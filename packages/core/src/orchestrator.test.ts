@@ -1035,6 +1035,62 @@ describe('orchestrator e2e', () => {
   )
 
   it(
+    'config-only change busts cache even when narrow inputs exclude the config file',
+    async () => {
+      // Narrow files to `src/**` only — the config file itself is NOT in the
+      // input set. The cache must still invalidate when the config changes,
+      // via the resolved task-config hash.
+      const dir = await addProject(fixture.root, 'cfgchange', {
+        files: { 'src/x.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                process: {
+                  command: ${JSON.stringify(STAMP_CMD)},
+                  passThroughEnv: ['ONE'],
+                },
+                cache: {
+                  inputs: { files: ['src/**'] },
+                  outputs: ['out.txt'],
+                },
+              },
+            },
+          }
+        `,
+      })
+
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+
+      // Edit only the config file. It's outside `src/**` so file inputs are
+      // unchanged. taskConfigHash differs -> cache must bust.
+      await writeFile(
+        path.join(dir, 'nxt.config.mjs'),
+        `
+          export default {
+            tasks: {
+              run: {
+                process: {
+                  command: ${JSON.stringify(STAMP_CMD)},
+                  passThroughEnv: ['ONE', 'TWO'],
+                },
+                cache: {
+                  inputs: { files: ['src/**'] },
+                  outputs: ['out.txt'],
+                },
+              },
+            },
+          }
+        `,
+      )
+
+      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r.outcomes[0]?.status).toBe('success')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'duplicate package names across workspace globs error clearly',
     async () => {
       // Two packages claiming the same name.

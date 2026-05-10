@@ -28,9 +28,8 @@ describe('Cache.key', () => {
   function baseInput(): CacheKeyInput {
     return {
       taskId: 'pkg#build',
-      command: 'echo hi',
-      explicitEnv: [],
-      envInputs: [],
+      taskConfigHash: 'config-hash-base',
+      envValues: [],
       inputFiles: [],
       workspaceRoot,
       upstreamHashes: [],
@@ -43,9 +42,9 @@ describe('Cache.key', () => {
     expect(a).toBe(b)
   })
 
-  it('changes when the command string changes', async () => {
-    const a = await cache.key({ ...baseInput(), command: 'echo a' })
-    const b = await cache.key({ ...baseInput(), command: 'echo b' })
+  it('changes when the resolved task config hash changes', async () => {
+    const a = await cache.key({ ...baseInput(), taskConfigHash: 'aaa' })
+    const b = await cache.key({ ...baseInput(), taskConfigHash: 'bbb' })
     expect(a).not.toBe(b)
   })
 
@@ -80,21 +79,15 @@ describe('Cache.key', () => {
     expect(a).toBe(b)
   })
 
-  it('changes when an explicit env value changes', async () => {
-    const a = await cache.key({ ...baseInput(), explicitEnv: [['K', 'v1']] })
-    const b = await cache.key({ ...baseInput(), explicitEnv: [['K', 'v2']] })
-    expect(a).not.toBe(b)
-  })
-
   it('changes when an env-input value changes', async () => {
-    const a = await cache.key({ ...baseInput(), envInputs: [['MODE', 'a']] })
-    const b = await cache.key({ ...baseInput(), envInputs: [['MODE', 'b']] })
+    const a = await cache.key({ ...baseInput(), envValues: [['MODE', 'a']] })
+    const b = await cache.key({ ...baseInput(), envValues: [['MODE', 'b']] })
     expect(a).not.toBe(b)
   })
 
   it('distinguishes empty value from unset (different cache keys)', async () => {
-    const present = await cache.key({ ...baseInput(), envInputs: [['MODE', '']] })
-    const absent = await cache.key({ ...baseInput(), envInputs: [] })
+    const present = await cache.key({ ...baseInput(), envValues: [['MODE', '']] })
+    const absent = await cache.key({ ...baseInput(), envValues: [] })
     expect(present).not.toBe(absent)
   })
 

@@ -12,15 +12,19 @@ import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:
 import path from 'node:path'
 import { relPosix } from './paths.js'
 
-const CACHE_VERSION = 'nxt-cache-v4'
+const CACHE_VERSION = 'nxt-cache-v5'
 
 export interface CacheKeyInput {
   taskId: string
-  command: string
-  /** Explicit name=value pairs from process.env config. */
-  explicitEnv: Array<[name: string, value: string]>
-  /** Declared env-input markers, name=value (from parent at hash time). */
-  envInputs: Array<[name: string, value: string]>
+  /**
+   * Hash of the resolved task config (post-evaluation). Folds in everything
+   * the user wrote — command, env names, dependsOn, cache.inputs declarations,
+   * outputs, passThroughEnv list, etc. — including values that arrived via
+   * `import` at config-load time.
+   */
+  taskConfigHash: string
+  /** Runtime values of declared env-input names (from parent at hash time). */
+  envValues: Array<[name: string, value: string]>
   /** Absolute paths to input files. */
   inputFiles: string[]
   workspaceRoot: string
@@ -47,13 +51,10 @@ export class Cache {
     const h = createHash('sha256')
     h.update(`${CACHE_VERSION}\n`)
     h.update(`task:${input.taskId}\n`)
-    h.update(`cmd:${input.command}\n`)
+    h.update(`config:${input.taskConfigHash}\n`)
 
-    h.update(`explicit-env:${input.explicitEnv.length}\n`)
-    for (const [n, v] of input.explicitEnv) h.update(`${n}=${v}\n`)
-
-    h.update(`env-inputs:${input.envInputs.length}\n`)
-    for (const [n, v] of input.envInputs) h.update(`${n}=${v}\n`)
+    h.update(`env-values:${input.envValues.length}\n`)
+    for (const [n, v] of input.envValues) h.update(`${n}=${v}\n`)
 
     const upstream = [...input.upstreamHashes].sort()
     h.update(`upstream:${upstream.length}\n`)

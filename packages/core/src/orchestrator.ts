@@ -2,11 +2,12 @@
 // run with caching. Each step delegates to a single-purpose module so the
 // layer can be swapped without touching the others.
 
+import { createHash } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import type { CacheInputs, ProcessConfig, ProjectConfig, TaskConfig, CacheConfig } from '@nxt/config'
 import { Cache } from './cache.js'
-import { buildIsolatedEnv, explicitEnvForKey } from './env.js'
+import { buildIsolatedEnv } from './env.js'
 import { resolveInputs, resolveOutputs } from './inputs.js'
 import { buildPackageGraph } from './package-graph.js'
 import { loadProjectConfig } from './project-loader.js'
@@ -135,12 +136,12 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   })
 
   const upstreamHashes = filterUpstreamHashes(upstream, cacheCfg.inputs?.dependencies)
+  const taskConfigHash = hashTaskConfig(cfg)
 
   const hash = await cache.key({
     taskId: node.id,
-    command: proc.command,
-    explicitEnv: explicitEnvForKey(explicitEnv),
-    envInputs: resolved.envValues,
+    taskConfigHash,
+    envValues: resolved.envValues,
     inputFiles: resolved.files,
     workspaceRoot,
     upstreamHashes,
@@ -221,6 +222,18 @@ function computeNestedProjectDirs(entries: ProjectEntry[]): Map<string, string[]
     result.set(p.name, nested)
   }
   return result
+}
+
+/**
+ * Hash the resolved task config. Folds every config-time decision (command,
+ * env names, dependsOn, cache directives, outputs, passThroughEnv list, etc.)
+ * into the cache key. Imported values are included because jiti has already
+ * baked them into the loaded object before we serialize.
+ *
+ * The schema is JSON-serializable by construction (no functions in fields).
+ */
+function hashTaskConfig(cfg: TaskConfig): string {
+  return createHash('sha256').update(JSON.stringify(cfg)).digest('hex')
 }
 
 function filterUpstreamHashes(
