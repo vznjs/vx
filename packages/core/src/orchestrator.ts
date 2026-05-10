@@ -3,6 +3,8 @@
 // layer can be swapped without touching the others.
 
 import { createHash } from 'node:crypto'
+import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import type { CacheInputs, ProcessConfig, ProjectConfig, TaskConfig, CacheConfig } from '@nxt/config'
@@ -80,6 +82,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 
   const cache = new Cache(path.join(workspaceRoot, '.nxt', 'cache'))
   const concurrency = options.concurrency ?? Math.max(1, os.cpus().length)
+  const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
   log.status(`nxt: ${nodes.size} task(s), concurrency ${concurrency}`)
 
@@ -93,6 +96,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         node,
         upstream,
         workspaceRoot,
+        workspaceFingerprint,
         cache,
         force: options.force ?? false,
         log,
@@ -109,6 +113,7 @@ interface ExecuteArgs {
   node: TaskNode
   upstream: TaskOutcome[]
   workspaceRoot: string
+  workspaceFingerprint: string
   cache: Cache
   force: boolean
   log: Logger
@@ -145,6 +150,7 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     inputFiles: resolved.files,
     workspaceRoot,
     upstreamHashes,
+    workspaceFingerprint: args.workspaceFingerprint,
   })
 
   if (cacheEnabled && !force) {
@@ -234,6 +240,26 @@ function computeNestedProjectDirs(entries: ProjectEntry[]): Map<string, string[]
  */
 function hashTaskConfig(cfg: TaskConfig): string {
   return createHash('sha256').update(JSON.stringify(cfg)).digest('hex')
+}
+
+const WORKSPACE_FINGERPRINT_FILES = ['pnpm-lock.yaml', 'pnpm-workspace.yaml']
+
+/**
+ * One hash for the workspace as a whole, derived from `pnpm-lock.yaml` and
+ * `pnpm-workspace.yaml`. Folded into every task's cache key so a `pnpm
+ * update` (lockfile change) or a workspace-shape change invalidates every
+ * cached entry. Coarse but correct.
+ */
+async function computeWorkspaceFingerprint(workspaceRoot: string): Promise<string> {
+  const h = createHash('sha256')
+  for (const f of WORKSPACE_FINGERPRINT_FILES) {
+    const full = path.join(workspaceRoot, f)
+    if (!existsSync(full)) continue
+    h.update(`${f}\0`)
+    h.update(await readFile(full))
+    h.update('\n')
+  }
+  return h.digest('hex')
 }
 
 function filterUpstreamHashes(

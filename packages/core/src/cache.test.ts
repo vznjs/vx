@@ -33,6 +33,7 @@ describe('Cache.key', () => {
       inputFiles: [],
       workspaceRoot,
       upstreamHashes: [],
+      workspaceFingerprint: 'ws-fp-base',
     }
   }
 
@@ -101,6 +102,12 @@ describe('Cache.key', () => {
     const a = await cache.key({ ...baseInput(), upstreamHashes: ['aaa', 'bbb'] })
     const b = await cache.key({ ...baseInput(), upstreamHashes: ['bbb', 'aaa'] })
     expect(a).toBe(b)
+  })
+
+  it('changes when the workspace fingerprint changes', async () => {
+    const a = await cache.key({ ...baseInput(), workspaceFingerprint: 'a' })
+    const b = await cache.key({ ...baseInput(), workspaceFingerprint: 'b' })
+    expect(a).not.toBe(b)
   })
 
   it('produces different keys for two projects with identical relative trees', async () => {

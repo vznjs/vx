@@ -1035,6 +1035,51 @@ describe('orchestrator e2e', () => {
   )
 
   it(
+    'workspace fingerprint: pnpm-lock.yaml change busts every task cache',
+    async () => {
+      // Seed a lockfile.
+      await writeFile(
+        path.join(fixture.root, 'pnpm-lock.yaml'),
+        "lockfileVersion: '9.0'\nimporters:\n  '.': {}\n",
+      )
+      const dir = await addProject(fixture.root, 'lockproj', {
+        files: { 'src/x.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                process: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { outputs: ['out.txt'] },
+              },
+            },
+          }
+        `,
+      })
+
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const first = await readFile(path.join(dir, 'out.txt'), 'utf8')
+
+      // Same lockfile -> cache hits.
+      const r1 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r1.outcomes[0]?.status).toBe('cache-hit')
+      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe(first)
+
+      // Lockfile changes (e.g. transitive resolution bump). No project file
+      // changed; cache must still bust because workspaceFingerprint differs.
+      await new Promise((r) => setTimeout(r, 5))
+      await writeFile(
+        path.join(fixture.root, 'pnpm-lock.yaml'),
+        "lockfileVersion: '9.0'\nimporters:\n  '.': {}\n# bumped\n",
+      )
+
+      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r2.outcomes[0]?.status).toBe('success')
+      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).not.toBe(first)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'config-only change busts cache even when narrow inputs exclude the config file',
     async () => {
       // Narrow files to `src/**` only — the config file itself is NOT in the

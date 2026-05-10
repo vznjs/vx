@@ -82,13 +82,16 @@ Tasks that must complete before this one runs. Shape:
 
 A task's cache key is derived from:
 
-1. The shell command string.
-2. `process.env` explicit values.
-3. Resolved inputs:
-   - All declared file contents (hashed).
-   - Declared env input values.
-   - Declared external-dependency version ranges from `package.json`.
+1. A hash of the resolved task config (post-evaluation): command, env
+   names, dependsOn, cache directives, outputs, passThroughEnv list,
+   process.env explicit values, etc.
+2. Declared env-input values (from parent process.env at hash time).
+3. Input file contents (gitignore-aware project files; or whatever
+   `cache.inputs.files` narrows to).
 4. Upstream tasks' cache keys, filtered by `cache.inputs.dependencies`.
+5. Workspace fingerprint — a hash of `pnpm-lock.yaml` and
+   `pnpm-workspace.yaml`. A `pnpm update` (resolved version bump) or a
+   workspace-shape change invalidates every task's cache.
 
 Cache hit → outputs restored, captured stdout / stderr replayed. Miss →
 the task runs, outputs are captured, the entry is saved.

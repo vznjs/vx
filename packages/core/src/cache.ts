@@ -12,7 +12,7 @@ import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:
 import path from 'node:path'
 import { relPosix } from './paths.js'
 
-const CACHE_VERSION = 'nxt-cache-v5'
+const CACHE_VERSION = 'nxt-cache-v6'
 
 export interface CacheKeyInput {
   taskId: string
@@ -30,6 +30,12 @@ export interface CacheKeyInput {
   workspaceRoot: string
   /** Cache keys of upstream tasks this one depends on, sorted. */
   upstreamHashes: string[]
+  /**
+   * Workspace-level fingerprint — typically a hash of `pnpm-lock.yaml` +
+   * `pnpm-workspace.yaml`. Folds resolved dep versions and workspace shape
+   * into every task's key, so a lockfile bump invalidates everything.
+   */
+  workspaceFingerprint: string
 }
 
 export interface CacheEntry {
@@ -51,6 +57,7 @@ export class Cache {
     const h = createHash('sha256')
     h.update(`${CACHE_VERSION}\n`)
     h.update(`task:${input.taskId}\n`)
+    h.update(`workspace:${input.workspaceFingerprint}\n`)
     h.update(`config:${input.taskConfigHash}\n`)
 
     h.update(`env-values:${input.envValues.length}\n`)
