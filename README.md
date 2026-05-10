@@ -22,7 +22,7 @@ export default defineProject({
         inputs: {
           files: ['src/**', '!**/*.test.ts'],
           env: ['NODE_ENV'],
-          dependencies: ['*', '!lint'],
+          tasks: ['*', '!lint'],
         },
         outputs: ['dist/**'],
       },
@@ -61,7 +61,7 @@ Tasks that must complete before this one runs. Shape:
   | --- | --- |
   | `files` | project-relative globs (`!` to negate). Omit for "all project files". |
   | `env` | env var names; their current values participate in the key. |
-  | `dependencies` | which upstream tasks' cache keys fold in. Patterns: `'*'` = all dependsOn, `'name'` = include literal, `'!name'` = exclude literal. Default `['*']`. Examples: `['build']`, `['*', '!test']`, `[]` for none. |
+  | `tasks` | which upstream tasks' cache keys fold in. Patterns: `'*'` = all dependsOn, `'name'` = include literal, `'!name'` = exclude literal. Default `['*']`. Examples: `['build']`, `['*', '!test']`, `[]` for none. |
 
   File globs are gitignore-aware. Declared outputs and any nested nxt
   project's directory are excluded automatically — a task cannot
@@ -88,7 +88,7 @@ A task's cache key is derived from:
 2. Declared env-input values (from parent process.env at hash time).
 3. Input file contents (gitignore-aware project files; or whatever
    `cache.inputs.files` narrows to).
-4. Upstream tasks' cache keys, filtered by `cache.inputs.dependencies`.
+4. Upstream tasks' cache keys, filtered by `cache.inputs.tasks`.
 5. Workspace fingerprint — a hash of `pnpm-lock.yaml` and
    `pnpm-workspace.yaml`. A `pnpm update` (resolved version bump) or a
    workspace-shape change invalidates every task's cache.
@@ -98,7 +98,7 @@ the task runs, outputs are captured, the entry is saved.
 
 This is Turbo-style: an upstream's cache-key change cascades. A change
 to a file in an upstream package will invalidate every dependent whose
-`cache.inputs.dependencies` includes that upstream — even if the produced
+`cache.inputs.tasks` includes that upstream — even if the produced
 output bytes are unchanged.
 
 ## CLI

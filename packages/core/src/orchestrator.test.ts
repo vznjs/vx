@@ -244,7 +244,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'cache.inputs.dependencies: [] decouples the dependent from upstream cache',
+    'cache.inputs.tasks: [] decouples the dependent from upstream cache',
     async () => {
       await addProject(fixture.root, 'lib', {
         files: { 'src/x.txt': 'v1' },
@@ -270,7 +270,7 @@ describe('orchestrator e2e', () => {
                 dependsOn: [{ task: 'build', dependencies: true }],
                 cache: {
                   outputs: ['out.txt'],
-                  inputs: { dependencies: [] },
+                  inputs: { tasks: [] },
                 },
               },
             },
@@ -282,7 +282,7 @@ describe('orchestrator e2e', () => {
       const appOut1 = await readFile(path.join(appDir, 'out.txt'), 'utf8')
 
       // Change lib's source. App's cache should still hit because
-      // app declared dependencies: [].
+      // app declared tasks: [].
       await writeFile(path.join(fixture.root, 'packages/lib/src/x.txt'), 'v2')
       const r = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
       expect(r.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
@@ -386,7 +386,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'cache.inputs.dependencies pattern: ["*", "!noisy"] excludes noisy from key',
+    'cache.inputs.tasks pattern: ["*", "!noisy"] excludes noisy from key',
     async () => {
       // lib has two unrelated tasks with narrow, non-overlapping inputs.
       await addProject(fixture.root, 'lib', {
@@ -426,7 +426,7 @@ describe('orchestrator e2e', () => {
                 ],
                 cache: {
                   outputs: ['out.txt'],
-                  inputs: { dependencies: ['*', '!noisy'] },
+                  inputs: { tasks: ['*', '!noisy'] },
                 },
               },
             },

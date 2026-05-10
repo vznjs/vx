@@ -140,7 +140,7 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     nestedProjectDirs: args.nestedProjectDirs,
   })
 
-  const upstreamHashes = filterUpstreamHashes(upstream, cacheCfg.inputs?.dependencies)
+  const upstreamHashes = filterUpstreamHashes(upstream, cacheCfg.inputs?.tasks)
   const taskConfigHash = hashTaskConfig(cfg)
 
   const hash = await cache.key({
@@ -264,7 +264,7 @@ async function computeWorkspaceFingerprint(workspaceRoot: string): Promise<strin
 
 function filterUpstreamHashes(
   upstream: TaskOutcome[],
-  filter: CacheInputs['dependencies'],
+  filter: CacheInputs['tasks'],
 ): string[] {
   const patterns = filter ?? ['*']
   const candidates = upstream.map((u) => u.node.taskName)

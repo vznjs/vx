@@ -78,7 +78,7 @@ export interface CacheInputs {
    *   ['*', '!test']      — all except `test`
    *   []                  — none
    */
-  dependencies?: string[]
+  tasks?: string[]
 }
 
 export interface TaskDependency {
