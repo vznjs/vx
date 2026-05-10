@@ -458,6 +458,72 @@ describe('orchestrator e2e', () => {
   )
 
   it(
+    'cache.inputs.tasks per-bucket default: overriding self leaves dependencies on default-all',
+    async () => {
+      // lib has a `build` task — workspace dep upstream.
+      await addProject(fixture.root, 'lib', {
+        files: { 'src/x.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: "cat src/x.txt > dist.txt" },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['dist.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+
+      // app has `codegen` (self) AND a workspace dep on lib's build.
+      // Its `build` filters self to ['codegen'] but DOESN'T set dependencies
+      // -> dependencies bucket should default to all-of-deps' build.
+      const appDir = await addProject(fixture.root, 'app', {
+        deps: { lib: 'workspace:*' },
+        files: { 'src/y.txt': 'app' },
+        config: `
+          export default {
+            tasks: {
+              codegen: {
+                exec: { command: "echo gen > generated.txt" },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['generated.txt'] } },
+              },
+              build: {
+                exec: { command: ${JSON.stringify(STAMP_CMD)} },
+                dependsOn: { self: ['codegen'], dependencies: ['build'] },
+                cache: {
+                  inputs: {
+                    files: ['**/*'],
+                    tasks: { self: ['codegen'] },   // explicit self; deps default = all
+                  },
+                  outputs: { files: ['out.txt'] },
+                },
+              },
+            },
+          }
+        `,
+      })
+
+      await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      const appOut1 = await readFile(path.join(appDir, 'out.txt'), 'utf8')
+
+      // Re-run unchanged: cache hit.
+      const r2 = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      expect(r2.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
+
+      // Change lib's source. Because `dependencies` bucket is omitted, lib#build
+      // hash should still flow through and bust app#build.
+      await new Promise((r) => setTimeout(r, 5))
+      await writeFile(path.join(fixture.root, 'packages/lib/src/x.txt'), 'v2')
+
+      const r3 = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      expect(r3.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
+      expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).not.toBe(appOut1)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'fails the dependent when an upstream task fails',
     async () => {
       await addProject(fixture.root, 'lib', {

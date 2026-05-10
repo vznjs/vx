@@ -89,10 +89,16 @@ export interface CacheInputs {
    * Which upstream tasks' cache keys participate in this task's key.
    * Same shape as `dependsOn`: list task names by source bucket.
    *
-   * - omitted: every upstream task that ran for me (all of `dependsOn`).
-   * - object: only the listed tasks' hashes participate. Empty arrays
-   *   in either bucket → none from that source. Both empty → fully
-   *   decoupled from upstream cache.
+   * **Per-bucket defaults.** When a bucket (`self` or `dependencies`)
+   * is omitted, all upstream tasks from that source contribute. When
+   * a bucket is an explicit array, only the listed names contribute
+   * (empty array = none from that source).
+   *
+   * Examples:
+   * - omitted entirely: all upstream contribute (most common; default).
+   * - `{ self: ['codegen'] }`: filter self to just codegen; deps stay
+   *   on the default-all behaviour.
+   * - `{ self: [], dependencies: [] }`: fully decoupled.
    */
   tasks?: TaskDependsOn
 }

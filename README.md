@@ -108,7 +108,7 @@ cache: {
   | --- | --- | --- |
   | `files` | yes | project-relative globs (`!` to negate). Use `['**/*']` for all project files. |
   | `env` | no | env var names; their host values bust the cache when changed. Independent of `exec.env.passThrough`: declaring a name here does NOT forward it to the child. |
-  | `tasks` | no | which upstream tasks' cache keys fold in. Same shape as `dependsOn` (`{ self?, dependencies? }`). Omitted = every upstream that ran for me. Empty arrays = nothing from that source. |
+  | `tasks` | no | which upstream tasks' cache keys fold in. Same shape as `dependsOn` (`{ self?, dependencies? }`). **Per-bucket defaults**: omit a bucket and all upstream from that source contribute; provide an explicit array to filter (empty array = none from that source). So `{ self: ['codegen'] }` filters self but leaves `dependencies` on the default-all behaviour. |
 
   File globs are always gitignore-aware (whether you write `['**/*']`
   or a narrow list). Declared outputs and any nested vzn project's

@@ -262,17 +262,16 @@ function filterUpstreamHashes(
   filter: TaskDependsOn | undefined,
   selfProjectName: string,
 ): string[] {
-  // Default (omitted): every upstream task that ran for me contributes.
-  if (filter === undefined) {
-    return upstream.flatMap((u) => (u.hash ? [u.hash] : []))
-  }
-  const selfNames = new Set(filter.self ?? [])
-  const depNames = new Set(filter.dependencies ?? [])
+  // Per-bucket default: when a bucket is OMITTED, all upstream from that
+  // source contribute. When it's an EXPLICIT array (even empty), only the
+  // listed names contribute. So `{ self: ['codegen'] }` filters self but
+  // leaves dependencies on the default-all behaviour.
   const out: string[] = []
   for (const u of upstream) {
     if (!u.hash) continue
     const isSameProject = u.node.projectName === selfProjectName
-    const allowed = isSameProject ? selfNames.has(u.node.taskName) : depNames.has(u.node.taskName)
+    const bucket = isSameProject ? filter?.self : filter?.dependencies
+    const allowed = bucket === undefined || bucket.includes(u.node.taskName)
     if (allowed) out.push(u.hash)
   }
   return out
