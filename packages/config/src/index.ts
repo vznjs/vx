@@ -48,13 +48,6 @@ export interface CacheConfig {
    * restore on a cache hit.
    */
   outputs?: string[]
-  /**
-   * Which upstream tasks' cache keys participate in this task's key.
-   * Names refer to entries in `dependsOn` (by their `task` name).
-   * - `true` (default): all entries in `dependsOn`.
-   * - `string[]`: only the listed task names.
-   */
-  dependencies?: boolean | string[]
 }
 
 export interface CacheInputs {
@@ -71,10 +64,13 @@ export interface CacheInputs {
    */
   env?: string[]
   /**
-   * npm package names. Each package's version range, as declared in this
-   * project's package.json, is folded into the cache key.
+   * Which upstream tasks' cache keys participate in this task's key.
+   * Names refer to entries in `dependsOn` (by their `task` name).
+   * - `true` (default): all entries in `dependsOn`.
+   * - `string[]`: only the listed task names.
+   * - `false` / `[]`: no upstream cache keys participate.
    */
-  externalDependencies?: string[]
+  dependencies?: boolean | string[]
 }
 
 export interface TaskDependency {

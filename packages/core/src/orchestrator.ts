@@ -4,7 +4,7 @@
 
 import os from 'node:os'
 import path from 'node:path'
-import type { CacheConfig, ProcessConfig, ProjectConfig, TaskConfig } from '@nxt/config'
+import type { CacheInputs, ProcessConfig, ProjectConfig, TaskConfig, CacheConfig } from '@nxt/config'
 import { Cache } from './cache.js'
 import { buildIsolatedEnv, explicitEnvForKey } from './env.js'
 import { resolveInputs, resolveOutputs } from './inputs.js'
@@ -13,7 +13,7 @@ import { loadProjectConfig } from './project-loader.js'
 import { runCommand } from './runner.js'
 import { runGraph, type TaskOutcome } from './scheduler.js'
 import { buildTaskGraph, taskId, type ProjectEntry, type TaskNode } from './task-graph.js'
-import { findWorkspaceRoot, listProjects, loadWorkspace, type ProjectMeta } from './workspace.js'
+import { findWorkspaceRoot, listProjects, loadWorkspace } from './workspace.js'
 
 export interface RunOptions {
   cwd: string
@@ -42,8 +42,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const workspaceRoot = findWorkspaceRoot(options.cwd)
   const workspace = await loadWorkspace(workspaceRoot)
   const projectMetas = await listProjects(workspace)
-  const metaByName = new Map<string, ProjectMeta>()
-  for (const m of projectMetas) metaByName.set(m.name, m)
 
   const projects = new Map<string, ProjectEntry>()
   for (const meta of projectMetas) {
@@ -97,7 +95,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         cache,
         force: options.force ?? false,
         log,
-        packageJsonByProject: metaByName,
         nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
       }),
   })
@@ -114,7 +111,6 @@ interface ExecuteArgs {
   cache: Cache
   force: boolean
   log: Logger
-  packageJsonByProject: Map<string, ProjectMeta>
   nestedProjectDirs: string[]
 }
 
@@ -125,11 +121,6 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const cacheCfg: CacheConfig = cfg.cache ?? {}
   const cacheEnabled = cacheCfg.enabled !== false
 
-  const meta = args.packageJsonByProject.get(node.projectName)
-  if (!meta) {
-    throw new Error(`Missing package metadata for ${node.projectName}`)
-  }
-
   const outputs = cacheCfg.outputs ?? []
   const passThroughEnv = proc.passThroughEnv ?? []
   const explicitEnv = proc.env ?? {}
@@ -137,21 +128,19 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const resolved = await resolveInputs({
     projectDir: node.projectDir,
     workspaceRoot,
-    packageJson: meta.packageJson,
     envSource: process.env,
     inputs: cacheCfg.inputs,
     ownOutputs: outputs,
     nestedProjectDirs: args.nestedProjectDirs,
   })
 
-  const upstreamHashes = filterUpstreamHashes(upstream, cacheCfg.dependencies)
+  const upstreamHashes = filterUpstreamHashes(upstream, cacheCfg.inputs?.dependencies)
 
   const hash = await cache.key({
     taskId: node.id,
     command: proc.command,
     explicitEnv: explicitEnvForKey(explicitEnv),
     envInputs: resolved.envValues,
-    externalDeps: resolved.externalDeps,
     inputFiles: resolved.files,
     workspaceRoot,
     upstreamHashes,
@@ -236,7 +225,7 @@ function computeNestedProjectDirs(entries: ProjectEntry[]): Map<string, string[]
 
 function filterUpstreamHashes(
   upstream: TaskOutcome[],
-  filter: CacheConfig['dependencies'],
+  filter: CacheInputs['dependencies'],
 ): string[] {
   if (filter === false || (Array.isArray(filter) && filter.length === 0)) return []
   const wantAll = filter === undefined || filter === true

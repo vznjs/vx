@@ -22,10 +22,9 @@ export default defineProject({
         inputs: {
           files: ['src/**', '!**/*.test.ts'],
           env: ['NODE_ENV'],
-          externalDependencies: ['typescript'],
+          dependencies: true,
         },
         outputs: ['dist/**'],
-        dependencies: true,
       },
     },
   },
@@ -62,15 +61,16 @@ Tasks that must complete before this one runs. Shape:
   | --- | --- |
   | `files` | project-relative globs (`!` to negate). Omit for "all project files". |
   | `env` | env var names; their current values participate in the key. |
-  | `externalDependencies` | npm package names; their declared version ranges participate in the key. |
+  | `dependencies` | which upstream tasks' cache keys fold in. `true` (default) = all of `dependsOn`; `string[]` = filter by task name; `[]` = none. |
 
   File globs are gitignore-aware. Declared outputs and any nested nxt
   project's directory are excluded automatically — a task cannot
   invalidate itself, and cannot read across project boundaries.
 
-  Files outside the project (root configs, etc.) are intentionally not
-  reachable from per-task inputs. That belongs at the workspace level —
-  see the future `defineWorkspace({ globalInputs })`.
+  Note: package version changes are picked up automatically because
+  `package.json` is part of the default file inputs. There's no
+  `externalDependencies` field — bumping a dep range edits the file,
+  which busts the cache.
 
 - `outputs`: project-relative globs the task produces. Captured for
   restore on hit.
@@ -88,14 +88,14 @@ A task's cache key is derived from:
    - All declared file contents (hashed).
    - Declared env input values.
    - Declared external-dependency version ranges from `package.json`.
-4. Upstream tasks' cache keys, filtered by `cache.dependencies`.
+4. Upstream tasks' cache keys, filtered by `cache.inputs.dependencies`.
 
 Cache hit → outputs restored, captured stdout / stderr replayed. Miss →
 the task runs, outputs are captured, the entry is saved.
 
 This is Turbo-style: an upstream's cache-key change cascades. A change
 to a file in an upstream package will invalidate every dependent whose
-`cache.dependencies` includes that upstream — even if the produced
+`cache.inputs.dependencies` includes that upstream — even if the produced
 output bytes are unchanged.
 
 ## CLI

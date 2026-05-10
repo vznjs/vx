@@ -31,7 +31,6 @@ describe('Cache.key', () => {
       command: 'echo hi',
       explicitEnv: [],
       envInputs: [],
-      externalDeps: [],
       inputFiles: [],
       workspaceRoot,
       upstreamHashes: [],
@@ -97,12 +96,6 @@ describe('Cache.key', () => {
     const present = await cache.key({ ...baseInput(), envInputs: [['MODE', '']] })
     const absent = await cache.key({ ...baseInput(), envInputs: [] })
     expect(present).not.toBe(absent)
-  })
-
-  it('changes when an externalDependencies version changes', async () => {
-    const a = await cache.key({ ...baseInput(), externalDeps: [['typescript', '^5.0.0']] })
-    const b = await cache.key({ ...baseInput(), externalDeps: [['typescript', '^5.6.0']] })
-    expect(a).not.toBe(b)
   })
 
   it('changes when an upstream hash changes', async () => {

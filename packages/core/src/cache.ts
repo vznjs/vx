@@ -12,7 +12,7 @@ import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:
 import path from 'node:path'
 import { relPosix } from './paths.js'
 
-const CACHE_VERSION = 'nxt-cache-v3'
+const CACHE_VERSION = 'nxt-cache-v4'
 
 export interface CacheKeyInput {
   taskId: string
@@ -21,8 +21,6 @@ export interface CacheKeyInput {
   explicitEnv: Array<[name: string, value: string]>
   /** Declared env-input markers, name=value (from parent at hash time). */
   envInputs: Array<[name: string, value: string]>
-  /** Declared external-dependency markers, name=version. */
-  externalDeps: Array<[name: string, version: string]>
   /** Absolute paths to input files. */
   inputFiles: string[]
   workspaceRoot: string
@@ -56,9 +54,6 @@ export class Cache {
 
     h.update(`env-inputs:${input.envInputs.length}\n`)
     for (const [n, v] of input.envInputs) h.update(`${n}=${v}\n`)
-
-    h.update(`ext-deps:${input.externalDeps.length}\n`)
-    for (const [n, v] of input.externalDeps) h.update(`${n}=${v}\n`)
 
     const upstream = [...input.upstreamHashes].sort()
     h.update(`upstream:${upstream.length}\n`)

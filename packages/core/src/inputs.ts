@@ -2,7 +2,6 @@
 // cache key:
 //   - files: absolute paths whose contents are hashed
 //   - envValues: [name, value] pairs (from parent process.env)
-//   - externalDeps: [name, version] pairs (from project's package.json)
 //
 // Each input kind has its own resolver; the orchestrator calls them via
 // `resolveInputs`. File globs are uniformly gitignore-aware and exclude
@@ -14,7 +13,6 @@ import path from 'node:path'
 import ignore, { type Ignore } from 'ignore'
 import { glob } from 'tinyglobby'
 import type { CacheInputs } from '@nxt/config'
-import type { PackageJson } from './workspace.js'
 
 const ALWAYS_IGNORE = [
   '**/node_modules/**',
@@ -28,13 +26,11 @@ const DEFAULT_FILE_GLOBS: readonly string[] = ['**/*']
 export interface ResolvedInputs {
   files: string[]
   envValues: Array<[name: string, value: string]>
-  externalDeps: Array<[name: string, version: string]>
 }
 
 export interface ResolveInputsArgs {
   projectDir: string
   workspaceRoot: string
-  packageJson: PackageJson
   envSource: NodeJS.ProcessEnv
   inputs: CacheInputs | undefined
   /** Project-relative output globs to exclude from inputs. */
@@ -54,7 +50,6 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
       nestedProjectDirs: args.nestedProjectDirs,
     }),
     envValues: resolveEnvValues(cfg.env ?? [], args.envSource),
-    externalDeps: resolveExternalDeps(cfg.externalDependencies ?? [], args.packageJson),
   }
 }
 
@@ -119,14 +114,6 @@ function resolveEnvValues(
   return [...names].sort().map((name) => [name, source[name] ?? ''] as [string, string])
 }
 
-function resolveExternalDeps(
-  names: readonly string[],
-  pkg: PackageJson,
-): Array<[string, string]> {
-  const declared = readDeclaredVersions(pkg)
-  return [...names].sort().map((name) => [name, declared[name] ?? ''] as [string, string])
-}
-
 function boundaryIgnorePatterns(projectDir: string, nestedDirs: string[]): string[] {
   return nestedDirs.map((d) => {
     const rel = path.relative(projectDir, d).split(path.sep).join('/')
@@ -143,21 +130,4 @@ async function loadGitignore(workspaceRoot: string, projectDir: string): Promise
     if (existsSync(f)) ig.add(await readFile(f, 'utf8'))
   }
   return ig
-}
-
-function readDeclaredVersions(pkg: PackageJson): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const field of [
-    'dependencies',
-    'devDependencies',
-    'peerDependencies',
-    'optionalDependencies',
-  ] as const) {
-    const obj = pkg[field]
-    if (!obj) continue
-    for (const [name, version] of Object.entries(obj)) {
-      out[name] = version
-    }
-  }
-  return out
 }

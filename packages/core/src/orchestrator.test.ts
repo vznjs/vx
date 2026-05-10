@@ -244,7 +244,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'cache.dependencies: [] decouples the dependent from upstream cache',
+    'cache.inputs.dependencies: [] decouples the dependent from upstream cache',
     async () => {
       await addProject(fixture.root, 'lib', {
         files: { 'src/x.txt': 'v1' },
@@ -268,7 +268,10 @@ describe('orchestrator e2e', () => {
               build: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
                 dependsOn: [{ task: 'build', dependencies: true }],
-                cache: { outputs: ['out.txt'], dependencies: [] },
+                cache: {
+                  outputs: ['out.txt'],
+                  inputs: { dependencies: [] },
+                },
               },
             },
           }
@@ -378,45 +381,6 @@ describe('orchestrator e2e', () => {
       const r = await run({ cwd: fixture.root, task: 'show', log: silentLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('success')
       expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('two')
-    },
-    TIMEOUT,
-  )
-
-  it(
-    'externalDependencies input changes bust the cache',
-    async () => {
-      const dir = await addProject(fixture.root, 'extdeps', {
-        devDeps: { typescript: '^5.0.0' },
-        config: `
-          export default {
-            tasks: {
-              run: {
-                process: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: {
-                  inputs: { externalDependencies: ['typescript'] },
-                  outputs: ['out.txt'],
-                },
-              },
-            },
-          }
-        `,
-      })
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
-      const first = await readFile(path.join(dir, 'out.txt'), 'utf8')
-
-      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
-      expect(r2.outcomes[0]?.status).toBe('cache-hit')
-
-      // Bump typescript range; cache busts.
-      const pkg = JSON.parse(await readFile(path.join(dir, 'package.json'), 'utf8')) as {
-        devDependencies: Record<string, string>
-      }
-      pkg.devDependencies.typescript = '^5.6.0'
-      await writeFile(path.join(dir, 'package.json'), JSON.stringify(pkg, null, 2))
-
-      const r3 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
-      expect(r3.outcomes[0]?.status).toBe('success')
-      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).not.toBe(first)
     },
     TIMEOUT,
   )
