@@ -22,7 +22,7 @@ export default defineProject({
         inputs: {
           files: ['src/**', '!**/*.test.ts'],
           env: ['NODE_ENV'],
-          dependencies: true,
+          dependencies: ['*', '!lint'],
         },
         outputs: ['dist/**'],
       },
@@ -61,7 +61,7 @@ Tasks that must complete before this one runs. Shape:
   | --- | --- |
   | `files` | project-relative globs (`!` to negate). Omit for "all project files". |
   | `env` | env var names; their current values participate in the key. |
-  | `dependencies` | which upstream tasks' cache keys fold in. `true` (default) = all of `dependsOn`; `string[]` = filter by task name; `[]` = none. |
+  | `dependencies` | which upstream tasks' cache keys fold in. Patterns: `'*'` = all dependsOn, `'name'` = include literal, `'!name'` = exclude literal. Default `['*']`. Examples: `['build']`, `['*', '!test']`, `[]` for none. |
 
   File globs are gitignore-aware. Declared outputs and any nested nxt
   project's directory are excluded automatically — a task cannot

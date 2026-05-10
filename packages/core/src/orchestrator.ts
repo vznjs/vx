@@ -227,13 +227,22 @@ function filterUpstreamHashes(
   upstream: TaskOutcome[],
   filter: CacheInputs['dependencies'],
 ): string[] {
-  if (filter === false || (Array.isArray(filter) && filter.length === 0)) return []
-  const wantAll = filter === undefined || filter === true
-  const wanted = Array.isArray(filter) ? new Set(filter) : null
+  const patterns = filter ?? ['*']
+  const candidates = upstream.map((u) => u.node.taskName)
+  const selected = new Set<string>()
+  for (const p of patterns) {
+    if (p === '*') {
+      for (const c of candidates) selected.add(c)
+    } else if (p.startsWith('!')) {
+      selected.delete(p.slice(1))
+    } else {
+      selected.add(p)
+    }
+  }
   const out: string[] = []
   for (const u of upstream) {
     if (!u.hash) continue
-    if (wantAll || (wanted && wanted.has(u.node.taskName))) out.push(u.hash)
+    if (selected.has(u.node.taskName)) out.push(u.hash)
   }
   return out
 }

@@ -65,12 +65,20 @@ export interface CacheInputs {
   env?: string[]
   /**
    * Which upstream tasks' cache keys participate in this task's key.
-   * Names refer to entries in `dependsOn` (by their `task` name).
-   * - `true` (default): all entries in `dependsOn`.
-   * - `string[]`: only the listed task names.
-   * - `false` / `[]`: no upstream cache keys participate.
+   * Patterns refer to entries in `dependsOn` (by their `task` name):
+   * - `'*'`: every dependsOn task.
+   * - `'name'`: include the literal task name.
+   * - `'!name'`: exclude the literal task name.
+   *
+   * Patterns are applied in order, last write wins. Default: `['*']`.
+   *
+   * Examples:
+   *   ['*']               — all dependsOn (default)
+   *   ['build']           — only `build`
+   *   ['*', '!test']      — all except `test`
+   *   []                  — none
    */
-  dependencies?: boolean | string[]
+  dependencies?: string[]
 }
 
 export interface TaskDependency {
