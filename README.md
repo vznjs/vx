@@ -17,17 +17,19 @@ import { defineProject } from '@vzn/run'
 export default defineProject({
   tasks: {
     build: {
-      process: {
+      exec: {
         command: 'tsc -b',
-        passThroughEnv: ['AWS_REGION'],
-        env: { NODE_ENV: 'production' },
+        env: {
+          passThrough: ['AWS_REGION'],          // forwarded from host, NOT in cache key
+          define: { NODE_ENV: 'production' },   // explicit values, IN cache key
+        },
       },
       dependsOn: { dependencies: ['build'] },
       cache: {
         inputs: {
           files: ['src/**', '!**/*.test.ts'],   // required; pass ['**/*'] for all
-          env: ['NODE_ENV'],
-          tasks: ['*', '!lint'],
+          env: ['CI'],                          // names whose host values bust cache
+          tasks: { dependencies: ['build'] },   // which upstreams' hashes fold in
         },
         outputs: {
           files: ['dist/**'],
@@ -38,15 +40,21 @@ export default defineProject({
 })
 ```
 
-### `process`
+### `exec`
 
 How the task is executed. The child sees only what you list here, plus a
 small essential allowlist for shell tooling (`PATH`, `HOME`, `TMPDIR`, …).
 
 - `command`: shell command, run from the project's directory.
-- `passThroughEnv`: env names whose values are passed through from the
-  parent. Not folded into the cache key — for secrets, region, etc.
-- `env`: explicit name=value pairs to set. Folded into the cache key.
+- `env.passThrough`: env var names whose values come from the host
+  (`process.env`) and are forwarded to the child. NOT folded into the
+  cache key — for CI flags, secrets, regions.
+- `env.define`: explicit `name: value` pairs set on the child. Folded
+  into the cache key automatically (the values are literal in your
+  config and captured via the task config hash).
+
+`exec.env` is purely about what the child sees. Cache invalidation on
+env changes is a separate, optional axis — see `cache.inputs.env`.
 
 ### `dependsOn`
 
@@ -76,13 +84,13 @@ minimum — to enable caching.
 
 ```ts
 cache: {
-  inputs: {                        // required; declare what participates in the key
-    files: ['**/*'],               // required; '**/*' for all project files
-    env?: ['NODE_ENV'],
-    tasks?: ['*'],
+  inputs: {                                // required
+    files: ['**/*'],                       // required; '**/*' for all project files
+    env?: ['NODE_ENV'],                    // host env names whose values bust cache
+    tasks?: { dependencies: ['build'] },   // upstream task hashes to fold in
   },
-  outputs: {                       // required; declare what this task produces
-    files: ['dist/**'],            // required; pass [] if there are none
+  outputs: {                               // required
+    files: ['dist/**'],                    // required; pass [] if there are none
   },
 }
 ```
@@ -99,8 +107,8 @@ cache: {
   | Field | Required | Meaning |
   | --- | --- | --- |
   | `files` | yes | project-relative globs (`!` to negate). Use `['**/*']` for all project files. |
-  | `env` | no | env var names; their current values participate in the key. |
-  | `tasks` | no | which upstream tasks' cache keys fold in. Patterns: `'*'` = all dependsOn, `'name'` = include literal, `'!name'` = exclude literal. Default `['*']`. |
+  | `env` | no | env var names; their host values bust the cache when changed. Independent of `exec.env.passThrough`: declaring a name here does NOT forward it to the child. |
+  | `tasks` | no | which upstream tasks' cache keys fold in. Same shape as `dependsOn` (`{ self?, dependencies? }`). Omitted = every upstream that ran for me. Empty arrays = nothing from that source. |
 
   File globs are always gitignore-aware (whether you write `['**/*']`
   or a narrow list). Declared outputs and any nested vzn project's
@@ -117,10 +125,11 @@ cache: {
 
 A task's cache key is derived from:
 
-1. A hash of the resolved task config (post-evaluation): command, env
-   names, dependsOn, cache directives, outputs, passThroughEnv list,
-   process.env explicit values, etc.
-2. Declared env-input values (from parent process.env at hash time).
+1. A hash of the resolved task config (post-evaluation): command,
+   `exec.env.passThrough` names, `exec.env.define` literal values,
+   dependsOn, cache directives, outputs — including values that arrived
+   via `import` at config-load time.
+2. Declared `cache.inputs.env` values (from host `process.env` at hash time).
 3. Input file contents — `cache.inputs.files` resolved with gitignore
    filtering, declared outputs excluded, nested-project files excluded.
 4. Upstream tasks' cache keys, filtered by `cache.inputs.tasks`.

@@ -1,11 +1,10 @@
 // Resolve declared cache inputs into the concrete pieces that go into the
 // cache key:
 //   - files: absolute paths whose contents are hashed
-//   - envValues: [name, value] pairs (from parent process.env)
+//   - envValues: [name, value] pairs from parent process.env
 //
-// Each input kind has its own resolver; the orchestrator calls them via
-// `resolveInputs`. File globs are uniformly gitignore-aware and exclude
-// nested-project subtrees + declared outputs + always-ignored paths.
+// `cache.inputs.env` is the cache-tracking axis for env vars; it's
+// independent of `exec.env`, which controls what reaches the child.
 
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
@@ -35,22 +34,28 @@ export interface ResolveInputsArgs {
   inputs: CacheInputs | undefined
   /** Project-relative output globs to exclude from inputs. */
   ownOutputs: string[]
-  /** Absolute dirs of nested nxt projects (cross-boundary isolation). */
+  /** Absolute dirs of nested projects (cross-boundary isolation). */
   nestedProjectDirs: string[]
 }
 
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs> {
-  const cfg = args.inputs
   return {
     files: await resolveFiles({
       projectDir: args.projectDir,
       workspaceRoot: args.workspaceRoot,
-      files: cfg?.files,
+      files: args.inputs?.files,
       ownOutputs: args.ownOutputs,
       nestedProjectDirs: args.nestedProjectDirs,
     }),
-    envValues: resolveEnvValues(cfg?.env ?? [], args.envSource),
+    envValues: resolveEnvValues(args.inputs?.env ?? [], args.envSource),
   }
+}
+
+function resolveEnvValues(
+  names: readonly string[],
+  source: NodeJS.ProcessEnv,
+): Array<[string, string]> {
+  return [...names].sort().map((name) => [name, source[name] ?? ''] as [string, string])
 }
 
 /** Resolve declared output globs (project-relative) to actual produced files. */
@@ -105,13 +110,6 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   })
 
   return matches.filter((p) => !ig.ignores(path.relative(args.workspaceRoot, p))).sort()
-}
-
-function resolveEnvValues(
-  names: readonly string[],
-  source: NodeJS.ProcessEnv,
-): Array<[string, string]> {
-  return [...names].sort().map((name) => [name, source[name] ?? ''] as [string, string])
 }
 
 function boundaryIgnorePatterns(projectDir: string, nestedDirs: string[]): string[] {

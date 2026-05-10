@@ -7,9 +7,11 @@ export type {
   WorkspaceConfig,
   ProjectConfig,
   TaskConfig,
-  ProcessConfig,
+  ExecConfig,
+  ExecEnv,
   CacheConfig,
   CacheInputs,
+  CacheOutputs,
   TaskDependsOn,
 } from './config.js'
 export { defineProject, defineWorkspace } from './config.js'

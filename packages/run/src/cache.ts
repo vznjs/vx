@@ -12,18 +12,21 @@ import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:
 import path from 'node:path'
 import { relPosix } from './paths.js'
 
-const CACHE_VERSION = 'nxt-cache-v6'
+const CACHE_VERSION = 'vzn-cache-v7'
 
 export interface CacheKeyInput {
   taskId: string
   /**
    * Hash of the resolved task config (post-evaluation). Folds in everything
-   * the user wrote — command, env names, dependsOn, cache.inputs declarations,
-   * outputs, passThroughEnv list, etc. — including values that arrived via
-   * `import` at config-load time.
+   * the user wrote — command, env declarations (passThrough names + define
+   * key/value pairs), dependsOn, cache.inputs declarations, outputs — including
+   * values that arrived via `import` at config-load time.
    */
   taskConfigHash: string
-  /** Runtime values of declared env-input names (from parent at hash time). */
+  /**
+   * Runtime values of declared cache-input env names (from parent at hash
+   * time). Independent of `exec.env`; lives here for cache identity.
+   */
   envValues: Array<[name: string, value: string]>
   /** Absolute paths to input files. */
   inputFiles: string[]

@@ -14,7 +14,7 @@ export interface ProjectConfig {
 
 export interface TaskConfig {
   /** How the task is executed. */
-  process: ProcessConfig
+  exec: ExecConfig
   /** Tasks that must complete successfully before this task runs. */
   dependsOn?: TaskDependsOn
   /**
@@ -25,19 +25,27 @@ export interface TaskConfig {
   cache?: CacheConfig
 }
 
-export interface ProcessConfig {
+export interface ExecConfig {
   /** Shell command to run, from the project's directory. */
   command: string
+  /** Environment exposed to the child process. */
+  env?: ExecEnv
+}
+
+export interface ExecEnv {
   /**
-   * Env vars whose values are passed through from the parent process to
-   * the child. NOT folded into the cache key — for secrets, region, etc.
+   * Names of env vars whose values are taken from the host (parent
+   * `process.env`) and forwarded to the child. Their values are NOT
+   * folded into the cache key — for things like CI flags, regional
+   * vars, secrets that change between machines without affecting output.
    */
-  passThroughEnv?: string[]
+  passThrough?: string[]
   /**
-   * Explicit env values to set for the child process. These ARE folded
-   * into the cache key (they are the values, after all).
+   * Explicit `name: value` pairs. The values are set on the child AND
+   * folded into the cache key (they are literal in your config, captured
+   * via the task config hash).
    */
-  env?: Record<string, string>
+  define?: Record<string, string>
 }
 
 export interface CacheConfig {
@@ -70,21 +78,23 @@ export interface CacheInputs {
    */
   files: string[]
   /**
-   * Env var names. Their current values are folded into the cache key.
-   * Independent of `process.passThroughEnv` — declaring a name here does
-   * not pass it through to the child.
+   * Env var names whose runtime values from parent `process.env` are
+   * folded into the cache key. **Independent of `exec.env`** — declaring
+   * a name here does not forward it to the child; it only affects cache
+   * invalidation. To both forward AND track, list the name in both
+   * `exec.env.passThrough` and here.
    */
   env?: string[]
   /**
    * Which upstream tasks' cache keys participate in this task's key.
-   * Patterns refer to entries in `dependsOn` (by their `task` name):
-   * - `'*'`: every dependsOn task.
-   * - `'name'`: include the literal task name.
-   * - `'!name'`: exclude the literal task name.
+   * Same shape as `dependsOn`: list task names by source bucket.
    *
-   * Patterns are applied in order, last write wins. Default: `['*']`.
+   * - omitted: every upstream task that ran for me (all of `dependsOn`).
+   * - object: only the listed tasks' hashes participate. Empty arrays
+   *   in either bucket → none from that source. Both empty → fully
+   *   decoupled from upstream cache.
    */
-  tasks?: string[]
+  tasks?: TaskDependsOn
 }
 
 export interface TaskDependsOn {

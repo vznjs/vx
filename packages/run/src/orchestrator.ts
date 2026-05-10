@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import type { CacheInputs, ProcessConfig, ProjectConfig, TaskConfig, CacheConfig } from './config.js'
+import type { ExecConfig, ProjectConfig, TaskConfig, CacheConfig, TaskDependsOn } from './config.js'
 import { Cache } from './cache.js'
 import { buildIsolatedEnv } from './env.js'
 import { resolveInputs, resolveOutputs } from './inputs.js'
@@ -118,13 +118,13 @@ interface ExecuteArgs {
 async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const { node, upstream, workspaceRoot, cache, force, log } = args
   const cfg: TaskConfig = node.config
-  const proc: ProcessConfig = cfg.process
+  const exec: ExecConfig = cfg.exec
   const cacheCfg: CacheConfig | undefined = cfg.cache
   const cacheEnabled = cacheCfg !== undefined
 
   const outputs = cacheCfg?.outputs.files ?? []
-  const passThroughEnv = proc.passThroughEnv ?? []
-  const explicitEnv = proc.env ?? {}
+  const passThrough = exec.env?.passThrough ?? []
+  const define = exec.env?.define ?? {}
 
   const resolved = await resolveInputs({
     projectDir: node.projectDir,
@@ -135,7 +135,7 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     nestedProjectDirs: args.nestedProjectDirs,
   })
 
-  const upstreamHashes = filterUpstreamHashes(upstream, cacheCfg?.inputs?.tasks)
+  const upstreamHashes = filterUpstreamHashes(upstream, cacheCfg?.inputs?.tasks, node.projectName)
   const taskConfigHash = hashTaskConfig(cfg)
 
   const hash = await cache.key({
@@ -165,13 +165,13 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   const env = buildIsolatedEnv({
-    passThroughEnv,
-    explicitEnv,
+    passThrough,
+    define,
     source: process.env,
   })
 
   const result = await runCommand({
-    command: proc.command,
+    command: exec.command,
     cwd: node.projectDir,
     env,
     onStdout: (chunk) => log.taskStdout(node, chunk),
@@ -190,7 +190,7 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
       outputFiles,
       entry: {
         taskId: node.id,
-        command: proc.command,
+        command: exec.command,
         exitCode: result.exitCode,
         durationMs: result.durationMs,
         stdout: result.stdout,
@@ -259,24 +259,21 @@ async function computeWorkspaceFingerprint(workspaceRoot: string): Promise<strin
 
 function filterUpstreamHashes(
   upstream: TaskOutcome[],
-  filter: CacheInputs['tasks'],
+  filter: TaskDependsOn | undefined,
+  selfProjectName: string,
 ): string[] {
-  const patterns = filter ?? ['*']
-  const candidates = upstream.map((u) => u.node.taskName)
-  const selected = new Set<string>()
-  for (const p of patterns) {
-    if (p === '*') {
-      for (const c of candidates) selected.add(c)
-    } else if (p.startsWith('!')) {
-      selected.delete(p.slice(1))
-    } else {
-      selected.add(p)
-    }
+  // Default (omitted): every upstream task that ran for me contributes.
+  if (filter === undefined) {
+    return upstream.flatMap((u) => (u.hash ? [u.hash] : []))
   }
+  const selfNames = new Set(filter.self ?? [])
+  const depNames = new Set(filter.dependencies ?? [])
   const out: string[] = []
   for (const u of upstream) {
     if (!u.hash) continue
-    if (selected.has(u.node.taskName)) out.push(u.hash)
+    const isSameProject = u.node.projectName === selfProjectName
+    const allowed = isSameProject ? selfNames.has(u.node.taskName) : depNames.has(u.node.taskName)
+    if (allowed) out.push(u.hash)
   }
   return out
 }

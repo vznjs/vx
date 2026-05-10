@@ -2,8 +2,8 @@
 //
 // Layers, lowest to highest priority:
 //   1. Essentials (hard-coded allowlist for shell tooling).
-//   2. passThroughEnv: parent process.env values for the named vars.
-//   3. process.env: explicit name=value pairs from the task config.
+//   2. passThrough: parent process.env values for the named vars.
+//   3. define: explicit name=value pairs from the task config.
 //
 // Anything outside those three layers does not reach the child process.
 
@@ -36,8 +36,8 @@ const ESSENTIAL_ENV: readonly string[] = [
 ]
 
 export interface BuildEnvOptions {
-  passThroughEnv: readonly string[]
-  explicitEnv: Readonly<Record<string, string>>
+  passThrough: readonly string[]
+  define: Readonly<Record<string, string>>
   source: NodeJS.ProcessEnv
 }
 
@@ -48,23 +48,13 @@ export function buildIsolatedEnv(opts: BuildEnvOptions): NodeJS.ProcessEnv {
     const value = opts.source[name]
     if (value !== undefined) out[name] = value
   }
-  for (const name of opts.passThroughEnv) {
+  for (const name of opts.passThrough) {
     const value = opts.source[name]
     if (value !== undefined) out[name] = value
   }
-  for (const [name, value] of Object.entries(opts.explicitEnv)) {
+  for (const [name, value] of Object.entries(opts.define)) {
     out[name] = value
   }
 
   return out
-}
-
-/**
- * Stable list of explicit env entries for cache-key hashing.
- * Sorted by name.
- */
-export function explicitEnvForKey(
-  explicitEnv: Readonly<Record<string, string>>,
-): Array<[name: string, value: string]> {
-  return Object.entries(explicitEnv).sort(([a], [b]) => a.localeCompare(b))
 }
