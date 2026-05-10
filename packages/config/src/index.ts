@@ -41,20 +41,8 @@ export interface ProcessConfig {
 export interface CacheConfig {
   /** Default: true. */
   enabled?: boolean
-  /**
-   * What participates in the cache key. Omitted defaults to "all project
-   * files" (gitignore-aware, declared outputs and nested-project files
-   * excluded). When provided, the array is taken literally — use a
-   * top-level recursive glob to start from "all files", then subtract
-   * with `!` patterns.
-   *
-   * Each entry may be:
-   * - a string: project-relative glob; prefix with `!` to negate.
-   * - `{ env }`: parent env var name; its value is part of the key.
-   * - `{ externalDependencies }`: package names from package.json; their
-   *   declared version range is part of the key.
-   */
-  inputs?: Input[]
+  /** What participates in the cache key. */
+  inputs?: CacheInputs
   /**
    * Files this task produces, as project-relative globs. Captured for
    * restore on a cache hit.
@@ -69,19 +57,24 @@ export interface CacheConfig {
   dependencies?: boolean | string[]
 }
 
-export type Input = string | EnvInput | ExternalDependenciesInput
-
-export interface EnvInput {
-  /** Parent env var name. Its current value is folded into the cache key. */
-  env: string
-}
-
-export interface ExternalDependenciesInput {
+export interface CacheInputs {
+  /**
+   * Project-relative globs. Each entry is a positive glob, or a negation
+   * prefixed with `!`. Omitted: all project files (gitignore-aware, with
+   * declared outputs and nested-project files excluded automatically).
+   */
+  files?: string[]
+  /**
+   * Env var names. Their current values are folded into the cache key.
+   * Independent of `process.passThroughEnv` — declaring a name here does
+   * not pass it through to the child.
+   */
+  env?: string[]
   /**
    * npm package names. Each package's version range, as declared in this
-   * project's `package.json`, is folded into the cache key.
+   * project's package.json, is folded into the cache key.
    */
-  externalDependencies: string[]
+  externalDependencies?: string[]
 }
 
 export interface TaskDependency {

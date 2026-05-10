@@ -19,12 +19,11 @@ export default defineProject({
       },
       dependsOn: [{ task: 'build', dependencies: true }],
       cache: {
-        inputs: [
-          '**/*',
-          '!**/*.test.ts',
-          { env: 'NODE_ENV' },
-          { externalDependencies: ['typescript'] },
-        ],
+        inputs: {
+          files: ['src/**', '!**/*.test.ts'],
+          env: ['NODE_ENV'],
+          externalDependencies: ['typescript'],
+        },
         outputs: ['dist/**'],
         dependencies: true,
       },
@@ -56,22 +55,18 @@ Tasks that must complete before this one runs. Shape:
 
 - `enabled`: default `true`. `false` disables read/write but still
   computes the cache key so dependents are unaffected.
-- `inputs`: what participates in the cache key. Omitted = `['**/*']`
-  (all project files). When provided, the array is taken literally —
-  write `'**/*'` if you want to start from "all files" then subtract
-  with `!` patterns.
+- `inputs`: what participates in the cache key. Each kind has its own
+    field; declaring one does not replace another.
 
-  Entries:
-
-  | Form | Meaning |
+  | Field | Meaning |
   | --- | --- |
-  | `'src/**'` | project-relative glob (prefix `!` to negate) |
-  | `{ env: 'NODE_ENV' }` | parent env var value |
-  | `{ externalDependencies: ['typescript'] }` | declared version ranges |
+  | `files` | project-relative globs (`!` to negate). Omit for "all project files". |
+  | `env` | env var names; their current values participate in the key. |
+  | `externalDependencies` | npm package names; their declared version ranges participate in the key. |
 
-  Every glob pass is gitignore-aware. Declared outputs and any nested
-  nxt project's directory are also excluded automatically — a task
-  cannot invalidate itself, and cannot read across project boundaries.
+  File globs are gitignore-aware. Declared outputs and any nested nxt
+  project's directory are excluded automatically — a task cannot
+  invalidate itself, and cannot read across project boundaries.
 
   Files outside the project (root configs, etc.) are intentionally not
   reachable from per-task inputs. That belongs at the workspace level —

@@ -4,18 +4,16 @@
 //   - envValues: [name, value] pairs (from parent process.env)
 //   - externalDeps: [name, version] pairs (from project's package.json)
 //
-// File globs are uniformly gitignore-aware. Every glob pass also excludes:
-//   - ALWAYS_IGNORE (node_modules, .git, .nxt, *.tsbuildinfo)
-//   - the project's declared outputs (no self-invalidation)
-//   - the dirs of any nested nxt projects (no cross-boundary leakage)
-//   - any negation patterns (`!...`) the user wrote in the inputs list
+// Each input kind has its own resolver; the orchestrator calls them via
+// `resolveInputs`. File globs are uniformly gitignore-aware and exclude
+// nested-project subtrees + declared outputs + always-ignored paths.
 
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import ignore, { type Ignore } from 'ignore'
 import { glob } from 'tinyglobby'
-import type { Input } from '@nxt/config'
+import type { CacheInputs } from '@nxt/config'
 import type { PackageJson } from './workspace.js'
 
 const ALWAYS_IGNORE = [
@@ -25,7 +23,7 @@ const ALWAYS_IGNORE = [
   '**/*.tsbuildinfo',
 ]
 
-const DEFAULT_INPUT_GLOBS: readonly string[] = ['**/*']
+const DEFAULT_FILE_GLOBS: readonly string[] = ['**/*']
 
 export interface ResolvedInputs {
   files: string[]
@@ -38,7 +36,7 @@ export interface ResolveInputsArgs {
   workspaceRoot: string
   packageJson: PackageJson
   envSource: NodeJS.ProcessEnv
-  inputs: Input[] | undefined
+  inputs: CacheInputs | undefined
   /** Project-relative output globs to exclude from inputs. */
   ownOutputs: string[]
   /** Absolute dirs of nested nxt projects (cross-boundary isolation). */
@@ -46,58 +44,18 @@ export interface ResolveInputsArgs {
 }
 
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs> {
-  const boundaryIgnores = boundaryIgnorePatterns(args.projectDir, args.nestedProjectDirs)
-
-  // No declaration -> implicit defaults: all project files.
-  if (args.inputs === undefined) {
-    return {
-      files: await resolveFiles({
-        projectDir: args.projectDir,
-        workspaceRoot: args.workspaceRoot,
-        positiveGlobs: [...DEFAULT_INPUT_GLOBS],
-        ignorePatterns: [...boundaryIgnores, ...args.ownOutputs],
-      }),
-      envValues: [],
-      externalDeps: [],
-    }
+  const cfg = args.inputs ?? {}
+  return {
+    files: await resolveFiles({
+      projectDir: args.projectDir,
+      workspaceRoot: args.workspaceRoot,
+      files: cfg.files,
+      ownOutputs: args.ownOutputs,
+      nestedProjectDirs: args.nestedProjectDirs,
+    }),
+    envValues: resolveEnvValues(cfg.env ?? [], args.envSource),
+    externalDeps: resolveExternalDeps(cfg.externalDependencies ?? [], args.packageJson),
   }
-
-  const positiveGlobs: string[] = []
-  const negativeGlobs: string[] = []
-  const envNames = new Set<string>()
-  const extDeps = new Set<string>()
-
-  for (const input of args.inputs) {
-    if (typeof input === 'string') {
-      if (input.startsWith('!')) negativeGlobs.push(input.slice(1))
-      else positiveGlobs.push(input)
-    } else if ('env' in input) {
-      envNames.add(input.env)
-    } else if ('externalDependencies' in input) {
-      for (const name of input.externalDependencies) extDeps.add(name)
-    }
-  }
-
-  const files =
-    positiveGlobs.length > 0
-      ? await resolveFiles({
-          projectDir: args.projectDir,
-          workspaceRoot: args.workspaceRoot,
-          positiveGlobs,
-          ignorePatterns: [...boundaryIgnores, ...args.ownOutputs, ...negativeGlobs],
-        })
-      : []
-
-  const envValues: Array<[string, string]> = [...envNames]
-    .sort()
-    .map((name) => [name, args.envSource[name] ?? ''] as [string, string])
-
-  const allDeps = readDeclaredVersions(args.packageJson)
-  const externalDeps: Array<[string, string]> = [...extDeps]
-    .sort()
-    .map((name) => [name, allDeps[name] ?? ''] as [string, string])
-
-  return { files, envValues, externalDeps }
 }
 
 /** Resolve declared output globs (project-relative) to actual produced files. */
@@ -120,20 +78,53 @@ export async function resolveOutputs(args: {
 interface ResolveFilesArgs {
   projectDir: string
   workspaceRoot: string
-  positiveGlobs: string[]
-  ignorePatterns: string[]
+  files: string[] | undefined
+  ownOutputs: string[]
+  nestedProjectDirs: string[]
 }
 
 async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
+  const positive: string[] = []
+  const negative: string[] = []
+
+  if (args.files === undefined) {
+    positive.push(...DEFAULT_FILE_GLOBS)
+  } else {
+    for (const entry of args.files) {
+      if (entry.startsWith('!')) negative.push(entry.slice(1))
+      else positive.push(entry)
+    }
+  }
+
+  if (positive.length === 0) return []
+
+  const boundaryIgnores = boundaryIgnorePatterns(args.projectDir, args.nestedProjectDirs)
   const ig = await loadGitignore(args.workspaceRoot, args.projectDir)
-  const matches = await glob(args.positiveGlobs, {
+
+  const matches = await glob(positive, {
     cwd: args.projectDir,
     absolute: true,
     dot: true,
     onlyFiles: true,
-    ignore: [...ALWAYS_IGNORE, ...args.ignorePatterns],
+    ignore: [...ALWAYS_IGNORE, ...boundaryIgnores, ...args.ownOutputs, ...negative],
   })
+
   return matches.filter((p) => !ig.ignores(path.relative(args.workspaceRoot, p))).sort()
+}
+
+function resolveEnvValues(
+  names: readonly string[],
+  source: NodeJS.ProcessEnv,
+): Array<[string, string]> {
+  return [...names].sort().map((name) => [name, source[name] ?? ''] as [string, string])
+}
+
+function resolveExternalDeps(
+  names: readonly string[],
+  pkg: PackageJson,
+): Array<[string, string]> {
+  const declared = readDeclaredVersions(pkg)
+  return [...names].sort().map((name) => [name, declared[name] ?? ''] as [string, string])
 }
 
 function boundaryIgnorePatterns(projectDir: string, nestedDirs: string[]): string[] {

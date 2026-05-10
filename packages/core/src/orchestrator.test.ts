@@ -144,7 +144,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               run: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: ['src/**'], outputs: ['out.txt'] },
+                cache: { inputs: { files: ['src/**'] }, outputs: ['out.txt'] },
               },
             },
           }
@@ -301,7 +301,7 @@ describe('orchestrator e2e', () => {
                   passThroughEnv: ['CACHED', 'PASSED'],
                 },
                 cache: {
-                  inputs: [{ env: 'CACHED' }],
+                  inputs: { env: ['CACHED'] },
                   outputs: ['out.txt'],
                 },
               },
@@ -393,7 +393,7 @@ describe('orchestrator e2e', () => {
               run: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
                 cache: {
-                  inputs: [{ externalDependencies: ['typescript'] }],
+                  inputs: { externalDependencies: ['typescript'] },
                   outputs: ['out.txt'],
                 },
               },
@@ -806,7 +806,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               run: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: ['src/**', '!src/skip.txt'], outputs: ['out.txt'] },
+                cache: { inputs: { files: ['src/**', '!src/skip.txt'] }, outputs: ['out.txt'] },
               },
             },
           }
@@ -837,7 +837,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               run: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: ['**/*', '!noisy.log'], outputs: ['out.txt'] },
+                cache: { inputs: { files: ['**/*', '!noisy.log'] }, outputs: ['out.txt'] },
               },
             },
           }
@@ -948,7 +948,7 @@ describe('orchestrator e2e', () => {
               build: {
                 process: { command: "cat src/x.txt > dist.txt" },
                 cache: {
-                  inputs: ['**/*', { env: 'API_URL' }],
+                  inputs: { env: ['API_URL'] },
                   outputs: ['dist.txt'],
                 },
               },
