@@ -41,7 +41,8 @@ async function addProject(
   root: string,
   name: string,
   args: {
-    deps?: string[]
+    deps?: Record<string, string>
+    devDeps?: Record<string, string>
     files?: Record<string, string>
     config: string
   },
@@ -50,9 +51,8 @@ async function addProject(
   const dir = path.join(root, 'packages', safe)
   await mkdir(dir, { recursive: true })
   const pkg: Record<string, unknown> = { name, version: '0.0.0' }
-  if (args.deps && args.deps.length > 0) {
-    pkg.dependencies = Object.fromEntries(args.deps.map((d) => [d, 'workspace:*']))
-  }
+  if (args.deps && Object.keys(args.deps).length > 0) pkg.dependencies = args.deps
+  if (args.devDeps && Object.keys(args.devDeps).length > 0) pkg.devDependencies = args.devDeps
   await writeFile(path.join(dir, 'package.json'), JSON.stringify(pkg, null, 2))
   await writeFile(path.join(dir, 'nxt.config.mjs'), args.config)
   for (const [rel, content] of Object.entries(args.files ?? {})) {
@@ -85,8 +85,8 @@ describe('orchestrator e2e', () => {
           export default {
             tasks: {
               stamp: {
-                command: ${JSON.stringify(STAMP_CMD)},
-                outputs: ['out.txt'],
+                process: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { outputs: ['out.txt'] },
               },
             },
           }
@@ -98,7 +98,6 @@ describe('orchestrator e2e', () => {
       expect(first.outcomes[0]?.status).toBe('success')
 
       const stamp1 = await readFile(path.join(dir, 'out.txt'), 'utf8')
-
       const second = await run({ cwd: fixture.root, task: 'stamp', log: silentLogger(fixture) })
       expect(second.outcomes[0]?.status).toBe('cache-hit')
       expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe(stamp1)
@@ -107,7 +106,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'busts cache on any project file change',
+    'busts cache on any project file change (default inputs)',
     async () => {
       const dir = await addProject(fixture.root, 'app-b', {
         files: { 'src/x.txt': 'v1' },
@@ -115,19 +114,17 @@ describe('orchestrator e2e', () => {
           export default {
             tasks: {
               run: {
-                command: ${JSON.stringify(STAMP_CMD)},
-                outputs: ['out.txt'],
+                process: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { outputs: ['out.txt'] },
               },
             },
           }
         `,
       })
-
       await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
       const first = await readFile(path.join(dir, 'out.txt'), 'utf8')
 
       await new Promise((r) => setTimeout(r, 5))
-      // Any project file change should bust cache; not just files under src/.
       await writeFile(path.join(dir, 'random.md'), 'newly added')
 
       const second = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
@@ -138,7 +135,39 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'does not self-invalidate when only its own outputs change',
+    'narrow inputs limit what busts the cache',
+    async () => {
+      const dir = await addProject(fixture.root, 'narrow', {
+        files: { 'src/x.txt': 'v1', 'docs/README.md': 'docs' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                process: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { inputs: ['src/**'], outputs: ['out.txt'] },
+              },
+            },
+          }
+        `,
+      })
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+
+      // Change a file outside src/. Cache should still hit.
+      await writeFile(path.join(dir, 'docs/README.md'), 'docs v2')
+      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r.outcomes[0]?.status).toBe('cache-hit')
+
+      // Change a file inside src/. Cache busts.
+      await new Promise((r) => setTimeout(r, 5))
+      await writeFile(path.join(dir, 'src/x.txt'), 'v2')
+      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r2.outcomes[0]?.status).toBe('success')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'does not self-invalidate when only its declared outputs change',
     async () => {
       await addProject(fixture.root, 'app-self', {
         files: { 'src/x.txt': 'v1' },
@@ -146,8 +175,8 @@ describe('orchestrator e2e', () => {
           export default {
             tasks: {
               run: {
-                command: ${JSON.stringify(STAMP_CMD)},
-                outputs: ['out.txt'],
+                process: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { outputs: ['out.txt'] },
               },
             },
           }
@@ -156,8 +185,6 @@ describe('orchestrator e2e', () => {
 
       const r1 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
       expect(r1.outcomes[0]?.status).toBe('success')
-      // out.txt now exists in the project dir. A second run should still hit
-      // the cache because declared outputs are excluded from inputs.
       const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
       expect(r2.outcomes[0]?.status).toBe('cache-hit')
     },
@@ -165,7 +192,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'invalidates a dependent when an upstream output changes',
+    'upstream cache-key change invalidates dependent (Turbo-style)',
     async () => {
       await addProject(fixture.root, 'lib', {
         files: { 'src/x.txt': 'v1' },
@@ -173,23 +200,23 @@ describe('orchestrator e2e', () => {
           export default {
             tasks: {
               build: {
-                command: "cat src/x.txt > dist.txt",
-                outputs: ['dist.txt'],
+                process: { command: "cat src/x.txt > dist.txt" },
+                cache: { outputs: ['dist.txt'] },
               },
             },
           }
         `,
       })
       const appDir = await addProject(fixture.root, 'app', {
-        deps: ['lib'],
+        deps: { lib: 'workspace:*' },
         files: { 'src/y.txt': 'app' },
         config: `
           export default {
             tasks: {
               build: {
-                command: ${JSON.stringify(STAMP_CMD)},
+                process: { command: ${JSON.stringify(STAMP_CMD)} },
                 dependsOn: [{ task: 'build', dependencies: true }],
-                outputs: ['out.txt'],
+                cache: { outputs: ['out.txt'] },
               },
             },
           }
@@ -200,23 +227,227 @@ describe('orchestrator e2e', () => {
       expect(r1.ok).toBe(true)
       const appOut1 = await readFile(path.join(appDir, 'out.txt'), 'utf8')
 
-      // Re-run with no changes: both should hit cache.
       const r2 = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
-      const appOutcome2 = r2.outcomes.find((o) => o.node.id === 'app#build')
-      expect(appOutcome2?.status).toBe('cache-hit')
+      expect(r2.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
 
-      // Change lib's source: its output changes -> app's cache must invalidate.
+      // Touch a file in lib that is NOT in lib's outputs. With Turbo-style
+      // caching, lib's key changes, so app's key must change too.
       await new Promise((r) => setTimeout(r, 5))
-      await writeFile(path.join(fixture.root, 'packages/lib/src/x.txt'), 'v2')
+      await writeFile(path.join(fixture.root, 'packages/lib/NOTES.md'), 'something')
 
       const r3 = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
-      const libOutcome3 = r3.outcomes.find((o) => o.node.id === 'lib#build')
-      const appOutcome3 = r3.outcomes.find((o) => o.node.id === 'app#build')
-      expect(libOutcome3?.status).toBe('success')
-      expect(appOutcome3?.status).toBe('success')
-
+      expect(r3.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
       const appOut3 = await readFile(path.join(appDir, 'out.txt'), 'utf8')
       expect(appOut3).not.toBe(appOut1)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'cache.dependencies: [] decouples the dependent from upstream cache',
+    async () => {
+      await addProject(fixture.root, 'lib', {
+        files: { 'src/x.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                process: { command: "cat src/x.txt > dist.txt" },
+                cache: { outputs: ['dist.txt'] },
+              },
+            },
+          }
+        `,
+      })
+      const appDir = await addProject(fixture.root, 'app', {
+        deps: { lib: 'workspace:*' },
+        files: { 'src/y.txt': 'app' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                process: { command: ${JSON.stringify(STAMP_CMD)} },
+                dependsOn: [{ task: 'build', dependencies: true }],
+                cache: { outputs: ['out.txt'], dependencies: [] },
+              },
+            },
+          }
+        `,
+      })
+
+      await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      const appOut1 = await readFile(path.join(appDir, 'out.txt'), 'utf8')
+
+      // Change lib's source. App's cache should still hit because
+      // app declared dependencies: [].
+      await writeFile(path.join(fixture.root, 'packages/lib/src/x.txt'), 'v2')
+      const r = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      expect(r.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
+      expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).toBe(appOut1)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'env input affects the cache key; passThroughEnv does not',
+    async () => {
+      await addProject(fixture.root, 'envproj', {
+        config: `
+          export default {
+            tasks: {
+              show: {
+                process: {
+                  command: "node -e 'process.stdout.write([process.env.CACHED, process.env.PASSED].join(\\":\\"))' > out.txt",
+                  passThroughEnv: ['CACHED', 'PASSED'],
+                },
+                cache: {
+                  inputs: [{ env: 'CACHED' }],
+                  outputs: ['out.txt'],
+                },
+              },
+            },
+          }
+        `,
+      })
+      const dir = path.join(fixture.root, 'packages/envproj')
+
+      process.env.CACHED = 'a'
+      process.env.PASSED = '1'
+      await run({ cwd: fixture.root, task: 'show', log: silentLogger(fixture) })
+      const a = await readFile(path.join(dir, 'out.txt'), 'utf8')
+      expect(a).toBe('a:1')
+
+      // Change PASSED only. Not declared as an env input -> cache hits, the
+      // restored out.txt still says "a:1".
+      process.env.PASSED = '2'
+      const r2 = await run({ cwd: fixture.root, task: 'show', log: silentLogger(fixture) })
+      expect(r2.outcomes[0]?.status).toBe('cache-hit')
+      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('a:1')
+
+      // Change CACHED. It IS declared as input -> cache busts, new value reaches the task.
+      process.env.CACHED = 'b'
+      const r3 = await run({ cwd: fixture.root, task: 'show', log: silentLogger(fixture) })
+      expect(r3.outcomes[0]?.status).toBe('success')
+      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('b:2')
+
+      delete process.env.CACHED
+      delete process.env.PASSED
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'process.env explicit values reach the child and participate in cache',
+    async () => {
+      await addProject(fixture.root, 'explicit', {
+        config: `
+          export default {
+            tasks: {
+              show: {
+                process: {
+                  command: "node -e 'process.stdout.write(process.env.MODE)' > out.txt",
+                  env: { MODE: 'one' },
+                },
+                cache: { outputs: ['out.txt'] },
+              },
+            },
+          }
+        `,
+      })
+      const dir = path.join(fixture.root, 'packages/explicit')
+      await run({ cwd: fixture.root, task: 'show', log: silentLogger(fixture) })
+      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('one')
+
+      // Rewrite config with a different MODE value.
+      await writeFile(
+        path.join(dir, 'nxt.config.mjs'),
+        `
+          export default {
+            tasks: {
+              show: {
+                process: {
+                  command: "node -e 'process.stdout.write(process.env.MODE)' > out.txt",
+                  env: { MODE: 'two' },
+                },
+                cache: { outputs: ['out.txt'] },
+              },
+            },
+          }
+        `,
+      )
+      const r = await run({ cwd: fixture.root, task: 'show', log: silentLogger(fixture) })
+      expect(r.outcomes[0]?.status).toBe('success')
+      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('two')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'externalDependencies input changes bust the cache',
+    async () => {
+      const dir = await addProject(fixture.root, 'extdeps', {
+        devDeps: { typescript: '^5.0.0' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                process: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: {
+                  inputs: [{ externalDependencies: ['typescript'] }],
+                  outputs: ['out.txt'],
+                },
+              },
+            },
+          }
+        `,
+      })
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const first = await readFile(path.join(dir, 'out.txt'), 'utf8')
+
+      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r2.outcomes[0]?.status).toBe('cache-hit')
+
+      // Bump typescript range; cache busts.
+      const pkg = JSON.parse(await readFile(path.join(dir, 'package.json'), 'utf8')) as {
+        devDependencies: Record<string, string>
+      }
+      pkg.devDependencies.typescript = '^5.6.0'
+      await writeFile(path.join(dir, 'package.json'), JSON.stringify(pkg, null, 2))
+
+      const r3 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r3.outcomes[0]?.status).toBe('success')
+      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).not.toBe(first)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'workspace input invalidates when a workspace-root file changes',
+    async () => {
+      await writeFile(path.join(fixture.root, 'tsconfig.base.json'), '{"v":1}')
+      const dir = await addProject(fixture.root, 'ws', {
+        files: { 'src/x.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                process: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: {
+                  inputs: [{ default: true }, { workspace: 'tsconfig.base.json' }],
+                  outputs: ['out.txt'],
+                },
+              },
+            },
+          }
+        `,
+      })
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const first = await readFile(path.join(dir, 'out.txt'), 'utf8')
+
+      await writeFile(path.join(fixture.root, 'tsconfig.base.json'), '{"v":2}')
+      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r.outcomes[0]?.status).toBe('success')
+      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).not.toBe(first)
     },
     TIMEOUT,
   )
@@ -228,20 +459,23 @@ describe('orchestrator e2e', () => {
         config: `
           export default {
             tasks: {
-              build: { command: "exit 7", cache: false },
+              build: {
+                process: { command: "exit 7" },
+                cache: { enabled: false },
+              },
             },
           }
         `,
       })
       await addProject(fixture.root, 'app', {
-        deps: ['lib'],
+        deps: { lib: 'workspace:*' },
         config: `
           export default {
             tasks: {
               build: {
-                command: "echo should-not-run",
+                process: { command: "echo should-not-run" },
                 dependsOn: [{ task: 'build', dependencies: true }],
-                cache: false,
+                cache: { enabled: false },
               },
             },
           }
@@ -259,74 +493,33 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'isolates the env: only declared vars (plus PATH-class essentials) reach the task',
+    'undeclared env vars do not leak to the child',
     async () => {
-      await addProject(fixture.root, 'envtest', {
+      await addProject(fixture.root, 'iso', {
         config: `
           export default {
             tasks: {
               show: {
-                command: "node -e 'process.stdout.write([process.env.MY_VAR, process.env.SECRET_VAR].join(\\"|\\"))' > out.txt",
-                env: ['MY_VAR'],
-                outputs: ['out.txt'],
+                process: {
+                  command: "node -e 'process.stdout.write(String(process.env.LEAK))' > out.txt",
+                },
+                cache: { outputs: ['out.txt'] },
               },
             },
           }
         `,
       })
-
-      // Set both vars in the parent; only MY_VAR should leak through.
-      const prevMy = process.env.MY_VAR
-      const prevSecret = process.env.SECRET_VAR
-      process.env.MY_VAR = 'visible'
-      process.env.SECRET_VAR = 'hidden'
+      process.env.LEAK = 'should-not-pass'
       try {
         await run({ cwd: fixture.root, task: 'show', log: silentLogger(fixture) })
         const out = await readFile(
-          path.join(fixture.root, 'packages/envtest/out.txt'),
+          path.join(fixture.root, 'packages/iso/out.txt'),
           'utf8',
         )
-        // SECRET_VAR was not declared so it must not reach the task; join
-        // of [undefined] yields ''.
-        expect(out).toBe('visible|')
+        expect(out).toBe('undefined')
       } finally {
-        if (prevMy === undefined) delete process.env.MY_VAR
-        else process.env.MY_VAR = prevMy
-        if (prevSecret === undefined) delete process.env.SECRET_VAR
-        else process.env.SECRET_VAR = prevSecret
+        delete process.env.LEAK
       }
-    },
-    TIMEOUT,
-  )
-
-  it(
-    'declared env value participates in cache key',
-    async () => {
-      await addProject(fixture.root, 'envcache', {
-        config: `
-          export default {
-            tasks: {
-              run: {
-                command: "node -e 'process.stdout.write(process.env.MODE || \\"none\\")' > out.txt",
-                env: ['MODE'],
-                outputs: ['out.txt'],
-              },
-            },
-          }
-        `,
-      })
-      const projectDir = path.join(fixture.root, 'packages/envcache')
-
-      process.env.MODE = 'a'
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
-      const a = await readFile(path.join(projectDir, 'out.txt'), 'utf8')
-
-      process.env.MODE = 'b'
-      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
-      expect(r2.outcomes[0]?.status).toBe('success') // cache busted by MODE change
-      const b = await readFile(path.join(projectDir, 'out.txt'), 'utf8')
-      expect(b).not.toBe(a)
-      delete process.env.MODE
     },
     TIMEOUT,
   )
@@ -335,19 +528,17 @@ describe('orchestrator e2e', () => {
     'creates the cache directory under workspace root',
     async () => {
       await addProject(fixture.root, 'app-f', {
-        files: { 'src/x.txt': 'v1' },
         config: `
           export default {
             tasks: {
               run: {
-                command: ${JSON.stringify(STAMP_CMD)},
-                outputs: ['out.txt'],
+                process: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { outputs: ['out.txt'] },
               },
             },
           }
         `,
       })
-
       await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
       expect(existsSync(path.join(fixture.root, '.nxt', 'cache'))).toBe(true)
     },

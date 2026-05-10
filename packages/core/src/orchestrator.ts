@@ -4,29 +4,24 @@
 
 import os from 'node:os'
 import path from 'node:path'
-import type { ProjectConfig, TaskConfig } from '@nxt/config'
-import { Cache, hashFiles } from './cache.js'
-import { buildIsolatedEnv, readDeclaredEnvValues } from './env.js'
-import { projectInputFiles, resolveOutputs } from './inputs.js'
+import type { CacheConfig, ProcessConfig, ProjectConfig, TaskConfig } from '@nxt/config'
+import { Cache } from './cache.js'
+import { buildIsolatedEnv, explicitEnvForKey } from './env.js'
+import { resolveInputs, resolveOutputs } from './inputs.js'
 import { buildPackageGraph } from './package-graph.js'
 import { loadProjectConfig } from './project-loader.js'
 import { runCommand } from './runner.js'
 import { runGraph, type TaskOutcome } from './scheduler.js'
 import { buildTaskGraph, taskId, type ProjectEntry, type TaskNode } from './task-graph.js'
-import { findWorkspaceRoot, listProjects, loadWorkspace } from './workspace.js'
+import { findWorkspaceRoot, listProjects, loadWorkspace, type ProjectMeta } from './workspace.js'
 
 export interface RunOptions {
-  /** Working directory; the workspace root is discovered from here upward. */
   cwd: string
-  /** Task name to run (e.g. `build`). */
   task: string
-  /** Restrict to specific projects (and their task-graph upstream chain). */
   projects?: string[]
-  /** Maximum concurrent tasks. Defaults to CPU count. */
   concurrency?: number
-  /** When true, ignore cache hits and re-run every task. Writes still update the cache. */
+  /** Ignore cache hits and re-run; writes still update the cache. */
   force?: boolean
-  /** Logger; defaults to writing to process.stdout/stderr. */
   log?: Logger
 }
 
@@ -47,6 +42,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const workspaceRoot = findWorkspaceRoot(options.cwd)
   const workspace = await loadWorkspace(workspaceRoot)
   const projectMetas = await listProjects(workspace)
+  const metaByName = new Map<string, ProjectMeta>()
+  for (const m of projectMetas) metaByName.set(m.name, m)
 
   const projects = new Map<string, ProjectEntry>()
   for (const meta of projectMetas) {
@@ -99,6 +96,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         cache,
         force: options.force ?? false,
         log,
+        packageJsonByProject: metaByName,
       }),
   })
 
@@ -114,35 +112,47 @@ interface ExecuteArgs {
   cache: Cache
   force: boolean
   log: Logger
+  packageJsonByProject: Map<string, ProjectMeta>
 }
 
 async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const { node, upstream, workspaceRoot, cache, force, log } = args
   const cfg: TaskConfig = node.config
-  const cacheEnabled = cfg.cache !== false
-  const outputs = cfg.outputs ?? []
-  const envNames = cfg.env ?? []
+  const proc: ProcessConfig = cfg.process
+  const cacheCfg: CacheConfig = cfg.cache ?? {}
+  const cacheEnabled = cacheCfg.enabled !== false
 
-  const inputFiles = await projectInputFiles({
+  const meta = args.packageJsonByProject.get(node.projectName)
+  if (!meta) {
+    throw new Error(`Missing package metadata for ${node.projectName}`)
+  }
+
+  const outputs = cacheCfg.outputs ?? []
+  const passThroughEnv = proc.passThroughEnv ?? []
+  const explicitEnv = proc.env ?? {}
+
+  const resolved = await resolveInputs({
     projectDir: node.projectDir,
     workspaceRoot,
+    packageJson: meta.packageJson,
+    envSource: process.env,
+    inputs: cacheCfg.inputs,
     ownOutputs: outputs,
   })
 
-  const upstreamOutputHashes = upstream
-    .map((u) => u.outputHash)
-    .filter((h): h is string => Boolean(h))
+  const upstreamHashes = filterUpstreamHashes(upstream, cacheCfg.dependencies)
 
   const hash = await cache.key({
     taskId: node.id,
-    command: cfg.command,
-    envValues: readDeclaredEnvValues(envNames, process.env),
-    inputFiles,
+    command: proc.command,
+    explicitEnv: explicitEnvForKey(explicitEnv),
+    envInputs: resolved.envValues,
+    externalDeps: resolved.externalDeps,
+    inputFiles: resolved.files,
     workspaceRoot,
-    upstreamOutputHashes,
+    upstreamHashes,
   })
 
-  // Cache hit.
   if (cacheEnabled && !force) {
     const hit = await cache.get(hash)
     if (hit) {
@@ -155,41 +165,39 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
         exitCode: hit.exitCode,
         durationMs: 0,
         hash,
-        outputHash: hit.outputHash,
       }
     }
   }
 
-  const env = buildIsolatedEnv({ declared: envNames, source: process.env })
+  const env = buildIsolatedEnv({
+    passThroughEnv,
+    explicitEnv,
+    source: process.env,
+  })
 
   const result = await runCommand({
-    command: cfg.command,
+    command: proc.command,
     cwd: node.projectDir,
     env,
     onStdout: (chunk) => log.taskStdout(node, chunk),
     onStderr: (chunk) => log.taskStderr(node, chunk),
   })
 
-  let outputHash: string | undefined
-  if (result.exitCode === 0) {
+  if (result.exitCode === 0 && cacheEnabled) {
     const outputFiles = await resolveOutputs({ projectDir: node.projectDir, outputs })
-    outputHash = await hashFiles(node.projectDir, outputFiles)
-    if (cacheEnabled) {
-      await cache.save({
-        hash,
-        projectDir: node.projectDir,
-        outputFiles,
-        entry: {
-          taskId: node.id,
-          command: cfg.command,
-          exitCode: result.exitCode,
-          durationMs: result.durationMs,
-          outputHash,
-          stdout: result.stdout,
-          stderr: result.stderr,
-        },
-      })
-    }
+    await cache.save({
+      hash,
+      projectDir: node.projectDir,
+      outputFiles,
+      entry: {
+        taskId: node.id,
+        command: proc.command,
+        exitCode: result.exitCode,
+        durationMs: result.durationMs,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      },
+    })
   }
 
   return {
@@ -198,8 +206,22 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     exitCode: result.exitCode,
     durationMs: result.durationMs,
     hash,
-    ...(outputHash !== undefined ? { outputHash } : {}),
   }
+}
+
+function filterUpstreamHashes(
+  upstream: TaskOutcome[],
+  filter: CacheConfig['dependencies'],
+): string[] {
+  if (filter === false || (Array.isArray(filter) && filter.length === 0)) return []
+  const wantAll = filter === undefined || filter === true
+  const wanted = Array.isArray(filter) ? new Set(filter) : null
+  const out: string[] = []
+  for (const u of upstream) {
+    if (!u.hash) continue
+    if (wantAll || (wanted && wanted.has(u.node.taskName))) out.push(u.hash)
+  }
+  return out
 }
 
 function formatOutcome(o: TaskOutcome): string {

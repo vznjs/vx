@@ -1,11 +1,13 @@
-// Build the environment exposed to a task. Tasks run with an isolated env:
-// only the essential allowlist (so shells and common tools can find what they
-// need) plus the env names the task explicitly declared.
+// Build the environment exposed to a task.
 //
-// Replace this module wholesale to change isolation policy.
+// Layers, lowest to highest priority:
+//   1. Essentials (hard-coded allowlist for shell tooling).
+//   2. passThroughEnv: parent process.env values for the named vars.
+//   3. process.env: explicit name=value pairs from the task config.
+//
+// Anything outside those three layers does not reach the child process.
 
 const ESSENTIAL_ENV: readonly string[] = [
-  // POSIX essentials
   'PATH',
   'HOME',
   'SHELL',
@@ -14,19 +16,15 @@ const ESSENTIAL_ENV: readonly string[] = [
   'TMPDIR',
   'TEMP',
   'TMP',
-  // Locale
   'LANG',
   'LC_ALL',
   'LC_CTYPE',
-  // Terminal / color
   'TERM',
   'COLORTERM',
   'FORCE_COLOR',
   'NO_COLOR',
   'CI',
-  // Node
   'NODE_OPTIONS',
-  // Windows (so we work cross-platform later)
   'SYSTEMROOT',
   'APPDATA',
   'LOCALAPPDATA',
@@ -38,33 +36,35 @@ const ESSENTIAL_ENV: readonly string[] = [
 ]
 
 export interface BuildEnvOptions {
-  declared: readonly string[]
+  passThroughEnv: readonly string[]
+  explicitEnv: Readonly<Record<string, string>>
   source: NodeJS.ProcessEnv
 }
 
 export function buildIsolatedEnv(opts: BuildEnvOptions): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {}
+
   for (const name of ESSENTIAL_ENV) {
     const value = opts.source[name]
     if (value !== undefined) out[name] = value
   }
-  for (const name of opts.declared) {
+  for (const name of opts.passThroughEnv) {
     const value = opts.source[name]
     if (value !== undefined) out[name] = value
   }
+  for (const [name, value] of Object.entries(opts.explicitEnv)) {
+    out[name] = value
+  }
+
   return out
 }
 
 /**
- * Read the values of declared env names from a source env, for use in the
- * cache key. Names with no value are still included (with empty string) so
- * that "setting" vs "unsetting" the var produces different keys.
+ * Stable list of explicit env entries for cache-key hashing.
+ * Sorted by name.
  */
-export function readDeclaredEnvValues(
-  declared: readonly string[],
-  source: NodeJS.ProcessEnv,
+export function explicitEnvForKey(
+  explicitEnv: Readonly<Record<string, string>>,
 ): Array<[name: string, value: string]> {
-  return [...declared]
-    .sort()
-    .map((name) => [name, source[name] ?? ''] as [string, string])
+  return Object.entries(explicitEnv).sort(([a], [b]) => a.localeCompare(b))
 }

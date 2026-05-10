@@ -1,12 +1,4 @@
 // Public schema for nxt project and workspace configuration.
-//
-// Design constraints:
-// - Explicit. No inheritance, no string DSLs.
-// - Solve the common case. No knobs that exist for hypothetical needs.
-// - Replaceable layers underneath: this schema is the only contract.
-//
-// Cache inputs are NOT configurable. Every file in the project (gitignore-
-// aware) is a cache input. Outputs and declared env vars are the only knobs.
 
 export interface WorkspaceConfig {
   /** Maximum concurrent tasks. Defaults to the number of CPUs. */
@@ -16,54 +8,109 @@ export interface WorkspaceConfig {
 }
 
 export interface ProjectConfig {
-  /**
-   * Project name. Optional; when set, must match `package.json#name`.
-   * Used purely as a sanity check.
-   */
+  /** Project name. If set, must match `package.json#name`. */
   name?: string
   /** Tasks declared by this project, keyed by task name. */
   tasks?: Record<string, TaskConfig>
 }
 
 export interface TaskConfig {
-  /** Shell command to run, executed in the project's directory. */
-  command: string
-  /** Other tasks that must complete successfully before this task runs. */
+  /** How the task is executed. */
+  process: ProcessConfig
+  /** Tasks that must complete successfully before this task runs. */
   dependsOn?: TaskDependency[]
+  /** Caching configuration. */
+  cache?: CacheConfig
+}
+
+export interface ProcessConfig {
+  /** Shell command to run, from the project's directory. */
+  command: string
   /**
-   * Environment variables to expose to the task. These — and only these,
-   * plus a minimal essential allowlist for shell tooling — are visible to
-   * the child process. Their values are part of the cache key.
+   * Env vars whose values are passed through from the parent process to
+   * the child. NOT folded into the cache key — for secrets, region, etc.
    */
-  env?: string[]
+  passThroughEnv?: string[]
   /**
-   * Files produced by this task, as project-relative globs. Captured to the
-   * cache for restore on hit. Also folded into downstream cache keys via a
-   * content hash, so a dependency's output change invalidates dependents.
+   * Explicit env values to set for the child process. These ARE folded
+   * into the cache key (they are the values, after all).
+   */
+  env?: Record<string, string>
+}
+
+export interface CacheConfig {
+  /** Default: true. */
+  enabled?: boolean
+  /**
+   * What participates in the cache key. Omitted = all project files
+   * (gitignore-aware, with declared outputs excluded).
+   *
+   * Each entry may be:
+   * - a string: project-relative glob; prefix with `!` to negate.
+   * - `{ default: true }`: the implicit "all project files" set.
+   * - `{ workspace }`: workspace-relative glob.
+   * - `{ env }`: parent env var name; its value is part of the key.
+   * - `{ externalDependencies }`: package names from package.json; their
+   *   declared version range is part of the key.
+   */
+  inputs?: Input[]
+  /**
+   * Files this task produces, as project-relative globs. Captured for
+   * restore on a cache hit.
    */
   outputs?: string[]
   /**
-   * Whether to read from / write to the cache for this task. Defaults to
-   * `true`. When `false` the task always runs; its outputs are still hashed
-   * for downstream invalidation but not stored or restored.
+   * Which upstream tasks' cache keys participate in this task's key.
+   * Names refer to entries in `dependsOn` (by their `task` name).
+   * - `true` (default): all entries in `dependsOn`.
+   * - `string[]`: only the listed task names.
    */
-  cache?: boolean
+  dependencies?: boolean | string[]
+}
+
+export type Input =
+  | string
+  | DefaultInput
+  | WorkspaceInput
+  | EnvInput
+  | ExternalDependenciesInput
+
+export interface DefaultInput {
+  /** The implicit "all project files" set. Use to compose with other entries. */
+  default: true
+}
+
+export interface WorkspaceInput {
+  /** Glob relative to the workspace root. */
+  workspace: string
+}
+
+export interface EnvInput {
+  /** Parent env var name. Its current value is folded into the cache key. */
+  env: string
+}
+
+export interface ExternalDependenciesInput {
+  /**
+   * npm package names. Each package's version range, as declared in this
+   * project's `package.json`, is folded into the cache key.
+   */
+  externalDependencies: string[]
 }
 
 export interface TaskDependency {
   /** Name of the dependency task. */
   task: string
   /**
-   * Where to look for the dependency task.
+   * Where to find the dependency task.
    * - omitted / `false`: same project.
-   * - `true`: all transitive workspace dependencies (shorthand for `{ transitive: true }`).
-   * - object: explicit form.
+   * - `true`: all transitive workspace dependencies.
+   * - `{ transitive }`: explicit form.
    */
   dependencies?: boolean | DependenciesScope
 }
 
 export interface DependenciesScope {
-  /** If true, follow workspace deps transitively. If false, only direct deps. */
   transitive?: boolean
 }
 

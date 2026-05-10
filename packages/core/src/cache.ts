@@ -5,9 +5,6 @@
 //   get(hash)       : retrieve a previous run's metadata, or null
 //   restoreOutputs  : copy stored output files into the project dir
 //   save            : persist outputs + metadata under a hash
-//
-// The orchestrator hashes outputs separately (see hashFiles) so that downstream
-// cache keys reflect actual produced-file content, not just upstream cache keys.
 
 import { createHash } from 'node:crypto'
 import { createReadStream, existsSync } from 'node:fs'
@@ -15,18 +12,22 @@ import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:
 import path from 'node:path'
 import { relPosix } from './paths.js'
 
-const CACHE_VERSION = 'nxt-cache-v2'
+const CACHE_VERSION = 'nxt-cache-v3'
 
 export interface CacheKeyInput {
   taskId: string
   command: string
-  /** Names of env vars whose values are part of the cache key. */
-  envValues: Array<[name: string, value: string]>
-  /** Absolute paths to project input files. */
+  /** Explicit name=value pairs from process.env config. */
+  explicitEnv: Array<[name: string, value: string]>
+  /** Declared env-input markers, name=value (from parent at hash time). */
+  envInputs: Array<[name: string, value: string]>
+  /** Declared external-dependency markers, name=version. */
+  externalDeps: Array<[name: string, version: string]>
+  /** Absolute paths to input files. */
   inputFiles: string[]
   workspaceRoot: string
-  /** Output content hash of each upstream task this one depends on, sorted. */
-  upstreamOutputHashes: string[]
+  /** Cache keys of upstream tasks this one depends on, sorted. */
+  upstreamHashes: string[]
 }
 
 export interface CacheEntry {
@@ -36,7 +37,6 @@ export interface CacheEntry {
   exitCode: number
   durationMs: number
   outputFiles: string[]
-  outputHash: string
   stdout: string
   stderr: string
   storedAt: string
@@ -51,12 +51,16 @@ export class Cache {
     h.update(`task:${input.taskId}\n`)
     h.update(`cmd:${input.command}\n`)
 
-    h.update(`envs:${input.envValues.length}\n`)
-    for (const [name, value] of input.envValues) {
-      h.update(`${name}=${value}\n`)
-    }
+    h.update(`explicit-env:${input.explicitEnv.length}\n`)
+    for (const [n, v] of input.explicitEnv) h.update(`${n}=${v}\n`)
 
-    const upstream = [...input.upstreamOutputHashes].sort()
+    h.update(`env-inputs:${input.envInputs.length}\n`)
+    for (const [n, v] of input.envInputs) h.update(`${n}=${v}\n`)
+
+    h.update(`ext-deps:${input.externalDeps.length}\n`)
+    for (const [n, v] of input.externalDeps) h.update(`${n}=${v}\n`)
+
+    const upstream = [...input.upstreamHashes].sort()
     h.update(`upstream:${upstream.length}\n`)
     for (const u of upstream) h.update(`${u}\n`)
 
@@ -132,23 +136,6 @@ export class Cache {
   private outputsDir(hash: string): string {
     return path.join(this.entryDir(hash), 'outputs')
   }
-}
-
-/**
- * Hash the content of a set of files relative to a base directory.
- * Used to fingerprint a task's actual produced outputs for downstream keying.
- */
-export async function hashFiles(baseDir: string, files: readonly string[]): Promise<string> {
-  const h = createHash('sha256')
-  h.update(`${CACHE_VERSION}-outputs\n`)
-  h.update(`count:${files.length}\n`)
-  const sorted = [...files].sort()
-  for (const f of sorted) {
-    const rel = relPosix(baseDir, f)
-    const fileHash = await hashFile(f)
-    h.update(`${rel}\0${fileHash}\n`)
-  }
-  return h.digest('hex')
 }
 
 async function hashFile(filePath: string): Promise<string> {
