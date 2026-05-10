@@ -593,4 +593,397 @@ describe('orchestrator e2e', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'non-zero exit code is NOT cached; next run re-executes',
+    async () => {
+      const dir = await addProject(fixture.root, 'fail', {
+        config: `
+          export default {
+            tasks: {
+              run: {
+                process: {
+                  command: "node -e 'require(\\"fs\\").appendFileSync(\\"runs.txt\\", \\"x\\"); process.exit(3)'",
+                },
+                cache: { outputs: ['runs.txt'] },
+              },
+            },
+          }
+        `,
+      })
+
+      const r1 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r1.outcomes[0]?.status).toBe('failed')
+      expect(r1.outcomes[0]?.exitCode).toBe(3)
+
+      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r2.outcomes[0]?.status).toBe('failed')
+      // The command ran a second time -> "xx" in runs.txt.
+      expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('xx')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '--force re-runs even on a cache hit',
+    async () => {
+      const dir = await addProject(fixture.root, 'forced', {
+        config: `
+          export default {
+            tasks: {
+              run: {
+                process: {
+                  command: "node -e 'require(\\"fs\\").appendFileSync(\\"runs.txt\\", \\"x\\")'",
+                },
+                cache: { outputs: ['runs.txt'] },
+              },
+            },
+          }
+        `,
+      })
+
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const after1 = await readFile(path.join(dir, 'runs.txt'), 'utf8')
+      expect(after1).toBe('x')
+
+      // Without --force: cache-hit, file restored as-is.
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('x')
+
+      // With --force: command runs again, appends another 'x'.
+      await run({ cwd: fixture.root, task: 'run', force: true, log: silentLogger(fixture) })
+      expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('xx')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'cache.enabled: false always re-runs, never reads or writes the cache',
+    async () => {
+      const dir = await addProject(fixture.root, 'nocache', {
+        config: `
+          export default {
+            tasks: {
+              run: {
+                process: {
+                  command: "node -e 'require(\\"fs\\").appendFileSync(\\"runs.txt\\", \\"x\\")'",
+                },
+                cache: { enabled: false, outputs: ['runs.txt'] },
+              },
+            },
+          }
+        `,
+      })
+
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('xxx')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'restores a deleted output file on a cache hit',
+    async () => {
+      const dir = await addProject(fixture.root, 'restore', {
+        files: { 'src/x.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                process: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { outputs: ['out.txt'] },
+              },
+            },
+          }
+        `,
+      })
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const original = await readFile(path.join(dir, 'out.txt'), 'utf8')
+
+      await rm(path.join(dir, 'out.txt'))
+      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r.outcomes[0]?.status).toBe('cache-hit')
+      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe(original)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'restores multiple output files declared via globs',
+    async () => {
+      const dir = await addProject(fixture.root, 'multi-out', {
+        files: { 'src/x.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                process: {
+                  command: "mkdir -p dist && echo a > dist/a.txt && echo b > dist/b.txt && echo c > dist/c.txt",
+                },
+                cache: { outputs: ['dist/**'] },
+              },
+            },
+          }
+        `,
+      })
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await rm(path.join(dir, 'dist'), { recursive: true })
+
+      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r.outcomes[0]?.status).toBe('cache-hit')
+      expect(await readFile(path.join(dir, 'dist/a.txt'), 'utf8')).toBe('a\n')
+      expect(await readFile(path.join(dir, 'dist/b.txt'), 'utf8')).toBe('b\n')
+      expect(await readFile(path.join(dir, 'dist/c.txt'), 'utf8')).toBe('c\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'declared output that the task did not produce does not fail the run',
+    async () => {
+      await addProject(fixture.root, 'maybe', {
+        config: `
+          export default {
+            tasks: {
+              run: {
+                process: { command: "echo nothing-produced" },
+                cache: { outputs: ['out.txt', 'dist/**'] },
+              },
+            },
+          }
+        `,
+      })
+      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r.ok).toBe(true)
+      expect(r.outcomes[0]?.status).toBe('success')
+
+      // Second run still hits cache; nothing to restore is fine.
+      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r2.outcomes[0]?.status).toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'gitignored files do not contribute to the default input set',
+    async () => {
+      const dir = await addProject(fixture.root, 'gi', {
+        files: {
+          '.gitignore': 'ignored.txt\n',
+          'src/x.txt': 'v1',
+          'ignored.txt': 'v1',
+        },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                process: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { outputs: ['out.txt'] },
+              },
+            },
+          }
+        `,
+      })
+
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      // Modify the gitignored file. Cache should still hit.
+      await writeFile(path.join(dir, 'ignored.txt'), 'changed')
+      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r.outcomes[0]?.status).toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'negation glob in inputs excludes matched files from the cache key',
+    async () => {
+      const dir = await addProject(fixture.root, 'neg', {
+        files: { 'src/keep.txt': 'a', 'src/skip.txt': 'a' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                process: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { inputs: ['src/**', '!src/skip.txt'], outputs: ['out.txt'] },
+              },
+            },
+          }
+        `,
+      })
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+
+      // Touching src/skip.txt should NOT bust the cache (excluded by negation).
+      await writeFile(path.join(dir, 'src/skip.txt'), 'b')
+      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r.outcomes[0]?.status).toBe('cache-hit')
+
+      // Touching src/keep.txt SHOULD bust.
+      await writeFile(path.join(dir, 'src/keep.txt'), 'b')
+      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r2.outcomes[0]?.status).toBe('success')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'composing { default: true } with negation works as union-then-subtract',
+    async () => {
+      const dir = await addProject(fixture.root, 'compose', {
+        files: { 'src/x.txt': 'v1', 'noisy.log': 'a' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                process: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { inputs: [{ default: true }, '!noisy.log'], outputs: ['out.txt'] },
+              },
+            },
+          }
+        `,
+      })
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await writeFile(path.join(dir, 'noisy.log'), 'b')
+      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r.outcomes[0]?.status).toBe('cache-hit')
+
+      await writeFile(path.join(dir, 'src/x.txt'), 'v2')
+      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r2.outcomes[0]?.status).toBe('success')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'no project declares the requested task: returns ok with zero outcomes',
+    async () => {
+      await addProject(fixture.root, 'lonely', {
+        config: `
+          export default {
+            tasks: {
+              build: {
+                process: { command: "echo only-build" },
+                cache: { outputs: [] },
+              },
+            },
+          }
+        `,
+      })
+      const r = await run({ cwd: fixture.root, task: 'nonexistent', log: silentLogger(fixture) })
+      expect(r.ok).toBe(true)
+      expect(r.outcomes).toEqual([])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'package without nxt.config is discovered but contributes no tasks',
+    async () => {
+      // Project A has tasks; project B exists in pnpm workspace but has no config.
+      await addProject(fixture.root, 'has-config', {
+        config: `
+          export default {
+            tasks: {
+              run: {
+                process: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { outputs: ['out.txt'] },
+              },
+            },
+          }
+        `,
+      })
+      // Bare package without nxt.config:
+      const bareDir = path.join(fixture.root, 'packages/bare')
+      await mkdir(bareDir, { recursive: true })
+      await writeFile(
+        path.join(bareDir, 'package.json'),
+        JSON.stringify({ name: 'bare', version: '0.0.0' }, null, 2),
+      )
+
+      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r.outcomes.map((o) => o.node.projectName)).toEqual(['has-config'])
+      expect(r.ok).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'cache hit replays both stdout and stderr',
+    async () => {
+      await addProject(fixture.root, 'logs', {
+        config: `
+          export default {
+            tasks: {
+              run: {
+                process: {
+                  command: "node -e 'process.stdout.write(\\"OUT\\\\n\\"); process.stderr.write(\\"ERR\\\\n\\")'",
+                },
+                cache: { outputs: [] },
+              },
+            },
+          }
+        `,
+      })
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      // Reset the logger so we capture only the second (cache-hit) invocation.
+      fixture.log = []
+      fixture.err = []
+      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r.outcomes[0]?.status).toBe('cache-hit')
+      expect(fixture.log.join('\n')).toContain('OUT')
+      expect(fixture.err.join('\n')).toContain('ERR')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'duplicate package names across workspace globs error clearly',
+    async () => {
+      // Two packages claiming the same name.
+      await mkdir(path.join(fixture.root, 'packages/a'), { recursive: true })
+      await mkdir(path.join(fixture.root, 'packages/b'), { recursive: true })
+      await writeFile(
+        path.join(fixture.root, 'packages/a/package.json'),
+        JSON.stringify({ name: 'dup', version: '0.0.0' }),
+      )
+      await writeFile(
+        path.join(fixture.root, 'packages/b/package.json'),
+        JSON.stringify({ name: 'dup', version: '0.0.0' }),
+      )
+
+      await expect(
+        run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) }),
+      ).rejects.toThrow(/Duplicate package name "dup"/)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'mtime-only edits to the same content do not bust the cache',
+    async () => {
+      const dir = await addProject(fixture.root, 'mtime', {
+        files: { 'src/x.txt': 'same' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                process: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { outputs: ['out.txt'] },
+              },
+            },
+          }
+        `,
+      })
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+
+      await new Promise((r) => setTimeout(r, 10))
+      // Rewrite identical content so mtime advances but content hash is the same.
+      await writeFile(path.join(dir, 'src/x.txt'), 'same')
+
+      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r.outcomes[0]?.status).toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
 })

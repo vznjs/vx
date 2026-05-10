@@ -67,14 +67,16 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
     }
   }
 
-  const projectGlobs: string[] = []
+  const positiveGlobs: string[] = []
+  const negativeGlobs: string[] = []
   const envNames = new Set<string>()
   const extDeps = new Set<string>()
   let includeDefaults = false
 
   for (const input of args.inputs) {
     if (typeof input === 'string') {
-      projectGlobs.push(input)
+      if (input.startsWith('!')) negativeGlobs.push(input.slice(1))
+      else positiveGlobs.push(input)
     } else if ('default' in input) {
       includeDefaults = true
     } else if ('env' in input) {
@@ -84,6 +86,10 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
     }
   }
 
+  // Negation patterns apply to every positive source (defaults, explicit
+  // globs) so users can compose `[{ default: true }, '!noisy.log']`.
+  const baseIgnore = [...ALWAYS_IGNORE, ...boundaryIgnores, ...negativeGlobs]
+
   const fileSet = new Set<string>()
 
   if (includeDefaults) {
@@ -91,19 +97,19 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
       args.projectDir,
       args.workspaceRoot,
       args.ownOutputs,
-      boundaryIgnores,
+      [...boundaryIgnores, ...negativeGlobs],
     )) {
       fileSet.add(f)
     }
   }
 
-  if (projectGlobs.length > 0) {
-    const matches = await glob(projectGlobs, {
+  if (positiveGlobs.length > 0) {
+    const matches = await glob(positiveGlobs, {
       cwd: args.projectDir,
       absolute: true,
       dot: true,
       onlyFiles: true,
-      ignore: [...ALWAYS_IGNORE, ...boundaryIgnores],
+      ignore: baseIgnore,
     })
     for (const m of matches) fileSet.add(m)
   }

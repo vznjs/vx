@@ -59,10 +59,18 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
   })
 
   const projects: ProjectMeta[] = []
+  const seenName = new Map<string, string>()
   for (const pkgJsonPath of matches) {
     const dir = path.dirname(pkgJsonPath)
     const pkg = JSON.parse(await readFile(pkgJsonPath, 'utf8')) as PackageJson
     if (!pkg.name) continue
+    const previous = seenName.get(pkg.name)
+    if (previous) {
+      throw new Error(
+        `Duplicate package name "${pkg.name}" in workspace: ${previous} and ${dir}`,
+      )
+    }
+    seenName.set(pkg.name, dir)
     const configPath =
       CONFIG_FILENAMES.map((f) => path.join(dir, f)).find((f) => existsSync(f)) ?? null
     projects.push({ name: pkg.name, dir, packageJson: pkg, configPath })
