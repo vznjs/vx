@@ -1,0 +1,27 @@
+{
+  "name": "nxt",
+  "version": "0.0.0",
+  "private": true,
+  "description": "An open, extensible, smarter monorepo task runner.",
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=20.10",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean && pnpm -r exec rm -rf dist",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  }
+}
