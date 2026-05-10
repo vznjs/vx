@@ -1,7 +1,7 @@
-import { VERSION } from '@nxt/core'
+import { run as runOrchestrator, VERSION } from '@nxt/core'
 
-export function run(argv: readonly string[]): number {
-  const [command] = argv
+export async function run(argv: readonly string[]): Promise<number> {
+  const [command, ...rest] = argv
 
   switch (command) {
     case undefined:
@@ -15,6 +15,8 @@ export function run(argv: readonly string[]): number {
     case 'version':
       process.stdout.write(`nxt ${VERSION}\n`)
       return 0
+    case 'run':
+      return await runCmd(rest)
     default:
       process.stderr.write(`nxt: unknown command: ${command}\n`)
       printHelp()
@@ -22,18 +24,83 @@ export function run(argv: readonly string[]): number {
   }
 }
 
+async function runCmd(args: readonly string[]): Promise<number> {
+  const parsed = parseRunArgs(args)
+  if (parsed.error) {
+    process.stderr.write(`nxt run: ${parsed.error}\n`)
+    return 1
+  }
+  if (!parsed.task) {
+    process.stderr.write(`nxt run: missing task name\n`)
+    return 1
+  }
+  const opts: Parameters<typeof runOrchestrator>[0] = {
+    cwd: process.cwd(),
+    task: parsed.task,
+    force: parsed.force,
+  }
+  if (parsed.projects.length > 0) opts.projects = parsed.projects
+  if (parsed.concurrency !== undefined) opts.concurrency = parsed.concurrency
+
+  const summary = await runOrchestrator(opts)
+  return summary.ok ? 0 : 1
+}
+
+interface RunArgs {
+  task: string | undefined
+  projects: string[]
+  concurrency: number | undefined
+  force: boolean
+  error?: string
+}
+
+export function parseRunArgs(args: readonly string[]): RunArgs {
+  const out: RunArgs = {
+    task: undefined,
+    projects: [],
+    concurrency: undefined,
+    force: false,
+  }
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]
+    if (a === '--project' || a === '-p') {
+      const v = args[++i]
+      if (!v) return { ...out, error: `${a} requires a value` }
+      out.projects.push(v)
+    } else if (a === '--concurrency' || a === '-c') {
+      const v = args[++i]
+      if (!v) return { ...out, error: `${a} requires a value` }
+      const n = Number(v)
+      if (!Number.isFinite(n) || n < 1) return { ...out, error: `invalid concurrency: ${v}` }
+      out.concurrency = Math.floor(n)
+    } else if (a === '--force' || a === '-f') {
+      out.force = true
+    } else if (a && a.startsWith('-')) {
+      return { ...out, error: `unknown flag: ${a}` }
+    } else if (a !== undefined) {
+      if (out.task !== undefined) {
+        return { ...out, error: `unexpected positional: ${a}` }
+      }
+      out.task = a
+    }
+  }
+  return out
+}
+
 function printHelp(): void {
   process.stdout.write(
     [
       'nxt — open, extensible monorepo task runner',
       '',
-      'Usage: nxt <command> [options]',
+      'Usage:',
+      '  nxt run <task> [--project <name>]... [--concurrency <n>] [--force]',
+      '  nxt help',
+      '  nxt version',
       '',
-      'Commands:',
-      '  help        Show this help',
-      '  version     Print version',
-      '',
-      'Pre-alpha: more commands land as the engine is built.',
+      'Flags:',
+      '  -p, --project <name>     Run only for the named project (repeatable).',
+      '  -c, --concurrency <n>    Maximum concurrent tasks. Defaults to CPU count.',
+      '  -f, --force              Ignore the cache and re-run every task.',
       '',
     ].join('\n'),
   )

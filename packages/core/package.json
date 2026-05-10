@@ -17,7 +17,11 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@nxt/config": "workspace:*"
+    "@nxt/config": "workspace:*",
+    "ignore": "^7.0.4",
+    "jiti": "^2.4.2",
+    "tinyglobby": "^0.2.10",
+    "yaml": "^2.6.1"
   },
   "publishConfig": {
     "access": "public"
