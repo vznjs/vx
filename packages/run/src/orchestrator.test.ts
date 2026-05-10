@@ -524,6 +524,80 @@ describe('orchestrator e2e', () => {
   )
 
   it(
+    "cache.inputs.tasks supports '*' and '!name' patterns inside a bucket",
+    async () => {
+      // lib has two tasks with non-overlapping narrow inputs so we can
+      // change one without disturbing the other.
+      await addProject(fixture.root, 'lib', {
+        files: { 'src/x.txt': 'v1', 'noisy-src/n.txt': 'a' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: "cat src/x.txt > dist.txt" },
+                cache: {
+                  inputs: { files: ['src/**'] },
+                  outputs: { files: ['dist.txt'] },
+                },
+              },
+              noisy: {
+                exec: { command: "cat noisy-src/n.txt > noisy-out.txt" },
+                cache: {
+                  inputs: { files: ['noisy-src/**'] },
+                  outputs: { files: ['noisy-out.txt'] },
+                },
+              },
+            },
+          }
+        `,
+      })
+
+      const appDir = await addProject(fixture.root, 'app', {
+        deps: { lib: 'workspace:*' },
+        files: { 'src/y.txt': 'app' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: ${JSON.stringify(STAMP_CMD)} },
+                dependsOn: { dependencies: ['build', 'noisy'] },
+                cache: {
+                  inputs: {
+                    files: ['**/*'],
+                    tasks: { dependencies: ['*', '!noisy'] },
+                  },
+                  outputs: { files: ['out.txt'] },
+                },
+              },
+            },
+          }
+        `,
+      })
+
+      await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      const appOut1 = await readFile(path.join(appDir, 'out.txt'), 'utf8')
+
+      // Change lib's noisy source. lib#noisy reruns; lib#build cache-hits.
+      // app excluded noisy via '!noisy', so app#build cache-hits too.
+      await new Promise((r) => setTimeout(r, 5))
+      await writeFile(path.join(fixture.root, 'packages/lib/noisy-src/n.txt'), 'b')
+
+      const r2 = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      expect(r2.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
+      expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).toBe(appOut1)
+
+      // Change lib's build source. '*' matches build, app#build invalidates.
+      await new Promise((r) => setTimeout(r, 5))
+      await writeFile(path.join(fixture.root, 'packages/lib/src/x.txt'), 'v2')
+
+      const r3 = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      expect(r3.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
+      expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).not.toBe(appOut1)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'fails the dependent when an upstream task fails',
     async () => {
       await addProject(fixture.root, 'lib', {

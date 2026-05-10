@@ -262,19 +262,31 @@ function filterUpstreamHashes(
   filter: TaskDependsOn | undefined,
   selfProjectName: string,
 ): string[] {
-  // Per-bucket default: when a bucket is OMITTED, all upstream from that
-  // source contribute. When it's an EXPLICIT array, only the listed names
-  // contribute — with `'*'` as the wildcard for "all from this bucket".
-  // So `{ self: ['codegen'] }` filters self; `{ self: ['*'] }` is the
-  // explicit form of the default; `{ self: [] }` is none.
+  // Per-bucket default: omitted bucket → all upstream from that source.
+  // Explicit array supports three pattern kinds, applied in order:
+  //   '*'      include all from this bucket
+  //   'name'   include the literal task name
+  //   '!name'  exclude the literal task name
+  // Last write wins, so `['*', '!noisy']` reads as "all minus noisy".
   const out: string[] = []
   for (const u of upstream) {
     if (!u.hash) continue
     const isSameProject = u.node.projectName === selfProjectName
     const bucket = isSameProject ? filter?.self : filter?.dependencies
-    const allowed =
-      bucket === undefined || bucket.includes('*') || bucket.includes(u.node.taskName)
-    if (allowed) out.push(u.hash)
+
+    if (bucket === undefined) {
+      out.push(u.hash)
+      continue
+    }
+
+    let included = false
+    for (const pattern of bucket) {
+      if (pattern === '*') included = true
+      else if (pattern.startsWith('!')) {
+        if (pattern.slice(1) === u.node.taskName) included = false
+      } else if (pattern === u.node.taskName) included = true
+    }
+    if (included) out.push(u.hash)
   }
   return out
 }

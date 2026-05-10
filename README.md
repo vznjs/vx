@@ -108,7 +108,7 @@ cache: {
   | --- | --- | --- |
   | `files` | yes | project-relative globs (`!` to negate). Use `['**/*']` for all project files. |
   | `env` | no | env var names; their host values bust the cache when changed. Independent of `exec.env.passThrough`: declaring a name here does NOT forward it to the child. |
-  | `tasks` | no | which upstream tasks' cache keys fold in. Same shape as `dependsOn` (`{ self?, dependencies? }`). **Per-bucket defaults**: omit a bucket → all upstream from that source contribute; provide an explicit array to filter (empty array = none). `'*'` is a wildcard meaning "all from this bucket". So `{ self: ['codegen'] }` filters self but leaves deps on the default-all behaviour, and `{ self: ['*'], dependencies: ['build'] }` is the explicit "all self, only build from deps". |
+  | `tasks` | no | which upstream tasks' cache keys fold in. Same shape as `dependsOn` (`{ self?, dependencies? }`). **Per-bucket defaults**: omit a bucket → all upstream from that source. Inside a bucket, patterns are `'*'` (all), `'name'` (include literal), `'!name'` (exclude literal), applied in order. So `{ self: ['codegen'] }` filters self with deps on default-all, and `{ dependencies: ['*', '!noisy'] }` reads as "all deps minus noisy". |
 
   File globs are always gitignore-aware (whether you write `['**/*']`
   or a narrow list). Declared outputs and any nested vzn project's

@@ -90,15 +90,17 @@ export interface CacheInputs {
    * Same shape as `dependsOn`: list task names by source bucket.
    *
    * **Per-bucket defaults.** When a bucket is omitted, all upstream from
-   * that source contribute. Bucket entries are matched as literal task
-   * names, with `'*'` as the wildcard meaning "all from this bucket"
-   * — handy when you want to be explicit:
+   * that source contribute. When provided, entries are patterns applied
+   * in order, last write wins:
+   *   - `'*'`     include all from this bucket
+   *   - `'name'`  include the literal task name
+   *   - `'!name'` exclude the literal task name
    *
+   * Examples:
    * - omitted entirely → all upstream contribute (default).
    * - `{ self: ['*'], dependencies: ['build'] }` → explicit "all self,
    *   only build from deps".
-   * - `{ self: ['codegen'] }` → only codegen from self; deps stay on
-   *   the default-all behaviour (omitted bucket).
+   * - `{ dependencies: ['*', '!noisy'] }` → all deps except `noisy`.
    * - `{ self: [], dependencies: [] }` → fully decoupled.
    */
   tasks?: TaskDependsOn
