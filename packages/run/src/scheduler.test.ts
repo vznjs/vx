@@ -139,6 +139,28 @@ describe('runGraph', () => {
     expect(out.get('c')?.status).toBe('skipped')
   })
 
+  it('marks a node failed when its execute() throws and keeps the graph progressing', async () => {
+    // Suppress the [vzn] internal-error stderr write from the catch handler
+    // so test output stays clean.
+    const stderr = process.stderr.write
+    process.stderr.write = ((..._args: unknown[]) => true) as typeof stderr
+    try {
+      const out = await runGraph({
+        nodes: nodes(node('a#run'), node('b#run')),
+        concurrency: 4,
+        execute: async (n) => {
+          if (n.id === 'a#run') throw new Error('boom')
+          return success(n)
+        },
+      })
+      expect(out.get('a#run')?.status).toBe('failed')
+      expect(out.get('a#run')?.exitCode).toBe(1)
+      expect(out.get('b#run')?.status).toBe('success')
+    } finally {
+      process.stderr.write = stderr
+    }
+  })
+
   it('passes upstream outcomes to dependent execute()', async () => {
     let received: TaskOutcome[] = []
     await runGraph({

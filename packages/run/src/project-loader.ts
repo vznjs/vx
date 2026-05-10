@@ -19,8 +19,8 @@ export async function loadProjectConfig(configPath: string): Promise<ProjectConf
     // calls in the same Node process see edits.
     const url = pathToFileURL(configPath)
     url.searchParams.set('mtime', String(stats.mtimeMs))
-    const m = (await import(url.href)) as { default?: unknown } & Record<string, unknown>
-    mod = m.default ?? m
+    const m = (await import(url.href)) as { default?: unknown }
+    mod = m.default
   } else {
     // Let jiti handle .ts / .mts / .cts.
     mod = await jiti.import(configPath, { default: true })

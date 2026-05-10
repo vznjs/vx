@@ -340,7 +340,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'process.env explicit values reach the child and participate in cache',
+    'exec.env.define values reach the child and participate in the cache key',
     async () => {
       await addProject(fixture.root, 'explicit', {
         config: `
@@ -386,7 +386,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'cache.inputs.tasks pattern: ["*", "!noisy"] excludes noisy from key',
+    'cache.inputs.tasks: { dependencies: [\'build\'] } picks just one upstream task name',
     async () => {
       // lib has two unrelated tasks with narrow, non-overlapping inputs.
       await addProject(fixture.root, 'lib', {
