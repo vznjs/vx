@@ -4,8 +4,11 @@
 //   - envValues: [name, value] pairs (from parent process.env)
 //   - externalDeps: [name, version] pairs (from project's package.json)
 //
-// MVP keeps this layer narrow: file-resolution uses `tinyglobby`, env reads
-// from a supplied env source, external deps read from `package.json`.
+// File globs are uniformly gitignore-aware. Every glob pass also excludes:
+//   - ALWAYS_IGNORE (node_modules, .git, .nxt, *.tsbuildinfo)
+//   - the project's declared outputs (no self-invalidation)
+//   - the dirs of any nested nxt projects (no cross-boundary leakage)
+//   - any negation patterns (`!...`) the user wrote in the inputs list
 
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
@@ -22,12 +25,11 @@ const ALWAYS_IGNORE = [
   '**/*.tsbuildinfo',
 ]
 
+const DEFAULT_INPUT_GLOBS: readonly string[] = ['**/*']
+
 export interface ResolvedInputs {
-  /** Sorted absolute paths to all files whose contents go into the key. */
   files: string[]
-  /** Sorted [name, value] pairs of declared env inputs. */
   envValues: Array<[name: string, value: string]>
-  /** Sorted [name, version] pairs of declared external-dependency inputs. */
   externalDeps: Array<[name: string, version: string]>
 }
 
@@ -37,31 +39,24 @@ export interface ResolveInputsArgs {
   packageJson: PackageJson
   envSource: NodeJS.ProcessEnv
   inputs: Input[] | undefined
-  /** Project-relative output globs to exclude from the implicit defaults. */
+  /** Project-relative output globs to exclude from inputs. */
   ownOutputs: string[]
-  /**
-   * Absolute paths of nested nxt projects. Files inside these are never
-   * inputs of the current project — cross-project file references are not
-   * allowed; use `dependsOn` instead.
-   */
+  /** Absolute dirs of nested nxt projects (cross-boundary isolation). */
   nestedProjectDirs: string[]
 }
 
-/** Resolve declared cache inputs. */
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs> {
   const boundaryIgnores = boundaryIgnorePatterns(args.projectDir, args.nestedProjectDirs)
 
-  // No declaration -> implicit default: all project files (gitignore-aware),
-  // outputs excluded so a task does not invalidate itself, nested projects
-  // excluded so cross-project files do not leak in.
+  // No declaration -> implicit defaults: all project files.
   if (args.inputs === undefined) {
     return {
-      files: await defaultProjectFiles(
-        args.projectDir,
-        args.workspaceRoot,
-        args.ownOutputs,
-        boundaryIgnores,
-      ),
+      files: await resolveFiles({
+        projectDir: args.projectDir,
+        workspaceRoot: args.workspaceRoot,
+        positiveGlobs: [...DEFAULT_INPUT_GLOBS],
+        ignorePatterns: [...boundaryIgnores, ...args.ownOutputs],
+      }),
       envValues: [],
       externalDeps: [],
     }
@@ -71,14 +66,11 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
   const negativeGlobs: string[] = []
   const envNames = new Set<string>()
   const extDeps = new Set<string>()
-  let includeDefaults = false
 
   for (const input of args.inputs) {
     if (typeof input === 'string') {
       if (input.startsWith('!')) negativeGlobs.push(input.slice(1))
       else positiveGlobs.push(input)
-    } else if ('default' in input) {
-      includeDefaults = true
     } else if ('env' in input) {
       envNames.add(input.env)
     } else if ('externalDependencies' in input) {
@@ -86,33 +78,15 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
     }
   }
 
-  // Negation patterns apply to every positive source (defaults, explicit
-  // globs) so users can compose `[{ default: true }, '!noisy.log']`.
-  const baseIgnore = [...ALWAYS_IGNORE, ...boundaryIgnores, ...negativeGlobs]
-
-  const fileSet = new Set<string>()
-
-  if (includeDefaults) {
-    for (const f of await defaultProjectFiles(
-      args.projectDir,
-      args.workspaceRoot,
-      args.ownOutputs,
-      [...boundaryIgnores, ...negativeGlobs],
-    )) {
-      fileSet.add(f)
-    }
-  }
-
-  if (positiveGlobs.length > 0) {
-    const matches = await glob(positiveGlobs, {
-      cwd: args.projectDir,
-      absolute: true,
-      dot: true,
-      onlyFiles: true,
-      ignore: baseIgnore,
-    })
-    for (const m of matches) fileSet.add(m)
-  }
+  const files =
+    positiveGlobs.length > 0
+      ? await resolveFiles({
+          projectDir: args.projectDir,
+          workspaceRoot: args.workspaceRoot,
+          positiveGlobs,
+          ignorePatterns: [...boundaryIgnores, ...args.ownOutputs, ...negativeGlobs],
+        })
+      : []
 
   const envValues: Array<[string, string]> = [...envNames]
     .sort()
@@ -123,11 +97,7 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
     .sort()
     .map((name) => [name, allDeps[name] ?? ''] as [string, string])
 
-  return {
-    files: [...fileSet].sort(),
-    envValues,
-    externalDeps,
-  }
+  return { files, envValues, externalDeps }
 }
 
 /** Resolve declared output globs (project-relative) to actual produced files. */
@@ -147,21 +117,23 @@ export async function resolveOutputs(args: {
   return matches.sort()
 }
 
-async function defaultProjectFiles(
-  projectDir: string,
-  workspaceRoot: string,
-  ownOutputs: string[],
-  boundaryIgnores: string[],
-): Promise<string[]> {
-  const ig = await loadGitignore(workspaceRoot, projectDir)
-  const matches = await glob('**/*', {
-    cwd: projectDir,
+interface ResolveFilesArgs {
+  projectDir: string
+  workspaceRoot: string
+  positiveGlobs: string[]
+  ignorePatterns: string[]
+}
+
+async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
+  const ig = await loadGitignore(args.workspaceRoot, args.projectDir)
+  const matches = await glob(args.positiveGlobs, {
+    cwd: args.projectDir,
     absolute: true,
     dot: true,
     onlyFiles: true,
-    ignore: [...ALWAYS_IGNORE, ...boundaryIgnores, ...ownOutputs],
+    ignore: [...ALWAYS_IGNORE, ...args.ignorePatterns],
   })
-  return matches.filter((p) => !ig.ignores(path.relative(workspaceRoot, p))).sort()
+  return matches.filter((p) => !ig.ignores(path.relative(args.workspaceRoot, p))).sort()
 }
 
 function boundaryIgnorePatterns(projectDir: string, nestedDirs: string[]): string[] {

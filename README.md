@@ -20,7 +20,7 @@ export default defineProject({
       dependsOn: [{ task: 'build', dependencies: true }],
       cache: {
         inputs: [
-          { default: true },
+          '**/*',
           '!**/*.test.ts',
           { env: 'NODE_ENV' },
           { externalDependencies: ['typescript'] },
@@ -56,17 +56,22 @@ Tasks that must complete before this one runs. Shape:
 
 - `enabled`: default `true`. `false` disables read/write but still
   computes the cache key so dependents are unaffected.
-- `inputs`: what participates in the cache key. Omitted = all project
-  files, gitignore-aware, with declared outputs excluded.
+- `inputs`: what participates in the cache key. Omitted = `['**/*']`
+  (all project files). When provided, the array is taken literally —
+  write `'**/*'` if you want to start from "all files" then subtract
+  with `!` patterns.
 
   Entries:
 
   | Form | Meaning |
   | --- | --- |
   | `'src/**'` | project-relative glob (prefix `!` to negate) |
-  | `{ default: true }` | the implicit "all project files" set |
   | `{ env: 'NODE_ENV' }` | parent env var value |
   | `{ externalDependencies: ['typescript'] }` | declared version ranges |
+
+  Every glob pass is gitignore-aware. Declared outputs and any nested
+  nxt project's directory are also excluded automatically — a task
+  cannot invalidate itself, and cannot read across project boundaries.
 
   Files outside the project (root configs, etc.) are intentionally not
   reachable from per-task inputs. That belongs at the workspace level —

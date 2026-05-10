@@ -42,12 +42,14 @@ export interface CacheConfig {
   /** Default: true. */
   enabled?: boolean
   /**
-   * What participates in the cache key. Omitted = all project files
-   * (gitignore-aware, with declared outputs excluded).
+   * What participates in the cache key. Omitted defaults to "all project
+   * files" (gitignore-aware, declared outputs and nested-project files
+   * excluded). When provided, the array is taken literally — use a
+   * top-level recursive glob to start from "all files", then subtract
+   * with `!` patterns.
    *
    * Each entry may be:
    * - a string: project-relative glob; prefix with `!` to negate.
-   * - `{ default: true }`: the implicit "all project files" set.
    * - `{ env }`: parent env var name; its value is part of the key.
    * - `{ externalDependencies }`: package names from package.json; their
    *   declared version range is part of the key.
@@ -67,12 +69,7 @@ export interface CacheConfig {
   dependencies?: boolean | string[]
 }
 
-export type Input = string | DefaultInput | EnvInput | ExternalDependenciesInput
-
-export interface DefaultInput {
-  /** The implicit "all project files" set. Use to compose with other entries. */
-  default: true
-}
+export type Input = string | EnvInput | ExternalDependenciesInput
 
 export interface EnvInput {
   /** Parent env var name. Its current value is folded into the cache key. */

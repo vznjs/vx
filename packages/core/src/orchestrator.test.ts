@@ -828,7 +828,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'composing { default: true } with negation works as union-then-subtract',
+    "composing '**/*' with negation works as union-then-subtract",
     async () => {
       const dir = await addProject(fixture.root, 'compose', {
         files: { 'src/x.txt': 'v1', 'noisy.log': 'a' },
@@ -837,7 +837,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               run: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: [{ default: true }, '!noisy.log'], outputs: ['out.txt'] },
+                cache: { inputs: ['**/*', '!noisy.log'], outputs: ['out.txt'] },
               },
             },
           }
@@ -948,7 +948,7 @@ describe('orchestrator e2e', () => {
               build: {
                 process: { command: "cat src/x.txt > dist.txt" },
                 cache: {
-                  inputs: [{ default: true }, { env: 'API_URL' }],
+                  inputs: ['**/*', { env: 'API_URL' }],
                   outputs: ['dist.txt'],
                 },
               },
