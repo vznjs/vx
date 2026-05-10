@@ -1317,4 +1317,231 @@ describe('orchestrator e2e', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'self-bucket: changing a same-project upstream task busts the dependent',
+    async () => {
+      const dir = await addProject(fixture.root, 'self-up', {
+        files: { 'src/codegen-input.txt': 'v1', 'src/build-input.txt': 'app' },
+        config: `
+          export default {
+            tasks: {
+              codegen: {
+                exec: { command: "cat src/codegen-input.txt > generated.txt" },
+                cache: {
+                  inputs: { files: ['src/codegen-input.txt'] },
+                  outputs: { files: ['generated.txt'] },
+                },
+              },
+              build: {
+                exec: { command: ${JSON.stringify(STAMP_CMD)} },
+                dependsOn: { self: ['codegen'] },
+                cache: {
+                  inputs: { files: ['src/build-input.txt'] },
+                  outputs: { files: ['out.txt'] },
+                },
+              },
+            },
+          }
+        `,
+      })
+      await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      const out1 = await readFile(path.join(dir, 'out.txt'), 'utf8')
+
+      // Change codegen's input -> codegen reruns -> codegen hash changes ->
+      // build's hash changes (default `cache.inputs.tasks` = all upstream)
+      // -> build reruns even though build's own inputs are unchanged.
+      await new Promise((r) => setTimeout(r, 5))
+      await writeFile(path.join(dir, 'src/codegen-input.txt'), 'v2')
+
+      const r = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      expect(r.outcomes.find((o) => o.node.id === 'self-up#codegen')?.status).toBe('success')
+      expect(r.outcomes.find((o) => o.node.id === 'self-up#build')?.status).toBe('success')
+      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).not.toBe(out1)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'cache.inputs.files: [] is a stable empty input set (project files do not bust the cache)',
+    async () => {
+      const dir = await addProject(fixture.root, 'no-files', {
+        files: { 'src/x.txt': 'v1', 'random.md': 'a' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                exec: { command: "echo a > out.txt" },
+                cache: { inputs: { files: [] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+
+      // Editing arbitrary project files does NOT bust because file inputs are empty.
+      await writeFile(path.join(dir, 'src/x.txt'), 'v2')
+      await writeFile(path.join(dir, 'random.md'), 'b')
+      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r2.outcomes[0]?.status).toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'cache hit overwrites local modifications to declared output files',
+    async () => {
+      const dir = await addProject(fixture.root, 'overwrite', {
+        files: { 'src/x.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                exec: { command: "echo from-task > out.txt" },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+
+      // Manually corrupt the declared output BEFORE the cached re-run.
+      await writeFile(path.join(dir, 'out.txt'), 'tampered-locally')
+
+      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r.outcomes[0]?.status).toBe('cache-hit')
+      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('from-task\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'gitignore: a negated entry (!keep.gen.ts) is included back in inputs',
+    async () => {
+      const dir = await addProject(fixture.root, 'gi-neg', {
+        files: {
+          '.gitignore': '*.gen.ts\n!keep.gen.ts\n',
+          'src/x.txt': 'v1',
+          'src/skip.gen.ts': 'gen-a',
+          'src/keep.gen.ts': 'kept-a',
+        },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                exec: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const out1 = await readFile(path.join(dir, 'out.txt'), 'utf8')
+
+      // skip.gen.ts is gitignored (matches *.gen.ts) -> editing should NOT bust.
+      await writeFile(path.join(dir, 'src/skip.gen.ts'), 'gen-b')
+      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r2.outcomes[0]?.status).toBe('cache-hit')
+      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe(out1)
+
+      // keep.gen.ts is re-included by negated rule -> editing SHOULD bust.
+      await new Promise((r) => setTimeout(r, 5))
+      await writeFile(path.join(dir, 'src/keep.gen.ts'), 'kept-b')
+      const r3 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r3.outcomes[0]?.status).toBe('success')
+      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).not.toBe(out1)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'workspace fingerprint: pnpm-workspace.yaml change busts every cached task',
+    async () => {
+      await addProject(fixture.root, 'wsy', {
+        files: { 'src/x.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                exec: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const out1 = await readFile(
+        path.join(fixture.root, 'packages/wsy/out.txt'),
+        'utf8',
+      )
+
+      // Append a comment to pnpm-workspace.yaml. Workspace fingerprint shifts;
+      // every task's cache must invalidate.
+      await new Promise((r) => setTimeout(r, 5))
+      await writeFile(
+        path.join(fixture.root, 'pnpm-workspace.yaml'),
+        'packages:\n  - "packages/*"\n# bumped\n',
+      )
+
+      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r.outcomes[0]?.status).toBe('success')
+      expect(await readFile(path.join(fixture.root, 'packages/wsy/out.txt'), 'utf8')).not.toBe(
+        out1,
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'sibling-package input isolation: editing one package does not bust an unrelated sibling',
+    async () => {
+      const dirA = await addProject(fixture.root, 'sib-a', {
+        files: { 'src/a.txt': 'a-v1' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                exec: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+      const dirB = await addProject(fixture.root, 'sib-b', {
+        files: { 'src/b.txt': 'b-v1' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                exec: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const aOut1 = await readFile(path.join(dirA, 'out.txt'), 'utf8')
+      const bOut1 = await readFile(path.join(dirB, 'out.txt'), 'utf8')
+
+      // Edit only sib-a's source. sib-b must NOT bust — boundaries enforce
+      // that sib-a's files are not in sib-b's input set.
+      await new Promise((r) => setTimeout(r, 5))
+      await writeFile(path.join(dirA, 'src/a.txt'), 'a-v2')
+
+      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const aOutcome = r.outcomes.find((o) => o.node.id === 'sib-a#run')
+      const bOutcome = r.outcomes.find((o) => o.node.id === 'sib-b#run')
+      expect(aOutcome?.status).toBe('success')
+      expect(bOutcome?.status).toBe('cache-hit')
+      expect(await readFile(path.join(dirA, 'out.txt'), 'utf8')).not.toBe(aOut1)
+      expect(await readFile(path.join(dirB, 'out.txt'), 'utf8')).toBe(bOut1)
+    },
+    TIMEOUT,
+  )
 })
