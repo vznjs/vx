@@ -263,15 +263,17 @@ function filterUpstreamHashes(
   selfProjectName: string,
 ): string[] {
   // Per-bucket default: when a bucket is OMITTED, all upstream from that
-  // source contribute. When it's an EXPLICIT array (even empty), only the
-  // listed names contribute. So `{ self: ['codegen'] }` filters self but
-  // leaves dependencies on the default-all behaviour.
+  // source contribute. When it's an EXPLICIT array, only the listed names
+  // contribute — with `'*'` as the wildcard for "all from this bucket".
+  // So `{ self: ['codegen'] }` filters self; `{ self: ['*'] }` is the
+  // explicit form of the default; `{ self: [] }` is none.
   const out: string[] = []
   for (const u of upstream) {
     if (!u.hash) continue
     const isSameProject = u.node.projectName === selfProjectName
     const bucket = isSameProject ? filter?.self : filter?.dependencies
-    const allowed = bucket === undefined || bucket.includes(u.node.taskName)
+    const allowed =
+      bucket === undefined || bucket.includes('*') || bucket.includes(u.node.taskName)
     if (allowed) out.push(u.hash)
   }
   return out
