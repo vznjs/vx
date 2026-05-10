@@ -215,7 +215,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               build: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                dependsOn: [{ task: 'build', dependencies: ['*'] }],
+                dependsOn: { dependencies: ['build'] },
                 cache: { outputs: ['out.txt'] },
               },
             },
@@ -267,7 +267,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               build: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                dependsOn: [{ task: 'build', dependencies: ['*'] }],
+                dependsOn: { dependencies: ['build'] },
                 cache: {
                   outputs: ['out.txt'],
                   inputs: { tasks: [] },
@@ -420,10 +420,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               build: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                dependsOn: [
-                  { task: 'build', dependencies: ['*'] },
-                  { task: 'noisy', dependencies: ['*'] },
-                ],
+                dependsOn: { dependencies: ['build', 'noisy'] },
                 cache: {
                   outputs: ['out.txt'],
                   inputs: { tasks: ['*', '!noisy'] },
@@ -481,7 +478,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               build: {
                 process: { command: "echo should-not-run" },
-                dependsOn: [{ task: 'build', dependencies: ['*'] }],
+                dependsOn: { dependencies: ['build'] },
               },
             },
           }
@@ -999,7 +996,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               build: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                dependsOn: [{ task: 'build', dependencies: ['*'] }],
+                dependsOn: { dependencies: ['build'] },
                 cache: { outputs: ['out.txt'] },
               },
             },

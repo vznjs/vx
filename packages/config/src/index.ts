@@ -16,7 +16,7 @@ export interface TaskConfig {
   /** How the task is executed. */
   process: ProcessConfig
   /** Tasks that must complete successfully before this task runs. */
-  dependsOn?: TaskDependency[]
+  dependsOn?: TaskDependsOn
   /**
    * Caching configuration. **Caching is opt-in.** If this field is omitted,
    * the task always runs and nothing is read from or written to the cache.
@@ -76,18 +76,15 @@ export interface CacheInputs {
   tasks?: string[]
 }
 
-export interface TaskDependency {
-  /** Name of the dependency task. */
-  task: string
+export interface TaskDependsOn {
   /**
-   * Which workspace projects to look in for the dependency task.
-   * Patterns:
-   * - `'*'`: all transitive workspace dependencies.
-   * - `'name'`: include the literal package name (must be a transitive dep).
-   * - `'!name'`: exclude the literal package name.
-   *
-   * Patterns are applied in order, last write wins. Default: `[]` —
-   * the same project as the dependent task.
+   * Task names in this same project that must complete first.
+   * Equivalent to Turbo's bare `taskname` notation.
+   */
+  self?: string[]
+  /**
+   * Task names to run in every transitive workspace dependency before
+   * this task starts. Equivalent to Turbo's `^taskname` notation.
    */
   dependencies?: string[]
 }

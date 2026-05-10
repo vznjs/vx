@@ -1,4 +1,4 @@
-import type { ProjectConfig, TaskConfig, TaskDependency } from '@nxt/config'
+import type { ProjectConfig, TaskConfig } from '@nxt/config'
 import type { PackageGraph } from './package-graph.js'
 
 export interface TaskNode {
@@ -53,20 +53,28 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     }
     nodes.set(id, node)
 
-    for (const dep of taskConfig.dependsOn ?? []) {
-      const targets = resolveDependencyTargets(projectName, dep, packageGraph)
-      for (const target of targets) {
-        const child = addNode(target, dep.task)
-        if (child) {
-          node.deps.push(child.id)
-        } else if (target === projectName) {
-          // Same-project dependency that doesn't exist is a hard error.
-          throw new Error(
-            `Task ${id} depends on ${taskId(target, dep.task)} but no such task is declared`,
-          )
+    const dependsOn = taskConfig.dependsOn ?? {}
+
+    // Same-project tasks. Missing target is a hard error.
+    for (const t of dependsOn.self ?? []) {
+      const child = addNode(projectName, t)
+      if (!child) {
+        throw new Error(
+          `Task ${id} depends on ${taskId(projectName, t)} but no such task is declared`,
+        )
+      }
+      node.deps.push(child.id)
+    }
+
+    // For each transitive workspace dep, look for the named task. Missing
+    // tasks are silently skipped — not every dep needs to participate.
+    if ((dependsOn.dependencies ?? []).length > 0) {
+      const workspaceDeps = packageGraph.transitiveDeps(projectName)
+      for (const t of dependsOn.dependencies ?? []) {
+        for (const target of workspaceDeps) {
+          const child = addNode(target, t)
+          if (child) node.deps.push(child.id)
         }
-        // Cross-project dependency missing is silently skipped: not every
-        // dependency needs to participate in every task.
       }
     }
 
@@ -81,31 +89,6 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
 
   detectCycle(nodes)
   return nodes
-}
-
-function resolveDependencyTargets(
-  fromProject: string,
-  dep: TaskDependency,
-  packageGraph: PackageGraph,
-): string[] {
-  const patterns = dep.dependencies ?? []
-  if (patterns.length === 0) return [fromProject]
-
-  const candidates = packageGraph.transitiveDeps(fromProject)
-  const candidateSet = new Set(candidates)
-  const selected = new Set<string>()
-  for (const p of patterns) {
-    if (p === '*') {
-      for (const c of candidates) selected.add(c)
-    } else if (p.startsWith('!')) {
-      selected.delete(p.slice(1))
-    } else if (candidateSet.has(p)) {
-      selected.add(p)
-    }
-    // Literal name not in transitive deps: silently skipped (consistent
-    // with how cross-project missing tasks are handled below).
-  }
-  return [...selected]
 }
 
 function detectCycle(nodes: Map<string, TaskNode>): void {

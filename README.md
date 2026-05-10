@@ -17,7 +17,7 @@ export default defineProject({
         passThroughEnv: ['AWS_REGION'],
         env: { NODE_ENV: 'production' },
       },
-      dependsOn: [{ task: 'build', dependencies: ['*'] }],
+      dependsOn: { dependencies: ['build'] },
       cache: {
         inputs: {
           files: ['src/**', '!**/*.test.ts'],
@@ -43,15 +43,23 @@ small essential allowlist for shell tooling (`PATH`, `HOME`, `TMPDIR`, …).
 
 ### `dependsOn`
 
-Tasks that must complete before this one runs. Shape:
-`{ task, dependencies? }`. The `dependencies` field selects which
-workspace projects to look in for the upstream task — same pattern
-syntax as `cache.inputs.tasks`:
+Tasks that must complete before this one runs. Two buckets, both
+optional, both arrays of task names:
 
-- omitted or `[]` (default) → same project.
-- `['*']` → all transitive workspace dependencies.
-- `['lib-a', 'lib-b']` → only those (must be transitive deps).
-- `['*', '!lib-c']` → all transitive deps except `lib-c`.
+```ts
+dependsOn: {
+  self?: string[]          // tasks in this same project
+  dependencies?: string[]  // tasks to run in every transitive workspace dep
+}
+```
+
+- `{ dependencies: ['build'] }` — Turbo's `^build`. Most common case.
+- `{ self: ['codegen'] }` — Turbo's bare `codegen`. Same-project ordering.
+- `{ self: ['codegen'], dependencies: ['build'] }` — both.
+- omit the field — no dependencies.
+
+Same-project tasks must exist (missing target throws). Workspace-dep
+tasks that aren't declared on a given dep are silently skipped.
 
 ### `cache`
 

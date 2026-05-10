@@ -46,11 +46,11 @@ describe('buildTaskGraph', () => {
     expect(nodes.get('a#build')?.deps).toEqual([])
   })
 
-  it('expands a same-project task dependency', () => {
+  it('expands a same-project task dependency via dependsOn.self', () => {
     const nodes = buildTaskGraph({
       projects: projects(
         project('a', {
-          test: { ...cmd('vitest'), dependsOn: [{ task: 'build' }] },
+          test: { ...cmd('vitest'), dependsOn: { self: ['build'] } },
           build: cmd('tsc'),
         }),
       ),
@@ -61,12 +61,12 @@ describe('buildTaskGraph', () => {
     expect(nodes.has('a#build')).toBe(true)
   })
 
-  it('errors when a same-project dependency targets a missing task', () => {
+  it('errors when dependsOn.self targets a missing task', () => {
     expect(() =>
       buildTaskGraph({
         projects: projects(
           project('a', {
-            test: { ...cmd('vitest'), dependsOn: [{ task: 'nope' }] },
+            test: { ...cmd('vitest'), dependsOn: { self: ['nope'] } },
           }),
         ),
         packageGraph: packageGraph({}),
@@ -75,28 +75,11 @@ describe('buildTaskGraph', () => {
     ).toThrow(/depends on a#nope/)
   })
 
-  it('targets only listed workspace deps when given literal names', () => {
+  it('expands across all transitive workspace deps via dependsOn.dependencies', () => {
     const nodes = buildTaskGraph({
       projects: projects(
         project('app', {
-          build: { ...cmd('build app'), dependsOn: [{ task: 'build', dependencies: ['lib'] }] },
-        }),
-        project('lib', { build: cmd('build lib') }),
-        project('deep', { build: cmd('build deep') }),
-      ),
-      packageGraph: packageGraph({ app: ['lib'], lib: ['deep'] }),
-      requested: [{ project: 'app', task: 'build' }],
-    })
-    expect(nodes.has('lib#build')).toBe(true)
-    expect(nodes.has('deep#build')).toBe(false) // not listed
-    expect(nodes.get('app#build')?.deps).toEqual(['lib#build'])
-  })
-
-  it("expands across all transitive workspace deps with dependencies: ['*']", () => {
-    const nodes = buildTaskGraph({
-      projects: projects(
-        project('app', {
-          build: { ...cmd('build app'), dependsOn: [{ task: 'build', dependencies: ['*'] }] },
+          build: { ...cmd('build app'), dependsOn: { dependencies: ['build'] } },
         }),
         project('lib', { build: cmd('build lib') }),
         project('deep', { build: cmd('build deep') }),
@@ -108,11 +91,29 @@ describe('buildTaskGraph', () => {
     expect(nodes.has('deep#build')).toBe(true)
   })
 
-  it('silently skips cross-project deps that have no such task', () => {
+  it('runs both self and dependencies tasks before the dependent', () => {
     const nodes = buildTaskGraph({
       projects: projects(
         project('app', {
-          build: { ...cmd('build app'), dependsOn: [{ task: 'build', dependencies: ['*'] }] },
+          build: {
+            ...cmd('build app'),
+            dependsOn: { self: ['codegen'], dependencies: ['build'] },
+          },
+          codegen: cmd('codegen'),
+        }),
+        project('lib', { build: cmd('build lib') }),
+      ),
+      packageGraph: packageGraph({ app: ['lib'] }),
+      requested: [{ project: 'app', task: 'build' }],
+    })
+    expect(nodes.get('app#build')?.deps.sort()).toEqual(['app#codegen', 'lib#build'])
+  })
+
+  it('silently skips workspace deps that have no such task', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', {
+          build: { ...cmd('build app'), dependsOn: { dependencies: ['build'] } },
         }),
         project('lib', { lint: cmd('lint lib') }), // no `build` task here
       ),
@@ -127,13 +128,13 @@ describe('buildTaskGraph', () => {
     const nodes = buildTaskGraph({
       projects: projects(
         project('app', {
-          build: { ...cmd('build'), dependsOn: [{ task: 'build', dependencies: ['*'] }] },
+          build: { ...cmd('build'), dependsOn: { dependencies: ['build'] } },
         }),
         project('left', {
-          build: { ...cmd('build'), dependsOn: [{ task: 'build', dependencies: ['*'] }] },
+          build: { ...cmd('build'), dependsOn: { dependencies: ['build'] } },
         }),
         project('right', {
-          build: { ...cmd('build'), dependsOn: [{ task: 'build', dependencies: ['*'] }] },
+          build: { ...cmd('build'), dependsOn: { dependencies: ['build'] } },
         }),
         project('shared', { build: cmd('build') }),
       ),
@@ -150,7 +151,6 @@ describe('buildTaskGraph', () => {
       'right#build',
       'shared#build',
     ])
-    // Both intermediates point at the same shared instance.
     expect(nodes.get('left#build')?.deps).toEqual(['shared#build'])
     expect(nodes.get('right#build')?.deps).toEqual(['shared#build'])
   })
@@ -160,10 +160,10 @@ describe('buildTaskGraph', () => {
       buildTaskGraph({
         projects: projects(
           project('a', {
-            build: { ...cmd('a'), dependsOn: [{ task: 'build', dependencies: ['*'] }] },
+            build: { ...cmd('a'), dependsOn: { dependencies: ['build'] } },
           }),
           project('b', {
-            build: { ...cmd('b'), dependsOn: [{ task: 'build', dependencies: ['*'] }] },
+            build: { ...cmd('b'), dependsOn: { dependencies: ['build'] } },
           }),
         ),
         packageGraph: packageGraph({ a: ['b'], b: ['a'] }),
@@ -177,7 +177,7 @@ describe('buildTaskGraph', () => {
       buildTaskGraph({
         projects: projects(
           project('a', {
-            build: { ...cmd('a'), dependsOn: [{ task: 'build' }] },
+            build: { ...cmd('a'), dependsOn: { self: ['build'] } },
           }),
         ),
         packageGraph: packageGraph({}),
