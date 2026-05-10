@@ -50,11 +50,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   for (const meta of projectMetas) {
     if (!meta.configPath) continue
     const config: ProjectConfig = await loadProjectConfig(meta.configPath)
-    if (config.name && config.name !== meta.name) {
-      throw new Error(
-        `Project at ${meta.dir}: nxt.config name "${config.name}" does not match package.json name "${meta.name}"`,
-      )
-    }
     projects.set(meta.name, { name: meta.name, dir: meta.dir, config })
   }
 
@@ -124,10 +119,10 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const { node, upstream, workspaceRoot, cache, force, log } = args
   const cfg: TaskConfig = node.config
   const proc: ProcessConfig = cfg.process
-  const cacheCfg: CacheConfig = cfg.cache ?? {}
-  const cacheEnabled = cacheCfg.enabled !== false
+  const cacheCfg: CacheConfig | undefined = cfg.cache
+  const cacheEnabled = cacheCfg !== undefined
 
-  const outputs = cacheCfg.outputs ?? []
+  const outputs = cacheCfg?.outputs ?? []
   const passThroughEnv = proc.passThroughEnv ?? []
   const explicitEnv = proc.env ?? {}
 
@@ -135,12 +130,12 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     projectDir: node.projectDir,
     workspaceRoot,
     envSource: process.env,
-    inputs: cacheCfg.inputs,
+    inputs: cacheCfg?.inputs,
     ownOutputs: outputs,
     nestedProjectDirs: args.nestedProjectDirs,
   })
 
-  const upstreamHashes = filterUpstreamHashes(upstream, cacheCfg.inputs?.tasks)
+  const upstreamHashes = filterUpstreamHashes(upstream, cacheCfg?.inputs?.tasks)
   const taskConfigHash = hashTaskConfig(cfg)
 
   const hash = await cache.key({

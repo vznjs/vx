@@ -17,7 +17,7 @@ export default defineProject({
         passThroughEnv: ['AWS_REGION'],
         env: { NODE_ENV: 'production' },
       },
-      dependsOn: [{ task: 'build', dependencies: true }],
+      dependsOn: [{ task: 'build', dependencies: ['*'] }],
       cache: {
         inputs: {
           files: ['src/**', '!**/*.test.ts'],
@@ -44,18 +44,35 @@ small essential allowlist for shell tooling (`PATH`, `HOME`, `TMPDIR`, …).
 ### `dependsOn`
 
 Tasks that must complete before this one runs. Shape:
-`{ task, dependencies? }`:
+`{ task, dependencies? }`. The `dependencies` field selects which
+workspace projects to look in for the upstream task — same pattern
+syntax as `cache.inputs.tasks`:
 
-- `dependencies` omitted / `false` → same project.
-- `dependencies: true` → all transitive workspace deps.
-- `dependencies: { transitive: true | false }` → explicit form.
+- omitted or `[]` (default) → same project.
+- `['*']` → all transitive workspace dependencies.
+- `['lib-a', 'lib-b']` → only those (must be transitive deps).
+- `['*', '!lib-c']` → all transitive deps except `lib-c`.
 
 ### `cache`
 
-- `enabled`: default `true`. `false` disables read/write but still
-  computes the cache key so dependents are unaffected.
-- `inputs`: what participates in the cache key. Each kind has its own
-    field; declaring one does not replace another.
+**Caching is opt-in.** Omit the whole `cache` field and the task always
+runs (no read, no write). Provide a `cache` block — with `outputs` at
+minimum — to enable caching.
+
+```ts
+cache: {
+  inputs: { files, env, tasks },  // optional; see below
+  outputs: ['dist/**'],            // required; pass [] if there are none
+}
+```
+
+- `outputs` (required): project-relative globs the task produces.
+  Captured for restore on hit. Pass `[]` for tasks with no produced
+  files (e.g. `lint`, `typecheck`) when you still want to cache the
+  no-op success.
+
+- `inputs` (optional): what participates in the cache key. Each kind
+  has its own field; declaring one does not replace another.
 
   | Field | Meaning |
   | --- | --- |
@@ -68,15 +85,7 @@ Tasks that must complete before this one runs. Shape:
   invalidate itself, and cannot read across project boundaries.
 
   Note: package version changes are picked up automatically because
-  `package.json` is part of the default file inputs. There's no
-  `externalDependencies` field — bumping a dep range edits the file,
-  which busts the cache.
-
-- `outputs`: project-relative globs the task produces. Captured for
-  restore on hit.
-- `dependencies`: which upstream tasks' cache keys fold into this one's.
-  `true` (default) = all of `dependsOn`. `string[]` = only those task
-  names. `[]` = none (decouples the dependent from upstream cache).
+  `package.json` is part of the default file inputs.
 
 ## Caching strategy
 

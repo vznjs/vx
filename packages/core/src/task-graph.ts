@@ -88,16 +88,24 @@ function resolveDependencyTargets(
   dep: TaskDependency,
   packageGraph: PackageGraph,
 ): string[] {
-  if (dep.dependencies === undefined || dep.dependencies === false) {
-    return [fromProject]
+  const patterns = dep.dependencies ?? []
+  if (patterns.length === 0) return [fromProject]
+
+  const candidates = packageGraph.transitiveDeps(fromProject)
+  const candidateSet = new Set(candidates)
+  const selected = new Set<string>()
+  for (const p of patterns) {
+    if (p === '*') {
+      for (const c of candidates) selected.add(c)
+    } else if (p.startsWith('!')) {
+      selected.delete(p.slice(1))
+    } else if (candidateSet.has(p)) {
+      selected.add(p)
+    }
+    // Literal name not in transitive deps: silently skipped (consistent
+    // with how cross-project missing tasks are handled below).
   }
-  if (dep.dependencies === true) {
-    return packageGraph.transitiveDeps(fromProject)
-  }
-  if (dep.dependencies.transitive) {
-    return packageGraph.transitiveDeps(fromProject)
-  }
-  return packageGraph.directDeps.get(fromProject) ?? []
+  return [...selected]
 }
 
 function detectCycle(nodes: Map<string, TaskNode>): void {

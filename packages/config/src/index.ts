@@ -8,8 +8,6 @@ export interface WorkspaceConfig {
 }
 
 export interface ProjectConfig {
-  /** Project name. If set, must match `package.json#name`. */
-  name?: string
   /** Tasks declared by this project, keyed by task name. */
   tasks?: Record<string, TaskConfig>
 }
@@ -19,7 +17,11 @@ export interface TaskConfig {
   process: ProcessConfig
   /** Tasks that must complete successfully before this task runs. */
   dependsOn?: TaskDependency[]
-  /** Caching configuration. */
+  /**
+   * Caching configuration. **Caching is opt-in.** If this field is omitted,
+   * the task always runs and nothing is read from or written to the cache.
+   * Provide a `cache` block (with at least `outputs`) to enable caching.
+   */
   cache?: CacheConfig
 }
 
@@ -39,15 +41,14 @@ export interface ProcessConfig {
 }
 
 export interface CacheConfig {
-  /** Default: true. */
-  enabled?: boolean
   /** What participates in the cache key. */
   inputs?: CacheInputs
   /**
    * Files this task produces, as project-relative globs. Captured for
-   * restore on a cache hit.
+   * restore on a cache hit. Required when `cache` is set; pass `[]` when
+   * the task has no files to capture (e.g. `lint`, `typecheck`).
    */
-  outputs?: string[]
+  outputs: string[]
 }
 
 export interface CacheInputs {
@@ -71,12 +72,6 @@ export interface CacheInputs {
    * - `'!name'`: exclude the literal task name.
    *
    * Patterns are applied in order, last write wins. Default: `['*']`.
-   *
-   * Examples:
-   *   ['*']               — all dependsOn (default)
-   *   ['build']           — only `build`
-   *   ['*', '!test']      — all except `test`
-   *   []                  — none
    */
   tasks?: string[]
 }
@@ -85,16 +80,16 @@ export interface TaskDependency {
   /** Name of the dependency task. */
   task: string
   /**
-   * Where to find the dependency task.
-   * - omitted / `false`: same project.
-   * - `true`: all transitive workspace dependencies.
-   * - `{ transitive }`: explicit form.
+   * Which workspace projects to look in for the dependency task.
+   * Patterns:
+   * - `'*'`: all transitive workspace dependencies.
+   * - `'name'`: include the literal package name (must be a transitive dep).
+   * - `'!name'`: exclude the literal package name.
+   *
+   * Patterns are applied in order, last write wins. Default: `[]` —
+   * the same project as the dependent task.
    */
-  dependencies?: boolean | DependenciesScope
-}
-
-export interface DependenciesScope {
-  transitive?: boolean
+  dependencies?: string[]
 }
 
 export function defineProject<T extends ProjectConfig>(config: T): T {

@@ -215,7 +215,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               build: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                dependsOn: [{ task: 'build', dependencies: true }],
+                dependsOn: [{ task: 'build', dependencies: ['*'] }],
                 cache: { outputs: ['out.txt'] },
               },
             },
@@ -267,7 +267,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               build: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                dependsOn: [{ task: 'build', dependencies: true }],
+                dependsOn: [{ task: 'build', dependencies: ['*'] }],
                 cache: {
                   outputs: ['out.txt'],
                   inputs: { tasks: [] },
@@ -421,8 +421,8 @@ describe('orchestrator e2e', () => {
               build: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
                 dependsOn: [
-                  { task: 'build', dependencies: true },
-                  { task: 'noisy', dependencies: true },
+                  { task: 'build', dependencies: ['*'] },
+                  { task: 'noisy', dependencies: ['*'] },
                 ],
                 cache: {
                   outputs: ['out.txt'],
@@ -469,7 +469,6 @@ describe('orchestrator e2e', () => {
             tasks: {
               build: {
                 process: { command: "exit 7" },
-                cache: { enabled: false },
               },
             },
           }
@@ -482,8 +481,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               build: {
                 process: { command: "echo should-not-run" },
-                dependsOn: [{ task: 'build', dependencies: true }],
-                cache: { enabled: false },
+                dependsOn: [{ task: 'build', dependencies: ['*'] }],
               },
             },
           }
@@ -569,7 +567,6 @@ describe('orchestrator e2e', () => {
             tasks: {
               run: {
                 process: { command: "echo inner" },
-                cache: { enabled: false },
               },
             },
           }
@@ -697,7 +694,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'cache.enabled: false always re-runs, never reads or writes the cache',
+    'omitting `cache` makes the task always re-run (no read/write)',
     async () => {
       const dir = await addProject(fixture.root, 'nocache', {
         config: `
@@ -707,7 +704,6 @@ describe('orchestrator e2e', () => {
                 process: {
                   command: "node -e 'require(\\"fs\\").appendFileSync(\\"runs.txt\\", \\"x\\")'",
                 },
-                cache: { enabled: false, outputs: ['runs.txt'] },
               },
             },
           }
@@ -1003,7 +999,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               build: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                dependsOn: [{ task: 'build', dependencies: true }],
+                dependsOn: [{ task: 'build', dependencies: ['*'] }],
                 cache: { outputs: ['out.txt'] },
               },
             },
