@@ -7,8 +7,13 @@ export interface TaskOutcome {
   status: TaskStatus
   exitCode: number
   durationMs: number
-  /** Cache hash, if one was computed. */
+  /** Cache key hash, if one was computed. */
   hash?: string
+  /**
+   * Content hash of the task's actual produced output files. Folded into
+   * dependents' cache keys so a dep's output change invalidates them.
+   */
+  outputHash?: string
 }
 
 export interface ScheduleOptions {

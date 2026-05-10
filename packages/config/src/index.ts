@@ -1,8 +1,12 @@
 // Public schema for nxt project and workspace configuration.
 //
-// Everything is explicit. There is no inheritance between tasks, no workspace
-// defaults that bleed into projects, and no string DSLs. If a behaviour is not
-// declared here it does not happen.
+// Design constraints:
+// - Explicit. No inheritance, no string DSLs.
+// - Solve the common case. No knobs that exist for hypothetical needs.
+// - Replaceable layers underneath: this schema is the only contract.
+//
+// Cache inputs are NOT configurable. Every file in the project (gitignore-
+// aware) is a cache input. Outputs and declared env vars are the only knobs.
 
 export interface WorkspaceConfig {
   /** Maximum concurrent tasks. Defaults to the number of CPUs. */
@@ -22,24 +26,28 @@ export interface ProjectConfig {
 }
 
 export interface TaskConfig {
-  /** Shell command to run. Executed via the system shell in the project's directory. */
+  /** Shell command to run, executed in the project's directory. */
   command: string
   /** Other tasks that must complete successfully before this task runs. */
   dependsOn?: TaskDependency[]
   /**
-   * Names of environment variables whose values are part of the cache key.
-   * The full `process.env` is still passed to the child process; only the
-   * listed names participate in cache identity.
+   * Environment variables to expose to the task. These — and only these,
+   * plus a minimal essential allowlist for shell tooling — are visible to
+   * the child process. Their values are part of the cache key.
    */
   env?: string[]
   /**
-   * Caching configuration.
-   * - `true` (default): cache enabled with implicit inputs (all project files,
-   *   gitignore-aware) and no declared outputs.
-   * - `false`: caching disabled; the task always runs.
-   * - object: explicit inputs and/or outputs.
+   * Files produced by this task, as project-relative globs. Captured to the
+   * cache for restore on hit. Also folded into downstream cache keys via a
+   * content hash, so a dependency's output change invalidates dependents.
    */
-  cache?: boolean | CacheConfig
+  outputs?: string[]
+  /**
+   * Whether to read from / write to the cache for this task. Defaults to
+   * `true`. When `false` the task always runs; its outputs are still hashed
+   * for downstream invalidation but not stored or restored.
+   */
+  cache?: boolean
 }
 
 export interface TaskDependency {
@@ -47,44 +55,16 @@ export interface TaskDependency {
   task: string
   /**
    * Where to look for the dependency task.
-   * - omitted / `false`: same project as the dependent task.
+   * - omitted / `false`: same project.
    * - `true`: all transitive workspace dependencies (shorthand for `{ transitive: true }`).
-   * - object: explicit form, see `DependenciesScope`.
+   * - object: explicit form.
    */
   dependencies?: boolean | DependenciesScope
 }
 
 export interface DependenciesScope {
-  /**
-   * If true, follow workspace deps transitively.
-   * If false, only direct workspace deps from `package.json`.
-   */
+  /** If true, follow workspace deps transitively. If false, only direct deps. */
   transitive?: boolean
-}
-
-export interface CacheConfig {
-  /**
-   * What goes into the cache key.
-   * - omitted: implicit "all project files (gitignore-aware)".
-   * - present: only the declared inputs are hashed.
-   *
-   * Strings are globs relative to the project directory and may use `!` to
-   * negate. Objects escape to other roots; today only `{ workspace: '...' }`.
-   */
-  inputs?: Input[]
-  /**
-   * Files this task produces, as project-relative globs. Captured into the
-   * cache and restored on a hit. May be empty for tasks with no artifacts.
-   */
-  outputs?: string[]
-}
-
-/** A single input source. */
-export type Input = string | WorkspaceInput
-
-export interface WorkspaceInput {
-  /** Glob relative to the workspace root. */
-  workspace: string
 }
 
 export function defineProject<T extends ProjectConfig>(config: T): T {
