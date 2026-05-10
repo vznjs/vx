@@ -5,6 +5,5 @@
     "rootDir": "./src"
   },
   "include": ["src/**/*"],
-  "exclude": ["src/**/*.test.ts"],
-  "references": [{ "path": "../config" }, { "path": "../core" }]
+  "exclude": ["src/**/*.test.ts"]
 }

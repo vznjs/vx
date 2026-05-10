@@ -1,7 +1,7 @@
 {
-  "name": "@nxt/core",
+  "name": "@vzn/run",
   "version": "0.0.0",
-  "description": "Engine for nxt: graph, scheduler, cache, task execution.",
+  "description": "An open, extensible monorepo task runner.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -11,13 +11,15 @@
       "import": "./dist/index.js"
     }
   },
+  "bin": {
+    "vzn": "./dist/bin.js"
+  },
   "files": ["dist", "README.md"],
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@nxt/config": "workspace:*",
     "ignore": "^7.0.4",
     "jiti": "^2.4.2",
     "tinyglobby": "^0.2.10",

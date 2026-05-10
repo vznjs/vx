@@ -1,4 +1,5 @@
-import { run as runOrchestrator, VERSION } from '@nxt/core'
+import { VERSION } from './index.js'
+import { run as runOrchestrator } from './orchestrator.js'
 
 export async function run(argv: readonly string[]): Promise<number> {
   const [command, ...rest] = argv
@@ -13,12 +14,12 @@ export async function run(argv: readonly string[]): Promise<number> {
     case '--version':
     case '-v':
     case 'version':
-      process.stdout.write(`nxt ${VERSION}\n`)
+      process.stdout.write(`vzn ${VERSION}\n`)
       return 0
     case 'run':
       return await runCmd(rest)
     default:
-      process.stderr.write(`nxt: unknown command: ${command}\n`)
+      process.stderr.write(`vzn: unknown command: ${command}\n`)
       printHelp()
       return 1
   }
@@ -27,11 +28,11 @@ export async function run(argv: readonly string[]): Promise<number> {
 async function runCmd(args: readonly string[]): Promise<number> {
   const parsed = parseRunArgs(args)
   if (parsed.error) {
-    process.stderr.write(`nxt run: ${parsed.error}\n`)
+    process.stderr.write(`vzn run: ${parsed.error}\n`)
     return 1
   }
   if (!parsed.task) {
-    process.stderr.write(`nxt run: missing task name\n`)
+    process.stderr.write(`vzn run: missing task name\n`)
     return 1
   }
   const opts: Parameters<typeof runOrchestrator>[0] = {
@@ -90,12 +91,12 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
 function printHelp(): void {
   process.stdout.write(
     [
-      'nxt — open, extensible monorepo task runner',
+      'vzn — open, extensible monorepo task runner',
       '',
       'Usage:',
-      '  nxt run <task> [--project <name>]... [--concurrency <n>] [--force]',
-      '  nxt help',
-      '  nxt version',
+      '  vzn run <task> [--project <name>]... [--concurrency <n>] [--force]',
+      '  vzn help',
+      '  vzn version',
       '',
       'Flags:',
       '  -p, --project <name>     Run only for the named project (repeatable).',

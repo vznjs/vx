@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { TaskConfig } from '@nxt/config'
+import type { TaskConfig } from './config.js'
 import type { PackageGraph } from './package-graph.js'
 import { buildTaskGraph, type ProjectEntry } from './task-graph.js'
 

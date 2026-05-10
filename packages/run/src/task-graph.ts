@@ -1,4 +1,4 @@
-import type { ProjectConfig, TaskConfig } from '@nxt/config'
+import type { ProjectConfig, TaskConfig } from './config.js'
 import type { PackageGraph } from './package-graph.js'
 
 export interface TaskNode {

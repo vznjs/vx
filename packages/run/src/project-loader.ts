@@ -2,7 +2,7 @@ import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createJiti } from 'jiti'
-import type { ProjectConfig } from '@nxt/config'
+import type { ProjectConfig } from './config.js'
 
 const jiti = createJiti(import.meta.url, {
   interopDefault: true,

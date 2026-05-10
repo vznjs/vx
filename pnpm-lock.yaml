@@ -21,22 +21,8 @@ importers:
         specifier: ^2.1.4
         version: 2.1.9(@types/node@22.19.18)
 
-  packages/cli:
+  packages/run:
     dependencies:
-      '@nxt/config':
-        specifier: workspace:*
-        version: link:../config
-      '@nxt/core':
-        specifier: workspace:*
-        version: link:../core
-
-  packages/config: {}
-
-  packages/core:
-    dependencies:
-      '@nxt/config':
-        specifier: workspace:*
-        version: link:../config
       ignore:
         specifier: ^7.0.4
         version: 7.0.5

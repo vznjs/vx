@@ -1,8 +1,8 @@
 {
-  "name": "nxt",
+  "name": "vzn-monorepo",
   "version": "0.0.0",
   "private": true,
-  "description": "An open, extensible, smarter monorepo task runner.",
+  "description": "Monorepo for @vzn/run — an open, extensible task runner.",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
   "engines": {

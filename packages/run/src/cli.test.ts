@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { parseRunArgs, run } from './index.js'
+import { parseRunArgs, run } from './cli.js'
 
 describe('cli run()', () => {
   let stdout: string
@@ -29,7 +29,7 @@ describe('cli run()', () => {
 
   it('prints version', async () => {
     expect(await run(['--version'])).toBe(0)
-    expect(stdout).toMatch(/^nxt \d/)
+    expect(stdout).toMatch(/^vzn \d/)
   })
 
   it('rejects unknown command', async () => {

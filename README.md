@@ -1,13 +1,18 @@
-# nxt
+# @vzn/run
 
 An open, extensible monorepo task runner. Turborepo-shaped caching semantics
 with per-package TypeScript config and replaceable internals.
 
+```sh
+pnpm add -D @vzn/run
+vzn run build
+```
+
 ## Config
 
 ```ts
-// nxt.config.ts in a workspace package
-import { defineProject } from '@nxt/config'
+// vzn.config.ts in a workspace package
+import { defineProject } from '@vzn/run'
 
 export default defineProject({
   tasks: {
@@ -69,7 +74,7 @@ minimum — to enable caching.
 
 ```ts
 cache: {
-  inputs: { files, env, tasks },  // optional; see below
+  inputs: { files, env, tasks },   // optional; see below
   outputs: ['dist/**'],            // required; pass [] if there are none
 }
 ```
@@ -88,7 +93,7 @@ cache: {
   | `env` | env var names; their current values participate in the key. |
   | `tasks` | which upstream tasks' cache keys fold in. Patterns: `'*'` = all dependsOn, `'name'` = include literal, `'!name'` = exclude literal. Default `['*']`. Examples: `['build']`, `['*', '!test']`, `[]` for none. |
 
-  File globs are gitignore-aware. Declared outputs and any nested nxt
+  File globs are gitignore-aware. Declared outputs and any nested vzn
   project's directory are excluded automatically — a task cannot
   invalidate itself, and cannot read across project boundaries.
 
@@ -121,7 +126,7 @@ output bytes are unchanged.
 ## CLI
 
 ```sh
-nxt run <task> [--project <name>]... [--concurrency <n>] [--force]
+vzn run <task> [--project <name>]... [--concurrency <n>] [--force]
 ```
 
 - `--project, -p`: run only for the named project (repeatable).
@@ -130,34 +135,29 @@ nxt run <task> [--project <name>]... [--concurrency <n>] [--force]
 
 ## Architecture
 
-Each layer is one module, replaceable wholesale:
+Each layer is one module under `src/`, replaceable wholesale:
 
 ```
+config.ts           public schema + defineProject / defineWorkspace helpers
 workspace.ts        pnpm discovery
 project-loader.ts   jiti for .ts / native import for .mjs (mtime-busting)
 package-graph.ts    workspace dep graph
 task-graph.ts       task graph build + cycle detection
-inputs.ts           globs, env, workspace, external-deps resolution
-env.ts              essentials + passThroughEnv + explicit env
+inputs.ts           file globs, env values, gitignore-aware resolution
+env.ts              essentials + passThroughEnv + explicit env layers
 cache.ts            content-addressed FS cache
 runner.ts           child_process.spawn
 scheduler.ts        parallel topo executor with failure isolation
 orchestrator.ts     glue
+cli.ts              argv parser + command dispatcher
+bin.ts              `vzn` binary entry
 ```
 
 No plugin API, no DI: replace a layer by changing imports.
 
-## Packages
-
-| Package        | Purpose                                            |
-| -------------- | -------------------------------------------------- |
-| `@nxt/config`  | Project & workspace config types.                  |
-| `@nxt/core`    | Engine.                                            |
-| `@nxt/cli`     | The `nxt` command-line interface.                  |
-
 ## Status
 
-Pre-alpha. Schema may change. No published packages yet.
+Pre-alpha. Schema may change. No published versions yet.
 
 ## Development
 
