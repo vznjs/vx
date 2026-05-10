@@ -122,7 +122,7 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const cacheCfg: CacheConfig | undefined = cfg.cache
   const cacheEnabled = cacheCfg !== undefined
 
-  const outputs = cacheCfg?.outputs ?? []
+  const outputs = cacheCfg?.outputs.files ?? []
   const passThroughEnv = proc.passThroughEnv ?? []
   const explicitEnv = proc.env ?? {}
 

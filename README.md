@@ -29,7 +29,9 @@ export default defineProject({
           env: ['NODE_ENV'],
           tasks: ['*', '!lint'],
         },
-        outputs: ['dist/**'],
+        outputs: {
+          files: ['dist/**'],
+        },
       },
     },
   },
@@ -79,11 +81,13 @@ cache: {
     env?: ['NODE_ENV'],
     tasks?: ['*'],
   },
-  outputs: ['dist/**'],            // required; pass [] if there are none
+  outputs: {                       // required; declare what this task produces
+    files: ['dist/**'],            // required; pass [] if there are none
+  },
 }
 ```
 
-- `outputs` (required): project-relative globs the task produces.
+- `outputs.files` (required): project-relative globs the task produces.
   Captured for restore on hit. Pass `[]` for tasks with no produced
   files (e.g. `lint`, `typecheck`) when you still want to cache the
   no-op success.

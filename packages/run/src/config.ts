@@ -43,12 +43,18 @@ export interface ProcessConfig {
 export interface CacheConfig {
   /** What participates in the cache key. */
   inputs: CacheInputs
+  /** What this task produces. Captured for restore on a cache hit. */
+  outputs: CacheOutputs
+}
+
+export interface CacheOutputs {
   /**
-   * Files this task produces, as project-relative globs. Captured for
-   * restore on a cache hit. Pass `[]` when the task has no files to
-   * capture (e.g. `lint`, `typecheck`).
+   * Files produced by this task, as project-relative globs. Pass `[]`
+   * when the task has no files to capture (e.g. `lint`, `typecheck`).
+   * Outputs are not filtered through gitignore — typical artifact dirs
+   * like `dist/` and `coverage/` are captured normally even when ignored.
    */
-  outputs: string[]
+  files: string[]
 }
 
 export interface CacheInputs {
