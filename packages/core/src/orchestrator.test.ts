@@ -494,6 +494,86 @@ describe('orchestrator e2e', () => {
   )
 
   it(
+    'project boundary: nested project files do not leak into parent inputs',
+    async () => {
+      // Make the workspace root itself a project, with packages/* as children.
+      await writeFile(
+        path.join(fixture.root, 'pnpm-workspace.yaml'),
+        'packages:\n  - .\n  - "packages/*"\n',
+      )
+      await writeFile(
+        path.join(fixture.root, 'package.json'),
+        JSON.stringify({ name: 'root-proj', version: '0.0.0' }, null, 2),
+      )
+      await writeFile(
+        path.join(fixture.root, 'nxt.config.mjs'),
+        `
+          export default {
+            tasks: {
+              run: {
+                process: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { outputs: ['out.txt'] },
+              },
+            },
+          }
+        `,
+      )
+      await mkdir(path.join(fixture.root, 'src'), { recursive: true })
+      await writeFile(path.join(fixture.root, 'src/root.txt'), 'root v1')
+
+      // Nested project under packages/inner with cache disabled — so its files
+      // are pure noise from the root project's perspective.
+      await addProject(fixture.root, 'inner', {
+        files: { 'src/inner.txt': 'inner v1' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                process: { command: "echo inner" },
+                cache: { enabled: false },
+              },
+            },
+          }
+        `,
+      })
+
+      await run({
+        cwd: fixture.root,
+        task: 'run',
+        projects: ['root-proj'],
+        log: silentLogger(fixture),
+      })
+      const first = await readFile(path.join(fixture.root, 'out.txt'), 'utf8')
+
+      // 1. Changing a file inside the nested project must NOT bust root's cache.
+      await writeFile(
+        path.join(fixture.root, 'packages/inner/src/inner.txt'),
+        'inner v2',
+      )
+      const r2 = await run({
+        cwd: fixture.root,
+        task: 'run',
+        projects: ['root-proj'],
+        log: silentLogger(fixture),
+      })
+      expect(r2.outcomes.find((o) => o.node.id === 'root-proj#run')?.status).toBe('cache-hit')
+      expect(await readFile(path.join(fixture.root, 'out.txt'), 'utf8')).toBe(first)
+
+      // 2. Changing a file inside the parent's own src/ MUST bust root's cache.
+      await new Promise((r) => setTimeout(r, 5))
+      await writeFile(path.join(fixture.root, 'src/root.txt'), 'root v2')
+      const r3 = await run({
+        cwd: fixture.root,
+        task: 'run',
+        projects: ['root-proj'],
+        log: silentLogger(fixture),
+      })
+      expect(r3.outcomes.find((o) => o.node.id === 'root-proj#run')?.status).toBe('success')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'creates the cache directory under workspace root',
     async () => {
       await addProject(fixture.root, 'app-f', {

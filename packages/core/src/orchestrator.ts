@@ -58,6 +58,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   }
 
   const packageGraph = buildPackageGraph(projectMetas)
+  const nestedDirsByProject = computeNestedProjectDirs([...projects.values()])
 
   const candidateProjects = options.projects
     ? options.projects.filter((p) => projects.has(p))
@@ -97,6 +98,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         force: options.force ?? false,
         log,
         packageJsonByProject: metaByName,
+        nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
       }),
   })
 
@@ -113,6 +115,7 @@ interface ExecuteArgs {
   force: boolean
   log: Logger
   packageJsonByProject: Map<string, ProjectMeta>
+  nestedProjectDirs: string[]
 }
 
 async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
@@ -138,6 +141,7 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     envSource: process.env,
     inputs: cacheCfg.inputs,
     ownOutputs: outputs,
+    nestedProjectDirs: args.nestedProjectDirs,
   })
 
   const upstreamHashes = filterUpstreamHashes(upstream, cacheCfg.dependencies)
@@ -184,7 +188,11 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   })
 
   if (result.exitCode === 0 && cacheEnabled) {
-    const outputFiles = await resolveOutputs({ projectDir: node.projectDir, outputs })
+    const outputFiles = await resolveOutputs({
+      projectDir: node.projectDir,
+      outputs,
+      nestedProjectDirs: args.nestedProjectDirs,
+    })
     await cache.save({
       hash,
       projectDir: node.projectDir,
@@ -207,6 +215,23 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     durationMs: result.durationMs,
     hash,
   }
+}
+
+/**
+ * For each project, the absolute dirs of other projects that live underneath
+ * it. Used to enforce project-boundary isolation: a project's task cannot
+ * see files inside another project, even if its globs would otherwise match.
+ */
+function computeNestedProjectDirs(entries: ProjectEntry[]): Map<string, string[]> {
+  const result = new Map<string, string[]>()
+  for (const p of entries) {
+    const prefix = p.dir + path.sep
+    const nested = entries
+      .filter((o) => o.dir !== p.dir && o.dir.startsWith(prefix))
+      .map((o) => o.dir)
+    result.set(p.name, nested)
+  }
+  return result
 }
 
 function filterUpstreamHashes(
