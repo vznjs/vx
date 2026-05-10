@@ -23,7 +23,6 @@ export default defineProject({
           { default: true },
           '!**/*.test.ts',
           { env: 'NODE_ENV' },
-          { workspace: 'tsconfig.base.json' },
           { externalDependencies: ['typescript'] },
         ],
         outputs: ['dist/**'],
@@ -66,9 +65,12 @@ Tasks that must complete before this one runs. Shape:
   | --- | --- |
   | `'src/**'` | project-relative glob (prefix `!` to negate) |
   | `{ default: true }` | the implicit "all project files" set |
-  | `{ workspace: 'tsconfig.base.json' }` | workspace-relative glob |
   | `{ env: 'NODE_ENV' }` | parent env var value |
   | `{ externalDependencies: ['typescript'] }` | declared version ranges |
+
+  Files outside the project (root configs, etc.) are intentionally not
+  reachable from per-task inputs. That belongs at the workspace level —
+  see the future `defineWorkspace({ globalInputs })`.
 
 - `outputs`: project-relative globs the task produces. Captured for
   restore on hit.

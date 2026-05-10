@@ -422,37 +422,6 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'workspace input invalidates when a workspace-root file changes',
-    async () => {
-      await writeFile(path.join(fixture.root, 'tsconfig.base.json'), '{"v":1}')
-      const dir = await addProject(fixture.root, 'ws', {
-        files: { 'src/x.txt': 'v1' },
-        config: `
-          export default {
-            tasks: {
-              run: {
-                process: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: {
-                  inputs: [{ default: true }, { workspace: 'tsconfig.base.json' }],
-                  outputs: ['out.txt'],
-                },
-              },
-            },
-          }
-        `,
-      })
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
-      const first = await readFile(path.join(dir, 'out.txt'), 'utf8')
-
-      await writeFile(path.join(fixture.root, 'tsconfig.base.json'), '{"v":2}')
-      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
-      expect(r.outcomes[0]?.status).toBe('success')
-      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).not.toBe(first)
-    },
-    TIMEOUT,
-  )
-
-  it(
     'fails the dependent when an upstream task fails',
     async () => {
       await addProject(fixture.root, 'lib', {

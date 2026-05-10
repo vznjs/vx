@@ -48,7 +48,6 @@ export interface CacheConfig {
    * Each entry may be:
    * - a string: project-relative glob; prefix with `!` to negate.
    * - `{ default: true }`: the implicit "all project files" set.
-   * - `{ workspace }`: workspace-relative glob.
    * - `{ env }`: parent env var name; its value is part of the key.
    * - `{ externalDependencies }`: package names from package.json; their
    *   declared version range is part of the key.
@@ -68,21 +67,11 @@ export interface CacheConfig {
   dependencies?: boolean | string[]
 }
 
-export type Input =
-  | string
-  | DefaultInput
-  | WorkspaceInput
-  | EnvInput
-  | ExternalDependenciesInput
+export type Input = string | DefaultInput | EnvInput | ExternalDependenciesInput
 
 export interface DefaultInput {
   /** The implicit "all project files" set. Use to compose with other entries. */
   default: true
-}
-
-export interface WorkspaceInput {
-  /** Glob relative to the workspace root. */
-  workspace: string
 }
 
 export interface EnvInput {

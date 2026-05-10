@@ -54,7 +54,6 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
   }
 
   const projectGlobs: string[] = []
-  const workspaceGlobs: string[] = []
   const envNames = new Set<string>()
   const extDeps = new Set<string>()
   let includeDefaults = false
@@ -64,8 +63,6 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
       projectGlobs.push(input)
     } else if ('default' in input) {
       includeDefaults = true
-    } else if ('workspace' in input) {
-      workspaceGlobs.push(input.workspace)
     } else if ('env' in input) {
       envNames.add(input.env)
     } else if ('externalDependencies' in input) {
@@ -84,17 +81,6 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
   if (projectGlobs.length > 0) {
     const matches = await glob(projectGlobs, {
       cwd: args.projectDir,
-      absolute: true,
-      dot: true,
-      onlyFiles: true,
-      ignore: ALWAYS_IGNORE,
-    })
-    for (const m of matches) fileSet.add(m)
-  }
-
-  if (workspaceGlobs.length > 0) {
-    const matches = await glob(workspaceGlobs, {
-      cwd: args.workspaceRoot,
       absolute: true,
       dot: true,
       onlyFiles: true,
