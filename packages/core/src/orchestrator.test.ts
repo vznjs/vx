@@ -938,6 +938,64 @@ describe('orchestrator e2e', () => {
   )
 
   it(
+    'upstream env-input change invalidates dependent (Turbo-style propagation, env edition)',
+    async () => {
+      await addProject(fixture.root, 'lib', {
+        files: { 'src/x.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                process: { command: "cat src/x.txt > dist.txt" },
+                cache: {
+                  inputs: [{ default: true }, { env: 'API_URL' }],
+                  outputs: ['dist.txt'],
+                },
+              },
+            },
+          }
+        `,
+      })
+      const appDir = await addProject(fixture.root, 'app', {
+        deps: { lib: 'workspace:*' },
+        files: { 'src/y.txt': 'app' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                process: { command: ${JSON.stringify(STAMP_CMD)} },
+                dependsOn: [{ task: 'build', dependencies: true }],
+                cache: { outputs: ['out.txt'] },
+              },
+            },
+          }
+        `,
+      })
+
+      process.env.API_URL = 'https://a.example'
+      await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      const appOut1 = await readFile(path.join(appDir, 'out.txt'), 'utf8')
+
+      // Same env: both should hit cache.
+      const r2 = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      expect(r2.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
+      expect(r2.outcomes.find((o) => o.node.id === 'lib#build')?.status).toBe('cache-hit')
+
+      // Change API_URL: lib's env input changes -> lib reruns -> app's
+      // upstream hash changes -> app must rerun even though no file changed
+      // anywhere.
+      process.env.API_URL = 'https://b.example'
+      const r3 = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      expect(r3.outcomes.find((o) => o.node.id === 'lib#build')?.status).toBe('success')
+      expect(r3.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
+      expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).not.toBe(appOut1)
+
+      delete process.env.API_URL
+    },
+    TIMEOUT,
+  )
+
+  it(
     'duplicate package names across workspace globs error clearly',
     async () => {
       // Two packages claiming the same name.
