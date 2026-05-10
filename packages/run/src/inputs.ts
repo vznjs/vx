@@ -40,16 +40,16 @@ export interface ResolveInputsArgs {
 }
 
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs> {
-  const cfg = args.inputs ?? {}
+  const cfg = args.inputs
   return {
     files: await resolveFiles({
       projectDir: args.projectDir,
       workspaceRoot: args.workspaceRoot,
-      files: cfg.files,
+      files: cfg?.files,
       ownOutputs: args.ownOutputs,
       nestedProjectDirs: args.nestedProjectDirs,
     }),
-    envValues: resolveEnvValues(cfg.env ?? [], args.envSource),
+    envValues: resolveEnvValues(cfg?.env ?? [], args.envSource),
   }
 }
 

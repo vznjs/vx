@@ -25,7 +25,7 @@ export default defineProject({
       dependsOn: { dependencies: ['build'] },
       cache: {
         inputs: {
-          files: ['src/**', '!**/*.test.ts'],
+          files: ['src/**', '!**/*.test.ts'],   // required; pass ['**/*'] for all
           env: ['NODE_ENV'],
           tasks: ['*', '!lint'],
         },
@@ -74,7 +74,11 @@ minimum — to enable caching.
 
 ```ts
 cache: {
-  inputs: { files, env, tasks },   // optional; see below
+  inputs: {                        // required; declare what participates in the key
+    files: ['**/*'],               // required; '**/*' for all project files
+    env?: ['NODE_ENV'],
+    tasks?: ['*'],
+  },
   outputs: ['dist/**'],            // required; pass [] if there are none
 }
 ```
@@ -84,21 +88,26 @@ cache: {
   files (e.g. `lint`, `typecheck`) when you still want to cache the
   no-op success.
 
-- `inputs` (optional): what participates in the cache key. Each kind
-  has its own field; declaring one does not replace another.
+- `inputs` (required): what participates in the cache key. Forcing
+  declaration here makes you decide what the cache is keyed on; no
+  silent "all files" default that you forget to revisit.
 
-  | Field | Meaning |
-  | --- | --- |
-  | `files` | project-relative globs (`!` to negate). Omit for "all project files". |
-  | `env` | env var names; their current values participate in the key. |
-  | `tasks` | which upstream tasks' cache keys fold in. Patterns: `'*'` = all dependsOn, `'name'` = include literal, `'!name'` = exclude literal. Default `['*']`. Examples: `['build']`, `['*', '!test']`, `[]` for none. |
+  | Field | Required | Meaning |
+  | --- | --- | --- |
+  | `files` | yes | project-relative globs (`!` to negate). Use `['**/*']` for all project files. |
+  | `env` | no | env var names; their current values participate in the key. |
+  | `tasks` | no | which upstream tasks' cache keys fold in. Patterns: `'*'` = all dependsOn, `'name'` = include literal, `'!name'` = exclude literal. Default `['*']`. |
 
-  File globs are gitignore-aware. Declared outputs and any nested vzn
-  project's directory are excluded automatically — a task cannot
-  invalidate itself, and cannot read across project boundaries.
+  File globs are always gitignore-aware (whether you write `['**/*']`
+  or a narrow list). Declared outputs and any nested vzn project's
+  directory are excluded automatically — a task cannot invalidate
+  itself, and cannot read across project boundaries.
+
+  Outputs are *not* filtered through gitignore — so `dist/` and friends
+  get captured normally.
 
   Note: package version changes are picked up automatically because
-  `package.json` is part of the default file inputs.
+  `package.json` is part of the file set if matched by your `files` glob.
 
 ## Caching strategy
 
@@ -108,8 +117,8 @@ A task's cache key is derived from:
    names, dependsOn, cache directives, outputs, passThroughEnv list,
    process.env explicit values, etc.
 2. Declared env-input values (from parent process.env at hash time).
-3. Input file contents (gitignore-aware project files; or whatever
-   `cache.inputs.files` narrows to).
+3. Input file contents — `cache.inputs.files` resolved with gitignore
+   filtering, declared outputs excluded, nested-project files excluded.
 4. Upstream tasks' cache keys, filtered by `cache.inputs.tasks`.
 5. Workspace fingerprint — a hash of `pnpm-lock.yaml` and
    `pnpm-workspace.yaml`. A `pnpm update` (resolved version bump) or a

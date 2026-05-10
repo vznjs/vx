@@ -42,11 +42,11 @@ export interface ProcessConfig {
 
 export interface CacheConfig {
   /** What participates in the cache key. */
-  inputs?: CacheInputs
+  inputs: CacheInputs
   /**
    * Files this task produces, as project-relative globs. Captured for
-   * restore on a cache hit. Required when `cache` is set; pass `[]` when
-   * the task has no files to capture (e.g. `lint`, `typecheck`).
+   * restore on a cache hit. Pass `[]` when the task has no files to
+   * capture (e.g. `lint`, `typecheck`).
    */
   outputs: string[]
 }
@@ -54,10 +54,15 @@ export interface CacheConfig {
 export interface CacheInputs {
   /**
    * Project-relative globs. Each entry is a positive glob, or a negation
-   * prefixed with `!`. Omitted: all project files (gitignore-aware, with
-   * declared outputs and nested-project files excluded automatically).
+   * prefixed with `!`. Required: pass a recursive glob to mean "all
+   * project files" (gitignore-aware), or narrow as needed. An empty
+   * array means no file inputs at all.
+   *
+   * Declared outputs and any nested-project files are excluded
+   * automatically — a task cannot invalidate itself, and cannot read
+   * across project boundaries.
    */
-  files?: string[]
+  files: string[]
   /**
    * Env var names. Their current values are folded into the cache key.
    * Independent of `process.passThroughEnv` — declaring a name here does

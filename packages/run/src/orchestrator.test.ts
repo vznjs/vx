@@ -86,7 +86,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               stamp: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { outputs: ['out.txt'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['out.txt'] },
               },
             },
           }
@@ -115,7 +115,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               run: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { outputs: ['out.txt'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['out.txt'] },
               },
             },
           }
@@ -176,7 +176,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               run: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { outputs: ['out.txt'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['out.txt'] },
               },
             },
           }
@@ -201,7 +201,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               build: {
                 process: { command: "cat src/x.txt > dist.txt" },
-                cache: { outputs: ['dist.txt'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['dist.txt'] },
               },
             },
           }
@@ -216,7 +216,7 @@ describe('orchestrator e2e', () => {
               build: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
                 dependsOn: { dependencies: ['build'] },
-                cache: { outputs: ['out.txt'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['out.txt'] },
               },
             },
           }
@@ -253,7 +253,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               build: {
                 process: { command: "cat src/x.txt > dist.txt" },
-                cache: { outputs: ['dist.txt'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['dist.txt'] },
               },
             },
           }
@@ -351,7 +351,7 @@ describe('orchestrator e2e', () => {
                   command: "node -e 'process.stdout.write(process.env.MODE)' > out.txt",
                   env: { MODE: 'one' },
                 },
-                cache: { outputs: ['out.txt'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['out.txt'] },
               },
             },
           }
@@ -372,7 +372,7 @@ describe('orchestrator e2e', () => {
                   command: "node -e 'process.stdout.write(process.env.MODE)' > out.txt",
                   env: { MODE: 'two' },
                 },
-                cache: { outputs: ['out.txt'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['out.txt'] },
               },
             },
           }
@@ -506,7 +506,7 @@ describe('orchestrator e2e', () => {
                 process: {
                   command: "node -e 'process.stdout.write(String(process.env.LEAK))' > out.txt",
                 },
-                cache: { outputs: ['out.txt'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['out.txt'] },
               },
             },
           }
@@ -546,7 +546,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               run: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { outputs: ['out.txt'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['out.txt'] },
               },
             },
           }
@@ -615,7 +615,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               run: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { outputs: ['out.txt'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['out.txt'] },
               },
             },
           }
@@ -638,7 +638,7 @@ describe('orchestrator e2e', () => {
                 process: {
                   command: "node -e 'require(\\"fs\\").appendFileSync(\\"runs.txt\\", \\"x\\"); process.exit(3)'",
                 },
-                cache: { outputs: ['runs.txt'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['runs.txt'] },
               },
             },
           }
@@ -668,7 +668,7 @@ describe('orchestrator e2e', () => {
                 process: {
                   command: "node -e 'require(\\"fs\\").appendFileSync(\\"runs.txt\\", \\"x\\")'",
                 },
-                cache: { outputs: ['runs.txt'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['runs.txt'] },
               },
             },
           }
@@ -725,7 +725,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               run: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { outputs: ['out.txt'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['out.txt'] },
               },
             },
           }
@@ -754,7 +754,7 @@ describe('orchestrator e2e', () => {
                 process: {
                   command: "mkdir -p dist && echo a > dist/a.txt && echo b > dist/b.txt && echo c > dist/c.txt",
                 },
-                cache: { outputs: ['dist/**'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['dist/**'] },
               },
             },
           }
@@ -781,7 +781,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               run: {
                 process: { command: "echo nothing-produced" },
-                cache: { outputs: ['out.txt', 'dist/**'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['out.txt', 'dist/**'] },
               },
             },
           }
@@ -812,7 +812,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               run: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { outputs: ['out.txt'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['out.txt'] },
               },
             },
           }
@@ -896,7 +896,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               build: {
                 process: { command: "echo only-build" },
-                cache: { outputs: [] },
+                cache: { inputs: { files: ['**/*'] }, outputs: [] },
               },
             },
           }
@@ -919,7 +919,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               run: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { outputs: ['out.txt'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['out.txt'] },
               },
             },
           }
@@ -951,7 +951,7 @@ describe('orchestrator e2e', () => {
                 process: {
                   command: "node -e 'process.stdout.write(\\"OUT\\\\n\\"); process.stderr.write(\\"ERR\\\\n\\")'",
                 },
-                cache: { outputs: [] },
+                cache: { inputs: { files: ['**/*'] }, outputs: [] },
               },
             },
           }
@@ -997,7 +997,7 @@ describe('orchestrator e2e', () => {
               build: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
                 dependsOn: { dependencies: ['build'] },
-                cache: { outputs: ['out.txt'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['out.txt'] },
               },
             },
           }
@@ -1042,7 +1042,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               run: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { outputs: ['out.txt'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['out.txt'] },
               },
             },
           }
@@ -1160,7 +1160,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               run: {
                 process: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { outputs: ['out.txt'] },
+                cache: { inputs: { files: ['**/*'] }, outputs: ['out.txt'] },
               },
             },
           }
