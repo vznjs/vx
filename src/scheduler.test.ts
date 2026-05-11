@@ -10,6 +10,7 @@ function node(id: string, deps: string[] = []): TaskNode {
     taskName: id.split('#')[1]!,
     config: { exec: { command: 'noop' } },
     deps,
+    requested: true,
   }
 }
 

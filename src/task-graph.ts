@@ -1,4 +1,5 @@
 import type { ProjectConfig, TaskConfig } from './config.js'
+import { UserError } from './errors.js'
 import type { PackageGraph } from './package-graph.js'
 
 export interface TaskNode {
@@ -10,6 +11,13 @@ export interface TaskNode {
   config: TaskConfig
   /** Ids of tasks that must complete before this one runs. */
   deps: string[]
+  /**
+   * True for the tasks the user actually asked for (via cwd, `-r`, `-F`,
+   * or `pkg#task`). False for dependencies pulled in by `dependsOn`
+   * expansion. Used by the orchestrator to scope `forwardArgs` so trailing
+   * CLI args don't leak into upstream tasks the user didn't address.
+   */
+  requested: boolean
 }
 
 export interface ProjectEntry {
@@ -35,10 +43,15 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
   const { projects, packageGraph, requested, ignoreDependsOn = false } = options
   const nodes = new Map<string, TaskNode>()
 
-  function addNode(projectName: string, taskName: string): TaskNode | null {
+  function addNode(projectName: string, taskName: string, requested: boolean): TaskNode | null {
     const id = taskId(projectName, taskName)
     const existing = nodes.get(id)
-    if (existing) return existing
+    if (existing) {
+      // Promote an already-added node to requested if any caller asked
+      // for it directly. Once requested, never demoted.
+      if (requested) existing.requested = true
+      return existing
+    }
 
     const project = projects.get(projectName)
     if (!project) return null
@@ -52,6 +65,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       taskName,
       config: taskConfig,
       deps: [],
+      requested,
     }
     nodes.set(id, node)
 
@@ -63,9 +77,9 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
 
     // Same-project tasks. Missing target is a hard error.
     for (const t of dependsOn.self ?? []) {
-      const child = addNode(projectName, t)
+      const child = addNode(projectName, t, false)
       if (!child) {
-        throw new Error(
+        throw new UserError(
           `Task ${id} depends on ${taskId(projectName, t)} but no such task is declared`,
         )
       }
@@ -78,7 +92,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       const workspaceDeps = packageGraph.transitiveDeps(projectName)
       for (const t of dependsOn.dependencies ?? []) {
         for (const target of workspaceDeps) {
-          const child = addNode(target, t)
+          const child = addNode(target, t, false)
           if (child) node.deps.push(child.id)
         }
       }
@@ -90,7 +104,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
   }
 
   for (const { project, task } of requested) {
-    addNode(project, task)
+    addNode(project, task, true)
   }
 
   detectCycle(nodes)
@@ -110,7 +124,7 @@ function detectCycle(nodes: Map<string, TaskNode>): void {
     if (c === BLACK) return
     if (c === GRAY) {
       const cycle = [...stack.slice(stack.indexOf(id)), id].join(' -> ')
-      throw new Error(`Cycle detected in task graph: ${cycle}`)
+      throw new UserError(`Cycle detected in task graph: ${cycle}`)
     }
     color.set(id, GRAY)
     stack.push(id)

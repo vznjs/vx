@@ -379,4 +379,34 @@ describe('Cache storage (v10)', () => {
   it('prune() rejects empty options', async () => {
     await expect(cache.prune({})).rejects.toThrow(/at least one of/)
   })
+
+  it('two concurrent writers do not crash with SQLITE_BUSY', async () => {
+    // B1 from Agent A's real-world test: without PRAGMA busy_timeout,
+    // two parallel `vzn run` invocations would race on the small INSERT
+    // and one would die with `SQLiteError: database is locked`. With the
+    // 5s busy_timeout the second one waits and succeeds.
+    const second = new Cache(cacheDir)
+    try {
+      const now = Date.now()
+      const writeMany = async (label: string, c: Cache): Promise<void> => {
+        for (let i = 0; i < 20; i++) {
+          c.recordRun({
+            hash: `${label}-${i}`,
+            project: 'pkg',
+            task: 'build',
+            status: 'success',
+            exitCode: 0,
+            durationMs: 1,
+            startedAt: now,
+            endedAt: now + 1,
+          })
+        }
+      }
+      await Promise.all([writeMany('a', cache), writeMany('b', second)])
+      // Both wrote successfully.
+      expect(cache.stats().runCountLast24h).toBe(40)
+    } finally {
+      second.close()
+    }
+  })
 })

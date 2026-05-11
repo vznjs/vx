@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { glob } from 'tinyglobby'
 import { parse as parseYaml } from 'yaml'
+import { UserError } from './errors.js'
 
 export interface PackageJson {
   name: string
@@ -36,7 +37,7 @@ export function findWorkspaceRoot(start: string): string {
     if (existsSync(path.join(dir, 'pnpm-workspace.yaml'))) return dir
     const parent = path.dirname(dir)
     if (parent === dir) {
-      throw new Error(`Could not find pnpm-workspace.yaml in any parent of ${start}`)
+      throw new UserError(`Could not find pnpm-workspace.yaml in any parent of ${start}`)
     }
     dir = parent
   }
@@ -66,7 +67,9 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
     if (!pkg.name) continue
     const previous = seenName.get(pkg.name)
     if (previous) {
-      throw new Error(`Duplicate package name "${pkg.name}" in workspace: ${previous} and ${dir}`)
+      throw new UserError(
+        `Duplicate package name "${pkg.name}" in workspace: ${previous} and ${dir}`,
+      )
     }
     seenName.set(pkg.name, dir)
     const configPath =

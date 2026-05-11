@@ -1092,8 +1092,10 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'no project declares the requested task: returns ok with zero outcomes',
+    'no project declares the requested task: returns NOT-ok with zero outcomes',
     async () => {
+      // Treating a typo'd task name as success would silently no-op
+      // entire CI scripts. Real-world test (Agent A, bug B3) caught this.
       await addProject(fixture.root, 'lonely', {
         config: `
           export default {
@@ -1109,7 +1111,7 @@ describe('orchestrator e2e', () => {
         `,
       })
       const r = await run({ cwd: fixture.root, task: 'nonexistent', log: silentLogger(fixture) })
-      expect(r.ok).toBe(true)
+      expect(r.ok).toBe(false)
       expect(r.outcomes).toEqual([])
     },
     TIMEOUT,
