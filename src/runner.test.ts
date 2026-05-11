@@ -69,6 +69,31 @@ describe('runCommand', () => {
     expect(result.exitCode).toBe(0)
     expect(result.stdout.trim()).toBe(`prefix: hello world with space it's`)
   })
+
+  it('reports cpuMs and peakRssBytes from rusage (v11 analytics)', async () => {
+    // Burn a tiny bit of CPU so cpuMs is observably > 0.
+    const result = await runCommand({
+      command: 'i=0; while [ $i -lt 5000 ]; do i=$((i+1)); done; echo done',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+    })
+    expect(result.exitCode).toBe(0)
+    expect(result.cpuMs).toBeDefined()
+    expect(result.peakRssBytes).toBeDefined()
+    expect(result.cpuMs!).toBeGreaterThanOrEqual(0)
+    expect(result.peakRssBytes!).toBeGreaterThan(0)
+  })
+
+  it('captures rusage even when the command exits non-zero', async () => {
+    const result = await runCommand({
+      command: 'exit 7',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+    })
+    expect(result.exitCode).toBe(7)
+    expect(result.cpuMs).toBeDefined()
+    expect(result.peakRssBytes).toBeDefined()
+  })
 })
 
 describe('shellQuote', () => {

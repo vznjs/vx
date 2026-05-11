@@ -142,6 +142,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       ...(options.forwardArgs !== undefined ? { forwardArgs: options.forwardArgs } : {}),
       startedAt: now - o.durationMs,
       endedAt: now,
+      ...(o.cpuMs !== undefined ? { cpuMs: o.cpuMs } : {}),
+      ...(o.peakRssBytes !== undefined ? { peakRssBytes: o.peakRssBytes } : {}),
+      cacheHit: o.status === 'cache-hit',
     })
   }
   cache.close()
@@ -269,6 +272,8 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     exitCode: result.exitCode,
     durationMs: result.durationMs,
     hash,
+    ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
+    ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
   }
 }
 
