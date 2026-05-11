@@ -87,6 +87,21 @@ export interface CacheStats {
   hitCountLast24h: number
 }
 
+export interface PruneOptions {
+  /** Drop entries last accessed before this ms-epoch threshold. */
+  olderThanMs?: number
+  /**
+   * After applying olderThanMs, if the cache still exceeds this size in
+   * bytes, evict LRU (smallest `accessed_at` first) until under it.
+   */
+  maxBytes?: number
+}
+
+export interface PruneResult {
+  evicted: number
+  bytesFreed: number
+}
+
 interface EntryRow {
   hash: string
   project: string
@@ -330,6 +345,63 @@ export class Cache {
       runCountLast24h: runs.total,
       hitCountLast24h: runs.hits,
     }
+  }
+
+  async prune(options: PruneOptions): Promise<PruneResult> {
+    const { olderThanMs, maxBytes } = options
+    if (olderThanMs === undefined && maxBytes === undefined) {
+      throw new Error('prune: pass at least one of `olderThanMs` or `maxBytes`')
+    }
+
+    const victims = new Set<string>()
+    let bytesFreed = 0
+
+    if (olderThanMs !== undefined) {
+      const rows = this.db
+        .prepare('SELECT hash, size_bytes FROM entries WHERE accessed_at < ?')
+        .all(olderThanMs) as Array<{ hash: string; size_bytes: number }>
+      for (const r of rows) {
+        victims.add(r.hash)
+        bytesFreed += r.size_bytes
+      }
+    }
+
+    if (maxBytes !== undefined) {
+      const totalRow = this.db
+        .prepare('SELECT COALESCE(SUM(size_bytes), 0) AS bytes FROM entries')
+        .get() as { bytes: number }
+      let remaining = totalRow.bytes - bytesFreed
+      if (remaining > maxBytes) {
+        const candidates = (
+          victims.size === 0
+            ? (this.db
+                .prepare('SELECT hash, size_bytes FROM entries ORDER BY accessed_at ASC')
+                .all() as Array<{ hash: string; size_bytes: number }>)
+            : (this.db
+                .prepare(
+                  `SELECT hash, size_bytes FROM entries WHERE hash NOT IN (${[...victims].map(() => '?').join(',')}) ORDER BY accessed_at ASC`,
+                )
+                .all(...[...victims]) as Array<{ hash: string; size_bytes: number }>)
+        ) satisfies Array<{ hash: string; size_bytes: number }>
+        for (const row of candidates) {
+          if (remaining <= maxBytes) break
+          victims.add(row.hash)
+          bytesFreed += row.size_bytes
+          remaining -= row.size_bytes
+        }
+      }
+    }
+
+    // Perform the deletions: DB row, on-disk dir, log files.
+    const deleteEntry = this.db.prepare('DELETE FROM entries WHERE hash = ?')
+    for (const hash of victims) {
+      deleteEntry.run(hash)
+      await rm(this.entryDir(hash), { recursive: true, force: true })
+      await rm(this.logPath(hash, 'stdout'), { force: true })
+      await rm(this.logPath(hash, 'stderr'), { force: true })
+    }
+
+    return { evicted: victims.size, bytesFreed }
   }
 
   close(): void {

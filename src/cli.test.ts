@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { formatBytes, formatStats, parseRunArgs, run } from './cli.js'
+import {
+  formatBytes,
+  formatStats,
+  parseDuration,
+  parsePruneArgs,
+  parseRunArgs,
+  parseSize,
+  run,
+} from './cli.js'
 
 describe('cli run()', () => {
   let stdout: string
@@ -448,5 +456,136 @@ describe('cli stats command', () => {
     const code = await run(['stats'])
     expect(code).toBe(1)
     expect(stderr).toContain('Could not find pnpm-workspace.yaml')
+  })
+})
+
+describe('parseDuration', () => {
+  it('parses seconds, minutes, hours, days', () => {
+    expect(parseDuration('30s')).toBe(30_000)
+    expect(parseDuration('5m')).toBe(5 * 60_000)
+    expect(parseDuration('2h')).toBe(2 * 3_600_000)
+    expect(parseDuration('30d')).toBe(30 * 86_400_000)
+  })
+
+  it('rejects unknown units and missing numbers', () => {
+    expect(parseDuration('30')).toBeNull()
+    expect(parseDuration('30y')).toBeNull()
+    expect(parseDuration('d')).toBeNull()
+    expect(parseDuration('thirty')).toBeNull()
+  })
+})
+
+describe('parseSize', () => {
+  it('parses bytes, K, M, G, T (powers of 1024)', () => {
+    expect(parseSize('512')).toBe(512)
+    expect(parseSize('1K')).toBe(1024)
+    expect(parseSize('5M')).toBe(5 * 1024 * 1024)
+    expect(parseSize('1G')).toBe(1024 ** 3)
+    expect(parseSize('2T')).toBe(2 * 1024 ** 4)
+  })
+
+  it('accepts optional B suffix and lowercase', () => {
+    expect(parseSize('500MB')).toBe(500 * 1024 * 1024)
+    expect(parseSize('1g')).toBe(1024 ** 3)
+  })
+
+  it('rejects malformed values', () => {
+    expect(parseSize('1.5G')).toBeNull()
+    expect(parseSize('lots')).toBeNull()
+    expect(parseSize('')).toBeNull()
+  })
+})
+
+describe('parsePruneArgs', () => {
+  it('rejects empty args', () => {
+    expect(parsePruneArgs([]).error).toMatch(/--older-than|--max-size/)
+  })
+
+  it('parses --older-than as a wall-clock cutoff', () => {
+    const before = Date.now()
+    const r = parsePruneArgs(['--older-than', '7d'])
+    expect(r.error).toBeUndefined()
+    expect(r.olderThanMs).toBeDefined()
+    expect(r.olderThanMs!).toBeLessThanOrEqual(Date.now() - 7 * 86_400_000 + 5)
+    expect(r.olderThanMs!).toBeGreaterThanOrEqual(before - 7 * 86_400_000 - 5)
+  })
+
+  it('parses --max-size', () => {
+    expect(parsePruneArgs(['--max-size', '1G']).maxBytes).toBe(1024 ** 3)
+  })
+
+  it('rejects missing flag values', () => {
+    expect(parsePruneArgs(['--older-than']).error).toMatch(/requires a value/)
+    expect(parsePruneArgs(['--max-size']).error).toMatch(/requires a value/)
+  })
+
+  it('rejects unknown flags', () => {
+    expect(parsePruneArgs(['--bogus']).error).toMatch(/unknown argument/)
+  })
+
+  it('accepts both flags together', () => {
+    const r = parsePruneArgs(['--older-than', '24h', '--max-size', '500M'])
+    expect(r.olderThanMs).toBeDefined()
+    expect(r.maxBytes).toBe(500 * 1024 * 1024)
+  })
+})
+
+describe('vzn cache prune command', () => {
+  let workspaceRoot: string
+  const origCwd = process.cwd()
+
+  beforeEach(async () => {
+    const { mkdtemp, writeFile } = await import('node:fs/promises')
+    const os = await import('node:os')
+    const path = await import('node:path')
+    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vzn-prune-'))
+    await writeFile(
+      path.join(workspaceRoot, 'pnpm-workspace.yaml'),
+      'packages:\n  - "packages/*"\n',
+    )
+    process.chdir(workspaceRoot)
+  })
+
+  afterEach(async () => {
+    process.chdir(origCwd)
+    const { rm } = await import('node:fs/promises')
+    await rm(workspaceRoot, { recursive: true, force: true })
+    vi.restoreAllMocks()
+  })
+
+  it('errors when called with no policy', async () => {
+    let stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    const code = await run(['cache', 'prune'])
+    expect(code).toBe(1)
+    expect(stderr).toContain('--older-than')
+  })
+
+  it('reports 0 entries pruned from an empty cache', async () => {
+    let stdout = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const code = await run(['cache', 'prune', '--older-than', '1s'])
+    expect(code).toBe(0)
+    expect(stdout).toContain('Pruned 0 entries')
+  })
+
+  it('rejects unknown subcommand', async () => {
+    let stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    const code = await run(['cache', 'nope'])
+    expect(code).toBe(1)
+    expect(stderr).toContain('unknown subcommand')
   })
 })

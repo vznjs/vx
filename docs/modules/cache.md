@@ -24,7 +24,18 @@ export class Cache {
 
   recordRun(run: RunRecord): void
   stats(): CacheStats
+  prune(options: PruneOptions): Promise<PruneResult>
   close(): void
+}
+
+export interface PruneOptions {
+  olderThanMs?: number // ms-epoch cutoff; entries with accessed_at < this are evicted
+  maxBytes?: number // after age pruning, evict LRU until total <= maxBytes
+}
+
+export interface PruneResult {
+  evicted: number
+  bytesFreed: number
 }
 
 export interface CacheKeyInput {

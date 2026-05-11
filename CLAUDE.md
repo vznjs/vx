@@ -107,6 +107,12 @@ docs/
 
 ## Decision log
 
+- **2026-05**: `vzn cache prune` CLI command. Supports `--older-than
+<duration>` (TTL eviction) and `--max-size <bytes>` (LRU eviction
+  until under cap). Both can combine. Uses `entries.accessed_at` and
+  `entries.size_bytes` from the v10 schema. PR #9.
+- **2026-05**: `vzn stats` CLI command — surfaces v10 cache stats
+  (entry count, total size, runs/hits last 24h). PR #8.
 - **2026-05**: Local cache v10 — SQLite metadata index (`cache.db`),
   on-disk outputs at `<hash>/`, separate `logs/<hash>.{stdout,stderr}`
   log files. Adds `runs` table for run history (drives future `vzn stats`).
@@ -127,15 +133,12 @@ docs/
 
 ## Active workstreams (prioritized)
 
-1. **`vzn cache prune`** — TTL + size-cap eviction policy using
-   `entries.accessed_at` / `entries.size_bytes`. `vzn stats` already
-   shipped (PR #8).
-2. **Remote cache implementation** — HTTP client speaking Turbo
+1. **Remote cache implementation** — HTTP client speaking Turbo
    `/v8/artifacts/`. Layered with local via `LayeredCache`. Bearer
    token auth. Design at `docs/design/remote-cache.md`.
-3. **Sandboxing** (design-only) — bwrap on Linux to enforce declared
+2. **Sandboxing** (design-only) — bwrap on Linux to enforce declared
    inputs. Off-by-default, opt-in via `--sandbox`.
-4. **Presets / config-introspection** — NX-style task inference from
+3. **Presets / config-introspection** — NX-style task inference from
    tool configs (`vitest.config.ts`, `tsconfig.json`). Lower priority.
 
 ## Operating directive (to you, Claude)

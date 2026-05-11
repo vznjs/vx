@@ -304,4 +304,79 @@ describe('Cache storage (v10)', () => {
     // 3 bytes of file + 0 + 0 for stdout/stderr.
     expect(stats.totalBytes).toBeGreaterThanOrEqual(3)
   })
+
+  it('prune() with olderThanMs evicts entries last accessed before the cutoff', async () => {
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    await mkdir(projectDir, { recursive: true })
+    const f = path.join(projectDir, 'a.txt')
+    await writeFile(f, 'aaa')
+
+    await cache.save({
+      hash: 'h-old',
+      projectDir,
+      outputFiles: [f],
+      entry: {
+        taskId: 'pkg#build',
+        command: 'noop',
+        exitCode: 0,
+        durationMs: 0,
+        stdout: '',
+        stderr: '',
+      },
+    })
+
+    // Wait a tick so olderThanMs = now strictly exceeds h-old's accessed_at.
+    await new Promise((r) => setTimeout(r, 10))
+
+    const result = await cache.prune({ olderThanMs: Date.now() })
+    expect(result.evicted).toBe(1)
+    expect(result.bytesFreed).toBeGreaterThanOrEqual(3)
+
+    // DB row gone + on-disk dir gone.
+    expect(await cache.get('h-old')).toBeNull()
+    expect(existsSync(path.join(cacheDir, 'h-old'))).toBe(false)
+    expect(existsSync(path.join(cacheDir, 'logs', 'h-old.stdout'))).toBe(false)
+  })
+
+  it('prune() with maxBytes evicts LRU until under the cap', async () => {
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    await mkdir(projectDir, { recursive: true })
+
+    // Three entries, accessed in order h1 < h2 < h3.
+    for (const [name, content] of [
+      ['h1.txt', 'x'.repeat(100)],
+      ['h2.txt', 'x'.repeat(100)],
+      ['h3.txt', 'x'.repeat(100)],
+    ] as const) {
+      const f = path.join(projectDir, name)
+      await writeFile(f, content)
+      await cache.save({
+        hash: name.replace('.txt', ''),
+        projectDir,
+        outputFiles: [f],
+        entry: {
+          taskId: 'pkg#build',
+          command: 'noop',
+          exitCode: 0,
+          durationMs: 0,
+          stdout: '',
+          stderr: '',
+        },
+      })
+      // Force a measurable accessed_at gap between writes.
+      await new Promise((r) => setTimeout(r, 5))
+    }
+
+    // Cap = ~200 bytes worth → evict h1 (oldest accessed), maybe h2.
+    const result = await cache.prune({ maxBytes: 200 })
+    expect(result.evicted).toBeGreaterThanOrEqual(1)
+    // h3 (most recently accessed) survives.
+    expect(await cache.get('h3')).not.toBeNull()
+    // h1 (oldest accessed) is gone.
+    expect(await cache.get('h1')).toBeNull()
+  })
+
+  it('prune() rejects empty options', async () => {
+    await expect(cache.prune({})).rejects.toThrow(/at least one of/)
+  })
 })
