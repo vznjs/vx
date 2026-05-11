@@ -79,7 +79,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 
   if (requested.length === 0) {
     log.status(`No projects declare task "${options.task}".`)
-    return { ok: true, outcomes: [] }
+    // Treat "nothing matched" as a failure. A typo'd task name silently
+    // exiting 0 in CI is a real footgun (Agent A's real-world test, B3).
+    return { ok: false, outcomes: [] }
   }
 
   const nodes = buildTaskGraph({
@@ -90,7 +92,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   })
   if (nodes.size === 0) {
     log.status(`No tasks to run.`)
-    return { ok: true, outcomes: [] }
+    return { ok: false, outcomes: [] }
   }
 
   const localCache = new Cache(path.join(workspaceRoot, '.vzn', 'cache'))
@@ -98,7 +100,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const concurrency = options.concurrency ?? Math.max(1, os.cpus().length)
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
-  log.status(`nxt: ${nodes.size} task(s), concurrency ${concurrency}`)
+  log.status(`vzn: ${nodes.size} task(s), concurrency ${concurrency}`)
 
   const outcomes = await runGraph({
     nodes,
@@ -181,6 +183,13 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const upstreamHashes = filterUpstreamHashes(upstream, cacheCfg?.inputs?.tasks, node.projectName)
   const taskConfigHash = hashTaskConfig(cfg)
 
+  // forwardArgs apply only to the tasks the user explicitly asked for —
+  // not to dependsOn-expanded upstream tasks. This keeps `vzn run build --
+  // --watch` from forwarding `--watch` into every dependency's build, and
+  // it stops the upstream cache keys from being uselessly partitioned by
+  // CLI args that don't change their behavior.
+  const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
+
   const hash = await cache.key({
     taskId: node.id,
     taskConfigHash,
@@ -189,7 +198,7 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     workspaceRoot,
     upstreamHashes,
     workspaceFingerprint: args.workspaceFingerprint,
-    forwardArgs: args.forwardArgs ?? [],
+    forwardArgs: effectiveForwardArgs,
   })
 
   if (cacheEnabled) {
@@ -218,7 +227,7 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
         command: step.command,
         cwd: node.projectDir,
         env,
-        forwardArgs: args.forwardArgs,
+        forwardArgs: effectiveForwardArgs,
         projectDir: node.projectDir,
         inputFiles: resolved.files,
         onStdout: (chunk) => log.taskStdout(node, chunk),
@@ -228,7 +237,7 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
         command: step.command,
         cwd: node.projectDir,
         env,
-        forwardArgs: args.forwardArgs,
+        forwardArgs: effectiveForwardArgs,
         onStdout: (chunk) => log.taskStdout(node, chunk),
         onStderr: (chunk) => log.taskStderr(node, chunk),
       })

@@ -107,6 +107,16 @@ docs/
 
 ## Decision log
 
+- **2026-05**: P1 bug bundle from Agent A's real-world test. Adds
+  `PRAGMA busy_timeout = 5000` (concurrent `vzn run` no longer crashes
+  with SQLITE_BUSY), scopes `forwardArgs` to user-requested task nodes
+  (no longer leaks into `dependsOn`-pulled deps; no longer pollutes
+  their cache keys), returns `ok: false` when no project declares the
+  requested task (CI scripts surface typos), adds runtime validation
+  of `TaskConfig` shape in `project-loader.ts`, introduces a
+  `UserError` class so user-input failures print a clean message
+  instead of a full stack. Also renames the stale `nxt:` log prefix
+  to `vzn:`. PR #17.
 - **2026-05**: Sandbox shipped (v1). `src/sandbox.ts` with bwrap on
   Linux + sandbox-exec on macOS. `vzn run --sandbox` opts in. Declared
   `cache.inputs.files` are bind-mounted read-only; project dir is

@@ -134,6 +134,11 @@ export class Cache {
     this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec('PRAGMA synchronous = NORMAL')
     this.db.exec('PRAGMA foreign_keys = ON')
+    // busy_timeout makes concurrent writers wait for the lock instead of
+    // failing immediately with SQLITE_BUSY. Two parallel `vzn run`
+    // invocations in CI is a normal pattern; without this the second one
+    // crashes in recordRun().
+    this.db.exec('PRAGMA busy_timeout = 5000')
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS schema_meta (

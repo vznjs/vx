@@ -196,6 +196,43 @@ describe('buildTaskGraph', () => {
     expect(nodes.size).toBe(0)
   })
 
+  it('marks user-requested nodes; deps pulled in by dependsOn are not requested', () => {
+    // B2 from real-world test: forwardArgs must not leak to dependencies.
+    // The graph builder is the source of truth for which nodes were
+    // explicitly asked for vs implicitly pulled.
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', {
+          build: { ...cmd('build app'), dependsOn: { dependencies: ['build'] } },
+        }),
+        project('lib', { build: cmd('build lib') }),
+      ),
+      packageGraph: packageGraph({ app: ['lib'] }),
+      requested: [{ project: 'app', task: 'build' }],
+    })
+    expect(nodes.get('app#build')?.requested).toBe(true)
+    expect(nodes.get('lib#build')?.requested).toBe(false)
+  })
+
+  it('a node added implicitly and then requested explicitly is promoted', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', {
+          build: { ...cmd('build app'), dependsOn: { dependencies: ['build'] } },
+        }),
+        project('lib', { build: cmd('build lib') }),
+      ),
+      packageGraph: packageGraph({ app: ['lib'] }),
+      // `lib#build` is pulled in by app's dependsOn AND requested directly.
+      requested: [
+        { project: 'app', task: 'build' },
+        { project: 'lib', task: 'build' },
+      ],
+    })
+    expect(nodes.get('app#build')?.requested).toBe(true)
+    expect(nodes.get('lib#build')?.requested).toBe(true)
+  })
+
   it('ignoreDependsOn skips both self and dependencies expansion', () => {
     const nodes = buildTaskGraph({
       projects: projects(
