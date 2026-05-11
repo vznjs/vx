@@ -8,11 +8,11 @@
 //
 // See docs/design/sandbox.md for the full design rationale.
 
-import { spawn, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { shellQuote, type RunResult } from './runner.js'
+import { resourceUsageToCpuRss, shellQuote, streamToString, type RunResult } from './runner.js'
 
 export type SandboxPlatform = 'linux' | 'darwin' | 'unsupported'
 
@@ -194,40 +194,39 @@ function escapeForSeatbeltRegex(p: string): string {
 
 // --- shared spawn + stream + collect ---------------------------------
 
-function spawnAndStream(argv: string[], args: SandboxArgs): Promise<RunResult> {
-  return new Promise((resolve) => {
-    const start = Date.now()
-    const [bin, ...rest] = argv
-    const proc = spawn(bin!, rest, {
+async function spawnAndStream(argv: string[], args: SandboxArgs): Promise<RunResult> {
+  const start = Date.now()
+  let proc: ReturnType<typeof Bun.spawn>
+  try {
+    proc = Bun.spawn(argv, {
       cwd: args.cwd,
-      env: args.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      env: args.env as Record<string, string>,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
     })
-
-    let stdout = ''
-    let stderr = ''
-
-    proc.stdout.setEncoding('utf8')
-    proc.stderr.setEncoding('utf8')
-    proc.stdout.on('data', (chunk: string) => {
-      stdout += chunk
-      args.onStdout?.(chunk)
-    })
-    proc.stderr.on('data', (chunk: string) => {
-      stderr += chunk
-      args.onStderr?.(chunk)
-    })
-
-    proc.on('error', (err) => {
-      stderr += `\n[vzn] sandbox spawn failed: ${err.message}\n`
-      resolve({ exitCode: 127, durationMs: Date.now() - start, stdout, stderr })
-    })
-
-    proc.on('close', (code, signal) => {
-      const exitCode = code ?? (signal ? 130 : 1)
-      resolve({ exitCode, durationMs: Date.now() - start, stdout, stderr })
-    })
-  })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return {
+      exitCode: 127,
+      durationMs: Date.now() - start,
+      stdout: '',
+      stderr: `\n[vzn] sandbox spawn failed: ${message}\n`,
+    }
+  }
+  const [stdout, stderr] = await Promise.all([
+    streamToString(proc.stdout, args.onStdout),
+    streamToString(proc.stderr, args.onStderr),
+  ])
+  await proc.exited
+  const exitCode = proc.exitCode ?? (proc.signalCode ? 130 : 1)
+  return {
+    exitCode,
+    durationMs: Date.now() - start,
+    stdout,
+    stderr,
+    ...resourceUsageToCpuRss(proc.resourceUsage()),
+  }
 }
 
 function appendForwardArgs(command: string, forwardArgs?: readonly string[]): string {

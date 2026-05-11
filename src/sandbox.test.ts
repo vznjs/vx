@@ -137,6 +137,21 @@ describe.skipIf(!onLinux || !sandboxAvailable)('runSandboxed on Linux (bwrap)', 
     expect(result.stdout.trim()).toBe('0')
   })
 
+  it('reports cpuMs and peakRssBytes from rusage (v11 analytics)', async () => {
+    const result = await runSandboxed({
+      command: 'echo cpu-rss',
+      cwd: projectDir,
+      env: { PATH: process.env.PATH ?? '' },
+      projectDir,
+      inputFiles: [],
+    })
+    expect(result.exitCode).toBe(0)
+    expect(result.cpuMs).toBeDefined()
+    expect(result.peakRssBytes).toBeDefined()
+    expect(result.cpuMs!).toBeGreaterThanOrEqual(0)
+    expect(result.peakRssBytes!).toBeGreaterThan(0)
+  })
+
   it('forwardArgs are appended (shell-quoted) to the command', async () => {
     const result = await runSandboxed({
       command: 'printf "%s|" "$@" --',

@@ -107,6 +107,13 @@ docs/
 
 ## Decision log
 
+- **2026-05**: Dashboard PR 2/10 — `runner.ts` and `sandbox.ts`
+  switched to `Bun.spawn` so we get `resourceUsage()` (cpuTime,
+  maxRSS) per child. `RunResult` gains optional `cpuMs` +
+  `peakRssBytes`. `TaskOutcome` propagates them. Orchestrator passes
+  them through to `cache.recordRun()` plus `cacheHit` (derived from
+  status). The v11 columns from PR #19 are now populated for every
+  task. PR #20.
 - **2026-05**: Cache schema v11 — analytics columns added to the
   `runs` table (`run_id` ULID, `cpu_ms`, `peak_rss_bytes`,
   `wallclock_start/end_ns` hrtime spans, `cache_hit`,
