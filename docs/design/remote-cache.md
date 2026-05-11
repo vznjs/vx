@@ -28,14 +28,18 @@ turbo-compatible cache server ecosystem (`ducktors/turborepo-remote-cache`,
 `turbo-remote-cache-rs`) — multi-tenant, S3/MinIO/R2/GCS-backed,
 production-tested, self-hostable.
 
-The tar layout inside our artifacts is **Turbo-shaped with a `meta.json`
-sidecar** at the root. Turbo-compatible servers and tools see a familiar
-artifact; our client gets richer structured metadata.
+The tar layout **inside** our artifacts is our own — a structured
+`meta.json` plus an `outputs/` tree. We do not mimic Turbo's interior
+file conventions (`.turbo/turbo-<task>.log` etc.). The wire body is
+opaque to cache servers, so the interior is invisible to the ecosystem
+we're piggybacking on.
 
 What we don't promise: cross-tool _cache reuse_. Our key derivation
 differs from Turbo's, so a `vzn run` will never look up a hash that a
-`turbo run` wrote. The wire-spec compatibility is for ecosystem leverage
-(servers, tooling); not for cache sharing across runners.
+`turbo run` wrote (and vice versa). The wire-spec compatibility is for
+ecosystem leverage (servers, hosted backends, tooling that operates at
+the HTTP layer); it does not give cross-runner artifact swappability,
+and we no longer pretend it does.
 
 ## Access pattern (what the wire actually sees)
 
@@ -152,54 +156,51 @@ We explicitly DON'T batch:
 ## Artifact (tar) layout
 
 The wire body is opaque `application/octet-stream` — cache servers store
-bytes, they don't inspect. So we're free to pick the inside layout.
-
-We follow Turbo's tar conventions for compatibility with tar-inspecting
-tools, and add our own sidecar:
+bytes, they don't inspect. We adopt Turbo's HTTP shell but the **inside
+of the tar is ours**: a structured `meta.json` plus an `outputs/` tree.
+We do not mimic Turbo's interior file conventions.
 
 ```
 <tarball, zstd-compressed inside>
-├── .turbo/turbo-<task>.log     # captured stdout+stderr, interleaved
-├── meta.json                    # our richer structured metadata (sidecar)
-└── <outputs at project-relative paths>
-    ├── dist/index.js
-    ├── dist/index.js.map
-    └── ...
+├── meta.json
+└── outputs/
+    └── <project-relative output paths>
+        ├── dist/index.js
+        ├── dist/index.js.map
+        └── ...
 ```
 
 Components:
 
-- **Output files** are at their project-relative paths inside the tar.
-  This is Turbo's convention; common tar viewers see a familiar layout.
-- **`.turbo/turbo-<task>.log`** holds captured stdout and stderr,
-  interleaved as a single stream. On a cache hit, the client replays
-  this to the terminal. Both Turbo clients and ours can read this file.
-- **`meta.json`** is our sidecar. Schema is the `CacheEntry` from
+- **`meta.json`** at the tar root — schema is the `CacheEntry` from
   `docs/modules/cache.md` (taskId, command, exitCode, durationMs,
-  outputFiles, stdout, stderr, storedAt). Turbo clients don't expect it
-  and won't choke on it. Our client prefers it when present (it's
-  structured), falls back to `.turbo/<task>.log` otherwise.
+  outputFiles, stdout, stderr, storedAt). One structured object with
+  named fields. stdout and stderr are separate strings, no
+  interleaving, no log file.
+- **`outputs/`** subtree mirrors the project-relative paths declared in
+  `cache.outputs.files`. On restore the contents are copied back into
+  the project directory.
 
-The `taskId`/`command` in `meta.json` are diagnostic — useful for
-debugging cache contents — not part of the cache identity (those came
-from the hash itself).
+The `taskId`/`command` fields in `meta.json` are diagnostic — useful
+for debugging cache contents — not part of the cache identity (which
+came from the hash).
 
-**stdout / stderr stream separation.** When we write the log file, we
-write the two streams _interleaved with markers_ so we can split them
-back out on replay:
+**Why not match Turbo's interior?**
 
-```
-[STDOUT] <line 1 of stdout>
-[STDERR] <line 1 of stderr>
-[STDOUT] <line 2 of stdout>
-```
+Turbo's tar puts output files at the tar root (no `outputs/` prefix)
+and stuffs stdout/stderr into a single `.turbo/turbo-<task>.log` file.
+That convention requires either losing the stdout/stderr stream
+distinction or wrapping each line with `[STDOUT]/[STDERR]` markers.
+Neither is appealing.
 
-Turbo doesn't do this — its log file is a single undifferentiated
-stream. Our marker scheme keeps Turbo's filename and broad shape while
-preserving stream identity for our client. Turbo clients reading our
-artifact see slightly noisier log output (the `[STDOUT]/[STDERR]`
-prefixes), which is acceptable for the rare case of cross-tool
-inspection.
+Servers don't inspect the body. Tooling that does inspect tars is rare
+in practice (artifacts are usually treated as opaque). The cost of
+matching Turbo's interior is real (uglier log replay, ambiguous tar
+root); the benefit is hypothetical.
+
+So: adopt Turbo's wire, keep our interior. Anyone building a
+cross-runner artifact inspector can convert by reading our `meta.json`
+and renaming files.
 
 ## Compression
 
@@ -318,17 +319,16 @@ defineWorkspace({
   is part of the spec; we leave it unimplemented in v1 but reserve the
   hook to add later.
 
-## What we explicitly skip from Turbo's wire
+## What we explicitly skip from Turbo
 
 - **`POST /v8/artifacts/events`** — telemetry. Compatible servers accept
   its absence; we don't ship it in v1.
 - **`x-artifact-client-ci` / `x-artifact-client-interactive`** —
   Vercel-specific request metadata for their UI. We can populate them
   later for completeness; v1 omits.
-- **Turbo's exact tar layout for the log file content** — we use the
-  same path (`.turbo/turbo-<task>.log`) but add `[STDOUT]/[STDERR]`
-  prefixes to preserve stream separation. Compatible at the path/filename
-  level, divergent in line format. Trade-off documented above.
+- **Turbo's tar interior** — we keep our own `meta.json` + `outputs/`
+  layout. See the "Artifact (tar) layout" section. The wire body is
+  opaque, so this is invisible to compatible servers.
 
 ## Why this is the right move
 
@@ -346,19 +346,24 @@ defineWorkspace({
 
 ## Summary
 
-- **`/v8/artifacts/` REST endpoints**, HTTP/2 multiplexed.
+- **API adoption only.** We take Turbo's `/v8/artifacts/` HTTP spec
+  (endpoints, headers, auth, query-param tenancy) for the wire — and
+  nothing else.
+- **`HEAD/GET/PUT /v8/artifacts/{hash}`** per-hash CAS, **HTTP/2**
+  multiplexed.
 - **One batch endpoint** (`POST /v8/artifacts`) for run-start existence
   checks, returning size + duration + tag per hash.
-- **Tarball inside** is Turbo-shaped (output files at project-relative
-  paths + `.turbo/turbo-<task>.log`) with a `meta.json` sidecar at root
-  for our structured metadata.
+- **Tarball interior is ours**: `meta.json` (structured `CacheEntry`)
+  at the root + `outputs/` subtree of project-relative output paths.
+  We do not adopt Turbo's `.turbo/turbo-<task>.log` convention.
 - **zstd** inside the tar, **bearer token** v1 auth, **HMAC payload
   signing** opt-in.
 - **Multi-tenancy** via `?teamId=&slug=` query params (Turbo's names).
 - **Layered with the local cache** via `LayeredCache` wrapping the
   existing `Cache` interface — no breaking API change.
-- **Compatible with** `ducktors/turborepo-remote-cache`,
-  `Fox32/openturbo-remote-cache`, and Vercel's hosted Turbo cache on
-  day one. NX-compatible cache servers are out of scope.
+- **Compatible with the Turbo cache server ecosystem at the HTTP
+  layer** — ducktors, Fox32, Vercel's hosted cache, etc. Compatible
+  _artifacts_ are explicitly out of scope; the servers don't inspect
+  the body.
 
 Everything beyond this is implementation.
