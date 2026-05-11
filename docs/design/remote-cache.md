@@ -1,7 +1,10 @@
 # Remote cache — protocol design
 
-> **Status: proposal.** Nothing here is implemented. This doc records the
-> design we've settled on so the eventual implementation has a target.
+> **Status: implemented** (v1). Wire client in `src/remote-cache.ts`,
+> tar.gz pack/unpack in `src/cache-archive.ts`, layered with the local
+> cache in `src/layered-cache.ts`. Orchestrator picks it up automatically
+> when `VZN_REMOTE_CACHE_URL` + `VZN_REMOTE_CACHE_TOKEN` are set.
+> See "Configuration" at the bottom for env vars.
 
 ## What we're solving
 
@@ -16,272 +19,250 @@ Concretely, every `vzn run` invocation:
 3. After execution, persists the entry so future runs (here or
    elsewhere) can hit it.
 
-Remote cache replaces the local filesystem under steps 2-3 with a
-network-backed key/value store.
+Remote cache layers on top of the local cache: local-then-remote on
+reads (with remote hits hydrating local), local-sync + remote-async on
+writes (failed uploads never fail the user's run).
 
-## Access pattern (what the wire actually sees)
+## TL;DR
 
-- **Read-heavy.** A typical CI run has 80-95% cache hits. The hot path is
-  HEAD/GET, not PUT.
+**We adopt Turborepo's `/v8/artifacts/` HTTP spec verbatim** for the
+wire protocol. This gives us day-one compatibility with the existing
+OSS turbo-compatible cache server ecosystem (`ducktors/turborepo-remote-cache`,
+`Fox32/openturbo-remote-cache`, `felixmosh/turborepo-gh-artifacts`,
+`turbo-remote-cache-rs`) — multi-tenant, S3/MinIO/R2/GCS-backed,
+production-tested, self-hostable.
+
+The tar layout **inside** our artifacts is our own — a structured
+`meta.json` plus an `outputs/` tree. We do not mimic Turbo's interior
+file conventions (`.turbo/turbo-<task>.log` etc.). The wire body is
+opaque to cache servers, so the interior is invisible to the ecosystem
+we're piggybacking on.
+
+What we don't promise: cross-tool _cache reuse_. Our key derivation
+differs from Turbo's, so a `vzn run` will never look up a hash that a
+`turbo run` wrote (and vice versa). The wire-spec compatibility is for
+ecosystem leverage (servers, hosted backends, tooling that operates at
+the HTTP layer); it does not give cross-runner artifact swappability.
+
+## Access pattern
+
+- **Read-heavy.** A typical CI run has 80-95% cache hits. The hot path
+  is HEAD/GET, not PUT.
 - **Many small lookups.** A monorepo with 200 tasks issues 200 existence
   checks at the start of a run, mostly in parallel.
-- **Few large transfers.** A `build` output for one package can be tens
-  of MB (tens of thousands of small files in `dist/`); a `test` output
-  might be 0 bytes (caching the no-op success).
-- **Bursty.** Concurrency is set by `os.cpus().length` by default —
-  dozens of parallel uploads/downloads, then idle.
-- **Per-machine sequential within a task.** No two processes on the same
-  machine race for the same hash (the local orchestrator schedules
-  sequentially), but multiple machines can race for the same hash —
-  last-writer-wins is fine because entries are content-addressed.
+- **Few large transfers.** A `build` output can be tens of MB; a `test`
+  output might be 0 bytes (caching the no-op success).
+- **Bursty.** Concurrency = `os.cpus().length`; dozens of parallel
+  ops then idle.
+- **Per-machine sequential within a task.** The local orchestrator
+  schedules a given hash once; multiple machines can race for the same
+  hash — last-writer-wins is fine because entries are content-addressed.
 
-## Protocol options
+## Why HTTP REST (and not WebSocket / gRPC / custom)
 
-| Protocol          | Multiplexed                              | CDN-friendly | S3-compat backend | Notes                                                      |
-| ----------------- | ---------------------------------------- | ------------ | ----------------- | ---------------------------------------------------------- |
-| HTTP/1.1 + REST   | no (HOL blocking on a single connection) | yes          | yes               | Many parallel connections needed; works everywhere.        |
-| **HTTP/2 + REST** | yes (single conn, many streams)          | yes          | yes               | Same REST surface, far better concurrent behavior.         |
-| HTTP/3 (QUIC)     | yes                                      | yes          | rare              | Better on flaky networks; less ubiquitous server support.  |
-| WebSocket         | yes (one channel)                        | no           | no                | Persistent connection, push from server; not what we need. |
-| gRPC (HTTP/2)     | yes                                      | partial      | no                | Typed RPC + streaming, but ties us to a custom server.     |
-| Custom TCP        | yes                                      | no           | no                | Insane to ship and maintain.                               |
+- **Direct cloud-storage compatibility.** PUT/GET by hash is what S3,
+  R2, GCS, Azure Blob, MinIO speak. The "server" can be a bucket fronted
+  by a tiny signer.
+- **CDN at the edge.** HEAD and GET responses are cacheable by URL.
+- **HTTP/2 multiplexing** solves "many small requests" — one connection,
+  many concurrent streams, no head-of-line blocking.
+- **Debuggable.** `curl -I https://cache.example.com/v8/artifacts/<hash>`.
+- **Bearer auth is universal.**
 
-## Recommendation: HTTP/2 + REST, content-addressed by hash
-
-Why:
-
-- **Direct cloud-storage compatibility.** `PUT /cache/:hash` over HTTPS
-  is what S3, R2, GCS, Azure Blob, MinIO all already speak. The "server"
-  can literally be a bucket with no custom code on day one.
-- **CDN at the edge.** HEAD and GET responses are cacheable by URL —
-  CloudFront/Fastly/Cloudflare/Bunny all sit in front for free.
-- **Debuggable.** `curl -I https://cache.example.com/v1/<hash>` is a
-  one-liner. No protocol viewer needed.
-- **HTTP/2 solves the "many small requests" pain.** A single connection
-  multiplexes hundreds of concurrent HEAD checks; no head-of-line
-  blocking, no connection storm on the client. This is what mostly
-  obviates the need for batch endpoints (see below).
-- **Auth is solved.** Bearer token via header, or pre-signed URLs for
-  direct-to-storage uploads. Both are bog standard.
-
-We explicitly reject:
+Rejected:
 
 - **WebSocket.** No server push needed; loses CDN; loses S3 fronting.
-- **gRPC.** Locks us to a custom server (no S3 direct), adds proto
-  schemas, demands a heavier client. The "streaming and typed" features
-  don't outweigh the loss of S3 fronting for this access pattern.
-- **Custom TCP.** Build/maintain a network protocol for a build tool?
-  No.
+- **gRPC.** Locks us to a custom server (no S3 direct), proto schema
+  surface, heavier client.
+- **Custom TCP.** Maintain a network protocol for a build tool? No.
 
-## Endpoints
+## Endpoints (Turborepo `/v8/artifacts/` spec)
 
-CAS-style: the hash is the entire identity. Each entry has metadata
-(JSON) and outputs (a single compressed archive).
+Path prefix is `/v8/artifacts/`. Vercel has held this version stable
+for years; the OSS ecosystem converged on it.
 
 ```
-HEAD  /v1/cache/<hash>
+HEAD  /v8/artifacts/{hash}?teamId=&slug=
         → 200 if entry exists, 404 if not.
         → Cacheable at the edge.
+        → Authorization: Bearer <token>.
 
-GET   /v1/cache/<hash>
-        → 200 + tarball stream (Content-Type: application/x-tar+zstd).
-        → Headers: x-vzn-task-id, x-vzn-exit-code, x-vzn-duration-ms,
-                   x-vzn-stdout-bytes, x-vzn-stderr-bytes.
-        → Body layout (inside the tarball):
-            meta.json          # CacheEntry shape from docs/modules/cache.md
-            outputs/...        # project-relative paths
+GET   /v8/artifacts/{hash}?teamId=&slug=
+        → 200 + application/octet-stream (tarball stream).
+        → Response headers:
+            x-artifact-duration       # ms, integer
+            x-artifact-tag            # optional HMAC, opt-in
         → Cacheable at the edge.
 
-PUT   /v1/cache/<hash>
-        → Request body: same tar+zstd shape as GET response.
-        → 201 on first write, 200 on idempotent re-write
-          (entries are content-addressed, so duplicate writes are no-ops).
-        → 4xx on auth/quota errors; 5xx on storage errors → client retries.
+PUT   /v8/artifacts/{hash}?teamId=&slug=
+        → Request body: application/octet-stream (tarball).
+        → Request headers:
+            Authorization: Bearer <token>
+            Content-Type: application/octet-stream
+            Content-Length: <bytes>
+            x-artifact-duration       # ms, integer
+            x-artifact-tag            # optional HMAC
+            x-artifact-client-ci      # optional, name of CI provider
+            x-artifact-client-interactive  # optional, "1" if interactive
+        → 200/201 on success.
         → NOT cacheable.
+
+POST  /v8/artifacts                          (batch existence)
+        → Body: { "hashes": ["abc...", ...] }
+        → Response: { "<hash>": { "size": N, "taskDurationMs": N, "tag": "..." }, ... }
+        → Hashes absent from the response are misses.
+        → Called once at start of a run to amortize cold-CDN existence checks.
+
+POST  /v8/artifacts/events                    (telemetry — NOT SHIPPED in v1)
+        → Body: array of { sessionId, source, hash, event, duration }
+        → Compatible servers accept its absence.
 ```
 
-Versioning: `/v1/` segment. Bump on wire-incompatible changes. The
-in-band `CACHE_VERSION` (currently `vzn-cache-v9`) is folded into the
-hash itself, so format-bumps just appear as new keys; the URL version
-is for the _protocol_ (response headers, archive layout).
+Multi-tenancy: `teamId` and `slug` are query parameters, treated as
+opaque tenant identifiers. Configurable via `VZN_REMOTE_CACHE_TEAM_ID`
+and `VZN_REMOTE_CACHE_SLUG`.
 
-## Batch endpoints: only one, only at run start
+## Tar interior (ours, not Turbo's)
 
-**Per-hash endpoints are the right default.** They're cacheable at the
-edge, simple to authorize, idempotent, and easy to retry per-entry on
-failure. HTTP/2 multiplexing makes 200 parallel HEADs over one
-connection cheap.
-
-**The single justified batch endpoint:**
+The wire body is opaque `application/octet-stream` — cache servers
+store bytes, they don't inspect. We pick the inside layout:
 
 ```
-POST  /v1/cache/has
-        Body: { "hashes": ["abc...", "def...", ...] }
-        → { "hits": ["abc...", ...], "misses": ["def...", ...] }
+<tarball, gzipped>
+├── meta.json
+└── outputs/
+    └── <project-relative paths>
+        ├── dist/index.js
+        └── ...
 ```
 
-Why this one is worth it:
+Components:
 
-- Called _once_ at the start of a run, with the full hash list.
-- Saves N round trips on cold-CDN reads (when nothing is at the edge yet).
-- Lets the orchestrator front-load the cache check: schedule everything
-  that's a guaranteed hit first, optimistically execute the misses.
-- Not on the read-cache hot path — that's still per-hash GET (so the CDN
-  caches it).
+- **`meta.json`** at the tar root — schema is the `CacheEntry` from
+  `docs/modules/cache.md` (taskId, command, exitCode, durationMs,
+  stdout, stderr, storedAt). One structured object with named fields.
+- **`outputs/`** subtree mirrors the project-relative paths declared
+  in `cache.outputs.files`. On restore the contents are copied back
+  into the project directory.
 
-What we explicitly DON'T batch:
-
-- **GET** — outputs vary in size from 0 bytes to 100s of MB. Batching
-  is bad here: a slow large entry blocks the small fast ones; single
-  failures invalidate the whole batch; CDN can't cache an aggregate
-  response.
-- **PUT** — entries complete at different times. Streaming each one
-  immediately gives faster reuse by other machines.
-- **HEAD on the hot path** — HTTP/2 multiplexing already makes 200
-  parallel HEADs cheap.
-
-Rule of thumb: batch operations that are _latency-bound_ and _small_;
-keep operations that are _bandwidth-bound_ or _variable-sized_
-per-request.
+We do _not_ adopt Turbo's interior convention (`.turbo/turbo-<task>.log`
+combined log file). Servers don't inspect the body, and our orchestrator
+needs stdout/stderr stream identity preserved for replay — Turbo's
+combined log file would force `[STDOUT]/[STDERR]` line markers, which
+is ugly. Keeping our own interior costs us nothing at the ecosystem
+layer.
 
 ## Compression
 
-Use **zstd** for the output tarball. ~3x faster than gzip at equivalent
-ratios, native in Node 22+ (`node:zlib` `createZstdCompress` /
-`createZstdDecompress`), and supported by every major HTTP stack. Apply
-at archive level (`outputs.tar.zst`), not as `Content-Encoding` — gives
-us deterministic byte layout for content-addressing without leaking the
-HTTP layer's encoding choice into the cache identity.
+**gzip** via system `tar -czf`. We initially scoped zstd (faster at
+equivalent ratios) but gzip ships in every `tar` binary, costs no
+dependency, and the bottleneck for cache transfer is network not CPU.
+zstd remains an easy follow-up: swap `-z` for `--zstd` once we want it.
+
+## Pack/unpack
+
+`src/cache-archive.ts`:
+
+```ts
+packArchive(stageDir): Promise<Uint8Array> // tar -cz, streams to bytes
+unpackArchive(buf, destDir): Promise<void> // tar -xz from stdin
+packAndDiscard(stageDir): Promise<Uint8Array>
+```
+
+Shells out to system `tar` via `Bun.spawn`. Streaming stdin/stdout so
+no archive bytes ever touch disk in the happy path.
 
 ## Authentication
 
-Two modes:
+**v1 (shipped):** Bearer token (`Authorization: Bearer ...`). Token in
+`VZN_REMOTE_CACHE_TOKEN` env var. Standard, easy to rotate, easy to
+scope per project.
 
-1. **Bearer token** (`Authorization: Bearer ...`) for hosted cache
-   servers. Token in `VZN_CACHE_TOKEN` env var. Standard, easy to
-   rotate, easy to scope per project.
-2. **Pre-signed URLs** when fronting S3-compatible storage directly.
-   Client makes a side call to a tiny "signer" service that returns a
-   URL with an attached signature; client then PUTs/GETs straight to
-   the bucket. Lets users self-host with just a bucket + a 50-line
-   signer, no full cache server.
+**v1.5 (optional):** Payload signing via `x-artifact-tag` header,
+matching Turbo's HMAC scheme. We send it on PUT when the client
+configures a signing key; we receive it on GET but don't currently
+verify. Off by default; opt-in for users who don't trust their cache
+server's transport.
 
-For v1, ship bearer-token only. Pre-signed URLs are a v2 follow-up.
+**v2 (planned):** Pre-signed URLs when fronting S3-compatible storage
+directly. Client makes a side call to a tiny "signer" service, then
+PUT/GET straight to the bucket. Lets users self-host with just a bucket
 
-## Storage backends (server side)
+- a 50-line signer, no full cache server.
 
-The protocol is backend-agnostic. Day-one targets we can verify
-against:
+## Composition with the local cache
 
-- **A plain S3-compatible bucket.** Server is a thin proxy that
-  translates `/v1/cache/<hash>` to `s3://bucket/v1/<hash>/`. Works with
-  AWS S3, R2, MinIO, Backblaze B2.
-- **A Vercel/Turbo-style hosted service.** Same wire protocol; their
-  server is their problem.
+`LayeredCache(local, remote)` wraps the existing `Cache` interface in
+`src/cache.ts`. Same surface — `key/get/restoreOutputs/save/recordRun/
+stats/prune/close` — orchestrator callers don't change.
 
-We do not standardize on "the server is just S3" because:
+Behavior:
 
-- Real cache servers want auth (which S3 alone doesn't model well).
-- They want quota/eviction policies the protocol shouldn't dictate.
-- A REST proxy is a few hundred lines; the value of a separate server
-  abstraction is worth that cost.
+- **`get(hash)`**: try local first. On local miss, fetch from remote.
+  On remote hit, unpack into a temp stage, materialize into local via
+  `local.save()`, return the now-local entry. Future reads hit local.
+- **`save(args)`**: write to local synchronously. Then stage, pack, and
+  PUT to remote. Remote errors are logged via `onRemoteError`, never
+  thrown — the task already succeeded.
+- **`key/recordRun/stats/prune/restoreOutputs/close`**: pure delegation
+  to local.
+
+Orchestrator integration is in `wrapWithRemoteCache()` in
+`src/orchestrator.ts`: when `VZN_REMOTE_CACHE_URL` and
+`VZN_REMOTE_CACHE_TOKEN` are both set, the local `Cache` is wrapped in
+a `LayeredCache`. Otherwise the orchestrator uses the local cache
+directly.
 
 ## Failure handling
 
-- **Network error on HEAD/GET**: treat as miss, run the task, attempt
-  PUT after. Don't fail the user's build over a flaky cache.
+- **Network error on HEAD/GET**: caller treats as a miss; the orchestrator
+  runs the task, attempts PUT after. Doesn't fail the user's build.
 - **Network error on PUT**: log a warning, don't fail. The task already
-  succeeded; the only loss is the cache entry.
-- **Timeout**: per-request budget (default 10s for HEAD, 60s for GET,
-  120s for PUT). On timeout, behave as miss/no-write.
-- **Server 5xx**: same — degrade to no-cache, log.
-- **Server 4xx other than 404**: surface as an error (auth/quota issues
-  should be visible).
+  succeeded; the only loss is the remote cache entry.
+- **Timeout**: per-request budget (default 60s, configurable via
+  `VZN_REMOTE_CACHE_TIMEOUT_MS`). On timeout, behave as miss/no-write.
+- **Server 5xx**: same — degrade to local-only, log.
+- **Server 4xx other than 404**: surface as a `RemoteCacheError` so
+  auth/quota issues are visible.
 
-The local cache layer stays in front: a remote miss with a local hit
-restores from local; a remote hit can populate local. Composability is
-free if the `Cache` interface (`src/cache.ts`) gets a `RemoteCache`
-implementation alongside the existing local one, and a `LayeredCache`
-wraps both.
+## Why this is the right move
 
-## Client implementation sketch
+- **Ecosystem.** A pre-alpha tool gets a mature, multi-tenant,
+  self-hostable cache server (ducktors) on day one. The OSS work has
+  been done; we don't rebuild it.
+- **No vendor lock.** Pure HTTP REST + bearer auth. Any HTTP backend
+  works. Vercel doesn't control our keys, format, or pricing.
+- **Future-proof.** If we later want to deviate (richer batch metadata,
+  per-file CAS like Bazel), we add `/v9/` endpoints and run both in
+  parallel. Versioning is part of the spec.
+- **Spec is already public.** Anyone implementing the server side has
+  a reference, OpenAPI doc, and four reference implementations.
 
-`src/cache.ts` today exposes:
+## What we explicitly skip from Turbo
 
-```ts
-class Cache {
-  key(input): Promise<string>
-  get(hash): Promise<CacheEntry | null>
-  restoreOutputs(hash, projectDir): Promise<void>
-  save({ hash, entry, projectDir, outputFiles }): Promise<void>
-}
-```
+- **`POST /v8/artifacts/events`** — telemetry. Compatible servers
+  accept its absence; we don't ship it in v1.
+- **`x-artifact-client-ci` / `x-artifact-client-interactive` headers
+  on every PUT** — we accept these as optional config but don't auto-
+  populate them. Cosmetic for dashboards; not part of correctness.
+- **Turbo's tar interior** — see "Tar interior" above. We keep our own
+  layout. The wire body is opaque so this is invisible to compatible
+  servers.
 
-We keep that surface and add two impls:
+## Configuration (v1, shipped)
 
-- `LocalCache` — today's filesystem implementation.
-- `RemoteCache` — HTTP/2 client; same methods.
-- `LayeredCache(localCache, remoteCache)` — `get` tries local then
-  remote (and writes through to local on remote hit); `save` writes to
-  both. Hash derivation lives outside (it's a pure function of inputs).
+| Env var                       | Required? | Notes                                       |
+| ----------------------------- | --------- | ------------------------------------------- |
+| `VZN_REMOTE_CACHE_URL`        | yes       | Base URL, e.g. `https://cache.example.com`. |
+| `VZN_REMOTE_CACHE_TOKEN`      | yes       | Bearer token sent on every request.         |
+| `VZN_REMOTE_CACHE_TEAM_ID`    | no        | Sent as `?teamId=` (Turbo tenancy).         |
+| `VZN_REMOTE_CACHE_SLUG`       | no        | Sent as `?slug=`.                           |
+| `VZN_REMOTE_CACHE_TIMEOUT_MS` | no        | Per-request timeout. Default `60000`.       |
 
-Configuration: `vzn.config.ts` workspace block gains:
+Missing either of the two required vars → local cache only. The
+orchestrator logs `remote cache: <url>` at the top of a run when the
+remote layer is active.
 
-```ts
-defineWorkspace({
-  cache: {
-    remote: {
-      url: 'https://cache.example.com',
-      // or read from process.env.VZN_CACHE_URL
-      tokenEnv: 'VZN_CACHE_TOKEN',
-    },
-  },
-})
-```
-
-`--no-cache` continues to mean "skip local AND remote". A new
-`--remote-cache=off` (or `--local-cache=off`) lets you bypass one tier.
-
-## Open questions (not blockers for v1)
-
-- **Garbage collection / retention** — server policy, not protocol.
-  Hashes are immutable, so "delete entries older than N days" is the
-  obvious knob, but cache-warming workflows might want pin/keep
-  semantics. Leave as a server concern.
-- **Project-level multi-tenancy** — bearer tokens scoped per
-  `(team, project)` should suffice. Don't try to model it in the
-  protocol.
-- **Build provenance / signing** — out of scope for v1; add as
-  optional headers later (sigstore-style detached signatures).
-- **Resumable PUTs** for very large outputs — punt to v2. If/when we
-  see real-world entries >500MB, revisit.
-
-## Why not what NX / Turbo do
-
-- **Turborepo** uses a flat HTTP REST with bearer tokens (`POST
-/v8/artifacts/:hash`, `GET /v8/artifacts/:hash`). Single endpoint per
-  hash, no batch. We're proposing essentially the same shape — they got
-  the design right; the only thing we add is the optional batch-exists
-  endpoint and we use zstd instead of their gzip-only.
-- **NX Cloud** has a richer surface (file deduplication, distributed
-  task execution, run UI). That's a product, not a cache; their cache
-  protocol underneath is also HTTP REST. We're not building a product
-  on top; we're building an open protocol.
-- **Bazel Remote Cache** uses gRPC (over HTTP/2) with a separate CAS
-  service for per-file content addressing. Better for huge polyglot
-  monorepos with massive file overlap between actions; overkill for our
-  scale and incompatible with plain-bucket backends.
-
-## Summary
-
-- **HTTP/2 + REST**, content-addressed by hash.
-- **Per-hash endpoints** for HEAD/GET/PUT — CDN-cacheable, S3-friendly,
-  individually retriable.
-- **One batch endpoint** (`POST /v1/cache/has`) called once at run
-  start to amortize the round-trip cost of cold existence checks.
-- **zstd** archives, **bearer token** auth, **pre-signed URLs** in v2.
-- **Layered with the local cache** so the wire is only hit on local
-  miss.
-- **No WebSocket, no gRPC, no custom protocol.**
-
-Everything beyond this is implementation.
+`vzn.config.ts`-based remote-cache configuration is on the roadmap
+once workspace-config loading lands (see active workstreams in
+`CLAUDE.md`).
