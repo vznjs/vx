@@ -182,8 +182,15 @@ Not required when:
   argument forwarding alignment.
 - **v8 → v9** (PR #3): `TaskConfig` shape changed — `exec` collapsed
   from an array to a single command, `tasks` nested under `run`.
-- **v9 → v10** (this PR): on-disk layout switched from per-entry
+- **v9 → v10** (PR #7): on-disk layout switched from per-entry
   `meta.json` + `outputs/` directory to a workspace-wide
   `cache.db` (SQLite) plus output files directly at `<hash>/` and
   log files at `logs/<hash>.{stdout,stderr}`. Adds run history for
   stats. Removes the `meta.json` per-entry manifest.
+- **v10 → v11** (PR #19): analytics columns added to the `runs`
+  table: `run_id` (ULID shared across all tasks in one `vzn run`
+  invocation), `cpu_ms`, `peak_rss_bytes`, `wallclock_start_ns` /
+  `wallclock_end_ns` (hrtime spans), `cache_hit`, `bytes_uploaded`,
+  `bytes_downloaded`. All nullable; populated by follow-up PRs in
+  the dashboard sequence. Backwards-compatible for read paths that
+  don't use them.

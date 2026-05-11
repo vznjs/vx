@@ -20,8 +20,8 @@ import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 
 import path from 'node:path'
 import { relPosix } from './paths.js'
 
-const CACHE_VERSION = 'vzn-cache-v10'
-const SCHEMA_VERSION = 'v10'
+const CACHE_VERSION = 'vzn-cache-v11'
+const SCHEMA_VERSION = 'v11'
 
 export interface CacheKeyInput {
   taskId: string
@@ -76,8 +76,21 @@ export interface RunRecord {
   exitCode: number
   durationMs: number
   forwardArgs?: readonly string[]
-  startedAt: number
-  endedAt: number
+  startedAt: number // ms-epoch wall clock
+  endedAt: number // ms-epoch wall clock
+  /**
+   * Optional analytics columns populated by the orchestrator/runner once
+   * those PRs land. Stored as NULL until then; the dashboard tolerates
+   * NULLs in every chart.
+   */
+  runId?: string // ULID shared across every task in one `vzn run` invocation
+  cpuMs?: number // sum of user + system CPU time for the child process
+  peakRssBytes?: number // peak resident set size of the child process
+  wallclockStartNs?: bigint // hrtime span relative to run t=0
+  wallclockEndNs?: bigint
+  cacheHit?: boolean // convenience for flamegraph color; derivable from status
+  bytesUploaded?: number // remote-cache push size; null if no remote layer
+  bytesDownloaded?: number // remote-cache pull size on hit
 }
 
 export interface CacheStats {
@@ -181,20 +194,32 @@ export class Cache implements CacheLayer {
         accessed_at  INTEGER NOT NULL
       );
       CREATE TABLE IF NOT EXISTS runs (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        hash         TEXT NOT NULL,
-        project      TEXT NOT NULL,
-        task         TEXT NOT NULL,
-        status       TEXT NOT NULL,
-        exit_code    INTEGER NOT NULL,
-        duration_ms  INTEGER NOT NULL,
-        forward_args TEXT,
-        started_at   INTEGER NOT NULL,
-        ended_at     INTEGER NOT NULL
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        hash                TEXT NOT NULL,
+        project             TEXT NOT NULL,
+        task                TEXT NOT NULL,
+        status              TEXT NOT NULL,
+        exit_code           INTEGER NOT NULL,
+        duration_ms         INTEGER NOT NULL,
+        forward_args        TEXT,
+        started_at          INTEGER NOT NULL,
+        ended_at            INTEGER NOT NULL,
+        -- v11 analytics columns. Nullable until the runner / orchestrator
+        -- PRs populate them. Storing them now means we can swap on the
+        -- producer side without touching the schema again.
+        run_id              TEXT,
+        cpu_ms              INTEGER,
+        peak_rss_bytes      INTEGER,
+        wallclock_start_ns  INTEGER,
+        wallclock_end_ns    INTEGER,
+        cache_hit           INTEGER,
+        bytes_uploaded      INTEGER,
+        bytes_downloaded    INTEGER
       );
       CREATE INDEX IF NOT EXISTS runs_hash       ON runs(hash);
       CREATE INDEX IF NOT EXISTS runs_started_at ON runs(started_at);
       CREATE INDEX IF NOT EXISTS runs_project    ON runs(project, task);
+      CREATE INDEX IF NOT EXISTS runs_run_id     ON runs(run_id);
     `)
 
     const meta = this.db.prepare("SELECT value FROM schema_meta WHERE key = 'version'").get() as
@@ -226,8 +251,13 @@ export class Cache implements CacheLayer {
     this.selectEntry = this.db.prepare('SELECT * FROM entries WHERE hash = ?')
     this.bumpAccessed = this.db.prepare('UPDATE entries SET accessed_at = ? WHERE hash = ?')
     this.insertRun = this.db.prepare(`
-      INSERT INTO runs(hash, project, task, status, exit_code, duration_ms, forward_args, started_at, ended_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO runs(
+        hash, project, task, status, exit_code, duration_ms, forward_args,
+        started_at, ended_at,
+        run_id, cpu_ms, peak_rss_bytes, wallclock_start_ns, wallclock_end_ns,
+        cache_hit, bytes_uploaded, bytes_downloaded
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,  ?, ?, ?)
     `)
   }
 
@@ -355,6 +385,14 @@ export class Cache implements CacheLayer {
       run.forwardArgs ? JSON.stringify(run.forwardArgs) : null,
       run.startedAt,
       run.endedAt,
+      run.runId ?? null,
+      run.cpuMs ?? null,
+      run.peakRssBytes ?? null,
+      run.wallclockStartNs !== undefined ? run.wallclockStartNs : null,
+      run.wallclockEndNs !== undefined ? run.wallclockEndNs : null,
+      run.cacheHit === undefined ? null : run.cacheHit ? 1 : 0,
+      run.bytesUploaded ?? null,
+      run.bytesDownloaded ?? null,
     )
   }
 

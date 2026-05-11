@@ -107,6 +107,12 @@ docs/
 
 ## Decision log
 
+- **2026-05**: Cache schema v11 — analytics columns added to the
+  `runs` table (`run_id` ULID, `cpu_ms`, `peak_rss_bytes`,
+  `wallclock_start/end_ns` hrtime spans, `cache_hit`,
+  `bytes_uploaded/downloaded`). All nullable; producer PRs populate
+  them later. `CACHE_VERSION` → `vzn-cache-v11`. First PR of the
+  dashboard 10-PR sequence (`docs/design/dashboard.md`). PR #19.
 - **2026-05**: `CacheLayer` interface extracted in `src/cache.ts`. Both
   `Cache` and `LayeredCache` `implements CacheLayer`. Orchestrator's
   `cache` field types as `CacheLayer` (was the brittle `Cache |
