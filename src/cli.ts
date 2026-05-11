@@ -214,7 +214,7 @@ async function pickTask(cwd: string): Promise<PickedTask | null> {
   for (const meta of projects) {
     if (!meta.configPath) continue
     const config = await loadProjectConfig(meta.configPath)
-    const taskNames = Object.keys(config.tasks ?? {}).sort()
+    const taskNames = Object.keys(config.run?.tasks ?? {}).sort()
     for (const t of taskNames) entries.push({ project: meta.name, task: t })
   }
   if (entries.length === 0) {

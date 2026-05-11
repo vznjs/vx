@@ -12,7 +12,7 @@ import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:
 import path from 'node:path'
 import { relPosix } from './paths.js'
 
-const CACHE_VERSION = 'vzn-cache-v8'
+const CACHE_VERSION = 'vzn-cache-v9'
 
 export interface CacheKeyInput {
   taskId: string

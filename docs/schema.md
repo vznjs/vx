@@ -10,9 +10,11 @@ are re-exported from `@vzn/run`.
 import { defineProject } from '@vzn/run'
 
 export default defineProject({
-  tasks: {
-    <taskName>: TaskConfig,
-    ...
+  run: {
+    tasks: {
+      <taskName>: TaskConfig,
+      ...
+    },
   },
 })
 ```
@@ -20,7 +22,11 @@ export default defineProject({
 `defineProject` is an identity function — it exists purely so
 TypeScript can infer types when you author a config.
 
-`tasks` is a `Record<string, TaskConfig>`. Task names are arbitrary
+The top-level `run` namespace exists so future `@vzn/*` sibling packages
+(e.g. `@vzn/lint`, `@vzn/test`) can add their own top-level keys without
+colliding with the task runner's surface.
+
+`run.tasks` is a `Record<string, TaskConfig>`. Task names are arbitrary
 strings; they're referenced by `dependsOn`, by `cache.inputs.tasks`,
 and by the CLI (`vzn run <taskName>`).
 
@@ -28,7 +34,7 @@ and by the CLI (`vzn run <taskName>`).
 
 ```ts
 interface TaskConfig {
-  exec: ExecConfig[] // required
+  exec: ExecConfig // required
   dependsOn?: TaskDependsOn // optional
   cache?: CacheConfig // optional — caching is opt-in
 }
@@ -36,18 +42,18 @@ interface TaskConfig {
 
 ### `exec` (required)
 
-An array of one or more steps run sequentially. Single-command tasks
-write a one-element array.
+A single shell command with optional env. Multi-step is intentionally
+not supported — chain commands in the shell (`&&` / `;`) when you need
+to, or split into separate tasks linked by `dependsOn.self`.
 
 ```ts
-exec: [{ command: 'tsc -b' }] // single
+exec: {
+  command: 'tsc -b'
+}
 
-exec: [
-  // sequential multi-step
-  { command: 'gen' },
-  { command: 'tsc' },
-  { command: 'cp -r assets dist/' },
-]
+exec: {
+  command: 'gen && tsc && cp -r assets dist/'
+}
 ```
 
 #### `ExecConfig`
@@ -242,43 +248,45 @@ Use them so TypeScript can narrow literal types in your config (autocomplete
 import { defineProject } from '@vzn/run'
 
 export default defineProject({
-  tasks: {
-    build: {
-      exec: [{ command: 'tsc -b' }],
-      dependsOn: { dependencies: ['build'] },
-      cache: {
-        inputs: {
-          files: ['src/**', '!**/*.test.ts', 'tsconfig.json', 'package.json'],
-          env: ['NODE_ENV'],
+  run: {
+    tasks: {
+      build: {
+        exec: { command: 'tsc -b' },
+        dependsOn: { dependencies: ['build'] },
+        cache: {
+          inputs: {
+            files: ['src/**', '!**/*.test.ts', 'tsconfig.json', 'package.json'],
+            env: ['NODE_ENV'],
+          },
+          outputs: { files: ['dist/**'] },
         },
-        outputs: { files: ['dist/**'] },
       },
-    },
 
-    test: {
-      exec: [{ command: 'vitest run', env: { passThrough: ['CI'] } }],
-      dependsOn: { self: ['build'] },
-      cache: {
-        inputs: { files: ['src/**'] },
-        outputs: { files: [] },
-      },
-    },
-
-    package: {
-      exec: [{ command: 'rm -rf pkg' }, { command: 'npm pack --pack-destination ./pkg' }],
-      dependsOn: { self: ['build', 'test'] },
-      cache: {
-        inputs: {
-          files: ['package.json'],
-          tasks: { self: ['build'], dependencies: ['build'] },
+      test: {
+        exec: { command: 'vitest run', env: { passThrough: ['CI'] } },
+        dependsOn: { self: ['build'] },
+        cache: {
+          inputs: { files: ['src/**'] },
+          outputs: { files: [] },
         },
-        outputs: { files: ['pkg/*.tgz'] },
       },
-    },
 
-    dev: {
-      // No cache field → always runs.
-      exec: [{ command: 'vite', env: { passThrough: ['CI', 'VITE_API_URL'] } }],
+      package: {
+        exec: { command: 'rm -rf pkg && npm pack --pack-destination ./pkg' },
+        dependsOn: { self: ['build', 'test'] },
+        cache: {
+          inputs: {
+            files: ['package.json'],
+            tasks: { self: ['build'], dependencies: ['build'] },
+          },
+          outputs: { files: ['pkg/*.tgz'] },
+        },
+      },
+
+      dev: {
+        // No cache field → always runs.
+        exec: { command: 'vite', env: { passThrough: ['CI', 'VITE_API_URL'] } },
+      },
     },
   },
 })

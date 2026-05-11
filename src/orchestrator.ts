@@ -65,7 +65,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     : [...projects.keys()]
 
   const requested = candidateProjects
-    .filter((name) => projects.get(name)?.config.tasks?.[options.task])
+    .filter((name) => projects.get(name)?.config.run?.tasks?.[options.task])
     .map((name) => ({ project: name, task: options.task }))
 
   if (requested.length === 0) {
@@ -129,7 +129,7 @@ interface ExecuteArgs {
 async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const { node, upstream, workspaceRoot, cache, noCache, log } = args
   const cfg: TaskConfig = node.config
-  const steps: ExecConfig[] = cfg.exec
+  const step: ExecConfig = cfg.exec
   const cacheCfg: CacheConfig | undefined = cfg.cache
   const cacheEnabled = cacheCfg !== undefined && !noCache
 
@@ -174,36 +174,21 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
-  // Run the exec array sequentially. Stop on first non-zero exit.
-  let stdoutAggregate = ''
-  let stderrAggregate = ''
-  let totalDurationMs = 0
-  let lastExitCode = 0
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i]!
-    const env = buildIsolatedEnv({
-      passThrough: step.env?.passThrough ?? [],
-      define: step.env?.define ?? {},
-      source: process.env,
-    })
-    const stepLabel = steps.length > 1 ? `[${i + 1}/${steps.length}] ` : ''
-    const isLast = i === steps.length - 1
-    const stepResult = await runCommand({
-      command: step.command,
-      cwd: node.projectDir,
-      env,
-      forwardArgs: isLast ? args.forwardArgs : undefined,
-      onStdout: (chunk) => log.taskStdout(node, stepLabel ? prefixChunk(stepLabel, chunk) : chunk),
-      onStderr: (chunk) => log.taskStderr(node, stepLabel ? prefixChunk(stepLabel, chunk) : chunk),
-    })
-    stdoutAggregate += stepResult.stdout
-    stderrAggregate += stepResult.stderr
-    totalDurationMs += stepResult.durationMs
-    lastExitCode = stepResult.exitCode
-    if (stepResult.exitCode !== 0) break
-  }
+  const env = buildIsolatedEnv({
+    passThrough: step.env?.passThrough ?? [],
+    define: step.env?.define ?? {},
+    source: process.env,
+  })
+  const result = await runCommand({
+    command: step.command,
+    cwd: node.projectDir,
+    env,
+    forwardArgs: args.forwardArgs,
+    onStdout: (chunk) => log.taskStdout(node, chunk),
+    onStderr: (chunk) => log.taskStderr(node, chunk),
+  })
 
-  if (lastExitCode === 0 && cacheEnabled) {
+  if (result.exitCode === 0 && cacheEnabled) {
     const outputFiles = await resolveOutputs({
       projectDir: node.projectDir,
       outputs,
@@ -215,33 +200,22 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
       outputFiles,
       entry: {
         taskId: node.id,
-        command: steps.map((s) => s.command).join(' && '),
-        exitCode: lastExitCode,
-        durationMs: totalDurationMs,
-        stdout: stdoutAggregate,
-        stderr: stderrAggregate,
+        command: step.command,
+        exitCode: result.exitCode,
+        durationMs: result.durationMs,
+        stdout: result.stdout,
+        stderr: result.stderr,
       },
     })
   }
 
   return {
     node,
-    status: lastExitCode === 0 ? 'success' : 'failed',
-    exitCode: lastExitCode,
-    durationMs: totalDurationMs,
+    status: result.exitCode === 0 ? 'success' : 'failed',
+    exitCode: result.exitCode,
+    durationMs: result.durationMs,
     hash,
   }
-}
-
-function prefixChunk(label: string, chunk: string): string {
-  const trailingNewline = chunk.endsWith('\n')
-  const body = trailingNewline ? chunk.slice(0, -1) : chunk
-  return (
-    body
-      .split('\n')
-      .map((line) => `${label}${line}`)
-      .join('\n') + (trailingNewline ? '\n' : '')
-  )
 }
 
 /**

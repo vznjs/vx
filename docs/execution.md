@@ -43,46 +43,35 @@ terminal and a task succeeding or failing.
          is not set): try cache.get(key)
          - Hit → restore outputs, replay logs, return cache-hit
          - Miss → fall through
-      7. For each step in exec[]:
-         a. Build isolated env (essentials + step.env.passThrough values
-                                + step.env.define values)
-         b. spawn shell with the command (runner.ts:runCommand)
-         c. Stream chunks via onStdout / onStderr (prefixed with step index
-                                                   when >1 step)
-         d. Accumulate stdout/stderr/durationMs
-         e. If exit != 0 → break (later steps don't run)
-      8. If overall success and cache enabled:
+      7. Build isolated env (essentials + exec.env.passThrough values
+                              + exec.env.define values)
+      8. spawn shell with exec.command (runner.ts:runCommand), with any
+         CLI forwarded args appended (shell-quoted)
+      9. Stream chunks via onStdout / onStderr to the logger
+     10. If exit == 0 and cache enabled:
          a. Resolve outputs.files
          b. cache.save: copy outputs into temp slot, write meta.json,
                         atomic rename to final hash slot
-      9. Return TaskOutcome { node, status, exitCode, durationMs, hash }
+     11. Return TaskOutcome { node, status, exitCode, durationMs, hash }
 ```
 
-## Multi-step semantics
+## One command per task
 
-`exec: ExecConfig[]` is a flat, sequential list:
-
-- Steps run **one at a time**, top to bottom.
-- A failing step (exit != 0) stops the sequence; later steps do NOT run.
-- Each step has its own `env` block — they're built independently from
-  the essentials + that step's passThrough + define.
-- Captured stdout/stderr from all steps is concatenated for cache
-  replay. Live output is prefixed with `[i/N]` when `N > 1`.
-- The cache identity is the _whole array_. A cache hit replays all
-  output as one block; no per-step granularity.
-
-If you need per-step caching, define each step as its own task and
-chain them with `dependsOn`.
+`exec: ExecConfig` is a single shell command — there is no multi-step
+sequence. If you need to chain commands, use shell composition (`&&` or
+`;`) or split into separate tasks linked via `dependsOn.self`. Per-task
+caching only happens at task granularity; splitting into smaller tasks
+gives you per-step caching naturally.
 
 ## Env isolation
 
-The child process for each step gets, in priority order (lowest first):
+The child process gets, in priority order (lowest first):
 
 1. Essential allowlist (`PATH`, `HOME`, `SHELL`, `TMPDIR`, `LANG`,
    `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`,
    plus Windows essentials like `SYSTEMROOT`).
-2. `exec[step].env.passThrough` names → values from host `process.env`.
-3. `exec[step].env.define` literal name/value pairs.
+2. `exec.env.passThrough` names → values from host `process.env`.
+3. `exec.env.define` literal name/value pairs.
 
 Anything not in those three layers is invisible to the child. This
 prevents incidental env leakage between machines and gives reproducible
@@ -90,15 +79,15 @@ runs.
 
 ## Failure handling
 
-| Failure                                                       | Behavior                                                                 |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Step exit non-zero                                            | Remaining steps in the task skipped; task is `failed`; cache NOT written |
-| `execute()` throws (internal error)                           | Task marked `failed`, stderr written `[vzn] internal error in <id>`      |
-| Upstream task fails                                           | Dependent task is `skipped` (exit 1, durationMs 0); no command runs      |
-| Workspace yaml missing                                        | `findWorkspaceRoot` throws; `vzn run` exits 1                            |
-| Same-project task referenced in `dependsOn.self` not declared | `buildTaskGraph` throws                                                  |
-| Duplicate workspace package name                              | `listProjects` throws with both paths                                    |
-| Cycle in task graph                                           | `detectCycle` throws with the cycle path                                 |
+| Failure                                                       | Behavior                                                            |
+| ------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Exec exit non-zero                                            | Task is `failed`; cache NOT written                                 |
+| `execute()` throws (internal error)                           | Task marked `failed`, stderr written `[vzn] internal error in <id>` |
+| Upstream task fails                                           | Dependent task is `skipped` (exit 1, durationMs 0); no command runs |
+| Workspace yaml missing                                        | `findWorkspaceRoot` throws; `vzn run` exits 1                       |
+| Same-project task referenced in `dependsOn.self` not declared | `buildTaskGraph` throws                                             |
+| Duplicate workspace package name                              | `listProjects` throws with both paths                               |
+| Cycle in task graph                                           | `detectCycle` throws with the cycle path                            |
 
 Failures don't kill the scheduler — independent tasks already in
 flight finish, and unrelated tasks not yet started still run. The

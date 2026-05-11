@@ -23,35 +23,34 @@ vzn run build
 import { defineProject } from '@vzn/run'
 
 export default defineProject({
-  tasks: {
-    build: {
-      exec: [
-        { command: 'tsc -b' },
-        // ...more steps if you need them; sequential, stop on first failure
-      ],
-      dependsOn: { dependencies: ['build'] }, // Turbo's `^build`
-      cache: {
-        inputs: {
-          files: ['src/**', '!**/*.test.ts'],
-          env: ['NODE_ENV'], // host values that bust cache
-          tasks: { dependencies: ['build'] }, // upstream hashes to fold in
+  run: {
+    tasks: {
+      build: {
+        exec: { command: 'tsc -b' },
+        dependsOn: { dependencies: ['build'] }, // Turbo's `^build`
+        cache: {
+          inputs: {
+            files: ['src/**', '!**/*.test.ts'],
+            env: ['NODE_ENV'], // host values that bust cache
+            tasks: { dependencies: ['build'] }, // upstream hashes to fold in
+          },
+          outputs: { files: ['dist/**'] },
         },
-        outputs: { files: ['dist/**'] },
       },
-    },
 
-    test: {
-      exec: [{ command: 'vitest run', env: { passThrough: ['CI'] } }],
-      dependsOn: { self: ['build'] },
-      cache: {
-        inputs: { files: ['src/**'] },
-        outputs: { files: [] }, // cache the no-op success
+      test: {
+        exec: { command: 'vitest run', env: { passThrough: ['CI'] } },
+        dependsOn: { self: ['build'] },
+        cache: {
+          inputs: { files: ['src/**'] },
+          outputs: { files: [] }, // cache the no-op success
+        },
       },
-    },
 
-    dev: {
-      // No `cache` field → always runs.
-      exec: [{ command: 'vite', env: { passThrough: ['VITE_API_URL'] } }],
+      dev: {
+        // No `cache` field → always runs.
+        exec: { command: 'vite', env: { passThrough: ['VITE_API_URL'] } },
+      },
     },
   },
 })

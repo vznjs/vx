@@ -45,9 +45,9 @@ export function defineProject<T extends ProjectConfig>(config: T): T {
 
 Two reasons:
 
-1. **Type inference.** When a user writes `defineProject({ tasks: {...} })`,
+1. **Type inference.** When a user writes `defineProject({ run: { tasks: {...} } })`,
    the generic `T extends ProjectConfig` lets TypeScript infer the
-   _literal_ types of nested fields (so `tasks: 'build'` autocompletes,
+   _literal_ types of nested fields (so task names autocomplete and
    union types narrow correctly).
 2. **Forward compat.** If we ever need to do runtime validation or
    transformation on the config, `defineProject` is the place; user
