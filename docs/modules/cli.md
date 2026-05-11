@@ -65,8 +65,8 @@ exits `1` with `missing task name`.
 
 `parseRunArgs` splits argv on the first `--`. Everything before is
 parsed as flags + task; everything after is verbatim `forwardArgs`,
-passed through the orchestrator to the last `exec` step of each task,
-shell-quoted by `runner.ts:shellQuote`.
+passed through the orchestrator and appended to each task's
+`exec.command`, shell-quoted by `runner.ts:shellQuote`.
 
 `forwardArgs` is folded into the cache key — different forwarded args
 never spuriously hit cache.
