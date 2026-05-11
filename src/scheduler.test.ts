@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { runGraph, type TaskOutcome } from './scheduler.js'
 import type { TaskNode } from './task-graph.js'
 

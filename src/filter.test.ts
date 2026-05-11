@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import path from 'node:path'
 import { applyFilters, parseFilter } from './filter.js'
 import { buildPackageGraph } from './package-graph.js'

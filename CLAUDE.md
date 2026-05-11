@@ -17,7 +17,7 @@ order with parallelism. Cache hits replay stored outputs. Pre-alpha.
 | --------------- | ----------------------------------------------------------------------- |
 | Runtime         | Bun ≥ 1.3 (no Node fallback)                                            |
 | Package manager | Bun (`bun install`, `bun.lock`)                                         |
-| Test runner     | `bun test` (vitest-compat layer recognizes our `from 'vitest'` imports) |
+| Test runner     | `bun test` (tests import `describe`, `it`, `expect`, `vi` from `bun:test`) |
 | Linter          | `oxlint --type-aware --type-check` (real TS diagnostics via `tsgolint`) |
 | Formatter       | `oxfmt` (configured via `.oxfmtrc.json`, migrated from prettier)        |
 | Build           | None. TS source ships as the entry; `bin: src/bin.ts` runs via shebang. |
@@ -25,7 +25,7 @@ order with parallelism. Cache hits replay stored outputs. Pre-alpha.
 Configs:
 
 - `tsconfig.json` — for editor LSP + tsgolint type info. Not invoked by scripts.
-- `.oxlintrc.json` — disables `unicorn/no-useless-spread` (we use spread for deliberate snapshots) and `typescript/unbound-method` (test code patterns).
+- `.oxlintrc.json` — disables `unicorn/no-useless-spread` (we use spread for deliberate snapshots), `typescript/unbound-method` (test code patterns), and `typescript/await-thenable` (bun:test's `expect(...).rejects.toThrow()` is awaitable at runtime but typed as `void`).
 - `.oxfmtrc.json` — prettier-equivalent style (no semi, single quotes, trailing all, 100-col).
 
 ## Repository layout
