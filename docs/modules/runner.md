@@ -19,9 +19,12 @@ export interface RunOptions {
   command: string // single shell string
   cwd: string // absolute working dir
   env: NodeJS.ProcessEnv // exact env for child
+  forwardArgs?: readonly string[] // appended shell-quoted to command
   onStdout?: (chunk: string) => void // streamed live; not awaited
   onStderr?: (chunk: string) => void
 }
+
+export function shellQuote(arg: string): string
 
 export function runCommand(opts: RunOptions): Promise<RunResult>
 ```
@@ -53,8 +56,7 @@ For each `data` event from the child's stdout/stderr stream:
    synchronously.
 
 The orchestrator uses the callbacks for live display (prefixed with
-task id, step index in multi-step) while keeping the accumulated
-string for cache replay.
+task id) while keeping the accumulated string for cache replay.
 
 ## What this does NOT do
 

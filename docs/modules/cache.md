@@ -31,12 +31,13 @@ export interface CacheKeyInput {
   workspaceRoot: string
   upstreamHashes: string[]
   workspaceFingerprint: string
+  forwardArgs?: readonly string[] // CLI args after `--`
 }
 
 export interface CacheEntry {
   hash: string
   taskId: string
-  command: string // joined with ' && ' for multi-step
+  command: string // exec.command verbatim
   exitCode: number
   durationMs: number
   outputFiles: string[] // project-relative POSIX paths

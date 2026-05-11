@@ -84,18 +84,15 @@ vzn run build -F '*' -F '!docs'  # everything except docs
 
 ## Argument forwarding (`--`)
 
-Anything after `--` is forwarded (shell-quoted) to the last step of each
-task's `exec` array:
+Anything after `--` is forwarded (shell-quoted) to the task's `exec.command`:
 
 ```sh
 vzn run test -- --watch              # vitest sees --watch
-vzn run build -- --sourcemap         # build's last step gets --sourcemap
+vzn run build -- --sourcemap         # build command gets --sourcemap
 ```
 
 Forwarded args are folded into the cache key — runs with different
-forwarded args never spuriously hit cache. Forwarding applies only to
-the **last** step of `exec`; earlier steps are typically prep work
-(codegen, compile) that shouldn't receive user args.
+forwarded args never spuriously hit cache.
 
 ## Flags
 
@@ -112,7 +109,7 @@ the **last** step of `exec`; earlier steps are typically prep work
 ## Argv parsing rules
 
 - `--` separates vzn flags from forwarded task args. Everything after
-  `--` is appended (shell-quoted) to each task's last `exec` step.
+  `--` is appended (shell-quoted) to each task's `exec.command`.
 - The positional argument (before `--`) is the task name, optionally
   prefixed with `pkg#`.
 - Flag values are consumed as the next argv item: `-F foo` not `-F=foo`.

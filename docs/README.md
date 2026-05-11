@@ -23,9 +23,8 @@ dependency graph). It diverges from Turbo in two notable ways:
   automatically because the hash sees the post-evaluation object.
 
 It is intentionally _not_ an executor framework (no plugin protocol,
-no JS-function tasks), _not_ a generator, _not_ a daemon, _not_ a
-filter DSL. Commands are shell strings; everything else is layered on
-top.
+no JS-function tasks), _not_ a generator, _not_ a daemon. Commands are
+shell strings; everything else is layered on top.
 
 ## Where to start
 
@@ -37,6 +36,7 @@ top.
 | Trace what happens at `vzn run` time | [`execution.md`](./execution.md)       |
 | Use the CLI                          | [`cli.md`](./cli.md)                   |
 | Modify or replace a specific module  | [`modules/`](./modules/)               |
+| Read forward-looking design notes    | [`design/`](./design/)                 |
 
 ## Versioned guarantees
 
@@ -53,8 +53,6 @@ top.
 The following intentionally don't exist and shouldn't be added without
 a deliberate design pass:
 
-- Remote cache, sign-in, signing
-- `--filter` query language (git-diff, glob, dependency-relationship selection)
 - Watch mode, daemon, persistent tasks
 - Generators / scaffolding
 - Executor / plugin protocol — _no JS-function tasks_
@@ -66,3 +64,7 @@ a deliberate design pass:
 - Symlink-aware input traversal
 - Cross-platform shell quirks beyond what `child_process.spawn` with
   `shell: true` gives you for free
+
+## Proposed (designed, not yet implemented)
+
+- Remote cache — see [`design/remote-cache.md`](./design/remote-cache.md).
