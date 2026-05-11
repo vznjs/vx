@@ -1,18 +1,27 @@
-// Content-addressed task cache.
+// Content-addressed task cache, v10.
+//
+// SQLite holds metadata + run history (indexed by-hash, queryable for
+// stats and eviction). Output files stay on disk under <cacheDir>/<hash>/
+// so cache-hit restore is a direct file copy. stdout and stderr are
+// kept as separate text files to preserve stream identity on replay.
 //
 // Replace this module to plug in remote storage. The contract is:
 //   key()           : derive a stable hash from a task's identity + inputs
 //   get(hash)       : retrieve a previous run's metadata, or null
 //   restoreOutputs  : copy stored output files into the project dir
 //   save            : persist outputs + metadata under a hash
+//   recordRun       : append a row to the run history table (for stats)
+//   close           : release the SQLite handle
 
+import { Database } from 'bun:sqlite'
 import { createHash } from 'node:crypto'
 import { createReadStream, existsSync } from 'node:fs'
-import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { relPosix } from './paths.js'
 
-const CACHE_VERSION = 'vzn-cache-v9'
+const CACHE_VERSION = 'vzn-cache-v10'
+const SCHEMA_VERSION = 'v10'
 
 export interface CacheKeyInput {
   taskId: string
@@ -59,8 +68,124 @@ export interface CacheEntry {
   storedAt: string
 }
 
+export interface RunRecord {
+  hash: string
+  project: string
+  task: string
+  status: 'success' | 'failed' | 'cache-hit' | 'skipped'
+  exitCode: number
+  durationMs: number
+  forwardArgs?: readonly string[]
+  startedAt: number
+  endedAt: number
+}
+
+export interface CacheStats {
+  entryCount: number
+  totalBytes: number
+  runCountLast24h: number
+  hitCountLast24h: number
+}
+
+interface EntryRow {
+  hash: string
+  project: string
+  task: string
+  command: string
+  exit_code: number
+  duration_ms: number
+  size_bytes: number
+  created_at: number
+  accessed_at: number
+}
+
 export class Cache {
-  constructor(private readonly cacheDir: string) {}
+  private readonly db: Database
+  private readonly insertEntry: ReturnType<Database['prepare']>
+  private readonly selectEntry: ReturnType<Database['prepare']>
+  private readonly bumpAccessed: ReturnType<Database['prepare']>
+  private readonly insertRun: ReturnType<Database['prepare']>
+
+  constructor(private readonly cacheDir: string) {
+    // Ensure the directory exists before opening the DB — bun:sqlite won't
+    // create parent directories for us.
+    if (!existsSync(cacheDir)) {
+      // mkdirSync isn't available from node:fs/promises; use Bun's util.
+      // The constructor stays sync because callers expect synchronous DB
+      // open semantics.
+      Bun.spawnSync(['mkdir', '-p', cacheDir])
+    }
+    this.db = new Database(path.join(cacheDir, 'cache.db'), { create: true })
+    this.db.exec('PRAGMA journal_mode = WAL')
+    this.db.exec('PRAGMA synchronous = NORMAL')
+    this.db.exec('PRAGMA foreign_keys = ON')
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS schema_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS entries (
+        hash         TEXT PRIMARY KEY,
+        project      TEXT NOT NULL,
+        task         TEXT NOT NULL,
+        command      TEXT NOT NULL,
+        exit_code    INTEGER NOT NULL,
+        duration_ms  INTEGER NOT NULL,
+        size_bytes   INTEGER NOT NULL,
+        created_at   INTEGER NOT NULL,
+        accessed_at  INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS runs (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        hash         TEXT NOT NULL,
+        project      TEXT NOT NULL,
+        task         TEXT NOT NULL,
+        status       TEXT NOT NULL,
+        exit_code    INTEGER NOT NULL,
+        duration_ms  INTEGER NOT NULL,
+        forward_args TEXT,
+        started_at   INTEGER NOT NULL,
+        ended_at     INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS runs_hash       ON runs(hash);
+      CREATE INDEX IF NOT EXISTS runs_started_at ON runs(started_at);
+      CREATE INDEX IF NOT EXISTS runs_project    ON runs(project, task);
+    `)
+
+    const meta = this.db.prepare("SELECT value FROM schema_meta WHERE key = 'version'").get() as
+      | { value: string }
+      | undefined
+    if (!meta) {
+      this.db
+        .prepare("INSERT INTO schema_meta(key, value) VALUES ('version', ?)")
+        .run(SCHEMA_VERSION)
+    } else if (meta.value !== SCHEMA_VERSION) {
+      // Pre-alpha: schema mismatch means rebuild. Nuke entries + runs.
+      // Outputs on disk become orphans; they'll be ignored on next miss.
+      this.db.exec('DELETE FROM entries; DELETE FROM runs;')
+      this.db.prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'").run(SCHEMA_VERSION)
+    }
+
+    this.insertEntry = this.db.prepare(`
+      INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(hash) DO UPDATE SET
+        project      = excluded.project,
+        task         = excluded.task,
+        command      = excluded.command,
+        exit_code    = excluded.exit_code,
+        duration_ms  = excluded.duration_ms,
+        size_bytes   = excluded.size_bytes,
+        accessed_at  = excluded.accessed_at
+    `)
+    this.selectEntry = this.db.prepare('SELECT * FROM entries WHERE hash = ?')
+    this.bumpAccessed = this.db.prepare('UPDATE entries SET accessed_at = ? WHERE hash = ?')
+    this.insertRun = this.db.prepare(`
+      INSERT INTO runs(hash, project, task, status, exit_code, duration_ms, forward_args, started_at, ended_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+  }
 
   async key(input: CacheKeyInput): Promise<string> {
     const h = createHash('sha256')
@@ -92,19 +217,36 @@ export class Cache {
   }
 
   async get(hash: string): Promise<CacheEntry | null> {
-    const metaPath = this.metaPath(hash)
-    if (!existsSync(metaPath)) return null
-    try {
-      return JSON.parse(await readFile(metaPath, 'utf8')) as CacheEntry
-    } catch {
-      return null
+    const row = this.selectEntry.get(hash) as EntryRow | undefined
+    if (!row) return null
+
+    // Verify the on-disk artifact actually exists. The DB and the
+    // filesystem can drift if someone manually deletes a <hash>/ dir.
+    if (!existsSync(this.entryDir(hash))) return null
+
+    this.bumpAccessed.run(Date.now(), hash)
+
+    const stdout = await readMaybe(this.logPath(hash, 'stdout'))
+    const stderr = await readMaybe(this.logPath(hash, 'stderr'))
+    const outputFiles = await listRelativeFiles(this.entryDir(hash))
+
+    return {
+      hash: row.hash,
+      taskId: `${row.project}#${row.task}`,
+      command: row.command,
+      exitCode: row.exit_code,
+      durationMs: row.duration_ms,
+      outputFiles,
+      stdout,
+      stderr,
+      storedAt: new Date(row.created_at).toISOString(),
     }
   }
 
   async restoreOutputs(hash: string, projectDir: string): Promise<void> {
-    const outputsDir = this.outputsDir(hash)
-    if (!existsSync(outputsDir)) return
-    await copyDir(outputsDir, projectDir)
+    const src = this.entryDir(hash)
+    if (!existsSync(src)) return
+    await copyDir(src, projectDir)
   }
 
   async save(args: {
@@ -118,40 +260,114 @@ export class Cache {
     await rm(tmp, { recursive: true, force: true })
     await mkdir(tmp, { recursive: true })
 
-    const outputsDir = path.join(tmp, 'outputs')
-    await mkdir(outputsDir, { recursive: true })
+    let totalBytes = 0
     const relOutputs: string[] = []
     for (const f of args.outputFiles) {
       const rel = path.relative(args.projectDir, f)
-      const dest = path.join(outputsDir, rel)
+      const dest = path.join(tmp, rel)
       await mkdir(path.dirname(dest), { recursive: true })
       await copyFile(f, dest)
+      const s = await stat(dest)
+      totalBytes += s.size
       relOutputs.push(rel.split(path.sep).join('/'))
     }
 
-    const meta: CacheEntry = {
-      hash: args.hash,
-      ...args.entry,
-      outputFiles: relOutputs.sort(),
-      storedAt: new Date().toISOString(),
-    }
-    await writeFile(path.join(tmp, 'meta.json'), JSON.stringify(meta, null, 2))
-
     await rm(dir, { recursive: true, force: true })
     await rename(tmp, dir)
+
+    // Logs live alongside the entry dir, not inside it (otherwise they'd
+    // get restored into the project on cache hit).
+    const logsDir = path.join(this.cacheDir, 'logs')
+    await mkdir(logsDir, { recursive: true })
+    const stdoutPath = this.logPath(args.hash, 'stdout')
+    const stderrPath = this.logPath(args.hash, 'stderr')
+    await writeFile(stdoutPath, args.entry.stdout)
+    await writeFile(stderrPath, args.entry.stderr)
+    totalBytes += Buffer.byteLength(args.entry.stdout) + Buffer.byteLength(args.entry.stderr)
+
+    const [project, task] = splitTaskId(args.entry.taskId)
+    const now = Date.now()
+    this.insertEntry.run(
+      args.hash,
+      project,
+      task,
+      args.entry.command,
+      args.entry.exitCode,
+      args.entry.durationMs,
+      totalBytes,
+      now,
+      now,
+    )
+  }
+
+  recordRun(run: RunRecord): void {
+    this.insertRun.run(
+      run.hash,
+      run.project,
+      run.task,
+      run.status,
+      run.exitCode,
+      run.durationMs,
+      run.forwardArgs ? JSON.stringify(run.forwardArgs) : null,
+      run.startedAt,
+      run.endedAt,
+    )
+  }
+
+  stats(): CacheStats {
+    const aggregate = this.db
+      .prepare('SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS bytes FROM entries')
+      .get() as { n: number; bytes: number }
+    const since = Date.now() - 24 * 60 * 60 * 1000
+    const runs = this.db
+      .prepare(
+        "SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN status = 'cache-hit' THEN 1 ELSE 0 END), 0) AS hits FROM runs WHERE started_at >= ?",
+      )
+      .get(since) as { total: number; hits: number }
+    return {
+      entryCount: aggregate.n,
+      totalBytes: aggregate.bytes,
+      runCountLast24h: runs.total,
+      hitCountLast24h: runs.hits,
+    }
+  }
+
+  close(): void {
+    this.db.close()
   }
 
   private entryDir(hash: string): string {
     return path.join(this.cacheDir, hash)
   }
 
-  private metaPath(hash: string): string {
-    return path.join(this.entryDir(hash), 'meta.json')
+  private logPath(hash: string, stream: 'stdout' | 'stderr'): string {
+    return path.join(this.cacheDir, 'logs', `${hash}.${stream}`)
   }
+}
 
-  private outputsDir(hash: string): string {
-    return path.join(this.entryDir(hash), 'outputs')
+function splitTaskId(id: string): [string, string] {
+  const i = id.indexOf('#')
+  if (i < 0) return [id, '']
+  return [id.slice(0, i), id.slice(i + 1)]
+}
+
+async function readMaybe(p: string): Promise<string> {
+  if (!existsSync(p)) return ''
+  return await readFile(p, 'utf8')
+}
+
+async function listRelativeFiles(root: string, sub = ''): Promise<string[]> {
+  const out: string[] = []
+  const entries = await readdir(path.join(root, sub), { withFileTypes: true })
+  for (const e of entries) {
+    const childRel = sub === '' ? e.name : `${sub}/${e.name}`
+    if (e.isDirectory()) {
+      out.push(...(await listRelativeFiles(root, childRel)))
+    } else if (e.isFile()) {
+      out.push(childRel)
+    }
   }
+  return out.sort()
 }
 
 async function hashFile(filePath: string): Promise<string> {

@@ -1,4 +1,5 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -130,5 +131,177 @@ describe('Cache.key', () => {
     const a = await cache.key({ ...baseInput(), taskId: 'pkg-a#build', inputFiles: [f] })
     const b = await cache.key({ ...baseInput(), taskId: 'pkg-b#build', inputFiles: [f] })
     expect(a).not.toBe(b)
+  })
+})
+
+describe('Cache storage (v10)', () => {
+  let workspaceRoot: string
+  let cacheDir: string
+  let projectDir: string
+  let cache: Cache
+
+  beforeEach(async () => {
+    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vzn-cache-v10-'))
+    cacheDir = path.join(workspaceRoot, '.vzn', 'cache')
+    projectDir = path.join(workspaceRoot, 'project')
+    cache = new Cache(cacheDir)
+  })
+
+  afterEach(async () => {
+    cache.close()
+    await rm(workspaceRoot, { recursive: true, force: true })
+  })
+
+  it('creates a SQLite db at <cacheDir>/cache.db', async () => {
+    expect(existsSync(path.join(cacheDir, 'cache.db'))).toBe(true)
+  })
+
+  it('save() + get() round-trips an entry through SQLite + filesystem', async () => {
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    await mkdir(projectDir, { recursive: true })
+    const outFile = path.join(projectDir, 'dist', 'index.js')
+    await mkdir(path.dirname(outFile), { recursive: true })
+    await writeFile(outFile, 'console.log("hi")')
+
+    await cache.save({
+      hash: 'h1',
+      projectDir,
+      outputFiles: [outFile],
+      entry: {
+        taskId: 'pkg#build',
+        command: 'tsc',
+        exitCode: 0,
+        durationMs: 42,
+        stdout: 'compiling…\n',
+        stderr: '',
+      },
+    })
+
+    // Filesystem layout matches v10: outputs directly under <hash>/, logs in logs/<hash>.{stdout,stderr}.
+    expect(existsSync(path.join(cacheDir, 'h1', 'dist', 'index.js'))).toBe(true)
+    expect(existsSync(path.join(cacheDir, 'logs', 'h1.stdout'))).toBe(true)
+    expect(existsSync(path.join(cacheDir, 'logs', 'h1.stderr'))).toBe(true)
+    // No v9-style meta.json.
+    expect(existsSync(path.join(cacheDir, 'h1', 'meta.json'))).toBe(false)
+
+    const got = await cache.get('h1')
+    expect(got).not.toBeNull()
+    expect(got?.command).toBe('tsc')
+    expect(got?.exitCode).toBe(0)
+    expect(got?.durationMs).toBe(42)
+    expect(got?.stdout).toBe('compiling…\n')
+    expect(got?.stderr).toBe('')
+    expect(got?.outputFiles).toEqual(['dist/index.js'])
+  })
+
+  it('restoreOutputs() copies the on-disk artifact back into the project dir', async () => {
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    await mkdir(projectDir, { recursive: true })
+    const outFile = path.join(projectDir, 'dist', 'out.txt')
+    await mkdir(path.dirname(outFile), { recursive: true })
+    await writeFile(outFile, 'produced')
+
+    await cache.save({
+      hash: 'h2',
+      projectDir,
+      outputFiles: [outFile],
+      entry: {
+        taskId: 'pkg#build',
+        command: 'echo produced > dist/out.txt',
+        exitCode: 0,
+        durationMs: 1,
+        stdout: '',
+        stderr: '',
+      },
+    })
+
+    // Wipe the project's output, then restore from cache.
+    await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
+    await cache.restoreOutputs('h2', projectDir)
+    expect(await readFile(path.join(projectDir, 'dist', 'out.txt'), 'utf8')).toBe('produced')
+  })
+
+  it('get() returns null when the entry has never been written', async () => {
+    expect(await cache.get('never-written')).toBeNull()
+  })
+
+  it('get() returns null when DB row exists but on-disk artifact was deleted', async () => {
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    await mkdir(projectDir, { recursive: true })
+    const outFile = path.join(projectDir, 'a.txt')
+    await writeFile(outFile, 'x')
+
+    await cache.save({
+      hash: 'h-orphan',
+      projectDir,
+      outputFiles: [outFile],
+      entry: {
+        taskId: 'pkg#build',
+        command: 'noop',
+        exitCode: 0,
+        durationMs: 0,
+        stdout: '',
+        stderr: '',
+      },
+    })
+
+    // Simulate someone deleting the cached dir without touching the DB.
+    await rm(path.join(cacheDir, 'h-orphan'), { recursive: true, force: true })
+    expect(await cache.get('h-orphan')).toBeNull()
+  })
+
+  it('recordRun() + stats() captures run history', async () => {
+    const startedAt = Date.now() - 100
+    const endedAt = Date.now()
+    cache.recordRun({
+      hash: 'h3',
+      project: 'pkg',
+      task: 'build',
+      status: 'success',
+      exitCode: 0,
+      durationMs: 100,
+      startedAt,
+      endedAt,
+    })
+    cache.recordRun({
+      hash: 'h3',
+      project: 'pkg',
+      task: 'build',
+      status: 'cache-hit',
+      exitCode: 0,
+      durationMs: 0,
+      startedAt: endedAt,
+      endedAt: endedAt + 1,
+    })
+
+    const stats = cache.stats()
+    expect(stats.runCountLast24h).toBe(2)
+    expect(stats.hitCountLast24h).toBe(1)
+  })
+
+  it('stats() reports entry count and total bytes', async () => {
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    await mkdir(projectDir, { recursive: true })
+    const f = path.join(projectDir, 'tiny.txt')
+    await writeFile(f, 'abc')
+
+    await cache.save({
+      hash: 'h-tiny',
+      projectDir,
+      outputFiles: [f],
+      entry: {
+        taskId: 'pkg#build',
+        command: 'noop',
+        exitCode: 0,
+        durationMs: 0,
+        stdout: '',
+        stderr: '',
+      },
+    })
+
+    const stats = cache.stats()
+    expect(stats.entryCount).toBe(1)
+    // 3 bytes of file + 0 + 0 for stdout/stderr.
+    expect(stats.totalBytes).toBeGreaterThanOrEqual(3)
   })
 })

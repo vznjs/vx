@@ -107,33 +107,33 @@ docs/
 
 ## Decision log
 
+- **2026-05**: Local cache v10 — SQLite metadata index (`cache.db`),
+  on-disk outputs at `<hash>/`, separate `logs/<hash>.{stdout,stderr}`
+  log files. Adds `runs` table for run history (drives future `vzn stats`).
+  CACHE_VERSION → `vzn-cache-v10`. Per-entry `meta.json` is gone. PR #7.
+- **2026-05**: Project memory + agents — `CLAUDE.md` + architect /
+  developer subagents under `.claude/agents/`. PR #6.
 - **2026-05**: Bun runtime + oxc toolchain (oxlint + oxfmt + tsgolint).
   Dropped Node, pnpm, tsc, prettier, vitest. PR #5.
-- **2026-05**: Local cache `meta.json` is per-entry filesystem manifest.
-  Planned upgrade: NX-style SQLite for metadata + outputs as files on
-  disk. **Not yet implemented.**
-- **2026-05**: Remote cache wire = Turbo `/v8/artifacts/` spec verbatim.
-  Tar interior is ours: `meta.json` + `outputs/` (no Turbo log-file
+- **2026-05**: Remote cache wire = Turbo `/v8/artifacts/` spec verbatim,
+  but tar interior is ours (`meta.json` + `outputs/`, no Turbo log-file
   mimicry). Design at `docs/design/remote-cache.md`. **Not yet implemented.**
 - **2026-05**: Schema reshape — `defineProject({ run: { tasks: {...} } })`.
-  `exec` is a single ExecConfig, not an array. CACHE_VERSION bumped to
-  `vzn-cache-v9`. PR #3.
+  `exec` is a single ExecConfig, not an array. CACHE_VERSION → `v9`.
+  PR #3.
 - **2026-05**: CLI aligned with vite-task — default scope is cwd
   project, `-r` for all, `-F` for filter DSL, `--` separator, `pkg#task`
   addressing, `--no-cache` (was `--force`), `-v` for verbose. PR #2.
 
 ## Active workstreams (prioritized)
 
-1. **v10 local cache** — SQLite metadata + on-disk outputs (NX-style).
-   Removes per-entry `meta.json` files, adds LRU eviction by size, run
-   history table for stats. Will bump CACHE_VERSION to `v10` and
-   replace `src/cache.ts`'s storage.
-2. **Remote cache implementation** — HTTP client speaking
+1. **`vzn stats` + `vzn cache prune` CLI** — surface the v10
+   `runs`/`entries` data. LRU eviction policy + sized-cap. Small PR.
+2. **Remote cache implementation** — HTTP client speaking Turbo
    `/v8/artifacts/`. Layered with local via `LayeredCache`. Bearer
-   token auth.
-3. **Sandboxing** (research-only for now) — bwrap on Linux to enforce
-   declared inputs. Off-by-default, opt-in via `--sandbox`. See agent
-   archives.
+   token auth. Design at `docs/design/remote-cache.md`.
+3. **Sandboxing** (design-only) — bwrap on Linux to enforce declared
+   inputs. Off-by-default, opt-in via `--sandbox`.
 4. **Presets / config-introspection** — NX-style task inference from
    tool configs (`vitest.config.ts`, `tsconfig.json`). Lower priority.
 

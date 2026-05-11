@@ -114,23 +114,37 @@ guarantee — there's no file-glob escape hatch.
 
 ```
 <workspaceRoot>/.vzn/cache/
-└── <hash>/
-    ├── meta.json
-    └── outputs/
-        └── ... (files mirroring the project-relative output paths)
+├── cache.db                # SQLite metadata index + run history
+├── cache.db-wal            # write-ahead log
+├── cache.db-shm            # shared memory
+├── <hash>/                 # output files at project-relative paths
+│   └── dist/
+│       └── ... (files mirroring the project-relative output paths)
+└── logs/
+    ├── <hash>.stdout       # captured stdout for that task
+    └── <hash>.stderr       # captured stderr
 ```
 
 `<hash>` is the full sha256 hex string. No subdirectory bucketing yet
 — fine for thousands of entries; would want sharding past that.
+
+SQLite holds the cache index in two tables (`entries` for the
+per-hash record, `runs` for run history powering `stats()`). Output
+files stay as files on disk because cache-hit restore copies them
+back into the project — BLOBs in SQLite would just be a detour. See
+`docs/design/local-cache-v10.md` for the design rationale.
 
 ## Performance characteristics
 
 - **Hashing cost** scales linearly with total input file bytes per
   task. For large repos with `files: ['**/*']` this can dominate. To
   trim: declare narrow `inputs.files`.
-- **Cache read** is a stat + JSON parse + file copies. Disk-bound.
-- **Cache write** is hashing on top of the run. The cache write
-  itself is fast (copy + atomic rename).
+- **Cache read** is one indexed SELECT + an `existsSync` of the
+  on-disk artifact + file copies. SQLite's WAL keeps reads
+  non-blocking even during concurrent writes.
+- **Cache write** is one INSERT-or-UPDATE + atomic dir rename + two
+  log file writes. Hashing dominates the run; the storage itself is
+  cheap.
 - **Workspace fingerprint** is computed once per `vzn run` invocation
   and reused for every task in that run.
 
@@ -153,10 +167,23 @@ Required when:
 
 - A new field is added to the cache key derivation.
 - The order or framing of existing key fields changes.
-- The on-disk `meta.json` schema changes.
+- The on-disk layout changes (file placement, log path conventions).
+- The SQLite schema changes in a way that affects existing rows.
 
 Not required when:
 
 - Behavioural changes that adjust _which_ values flow into existing
   key components (those changes naturally produce different keys for
   affected tasks).
+
+### History
+
+- **v7 → v8** (PR #2): folded `forwardArgs` into the key for CLI
+  argument forwarding alignment.
+- **v8 → v9** (PR #3): `TaskConfig` shape changed — `exec` collapsed
+  from an array to a single command, `tasks` nested under `run`.
+- **v9 → v10** (this PR): on-disk layout switched from per-entry
+  `meta.json` + `outputs/` directory to a workspace-wide
+  `cache.db` (SQLite) plus output files directly at `<hash>/` and
+  log files at `logs/<hash>.{stdout,stderr}`. Adds run history for
+  stats. Removes the `meta.json` per-entry manifest.
