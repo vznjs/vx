@@ -98,8 +98,7 @@ status.
 
 - **Live**: `runCommand` listens to the child's stdout/stderr and calls
   `onStdout` / `onStderr` callbacks chunk by chunk. The orchestrator's
-  default logger prefixes each line with the task id and (in
-  multi-step) the step index.
+  default logger prefixes each line with the task id.
 - **Cache write**: full stdout/stderr text is stored in `meta.json`
   alongside the entry. No timing metadata; output is replayed as one
   blob.

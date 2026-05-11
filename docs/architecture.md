@@ -130,5 +130,6 @@ the architecture:
 - **No daemon.** Every `vzn run` invocation is a fresh Node process.
   Loaders use mtime-busting URLs so config edits show up next run.
 - **No nested task graphs.** The unit of caching, scheduling, and
-  reporting is the task. Multi-step exec is sequential within a single
-  task; for parallelism, define separate tasks with `dependsOn`.
+  reporting is the task. For parallelism, define separate tasks linked
+  by `dependsOn`. For chained commands inside one task, use shell
+  composition (`&&`, `;`) in `exec.command`.

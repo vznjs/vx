@@ -25,7 +25,7 @@ The cache key for one task is a SHA-256 digest of:
    workspace-shape change invalidates every cache entry.
 4. **Task config hash** — `sha256(JSON.stringify(node.config))` of the
    _evaluated_ task config. Captures:
-   - `exec` array (commands, per-step env declarations).
+   - `exec` block (command, env declarations).
    - `dependsOn` and `cache.inputs.tasks` declarations.
    - `cache.outputs.files`, `cache.inputs.files`, `cache.inputs.env`
      declarations (the strings themselves; their _resolved values_
@@ -68,9 +68,8 @@ On miss → task runs to completion. If the final exit code is `0`:
 1. `cache.outputs.files` is resolved against the project directory.
 2. Matching files are copied into a _temporary_ directory next to the
    target cache slot.
-3. A `meta.json` containing taskId, command (joined from steps),
-   exit code, duration, captured stdout/stderr, and stored output
-   paths is written.
+3. A `meta.json` containing taskId, command, exit code, duration,
+   captured stdout/stderr, and stored output paths is written.
 4. The whole temp directory is atomically renamed to its final hash
    slot. This makes concurrent writers see either no entry or a
    complete entry — never a partial one.
@@ -83,16 +82,17 @@ flows.
 
 A task's cache becomes invalid when any of these change:
 
-| Trigger                                                          | Mechanism                                                                     |
-| ---------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Edit a file in the task's `inputs.files` set                     | step 6 of key derivation                                                      |
-| `pnpm install` updates `pnpm-lock.yaml`                          | step 3 (workspace fingerprint)                                                |
-| Edit `pnpm-workspace.yaml`                                       | step 3                                                                        |
-| Edit the task's `vzn.config.ts`                                  | step 4 (config hash)                                                          |
-| Edit a config file that the task config imports                  | step 4 (configHash sees the resolved object after jiti evaluates the imports) |
-| Change `inputs.env` host values                                  | step 5                                                                        |
-| Upstream task's cache key changes (because its inputs changed)   | step 7                                                                        |
-| Two-step removed: changing `exec.env.passThrough` _values_ alone | NOT a trigger by design — passThrough values are host-specific                |
+| Trigger                                                        | Mechanism                                                                     |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Edit a file in the task's `inputs.files` set                   | step 6 of key derivation                                                      |
+| `pnpm install` updates `pnpm-lock.yaml`                        | step 3 (workspace fingerprint)                                                |
+| Edit `pnpm-workspace.yaml`                                     | step 3                                                                        |
+| Edit the task's `vzn.config.ts`                                | step 4 (config hash)                                                          |
+| Edit a config file that the task config imports                | step 4 (configHash sees the resolved object after jiti evaluates the imports) |
+| Change `inputs.env` host values                                | step 5                                                                        |
+| Upstream task's cache key changes (because its inputs changed) | step 7                                                                        |
+| Change CLI `forwardArgs` (after `--`)                          | folded into the key — different args produce a different entry                |
+| Change `exec.env.passThrough` _values_ alone                   | NOT a trigger by design — passThrough values are host-specific                |
 
 The cascade in row 7 is what makes monorepo caching work: edit `lib/`,
 and every package that depends on `lib`'s `build` task is invalidated

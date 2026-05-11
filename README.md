@@ -68,7 +68,8 @@ vzn run [TASK | PKG#TASK] [-r] [-F <pattern>] [-c <n>] [--no-cache] [--ignore-de
 Default scope: the project containing cwd (deps still expand via
 `dependsOn`). Use `-r` for every project, `-F` for a pnpm-style filter
 DSL, or `pkg#task` to target one project directly. Args after `--` are
-forwarded to the last `exec` step.
+forwarded (shell-quoted) to the task's `exec.command` and folded into
+the cache key.
 
 Full CLI reference: [`docs/cli.md`](./docs/cli.md).
 

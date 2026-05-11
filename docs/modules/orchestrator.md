@@ -60,17 +60,16 @@ The per-task work:
    pattern matching.
 3. Compute `taskConfigHash = sha256(JSON.stringify(node.config))`.
 4. Compute the cache key via `cache.key(...)`.
-5. If `cacheEnabled` (i.e., `cache` field provided) and `!force`,
-   look up `cache.get(hash)`:
+5. If `cacheEnabled` (i.e., `cache` field provided AND `noCache` is
+   off), look up `cache.get(hash)`:
    - Hit → restore outputs, replay stored stdout/stderr, return
      `cache-hit`.
-6. Run the `exec` array sequentially via `runCommand`. Per-step env
-   is built fresh from that step's `passThrough` + `define`. Output
-   is streamed live (prefixed `[i/N]` for multi-step). Aggregates
-   stdout/stderr/durationMs across steps. Stops on first non-zero
-   exit.
-7. If overall success and caching is enabled, save the entry:
-   `resolveOutputs` to find produced files, then `cache.save(...)`.
+6. Build the isolated env (essentials + `exec.env.passThrough` +
+   `exec.env.define`) and run `exec.command` via `runCommand`. Any
+   CLI `forwardArgs` are appended shell-quoted. Output streams live
+   to the logger.
+7. If exit 0 and caching is enabled, save the entry: `resolveOutputs`
+   to find produced files, then `cache.save(...)`.
 8. Return the `TaskOutcome` (status, exitCode, durationMs, hash).
 
 ## `filterUpstreamHashes`
