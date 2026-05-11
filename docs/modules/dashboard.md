@@ -9,8 +9,8 @@ file via WAL.
 
 The UI lives under `src/dashboard-ui/`: vanilla HTML + ESM + a tiny
 hash router. No build step, no framework. Pages added over the
-dashboard PR sequence: Overview + Cache shipped in PR #23; Tasks +
-Runs in PR #24; Run detail + flamegraph in PR #25.
+dashboard PR sequence: Overview + Cache (PR #23); Tasks + Runs
+(PR #24); Run detail + flamegraph (PR #25).
 
 ## Public surface
 

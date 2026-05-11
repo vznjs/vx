@@ -419,6 +419,22 @@ describe('handleRequest static UI', () => {
     }
   })
 
+  it.each([
+    ['cache', 'renderCache'],
+    ['runs', 'renderRuns'],
+    ['tasks', 'renderTasks'],
+  ])('serves /pages/%s.js exporting %s', async (page, exportName) => {
+    const db = openReadonly()
+    try {
+      const res = await handleRequest(db, new Request(`http://x/pages/${page}.js`))
+      expect(res.status).toBe(200)
+      const body = await res.text()
+      expect(body).toContain(exportName)
+    } finally {
+      db.close()
+    }
+  })
+
   it('falls through to the SPA shell for unknown non-asset paths', async () => {
     const db = openReadonly()
     try {
