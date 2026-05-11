@@ -380,6 +380,66 @@ describe('Cache storage (v10)', () => {
     await expect(cache.prune({})).rejects.toThrow(/at least one of/)
   })
 
+  it('recordRun() persists the v11 analytics columns when provided', async () => {
+    const started = Date.now() - 50
+    const ended = Date.now()
+    cache.recordRun({
+      hash: 'h-v11',
+      project: 'pkg',
+      task: 'build',
+      status: 'success',
+      exitCode: 0,
+      durationMs: 50,
+      startedAt: started,
+      endedAt: ended,
+      runId: '01JZZZZZZZZZZZZZZZZZZZZZZZ',
+      cpuMs: 42,
+      peakRssBytes: 1024 * 1024 * 32,
+      wallclockStartNs: 0n,
+      wallclockEndNs: 50_000_000n,
+      cacheHit: false,
+      bytesUploaded: 4096,
+      bytesDownloaded: 0,
+    })
+    // Read back via the underlying DB to confirm the columns were stored.
+    // Reaches past the public API on purpose — this is a schema test.
+    // @ts-expect-error: private member access for testing
+    const row = cache.db.prepare('SELECT * FROM runs WHERE hash = ?').get('h-v11') as {
+      run_id: string
+      cpu_ms: number
+      peak_rss_bytes: number
+      cache_hit: number
+      bytes_uploaded: number
+    }
+    expect(row.run_id).toBe('01JZZZZZZZZZZZZZZZZZZZZZZZ')
+    expect(row.cpu_ms).toBe(42)
+    expect(row.peak_rss_bytes).toBe(1024 * 1024 * 32)
+    expect(row.cache_hit).toBe(0)
+    expect(row.bytes_uploaded).toBe(4096)
+  })
+
+  it('recordRun() omitting v11 columns stores NULL', async () => {
+    cache.recordRun({
+      hash: 'h-v11-null',
+      project: 'pkg',
+      task: 'build',
+      status: 'cache-hit',
+      exitCode: 0,
+      durationMs: 0,
+      startedAt: Date.now(),
+      endedAt: Date.now() + 1,
+    })
+    // @ts-expect-error: private member access for testing
+    const row = cache.db.prepare('SELECT * FROM runs WHERE hash = ?').get('h-v11-null') as {
+      run_id: unknown
+      cpu_ms: unknown
+      cache_hit: unknown
+    }
+    expect(row.run_id).toBeNull()
+    expect(row.cpu_ms).toBeNull()
+    expect(row.cache_hit).toBeNull()
+  })
+
   it('two concurrent writers do not crash with SQLITE_BUSY', async () => {
     // B1 from Agent A's real-world test: without PRAGMA busy_timeout,
     // two parallel `vzn run` invocations would race on the small INSERT
