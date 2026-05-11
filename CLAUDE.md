@@ -107,6 +107,13 @@ docs/
 
 ## Decision log
 
+- **2026-05**: Sandbox shipped (v1). `src/sandbox.ts` with bwrap on
+  Linux + sandbox-exec on macOS. `vzn run --sandbox` opts in. Declared
+  `cache.inputs.files` are bind-mounted read-only; project dir is
+  read-write; everything else is invisible (ENOENT). Fail-loud when
+  the helper binary is missing — silent fall-through would defeat the
+  contract. Windows is unsupported. Design at
+  `docs/design/sandbox.md`. PR #15.
 - **2026-05**: Remote cache shipped. `RemoteCache` HTTP client (PR #10)
   speaks the Turbo `/v8/artifacts/` wire verbatim. `cache-archive`
   (PR #12) handles tar.gz pack/unpack via system `tar`. `LayeredCache`
@@ -142,15 +149,23 @@ docs/
 
 ## Active workstreams (prioritized)
 
-1. **Sandboxing implementation** — design accepted in
-   `docs/design/sandbox.md`. bwrap on Linux + sandbox-exec on macOS,
-   `--sandbox` opt-in flag. Enforce declared inputs structurally.
-2. **Presets / config-introspection** — NX-style task inference from
-   tool configs (`vitest.config.ts`, `tsconfig.json`). Lower priority.
-3. **Workspace config loading** — `defineWorkspace({...})` is exported
-   but the config file is never loaded. Today's `WorkspaceConfig` only
-   has `concurrency` and `cacheDir`, neither used. Cleanup or wire up.
-4. **Pre-signed URL auth + HMAC signing** (`x-artifact-tag`) for the
+1. **Architecture doc refresh + per-module docs for remote-cache
+   subsystem.** `docs/architecture.md` doesn't mention the
+   remote-cache trio (RemoteCache + cache-archive + LayeredCache) or
+   sandbox.ts. New contributors miss half the story. Add a `cache/`
+   cluster to the module map; create
+   `docs/modules/{remote-cache,cache-archive,layered-cache,sandbox}.md`.
+2. **CacheLayer interface refactor.** `cache: Cache | LayeredCache`
+   union is brittle; extract a `CacheLayer` interface, type
+   orchestrator's `cache` field to it. Shared types in a small module.
+3. **Split `orchestrator.ts` and `cli.ts`.** Both are > 400 LOC with
+   mixed concerns. See refactor audit findings in conversation.
+4. **Presets / config-introspection** — NX-style task inference from
+   tool configs (`vitest.config.ts`, `tsconfig.json`).
+5. **Workspace config loading** — `defineWorkspace({...})` is exported
+   but the config file is never loaded. Either wire it up or remove
+   the dead exports.
+6. **Pre-signed URL auth + HMAC signing** (`x-artifact-tag`) for the
    remote cache. v2 features per `docs/design/remote-cache.md`.
 
 ## Operating directive (to you, Claude)

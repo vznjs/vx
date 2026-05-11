@@ -1,7 +1,8 @@
 # Sandbox — design
 
-> **Status: proposal.** Not yet implemented. Captures the decision we
-> already reached in conversation so the implementation has a target.
+> **Status: implemented** (v1, Linux + macOS). Code in `src/sandbox.ts`,
+> CLI flag `--sandbox`, orchestrator integration in `executeTask`.
+> Windows and `--sandbox=warn` mode remain future work.
 
 ## What we're solving
 
