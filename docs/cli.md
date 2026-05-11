@@ -8,6 +8,7 @@ hand-parsed (no commander/yargs/etc.) in `src/cli.ts`.
 ```
 vzn run [OPTIONS] [TASK | PKG#TASK] [-- forwarded-args...]
 vzn stats
+vzn cache prune [--older-than <duration>] [--max-size <bytes>]
 vzn help
 vzn version
 vzn --help, vzn -h
@@ -51,6 +52,33 @@ Reads from `.vzn/cache/cache.db` (the v10 SQLite index). The "Runs"
 and "Hits" counts come from the `runs` table — recorded for every
 task at the end of each `vzn run`, including cache hits, failures,
 and skipped tasks. Exits `1` if not inside a pnpm workspace.
+
+### `vzn cache prune`
+
+Evict old or oversized cache entries. Operates on `.vzn/cache/cache.db`
+plus the on-disk `<hash>/` directories and `logs/<hash>.{stdout,stderr}`
+files.
+
+```
+vzn cache prune --older-than <duration>     Drop entries last accessed before now - duration.
+vzn cache prune --max-size <size>           After age-based pruning, evict LRU until under <size>.
+```
+
+At least one of `--older-than` / `--max-size` is required. Both may be
+combined: age-based first, then LRU-evict if still over the size cap.
+
+**Duration units**: `s`, `m`, `h`, `d`. Examples: `30d`, `24h`, `60m`, `30s`.
+**Size units**: `K`, `M`, `G`, `T` (powers of 1024). Optional `B` suffix
+accepted. Examples: `500M`, `1G`, `100K`, `2T`, `500MB`.
+
+Output:
+
+```
+$ vzn cache prune --older-than 30d
+Pruned 42 entries (1.3 GB freed)
+```
+
+Exits `1` on parse error, missing policy, or workspace-discovery error.
 
 ### `vzn help`, `vzn --help`, `vzn -h`
 
