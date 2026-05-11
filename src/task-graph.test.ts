@@ -30,6 +30,7 @@ function packageGraph(direct: Record<string, string[]>): PackageGraph {
     byName: new Map(),
     directDeps,
     transitiveDeps: (n) => transitive(n),
+    transitiveDependents: () => [],
   }
 }
 
@@ -193,5 +194,25 @@ describe('buildTaskGraph', () => {
       requested: [],
     })
     expect(nodes.size).toBe(0)
+  })
+
+  it('ignoreDependsOn skips both self and dependencies expansion', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', {
+          build: {
+            ...cmd('build app'),
+            dependsOn: { self: ['codegen'], dependencies: ['build'] },
+          },
+          codegen: cmd('codegen'),
+        }),
+        project('lib', { build: cmd('build lib') }),
+      ),
+      packageGraph: packageGraph({ app: ['lib'] }),
+      requested: [{ project: 'app', task: 'build' }],
+      ignoreDependsOn: true,
+    })
+    expect([...nodes.keys()]).toEqual(['app#build'])
+    expect(nodes.get('app#build')?.deps).toEqual([])
   })
 })

@@ -27,10 +27,12 @@ export interface BuildGraphOptions {
   packageGraph: PackageGraph
   /** Initial set: `{ project, task }` pairs the user asked to run. */
   requested: Array<{ project: string; task: string }>
+  /** Skip `dependsOn` expansion; only the requested nodes are added. */
+  ignoreDependsOn?: boolean
 }
 
 export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode> {
-  const { projects, packageGraph, requested } = options
+  const { projects, packageGraph, requested, ignoreDependsOn = false } = options
   const nodes = new Map<string, TaskNode>()
 
   function addNode(projectName: string, taskName: string): TaskNode | null {
@@ -52,6 +54,10 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       deps: [],
     }
     nodes.set(id, node)
+
+    if (ignoreDependsOn) {
+      return node
+    }
 
     const dependsOn = taskConfig.dependsOn ?? {}
 

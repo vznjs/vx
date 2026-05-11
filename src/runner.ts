@@ -11,15 +11,27 @@ export interface RunOptions {
   command: string
   cwd: string
   env: NodeJS.ProcessEnv
+  /** Extra args appended to the command (shell-quoted). For arg forwarding. */
+  forwardArgs?: readonly string[] | undefined
   /** Called for each chunk of stdout/stderr as it arrives, for live output. */
   onStdout?: (chunk: string) => void
   onStderr?: (chunk: string) => void
 }
 
+export function shellQuote(arg: string): string {
+  if (arg === '') return `''`
+  if (/^[A-Za-z0-9_\-.,/=:@%+]+$/.test(arg)) return arg
+  return `'${arg.replace(/'/g, `'\\''`)}'`
+}
+
 export function runCommand(opts: RunOptions): Promise<RunResult> {
   return new Promise((resolve) => {
     const start = Date.now()
-    const proc = spawn(opts.command, {
+    const suffix =
+      opts.forwardArgs && opts.forwardArgs.length > 0
+        ? ' ' + opts.forwardArgs.map(shellQuote).join(' ')
+        : ''
+    const proc = spawn(opts.command + suffix, {
       cwd: opts.cwd,
       env: opts.env,
       shell: true,

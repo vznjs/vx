@@ -792,7 +792,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    '--force re-runs even on a cache hit',
+    '--no-cache skips reads AND writes, re-running on every invocation',
     async () => {
       const dir = await addProject(fixture.root, 'forced', {
         config: `
@@ -813,13 +813,19 @@ describe('orchestrator e2e', () => {
       const after1 = await readFile(path.join(dir, 'runs.txt'), 'utf8')
       expect(after1).toBe('x')
 
-      // Without --force: cache-hit, file restored as-is.
+      // Without --no-cache: cache-hit, file restored as-is.
       await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
       expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('x')
 
-      // With --force: command runs again, appends another 'x'.
-      await run({ cwd: fixture.root, task: 'run', force: true, log: silentLogger(fixture) })
+      // With --no-cache: command runs again, appends another 'x'.
+      await run({ cwd: fixture.root, task: 'run', noCache: true, log: silentLogger(fixture) })
       expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('xx')
+
+      // --no-cache also skipped the WRITE: the next default run sees the
+      // previously-cached entry (from the first run) and restores it,
+      // overwriting the file back to 'x'.
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('x')
     },
     TIMEOUT,
   )

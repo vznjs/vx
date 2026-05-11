@@ -12,7 +12,7 @@ import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:
 import path from 'node:path'
 import { relPosix } from './paths.js'
 
-const CACHE_VERSION = 'vzn-cache-v7'
+const CACHE_VERSION = 'vzn-cache-v8'
 
 export interface CacheKeyInput {
   taskId: string
@@ -39,6 +39,12 @@ export interface CacheKeyInput {
    * into every task's key, so a lockfile bump invalidates everything.
    */
   workspaceFingerprint: string
+  /**
+   * CLI args forwarded to the task (after `--`). Folded into the key so that
+   * the same command with different forwarded args is treated as a distinct
+   * run, never a spurious cache hit.
+   */
+  forwardArgs?: readonly string[]
 }
 
 export interface CacheEntry {
@@ -62,6 +68,10 @@ export class Cache {
     h.update(`task:${input.taskId}\n`)
     h.update(`workspace:${input.workspaceFingerprint}\n`)
     h.update(`config:${input.taskConfigHash}\n`)
+
+    const forwarded = input.forwardArgs ?? []
+    h.update(`forward-args:${forwarded.length}\n`)
+    for (const a of forwarded) h.update(`${a}\0`)
 
     h.update(`env-values:${input.envValues.length}\n`)
     for (const [n, v] of input.envValues) h.update(`${n}=${v}\n`)
