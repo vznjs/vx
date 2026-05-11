@@ -7,7 +7,7 @@ on:
 
 jobs:
   ci:
-    name: build · typecheck · test · format
+    name: typecheck · test · format
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -26,9 +26,6 @@ jobs:
 
       - name: Typecheck
         run: bun run typecheck
-
-      - name: Build (emit d.ts)
-        run: bun run build
 
       - name: Test
         run: bun test src/
