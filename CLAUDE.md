@@ -13,14 +13,14 @@ order with parallelism. Cache hits replay stored outputs. Pre-alpha.
 
 ## Stack
 
-| Concern         | Tool                                                                    |
-| --------------- | ----------------------------------------------------------------------- |
-| Runtime         | Bun ≥ 1.3 (no Node fallback)                                            |
-| Package manager | Bun (`bun install`, `bun.lock`)                                         |
+| Concern         | Tool                                                                       |
+| --------------- | -------------------------------------------------------------------------- |
+| Runtime         | Bun ≥ 1.3 (no Node fallback)                                               |
+| Package manager | Bun (`bun install`, `bun.lock`)                                            |
 | Test runner     | `bun test` (tests import `describe`, `it`, `expect`, `vi` from `bun:test`) |
-| Linter          | `oxlint --type-aware --type-check` (real TS diagnostics via `tsgolint`) |
-| Formatter       | `oxfmt` (configured via `.oxfmtrc.json`, migrated from prettier)        |
-| Build           | None. TS source ships as the entry; `bin: src/bin.ts` runs via shebang. |
+| Linter          | `oxlint --type-aware --type-check` (real TS diagnostics via `tsgolint`)    |
+| Formatter       | `oxfmt` (configured via `.oxfmtrc.json`, migrated from prettier)           |
+| Build           | None. TS source ships as the entry; `bin: src/bin.ts` runs via shebang.    |
 
 Configs:
 
