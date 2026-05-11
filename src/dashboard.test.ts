@@ -353,14 +353,101 @@ describe('handleRequest /api/cache/entries', () => {
   })
 })
 
-describe('handleRequest unknown route', () => {
-  it('returns 404 JSON', async () => {
+describe('handleRequest unknown /api route', () => {
+  it('returns 404 JSON for unknown /api/* paths', async () => {
     const db = openReadonly()
     try {
       const res = await handleRequest(db, new Request('http://x/api/whatever'))
       expect(res.status).toBe(404)
       const body = (await res.json()) as { error: string }
       expect(body.error).toBe('not found')
+    } finally {
+      db.close()
+    }
+  })
+})
+
+describe('handleRequest static UI', () => {
+  it('serves the SPA shell on /', async () => {
+    const db = openReadonly()
+    try {
+      const res = await handleRequest(db, new Request('http://x/'))
+      expect(res.status).toBe(200)
+      expect(res.headers.get('content-type')).toContain('text/html')
+      const html = await res.text()
+      expect(html).toContain('<title>vzn dashboard</title>')
+      expect(html).toContain('id="page"')
+    } finally {
+      db.close()
+    }
+  })
+
+  it('serves /styles.css with the right content-type', async () => {
+    const db = openReadonly()
+    try {
+      const res = await handleRequest(db, new Request('http://x/styles.css'))
+      expect(res.status).toBe(200)
+      expect(res.headers.get('content-type')).toContain('text/css')
+      const body = await res.text()
+      expect(body).toContain('.topbar')
+    } finally {
+      db.close()
+    }
+  })
+
+  it('serves /app.js as JavaScript', async () => {
+    const db = openReadonly()
+    try {
+      const res = await handleRequest(db, new Request('http://x/app.js'))
+      expect(res.status).toBe(200)
+      expect(res.headers.get('content-type')).toContain('javascript')
+    } finally {
+      db.close()
+    }
+  })
+
+  it('serves page modules under /pages/', async () => {
+    const db = openReadonly()
+    try {
+      const res = await handleRequest(db, new Request('http://x/pages/overview.js'))
+      expect(res.status).toBe(200)
+      expect(res.headers.get('content-type')).toContain('javascript')
+      const body = await res.text()
+      expect(body).toContain('renderOverview')
+    } finally {
+      db.close()
+    }
+  })
+
+  it('falls through to the SPA shell for unknown non-asset paths', async () => {
+    const db = openReadonly()
+    try {
+      const res = await handleRequest(db, new Request('http://x/runs/abc123'))
+      expect(res.status).toBe(200)
+      expect(res.headers.get('content-type')).toContain('text/html')
+    } finally {
+      db.close()
+    }
+  })
+
+  it('returns 404 for an unknown asset request (.js)', async () => {
+    const db = openReadonly()
+    try {
+      const res = await handleRequest(db, new Request('http://x/nope.js'))
+      expect(res.status).toBe(404)
+    } finally {
+      db.close()
+    }
+  })
+
+  it('serves /format.js (shared formatter module)', async () => {
+    const db = openReadonly()
+    try {
+      const res = await handleRequest(db, new Request('http://x/format.js'))
+      expect(res.status).toBe(200)
+      const body = await res.text()
+      expect(body).toContain('fmtBytes')
+      expect(body).toContain('fmtDuration')
     } finally {
       db.close()
     }
