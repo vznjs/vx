@@ -16,7 +16,7 @@ import type { CacheInputs } from './config.js'
 const ALWAYS_IGNORE = [
   '**/node_modules/**',
   '**/.git/**',
-  '**/.nxt/**',
+  '**/.vzn/**',
   '**/*.tsbuildinfo',
 ]
 

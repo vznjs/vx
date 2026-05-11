@@ -8,6 +8,12 @@ pnpm add -D @vzn/run
 vzn run build
 ```
 
+> **Full technical documentation lives in [`docs/`](./docs/)** — start
+> at [`docs/README.md`](./docs/README.md) for the index. Schema reference:
+> [`docs/schema.md`](./docs/schema.md). Caching strategy:
+> [`docs/caching.md`](./docs/caching.md). One module reference per source
+> file under [`docs/modules/`](./docs/modules/).
+
 ## Config
 
 ```ts

@@ -1,0 +1,63 @@
+import { describe, expect, it } from 'vitest'
+import { buildPackageGraph } from './package-graph.js'
+import type { ProjectMeta } from './workspace.js'
+
+function meta(name: string, deps: Record<string, string> = {}): ProjectMeta {
+  return {
+    name,
+    dir: `/ws/${name}`,
+    packageJson: { name, dependencies: deps },
+    configPath: null,
+  }
+}
+
+describe('buildPackageGraph', () => {
+  it('builds an empty graph from no projects', () => {
+    const g = buildPackageGraph([])
+    expect(g.byName.size).toBe(0)
+  })
+
+  it('records direct workspace deps only when the dep is in the workspace', () => {
+    const g = buildPackageGraph([meta('a', { b: 'workspace:*', external: '^1.0.0' }), meta('b')])
+    expect(g.directDeps.get('a')).toEqual(['b'])
+    expect(g.directDeps.get('b')).toEqual([])
+  })
+
+  it('walks transitive deps and dedupes them', () => {
+    const g = buildPackageGraph([
+      meta('a', { b: 'workspace:*' }),
+      meta('b', { c: 'workspace:*' }),
+      meta('c'),
+    ])
+    expect(g.transitiveDeps('a').sort()).toEqual(['b', 'c'])
+    expect(g.transitiveDeps('b')).toEqual(['c'])
+    expect(g.transitiveDeps('c')).toEqual([])
+  })
+
+  it('does not loop forever on a workspace dep cycle', () => {
+    const g = buildPackageGraph([
+      meta('a', { b: 'workspace:*' }),
+      meta('b', { a: 'workspace:*' }),
+    ])
+    // Just terminate; resulting set should include the other package.
+    expect(g.transitiveDeps('a')).toContain('b')
+    expect(g.transitiveDeps('b')).toContain('a')
+  })
+
+  it('reads all four dependency fields (dependencies, devDependencies, peer, optional)', () => {
+    const m: ProjectMeta = {
+      name: 'a',
+      dir: '/ws/a',
+      packageJson: {
+        name: 'a',
+        dependencies: { b: 'workspace:*' },
+        devDependencies: { c: 'workspace:*' },
+        peerDependencies: { d: 'workspace:*' },
+        optionalDependencies: { e: 'workspace:*' },
+      },
+      configPath: null,
+    }
+    const g = buildPackageGraph([m, meta('b'), meta('c'), meta('d'), meta('e')])
+    expect(g.directDeps.get('a')?.sort()).toEqual(['b', 'c', 'd', 'e'])
+  })
+})

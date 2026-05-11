@@ -75,7 +75,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     return { ok: true, outcomes: [] }
   }
 
-  const cache = new Cache(path.join(workspaceRoot, '.nxt', 'cache'))
+  const cache = new Cache(path.join(workspaceRoot, '.vzn', 'cache'))
   const concurrency = options.concurrency ?? Math.max(1, os.cpus().length)
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 

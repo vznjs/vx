@@ -3,7 +3,7 @@
 export interface WorkspaceConfig {
   /** Maximum concurrent tasks. Defaults to the number of CPUs. */
   concurrency?: number
-  /** Cache directory, relative to the workspace root. Defaults to `.nxt/cache`. */
+  /** Cache directory, relative to the workspace root. Defaults to `.vzn/cache`. */
   cacheDir?: string
 }
 

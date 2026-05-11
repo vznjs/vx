@@ -41,7 +41,7 @@ export function runCommand(opts: RunOptions): Promise<RunResult> {
     })
 
     proc.on('error', (err) => {
-      stderr += `\n[nxt] failed to spawn: ${err.message}\n`
+      stderr += `\n[vzn] failed to spawn: ${err.message}\n`
       resolve({ exitCode: 127, durationMs: Date.now() - start, stdout, stderr })
     })
 

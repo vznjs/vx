@@ -54,7 +54,7 @@ async function addProject(
   if (args.deps && Object.keys(args.deps).length > 0) pkg.dependencies = args.deps
   if (args.devDeps && Object.keys(args.devDeps).length > 0) pkg.devDependencies = args.devDeps
   await writeFile(path.join(dir, 'package.json'), JSON.stringify(pkg, null, 2))
-  await writeFile(path.join(dir, 'nxt.config.mjs'), args.config)
+  await writeFile(path.join(dir, 'vzn.config.mjs'), args.config)
   for (const [rel, content] of Object.entries(args.files ?? {})) {
     const full = path.join(dir, rel)
     await mkdir(path.dirname(full), { recursive: true })
@@ -363,7 +363,7 @@ describe('orchestrator e2e', () => {
 
       // Rewrite config with a different MODE value.
       await writeFile(
-        path.join(dir, 'nxt.config.mjs'),
+        path.join(dir, 'vzn.config.mjs'),
         `
           export default {
             tasks: {
@@ -680,7 +680,7 @@ describe('orchestrator e2e', () => {
         JSON.stringify({ name: 'root-proj', version: '0.0.0' }, null, 2),
       )
       await writeFile(
-        path.join(fixture.root, 'nxt.config.mjs'),
+        path.join(fixture.root, 'vzn.config.mjs'),
         `
           export default {
             tasks: {
@@ -762,7 +762,7 @@ describe('orchestrator e2e', () => {
         `,
       })
       await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
-      expect(existsSync(path.join(fixture.root, '.nxt', 'cache'))).toBe(true)
+      expect(existsSync(path.join(fixture.root, '.vzn', 'cache'))).toBe(true)
     },
     TIMEOUT,
   )
@@ -1050,7 +1050,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'package without nxt.config is discovered but contributes no tasks',
+    'package without vzn.config is discovered but contributes no tasks',
     async () => {
       // Project A has tasks; project B exists in pnpm workspace but has no config.
       await addProject(fixture.root, 'has-config', {
@@ -1065,7 +1065,7 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      // Bare package without nxt.config:
+      // Bare package without vzn.config:
       const bareDir = path.join(fixture.root, 'packages/bare')
       await mkdir(bareDir, { recursive: true })
       await writeFile(
@@ -1243,7 +1243,7 @@ describe('orchestrator e2e', () => {
       // Edit only the config file. It's outside `src/**` so file inputs are
       // unchanged. taskConfigHash differs -> cache must bust.
       await writeFile(
-        path.join(dir, 'nxt.config.mjs'),
+        path.join(dir, 'vzn.config.mjs'),
         `
           export default {
             tasks: {

@@ -24,11 +24,11 @@ export interface ProjectMeta {
   /** Absolute path to the project directory. */
   dir: string
   packageJson: PackageJson
-  /** Absolute path to nxt.config.{ts,js,mjs,cjs} or null. */
+  /** Absolute path to vzn.config.{ts,mts,js,mjs} or null. */
   configPath: string | null
 }
 
-const CONFIG_FILENAMES = ['nxt.config.ts', 'nxt.config.mts', 'nxt.config.js', 'nxt.config.mjs']
+const CONFIG_FILENAMES = ['vzn.config.ts', 'vzn.config.mts', 'vzn.config.js', 'vzn.config.mjs']
 
 export function findWorkspaceRoot(start: string): string {
   let dir = path.resolve(start)

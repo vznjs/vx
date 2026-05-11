@@ -12,7 +12,7 @@ describe('Cache.key', () => {
   beforeEach(async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'nxt-cache-key-'))
     workspaceRoot = dir
-    cache = new Cache(path.join(dir, '.nxt', 'cache'))
+    cache = new Cache(path.join(dir, '.vzn', 'cache'))
   })
 
   afterEach(async () => {
