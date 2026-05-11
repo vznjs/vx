@@ -1,155 +1,64 @@
 # @vzn/run
 
-An open, extensible monorepo task runner. Turborepo-shaped caching semantics
-with per-package TypeScript config and replaceable internals.
+An open, extensible monorepo task runner for pnpm workspaces.
+TypeScript config, content-addressed cache, replaceable internals.
 
 ```sh
 pnpm add -D @vzn/run
 vzn run build
 ```
 
-> **Full technical documentation lives in [`docs/`](./docs/)** — start
-> at [`docs/README.md`](./docs/README.md) for the index. Schema reference:
-> [`docs/schema.md`](./docs/schema.md). Caching strategy:
-> [`docs/caching.md`](./docs/caching.md). One module reference per source
-> file under [`docs/modules/`](./docs/modules/).
+> **Complete technical documentation lives in [`docs/`](./docs/).**
+> Start with [`docs/README.md`](./docs/README.md) for the index. Then
+> [`docs/architecture.md`](./docs/architecture.md) for the design,
+> [`docs/schema.md`](./docs/schema.md) for every config field,
+> [`docs/caching.md`](./docs/caching.md) for how the cache works, and
+> one focused module reference per source file under
+> [`docs/modules/`](./docs/modules/).
 
-## Config
+## Config at a glance
 
 ```ts
-// vzn.config.ts in a workspace package
+// vzn.config.ts
 import { defineProject } from '@vzn/run'
 
 export default defineProject({
   tasks: {
     build: {
-      exec: {
-        command: 'tsc -b',
-        env: {
-          passThrough: ['AWS_REGION'],          // forwarded from host, NOT in cache key
-          define: { NODE_ENV: 'production' },   // explicit values, IN cache key
-        },
-      },
-      dependsOn: { dependencies: ['build'] },
+      exec: [
+        { command: 'tsc -b' },
+        // ...more steps if you need them; sequential, stop on first failure
+      ],
+      dependsOn: { dependencies: ['build'] },  // Turbo's `^build`
       cache: {
         inputs: {
-          files: ['src/**', '!**/*.test.ts'],   // required; pass ['**/*'] for all
-          env: ['CI'],                          // names whose host values bust cache
-          tasks: { dependencies: ['build'] },   // which upstreams' hashes fold in
+          files: ['src/**', '!**/*.test.ts'],
+          env: ['NODE_ENV'],                   // host values that bust cache
+          tasks: { dependencies: ['build'] },  // upstream hashes to fold in
         },
-        outputs: {
-          files: ['dist/**'],
-        },
+        outputs: { files: ['dist/**'] },
       },
+    },
+
+    test: {
+      exec: [{ command: 'vitest run', env: { passThrough: ['CI'] } }],
+      dependsOn: { self: ['build'] },
+      cache: {
+        inputs: { files: ['src/**'] },
+        outputs: { files: [] },                // cache the no-op success
+      },
+    },
+
+    dev: {
+      // No `cache` field → always runs.
+      exec: [{ command: 'vite', env: { passThrough: ['VITE_API_URL'] } }],
     },
   },
 })
 ```
 
-### `exec`
-
-How the task is executed. The child sees only what you list here, plus a
-small essential allowlist for shell tooling (`PATH`, `HOME`, `TMPDIR`, …).
-
-- `command`: shell command, run from the project's directory.
-- `env.passThrough`: env var names whose values come from the host
-  (`process.env`) and are forwarded to the child. NOT folded into the
-  cache key — for CI flags, secrets, regions.
-- `env.define`: explicit `name: value` pairs set on the child. Folded
-  into the cache key automatically (the values are literal in your
-  config and captured via the task config hash).
-
-`exec.env` is purely about what the child sees. Cache invalidation on
-env changes is a separate, optional axis — see `cache.inputs.env`.
-
-### `dependsOn`
-
-Tasks that must complete before this one runs. Two buckets, both
-optional, both arrays of task names:
-
-```ts
-dependsOn: {
-  self?: string[]          // tasks in this same project
-  dependencies?: string[]  // tasks to run in every transitive workspace dep
-}
-```
-
-- `{ dependencies: ['build'] }` — Turbo's `^build`. Most common case.
-- `{ self: ['codegen'] }` — Turbo's bare `codegen`. Same-project ordering.
-- `{ self: ['codegen'], dependencies: ['build'] }` — both.
-- omit the field — no dependencies.
-
-Same-project tasks must exist (missing target throws). Workspace-dep
-tasks that aren't declared on a given dep are silently skipped.
-
-### `cache`
-
-**Caching is opt-in.** Omit the whole `cache` field and the task always
-runs (no read, no write). Provide a `cache` block — with `outputs` at
-minimum — to enable caching.
-
-```ts
-cache: {
-  inputs: {                                // required
-    files: ['**/*'],                       // required; '**/*' for all project files
-    env?: ['NODE_ENV'],                    // host env names whose values bust cache
-    tasks?: { dependencies: ['build'] },   // upstream task hashes to fold in
-  },
-  outputs: {                               // required
-    files: ['dist/**'],                    // required; pass [] if there are none
-  },
-}
-```
-
-- `outputs.files` (required): project-relative globs the task produces.
-  Captured for restore on hit. Pass `[]` for tasks with no produced
-  files (e.g. `lint`, `typecheck`) when you still want to cache the
-  no-op success.
-
-- `inputs` (required): what participates in the cache key. Forcing
-  declaration here makes you decide what the cache is keyed on; no
-  silent "all files" default that you forget to revisit.
-
-  | Field | Required | Meaning |
-  | --- | --- | --- |
-  | `files` | yes | project-relative globs (`!` to negate). Use `['**/*']` for all project files. |
-  | `env` | no | env var names; their host values bust the cache when changed. Independent of `exec.env.passThrough`: declaring a name here does NOT forward it to the child. |
-  | `tasks` | no | which upstream tasks' cache keys fold in. Same shape as `dependsOn` (`{ self?, dependencies? }`). **Per-bucket defaults**: omit a bucket → all upstream from that source. Inside a bucket, patterns are `'*'` (all), `'name'` (include literal), `'!name'` (exclude literal), applied in order. So `{ self: ['codegen'] }` filters self with deps on default-all, and `{ dependencies: ['*', '!noisy'] }` reads as "all deps minus noisy". |
-
-  File globs are always gitignore-aware (whether you write `['**/*']`
-  or a narrow list). Declared outputs and any nested vzn project's
-  directory are excluded automatically — a task cannot invalidate
-  itself, and cannot read across project boundaries.
-
-  Outputs are *not* filtered through gitignore — so `dist/` and friends
-  get captured normally.
-
-  Note: package version changes are picked up automatically because
-  `package.json` is part of the file set if matched by your `files` glob.
-
-## Caching strategy
-
-A task's cache key is derived from:
-
-1. A hash of the resolved task config (post-evaluation): command,
-   `exec.env.passThrough` names, `exec.env.define` literal values,
-   dependsOn, cache directives, outputs — including values that arrived
-   via `import` at config-load time.
-2. Declared `cache.inputs.env` values (from host `process.env` at hash time).
-3. Input file contents — `cache.inputs.files` resolved with gitignore
-   filtering, declared outputs excluded, nested-project files excluded.
-4. Upstream tasks' cache keys, filtered by `cache.inputs.tasks`.
-5. Workspace fingerprint — a hash of `pnpm-lock.yaml` and
-   `pnpm-workspace.yaml`. A `pnpm update` (resolved version bump) or a
-   workspace-shape change invalidates every task's cache.
-
-Cache hit → outputs restored, captured stdout / stderr replayed. Miss →
-the task runs, outputs are captured, the entry is saved.
-
-This is Turbo-style: an upstream's cache-key change cascades. A change
-to a file in an upstream package will invalidate every dependent whose
-`cache.inputs.tasks` includes that upstream — even if the produced
-output bytes are unchanged.
+The full schema reference, including every field and its semantics, is
+in [`docs/schema.md`](./docs/schema.md).
 
 ## CLI
 
@@ -157,44 +66,62 @@ output bytes are unchanged.
 vzn run <task> [--project <name>]... [--concurrency <n>] [--force]
 ```
 
-- `--project, -p`: run only for the named project (repeatable).
-- `--concurrency, -c`: max parallel tasks. Defaults to CPU count.
-- `--force, -f`: ignore cache hits and re-run. Writes still update cache.
+Full CLI reference: [`docs/cli.md`](./docs/cli.md).
 
-## Architecture
+## Key properties
 
-Each layer is one module under `src/`, replaceable wholesale:
+- **Explicit, no magic.** Caching is opt-in. `cache.inputs.files` is
+  required when caching is enabled. No hidden globs, no `$TURBO_DEFAULT$`
+  tokens.
+- **Isolated env.** Tasks see only an essential allowlist + declared
+  `passThrough` (host values) + `define` (literal values). Everything
+  else is invisible to the child.
+- **Resolved-config hashing.** Imports and computed values in your
+  TypeScript config are captured automatically — the cache key sees
+  the post-evaluation object.
+- **Cascading invalidation.** Upstream task changes propagate through
+  `cache.inputs.tasks`; workspace-level changes (lockfile,
+  pnpm-workspace.yaml) invalidate everything.
+- **Project boundaries.** Nested projects' files never leak into a
+  parent's inputs. The only cross-project relationship is `dependsOn`.
+- **Shell is the API.** Commands are strings. No executor plugin
+  protocol, no JS-function tasks. Presets are TypeScript helpers that
+  return `TaskConfig` objects — evaluated at config-load time.
 
-```
-config.ts           public schema + defineProject / defineWorkspace helpers
-workspace.ts        pnpm discovery
-project-loader.ts   jiti for .ts / native import for .mjs (mtime-busting)
-package-graph.ts    workspace dep graph
-task-graph.ts       task graph build + cycle detection
-inputs.ts           file globs, env values, gitignore-aware resolution
-env.ts              essentials + passThroughEnv + explicit env layers
-cache.ts            content-addressed FS cache
-runner.ts           child_process.spawn
-scheduler.ts        parallel topo executor with failure isolation
-orchestrator.ts     glue
-cli.ts              argv parser + command dispatcher
-bin.ts              `vzn` binary entry
-```
+See [`docs/architecture.md`](./docs/architecture.md) for the design
+rationale and module layout.
 
-No plugin API, no DI: replace a layer by changing imports.
+## Compared to Turborepo / NX / vite-task
+
+- **Per-package TypeScript config** (vs Turbo's single `turbo.json`,
+  NX's JSON `project.json`, vite-task's per-package JSON). Type-safe
+  inference, shared presets via plain imports.
+- **No executors.** NX's plugin abstraction has real cost (versioned
+  packages, runtime indirection); we keep the shell as the API.
+- **Same Turbo-shape caching** — content-addressed key including
+  command, env, file contents, upstream hashes, workspace fingerprint.
+- **Resolved-config hash** captures values that flowed in through
+  `import` statements at config-load time — Turbo can't see those.
+
+A more detailed comparison is woven through
+[`docs/architecture.md`](./docs/architecture.md) and
+[`docs/caching.md`](./docs/caching.md).
 
 ## Status
 
-Pre-alpha. Schema may change. No published versions yet.
+Pre-alpha. Schema may shift. No published versions yet.
 
 ## Development
 
 ```sh
 pnpm install
-pnpm build
+pnpm build         # tsc -b across the workspace
 pnpm typecheck
-pnpm test
+pnpm test          # 114 tests, ~96.5% line coverage
 ```
+
+Architecture: [`docs/architecture.md`](./docs/architecture.md).
+Tests live next to each source module as `*.test.ts`.
 
 ## License
 
