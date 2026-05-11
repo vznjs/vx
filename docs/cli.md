@@ -165,6 +165,27 @@ forwarded args never spuriously hit cache.
 - A second positional before `--` exits `1`.
 - `--concurrency abc` (non-integer or `< 1`) exits `1`.
 
+## Remote cache (env-driven)
+
+If `VZN_REMOTE_CACHE_URL` and `VZN_REMOTE_CACHE_TOKEN` are set in the
+environment, `vzn run` layers a remote cache on top of the local one.
+Reads try local first then remote (hydrating local on remote hit);
+writes go to local immediately, then upload to remote in the background
+(failures are logged, not fatal).
+
+| Env var                       | Required? | Notes                                       |
+| ----------------------------- | --------- | ------------------------------------------- |
+| `VZN_REMOTE_CACHE_URL`        | yes       | Base URL, e.g. `https://cache.example.com`. |
+| `VZN_REMOTE_CACHE_TOKEN`      | yes       | Bearer token sent on every request.         |
+| `VZN_REMOTE_CACHE_TEAM_ID`    | no        | Sent as `?teamId=` (Turbo tenancy).         |
+| `VZN_REMOTE_CACHE_SLUG`       | no        | Sent as `?slug=`.                           |
+| `VZN_REMOTE_CACHE_TIMEOUT_MS` | no        | Per-request timeout. Default `60000`.       |
+
+Wire spec is Turborepo `/v8/artifacts/`. Compatible servers include
+`ducktors/turborepo-remote-cache`, `Fox32/openturbo-remote-cache`, and
+Vercel's hosted Turbo cache. See `docs/design/remote-cache.md` for the
+full protocol.
+
 ## What's NOT in the CLI
 
 Intentionally absent — see `docs/README.md` for the broader scope

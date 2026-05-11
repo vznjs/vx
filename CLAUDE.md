@@ -107,6 +107,15 @@ docs/
 
 ## Decision log
 
+- **2026-05**: Remote cache shipped. `RemoteCache` HTTP client (PR #10)
+  speaks the Turbo `/v8/artifacts/` wire verbatim. `cache-archive`
+  (PR #12) handles tar.gz pack/unpack via system `tar`. `LayeredCache`
+  (PR #13) composes local + remote: read-through (local → remote →
+  hydrate local), write-through (local sync, remote fire-and-forget).
+  Wired into orchestrator via env vars: `VZN_REMOTE_CACHE_URL` +
+  `VZN_REMOTE_CACHE_TOKEN` (plus optional `_TEAM_ID`, `_SLUG`,
+  `_TIMEOUT_MS`). Compatible with `ducktors/turborepo-remote-cache`,
+  `Fox32/openturbo-remote-cache`, Vercel hosted cache.
 - **2026-05**: `vzn cache prune` CLI command. Supports `--older-than
 <duration>` (TTL eviction) and `--max-size <bytes>` (LRU eviction
   until under cap). Both can combine. Uses `entries.accessed_at` and
@@ -133,13 +142,16 @@ docs/
 
 ## Active workstreams (prioritized)
 
-1. **Remote cache implementation** — HTTP client speaking Turbo
-   `/v8/artifacts/`. Layered with local via `LayeredCache`. Bearer
-   token auth. Design at `docs/design/remote-cache.md`.
-2. **Sandboxing** (design-only) — bwrap on Linux to enforce declared
-   inputs. Off-by-default, opt-in via `--sandbox`.
-3. **Presets / config-introspection** — NX-style task inference from
+1. **Sandboxing** (design-only today) — bwrap on Linux to enforce
+   declared inputs. Off-by-default, opt-in via `--sandbox`. Would also
+   close the "warn when undeclared" gap from the user's earlier ask.
+2. **Presets / config-introspection** — NX-style task inference from
    tool configs (`vitest.config.ts`, `tsconfig.json`). Lower priority.
+3. **Workspace config loading** — `defineWorkspace({...})` is exported
+   but the config file is never loaded. Today's `WorkspaceConfig` only
+   has `concurrency` and `cacheDir`, neither used. Cleanup or wire up.
+4. **Pre-signed URL auth + HMAC signing** (`x-artifact-tag`) for the
+   remote cache. v2 features per `docs/design/remote-cache.md`.
 
 ## Operating directive (to you, Claude)
 
