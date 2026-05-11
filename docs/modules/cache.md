@@ -9,23 +9,32 @@ and key derivation logic live here.
 ## Public surface
 
 ```ts
-export class Cache {
-  constructor(cacheDir: string)
-
-  async key(input: CacheKeyInput): Promise<string>
-  async get(hash: string): Promise<CacheEntry | null>
-  async restoreOutputs(hash: string, projectDir: string): Promise<void>
-  async save(args: {
-    hash: string
-    entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles'>
-    projectDir: string
-    outputFiles: string[] // absolute paths
-  }): Promise<void>
-
+/**
+ * Shape every cache implementation honors. Both Cache (local v10) and
+ * LayeredCache (local + remote) implement it. Orchestrator uses
+ * CacheLayer so callers don't need a discriminated union.
+ */
+export interface CacheLayer {
+  key(input: CacheKeyInput): Promise<string>
+  get(hash: string): Promise<CacheEntry | null>
+  restoreOutputs(hash: string, projectDir: string): Promise<void>
+  save(args: SaveArgs): Promise<void>
   recordRun(run: RunRecord): void
   stats(): CacheStats
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
+}
+
+export type SaveArgs = {
+  hash: string
+  entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles'>
+  projectDir: string
+  outputFiles: string[] // absolute paths
+}
+
+export class Cache implements CacheLayer {
+  constructor(cacheDir: string)
+  // ... CacheLayer methods
 }
 
 export interface PruneOptions {

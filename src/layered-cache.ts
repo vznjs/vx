@@ -16,13 +16,14 @@ import os from 'node:os'
 import path from 'node:path'
 import { packAndDiscard, unpackArchive } from './cache-archive.js'
 import type {
-  Cache,
   CacheEntry,
   CacheKeyInput,
+  CacheLayer,
   CacheStats,
   PruneOptions,
   PruneResult,
   RunRecord,
+  SaveArgs,
 } from './cache.js'
 import type { RemoteCache } from './remote-cache.js'
 
@@ -43,9 +44,9 @@ interface OnDiskMeta {
   storedAt: string
 }
 
-export class LayeredCache {
+export class LayeredCache implements CacheLayer {
   constructor(
-    private readonly local: Cache,
+    private readonly local: CacheLayer,
     private readonly remote: RemoteCache,
     private readonly options: LayeredCacheOptions = {},
   ) {}
@@ -103,17 +104,12 @@ export class LayeredCache {
     await this.local.restoreOutputs(hash, projectDir)
   }
 
-  async save(args: {
-    hash: string
-    entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles'>
-    projectDir: string
-    outputFiles: string[]
-  }): Promise<void> {
+  async save(args: SaveArgs): Promise<void> {
     await this.local.save(args)
     // Stage + upload. Errors are logged, not propagated — the task
     // already succeeded; we don't want to fail it on cache-server issues.
     try {
-      const bytes = await this.stageAndPack(args.hash, args)
+      const bytes = await this.stageAndPack(args)
       await this.remote.put(args.hash, bytes, { durationMs: args.entry.durationMs })
     } catch (err) {
       this.reportRemoteError(err)
@@ -136,14 +132,7 @@ export class LayeredCache {
     this.local.close()
   }
 
-  private async stageAndPack(
-    hash: string,
-    args: {
-      entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles'>
-      projectDir: string
-      outputFiles: string[]
-    },
-  ): Promise<Uint8Array> {
+  private async stageAndPack(args: SaveArgs): Promise<Uint8Array> {
     const stage = await mkdtemp(path.join(os.tmpdir(), 'vzn-remote-put-'))
     const outputsDir = path.join(stage, 'outputs')
     await mkdir(outputsDir, { recursive: true })

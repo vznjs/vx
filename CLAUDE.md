@@ -107,6 +107,11 @@ docs/
 
 ## Decision log
 
+- **2026-05**: `CacheLayer` interface extracted in `src/cache.ts`. Both
+  `Cache` and `LayeredCache` `implements CacheLayer`. Orchestrator's
+  `cache` field types as `CacheLayer` (was the brittle `Cache |
+LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
+  so callers don't redeclare the shape. PR #18.
 - **2026-05**: P1 bug bundle from Agent A's real-world test. Adds
   `PRAGMA busy_timeout = 5000` (concurrent `vzn run` no longer crashes
   with SQLITE_BUSY), scopes `forwardArgs` to user-requested task nodes
