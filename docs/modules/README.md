@@ -23,6 +23,10 @@ One markdown per module under `src/`. Each documents:
 | [`cache.md`](./cache.md)                   | Content-addressed cache + key derivation  |
 | [`runner.md`](./runner.md)                 | `child_process.spawn` wrapper             |
 | [`scheduler.md`](./scheduler.md)           | Parallel topo executor                    |
+| [`remote-cache.md`](./remote-cache.md)     | Turbo `/v8/artifacts` HTTP client         |
+| [`cache-archive.md`](./cache-archive.md)   | tar.gz pack/unpack for remote artifacts   |
+| [`layered-cache.md`](./layered-cache.md)   | Local + remote cache composition          |
+| [`sandbox.md`](./sandbox.md)               | bwrap/sandbox-exec input enforcement      |
 | [`orchestrator.md`](./orchestrator.md)     | End-to-end glue                           |
 | [`filter.md`](./filter.md)                 | pnpm-style filter DSL (`-F`)              |
 | [`cli.md`](./cli.md)                       | Argv parser + dispatcher                  |
