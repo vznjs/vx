@@ -123,11 +123,14 @@ Pre-alpha. Schema may shift. No published versions yet.
 
 ```sh
 bun install
-bun run typecheck   # tsc --noEmit
+bun run lint        # oxlint with type-aware checks (via tsgolint)
+bun run format      # oxfmt
 bun test src/       # 155 tests under bun:test
 ```
 
 No build step. TypeScript source ships as-is; Bun runs it directly.
+Lint, format, and types are all checked by the oxc toolchain — no tsc,
+no prettier.
 
 Architecture: [`docs/architecture.md`](./docs/architecture.md).
 Tests live next to each source module as `*.test.ts`.

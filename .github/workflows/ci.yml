@@ -7,7 +7,7 @@ on:
 
 jobs:
   ci:
-    name: typecheck · test · format
+    name: lint · format · test
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -24,8 +24,8 @@ jobs:
       - name: Format check
         run: bun run format:check
 
-      - name: Typecheck
-        run: bun run typecheck
+      - name: Lint + typecheck
+        run: bun run lint
 
       - name: Test
         run: bun test src/
