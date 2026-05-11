@@ -6,6 +6,7 @@ export const VERSION = '0.0.0'
 export type {
   WorkspaceConfig,
   ProjectConfig,
+  ProjectRunConfig,
   TaskConfig,
   ExecConfig,
   ExecEnv,

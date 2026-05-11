@@ -105,9 +105,9 @@ The codebase consistently chooses the same trade-offs:
 1. **Explicit over magical.** Defaults exist but are narrow and
    documented. Where ambiguity is dangerous (cache inputs, outputs,
    env isolation), declaration is required.
-2. **Common case is one declaration; complex cases are expressible.**
-   `exec: [{ command }]` covers 95% of tasks; multi-step is the same
-   shape with more entries.
+2. **One command per task.** `exec: { command }` runs a single shell
+   command. To chain steps, use shell composition (`&&`, `;`) or split
+   into separate tasks linked by `dependsOn.self`.
 3. **Shell is the API.** Commands are strings, the shell is the
    sandboxing layer. No JS-function tasks.
 4. **Resolved values, not literal source.** The cache key derives from

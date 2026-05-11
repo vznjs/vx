@@ -8,18 +8,22 @@ export interface WorkspaceConfig {
 }
 
 export interface ProjectConfig {
+  /**
+   * Task-runner config for this project. Nested under `run` so future
+   * `@vzn/*` sibling packages can add their own top-level keys (e.g.
+   * `lint`, `test`) without colliding with the runner's surface.
+   */
+  run?: ProjectRunConfig
+}
+
+export interface ProjectRunConfig {
   /** Tasks declared by this project, keyed by task name. */
   tasks?: Record<string, TaskConfig>
 }
 
 export interface TaskConfig {
-  /**
-   * Steps to execute, in order. Each step is a shell command with its own
-   * optional env. The whole array is one task: cached, scheduled, and
-   * reported as a single unit. Execution stops on the first non-zero exit;
-   * stdout/stderr from each step are concatenated for cache replay.
-   */
-  exec: ExecConfig[]
+  /** Shell command + optional env. One command per task. */
+  exec: ExecConfig
   /** Tasks that must complete successfully before this task runs. */
   dependsOn?: TaskDependsOn
   /**

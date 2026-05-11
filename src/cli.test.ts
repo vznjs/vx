@@ -79,10 +79,12 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     await writeFile(
       path.join(pkgDir, 'vzn.config.mjs'),
       `export default {
-        tasks: {
-          hello: {
-            exec: [{ command: "echo hello-cli" }],
-            cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+        run: {
+          tasks: {
+            hello: {
+              exec: { command: "echo hello-cli" },
+              cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+            },
           },
         },
       }`,
@@ -201,9 +203,11 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     await writeFile(
       path.join(workspaceRoot, 'packages', 'one', 'vzn.config.mjs'),
       `export default {
-        tasks: {
-          fail: {
-            exec: [{ command: "exit 9" }],
+        run: {
+          tasks: {
+            fail: {
+              exec: { command: "exit 9" },
+            },
           },
         },
       }`,
@@ -229,9 +233,11 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     await writeFile(
       path.join(workspaceRoot, 'packages', 'one', 'vzn.config.mjs'),
       `export default {
-        tasks: {
-          echo: {
-            exec: [{ command: "echo forwarded:" }],
+        run: {
+          tasks: {
+            echo: {
+              exec: { command: "echo forwarded:" },
+            },
           },
         },
       }`,

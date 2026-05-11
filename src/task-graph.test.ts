@@ -4,7 +4,7 @@ import type { PackageGraph } from './package-graph.js'
 import { buildTaskGraph, type ProjectEntry } from './task-graph.js'
 
 function project(name: string, tasks: Record<string, TaskConfig>): ProjectEntry {
-  return { name, dir: `/ws/${name}`, config: { tasks } }
+  return { name, dir: `/ws/${name}`, config: { run: { tasks } } }
 }
 
 function projects(...entries: ProjectEntry[]): Map<string, ProjectEntry> {
@@ -34,7 +34,7 @@ function packageGraph(direct: Record<string, string[]>): PackageGraph {
   }
 }
 
-const cmd = (s: string): TaskConfig => ({ process: { command: s } })
+const cmd = (s: string): TaskConfig => ({ exec: { command: s } })
 
 describe('buildTaskGraph', () => {
   it('builds a single zero-dependency node', () => {
