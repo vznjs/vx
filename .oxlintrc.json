@@ -7,7 +7,8 @@
   "rules": {
     "no-unused-vars": "warn",
     "unicorn/no-useless-spread": "off",
-    "typescript/unbound-method": "off"
+    "typescript/unbound-method": "off",
+    "typescript/await-thenable": "off"
   },
   "ignorePatterns": ["node_modules", "dist"]
 }

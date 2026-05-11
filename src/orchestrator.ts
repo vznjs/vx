@@ -19,6 +19,7 @@ import { runCommand } from './runner.js'
 import { runSandboxed } from './sandbox.js'
 import { runGraph, type TaskOutcome } from './scheduler.js'
 import { buildTaskGraph, taskId, type ProjectEntry, type TaskNode } from './task-graph.js'
+import { ulid } from './ulid.js'
 import { findWorkspaceRoot, listProjects, loadWorkspace } from './workspace.js'
 
 export interface RunOptions {
@@ -100,7 +101,12 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const concurrency = options.concurrency ?? Math.max(1, os.cpus().length)
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
-  log.status(`vzn: ${nodes.size} task(s), concurrency ${concurrency}`)
+  // One run-id per `vzn run` invocation. Every task in the resulting
+  // graph carries it, so the dashboard can group them.
+  const runId = ulid()
+  const runStartHrTimeNs = process.hrtime.bigint()
+
+  log.status(`vzn: ${nodes.size} task(s), concurrency ${concurrency} [run ${runId}]`)
 
   const outcomes = await runGraph({
     nodes,
@@ -119,6 +125,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         forwardArgs: options.forwardArgs,
         log,
         nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
+        runStartHrTimeNs,
       }),
   })
 
@@ -142,8 +149,11 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       ...(options.forwardArgs !== undefined ? { forwardArgs: options.forwardArgs } : {}),
       startedAt: now - o.durationMs,
       endedAt: now,
+      runId,
       ...(o.cpuMs !== undefined ? { cpuMs: o.cpuMs } : {}),
       ...(o.peakRssBytes !== undefined ? { peakRssBytes: o.peakRssBytes } : {}),
+      ...(o.wallclockStartNs !== undefined ? { wallclockStartNs: o.wallclockStartNs } : {}),
+      ...(o.wallclockEndNs !== undefined ? { wallclockEndNs: o.wallclockEndNs } : {}),
       cacheHit: o.status === 'cache-hit',
     })
   }
@@ -163,6 +173,8 @@ interface ExecuteArgs {
   forwardArgs?: readonly string[] | undefined
   log: Logger
   nestedProjectDirs: string[]
+  /** Anchor for hrtime spans across all tasks in this run. */
+  runStartHrTimeNs: bigint
 }
 
 async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
@@ -225,6 +237,10 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     define: step.env?.define ?? {},
     source: process.env,
   })
+  // Per-task wallclock span relative to the run's t=0. We capture
+  // monotonic ns ticks so the dashboard's flamegraph lane-packing has
+  // accurate stacking, immune to wall-clock skew.
+  const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
   const result = args.sandbox
     ? await runSandboxed({
         command: step.command,
@@ -244,6 +260,7 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
         onStdout: (chunk) => log.taskStdout(node, chunk),
         onStderr: (chunk) => log.taskStderr(node, chunk),
       })
+  const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
   if (result.exitCode === 0 && cacheEnabled) {
     const outputFiles = await resolveOutputs({
@@ -274,6 +291,8 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     hash,
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
+    wallclockStartNs,
+    wallclockEndNs,
   }
 }
 

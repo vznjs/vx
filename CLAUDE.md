@@ -13,19 +13,19 @@ order with parallelism. Cache hits replay stored outputs. Pre-alpha.
 
 ## Stack
 
-| Concern         | Tool                                                                    |
-| --------------- | ----------------------------------------------------------------------- |
-| Runtime         | Bun ≥ 1.3 (no Node fallback)                                            |
-| Package manager | Bun (`bun install`, `bun.lock`)                                         |
-| Test runner     | `bun test` (vitest-compat layer recognizes our `from 'vitest'` imports) |
-| Linter          | `oxlint --type-aware --type-check` (real TS diagnostics via `tsgolint`) |
-| Formatter       | `oxfmt` (configured via `.oxfmtrc.json`, migrated from prettier)        |
-| Build           | None. TS source ships as the entry; `bin: src/bin.ts` runs via shebang. |
+| Concern         | Tool                                                                       |
+| --------------- | -------------------------------------------------------------------------- |
+| Runtime         | Bun ≥ 1.3 (no Node fallback)                                               |
+| Package manager | Bun (`bun install`, `bun.lock`)                                            |
+| Test runner     | `bun test` (tests import `describe`, `it`, `expect`, `vi` from `bun:test`) |
+| Linter          | `oxlint --type-aware --type-check` (real TS diagnostics via `tsgolint`)    |
+| Formatter       | `oxfmt` (configured via `.oxfmtrc.json`, migrated from prettier)           |
+| Build           | None. TS source ships as the entry; `bin: src/bin.ts` runs via shebang.    |
 
 Configs:
 
 - `tsconfig.json` — for editor LSP + tsgolint type info. Not invoked by scripts.
-- `.oxlintrc.json` — disables `unicorn/no-useless-spread` (we use spread for deliberate snapshots) and `typescript/unbound-method` (test code patterns).
+- `.oxlintrc.json` — disables `unicorn/no-useless-spread` (we use spread for deliberate snapshots), `typescript/unbound-method` (test code patterns), and `typescript/await-thenable` (bun:test's `expect(...).rejects.toThrow()` is awaitable at runtime but typed as `void`).
 - `.oxfmtrc.json` — prettier-equivalent style (no semi, single quotes, trailing all, 100-col).
 
 ## Repository layout
@@ -107,6 +107,13 @@ docs/
 
 ## Decision log
 
+- **2026-05**: Dashboard PR 3/10 — orchestrator generates a ULID
+  `runId` at the top of `run()` shared by every task in the
+  invocation, plus an `hrtime.bigint()` anchor for per-task spans.
+  `TaskOutcome` carries `wallclockStartNs` / `wallclockEndNs` (ns
+  relative to run t=0). `recordRun()` now writes `run_id` + spans
+  into the v11 columns. Hand-rolled `src/ulid.ts` (Crockford
+  base32, 48-bit ms + 80-bit random) — no new dep. PR #21.
 - **2026-05**: Dashboard PR 2/10 — `runner.ts` and `sandbox.ts`
   switched to `Bun.spawn` so we get `resourceUsage()` (cpuTime,
   maxRSS) per child. `RunResult` gains optional `cpuMs` +

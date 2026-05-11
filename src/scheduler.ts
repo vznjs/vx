@@ -12,6 +12,12 @@ export interface TaskOutcome {
   /** v11 analytics: CPU time + peak RSS for this task's child process. */
   cpuMs?: number
   peakRssBytes?: number
+  /**
+   * v11 analytics: hrtime span relative to the parent run's t=0.
+   * Used by the dashboard to lane-pack a flamegraph.
+   */
+  wallclockStartNs?: bigint
+  wallclockEndNs?: bigint
 }
 
 export interface ScheduleOptions {

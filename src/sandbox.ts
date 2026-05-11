@@ -59,12 +59,32 @@ export function detectPlatform(): SandboxPlatform {
 /**
  * True if the host can run sandboxed tasks. False on Windows, BSDs, etc.,
  * AND on Linux/macOS when the required helper binary isn't installed.
+ *
+ * On Linux we also verify bwrap can actually create namespaces — recent
+ * Ubuntu kernels (24.04+) restrict unprivileged user namespaces via
+ * AppArmor by default, so a working `bwrap --version` binary may still
+ * fail on `bwrap --ro-bind / / true`. The functional probe is memoized
+ * so we pay the spawn cost only once per process.
  */
+let sandboxSupportedCache: boolean | undefined
 export function isSandboxSupported(): boolean {
+  if (sandboxSupportedCache !== undefined) return sandboxSupportedCache
+  sandboxSupportedCache = computeSandboxSupported()
+  return sandboxSupportedCache
+}
+
+function computeSandboxSupported(): boolean {
   const p = detectPlatform()
-  if (p === 'linux') return hasExecutable('bwrap')
   if (p === 'darwin') return hasExecutable('sandbox-exec')
-  return false
+  if (p !== 'linux') return false
+  if (!hasExecutable('bwrap')) return false
+  // Functional probe: try a no-op namespace creation. If the kernel blocks
+  // unprivileged user namespaces (Ubuntu 24.04 AppArmor default on CI),
+  // bwrap exits non-zero. Suppress output — failure is the signal.
+  const r = spawnSync('bwrap', ['--ro-bind', '/', '/', '--tmpfs', '/tmp', '/bin/true'], {
+    stdio: 'ignore',
+  })
+  return r.status === 0
 }
 
 /**
