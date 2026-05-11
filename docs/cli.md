@@ -20,6 +20,7 @@ Run the named task across every project that declares it (filtered by
 declared `dependsOn` and runs it with caching.
 
 Exit codes:
+
 - `0` — every task finished `success` or `cache-hit`.
 - `1` — at least one task ended `failed` or `skipped`.
 
@@ -35,11 +36,11 @@ Unknown commands print a help message + error to stderr and exit `1`.
 
 ## Flags
 
-| Flag | Type | Default | Description |
-|---|---|---|---|
-| `--project <name>`, `-p <name>` | repeatable string | (all) | Restrict to specific projects. The task graph still expands through `dependsOn` from the listed projects. |
-| `--concurrency <n>`, `-c <n>` | positive integer | `os.cpus().length` | Maximum parallel tasks. `1` serializes. |
-| `--force`, `-f` | boolean | off | Ignore cache hits and re-run. Cache writes still happen on success. |
+| Flag                            | Type              | Default            | Description                                                                                               |
+| ------------------------------- | ----------------- | ------------------ | --------------------------------------------------------------------------------------------------------- |
+| `--project <name>`, `-p <name>` | repeatable string | (all)              | Restrict to specific projects. The task graph still expands through `dependsOn` from the listed projects. |
+| `--concurrency <n>`, `-c <n>`   | positive integer  | `os.cpus().length` | Maximum parallel tasks. `1` serializes.                                                                   |
+| `--force`, `-f`                 | boolean           | off                | Ignore cache hits and re-run. Cache writes still happen on success.                                       |
 
 ## Argv parsing rules
 
@@ -74,9 +75,9 @@ The CLI dispatcher is also exported as `run(argv)` from `src/cli.ts`
 or programmatic use:
 
 ```ts
-import { run as cliRun } from '@vzn/run/cli'   // not yet re-exported
+import { run as cliRun } from '@vzn/run/cli' // not yet re-exported
 ```
 
-Currently you'd `import { run } from '@vzn/run'` for the *orchestrator*
+Currently you'd `import { run } from '@vzn/run'` for the _orchestrator_
 `run` (programmatic API). The CLI dispatcher is not part of the public
 package exports; the `bin.ts` entry calls it directly.

@@ -26,7 +26,7 @@ export interface ProjectMeta {
   name: string
   dir: string
   packageJson: PackageJson
-  configPath: string | null         // absolute path or null if no vzn.config.*
+  configPath: string | null // absolute path or null if no vzn.config.*
 }
 
 export function findWorkspaceRoot(start: string): string
@@ -68,6 +68,7 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
 ## Tests
 
 `workspace.test.ts` covers:
+
 - `findWorkspaceRoot` walks up; throws when nothing found.
 - `listProjects` skips packages with no `name`.
 - `listProjects` handles an empty workspace yaml gracefully.

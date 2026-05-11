@@ -16,9 +16,9 @@ export async function run(options: RunOptions): Promise<RunSummary>
 export interface RunOptions {
   cwd: string
   task: string
-  projects?: string[]            // restrict to these projects (and their graph)
+  projects?: string[] // restrict to these projects (and their graph)
   concurrency?: number
-  force?: boolean                // ignore cache hits; still write
+  force?: boolean // ignore cache hits; still write
   log?: Logger
 }
 
@@ -80,14 +80,14 @@ Implements `cache.inputs.tasks` semantics:
 - `filter === undefined` → every upstream hash contributes.
 - Otherwise, for each upstream:
   - Determine bucket by whether `upstream.node.projectName ===
-    selfProjectName` (self) or not (dependencies).
+selfProjectName` (self) or not (dependencies).
   - If the bucket is undefined in `filter`, include the hash (per-bucket
     default = all).
   - If the bucket is present, walk its patterns in order:
     - `'*'` → include
     - `'name'` → include if `upstream.taskName === name`
     - `'!name'` → exclude if `upstream.taskName === name`
-    Last write wins.
+      Last write wins.
 
 This gives the rich filtering documented in
 [`../schema.md`](../schema.md) §`cache.inputs.tasks`.
@@ -112,7 +112,7 @@ sha256(JSON.stringify(node.config))
 
 Captures every config-time decision — command list, env declarations,
 output globs, input globs, dependsOn, cache.inputs.tasks filter — and
-critically also captures *imported / computed values* because `jiti`
+critically also captures _imported / computed values_ because `jiti`
 has already baked them into the loaded object.
 
 ## `defaultLogger`

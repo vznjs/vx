@@ -13,12 +13,7 @@ import ignore, { type Ignore } from 'ignore'
 import { glob } from 'tinyglobby'
 import type { CacheInputs } from './config.js'
 
-const ALWAYS_IGNORE = [
-  '**/node_modules/**',
-  '**/.git/**',
-  '**/.vzn/**',
-  '**/*.tsbuildinfo',
-]
+const ALWAYS_IGNORE = ['**/node_modules/**', '**/.git/**', '**/.vzn/**', '**/*.tsbuildinfo']
 
 const DEFAULT_FILE_GLOBS: readonly string[] = ['**/*']
 
@@ -121,10 +116,7 @@ function boundaryIgnorePatterns(projectDir: string, nestedDirs: string[]): strin
 
 async function loadGitignore(workspaceRoot: string, projectDir: string): Promise<Ignore> {
   const ig = ignore()
-  for (const f of [
-    path.join(workspaceRoot, '.gitignore'),
-    path.join(projectDir, '.gitignore'),
-  ]) {
+  for (const f of [path.join(workspaceRoot, '.gitignore'), path.join(projectDir, '.gitignore')]) {
     if (existsSync(f)) ig.add(await readFile(f, 'utf8'))
   }
   return ig

@@ -29,11 +29,12 @@ The default export must be a non-null object. Anything else throws
 
 Node's ESM loader caches modules by URL. Without a cache-busting
 parameter, the second `import()` of the same path inside one process
-returns the *first* loaded module, even after the file changed on
+returns the _first_ loaded module, even after the file changed on
 disk. With `?mtime=<ms>`, file edits produce a different URL, forcing
 re-evaluation.
 
 This matters when:
+
 - Tests run multiple `vzn run` calls in the same process and edit
   configs between them.
 - (Future) a long-running watch mode reloads configs after edits.
@@ -68,6 +69,7 @@ nothing.
 ## Tests
 
 `project-loader.test.ts` covers:
+
 - Loads a default-exported object from `.mjs`.
 - Throws on no-default export.
 - Throws on non-object default export.

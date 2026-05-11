@@ -4,6 +4,7 @@
 
 Turn a task's declared `cache.inputs` into concrete data the cache key
 can hash:
+
 - a sorted list of absolute file paths whose contents will be hashed
 - a sorted list of `[envName, hostValue]` pairs
 
@@ -14,8 +15,8 @@ files for capture.
 
 ```ts
 export interface ResolvedInputs {
-  files: string[]                                       // absolute paths, sorted
-  envValues: Array<[name: string, value: string]>      // sorted by name
+  files: string[] // absolute paths, sorted
+  envValues: Array<[name: string, value: string]> // sorted by name
 }
 
 export interface ResolveInputsArgs {
@@ -23,8 +24,8 @@ export interface ResolveInputsArgs {
   workspaceRoot: string
   envSource: NodeJS.ProcessEnv
   inputs: CacheInputs | undefined
-  ownOutputs: string[]                  // project-relative globs to exclude
-  nestedProjectDirs: string[]           // absolute dirs of nested projects
+  ownOutputs: string[] // project-relative globs to exclude
+  nestedProjectDirs: string[] // absolute dirs of nested projects
 }
 
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs>
@@ -62,6 +63,7 @@ The matched absolute paths are sorted alphabetically and returned.
 
 Listed `cache.inputs.env` names are looked up in `envSource` (the
 host's `process.env`):
+
 - Set names → `[name, value]` pair.
 - Unset names → `[name, '']` (distinguishable from "name was never
   listed").
@@ -70,6 +72,7 @@ host's `process.env`):
 ## Output resolution rules
 
 `resolveOutputs` is a simpler glob pass:
+
 - Globs run against the project dir.
 - Always-ignored paths excluded (`node_modules`, etc.).
 - Nested-project subtrees excluded (boundary isolation).
@@ -92,6 +95,7 @@ Returns sorted absolute paths.
 ## Tests
 
 Mostly covered by `orchestrator.test.ts` e2e tests:
+
 - default = all files (gitignore-aware)
 - narrow globs limit cache busting
 - negation excludes

@@ -35,10 +35,7 @@ describe('buildPackageGraph', () => {
   })
 
   it('does not loop forever on a workspace dep cycle', () => {
-    const g = buildPackageGraph([
-      meta('a', { b: 'workspace:*' }),
-      meta('b', { a: 'workspace:*' }),
-    ])
+    const g = buildPackageGraph([meta('a', { b: 'workspace:*' }), meta('b', { a: 'workspace:*' })])
     // Just terminate; resulting set should include the other package.
     expect(g.transitiveDeps('a')).toContain('b')
     expect(g.transitiveDeps('b')).toContain('a')

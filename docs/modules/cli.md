@@ -28,6 +28,7 @@ and `process.exit(code)`s.
 ## Commands
 
 The dispatcher recognizes:
+
 - `vzn run <task>` → invoke the orchestrator.
 - `vzn help` / `--help` / `-h` → print help text.
 - `vzn version` / `--version` / `-v` → print `vzn <VERSION>`.
@@ -70,6 +71,7 @@ predictable.
 ## Tests
 
 `cli.test.ts` covers:
+
 - Help, version, unknown command, missing task name, parser errors
   (unknown flag, missing value, bad concurrency, double positional).
 - `parseRunArgs` direct behavior across all flags.

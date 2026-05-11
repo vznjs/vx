@@ -83,15 +83,15 @@ higher ones.
 Every module is structured so that swapping it requires changes only to
 that module's `.ts` file and its consumers' imports. Specifically:
 
-| Module | What you'd replace to… |
-|---|---|
-| `workspace.ts` | Support yarn/npm workspaces, lerna, or custom layouts |
+| Module              | What you'd replace to…                                       |
+| ------------------- | ------------------------------------------------------------ |
+| `workspace.ts`      | Support yarn/npm workspaces, lerna, or custom layouts        |
 | `project-loader.ts` | Use a different config evaluator (esbuild, swc, native node) |
-| `cache.ts` | Add a remote cache, S3 backend, signed entries |
-| `runner.ts` | Run inside containers, sandboxes, remote machines |
-| `scheduler.ts` | Implement work-stealing, priority queues |
-| `inputs.ts` | Add fspy-style runtime input tracking |
-| `env.ts` | Adjust the essential allowlist or isolation policy |
+| `cache.ts`          | Add a remote cache, S3 backend, signed entries               |
+| `runner.ts`         | Run inside containers, sandboxes, remote machines            |
+| `scheduler.ts`      | Implement work-stealing, priority queues                     |
+| `inputs.ts`         | Add fspy-style runtime input tracking                        |
+| `env.ts`            | Adjust the essential allowlist or isolation policy           |
 
 Each module's documentation (under [`modules/`](./modules/)) lists its
 exported types and functions — those are the seam. Internal helpers
@@ -110,7 +110,7 @@ The codebase consistently chooses the same trade-offs:
 3. **Shell is the API.** Commands are strings, the shell is the
    sandboxing layer. No JS-function tasks.
 4. **Resolved values, not literal source.** The cache key derives from
-   the *evaluated* config (so imports and computed values are
+   the _evaluated_ config (so imports and computed values are
    captured), not from the file bytes.
 5. **Cascade through the dependency graph.** Upstream cache changes
    automatically invalidate dependents via folded-in cache hashes;
@@ -123,7 +123,7 @@ See [`README.md` § Out of scope](./README.md#out-of-scope-by-design)
 for the deliberate non-features. The most relevant for understanding
 the architecture:
 
-- **No plugin protocol.** Presets are TypeScript helpers that *return*
+- **No plugin protocol.** Presets are TypeScript helpers that _return_
   `TaskConfig` objects, evaluated at config-load time. The runner
   doesn't know they exist.
 - **No daemon.** Every `vzn run` invocation is a fresh Node process.

@@ -16,7 +16,7 @@ export interface TaskOutcome {
   status: TaskStatus
   exitCode: number
   durationMs: number
-  hash?: string                          // cache key, when computed
+  hash?: string // cache key, when computed
 }
 
 export interface ScheduleOptions {
@@ -40,7 +40,7 @@ A small `tick()` loop:
    no `execute` call), call `onFinish`, remove from `remaining`,
    continue.
 3. **Ready and no in-flight cap reached** → call `execute(node,
-   upstream)`. Add to `inFlight`. Increment `active`.
+upstream)`. Add to `inFlight`. Increment `active`.
 4. When a task's `execute` promise resolves/rejects, record the
    outcome, decrement `active`, recurse into `tick()`.
 5. When `remaining.size === 0 && active === 0`, resolve the overall
@@ -58,7 +58,7 @@ A failed task does not stop the scheduler:
 - Its direct dependents (and their dependents, recursively) get
   status `skipped`.
 - Tasks not in that lineage continue to start and finish normally.
-- The overall promise resolves only after every task has *some*
+- The overall promise resolves only after every task has _some_
   outcome (success / cache-hit / failed / skipped).
 
 This is exactly what a `--continue` flag does in other tools. We treat
@@ -81,13 +81,14 @@ it as the default because it gives users maximum information per run.
 - Doesn't catch internal errors in `execute` other than treating a
   rejected promise as a failed outcome. The default behaviour writes
   the error message to stderr prefixed with `[vzn] internal error in
-  <id>`.
+<id>`.
 - Doesn't enforce timeouts.
 - Doesn't reorder for fairness or priority.
 
 ## Tests
 
 `scheduler.test.ts` covers:
+
 - Empty graph resolves immediately.
 - Topological order respected (dependency completes before dependent
   starts).

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Compute the dependency relationships *between workspace packages* from
+Compute the dependency relationships _between workspace packages_ from
 their `package.json` files. Provides a fast way to ask "what are the
 transitive workspace deps of package X?"
 
@@ -11,8 +11,8 @@ transitive workspace deps of package X?"
 ```ts
 export interface PackageGraph {
   byName: Map<string, ProjectMeta>
-  directDeps: Map<string, string[]>            // project name → direct workspace deps
-  transitiveDeps: (name: string) => string[]   // memoized
+  directDeps: Map<string, string[]> // project name → direct workspace deps
+  transitiveDeps: (name: string) => string[] // memoized
 }
 
 export function buildPackageGraph(projects: ProjectMeta[]): PackageGraph
@@ -21,9 +21,10 @@ export function buildPackageGraph(projects: ProjectMeta[]): PackageGraph
 ## Construction rules
 
 For each project:
+
 - Look at `dependencies`, `devDependencies`, `peerDependencies`, and
   `optionalDependencies`. All four fields are equally treated.
-- A dependency name is considered a *workspace* dep only if there's
+- A dependency name is considered a _workspace_ dep only if there's
   another project in the workspace with that name. External npm
   packages are dropped here.
 - Self-references (a project listing itself in its own deps) are
@@ -31,6 +32,7 @@ For each project:
 - Direct deps for a project are sorted alphabetically for determinism.
 
 `transitiveDeps(name)`:
+
 - Returns every workspace dep reachable through any number of `dep-of`
   edges.
 - Memoized via `cache` map.
@@ -53,6 +55,7 @@ For each project:
 ## Tests
 
 `package-graph.test.ts` covers:
+
 - Empty input → empty graph.
 - Direct deps recorded only when the dep is in the workspace.
 - Transitive walk with dedup.

@@ -10,12 +10,12 @@ will execute.
 
 ```ts
 export interface TaskNode {
-  id: string                       // `${projectName}#${taskName}`
+  id: string // `${projectName}#${taskName}`
   projectName: string
   projectDir: string
   taskName: string
   config: TaskConfig
-  deps: string[]                   // ids of tasks that must finish first; sorted
+  deps: string[] // ids of tasks that must finish first; sorted
 }
 
 export interface ProjectEntry {
@@ -77,6 +77,7 @@ Both cross-project cycles and self-cycles (a task listing itself in
 ## Tests
 
 `task-graph.test.ts` covers:
+
 - zero-dependency single node
 - `dependsOn.self` expansion + missing-task error
 - `dependsOn.dependencies` expansion across transitive deps

@@ -14,7 +14,10 @@
   "bin": {
     "vzn": "./dist/bin.js"
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=20.10",

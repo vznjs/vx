@@ -29,12 +29,12 @@ export default defineProject({
         { command: 'tsc -b' },
         // ...more steps if you need them; sequential, stop on first failure
       ],
-      dependsOn: { dependencies: ['build'] },  // Turbo's `^build`
+      dependsOn: { dependencies: ['build'] }, // Turbo's `^build`
       cache: {
         inputs: {
           files: ['src/**', '!**/*.test.ts'],
-          env: ['NODE_ENV'],                   // host values that bust cache
-          tasks: { dependencies: ['build'] },  // upstream hashes to fold in
+          env: ['NODE_ENV'], // host values that bust cache
+          tasks: { dependencies: ['build'] }, // upstream hashes to fold in
         },
         outputs: { files: ['dist/**'] },
       },
@@ -45,7 +45,7 @@ export default defineProject({
       dependsOn: { self: ['build'] },
       cache: {
         inputs: { files: ['src/**'] },
-        outputs: { files: [] },                // cache the no-op success
+        outputs: { files: [] }, // cache the no-op success
       },
     },
 

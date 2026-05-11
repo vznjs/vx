@@ -28,9 +28,9 @@ and by the CLI (`vzn run <taskName>`).
 
 ```ts
 interface TaskConfig {
-  exec: ExecConfig[]              // required
-  dependsOn?: TaskDependsOn       // optional
-  cache?: CacheConfig             // optional — caching is opt-in
+  exec: ExecConfig[] // required
+  dependsOn?: TaskDependsOn // optional
+  cache?: CacheConfig // optional — caching is opt-in
 }
 ```
 
@@ -40,9 +40,10 @@ An array of one or more steps run sequentially. Single-command tasks
 write a one-element array.
 
 ```ts
-exec: [{ command: 'tsc -b' }]    // single
+exec: [{ command: 'tsc -b' }] // single
 
-exec: [                          // sequential multi-step
+exec: [
+  // sequential multi-step
   { command: 'gen' },
   { command: 'tsc' },
   { command: 'cp -r assets dist/' },
@@ -53,8 +54,8 @@ exec: [                          // sequential multi-step
 
 ```ts
 interface ExecConfig {
-  command: string                // shell command, run from the project's dir
-  env?: ExecEnv                  // optional per-step env
+  command: string // shell command, run from the project's dir
+  env?: ExecEnv // optional per-step env
 }
 ```
 
@@ -62,19 +63,20 @@ interface ExecConfig {
 
 ```ts
 interface ExecEnv {
-  passThrough?: string[]                   // names taken from host process.env
-  define?: Record<string, string>          // explicit name=value pairs
+  passThrough?: string[] // names taken from host process.env
+  define?: Record<string, string> // explicit name=value pairs
 }
 ```
 
 - **`passThrough`** — env var names whose host values are forwarded to
-  the child. *NOT* folded into the cache key — for secrets, regional
+  the child. _NOT_ folded into the cache key — for secrets, regional
   vars, CI flags that shouldn't bust caches.
-- **`define`** — explicit literal values set on the child. *ARE* folded
+- **`define`** — explicit literal values set on the child. _ARE_ folded
   into the cache key via the task config hash (the values are in your
   config file).
 
 Child process env, lowest to highest priority:
+
 1. Hard-coded essential allowlist (`PATH`, `HOME`, `SHELL`, `TMPDIR`,
    `LANG`, `TERM`, etc. — full list in `src/env.ts`).
 2. `passThrough` names, value taken from host `process.env`.
@@ -88,8 +90,8 @@ Tasks that must complete successfully before this task runs.
 
 ```ts
 interface TaskDependsOn {
-  self?: string[]                // tasks in this project
-  dependencies?: string[]        // tasks in every transitive workspace dep
+  self?: string[] // tasks in this project
+  dependencies?: string[] // tasks in every transitive workspace dep
 }
 ```
 
@@ -101,10 +103,11 @@ interface TaskDependsOn {
 - omitted — no dependencies.
 
 Semantics:
+
 - **Same-project (`self`)** — task name must exist in this project's
   `tasks` map, otherwise a hard error is thrown at graph-build time.
 - **Workspace-dep (`dependencies`)** — the task is added for every
-  transitive workspace dep that *has* it. Deps that don't declare it
+  transitive workspace dep that _has_ it. Deps that don't declare it
   are silently skipped (it's normal for tasks to be sparse).
 - **Cycle detection** — runs across the whole resolved graph at the end
   of graph building. Cycles throw with a path-formatted message.
@@ -113,8 +116,8 @@ Semantics:
 
 ```ts
 interface CacheConfig {
-  inputs: CacheInputs            // required when cache is provided
-  outputs: CacheOutputs          // required when cache is provided
+  inputs: CacheInputs // required when cache is provided
+  outputs: CacheOutputs // required when cache is provided
 }
 ```
 
@@ -127,9 +130,9 @@ on and what gets captured.
 
 ```ts
 interface CacheInputs {
-  files: string[]                // required
-  env?: string[]                 // optional
-  tasks?: TaskDependsOn          // optional; same shape as dependsOn
+  files: string[] // required
+  env?: string[] // optional
+  tasks?: TaskDependsOn // optional; same shape as dependsOn
 }
 ```
 
@@ -142,6 +145,7 @@ Project-relative globs. `!`-prefix negates.
 - `[]` — no file inputs (cache key still includes command + env + upstream).
 
 Always applied to every glob pass:
+
 - gitignore filter (workspace-root `.gitignore` + project `.gitignore`)
 - always-ignored: `node_modules/**`, `.git/**`, `.vzn/**`, `*.tsbuildinfo`
 - declared `outputs.files` (so a task never invalidates itself)
@@ -167,16 +171,19 @@ Same shape as `dependsOn`. Filters which upstream tasks' cache keys
 contribute to this task's key.
 
 **Per-bucket defaults:**
+
 - Omitting a bucket (`self` or `dependencies`) → all upstream from that
   source contribute.
 - Providing an explicit array → only matched names contribute.
 
 **Pattern syntax inside a bucket, applied in order (last write wins):**
+
 - `'*'` — include all from this bucket
 - `'name'` — include literal task name
 - `'!name'` — exclude literal task name
 
 Examples:
+
 - omitted entirely → all upstream contribute (most common).
 - `{ dependencies: ['build'] }` → only `build` from deps; same-project
   upstream stays default-all.
@@ -187,7 +194,7 @@ Examples:
 
 ```ts
 interface CacheOutputs {
-  files: string[]                // required
+  files: string[] // required
 }
 ```
 
@@ -226,7 +233,8 @@ defineWorkspace<T extends WorkspaceConfig>(config: T): T
 ```
 
 Use them so TypeScript can narrow literal types in your config (autocomplete
-+ stricter validation against the schema).
+
+- stricter validation against the schema).
 
 ## Full example
 
@@ -257,10 +265,7 @@ export default defineProject({
     },
 
     package: {
-      exec: [
-        { command: 'rm -rf pkg' },
-        { command: 'npm pack --pack-destination ./pkg' },
-      ],
+      exec: [{ command: 'rm -rf pkg' }, { command: 'npm pack --pack-destination ./pkg' }],
       dependsOn: { self: ['build', 'test'] },
       cache: {
         inputs: {
