@@ -107,6 +107,29 @@ docs/
 
 ## Decision log
 
+- **2026-05**: Dashboard PR 4/10 — `vzn dashboard` subcommand +
+  `src/dashboard.ts` HTTP server. Bun.serve()-based, opens
+  `cache.db` read-only, exposes `/api/health`, `/api/overview`,
+  `/api/runs`, `/api/runs/:id`, `/api/tasks/slowest`,
+  `/api/cache/entries`. JSON wire shape designed so PR #26's
+  Cloudflare Worker can be a drop-in replacement. bigints
+  (wallclock ns) serialized as strings. Default bind
+  `127.0.0.1:4280`; `--host 0.0.0.0` opts into LAN exposure.
+  14 dashboard tests + full module docs. PR #22.
+- **2026-05**: Test harness migrated from `from 'vitest'` to `from
+'bun:test'`. vitest was a stale pnpm symlink locally — never in
+  `bun.lock` — so CI's `bun install --frozen-lockfile` couldn't
+  resolve it for tsgolint. `bun:test` re-exports `vi` as a compat
+  alias so the `vi.spyOn(...)` patterns in `cli.test.ts` keep
+  working. Also disabled `typescript/await-thenable` in oxlint
+  (`bun:test`'s `.rejects.toThrow()` is awaitable at runtime but
+  typed as `void`). PR #21.
+- **2026-05**: `isSandboxSupported()` now functionally probes
+  bwrap (one-time, memoized): Ubuntu 24.04+ (the new GitHub
+  Actions ubuntu-latest baseline) restricts unprivileged user
+  namespaces via AppArmor by default, so the binary is installed
+  but namespace-creating invocations exit non-zero. Sandbox tests
+  `describe.skipIf` cleanly when the kernel blocks. PR #21.
 - **2026-05**: Dashboard PR 3/10 — orchestrator generates a ULID
   `runId` at the top of `run()` shared by every task in the
   invocation, plus an `hrtime.bigint()` anchor for per-task spans.
