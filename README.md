@@ -63,8 +63,13 @@ in [`docs/schema.md`](./docs/schema.md).
 ## CLI
 
 ```sh
-vzn run <task> [--project <name>]... [--concurrency <n>] [--force]
+vzn run [TASK | PKG#TASK] [-r] [-F <pattern>] [-c <n>] [--no-cache] [--ignore-depends-on] [-v] [-- forwarded-args...]
 ```
+
+Default scope: the project containing cwd (deps still expand via
+`dependsOn`). Use `-r` for every project, `-F` for a pnpm-style filter
+DSL, or `pkg#task` to target one project directly. Args after `--` are
+forwarded to the last `exec` step.
 
 Full CLI reference: [`docs/cli.md`](./docs/cli.md).
 

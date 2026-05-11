@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { runCommand } from './runner.js'
+import { runCommand, shellQuote } from './runner.js'
 
 describe('runCommand', () => {
   let cwd: string
@@ -57,5 +57,36 @@ describe('runCommand', () => {
       env: { PATH: process.env.PATH ?? '' },
     })
     expect(result.exitCode).not.toBe(0)
+  })
+
+  it('appends forwardArgs to the command, shell-quoted', async () => {
+    const result = await runCommand({
+      command: 'echo prefix:',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      forwardArgs: ['hello', 'world with space', `it's`],
+    })
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout.trim()).toBe(`prefix: hello world with space it's`)
+  })
+})
+
+describe('shellQuote', () => {
+  it('leaves simple identifiers untouched', () => {
+    expect(shellQuote('hello')).toBe('hello')
+    expect(shellQuote('--watch')).toBe('--watch')
+    expect(shellQuote('a/b.c=1')).toBe('a/b.c=1')
+  })
+
+  it('wraps strings with spaces in single quotes', () => {
+    expect(shellQuote('hello world')).toBe(`'hello world'`)
+  })
+
+  it('escapes embedded single quotes', () => {
+    expect(shellQuote(`it's`)).toBe(`'it'\\''s'`)
+  })
+
+  it('handles empty string', () => {
+    expect(shellQuote('')).toBe(`''`)
   })
 })

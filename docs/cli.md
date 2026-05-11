@@ -6,18 +6,27 @@ hand-parsed (no commander/yargs/etc.) in `src/cli.ts`.
 ## Commands
 
 ```
-vzn run <task> [--project <name>]... [--concurrency <n>] [--force]
+vzn run [OPTIONS] [TASK | PKG#TASK] [-- forwarded-args...]
 vzn help
 vzn version
 vzn --help, vzn -h
-vzn --version, vzn -v
+vzn --version, vzn -V
 ```
 
-### `vzn run <task>`
+`-v` is reserved for `--verbose`; use `-V` for `--version`.
 
-Run the named task across every project that declares it (filtered by
-`--project` if provided). The orchestrator builds the task graph from
-declared `dependsOn` and runs it with caching.
+### `vzn run [TASK]`
+
+Run the named task. By default, only the project containing the current
+working directory is selected — `dependsOn` still expands so the
+project's upstream workspace deps run too. Override the selection with
+`-r`, `-F`, or `pkg#task`.
+
+If no task name is given:
+
+- In a TTY: an interactive picker lists every `pkg#task` entry across the
+  workspace, prompts for a number, and runs the chosen one.
+- Not a TTY: the run exits `1` with `missing task name`.
 
 Exit codes:
 
@@ -28,29 +37,89 @@ Exit codes:
 
 Print the help message to stdout, exit `0`.
 
-### `vzn version`, `vzn --version`, `vzn -v`
+### `vzn version`, `vzn --version`, `vzn -V`
 
 Print `vzn <version>` to stdout, exit `0`.
 
 Unknown commands print a help message + error to stderr and exit `1`.
 
+## Selection
+
+`vzn run` picks the set of projects to consider, then walks `dependsOn`
+to assemble the full task graph from that set. Pick one of:
+
+| Form                | Effect                                                                |
+| ------------------- | --------------------------------------------------------------------- |
+| (default)           | The project that contains cwd. Errors if cwd is not inside a project. |
+| `pkg#task`          | Just that project.                                                    |
+| `-r`, `--recursive` | Every project that declares the task.                                 |
+| `-F <pattern>`      | pnpm-style filter DSL (repeatable).                                   |
+
+### Filter DSL (`-F`, `--filter`)
+
+| Form            | Meaning                                                                       |
+| --------------- | ----------------------------------------------------------------------------- |
+| `<pattern>`     | Match by package name. `*` is a wildcard (no `/`).                            |
+| `./<dir>`       | Match packages whose dir is at or under `<dir>` (relative to workspace root). |
+| `{<dir>}`       | Same as `./<dir>`.                                                            |
+| `<pattern>...`  | Match + all transitive workspace dependencies.                                |
+| `...<pattern>`  | Match + all transitive workspace dependents.                                  |
+| `<pattern>^...` | Only the transitive dependencies, excluding the matched package itself.       |
+| `!<pattern>`    | Exclude packages matching `<pattern>`.                                        |
+
+Filters are evaluated in order. If at least one include filter is
+present, the base set is empty and matched packages are added. If only
+exclude filters are given, the base set is "all projects" minus the
+excluded ones.
+
+Examples:
+
+```sh
+vzn run build -F @scope/*        # all packages under @scope
+vzn run build -F app...          # app and its transitive deps
+vzn run build -F ...util         # util and everything that depends on it
+vzn run build -F app^...         # only app's deps
+vzn run build -F '*' -F '!docs'  # everything except docs
+```
+
+## Argument forwarding (`--`)
+
+Anything after `--` is forwarded (shell-quoted) to the last step of each
+task's `exec` array:
+
+```sh
+vzn run test -- --watch              # vitest sees --watch
+vzn run build -- --sourcemap         # build's last step gets --sourcemap
+```
+
+Forwarded args are folded into the cache key — runs with different
+forwarded args never spuriously hit cache. Forwarding applies only to
+the **last** step of `exec`; earlier steps are typically prep work
+(codegen, compile) that shouldn't receive user args.
+
 ## Flags
 
-| Flag                            | Type              | Default            | Description                                                                                               |
-| ------------------------------- | ----------------- | ------------------ | --------------------------------------------------------------------------------------------------------- |
-| `--project <name>`, `-p <name>` | repeatable string | (all)              | Restrict to specific projects. The task graph still expands through `dependsOn` from the listed projects. |
-| `--concurrency <n>`, `-c <n>`   | positive integer  | `os.cpus().length` | Maximum parallel tasks. `1` serializes.                                                                   |
-| `--force`, `-f`                 | boolean           | off                | Ignore cache hits and re-run. Cache writes still happen on success.                                       |
+| Flag                             | Type              | Default            | Description                                                                                  |
+| -------------------------------- | ----------------- | ------------------ | -------------------------------------------------------------------------------------------- |
+| `-F <pattern>`, `--filter <pat>` | repeatable string | (none)             | Filter DSL, see above.                                                                       |
+| `-r`, `--recursive`              | boolean           | off                | Select every project that declares the task.                                                 |
+| `-c <n>`, `--concurrency <n>`    | positive integer  | `os.cpus().length` | Maximum parallel tasks. `1` serializes.                                                      |
+| `--ignore-depends-on`            | boolean           | off                | Skip `dependsOn` expansion; run only the explicitly requested tasks.                         |
+| `--no-cache`                     | boolean           | off                | Skip cache reads AND writes. Every task runs; nothing is persisted.                          |
+| `--cache`                        | boolean           | off                | No-op. Accepted for parity with vite-task. Caching is governed by each task's `cache` block. |
+| `-v`, `--verbose`                | boolean           | off                | Print a summary table (task, status, duration) after the run.                                |
 
 ## Argv parsing rules
 
-- Positional argument before flags is the task name.
-- Flag values are consumed as the next argv item: `-p foo` not `-p=foo`.
-- Repeated `--project` accumulates: `-p a -p b` selects `{a, b}`.
-- Unknown flags (`--bogus`) exit `1` with a clear error.
-- A flag missing its value (`-p` at end of argv) exits `1`.
-- A second positional after the task name exits `1`.
-- `--concurrency abc` (non-integer or < 1) exits `1`.
+- `--` separates vzn flags from forwarded task args. Everything after
+  `--` is appended (shell-quoted) to each task's last `exec` step.
+- The positional argument (before `--`) is the task name, optionally
+  prefixed with `pkg#`.
+- Flag values are consumed as the next argv item: `-F foo` not `-F=foo`.
+- Repeated `-F` / `--filter` accumulates.
+- Unknown flags exit `1` with a clear error.
+- A second positional before `--` exits `1`.
+- `--concurrency abc` (non-integer or `< 1`) exits `1`.
 
 ## What's NOT in the CLI
 
@@ -58,8 +127,7 @@ Intentionally absent — see `docs/README.md` for the broader scope
 discussion:
 
 - Multi-task invocation (`vzn run a b c`)
-- Wildcards / patterns (`vzn run 'build:*'`)
-- `--filter` query language
+- Wildcards in task names (`vzn run 'build:*'`)
 - `--dry-run`
 - `--continue` (failure isolation is already default)
 - Output format flags (`--output-logs none/errors-only/full`)

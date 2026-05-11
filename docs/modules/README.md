@@ -24,6 +24,7 @@ One markdown per module under `src/`. Each documents:
 | [`runner.md`](./runner.md)                 | `child_process.spawn` wrapper             |
 | [`scheduler.md`](./scheduler.md)           | Parallel topo executor                    |
 | [`orchestrator.md`](./orchestrator.md)     | End-to-end glue                           |
+| [`filter.md`](./filter.md)                 | pnpm-style filter DSL (`-F`)              |
 | [`cli.md`](./cli.md)                       | Argv parser + dispatcher                  |
 
 For a higher-level view see [`../architecture.md`](../architecture.md).

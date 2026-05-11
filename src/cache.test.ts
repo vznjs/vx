@@ -55,6 +55,21 @@ describe('Cache.key', () => {
     expect(a).not.toBe(b)
   })
 
+  it('changes when forwardArgs differ', async () => {
+    const a = await cache.key({ ...baseInput(), forwardArgs: ['--watch'] })
+    const b = await cache.key({ ...baseInput(), forwardArgs: [] })
+    const c = await cache.key({ ...baseInput(), forwardArgs: ['--watch', '--bail'] })
+    expect(a).not.toBe(b)
+    expect(a).not.toBe(c)
+    expect(b).not.toBe(c)
+  })
+
+  it('treats empty forwardArgs and omitted forwardArgs as equivalent', async () => {
+    const a = await cache.key({ ...baseInput(), forwardArgs: [] })
+    const b = await cache.key(baseInput())
+    expect(a).toBe(b)
+  })
+
   it('changes when an input file content changes (not just mtime)', async () => {
     const f = await writeInput('a.txt', 'one')
     const a = await cache.key({ ...baseInput(), inputFiles: [f] })

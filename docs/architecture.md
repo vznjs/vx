@@ -38,12 +38,13 @@ higher ones.
 
        config.ts:  the public schema; imported by nearly everything.
        paths.ts:   tiny POSIX-path helper for stable cache keys.
+       filter.ts:  pnpm-style filter DSL used by the CLI's -F flag.
        index.ts:   re-exports the public surface.
 ```
 
 ## Data flow on `vzn run <task>`
 
-1. **`cli.ts`** parses argv → `{ task, projects?, concurrency?, force? }`.
+1. **`cli.ts`** parses argv → `{ task, projects?, concurrency?, noCache?, ignoreDependsOn?, forwardArgs? }`. The CLI resolves the selection mode (cwd, `-r`, `-F` filters, or `pkg#task`) into a concrete project list before invoking the orchestrator.
 2. **`orchestrator.ts:run()`** is invoked with those options.
 3. **`workspace.ts`** walks up to the nearest `pnpm-workspace.yaml`,
    parses it, and lists every package that has a `vzn.config.*` file.

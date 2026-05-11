@@ -39,7 +39,8 @@ terminal and a task succeeding or failing.
       3. Hash the resolved task config (post-evaluation)
       4. Filter upstream cache hashes per cache.inputs.tasks
       5. Compute cache key from (1) + (2) + (3) + (4) + workspaceFingerprint
-      6. If cache enabled and not --force: try cache.get(key)
+      6. If cache enabled (task declares a `cache` block AND --no-cache
+         is not set): try cache.get(key)
          - Hit → restore outputs, replay logs, return cache-hit
          - Miss → fall through
       7. For each step in exec[]:
@@ -130,13 +131,18 @@ tasks that need TTY input won't work and shouldn't be cached anyway.
 - Failure of a task doesn't pause the scheduler — independent siblings
   continue running and starting.
 
-## `--force`
+## `--no-cache`
 
-Bypasses cache reads. Cache writes still happen on success, so a
-forced run refreshes stored entries.
+Bypasses cache reads **and** writes. Every task runs, and nothing is
+persisted to the cache directory.
 
 Useful when:
 
 - You suspect cache corruption.
 - You want to validate that a cache-hit task can re-run cleanly.
 - You're benchmarking.
+- You're forwarding args via `--` and want a one-off run that doesn't
+  populate the cache with a one-off entry (though note that forwarded
+  args are folded into the key, so a separate entry would form anyway).
+
+`--cache` is accepted as a no-op for parity with vite-task.

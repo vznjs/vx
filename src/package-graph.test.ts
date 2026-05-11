@@ -41,6 +41,19 @@ describe('buildPackageGraph', () => {
     expect(g.transitiveDeps('b')).toContain('a')
   })
 
+  it('transitiveDependents walks the reverse direction', () => {
+    const g = buildPackageGraph([
+      meta('a', { b: 'workspace:*' }),
+      meta('b', { c: 'workspace:*' }),
+      meta('c'),
+      meta('lonely'),
+    ])
+    expect(g.transitiveDependents('c').sort()).toEqual(['a', 'b'])
+    expect(g.transitiveDependents('b')).toEqual(['a'])
+    expect(g.transitiveDependents('a')).toEqual([])
+    expect(g.transitiveDependents('lonely')).toEqual([])
+  })
+
   it('reads all four dependency fields (dependencies, devDependencies, peer, optional)', () => {
     const m: ProjectMeta = {
       name: 'a',

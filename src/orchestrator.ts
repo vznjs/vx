@@ -23,8 +23,12 @@ export interface RunOptions {
   task: string
   projects?: string[]
   concurrency?: number
-  /** Ignore cache hits and re-run; writes still update the cache. */
-  force?: boolean
+  /** Skip cache reads AND writes. Every task runs and nothing is persisted. */
+  noCache?: boolean
+  /** Build the graph from only the requested tasks; skip `dependsOn` expansion. */
+  ignoreDependsOn?: boolean
+  /** Forwarded to the last step of each task's exec array (shell-quoted). */
+  forwardArgs?: readonly string[]
   log?: Logger
 }
 
@@ -69,7 +73,12 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     return { ok: true, outcomes: [] }
   }
 
-  const nodes = buildTaskGraph({ projects, packageGraph, requested })
+  const nodes = buildTaskGraph({
+    projects,
+    packageGraph,
+    requested,
+    ignoreDependsOn: options.ignoreDependsOn ?? false,
+  })
   if (nodes.size === 0) {
     log.status(`No tasks to run.`)
     return { ok: true, outcomes: [] }
@@ -93,7 +102,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         workspaceRoot,
         workspaceFingerprint,
         cache,
-        force: options.force ?? false,
+        noCache: options.noCache ?? false,
+        forwardArgs: options.forwardArgs,
         log,
         nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
       }),
@@ -110,17 +120,18 @@ interface ExecuteArgs {
   workspaceRoot: string
   workspaceFingerprint: string
   cache: Cache
-  force: boolean
+  noCache: boolean
+  forwardArgs?: readonly string[] | undefined
   log: Logger
   nestedProjectDirs: string[]
 }
 
 async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
-  const { node, upstream, workspaceRoot, cache, force, log } = args
+  const { node, upstream, workspaceRoot, cache, noCache, log } = args
   const cfg: TaskConfig = node.config
   const steps: ExecConfig[] = cfg.exec
   const cacheCfg: CacheConfig | undefined = cfg.cache
-  const cacheEnabled = cacheCfg !== undefined
+  const cacheEnabled = cacheCfg !== undefined && !noCache
 
   const outputs = cacheCfg?.outputs.files ?? []
 
@@ -144,9 +155,10 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     workspaceRoot,
     upstreamHashes,
     workspaceFingerprint: args.workspaceFingerprint,
+    forwardArgs: args.forwardArgs ?? [],
   })
 
-  if (cacheEnabled && !force) {
+  if (cacheEnabled) {
     const hit = await cache.get(hash)
     if (hit) {
       await cache.restoreOutputs(hash, node.projectDir)
@@ -175,10 +187,12 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
       source: process.env,
     })
     const stepLabel = steps.length > 1 ? `[${i + 1}/${steps.length}] ` : ''
+    const isLast = i === steps.length - 1
     const stepResult = await runCommand({
       command: step.command,
       cwd: node.projectDir,
       env,
+      forwardArgs: isLast ? args.forwardArgs : undefined,
       onStdout: (chunk) => log.taskStdout(node, stepLabel ? prefixChunk(stepLabel, chunk) : chunk),
       onStderr: (chunk) => log.taskStderr(node, stepLabel ? prefixChunk(stepLabel, chunk) : chunk),
     })
