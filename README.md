@@ -3,8 +3,11 @@
 An open, extensible monorepo task runner for pnpm workspaces.
 TypeScript config, content-addressed cache, replaceable internals.
 
+**Runs on [Bun](https://bun.sh) (≥ 1.3).** TypeScript source ships as the
+runtime entry — no compile step on install. SQLite is via `bun:sqlite`.
+
 ```sh
-pnpm add -D @vzn/run
+bun add -d @vzn/run
 vzn run build
 ```
 
@@ -119,11 +122,15 @@ Pre-alpha. Schema may shift. No published versions yet.
 ## Development
 
 ```sh
-pnpm install
-pnpm build         # tsc -b across the workspace
-pnpm typecheck
-pnpm test          # 114 tests, ~96.5% line coverage
+bun install
+bun run lint        # oxlint with type-aware checks (via tsgolint)
+bun run format      # oxfmt
+bun test src/       # 155 tests under bun:test
 ```
+
+No build step. TypeScript source ships as-is; Bun runs it directly.
+Lint, format, and types are all checked by the oxc toolchain — no tsc,
+no prettier.
 
 Architecture: [`docs/architecture.md`](./docs/architecture.md).
 Tests live next to each source module as `*.test.ts`.

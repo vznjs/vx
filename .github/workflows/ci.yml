@@ -7,28 +7,25 @@ on:
 
 jobs:
   ci:
-    name: build · typecheck · test · format
+    name: lint · format · test
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: '20'
-          cache: pnpm
+          bun-version: '1.3'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Format check
-        run: pnpm format:check
+        run: bun run format:check
 
-      - name: Build
-        run: pnpm build
+      - name: Lint + typecheck
+        run: bun run lint
 
       - name: Test
-        run: pnpm test
+        run: bun test src/
