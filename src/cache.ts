@@ -102,6 +102,30 @@ export interface PruneResult {
   bytesFreed: number
 }
 
+/**
+ * The shape every cache implementation honors. `Cache` (the local v10
+ * implementation) and `LayeredCache` both `implements` this so the
+ * orchestrator's `executeTask` can take either without a discriminated
+ * union and we get a compile-time guarantee the surfaces stay congruent.
+ */
+export interface CacheLayer {
+  key(input: CacheKeyInput): Promise<string>
+  get(hash: string): Promise<CacheEntry | null>
+  restoreOutputs(hash: string, projectDir: string): Promise<void>
+  save(args: {
+    hash: string
+    entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles'>
+    projectDir: string
+    outputFiles: string[]
+  }): Promise<void>
+  recordRun(run: RunRecord): void
+  stats(): CacheStats
+  prune(options: PruneOptions): Promise<PruneResult>
+  close(): void
+}
+
+export type SaveArgs = Parameters<CacheLayer['save']>[0]
+
 interface EntryRow {
   hash: string
   project: string
@@ -114,7 +138,7 @@ interface EntryRow {
   accessed_at: number
 }
 
-export class Cache {
+export class Cache implements CacheLayer {
   private readonly db: Database
   private readonly insertEntry: ReturnType<Database['prepare']>
   private readonly selectEntry: ReturnType<Database['prepare']>

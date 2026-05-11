@@ -8,7 +8,7 @@ import { readFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import type { ExecConfig, ProjectConfig, TaskConfig, CacheConfig, TaskDependsOn } from './config.js'
-import { Cache } from './cache.js'
+import { Cache, type CacheLayer } from './cache.js'
 import { LayeredCache } from './layered-cache.js'
 import { RemoteCache } from './remote-cache.js'
 import { buildIsolatedEnv } from './env.js'
@@ -154,7 +154,7 @@ interface ExecuteArgs {
   upstream: TaskOutcome[]
   workspaceRoot: string
   workspaceFingerprint: string
-  cache: Cache | LayeredCache
+  cache: CacheLayer
   noCache: boolean
   sandbox: boolean
   forwardArgs?: readonly string[] | undefined
@@ -402,7 +402,7 @@ export { taskId }
  * Optional env: VZN_REMOTE_CACHE_TEAM_ID, VZN_REMOTE_CACHE_SLUG (tenancy
  * query params), VZN_REMOTE_CACHE_TIMEOUT_MS.
  */
-function wrapWithRemoteCache(local: Cache, log: Logger): Cache | LayeredCache {
+function wrapWithRemoteCache(local: Cache, log: Logger): CacheLayer {
   const url = process.env.VZN_REMOTE_CACHE_URL
   const token = process.env.VZN_REMOTE_CACHE_TOKEN
   if (!url || !token) return local

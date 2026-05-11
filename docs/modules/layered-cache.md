@@ -16,18 +16,9 @@ it's talking to.
 ## Public surface
 
 ```ts
-export class LayeredCache {
-  constructor(local: Cache, remote: RemoteCache, options?: LayeredCacheOptions)
-
-  // Cache shape, mirrored:
-  key(input: CacheKeyInput): Promise<string>
-  get(hash: string): Promise<CacheEntry | null>
-  restoreOutputs(hash: string, projectDir: string): Promise<void>
-  save(args: SaveArgs): Promise<void>
-  recordRun(run: RunRecord): void
-  stats(): CacheStats
-  prune(options: PruneOptions): Promise<PruneResult>
-  close(): void
+export class LayeredCache implements CacheLayer {
+  constructor(local: CacheLayer, remote: RemoteCache, options?: LayeredCacheOptions)
+  // CacheLayer methods — see docs/modules/cache.md.
 }
 
 export interface LayeredCacheOptions {
@@ -35,6 +26,10 @@ export interface LayeredCacheOptions {
   onRemoteHit?: (hash: string, bytes: number) => void
 }
 ```
+
+`LayeredCache` accepts a `CacheLayer` (not a concrete `Cache`) as the
+local layer, so future layerings (local → regional → global) can stack
+without churn.
 
 ## Read path
 
