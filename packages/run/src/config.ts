@@ -13,8 +13,13 @@ export interface ProjectConfig {
 }
 
 export interface TaskConfig {
-  /** How the task is executed. */
-  exec: ExecConfig
+  /**
+   * Steps to execute, in order. Each step is a shell command with its own
+   * optional env. The whole array is one task: cached, scheduled, and
+   * reported as a single unit. Execution stops on the first non-zero exit;
+   * stdout/stderr from each step are concatenated for cache replay.
+   */
+  exec: ExecConfig[]
   /** Tasks that must complete successfully before this task runs. */
   dependsOn?: TaskDependsOn
   /**

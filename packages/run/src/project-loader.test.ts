@@ -17,9 +17,9 @@ describe('loadProjectConfig', () => {
 
   it('loads a default-exported object from .mjs', async () => {
     const file = path.join(dir, 'vzn.config.mjs')
-    await writeFile(file, "export default { tasks: { build: { exec: { command: 'tsc' } } } }")
+    await writeFile(file, "export default { tasks: { build: { exec: [{ command: 'tsc' }] } } }")
     const cfg = await loadProjectConfig(file)
-    expect(cfg.tasks?.build?.exec.command).toBe('tsc')
+    expect(cfg.tasks?.build?.exec[0]?.command).toBe('tsc')
   })
 
   it('throws clearly when the config did not export a default object', async () => {

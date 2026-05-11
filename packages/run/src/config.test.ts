@@ -3,7 +3,7 @@ import { defineProject, defineWorkspace } from './config.js'
 
 describe('defineProject', () => {
   it('is an identity function (returns its input)', () => {
-    const cfg = { tasks: { build: { exec: { command: 'tsc' } } } }
+    const cfg = { tasks: { build: { exec: [{ command: 'tsc' }] } } }
     expect(defineProject(cfg)).toBe(cfg)
   })
 
@@ -11,7 +11,7 @@ describe('defineProject', () => {
     const cfg = defineProject({
       tasks: {
         build: {
-          exec: { command: 'tsc' },
+          exec: [{ command: 'tsc' }],
           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
         },
       },
