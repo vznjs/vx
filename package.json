@@ -1,9 +1,23 @@
 {
-  "name": "vzn-monorepo",
+  "name": "@vzn/run",
   "version": "0.0.0",
-  "private": true,
-  "description": "Monorepo for @vzn/run — an open, extensible task runner.",
+  "description": "An open, extensible monorepo task runner.",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "vzn": "./dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=20.10",
@@ -11,12 +25,18 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "clean": "tsc -b --clean && pnpm -r exec rm -rf dist",
+    "clean": "tsc -b --clean && rm -rf dist",
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "ignore": "^7.0.4",
+    "jiti": "^2.4.2",
+    "tinyglobby": "^0.2.10",
+    "yaml": "^2.6.1"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
@@ -24,5 +44,8 @@
     "prettier": "^3.3.3",
     "typescript": "^5.6.3",
     "vitest": "^2.1.4"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

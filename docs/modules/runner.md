@@ -11,15 +11,15 @@ via callbacks while accumulating them for later capture.
 export interface RunResult {
   exitCode: number
   durationMs: number
-  stdout: string                         // full captured text
-  stderr: string                         // full captured text
+  stdout: string // full captured text
+  stderr: string // full captured text
 }
 
 export interface RunOptions {
-  command: string                        // single shell string
-  cwd: string                            // absolute working dir
-  env: NodeJS.ProcessEnv                 // exact env for child
-  onStdout?: (chunk: string) => void     // streamed live; not awaited
+  command: string // single shell string
+  cwd: string // absolute working dir
+  env: NodeJS.ProcessEnv // exact env for child
+  onStdout?: (chunk: string) => void // streamed live; not awaited
   onStderr?: (chunk: string) => void
 }
 
@@ -36,6 +36,7 @@ export function runCommand(opts: RunOptions): Promise<RunResult>
 - Encoding is `utf8`. Non-UTF8 binary output will be corrupted.
 
 The promise always resolves (never rejects) with a `RunResult`:
+
 - Normal exit → `exitCode` is the child's exit code.
 - Signal-killed → `exitCode = 130` if no code was reported (otherwise
   the OS's "signal as exit code" convention).
@@ -46,6 +47,7 @@ The promise always resolves (never rejects) with a `RunResult`:
 ## Live streaming + capture
 
 For each `data` event from the child's stdout/stderr stream:
+
 1. The chunk is appended to the running `stdout` / `stderr` string.
 2. If `onStdout` / `onStderr` is provided, it's called with the chunk
    synchronously.
@@ -70,6 +72,7 @@ string for cache replay.
 ## Tests
 
 `runner.test.ts` covers:
+
 - Successful command returns exit 0 + captured stdout.
 - Failing command returns non-zero + captured stderr.
 - Streaming callbacks fire.

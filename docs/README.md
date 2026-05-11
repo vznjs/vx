@@ -1,8 +1,8 @@
 # `@vzn/run` — technical documentation
 
 This directory is the complete technical reference for `@vzn/run`. Read
-it instead of the source when you want to understand *what* and *why*;
-read the source when you want to understand *how*.
+it instead of the source when you want to understand _what_ and _why_;
+read the source when you want to understand _how_.
 
 ## What `@vzn/run` is
 
@@ -22,21 +22,21 @@ dependency graph). It diverges from Turbo in two notable ways:
   imports, computed values, and partial reconfigurations are captured
   automatically because the hash sees the post-evaluation object.
 
-It is intentionally *not* an executor framework (no plugin protocol,
-no JS-function tasks), *not* a generator, *not* a daemon, *not* a
+It is intentionally _not_ an executor framework (no plugin protocol,
+no JS-function tasks), _not_ a generator, _not_ a daemon, _not_ a
 filter DSL. Commands are shell strings; everything else is layered on
 top.
 
 ## Where to start
 
-| You want to… | Read |
-|---|---|
-| Understand the overall shape | [`architecture.md`](./architecture.md) |
-| Author a config | [`schema.md`](./schema.md) |
-| Reason about caching | [`caching.md`](./caching.md) |
-| Trace what happens at `vzn run` time | [`execution.md`](./execution.md) |
-| Use the CLI | [`cli.md`](./cli.md) |
-| Modify or replace a specific module | [`modules/`](./modules/) |
+| You want to…                         | Read                                   |
+| ------------------------------------ | -------------------------------------- |
+| Understand the overall shape         | [`architecture.md`](./architecture.md) |
+| Author a config                      | [`schema.md`](./schema.md)             |
+| Reason about caching                 | [`caching.md`](./caching.md)           |
+| Trace what happens at `vzn run` time | [`execution.md`](./execution.md)       |
+| Use the CLI                          | [`cli.md`](./cli.md)                   |
+| Modify or replace a specific module  | [`modules/`](./modules/)               |
 
 ## Versioned guarantees
 
@@ -57,7 +57,7 @@ a deliberate design pass:
 - `--filter` query language (git-diff, glob, dependency-relationship selection)
 - Watch mode, daemon, persistent tasks
 - Generators / scaffolding
-- Executor / plugin protocol — *no JS-function tasks*
+- Executor / plugin protocol — _no JS-function tasks_
 - `affected --base` (git-relative selection)
 - TUI, progress bars, animated output
 - `.env` file loading

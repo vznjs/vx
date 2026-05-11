@@ -24,11 +24,11 @@ The cache key for one task is a SHA-256 digest of:
    `pnpm-workspace.yaml`. A `pnpm update` (lockfile change) or a
    workspace-shape change invalidates every cache entry.
 4. **Task config hash** — `sha256(JSON.stringify(node.config))` of the
-   *evaluated* task config. Captures:
+   _evaluated_ task config. Captures:
    - `exec` array (commands, per-step env declarations).
    - `dependsOn` and `cache.inputs.tasks` declarations.
    - `cache.outputs.files`, `cache.inputs.files`, `cache.inputs.env`
-     declarations (the strings themselves; their *resolved values*
+     declarations (the strings themselves; their _resolved values_
      contribute separately).
    - **Imported / computed values** — anything a preset or `process.env`
      read at config-load time injected, since jiti has already baked it
@@ -49,13 +49,14 @@ The cache key for one task is a SHA-256 digest of:
 ## Cache restore
 
 On hit:
+
 1. Output files are copied from `.vzn/cache/<hash>/outputs/` into the
    project directory. Pre-existing local files at those paths are
    overwritten.
 2. Captured stdout / stderr are replayed to the live terminal via the
    logger (preserves what a fresh run would have shown).
 3. The task is marked `cache-hit` with `durationMs: 0` and the
-   command is *not* re-executed.
+   command is _not_ re-executed.
 
 Restored files include parent directories that didn't exist; cache
 write uses `mkdir -p` semantics on restore.
@@ -63,8 +64,9 @@ write uses `mkdir -p` semantics on restore.
 ## Cache write
 
 On miss → task runs to completion. If the final exit code is `0`:
+
 1. `cache.outputs.files` is resolved against the project directory.
-2. Matching files are copied into a *temporary* directory next to the
+2. Matching files are copied into a _temporary_ directory next to the
    target cache slot.
 3. A `meta.json` containing taskId, command (joined from steps),
    exit code, duration, captured stdout/stderr, and stored output
@@ -81,16 +83,16 @@ flows.
 
 A task's cache becomes invalid when any of these change:
 
-| Trigger | Mechanism |
-|---|---|
-| Edit a file in the task's `inputs.files` set | step 6 of key derivation |
-| `pnpm install` updates `pnpm-lock.yaml` | step 3 (workspace fingerprint) |
-| Edit `pnpm-workspace.yaml` | step 3 |
-| Edit the task's `vzn.config.ts` | step 4 (config hash) |
-| Edit a config file that the task config imports | step 4 (configHash sees the resolved object after jiti evaluates the imports) |
-| Change `inputs.env` host values | step 5 |
-| Upstream task's cache key changes (because its inputs changed) | step 7 |
-| Two-step removed: changing `exec.env.passThrough` *values* alone | NOT a trigger by design — passThrough values are host-specific |
+| Trigger                                                          | Mechanism                                                                     |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Edit a file in the task's `inputs.files` set                     | step 6 of key derivation                                                      |
+| `pnpm install` updates `pnpm-lock.yaml`                          | step 3 (workspace fingerprint)                                                |
+| Edit `pnpm-workspace.yaml`                                       | step 3                                                                        |
+| Edit the task's `vzn.config.ts`                                  | step 4 (config hash)                                                          |
+| Edit a config file that the task config imports                  | step 4 (configHash sees the resolved object after jiti evaluates the imports) |
+| Change `inputs.env` host values                                  | step 5                                                                        |
+| Upstream task's cache key changes (because its inputs changed)   | step 7                                                                        |
+| Two-step removed: changing `exec.env.passThrough` _values_ alone | NOT a trigger by design — passThrough values are host-specific                |
 
 The cascade in row 7 is what makes monorepo caching work: edit `lib/`,
 and every package that depends on `lib`'s `build` task is invalidated
@@ -100,7 +102,7 @@ automatically.
 
 A project's `inputs.files` globs never reach into another project's
 directory, even if a `**/*` pattern would otherwise match. The
-orchestrator computes the set of *nested project directories* (other
+orchestrator computes the set of _nested project directories_ (other
 projects whose dir is under this one) and adds them to the ignore
 list passed to every glob.
 
@@ -134,7 +136,7 @@ guarantee — there's no file-glob escape hatch.
 
 ## What's NOT in the key (and why)
 
-- `exec.env.passThrough` *values* — would force cache misses across
+- `exec.env.passThrough` _values_ — would force cache misses across
   machines with different CI flags or regions. Names are in the
   config hash (step 4) so adding/removing a passthrough still bumps
   the key.
@@ -148,11 +150,13 @@ guarantee — there's no file-glob escape hatch.
 ## Bumping `CACHE_VERSION`
 
 Required when:
+
 - A new field is added to the cache key derivation.
 - The order or framing of existing key fields changes.
 - The on-disk `meta.json` schema changes.
 
 Not required when:
-- Behavioural changes that adjust *which* values flow into existing
+
+- Behavioural changes that adjust _which_ values flow into existing
   key components (those changes naturally produce different keys for
   affected tasks).

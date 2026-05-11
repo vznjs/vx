@@ -386,7 +386,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'cache.inputs.tasks: { dependencies: [\'build\'] } picks just one upstream task name',
+    "cache.inputs.tasks: { dependencies: ['build'] } picks just one upstream task name",
     async () => {
       // lib has two unrelated tasks with narrow, non-overlapping inputs.
       await addProject(fixture.root, 'lib', {
@@ -655,10 +655,7 @@ describe('orchestrator e2e', () => {
       process.env.LEAK = 'should-not-pass'
       try {
         await run({ cwd: fixture.root, task: 'show', log: silentLogger(fixture) })
-        const out = await readFile(
-          path.join(fixture.root, 'packages/iso/out.txt'),
-          'utf8',
-        )
+        const out = await readFile(path.join(fixture.root, 'packages/iso/out.txt'), 'utf8')
         expect(out).toBe('undefined')
       } finally {
         delete process.env.LEAK
@@ -719,10 +716,7 @@ describe('orchestrator e2e', () => {
       const first = await readFile(path.join(fixture.root, 'out.txt'), 'utf8')
 
       // 1. Changing a file inside the nested project must NOT bust root's cache.
-      await writeFile(
-        path.join(fixture.root, 'packages/inner/src/inner.txt'),
-        'inner v2',
-      )
+      await writeFile(path.join(fixture.root, 'packages/inner/src/inner.txt'), 'inner v2')
       const r2 = await run({
         cwd: fixture.root,
         task: 'run',
@@ -1474,10 +1468,7 @@ describe('orchestrator e2e', () => {
         `,
       })
       await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
-      const out1 = await readFile(
-        path.join(fixture.root, 'packages/wsy/out.txt'),
-        'utf8',
-      )
+      const out1 = await readFile(path.join(fixture.root, 'packages/wsy/out.txt'), 'utf8')
 
       // Append a comment to pnpm-workspace.yaml. Workspace fingerprint shifts;
       // every task's cache must invalidate.
@@ -1489,9 +1480,7 @@ describe('orchestrator e2e', () => {
 
       const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('success')
-      expect(await readFile(path.join(fixture.root, 'packages/wsy/out.txt'), 'utf8')).not.toBe(
-        out1,
-      )
+      expect(await readFile(path.join(fixture.root, 'packages/wsy/out.txt'), 'utf8')).not.toBe(out1)
     },
     TIMEOUT,
   )
@@ -1571,13 +1560,17 @@ describe('orchestrator e2e', () => {
 
       const r1 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
       expect(r1.outcomes[0]?.status).toBe('success')
-      expect(await readFile(path.join(dir, 'step.txt'), 'utf8')).toBe('step-one\nstep-two\nstep-three\n')
+      expect(await readFile(path.join(dir, 'step.txt'), 'utf8')).toBe(
+        'step-one\nstep-two\nstep-three\n',
+      )
 
       // Cache hit replays restoration; no re-execution.
       await rm(path.join(dir, 'step.txt'))
       const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
       expect(r2.outcomes[0]?.status).toBe('cache-hit')
-      expect(await readFile(path.join(dir, 'step.txt'), 'utf8')).toBe('step-one\nstep-two\nstep-three\n')
+      expect(await readFile(path.join(dir, 'step.txt'), 'utf8')).toBe(
+        'step-one\nstep-two\nstep-three\n',
+      )
     },
     TIMEOUT,
   )

@@ -67,7 +67,7 @@ terminal and a task succeeding or failing.
   the essentials + that step's passThrough + define.
 - Captured stdout/stderr from all steps is concatenated for cache
   replay. Live output is prefixed with `[i/N]` when `N > 1`.
-- The cache identity is the *whole array*. A cache hit replays all
+- The cache identity is the _whole array_. A cache hit replays all
   output as one block; no per-step granularity.
 
 If you need per-step caching, define each step as its own task and
@@ -89,15 +89,15 @@ runs.
 
 ## Failure handling
 
-| Failure | Behavior |
-|---|---|
-| Step exit non-zero | Remaining steps in the task skipped; task is `failed`; cache NOT written |
-| `execute()` throws (internal error) | Task marked `failed`, stderr written `[vzn] internal error in <id>` |
-| Upstream task fails | Dependent task is `skipped` (exit 1, durationMs 0); no command runs |
-| Workspace yaml missing | `findWorkspaceRoot` throws; `vzn run` exits 1 |
-| Same-project task referenced in `dependsOn.self` not declared | `buildTaskGraph` throws |
-| Duplicate workspace package name | `listProjects` throws with both paths |
-| Cycle in task graph | `detectCycle` throws with the cycle path |
+| Failure                                                       | Behavior                                                                 |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Step exit non-zero                                            | Remaining steps in the task skipped; task is `failed`; cache NOT written |
+| `execute()` throws (internal error)                           | Task marked `failed`, stderr written `[vzn] internal error in <id>`      |
+| Upstream task fails                                           | Dependent task is `skipped` (exit 1, durationMs 0); no command runs      |
+| Workspace yaml missing                                        | `findWorkspaceRoot` throws; `vzn run` exits 1                            |
+| Same-project task referenced in `dependsOn.self` not declared | `buildTaskGraph` throws                                                  |
+| Duplicate workspace package name                              | `listProjects` throws with both paths                                    |
+| Cycle in task graph                                           | `detectCycle` throws with the cycle path                                 |
 
 Failures don't kill the scheduler — independent tasks already in
 flight finish, and unrelated tasks not yet started still run. The
@@ -136,6 +136,7 @@ Bypasses cache reads. Cache writes still happen on success, so a
 forced run refreshes stored entries.
 
 Useful when:
+
 - You suspect cache corruption.
 - You want to validate that a cache-hit task can re-run cleanly.
 - You're benchmarking.

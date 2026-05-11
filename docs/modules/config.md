@@ -47,7 +47,7 @@ Two reasons:
 
 1. **Type inference.** When a user writes `defineProject({ tasks: {...} })`,
    the generic `T extends ProjectConfig` lets TypeScript infer the
-   *literal* types of nested fields (so `tasks: 'build'` autocompletes,
+   _literal_ types of nested fields (so `tasks: 'build'` autocompletes,
    union types narrow correctly).
 2. **Forward compat.** If we ever need to do runtime validation or
    transformation on the config, `defineProject` is the place; user
@@ -65,7 +65,7 @@ The function body is a one-liner today and that's by design.
   runtime).
 - The types are JSON-serializable. No `Function` fields, no
   `Date` objects. This is what makes `taskConfigHash =
-  sha256(JSON.stringify(config))` well-defined.
+sha256(JSON.stringify(config))` well-defined.
 
 ## Replacing this module
 

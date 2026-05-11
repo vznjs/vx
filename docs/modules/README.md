@@ -1,6 +1,6 @@
 # Module reference
 
-One markdown per module under `packages/run/src/`. Each documents:
+One markdown per module under `src/`. Each documents:
 
 - **Purpose** — what the module exists to do
 - **Public surface** — types and functions consumed by other modules
@@ -11,19 +11,19 @@ One markdown per module under `packages/run/src/`. Each documents:
 
 ## Modules
 
-| File | Topic |
-|---|---|
-| [`config.md`](./config.md) | The public schema (`vzn.config.ts` types) |
-| [`workspace.md`](./workspace.md) | pnpm workspace discovery |
-| [`project-loader.md`](./project-loader.md) | `vzn.config.*` evaluation |
-| [`package-graph.md`](./package-graph.md) | Workspace dependency graph |
-| [`task-graph.md`](./task-graph.md) | Task DAG + cycle detection |
-| [`inputs.md`](./inputs.md) | Input file + env resolution |
-| [`env.md`](./env.md) | Child-process env composition |
-| [`cache.md`](./cache.md) | Content-addressed cache + key derivation |
-| [`runner.md`](./runner.md) | `child_process.spawn` wrapper |
-| [`scheduler.md`](./scheduler.md) | Parallel topo executor |
-| [`orchestrator.md`](./orchestrator.md) | End-to-end glue |
-| [`cli.md`](./cli.md) | Argv parser + dispatcher |
+| File                                       | Topic                                     |
+| ------------------------------------------ | ----------------------------------------- |
+| [`config.md`](./config.md)                 | The public schema (`vzn.config.ts` types) |
+| [`workspace.md`](./workspace.md)           | pnpm workspace discovery                  |
+| [`project-loader.md`](./project-loader.md) | `vzn.config.*` evaluation                 |
+| [`package-graph.md`](./package-graph.md)   | Workspace dependency graph                |
+| [`task-graph.md`](./task-graph.md)         | Task DAG + cycle detection                |
+| [`inputs.md`](./inputs.md)                 | Input file + env resolution               |
+| [`env.md`](./env.md)                       | Child-process env composition             |
+| [`cache.md`](./cache.md)                   | Content-addressed cache + key derivation  |
+| [`runner.md`](./runner.md)                 | `child_process.spawn` wrapper             |
+| [`scheduler.md`](./scheduler.md)           | Parallel topo executor                    |
+| [`orchestrator.md`](./orchestrator.md)     | End-to-end glue                           |
+| [`cli.md`](./cli.md)                       | Argv parser + dispatcher                  |
 
 For a higher-level view see [`../architecture.md`](../architecture.md).

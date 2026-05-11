@@ -10,9 +10,9 @@ what the user explicitly declared.
 
 ```ts
 export interface BuildEnvOptions {
-  passThrough: readonly string[]                   // names → values from source
-  define: Readonly<Record<string, string>>         // explicit literal pairs
-  source: NodeJS.ProcessEnv                        // typically process.env
+  passThrough: readonly string[] // names → values from source
+  define: Readonly<Record<string, string>> // explicit literal pairs
+  source: NodeJS.ProcessEnv // typically process.env
 }
 
 export function buildIsolatedEnv(opts: BuildEnvOptions): NodeJS.ProcessEnv
@@ -59,6 +59,7 @@ Result: a `NodeJS.ProcessEnv` ready to pass to `child_process.spawn`.
 
 Without the allowlist, child processes inherit the full parent env,
 which:
+
 - Makes builds non-reproducible across machines (every CI flag, every
   user-installed dotfile thing leaks in).
 - Pollutes the cache key (if the user mistakenly tracks env: `*`).
@@ -74,6 +75,7 @@ future feature; for now, declare via `passThrough` what you need.
 ## Tests
 
 `env.test.ts` covers:
+
 - Essentials passed from source; undeclared vars stripped.
 - Essentials omitted when not present in source.
 - `passThrough` names forwarded; missing names absent (not empty
@@ -92,8 +94,8 @@ Adjusting policy:
   values participate via `cache.inputs.env`, not via the essential
   list).
 - **No essentials at all** — start with `{}`, only apply `passThrough`
-  + `define`. Most tools won't find `PATH`; user must declare it.
-  Strict reproducibility at high friction cost.
+  - `define`. Most tools won't find `PATH`; user must declare it.
+    Strict reproducibility at high friction cost.
 - **Layered profiles** — workspace-level + task-level merging. Build
   a different `BuildEnvOptions` upstream and feed it through; this
   module stays simple.

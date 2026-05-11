@@ -19,7 +19,7 @@ export class Cache {
     hash: string
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles'>
     projectDir: string
-    outputFiles: string[]                  // absolute paths
+    outputFiles: string[] // absolute paths
   }): Promise<void>
 }
 
@@ -36,13 +36,13 @@ export interface CacheKeyInput {
 export interface CacheEntry {
   hash: string
   taskId: string
-  command: string                          // joined with ' && ' for multi-step
+  command: string // joined with ' && ' for multi-step
   exitCode: number
   durationMs: number
-  outputFiles: string[]                    // project-relative POSIX paths
+  outputFiles: string[] // project-relative POSIX paths
   stdout: string
   stderr: string
-  storedAt: string                         // ISO timestamp
+  storedAt: string // ISO timestamp
 }
 ```
 
@@ -69,6 +69,7 @@ relative path from `workspaceRoot` (so cache keys are stable across
 platforms).
 
 Determinism notes:
+
 - The caller is responsible for canonicalizing `envValues` and
   `inputFiles` ordering (`inputs.ts` sorts both).
 - `upstreamHashes` is sorted inside `key()` so caller order doesn't
@@ -103,6 +104,7 @@ multi-machine cache sharing would need a different backend.
 ## Restore semantics
 
 `restoreOutputs(hash, projectDir)`:
+
 - If `<cacheDir>/<hash>/outputs/` doesn't exist, no-op.
 - Otherwise recursively copies into `projectDir`, creating parent
   directories as needed.
@@ -110,6 +112,7 @@ multi-machine cache sharing would need a different backend.
 - Stored output paths are project-relative; layout is mirrored.
 
 `get(hash)`:
+
 - Reads `meta.json`. Returns parsed `CacheEntry` or `null` (if file
   missing or JSON corrupt).
 - Doesn't restore files — the caller (orchestrator) decides when to
@@ -139,6 +142,7 @@ output-content-based propagation if we revisit that strategy.
 ## `CACHE_VERSION`
 
 Currently `'vzn-cache-v7'`. Bump when:
+
 - A new field is added to `CacheKeyInput`.
 - The order or framing of existing key fields changes.
 - The `meta.json` schema changes.
@@ -149,6 +153,7 @@ this freely; post-1.0 we'd want a migration story.
 ## Tests
 
 `cache.test.ts` covers `Cache.key` exhaustively:
+
 - Determinism across repeated calls.
 - Changes in task id, config hash, env values, input file content,
   workspace fingerprint, upstream hashes all change the key.
