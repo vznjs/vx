@@ -47,6 +47,8 @@ src/
   inputs.ts         # input file glob resolution + project-boundary enforcement
   config.ts         # public schema (ProjectConfig, TaskConfig, …)
   paths.ts          # tiny POSIX-path helper
+  dashboard.ts      # local analytics HTTP server (JSON API + static UI)
+  dashboard-ui/     # static UI bundle (vanilla HTML + ESM hash router)
   index.ts          # public re-exports
 docs/
   README.md         # index
@@ -107,6 +109,15 @@ docs/
 
 ## Decision log
 
+- **2026-05**: Dashboard PR 5/10 — static UI bundle. `src/dashboard-ui/`
+  ships vanilla HTML + ESM + a tiny hash router with no build step.
+  `dashboard.ts` now serves non-`/api/*` paths from disk with a
+  no-store cache policy; unknown non-asset paths fall through to
+  `index.html` so the SPA's `#/overview`, `#/cache`, … hash routes
+  resolve correctly. Two pages this PR: Overview (cards + recent
+  runs) + Cache (entries table). PR #24 adds Tasks + Runs; PR #25
+  adds Run detail + flamegraph. 7 new static-serving tests. Default
+  port also accepts `0` for kernel-assigned. PR #23.
 - **2026-05**: Dashboard PR 4/10 — `vzn dashboard` subcommand +
   `src/dashboard.ts` HTTP server. Bun.serve()-based, opens
   `cache.db` read-only, exposes `/api/health`, `/api/overview`,

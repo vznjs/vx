@@ -8,6 +8,7 @@
 
 import { Database } from 'bun:sqlite'
 import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 export interface DashboardServerOptions {
@@ -158,7 +159,56 @@ export async function handleRequest(db: Database, req: Request): Promise<Respons
     const limit = clamp(intParam(url, 'limit', 100), 1, 1000)
     return json(getCacheEntries(db, limit))
   }
+  if (pathname.startsWith('/api/')) return notFound()
+  return await serveStatic(pathname)
+}
+
+const UI_DIR = path.join(import.meta.dir, 'dashboard-ui')
+
+/**
+ * Serve a UI static asset. Returns 404 outside the UI tree. Everything
+ * that isn't a known file falls through to `index.html` so the SPA's
+ * hash router can take it from there (`/runs/abc` etc. all serve the
+ * shell; the router handles routing).
+ */
+async function serveStatic(pathname: string): Promise<Response> {
+  const requested = pathname === '/' ? '/index.html' : pathname
+  // Path traversal guard: normalize and require the result to stay
+  // under UI_DIR. `path.join` here resolves `..` segments.
+  const absolute = path.join(UI_DIR, requested)
+  if (!absolute.startsWith(UI_DIR)) return notFound()
+  if (existsSync(absolute)) {
+    return await fileResponse(absolute)
+  }
+  // SPA fallback: any unknown path that isn't an obvious asset request
+  // gets the shell HTML.
+  if (!/\.(js|css|html|ico|svg|png|jpg|woff2?)$/i.test(requested)) {
+    return await fileResponse(path.join(UI_DIR, 'index.html'))
+  }
   return notFound()
+}
+
+async function fileResponse(absolute: string): Promise<Response> {
+  const buf = await readFile(absolute)
+  return new Response(buf, {
+    headers: {
+      'content-type': contentTypeFor(absolute),
+      // Don't cache during development — the user wants fresh data
+      // every reload. The dashboard is a dev tool, not production.
+      'cache-control': 'no-store',
+    },
+  })
+}
+
+function contentTypeFor(file: string): string {
+  if (file.endsWith('.html')) return 'text/html; charset=utf-8'
+  if (file.endsWith('.css')) return 'text/css; charset=utf-8'
+  if (file.endsWith('.js')) return 'text/javascript; charset=utf-8'
+  if (file.endsWith('.json')) return 'application/json; charset=utf-8'
+  if (file.endsWith('.svg')) return 'image/svg+xml'
+  if (file.endsWith('.png')) return 'image/png'
+  if (file.endsWith('.ico')) return 'image/x-icon'
+  return 'application/octet-stream'
 }
 
 export function getOverview(db: Database): OverviewResponse {

@@ -406,7 +406,9 @@ export function parseDashboardArgs(args: readonly string[]): DashboardArgs {
       const v = args[++i]
       if (v === undefined) return { ...out, error: `${a} requires a value` }
       const n = Number(v)
-      if (!Number.isInteger(n) || n < 1 || n > 65535) return { ...out, error: `invalid port: ${v}` }
+      // 0 is valid: kernel assigns an ephemeral port (useful in tests
+      // and for "just find me one" workflows).
+      if (!Number.isInteger(n) || n < 0 || n > 65535) return { ...out, error: `invalid port: ${v}` }
       out.port = n
     } else if (a === '--host') {
       const v = args[++i]

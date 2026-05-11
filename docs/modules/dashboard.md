@@ -1,12 +1,16 @@
-# `dashboard.ts` — local analytics server
+# `dashboard.ts` — local analytics server + UI
 
 ## Purpose
 
-Serve a JSON API over the local cache SQLite DB so the dashboard UI
-(PR #23+) and external integrations can query run history, cache
-state, and per-task analytics without going through the CLI. Read-only
-— `vzn run` continues to own the database; this server opens
-`cache.db` with `{ readonly: true }` and shares the file via WAL.
+Serve a JSON API over the local cache SQLite DB plus a static UI
+bundle. Read-only — `vzn run` continues to own the database; this
+server opens `cache.db` with `{ readonly: true }` and shares the
+file via WAL.
+
+The UI lives under `src/dashboard-ui/`: vanilla HTML + ESM + a tiny
+hash router. No build step, no framework. Pages added over the
+dashboard PR sequence: Overview + Cache shipped in PR #23; Tasks +
+Runs in PR #24; Run detail + flamegraph in PR #25.
 
 ## Public surface
 
@@ -153,6 +157,7 @@ Cache entry index, MRU first. Default 100, clamped 1–1000.
 ```sh
 vzn dashboard                  # 127.0.0.1:4280
 vzn dashboard --port 9090
+vzn dashboard --port 0         # let the kernel pick (useful in tests)
 vzn dashboard --host 0.0.0.0   # listen on all interfaces
 ```
 
@@ -167,9 +172,29 @@ entries and runs — none of those belong on `CacheLayer`, which is
 already the orchestrator's contract. Keeping them in this module
 avoids polluting the cache API for read patterns nobody else needs.
 
+## Static UI bundle
+
+Non-`/api/*` paths serve assets from `src/dashboard-ui/`. The router
+is hash-based (`#/overview`, `#/cache`, …) so the server only needs
+one fallback rule:
+
+- known asset (`.css`, `.js`, `.html`, `.svg`, `.png`, `.ico`,
+  `.woff?`) → file from disk, or 404
+- everything else → `index.html` (SPA shell)
+
+The shell loads `/app.js` which imports each page module on demand.
+Pages call `/api/*` directly with `fetch`. No bundler.
+
+`Cache-Control: no-store` on every static response: this is a dev
+tool and the user wants fresh data on every reload.
+
+`UI_DIR` resolves via `import.meta.dir`, so the published npm package
+serves the bundle straight out of `src/dashboard-ui/` with no build
+step.
+
 ## Cloudflare port (forward-looking)
 
 PR #26 will ship a `cf-dashboard/` template that implements the same
-wire shape over a D1 database. Clients (the UI + any third-party
-integration) won't need to know whether they're hitting a local Bun
-server or a Cloudflare Worker — same endpoints, same JSON.
+wire shape over a D1 database. The static UI bundle is portable: the
+Worker will serve the same files via the Workers static-assets
+binding so the dashboard ships once and runs in two places.
