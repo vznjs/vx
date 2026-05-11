@@ -1,6 +1,7 @@
 import readline from 'node:readline/promises'
 import path from 'node:path'
 import { VERSION } from './index.js'
+import { Cache, type CacheStats } from './cache.js'
 import { applyFilters, parseFilter } from './filter.js'
 import { run as runOrchestrator, type RunOptions, type RunSummary } from './orchestrator.js'
 import { buildPackageGraph } from './package-graph.js'
@@ -25,6 +26,8 @@ export async function run(argv: readonly string[]): Promise<number> {
       return 0
     case 'run':
       return await runCmd(rest)
+    case 'stats':
+      return await statsCmd()
     default:
       process.stderr.write(`vzn: unknown command: ${command}\n`)
       printHelp()
@@ -285,6 +288,49 @@ function formatRow(o: TaskOutcome): { task: string; status: string; duration: st
   }
 }
 
+async function statsCmd(): Promise<number> {
+  const cwd = process.cwd()
+  let root: string
+  try {
+    root = findWorkspaceRoot(cwd)
+  } catch (err) {
+    process.stderr.write(`vzn stats: ${(err as Error).message}\n`)
+    return 1
+  }
+  const cache = new Cache(path.join(root, '.vzn', 'cache'))
+  try {
+    process.stdout.write(formatStats(cache.stats()))
+  } finally {
+    cache.close()
+  }
+  return 0
+}
+
+export function formatStats(s: CacheStats): string {
+  const hitRate =
+    s.runCountLast24h > 0 ? `${((s.hitCountLast24h / s.runCountLast24h) * 100).toFixed(1)}%` : 'n/a'
+  return [
+    'Cache statistics',
+    '----------------',
+    `Entries:           ${s.entryCount}`,
+    `Total size:        ${formatBytes(s.totalBytes)}`,
+    `Runs (24h):        ${s.runCountLast24h}`,
+    `Hits  (24h):       ${s.hitCountLast24h}  (${hitRate})`,
+    '',
+  ].join('\n')
+}
+
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let v = n / 1024
+  for (const u of units) {
+    if (v < 1024) return `${v.toFixed(v < 10 ? 1 : 0)} ${u}`
+    v /= 1024
+  }
+  return `${v.toFixed(0)} PB`
+}
+
 function printHelp(): void {
   process.stdout.write(
     [
@@ -292,10 +338,11 @@ function printHelp(): void {
       '',
       'Usage:',
       '  vzn run [OPTIONS] [TASK | PKG#TASK] [-- forwarded-args...]',
+      '  vzn stats',
       '  vzn help',
       '  vzn version',
       '',
-      'Selection:',
+      'Selection (for run):',
       '  (default)                Run task in the project containing cwd.',
       '  -r, --recursive          Run task in every project that declares it.',
       '  -F, --filter <pattern>   pnpm-style filter (repeatable). Examples:',
@@ -303,17 +350,20 @@ function printHelp(): void {
       '                             foo^..., !foo',
       "  pkg#task                 Run a specific project's task directly.",
       '',
-      'Behavior:',
+      'Behavior (for run):',
       '  -c, --concurrency <n>    Max parallel tasks (default: CPU count).',
       '      --ignore-depends-on  Skip dependsOn expansion; run only the requested task(s).',
       '      --no-cache           Skip cache reads AND writes.',
       '      --cache              No-op (parity with vite-task).',
       '  -v, --verbose            Print a detailed summary after the run.',
       '',
-      'Argument forwarding:',
-      '  Anything after `--` is forwarded (shell-quoted) to the last step of',
-      "  each task's exec array. The forwarded args are folded into the",
-      '  cache key, so different args produce different cache entries.',
+      'Argument forwarding (for run):',
+      "  Anything after `--` is forwarded (shell-quoted) to the task's exec",
+      '  command. The forwarded args are folded into the cache key, so',
+      '  different args produce different cache entries.',
+      '',
+      'Stats:',
+      '  vzn stats                Print cache size + last-24h run/hit summary.',
       '',
     ].join('\n'),
   )

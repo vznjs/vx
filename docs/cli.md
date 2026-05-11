@@ -7,6 +7,7 @@ hand-parsed (no commander/yargs/etc.) in `src/cli.ts`.
 
 ```
 vzn run [OPTIONS] [TASK | PKG#TASK] [-- forwarded-args...]
+vzn stats
 vzn help
 vzn version
 vzn --help, vzn -h
@@ -32,6 +33,24 @@ Exit codes:
 
 - `0` — every task finished `success` or `cache-hit`.
 - `1` — at least one task ended `failed` or `skipped`.
+
+### `vzn stats`
+
+Print a summary of the local cache:
+
+```
+Cache statistics
+----------------
+Entries:           42
+Total size:        5.0 MB
+Runs (24h):        100
+Hits  (24h):       73  (73.0%)
+```
+
+Reads from `.vzn/cache/cache.db` (the v10 SQLite index). The "Runs"
+and "Hits" counts come from the `runs` table — recorded for every
+task at the end of each `vzn run`, including cache hits, failures,
+and skipped tasks. Exits `1` if not inside a pnpm workspace.
 
 ### `vzn help`, `vzn --help`, `vzn -h`
 

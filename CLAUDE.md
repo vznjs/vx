@@ -127,8 +127,9 @@ docs/
 
 ## Active workstreams (prioritized)
 
-1. **`vzn stats` + `vzn cache prune` CLI** — surface the v10
-   `runs`/`entries` data. LRU eviction policy + sized-cap. Small PR.
+1. **`vzn cache prune`** — TTL + size-cap eviction policy using
+   `entries.accessed_at` / `entries.size_bytes`. `vzn stats` already
+   shipped (PR #8).
 2. **Remote cache implementation** — HTTP client speaking Turbo
    `/v8/artifacts/`. Layered with local via `LayeredCache`. Bearer
    token auth. Design at `docs/design/remote-cache.md`.

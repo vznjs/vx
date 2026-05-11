@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { parseRunArgs, run } from './cli.js'
+import { formatBytes, formatStats, parseRunArgs, run } from './cli.js'
 
 describe('cli run()', () => {
   let stdout: string
@@ -346,5 +346,107 @@ describe('parseRunArgs', () => {
 
   it('rejects double positional', () => {
     expect(parseRunArgs(['a', 'b']).error).toMatch(/unexpected positional/)
+  })
+})
+
+describe('formatBytes', () => {
+  it('formats values under 1 KB as bytes', () => {
+    expect(formatBytes(0)).toBe('0 B')
+    expect(formatBytes(512)).toBe('512 B')
+    expect(formatBytes(1023)).toBe('1023 B')
+  })
+
+  it('switches to KB at 1024', () => {
+    expect(formatBytes(1024)).toBe('1.0 KB')
+    expect(formatBytes(5_120)).toBe('5.0 KB')
+  })
+
+  it('drops the decimal once values are >= 10 in a unit', () => {
+    expect(formatBytes(10_240)).toBe('10 KB')
+  })
+
+  it('switches to MB and GB', () => {
+    expect(formatBytes(2 * 1024 * 1024)).toBe('2.0 MB')
+    expect(formatBytes(3 * 1024 * 1024 * 1024)).toBe('3.0 GB')
+  })
+})
+
+describe('formatStats', () => {
+  it('renders zero state with n/a hit rate', () => {
+    const out = formatStats({
+      entryCount: 0,
+      totalBytes: 0,
+      runCountLast24h: 0,
+      hitCountLast24h: 0,
+    })
+    expect(out).toContain('Entries:           0')
+    expect(out).toContain('Total size:        0 B')
+    expect(out).toContain('Hits  (24h):       0  (n/a)')
+  })
+
+  it('renders populated state with hit-rate percentage', () => {
+    const out = formatStats({
+      entryCount: 42,
+      totalBytes: 5 * 1024 * 1024,
+      runCountLast24h: 100,
+      hitCountLast24h: 73,
+    })
+    expect(out).toContain('Entries:           42')
+    expect(out).toContain('Total size:        5.0 MB')
+    expect(out).toContain('Runs (24h):        100')
+    expect(out).toContain('Hits  (24h):       73  (73.0%)')
+  })
+})
+
+describe('cli stats command', () => {
+  let workspaceRoot: string
+  const origCwd = process.cwd()
+
+  beforeEach(async () => {
+    const { mkdtemp, writeFile } = await import('node:fs/promises')
+    const os = await import('node:os')
+    const path = await import('node:path')
+    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vzn-stats-'))
+    await writeFile(
+      path.join(workspaceRoot, 'pnpm-workspace.yaml'),
+      'packages:\n  - "packages/*"\n',
+    )
+    process.chdir(workspaceRoot)
+  })
+
+  afterEach(async () => {
+    process.chdir(origCwd)
+    const { rm } = await import('node:fs/promises')
+    await rm(workspaceRoot, { recursive: true, force: true })
+    vi.restoreAllMocks()
+  })
+
+  it('prints cache statistics from an empty workspace', async () => {
+    let stdout = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const code = await run(['stats'])
+    expect(code).toBe(0)
+    expect(stdout).toContain('Cache statistics')
+    expect(stdout).toContain('Entries:           0')
+  })
+
+  it('exits 1 when not inside a pnpm workspace', async () => {
+    process.chdir(origCwd)
+    let stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    // Move out of any workspace.
+    const os = await import('node:os')
+    process.chdir(os.tmpdir())
+    const code = await run(['stats'])
+    expect(code).toBe(1)
+    expect(stderr).toContain('Could not find pnpm-workspace.yaml')
   })
 })
