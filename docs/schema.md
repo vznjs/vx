@@ -1,7 +1,7 @@
 # Config schema
 
 Complete reference for every field accepted by `vzn.config.ts` (or
-`.mts`, `.js`, `.mjs`). Types live in `packages/run/src/config.ts` and
+`.mts`, `.js`, `.mjs`). Types live in `src/config.ts` and
 are re-exported from `@vzn/run`.
 
 ## Top-level shape

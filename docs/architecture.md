@@ -2,7 +2,7 @@
 
 ## Module map
 
-Each file under `packages/run/src/` is one focused module. Internal
+Each file under `src/` is one focused module. Internal
 imports are unidirectional: lower modules in this table don't depend on
 higher ones.
 

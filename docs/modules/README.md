@@ -1,6 +1,6 @@
 # Module reference
 
-One markdown per module under `packages/run/src/`. Each documents:
+One markdown per module under `src/`. Each documents:
 
 - **Purpose** — what the module exists to do
 - **Public surface** — types and functions consumed by other modules

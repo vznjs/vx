@@ -7,6 +7,19 @@ settings:
 importers:
 
   .:
+    dependencies:
+      ignore:
+        specifier: ^7.0.4
+        version: 7.0.5
+      jiti:
+        specifier: ^2.4.2
+        version: 2.7.0
+      tinyglobby:
+        specifier: ^0.2.10
+        version: 0.2.16
+      yaml:
+        specifier: ^2.6.1
+        version: 2.8.4
     devDependencies:
       '@types/node':
         specifier: ^22.9.0
@@ -23,21 +36,6 @@ importers:
       vitest:
         specifier: ^2.1.4
         version: 2.1.9(@types/node@22.19.18)
-
-  packages/run:
-    dependencies:
-      ignore:
-        specifier: ^7.0.4
-        version: 7.0.5
-      jiti:
-        specifier: ^2.4.2
-        version: 2.7.0
-      tinyglobby:
-        specifier: ^0.2.10
-        version: 0.2.16
-      yaml:
-        specifier: ^2.6.1
-        version: 2.8.4
 
 packages:
 
