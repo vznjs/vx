@@ -8,7 +8,7 @@ function node(id: string, deps: string[] = []): TaskNode {
     projectName: id.split('#')[0]!,
     projectDir: '/tmp',
     taskName: id.split('#')[1]!,
-    config: { process: { command: 'noop' } },
+    config: { exec: { command: 'noop' } },
     deps,
   }
 }

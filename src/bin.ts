@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { run } from './cli.js'
 
 run(process.argv.slice(2)).then(
