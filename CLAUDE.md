@@ -107,6 +107,13 @@ docs/
 
 ## Decision log
 
+- **2026-05**: Dashboard PR 3/10 — orchestrator generates a ULID
+  `runId` at the top of `run()` shared by every task in the
+  invocation, plus an `hrtime.bigint()` anchor for per-task spans.
+  `TaskOutcome` carries `wallclockStartNs` / `wallclockEndNs` (ns
+  relative to run t=0). `recordRun()` now writes `run_id` + spans
+  into the v11 columns. Hand-rolled `src/ulid.ts` (Crockford
+  base32, 48-bit ms + 80-bit random) — no new dep. PR #21.
 - **2026-05**: Dashboard PR 2/10 — `runner.ts` and `sandbox.ts`
   switched to `Bun.spawn` so we get `resourceUsage()` (cpuTime,
   maxRSS) per child. `RunResult` gains optional `cpuMs` +
