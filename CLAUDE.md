@@ -142,9 +142,9 @@ docs/
 
 ## Active workstreams (prioritized)
 
-1. **Sandboxing** (design-only today) — bwrap on Linux to enforce
-   declared inputs. Off-by-default, opt-in via `--sandbox`. Would also
-   close the "warn when undeclared" gap from the user's earlier ask.
+1. **Sandboxing implementation** — design accepted in
+   `docs/design/sandbox.md`. bwrap on Linux + sandbox-exec on macOS,
+   `--sandbox` opt-in flag. Enforce declared inputs structurally.
 2. **Presets / config-introspection** — NX-style task inference from
    tool configs (`vitest.config.ts`, `tsconfig.json`). Lower priority.
 3. **Workspace config loading** — `defineWorkspace({...})` is exported
