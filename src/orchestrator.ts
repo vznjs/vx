@@ -111,6 +111,28 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 
   const list = [...outcomes.values()]
   const ok = list.every((o) => o.status === 'success' || o.status === 'cache-hit')
+
+  // Record each task to the run history. Timestamps are approximate
+  // (we don't have per-task wall-clock start times exposed by the
+  // scheduler), but durations are real. Good enough for stats; if we
+  // ever need precise span tracking we'd add start/end to TaskOutcome.
+  const now = Date.now()
+  for (const o of list) {
+    if (!o.hash) continue
+    cache.recordRun({
+      hash: o.hash,
+      project: o.node.projectName,
+      task: o.node.taskName,
+      status: o.status,
+      exitCode: o.exitCode,
+      durationMs: o.durationMs,
+      ...(options.forwardArgs !== undefined ? { forwardArgs: options.forwardArgs } : {}),
+      startedAt: now - o.durationMs,
+      endedAt: now,
+    })
+  }
+  cache.close()
+
   return { ok, outcomes: list }
 }
 
