@@ -41,15 +41,22 @@ export function formatHeader(input: HeaderInput): string[] {
 }
 
 export function formatTaskBlock(node: TaskNode, outcome: TaskOutcome, body: string): string {
+  // Group tasks (no `exec`) do no work and have no body — they're
+  // organizational nodes the user wrote so a `vx run ci` invocation
+  // has a single name to address. Showing an empty box for them is
+  // pure noise. Same exclusion the summary totals + analytics
+  // pass already make.
+  if (node.config.exec === undefined) return ''
+
   const id = node.id
   const header = formatBlockHeader(node, outcome)
   const lines: string[] = [`┌─ ${id} > ${header}`]
 
   // Show the command for executed tasks so the user sees what ran;
   // skip for cache hits (the captured stdout/stderr is the interesting
-  // part) and for groups (no command).
-  const cmd = node.config.exec?.command
-  if (cmd && outcome.status === 'success') lines.push(`$ ${cmd}`)
+  // part).
+  const cmd = node.config.exec.command
+  if (outcome.status === 'success') lines.push(`$ ${cmd}`)
 
   if (body.length > 0) {
     lines.push(body.replace(/\n$/, ''))
@@ -71,7 +78,7 @@ function formatBlockHeader(node: TaskNode, o: TaskOutcome): string {
     case 'skipped':
       return 'skipped (upstream failed)'
     case 'success':
-      return node.config.exec ? 'executed' : 'group task'
+      return 'executed'
     default:
       return o.status
   }
