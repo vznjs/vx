@@ -102,7 +102,6 @@ async function runCmd(args: readonly string[]): Promise<number> {
     task: taskName,
     noCache: parsed.noCache,
     ignoreDependsOn: parsed.ignoreDependsOn,
-    sandbox: parsed.sandbox,
     forwardArgs: parsed.forwardArgs,
   }
   if (projects !== undefined) opts.projects = projects
@@ -120,7 +119,6 @@ export interface RunArgs {
   ignoreDependsOn: boolean
   concurrency: number | undefined
   noCache: boolean
-  sandbox: boolean
   forwardArgs: string[]
   verbose: boolean
   error?: string
@@ -134,7 +132,6 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     ignoreDependsOn: false,
     concurrency: undefined,
     noCache: false,
-    sandbox: false,
     forwardArgs: [],
     verbose: false,
   }
@@ -161,8 +158,6 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       out.ignoreDependsOn = true
     } else if (a === '--no-cache') {
       out.noCache = true
-    } else if (a === '--sandbox') {
-      out.sandbox = true
     } else if (a === '--cache') {
       // No-op: parity with vite-task. Caching is governed by the task's `cache`
       // block in config; this flag is symmetric with --no-cache.
@@ -457,9 +452,6 @@ function printHelp(): void {
       '      --ignore-depends-on  Skip dependsOn expansion; run only the requested task(s).',
       '      --no-cache           Skip cache reads AND writes.',
       '      --cache              No-op (parity with vite-task).',
-      '      --sandbox            Run each task inside a filesystem sandbox',
-      '                           that exposes only declared cache.inputs.files.',
-      '                           Linux: bwrap; macOS: sandbox-exec.',
       '  -v, --verbose            Print a detailed summary after the run.',
       '',
       'Argument forwarding (for run):',

@@ -1804,10 +1804,9 @@ describe('orchestrator e2e', () => {
   it(
     'thrown errors from executeTask surface in the failure replay',
     async () => {
-      // Force a thrown error: --sandbox on Windows would normally throw
-      // SandboxUnsupportedError, but we can simulate the same shape with
-      // a project whose config is unreadable. Easier: command that
-      // resolves to a nonexistent executable so spawn fails with ENOENT.
+      // Force a thrown error: a command that resolves to a nonexistent
+      // executable. The spawn fails with ENOENT, which surfaces via
+      // Bun.spawn's error path and gets caught by the scheduler.
       await addProject(fixture.root, 'broken-spawn', {
         config: `
           export default {

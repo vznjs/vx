@@ -26,21 +26,16 @@ ones.
        └────────────┘    └──────┬──────┘    │ ┌────────────┐  ┌─────────────┐   │
                                 │           │ │ inputs.ts  │  │ env.ts      │   │
                          ┌──────▼───────┐   │ ├────────────┤  ├─────────────┤   │
-                         │ package-graph│   │ │ runner.ts  │  │ sandbox.ts  │   │
+                         │ package-graph│   │ │ runner.ts  │  │   cache     │   │
                          └──────┬───────┘   │ └────────────┘  └─────────────┘   │
-                                │           │ ┌────────────────────────────┐    │
-                         ┌──────▼───────┐   │ │           cache            │    │
-                         │  workspace   │   │ │ ┌──────────────────────┐   │    │
-                         └──────┬───────┘   │ │ │ cache.ts (local v10) │   │    │
-                                │           │ │ ├──────────────────────┤   │    │
-                         ┌──────▼───────┐   │ │ │ layered-cache.ts     │   │    │
-                         │project-loader│   │ │ ├──────────────────────┤   │    │
-                         └──────────────┘   │ │ │ remote-cache.ts      │   │    │
-                                            │ │ ├──────────────────────┤   │    │
-                                            │ │ │ cache-archive.ts     │   │    │
-                                            │ │ └──────────────────────┘   │    │
-                                            │ └────────────────────────────┘    │
-                                            └───────────────────────────────────┘
+                                │           │                                   │
+                         ┌──────▼───────┐   │ cache cluster:                    │
+                         │  workspace   │   │   cache.ts (local v10)            │
+                         └──────┬───────┘   │   layered-cache.ts                │
+                                │           │   remote-cache.ts                 │
+                         ┌──────▼───────┐   │   cache-archive.ts                │
+                         │project-loader│   │                                   │
+                         └──────────────┘   └───────────────────────────────────┘
 
        config.ts:    the public schema; imported by nearly everything.
        paths.ts:     tiny POSIX-path helper for stable cache keys.
@@ -63,17 +58,17 @@ it in a `LayeredCache` when `VZN_REMOTE_CACHE_URL` + `_TOKEN` are set.
 From there, `executeTask` calls the same `key / get / save / restoreOutputs`
 methods regardless of the layering.
 
-### The runner / sandbox split
+### The runner
 
-`runner.ts` spawns the user's `exec.command` directly. `sandbox.ts`
-wraps the same command in `bwrap` (Linux) or `sandbox-exec` (macOS)
-so undeclared file reads return `ENOENT`. The orchestrator picks
-between them based on the `--sandbox` flag on `vzn run`.
+`runner.ts` spawns the user's `exec.command` via `Bun.spawn`. There
+is no sandboxing layer — under-declared `cache.inputs.files` will
+silently produce stale cache hits, which is the standard task-runner
+tradeoff (Turbo and Nx behave the same).
 
 ## Data flow on `vzn run <task>`
 
 1. **`cli.ts`** parses argv → `{ task, projects?, concurrency?,
-noCache?, ignoreDependsOn?, sandbox?, forwardArgs? }`. The CLI
+noCache?, ignoreDependsOn?, forwardArgs? }`. The CLI
    resolves the selection mode (cwd, `-r`, `-F` filters, or
    `pkg#task`) into a concrete project list before invoking the
    orchestrator.
@@ -115,9 +110,9 @@ noCache?, ignoreDependsOn?, sandbox?, forwardArgs? }`. The CLI
     - On hit: restores output files, replays captured stdout/stderr,
       returns `cache-hit`.
     - On miss: builds an isolated env (**`env.ts`**) and calls either
-      **`runner.runCommand`** (default) or **`sandbox.runSandboxed`**
-      (when `--sandbox` is set). On success, captures output files
-      and writes the cache entry. On failure, nothing is cached.
+      **`runner.runCommand`** to spawn the shell command. On success,
+      captures output files and writes the cache entry. On failure,
+      nothing is cached.
 11. After all tasks finish, the orchestrator records one row per task
     to the local cache's `runs` table (drives `vzn stats` and
     eviction heuristics). When the layered cache is active, the
@@ -137,7 +132,6 @@ that module's `.ts` file and its consumers' imports.
 | `cache-archive.ts`  | Swap tar.gz for zstd or zip; or use a JS implementation                            |
 | `layered-cache.ts`  | Different layering topology (local → regional → global)                            |
 | `runner.ts`         | Run inside containers, remote machines                                             |
-| `sandbox.ts`        | Use a different sandbox primitive (landlock, Job Objects)                          |
 | `scheduler.ts`      | Implement work-stealing, priority queues                                           |
 | `inputs.ts`         | Add fspy-style runtime input tracking                                              |
 | `env.ts`            | Adjust the essential allowlist or isolation policy                                 |
@@ -170,18 +164,6 @@ client interops with any turbo-compatible server (`ducktors/turborepo-remote-cac
 servers don't inspect the body, so this is invisible to them. See
 `docs/design/remote-cache.md` for the full protocol.
 
-## Sandbox subsystem (detail)
-
-When `vzn run --sandbox` is set, `executeTask` routes each task
-through `sandbox.runSandboxed` instead of `runner.runCommand`. The
-sandbox bind-mounts only the resolved `cache.inputs.files` (read-only)
-plus the project dir (read-write); everything else returns `ENOENT`.
-Linux uses `bwrap`; macOS uses `sandbox-exec`. The orchestrator
-fails loud when the helper isn't installed — silent fall-through
-would defeat the contract.
-
-See `docs/design/sandbox.md` for design rationale.
-
 ## Run-history analytics
 
 Every `vzn run` invocation stamps a ULID (`run_id`) and appends one
@@ -211,10 +193,9 @@ The codebase consistently chooses the same trade-offs:
    automatically invalidate dependents via folded-in cache hashes;
    workspace-level changes (lockfile, workspace yaml) cascade to all
    tasks via the workspace fingerprint.
-6. **Fail loud on the contract.** When the user asks for sandboxing,
-   we don't silently fall through to unsandboxed; when the cache key
-   shape changes, we bump `CACHE_VERSION` and orphan old entries
-   rather than reading possibly-stale data.
+6. **Fail loud on the contract.** When the cache key shape changes
+   we bump `CACHE_VERSION` and orphan old entries rather than
+   reading possibly-stale data.
 
 ## What's intentionally absent
 
