@@ -19,6 +19,14 @@ export interface TaskOutcome {
    */
   wallclockStartNs?: bigint
   wallclockEndNs?: bigint
+  /**
+   * Captured stdout/stderr from the task's process. Populated on real
+   * `exec` runs (success or failure) so the orchestrator can replay
+   * failed-task output at end of run + persist logs to disk. Empty
+   * strings for cache-hits and group tasks.
+   */
+  stdout?: string
+  stderr?: string
 }
 
 export interface ScheduleOptions {
