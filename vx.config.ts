@@ -13,7 +13,7 @@ export default defineProject({
     'format-check': {
       exec: { command: 'oxfmt --check .' },
       cache: {
-        inputs: { files: ['**/*', '.oxfmtrc.json'] },
+        inputs: { files: ['**/*'] },
         outputs: { files: [] },
       },
     },
