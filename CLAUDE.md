@@ -109,6 +109,14 @@ docs/
 
 ## Decision log
 
+- **2026-05**: Dashboard PR 6/10 — Tasks + Runs UI pages. Tasks
+  ranks `(project, task)` pairs by average wall-clock duration
+  (cache-hits excluded so the ranking reflects work actually
+  done). Runs is a reverse-chronological list of `vzn run`
+  invocations grouped by `run_id`; rows link to `#/runs/:id`
+  which lands in PR #25. Added parametrized static-serving test
+  asserting each page module exports the expected `render*`
+  function. PR #24.
 - **2026-05**: Dashboard PR 5/10 — static UI bundle. `src/dashboard-ui/`
   ships vanilla HTML + ESM + a tiny hash router with no build step.
   `dashboard.ts` now serves non-`/api/*` paths from disk with a

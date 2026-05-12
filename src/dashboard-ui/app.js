@@ -3,9 +3,13 @@
 
 import { renderOverview } from '/pages/overview.js'
 import { renderCache } from '/pages/cache.js'
+import { renderTasks } from '/pages/tasks.js'
+import { renderRuns } from '/pages/runs.js'
 
 const routes = {
   '/overview': renderOverview,
+  '/runs': renderRuns,
+  '/tasks': renderTasks,
   '/cache': renderCache,
 }
 
