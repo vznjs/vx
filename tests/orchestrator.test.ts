@@ -764,7 +764,11 @@ describe('orchestrator e2e', () => {
   it(
     'non-zero exit code is NOT cached; next run re-executes',
     async () => {
+      // The exec-run counter lives outside `cache.outputs.files` so
+      // cleanOutputs() doesn't wipe it between runs. It's only used to
+      // confirm the task body actually re-executed.
       const dir = await addProject(fixture.root, 'fail', {
+        files: { 'src/x.txt': 'v1' },
         config: `
           export default {
             tasks: {
@@ -772,7 +776,7 @@ describe('orchestrator e2e', () => {
                 exec: {
                   command: "node -e 'require(\\"fs\\").appendFileSync(\\"runs.txt\\", \\"x\\"); process.exit(3)'",
                 },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['runs.txt'] } },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
               },
             },
           }
@@ -1415,6 +1419,102 @@ describe('orchestrator e2e', () => {
       const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('cache-hit')
       expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('from-task\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'cache-hit restore removes stale files matching the output globs',
+    async () => {
+      const dir = await addProject(fixture.root, 'stale-restore', {
+        files: { 'src/x.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                exec: { command: "mkdir -p dist && echo a > dist/a.txt" },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+              },
+            },
+          }
+        `,
+      })
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+
+      // Drop a "stragler" inside the declared output dir — something a
+      // prior build (or the user) left behind that the cache snapshot
+      // doesn't know about.
+      await writeFile(path.join(dir, 'dist/stale.txt'), 'left-over')
+
+      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r.outcomes[0]?.status).toBe('cache-hit')
+      expect(await readFile(path.join(dir, 'dist/a.txt'), 'utf8')).toBe('a\n')
+      expect(existsSync(path.join(dir, 'dist/stale.txt'))).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'cache-miss exec also cleans declared outputs before running',
+    async () => {
+      const dir = await addProject(fixture.root, 'stale-miss', {
+        files: { 'src/x.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                exec: { command: "mkdir -p dist && echo a > dist/a.txt" },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+              },
+            },
+          }
+        `,
+      })
+
+      // Pre-seed a stale file under the declared outputs BEFORE the
+      // very first run. With cleanOutputs in place this gets wiped
+      // before exec; without it the file would survive the run.
+      await mkdir(path.join(dir, 'dist'), { recursive: true })
+      await writeFile(path.join(dir, 'dist/stale.txt'), 'left-over')
+
+      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r.outcomes[0]?.status).toBe('success')
+      expect(await readFile(path.join(dir, 'dist/a.txt'), 'utf8')).toBe('a\n')
+      expect(existsSync(path.join(dir, 'dist/stale.txt'))).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'does not clean output paths when cache is disabled (--no-cache)',
+    async () => {
+      const dir = await addProject(fixture.root, 'no-cache-no-clean', {
+        files: { 'src/x.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                exec: { command: "mkdir -p dist && echo a > dist/a.txt" },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+              },
+            },
+          }
+        `,
+      })
+
+      await mkdir(path.join(dir, 'dist'), { recursive: true })
+      await writeFile(path.join(dir, 'dist/manual.txt'), 'kept')
+
+      const r = await run({
+        cwd: fixture.root,
+        task: 'run',
+        noCache: true,
+        log: silentLogger(fixture),
+      })
+      expect(r.outcomes[0]?.status).toBe('success')
+      // --no-cache means "don't manage outputs either" — the user is
+      // debugging, leave their files alone.
+      expect(existsSync(path.join(dir, 'dist/manual.txt'))).toBe(true)
     },
     TIMEOUT,
   )

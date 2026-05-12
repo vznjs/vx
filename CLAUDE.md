@@ -133,6 +133,18 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: Declared output paths are wiped before every cache-hit
+  restore AND every cache-miss exec, so the project's output dir ends
+  the run bit-identical to the cached snapshot (no stragglers from a
+  prior build / hand-edits / removed files survive). New
+  `cleanOutputs` helper in `src/cache/inputs.ts` reuses `resolveOutputs`'
+  glob-and-boundary logic; `execute-task.ts` calls it in both spots
+  when `cache.outputs.files` is non-empty AND caching is enabled
+  (`--no-cache` leaves the tree alone — user is debugging and managing
+  files themselves). Three new e2e tests pin the behavior; one
+  existing test that relied on a stale output surviving across runs
+  (`non-zero exit code is NOT cached`) was rewritten to track
+  re-execution via a non-output file. PR #50.
 - **2026-05**: PATH-prepend each project's `node_modules/.bin` per
   task (vite-task-style). `buildIsolatedEnv` gained an optional
   `binPaths` arg; `executeTask` passes

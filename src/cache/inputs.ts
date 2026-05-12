@@ -7,6 +7,7 @@
 // independent of `exec.env`, which controls what reaches the child.
 
 import path from 'node:path'
+import { rm } from 'node:fs/promises'
 import ignore, { type Ignore } from 'ignore'
 import type { CacheInputs } from '../config.js'
 
@@ -61,6 +62,30 @@ export async function resolveOutputs(args: {
     (p) => new Bun.Glob(p),
   )
   return [...(await scanUnion(args.outputs, excludeGlobs, args.projectDir))].sort()
+}
+
+/**
+ * Remove every file currently matching the declared output globs in
+ * the project dir. Called both before a cache-hit restore (so the
+ * restore lands on a clean slate, matching the cached snapshot bit-
+ * for-bit) and before a cache-miss exec (so the task's output dir
+ * doesn't carry stale stragglers from a prior run).
+ *
+ * Globs are evaluated against the *current* tree. Files in declared
+ * output paths that the user dropped by hand will be removed — that's
+ * the contract of declaring something as an output. Nested-project
+ * dirs are excluded the same way `resolveOutputs` does, so we never
+ * cross a project boundary.
+ */
+export async function cleanOutputs(args: {
+  projectDir: string
+  outputs: string[]
+  nestedProjectDirs: string[]
+}): Promise<void> {
+  const files = await resolveOutputs(args)
+  // `force: true` makes rm tolerate ENOENT (e.g. when two output
+  // globs overlap and a sibling already deleted a path mid-iteration).
+  await Promise.all(files.map((f) => rm(f, { force: true })))
 }
 
 interface ResolveFilesArgs {

@@ -1,7 +1,7 @@
 import path from 'node:path'
 import type { ExecConfig, TaskConfig, CacheConfig } from '../config.js'
 import type { CacheLayer } from '../cache/cache.js'
-import { resolveInputs, resolveOutputs } from '../cache/inputs.js'
+import { cleanOutputs, resolveInputs, resolveOutputs } from '../cache/inputs.js'
 import { buildIsolatedEnv } from '../exec/env.js'
 import { runCommand } from '../exec/runner.js'
 import type { TaskOutcome } from '../graph/scheduler.js'
@@ -86,9 +86,22 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     forwardArgs: effectiveForwardArgs,
   })
 
+  // Cleaning the declared output paths is the same operation in both
+  // cache-hit and cache-miss paths: wipe whatever's currently matching
+  // the output globs so the restored snapshot (or the fresh exec) lands
+  // on a clean slate. Skipped when nothing is declared as output, and
+  // when caching is off (the user is debugging and managing the tree
+  // themselves).
+  const cleanArgs = {
+    projectDir: node.projectDir,
+    outputs,
+    nestedProjectDirs: args.nestedProjectDirs,
+  }
+
   if (cacheEnabled) {
     const hit = await cache.get(hash)
     if (hit) {
+      if (outputs.length > 0) await cleanOutputs(cleanArgs)
       await cache.restoreOutputs(hash, node.projectDir)
       if (hit.stdout) log.taskStdout(node, hit.stdout)
       if (hit.stderr) log.taskStderr(node, hit.stderr)
@@ -103,6 +116,8 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
       }
     }
   }
+
+  if (cacheEnabled && outputs.length > 0) await cleanOutputs(cleanArgs)
 
   const env = buildIsolatedEnv({
     passThrough: step.env?.passThrough ?? [],
