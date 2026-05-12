@@ -493,13 +493,64 @@ describe('createDashboardServer', () => {
         hostname: '127.0.0.1',
       })
       try {
-        const res = await fetch(`http://127.0.0.1:${server.port}/api/health`)
+        // /api/overview queries the `entries` table, so this exercises
+        // the schema-migration path (not just file creation).
+        const res = await fetch(`http://127.0.0.1:${server.port}/api/overview`)
         expect(res.status).toBe(200)
+        const body = (await res.json()) as OverviewResponse
+        expect(body.cache.entryCount).toBe(0)
       } finally {
         void server.stop()
       }
     } finally {
       await rm(empty, { recursive: true, force: true })
+    }
+  })
+
+  it("migrates a cacheDir whose parent doesn't exist yet", async () => {
+    // Simulates `vzn dashboard` invoked before any `vzn run` — neither
+    // .vzn nor .vzn/cache has been mkdir'd. Reproduces the SQLITE_CANTOPEN
+    // crash from PR #32.
+    const outer = await mkdtemp(path.join(os.tmpdir(), 'vzn-dash-nodir-'))
+    const nested = path.join(outer, '.vzn', 'cache')
+    try {
+      const server = createDashboardServer({
+        cacheDir: nested,
+        uiDir: UI_DIR,
+        port: 0,
+        hostname: '127.0.0.1',
+      })
+      try {
+        const res = await fetch(`http://127.0.0.1:${server.port}/api/overview`)
+        expect(res.status).toBe(200)
+      } finally {
+        void server.stop()
+      }
+    } finally {
+      await rm(outer, { recursive: true, force: true })
+    }
+  })
+
+  it('recovers from a leftover 0-byte cache.db', async () => {
+    // A previously-buggy `vzn dashboard` may have left a stub file
+    // behind. Subsequent readonly opens hit SQLITE_CANTOPEN on prepare.
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vzn-dash-stub-'))
+    try {
+      await Bun.write(path.join(dir, 'cache.db'), new Uint8Array(0))
+      const server = createDashboardServer({
+        cacheDir: dir,
+        uiDir: UI_DIR,
+        port: 0,
+        hostname: '127.0.0.1',
+      })
+      try {
+        const res = await fetch(`http://127.0.0.1:${server.port}/api/overview`)
+        expect(res.status).toBe(200)
+      } finally {
+        void server.stop()
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
     }
   })
 })

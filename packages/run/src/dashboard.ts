@@ -10,6 +10,7 @@ import { Database } from 'bun:sqlite'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
+import { Cache } from './cache.js'
 
 export interface DashboardServerOptions {
   cacheDir: string
@@ -143,12 +144,18 @@ interface RunsRow {
  * when the server stops.
  */
 export function createDashboardServer(opts: DashboardServerOptions): ReturnType<typeof Bun.serve> {
+  // Always go through Cache so:
+  //   1. opts.cacheDir gets mkdir -p'd
+  //   2. cache.db is created with the v11 schema, or migrated if it's
+  //      a stale earlier-version file
+  //   3. WAL mode is set BEFORE the readonly handle opens
+  // Plain `Database(dbPath, { create: true })` would leave a 0-byte file
+  // on a missing parent dir, and the readonly reopen would then throw
+  // SQLITE_CANTOPEN when SQLite tries to parse the empty header.
+  // Idempotent — on a populated DB the migrations are CREATE TABLE
+  // IF NOT EXISTS, no-op.
+  new Cache(opts.cacheDir).close()
   const dbPath = path.join(opts.cacheDir, 'cache.db')
-  if (!existsSync(dbPath)) {
-    // Open read-write so bun:sqlite can create the file on first launch.
-    // The empty DB satisfies every endpoint with zero rows.
-    new Database(dbPath, { create: true }).close()
-  }
   const db = new Database(dbPath, { readonly: true })
   db.exec('PRAGMA busy_timeout = 5000')
 
