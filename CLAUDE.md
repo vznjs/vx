@@ -121,6 +121,17 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: Dashboard PR 7/10 — `apps/dashboard/` scaffold. Vite 6 +
+  vite-plugin-solid + UnoCSS (presetUno + presetIcons +
+  transformerVariantGroup) with a dark-by-default theme and
+  system-font stack (presetWebFonts deliberately omitted — would fetch
+  from fonts.bunny.net at build time, breaking hermetic CI). Vite dev
+  server runs on port 5280 and proxies `/api/*` to `127.0.0.1:4280`
+  (the legacy `vzn dashboard` server) so the Solid app can develop
+  against real data. `src/main.tsx` mounts a placeholder `<App />`;
+  pages port in PR #27. Brought along `src/format.ts` (bytes,
+  duration, relative-time formatters) + tests so the `apps/*/src/` CI
+  glob has something to assert on. PR #26.
 - **2026-05**: Re-monorepo'd the project. Root `package.json` is a
   Bun-workspaces manifest (`"workspaces": ["packages/*", "apps/*"]`);
   current `src/` moved into `packages/run/src/`. Set up to host
