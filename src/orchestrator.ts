@@ -139,9 +139,12 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // (we don't have per-task wall-clock start times exposed by the
   // scheduler), but durations are real. Good enough for stats; if we
   // ever need precise span tracking we'd add start/end to TaskOutcome.
+  // Group tasks (no `exec`) are skipped — they aren't real runs and
+  // showing them in `vzn stats` as zero-duration successes is noise.
   const now = Date.now()
   for (const o of list) {
     if (!o.hash) continue
+    if (o.node.config.exec === undefined) continue
     cache.recordRun({
       hash: o.hash,
       project: o.node.projectName,
@@ -183,6 +186,27 @@ interface ExecuteArgs {
 async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const { node, upstream, workspaceRoot, cache, noCache, log } = args
   const cfg: TaskConfig = node.config
+
+  // Group task: no `exec` means this task is just a dependency aggregator.
+  // Return success immediately — no spawn, no cache lookup, no I/O. The
+  // scheduler has already ensured every dependency completed successfully
+  // before calling us. Derive a hash from the upstream hashes so any
+  // downstream task with `inputs.tasks` pointing here gets natural cache
+  // invalidation when something beneath the group changes.
+  if (cfg.exec === undefined) {
+    const wallclockNs = process.hrtime.bigint() - args.runStartHrTimeNs
+    const groupHash = computeGroupHash(upstream)
+    return {
+      node,
+      status: 'success',
+      exitCode: 0,
+      durationMs: 0,
+      hash: groupHash,
+      wallclockStartNs: wallclockNs,
+      wallclockEndNs: wallclockNs,
+    }
+  }
+
   const step: ExecConfig = cfg.exec
   const cacheCfg: CacheConfig | undefined = cfg.cache
   const cacheEnabled = cacheCfg !== undefined && !noCache
@@ -326,6 +350,21 @@ function computeNestedProjectDirs(entries: ProjectEntry[]): Map<string, string[]
  */
 function hashTaskConfig(cfg: TaskConfig): string {
   return createHash('sha256').update(JSON.stringify(cfg)).digest('hex')
+}
+
+/**
+ * Derive a stable hash for a group task (no `exec`) from its upstream
+ * outcomes. Lets downstream tasks that filter `inputs.tasks` to include
+ * a group still invalidate naturally when anything beneath the group
+ * changes. Sorted so the hash is order-independent. Empty group (no
+ * upstream) yields a fixed sentinel hash.
+ */
+function computeGroupHash(upstream: TaskOutcome[]): string {
+  const ids = upstream
+    .map((u) => `${u.node.id}:${u.hash ?? ''}`)
+    .sort()
+    .join('|')
+  return createHash('sha256').update(`group|${ids}`).digest('hex')
 }
 
 const WORKSPACE_FINGERPRINT_FILES = ['pnpm-lock.yaml', 'pnpm-workspace.yaml']

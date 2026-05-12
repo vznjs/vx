@@ -22,14 +22,23 @@ export interface ProjectRunConfig {
 }
 
 export interface TaskConfig {
-  /** Shell command + optional env. One command per task. */
-  exec: ExecConfig
+  /**
+   * Shell command + optional env. One command per task. Omit `exec` to
+   * declare a **group task** — a no-op that exists only to chain
+   * `dependsOn`. Running a group is equivalent to running its
+   * dependencies; nothing else happens (no spawn, no I/O, no cache
+   * read/write). Useful for "install" / "ci" umbrella tasks that fan
+   * out to per-package work.
+   */
+  exec?: ExecConfig
   /** Tasks that must complete successfully before this task runs. */
   dependsOn?: TaskDependsOn
   /**
    * Caching configuration. **Caching is opt-in.** If this field is omitted,
    * the task always runs and nothing is read from or written to the cache.
    * Provide a `cache` block (with at least `outputs`) to enable caching.
+   * Requires `exec` — a group task can't cache anything because nothing
+   * runs.
    */
   cache?: CacheConfig
 }

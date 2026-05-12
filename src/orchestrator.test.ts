@@ -1666,4 +1666,97 @@ describe('orchestrator e2e', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'runs a group task as a no-op aggregator over dependsOn',
+    async () => {
+      await addProject(fixture.root, 'app-core', {
+        files: { 'src/x.txt': 'core' },
+        config: `
+          export default {
+            run: {
+              tasks: {
+                build: {
+                  exec: { command: ${JSON.stringify(STAMP_CMD)} },
+                  cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+                },
+              },
+            },
+          }
+        `,
+      })
+      await addProject(fixture.root, 'app-shell', {
+        deps: { 'app-core': 'workspace:*' },
+        config: `
+          export default {
+            run: {
+              tasks: {
+                install: { dependsOn: { dependencies: ['build'] } },
+              },
+            },
+          }
+        `,
+      })
+      const r = await run({
+        cwd: fixture.root,
+        task: 'install',
+        projects: ['app-shell'],
+        log: silentLogger(fixture),
+      })
+      expect(r.ok).toBe(true)
+      const installOutcome = r.outcomes.find((o) => o.node.id === 'app-shell#install')
+      const buildOutcome = r.outcomes.find((o) => o.node.id === 'app-core#build')
+      expect(installOutcome?.status).toBe('success')
+      expect(installOutcome?.durationMs).toBe(0)
+      expect(buildOutcome?.status).toBe('success')
+
+      const r2 = await run({
+        cwd: fixture.root,
+        task: 'install',
+        projects: ['app-shell'],
+        log: silentLogger(fixture),
+      })
+      expect(r2.outcomes.find((o) => o.node.id === 'app-core#build')?.status).toBe('cache-hit')
+      expect(r2.outcomes.find((o) => o.node.id === 'app-shell#install')?.status).toBe('success')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'group tasks do NOT appear in the runs analytics table',
+    async () => {
+      await addProject(fixture.root, 'core-x', {
+        files: { 'src/y.txt': 'y' },
+        config: `
+          export default {
+            run: {
+              tasks: {
+                build: {
+                  exec: { command: ${JSON.stringify(STAMP_CMD)} },
+                  cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+                },
+                ci: { dependsOn: { self: ['build'] } },
+              },
+            },
+          }
+        `,
+      })
+      await run({ cwd: fixture.root, task: 'ci', log: silentLogger(fixture) })
+
+      const { Database } = await import('bun:sqlite')
+      const db = new Database(path.join(fixture.root, '.vzn/cache/cache.db'), {
+        readonly: true,
+      })
+      try {
+        const rows = db.prepare('SELECT project, task FROM runs ORDER BY task').all() as Array<{
+          project: string
+          task: string
+        }>
+        expect(rows.map((r) => `${r.project}:${r.task}`)).toEqual(['core-x:build'])
+      } finally {
+        db.close()
+      }
+    },
+    TIMEOUT,
+  )
 })

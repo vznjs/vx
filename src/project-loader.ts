@@ -89,14 +89,32 @@ function validate(config: ProjectConfig, configPath: string): void {
       throw new UserError(`${where} must be an object`)
     }
     const exec = (task as { exec?: unknown }).exec
-    if (!exec || typeof exec !== 'object') {
-      throw new UserError(`${where}.exec must be an object with a \`command\` string`)
-    }
-    const command = (exec as { command?: unknown }).command
-    if (typeof command !== 'string' || command.length === 0) {
-      throw new UserError(`${where}.exec.command must be a non-empty string`)
-    }
+    const dependsOn = (task as { dependsOn?: unknown }).dependsOn
     const cache = (task as { cache?: unknown }).cache
+    if (exec !== undefined) {
+      if (typeof exec !== 'object' || exec === null) {
+        throw new UserError(`${where}.exec must be an object with a \`command\` string`)
+      }
+      const command = (exec as { command?: unknown }).command
+      if (typeof command !== 'string' || command.length === 0) {
+        throw new UserError(`${where}.exec.command must be a non-empty string`)
+      }
+    } else {
+      // Group task: no exec, just dependencies. Must declare something to
+      // depend on, otherwise the task is a literal no-op with nothing to
+      // chain (almost certainly a config mistake).
+      if (dependsOn === undefined) {
+        throw new UserError(
+          `${where}: a task with no \`exec\` must declare \`dependsOn\` ` +
+            `(group tasks exist to chain dependencies)`,
+        )
+      }
+      if (cache !== undefined) {
+        throw new UserError(
+          `${where}: \`cache\` requires \`exec\` — a group task has nothing to cache`,
+        )
+      }
+    }
     if (cache !== undefined) {
       if (typeof cache !== 'object' || cache === null) {
         throw new UserError(`${where}.cache must be an object when present`)

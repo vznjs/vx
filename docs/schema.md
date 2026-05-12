@@ -34,13 +34,35 @@ and by the CLI (`vzn run <taskName>`).
 
 ```ts
 interface TaskConfig {
-  exec: ExecConfig // required
+  exec?: ExecConfig // optional — omit to declare a group task
   dependsOn?: TaskDependsOn // optional
-  cache?: CacheConfig // optional — caching is opt-in
+  cache?: CacheConfig // optional — caching is opt-in; requires `exec`
 }
 ```
 
-### `exec` (required)
+A task either has an `exec` (it does work), or omits `exec` and provides
+a `dependsOn` (it's a **group**). Group tasks are pure aggregators —
+nothing spawns, no cache lookup, no I/O. Useful for umbrella commands:
+
+```ts
+// vzn run install -r  →  fans out to `build` in every workspace dep
+install: {
+  dependsOn: { dependencies: ['build'] },
+}
+
+// vzn run ci  →  runs build then test in the cwd project
+ci: {
+  dependsOn: { self: ['build', 'test'] },
+}
+```
+
+A group task that's required as an upstream of a caching task does
+contribute a stable hash (rolled up from its own dependencies), so
+cache invalidation cascades correctly when anything beneath the group
+changes. Group tasks are **not** recorded in the `runs` analytics
+table — they aren't real runs.
+
+### `exec` (optional — required for non-group tasks)
 
 A single shell command with optional env. Multi-step is intentionally
 not supported — chain commands in the shell (`&&` / `;`) when you need
