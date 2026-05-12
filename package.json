@@ -27,8 +27,8 @@
     "lint:fix": "oxlint --type-aware --type-check --fix",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
-    "test": "bun test src/",
-    "test:watch": "bun test --watch src/"
+    "test": "bun test",
+    "test:watch": "bun test --watch"
   },
   "dependencies": {
     "ignore": "^7.0.4",

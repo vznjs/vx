@@ -7,7 +7,7 @@ import {
   parseRunArgs,
   parseSize,
   run,
-} from './cli.js'
+} from '../src/cli.js'
 
 describe('cli run()', () => {
   let stdout: string

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { buildIsolatedEnv } from './env.js'
+import { buildIsolatedEnv } from '../src/env.js'
 
 describe('buildIsolatedEnv', () => {
   it('passes essential allowlist values from source', () => {

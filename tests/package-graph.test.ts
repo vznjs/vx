@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
-import { buildPackageGraph } from './package-graph.js'
-import type { ProjectMeta } from './workspace.js'
+import { buildPackageGraph } from '../src/package-graph.js'
+import type { ProjectMeta } from '../src/workspace.js'
 
 function meta(name: string, deps: Record<string, string> = {}): ProjectMeta {
   return {
