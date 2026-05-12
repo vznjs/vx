@@ -3,8 +3,19 @@
 // real (exec-having) tasks — group nodes are filtered upstream.
 
 import type { TaskOutcome } from '../graph/scheduler.js'
+import { paint, type ColorSupport } from './colors.js'
 
-export function formatRunSummary(outcomes: readonly TaskOutcome[], totalMs: number): string[] {
+const NO_COLOR: ColorSupport = { enabled: false }
+
+const SUCCESS = '#22c55e'
+const WARN = '#eab308'
+const ERROR = '#ef4444'
+
+export function formatRunSummary(
+  outcomes: readonly TaskOutcome[],
+  totalMs: number,
+  colors: ColorSupport = NO_COLOR,
+): string[] {
   const total = outcomes.length
   const success = outcomes.filter(
     (o) => o.status === 'success' || o.status === 'cache-hit' || o.status === 'cache-hit-remote',
@@ -15,9 +26,9 @@ export function formatRunSummary(outcomes: readonly TaskOutcome[], totalMs: numb
   const remote = outcomes.filter((o) => o.status === 'cache-hit-remote').length
   const cached = local + remote
 
-  const taskParts = [`${success} successful`]
-  if (failed > 0) taskParts.push(`${failed} failed`)
-  if (skipped > 0) taskParts.push(`${skipped} skipped`)
+  const taskParts = [paint(SUCCESS, `${success} successful`, colors)]
+  if (failed > 0) taskParts.push(paint(ERROR, `${failed} failed`, colors, { bold: true }))
+  if (skipped > 0) taskParts.push(paint(WARN, `${skipped} skipped`, colors))
   taskParts.push(`${total} total`)
 
   const cachedParts: string[] = []
@@ -29,9 +40,10 @@ export function formatRunSummary(outcomes: readonly TaskOutcome[], totalMs: numb
   // Motif printed when every real task came from the cache (local or
   // remote). Mirrors Turbo's `>>> FULL TURBO`.
   const fullCache = total > 0 && cached === total
+  const dur = formatDuration(totalMs)
   const timeLine = fullCache
-    ? `  Time:    ${formatDuration(totalMs)} >>> FULL CACHE`
-    : `  Time:    ${formatDuration(totalMs)}`
+    ? `  Time:    ${dur} ${paint(SUCCESS, '>>> FULL CACHE', colors, { bold: true })}`
+    : `  Time:    ${dur}`
 
   return [
     '',

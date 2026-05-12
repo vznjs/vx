@@ -1,5 +1,6 @@
 import type { TaskNode } from '../graph/task-graph.js'
 import type { TaskOutcome } from '../graph/scheduler.js'
+import { detectColors, type ColorSupport } from './colors.js'
 import { formatTaskBlock } from './framed-output.js'
 
 export interface Logger {
@@ -16,7 +17,7 @@ export interface Logger {
   taskComplete(node: TaskNode, outcome: TaskOutcome): void
 }
 
-export function defaultLogger(): Logger {
+export function defaultLogger(colors: ColorSupport = detectColors()): Logger {
   // Per-task buffer. We don't separate stdout/stderr in the rendered
   // block — the user sees them in arrival order, same as Turbo.
   const buffers = new Map<string, string>()
@@ -45,7 +46,7 @@ export function defaultLogger(): Logger {
       buffers.delete(node.id)
       // formatTaskBlock returns '' for group tasks (no exec) — skip
       // the write so a stray newline doesn't sneak into the output.
-      const block = formatTaskBlock(node, outcome, body)
+      const block = formatTaskBlock(node, outcome, body, colors)
       if (block.length === 0) return
       process.stdout.write(blocksEmitted > 0 ? `\n${block}` : block)
       blocksEmitted++

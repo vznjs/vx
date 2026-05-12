@@ -77,6 +77,22 @@ describe('formatRunSummary', () => {
     const lines = formatRunSummary([], 0)
     expect(lines[3]).toBe('  Time:    0ms')
   })
+
+  it('injects ANSI escapes around counts + FULL CACHE when colors are enabled', () => {
+    const lines = formatRunSummary([outcome('a#x', 'cache-hit'), outcome('b#x', 'failed', 1)], 42, {
+      enabled: true,
+    })
+    // success count colorized
+    expect(lines[1]).toContain('\x1b[')
+    expect(lines[1]).toContain('1 successful')
+    expect(lines[1]).toContain('1 failed')
+  })
+
+  it('FULL CACHE motif gets bold + green when colors are enabled', () => {
+    const lines = formatRunSummary([outcome('a#x', 'cache-hit')], 10, { enabled: true })
+    expect(lines[3]).toContain('>>> FULL CACHE')
+    expect(lines[3]).toContain('\x1b[1m')
+  })
 })
 
 describe('formatDuration', () => {
