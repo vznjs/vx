@@ -14,17 +14,35 @@ interface Fixture {
 
 const TIMEOUT = 30_000
 
-const silentLogger = (fixture: Fixture): Logger => ({
-  status(line) {
-    fixture.log.push(line)
-  },
-  taskStdout(_n, chunk) {
-    fixture.log.push(chunk.trimEnd())
-  },
-  taskStderr(_n, chunk) {
-    fixture.err.push(chunk.trimEnd())
-  },
-})
+const silentLogger = (fixture: Fixture): Logger => {
+  const buffers = new Map<string, string>()
+  return {
+    status(line) {
+      fixture.log.push(line)
+    },
+    taskStdout(node, chunk) {
+      buffers.set(node.id, (buffers.get(node.id) ?? '') + chunk)
+    },
+    taskStderr(node, chunk) {
+      // Tee stderr to fixture.err for tests that assert on it
+      // separately, AND into the per-task body buffer so taskComplete
+      // surfaces it in `fixture.log` (matches defaultLogger, which
+      // merges streams into a single framed block).
+      fixture.err.push(chunk.trimEnd())
+      buffers.set(node.id, (buffers.get(node.id) ?? '') + chunk)
+    },
+    taskComplete(node, outcome) {
+      const body = buffers.get(node.id) ?? ''
+      buffers.delete(node.id)
+      // Marker line carries the task id + status so tests that grep
+      // `fixture.log` for the id (the only way they used to detect
+      // task progress) keep working without coupling to the exact
+      // framed-output format.
+      fixture.log.push(`task ${node.id} ${outcome.status}`)
+      if (body.trim().length > 0) fixture.log.push(body.trimEnd())
+    },
+  }
+}
 
 async function makeWorkspace(): Promise<Fixture> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'nxt-e2e-'))
