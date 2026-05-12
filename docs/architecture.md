@@ -1,9 +1,21 @@
 # Architecture
 
+## Repository layout
+
+`@vzn/run` is a Bun-workspaces monorepo:
+
+- **`packages/run/`** — the published CLI + library (`@vzn/run`),
+  including the read-only dashboard HTTP API server. Every module
+  referenced below lives under `packages/run/src/`.
+- **`apps/dashboard/`** — the dashboard UI (Vite + Solid + UnoCSS),
+  built ahead of time and static-served by `vzn dashboard`. Not a
+  published package; consumes the `@vzn/run` JSON API.
+
 ## Module map
 
-Each file under `src/` is one focused module. Internal imports are
-unidirectional: lower modules in this map don't depend on higher ones.
+Each file under `packages/run/src/` is one focused module. Internal
+imports are unidirectional: lower modules in this map don't depend on
+higher ones.
 
 ```
                        ┌────────────────┐
@@ -40,11 +52,19 @@ unidirectional: lower modules in this map don't depend on higher ones.
                                             │ └────────────────────────────┘    │
                                             └───────────────────────────────────┘
 
-       config.ts:  the public schema; imported by nearly everything.
-       paths.ts:   tiny POSIX-path helper for stable cache keys.
-       filter.ts:  pnpm-style filter DSL used by the CLI's -F flag.
-       index.ts:   re-exports the public surface.
+       config.ts:    the public schema; imported by nearly everything.
+       paths.ts:     tiny POSIX-path helper for stable cache keys.
+       filter.ts:    pnpm-style filter DSL used by the CLI's -F flag.
+       ulid.ts:      tiny ULID generator (run-id stamping; no deps).
+       errors.ts:    UserError class — clean error output without a stack.
+       dashboard.ts: read-only JSON API + static-serves apps/dashboard/dist.
+       index.ts:     re-exports the public surface.
 ```
+
+The `dashboard.ts` module sits to the side of the runner pipeline:
+it opens `.vzn/cache/cache.db` read-only and exposes the data over
+HTTP. The `apps/dashboard/` Solid app (separate workspace) consumes
+that JSON wire shape.
 
 ### The cache cluster
 
@@ -177,6 +197,23 @@ fails loud when the helper isn't installed — silent fall-through
 would defeat the contract.
 
 See `docs/design/sandbox.md` for design rationale.
+
+## Dashboard subsystem (detail)
+
+The `vzn dashboard` command runs `Bun.serve()` on `127.0.0.1:4280`
+and exposes `/api/{overview,runs,runs/:id,tasks/slowest,cache/entries,health}`
+against a read-only `bun:sqlite` handle on `.vzn/cache/cache.db`.
+Output is JSON; `bigint` (ns spans) is stringified at the wire boundary.
+
+The UI lives in `apps/dashboard/` (Vite + Solid + UnoCSS) and is
+built ahead of time. `dashboard.ts` serves the resulting `dist/` for
+any non-`/api/*` path, with an SPA fallback to `index.html` so the
+HashRouter handles routing client-side. The bundle directory is
+configurable via the `uiDir` option and the `VZN_DASHBOARD_DIST` env
+override; the CLI computes it from the workspace root.
+
+`docs/design/dashboard.md` covers the 10-PR rollout and the
+Cloudflare-Worker variant of the wire shape.
 
 ## Design principles
 

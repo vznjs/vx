@@ -38,12 +38,32 @@ shell strings; everything else is layered on top.
 | Modify or replace a specific module  | [`modules/`](./modules/)               |
 | Read forward-looking design notes    | [`design/`](./design/)                 |
 
+## Repository layout
+
+`@vzn/run` lives in a Bun-workspaces monorepo:
+
+- **`packages/run/`** — the published CLI + library (`@vzn/run`). Owns
+  the orchestrator, cache, scheduler, project loader, and the
+  read-only dashboard HTTP/JSON server.
+- **`apps/dashboard/`** — the dashboard UI (Vite + Solid + UnoCSS).
+  Built ahead of time; `vzn dashboard` static-serves the resulting
+  `dist/`. Not a published package.
+
+The remote-cache, layered-cache, cache-archive, sandbox, and
+dashboard modules each have their own page under
+[`modules/`](./modules/) — that's where the per-module contract
+lives.
+
 ## Versioned guarantees
 
-- The schema in `src/config.ts` is the public contract. Breaking
-  changes there are breaking changes for users.
+- The schema in `packages/run/src/config.ts` is the public contract.
+  Breaking changes there are breaking changes for users.
 - The cache schema is versioned by a `CACHE_VERSION` constant in
-  `src/cache.ts`. Bumping it invalidates every previously-stored entry.
+  `packages/run/src/cache.ts`. Bumping it invalidates every previously
+  -stored entry.
+- The dashboard HTTP wire shape (under `/api/*`) is documented in
+  [`modules/dashboard.md`](./modules/dashboard.md) and designed so a
+  Cloudflare-Worker variant can be a drop-in replacement.
 - Internal module boundaries are documented under [`modules/`](./modules/);
   replacements just need to honor the public functions / types listed
   in each module's doc.

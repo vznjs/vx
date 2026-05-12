@@ -52,13 +52,14 @@ packages/
       inputs.ts         # glob resolution + project-boundary enforcement
       config.ts         # public schema (ProjectConfig, TaskConfig, …)
       paths.ts          # tiny POSIX-path helper
-      dashboard.ts      # legacy: API server (to move to @vzn/dashboard)
-      dashboard-ui/     # legacy: static UI (to be replaced)
+      dashboard.ts      # JSON API server + static-serves apps/dashboard/dist
+      ulid.ts           # tiny ULID generator (run-id stamping; no deps)
+      errors.ts         # UserError class — clean error output without a stack
       index.ts          # public re-exports
     tsconfig.json
     package.json
 apps/
-  dashboard/        # coming PR #26 — Vite + Solid + UnoCSS app, not a published package
+  dashboard/        # Vite + Solid + UnoCSS app, not a published package
 docs/
   README.md         # index
   architecture.md   # module map, data flow, design principles
