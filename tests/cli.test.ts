@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import {
   formatBytes,
   formatStats,
+  formatStatsJson,
   parseDuration,
   parsePruneArgs,
   parseRunArgs,
   parseSize,
+  parseStatsArgs,
   run,
 } from '../src/cli.js'
 
@@ -373,6 +375,52 @@ describe('formatBytes', () => {
   })
 })
 
+describe('parseStatsArgs', () => {
+  it('defaults to json=false', () => {
+    expect(parseStatsArgs([])).toEqual({ json: false })
+  })
+
+  it('parses --json', () => {
+    expect(parseStatsArgs(['--json'])).toEqual({ json: true })
+  })
+
+  it('rejects unknown args', () => {
+    const r = parseStatsArgs(['--bogus'])
+    expect(r.error).toBe('unknown argument: --bogus')
+  })
+})
+
+describe('formatStatsJson', () => {
+  it('emits a parseable JSON object with all fields', () => {
+    const out = formatStatsJson({
+      entryCount: 42,
+      totalBytes: 5 * 1024 * 1024,
+      runCountLast24h: 100,
+      hitCountLast24h: 73,
+    })
+    expect(out.endsWith('\n')).toBe(true)
+    const parsed = JSON.parse(out) as Record<string, unknown>
+    expect(parsed).toEqual({
+      entryCount: 42,
+      totalBytes: 5 * 1024 * 1024,
+      runCountLast24h: 100,
+      hitCountLast24h: 73,
+      hitRateLast24h: 0.73,
+    })
+  })
+
+  it('returns null hitRate when there are no runs (distinct from 0%)', () => {
+    const out = formatStatsJson({
+      entryCount: 0,
+      totalBytes: 0,
+      runCountLast24h: 0,
+      hitCountLast24h: 0,
+    })
+    const parsed = JSON.parse(out) as Record<string, unknown>
+    expect(parsed['hitRateLast24h']).toBeNull()
+  })
+})
+
 describe('formatStats', () => {
   it('renders zero state with n/a hit rate', () => {
     const out = formatStats({
@@ -434,6 +482,38 @@ describe('cli stats command', () => {
     expect(code).toBe(0)
     expect(stdout).toContain('Cache statistics')
     expect(stdout).toContain('Entries:           0')
+  })
+
+  it('--json emits parseable JSON instead of the human format', async () => {
+    let stdout = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const code = await run(['stats', '--json'])
+    expect(code).toBe(0)
+    expect(stdout).not.toContain('Cache statistics')
+    const parsed = JSON.parse(stdout) as Record<string, unknown>
+    expect(parsed).toEqual({
+      entryCount: 0,
+      totalBytes: 0,
+      runCountLast24h: 0,
+      hitCountLast24h: 0,
+      hitRateLast24h: null,
+    })
+  })
+
+  it('errors clearly on unknown stats args', async () => {
+    let stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    const code = await run(['stats', '--bogus'])
+    expect(code).toBe(1)
+    expect(stderr).toContain('unknown argument: --bogus')
   })
 
   it('exits 1 when not inside a workspace', async () => {
