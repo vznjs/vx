@@ -36,9 +36,17 @@ Single-package project. Flat src/ at root.
 src/
   bin.ts                # shebang; wires process.argv -> cli.run
   cli.ts                # argv parser, dispatcher, interactive picker
-  orchestrator.ts       # discover → load → graph → schedule → execute
+  orchestrator.ts       # run() entry: discover → load → graph → schedule
   config.ts             # public schema (ProjectConfig, TaskConfig, …)
   index.ts              # public re-exports
+  orchestrator/         # orchestrator helpers
+    execute-task.ts     # per-task execution (cache lookup → spawn → save)
+    fingerprint.ts      # workspace lockfile / yaml hash
+    nested-dirs.ts      # project-boundary computation
+    upstream.ts         # filter upstream hashes for cache key
+    task-logs.ts        # persist stdout/stderr to <cacheDir>/logs/<run_id>/
+    remote-cache-setup.ts # VZN_REMOTE_CACHE_* env → LayeredCache
+    logger.ts           # default logger + formatOutcome + prefix
   workspace/            # discovery + selection
     workspace.ts        # pnpm-workspace.yaml discovery
     project-loader.ts   # Bun-native vzn.config.* loader (content-hash bust)
@@ -52,10 +60,10 @@ src/
     layered-cache.ts    # local + remote composition
     remote-cache.ts     # Turbo /v8/artifacts HTTP client
     cache-archive.ts    # tar.gz pack/unpack for remote artifacts
-  exec/                 # per-task execution
+    inputs.ts           # glob resolution + project-boundary enforcement
+  exec/                 # per-task execution primitives
     runner.ts           # Bun.spawn wrapper + shellQuote
     env.ts              # env composition
-    inputs.ts           # glob resolution + project-boundary enforcement
   util/                 # tiny shared helpers
     paths.ts            # tiny POSIX-path helper
     ulid.ts             # tiny ULID generator (run-id stamping; no deps)
@@ -332,13 +340,19 @@ LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
 
 ## Active workstreams (prioritized)
 
-1. **Split `orchestrator.ts` and `cli.ts`.** Both are > 400 LOC with
-   mixed concerns. Extract argv parsing, command dispatch, and the
-   per-task executeTask body into their own modules.
-2. **Presets / config-introspection** — NX-style task inference from
+1. **Auto-fold project `package.json` + `vzn.config.*` into every
+   task's cache key**, like Turbo and Nx do via "global dependencies"
+   / "implicit dependencies". Current gap: narrow `cache.inputs.files`
+   like `['src/**']` doesn't include package.json, so dep changes
+   miss cache invalidation. One-line fix in `cache.ts:key()`.
+2. **Split `cli.ts`** into `src/cli/{run,cache,stats,help,pick-task}.ts`.
+   Currently ~430 LOC of mixed concerns; orchestrator.ts just got
+   the same treatment in PR #41.
+3. **Presets / config-introspection** — NX-style task inference from
    tool configs (`vitest.config.ts`, `tsconfig.json`).
-3. **Pre-signed URL auth + HMAC signing** (`x-artifact-tag`) for the
+4. **Pre-signed URL auth + HMAC signing** (`x-artifact-tag`) for the
    remote cache. v2 features per `docs/design/remote-cache.md`.
+5. **`vzn stats --json`** for CI consumption.
 4. **`vzn stats --json`** — machine-readable output for CI scripts.
    Underlying data is already in `cache.db`; just needs a flag and
    a JSON encoder branch in the stats command.
