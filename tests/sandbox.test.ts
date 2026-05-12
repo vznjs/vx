@@ -8,7 +8,7 @@ import {
   runSandboxed,
   SandboxToolMissingError,
   SandboxUnsupportedError,
-} from './sandbox.js'
+} from '../src/sandbox.js'
 
 const onLinux = process.platform === 'linux'
 const sandboxAvailable = isSandboxSupported()

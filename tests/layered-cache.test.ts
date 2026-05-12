@@ -2,9 +2,9 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { Cache } from './cache.js'
-import { LayeredCache } from './layered-cache.js'
-import { RemoteCache } from './remote-cache.js'
+import { Cache } from '../src/cache.js'
+import { LayeredCache } from '../src/layered-cache.js'
+import { RemoteCache } from '../src/remote-cache.js'
 
 describe('LayeredCache', () => {
   let workspaceRoot: string

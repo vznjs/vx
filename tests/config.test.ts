@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { defineProject, defineWorkspace } from './config.js'
+import { defineProject, defineWorkspace } from '../src/config.js'
 
 describe('defineProject', () => {
   it('is an identity function (returns its input)', () => {
