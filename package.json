@@ -5,7 +5,8 @@
   "description": "vzn monorepo — @vzn/run (CLI/cache) + @vzn/dashboard (analytics UI).",
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "packageManager": "bun@1.3.11",
   "engines": {
@@ -16,7 +17,7 @@
     "lint:fix": "oxlint --type-aware --type-check --fix",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
-    "test": "bun test packages/*/src/"
+    "test": "bun test packages/*/src/ apps/*/src/"
   },
   "devDependencies": {
     "@types/bun": "^1.3.0",

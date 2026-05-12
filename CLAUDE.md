@@ -57,7 +57,8 @@ packages/
       index.ts          # public re-exports
     tsconfig.json
     package.json
-  dashboard/        # @vzn/dashboard (coming PR #26) — Vite + Solid + Tailwind
+apps/
+  dashboard/        # coming PR #26 — Vite + Solid + UnoCSS app, not a published package
 docs/
   README.md         # index
   architecture.md   # module map, data flow, design principles
@@ -121,12 +122,13 @@ bun.lock
 ## Decision log
 
 - **2026-05**: Re-monorepo'd the project. Root `package.json` is a
-  Bun-workspaces manifest (`"workspaces": ["packages/*"]`); current
-  `src/` moved into `packages/run/src/`. Set up to host
-  `@vzn/dashboard` (Vite + Solid + Tailwind) alongside `@vzn/run`
+  Bun-workspaces manifest (`"workspaces": ["packages/*", "apps/*"]`);
+  current `src/` moved into `packages/run/src/`. Set up to host
+  `apps/dashboard/` (Vite + Solid + UnoCSS) alongside `packages/run/`
   per user direction — the dashboard server + UI is being pulled
   out of `@vzn/run` so it can be a proper component-based app with
-  a build step. PR #25.
+  a build step. Convention: `packages/*` is published libs,
+  `apps/*` is end-user applications. PR #25.
 - **2026-05**: Dashboard PR 6/10 — Tasks + Runs UI pages. Tasks
   ranks `(project, task)` pairs by average wall-clock duration
   (cache-hits excluded so the ranking reflects work actually
