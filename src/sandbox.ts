@@ -8,7 +8,6 @@
 //
 // See docs/design/sandbox.md for the full design rationale.
 
-import { spawnSync } from 'node:child_process'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -81,10 +80,12 @@ function computeSandboxSupported(): boolean {
   // Functional probe: try a no-op namespace creation. If the kernel blocks
   // unprivileged user namespaces (Ubuntu 24.04 AppArmor default on CI),
   // bwrap exits non-zero. Suppress output — failure is the signal.
-  const r = spawnSync('bwrap', ['--ro-bind', '/', '/', '--tmpfs', '/tmp', '/bin/true'], {
-    stdio: 'ignore',
+  const r = Bun.spawnSync({
+    cmd: ['bwrap', '--ro-bind', '/', '/', '--tmpfs', '/tmp', '/bin/true'],
+    stdout: 'ignore',
+    stderr: 'ignore',
   })
-  return r.status === 0
+  return r.exitCode === 0
 }
 
 /**
@@ -256,8 +257,10 @@ function appendForwardArgs(command: string, forwardArgs?: readonly string[]): st
 
 function hasExecutable(name: string): boolean {
   // `command -v` is POSIX; `which` isn't required.
-  const r = spawnSync('sh', ['-c', `command -v ${shellQuote(name)}`], {
-    stdio: 'ignore',
+  const r = Bun.spawnSync({
+    cmd: ['sh', '-c', `command -v ${shellQuote(name)}`],
+    stdout: 'ignore',
+    stderr: 'ignore',
   })
-  return r.status === 0
+  return r.exitCode === 0
 }

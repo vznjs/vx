@@ -1800,4 +1800,38 @@ describe('orchestrator e2e', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'thrown errors from executeTask surface in the failure replay',
+    async () => {
+      // Force a thrown error: --sandbox on Windows would normally throw
+      // SandboxUnsupportedError, but we can simulate the same shape with
+      // a project whose config is unreadable. Easier: command that
+      // resolves to a nonexistent executable so spawn fails with ENOENT.
+      await addProject(fixture.root, 'broken-spawn', {
+        config: `
+          export default {
+            run: {
+              tasks: {
+                run: { exec: { command: '/this/binary/does/not/exist' } },
+              },
+            },
+          }
+        `,
+      })
+      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r.ok).toBe(false)
+      const o = r.outcomes.find((o) => o.node.id === 'broken-spawn#run')
+      expect(o?.status).toBe('failed')
+      // Either captured stderr from the spawn (e.g. "command not found")
+      // or a synthesized [vzn] failed-to-spawn marker, but SOMETHING
+      // user-visible must be present.
+      const captured = (o?.stderr ?? '') + (o?.stdout ?? '')
+      expect(captured.length).toBeGreaterThan(0)
+      // It should also have been replayed via log.status.
+      const replayedLines = fixture.log.filter((l) => l.includes('broken-spawn#run'))
+      expect(replayedLines.length).toBeGreaterThan(0)
+    },
+    TIMEOUT,
+  )
 })
