@@ -353,7 +353,7 @@ LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
 4. **Pre-signed URL auth + HMAC signing** (`x-artifact-tag`) for the
    remote cache. v2 features per `docs/design/remote-cache.md`.
 5. **`vzn stats --json`** for CI consumption.
-4. **`vzn stats --json`** — machine-readable output for CI scripts.
+6. **`vzn stats --json`** — machine-readable output for CI scripts.
    Underlying data is already in `cache.db`; just needs a flag and
    a JSON encoder branch in the stats command.
 
