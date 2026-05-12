@@ -181,7 +181,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
 }
 
 async function loadWorkspaceProjects(cwd: string): Promise<ProjectMeta[]> {
-  const root = findWorkspaceRoot(cwd)
+  const root = await findWorkspaceRoot(cwd)
   const ws = await loadWorkspace(root)
   return await listProjects(ws)
 }
@@ -202,7 +202,7 @@ async function resolveFilters(
   cwd: string,
   raw: string[],
 ): Promise<{ names?: string[]; error?: string }> {
-  const root = findWorkspaceRoot(cwd)
+  const root = await findWorkspaceRoot(cwd)
   const projects = await loadWorkspaceProjects(cwd)
   const graph = buildPackageGraph(projects)
   const parsed = raw.map((r) => parseFilter(r, root))
@@ -350,7 +350,7 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
   const cwd = process.cwd()
   let root: string
   try {
-    root = findWorkspaceRoot(cwd)
+    root = await findWorkspaceRoot(cwd)
   } catch (err) {
     process.stderr.write(`vzn cache prune: ${(err as Error).message}\n`)
     return 1
@@ -393,7 +393,7 @@ async function statsCmd(): Promise<number> {
   const cwd = process.cwd()
   let root: string
   try {
-    root = findWorkspaceRoot(cwd)
+    root = await findWorkspaceRoot(cwd)
   } catch (err) {
     process.stderr.write(`vzn stats: ${(err as Error).message}\n`)
     return 1

@@ -11,7 +11,7 @@
 // Same `Cache` shape callers expect (key/get/save/restoreOutputs/recordRun/
 // stats/prune/close) — orchestrator code doesn't change.
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { packAndDiscard, unpackArchive } from './cache-archive.js'
@@ -75,8 +75,7 @@ export class LayeredCache implements CacheLayer {
     const stage = await mkdtemp(path.join(os.tmpdir(), 'vzn-remote-hit-'))
     try {
       await unpackArchive(remoteResult.body, stage)
-      const metaRaw = await readFile(path.join(stage, 'meta.json'), 'utf8')
-      const meta = JSON.parse(metaRaw) as OnDiskMeta
+      const meta = (await Bun.file(path.join(stage, 'meta.json')).json()) as OnDiskMeta
       const outputsDir = path.join(stage, 'outputs')
       const outputFiles = await listFilesRecursive(outputsDir)
       await this.local.save({
@@ -135,11 +134,10 @@ export class LayeredCache implements CacheLayer {
   private async stageAndPack(args: SaveArgs): Promise<Uint8Array> {
     const stage = await mkdtemp(path.join(os.tmpdir(), 'vzn-remote-put-'))
     const outputsDir = path.join(stage, 'outputs')
-    await mkdir(outputsDir, { recursive: true })
     for (const f of args.outputFiles) {
       const rel = path.relative(args.projectDir, f)
       const dest = path.join(outputsDir, rel)
-      await mkdir(path.dirname(dest), { recursive: true })
+      // Bun.write auto-creates parent dirs.
       await Bun.write(dest, Bun.file(f))
     }
     const meta: OnDiskMeta = {
@@ -151,7 +149,7 @@ export class LayeredCache implements CacheLayer {
       stderr: args.entry.stderr,
       storedAt: new Date().toISOString(),
     }
-    await writeFile(path.join(stage, 'meta.json'), JSON.stringify(meta))
+    await Bun.write(path.join(stage, 'meta.json'), JSON.stringify(meta))
     return await packAndDiscard(stage)
   }
 

@@ -1,4 +1,3 @@
-import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from './config.js'
 import { UserError } from './errors.js'
@@ -42,8 +41,13 @@ export async function loadProjectConfig(configPath: string): Promise<ProjectConf
  * a `UserError` on malformed input.
  */
 export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig | null> {
-  const configPath =
-    WORKSPACE_CONFIG_FILENAMES.map((f) => path.join(root, f)).find((f) => existsSync(f)) ?? null
+  let configPath: string | null = null
+  for (const candidate of WORKSPACE_CONFIG_FILENAMES.map((f) => path.join(root, f))) {
+    if (await Bun.file(candidate).exists()) {
+      configPath = candidate
+      break
+    }
+  }
   if (!configPath) return null
   const mod = (await loadDefaultExport(configPath, 'Workspace')) as WorkspaceConfig
   validateWorkspace(mod, configPath)

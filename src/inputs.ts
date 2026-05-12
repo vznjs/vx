@@ -6,11 +6,8 @@
 // `cache.inputs.env` is the cache-tracking axis for env vars; it's
 // independent of `exec.env`, which controls what reaches the child.
 
-import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import ignore, { type Ignore } from 'ignore'
-import { glob } from 'tinyglobby'
 import type { CacheInputs } from './config.js'
 
 const ALWAYS_IGNORE = ['**/node_modules/**', '**/.git/**', '**/.vzn/**', '**/*.tsbuildinfo']
@@ -60,14 +57,10 @@ export async function resolveOutputs(args: {
   nestedProjectDirs: string[]
 }): Promise<string[]> {
   if (args.outputs.length === 0) return []
-  const matches = await glob(args.outputs, {
-    cwd: args.projectDir,
-    absolute: true,
-    dot: true,
-    onlyFiles: true,
-    ignore: boundaryIgnorePatterns(args.projectDir, args.nestedProjectDirs),
-  })
-  return matches.sort()
+  const excludeGlobs = boundaryIgnorePatterns(args.projectDir, args.nestedProjectDirs).map(
+    (p) => new Bun.Glob(p),
+  )
+  return [...(await scanUnion(args.outputs, excludeGlobs, args.projectDir))].sort()
 }
 
 interface ResolveFilesArgs {
@@ -95,16 +88,33 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
 
   const boundaryIgnores = boundaryIgnorePatterns(args.projectDir, args.nestedProjectDirs)
   const ig = await loadGitignore(args.workspaceRoot, args.projectDir)
+  const excludeGlobs = [...ALWAYS_IGNORE, ...boundaryIgnores, ...args.ownOutputs, ...negative].map(
+    (p) => new Bun.Glob(p),
+  )
 
-  const matches = await glob(positive, {
-    cwd: args.projectDir,
-    absolute: true,
-    dot: true,
-    onlyFiles: true,
-    ignore: [...ALWAYS_IGNORE, ...boundaryIgnores, ...args.ownOutputs, ...negative],
-  })
+  const matches = await scanUnion(positive, excludeGlobs, args.projectDir)
+  return [...matches].filter((p) => !ig.ignores(path.relative(args.workspaceRoot, p))).sort()
+}
 
-  return matches.filter((p) => !ig.ignores(path.relative(args.workspaceRoot, p))).sort()
+/**
+ * Union of files matching any positive pattern in `cwd`, minus files
+ * matching any exclude glob (tested by Bun.Glob.match on the relative
+ * path). Bun.Glob takes a single pattern per instance, so we iterate.
+ */
+async function scanUnion(
+  positive: readonly string[],
+  excludeGlobs: readonly Bun.Glob[],
+  cwd: string,
+): Promise<Set<string>> {
+  const matches = new Set<string>()
+  for (const pattern of positive) {
+    const glob = new Bun.Glob(pattern)
+    for await (const rel of glob.scan({ cwd, onlyFiles: true, dot: true })) {
+      if (excludeGlobs.some((g) => g.match(rel))) continue
+      matches.add(path.resolve(cwd, rel))
+    }
+  }
+  return matches
 }
 
 function boundaryIgnorePatterns(projectDir: string, nestedDirs: string[]): string[] {
@@ -117,7 +127,8 @@ function boundaryIgnorePatterns(projectDir: string, nestedDirs: string[]): strin
 async function loadGitignore(workspaceRoot: string, projectDir: string): Promise<Ignore> {
   const ig = ignore()
   for (const f of [path.join(workspaceRoot, '.gitignore'), path.join(projectDir, '.gitignore')]) {
-    if (existsSync(f)) ig.add(await readFile(f, 'utf8'))
+    const file = Bun.file(f)
+    if (await file.exists()) ig.add(await file.text())
   }
   return ig
 }
