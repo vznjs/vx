@@ -20,6 +20,11 @@ export function defaultLogger(): Logger {
   // Per-task buffer. We don't separate stdout/stderr in the rendered
   // block — the user sees them in arrival order, same as Turbo.
   const buffers = new Map<string, string>()
+  // Tracks whether we've already emitted at least one task block so
+  // we can prefix subsequent blocks with a blank line for visual
+  // separation. The header (formatHeader) already ends with a blank
+  // line, so the first block doesn't need one.
+  let blocksEmitted = 0
 
   const append = (node: TaskNode, chunk: string): void => {
     buffers.set(node.id, (buffers.get(node.id) ?? '') + chunk)
@@ -41,7 +46,9 @@ export function defaultLogger(): Logger {
       // formatTaskBlock returns '' for group tasks (no exec) — skip
       // the write so a stray newline doesn't sneak into the output.
       const block = formatTaskBlock(node, outcome, body)
-      if (block.length > 0) process.stdout.write(block)
+      if (block.length === 0) return
+      process.stdout.write(blocksEmitted > 0 ? `\n${block}` : block)
+      blocksEmitted++
     },
   }
 }
