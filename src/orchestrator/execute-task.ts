@@ -1,3 +1,4 @@
+import path from 'node:path'
 import type { ExecConfig, TaskConfig, CacheConfig } from '../config.js'
 import type { CacheLayer } from '../cache/cache.js'
 import { resolveInputs, resolveOutputs } from '../cache/inputs.js'
@@ -64,6 +65,7 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   const upstreamHashes = filterUpstreamHashes(upstream, cacheCfg?.inputs?.tasks, node.projectName)
   const taskConfigHash = hashTaskConfig(cfg)
+  const projectPackageJsonHash = await hashProjectPackageJson(node.projectDir)
 
   // forwardArgs apply only to the tasks the user explicitly asked for —
   // not to dependsOn-expanded upstream tasks. This keeps `vzn run build
@@ -75,6 +77,7 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const hash = await cache.key({
     taskId: node.id,
     taskConfigHash,
+    projectPackageJsonHash,
     envValues: resolved.envValues,
     inputFiles: resolved.files,
     workspaceRoot,
@@ -181,4 +184,20 @@ function computeGroupHash(upstream: TaskOutcome[]): string {
     .sort()
     .join('|')
   return new Bun.CryptoHasher('sha256').update(`group|${ids}`).digest('hex')
+}
+
+/**
+ * Hash the project's `package.json` bytes. Folded into every task's
+ * cache key in that project so dep changes (devDependencies, scripts,
+ * version bumps) invalidate the project's tasks even when
+ * `cache.inputs.files` is narrow and doesn't cover the file.
+ *
+ * Matches Turbo and Nx's "implicit dependencies" behavior. Returns
+ * '' for the edge case of a project without a package.json (impossible
+ * in practice — workspace discovery requires one).
+ */
+async function hashProjectPackageJson(projectDir: string): Promise<string> {
+  const file = Bun.file(path.join(projectDir, 'package.json'))
+  if (!(await file.exists())) return ''
+  return new Bun.CryptoHasher('sha256').update(await file.bytes()).digest('hex')
 }

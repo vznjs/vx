@@ -131,6 +131,13 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: CACHE_VERSION → v12. Folded project's `package.json`
+  bytes into every task's cache key (Turbo/Nx-style "implicit
+  dependencies"). Closes the gap where a narrow `cache.inputs.files`
+  like `['src/**']` missed package.json and dep changes went stale.
+  One-line addition in `cache.ts:key()` + a `hashProjectPackageJson`
+  helper in `orchestrator/execute-task.ts`. New CacheKeyInput field
+  `projectPackageJsonHash`. PR #42.
 - **2026-05**: **Removed the entire sandbox subsystem.** `src/sandbox.ts`,
   `tests/sandbox.test.ts`, `docs/design/sandbox.md`, `docs/modules/sandbox.md`,
   the `--sandbox` CLI flag, and the bwrap installation step from CI all
