@@ -26,7 +26,7 @@ export async function run(argv: readonly string[]): Promise<number> {
     case 'run':
       return await runCmd(rest)
     case 'stats':
-      return await statsCmd()
+      return await statsCmd(rest)
     case 'cache':
       return await cacheCmd(rest)
     default:
@@ -39,5 +39,5 @@ export async function run(argv: readonly string[]): Promise<number> {
 // Re-exports for tests + programmatic embedders.
 export { parseRunArgs, type RunArgs } from './cli/run.js'
 export { parsePruneArgs, parseDuration, parseSize } from './cli/cache.js'
-export { formatStats } from './cli/stats.js'
+export { formatStats, formatStatsJson, parseStatsArgs } from './cli/stats.js'
 export { formatBytes } from './cli/format.js'
