@@ -30,6 +30,7 @@ describe('Cache.key', () => {
     return {
       taskId: 'pkg#build',
       taskConfigHash: 'config-hash-base',
+      projectPackageJsonHash: 'pkg-hash-base',
       envValues: [],
       inputFiles: [],
       workspaceRoot,

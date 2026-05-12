@@ -1833,4 +1833,50 @@ describe('orchestrator e2e', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    "project's package.json change busts the cache, even with narrow inputs",
+    async () => {
+      // Reproduces the gap user flagged: cache.inputs.files: ['src/**']
+      // doesn't include package.json, so before v12 a deps bump
+      // wouldn't invalidate. Now folded in implicitly via
+      // projectPackageJsonHash.
+      const dir = await addProject(fixture.root, 'narrow-pkg', {
+        files: { 'src/x.txt': 'v1' },
+        config: `
+          export default {
+            run: {
+              tasks: {
+                run: {
+                  exec: { command: ${JSON.stringify(STAMP_CMD)} },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                },
+              },
+            },
+          }
+        `,
+      })
+
+      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const first = await readFile(path.join(dir, 'out.txt'), 'utf8')
+
+      // Re-run with no changes — cache hit, same out.txt.
+      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r2.outcomes[0]?.status).toBe('cache-hit')
+
+      // Bump package.json — cache MUST bust now.
+      await new Promise((r) => setTimeout(r, 5))
+      const pkgPath = path.join(dir, 'package.json')
+      const pkg = JSON.parse(await readFile(pkgPath, 'utf8')) as {
+        dependencies?: Record<string, string>
+      }
+      pkg.dependencies = { 'fake-dep': '^1.2.3' }
+      await writeFile(pkgPath, JSON.stringify(pkg, null, 2))
+
+      const r3 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      expect(r3.outcomes[0]?.status).toBe('success')
+      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).not.toBe(first)
+    },
+    TIMEOUT,
+  )
 })

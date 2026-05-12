@@ -194,3 +194,8 @@ Not required when:
   `bytes_downloaded`. All nullable; surfaced via `vzn stats` and
   directly queryable from CI via `sqlite3 .vzn/cache/cache.db`.
   Backwards-compatible for read paths that don't use them.
+- **v11 → v12** (PR #42): project's `package.json` bytes folded into
+  every task's cache key implicitly. Matches Turbo / Nx "implicit
+  dependencies" behaviour — a deps change in `package.json`
+  invalidates the project's tasks even when `cache.inputs.files`
+  doesn't cover it.

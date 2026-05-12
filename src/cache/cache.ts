@@ -19,7 +19,7 @@ import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { relPosix } from '../util/paths.js'
 
-const CACHE_VERSION = 'vzn-cache-v11'
+const CACHE_VERSION = 'vzn-cache-v12'
 const SCHEMA_VERSION = 'v11'
 
 export interface CacheKeyInput {
@@ -53,6 +53,15 @@ export interface CacheKeyInput {
    * run, never a spurious cache hit.
    */
   forwardArgs?: readonly string[]
+  /**
+   * Hash of the project's `package.json` bytes. Folded into the key
+   * implicitly (Turbo / Nx parity) so dep changes invalidate every
+   * task in that project, even when `cache.inputs.files` doesn't
+   * cover package.json. Empty string when the project has no
+   * package.json (impossible in practice — workspace discovery
+   * requires one — but we don't fail-loud here).
+   */
+  projectPackageJsonHash: string
 }
 
 export interface CacheEntry {
@@ -262,6 +271,7 @@ export class Cache implements CacheLayer {
     h.update(`${CACHE_VERSION}\n`)
     h.update(`task:${input.taskId}\n`)
     h.update(`workspace:${input.workspaceFingerprint}\n`)
+    h.update(`pkg:${input.projectPackageJsonHash}\n`)
     h.update(`config:${input.taskConfigHash}\n`)
 
     const forwarded = input.forwardArgs ?? []
