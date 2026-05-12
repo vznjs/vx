@@ -244,7 +244,8 @@ directly.
   accept its absence; we don't ship it in v1.
 - **`x-artifact-client-ci` / `x-artifact-client-interactive` headers
   on every PUT** — we accept these as optional config but don't auto-
-  populate them. Cosmetic for dashboards; not part of correctness.
+  populate them. Cosmetic for upstream analytics; not part of
+  correctness.
 - **Turbo's tar interior** — see "Tar interior" above. We keep our own
   layout. The wire body is opaque so this is invisible to compatible
   servers.

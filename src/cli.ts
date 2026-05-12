@@ -2,18 +2,11 @@ import readline from 'node:readline/promises'
 import path from 'node:path'
 import { VERSION } from './index.js'
 import { Cache, type CacheStats } from './cache.js'
-import { createDashboardServer, DashboardUiMissingError, resolveUiDir } from './dashboard.js'
 import { applyFilters, parseFilter } from './filter.js'
 import { run as runOrchestrator, type RunOptions, type RunSummary } from './orchestrator.js'
 import { buildPackageGraph } from './package-graph.js'
-import { loadProjectConfig, loadWorkspaceConfig } from './project-loader.js'
-import {
-  findWorkspaceRoot,
-  listProjects,
-  loadWorkspace,
-  resolveCacheDir,
-  type ProjectMeta,
-} from './workspace.js'
+import { loadProjectConfig } from './project-loader.js'
+import { findWorkspaceRoot, listProjects, loadWorkspace, type ProjectMeta } from './workspace.js'
 import type { TaskOutcome } from './scheduler.js'
 
 export async function run(argv: readonly string[]): Promise<number> {
@@ -37,8 +30,6 @@ export async function run(argv: readonly string[]): Promise<number> {
       return await statsCmd()
     case 'cache':
       return await cacheCmd(rest)
-    case 'dashboard':
-      return await dashboardCmd(rest)
     default:
       process.stderr.write(`vzn: unknown command: ${command}\n`)
       printHelp()
@@ -398,85 +389,6 @@ export function parseSize(input: string): number | null {
   return n * mult
 }
 
-interface DashboardArgs {
-  port: number
-  host: string
-  error?: string
-}
-
-export function parseDashboardArgs(args: readonly string[]): DashboardArgs {
-  const out: DashboardArgs = { port: 4280, host: '127.0.0.1' }
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i]
-    if (a === '--port' || a === '-p') {
-      const v = args[++i]
-      if (v === undefined) return { ...out, error: `${a} requires a value` }
-      const n = Number(v)
-      // 0 is valid: kernel assigns an ephemeral port (useful in tests
-      // and for "just find me one" workflows).
-      if (!Number.isInteger(n) || n < 0 || n > 65535) return { ...out, error: `invalid port: ${v}` }
-      out.port = n
-    } else if (a === '--host') {
-      const v = args[++i]
-      if (v === undefined) return { ...out, error: `${a} requires a value` }
-      out.host = v
-    } else {
-      return { ...out, error: `unknown argument: ${a}` }
-    }
-  }
-  return out
-}
-
-async function dashboardCmd(args: readonly string[]): Promise<number> {
-  const parsed = parseDashboardArgs(args)
-  if (parsed.error) {
-    process.stderr.write(`vzn dashboard: ${parsed.error}\n`)
-    return 1
-  }
-  const cwd = process.cwd()
-  let root: string
-  try {
-    root = findWorkspaceRoot(cwd)
-  } catch (err) {
-    process.stderr.write(`vzn dashboard: ${(err as Error).message}\n`)
-    return 1
-  }
-  const workspaceConfig = await loadWorkspaceConfig(root)
-  const cacheDir = resolveCacheDir(root, workspaceConfig)
-  let uiDir: string
-  try {
-    uiDir = resolveUiDir(process.env['VZN_DASHBOARD_DIST'])
-  } catch (err) {
-    if (err instanceof DashboardUiMissingError) {
-      process.stderr.write(`${err.message}\n`)
-      return 1
-    }
-    throw err
-  }
-  const server = createDashboardServer({
-    cacheDir,
-    uiDir,
-    port: parsed.port,
-    hostname: parsed.host,
-  })
-  process.stdout.write(`vzn dashboard: http://${server.hostname}:${server.port}/\n`)
-  process.stdout.write(
-    `  API: /api/overview, /api/runs, /api/runs/:id, /api/tasks/slowest, /api/cache/entries\n`,
-  )
-  process.stdout.write(`  (Ctrl+C to stop)\n`)
-  // Keep the process alive until Ctrl+C. Bun.serve does not block the
-  // event loop on its own.
-  await new Promise<void>((resolve) => {
-    const stop = (): void => {
-      void server.stop()
-      resolve()
-    }
-    process.on('SIGINT', stop)
-    process.on('SIGTERM', stop)
-  })
-  return 0
-}
-
 async function statsCmd(): Promise<number> {
   const cwd = process.cwd()
   let root: string
@@ -529,7 +441,6 @@ function printHelp(): void {
       '  vzn run [OPTIONS] [TASK | PKG#TASK] [-- forwarded-args...]',
       '  vzn stats',
       '  vzn cache prune [--older-than <duration>] [--max-size <bytes>]',
-      '  vzn dashboard [--port <n>] [--host <addr>]',
       '  vzn help',
       '  vzn version',
       '',
@@ -562,11 +473,6 @@ function printHelp(): void {
       '  vzn cache prune --max-size 1G        Keep total cache under 1 GB (LRU eviction).',
       '',
       '  Duration units: s, m, h, d. Size units: K, M, G, T (powers of 1024).',
-      '',
-      'Dashboard:',
-      '  vzn dashboard                         Serve local analytics UI + JSON API on :4280.',
-      '  vzn dashboard --port 9090             Bind a custom port.',
-      '  vzn dashboard --host 0.0.0.0          Listen on all interfaces (default 127.0.0.1).',
       '',
     ].join('\n'),
   )
