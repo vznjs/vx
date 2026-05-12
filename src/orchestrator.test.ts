@@ -1759,4 +1759,45 @@ describe('orchestrator e2e', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'replays failed task stderr at end of run and persists logs to disk',
+    async () => {
+      await addProject(fixture.root, 'app-fail', {
+        config: `
+          export default {
+            run: {
+              tasks: {
+                broken: {
+                  exec: { command: 'echo MY-ERROR-MARKER >&2 && exit 42' },
+                },
+              },
+            },
+          }
+        `,
+      })
+
+      const r = await run({ cwd: fixture.root, task: 'broken', log: silentLogger(fixture) })
+      expect(r.ok).toBe(false)
+      const o = r.outcomes.find((o) => o.node.id === 'app-fail#broken')
+      expect(o?.status).toBe('failed')
+      expect(o?.exitCode).toBe(42)
+      expect(o?.stderr).toContain('MY-ERROR-MARKER')
+
+      const replayed = fixture.log.some((line) => line.includes('MY-ERROR-MARKER'))
+      expect(replayed).toBe(true)
+
+      const logsRoot = path.join(fixture.root, '.vzn/cache/logs')
+      expect(existsSync(logsRoot)).toBe(true)
+      const { readdir } = await import('node:fs/promises')
+      const runDirs = await readdir(logsRoot)
+      expect(runDirs).toHaveLength(1)
+      const stderr = await readFile(
+        path.join(logsRoot, runDirs[0]!, 'app-fail__broken.stderr'),
+        'utf8',
+      )
+      expect(stderr).toContain('MY-ERROR-MARKER')
+    },
+    TIMEOUT,
+  )
 })

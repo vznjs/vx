@@ -4,7 +4,7 @@
 
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import type { ExecConfig, ProjectConfig, TaskConfig, CacheConfig, TaskDependsOn } from './config.js'
@@ -98,7 +98,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     return { ok: false, outcomes: [] }
   }
 
-  const localCache = new Cache(resolveCacheDir(workspaceRoot, workspaceConfig))
+  const cacheDir = resolveCacheDir(workspaceRoot, workspaceConfig)
+  const localCache = new Cache(cacheDir)
   const cache = wrapWithRemoteCache(localCache, log)
   const concurrency =
     options.concurrency ?? workspaceConfig?.concurrency ?? Math.max(1, os.cpus().length)
@@ -134,6 +135,41 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 
   const list = [...outcomes.values()]
   const ok = list.every((o) => o.status === 'success' || o.status === 'cache-hit')
+
+  // Persist task logs to disk so users can inspect after the fact —
+  // especially failures (we don't cache failed exec output). Path
+  // shape: <cacheDir>/logs/<run_id>/<project>__<task>.{stdout,stderr}
+  const logsDir = path.join(cacheDir, 'logs', runId)
+  await persistTaskLogs({ logsDir, outcomes: list })
+
+  // Failure replay: if any task failed, re-print its captured stderr
+  // (and stdout) at the bottom of the run output. Live streaming
+  // already happened, but in parallel runs the failed task's output
+  // is often buried by N other tasks' output. Re-printing gives the
+  // user one place to look.
+  const failed = list.filter((o) => o.status === 'failed')
+  if (failed.length > 0) {
+    log.status('')
+    log.status(`✗ ${failed.length} task(s) failed:`)
+    for (const o of failed) {
+      log.status('')
+      log.status(`  ${o.node.id}  (exit ${o.exitCode}, ${o.durationMs}ms)`)
+      if (o.stderr && o.stderr.trim().length > 0) {
+        for (const line of o.stderr.trimEnd().split('\n')) {
+          log.status(`    ${line}`)
+        }
+      } else if (o.stdout && o.stdout.trim().length > 0) {
+        // Some tools (esbuild, vite) write errors to stdout.
+        for (const line of o.stdout.trimEnd().split('\n')) {
+          log.status(`    ${line}`)
+        }
+      } else {
+        log.status('    (no output captured)')
+      }
+    }
+    log.status('')
+    log.status(`  full logs: ${path.relative(workspaceRoot, logsDir)}/`)
+  }
 
   // Record each task to the run history. Timestamps are approximate
   // (we don't have per-task wall-clock start times exposed by the
@@ -316,6 +352,8 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     exitCode: result.exitCode,
     durationMs: result.durationMs,
     hash,
+    stdout: result.stdout,
+    stderr: result.stderr,
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
     wallclockStartNs,
@@ -365,6 +403,38 @@ function computeGroupHash(upstream: TaskOutcome[]): string {
     .sort()
     .join('|')
   return createHash('sha256').update(`group|${ids}`).digest('hex')
+}
+
+/**
+ * Write each task's captured stdout/stderr to
+ * `<logsDir>/<project>__<task>.{stdout,stderr}`. Only writes files
+ * that have non-empty content. Group tasks and cache-hits skip
+ * (nothing to write). Errors during write are swallowed — log
+ * persistence is best-effort, never blocks the run.
+ */
+async function persistTaskLogs(args: { logsDir: string; outcomes: TaskOutcome[] }): Promise<void> {
+  const writable = args.outcomes.filter(
+    (o) => (o.stdout && o.stdout.length > 0) || (o.stderr && o.stderr.length > 0),
+  )
+  if (writable.length === 0) return
+  try {
+    await mkdir(args.logsDir, { recursive: true })
+  } catch {
+    return
+  }
+  await Promise.all(
+    writable.flatMap((o) => {
+      const stem = `${o.node.projectName}__${o.node.taskName}`.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const tasks: Promise<unknown>[] = []
+      if (o.stdout && o.stdout.length > 0) {
+        tasks.push(writeFile(path.join(args.logsDir, `${stem}.stdout`), o.stdout).catch(() => {}))
+      }
+      if (o.stderr && o.stderr.length > 0) {
+        tasks.push(writeFile(path.join(args.logsDir, `${stem}.stderr`), o.stderr).catch(() => {}))
+      }
+      return tasks
+    }),
+  )
 }
 
 const WORKSPACE_FINGERPRINT_FILES = ['pnpm-lock.yaml', 'pnpm-workspace.yaml']
