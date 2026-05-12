@@ -74,13 +74,22 @@ export interface CacheEntry {
   stdout: string
   stderr: string
   storedAt: string
+  /**
+   * Where this hit was resolved from. `'local'` for a SQLite-backed
+   * Cache; `'remote'` when LayeredCache pulled the artifact from the
+   * remote layer this lookup (even though it's been materialized into
+   * local for next time). Lets the orchestrator surface
+   * `cache-hit-remote` so users see when remote caching actually saved
+   * them work vs. a stale-local replay.
+   */
+  source?: 'local' | 'remote'
 }
 
 export interface RunRecord {
   hash: string
   project: string
   task: string
-  status: 'success' | 'failed' | 'cache-hit' | 'skipped'
+  status: 'success' | 'failed' | 'cache-hit' | 'cache-hit-remote' | 'skipped'
   exitCode: number
   durationMs: number
   forwardArgs?: readonly string[]
@@ -322,6 +331,7 @@ export class Cache implements CacheLayer {
       stdout,
       stderr,
       storedAt: new Date(row.created_at).toISOString(),
+      source: 'local',
     }
   }
 

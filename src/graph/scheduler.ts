@@ -1,6 +1,6 @@
 import type { TaskNode } from './task-graph.js'
 
-export type TaskStatus = 'success' | 'cache-hit' | 'failed' | 'skipped'
+export type TaskStatus = 'success' | 'cache-hit' | 'cache-hit-remote' | 'failed' | 'skipped'
 
 export interface TaskOutcome {
   node: TaskNode

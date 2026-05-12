@@ -92,9 +92,11 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
       await cache.restoreOutputs(hash, node.projectDir)
       if (hit.stdout) log.taskStdout(node, hit.stdout)
       if (hit.stderr) log.taskStderr(node, hit.stderr)
+      const status =
+        hit.exitCode !== 0 ? 'failed' : hit.source === 'remote' ? 'cache-hit-remote' : 'cache-hit'
       return {
         node,
-        status: hit.exitCode === 0 ? 'cache-hit' : 'failed',
+        status,
         exitCode: hit.exitCode,
         durationMs: 0,
         hash,

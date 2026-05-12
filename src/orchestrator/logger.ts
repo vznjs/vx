@@ -11,11 +11,13 @@ export function formatOutcome(o: TaskOutcome): string {
   const tag =
     o.status === 'cache-hit'
       ? '◉  cache'
-      : o.status === 'success'
-        ? '✓'
-        : o.status === 'failed'
-          ? '✗'
-          : '·  skip'
+      : o.status === 'cache-hit-remote'
+        ? '↓  remote'
+        : o.status === 'success'
+          ? '✓'
+          : o.status === 'failed'
+            ? '✗'
+            : '·  skip'
   return `${tag} ${o.node.id}  (${o.durationMs}ms)`
 }
 

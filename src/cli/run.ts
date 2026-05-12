@@ -253,11 +253,13 @@ function formatRow(o: TaskOutcome): { task: string; status: string; duration: st
   const status =
     o.status === 'cache-hit'
       ? 'cache'
-      : o.status === 'success'
-        ? 'ok'
-        : o.status === 'failed'
-          ? `fail(${o.exitCode})`
-          : o.status
+      : o.status === 'cache-hit-remote'
+        ? 'remote'
+        : o.status === 'success'
+          ? 'ok'
+          : o.status === 'failed'
+            ? `fail(${o.exitCode})`
+            : o.status
   return {
     task: o.node.id,
     status,

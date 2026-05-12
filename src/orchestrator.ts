@@ -22,6 +22,7 @@ import { computeNestedProjectDirs } from './orchestrator/nested-dirs.ts'
 import { persistTaskLogs } from './orchestrator/task-logs.ts'
 import { wrapWithRemoteCache } from './orchestrator/remote-cache-setup.ts'
 import { defaultLogger, formatOutcome, type Logger } from './orchestrator/logger.ts'
+import { formatRunSummary } from './orchestrator/summary.ts'
 
 export type { Logger } from './orchestrator/logger.ts'
 
@@ -134,6 +135,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const logsDir = path.join(cacheDir, 'logs', runId)
   await persistTaskLogs({ logsDir, outcomes: list })
 
+  const totalMs = Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000
+  for (const line of formatRunSummary(list, totalMs)) log.status(line)
+
   // Record each task to the run history. Group tasks (no `exec`) are
   // skipped — they aren't real runs and showing them in `vx stats` as
   // zero-duration successes is noise.
@@ -156,7 +160,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       ...(o.peakRssBytes !== undefined ? { peakRssBytes: o.peakRssBytes } : {}),
       ...(o.wallclockStartNs !== undefined ? { wallclockStartNs: o.wallclockStartNs } : {}),
       ...(o.wallclockEndNs !== undefined ? { wallclockEndNs: o.wallclockEndNs } : {}),
-      cacheHit: o.status === 'cache-hit',
+      cacheHit: o.status === 'cache-hit' || o.status === 'cache-hit-remote',
     })
   }
   cache.close()
