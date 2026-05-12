@@ -214,19 +214,41 @@ write, restored on cache hit (overwriting any local modifications).
 Outputs are **NOT** filtered through gitignore — so `dist/` and friends
 get captured even when gitignored (which they usually are).
 
-## `WorkspaceConfig` (deferred)
+## `WorkspaceConfig`
+
+Loaded from `vzn.workspace.{ts,mts,js,mjs}` at the workspace root —
+the same directory that contains `pnpm-workspace.yaml`. The file is
+**optional**: when missing, every field falls back to its built-in
+default.
 
 ```ts
 interface WorkspaceConfig {
+  /** Maximum concurrent tasks. Defaults to the number of CPUs. */
   concurrency?: number
+  /** Cache directory, relative to the workspace root. Defaults to `.vzn/cache`. */
   cacheDir?: string
 }
 ```
 
-Exported and accepted by `defineWorkspace`, but **not loaded by the
-orchestrator yet**. Reserved for future workspace-level features like
-`globalInputs` (a workspace-wide file set folded into every task's
-key — useful for shared root configs like `tsconfig.base.json`).
+```ts
+// vzn.workspace.ts
+import { defineWorkspace } from '@vzn/run'
+
+export default defineWorkspace({
+  concurrency: 8,
+  cacheDir: 'build/.vzn-cache',
+})
+```
+
+- `concurrency`: a CLI `-c <n>` flag still wins. Picked up by both
+  `vzn run` and (read-only) by `vzn dashboard`.
+- `cacheDir`: relative paths are resolved against the workspace root.
+  Absolute paths are honoured as-is. Both `vzn run` and
+  `vzn dashboard` read from the same resolved location.
+
+Reserved for future workspace-level features like `globalInputs` (a
+workspace-wide file set folded into every task's key — useful for
+shared root configs like `tsconfig.base.json`).
 
 ## Helpers
 

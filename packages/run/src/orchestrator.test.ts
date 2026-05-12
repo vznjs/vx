@@ -1637,4 +1637,33 @@ describe('orchestrator e2e', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    "honours vzn.workspace.mjs's cacheDir override",
+    async () => {
+      await writeFile(
+        path.join(fixture.root, 'vzn.workspace.mjs'),
+        "export default { cacheDir: 'build/.vzn-cache' }",
+      )
+      await addProject(fixture.root, 'app-x', {
+        files: { 'src/index.txt': 'hello' },
+        config: `
+          export default {
+            run: {
+              tasks: {
+                stamp: {
+                  exec: { command: ${JSON.stringify(STAMP_CMD)} },
+                  cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+                },
+              },
+            },
+          }
+        `,
+      })
+      await run({ cwd: fixture.root, task: 'stamp', log: silentLogger(fixture) })
+      expect(existsSync(path.join(fixture.root, 'build/.vzn-cache/cache.db'))).toBe(true)
+      expect(existsSync(path.join(fixture.root, '.vzn/cache'))).toBe(false)
+    },
+    TIMEOUT,
+  )
 })

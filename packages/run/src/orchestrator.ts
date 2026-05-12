@@ -20,7 +20,8 @@ import { runSandboxed } from './sandbox.js'
 import { runGraph, type TaskOutcome } from './scheduler.js'
 import { buildTaskGraph, taskId, type ProjectEntry, type TaskNode } from './task-graph.js'
 import { ulid } from './ulid.js'
-import { findWorkspaceRoot, listProjects, loadWorkspace } from './workspace.js'
+import { findWorkspaceRoot, listProjects, loadWorkspace, resolveCacheDir } from './workspace.js'
+import { loadWorkspaceConfig } from './project-loader.js'
 
 export interface RunOptions {
   cwd: string
@@ -58,6 +59,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 
   const workspaceRoot = findWorkspaceRoot(options.cwd)
   const workspace = await loadWorkspace(workspaceRoot)
+  const workspaceConfig = await loadWorkspaceConfig(workspaceRoot)
   const projectMetas = await listProjects(workspace)
 
   const projects = new Map<string, ProjectEntry>()
@@ -96,9 +98,10 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     return { ok: false, outcomes: [] }
   }
 
-  const localCache = new Cache(path.join(workspaceRoot, '.vzn', 'cache'))
+  const localCache = new Cache(resolveCacheDir(workspaceRoot, workspaceConfig))
   const cache = wrapWithRemoteCache(localCache, log)
-  const concurrency = options.concurrency ?? Math.max(1, os.cpus().length)
+  const concurrency =
+    options.concurrency ?? workspaceConfig?.concurrency ?? Math.max(1, os.cpus().length)
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
   // One run-id per `vzn run` invocation. Every task in the resulting
