@@ -13,8 +13,46 @@ import path from 'node:path'
 
 export interface DashboardServerOptions {
   cacheDir: string
+  uiDir: string
   port?: number
   hostname?: string
+}
+
+// Repo-relative path to the built Solid bundle. PR #28 carved the UI
+// out of this package into `apps/dashboard/`; the CLI passes this
+// through after probing it exists.
+export const DEFAULT_UI_DIR: string = path.resolve(
+  import.meta.dir,
+  '..',
+  '..',
+  '..',
+  'apps',
+  'dashboard',
+  'dist',
+)
+
+export class DashboardUiMissingError extends Error {
+  constructor(triedDir: string) {
+    super(
+      `vzn dashboard: UI bundle not built at ${triedDir}.\n` +
+        '  Run: bun --cwd apps/dashboard run build',
+    )
+    this.name = 'DashboardUiMissingError'
+  }
+}
+
+/**
+ * Resolve the dist dir the dashboard serves from. Env override wins
+ * for tests + future packaging. Otherwise we expect a monorepo
+ * checkout. Throws `DashboardUiMissingError` with a fixit hint when
+ * the dir exists but isn't built.
+ */
+export function resolveUiDir(envOverride?: string): string {
+  const dir = envOverride ?? DEFAULT_UI_DIR
+  if (!existsSync(path.join(dir, 'index.html'))) {
+    throw new DashboardUiMissingError(dir)
+  }
+  return dir
 }
 
 export interface OverviewResponse {
@@ -117,10 +155,11 @@ export function createDashboardServer(opts: DashboardServerOptions): ReturnType<
   const port = opts.port ?? 4280
   const hostname = opts.hostname ?? '127.0.0.1'
 
+  const uiDir = opts.uiDir
   const server = Bun.serve({
     port,
     hostname,
-    fetch: (req) => handleRequest(db, req),
+    fetch: (req) => handleRequest(db, req, uiDir),
   })
 
   // bun:sqlite has no `onClose`; we monkey-patch stop() so callers get
@@ -135,7 +174,11 @@ export function createDashboardServer(opts: DashboardServerOptions): ReturnType<
   return server
 }
 
-export async function handleRequest(db: Database, req: Request): Promise<Response> {
+export async function handleRequest(
+  db: Database,
+  req: Request,
+  uiDir: string = DEFAULT_UI_DIR,
+): Promise<Response> {
   const url = new URL(req.url)
   const { pathname } = url
 
@@ -160,30 +203,26 @@ export async function handleRequest(db: Database, req: Request): Promise<Respons
     return json(getCacheEntries(db, limit))
   }
   if (pathname.startsWith('/api/')) return notFound()
-  return await serveStatic(pathname)
+  return await serveStatic(pathname, uiDir)
 }
-
-const UI_DIR = path.join(import.meta.dir, 'dashboard-ui')
 
 /**
  * Serve a UI static asset. Returns 404 outside the UI tree. Everything
- * that isn't a known file falls through to `index.html` so the SPA's
- * hash router can take it from there (`/runs/abc` etc. all serve the
- * shell; the router handles routing).
+ * that isn't a known file falls through to `index.html` so the SPA
+ * router can take it from there (`/runs/abc` etc. all serve the shell;
+ * the router handles routing).
  */
-async function serveStatic(pathname: string): Promise<Response> {
+async function serveStatic(pathname: string, uiDir: string): Promise<Response> {
   const requested = pathname === '/' ? '/index.html' : pathname
   // Path traversal guard: normalize and require the result to stay
-  // under UI_DIR. `path.join` here resolves `..` segments.
-  const absolute = path.join(UI_DIR, requested)
-  if (!absolute.startsWith(UI_DIR)) return notFound()
+  // under uiDir. `path.join` here resolves `..` segments.
+  const absolute = path.join(uiDir, requested)
+  if (!absolute.startsWith(uiDir)) return notFound()
   if (existsSync(absolute)) {
     return await fileResponse(absolute)
   }
-  // SPA fallback: any unknown path that isn't an obvious asset request
-  // gets the shell HTML.
-  if (!/\.(js|css|html|ico|svg|png|jpg|woff2?)$/i.test(requested)) {
-    return await fileResponse(path.join(UI_DIR, 'index.html'))
+  if (!/\.(js|css|html|ico|svg|png|jpg|woff2?|map)$/i.test(requested)) {
+    return await fileResponse(path.join(uiDir, 'index.html'))
   }
   return notFound()
 }
