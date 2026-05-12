@@ -1,6 +1,6 @@
-import type { ProjectConfig, TaskConfig } from './config.js'
-import { UserError } from './errors.js'
-import type { PackageGraph } from './package-graph.js'
+import type { ProjectConfig, TaskConfig } from '../config.js'
+import { UserError } from '../util/errors.js'
+import type { PackageGraph } from '../workspace/package-graph.js'
 
 export interface TaskNode {
   /** Stable id: `${projectName}#${taskName}`. */

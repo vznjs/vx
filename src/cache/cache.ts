@@ -17,7 +17,7 @@ import { Database } from 'bun:sqlite'
 import { existsSync, mkdirSync } from 'node:fs'
 import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
-import { relPosix } from './paths.js'
+import { relPosix } from '../util/paths.js'
 
 const CACHE_VERSION = 'vzn-cache-v11'
 const SCHEMA_VERSION = 'v11'

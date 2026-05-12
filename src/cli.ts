@@ -1,13 +1,18 @@
 import readline from 'node:readline/promises'
 import path from 'node:path'
 import { VERSION } from './index.js'
-import { Cache, type CacheStats } from './cache.js'
-import { applyFilters, parseFilter } from './filter.js'
+import { Cache, type CacheStats } from './cache/cache.js'
+import { applyFilters, parseFilter } from './workspace/filter.js'
 import { run as runOrchestrator, type RunOptions, type RunSummary } from './orchestrator.js'
-import { buildPackageGraph } from './package-graph.js'
-import { loadProjectConfig } from './project-loader.js'
-import { findWorkspaceRoot, listProjects, loadWorkspace, type ProjectMeta } from './workspace.js'
-import type { TaskOutcome } from './scheduler.js'
+import { buildPackageGraph } from './workspace/package-graph.js'
+import { loadProjectConfig } from './workspace/project-loader.js'
+import {
+  findWorkspaceRoot,
+  listProjects,
+  loadWorkspace,
+  type ProjectMeta,
+} from './workspace/workspace.js'
+import type { TaskOutcome } from './graph/scheduler.js'
 
 export async function run(argv: readonly string[]): Promise<number> {
   const [command, ...rest] = argv

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
-import { runGraph, type TaskOutcome } from '../src/scheduler.js'
-import type { TaskNode } from '../src/task-graph.js'
+import { runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
+import type { TaskNode } from '../src/graph/task-graph.js'
 
 function node(id: string, deps: string[] = []): TaskNode {
   return {

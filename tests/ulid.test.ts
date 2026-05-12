@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { ulid } from '../src/ulid.js'
+import { ulid } from '../src/util/ulid.js'
 
 describe('ulid', () => {
   it('produces a 26-character Crockford-base32 string', () => {

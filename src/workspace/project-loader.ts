@@ -1,6 +1,6 @@
 import path from 'node:path'
-import type { ProjectConfig, WorkspaceConfig } from './config.js'
-import { UserError } from './errors.js'
+import type { ProjectConfig, WorkspaceConfig } from '../config.js'
+import { UserError } from '../util/errors.js'
 
 const WORKSPACE_CONFIG_FILENAMES = [
   'vzn.workspace.ts',

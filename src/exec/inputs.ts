@@ -8,7 +8,7 @@
 
 import path from 'node:path'
 import ignore, { type Ignore } from 'ignore'
-import type { CacheInputs } from './config.js'
+import type { CacheInputs } from '../config.js'
 
 const ALWAYS_IGNORE = ['**/node_modules/**', '**/.git/**', '**/.vzn/**', '**/*.tsbuildinfo']
 

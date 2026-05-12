@@ -4,19 +4,24 @@
 
 import path from 'node:path'
 import type { ExecConfig, ProjectConfig, TaskConfig, CacheConfig, TaskDependsOn } from './config.js'
-import { Cache, type CacheLayer } from './cache.js'
-import { LayeredCache } from './layered-cache.js'
-import { RemoteCache } from './remote-cache.js'
-import { buildIsolatedEnv } from './env.js'
-import { resolveInputs, resolveOutputs } from './inputs.js'
-import { buildPackageGraph } from './package-graph.js'
-import { loadProjectConfig } from './project-loader.js'
-import { runCommand } from './runner.js'
-import { runGraph, type TaskOutcome } from './scheduler.js'
-import { buildTaskGraph, taskId, type ProjectEntry, type TaskNode } from './task-graph.js'
-import { ulid } from './ulid.js'
-import { findWorkspaceRoot, listProjects, loadWorkspace, resolveCacheDir } from './workspace.js'
-import { loadWorkspaceConfig } from './project-loader.js'
+import { Cache, type CacheLayer } from './cache/cache.js'
+import { LayeredCache } from './cache/layered-cache.js'
+import { RemoteCache } from './cache/remote-cache.js'
+import { buildIsolatedEnv } from './exec/env.js'
+import { resolveInputs, resolveOutputs } from './exec/inputs.js'
+import { buildPackageGraph } from './workspace/package-graph.js'
+import { loadProjectConfig } from './workspace/project-loader.js'
+import { runCommand } from './exec/runner.js'
+import { runGraph, type TaskOutcome } from './graph/scheduler.js'
+import { buildTaskGraph, taskId, type ProjectEntry, type TaskNode } from './graph/task-graph.js'
+import { ulid } from './util/ulid.js'
+import {
+  findWorkspaceRoot,
+  listProjects,
+  loadWorkspace,
+  resolveCacheDir,
+} from './workspace/workspace.js'
+import { loadWorkspaceConfig } from './workspace/project-loader.js'
 
 export interface RunOptions {
   cwd: string

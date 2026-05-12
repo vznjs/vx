@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import type { TaskConfig } from '../src/config.js'
-import type { PackageGraph } from '../src/package-graph.js'
-import { buildTaskGraph, type ProjectEntry } from '../src/task-graph.js'
+import type { PackageGraph } from '../src/workspace/package-graph.js'
+import { buildTaskGraph, type ProjectEntry } from '../src/graph/task-graph.js'
 
 function project(name: string, tasks: Record<string, TaskConfig>): ProjectEntry {
   return { name, dir: `/ws/${name}`, config: { run: { tasks } } }

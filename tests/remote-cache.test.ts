@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { RemoteCache, RemoteCacheError } from '../src/remote-cache.js'
+import { RemoteCache, RemoteCacheError } from '../src/cache/remote-cache.js'
 
 interface RecordedRequest {
   method: string
