@@ -121,6 +121,24 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: Dashboard PR 8/10 — ported the four legacy pages
+  (Overview, Cache, Tasks, Runs) to Solid components inside
+  `apps/dashboard/`. Routing via `@solidjs/router`'s `<HashRouter>`
+  so URLs stay shaped like the legacy app (`#/overview`, `#/runs`,
+  `#/runs/:id`) and so the bundle works as a flat static asset
+  without needing SPA-fallback config on whatever serves it. Each
+  page does `createResource(() => fetchJson<T>(url))` and wraps the
+  output in a small `<AsyncView>` for loading/error/data states.
+  Shared chrome (header + nav + footer) lives in a `Shell` root
+  component; pages render into it via the router's outlet
+  (`props.children`). UnoCSS classes lean on the semantic color
+  tokens from PR #26 (`bg-bg-elevated`, `text-fg-muted`,
+  `border-border-muted`, …). Added `src/api.ts` (response types +
+  `fetchJson<T>`) and extended `src/format.ts` with `formatAge`,
+  `formatPercent`, `shortHash`, `shortRunId`. Run-detail page +
+  flamegraph land in PR #29; legacy `dashboard-ui/` removal +
+  server-side static-serving rewrite is PR #28. Production bundle:
+  ~46 KB raw / 16 KB gzipped JS, 5 KB CSS. PR #27.
 - **2026-05**: Dashboard PR 7/10 — `apps/dashboard/` scaffold. Vite 6 +
   vite-plugin-solid + UnoCSS (presetUno + presetIcons +
   transformerVariantGroup) with a dark-by-default theme and
