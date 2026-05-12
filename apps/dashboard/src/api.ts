@@ -28,6 +28,32 @@ export interface SlowestTask {
   runCount: number
 }
 
+export interface TaskRow {
+  id: number
+  hash: string
+  project: string
+  task: string
+  status: string
+  exitCode: number
+  durationMs: number
+  startedAt: number
+  endedAt: number
+  runId: string | null
+  cpuMs: number | null
+  peakRssBytes: number | null
+  /** Stringified because JSON can't represent bigint. ns since run t=0. */
+  wallclockStartNs: string | null
+  wallclockEndNs: string | null
+  cacheHit: boolean | null
+  bytesUploaded: number | null
+  bytesDownloaded: number | null
+}
+
+export interface RunDetailResponse {
+  runId: string
+  tasks: TaskRow[]
+}
+
 export interface CacheEntryRow {
   hash: string
   project: string
