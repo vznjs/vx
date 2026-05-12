@@ -1,7 +1,7 @@
 // Tiny ULID generator — 26-char lexicographically-sortable id with a
 // 48-bit ms timestamp prefix + 80 bits of randomness, encoded in
 // Crockford's base32. Used as `run_id` so every task in one `vzn run`
-// invocation shares an id (dashboard groups them).
+// invocation shares an id (lets analytics queries group by invocation).
 //
 // Why not pull in the `ulid` npm package: it's 12 KB on disk with a
 // browser/node split and zero of its features beyond what we use here.

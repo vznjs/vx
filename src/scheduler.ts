@@ -14,7 +14,8 @@ export interface TaskOutcome {
   peakRssBytes?: number
   /**
    * v11 analytics: hrtime span relative to the parent run's t=0.
-   * Used by the dashboard to lane-pack a flamegraph.
+   * Lets downstream analytics reconstruct the actual parallel timeline
+   * (overlapping tasks, idle gaps) rather than just summing durations.
    */
   wallclockStartNs?: bigint
   wallclockEndNs?: bigint

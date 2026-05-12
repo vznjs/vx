@@ -79,9 +79,9 @@ export interface RunRecord {
   startedAt: number // ms-epoch wall clock
   endedAt: number // ms-epoch wall clock
   /**
-   * Optional analytics columns populated by the orchestrator/runner once
-   * those PRs land. Stored as NULL until then; the dashboard tolerates
-   * NULLs in every chart.
+   * Optional analytics columns. Populated by the orchestrator/runner;
+   * stored as NULL on rows from older runs. Surfaced via `vzn stats`
+   * and consumable from CI by reading cache.db directly.
    */
   runId?: string // ULID shared across every task in one `vzn run` invocation
   cpuMs?: number // sum of user + system CPU time for the child process

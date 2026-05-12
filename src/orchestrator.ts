@@ -105,7 +105,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
   // One run-id per `vzn run` invocation. Every task in the resulting
-  // graph carries it, so the dashboard can group them.
+  // graph carries it so analytics queries can group by invocation.
   const runId = ulid()
   const runStartHrTimeNs = process.hrtime.bigint()
 
@@ -240,9 +240,9 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     define: step.env?.define ?? {},
     source: process.env,
   })
-  // Per-task wallclock span relative to the run's t=0. We capture
-  // monotonic ns ticks so the dashboard's flamegraph lane-packing has
-  // accurate stacking, immune to wall-clock skew.
+  // Per-task wallclock span relative to the run's t=0. Monotonic ns
+  // ticks so analytics can reconstruct the parallel timeline (overlaps,
+  // idle gaps) immune to wall-clock skew.
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
   const result = args.sandbox
     ? await runSandboxed({

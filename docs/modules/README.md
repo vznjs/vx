@@ -30,6 +30,5 @@ One markdown per module under `src/`. Each documents:
 | [`orchestrator.md`](./orchestrator.md)     | End-to-end glue                           |
 | [`filter.md`](./filter.md)                 | pnpm-style filter DSL (`-F`)              |
 | [`cli.md`](./cli.md)                       | Argv parser + dispatcher                  |
-| [`dashboard.md`](./dashboard.md)           | Local analytics HTTP API                  |
 
 For a higher-level view see [`../architecture.md`](../architecture.md).

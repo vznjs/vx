@@ -191,6 +191,6 @@ Not required when:
   table: `run_id` (ULID shared across all tasks in one `vzn run`
   invocation), `cpu_ms`, `peak_rss_bytes`, `wallclock_start_ns` /
   `wallclock_end_ns` (hrtime spans), `cache_hit`, `bytes_uploaded`,
-  `bytes_downloaded`. All nullable; populated by follow-up PRs in
-  the dashboard sequence. Backwards-compatible for read paths that
-  don't use them.
+  `bytes_downloaded`. All nullable; surfaced via `vzn stats` and
+  directly queryable from CI via `sqlite3 .vzn/cache/cache.db`.
+  Backwards-compatible for read paths that don't use them.

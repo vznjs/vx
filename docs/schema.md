@@ -240,11 +240,10 @@ export default defineWorkspace({
 })
 ```
 
-- `concurrency`: a CLI `-c <n>` flag still wins. Picked up by both
-  `vzn run` and (read-only) by `vzn dashboard`.
+- `concurrency`: a CLI `-c <n>` flag still wins.
 - `cacheDir`: relative paths are resolved against the workspace root.
-  Absolute paths are honoured as-is. Both `vzn run` and
-  `vzn dashboard` read from the same resolved location.
+  Absolute paths are honoured as-is. `vzn run` and `vzn stats` both
+  read from the resolved location.
 
 Reserved for future workspace-level features like `globalInputs` (a
 workspace-wide file set folded into every task's key — useful for

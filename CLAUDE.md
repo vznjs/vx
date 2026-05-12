@@ -30,36 +30,32 @@ Configs:
 
 ## Repository layout
 
-Bun-workspace monorepo. Root holds shared dev tooling (oxlint, oxfmt,
-@types/bun); each package owns its own code, tests, deps.
+Single-package project. Flat src/ at root.
 
 ```
-packages/
-  run/              # @vzn/run — CLI, cache, scheduler, orchestrator
-    src/
-      bin.ts            # shebang; wires process.argv -> cli.run
-      cli.ts            # argv parser, dispatcher, interactive picker
-      orchestrator.ts   # discover → load → graph → schedule → execute
-      scheduler.ts      # parallel topo executor
-      task-graph.ts     # builds TaskNode DAG from declared dependsOn
-      package-graph.ts  # workspace dep graph
-      workspace.ts      # pnpm-workspace.yaml discovery
-      project-loader.ts # jiti-loaded vzn.config.* (moduleCache: false)
-      filter.ts         # pnpm-style filter DSL (-F)
-      cache.ts          # content-addressed cache (key + save/restore)
-      runner.ts         # Bun.spawn wrapper + shellQuote
-      env.ts            # env composition
-      inputs.ts         # glob resolution + project-boundary enforcement
-      config.ts         # public schema (ProjectConfig, TaskConfig, …)
-      paths.ts          # tiny POSIX-path helper
-      dashboard.ts      # JSON API server + static-serves apps/dashboard/dist
-      ulid.ts           # tiny ULID generator (run-id stamping; no deps)
-      errors.ts         # UserError class — clean error output without a stack
-      index.ts          # public re-exports
-    tsconfig.json
-    package.json
-apps/
-  dashboard/        # Vite + Solid + UnoCSS app, not a published package
+src/
+  bin.ts            # shebang; wires process.argv -> cli.run
+  cli.ts            # argv parser, dispatcher, interactive picker
+  orchestrator.ts   # discover → load → graph → schedule → execute
+  scheduler.ts      # parallel topo executor
+  task-graph.ts     # builds TaskNode DAG from declared dependsOn
+  package-graph.ts  # workspace dep graph
+  workspace.ts      # pnpm-workspace.yaml discovery
+  project-loader.ts # jiti-loaded vzn.config.* (moduleCache: false)
+  filter.ts         # pnpm-style filter DSL (-F)
+  cache.ts          # content-addressed cache (key + save/restore)
+  layered-cache.ts  # local + remote composition
+  remote-cache.ts   # Turbo /v8/artifacts HTTP client
+  cache-archive.ts  # tar.gz pack/unpack for remote artifacts
+  runner.ts         # Bun.spawn wrapper + shellQuote
+  sandbox.ts        # bwrap (Linux) / sandbox-exec (macOS)
+  env.ts            # env composition
+  inputs.ts         # glob resolution + project-boundary enforcement
+  config.ts         # public schema (ProjectConfig, TaskConfig, …)
+  paths.ts          # tiny POSIX-path helper
+  ulid.ts           # tiny ULID generator (run-id stamping; no deps)
+  errors.ts         # UserError class — clean error output without a stack
+  index.ts          # public re-exports
 docs/
   README.md         # index
   architecture.md   # module map, data flow, design principles
@@ -70,10 +66,11 @@ docs/
   modules/<name>.md # per-module reference
   design/           # forward-looking proposals
 .claude/agents/     # subagent definitions
-package.json        # workspace root (Bun workspaces, "packages/*")
+tsconfig.json
+package.json
 bun.lock
-.oxlintrc.json      # lint config (shared across packages)
-.oxfmtrc.json       # format config (shared)
+.oxlintrc.json      # lint config
+.oxfmtrc.json       # format config
 ```
 
 ## Workflow
@@ -122,6 +119,16 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: **Removed the entire dashboard subsystem.** Server
+  (`src/dashboard.ts`), UI app (`apps/dashboard/`), `vzn dashboard`
+  subcommand, design doc, and module doc all deleted. Project
+  flattened back to a single-package layout (no more `packages/run/`
+  or `apps/`). What stays: `runs` table + ULID + hrtime spans +
+  cpu_ms / peak_rss / wallclock columns in cache.db, populated on
+  every `vzn run`. CI consumes them either via `vzn stats` or by
+  reading `cache.db` directly with `sqlite3`. Net: −9 of 10
+  dashboard PRs' worth of code; dep tree down from 304 packages to 19. Original framing of "dashboard as a window onto the cache"
+  was real scope creep — the cache file IS the API.
 - **2026-05**: Dashboard PR 10/10 — Run detail page + flamegraph.
   `/runs/:id` hits the existing `/api/runs/:id` endpoint and renders
   per-task spans against the wallclock timeline. Flamegraph is a
@@ -311,21 +318,16 @@ LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
 
 ## Active workstreams (prioritized)
 
-1. **Architecture doc refresh + per-module docs for remote-cache
-   subsystem.** `docs/architecture.md` doesn't mention the
-   remote-cache trio (RemoteCache + cache-archive + LayeredCache) or
-   sandbox.ts. New contributors miss half the story. Add a `cache/`
-   cluster to the module map; create
-   `docs/modules/{remote-cache,cache-archive,layered-cache,sandbox}.md`.
-2. **CacheLayer interface refactor.** `cache: Cache | LayeredCache`
-   union is brittle; extract a `CacheLayer` interface, type
-   orchestrator's `cache` field to it. Shared types in a small module.
-3. **Split `orchestrator.ts` and `cli.ts`.** Both are > 400 LOC with
-   mixed concerns. See refactor audit findings in conversation.
-4. **Presets / config-introspection** — NX-style task inference from
+1. **Split `orchestrator.ts` and `cli.ts`.** Both are > 400 LOC with
+   mixed concerns. Extract argv parsing, command dispatch, and the
+   per-task executeTask body into their own modules.
+2. **Presets / config-introspection** — NX-style task inference from
    tool configs (`vitest.config.ts`, `tsconfig.json`).
-5. **Pre-signed URL auth + HMAC signing** (`x-artifact-tag`) for the
+3. **Pre-signed URL auth + HMAC signing** (`x-artifact-tag`) for the
    remote cache. v2 features per `docs/design/remote-cache.md`.
+4. **`vzn stats --json`** — machine-readable output for CI scripts.
+   Underlying data is already in `cache.db`; just needs a flag and
+   a JSON encoder branch in the stats command.
 
 ## Operating directive (to you, Claude)
 
