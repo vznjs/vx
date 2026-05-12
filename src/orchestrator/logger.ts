@@ -1,47 +1,44 @@
 import type { TaskNode } from '../graph/task-graph.js'
 import type { TaskOutcome } from '../graph/scheduler.js'
+import { formatTaskBlock } from './framed-output.js'
 
 export interface Logger {
+  /** Header / footer / status text. Written verbatim, one trailing \n added. */
   status(line: string): void
+  /** Streamed stdout chunk for a task. Buffered until `taskComplete`. */
   taskStdout(node: TaskNode, chunk: string): void
+  /** Streamed stderr chunk for a task. Buffered until `taskComplete`. */
   taskStderr(node: TaskNode, chunk: string): void
-}
-
-export function formatOutcome(o: TaskOutcome): string {
-  const tag =
-    o.status === 'cache-hit'
-      ? '◉  cache'
-      : o.status === 'cache-hit-remote'
-        ? '↓  remote'
-        : o.status === 'success'
-          ? '✓'
-          : o.status === 'failed'
-            ? '✗'
-            : '·  skip'
-  return `${tag} ${o.node.id}  (${o.durationMs}ms)`
+  /**
+   * Flush a task's buffered output as one framed block. Called once
+   * per task on completion (success, failure, cache hit, or skip).
+   */
+  taskComplete(node: TaskNode, outcome: TaskOutcome): void
 }
 
 export function defaultLogger(): Logger {
+  // Per-task buffer. We don't separate stdout/stderr in the rendered
+  // block — the user sees them in arrival order, same as Turbo.
+  const buffers = new Map<string, string>()
+
+  const append = (node: TaskNode, chunk: string): void => {
+    buffers.set(node.id, (buffers.get(node.id) ?? '') + chunk)
+  }
+
   return {
     status(line) {
       process.stdout.write(`${line}\n`)
     },
     taskStdout(node, chunk) {
-      process.stdout.write(prefix(node.id, chunk))
+      append(node, chunk)
     },
     taskStderr(node, chunk) {
-      process.stderr.write(prefix(node.id, chunk))
+      append(node, chunk)
+    },
+    taskComplete(node, outcome) {
+      const body = buffers.get(node.id) ?? ''
+      buffers.delete(node.id)
+      process.stdout.write(formatTaskBlock(node, outcome, body))
     },
   }
-}
-
-function prefix(id: string, chunk: string): string {
-  const pad = `${id} │ `
-  return (
-    chunk
-      .replace(/\n$/, '')
-      .split('\n')
-      .map((line) => `${pad}${line}`)
-      .join('\n') + (chunk.endsWith('\n') ? '\n' : '')
-  )
 }

@@ -59,6 +59,24 @@ describe('formatRunSummary', () => {
     expect(lines[1]).toBe(' Tasks:    1 successful, 1 total')
     expect(lines[2]).toBe('Cached:    1 remote, 1 total')
   })
+
+  it('appends >>> FULL CACHE when every real task came from the cache', () => {
+    const lines = formatRunSummary(
+      [outcome('a#x', 'cache-hit'), outcome('b#x', 'cache-hit-remote')],
+      42,
+    )
+    expect(lines[3]).toBe('  Time:    42ms >>> FULL CACHE')
+  })
+
+  it('omits >>> FULL CACHE when at least one task actually ran', () => {
+    const lines = formatRunSummary([outcome('a#x', 'cache-hit'), outcome('b#x', 'success')], 42)
+    expect(lines[3]).toBe('  Time:    42ms')
+  })
+
+  it('omits >>> FULL CACHE on an empty run (no tasks)', () => {
+    const lines = formatRunSummary([], 0)
+    expect(lines[3]).toBe('  Time:    0ms')
+  })
 })
 
 describe('formatDuration', () => {

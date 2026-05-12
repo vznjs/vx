@@ -5,6 +5,8 @@
 import path from 'node:path'
 import type { ProjectConfig } from './config.js'
 import { Cache } from './cache/cache.js'
+import { LayeredCache } from './cache/layered-cache.js'
+import { VERSION } from './index.js'
 import { buildPackageGraph } from './workspace/package-graph.js'
 import { loadProjectConfig, loadWorkspaceConfig } from './workspace/project-loader.js'
 import { runGraph, type TaskOutcome } from './graph/scheduler.js'
@@ -21,7 +23,8 @@ import { computeWorkspaceFingerprint } from './orchestrator/fingerprint.ts'
 import { computeNestedProjectDirs } from './orchestrator/nested-dirs.ts'
 import { persistTaskLogs } from './orchestrator/task-logs.ts'
 import { wrapWithRemoteCache } from './orchestrator/remote-cache-setup.ts'
-import { defaultLogger, formatOutcome, type Logger } from './orchestrator/logger.ts'
+import { defaultLogger, type Logger } from './orchestrator/logger.ts'
+import { formatHeader } from './orchestrator/framed-output.ts'
 import { formatRunSummary } from './orchestrator/summary.ts'
 
 export type { Logger } from './orchestrator/logger.ts'
@@ -103,13 +106,26 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const runId = ulid()
   const runStartHrTimeNs = process.hrtime.bigint()
 
-  log.status(`vx: ${nodes.size} task(s), concurrency ${concurrency} [run ${runId}]`)
+  // Packages-in-scope for the header: the unique projects covered by
+  // the graph (including dependsOn-pulled deps), not just the
+  // user-requested set.
+  const packagesInScope = new Set<string>()
+  for (const node of nodes.values()) packagesInScope.add(node.projectName)
+  for (const line of formatHeader({
+    version: VERSION,
+    packages: [...packagesInScope],
+    task: options.task,
+    remoteCacheEnabled: cache instanceof LayeredCache,
+  }))
+    log.status(line)
 
   const outcomes = await runGraph({
     nodes,
     concurrency,
-    onStart: (node) => log.status(`▶  ${node.id}`),
-    onFinish: (o) => log.status(formatOutcome(o)),
+    onStart: () => {
+      // No per-task start line — the framed block renders on completion.
+    },
+    onFinish: (o) => log.taskComplete(o.node, o),
     execute: (node, upstream) =>
       executeTask({
         node,
