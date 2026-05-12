@@ -119,6 +119,7 @@ describe('LayeredCache', () => {
     const layered = makeLayered()
     const hit = await layered.get('h-local')
     expect(hit).not.toBeNull()
+    expect(hit?.source).toBe('local')
     expect(serverRequests).toHaveLength(0)
   })
 
@@ -147,13 +148,17 @@ describe('LayeredCache', () => {
     // get() pulls from remote, materializes locally.
     const hit = await layered.get('h-remote-only')
     expect(hit).not.toBeNull()
+    expect(hit?.source).toBe('remote')
     expect(hit?.command).toBe('echo produced')
     expect(hit?.exitCode).toBe(0)
     expect(hit?.stdout).toBe('compiling…')
     expect(hit?.outputFiles).toEqual(['dist/out.txt'])
 
-    // Local is now populated for next time.
-    expect(await local.get('h-remote-only')).not.toBeNull()
+    // Local is now populated for next time, and a follow-up lookup
+    // reports source='local' (the remote pull only fires once).
+    const next = await local.get('h-remote-only')
+    expect(next).not.toBeNull()
+    expect(next?.source).toBe('local')
   })
 
   it('get() returns null when both local and remote miss', async () => {

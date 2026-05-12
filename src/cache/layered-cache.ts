@@ -96,7 +96,11 @@ export class LayeredCache implements CacheLayer {
       await rm(stage, { recursive: true, force: true })
     }
 
-    return await this.local.get(hash)
+    // The artifact is now in local, but this *lookup* was a remote
+    // hit — flip the source so callers can distinguish "saved work
+    // via the remote cache" from "saved work via a prior local run".
+    const materialized = await this.local.get(hash)
+    return materialized ? { ...materialized, source: 'remote' } : null
   }
 
   async restoreOutputs(hash: string, projectDir: string): Promise<void> {
