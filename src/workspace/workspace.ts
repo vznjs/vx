@@ -9,10 +9,13 @@ export interface PackageJson {
   devDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
+  /** npm / yarn / bun workspaces. May be a glob array or { packages: [...] }. */
+  workspaces?: string[] | { packages?: string[] }
 }
 
 export interface Workspace {
   root: string
+  /** Glob patterns relative to root that match project directories. */
   packageGlobs: string[]
 }
 
@@ -28,13 +31,27 @@ export interface ProjectMeta {
 
 const CONFIG_FILENAMES = ['vx.config.ts', 'vx.config.mts', 'vx.config.js', 'vx.config.mjs']
 
+/**
+ * Walk up from `start` to find the workspace root. A directory is a
+ * workspace root if it contains either:
+ *   - `pnpm-workspace.yaml`, OR
+ *   - a `package.json` (with or without a `workspaces` field).
+ *
+ * The first match wins. A bare `package.json` without `workspaces`
+ * means a single-project workspace (the root itself IS the project).
+ * Throws a `UserError` if neither signal is found before `/`.
+ */
 export async function findWorkspaceRoot(start: string): Promise<string> {
   let dir = path.resolve(start)
   while (true) {
     if (await Bun.file(path.join(dir, 'pnpm-workspace.yaml')).exists()) return dir
+    if (await Bun.file(path.join(dir, 'package.json')).exists()) return dir
     const parent = path.dirname(dir)
     if (parent === dir) {
-      throw new UserError(`Could not find pnpm-workspace.yaml in any parent of ${start}`)
+      throw new UserError(
+        `Could not find a workspace root in any parent of ${start} ` +
+          `(looked for pnpm-workspace.yaml or package.json)`,
+      )
     }
     dir = parent
   }
@@ -50,17 +67,50 @@ export function resolveCacheDir(root: string, config: WorkspaceConfig | null): s
   return path.resolve(root, rel)
 }
 
+/**
+ * Read the workspace's package-glob list, supporting all common
+ * package managers:
+ *   - `pnpm-workspace.yaml` (pnpm)
+ *   - `package.json` `workspaces` array (npm / yarn / bun)
+ *   - `package.json` `workspaces.packages` array (yarn legacy)
+ *
+ * If a `package.json` exists with no `workspaces` field, the root
+ * itself is treated as a single-project workspace.
+ */
 export async function loadWorkspace(root: string): Promise<Workspace> {
   const yamlPath = path.join(root, 'pnpm-workspace.yaml')
-  const text = await Bun.file(yamlPath).text()
-  const parsed = (Bun.YAML.parse(text) ?? {}) as { packages?: string[] }
-  return { root, packageGlobs: parsed.packages ?? [] }
+  if (await Bun.file(yamlPath).exists()) {
+    const parsed = (Bun.YAML.parse(await Bun.file(yamlPath).text()) ?? {}) as {
+      packages?: string[]
+    }
+    return { root, packageGlobs: parsed.packages ?? [] }
+  }
+
+  const pkgPath = path.join(root, 'package.json')
+  if (await Bun.file(pkgPath).exists()) {
+    const pkg = (await Bun.file(pkgPath).json()) as PackageJson
+    const ws = pkg.workspaces
+    if (Array.isArray(ws)) return { root, packageGlobs: ws }
+    if (ws && typeof ws === 'object' && Array.isArray(ws.packages)) {
+      return { root, packageGlobs: ws.packages }
+    }
+    // Bare package.json with no `workspaces` — single-project mode.
+    // Treat the root itself as the only project.
+    return { root, packageGlobs: ['.'] }
+  }
+
+  // Should be unreachable: findWorkspaceRoot only returns dirs that
+  // pass at least one of the two existence checks.
+  throw new UserError(`workspace root ${root} has neither pnpm-workspace.yaml nor package.json`)
 }
 
 export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]> {
   const matches = new Set<string>()
   for (const pattern of workspace.packageGlobs) {
-    const glob = new Bun.Glob(`${pattern.replace(/\/$/, '')}/package.json`)
+    // Normalize: `"."` -> the root itself; `"foo/"` -> `"foo"`.
+    const normalized = pattern === '.' ? '' : pattern.replace(/\/$/, '')
+    const globPattern = normalized === '' ? 'package.json' : `${normalized}/package.json`
+    const glob = new Bun.Glob(globPattern)
     for await (const rel of glob.scan({
       cwd: workspace.root,
       onlyFiles: true,

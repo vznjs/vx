@@ -48,7 +48,8 @@ src/
     remote-cache-setup.ts # VX_REMOTE_CACHE_* env → LayeredCache
     logger.ts           # default logger + formatOutcome + prefix
   workspace/            # discovery + selection
-    workspace.ts        # pnpm-workspace.yaml discovery
+    workspace.ts        # discovery: pnpm-workspace.yaml / pkg.json workspaces / bare pkg.json
+    package-manager.ts  # detected PM (bun/pnpm/npm/yarn) via package-manager-detector
     project-loader.ts   # Bun-native vx.config.* loader (content-hash bust)
     package-graph.ts    # workspace dep graph
     filter.ts           # pnpm-style filter DSL (-F)

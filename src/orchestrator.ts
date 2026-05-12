@@ -10,6 +10,7 @@ import { loadProjectConfig, loadWorkspaceConfig } from './workspace/project-load
 import { runGraph, type TaskOutcome } from './graph/scheduler.js'
 import { buildTaskGraph, taskId, type ProjectEntry } from './graph/task-graph.js'
 import { ulid } from './util/ulid.js'
+import { detectPackageManager } from './workspace/package-manager.ts'
 import {
   findWorkspaceRoot,
   listProjects,
@@ -96,13 +97,15 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     workspaceConfig?.concurrency ??
     Math.max(1, navigator.hardwareConcurrency)
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
+  const pm = await detectPackageManager(workspaceRoot)
 
   // One run-id per `vx run` invocation. Every task in the resulting
   // graph carries it so analytics queries can group by invocation.
   const runId = ulid()
   const runStartHrTimeNs = process.hrtime.bigint()
 
-  log.status(`vx: ${nodes.size} task(s), concurrency ${concurrency} [run ${runId}]`)
+  const pmTag = pm ? ` [${pm.agent}]` : ''
+  log.status(`vx: ${nodes.size} task(s), concurrency ${concurrency}${pmTag} [run ${runId}]`)
 
   const outcomes = await runGraph({
     nodes,
