@@ -143,16 +143,15 @@ forwarded args never spuriously hit cache.
 
 ## Flags
 
-| Flag                             | Type              | Default            | Description                                                                                                            |
-| -------------------------------- | ----------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `-F <pattern>`, `--filter <pat>` | repeatable string | (none)             | Filter DSL, see above.                                                                                                 |
-| `-r`, `--recursive`              | boolean           | off                | Select every project that declares the task.                                                                           |
-| `-c <n>`, `--concurrency <n>`    | positive integer  | `os.cpus().length` | Maximum parallel tasks. `1` serializes.                                                                                |
-| `--ignore-depends-on`            | boolean           | off                | Skip `dependsOn` expansion; run only the explicitly requested tasks.                                                   |
-| `--no-cache`                     | boolean           | off                | Skip cache reads AND writes. Every task runs; nothing is persisted.                                                    |
-| `--cache`                        | boolean           | off                | No-op. Accepted for parity with vite-task. Caching is governed by each task's `cache` block.                           |
-| `--sandbox`                      | boolean           | off                | Enforce declared `cache.inputs.files` via bwrap (Linux) or sandbox-exec (macOS). Errors if the helper isn't installed. |
-| `-v`, `--verbose`                | boolean           | off                | Print a summary table (task, status, duration) after the run.                                                          |
+| Flag                             | Type              | Default            | Description                                                                                  |
+| -------------------------------- | ----------------- | ------------------ | -------------------------------------------------------------------------------------------- |
+| `-F <pattern>`, `--filter <pat>` | repeatable string | (none)             | Filter DSL, see above.                                                                       |
+| `-r`, `--recursive`              | boolean           | off                | Select every project that declares the task.                                                 |
+| `-c <n>`, `--concurrency <n>`    | positive integer  | `os.cpus().length` | Maximum parallel tasks. `1` serializes.                                                      |
+| `--ignore-depends-on`            | boolean           | off                | Skip `dependsOn` expansion; run only the explicitly requested tasks.                         |
+| `--no-cache`                     | boolean           | off                | Skip cache reads AND writes. Every task runs; nothing is persisted.                          |
+| `--cache`                        | boolean           | off                | No-op. Accepted for parity with vite-task. Caching is governed by each task's `cache` block. |
+| `-v`, `--verbose`                | boolean           | off                | Print a summary table (task, status, duration) after the run.                                |
 
 ## Argv parsing rules
 
@@ -165,27 +164,6 @@ forwarded args never spuriously hit cache.
 - Unknown flags exit `1` with a clear error.
 - A second positional before `--` exits `1`.
 - `--concurrency abc` (non-integer or `< 1`) exits `1`.
-
-## `--sandbox` (enforce declared inputs)
-
-`vzn run --sandbox <task>` runs each task inside a filesystem sandbox.
-Only the resolved `cache.inputs.files` (read-only) and the project dir
-(read-write) are visible; everything else returns `ENOENT`. This makes
-under-declared inputs structurally impossible to produce silent false
-cache hits.
-
-| Platform | Helper         | Status                                    |
-| -------- | -------------- | ----------------------------------------- |
-| Linux    | `bwrap`        | supported; requires bwrap on PATH         |
-| macOS    | `sandbox-exec` | supported; uses Apple's seatbelt language |
-| Windows  | —              | not supported (errors with a clear msg)   |
-
-If the helper isn't installed, `vzn run --sandbox` fails loudly with
-`sandbox requires \`bwrap\` on PATH but it was not found`. Silent
-fall-through would defeat the contract.
-
-Out of scope for v1: network isolation, `--sandbox=warn` mode,
-default-on, Windows support. See `docs/design/sandbox.md`.
 
 ## Remote cache (env-driven)
 

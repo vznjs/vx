@@ -48,7 +48,6 @@ src/
   remote-cache.ts   # Turbo /v8/artifacts HTTP client
   cache-archive.ts  # tar.gz pack/unpack for remote artifacts
   runner.ts         # Bun.spawn wrapper + shellQuote
-  sandbox.ts        # bwrap (Linux) / sandbox-exec (macOS)
   env.ts            # env composition
   inputs.ts         # glob resolution + project-boundary enforcement
   config.ts         # public schema (ProjectConfig, TaskConfig, …)
@@ -119,6 +118,16 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: **Removed the entire sandbox subsystem.** `src/sandbox.ts`,
+  `tests/sandbox.test.ts`, `docs/design/sandbox.md`, `docs/modules/sandbox.md`,
+  the `--sandbox` CLI flag, and the bwrap installation step from CI all
+  gone. Reasons: Ubuntu 24's default AppArmor profile blocks unprivileged
+  user namespaces, breaking bwrap on the most common CI target; the
+  sandbox contract requires the user to declare every input file exactly
+  right or builds break confusingly; and Turborepo / Nx ship without
+  sandboxing and that's fine — under-declared inputs producing stale
+  hits is the accepted task-runner tradeoff. RunOptions.sandbox dropped;
+  the `executeTask` body simplifies to a single `runCommand` call.
 - **2026-05**: **Removed the entire dashboard subsystem.** Server
   (`src/dashboard.ts`), UI app (`apps/dashboard/`), `vzn dashboard`
   subcommand, design doc, and module doc all deleted. Project

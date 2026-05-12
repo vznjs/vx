@@ -12,7 +12,6 @@ import { resolveInputs, resolveOutputs } from './inputs.js'
 import { buildPackageGraph } from './package-graph.js'
 import { loadProjectConfig } from './project-loader.js'
 import { runCommand } from './runner.js'
-import { runSandboxed } from './sandbox.js'
 import { runGraph, type TaskOutcome } from './scheduler.js'
 import { buildTaskGraph, taskId, type ProjectEntry, type TaskNode } from './task-graph.js'
 import { ulid } from './ulid.js'
@@ -30,12 +29,6 @@ export interface RunOptions {
   ignoreDependsOn?: boolean
   /** Forwarded to the last step of each task's exec array (shell-quoted). */
   forwardArgs?: readonly string[]
-  /**
-   * Run each task inside a sandbox enforcing declared `cache.inputs.files`.
-   * Linux uses bwrap; macOS uses sandbox-exec; other platforms throw.
-   * Off by default. See `docs/design/sandbox.md`.
-   */
-  sandbox?: boolean
   log?: Logger
 }
 
@@ -123,7 +116,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         workspaceFingerprint,
         cache,
         noCache: options.noCache ?? false,
-        sandbox: options.sandbox ?? false,
         forwardArgs: options.forwardArgs,
         log,
         nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
@@ -209,7 +201,6 @@ interface ExecuteArgs {
   workspaceFingerprint: string
   cache: CacheLayer
   noCache: boolean
-  sandbox: boolean
   forwardArgs?: readonly string[] | undefined
   log: Logger
   nestedProjectDirs: string[]
@@ -302,25 +293,14 @@ async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // ticks so analytics can reconstruct the parallel timeline (overlaps,
   // idle gaps) immune to wall-clock skew.
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
-  const result = args.sandbox
-    ? await runSandboxed({
-        command: step.command,
-        cwd: node.projectDir,
-        env,
-        forwardArgs: effectiveForwardArgs,
-        projectDir: node.projectDir,
-        inputFiles: resolved.files,
-        onStdout: (chunk) => log.taskStdout(node, chunk),
-        onStderr: (chunk) => log.taskStderr(node, chunk),
-      })
-    : await runCommand({
-        command: step.command,
-        cwd: node.projectDir,
-        env,
-        forwardArgs: effectiveForwardArgs,
-        onStdout: (chunk) => log.taskStdout(node, chunk),
-        onStderr: (chunk) => log.taskStderr(node, chunk),
-      })
+  const result = await runCommand({
+    command: step.command,
+    cwd: node.projectDir,
+    env,
+    forwardArgs: effectiveForwardArgs,
+    onStdout: (chunk) => log.taskStdout(node, chunk),
+    onStderr: (chunk) => log.taskStderr(node, chunk),
+  })
   const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
   if (result.exitCode === 0 && cacheEnabled) {

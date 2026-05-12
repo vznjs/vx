@@ -99,8 +99,8 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             const message = err instanceof Error ? err.message : String(err)
             // Park the message on the outcome's stderr so end-of-run
             // failure replay surfaces it. Without this, thrown errors
-            // (SandboxToolMissingError, bwrap-rejected-by-AppArmor, etc.)
-            // were lost — users saw ✗ with no logs.
+            // (spawn failures, config issues, etc.) were lost — users
+            // saw ✗ with no logs.
             const outcome: TaskOutcome = {
               node,
               status: 'failed',

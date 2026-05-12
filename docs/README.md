@@ -43,9 +43,9 @@ shell strings; everything else is layered on top.
 `@vzn/run` is a single-package project. All code lives under `src/`;
 each module has a corresponding page in [`modules/`](./modules/).
 
-The remote-cache, layered-cache, cache-archive, and sandbox modules
-each have their own page under [`modules/`](./modules/) — that's
-where the per-module contract lives.
+The remote-cache, layered-cache, and cache-archive modules each have
+their own page under [`modules/`](./modules/) — that's where the
+per-module contract lives.
 
 ## Versioned guarantees
 
