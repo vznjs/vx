@@ -135,8 +135,14 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const logsDir = path.join(cacheDir, 'logs', runId)
   await persistTaskLogs({ logsDir, outcomes: list })
 
+  // Summary counts only real tasks (those with `exec`). Group tasks
+  // do no work — they're just dependency aggregators — so including
+  // them in totals makes "3 cached, 4 total" read as if something
+  // wasn't cached when in fact every executable task was. Same
+  // exclusion as the analytics `recordRun` pass below.
+  const realTasks = list.filter((o) => o.node.config.exec !== undefined)
   const totalMs = Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000
-  for (const line of formatRunSummary(list, totalMs)) log.status(line)
+  for (const line of formatRunSummary(realTasks, totalMs)) log.status(line)
 
   // Record each task to the run history. Group tasks (no `exec`) are
   // skipped — they aren't real runs and showing them in `vx stats` as

@@ -1621,6 +1621,32 @@ describe('orchestrator e2e', () => {
   )
 
   it(
+    'group tasks do NOT inflate the end-of-run summary totals',
+    async () => {
+      await addProject(fixture.root, 'app-z', {
+        files: { 'src/y.txt': 'y' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+              },
+              ci: { dependsOn: { self: ['build'] } },
+            },
+          }
+        `,
+      })
+      await run({ cwd: fixture.root, task: 'ci', log: silentLogger(fixture) })
+      const summary = fixture.log.filter((l) => l.startsWith(' Tasks:') || l.startsWith('Cached:'))
+      // Only the executable `build` task counts — the `ci` group is hidden.
+      expect(summary[0]).toBe(' Tasks:    1 successful, 1 total')
+      expect(summary[1]).toBe('Cached:    0 cached, 1 total')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'group tasks do NOT appear in the runs analytics table',
     async () => {
       await addProject(fixture.root, 'core-x', {
