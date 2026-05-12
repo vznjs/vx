@@ -1,19 +1,14 @@
 // End-to-end wiring: discover workspace -> load configs -> build graph ->
-// run with caching. Each step delegates to a single-purpose module so the
-// layer can be swapped without touching the others.
+// run with caching. Each step delegates to a single-purpose module under
+// ./orchestrator/ so the layers can be swapped without touching the others.
 
 import path from 'node:path'
-import type { ExecConfig, ProjectConfig, TaskConfig, CacheConfig, TaskDependsOn } from './config.js'
-import { Cache, type CacheLayer } from './cache/cache.js'
-import { LayeredCache } from './cache/layered-cache.js'
-import { RemoteCache } from './cache/remote-cache.js'
-import { buildIsolatedEnv } from './exec/env.js'
-import { resolveInputs, resolveOutputs } from './exec/inputs.js'
+import type { ProjectConfig } from './config.js'
+import { Cache } from './cache/cache.js'
 import { buildPackageGraph } from './workspace/package-graph.js'
-import { loadProjectConfig } from './workspace/project-loader.js'
-import { runCommand } from './exec/runner.js'
+import { loadProjectConfig, loadWorkspaceConfig } from './workspace/project-loader.js'
 import { runGraph, type TaskOutcome } from './graph/scheduler.js'
-import { buildTaskGraph, taskId, type ProjectEntry, type TaskNode } from './graph/task-graph.js'
+import { buildTaskGraph, taskId, type ProjectEntry } from './graph/task-graph.js'
 import { ulid } from './util/ulid.js'
 import {
   findWorkspaceRoot,
@@ -21,7 +16,14 @@ import {
   loadWorkspace,
   resolveCacheDir,
 } from './workspace/workspace.js'
-import { loadWorkspaceConfig } from './workspace/project-loader.js'
+import { executeTask } from './orchestrator/execute-task.ts'
+import { computeWorkspaceFingerprint } from './orchestrator/fingerprint.ts'
+import { computeNestedProjectDirs } from './orchestrator/nested-dirs.ts'
+import { persistTaskLogs } from './orchestrator/task-logs.ts'
+import { wrapWithRemoteCache } from './orchestrator/remote-cache-setup.ts'
+import { defaultLogger, formatOutcome, type Logger } from './orchestrator/logger.ts'
+
+export type { Logger } from './orchestrator/logger.ts'
 
 export interface RunOptions {
   cwd: string
@@ -40,12 +42,6 @@ export interface RunOptions {
 export interface RunSummary {
   ok: boolean
   outcomes: TaskOutcome[]
-}
-
-export interface Logger {
-  status(line: string): void
-  taskStdout(node: TaskNode, chunk: string): void
-  taskStderr(node: TaskNode, chunk: string): void
 }
 
 export async function run(options: RunOptions): Promise<RunSummary> {
@@ -77,7 +73,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   if (requested.length === 0) {
     log.status(`No projects declare task "${options.task}".`)
     // Treat "nothing matched" as a failure. A typo'd task name silently
-    // exiting 0 in CI is a real footgun (Agent A's real-world test, B3).
+    // exiting 0 in CI is a real footgun.
     return { ok: false, outcomes: [] }
   }
 
@@ -137,11 +133,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const logsDir = path.join(cacheDir, 'logs', runId)
   await persistTaskLogs({ logsDir, outcomes: list })
 
-  // Failure replay: if any task failed, re-print its captured stderr
-  // (and stdout) at the bottom of the run output. Live streaming
-  // already happened, but in parallel runs the failed task's output
-  // is often buried by N other tasks' output. Re-printing gives the
-  // user one place to look.
+  // Failure replay: in parallel runs a failed task's output is often
+  // buried by N other tasks' output. Re-printing gives the user one
+  // place to look.
   const failed = list.filter((o) => o.status === 'failed')
   if (failed.length > 0) {
     log.status('')
@@ -150,14 +144,10 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       log.status('')
       log.status(`  ${o.node.id}  (exit ${o.exitCode}, ${o.durationMs}ms)`)
       if (o.stderr && o.stderr.trim().length > 0) {
-        for (const line of o.stderr.trimEnd().split('\n')) {
-          log.status(`    ${line}`)
-        }
+        for (const line of o.stderr.trimEnd().split('\n')) log.status(`    ${line}`)
       } else if (o.stdout && o.stdout.trim().length > 0) {
-        // Some tools (esbuild, vite) write errors to stdout.
-        for (const line of o.stdout.trimEnd().split('\n')) {
-          log.status(`    ${line}`)
-        }
+        // esbuild / vite write errors to stdout.
+        for (const line of o.stdout.trimEnd().split('\n')) log.status(`    ${line}`)
       } else {
         log.status('    (no output captured)')
       }
@@ -166,12 +156,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     log.status(`  full logs: ${path.relative(workspaceRoot, logsDir)}/`)
   }
 
-  // Record each task to the run history. Timestamps are approximate
-  // (we don't have per-task wall-clock start times exposed by the
-  // scheduler), but durations are real. Good enough for stats; if we
-  // ever need precise span tracking we'd add start/end to TaskOutcome.
-  // Group tasks (no `exec`) are skipped — they aren't real runs and
-  // showing them in `vzn stats` as zero-duration successes is noise.
+  // Record each task to the run history. Group tasks (no `exec`) are
+  // skipped — they aren't real runs and showing them in `vzn stats` as
+  // zero-duration successes is noise.
   const now = Date.now()
   for (const o of list) {
     if (!o.hash) continue
@@ -199,344 +186,4 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   return { ok, outcomes: list }
 }
 
-interface ExecuteArgs {
-  node: TaskNode
-  upstream: TaskOutcome[]
-  workspaceRoot: string
-  workspaceFingerprint: string
-  cache: CacheLayer
-  noCache: boolean
-  forwardArgs?: readonly string[] | undefined
-  log: Logger
-  nestedProjectDirs: string[]
-  /** Anchor for hrtime spans across all tasks in this run. */
-  runStartHrTimeNs: bigint
-}
-
-async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
-  const { node, upstream, workspaceRoot, cache, noCache, log } = args
-  const cfg: TaskConfig = node.config
-
-  // Group task: no `exec` means this task is just a dependency aggregator.
-  // Return success immediately — no spawn, no cache lookup, no I/O. The
-  // scheduler has already ensured every dependency completed successfully
-  // before calling us. Derive a hash from the upstream hashes so any
-  // downstream task with `inputs.tasks` pointing here gets natural cache
-  // invalidation when something beneath the group changes.
-  if (cfg.exec === undefined) {
-    const wallclockNs = process.hrtime.bigint() - args.runStartHrTimeNs
-    const groupHash = computeGroupHash(upstream)
-    return {
-      node,
-      status: 'success',
-      exitCode: 0,
-      durationMs: 0,
-      hash: groupHash,
-      wallclockStartNs: wallclockNs,
-      wallclockEndNs: wallclockNs,
-    }
-  }
-
-  const step: ExecConfig = cfg.exec
-  const cacheCfg: CacheConfig | undefined = cfg.cache
-  const cacheEnabled = cacheCfg !== undefined && !noCache
-
-  const outputs = cacheCfg?.outputs.files ?? []
-
-  const resolved = await resolveInputs({
-    projectDir: node.projectDir,
-    workspaceRoot,
-    envSource: process.env,
-    inputs: cacheCfg?.inputs,
-    ownOutputs: outputs,
-    nestedProjectDirs: args.nestedProjectDirs,
-  })
-
-  const upstreamHashes = filterUpstreamHashes(upstream, cacheCfg?.inputs?.tasks, node.projectName)
-  const taskConfigHash = hashTaskConfig(cfg)
-
-  // forwardArgs apply only to the tasks the user explicitly asked for —
-  // not to dependsOn-expanded upstream tasks. This keeps `vzn run build --
-  // --watch` from forwarding `--watch` into every dependency's build, and
-  // it stops the upstream cache keys from being uselessly partitioned by
-  // CLI args that don't change their behavior.
-  const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
-
-  const hash = await cache.key({
-    taskId: node.id,
-    taskConfigHash,
-    envValues: resolved.envValues,
-    inputFiles: resolved.files,
-    workspaceRoot,
-    upstreamHashes,
-    workspaceFingerprint: args.workspaceFingerprint,
-    forwardArgs: effectiveForwardArgs,
-  })
-
-  if (cacheEnabled) {
-    const hit = await cache.get(hash)
-    if (hit) {
-      await cache.restoreOutputs(hash, node.projectDir)
-      if (hit.stdout) log.taskStdout(node, hit.stdout)
-      if (hit.stderr) log.taskStderr(node, hit.stderr)
-      return {
-        node,
-        status: hit.exitCode === 0 ? 'cache-hit' : 'failed',
-        exitCode: hit.exitCode,
-        durationMs: 0,
-        hash,
-      }
-    }
-  }
-
-  const env = buildIsolatedEnv({
-    passThrough: step.env?.passThrough ?? [],
-    define: step.env?.define ?? {},
-    source: process.env,
-  })
-  // Per-task wallclock span relative to the run's t=0. Monotonic ns
-  // ticks so analytics can reconstruct the parallel timeline (overlaps,
-  // idle gaps) immune to wall-clock skew.
-  const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
-  const result = await runCommand({
-    command: step.command,
-    cwd: node.projectDir,
-    env,
-    forwardArgs: effectiveForwardArgs,
-    onStdout: (chunk) => log.taskStdout(node, chunk),
-    onStderr: (chunk) => log.taskStderr(node, chunk),
-  })
-  const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
-
-  if (result.exitCode === 0 && cacheEnabled) {
-    const outputFiles = await resolveOutputs({
-      projectDir: node.projectDir,
-      outputs,
-      nestedProjectDirs: args.nestedProjectDirs,
-    })
-    await cache.save({
-      hash,
-      projectDir: node.projectDir,
-      outputFiles,
-      entry: {
-        taskId: node.id,
-        command: step.command,
-        exitCode: result.exitCode,
-        durationMs: result.durationMs,
-        stdout: result.stdout,
-        stderr: result.stderr,
-      },
-    })
-  }
-
-  return {
-    node,
-    status: result.exitCode === 0 ? 'success' : 'failed',
-    exitCode: result.exitCode,
-    durationMs: result.durationMs,
-    hash,
-    stdout: result.stdout,
-    stderr: result.stderr,
-    ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
-    ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
-    wallclockStartNs,
-    wallclockEndNs,
-  }
-}
-
-/**
- * For each project, the absolute dirs of other projects that live underneath
- * it. Used to enforce project-boundary isolation: a project's task cannot
- * see files inside another project, even if its globs would otherwise match.
- */
-function computeNestedProjectDirs(entries: ProjectEntry[]): Map<string, string[]> {
-  const result = new Map<string, string[]>()
-  for (const p of entries) {
-    const prefix = p.dir + path.sep
-    const nested = entries
-      .filter((o) => o.dir !== p.dir && o.dir.startsWith(prefix))
-      .map((o) => o.dir)
-    result.set(p.name, nested)
-  }
-  return result
-}
-
-/**
- * Hash the resolved task config. Folds every config-time decision (command,
- * env names, dependsOn, cache directives, outputs, passThroughEnv list, etc.)
- * into the cache key. Imported values are included because jiti has already
- * baked them into the loaded object before we serialize.
- *
- * The schema is JSON-serializable by construction (no functions in fields).
- */
-function hashTaskConfig(cfg: TaskConfig): string {
-  return new Bun.CryptoHasher('sha256').update(JSON.stringify(cfg)).digest('hex')
-}
-
-/**
- * Derive a stable hash for a group task (no `exec`) from its upstream
- * outcomes. Lets downstream tasks that filter `inputs.tasks` to include
- * a group still invalidate naturally when anything beneath the group
- * changes. Sorted so the hash is order-independent. Empty group (no
- * upstream) yields a fixed sentinel hash.
- */
-function computeGroupHash(upstream: TaskOutcome[]): string {
-  const ids = upstream
-    .map((u) => `${u.node.id}:${u.hash ?? ''}`)
-    .sort()
-    .join('|')
-  return new Bun.CryptoHasher('sha256').update(`group|${ids}`).digest('hex')
-}
-
-/**
- * Write each task's captured stdout/stderr to
- * `<logsDir>/<project>__<task>.{stdout,stderr}`. Only writes files
- * that have non-empty content. Group tasks and cache-hits skip
- * (nothing to write). Errors during write are swallowed — log
- * persistence is best-effort, never blocks the run.
- */
-async function persistTaskLogs(args: { logsDir: string; outcomes: TaskOutcome[] }): Promise<void> {
-  const writable = args.outcomes.filter(
-    (o) => (o.stdout && o.stdout.length > 0) || (o.stderr && o.stderr.length > 0),
-  )
-  if (writable.length === 0) return
-  // Bun.write below auto-creates parent dirs, so we don't need an
-  // explicit mkdir. Write failures are swallowed per-call below.
-  await Promise.all(
-    writable.flatMap((o) => {
-      const stem = `${o.node.projectName}__${o.node.taskName}`.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const tasks: Promise<unknown>[] = []
-      if (o.stdout && o.stdout.length > 0) {
-        tasks.push(Bun.write(path.join(args.logsDir, `${stem}.stdout`), o.stdout).catch(() => {}))
-      }
-      if (o.stderr && o.stderr.length > 0) {
-        tasks.push(Bun.write(path.join(args.logsDir, `${stem}.stderr`), o.stderr).catch(() => {}))
-      }
-      return tasks
-    }),
-  )
-}
-
-const WORKSPACE_FINGERPRINT_FILES = ['pnpm-lock.yaml', 'pnpm-workspace.yaml']
-
-/**
- * One hash for the workspace as a whole, derived from `pnpm-lock.yaml` and
- * `pnpm-workspace.yaml`. Folded into every task's cache key so a `pnpm
- * update` (lockfile change) or a workspace-shape change invalidates every
- * cached entry. Coarse but correct.
- */
-async function computeWorkspaceFingerprint(workspaceRoot: string): Promise<string> {
-  const h = new Bun.CryptoHasher('sha256')
-  for (const f of WORKSPACE_FINGERPRINT_FILES) {
-    const full = path.join(workspaceRoot, f)
-    const file = Bun.file(full)
-    if (!(await file.exists())) continue
-    h.update(`${f}\0`)
-    h.update(await file.bytes())
-    h.update('\n')
-  }
-  return h.digest('hex')
-}
-
-function filterUpstreamHashes(
-  upstream: TaskOutcome[],
-  filter: TaskDependsOn | undefined,
-  selfProjectName: string,
-): string[] {
-  // Per-bucket default: omitted bucket → all upstream from that source.
-  // Explicit array supports three pattern kinds, applied in order:
-  //   '*'      include all from this bucket
-  //   'name'   include the literal task name
-  //   '!name'  exclude the literal task name
-  // Last write wins, so `['*', '!noisy']` reads as "all minus noisy".
-  const out: string[] = []
-  for (const u of upstream) {
-    if (!u.hash) continue
-    const isSameProject = u.node.projectName === selfProjectName
-    const bucket = isSameProject ? filter?.self : filter?.dependencies
-
-    if (bucket === undefined) {
-      out.push(u.hash)
-      continue
-    }
-
-    let included = false
-    for (const pattern of bucket) {
-      if (pattern === '*') included = true
-      else if (pattern.startsWith('!')) {
-        if (pattern.slice(1) === u.node.taskName) included = false
-      } else if (pattern === u.node.taskName) included = true
-    }
-    if (included) out.push(u.hash)
-  }
-  return out
-}
-
-function formatOutcome(o: TaskOutcome): string {
-  const tag =
-    o.status === 'cache-hit'
-      ? '◉  cache'
-      : o.status === 'success'
-        ? '✓'
-        : o.status === 'failed'
-          ? '✗'
-          : '·  skip'
-  return `${tag} ${o.node.id}  (${o.durationMs}ms)`
-}
-
-function defaultLogger(): Logger {
-  return {
-    status(line) {
-      process.stdout.write(`${line}\n`)
-    },
-    taskStdout(node, chunk) {
-      process.stdout.write(prefix(node.id, chunk))
-    },
-    taskStderr(node, chunk) {
-      process.stderr.write(prefix(node.id, chunk))
-    },
-  }
-}
-
-function prefix(id: string, chunk: string): string {
-  const pad = `${id} │ `
-  return (
-    chunk
-      .replace(/\n$/, '')
-      .split('\n')
-      .map((line) => `${pad}${line}`)
-      .join('\n') + (chunk.endsWith('\n') ? '\n' : '')
-  )
-}
-
 export { taskId }
-
-/**
- * If VZN_REMOTE_CACHE_URL + VZN_REMOTE_CACHE_TOKEN are both set, wrap the
- * local cache in a LayeredCache so cache reads/writes also hit the remote
- * over the Turbo /v8/artifacts wire. Otherwise return local unchanged.
- *
- * Optional env: VZN_REMOTE_CACHE_TEAM_ID, VZN_REMOTE_CACHE_SLUG (tenancy
- * query params), VZN_REMOTE_CACHE_TIMEOUT_MS.
- */
-function wrapWithRemoteCache(local: Cache, log: Logger): CacheLayer {
-  const url = process.env.VZN_REMOTE_CACHE_URL
-  const token = process.env.VZN_REMOTE_CACHE_TOKEN
-  if (!url || !token) return local
-
-  const config: ConstructorParameters<typeof RemoteCache>[0] = { baseUrl: url, token }
-  const teamId = process.env.VZN_REMOTE_CACHE_TEAM_ID
-  if (teamId) config.teamId = teamId
-  const slug = process.env.VZN_REMOTE_CACHE_SLUG
-  if (slug) config.slug = slug
-  const timeoutMs = process.env.VZN_REMOTE_CACHE_TIMEOUT_MS
-  if (timeoutMs) {
-    const n = Number(timeoutMs)
-    if (Number.isFinite(n) && n > 0) config.timeoutMs = n
-  }
-
-  log.status(`remote cache: ${url}`)
-  return new LayeredCache(local, new RemoteCache(config), {
-    onRemoteError: (err) => log.status(`[vzn] remote cache: ${err.message}`),
-  })
-}
