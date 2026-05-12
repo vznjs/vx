@@ -1,3 +1,4 @@
+import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { buildIsolatedEnv } from '../src/exec/env.js'
 
@@ -66,5 +67,35 @@ describe('buildIsolatedEnv', () => {
       source: { PATH: '/usr/bin' },
     })
     expect(env.PATH).toBe('/custom/bin')
+  })
+
+  it('prepends binPaths onto PATH (highest priority first)', () => {
+    const env = buildIsolatedEnv({
+      passThrough: [],
+      define: {},
+      source: { PATH: '/usr/bin' },
+      binPaths: ['/proj/node_modules/.bin'],
+    })
+    expect(env.PATH).toBe(`/proj/node_modules/.bin${path.delimiter}/usr/bin`)
+  })
+
+  it('binPaths becomes PATH when source has no PATH', () => {
+    const env = buildIsolatedEnv({
+      passThrough: [],
+      define: {},
+      source: {},
+      binPaths: ['/proj/node_modules/.bin'],
+    })
+    expect(env.PATH).toBe('/proj/node_modules/.bin')
+  })
+
+  it('binPaths prepend even after define overrides PATH', () => {
+    const env = buildIsolatedEnv({
+      passThrough: [],
+      define: { PATH: '/custom/bin' },
+      source: { PATH: '/usr/bin' },
+      binPaths: ['/proj/node_modules/.bin'],
+    })
+    expect(env.PATH).toBe(`/proj/node_modules/.bin${path.delimiter}/custom/bin`)
   })
 })

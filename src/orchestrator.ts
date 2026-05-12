@@ -10,7 +10,6 @@ import { loadProjectConfig, loadWorkspaceConfig } from './workspace/project-load
 import { runGraph, type TaskOutcome } from './graph/scheduler.js'
 import { buildTaskGraph, taskId, type ProjectEntry } from './graph/task-graph.js'
 import { ulid } from './util/ulid.js'
-import { detectPackageManager } from './workspace/package-manager.ts'
 import {
   findWorkspaceRoot,
   listProjects,
@@ -97,15 +96,13 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     workspaceConfig?.concurrency ??
     Math.max(1, navigator.hardwareConcurrency)
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
-  const pm = await detectPackageManager(workspaceRoot)
 
   // One run-id per `vx run` invocation. Every task in the resulting
   // graph carries it so analytics queries can group by invocation.
   const runId = ulid()
   const runStartHrTimeNs = process.hrtime.bigint()
 
-  const pmTag = pm ? ` [${pm.agent}]` : ''
-  log.status(`vx: ${nodes.size} task(s), concurrency ${concurrency}${pmTag} [run ${runId}]`)
+  log.status(`vx: ${nodes.size} task(s), concurrency ${concurrency} [run ${runId}]`)
 
   const outcomes = await runGraph({
     nodes,
@@ -131,33 +128,11 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const ok = list.every((o) => o.status === 'success' || o.status === 'cache-hit')
 
   // Persist task logs to disk so users can inspect after the fact —
-  // especially failures (we don't cache failed exec output). Path
-  // shape: <cacheDir>/logs/<run_id>/<project>__<task>.{stdout,stderr}
+  // especially failures (we don't cache failed exec output). Output was
+  // already streamed live during the run; we deliberately do not replay
+  // it here. Path: <cacheDir>/logs/<run_id>/<project>__<task>.{stdout,stderr}
   const logsDir = path.join(cacheDir, 'logs', runId)
   await persistTaskLogs({ logsDir, outcomes: list })
-
-  // Failure replay: in parallel runs a failed task's output is often
-  // buried by N other tasks' output. Re-printing gives the user one
-  // place to look.
-  const failed = list.filter((o) => o.status === 'failed')
-  if (failed.length > 0) {
-    log.status('')
-    log.status(`✗ ${failed.length} task(s) failed:`)
-    for (const o of failed) {
-      log.status('')
-      log.status(`  ${o.node.id}  (exit ${o.exitCode}, ${o.durationMs}ms)`)
-      if (o.stderr && o.stderr.trim().length > 0) {
-        for (const line of o.stderr.trimEnd().split('\n')) log.status(`    ${line}`)
-      } else if (o.stdout && o.stdout.trim().length > 0) {
-        // esbuild / vite write errors to stdout.
-        for (const line of o.stdout.trimEnd().split('\n')) log.status(`    ${line}`)
-      } else {
-        log.status('    (no output captured)')
-      }
-    }
-    log.status('')
-    log.status(`  full logs: ${path.relative(workspaceRoot, logsDir)}/`)
-  }
 
   // Record each task to the run history. Group tasks (no `exec`) are
   // skipped — they aren't real runs and showing them in `vx stats` as
