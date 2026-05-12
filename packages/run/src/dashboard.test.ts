@@ -1,10 +1,12 @@
+import { existsSync, readdirSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache } from './cache.js'
 import {
   createDashboardServer,
+  DEFAULT_UI_DIR,
   handleRequest,
   type CacheEntryRow,
   type OverviewResponse,
@@ -13,6 +15,22 @@ import {
   type TaskRow,
 } from './dashboard.js'
 import { Database } from 'bun:sqlite'
+
+// Static-serving tests run against the actual Vite-built dist so we
+// don't drift from what `vzn dashboard` ships at runtime. On a fresh
+// checkout the bundle isn't there yet — build it once, lazily.
+const UI_DIR = DEFAULT_UI_DIR
+beforeAll(async () => {
+  if (existsSync(path.join(UI_DIR, 'index.html'))) return
+  const proc = Bun.spawn({
+    cmd: ['bun', 'run', 'build'],
+    cwd: path.resolve(import.meta.dir, '..', '..', '..', 'apps', 'dashboard'),
+    stdout: 'inherit',
+    stderr: 'inherit',
+  })
+  const code = await proc.exited
+  if (code !== 0) throw new Error(`apps/dashboard build failed (exit ${code})`)
+})
 
 let cacheDir: string
 let cache: Cache
@@ -371,65 +389,38 @@ describe('handleRequest static UI', () => {
   it('serves the SPA shell on /', async () => {
     const db = openReadonly()
     try {
-      const res = await handleRequest(db, new Request('http://x/'))
+      const res = await handleRequest(db, new Request('http://x/'), UI_DIR)
       expect(res.status).toBe(200)
       expect(res.headers.get('content-type')).toContain('text/html')
       const html = await res.text()
       expect(html).toContain('<title>vzn dashboard</title>')
-      expect(html).toContain('id="page"')
+      expect(html).toContain('id="root"')
     } finally {
       db.close()
     }
   })
 
-  it('serves /styles.css with the right content-type', async () => {
+  it('serves the bundled JS asset under /assets/', async () => {
+    const jsAsset = readdirSync(path.join(UI_DIR, 'assets')).find((f) => f.endsWith('.js'))
+    expect(jsAsset).toBeTruthy()
     const db = openReadonly()
     try {
-      const res = await handleRequest(db, new Request('http://x/styles.css'))
+      const res = await handleRequest(db, new Request(`http://x/assets/${jsAsset}`), UI_DIR)
+      expect(res.status).toBe(200)
+      expect(res.headers.get('content-type')).toContain('javascript')
+    } finally {
+      db.close()
+    }
+  })
+
+  it('serves the bundled CSS asset under /assets/', async () => {
+    const cssAsset = readdirSync(path.join(UI_DIR, 'assets')).find((f) => f.endsWith('.css'))
+    expect(cssAsset).toBeTruthy()
+    const db = openReadonly()
+    try {
+      const res = await handleRequest(db, new Request(`http://x/assets/${cssAsset}`), UI_DIR)
       expect(res.status).toBe(200)
       expect(res.headers.get('content-type')).toContain('text/css')
-      const body = await res.text()
-      expect(body).toContain('.topbar')
-    } finally {
-      db.close()
-    }
-  })
-
-  it('serves /app.js as JavaScript', async () => {
-    const db = openReadonly()
-    try {
-      const res = await handleRequest(db, new Request('http://x/app.js'))
-      expect(res.status).toBe(200)
-      expect(res.headers.get('content-type')).toContain('javascript')
-    } finally {
-      db.close()
-    }
-  })
-
-  it('serves page modules under /pages/', async () => {
-    const db = openReadonly()
-    try {
-      const res = await handleRequest(db, new Request('http://x/pages/overview.js'))
-      expect(res.status).toBe(200)
-      expect(res.headers.get('content-type')).toContain('javascript')
-      const body = await res.text()
-      expect(body).toContain('renderOverview')
-    } finally {
-      db.close()
-    }
-  })
-
-  it.each([
-    ['cache', 'renderCache'],
-    ['runs', 'renderRuns'],
-    ['tasks', 'renderTasks'],
-  ])('serves /pages/%s.js exporting %s', async (page, exportName) => {
-    const db = openReadonly()
-    try {
-      const res = await handleRequest(db, new Request(`http://x/pages/${page}.js`))
-      expect(res.status).toBe(200)
-      const body = await res.text()
-      expect(body).toContain(exportName)
     } finally {
       db.close()
     }
@@ -438,7 +429,7 @@ describe('handleRequest static UI', () => {
   it('falls through to the SPA shell for unknown non-asset paths', async () => {
     const db = openReadonly()
     try {
-      const res = await handleRequest(db, new Request('http://x/runs/abc123'))
+      const res = await handleRequest(db, new Request('http://x/runs/abc123'), UI_DIR)
       expect(res.status).toBe(200)
       expect(res.headers.get('content-type')).toContain('text/html')
     } finally {
@@ -449,21 +440,24 @@ describe('handleRequest static UI', () => {
   it('returns 404 for an unknown asset request (.js)', async () => {
     const db = openReadonly()
     try {
-      const res = await handleRequest(db, new Request('http://x/nope.js'))
+      const res = await handleRequest(db, new Request('http://x/nope.js'), UI_DIR)
       expect(res.status).toBe(404)
     } finally {
       db.close()
     }
   })
 
-  it('serves /format.js (shared formatter module)', async () => {
+  it('refuses path traversal attempts', async () => {
     const db = openReadonly()
     try {
-      const res = await handleRequest(db, new Request('http://x/format.js'))
-      expect(res.status).toBe(200)
-      const body = await res.text()
-      expect(body).toContain('fmtBytes')
-      expect(body).toContain('fmtDuration')
+      const res = await handleRequest(db, new Request('http://x/../../../etc/passwd'), UI_DIR)
+      // Either notFound (404) or the SPA fallback (200 html). Either way
+      // we must never serve a file outside UI_DIR.
+      expect([200, 404]).toContain(res.status)
+      const ct = res.headers.get('content-type') ?? ''
+      if (res.status === 200) {
+        expect(ct).toContain('text/html')
+      }
     } finally {
       db.close()
     }
@@ -473,7 +467,12 @@ describe('handleRequest static UI', () => {
 describe('createDashboardServer', () => {
   it('starts a real HTTP server and serves /api/overview', async () => {
     // Pick an ephemeral port (0 → kernel assigns).
-    const server = createDashboardServer({ cacheDir, port: 0, hostname: '127.0.0.1' })
+    const server = createDashboardServer({
+      cacheDir,
+      uiDir: UI_DIR,
+      port: 0,
+      hostname: '127.0.0.1',
+    })
     try {
       const res = await fetch(`http://127.0.0.1:${server.port}/api/overview`)
       expect(res.status).toBe(200)
@@ -487,7 +486,12 @@ describe('createDashboardServer', () => {
   it('creates an empty cache.db on first launch (no .vzn dir yet)', async () => {
     const empty = await mkdtemp(path.join(os.tmpdir(), 'vzn-dash-empty-'))
     try {
-      const server = createDashboardServer({ cacheDir: empty, port: 0, hostname: '127.0.0.1' })
+      const server = createDashboardServer({
+        cacheDir: empty,
+        uiDir: UI_DIR,
+        port: 0,
+        hostname: '127.0.0.1',
+      })
       try {
         const res = await fetch(`http://127.0.0.1:${server.port}/api/health`)
         expect(res.status).toBe(200)

@@ -2,7 +2,7 @@ import readline from 'node:readline/promises'
 import path from 'node:path'
 import { VERSION } from './index.js'
 import { Cache, type CacheStats } from './cache.js'
-import { createDashboardServer } from './dashboard.js'
+import { createDashboardServer, DashboardUiMissingError, resolveUiDir } from './dashboard.js'
 import { applyFilters, parseFilter } from './filter.js'
 import { run as runOrchestrator, type RunOptions, type RunSummary } from './orchestrator.js'
 import { buildPackageGraph } from './package-graph.js'
@@ -443,7 +443,22 @@ async function dashboardCmd(args: readonly string[]): Promise<number> {
   }
   const workspaceConfig = await loadWorkspaceConfig(root)
   const cacheDir = resolveCacheDir(root, workspaceConfig)
-  const server = createDashboardServer({ cacheDir, port: parsed.port, hostname: parsed.host })
+  let uiDir: string
+  try {
+    uiDir = resolveUiDir(process.env['VZN_DASHBOARD_DIST'])
+  } catch (err) {
+    if (err instanceof DashboardUiMissingError) {
+      process.stderr.write(`${err.message}\n`)
+      return 1
+    }
+    throw err
+  }
+  const server = createDashboardServer({
+    cacheDir,
+    uiDir,
+    port: parsed.port,
+    hostname: parsed.host,
+  })
   process.stdout.write(`vzn dashboard: http://${server.hostname}:${server.port}/\n`)
   process.stdout.write(
     `  API: /api/overview, /api/runs, /api/runs/:id, /api/tasks/slowest, /api/cache/entries\n`,

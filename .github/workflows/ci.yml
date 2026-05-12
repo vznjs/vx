@@ -33,5 +33,8 @@ jobs:
       - name: Lint + typecheck
         run: bun run lint
 
+      - name: Build dashboard UI
+        run: bun --cwd apps/dashboard run build
+
       - name: Test
         run: bun test packages/*/src/ apps/*/src/

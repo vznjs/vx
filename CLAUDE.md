@@ -122,6 +122,20 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: Dashboard PR 9/10 — `vzn dashboard` now serves
+  `apps/dashboard/dist/` (the built Solid bundle from PR #27)
+  instead of the inlined `packages/run/src/dashboard-ui/` static
+  files. Legacy `dashboard-ui/` deleted. `DashboardServerOptions`
+  gained a required `uiDir` field; the CLI computes it from
+  `$VZN_DASHBOARD_DIST` (override) or the repo-relative
+  `apps/dashboard/dist/` path, surfacing a `DashboardUiMissingError`
+  with a `bun --cwd apps/dashboard run build` fixit if the bundle
+  isn't there yet. CI gained a "Build dashboard UI" step before
+  tests; tests' `beforeAll` builds lazily so local cold runs still
+  work. Static-serving tests rewritten around the Vite layout
+  (`index.html` + `assets/<hashed>.{js,css}`) plus a path-traversal
+  guard test. Run-detail + flamegraph is the last dashboard PR (#29).
+  PR #28.
 - **2026-05**: Wired `defineWorkspace({...})` loading. Was a dead
   export — schema docs even flagged it as deferred. Now
   `vzn.workspace.{ts,mts,js,mjs}` at the workspace root is jiti-loaded
