@@ -97,11 +97,16 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           })
           .catch((err: unknown) => {
             const message = err instanceof Error ? err.message : String(err)
+            // Park the message on the outcome's stderr so end-of-run
+            // failure replay surfaces it. Without this, thrown errors
+            // (SandboxToolMissingError, bwrap-rejected-by-AppArmor, etc.)
+            // were lost — users saw ✗ with no logs.
             const outcome: TaskOutcome = {
               node,
               status: 'failed',
               exitCode: 1,
               durationMs: 0,
+              stderr: `${err instanceof Error && err.name !== 'Error' ? err.name + ': ' : ''}${message}\n`,
             }
             outcomes.set(id, outcome)
             inFlight.delete(id)

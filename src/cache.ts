@@ -14,7 +14,6 @@
 //   close           : release the SQLite handle
 
 import { Database } from 'bun:sqlite'
-import { createHash } from 'node:crypto'
 import { createReadStream, existsSync } from 'node:fs'
 import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -262,7 +261,7 @@ export class Cache implements CacheLayer {
   }
 
   async key(input: CacheKeyInput): Promise<string> {
-    const h = createHash('sha256')
+    const h = new Bun.CryptoHasher('sha256')
     h.update(`${CACHE_VERSION}\n`)
     h.update(`task:${input.taskId}\n`)
     h.update(`workspace:${input.workspaceFingerprint}\n`)
@@ -511,7 +510,7 @@ async function listRelativeFiles(root: string, sub = ''): Promise<string[]> {
 
 async function hashFile(filePath: string): Promise<string> {
   return await new Promise<string>((resolve, reject) => {
-    const h = createHash('sha256')
+    const h = new Bun.CryptoHasher('sha256')
     const s = createReadStream(filePath)
     s.on('data', (chunk) => h.update(chunk))
     s.on('end', () => resolve(h.digest('hex')))

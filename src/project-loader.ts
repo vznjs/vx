@@ -1,6 +1,5 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { createJiti } from 'jiti'
 import type { ProjectConfig, WorkspaceConfig } from './config.js'
 import { UserError } from './errors.js'
 
@@ -11,28 +10,29 @@ const WORKSPACE_CONFIG_FILENAMES = [
   'vzn.workspace.mjs',
 ]
 
-// jiti handles every supported extension (.ts/.mts/.cts/.js/.mjs/.cjs) with
-// `moduleCache: false`, so edits show up across repeated calls within a
-// single process. We previously used native `import()` with an `?mtime=…`
-// query for plain JS, but Bun ignores query strings on file: URLs and
-// returns the cached module — so jiti is the portable choice.
-// `interopDefault: false` matters: with it on, jiti synthesizes a fake
-// `.default` (the namespace itself) for sources that have no real default
-// export. We need to distinguish "user exported a default" from "no default
-// was exported" to give a clear error.
-const jiti = createJiti(import.meta.url, {
-  interopDefault: false,
-  moduleCache: false,
-})
-
-export async function loadProjectConfig(configPath: string): Promise<ProjectConfig> {
-  const ns = (await jiti.import(configPath)) as { default?: unknown }
+// Bun has native TS / ESM execution — no transpiler dep needed. We fold
+// a short content hash into the import URL as a cache-bust key so that:
+//   same content   → same URL → Bun's module cache hits (fast)
+//   changed content → new URL → fresh re-evaluation (correct)
+// mtime would be cheaper but Bun's stat().mtimeNs is currently undefined
+// on Linux/macOS, and ms-resolution mtime misses rapid edits in tests.
+// Hashing a typical <10 KB config file is ~50µs — not measurable next
+// to the import() evaluation itself.
+async function loadDefaultExport(configPath: string, kind: string): Promise<unknown> {
+  const bytes = await Bun.file(configPath).bytes()
+  const bust = new Bun.CryptoHasher('sha256').update(bytes).digest('hex').slice(0, 16)
+  const ns = (await import(`${configPath}?vzn-bust=${bust}`)) as { default?: unknown }
   const mod = ns?.default
   if (!mod || typeof mod !== 'object') {
-    throw new UserError(`Project config at ${configPath} did not export a default object`)
+    throw new UserError(`${kind} config at ${configPath} did not export a default object`)
   }
-  validate(mod as ProjectConfig, configPath)
-  return mod as ProjectConfig
+  return mod
+}
+
+export async function loadProjectConfig(configPath: string): Promise<ProjectConfig> {
+  const mod = (await loadDefaultExport(configPath, 'Project')) as ProjectConfig
+  validate(mod, configPath)
+  return mod
 }
 
 /**
@@ -45,13 +45,9 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
   const configPath =
     WORKSPACE_CONFIG_FILENAMES.map((f) => path.join(root, f)).find((f) => existsSync(f)) ?? null
   if (!configPath) return null
-  const ns = (await jiti.import(configPath)) as { default?: unknown }
-  const mod = ns?.default
-  if (!mod || typeof mod !== 'object') {
-    throw new UserError(`Workspace config at ${configPath} did not export a default object`)
-  }
-  validateWorkspace(mod as WorkspaceConfig, configPath)
-  return mod as WorkspaceConfig
+  const mod = (await loadDefaultExport(configPath, 'Workspace')) as WorkspaceConfig
+  validateWorkspace(mod, configPath)
+  return mod
 }
 
 function validateWorkspace(config: WorkspaceConfig, configPath: string): void {

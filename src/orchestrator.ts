@@ -2,10 +2,8 @@
 // run with caching. Each step delegates to a single-purpose module so the
 // layer can be swapped without touching the others.
 
-import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import os from 'node:os'
 import path from 'node:path'
 import type { ExecConfig, ProjectConfig, TaskConfig, CacheConfig, TaskDependsOn } from './config.js'
 import { Cache, type CacheLayer } from './cache.js'
@@ -102,7 +100,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const localCache = new Cache(cacheDir)
   const cache = wrapWithRemoteCache(localCache, log)
   const concurrency =
-    options.concurrency ?? workspaceConfig?.concurrency ?? Math.max(1, os.cpus().length)
+    options.concurrency ??
+    workspaceConfig?.concurrency ??
+    Math.max(1, navigator.hardwareConcurrency)
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
   // One run-id per `vzn run` invocation. Every task in the resulting
@@ -387,7 +387,7 @@ function computeNestedProjectDirs(entries: ProjectEntry[]): Map<string, string[]
  * The schema is JSON-serializable by construction (no functions in fields).
  */
 function hashTaskConfig(cfg: TaskConfig): string {
-  return createHash('sha256').update(JSON.stringify(cfg)).digest('hex')
+  return new Bun.CryptoHasher('sha256').update(JSON.stringify(cfg)).digest('hex')
 }
 
 /**
@@ -402,7 +402,7 @@ function computeGroupHash(upstream: TaskOutcome[]): string {
     .map((u) => `${u.node.id}:${u.hash ?? ''}`)
     .sort()
     .join('|')
-  return createHash('sha256').update(`group|${ids}`).digest('hex')
+  return new Bun.CryptoHasher('sha256').update(`group|${ids}`).digest('hex')
 }
 
 /**
@@ -446,7 +446,7 @@ const WORKSPACE_FINGERPRINT_FILES = ['pnpm-lock.yaml', 'pnpm-workspace.yaml']
  * cached entry. Coarse but correct.
  */
 async function computeWorkspaceFingerprint(workspaceRoot: string): Promise<string> {
-  const h = createHash('sha256')
+  const h = new Bun.CryptoHasher('sha256')
   for (const f of WORKSPACE_FINGERPRINT_FILES) {
     const full = path.join(workspaceRoot, f)
     if (!existsSync(full)) continue
