@@ -14,8 +14,8 @@
 //   close           : release the SQLite handle
 
 import { Database } from 'bun:sqlite'
-import { createReadStream, existsSync } from 'node:fs'
-import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { existsSync, mkdirSync } from 'node:fs'
+import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { relPosix } from './paths.js'
 
@@ -158,14 +158,11 @@ export class Cache implements CacheLayer {
   private readonly insertRun: ReturnType<Database['prepare']>
 
   constructor(private readonly cacheDir: string) {
-    // Ensure the directory exists before opening the DB — bun:sqlite won't
-    // create parent directories for us.
-    if (!existsSync(cacheDir)) {
-      // mkdirSync isn't available from node:fs/promises; use Bun's util.
-      // The constructor stays sync because callers expect synchronous DB
-      // open semantics.
-      Bun.spawnSync(['mkdir', '-p', cacheDir])
-    }
+    // Ensure the directory exists before opening the DB — bun:sqlite
+    // won't create parent dirs for us. The constructor stays sync
+    // because callers use `new Cache(...)` directly; `mkdirSync` keeps
+    // that property without a subprocess fork.
+    mkdirSync(cacheDir, { recursive: true })
     this.db = new Database(path.join(cacheDir, 'cache.db'), { create: true })
     this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec('PRAGMA synchronous = NORMAL')
@@ -295,6 +292,8 @@ export class Cache implements CacheLayer {
 
     // Verify the on-disk artifact actually exists. The DB and the
     // filesystem can drift if someone manually deletes a <hash>/ dir.
+    // existsSync is required here: `Bun.file(dir).exists()` returns
+    // false for directories — Bun.file is a file-only API.
     if (!existsSync(this.entryDir(hash))) return null
 
     this.bumpAccessed.run(Date.now(), hash)
@@ -318,6 +317,7 @@ export class Cache implements CacheLayer {
 
   async restoreOutputs(hash: string, projectDir: string): Promise<void> {
     const src = this.entryDir(hash)
+    // Same caveat as above: src is a directory; use existsSync.
     if (!existsSync(src)) return
     await copyDir(src, projectDir)
   }
@@ -338,8 +338,8 @@ export class Cache implements CacheLayer {
     for (const f of args.outputFiles) {
       const rel = path.relative(args.projectDir, f)
       const dest = path.join(tmp, rel)
-      await mkdir(path.dirname(dest), { recursive: true })
-      await copyFile(f, dest)
+      // Bun.write auto-creates parent dirs.
+      await Bun.write(dest, Bun.file(f))
       const s = await stat(dest)
       totalBytes += s.size
       relOutputs.push(rel.split(path.sep).join('/'))
@@ -354,8 +354,8 @@ export class Cache implements CacheLayer {
     await mkdir(logsDir, { recursive: true })
     const stdoutPath = this.logPath(args.hash, 'stdout')
     const stderrPath = this.logPath(args.hash, 'stderr')
-    await writeFile(stdoutPath, args.entry.stdout)
-    await writeFile(stderrPath, args.entry.stderr)
+    await Bun.write(stdoutPath, args.entry.stdout)
+    await Bun.write(stderrPath, args.entry.stderr)
     totalBytes += Buffer.byteLength(args.entry.stdout) + Buffer.byteLength(args.entry.stderr)
 
     const [project, task] = splitTaskId(args.entry.taskId)
@@ -490,8 +490,9 @@ function splitTaskId(id: string): [string, string] {
 }
 
 async function readMaybe(p: string): Promise<string> {
-  if (!existsSync(p)) return ''
-  return await readFile(p, 'utf8')
+  const f = Bun.file(p)
+  if (!(await f.exists())) return ''
+  return await f.text()
 }
 
 async function listRelativeFiles(root: string, sub = ''): Promise<string[]> {
@@ -509,13 +510,11 @@ async function listRelativeFiles(root: string, sub = ''): Promise<string[]> {
 }
 
 async function hashFile(filePath: string): Promise<string> {
-  return await new Promise<string>((resolve, reject) => {
-    const h = new Bun.CryptoHasher('sha256')
-    const s = createReadStream(filePath)
-    s.on('data', (chunk) => h.update(chunk))
-    s.on('end', () => resolve(h.digest('hex')))
-    s.on('error', reject)
-  })
+  const h = new Bun.CryptoHasher('sha256')
+  // Bun.file(...).stream() yields Uint8Array chunks lazily — no
+  // whole-file load into memory even for large artifacts. Async-iterable.
+  for await (const chunk of Bun.file(filePath).stream()) h.update(chunk)
+  return h.digest('hex')
 }
 
 async function copyDir(src: string, dest: string): Promise<void> {
@@ -527,7 +526,7 @@ async function copyDir(src: string, dest: string): Promise<void> {
     if (e.isDirectory()) {
       await copyDir(s, d)
     } else if (e.isFile()) {
-      await copyFile(s, d)
+      await Bun.write(d, Bun.file(s))
     }
   }
 }

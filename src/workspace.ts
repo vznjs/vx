@@ -1,8 +1,4 @@
-import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { glob } from 'tinyglobby'
-import { parse as parseYaml } from 'yaml'
 import type { WorkspaceConfig } from './config.js'
 import { UserError } from './errors.js'
 
@@ -32,10 +28,10 @@ export interface ProjectMeta {
 
 const CONFIG_FILENAMES = ['vzn.config.ts', 'vzn.config.mts', 'vzn.config.js', 'vzn.config.mjs']
 
-export function findWorkspaceRoot(start: string): string {
+export async function findWorkspaceRoot(start: string): Promise<string> {
   let dir = path.resolve(start)
   while (true) {
-    if (existsSync(path.join(dir, 'pnpm-workspace.yaml'))) return dir
+    if (await Bun.file(path.join(dir, 'pnpm-workspace.yaml')).exists()) return dir
     const parent = path.dirname(dir)
     if (parent === dir) {
       throw new UserError(`Could not find pnpm-workspace.yaml in any parent of ${start}`)
@@ -56,25 +52,32 @@ export function resolveCacheDir(root: string, config: WorkspaceConfig | null): s
 
 export async function loadWorkspace(root: string): Promise<Workspace> {
   const yamlPath = path.join(root, 'pnpm-workspace.yaml')
-  const text = await readFile(yamlPath, 'utf8')
-  const parsed = (parseYaml(text) ?? {}) as { packages?: string[] }
+  const text = await Bun.file(yamlPath).text()
+  const parsed = (Bun.YAML.parse(text) ?? {}) as { packages?: string[] }
   return { root, packageGlobs: parsed.packages ?? [] }
 }
 
 export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]> {
-  const patterns = workspace.packageGlobs.map((g) => `${g.replace(/\/$/, '')}/package.json`)
-  const matches = await glob(patterns, {
-    cwd: workspace.root,
-    absolute: true,
-    dot: false,
-    ignore: ['**/node_modules/**'],
-  })
+  const matches = new Set<string>()
+  for (const pattern of workspace.packageGlobs) {
+    const glob = new Bun.Glob(`${pattern.replace(/\/$/, '')}/package.json`)
+    for await (const rel of glob.scan({
+      cwd: workspace.root,
+      onlyFiles: true,
+      dot: false,
+    })) {
+      // Skip nested node_modules — workspace package globs shouldn't ever
+      // reach into them, but a pathological pattern like `**` would.
+      if (rel.split(path.sep).includes('node_modules')) continue
+      matches.add(path.resolve(workspace.root, rel))
+    }
+  }
 
   const projects: ProjectMeta[] = []
   const seenName = new Map<string, string>()
   for (const pkgJsonPath of matches) {
     const dir = path.dirname(pkgJsonPath)
-    const pkg = JSON.parse(await readFile(pkgJsonPath, 'utf8')) as PackageJson
+    const pkg = (await Bun.file(pkgJsonPath).json()) as PackageJson
     if (!pkg.name) continue
     const previous = seenName.get(pkg.name)
     if (previous) {
@@ -83,9 +86,15 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
       )
     }
     seenName.set(pkg.name, dir)
-    const configPath =
-      CONFIG_FILENAMES.map((f) => path.join(dir, f)).find((f) => existsSync(f)) ?? null
+    const configPath = await firstExisting(CONFIG_FILENAMES.map((f) => path.join(dir, f)))
     projects.push({ name: pkg.name, dir, packageJson: pkg, configPath })
   }
   return projects.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+async function firstExisting(paths: string[]): Promise<string | null> {
+  for (const p of paths) {
+    if (await Bun.file(p).exists()) return p
+  }
+  return null
 }

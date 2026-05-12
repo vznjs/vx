@@ -19,11 +19,11 @@ describe('findWorkspaceRoot', () => {
     await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages: []\n')
     const sub = path.join(dir, 'a', 'b', 'c')
     await mkdir(sub, { recursive: true })
-    expect(findWorkspaceRoot(sub)).toBe(dir)
+    expect(await findWorkspaceRoot(sub)).toBe(dir)
   })
 
   it('throws clearly when no workspace yaml exists in any parent', async () => {
-    expect(() => findWorkspaceRoot(dir)).toThrow(/Could not find pnpm-workspace.yaml/)
+    await expect(findWorkspaceRoot(dir)).rejects.toThrow(/Could not find pnpm-workspace.yaml/)
   })
 })
 

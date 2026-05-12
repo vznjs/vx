@@ -2,8 +2,6 @@
 // run with caching. Each step delegates to a single-purpose module so the
 // layer can be swapped without touching the others.
 
-import { existsSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { ExecConfig, ProjectConfig, TaskConfig, CacheConfig, TaskDependsOn } from './config.js'
 import { Cache, type CacheLayer } from './cache.js'
@@ -55,7 +53,7 @@ export interface Logger {
 export async function run(options: RunOptions): Promise<RunSummary> {
   const log = options.log ?? defaultLogger()
 
-  const workspaceRoot = findWorkspaceRoot(options.cwd)
+  const workspaceRoot = await findWorkspaceRoot(options.cwd)
   const workspace = await loadWorkspace(workspaceRoot)
   const workspaceConfig = await loadWorkspaceConfig(workspaceRoot)
   const projectMetas = await listProjects(workspace)
@@ -417,20 +415,17 @@ async function persistTaskLogs(args: { logsDir: string; outcomes: TaskOutcome[] 
     (o) => (o.stdout && o.stdout.length > 0) || (o.stderr && o.stderr.length > 0),
   )
   if (writable.length === 0) return
-  try {
-    await mkdir(args.logsDir, { recursive: true })
-  } catch {
-    return
-  }
+  // Bun.write below auto-creates parent dirs, so we don't need an
+  // explicit mkdir. Write failures are swallowed per-call below.
   await Promise.all(
     writable.flatMap((o) => {
       const stem = `${o.node.projectName}__${o.node.taskName}`.replace(/[^a-zA-Z0-9._-]/g, '_')
       const tasks: Promise<unknown>[] = []
       if (o.stdout && o.stdout.length > 0) {
-        tasks.push(writeFile(path.join(args.logsDir, `${stem}.stdout`), o.stdout).catch(() => {}))
+        tasks.push(Bun.write(path.join(args.logsDir, `${stem}.stdout`), o.stdout).catch(() => {}))
       }
       if (o.stderr && o.stderr.length > 0) {
-        tasks.push(writeFile(path.join(args.logsDir, `${stem}.stderr`), o.stderr).catch(() => {}))
+        tasks.push(Bun.write(path.join(args.logsDir, `${stem}.stderr`), o.stderr).catch(() => {}))
       }
       return tasks
     }),
@@ -449,9 +444,10 @@ async function computeWorkspaceFingerprint(workspaceRoot: string): Promise<strin
   const h = new Bun.CryptoHasher('sha256')
   for (const f of WORKSPACE_FINGERPRINT_FILES) {
     const full = path.join(workspaceRoot, f)
-    if (!existsSync(full)) continue
+    const file = Bun.file(full)
+    if (!(await file.exists())) continue
     h.update(`${f}\0`)
-    h.update(await readFile(full))
+    h.update(await file.bytes())
     h.update('\n')
   }
   return h.digest('hex')
