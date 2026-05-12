@@ -13,7 +13,7 @@ describe('Cache.key', () => {
   beforeEach(async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'nxt-cache-key-'))
     workspaceRoot = dir
-    cache = new Cache(path.join(dir, '.vzn', 'cache'))
+    cache = new Cache(path.join(dir, '.vx', 'cache'))
   })
 
   afterEach(async () => {
@@ -142,8 +142,8 @@ describe('Cache storage (v10)', () => {
   let cache: Cache
 
   beforeEach(async () => {
-    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vzn-cache-v10-'))
-    cacheDir = path.join(workspaceRoot, '.vzn', 'cache')
+    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vx-cache-v10-'))
+    cacheDir = path.join(workspaceRoot, '.vx', 'cache')
     projectDir = path.join(workspaceRoot, 'project')
     cache = new Cache(cacheDir)
   })
@@ -443,7 +443,7 @@ describe('Cache storage (v10)', () => {
 
   it('two concurrent writers do not crash with SQLITE_BUSY', async () => {
     // B1 from Agent A's real-world test: without PRAGMA busy_timeout,
-    // two parallel `vzn run` invocations would race on the small INSERT
+    // two parallel `vx run` invocations would race on the small INSERT
     // and one would die with `SQLiteError: database is locked`. With the
     // 5s busy_timeout the second one waits and succeeds.
     const second = new Cache(cacheDir)

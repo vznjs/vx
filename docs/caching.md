@@ -2,7 +2,7 @@
 
 ## Why caching is opt-in
 
-`@vzn/run` deliberately requires you to provide a `cache` block (with
+`@vzn/vx` deliberately requires you to provide a `cache` block (with
 both `inputs.files` and `outputs.files`) to enable caching. The reason:
 defaulting caching ON with implicit "all files / no outputs" leads to
 silently stale builds when users forget to revisit the configuration.
@@ -50,7 +50,7 @@ The cache key for one task is a SHA-256 digest of:
 
 On hit:
 
-1. Output files are copied from `.vzn/cache/<hash>/outputs/` into the
+1. Output files are copied from `.vx/cache/<hash>/outputs/` into the
    project directory. Pre-existing local files at those paths are
    overwritten.
 2. Captured stdout / stderr are replayed to the live terminal via the
@@ -87,7 +87,7 @@ A task's cache becomes invalid when any of these change:
 | Edit a file in the task's `inputs.files` set                   | step 6 of key derivation                                                      |
 | `pnpm install` updates `pnpm-lock.yaml`                        | step 3 (workspace fingerprint)                                                |
 | Edit `pnpm-workspace.yaml`                                     | step 3                                                                        |
-| Edit the task's `vzn.config.ts`                                | step 4 (config hash)                                                          |
+| Edit the task's `vx.config.ts`                                 | step 4 (config hash)                                                          |
 | Edit a config file that the task config imports                | step 4 (configHash sees the resolved object after jiti evaluates the imports) |
 | Change `inputs.env` host values                                | step 5                                                                        |
 | Upstream task's cache key changes (because its inputs changed) | step 7                                                                        |
@@ -113,7 +113,7 @@ guarantee — there's no file-glob escape hatch.
 ## Storage layout
 
 ```
-<workspaceRoot>/.vzn/cache/
+<workspaceRoot>/.vx/cache/
 ├── cache.db                # SQLite metadata index + run history
 ├── cache.db-wal            # write-ahead log
 ├── cache.db-shm            # shared memory
@@ -145,7 +145,7 @@ back into the project — BLOBs in SQLite would just be a detour. See
 - **Cache write** is one INSERT-or-UPDATE + atomic dir rename + two
   log file writes. Hashing dominates the run; the storage itself is
   cheap.
-- **Workspace fingerprint** is computed once per `vzn run` invocation
+- **Workspace fingerprint** is computed once per `vx run` invocation
   and reused for every task in that run.
 
 ## What's NOT in the key (and why)
@@ -188,11 +188,11 @@ Not required when:
   log files at `logs/<hash>.{stdout,stderr}`. Adds run history for
   stats. Removes the `meta.json` per-entry manifest.
 - **v10 → v11** (PR #19): analytics columns added to the `runs`
-  table: `run_id` (ULID shared across all tasks in one `vzn run`
+  table: `run_id` (ULID shared across all tasks in one `vx run`
   invocation), `cpu_ms`, `peak_rss_bytes`, `wallclock_start_ns` /
   `wallclock_end_ns` (hrtime spans), `cache_hit`, `bytes_uploaded`,
-  `bytes_downloaded`. All nullable; surfaced via `vzn stats` and
-  directly queryable from CI via `sqlite3 .vzn/cache/cache.db`.
+  `bytes_downloaded`. All nullable; surfaced via `vx stats` and
+  directly queryable from CI via `sqlite3 .vx/cache/cache.db`.
   Backwards-compatible for read paths that don't use them.
 - **v11 → v12** (PR #42): project's `package.json` bytes folded into
   every task's cache key implicitly. Matches Turbo / Nx "implicit

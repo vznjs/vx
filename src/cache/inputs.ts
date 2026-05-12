@@ -10,7 +10,7 @@ import path from 'node:path'
 import ignore, { type Ignore } from 'ignore'
 import type { CacheInputs } from '../config.js'
 
-const ALWAYS_IGNORE = ['**/node_modules/**', '**/.git/**', '**/.vzn/**', '**/*.tsbuildinfo']
+const ALWAYS_IGNORE = ['**/node_modules/**', '**/.git/**', '**/.vx/**', '**/*.tsbuildinfo']
 
 const DEFAULT_FILE_GLOBS: readonly string[] = ['**/*']
 

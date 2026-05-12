@@ -19,7 +19,7 @@ import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { relPosix } from '../util/paths.js'
 
-const CACHE_VERSION = 'vzn-cache-v12'
+const CACHE_VERSION = 'vx-cache-v12'
 const SCHEMA_VERSION = 'v11'
 
 export interface CacheKeyInput {
@@ -88,10 +88,10 @@ export interface RunRecord {
   endedAt: number // ms-epoch wall clock
   /**
    * Optional analytics columns. Populated by the orchestrator/runner;
-   * stored as NULL on rows from older runs. Surfaced via `vzn stats`
+   * stored as NULL on rows from older runs. Surfaced via `vx stats`
    * and consumable from CI by reading cache.db directly.
    */
-  runId?: string // ULID shared across every task in one `vzn run` invocation
+  runId?: string // ULID shared across every task in one `vx run` invocation
   cpuMs?: number // sum of user + system CPU time for the child process
   peakRssBytes?: number // peak resident set size of the child process
   wallclockStartNs?: bigint // hrtime span relative to run t=0
@@ -177,7 +177,7 @@ export class Cache implements CacheLayer {
     this.db.exec('PRAGMA synchronous = NORMAL')
     this.db.exec('PRAGMA foreign_keys = ON')
     // busy_timeout makes concurrent writers wait for the lock instead of
-    // failing immediately with SQLITE_BUSY. Two parallel `vzn run`
+    // failing immediately with SQLITE_BUSY. Two parallel `vx run`
     // invocations in CI is a normal pattern; without this the second one
     // crashes in recordRun().
     this.db.exec('PRAGMA busy_timeout = 5000')

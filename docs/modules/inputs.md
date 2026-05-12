@@ -48,7 +48,7 @@ A glob pass that yields the final `files` list:
 2. **Negative entries** — strings starting with `!`. The `!` is
    stripped, and the rest is added to the ignore list.
 3. **Always-ignored** — hard-coded list:
-   `node_modules/**`, `.git/**`, `.vzn/**`, `*.tsbuildinfo`.
+   `node_modules/**`, `.git/**`, `.vx/**`, `*.tsbuildinfo`.
 4. **Boundary ignores** — every nested project's directory (relative
    to this project) → `<rel>/**`. Computed by the orchestrator;
    guarantees cross-project isolation.

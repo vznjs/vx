@@ -26,7 +26,7 @@ export interface ProjectMeta {
   name: string
   dir: string
   packageJson: PackageJson
-  configPath: string | null // absolute path or null if no vzn.config.*
+  configPath: string | null // absolute path or null if no vx.config.*
 }
 
 export function findWorkspaceRoot(start: string): string
@@ -50,7 +50,7 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
      entirely (not even listed).
    - Throws on duplicate `package.json#name` across the workspace,
      citing both directories.
-   - Looks for `vzn.config.{ts,mts,js,mjs}` in the package directory.
+   - Looks for `vx.config.{ts,mts,js,mjs}` in the package directory.
      The first matching file is the `configPath`; if none exists,
      `configPath` is `null` (the project is discovered but contributes
      no tasks).

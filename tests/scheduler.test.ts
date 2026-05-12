@@ -141,7 +141,7 @@ describe('runGraph', () => {
   })
 
   it('marks a node failed when its execute() throws and keeps the graph progressing', async () => {
-    // Suppress the [vzn] internal-error stderr write from the catch handler
+    // Suppress the [vx] internal-error stderr write from the catch handler
     // so test output stays clean.
     const stderr = process.stderr.write
     process.stderr.write = ((..._args: unknown[]) => true) as typeof stderr

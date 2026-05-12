@@ -112,7 +112,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             inFlight.delete(id)
             active--
             onFinish?.(outcome)
-            process.stderr.write(`[vzn] internal error in ${id}: ${message}\n`)
+            process.stderr.write(`[vx] internal error in ${id}: ${message}\n`)
             tick()
           })
       }

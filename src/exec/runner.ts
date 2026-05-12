@@ -54,7 +54,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
       exitCode: 127,
       durationMs: Date.now() - start,
       stdout: '',
-      stderr: `\n[vzn] failed to spawn: ${message}\n`,
+      stderr: `\n[vx] failed to spawn: ${message}\n`,
     }
   }
 

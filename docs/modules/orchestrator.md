@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Drive a single `vzn run` invocation from start to finish. Wire
+Drive a single `vx run` invocation from start to finish. Wire
 workspace discovery, config loading, graph building, fingerprinting,
 scheduling, per-task execution, and caching together.
 

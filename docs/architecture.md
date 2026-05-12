@@ -2,7 +2,7 @@
 
 ## Module map
 
-`@vzn/run` is a single-package project. Every module lives under
+`@vzn/vx` is a single-package project. Every module lives under
 `src/`; each file is one focused module. Internal imports are
 unidirectional: lower modules in this map don't depend on higher
 ones.
@@ -54,7 +54,7 @@ with tar.gz pack/unpack. `layered-cache.ts` composes local + remote
 behind the same surface `Cache` exposes.
 
 The orchestrator constructs the local cache, then conditionally wraps
-it in a `LayeredCache` when `VZN_REMOTE_CACHE_URL` + `_TOKEN` are set.
+it in a `LayeredCache` when `VX_REMOTE_CACHE_URL` + `_TOKEN` are set.
 From there, `executeTask` calls the same `key / get / save / restoreOutputs`
 methods regardless of the layering.
 
@@ -65,7 +65,7 @@ is no sandboxing layer — under-declared `cache.inputs.files` will
 silently produce stale cache hits, which is the standard task-runner
 tradeoff (Turbo and Nx behave the same).
 
-## Data flow on `vzn run <task>`
+## Data flow on `vx run <task>`
 
 1. **`cli.ts`** parses argv → `{ task, projects?, concurrency?,
 noCache?, ignoreDependsOn?, forwardArgs? }`. The CLI
@@ -74,9 +74,9 @@ noCache?, ignoreDependsOn?, forwardArgs? }`. The CLI
    orchestrator.
 2. **`orchestrator.ts:run()`** is invoked with those options.
 3. **`workspace.ts`** walks up to the nearest `pnpm-workspace.yaml`,
-   parses it, and lists every package that has a `vzn.config.*` file.
+   parses it, and lists every package that has a `vx.config.*` file.
    Detects duplicate package names and throws.
-4. **`project-loader.ts`** evaluates each `vzn.config.ts` (or .mjs)
+4. **`project-loader.ts`** evaluates each `vx.config.ts` (or .mjs)
    via `jiti` (`moduleCache: false`, `interopDefault: false`) so
    edits across same-process calls are picked up and missing default
    exports produce a clear error.
@@ -86,8 +86,8 @@ noCache?, ignoreDependsOn?, forwardArgs? }`. The CLI
    requested `(project, task)` pairs, it walks each task's
    `dependsOn` into a DAG. Cycles are detected upfront.
 7. The orchestrator constructs the cache:
-   - `new Cache(.vzn/cache)` — local v10 SQLite + on-disk outputs.
-   - If `VZN_REMOTE_CACHE_URL` and `VZN_REMOTE_CACHE_TOKEN` are set,
+   - `new Cache(.vx/cache)` — local v10 SQLite + on-disk outputs.
+   - If `VX_REMOTE_CACHE_URL` and `VX_REMOTE_CACHE_TOKEN` are set,
      wraps it in `new LayeredCache(local, new RemoteCache({...}))`.
    - Either way, the orchestrator sees the `Cache | LayeredCache`
      surface and doesn't branch on the layering.
@@ -114,7 +114,7 @@ noCache?, ignoreDependsOn?, forwardArgs? }`. The CLI
       captures output files and writes the cache entry. On failure,
       nothing is cached.
 11. After all tasks finish, the orchestrator records one row per task
-    to the local cache's `runs` table (drives `vzn stats` and
+    to the local cache's `runs` table (drives `vx stats` and
     eviction heuristics). When the layered cache is active, the
     save also fires off a background upload to the remote.
 
@@ -142,7 +142,7 @@ are not part of the contract.
 
 ## Remote-cache subsystem (detail)
 
-`vzn run` looks at `VZN_REMOTE_CACHE_URL` + `VZN_REMOTE_CACHE_TOKEN`
+`vx run` looks at `VX_REMOTE_CACHE_URL` + `VX_REMOTE_CACHE_TOKEN`
 at the top of `orchestrator.run()`. When present:
 
 1. `wrapWithRemoteCache(localCache, log)` constructs `RemoteCache`
@@ -166,10 +166,10 @@ servers don't inspect the body, so this is invisible to them. See
 
 ## Run-history analytics
 
-Every `vzn run` invocation stamps a ULID (`run_id`) and appends one
+Every `vx run` invocation stamps a ULID (`run_id`) and appends one
 row per task to the `runs` table in `cache.db`. Columns include
 status, exit code, duration, CPU time, peak RSS, and hrtime-ns
-wallclock spans relative to the run's t=0. `vzn stats` reads from
+wallclock spans relative to the run's t=0. `vx stats` reads from
 this table; CI scripts can also query `cache.db` directly with
 `sqlite3` to extract metrics. No HTTP layer, no UI — the cache file
 is the API.
@@ -206,7 +206,7 @@ the architecture:
 - **No plugin protocol.** Presets are TypeScript helpers that _return_
   `TaskConfig` objects, evaluated at config-load time. The runner
   doesn't know they exist.
-- **No daemon.** Every `vzn run` invocation is a fresh process.
+- **No daemon.** Every `vx run` invocation is a fresh process.
   Loaders use jiti's `moduleCache: false` so config edits show up
   next run.
 - **No nested task graphs.** The unit of caching, scheduling, and

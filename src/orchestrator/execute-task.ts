@@ -68,7 +68,7 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const projectPackageJsonHash = await hashProjectPackageJson(node.projectDir)
 
   // forwardArgs apply only to the tasks the user explicitly asked for —
-  // not to dependsOn-expanded upstream tasks. This keeps `vzn run build
+  // not to dependsOn-expanded upstream tasks. This keeps `vx run build
   // -- --watch` from forwarding `--watch` into every dependency's
   // build, and it stops upstream cache keys from being uselessly
   // partitioned by CLI args that don't change their behavior.

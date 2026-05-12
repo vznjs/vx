@@ -4,10 +4,10 @@
 
 ## What we're solving
 
-The v9 local cache stores everything under `.vzn/cache/<hash>/`:
+The v9 local cache stores everything under `.vx/cache/<hash>/`:
 
 ```
-.vzn/cache/<hash>/
+.vx/cache/<hash>/
 ├── meta.json    # taskId, command, exitCode, durationMs, outputFiles, stdout, stderr, storedAt
 └── outputs/
     └── <project-relative paths>
@@ -23,7 +23,7 @@ That works but has rough edges as the cache grows:
 - **No run history.** We can't answer "what's my cache hit rate" or
   "which tasks ran in the last hour and how long did they take?"
 - **Metadata reads are stat-storms.** Each existence check is a stat of
-  `.vzn/cache/<hash>/meta.json`. At thousands of entries × multiple
+  `.vx/cache/<hash>/meta.json`. At thousands of entries × multiple
   tasks per run, this adds up.
 
 v10 inverts the model: **SQLite holds the metadata index, outputs stay
@@ -33,7 +33,7 @@ research session notes).
 ## Layout
 
 ```
-.vzn/
+.vx/
 └── cache/
     ├── cache.db                 # SQLite (with cache.db-wal, cache.db-shm)
     ├── cache.db.lock            # cross-process flock file
@@ -113,16 +113,16 @@ Why two tables:
   `bun:lock` style? — fall back to writing a sentinel file).
 - Output-file writes use the existing tmpdir + atomic rename pattern.
   Same as v9, no change.
-- Multiple `vzn run` invocations on the same host race for the same
+- Multiple `vx run` invocations on the same host race for the same
   hash via OS file-rename atomicity. WAL handles the SQLite side.
 
 ## Atomic write protocol
 
 For a cache miss → write sequence:
 
-1. Materialize outputs into `.vzn/cache/<hash>.tmp.<pid>/` (mirroring
+1. Materialize outputs into `.vx/cache/<hash>.tmp.<pid>/` (mirroring
    project-relative paths).
-2. Write combined stdout+stderr to `.vzn/cache/logs/<hash>.tmp.<pid>`.
+2. Write combined stdout+stderr to `.vx/cache/logs/<hash>.tmp.<pid>`.
 3. Compute `size_bytes` (sum of all files written).
 4. `rename(2)` `<hash>.tmp.<pid>/` → `<hash>/` (atomic for empty
    target; if target exists, our entry was already written by another
@@ -154,8 +154,8 @@ class LocalCacheV10 {
 
   // New:
   recordRun(args: RunRecord): Promise<void> // called by orchestrator after each task
-  stats(): CacheStats // for `vzn stats` (future)
-  prune(options: PruneOptions): Promise<number> // for `vzn cache prune` (future)
+  stats(): CacheStats // for `vx stats` (future)
+  prune(options: PruneOptions): Promise<number> // for `vx cache prune` (future)
   close(): void // db handle cleanup
 }
 ```
@@ -166,26 +166,26 @@ log file as needed.
 
 ## Migration
 
-- Bump `CACHE_VERSION` from `vzn-cache-v9` to `vzn-cache-v10` in
+- Bump `CACHE_VERSION` from `vx-cache-v9` to `vx-cache-v10` in
   `src/cache.ts`. All existing entries become unreachable (different
   hashes). Tasks rebuild on next run.
 - No data migration code. Pre-alpha.
-- Old `.vzn/cache/<hash>/meta.json` files are simply orphaned; they'll
-  never be read. A future `vzn cache clean` will sweep them. Until
+- Old `.vx/cache/<hash>/meta.json` files are simply orphaned; they'll
+  never be read. A future `vx cache clean` will sweep them. Until
   then, they cost a few KB each — negligible.
 
 ## What's out of scope (this PR)
 
-- **`vzn stats` CLI command.** The data is captured; the command can
+- **`vx stats` CLI command.** The data is captured; the command can
   ship in a follow-up.
-- **`vzn cache prune` CLI command.** Same — the `prune()` method
+- **`vx cache prune` CLI command.** Same — the `prune()` method
   exists, no command yet.
 - **LRU eviction on write.** We capture `size_bytes` but don't
   auto-evict yet. Eviction policy needs explicit user-facing controls
   (max size? max age? both?). Defer until use cases force it.
 - **Remote cache integration.** Layered with v10 via `LayeredCache` —
   but that's a separate workstream.
-- **Concurrent `vzn run` invocations from multiple machines on the same
+- **Concurrent `vx run` invocations from multiple machines on the same
   filesystem.** WAL is per-host; cross-host concurrency is the remote
   cache's job.
 
@@ -218,4 +218,4 @@ log file as needed.
 10. Tests: bump fixtures, add SQLite-specific tests, verify existing
     e2e tests still pass under the new storage.
 11. Update `docs/caching.md` and `docs/modules/cache.md`.
-12. Bump `CACHE_VERSION` to `vzn-cache-v10`.
+12. Bump `CACHE_VERSION` to `vx-cache-v10`.

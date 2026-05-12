@@ -1,4 +1,4 @@
-# @vzn/run
+# @vzn/vx
 
 An open, extensible monorepo task runner for pnpm workspaces.
 TypeScript config, content-addressed cache, replaceable internals.
@@ -7,8 +7,8 @@ TypeScript config, content-addressed cache, replaceable internals.
 runtime entry — no compile step on install. SQLite is via `bun:sqlite`.
 
 ```sh
-bun add -d @vzn/run
-vzn run build
+bun add -d @vzn/vx
+vx run build
 ```
 
 > **Complete technical documentation lives in [`docs/`](./docs/).**
@@ -22,8 +22,8 @@ vzn run build
 ## Config at a glance
 
 ```ts
-// vzn.config.ts
-import { defineProject } from '@vzn/run'
+// vx.config.ts
+import { defineProject } from '@vzn/vx'
 
 export default defineProject({
   run: {
@@ -65,7 +65,7 @@ in [`docs/schema.md`](./docs/schema.md).
 ## CLI
 
 ```sh
-vzn run [TASK | PKG#TASK] [-r] [-F <pattern>] [-c <n>] [--no-cache] [--ignore-depends-on] [-v] [-- forwarded-args...]
+vx run [TASK | PKG#TASK] [-r] [-F <pattern>] [-c <n>] [--no-cache] [--ignore-depends-on] [-v] [-- forwarded-args...]
 ```
 
 Default scope: the project containing cwd (deps still expand via

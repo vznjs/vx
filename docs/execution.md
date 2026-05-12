@@ -1,6 +1,6 @@
 # Task execution lifecycle
 
-This document traces what happens between `vzn run build` typed at the
+This document traces what happens between `vx run build` typed at the
 terminal and a task succeeding or failing.
 
 ## End-to-end timeline
@@ -12,7 +12,7 @@ terminal and a task succeeding or failing.
  ├─ Workspace setup (orchestrator.ts:run)
  │    1. findWorkspaceRoot from process.cwd (walk up to pnpm-workspace.yaml)
  │    2. loadWorkspace (parse YAML)
- │    3. listProjects (glob package.json files, find vzn.config.* siblings,
+ │    3. listProjects (glob package.json files, find vx.config.* siblings,
  │                     detect duplicate names)
  │    4. loadProjectConfig for each project that has a config (jiti for .ts,
  │                                              native import for .mjs)
@@ -82,9 +82,9 @@ runs.
 | Failure                                                       | Behavior                                                            |
 | ------------------------------------------------------------- | ------------------------------------------------------------------- |
 | Exec exit non-zero                                            | Task is `failed`; cache NOT written                                 |
-| `execute()` throws (internal error)                           | Task marked `failed`, stderr written `[vzn] internal error in <id>` |
+| `execute()` throws (internal error)                           | Task marked `failed`, stderr written `[vx] internal error in <id>`  |
 | Upstream task fails                                           | Dependent task is `skipped` (exit 1, durationMs 0); no command runs |
-| Workspace yaml missing                                        | `findWorkspaceRoot` throws; `vzn run` exits 1                       |
+| Workspace yaml missing                                        | `findWorkspaceRoot` throws; `vx run` exits 1                        |
 | Same-project task referenced in `dependsOn.self` not declared | `buildTaskGraph` throws                                             |
 | Duplicate workspace package name                              | `listProjects` throws with both paths                               |
 | Cycle in task graph                                           | `detectCycle` throws with the cycle path                            |

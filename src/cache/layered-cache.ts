@@ -72,7 +72,7 @@ export class LayeredCache implements CacheLayer {
     // lookups hit local. We unpack into a temp stage dir that mirrors
     // the pack layout ({meta.json, outputs/}), then call local.save()
     // with outputs/ as the "project dir".
-    const stage = await mkdtemp(path.join(os.tmpdir(), 'vzn-remote-hit-'))
+    const stage = await mkdtemp(path.join(os.tmpdir(), 'vx-remote-hit-'))
     try {
       await unpackArchive(remoteResult.body, stage)
       const meta = (await Bun.file(path.join(stage, 'meta.json')).json()) as OnDiskMeta
@@ -132,7 +132,7 @@ export class LayeredCache implements CacheLayer {
   }
 
   private async stageAndPack(args: SaveArgs): Promise<Uint8Array> {
-    const stage = await mkdtemp(path.join(os.tmpdir(), 'vzn-remote-put-'))
+    const stage = await mkdtemp(path.join(os.tmpdir(), 'vx-remote-put-'))
     const outputsDir = path.join(stage, 'outputs')
     for (const f of args.outputFiles) {
       const rel = path.relative(args.projectDir, f)
@@ -158,7 +158,7 @@ export class LayeredCache implements CacheLayer {
     if (this.options.onRemoteError) {
       this.options.onRemoteError(e)
     } else {
-      process.stderr.write(`[vzn] remote cache: ${e.message}\n`)
+      process.stderr.write(`[vx] remote cache: ${e.message}\n`)
     }
   }
 }

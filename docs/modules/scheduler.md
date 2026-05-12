@@ -80,7 +80,7 @@ it as the default because it gives users maximum information per run.
   orchestrator provides one that does cache lookup + run).
 - Doesn't catch internal errors in `execute` other than treating a
   rejected promise as a failed outcome. The default behaviour writes
-  the error message to stderr prefixed with `[vzn] internal error in
+  the error message to stderr prefixed with `[vx] internal error in
 <id>`.
 - Doesn't enforce timeouts.
 - Doesn't reorder for fairness or priority.

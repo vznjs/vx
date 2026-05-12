@@ -1,12 +1,12 @@
-# `@vzn/run` — project memory for Claude
+# `@vzn/vx` — project memory for Claude
 
 A monorepo task runner for pnpm workspaces. Bun-only (≥ 1.3). Pre-alpha.
 **You are the project owner.** Maintain it, push it forward, ship.
 
 ## Project identity in one paragraph
 
-`@vzn/run` is a content-addressed cache + task scheduler for pnpm
-workspaces. Authors write per-package `vzn.config.ts` files; the CLI
+`@vzn/vx` is a content-addressed cache + task scheduler for pnpm
+workspaces. Authors write per-package `vx.config.ts` files; the CLI
 discovers projects, builds a task graph from declared `dependsOn`,
 hashes inputs deterministically, and executes tasks in topological
 order with parallelism. Cache hits replay stored outputs. Pre-alpha.
@@ -45,11 +45,11 @@ src/
     nested-dirs.ts      # project-boundary computation
     upstream.ts         # filter upstream hashes for cache key
     task-logs.ts        # persist stdout/stderr to <cacheDir>/logs/<run_id>/
-    remote-cache-setup.ts # VZN_REMOTE_CACHE_* env → LayeredCache
+    remote-cache-setup.ts # VX_REMOTE_CACHE_* env → LayeredCache
     logger.ts           # default logger + formatOutcome + prefix
   workspace/            # discovery + selection
     workspace.ts        # pnpm-workspace.yaml discovery
-    project-loader.ts   # Bun-native vzn.config.* loader (content-hash bust)
+    project-loader.ts   # Bun-native vx.config.* loader (content-hash bust)
     package-graph.ts    # workspace dep graph
     filter.ts           # pnpm-style filter DSL (-F)
   graph/                # task graph + scheduling
@@ -73,7 +73,7 @@ docs/
   architecture.md   # module map, data flow, design principles
   schema.md         # every config field
   caching.md        # cache key derivation, invalidation table
-  execution.md      # what happens during a `vzn run`
+  execution.md      # what happens during a `vx run`
   cli.md            # CLI reference (flags, filter DSL, forwarding)
   modules/<name>.md # per-module reference
   design/           # forward-looking proposals
@@ -110,7 +110,7 @@ bun.lock
 - **Trust internal code.** Validate only at system boundaries (user
   input, external APIs, FS). No defensive error handling for
   impossible cases.
-- **Test fixtures use heredoc strings** for `vzn.config.mjs`. The
+- **Test fixtures use heredoc strings** for `vx.config.mjs`. The
   indentation inside the heredoc matters for readability but doesn't
   affect parsing.
 
@@ -149,12 +149,12 @@ bun.lock
   hits is the accepted task-runner tradeoff. RunOptions.sandbox dropped;
   the `executeTask` body simplifies to a single `runCommand` call.
 - **2026-05**: **Removed the entire dashboard subsystem.** Server
-  (`src/dashboard.ts`), UI app (`apps/dashboard/`), `vzn dashboard`
+  (`src/dashboard.ts`), UI app (`apps/dashboard/`), `vx dashboard`
   subcommand, design doc, and module doc all deleted. Project
   flattened back to a single-package layout (no more `packages/run/`
   or `apps/`). What stays: `runs` table + ULID + hrtime spans +
   cpu_ms / peak_rss / wallclock columns in cache.db, populated on
-  every `vzn run`. CI consumes them either via `vzn stats` or by
+  every `vx run`. CI consumes them either via `vx stats` or by
   reading `cache.db` directly with `sqlite3`. Net: −9 of 10
   dashboard PRs' worth of code; dep tree down from 304 packages to 19. Original framing of "dashboard as a window onto the cache"
   was real scope creep — the cache file IS the API.
@@ -170,7 +170,7 @@ bun.lock
   CPU/peak-RSS columns, and a status-badge component round out the
   page. Last dashboard PR. Bundle: 53 KB raw / 18 KB gzipped JS,
   7 KB CSS. PR #29.
-- **2026-05**: Dashboard PR 9/10 — `vzn dashboard` now serves
+- **2026-05**: Dashboard PR 9/10 — `vx dashboard` now serves
   `apps/dashboard/dist/` (the built Solid bundle from PR #27)
   instead of the inlined `packages/run/src/dashboard-ui/` static
   files. Legacy `dashboard-ui/` deleted. `DashboardServerOptions`
@@ -186,11 +186,11 @@ bun.lock
   PR #28.
 - **2026-05**: Wired `defineWorkspace({...})` loading. Was a dead
   export — schema docs even flagged it as deferred. Now
-  `vzn.workspace.{ts,mts,js,mjs}` at the workspace root is jiti-loaded
-  by both `vzn run` and `vzn dashboard`. `concurrency` provides the
+  `vx.workspace.{ts,mts,js,mjs}` at the workspace root is jiti-loaded
+  by both `vx run` and `vx dashboard`. `concurrency` provides the
   default when `-c` isn't passed; `cacheDir` (relative to workspace
-  root) lets users park `.vzn/cache` somewhere else (e.g.
-  `build/.vzn-cache` to keep all derived files in one tree).
+  root) lets users park `.vx/cache` somewhere else (e.g.
+  `build/.vx-cache` to keep all derived files in one tree).
   `resolveCacheDir(root, config)` is the single source of truth so
   the runner and the dashboard never disagree on which DB to open.
 - **2026-05**: Dashboard PR 8/10 — ported the four legacy pages
@@ -217,7 +217,7 @@ bun.lock
   system-font stack (presetWebFonts deliberately omitted — would fetch
   from fonts.bunny.net at build time, breaking hermetic CI). Vite dev
   server runs on port 5280 and proxies `/api/*` to `127.0.0.1:4280`
-  (the legacy `vzn dashboard` server) so the Solid app can develop
+  (the legacy `vx dashboard` server) so the Solid app can develop
   against real data. `src/main.tsx` mounts a placeholder `<App />`;
   pages port in PR #27. Brought along `src/format.ts` (bytes,
   duration, relative-time formatters) + tests so the `apps/*/src/` CI
@@ -227,13 +227,13 @@ bun.lock
   current `src/` moved into `packages/run/src/`. Set up to host
   `apps/dashboard/` (Vite + Solid + UnoCSS) alongside `packages/run/`
   per user direction — the dashboard server + UI is being pulled
-  out of `@vzn/run` so it can be a proper component-based app with
+  out of `@vzn/vx` so it can be a proper component-based app with
   a build step. Convention: `packages/*` is published libs,
   `apps/*` is end-user applications. PR #25.
 - **2026-05**: Dashboard PR 6/10 — Tasks + Runs UI pages. Tasks
   ranks `(project, task)` pairs by average wall-clock duration
   (cache-hits excluded so the ranking reflects work actually
-  done). Runs is a reverse-chronological list of `vzn run`
+  done). Runs is a reverse-chronological list of `vx run`
   invocations grouped by `run_id`; rows link to `#/runs/:id`
   which lands in PR #25. Added parametrized static-serving test
   asserting each page module exports the expected `render*`
@@ -247,7 +247,7 @@ bun.lock
   runs) + Cache (entries table). PR #24 adds Tasks + Runs; PR #25
   adds Run detail + flamegraph. 7 new static-serving tests. Default
   port also accepts `0` for kernel-assigned. PR #23.
-- **2026-05**: Dashboard PR 4/10 — `vzn dashboard` subcommand +
+- **2026-05**: Dashboard PR 4/10 — `vx dashboard` subcommand +
   `src/dashboard.ts` HTTP server. Bun.serve()-based, opens
   `cache.db` read-only, exposes `/api/health`, `/api/overview`,
   `/api/runs`, `/api/runs/:id`, `/api/tasks/slowest`,
@@ -288,7 +288,7 @@ bun.lock
   `runs` table (`run_id` ULID, `cpu_ms`, `peak_rss_bytes`,
   `wallclock_start/end_ns` hrtime spans, `cache_hit`,
   `bytes_uploaded/downloaded`). All nullable; producer PRs populate
-  them later. `CACHE_VERSION` → `vzn-cache-v11`. First PR of the
+  them later. `CACHE_VERSION` → `vx-cache-v11`. First PR of the
   dashboard 10-PR sequence (`docs/design/dashboard.md`). PR #19.
 - **2026-05**: `CacheLayer` interface extracted in `src/cache.ts`. Both
   `Cache` and `LayeredCache` `implements CacheLayer`. Orchestrator's
@@ -296,7 +296,7 @@ bun.lock
 LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
   so callers don't redeclare the shape. PR #18.
 - **2026-05**: P1 bug bundle from Agent A's real-world test. Adds
-  `PRAGMA busy_timeout = 5000` (concurrent `vzn run` no longer crashes
+  `PRAGMA busy_timeout = 5000` (concurrent `vx run` no longer crashes
   with SQLITE_BUSY), scopes `forwardArgs` to user-requested task nodes
   (no longer leaks into `dependsOn`-pulled deps; no longer pollutes
   their cache keys), returns `ok: false` when no project declares the
@@ -304,9 +304,9 @@ LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
   of `TaskConfig` shape in `project-loader.ts`, introduces a
   `UserError` class so user-input failures print a clean message
   instead of a full stack. Also renames the stale `nxt:` log prefix
-  to `vzn:`. PR #17.
+  to `vx:`. PR #17.
 - **2026-05**: Sandbox shipped (v1). `src/sandbox.ts` with bwrap on
-  Linux + sandbox-exec on macOS. `vzn run --sandbox` opts in. Declared
+  Linux + sandbox-exec on macOS. `vx run --sandbox` opts in. Declared
   `cache.inputs.files` are bind-mounted read-only; project dir is
   read-write; everything else is invisible (ENOENT). Fail-loud when
   the helper binary is missing — silent fall-through would defeat the
@@ -317,20 +317,20 @@ LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
   (PR #12) handles tar.gz pack/unpack via system `tar`. `LayeredCache`
   (PR #13) composes local + remote: read-through (local → remote →
   hydrate local), write-through (local sync, remote fire-and-forget).
-  Wired into orchestrator via env vars: `VZN_REMOTE_CACHE_URL` +
-  `VZN_REMOTE_CACHE_TOKEN` (plus optional `_TEAM_ID`, `_SLUG`,
+  Wired into orchestrator via env vars: `VX_REMOTE_CACHE_URL` +
+  `VX_REMOTE_CACHE_TOKEN` (plus optional `_TEAM_ID`, `_SLUG`,
   `_TIMEOUT_MS`). Compatible with `ducktors/turborepo-remote-cache`,
   `Fox32/openturbo-remote-cache`, Vercel hosted cache.
-- **2026-05**: `vzn cache prune` CLI command. Supports `--older-than
+- **2026-05**: `vx cache prune` CLI command. Supports `--older-than
 <duration>` (TTL eviction) and `--max-size <bytes>` (LRU eviction
   until under cap). Both can combine. Uses `entries.accessed_at` and
   `entries.size_bytes` from the v10 schema. PR #9.
-- **2026-05**: `vzn stats` CLI command — surfaces v10 cache stats
+- **2026-05**: `vx stats` CLI command — surfaces v10 cache stats
   (entry count, total size, runs/hits last 24h). PR #8.
 - **2026-05**: Local cache v10 — SQLite metadata index (`cache.db`),
   on-disk outputs at `<hash>/`, separate `logs/<hash>.{stdout,stderr}`
-  log files. Adds `runs` table for run history (drives future `vzn stats`).
-  CACHE_VERSION → `vzn-cache-v10`. Per-entry `meta.json` is gone. PR #7.
+  log files. Adds `runs` table for run history (drives future `vx stats`).
+  CACHE_VERSION → `vx-cache-v10`. Per-entry `meta.json` is gone. PR #7.
 - **2026-05**: Project memory + agents — `CLAUDE.md` + architect /
   developer subagents under `.claude/agents/`. PR #6.
 - **2026-05**: Bun runtime + oxc toolchain (oxlint + oxfmt + tsgolint).
@@ -338,7 +338,7 @@ LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
 - **2026-05**: Remote cache wire = Turbo `/v8/artifacts/` spec verbatim,
   but tar interior is ours (`meta.json` + `outputs/`, no Turbo log-file
   mimicry). Design at `docs/design/remote-cache.md`. **Not yet implemented.**
-- **2026-05**: Schema reshape — `defineProject({ run: { tasks: {...} } })`.
+- **2026-05**: Schema reshape — `defineProject({ tasks: {...} } })`.
   `exec` is a single ExecConfig, not an array. CACHE_VERSION → `v9`.
   PR #3.
 - **2026-05**: CLI aligned with vite-task — default scope is cwd
@@ -347,7 +347,7 @@ LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
 
 ## Active workstreams (prioritized)
 
-1. **Auto-fold project `package.json` + `vzn.config.*` into every
+1. **Auto-fold project `package.json` + `vx.config.*` into every
    task's cache key**, like Turbo and Nx do via "global dependencies"
    / "implicit dependencies". Current gap: narrow `cache.inputs.files`
    like `['src/**']` doesn't include package.json, so dep changes
@@ -359,8 +359,8 @@ LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
    tool configs (`vitest.config.ts`, `tsconfig.json`).
 4. **Pre-signed URL auth + HMAC signing** (`x-artifact-tag`) for the
    remote cache. v2 features per `docs/design/remote-cache.md`.
-5. **`vzn stats --json`** for CI consumption.
-6. **`vzn stats --json`** — machine-readable output for CI scripts.
+5. **`vx stats --json`** for CI consumption.
+6. **`vx stats --json`** — machine-readable output for CI scripts.
    Underlying data is already in `cache.db`; just needs a flag and
    a JSON encoder branch in the stats command.
 

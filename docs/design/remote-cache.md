@@ -3,7 +3,7 @@
 > **Status: implemented** (v1). Wire client in `src/remote-cache.ts`,
 > tar.gz pack/unpack in `src/cache-archive.ts`, layered with the local
 > cache in `src/layered-cache.ts`. Orchestrator picks it up automatically
-> when `VZN_REMOTE_CACHE_URL` + `VZN_REMOTE_CACHE_TOKEN` are set.
+> when `VX_REMOTE_CACHE_URL` + `VX_REMOTE_CACHE_TOKEN` are set.
 > See "Configuration" at the bottom for env vars.
 
 ## What we're solving
@@ -12,7 +12,7 @@ The local cache (`docs/caching.md`) makes one machine's repeat runs fast.
 A remote cache lets a team or CI fleet share entries: a task computed on
 one machine becomes a cache hit for everyone else with the same inputs.
 
-Concretely, every `vzn run` invocation:
+Concretely, every `vx run` invocation:
 
 1. Computes N task cache keys (one per task in the resolved graph).
 2. For each key, decides if it can replay or must execute.
@@ -39,7 +39,7 @@ opaque to cache servers, so the interior is invisible to the ecosystem
 we're piggybacking on.
 
 What we don't promise: cross-tool _cache reuse_. Our key derivation
-differs from Turbo's, so a `vzn run` will never look up a hash that a
+differs from Turbo's, so a `vx run` will never look up a hash that a
 `turbo run` wrote (and vice versa). The wire-spec compatibility is for
 ecosystem leverage (servers, hosted backends, tooling that operates at
 the HTTP layer); it does not give cross-runner artifact swappability.
@@ -119,8 +119,8 @@ POST  /v8/artifacts/events                    (telemetry — NOT SHIPPED in v1)
 ```
 
 Multi-tenancy: `teamId` and `slug` are query parameters, treated as
-opaque tenant identifiers. Configurable via `VZN_REMOTE_CACHE_TEAM_ID`
-and `VZN_REMOTE_CACHE_SLUG`.
+opaque tenant identifiers. Configurable via `VX_REMOTE_CACHE_TEAM_ID`
+and `VX_REMOTE_CACHE_SLUG`.
 
 ## Tar interior (ours, not Turbo's)
 
@@ -175,7 +175,7 @@ no archive bytes ever touch disk in the happy path.
 ## Authentication
 
 **v1 (shipped):** Bearer token (`Authorization: Bearer ...`). Token in
-`VZN_REMOTE_CACHE_TOKEN` env var. Standard, easy to rotate, easy to
+`VX_REMOTE_CACHE_TOKEN` env var. Standard, easy to rotate, easy to
 scope per project.
 
 **v1.5 (optional):** Payload signing via `x-artifact-tag` header,
@@ -208,8 +208,8 @@ Behavior:
   to local.
 
 Orchestrator integration is in `wrapWithRemoteCache()` in
-`src/orchestrator.ts`: when `VZN_REMOTE_CACHE_URL` and
-`VZN_REMOTE_CACHE_TOKEN` are both set, the local `Cache` is wrapped in
+`src/orchestrator.ts`: when `VX_REMOTE_CACHE_URL` and
+`VX_REMOTE_CACHE_TOKEN` are both set, the local `Cache` is wrapped in
 a `LayeredCache`. Otherwise the orchestrator uses the local cache
 directly.
 
@@ -220,7 +220,7 @@ directly.
 - **Network error on PUT**: log a warning, don't fail. The task already
   succeeded; the only loss is the remote cache entry.
 - **Timeout**: per-request budget (default 60s, configurable via
-  `VZN_REMOTE_CACHE_TIMEOUT_MS`). On timeout, behave as miss/no-write.
+  `VX_REMOTE_CACHE_TIMEOUT_MS`). On timeout, behave as miss/no-write.
 - **Server 5xx**: same — degrade to local-only, log.
 - **Server 4xx other than 404**: surface as a `RemoteCacheError` so
   auth/quota issues are visible.
@@ -252,18 +252,18 @@ directly.
 
 ## Configuration (v1, shipped)
 
-| Env var                       | Required? | Notes                                       |
-| ----------------------------- | --------- | ------------------------------------------- |
-| `VZN_REMOTE_CACHE_URL`        | yes       | Base URL, e.g. `https://cache.example.com`. |
-| `VZN_REMOTE_CACHE_TOKEN`      | yes       | Bearer token sent on every request.         |
-| `VZN_REMOTE_CACHE_TEAM_ID`    | no        | Sent as `?teamId=` (Turbo tenancy).         |
-| `VZN_REMOTE_CACHE_SLUG`       | no        | Sent as `?slug=`.                           |
-| `VZN_REMOTE_CACHE_TIMEOUT_MS` | no        | Per-request timeout. Default `60000`.       |
+| Env var                      | Required? | Notes                                       |
+| ---------------------------- | --------- | ------------------------------------------- |
+| `VX_REMOTE_CACHE_URL`        | yes       | Base URL, e.g. `https://cache.example.com`. |
+| `VX_REMOTE_CACHE_TOKEN`      | yes       | Bearer token sent on every request.         |
+| `VX_REMOTE_CACHE_TEAM_ID`    | no        | Sent as `?teamId=` (Turbo tenancy).         |
+| `VX_REMOTE_CACHE_SLUG`       | no        | Sent as `?slug=`.                           |
+| `VX_REMOTE_CACHE_TIMEOUT_MS` | no        | Per-request timeout. Default `60000`.       |
 
 Missing either of the two required vars → local cache only. The
 orchestrator logs `remote cache: <url>` at the top of a run when the
 remote layer is active.
 
-`vzn.config.ts`-based remote-cache configuration is on the roadmap
+`vx.config.ts`-based remote-cache configuration is on the roadmap
 once workspace-config loading lands (see active workstreams in
 `CLAUDE.md`).

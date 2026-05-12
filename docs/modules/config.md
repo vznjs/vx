@@ -1,6 +1,6 @@
 # `config.ts` — the public schema
 
-The single source of truth for what users can write in `vzn.config.ts`.
+The single source of truth for what users can write in `vx.config.ts`.
 Pure types + two identity helpers; no runtime logic.
 
 ## Purpose
@@ -45,7 +45,7 @@ export function defineProject<T extends ProjectConfig>(config: T): T {
 
 Two reasons:
 
-1. **Type inference.** When a user writes `defineProject({ run: { tasks: {...} } })`,
+1. **Type inference.** When a user writes `defineProject({ tasks: {...} })`,
    the generic `T extends ProjectConfig` lets TypeScript infer the
    _literal_ types of nested fields (so task names autocomplete and
    union types narrow correctly).
@@ -58,7 +58,7 @@ The function body is a one-liner today and that's by design.
 ## Invariants
 
 - The exported types and helpers are the **only** public contract.
-  Internal modules import them; user code imports them via `@vzn/run`.
+  Internal modules import them; user code imports them via `@vzn/vx`.
 - No field is optional in the schema if it's required for correctness.
   When `cache` is provided, `cache.inputs.files` and
   `cache.outputs.files` are required by the type system (not just at

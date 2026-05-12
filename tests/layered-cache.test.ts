@@ -16,9 +16,9 @@ describe('LayeredCache', () => {
   let serverStore: Map<string, ArrayBuffer>
 
   beforeEach(async () => {
-    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vzn-layered-'))
+    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vx-layered-'))
     projectDir = path.join(workspaceRoot, 'project')
-    cacheDir = path.join(workspaceRoot, '.vzn', 'cache')
+    cacheDir = path.join(workspaceRoot, '.vx', 'cache')
     await mkdir(projectDir, { recursive: true })
     local = new Cache(cacheDir)
 

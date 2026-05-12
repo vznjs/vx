@@ -55,7 +55,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
 
     const project = projects.get(projectName)
     if (!project) return null
-    const taskConfig = project.config.run?.tasks?.[taskName]
+    const taskConfig = project.config.tasks?.[taskName]
     if (!taskConfig) return null
 
     const node: TaskNode = {
