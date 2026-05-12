@@ -30,26 +30,34 @@ Configs:
 
 ## Repository layout
 
+Bun-workspace monorepo. Root holds shared dev tooling (oxlint, oxfmt,
+@types/bun); each package owns its own code, tests, deps.
+
 ```
-src/
-  bin.ts            # shebang #!/usr/bin/env bun; wires process.argv -> cli.run
-  cli.ts            # argv parser, dispatcher, interactive picker, verbose summary
-  orchestrator.ts   # end-to-end: discover → load → graph → schedule → execute
-  scheduler.ts      # parallel topo executor
-  task-graph.ts     # builds TaskNode DAG from declared dependsOn
-  package-graph.ts  # workspace dep graph + transitive deps/dependents
-  workspace.ts      # pnpm-workspace.yaml discovery + project listing
-  project-loader.ts # jiti-loaded vzn.config.* with moduleCache: false
-  filter.ts         # pnpm-style filter DSL (-F)
-  cache.ts          # content-addressed cache (key derivation + save/restore)
-  runner.ts         # child_process.spawn wrapper + shellQuote
-  env.ts            # env composition (allowlist + passThrough + define)
-  inputs.ts         # input file glob resolution + project-boundary enforcement
-  config.ts         # public schema (ProjectConfig, TaskConfig, …)
-  paths.ts          # tiny POSIX-path helper
-  dashboard.ts      # local analytics HTTP server (JSON API + static UI)
-  dashboard-ui/     # static UI bundle (vanilla HTML + ESM hash router)
-  index.ts          # public re-exports
+packages/
+  run/              # @vzn/run — CLI, cache, scheduler, orchestrator
+    src/
+      bin.ts            # shebang; wires process.argv -> cli.run
+      cli.ts            # argv parser, dispatcher, interactive picker
+      orchestrator.ts   # discover → load → graph → schedule → execute
+      scheduler.ts      # parallel topo executor
+      task-graph.ts     # builds TaskNode DAG from declared dependsOn
+      package-graph.ts  # workspace dep graph
+      workspace.ts      # pnpm-workspace.yaml discovery
+      project-loader.ts # jiti-loaded vzn.config.* (moduleCache: false)
+      filter.ts         # pnpm-style filter DSL (-F)
+      cache.ts          # content-addressed cache (key + save/restore)
+      runner.ts         # Bun.spawn wrapper + shellQuote
+      env.ts            # env composition
+      inputs.ts         # glob resolution + project-boundary enforcement
+      config.ts         # public schema (ProjectConfig, TaskConfig, …)
+      paths.ts          # tiny POSIX-path helper
+      dashboard.ts      # legacy: API server (to move to @vzn/dashboard)
+      dashboard-ui/     # legacy: static UI (to be replaced)
+      index.ts          # public re-exports
+    tsconfig.json
+    package.json
+  dashboard/        # @vzn/dashboard (coming PR #26) — Vite + Solid + Tailwind
 docs/
   README.md         # index
   architecture.md   # module map, data flow, design principles
@@ -59,8 +67,11 @@ docs/
   cli.md            # CLI reference (flags, filter DSL, forwarding)
   modules/<name>.md # per-module reference
   design/           # forward-looking proposals
-    remote-cache.md # Turbo /v8/artifacts wire-spec adoption (not yet implemented)
 .claude/agents/     # subagent definitions
+package.json        # workspace root (Bun workspaces, "packages/*")
+bun.lock
+.oxlintrc.json      # lint config (shared across packages)
+.oxfmtrc.json       # format config (shared)
 ```
 
 ## Workflow
@@ -109,6 +120,13 @@ docs/
 
 ## Decision log
 
+- **2026-05**: Re-monorepo'd the project. Root `package.json` is a
+  Bun-workspaces manifest (`"workspaces": ["packages/*"]`); current
+  `src/` moved into `packages/run/src/`. Set up to host
+  `@vzn/dashboard` (Vite + Solid + Tailwind) alongside `@vzn/run`
+  per user direction — the dashboard server + UI is being pulled
+  out of `@vzn/run` so it can be a proper component-based app with
+  a build step. PR #25.
 - **2026-05**: Dashboard PR 6/10 — Tasks + Runs UI pages. Tasks
   ranks `(project, task)` pairs by average wall-clock duration
   (cache-hits excluded so the ranking reflects work actually
