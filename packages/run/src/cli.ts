@@ -6,8 +6,14 @@ import { createDashboardServer } from './dashboard.js'
 import { applyFilters, parseFilter } from './filter.js'
 import { run as runOrchestrator, type RunOptions, type RunSummary } from './orchestrator.js'
 import { buildPackageGraph } from './package-graph.js'
-import { loadProjectConfig } from './project-loader.js'
-import { findWorkspaceRoot, listProjects, loadWorkspace, type ProjectMeta } from './workspace.js'
+import { loadProjectConfig, loadWorkspaceConfig } from './project-loader.js'
+import {
+  findWorkspaceRoot,
+  listProjects,
+  loadWorkspace,
+  resolveCacheDir,
+  type ProjectMeta,
+} from './workspace.js'
 import type { TaskOutcome } from './scheduler.js'
 
 export async function run(argv: readonly string[]): Promise<number> {
@@ -435,7 +441,8 @@ async function dashboardCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`vzn dashboard: ${(err as Error).message}\n`)
     return 1
   }
-  const cacheDir = path.join(root, '.vzn', 'cache')
+  const workspaceConfig = await loadWorkspaceConfig(root)
+  const cacheDir = resolveCacheDir(root, workspaceConfig)
   const server = createDashboardServer({ cacheDir, port: parsed.port, hostname: parsed.host })
   process.stdout.write(`vzn dashboard: http://${server.hostname}:${server.port}/\n`)
   process.stdout.write(

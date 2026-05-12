@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { glob } from 'tinyglobby'
 import { parse as parseYaml } from 'yaml'
+import type { WorkspaceConfig } from './config.js'
 import { UserError } from './errors.js'
 
 export interface PackageJson {
@@ -41,6 +42,16 @@ export function findWorkspaceRoot(start: string): string {
     }
     dir = parent
   }
+}
+
+/**
+ * Resolve the cache directory for a workspace. Respects the user's
+ * `defineWorkspace({ cacheDir })` override (relative to the workspace
+ * root) and falls back to `.vzn/cache` when no config is set.
+ */
+export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string {
+  const rel = config?.cacheDir ?? path.join('.vzn', 'cache')
+  return path.resolve(root, rel)
 }
 
 export async function loadWorkspace(root: string): Promise<Workspace> {

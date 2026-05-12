@@ -122,6 +122,15 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: Wired `defineWorkspace({...})` loading. Was a dead
+  export — schema docs even flagged it as deferred. Now
+  `vzn.workspace.{ts,mts,js,mjs}` at the workspace root is jiti-loaded
+  by both `vzn run` and `vzn dashboard`. `concurrency` provides the
+  default when `-c` isn't passed; `cacheDir` (relative to workspace
+  root) lets users park `.vzn/cache` somewhere else (e.g.
+  `build/.vzn-cache` to keep all derived files in one tree).
+  `resolveCacheDir(root, config)` is the single source of truth so
+  the runner and the dashboard never disagree on which DB to open.
 - **2026-05**: Dashboard PR 8/10 — ported the four legacy pages
   (Overview, Cache, Tasks, Runs) to Solid components inside
   `apps/dashboard/`. Routing via `@solidjs/router`'s `<HashRouter>`
@@ -289,10 +298,7 @@ LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
    mixed concerns. See refactor audit findings in conversation.
 4. **Presets / config-introspection** — NX-style task inference from
    tool configs (`vitest.config.ts`, `tsconfig.json`).
-5. **Workspace config loading** — `defineWorkspace({...})` is exported
-   but the config file is never loaded. Either wire it up or remove
-   the dead exports.
-6. **Pre-signed URL auth + HMAC signing** (`x-artifact-tag`) for the
+5. **Pre-signed URL auth + HMAC signing** (`x-artifact-tag`) for the
    remote cache. v2 features per `docs/design/remote-cache.md`.
 
 ## Operating directive (to you, Claude)

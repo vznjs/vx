@@ -1,6 +1,15 @@
+import { existsSync } from 'node:fs'
+import path from 'node:path'
 import { createJiti } from 'jiti'
-import type { ProjectConfig } from './config.js'
+import type { ProjectConfig, WorkspaceConfig } from './config.js'
 import { UserError } from './errors.js'
+
+const WORKSPACE_CONFIG_FILENAMES = [
+  'vzn.workspace.ts',
+  'vzn.workspace.mts',
+  'vzn.workspace.js',
+  'vzn.workspace.mjs',
+]
 
 // jiti handles every supported extension (.ts/.mts/.cts/.js/.mjs/.cjs) with
 // `moduleCache: false`, so edits show up across repeated calls within a
@@ -24,6 +33,41 @@ export async function loadProjectConfig(configPath: string): Promise<ProjectConf
   }
   validate(mod as ProjectConfig, configPath)
   return mod as ProjectConfig
+}
+
+/**
+ * Find and load `vzn.workspace.{ts,mts,js,mjs}` from the workspace
+ * root. Returns `null` if no such file exists (the common case;
+ * the schema is fully optional). Validates the shape and throws
+ * a `UserError` on malformed input.
+ */
+export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig | null> {
+  const configPath =
+    WORKSPACE_CONFIG_FILENAMES.map((f) => path.join(root, f)).find((f) => existsSync(f)) ?? null
+  if (!configPath) return null
+  const ns = (await jiti.import(configPath)) as { default?: unknown }
+  const mod = ns?.default
+  if (!mod || typeof mod !== 'object') {
+    throw new UserError(`Workspace config at ${configPath} did not export a default object`)
+  }
+  validateWorkspace(mod as WorkspaceConfig, configPath)
+  return mod as WorkspaceConfig
+}
+
+function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
+  if (config.concurrency !== undefined) {
+    if (
+      typeof config.concurrency !== 'number' ||
+      !Number.isFinite(config.concurrency) ||
+      config.concurrency < 1 ||
+      !Number.isInteger(config.concurrency)
+    ) {
+      throw new UserError(`${configPath}: \`concurrency\` must be a positive integer`)
+    }
+  }
+  if (config.cacheDir !== undefined && typeof config.cacheDir !== 'string') {
+    throw new UserError(`${configPath}: \`cacheDir\` must be a string`)
+  }
 }
 
 /**
