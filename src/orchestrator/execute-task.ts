@@ -99,6 +99,11 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   if (cacheEnabled) {
+    // Time the cache lookup + (if hit) clean + restore + log replay.
+    // This is the "operation time" the user sees in the footer —
+    // wallclock for actually doing the cache-hit work, not the
+    // original exec time that produced the entry.
+    const cacheOpStart = performance.now()
     const hit = await cache.get(hash)
     if (hit) {
       if (outputs.length > 0) await cleanOutputs(cleanArgs)
@@ -111,7 +116,7 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
         node,
         status,
         exitCode: hit.exitCode,
-        durationMs: 0,
+        durationMs: Math.round(performance.now() - cacheOpStart),
         hash,
       }
     }

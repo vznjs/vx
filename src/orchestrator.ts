@@ -24,6 +24,7 @@ import { computeNestedProjectDirs } from './orchestrator/nested-dirs.ts'
 import { persistTaskLogs } from './orchestrator/task-logs.ts'
 import { wrapWithRemoteCache } from './orchestrator/remote-cache-setup.ts'
 import { defaultLogger, type Logger } from './orchestrator/logger.ts'
+import { detectColors } from './orchestrator/colors.ts'
 import { formatHeader } from './orchestrator/framed-output.ts'
 import { formatRunSummary } from './orchestrator/summary.ts'
 
@@ -49,7 +50,12 @@ export interface RunSummary {
 }
 
 export async function run(options: RunOptions): Promise<RunSummary> {
-  const log = options.log ?? defaultLogger()
+  // Color decision: a custom logger (tests, embedders) handles its
+  // own formatting and asserts on plain strings, so we suppress
+  // ANSI escapes for them. Only the defaultLogger (real terminal
+  // output) gets colors, gated by NO_COLOR / FORCE_COLOR / isTTY.
+  const colors = options.log ? { enabled: false } : detectColors()
+  const log = options.log ?? defaultLogger(colors)
 
   const workspaceRoot = await findWorkspaceRoot(options.cwd)
   const workspace = await loadWorkspace(workspaceRoot)
@@ -111,12 +117,15 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // user-requested set.
   const packagesInScope = new Set<string>()
   for (const node of nodes.values()) packagesInScope.add(node.projectName)
-  for (const line of formatHeader({
-    version: VERSION,
-    packages: [...packagesInScope],
-    task: options.task,
-    remoteCacheEnabled: cache instanceof LayeredCache,
-  }))
+  for (const line of formatHeader(
+    {
+      version: VERSION,
+      packages: [...packagesInScope],
+      task: options.task,
+      remoteCacheEnabled: cache instanceof LayeredCache,
+    },
+    colors,
+  ))
     log.status(line)
 
   const outcomes = await runGraph({
@@ -158,7 +167,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // exclusion as the analytics `recordRun` pass below.
   const realTasks = list.filter((o) => o.node.config.exec !== undefined)
   const totalMs = Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000
-  for (const line of formatRunSummary(realTasks, totalMs)) log.status(line)
+  for (const line of formatRunSummary(realTasks, totalMs, colors)) log.status(line)
 
   // Record each task to the run history. Group tasks (no `exec`) are
   // skipped — they aren't real runs and showing them in `vx stats` as

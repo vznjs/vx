@@ -20,6 +20,14 @@
 
 import type { TaskNode } from '../graph/task-graph.js'
 import type { TaskOutcome } from '../graph/scheduler.js'
+import { paint, type ColorSupport } from './colors.js'
+
+const NO_COLOR: ColorSupport = { enabled: false }
+
+const ACCENT = '#06b6d4' // cyan-500 — bullets, task ids, remote-hit hint
+const SUCCESS = '#22c55e' // green-500 — local cache-hit hint
+const WARN = '#eab308' // yellow-500 — skipped
+const ERROR = '#ef4444' // red-500 — failed
 
 export interface HeaderInput {
   version: string
@@ -28,19 +36,25 @@ export interface HeaderInput {
   remoteCacheEnabled: boolean
 }
 
-export function formatHeader(input: HeaderInput): string[] {
+export function formatHeader(input: HeaderInput, colors: ColorSupport = NO_COLOR): string[] {
   const sortedPkgs = [...input.packages].sort()
+  const bullet = paint(ACCENT, '•', colors)
   return [
-    `• vx ${input.version}`,
+    `${bullet} ${paint('', `vx ${input.version}`, colors, { bold: true })}`,
     '',
-    `   • Packages in scope: ${sortedPkgs.join(', ')}`,
-    `   • Running ${input.task} in ${sortedPkgs.length} package${sortedPkgs.length === 1 ? '' : 's'}`,
-    `   • Remote caching ${input.remoteCacheEnabled ? 'enabled' : 'disabled'}`,
+    `   ${bullet} Packages in scope: ${sortedPkgs.join(', ')}`,
+    `   ${bullet} Running ${input.task} in ${sortedPkgs.length} package${sortedPkgs.length === 1 ? '' : 's'}`,
+    `   ${bullet} Remote caching ${input.remoteCacheEnabled ? 'enabled' : 'disabled'}`,
     '',
   ]
 }
 
-export function formatTaskBlock(node: TaskNode, outcome: TaskOutcome, body: string): string {
+export function formatTaskBlock(
+  node: TaskNode,
+  outcome: TaskOutcome,
+  body: string,
+  colors: ColorSupport = NO_COLOR,
+): string {
   // Group tasks (no `exec`) do no work and have no body — they're
   // organizational nodes the user wrote so a `vx run ci` invocation
   // has a single name to address. Showing an empty box for them is
@@ -49,47 +63,69 @@ export function formatTaskBlock(node: TaskNode, outcome: TaskOutcome, body: stri
   if (node.config.exec === undefined) return ''
 
   const id = node.id
-  const header = formatBlockHeader(node, outcome)
-  const lines: string[] = [`┌─ ${id} > ${header}`]
+  const idPainted = paint(ACCENT, id, colors, { bold: true })
+  const corner = (s: string) => paint('', s, colors, { dim: true })
+  const header = formatBlockHeader(node, outcome, colors)
+  const lines: string[] = [`${corner('┌─')} ${idPainted} ${corner('>')} ${header}`]
 
   // Show the command for executed tasks so the user sees what ran;
   // skip for cache hits (the captured stdout/stderr is the interesting
   // part).
   const cmd = node.config.exec.command
-  if (outcome.status === 'success') lines.push(`$ ${cmd}`)
+  if (outcome.status === 'success') lines.push(paint('', `$ ${cmd}`, colors, { dim: true }))
 
   if (body.length > 0) {
     lines.push(body.replace(/\n$/, ''))
   }
 
-  lines.push(`└─ ${id} ──${formatBlockFooter(outcome)}`)
+  lines.push(`${corner('└─')} ${idPainted} ${corner('──')}${formatBlockFooter(outcome, colors)}`)
   return lines.join('\n') + '\n'
 }
 
-function formatBlockHeader(node: TaskNode, o: TaskOutcome): string {
+function formatBlockHeader(node: TaskNode, o: TaskOutcome, colors: ColorSupport): string {
   const shortHash = o.hash ? o.hash.slice(0, 8) : ''
+  const dim = (s: string) => paint('', s, colors, { dim: true })
   switch (o.status) {
     case 'cache-hit':
-      return `cache hit • ${shortHash}`
+      return `${paint(SUCCESS, 'cache hit', colors)} ${dim(`• ${shortHash}`)}`
     case 'cache-hit-remote':
-      return `remote cache hit • ${shortHash}`
+      return `${paint(ACCENT, 'remote cache hit', colors)} ${dim(`• ${shortHash}`)}`
     case 'failed':
       return `$ ${node.config.exec?.command ?? '(no command)'}`
     case 'skipped':
-      return 'skipped (upstream failed)'
+      return paint(WARN, 'skipped (upstream failed)', colors)
     case 'success':
-      return 'executed'
+      return dim('executed')
     default:
       return o.status
   }
 }
 
-function formatBlockFooter(o: TaskOutcome): string {
-  if (o.status === 'failed')
-    return ` FAILED in ${formatBriefDuration(o.durationMs)} (exit ${o.exitCode})`
-  if (o.status === 'skipped') return ''
-  if (o.durationMs === 0) return ''
-  return ` (${formatBriefDuration(o.durationMs)})`
+function formatBlockFooter(o: TaskOutcome, colors: ColorSupport): string {
+  // Footer pattern: ` (<dur>) <status>`. Duration is always shown.
+  // For cache hits it's the *original* exec time the entry was
+  // stored with (set by execute-task), not the ~0ms replay cost.
+  // Status differs by outcome — see formatStatusTag.
+  const dur = paint('', `(${formatBriefDuration(o.durationMs)})`, colors, { dim: true })
+  const tag = formatStatusTag(o, colors)
+  return ` ${dur} ${tag}`
+}
+
+function formatStatusTag(o: TaskOutcome, colors: ColorSupport): string {
+  switch (o.status) {
+    case 'cache-hit':
+      return paint('', 'from local cache', colors, { dim: true })
+    case 'cache-hit-remote':
+      return paint('', 'from remote cache', colors, { dim: true })
+    case 'success':
+      return paint('', 'executed', colors, { dim: true })
+    case 'failed':
+      return paint(ERROR, `FAILED (exit ${o.exitCode})`, colors, { bold: true })
+    case 'skipped':
+      return paint(WARN, 'skipped', colors)
+    default:
+      return o.status
+  }
 }
 
 function formatBriefDuration(ms: number): string {
