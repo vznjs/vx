@@ -106,6 +106,7 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     passThrough: step.env?.passThrough ?? [],
     define: step.env?.define ?? {},
     source: process.env,
+    binPaths: [path.join(node.projectDir, 'node_modules', '.bin')],
   })
   // Per-task wallclock span relative to the run's t=0. Monotonic ns
   // ticks so analytics can reconstruct the parallel timeline (overlaps,

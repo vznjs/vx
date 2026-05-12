@@ -1,11 +1,12 @@
+import path from 'node:path'
+
 // Build the environment exposed to a task.
 //
 // Layers, lowest to highest priority:
 //   1. Essentials (hard-coded allowlist for shell tooling).
 //   2. passThrough: parent process.env values for the named vars.
 //   3. define: explicit name=value pairs from the task config.
-//
-// Anything outside those three layers does not reach the child process.
+//   4. binPaths prepended to PATH (after all the above resolve PATH).
 
 const ESSENTIAL_ENV: readonly string[] = [
   'PATH',
@@ -39,17 +40,16 @@ export interface BuildEnvOptions {
   passThrough: readonly string[]
   define: Readonly<Record<string, string>>
   source: NodeJS.ProcessEnv
+  /**
+   * Directories prepended to the child's PATH (highest priority first).
+   * Used to expose the project's own `node_modules/.bin` so user commands
+   * (`oxlint`, `tsc`, `vitest`, …) resolve without a PM wrapper. Matches
+   * vite-task's behavior — explicit per-project bin, no tree walk, so
+   * sibling projects' bins stay invisible per the project-isolation rule.
+   */
+  binPaths?: readonly string[]
 }
 
-// PATH magic for node_modules/.bin is intentionally NOT handled here.
-// Same as Turbo / vite-task: vx expects to be invoked via the package
-// manager's run-script wrapper (`bun run`, `pnpm run`, `npm run`,
-// `yarn`), which prepends `<dir>/node_modules/.bin` to PATH for the
-// duration of the script. We inherit that PATH via `opts.source` and
-// pass it through to spawned children, so `oxlint` / `vitest` / `tsc`
-// resolve naturally. Users invoking vx from a raw shell without a PM
-// wrapper need to set PATH themselves — that's the standard
-// task-runner contract.
 export function buildIsolatedEnv(opts: BuildEnvOptions): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {}
 
@@ -63,6 +63,11 @@ export function buildIsolatedEnv(opts: BuildEnvOptions): NodeJS.ProcessEnv {
   }
   for (const [name, value] of Object.entries(opts.define)) {
     out[name] = value
+  }
+
+  if (opts.binPaths && opts.binPaths.length > 0) {
+    const prefix = opts.binPaths.join(path.delimiter)
+    out['PATH'] = out['PATH'] ? `${prefix}${path.delimiter}${out['PATH']}` : prefix
   }
 
   return out

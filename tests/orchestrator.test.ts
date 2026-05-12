@@ -1657,7 +1657,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'replays failed task stderr at end of run and persists logs to disk',
+    'streams failed task stderr live and persists logs to disk',
     async () => {
       await addProject(fixture.root, 'app-fail', {
         config: `
@@ -1678,8 +1678,9 @@ describe('orchestrator e2e', () => {
       expect(o?.exitCode).toBe(42)
       expect(o?.stderr).toContain('MY-ERROR-MARKER')
 
-      const replayed = fixture.log.some((line) => line.includes('MY-ERROR-MARKER'))
-      expect(replayed).toBe(true)
+      // Live stream goes through taskStderr → fixture.err.
+      const streamed = fixture.err.some((line) => line.includes('MY-ERROR-MARKER'))
+      expect(streamed).toBe(true)
 
       const logsRoot = path.join(fixture.root, '.vx/cache/logs')
       expect(existsSync(logsRoot)).toBe(true)
@@ -1696,7 +1697,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'thrown errors from executeTask surface in the failure replay',
+    'thrown errors from executeTask surface via the live stream',
     async () => {
       // Force a thrown error: a command that resolves to a nonexistent
       // executable. The spawn fails with ENOENT, which surfaces via
@@ -1719,9 +1720,9 @@ describe('orchestrator e2e', () => {
       // user-visible must be present.
       const captured = (o?.stderr ?? '') + (o?.stdout ?? '')
       expect(captured.length).toBeGreaterThan(0)
-      // It should also have been replayed via log.status.
-      const replayedLines = fixture.log.filter((l) => l.includes('broken-spawn#run'))
-      expect(replayedLines.length).toBeGreaterThan(0)
+      // Start + finish status lines name the task id.
+      const statusLines = fixture.log.filter((l) => l.includes('broken-spawn#run'))
+      expect(statusLines.length).toBeGreaterThan(0)
     },
     TIMEOUT,
   )

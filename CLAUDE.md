@@ -49,7 +49,6 @@ src/
     logger.ts           # default logger + formatOutcome + prefix
   workspace/            # discovery + selection
     workspace.ts        # discovery: pnpm-workspace.yaml / pkg.json workspaces / bare pkg.json
-    package-manager.ts  # detected PM (bun/pnpm/npm/yarn) via package-manager-detector
     project-loader.ts   # Bun-native vx.config.* loader (content-hash bust)
     package-graph.ts    # workspace dep graph
     filter.ts           # pnpm-style filter DSL (-F)
@@ -94,9 +93,11 @@ bun.lock
 - **PR cadence:** small, focused, reviewable diff per PR.
 - **Commit messages:** imperative present; first line < 72 chars; body
   explains _why_. No co-author lines.
-- **Tests must pass.** 155+ tests today. Use `bun test src/` locally.
-- **Format must be clean.** Use `bun run format`.
-- **Lint+typecheck must be clean.** Use `bun run lint`.
+- **Tests must pass.** 250+ tests today. Use `bun test` locally, or
+  `bun src/bin.ts run test` to drive it through vx itself.
+- **Format must be clean.** Run via vx: `bun src/bin.ts run format`.
+- **Lint+typecheck must be clean.** Run via vx: `bun src/bin.ts run lint`.
+  No `package.json` scripts — dogfooded through vx's own task graph.
 - **CI gates:** install → format:check → lint → test, all under Bun.
   CI workflow is `.github/workflows/ci.yml`.
 
@@ -132,6 +133,21 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: PATH-prepend each project's `node_modules/.bin` per
+  task (vite-task-style). `buildIsolatedEnv` gained an optional
+  `binPaths` arg; `executeTask` passes
+  `[<projectDir>/node_modules/.bin]`. Only the _project's own_ bin —
+  not the workspace root's — so sibling-project bins stay invisible
+  per the project-isolation rule. Side effects: deleted
+  `tryDelegateToLocal` / `findProjectDeclaringVx` from `bin.ts` (no
+  longer needed — PATH is set up by us, not by a PM wrapper),
+  dropped `[<agent>]` PM tag from the run banner, removed
+  `src/workspace/package-manager.ts`, and dropped the
+  `package-manager-detector` dep. Also dropped the orchestrator's
+  end-of-run failure replay (stderr is already streamed live;
+  reprinting just duplicates noise) — logs are still persisted to
+  `<cacheDir>/logs/<run_id>/`. Also dropped all `package.json`
+  scripts; CI invokes `bun src/bin.ts run ci` directly. PR #46.
 - **2026-05**: CACHE_VERSION → v12. Folded project's `package.json`
   bytes into every task's cache key (Turbo/Nx-style "implicit
   dependencies"). Closes the gap where a narrow `cache.inputs.files`
