@@ -44,7 +44,7 @@ The promise always resolves (never rejects) with a `RunResult`:
 - Signal-killed → `exitCode = 130` if no code was reported (otherwise
   the OS's "signal as exit code" convention).
 - `spawn()` itself failing → `exitCode = 127`, `stderr` augmented with
-  `[vzn] failed to spawn: <error>`. Rare; only happens if the shell
+  `[vx] failed to spawn: <error>`. Rare; only happens if the shell
   binary is missing.
 
 ## Live streaming + capture
@@ -62,7 +62,7 @@ task id) while keeping the accumulated string for cache replay.
 
 - Doesn't time out. A command that hangs hangs forever. Could add a
   `timeoutMs` option but it's not wired up.
-- Doesn't forward signals — if `vzn` is `SIGINT`ed, the child gets
+- Doesn't forward signals — if `vx` is `SIGINT`ed, the child gets
   whatever Node propagates by default. Cleaning up children on parent
   termination is currently not handled explicitly.
 - Doesn't decode TTY escape sequences or strip ANSI codes. They flow

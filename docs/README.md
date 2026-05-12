@@ -1,13 +1,13 @@
-# `@vzn/run` — technical documentation
+# `@vzn/vx` — technical documentation
 
-This directory is the complete technical reference for `@vzn/run`. Read
+This directory is the complete technical reference for `@vzn/vx`. Read
 it instead of the source when you want to understand _what_ and _why_;
 read the source when you want to understand _how_.
 
-## What `@vzn/run` is
+## What `@vzn/vx` is
 
-A monorepo task runner for pnpm workspaces. You author a `vzn.config.ts`
-per package; you run `vzn run <task>` at the workspace root; the tool
+A monorepo task runner for pnpm workspaces. You author a `vx.config.ts`
+per package; you run `vx run <task>` at the workspace root; the tool
 discovers projects, builds a task graph from declared dependencies,
 executes tasks in topological order with parallelism, and caches each
 task's outputs and replays them on cache hit.
@@ -16,7 +16,7 @@ It is shaped most directly after Turborepo (per-package config, opt-in
 caching, content-addressed key, cache hashes cascade through the
 dependency graph). It diverges from Turbo in two notable ways:
 
-- **TypeScript config** (`vzn.config.ts`) instead of `turbo.json` —
+- **TypeScript config** (`vx.config.ts`) instead of `turbo.json` —
   presets and computed values are first-class.
 - **Resolved task config hash** folded into the cache key — config
   imports, computed values, and partial reconfigurations are captured
@@ -28,19 +28,19 @@ shell strings; everything else is layered on top.
 
 ## Where to start
 
-| You want to…                         | Read                                   |
-| ------------------------------------ | -------------------------------------- |
-| Understand the overall shape         | [`architecture.md`](./architecture.md) |
-| Author a config                      | [`schema.md`](./schema.md)             |
-| Reason about caching                 | [`caching.md`](./caching.md)           |
-| Trace what happens at `vzn run` time | [`execution.md`](./execution.md)       |
-| Use the CLI                          | [`cli.md`](./cli.md)                   |
-| Modify or replace a specific module  | [`modules/`](./modules/)               |
-| Read forward-looking design notes    | [`design/`](./design/)                 |
+| You want to…                        | Read                                   |
+| ----------------------------------- | -------------------------------------- |
+| Understand the overall shape        | [`architecture.md`](./architecture.md) |
+| Author a config                     | [`schema.md`](./schema.md)             |
+| Reason about caching                | [`caching.md`](./caching.md)           |
+| Trace what happens at `vx run` time | [`execution.md`](./execution.md)       |
+| Use the CLI                         | [`cli.md`](./cli.md)                   |
+| Modify or replace a specific module | [`modules/`](./modules/)               |
+| Read forward-looking design notes   | [`design/`](./design/)                 |
 
 ## Repository layout
 
-`@vzn/run` is a single-package project. All code lives under `src/`;
+`@vzn/vx` is a single-package project. All code lives under `src/`;
 each module has a corresponding page in [`modules/`](./modules/).
 
 The remote-cache, layered-cache, and cache-archive modules each have

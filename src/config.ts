@@ -1,22 +1,13 @@
-// Public schema for nxt project and workspace configuration.
+// Public schema for vx project and workspace configuration.
 
 export interface WorkspaceConfig {
   /** Maximum concurrent tasks. Defaults to the number of CPUs. */
   concurrency?: number
-  /** Cache directory, relative to the workspace root. Defaults to `.vzn/cache`. */
+  /** Cache directory, relative to the workspace root. Defaults to `.vx/cache`. */
   cacheDir?: string
 }
 
 export interface ProjectConfig {
-  /**
-   * Task-runner config for this project. Nested under `run` so future
-   * `@vzn/*` sibling packages can add their own top-level keys (e.g.
-   * `lint`, `test`) without colliding with the runner's surface.
-   */
-  run?: ProjectRunConfig
-}
-
-export interface ProjectRunConfig {
   /** Tasks declared by this project, keyed by task name. */
   tasks?: Record<string, TaskConfig>
 }

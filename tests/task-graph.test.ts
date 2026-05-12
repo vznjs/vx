@@ -4,7 +4,7 @@ import type { PackageGraph } from '../src/workspace/package-graph.js'
 import { buildTaskGraph, type ProjectEntry } from '../src/graph/task-graph.js'
 
 function project(name: string, tasks: Record<string, TaskConfig>): ProjectEntry {
-  return { name, dir: `/ws/${name}`, config: { run: { tasks } } }
+  return { name, dir: `/ws/${name}`, config: { tasks } }
 }
 
 function projects(...entries: ProjectEntry[]): Map<string, ProjectEntry> {

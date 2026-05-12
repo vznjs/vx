@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Implement the pnpm-style filter language used by `vzn run -F <pattern>`.
+Implement the pnpm-style filter language used by `vx run -F <pattern>`.
 A filter expression selects a set of projects from the workspace; the
 CLI passes that set to the orchestrator as the `projects` list.
 

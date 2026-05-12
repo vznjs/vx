@@ -8,7 +8,7 @@ describe('findWorkspaceRoot', () => {
   let dir: string
 
   beforeEach(async () => {
-    dir = await mkdtemp(path.join(os.tmpdir(), 'vzn-ws-'))
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-ws-'))
   })
 
   afterEach(async () => {
@@ -31,7 +31,7 @@ describe('listProjects', () => {
   let dir: string
 
   beforeEach(async () => {
-    dir = await mkdtemp(path.join(os.tmpdir(), 'vzn-list-'))
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-list-'))
   })
 
   afterEach(async () => {

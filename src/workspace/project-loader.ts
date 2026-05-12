@@ -3,10 +3,10 @@ import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { UserError } from '../util/errors.js'
 
 const WORKSPACE_CONFIG_FILENAMES = [
-  'vzn.workspace.ts',
-  'vzn.workspace.mts',
-  'vzn.workspace.js',
-  'vzn.workspace.mjs',
+  'vx.workspace.ts',
+  'vx.workspace.mts',
+  'vx.workspace.js',
+  'vx.workspace.mjs',
 ]
 
 // Bun has native TS / ESM execution — no transpiler dep needed. We fold
@@ -20,7 +20,7 @@ const WORKSPACE_CONFIG_FILENAMES = [
 async function loadDefaultExport(configPath: string, kind: string): Promise<unknown> {
   const bytes = await Bun.file(configPath).bytes()
   const bust = new Bun.CryptoHasher('sha256').update(bytes).digest('hex').slice(0, 16)
-  const ns = (await import(`${configPath}?vzn-bust=${bust}`)) as { default?: unknown }
+  const ns = (await import(`${configPath}?vx-bust=${bust}`)) as { default?: unknown }
   const mod = ns?.default
   if (!mod || typeof mod !== 'object') {
     throw new UserError(`${kind} config at ${configPath} did not export a default object`)
@@ -35,7 +35,7 @@ export async function loadProjectConfig(configPath: string): Promise<ProjectConf
 }
 
 /**
- * Find and load `vzn.workspace.{ts,mts,js,mjs}` from the workspace
+ * Find and load `vx.workspace.{ts,mts,js,mjs}` from the workspace
  * root. Returns `null` if no such file exists (the common case;
  * the schema is fully optional). Validates the shape and throws
  * a `UserError` on malformed input.
@@ -72,19 +72,19 @@ function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
 
 /**
  * Runtime validation for the user-authored config. TypeScript checks
- * shape at edit-time, but `vzn run` may load configs that were never
+ * shape at edit-time, but `vx run` may load configs that were never
  * typechecked (plain .js, or TS with errors ignored). Catch the worst
  * shape problems early with a clear message rather than letting them
  * crash deeper in the orchestrator.
  */
 function validate(config: ProjectConfig, configPath: string): void {
-  const tasks = config.run?.tasks
+  const tasks = config.tasks
   if (tasks === undefined) return
   if (typeof tasks !== 'object' || tasks === null) {
-    throw new UserError(`${configPath}: \`run.tasks\` must be an object`)
+    throw new UserError(`${configPath}: \`tasks\` must be an object`)
   }
   for (const [name, task] of Object.entries(tasks)) {
-    const where = `${configPath}: run.tasks.${name}`
+    const where = `${configPath}: tasks.${name}`
     if (!task || typeof task !== 'object') {
       throw new UserError(`${where} must be an object`)
     }

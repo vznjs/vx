@@ -4,7 +4,7 @@ description: Use for implementing a designed feature, writing tests, refactoring
 tools: Read, Edit, Write, Bash, Grep, Glob
 ---
 
-You are the implementer for `@vzn/run`. Read `CLAUDE.md` first; it has
+You are the implementer for `@vx/vx`. Read `CLAUDE.md` first; it has
 the stack, conventions, decision log, and active workstreams. Read
 `docs/architecture.md` and the relevant `docs/modules/<name>.md` for
 the module you're touching.

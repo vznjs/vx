@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Evaluate a `vzn.config.{ts,mts,js,mjs}` file and return the resolved
+Evaluate a `vx.config.{ts,mts,js,mjs}` file and return the resolved
 `ProjectConfig` object. Handle TypeScript via `jiti`; handle native
 ES modules via dynamic `import()` with mtime cache-busting so config
 edits show up across calls within the same Node process.
@@ -35,11 +35,11 @@ re-evaluation.
 
 This matters when:
 
-- Tests run multiple `vzn run` calls in the same process and edit
+- Tests run multiple `vx run` calls in the same process and edit
   configs between them.
 - (Future) a long-running watch mode reloads configs after edits.
 
-For the normal one-shot `vzn run` CLI invocation it doesn't matter
+For the normal one-shot `vx run` CLI invocation it doesn't matter
 (each invocation is a fresh Node process), but supporting it costs
 nothing.
 

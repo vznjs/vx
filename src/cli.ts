@@ -27,7 +27,7 @@ export async function run(argv: readonly string[]): Promise<number> {
     case '--version':
     case '-V':
     case 'version':
-      process.stdout.write(`vzn ${VERSION}\n`)
+      process.stdout.write(`vx ${VERSION}\n`)
       return 0
     case 'run':
       return await runCmd(rest)
@@ -36,7 +36,7 @@ export async function run(argv: readonly string[]): Promise<number> {
     case 'cache':
       return await cacheCmd(rest)
     default:
-      process.stderr.write(`vzn: unknown command: ${command}\n`)
+      process.stderr.write(`vx: unknown command: ${command}\n`)
       printHelp()
       return 1
   }
@@ -45,7 +45,7 @@ export async function run(argv: readonly string[]): Promise<number> {
 async function runCmd(args: readonly string[]): Promise<number> {
   const parsed = parseRunArgs(args)
   if (parsed.error) {
-    process.stderr.write(`vzn run: ${parsed.error}\n`)
+    process.stderr.write(`vx run: ${parsed.error}\n`)
     return 1
   }
 
@@ -58,7 +58,7 @@ async function runCmd(args: readonly string[]): Promise<number> {
       pkgAnchor = parsed.task.slice(0, hashIdx)
       taskName = parsed.task.slice(hashIdx + 1)
       if (!pkgAnchor || !taskName) {
-        process.stderr.write(`vzn run: invalid pkg#task: ${parsed.task}\n`)
+        process.stderr.write(`vx run: invalid pkg#task: ${parsed.task}\n`)
         return 1
       }
     } else {
@@ -70,7 +70,7 @@ async function runCmd(args: readonly string[]): Promise<number> {
 
   if (!taskName) {
     if (!process.stdin.isTTY) {
-      process.stderr.write(`vzn run: missing task name (stdin is not a TTY)\n`)
+      process.stderr.write(`vx run: missing task name (stdin is not a TTY)\n`)
       return 1
     }
     const picked = await pickTask(cwd)
@@ -85,7 +85,7 @@ async function runCmd(args: readonly string[]): Promise<number> {
   } else if (parsed.filters.length > 0) {
     const resolved = await resolveFilters(cwd, parsed.filters)
     if (resolved.error) {
-      process.stderr.write(`vzn run: ${resolved.error}\n`)
+      process.stderr.write(`vx run: ${resolved.error}\n`)
       return 1
     }
     projects = resolved.names
@@ -95,7 +95,7 @@ async function runCmd(args: readonly string[]): Promise<number> {
     const cwdProject = await findCwdProject(cwd)
     if (!cwdProject) {
       process.stderr.write(
-        `vzn run: not inside a project. Pass -r for all packages, -F <pattern> to filter, or run from within a project directory.\n`,
+        `vx run: not inside a project. Pass -r for all packages, -F <pattern> to filter, or run from within a project directory.\n`,
       )
       return 1
     }
@@ -224,11 +224,11 @@ async function pickTask(cwd: string): Promise<PickedTask | null> {
   for (const meta of projects) {
     if (!meta.configPath) continue
     const config = await loadProjectConfig(meta.configPath)
-    const taskNames = Object.keys(config.run?.tasks ?? {}).sort()
+    const taskNames = Object.keys(config.tasks ?? {}).sort()
     for (const t of taskNames) entries.push({ project: meta.name, task: t })
   }
   if (entries.length === 0) {
-    process.stderr.write(`vzn run: no tasks declared in any project\n`)
+    process.stderr.write(`vx run: no tasks declared in any project\n`)
     return null
   }
   const width = String(entries.length).length
@@ -242,7 +242,7 @@ async function pickTask(cwd: string): Promise<PickedTask | null> {
     const answer = (await rl.question(`Pick a task [1-${entries.length}]: `)).trim()
     const n = Number(answer)
     if (!Number.isInteger(n) || n < 1 || n > entries.length) {
-      process.stderr.write(`vzn run: invalid selection: ${answer}\n`)
+      process.stderr.write(`vx run: invalid selection: ${answer}\n`)
       return null
     }
     return entries[n - 1] ?? null
@@ -301,10 +301,10 @@ async function cacheCmd(args: readonly string[]): Promise<number> {
     case 'prune':
       return await pruneCmd(rest)
     case undefined:
-      process.stderr.write('vzn cache: missing subcommand. Try `vzn cache prune`.\n')
+      process.stderr.write('vx cache: missing subcommand. Try `vx cache prune`.\n')
       return 1
     default:
-      process.stderr.write(`vzn cache: unknown subcommand: ${sub}\n`)
+      process.stderr.write(`vx cache: unknown subcommand: ${sub}\n`)
       return 1
   }
 }
@@ -344,7 +344,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
 async function pruneCmd(args: readonly string[]): Promise<number> {
   const parsed = parsePruneArgs(args)
   if (parsed.error) {
-    process.stderr.write(`vzn cache prune: ${parsed.error}\n`)
+    process.stderr.write(`vx cache prune: ${parsed.error}\n`)
     return 1
   }
   const cwd = process.cwd()
@@ -352,10 +352,10 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
   try {
     root = await findWorkspaceRoot(cwd)
   } catch (err) {
-    process.stderr.write(`vzn cache prune: ${(err as Error).message}\n`)
+    process.stderr.write(`vx cache prune: ${(err as Error).message}\n`)
     return 1
   }
-  const cache = new Cache(path.join(root, '.vzn', 'cache'))
+  const cache = new Cache(path.join(root, '.vx', 'cache'))
   try {
     const opts: { olderThanMs?: number; maxBytes?: number } = {}
     if (parsed.olderThanMs !== undefined) opts.olderThanMs = parsed.olderThanMs
@@ -395,10 +395,10 @@ async function statsCmd(): Promise<number> {
   try {
     root = await findWorkspaceRoot(cwd)
   } catch (err) {
-    process.stderr.write(`vzn stats: ${(err as Error).message}\n`)
+    process.stderr.write(`vx stats: ${(err as Error).message}\n`)
     return 1
   }
-  const cache = new Cache(path.join(root, '.vzn', 'cache'))
+  const cache = new Cache(path.join(root, '.vx', 'cache'))
   try {
     process.stdout.write(formatStats(cache.stats()))
   } finally {
@@ -435,14 +435,14 @@ export function formatBytes(n: number): string {
 function printHelp(): void {
   process.stdout.write(
     [
-      'vzn — open, extensible monorepo task runner',
+      'vx — open, extensible monorepo task runner',
       '',
       'Usage:',
-      '  vzn run [OPTIONS] [TASK | PKG#TASK] [-- forwarded-args...]',
-      '  vzn stats',
-      '  vzn cache prune [--older-than <duration>] [--max-size <bytes>]',
-      '  vzn help',
-      '  vzn version',
+      '  vx run [OPTIONS] [TASK | PKG#TASK] [-- forwarded-args...]',
+      '  vx stats',
+      '  vx cache prune [--older-than <duration>] [--max-size <bytes>]',
+      '  vx help',
+      '  vx version',
       '',
       'Selection (for run):',
       '  (default)                Run task in the project containing cwd.',
@@ -465,9 +465,9 @@ function printHelp(): void {
       '  different args produce different cache entries.',
       '',
       'Cache management:',
-      '  vzn stats                            Print cache size + last-24h run/hit summary.',
-      '  vzn cache prune --older-than 30d     Evict entries last accessed > 30 days ago.',
-      '  vzn cache prune --max-size 1G        Keep total cache under 1 GB (LRU eviction).',
+      '  vx stats                            Print cache size + last-24h run/hit summary.',
+      '  vx cache prune --older-than 30d     Evict entries last accessed > 30 days ago.',
+      '  vx cache prune --max-size 1G        Keep total cache under 1 GB (LRU eviction).',
       '',
       '  Duration units: s, m, h, d. Size units: K, M, G, T (powers of 1024).',
       '',

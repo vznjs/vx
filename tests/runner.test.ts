@@ -8,7 +8,7 @@ describe('runCommand', () => {
   let cwd: string
 
   beforeEach(async () => {
-    cwd = await mkdtemp(path.join(os.tmpdir(), 'vzn-runner-'))
+    cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-runner-'))
   })
 
   afterEach(async () => {

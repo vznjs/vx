@@ -48,7 +48,7 @@ Result: a `NodeJS.ProcessEnv` ready to pass to `child_process.spawn`.
   Garbage in → garbage out.
 - Doesn't read from `.env` files or anywhere except `source`. If you
   want `.env` support, do it at the config-author level (parse the file
-  in `vzn.config.ts` and feed values into `define`).
+  in `vx.config.ts` and feed values into `define`).
 - Doesn't merge `PATH` smart-style (prepend project bins, etc.). Pure
   override. `node_modules/.bin` is on PATH because the shell handles it
   (or doesn't); we don't intervene.

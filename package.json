@@ -1,5 +1,5 @@
 {
-  "name": "@vzn/run",
+  "name": "@vzn/vx",
   "version": "0.0.0",
   "description": "An open, extensible monorepo task runner.",
   "type": "module",
@@ -12,7 +12,7 @@
     }
   },
   "bin": {
-    "vzn": "./src/bin.ts"
+    "vx": "./src/bin.ts"
   },
   "files": [
     "src",

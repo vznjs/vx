@@ -197,7 +197,7 @@ interface CacheStats {
 }
 ```
 
-A `vzn stats` CLI command can ship later; the data is captured today.
+A `vx stats` CLI command can ship later; the data is captured today.
 
 ## What this does NOT do
 
@@ -206,13 +206,13 @@ A `vzn stats` CLI command can ship later; the data is captured today.
   add tar+zstd at the wire.
 - Doesn't garbage-collect old entries automatically. Tracked size +
   LRU access timestamps support eviction; the policy and the
-  `vzn cache prune` command haven't shipped yet.
+  `vx cache prune` command haven't shipped yet.
 - Doesn't verify entries are intact byte-for-byte. The file existence
   check is the only integrity gate.
 
 ## `CACHE_VERSION`
 
-Currently `'vzn-cache-v10'`. Bump when:
+Currently `'vx-cache-v10'`. Bump when:
 
 - A new field is added to `CacheKeyInput`.
 - The order or framing of existing key fields changes.

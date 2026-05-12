@@ -1,20 +1,18 @@
 # Config schema
 
-Complete reference for every field accepted by `vzn.config.ts` (or
+Complete reference for every field accepted by `vx.config.ts` (or
 `.mts`, `.js`, `.mjs`). Types live in `src/config.ts` and
-are re-exported from `@vzn/run`.
+are re-exported from `@vzn/vx`.
 
 ## Top-level shape
 
 ```ts
-import { defineProject } from '@vzn/run'
+import { defineProject } from '@vzn/vx'
 
 export default defineProject({
-  run: {
-    tasks: {
-      <taskName>: TaskConfig,
-      ...
-    },
+  tasks: {
+    <taskName>: TaskConfig,
+    ...
   },
 })
 ```
@@ -22,13 +20,9 @@ export default defineProject({
 `defineProject` is an identity function — it exists purely so
 TypeScript can infer types when you author a config.
 
-The top-level `run` namespace exists so future `@vzn/*` sibling packages
-(e.g. `@vzn/lint`, `@vzn/test`) can add their own top-level keys without
-colliding with the task runner's surface.
-
-`run.tasks` is a `Record<string, TaskConfig>`. Task names are arbitrary
+`tasks` is a `Record<string, TaskConfig>`. Task names are arbitrary
 strings; they're referenced by `dependsOn`, by `cache.inputs.tasks`,
-and by the CLI (`vzn run <taskName>`).
+and by the CLI (`vx run <taskName>`).
 
 ## `TaskConfig`
 
@@ -45,12 +39,12 @@ a `dependsOn` (it's a **group**). Group tasks are pure aggregators —
 nothing spawns, no cache lookup, no I/O. Useful for umbrella commands:
 
 ```ts
-// vzn run install -r  →  fans out to `build` in every workspace dep
+// vx run install -r  →  fans out to `build` in every workspace dep
 install: {
   dependsOn: { dependencies: ['build'] },
 }
 
-// vzn run ci  →  runs build then test in the cwd project
+// vx run ci  →  runs build then test in the cwd project
 ci: {
   dependsOn: { self: ['build', 'test'] },
 }
@@ -175,7 +169,7 @@ Project-relative globs. `!`-prefix negates.
 Always applied to every glob pass:
 
 - gitignore filter (workspace-root `.gitignore` + project `.gitignore`)
-- always-ignored: `node_modules/**`, `.git/**`, `.vzn/**`, `*.tsbuildinfo`
+- always-ignored: `node_modules/**`, `.git/**`, `.vx/**`, `*.tsbuildinfo`
 - declared `outputs.files` (so a task never invalidates itself)
 - nested-project subtree (no cross-project file references)
 
@@ -238,7 +232,7 @@ get captured even when gitignored (which they usually are).
 
 ## `WorkspaceConfig`
 
-Loaded from `vzn.workspace.{ts,mts,js,mjs}` at the workspace root —
+Loaded from `vx.workspace.{ts,mts,js,mjs}` at the workspace root —
 the same directory that contains `pnpm-workspace.yaml`. The file is
 **optional**: when missing, every field falls back to its built-in
 default.
@@ -247,24 +241,24 @@ default.
 interface WorkspaceConfig {
   /** Maximum concurrent tasks. Defaults to the number of CPUs. */
   concurrency?: number
-  /** Cache directory, relative to the workspace root. Defaults to `.vzn/cache`. */
+  /** Cache directory, relative to the workspace root. Defaults to `.vx/cache`. */
   cacheDir?: string
 }
 ```
 
 ```ts
-// vzn.workspace.ts
-import { defineWorkspace } from '@vzn/run'
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
 
 export default defineWorkspace({
   concurrency: 8,
-  cacheDir: 'build/.vzn-cache',
+  cacheDir: 'build/.vx-cache',
 })
 ```
 
 - `concurrency`: a CLI `-c <n>` flag still wins.
 - `cacheDir`: relative paths are resolved against the workspace root.
-  Absolute paths are honoured as-is. `vzn run` and `vzn stats` both
+  Absolute paths are honoured as-is. `vx run` and `vx stats` both
   read from the resolved location.
 
 Reserved for future workspace-level features like `globalInputs` (a
@@ -274,7 +268,7 @@ shared root configs like `tsconfig.base.json`).
 ## Helpers
 
 ```ts
-import { defineProject, defineWorkspace } from '@vzn/run'
+import { defineProject, defineWorkspace } from '@vzn/vx'
 
 // Identity functions; their purpose is type inference.
 defineProject<T extends ProjectConfig>(config: T): T
@@ -288,7 +282,7 @@ Use them so TypeScript can narrow literal types in your config (autocomplete
 ## Full example
 
 ```ts
-import { defineProject } from '@vzn/run'
+import { defineProject } from '@vzn/vx'
 
 export default defineProject({
   run: {

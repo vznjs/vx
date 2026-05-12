@@ -34,4 +34,4 @@ bun test src/
 - **format**: `bun run format` to fix.
 - **lint**: `bun run lint:fix` for autofixes; manual review for the rest.
 - **test**: usual triage; existing test fixtures in
-  `src/*.test.ts` use heredoc-string `vzn.config.mjs` content.
+  `src/*.test.ts` use heredoc-string `vx.config.mjs` content.

@@ -67,7 +67,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     : [...projects.keys()]
 
   const requested = candidateProjects
-    .filter((name) => projects.get(name)?.config.run?.tasks?.[options.task])
+    .filter((name) => projects.get(name)?.config.tasks?.[options.task])
     .map((name) => ({ project: name, task: options.task }))
 
   if (requested.length === 0) {
@@ -97,12 +97,12 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     Math.max(1, navigator.hardwareConcurrency)
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
-  // One run-id per `vzn run` invocation. Every task in the resulting
+  // One run-id per `vx run` invocation. Every task in the resulting
   // graph carries it so analytics queries can group by invocation.
   const runId = ulid()
   const runStartHrTimeNs = process.hrtime.bigint()
 
-  log.status(`vzn: ${nodes.size} task(s), concurrency ${concurrency} [run ${runId}]`)
+  log.status(`vx: ${nodes.size} task(s), concurrency ${concurrency} [run ${runId}]`)
 
   const outcomes = await runGraph({
     nodes,
@@ -157,7 +157,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   }
 
   // Record each task to the run history. Group tasks (no `exec`) are
-  // skipped — they aren't real runs and showing them in `vzn stats` as
+  // skipped — they aren't real runs and showing them in `vx stats` as
   // zero-duration successes is noise.
   const now = Date.now()
   for (const o of list) {

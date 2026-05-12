@@ -9,8 +9,8 @@ describe('packArchive + unpackArchive', () => {
   let dest: string
 
   beforeEach(async () => {
-    stage = await mkdtemp(path.join(os.tmpdir(), 'vzn-pack-'))
-    dest = await mkdtemp(path.join(os.tmpdir(), 'vzn-dest-'))
+    stage = await mkdtemp(path.join(os.tmpdir(), 'vx-pack-'))
+    dest = await mkdtemp(path.join(os.tmpdir(), 'vx-dest-'))
   })
 
   afterEach(async () => {
@@ -112,8 +112,8 @@ describe('tarPath', () => {
 
 describe('uniqueStageDir', () => {
   it('produces a path under the parent with pid + timestamp suffix', () => {
-    const p = uniqueStageDir('/tmp', 'vzn')
-    expect(p.startsWith('/tmp/vzn.')).toBe(true)
+    const p = uniqueStageDir('/tmp', 'vx')
+    expect(p.startsWith('/tmp/vx.')).toBe(true)
     const parts = p.split('.')
     expect(Number(parts[1])).toBe(process.pid)
     expect(Number(parts[2])).toBeGreaterThan(0)

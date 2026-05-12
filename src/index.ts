@@ -1,12 +1,11 @@
-// Public API for @vzn/run.
+// Public API for @vzn/vx.
 
 export const VERSION = '0.0.0'
 
-// Schema types and helpers (used by user vzn-config files and presets).
+// Schema types and helpers (used by user vx.config files and presets).
 export type {
   WorkspaceConfig,
   ProjectConfig,
-  ProjectRunConfig,
   TaskConfig,
   ExecConfig,
   ExecEnv,

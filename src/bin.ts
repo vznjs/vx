@@ -10,10 +10,10 @@ run(process.argv.slice(2)).then(
     // act on. For everything else (internal bugs, unexpected throws) we
     // print the full stack to aid debugging.
     if (err instanceof UserError) {
-      process.stderr.write(`vzn: ${err.message}\n`)
+      process.stderr.write(`vx: ${err.message}\n`)
     } else {
       const message = err instanceof Error ? (err.stack ?? err.message) : String(err)
-      process.stderr.write(`vzn: ${message}\n`)
+      process.stderr.write(`vx: ${message}\n`)
     }
     process.exit(1)
   },

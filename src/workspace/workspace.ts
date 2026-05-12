@@ -22,11 +22,11 @@ export interface ProjectMeta {
   /** Absolute path to the project directory. */
   dir: string
   packageJson: PackageJson
-  /** Absolute path to vzn.config.{ts,mts,js,mjs} or null. */
+  /** Absolute path to vx.config.{ts,mts,js,mjs} or null. */
   configPath: string | null
 }
 
-const CONFIG_FILENAMES = ['vzn.config.ts', 'vzn.config.mts', 'vzn.config.js', 'vzn.config.mjs']
+const CONFIG_FILENAMES = ['vx.config.ts', 'vx.config.mts', 'vx.config.js', 'vx.config.mjs']
 
 export async function findWorkspaceRoot(start: string): Promise<string> {
   let dir = path.resolve(start)
@@ -43,10 +43,10 @@ export async function findWorkspaceRoot(start: string): Promise<string> {
 /**
  * Resolve the cache directory for a workspace. Respects the user's
  * `defineWorkspace({ cacheDir })` override (relative to the workspace
- * root) and falls back to `.vzn/cache` when no config is set.
+ * root) and falls back to `.vx/cache` when no config is set.
  */
 export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string {
-  const rel = config?.cacheDir ?? path.join('.vzn', 'cache')
+  const rel = config?.cacheDir ?? path.join('.vx', 'cache')
   return path.resolve(root, rel)
 }
 

@@ -37,7 +37,7 @@ describe('cli run()', () => {
 
   it('prints version', async () => {
     expect(await run(['--version'])).toBe(0)
-    expect(stdout).toMatch(/^vzn \d/)
+    expect(stdout).toMatch(/^vx \d/)
   })
 
   it('rejects unknown command', async () => {
@@ -57,7 +57,7 @@ describe('cli run()', () => {
 
   it('--version uses -V (lowercase -v is reserved for --verbose)', async () => {
     expect(await run(['-V'])).toBe(0)
-    expect(stdout).toMatch(/^vzn \d/)
+    expect(stdout).toMatch(/^vx \d/)
   })
 })
 
@@ -69,7 +69,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises')
     const os = await import('node:os')
     const path = await import('node:path')
-    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vzn-cli-e2e-'))
+    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vx-cli-e2e-'))
     await writeFile(
       path.join(workspaceRoot, 'pnpm-workspace.yaml'),
       'packages:\n  - "packages/*"\n',
@@ -85,14 +85,12 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
       JSON.stringify({ name: 'one', version: '0.0.0' }),
     )
     await writeFile(
-      path.join(pkgDir, 'vzn.config.mjs'),
+      path.join(pkgDir, 'vx.config.mjs'),
       `export default {
-        run: {
-          tasks: {
-            hello: {
-              exec: { command: "echo hello-cli" },
-              cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
-            },
+        tasks: {
+          hello: {
+            exec: { command: "echo hello-cli" },
+            cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
           },
         },
       }`,
@@ -209,13 +207,11 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     const { writeFile } = await import('node:fs/promises')
     const path = await import('node:path')
     await writeFile(
-      path.join(workspaceRoot, 'packages', 'one', 'vzn.config.mjs'),
+      path.join(workspaceRoot, 'packages', 'one', 'vx.config.mjs'),
       `export default {
-        run: {
-          tasks: {
-            fail: {
-              exec: { command: "exit 9" },
-            },
+        tasks: {
+          fail: {
+            exec: { command: "exit 9" },
           },
         },
       }`,
@@ -239,13 +235,11 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     const { writeFile } = await import('node:fs/promises')
     const path = await import('node:path')
     await writeFile(
-      path.join(workspaceRoot, 'packages', 'one', 'vzn.config.mjs'),
+      path.join(workspaceRoot, 'packages', 'one', 'vx.config.mjs'),
       `export default {
-        run: {
-          tasks: {
-            echo: {
-              exec: { command: "echo forwarded:" },
-            },
+        tasks: {
+          echo: {
+            exec: { command: "echo forwarded:" },
           },
         },
       }`,
@@ -414,7 +408,7 @@ describe('cli stats command', () => {
     const { mkdtemp, writeFile } = await import('node:fs/promises')
     const os = await import('node:os')
     const path = await import('node:path')
-    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vzn-stats-'))
+    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vx-stats-'))
     await writeFile(
       path.join(workspaceRoot, 'pnpm-workspace.yaml'),
       'packages:\n  - "packages/*"\n',
@@ -530,7 +524,7 @@ describe('parsePruneArgs', () => {
   })
 })
 
-describe('vzn cache prune command', () => {
+describe('vx cache prune command', () => {
   let workspaceRoot: string
   const origCwd = process.cwd()
 
@@ -538,7 +532,7 @@ describe('vzn cache prune command', () => {
     const { mkdtemp, writeFile } = await import('node:fs/promises')
     const os = await import('node:os')
     const path = await import('node:path')
-    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vzn-prune-'))
+    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vx-prune-'))
     await writeFile(
       path.join(workspaceRoot, 'pnpm-workspace.yaml'),
       'packages:\n  - "packages/*"\n',

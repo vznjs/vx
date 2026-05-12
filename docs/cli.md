@@ -1,23 +1,23 @@
 # CLI reference
 
-The `vzn` binary is installed by `@vzn/run`. All commands are
+The `vx` binary is installed by `@vzn/vx`. All commands are
 hand-parsed (no commander/yargs/etc.) in `src/cli.ts`.
 
 ## Commands
 
 ```
-vzn run [OPTIONS] [TASK | PKG#TASK] [-- forwarded-args...]
-vzn stats
-vzn cache prune [--older-than <duration>] [--max-size <bytes>]
-vzn help
-vzn version
-vzn --help, vzn -h
-vzn --version, vzn -V
+vx run [OPTIONS] [TASK | PKG#TASK] [-- forwarded-args...]
+vx stats
+vx cache prune [--older-than <duration>] [--max-size <bytes>]
+vx help
+vx version
+vx --help, vx -h
+vx --version, vx -V
 ```
 
 `-v` is reserved for `--verbose`; use `-V` for `--version`.
 
-### `vzn run [TASK]`
+### `vx run [TASK]`
 
 Run the named task. By default, only the project containing the current
 working directory is selected — `dependsOn` still expands so the
@@ -35,7 +35,7 @@ Exit codes:
 - `0` — every task finished `success` or `cache-hit`.
 - `1` — at least one task ended `failed` or `skipped`.
 
-### `vzn stats`
+### `vx stats`
 
 Print a summary of the local cache:
 
@@ -48,20 +48,20 @@ Runs (24h):        100
 Hits  (24h):       73  (73.0%)
 ```
 
-Reads from `.vzn/cache/cache.db` (the v10 SQLite index). The "Runs"
+Reads from `.vx/cache/cache.db` (the v10 SQLite index). The "Runs"
 and "Hits" counts come from the `runs` table — recorded for every
-task at the end of each `vzn run`, including cache hits, failures,
+task at the end of each `vx run`, including cache hits, failures,
 and skipped tasks. Exits `1` if not inside a pnpm workspace.
 
-### `vzn cache prune`
+### `vx cache prune`
 
-Evict old or oversized cache entries. Operates on `.vzn/cache/cache.db`
+Evict old or oversized cache entries. Operates on `.vx/cache/cache.db`
 plus the on-disk `<hash>/` directories and `logs/<hash>.{stdout,stderr}`
 files.
 
 ```
-vzn cache prune --older-than <duration>     Drop entries last accessed before now - duration.
-vzn cache prune --max-size <size>           After age-based pruning, evict LRU until under <size>.
+vx cache prune --older-than <duration>     Drop entries last accessed before now - duration.
+vx cache prune --max-size <size>           After age-based pruning, evict LRU until under <size>.
 ```
 
 At least one of `--older-than` / `--max-size` is required. Both may be
@@ -74,25 +74,25 @@ accepted. Examples: `500M`, `1G`, `100K`, `2T`, `500MB`.
 Output:
 
 ```
-$ vzn cache prune --older-than 30d
+$ vx cache prune --older-than 30d
 Pruned 42 entries (1.3 GB freed)
 ```
 
 Exits `1` on parse error, missing policy, or workspace-discovery error.
 
-### `vzn help`, `vzn --help`, `vzn -h`
+### `vx help`, `vx --help`, `vx -h`
 
 Print the help message to stdout, exit `0`.
 
-### `vzn version`, `vzn --version`, `vzn -V`
+### `vx version`, `vx --version`, `vx -V`
 
-Print `vzn <version>` to stdout, exit `0`.
+Print `vx <version>` to stdout, exit `0`.
 
 Unknown commands print a help message + error to stderr and exit `1`.
 
 ## Selection
 
-`vzn run` picks the set of projects to consider, then walks `dependsOn`
+`vx run` picks the set of projects to consider, then walks `dependsOn`
 to assemble the full task graph from that set. Pick one of:
 
 | Form                | Effect                                                                |
@@ -122,11 +122,11 @@ excluded ones.
 Examples:
 
 ```sh
-vzn run build -F @scope/*        # all packages under @scope
-vzn run build -F app...          # app and its transitive deps
-vzn run build -F ...util         # util and everything that depends on it
-vzn run build -F app^...         # only app's deps
-vzn run build -F '*' -F '!docs'  # everything except docs
+vx run build -F @scope/*        # all packages under @scope
+vx run build -F app...          # app and its transitive deps
+vx run build -F ...util         # util and everything that depends on it
+vx run build -F app^...         # only app's deps
+vx run build -F '*' -F '!docs'  # everything except docs
 ```
 
 ## Argument forwarding (`--`)
@@ -134,8 +134,8 @@ vzn run build -F '*' -F '!docs'  # everything except docs
 Anything after `--` is forwarded (shell-quoted) to the task's `exec.command`:
 
 ```sh
-vzn run test -- --watch              # vitest sees --watch
-vzn run build -- --sourcemap         # build command gets --sourcemap
+vx run test -- --watch              # vitest sees --watch
+vx run build -- --sourcemap         # build command gets --sourcemap
 ```
 
 Forwarded args are folded into the cache key — runs with different
@@ -155,7 +155,7 @@ forwarded args never spuriously hit cache.
 
 ## Argv parsing rules
 
-- `--` separates vzn flags from forwarded task args. Everything after
+- `--` separates vx flags from forwarded task args. Everything after
   `--` is appended (shell-quoted) to each task's `exec.command`.
 - The positional argument (before `--`) is the task name, optionally
   prefixed with `pkg#`.
@@ -167,19 +167,19 @@ forwarded args never spuriously hit cache.
 
 ## Remote cache (env-driven)
 
-If `VZN_REMOTE_CACHE_URL` and `VZN_REMOTE_CACHE_TOKEN` are set in the
-environment, `vzn run` layers a remote cache on top of the local one.
+If `VX_REMOTE_CACHE_URL` and `VX_REMOTE_CACHE_TOKEN` are set in the
+environment, `vx run` layers a remote cache on top of the local one.
 Reads try local first then remote (hydrating local on remote hit);
 writes go to local immediately, then upload to remote in the background
 (failures are logged, not fatal).
 
-| Env var                       | Required? | Notes                                       |
-| ----------------------------- | --------- | ------------------------------------------- |
-| `VZN_REMOTE_CACHE_URL`        | yes       | Base URL, e.g. `https://cache.example.com`. |
-| `VZN_REMOTE_CACHE_TOKEN`      | yes       | Bearer token sent on every request.         |
-| `VZN_REMOTE_CACHE_TEAM_ID`    | no        | Sent as `?teamId=` (Turbo tenancy).         |
-| `VZN_REMOTE_CACHE_SLUG`       | no        | Sent as `?slug=`.                           |
-| `VZN_REMOTE_CACHE_TIMEOUT_MS` | no        | Per-request timeout. Default `60000`.       |
+| Env var                      | Required? | Notes                                       |
+| ---------------------------- | --------- | ------------------------------------------- |
+| `VX_REMOTE_CACHE_URL`        | yes       | Base URL, e.g. `https://cache.example.com`. |
+| `VX_REMOTE_CACHE_TOKEN`      | yes       | Bearer token sent on every request.         |
+| `VX_REMOTE_CACHE_TEAM_ID`    | no        | Sent as `?teamId=` (Turbo tenancy).         |
+| `VX_REMOTE_CACHE_SLUG`       | no        | Sent as `?slug=`.                           |
+| `VX_REMOTE_CACHE_TIMEOUT_MS` | no        | Per-request timeout. Default `60000`.       |
 
 Wire spec is Turborepo `/v8/artifacts/`. Compatible servers include
 `ducktors/turborepo-remote-cache`, `Fox32/openturbo-remote-cache`, and
@@ -191,13 +191,13 @@ full protocol.
 Intentionally absent — see `docs/README.md` for the broader scope
 discussion:
 
-- Multi-task invocation (`vzn run a b c`)
-- Wildcards in task names (`vzn run 'build:*'`)
+- Multi-task invocation (`vx run a b c`)
+- Wildcards in task names (`vx run 'build:*'`)
 - `--dry-run`
 - `--continue` (failure isolation is already default)
 - Output format flags (`--output-logs none/errors-only/full`)
-- Cache management subcommands (`vzn cache clean`)
-- Graph introspection (`vzn graph`, `vzn list`)
+- Cache management subcommands (`vx cache clean`)
+- Graph introspection (`vx graph`, `vx list`)
 
 Most of these are tractable additions; they just haven't been built.
 
@@ -208,9 +208,9 @@ The CLI dispatcher is also exported as `run(argv)` from `src/cli.ts`
 or programmatic use:
 
 ```ts
-import { run as cliRun } from '@vzn/run/cli' // not yet re-exported
+import { run as cliRun } from '@vzn/vx/cli' // not yet re-exported
 ```
 
-Currently you'd `import { run } from '@vzn/run'` for the _orchestrator_
+Currently you'd `import { run } from '@vzn/vx'` for the _orchestrator_
 `run` (programmatic API). The CLI dispatcher is not part of the public
 package exports; the `bin.ts` entry calls it directly.

@@ -31,9 +31,9 @@ and `process.exit(code)`s.
 
 ## Commands
 
-- `vzn run [OPTIONS] [TASK | PKG#TASK] [-- forwarded-args...]`
-- `vzn help` / `--help` / `-h`
-- `vzn version` / `--version` / `-V`
+- `vx run [OPTIONS] [TASK | PKG#TASK] [-- forwarded-args...]`
+- `vx help` / `--help` / `-h`
+- `vx version` / `--version` / `-V`
 - anything else → print "unknown command", print help, exit 1.
 
 Note: `-v` is reserved for `--verbose`; `--version` shorthand is `-V`.
@@ -103,7 +103,7 @@ predictable.
 - No global flags (no `--debug`, no `--quiet`, no `--color`).
 - No subcommands other than `run`/`help`/`version`.
 - No tab completion.
-- No multi-task invocation (`vzn run a b c`).
+- No multi-task invocation (`vx run a b c`).
 
 ## Tests
 
@@ -122,7 +122,7 @@ predictable.
 
 - **Different parser library** — keep `parseRunArgs` returning a stable
   shape so tests don't churn.
-- **Subcommands** — `vzn cache clean`, `vzn graph`, `vzn affected`. Add
+- **Subcommands** — `vx cache clean`, `vx graph`, `vx affected`. Add
   to the `switch (command)` in `run()`.
 - **Different filter DSL** — replace `filter.ts`, keep its two exports.
 - **TUI** — different concern; keep the parser intact and replace the
