@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { run } from './cli.js'
-import { UserError } from './errors.js'
+import { UserError } from './util/errors.js'
 
 run(process.argv.slice(2)).then(
   (code) => process.exit(code),

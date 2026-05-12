@@ -34,27 +34,32 @@ Single-package project. Flat src/ at root.
 
 ```
 src/
-  bin.ts            # shebang; wires process.argv -> cli.run
-  cli.ts            # argv parser, dispatcher, interactive picker
-  orchestrator.ts   # discover → load → graph → schedule → execute
-  scheduler.ts      # parallel topo executor
-  task-graph.ts     # builds TaskNode DAG from declared dependsOn
-  package-graph.ts  # workspace dep graph
-  workspace.ts      # pnpm-workspace.yaml discovery
-  project-loader.ts # jiti-loaded vzn.config.* (moduleCache: false)
-  filter.ts         # pnpm-style filter DSL (-F)
-  cache.ts          # content-addressed cache (key + save/restore)
-  layered-cache.ts  # local + remote composition
-  remote-cache.ts   # Turbo /v8/artifacts HTTP client
-  cache-archive.ts  # tar.gz pack/unpack for remote artifacts
-  runner.ts         # Bun.spawn wrapper + shellQuote
-  env.ts            # env composition
-  inputs.ts         # glob resolution + project-boundary enforcement
-  config.ts         # public schema (ProjectConfig, TaskConfig, …)
-  paths.ts          # tiny POSIX-path helper
-  ulid.ts           # tiny ULID generator (run-id stamping; no deps)
-  errors.ts         # UserError class — clean error output without a stack
-  index.ts          # public re-exports
+  bin.ts                # shebang; wires process.argv -> cli.run
+  cli.ts                # argv parser, dispatcher, interactive picker
+  orchestrator.ts       # discover → load → graph → schedule → execute
+  config.ts             # public schema (ProjectConfig, TaskConfig, …)
+  index.ts              # public re-exports
+  workspace/            # discovery + selection
+    workspace.ts        # pnpm-workspace.yaml discovery
+    project-loader.ts   # Bun-native vzn.config.* loader (content-hash bust)
+    package-graph.ts    # workspace dep graph
+    filter.ts           # pnpm-style filter DSL (-F)
+  graph/                # task graph + scheduling
+    task-graph.ts       # builds TaskNode DAG from declared dependsOn
+    scheduler.ts        # parallel topo executor
+  cache/                # local + remote cache cluster
+    cache.ts            # content-addressed cache (key + save/restore)
+    layered-cache.ts    # local + remote composition
+    remote-cache.ts     # Turbo /v8/artifacts HTTP client
+    cache-archive.ts    # tar.gz pack/unpack for remote artifacts
+  exec/                 # per-task execution
+    runner.ts           # Bun.spawn wrapper + shellQuote
+    env.ts              # env composition
+    inputs.ts           # glob resolution + project-boundary enforcement
+  util/                 # tiny shared helpers
+    paths.ts            # tiny POSIX-path helper
+    ulid.ts             # tiny ULID generator (run-id stamping; no deps)
+    errors.ts           # UserError class — clean error output without a stack
 docs/
   README.md         # index
   architecture.md   # module map, data flow, design principles

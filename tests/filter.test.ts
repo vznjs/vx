@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test'
 import path from 'node:path'
-import { applyFilters, parseFilter } from '../src/filter.js'
-import { buildPackageGraph } from '../src/package-graph.js'
-import type { ProjectMeta } from '../src/workspace.js'
+import { applyFilters, parseFilter } from '../src/workspace/filter.js'
+import { buildPackageGraph } from '../src/workspace/package-graph.js'
+import type { ProjectMeta } from '../src/workspace/workspace.js'
 
 const ROOT = '/ws'
 

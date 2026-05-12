@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { UserError } from '../src/errors.js'
+import { UserError } from '../src/util/errors.js'
 
 describe('UserError', () => {
   it('is an Error instance with the supplied message', () => {
