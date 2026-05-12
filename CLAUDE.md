@@ -122,6 +122,18 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: Dashboard PR 10/10 — Run detail page + flamegraph.
+  `/runs/:id` hits the existing `/api/runs/:id` endpoint and renders
+  per-task spans against the wallclock timeline. Flamegraph is a
+  pure CSS/absolute-position layout (no canvas, no SVG library):
+  one lane per project, bars positioned by `wallclockStartNs` (ns
+  precision when available, ms fallback for legacy rows), colored
+  by `status`/`cacheHit`. Layout math lives in a pure
+  `src/flamegraph.ts` with unit tests; rendering in
+  `components/Flamegraph.tsx`. Summary cards, a task table with
+  CPU/peak-RSS columns, and a status-badge component round out the
+  page. Last dashboard PR. Bundle: 53 KB raw / 18 KB gzipped JS,
+  7 KB CSS. PR #29.
 - **2026-05**: Dashboard PR 9/10 — `vzn dashboard` now serves
   `apps/dashboard/dist/` (the built Solid bundle from PR #27)
   instead of the inlined `packages/run/src/dashboard-ui/` static

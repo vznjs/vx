@@ -2,6 +2,7 @@ import type { Component, JSX } from 'solid-js'
 import { HashRouter, Route, A, useLocation, type RouteSectionProps } from '@solidjs/router'
 import { Overview } from './pages/Overview.tsx'
 import { Runs } from './pages/Runs.tsx'
+import { RunDetail } from './pages/RunDetail.tsx'
 import { Tasks } from './pages/Tasks.tsx'
 import { Cache } from './pages/Cache.tsx'
 
@@ -59,6 +60,7 @@ export const App: Component = () => (
     <Route path="/" component={Overview} />
     <Route path="/overview" component={Overview} />
     <Route path="/runs" component={Runs} />
+    <Route path="/runs/:id" component={RunDetail} />
     <Route path="/tasks" component={Tasks} />
     <Route path="/cache" component={Cache} />
     <Route path="*" component={NotFound} />
