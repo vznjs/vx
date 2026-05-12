@@ -116,8 +116,7 @@ describe('formatTaskBlock', () => {
     expect(out).toBe('┌─ @vzn/vx#deploy > skipped (upstream failed)\n└─ @vzn/vx#deploy ──\n')
   })
 
-  it('renders group tasks (no exec) with a "group task" header', () => {
-    const out = formatTaskBlock(node('@vzn/vx#ci'), outcome('@vzn/vx#ci', 'success'), '')
-    expect(out).toBe('┌─ @vzn/vx#ci > group task\n└─ @vzn/vx#ci ──\n')
+  it('emits no block for group tasks (no exec) — they are pure organization', () => {
+    expect(formatTaskBlock(node('@vzn/vx#ci'), outcome('@vzn/vx#ci', 'success'), '')).toBe('')
   })
 })

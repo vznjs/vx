@@ -38,7 +38,10 @@ export function defaultLogger(): Logger {
     taskComplete(node, outcome) {
       const body = buffers.get(node.id) ?? ''
       buffers.delete(node.id)
-      process.stdout.write(formatTaskBlock(node, outcome, body))
+      // formatTaskBlock returns '' for group tasks (no exec) — skip
+      // the write so a stray newline doesn't sneak into the output.
+      const block = formatTaskBlock(node, outcome, body)
+      if (block.length > 0) process.stdout.write(block)
     },
   }
 }
