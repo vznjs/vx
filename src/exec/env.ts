@@ -41,6 +41,15 @@ export interface BuildEnvOptions {
   source: NodeJS.ProcessEnv
 }
 
+// PATH magic for node_modules/.bin is intentionally NOT handled here.
+// Same as Turbo / vite-task: vx expects to be invoked via the package
+// manager's run-script wrapper (`bun run`, `pnpm run`, `npm run`,
+// `yarn`), which prepends `<dir>/node_modules/.bin` to PATH for the
+// duration of the script. We inherit that PATH via `opts.source` and
+// pass it through to spawned children, so `oxlint` / `vitest` / `tsc`
+// resolve naturally. Users invoking vx from a raw shell without a PM
+// wrapper need to set PATH themselves — that's the standard
+// task-runner contract.
 export function buildIsolatedEnv(opts: BuildEnvOptions): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {}
 

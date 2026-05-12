@@ -22,8 +22,25 @@ describe('findWorkspaceRoot', () => {
     expect(await findWorkspaceRoot(sub)).toBe(dir)
   })
 
-  it('throws clearly when no workspace yaml exists in any parent', async () => {
-    await expect(findWorkspaceRoot(dir)).rejects.toThrow(/Could not find pnpm-workspace.yaml/)
+  it('throws clearly when no workspace root signal exists in any parent', async () => {
+    await expect(findWorkspaceRoot(dir)).rejects.toThrow(/Could not find a workspace root/)
+  })
+
+  it('accepts a bare package.json as workspace root (single-project mode)', async () => {
+    await writeFile(path.join(dir, 'package.json'), '{"name":"r","private":true}')
+    const sub = path.join(dir, 'a', 'b', 'c')
+    await mkdir(sub, { recursive: true })
+    expect(await findWorkspaceRoot(sub)).toBe(dir)
+  })
+
+  it('accepts package.json with workspaces field (npm/yarn/bun)', async () => {
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
+    )
+    const sub = path.join(dir, 'packages')
+    await mkdir(sub, { recursive: true })
+    expect(await findWorkspaceRoot(sub)).toBe(dir)
   })
 })
 

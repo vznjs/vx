@@ -436,7 +436,7 @@ describe('cli stats command', () => {
     expect(stdout).toContain('Entries:           0')
   })
 
-  it('exits 1 when not inside a pnpm workspace', async () => {
+  it('exits 1 when not inside a workspace', async () => {
     process.chdir(origCwd)
     let stderr = ''
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
@@ -444,12 +444,12 @@ describe('cli stats command', () => {
       stderr += String(chunk)
       return true
     })
-    // Move out of any workspace.
-    const os = await import('node:os')
-    process.chdir(os.tmpdir())
+    // Walk to filesystem root — neither pnpm-workspace.yaml nor a
+    // package.json should exist there.
+    process.chdir('/')
     const code = await run(['stats'])
     expect(code).toBe(1)
-    expect(stderr).toContain('Could not find pnpm-workspace.yaml')
+    expect(stderr).toContain('Could not find a workspace root')
   })
 })
 

@@ -24,11 +24,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Format check
-        run: bun run format:check
-
-      - name: Lint + typecheck
-        run: bun run lint
-
-      - name: Test
-        run: bun test
+      # Dogfood: vx orchestrates its own format-check / lint / test
+      # via vx.config.ts. The `ci` task is a group that fans out to
+      # all three. Bun's `run` script wrapper prepends node_modules/.bin
+      # to PATH, so oxlint / oxfmt resolve.
+      - name: vx run ci
+        run: bun run ci

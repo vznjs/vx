@@ -8,4 +8,5 @@ coverage
 .idea
 .vscode
 *.log
+.vx
 .nxt
