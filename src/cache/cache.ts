@@ -15,7 +15,7 @@
 
 import { Database, type SQLQueryBindings } from 'bun:sqlite'
 import { existsSync, mkdirSync } from 'node:fs'
-import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises'
+import { link, mkdir, readdir, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { relPosix } from '../util/paths.js'
 
@@ -486,10 +486,15 @@ export class Cache implements CacheLayer {
     await rm(tmp, { recursive: true, force: true })
     await mkdir(tmp, { recursive: true })
 
+    // Save is a real byte copy (NOT hardlink). If we hardlinked the
+    // project's output file into the cache, a later `writeFile` to
+    // the project file would truncate the shared inode and corrupt
+    // the cache copy too. Restore can hardlink safely because clean
+    // removes the project file first, breaking any prior link.
     let totalBytes = 0
     const relOutputs: string[] = []
     const tmpOutputs = path.join(tmp, 'outputs')
-    for (const f of args.outputFiles) {
+    const saves = args.outputFiles.map(async (f) => {
       const rel = path.relative(args.projectDir, f)
       const dest = path.join(tmpOutputs, rel)
       // Bun.write auto-creates parent dirs.
@@ -497,7 +502,8 @@ export class Cache implements CacheLayer {
       const s = await stat(dest)
       totalBytes += s.size
       relOutputs.push(rel.split(path.sep).join('/'))
-    }
+    })
+    await Promise.all(saves)
 
     await Bun.write(path.join(tmp, 'stdout'), args.entry.stdout)
     await Bun.write(path.join(tmp, 'stderr'), args.entry.stderr)
@@ -803,16 +809,76 @@ async function hashFileFromDisk(filePath: string): Promise<string> {
   return h.digest('hex')
 }
 
+/**
+ * Materialize a cached output tree into `dest`. Same shape Turbo
+ * uses:
+ *
+ *   - Prefer `link(src, dest)` (POSIX hardlink) — O(1) per file,
+ *     no byte copying. The destination is a new directory entry
+ *     pointing to the cache's inode. This is what makes Turbo's
+ *     restore "instant".
+ *   - On `EXDEV` (cross-filesystem mount) or any other link failure,
+ *     fall back to a real byte copy via `Bun.write`. We try once per
+ *     run — if the cache and the project tree are on different
+ *     filesystems, every subsequent file pays the same fallback cost
+ *     but we don't keep re-trying link().
+ *   - Operations run in **parallel** across the entire tree (was
+ *     sequential).
+ *
+ * Caveat: hardlinks share the inode, so an in-place edit of a
+ * restored file would also corrupt the cache copy. Standard
+ * cache-runner contract — outputs are owned by the cache; users
+ * shouldn't edit them. Same model Turbo and Nx use.
+ */
 async function copyDir(src: string, dest: string): Promise<void> {
-  const entries = await readdir(src, { withFileTypes: true })
   await mkdir(dest, { recursive: true })
+  const work: Array<Promise<void>> = []
+  await collectFiles(src, dest, work)
+  await Promise.all(work)
+}
+
+async function collectFiles(src: string, dest: string, work: Array<Promise<void>>): Promise<void> {
+  const entries = await readdir(src, { withFileTypes: true })
+  // Pre-create directories sequentially per level — link() needs the
+  // parent to exist. Files within a level are linked in parallel.
   for (const e of entries) {
     const s = path.join(src, e.name)
     const d = path.join(dest, e.name)
     if (e.isDirectory()) {
-      await copyDir(s, d)
+      await mkdir(d, { recursive: true })
+      await collectFiles(s, d, work)
     } else if (e.isFile()) {
-      await Bun.write(d, Bun.file(s))
+      work.push(linkOrCopy(s, d))
     }
+  }
+}
+
+let crossFilesystemFallback = false
+
+async function linkOrCopy(src: string, dest: string): Promise<void> {
+  if (crossFilesystemFallback) {
+    await Bun.write(dest, Bun.file(src))
+    return
+  }
+  try {
+    await link(src, dest)
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'EEXIST') {
+      // Stale leftover from a partial restore; unlink and retry.
+      await rm(dest, { force: true })
+      try {
+        await link(src, dest)
+        return
+      } catch {
+        // Fall through to copy.
+      }
+    }
+    if (code === 'EXDEV') {
+      // Cross-filesystem — set the sticky fallback so subsequent
+      // files skip the link() syscall entirely.
+      crossFilesystemFallback = true
+    }
+    await Bun.write(dest, Bun.file(src))
   }
 }

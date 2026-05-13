@@ -3,6 +3,7 @@
 // rather than asserting wall-clock time (which is too flaky for CI).
 
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
+import { existsSync } from 'node:fs'
 import { mkdtemp, mkdir, rm, writeFile, utimes, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -340,6 +341,100 @@ describe('createHashCache + within-run hash memoization', () => {
     const hasher = new Bun.CryptoHasher('sha256')
     hasher.update(await Bun.file(pj).bytes())
     expect(direct).toBe(hasher.digest('hex'))
+  })
+})
+
+describe('restoreOutputs uses hardlinks (Turbo-style fast restore)', () => {
+  let dir: string
+  let cache: Cache
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-restore-'))
+    cache = new Cache(path.join(dir, '.vx-cache'))
+  })
+
+  afterEach(async () => {
+    cache.close()
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  async function seed(hash: string): Promise<{ projectDir: string; outFile: string }> {
+    const projectDir = path.join(dir, 'project')
+    await mkdir(path.join(projectDir, 'dist'), { recursive: true })
+    const outFile = path.join(projectDir, 'dist', 'index.js')
+    await writeFile(outFile, 'BUILT')
+    await cache.save({
+      hash,
+      projectDir,
+      outputFiles: [outFile],
+      entry: {
+        taskId: 'pkg#build',
+        command: 'tsc',
+        exitCode: 0,
+        durationMs: 1,
+        stdout: '',
+        stderr: '',
+      },
+    })
+    return { projectDir, outFile }
+  }
+
+  it('restoreOutputs creates a hardlink (same inode as the cache copy)', async () => {
+    const { projectDir, outFile } = await seed('h-link')
+    // Remove the project file so restore needs to create a new entry.
+    await rm(outFile)
+    await cache.restoreOutputs('h-link', projectDir)
+
+    const cacheCopy = path.join(dir, '.vx-cache', 'h-link', 'outputs', 'dist', 'index.js')
+    const a = await stat(outFile)
+    const b = await stat(cacheCopy)
+    expect(a.ino).toBe(b.ino) // same inode → hardlink
+    expect(a.nlink).toBeGreaterThanOrEqual(2) // at least the cache + project entries
+  })
+
+  it('save() does NOT hardlink (a later writeFile to the project copy must not corrupt the cache)', async () => {
+    const { projectDir, outFile } = await seed('h-no-link-on-save')
+    const cacheCopy = path.join(
+      dir,
+      '.vx-cache',
+      'h-no-link-on-save',
+      'outputs',
+      'dist',
+      'index.js',
+    )
+    const a = await stat(outFile)
+    const b = await stat(cacheCopy)
+    // save uses real byte-copy → different inodes.
+    expect(a.ino).not.toBe(b.ino)
+
+    // Sanity: corrupting the project copy leaves the cache copy intact.
+    await writeFile(outFile, 'CORRUPTED')
+    const { readFile } = await import('node:fs/promises')
+    expect(await readFile(cacheCopy, 'utf8')).toBe('BUILT')
+  })
+
+  it('cleanOutputs unlinks the project copy without affecting the cache copy', async () => {
+    const { projectDir, outFile } = await seed('h-unlink')
+    // Restore so project and cache share an inode.
+    await rm(outFile)
+    await cache.restoreOutputs('h-unlink', projectDir)
+    const cacheCopy = path.join(dir, '.vx-cache', 'h-unlink', 'outputs', 'dist', 'index.js')
+    // Now unlink the project file. Cache copy must survive.
+    await rm(outFile)
+    expect(existsSync(cacheCopy)).toBe(true)
+    const { readFile } = await import('node:fs/promises')
+    expect(await readFile(cacheCopy, 'utf8')).toBe('BUILT')
+  })
+
+  it('restoreOutputs handles a stale destination file (EEXIST → unlink + relink)', async () => {
+    const { projectDir, outFile } = await seed('h-eexist')
+    // A stale leftover at the destination must not block link().
+    // (cleanOutputs would normally remove it before restore, but if
+    // it lingers for any reason, restore must still succeed.)
+    await writeFile(outFile, 'STALE')
+    await cache.restoreOutputs('h-eexist', projectDir)
+    const { readFile } = await import('node:fs/promises')
+    expect(await readFile(outFile, 'utf8')).toBe('BUILT')
   })
 })
 
