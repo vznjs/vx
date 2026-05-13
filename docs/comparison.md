@@ -32,7 +32,7 @@ upstream repo so future revisions can be diffed against reality.
 
 | Capability                 | Turbo                     | Nx                         | vite-task                           | vx                                                         |
 | -------------------------- | ------------------------- | -------------------------- | ----------------------------------- | ---------------------------------------------------------- |
-| pnpm-style filter DSL      | `--filter`                | `--projects`, `--exclude`  | `--filter`                          | `-F` / `--filter` (same DSL)                               |
+| pnpm-style filter DSL      | `--filter`                | `--projects`, `--exclude`  | `--filter`                          | `--filter` / `--filter` (same DSL)                         |
 | recursive (every project)  | implicit                  | `--all`                    | `-r`                                | `--all`                                                    |
 | transitive deps            | `pkg...`                  | `--with-deps` (legacy)     | `-t`                                | `pkg...` (via DSL)                                         |
 | `pkg#task` addressing      | yes                       | `nx run pkg:target`        | yes                                 | yes                                                        |
@@ -140,7 +140,7 @@ paths are inside the respective upstream repos (Turbo
    `--affected=<ref>`) runs only the projects whose files changed
    since the given base. Default base is `origin/HEAD`, falling back
    to `HEAD~1`. Also exposed as a `[<since>]` form in the filter
-   DSL — `vx run build -F '[main]'` is the lower-level equivalent.
+   DSL — `vx run build --filter '[main]'` is the lower-level equivalent.
 
 4. ~~**Cross-package `dependsOn` via `pkg#task`**~~ — **shipped** as
    part of the dependsOn micro-syntax refactor. Wildcards

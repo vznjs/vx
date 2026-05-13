@@ -27,7 +27,7 @@ One markdown per module under `src/`. Each documents:
 | [`cache-archive.md`](./cache-archive.md)   | tar.gz pack/unpack for remote artifacts  |
 | [`layered-cache.md`](./layered-cache.md)   | Local + remote cache composition         |
 | [`orchestrator.md`](./orchestrator.md)     | End-to-end glue                          |
-| [`filter.md`](./filter.md)                 | pnpm-style filter DSL (`-F`)             |
+| [`filter.md`](./filter.md)                 | pnpm-style filter DSL (`--filter`)       |
 | [`cli.md`](./cli.md)                       | Argv parser + dispatcher                 |
 
 For a higher-level view see [`../architecture.md`](../architecture.md).
