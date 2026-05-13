@@ -17,6 +17,21 @@ export interface Logger {
   taskComplete(node: TaskNode, outcome: TaskOutcome): void
 }
 
+/**
+ * A Logger that silently drops every call. Pass this to `run()` when
+ * another consumer (the TUI) owns the terminal — the default logger
+ * writes framed-block output to stdout, which would otherwise bleed
+ * through the TUI's alt-screen render and corrupt the UI.
+ */
+export function noopLogger(): Logger {
+  return {
+    status: () => undefined,
+    taskStdout: () => undefined,
+    taskStderr: () => undefined,
+    taskComplete: () => undefined,
+  }
+}
+
 export function defaultLogger(colors: ColorSupport = detectColors()): Logger {
   // Per-task buffer. We don't separate stdout/stderr in the rendered
   // block — the user sees them in arrival order, same as Turbo.
