@@ -40,5 +40,62 @@ export default defineProject({
       description: 'format-check + lint + test (CI gate)',
       dependsOn: ['format-check', 'lint', 'test'],
     },
+
+    // Cross-target standalone binaries. One task per (os, arch) so
+    // each gets its own cache slot — changing src/ invalidates all
+    // four, but a cache hit on one doesn't drag the others through
+    // a recompile. `dist/` is wiped before each build by output
+    // cleaning, so the binary on disk always matches the cached one.
+    'build:linux-x64': {
+      description: 'compile standalone binary (linux x64)',
+      exec: {
+        command:
+          'bun build --compile --minify --bytecode --target=bun-linux-x64 src/bin.ts --outfile dist/vx-linux-x64',
+      },
+      cache: {
+        inputs: { files: ['src/**', 'package.json', 'bun.lock', 'tsconfig.json'] },
+        outputs: { files: ['dist/vx-linux-x64'] },
+      },
+    },
+    'build:linux-arm64': {
+      description: 'compile standalone binary (linux arm64)',
+      exec: {
+        command:
+          'bun build --compile --minify --bytecode --target=bun-linux-arm64 src/bin.ts --outfile dist/vx-linux-arm64',
+      },
+      cache: {
+        inputs: { files: ['src/**', 'package.json', 'bun.lock', 'tsconfig.json'] },
+        outputs: { files: ['dist/vx-linux-arm64'] },
+      },
+    },
+    'build:darwin-x64': {
+      description: 'compile standalone binary (darwin x64)',
+      exec: {
+        command:
+          'bun build --compile --minify --bytecode --target=bun-darwin-x64 src/bin.ts --outfile dist/vx-darwin-x64',
+      },
+      cache: {
+        inputs: { files: ['src/**', 'package.json', 'bun.lock', 'tsconfig.json'] },
+        outputs: { files: ['dist/vx-darwin-x64'] },
+      },
+    },
+    'build:darwin-arm64': {
+      description: 'compile standalone binary (darwin arm64)',
+      exec: {
+        command:
+          'bun build --compile --minify --bytecode --target=bun-darwin-arm64 src/bin.ts --outfile dist/vx-darwin-arm64',
+      },
+      cache: {
+        inputs: { files: ['src/**', 'package.json', 'bun.lock', 'tsconfig.json'] },
+        outputs: { files: ['dist/vx-darwin-arm64'] },
+      },
+    },
+
+    // Umbrella build for the release workflow. Fans out to every
+    // platform target. Skipped Windows since vx spawns POSIX shell.
+    build: {
+      description: 'compile standalone binaries for every target',
+      dependsOn: ['build:linux-x64', 'build:linux-arm64', 'build:darwin-x64', 'build:darwin-arm64'],
+    },
   },
 })

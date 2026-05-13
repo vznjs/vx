@@ -1,12 +1,10 @@
 name: Release assets
 
 # Triggered when a maintainer publishes a release in the GitHub UI
-# (or via `gh release create`). Compiles the binaries against the
-# release's tag and attaches them to the release.
-#
-# Notes: the maintainer writes the release body manually (or uses
-# GitHub's "Generate release notes" button). This workflow only
-# uploads the four cross-target binaries as assets.
+# (or via `gh release create`). Runs `vx run build` (which fans out
+# to one task per target with per-binary caching), then attaches
+# the four binaries to the release. The maintainer writes the body
+# manually.
 
 on:
   release:
@@ -27,14 +25,13 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
 
-      - name: Compile binaries
-        run: |
-          for t in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
-            bun build --compile --minify --bytecode --target=bun-$t \
-              src/bin.ts --outfile "dist/vx-${{ github.event.release.tag_name }}-$t"
-          done
+      # Dogfood: `build` is a vx group task fanning out to
+      # `build:<target>` for each platform. Each sub-task is
+      # individually cached, so re-running this workflow on the same
+      # commit is essentially free.
+      - run: bun src/bin.ts run build
 
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.release.tag_name }}
-          files: dist/*
+          files: dist/vx-*
