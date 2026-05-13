@@ -134,9 +134,9 @@ bun.lock
 ## Decision log
 
 - **2026-05**: TUI rebuild — wholesale rewrite on `@opentui/solid`
-  + `@opentui/keymap` + `xterm-headless`, scrapping the React-based
-  Phase 1-3B implementation. Three drivers (see
-  `docs/design/tui-rebuild.md`):
+  - `@opentui/keymap` + `xterm-headless`, scrapping the React-based
+    Phase 1-3B implementation. Three drivers (see
+    `docs/design/tui-rebuild.md`):
   1. **opencode uses Solid not React.** The OpenTUI maintainers'
      own TUI runs on `@opentui/solid`; the React reconciler caused
      the ghosting / overlay-bleed problems we kept fighting. Solid's
@@ -171,7 +171,7 @@ bun.lock
     (Turbo convention).
   - `src/tui/tui.tsx` — entry: `createCliRenderer` + `render(<App />)`
     inside `ThemeProvider > RunStateProvider > PtyStoreProvider >
-    DialogProvider`.
+DialogProvider`.
 
   Tsconfig: `jsx: preserve`, `jsxImportSource: @opentui/solid`.
   `bunfig.toml` adds `preload = ["@opentui/solid/preload"]` for
