@@ -133,6 +133,63 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: TUI rebuild — wholesale rewrite on `@opentui/solid`
+  - `@opentui/keymap` + `xterm-headless`, scrapping the React-based
+    Phase 1-3B implementation. Three drivers (see
+    `docs/design/tui-rebuild.md`):
+  1. **opencode uses Solid not React.** The OpenTUI maintainers'
+     own TUI runs on `@opentui/solid`; the React reconciler caused
+     the ghosting / overlay-bleed problems we kept fighting. Solid's
+     fine-grained reactivity has no VDOM diff to race the OpenTUI
+     painter.
+  2. **`xterm-headless` for per-task log panes.** Mirrors Turbo's
+     `vt100` parser: each task's stdout/stderr feeds an
+     `xterm-headless` Terminal; the pane reads `buffer.active.getLine`
+     rows. Build-tool output (`\r` overwrites, ANSI cursor escapes,
+     progress bars) now renders correctly. xterm-headless 5.x still
+     references browser `window`/`self` globals in its bundle — we
+     shim them to `globalThis` before importing.
+  3. **Scope cut to match Turbo.** One screen: TaskList (left,
+     sorted Turbo-style — running first w/ spinner, planned, then
+     finished by failure→success→cache) + LogPane (right, reads the
+     selected task's pty buffer) + StatusBar + Help dialog. No 5
+     view-tabs, no sparklines, no critical-path widget, no auto-exit
+     countdown. q / Ctrl-C exits.
+
+  Architecture mirrors opencode's TUI:
+  - `src/tui/context/helper.tsx` — `createSimpleContext` factory.
+  - `src/tui/context/{theme,run-state,pty-store}.tsx` — Solid
+    contexts (no single reducer; each subsystem owns its state).
+  - `src/tui/ui/dialog.tsx` — modal Dialog using
+    `position="absolute"` full-viewport with `zIndex={3000}` +
+    translucent `RGBA.fromInts(0,0,0,150)` backdrop, popup centered
+    inside via `alignItems="center" + paddingTop`. Opencode's exact
+    pattern.
+  - `src/tui/component/{task-list,log-pane,status-bar,pty-output}` —
+    components + the xterm-headless wrapper.
+  - `src/tui/overlay/help-dialog.tsx` — Help bound to `m`
+    (Turbo convention).
+  - `src/tui/tui.tsx` — entry: `createCliRenderer` + `render(<App />)`
+    inside `ThemeProvider > RunStateProvider > PtyStoreProvider >
+DialogProvider`.
+
+  Tsconfig: `jsx: preserve`, `jsxImportSource: @opentui/solid`.
+  `bunfig.toml` adds `preload = ["@opentui/solid/preload"]` for
+  `bun run` / `bun test`; the CLI also does
+  `await import('@opentui/solid/preload')` before lazy-loading the
+  TUI so installed-binary users (different cwd) also get the
+  babel-preset-solid plugin registered.
+
+  Deps: removed `@opentui/react`, `react`, `@types/react`. Added
+  `@opentui/solid`, `@opentui/keymap`, `solid-js`, `xterm-headless`,
+  `@types/babel__core` (for tsc strictness against the OpenTUI
+  preload script).
+
+  Tests: 506 → 436 (deleted the React-binding-specific tests; kept
+  the orchestrator-side Observer + scheduler tests). One Solid smoke
+  test verifies the new TUI mounts under OpenTUI's `testing: true`
+  mode.
+
 - **2026-05**: TUI Phase 3B — polish PR. Three additions on top of
   Phase 3 (497 → 506 tests):
   1. Filter input (`/`). State gains `filterEditing: boolean`; the
