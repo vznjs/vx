@@ -17,6 +17,8 @@
     "resolveJsonModule": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "@opentui/react",
     "types": ["bun"]
   },
   "include": ["src/**/*", "tests/**/*"]

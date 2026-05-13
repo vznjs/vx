@@ -665,6 +665,12 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--affected=origin/main']).affected).toBe('origin/main')
   })
 
+  it('parses --tui / --no-tui', () => {
+    expect(parseRunArgs(['build']).tui).toBeUndefined()
+    expect(parseRunArgs(['build', '--tui']).tui).toBe(true)
+    expect(parseRunArgs(['build', '--no-tui']).tui).toBe(false)
+  })
+
   it('parses --verbosity <n> (replaces -v / --verbose)', () => {
     expect(parseRunArgs(['build', '--verbosity', '1']).verbosity).toBe(1)
     expect(parseRunArgs(['build', '--verbosity', '2']).verbosity).toBe(2)
