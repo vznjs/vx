@@ -22,8 +22,14 @@ export interface TaskConfig {
    * out to per-package work.
    */
   exec?: ExecConfig
-  /** Tasks that must complete successfully before this task runs. */
-  dependsOn?: TaskDependsOn
+  /**
+   * Tasks that must complete successfully before this task runs.
+   * Turbo/Nx-style micro-syntax:
+   *   - `'name'`       — same-project task named `name`.
+   *   - `'^name'`      — task `name` in every transitive workspace dep.
+   *   - `'pkg#name'`   — specific package's `name` task.
+   */
+  dependsOn?: readonly string[]
   /**
    * Caching configuration. **Caching is opt-in.** If this field is omitted,
    * the task always runs and nothing is read from or written to the cache.
@@ -96,36 +102,24 @@ export interface CacheInputs {
   env?: string[]
   /**
    * Which upstream tasks' cache keys participate in this task's key.
-   * Same shape as `dependsOn`: list task names by source bucket.
+   * Uses the same Turbo/Nx micro-syntax as `dependsOn`, plus
+   * wildcards and negation for filtering:
    *
-   * **Per-bucket defaults.** When a bucket is omitted, all upstream from
-   * that source contribute. When provided, entries are patterns applied
-   * in order, last write wins:
-   *   - `'*'`     include all from this bucket
-   *   - `'name'`  include the literal task name
-   *   - `'!name'` exclude the literal task name
+   *   - `'*'`         include every same-project upstream
+   *   - `'^*'`        include every dep-workspace upstream
+   *   - `'name'`      include same-project task `name`
+   *   - `'^name'`     include the `name` task in dep workspaces
+   *   - `'pkg#name'`  include the specific package's `name` task
+   *   - `'!name'`, `'!^name'`, `'!pkg#name'` — exclude
    *
-   * Examples:
-   * - omitted entirely → all upstream contribute (default).
-   * - `{ self: ['*'], dependencies: ['build'] }` → explicit "all self,
-   *   only build from deps".
-   * - `{ dependencies: ['*', '!noisy'] }` → all deps except `noisy`.
-   * - `{ self: [], dependencies: [] }` → fully decoupled.
+   * Patterns are applied in order, last write wins, so
+   * `['*', '^*', '!^noisy']` reads as "all upstream except deps' noisy".
+   *
+   * Defaults:
+   * - omitted entirely → all upstream contribute (same as `['*', '^*']`).
+   * - `[]` → fully decoupled; no upstream contributes.
    */
-  tasks?: TaskDependsOn
-}
-
-export interface TaskDependsOn {
-  /**
-   * Task names in this same project that must complete first.
-   * Equivalent to Turbo's bare `taskname` notation.
-   */
-  self?: string[]
-  /**
-   * Task names to run in every transitive workspace dependency before
-   * this task starts. Equivalent to Turbo's `^taskname` notation.
-   */
-  dependencies?: string[]
+  tasks?: readonly string[]
 }
 
 export function defineProject<T extends ProjectConfig>(config: T): T {

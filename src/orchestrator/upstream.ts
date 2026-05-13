@@ -1,42 +1,73 @@
-import type { TaskDependsOn } from '../config.js'
+import {
+  DependencySpecError,
+  parseDependencySpec,
+  type DependencySpec,
+} from '../graph/dependency-spec.js'
 import type { TaskOutcome } from '../graph/scheduler.js'
+import { UserError } from '../util/errors.js'
 
 /**
  * Pick which upstream task hashes participate in the current task's
  * cache key, filtered by `cache.inputs.tasks`.
  *
- * Per-bucket default: an omitted bucket → all upstream from that
- * source contribute. An explicit array supports three pattern kinds,
- * applied in order:
- *   '*'      include all from this bucket
- *   'name'   include the literal task name
- *   '!name'  exclude the literal task name
- * Last write wins, so `['*', '!noisy']` reads as "all minus noisy".
+ * Patterns (Turbo/Nx micro-syntax + filter extensions):
+ *   '*'         all same-project upstream
+ *   '^*'        all dep-workspace upstream
+ *   'name'      same-project task `name`
+ *   '^name'     `name` task in every dep workspace
+ *   'pkg#name'  specific package's `name` task
+ *   '!<form>'   exclude — any of the above with a leading `!`
+ *
+ * Patterns are applied in order; last write wins, so
+ * `['*', '^*', '!^noisy']` reads as "all minus deps' noisy".
+ *
+ * Defaults:
+ *   - `filter === undefined` → all upstream contribute.
+ *   - `filter === []`        → none contribute (fully decoupled).
  */
 export function filterUpstreamHashes(
   upstream: TaskOutcome[],
-  filter: TaskDependsOn | undefined,
+  filter: readonly string[] | undefined,
   selfProjectName: string,
+  selfTaskId: string,
 ): string[] {
-  const out: string[] = []
-  for (const u of upstream) {
-    if (!u.hash) continue
-    const isSameProject = u.node.projectName === selfProjectName
-    const bucket = isSameProject ? filter?.self : filter?.dependencies
+  if (filter === undefined) return upstream.filter((u) => u.hash).map((u) => u.hash as string)
 
-    if (bucket === undefined) {
-      out.push(u.hash)
-      continue
+  const specs: DependencySpec[] = filter.map((raw) => {
+    try {
+      return parseDependencySpec(raw)
+    } catch (err) {
+      if (err instanceof DependencySpecError) {
+        throw new UserError(`${selfTaskId}: cache.inputs.tasks: ${err.message}`)
+      }
+      throw err
     }
+  })
 
-    let included = false
-    for (const pattern of bucket) {
-      if (pattern === '*') included = true
-      else if (pattern.startsWith('!')) {
-        if (pattern.slice(1) === u.node.taskName) included = false
-      } else if (pattern === u.node.taskName) included = true
+  const selected = new Set<string>()
+  for (const spec of specs) {
+    for (const u of upstream) {
+      if (!u.hash) continue
+      const isSelf = u.node.projectName === selfProjectName
+      if (!matches(spec, u, isSelf)) continue
+      if (spec.negated) selected.delete(u.hash)
+      else selected.add(u.hash)
     }
-    if (included) out.push(u.hash)
   }
-  return out
+  return [...selected]
+}
+
+function matches(spec: DependencySpec, u: TaskOutcome, isSelf: boolean): boolean {
+  switch (spec.kind) {
+    case 'wildcardSelf':
+      return isSelf
+    case 'wildcardDeps':
+      return !isSelf
+    case 'self':
+      return isSelf && u.node.taskName === spec.task
+    case 'deps':
+      return !isSelf && u.node.taskName === spec.task
+    case 'cross':
+      return u.node.projectName === spec.project && u.node.taskName === spec.task
+  }
 }

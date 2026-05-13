@@ -133,6 +133,15 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: dependsOn + cache.inputs.tasks switched to Turbo/Nx
+  micro-syntax — a flat `string[]` instead of
+  `{ self: [...], dependencies: [...] }`. Entries:
+  `'name'` (same-project), `'^name'` (workspace deps), `'pkg#name'`
+  (cross-project edge). For `cache.inputs.tasks`, two extras for
+  filtering: `'*'`/`'^*'` for "every same-project/dep upstream",
+  `'!<form>'` for exclusion. Last-write-wins ordering. New
+  `src/graph/dependency-spec.ts` is the shared parser. dependsOn
+  validation rejects wildcards/negation (they're filter-only). PR #56.
 - **2026-05**: Declared output paths are wiped before every cache-hit
   restore AND every cache-miss exec, so the project's output dir ends
   the run bit-identical to the cached snapshot (no stragglers from a

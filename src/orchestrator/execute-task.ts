@@ -63,6 +63,7 @@ export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
     args.upstream,
     cacheCfg?.inputs?.tasks,
     args.node.projectName,
+    args.node.id,
   )
   const taskConfigHash = hashTaskConfig(cfg)
   const projectPackageJsonHash = await hashProjectPackageJson(args.node.projectDir)

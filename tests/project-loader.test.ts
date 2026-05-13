@@ -37,13 +37,10 @@ describe('loadProjectConfig', () => {
   describe('group tasks (no exec)', () => {
     it('accepts a task that has only dependsOn', async () => {
       const file = path.join(dir, 'vx.config.mjs')
-      await writeFile(
-        file,
-        `export default { tasks: { install: { dependsOn: { dependencies: ['build'] } } } }`,
-      )
+      await writeFile(file, `export default { tasks: { install: { dependsOn: ['^build'] } } }`)
       const cfg = await loadProjectConfig(file)
       expect(cfg.tasks?.install?.exec).toBeUndefined()
-      expect(cfg.tasks?.install?.dependsOn).toEqual({ dependencies: ['build'] })
+      expect(cfg.tasks?.install?.dependsOn).toEqual(['^build'])
     })
 
     it('rejects a task with no exec and no dependsOn', async () => {
@@ -57,7 +54,7 @@ describe('loadProjectConfig', () => {
       await writeFile(
         file,
         `export default { tasks: { g: {
-          dependsOn: { dependencies: ['build'] },
+          dependsOn: ['^build'],
           cache: { inputs: { files: ['**'] }, outputs: { files: [] } },
         } } }`,
       )

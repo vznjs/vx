@@ -33,7 +33,7 @@ export default defineProject({
 
     // Umbrella task for CI. Group task: no exec, just chains deps.
     ci: {
-      dependsOn: { self: ['format-check', 'lint', 'test'] },
+      dependsOn: ['format-check', 'lint', 'test'],
     },
   },
 })

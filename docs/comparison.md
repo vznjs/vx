@@ -59,7 +59,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 > **Why no `--parallel`?** Turbo's `--parallel` exists because users
 > often over-declare `dependsOn` and want an escape hatch. In vx,
 > `dependsOn` is opt-in and explicit — if you wrote
-> `dependsOn: { dependencies: ['build'] }` you meant it. The
+> `dependsOn: ['^build']` you meant it. The
 > legitimate "I want to fan out without waiting" cases are already
 > covered by (a) not declaring `dependsOn` in the first place, and
 > (b) `--only`, which skips `dependsOn` expansion.
@@ -71,9 +71,9 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Config language                                      | JSON (`turbo.json`)                                  | JSON (`project.json`, `nx.json`)                  | Vite config (`run` key)            | TypeScript (`vx.config.ts`)                     |
 | Per-package config                                   | yes                                                  | yes                                               | yes                                | yes                                             |
 | Workspace-level config                               | `turbo.json` at root + `extends`                     | `nx.json`                                         | root `vite.config.*`               | `vx.workspace.ts` (concurrency + cacheDir only) |
-| Per-task `dependsOn`: same project                   | bare name `lint`                                     | bare name                                         | bare name                          | `dependsOn.self: [...]`                         |
-| Per-task `dependsOn`: workspace deps                 | `^lint`                                              | `^lint` or `{projects:"dependencies"}`            | `pkg#task`                         | `dependsOn.dependencies: [...]`                 |
-| Per-task `dependsOn`: arbitrary other package's task | `pkg#task`                                           | `{projects:["pkg"],target:"task"}`                | `pkg#task`                         | — **gap**                                       |
+| Per-task `dependsOn`: same project                   | bare name `lint`                                     | bare name                                         | bare name                          | `'lint'`                                        |
+| Per-task `dependsOn`: workspace deps                 | `^lint`                                              | `^lint` or `{projects:"dependencies"}`            | `pkg#task`                         | `'^lint'`                                       |
+| Per-task `dependsOn`: arbitrary other package's task | `pkg#task`                                           | `{projects:["pkg"],target:"task"}`                | `pkg#task`                         | `'pkg#task'`                                    |
 | Wildcards in `dependsOn`                             | —                                                    | v19.5+: `build-*`, `^build-*`                     | —                                  | — **gap**                                       |
 | Group / umbrella tasks                               | tasks with `dependsOn` only                          | (achieved via target groups)                      | (none)                             | yes — tasks with no `exec`                      |
 | Input declarations                                   | `inputs: [...]` + `$TURBO_DEFAULT$` etc.             | `inputs: [...]` w/ rich types                     | `input: glob` or `{auto:true}`     | `cache.inputs.files: string[]`                  |
@@ -142,12 +142,10 @@ paths are inside the respective upstream repos (Turbo
    - Nx: `affected` subcommand + `--base/--head/--uncommitted/--untracked/--files/--stdin`
      (`packages/nx/src/command-line/affected/command-object.ts`).
 
-4. **Cross-package `dependsOn` (`pkg#task` and wildcards).** Today vx
-   can do "build in deps" via `dependsOn.dependencies`, but not "depend
-   on web#bundle from utils#docs". Schema-extending but contained.
-   - Turbo: `web#lint` arbitrary edges.
-   - Nx: `{projects:["my-app"],target:"build"}`; v19.5+ wildcards
-     `build-*`, `^build-*`.
+4. ~~**Cross-package `dependsOn` via `pkg#task`**~~ — **shipped** as
+   part of the dependsOn micro-syntax refactor. Wildcards
+   (`build-*`, `^build-*`) are still a gap; Nx is the only one with
+   them.
 
 5. **Named / reusable input sets.** Repeating `['src/**', 'tsconfig.json',
 'package.json']` across every cached task is noise. Schema addition

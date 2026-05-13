@@ -115,6 +115,14 @@ function validate(config: ProjectConfig, configPath: string): void {
         )
       }
     }
+    if (dependsOn !== undefined) {
+      if (!Array.isArray(dependsOn) || dependsOn.some((s) => typeof s !== 'string')) {
+        throw new UserError(
+          `${where}.dependsOn must be an array of strings ` +
+            `(Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name')`,
+        )
+      }
+    }
     if (cache !== undefined) {
       if (typeof cache !== 'object' || cache === null) {
         throw new UserError(`${where}.cache must be an object when present`)
