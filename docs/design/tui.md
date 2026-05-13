@@ -1,7 +1,8 @@
 # `vx run --tui` — interactive full-screen dashboard
 
 > **Status:** spec. Not implemented. Architect pass next; design doc
-> + implementation phases follow.
+>
+> - implementation phases follow.
 
 ## Vision
 
@@ -69,13 +70,13 @@ Five top-level views, switchable with `1`–`5` keys. The TUI launches
 into **Overview** (`1`). All views share the same header / progress /
 status bar; the middle region changes.
 
-| Key | View       | Use                                                       |
-| --- | ---------- | --------------------------------------------------------- |
-| `1` | Overview   | The dashboard. Tasks + stats + cache + timeline + log.    |
-| `2` | Graph      | Full-screen project DAG with status + per-task progress.  |
-| `3` | Workers    | Concurrency-slot occupancy + utilization sparkline.       |
-| `4` | Bottleneck | Critical path + slowest tasks + slow-vs-historical.       |
-| `5` | Queue      | Ready-but-waiting + blocked-by-deps breakdown.            |
+| Key | View       | Use                                                      |
+| --- | ---------- | -------------------------------------------------------- |
+| `1` | Overview   | The dashboard. Tasks + stats + cache + timeline + log.   |
+| `2` | Graph      | Full-screen project DAG with status + per-task progress. |
+| `3` | Workers    | Concurrency-slot occupancy + utilization sparkline.      |
+| `4` | Bottleneck | Critical path + slowest tasks + slow-vs-historical.      |
+| `5` | Queue      | Ready-but-waiting + blocked-by-deps breakdown.           |
 
 `Enter` from any view opens the **Task Detail overlay** for the
 currently-focused task (logs, history, ETA, worker slot, cache key).
@@ -480,20 +481,20 @@ Context-sensitive: when Task Detail is open, shows
 
 ## Interactions (keymap v1)
 
-| Key            | Action                                                                  |
-| -------------- | ----------------------------------------------------------------------- |
-| `q` / `Ctrl+C` | Quit. SIGINT propagates; orchestrator drains; TUI tears down.           |
-| `1` … `5`      | Switch top-level view (Overview / Graph / Workers / Bottleneck / Queue).|
-| `Tab`          | Cycle focus within the current view (panel-to-panel).                   |
-| `↑` / `↓`      | Move selection (or scroll when a scrollable panel is focused).          |
-| `Enter`        | Open Task Detail overlay for the focused task.                          |
-| `Esc`          | Close overlay / return focus to the primary panel.                      |
-| `Space`        | Expand / collapse a group task in any list-style view.                  |
-| `/`            | Open filter input; filters the current view's list by substring match.  |
-| `t`            | In Graph view, toggle critical-path overlay.                            |
-| `?`            | Open help overlay.                                                      |
-| `pgup` / `pgdn`| Scroll the focused panel.                                               |
-| `c`            | (Task Detail) copy the log buffer to the OS clipboard (best-effort).    |
+| Key             | Action                                                                   |
+| --------------- | ------------------------------------------------------------------------ |
+| `q` / `Ctrl+C`  | Quit. SIGINT propagates; orchestrator drains; TUI tears down.            |
+| `1` … `5`       | Switch top-level view (Overview / Graph / Workers / Bottleneck / Queue). |
+| `Tab`           | Cycle focus within the current view (panel-to-panel).                    |
+| `↑` / `↓`       | Move selection (or scroll when a scrollable panel is focused).           |
+| `Enter`         | Open Task Detail overlay for the focused task.                           |
+| `Esc`           | Close overlay / return focus to the primary panel.                       |
+| `Space`         | Expand / collapse a group task in any list-style view.                   |
+| `/`             | Open filter input; filters the current view's list by substring match.   |
+| `t`             | In Graph view, toggle critical-path overlay.                             |
+| `?`             | Open help overlay.                                                       |
+| `pgup` / `pgdn` | Scroll the focused panel.                                                |
+| `c`             | (Task Detail) copy the log buffer to the OS clipboard (best-effort).     |
 
 Out of scope v1: re-run (`r`), kill (`x`), pause (`p`), expand task
 to multi-pane diff vs cached output, mouse.
@@ -505,12 +506,25 @@ Events:
 
 ```ts
 type TuiEvent =
-  | { kind: 'runStart'; runId: string; nodes: TaskNode[]; concurrency: number; remoteCacheEnabled: boolean }
+  | {
+      kind: 'runStart'
+      runId: string
+      nodes: TaskNode[]
+      concurrency: number
+      remoteCacheEnabled: boolean
+    }
   | { kind: 'taskStart'; taskId: string; startNs: bigint }
   | { kind: 'taskStdout'; taskId: string; chunk: string }
   | { kind: 'taskStderr'; taskId: string; chunk: string }
   | { kind: 'taskComplete'; taskId: string; outcome: TaskOutcome }
-  | { kind: 'remoteCache'; op: 'GET' | 'PUT' | 'HEAD'; hash: string; bytes?: number; latencyMs: number; ok: boolean }
+  | {
+      kind: 'remoteCache'
+      op: 'GET' | 'PUT' | 'HEAD'
+      hash: string
+      bytes?: number
+      latencyMs: number
+      ok: boolean
+    }
   | { kind: 'runEnd'; ok: boolean; outcomes: TaskOutcome[]; totalMs: number }
 ```
 
@@ -676,11 +690,11 @@ falls back, the framed-block logger runs as today.
 4. **Tear down.** On `q` / SIGINT / runEnd:
    a. Stop the render loop.
    b. Exit alternate-screen buffer (`\x1b[?1049l`), show cursor,
-      restore stdin mode.
+   restore stdin mode.
    c. Print the standard end-of-run summary (`formatRunSummary`)
-      to stdout so the user sees the same totals they'd get from
-      the framed-block logger — and so the buffer-up of CI logs is
-      consistent.
+   to stdout so the user sees the same totals they'd get from
+   the framed-block logger — and so the buffer-up of CI logs is
+   consistent.
    d. Return the run's exit code.
 
 ### Performance
@@ -744,7 +758,8 @@ positioned by `wallclockStartNs` and `wallclockEndNs` (or
 `hrtime.bigint()` for running tasks).
 
 The bar width is `min(remainingWidth, ((endNs - startNs) / totalNs)
-* panelWidth)`. Filled `█`. Running tasks have an animated trailing
+
+- panelWidth)`. Filled `█`. Running tasks have an animated trailing
 edge (a `▌` half-block that toggles every 500ms to suggest motion).
 
 When a project has > 5 concurrent tasks within the visible window
@@ -896,16 +911,16 @@ running task. Not yet competitive with the framed block.
     clipboard. Best-effort via OSC-52 escape (terminal clipboard
     protocol; works in iTerm2, Kitty, recent xterm). Falls back to
     silently no-op. Acceptable for v1?
-   Default ON gives the best first impression but risks confusion
-   in mixed-tooling pipelines.
-4. **Where do `--summarize` / `--profile` files write to?** Still on
-   exit, after tear-down. Confirm.
-5. **What's the contract for programmatic embedders** that pass a
-   custom `log`? Currently they suppress colors. With TUI, they
-   should suppress TUI too (force framed-block — or actually, force
-   their custom logger).
-6. **How do we handle resize?** Ink reflows on `process.stdout` resize
-   events. Validate that the timeline + sparkline panels recompute.
-7. **Bun compile + Ink.** Does `bun build --compile` work with the
-   Ink + react + react-reconciler tree, or does it choke on dynamic
-   requires? Needs a prototype.
+    Default ON gives the best first impression but risks confusion
+    in mixed-tooling pipelines.
+11. **Where do `--summarize` / `--profile` files write to?** Still on
+    exit, after tear-down. Confirm.
+12. **What's the contract for programmatic embedders** that pass a
+    custom `log`? Currently they suppress colors. With TUI, they
+    should suppress TUI too (force framed-block — or actually, force
+    their custom logger).
+13. **How do we handle resize?** Ink reflows on `process.stdout` resize
+    events. Validate that the timeline + sparkline panels recompute.
+14. **Bun compile + Ink.** Does `bun build --compile` work with the
+    Ink + react + react-reconciler tree, or does it choke on dynamic
+    requires? Needs a prototype.

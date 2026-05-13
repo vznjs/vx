@@ -90,15 +90,37 @@ In `src/orchestrator/observer.ts` (new):
 
 ```ts
 export type ObserverEvent =
-  | { kind: 'runStart'; runId: string; nodes: readonly TaskNode[]; concurrency: number; remoteCacheEnabled: boolean; startedAtMs: number }
+  | {
+      kind: 'runStart'
+      runId: string
+      nodes: readonly TaskNode[]
+      concurrency: number
+      remoteCacheEnabled: boolean
+      startedAtMs: number
+    }
   | { kind: 'taskStart'; nodeId: string; startNs: bigint }
   | { kind: 'taskStdout'; nodeId: string; chunk: string }
   | { kind: 'taskStderr'; nodeId: string; chunk: string }
   | { kind: 'taskComplete'; outcome: TaskOutcome }
-  | { kind: 'remoteCache'; op: 'GET' | 'PUT' | 'HEAD'; hash: string; bytes?: number; latencyMs: number; ok: boolean }
-  | { kind: 'runEnd'; ok: boolean; outcomes: readonly TaskOutcome[]; totalMs: number; endedAtMs: number }
+  | {
+      kind: 'remoteCache'
+      op: 'GET' | 'PUT' | 'HEAD'
+      hash: string
+      bytes?: number
+      latencyMs: number
+      ok: boolean
+    }
+  | {
+      kind: 'runEnd'
+      ok: boolean
+      outcomes: readonly TaskOutcome[]
+      totalMs: number
+      endedAtMs: number
+    }
 
-export interface Observer { emit(event: ObserverEvent): void }
+export interface Observer {
+  emit(event: ObserverEvent): void
+}
 ```
 
 One method, one tagged-union argument. Reducers love unions; new
@@ -106,15 +128,15 @@ event kinds don't break consumers (default: ignore).
 
 ### Emit sites (line-level)
 
-| Event           | Where                                                                                      |
-| --------------- | ------------------------------------------------------------------------------------------ |
-| `runStart`      | `src/orchestrator.ts:run()` after `formatHeader` writes (line ~117).                       |
-| `taskStart`     | `src/graph/scheduler.ts:runGraph` inside the `onStart` callback (line ~87).                |
-| `taskStdout`    | `src/orchestrator/execute-task.ts` — every `runCommand({ onStdout })` and `runPersistent({ onStdout })` callsite. Wrap once. |
-| `taskStderr`    | Same, for `onStderr`.                                                                      |
-| `taskComplete`  | `src/orchestrator.ts:run()` — `onFinish` callback to `runGraph`, after `log.taskComplete` (line ~131). |
-| `remoteCache`   | `src/cache/layered-cache.ts` via `LayeredCacheOptions.onRemoteRequest` (new field).        |
-| `runEnd`        | `src/orchestrator.ts:run()` immediately after `formatRunSummary` (line ~170) and before `--summarize` / `--profile` writes. |
+| Event          | Where                                                                                                                        |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `runStart`     | `src/orchestrator.ts:run()` after `formatHeader` writes (line ~117).                                                         |
+| `taskStart`    | `src/graph/scheduler.ts:runGraph` inside the `onStart` callback (line ~87).                                                  |
+| `taskStdout`   | `src/orchestrator/execute-task.ts` — every `runCommand({ onStdout })` and `runPersistent({ onStdout })` callsite. Wrap once. |
+| `taskStderr`   | Same, for `onStderr`.                                                                                                        |
+| `taskComplete` | `src/orchestrator.ts:run()` — `onFinish` callback to `runGraph`, after `log.taskComplete` (line ~131).                       |
+| `remoteCache`  | `src/cache/layered-cache.ts` via `LayeredCacheOptions.onRemoteRequest` (new field).                                          |
+| `runEnd`       | `src/orchestrator.ts:run()` immediately after `formatRunSummary` (line ~170) and before `--summarize` / `--profile` writes.  |
 
 ### LayeredCache decoupling
 
@@ -144,7 +166,15 @@ Defined once:
 
 ```ts
 function makeSafeObserver(o: Observer): Observer {
-  return { emit: (ev) => { try { o.emit(ev) } catch (err) { process.stderr.write(`[vx] observer error: ${(err as Error).message}\n`) } } }
+  return {
+    emit: (ev) => {
+      try {
+        o.emit(ev)
+      } catch (err) {
+        process.stderr.write(`[vx] observer error: ${(err as Error).message}\n`)
+      }
+    },
+  }
 }
 ```
 
@@ -157,29 +187,65 @@ spams stderr; it cannot fail the run.
 
 ```ts
 interface TaskRow {
-  id: string; projectName: string; taskName: string
-  status: 'waiting' | 'running' | 'success' | 'cache-hit' | 'cache-hit-remote' | 'failed' | 'skipped'
-  startNs?: bigint; endNs?: bigint; exitCode?: number; hash?: string
-  cpuMs?: number; peakRssBytes?: number
-  logLines: string[]      // 10k-line cap; on overflow drop oldest 1k, set logLines[0] = sentinel
+  id: string
+  projectName: string
+  taskName: string
+  status:
+    | 'waiting'
+    | 'running'
+    | 'success'
+    | 'cache-hit'
+    | 'cache-hit-remote'
+    | 'failed'
+    | 'skipped'
+  startNs?: bigint
+  endNs?: bigint
+  exitCode?: number
+  hash?: string
+  cpuMs?: number
+  peakRssBytes?: number
+  logLines: string[] // 10k-line cap; on overflow drop oldest 1k, set logLines[0] = sentinel
   elidedCount: number
-  pendingLine: string     // partial line awaiting \n
+  pendingLine: string // partial line awaiting \n
 }
 
-interface SparklineBuf { samples: Float32Array; head: number; len: number }  // cap 60
+interface SparklineBuf {
+  samples: Float32Array
+  head: number
+  len: number
+} // cap 60
 
 export interface State {
-  runId: string; startedAtMs: number; totalNodes: number; concurrency: number; remoteCacheEnabled: boolean
-  tasks: Map<string, TaskRow>     // insertion = topo order
-  throughput: SparklineBuf; cpuPct: SparklineBuf; remoteOpsPerSec: SparklineBuf
-  remote: { gets: number; puts: number; heads: number; bytesDown: number; bytesUp: number; latencies: number[] /* trimmed to 1024 */ }
-  focusPanel: 'tasks' | 'log'; selectedTaskId?: string; pinnedTaskId?: string
-  filter: string; showHelp: boolean; showGraph: boolean; done: boolean; dirty: boolean
+  runId: string
+  startedAtMs: number
+  totalNodes: number
+  concurrency: number
+  remoteCacheEnabled: boolean
+  tasks: Map<string, TaskRow> // insertion = topo order
+  throughput: SparklineBuf
+  cpuPct: SparklineBuf
+  remoteOpsPerSec: SparklineBuf
+  remote: {
+    gets: number
+    puts: number
+    heads: number
+    bytesDown: number
+    bytesUp: number
+    latencies: number[] /* trimmed to 1024 */
+  }
+  focusPanel: 'tasks' | 'log'
+  selectedTaskId?: string
+  pinnedTaskId?: string
+  filter: string
+  showHelp: boolean
+  showGraph: boolean
+  done: boolean
+  dirty: boolean
 }
 
 export type Action =
   | { type: 'event'; event: ObserverEvent }
-  | { type: 'tick'; nowNs: bigint }              // 1 Hz sparkline sampler
+  | { type: 'tick'; nowNs: bigint } // 1 Hz sparkline sampler
   | { type: 'key'; key: KeyAction }
   | { type: 'resize'; cols: number; rows: number }
 
@@ -225,10 +291,14 @@ Chunks are split on `\n` at ingest. Partial trailing lines park in
 ```ts
 export interface TuiEnv {
   argv: { tui?: boolean; noTui?: boolean; dry?: boolean; graph?: boolean }
-  stdinIsTTY: boolean; stdoutIsTTY: boolean
-  noColor: boolean; ci: boolean
-  customLogger: boolean; customObserver: boolean
-  columns: number; rows: number
+  stdinIsTTY: boolean
+  stdoutIsTTY: boolean
+  noColor: boolean
+  ci: boolean
+  customLogger: boolean
+  customObserver: boolean
+  columns: number
+  rows: number
 }
 export type TuiDecision = { use: true } | { use: false; reason: string }
 export function shouldUseTui(env: TuiEnv): TuiDecision
@@ -236,19 +306,19 @@ export function shouldUseTui(env: TuiEnv): TuiDecision
 
 Decision table, top to bottom, first match wins:
 
-| Condition                                | Decision                                          |
-| ---------------------------------------- | ------------------------------------------------- |
-| `argv.noTui`                             | `{ use: false, reason: '--no-tui' }`              |
-| `argv.dry \|\| argv.graph`               | `{ use: false, reason: 'planning mode' }`         |
-| `!stdoutIsTTY`                           | `{ use: false, reason: 'stdout is not a TTY' }`   |
-| `!stdinIsTTY`                            | `{ use: false, reason: 'stdin is not a TTY' }`    |
-| `noColor`                                | `{ use: false, reason: 'NO_COLOR set' }`          |
-| `ci`                                     | `{ use: false, reason: 'CI environment' }`        |
-| `customLogger \|\| customObserver`       | `{ use: false, reason: 'custom logger configured' }` |
-| `columns < 80 \|\| rows < 20`            | `{ use: false, reason: 'terminal smaller than 80x20' }` |
-| `argv.tui === true`                      | `{ use: true }`                                   |
-| Phase ≥ 3 default                        | `{ use: true }`                                   |
-| Phase < 3 default                        | `{ use: false, reason: 'opt-in' }`                |
+| Condition                          | Decision                                                |
+| ---------------------------------- | ------------------------------------------------------- |
+| `argv.noTui`                       | `{ use: false, reason: '--no-tui' }`                    |
+| `argv.dry \|\| argv.graph`         | `{ use: false, reason: 'planning mode' }`               |
+| `!stdoutIsTTY`                     | `{ use: false, reason: 'stdout is not a TTY' }`         |
+| `!stdinIsTTY`                      | `{ use: false, reason: 'stdin is not a TTY' }`          |
+| `noColor`                          | `{ use: false, reason: 'NO_COLOR set' }`                |
+| `ci`                               | `{ use: false, reason: 'CI environment' }`              |
+| `customLogger \|\| customObserver` | `{ use: false, reason: 'custom logger configured' }`    |
+| `columns < 80 \|\| rows < 20`      | `{ use: false, reason: 'terminal smaller than 80x20' }` |
+| `argv.tui === true`                | `{ use: true }`                                         |
+| Phase ≥ 3 default                  | `{ use: true }`                                         |
+| Phase < 3 default                  | `{ use: false, reason: 'opt-in' }`                      |
 
 Note: when `argv.tui` is set but a disqualifier fires, return the
 disqualifier reason — the CLI prints `vx: TUI unavailable (<reason>)`.
@@ -355,17 +425,17 @@ can stop after any of them and have shipped something coherent.
 
 ## 9. Risks + mitigations
 
-| Risk                                                  | Mitigation                                                              |
-| ----------------------------------------------------- | ----------------------------------------------------------------------- |
-| `yoga.wasm` + `bun build --compile`                   | Compile-gate experiment. Embed-shim if needed. §2.                      |
-| Bun + Ink raw stdin                                   | Verified working. `isRawModeSupported` gates non-TTY.                   |
-| Truecolor inconsistency                               | 256-color palette only. Skip 24-bit. Status accents survive in 8-color via bold + dim. |
-| Unicode block-character widths                        | U+2581–U+2588 are single-width by spec. Verified across iTerm2, Apple Terminal, Windows Terminal, GNOME Terminal, VS Code. Skip emoji — those break tmux line-counting. |
-| tmux/screen + alt-screen                              | Both forward `\x1b[?1049h`. Verified by GitHub CLI / opencode / lazygit shipping the same pattern. |
-| Bun version drift breaking raw-mode                   | Pin Bun ≥ 1.3 in `engines`. Smoke-test raw-mode availability in `src/tui/tui.ts:run()`. |
-| Persistent tasks orphaned on `Ctrl+C`                 | §6: cancellation → in-flight SIGTERM → existing persistent-registry SIGTERM. |
-| Observer throws → crashes run                         | `makeSafeObserver` wrapper. Spec said "shouldn't"; we enforce it.       |
-| react-reconciler dynamic requires in compiled binary  | Same compile-gate. Defer until we actually ship a compiled binary.      |
+| Risk                                                 | Mitigation                                                                                                                                                              |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `yoga.wasm` + `bun build --compile`                  | Compile-gate experiment. Embed-shim if needed. §2.                                                                                                                      |
+| Bun + Ink raw stdin                                  | Verified working. `isRawModeSupported` gates non-TTY.                                                                                                                   |
+| Truecolor inconsistency                              | 256-color palette only. Skip 24-bit. Status accents survive in 8-color via bold + dim.                                                                                  |
+| Unicode block-character widths                       | U+2581–U+2588 are single-width by spec. Verified across iTerm2, Apple Terminal, Windows Terminal, GNOME Terminal, VS Code. Skip emoji — those break tmux line-counting. |
+| tmux/screen + alt-screen                             | Both forward `\x1b[?1049h`. Verified by GitHub CLI / opencode / lazygit shipping the same pattern.                                                                      |
+| Bun version drift breaking raw-mode                  | Pin Bun ≥ 1.3 in `engines`. Smoke-test raw-mode availability in `src/tui/tui.ts:run()`.                                                                                 |
+| Persistent tasks orphaned on `Ctrl+C`                | §6: cancellation → in-flight SIGTERM → existing persistent-registry SIGTERM.                                                                                            |
+| Observer throws → crashes run                        | `makeSafeObserver` wrapper. Spec said "shouldn't"; we enforce it.                                                                                                       |
+| react-reconciler dynamic requires in compiled binary | Same compile-gate. Defer until we actually ship a compiled binary.                                                                                                      |
 
 ## 10. Extension points the design preserves
 
@@ -479,9 +549,13 @@ Shape returned to consumers:
 
 ```ts
 interface TaskHistory {
-  runs: number; avgMs: number; p50Ms: number; p99Ms: number
-  successRate: number; hitRate: number
-  recent: { startedAt: number; durationMs: number; status: string; hash: string }[]  // up to 10
+  runs: number
+  avgMs: number
+  p50Ms: number
+  p99Ms: number
+  successRate: number
+  hitRate: number
+  recent: { startedAt: number; durationMs: number; status: string; hash: string }[] // up to 10
 }
 type HistoryTable = Map<string /* `${project}#${task}` */, TaskHistory>
 ```
@@ -658,10 +732,10 @@ selectors.ts` grows:
   finished).
 - `selectSlowVsHistory(state)` → for tasks with
   `history.get(id)?.avgMs` defined, compute `currentElapsedMs /
-  avgMs`; filter `> 1.5`; sort by ratio desc. Live during the run
+avgMs`; filter `> 1.5`; sort by ratio desc. Live during the run
   (running tasks only).
 - `selectCacheMissImpact(state)` → tasks where `outcome === undefined
-  && cacheStatus === 'miss'` (we'd need to add a `cacheStatus` field
+&& cacheStatus === 'miss'` (we'd need to add a `cacheStatus` field
   to `TaskRow` populated from the cache-probe phase in
   `execute-task.ts` — emit a new `cacheProbe` event); rank by
   `history.avgMs`.
@@ -681,8 +755,8 @@ honest.
 Two selectors over `state.tasks`:
 
 ```ts
-isReady(row)   = deps.every(d => isFinishedOk(state.tasks.get(d))) && row.status === 'waiting'
-isBlocked(row) = deps.some(d => !isFinishedOk(state.tasks.get(d)))  && row.status === 'waiting'
+isReady(row) = deps.every((d) => isFinishedOk(state.tasks.get(d))) && row.status === 'waiting'
+isBlocked(row) = deps.some((d) => !isFinishedOk(state.tasks.get(d))) && row.status === 'waiting'
 ```
 
 The "ready but no slot" distinction the spec describes is implicit:
@@ -715,7 +789,7 @@ Render in any list view: `▣ name  N/M done (R running, C cached)`.
 Selector `selectParallelPct(state)`:
 
 ```ts
-floor(state.workerSlots.filter(s => s.taskId != null).length / state.concurrency * 100)
+floor((state.workerSlots.filter((s) => s.taskId != null).length / state.concurrency) * 100)
 ```
 
 Rendered in `src/tui/components/Header.tsx` as `parallel <P>%`.
