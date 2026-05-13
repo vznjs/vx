@@ -1,4 +1,4 @@
-# `scheduler.ts` — parallel topological executor
+# `src/graph/scheduler.ts` — parallel topological executor
 
 ## Purpose
 
@@ -9,7 +9,7 @@ keeping unrelated tasks moving.
 ## Public surface
 
 ```ts
-export type TaskStatus = 'success' | 'cache-hit' | 'failed' | 'skipped'
+export type TaskStatus = 'success' | 'cache-hit' | 'cache-hit-remote' | 'failed' | 'skipped'
 
 export interface TaskOutcome {
   node: TaskNode
@@ -17,6 +17,14 @@ export interface TaskOutcome {
   exitCode: number
   durationMs: number
   hash?: string // cache key, when computed
+  // v11 analytics:
+  cpuMs?: number
+  peakRssBytes?: number
+  wallclockStartNs?: bigint // hrtime span relative to run t=0
+  wallclockEndNs?: bigint
+  // Captured output (empty for cache-hits + group tasks):
+  stdout?: string
+  stderr?: string
 }
 
 export interface ScheduleOptions {

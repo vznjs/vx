@@ -1,4 +1,4 @@
-# `env.ts` — child process env builder
+# `src/exec/env.ts` — child process env builder
 
 ## Purpose
 
@@ -13,6 +13,7 @@ export interface BuildEnvOptions {
   passThrough: readonly string[] // names → values from source
   define: Readonly<Record<string, string>> // explicit literal pairs
   source: NodeJS.ProcessEnv // typically process.env
+  binPaths?: readonly string[] // prepended to PATH (project bins)
 }
 
 export function buildIsolatedEnv(opts: BuildEnvOptions): NodeJS.ProcessEnv
@@ -36,11 +37,18 @@ Layers, lowest to highest priority:
    `source` if present. Missing names are skipped (not assigned to
    empty string).
 
-3. **`define` entries** — literal `name: value` pairs, applied last so
-   they override anything from earlier layers (including `PATH` if you
-   want, though most users won't).
+3. **`define` entries** — literal `name: value` pairs, applied next so
+   they override earlier layers (including `PATH` if you want, though
+   most users won't).
 
-Result: a `NodeJS.ProcessEnv` ready to pass to `child_process.spawn`.
+4. **`binPaths` PATH prefix** — applied last, AFTER `define`. Each
+   entry is prepended to the existing `PATH` (joined by `path.delimiter`).
+   The orchestrator passes `[<projectDir>/node_modules/.bin]` so local
+   tools resolve without `npx`. Only the project's _own_ bin — never
+   the workspace root's or sibling projects' — so project isolation
+   holds.
+
+Result: a `NodeJS.ProcessEnv` ready to pass to `Bun.spawn`.
 
 ## What this does NOT do
 

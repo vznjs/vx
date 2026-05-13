@@ -1,4 +1,4 @@
-# `project-loader.ts` — config file evaluation
+# `src/workspace/project-loader.ts` — config file evaluation
 
 ## Purpose
 
@@ -16,9 +16,9 @@ export async function loadWorkspaceConfig(workspaceRoot: string): Promise<Worksp
 
 ## Loading rules
 
-- Every supported extension (`.ts`, `.mts`, `.cts`, `.js`, `.mjs`,
-  `.cjs`) is handed to a native `await import()`. Bun resolves TS
-  natively — no transpile step, no separate loader, no `jiti`.
+- Supported extensions: `.ts`, `.mts`, `.js`, `.mjs`. Each is handed
+  to a native `await import()`. Bun resolves TypeScript natively —
+  no transpile step, no separate loader, no `jiti`.
 - The import specifier is `<absolutePath>?vx-bust=<sha256-of-bytes>`.
   Content changes produce a different query string → different ESM
   module identity → fresh evaluation. Same content → cached module
@@ -49,10 +49,19 @@ costs nothing.
 
 ## What this does NOT do
 
-- Doesn't validate the config against the schema beyond "is it an
-  object?" (plus a small `TaskConfig`-shape check). Deeper schema
-  mismatches surface later as TypeScript errors at build time, or as
-  runtime errors deep in the orchestrator.
+- Validates each `TaskConfig` shape at load time and surfaces
+  `UserError` on malformed input. Rules enforced:
+  - `exec` must be an object with a non-empty `command` string.
+  - `exec.persistent` rejects malformed shapes; non-string
+    `readyWhen` is rejected.
+  - `cache` + `persistent` together is a hard error (no exit to
+    cache).
+  - A task with no `exec` MUST declare `dependsOn` (group task) —
+    a no-op task is rejected.
+  - `cache` requires `exec` AND requires both `inputs.files` and
+    `outputs.files` arrays.
+  - `dependsOn` must be a `string[]`.
+  - `description` must be a string.
 - Doesn't sandbox the evaluated config — config code runs with the
   caller's full Bun permissions. The user wrote it, the user trusts it.
 - Doesn't transform imports — relative imports inside the config

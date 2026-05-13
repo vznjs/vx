@@ -129,28 +129,37 @@ store bytes, they don't inspect. We pick the inside layout:
 
 ```
 <tarball, gzipped>
-├── meta.json
+├── stdout                 # captured stdout (text)
+├── stderr                 # captured stderr (text)
 └── outputs/
     └── <project-relative paths>
         ├── dist/index.js
         └── ...
 ```
 
+This mirrors the local v13 entry layout
+(`<cacheDir>/<hash>/{stdout, stderr, outputs/}`) so packing and
+unpacking are a straight pack-the-dir / unpack-into-stage operation.
+
 Components:
 
-- **`meta.json`** at the tar root — schema is the `CacheEntry` from
-  `docs/modules/cache.md` (taskId, command, exitCode, durationMs,
-  stdout, stderr, storedAt). One structured object with named fields.
+- **`stdout` / `stderr`** at the tar root — text files, preserved
+  byte-for-byte. Restore replays each separately so stream identity
+  is preserved (Turbo's `.turbo/turbo-<task>.log` combined-stream
+  format would force `[STDOUT]/[STDERR]` line markers, which we
+  avoid).
 - **`outputs/`** subtree mirrors the project-relative paths declared
   in `cache.outputs.files`. On restore the contents are copied back
   into the project directory.
 
-We do _not_ adopt Turbo's interior convention (`.turbo/turbo-<task>.log`
-combined log file). Servers don't inspect the body, and our orchestrator
-needs stdout/stderr stream identity preserved for replay — Turbo's
-combined log file would force `[STDOUT]/[STDERR]` line markers, which
-is ugly. Keeping our own interior costs us nothing at the ecosystem
-layer.
+Servers don't inspect the body; this interior is invisible to the
+ecosystem we're piggybacking on. We're free to evolve it without
+co-ordinating with cache servers.
+
+The remaining metadata (taskId, command, exitCode, durationMs,
+storedAt) lives on the SQLite `entries` row that the local layer
+upserts when `local.save(...)` finishes. The remote artifact only
+carries what's needed to reconstitute outputs + log replay.
 
 ## Compression
 
@@ -264,6 +273,21 @@ Missing either of the two required vars → local cache only. The
 orchestrator logs `remote cache: <url>` at the top of a run when the
 remote layer is active.
 
-`vx.config.ts`-based remote-cache configuration is on the roadmap
-once workspace-config loading lands (see active workstreams in
-`CLAUDE.md`).
+`vx.config.ts`-based remote-cache configuration is on the roadmap.
+Workspace-config loading is shipped (see
+[`schema.md` § Workspace config](../schema.md#workspace-config-vxworkspacets)),
+so the surface for adding `remoteCache: { url, token, teamId, slug,
+timeoutMs }` to `WorkspaceConfig` exists.
+
+## Open workstreams
+
+- **HMAC artifact signing.** Turbo's `remoteCache.signature: true`
+  - `x-artifact-tag` HMAC of the body. We send `x-artifact-tag` on
+    PUT today but don't verify the one we receive. Roadmap item; see
+    [`comparison.md` § Gaps](../comparison.md#likely-worth-adding).
+- **Pre-signed URLs.** Turbo and Nx both offer them. Lets the server
+  redirect uploads/downloads to an S3 bucket directly. We don't
+  implement them yet.
+- **`x-artifact-client-ci` / `x-artifact-client-interactive`
+  headers.** Optional; today we accept config to send them but don't
+  auto-populate.
