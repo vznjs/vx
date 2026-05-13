@@ -99,6 +99,22 @@ function validate(config: ProjectConfig, configPath: string): void {
       if (typeof command !== 'string' || command.length === 0) {
         throw new UserError(`${where}.exec.command must be a non-empty string`)
       }
+      const persistent = (exec as { persistent?: unknown }).persistent
+      if (persistent !== undefined) {
+        if (typeof persistent !== 'object' || persistent === null) {
+          throw new UserError(`${where}.exec.persistent must be an object (or omitted)`)
+        }
+        const readyWhen = (persistent as { readyWhen?: unknown }).readyWhen
+        if (readyWhen !== undefined && typeof readyWhen !== 'string') {
+          throw new UserError(`${where}.exec.persistent.readyWhen must be a string regex`)
+        }
+        if (cache !== undefined) {
+          throw new UserError(
+            `${where}: \`cache\` is not allowed on a persistent task — persistent tasks ` +
+              `don't terminate, so there's no exit to cache`,
+          )
+        }
+      }
     } else {
       // Group task: no exec, just dependencies. Must declare something to
       // depend on, otherwise the task is a literal no-op with nothing to

@@ -32,6 +32,153 @@ export function shellQuote(arg: string): string {
   return `'${arg.replace(/'/g, `'\\''`)}'`
 }
 
+export interface PersistentSpawn {
+  /** Underlying Bun subprocess so the orchestrator can SIGTERM it later. */
+  child: ReturnType<typeof Bun.spawn>
+  /**
+   * Resolves once the task is considered "ready":
+   *   - immediately on successful spawn when no `readyWhen` is given,
+   *   - on the first stdout/stderr line that matches `readyWhen`.
+   * Rejects with the spawn error if the child fails to start.
+   */
+  ready: Promise<void>
+  /** Captured stdout/stderr up to the moment ready resolved. */
+  bufferedStdout: () => string
+  bufferedStderr: () => string
+  /** ms elapsed from spawn to ready (or to current time if not yet ready). */
+  readyMs: () => number
+}
+
+export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs'> {
+  /**
+   * String regex. The first stdout/stderr line that matches signals
+   * "ready". Undefined → ready immediately on spawn.
+   */
+  readyWhen?: string
+}
+
+/**
+ * Spawn a long-running task. Unlike `runCommand`, this returns once
+ * the task is *ready* (per `readyWhen`) — not when it exits. The
+ * caller owns the returned `child` and must SIGTERM it during
+ * cleanup. Stdout/stderr keep streaming into the live `onStdout` /
+ * `onStderr` callbacks for the whole lifetime of the child.
+ */
+export function runPersistent(opts: PersistentOptions): PersistentSpawn {
+  const start = Date.now()
+  let bufferedStdout = ''
+  let bufferedStderr = ''
+  let readyAt: number | undefined
+
+  // Pattern compiled once; thrown errors surface synchronously so the
+  // caller can wrap with a user-facing message.
+  const readyRe = opts.readyWhen !== undefined ? new RegExp(opts.readyWhen) : undefined
+
+  let child: ReturnType<typeof Bun.spawn>
+  try {
+    child = Bun.spawn(['sh', '-c', opts.command], {
+      cwd: opts.cwd,
+      env: opts.env as Record<string, string>,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return {
+      child: undefined as unknown as ReturnType<typeof Bun.spawn>,
+      ready: Promise.reject(new Error(`failed to spawn persistent task: ${message}`)),
+      bufferedStdout: () => '',
+      bufferedStderr: () => `\n[vx] failed to spawn: ${message}\n`,
+      readyMs: () => Date.now() - start,
+    }
+  }
+
+  let resolveReady!: () => void
+  let rejectReady!: (err: Error) => void
+  const ready = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve
+    rejectReady = reject
+  })
+
+  const markReady = (): void => {
+    if (readyAt === undefined) {
+      readyAt = Date.now()
+      resolveReady()
+    }
+  }
+
+  // Stream readers — match against `readyWhen` line-by-line. Each
+  // stream owns a pending fragment so a regex match isn't missed
+  // across chunk boundaries.
+  const consumeChunks = async (
+    stream: ReadableStream<Uint8Array> | number | undefined,
+    isStderr: boolean,
+  ): Promise<void> => {
+    if (!stream || typeof stream === 'number') return
+    let fragment = ''
+    const reader = stream.getReader()
+    const decoder = new TextDecoder()
+    try {
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        const chunk = decoder.decode(value, { stream: true })
+        if (isStderr) {
+          bufferedStderr += chunk
+          opts.onStderr?.(chunk)
+        } else {
+          bufferedStdout += chunk
+          opts.onStdout?.(chunk)
+        }
+        if (readyRe && readyAt === undefined) {
+          fragment += chunk
+          const lastNl = fragment.lastIndexOf('\n')
+          const scanRegion = lastNl >= 0 ? fragment.slice(0, lastNl) : ''
+          if (readyRe.test(scanRegion)) {
+            markReady()
+            fragment = ''
+          } else if (lastNl >= 0) {
+            fragment = fragment.slice(lastNl + 1)
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  }
+
+  // Wire up readers. We deliberately don't await them — they run for
+  // the child's lifetime. The `ready` promise resolves out-of-band.
+  void consumeChunks(child.stdout, false)
+  void consumeChunks(child.stderr, true)
+
+  // If the child exits BEFORE ready fires, that's a failure to start
+  // — reject the ready promise so the caller can surface it.
+  void child.exited.then((code) => {
+    if (readyAt === undefined) {
+      rejectReady(
+        new Error(
+          `persistent task exited before becoming ready (exit ${code ?? '?'})` +
+            (readyRe ? ` — readyWhen pattern never matched` : ''),
+        ),
+      )
+    }
+  })
+
+  // No readyWhen → ready immediately. We still wire the readers above
+  // so output streams during the task's lifetime.
+  if (!readyRe) markReady()
+
+  return {
+    child,
+    ready,
+    bufferedStdout: () => bufferedStdout,
+    bufferedStderr: () => bufferedStderr,
+    readyMs: () => (readyAt ?? Date.now()) - start,
+  }
+}
+
 export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const start = Date.now()
   const fullCommand =

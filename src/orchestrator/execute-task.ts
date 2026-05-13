@@ -3,7 +3,7 @@ import type { ExecConfig, TaskConfig, CacheConfig } from '../config.js'
 import type { CacheLayer } from '../cache/cache.js'
 import { cleanOutputs, resolveInputs, resolveOutputs } from '../cache/inputs.js'
 import { buildIsolatedEnv } from '../exec/env.js'
-import { runCommand } from '../exec/runner.js'
+import { runCommand, runPersistent } from '../exec/runner.js'
 import type { TaskOutcome } from '../graph/scheduler.js'
 import type { TaskNode } from '../graph/task-graph.js'
 import type { Logger } from './logger.js'
@@ -21,6 +21,12 @@ export interface ExecuteArgs {
   nestedProjectDirs: string[]
   /** Anchor for hrtime spans across all tasks in this run. */
   runStartHrTimeNs: bigint
+  /**
+   * Registry the orchestrator owns. For each persistent task we
+   * spawn, we stash the subprocess handle here so the orchestrator
+   * can SIGTERM it once the rest of the graph finishes.
+   */
+  persistentRegistry?: Map<string, ReturnType<typeof Bun.spawn>>
 }
 
 export interface ComputeHashArgs {
@@ -120,6 +126,65 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // build, and it stops upstream cache keys from being uselessly
   // partitioned by CLI args that don't change their behavior.
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
+
+  // Persistent (long-running) tasks: spawn + wait for readiness, don't
+  // wait for exit. The orchestrator collects the subprocess and SIGTERMs
+  // it once the rest of the graph finishes. No caching for these — the
+  // schema rejects `cache + persistent` at load time.
+  if (step.persistent !== undefined) {
+    const env = buildIsolatedEnv({
+      passThrough: step.env?.passThrough ?? [],
+      define: step.env?.define ?? {},
+      source: process.env,
+      binPaths: [path.join(node.projectDir, 'node_modules', '.bin')],
+    })
+    const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
+    const persistentOpts: Parameters<typeof runPersistent>[0] = {
+      command:
+        step.persistent.readyWhen !== undefined
+          ? step.command
+          : effectiveForwardArgs.length > 0
+            ? step.command + ' ' + effectiveForwardArgs.map((s) => JSON.stringify(s)).join(' ')
+            : step.command,
+      cwd: node.projectDir,
+      env,
+      onStdout: (chunk) => log.taskStdout(node, chunk),
+      onStderr: (chunk) => log.taskStderr(node, chunk),
+    }
+    if (step.persistent.readyWhen !== undefined) {
+      persistentOpts.readyWhen = step.persistent.readyWhen
+    }
+    const spawn = runPersistent(persistentOpts)
+    try {
+      await spawn.ready
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
+      return {
+        node,
+        status: 'failed',
+        exitCode: 1,
+        durationMs: spawn.readyMs(),
+        stdout: spawn.bufferedStdout(),
+        stderr:
+          spawn.bufferedStderr() + `\n[vx] persistent task failed to become ready: ${message}\n`,
+        wallclockStartNs,
+        wallclockEndNs,
+      }
+    }
+    args.persistentRegistry?.set(node.id, spawn.child)
+    const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
+    return {
+      node,
+      status: 'success',
+      exitCode: 0,
+      durationMs: spawn.readyMs(),
+      stdout: spawn.bufferedStdout(),
+      stderr: spawn.bufferedStderr(),
+      wallclockStartNs,
+      wallclockEndNs,
+    }
+  }
 
   const hash = await computeTaskHash({
     node,

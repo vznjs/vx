@@ -68,6 +68,55 @@ describe('loadProjectConfig', () => {
       await expect(loadProjectConfig(file)).rejects.toThrow(/description must be a string/)
     })
 
+    it('accepts a persistent exec', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { dev: { exec: { command: 'vite', persistent: { readyWhen: 'Local:' } } } } }`,
+      )
+      const cfg = await loadProjectConfig(file)
+      expect(cfg.tasks?.dev?.exec?.persistent?.readyWhen).toBe('Local:')
+    })
+
+    it('accepts empty persistent (ready immediately)', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { dev: { exec: { command: 'vite', persistent: {} } } } }`,
+      )
+      const cfg = await loadProjectConfig(file)
+      expect(cfg.tasks?.dev?.exec?.persistent).toEqual({})
+    })
+
+    it('rejects cache + persistent (persistent tasks have no exit to cache)', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { dev: { exec: { command: 'vite', persistent: {} }, cache: { inputs: { files: [] }, outputs: { files: [] } } } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(
+        /cache.*not allowed on a persistent task/,
+      )
+    })
+
+    it('rejects non-string readyWhen', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { dev: { exec: { command: 'vite', persistent: { readyWhen: 42 } } } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/readyWhen must be a string/)
+    })
+
+    it('rejects non-object persistent', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { dev: { exec: { command: 'vite', persistent: true } } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/persistent must be an object/)
+    })
+
     it('rejects cache on a group task (no exec)', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(

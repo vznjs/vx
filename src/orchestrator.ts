@@ -151,6 +151,12 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   ))
     log.status(line)
 
+  // Persistent (long-running) subprocesses — dev servers, watchers.
+  // executeTask spawns them but does NOT await their exit; ownership
+  // moves to this registry. Once the rest of the graph finishes we
+  // SIGTERM each one so the runner returns cleanly.
+  const persistentRegistry = new Map<string, ReturnType<typeof Bun.spawn>>()
+
   const outcomes = await runGraph({
     nodes,
     concurrency,
@@ -170,8 +176,23 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         log,
         nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
         runStartHrTimeNs,
+        persistentRegistry,
       }),
   })
+
+  // Shut down every persistent task before reporting the final
+  // summary. SIGTERM gives well-behaved servers (vite, next, esbuild
+  // --watch) a moment to clean up; we don't escalate to SIGKILL —
+  // process-group propagation on Ctrl-C handles the unhappy case.
+  for (const [id, child] of persistentRegistry) {
+    try {
+      child.kill('SIGTERM')
+    } catch {
+      // already exited — fine.
+    }
+    void id
+  }
+  await Promise.allSettled([...persistentRegistry.values()].map((c) => c.exited))
 
   const list = [...outcomes.values()]
   const ok = list.every((o) => o.status === 'success' || o.status === 'cache-hit')

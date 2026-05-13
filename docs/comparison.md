@@ -87,7 +87,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Output cleaning before exec / restore                | (no — additive)                                      | (no — additive)                                   | (via materialized artifacts)       | **yes** — strict (PR #50)                       |
 | Implicit-dependency hash (project `package.json`)    | (via lockfile)                                       | `externalDependencies`                            | (via lockfile)                     | **yes** — folded directly (PR #42)              |
 | Resolved-config hash (captures TS imports)           | —                                                    | —                                                 | —                                  | **yes** — `node.config` JSON hashed             |
-| Persistent / long-running tasks (dev servers)        | `persistent`, `interruptible`, `interactive`, `with` | `continuous`                                      | (handled outside graph)            | — **gap**                                       |
+| Persistent / long-running tasks (dev servers)        | `persistent`, `interruptible`, `interactive`, `with` | `continuous`                                      | (handled outside graph)            | `exec.persistent.readyWhen`                     |
 | Configurations (named option sets)                   | —                                                    | `configurations` + `-c`                           | —                                  | — **gap**                                       |
 | Per-target metadata (`description`)                  | `description`                                        | `metadata.description`                            | —                                  | `description: string`                           |
 | Target defaults / inheritance                        | `extends`, task `extends`                            | `targetDefaults` (priority-resolved)              | (no)                               | — **gap**                                       |
@@ -193,11 +193,14 @@ paths are inside the respective upstream repos (Turbo
 
 ### Maybe-worth-adding (heavier lift, narrower payoff)
 
-13. **Persistent / long-running tasks** (`dev` servers in the graph).
-    Requires a different scheduler — tasks don't terminate.
-    - Turbo: `persistent`, `interruptible`, `interactive`, `with`
-      sidecars.
-    - Nx: `continuous`.
+13. ~~**Persistent / long-running tasks**~~ — **shipped** as
+    `exec.persistent.readyWhen`. Spawns the task, marks it ready
+    on a stdout/stderr regex match (or immediately when no
+    `readyWhen` is given). Downstream tasks unblock on ready;
+    SIGTERM at end of graph. `cache + persistent` is a config
+    error (no exit code to cache). Doesn't include Turbo's
+    `interruptible` / `interactive` / `with` sidecars — those
+    are future additions.
 
 14. **Configurations (named option sets per target).** `build:prod` vs
     `build:dev` as one task with two configurations rather than two

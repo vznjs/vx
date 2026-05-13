@@ -133,6 +133,19 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: Persistent / long-running tasks shipped via
+  `exec.persistent.readyWhen`. Schema-extending: `ExecConfig` gains an
+  optional `PersistentConfig`. Runner has a new `runPersistent` that
+  spawns + watches stdout/stderr for a regex match (line-by-line),
+  resolving a `ready` promise on first match or immediately when no
+  regex given. The orchestrator owns the subprocess registry and
+  SIGTERMs every persistent child once the rest of the graph
+  finishes. `cache + persistent` is a config error (no exit, nothing
+  to cache). Project-loader rejects malformed `persistent` shapes
+  (non-object, non-string `readyWhen`). 8 new e2e tests cover:
+  immediate-ready, regex-ready, fail-before-ready, downstream
+  blocking, multi-package concurrent persistent, SIGTERM-on-sibling-
+  failure, output streaming pre-ready, schema validation. PR pending.
 - **2026-05**: Multi-task positional invocation. `vx run build lint
 test` runs all three with a shared graph (Turbo parity). Anchored
   positionals (`vx run pkg#deploy lint`) resolve directly; bare
