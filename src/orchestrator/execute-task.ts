@@ -36,6 +36,35 @@ export interface ExecuteArgs {
   persistentRegistry?: Map<string, ReturnType<typeof Bun.spawn>>
   /** Per-run memo for `git ls-files` (one entry per project dir). */
   gitFilesCache?: Map<string, readonly string[] | null>
+  /** Per-run memo for derived hashes (package.json bytes + task config). */
+  hashCache?: HashCache
+}
+
+/**
+ * Per-run memoization caches for the two derived hashes that don't
+ * change across tasks within one run:
+ *   - `packageJson`: keyed by absolute projectDir. Every task in a
+ *     project re-reads the same `package.json`; without this, a
+ *     monorepo with N projects × M tasks per project does N×M reads
+ *     of the same bytes.
+ *   - `taskConfig`: keyed by the resolved-config object reference.
+ *     Each task's config is created once at prepareRun time; the
+ *     JSON.stringify + sha256 of it is deterministic. WeakMap so
+ *     entries free when the orchestrator is done.
+ *
+ * Both fields are optional — the helpers fall back to computing
+ * fresh when the cache is missing.
+ */
+export interface HashCache {
+  packageJson: Map<string, Promise<string>>
+  taskConfig: WeakMap<TaskConfig, string>
+}
+
+export function createHashCache(): HashCache {
+  return {
+    packageJson: new Map(),
+    taskConfig: new WeakMap(),
+  }
 }
 
 export interface ComputeHashArgs {
@@ -47,6 +76,7 @@ export interface ComputeHashArgs {
   forwardArgs?: readonly string[] | undefined
   nestedProjectDirs: string[]
   gitFilesCache?: Map<string, readonly string[] | null>
+  hashCache?: HashCache
 }
 
 /**
@@ -82,8 +112,12 @@ export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
     args.node.projectName,
     args.node.id,
   )
-  const taskConfigHash = hashTaskConfig(cfg)
-  const projectPackageJsonHash = await hashProjectPackageJson(args.node.projectDir)
+  const taskConfigHash = hashTaskConfig(cfg, args.hashCache)
+  const projectPackageJsonHash = await hashProjectPackageJson(
+    args.node.projectDir,
+    args.cache,
+    args.hashCache,
+  )
 
   const effectiveForwardArgs = args.node.requested ? (args.forwardArgs ?? []) : []
 
@@ -227,6 +261,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     forwardArgs: args.forwardArgs,
     nestedProjectDirs: args.nestedProjectDirs,
     ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+    ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
   })
 
   const cleanArgs = {
@@ -354,9 +389,18 @@ function taskEnv(node: TaskNode, step: ExecConfig): NodeJS.ProcessEnv {
  * resolved object before we serialize.
  *
  * The schema is JSON-serializable by construction (no functions in
- * fields).
+ * fields). The `hashCache.taskConfig` WeakMap is consulted first —
+ * each task's config object is created once per run, so a hit there
+ * skips the JSON.stringify + sha256 entirely.
  */
-function hashTaskConfig(cfg: TaskConfig): string {
+function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string {
+  if (hashCache) {
+    const cached = hashCache.taskConfig.get(cfg)
+    if (cached !== undefined) return cached
+    const hash = new Bun.CryptoHasher('sha256').update(JSON.stringify(cfg)).digest('hex')
+    hashCache.taskConfig.set(cfg, hash)
+    return hash
+  }
   return new Bun.CryptoHasher('sha256').update(JSON.stringify(cfg)).digest('hex')
 }
 
@@ -384,9 +428,29 @@ export function computeGroupHash(upstream: TaskOutcome[]): string {
  * Matches Turbo and Nx's "implicit dependencies" behavior. Returns
  * '' for the edge case of a project without a package.json (impossible
  * in practice — workspace discovery requires one).
+ *
+ * Two optimizations: routed through `Cache.hashFile` so the mtime+size
+ * fast path applies (an unchanged pkg.json takes a stat + SQLite SELECT
+ * instead of a full file read). And memoized within-run per projectDir
+ * so a monorepo with 100 projects × 3 tasks each does 100 lookups, not
+ * 300.
  */
-async function hashProjectPackageJson(projectDir: string): Promise<string> {
-  const file = Bun.file(path.join(projectDir, 'package.json'))
-  if (!(await file.exists())) return ''
-  return new Bun.CryptoHasher('sha256').update(await file.bytes()).digest('hex')
+async function hashProjectPackageJson(
+  projectDir: string,
+  cache: CacheLayer,
+  hashCache?: HashCache,
+): Promise<string> {
+  const cached = hashCache?.packageJson.get(projectDir)
+  if (cached !== undefined) return cached
+  const promise = doHashProjectPackageJson(projectDir, cache)
+  hashCache?.packageJson.set(projectDir, promise)
+  return promise
+}
+
+async function doHashProjectPackageJson(projectDir: string, cache: CacheLayer): Promise<string> {
+  const filePath = path.join(projectDir, 'package.json')
+  if (!(await Bun.file(filePath).exists())) return ''
+  // Route through the cache layer's mtime+size fast path so the
+  // typical re-run sees a stat + SQLite lookup instead of a file read.
+  return await cache.hashFile(filePath)
 }

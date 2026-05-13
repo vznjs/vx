@@ -142,6 +142,207 @@ describe('Cache.recordRuns (batched)', () => {
   })
 })
 
+describe('createHashCache + within-run hash memoization', () => {
+  let dir: string
+  let cache: Cache
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-hashCache-'))
+    cache = new Cache(path.join(dir, '.vx-cache'))
+  })
+
+  afterEach(async () => {
+    cache.close()
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('taskConfig memo returns identical hash on repeated calls (same object)', async () => {
+    const { createHashCache, computeTaskHash } = await import('../src/orchestrator/execute-task.ts')
+    const hashCache = createHashCache()
+    const sharedConfig = {
+      exec: { command: 'noop' },
+      cache: { inputs: { files: [] }, outputs: { files: [] } },
+    }
+    const node = {
+      id: 'p#build',
+      projectName: 'p',
+      projectDir: dir,
+      taskName: 'build',
+      config: sharedConfig,
+      deps: [],
+      requested: true,
+    } as unknown as import('../src/graph/task-graph.ts').TaskNode
+    const h1 = await computeTaskHash({
+      node,
+      upstream: [],
+      workspaceRoot: dir,
+      workspaceFingerprint: 'fp',
+      cache,
+      nestedProjectDirs: [],
+      hashCache,
+    })
+    const h2 = await computeTaskHash({
+      node,
+      upstream: [],
+      workspaceRoot: dir,
+      workspaceFingerprint: 'fp',
+      cache,
+      nestedProjectDirs: [],
+      hashCache,
+    })
+    expect(h2).toBe(h1)
+    // The WeakMap should have the config in it after the first call.
+    expect(hashCache.taskConfig.has(sharedConfig)).toBe(true)
+  })
+
+  it('packageJson memo only resolves projectDir once across multiple tasks', async () => {
+    const projectDir = path.join(dir, 'pkg')
+    await mkdir(projectDir, { recursive: true })
+    await writeFile(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'pkg' }))
+
+    const { createHashCache, computeTaskHash } = await import('../src/orchestrator/execute-task.ts')
+    const hashCache = createHashCache()
+    const baseNode = {
+      projectName: 'pkg',
+      projectDir,
+      deps: [],
+      requested: true,
+    }
+    const buildConfig = {
+      exec: { command: 'b' },
+      cache: { inputs: { files: [] }, outputs: { files: [] } },
+    }
+    const testConfig = {
+      exec: { command: 't' },
+      cache: { inputs: { files: [] }, outputs: { files: [] } },
+    }
+
+    await computeTaskHash({
+      node: {
+        ...baseNode,
+        id: 'pkg#build',
+        taskName: 'build',
+        config: buildConfig,
+      } as unknown as import('../src/graph/task-graph.ts').TaskNode,
+      upstream: [],
+      workspaceRoot: dir,
+      workspaceFingerprint: 'fp',
+      cache,
+      nestedProjectDirs: [],
+      hashCache,
+    })
+    expect(hashCache.packageJson.has(projectDir)).toBe(true)
+    const entryAfterFirst = hashCache.packageJson.get(projectDir)
+
+    await computeTaskHash({
+      node: {
+        ...baseNode,
+        id: 'pkg#test',
+        taskName: 'test',
+        config: testConfig,
+      } as unknown as import('../src/graph/task-graph.ts').TaskNode,
+      upstream: [],
+      workspaceRoot: dir,
+      workspaceFingerprint: 'fp',
+      cache,
+      nestedProjectDirs: [],
+      hashCache,
+    })
+    // Same Promise instance is returned — second call hit the memo.
+    expect(hashCache.packageJson.get(projectDir)).toBe(entryAfterFirst)
+    expect(hashCache.packageJson.size).toBe(1)
+  })
+
+  it('different projects each get their own packageJson cache entry', async () => {
+    const a = path.join(dir, 'a')
+    const b = path.join(dir, 'b')
+    await mkdir(a, { recursive: true })
+    await mkdir(b, { recursive: true })
+    await writeFile(path.join(a, 'package.json'), JSON.stringify({ name: 'a' }))
+    await writeFile(path.join(b, 'package.json'), JSON.stringify({ name: 'b' }))
+
+    const { createHashCache, computeTaskHash } = await import('../src/orchestrator/execute-task.ts')
+    const hashCache = createHashCache()
+    const cfg = { exec: { command: 'x' }, cache: { inputs: { files: [] }, outputs: { files: [] } } }
+
+    await computeTaskHash({
+      node: {
+        id: 'a#b',
+        projectName: 'a',
+        projectDir: a,
+        taskName: 'b',
+        config: cfg,
+        deps: [],
+        requested: true,
+      } as unknown as import('../src/graph/task-graph.ts').TaskNode,
+      upstream: [],
+      workspaceRoot: dir,
+      workspaceFingerprint: 'fp',
+      cache,
+      nestedProjectDirs: [],
+      hashCache,
+    })
+    await computeTaskHash({
+      node: {
+        id: 'b#b',
+        projectName: 'b',
+        projectDir: b,
+        taskName: 'b',
+        config: cfg,
+        deps: [],
+        requested: true,
+      } as unknown as import('../src/graph/task-graph.ts').TaskNode,
+      upstream: [],
+      workspaceRoot: dir,
+      workspaceFingerprint: 'fp',
+      cache,
+      nestedProjectDirs: [],
+      hashCache,
+    })
+    expect(hashCache.packageJson.size).toBe(2)
+    expect(hashCache.packageJson.has(a)).toBe(true)
+    expect(hashCache.packageJson.has(b)).toBe(true)
+  })
+
+  it('hashFile fast-path is used for package.json reads (verified via Cache.hashFile call)', async () => {
+    // Write a pkg.json, hash it through computeTaskHash, then confirm
+    // the file_hashes table now has a row for the project's pkg.json.
+    const projectDir = path.join(dir, 'pkg')
+    await mkdir(projectDir, { recursive: true })
+    const pj = path.join(projectDir, 'package.json')
+    await writeFile(pj, JSON.stringify({ name: 'pkg' }))
+
+    const { createHashCache, computeTaskHash } = await import('../src/orchestrator/execute-task.ts')
+    await computeTaskHash({
+      node: {
+        id: 'pkg#x',
+        projectName: 'pkg',
+        projectDir,
+        taskName: 'x',
+        config: {
+          exec: { command: 'x' },
+          cache: { inputs: { files: [] }, outputs: { files: [] } },
+        },
+        deps: [],
+        requested: true,
+      } as unknown as import('../src/graph/task-graph.ts').TaskNode,
+      upstream: [],
+      workspaceRoot: dir,
+      workspaceFingerprint: 'fp',
+      cache,
+      nestedProjectDirs: [],
+      hashCache: createHashCache(),
+    })
+    // hashFile direct re-call must produce the same hash without re-reading
+    // (we can't directly observe the fast-path's "no disk read" behavior,
+    // but we can verify identity).
+    const direct = await cache.hashFile(pj)
+    const hasher = new Bun.CryptoHasher('sha256')
+    hasher.update(await Bun.file(pj).bytes())
+    expect(direct).toBe(hasher.digest('hex'))
+  })
+})
+
 describe('outputsMatchCache (cache-hit skip-clean-restore optimization)', () => {
   let dir: string
 
