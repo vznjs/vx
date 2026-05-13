@@ -133,6 +133,21 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: TUI Phase 3 — multi-view + overlays + stats panel.
+  Adds the four follow-on views (Graph, Workers, Bottlenecks, Queue)
+  and two overlays (Help, Task Detail) on top of Phase 2B's
+  Overview layout. Keyboard: `1`-`5` selects view; `?` toggles
+  Help; Enter opens Task Detail; Esc closes overlays. The reducer
+  gained two per-tick counters (`completedSinceTick`,
+  `remoteOpsSinceTick`) so the 1 Hz sampler now drives real
+  throughput + remote-ops sparklines (Phase 2A's stubbed `0`s are
+  gone). New `StatsPanel` shows the three sparklines stacked under
+  the task list on Overview. `Bottlenecks` runs the topo-DP
+  critical-path live and ranks top blockers / slow-vs-history /
+  cache-miss impact via the Phase 2A selectors. Tests: 497 → 499
+  (added reducer key/overlay tests). All Phase 1-2 surfaces
+  unchanged.
+
 - **2026-05**: TUI Phase 2B — OpenTUI renderer shipped behind `--tui`
   (explicit only; auto-promote is Phase 3). Single-screen layout:
   Header (run id, status counts, parallel %), TaskList (left), LogPane

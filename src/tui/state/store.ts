@@ -71,6 +71,16 @@ export interface State {
   throughputBuf: SparklineBuf
   remoteOpsBuf: SparklineBuf
   parallelPctBuf: SparklineBuf
+  /**
+   * Counter of `taskComplete` events received since the last `tick`.
+   * The tick drains it into `throughputBuf` and resets to 0.
+   */
+  completedSinceTick: number
+  /**
+   * Counter of `remoteCache` events received since the last `tick`.
+   * The tick drains it into `remoteOpsBuf` and resets to 0.
+   */
+  remoteOpsSinceTick: number
   // UI state.
   activeView: 1 | 2 | 3 | 4 | 5
   focusPanel: 'tasks' | 'log'
@@ -110,6 +120,8 @@ export function initialState(): State {
     throughputBuf: newSparklineBuf(60),
     remoteOpsBuf: newSparklineBuf(60),
     parallelPctBuf: newSparklineBuf(60),
+    completedSinceTick: 0,
+    remoteOpsSinceTick: 0,
     activeView: 1,
     focusPanel: 'tasks',
     filters: {},
@@ -272,6 +284,7 @@ export function reduce(state: State, action: Action): State {
             row.pendingLine = ''
           }
           freeSlotByTask(state, row.id)
+          state.completedSinceTick++
           state.dirty = true
           return state
         }
@@ -287,6 +300,7 @@ export function reduce(state: State, action: Action): State {
           if (state.remote.latencies.length > LATENCY_CAP) {
             state.remote.latencies.splice(0, state.remote.latencies.length - LATENCY_CAP)
           }
+          state.remoteOpsSinceTick++
           state.dirty = true
           return state
         }
@@ -300,15 +314,13 @@ export function reduce(state: State, action: Action): State {
       }
     }
     case 'tick': {
-      // Sample the current parallel-% into the ring buffer.
+      // Drain the per-tick counters; each sample is "events that
+      // happened in the last second."
       pushSample(state.parallelPctBuf, parallelPct(state))
-      // Throughput: count of tasks completed since the previous tick.
-      // We don't track that explicitly yet; push a 0 placeholder so the
-      // buffer shape matches the others. Real throughput math arrives
-      // with the Stats panel.
-      pushSample(state.throughputBuf, 0)
-      const remoteRate = state.remote.gets + state.remote.puts + state.remote.heads
-      pushSample(state.remoteOpsBuf, remoteRate)
+      pushSample(state.throughputBuf, state.completedSinceTick)
+      pushSample(state.remoteOpsBuf, state.remoteOpsSinceTick)
+      state.completedSinceTick = 0
+      state.remoteOpsSinceTick = 0
       state.dirty = true
       return state
     }
