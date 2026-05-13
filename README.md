@@ -1,50 +1,12 @@
-# @vzn/vx
+# vx
 
-An open, extensible monorepo task runner for pnpm / npm / yarn / Bun workspaces.
-TypeScript config, content-addressed cache, replaceable internals.
+**A Turbo-shape monorepo task runner that's smaller, faster, and easier to live with.**
 
-**Runs on [Bun](https://bun.sh) (≥ 1.3).** TypeScript source ships as the
-runtime entry — no compile step on install. SQLite is via `bun:sqlite`.
-
-## Install
-
-### One-liner (standalone binary; no Bun required)
+TypeScript-first config. Bun-native runtime. Content-addressed cache that's wire-compatible with the Turborepo remote-cache ecosystem. Single-binary install, no Node required.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
 ```
-
-Auto-detects platform (linux / darwin × x64 / arm64) and drops the
-binary at `$HOME/.local/bin/vx`. Override with `VX_INSTALL_DIR=/path`
-or pin with `VX_VERSION=v0.1.2`. Latest release lives at
-[github.com/vznjs/vx/releases/latest](https://github.com/vznjs/vx/releases/latest).
-
-### Or grab a single asset manually
-
-```sh
-# linux x64
-curl -fsSL https://github.com/vznjs/vx/releases/latest/download/vx-linux-x64 -o vx && chmod +x vx
-# darwin arm64 (Apple Silicon)
-curl -fsSL https://github.com/vznjs/vx/releases/latest/download/vx-darwin-arm64 -o vx && chmod +x vx
-```
-
-### From source (Bun)
-
-```sh
-git clone https://github.com/vznjs/vx && cd vx
-bun install
-bun src/bin.ts --version
-```
-
-> **Complete technical documentation lives in [`docs/`](./docs/).**
-> Start with [`docs/README.md`](./docs/README.md) for the index. Then
-> [`docs/architecture.md`](./docs/architecture.md) for the design,
-> [`docs/schema.md`](./docs/schema.md) for every config field,
-> [`docs/caching.md`](./docs/caching.md) for how the cache works, and
-> one focused module reference per source file under
-> [`docs/modules/`](./docs/modules/).
-
-## Config at a glance
 
 ```ts
 // vx.config.ts
@@ -54,131 +16,306 @@ export default defineProject({
   tasks: {
     build: {
       exec: { command: 'tsc -b' },
-      dependsOn: ['^build'], // Turbo's `^build`
+      dependsOn: ['^build'],
       cache: {
-        inputs: {
-          files: ['src/**', '!**/*.test.ts'],
-          env: ['NODE_ENV'], // host values that bust cache
-          tasks: { dependencies: ['build'] }, // upstream hashes to fold in
-        },
+        inputs: { files: ['src/**'] },
         outputs: { files: ['dist/**'] },
       },
     },
-
     test: {
-      exec: { command: 'bun test', env: { passThrough: ['CI'] } },
+      exec: { command: 'bun test' },
       dependsOn: ['build'],
-      cache: {
-        inputs: { files: ['src/**'] },
-        outputs: { files: [] }, // cache the no-op success
+      cache: { inputs: { files: ['src/**', 'tests/**'] }, outputs: { files: [] } },
+    },
+    ci: { dependsOn: ['lint', 'test'] }, // umbrella; runs both
+  },
+})
+```
+
+```sh
+vx run build              # cwd project + its workspace deps
+vx run test --all         # every project that declares `test`
+vx run ci --affected      # only what changed since origin/HEAD
+vx watch lint             # re-run on file changes
+vx run build --dry        # show the plan, don't execute
+```
+
+## Why vx
+
+|                             | vx                                              | Turborepo                      | Nx                            |
+| --------------------------- | ----------------------------------------------- | ------------------------------ | ----------------------------- |
+| Config                      | TypeScript per package                          | JSON (`turbo.json`)            | JSON (`project.json`)         |
+| Caching                     | Opt-in, content-addressed                       | On-by-default                  | Opt-out (`cache: false`)      |
+| Output ownership            | **Strict** — wiped before exec AND restore      | Additive (stale files survive) | Additive                      |
+| Resolved-config hash        | **Yes** — captures TS imports + computed values | No (static JSON)               | No                            |
+| Implicit `package.json` dep | **Yes** — folded into every task's key          | Via lockfile only              | `externalDependencies` opt-in |
+| File enumeration            | `git ls-files`                                  | `git ls-files`                 | `git ls-files` (via hasher)   |
+| Remote cache                | Turbo `/v8/artifacts/` wire                     | Vercel-native                  | Nx Cloud / plugin             |
+| Daemon                      | **No** — every run is fresh                     | Yes (`--daemon`)               | Yes (always-on)               |
+| Executor plugins            | **No** — shell is the API                       | No                             | Yes (`@nx/*` packages)        |
+| Install                     | **Single binary** — 1 curl line                 | npm package + Node             | npm package + Node            |
+| Watch                       | `vx watch <task>`                               | `turbo watch`                  | `nx watch`                    |
+| Persistent tasks            | `exec.persistent.readyWhen` regex               | `persistent: true` flag        | `continuous: true` flag       |
+
+vx is **the same Turbo cache mental model** with a tighter config story, a smaller surface, and stricter correctness defaults.
+
+## What you keep when you switch from Turbo / Nx
+
+- **The cache model.** Content-addressed hash, cascading invalidation through `dependsOn`, lockfile fingerprint, workspace-aware. Identical semantics.
+- **Your remote cache.** vx speaks the Turborepo `/v8/artifacts/` wire verbatim — drop in your existing `ducktors/turborepo-remote-cache`, `Fox32/openturbo-remote-cache`, or hosted Vercel cache server. Set two env vars and it works.
+- **The filter DSL.** `--filter` accepts `app...`, `...util`, `app^...`, `!docs`, `./packages/ui`, `[main]` — the pnpm-style language Turbo and Nx both ship.
+- **Affected.** `--affected[=<base>]` is sugar for `--filter '[<base>]'`. Default base is `origin/HEAD`.
+- **dependsOn micro-syntax.** `'name'`, `'^name'`, `'pkg#name'`. Same shape Turbo and Nx use.
+- **Cache pruning.** `vx cache prune --older-than 30d --max-size 1G`.
+- **Planning.** `--dry`, `--dry=json`, `--graph` (Graphviz DOT). Skip execution; preview the cache outcome of every task.
+
+## What's new in vx
+
+### TypeScript config, with imports
+
+`vx.config.ts` is regular TypeScript. Presets are functions you import. Computed values flow naturally:
+
+```ts
+import { defineProject } from '@vzn/vx'
+import { tsBuild } from '@my-org/vx-presets'
+
+export default defineProject({
+  tasks: {
+    build: tsBuild({ tsconfig: './tsconfig.build.json' }),
+    test: {
+      exec: {
+        command: 'bun test',
+        env: { define: { NODE_VERSION: process.versions.node } },
       },
-    },
-
-    dev: {
-      // No `cache` field → always runs.
-      exec: { command: 'vite', env: { passThrough: ['VITE_API_URL'] } },
-    },
-
-    // Umbrella task — group node, no exec. `vx run ci` fans out.
-    ci: {
-      dependsOn: ['lint', 'test'],
+      cache: { inputs: { files: ['src/**'], env: ['CI'] }, outputs: { files: [] } },
     },
   },
 })
 ```
 
-The full schema reference, including every field and its semantics, is
-in [`docs/schema.md`](./docs/schema.md).
+vx folds the **resolved post-evaluation config** into the cache key — so a change to your preset, or to a value pulled from `process.env` at config-load time, busts the cache automatically. Turbo and Nx hash the static config file and miss these.
 
-## CLI
+### Strict output ownership
 
-```sh
-vx run [TASK | PKG#TASK ...] [--all] [--filter <pattern>] [--concurrency <n>] [--no-cache] [--excludeDependencies] [--verbosity <n>] [-- forwarded-args...]
-vx cache prune [--older-than 30d] [--max-size 1G]
+When you declare `outputs: { files: ['dist/**'] }`, vx **wipes `dist/`** before every cache restore AND before every fresh exec. Your project dir ends every run bit-identical to the cached snapshot. No stale files from a prior build can survive a cache hit.
+
+Turbo and Nx restore additively. If yesterday's build produced `dist/old.js` and today's build doesn't, the file persists into a cache-hit replay — silently shipping stale artifacts. vx makes this impossible.
+
+### Persistent tasks with regex readiness
+
+```ts
+dev: {
+  exec: {
+    command: 'vite',
+    persistent: { readyWhen: 'Local:' },
+  },
+},
+e2e: {
+  dependsOn: ['dev'],
+  exec: { command: 'playwright test' },
+},
 ```
 
-Default scope: the project containing cwd (deps still expand via
-`dependsOn`). Use `--all` for every project, `--filter` for a pnpm-style
-filter DSL, or `pkg#task` to target one project directly. Pass
-multiple positionals to run several tasks in one invocation
-(`vx run build lint test`). Args after `--` are forwarded (shell-
-quoted) to the task's `exec.command` and folded into the cache key.
+`vx run e2e` starts the dev server, watches its output for `Local:`, then runs Playwright. The dev server is SIGTERMed at end-of-run automatically.
 
-Output is Turbo-style: framed per-task blocks with status indicators
-(`cache hit • <hash>`, `executed`, `FAILED (exit N)`, `from local
-cache` / `from remote cache`) and a summary line that prints
-`>>> FULL CACHE` when every real task was cached.
+### Built-in profiling and run summaries
 
-Full CLI reference: [`docs/cli.md`](./docs/cli.md). Side-by-side with
-Turborepo / Nx / vite-task: [`docs/comparison.md`](./docs/comparison.md).
+```sh
+vx run ci --profile           # Chrome-trace JSON → chrome://tracing
+vx run ci --summarize         # per-run JSON with hrtime spans + cpu + peak RSS
+```
 
-## Key properties
+Every task records `cpu_ms`, `peakRssBytes`, and ns-precision hrtime spans to a SQLite `runs` table. Query it directly:
 
-- **Explicit, no magic.** Caching is opt-in. `cache.inputs.files` is
-  required when caching is enabled. No hidden globs, no `$TURBO_DEFAULT$`
-  tokens.
-- **Isolated env.** Tasks see only an essential allowlist + declared
-  `passThrough` (host values) + `define` (literal values). Everything
-  else is invisible to the child.
-- **Resolved-config hashing.** Imports and computed values in your
-  TypeScript config are captured automatically — the cache key sees
-  the post-evaluation object.
-- **Cascading invalidation.** Upstream task changes propagate through
-  `cache.inputs.tasks`; workspace-level changes (lockfile,
-  pnpm-workspace.yaml) invalidate everything.
-- **Project boundaries.** Nested projects' files never leak into a
-  parent's inputs. The only cross-project relationship is `dependsOn`.
-- **Shell is the API.** Commands are strings. No executor plugin
-  protocol, no JS-function tasks. Presets are TypeScript helpers that
-  return `TaskConfig` objects — evaluated at config-load time.
+```sh
+sqlite3 .vx/cache/cache.db \
+  "SELECT project, task, duration_ms FROM runs ORDER BY id DESC LIMIT 5"
+```
 
-See [`docs/architecture.md`](./docs/architecture.md) for the design
-rationale and module layout.
+No Nx Cloud account. No Turbo dashboard. Your data, your queries.
 
-## Compared to Turborepo / Nx / vite-task
+### Single-binary install
 
-- **Per-package TypeScript config** (vs Turbo's single `turbo.json`,
-  Nx's JSON `project.json`, vite-task's per-package config). Type-safe
-  inference, shared presets via plain imports.
-- **No executors.** Nx's plugin abstraction has real cost (versioned
-  packages, runtime indirection); we keep the shell as the API.
-- **Turbo-shape caching, wire-compatible** — content-addressed key,
-  output restore, plus a remote-cache HTTP client that speaks the
-  Turbo `/v8/artifacts/` API (works against `ducktors/turborepo-remote-cache`
-  et al.).
-- **Resolved-config hash** captures values that flowed in through
-  `import` statements at config-load time — Turbo can't see those.
-- **Strict output cleaning.** Declared `cache.outputs.files` are wiped
-  before exec AND before cache restore, so the project dir ends every
-  run bit-identical to the cached snapshot.
+```sh
+curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
+```
 
-Feature-by-feature side-by-side with each tool, including known gaps:
-[`docs/comparison.md`](./docs/comparison.md).
+One binary. ~10 MB. No Node, no npm, no install dance. Auto-detects platform (`linux` / `darwin` × `x64` / `arm64`). CI startup goes from "wait for `npm install`" to "run the binary."
+
+## Speed
+
+vx is fast for a few compounding reasons:
+
+- **Bun runtime.** Bun starts in tens of milliseconds; Node + npm wrappers add hundreds. The whole `vx run` invocation overhead is roughly one Bun startup.
+- **`bun:sqlite` for cache metadata.** Native, no FFI, indexed lookups for "is this hash cached?" + LRU pruning.
+- **`git ls-files` for inputs.** Same as Turbo and Nx — git is heavily optimized; we don't reimplement.
+- **No daemon.** Every run is fresh, but workspace discovery is fast enough that the operational cost of a daemon doesn't pay for itself.
+- **Bun.spawn for child processes.** Real `resourceUsage()` for CPU + peak RSS, no wrapper overhead.
+- **Cache-hit replay is a file copy + log replay.** No spawn, no re-hash on hit — just SQLite SELECT + atomic dir restore.
+
+A typical cached-everything `vx run ci` invocation in our own dogfooded workspace runs in ~50 ms total wall-clock.
+
+## Configurability
+
+vx is **explicit by default** — no hidden globs, no implicit fallbacks. That sounds rigid until you realize it's the same property that makes the cache trustworthy.
+
+```ts
+{
+  exec: {
+    command: 'bun test',
+    env: {
+      passThrough: ['CI', 'GH_TOKEN'],   // forwarded; not in cache key (secrets / CI flags)
+      define: { NODE_ENV: 'test' },       // literal; in cache key
+    },
+  },
+  dependsOn: ['build'],
+  cache: {
+    inputs: {
+      files: ['src/**', 'tests/**'],
+      env: ['NODE_ENV'],                  // host values that bust the cache
+      tasks: ['build'],                   // upstream hashes folded in
+    },
+    outputs: { files: [] },               // cache the no-op success
+  },
+}
+```
+
+Every axis of cache identity is something you write or omit deliberately:
+
+- **`cache.inputs.files`** — what the task reads.
+- **`cache.inputs.env`** — env names whose values participate in the hash.
+- **`cache.inputs.tasks`** — which upstream tasks' hashes cascade in (default: all).
+- **`cache.outputs.files`** — what the task produces.
+- **`exec.env.passThrough`** — host env forwarded to the child (cache-invariant).
+- **`exec.env.define`** — literal env (in the cache key via the config hash).
+
+[`docs/schema.md`](./docs/schema.md) documents every field with rationale.
+
+## Workspace config (optional)
+
+Workspace-level overrides live in `vx.workspace.ts` at the workspace root:
+
+```ts
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+
+export default defineWorkspace({
+  concurrency: 8, // default; CLI -c still wins
+  cacheDir: 'build/.vx-cache', // relative to workspace root
+})
+```
+
+Remote cache is environment-driven (works with any Turbo-compatible server):
+
+```sh
+export VX_REMOTE_CACHE_URL=https://cache.example.com
+export VX_REMOTE_CACHE_TOKEN=...
+# optional: VX_REMOTE_CACHE_TEAM_ID, VX_REMOTE_CACHE_SLUG, VX_REMOTE_CACHE_TIMEOUT_MS
+vx run build --all
+```
+
+## CLI essentials
+
+```
+vx run [TASK | PKG#TASK ...] [--all] [--filter <pat>] [--affected[=<base>]]
+                              [--concurrency <n>] [--no-cache]
+                              [--excludeDependencies[=names]] [--verbosity <n>]
+                              [--dry[=text|json]] [--graph[=<path>]]
+                              [--summarize[=<path>]] [--profile[=<path>]]
+                              [-- forwarded-args...]
+
+vx watch TASK                 # same flags as `vx run`; re-runs on FS change
+vx cache prune --older-than 30d --max-size 1G
+vx help
+vx --version
+```
+
+Default scope is the project containing `cwd`. `--all` broadens to every project; `--filter` accepts the pnpm DSL plus `[<git-ref>]` for affected-since-ref selection.
+
+Output is framed per-task — no interleaving between concurrent tasks. Status indicators are Turbo-style (`cache hit • <hash>`, `executed`, `FAILED (exit N)`); the closing summary prints `>>> FULL CACHE` when every executed task hit the cache.
+
+Full reference: [`docs/cli.md`](./docs/cli.md).
+
+## Migrating from Turbo
+
+Most projects can move in an afternoon. The mapping is mechanical:
+
+```jsonc
+// turbo.json (before)
+{
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**"],
+      "outputs": ["dist/**"],
+      "env": ["NODE_ENV"],
+    },
+  },
+}
+```
+
+```ts
+// vx.config.ts (after)
+import { defineProject } from '@vzn/vx'
+export default defineProject({
+  tasks: {
+    build: {
+      exec: { command: 'tsc -b' }, // ← name the command (Turbo reads package.json scripts)
+      dependsOn: ['^build'],
+      cache: {
+        inputs: { files: ['src/**'], env: ['NODE_ENV'] },
+        outputs: { files: ['dist/**'] },
+      },
+    },
+  },
+})
+```
+
+Differences to know:
+
+- vx requires `exec.command` in the config — we don't read `package.json` scripts implicitly.
+- vx requires `cache.inputs.files` when caching is enabled (no default `$TURBO_DEFAULT$`).
+- vx defaults caching **off**; opt in per task by adding the `cache` block.
+- Persistent tasks: `persistent: { readyWhen: 'regex' }` (Turbo uses just `persistent: true`).
+- Remote cache: same wire format. Existing `VERCEL_*` / Turbo-cache-server tokens work via `VX_REMOTE_CACHE_TOKEN`.
+
+Side-by-side feature matrix + every known gap: [`docs/comparison.md`](./docs/comparison.md).
+
+## Architecture (one paragraph)
+
+`bin.ts → cli.ts` dispatches subcommands. `orchestrator.ts:run()` calls `prepareRun()` which discovers the workspace, loads configs, builds the package + task graph, and opens the cache (local SQLite + optional remote layer). The scheduler runs the graph in topological order with bounded concurrency; each task hits the cache (hash → get → restore on hit; spawn → save on miss) or short-circuits as a group / persistent. Outcomes go to the run-history table for direct SQL analytics. Every module has a docs page; every interface is a swappable seam.
+
+Read [`docs/architecture.md`](./docs/architecture.md) for the module map and design principles.
+
+## Documentation
+
+Full technical docs live under [`docs/`](./docs/):
+
+- [`docs/architecture.md`](./docs/architecture.md) — module map + data flow
+- [`docs/schema.md`](./docs/schema.md) — every config field
+- [`docs/caching.md`](./docs/caching.md) — cache-key derivation + invalidation table
+- [`docs/execution.md`](./docs/execution.md) — `vx run` lifecycle
+- [`docs/cli.md`](./docs/cli.md) — every flag
+- [`docs/comparison.md`](./docs/comparison.md) — Turbo / Nx / vite-task feature matrix
+- [`docs/modules/`](./docs/modules/) — one reference page per source module
 
 ## Status
 
-Pre-alpha. Schema may shift. No published versions yet.
+**Pre-alpha.** The schema is settling; we bump `CACHE_VERSION` rather than maintain back-compat. 414 tests; CI green on every commit; the project dogfoods itself (`bun run ci` → `vx run ci`).
+
+Production readiness: not yet. The semantics are solid; the rough edges are operational (Windows unsupported, no published versions on npm, no managed remote-cache offering).
 
 ## Development
 
 ```sh
+git clone https://github.com/vznjs/vx && cd vx
 bun install
-bun run lint        # → vx run lint (oxlint --type-aware --type-check)
-bun run format      # → vx run format (oxfmt)
-bun run test        # → vx run test (bun test)
-bun run ci          # → vx run ci (group: format-check + lint + test)
+bun src/bin.ts run ci          # format-check + lint + test
+bun src/bin.ts run build       # cross-target binaries → dist/
 ```
 
-vx dogfoods itself — every dev task routes through `bun src/bin.ts run
-<task>` per `vx.config.ts`, which is what CI invokes too.
-
-No build step. TypeScript source ships as-is; Bun runs it directly.
-Lint, format, and types are all checked by the oxc toolchain — no tsc,
-no prettier.
-
-Architecture: [`docs/architecture.md`](./docs/architecture.md).
-Tests live under [`tests/`](./tests/), one file per src module.
+vx is self-hosted: every dev task routes through `bun src/bin.ts run <task>` per the repo's own `vx.config.ts`. No `package.json` scripts; CI invokes vx directly.
 
 ## License
 
-MIT
+MIT — see [LICENSE](./LICENSE).
