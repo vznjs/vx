@@ -191,21 +191,9 @@ Every axis of cache identity is something you write or omit deliberately:
 
 [`docs/schema.md`](./docs/schema.md) documents every field with rationale.
 
-## Workspace config (optional)
+## Remote cache
 
-Workspace-level overrides live in `vx.workspace.ts` at the workspace root:
-
-```ts
-// vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
-
-export default defineWorkspace({
-  concurrency: 8, // default; CLI -c still wins
-  cacheDir: 'build/.vx-cache', // relative to workspace root
-})
-```
-
-Remote cache is environment-driven (works with any Turbo-compatible server):
+Environment-driven, works with any Turbo-compatible cache server:
 
 ```sh
 export VX_REMOTE_CACHE_URL=https://cache.example.com
@@ -213,6 +201,8 @@ export VX_REMOTE_CACHE_TOKEN=...
 # optional: VX_REMOTE_CACHE_TEAM_ID, VX_REMOTE_CACHE_SLUG, VX_REMOTE_CACHE_TIMEOUT_MS
 vx run build --all
 ```
+
+Reads try local first, then remote (hydrating local on remote hit). Writes go to local immediately, then upload to remote in the background — a flaky cache server never fails your build.
 
 ## CLI essentials
 
