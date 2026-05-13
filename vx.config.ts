@@ -42,11 +42,9 @@ export default defineProject({
     },
 
     // Cross-target standalone binaries. One task per (os, arch) so
-    // each gets its own cache slot. `inputs.files` only needs `src/**`
-    // and `tsconfig.json` — package.json bytes are auto-folded into
-    // every cache key, and bun.lock is part of the workspace
-    // fingerprint. `dist/` is wiped before each build by output
-    // cleaning, so the binary on disk always matches the cached one.
+    // each gets its own cache slot. `dist/` is wiped before each
+    // build by output cleaning, so the binary on disk always matches
+    // the cached one.
     'build.linux-x64': {
       description: 'compile standalone binary (linux x64)',
       exec: {
@@ -54,7 +52,7 @@ export default defineProject({
           'bun build --compile --minify --bytecode --target=bun-linux-x64 src/bin.ts --outfile dist/vx-linux-x64',
       },
       cache: {
-        inputs: { files: ['src/**', 'tsconfig.json'] },
+        inputs: { files: ['**/*'] },
         outputs: { files: ['dist/vx-linux-x64'] },
       },
     },
@@ -65,7 +63,7 @@ export default defineProject({
           'bun build --compile --minify --bytecode --target=bun-linux-arm64 src/bin.ts --outfile dist/vx-linux-arm64',
       },
       cache: {
-        inputs: { files: ['src/**', 'tsconfig.json'] },
+        inputs: { files: ['**/*'] },
         outputs: { files: ['dist/vx-linux-arm64'] },
       },
     },
@@ -76,7 +74,7 @@ export default defineProject({
           'bun build --compile --minify --bytecode --target=bun-darwin-x64 src/bin.ts --outfile dist/vx-darwin-x64',
       },
       cache: {
-        inputs: { files: ['src/**', 'tsconfig.json'] },
+        inputs: { files: ['**/*'] },
         outputs: { files: ['dist/vx-darwin-x64'] },
       },
     },
@@ -87,7 +85,7 @@ export default defineProject({
           'bun build --compile --minify --bytecode --target=bun-darwin-arm64 src/bin.ts --outfile dist/vx-darwin-arm64',
       },
       cache: {
-        inputs: { files: ['src/**', 'tsconfig.json'] },
+        inputs: { files: ['**/*'] },
         outputs: { files: ['dist/vx-darwin-arm64'] },
       },
     },
