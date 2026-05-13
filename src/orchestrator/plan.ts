@@ -38,6 +38,7 @@ export interface PlanArgs {
   noCache: boolean
   forwardArgs?: readonly string[] | undefined
   nestedDirsByProject: Map<string, string[]>
+  gitFilesCache?: Map<string, readonly string[] | null>
 }
 
 /**
@@ -72,6 +73,7 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
         cache: args.cache,
         forwardArgs: args.forwardArgs,
         nestedProjectDirs: args.nestedDirsByProject.get(node.projectName) ?? [],
+        ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
       })
 
       const cacheEnabled = node.config.cache !== undefined && !args.noCache

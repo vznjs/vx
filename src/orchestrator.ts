@@ -2,6 +2,7 @@
 // run with caching. Each step delegates to a single-purpose module under
 // ./orchestrator/ so the layers can be swapped without touching the others.
 
+import type { RunRecord } from './cache/cache.js'
 import { LayeredCache } from './cache/layered-cache.js'
 import { VERSION } from './index.js'
 import { runGraph, type TaskOutcome } from './graph/scheduler.js'
@@ -103,6 +104,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     workspaceFingerprint,
     nestedDirsByProject,
     historyTable,
+    gitFilesCache,
   } = prepared
   const concurrency =
     options.concurrency ??
@@ -179,6 +181,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
         runStartHrTimeNs,
         persistentRegistry,
+        gitFilesCache,
       }),
   })
 
@@ -241,14 +244,15 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     }
   }
 
-  // Record each task to the run history. Group tasks (no `exec`) are
-  // skipped — they aren't real runs and the `runs` table is
-  // analytics-focused.
+  // Record each task to the run history in a single SQLite transaction
+  // (one fsync instead of N). Group tasks (no `exec`) are skipped —
+  // they aren't real runs and the `runs` table is analytics-focused.
   const now = endedAtMs
+  const toRecord: RunRecord[] = []
   for (const o of list) {
     if (!o.hash) continue
     if (isGroupTask(o.node)) continue
-    cache.recordRun({
+    toRecord.push({
       hash: o.hash,
       project: o.node.projectName,
       task: o.node.taskName,
@@ -266,6 +270,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       cacheHit: o.status === 'cache-hit' || o.status === 'cache-hit-remote',
     })
   }
+  cache.recordRuns(toRecord)
   cache.close()
 
   return { ok, outcomes: list }
@@ -298,6 +303,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       noCache: options.noCache ?? false,
       forwardArgs: options.forwardArgs,
       nestedDirsByProject: prepared.nestedDirsByProject,
+      gitFilesCache: prepared.gitFilesCache,
     })
   } finally {
     prepared.cache.close()

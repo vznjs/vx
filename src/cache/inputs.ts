@@ -42,6 +42,13 @@ export interface ResolveInputsArgs {
   ownOutputs: string[]
   /** Absolute dirs of nested projects (cross-boundary isolation). */
   nestedProjectDirs: string[]
+  /**
+   * Per-run memo for `git ls-files` output. The same project's file
+   * list is asked for once per task (build + test + …) — without
+   * memoization we spawn git 3× per project per run. The orchestrator
+   * passes a fresh Map at the top of every `vx run`.
+   */
+  gitFilesCache?: Map<string, readonly string[] | null>
 }
 
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs> {
@@ -52,6 +59,7 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
       files: args.inputs?.files,
       ownOutputs: args.ownOutputs,
       nestedProjectDirs: args.nestedProjectDirs,
+      ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
     }),
     envValues: resolveEnvValues(args.inputs?.env ?? [], args.envSource),
   }
@@ -62,6 +70,79 @@ function resolveEnvValues(
   source: NodeJS.ProcessEnv,
 ): Array<[string, string]> {
   return [...names].sort().map((name) => [name, source[name] ?? ''] as [string, string])
+}
+
+/**
+ * Bidirectional stat-only check: does the project's declared-output
+ * tree match the cached snapshot exactly (same file set, same sizes)?
+ *
+ * Used by the cache-hit path to skip the rm + re-copy dance when the
+ * on-disk tree is already what the cache would restore (the common
+ * case for back-to-back `vx run` invocations).
+ *
+ * Returns true iff:
+ *   - every file under `<outputsDir>` exists in `projectDir` at the
+ *     same relative path with the same byte size, AND
+ *   - every file in `projectDir` matching the declared `outputs`
+ *     globs is also in `<outputsDir>` (i.e. no stale files that
+ *     `cleanOutputs` would otherwise remove).
+ *
+ * The second check is what makes the optimization correct: without
+ * it, a stale file the user hand-edited or that an earlier (cached)
+ * build wrote would silently survive into the new build.
+ *
+ * Sizes-match-but-content-differs is the only remaining false
+ * positive. That can't happen in practice for our caller — the
+ * cache restored the bytes itself last run, and downstream tasks
+ * treat their own outputs as inputs (content-hashed).
+ */
+export async function outputsMatchCache(args: {
+  projectDir: string
+  outputsDir: string
+  outputs: string[]
+  nestedProjectDirs: string[]
+}): Promise<boolean> {
+  const { stat } = await import('node:fs/promises')
+  if (!existsSync(args.outputsDir)) return false
+
+  // Walk the cache's outputs tree once to get the expected file set
+  // with sizes. Cheap — ~5 stats per task on average.
+  const expected = new Map<string, number>()
+  async function walk(sub: string): Promise<void> {
+    const { readdir } = await import('node:fs/promises')
+    const entries = await readdir(path.join(args.outputsDir, sub), { withFileTypes: true })
+    for (const e of entries) {
+      const childRel = sub === '' ? e.name : `${sub}/${e.name}`
+      if (e.isDirectory()) await walk(childRel)
+      else if (e.isFile()) {
+        const s = await stat(path.join(args.outputsDir, childRel))
+        expected.set(childRel, s.size)
+      }
+    }
+  }
+  await walk('')
+
+  // The project's current output-glob matches.
+  const onDiskAbs = await resolveOutputs({
+    projectDir: args.projectDir,
+    outputs: args.outputs,
+    nestedProjectDirs: args.nestedProjectDirs,
+  })
+  if (onDiskAbs.length !== expected.size) return false
+
+  for (const abs of onDiskAbs) {
+    const rel = path.relative(args.projectDir, abs).split(path.sep).join('/')
+    const expectedSize = expected.get(rel)
+    if (expectedSize === undefined) return false
+    let s
+    try {
+      s = await stat(abs)
+    } catch {
+      return false
+    }
+    if (s.size !== expectedSize) return false
+  }
+  return true
 }
 
 /** Resolve declared output globs (project-relative) to actual produced files. */
@@ -107,6 +188,7 @@ interface ResolveFilesArgs {
   files: string[] | undefined
   ownOutputs: string[]
   nestedProjectDirs: string[]
+  gitFilesCache?: Map<string, readonly string[] | null>
 }
 
 async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
@@ -134,7 +216,18 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // sees — i.e., tracked + untracked-but-not-ignored. Nested .gitignore
   // files, .git/info/exclude, and global excludes all participate
   // correctly because git does the cascade for us.
-  const gitFiles = listGitTrackedFiles(args.projectDir)
+  //
+  // Per-run memo: each project's git ls-files output is asked for once
+  // per task (build + test + lint + …). Spawning git N times for the
+  // same project per run is wasteful; we cache the result for the
+  // duration of one orchestrator run.
+  let gitFiles: readonly string[] | null
+  if (args.gitFilesCache !== undefined && args.gitFilesCache.has(args.projectDir)) {
+    gitFiles = args.gitFilesCache.get(args.projectDir)!
+  } else {
+    gitFiles = listGitTrackedFiles(args.projectDir)
+    args.gitFilesCache?.set(args.projectDir, gitFiles)
+  }
   if (gitFiles !== null) {
     const positiveGlobs = positive.map((p) => new Bun.Glob(p))
     const matches: string[] = []

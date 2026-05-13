@@ -137,6 +137,10 @@ export class LayeredCache implements CacheLayer {
     return materialized ? { ...materialized, source: 'remote' } : null
   }
 
+  outputsPath(hash: string): string {
+    return this.local.outputsPath(hash)
+  }
+
   async restoreOutputs(hash: string, projectDir: string): Promise<void> {
     await this.local.restoreOutputs(hash, projectDir)
   }
@@ -169,6 +173,10 @@ export class LayeredCache implements CacheLayer {
 
   recordRun(run: RunRecord): void {
     this.local.recordRun(run)
+  }
+
+  recordRuns(runs: readonly RunRecord[]): void {
+    this.local.recordRuns(runs)
   }
 
   stats(): CacheStats {

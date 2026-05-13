@@ -556,3 +556,80 @@ describe('resolveInputs — git ls-files path (v14)', () => {
     expect(rels).not.toContain(path.join('node_modules', 'dep', 'index.js'))
   })
 })
+
+describe('resolveInputs — gitFilesCache memoization', () => {
+  let workspaceRoot: string
+  let projectDir: string
+
+  beforeEach(async () => {
+    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vx-gitmemo-'))
+    projectDir = path.join(workspaceRoot, 'pkg')
+    await mkdir(projectDir, { recursive: true })
+    // Init real git so resolveFiles takes the git-ls-files path.
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: workspaceRoot, stdout: 'ignore' })
+    Bun.spawnSync({
+      cmd: [
+        'git',
+        '-c',
+        'user.email=t@t',
+        '-c',
+        'user.name=t',
+        'commit',
+        '--allow-empty',
+        '-m',
+        'init',
+      ],
+      cwd: workspaceRoot,
+      stdout: 'ignore',
+    })
+    await writeFile(path.join(projectDir, 'src.ts'), 'const x = 1')
+  })
+
+  afterEach(async () => {
+    await rm(workspaceRoot, { recursive: true, force: true })
+  })
+
+  it('populates an empty Map after the first call', async () => {
+    const memo = new Map<string, readonly string[] | null>()
+    await resolveInputs({
+      projectDir,
+      workspaceRoot,
+      envSource: {},
+      inputs: { files: ['**/*'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+      gitFilesCache: memo,
+    })
+    expect(memo.has(projectDir)).toBe(true)
+  })
+
+  it('reuses the cached entry on the second call (no second git spawn)', async () => {
+    const memo = new Map<string, readonly string[] | null>()
+    const first = await resolveInputs({
+      projectDir,
+      workspaceRoot,
+      envSource: {},
+      inputs: { files: ['**/*'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+      gitFilesCache: memo,
+    })
+    // Manually replace the memo's entry with a sentinel; if the
+    // second call uses the memo (skip git spawn), the resolved file
+    // set reflects the sentinel — proving cache use.
+    memo.set(projectDir, ['from-memo.ts'])
+    const second = await resolveInputs({
+      projectDir,
+      workspaceRoot,
+      envSource: {},
+      inputs: { files: ['**/*'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+      gitFilesCache: memo,
+    })
+    // First call saw the real `src.ts`; second saw only the memo'd entry.
+    void first
+    const relsSecond = second.files.map((p) => path.relative(projectDir, p))
+    expect(relsSecond).toEqual([]) // 'from-memo.ts' doesn't exist on disk → filtered out
+  })
+})
