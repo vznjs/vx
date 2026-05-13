@@ -15,6 +15,7 @@
 
 import path from 'node:path'
 import type { TaskOutcome } from '../graph/scheduler.js'
+import { tallyOutcomes } from './tally.js'
 
 export interface SummarizeArgs {
   /** Empty string → default path; otherwise the explicit file path. */
@@ -107,29 +108,4 @@ export async function writeRunProfile(args: ProfileArgs): Promise<string> {
     })
   await Bun.write(outPath, JSON.stringify({ traceEvents }, null, 2))
   return outPath
-}
-
-function tallyOutcomes(outcomes: readonly TaskOutcome[]): Record<string, number> {
-  const t = {
-    successful: 0,
-    failed: 0,
-    skipped: 0,
-    cachedLocal: 0,
-    cachedRemote: 0,
-    total: 0,
-  }
-  for (const o of outcomes) {
-    if (o.node.config.exec === undefined) continue
-    t.total++
-    if (o.status === 'success') t.successful++
-    else if (o.status === 'cache-hit') {
-      t.successful++
-      t.cachedLocal++
-    } else if (o.status === 'cache-hit-remote') {
-      t.successful++
-      t.cachedRemote++
-    } else if (o.status === 'failed') t.failed++
-    else if (o.status === 'skipped') t.skipped++
-  }
-  return t
 }

@@ -5,7 +5,7 @@ import { cleanOutputs, resolveInputs, resolveOutputs } from '../cache/inputs.js'
 import { buildIsolatedEnv } from '../exec/env.js'
 import { runCommand, runPersistent } from '../exec/runner.js'
 import type { TaskOutcome } from '../graph/scheduler.js'
-import type { TaskNode } from '../graph/task-graph.js'
+import { isGroupTask, type TaskNode } from '../graph/task-graph.js'
 import type { Logger } from './logger.js'
 import { filterUpstreamHashes } from './upstream.js'
 
@@ -89,102 +89,123 @@ export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
   })
 }
 
+/**
+ * Dispatch a single task to one of three execution paths. Each path
+ * owns its own outcome shape; the dispatcher just picks based on the
+ * task's config shape (group vs persistent vs cached). Sharing
+ * helpers (`taskEnv`, `effectiveForwardArgs`) live below.
+ */
 export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
-  const { node, upstream, cache, noCache, log } = args
-  const cfg: TaskConfig = node.config
+  if (isGroupTask(args.node)) return executeGroupTask(args)
+  if (args.node.config.exec?.persistent !== undefined) return executePersistentTask(args)
+  return executeCachedTask(args)
+}
 
-  // Group task: no `exec` means this task is just a dependency
-  // aggregator. Return success immediately — no spawn, no cache
-  // lookup, no I/O. The scheduler has already ensured every
-  // dependency completed successfully before calling us. Derive a
-  // hash from the upstream hashes so any downstream task with
-  // `inputs.tasks` pointing here gets natural cache invalidation
-  // when something beneath the group changes.
-  if (cfg.exec === undefined) {
-    const wallclockNs = process.hrtime.bigint() - args.runStartHrTimeNs
-    const groupHash = computeGroupHash(upstream)
+/**
+ * Group task: no `exec`. The scheduler has already ensured every
+ * dependency completed; we just return success with a hash rolled up
+ * from upstream outcomes so downstream cache keys still cascade
+ * through us.
+ */
+function executeGroupTask(args: ExecuteArgs): TaskOutcome {
+  const wallclockNs = process.hrtime.bigint() - args.runStartHrTimeNs
+  return {
+    node: args.node,
+    status: 'success',
+    exitCode: 0,
+    durationMs: 0,
+    hash: computeGroupHash(args.upstream),
+    wallclockStartNs: wallclockNs,
+    wallclockEndNs: wallclockNs,
+  }
+}
+
+/**
+ * Persistent task: dev server / file watcher / daemon. Spawn, wait
+ * for ready (regex match or immediate), stash the subprocess in the
+ * orchestrator-owned registry, return success. The orchestrator
+ * SIGTERMs the registry at end-of-run.
+ *
+ * Never reads or writes the cache — the project loader rejects
+ * `cache + persistent` at config-load time, so by the time we get
+ * here, `cache` is guaranteed undefined.
+ */
+async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
+  const { node, log } = args
+  // Type narrowing: the dispatcher checks `exec.persistent` before
+  // calling us, so `exec` and `exec.persistent` are both present.
+  const step = node.config.exec as ExecConfig & {
+    persistent: NonNullable<ExecConfig['persistent']>
+  }
+  const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
+  const env = taskEnv(node, step)
+  const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
+
+  // When readyWhen is set we leave the command untouched so the
+  // regex matcher sees the unmodified output. When it's absent the
+  // task is "ready on spawn" — we can safely append forwardArgs in
+  // the same way runCommand does.
+  const persistentOpts: Parameters<typeof runPersistent>[0] = {
+    command:
+      step.persistent.readyWhen !== undefined
+        ? step.command
+        : effectiveForwardArgs.length > 0
+          ? step.command + ' ' + effectiveForwardArgs.map((s) => JSON.stringify(s)).join(' ')
+          : step.command,
+    cwd: node.projectDir,
+    env,
+    onStdout: (chunk) => log.taskStdout(node, chunk),
+    onStderr: (chunk) => log.taskStderr(node, chunk),
+  }
+  if (step.persistent.readyWhen !== undefined) {
+    persistentOpts.readyWhen = step.persistent.readyWhen
+  }
+
+  const spawn = runPersistent(persistentOpts)
+  try {
+    await spawn.ready
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
     return {
       node,
-      status: 'success',
-      exitCode: 0,
-      durationMs: 0,
-      hash: groupHash,
-      wallclockStartNs: wallclockNs,
-      wallclockEndNs: wallclockNs,
+      status: 'failed',
+      exitCode: 1,
+      durationMs: spawn.readyMs(),
+      stdout: spawn.bufferedStdout(),
+      stderr:
+        spawn.bufferedStderr() + `\n[vx] persistent task failed to become ready: ${message}\n`,
+      wallclockStartNs,
+      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
     }
   }
 
-  const step: ExecConfig = cfg.exec
+  args.persistentRegistry?.set(node.id, spawn.child)
+  return {
+    node,
+    status: 'success',
+    exitCode: 0,
+    durationMs: spawn.readyMs(),
+    stdout: spawn.bufferedStdout(),
+    stderr: spawn.bufferedStderr(),
+    wallclockStartNs,
+    wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+  }
+}
+
+/**
+ * Cached task: the common case. Hash inputs, try cache.get; on hit,
+ * clean+restore+replay logs; on miss (or --no-cache), clean outputs,
+ * spawn the command, save on success.
+ */
+async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
+  const { node, upstream, cache, noCache, log } = args
+  const cfg: TaskConfig = node.config
+  const step = cfg.exec as ExecConfig // dispatcher guarantees exec is present
   const cacheCfg: CacheConfig | undefined = cfg.cache
   const cacheEnabled = cacheCfg !== undefined && !noCache
 
   const outputs = cacheCfg?.outputs.files ?? []
-
-  // forwardArgs apply only to the tasks the user explicitly asked for —
-  // not to dependsOn-expanded upstream tasks. This keeps `vx run build
-  // -- --watch` from forwarding `--watch` into every dependency's
-  // build, and it stops upstream cache keys from being uselessly
-  // partitioned by CLI args that don't change their behavior.
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
-
-  // Persistent (long-running) tasks: spawn + wait for readiness, don't
-  // wait for exit. The orchestrator collects the subprocess and SIGTERMs
-  // it once the rest of the graph finishes. No caching for these — the
-  // schema rejects `cache + persistent` at load time.
-  if (step.persistent !== undefined) {
-    const env = buildIsolatedEnv({
-      passThrough: step.env?.passThrough ?? [],
-      define: step.env?.define ?? {},
-      source: process.env,
-      binPaths: [path.join(node.projectDir, 'node_modules', '.bin')],
-    })
-    const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
-    const persistentOpts: Parameters<typeof runPersistent>[0] = {
-      command:
-        step.persistent.readyWhen !== undefined
-          ? step.command
-          : effectiveForwardArgs.length > 0
-            ? step.command + ' ' + effectiveForwardArgs.map((s) => JSON.stringify(s)).join(' ')
-            : step.command,
-      cwd: node.projectDir,
-      env,
-      onStdout: (chunk) => log.taskStdout(node, chunk),
-      onStderr: (chunk) => log.taskStderr(node, chunk),
-    }
-    if (step.persistent.readyWhen !== undefined) {
-      persistentOpts.readyWhen = step.persistent.readyWhen
-    }
-    const spawn = runPersistent(persistentOpts)
-    try {
-      await spawn.ready
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
-      return {
-        node,
-        status: 'failed',
-        exitCode: 1,
-        durationMs: spawn.readyMs(),
-        stdout: spawn.bufferedStdout(),
-        stderr:
-          spawn.bufferedStderr() + `\n[vx] persistent task failed to become ready: ${message}\n`,
-        wallclockStartNs,
-        wallclockEndNs,
-      }
-    }
-    args.persistentRegistry?.set(node.id, spawn.child)
-    const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
-    return {
-      node,
-      status: 'success',
-      exitCode: 0,
-      durationMs: spawn.readyMs(),
-      stdout: spawn.bufferedStdout(),
-      stderr: spawn.bufferedStderr(),
-      wallclockStartNs,
-      wallclockEndNs,
-    }
-  }
 
   const hash = await computeTaskHash({
     node,
@@ -196,23 +217,16 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     nestedProjectDirs: args.nestedProjectDirs,
   })
 
-  // Cleaning the declared output paths is the same operation in both
-  // cache-hit and cache-miss paths: wipe whatever's currently matching
-  // the output globs so the restored snapshot (or the fresh exec) lands
-  // on a clean slate. Skipped when nothing is declared as output, and
-  // when caching is off (the user is debugging and managing the tree
-  // themselves).
   const cleanArgs = {
     projectDir: node.projectDir,
     outputs,
     nestedProjectDirs: args.nestedProjectDirs,
   }
 
+  // Cache lookup. On hit, time the user-perceived restore op
+  // (clean+restore+log-replay) — that's what the framed-block footer
+  // shows, not the original exec time stored in the entry.
   if (cacheEnabled) {
-    // Time the cache lookup + (if hit) clean + restore + log replay.
-    // This is the "operation time" the user sees in the footer —
-    // wallclock for actually doing the cache-hit work, not the
-    // original exec time that produced the entry.
     const cacheOpStart = performance.now()
     const hit = await cache.get(hash)
     if (hit) {
@@ -232,17 +246,12 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
+  // Cache miss path (or caching disabled). Clean declared outputs
+  // before exec so a stale prior-build artifact can't survive into a
+  // fresh run.
   if (cacheEnabled && outputs.length > 0) await cleanOutputs(cleanArgs)
 
-  const env = buildIsolatedEnv({
-    passThrough: step.env?.passThrough ?? [],
-    define: step.env?.define ?? {},
-    source: process.env,
-    binPaths: [path.join(node.projectDir, 'node_modules', '.bin')],
-  })
-  // Per-task wallclock span relative to the run's t=0. Monotonic ns
-  // ticks so analytics can reconstruct the parallel timeline (overlaps,
-  // idle gaps) immune to wall-clock skew.
+  const env = taskEnv(node, step)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
   const result = await runCommand({
     command: step.command,
@@ -288,6 +297,21 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     wallclockStartNs,
     wallclockEndNs,
   }
+}
+
+/**
+ * Build the child-process env for one task. Same arguments at every
+ * call site (persistent + cached); the project's own
+ * `node_modules/.bin` is prepended to PATH — never the workspace
+ * root's, never sibling projects' (per the project-isolation rule).
+ */
+function taskEnv(node: TaskNode, step: ExecConfig): NodeJS.ProcessEnv {
+  return buildIsolatedEnv({
+    passThrough: step.env?.passThrough ?? [],
+    define: step.env?.define ?? {},
+    source: process.env,
+    binPaths: [path.join(node.projectDir, 'node_modules', '.bin')],
+  })
 }
 
 /**

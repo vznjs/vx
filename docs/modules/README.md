@@ -47,6 +47,8 @@ For the high-level data flow, read
 | [`plan.md`](./plan.md)                             | `src/orchestrator/plan.ts` — `--dry` / `--graph` planning (no exec).                   |
 | [`plan-format.md`](./plan-format.md)               | `src/orchestrator/plan-format.ts` — plan → text / JSON / DOT.                          |
 | [`run-artifacts.md`](./run-artifacts.md)           | `src/orchestrator/run-artifacts.ts` — `--summarize` JSON + `--profile` trace writers.  |
+| [`prepare.md`](./prepare.md)                       | `src/orchestrator/prepare.ts` — shared run / planRun setup (workspace, graph, cache).  |
+| [`tally.md`](./tally.md)                           | `src/orchestrator/tally.ts` — shared outcome tally for summary + summarize JSON.       |
 
 ## Workspace + discovery
 

@@ -133,6 +133,37 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: Architecture refactor. Three focused changes (no
+  behaviour change, all 414 tests still pass):
+  1. Extracted `orchestrator/prepare.ts:prepareRun(options, log) ->
+PreparedRun`. `run()` and `planRun()` no longer duplicate
+     ~50 lines of workspace-discovery → config-load → graph-build →
+     cache-open. `PreparedRun.empty` is a small discriminated union
+     so the two callers handle empty cases in their own way (run
+     logs + returns NOT-ok; planRun returns `{ tasks: [] }`).
+  2. Split `executeTask` into three named functions —
+     `executeGroupTask`, `executePersistentTask`, `executeCachedTask`
+     — behind a tiny dispatcher. Hoisted `buildIsolatedEnv` to a
+     private `taskEnv(node, step)` helper since the persistent and
+     cached paths constructed it identically.
+  3. Shared `tallyOutcomes` between `summary.ts` and
+     `run-artifacts.ts` via a new `orchestrator/tally.ts`. Both
+     surfaces (terminal summary + `--summarize` JSON) now compute
+     the same numbers from one place; group-task exclusion is baked
+     into the helper.
+
+  Small follow-ons in the same PR: `isGroupTask(node)` predicate
+  added to `graph/task-graph.ts` and applied at six call sites that
+  previously inlined `node.config.exec === undefined`;
+  `expandRequested` moved from `orchestrator.ts` to
+  `graph/task-graph.ts` next to `buildTaskGraph` (they're paired);
+  dead `taskId` re-export from `orchestrator.ts` removed;
+  `formatBriefDuration` (framed-output.ts) replaced with the
+  byte-identical `formatDuration` from `summary.ts`; the `OnDiskMeta`
+  shape in `layered-cache.ts` is now `Omit<CacheEntry, 'hash' |
+'outputFiles' | 'source'>` so it stays in sync with the cache
+  contract automatically; `SaveArgs` marked `@internal`.
+
 - **2026-05**: CACHE_VERSION → v14. File enumeration switched from
   `Bun.Glob` + `ignore`-library filter to `git ls-files --cached
   --others --exclude-standard` (Turbo / Nx parity — both defer to

@@ -34,15 +34,16 @@ export interface LayeredCacheOptions {
   onRemoteHit?: (hash: string, bytes: number) => void
 }
 
-interface OnDiskMeta {
-  taskId: string
-  command: string
-  exitCode: number
-  durationMs: number
-  stdout: string
-  stderr: string
-  storedAt: string
-}
+/**
+ * Shape of `meta.json` inside a remote artifact tarball. Officially
+ * derived from `CacheEntry` so the on-disk meta schema stays in sync
+ * with the cache contract automatically — adding a field to
+ * `CacheEntry` propagates here unless it's one of the three excluded
+ * fields (`hash` is the artifact's own filename, `outputFiles` is
+ * recovered by listing the unpacked `outputs/` tree, `source` is
+ * set per-lookup by the layer that served the hit).
+ */
+type OnDiskMeta = Omit<CacheEntry, 'hash' | 'outputFiles' | 'source'>
 
 export class LayeredCache implements CacheLayer {
   constructor(

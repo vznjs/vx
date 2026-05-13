@@ -6,7 +6,7 @@
 // The plan is read-only.
 
 import type { CacheLayer } from '../cache/cache.js'
-import type { TaskNode } from '../graph/task-graph.js'
+import { isGroupTask, type TaskNode } from '../graph/task-graph.js'
 import type { TaskOutcome } from '../graph/scheduler.js'
 import { runGraph } from '../graph/scheduler.js'
 import { computeGroupHash, computeTaskHash } from './execute-task.js'
@@ -59,7 +59,7 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
     nodes: args.nodes,
     concurrency: 1,
     execute: async (node, upstream) => {
-      if (node.config.exec === undefined) {
+      if (isGroupTask(node)) {
         cacheStatusById.set(node.id, 'group')
         return planOutcome(node, computeGroupHash(upstream))
       }

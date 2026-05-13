@@ -154,6 +154,14 @@ export interface CacheLayer {
   close(): void
 }
 
+/**
+ * Convenience alias for the `save()` args. Used by `LayeredCache` to
+ * forward call args without redeclaring the structural shape — NOT
+ * part of the conceptual cache contract; consumers should call
+ * `CacheLayer.save({ ... })` directly.
+ *
+ * @internal
+ */
 export type SaveArgs = Parameters<CacheLayer['save']>[0]
 
 interface EntryRow {

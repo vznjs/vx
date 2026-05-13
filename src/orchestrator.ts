@@ -2,29 +2,17 @@
 // run with caching. Each step delegates to a single-purpose module under
 // ./orchestrator/ so the layers can be swapped without touching the others.
 
-import type { ProjectConfig } from './config.js'
-import { Cache } from './cache/cache.js'
 import { LayeredCache } from './cache/layered-cache.js'
 import { VERSION } from './index.js'
-import { buildPackageGraph } from './workspace/package-graph.js'
-import { loadProjectConfig, loadWorkspaceConfig } from './workspace/project-loader.js'
 import { runGraph, type TaskOutcome } from './graph/scheduler.js'
-import { buildTaskGraph, taskId, type ProjectEntry } from './graph/task-graph.js'
+import { isGroupTask } from './graph/task-graph.js'
 import { ulid } from './util/ulid.js'
-import {
-  findWorkspaceRoot,
-  listProjects,
-  loadWorkspace,
-  resolveCacheDir,
-} from './workspace/workspace.js'
 import { executeTask } from './orchestrator/execute-task.ts'
-import { computeWorkspaceFingerprint } from './orchestrator/fingerprint.ts'
-import { computeNestedProjectDirs } from './orchestrator/nested-dirs.ts'
-import { wrapWithRemoteCache } from './orchestrator/remote-cache-setup.ts'
 import { defaultLogger, type Logger } from './orchestrator/logger.ts'
 import { detectColors } from './orchestrator/colors.ts'
 import { formatHeader } from './orchestrator/framed-output.ts'
 import { plan, type RunPlan } from './orchestrator/plan.ts'
+import { prepareRun } from './orchestrator/prepare.ts'
 import { writeRunProfile, writeRunSummary } from './orchestrator/run-artifacts.ts'
 import { formatRunSummary } from './orchestrator/summary.ts'
 
@@ -79,54 +67,33 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const colors = options.log ? { enabled: false } : detectColors()
   const log = options.log ?? defaultLogger(colors)
 
-  const workspaceRoot = await findWorkspaceRoot(options.cwd)
-  const workspace = await loadWorkspace(workspaceRoot)
-  const workspaceConfig = await loadWorkspaceConfig(workspaceRoot)
-  const projectMetas = await listProjects(workspace)
-
-  const projects = new Map<string, ProjectEntry>()
-  for (const meta of projectMetas) {
-    if (!meta.configPath) continue
-    const config: ProjectConfig = await loadProjectConfig(meta.configPath)
-    projects.set(meta.name, { name: meta.name, dir: meta.dir, config })
-  }
-
-  const packageGraph = buildPackageGraph(projectMetas)
-  const nestedDirsByProject = computeNestedProjectDirs([...projects.values()])
-
-  const candidateProjects = options.projects
-    ? options.projects.filter((p) => projects.has(p))
-    : [...projects.keys()]
-
-  const requested = expandRequested(options.tasks, candidateProjects, projects)
-  if (requested.length === 0) {
-    log.status(`No projects declare task(s): ${options.tasks.join(', ')}.`)
-    // Treat "nothing matched" as a failure. A typo'd task name silently
-    // exiting 0 in CI is a real footgun.
+  const prepared = await prepareRun(options, log)
+  if (prepared.empty !== null) {
+    // `no-tasks-declared` is almost always a typo in CI; we surface
+    // a clear message and return NOT-ok so the script exits 1.
+    // `empty-graph` is defensive — unreachable under current
+    // buildTaskGraph semantics but logged just in case.
+    const msg =
+      prepared.empty === 'no-tasks-declared'
+        ? `No projects declare task(s): ${options.tasks.join(', ')}.`
+        : 'No tasks to run.'
+    log.status(msg)
+    prepared.cache.close()
     return { ok: false, outcomes: [] }
   }
-
-  const nodes = buildTaskGraph({
-    projects,
-    packageGraph,
-    requested,
-    ...(options.excludeDependencies !== undefined
-      ? { excludeDependencies: options.excludeDependencies }
-      : {}),
-  })
-  if (nodes.size === 0) {
-    log.status(`No tasks to run.`)
-    return { ok: false, outcomes: [] }
-  }
-
-  const cacheDir = resolveCacheDir(workspaceRoot, workspaceConfig)
-  const localCache = new Cache(cacheDir)
-  const cache = wrapWithRemoteCache(localCache, log)
+  const {
+    workspaceRoot,
+    workspaceConfig,
+    cacheDir,
+    cache,
+    nodes,
+    workspaceFingerprint,
+    nestedDirsByProject,
+  } = prepared
   const concurrency =
     options.concurrency ??
     workspaceConfig?.concurrency ??
     Math.max(1, navigator.hardwareConcurrency)
-  const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
   // One run-id per `vx run` invocation. Every task in the resulting
   // graph carries it so analytics queries can group by invocation.
@@ -195,15 +162,12 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const list = [...outcomes.values()]
   const ok = list.every((o) => o.status === 'success' || o.status === 'cache-hit')
 
-  // Summary counts only real tasks (those with `exec`). Group tasks
-  // do no work — they're just dependency aggregators — so including
-  // them in totals makes "3 cached, 4 total" read as if something
-  // wasn't cached when in fact every executable task was. Same
-  // exclusion as the analytics `recordRun` pass below.
-  const realTasks = list.filter((o) => o.node.config.exec !== undefined)
+  // The summary + artifact writers + recordRun pass all exclude group
+  // tasks via the shared tallyOutcomes helper. We pass the full
+  // outcome list and let each consumer apply the same filter.
   const endedAtMs = Date.now()
   const totalMs = Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000
-  for (const line of formatRunSummary(realTasks, totalMs, colors)) log.status(line)
+  for (const line of formatRunSummary(list, totalMs, colors)) log.status(line)
 
   // Optional artifacts. Errors are surfaced to the user but don't
   // change the run's exit code — the run already happened.
@@ -245,7 +209,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const now = endedAtMs
   for (const o of list) {
     if (!o.hash) continue
-    if (o.node.config.exec === undefined) continue
+    if (isGroupTask(o.node)) continue
     cache.recordRun({
       hash: o.hash,
       project: o.node.projectName,
@@ -281,97 +245,22 @@ export async function run(options: RunOptions): Promise<RunSummary> {
  *   - Opening + closing the local Cache handle.
  */
 export async function planRun(options: RunOptions): Promise<RunPlan> {
-  const workspaceRoot = await findWorkspaceRoot(options.cwd)
-  const workspace = await loadWorkspace(workspaceRoot)
-  const workspaceConfig = await loadWorkspaceConfig(workspaceRoot)
-  const projectMetas = await listProjects(workspace)
-
-  const projects = new Map<string, ProjectEntry>()
-  for (const meta of projectMetas) {
-    if (!meta.configPath) continue
-    const config: ProjectConfig = await loadProjectConfig(meta.configPath)
-    projects.set(meta.name, { name: meta.name, dir: meta.dir, config })
-  }
-
-  const packageGraph = buildPackageGraph(projectMetas)
-  const nestedDirsByProject = computeNestedProjectDirs([...projects.values()])
-
-  const candidateProjects = options.projects
-    ? options.projects.filter((p) => projects.has(p))
-    : [...projects.keys()]
-
-  const requested = expandRequested(options.tasks, candidateProjects, projects)
-  if (requested.length === 0) return { tasks: [] }
-
-  const nodes = buildTaskGraph({
-    projects,
-    packageGraph,
-    requested,
-    ...(options.excludeDependencies !== undefined
-      ? { excludeDependencies: options.excludeDependencies }
-      : {}),
-  })
-  if (nodes.size === 0) return { tasks: [] }
-
-  const cacheDir = resolveCacheDir(workspaceRoot, workspaceConfig)
-  const localCache = new Cache(cacheDir)
-  const cache = wrapWithRemoteCache(localCache, options.log ?? defaultLogger())
-  const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
-
+  const log = options.log ?? defaultLogger()
+  const prepared = await prepareRun(options, log)
   try {
+    if (prepared.empty !== null) return { tasks: [] }
     return await plan({
-      nodes,
-      workspaceRoot,
-      workspaceFingerprint,
-      cache,
+      nodes: prepared.nodes,
+      workspaceRoot: prepared.workspaceRoot,
+      workspaceFingerprint: prepared.workspaceFingerprint,
+      cache: prepared.cache,
       noCache: options.noCache ?? false,
       forwardArgs: options.forwardArgs,
-      nestedDirsByProject,
+      nestedDirsByProject: prepared.nestedDirsByProject,
     })
   } finally {
-    cache.close()
+    prepared.cache.close()
   }
-}
-
-/**
- * Expand the user-requested task list into concrete `{project, task}`
- * pairs the task-graph builder consumes.
- *
- *  - Bare task names (`'build'`) → one entry per project in
- *    `candidates` that declares the task. Missing in a given project
- *    is silent (sparse tasks are normal across a workspace).
- *  - Anchored entries (`'pkg#task'`) → one entry exactly, ignoring
- *    `candidates`. Silently dropped if pkg/task doesn't exist (the
- *    CLI's pre-validation catches malformed strings).
- *
- * Duplicates are deduped (a user might pass `vx run build pkg#build`).
- */
-function expandRequested(
-  tasks: readonly string[],
-  candidates: readonly string[],
-  projects: Map<string, ProjectEntry>,
-): Array<{ project: string; task: string }> {
-  const seen = new Set<string>()
-  const out: Array<{ project: string; task: string }> = []
-  const push = (project: string, task: string): void => {
-    const key = `${project}#${task}`
-    if (seen.has(key)) return
-    seen.add(key)
-    out.push({ project, task })
-  }
-  for (const spec of tasks) {
-    const idx = spec.indexOf('#')
-    if (idx >= 0) {
-      const project = spec.slice(0, idx)
-      const task = spec.slice(idx + 1)
-      if (projects.get(project)?.config.tasks?.[task]) push(project, task)
-      continue
-    }
-    for (const name of candidates) {
-      if (projects.get(name)?.config.tasks?.[spec]) push(name, spec)
-    }
-  }
-  return out
 }
 
 function unanchored(spec: string): string {
@@ -380,4 +269,3 @@ function unanchored(spec: string): string {
 }
 
 export type { RunPlan, PlannedTask, CacheStatus } from './orchestrator/plan.ts'
-export { taskId }
