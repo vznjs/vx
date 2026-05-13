@@ -341,3 +341,218 @@ describe('resolveInputs', () => {
     expect(got.files).toEqual([path.join(projectDir, 'src', 'outer.ts')])
   })
 })
+
+// v14: file enumeration defers to `git ls-files --cached --others
+// --exclude-standard` when the project is inside a git repo, matching
+// what Turbo and Nx do. Nested .gitignore files, .git/info/exclude,
+// and global excludes are all honored because git applies them.
+describe('resolveInputs — git ls-files path (v14)', () => {
+  let root: string
+  let projectDir: string
+
+  async function git(cwd: string, ...args: string[]): Promise<void> {
+    const proc = Bun.spawnSync({
+      cmd: ['git', '-c', 'commit.gpgsign=false', '-c', 'tag.gpgSign=false', ...args],
+      cwd,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    if (proc.exitCode !== 0) {
+      const stderr = new TextDecoder().decode(proc.stderr)
+      throw new Error(`git ${args.join(' ')} failed: ${stderr}`)
+    }
+  }
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-in-git-'))
+    projectDir = path.join(root, 'pkg')
+    await mkdir(projectDir, { recursive: true })
+    await git(root, 'init', '-q')
+    await git(root, 'config', 'user.email', 'test@vx.local')
+    await git(root, 'config', 'user.name', 'vx test')
+  })
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('nested .gitignore patterns are correctly anchored (the v13 footgun)', async () => {
+    // Pre-v14, a project-level pattern like `src/skip.ts` was anchored
+    // to the workspace root, not the project — so it never matched.
+    // v14 defers to git, which gets this right.
+    await write(path.join(projectDir, '.gitignore'), 'src/skip.ts\n')
+    await write(path.join(projectDir, 'src', 'keep.ts'))
+    await write(path.join(projectDir, 'src', 'skip.ts'))
+    // Need at least one commit for ls-files to behave normally.
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'init')
+
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['src/**'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    const rels = got.files.map((p) => path.relative(projectDir, p))
+    expect(rels).toContain(path.join('src', 'keep.ts'))
+    expect(rels).not.toContain(path.join('src', 'skip.ts'))
+  })
+
+  it('untracked-but-not-ignored files participate in inputs (no commit required)', async () => {
+    // A freshly-added file that hasn't been `git add`ed yet should
+    // still enter the hash — that's the `--others --exclude-standard`
+    // behavior, and matches user intuition ("I added a file, the
+    // cache should reflect it").
+    await write(path.join(projectDir, 'src', 'fresh.ts'))
+    // Don't `git add`. Don't commit.
+
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['src/**'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    expect(got.files.map((p) => path.relative(projectDir, p))).toEqual([
+      path.join('src', 'fresh.ts'),
+    ])
+  })
+
+  it('gitignored files are excluded (workspace-root .gitignore)', async () => {
+    await write(path.join(root, '.gitignore'), 'pkg/secret.txt\n')
+    await write(path.join(projectDir, 'src', 'index.ts'))
+    await write(path.join(projectDir, 'secret.txt'), 'shh')
+
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['**/*'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    const rels = got.files.map((p) => path.relative(projectDir, p))
+    expect(rels).toContain(path.join('src', 'index.ts'))
+    expect(rels).not.toContain('secret.txt')
+  })
+
+  it('global excludes (.git/info/exclude) are honored', async () => {
+    // Repo-local equivalent of a global gitignore. The v13 ignore-lib
+    // path didn't know about this file at all.
+    await write(path.join(root, '.git', 'info', 'exclude'), 'pkg/local-only.tmp\n')
+    await write(path.join(projectDir, 'src', 'index.ts'))
+    await write(path.join(projectDir, 'local-only.tmp'), 'noise')
+
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['**/*'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    const rels = got.files.map((p) => path.relative(projectDir, p))
+    expect(rels).not.toContain('local-only.tmp')
+  })
+
+  it('deleted-but-tracked files are skipped (existsSync guard)', async () => {
+    await write(path.join(projectDir, 'src', 'index.ts'))
+    await write(path.join(projectDir, 'src', 'deleteme.ts'))
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'init')
+    // Delete the file via the FS only. git ls-files --cached still
+    // reports it; we must skip silently or the hasher would throw.
+    await rm(path.join(projectDir, 'src', 'deleteme.ts'))
+
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['src/**'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    expect(got.files.map((p) => path.relative(projectDir, p))).toEqual([
+      path.join('src', 'index.ts'),
+    ])
+  })
+
+  it('declared outputs still excluded under the git path', async () => {
+    // Even though git would list dist/index.js (untracked, gitignored
+    // OR not), declared outputs must never enter inputs. Same guard
+    // as the FS-walker path.
+    await write(path.join(projectDir, 'src', 'index.ts'))
+    await write(path.join(projectDir, 'dist', 'index.js'))
+
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['**/*'] },
+      ownOutputs: ['dist/**'],
+      nestedProjectDirs: [],
+    })
+    const rels = got.files.map((p) => path.relative(projectDir, p))
+    expect(rels).toContain(path.join('src', 'index.ts'))
+    expect(rels).not.toContain(path.join('dist', 'index.js'))
+  })
+
+  it('nested-project boundary still excludes inner-project files under the git path', async () => {
+    const inner = path.join(projectDir, 'inner')
+    await write(path.join(inner, 'src', 'inner.ts'))
+    await write(path.join(projectDir, 'src', 'outer.ts'))
+
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['**/*'] },
+      ownOutputs: [],
+      nestedProjectDirs: [inner],
+    })
+    const rels = got.files.map((p) => path.relative(projectDir, p))
+    expect(rels).toContain(path.join('src', 'outer.ts'))
+    expect(rels).not.toContain(path.join('inner', 'src', 'inner.ts'))
+  })
+
+  it('negation in inputs.files still strips matched files under the git path', async () => {
+    await write(path.join(projectDir, 'src', 'keep.ts'))
+    await write(path.join(projectDir, 'src', 'skip.test.ts'))
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['src/**', '!**/*.test.ts'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    expect(got.files.map((p) => path.relative(projectDir, p))).toEqual([
+      path.join('src', 'keep.ts'),
+    ])
+  })
+
+  it('node_modules under a project is always excluded (defense in depth)', async () => {
+    // git would already exclude node_modules if it's in .gitignore;
+    // we also have ALWAYS_IGNORE as a belt-and-suspenders guard.
+    await write(path.join(projectDir, 'node_modules', 'dep', 'index.js'))
+    await write(path.join(projectDir, 'src', 'index.ts'))
+    // Force git to track node_modules to verify our own filter wins.
+    await git(root, 'add', '-f', 'pkg/node_modules/dep/index.js')
+    await write(path.join(projectDir, 'src', 'index.ts'))
+
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['**/*'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    const rels = got.files.map((p) => path.relative(projectDir, p))
+    expect(rels).toContain(path.join('src', 'index.ts'))
+    expect(rels).not.toContain(path.join('node_modules', 'dep', 'index.js'))
+  })
+})

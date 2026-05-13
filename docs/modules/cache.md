@@ -227,7 +227,7 @@ A `vx stats` CLI command can ship later; the data is captured today.
 
 ## `CACHE_VERSION`
 
-Currently `'vx-cache-v13'`. Bump when:
+Currently `'vx-cache-v14'`. Bump when:
 
 - A new field is added to `CacheKeyInput`.
 - The order or framing of existing key fields changes.

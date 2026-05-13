@@ -34,7 +34,7 @@ opt _out_ via `cache: false`. We chose the strictest of the three.
 The cache key for one task is a SHA-256 hex digest over (in order):
 
 1. **`CACHE_VERSION`** — the schema-version sentinel
-   (currently `'vx-cache-v13'`, in `src/cache/cache.ts`). Bumped only
+   (currently `'vx-cache-v14'`, in `src/cache/cache.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -379,3 +379,19 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
   object, and the cache entry covers successful runs; CI captures
   parent stdout natively. The duplicate sibling dump was pure
   redundancy.
+- **v13 → v14**: file enumeration switched from a `Bun.Glob` walker
+  with our own `ignore`-library filter to `git ls-files --cached
+--others --exclude-standard` when the project is inside a git repo.
+  Matches what Turborepo and Nx both do at the bottom of their hash
+  pipelines. Side-effects user-visible: (a) nested `.gitignore`
+  patterns are anchored to the gitignore's own directory, fixing the
+  v13 footgun where `pkg/.gitignore: src/skip.ts` was misinterpreted
+  as `<workspaceRoot>/src/skip.ts`; (b) `.git/info/exclude` and
+  global excludes participate; (c) untracked-but-not-ignored files
+  enter inputs immediately (no `git add` required). When git isn't
+  available (no `.git`, git binary missing), we fall back to the
+  pre-v14 `ignore`-library walker — same behavior as before. Bumped
+  because the file-set definition for the same `inputs.files` globs
+  could differ (e.g. a previously-mis-handled nested gitignore now
+  filters correctly). Pre-alpha tolerates the one-time cache
+  invalidation freely.

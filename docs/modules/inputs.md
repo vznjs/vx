@@ -48,25 +48,43 @@ export async function cleanOutputs(args: {
 }): Promise<void>
 ```
 
-## File resolution rules
+## File resolution rules (v14)
 
-A glob pass that yields the final `files` list:
+The candidate file set comes from `git ls-files --cached --others
+--exclude-standard` when the project is inside a git repo, falling
+back to a `Bun.Glob` walker when it isn't. The user's
+`cache.inputs.files` globs are then applied as a filter on top.
 
-1. **Positive entries** — `cache.inputs.files` strings that don't
-   start with `!`. If `cache.inputs.files` is undefined (only happens
-   for tasks with no `cache` block, where we hash inputs anyway for
-   downstream propagation), defaults to `['**/*']`.
-2. **Negative entries** — strings starting with `!`. The `!` is
-   stripped, and the rest is added to the ignore list.
-3. **Always-ignored** — hard-coded list:
-   `node_modules/**`, `.git/**`, `.vx/**`, `*.tsbuildinfo`.
-4. **Boundary ignores** — every nested project's directory (relative
-   to this project) → `<rel>/**`. Computed by the orchestrator;
-   guarantees cross-project isolation.
-5. **Own outputs** — declared `cache.outputs.files` are added to the
-   ignore set. Prevents self-invalidation.
-6. **Gitignore filter** — after globbing, results are filtered through
-   `.gitignore` rules from the workspace root and the project dir.
+1. **Candidate enumeration:**
+   - **Git path** (default when a `.git` work-tree exists). `git
+ls-files` yields tracked files PLUS untracked-but-not-ignored
+     files. `.gitignore` cascades (workspace + every nested), plus
+     `.git/info/exclude` + global excludes, are honored — git
+     applies them for us. This matches what Turbo and Nx do
+     internally.
+   - **Fallback path** (no git available). `Bun.Glob.scan(projectDir)`
+     walks the FS. The `ignore` library applies workspace-root +
+     project-root `.gitignore` patterns, with the caveat that
+     project-level anchored patterns are evaluated against
+     workspace-relative paths (so `pkg/.gitignore: src/skip.ts`
+     misbehaves — match git semantics by adopting a git workspace).
+2. **Positive globs** — `cache.inputs.files` strings without `!`.
+   The default when `cache.inputs.files` is undefined is `['**/*']`.
+   Each is checked against the candidate set via `Bun.Glob.match`.
+3. **Negative globs** — entries starting with `!`. The `!` is
+   stripped; the rest becomes a `Bun.Glob` and any matched path is
+   removed.
+4. **Always-ignored** — hard-coded
+   (`**/node_modules/**`, `**/.git/**`, `**/.vx/**`, `**/*.tsbuildinfo`)
+   — applied as a defense-in-depth even if git happens to track
+   something there.
+5. **Boundary ignores** — every nested project's directory (relative
+   to this project) → `<rel>/**`. Cross-project isolation contract.
+6. **Own outputs** — declared `cache.outputs.files` are excluded.
+   Prevents self-invalidation.
+7. **Existence check** — `git ls-files --cached` can surface a
+   deleted-but-tracked path; we drop entries that don't exist on
+   disk so the hasher doesn't throw ENOENT.
 
 The matched absolute paths are sorted alphabetically and returned.
 
@@ -105,7 +123,24 @@ Returns sorted absolute paths.
 
 ## Tests
 
-Mostly covered by `orchestrator.test.ts` e2e tests:
+Two test files cover this module:
+
+**`tests/inputs.test.ts`** — direct unit tests against `resolveInputs`,
+`resolveOutputs`, `cleanOutputs`. Split into FS-walker tests (no git
+init in fixture) and **git-path tests** (init a real git repo in the
+fixture). The git-path block verifies:
+
+- Nested `.gitignore` patterns are correctly anchored (the v13 bug).
+- Untracked-but-not-ignored files participate immediately.
+- Workspace-root `.gitignore` excludes via git.
+- `.git/info/exclude` honored.
+- Deleted-but-tracked files skipped (no ENOENT).
+- Declared outputs still excluded under the git path.
+- Nested-project boundary still excludes under the git path.
+- Negation in `inputs.files` still strips under the git path.
+- `node_modules` always-ignored even when force-added to git.
+
+**`tests/orchestrator.test.ts`** — e2e behaviour:
 
 - default = all files (gitignore-aware)
 - narrow globs limit cache busting

@@ -19,7 +19,7 @@ import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { relPosix } from '../util/paths.js'
 
-const CACHE_VERSION = 'vx-cache-v13'
+const CACHE_VERSION = 'vx-cache-v14'
 const SCHEMA_VERSION = 'v11'
 
 export interface CacheKeyInput {
