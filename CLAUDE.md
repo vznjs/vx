@@ -133,6 +133,19 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: CACHE_VERSION → v13. Unified per-entry on-disk layout:
+  outputs moved from `<cacheDir>/<hash>/<rel>` to
+  `<cacheDir>/<hash>/outputs/<rel>`; stdout/stderr moved from the
+  sibling `<cacheDir>/logs/<hash>.{stdout,stderr}` into
+  `<cacheDir>/<hash>/stdout` and `<cacheDir>/<hash>/stderr`. Eviction
+  collapses to a single `rm -rf <hash>/`. Also dropped the run-time
+  `logs/<run_id>/<project>__<task>.{stdout,stderr}` dump from the
+  orchestrator (the `persistTaskLogs` helper + module). Rationale: the
+  cache only writes on success and already captures stdout/stderr per
+  hash; failures are streamed live and surfaced on the outcome object;
+  CI captures the parent stdout natively; structured per-task metadata
+  lives in the `runs` table. The duplicate sibling dump was pure
+  redundancy. PR pending.
 - **2026-05**: Persistent / long-running tasks shipped via
   `exec.persistent.readyWhen`. Schema-extending: `ExecConfig` gains an
   optional `PersistentConfig`. Runner has a new `runPersistent` that

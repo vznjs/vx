@@ -246,8 +246,8 @@ separate lanes.
 ## `vx cache prune`
 
 Evict old or oversized cache entries. Operates on `.vx/cache/cache.db`
-plus the on-disk `<hash>/` directories and `logs/<hash>.{stdout,stderr}`
-files.
+plus the on-disk `<hash>/` directories (each one carrying its own
+`outputs/`, `stdout`, and `stderr`).
 
 ```
 vx cache prune --older-than <duration>     Drop entries last accessed before now - duration.

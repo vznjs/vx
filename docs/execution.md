@@ -71,8 +71,9 @@ terminal and a task succeeding or failing.
          them as one framed block on taskComplete).
      12. If exit == 0 and cache enabled:
          a. Resolve outputs.files.
-         b. cache.save: copy outputs into <hash>/, write SQLite row,
-                        store stdout/stderr in logs/<hash>.{stdout,stderr}.
+         b. cache.save: copy outputs into <hash>/outputs/<rel>,
+                        write stdout/stderr to <hash>/stdout and
+                        <hash>/stderr, upsert the SQLite row.
      13. Return TaskOutcome { node, status, exitCode, durationMs, hash,
          stdout, stderr, cpuMs?, peakRssBytes?, wallclockStartNs?,
          wallclockEndNs? }.
@@ -125,7 +126,7 @@ status.
   as a Turbo-style framed block on task completion — no per-line
   prefix, no interleaving between concurrent tasks.
 - **Cache write.** Full stdout/stderr text is stored as
-  `logs/<hash>.{stdout,stderr}` next to the SQLite row.
+  `<hash>/stdout` and `<hash>/stderr` alongside the entry's outputs.
 - **Cache hit replay.** The stored stdout/stderr is fed through the
   same logger path so the framed block looks the same as a fresh run.
 

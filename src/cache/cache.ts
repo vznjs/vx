@@ -19,7 +19,7 @@ import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { relPosix } from '../util/paths.js'
 
-const CACHE_VERSION = 'vx-cache-v12'
+const CACHE_VERSION = 'vx-cache-v13'
 const SCHEMA_VERSION = 'v11'
 
 export interface CacheKeyInput {
@@ -319,7 +319,9 @@ export class Cache implements CacheLayer {
 
     const stdout = await readMaybe(this.logPath(hash, 'stdout'))
     const stderr = await readMaybe(this.logPath(hash, 'stderr'))
-    const outputFiles = await listRelativeFiles(this.entryDir(hash))
+    const outputFiles = existsSync(this.outputsDir(hash))
+      ? await listRelativeFiles(this.outputsDir(hash))
+      : []
 
     return {
       hash: row.hash,
@@ -336,7 +338,7 @@ export class Cache implements CacheLayer {
   }
 
   async restoreOutputs(hash: string, projectDir: string): Promise<void> {
-    const src = this.entryDir(hash)
+    const src = this.outputsDir(hash)
     // Same caveat as above: src is a directory; use existsSync.
     if (!existsSync(src)) return
     await copyDir(src, projectDir)
@@ -348,6 +350,13 @@ export class Cache implements CacheLayer {
     projectDir: string
     outputFiles: string[]
   }): Promise<void> {
+    // Layout (v13):
+    //   <hash>/
+    //   ├── stdout                ← captured stdout
+    //   ├── stderr                ← captured stderr
+    //   └── outputs/<rel paths>   ← files restoreOutputs() copies back
+    // Stage everything under a sibling tmp dir; rename atomically so
+    // a concurrent reader sees either no entry or a complete one.
     const dir = this.entryDir(args.hash)
     const tmp = `${dir}.tmp-${process.pid}-${Date.now()}`
     await rm(tmp, { recursive: true, force: true })
@@ -355,9 +364,10 @@ export class Cache implements CacheLayer {
 
     let totalBytes = 0
     const relOutputs: string[] = []
+    const tmpOutputs = path.join(tmp, 'outputs')
     for (const f of args.outputFiles) {
       const rel = path.relative(args.projectDir, f)
-      const dest = path.join(tmp, rel)
+      const dest = path.join(tmpOutputs, rel)
       // Bun.write auto-creates parent dirs.
       await Bun.write(dest, Bun.file(f))
       const s = await stat(dest)
@@ -365,18 +375,12 @@ export class Cache implements CacheLayer {
       relOutputs.push(rel.split(path.sep).join('/'))
     }
 
+    await Bun.write(path.join(tmp, 'stdout'), args.entry.stdout)
+    await Bun.write(path.join(tmp, 'stderr'), args.entry.stderr)
+    totalBytes += Buffer.byteLength(args.entry.stdout) + Buffer.byteLength(args.entry.stderr)
+
     await rm(dir, { recursive: true, force: true })
     await rename(tmp, dir)
-
-    // Logs live alongside the entry dir, not inside it (otherwise they'd
-    // get restored into the project on cache hit).
-    const logsDir = path.join(this.cacheDir, 'logs')
-    await mkdir(logsDir, { recursive: true })
-    const stdoutPath = this.logPath(args.hash, 'stdout')
-    const stderrPath = this.logPath(args.hash, 'stderr')
-    await Bun.write(stdoutPath, args.entry.stdout)
-    await Bun.write(stderrPath, args.entry.stderr)
-    totalBytes += Buffer.byteLength(args.entry.stdout) + Buffer.byteLength(args.entry.stderr)
 
     const [project, task] = splitTaskId(args.entry.taskId)
     const now = Date.now()
@@ -478,13 +482,11 @@ export class Cache implements CacheLayer {
       }
     }
 
-    // Perform the deletions: DB row, on-disk dir, log files.
+    // Perform the deletions: DB row + on-disk dir (logs live inside).
     const deleteEntry = this.db.prepare('DELETE FROM entries WHERE hash = ?')
     for (const hash of victims) {
       deleteEntry.run(hash)
       await rm(this.entryDir(hash), { recursive: true, force: true })
-      await rm(this.logPath(hash, 'stdout'), { force: true })
-      await rm(this.logPath(hash, 'stderr'), { force: true })
     }
 
     return { evicted: victims.size, bytesFreed }
@@ -498,8 +500,12 @@ export class Cache implements CacheLayer {
     return path.join(this.cacheDir, hash)
   }
 
+  private outputsDir(hash: string): string {
+    return path.join(this.cacheDir, hash, 'outputs')
+  }
+
   private logPath(hash: string, stream: 'stdout' | 'stderr'): string {
-    return path.join(this.cacheDir, 'logs', `${hash}.${stream}`)
+    return path.join(this.cacheDir, hash, stream)
   }
 }
 
