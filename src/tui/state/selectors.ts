@@ -3,6 +3,18 @@
 
 import type { State, TaskRow } from './store.js'
 
+/**
+ * Substring filter on `${project}#${task}`. Empty / undefined filter
+ * passes everything through. Per-view filters live in `state.filters`
+ * keyed by `state.activeView`.
+ */
+export function selectFilteredTasks(state: State): TaskRow[] {
+  const term = (state.filters[state.activeView] ?? '').trim().toLowerCase()
+  const rows = [...state.tasks.values()]
+  if (term.length === 0) return rows
+  return rows.filter((r) => r.id.toLowerCase().includes(term))
+}
+
 const FINISHED = new Set<TaskRow['status']>([
   'success',
   'cache-hit',

@@ -133,6 +133,28 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: TUI Phase 3B — polish PR. Three additions on top of
+  Phase 3 (497 → 506 tests):
+  1. Filter input (`/`). State gains `filterEditing: boolean`; the
+     reducer adds `startFilterEdit` / `endFilterEdit` key actions.
+     The App's keyboard handler routes printable keys + Backspace +
+     Enter/Esc to filter editing when active. `selectFilteredTasks`
+     is a substring (case-insensitive) match on `${project}#${task}`
+     keyed by `state.filters[activeView]` (per-view, not global).
+     The TaskList title shows the active filter.
+  2. **Post-run auto-exit** (3s, cancelable). On `runEnd`, the
+     reducer sets `state.autoExitAt = Date.now() + 3000`. A new
+     `AutoExit` overlay shows a 1Hz countdown over the final frame.
+     Any key dispatch clears `autoExitAt` (the user is engaged; the
+     TUI stays open until they press q). The sampler tick flips
+     `autoExitTriggered` when the deadline passes; `startTui` exposes
+     `waitForExit()` that resolves on q / Ctrl-C OR autoExitTriggered.
+     `cli/run.ts` awaits it between `runEnd` and `dispose()`.
+  3. Context-sensitive `StatusBar` — keymap hints change by
+     `activeView` (Overview vs Graph vs Workers vs Bottlenecks vs
+     Queue) and by mode (filter-editing vs help-open vs default).
+     Shows the view name + number on the left.
+
 - **2026-05**: TUI Phase 3 — multi-view + overlays + stats panel.
   Adds the four follow-on views (Graph, Workers, Bottlenecks, Queue)
   and two overlays (Help, Task Detail) on top of Phase 2B's

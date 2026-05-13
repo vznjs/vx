@@ -5,6 +5,7 @@
 
 import type React from 'react'
 import type { State, TaskRow } from '../state/store.js'
+import { selectFilteredTasks } from '../state/selectors.js'
 
 interface Props {
   state: State
@@ -55,11 +56,13 @@ function formatMs(ms: number): string {
 }
 
 export function TaskList({ state, width, height }: Props): React.ReactNode {
-  const rows = [...state.tasks.values()]
+  const rows = selectFilteredTasks(state)
   const selectedId = state.selectedTaskId
   // Visible window — simple top-pinned scroll (the design's full
   // selection-following scroller lands later).
   const visibleRows = rows.slice(0, Math.max(0, height - 2))
+  const filterTerm = state.filters[state.activeView] ?? ''
+  const title = filterTerm.length > 0 ? `Tasks (filter: ${filterTerm})` : 'Tasks'
 
   return (
     <box
@@ -68,7 +71,7 @@ export function TaskList({ state, width, height }: Props): React.ReactNode {
       height={height}
       border
       borderColor="#374151"
-      title="Tasks"
+      title={title}
     >
       {visibleRows.map((row) => {
         const { glyph, fg } = icon(row)

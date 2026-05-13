@@ -315,10 +315,10 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     const tui = await startTui({ version: VERSION, onExit: () => undefined })
     try {
       const summary = await runOrchestrator({ ...opts, observer: tui.observer })
-      // Hold the TUI on screen briefly so the user sees the final
-      // frame, then tear down so the post-run framed-summary lines
-      // print to the regular stream.
-      await Bun.sleep(120)
+      // Hold the TUI on screen until the user signals exit (q / Ctrl-C)
+      // OR the post-run auto-dismiss countdown elapses. The TUI itself
+      // owns the timer; we just await it.
+      await tui.waitForExit()
       await tui.dispose()
       if (parsed.verbosity > 0) printSummary(summary)
       return summary.ok ? 0 : 1
