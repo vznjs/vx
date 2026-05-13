@@ -169,6 +169,63 @@ forwarded args never spuriously hit cache.
 | `--no-cache`                     | boolean           | off                             | Skip cache reads AND writes. Every task runs; nothing is persisted; outputs are NOT cleaned. |
 | `--cache`                        | boolean           | off                             | No-op. Accepted for parity with vite-task. Caching is governed by each task's `cache` block. |
 | `-v`, `--verbose`                | boolean           | off                             | Print a per-task summary table after the framed blocks.                                      |
+| `--dry-run`, `--dry`             | boolean           | off                             | Print the planned task graph + predicted cache hit/miss; skip execution.                     |
+| `--graph`                        | boolean           | off                             | Print the task graph as Graphviz DOT; skip execution.                                        |
+| `--json`                         | boolean           | off                             | With `--dry-run`, emit JSON instead of human text. (No effect alone yet.)                    |
+
+## Planning mode (`--dry-run`, `--graph`)
+
+Both flags short-circuit execution. They build the full task graph,
+compute every task's cache key, and probe the cache to predict what
+would happen if you ran the same command without the flag.
+
+```
+$ vx run ci --dry-run
+would run:
+  ◉  @vzn/vx#format-check  cache hit (local)         02bfe8a9
+  ◉  @vzn/vx#lint          cache hit (local)         d66cfed2
+  ▶  @vzn/vx#test          cache miss — would exec   68595e49
+
+3 task(s) planned, 2 cache hits (2 local), 1 would run.
+```
+
+Status legend:
+
+| Symbol | Meaning                                                      |
+| ------ | ------------------------------------------------------------ |
+| `◉`    | cache hit (local) — entry already in `.vx/cache/`            |
+| `↓`    | cache hit (remote) — entry would be fetched from the layer   |
+| `▶`    | cache miss — task would execute                              |
+| `·`    | no-cache — task opts out (no `cache` block, or `--no-cache`) |
+| `○`    | group task (suppressed in the human view; in DOT + JSON)     |
+
+`--dry-run --json` emits the same data as a JSON object for tooling:
+
+```json
+{
+  "tasks": [
+    {
+      "id": "@vzn/vx#lint",
+      "project": "@vzn/vx",
+      "task": "lint",
+      "hash": "d66cfed2...",
+      "cacheStatus": "hit-local",
+      "deps": []
+    }
+  ]
+}
+```
+
+`--graph` prints Graphviz DOT to stdout. Pipe through `dot` to render:
+
+```
+vx run ci --graph | dot -Tsvg > graph.svg
+```
+
+Node fillcolor varies by predicted status (green = local hit, sky-blue
+= remote hit, orange = miss, gray = no-cache, fuchsia = group).
+
+`--dry-run` and `--graph` are mutually exclusive; passing both errors.
 
 ## Output format
 
@@ -264,12 +321,12 @@ full Turbo/Nx/vite-task gap list and which items we'd accept PRs for:
 
 - Multi-task invocation (`vx run a b c`)
 - Wildcards in task names (`vx run 'build:*'`)
-- `--dry-run` / `--dry=json` (Turbo)
 - `--continue` (failure isolation is already the default for
   independent siblings)
 - Output mode flags (`--output-logs none/errors-only/full`)
 - Cache management subcommands beyond `prune` (`vx cache clean`)
-- Graph introspection (`vx graph`, `vx list`)
+- `vx graph` / `vx list` as standalone subcommands (the same data is
+  available via `vx run <task> --graph` and `--dry-run --json`).
 - `affected --base <ref>` (Nx-style git-relative selection)
 - Watch / daemon mode
 

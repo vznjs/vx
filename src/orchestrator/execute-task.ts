@@ -23,8 +23,67 @@ export interface ExecuteArgs {
   runStartHrTimeNs: bigint
 }
 
+export interface ComputeHashArgs {
+  node: TaskNode
+  upstream: TaskOutcome[]
+  workspaceRoot: string
+  workspaceFingerprint: string
+  cache: CacheLayer
+  forwardArgs?: readonly string[] | undefined
+  nestedProjectDirs: string[]
+}
+
+/**
+ * Resolve every input the cache key depends on (file content, env
+ * values, upstream hashes, config bytes, project package.json bytes,
+ * forwardArgs) and ask the cache layer to combine them. Used by both
+ * `executeTask` for the real run and `plan()` for `--dry-run` /
+ * `--graph` previews.
+ *
+ * Caller is responsible for handling the group-task case before
+ * calling this — groups have no `exec` and no `cache.inputs`, so the
+ * key-derivation steps below would all fall back to defaults.
+ * `computeGroupHash` is exported for that purpose.
+ */
+export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
+  const cfg = args.node.config
+  const cacheCfg: CacheConfig | undefined = cfg.cache
+  const outputs = cacheCfg?.outputs.files ?? []
+
+  const resolved = await resolveInputs({
+    projectDir: args.node.projectDir,
+    workspaceRoot: args.workspaceRoot,
+    envSource: process.env,
+    inputs: cacheCfg?.inputs,
+    ownOutputs: outputs,
+    nestedProjectDirs: args.nestedProjectDirs,
+  })
+
+  const upstreamHashes = filterUpstreamHashes(
+    args.upstream,
+    cacheCfg?.inputs?.tasks,
+    args.node.projectName,
+  )
+  const taskConfigHash = hashTaskConfig(cfg)
+  const projectPackageJsonHash = await hashProjectPackageJson(args.node.projectDir)
+
+  const effectiveForwardArgs = args.node.requested ? (args.forwardArgs ?? []) : []
+
+  return await args.cache.key({
+    taskId: args.node.id,
+    taskConfigHash,
+    projectPackageJsonHash,
+    envValues: resolved.envValues,
+    inputFiles: resolved.files,
+    workspaceRoot: args.workspaceRoot,
+    upstreamHashes,
+    workspaceFingerprint: args.workspaceFingerprint,
+    forwardArgs: effectiveForwardArgs,
+  })
+}
+
 export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
-  const { node, upstream, workspaceRoot, cache, noCache, log } = args
+  const { node, upstream, cache, noCache, log } = args
   const cfg: TaskConfig = node.config
 
   // Group task: no `exec` means this task is just a dependency
@@ -54,19 +113,6 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   const outputs = cacheCfg?.outputs.files ?? []
 
-  const resolved = await resolveInputs({
-    projectDir: node.projectDir,
-    workspaceRoot,
-    envSource: process.env,
-    inputs: cacheCfg?.inputs,
-    ownOutputs: outputs,
-    nestedProjectDirs: args.nestedProjectDirs,
-  })
-
-  const upstreamHashes = filterUpstreamHashes(upstream, cacheCfg?.inputs?.tasks, node.projectName)
-  const taskConfigHash = hashTaskConfig(cfg)
-  const projectPackageJsonHash = await hashProjectPackageJson(node.projectDir)
-
   // forwardArgs apply only to the tasks the user explicitly asked for —
   // not to dependsOn-expanded upstream tasks. This keeps `vx run build
   // -- --watch` from forwarding `--watch` into every dependency's
@@ -74,16 +120,14 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // partitioned by CLI args that don't change their behavior.
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
 
-  const hash = await cache.key({
-    taskId: node.id,
-    taskConfigHash,
-    projectPackageJsonHash,
-    envValues: resolved.envValues,
-    inputFiles: resolved.files,
-    workspaceRoot,
-    upstreamHashes,
+  const hash = await computeTaskHash({
+    node,
+    upstream,
+    workspaceRoot: args.workspaceRoot,
     workspaceFingerprint: args.workspaceFingerprint,
-    forwardArgs: effectiveForwardArgs,
+    cache,
+    forwardArgs: args.forwardArgs,
+    nestedProjectDirs: args.nestedProjectDirs,
   })
 
   // Cleaning the declared output paths is the same operation in both
@@ -201,7 +245,7 @@ function hashTaskConfig(cfg: TaskConfig): string {
  * the group changes. Sorted so the hash is order-independent. Empty
  * group (no upstream) yields a fixed sentinel hash.
  */
-function computeGroupHash(upstream: TaskOutcome[]): string {
+export function computeGroupHash(upstream: TaskOutcome[]): string {
   const ids = upstream
     .map((u) => `${u.node.id}:${u.hash ?? ''}`)
     .sort()

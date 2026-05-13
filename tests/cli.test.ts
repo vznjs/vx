@@ -107,6 +107,53 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     vi.restoreAllMocks()
   })
 
+  it('--dry-run prints a plan, never invokes the task, exits 0', async () => {
+    let stdout = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    const code = await run(['run', '-r', 'hello', '--dry-run'])
+    expect(code).toBe(0)
+    expect(stdout).toContain('would run:')
+    expect(stdout).toContain('one#hello')
+    // The actual task would have echoed `hello-cli`; it must NOT run.
+    expect(stdout).not.toContain('hello-cli')
+  })
+
+  it('--dry-run --json emits parseable JSON', async () => {
+    let stdout = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    const code = await run(['run', '-r', 'hello', '--dry-run', '--json'])
+    expect(code).toBe(0)
+    const parsed = JSON.parse(stdout) as { tasks: Array<Record<string, unknown>> }
+    expect(parsed.tasks).toHaveLength(1)
+    expect(parsed.tasks[0]?.['id']).toBe('one#hello')
+    expect(parsed.tasks[0]?.['cacheStatus']).toBe('miss')
+  })
+
+  it('--graph prints Graphviz DOT, skips execution', async () => {
+    let stdout = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    const code = await run(['run', '-r', 'hello', '--graph'])
+    expect(code).toBe(0)
+    expect(stdout).toContain('digraph TaskGraph')
+    expect(stdout).toContain('"one#hello"')
+    expect(stdout).not.toContain('hello-cli')
+  })
+
   it('exits 0 and prints task output when run with -r from workspace root', async () => {
     let stdout = ''
     let stderr = ''
@@ -310,6 +357,21 @@ describe('parseRunArgs', () => {
   it('parses --verbose / -v', () => {
     expect(parseRunArgs(['build', '--verbose']).verbose).toBe(true)
     expect(parseRunArgs(['build', '-v']).verbose).toBe(true)
+  })
+
+  it('parses --dry-run and --dry as the same flag', () => {
+    expect(parseRunArgs(['build', '--dry-run']).dryRun).toBe(true)
+    expect(parseRunArgs(['build', '--dry']).dryRun).toBe(true)
+  })
+
+  it('parses --graph and --json', () => {
+    expect(parseRunArgs(['build', '--graph']).graph).toBe(true)
+    expect(parseRunArgs(['build', '--json']).json).toBe(true)
+  })
+
+  it('rejects --dry-run combined with --graph (mutually exclusive)', () => {
+    const r = parseRunArgs(['build', '--dry-run', '--graph'])
+    expect(r.error).toMatch(/mutually exclusive/)
   })
 
   it('captures trailing args after `--` as forwardArgs', () => {

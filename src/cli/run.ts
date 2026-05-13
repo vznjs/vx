@@ -1,7 +1,13 @@
 import readline from 'node:readline/promises'
 import path from 'node:path'
 import { applyFilters, parseFilter } from '../workspace/filter.js'
-import { run as runOrchestrator, type RunOptions, type RunSummary } from '../orchestrator.js'
+import {
+  run as runOrchestrator,
+  planRun,
+  type RunOptions,
+  type RunSummary,
+} from '../orchestrator.js'
+import { formatGraphDot, formatPlanJson, formatPlanText } from '../orchestrator/plan-format.js'
 import { buildPackageGraph } from '../workspace/package-graph.js'
 import { loadProjectConfig } from '../workspace/project-loader.js'
 import {
@@ -21,6 +27,9 @@ export interface RunArgs {
   noCache: boolean
   forwardArgs: string[]
   verbose: boolean
+  dryRun: boolean
+  graph: boolean
+  json: boolean
   error?: string
 }
 
@@ -34,6 +43,9 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     noCache: false,
     forwardArgs: [],
     verbose: false,
+    dryRun: false,
+    graph: false,
+    json: false,
   }
 
   const sepIdx = args.indexOf('--')
@@ -63,6 +75,12 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       // block in config; this flag is symmetric with --no-cache.
     } else if (a === '--verbose' || a === '-v') {
       out.verbose = true
+    } else if (a === '--dry-run' || a === '--dry') {
+      out.dryRun = true
+    } else if (a === '--graph') {
+      out.graph = true
+    } else if (a === '--json') {
+      out.json = true
     } else if (a !== undefined && a.startsWith('-')) {
       return { ...out, error: `unknown flag: ${a}` }
     } else if (a !== undefined) {
@@ -71,6 +89,9 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       }
       out.task = a
     }
+  }
+  if (out.dryRun && out.graph) {
+    return { ...out, error: '--dry-run and --graph are mutually exclusive' }
   }
   return out
 }
@@ -144,6 +165,24 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   }
   if (projects !== undefined) opts.projects = projects
   if (parsed.concurrency !== undefined) opts.concurrency = parsed.concurrency
+
+  // Planning paths short-circuit execution. Both build the full task
+  // graph + probe the cache; the difference is just the formatter.
+  if (parsed.dryRun || parsed.graph) {
+    const plan = await planRun(opts)
+    if (plan.tasks.length === 0) {
+      process.stderr.write(`vx run: no projects declare task "${taskName}".\n`)
+      return 1
+    }
+    if (parsed.graph) {
+      process.stdout.write(formatGraphDot(plan))
+    } else if (parsed.json) {
+      process.stdout.write(formatPlanJson(plan))
+    } else {
+      process.stdout.write(formatPlanText(plan))
+    }
+    return 0
+  }
 
   const summary = await runOrchestrator(opts)
   if (parsed.verbose) printSummary(summary)

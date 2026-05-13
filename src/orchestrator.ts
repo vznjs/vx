@@ -26,6 +26,7 @@ import { wrapWithRemoteCache } from './orchestrator/remote-cache-setup.ts'
 import { defaultLogger, type Logger } from './orchestrator/logger.ts'
 import { detectColors } from './orchestrator/colors.ts'
 import { formatHeader } from './orchestrator/framed-output.ts'
+import { plan, type RunPlan } from './orchestrator/plan.ts'
 import { formatRunSummary } from './orchestrator/summary.ts'
 
 export type { Logger } from './orchestrator/logger.ts'
@@ -199,4 +200,70 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   return { ok, outcomes: list }
 }
 
+/**
+ * Planning mode. Same setup as `run()` — workspace discovery, config
+ * load, package graph, task graph — but stops short of execution.
+ * Returns a `RunPlan` predicting the cache hit/miss outcome of every
+ * task. Used by `--dry-run` and `--graph`.
+ *
+ * Side-effects are limited to:
+ *   - SQLite `accessed_at` bumps on cache.get() probes (read-only
+ *     from the user's perspective).
+ *   - Opening + closing the local Cache handle.
+ */
+export async function planRun(options: RunOptions): Promise<RunPlan> {
+  const workspaceRoot = await findWorkspaceRoot(options.cwd)
+  const workspace = await loadWorkspace(workspaceRoot)
+  const workspaceConfig = await loadWorkspaceConfig(workspaceRoot)
+  const projectMetas = await listProjects(workspace)
+
+  const projects = new Map<string, ProjectEntry>()
+  for (const meta of projectMetas) {
+    if (!meta.configPath) continue
+    const config: ProjectConfig = await loadProjectConfig(meta.configPath)
+    projects.set(meta.name, { name: meta.name, dir: meta.dir, config })
+  }
+
+  const packageGraph = buildPackageGraph(projectMetas)
+  const nestedDirsByProject = computeNestedProjectDirs([...projects.values()])
+
+  const candidateProjects = options.projects
+    ? options.projects.filter((p) => projects.has(p))
+    : [...projects.keys()]
+
+  const requested = candidateProjects
+    .filter((name) => projects.get(name)?.config.tasks?.[options.task])
+    .map((name) => ({ project: name, task: options.task }))
+
+  if (requested.length === 0) return { tasks: [] }
+
+  const nodes = buildTaskGraph({
+    projects,
+    packageGraph,
+    requested,
+    ignoreDependsOn: options.ignoreDependsOn ?? false,
+  })
+  if (nodes.size === 0) return { tasks: [] }
+
+  const cacheDir = resolveCacheDir(workspaceRoot, workspaceConfig)
+  const localCache = new Cache(cacheDir)
+  const cache = wrapWithRemoteCache(localCache, options.log ?? defaultLogger())
+  const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
+
+  try {
+    return await plan({
+      nodes,
+      workspaceRoot,
+      workspaceFingerprint,
+      cache,
+      noCache: options.noCache ?? false,
+      forwardArgs: options.forwardArgs,
+      nestedDirsByProject,
+    })
+  } finally {
+    cache.close()
+  }
+}
+
+export type { RunPlan, PlannedTask, CacheStatus } from './orchestrator/plan.ts'
 export { taskId }
