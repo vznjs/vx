@@ -30,31 +30,39 @@ upstream repo so future revisions can be diffed against reality.
 
 `turbo run` / `nx run-many` / `vp run` / `vx run`:
 
-| Capability                 | Turbo                     | Nx                         | vite-task                           | vx                                      |
-| -------------------------- | ------------------------- | -------------------------- | ----------------------------------- | --------------------------------------- |
-| pnpm-style filter DSL      | `--filter`                | `--projects`, `--exclude`  | `--filter`                          | `-F` / `--filter` (same DSL)            |
-| recursive (every project)  | implicit                  | `--all`                    | `-r`                                | `-r`                                    |
-| transitive deps            | `pkg...`                  | `--with-deps` (legacy)     | `-t`                                | `pkg...` (via DSL)                      |
-| `pkg#task` addressing      | yes                       | `nx run pkg:target`        | yes                                 | yes                                     |
-| concurrency cap            | `--concurrency`           | `--parallel`               | `--concurrency-limit`               | `-c` / `--concurrency`                  |
-| serialize / drop dep order | `--parallel`              | (always topo)              | `--parallel`                        | `-c 1` to serialize                     |
-| skip dependsOn             | `--only`                  | `--skipNxDependsOn`        | `--ignore-depends-on`               | `--ignore-depends-on`                   |
-| forward args               | `--`                      | `--args="..."`             | trailing args                       | `--`                                    |
-| skip cache reads+writes    | `--no-cache`, `--force`   | `--skipNxCache`            | `--no-cache`                        | `--no-cache`                            |
-| dry-run (print plan)       | `--dry`, `--dry=json`     | `--graph` renders          | —                                   | `--dry-run [--json]`                    |
-| affected (git-relative)    | `--affected`              | full `affected` subcommand | —                                   | — **gap**                               |
-| graph render               | `--graph file.{dot,html}` | `--graph`                  | —                                   | `--graph` (DOT to stdout)               |
-| continue past failure      | `--continue=…`            | `--nx-bail` (default)      | —                                   | (always; independent siblings continue) |
-| per-run JSON summary       | `--summarize`, `--json`   | `--outputStyle`            | `--last-details` replay             | `vx stats --json` (cache-level only)    |
-| output log mode            | `--output-logs=…`         | `--outputStyle=…`          | `--log=interleaved/labeled/grouped` | (always grouped/framed)                 |
-| profile / Chrome trace     | `--profile`               | (via Nx Cloud)             | —                                   | hrtime spans in cache.db                |
-| daemon on/off              | `--daemon`/`--no-daemon`  | (Nx daemon, always on)     | —                                   | (no daemon)                             |
-| watch mode                 | `turbo watch`             | `nx watch`                 | —                                   | —                                       |
-| version / help             | `--version`/`--help`      | `--version`/`--help`       | `--version`/`--help`                | `-V`/`-h`                               |
+| Capability                 | Turbo                     | Nx                         | vite-task                           | vx                                                         |
+| -------------------------- | ------------------------- | -------------------------- | ----------------------------------- | ---------------------------------------------------------- |
+| pnpm-style filter DSL      | `--filter`                | `--projects`, `--exclude`  | `--filter`                          | `-F` / `--filter` (same DSL)                               |
+| recursive (every project)  | implicit                  | `--all`                    | `-r`                                | `--all`                                                    |
+| transitive deps            | `pkg...`                  | `--with-deps` (legacy)     | `-t`                                | `pkg...` (via DSL)                                         |
+| `pkg#task` addressing      | yes                       | `nx run pkg:target`        | yes                                 | yes                                                        |
+| concurrency cap            | `--concurrency`           | `--parallel`               | `--concurrency-limit`               | `--concurrency`                                            |
+| serialize / drop dep order | `--parallel`              | (always topo)              | `--parallel`                        | `--concurrency 1` to serialize; no `--parallel` (see note) |
+| skip dependsOn             | `--only`                  | `--skipNxDependsOn`        | `--ignore-depends-on`               | `--excludeDependencies[=<names>]`                          |
+| forward args               | `--`                      | `--args="..."`             | trailing args                       | `--`                                                       |
+| skip cache reads+writes    | `--no-cache`, `--force`   | `--skipNxCache`            | `--no-cache`                        | `--no-cache`, `--force`                                    |
+| dry-run (print plan)       | `--dry`, `--dry=json`     | `--graph` renders          | —                                   | `--dry`, `--dry=json`                                      |
+| affected (git-relative)    | `--affected`              | full `affected` subcommand | —                                   | — **gap**                                                  |
+| graph render               | `--graph file.{dot,html}` | `--graph`                  | —                                   | `--graph[=<path>]` (DOT)                                   |
+| continue past failure      | `--continue=…`            | `--nx-bail` (default)      | —                                   | (always; independent siblings continue)                    |
+| per-run JSON summary       | `--summarize`, `--json`   | `--outputStyle`            | `--last-details` replay             | `--summarize[=<path>]`                                     |
+| output log mode            | `--output-logs=…`         | `--outputStyle=…`          | `--log=interleaved/labeled/grouped` | (always grouped/framed)                                    |
+| profile / Chrome trace     | `--profile`               | (via Nx Cloud)             | —                                   | `--profile[=<path>]`                                       |
+| daemon on/off              | `--daemon`/`--no-daemon`  | (Nx daemon, always on)     | —                                   | (no daemon)                                                |
+| watch mode                 | `turbo watch`             | `nx watch`                 | —                                   | — **gap**                                                  |
+| version / help             | `--version`/`--help`      | `--version`/`--help`       | `--version`/`--help`                | `--version`, `--help` / `-h`                               |
 
 Sources: Turbo `/apps/docs/content/docs/reference/run.mdx`; Nx
 `/packages/nx/src/command-line/yargs-utils/shared-options.ts`;
 vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
+
+> **Why no `--parallel`?** Turbo's `--parallel` exists because users
+> often over-declare `dependsOn` and want an escape hatch. In vx,
+> `dependsOn` is opt-in and explicit — if you wrote
+> `dependsOn: { dependencies: ['build'] }` you meant it. The
+> legitimate "I want to fan out without waiting" cases are already
+> covered by (a) not declaring `dependsOn` in the first place, and
+> (b) `--only`, which skips `dependsOn` expansion.
 
 ## Config schema comparison
 

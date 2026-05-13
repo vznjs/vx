@@ -21,15 +21,21 @@ import type { TaskOutcome } from '../graph/scheduler.js'
 export interface RunArgs {
   task: string | undefined
   filters: string[]
-  recursive: boolean
-  ignoreDependsOn: boolean
+  all: boolean
+  /**
+   * `'all'`  → skip every `dependsOn` edge (run just the requested task).
+   * `[]`     → no exclusion (default).
+   * `[...names]` → drop only these specific dep names.
+   */
+  excludeDependencies: 'all' | string[]
   concurrency: number | undefined
   noCache: boolean
   forwardArgs: string[]
-  verbose: boolean
-  dryRun: boolean
-  graph: boolean
-  json: boolean
+  verbosity: number
+  dry: 'text' | 'json' | undefined
+  graph: string | undefined
+  summarize: string | undefined
+  profile: string | undefined
   error?: string
 }
 
@@ -37,15 +43,16 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
   const out: RunArgs = {
     task: undefined,
     filters: [],
-    recursive: false,
-    ignoreDependsOn: false,
+    all: false,
+    excludeDependencies: [],
     concurrency: undefined,
     noCache: false,
     forwardArgs: [],
-    verbose: false,
-    dryRun: false,
-    graph: false,
-    json: false,
+    verbosity: 0,
+    dry: undefined,
+    graph: undefined,
+    summarize: undefined,
+    profile: undefined,
   }
 
   const sepIdx = args.indexOf('--')
@@ -58,29 +65,53 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       const v = before[++i]
       if (v === undefined) return { ...out, error: `${a} requires a value` }
       out.filters.push(v)
-    } else if (a === '--concurrency' || a === '-c') {
+    } else if (a === '--concurrency') {
       const v = before[++i]
       if (v === undefined) return { ...out, error: `${a} requires a value` }
       const n = Number(v)
       if (!Number.isFinite(n) || n < 1) return { ...out, error: `invalid concurrency: ${v}` }
       out.concurrency = Math.floor(n)
-    } else if (a === '--recursive' || a === '-r') {
-      out.recursive = true
-    } else if (a === '--ignore-depends-on') {
-      out.ignoreDependsOn = true
-    } else if (a === '--no-cache') {
+    } else if (a === '--all') {
+      out.all = true
+    } else if (a === '--excludeDependencies') {
+      out.excludeDependencies = 'all'
+    } else if (a?.startsWith('--excludeDependencies=')) {
+      const raw = a.slice('--excludeDependencies='.length)
+      out.excludeDependencies = raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+    } else if (a === '--no-cache' || a === '--force') {
       out.noCache = true
     } else if (a === '--cache') {
       // No-op: parity with vite-task. Caching is governed by the task's `cache`
       // block in config; this flag is symmetric with --no-cache.
-    } else if (a === '--verbose' || a === '-v') {
-      out.verbose = true
-    } else if (a === '--dry-run' || a === '--dry') {
-      out.dryRun = true
+    } else if (a === '--verbosity') {
+      const v = before[++i]
+      if (v === undefined) return { ...out, error: `${a} requires a value` }
+      const n = Number(v)
+      if (!Number.isInteger(n) || n < 0) return { ...out, error: `invalid verbosity: ${v}` }
+      out.verbosity = n
+    } else if (a === '--dry') {
+      out.dry = 'text'
+    } else if (a?.startsWith('--dry=')) {
+      const fmt = a.slice('--dry='.length)
+      if (fmt !== 'text' && fmt !== 'json') {
+        return { ...out, error: `invalid --dry value: ${fmt}` }
+      }
+      out.dry = fmt
     } else if (a === '--graph') {
-      out.graph = true
-    } else if (a === '--json') {
-      out.json = true
+      out.graph = ''
+    } else if (a?.startsWith('--graph=')) {
+      out.graph = a.slice('--graph='.length)
+    } else if (a === '--summarize') {
+      out.summarize = ''
+    } else if (a?.startsWith('--summarize=')) {
+      out.summarize = a.slice('--summarize='.length)
+    } else if (a === '--profile') {
+      out.profile = 'profile.json'
+    } else if (a?.startsWith('--profile=')) {
+      out.profile = a.slice('--profile='.length)
     } else if (a !== undefined && a.startsWith('-')) {
       return { ...out, error: `unknown flag: ${a}` }
     } else if (a !== undefined) {
@@ -90,8 +121,15 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       out.task = a
     }
   }
-  if (out.dryRun && out.graph) {
-    return { ...out, error: '--dry-run and --graph are mutually exclusive' }
+
+  if (out.dry !== undefined && out.graph !== undefined) {
+    return { ...out, error: '--dry and --graph are mutually exclusive' }
+  }
+  if (out.dry !== undefined && (out.summarize !== undefined || out.profile !== undefined)) {
+    return { ...out, error: '--dry skips execution; --summarize / --profile need a real run' }
+  }
+  if (out.graph !== undefined && (out.summarize !== undefined || out.profile !== undefined)) {
+    return { ...out, error: '--graph skips execution; --summarize / --profile need a real run' }
   }
   return out
 }
@@ -143,13 +181,13 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       return 1
     }
     projects = resolved.names
-  } else if (parsed.recursive) {
+  } else if (parsed.all) {
     projects = undefined
   } else {
     const cwdProject = await findCwdProject(cwd)
     if (!cwdProject) {
       process.stderr.write(
-        `vx run: not inside a project. Pass -r for all packages, -F <pattern> to filter, or run from within a project directory.\n`,
+        `vx run: not inside a project. Pass --all for every project, -F <pattern> to filter, or run from within a project directory.\n`,
       )
       return 1
     }
@@ -160,23 +198,34 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     cwd,
     task: taskName,
     noCache: parsed.noCache,
-    ignoreDependsOn: parsed.ignoreDependsOn,
     forwardArgs: parsed.forwardArgs,
+  }
+  if (parsed.excludeDependencies === 'all') {
+    opts.excludeDependencies = 'all'
+  } else if (parsed.excludeDependencies.length > 0) {
+    opts.excludeDependencies = parsed.excludeDependencies
   }
   if (projects !== undefined) opts.projects = projects
   if (parsed.concurrency !== undefined) opts.concurrency = parsed.concurrency
+  if (parsed.summarize !== undefined) opts.summarize = parsed.summarize
+  if (parsed.profile !== undefined) opts.profile = parsed.profile
 
   // Planning paths short-circuit execution. Both build the full task
   // graph + probe the cache; the difference is just the formatter.
-  if (parsed.dryRun || parsed.graph) {
+  if (parsed.dry !== undefined || parsed.graph !== undefined) {
     const plan = await planRun(opts)
     if (plan.tasks.length === 0) {
       process.stderr.write(`vx run: no projects declare task "${taskName}".\n`)
       return 1
     }
-    if (parsed.graph) {
-      process.stdout.write(formatGraphDot(plan))
-    } else if (parsed.json) {
+    if (parsed.graph !== undefined) {
+      const out = formatGraphDot(plan)
+      if (parsed.graph === '') {
+        process.stdout.write(out)
+      } else {
+        await Bun.write(parsed.graph, out)
+      }
+    } else if (parsed.dry === 'json') {
       process.stdout.write(formatPlanJson(plan))
     } else {
       process.stdout.write(formatPlanText(plan))
@@ -185,7 +234,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   }
 
   const summary = await runOrchestrator(opts)
-  if (parsed.verbose) printSummary(summary)
+  if (parsed.verbosity > 0) printSummary(summary)
   return summary.ok ? 0 : 1
 }
 

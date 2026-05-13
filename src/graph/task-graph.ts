@@ -35,12 +35,24 @@ export interface BuildGraphOptions {
   packageGraph: PackageGraph
   /** Initial set: `{ project, task }` pairs the user asked to run. */
   requested: Array<{ project: string; task: string }>
-  /** Skip `dependsOn` expansion; only the requested nodes are added. */
-  ignoreDependsOn?: boolean
+  /**
+   * Filter `dependsOn` expansion.
+   *   - `undefined` → every dependsOn entry is followed (default).
+   *   - `'all'`     → no expansion; only the requested nodes are added.
+   *   - `string[]`  → expand normally, but drop edges whose target
+   *                   task name is in the list. `dependsOn.self` and
+   *                   `dependsOn.dependencies` are both filtered.
+   */
+  excludeDependencies?: 'all' | readonly string[]
 }
 
 export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode> {
-  const { projects, packageGraph, requested, ignoreDependsOn = false } = options
+  const { projects, packageGraph, requested, excludeDependencies } = options
+  const skipAll = excludeDependencies === 'all'
+  const skipNames =
+    Array.isArray(excludeDependencies) && excludeDependencies.length > 0
+      ? new Set(excludeDependencies)
+      : null
   const nodes = new Map<string, TaskNode>()
 
   function addNode(projectName: string, taskName: string, requested: boolean): TaskNode | null {
@@ -69,14 +81,13 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     }
     nodes.set(id, node)
 
-    if (ignoreDependsOn) {
-      return node
-    }
+    if (skipAll) return node
 
     const dependsOn = taskConfig.dependsOn ?? {}
 
     // Same-project tasks. Missing target is a hard error.
     for (const t of dependsOn.self ?? []) {
+      if (skipNames?.has(t)) continue
       const child = addNode(projectName, t, false)
       if (!child) {
         throw new UserError(
@@ -91,6 +102,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     if ((dependsOn.dependencies ?? []).length > 0) {
       const workspaceDeps = packageGraph.transitiveDeps(projectName)
       for (const t of dependsOn.dependencies ?? []) {
+        if (skipNames?.has(t)) continue
         for (const target of workspaceDeps) {
           const child = addNode(target, t, false)
           if (child) node.deps.push(child.id)

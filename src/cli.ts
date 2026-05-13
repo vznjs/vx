@@ -5,7 +5,6 @@
 import { VERSION } from './index.js'
 import { runCmd } from './cli/run.js'
 import { cacheCmd } from './cli/cache.js'
-import { statsCmd } from './cli/stats.js'
 import { printHelp } from './cli/help.js'
 
 export async function run(argv: readonly string[]): Promise<number> {
@@ -19,14 +18,11 @@ export async function run(argv: readonly string[]): Promise<number> {
       printHelp()
       return 0
     case '--version':
-    case '-V':
     case 'version':
       process.stdout.write(`vx ${VERSION}\n`)
       return 0
     case 'run':
       return await runCmd(rest)
-    case 'stats':
-      return await statsCmd(rest)
     case 'cache':
       return await cacheCmd(rest)
     default:
@@ -39,5 +35,4 @@ export async function run(argv: readonly string[]): Promise<number> {
 // Re-exports for tests + programmatic embedders.
 export { parseRunArgs, type RunArgs } from './cli/run.js'
 export { parsePruneArgs, parseDuration, parseSize } from './cli/cache.js'
-export { formatStats, formatStatsJson, parseStatsArgs } from './cli/stats.js'
 export { formatBytes } from './cli/format.js'

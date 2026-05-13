@@ -233,7 +233,7 @@ describe('buildTaskGraph', () => {
     expect(nodes.get('lib#build')?.requested).toBe(true)
   })
 
-  it('ignoreDependsOn skips both self and dependencies expansion', () => {
+  it('excludeDependencies: "all" skips both self and dependencies expansion', () => {
     const nodes = buildTaskGraph({
       projects: projects(
         project('app', {
@@ -247,9 +247,30 @@ describe('buildTaskGraph', () => {
       ),
       packageGraph: packageGraph({ app: ['lib'] }),
       requested: [{ project: 'app', task: 'build' }],
-      ignoreDependsOn: true,
+      excludeDependencies: 'all',
     })
     expect([...nodes.keys()]).toEqual(['app#build'])
     expect(nodes.get('app#build')?.deps).toEqual([])
+  })
+
+  it('excludeDependencies: name-list drops only matching edges in both self and deps', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', {
+          build: {
+            ...cmd('build app'),
+            dependsOn: { self: ['codegen'], dependencies: ['build'] },
+          },
+          codegen: cmd('codegen'),
+        }),
+        project('lib', { build: cmd('build lib') }),
+      ),
+      packageGraph: packageGraph({ app: ['lib'] }),
+      requested: [{ project: 'app', task: 'build' }],
+      excludeDependencies: ['build'],
+    })
+    // build edge to lib#build is dropped, but the same-project codegen edge stays.
+    expect(nodes.has('lib#build')).toBe(false)
+    expect(nodes.get('app#build')?.deps).toEqual(['app#codegen'])
   })
 })

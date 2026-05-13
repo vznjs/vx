@@ -1,13 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import {
   formatBytes,
-  formatStats,
-  formatStatsJson,
   parseDuration,
   parsePruneArgs,
   parseRunArgs,
   parseSize,
-  parseStatsArgs,
   run,
 } from '../src/cli.js'
 
@@ -53,13 +50,18 @@ describe('cli run()', () => {
   })
 
   it('rejects run with bad flag value (parser error surfaced)', async () => {
-    expect(await run(['run', 'build', '-c', 'oops'])).toBe(1)
+    expect(await run(['run', 'build', '--concurrency', 'oops'])).toBe(1)
     expect(stderr).toContain('invalid concurrency')
   })
 
-  it('--version uses -V (lowercase -v is reserved for --verbose)', async () => {
-    expect(await run(['-V'])).toBe(0)
+  it('--version is the only version form (no -V short alias)', async () => {
+    expect(await run(['--version'])).toBe(0)
     expect(stdout).toMatch(/^vx \d/)
+  })
+
+  it('-V is rejected as unknown', async () => {
+    expect(await run(['-V'])).toBe(1)
+    expect(stderr).toContain('unknown command')
   })
 })
 
@@ -115,7 +117,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     })
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
-    const code = await run(['run', '-r', 'hello', '--dry-run'])
+    const code = await run(['run', '--all', 'hello', '--dry'])
     expect(code).toBe(0)
     expect(stdout).toContain('would run:')
     expect(stdout).toContain('one#hello')
@@ -131,7 +133,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     })
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
-    const code = await run(['run', '-r', 'hello', '--dry-run', '--json'])
+    const code = await run(['run', '--all', 'hello', '--dry=json'])
     expect(code).toBe(0)
     const parsed = JSON.parse(stdout) as { tasks: Array<Record<string, unknown>> }
     expect(parsed.tasks).toHaveLength(1)
@@ -147,7 +149,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     })
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
-    const code = await run(['run', '-r', 'hello', '--graph'])
+    const code = await run(['run', '--all', 'hello', '--graph'])
     expect(code).toBe(0)
     expect(stdout).toContain('digraph TaskGraph')
     expect(stdout).toContain('"one#hello"')
@@ -166,7 +168,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
       return true
     })
 
-    const code = await run(['run', '-r', 'hello'])
+    const code = await run(['run', '--all', 'hello'])
     expect(code).toBe(0)
     expect(stdout).toContain('hello-cli')
   })
@@ -246,7 +248,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     })
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
-    const code = await run(['run', '-r', '-v', 'hello'])
+    const code = await run(['run', '--all', '--verbosity', '1', 'hello'])
     expect(code).toBe(0)
     expect(stdout).toContain('TASK')
     expect(stdout).toContain('one#hello')
@@ -269,7 +271,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
-    const code = await run(['run', '-r', 'fail'])
+    const code = await run(['run', '--all', 'fail'])
     expect(code).toBe(1)
   })
 
@@ -301,21 +303,25 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     })
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
-    const code = await run(['run', '-r', 'echo', '--', 'hello', 'world'])
+    const code = await run(['run', '--all', 'echo', '--', 'hello', 'world'])
     expect(code).toBe(0)
     expect(stdout).toMatch(/forwarded: hello world/)
   })
 })
 
 describe('parseRunArgs', () => {
-  it('parses task name', () => {
+  it('parses task name with all flags defaulted', () => {
     const r = parseRunArgs(['build'])
     expect(r.task).toBe('build')
     expect(r.filters).toEqual([])
-    expect(r.recursive).toBe(false)
+    expect(r.all).toBe(false)
     expect(r.noCache).toBe(false)
-    expect(r.ignoreDependsOn).toBe(false)
-    expect(r.verbose).toBe(false)
+    expect(r.excludeDependencies).toEqual([])
+    expect(r.verbosity).toBe(0)
+    expect(r.dry).toBeUndefined()
+    expect(r.graph).toBeUndefined()
+    expect(r.summarize).toBeUndefined()
+    expect(r.profile).toBeUndefined()
     expect(r.forwardArgs).toEqual([])
   })
 
@@ -330,18 +336,20 @@ describe('parseRunArgs', () => {
     expect(r.filters).toEqual(['foo', '@scope/*'])
   })
 
-  it('parses --concurrency', () => {
-    expect(parseRunArgs(['build', '-c', '4']).concurrency).toBe(4)
+  it('parses --concurrency (no short alias)', () => {
     expect(parseRunArgs(['build', '--concurrency', '2']).concurrency).toBe(2)
+    expect(parseRunArgs(['build', '-c', '4']).error).toMatch(/unknown flag: -c/)
   })
 
-  it('parses --recursive / -r', () => {
-    expect(parseRunArgs(['build', '--recursive']).recursive).toBe(true)
-    expect(parseRunArgs(['build', '-r']).recursive).toBe(true)
+  it('parses --all (replaces -r / --recursive)', () => {
+    expect(parseRunArgs(['build', '--all']).all).toBe(true)
+    expect(parseRunArgs(['build', '-r']).error).toMatch(/unknown flag: -r/)
+    expect(parseRunArgs(['build', '--recursive']).error).toMatch(/unknown flag: --recursive/)
   })
 
-  it('parses --no-cache', () => {
+  it('parses --no-cache and --force (alias)', () => {
     expect(parseRunArgs(['build', '--no-cache']).noCache).toBe(true)
+    expect(parseRunArgs(['build', '--force']).noCache).toBe(true)
   })
 
   it('--cache is accepted as a no-op (parity flag)', () => {
@@ -350,28 +358,64 @@ describe('parseRunArgs', () => {
     expect(r.noCache).toBe(false)
   })
 
-  it('parses --ignore-depends-on', () => {
-    expect(parseRunArgs(['build', '--ignore-depends-on']).ignoreDependsOn).toBe(true)
+  it('parses --excludeDependencies as "all" with no value', () => {
+    expect(parseRunArgs(['build', '--excludeDependencies']).excludeDependencies).toBe('all')
+    expect(parseRunArgs(['build', '--ignore-depends-on']).error).toMatch(/unknown flag/)
+    expect(parseRunArgs(['build', '--only']).error).toMatch(/unknown flag/)
   })
 
-  it('parses --verbose / -v', () => {
-    expect(parseRunArgs(['build', '--verbose']).verbose).toBe(true)
-    expect(parseRunArgs(['build', '-v']).verbose).toBe(true)
+  it('parses --excludeDependencies=name1,name2 as a name list', () => {
+    expect(parseRunArgs(['build', '--excludeDependencies=lint,test']).excludeDependencies).toEqual([
+      'lint',
+      'test',
+    ])
   })
 
-  it('parses --dry-run and --dry as the same flag', () => {
-    expect(parseRunArgs(['build', '--dry-run']).dryRun).toBe(true)
-    expect(parseRunArgs(['build', '--dry']).dryRun).toBe(true)
+  it('parses --verbosity <n> (replaces -v / --verbose)', () => {
+    expect(parseRunArgs(['build', '--verbosity', '1']).verbosity).toBe(1)
+    expect(parseRunArgs(['build', '--verbosity', '2']).verbosity).toBe(2)
+    expect(parseRunArgs(['build', '-v']).error).toMatch(/unknown flag: -v/)
+    expect(parseRunArgs(['build', '--verbose']).error).toMatch(/unknown flag: --verbose/)
   })
 
-  it('parses --graph and --json', () => {
-    expect(parseRunArgs(['build', '--graph']).graph).toBe(true)
-    expect(parseRunArgs(['build', '--json']).json).toBe(true)
+  it('--verbosity rejects non-integer and negative values', () => {
+    expect(parseRunArgs(['build', '--verbosity', 'high']).error).toMatch(/invalid verbosity/)
+    expect(parseRunArgs(['build', '--verbosity', '-1']).error).toMatch(/invalid verbosity/)
   })
 
-  it('rejects --dry-run combined with --graph (mutually exclusive)', () => {
-    const r = parseRunArgs(['build', '--dry-run', '--graph'])
-    expect(r.error).toMatch(/mutually exclusive/)
+  it('parses --dry and --dry=json / --dry=text', () => {
+    expect(parseRunArgs(['build', '--dry']).dry).toBe('text')
+    expect(parseRunArgs(['build', '--dry=text']).dry).toBe('text')
+    expect(parseRunArgs(['build', '--dry=json']).dry).toBe('json')
+    expect(parseRunArgs(['build', '--dry-run']).error).toMatch(/unknown flag: --dry-run/)
+  })
+
+  it('rejects invalid --dry=<format>', () => {
+    expect(parseRunArgs(['build', '--dry=yaml']).error).toMatch(/invalid --dry value: yaml/)
+  })
+
+  it('parses --graph (stdout) and --graph=<path>', () => {
+    expect(parseRunArgs(['build', '--graph']).graph).toBe('')
+    expect(parseRunArgs(['build', '--graph=g.dot']).graph).toBe('g.dot')
+  })
+
+  it('rejects --dry combined with --graph (mutually exclusive)', () => {
+    expect(parseRunArgs(['build', '--dry', '--graph']).error).toMatch(/mutually exclusive/)
+  })
+
+  it('parses --summarize (default path) and --summarize=<path>', () => {
+    expect(parseRunArgs(['build', '--summarize']).summarize).toBe('')
+    expect(parseRunArgs(['build', '--summarize=out.json']).summarize).toBe('out.json')
+  })
+
+  it('parses --profile (default profile.json) and --profile=<path>', () => {
+    expect(parseRunArgs(['build', '--profile']).profile).toBe('profile.json')
+    expect(parseRunArgs(['build', '--profile=trace.json']).profile).toBe('trace.json')
+  })
+
+  it('rejects --summarize / --profile with --dry or --graph', () => {
+    expect(parseRunArgs(['build', '--dry', '--summarize']).error).toMatch(/need a real run/)
+    expect(parseRunArgs(['build', '--graph', '--profile']).error).toMatch(/need a real run/)
   })
 
   it('captures trailing args after `--` as forwardArgs', () => {
@@ -381,21 +425,20 @@ describe('parseRunArgs', () => {
   })
 
   it('flags before `--` are parsed; flags after are forwarded literally', () => {
-    const r = parseRunArgs(['-r', 'build', '--', '-v', '--no-cache'])
-    expect(r.recursive).toBe(true)
+    const r = parseRunArgs(['--all', 'build', '--', '--verbosity', '--no-cache'])
+    expect(r.all).toBe(true)
     expect(r.task).toBe('build')
-    expect(r.verbose).toBe(false)
+    expect(r.verbosity).toBe(0)
     expect(r.noCache).toBe(false)
-    expect(r.forwardArgs).toEqual(['-v', '--no-cache'])
+    expect(r.forwardArgs).toEqual(['--verbosity', '--no-cache'])
   })
 
   it('rejects unknown flag', () => {
     expect(parseRunArgs(['--bogus']).error).toMatch(/unknown flag/)
   })
 
-  it('-f / --force is no longer recognized', () => {
+  it('-f is not recognized (legacy)', () => {
     expect(parseRunArgs(['build', '-f']).error).toMatch(/unknown flag: -f/)
-    expect(parseRunArgs(['build', '--force']).error).toMatch(/unknown flag: --force/)
   })
 
   it('-p / --project is no longer recognized', () => {
@@ -407,7 +450,7 @@ describe('parseRunArgs', () => {
   })
 
   it('rejects bad concurrency', () => {
-    expect(parseRunArgs(['build', '-c', 'abc']).error).toMatch(/invalid concurrency/)
+    expect(parseRunArgs(['build', '--concurrency', 'abc']).error).toMatch(/invalid concurrency/)
   })
 
   it('rejects double positional', () => {
@@ -434,164 +477,6 @@ describe('formatBytes', () => {
   it('switches to MB and GB', () => {
     expect(formatBytes(2 * 1024 * 1024)).toBe('2.0 MB')
     expect(formatBytes(3 * 1024 * 1024 * 1024)).toBe('3.0 GB')
-  })
-})
-
-describe('parseStatsArgs', () => {
-  it('defaults to json=false', () => {
-    expect(parseStatsArgs([])).toEqual({ json: false })
-  })
-
-  it('parses --json', () => {
-    expect(parseStatsArgs(['--json'])).toEqual({ json: true })
-  })
-
-  it('rejects unknown args', () => {
-    const r = parseStatsArgs(['--bogus'])
-    expect(r.error).toBe('unknown argument: --bogus')
-  })
-})
-
-describe('formatStatsJson', () => {
-  it('emits a parseable JSON object with all fields', () => {
-    const out = formatStatsJson({
-      entryCount: 42,
-      totalBytes: 5 * 1024 * 1024,
-      runCountLast24h: 100,
-      hitCountLast24h: 73,
-    })
-    expect(out.endsWith('\n')).toBe(true)
-    const parsed = JSON.parse(out) as Record<string, unknown>
-    expect(parsed).toEqual({
-      entryCount: 42,
-      totalBytes: 5 * 1024 * 1024,
-      runCountLast24h: 100,
-      hitCountLast24h: 73,
-      hitRateLast24h: 0.73,
-    })
-  })
-
-  it('returns null hitRate when there are no runs (distinct from 0%)', () => {
-    const out = formatStatsJson({
-      entryCount: 0,
-      totalBytes: 0,
-      runCountLast24h: 0,
-      hitCountLast24h: 0,
-    })
-    const parsed = JSON.parse(out) as Record<string, unknown>
-    expect(parsed['hitRateLast24h']).toBeNull()
-  })
-})
-
-describe('formatStats', () => {
-  it('renders zero state with n/a hit rate', () => {
-    const out = formatStats({
-      entryCount: 0,
-      totalBytes: 0,
-      runCountLast24h: 0,
-      hitCountLast24h: 0,
-    })
-    expect(out).toContain('Entries:           0')
-    expect(out).toContain('Total size:        0 B')
-    expect(out).toContain('Hits  (24h):       0  (n/a)')
-  })
-
-  it('renders populated state with hit-rate percentage', () => {
-    const out = formatStats({
-      entryCount: 42,
-      totalBytes: 5 * 1024 * 1024,
-      runCountLast24h: 100,
-      hitCountLast24h: 73,
-    })
-    expect(out).toContain('Entries:           42')
-    expect(out).toContain('Total size:        5.0 MB')
-    expect(out).toContain('Runs (24h):        100')
-    expect(out).toContain('Hits  (24h):       73  (73.0%)')
-  })
-})
-
-describe('cli stats command', () => {
-  let workspaceRoot: string
-  const origCwd = process.cwd()
-
-  beforeEach(async () => {
-    const { mkdtemp, writeFile } = await import('node:fs/promises')
-    const os = await import('node:os')
-    const path = await import('node:path')
-    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vx-stats-'))
-    await writeFile(
-      path.join(workspaceRoot, 'pnpm-workspace.yaml'),
-      'packages:\n  - "packages/*"\n',
-    )
-    process.chdir(workspaceRoot)
-  })
-
-  afterEach(async () => {
-    process.chdir(origCwd)
-    const { rm } = await import('node:fs/promises')
-    await rm(workspaceRoot, { recursive: true, force: true })
-    vi.restoreAllMocks()
-  })
-
-  it('prints cache statistics from an empty workspace', async () => {
-    let stdout = ''
-    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
-      stdout += String(chunk)
-      return true
-    })
-    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-    const code = await run(['stats'])
-    expect(code).toBe(0)
-    expect(stdout).toContain('Cache statistics')
-    expect(stdout).toContain('Entries:           0')
-  })
-
-  it('--json emits parseable JSON instead of the human format', async () => {
-    let stdout = ''
-    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
-      stdout += String(chunk)
-      return true
-    })
-    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-    const code = await run(['stats', '--json'])
-    expect(code).toBe(0)
-    expect(stdout).not.toContain('Cache statistics')
-    const parsed = JSON.parse(stdout) as Record<string, unknown>
-    expect(parsed).toEqual({
-      entryCount: 0,
-      totalBytes: 0,
-      runCountLast24h: 0,
-      hitCountLast24h: 0,
-      hitRateLast24h: null,
-    })
-  })
-
-  it('errors clearly on unknown stats args', async () => {
-    let stderr = ''
-    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
-    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
-      stderr += String(chunk)
-      return true
-    })
-    const code = await run(['stats', '--bogus'])
-    expect(code).toBe(1)
-    expect(stderr).toContain('unknown argument: --bogus')
-  })
-
-  it('exits 1 when not inside a workspace', async () => {
-    process.chdir(origCwd)
-    let stderr = ''
-    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
-    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
-      stderr += String(chunk)
-      return true
-    })
-    // Walk to filesystem root — neither pnpm-workspace.yaml nor a
-    // package.json should exist there.
-    process.chdir('/')
-    const code = await run(['stats'])
-    expect(code).toBe(1)
-    expect(stderr).toContain('Could not find a workspace root')
   })
 })
 

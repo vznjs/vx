@@ -27,6 +27,7 @@ import { defaultLogger, type Logger } from './orchestrator/logger.ts'
 import { detectColors } from './orchestrator/colors.ts'
 import { formatHeader } from './orchestrator/framed-output.ts'
 import { plan, type RunPlan } from './orchestrator/plan.ts'
+import { writeRunProfile, writeRunSummary } from './orchestrator/run-artifacts.ts'
 import { formatRunSummary } from './orchestrator/summary.ts'
 
 export type { Logger } from './orchestrator/logger.ts'
@@ -38,10 +39,26 @@ export interface RunOptions {
   concurrency?: number
   /** Skip cache reads AND writes. Every task runs and nothing is persisted. */
   noCache?: boolean
-  /** Build the graph from only the requested tasks; skip `dependsOn` expansion. */
-  ignoreDependsOn?: boolean
+  /**
+   * Filter `dependsOn` expansion. `'all'` drops every edge (just the
+   * requested task runs). A string array drops only those task names
+   * from both `self` and `dependencies` buckets.
+   */
+  excludeDependencies?: 'all' | readonly string[]
   /** Forwarded to the last step of each task's exec array (shell-quoted). */
   forwardArgs?: readonly string[]
+  /**
+   * If set, write a per-run JSON summary at end of run. Empty string
+   * picks the default path `<cacheDir>/runs/<run_id>.json`; anything
+   * else is treated as the literal file path (cwd-relative).
+   */
+  summarize?: string
+  /**
+   * If set, write a Chrome-trace JSON profile of the run's wallclock
+   * spans. Path is cwd-relative. Default `profile.json` is selected
+   * by the CLI parser, not here.
+   */
+  profile?: string
   log?: Logger
 }
 
@@ -92,7 +109,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     projects,
     packageGraph,
     requested,
-    ignoreDependsOn: options.ignoreDependsOn ?? false,
+    ...(options.excludeDependencies !== undefined
+      ? { excludeDependencies: options.excludeDependencies }
+      : {}),
   })
   if (nodes.size === 0) {
     log.status(`No tasks to run.`)
@@ -167,13 +186,48 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // wasn't cached when in fact every executable task was. Same
   // exclusion as the analytics `recordRun` pass below.
   const realTasks = list.filter((o) => o.node.config.exec !== undefined)
+  const endedAtMs = Date.now()
   const totalMs = Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000
   for (const line of formatRunSummary(realTasks, totalMs, colors)) log.status(line)
 
+  // Optional artifacts. Errors are surfaced to the user but don't
+  // change the run's exit code — the run already happened.
+  if (options.summarize !== undefined) {
+    try {
+      const wrote = await writeRunSummary({
+        target: options.summarize,
+        cacheDir,
+        cwd: options.cwd,
+        runId,
+        startedAtMs: endedAtMs - totalMs,
+        endedAtMs,
+        totalMs,
+        outcomes: list,
+      })
+      log.status(`vx: summary written to ${wrote}`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.status(`vx: failed to write summary: ${msg}`)
+    }
+  }
+  if (options.profile !== undefined) {
+    try {
+      const wrote = await writeRunProfile({
+        target: options.profile,
+        cwd: options.cwd,
+        outcomes: list,
+      })
+      log.status(`vx: profile written to ${wrote}`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.status(`vx: failed to write profile: ${msg}`)
+    }
+  }
+
   // Record each task to the run history. Group tasks (no `exec`) are
-  // skipped — they aren't real runs and showing them in `vx stats` as
-  // zero-duration successes is noise.
-  const now = Date.now()
+  // skipped — they aren't real runs and the `runs` table is
+  // analytics-focused.
+  const now = endedAtMs
   for (const o of list) {
     if (!o.hash) continue
     if (o.node.config.exec === undefined) continue
@@ -241,7 +295,9 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
     projects,
     packageGraph,
     requested,
-    ignoreDependsOn: options.ignoreDependsOn ?? false,
+    ...(options.excludeDependencies !== undefined
+      ? { excludeDependencies: options.excludeDependencies }
+      : {}),
   })
   if (nodes.size === 0) return { tasks: [] }
 

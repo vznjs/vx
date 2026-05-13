@@ -4,31 +4,33 @@ The `vx` binary is installed by `@vzn/vx`. All commands are
 hand-parsed (no commander/yargs/etc.) in `src/cli.ts`; each subcommand
 handler lives in `src/cli/<name>.ts`.
 
+The flag surface is aligned with [Turborepo's `turbo run`](https://turborepo.com/docs/reference/run)
+so existing Turbo users can swap in with minimal muscle-memory churn.
+
 ## Commands
 
 ```
 vx run [OPTIONS] [TASK | PKG#TASK] [-- forwarded-args...]
-vx stats [--json]
 vx cache prune [--older-than <duration>] [--max-size <bytes>]
 vx help
 vx version
-vx --help, vx -h
-vx --version, vx -V
+vx --help, -h
+vx --version
 ```
 
-`-v` is reserved for `--verbose`; use `-V` for `--version`.
+(No `-V` for version; `vx --version` only — matches Turbo.)
 
-### `vx run [TASK]`
+## `vx run [TASK]`
 
-Run the named task. By default, only the project containing the current
+Run the named task. By default only the project containing the current
 working directory is selected — `dependsOn` still expands so the
 project's upstream workspace deps run too. Override the selection with
-`-r`, `-F`, or `pkg#task`.
+`--all`, `-F`/`--filter`, or `pkg#task`.
 
 If no task name is given:
 
-- In a TTY: an interactive picker lists every `pkg#task` entry across the
-  workspace, prompts for a number, and runs the chosen one.
+- In a TTY: an interactive picker lists every `pkg#task` entry across
+  the workspace, prompts for a number, runs the chosen one.
 - Not a TTY: the run exits `1` with `missing task name`.
 
 Exit codes:
@@ -36,41 +38,191 @@ Exit codes:
 - `0` — every task finished `success` or `cache-hit`.
 - `1` — at least one task ended `failed` or `skipped`.
 
-### `vx stats`
+### Selection
 
-Print a summary of the local cache:
+| Form             | Effect                                                                |
+| ---------------- | --------------------------------------------------------------------- |
+| (default)        | The project that contains cwd. Errors if cwd is not inside a project. |
+| `pkg#task`       | Just that project.                                                    |
+| `--all`          | Every project that declares the task.                                 |
+| `-F`, `--filter` | pnpm-style filter DSL (repeatable).                                   |
+
+### Filter DSL (`-F`, `--filter`)
+
+| Form            | Meaning                                                                       |
+| --------------- | ----------------------------------------------------------------------------- |
+| `<pattern>`     | Match by package name. `*` is a wildcard (no `/`).                            |
+| `./<dir>`       | Match packages whose dir is at or under `<dir>` (relative to workspace root). |
+| `{<dir>}`       | Same as `./<dir>`.                                                            |
+| `<pattern>...`  | Match + all transitive workspace dependencies.                                |
+| `...<pattern>`  | Match + all transitive workspace dependents.                                  |
+| `<pattern>^...` | Only the transitive dependencies, excluding the matched package itself.       |
+| `!<pattern>`    | Exclude packages matching `<pattern>`.                                        |
+
+Examples:
+
+```sh
+vx run build -F @scope/*        # all packages under @scope
+vx run build -F app...          # app and its transitive deps
+vx run build -F ...util         # util and everything that depends on it
+vx run build -F app^...         # only app's deps
+vx run build -F '*' -F '!docs'  # everything except docs
+```
+
+### Argument forwarding (`--`)
+
+Anything after `--` is forwarded (shell-quoted) to the task's `exec.command`:
+
+```sh
+vx run test -- --watch              # underlying test runner sees --watch
+vx run build -- --sourcemap         # build command gets --sourcemap
+```
+
+Forwarded args are folded into the cache key — different args produce
+different cache entries.
+
+### Flags
+
+| Flag                              | Type           | Default                         | Description                                                                                                         |
+| --------------------------------- | -------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `--filter`, `-F`                  | repeatable     | (none)                          | pnpm-style filter DSL (see above).                                                                                  |
+| `--all`                           | boolean        | off                             | Select every project that declares the task.                                                                        |
+| `--excludeDependencies[=<names>]` | optional value | off                             | Drop `dependsOn` edges. No value = all (just the requested task runs); comma-list = drop only those specific names. |
+| `--concurrency <n>`               | positive int   | `navigator.hardwareConcurrency` | Maximum parallel tasks. `1` serializes.                                                                             |
+| `--no-cache`, `--force`           | boolean        | off                             | Skip cache reads AND writes; outputs are NOT cleaned.                                                               |
+| `--cache`                         | boolean        | off                             | No-op (parity with vite-task).                                                                                      |
+| `--verbosity <n>`                 | int (0+)       | `0`                             | `1` prints a per-task summary table after the framed blocks; `2+` reserved.                                         |
+| `--dry[=text\|json]`              | optional value | off                             | Print the task graph + predicted cache hit/miss; skip execution.                                                    |
+| `--graph[=<path>]`                | optional value | off                             | Emit Graphviz DOT (stdout if no path); skip execution. Format from extension.                                       |
+| `--summarize[=<path>]`            | optional value | off                             | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                                       |
+| `--profile[=<path>]`              | optional value | off (`profile.json` when set)   | Write Chrome-trace JSON of the run's wallclock spans (open in chrome://tracing).                                    |
+
+Mutually exclusive:
+
+- `--dry` and `--graph` — both skip execution; pick one form.
+- `--dry` or `--graph` with `--summarize` or `--profile` — the latter
+  two need a real run.
+
+## Planning mode (`--dry`, `--graph`)
+
+Both flags short-circuit execution. They build the full task graph,
+compute every task's cache key, and probe the cache to predict the
+hit/miss outcome.
 
 ```
-Cache statistics
-----------------
-Entries:           42
-Total size:        5.0 MB
-Runs (24h):        100
-Hits  (24h):       73  (73.0%)
+$ vx run ci --dry
+would run:
+  ◉  @vzn/vx#format-check  cache hit (local)         02bfe8a9
+  ◉  @vzn/vx#lint          cache hit (local)         d66cfed2
+  ▶  @vzn/vx#test          cache miss — would exec   68595e49
+
+3 task(s) planned, 2 cache hits (2 local), 1 would run.
 ```
 
-Reads from `.vx/cache/cache.db` (the v10 SQLite index). The "Runs"
-and "Hits" counts come from the `runs` table — recorded for every
-task at the end of each `vx run`, including cache hits, failures,
-and skipped tasks. Exits `1` if not inside a workspace.
+Status legend:
 
-`--json` switches to a machine-readable form for CI scripts. No
-formatted byte strings; consumers handle rendering. `hitRateLast24h`
-is `null` (not `0`) when there's no denominator so "we don't know"
-stays distinguishable from "0%".
+| Symbol | Meaning                                                      |
+| ------ | ------------------------------------------------------------ |
+| `◉`    | cache hit (local) — entry already in `.vx/cache/`            |
+| `↓`    | cache hit (remote) — entry would be fetched from the layer   |
+| `▶`    | cache miss — task would execute                              |
+| `·`    | no-cache — task opts out (no `cache` block, or `--no-cache`) |
+| `○`    | group task (suppressed in human view; in DOT + JSON)         |
 
-```
-$ vx stats --json
+`--dry=json` emits the same data as a JSON object:
+
+```json
 {
-  "entryCount": 27,
-  "totalBytes": 132032,
-  "runCountLast24h": 52,
-  "hitCountLast24h": 9,
-  "hitRateLast24h": 0.173
+  "tasks": [
+    {
+      "id": "@vzn/vx#lint",
+      "project": "@vzn/vx",
+      "task": "lint",
+      "hash": "d66cfed2...",
+      "cacheStatus": "hit-local",
+      "deps": []
+    }
+  ]
 }
 ```
 
-### `vx cache prune`
+`--graph` prints Graphviz DOT (stdout by default; pass `--graph=path`
+to write a file). Pipe through `dot` to render:
+
+```
+vx run ci --graph | dot -Tsvg > graph.svg
+vx run ci --graph=graph.dot
+```
+
+Node fillcolor varies by predicted status (green = local hit, sky-blue
+= remote hit, orange = miss, gray = no-cache, fuchsia = group).
+
+## Run artifacts (`--summarize`, `--profile`)
+
+Both flags add a side-effect after a real run completes.
+
+`--summarize[=<path>]` writes a per-run JSON file:
+
+```json
+{
+  "runId": "01HKQ...",
+  "startedAt": "2026-05-13T22:00:00.123Z",
+  "endedAt": "2026-05-13T22:00:05.567Z",
+  "totalMs": 5443.7,
+  "tasks": [
+    {
+      "id": "@vzn/vx#lint",
+      "project": "@vzn/vx",
+      "task": "lint",
+      "status": "cache-hit",
+      "exitCode": 0,
+      "durationMs": 4,
+      "hash": "...",
+      "cpuMs": 123,
+      "peakRssBytes": 45678,
+      "wallclockStartNs": "12345678",
+      "wallclockEndNs": "12356789"
+    }
+  ],
+  "summary": {
+    "successful": 3,
+    "failed": 0,
+    "skipped": 0,
+    "cachedLocal": 2,
+    "cachedRemote": 0,
+    "total": 3
+  }
+}
+```
+
+Default path: `<cacheDir>/runs/<run_id>.json`. hrtime fields are
+strings (BigInt) to preserve ns precision through JSON.
+
+`--profile[=<path>]` writes a Chrome-trace JSON of the run's wallclock
+spans. Default path: `profile.json` (cwd-relative). Open with
+chrome://tracing or https://ui.perfetto.dev.
+
+```json
+{
+  "traceEvents": [
+    {
+      "name": "@vzn/vx#lint",
+      "cat": "cache-hit",
+      "ph": "X",
+      "ts": 12345,
+      "dur": 4321,
+      "pid": 1,
+      "tid": 1,
+      "args": { "exitCode": 0, "hash": "..." }
+    }
+  ]
+}
+```
+
+Each project gets a distinct `tid` so concurrent tasks render on
+separate lanes.
+
+## `vx cache prune`
 
 Evict old or oversized cache entries. Operates on `.vx/cache/cache.db`
 plus the on-disk `<hash>/` directories and `logs/<hash>.{stdout,stderr}`
@@ -88,144 +240,12 @@ combined: age-based first, then LRU-evict if still over the size cap.
 **Size units**: `K`, `M`, `G`, `T` (powers of 1024). Optional `B` suffix
 accepted. Examples: `500M`, `1G`, `100K`, `2T`, `500MB`.
 
-Output:
-
 ```
 $ vx cache prune --older-than 30d
 Pruned 42 entries (1.3 GB freed)
 ```
 
 Exits `1` on parse error, missing policy, or workspace-discovery error.
-
-### `vx help`, `vx --help`, `vx -h`
-
-Print the help message to stdout, exit `0`.
-
-### `vx version`, `vx --version`, `vx -V`
-
-Print `vx <version>` to stdout, exit `0`.
-
-Unknown commands print a help message + error to stderr and exit `1`.
-
-## Selection
-
-`vx run` picks the set of projects to consider, then walks `dependsOn`
-to assemble the full task graph from that set. Pick one of:
-
-| Form                | Effect                                                                |
-| ------------------- | --------------------------------------------------------------------- |
-| (default)           | The project that contains cwd. Errors if cwd is not inside a project. |
-| `pkg#task`          | Just that project.                                                    |
-| `-r`, `--recursive` | Every project that declares the task.                                 |
-| `-F <pattern>`      | pnpm-style filter DSL (repeatable).                                   |
-
-### Filter DSL (`-F`, `--filter`)
-
-| Form            | Meaning                                                                       |
-| --------------- | ----------------------------------------------------------------------------- |
-| `<pattern>`     | Match by package name. `*` is a wildcard (no `/`).                            |
-| `./<dir>`       | Match packages whose dir is at or under `<dir>` (relative to workspace root). |
-| `{<dir>}`       | Same as `./<dir>`.                                                            |
-| `<pattern>...`  | Match + all transitive workspace dependencies.                                |
-| `...<pattern>`  | Match + all transitive workspace dependents.                                  |
-| `<pattern>^...` | Only the transitive dependencies, excluding the matched package itself.       |
-| `!<pattern>`    | Exclude packages matching `<pattern>`.                                        |
-
-Filters are evaluated in order. If at least one include filter is
-present, the base set is empty and matched packages are added. If only
-exclude filters are given, the base set is "all projects" minus the
-excluded ones.
-
-Examples:
-
-```sh
-vx run build -F @scope/*        # all packages under @scope
-vx run build -F app...          # app and its transitive deps
-vx run build -F ...util         # util and everything that depends on it
-vx run build -F app^...         # only app's deps
-vx run build -F '*' -F '!docs'  # everything except docs
-```
-
-## Argument forwarding (`--`)
-
-Anything after `--` is forwarded (shell-quoted) to the task's `exec.command`:
-
-```sh
-vx run test -- --watch              # vitest sees --watch
-vx run build -- --sourcemap         # build command gets --sourcemap
-```
-
-Forwarded args are folded into the cache key — runs with different
-forwarded args never spuriously hit cache.
-
-## Flags
-
-| Flag                             | Type              | Default                         | Description                                                                                  |
-| -------------------------------- | ----------------- | ------------------------------- | -------------------------------------------------------------------------------------------- |
-| `-F <pattern>`, `--filter <pat>` | repeatable string | (none)                          | Filter DSL, see above.                                                                       |
-| `-r`, `--recursive`              | boolean           | off                             | Select every project that declares the task.                                                 |
-| `-c <n>`, `--concurrency <n>`    | positive integer  | `navigator.hardwareConcurrency` | Maximum parallel tasks. `1` serializes.                                                      |
-| `--ignore-depends-on`            | boolean           | off                             | Skip `dependsOn` expansion; run only the explicitly requested tasks.                         |
-| `--no-cache`                     | boolean           | off                             | Skip cache reads AND writes. Every task runs; nothing is persisted; outputs are NOT cleaned. |
-| `--cache`                        | boolean           | off                             | No-op. Accepted for parity with vite-task. Caching is governed by each task's `cache` block. |
-| `-v`, `--verbose`                | boolean           | off                             | Print a per-task summary table after the framed blocks.                                      |
-| `--dry-run`, `--dry`             | boolean           | off                             | Print the planned task graph + predicted cache hit/miss; skip execution.                     |
-| `--graph`                        | boolean           | off                             | Print the task graph as Graphviz DOT; skip execution.                                        |
-| `--json`                         | boolean           | off                             | With `--dry-run`, emit JSON instead of human text. (No effect alone yet.)                    |
-
-## Planning mode (`--dry-run`, `--graph`)
-
-Both flags short-circuit execution. They build the full task graph,
-compute every task's cache key, and probe the cache to predict what
-would happen if you ran the same command without the flag.
-
-```
-$ vx run ci --dry-run
-would run:
-  ◉  @vzn/vx#format-check  cache hit (local)         02bfe8a9
-  ◉  @vzn/vx#lint          cache hit (local)         d66cfed2
-  ▶  @vzn/vx#test          cache miss — would exec   68595e49
-
-3 task(s) planned, 2 cache hits (2 local), 1 would run.
-```
-
-Status legend:
-
-| Symbol | Meaning                                                      |
-| ------ | ------------------------------------------------------------ |
-| `◉`    | cache hit (local) — entry already in `.vx/cache/`            |
-| `↓`    | cache hit (remote) — entry would be fetched from the layer   |
-| `▶`    | cache miss — task would execute                              |
-| `·`    | no-cache — task opts out (no `cache` block, or `--no-cache`) |
-| `○`    | group task (suppressed in the human view; in DOT + JSON)     |
-
-`--dry-run --json` emits the same data as a JSON object for tooling:
-
-```json
-{
-  "tasks": [
-    {
-      "id": "@vzn/vx#lint",
-      "project": "@vzn/vx",
-      "task": "lint",
-      "hash": "d66cfed2...",
-      "cacheStatus": "hit-local",
-      "deps": []
-    }
-  ]
-}
-```
-
-`--graph` prints Graphviz DOT to stdout. Pipe through `dot` to render:
-
-```
-vx run ci --graph | dot -Tsvg > graph.svg
-```
-
-Node fillcolor varies by predicted status (green = local hit, sky-blue
-= remote hit, orange = miss, gray = no-cache, fuchsia = group).
-
-`--dry-run` and `--graph` are mutually exclusive; passing both errors.
 
 ## Output format
 
@@ -246,7 +266,7 @@ Found 0 warnings and 0 errors.
 
 ┌─ @vzn/vx#test > executed
 $ bun test
-... bun test output ...
+... test output ...
 └─ @vzn/vx#test ── (5.20s) executed
 
  Tasks:    2 successful, 2 total
@@ -254,20 +274,7 @@ Cached:    1 local, 2 total
   Time:    5.34s
 ```
 
-Top border shows the task id + a status hint (`cache hit • <hash>`,
-`remote cache hit • <hash>`, `executed`, `skipped (upstream failed)`,
-`$ <command>` on failure). Bottom border always shows the
-operation-time (wallclock for the actual work — clean+restore for
-cache hits, exec for misses) plus the final status (`executed`, `from
-local cache`, `from remote cache`, `FAILED (exit N)` in bold red,
-`skipped` in yellow).
-
-When every real task came from cache, the summary's `Time:` line
-appends `>>> FULL CACHE` (Turbo's `>>> FULL TURBO` flourish, our
-cache).
-
-**Group tasks** (no `exec` — pure `dependsOn` aggregators) emit no
-framed block. They're invisible in the run output by design.
+Group tasks emit no framed block by design.
 
 ### Colors
 
@@ -280,18 +287,6 @@ ANSI truecolor (`ansi-16m`) sequences, gated by env:
 | (neither)       | On iff `stdout.isTTY`.        |
 
 Custom loggers passed via the programmatic API always see plain text.
-
-## Argv parsing rules
-
-- `--` separates vx flags from forwarded task args. Everything after
-  `--` is appended (shell-quoted) to each task's `exec.command`.
-- The positional argument (before `--`) is the task name, optionally
-  prefixed with `pkg#`.
-- Flag values are consumed as the next argv item: `-F foo` not `-F=foo`.
-- Repeated `-F` / `--filter` accumulates.
-- Unknown flags exit `1` with a clear error.
-- A second positional before `--` exits `1`.
-- `--concurrency abc` (non-integer or `< 1`) exits `1`.
 
 ## Remote cache (env-driven)
 
@@ -314,34 +309,25 @@ Wire spec is Turborepo `/v8/artifacts/`. Compatible servers include
 Vercel's hosted Turbo cache. See `docs/design/remote-cache.md` for the
 full protocol.
 
-## What's NOT in the CLI
+## What's still missing vs Turbo
 
-Intentionally absent — see [`comparison.md`](./comparison.md) for the
-full Turbo/Nx/vite-task gap list and which items we'd accept PRs for:
+Tracked in [`comparison.md`](./comparison.md). Highlights:
 
-- Multi-task invocation (`vx run a b c`)
-- Wildcards in task names (`vx run 'build:*'`)
-- `--continue` (failure isolation is already the default for
-  independent siblings)
-- Output mode flags (`--output-logs none/errors-only/full`)
-- Cache management subcommands beyond `prune` (`vx cache clean`)
-- `vx graph` / `vx list` as standalone subcommands (the same data is
-  available via `vx run <task> --graph` and `--dry-run --json`).
-- `affected --base <ref>` (Nx-style git-relative selection)
-- Watch / daemon mode
-
-Most of these are tractable additions; they just haven't been built.
+- `--affected` / `[<since>]` filter syntax (git-relative selection)
+- `vx watch` subcommand
+- `--continue` (current behavior: independent siblings continue, dependents are skipped)
+- `--output-logs full|errors-only|hash-only|none`
+- `--cache-dir <path>` (workspace-config field works; CLI flag doesn't)
+- `--remote-cache-timeout`, `--token`, `--team` on CLI (env vars work)
 
 ## Internal API
 
-The CLI dispatcher is also exported as `run(argv)` from `src/cli.ts`
-(distinct from the orchestrator's `run(options)`). Useful for testing
-or programmatic use:
-
 ```ts
 import { run as cliRun } from '@vzn/vx/cli' // not yet re-exported
+import { run, planRun } from '@vzn/vx'
 ```
 
-Currently you'd `import { run } from '@vzn/vx'` for the _orchestrator_
-`run` (programmatic API). The CLI dispatcher is not part of the public
-package exports; the `bin.ts` entry calls it directly.
+`run(argv)` is the CLI dispatcher; `run(options)` and `planRun(options)`
+are the programmatic orchestrator entry points. The CLI dispatcher is
+not part of the public package exports yet; the `bin.ts` entry calls it
+directly.

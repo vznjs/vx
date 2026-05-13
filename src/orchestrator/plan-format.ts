@@ -1,6 +1,6 @@
 // Formatters for `--dry-run` (human / JSON) and `--graph` (DOT).
 
-import type { CacheStatus, PlannedTask, RunPlan } from './plan.js'
+import type { CacheStatus, RunPlan } from './plan.js'
 
 /**
  * Human-readable preview. One line per real task (groups hidden, same
