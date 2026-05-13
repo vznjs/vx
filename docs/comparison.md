@@ -51,7 +51,7 @@ upstream repo so future revisions can be diffed against reality.
 | output log mode            | `--output-logs=…`         | `--outputStyle=…`          | `--log=interleaved/labeled/grouped` | (always grouped/framed)                                    |
 | profile / Chrome trace     | `--profile`               | (via Nx Cloud)             | —                                   | `--profile[=<path>]`                                       |
 | daemon on/off              | `--daemon`/`--no-daemon`  | (Nx daemon, always on)     | —                                   | (no daemon)                                                |
-| watch mode                 | `turbo watch`             | `nx watch`                 | —                                   | — **gap**                                                  |
+| watch mode                 | `turbo watch`             | `nx watch`                 | —                                   | `vx watch <task>`                                          |
 | version / help             | `--version` / `--help`    | `--version` / `--help`     | `--version` / `--help`              | `--version`, `--help` / `-h`                               |
 
 _Sources_: Turbo `/apps/docs/content/docs/reference/run.mdx`; Nx
@@ -122,7 +122,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Filter DSL                                | pnpm-style + `[<since>]` (git-relative) | yes via `--projects/--exclude` (no DSL) | pnpm-style | pnpm-style + `[<since>]`                                            |
 | Affected / git-relative                   | `--filter '[since...]'`, `--affected`   | full `affected` subcommand              | —          | `--affected[=<base>]` + `[<since>]`                                 |
 | Daemon / persistent project-graph process | yes (`--daemon`)                        | yes (always-on)                         | —          | — **out of scope**                                                  |
-| Watch mode                                | `turbo watch`                           | `nx watch`                              | —          | — **gap**                                                           |
+| Watch mode                                | `turbo watch`                           | `nx watch`                              | —          | `vx watch <task>`                                                   |
 | Prune workspace (Docker subset)           | `turbo prune`                           | —                                       | —          | — **gap**                                                           |
 
 ## Gaps for `@vzn/vx`
@@ -173,9 +173,12 @@ upstream repos.
 
 ### Maybe-worth-adding (heavier lift, narrower payoff)
 
-9. **`vx watch` subcommand.** Like `turbo watch` / `nx watch`. Re-runs
-   tasks when watched inputs change. Out-of-band — most users get this
-   per-tool today (Vite, tsc -b -w, bun --watch).
+9. ~~**`vx watch` subcommand**~~ — **shipped.** `vx watch <task>` runs
+   the task once, then re-runs on every filesystem change in scope.
+   Same flag surface as `vx run` minus `--dry` / `--graph` /
+   `--summarize` / `--profile` (which don't make sense for a loop).
+   Cycles are debounced ~150ms; failed cycles don't break the loop.
+   See [`cli.md` § vx watch](./cli.md#vx-watch).
 
 10. **Workspace-level `globalInputs` / `globalEnv` / `globalPassThrough`.**
     Today every task lists `tsconfig.base.json` etc. independently if

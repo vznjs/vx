@@ -133,6 +133,22 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: `vx watch <task>` shipped. New subcommand:
+  initial run uses the same orchestrator path as `vx run`; afterwards
+  a debounced (150 ms) `fs.watch(projectDir, { recursive: true })`
+  per project + non-recursive watch of the workspace root re-invokes
+  the orchestrator on changes. Path filter ignores `node_modules` /
+  `.git` / `.vx` / `*.tsbuildinfo` / `*~` (editor swap files).
+  Reentrancy guard: events while a cycle runs set `pending = true`;
+  the loop drains after the current cycle so two events collapse
+  into one re-run. Rejected at parse time: `--dry`, `--graph`,
+  `--summarize`, `--profile` (don't make sense for a loop). Extracted
+  `resolveRunOptions(parsed, cwd, tasks)` from `cli/run.ts` so both
+  subcommands share scope resolution. 7 new CLI tests including an
+  end-to-end re-run-on-change against a real fixture workspace +
+  clean SIGINT exit. Docs: new module page `cli-watch.md`,
+  `comparison.md` flipped from gap to shipped, `cli.md` new
+  `## vx watch` section.
 - **2026-05**: CACHE_VERSION → v13. Unified per-entry on-disk layout:
   outputs moved from `<cacheDir>/<hash>/<rel>` to
   `<cacheDir>/<hash>/outputs/<rel>`; stdout/stderr moved from the
@@ -424,25 +440,32 @@ LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
 Roadmap is derived from [`docs/comparison.md`](docs/comparison.md) —
 the gap analysis against Turbo / Nx / vite-task with sourced cites.
 
-1. **`--affected`.** Git-relative selection (`main..HEAD`). Pure
-   addition; no schema change. Selects packages whose changed-files
-   intersect any task's `cache.inputs.files`.
-2. **Cross-package `dependsOn`.** Allow `pkg#task` and wildcards
-   (`build-*`, `^build-*`) in `dependsOn.self` / `.dependencies`.
-   Schema-extending but contained.
-3. **Named inputs + target defaults.** Workspace-level reusable input
+1. **Named inputs + target defaults.** Workspace-level reusable input
    sets + per-task inheritance. Reduces glob duplication across tasks.
    See Nx `namedInputs` / `targetDefaults`.
-4. **Pre-signed URL auth + HMAC signing** (`x-artifact-tag`) for the
+2. **Pre-signed URL auth + HMAC signing** (`x-artifact-tag`) for the
    remote cache. v2 per `docs/design/remote-cache.md`.
-5. **Per-run JSON summary** (`.vx/runs/<run_id>.json`). Already have
-   the data in `cache.db`'s `runs` table.
-6. **Output log modes** (`--output-logs=full|errors-only|hash-only|none`).
+3. **Output log modes** (`--output-logs=full|errors-only|hash-only|none`).
+4. **`--continue=<mode>`.** Today vx aborts a failed task's
+   transitive dependents but continues independent siblings — Turbo's
+   middle setting. Add the explicit flag plus a `--continue=always`
+   for more lenient runs.
+5. **Wildcards in `dependsOn`** (`build-*`, `^build-*` — Nx 19.5+).
+6. **Workspace-level `globalInputs` / `globalEnv` / `globalPassThrough`.**
 7. **Auto-input inference** (vite-task's `{auto:true}` via filesystem
    tracing). Biggest UX win, biggest engineering lift; needs an
    `fspy`-equivalent per OS.
 
 ## Recently shipped
+
+- **2026-05**: `vx watch <task>` subcommand. Initial run via the
+  shared orchestrator path, then debounced (150 ms) recursive
+  `fs.watch` per project + non-recursive root watch for lockfile
+  edits. Path filter ignores `node_modules` / `.git` / `.vx` /
+  `*.tsbuildinfo` / `*~`. Reentrancy guard collapses bursty events
+  into a single re-run. Rejects `--dry` / `--graph` / `--summarize`
+  / `--profile` (no sense for a loop). 7 new tests including
+  end-to-end re-run on FS change + clean SIGINT.
 
 - **2026-05**: `--dry-run` (`--dry`) and `--graph` for `vx run`. Both
   short-circuit execution: build the graph, compute every task's

@@ -309,6 +309,156 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
   })
 })
 
+describe('vx watch command (parser-side validation)', () => {
+  let stdout: string
+  let stderr: string
+
+  beforeEach(() => {
+    stdout = ''
+    stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('rejects watch with no task name', async () => {
+    expect(await run(['watch'])).toBe(1)
+    expect(stderr).toContain('missing task name')
+  })
+
+  it('rejects watch with --dry', async () => {
+    expect(await run(['watch', 'build', '--dry'])).toBe(1)
+    expect(stderr).toContain('--dry / --graph are not supported in watch mode')
+  })
+
+  it('rejects watch with --graph', async () => {
+    expect(await run(['watch', 'build', '--graph'])).toBe(1)
+    expect(stderr).toContain('--dry / --graph are not supported in watch mode')
+  })
+
+  it('rejects watch with --summarize', async () => {
+    expect(await run(['watch', 'build', '--summarize'])).toBe(1)
+    expect(stderr).toContain('--summarize / --profile are not supported')
+  })
+
+  it('rejects watch with --profile', async () => {
+    expect(await run(['watch', 'build', '--profile'])).toBe(1)
+    expect(stderr).toContain('--summarize / --profile are not supported')
+  })
+
+  it('surfaces parser errors with the watch prefix', async () => {
+    expect(await run(['watch', 'build', '--concurrency', 'oops'])).toBe(1)
+    expect(stderr).toContain('vx watch:')
+    expect(stderr).toContain('invalid concurrency')
+  })
+})
+
+describe('vx watch end-to-end against a real fixture workspace', () => {
+  let workspaceRoot: string
+  const origCwd = process.cwd()
+
+  beforeEach(async () => {
+    const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises')
+    const os = await import('node:os')
+    const path = await import('node:path')
+    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-e2e-'))
+    await writeFile(
+      path.join(workspaceRoot, 'pnpm-workspace.yaml'),
+      'packages:\n  - "packages/*"\n',
+    )
+    await writeFile(
+      path.join(workspaceRoot, 'package.json'),
+      JSON.stringify({ name: 'root', private: true }),
+    )
+    const pkgDir = path.join(workspaceRoot, 'packages', 'one')
+    await mkdir(pkgDir, { recursive: true })
+    await mkdir(path.join(pkgDir, 'src'), { recursive: true })
+    await writeFile(path.join(pkgDir, 'src', 'index.txt'), 'v0')
+    await writeFile(
+      path.join(pkgDir, 'package.json'),
+      JSON.stringify({ name: 'one', version: '0.0.0' }),
+    )
+    await writeFile(
+      path.join(pkgDir, 'vx.config.mjs'),
+      `export default {
+        tasks: {
+          hello: {
+            exec: { command: "cat src/index.txt" },
+            cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+          },
+        },
+      }`,
+    )
+    process.chdir(workspaceRoot)
+  })
+
+  afterEach(async () => {
+    process.chdir(origCwd)
+    const { rm } = await import('node:fs/promises')
+    await rm(workspaceRoot, { recursive: true, force: true })
+    vi.restoreAllMocks()
+  })
+
+  it(
+    're-runs the task after a file change, then exits on SIGINT',
+    async () => {
+      const path = await import('node:path')
+      const { writeFile } = await import('node:fs/promises')
+
+      let stdout = ''
+      let stderr = ''
+      vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk)
+        return true
+      })
+      vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+        stderr += String(chunk)
+        return true
+      })
+
+      const cmd = run(['watch', '--all', 'hello'])
+
+      // Wait for the initial run to appear in stdout, then write a change.
+      await waitFor(() => stdout.includes('v0'))
+      await writeFile(path.join(workspaceRoot, 'packages', 'one', 'src', 'index.txt'), 'v1')
+
+      // Wait for the re-run to surface the new content.
+      await waitFor(() => stdout.includes('v1'))
+
+      // Send SIGINT so the watch loop exits cleanly.
+      process.emit('SIGINT')
+      const code = await cmd
+      expect(code).toBe(0)
+      expect(stdout).toContain('vx watch: initial run')
+      expect(stdout).toMatch(/re-running\.\.\./)
+      expect(stdout).toContain('v0')
+      expect(stdout).toContain('v1')
+      // Silence the stderr-may-have-content lint by referencing it.
+      void stderr
+    },
+    { timeout: 20_000 },
+  )
+})
+
+async function waitFor(predicate: () => boolean, timeoutMs = 10_000): Promise<void> {
+  const start = Date.now()
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(`waitFor timed out after ${timeoutMs}ms`)
+    }
+    await new Promise((r) => setTimeout(r, 25))
+  }
+}
+
 describe('parseRunArgs', () => {
   it('parses task name with all flags defaulted', () => {
     const r = parseRunArgs(['build'])
