@@ -20,9 +20,14 @@ The cache key for one task is a SHA-256 digest of:
    Bumped only when the key derivation format changes.
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
    identical everything else still produce different keys.
-3. **Workspace fingerprint** — a hash of `pnpm-lock.yaml` plus
-   `pnpm-workspace.yaml`. A `pnpm update` (lockfile change) or a
-   workspace-shape change invalidates every cache entry.
+3. **Workspace fingerprint** — a hash over every supported workspace
+   marker found at the root: `pnpm-lock.yaml`, `package-lock.json`,
+   `npm-shrinkwrap.json`, `yarn.lock`, `bun.lock`, `bun.lockb`,
+   `pnpm-workspace.yaml`. Any install-resolved change (e.g. a `bun
+install` that updates `bun.lock`) or workspace-shape change
+   invalidates every cache entry. Plus the **project's `package.json`
+   bytes** (Turbo/Nx-style implicit dependency, PR #42) — covers dep
+   changes even when `cache.inputs.files` is narrow.
 4. **Task config hash** — `sha256(JSON.stringify(node.config))` of the
    _evaluated_ task config. Captures:
    - `exec` block (command, env declarations).
@@ -31,7 +36,8 @@ The cache key for one task is a SHA-256 digest of:
      declarations (the strings themselves; their _resolved values_
      contribute separately).
    - **Imported / computed values** — anything a preset or `process.env`
-     read at config-load time injected, since jiti has already baked it
+     read at config-load time injected, since Bun's native
+     `await import()` has already evaluated the module and baked it
      into the object.
 5. **`cache.inputs.env` resolved values** — `[name, value]` pairs read
    from host `process.env` at hash time. Listed names get their current
@@ -82,17 +88,18 @@ flows.
 
 A task's cache becomes invalid when any of these change:
 
-| Trigger                                                        | Mechanism                                                                     |
-| -------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Edit a file in the task's `inputs.files` set                   | step 6 of key derivation                                                      |
-| `pnpm install` updates `pnpm-lock.yaml`                        | step 3 (workspace fingerprint)                                                |
-| Edit `pnpm-workspace.yaml`                                     | step 3                                                                        |
-| Edit the task's `vx.config.ts`                                 | step 4 (config hash)                                                          |
-| Edit a config file that the task config imports                | step 4 (configHash sees the resolved object after jiti evaluates the imports) |
-| Change `inputs.env` host values                                | step 5                                                                        |
-| Upstream task's cache key changes (because its inputs changed) | step 7                                                                        |
-| Change CLI `forwardArgs` (after `--`)                          | folded into the key — different args produce a different entry                |
-| Change `exec.env.passThrough` _values_ alone                   | NOT a trigger by design — passThrough values are host-specific                |
+| Trigger                                                                 | Mechanism                                                                    |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Edit a file in the task's `inputs.files` set                            | step 6 of key derivation                                                     |
+| Any package manager updates its lockfile (`pnpm`, `npm`, `yarn`, `bun`) | step 3 (workspace fingerprint)                                               |
+| Edit `pnpm-workspace.yaml` / `package.json`'s `workspaces` field        | step 3                                                                       |
+| Edit the project's `package.json` (dep / version / script changes)      | step 3 (project-package.json hash, PR #42)                                   |
+| Edit the task's `vx.config.ts`                                          | step 4 (config hash)                                                         |
+| Edit a config file that the task config imports                         | step 4 (configHash sees the resolved object after Bun evaluates the imports) |
+| Change `inputs.env` host values                                         | step 5                                                                       |
+| Upstream task's cache key changes (because its inputs changed)          | step 7                                                                       |
+| Change CLI `forwardArgs` (after `--`)                                   | folded into the key — different args produce a different entry               |
+| Change `exec.env.passThrough` _values_ alone                            | NOT a trigger by design — passThrough values are host-specific               |
 
 The cascade in row 7 is what makes monorepo caching work: edit `lib/`,
 and every package that depends on `lib`'s `build` task is invalidated

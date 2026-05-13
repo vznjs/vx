@@ -1,6 +1,6 @@
 # @vzn/vx
 
-An open, extensible monorepo task runner for pnpm workspaces.
+An open, extensible monorepo task runner for pnpm / npm / yarn / Bun workspaces.
 TypeScript config, content-addressed cache, replaceable internals.
 
 **Runs on [Bun](https://bun.sh) (≥ 1.3).** TypeScript source ships as the
@@ -26,34 +26,37 @@ vx run build
 import { defineProject } from '@vzn/vx'
 
 export default defineProject({
-  run: {
-    tasks: {
-      build: {
-        exec: { command: 'tsc -b' },
-        dependsOn: { dependencies: ['build'] }, // Turbo's `^build`
-        cache: {
-          inputs: {
-            files: ['src/**', '!**/*.test.ts'],
-            env: ['NODE_ENV'], // host values that bust cache
-            tasks: { dependencies: ['build'] }, // upstream hashes to fold in
-          },
-          outputs: { files: ['dist/**'] },
+  tasks: {
+    build: {
+      exec: { command: 'tsc -b' },
+      dependsOn: { dependencies: ['build'] }, // Turbo's `^build`
+      cache: {
+        inputs: {
+          files: ['src/**', '!**/*.test.ts'],
+          env: ['NODE_ENV'], // host values that bust cache
+          tasks: { dependencies: ['build'] }, // upstream hashes to fold in
         },
+        outputs: { files: ['dist/**'] },
       },
+    },
 
-      test: {
-        exec: { command: 'vitest run', env: { passThrough: ['CI'] } },
-        dependsOn: { self: ['build'] },
-        cache: {
-          inputs: { files: ['src/**'] },
-          outputs: { files: [] }, // cache the no-op success
-        },
+    test: {
+      exec: { command: 'bun test', env: { passThrough: ['CI'] } },
+      dependsOn: { self: ['build'] },
+      cache: {
+        inputs: { files: ['src/**'] },
+        outputs: { files: [] }, // cache the no-op success
       },
+    },
 
-      dev: {
-        // No `cache` field → always runs.
-        exec: { command: 'vite', env: { passThrough: ['VITE_API_URL'] } },
-      },
+    dev: {
+      // No `cache` field → always runs.
+      exec: { command: 'vite', env: { passThrough: ['VITE_API_URL'] } },
+    },
+
+    // Umbrella task — group node, no exec. `vx run ci` fans out.
+    ci: {
+      dependsOn: { self: ['lint', 'test'] },
     },
   },
 })
@@ -66,6 +69,8 @@ in [`docs/schema.md`](./docs/schema.md).
 
 ```sh
 vx run [TASK | PKG#TASK] [-r] [-F <pattern>] [-c <n>] [--no-cache] [--ignore-depends-on] [-v] [-- forwarded-args...]
+vx stats [--json]
+vx cache prune [--older-than 30d] [--max-size 1G]
 ```
 
 Default scope: the project containing cwd (deps still expand via
@@ -74,7 +79,13 @@ DSL, or `pkg#task` to target one project directly. Args after `--` are
 forwarded (shell-quoted) to the task's `exec.command` and folded into
 the cache key.
 
-Full CLI reference: [`docs/cli.md`](./docs/cli.md).
+Output is Turbo-style: framed per-task blocks with status indicators
+(`cache hit • <hash>`, `executed`, `FAILED (exit N)`, `from local
+cache` / `from remote cache`) and a summary line that prints
+`>>> FULL CACHE` when every real task was cached.
+
+Full CLI reference: [`docs/cli.md`](./docs/cli.md). Side-by-side with
+Turborepo / Nx / vite-task: [`docs/comparison.md`](./docs/comparison.md).
 
 ## Key properties
 
@@ -99,21 +110,25 @@ Full CLI reference: [`docs/cli.md`](./docs/cli.md).
 See [`docs/architecture.md`](./docs/architecture.md) for the design
 rationale and module layout.
 
-## Compared to Turborepo / NX / vite-task
+## Compared to Turborepo / Nx / vite-task
 
 - **Per-package TypeScript config** (vs Turbo's single `turbo.json`,
-  NX's JSON `project.json`, vite-task's per-package JSON). Type-safe
+  Nx's JSON `project.json`, vite-task's per-package config). Type-safe
   inference, shared presets via plain imports.
-- **No executors.** NX's plugin abstraction has real cost (versioned
+- **No executors.** Nx's plugin abstraction has real cost (versioned
   packages, runtime indirection); we keep the shell as the API.
-- **Same Turbo-shape caching** — content-addressed key including
-  command, env, file contents, upstream hashes, workspace fingerprint.
+- **Turbo-shape caching, wire-compatible** — content-addressed key,
+  output restore, plus a remote-cache HTTP client that speaks the
+  Turbo `/v8/artifacts/` API (works against `ducktors/turborepo-remote-cache`
+  et al.).
 - **Resolved-config hash** captures values that flowed in through
   `import` statements at config-load time — Turbo can't see those.
+- **Strict output cleaning.** Declared `cache.outputs.files` are wiped
+  before exec AND before cache restore, so the project dir ends every
+  run bit-identical to the cached snapshot.
 
-A more detailed comparison is woven through
-[`docs/architecture.md`](./docs/architecture.md) and
-[`docs/caching.md`](./docs/caching.md).
+Feature-by-feature side-by-side with each tool, including known gaps:
+[`docs/comparison.md`](./docs/comparison.md).
 
 ## Status
 
@@ -123,17 +138,21 @@ Pre-alpha. Schema may shift. No published versions yet.
 
 ```sh
 bun install
-bun run lint        # oxlint with type-aware checks (via tsgolint)
-bun run format      # oxfmt
-bun test src/       # 155 tests under bun:test
+bun run lint        # → vx run lint (oxlint --type-aware --type-check)
+bun run format      # → vx run format (oxfmt)
+bun run test        # → vx run test (bun test)
+bun run ci          # → vx run ci (group: format-check + lint + test)
 ```
+
+vx dogfoods itself — every dev task routes through `bun src/bin.ts run
+<task>` per `vx.config.ts`, which is what CI invokes too.
 
 No build step. TypeScript source ships as-is; Bun runs it directly.
 Lint, format, and types are all checked by the oxc toolchain — no tsc,
 no prettier.
 
 Architecture: [`docs/architecture.md`](./docs/architecture.md).
-Tests live next to each source module as `*.test.ts`.
+Tests live under [`tests/`](./tests/), one file per src module.
 
 ## License
 

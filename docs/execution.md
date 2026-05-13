@@ -6,53 +6,76 @@ terminal and a task succeeding or failing.
 ## End-to-end timeline
 
 ```
- ┌─ CLI parsing (cli.ts)
- │    argv → { task, projects, concurrency, force }
+ ┌─ CLI dispatch (cli.ts, cli/run.ts)
+ │    argv → { task, projects, concurrency, noCache, ignoreDependsOn,
+ │             forwardArgs, verbose }
  │
  ├─ Workspace setup (orchestrator.ts:run)
- │    1. findWorkspaceRoot from process.cwd (walk up to pnpm-workspace.yaml)
- │    2. loadWorkspace (parse YAML)
+ │    1. findWorkspaceRoot from process.cwd — walks up; first match
+ │       wins across pnpm-workspace.yaml, package.json with a
+ │       `workspaces` field (npm/yarn/bun), or a bare package.json
+ │       (single-project mode).
+ │    2. loadWorkspace (parses the appropriate manifest via Bun.YAML
+ │       / Bun.file().json()).
  │    3. listProjects (glob package.json files, find vx.config.* siblings,
- │                     detect duplicate names)
- │    4. loadProjectConfig for each project that has a config (jiti for .ts,
- │                                              native import for .mjs)
- │    5. buildPackageGraph from package.json deps
- │    6. computeNestedProjectDirs (for boundary enforcement)
- │    7. computeWorkspaceFingerprint (hash pnpm-lock.yaml + pnpm-workspace.yaml)
+ │                     detect duplicate names).
+ │    4. loadProjectConfig for each project that has a config — native
+ │       Bun `await import()` with a content-hash query-string bust
+ │       so config edits are picked up across runs.
+ │    5. buildPackageGraph from package.json deps.
+ │    6. computeNestedProjectDirs (for boundary enforcement).
+ │    7. computeWorkspaceFingerprint (hash every supported lockfile +
+ │       pnpm-workspace.yaml at the root: pnpm-lock.yaml,
+ │       package-lock.json, npm-shrinkwrap.json, yarn.lock, bun.lock,
+ │       bun.lockb).
  │
- ├─ Task graph (task-graph.ts:buildTaskGraph)
+ ├─ Task graph (graph/task-graph.ts:buildTaskGraph)
  │    Starting from requested {project, task} pairs, walk dependsOn:
  │      - self entries are added in the same project
  │      - dependencies entries are added in each transitive workspace dep
  │    Detect cycles. Each node carries id, projectName, projectDir, taskName,
  │    config, sorted deps.
  │
- ├─ Scheduling (scheduler.ts:runGraph)
+ ├─ Scheduling (graph/scheduler.ts:runGraph)
  │    Up to N tasks concurrently, ordered topologically.
  │    For each ready node, call execute(node, upstream) → outcome.
  │    If a task fails, its dependents are marked skipped; independent siblings
  │    continue.
  │
- └─ Per-task execution (orchestrator.ts:executeTask)
-      1. Resolve inputs.files (gitignore-aware, boundary-aware, own-outputs-excluded)
-      2. Resolve inputs.env values (read host process.env for listed names)
-      3. Hash the resolved task config (post-evaluation)
-      4. Filter upstream cache hashes per cache.inputs.tasks
-      5. Compute cache key from (1) + (2) + (3) + (4) + workspaceFingerprint
-      6. If cache enabled (task declares a `cache` block AND --no-cache
-         is not set): try cache.get(key)
-         - Hit → restore outputs, replay logs, return cache-hit
-         - Miss → fall through
-      7. Build isolated env (essentials + exec.env.passThrough values
-                              + exec.env.define values)
-      8. spawn shell with exec.command (runner.ts:runCommand), with any
-         CLI forwarded args appended (shell-quoted)
-      9. Stream chunks via onStdout / onStderr to the logger
-     10. If exit == 0 and cache enabled:
-         a. Resolve outputs.files
-         b. cache.save: copy outputs into temp slot, write meta.json,
-                        atomic rename to final hash slot
-     11. Return TaskOutcome { node, status, exitCode, durationMs, hash }
+ └─ Per-task execution (orchestrator/execute-task.ts:executeTask)
+      1. Group task short-circuit — if node has no `exec`, return
+         success with a derived hash (rolled up from upstream); no
+         spawn, no I/O.
+      2. Resolve inputs.files (gitignore-aware, boundary-aware,
+         own-outputs-excluded).
+      3. Resolve inputs.env values (read host process.env for listed names).
+      4. Hash the resolved task config (post-evaluation).
+      5. Hash the project's package.json (Turbo/Nx implicit dependency).
+      6. Filter upstream cache hashes per cache.inputs.tasks.
+      7. Compute cache key from (2) + (3) + (4) + (5) + (6) +
+         workspaceFingerprint + taskId + forwardArgs.
+      8. If cache enabled (task declares a `cache` block AND
+         --no-cache is not set): try cache.get(key)
+         - Hit → cleanOutputs (declared globs) → restoreOutputs from
+           entry → replay captured logs → return cache-hit (durationMs
+           is the wallclock for the restore op, not the original exec).
+         - Miss → fall through, but first cleanOutputs (so stale files
+           from a prior build don't survive a fresh exec).
+      9. Build isolated env (essentials + exec.env.passThrough values
+         + exec.env.define values + `<projectDir>/node_modules/.bin`
+         prepended to PATH).
+     10. spawn shell with exec.command (exec/runner.ts:runCommand,
+         using Bun.spawn for resource usage capture), with any CLI
+         forwardArgs appended (shell-quoted).
+     11. Buffer chunks via onStdout / onStderr (the logger flushes
+         them as one framed block on taskComplete).
+     12. If exit == 0 and cache enabled:
+         a. Resolve outputs.files.
+         b. cache.save: copy outputs into <hash>/, write SQLite row,
+                        store stdout/stderr in logs/<hash>.{stdout,stderr}.
+     13. Return TaskOutcome { node, status, exitCode, durationMs, hash,
+         stdout, stderr, cpuMs?, peakRssBytes?, wallclockStartNs?,
+         wallclockEndNs? }.
 ```
 
 ## One command per task
@@ -94,16 +117,17 @@ flight finish, and unrelated tasks not yet started still run. The
 overall exit code is 1 if any task ended in `failed` or `skipped`
 status.
 
-## Output capture, replay, and live streaming
+## Output capture and rendering
 
-- **Live**: `runCommand` listens to the child's stdout/stderr and calls
-  `onStdout` / `onStderr` callbacks chunk by chunk. The orchestrator's
-  default logger prefixes each line with the task id.
-- **Cache write**: full stdout/stderr text is stored in `meta.json`
-  alongside the entry. No timing metadata; output is replayed as one
-  blob.
-- **Cache hit replay**: the stored stdout/stderr is written verbatim to
-  the live terminal via the same logger. ANSI codes are preserved.
+- **Buffered, framed.** `runCommand` listens to the child's
+  stdout/stderr and calls `onStdout` / `onStderr` per chunk. The
+  default logger buffers the chunks per-task and dumps the full body
+  as a Turbo-style framed block on task completion — no per-line
+  prefix, no interleaving between concurrent tasks.
+- **Cache write.** Full stdout/stderr text is stored as
+  `logs/<hash>.{stdout,stderr}` next to the SQLite row.
+- **Cache hit replay.** The stored stdout/stderr is fed through the
+  same logger path so the framed block looks the same as a fresh run.
 
 There is no special handling for binary output, very large output, or
 interactive prompts. Stdin is `'ignore'` (child sees a closed stdin) —
@@ -111,8 +135,9 @@ tasks that need TTY input won't work and shouldn't be cached anyway.
 
 ## Concurrency
 
-- Default: `os.cpus().length`.
-- Override: `--concurrency N` or `-c N`.
+- Default: `navigator.hardwareConcurrency` (Bun's CPU-count primitive).
+- Override: `--concurrency N` or `-c N`, or a workspace-level default
+  in `vx.workspace.ts`.
 - `concurrency: 1` serializes execution while still respecting topo
   order.
 - The scheduler never exceeds the cap; it just lets tasks queue.
