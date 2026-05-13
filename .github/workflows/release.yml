@@ -1,42 +1,40 @@
-name: Release
+name: Release assets
+
+# Triggered when a maintainer publishes a release in the GitHub UI
+# (or via `gh release create`). Compiles the binaries against the
+# release's tag and attaches them to the release.
+#
+# Notes: the maintainer writes the release body manually (or uses
+# GitHub's "Generate release notes" button). This workflow only
+# uploads the four cross-target binaries as assets.
 
 on:
-  push:
-    branches: [main]
+  release:
+    types: [published]
 
 permissions:
   contents: write
 
 jobs:
-  release:
+  assets:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with:
+          ref: ${{ github.event.release.tag_name }}
 
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-
-      # Computes the next tag from conventional commits since the last
-      # release, creates + pushes the tag, and exports a markdown
-      # changelog. `default_bump: patch` keeps unlabeled commits as
-      # patches.
-      - id: tag
-        uses: mathieudutour/github-tag-action@v6.2
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          default_bump: patch
 
       - name: Compile binaries
         run: |
           for t in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
             bun build --compile --minify --bytecode --target=bun-$t \
-              src/bin.ts --outfile "dist/vx-${{ steps.tag.outputs.new_tag }}-$t"
+              src/bin.ts --outfile "dist/vx-${{ github.event.release.tag_name }}-$t"
           done
 
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.tag.outputs.new_tag }}
-          generate_release_notes: true
+          tag_name: ${{ github.event.release.tag_name }}
           files: dist/*
