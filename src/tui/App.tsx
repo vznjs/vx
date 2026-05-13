@@ -16,6 +16,7 @@ import { Queue } from './views/Queue.tsx'
 import { Bottlenecks } from './views/Bottlenecks.tsx'
 import { Help } from './overlays/Help.tsx'
 import { TaskDetail } from './overlays/TaskDetail.tsx'
+import { AutoExit } from './overlays/AutoExit.tsx'
 import type { Action, State } from './state/store.js'
 
 interface Props {
@@ -29,6 +30,30 @@ export function App({ state, dispatch, version, onExit }: Props): React.ReactNod
   const { width, height } = useTerminalDimensions()
 
   useKeyboard((key) => {
+    // Filter-editing mode owns the keys until Enter/Esc.
+    if (state.filterEditing) {
+      if (key.name === 'escape') {
+        dispatch({ type: 'key', key: { kind: 'setFilter', value: '' } })
+        dispatch({ type: 'key', key: { kind: 'endFilterEdit' } })
+        return
+      }
+      if (key.name === 'return' || key.name === 'enter') {
+        dispatch({ type: 'key', key: { kind: 'endFilterEdit' } })
+        return
+      }
+      const current = state.filters[state.activeView] ?? ''
+      if (key.name === 'backspace') {
+        dispatch({ type: 'key', key: { kind: 'setFilter', value: current.slice(0, -1) } })
+        return
+      }
+      // Treat printable single-character keys as typing input.
+      const seq = (key as { sequence?: string }).sequence
+      if (typeof seq === 'string' && seq.length === 1 && seq >= ' ' && seq !== '\x7f') {
+        dispatch({ type: 'key', key: { kind: 'setFilter', value: current + seq } })
+      }
+      return
+    }
+
     if (key.name === 'q' || (key.ctrl && key.name === 'c')) {
       onExit()
       return
@@ -39,6 +64,10 @@ export function App({ state, dispatch, version, onExit }: Props): React.ReactNod
     }
     if (key.name === 'escape') {
       dispatch({ type: 'key', key: { kind: 'closeOverlay' } })
+      return
+    }
+    if (key.name === '/') {
+      dispatch({ type: 'key', key: { kind: 'startFilterEdit' } })
       return
     }
     // Number row 1..5 switches views.
@@ -107,18 +136,28 @@ export function App({ state, dispatch, version, onExit }: Props): React.ReactNod
     }
   }
 
-  const overlay = state.taskDetailOpen ? (
-    <TaskDetail state={state} width={width} height={height} />
-  ) : state.showHelp ? (
-    <Help width={width} height={height} />
-  ) : null
+  const overlay =
+    state.autoExitAt !== undefined ? (
+      <AutoExit autoExitAt={state.autoExitAt} />
+    ) : state.taskDetailOpen ? (
+      <TaskDetail state={state} width={width} height={height} />
+    ) : state.showHelp ? (
+      <Help width={width} height={height} />
+    ) : null
 
   return (
     <box flexDirection="column" width={width} height={height}>
       <Header state={state} version={version} />
       {body}
       <ProgressBar state={state} width={width} />
-      <StatusBar width={width} showHelp={state.showHelp} />
+      <StatusBar
+        width={width}
+        activeView={state.activeView}
+        showHelp={state.showHelp}
+        filterEditing={state.filterEditing}
+        filterValue={state.filters[state.activeView] ?? ''}
+        selectedTaskId={state.selectedTaskId}
+      />
       {overlay}
     </box>
   )

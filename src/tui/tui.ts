@@ -19,6 +19,16 @@ import { initialState, reduce, type Action, type State } from './state/store.ts'
 
 export interface TuiHandle {
   observer: Observer
+  /**
+   * Resolves when the user has signaled they're done with the TUI:
+   *   - they pressed `q` / Ctrl-C → resolves immediately,
+   *   - the post-run auto-exit countdown elapsed (default 3 s after
+   *     `runEnd`) → resolves on the next tick.
+   * The orchestrator awaits this between `runEnd` and `dispose()` so
+   * the user has a chance to look at the final frame before the
+   * alt-screen tears down.
+   */
+  waitForExit: () => Promise<void>
   /** Tear down alt-screen + unmount React. Idempotent. */
   dispose: () => Promise<void>
 }
@@ -58,10 +68,21 @@ export async function startTui(options: StartTuiOptions): Promise<TuiHandle> {
   })
   root = createRoot(renderer)
 
+  let resolveExit: (() => void) | null = null
+  const exitPromise = new Promise<void>((resolve) => {
+    resolveExit = resolve
+  })
+  const signalExit = (): void => {
+    if (resolveExit) {
+      const r = resolveExit
+      resolveExit = null
+      r()
+    }
+  }
+
   const onExit = (): void => {
     options.onExit?.()
-    // Best-effort dispose; the run loop may have already taken over.
-    void dispose()
+    signalExit()
   }
 
   const dispatch = (action: Action): void => {
@@ -93,9 +114,11 @@ export async function startTui(options: StartTuiOptions): Promise<TuiHandle> {
     }, PAINT_MS)
   }
 
-  // 1 Hz sparkline sampler — see store.ts tick handler.
+  // 1 Hz sparkline sampler — see store.ts tick handler. Same tick
+  // also drives the post-run auto-exit countdown.
   sampler = setInterval(() => {
     dispatch({ type: 'tick', nowNs: process.hrtime.bigint() })
+    if (state.autoExitTriggered) signalExit()
   }, 1000)
 
   // Initial paint so the screen is non-blank before the first event.
@@ -128,5 +151,9 @@ export async function startTui(options: StartTuiOptions): Promise<TuiHandle> {
     renderer = null
   }
 
-  return { observer, dispose }
+  const waitForExit = async (): Promise<void> => {
+    await exitPromise
+  }
+
+  return { observer, waitForExit, dispose }
 }

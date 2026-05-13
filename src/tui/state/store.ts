@@ -87,9 +87,24 @@ export interface State {
   selectedTaskId?: string
   pinnedTaskId?: string
   filters: Record<number, string>
+  /**
+   * True when the user pressed `/` and is typing a filter for the
+   * current view. Keystrokes go to `setFilter`; Enter/Esc end the
+   * mode. Each view's filter persists in `filters[view]`.
+   */
+  filterEditing: boolean
   showHelp: boolean
   taskDetailOpen: boolean
   done: boolean
+  /**
+   * Wall-clock target (ms) for the post-run auto-dismiss. Set on
+   * `runEnd` to `Date.now() + AUTO_EXIT_MS`. Any subsequent key
+   * dispatch clears it (the user is engaged; we keep the TUI open
+   * until they quit explicitly).
+   */
+  autoExitAt?: number
+  /** True once the auto-exit fires; the renderer reads this to dispose. */
+  autoExitTriggered: boolean
   dirty: boolean
 }
 
@@ -100,6 +115,8 @@ export type KeyAction =
   | { kind: 'openTaskDetail' }
   | { kind: 'closeOverlay' }
   | { kind: 'setFilter'; value: string }
+  | { kind: 'startFilterEdit' }
+  | { kind: 'endFilterEdit' }
 
 export type Action =
   | { type: 'event'; event: ObserverEvent }
@@ -125,12 +142,17 @@ export function initialState(): State {
     activeView: 1,
     focusPanel: 'tasks',
     filters: {},
+    filterEditing: false,
     showHelp: false,
     taskDetailOpen: false,
     done: false,
+    autoExitTriggered: false,
     dirty: false,
   }
 }
+
+/** Wall-clock countdown to auto-dismiss after `runEnd`. */
+export const AUTO_EXIT_MS = 3000
 
 const LATENCY_CAP = 1024
 const LOG_CAP = 10_000
@@ -306,6 +328,9 @@ export function reduce(state: State, action: Action): State {
         }
         case 'runEnd': {
           state.done = true
+          // Start the auto-dismiss countdown. Any key the user
+          // presses (handled below) clears it.
+          state.autoExitAt = Date.now() + AUTO_EXIT_MS
           state.dirty = true
           return state
         }
@@ -321,10 +346,19 @@ export function reduce(state: State, action: Action): State {
       pushSample(state.remoteOpsBuf, state.remoteOpsSinceTick)
       state.completedSinceTick = 0
       state.remoteOpsSinceTick = 0
+      // Auto-exit check.
+      if (state.autoExitAt !== undefined && Date.now() >= state.autoExitAt) {
+        state.autoExitTriggered = true
+      }
       state.dirty = true
       return state
     }
     case 'key': {
+      // Any key the user presses clears the auto-exit countdown —
+      // they're engaged.
+      if (state.autoExitAt !== undefined) {
+        delete state.autoExitAt
+      }
       const k = action.key
       switch (k.kind) {
         case 'viewChange':
@@ -336,13 +370,23 @@ export function reduce(state: State, action: Action): State {
         case 'openTaskDetail':
           return { ...state, taskDetailOpen: true, dirty: true }
         case 'closeOverlay':
-          return { ...state, taskDetailOpen: false, showHelp: false, dirty: true }
+          return {
+            ...state,
+            taskDetailOpen: false,
+            showHelp: false,
+            filterEditing: false,
+            dirty: true,
+          }
         case 'setFilter':
           return {
             ...state,
             filters: { ...state.filters, [state.activeView]: k.value },
             dirty: true,
           }
+        case 'startFilterEdit':
+          return { ...state, filterEditing: true, dirty: true }
+        case 'endFilterEdit':
+          return { ...state, filterEditing: false, dirty: true }
         default:
           return state
       }

@@ -8,6 +8,7 @@ import {
   selectTopBlockers,
   selectSlowVsHistory,
   selectCacheMissImpact,
+  selectFilteredTasks,
 } from '../src/tui/state/selectors.ts'
 import { initialState, reduce } from '../src/tui/state/store.ts'
 import type { ObserverEvent, HistoryTable } from '../src/orchestrator/observer.ts'
@@ -145,6 +146,28 @@ describe('selectSlowVsHistory', () => {
     let s = seed([tnode('a#build')], 1)
     s = reduce(s, event({ kind: 'taskStart', nodeId: 'a#build', startNs: 0n, slot: 0 }))
     expect(selectSlowVsHistory(s, 9999)).toEqual([])
+  })
+})
+
+describe('selectFilteredTasks', () => {
+  it('passes everything when the filter is empty / unset', () => {
+    const s = seed([tnode('a#build'), tnode('b#test')], 2)
+    expect(selectFilteredTasks(s).map((r) => r.id)).toEqual(['a#build', 'b#test'])
+  })
+
+  it('matches substrings case-insensitively', () => {
+    let s = seed([tnode('app#build'), tnode('pkg#test'), tnode('lib#build')], 2)
+    s = reduce(s, { type: 'key', key: { kind: 'setFilter', value: 'BUILD' } })
+    expect(selectFilteredTasks(s).map((r) => r.id)).toEqual(['app#build', 'lib#build'])
+  })
+
+  it('uses the per-view filter (different views isolated)', () => {
+    let s = seed([tnode('a#build')], 2)
+    s = reduce(s, { type: 'key', key: { kind: 'setFilter', value: 'nothing' } })
+    expect(selectFilteredTasks(s)).toEqual([])
+    s = reduce(s, { type: 'key', key: { kind: 'viewChange', view: 2 } })
+    // View 2 has no filter; should pass everything.
+    expect(selectFilteredTasks(s).map((r) => r.id)).toEqual(['a#build'])
   })
 })
 

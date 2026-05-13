@@ -205,6 +205,64 @@ describe('reduce — remoteCache', () => {
   })
 })
 
+describe('reduce — auto-exit', () => {
+  const seed = (): ReturnType<typeof reduce> =>
+    reduce(
+      initialState(),
+      event({
+        kind: 'runStart',
+        runId: '01',
+        nodes: [tnode('a#build')],
+        concurrency: 1,
+        remoteCacheEnabled: false,
+        startedAtMs: 0,
+        historyTable: new Map(),
+      }),
+    )
+
+  it('runEnd starts an autoExitAt deadline ~3s in the future', () => {
+    const before = Date.now()
+    const s = reduce(
+      seed(),
+      event({ kind: 'runEnd', ok: true, outcomes: [], totalMs: 0, endedAtMs: 0 }),
+    )
+    const after = Date.now()
+    expect(s.autoExitAt).toBeDefined()
+    expect(s.autoExitAt!).toBeGreaterThanOrEqual(before + 2999)
+    expect(s.autoExitAt!).toBeLessThanOrEqual(after + 3001)
+  })
+
+  it('any key press clears autoExitAt (user is engaged)', () => {
+    let s = reduce(
+      seed(),
+      event({ kind: 'runEnd', ok: true, outcomes: [], totalMs: 0, endedAtMs: 0 }),
+    )
+    expect(s.autoExitAt).toBeDefined()
+    s = reduce(s, { type: 'key', key: { kind: 'viewChange', view: 2 } })
+    expect(s.autoExitAt).toBeUndefined()
+  })
+
+  it('tick after the deadline flips autoExitTriggered', async () => {
+    let s = reduce(
+      seed(),
+      event({ kind: 'runEnd', ok: true, outcomes: [], totalMs: 0, endedAtMs: 0 }),
+    )
+    // Fast-forward by mutating the deadline into the past.
+    s.autoExitAt = Date.now() - 1
+    s = reduce(s, { type: 'tick', nowNs: 1n })
+    expect(s.autoExitTriggered).toBe(true)
+  })
+
+  it('tick before the deadline does not trigger', () => {
+    let s = reduce(
+      seed(),
+      event({ kind: 'runEnd', ok: true, outcomes: [], totalMs: 0, endedAtMs: 0 }),
+    )
+    s = reduce(s, { type: 'tick', nowNs: 1n })
+    expect(s.autoExitTriggered).toBe(false)
+  })
+})
+
 describe('reduce — runEnd', () => {
   it('marks done and sets dirty', () => {
     let s = reduce(
