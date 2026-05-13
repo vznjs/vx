@@ -1,7 +1,8 @@
 // Right-side pane. Reads the selected task's xterm-headless screen
-// and renders the bottom-N lines (clipped to pane height). The
-// vt100 parser inside xterm-headless does all the work of
-// interpreting ANSI escapes, `\r` overwrites, cursor moves, etc.
+// and renders the bottom-N lines (clipped to pane height).
+//
+// The pty-store's `rev` signal is throttled to ~30 Hz so we re-render
+// at most that often regardless of how many bytes the task emitted.
 
 import { createMemo, For, Show } from 'solid-js'
 import { TextAttributes } from '@opentui/core'
@@ -15,8 +16,7 @@ export function LogPane(props: { width: number; height: number }) {
   const ptyStore = usePtyStore()
 
   const lines = createMemo<string[]>(() => {
-    // Subscribe to pty writes via the rev signal so we re-render on
-    // every new chunk.
+    // Subscribe to the throttled rev tick.
     ptyStore.rev()
     const id = state.selectedId
     if (!id) return []
@@ -25,9 +25,13 @@ export function LogPane(props: { width: number; height: number }) {
     const pty = ptyStore.get(id)
     if (!pty) return []
     const all = pty.readLines()
-    while (all.length > 0 && all[all.length - 1]!.trim() === '') all.pop()
+    // Trim trailing blank lines so the viewport shows live output
+    // near the top of the pane.
+    let end = all.length
+    while (end > 0 && all[end - 1]!.trim() === '') end--
+    const trimmed = all.slice(0, end)
     const visibleRows = Math.max(1, props.height - 2)
-    return all.slice(Math.max(0, all.length - visibleRows))
+    return trimmed.slice(Math.max(0, trimmed.length - visibleRows))
   })
 
   const title = createMemo(() => {
