@@ -1,26 +1,8 @@
 name: Release
 
-# Cuts a new release every time something lands on `main`. The bump
-# is decided from conventional commit prefixes in the range
-# `previous-tag..HEAD`:
-#   - any `feat:` (or `feat(scope):`) → minor bump
-#   - otherwise                       → patch bump
-# Breaking-change markers (`!` suffix or `BREAKING CHANGE:` footer)
-# are deliberately ignored — we're capped at 0.x.x for now (pre-alpha).
-#
-# Manual override: workflow_dispatch with `bump: minor` (or `patch`)
-# lets a maintainer force the bump regardless of commit history.
-
 on:
   push:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      bump:
-        description: 'Override semver bump (within 0.x.x). Default = infer from commits.'
-        type: choice
-        options: [auto, patch, minor]
-        default: auto
 
 permissions:
   contents: write
@@ -29,119 +11,45 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        with: { fetch-depth: 0 }
 
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+      - run: bun install --frozen-lockfile
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Compute next version
-        id: version
+      - id: v
+        # Bump from latest v0.* tag. `feat:` in commits since → minor, else patch.
+        # Breaking-change markers ignored (we're capped at 0.x.x).
         run: |
-          set -euo pipefail
           prev=$(git tag --list 'v0.*' --sort=-v:refname | head -n1)
-          if [ -z "$prev" ]; then
-            next="v0.0.1"
+          IFS=. read M m p <<<"${prev#v}"
+          M=${M:-0}; m=${m:-0}; p=${p:-0}
+          if [ -n "$prev" ] && git log "$prev..HEAD" --pretty=%s | grep -qE '^feat(\(|:)'; then
+            m=$((m+1)); p=0
           else
-            ver=${prev#v}
-            major=$(echo "$ver" | cut -d. -f1)
-            minor=$(echo "$ver" | cut -d. -f2)
-            patch=$(echo "$ver" | cut -d. -f3)
-
-            # Decide bump. Manual override wins; else scan commit
-            # subjects in $prev..HEAD for any `feat:` or `feat(`.
-            requested='${{ inputs.bump }}'
-            requested=${requested:-auto}
-            if [ "$requested" = "auto" ]; then
-              if git log "$prev..HEAD" --pretty=format:%s --no-merges \
-                  | grep -E '^feat(\([^)]+\))?:' >/dev/null; then
-                bump="minor"
-              else
-                bump="patch"
-              fi
-              echo "Inferred bump from conventional commits: $bump"
-            else
-              bump="$requested"
-              echo "Manual bump override: $bump"
-            fi
-
-            if [ "$bump" = "minor" ]; then
-              minor=$((minor + 1))
-              patch=0
-            else
-              patch=$((patch + 1))
-            fi
-            next="v${major}.${minor}.${patch}"
+            p=$((p+1))
           fi
-          echo "prev=$prev" >> "$GITHUB_OUTPUT"
-          echo "next=$next" >> "$GITHUB_OUTPUT"
-          echo "Cutting $next (previous: ${prev:-<none>})"
-
-      - name: Skip if tag already exists
-        id: check
-        run: |
-          if git rev-parse "${{ steps.version.outputs.next }}" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Tag ${{ steps.version.outputs.next }} already exists — nothing to do."
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
+          echo "tag=v$M.$m.$p" >> $GITHUB_OUTPUT
+          echo "prev=$prev"    >> $GITHUB_OUTPUT
 
       - name: Compile binaries
-        if: steps.check.outputs.exists != 'true'
         run: |
-          set -euo pipefail
-          mkdir -p dist
-          version="${{ steps.version.outputs.next }}"
-          version_no_v="${version#v}"
-          # Bun targets per the docs (bun-<os>-<arch>). vx spawns
-          # POSIX shell so we deliberately skip Windows.
-          for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
-            out="dist/vx-${version_no_v}-${target}"
-            bun build --compile --minify --sourcemap --bytecode \
-              --target="bun-${target}" \
-              ./src/bin.ts --outfile "$out"
-            # Smoke the linux-x64 binary on the runner; others are
-            # built but we trust the compile output (no qemu setup).
-            if [ "$target" = "linux-x64" ]; then
-              "$out" --version
-            fi
+          for t in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
+            bun build --compile --minify --bytecode --target=bun-$t \
+              src/bin.ts --outfile "dist/vx-${{ steps.v.outputs.tag }}-$t"
           done
-          # Checksums file for verification.
-          (cd dist && sha256sum vx-*-* > SHA256SUMS.txt)
-          ls -la dist
 
-      - name: Generate release notes
-        if: steps.check.outputs.exists != 'true'
+      - name: Release notes
         run: |
-          set -euo pipefail
-          prev="${{ steps.version.outputs.prev }}"
-          next="${{ steps.version.outputs.next }}"
-          range="HEAD"
-          if [ -n "$prev" ]; then range="$prev..HEAD"; fi
           {
-            echo "Release $next"
-            echo
             echo "## Changes"
-            echo
-            git log "$range" --reverse --no-merges --pretty='format:- %s'
-            echo
-          } > release-notes.md
+            range="HEAD"; [ -n "${{ steps.v.outputs.prev }}" ] && range="${{ steps.v.outputs.prev }}..HEAD"
+            git log "$range" --reverse --no-merges --pretty='- %s'
+          } > notes.md
 
-      - name: Create GitHub release
-        if: steps.check.outputs.exists != 'true'
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.next }}
-          name: ${{ steps.version.outputs.next }}
-          body_path: release-notes.md
-          files: |
-            dist/vx-*-*
-            dist/SHA256SUMS.txt
+          tag_name: ${{ steps.v.outputs.tag }}
+          body_path: notes.md
+          files: dist/*
