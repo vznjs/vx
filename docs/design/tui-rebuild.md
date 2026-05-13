@@ -103,30 +103,98 @@ No tabs. No multi-view. No sparklines. No critical-path widget. No
 parallel-% gauge. **Just the actual logs of the tasks, with the task
 list to pick which one you're looking at.**
 
+## How opencode does it (and why theirs works while ours doesn't)
+
+Opencode (`sst/opencode`, the team that *builds* OpenTUI) uses the
+same renderer but with completely different bindings. Reading their
+TUI (`packages/opencode/src/cli/cmd/tui`):
+
+1. **They use `@opentui/solid`, not `@opentui/react`.** SolidJS has
+   fine-grained reactivity, no VDOM, no reconciler. The renderable
+   tree mutates imperatively when signals change. There's no React
+   reconciler racing the OpenTUI painter — which is what's been
+   causing our ghosting / overlay-bleed problems.
+
+2. **Overlays are full-viewport absolute backdrops with `zIndex`,
+   not centered popup boxes.** Their `Dialog`:
+
+   ```tsx
+   <box
+     position="absolute" zIndex={3000}
+     left={0} top={0}
+     width={dimensions().width} height={dimensions().height}
+     alignItems="center"
+     paddingTop={dimensions().height / 4}
+     backgroundColor={RGBA.fromInts(0, 0, 0, 150)}   // translucent fill
+   >
+     <box backgroundColor={theme.backgroundPanel} width={60}>
+       {children}                                     // the actual popup
+     </box>
+   </box>
+   ```
+
+   Two things I never did:
+   - `zIndex={3000}` — explicit layer ordering. Without it, OpenTUI
+     doesn't reliably stack absolute-positioned children above flex
+     siblings.
+   - **Translucent full-screen backdrop**. They use a child box that
+     fills the entire viewport with `rgba(0,0,0,150)` (~60% alpha
+     dim), then center the actual popup inside via flex. My overlays
+     were just a small popup box at calculated coordinates — the
+     cells outside the popup never got repainted, which is why text
+     bled through.
+
+3. **They use `@opentui/keymap` for input.** A dedicated package
+   with named bindings, priorities, contexts. They never write
+   `useKeyboard(...)` handlers directly. Each component registers
+   bindings declaratively; the manager dispatches.
+
+4. **Solid contexts everywhere** (ThemeProvider, RouteProvider,
+   DialogProvider, etc.). The state isn't a single reducer — each
+   subsystem owns a context. Components subscribe via signals.
+
+5. **Stack is `@opentui/core` + `@opentui/solid` + `@opentui/keymap`
+   + `opentui-spinner`.** Plus their own UI primitives (`Dialog`,
+   `Toast`, `DialogSelect`, etc.). No xterm-headless in their TUI
+   — but opencode doesn't render multi-task build output, so they
+   don't need a vt100 emulator. We do.
+
+The TL;DR: **opencode runs on OpenTUI just fine because they use
+Solid, not React, and use the right layering primitives**. Their
+TUI is "amazing" not because they replaced OpenTUI; because they
+use it the way the maintainers intended.
+
 ## Why our current TUI is trash
 
 I built the wrong thing. Sources of failure, in priority order:
 
-1. **Wrong primitive.** I'm passing chunks to `state.logLines` as
-   newline-split strings. Anything with `\r`, ANSI cursor escapes,
-   or `\x1b[2K` line-clears renders as garbage. Turbo feeds bytes to
-   a vt100 parser; the parser does the right thing. **I would never
-   get this right without a vt100 emulator** — that's the entire
-   point of `xterm-headless` / `vt100`.
+1. **Wrong primitive for log output.** I'm passing chunks to
+   `state.logLines` as newline-split strings. Anything with `\r`,
+   ANSI cursor escapes, or `\x1b[2K` line-clears renders as garbage.
+   Turbo feeds bytes to a vt100 parser; the parser does the right
+   thing. **I would never get this right without a vt100 emulator**
+   — that's the entire point of `xterm-headless` / `vt100`.
+   Opencode doesn't have this problem because they don't pipe
+   build-tool output.
 
-2. **Wrong rendering model.** React + Yoga + OpenTUI's reconciler is
-   three layers of indirection between "compute the screen" and "send
-   bytes to stdout." Each layer has bugs. The ghosting
-   ("paralel"/"125%"), the overlays-bleeding, the cramped layout —
-   all caused by OpenTUI not clearing cells correctly on diff. Turbo
-   recomputes the entire frame every paint; the backend handles
-   diffs.
+2. **Wrong React binding.** Using `@opentui/react` puts the React
+   reconciler between component renders and OpenTUI's painter. The
+   reconciler doesn't know about the painter's cell buffer; the
+   painter doesn't know which props are "settled" yet. The ghosting
+   ("paralel"/"125%"), the overlay-bleed-through, the cramped
+   layout — these manifest because the reconciler decides to skip
+   re-rendering a sibling while the painter still has its old cells
+   written. **Opencode uses Solid and these bugs don't exist.**
 
-3. **Wrong scope.** The design doc grew to 5 views, overlays,
+3. **Missing layering primitives.** No `zIndex`, no full-viewport
+   backdrop. Overlays were small popups at coordinates; the cells
+   around them never got cleared.
+
+4. **Wrong scope.** The design doc grew to 5 views, overlays,
    sparklines, critical-path DP, history aggregates. Turbo ships one
    screen and a help popup. That's it.
 
-4. **OpenTUI is young.** v0.2.8 was published days before I used it.
+5. **OpenTUI is young.** v0.2.8 was published days before I used it.
    It has bugs (the painter ghosting is one; the keyboard `sequence`
    field type wasn't typed correctly; `position="absolute"` was
    underdocumented). Building production UX on a young lib while we
@@ -234,30 +302,87 @@ Costs:
 - We don't learn from Turbo's hand-rolled architecture — we'd just be
   swapping one React-on-terminal lib for another.
 
+### Option D — Switch to `@opentui/solid` + match opencode's patterns
+
+**~1,000 LOC delete + ~1,500 LOC swap.**
+
+This is option B retargeted at the binding that actually works.
+
+Stack:
+- `@opentui/core` (kept; the renderer is fine)
+- `@opentui/solid` ← swap from `@opentui/react`
+- `@opentui/keymap` ← new; replaces our `useKeyboard` handlers
+- `opentui-spinner` ← optional; nice spinner widget
+- `xterm-headless` ← for per-task log panes (the vt100 emulator we
+  need; opencode doesn't have this but they don't render build
+  output either)
+- `solid-js` (~25 KB gzipped) ← replaces `react` + `@types/react`
+
+Steps:
+1. Delete `@opentui/react`, `react`, `@types/react`. Install
+   `@opentui/solid`, `@opentui/keymap`, `solid-js`, `xterm-headless`.
+2. tsconfig: `"jsx": "preserve"`, `"jsxImportSource": "solid-js"`.
+3. Drop the 5-view scope (Graph, Workers, Bottlenecks, Queue), drop
+   sparklines, drop critical-path widget. Keep: TaskList + LogPane +
+   StatusBar + Help dialog.
+4. Rewrite components in Solid: `function App()` returning JSX,
+   `createSignal` / `createMemo` for state, `createEffect` for side
+   effects. No reducer — small Solid stores in contexts.
+5. Wire `xterm-headless` per task. `taskStdout` bytes go to the
+   parser; LogPane reads the parser's screen buffer rows directly.
+6. Use the opencode Dialog pattern for overlays: full-viewport
+   `position="absolute"` `zIndex={3000}` translucent backdrop, popup
+   centered inside via flex.
+7. Replace our keyboard handler with `@opentui/keymap` bindings
+   registered per component context.
+8. Keep the orchestrator-side Observer + scheduler slots + history
+   table (Phase 1) — those are clean.
+
+Wins:
+- **Uses the OpenTUI maintainers' own recommended binding.** No
+  React reconciler bugs.
+- **Proven in production** — opencode's TUI runs on this stack
+  daily.
+- xterm-headless gives us correct VT handling for build output.
+- Faster than A (~1 week vs 2–3) because we're not writing a cell
+  buffer.
+
+Costs:
+- Team has to learn Solid (≈ 1 hour for anyone fluent in React;
+  it's a simpler model).
+- Solid + OpenTUI ecosystem is smaller than React's — fewer
+  copy-paste examples on the web.
+- We don't escape OpenTUI's growing-pains risk — if `@opentui/core`
+  ships a regression, we're affected (but opencode would also break,
+  so the maintainers have strong incentive to fix fast).
+
 ## Recommendation
 
-**Option A.** Six reasons:
+**Option D.** Five reasons:
 
-1. The current TUI's biggest UX problem is "I can't see what my build
-   tool is actually doing because the output is mangled." That's
-   100% the vt100-parser-missing problem. Both A and B fix it via
-   xterm-headless; only A fixes the painter problem too.
-2. The OpenTUI painter bugs aren't "I held it wrong" — they're real,
-   visible, and the lib is too young to know if upstream will fix
-   them on our timescale.
-3. A is the only option that matches the proven architecture (Turbo,
-   lazygit, fzf, btop — all hand-rolled cell buffers, immediate-mode).
-4. The total LOC we'd own is comparable to what we have now
-   (`src/tui/` is currently ~1,400 LOC; A would replace it with
-   ~1,800–2,500). We don't ship 5× more code by going hand-rolled.
-5. We retain Phase 1's Observer + Phase 2A's reducer + selectors
-   (the orchestrator-side stuff). Nothing there changes for A.
-6. xterm-headless is the well-trodden path — same lib VSCode uses
-   for its integrated terminal. We're not pioneering.
+1. **opencode proves it works.** Their entire TUI runs on
+   `@opentui/solid` + `@opentui/keymap`, and you said it's
+   "amazing." The maintainers eat their own dog food on Solid, not
+   on React. Following their lead is the cheap risk-free move.
+2. **The React-binding bugs evaporate.** No reconciler → no
+   reconciler-vs-painter race. The ghosting and overlay-bleed I've
+   been fighting are React-binding-specific.
+3. **xterm-headless still solves the log-output problem.** Same
+   `vt100`-emulator story as A and B; we get correct rendering of
+   build-tool output regardless of which Solid binding we use.
+4. **Fastest plausible path to a working TUI we're not embarrassed
+   by** — ~1 week. A is 2–3 weeks. B keeps the React-binding bugs.
+5. **We keep all the orchestrator-side work.** Phase 1's Observer +
+   scheduler slots + history table aren't touched.
 
-If you want the fastest "stops being trash" path, take B — that gets
-us to a usable Turbo-shaped TUI on top of OpenTUI in a few days. If
-the painter problems persist, we'd cut over to A later anyway.
+If the React-painter mismatch turns out NOT to be the real cause of
+our bugs after the Solid swap, we still have option A in our back
+pocket. Option D is the "minimum bet that's most likely to work";
+A is the "guaranteed-correct rewrite at higher cost."
+
+If you want the fastest "stops being trash" path, **D is now the
+right answer** — option B was my pre-opencode-research guess; D
+supersedes it.
 
 ## What I'd actually do next (whichever option you pick)
 
@@ -279,8 +404,9 @@ the painter problems persist, we'd cut over to A later anyway.
 
 ## Open questions for you
 
-1. **A, B, or C?** I lean A; happy to start with B if you want
-   faster results.
+1. **A, B, C, or D?** After studying opencode I lean **D**. A is
+   only worth doing if D's Solid swap doesn't actually fix our
+   problems.
 2. **Should we delete the existing TUI entirely** in the first PR of
    the rebuild, or keep it behind `--tui-legacy` so you can compare?
 3. **Persistent-task TUI support:** Turbo has none (their model is
