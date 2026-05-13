@@ -119,18 +119,18 @@ export function App({ state, dispatch, version, onExit }: Props): React.ReactNod
       break
     case 1:
     default: {
-      const splitListWidth = Math.max(20, Math.floor(listWidth * 0.6))
-      const statsWidth = listWidth - splitListWidth
+      // Stats panel has a fixed footer height so TaskList takes the
+      // remaining column space; otherwise yoga shrinks both
+      // proportionally and TaskList collapses to a single visible row.
+      const statsHeight = 6
+      const taskListHeight = Math.max(3, bodyHeight - statsHeight)
       body = (
         <box flexDirection="row" width={width} height={bodyHeight}>
           <box flexDirection="column" width={listWidth} height={bodyHeight}>
-            <TaskList state={state} width={listWidth} height={bodyHeight - 5} />
+            <TaskList state={state} width={listWidth} height={taskListHeight} />
             <StatsPanel state={state} width={listWidth} />
           </box>
           <LogPane state={state} width={logWidth} height={bodyHeight} />
-          {/* dummy size deps so unused-var lint stays clean while we keep the
-              fixed splitListWidth seam for a future filter pane */}
-          {splitListWidth === 0 || statsWidth === 0 ? <text content="" /> : null}
         </box>
       )
     }
@@ -138,17 +138,32 @@ export function App({ state, dispatch, version, onExit }: Props): React.ReactNod
 
   const overlay =
     state.autoExitAt !== undefined ? (
-      <AutoExit autoExitAt={state.autoExitAt} />
+      <AutoExit autoExitAt={state.autoExitAt} screenWidth={width} screenHeight={height} />
     ) : state.taskDetailOpen ? (
-      <TaskDetail state={state} width={width} height={height} />
+      <TaskDetail state={state} screenWidth={width} screenHeight={height} />
     ) : state.showHelp ? (
-      <Help width={width} height={height} />
+      <Help screenWidth={width} screenHeight={height} />
     ) : null
 
+  // Root is a relative-positioned box so children with `position=absolute`
+  // anchor to it (their top/left are in screen coordinates).
   return (
-    <box flexDirection="column" width={width} height={height}>
-      <Header state={state} version={version} />
-      {body}
+    <box position="relative" flexDirection="column" width={width} height={height}>
+      <Header state={state} version={version} width={width} />
+      {state.totalNodes === 0 && !state.done ? (
+        <box
+          flexDirection="column"
+          width={width}
+          height={Math.max(3, bodyHeight)}
+          paddingLeft={2}
+          paddingTop={1}
+        >
+          <text content="Waiting for tasks…" fg="#9ca3af" />
+          <text content="(orchestrator is loading the workspace)" fg="#6b7280" />
+        </box>
+      ) : (
+        body
+      )}
       <ProgressBar state={state} width={width} />
       <StatusBar
         width={width}

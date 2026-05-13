@@ -1,53 +1,46 @@
-// Stats panel — three sparklines: throughput, parallel %, remote ops/s.
-// Used inside the Overview view; also a standalone block the Stats
-// view will reuse later.
+// Stats panel — three single-line sparklines (throughput, parallel %,
+// remote ops). Each row is one pre-padded string so the OpenTUI
+// painter never leaves stale cells on shrink (multi-element rows
+// ghost text in incremental redraws).
 
 import type React from 'react'
 import type { State } from '../state/store.js'
-import { renderSparkline } from '../primitives/sparkline.js'
+import { renderSparkline, type SparklineBuf } from '../primitives/sparkline.js'
 
 interface Props {
   state: State
   width: number
 }
 
+const LABEL_WIDTH = 12
+const SUFFIX_WIDTH = 8
+
 export function StatsPanel({ state, width }: Props): React.ReactNode {
-  const innerWidth = Math.max(8, width - 24)
-  const tput = renderSparkline(state.throughputBuf, innerWidth)
-  const par = renderSparkline(state.parallelPctBuf, innerWidth)
-  const remote = renderSparkline(state.remoteOpsBuf, innerWidth)
-  const lastT = lastSample(state.throughputBuf)
-  const lastP = lastSample(state.parallelPctBuf)
-  const lastR = lastSample(state.remoteOpsBuf)
+  const innerWidth = Math.max(8, width - LABEL_WIDTH - SUFFIX_WIDTH - 4)
+  const lines = [
+    formatLine('throughput', state.throughputBuf, '/s', innerWidth),
+    formatLine('parallel %', state.parallelPctBuf, '%', innerWidth),
+    formatLine('remote ops', state.remoteOpsBuf, '/s', innerWidth),
+  ]
   return (
     <box flexDirection="column" border borderColor="#374151" title="Stats" width={width}>
-      <Line label="throughput" line={tput} suffix={`${lastT}/s`} />
-      <Line label="parallel %" line={par} suffix={`${lastP}%`} />
-      <Line label="remote ops" line={remote} suffix={`${lastR}/s`} />
+      {lines.map((line, i) => (
+        <text key={String(i)} content={line} fg="#22c55e" />
+      ))}
     </box>
   )
 }
 
-interface LineProps {
-  label: string
-  line: string
-  suffix: string
+function formatLine(label: string, buf: SparklineBuf, unit: string, innerWidth: number): string {
+  const sparks = renderSparkline(buf, innerWidth)
+  const last = Math.round(lastSample(buf))
+  const suffix = `${last}${unit}`
+  return ` ${label.padEnd(LABEL_WIDTH)} ${sparks}  ${suffix.padEnd(SUFFIX_WIDTH)}`
 }
 
-function Line({ label, line, suffix }: LineProps): React.ReactNode {
-  return (
-    <box flexDirection="row" paddingLeft={1} paddingRight={1}>
-      <text content={label.padEnd(11)} fg="#9ca3af" />
-      <text content={line} fg="#22c55e" />
-      <text content="  " />
-      <text content={suffix} fg="#d1d5db" />
-    </box>
-  )
-}
-
-function lastSample(buf: State['throughputBuf']): number {
+function lastSample(buf: SparklineBuf): number {
   if (buf.len === 0) return 0
   const cap = buf.samples.length
   const idx = (buf.head - 1 + cap) % cap
-  return Math.round(buf.samples[idx] ?? 0)
+  return buf.samples[idx] ?? 0
 }

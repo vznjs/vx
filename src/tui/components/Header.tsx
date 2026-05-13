@@ -1,7 +1,6 @@
-// Top-of-screen status strip. Renders the run identity (version,
-// run id, packages, tasks), live counts of pending / running /
-// finished, parallel-% gauge, and remote-cache status. See
-// docs/design/tui-design.md §11.10 for the gauge thresholds.
+// Top-of-screen status strip. Rendered as a single padded line so the
+// painter has nothing stale to leave behind on shrink (multi-element
+// rows ghost characters in OpenTUI's incremental painter).
 
 import type React from 'react'
 import type { State } from '../state/store.js'
@@ -10,6 +9,7 @@ import { selectParallelPct } from '../state/selectors.js'
 interface Props {
   state: State
   version: string
+  width: number
 }
 
 function statusBuckets(state: State): {
@@ -31,14 +31,7 @@ function statusBuckets(state: State): {
   return { waiting, running, done, failed }
 }
 
-function parallelColor(pct: number, done: boolean): string {
-  if (done) return '#808080'
-  if (pct >= 80) return '#22c55e'
-  if (pct >= 50) return '#eab308'
-  return '#ef4444'
-}
-
-export function Header({ state, version }: Props): React.ReactNode {
+export function Header({ state, version, width }: Props): React.ReactNode {
   const counts = statusBuckets(state)
   const pct = selectParallelPct(state)
   const projects = new Set<string>()
@@ -47,38 +40,21 @@ export function Header({ state, version }: Props): React.ReactNode {
     projects.add(row.projectName)
     tasks.add(row.taskName)
   }
-  const gaugeColor = parallelColor(pct, state.done)
-
+  const idStr = state.runId.slice(-8) || '…'
+  const left = `vx ${version}`
+  const runChip = `run ${idStr}`
+  const scopeChip =
+    tasks.size === 0 ? 'loading…' : `tasks ${[...tasks].sort().join(',')}  pkgs ${projects.size}`
+  const counter = `✓${counts.done}  ▶${counts.running}  ⏳${counts.waiting}${counts.failed > 0 ? `  ✗${counts.failed}` : ''}`
+  const parallel = `parallel ${pct}%`
+  const remote = state.remoteCacheEnabled
+    ? `remote ↑${state.remote.puts} ↓${state.remote.gets}`
+    : 'local cache only'
+  const raw = ` ${left}  ${runChip}  ${scopeChip}  ${counter}  ${parallel}  ${remote}`
+  const line = raw.length > width ? raw.slice(0, width) : raw.padEnd(width, ' ')
   return (
-    <box flexDirection="row" paddingLeft={1} paddingRight={1} backgroundColor="#1f2937">
-      <text content={`vx ${version}`} fg="#a78bfa" attributes={1} />
-      <text content="  " />
-      <text content={`run ${state.runId.slice(-8) || '--------'}`} fg="#9ca3af" />
-      <text content="  " />
-      <text content={`tasks ${[...tasks].sort().join(',')}  pkgs ${projects.size}`} fg="#d1d5db" />
-      <text content="  " />
-      <text content={`✓${counts.done}`} fg="#22c55e" />
-      <text content="  " />
-      <text content={`▶${counts.running}`} fg="#eab308" />
-      <text content="  " />
-      <text content={`⏳${counts.waiting}`} fg="#9ca3af" />
-      {counts.failed > 0 ? (
-        <>
-          <text content="  " />
-          <text content={`✗${counts.failed}`} fg="#ef4444" />
-        </>
-      ) : null}
-      <text content="  " />
-      <text content={`parallel ${pct}%`} fg={gaugeColor} attributes={1} />
-      <text content="  " />
-      <text
-        content={
-          state.remoteCacheEnabled
-            ? `remote ↑${state.remote.puts} ↓${state.remote.gets}`
-            : 'local cache only'
-        }
-        fg="#9ca3af"
-      />
+    <box width={width} backgroundColor="#1f2937">
+      <text content={line} fg="#d1d5db" />
     </box>
   )
 }
