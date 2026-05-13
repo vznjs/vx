@@ -29,7 +29,7 @@ export default defineProject({
   tasks: {
     build: {
       exec: { command: 'tsc -b' },
-      dependsOn: { dependencies: ['build'] }, // Turbo's `^build`
+      dependsOn: ['^build'], // Turbo's `^build`
       cache: {
         inputs: {
           files: ['src/**', '!**/*.test.ts'],
@@ -42,7 +42,7 @@ export default defineProject({
 
     test: {
       exec: { command: 'bun test', env: { passThrough: ['CI'] } },
-      dependsOn: { self: ['build'] },
+      dependsOn: ['build'],
       cache: {
         inputs: { files: ['src/**'] },
         outputs: { files: [] }, // cache the no-op success
@@ -56,7 +56,7 @@ export default defineProject({
 
     // Umbrella task — group node, no exec. `vx run ci` fans out.
     ci: {
-      dependsOn: { self: ['lint', 'test'] },
+      dependsOn: ['lint', 'test'],
     },
   },
 })

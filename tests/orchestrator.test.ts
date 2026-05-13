@@ -233,7 +233,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               build: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                dependsOn: { dependencies: ['build'] },
+                dependsOn: ['^build'],
                 cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
               },
             },
@@ -285,10 +285,10 @@ describe('orchestrator e2e', () => {
             tasks: {
               build: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                dependsOn: { dependencies: ['build'] },
+                dependsOn: ['^build'],
                 cache: {
                   outputs: { files: ['out.txt'] },
-                  inputs: { files: ['**/*'], tasks: { self: [], dependencies: [] } },
+                  inputs: { files: ['**/*'], tasks: [] },
                 },
               },
             },
@@ -404,7 +404,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    "cache.inputs.tasks: { dependencies: ['build'] } picks just one upstream task name",
+    "cache.inputs.tasks: ['^build'] picks just one upstream task name",
     async () => {
       // lib has two unrelated tasks with narrow, non-overlapping inputs.
       await addProject(fixture.root, 'lib', {
@@ -438,10 +438,10 @@ describe('orchestrator e2e', () => {
             tasks: {
               build: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                dependsOn: { dependencies: ['build', 'noisy'] },
+                dependsOn: ['^build', '^noisy'],
                 cache: {
                   outputs: { files: ['out.txt'] },
-                  inputs: { files: ['**/*'], tasks: { dependencies: ['build'] } },
+                  inputs: { files: ['**/*'], tasks: ['^build'] },
                 },
               },
             },
@@ -508,11 +508,11 @@ describe('orchestrator e2e', () => {
               },
               build: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                dependsOn: { self: ['codegen'], dependencies: ['build'] },
+                dependsOn: ['codegen', '^build'],
                 cache: {
                   inputs: {
                     files: ['**/*'],
-                    tasks: { self: ['codegen'] },   // explicit self; deps default = all
+                    tasks: ['codegen', '^*'],   // explicit self + all deps
                   },
                   outputs: { files: ['out.txt'] },
                 },
@@ -578,11 +578,11 @@ describe('orchestrator e2e', () => {
             tasks: {
               build: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                dependsOn: { dependencies: ['build', 'noisy'] },
+                dependsOn: ['^build', '^noisy'],
                 cache: {
                   inputs: {
                     files: ['**/*'],
-                    tasks: { dependencies: ['*', '!noisy'] },
+                    tasks: ['^*', '!^noisy'],
                   },
                   outputs: { files: ['out.txt'] },
                 },
@@ -636,7 +636,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               build: {
                 exec: { command: "echo should-not-run" },
-                dependsOn: { dependencies: ['build'] },
+                dependsOn: ['^build'],
               },
             },
           }
@@ -1160,7 +1160,7 @@ describe('orchestrator e2e', () => {
             tasks: {
               build: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                dependsOn: { dependencies: ['build'] },
+                dependsOn: ['^build'],
                 cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
               },
             },
@@ -1359,7 +1359,7 @@ describe('orchestrator e2e', () => {
               },
               build: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                dependsOn: { self: ['codegen'] },
+                dependsOn: ['codegen'],
                 cache: {
                   inputs: { files: ['src/build-input.txt'] },
                   outputs: { files: ['out.txt'] },
@@ -1708,7 +1708,7 @@ describe('orchestrator e2e', () => {
         config: `
           export default {
             tasks: {
-              install: { dependsOn: { dependencies: ['build'] } },
+              install: { dependsOn: ['^build'] },
             },
           }
         `,
@@ -1750,7 +1750,7 @@ describe('orchestrator e2e', () => {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
                 cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
               },
-              ci: { dependsOn: { self: ['build'] } },
+              ci: { dependsOn: ['build'] },
             },
           }
         `,
@@ -1776,7 +1776,7 @@ describe('orchestrator e2e', () => {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
                 cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
               },
-              ci: { dependsOn: { self: ['build'] } },
+              ci: { dependsOn: ['build'] },
             },
           }
         `,

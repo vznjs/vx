@@ -39,14 +39,14 @@ a `dependsOn` (it's a **group**). Group tasks are pure aggregators —
 nothing spawns, no cache lookup, no I/O. Useful for umbrella commands:
 
 ```ts
-// vx run install -r  →  fans out to `build` in every workspace dep
+// vx run install --all  →  fans out to `build` in every workspace dep
 install: {
-  dependsOn: { dependencies: ['build'] },
+  dependsOn: ['^build'],
 }
 
 // vx run ci  →  runs build then test in the cwd project
 ci: {
-  dependsOn: { self: ['build', 'test'] },
+  dependsOn: ['build', 'test'],
 }
 ```
 
@@ -60,7 +60,7 @@ table — they aren't real runs.
 
 A single shell command with optional env. Multi-step is intentionally
 not supported — chain commands in the shell (`&&` / `;`) when you need
-to, or split into separate tasks linked by `dependsOn.self`.
+to, or split into separate tasks linked by `dependsOn`.
 
 ```ts
 exec: {
@@ -108,31 +108,44 @@ Anything outside these three layers is invisible to the child process.
 
 ### `dependsOn` (optional)
 
-Tasks that must complete successfully before this task runs.
+Tasks that must complete successfully before this task runs. Turbo /
+Nx-style micro-syntax — a flat array of strings:
 
 ```ts
-interface TaskDependsOn {
-  self?: string[] // tasks in this project
-  dependencies?: string[] // tasks in every transitive workspace dep
-}
+dependsOn: readonly string[]
 ```
 
-- `{ self: ['build'] }` — Turbo's bare `build` notation. Same-project
-  task ordering.
-- `{ dependencies: ['build'] }` — Turbo's `^build` notation. Run
-  `build` in every transitive workspace dependency before this task.
-- `{ self: ['codegen'], dependencies: ['build'] }` — both.
-- omitted — no dependencies.
+Each entry is one of:
+
+| Form         | Meaning                                                           |
+| ------------ | ----------------------------------------------------------------- |
+| `'name'`     | Same-project task `name`.                                         |
+| `'^name'`    | The `name` task in every transitive workspace dependency.         |
+| `'pkg#name'` | The `name` task in a specific other package (cross-project edge). |
+
+Examples:
+
+```ts
+dependsOn: ['build'] // bare = Turbo's `build`
+dependsOn: ['^build'] // = Turbo's `^build`
+dependsOn: ['codegen', '^build'] // both
+dependsOn: ['lib#build', 'shared#test'] // cross-project edges
+```
 
 Semantics:
 
-- **Same-project (`self`)** — task name must exist in this project's
-  `tasks` map, otherwise a hard error is thrown at graph-build time.
-- **Workspace-dep (`dependencies`)** — the task is added for every
-  transitive workspace dep that _has_ it. Deps that don't declare it
-  are silently skipped (it's normal for tasks to be sparse).
-- **Cycle detection** — runs across the whole resolved graph at the end
-  of graph building. Cycles throw with a path-formatted message.
+- **Same-project** — task name must exist in this project's `tasks`
+  map; missing target is a hard error at graph-build time.
+- **`^name`** — task is added for every transitive workspace dep that
+  has it. Deps that don't declare it are silently skipped (it's normal
+  for tasks to be sparse).
+- **`pkg#name`** — missing pkg/task is a hard error (you named them
+  explicitly).
+- **No wildcards or negation here.** Those operations belong in
+  `cache.inputs.tasks` (filtering hash inputs), not `dependsOn`
+  (declaring graph edges).
+- **Cycle detection** — runs across the whole resolved graph at the
+  end of graph building. Cycles throw with a path-formatted message.
 
 ### `cache` (optional)
 
@@ -154,7 +167,7 @@ on and what gets captured.
 interface CacheInputs {
   files: string[] // required
   env?: string[] // optional
-  tasks?: TaskDependsOn // optional; same shape as dependsOn
+  tasks?: readonly string[] // optional; same micro-syntax as dependsOn
 }
 ```
 
@@ -189,28 +202,35 @@ preset helpers (`envTracked('NODE_ENV')`).
 
 ##### `inputs.tasks` (optional, default = all upstream)
 
-Same shape as `dependsOn`. Filters which upstream tasks' cache keys
-contribute to this task's key.
+Same micro-syntax as `dependsOn`, with two extras for filtering:
 
-**Per-bucket defaults:**
+| Form         | Meaning                                        |
+| ------------ | ---------------------------------------------- |
+| `'*'`        | Include every same-project upstream hash.      |
+| `'^*'`       | Include every dep-workspace upstream hash.     |
+| `'name'`     | Include same-project task `name`.              |
+| `'^name'`    | Include `name` in every dep workspace.         |
+| `'pkg#name'` | Include the specific package's `name` task.    |
+| `'!<form>'`  | Exclude — any of the above with a leading `!`. |
 
-- Omitting a bucket (`self` or `dependencies`) → all upstream from that
-  source contribute.
-- Providing an explicit array → only matched names contribute.
+Patterns are applied in order; **last write wins**. So
+`['*', '^*', '!^noisy']` reads as "all upstream except deps' noisy".
 
-**Pattern syntax inside a bucket, applied in order (last write wins):**
+Defaults:
 
-- `'*'` — include all from this bucket
-- `'name'` — include literal task name
-- `'!name'` — exclude literal task name
+- Omitted → all upstream contribute (same as `['*', '^*']`). Most
+  common case.
+- `[]` → fully decoupled; no upstream contributes.
 
 Examples:
 
-- omitted entirely → all upstream contribute (most common).
-- `{ dependencies: ['build'] }` → only `build` from deps; same-project
-  upstream stays default-all.
-- `{ dependencies: ['*', '!noisy'] }` → all deps except `noisy`.
-- `{ self: [], dependencies: [] }` → fully decoupled.
+```ts
+tasks: ['^build'] // only ^build from deps; nothing from self
+tasks: ['codegen', '^*'] // self.codegen + all deps
+tasks: ['*', '^*', '!^noisy'] // all upstream except deps.noisy
+tasks: ['lib#build'] // a single cross-project hash
+tasks: [] // fully decoupled
+```
 
 #### `CacheOutputs`
 
@@ -288,7 +308,7 @@ export default defineProject({
   tasks: {
     build: {
       exec: { command: 'tsc -b' },
-      dependsOn: { dependencies: ['build'] },
+      dependsOn: ['^build'],
       cache: {
         inputs: {
           files: ['src/**', '!**/*.test.ts', 'tsconfig.json', 'package.json'],
@@ -300,7 +320,7 @@ export default defineProject({
 
     test: {
       exec: { command: 'bun test', env: { passThrough: ['CI'] } },
-      dependsOn: { self: ['build'] },
+      dependsOn: ['build'],
       cache: {
         inputs: { files: ['src/**'] },
         outputs: { files: [] },
@@ -309,11 +329,11 @@ export default defineProject({
 
     package: {
       exec: { command: 'rm -rf pkg && npm pack --pack-destination ./pkg' },
-      dependsOn: { self: ['build', 'test'] },
+      dependsOn: ['build', 'test'],
       cache: {
         inputs: {
           files: ['package.json'],
-          tasks: { self: ['build'], dependencies: ['build'] },
+          tasks: ['build', '^build'],
         },
         outputs: { files: ['pkg/*.tgz'] },
       },
@@ -327,7 +347,7 @@ export default defineProject({
     // Umbrella / group task — no exec, just chains deps. `vx run ci`
     // fans out, and the group itself is silent in the run output.
     ci: {
-      dependsOn: { self: ['build', 'test'] },
+      dependsOn: ['build', 'test'],
     },
   },
 })

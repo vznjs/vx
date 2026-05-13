@@ -51,7 +51,7 @@ describe('buildTaskGraph', () => {
     const nodes = buildTaskGraph({
       projects: projects(
         project('a', {
-          test: { ...cmd('vitest'), dependsOn: { self: ['build'] } },
+          test: { ...cmd('vitest'), dependsOn: ['build'] },
           build: cmd('tsc'),
         }),
       ),
@@ -67,7 +67,7 @@ describe('buildTaskGraph', () => {
       buildTaskGraph({
         projects: projects(
           project('a', {
-            test: { ...cmd('vitest'), dependsOn: { self: ['nope'] } },
+            test: { ...cmd('vitest'), dependsOn: ['nope'] },
           }),
         ),
         packageGraph: packageGraph({}),
@@ -80,7 +80,7 @@ describe('buildTaskGraph', () => {
     const nodes = buildTaskGraph({
       projects: projects(
         project('app', {
-          build: { ...cmd('build app'), dependsOn: { dependencies: ['build'] } },
+          build: { ...cmd('build app'), dependsOn: ['^build'] },
         }),
         project('lib', { build: cmd('build lib') }),
         project('deep', { build: cmd('build deep') }),
@@ -98,7 +98,7 @@ describe('buildTaskGraph', () => {
         project('app', {
           build: {
             ...cmd('build app'),
-            dependsOn: { self: ['codegen'], dependencies: ['build'] },
+            dependsOn: ['codegen', '^build'],
           },
           codegen: cmd('codegen'),
         }),
@@ -114,7 +114,7 @@ describe('buildTaskGraph', () => {
     const nodes = buildTaskGraph({
       projects: projects(
         project('app', {
-          build: { ...cmd('build app'), dependsOn: { dependencies: ['build'] } },
+          build: { ...cmd('build app'), dependsOn: ['^build'] },
         }),
         project('lib', { lint: cmd('lint lib') }), // no `build` task here
       ),
@@ -129,13 +129,13 @@ describe('buildTaskGraph', () => {
     const nodes = buildTaskGraph({
       projects: projects(
         project('app', {
-          build: { ...cmd('build'), dependsOn: { dependencies: ['build'] } },
+          build: { ...cmd('build'), dependsOn: ['^build'] },
         }),
         project('left', {
-          build: { ...cmd('build'), dependsOn: { dependencies: ['build'] } },
+          build: { ...cmd('build'), dependsOn: ['^build'] },
         }),
         project('right', {
-          build: { ...cmd('build'), dependsOn: { dependencies: ['build'] } },
+          build: { ...cmd('build'), dependsOn: ['^build'] },
         }),
         project('shared', { build: cmd('build') }),
       ),
@@ -161,10 +161,10 @@ describe('buildTaskGraph', () => {
       buildTaskGraph({
         projects: projects(
           project('a', {
-            build: { ...cmd('a'), dependsOn: { dependencies: ['build'] } },
+            build: { ...cmd('a'), dependsOn: ['^build'] },
           }),
           project('b', {
-            build: { ...cmd('b'), dependsOn: { dependencies: ['build'] } },
+            build: { ...cmd('b'), dependsOn: ['^build'] },
           }),
         ),
         packageGraph: packageGraph({ a: ['b'], b: ['a'] }),
@@ -178,7 +178,7 @@ describe('buildTaskGraph', () => {
       buildTaskGraph({
         projects: projects(
           project('a', {
-            build: { ...cmd('a'), dependsOn: { self: ['build'] } },
+            build: { ...cmd('a'), dependsOn: ['build'] },
           }),
         ),
         packageGraph: packageGraph({}),
@@ -203,7 +203,7 @@ describe('buildTaskGraph', () => {
     const nodes = buildTaskGraph({
       projects: projects(
         project('app', {
-          build: { ...cmd('build app'), dependsOn: { dependencies: ['build'] } },
+          build: { ...cmd('build app'), dependsOn: ['^build'] },
         }),
         project('lib', { build: cmd('build lib') }),
       ),
@@ -218,7 +218,7 @@ describe('buildTaskGraph', () => {
     const nodes = buildTaskGraph({
       projects: projects(
         project('app', {
-          build: { ...cmd('build app'), dependsOn: { dependencies: ['build'] } },
+          build: { ...cmd('build app'), dependsOn: ['^build'] },
         }),
         project('lib', { build: cmd('build lib') }),
       ),
@@ -239,7 +239,7 @@ describe('buildTaskGraph', () => {
         project('app', {
           build: {
             ...cmd('build app'),
-            dependsOn: { self: ['codegen'], dependencies: ['build'] },
+            dependsOn: ['codegen', '^build'],
           },
           codegen: cmd('codegen'),
         }),
@@ -259,7 +259,7 @@ describe('buildTaskGraph', () => {
         project('app', {
           build: {
             ...cmd('build app'),
-            dependsOn: { self: ['codegen'], dependencies: ['build'] },
+            dependsOn: ['codegen', '^build'],
           },
           codegen: cmd('codegen'),
         }),

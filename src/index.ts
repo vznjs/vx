@@ -12,7 +12,6 @@ export type {
   CacheConfig,
   CacheInputs,
   CacheOutputs,
-  TaskDependsOn,
 } from './config.js'
 export { defineProject, defineWorkspace } from './config.js'
 

@@ -1,6 +1,7 @@
 import type { ProjectConfig, TaskConfig } from '../config.js'
 import { UserError } from '../util/errors.js'
 import type { PackageGraph } from '../workspace/package-graph.js'
+import { DependencySpecError, parseDependencySpec, type DependencySpec } from './dependency-spec.js'
 
 export interface TaskNode {
   /** Stable id: `${projectName}#${taskName}`. */
@@ -83,30 +84,60 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
 
     if (skipAll) return node
 
-    const dependsOn = taskConfig.dependsOn ?? {}
-
-    // Same-project tasks. Missing target is a hard error.
-    for (const t of dependsOn.self ?? []) {
-      if (skipNames?.has(t)) continue
-      const child = addNode(projectName, t, false)
-      if (!child) {
-        throw new UserError(
-          `Task ${id} depends on ${taskId(projectName, t)} but no such task is declared`,
-        )
+    const rawSpecs = taskConfig.dependsOn ?? []
+    for (const raw of rawSpecs) {
+      let spec: DependencySpec
+      try {
+        spec = parseDependencySpec(raw)
+      } catch (err) {
+        if (err instanceof DependencySpecError) {
+          throw new UserError(`Task ${id}: ${err.message}`)
+        }
+        throw err
       }
-      node.deps.push(child.id)
-    }
 
-    // For each transitive workspace dep, look for the named task. Missing
-    // tasks are silently skipped — not every dep needs to participate.
-    if ((dependsOn.dependencies ?? []).length > 0) {
-      const workspaceDeps = packageGraph.transitiveDeps(projectName)
-      for (const t of dependsOn.dependencies ?? []) {
-        if (skipNames?.has(t)) continue
+      // dependsOn is about which tasks to ADD to the graph, not which
+      // to filter. Wildcards and negation aren't meaningful here —
+      // they're cache.inputs.tasks operations.
+      if (spec.kind === 'wildcardSelf' || spec.kind === 'wildcardDeps') {
+        throw new UserError(`Task ${id}: dependsOn does not accept wildcards (got "${raw}")`)
+      }
+      if (spec.negated) {
+        throw new UserError(`Task ${id}: dependsOn does not accept negation (got "${raw}")`)
+      }
+      // CLI `--excludeDependencies=name1,name2` drops edges whose target
+      // task name matches, regardless of bucket (self / deps / cross).
+      if (skipNames?.has(spec.task)) continue
+
+      if (spec.kind === 'self') {
+        // Missing target is a hard error — the user typed a name that
+        // doesn't resolve in this project.
+        const child = addNode(projectName, spec.task, false)
+        if (!child) {
+          throw new UserError(
+            `Task ${id} depends on ${taskId(projectName, spec.task)} but no such task is declared`,
+          )
+        }
+        node.deps.push(child.id)
+      } else if (spec.kind === 'deps') {
+        // For each transitive workspace dep, look for the named task.
+        // Missing tasks in particular deps are silently skipped — not
+        // every dep needs to participate.
+        const workspaceDeps = packageGraph.transitiveDeps(projectName)
         for (const target of workspaceDeps) {
-          const child = addNode(target, t, false)
+          const child = addNode(target, spec.task, false)
           if (child) node.deps.push(child.id)
         }
+      } else {
+        // Cross-project edge: pkg#task. Missing target is a hard error
+        // because the user named the package + task explicitly.
+        const child = addNode(spec.project, spec.task, false)
+        if (!child) {
+          throw new UserError(
+            `Task ${id} depends on ${taskId(spec.project, spec.task)} but no such project or task is declared`,
+          )
+        }
+        node.deps.push(child.id)
       }
     }
 
