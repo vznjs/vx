@@ -42,7 +42,7 @@ upstream repo so future revisions can be diffed against reality.
 | forward args               | `--`                      | `--args="..."`             | trailing args                       | `--`                                                       |
 | skip cache reads+writes    | `--no-cache`, `--force`   | `--skipNxCache`            | `--no-cache`                        | `--no-cache`, `--force`                                    |
 | dry-run (print plan)       | `--dry`, `--dry=json`     | `--graph` renders          | —                                   | `--dry`, `--dry=json`                                      |
-| affected (git-relative)    | `--affected`              | full `affected` subcommand | —                                   | — **gap**                                                  |
+| affected (git-relative)    | `--affected`              | full `affected` subcommand | —                                   | `--affected[=<base>]` + `[<since>]` filter form            |
 | graph render               | `--graph file.{dot,html}` | `--graph`                  | —                                   | `--graph[=<path>]` (DOT)                                   |
 | continue past failure      | `--continue=…`            | `--nx-bail` (default)      | —                                   | (always; independent siblings continue)                    |
 | per-run JSON summary       | `--summarize`, `--json`   | `--outputStyle`            | `--last-details` replay             | `--summarize[=<path>]`                                     |
@@ -136,11 +136,11 @@ paths are inside the respective upstream repos (Turbo
    don't write directly to file yet; Turbo's `--graph foo.html` form
    is a follow-up.
 
-3. **`--affected` / changed-files selection.** "Run only what
-   `main..HEAD` touched." Pure addition; no schema change.
-   - Turbo: `--affected`.
-   - Nx: `affected` subcommand + `--base/--head/--uncommitted/--untracked/--files/--stdin`
-     (`packages/nx/src/command-line/affected/command-object.ts`).
+3. ~~**`--affected`**~~ — **shipped.** `vx run <task> --affected` (or
+   `--affected=<ref>`) runs only the projects whose files changed
+   since the given base. Default base is `origin/HEAD`, falling back
+   to `HEAD~1`. Also exposed as a `[<since>]` form in the filter
+   DSL — `vx run build -F '[main]'` is the lower-level equivalent.
 
 4. ~~**Cross-package `dependsOn` via `pkg#task`**~~ — **shipped** as
    part of the dependsOn micro-syntax refactor. Wildcards

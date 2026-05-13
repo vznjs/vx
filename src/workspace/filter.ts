@@ -7,6 +7,9 @@
 //   ...<pattern>     pattern + its transitive workspace dependents
 //   <pattern>^...    only the transitive deps of pattern (excluding the matched package)
 //   !<pattern>       exclude packages matching pattern from the selection
+//   [<since>]        projects affected since the given git ref
+//                    (Turbo-style; resolved upstream of applyFilters via
+//                    `affectedProjects` since it needs FS + git access)
 //
 // Filters are evaluated in order. If any include filter is present, the base
 // set is empty and matched/expanded packages are added. If only excludes are
@@ -25,6 +28,12 @@ export interface ParsedFilter {
   isPath: boolean
   /** Glob pattern (for name match) or absolute path (for path match). */
   matcher: string
+  /**
+   * When non-undefined, this filter is a git-relative `[<since>]`
+   * selector. The matcher field is unused; the CLI resolves the ref
+   * to a concrete set of project names before calling applyFilters.
+   */
+  gitSince?: string
 }
 
 export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
@@ -45,6 +54,21 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
     s = s.slice(0, -3)
   }
 
+  // `[<since>]` git-relative selector. Suffix walks already ran above,
+  // so `[main]...` parses as `[main]` with withDeps=true.
+  if (s.startsWith('[') && s.endsWith(']')) {
+    return {
+      raw,
+      negate,
+      withDeps,
+      withDependents,
+      onlyDeps,
+      isPath: false,
+      matcher: '',
+      gitSince: s.slice(1, -1),
+    }
+  }
+
   let isPath = false
   let matcher = s
   if (s.startsWith('./') || s === '.') {
@@ -63,7 +87,17 @@ function globToRegex(glob: string): RegExp {
   return new RegExp(`^${escaped}$`)
 }
 
-function matchProjects(filter: ParsedFilter, projects: ProjectMeta[]): string[] {
+function matchProjects(
+  filter: ParsedFilter,
+  projects: ProjectMeta[],
+  affectedByFilter: Map<ParsedFilter, Set<string>> | undefined,
+): string[] {
+  // `[<since>]` selectors are pre-resolved by the caller (the parser
+  // is pure; git access happens upstream). Use the provided set as
+  // the match set for this filter.
+  if (filter.gitSince !== undefined) {
+    return [...(affectedByFilter?.get(filter) ?? new Set())]
+  }
   const out: string[] = []
   if (filter.isPath) {
     const prefix = filter.matcher + path.sep
@@ -89,6 +123,13 @@ export interface ApplyFiltersOptions {
   filters: ParsedFilter[]
   projects: ProjectMeta[]
   graph: PackageGraph
+  /**
+   * Pre-resolved affected-project sets for each `[<since>]` filter.
+   * The caller (CLI / programmatic embedder) runs the git work and
+   * stuffs results in this map before calling applyFilters, which
+   * stays pure + sync.
+   */
+  affectedByFilter?: Map<ParsedFilter, Set<string>>
 }
 
 export function applyFilters(opts: ApplyFiltersOptions): Set<string> {
@@ -97,7 +138,7 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string> {
   const selected = new Set<string>(hasInclude ? [] : allNames)
 
   for (const f of opts.filters) {
-    const matched = matchProjects(f, opts.projects)
+    const matched = matchProjects(f, opts.projects, opts.affectedByFilter)
     const expanded = new Set<string>()
     for (const name of matched) {
       if (!f.onlyDeps) expanded.add(name)

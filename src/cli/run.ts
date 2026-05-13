@@ -1,5 +1,6 @@
 import readline from 'node:readline/promises'
 import path from 'node:path'
+import { affectedProjects, defaultAffectedBase } from '../workspace/affected.js'
 import { applyFilters, parseFilter } from '../workspace/filter.js'
 import {
   run as runOrchestrator,
@@ -36,6 +37,12 @@ export interface RunArgs {
   graph: string | undefined
   summarize: string | undefined
   profile: string | undefined
+  /**
+   * `--affected[=<base>]`. When undefined the flag wasn't passed.
+   * Empty string means "use the default base" (resolved later via
+   * `defaultAffectedBase`). Any other string is an explicit git ref.
+   */
+  affected: string | undefined
   error?: string
 }
 
@@ -53,6 +60,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     graph: undefined,
     summarize: undefined,
     profile: undefined,
+    affected: undefined,
   }
 
   const sepIdx = args.indexOf('--')
@@ -112,6 +120,10 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       out.profile = 'profile.json'
     } else if (a?.startsWith('--profile=')) {
       out.profile = a.slice('--profile='.length)
+    } else if (a === '--affected') {
+      out.affected = ''
+    } else if (a?.startsWith('--affected=')) {
+      out.affected = a.slice('--affected='.length)
     } else if (a !== undefined && a.startsWith('-')) {
       return { ...out, error: `unknown flag: ${a}` }
     } else if (a !== undefined) {
@@ -171,11 +183,21 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     taskName = picked.task
   }
 
+  // `--affected[=<base>]` is sugar for `--filter '[<base>]'`. Merging
+  // them here means the same code path handles single + combined
+  // filter use, and pkg#task still wins (it's narrower than affected).
+  const filterStrings = [...parsed.filters]
+  if (parsed.affected !== undefined) {
+    const root = await findWorkspaceRoot(cwd)
+    const base = parsed.affected === '' ? await defaultAffectedBase(root) : parsed.affected
+    filterStrings.push(`[${base}]`)
+  }
+
   let projects: string[] | undefined
   if (pkgAnchor) {
     projects = [pkgAnchor]
-  } else if (parsed.filters.length > 0) {
-    const resolved = await resolveFilters(cwd, parsed.filters)
+  } else if (filterStrings.length > 0) {
+    const resolved = await resolveFilters(cwd, filterStrings)
     if (resolved.error) {
       process.stderr.write(`vx run: ${resolved.error}\n`)
       return 1
@@ -264,7 +286,23 @@ async function resolveFilters(
   const projects = await loadWorkspaceProjects(cwd)
   const graph = buildPackageGraph(projects)
   const parsed = raw.map((r) => parseFilter(r, root))
-  const selected = applyFilters({ filters: parsed, projects, graph })
+
+  // Resolve every `[<since>]` filter against git before the pure
+  // applyFilters pass runs. One spawn per distinct ref — usually
+  // there's only one anyway.
+  const affectedByFilter = new Map<(typeof parsed)[number], Set<string>>()
+  for (const f of parsed) {
+    if (f.gitSince === undefined) continue
+    try {
+      const names = await affectedProjects({ workspaceRoot: root, since: f.gitSince, projects })
+      affectedByFilter.set(f, names)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return { error: msg }
+    }
+  }
+
+  const selected = applyFilters({ filters: parsed, projects, graph, affectedByFilter })
   if (selected.size === 0) {
     return { error: `no projects matched filter(s): ${raw.join(', ')}` }
   }
