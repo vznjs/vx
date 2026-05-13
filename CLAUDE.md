@@ -133,6 +133,48 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: TUI dropped entirely. After six PRs (#73, #74, #75,
+  #76, #77, #79, #80, #81) trying React, then Solid, then patching
+  the painter, the user's verdict was "still freezing, no screens
+  for tasks without logs, very bad — drop it for now." The right
+  call. `src/tui/` deleted, `@opentui/*` / `solid-js` /
+  `xterm-headless` / `@types/babel__core` removed, `bunfig.toml`
+  removed, `tsconfig`'s `jsx` / `jsxImportSource` reverted, the
+  `--tui` / `--no-tui` CLI flags removed.
+
+  What survived from the TUI work:
+  - `src/orchestrator/observer.ts` — the tagged-union `Observer`
+    contract + `makeSafeObserver` wrapper. Useful for embedders,
+    future dashboards, structured-event consumers.
+  - `RunOptions.observer?: Observer` wiring + emit sites in the
+    orchestrator (`runStart`, `taskStart`, `taskStdout/Stderr`,
+    `cacheProbe`, `taskComplete`, `runEnd`, `remoteCache`). No
+    runtime cost unless a consumer subscribes.
+  - Scheduler worker-slot allocation (`runGraph` allocates lowest-
+    free-index slots, passes `slot: number` to `execute()` /
+    `onStart()`). Stable allocation across runs.
+  - `Cache.getTaskHistory(taskIds)` — batched SQL CTE returning a
+    `TaskHistoryMap`. Used by `prepareRun` so any future consumer
+    has per-task aggregates cheap.
+  - `LayeredCacheOptions.onRemoteRequest` — remote-cache request
+    callback. Currently no consumer; useful when telemetry lands.
+  - `noopLogger()` in `src/orchestrator/logger.ts` — minimal
+    Logger that drops every call. Already used by embedders.
+  - Design docs `docs/design/tui.md`, `docs/design/tui-design.md`,
+    `docs/design/tui-rebuild.md`, `docs/design/tui-claude-code.md` —
+    kept as a record of what was explored and why it didn't ship.
+
+  Tests: 506 → 434 (deleted all TUI-specific tests + the `--tui`
+  parser test). The remaining 434 cover orchestrator, scheduler,
+  cache, CLI, watch, persistent tasks, observer, etc.
+
+  Lessons logged in `docs/design/tui-claude-code.md`: production-
+  grade terminal UIs (Claude Code, lazygit, fzf, btop) all
+  hand-roll the cell-buffer + ANSI emitter. They use
+  `react-reconciler` for the component API but write the painter
+  themselves. The existing React/Solid-on-OpenTUI stack has too
+  many leaky abstractions for our use case.
+
 - **2026-05**: TUI rebuild — wholesale rewrite on `@opentui/solid`
   - `@opentui/keymap` + `xterm-headless`, scrapping the React-based
     Phase 1-3B implementation. Three drivers (see
