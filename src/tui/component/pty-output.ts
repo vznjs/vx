@@ -1,27 +1,23 @@
 // Per-task pseudo-terminal — same idea as Turbo's `term_output.rs`
-// (which wraps `turborepo-vt100`). We feed stdout/stderr chunks
-// to an `xterm-headless` Terminal, then read its screen buffer to
-// render. This is what makes complex output (npm progress bars,
-// esbuild spinners, `\r`-overwrites, ANSI cursor escapes) render
-// correctly — we're not split-on-newline-ing strings any more;
-// we're driving a real VT emulator.
-//
-// xterm-headless 5.x still references the browser `window` / `self`
-// globals in its compiled bundle even though it's the "headless"
-// build. Shim them to `globalThis` before loading.
+// (which wraps `turborepo-vt100`). We feed stdout/stderr chunks to
+// an `xterm-headless` Terminal, then read its screen buffer to
+// render. The VT emulator handles `\r`, ANSI cursor moves, line
+// clears, etc.
 
-import type { Terminal as XTermTerminal } from 'xterm-headless'
+import './xterm-shim.ts'
+import type { Terminal as XTerm } from 'xterm-headless'
 
-const g = globalThis as unknown as Record<string, unknown>
-if (g.window === undefined) g.window = globalThis
-if (g.self === undefined) g.self = globalThis
-
-// Lazy require so the shim above is set before xterm-headless touches
-// any module-level code.
-let TerminalCtor: typeof XTermTerminal | null = null
-async function getTerminalCtor(): Promise<typeof XTermTerminal> {
+// xterm-headless references browser `window`/`self` globals at
+// module-load time. The shim above must run BEFORE we touch the
+// xterm-headless module — under Bun's ESM, static imports from
+// node_modules are evaluated before our same-file static imports,
+// so we use `require()` (Bun maps it to its CJS shim) instead. By
+// this point, the shim's side effects have run.
+let TerminalCtor: typeof XTerm | null = null
+function getTerminalCtor(): typeof XTerm {
   if (!TerminalCtor) {
-    const mod = await import('xterm-headless')
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('xterm-headless') as { Terminal: typeof XTerm }
     TerminalCtor = mod.Terminal
   }
   return TerminalCtor
@@ -31,11 +27,13 @@ export interface PtyOutput {
   write(chunk: string): void
   resize(cols: number, rows: number): void
   readLines(): string[]
+  /** Monotonic byte counter — bumps on every write. */
+  readonly bytesWritten: number
   dispose(): void
 }
 
-export async function createPtyOutput(initialCols = 200, initialRows = 1000): Promise<PtyOutput> {
-  const Terminal = await getTerminalCtor()
+export function createPtyOutput(initialCols = 200, initialRows = 1000): PtyOutput {
+  const Terminal = getTerminalCtor()
   const term = new Terminal({
     cols: Math.max(1, initialCols),
     rows: Math.max(1, initialRows),
@@ -44,17 +42,21 @@ export async function createPtyOutput(initialCols = 200, initialRows = 1000): Pr
     allowProposedApi: true,
   })
 
-  // xterm-headless's `write` is async (uses a parser pump). We don't
-  // need to await each chunk — readLines reflects whatever's been
-  // parsed so far — but flush callbacks fire when the parser drains.
+  let bytesWritten = 0
+  let lastReadAt = -1
+  let cachedLines: string[] = []
+
   return {
     write(chunk: string) {
       term.write(chunk)
+      bytesWritten += chunk.length
     },
     resize(cols: number, rows: number) {
       term.resize(Math.max(1, cols), Math.max(1, rows))
+      lastReadAt = -1
     },
     readLines() {
+      if (lastReadAt === bytesWritten) return cachedLines
       const out: string[] = []
       const total = term.buffer.active.length
       const viewportRows = term.rows
@@ -63,7 +65,12 @@ export async function createPtyOutput(initialCols = 200, initialRows = 1000): Pr
         const line = term.buffer.active.getLine(y)
         out.push(line ? line.translateToString(true) : '')
       }
+      cachedLines = out
+      lastReadAt = bytesWritten
       return out
+    },
+    get bytesWritten() {
+      return bytesWritten
     },
     dispose() {
       term.dispose()

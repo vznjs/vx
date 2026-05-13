@@ -6,6 +6,7 @@ import { createMemo, For } from 'solid-js'
 import { TextAttributes } from '@opentui/core'
 import { useTheme } from '../context/theme.tsx'
 import { useRunState, type TaskRow } from '../context/run-state.tsx'
+import { useClock } from '../context/clock.tsx'
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const
 
@@ -54,13 +55,12 @@ function TaskRowItem(props: RowProps) {
 export function TaskList(props: { width: number }) {
   const { theme } = useTheme()
   const { state } = useRunState()
+  const clock = useClock()
 
-  // Update the spinner frame at 10 Hz. We use a memo over performance.now()
-  // bucketed to 100 ms so unrelated re-renders don't re-pick a new frame
-  // (Solid's memo only invalidates on dependency change).
+  // Spinner frame keyed by the global clock tick (10 Hz). When the
+  // tick signal updates, this memo invalidates and re-renders.
   const spinnerFrame = createMemo(() => {
-    const tick = Math.floor(Date.now() / 100)
-    return SPINNER_FRAMES[tick % SPINNER_FRAMES.length]!
+    return SPINNER_FRAMES[clock.tick() % SPINNER_FRAMES.length]!
   })
 
   const ordered = createMemo<TaskRow[]>(() => {
