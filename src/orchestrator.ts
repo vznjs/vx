@@ -34,7 +34,13 @@ export type { Logger } from './orchestrator/logger.ts'
 
 export interface RunOptions {
   cwd: string
-  task: string
+  /**
+   * Task specs to run. Each may be a bare task name (`'build'`) —
+   * applied across `projects` to every project that declares it —
+   * or an anchored `'pkg#task'` — added directly to the requested
+   * set regardless of `projects`.
+   */
+  tasks: readonly string[]
   projects?: string[]
   concurrency?: number
   /** Skip cache reads AND writes. Every task runs and nothing is persisted. */
@@ -94,12 +100,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     ? options.projects.filter((p) => projects.has(p))
     : [...projects.keys()]
 
-  const requested = candidateProjects
-    .filter((name) => projects.get(name)?.config.tasks?.[options.task])
-    .map((name) => ({ project: name, task: options.task }))
-
+  const requested = expandRequested(options.tasks, candidateProjects, projects)
   if (requested.length === 0) {
-    log.status(`No projects declare task "${options.task}".`)
+    log.status(`No projects declare task(s): ${options.tasks.join(', ')}.`)
     // Treat "nothing matched" as a failure. A typo'd task name silently
     // exiting 0 in CI is a real footgun.
     return { ok: false, outcomes: [] }
@@ -141,7 +144,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     {
       version: VERSION,
       packages: [...packagesInScope],
-      task: options.task,
+      tasks: [...new Set(options.tasks.map(unanchored))],
       remoteCacheEnabled: cache instanceof LayeredCache,
     },
     colors,
@@ -285,10 +288,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
     ? options.projects.filter((p) => projects.has(p))
     : [...projects.keys()]
 
-  const requested = candidateProjects
-    .filter((name) => projects.get(name)?.config.tasks?.[options.task])
-    .map((name) => ({ project: name, task: options.task }))
-
+  const requested = expandRequested(options.tasks, candidateProjects, projects)
   if (requested.length === 0) return { tasks: [] }
 
   const nodes = buildTaskGraph({
@@ -319,6 +319,52 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
   } finally {
     cache.close()
   }
+}
+
+/**
+ * Expand the user-requested task list into concrete `{project, task}`
+ * pairs the task-graph builder consumes.
+ *
+ *  - Bare task names (`'build'`) → one entry per project in
+ *    `candidates` that declares the task. Missing in a given project
+ *    is silent (sparse tasks are normal across a workspace).
+ *  - Anchored entries (`'pkg#task'`) → one entry exactly, ignoring
+ *    `candidates`. Silently dropped if pkg/task doesn't exist (the
+ *    CLI's pre-validation catches malformed strings).
+ *
+ * Duplicates are deduped (a user might pass `vx run build pkg#build`).
+ */
+function expandRequested(
+  tasks: readonly string[],
+  candidates: readonly string[],
+  projects: Map<string, ProjectEntry>,
+): Array<{ project: string; task: string }> {
+  const seen = new Set<string>()
+  const out: Array<{ project: string; task: string }> = []
+  const push = (project: string, task: string): void => {
+    const key = `${project}#${task}`
+    if (seen.has(key)) return
+    seen.add(key)
+    out.push({ project, task })
+  }
+  for (const spec of tasks) {
+    const idx = spec.indexOf('#')
+    if (idx >= 0) {
+      const project = spec.slice(0, idx)
+      const task = spec.slice(idx + 1)
+      if (projects.get(project)?.config.tasks?.[task]) push(project, task)
+      continue
+    }
+    for (const name of candidates) {
+      if (projects.get(name)?.config.tasks?.[spec]) push(name, spec)
+    }
+  }
+  return out
+}
+
+function unanchored(spec: string): string {
+  const idx = spec.indexOf('#')
+  return idx >= 0 ? spec.slice(idx + 1) : spec
 }
 
 export type { RunPlan, PlannedTask, CacheStatus } from './orchestrator/plan.ts'

@@ -111,12 +111,12 @@ describe('orchestrator e2e', () => {
         `,
       })
 
-      const first = await run({ cwd: fixture.root, task: 'stamp', log: silentLogger(fixture) })
+      const first = await run({ cwd: fixture.root, tasks: ['stamp'], log: silentLogger(fixture) })
       expect(first.ok).toBe(true)
       expect(first.outcomes[0]?.status).toBe('success')
 
       const stamp1 = await readFile(path.join(dir, 'out.txt'), 'utf8')
-      const second = await run({ cwd: fixture.root, task: 'stamp', log: silentLogger(fixture) })
+      const second = await run({ cwd: fixture.root, tasks: ['stamp'], log: silentLogger(fixture) })
       expect(second.outcomes[0]?.status).toBe('cache-hit')
       expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe(stamp1)
     },
@@ -139,13 +139,13 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       const first = await readFile(path.join(dir, 'out.txt'), 'utf8')
 
       await new Promise((r) => setTimeout(r, 5))
       await writeFile(path.join(dir, 'random.md'), 'newly added')
 
-      const second = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const second = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(second.outcomes[0]?.status).toBe('success')
       expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).not.toBe(first)
     },
@@ -168,17 +168,17 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
 
       // Change a file outside src/. Cache should still hit.
       await writeFile(path.join(dir, 'docs/README.md'), 'docs v2')
-      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('cache-hit')
 
       // Change a file inside src/. Cache busts.
       await new Promise((r) => setTimeout(r, 5))
       await writeFile(path.join(dir, 'src/x.txt'), 'v2')
-      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r2 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r2.outcomes[0]?.status).toBe('success')
     },
     TIMEOUT,
@@ -201,9 +201,9 @@ describe('orchestrator e2e', () => {
         `,
       })
 
-      const r1 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r1 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r1.outcomes[0]?.status).toBe('success')
-      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r2 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r2.outcomes[0]?.status).toBe('cache-hit')
     },
     TIMEOUT,
@@ -241,11 +241,11 @@ describe('orchestrator e2e', () => {
         `,
       })
 
-      const r1 = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      const r1 = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(r1.ok).toBe(true)
       const appOut1 = await readFile(path.join(appDir, 'out.txt'), 'utf8')
 
-      const r2 = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      const r2 = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(r2.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
 
       // Touch a file in lib that is NOT in lib's outputs. With Turbo-style
@@ -253,7 +253,7 @@ describe('orchestrator e2e', () => {
       await new Promise((r) => setTimeout(r, 5))
       await writeFile(path.join(fixture.root, 'packages/lib/NOTES.md'), 'something')
 
-      const r3 = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      const r3 = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(r3.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
       const appOut3 = await readFile(path.join(appDir, 'out.txt'), 'utf8')
       expect(appOut3).not.toBe(appOut1)
@@ -296,13 +296,13 @@ describe('orchestrator e2e', () => {
         `,
       })
 
-      await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       const appOut1 = await readFile(path.join(appDir, 'out.txt'), 'utf8')
 
       // Change lib's source. App's cache should still hit because
       // app declared tasks: [].
       await writeFile(path.join(fixture.root, 'packages/lib/src/x.txt'), 'v2')
-      const r = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(r.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
       expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).toBe(appOut1)
     },
@@ -334,20 +334,20 @@ describe('orchestrator e2e', () => {
 
       process.env.CACHED = 'a'
       process.env.PASSED = '1'
-      await run({ cwd: fixture.root, task: 'show', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['show'], log: silentLogger(fixture) })
       const a = await readFile(path.join(dir, 'out.txt'), 'utf8')
       expect(a).toBe('a:1')
 
       // Change PASSED only. Not declared as an env input -> cache hits, the
       // restored out.txt still says "a:1".
       process.env.PASSED = '2'
-      const r2 = await run({ cwd: fixture.root, task: 'show', log: silentLogger(fixture) })
+      const r2 = await run({ cwd: fixture.root, tasks: ['show'], log: silentLogger(fixture) })
       expect(r2.outcomes[0]?.status).toBe('cache-hit')
       expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('a:1')
 
       // Change CACHED. It IS declared as input -> cache busts, new value reaches the task.
       process.env.CACHED = 'b'
-      const r3 = await run({ cwd: fixture.root, task: 'show', log: silentLogger(fixture) })
+      const r3 = await run({ cwd: fixture.root, tasks: ['show'], log: silentLogger(fixture) })
       expect(r3.outcomes[0]?.status).toBe('success')
       expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('b:2')
 
@@ -376,7 +376,7 @@ describe('orchestrator e2e', () => {
         `,
       })
       const dir = path.join(fixture.root, 'packages/explicit')
-      await run({ cwd: fixture.root, task: 'show', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['show'], log: silentLogger(fixture) })
       expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('one')
 
       // Rewrite config with a different MODE value.
@@ -396,7 +396,7 @@ describe('orchestrator e2e', () => {
           }
         `,
       )
-      const r = await run({ cwd: fixture.root, task: 'show', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['show'], log: silentLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('success')
       expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('two')
     },
@@ -449,7 +449,7 @@ describe('orchestrator e2e', () => {
         `,
       })
 
-      await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       const appOut1 = await readFile(path.join(appDir, 'out.txt'), 'utf8')
 
       // Change lib's noisy source. lib#noisy reruns; lib#build cache-hits.
@@ -457,7 +457,7 @@ describe('orchestrator e2e', () => {
       await new Promise((r) => setTimeout(r, 5))
       await writeFile(path.join(fixture.root, 'packages/lib/noisy-src/n.txt'), 'b')
 
-      const r = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(r.outcomes.find((o) => o.node.id === 'lib#noisy')?.status).toBe('success')
       expect(r.outcomes.find((o) => o.node.id === 'lib#build')?.status).toBe('cache-hit')
       expect(r.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
@@ -468,7 +468,7 @@ describe('orchestrator e2e', () => {
       await new Promise((r) => setTimeout(r, 5))
       await writeFile(path.join(fixture.root, 'packages/lib/src/x.txt'), 'v2')
 
-      const r2 = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      const r2 = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(r2.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
       expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).not.toBe(appOut1)
     },
@@ -522,11 +522,11 @@ describe('orchestrator e2e', () => {
         `,
       })
 
-      await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       const appOut1 = await readFile(path.join(appDir, 'out.txt'), 'utf8')
 
       // Re-run unchanged: cache hit.
-      const r2 = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      const r2 = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(r2.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
 
       // Change lib's source. Because `dependencies` bucket is omitted, lib#build
@@ -534,7 +534,7 @@ describe('orchestrator e2e', () => {
       await new Promise((r) => setTimeout(r, 5))
       await writeFile(path.join(fixture.root, 'packages/lib/src/x.txt'), 'v2')
 
-      const r3 = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      const r3 = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(r3.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
       expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).not.toBe(appOut1)
     },
@@ -592,7 +592,7 @@ describe('orchestrator e2e', () => {
         `,
       })
 
-      await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       const appOut1 = await readFile(path.join(appDir, 'out.txt'), 'utf8')
 
       // Change lib's noisy source. lib#noisy reruns; lib#build cache-hits.
@@ -600,7 +600,7 @@ describe('orchestrator e2e', () => {
       await new Promise((r) => setTimeout(r, 5))
       await writeFile(path.join(fixture.root, 'packages/lib/noisy-src/n.txt'), 'b')
 
-      const r2 = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      const r2 = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(r2.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
       expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).toBe(appOut1)
 
@@ -608,7 +608,7 @@ describe('orchestrator e2e', () => {
       await new Promise((r) => setTimeout(r, 5))
       await writeFile(path.join(fixture.root, 'packages/lib/src/x.txt'), 'v2')
 
-      const r3 = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      const r3 = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(r3.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
       expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).not.toBe(appOut1)
     },
@@ -643,7 +643,7 @@ describe('orchestrator e2e', () => {
         `,
       })
 
-      const result = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      const result = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(result.ok).toBe(false)
       const lib = result.outcomes.find((o) => o.node.id === 'lib#build')
       const app = result.outcomes.find((o) => o.node.id === 'app#build')
@@ -672,7 +672,7 @@ describe('orchestrator e2e', () => {
       })
       process.env.LEAK = 'should-not-pass'
       try {
-        await run({ cwd: fixture.root, task: 'show', log: silentLogger(fixture) })
+        await run({ cwd: fixture.root, tasks: ['show'], log: silentLogger(fixture) })
         const out = await readFile(path.join(fixture.root, 'packages/iso/out.txt'), 'utf8')
         expect(out).toBe('undefined')
       } finally {
@@ -727,7 +727,7 @@ describe('orchestrator e2e', () => {
 
       await run({
         cwd: fixture.root,
-        task: 'run',
+        tasks: ['run'],
         projects: ['root-proj'],
         log: silentLogger(fixture),
       })
@@ -737,7 +737,7 @@ describe('orchestrator e2e', () => {
       await writeFile(path.join(fixture.root, 'packages/inner/src/inner.txt'), 'inner v2')
       const r2 = await run({
         cwd: fixture.root,
-        task: 'run',
+        tasks: ['run'],
         projects: ['root-proj'],
         log: silentLogger(fixture),
       })
@@ -749,7 +749,7 @@ describe('orchestrator e2e', () => {
       await writeFile(path.join(fixture.root, 'src/root.txt'), 'root v2')
       const r3 = await run({
         cwd: fixture.root,
-        task: 'run',
+        tasks: ['run'],
         projects: ['root-proj'],
         log: silentLogger(fixture),
       })
@@ -773,7 +773,7 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(existsSync(path.join(fixture.root, '.vx', 'cache'))).toBe(true)
     },
     TIMEOUT,
@@ -801,11 +801,11 @@ describe('orchestrator e2e', () => {
         `,
       })
 
-      const r1 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r1 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r1.outcomes[0]?.status).toBe('failed')
       expect(r1.outcomes[0]?.exitCode).toBe(3)
 
-      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r2 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r2.outcomes[0]?.status).toBe('failed')
       // The command ran a second time -> "xx" in runs.txt.
       expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('xx')
@@ -831,22 +831,22 @@ describe('orchestrator e2e', () => {
         `,
       })
 
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       const after1 = await readFile(path.join(dir, 'runs.txt'), 'utf8')
       expect(after1).toBe('x')
 
       // Without --no-cache: cache-hit, file restored as-is.
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('x')
 
       // With --no-cache: command runs again, appends another 'x'.
-      await run({ cwd: fixture.root, task: 'run', noCache: true, log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], noCache: true, log: silentLogger(fixture) })
       expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('xx')
 
       // --no-cache also skipped the WRITE: the next default run sees the
       // previously-cached entry (from the first run) and restores it,
       // overwriting the file back to 'x'.
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('x')
     },
     TIMEOUT,
@@ -869,9 +869,9 @@ describe('orchestrator e2e', () => {
         `,
       })
 
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('xxx')
     },
     TIMEOUT,
@@ -893,11 +893,11 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       const original = await readFile(path.join(dir, 'out.txt'), 'utf8')
 
       await rm(path.join(dir, 'out.txt'))
-      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('cache-hit')
       expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe(original)
     },
@@ -922,10 +922,10 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       await rm(path.join(dir, 'dist'), { recursive: true })
 
-      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('cache-hit')
       expect(await readFile(path.join(dir, 'dist/a.txt'), 'utf8')).toBe('a\n')
       expect(await readFile(path.join(dir, 'dist/b.txt'), 'utf8')).toBe('b\n')
@@ -949,12 +949,12 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r.ok).toBe(true)
       expect(r.outcomes[0]?.status).toBe('success')
 
       // Second run still hits cache; nothing to restore is fine.
-      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r2 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r2.outcomes[0]?.status).toBe('cache-hit')
     },
     TIMEOUT,
@@ -981,10 +981,10 @@ describe('orchestrator e2e', () => {
         `,
       })
 
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       // Modify the gitignored file. Cache should still hit.
       await writeFile(path.join(dir, 'ignored.txt'), 'changed')
-      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('cache-hit')
     },
     TIMEOUT,
@@ -1006,16 +1006,16 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
 
       // Touching src/skip.txt should NOT bust the cache (excluded by negation).
       await writeFile(path.join(dir, 'src/skip.txt'), 'b')
-      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('cache-hit')
 
       // Touching src/keep.txt SHOULD bust.
       await writeFile(path.join(dir, 'src/keep.txt'), 'b')
-      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r2 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r2.outcomes[0]?.status).toBe('success')
     },
     TIMEOUT,
@@ -1037,13 +1037,13 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       await writeFile(path.join(dir, 'noisy.log'), 'b')
-      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('cache-hit')
 
       await writeFile(path.join(dir, 'src/x.txt'), 'v2')
-      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r2 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r2.outcomes[0]?.status).toBe('success')
     },
     TIMEOUT,
@@ -1066,7 +1066,7 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      const r = await run({ cwd: fixture.root, task: 'nonexistent', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['nonexistent'], log: silentLogger(fixture) })
       expect(r.ok).toBe(false)
       expect(r.outcomes).toEqual([])
     },
@@ -1097,7 +1097,7 @@ describe('orchestrator e2e', () => {
         JSON.stringify({ name: 'bare', version: '0.0.0' }, null, 2),
       )
 
-      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r.outcomes.map((o) => o.node.projectName)).toEqual(['has-config'])
       expect(r.ok).toBe(true)
     },
@@ -1121,11 +1121,11 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       // Reset the logger so we capture only the second (cache-hit) invocation.
       fixture.log = []
       fixture.err = []
-      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('cache-hit')
       expect(fixture.log.join('\n')).toContain('OUT')
       expect(fixture.err.join('\n')).toContain('ERR')
@@ -1169,11 +1169,11 @@ describe('orchestrator e2e', () => {
       })
 
       process.env.API_URL = 'https://a.example'
-      await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       const appOut1 = await readFile(path.join(appDir, 'out.txt'), 'utf8')
 
       // Same env: both should hit cache.
-      const r2 = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      const r2 = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(r2.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
       expect(r2.outcomes.find((o) => o.node.id === 'lib#build')?.status).toBe('cache-hit')
 
@@ -1181,7 +1181,7 @@ describe('orchestrator e2e', () => {
       // upstream hash changes -> app must rerun even though no file changed
       // anywhere.
       process.env.API_URL = 'https://b.example'
-      const r3 = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      const r3 = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(r3.outcomes.find((o) => o.node.id === 'lib#build')?.status).toBe('success')
       expect(r3.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
       expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).not.toBe(appOut1)
@@ -1213,11 +1213,11 @@ describe('orchestrator e2e', () => {
         `,
       })
 
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       const first = await readFile(path.join(dir, 'out.txt'), 'utf8')
 
       // Same lockfile -> cache hits.
-      const r1 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r1 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r1.outcomes[0]?.status).toBe('cache-hit')
       expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe(first)
 
@@ -1229,7 +1229,7 @@ describe('orchestrator e2e', () => {
         "lockfileVersion: '9.0'\nimporters:\n  '.': {}\n# bumped\n",
       )
 
-      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r2 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r2.outcomes[0]?.status).toBe('success')
       expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).not.toBe(first)
     },
@@ -1262,7 +1262,7 @@ describe('orchestrator e2e', () => {
         `,
       })
 
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
 
       // Edit only the config file. It's outside `src/**` so file inputs are
       // unchanged. taskConfigHash differs -> cache must bust.
@@ -1286,7 +1286,7 @@ describe('orchestrator e2e', () => {
         `,
       )
 
-      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('success')
     },
     TIMEOUT,
@@ -1308,7 +1308,7 @@ describe('orchestrator e2e', () => {
       )
 
       await expect(
-        run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) }),
+        run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) }),
       ).rejects.toThrow(/Duplicate package name "dup"/)
     },
     TIMEOUT,
@@ -1330,13 +1330,13 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
 
       await new Promise((r) => setTimeout(r, 10))
       // Rewrite identical content so mtime advances but content hash is the same.
       await writeFile(path.join(dir, 'src/x.txt'), 'same')
 
-      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('cache-hit')
     },
     TIMEOUT,
@@ -1369,7 +1369,7 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       const out1 = await readFile(path.join(dir, 'out.txt'), 'utf8')
 
       // Change codegen's input -> codegen reruns -> codegen hash changes ->
@@ -1378,7 +1378,7 @@ describe('orchestrator e2e', () => {
       await new Promise((r) => setTimeout(r, 5))
       await writeFile(path.join(dir, 'src/codegen-input.txt'), 'v2')
 
-      const r = await run({ cwd: fixture.root, task: 'build', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(r.outcomes.find((o) => o.node.id === 'self-up#codegen')?.status).toBe('success')
       expect(r.outcomes.find((o) => o.node.id === 'self-up#build')?.status).toBe('success')
       expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).not.toBe(out1)
@@ -1402,12 +1402,12 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
 
       // Editing arbitrary project files does NOT bust because file inputs are empty.
       await writeFile(path.join(dir, 'src/x.txt'), 'v2')
       await writeFile(path.join(dir, 'random.md'), 'b')
-      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r2 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r2.outcomes[0]?.status).toBe('cache-hit')
     },
     TIMEOUT,
@@ -1429,12 +1429,12 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
 
       // Manually corrupt the declared output BEFORE the cached re-run.
       await writeFile(path.join(dir, 'out.txt'), 'tampered-locally')
 
-      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('cache-hit')
       expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('from-task\n')
     },
@@ -1457,14 +1457,14 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
 
       // Drop a "stragler" inside the declared output dir — something a
       // prior build (or the user) left behind that the cache snapshot
       // doesn't know about.
       await writeFile(path.join(dir, 'dist/stale.txt'), 'left-over')
 
-      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('cache-hit')
       expect(await readFile(path.join(dir, 'dist/a.txt'), 'utf8')).toBe('a\n')
       expect(existsSync(path.join(dir, 'dist/stale.txt'))).toBe(false)
@@ -1495,7 +1495,7 @@ describe('orchestrator e2e', () => {
       await mkdir(path.join(dir, 'dist'), { recursive: true })
       await writeFile(path.join(dir, 'dist/stale.txt'), 'left-over')
 
-      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('success')
       expect(await readFile(path.join(dir, 'dist/a.txt'), 'utf8')).toBe('a\n')
       expect(existsSync(path.join(dir, 'dist/stale.txt'))).toBe(false)
@@ -1525,7 +1525,7 @@ describe('orchestrator e2e', () => {
 
       const r = await run({
         cwd: fixture.root,
-        task: 'run',
+        tasks: ['run'],
         noCache: true,
         log: silentLogger(fixture),
       })
@@ -1558,19 +1558,19 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       const out1 = await readFile(path.join(dir, 'out.txt'), 'utf8')
 
       // skip.gen.ts is gitignored (matches *.gen.ts) -> editing should NOT bust.
       await writeFile(path.join(dir, 'src/skip.gen.ts'), 'gen-b')
-      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r2 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r2.outcomes[0]?.status).toBe('cache-hit')
       expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe(out1)
 
       // keep.gen.ts is re-included by negated rule -> editing SHOULD bust.
       await new Promise((r) => setTimeout(r, 5))
       await writeFile(path.join(dir, 'src/keep.gen.ts'), 'kept-b')
-      const r3 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r3 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r3.outcomes[0]?.status).toBe('success')
       expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).not.toBe(out1)
     },
@@ -1593,7 +1593,7 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       const out1 = await readFile(path.join(fixture.root, 'packages/wsy/out.txt'), 'utf8')
 
       // Append a comment to pnpm-workspace.yaml. Workspace fingerprint shifts;
@@ -1604,7 +1604,7 @@ describe('orchestrator e2e', () => {
         'packages:\n  - "packages/*"\n# bumped\n',
       )
 
-      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('success')
       expect(await readFile(path.join(fixture.root, 'packages/wsy/out.txt'), 'utf8')).not.toBe(out1)
     },
@@ -1640,7 +1640,7 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       const aOut1 = await readFile(path.join(dirA, 'out.txt'), 'utf8')
       const bOut1 = await readFile(path.join(dirB, 'out.txt'), 'utf8')
 
@@ -1649,7 +1649,7 @@ describe('orchestrator e2e', () => {
       await new Promise((r) => setTimeout(r, 5))
       await writeFile(path.join(dirA, 'src/a.txt'), 'a-v2')
 
-      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       const aOutcome = r.outcomes.find((o) => o.node.id === 'sib-a#run')
       const bOutcome = r.outcomes.find((o) => o.node.id === 'sib-b#run')
       expect(aOutcome?.status).toBe('success')
@@ -1680,7 +1680,7 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      await run({ cwd: fixture.root, task: 'stamp', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['stamp'], log: silentLogger(fixture) })
       expect(existsSync(path.join(fixture.root, 'build/.vx-cache/cache.db'))).toBe(true)
       expect(existsSync(path.join(fixture.root, '.vx/cache'))).toBe(false)
     },
@@ -1715,7 +1715,7 @@ describe('orchestrator e2e', () => {
       })
       const r = await run({
         cwd: fixture.root,
-        task: 'install',
+        tasks: ['install'],
         projects: ['app-shell'],
         log: silentLogger(fixture),
       })
@@ -1728,7 +1728,7 @@ describe('orchestrator e2e', () => {
 
       const r2 = await run({
         cwd: fixture.root,
-        task: 'install',
+        tasks: ['install'],
         projects: ['app-shell'],
         log: silentLogger(fixture),
       })
@@ -1755,7 +1755,7 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      await run({ cwd: fixture.root, task: 'ci', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['ci'], log: silentLogger(fixture) })
       const summary = fixture.log.filter((l) => l.startsWith(' Tasks:') || l.startsWith('Cached:'))
       // Only the executable `build` task counts — the `ci` group is hidden.
       expect(summary[0]).toBe(' Tasks:    1 successful, 1 total')
@@ -1781,7 +1781,7 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      await run({ cwd: fixture.root, task: 'ci', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['ci'], log: silentLogger(fixture) })
 
       const { Database } = await import('bun:sqlite')
       const db = new Database(path.join(fixture.root, '.vx/cache/cache.db'), {
@@ -1815,7 +1815,7 @@ describe('orchestrator e2e', () => {
         `,
       })
 
-      const r = await run({ cwd: fixture.root, task: 'broken', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['broken'], log: silentLogger(fixture) })
       expect(r.ok).toBe(false)
       const o = r.outcomes.find((o) => o.node.id === 'app-fail#broken')
       expect(o?.status).toBe('failed')
@@ -1855,7 +1855,7 @@ describe('orchestrator e2e', () => {
           }
         `,
       })
-      const r = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r.ok).toBe(false)
       const o = r.outcomes.find((o) => o.node.id === 'broken-spawn#run')
       expect(o?.status).toBe('failed')
@@ -1892,11 +1892,11 @@ describe('orchestrator e2e', () => {
         `,
       })
 
-      await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       const first = await readFile(path.join(dir, 'out.txt'), 'utf8')
 
       // Re-run with no changes — cache hit, same out.txt.
-      const r2 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r2 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r2.outcomes[0]?.status).toBe('cache-hit')
 
       // Bump package.json — cache MUST bust now.
@@ -1908,7 +1908,7 @@ describe('orchestrator e2e', () => {
       pkg.dependencies = { 'fake-dep': '^1.2.3' }
       await writeFile(pkgPath, JSON.stringify(pkg, null, 2))
 
-      const r3 = await run({ cwd: fixture.root, task: 'run', log: silentLogger(fixture) })
+      const r3 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r3.outcomes[0]?.status).toBe('success')
       expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).not.toBe(first)
     },

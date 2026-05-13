@@ -25,12 +25,12 @@ function outcome(
 }
 
 describe('formatHeader', () => {
-  it('renders the standard four lines + blanks', () => {
+  it('renders the standard four lines + blanks for a single task', () => {
     expect(
       formatHeader({
         version: '1.2.3',
         packages: ['@vzn/vx'],
-        task: 'lint',
+        tasks: ['lint'],
         remoteCacheEnabled: false,
       }),
     ).toEqual([
@@ -43,11 +43,21 @@ describe('formatHeader', () => {
     ])
   })
 
+  it('lists multiple tasks comma-separated on the Running line', () => {
+    const lines = formatHeader({
+      version: '0.0.0',
+      packages: ['app'],
+      tasks: ['build', 'lint', 'test'],
+      remoteCacheEnabled: false,
+    })
+    expect(lines).toContain('   • Running build, lint, test in 1 package')
+  })
+
   it('pluralizes "packages" past one, and sorts the in-scope list', () => {
     const lines = formatHeader({
       version: '0.0.0',
       packages: ['z', 'a', 'm'],
-      task: 'build',
+      tasks: ['build'],
       remoteCacheEnabled: true,
     })
     expect(lines).toContain('   • Packages in scope: a, m, z')

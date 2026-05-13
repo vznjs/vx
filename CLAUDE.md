@@ -133,6 +133,16 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: Multi-task positional invocation. `vx run build lint
+test` runs all three with a shared graph (Turbo parity). Anchored
+  positionals (`vx run pkg#deploy lint`) resolve directly; bare
+  positionals fan out across the resolved project scope. New
+  `expandRequested(tasks, candidates, projects)` helper in
+  `src/orchestrator.ts` dedupes `{project, task}` pairs across mixed
+  inputs. `RunOptions.task: string` → `RunOptions.tasks: string[]`;
+  parser's single-positional rule replaced with array accumulation.
+  Header `Running ...` line comma-lists the unique task names. PR
+  pending.
 - **2026-05**: dependsOn + cache.inputs.tasks switched to Turbo/Nx
   micro-syntax — a flat `string[]` instead of
   `{ self: [...], dependencies: [...] }`. Entries:

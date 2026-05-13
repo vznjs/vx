@@ -312,7 +312,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
 describe('parseRunArgs', () => {
   it('parses task name with all flags defaulted', () => {
     const r = parseRunArgs(['build'])
-    expect(r.task).toBe('build')
+    expect(r.tasks).toEqual(['build'])
     expect(r.filters).toEqual([])
     expect(r.all).toBe(false)
     expect(r.noCache).toBe(false)
@@ -327,12 +327,12 @@ describe('parseRunArgs', () => {
 
   it('parses pkg#task syntax untouched (split happens later)', () => {
     const r = parseRunArgs(['@scope/web#build'])
-    expect(r.task).toBe('@scope/web#build')
+    expect(r.tasks).toEqual(['@scope/web#build'])
   })
 
   it('parses repeated --filter / -F', () => {
     const r = parseRunArgs(['build', '-F', 'foo', '--filter', '@scope/*'])
-    expect(r.task).toBe('build')
+    expect(r.tasks).toEqual(['build'])
     expect(r.filters).toEqual(['foo', '@scope/*'])
   })
 
@@ -425,14 +425,14 @@ describe('parseRunArgs', () => {
 
   it('captures trailing args after `--` as forwardArgs', () => {
     const r = parseRunArgs(['build', '--', '--watch', '--bail'])
-    expect(r.task).toBe('build')
+    expect(r.tasks).toEqual(['build'])
     expect(r.forwardArgs).toEqual(['--watch', '--bail'])
   })
 
   it('flags before `--` are parsed; flags after are forwarded literally', () => {
     const r = parseRunArgs(['--all', 'build', '--', '--verbosity', '--no-cache'])
     expect(r.all).toBe(true)
-    expect(r.task).toBe('build')
+    expect(r.tasks).toEqual(['build'])
     expect(r.verbosity).toBe(0)
     expect(r.noCache).toBe(false)
     expect(r.forwardArgs).toEqual(['--verbosity', '--no-cache'])
@@ -458,8 +458,16 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--concurrency', 'abc']).error).toMatch(/invalid concurrency/)
   })
 
-  it('rejects double positional', () => {
-    expect(parseRunArgs(['a', 'b']).error).toMatch(/unexpected positional/)
+  it('multiple positionals are collected as tasks (Turbo-style `vx run a b`)', () => {
+    expect(parseRunArgs(['a', 'b']).tasks).toEqual(['a', 'b'])
+  })
+
+  it('mixes bare and pkg#task positionals into tasks', () => {
+    expect(parseRunArgs(['build', 'pkg#deploy', 'lint']).tasks).toEqual([
+      'build',
+      'pkg#deploy',
+      'lint',
+    ])
   })
 })
 
