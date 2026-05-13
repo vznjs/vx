@@ -1909,4 +1909,259 @@ describe('orchestrator e2e', () => {
     },
     TIMEOUT,
   )
+
+  // forwardArgs (`--`) semantics — scoping is the subtle part.
+  // The values are folded into the user-requested task's cache key
+  // but NOT into dependsOn-pulled upstream keys. So `vx run app --
+  // --watch` doesn't partition upstream caches across CLI flags.
+  it(
+    'forwardArgs change the user-requested task cache key (different args -> miss)',
+    async () => {
+      await addProject(fixture.root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              say: {
+                // /usr/bin/true ignores extra args. Output is the empty
+                // file we write before running, so cache.save has something
+                // to capture.
+                exec: { command: 'true' },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+              },
+            },
+          }
+        `,
+      })
+      // First run with one set of forwardArgs.
+      await run({
+        cwd: fixture.root,
+        tasks: ['say'],
+        forwardArgs: ['--alpha'],
+        log: silentLogger(fixture),
+      })
+      // Identical args -> cache hit.
+      const r2 = await run({
+        cwd: fixture.root,
+        tasks: ['say'],
+        forwardArgs: ['--alpha'],
+        log: silentLogger(fixture),
+      })
+      expect(r2.outcomes[0]?.status).toBe('cache-hit')
+      // Different args -> miss (separate entry).
+      const r3 = await run({
+        cwd: fixture.root,
+        tasks: ['say'],
+        forwardArgs: ['--beta'],
+        log: silentLogger(fixture),
+      })
+      expect(r3.outcomes[0]?.status).toBe('success')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'forwardArgs do NOT pollute upstream cache keys (dep stays cached across user-args changes)',
+    async () => {
+      // Two-project graph: app dependsOn lib. lib#build has no
+      // user-requested args; its cache key must NOT depend on the
+      // forwardArgs the user passed for `vx run app#build -- ...`.
+      await addProject(fixture.root, 'lib', {
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: 'true' },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+              },
+            },
+          }
+        `,
+      })
+      await addProject(fixture.root, 'app', {
+        deps: { lib: '*' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: 'true' },
+                dependsOn: ['^build'],
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+              },
+            },
+          }
+        `,
+      })
+
+      // First invocation with --alpha; second with --beta. lib must
+      // cache-hit on the second despite the different forwardArgs.
+      await run({
+        cwd: fixture.root,
+        tasks: ['app#build'],
+        forwardArgs: ['--alpha'],
+        log: silentLogger(fixture),
+      })
+      const r2 = await run({
+        cwd: fixture.root,
+        tasks: ['app#build'],
+        forwardArgs: ['--beta'],
+        log: silentLogger(fixture),
+      })
+      expect(r2.outcomes.find((o) => o.node.id === 'lib#build')?.status).toBe('cache-hit')
+      // app's key DID change (its hash partitioned by forwardArgs) so
+      // its own cache should miss.
+      expect(r2.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'multiple positional tasks share a graph: vx run a b runs both in one invocation',
+    async () => {
+      await addProject(fixture.root, 'p1', {
+        config: `
+          export default {
+            tasks: {
+              a: { exec: { command: "echo a" } },
+              b: { exec: { command: "echo b" } },
+            },
+          }
+        `,
+      })
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['a', 'b'],
+        log: silentLogger(fixture),
+      })
+      expect(r.ok).toBe(true)
+      expect(r.outcomes.map((o) => o.node.id).sort()).toEqual(['p1#a', 'p1#b'])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'mixed bare + anchored positionals run a single shared graph',
+    async () => {
+      // `vx run app#build lint` should: run app#build directly, AND
+      // fan `lint` across every project that declares it. Verify both
+      // appear in outcomes with the right anchoring.
+      await addProject(fixture.root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              build: { exec: { command: "echo app-build" } },
+              lint:  { exec: { command: "echo app-lint" } },
+            },
+          }
+        `,
+      })
+      await addProject(fixture.root, 'lib', {
+        config: `
+          export default {
+            tasks: {
+              lint: { exec: { command: "echo lib-lint" } },
+            },
+          }
+        `,
+      })
+
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['app#build', 'lint'],
+        log: silentLogger(fixture),
+      })
+      expect(r.ok).toBe(true)
+      // app#build runs directly (anchored).
+      const ids = r.outcomes.map((o) => o.node.id).sort()
+      expect(ids).toContain('app#build')
+      // lint fans out across every project that declares it
+      // (--all-equivalent for a programmatic call with projects = undefined).
+      expect(ids).toContain('app#lint')
+      expect(ids).toContain('lib#lint')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'two parallel vx run invocations against the same workspace both complete (SQLITE_BUSY busy_timeout)',
+    async () => {
+      // Both invocations open their own Cache handle against the same
+      // cacheDir; without PRAGMA busy_timeout, one would crash with
+      // SQLITE_BUSY when the other holds the writer lock. Real users
+      // hit this on CI: `vx run lint & vx run test &`.
+      await addProject(fixture.root, 'p', {
+        config: `
+          export default {
+            tasks: {
+              a: {
+                exec: { command: 'true' },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+              },
+              b: {
+                exec: { command: 'true' },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+              },
+            },
+          }
+        `,
+      })
+      const f1 = await makeWorkspace().then((f) => ({
+        ...f,
+        log: fixture.log,
+        err: fixture.err,
+      }))
+      void f1 // reuse the shared fixture for both runs (same root)
+      const [r1, r2] = await Promise.all([
+        run({ cwd: fixture.root, tasks: ['a'], log: silentLogger(fixture) }),
+        run({ cwd: fixture.root, tasks: ['b'], log: silentLogger(fixture) }),
+      ])
+      expect(r1.ok).toBe(true)
+      expect(r2.ok).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'planRun prediction matches the actual run outcome for hit / miss / group',
+    async () => {
+      // Property: for the same workspace + cache state, what planRun
+      // predicts must match what run produces. Catches drift between
+      // `computeTaskHash` and the executor.
+      const { planRun } = await import('../src/orchestrator.js')
+      await addProject(fixture.root, 'p', {
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+              },
+              ci: {
+                dependsOn: ['build'],
+              },
+              dev: {
+                exec: { command: 'echo dev' },
+              },
+            },
+          }
+        `,
+      })
+      // Cold cache: build should be a miss; dev no-cache; ci group.
+      const cold = await planRun({ cwd: fixture.root, tasks: ['ci', 'dev'] })
+      const coldByName = Object.fromEntries(cold.tasks.map((t) => [t.node.id, t.cacheStatus]))
+      expect(coldByName['p#build']).toBe('miss')
+      expect(coldByName['p#ci']).toBe('group')
+      expect(coldByName['p#dev']).toBe('no-cache')
+
+      // Real run populates the cache for build.
+      await run({ cwd: fixture.root, tasks: ['ci', 'dev'], log: silentLogger(fixture) })
+
+      // Warm cache: build now predicts hit-local.
+      const warm = await planRun({ cwd: fixture.root, tasks: ['ci', 'dev'] })
+      const warmByName = Object.fromEntries(warm.tasks.map((t) => [t.node.id, t.cacheStatus]))
+      expect(warmByName['p#build']).toBe('hit-local')
+      expect(warmByName['p#ci']).toBe('group')
+      expect(warmByName['p#dev']).toBe('no-cache')
+    },
+    TIMEOUT,
+  )
 })

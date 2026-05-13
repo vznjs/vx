@@ -114,4 +114,46 @@ describe('shellQuote', () => {
   it('handles empty string', () => {
     expect(shellQuote('')).toBe(`''`)
   })
+
+  // Adversarial inputs — verify quoting survives a literal pass
+  // through `sh -c`. These would be catastrophic without proper
+  // single-quoting; we want command injection to be impossible
+  // through the forwardArgs path.
+  it('quotes shell-injection attempts so they reach the child as literal text', async () => {
+    const { runCommand } = await import('../src/exec/runner.js')
+    const cwd = (await import('node:fs/promises')).mkdtemp(
+      (await import('node:path')).join((await import('node:os')).tmpdir(), 'vx-runner-quote-'),
+    )
+    const dir = await cwd
+    try {
+      const payloads = [
+        `; touch /tmp/vx-pwned-${process.pid}`, // statement injection
+        `$(echo evaluated)`, // command substitution
+        `"hello" world`, // mixed quoting
+        `a 'b' c`, // single quotes inside
+        `a\\b`, // backslash literal
+        `multi
+line`, // embedded newline
+      ]
+      const r = await runCommand({
+        command: 'printf "%s\\n"',
+        cwd: dir,
+        env: { PATH: process.env.PATH ?? '' },
+        forwardArgs: payloads,
+      })
+      expect(r.exitCode).toBe(0)
+      // Each payload survives byte-for-byte (sans the literal newline
+      // payload which prints across two lines — the joined output still
+      // contains the originals).
+      for (const p of payloads) {
+        expect(r.stdout).toContain(p)
+      }
+      // Side effect that injection would have caused: the file MUST
+      // not exist.
+      const { existsSync } = await import('node:fs')
+      expect(existsSync(`/tmp/vx-pwned-${process.pid}`)).toBe(false)
+    } finally {
+      await (await import('node:fs/promises')).rm(dir, { recursive: true, force: true })
+    }
+  })
 })

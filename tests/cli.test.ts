@@ -447,7 +447,146 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
     },
     { timeout: 20_000 },
   )
+
+  it(
+    'editor swap files (~ suffix) are ignored — no re-run cycle',
+    async () => {
+      const path = await import('node:path')
+      const { writeFile } = await import('node:fs/promises')
+
+      let stdout = ''
+      vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk)
+        return true
+      })
+      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+      const cmd = run(['watch', '--all', 'hello'])
+      await waitFor(() => stdout.includes('watching 1 project'))
+
+      // Drop a typical editor swap file. The watch loop should ignore it.
+      await writeFile(
+        path.join(workspaceRoot, 'packages', 'one', 'src', 'index.txt~'),
+        'editor-swap',
+      )
+      // Also write to a node_modules path under the project — must be ignored.
+      await import('node:fs/promises').then((m) =>
+        m.mkdir(path.join(workspaceRoot, 'packages', 'one', 'node_modules', 'dep'), {
+          recursive: true,
+        }),
+      )
+      await writeFile(
+        path.join(workspaceRoot, 'packages', 'one', 'node_modules', 'dep', 'index.js'),
+        'noise',
+      )
+
+      // Give the watch loop a moment; no `re-running` line should appear
+      // after the initial run.
+      await new Promise((r) => setTimeout(r, 400))
+      const reRunCount = (stdout.match(/re-running\.\.\./g) ?? []).length
+      expect(reRunCount).toBe(0)
+
+      process.emit('SIGINT')
+      await cmd
+    },
+    { timeout: 20_000 },
+  )
+
+  it(
+    'rapid file edits collapse into a single re-run cycle (debounce)',
+    async () => {
+      const path = await import('node:path')
+      const { writeFile } = await import('node:fs/promises')
+
+      let stdout = ''
+      vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk)
+        return true
+      })
+      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+      const cmd = run(['watch', '--all', 'hello'])
+      await waitFor(() => stdout.includes('watching 1 project'))
+
+      // Burst-write 5 versions of the same file within < debounce
+      // window. Debounce should collapse to ONE re-run that reads the
+      // final value.
+      const src = path.join(workspaceRoot, 'packages', 'one', 'src', 'index.txt')
+      for (let i = 0; i < 5; i++) {
+        await writeFile(src, `burst-${i}`)
+      }
+      await writeFor('burst-4', () => stdout.includes('burst-4'))
+
+      // Wait an extra debounce window to ensure no further cycles.
+      await new Promise((r) => setTimeout(r, 300))
+      const reRunCount = (stdout.match(/re-running\.\.\./g) ?? []).length
+      // Allow up to 2 cycles in case the burst spanned two debounce
+      // windows; the contract is "doesn't fire 5 cycles for 5 edits".
+      expect(reRunCount).toBeGreaterThanOrEqual(1)
+      expect(reRunCount).toBeLessThanOrEqual(2)
+      expect(stdout).toContain('burst-4')
+
+      process.emit('SIGINT')
+      await cmd
+    },
+    { timeout: 20_000 },
+  )
+
+  it(
+    'workspace-root lockfile changes trigger a cycle (workspace fingerprint)',
+    async () => {
+      const path = await import('node:path')
+      const { writeFile } = await import('node:fs/promises')
+
+      let stdout = ''
+      vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk)
+        return true
+      })
+      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+      const cmd = run(['watch', '--all', 'hello'])
+      await waitFor(() => stdout.includes('watching 1 project'))
+
+      // Touch a lockfile at the root. Should trigger a cycle even
+      // though no project dir saw the change.
+      await writeFile(path.join(workspaceRoot, 'bun.lock'), '# lockfile bump')
+      await waitFor(() => stdout.includes('re-running'))
+
+      process.emit('SIGINT')
+      await cmd
+    },
+    { timeout: 20_000 },
+  )
+
+  it(
+    'SIGTERM also exits the watch loop cleanly',
+    async () => {
+      let stdout = ''
+      vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk)
+        return true
+      })
+      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+      const cmd = run(['watch', '--all', 'hello'])
+      await waitFor(() => stdout.includes('watching 1 project'))
+
+      process.emit('SIGTERM')
+      const code = await cmd
+      expect(code).toBe(0)
+    },
+    { timeout: 20_000 },
+  )
 })
+
+async function writeFor(
+  _label: string,
+  predicate: () => boolean,
+  timeoutMs = 10_000,
+): Promise<void> {
+  await waitFor(predicate, timeoutMs)
+}
 
 async function waitFor(predicate: () => boolean, timeoutMs = 10_000): Promise<void> {
   const start = Date.now()
