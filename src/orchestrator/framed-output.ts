@@ -18,9 +18,10 @@
 // price is no live progress within a task. This matches Turbo's
 // `--ui=stream` mode.
 
-import type { TaskNode } from '../graph/task-graph.js'
+import { isGroupTask, type TaskNode } from '../graph/task-graph.js'
 import type { TaskOutcome } from '../graph/scheduler.js'
 import { paint, type ColorSupport } from './colors.js'
+import { formatDuration } from './summary.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
 
@@ -62,7 +63,7 @@ export function formatTaskBlock(
   // has a single name to address. Showing an empty box for them is
   // pure noise. Same exclusion the summary totals + analytics
   // pass already make.
-  if (node.config.exec === undefined) return ''
+  if (isGroupTask(node)) return ''
 
   const id = node.id
   const idPainted = paint(ACCENT, id, colors, { bold: true })
@@ -73,7 +74,9 @@ export function formatTaskBlock(
   // Show the command for executed tasks so the user sees what ran;
   // skip for cache hits (the captured stdout/stderr is the interesting
   // part).
-  const cmd = node.config.exec.command
+  // isGroupTask early-return above guarantees exec is defined; TS
+  // can't see through the predicate's negation, so we re-narrow.
+  const cmd = node.config.exec?.command ?? ''
   if (outcome.status === 'success') lines.push(paint('', `$ ${cmd}`, colors, { dim: true }))
 
   if (body.length > 0) {
@@ -108,7 +111,7 @@ function formatBlockFooter(o: TaskOutcome, colors: ColorSupport): string {
   // For cache hits it's the *original* exec time the entry was
   // stored with (set by execute-task), not the ~0ms replay cost.
   // Status differs by outcome — see formatStatusTag.
-  const dur = paint('', `(${formatBriefDuration(o.durationMs)})`, colors, { dim: true })
+  const dur = paint('', `(${formatDuration(o.durationMs)})`, colors, { dim: true })
   const tag = formatStatusTag(o, colors)
   return ` ${dur} ${tag}`
 }
@@ -128,9 +131,4 @@ function formatStatusTag(o: TaskOutcome, colors: ColorSupport): string {
     default:
       return o.status
   }
-}
-
-function formatBriefDuration(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  return `${(ms / 1000).toFixed(2)}s`
 }

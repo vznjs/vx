@@ -41,7 +41,7 @@ terminal and a task succeeding or failing. Read it alongside
  │       lockfile + pnpm-workspace.yaml found at the root. Computed
  │       once; reused for every task's cache key.
  │
- ├─ Task selection (orchestrator.ts:expandRequested)
+ ├─ Task selection (graph/task-graph.ts:expandRequested)
  │    Bare task names fan out across the resolved candidate projects
  │    (every project that declares the task). Anchored entries
  │    (`pkg#task`) resolve directly. Duplicates are deduped.

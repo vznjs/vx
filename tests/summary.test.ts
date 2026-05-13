@@ -5,7 +5,11 @@ import type { TaskNode } from '../src/graph/task-graph.js'
 
 function outcome(id: string, status: TaskOutcome['status'], exitCode = 0): TaskOutcome {
   return {
-    node: { id } as TaskNode,
+    // Minimal TaskNode shape, with `exec` set so `isGroupTask` returns
+    // false. The shared `tallyOutcomes` helper filters group tasks
+    // out — `node.config.exec` must be defined for these test
+    // outcomes to count toward the totals.
+    node: { id, config: { exec: { command: 'noop' } } } as TaskNode,
     status,
     exitCode,
     durationMs: 100,

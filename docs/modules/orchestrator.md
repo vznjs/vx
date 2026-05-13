@@ -34,7 +34,6 @@ export interface RunSummary {
 export function run(options: RunOptions): Promise<RunSummary>
 export function planRun(options: RunOptions): Promise<RunPlan>
 
-export { taskId } from './graph/task-graph.js'
 export type { Logger } from './orchestrator/logger.js'
 export type { RunPlan, PlannedTask, CacheStatus } from './orchestrator/plan.js'
 ```
@@ -43,41 +42,40 @@ export type { RunPlan, PlannedTask, CacheStatus } from './orchestrator/plan.js'
 
 1. **Color decision.** Programmatic logger → plain text. Default
    logger → `detectColors()` (NO_COLOR / FORCE_COLOR / isTTY).
-2. **Workspace setup.** `findWorkspaceRoot`, `loadWorkspace`,
-   `loadWorkspaceConfig`, `listProjects`. Each project's
-   `vx.config.*` is loaded; projects without configs are kept in the
-   graph (for package-graph relations) but contribute no tasks.
-3. **`buildPackageGraph` + `computeNestedProjectDirs`.** One pass each
-   over the project list.
-4. **`expandRequested(tasks, candidates, projects)`.** User tasks →
-   concrete `(project, task)[]`. Bare names fan out across scope;
-   anchored entries pass through. Empty result is treated as a CI
-   footgun — we return `{ ok: false, outcomes: [] }`.
-5. **`buildTaskGraph(...)`.** Builds the full DAG.
-6. **Cache setup.** `new Cache(resolveCacheDir(root, workspaceConfig))`
-   then optionally `wrapWithRemoteCache(local, log)`.
-7. **Concurrency** = `options.concurrency ?? workspaceConfig.concurrency
+2. **`prepareRun(options, log)`** (`orchestrator/prepare.ts`) runs the
+   shared setup: `findWorkspaceRoot`, `loadWorkspace`,
+   `loadWorkspaceConfig`, `listProjects`, per-project
+   `loadProjectConfig`, `buildPackageGraph`,
+   `computeNestedProjectDirs`, `expandRequested`, `buildTaskGraph`,
+   `computeWorkspaceFingerprint`, and `new Cache(...) +
+wrapWithRemoteCache`. Returns a `PreparedRun` with the cache
+   handle; **caller owns `cache.close()`**.
+3. **Empty-case handling.** If `prepared.empty !== null`, log the
+   appropriate message (`no-tasks-declared` or `empty-graph`), close
+   the cache, return NOT-ok.
+4. **Concurrency** = `options.concurrency ?? workspaceConfig.concurrency
 ?? navigator.hardwareConcurrency`.
-8. **`computeWorkspaceFingerprint(root)`.** One sha256 reused per task.
-9. **Run-level state.** `runId` (ULID) + `runStartHrTimeNs` anchor +
-   `persistentRegistry` map.
-10. **Header.** Packages-in-scope (the unique projects covered by the
-    graph, including dep-pulled), task names, remote-cache enabled?
-11. **`runGraph(...)`.** Scheduler executes each ready node via
-    `executeTask`. Each finished outcome gets `log.taskComplete`.
-12. **Persistent cleanup.** Every entry in `persistentRegistry` is
-    SIGTERMed; `Promise.allSettled` waits for exits before continuing.
-13. **Summary.** `formatRunSummary` over real tasks (those with
-    `exec`), printed via `log.status`.
-14. **Optional artifacts.** `writeRunSummary` / `writeRunProfile` when
+5. **Run-level state.** `runId` (ULID) + `runStartHrTimeNs` anchor +
+   `persistentRegistry` map. Stays in `run()` — not shared with
+   `planRun()`.
+6. **Header.** Packages-in-scope, task names, remote-cache enabled?
+7. **`runGraph(...)`.** Scheduler executes each ready node via
+   `executeTask`. Each finished outcome gets `log.taskComplete`.
+8. **Persistent cleanup.** Every entry in `persistentRegistry` is
+   SIGTERMed; `Promise.allSettled` waits for exits before continuing.
+9. **Summary.** `formatRunSummary(list, totalMs)` — the shared
+   `tallyOutcomes` helper inside excludes group tasks.
+10. **Optional artifacts.** `writeRunSummary` / `writeRunProfile` when
     `summarize` / `profile` options are set. Errors logged, exit code
     unchanged.
-15. **`recordRun` per real task.** Group tasks skipped.
-16. **`cache.close()`.**
+11. **`recordRun` per real task.** Group tasks skipped (via the
+    shared `isGroupTask` predicate).
+12. **`cache.close()`.**
 
-`planRun()` performs steps 1–9 then delegates to
-`orchestrator/plan.ts:plan(...)`. No scheduler, no spawn, no SIGTERM,
-no recordRun.
+`planRun()` mirrors steps 1–2 via the same `prepareRun`, then
+delegates to `orchestrator/plan.ts:plan(...)` inside a try/finally
+that closes the cache. No scheduler, no spawn, no SIGTERM, no
+recordRun.
 
 ## Forwarded-args scoping
 

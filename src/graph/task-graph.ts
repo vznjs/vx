@@ -31,6 +31,61 @@ export function taskId(project: string, task: string): string {
   return `${project}#${task}`
 }
 
+/**
+ * A task is a "group" if it has no `exec` — it exists only to chain
+ * `dependsOn` (an umbrella for `vx run ci`). Group tasks:
+ *   - never spawn a process,
+ *   - never read/write the cache (it's a config error to declare one),
+ *   - never appear in the run summary or `runs` analytics table,
+ *   - render no framed block in the live output.
+ * Six call sites used to repeat `node.config.exec === undefined`;
+ * centralising the predicate prevents that check from drifting.
+ */
+export function isGroupTask(node: TaskNode): boolean {
+  return node.config.exec === undefined
+}
+
+/**
+ * Expand the user-requested task list into concrete `{project, task}`
+ * pairs the graph builder consumes.
+ *
+ *   - Bare task names (`'build'`) → one entry per project in
+ *     `candidates` that declares the task. Missing in a given project
+ *     is silent (sparse tasks are normal across a workspace).
+ *   - Anchored entries (`'pkg#task'`) → one entry exactly, ignoring
+ *     `candidates`. Silently dropped if pkg/task doesn't exist (the
+ *     CLI's pre-validation catches malformed strings).
+ *
+ * Duplicates are deduped (a user might pass `vx run build pkg#build`).
+ */
+export function expandRequested(
+  tasks: readonly string[],
+  candidates: readonly string[],
+  projects: Map<string, ProjectEntry>,
+): Array<{ project: string; task: string }> {
+  const seen = new Set<string>()
+  const out: Array<{ project: string; task: string }> = []
+  const push = (project: string, task: string): void => {
+    const key = `${project}#${task}`
+    if (seen.has(key)) return
+    seen.add(key)
+    out.push({ project, task })
+  }
+  for (const spec of tasks) {
+    const idx = spec.indexOf('#')
+    if (idx >= 0) {
+      const project = spec.slice(0, idx)
+      const task = spec.slice(idx + 1)
+      if (projects.get(project)?.config.tasks?.[task]) push(project, task)
+      continue
+    }
+    for (const name of candidates) {
+      if (projects.get(name)?.config.tasks?.[spec]) push(name, spec)
+    }
+  }
+  return out
+}
+
 export interface BuildGraphOptions {
   projects: Map<string, ProjectEntry>
   packageGraph: PackageGraph
