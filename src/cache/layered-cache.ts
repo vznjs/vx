@@ -24,6 +24,7 @@ import type {
   PruneResult,
   RunRecord,
   SaveArgs,
+  TaskHistoryMap,
 } from './cache.js'
 import type { RemoteCache } from './remote-cache.js'
 
@@ -32,6 +33,24 @@ export interface LayeredCacheOptions {
   onRemoteError?: (err: Error) => void
   /** Called when a remote miss → local materialization completes. */
   onRemoteHit?: (hash: string, bytes: number) => void
+  /**
+   * Fired once per attempted remote HTTP request: `GET` (read),
+   * `PUT` (write), `HEAD` (existence check; not yet emitted but
+   * reserved for future use). The TUI consumes these via
+   * `Observer.emit({ kind: 'remoteCache', ... })` to drive the
+   * remote-cache stats panel.
+   *
+   * `ok=false` covers both transport errors (caught and reported via
+   * `onRemoteError`) and HTTP non-2xx responses (the RemoteCache
+   * client throws on those too).
+   */
+  onRemoteRequest?: (event: {
+    op: 'GET' | 'PUT' | 'HEAD'
+    hash: string
+    bytes?: number
+    latencyMs: number
+    ok: boolean
+  }) => void
 }
 
 /**
@@ -61,12 +80,26 @@ export class LayeredCache implements CacheLayer {
     if (localHit) return localHit
 
     let remoteResult
+    const t0 = performance.now()
     try {
       remoteResult = await this.remote.get(hash)
     } catch (err) {
+      this.options.onRemoteRequest?.({
+        op: 'GET',
+        hash,
+        latencyMs: performance.now() - t0,
+        ok: false,
+      })
       this.reportRemoteError(err)
       return null
     }
+    this.options.onRemoteRequest?.({
+      op: 'GET',
+      hash,
+      ...(remoteResult ? { bytes: remoteResult.body.byteLength } : {}),
+      latencyMs: performance.now() - t0,
+      ok: true,
+    })
     if (!remoteResult) return null
 
     // Materialize the remote artifact into the local cache so future
@@ -112,10 +145,24 @@ export class LayeredCache implements CacheLayer {
     await this.local.save(args)
     // Stage + upload. Errors are logged, not propagated — the task
     // already succeeded; we don't want to fail it on cache-server issues.
+    const t0 = performance.now()
     try {
       const bytes = await this.stageAndPack(args)
       await this.remote.put(args.hash, bytes, { durationMs: args.entry.durationMs })
+      this.options.onRemoteRequest?.({
+        op: 'PUT',
+        hash: args.hash,
+        bytes: bytes.byteLength,
+        latencyMs: performance.now() - t0,
+        ok: true,
+      })
     } catch (err) {
+      this.options.onRemoteRequest?.({
+        op: 'PUT',
+        hash: args.hash,
+        latencyMs: performance.now() - t0,
+        ok: false,
+      })
       this.reportRemoteError(err)
     }
   }
@@ -126,6 +173,10 @@ export class LayeredCache implements CacheLayer {
 
   stats(): CacheStats {
     return this.local.stats()
+  }
+
+  getTaskHistory(taskIds: readonly string[]): TaskHistoryMap {
+    return this.local.getTaskHistory(taskIds)
   }
 
   async prune(options: PruneOptions): Promise<PruneResult> {

@@ -133,6 +133,41 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: TUI Phase 1 foundation — orchestrator-side scaffolding,
+  no renderer yet. Five focused additions (no behaviour change for
+  non-TUI runs, 414 → 434 tests):
+  1. New `src/orchestrator/observer.ts` exporting a tagged-union
+     `ObserverEvent` (`runStart` | `taskStart` | `taskStdout` |
+     `taskStderr` | `cacheProbe` | `taskComplete` | `remoteCache` |
+     `runEnd`), an `Observer` interface, and `makeSafeObserver(inner)`
+     that swallows throws from `inner.emit` so a buggy TUI never
+     crashes the run. Logger stays parallel — it owns terminal
+     framed-block output; Observer is the structural sink.
+  2. `RunOptions.observer?: Observer` wired through `orchestrator.run()`.
+     Emit sites: `runStart` after header writes; `taskStart` from the
+     scheduler's `onStart` (now `(node, slot)`); `cacheProbe` from
+     `execute-task.ts` after `cache.get(hash)`; `taskComplete` from
+     scheduler's `onFinish`; `runEnd` after `formatRunSummary`.
+  3. `runGraph` now allocates lowest-free-index worker slots and
+     passes `slot: number` to `execute()` + `onStart()`. Stable
+     allocation across runs so a future TUI Workers view renders
+     `[1]` always-busy / `[N]` idle-gap visibly.
+  4. New `Cache.getTaskHistory(taskIds)` — one SQL CTE with
+     `ROW_NUMBER() OVER (PARTITION BY project, task)` capped at 50
+     rows per pair, returns a `TaskHistoryMap` of runs / avg / p50 /
+     p99 / successRate / hitRate / recent[10]. Threaded through
+     `prepareRun` so the `runStart` event carries `historyTable`
+     populated for every node in the graph (cheap; one batched read).
+  5. `LayeredCacheOptions.onRemoteRequest` callback fires for every
+     remote GET/PUT with `{ op, hash, bytes?, latencyMs, ok }`. The
+     orchestrator wires it to `observer.emit({ kind: 'remoteCache',
+... })` in `wrapWithRemoteCache(local, log, observer)`.
+
+  No renderer in this PR — Phase 1's UI components land in the
+  follow-up PR. The orchestrator side is renderer-agnostic by design:
+  the same Observer feeds future `vx ui` historical browser and
+  embedder use cases.
+
 - **2026-05**: Architecture refactor. Three focused changes (no
   behaviour change, all 414 tests still pass):
   1. Extracted `orchestrator/prepare.ts:prepareRun(options, log) ->

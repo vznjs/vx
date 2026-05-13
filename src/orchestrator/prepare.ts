@@ -27,6 +27,7 @@ import { computeNestedProjectDirs } from './nested-dirs.js'
 import { computeWorkspaceFingerprint } from './fingerprint.js'
 import { wrapWithRemoteCache } from './remote-cache-setup.js'
 import type { Logger } from './logger.js'
+import type { Observer, HistoryTable } from './observer.js'
 import type { RunOptions } from '../orchestrator.js'
 
 export interface PreparedRun {
@@ -39,6 +40,14 @@ export interface PreparedRun {
   nodes: Map<string, TaskNode>
   workspaceFingerprint: string
   nestedDirsByProject: Map<string, string[]>
+  /**
+   * Per-task historical aggregates pulled from the `runs` table. Cheap
+   * (one batched SQL transaction) and useful to every downstream:
+   * TUI progress bars / ETAs, `--summarize` JSON enrichment, future
+   * `vx ui` historical browser. Empty map on the no-tasks paths so
+   * consumers never have to null-check.
+   */
+  historyTable: HistoryTable
   /**
    * Reason `nodes` is empty. `null` when the prepared run is ready to
    * execute. Either:
@@ -63,7 +72,14 @@ export interface PreparedRun {
  * caller-specific (run logs + returns NOT-ok; planRun returns an
  * empty plan).
  */
-export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun> {
+export async function prepareRun(
+  options: RunOptions,
+  log: Logger,
+  // Threaded to the LayeredCache wrapper so remote-cache GETs/PUTs
+  // emit `remoteCache` events as they happen. The TUI's RemoteCache
+  // panel reads them directly; non-TUI runs ignore them.
+  observer?: Observer,
+): Promise<PreparedRun> {
   const workspaceRoot = await findWorkspaceRoot(options.cwd)
   const workspace = await loadWorkspace(workspaceRoot)
   const workspaceConfig = await loadWorkspaceConfig(workspaceRoot)
@@ -87,7 +103,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
 
   const cacheDir = resolveCacheDir(workspaceRoot, workspaceConfig)
   const localCache = new Cache(cacheDir)
-  const cache = wrapWithRemoteCache(localCache, log)
+  const cache = wrapWithRemoteCache(localCache, log, observer)
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
   // Empty-cases bookkeeping. We still construct the cache + fingerprint
@@ -103,6 +119,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       nodes: new Map(),
       workspaceFingerprint,
       nestedDirsByProject,
+      historyTable: new Map(),
       empty: 'no-tasks-declared',
     }
   }
@@ -116,6 +133,11 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       : {}),
   })
 
+  // One batched SQL pass to populate ETA / progress / Bottlenecks data
+  // for everything we're about to run. Cheap and safe to do here so
+  // downstream consumers (TUI, --summarize) don't each re-query.
+  const historyTable = cache.getTaskHistory([...nodes.keys()])
+
   return {
     workspaceRoot,
     workspaceConfig,
@@ -126,6 +148,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     nodes,
     workspaceFingerprint,
     nestedDirsByProject,
+    historyTable,
     empty: nodes.size === 0 ? 'empty-graph' : null,
   }
 }

@@ -174,4 +174,113 @@ describe('runGraph', () => {
     })
     expect(received.map((o) => o.node.id)).toEqual(['a'])
   })
+
+  describe('worker slot allocation', () => {
+    it('assigns slot 0 to the first task launched', async () => {
+      const seen = new Map<string, number>()
+      await runGraph({
+        nodes: nodes(node('a#run')),
+        concurrency: 4,
+        execute: async (n, _upstream, slot) => {
+          seen.set(n.id, slot)
+          return success(n)
+        },
+      })
+      expect(seen.get('a#run')).toBe(0)
+    })
+
+    it('assigns disjoint slots to concurrent tasks (lowest free first)', async () => {
+      const slotByTask = new Map<string, number>()
+      const release = new Map<string, () => void>()
+      const inFlightSlots: number[] = []
+
+      const promise = runGraph({
+        nodes: nodes(node('a#run'), node('b#run'), node('c#run')),
+        concurrency: 4,
+        execute: async (n, _upstream, slot) => {
+          slotByTask.set(n.id, slot)
+          inFlightSlots.push(slot)
+          await new Promise<void>((resolve) => release.set(n.id, resolve))
+          return success(n)
+        },
+      })
+
+      // All three should be in-flight on slots 0, 1, 2 in launch order.
+      while (inFlightSlots.length < 3) await Bun.sleep(1)
+      expect([...inFlightSlots].sort((a, b) => a - b)).toEqual([0, 1, 2])
+
+      // Distinct slots, all inside concurrency.
+      expect(new Set(inFlightSlots).size).toBe(3)
+      for (const s of inFlightSlots) expect(s).toBeGreaterThanOrEqual(0)
+      for (const s of inFlightSlots) expect(s).toBeLessThan(4)
+
+      for (const r of release.values()) r()
+      await promise
+    })
+
+    it('reuses the lowest released slot first', async () => {
+      const start = new Map<string, () => void>()
+      const slotsObserved: number[] = []
+      let bSlot = -1
+      let dSlot = -1
+
+      const promise = runGraph({
+        // a + b run first; once a finishes, c+d schedule. c should
+        // grab slot 0 (released by a) before d.
+        nodes: nodes(node('a#run'), node('b#run'), node('c#run'), node('d#run')),
+        concurrency: 2,
+        execute: async (n, _u, slot) => {
+          slotsObserved.push(slot)
+          if (n.id === 'b#run') bSlot = slot
+          if (n.id === 'd#run') dSlot = slot
+          await new Promise<void>((resolve) => start.set(n.id, resolve))
+          return success(n)
+        },
+      })
+
+      while (!start.has('a#run') || !start.has('b#run')) await Bun.sleep(1)
+      // a finishes; c should pick up its slot.
+      start.get('a#run')!()
+      while (!start.has('c#run')) await Bun.sleep(1)
+      start.get('b#run')!()
+      while (!start.has('d#run')) await Bun.sleep(1)
+      start.get('c#run')!()
+      start.get('d#run')!()
+      await promise
+
+      // Both d and c reused freed slots; specifically c (released
+      // first by a) should be on a's slot.
+      expect(bSlot).toBe(1)
+      expect(dSlot).toBe(1)
+      expect(slotsObserved[0]).toBe(0)
+      expect(slotsObserved[1]).toBe(1)
+    })
+
+    it('passes the slot to the onStart callback', async () => {
+      const onStartSlots = new Map<string, number>()
+      await runGraph({
+        nodes: nodes(node('a#run'), node('b#run')),
+        concurrency: 2,
+        onStart: (n, slot) => {
+          onStartSlots.set(n.id, slot)
+        },
+        execute: async (n) => success(n),
+      })
+      expect(onStartSlots.size).toBe(2)
+      expect(new Set(onStartSlots.values())).toEqual(new Set([0, 1]))
+    })
+
+    it('does not pass a slot to skipped dependents (they never run)', async () => {
+      const slots: number[] = []
+      await runGraph({
+        nodes: nodes(node('a'), node('b', ['a'])),
+        concurrency: 2,
+        execute: async (n, _u, slot) => {
+          slots.push(slot)
+          return n.id === 'a' ? failed(n) : success(n)
+        },
+      })
+      expect(slots).toEqual([0])
+    })
+  })
 })

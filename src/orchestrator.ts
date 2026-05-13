@@ -11,12 +11,14 @@ import { executeTask } from './orchestrator/execute-task.ts'
 import { defaultLogger, type Logger } from './orchestrator/logger.ts'
 import { detectColors } from './orchestrator/colors.ts'
 import { formatHeader } from './orchestrator/framed-output.ts'
+import { makeSafeObserver, type Observer } from './orchestrator/observer.ts'
 import { plan, type RunPlan } from './orchestrator/plan.ts'
 import { prepareRun } from './orchestrator/prepare.ts'
 import { writeRunProfile, writeRunSummary } from './orchestrator/run-artifacts.ts'
 import { formatRunSummary } from './orchestrator/summary.ts'
 
 export type { Logger } from './orchestrator/logger.ts'
+export type { Observer, ObserverEvent, HistoryTable, TaskHistory } from './orchestrator/observer.ts'
 
 export interface RunOptions {
   cwd: string
@@ -52,6 +54,13 @@ export interface RunOptions {
    */
   profile?: string
   log?: Logger
+  /**
+   * Optional structural event sink. Independent of `log` — the Logger
+   * owns terminal output (framed blocks); the Observer is a tagged-
+   * union event stream the TUI / dashboards / tests consume. Errors
+   * thrown from `observer.emit` are swallowed and logged to stderr.
+   */
+  observer?: Observer
 }
 
 export interface RunSummary {
@@ -67,7 +76,11 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const colors = options.log ? { enabled: false } : detectColors()
   const log = options.log ?? defaultLogger(colors)
 
-  const prepared = await prepareRun(options, log)
+  // Wrap once so emit sites are unconditional. Throws from a buggy
+  // observer never fail the run.
+  const observer = makeSafeObserver(options.observer)
+
+  const prepared = await prepareRun(options, log, observer)
   if (prepared.empty !== null) {
     // `no-tasks-declared` is almost always a typo in CI; we surface
     // a clear message and return NOT-ok so the script exits 1.
@@ -89,6 +102,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     nodes,
     workspaceFingerprint,
     nestedDirsByProject,
+    historyTable,
   } = prepared
   const concurrency =
     options.concurrency ??
@@ -99,6 +113,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // graph carries it so analytics queries can group by invocation.
   const runId = ulid()
   const runStartHrTimeNs = process.hrtime.bigint()
+  const startedAtMs = Date.now()
+  const remoteCacheEnabled = cache instanceof LayeredCache
 
   // Packages-in-scope for the header: the unique projects covered by
   // the graph (including dependsOn-pulled deps), not just the
@@ -110,11 +126,21 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       version: VERSION,
       packages: [...packagesInScope],
       tasks: [...new Set(options.tasks.map(unanchored))],
-      remoteCacheEnabled: cache instanceof LayeredCache,
+      remoteCacheEnabled,
     },
     colors,
   ))
     log.status(line)
+
+  observer.emit({
+    kind: 'runStart',
+    runId,
+    nodes: [...nodes.values()],
+    concurrency,
+    remoteCacheEnabled,
+    startedAtMs,
+    historyTable,
+  })
 
   // Persistent (long-running) subprocesses — dev servers, watchers.
   // executeTask spawns them but does NOT await their exit; ownership
@@ -125,10 +151,20 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const outcomes = await runGraph({
     nodes,
     concurrency,
-    onStart: () => {
-      // No per-task start line — the framed block renders on completion.
+    onStart: (node, slot) => {
+      // No per-task start line — the framed block renders on
+      // completion. The Observer gets the start event for live UIs.
+      observer.emit({
+        kind: 'taskStart',
+        nodeId: node.id,
+        startNs: process.hrtime.bigint() - runStartHrTimeNs,
+        slot,
+      })
     },
-    onFinish: (o) => log.taskComplete(o.node, o),
+    onFinish: (o) => {
+      log.taskComplete(o.node, o)
+      observer.emit({ kind: 'taskComplete', outcome: o })
+    },
     execute: (node, upstream) =>
       executeTask({
         node,
@@ -139,6 +175,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         noCache: options.noCache ?? false,
         forwardArgs: options.forwardArgs,
         log,
+        observer,
         nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
         runStartHrTimeNs,
         persistentRegistry,
@@ -168,6 +205,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const endedAtMs = Date.now()
   const totalMs = Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000
   for (const line of formatRunSummary(list, totalMs, colors)) log.status(line)
+  observer.emit({ kind: 'runEnd', ok, outcomes: list, totalMs, endedAtMs })
 
   // Optional artifacts. Errors are surfaced to the user but don't
   // change the run's exit code — the run already happened.
@@ -246,7 +284,10 @@ export async function run(options: RunOptions): Promise<RunSummary> {
  */
 export async function planRun(options: RunOptions): Promise<RunPlan> {
   const log = options.log ?? defaultLogger()
-  const prepared = await prepareRun(options, log)
+  // planRun doesn't run tasks — no events to emit. But prepareRun
+  // wants an observer; use the no-op one so callsites don't branch.
+  const observer = makeSafeObserver(undefined)
+  const prepared = await prepareRun(options, log, observer)
   try {
     if (prepared.empty !== null) return { tasks: [] }
     return await plan({

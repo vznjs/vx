@@ -188,6 +188,82 @@ describe('LayeredCache', () => {
     expect(await layered.key(input)).toBe(await local.key(input))
   })
 
+  it('onRemoteRequest fires for GET (hit) with bytes', async () => {
+    // Seed the remote.
+    const seeder = makeLayered()
+    await saveSample(seeder, 'h-cb-get')
+    expect(serverStore.has('h-cb-get')).toBe(true)
+
+    // Fresh local + a layered cache that records the callback events.
+    local.close()
+    await rm(cacheDir, { recursive: true, force: true })
+    local = new Cache(cacheDir)
+
+    const events: Array<{
+      op: 'GET' | 'PUT' | 'HEAD'
+      hash: string
+      bytes?: number
+      latencyMs: number
+      ok: boolean
+    }> = []
+    const layered = new LayeredCache(
+      local,
+      new RemoteCache({ baseUrl: `http://localhost:${server.port}`, token: 'tok' }),
+      { onRemoteRequest: (e) => events.push(e) },
+    )
+
+    await layered.get('h-cb-get')
+    const gets = events.filter((e) => e.op === 'GET')
+    expect(gets).toHaveLength(1)
+    expect(gets[0]?.hash).toBe('h-cb-get')
+    expect(gets[0]?.ok).toBe(true)
+    expect(gets[0]?.bytes).toBeGreaterThan(0)
+    expect(gets[0]?.latencyMs).toBeGreaterThanOrEqual(0)
+  })
+
+  it('onRemoteRequest fires for PUT with bytes', async () => {
+    const events: Array<{
+      op: 'GET' | 'PUT' | 'HEAD'
+      hash: string
+      bytes?: number
+      latencyMs: number
+      ok: boolean
+    }> = []
+    const layered = new LayeredCache(
+      local,
+      new RemoteCache({ baseUrl: `http://localhost:${server.port}`, token: 'tok' }),
+      { onRemoteRequest: (e) => events.push(e), onRemoteError: () => undefined },
+    )
+    await saveSample(layered, 'h-cb-put')
+    const puts = events.filter((e) => e.op === 'PUT' && e.hash === 'h-cb-put')
+    expect(puts).toHaveLength(1)
+    expect(puts[0]?.ok).toBe(true)
+    expect(puts[0]?.bytes).toBeGreaterThan(0)
+  })
+
+  it('onRemoteRequest fires with ok=false on remote failure', async () => {
+    await server.stop(true)
+    server = Bun.serve({ port: 0, fetch: () => new Response(null, { status: 500 }) })
+
+    const events: Array<{
+      op: 'GET' | 'PUT' | 'HEAD'
+      hash: string
+      bytes?: number
+      latencyMs: number
+      ok: boolean
+    }> = []
+    const layered = new LayeredCache(
+      local,
+      new RemoteCache({ baseUrl: `http://localhost:${server.port}`, token: 'tok' }),
+      { onRemoteRequest: (e) => events.push(e), onRemoteError: () => undefined },
+    )
+
+    await saveSample(layered, 'h-cb-fail')
+    const puts = events.filter((e) => e.op === 'PUT' && e.hash === 'h-cb-fail')
+    expect(puts).toHaveLength(1)
+    expect(puts[0]?.ok).toBe(false)
+  })
+
   it('stats() / recordRun() / prune() delegate to local', async () => {
     const layered = makeLayered()
     layered.recordRun({
