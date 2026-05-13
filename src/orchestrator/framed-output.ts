@@ -32,18 +32,20 @@ const ERROR = '#ef4444' // red-500 — failed
 export interface HeaderInput {
   version: string
   packages: readonly string[]
-  task: string
+  /** Display names of the tasks the user requested (already deduped). */
+  tasks: readonly string[]
   remoteCacheEnabled: boolean
 }
 
 export function formatHeader(input: HeaderInput, colors: ColorSupport = NO_COLOR): string[] {
   const sortedPkgs = [...input.packages].sort()
   const bullet = paint(ACCENT, '•', colors)
+  const taskList = input.tasks.length === 1 ? input.tasks[0] : input.tasks.join(', ')
   return [
     `${bullet} ${paint('', `vx ${input.version}`, colors, { bold: true })}`,
     '',
     `   ${bullet} Packages in scope: ${sortedPkgs.join(', ')}`,
-    `   ${bullet} Running ${input.task} in ${sortedPkgs.length} package${sortedPkgs.length === 1 ? '' : 's'}`,
+    `   ${bullet} Running ${taskList} in ${sortedPkgs.length} package${sortedPkgs.length === 1 ? '' : 's'}`,
     `   ${bullet} Remote caching ${input.remoteCacheEnabled ? 'enabled' : 'disabled'}`,
     '',
   ]

@@ -10,13 +10,19 @@ so existing Turbo users can swap in with minimal muscle-memory churn.
 ## Commands
 
 ```
-vx run [OPTIONS] [TASK | PKG#TASK] [-- forwarded-args...]
+vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx cache prune [--older-than <duration>] [--max-size <bytes>]
 vx help
 vx version
 vx --help, -h
 vx --version
 ```
+
+Multiple positional tasks run in one orchestrator invocation with a
+shared task graph: `vx run build lint test` fans out all three across
+the resolved project scope. Anchored entries (`pkg#task`) target a
+specific project; bare entries follow the usual scope rules
+(default = cwd project; `--all` / `--filter` to broaden).
 
 (No `-V` for version; `vx --version` only — matches Turbo.)
 

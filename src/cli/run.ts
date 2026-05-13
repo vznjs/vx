@@ -20,7 +20,13 @@ import {
 import type { TaskOutcome } from '../graph/scheduler.js'
 
 export interface RunArgs {
-  task: string | undefined
+  /**
+   * Positional task names. Each entry is either a bare task (`'build'`)
+   * — applied across the resolved project scope — or anchored as
+   * `'pkg#task'` to target a specific project directly. Multiple
+   * entries run in one orchestrator invocation with a shared graph.
+   */
+  tasks: string[]
   filters: string[]
   all: boolean
   /**
@@ -48,7 +54,7 @@ export interface RunArgs {
 
 export function parseRunArgs(args: readonly string[]): RunArgs {
   const out: RunArgs = {
-    task: undefined,
+    tasks: [],
     filters: [],
     all: false,
     excludeDependencies: [],
@@ -127,10 +133,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     } else if (a !== undefined && a.startsWith('-')) {
       return { ...out, error: `unknown flag: ${a}` }
     } else if (a !== undefined) {
-      if (out.task !== undefined) {
-        return { ...out, error: `unexpected positional: ${a}` }
-      }
-      out.task = a
+      out.tasks.push(a)
     }
   }
 
@@ -153,39 +156,39 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     return 1
   }
 
-  let taskName: string | undefined
-  let pkgAnchor: string | undefined
-
-  if (parsed.task !== undefined) {
-    const hashIdx = parsed.task.indexOf('#')
-    if (hashIdx >= 0) {
-      pkgAnchor = parsed.task.slice(0, hashIdx)
-      taskName = parsed.task.slice(hashIdx + 1)
-      if (!pkgAnchor || !taskName) {
-        process.stderr.write(`vx run: invalid pkg#task: ${parsed.task}\n`)
-        return 1
-      }
-    } else {
-      taskName = parsed.task
-    }
-  }
-
   const cwd = process.cwd()
+  let tasks = [...parsed.tasks]
 
-  if (!taskName) {
+  // No positionals → interactive picker (TTY only). Yields a single
+  // anchored pkg#task; the rest of the pipeline treats it like any
+  // explicit anchored positional.
+  if (tasks.length === 0) {
     if (!process.stdin.isTTY) {
       process.stderr.write(`vx run: missing task name (stdin is not a TTY)\n`)
       return 1
     }
     const picked = await pickTask(cwd)
     if (!picked) return 1
-    pkgAnchor = picked.project
-    taskName = picked.task
+    tasks = [`${picked.project}#${picked.task}`]
+  }
+
+  // Validate each positional. Anchored entries (`pkg#task`) must have
+  // both halves non-empty.
+  for (const t of tasks) {
+    const idx = t.indexOf('#')
+    if (idx >= 0) {
+      const project = t.slice(0, idx)
+      const task = t.slice(idx + 1)
+      if (!project || !task) {
+        process.stderr.write(`vx run: invalid pkg#task: ${t}\n`)
+        return 1
+      }
+    }
   }
 
   // `--affected[=<base>]` is sugar for `--filter '[<base>]'`. Merging
-  // them here means the same code path handles single + combined
-  // filter use, and pkg#task still wins (it's narrower than affected).
+  // it into the filter list means the same code path handles plain
+  // filter use, --affected alone, and the combo.
   const filterStrings = [...parsed.filters]
   if (parsed.affected !== undefined) {
     const root = await findWorkspaceRoot(cwd)
@@ -193,9 +196,13 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     filterStrings.push(`[${base}]`)
   }
 
+  // Project scope applies to bare task names only. Anchored entries
+  // (pkg#task) resolve directly to their own project regardless.
+  const bareTasks = tasks.filter((t) => !t.includes('#'))
   let projects: string[] | undefined
-  if (pkgAnchor) {
-    projects = [pkgAnchor]
+  if (bareTasks.length === 0) {
+    // All positionals are anchored — no need to compute a scope.
+    projects = undefined
   } else if (filterStrings.length > 0) {
     const resolved = await resolveFilters(cwd, filterStrings)
     if (resolved.error) {
@@ -218,7 +225,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
 
   const opts: RunOptions = {
     cwd,
-    task: taskName,
+    tasks,
     noCache: parsed.noCache,
     forwardArgs: parsed.forwardArgs,
   }
@@ -237,7 +244,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   if (parsed.dry !== undefined || parsed.graph !== undefined) {
     const plan = await planRun(opts)
     if (plan.tasks.length === 0) {
-      process.stderr.write(`vx run: no projects declare task "${taskName}".\n`)
+      process.stderr.write(`vx run: no projects declare task(s): ${tasks.join(', ')}.\n`)
       return 1
     }
     if (parsed.graph !== undefined) {
