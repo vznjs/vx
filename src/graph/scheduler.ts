@@ -32,8 +32,14 @@ export interface TaskOutcome {
 export interface ScheduleOptions {
   nodes: Map<string, TaskNode>
   concurrency: number
-  execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
-  onStart?: (node: TaskNode) => void
+  /**
+   * `slot` is a stable lowest-free-index worker slot in `[0, concurrency)`.
+   * Allocated as `execute` is called, released in the task's finally.
+   * Lets dashboards / TUIs render per-slot timelines without inferring
+   * which slot a task ran on from interleaved start events.
+   */
+  execute: (node: TaskNode, upstream: TaskOutcome[], slot: number) => Promise<TaskOutcome>
+  onStart?: (node: TaskNode, slot: number) => void
   onFinish?: (outcome: TaskOutcome) => void
 }
 
@@ -47,6 +53,14 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   const outcomes = new Map<string, TaskOutcome>()
   const remaining = new Set(nodes.keys())
   const inFlight = new Set<string>()
+
+  // Free-list of worker slots. Lowest-free-index allocation keeps a
+  // task that's almost always running pinned to slot 0; idle gaps on
+  // higher slot indices stay visible. Stable assignment matters more
+  // to TUI consumers than any scheduling fairness — we already pick
+  // tasks by ready-order.
+  const freeSlots: number[] = Array.from({ length: concurrency }, (_, i) => i)
+  const slotOf = new Map<string, number>()
 
   return new Promise<Map<string, TaskOutcome>>((resolve) => {
     let active = 0
@@ -84,14 +98,28 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         active++
         inFlight.add(id)
         remaining.delete(id)
-        onStart?.(node)
+        // shift() returns the lowest-index free slot; we already gated
+        // on `active < concurrency`, so this is always defined.
+        const slot = freeSlots.shift() as number
+        slotOf.set(id, slot)
+        onStart?.(node, slot)
 
         const upstreamDefined = upstream.filter((u): u is TaskOutcome => u !== undefined)
-        execute(node, upstreamDefined)
+        const releaseSlot = (): void => {
+          const s = slotOf.get(id)
+          if (s !== undefined) {
+            slotOf.delete(id)
+            // Insert at the head so the next acquire picks the lowest index.
+            freeSlots.unshift(s)
+            freeSlots.sort((a, b) => a - b)
+          }
+        }
+        execute(node, upstreamDefined, slot)
           .then((outcome) => {
             outcomes.set(id, outcome)
             inFlight.delete(id)
             active--
+            releaseSlot()
             onFinish?.(outcome)
             tick()
           })
@@ -111,6 +139,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             outcomes.set(id, outcome)
             inFlight.delete(id)
             active--
+            releaseSlot()
             onFinish?.(outcome)
             process.stderr.write(`[vx] internal error in ${id}: ${message}\n`)
             tick()

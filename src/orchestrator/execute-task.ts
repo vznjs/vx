@@ -7,6 +7,7 @@ import { runCommand, runPersistent } from '../exec/runner.js'
 import type { TaskOutcome } from '../graph/scheduler.js'
 import { isGroupTask, type TaskNode } from '../graph/task-graph.js'
 import type { Logger } from './logger.js'
+import type { Observer } from './observer.js'
 import { filterUpstreamHashes } from './upstream.js'
 
 export interface ExecuteArgs {
@@ -18,6 +19,12 @@ export interface ExecuteArgs {
   noCache: boolean
   forwardArgs?: readonly string[] | undefined
   log: Logger
+  /**
+   * Structural event sink. Wrapped via `makeSafeObserver` at the
+   * orchestrator boundary so `emit` is always safe. Used here for the
+   * `cacheProbe` event after the local + remote lookup resolves.
+   */
+  observer?: Observer
   nestedProjectDirs: string[]
   /** Anchor for hrtime spans across all tasks in this run. */
   runStartHrTimeNs: bigint
@@ -229,6 +236,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   if (cacheEnabled) {
     const cacheOpStart = performance.now()
     const hit = await cache.get(hash)
+    args.observer?.emit({
+      kind: 'cacheProbe',
+      nodeId: node.id,
+      status: hit ? (hit.source === 'remote' ? 'hit-remote' : 'hit-local') : 'miss',
+    })
     if (hit) {
       if (outputs.length > 0) await cleanOutputs(cleanArgs)
       await cache.restoreOutputs(hash, node.projectDir)
@@ -244,6 +256,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         hash,
       }
     }
+  } else {
+    args.observer?.emit({ kind: 'cacheProbe', nodeId: node.id, status: 'no-cache' })
   }
 
   // Cache miss path (or caching disabled). Clean declared outputs

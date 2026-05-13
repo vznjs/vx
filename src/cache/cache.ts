@@ -117,6 +117,24 @@ export interface CacheStats {
   hitCountLast24h: number
 }
 
+/**
+ * Per-task aggregates pulled from the `runs` table for ETA + progress
+ * estimation in the TUI / dashboards. Capped at 50 most-recent rows
+ * per `(project, task)`; `recent` is the top 10 for live-rendering.
+ */
+export interface TaskHistoryRow {
+  runs: number
+  avgMs: number
+  p50Ms: number
+  p99Ms: number
+  successRate: number
+  hitRate: number
+  recent: { startedAt: number; durationMs: number; status: string; hash: string }[]
+}
+
+/** Keyed by `${project}#${task}`. Missing keys = never-run-before task. */
+export type TaskHistoryMap = Map<string, TaskHistoryRow>
+
 export interface PruneOptions {
   /** Drop entries last accessed before this ms-epoch threshold. */
   olderThanMs?: number
@@ -150,6 +168,12 @@ export interface CacheLayer {
   }): Promise<void>
   recordRun(run: RunRecord): void
   stats(): CacheStats
+  /**
+   * Batched lookup of per-`(project, task)` aggregates over the most
+   * recent 50 runs per pair. One SQL transaction; cheap enough to run
+   * unconditionally at `runStart`.
+   */
+  getTaskHistory(taskIds: readonly string[]): TaskHistoryMap
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
 }
@@ -443,6 +467,117 @@ export class Cache implements CacheLayer {
       runCountLast24h: runs.total,
       hitCountLast24h: runs.hits,
     }
+  }
+
+  getTaskHistory(taskIds: readonly string[]): TaskHistoryMap {
+    const out: TaskHistoryMap = new Map()
+    if (taskIds.length === 0) return out
+
+    // Decompose `${project}#${task}` once. Skip malformed ids defensively.
+    const pairs: { project: string; task: string; key: string }[] = []
+    for (const id of taskIds) {
+      const i = id.indexOf('#')
+      if (i < 0) continue
+      pairs.push({ project: id.slice(0, i), task: id.slice(i + 1), key: id })
+    }
+    if (pairs.length === 0) return out
+
+    // SQLite doesn't allow tuple IN (?, ?) parameter binding, so we
+    // build a `(project, task) IN (VALUES (?, ?), (?, ?), ...)` clause
+    // for the row-fetch query; the per-pair fanout for aggregates uses
+    // a CTE-based window function to cap at 50 rows per pair.
+    const placeholders = pairs.map(() => '(?, ?)').join(', ')
+    const bindings: string[] = []
+    for (const p of pairs) {
+      bindings.push(p.project, p.task)
+    }
+
+    // Pull the 50 most-recent rows per (project, task). We do the
+    // aggregation client-side (cheap; ≤ 50 × N rows) so we avoid
+    // depending on SQLite extensions for percentile_cont.
+    const rows = this.db
+      .prepare(
+        `
+        WITH ranked AS (
+          SELECT project, task, started_at, ended_at, duration_ms, status, hash, cache_hit,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY project, task
+                   ORDER BY started_at DESC
+                 ) AS rn
+            FROM runs
+           WHERE (project, task) IN (VALUES ${placeholders})
+        )
+        SELECT project, task, started_at, duration_ms, status, hash, cache_hit
+          FROM ranked
+         WHERE rn <= 50
+         ORDER BY project, task, started_at DESC
+        `,
+      )
+      .all(...bindings) as Array<{
+      project: string
+      task: string
+      started_at: number
+      duration_ms: number
+      status: string
+      hash: string
+      cache_hit: number | null
+    }>
+
+    // Group rows in-order (the SQL ORDER BY guarantees per-key
+    // contiguity, and within each key newest-first).
+    type Row = (typeof rows)[number]
+    const grouped = new Map<string, Row[]>()
+    for (const r of rows) {
+      const key = `${r.project}#${r.task}`
+      let bucket = grouped.get(key)
+      if (!bucket) {
+        bucket = []
+        grouped.set(key, bucket)
+      }
+      bucket.push(r)
+    }
+
+    for (const [key, bucket] of grouped) {
+      const runs = bucket.length
+      let sum = 0
+      let successes = 0
+      let hits = 0
+      const sortedDurations: number[] = []
+      for (const r of bucket) {
+        sum += r.duration_ms
+        if (r.status === 'success' || r.status === 'cache-hit' || r.status === 'cache-hit-remote') {
+          successes++
+        }
+        if (r.cache_hit === 1) hits++
+        sortedDurations.push(r.duration_ms)
+      }
+      sortedDurations.sort((a, b) => a - b)
+      const p = (q: number): number => {
+        if (sortedDurations.length === 0) return 0
+        const idx = Math.min(
+          sortedDurations.length - 1,
+          Math.floor(q * (sortedDurations.length - 1)),
+        )
+        return sortedDurations[idx] ?? 0
+      }
+
+      out.set(key, {
+        runs,
+        avgMs: sum / runs,
+        p50Ms: p(0.5),
+        p99Ms: p(0.99),
+        successRate: successes / runs,
+        hitRate: hits / runs,
+        recent: bucket.slice(0, 10).map((r) => ({
+          startedAt: r.started_at,
+          durationMs: r.duration_ms,
+          status: r.status,
+          hash: r.hash,
+        })),
+      })
+    }
+
+    return out
   }
 
   async prune(options: PruneOptions): Promise<PruneResult> {
