@@ -49,6 +49,13 @@ export interface PreparedRun {
    */
   historyTable: HistoryTable
   /**
+   * Per-run memo for `git ls-files` output, keyed by project dir.
+   * Without this, every task in a project re-spawns git just to
+   * enumerate its input file set (3× per project for build / test /
+   * lint, etc.) — observable in cache-hit run times.
+   */
+  gitFilesCache: Map<string, readonly string[] | null>
+  /**
    * Reason `nodes` is empty. `null` when the prepared run is ready to
    * execute. Either:
    *   - `'no-tasks-declared'` — `requested.length === 0` after the
@@ -85,10 +92,18 @@ export async function prepareRun(
   const workspaceConfig = await loadWorkspaceConfig(workspaceRoot)
   const projectMetas = await listProjects(workspace)
 
+  // Load every project's `vx.config.*` in parallel. Each load is a
+  // `jiti`/Bun import call; bunched across 100 projects this is the
+  // biggest single overhead in startup.
   const projects = new Map<string, ProjectEntry>()
-  for (const meta of projectMetas) {
-    if (!meta.configPath) continue
-    const config: ProjectConfig = await loadProjectConfig(meta.configPath)
+  const projectsWithConfigs = projectMetas.filter(
+    (m): m is typeof m & { configPath: string } =>
+      typeof m.configPath === 'string' && m.configPath.length > 0,
+  )
+  const configs = await Promise.all(projectsWithConfigs.map((m) => loadProjectConfig(m.configPath)))
+  for (let i = 0; i < projectsWithConfigs.length; i++) {
+    const meta = projectsWithConfigs[i]!
+    const config = configs[i] as ProjectConfig
     projects.set(meta.name, { name: meta.name, dir: meta.dir, config })
   }
 
@@ -106,6 +121,8 @@ export async function prepareRun(
   const cache = wrapWithRemoteCache(localCache, log, observer)
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
+  const gitFilesCache = new Map<string, readonly string[] | null>()
+
   // Empty-cases bookkeeping. We still construct the cache + fingerprint
   // so the caller's try/finally pattern can close it uniformly.
   if (requested.length === 0) {
@@ -120,6 +137,7 @@ export async function prepareRun(
       workspaceFingerprint,
       nestedDirsByProject,
       historyTable: new Map(),
+      gitFilesCache,
       empty: 'no-tasks-declared',
     }
   }
@@ -149,6 +167,7 @@ export async function prepareRun(
     workspaceFingerprint,
     nestedDirsByProject,
     historyTable,
+    gitFilesCache,
     empty: nodes.size === 0 ? 'empty-graph' : null,
   }
 }

@@ -1,7 +1,7 @@
 import path from 'node:path'
 import type { ExecConfig, TaskConfig, CacheConfig } from '../config.js'
 import type { CacheLayer } from '../cache/cache.js'
-import { cleanOutputs, resolveInputs, resolveOutputs } from '../cache/inputs.js'
+import { cleanOutputs, outputsMatchCache, resolveInputs, resolveOutputs } from '../cache/inputs.js'
 import { buildIsolatedEnv } from '../exec/env.js'
 import { runCommand, runPersistent } from '../exec/runner.js'
 import type { TaskOutcome } from '../graph/scheduler.js'
@@ -34,6 +34,8 @@ export interface ExecuteArgs {
    * can SIGTERM it once the rest of the graph finishes.
    */
   persistentRegistry?: Map<string, ReturnType<typeof Bun.spawn>>
+  /** Per-run memo for `git ls-files` (one entry per project dir). */
+  gitFilesCache?: Map<string, readonly string[] | null>
 }
 
 export interface ComputeHashArgs {
@@ -44,6 +46,7 @@ export interface ComputeHashArgs {
   cache: CacheLayer
   forwardArgs?: readonly string[] | undefined
   nestedProjectDirs: string[]
+  gitFilesCache?: Map<string, readonly string[] | null>
 }
 
 /**
@@ -70,6 +73,7 @@ export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
     inputs: cacheCfg?.inputs,
     ownOutputs: outputs,
     nestedProjectDirs: args.nestedProjectDirs,
+    ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
   })
 
   const upstreamHashes = filterUpstreamHashes(
@@ -222,6 +226,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     cache,
     forwardArgs: args.forwardArgs,
     nestedProjectDirs: args.nestedProjectDirs,
+    ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
   })
 
   const cleanArgs = {
@@ -242,8 +247,21 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       status: hit ? (hit.source === 'remote' ? 'hit-remote' : 'hit-local') : 'miss',
     })
     if (hit) {
-      if (outputs.length > 0) await cleanOutputs(cleanArgs)
-      await cache.restoreOutputs(hash, node.projectDir)
+      // Skip clean+restore when the on-disk outputs already match the
+      // cached snapshot exactly (bidirectional stat-based set compare).
+      // Saves the rm + copy walk on back-to-back `vx run` invocations.
+      const skipMaterialize =
+        outputs.length > 0 &&
+        (await outputsMatchCache({
+          projectDir: node.projectDir,
+          outputsDir: cache.outputsPath(hash),
+          outputs,
+          nestedProjectDirs: args.nestedProjectDirs,
+        }))
+      if (!skipMaterialize) {
+        if (outputs.length > 0) await cleanOutputs(cleanArgs)
+        await cache.restoreOutputs(hash, node.projectDir)
+      }
       if (hit.stdout) log.taskStdout(node, hit.stdout)
       if (hit.stderr) log.taskStderr(node, hit.stderr)
       const status =

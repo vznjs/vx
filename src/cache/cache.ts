@@ -13,14 +13,14 @@
 //   recordRun       : append a row to the run history table (for stats)
 //   close           : release the SQLite handle
 
-import { Database } from 'bun:sqlite'
+import { Database, type SQLQueryBindings } from 'bun:sqlite'
 import { existsSync, mkdirSync } from 'node:fs'
 import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { relPosix } from '../util/paths.js'
 
 const CACHE_VERSION = 'vx-cache-v14'
-const SCHEMA_VERSION = 'v11'
+const SCHEMA_VERSION = 'v12'
 
 export interface CacheKeyInput {
   taskId: string
@@ -167,7 +167,21 @@ export interface CacheLayer {
     outputFiles: string[]
   }): Promise<void>
   recordRun(run: RunRecord): void
+  /**
+   * Append every run in `runs` to the history in a single SQLite
+   * transaction. ~10× faster than calling `recordRun` in a loop when
+   * `runs.length > ~50` (one fsync vs. N).
+   */
+  recordRuns(runs: readonly RunRecord[]): void
   stats(): CacheStats
+  /**
+   * Absolute path to the on-disk outputs directory for a hash —
+   * `<cacheDir>/<hash>/outputs/`. Returns the path whether or not
+   * the entry exists; callers stat to find out. Used by the cache-
+   * hit fast-path to compare on-disk outputs to the cached snapshot
+   * before deciding whether to clean+restore.
+   */
+  outputsPath(hash: string): string
   /**
    * Batched lookup of per-`(project, task)` aggregates over the most
    * recent 50 runs per pair. One SQL transaction; cheap enough to run
@@ -206,6 +220,8 @@ export class Cache implements CacheLayer {
   private readonly selectEntry: ReturnType<Database['prepare']>
   private readonly bumpAccessed: ReturnType<Database['prepare']>
   private readonly insertRun: ReturnType<Database['prepare']>
+  private readonly selectFileHash: ReturnType<Database['prepare']>
+  private readonly upsertFileHash: ReturnType<Database['prepare']>
 
   constructor(private readonly cacheDir: string) {
     // Ensure the directory exists before opening the DB — bun:sqlite
@@ -266,6 +282,18 @@ export class Cache implements CacheLayer {
       CREATE INDEX IF NOT EXISTS runs_started_at ON runs(started_at);
       CREATE INDEX IF NOT EXISTS runs_project    ON runs(project, task);
       CREATE INDEX IF NOT EXISTS runs_run_id     ON runs(run_id);
+      -- Per-file (mtime, size, sha256) cache. Lets Cache.key() skip
+      -- the content-hash on inputs whose stat hasnt changed since
+      -- the last run. Pure performance optimization; the sha256 we
+      -- store is the exact same one content-hashing would compute,
+      -- so the cache key derivation is unchanged.
+      CREATE TABLE IF NOT EXISTS file_hashes (
+        path        TEXT PRIMARY KEY,
+        mtime_ms    INTEGER NOT NULL,
+        size_bytes  INTEGER NOT NULL,
+        sha256      TEXT NOT NULL,
+        seen_at     INTEGER NOT NULL
+      );
     `)
 
     const meta = this.db.prepare("SELECT value FROM schema_meta WHERE key = 'version'").get() as
@@ -305,6 +333,52 @@ export class Cache implements CacheLayer {
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,  ?, ?, ?)
     `)
+    this.selectFileHash = this.db.prepare(
+      'SELECT mtime_ms, size_bytes, sha256 FROM file_hashes WHERE path = ?',
+    )
+    this.upsertFileHash = this.db.prepare(`
+      INSERT INTO file_hashes(path, mtime_ms, size_bytes, sha256, seen_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(path) DO UPDATE SET
+        mtime_ms   = excluded.mtime_ms,
+        size_bytes = excluded.size_bytes,
+        sha256     = excluded.sha256,
+        seen_at    = excluded.seen_at
+    `)
+  }
+
+  /**
+   * Content-hash a file with an mtime+size fast path. If the
+   * `file_hashes` table has a row for `path` whose `(mtime_ms,
+   * size_bytes)` match the current stat, we reuse the stored sha256
+   * (a memory + SQLite lookup, no disk read). Otherwise we read +
+   * hash + upsert.
+   *
+   * This produces the exact same hash a fresh content-hash would, so
+   * the cache key derivation is unchanged. Pure performance win.
+   */
+  async hashFile(filePath: string): Promise<string> {
+    const statSync = (await import('node:fs')).statSync
+    let stat
+    try {
+      stat = statSync(filePath)
+    } catch {
+      // Caller is responsible for skipping files that don't exist;
+      // fall through to the content-hash path which will throw with
+      // a more useful error.
+      return await hashFileFromDisk(filePath)
+    }
+    const mtimeMs = Math.floor(stat.mtimeMs)
+    const size = stat.size
+    const row = this.selectFileHash.get(filePath) as
+      | { mtime_ms: number; size_bytes: number; sha256: string }
+      | undefined
+    if (row && row.mtime_ms === mtimeMs && row.size_bytes === size) {
+      return row.sha256
+    }
+    const sha = await hashFileFromDisk(filePath)
+    this.upsertFileHash.run(filePath, mtimeMs, size, sha, Date.now())
+    return sha
   }
 
   async key(input: CacheKeyInput): Promise<string> {
@@ -328,10 +402,15 @@ export class Cache implements CacheLayer {
 
     const sortedInputs = [...input.inputFiles].sort()
     h.update(`inputs:${sortedInputs.length}\n`)
-    for (const file of sortedInputs) {
+    // Hash in parallel via the mtime+size fast-path. Unchanged files
+    // reuse the stored sha256 (no disk read); changed/new files do the
+    // full content hash and upsert. Hashes are identical to what a
+    // fresh content-hash would produce, so the cache key is unchanged.
+    const fileHashes = await Promise.all(sortedInputs.map((f) => this.hashFile(f)))
+    for (let i = 0; i < sortedInputs.length; i++) {
+      const file = sortedInputs[i]!
       const rel = relPosix(input.workspaceRoot, file)
-      const fileHash = await hashFile(file)
-      h.update(`${rel}\0${fileHash}\n`)
+      h.update(`${rel}\0${fileHashes[i]!}\n`)
     }
 
     return h.digest('hex')
@@ -367,6 +446,10 @@ export class Cache implements CacheLayer {
       storedAt: new Date(row.created_at).toISOString(),
       source: 'local',
     }
+  }
+
+  outputsPath(hash: string): string {
+    return this.outputsDir(hash)
   }
 
   async restoreOutputs(hash: string, projectDir: string): Promise<void> {
@@ -430,25 +513,23 @@ export class Cache implements CacheLayer {
   }
 
   recordRun(run: RunRecord): void {
-    this.insertRun.run(
-      run.hash,
-      run.project,
-      run.task,
-      run.status,
-      run.exitCode,
-      run.durationMs,
-      run.forwardArgs ? JSON.stringify(run.forwardArgs) : null,
-      run.startedAt,
-      run.endedAt,
-      run.runId ?? null,
-      run.cpuMs ?? null,
-      run.peakRssBytes ?? null,
-      run.wallclockStartNs !== undefined ? run.wallclockStartNs : null,
-      run.wallclockEndNs !== undefined ? run.wallclockEndNs : null,
-      run.cacheHit === undefined ? null : run.cacheHit ? 1 : 0,
-      run.bytesUploaded ?? null,
-      run.bytesDownloaded ?? null,
-    )
+    this.insertRun.run(...bindRun(run))
+  }
+
+  recordRuns(runs: readonly RunRecord[]): void {
+    if (runs.length === 0) return
+    if (runs.length === 1) {
+      this.insertRun.run(...bindRun(runs[0]!))
+      return
+    }
+    // `bun:sqlite`'s `transaction()` returns a callable that wraps the
+    // body in BEGIN/COMMIT, fsyncing once at the end. For a 200-task
+    // run that's one fsync instead of 200.
+    const insert = this.insertRun
+    const tx = this.db.transaction((batch: readonly RunRecord[]) => {
+      for (const r of batch) insert.run(...bindRun(r))
+    })
+    tx(runs)
   }
 
   stats(): CacheStats {
@@ -652,6 +733,33 @@ export class Cache implements CacheLayer {
   }
 }
 
+/**
+ * Bind a RunRecord to the positional parameters expected by the
+ * `insertRun` prepared statement (17 columns). Shared between the
+ * single and batched record paths.
+ */
+function bindRun(run: RunRecord): SQLQueryBindings[] {
+  return [
+    run.hash,
+    run.project,
+    run.task,
+    run.status,
+    run.exitCode,
+    run.durationMs,
+    run.forwardArgs ? JSON.stringify(run.forwardArgs) : null,
+    run.startedAt,
+    run.endedAt,
+    run.runId ?? null,
+    run.cpuMs ?? null,
+    run.peakRssBytes ?? null,
+    run.wallclockStartNs !== undefined ? run.wallclockStartNs : null,
+    run.wallclockEndNs !== undefined ? run.wallclockEndNs : null,
+    run.cacheHit === undefined ? null : run.cacheHit ? 1 : 0,
+    run.bytesUploaded ?? null,
+    run.bytesDownloaded ?? null,
+  ]
+}
+
 function splitTaskId(id: string): [string, string] {
   const i = id.indexOf('#')
   if (i < 0) return [id, '']
@@ -678,7 +786,7 @@ async function listRelativeFiles(root: string, sub = ''): Promise<string[]> {
   return out.sort()
 }
 
-async function hashFile(filePath: string): Promise<string> {
+async function hashFileFromDisk(filePath: string): Promise<string> {
   const h = new Bun.CryptoHasher('sha256')
   // Bun.file(...).stream() yields Uint8Array chunks lazily — no
   // whole-file load into memory even for large artifacts. Async-iterable.
