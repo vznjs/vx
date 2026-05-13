@@ -26,6 +26,7 @@ import {
 import { computeNestedProjectDirs } from './nested-dirs.js'
 import { computeWorkspaceFingerprint } from './fingerprint.js'
 import { wrapWithRemoteCache } from './remote-cache-setup.js'
+import { createHashCache, type HashCache } from './execute-task.js'
 import type { Logger } from './logger.js'
 import type { Observer, HistoryTable } from './observer.js'
 import type { RunOptions } from '../orchestrator.js'
@@ -55,6 +56,14 @@ export interface PreparedRun {
    * lint, etc.) — observable in cache-hit run times.
    */
   gitFilesCache: Map<string, readonly string[] | null>
+  /**
+   * Per-run memo for derived hashes — project package.json bytes
+   * keyed by projectDir, task-config hash keyed by config object
+   * identity. Shared across every task's `computeTaskHash` call so
+   * the same project's package.json (and the same task config
+   * object) aren't re-hashed on every task in that project.
+   */
+  hashCache: HashCache
   /**
    * Reason `nodes` is empty. `null` when the prepared run is ready to
    * execute. Either:
@@ -122,6 +131,7 @@ export async function prepareRun(
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
   const gitFilesCache = new Map<string, readonly string[] | null>()
+  const hashCache = createHashCache()
 
   // Empty-cases bookkeeping. We still construct the cache + fingerprint
   // so the caller's try/finally pattern can close it uniformly.
@@ -138,6 +148,7 @@ export async function prepareRun(
       nestedDirsByProject,
       historyTable: new Map(),
       gitFilesCache,
+      hashCache,
       empty: 'no-tasks-declared',
     }
   }
@@ -168,6 +179,7 @@ export async function prepareRun(
     nestedDirsByProject,
     historyTable,
     gitFilesCache,
+    hashCache,
     empty: nodes.size === 0 ? 'empty-graph' : null,
   }
 }

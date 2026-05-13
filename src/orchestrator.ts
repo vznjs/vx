@@ -105,6 +105,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     nestedDirsByProject,
     historyTable,
     gitFilesCache,
+    hashCache,
   } = prepared
   const concurrency =
     options.concurrency ??
@@ -182,6 +183,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         runStartHrTimeNs,
         persistentRegistry,
         gitFilesCache,
+        hashCache,
       }),
   })
 
@@ -304,6 +306,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       forwardArgs: options.forwardArgs,
       nestedDirsByProject: prepared.nestedDirsByProject,
       gitFilesCache: prepared.gitFilesCache,
+      hashCache: prepared.hashCache,
     })
   } finally {
     prepared.cache.close()

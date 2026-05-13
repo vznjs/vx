@@ -175,6 +175,15 @@ export interface CacheLayer {
   recordRuns(runs: readonly RunRecord[]): void
   stats(): CacheStats
   /**
+   * Content-hash a file with an mtime+size fast path. If the
+   * `(mtime_ms, size_bytes)` of `filePath` match a previously seen
+   * row, return the stored sha256 instead of re-reading the bytes.
+   * Otherwise read + hash + upsert. The hash is byte-for-byte
+   * identical to what a fresh content-hash would produce — pure
+   * optimization, no cache-key change.
+   */
+  hashFile(filePath: string): Promise<string>
+  /**
    * Absolute path to the on-disk outputs directory for a hash —
    * `<cacheDir>/<hash>/outputs/`. Returns the path whether or not
    * the entry exists; callers stat to find out. Used by the cache-

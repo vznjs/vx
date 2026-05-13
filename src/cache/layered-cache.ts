@@ -141,6 +141,10 @@ export class LayeredCache implements CacheLayer {
     return this.local.outputsPath(hash)
   }
 
+  async hashFile(filePath: string): Promise<string> {
+    return await this.local.hashFile(filePath)
+  }
+
   async restoreOutputs(hash: string, projectDir: string): Promise<void> {
     await this.local.restoreOutputs(hash, projectDir)
   }
