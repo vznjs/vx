@@ -1,8 +1,6 @@
-// Bottom keymap hint. Three modes:
-//   - filterEditing → shows "/" prompt + the in-progress filter,
-//     plus Enter/Esc hints
-//   - showHelp → "press ? to close"
-//   - default → context-sensitive hints based on the active view
+// Single padded line. Three modes (filterEditing, showHelp, default);
+// each composes a single string then pads to full width so the
+// painter never leaves stale cells on mode transitions.
 
 import type React from 'react'
 
@@ -23,57 +21,43 @@ const VIEW_HINTS: Record<1 | 2 | 3 | 4 | 5, string> = {
   5: 'Queue',
 }
 
+function viewHint(activeView: 1 | 2 | 3 | 4 | 5, selectedTaskId: string | undefined): string {
+  switch (activeView) {
+    case 1:
+      return selectedTaskId
+        ? 'j/k select · enter detail · / filter · ? help · q quit'
+        : 'j/k select · / filter · ? help · 1-5 switch · q quit'
+    case 2:
+      return '/ filter · ? help · 1-5 switch · q quit'
+    case 3:
+      return '1-5 switch · / filter · ? help · q quit'
+    case 4:
+      return '1-5 switch · ? help · q quit'
+    case 5:
+      return '1-5 switch · / filter · ? help · q quit'
+  }
+}
+
 export function StatusBar({
+  width,
+  activeView,
   showHelp,
   filterEditing,
   filterValue,
-  activeView,
   selectedTaskId,
 }: Props): React.ReactNode {
+  let raw: string
   if (filterEditing) {
-    return (
-      <box flexDirection="row" paddingLeft={1} paddingRight={1} backgroundColor="#0f172a">
-        <text content="/" fg="#a78bfa" attributes={1} />
-        <text content={filterValue} fg="#f3f4f6" />
-        <text content=" " />
-        <text content="(Enter to apply · Esc to cancel · Backspace to delete)" fg="#6b7280" />
-      </box>
-    )
+    raw = ` / ${filterValue}    (Enter to apply · Esc to cancel · Backspace to delete)`
+  } else if (showHelp) {
+    raw = ` ? close help · esc close overlays · q quit`
+  } else {
+    raw = ` [${activeView}] ${VIEW_HINTS[activeView]}  ${viewHint(activeView, selectedTaskId)}`
   }
-  if (showHelp) {
-    return (
-      <box flexDirection="row" paddingLeft={1} paddingRight={1} backgroundColor="#0f172a">
-        <text content="? close help · esc close overlays · q quit" fg="#9ca3af" />
-      </box>
-    )
-  }
-  // Context hints per view.
-  const left = `[${activeView}] ${VIEW_HINTS[activeView]}`
-  let hint: string
-  switch (activeView) {
-    case 1:
-      hint = selectedTaskId
-        ? 'j/k select · enter detail · / filter · ? help · q quit'
-        : 'j/k select · / filter · ? help · 1-5 switch · q quit'
-      break
-    case 2:
-      hint = 't critical-path · / filter · ? help · 1-5 switch · q quit'
-      break
-    case 3:
-      hint = '1-5 switch · / filter · ? help · q quit'
-      break
-    case 4:
-      hint = '1-5 switch · ? help · q quit'
-      break
-    case 5:
-      hint = '1-5 switch · / filter · ? help · q quit'
-      break
-  }
+  const line = raw.length > width ? raw.slice(0, width) : raw.padEnd(width, ' ')
   return (
-    <box flexDirection="row" paddingLeft={1} paddingRight={1} backgroundColor="#0f172a">
-      <text content={left} fg="#a78bfa" attributes={1} />
-      <text content="  " />
-      <text content={hint} fg="#9ca3af" />
+    <box width={width} backgroundColor="#0f172a">
+      <text content={line} fg="#9ca3af" />
     </box>
   )
 }

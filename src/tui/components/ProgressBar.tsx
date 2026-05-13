@@ -1,4 +1,6 @@
-// Bottom progress bar — "N/M tasks complete · X% parallel".
+// Bottom progress bar — single fixed-width line so OpenTUI's painter
+// has nothing stale to leave behind (multi-element rows ghost text on
+// shrink). Format: `<filled-bar>  <done>/<total>  <pct>% parallel`.
 
 import type React from 'react'
 import type { State } from '../state/store.js'
@@ -27,17 +29,15 @@ export function ProgressBar({ state, width }: Props): React.ReactNode {
   const total = state.totalNodes
   const completed = done + failed
   const pct = total === 0 ? 0 : Math.floor((completed / total) * 100)
-  const barWidth = Math.max(0, width - 24)
+  const suffix = `  ${completed}/${total}  ${selectParallelPct(state)}% parallel`
+  const barWidth = Math.max(1, width - suffix.length - 2)
   const filled = Math.floor((pct / 100) * barWidth)
   const bar = '█'.repeat(filled) + '░'.repeat(Math.max(0, barWidth - filled))
-
+  // Pad to full width to overwrite any prior content cells.
+  const line = (' ' + bar + suffix).padEnd(width, ' ')
   return (
-    <box flexDirection="row" paddingLeft={1} paddingRight={1} backgroundColor="#0f172a">
-      <text content={bar} fg="#22c55e" />
-      <text content=" " />
-      <text content={`${completed}/${total}`} fg="#d1d5db" />
-      <text content="  " />
-      <text content={`${selectParallelPct(state)}% parallel`} fg="#9ca3af" />
+    <box flexDirection="row" width={width} backgroundColor="#0f172a">
+      <text content={line} fg="#9ca3af" />
     </box>
   )
 }
