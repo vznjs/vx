@@ -9,7 +9,6 @@ import {
   type RunSummary,
 } from '../orchestrator.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from '../orchestrator/plan-format.js'
-import { VERSION } from '../index.js'
 import { shouldUseTui } from '../tui/should-use-tui.js'
 import { buildPackageGraph } from '../workspace/package-graph.js'
 import { loadProjectConfig } from '../workspace/project-loader.js'
@@ -311,13 +310,16 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   })
 
   if (decision.use) {
-    const { startTui } = await import('../tui/tui.ts')
-    const tui = await startTui({ version: VERSION, onExit: () => undefined })
+    // OpenTUI's Solid binding compiles JSX through a babel preset; we
+    // have to register the Bun loader plugin BEFORE importing any JSX
+    // module. bunfig.toml's `preload` doesn't reach users running our
+    // installed binary from a different cwd, so register it here.
+    await import('@opentui/solid/preload')
+    const { startTui } = await import('../tui/tui.tsx')
+    const tui = await startTui()
     try {
       const summary = await runOrchestrator({ ...opts, observer: tui.observer })
-      // Hold the TUI on screen until the user signals exit (q / Ctrl-C)
-      // OR the post-run auto-dismiss countdown elapses. The TUI itself
-      // owns the timer; we just await it.
+      // Hold the TUI on screen until the user presses q / Ctrl-C.
       await tui.waitForExit()
       await tui.dispose()
       if (parsed.verbosity > 0) printSummary(summary)
