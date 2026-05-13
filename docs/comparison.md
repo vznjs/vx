@@ -89,7 +89,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Resolved-config hash (captures TS imports)           | —                                                    | —                                                 | —                                  | **yes** — `node.config` JSON hashed             |
 | Persistent / long-running tasks (dev servers)        | `persistent`, `interruptible`, `interactive`, `with` | `continuous`                                      | (handled outside graph)            | — **gap**                                       |
 | Configurations (named option sets)                   | —                                                    | `configurations` + `-c`                           | —                                  | — **gap**                                       |
-| Per-target metadata (`description`)                  | `description`                                        | `metadata.description`                            | —                                  | — **gap**                                       |
+| Per-target metadata (`description`)                  | `description`                                        | `metadata.description`                            | —                                  | `description: string`                           |
 | Target defaults / inheritance                        | `extends`, task `extends`                            | `targetDefaults` (priority-resolved)              | (no)                               | — **gap**                                       |
 | Pre/post script lifecycle                            | (no)                                                 | (executor-defined)                                | `enablePrePostScripts: true`       | — **gap**                                       |
 | Boundaries / package-tag visibility                  | `boundaries.tags`                                    | `@nx/enforce-module-boundaries`                   | (no)                               | — **gap**                                       |
@@ -164,9 +164,11 @@ paths are inside the respective upstream repos (Turbo
    - vite-task: `{auto: true}` is the default; backed by LD_PRELOAD on
      Linux, Detours on Windows, seccomp_unotify (`crates/fspy*`).
 
-8. **`description` per task.** Trivial. Helps the interactive picker
-   UX.
-   - Turbo: `description`. Nx: `metadata.description`.
+8. ~~**`description` per task.**~~ — **shipped.** Optional
+   `description: string` on every task. Surfaced in the interactive
+   picker (right of the `pkg#task` id) and in the `--dry` text view
+   (a second line below the cache-status line). Also exposed in the
+   `--dry=json` output so tooling can grep across configs.
 
 9. **Output log modes.** A `--output-logs=full|hash-only|errors-only|none`
    flag. Matches user-asked CI use cases.

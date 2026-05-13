@@ -49,6 +49,25 @@ describe('loadProjectConfig', () => {
       await expect(loadProjectConfig(file)).rejects.toThrow(/must declare `dependsOn`/)
     })
 
+    it('accepts a string description on a task', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { lint: { description: 'lint with oxlint', exec: { command: 'oxlint' } } } }`,
+      )
+      const cfg = await loadProjectConfig(file)
+      expect(cfg.tasks?.lint?.description).toBe('lint with oxlint')
+    })
+
+    it('rejects a non-string description', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { lint: { description: 42, exec: { command: 'oxlint' } } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/description must be a string/)
+    })
+
     it('rejects cache on a group task (no exec)', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(

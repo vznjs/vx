@@ -115,6 +115,10 @@ function validate(config: ProjectConfig, configPath: string): void {
         )
       }
     }
+    const description = (task as { description?: unknown }).description
+    if (description !== undefined && typeof description !== 'string') {
+      throw new UserError(`${where}.description must be a string`)
+    }
     if (dependsOn !== undefined) {
       if (!Array.isArray(dependsOn) || dependsOn.some((s) => typeof s !== 'string')) {
         throw new UserError(

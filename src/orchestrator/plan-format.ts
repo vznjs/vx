@@ -30,6 +30,12 @@ export function formatPlanText(plan: RunPlan): string {
     const desc = describe(t.cacheStatus)
     const shortHash = t.hash ? t.hash.slice(0, 8) : ''
     lines.push(`  ${sym}  ${t.node.id.padEnd(idWidth)}  ${desc.padEnd(tagWidth)}  ${shortHash}`)
+    // Optional one-line description from the task config, indented
+    // under the id so the eye picks up the task → blurb mapping.
+    const taskDesc = t.node.config.description
+    if (taskDesc) {
+      lines.push(`     ${' '.repeat(idWidth)}  ${taskDesc}`)
+    }
     if (t.cacheStatus === 'hit-local') local++
     else if (t.cacheStatus === 'hit-remote') remote++
     else if (t.cacheStatus === 'miss') miss++
@@ -60,6 +66,9 @@ export function formatPlanJson(plan: RunPlan): string {
           hash: t.hash,
           cacheStatus: t.cacheStatus,
           deps: t.deps,
+          ...(t.node.config.description !== undefined
+            ? { description: t.node.config.description }
+            : {}),
         })),
       },
       null,

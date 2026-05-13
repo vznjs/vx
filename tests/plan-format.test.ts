@@ -8,12 +8,14 @@ function task(
   status: CacheStatus,
   hash: string,
   deps: readonly string[] = [],
+  description?: string,
 ): PlannedTask {
   return {
     node: {
       id,
       projectName: id.split('#')[0] ?? '',
       taskName: id.split('#')[1] ?? '',
+      config: description !== undefined ? { description } : {},
     } as TaskNode,
     hash,
     cacheStatus: status,
@@ -54,6 +56,23 @@ describe('formatPlanText', () => {
     })
     expect(out).toMatch(/2 task\(s\) planned, 2 would run\./)
     expect(out).not.toContain('cache hits')
+  })
+
+  it('shows task description below the id line when present', () => {
+    const out = formatPlanText({
+      tasks: [task('a#lint', 'miss', '11111111', [], 'oxlint with type-aware checks')],
+    })
+    expect(out).toContain('a#lint')
+    expect(out).toContain('oxlint with type-aware checks')
+  })
+
+  it('omits the description row when undefined (no blank gap)', () => {
+    const out = formatPlanText({
+      tasks: [task('a#lint', 'miss', '11111111')],
+    })
+    const lines = out.split('\n')
+    // 'would run:', task line, '', summary, '' (trailing newline)
+    expect(lines).toHaveLength(5)
   })
 })
 
