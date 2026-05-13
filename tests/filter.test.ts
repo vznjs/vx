@@ -81,6 +81,25 @@ describe('parseFilter', () => {
     expect(p.isPath).toBe(false)
     expect(p.matcher).toBe('@scope/*')
   })
+
+  it('parses [<since>] as a git-relative selector', () => {
+    const p = parseFilter('[main]', ROOT)
+    expect(p.gitSince).toBe('main')
+    expect(p.isPath).toBe(false)
+    expect(p.withDeps).toBe(false)
+  })
+
+  it('parses [<since>]... as gitSince + withDeps', () => {
+    const p = parseFilter('[main]...', ROOT)
+    expect(p.gitSince).toBe('main')
+    expect(p.withDeps).toBe(true)
+  })
+
+  it('parses ![<since>] as negated gitSince', () => {
+    const p = parseFilter('![origin/main]', ROOT)
+    expect(p.gitSince).toBe('origin/main')
+    expect(p.negate).toBe(true)
+  })
 })
 
 describe('applyFilters', () => {

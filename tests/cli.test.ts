@@ -371,6 +371,11 @@ describe('parseRunArgs', () => {
     ])
   })
 
+  it('parses --affected (no value) and --affected=<ref>', () => {
+    expect(parseRunArgs(['build', '--affected']).affected).toBe('')
+    expect(parseRunArgs(['build', '--affected=origin/main']).affected).toBe('origin/main')
+  })
+
   it('parses --verbosity <n> (replaces -v / --verbose)', () => {
     expect(parseRunArgs(['build', '--verbosity', '1']).verbosity).toBe(1)
     expect(parseRunArgs(['build', '--verbosity', '2']).verbosity).toBe(2)
