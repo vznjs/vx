@@ -129,11 +129,11 @@ Determinism notes:
 ```
 <cacheDir>/
 ├── cache.db                 # SQLite (with cache.db-wal, cache.db-shm)
-├── <hash>/                  # output files at project-relative paths
-│   └── dist/...
-└── logs/
-    ├── <hash>.stdout        # captured stdout
-    └── <hash>.stderr        # captured stderr
+└── <hash>/
+    ├── stdout               # captured stdout
+    ├── stderr               # captured stderr
+    └── outputs/             # declared output files, project-relative
+        └── dist/...
 ```
 
 SQLite stores metadata only:
@@ -156,10 +156,13 @@ text files to preserve stream identity on replay.
 
 `save()`:
 
-1. Materializes outputs into a temp dir `<cacheDir>/<hash>.tmp-<pid>-<ms>/`.
-2. `rename(2)` to `<cacheDir>/<hash>/`. Atomic for empty target.
-3. Writes `<cacheDir>/logs/<hash>.stdout` and `.stderr`.
-4. Upserts the `entries` row (`ON CONFLICT(hash) DO UPDATE …`).
+1. Materializes the full entry into a temp dir
+   `<cacheDir>/<hash>.tmp-<pid>-<ms>/` — outputs at
+   `<tmp>/outputs/<rel>`, captured streams at `<tmp>/stdout` and
+   `<tmp>/stderr`.
+2. `rename(2)` to `<cacheDir>/<hash>/`. Atomic for an empty target;
+   the dir's contents (outputs + logs) move as a unit.
+3. Upserts the `entries` row (`ON CONFLICT(hash) DO UPDATE …`).
 
 Reads via `get()` are non-blocking thanks to WAL.
 
@@ -167,9 +170,9 @@ Reads via `get()` are non-blocking thanks to WAL.
 
 `restoreOutputs(hash, projectDir)`:
 
-- If `<cacheDir>/<hash>/` doesn't exist, no-op.
-- Otherwise recursively copies into `projectDir`, creating parent
-  directories as needed.
+- If `<cacheDir>/<hash>/outputs/` doesn't exist, no-op.
+- Otherwise recursively copies its contents into `projectDir`,
+  creating parent directories as needed.
 - Pre-existing local files at output paths are **overwritten**.
 
 `get(hash)`:
@@ -178,9 +181,9 @@ Reads via `get()` are non-blocking thanks to WAL.
 - Verifies `<cacheDir>/<hash>/` exists on disk; returns `null` if the
   DB row is present but the artifact was deleted out from under us.
 - Bumps `accessed_at` on hit (used for LRU eviction once implemented).
-- Reads the log files and lists `<hash>/` files to reconstruct
-  `outputFiles`. Doesn't restore them — the caller decides when to
-  call `restoreOutputs`.
+- Reads `<hash>/stdout`, `<hash>/stderr`, and lists files under
+  `<hash>/outputs/` to reconstruct `outputFiles`. Doesn't restore them
+  — the caller decides when to call `restoreOutputs`.
 
 ## Run history & stats
 
@@ -212,7 +215,7 @@ A `vx stats` CLI command can ship later; the data is captured today.
 
 ## `CACHE_VERSION`
 
-Currently `'vx-cache-v10'`. Bump when:
+Currently `'vx-cache-v13'`. Bump when:
 
 - A new field is added to `CacheKeyInput`.
 - The order or framing of existing key fields changes.
@@ -228,8 +231,9 @@ file checklist.
 `cache.test.ts` covers:
 
 - `Cache.key` exhaustively (determinism, sensitivity to each input).
-- v10 storage shape: SQLite DB exists, outputs at `<hash>/`,
-  logs at `logs/<hash>.{stdout,stderr}`, no `meta.json`.
+- v13 storage shape: SQLite DB exists, outputs under
+  `<hash>/outputs/`, logs at `<hash>/stdout` and `<hash>/stderr`, no
+  `meta.json`, no sibling `logs/` dir.
 - `save → get → restoreOutputs` round-trip.
 - `get()` returns null when DB row exists but on-disk artifact was
   deleted.

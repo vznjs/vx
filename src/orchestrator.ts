@@ -2,7 +2,6 @@
 // run with caching. Each step delegates to a single-purpose module under
 // ./orchestrator/ so the layers can be swapped without touching the others.
 
-import path from 'node:path'
 import type { ProjectConfig } from './config.js'
 import { Cache } from './cache/cache.js'
 import { LayeredCache } from './cache/layered-cache.js'
@@ -21,7 +20,6 @@ import {
 import { executeTask } from './orchestrator/execute-task.ts'
 import { computeWorkspaceFingerprint } from './orchestrator/fingerprint.ts'
 import { computeNestedProjectDirs } from './orchestrator/nested-dirs.ts'
-import { persistTaskLogs } from './orchestrator/task-logs.ts'
 import { wrapWithRemoteCache } from './orchestrator/remote-cache-setup.ts'
 import { defaultLogger, type Logger } from './orchestrator/logger.ts'
 import { detectColors } from './orchestrator/colors.ts'
@@ -196,13 +194,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 
   const list = [...outcomes.values()]
   const ok = list.every((o) => o.status === 'success' || o.status === 'cache-hit')
-
-  // Persist task logs to disk so users can inspect after the fact —
-  // especially failures (we don't cache failed exec output). Output was
-  // already streamed live during the run; we deliberately do not replay
-  // it here. Path: <cacheDir>/logs/<run_id>/<project>__<task>.{stdout,stderr}
-  const logsDir = path.join(cacheDir, 'logs', runId)
-  await persistTaskLogs({ logsDir, outcomes: list })
 
   // Summary counts only real tasks (those with `exec`). Group tasks
   // do no work — they're just dependency aggregators — so including

@@ -1801,7 +1801,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'streams failed task stderr live and persists logs to disk',
+    'streams failed task stderr live and surfaces it on the outcome',
     async () => {
       await addProject(fixture.root, 'app-fail', {
         config: `
@@ -1826,16 +1826,11 @@ describe('orchestrator e2e', () => {
       const streamed = fixture.err.some((line) => line.includes('MY-ERROR-MARKER'))
       expect(streamed).toBe(true)
 
-      const logsRoot = path.join(fixture.root, '.vx/cache/logs')
-      expect(existsSync(logsRoot)).toBe(true)
-      const { readdir } = await import('node:fs/promises')
-      const runDirs = await readdir(logsRoot)
-      expect(runDirs).toHaveLength(1)
-      const stderr = await readFile(
-        path.join(logsRoot, runDirs[0]!, 'app-fail__broken.stderr'),
-        'utf8',
-      )
-      expect(stderr).toContain('MY-ERROR-MARKER')
+      // No sibling logs/ dir under cacheDir — failed-task stdout/stderr is
+      // surfaced on the outcome and via the live stream; we don't duplicate
+      // it to disk (CI captures stdout natively; the runs table captures
+      // structured metadata).
+      expect(existsSync(path.join(fixture.root, '.vx/cache/logs'))).toBe(false)
     },
     TIMEOUT,
   )

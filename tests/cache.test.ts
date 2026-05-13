@@ -178,12 +178,15 @@ describe('Cache storage (v10)', () => {
       },
     })
 
-    // Filesystem layout matches v10: outputs directly under <hash>/, logs in logs/<hash>.{stdout,stderr}.
-    expect(existsSync(path.join(cacheDir, 'h1', 'dist', 'index.js'))).toBe(true)
-    expect(existsSync(path.join(cacheDir, 'logs', 'h1.stdout'))).toBe(true)
-    expect(existsSync(path.join(cacheDir, 'logs', 'h1.stderr'))).toBe(true)
+    // Filesystem layout v13: outputs under <hash>/outputs/<rel>, stdout/stderr
+    // as plain files under <hash>/.
+    expect(existsSync(path.join(cacheDir, 'h1', 'outputs', 'dist', 'index.js'))).toBe(true)
+    expect(existsSync(path.join(cacheDir, 'h1', 'stdout'))).toBe(true)
+    expect(existsSync(path.join(cacheDir, 'h1', 'stderr'))).toBe(true)
     // No v9-style meta.json.
     expect(existsSync(path.join(cacheDir, 'h1', 'meta.json'))).toBe(false)
+    // No legacy v12-style sibling logs/ dir.
+    expect(existsSync(path.join(cacheDir, 'logs'))).toBe(false)
 
     const got = await cache.get('h1')
     expect(got).not.toBeNull()
@@ -333,10 +336,9 @@ describe('Cache storage (v10)', () => {
     expect(result.evicted).toBe(1)
     expect(result.bytesFreed).toBeGreaterThanOrEqual(3)
 
-    // DB row gone + on-disk dir gone.
+    // DB row gone + on-disk dir gone (logs live inside <hash>/, so one rm covers both).
     expect(await cache.get('h-old')).toBeNull()
     expect(existsSync(path.join(cacheDir, 'h-old'))).toBe(false)
-    expect(existsSync(path.join(cacheDir, 'logs', 'h-old.stdout'))).toBe(false)
   })
 
   it('prune() with maxBytes evicts LRU until under the cap', async () => {

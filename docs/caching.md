@@ -124,16 +124,18 @@ guarantee — there's no file-glob escape hatch.
 ├── cache.db                # SQLite metadata index + run history
 ├── cache.db-wal            # write-ahead log
 ├── cache.db-shm            # shared memory
-├── <hash>/                 # output files at project-relative paths
-│   └── dist/
-│       └── ... (files mirroring the project-relative output paths)
-└── logs/
-    ├── <hash>.stdout       # captured stdout for that task
-    └── <hash>.stderr       # captured stderr
+└── <hash>/
+    ├── stdout              # captured stdout for that task
+    ├── stderr              # captured stderr
+    └── outputs/            # declared output files, project-relative
+        └── dist/
+            └── ... (files mirroring the project-relative output paths)
 ```
 
 `<hash>` is the full sha256 hex string. No subdirectory bucketing yet
-— fine for thousands of entries; would want sharding past that.
+— fine for thousands of entries; would want sharding past that. A
+single `rm -rf <hash>/` evicts everything for an entry — outputs +
+logs + (future) any per-entry metadata.
 
 SQLite holds the cache index in two tables (`entries` for the
 per-hash record, `runs` for run history powering `stats()`). Output
@@ -206,3 +208,12 @@ Not required when:
   dependencies" behaviour — a deps change in `package.json`
   invalidates the project's tasks even when `cache.inputs.files`
   doesn't cover it.
+- **v12 → v13**: per-entry on-disk layout unified. Outputs moved
+  from `<hash>/` (mixed with metadata) to `<hash>/outputs/`;
+  stdout / stderr moved from the sibling `logs/<hash>.{stdout,stderr}`
+  into `<hash>/stdout` and `<hash>/stderr`. Eviction collapses to a
+  single `rm -rf <hash>/`. The runner-side `logs/<run_id>/` dump
+  (`<project>__<task>.{stdout,stderr}` files) is dropped — output is
+  already streamed live, surfaced on the outcome object, and any
+  successful run's logs live in the cache entry; failures don't need
+  a second copy on disk.
