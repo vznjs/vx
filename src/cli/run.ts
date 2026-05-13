@@ -316,9 +316,17 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     // installed binary from a different cwd, so register it here.
     await import('@opentui/solid/preload')
     const { startTui } = await import('../tui/tui.tsx')
+    const { noopLogger } = await import('../orchestrator/logger.ts')
     const tui = await startTui()
     try {
-      const summary = await runOrchestrator({ ...opts, observer: tui.observer })
+      // Silence the default framed-block logger when the TUI is on —
+      // otherwise its `log.status` / `log.taskComplete` writes go to
+      // stdout and bleed through the alt-screen TUI rendering.
+      const summary = await runOrchestrator({
+        ...opts,
+        log: noopLogger(),
+        observer: tui.observer,
+      })
       // Hold the TUI on screen until the user presses q / Ctrl-C.
       await tui.waitForExit()
       await tui.dispose()
