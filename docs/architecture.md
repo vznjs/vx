@@ -170,10 +170,31 @@ servers don't inspect the body, so this is invisible to them. See
 Every `vx run` invocation stamps a ULID (`run_id`) and appends one
 row per task to the `runs` table in `cache.db`. Columns include
 status, exit code, duration, CPU time, peak RSS, and hrtime-ns
-wallclock spans relative to the run's t=0. `vx stats` reads from
-this table; CI scripts can also query `cache.db` directly with
-`sqlite3` to extract metrics. No HTTP layer, no UI — the cache file
-is the API.
+wallclock spans relative to the run's t=0. CI scripts query
+`cache.db` directly with `sqlite3` to extract metrics. No HTTP
+layer, no UI — the cache file is the API.
+
+The same per-task wallclock data has three surface forms:
+
+| Surface            | Where                                              | When written          |
+| ------------------ | -------------------------------------------------- | --------------------- |
+| `runs` table       | `<cacheDir>/cache.db`                              | every `vx run` end    |
+| `--summarize` JSON | `<cacheDir>/runs/<run_id>.json` (or explicit path) | opt-in per invocation |
+| `--profile` trace  | `profile.json` (or explicit path)                  | opt-in per invocation |
+
+The summarize JSON mirrors the `runs` table shape (one entry per
+task with status, duration, hash, cpuMs, peakRssBytes, hrtime
+spans as bigint-strings) — handy for diffing two runs in CI or
+posting back to a PR comment.
+
+The profile JSON is Chrome-trace format: one `ph: 'X'` event per
+task with `ts` and `dur` in microseconds, one `tid` per project so
+overlapping tasks across packages render on distinct lanes. Drop
+the file into `chrome://tracing` or https://ui.perfetto.dev to
+visualize the parallel timeline — exactly the data that was already
+in the `runs` table, just in a format off-the-shelf tools speak.
+See [`cli.md`](./cli.md#run-artifacts---summarize---profile) for
+the JSON schemas.
 
 ## Design principles
 

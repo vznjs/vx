@@ -206,7 +206,17 @@ strings (BigInt) to preserve ns precision through JSON.
 
 `--profile[=<path>]` writes a Chrome-trace JSON of the run's wallclock
 spans. Default path: `profile.json` (cwd-relative). Open with
-chrome://tracing or https://ui.perfetto.dev.
+`chrome://tracing` or https://ui.perfetto.dev.
+
+Each task is one complete event (`ph: "X"`) with `ts` and `dur` in
+microseconds derived from the `hrtime.bigint()` spans the runner
+captures per task. Each project gets its own `tid` so concurrent
+tasks render on distinct lanes — perfect for spotting serial
+bottlenecks vs true parallelism in a monorepo. The `args` object
+carries the exit code, content-addressed cache `hash`, and (where
+the runner captured them) `cpuMs` + `peakRssBytes` from rusage.
+`cat` is the task's final status (`success`, `cache-hit`,
+`cache-hit-remote`, `failed`).
 
 ```json
 {
@@ -219,7 +229,12 @@ chrome://tracing or https://ui.perfetto.dev.
       "dur": 4321,
       "pid": 1,
       "tid": 1,
-      "args": { "exitCode": 0, "hash": "..." }
+      "args": {
+        "exitCode": 0,
+        "hash": "...",
+        "cpuMs": 123,
+        "peakRssBytes": 45678
+      }
     }
   ]
 }

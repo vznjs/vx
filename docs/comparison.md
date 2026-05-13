@@ -219,9 +219,14 @@ paths are inside the respective upstream repos (Turbo
     re-executing.
     - vite-task: `--last-details`.
 
-19. **Profile / Chrome trace export.** We have the data (hrtime spans
-    in `cache.db`) — just need an exporter.
-    - Turbo: `--profile`.
+19. ~~**Profile / Chrome trace export.**~~ — **shipped** as
+    `--profile[=<path>]` (PR #55). Writes a Chrome-trace JSON of
+    every task's wallclock span; default path `profile.json`. One
+    `tid` per project so concurrent tasks render on distinct lanes
+    in `chrome://tracing` or `ui.perfetto.dev`. Same hrtime data
+    also lives in `cache.db`'s `runs` table for direct SQLite
+    queries. See [`cli.md`](./cli.md#run-artifacts---summarize---profile)
+    for the JSON shape.
 
 20. **OTel run telemetry.** Push every run's spans to an OTLP endpoint.
     - Turbo: `experimentalObservability.otel.*`.
