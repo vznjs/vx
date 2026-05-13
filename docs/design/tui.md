@@ -22,11 +22,28 @@ TUI a developer leaves running while they work.
 - **One screen, every detail.** Status of every task, live, no
   scrolling required for the common monorepo size (up to ~100 tasks).
 - **Drill in without re-running.** Select any task → see its live or
-  finished output in a focused pane.
+  finished output AND its historical stats AND an ETA in a focused
+  pane.
 - **Live charts.** Sparkline of tasks-completed-per-second, cache hit
-  rate, CPU/RSS aggregates. Remote-cache request volume + latency.
-- **Gantt timeline.** Visualize the parallel timeline as it happens —
-  spot serialization bottlenecks live.
+  rate, CPU/RSS aggregates, **worker-slot utilization over time**.
+  Remote-cache request volume + latency.
+- **Project graph view.** Render the actual `dependsOn` DAG with
+  status colors per node, per-running-task progress, and live edges.
+- **Worker occupancy.** Show the N concurrency slots, what each is
+  running, and historical occupancy %. Surface the **current
+  parallelization %** (`running / capacity`) as a live counter +
+  sparkline.
+- **Bottleneck callouts.** Critical-path tasks, slow-vs-historical
+  tasks, tasks blocking the most dependents.
+- **Queue introspection.** Tasks ready and waiting for a worker
+  slot vs tasks blocked by upstream deps — both queues visible.
+- **Group + persistent first-class.** Group tasks render as
+  collapsible aggregators showing their children's collective
+  progress. Persistent tasks render with a "ready since" badge and
+  stay visibly alive until end-of-run SIGTERM.
+- **Historical context per task.** From `cache.db`'s `runs` table:
+  last N runs, avg / p50 / p99 duration, success rate, cache-hit
+  rate. Used to compute live ETAs.
 - **Keyboard-first.** Mouse-optional. Every action has a key.
 - **Graceful fallback.** Non-TTY, `NO_COLOR=1`, or `vx run --tui` in CI
   → falls back to the existing framed-block logger. No surprises.
@@ -46,9 +63,26 @@ TUI a developer leaves running while they work.
 - Cross-platform terminal feature parity beyond what `tput` / common
   TTYs expose.
 
+## Views
+
+Five top-level views, switchable with `1`–`5` keys. The TUI launches
+into **Overview** (`1`). All views share the same header / progress /
+status bar; the middle region changes.
+
+| Key | View       | Use                                                       |
+| --- | ---------- | --------------------------------------------------------- |
+| `1` | Overview   | The dashboard. Tasks + stats + cache + timeline + log.    |
+| `2` | Graph      | Full-screen project DAG with status + per-task progress.  |
+| `3` | Workers    | Concurrency-slot occupancy + utilization sparkline.       |
+| `4` | Bottleneck | Critical path + slowest tasks + slow-vs-historical.       |
+| `5` | Queue      | Ready-but-waiting + blocked-by-deps breakdown.            |
+
+`Enter` from any view opens the **Task Detail overlay** for the
+currently-focused task (logs, history, ETA, worker slot, cache key).
+
 ## Visual layout
 
-Default layout, 80×24 minimum, scales up:
+Default layout (Overview), 80×24 minimum, scales up:
 
 ```
 ┌─ vx 0.0.0 — workspace: @vzn/vx ─ run 01HKQ3WT… ─── 00:00:14 ─── concurrency: 8 ┐
@@ -85,22 +119,30 @@ Default layout, 80×24 minimum, scales up:
 
 Status icons:
 
-- `○` waiting (deps not yet ready)
+- `○` waiting (deps not yet ready, blocked)
+- `◌` ready (deps satisfied, waiting for a worker slot)
 - `⏵` running
 - `✓` succeeded (executed)
 - `⊙` cache hit local
 - `⊚` cache hit remote
 - `✗` failed
 - `⊘` skipped (upstream failed)
+- `▣` group task (aggregator; child status rolled up)
+- `⚡` persistent (long-running; "ready since …")
 - `★` focused
 
 ## Panels
 
 ### Header
 
-`vx <version> — workspace: <name> ─ run <ULID> ─ <elapsed> ─ concurrency: <N>`
+`vx <version> — workspace: <name> ─ run <ULID> ─ <elapsed> ─ concurrency: <N> ─ ⚡<persistent-count> ─ parallel <P>%`
 
-Always visible. ULID short-form (8 chars). Elapsed updates every second.
+Always visible. ULID short-form (8 chars). Elapsed updates every
+second. **`⚡<n>`** when at least one persistent task is alive (e.g.
+`⚡1` for a running dev server). **`parallel <P>%`** is the live
+utilization gauge: `floor(running / capacity * 100)`. Tinted green
+above 80%, yellow 50-80%, red below 50% (under-utilization usually
+means a serial bottleneck on the critical path).
 
 ### Tasks panel (left)
 
@@ -204,33 +246,257 @@ marker).
 - ETA: simple linear projection from current throughput. Shown only
   when N ≥ 5 tasks have completed and throughput > 0.
 
+### Group tasks
+
+Tasks with no `exec` (e.g. `ci: { dependsOn: ['lint', 'test'] }`) are
+aggregators. The list renders them with the `▣` icon and a collapsed
+roll-up of their children's status:
+
+```
+▣ @vzn/vx#ci             3/5 done (1 running, 1 cached)
+```
+
+`Space` on a group expands it into a tree-indented expansion in
+place. `Space` again collapses. Groups never spawn a process; their
+ETA = max(child ETA) across their entire transitive closure.
+
+### Persistent tasks
+
+Persistent tasks (`exec.persistent`) get the `⚡` icon. While
+waiting for `readyWhen` they show `starting…`; once ready, the row
+flips to:
+
+```
+⚡ app#dev               ready 00:00:04 ago  PID 12345
+```
+
+Their stdout/stderr keeps streaming into their log buffer for the
+whole run — selecting the row shows the live tail. At end-of-run
+the row briefly shows `SIGTERM…` while the orchestrator drains.
+
+### Workers panel (Overview shows compact form; view `3` shows full)
+
+The Overview layout shows a one-line worker summary:
+
+```
+WORKERS  ▇▇▇▇░░░░  4/8 active  parallel 50%  avg 73%
+```
+
+Pressing `3` opens the full Workers view:
+
+```
+WORKER OCCUPANCY (8 slots)
+┌────────────────────────────────────────────────────┐
+│ [1] pkg-a#build      ⏵  12.3s    ~5s remaining     │
+│ [2] pkg-b#test       ⏵   4.1s    ~1s remaining     │
+│ [3] pkg-c#test       ⏵   3.8s    ~1.5s remaining   │
+│ [4] pkg-d#test       ⏵   3.5s    ~1.5s remaining   │
+│ [5] (idle)                                          │
+│ [6] (idle)                                          │
+│ [7] (idle)                                          │
+│ [8] (idle)                                          │
+└────────────────────────────────────────────────────┘
+
+Utilization over time (60 samples, 1Hz)
+▂▃▅▇█▇▆▆▇█▇▅▃▂▂▃▅▇████▇▅▃▂▁  current 50%  peak 100%  avg 73%
+
+Per-slot heatmap (last 30 seconds)
+[1] ████████████████████████████████  100% busy
+[2] ████████████░░░░████████████░░░░   70% busy
+[3] ████░░░░████░░░░████░░░░████░░░░   50% busy
+[4] ░░░░████░░░░░░░░░░░░████░░░░░░░░   25% busy
+[5] ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░    0% busy
+...
+```
+
+The per-slot heatmap exposes idle slots: a column of `░` means
+"this slot has been idle most of the run" — usually a sign of a
+serial bottleneck upstream.
+
+### Bottlenecks view (`4`)
+
+Computed cross-cuts of the live + historical state:
+
+```
+BOTTLENECKS
+
+Critical path  (projected 32.4s)
+  lib#build ─▶ app#build ─▶ app#test ─▶ ci
+  ✓ 14.0s     ⏵ 12.0s     ○ ~6.4s     ○ ~0.0s
+
+Tasks blocking the most dependents
+  pkg-a#build    blocks 4    ⏵ 12.3s
+  app#build      blocks 3    ⏵ 12.0s
+  lib#build      blocks 8    ✓ done
+
+Slow vs historical (avg over last 10 runs)
+  pkg-c#test    8.1s  →  3.2× slower than avg (2.5s)
+  app#build    12.0s  →  1.4× slower than avg (8.6s)
+
+Cache misses (most-impactful, longest projected)
+  pkg-a#build  ~13.2s  inputs changed: src/index.ts, src/util.ts
+  app#build     ~8.6s  inputs changed: package.json
+```
+
+The critical path is computed from the task graph: longest chain of
+dependent task durations (using historical averages for not-yet-run
+tasks, current elapsed for running, actual for completed). Highlights
+which task — if sped up by 1 second — would shave 1 second off the
+total wallclock.
+
+"Cache misses (most-impactful)" answers "what's about to take a
+while because it can't be cached this run?"
+
+### Queue view (`5`)
+
+Two columns: ready-but-waiting (no slot) and blocked-by-deps:
+
+```
+QUEUE
+
+ready (3)                          blocked (5)
+─────────────────────              ──────────────────────────────
+pkg-c#test   ~2.5s                 app#package  → app#test
+pkg-d#test   ~1.0s                 app#publish  → app#package
+pkg-e#test   ~0.8s                 ci           → lint, test
+                                   pkg-f#test   → pkg-a#build
+                                   pkg-g#test   → pkg-b#build
+
+Queue throughput  ▁▁▂▃▅▇█▇  promoting ~1.2 tasks/s into running
+```
+
+Surface the queue-depth-over-time sparkline to make stalls obvious:
+if "ready" stays at 0 while "blocked" stays at 10, your concurrency
+isn't the constraint — a single upstream task is.
+
+### Task Detail overlay (`Enter` from any view)
+
+Full-screen modal showing every available datum about the focused
+task. The view that triggered it is preserved underneath; `Esc`
+returns to it.
+
+```
+TASK DETAIL: pkg-a#build                              ⏵ running 14.2s
+
+  Command   tsc -b --incremental
+  Hash      7da42dfe1c34…
+  Project   pkg-a   /home/user/repo/packages/pkg-a
+  Worker    slot [2]            Started 00:00:08
+  Cache     miss
+  Inputs    src/**, tsconfig.json, package.json
+            47 files · 312 KB
+  Outputs   dist/** (declared)
+  Deps      lib#build (cached) · shared#build (cached)
+  Blocks    app#build · app#test · app#package · app#publish
+
+  Persistent  no
+  Forwarded   (none)
+  Env tracked NODE_ENV=production
+
+  HISTORY (last 5 runs from cache.db)
+  ─────────────────────────────────────────────
+  Wed 14:32   12.3s  ✓ executed       hash 7da42dfe
+  Wed 14:21    7.1s  ⊙ cache-hit      hash 7da42dfe
+  Wed 14:08    7.0s  ⊙ cache-hit      hash 7da42dfe
+  Tue 18:45   18.4s  ✓ executed       hash a3c1b9f2
+  Tue 17:30   13.2s  ✓ executed       hash 0afe44dd
+  ─────────────────────────────────────────────
+  avg 11.6s · p50 12.3s · p99 18.4s · success 100% · hit 40%
+
+  Estimated progress  ▰▰▰▰▰▰▰▰░░░░  ~72% (8.4s / ~11.6s)
+
+  LIVE LOG  (auto-scroll · 1247 lines · 18 KB)
+  ─────────────────────────────────────────────
+  $ tsc -b --incremental
+  [12:34:56] File change detected. Starting incremental compile…
+  [12:34:57] src/index.ts(42,3): error TS2304: cannot find name 'foo'
+  [12:34:58] src/index.ts(48,7): error TS2304: cannot find name 'bar'
+  …
+
+  [↑↓] scroll  [/] search  [c] copy log  [esc] back
+```
+
+History comes from a read-only `cache.db` query:
+
+```sql
+SELECT started_at, duration_ms, status, hash
+FROM runs
+WHERE project = ? AND task = ?
+ORDER BY started_at DESC
+LIMIT 10;
+```
+
+ETA = `historicalAvg - currentElapsed` clamped to 0; rendered as a
+progress bar with the elapsed/total caption.
+
+### Project Graph view (`2`)
+
+Full-screen tree visualization of the task graph, topologically
+ordered with children indented. Cross-project dependencies show as
+`▶` arrows to anchors elsewhere in the tree. Status icons + per-task
+progress inline:
+
+```
+PROJECT GRAPH                                          (42 tasks)
+
+@vzn/vx
+  ✓ format-check         cached    4ms
+  ✓ lint                 cached    7ms
+  ⏵ test                 ▰▰▰▰░░░  2.4s / ~4.1s
+  ▣ ci                   3/5 done
+
+lib
+  ✓ build                cached   14ms
+
+app   ←  lib
+  ⏵ build                ▰▰▰▰▰▰░  1.8s / ~5.0s
+  ◌ test                 ready (slot wait)
+  ○ package              blocked: app#test
+  ○ publish              blocked: app#package, app#test
+  ▣ ci                   1/4 done
+
+[↑↓] navigate  [enter] task detail  [space] collapse group
+[/] filter     [t] toggle critical path overlay
+```
+
+Pressing `t` overlays the critical path as a highlighted ribbon
+through the tree. Pressing `Space` on a group folds its children.
+
+The DAG is "rendered as a tree" rather than a true 2D graph because
+true graph layout in ASCII is hard to do without sacrificing
+density. Diamond dependencies are flagged with `▶ shared#build` and
+`◀ pkg-a#build` cross-references rather than drawing the edge.
+
 ### Status bar / keymap
 
 Bottom row, dim:
 
 ```
-[q] quit  [tab] focus  [↑↓] task  [enter] log  [/] filter  [g] graph  [?] help
+[q] quit  [1-5] view  [↑↓] move  [enter] detail  [space] expand  [/] filter  [?] help
 ```
 
-Context-sensitive: when log panel is focused, shows `[esc] back
-[pgup/pgdn] scroll` instead.
+Context-sensitive: when Task Detail is open, shows
+`[esc] back  [↑↓] scroll  [/] search  [c] copy`.
 
 ## Interactions (keymap v1)
 
-| Key            | Action                                                          |
-| -------------- | --------------------------------------------------------------- |
-| `q` / `Ctrl+C` | Quit. SIGINT propagates; orchestrator drains; TUI tears down.   |
-| `Tab`          | Cycle focus: Tasks → Log → (Stats overview if implemented).     |
-| `↑` / `↓`      | Move selection in the task list (or scroll log when log-focused). |
-| `Enter`        | Pin the selected task into the log panel.                       |
-| `Esc`          | Return focus to the task list.                                  |
-| `/`            | Open filter input; filters task list by substring match.        |
-| `g`            | Toggle graph view (full-screen Gantt).                          |
-| `?`            | Open help overlay.                                              |
-| `pgup`/`pgdn`  | Scroll the focused panel (log or task list).                    |
+| Key            | Action                                                                  |
+| -------------- | ----------------------------------------------------------------------- |
+| `q` / `Ctrl+C` | Quit. SIGINT propagates; orchestrator drains; TUI tears down.           |
+| `1` … `5`      | Switch top-level view (Overview / Graph / Workers / Bottleneck / Queue).|
+| `Tab`          | Cycle focus within the current view (panel-to-panel).                   |
+| `↑` / `↓`      | Move selection (or scroll when a scrollable panel is focused).          |
+| `Enter`        | Open Task Detail overlay for the focused task.                          |
+| `Esc`          | Close overlay / return focus to the primary panel.                      |
+| `Space`        | Expand / collapse a group task in any list-style view.                  |
+| `/`            | Open filter input; filters the current view's list by substring match.  |
+| `t`            | In Graph view, toggle critical-path overlay.                            |
+| `?`            | Open help overlay.                                                      |
+| `pgup` / `pgdn`| Scroll the focused panel.                                               |
+| `c`            | (Task Detail) copy the log buffer to the OS clipboard (best-effort).    |
 
 Out of scope v1: re-run (`r`), kill (`x`), pause (`p`), expand task
-to multi-pane diff vs cached output.
+to multi-pane diff vs cached output, mouse.
 
 ## Data model
 
@@ -251,11 +517,33 @@ type TuiEvent =
 The TUI maintains:
 
 - **Task state map** — by task id, with status, start/end ns, hash,
-  cpuMs, peakRssBytes, buffered stdout/stderr.
-- **Sparkline buffers** — 60-sample ring buffers for throughput,
-  CPU%, remote-cache request rate.
+  cpuMs, peakRssBytes, buffered stdout/stderr, **worker slot index**
+  while running, **persistent flag** + `readyAt` if persistent,
+  **dependents-of count** (precomputed from the graph at runStart).
+- **Worker slot map** — `slot index → { taskId | null, sinceNs }`
+  with capacity = `concurrency`. Updated on `taskStart` /
+  `taskComplete`. Powers the Workers view + parallelization gauge.
+- **Sparkline buffers** — 60-sample ring buffers per metric:
+  throughput, CPU%, remote-cache request rate, **utilization %**,
+  **queue depth (ready)**, **queue depth (blocked)**.
+- **Per-slot heatmap buffers** — 30-sample ring buffer per slot
+  (1Hz), 1-bit busy/idle, for the Workers view's per-slot strip.
 - **Remote-cache stats** — running counts + latency histogram.
-- **Focus + filter state** — UI-only.
+- **Historical-stats cache** — read-once per task at runStart from
+  `cache.db`'s `runs` table: `{ avgMs, p50Ms, p99Ms, successRate,
+hitRate, lastFive: RunRow[] }`. Powers per-task ETAs, the
+  "slow vs historical" bottleneck callout, and the Task Detail
+  overlay's history block. Done in one batched SQL query, not per
+  task.
+- **Critical path** — recomputed on every `taskComplete` (cheap;
+  DAG is small). Stored as ordered task-id list with each node's
+  contribution to the projected total. The Bottlenecks view + the
+  Graph view's `t` overlay both read from this.
+- **Group rollups** — precomputed once at runStart: for each group
+  task, the set of all transitive `exec` descendants. On each
+  child's `taskComplete`, the group's rollup counters are updated
+  incrementally (done / running / cached / failed counts).
+- **Focus + filter state + active view** — UI-only.
 
 ## Architecture
 
@@ -529,26 +817,48 @@ Coverage targets v1:
 Deliverables: enough to replace the framed output for a single
 running task. Not yet competitive with the framed block.
 
-### Phase 2 — stats + timeline + remote-cache
+### Phase 2 — stats + timeline + remote-cache + groups/persistent
 
 - Stats panel (throughput, CPU, RSS, sparklines).
 - Cache + remote-cache panels.
 - Timeline panel.
 - Filter (`/`).
+- Group task rendering (▣ icon + collapsed rollup + Space-expand).
+- Persistent task rendering (⚡ icon + "ready since" badge).
 
-### Phase 3 — polish
+### Phase 3 — multi-view + workers + historical
+
+- Views 2-5 (Graph / Workers / Bottlenecks / Queue), switchable via
+  `1`-`5`.
+- Workers view: per-slot occupancy + 30s heatmap +
+  utilization-over-time sparkline + parallel-% gauge in the header.
+- Queue view: ready vs blocked breakdown + queue-throughput
+  sparkline.
+- Critical-path computation (used by Bottlenecks view + Graph `t`
+  overlay).
+- Historical-stats SQL pull at runStart; ETA on running tasks.
+- Task Detail overlay (`Enter`): full task introspection, history
+  block, per-task progress bar.
+
+### Phase 4 — polish
 
 - Help overlay.
 - Auto-promotion (TTY + NO_COLOR + CI checks).
 - Graceful tear-down + standard summary printed after exit.
 - Visual snapshot tests.
+- Project Graph view's critical-path `t` overlay.
+- Bottlenecks view's "slow vs historical" + "cache miss impact"
+  rows.
 
-### Phase 4 — future (out of v1)
+### Phase 5 — future (out of v1)
 
 - Mouse support.
 - Re-run / kill from the TUI (`r`, `x`).
 - `vx ui` — historical runs browser sourced from `cache.db`.
 - Pause / resume.
+- True 2D DAG layout (rather than indented tree) for the Graph view.
+- Per-task search in the log buffer.
+- Copy-to-clipboard from the Task Detail log pane.
 
 ## Open questions for the architect
 
@@ -559,6 +869,33 @@ running task. Not yet competitive with the framed block.
    open to the architect arguing for grown Logger.
 3. **Auto-default behavior.** Should `--tui` default ON when the
    terminal supports it, or stay opt-in until the polish phase?
+4. **Historical stats SQL — batched or lazy?** Pulling per-task
+   history on render is too chatty. Proposal: one batched query at
+   runStart returning a row-per-task with `avg / p50 / p99 / last5`.
+   Question: include in `prepareRun`'s context so non-TUI consumers
+   benefit too, or keep it TUI-internal?
+5. **Critical-path computation on `taskComplete`** — fine for graphs
+   ≤ 1000 nodes (we're nowhere near). Acceptable, or should we
+   throttle?
+6. **Worker-slot assignment** — the scheduler today doesn't expose
+   slot indices; tasks just acquire a semaphore. The Workers view
+   needs explicit slot IDs. Cleanest: scheduler exposes a `slot`
+   field on each task's `onStart` callback. Pure addition; doesn't
+   change behaviour.
+7. **Group-task expand/collapse** — keep collapsed state per-group
+   in TUI state, or remember across `1`/`2`/`3` view switches?
+   Default: per-group state survives view switches (less surprise).
+8. **Estimated progress accuracy** — what do we do when no history
+   exists (first-ever run of this task)? Proposal: show
+   `▱▱▱▱▱▱▱▱  ?` (no progress, no ETA) rather than fake it.
+9. **Persistent tasks in the Bottlenecks view.** They never
+   complete; they shouldn't appear in critical-path computations.
+   Persistent count surfaces in the header (`⚡<n>`) instead.
+   Confirm.
+10. **Task Detail's "copy log to clipboard"** — Bun has no native
+    clipboard. Best-effort via OSC-52 escape (terminal clipboard
+    protocol; works in iTerm2, Kitty, recent xterm). Falls back to
+    silently no-op. Acceptable for v1?
    Default ON gives the best first impression but risks confusion
    in mixed-tooling pipelines.
 4. **Where do `--summarize` / `--profile` files write to?** Still on
