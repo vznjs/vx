@@ -42,51 +42,52 @@ export default defineProject({
     },
 
     // Cross-target standalone binaries. One task per (os, arch) so
-    // each gets its own cache slot — changing src/ invalidates all
-    // four, but a cache hit on one doesn't drag the others through
-    // a recompile. `dist/` is wiped before each build by output
+    // each gets its own cache slot. `inputs.files` only needs `src/**`
+    // and `tsconfig.json` — package.json bytes are auto-folded into
+    // every cache key, and bun.lock is part of the workspace
+    // fingerprint. `dist/` is wiped before each build by output
     // cleaning, so the binary on disk always matches the cached one.
-    'build:linux-x64': {
+    'build.linux-x64': {
       description: 'compile standalone binary (linux x64)',
       exec: {
         command:
           'bun build --compile --minify --bytecode --target=bun-linux-x64 src/bin.ts --outfile dist/vx-linux-x64',
       },
       cache: {
-        inputs: { files: ['src/**', 'package.json', 'bun.lock', 'tsconfig.json'] },
+        inputs: { files: ['src/**', 'tsconfig.json'] },
         outputs: { files: ['dist/vx-linux-x64'] },
       },
     },
-    'build:linux-arm64': {
+    'build.linux-arm64': {
       description: 'compile standalone binary (linux arm64)',
       exec: {
         command:
           'bun build --compile --minify --bytecode --target=bun-linux-arm64 src/bin.ts --outfile dist/vx-linux-arm64',
       },
       cache: {
-        inputs: { files: ['src/**', 'package.json', 'bun.lock', 'tsconfig.json'] },
+        inputs: { files: ['src/**', 'tsconfig.json'] },
         outputs: { files: ['dist/vx-linux-arm64'] },
       },
     },
-    'build:darwin-x64': {
+    'build.darwin-x64': {
       description: 'compile standalone binary (darwin x64)',
       exec: {
         command:
           'bun build --compile --minify --bytecode --target=bun-darwin-x64 src/bin.ts --outfile dist/vx-darwin-x64',
       },
       cache: {
-        inputs: { files: ['src/**', 'package.json', 'bun.lock', 'tsconfig.json'] },
+        inputs: { files: ['src/**', 'tsconfig.json'] },
         outputs: { files: ['dist/vx-darwin-x64'] },
       },
     },
-    'build:darwin-arm64': {
+    'build.darwin-arm64': {
       description: 'compile standalone binary (darwin arm64)',
       exec: {
         command:
           'bun build --compile --minify --bytecode --target=bun-darwin-arm64 src/bin.ts --outfile dist/vx-darwin-arm64',
       },
       cache: {
-        inputs: { files: ['src/**', 'package.json', 'bun.lock', 'tsconfig.json'] },
+        inputs: { files: ['src/**', 'tsconfig.json'] },
         outputs: { files: ['dist/vx-darwin-arm64'] },
       },
     },
@@ -95,7 +96,7 @@ export default defineProject({
     // platform target. Skipped Windows since vx spawns POSIX shell.
     build: {
       description: 'compile standalone binaries for every target',
-      dependsOn: ['build:linux-x64', 'build:linux-arm64', 'build:darwin-x64', 'build:darwin-arm64'],
+      dependsOn: ['build.linux-x64', 'build.linux-arm64', 'build.darwin-x64', 'build.darwin-arm64'],
     },
   },
 })
