@@ -1,12 +1,15 @@
 name: Release
 
-# Cuts a new patch release every time something lands on `main`.
-# Skips itself when the head commit was made by this workflow (so the
-# release commit doesn't trigger another release).
+# Cuts a new release every time something lands on `main`. The bump
+# is decided from conventional commit prefixes in the range
+# `previous-tag..HEAD`:
+#   - any `feat:` (or `feat(scope):`) → minor bump
+#   - otherwise                       → patch bump
+# Breaking-change markers (`!` suffix or `BREAKING CHANGE:` footer)
+# are deliberately ignored — we're capped at 0.x.x for now (pre-alpha).
 #
-# Manual override: workflow_dispatch with `bump: minor` (or `patch`,
-# the default) lets a maintainer cut a minor bump when a release
-# warrants it. Major is locked at 0 for now (pre-alpha).
+# Manual override: workflow_dispatch with `bump: minor` (or `patch`)
+# lets a maintainer force the bump regardless of commit history.
 
 on:
   push:
@@ -14,10 +17,10 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: 'Semver bump (always within 0.x.x)'
+        description: 'Override semver bump (within 0.x.x). Default = infer from commits.'
         type: choice
-        options: [patch, minor]
-        default: patch
+        options: [auto, patch, minor]
+        default: auto
 
 permissions:
   contents: write
@@ -26,10 +29,6 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Don't re-release on the auto-tag commit itself (defensive — we
-    # don't push commits from this workflow, but if a maintainer ever
-    # tags manually with a commit, this guards against a loop).
-    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
 
     steps:
       - uses: actions/checkout@v4
@@ -50,17 +49,29 @@ jobs:
           prev=$(git tag --list 'v0.*' --sort=-v:refname | head -n1)
           if [ -z "$prev" ]; then
             next="v0.0.1"
-            major=0
-            minor=0
-            patch=1
           else
-            # Parse v0.MINOR.PATCH
             ver=${prev#v}
             major=$(echo "$ver" | cut -d. -f1)
             minor=$(echo "$ver" | cut -d. -f2)
             patch=$(echo "$ver" | cut -d. -f3)
-            bump='${{ inputs.bump }}'
-            bump=${bump:-patch}
+
+            # Decide bump. Manual override wins; else scan commit
+            # subjects in $prev..HEAD for any `feat:` or `feat(`.
+            requested='${{ inputs.bump }}'
+            requested=${requested:-auto}
+            if [ "$requested" = "auto" ]; then
+              if git log "$prev..HEAD" --pretty=format:%s --no-merges \
+                  | grep -E '^feat(\([^)]+\))?:' >/dev/null; then
+                bump="minor"
+              else
+                bump="patch"
+              fi
+              echo "Inferred bump from conventional commits: $bump"
+            else
+              bump="$requested"
+              echo "Manual bump override: $bump"
+            fi
+
             if [ "$bump" = "minor" ]; then
               minor=$((minor + 1))
               patch=0
@@ -115,18 +126,13 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: bun scripts/release-notes.ts
 
-      - name: Create tag
-        if: steps.check.outputs.exists != 'true'
-        run: |
-          git tag "${{ steps.version.outputs.next }}"
-          git push origin "${{ steps.version.outputs.next }}"
-
       - name: Create GitHub release
         if: steps.check.outputs.exists != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "${{ steps.version.outputs.next }}" \
-            --title "${{ steps.version.outputs.next }}" \
-            --notes-file release-notes.md \
-            dist/vx-*-* dist/SHA256SUMS.txt
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.next }}
+          name: ${{ steps.version.outputs.next }}
+          body_path: release-notes.md
+          files: |
+            dist/vx-*-*
+            dist/SHA256SUMS.txt
