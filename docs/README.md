@@ -1,89 +1,195 @@
 # `@vzn/vx` — technical documentation
 
 This directory is the complete technical reference for `@vzn/vx`. Read
-it instead of the source when you want to understand _what_ and _why_;
-read the source when you want to understand _how_.
+it to understand _what_ and _why_; read the source under `src/` to
+understand _how_. Every doc is intended to be self-contained enough
+that a fresh contributor (or an AI agent) can pick up development
+without back-channel context.
 
 ## What `@vzn/vx` is
 
-A monorepo task runner for pnpm / npm / yarn / Bun workspaces. You
-author a `vx.config.ts` per package; you run `vx run <task>` at the
-workspace root; the tool discovers projects, builds a task graph from
-declared dependencies, executes tasks in topological order with
-parallelism, and caches each task's outputs and replays them on cache
-hit. Local cache is SQLite-backed; an optional remote layer speaks the
-Turborepo `/v8/artifacts/` wire.
+A content-addressed cache + task scheduler for pnpm / npm / yarn / Bun
+workspaces. Authors write a per-package `vx.config.ts`; the CLI
+discovers projects, builds a task graph from declared `dependsOn`,
+hashes every task's inputs deterministically, executes tasks in
+topological order with bounded parallelism, and replays stored outputs
+on a cache hit. Local cache is SQLite-backed; an optional remote layer
+speaks the Turborepo `/v8/artifacts/` HTTP wire so any Turbo-compatible
+cache server works.
 
 It is shaped most directly after Turborepo (per-package config, opt-in
-caching, content-addressed key, cache hashes cascade through the
-dependency graph). It diverges from Turbo in three notable ways:
+caching, content-addressed key, hashes cascade through the dep graph),
+with a smaller surface and three deliberate divergences:
 
-- **TypeScript config** (`vx.config.ts`) instead of `turbo.json` —
-  presets and computed values are first-class.
-- **Resolved task config hash** folded into the cache key — config
-  imports, computed values, and partial reconfigurations are captured
-  automatically because the hash sees the post-evaluation object.
+- **TypeScript config** (`vx.config.ts`) instead of `turbo.json`.
+  Presets are plain TypeScript helpers; computed values participate in
+  the cache key automatically.
+- **Resolved-config hash.** The cache key sees the post-evaluation
+  config object, so imports and `process.env`-derived values get
+  folded in. Turbo and Nx hash the static config file and miss them.
 - **Strict output ownership.** Declared `cache.outputs.files` are
-  cleaned before exec AND before restore, so the project dir ends a
-  cached run bit-identical to the snapshot.
+  wiped before exec AND before cache restore, so the project dir ends
+  every run bit-identical to the cached snapshot. Turbo / Nx restore
+  additively; stale files from a prior build can survive a cache hit.
 
-It is intentionally _not_ an executor framework (no plugin protocol,
-no JS-function tasks), _not_ a generator, _not_ a daemon. Commands are
-shell strings; everything else is layered on top.
+Things vx intentionally is _not_, and the rationale:
 
-A side-by-side feature comparison with Turborepo, Nx, and vite-task
-(plus the gaps) lives in [`comparison.md`](./comparison.md).
+- _Not_ an executor framework — no plugin protocol, no JS-function
+  tasks. Shell is the API. Plugins introduce versioned packages and
+  runtime indirection; vx keeps the contract minimal.
+- _Not_ a daemon — every `vx run` is a fresh process. Re-discovery
+  - config evaluation is fast enough on a Bun runtime that a daemon
+    is not worth its operational cost.
+- _Not_ a scaffolding tool, generator, watcher, or TUI. Those are
+  separate problems with separate tools.
+- _Not_ a non-JS runner. Rust / .NET / Gradle projects use their
+  own runners; vx is a JS-monorepo runner specifically.
+
+A complete side-by-side with Turborepo, Nx, and vite-task — including
+every known gap — lives in [`comparison.md`](./comparison.md).
 
 ## Where to start
 
-| You want to…                        | Read                                   |
-| ----------------------------------- | -------------------------------------- |
-| Understand the overall shape        | [`architecture.md`](./architecture.md) |
-| Author a config                     | [`schema.md`](./schema.md)             |
-| Reason about caching                | [`caching.md`](./caching.md)           |
-| Trace what happens at `vx run` time | [`execution.md`](./execution.md)       |
-| Use the CLI                         | [`cli.md`](./cli.md)                   |
-| Compare to Turbo / Nx / vite-task   | [`comparison.md`](./comparison.md)     |
-| Modify or replace a specific module | [`modules/`](./modules/)               |
-| Read forward-looking design notes   | [`design/`](./design/)                 |
+| You want to…                      | Read                                                  |
+| --------------------------------- | ----------------------------------------------------- |
+| Understand the overall shape      | [`architecture.md`](./architecture.md)                |
+| Author a `vx.config.ts`           | [`schema.md`](./schema.md)                            |
+| Reason about caching              | [`caching.md`](./caching.md)                          |
+| Trace what `vx run` actually does | [`execution.md`](./execution.md)                      |
+| Use the CLI from a shell          | [`cli.md`](./cli.md)                                  |
+| Compare to Turbo / Nx / vite-task | [`comparison.md`](./comparison.md)                    |
+| Modify, fork, or replace a module | [`modules/`](./modules/) (one file per source module) |
+| Read forward-looking design notes | [`design/`](./design/)                                |
+
+If you have ten minutes: read `architecture.md` then `caching.md`.
+Those two cover ~80% of the system.
 
 ## Repository layout
 
-`@vzn/vx` is a single-package project. All code lives under `src/`;
-each module has a corresponding page in [`modules/`](./modules/).
+`@vzn/vx` is a single-package project. All source lives under `src/`;
+every module has a corresponding page under [`modules/`](./modules/).
+Tests live under `tests/`, one file per source module.
 
-The remote-cache, layered-cache, and cache-archive modules each have
-their own page under [`modules/`](./modules/) — that's where the
-per-module contract lives.
+The cache subsystem is more than one file: `cache/cache.ts` is the
+local SQLite-backed v13 store; `cache/remote-cache.ts` is the Turbo
+HTTP client; `cache/cache-archive.ts` bridges them with tar.gz
+pack/unpack; `cache/layered-cache.ts` composes the two behind the same
+`CacheLayer` interface that the orchestrator consumes.
+
+```
+src/
+  bin.ts                          # shebang entrypoint; forwards process.argv → cli.run
+  cli.ts                          # top-level argv → subcommand dispatcher
+  cli/
+    run.ts                        # `vx run` parser + handler
+    cache.ts                      # `vx cache prune` (and the duration / size parsers)
+    help.ts                       # `vx help` text
+    format.ts                     # shared formatters (formatBytes, …)
+  orchestrator.ts                 # run() + planRun(): workspace → graph → schedule
+  orchestrator/
+    execute-task.ts               # per-task: hash → cache lookup → spawn → save
+    fingerprint.ts                # workspace-fingerprint (lockfiles + workspace yaml)
+    nested-dirs.ts                # project-boundary computation for input globs
+    upstream.ts                   # filter upstream cache hashes per inputs.tasks
+    remote-cache-setup.ts         # VX_REMOTE_CACHE_* env → LayeredCache wrap
+    logger.ts                     # default logger (framed blocks, summary, etc.)
+    framed-output.ts              # ┌─ task ─┐ output format
+    colors.ts                     # ANSI truecolor with NO_COLOR / FORCE_COLOR gating
+    summary.ts                    # tail summary lines (Tasks / Cached / Time)
+    plan.ts                       # `--dry` / `--graph` — predict outcomes, no exec
+    plan-format.ts                # plan → text / JSON / Graphviz DOT
+    run-artifacts.ts              # --summarize JSON + --profile Chrome-trace writers
+  config.ts                       # public schema: ProjectConfig, TaskConfig, …
+  index.ts                        # public re-exports + package VERSION
+  workspace/
+    workspace.ts                  # findWorkspaceRoot, listProjects, resolveCacheDir
+    project-loader.ts             # Bun-native vx.config.* + vx.workspace.* loader
+    package-graph.ts              # workspace dep graph
+    filter.ts                     # pnpm-style filter DSL (`--filter`)
+    affected.ts                   # git-relative project selection (`--affected`)
+  graph/
+    task-graph.ts                 # TaskNode DAG builder + cycle detection
+    scheduler.ts                  # parallel topological executor
+    dependency-spec.ts            # shared parser for dependsOn / inputs.tasks micro-syntax
+  cache/
+    cache.ts                      # local v13 cache (bun:sqlite + on-disk)
+    layered-cache.ts              # local + remote composition (read-through, write-through)
+    remote-cache.ts               # Turbo /v8/artifacts/ HTTP client
+    cache-archive.ts              # tar.gz pack/unpack for remote artifacts
+    inputs.ts                     # input/output glob resolution + boundary enforcement
+  exec/
+    runner.ts                     # Bun.spawn wrapper + shellQuote + runPersistent
+    env.ts                        # child-env composition + essential allowlist
+  util/
+    paths.ts                      # tiny POSIX-path normalizer for stable cache keys
+    ulid.ts                       # ULID generator (run-id stamping; no deps)
+    errors.ts                     # UserError — clean stack-less error reporting
+
+docs/
+  README.md                       # this file
+  architecture.md                 # module map + data flow + design principles
+  schema.md                       # every config field
+  caching.md                      # cache key, invalidation table, layout, version history
+  execution.md                    # the lifecycle of a `vx run`
+  cli.md                          # CLI reference (flags, output, exit codes, env)
+  comparison.md                   # side-by-side with Turbo / Nx / vite-task
+  modules/README.md               # index of per-module docs
+  modules/<name>.md               # one per src module
+  design/                         # forward-looking proposals + historical design notes
+```
 
 ## Versioned guarantees
 
-- The schema in `src/config.ts` is the public contract. Breaking
-  changes there are breaking changes for users.
-- The cache schema is versioned by a `CACHE_VERSION` constant in
-  `src/cache.ts`. Bumping it invalidates every previously-stored
-  entry.
-- Internal module boundaries are documented under [`modules/`](./modules/);
-  replacements just need to honor the public functions / types listed
-  in each module's doc.
+- **Schema.** `src/config.ts` is the public surface. Breaking changes
+  to the exported `ProjectConfig` / `WorkspaceConfig` / `TaskConfig`
+  types are breaking changes for users.
+- **Cache.** The on-disk cache is versioned via the `CACHE_VERSION`
+  constant in `src/cache/cache.ts`. Bumping it orphans every
+  previously-stored entry — pre-alpha tolerates this freely. See
+  [`caching.md` § Bumping CACHE_VERSION](./caching.md#bumping-cache_version)
+  for when a bump is required.
+- **SQLite schema.** `SCHEMA_VERSION` in `src/cache/cache.ts`.
+  Mismatch wipes the `entries` and `runs` tables (no migrations in
+  pre-alpha).
+- **Remote-cache wire.** Verbatim Turbo `/v8/artifacts/` — see
+  [`design/remote-cache.md`](./design/remote-cache.md).
+- **Module boundaries.** Every src file has a docs/modules/ page
+  listing its public exports. Internal helpers are not part of the
+  contract and can change without notice.
 
 ## Out of scope (by design)
 
-The following intentionally don't exist and shouldn't be added without
-a deliberate design pass:
+These are deliberate non-features. Don't add them without a design pass:
 
-- Watch mode, daemon, persistent tasks
-- Generators / scaffolding
-- Executor / plugin protocol — _no JS-function tasks_
-- `affected --base` (git-relative selection)
-- TUI / interactive panes (the framed-block stream output is final)
-- `.env` file loading
-- Workspace-level `globalInputs` / `globalEnv` (deferred; see
-  [`schema.md`](./schema.md))
-- Symlink-aware input traversal
-- Cross-platform shell quirks beyond what `Bun.spawn` with `shell:
-true` gives you for free
+- **Watch mode**, daemon, persistent project-graph process.
+- **Generators / scaffolding.**
+- **Executor / plugin protocol**, JS-function tasks.
+- **TUI / interactive panes** beyond the framed-block stream output.
+- **`.env` file loading.**
+- **Workspace-level `globalInputs` / `globalEnv`** (a stub exists in
+  the `WorkspaceConfig` future-fields list in
+  [`schema.md`](./schema.md); not implemented).
+- **Symlink-aware input traversal.** `Bun.Glob` walks the real tree.
+- **Cross-platform shell quirks** beyond what `Bun.spawn` with
+  `shell: true` gives you for free (Windows is unsupported).
+- **HMAC artifact signing + pre-signed URLs** on the remote cache —
+  workstream open, see [`design/remote-cache.md`](./design/remote-cache.md).
 
-The complete list of features Turborepo / Nx / vite-task have and `vx`
+The complete list of features Turbo / Nx / vite-task have that vx
 doesn't (deliberately or otherwise) is in
 [`comparison.md`](./comparison.md).
+
+## A note on Bun
+
+vx assumes Bun ≥ 1.3. We rely directly on:
+
+- `bun:sqlite` (cache metadata + run history)
+- `Bun.spawn` (`resourceUsage()` for cpu_ms + peak RSS)
+- `Bun.file` / `Bun.write` (stream I/O)
+- `Bun.Glob` (input/output resolution)
+- `Bun.CryptoHasher` (sha256 file content + config hashing)
+- `Bun.YAML` (`pnpm-workspace.yaml` parse)
+- Native `await import()` of `.ts` (vx.config.ts loader; no jiti)
+
+There is no Node fallback path. `bun install` produces a `bun.lock`;
+TypeScript source ships as-is — `src/bin.ts` runs via shebang.

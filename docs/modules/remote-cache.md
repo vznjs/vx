@@ -1,4 +1,4 @@
-# `remote-cache.ts` — HTTP client for the Turborepo `/v8/artifacts/` wire
+# `src/cache/remote-cache.ts` — Turborepo `/v8/artifacts/` HTTP client
 
 ## Purpose
 

@@ -1,17 +1,17 @@
-# `cache-archive.ts` — tar.gz pack/unpack for remote-cache artifacts
+# `src/cache/cache-archive.ts` — tar.gz pack/unpack for remote-cache artifacts
 
 ## Purpose
 
-Bridges the local v10 cache layout and the remote-cache wire body.
+Bridges the local v13 cache layout and the remote-cache wire body.
 Pure helpers that pack a stage directory into a `tar.gz` `Uint8Array`
 and unpack one back into a destination directory.
 
 Used by `LayeredCache` to:
 
-- **Pack** an artifact for `RemoteCache.put()`: stage `meta.json` +
+- **Pack** an artifact for `RemoteCache.put()`: stage stdout/stderr +
   `outputs/`, tar+gzip the stage, send the bytes.
 - **Unpack** an artifact from `RemoteCache.get()`: write bytes to a
-  stage dir, then materialize into the local cache.
+  stage dir, then materialize into the local cache via `local.save()`.
 
 ## Public surface
 
@@ -37,11 +37,13 @@ Windows 10+).
 
 ## Stage-dir layout convention
 
-Callers stage this shape inside `stageDir` before packing:
+Callers stage this shape inside `stageDir` before packing (mirrors
+the local v13 entry shape):
 
 ```
 stageDir/
-├── meta.json           # CacheEntry shape (taskId, command, exitCode, ...)
+├── stdout              # captured stdout
+├── stderr              # captured stderr
 └── outputs/
     └── <project-relative paths>
 ```

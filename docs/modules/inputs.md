@@ -1,4 +1,4 @@
-# `inputs.ts` — input file + env resolution
+# `src/cache/inputs.ts` — input/output glob resolution + cleaning
 
 ## Purpose
 
@@ -35,6 +35,17 @@ export async function resolveOutputs(args: {
   outputs: string[]
   nestedProjectDirs: string[]
 }): Promise<string[]>
+
+/**
+ * Remove every file currently matching the declared output globs.
+ * Called before every cache-miss exec AND before every cache-hit
+ * restore so the project dir lands on a clean slate.
+ */
+export async function cleanOutputs(args: {
+  projectDir: string
+  outputs: string[]
+  nestedProjectDirs: string[]
+}): Promise<void>
 ```
 
 ## File resolution rules

@@ -1,9 +1,9 @@
-# `layered-cache.ts` — local + remote cache composition
+# `src/cache/layered-cache.ts` — local + remote cache composition
 
 ## Purpose
 
-Wraps the v10 local `Cache` with a `RemoteCache` and exposes the same
-public surface as `Cache`. The orchestrator doesn't know which layer
+Wraps the v13 local `Cache` with a `RemoteCache` and exposes the same
+`CacheLayer` interface. The orchestrator doesn't know which layer
 it's talking to.
 
 - **Read-through**: try local; on miss, fetch from remote, materialize
@@ -33,19 +33,21 @@ without churn.
 
 ## Read path
 
-1. `local.get(hash)` — return immediately on hit.
+1. `local.get(hash)` — return immediately on local hit (`source: 'local'`).
 2. `remote.get(hash)` — `null` on miss; suppress errors and return `null`.
 3. On remote hit:
    - `unpackArchive(body, stage)` into a temp dir.
-   - Read `meta.json` from the stage.
-   - List `outputs/` files; call `local.save()` with the stage as
-     `projectDir`. This populates the local cache for next time.
-   - Return the now-local entry (via `local.get(hash)`).
+   - Read the entry's `stdout` / `stderr` and `outputs/` from the
+     stage; call `local.save()` to materialize it into the local
+     layer.
+   - Return the now-local entry with `source: 'remote'` so the
+     orchestrator marks it `cache-hit-remote`.
 
 ## Write path
 
 1. `local.save(args)` — synchronous, succeeds before we touch network.
-2. Stage `meta.json` + `outputs/<rel paths>` into a temp dir.
+2. Stage stdout/stderr + `outputs/<rel paths>` into a temp dir
+   (mirroring the local v13 entry shape).
 3. `packAndDiscard(stage)` → tar.gz bytes.
 4. `remote.put(hash, bytes, { durationMs })`.
 

@@ -1,4 +1,4 @@
-# `config.ts` — the public schema
+# `src/config.ts` — the public schema
 
 The single source of truth for what users can write in `vx.config.ts`.
 Pure types + two identity helpers; no runtime logic.
@@ -6,8 +6,9 @@ Pure types + two identity helpers; no runtime logic.
 ## Purpose
 
 Defines every interface the rest of the codebase consumes:
-`ProjectConfig`, `TaskConfig`, `ExecConfig`, `ExecEnv`, `TaskDependsOn`,
-`CacheConfig`, `CacheInputs`, `CacheOutputs`, `WorkspaceConfig`.
+`ProjectConfig`, `TaskConfig`, `ExecConfig`, `ExecEnv`,
+`PersistentConfig`, `CacheConfig`, `CacheInputs`, `CacheOutputs`,
+`WorkspaceConfig`.
 
 Exports two helpers — `defineProject` and `defineWorkspace` — that
 exist purely so TypeScript can narrow the user's literal types via the
@@ -22,7 +23,7 @@ export interface WorkspaceConfig
 export interface TaskConfig
 export interface ExecConfig
 export interface ExecEnv
-export interface TaskDependsOn
+export interface PersistentConfig
 export interface CacheConfig
 export interface CacheInputs
 export interface CacheOutputs
@@ -31,6 +32,11 @@ export interface CacheOutputs
 export function defineProject<T extends ProjectConfig>(config: T): T
 export function defineWorkspace<T extends WorkspaceConfig>(config: T): T
 ```
+
+`TaskConfig.dependsOn` is `readonly string[]` (Turbo/Nx
+micro-syntax — see [`schema.md`](../schema.md)).
+`CacheInputs.tasks` is the same shape with `*` / `^*` / `!` filter
+extras.
 
 See [`../schema.md`](../schema.md) for the full reference of every
 field's meaning.

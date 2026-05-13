@@ -50,8 +50,9 @@ export interface PruneResult {
 export interface CacheKeyInput {
   taskId: string
   taskConfigHash: string
+  projectPackageJsonHash: string // (v12) project's package.json bytes
   envValues: Array<[name: string, value: string]>
-  inputFiles: string[]
+  inputFiles: string[] // absolute paths (sorted by caller before pass)
   workspaceRoot: string
   upstreamHashes: string[]
   workspaceFingerprint: string
@@ -68,18 +69,28 @@ export interface CacheEntry {
   stdout: string
   stderr: string
   storedAt: string // ISO timestamp
+  source?: 'local' | 'remote' // (LayeredCache) which layer served the hit
 }
 
 export interface RunRecord {
   hash: string
   project: string
   task: string
-  status: 'success' | 'failed' | 'cache-hit' | 'skipped'
+  status: 'success' | 'failed' | 'cache-hit' | 'cache-hit-remote' | 'skipped'
   exitCode: number
   durationMs: number
   forwardArgs?: readonly string[]
-  startedAt: number // ms since epoch
-  endedAt: number // ms since epoch
+  startedAt: number // ms-epoch
+  endedAt: number // ms-epoch
+  // v11 analytics columns (all optional; populated by runner / orchestrator)
+  runId?: string // ULID shared across all tasks in one `vx run`
+  cpuMs?: number // user + system CPU time from Bun.spawn rusage
+  peakRssBytes?: number // peak resident set size
+  wallclockStartNs?: bigint // hrtime span relative to run t=0
+  wallclockEndNs?: bigint
+  cacheHit?: boolean // convenience for flamegraph color
+  bytesUploaded?: number // remote-cache push size
+  bytesDownloaded?: number // remote-cache pull size on hit
 }
 
 export interface CacheStats {
@@ -99,15 +110,16 @@ in this exact order:
 <CACHE_VERSION>\n
 task:<taskId>\n
 workspace:<workspaceFingerprint>\n
+pkg:<projectPackageJsonHash>\n
 config:<taskConfigHash>\n
 forward-args:<n>\n
   <arg>\0 (n times, in caller order)
 env-values:<n>\n
   <name>=<value>\n (n times, in supplied order — caller pre-sorts)
 upstream:<n>\n
-  <hash>\n (n times, after we sort)
+  <hash>\n (n times, after we sort inside key())
 inputs:<n>\n
-  <relPath>\0<fileHash>\n (n times, after we sort inputFiles)
+  <relPath>\0<fileHash>\n (n times, after we sort inputFiles inside key())
 ```
 
 `<fileHash>` is sha256 of the file contents. `<relPath>` is the POSIX-
@@ -207,9 +219,9 @@ A `vx stats` CLI command can ship later; the data is captured today.
 - Doesn't compress entries. `dist/` of typical projects is ~1–10MB
   per entry; uncompressed is fine for local cache. Remote cache should
   add tar+zstd at the wire.
-- Doesn't garbage-collect old entries automatically. Tracked size +
-  LRU access timestamps support eviction; the policy and the
-  `vx cache prune` command haven't shipped yet.
+- Doesn't garbage-collect old entries automatically. Eviction is
+  user-driven via `vx cache prune --older-than <d>` / `--max-size <s>`
+  (calls into `Cache.prune`).
 - Doesn't verify entries are intact byte-for-byte. The file existence
   check is the only integrity gate.
 

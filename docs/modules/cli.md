@@ -1,132 +1,58 @@
-# `cli.ts` and `bin.ts` — command-line dispatcher
+# `src/cli.ts` — top-level command dispatcher
 
 ## Purpose
 
-Hand-written argv parser and command dispatcher. `bin.ts` is the
-binary entry that calls `cli.run()` and exits with its code; `cli.ts`
-is the testable function.
+Argv → subcommand dispatch. Hand-rolled (no commander / yargs / cac)
+to keep the dependency tree slim and behaviour trivially predictable.
+Each subcommand handler lives in `src/cli/<name>.ts`.
 
 ## Public surface
 
 ```ts
-// cli.ts
 export async function run(argv: readonly string[]): Promise<number>
-export function parseRunArgs(args: readonly string[]): RunArgs
 
-interface RunArgs {
-  task: string | undefined // task or `pkg#task`
-  filters: string[] // raw --filter values
-  recursive: boolean // -r
-  ignoreDependsOn: boolean // --ignore-depends-on
-  concurrency: number | undefined // -c
-  noCache: boolean // --no-cache
-  forwardArgs: string[] // everything after `--`
-  verbose: boolean // -v / --verbose
-  error?: string
-}
+// Re-exports for tests:
+export { parseRunArgs, type RunArgs } from './cli/run.js'
+export { parsePruneArgs, parseDuration, parseSize } from './cli/cache.js'
+export { formatBytes } from './cli/format.js'
 ```
 
-`bin.ts` just imports `run` from `./cli.js`, slices `process.argv`,
-and `process.exit(code)`s.
+`run(argv)` returns the exit code. `bin.ts` calls
+`process.exit(await run(process.argv.slice(2)))`.
 
-## Commands
+## Subcommands
 
-- `vx run [OPTIONS] [TASK | PKG#TASK] [-- forwarded-args...]`
-- `vx help` / `--help` / `-h`
-- `vx version` / `--version` / `-V`
-- anything else → print "unknown command", print help, exit 1.
+| Argv first token                     | Handler                                    |
+| ------------------------------------ | ------------------------------------------ |
+| `run`                                | `cli/run.ts:runCmd(rest)`                  |
+| `cache`                              | `cli/cache.ts:cacheCmd(rest)`              |
+| `help` / `--help` / `-h` / _(empty)_ | `cli/help.ts:printHelp()`                  |
+| `version` / `--version`              | `process.stdout.write('vx <VERSION>\n')`   |
+| anything else                        | print `unknown command`, then help, exit 1 |
 
-Note: `-v` is reserved for `--verbose`; `--version` shorthand is `-V`.
+Per-subcommand parsers / handlers carry their own argv-walk loops.
+See:
 
-See [`../cli.md`](../cli.md) for the user-facing CLI reference.
-
-## Selection model
-
-After `parseRunArgs`, the dispatcher resolves the project set:
-
-| Input                    | Resolution                                      |
-| ------------------------ | ----------------------------------------------- |
-| `pkg#task` task argument | `projects = [pkg]`                              |
-| `-r` / `--recursive`     | `projects = undefined` (orchestrator picks all) |
-| `--filter` filter(s)     | `projects = applyFilters(...)` via `filter.ts`  |
-| (default)                | resolve cwd → enclosing project; error if none  |
-
-`pkg#task` and `--filter` both still expand through `dependsOn`. The orchestrator
-treats `projects` as a starting set, not a final set.
-
-## Interactive picker
-
-If the task argument is missing AND stdin is a TTY, the CLI loads every
-`pkg#task` declared in the workspace, prints a numbered list, and reads
-a selection via `readline/promises`. If stdin is not a TTY, the CLI
-exits `1` with `missing task name`.
-
-## Argument forwarding (`--`)
-
-`parseRunArgs` splits argv on the first `--`. Everything before is
-parsed as flags + task; everything after is verbatim `forwardArgs`,
-passed through the orchestrator to the last `exec` step of each task,
-shell-quoted by `runner.ts:shellQuote`.
-
-`forwardArgs` is folded into the cache key — different forwarded args
-never spuriously hit cache.
-
-## Argv parsing rules
-
-Implemented as a small loop in `parseRunArgs`:
-
-- The first non-flag positional (before `--`) is the task name.
-- Flags take their value as the next argv entry:
-  - `--filter <pattern>` (repeatable)
-  - `-c, --concurrency <n>` (positive integer)
-  - `-r, --recursive` (boolean)
-  - `--ignore-depends-on` (boolean)
-  - `--no-cache` (boolean)
-  - `--cache` (no-op, parity with vite-task)
-  - `-v, --verbose` (boolean)
-- Unknown flag → error.
-- Missing flag value → error.
-- Second positional → error.
-- Bad concurrency value (NaN, `< 1`) → error.
-
-All errors are returned as `{ error: '...' }` from `parseRunArgs` and
-surface as exit code 1 from `run()`.
-
-## Why hand-rolled
-
-No commander / yargs / cac. The parsing surface is small,
-hand-rolling keeps the dependency tree slim and the behavior trivially
-predictable.
+- [`cli-run.md`](./cli-run.md) — `vx run`
+- [`cli-cache.md`](./cli-cache.md) — `vx cache prune`
+- [`cli-help.md`](./cli-help.md) — `vx help`
+- [`cli-format.md`](./cli-format.md) — shared formatters
 
 ## What this does NOT do
 
-- No global flags (no `--debug`, no `--quiet`, no `--color`).
-- No subcommands other than `run`/`help`/`version`.
+- No global flags (no `--debug`, no `--quiet`, no `--color`). Color
+  is gated by env (`NO_COLOR` / `FORCE_COLOR` / TTY).
 - No tab completion.
-- No multi-task invocation (`vx run a b c`).
+- No subcommand aliases beyond the help / version sugar.
 
 ## Tests
 
-`cli.test.ts` covers:
-
-- Help, version (both `--version` and `-V`), unknown command, missing
-  task name, parser errors (unknown flag, missing value, bad
-  concurrency, double positional).
-- `parseRunArgs` direct behavior across all flags including `--`
-  separator and forwarding semantics.
-- End-to-end through a real fixture workspace: default cwd resolution,
-  `-r` recursive, `pkg#task` addressing, `--filter` filter, no-match errors,
-  `-v` verbose summary, arg forwarding to the underlying command.
+`tests/cli.test.ts` covers the dispatcher table — help, version,
+unknown subcommand. Per-subcommand parser tests live in
+`tests/cli.test.ts` too (it's one file).
 
 ## Replacing this module
 
-- **Different parser library** — keep `parseRunArgs` returning a stable
-  shape so tests don't churn.
-- **Subcommands** — `vx cache clean`, `vx graph`, `vx affected`. Add
-  to the `switch (command)` in `run()`.
-- **Different filter DSL** — replace `filter.ts`, keep its two exports.
-- **TUI** — different concern; keep the parser intact and replace the
-  `Logger` impl the orchestrator receives.
-
-The `bin.ts` entry should stay tiny — its only job is wiring
-`process.argv` and `process.exit`.
+To swap in a parser library, keep `run(argv): Promise<number>` and
+keep the per-subcommand re-exports stable (tests import them
+directly). Everything else can change.
