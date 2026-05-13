@@ -39,7 +39,7 @@ ones.
 
        config.ts:    the public schema; imported by nearly everything.
        paths.ts:     tiny POSIX-path helper for stable cache keys.
-       filter.ts:    pnpm-style filter DSL used by the CLI's -F flag.
+       filter.ts:    pnpm-style filter DSL used by the CLI's --filter flag.
        ulid.ts:      tiny ULID generator (run-id stamping; no deps).
        errors.ts:    UserError class — clean error output without a stack.
        index.ts:     re-exports the public surface.
@@ -69,7 +69,7 @@ tradeoff (Turbo and Nx behave the same).
 
 1. **`cli.ts`** parses argv → `{ task, projects?, concurrency?,
 noCache?, ignoreDependsOn?, forwardArgs? }`. The CLI
-   resolves the selection mode (cwd, `-r`, `-F` filters, or
+   resolves the selection mode (cwd, `--all`, `--filter` filters, or
    `pkg#task`) into a concrete project list before invoking the
    orchestrator.
 2. **`orchestrator.ts:run()`** is invoked with those options.

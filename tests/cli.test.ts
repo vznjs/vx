@@ -222,7 +222,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     })
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
-    const code = await run(['run', '-F', 'one', 'hello'])
+    const code = await run(['run', '--filter', 'one', 'hello'])
     expect(code).toBe(0)
     expect(stdout).toContain('hello-cli')
   })
@@ -235,7 +235,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
       return true
     })
 
-    const code = await run(['run', '-F', 'nope', 'hello'])
+    const code = await run(['run', '--filter', 'nope', 'hello'])
     expect(code).toBe(1)
     expect(stderr).toContain('no projects matched')
   })
@@ -278,7 +278,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
   it('honors -F and --concurrency through to the orchestrator', async () => {
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-    const code = await run(['run', 'hello', '-F', 'one', '--concurrency', '1'])
+    const code = await run(['run', 'hello', '--filter', 'one', '--concurrency', '1'])
     expect(code).toBe(0)
   })
 
@@ -330,8 +330,8 @@ describe('parseRunArgs', () => {
     expect(r.tasks).toEqual(['@scope/web#build'])
   })
 
-  it('parses repeated --filter / -F', () => {
-    const r = parseRunArgs(['build', '-F', 'foo', '--filter', '@scope/*'])
+  it('parses repeated --filter', () => {
+    const r = parseRunArgs(['build', '--filter', 'foo', '--filter', '@scope/*'])
     expect(r.tasks).toEqual(['build'])
     expect(r.filters).toEqual(['foo', '@scope/*'])
   })
@@ -451,7 +451,11 @@ describe('parseRunArgs', () => {
   })
 
   it('rejects missing flag value', () => {
-    expect(parseRunArgs(['build', '-F']).error).toMatch(/requires a value/)
+    expect(parseRunArgs(['build', '--filter']).error).toMatch(/requires a value/)
+  })
+
+  it('-F short alias is no longer recognized', () => {
+    expect(parseRunArgs(['build', '-F', 'foo']).error).toMatch(/unknown flag: -F/)
   })
 
   it('rejects bad concurrency', () => {

@@ -12,7 +12,7 @@ export function printHelp(): void {
       'Selection (for run):',
       '  (default)                Run task in the project containing cwd.',
       '      --all                Run task in every project that declares it.',
-      '      --filter, -F <pat>   pnpm-style filter (repeatable). Examples:',
+      '      --filter <pat>       pnpm-style filter (repeatable). Examples:',
       '                             foo, @scope/*, ./packages/foo, foo..., ...foo,',
       '                             foo^..., !foo, [<since>]',
       '      --affected[=<base>]  Sugar for --filter "[<base>]". Default base =',

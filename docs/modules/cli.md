@@ -15,7 +15,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs
 
 interface RunArgs {
   task: string | undefined // task or `pkg#task`
-  filters: string[] // raw -F values
+  filters: string[] // raw --filter values
   recursive: boolean // -r
   ignoreDependsOn: boolean // --ignore-depends-on
   concurrency: number | undefined // -c
@@ -48,10 +48,10 @@ After `parseRunArgs`, the dispatcher resolves the project set:
 | ------------------------ | ----------------------------------------------- |
 | `pkg#task` task argument | `projects = [pkg]`                              |
 | `-r` / `--recursive`     | `projects = undefined` (orchestrator picks all) |
-| `-F` filter(s)           | `projects = applyFilters(...)` via `filter.ts`  |
+| `--filter` filter(s)     | `projects = applyFilters(...)` via `filter.ts`  |
 | (default)                | resolve cwd → enclosing project; error if none  |
 
-`pkg#task` and `-F` both still expand through `dependsOn`. The orchestrator
+`pkg#task` and `--filter` both still expand through `dependsOn`. The orchestrator
 treats `projects` as a starting set, not a final set.
 
 ## Interactive picker
@@ -77,7 +77,7 @@ Implemented as a small loop in `parseRunArgs`:
 
 - The first non-flag positional (before `--`) is the task name.
 - Flags take their value as the next argv entry:
-  - `-F, --filter <pattern>` (repeatable)
+  - `--filter <pattern>` (repeatable)
   - `-c, --concurrency <n>` (positive integer)
   - `-r, --recursive` (boolean)
   - `--ignore-depends-on` (boolean)
@@ -115,7 +115,7 @@ predictable.
 - `parseRunArgs` direct behavior across all flags including `--`
   separator and forwarding semantics.
 - End-to-end through a real fixture workspace: default cwd resolution,
-  `-r` recursive, `pkg#task` addressing, `-F` filter, no-match errors,
+  `-r` recursive, `pkg#task` addressing, `--filter` filter, no-match errors,
   `-v` verbose summary, arg forwarding to the underlying command.
 
 ## Replacing this module

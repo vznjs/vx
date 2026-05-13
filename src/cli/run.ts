@@ -75,7 +75,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
 
   for (let i = 0; i < before.length; i++) {
     const a = before[i]
-    if (a === '--filter' || a === '-F') {
+    if (a === '--filter') {
       const v = before[++i]
       if (v === undefined) return { ...out, error: `${a} requires a value` }
       out.filters.push(v)
@@ -216,7 +216,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     const cwdProject = await findCwdProject(cwd)
     if (!cwdProject) {
       process.stderr.write(
-        `vx run: not inside a project. Pass --all for every project, -F <pattern> to filter, or run from within a project directory.\n`,
+        `vx run: not inside a project. Pass --all for every project, --filter <pattern> to filter, or run from within a project directory.\n`,
       )
       return 1
     }

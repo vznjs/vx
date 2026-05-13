@@ -31,7 +31,7 @@ specific project; bare entries follow the usual scope rules
 Run the named task. By default only the project containing the current
 working directory is selected — `dependsOn` still expands so the
 project's upstream workspace deps run too. Override the selection with
-`--all`, `-F`/`--filter`, or `pkg#task`.
+`--all`, `--filter`, or `pkg#task`.
 
 If no task name is given:
 
@@ -46,14 +46,14 @@ Exit codes:
 
 ### Selection
 
-| Form             | Effect                                                                |
-| ---------------- | --------------------------------------------------------------------- |
-| (default)        | The project that contains cwd. Errors if cwd is not inside a project. |
-| `pkg#task`       | Just that project.                                                    |
-| `--all`          | Every project that declares the task.                                 |
-| `-F`, `--filter` | pnpm-style filter DSL (repeatable).                                   |
+| Form       | Effect                                                                |
+| ---------- | --------------------------------------------------------------------- |
+| (default)  | The project that contains cwd. Errors if cwd is not inside a project. |
+| `pkg#task` | Just that project.                                                    |
+| `--all`    | Every project that declares the task.                                 |
+| `--filter` | pnpm-style filter DSL (repeatable).                                   |
 
-### Filter DSL (`-F`, `--filter`)
+### Filter DSL (`--filter`)
 
 | Form            | Meaning                                                                       |
 | --------------- | ----------------------------------------------------------------------------- |
@@ -68,11 +68,11 @@ Exit codes:
 Examples:
 
 ```sh
-vx run build -F @scope/*        # all packages under @scope
-vx run build -F app...          # app and its transitive deps
-vx run build -F ...util         # util and everything that depends on it
-vx run build -F app^...         # only app's deps
-vx run build -F '*' -F '!docs'  # everything except docs
+vx run build --filter @scope/*        # all packages under @scope
+vx run build --filter app...          # app and its transitive deps
+vx run build --filter ...util         # util and everything that depends on it
+vx run build --filter app^...         # only app's deps
+vx run build --filter '*' --filter '!docs'  # everything except docs
 ```
 
 ### Argument forwarding (`--`)
@@ -91,7 +91,7 @@ different cache entries.
 
 | Flag                              | Type           | Default                         | Description                                                                                                         |
 | --------------------------------- | -------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `--filter`, `-F`                  | repeatable     | (none)                          | pnpm-style filter DSL (see above).                                                                                  |
+| `--filter`, `--filter`            | repeatable     | (none)                          | pnpm-style filter DSL (see above).                                                                                  |
 | `--all`                           | boolean        | off                             | Select every project that declares the task.                                                                        |
 | `--excludeDependencies[=<names>]` | optional value | off                             | Drop `dependsOn` edges. No value = all (just the requested task runs); comma-list = drop only those specific names. |
 | `--concurrency <n>`               | positive int   | `navigator.hardwareConcurrency` | Maximum parallel tasks. `1` serializes.                                                                             |

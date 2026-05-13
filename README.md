@@ -68,16 +68,16 @@ in [`docs/schema.md`](./docs/schema.md).
 ## CLI
 
 ```sh
-vx run [TASK | PKG#TASK] [-r] [-F <pattern>] [-c <n>] [--no-cache] [--ignore-depends-on] [-v] [-- forwarded-args...]
-vx stats [--json]
+vx run [TASK | PKG#TASK ...] [--all] [--filter <pattern>] [--concurrency <n>] [--no-cache] [--excludeDependencies] [--verbosity <n>] [-- forwarded-args...]
 vx cache prune [--older-than 30d] [--max-size 1G]
 ```
 
 Default scope: the project containing cwd (deps still expand via
-`dependsOn`). Use `-r` for every project, `-F` for a pnpm-style filter
-DSL, or `pkg#task` to target one project directly. Args after `--` are
-forwarded (shell-quoted) to the task's `exec.command` and folded into
-the cache key.
+`dependsOn`). Use `--all` for every project, `--filter` for a pnpm-style
+filter DSL, or `pkg#task` to target one project directly. Pass
+multiple positionals to run several tasks in one invocation
+(`vx run build lint test`). Args after `--` are forwarded (shell-
+quoted) to the task's `exec.command` and folded into the cache key.
 
 Output is Turbo-style: framed per-task blocks with status indicators
 (`cache hit • <hash>`, `executed`, `FAILED (exit N)`, `from local
