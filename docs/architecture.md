@@ -77,9 +77,10 @@ noCache?, ignoreDependsOn?, forwardArgs? }`. The CLI
    parses it, and lists every package that has a `vx.config.*` file.
    Detects duplicate package names and throws.
 4. **`project-loader.ts`** evaluates each `vx.config.ts` (or .mjs)
-   via `jiti` (`moduleCache: false`, `interopDefault: false`) so
-   edits across same-process calls are picked up and missing default
-   exports produce a clear error.
+   via native Bun `await import()` with a content-hash query-string
+   bust (`?vx-bust=<sha256>`) so edits across same-process calls are
+   picked up and missing default exports produce a clear error. No
+   jiti dependency — Bun runs TS natively.
 5. **`package-graph.ts`** builds the workspace dependency graph from
    each project's `package.json`. Only workspace-internal deps count.
 6. **`task-graph.ts`** builds the task graph: starting from the user's
@@ -206,9 +207,10 @@ the architecture:
 - **No plugin protocol.** Presets are TypeScript helpers that _return_
   `TaskConfig` objects, evaluated at config-load time. The runner
   doesn't know they exist.
-- **No daemon.** Every `vx run` invocation is a fresh process.
-  Loaders use jiti's `moduleCache: false` so config edits show up
-  next run.
+- **No daemon.** Every `vx run` invocation is a fresh process. The
+  loader content-hashes each config file and appends `?vx-bust=<sha>`
+  to the import specifier, so edits show up the next run without
+  manually clearing a cache.
 - **No nested task graphs.** The unit of caching, scheduling, and
   reporting is the task. For parallelism, define separate tasks
   linked by `dependsOn`. For chained commands inside one task, use

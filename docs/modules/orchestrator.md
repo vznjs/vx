@@ -111,8 +111,9 @@ sha256(JSON.stringify(node.config))
 
 Captures every config-time decision — command list, env declarations,
 output globs, input globs, dependsOn, cache.inputs.tasks filter — and
-critically also captures _imported / computed values_ because `jiti`
-has already baked them into the loaded object.
+critically also captures _imported / computed values_ because Bun's
+native `await import()` has already evaluated the module and baked
+them into the loaded object.
 
 ## `defaultLogger`
 

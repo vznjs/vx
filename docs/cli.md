@@ -1,13 +1,14 @@
 # CLI reference
 
 The `vx` binary is installed by `@vzn/vx`. All commands are
-hand-parsed (no commander/yargs/etc.) in `src/cli.ts`.
+hand-parsed (no commander/yargs/etc.) in `src/cli.ts`; each subcommand
+handler lives in `src/cli/<name>.ts`.
 
 ## Commands
 
 ```
 vx run [OPTIONS] [TASK | PKG#TASK] [-- forwarded-args...]
-vx stats
+vx stats [--json]
 vx cache prune [--older-than <duration>] [--max-size <bytes>]
 vx help
 vx version
@@ -51,7 +52,23 @@ Hits  (24h):       73  (73.0%)
 Reads from `.vx/cache/cache.db` (the v10 SQLite index). The "Runs"
 and "Hits" counts come from the `runs` table — recorded for every
 task at the end of each `vx run`, including cache hits, failures,
-and skipped tasks. Exits `1` if not inside a pnpm workspace.
+and skipped tasks. Exits `1` if not inside a workspace.
+
+`--json` switches to a machine-readable form for CI scripts. No
+formatted byte strings; consumers handle rendering. `hitRateLast24h`
+is `null` (not `0`) when there's no denominator so "we don't know"
+stays distinguishable from "0%".
+
+```
+$ vx stats --json
+{
+  "entryCount": 27,
+  "totalBytes": 132032,
+  "runCountLast24h": 52,
+  "hitCountLast24h": 9,
+  "hitRateLast24h": 0.173
+}
+```
 
 ### `vx cache prune`
 
@@ -143,15 +160,69 @@ forwarded args never spuriously hit cache.
 
 ## Flags
 
-| Flag                             | Type              | Default            | Description                                                                                  |
-| -------------------------------- | ----------------- | ------------------ | -------------------------------------------------------------------------------------------- |
-| `-F <pattern>`, `--filter <pat>` | repeatable string | (none)             | Filter DSL, see above.                                                                       |
-| `-r`, `--recursive`              | boolean           | off                | Select every project that declares the task.                                                 |
-| `-c <n>`, `--concurrency <n>`    | positive integer  | `os.cpus().length` | Maximum parallel tasks. `1` serializes.                                                      |
-| `--ignore-depends-on`            | boolean           | off                | Skip `dependsOn` expansion; run only the explicitly requested tasks.                         |
-| `--no-cache`                     | boolean           | off                | Skip cache reads AND writes. Every task runs; nothing is persisted.                          |
-| `--cache`                        | boolean           | off                | No-op. Accepted for parity with vite-task. Caching is governed by each task's `cache` block. |
-| `-v`, `--verbose`                | boolean           | off                | Print a summary table (task, status, duration) after the run.                                |
+| Flag                             | Type              | Default                         | Description                                                                                  |
+| -------------------------------- | ----------------- | ------------------------------- | -------------------------------------------------------------------------------------------- |
+| `-F <pattern>`, `--filter <pat>` | repeatable string | (none)                          | Filter DSL, see above.                                                                       |
+| `-r`, `--recursive`              | boolean           | off                             | Select every project that declares the task.                                                 |
+| `-c <n>`, `--concurrency <n>`    | positive integer  | `navigator.hardwareConcurrency` | Maximum parallel tasks. `1` serializes.                                                      |
+| `--ignore-depends-on`            | boolean           | off                             | Skip `dependsOn` expansion; run only the explicitly requested tasks.                         |
+| `--no-cache`                     | boolean           | off                             | Skip cache reads AND writes. Every task runs; nothing is persisted; outputs are NOT cleaned. |
+| `--cache`                        | boolean           | off                             | No-op. Accepted for parity with vite-task. Caching is governed by each task's `cache` block. |
+| `-v`, `--verbose`                | boolean           | off                             | Print a per-task summary table after the framed blocks.                                      |
+
+## Output format
+
+`vx run` emits Turbo-style framed blocks. Stdout/stderr from each task
+is buffered until completion, then dumped inside the block — so
+concurrent tasks never interleave their lines.
+
+```
+• vx 0.0.0
+
+   • Packages in scope: @vzn/vx
+   • Running ci in 1 package
+   • Remote caching disabled
+
+┌─ @vzn/vx#lint > cache hit • 7da42dfe
+Found 0 warnings and 0 errors.
+└─ @vzn/vx#lint ── (4ms) from local cache
+
+┌─ @vzn/vx#test > executed
+$ bun test
+... bun test output ...
+└─ @vzn/vx#test ── (5.20s) executed
+
+ Tasks:    2 successful, 2 total
+Cached:    1 local, 2 total
+  Time:    5.34s
+```
+
+Top border shows the task id + a status hint (`cache hit • <hash>`,
+`remote cache hit • <hash>`, `executed`, `skipped (upstream failed)`,
+`$ <command>` on failure). Bottom border always shows the
+operation-time (wallclock for the actual work — clean+restore for
+cache hits, exec for misses) plus the final status (`executed`, `from
+local cache`, `from remote cache`, `FAILED (exit N)` in bold red,
+`skipped` in yellow).
+
+When every real task came from cache, the summary's `Time:` line
+appends `>>> FULL CACHE` (Turbo's `>>> FULL TURBO` flourish, our
+cache).
+
+**Group tasks** (no `exec` — pure `dependsOn` aggregators) emit no
+framed block. They're invisible in the run output by design.
+
+### Colors
+
+ANSI truecolor (`ansi-16m`) sequences, gated by env:
+
+| Var             | Effect                        |
+| --------------- | ----------------------------- |
+| `NO_COLOR=…`    | Force off. Overrides FORCE\_. |
+| `FORCE_COLOR=…` | Force on.                     |
+| (neither)       | On iff `stdout.isTTY`.        |
+
+Custom loggers passed via the programmatic API always see plain text.
 
 ## Argv parsing rules
 
@@ -188,16 +259,19 @@ full protocol.
 
 ## What's NOT in the CLI
 
-Intentionally absent — see `docs/README.md` for the broader scope
-discussion:
+Intentionally absent — see [`comparison.md`](./comparison.md) for the
+full Turbo/Nx/vite-task gap list and which items we'd accept PRs for:
 
 - Multi-task invocation (`vx run a b c`)
 - Wildcards in task names (`vx run 'build:*'`)
-- `--dry-run`
-- `--continue` (failure isolation is already default)
-- Output format flags (`--output-logs none/errors-only/full`)
-- Cache management subcommands (`vx cache clean`)
+- `--dry-run` / `--dry=json` (Turbo)
+- `--continue` (failure isolation is already the default for
+  independent siblings)
+- Output mode flags (`--output-logs none/errors-only/full`)
+- Cache management subcommands beyond `prune` (`vx cache clean`)
 - Graph introspection (`vx graph`, `vx list`)
+- `affected --base <ref>` (Nx-style git-relative selection)
+- Watch / daemon mode
 
 Most of these are tractable additions; they just haven't been built.
 

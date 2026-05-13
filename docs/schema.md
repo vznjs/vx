@@ -285,45 +285,49 @@ Use them so TypeScript can narrow literal types in your config (autocomplete
 import { defineProject } from '@vzn/vx'
 
 export default defineProject({
-  run: {
-    tasks: {
-      build: {
-        exec: { command: 'tsc -b' },
-        dependsOn: { dependencies: ['build'] },
-        cache: {
-          inputs: {
-            files: ['src/**', '!**/*.test.ts', 'tsconfig.json', 'package.json'],
-            env: ['NODE_ENV'],
-          },
-          outputs: { files: ['dist/**'] },
+  tasks: {
+    build: {
+      exec: { command: 'tsc -b' },
+      dependsOn: { dependencies: ['build'] },
+      cache: {
+        inputs: {
+          files: ['src/**', '!**/*.test.ts', 'tsconfig.json', 'package.json'],
+          env: ['NODE_ENV'],
         },
+        outputs: { files: ['dist/**'] },
       },
+    },
 
-      test: {
-        exec: { command: 'vitest run', env: { passThrough: ['CI'] } },
-        dependsOn: { self: ['build'] },
-        cache: {
-          inputs: { files: ['src/**'] },
-          outputs: { files: [] },
+    test: {
+      exec: { command: 'bun test', env: { passThrough: ['CI'] } },
+      dependsOn: { self: ['build'] },
+      cache: {
+        inputs: { files: ['src/**'] },
+        outputs: { files: [] },
+      },
+    },
+
+    package: {
+      exec: { command: 'rm -rf pkg && npm pack --pack-destination ./pkg' },
+      dependsOn: { self: ['build', 'test'] },
+      cache: {
+        inputs: {
+          files: ['package.json'],
+          tasks: { self: ['build'], dependencies: ['build'] },
         },
+        outputs: { files: ['pkg/*.tgz'] },
       },
+    },
 
-      package: {
-        exec: { command: 'rm -rf pkg && npm pack --pack-destination ./pkg' },
-        dependsOn: { self: ['build', 'test'] },
-        cache: {
-          inputs: {
-            files: ['package.json'],
-            tasks: { self: ['build'], dependencies: ['build'] },
-          },
-          outputs: { files: ['pkg/*.tgz'] },
-        },
-      },
+    dev: {
+      // No cache field → always runs.
+      exec: { command: 'vite', env: { passThrough: ['CI', 'VITE_API_URL'] } },
+    },
 
-      dev: {
-        // No cache field → always runs.
-        exec: { command: 'vite', env: { passThrough: ['CI', 'VITE_API_URL'] } },
-      },
+    // Umbrella / group task — no exec, just chains deps. `vx run ci`
+    // fans out, and the group itself is silent in the run output.
+    ci: {
+      dependsOn: { self: ['build', 'test'] },
     },
   },
 })

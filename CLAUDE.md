@@ -376,22 +376,29 @@ LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
 
 ## Active workstreams (prioritized)
 
-1. **Auto-fold project `package.json` + `vx.config.*` into every
-   task's cache key**, like Turbo and Nx do via "global dependencies"
-   / "implicit dependencies". Current gap: narrow `cache.inputs.files`
-   like `['src/**']` doesn't include package.json, so dep changes
-   miss cache invalidation. One-line fix in `cache.ts:key()`.
-2. **Split `cli.ts`** into `src/cli/{run,cache,stats,help,pick-task}.ts`.
-   Currently ~430 LOC of mixed concerns; orchestrator.ts just got
-   the same treatment in PR #41.
-3. **Presets / config-introspection** — NX-style task inference from
-   tool configs (`vitest.config.ts`, `tsconfig.json`).
-4. **Pre-signed URL auth + HMAC signing** (`x-artifact-tag`) for the
-   remote cache. v2 features per `docs/design/remote-cache.md`.
-5. **`vx stats --json`** for CI consumption.
-6. **`vx stats --json`** — machine-readable output for CI scripts.
-   Underlying data is already in `cache.db`; just needs a flag and
-   a JSON encoder branch in the stats command.
+Roadmap is derived from [`docs/comparison.md`](docs/comparison.md) —
+the gap analysis against Turbo / Nx / vite-task with sourced cites.
+
+1. **`--dry-run` / `--graph`.** Print the task graph + cache hit/miss
+   prediction without executing. Cheap; the data lives in
+   `graph/task-graph.ts` already. Render `.dot` and/or JSON.
+2. **`--affected`.** Git-relative selection (`main..HEAD`). Pure
+   addition; no schema change. Selects packages whose changed-files
+   intersect any task's `cache.inputs.files`.
+3. **Cross-package `dependsOn`.** Allow `pkg#task` and wildcards (`build-*`,
+   `^build-*`) in `dependsOn.self` / `.dependencies`. Schema-extending
+   but contained.
+4. **Named inputs + target defaults.** Workspace-level reusable input
+   sets + per-task inheritance. Reduces glob duplication across tasks.
+   See Nx `namedInputs` / `targetDefaults`.
+5. **Pre-signed URL auth + HMAC signing** (`x-artifact-tag`) for the
+   remote cache. v2 per `docs/design/remote-cache.md`.
+6. **Per-run JSON summary** (`.vx/runs/<run_id>.json`). Already have
+   the data in `cache.db`'s `runs` table.
+7. **Output log modes** (`--output-logs=full|errors-only|hash-only|none`).
+8. **Auto-input inference** (vite-task's `{auto:true}` via filesystem
+   tracing). Biggest UX win, biggest engineering lift; needs an
+   `fspy`-equivalent per OS.
 
 ## Operating directive (to you, Claude)
 
