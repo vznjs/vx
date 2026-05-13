@@ -1,0 +1,37 @@
+name: Release assets
+
+# Triggered when a maintainer publishes a release in the GitHub UI
+# (or via `gh release create`). Runs `vx run build` (which fans out
+# to one task per target with per-binary caching), then attaches
+# the four binaries to the release. The maintainer writes the body
+# manually.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  assets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+
+      # Dogfood: `build` is a vx group task fanning out to
+      # `build:<target>` for each platform. Each sub-task is
+      # individually cached, so re-running this workflow on the same
+      # commit is essentially free.
+      - run: bun src/bin.ts run build
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: dist/vx-*
