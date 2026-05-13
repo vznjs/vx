@@ -6,8 +6,8 @@
 
 ## 1. Spec open questions — direct answers
 
-1. **Ink vs hand-roll** → Ink, with a `bun build --compile`
-   gate-check. See §2.
+1. **OpenTUI vs Ink vs hand-roll** → OpenTUI, with a
+   `bun build --compile` gate-check covering its native lib. See §2.
 2. **Observer vs grown Logger** → Observer. Logger keeps streaming-
    chunk semantics. See §3.
 3. **Auto-default `--tui`** → Opt-in for Phase 1 / 2. Promote to
@@ -23,59 +23,111 @@
    shipping a `Logger` is consuming events structurally, not asking
    for a screen takeover. Disqualifier reason:
    `"custom logger configured"`.
-6. **Resize handling** → Ink emits `resize` on
-   `useStdout().stdout`. Sparklines and the timeline read width from
-   a `WidthContext` and recompute on each event. Verified in §6.
-7. **Bun compile + Ink** → Known issue: Ink loads `yoga.wasm` via
-   runtime path resolution; `bun build --compile` mis-resolves it
-   ([bun#13552](https://github.com/oven-sh/bun/issues/13552),
-   [bun#2034](https://github.com/oven-sh/bun/issues/2034)). Mitigation in §2.
+6. **Resize handling** → `@opentui/react` exposes a stdout resize
+   hook; sparklines and the timeline read width from a
+   `WidthContext` and recompute on each event. Validated during
+   the compile-gate prototype.
+7. **Bun compile + OpenTUI** → Native lib (`.dylib`/`.so`/`.dll`)
+   needs to be reachable from the compiled binary. `bun build
+--compile` does not load native libs from inside the binary;
+   resolve via one of two paths (§2). Ink remains the escape hatch
+   if both fail.
 
-## 2. Ink vs hand-roll
+## 2. OpenTUI vs Ink vs hand-roll
 
-**Recommendation: Ink. Hand-roll is a non-starter for v1.**
+**Recommendation: OpenTUI. Ink is the fallback if the compile-gate
+fails. Hand-roll is a non-starter.**
 
-Hand-rolling layout + focus + alt-screen + reconciler is 2–4 weeks
-before we have spec-level visual quality. We don't have those weeks.
-Ink, footguns and all, ships the Phase-1 demo in days.
+OpenTUI ([sst/opentui](https://github.com/sst/opentui)) is a
+Bun-first TUI framework with a native renderer (Zig/Rust via
+`bun:ffi`) and a React binding (`@opentui/react`). Built by the
+opencode team — its primitives are tuned for the same use case
+the spec calls "tiny stark level god."
 
-### Verified
+### Why OpenTUI over Ink
 
-- **`bun:test` + `ink-testing-library`** — works under Bun ≥ 1.3.
-  `render` / `lastFrame` / `rerender`, no native deps. Snapshots via
-  `.toMatchSnapshot()`.
-- **Raw stdin under Bun** — Bun's `node:tty` raw-mode is correct.
-  Ink's `isRawModeSupported` already gates non-TTY.
-- **`yoga.wasm` + `bun build --compile`** — currently broken. The
-  WASM is path-resolved at runtime; the compiled binary can't find
-  it.
+- **Bun-native by design.** The renderer is a small native lib
+  invoked via `bun:ffi`. Diff-based partial redraws done in native
+  code; React component tree is the source-of-truth but rendering
+  cost stays bounded as the screen grows.
+- **No `yoga.wasm` bun-compile bug.** Ink hits
+  [bun#13552](https://github.com/oven-sh/bun/issues/13552) /
+  [bun#2034](https://github.com/oven-sh/bun/issues/2034) — its
+  WASM layout engine doesn't path-resolve cleanly inside a
+  compiled binary. OpenTUI's native lib has its own bundling
+  story (§ compile-gate below) that's cleaner to solve.
+- **React ergonomics preserved.** Components, hooks, JSX —
+  porting between OpenTUI and Ink is a one-file shim swap if we
+  ever need to.
+
+### Why Ink stays the listed fallback
+
+- Far more battle-tested (GitHub CLI, Vercel CLI, et al).
+- Ink ecosystem (`ink-testing-library`, `ink-spinner`, etc.) is rich.
+- Ink + the `yoga.wasm` extraction shim is a known-workable path.
+
+If the compile-gate experiment fails for OpenTUI's native lib AND
+we can't resolve via either of the two paths below, fall back to
+Ink + the yoga shim. The spec's Observer surface + reducer +
+selectors are renderer-agnostic; only `src/tui/tui-shim.ts`
+changes.
 
 ### Compile-gate experiment (do before merging Phase 1)
 
-30 minutes. 5-line Ink hello-world, run `bun build --compile`, run
-the binary in a fresh shell. If it errors on `yoga.wasm`, prototype
-the embed-shim (one-line patch in `src/tui/tui.ts` that pre-resolves
-`yoga.wasm` via `Bun.embeddedFiles` before importing Ink) BEFORE
-committing to Ink. If the shim doesn't work, escalate. We don't ship
-a compiled binary today, so this is latent — but we gate-check now
-so we're not stuck later.
+30-60 minutes. Two paths to try, in order:
+
+1. **Sibling-file install.** Release archive contains the `vx`
+   binary AND `libopentui-<target>.<so|dylib|dll>` next to it.
+   Bun-FFI loads the lib by absolute path relative to
+   `path.dirname(process.execPath)`. Pros: trivial. Cons: install
+   is two files; install.sh needs to drop both.
+2. **Embed + extract shim.** Bundle the native lib bytes via
+   `Bun.file('./vendor/libopentui-<target>.so')` embedded into the
+   compiled binary. At TUI startup, write to
+   `$TMPDIR/vx-opentui-<sha>.so` (hashed by binary version) and
+   load from there. Skip the write if already present (idempotent
+   across runs). Pros: single-file install preserved. Cons:
+   ~10 ms first-run cost; relies on `Bun.embeddedFiles` (or
+   equivalent embed mechanism in current Bun).
+
+Prototype steps:
+
+1. `bun add @opentui/core @opentui/react`.
+2. 20-line hello-world rendering a counter with one keypress
+   handler.
+3. `bun build --compile --target=bun-linux-x64 hello.ts --outfile
+hello`. Test under fresh shell on Linux + macOS.
+4. Try path (1). If clean: ship that. Otherwise try (2). If both
+   fail: switch to Ink + yoga shim (well-trodden).
+
+Validate during the same experiment:
+
+- `@opentui/react`'s stdout resize hook exists and fires.
+- `@opentui/react` exposes a way to take over alt-screen + raw
+  stdin (or we wrap it via `@opentui/core` directly).
+- There's a frame-capture test helper for snapshot tests, or
+  document the gap and plan a ~50-line stub renderer for
+  component tests.
 
 ### Startup cost
 
-Ink + react + react-reconciler + yoga.wasm under Bun: ~80–120 ms
-cold, ~30–50 ms warm. **Pay this only when `--tui` activates.** The
-single import site is `src/tui/tui.ts`, loaded via dynamic
-`await import('./tui/tui.ts')` from `orchestrator.run()` only when
-`shouldUseTui()` returns `{ use: true }`. Non-TUI runs see zero
-startup impact.
+OpenTUI cold-start (estimate, validate during prototype):
+~30–60 ms cold including the native-lib load via `bun:ffi`,
+~10–20 ms warm. Faster than Ink + react + react-reconciler +
+yoga.wasm (~80–120 ms cold). **Pay this only when `--tui`
+activates.** The single import site is `src/tui/tui.ts`, loaded
+via dynamic `await import('./tui/tui.ts')` from
+`orchestrator.run()` only when `shouldUseTui()` returns
+`{ use: true }`. Non-TUI runs see zero startup impact.
 
 ### Bundle size
 
-In `node_modules`: ~600 KB JS + ~90 KB WASM. In a future compiled
-binary: ~250–300 KB contribution after dead-code elimination.
-Acceptable.
+JS payload: ~150–250 KB (no react-reconciler, no Yoga WASM).
+Native lib: 200–400 KB per target architecture. Total contribution
+to a single compiled binary: ~400–650 KB after dead-code
+elimination — comparable to Ink's footprint, with a faster runtime.
 
-### Hand-roll fallback (only if Ink is rejected later)
+### Hand-roll fallback (only if both OpenTUI and Ink are rejected)
 
 For posterity. Minimum viable: `src/tui/render.ts` (cell-buffer
 diff), `src/tui/layout.ts` (fixed 5-region splits, no flexbox),
@@ -156,7 +208,7 @@ deltas to fill `latencyMs`.
 
 `Logger` keeps its four methods. When the TUI activates, we replace
 `defaultLogger` with a no-op-status / route-streams-to-observer
-adapter so Ink owns the screen. `Logger.taskStdout` and
+adapter so OpenTUI owns the screen. `Logger.taskStdout` and
 `Observer.emit({ kind: 'taskStdout' })` fire as independent sinks
 for the same chunk — they don't share state.
 
@@ -252,7 +304,7 @@ export type Action =
 export function reduce(state: State, action: Action): State
 ```
 
-Reducer is pure. Inner `Map` mutates in place (Ink doesn't need
+Reducer is pure. Inner `Map` mutates in place (the renderer doesn't need
 referential equality at the Map level since selectors produce fresh
 arrays). Setting `state.dirty = true` is the re-render signal.
 
@@ -333,7 +385,7 @@ users out by two rows.
 
 ### SIGINT (any state)
 
-1. Ink's `useInput` catches `Ctrl+C`; we chain a custom handler.
+1. OpenTUI's keyboard hook catches `Ctrl+C`; we chain a custom handler.
 2. Signal the orchestrator to stop scheduling — set `cancelled = true`
    on a cancellation token passed into `runGraph` (new primitive;
    see open question 1 below).
@@ -361,31 +413,31 @@ today. If they want to inspect, future `--tui-keep` — out of v1.
 
 `useStdout().stdout.on('resize', ...)` → set `cols`/`rows` in
 `WidthContext`. Sparklines truncate samples to fit width; timeline
-rescales totalNs→pixels; task-list rows reflow. Standard Ink pattern.
+rescales totalNs→pixels; task-list rows reflow. Standard pattern.
 
 ## 7. Testing
 
 Five tiers:
 
 1. **Reducer** — `src/tui/state/store.test.ts`. Table-driven event
-   sequences → expected `State` shapes. Pure, no Ink.
+   sequences → expected `State` shapes. Pure, no renderer.
 2. **Pure math** — `src/tui/primitives/sparkline.test.ts`,
    `src/tui/components/timeline-layout.test.ts`. Table-driven
    `(input) => output`.
-3. **Components** — `ink-testing-library` `render(...)` +
+3. **Components** — the renderer's testing helper (or stub) `render(...)` +
    `lastFrame()`. Components take props (not the full store) so
    tests skip the reducer. Snapshots in `src/tui/__snapshots__/`.
 4. **Fallback predicate** — `should-use-tui.test.ts`. Parametrised
    over the full env matrix; assert `(use, reason)` tuples.
 5. **End-to-end** — **don't fake a TTY.** Test data flow through a
    stub Observer: orchestrator wired with a stub appends events to
-   an array; assert the sequence. Couple with one Ink smoke-test
+   an array; assert the sequence. Couple with one renderer smoke-test
    that mounts `<App />` with a pre-baked state and snapshots three
    frames (initial, mid-run, end).
 
 Explicitly skipped: real-terminal screenshot tests (flaky,
 font-dependent); compiled-binary tests (no compiled binary in CI;
-the compile-gate is manual before each Ink upgrade).
+the compile-gate is manual before each OpenTUI upgrade).
 
 ## 8. Rollout
 
@@ -428,7 +480,7 @@ can stop after any of them and have shipped something coherent.
 | Risk                                                 | Mitigation                                                                                                                                                              |
 | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `yoga.wasm` + `bun build --compile`                  | Compile-gate experiment. Embed-shim if needed. §2.                                                                                                                      |
-| Bun + Ink raw stdin                                  | Verified working. `isRawModeSupported` gates non-TTY.                                                                                                                   |
+| Bun + OpenTUI raw stdin                              | Validate during compile-gate; OpenTUI uses bun:ffi so TTY detection is on us (delegate to `process.stdin.isTTY`).                                                       |
 | Truecolor inconsistency                              | 256-color palette only. Skip 24-bit. Status accents survive in 8-color via bold + dim.                                                                                  |
 | Unicode block-character widths                       | U+2581–U+2588 are single-width by spec. Verified across iTerm2, Apple Terminal, Windows Terminal, GNOME Terminal, VS Code. Skip emoji — those break tmux line-counting. |
 | tmux/screen + alt-screen                             | Both forward `\x1b[?1049h`. Verified by GitHub CLI / opencode / lazygit shipping the same pattern.                                                                      |
@@ -447,9 +499,9 @@ Non-negotiable; the architecture wins or loses on these.
   "remote tracing latency p99": write `selectP99(state)`,
   `<P99Panel value={...} />`, place in `App.tsx`. No state-shape
   change — `remote.latencies` is already in `State`.
-- **Replacing Ink = one file.** `src/tui/tui.ts` is the only
-  file that imports `ink`. `App.tsx` and all components import from
-  a local shim `src/tui/ink-shim.ts` that re-exports the primitives
+- **Replacing the renderer = one file.** `src/tui/tui.ts` is the only
+  file that imports `@opentui/react`. `App.tsx` and all components import from
+  a local shim `src/tui/tui-shim.ts` that re-exports the primitives
   we use (`Box`, `Text`, `useInput`, `useStdout`, `render`,
   `useApp`). Replacement = swap the shim. Reducer, selectors,
   Observer survive.
@@ -464,11 +516,11 @@ Non-negotiable; the architecture wins or loses on these.
 
 ## Why this is the right move
 
-- Ink is the only path to a Phase-1 demo in two weeks; the compile-
-  gate de-risks the one real Ink-on-Bun footgun.
+- OpenTUI is the chosen path; the compile-
+  gate de-risks the native-lib bundling decision before merge.
 - Observer-as-tagged-union is one method, one tested adapter, one
   safe wrapper. New events don't break consumers.
-- Store / reducer split keeps Ink swappable. The renderer is one
+- Store / reducer split keeps the renderer swappable. The renderer is one
   file. The state shape is the actual contract.
 - Fallback is a pure function with stable reason strings — testable,
   debuggable, copy-pastable into a bug report.
@@ -810,7 +862,7 @@ alongside throughput).
 `src/tui/overlays/task-detail.tsx`. Mounted when
 `state.taskDetailOpen === true`; reads `state.selectedTaskId` to pick
 which task. Layered over the active view via a top-of-tree
-`<Box position="absolute">` (Ink supports it) with a backdrop
+`<Box position="absolute">` (OpenTUI supports absolute positioning) with a backdrop
 character fill.
 
 Sections:
@@ -847,7 +899,7 @@ For the developer agent:
   `taskDetailOpen`, `parallelPctBuf`, `history: HistoryTable`,
   `cacheStatus` on `TaskRow`.
 - **No new external dependency.** All views, overlays, and selectors
-  sit on Ink + the existing reducer.
+  sit on the renderer + the existing reducer.
 
 ### 11.13 What's still out of scope (reiterated, expanded)
 

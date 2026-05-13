@@ -563,33 +563,75 @@ hitRate, lastFive: RunRow[] }`. Powers per-task ETAs, the
 
 ### Library choice
 
-**Ink** ([https://github.com/vadimdemedes/ink](https://github.com/vadimdemedes/ink))
-— React for terminals. Mature, used by GitHub CLI / Vercel CLI /
-opencode-class tooling. Works in Bun (treats Bun like Node).
+**OpenTUI** ([https://github.com/sst/opentui](https://github.com/sst/opentui))
+— Bun-first TUI framework with a native renderer (Zig/Rust via
+`bun:ffi`) and a React binding (`@opentui/react`). Built by the
+opencode team; the primitives are tuned for the same use case we're
+targeting.
 
-Why not roll our own:
+Why OpenTUI over Ink:
 
-- We'd reimplement layout, focus, keyboard, escape-sequence
-  handling, alternate-screen buffer management. All of that is solved
-  in Ink.
-- Ink's reconciler keeps re-renders cheap and predictable.
-- Bundle size impact: Ink + react + react-reconciler ≈ ~200 KB in
-  the compiled Bun binary. Acceptable.
+- **Bun-native by design.** Uses `bun:ffi` for its renderer; no
+  React-reconciler tax, no Yoga (WASM) layout pass per frame.
+  Native diff-based partial redraws.
+- **No `yoga.wasm` resolution issue under `bun build --compile`.**
+  Ink hits a known bug ([bun#13552](https://github.com/oven-sh/bun/issues/13552))
+  that requires a runtime extraction shim. OpenTUI sidesteps it.
+- **Designed for our use case.** opencode is exactly the "tiny stark
+  level god" reference the user named; OpenTUI is what its TUI is
+  built on.
+- **React ergonomics preserved.** `@opentui/react` gives us
+  components, hooks, declarative state — same mental model as Ink,
+  faster execution.
+
+Why not Ink:
+
+- React reconciler + Yoga WASM layout = measurable per-frame cost
+  on large views (Workers' 30-slot heatmap + 60-sample sparklines
+  - live timeline). OpenTUI's native renderer is the right shape.
+- The compile-time `yoga.wasm` shim is a load-bearing hack we'd
+  carry forever.
 
 Why not blessed / blessed-contrib:
 
-- Older, less maintained.
-- Manual layout via box coordinates; harder to compose.
-- We'd still want a React-like state model on top.
+- Older, less maintained, manual layout via box coordinates.
 
-Why not terminal-kit:
+Why not roll our own:
 
-- Heavyweight, more imperative.
+- 2–4 weeks for a worse v1. Hard pass.
 
-If the bundle-size cost or react dep is unacceptable, the fallback
-is a hand-rolled minimal renderer using `tty.WriteStream` directly +
-a small layout primitive. ~1–2 weeks of additional implementation.
-**Recommendation: Ink for v1.**
+**Recommendation: OpenTUI for v1**, with Ink listed as the fallback
+if the OpenTUI prototype fails the `bun build --compile` gate-check
+(§ Compile-gate experiment below).
+
+### Compile-gate experiment (do before Phase 1 merge)
+
+OpenTUI ships a small native lib (`.dylib` / `.so` / `.dll` per
+target). `bun build --compile` does not load `.dylib` from inside
+the compiled binary at runtime. Two options:
+
+1. **Sibling-file install.** Release archive contains `vx` AND
+   `libopentui-<target>.so`. Install script drops both into
+   `$VX_INSTALL_DIR/`. Bun-FFI loads the lib by absolute path
+   computed relative to `import.meta.dir`. Simpler, slightly less
+   clean install.
+2. **Embed + extract shim.** Bundle the native lib via
+   `Bun.embed(...)` (or `Bun.embeddedFiles` if available); at TUI
+   startup, write it to `$TMPDIR/vx-opentui-<hash>.so` and load
+   from there. Single-file install preserved; ~10 ms first-run
+   cost.
+
+Run a 30-min prototype:
+
+1. `bun add @opentui/core @opentui/react`
+2. 20-line hello-world rendering a counter.
+3. `bun build --compile --target=bun-linux-x64 hello.ts --outfile
+hello`. Test under fresh shell.
+4. Try options (1) then (2). Pick whichever works.
+
+If both fail: fall back to Ink with the yoga shim. The spec's data
+model + Observer surface + reducer architecture are renderer-
+agnostic.
 
 ### Module layout
 
@@ -598,7 +640,11 @@ New `src/tui/` directory:
 ```
 src/tui/
 ├── tui.ts                  # entry: createTui(events): { run, dispose }
-├── App.tsx                 # root Ink component
+│                           # the ONLY file that imports @opentui/*;
+│                           # everything else goes through tui-shim.ts
+├── tui-shim.ts             # re-exports renderer primitives so swapping
+│                           # @opentui/react for ink later is one-file
+├── App.tsx                 # root component (from tui-shim)
 ├── components/
 │   ├── Header.tsx
 │   ├── TaskList.tsx
@@ -683,10 +729,12 @@ falls back, the framed-block logger runs as today.
 
 1. **Init.** Enter alternate-screen buffer (`\x1b[?1049h`), hide
    cursor, set raw stdin, install signal handlers.
-2. **Subscribe.** Construct an Ink app rooted at `<App />`; pass the
-   event stream + initial state.
-3. **Render loop.** Ink batches re-renders via React reconciler; we
-   throttle to ≤30Hz via a 33ms render-debounce in the store reducer.
+2. **Subscribe.** Mount the OpenTUI app rooted at `<App />` via
+   `@opentui/react`; pass the event stream + initial state.
+3. **Render loop.** OpenTUI's native renderer does diff-based
+   partial redraws. We still throttle state-dirty notifications to
+   ≤30Hz in the store reducer to keep React's component churn
+   bounded; the native renderer only repaints damaged regions.
 4. **Tear down.** On `q` / SIGINT / runEnd:
    a. Stop the render loop.
    b. Exit alternate-screen buffer (`\x1b[?1049l`), show cursor,
@@ -797,17 +845,28 @@ that threshold it's stable enough to display.
 
 ## Testing
 
-Visual-snapshot testing for Ink components is mature (`ink-testing-library`):
+Two layers; the high-leverage one is the pure-function layer that
+doesn't depend on the renderer at all.
 
-```ts
-import { render } from 'ink-testing-library'
-import { App } from '../src/tui/App.js'
+**Pure layer (the bulk of the value).** Reducer, selectors,
+sparkline math, critical-path computation, queue predicates,
+fallback decision matrix. All pure functions; `bun:test` tables.
 
-it('renders the initial task list', () => {
-  const { lastFrame } = render(<App initialState={...} />)
-  expect(lastFrame()).toMatchSnapshot()
-})
-```
+**Component layer.** If `@opentui/react` ships a frame-capture
+test helper (e.g. `@opentui/testing` with a `lastFrame()`-style
+API), use it for snapshot tests of view rendering. If it doesn't,
+the next-best option is:
+
+- Mount components in a stub renderer that captures the component
+  tree (one we write, ~50 lines — equivalent to what Ink's
+  testing library does). Assert shape, not bytes.
+- Don't snapshot the native-renderer output. The native renderer
+  emits ANSI control sequences whose exact bytes vary with
+  terminal capabilities; snapshots there are brittle.
+
+Validate during the Phase 1 compile-gate prototype: confirm
+OpenTUI has (or accepts a contribution of) a frame-capture test
+shim. If not, plan to write the ~50-line stub renderer.
 
 Coverage targets v1:
 
@@ -877,9 +936,12 @@ running task. Not yet competitive with the framed block.
 
 ## Open questions for the architect
 
-1. **Ink or hand-roll?** Ink is the recommendation; if the bundle
-   weight or react dep is rejected, the design needs to provide the
-   layout/focus/render primitives.
+1. **OpenTUI vs Ink vs hand-roll?** OpenTUI is the recommendation
+   (Bun-native renderer via `bun:ffi`, no Yoga-WASM bun-compile bug,
+   built by opencode team). Ink is the fallback if the
+   `bun build --compile` gate-check (see Compile-gate experiment)
+   fails for both sibling-file install AND embed+extract shim.
+   Hand-roll only if both fail.
 2. **Observer vs grown Logger?** I lean Observer for separation;
    open to the architect arguing for grown Logger.
 3. **Auto-default behavior.** Should `--tui` default ON when the
@@ -919,8 +981,10 @@ running task. Not yet competitive with the framed block.
     custom `log`? Currently they suppress colors. With TUI, they
     should suppress TUI too (force framed-block — or actually, force
     their custom logger).
-13. **How do we handle resize?** Ink reflows on `process.stdout` resize
-    events. Validate that the timeline + sparkline panels recompute.
-14. **Bun compile + Ink.** Does `bun build --compile` work with the
-    Ink + react + react-reconciler tree, or does it choke on dynamic
-    requires? Needs a prototype.
+13. **How do we handle resize?** `@opentui/react` exposes a stdout
+    resize hook; sparkline + timeline panels read width from a
+    `WidthContext` and recompute on each event. Validate during the
+    prototype.
+14. **Bun compile + OpenTUI.** Run the compile-gate experiment
+    before Phase 1 merge. Sibling-file install OR embed+extract
+    shim. If both fail, escalate to Ink + yoga shim.
