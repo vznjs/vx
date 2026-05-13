@@ -29,6 +29,19 @@ export interface RunArgs {
 
 export function parseRunArgs(args: readonly string[]): RunArgs
 export async function runCmd(args: readonly string[]): Promise<number>
+
+/**
+ * Shared with `cli/watch.ts`: turn parsed args + cwd + task list into
+ * the orchestrator's `RunOptions`. Returns either the options or an
+ * error message (caller prefixes with subcommand name). Doesn't
+ * handle the interactive picker — `runCmd` does that first, then
+ * passes the resolved task list in.
+ */
+export async function resolveRunOptions(
+  parsed: RunArgs,
+  cwd: string,
+  tasks: readonly string[],
+): Promise<RunOptions | { error: string }>
 ```
 
 ## Parser

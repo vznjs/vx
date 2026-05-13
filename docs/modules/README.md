@@ -23,6 +23,7 @@ For the high-level data flow, read
 | [`bin.md`](./bin.md)               | `src/bin.ts` — shebang entry; wires `process.argv` to `cli.run`.   |
 | [`cli.md`](./cli.md)               | `src/cli.ts` — argv → subcommand dispatcher; re-exports for tests. |
 | [`cli-run.md`](./cli-run.md)       | `src/cli/run.ts` — the `vx run` parser, scope resolver, picker.    |
+| [`cli-watch.md`](./cli-watch.md)   | `src/cli/watch.ts` — `vx watch <task>`: re-run on FS change.       |
 | [`cli-cache.md`](./cli-cache.md)   | `src/cli/cache.ts` — `vx cache prune`, duration / size parsers.    |
 | [`cli-help.md`](./cli-help.md)     | `src/cli/help.ts` — static help text.                              |
 | [`cli-format.md`](./cli-format.md) | `src/cli/format.ts` — `formatBytes` and other shared formatters.   |

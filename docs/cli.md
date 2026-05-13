@@ -19,6 +19,7 @@ bun src/bin.ts --version
 
 ```
 vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
+vx watch [OPTIONS] TASK [-- forwarded-args...]
 vx cache prune [--older-than <duration>] [--max-size <bytes>]
 vx help
 vx --help, -h
@@ -290,6 +291,83 @@ from the per-task `hrtime.bigint()` spans the runner captures.
 
 Default path: `profile.json` (cwd-relative).
 
+## `vx watch`
+
+```
+vx watch [OPTIONS] TASK [-- forwarded-args...]
+```
+
+Run the named task, then re-run it on every filesystem change in the
+projects in scope. Press `Ctrl+C` to stop.
+
+```sh
+vx watch test                       # cwd project; re-test on changes
+vx watch test --all                 # every project that declares `test`
+vx watch lint --filter '@scope/*'   # filtered scope
+vx watch build -- --sourcemap       # forwarded args carry through every cycle
+```
+
+### Lifecycle
+
+1. **Initial run.** Same code path as `vx run` — same scope resolution,
+   same task graph, same cache behaviour. The line `vx watch: initial
+run...` precedes it.
+2. **Watch loop.** After the initial run finishes, every project's
+   directory in scope is watched recursively. The workspace root is
+   watched (non-recursively) for lockfile / `pnpm-workspace.yaml`
+   changes.
+3. **On change.** The triggering path is logged
+   (`vx watch: <project> <relpath>; re-running...`) and the
+   orchestrator is invoked again with the same options. Events arriving
+   while a run is in flight queue and drain after the current cycle.
+   Re-runs are debounced ~150ms after the last event.
+4. **Exit.** `SIGINT` (Ctrl+C) prints `vx watch: stopped` and exits 0.
+
+### Path filtering
+
+Always ignored (no re-trigger):
+
+- `node_modules/`, `.git/`, `.vx/` anywhere in the path.
+- Files ending in `.tsbuildinfo` or `~` (editor swap files).
+
+Everything else triggers a cycle. We deliberately don't filter events
+against per-task `cache.inputs.files` — the cache hash is the source
+of truth. A change to an irrelevant file produces a cache-hit run
+(typically tens of ms); the cost is much smaller than the engineering
+cost of a per-event glob match.
+
+### Workspace fingerprint changes
+
+Edits to a lockfile (`pnpm-lock.yaml`, `bun.lock`, …) or
+`pnpm-workspace.yaml` at the root invalidate every task's cache key
+via the [workspace fingerprint](./caching.md#cache-key-derivation).
+Watch mode hears those because it watches the workspace root
+(non-recursively).
+
+### Constraints
+
+The following flags are rejected (parser exits 1 before the initial
+run):
+
+- `--dry` / `--graph` — those skip execution; nothing to watch.
+- `--summarize` / `--profile` — would overwrite their target per cycle.
+
+Persistent tasks (`exec.persistent`) re-spawn each cycle: the previous
+SIGTERM happens between cycles, then the next cycle launches a fresh
+child. For dev-server workflows where you want the server to stay up
+across changes, use the dev tool's own watch (`vite`, `tsc -b -w`,
+`bun --watch`) rather than `vx watch`.
+
+### Exit codes
+
+- `0` — clean Ctrl+C / SIGTERM exit.
+- `1` — parser error or missing scope.
+
+Re-run cycles whose orchestrator returns `{ ok: false }` do NOT exit
+the watch loop — a failed cycle just prints the framed FAILED block
+and waits for the next change. This matches `turbo watch` / `nx
+watch`.
+
 ## `vx cache prune`
 
 Evict old or oversized cache entries. Operates on
@@ -426,7 +504,6 @@ documented in [`caching.md` § SQLite tables](./caching.md#sqlite-tables).
 Tracked in detail in [`comparison.md`](./comparison.md). Recap of the
 gaps visible from the CLI:
 
-- `vx watch` subcommand.
 - `--continue=<mode>` (current behavior: independent siblings continue;
   dependents are skipped).
 - `--output-logs full|errors-only|hash-only|none`.

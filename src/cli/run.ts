@@ -149,6 +149,87 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
   return out
 }
 
+/**
+ * Resolve parsed `vx run` argv into the `RunOptions` the orchestrator
+ * consumes. Shared between `runCmd` and `watchCmd` so both subcommands
+ * honor the same selection semantics (cwd / `--all` / `--filter` /
+ * `--affected` / anchored positionals).
+ *
+ * Returns either the resolved options or an error message string. The
+ * caller is responsible for prefixing the message with its subcommand
+ * name (`vx run: <msg>` / `vx watch: <msg>`) and exiting non-zero.
+ *
+ * Assumes the caller has already populated `parsed.tasks` (e.g. via
+ * the interactive picker for `vx run`).
+ */
+export async function resolveRunOptions(
+  parsed: RunArgs,
+  cwd: string,
+  tasks: readonly string[],
+): Promise<RunOptions | { error: string }> {
+  for (const t of tasks) {
+    const idx = t.indexOf('#')
+    if (idx >= 0) {
+      const project = t.slice(0, idx)
+      const task = t.slice(idx + 1)
+      if (!project || !task) {
+        return { error: `invalid pkg#task: ${t}` }
+      }
+    }
+  }
+
+  // `--affected[=<base>]` is sugar for `--filter '[<base>]'`. Merging
+  // it into the filter list means the same code path handles plain
+  // filter use, --affected alone, and the combo.
+  const filterStrings = [...parsed.filters]
+  if (parsed.affected !== undefined) {
+    const root = await findWorkspaceRoot(cwd)
+    const base = parsed.affected === '' ? await defaultAffectedBase(root) : parsed.affected
+    filterStrings.push(`[${base}]`)
+  }
+
+  // Project scope applies to bare task names only. Anchored entries
+  // (pkg#task) resolve directly to their own project regardless.
+  const bareTasks = tasks.filter((t) => !t.includes('#'))
+  let projects: string[] | undefined
+  if (bareTasks.length === 0) {
+    projects = undefined
+  } else if (filterStrings.length > 0) {
+    const resolved = await resolveFilters(cwd, filterStrings)
+    if (resolved.error) return { error: resolved.error }
+    projects = resolved.names
+  } else if (parsed.all) {
+    projects = undefined
+  } else {
+    const cwdProject = await findCwdProject(cwd)
+    if (!cwdProject) {
+      return {
+        error:
+          'not inside a project. Pass --all for every project, --filter <pattern> to filter, or run from within a project directory.',
+      }
+    }
+    projects = [cwdProject]
+  }
+
+  const opts: RunOptions = {
+    cwd,
+    tasks: [...tasks],
+    noCache: parsed.noCache,
+    forwardArgs: parsed.forwardArgs,
+  }
+  if (parsed.excludeDependencies === 'all') {
+    opts.excludeDependencies = 'all'
+  } else if (parsed.excludeDependencies.length > 0) {
+    opts.excludeDependencies = parsed.excludeDependencies
+  }
+  if (projects !== undefined) opts.projects = projects
+  if (parsed.concurrency !== undefined) opts.concurrency = parsed.concurrency
+  if (parsed.summarize !== undefined) opts.summarize = parsed.summarize
+  if (parsed.profile !== undefined) opts.profile = parsed.profile
+
+  return opts
+}
+
 export async function runCmd(args: readonly string[]): Promise<number> {
   const parsed = parseRunArgs(args)
   if (parsed.error) {
@@ -172,72 +253,12 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     tasks = [`${picked.project}#${picked.task}`]
   }
 
-  // Validate each positional. Anchored entries (`pkg#task`) must have
-  // both halves non-empty.
-  for (const t of tasks) {
-    const idx = t.indexOf('#')
-    if (idx >= 0) {
-      const project = t.slice(0, idx)
-      const task = t.slice(idx + 1)
-      if (!project || !task) {
-        process.stderr.write(`vx run: invalid pkg#task: ${t}\n`)
-        return 1
-      }
-    }
+  const resolved = await resolveRunOptions(parsed, cwd, tasks)
+  if ('error' in resolved) {
+    process.stderr.write(`vx run: ${resolved.error}\n`)
+    return 1
   }
-
-  // `--affected[=<base>]` is sugar for `--filter '[<base>]'`. Merging
-  // it into the filter list means the same code path handles plain
-  // filter use, --affected alone, and the combo.
-  const filterStrings = [...parsed.filters]
-  if (parsed.affected !== undefined) {
-    const root = await findWorkspaceRoot(cwd)
-    const base = parsed.affected === '' ? await defaultAffectedBase(root) : parsed.affected
-    filterStrings.push(`[${base}]`)
-  }
-
-  // Project scope applies to bare task names only. Anchored entries
-  // (pkg#task) resolve directly to their own project regardless.
-  const bareTasks = tasks.filter((t) => !t.includes('#'))
-  let projects: string[] | undefined
-  if (bareTasks.length === 0) {
-    // All positionals are anchored — no need to compute a scope.
-    projects = undefined
-  } else if (filterStrings.length > 0) {
-    const resolved = await resolveFilters(cwd, filterStrings)
-    if (resolved.error) {
-      process.stderr.write(`vx run: ${resolved.error}\n`)
-      return 1
-    }
-    projects = resolved.names
-  } else if (parsed.all) {
-    projects = undefined
-  } else {
-    const cwdProject = await findCwdProject(cwd)
-    if (!cwdProject) {
-      process.stderr.write(
-        `vx run: not inside a project. Pass --all for every project, --filter <pattern> to filter, or run from within a project directory.\n`,
-      )
-      return 1
-    }
-    projects = [cwdProject]
-  }
-
-  const opts: RunOptions = {
-    cwd,
-    tasks,
-    noCache: parsed.noCache,
-    forwardArgs: parsed.forwardArgs,
-  }
-  if (parsed.excludeDependencies === 'all') {
-    opts.excludeDependencies = 'all'
-  } else if (parsed.excludeDependencies.length > 0) {
-    opts.excludeDependencies = parsed.excludeDependencies
-  }
-  if (projects !== undefined) opts.projects = projects
-  if (parsed.concurrency !== undefined) opts.concurrency = parsed.concurrency
-  if (parsed.summarize !== undefined) opts.summarize = parsed.summarize
-  if (parsed.profile !== undefined) opts.profile = parsed.profile
+  const opts = resolved
 
   // Planning paths short-circuit execution. Both build the full task
   // graph + probe the cache; the difference is just the formatter.
