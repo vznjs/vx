@@ -6,9 +6,34 @@ TypeScript config, content-addressed cache, replaceable internals.
 **Runs on [Bun](https://bun.sh) (≥ 1.3).** TypeScript source ships as the
 runtime entry — no compile step on install. SQLite is via `bun:sqlite`.
 
+## Install
+
+### One-liner (standalone binary; no Bun required)
+
 ```sh
-bun add -d @vzn/vx
-vx run build
+curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
+```
+
+Auto-detects platform (linux / darwin × x64 / arm64) and drops the
+binary at `$HOME/.local/bin/vx`. Override with `VX_INSTALL_DIR=/path`
+or pin with `VX_VERSION=v0.1.2`. Latest release lives at
+[github.com/vznjs/vx/releases/latest](https://github.com/vznjs/vx/releases/latest).
+
+### Or grab a single asset manually
+
+```sh
+# linux x64
+curl -fsSL https://github.com/vznjs/vx/releases/latest/download/vx-linux-x64 -o vx && chmod +x vx
+# darwin arm64 (Apple Silicon)
+curl -fsSL https://github.com/vznjs/vx/releases/latest/download/vx-darwin-arm64 -o vx && chmod +x vx
+```
+
+### From source (Bun)
+
+```sh
+git clone https://github.com/vznjs/vx && cd vx
+bun install
+bun src/bin.ts --version
 ```
 
 > **Complete technical documentation lives in [`docs/`](./docs/).**
