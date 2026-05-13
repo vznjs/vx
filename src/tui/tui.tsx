@@ -9,6 +9,7 @@ import { App } from './app.tsx'
 import { ThemeProvider } from './context/theme.tsx'
 import { RunStateProvider, useRunState } from './context/run-state.tsx'
 import { PtyStoreProvider, usePtyStore } from './context/pty-store.tsx'
+import { ClockProvider } from './context/clock.tsx'
 import { DialogProvider } from './ui/dialog.tsx'
 import type { Observer, ObserverEvent } from '../orchestrator/observer.js'
 import { createEffect, on } from 'solid-js'
@@ -67,14 +68,16 @@ export async function startTui(options: StartTuiOptions = {}): Promise<TuiHandle
   await render(
     () => (
       <ThemeProvider>
-        <RunStateProvider>
-          <PtyStoreProvider>
-            <DialogProvider>
-              <Bridge />
-              <App />
-            </DialogProvider>
-          </PtyStoreProvider>
-        </RunStateProvider>
+        <ClockProvider>
+          <RunStateProvider>
+            <PtyStoreProvider>
+              <DialogProvider>
+                <Bridge />
+                <App />
+              </DialogProvider>
+            </PtyStoreProvider>
+          </RunStateProvider>
+        </ClockProvider>
       </ThemeProvider>
     ),
     renderer,
@@ -95,8 +98,19 @@ export async function startTui(options: StartTuiOptions = {}): Promise<TuiHandle
   let disposed = false
   const observer: Observer = {
     emit(event: ObserverEvent) {
-      runStateApply?.(event)
-      ptyApply?.(event)
+      // Defensive — a bug in either apply must never propagate out
+      // of the orchestrator's emit call. Errors get logged and the
+      // TUI keeps rendering whatever state it has.
+      try {
+        runStateApply?.(event)
+      } catch (err) {
+        process.stderr.write(`[vx tui] runState.apply error: ${(err as Error).message}\n`)
+      }
+      try {
+        ptyApply?.(event)
+      } catch (err) {
+        process.stderr.write(`[vx tui] pty.apply error: ${(err as Error).message}\n`)
+      }
     },
   }
 
