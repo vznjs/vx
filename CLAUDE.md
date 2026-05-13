@@ -379,26 +379,32 @@ LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
 Roadmap is derived from [`docs/comparison.md`](docs/comparison.md) —
 the gap analysis against Turbo / Nx / vite-task with sourced cites.
 
-1. **`--dry-run` / `--graph`.** Print the task graph + cache hit/miss
-   prediction without executing. Cheap; the data lives in
-   `graph/task-graph.ts` already. Render `.dot` and/or JSON.
-2. **`--affected`.** Git-relative selection (`main..HEAD`). Pure
+1. **`--affected`.** Git-relative selection (`main..HEAD`). Pure
    addition; no schema change. Selects packages whose changed-files
    intersect any task's `cache.inputs.files`.
-3. **Cross-package `dependsOn`.** Allow `pkg#task` and wildcards (`build-*`,
-   `^build-*`) in `dependsOn.self` / `.dependencies`. Schema-extending
-   but contained.
-4. **Named inputs + target defaults.** Workspace-level reusable input
+2. **Cross-package `dependsOn`.** Allow `pkg#task` and wildcards
+   (`build-*`, `^build-*`) in `dependsOn.self` / `.dependencies`.
+   Schema-extending but contained.
+3. **Named inputs + target defaults.** Workspace-level reusable input
    sets + per-task inheritance. Reduces glob duplication across tasks.
    See Nx `namedInputs` / `targetDefaults`.
-5. **Pre-signed URL auth + HMAC signing** (`x-artifact-tag`) for the
+4. **Pre-signed URL auth + HMAC signing** (`x-artifact-tag`) for the
    remote cache. v2 per `docs/design/remote-cache.md`.
-6. **Per-run JSON summary** (`.vx/runs/<run_id>.json`). Already have
+5. **Per-run JSON summary** (`.vx/runs/<run_id>.json`). Already have
    the data in `cache.db`'s `runs` table.
-7. **Output log modes** (`--output-logs=full|errors-only|hash-only|none`).
-8. **Auto-input inference** (vite-task's `{auto:true}` via filesystem
+6. **Output log modes** (`--output-logs=full|errors-only|hash-only|none`).
+7. **Auto-input inference** (vite-task's `{auto:true}` via filesystem
    tracing). Biggest UX win, biggest engineering lift; needs an
    `fspy`-equivalent per OS.
+
+## Recently shipped
+
+- **2026-05**: `--dry-run` (`--dry`) and `--graph` for `vx run`. Both
+  short-circuit execution: build the graph, compute every task's
+  cache key, probe the cache, emit a human/JSON/DOT view of the
+  predicted plan. `computeTaskHash` extracted from `executeTask` for
+  reuse. New `orchestrator/plan.ts` + `orchestrator/plan-format.ts`.
+  12 new tests; 303 total passing.
 
 ## Operating directive (to you, Claude)
 
