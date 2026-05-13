@@ -52,6 +52,33 @@ export interface ExecConfig {
   command: string
   /** Environment exposed to the child process. */
   env?: ExecEnv
+  /**
+   * Long-running / continuous task (dev server, watcher, daemon).
+   * When present, the task is spawned but the runner does NOT wait
+   * for it to exit. Instead it considers the task "ready" — either
+   * immediately on spawn (no `readyWhen`) or once the readiness
+   * pattern matches a line of stdout/stderr. Downstream tasks unblock
+   * on ready, not on exit. The orchestrator SIGTERMs every persistent
+   * subprocess once the rest of the graph has finished.
+   *
+   * `cache` is silently ignored for persistent tasks — there's no
+   * exit code to cache and the work continues after vx's run notion
+   * of "done".
+   */
+  persistent?: PersistentConfig
+}
+
+export interface PersistentConfig {
+  /**
+   * Regex pattern (string) matched against stdout/stderr line-by-line.
+   * The task is marked "ready" the first time a line matches. Omitted
+   * → ready immediately on spawn (fire-and-forget; downstream still
+   * runs but doesn't gate on a signal).
+   *
+   * Example: Vite prints `Local:   http://localhost:5173/` when its
+   * dev server is up — `readyWhen: 'Local:'` waits for that line.
+   */
+  readyWhen?: string
 }
 
 export interface ExecEnv {

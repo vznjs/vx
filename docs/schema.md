@@ -98,8 +98,54 @@ exec: {
 interface ExecConfig {
   command: string // shell command, run from the project's dir
   env?: ExecEnv // optional per-step env
+  persistent?: PersistentConfig // long-running task (dev server, watcher)
 }
 ```
+
+##### `persistent` (optional)
+
+Marks the task as a long-running process — a dev server, a file
+watcher, a daemon. The runner spawns the command but does NOT wait
+for it to exit. Instead it considers the task "ready":
+
+- Immediately on successful spawn when no `readyWhen` is given.
+- On the first stdout/stderr line that matches the `readyWhen`
+  regex string.
+
+```ts
+interface PersistentConfig {
+  readyWhen?: string // regex; first matching line marks ready
+}
+```
+
+```ts
+dev: {
+  exec: {
+    command: 'vite',
+    persistent: { readyWhen: 'Local:' },
+  },
+}
+
+watch: {
+  exec: {
+    command: 'tsc --watch --preserveWatchOutput',
+    persistent: { readyWhen: 'Watching for file changes' },
+  },
+}
+```
+
+Semantics:
+
+- Downstream tasks (`dependsOn` from another task) unblock on ready,
+  not on exit. Useful for e2e tests that need a dev server up first.
+- If the persistent task exits BEFORE `readyWhen` matches, the task
+  is reported as `failed`.
+- Once the rest of the graph finishes (success OR failure of
+  downstream), the orchestrator sends `SIGTERM` to every persistent
+  subprocess and waits for them to exit before returning.
+- **`cache` is not allowed alongside `persistent`** — the config
+  loader rejects the combination. Persistent tasks don't terminate,
+  so there's no exit code to record + no outputs to capture.
 
 ##### `ExecEnv`
 
