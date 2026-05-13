@@ -360,4 +360,83 @@ describe('exec.persistent (e2e)', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'persistent task with concurrency=1 does not block downstream forever',
+    async () => {
+      // Hazard: a serial scheduler that waits for child.exited (instead
+      // of spawn.ready) on a persistent task would deadlock — the dev
+      // server never exits. Pin: with concurrency=1, downstream still
+      // runs after ready, and the run completes well under the timeout.
+      await addProject(fixture.root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              dev: {
+                exec: {
+                  command: "node -e 'console.log(\\"Local: ready\\"); setTimeout(()=>{}, 60000)'",
+                  persistent: { readyWhen: 'Local:' },
+                },
+              },
+              smoke: {
+                exec: { command: 'true' },
+                dependsOn: ['dev'],
+              },
+            },
+          }
+        `,
+      })
+
+      const t0 = Date.now()
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['smoke'],
+        projects: ['app'],
+        concurrency: 1,
+        log: silentLogger(fixture),
+      })
+      const elapsed = Date.now() - t0
+      expect(r.ok).toBe(true)
+      expect(elapsed).toBeLessThan(5_000)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'persistent task spawn failure surfaces clean failure, not a hung run',
+    async () => {
+      // Command resolves to a missing binary. The spawn itself
+      // succeeds (we go through `sh -c`), but the shell exits
+      // non-zero immediately. `ready` rejects with the captured
+      // stderr; runner returns failed.
+      await addProject(fixture.root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              dev: {
+                exec: {
+                  command: '/this/binary/does/not/exist --serve',
+                  persistent: { readyWhen: 'Listening' },
+                },
+              },
+            },
+          }
+        `,
+      })
+      const t0 = Date.now()
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['dev'],
+        projects: ['app'],
+        log: silentLogger(fixture),
+      })
+      const elapsed = Date.now() - t0
+      expect(r.ok).toBe(false)
+      const o = r.outcomes.find((o) => o.node.id === 'app#dev')
+      expect(o?.status).toBe('failed')
+      // Should fail fast — not wait for the never-coming Listening line.
+      expect(elapsed).toBeLessThan(5_000)
+    },
+    TIMEOUT,
+  )
 })

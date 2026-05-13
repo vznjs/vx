@@ -157,4 +157,75 @@ describe('applyFilters', () => {
     const filters = [parseFilter('ui', ROOT), parseFilter('lib', ROOT)]
     expect([...applyFilters({ filters, projects, graph })].sort()).toEqual(['lib', 'ui'])
   })
+
+  // `[<since>]` filter resolves to a project set via affectedByFilter
+  // (caller-resolved). Verify the parser + applier compose with the
+  // other modifiers — that's the integration point CLI users hit.
+
+  it('[<since>] + ...suffix expands to affected + their transitive deps', () => {
+    const f = parseFilter('[main]...', ROOT)
+    expect(f.gitSince).toBe('main')
+    expect(f.withDeps).toBe(true)
+    const affectedByFilter = new Map([[f, new Set(['app'])]])
+    expect([...applyFilters({ filters: [f], projects, graph, affectedByFilter })].sort()).toEqual([
+      'app',
+      'ui',
+      'utils',
+    ])
+  })
+
+  it('[<since>] + ^... suffix expands to deps-of-affected only', () => {
+    const f = parseFilter('[main]^...', ROOT)
+    expect(f.gitSince).toBe('main')
+    expect(f.onlyDeps).toBe(true)
+    const affectedByFilter = new Map([[f, new Set(['app'])]])
+    expect([...applyFilters({ filters: [f], projects, graph, affectedByFilter })].sort()).toEqual([
+      'ui',
+      'utils',
+    ])
+  })
+
+  it('![<since>] excludes affected projects from an otherwise-full set', () => {
+    const f = parseFilter('![main]', ROOT)
+    expect(f.negate).toBe(true)
+    expect(f.gitSince).toBe('main')
+    // Affected = {app}; full set minus app = the rest.
+    const affectedByFilter = new Map([[f, new Set(['app'])]])
+    expect([...applyFilters({ filters: [f], projects, graph, affectedByFilter })].sort()).toEqual([
+      'lib',
+      'ui',
+      'utils',
+    ])
+  })
+
+  it('[<since>] with empty affected set selects nothing (no implicit fallback)', () => {
+    // Empty affected after a no-op `git diff` should produce an empty
+    // selection — NOT silently fall back to "all projects".
+    const f = parseFilter('[HEAD]', ROOT)
+    const affectedByFilter = new Map([[f, new Set<string>()]])
+    expect([...applyFilters({ filters: [f], projects, graph, affectedByFilter })]).toEqual([])
+  })
+
+  it('stacked: --filter ui --filter [main] unions name + affected sets', () => {
+    const fName = parseFilter('lib', ROOT)
+    const fSince = parseFilter('[main]', ROOT)
+    const affectedByFilter = new Map([[fSince, new Set(['app'])]])
+    expect(
+      [...applyFilters({ filters: [fName, fSince], projects, graph, affectedByFilter })].sort(),
+    ).toEqual(['app', 'lib'])
+  })
+
+  it('path filter with absolute path resolves correctly', () => {
+    // path.resolve(ROOT, './packages/ui') -> absolute. Parser stores
+    // the absolute form; applier matches by `p.dir.startsWith(...)`.
+    const f = parseFilter('./packages/ui', ROOT)
+    expect(f.isPath).toBe(true)
+    expect(f.matcher.endsWith('/packages/ui')).toBe(true)
+    expect([...applyFilters({ filters: [f], projects, graph })]).toEqual(['ui'])
+  })
+
+  it('mixed include + path-filter union', () => {
+    const filters = [parseFilter('lib', ROOT), parseFilter('./packages/ui', ROOT)]
+    expect([...applyFilters({ filters, projects, graph })].sort()).toEqual(['lib', 'ui'])
+  })
 })

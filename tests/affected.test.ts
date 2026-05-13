@@ -97,6 +97,52 @@ describe('affectedProjects', () => {
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
     expect([...out]).toEqual([])
   })
+
+  it('staged-only changes are selected (working-tree diff includes the index)', async () => {
+    // `git diff --name-only <since>` compares <since> to working tree,
+    // which includes staged + unstaged. A `git add`-then-no-commit
+    // workflow should still surface the change.
+    await writeFile(path.join(root, 'packages/a/file.txt'), 'a-staged')
+    await git(root, 'add', '.')
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+    expect([...out]).toEqual(['a'])
+  })
+
+  it('respects the nested-project boundary (file in inner project does not select parent)', async () => {
+    // If two projects are stacked (a parent and a nested child), a
+    // change inside the child should select the child (which has the
+    // longer dir path), not the parent. The implementation sorts
+    // projects by dir-length descending to honor this.
+    await mkdir(path.join(root, 'packages/a/inner'), { recursive: true })
+    await writeFile(path.join(root, 'packages/a/inner/file.txt'), 'inner-initial')
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'add inner')
+    const nestedProjects: ProjectMeta[] = [
+      ...projects,
+      {
+        name: 'inner',
+        dir: path.join(root, 'packages/a/inner'),
+        configPath: null,
+        packageJson: { name: 'inner' },
+      },
+    ]
+    await writeFile(path.join(root, 'packages/a/inner/file.txt'), 'inner-changed')
+    const out = await affectedProjects({
+      workspaceRoot: root,
+      since: 'HEAD',
+      projects: nestedProjects,
+    })
+    expect([...out]).toEqual(['inner'])
+  })
+
+  it('selects via committed-only history (no working-tree changes)', async () => {
+    // Compare to HEAD~1; the change is committed; working tree clean.
+    await writeFile(path.join(root, 'packages/b/file.txt'), 'b-committed')
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'commit-b')
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD~1', projects })
+    expect([...out]).toEqual(['b'])
+  })
 })
 
 describe('defaultAffectedBase', () => {
