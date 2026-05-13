@@ -14,6 +14,13 @@ export interface ProjectConfig {
 
 export interface TaskConfig {
   /**
+   * Optional one-line description of what this task does. Surfaced in
+   * the interactive task picker and the `--dry` text view so users
+   * can grep for what each task does without opening every config.
+   * Pure metadata — no effect on caching, scheduling, or execution.
+   */
+  description?: string
+  /**
    * Shell command + optional env. One command per task. Omit `exec` to
    * declare a **group task** — a no-op that exists only to chain
    * `dependsOn`. Running a group is equivalent to running its

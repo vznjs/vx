@@ -28,9 +28,29 @@ and by the CLI (`vx run <taskName>`).
 
 ```ts
 interface TaskConfig {
+  description?: string // optional one-line blurb for the picker / --dry view
   exec?: ExecConfig // optional — omit to declare a group task
-  dependsOn?: TaskDependsOn // optional
+  dependsOn?: readonly string[] // optional; Turbo/Nx micro-syntax
   cache?: CacheConfig // optional — caching is opt-in; requires `exec`
+}
+```
+
+### `description` (optional)
+
+A short one-line blurb describing the task. Pure metadata — has no
+effect on caching, scheduling, or execution. Surfaced in two places:
+
+- The interactive task picker (`vx run` with no positional in a TTY)
+  — printed to the right of each `pkg#task` id.
+- The `--dry` text preview — printed on a second indented line under
+  the cache-status row.
+- `--dry=json` includes it on each task entry too.
+
+```ts
+test: {
+  description: 'bun test against the tests/ tree',
+  exec: { command: 'bun test' },
+  cache: { inputs: { files: ['src/**', 'tests/**'] }, outputs: { files: [] } },
 }
 ```
 

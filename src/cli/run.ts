@@ -319,6 +319,7 @@ async function resolveFilters(
 interface PickedTask {
   project: string
   task: string
+  description?: string
 }
 
 async function pickTask(cwd: string): Promise<PickedTask | null> {
@@ -328,17 +329,23 @@ async function pickTask(cwd: string): Promise<PickedTask | null> {
     if (!meta.configPath) continue
     const config = await loadProjectConfig(meta.configPath)
     const taskNames = Object.keys(config.tasks ?? {}).sort()
-    for (const t of taskNames) entries.push({ project: meta.name, task: t })
+    for (const t of taskNames) {
+      const desc = config.tasks?.[t]?.description
+      entries.push({ project: meta.name, task: t, ...(desc ? { description: desc } : {}) })
+    }
   }
   if (entries.length === 0) {
     process.stderr.write(`vx run: no tasks declared in any project\n`)
     return null
   }
-  const width = String(entries.length).length
+  const numW = String(entries.length).length
+  const idW = Math.max(...entries.map((e) => `${e.project}#${e.task}`.length))
   process.stdout.write('Tasks:\n')
   entries.forEach((e, i) => {
-    const n = String(i + 1).padStart(width, ' ')
-    process.stdout.write(`  ${n}. ${e.project}#${e.task}\n`)
+    const n = String(i + 1).padStart(numW, ' ')
+    const id = `${e.project}#${e.task}`.padEnd(idW)
+    const desc = e.description ? `  ${e.description}` : ''
+    process.stdout.write(`  ${n}. ${id}${desc}\n`)
   })
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
   try {
