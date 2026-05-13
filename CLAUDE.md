@@ -133,6 +133,20 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: CACHE_VERSION → v14. File enumeration switched from
+  `Bun.Glob` + `ignore`-library filter to `git ls-files --cached
+  --others --exclude-standard` (Turbo / Nx parity — both defer to
+  git at the bottom of their hash pipelines). User-visible effects:
+  (a) nested `.gitignore` patterns are anchored to the gitignore's
+  own directory (fixes the v13 footgun where `pkg/.gitignore:
+src/skip.ts` was misinterpreted as `<workspaceRoot>/src/skip.ts`);
+  (b) `.git/info/exclude` and global excludes participate; (c)
+  untracked-but-not-ignored files enter inputs immediately (no
+  `git add` required). When git isn't available, we fall back to
+  the pre-v14 walker. New: `listGitTrackedFiles(projectDir)` helper
+  in `cache/inputs.ts`. 9 new git-path tests in `tests/inputs.test.ts`
+  (init a real git repo in the fixture); all 23 pre-existing
+  `inputs.test.ts` tests still pass via the fallback path.
 - **2026-05**: `vx watch <task>` shipped. New subcommand:
   initial run uses the same orchestrator path as `vx run`; afterwards
   a debounced (150 ms) `fs.watch(projectDir, { recursive: true })`

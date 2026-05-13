@@ -5,8 +5,21 @@
 //
 // `cache.inputs.env` is the cache-tracking axis for env vars; it's
 // independent of `exec.env`, which controls what reaches the child.
+//
+// File enumeration follows the Turbo / Nx model: when the project is
+// inside a git repo, we ask git for the file set via `git ls-files
+// --cached --others --exclude-standard`. That gives us:
+//   - all tracked files,
+//   - plus untracked-but-not-ignored files,
+//   - with nested .gitignore + .git/info/exclude + global excludes
+//     correctly applied (because git already does the cascade).
+// The user's `inputs.files` globs are then matched as a *filter* on
+// top of that file set. Outside a git repo, we fall back to a raw
+// Bun.Glob walk with our own `ignore`-library-based filter — same
+// behavior as pre-v14.
 
 import path from 'node:path'
+import { existsSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import ignore, { type Ignore } from 'ignore'
 import type { CacheInputs } from '../config.js'
@@ -112,13 +125,80 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   if (positive.length === 0) return []
 
   const boundaryIgnores = boundaryIgnorePatterns(args.projectDir, args.nestedProjectDirs)
-  const ig = await loadGitignore(args.workspaceRoot, args.projectDir)
   const excludeGlobs = [...ALWAYS_IGNORE, ...boundaryIgnores, ...args.ownOutputs, ...negative].map(
     (p) => new Bun.Glob(p),
   )
 
-  const matches = await scanUnion(positive, excludeGlobs, args.projectDir)
-  return [...matches].filter((p) => !ig.ignores(path.relative(args.workspaceRoot, p))).sort()
+  // Try git first (Turbo / Nx model). Returns project-relative paths
+  // for everything `git ls-files --cached --others --exclude-standard`
+  // sees — i.e., tracked + untracked-but-not-ignored. Nested .gitignore
+  // files, .git/info/exclude, and global excludes all participate
+  // correctly because git does the cascade for us.
+  const gitFiles = listGitTrackedFiles(args.projectDir)
+  if (gitFiles !== null) {
+    const positiveGlobs = positive.map((p) => new Bun.Glob(p))
+    const matches: string[] = []
+    for (const rel of gitFiles) {
+      // Match against any positive glob (Bun.Glob is per-pattern).
+      let matched = false
+      for (const g of positiveGlobs) {
+        if (g.match(rel)) {
+          matched = true
+          break
+        }
+      }
+      if (!matched) continue
+      if (excludeGlobs.some((g) => g.match(rel))) continue
+      const abs = path.resolve(args.projectDir, rel)
+      // Skip deleted-but-tracked files. `git ls-files --cached` would
+      // surface a stale entry while the working tree has it gone; the
+      // hasher would otherwise throw ENOENT.
+      if (!existsSync(abs)) continue
+      matches.push(abs)
+    }
+    return matches.sort()
+  }
+
+  // Fallback path — no git available. Use our own gitignore-lib walker.
+  // Behaves as pre-v14: workspace-root + project-root .gitignore are
+  // both consulted, anchored relative to the workspace root.
+  const ig = await loadGitignore(args.workspaceRoot, args.projectDir)
+  const fsMatches = await scanUnion(positive, excludeGlobs, args.projectDir)
+  return [...fsMatches].filter((p) => !ig.ignores(path.relative(args.workspaceRoot, p))).sort()
+}
+
+/**
+ * Return the set of project-relative paths git considers part of
+ * the project (tracked + untracked-but-not-ignored). `null` means
+ * we're not inside a git work tree — the caller falls back to the
+ * Bun.Glob walker.
+ *
+ * `-z` gives NUL-separated output so filenames with newlines /
+ * spaces survive unparsed.
+ */
+function listGitTrackedFiles(projectDir: string): readonly string[] | null {
+  let proc
+  try {
+    proc = Bun.spawnSync({
+      cmd: ['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z', '.'],
+      cwd: projectDir,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+  } catch {
+    // git binary missing — fall back.
+    return null
+  }
+  if (proc.exitCode !== 0) {
+    // Either not a git repo (exit 128) or some other failure. Either
+    // way, defer to the FS walker.
+    return null
+  }
+  const out = new TextDecoder().decode(proc.stdout)
+  if (out.length === 0) return []
+  // ls-files emits NUL-separated; trailing NUL produces an empty
+  // segment we filter out.
+  return out.split('\0').filter((s) => s.length > 0)
 }
 
 /**
