@@ -10,3 +10,4 @@ coverage
 *.log
 .vx
 .nxt
+release-notes.md
