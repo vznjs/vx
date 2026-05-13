@@ -120,11 +120,20 @@ jobs:
 
       - name: Generate release notes
         if: steps.check.outputs.exists != 'true'
-        env:
-          PREV_TAG: ${{ steps.version.outputs.prev }}
-          NEW_TAG: ${{ steps.version.outputs.next }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: bun scripts/release-notes.ts
+        run: |
+          set -euo pipefail
+          prev="${{ steps.version.outputs.prev }}"
+          next="${{ steps.version.outputs.next }}"
+          range="HEAD"
+          if [ -n "$prev" ]; then range="$prev..HEAD"; fi
+          {
+            echo "Release $next"
+            echo
+            echo "## Changes"
+            echo
+            git log "$range" --reverse --no-merges --pretty='format:- %s'
+            echo
+          } > release-notes.md
 
       - name: Create GitHub release
         if: steps.check.outputs.exists != 'true'
