@@ -133,6 +133,31 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: TUI Phase 2B — OpenTUI renderer shipped behind `--tui`
+  (explicit only; auto-promote is Phase 3). Single-screen layout:
+  Header (run id, status counts, parallel %), TaskList (left), LogPane
+  (right, follows selection), ProgressBar (filled-bar + N/M + %),
+  StatusBar (keymap hint). Components live in `src/tui/components/`;
+  `src/tui/App.tsx` switches view by `state.activeView` (only view 1
+  for Phase 2B). `src/tui/tui.ts` is the single import site for
+  `@opentui/react` — wraps `createCliRenderer` + `createRoot`, builds
+  a `Observer` that dispatches into the Phase 2A reducer, runs a
+  paint-debounced render loop (33ms) and a 1 Hz sparkline sampler.
+  Renderer-swappable: only `src/tui/tui-shim.ts` imports OpenTUI.
+  Renderer falls back silently to framed-block when stdout/stdin
+  isn't a TTY, NO_COLOR is set, CI=1, or term < 80×20; explicit
+  `--tui` surfaces a `vx: TUI unavailable (<reason>)` line. Tests:
+  495 → 497 (added a smoke test + CLI flag parser tests). Manual
+  e2e verified `--tui` disqualifier path; live TTY render path is
+  exercised by `startTui({ testing: true })` (OpenTUI's headless
+  mode).
+
+- **2026-05**: TUI Phase 2A — renderer-agnostic foundation. Pure-
+  function modules under `src/tui/`: `should-use-tui.ts`,
+  `primitives/{sparkline,timeline-layout}.ts`,
+  `state/{store,selectors,critical-path}.ts`. All TDD-driven, no
+  JSX, no renderer dependency. Tests: 434 → 495.
+
 - **2026-05**: TUI Phase 1 foundation — orchestrator-side scaffolding,
   no renderer yet. Five focused additions (no behaviour change for
   non-TUI runs, 414 → 434 tests):

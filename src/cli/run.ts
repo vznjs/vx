@@ -9,6 +9,8 @@ import {
   type RunSummary,
 } from '../orchestrator.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from '../orchestrator/plan-format.js'
+import { VERSION } from '../index.js'
+import { shouldUseTui } from '../tui/should-use-tui.js'
 import { buildPackageGraph } from '../workspace/package-graph.js'
 import { loadProjectConfig } from '../workspace/project-loader.js'
 import {
@@ -49,6 +51,8 @@ export interface RunArgs {
    * `defaultAffectedBase`). Any other string is an explicit git ref.
    */
   affected: string | undefined
+  /** `--tui` / `--no-tui`. Undefined = auto-detect (opt-in fall-through). */
+  tui: boolean | undefined
   error?: string
 }
 
@@ -67,6 +71,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     summarize: undefined,
     profile: undefined,
     affected: undefined,
+    tui: undefined,
   }
 
   const sepIdx = args.indexOf('--')
@@ -130,6 +135,10 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       out.affected = ''
     } else if (a?.startsWith('--affected=')) {
       out.affected = a.slice('--affected='.length)
+    } else if (a === '--tui') {
+      out.tui = true
+    } else if (a === '--no-tui') {
+      out.tui = false
     } else if (a !== undefined && a.startsWith('-')) {
       return { ...out, error: `unknown flag: ${a}` }
     } else if (a !== undefined) {
@@ -281,6 +290,45 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       process.stdout.write(formatPlanText(plan))
     }
     return 0
+  }
+
+  // TUI activation: pure decision via shouldUseTui, then lazy-load
+  // the renderer only on `use: true`. Non-TUI runs never import
+  // `@opentui/*` (zero cold-start cost).
+  const decision = shouldUseTui({
+    argv: {
+      ...(parsed.tui === true ? { tui: true } : {}),
+      ...(parsed.tui === false ? { noTui: true } : {}),
+    },
+    stdinIsTTY: Boolean(process.stdin.isTTY),
+    stdoutIsTTY: Boolean(process.stdout.isTTY),
+    noColor: Boolean(process.env.NO_COLOR),
+    ci: Boolean(process.env.CI),
+    customLogger: false,
+    customObserver: false,
+    columns: process.stdout.columns ?? 80,
+    rows: process.stdout.rows ?? 24,
+  })
+
+  if (decision.use) {
+    const { startTui } = await import('../tui/tui.ts')
+    const tui = await startTui({ version: VERSION, onExit: () => undefined })
+    try {
+      const summary = await runOrchestrator({ ...opts, observer: tui.observer })
+      // Hold the TUI on screen briefly so the user sees the final
+      // frame, then tear down so the post-run framed-summary lines
+      // print to the regular stream.
+      await Bun.sleep(120)
+      await tui.dispose()
+      if (parsed.verbosity > 0) printSummary(summary)
+      return summary.ok ? 0 : 1
+    } catch (err) {
+      await tui.dispose()
+      throw err
+    }
+  } else if (parsed.tui === true) {
+    // User explicitly asked for it; surface why we couldn't deliver.
+    process.stderr.write(`vx: TUI unavailable (${decision.reason})\n`)
   }
 
   const summary = await runOrchestrator(opts)
