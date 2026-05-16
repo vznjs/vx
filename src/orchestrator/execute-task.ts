@@ -253,6 +253,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const outputs = cacheCfg?.outputs.files ?? []
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
 
+  // Prefer the hash precomputed in `prepareRun` (batched topo-walk).
+  // Falls back to per-task computation only when a caller skips the
+  // upfront pass (legacy entry points, focused tests).
+  // Hash is computed mid-run, not at prepareRun time. Tasks whose
+  // `cache.inputs.files` matches sibling outputs (e.g. `'**/*'` after
+  // a `codegen` step has written `generated.txt`) need the upstream
+  // outputs ALREADY on disk when their hash is computed — so we
+  // can't lift this into prepareRun. Same model as Turbo / Nx.
   const hash = await computeTaskHash({
     node,
     upstream,
@@ -283,13 +291,44 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       status: hit ? (hit.source === 'remote' ? 'hit-remote' : 'hit-local') : 'miss',
     })
     if (hit) {
-      // Outputs live in `<cacheDir>/<hash>.tar`. cleanOutputs + tar
-      // extract is fast enough that the previous whole-restore skip
-      // (`outputsMatchCache`) isn't worth the extra walk. Turbo
-      // doesn't have a whole-restore skip either; their per-file
-      // manifest-skip during extract is a deferred optimization.
-      if (outputs.length > 0) await cleanOutputs(cleanArgs)
-      await cache.restoreOutputs(hash, node.projectDir)
+      // "Tree is already current" short-circuit — skip cleanOutputs
+      // + restoreOutputs when the on-disk state matches what this
+      // entry recorded at save time. Integrity-preserving: we
+      // require BOTH that the output-glob walk yields exactly the
+      // expected paths (no strays, no missing) AND that every file's
+      // (size, mode, mtime) matches the stored fingerprint. Any
+      // divergence falls through to a real clean + restore.
+      //
+      // The output-file fingerprints can't be batch-loaded at
+      // prepareRun time — non-leaf task hashes depend on upstream
+      // outputs that haven't been written yet, so hashes are
+      // necessarily computed mid-run. We do one extra SELECT per
+      // cache hit here. Still beats reading the manifest from the
+      // tar (decompress + parse) at the same point.
+      let skipRestore = false
+      if (outputs.length > 0) {
+        const expected = cache.loadOutputFilesBatch([hash]).get(hash) ?? []
+        if (expected.length > 0) {
+          const actualAbs = await resolveOutputs({
+            projectDir: node.projectDir,
+            outputs,
+            nestedProjectDirs: args.nestedProjectDirs,
+          })
+          const expectedRels = new Set(expected.map((e) => e.path))
+          const actualRels = actualAbs.map((p) =>
+            path.relative(node.projectDir, p).split(path.sep).join('/'),
+          )
+          const setMatches =
+            actualRels.length === expectedRels.size && actualRels.every((r) => expectedRels.has(r))
+          if (setMatches) {
+            skipRestore = await cache.isOutputsCurrent(node.projectDir, expected)
+          }
+        }
+      }
+      if (!skipRestore) {
+        if (outputs.length > 0) await cleanOutputs(cleanArgs)
+        await cache.restoreOutputs(hash, node.projectDir)
+      }
       if (hit.stdout) log.taskStdout(node, hit.stdout)
       if (hit.stderr) log.taskStderr(node, hit.stderr)
       const status =

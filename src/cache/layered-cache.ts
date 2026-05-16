@@ -21,6 +21,7 @@ import type {
   CacheKeyInput,
   CacheLayer,
   CacheStats,
+  OutputFileRow,
   PruneOptions,
   PruneResult,
   RunRecord,
@@ -183,6 +184,16 @@ export class LayeredCache implements CacheLayer {
     // path. Callers can fall through to per-hash `get()` for any
     // hash not in the returned map.
     return this.local.getMetaBatch(hashes)
+  }
+
+  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]> {
+    // Output-file fingerprints live in the local SQLite layer only —
+    // they describe the state on this machine's filesystem.
+    return this.local.loadOutputFilesBatch(hashes)
+  }
+
+  async isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean> {
+    return this.local.isOutputsCurrent(projectDir, expected)
   }
 
   recordRun(run: RunRecord): void {
