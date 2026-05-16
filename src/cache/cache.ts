@@ -247,6 +247,15 @@ export class Cache implements CacheLayer {
   private readonly insertRun: ReturnType<Database['prepare']>
   private readonly selectFileHash: ReturnType<Database['prepare']>
   private readonly upsertFileHash: ReturnType<Database['prepare']>
+  /**
+   * Single-slot stash of the most recently decompressed tar. Populated
+   * by `get()`, consumed by the next matching `restoreOutputs()`. The
+   * orchestrator's cache-hit path always calls these back-to-back for
+   * the same hash, so a one-entry slot is enough to avoid a second
+   * round of zstd decompression on every hit. Evicted on hash change,
+   * cleared on close().
+   */
+  private decompressedTar: { hash: string; bytes: Uint8Array } | null = null
 
   constructor(private readonly cacheDir: string) {
     // Ensure the directory exists before opening the DB — bun:sqlite
@@ -469,9 +478,13 @@ export class Cache implements CacheLayer {
 
     // Read the tar once: get the entry list AND pull `stdout`/`stderr`
     // contents (if present) in a single decompress. Output file list
-    // ends up filtered to entries under `outputs/`.
+    // ends up filtered to entries under `outputs/`. The decompressed
+    // bytes are stashed for the matching `restoreOutputs()` call —
+    // the orchestrator's cache-hit path does get→restore back-to-
+    // back so we skip a second decompress on every hit.
     const compressed = await Bun.file(this.tarPath(hash)).bytes()
     const tarBytes = await Bun.zstdDecompress(compressed)
+    this.decompressedTar = { hash, bytes: tarBytes }
     const peek = await peekTar(tarBytes)
     const outputFiles = peek.entries
       .filter((p) => p.startsWith('outputs/'))
@@ -496,15 +509,23 @@ export class Cache implements CacheLayer {
   }
 
   async restoreOutputs(hash: string, projectDir: string): Promise<void> {
-    const src = this.tarPath(hash)
-    if (!(await Bun.file(src).exists())) return
-    // Decompress once, then ask `tar` to extract only the `outputs/`
-    // subtree with the prefix stripped so files land at their
-    // project-relative paths. `stdout` and `stderr` entries in the
-    // archive (if any) are ignored — they're surfaced via `get()`
-    // for the orchestrator to replay through the logger.
-    const compressed = await Bun.file(src).bytes()
-    const tarBytes = await Bun.zstdDecompress(compressed)
+    // Reuse the bytes stashed by the matching `get()` call when
+    // available — saves a redundant disk read + zstd decompress on
+    // every cache hit. Falls back to fresh decompress when called
+    // standalone (tests, or future callers that skip `get()`).
+    let tarBytes: Uint8Array
+    if (this.decompressedTar && this.decompressedTar.hash === hash) {
+      tarBytes = this.decompressedTar.bytes
+      this.decompressedTar = null
+    } else {
+      const src = this.tarPath(hash)
+      if (!(await Bun.file(src).exists())) return
+      const compressed = await Bun.file(src).bytes()
+      tarBytes = await Bun.zstdDecompress(compressed)
+    }
+    // `stdout` and `stderr` entries in the archive (if any) are
+    // ignored on this path — they're surfaced via `get()` for the
+    // orchestrator to replay through the logger.
     // Peek the tar first — `tar -x outputs/` fails when the archive
     // has no `outputs/` member (e.g. a stdout-only entry); skip the
     // extract entirely in that case.
@@ -832,6 +853,7 @@ export class Cache implements CacheLayer {
   }
 
   close(): void {
+    this.decompressedTar = null
     this.db.close()
   }
 
