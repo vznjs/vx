@@ -1,4 +1,4 @@
-// Content-addressed task cache, v15 (artifact layout) / v14 (schema).
+// Content-addressed task cache, v15 (xxh3 keys, tar.zst artifact) / v15 (schema).
 //
 // On-disk layout:
 //   <cacheDir>/cache.db            — SQLite index (entries + runs + file_hashes)
@@ -24,15 +24,20 @@ import { mkdirSync } from 'node:fs'
 import { mkdir, mkdtemp, rename, rm, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { xxh3, xxh3hex, xxh3hexOf } from '../util/hash.js'
 import { relPosix } from '../util/paths.js'
 
-const CACHE_VERSION = 'vx-cache-v14'
-// v14: stdout/stderr moved OUT of the entries row and into the
-// `<hash>.tar.zst` artifact (as plain `stdout` / `stderr` entries,
-// only present when non-empty). Output files live inside the tar
-// under `outputs/`. Empty tasks (no outputs, no logs) produce an
-// empty archive. The entries table remains the queryable index.
-const SCHEMA_VERSION = 'v14'
+// v15: cache-key hash swapped from SHA-256 to xxHash3 (~5× faster,
+// 16-hex keys, Turbo parity on width). Schema also bumps to v15:
+// `file_hashes.sha256` column renamed to `content_hash`; the
+// migration path DROPs stale tables before CREATE TABLE IF NOT
+// EXISTS so column renames take effect on existing DBs. stdout/stderr
+// continue to live in the `<hash>.tar.zst` artifact (from v14), as
+// `stdout` / `stderr` entries only when non-empty. Output files live
+// inside the tar under `outputs/`. Empty tasks produce an empty
+// archive. The entries table remains the queryable index.
+const CACHE_VERSION = 'vx-cache-v15'
+const SCHEMA_VERSION = 'v15'
 
 export interface CacheKeyInput {
   taskId: string
@@ -189,8 +194,8 @@ export interface CacheLayer {
   /**
    * Content-hash a file with an mtime+size fast path. If the
    * `(mtime_ms, size_bytes)` of `filePath` match a previously seen
-   * row, return the stored sha256 instead of re-reading the bytes.
-   * Otherwise read + hash + upsert. The hash is byte-for-byte
+   * row, return the stored xxh3 digest instead of re-reading the
+   * bytes. Otherwise read + hash + upsert. The hash is byte-for-byte
    * identical to what a fresh content-hash would produce — pure
    * optimization, no cache-key change.
    */
@@ -264,11 +269,32 @@ export class Cache implements CacheLayer {
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
-      -- v14: stdout/stderr moved OUT of the entries row into the
-      -- artifact (so they survive remote round-trips). Everything
-      -- else (command, exit_code, duration_ms, size) stays here as
-      -- the index; the artifact stays a pure dump of outputs/ +
-      -- optional stdout + optional stderr files.
+    `)
+
+    // Schema-version gate runs BEFORE the rest of the schema lands so
+    // a column rename (e.g. v15's `sha256` → `content_hash`) actually
+    // takes effect on stale DBs. Pre-alpha: no migrations, just drop
+    // and recreate. Outputs on disk become orphans; they'll be ignored
+    // on next miss and reaped by `vx cache prune`.
+    const meta = this.db.prepare("SELECT value FROM schema_meta WHERE key = 'version'").get() as
+      | { value: string }
+      | undefined
+    if (meta && meta.value !== SCHEMA_VERSION) {
+      this.db.exec(
+        'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes;',
+      )
+      this.db.prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'").run(SCHEMA_VERSION)
+    } else if (!meta) {
+      this.db
+        .prepare("INSERT INTO schema_meta(key, value) VALUES ('version', ?)")
+        .run(SCHEMA_VERSION)
+    }
+
+    this.db.exec(`
+      -- stdout/stderr live in the <hash>.tar.zst artifact, not here
+      -- (v14+) — so they survive remote round-trips. The entries
+      -- table is the queryable index: command, exit_code, duration,
+      -- size, timestamps.
       CREATE TABLE IF NOT EXISTS entries (
         hash         TEXT PRIMARY KEY,
         project      TEXT NOT NULL,
@@ -307,81 +333,19 @@ export class Cache implements CacheLayer {
       CREATE INDEX IF NOT EXISTS runs_started_at ON runs(started_at);
       CREATE INDEX IF NOT EXISTS runs_project    ON runs(project, task);
       CREATE INDEX IF NOT EXISTS runs_run_id     ON runs(run_id);
-      -- Per-file (mtime, size, sha256) cache. Lets Cache.key() skip
-      -- the content-hash on inputs whose stat hasnt changed since
-      -- the last run. Pure performance optimization; the sha256 we
-      -- store is the exact same one content-hashing would compute,
+      -- Per-file (mtime, size, content_hash) cache. Lets Cache.key()
+      -- skip the content-hash on inputs whose stat hasn't changed
+      -- since the last run. Pure performance optimization; the stored
+      -- hash is the exact same one content-hashing would compute now,
       -- so the cache key derivation is unchanged.
       CREATE TABLE IF NOT EXISTS file_hashes (
-        path        TEXT PRIMARY KEY,
-        mtime_ms    INTEGER NOT NULL,
-        size_bytes  INTEGER NOT NULL,
-        sha256      TEXT NOT NULL,
-        seen_at     INTEGER NOT NULL
+        path         TEXT PRIMARY KEY,
+        mtime_ms     INTEGER NOT NULL,
+        size_bytes   INTEGER NOT NULL,
+        content_hash TEXT NOT NULL,
+        seen_at      INTEGER NOT NULL
       );
     `)
-
-    const meta = this.db.prepare("SELECT value FROM schema_meta WHERE key = 'version'").get() as
-      | { value: string }
-      | undefined
-    if (!meta) {
-      this.db
-        .prepare("INSERT INTO schema_meta(key, value) VALUES ('version', ?)")
-        .run(SCHEMA_VERSION)
-    } else if (meta.value !== SCHEMA_VERSION) {
-      // Pre-alpha: schema mismatch nukes everything. Drop the tables
-      // and let the CREATE-IF-NOT-EXISTS block above re-make them with
-      // the current schema next constructor call. The simplest "make
-      // it consistent" path while we're free to break.
-      this.db.exec(
-        'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes;',
-      )
-      this.db.exec(`
-        CREATE TABLE entries (
-          hash         TEXT PRIMARY KEY,
-          project      TEXT NOT NULL,
-          task         TEXT NOT NULL,
-          command      TEXT NOT NULL,
-          exit_code    INTEGER NOT NULL,
-          duration_ms  INTEGER NOT NULL,
-          size_bytes   INTEGER NOT NULL,
-          created_at   INTEGER NOT NULL,
-          accessed_at  INTEGER NOT NULL
-        );
-        CREATE TABLE runs (
-          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-          hash                TEXT NOT NULL,
-          project             TEXT NOT NULL,
-          task                TEXT NOT NULL,
-          status              TEXT NOT NULL,
-          exit_code           INTEGER NOT NULL,
-          duration_ms         INTEGER NOT NULL,
-          forward_args        TEXT,
-          started_at          INTEGER NOT NULL,
-          ended_at            INTEGER NOT NULL,
-          run_id              TEXT,
-          cpu_ms              INTEGER,
-          peak_rss_bytes      INTEGER,
-          wallclock_start_ns  INTEGER,
-          wallclock_end_ns    INTEGER,
-          cache_hit           INTEGER,
-          bytes_uploaded      INTEGER,
-          bytes_downloaded    INTEGER
-        );
-        CREATE INDEX runs_hash       ON runs(hash);
-        CREATE INDEX runs_started_at ON runs(started_at);
-        CREATE INDEX runs_project    ON runs(project, task);
-        CREATE INDEX runs_run_id     ON runs(run_id);
-        CREATE TABLE file_hashes (
-          path        TEXT PRIMARY KEY,
-          mtime_ms    INTEGER NOT NULL,
-          size_bytes  INTEGER NOT NULL,
-          sha256      TEXT NOT NULL,
-          seen_at     INTEGER NOT NULL
-        );
-      `)
-      this.db.prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'").run(SCHEMA_VERSION)
-    }
 
     this.insertEntry = this.db.prepare(`
       INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
@@ -407,25 +371,25 @@ export class Cache implements CacheLayer {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,  ?, ?, ?)
     `)
     this.selectFileHash = this.db.prepare(
-      'SELECT mtime_ms, size_bytes, sha256 FROM file_hashes WHERE path = ?',
+      'SELECT mtime_ms, size_bytes, content_hash FROM file_hashes WHERE path = ?',
     )
     this.upsertFileHash = this.db.prepare(`
-      INSERT INTO file_hashes(path, mtime_ms, size_bytes, sha256, seen_at)
+      INSERT INTO file_hashes(path, mtime_ms, size_bytes, content_hash, seen_at)
       VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(path) DO UPDATE SET
-        mtime_ms   = excluded.mtime_ms,
-        size_bytes = excluded.size_bytes,
-        sha256     = excluded.sha256,
-        seen_at    = excluded.seen_at
+        mtime_ms     = excluded.mtime_ms,
+        size_bytes   = excluded.size_bytes,
+        content_hash = excluded.content_hash,
+        seen_at      = excluded.seen_at
     `)
   }
 
   /**
    * Content-hash a file with an mtime+size fast path. If the
    * `file_hashes` table has a row for `path` whose `(mtime_ms,
-   * size_bytes)` match the current stat, we reuse the stored sha256
-   * (a memory + SQLite lookup, no disk read). Otherwise we read +
-   * hash + upsert.
+   * size_bytes)` match the current stat, we reuse the stored
+   * content_hash (a memory + SQLite lookup, no disk read). Otherwise
+   * we read + hash + upsert.
    *
    * This produces the exact same hash a fresh content-hash would, so
    * the cache key derivation is unchanged. Pure performance win.
@@ -444,49 +408,53 @@ export class Cache implements CacheLayer {
     const mtimeMs = Math.floor(stat.mtimeMs)
     const size = stat.size
     const row = this.selectFileHash.get(filePath) as
-      | { mtime_ms: number; size_bytes: number; sha256: string }
+      | { mtime_ms: number; size_bytes: number; content_hash: string }
       | undefined
     if (row && row.mtime_ms === mtimeMs && row.size_bytes === size) {
-      return row.sha256
+      return row.content_hash
     }
-    const sha = await hashFileFromDisk(filePath)
-    this.upsertFileHash.run(filePath, mtimeMs, size, sha, Date.now())
-    return sha
+    const ch = await hashFileFromDisk(filePath)
+    this.upsertFileHash.run(filePath, mtimeMs, size, ch, Date.now())
+    return ch
   }
 
   async key(input: CacheKeyInput): Promise<string> {
-    const h = new Bun.CryptoHasher('sha256')
-    h.update(`${CACHE_VERSION}\n`)
-    h.update(`task:${input.taskId}\n`)
-    h.update(`workspace:${input.workspaceFingerprint}\n`)
-    h.update(`pkg:${input.projectPackageJsonHash}\n`)
-    h.update(`config:${input.taskConfigHash}\n`)
+    // Seed-chained xxHash3: each step folds one field into the
+    // running digest via `xxh3(part, prevDigest)`. Equivalent to the
+    // old CryptoHasher.update() pattern, no intermediate buffer.
+    // Field-order matters; each line is prefixed with its label so
+    // adjacent fields can't collide via concat.
+    let h = xxh3(CACHE_VERSION)
+    h = xxh3(`task:${input.taskId}`, h)
+    h = xxh3(`workspace:${input.workspaceFingerprint}`, h)
+    h = xxh3(`pkg:${input.projectPackageJsonHash}`, h)
+    h = xxh3(`config:${input.taskConfigHash}`, h)
 
     const forwarded = input.forwardArgs ?? []
-    h.update(`forward-args:${forwarded.length}\n`)
-    for (const a of forwarded) h.update(`${a}\0`)
+    h = xxh3(`forward-args:${forwarded.length}`, h)
+    for (const a of forwarded) h = xxh3(a, h)
 
-    h.update(`env-values:${input.envValues.length}\n`)
-    for (const [n, v] of input.envValues) h.update(`${n}=${v}\n`)
+    h = xxh3(`env-values:${input.envValues.length}`, h)
+    for (const [n, v] of input.envValues) h = xxh3(`${n}=${v}`, h)
 
     const upstream = [...input.upstreamHashes].sort()
-    h.update(`upstream:${upstream.length}\n`)
-    for (const u of upstream) h.update(`${u}\n`)
+    h = xxh3(`upstream:${upstream.length}`, h)
+    for (const u of upstream) h = xxh3(u, h)
 
     const sortedInputs = [...input.inputFiles].sort()
-    h.update(`inputs:${sortedInputs.length}\n`)
+    h = xxh3(`inputs:${sortedInputs.length}`, h)
     // Hash in parallel via the mtime+size fast-path. Unchanged files
-    // reuse the stored sha256 (no disk read); changed/new files do the
-    // full content hash and upsert. Hashes are identical to what a
-    // fresh content-hash would produce, so the cache key is unchanged.
+    // reuse the stored content_hash (no disk read); changed/new files
+    // do the full content hash and upsert. The fold order is locked
+    // to `sortedInputs` so results are stable across runs.
     const fileHashes = await Promise.all(sortedInputs.map((f) => this.hashFile(f)))
     for (let i = 0; i < sortedInputs.length; i++) {
       const file = sortedInputs[i]!
       const rel = relPosix(input.workspaceRoot, file)
-      h.update(`${rel}\0${fileHashes[i]!}\n`)
+      h = xxh3(`${rel}\0${fileHashes[i]!}`, h)
     }
 
-    return h.digest('hex')
+    return xxh3hexOf(h)
   }
 
   async get(hash: string): Promise<CacheEntry | null> {
@@ -964,9 +932,10 @@ function splitTaskId(id: string): [string, string] {
 }
 
 async function hashFileFromDisk(filePath: string): Promise<string> {
-  const h = new Bun.CryptoHasher('sha256')
-  // Bun.file(...).stream() yields Uint8Array chunks lazily — no
-  // whole-file load into memory even for large artifacts. Async-iterable.
-  for await (const chunk of Bun.file(filePath).stream()) h.update(chunk)
-  return h.digest('hex')
+  // Bun.hash.xxHash3 has no streaming API, so we load the whole file.
+  // Input files are source code (typically < 1MB each); the memory
+  // hit is bounded and the ~5× throughput win vs sha256-streaming
+  // dominates on a cache-warm path that hashes hundreds of them.
+  const bytes = await Bun.file(filePath).bytes()
+  return xxh3hex(bytes)
 }

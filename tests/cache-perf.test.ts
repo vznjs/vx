@@ -22,12 +22,12 @@ describe('Cache.hashFile (mtime+size fast path)', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
-  it('returns the correct sha256 on first call (cold path)', async () => {
+  it('returns the correct xxh3 digest on first call (cold path)', async () => {
     const f = path.join(dir, 'hello.txt')
     await writeFile(f, 'hello world')
     const h = await cache.hashFile(f)
-    // Pre-computed sha256 of "hello world"
-    expect(h).toBe('b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9')
+    // Pre-computed Bun.hash.xxHash3 of "hello world" (16-char hex)
+    expect(h).toBe('d447b1ea40e6988b')
   })
 
   it('returns identical hash on second call (warm path)', async () => {
@@ -57,16 +57,15 @@ describe('Cache.hashFile (mtime+size fast path)', () => {
     await Bun.sleep(20)
     await writeFile(f, 'v2-longer-content')
     const second = await cache.hashFile(f)
-    // Hash matches direct sha256 of the new bytes.
-    const hasher = new Bun.CryptoHasher('sha256')
-    hasher.update('v2-longer-content')
-    expect(second).toBe(hasher.digest('hex'))
+    // Hash matches direct xxh3 of the new bytes.
+    const expected = Bun.hash.xxHash3('v2-longer-content').toString(16).padStart(16, '0')
+    expect(second).toBe(expected)
   })
 
-  it('reuses stored sha256 when stat is unchanged (does not re-read disk)', async () => {
+  it('reuses stored digest when stat is unchanged (does not re-read disk)', async () => {
     // We can't directly observe "did we read the disk?" without
     // mocking fs, so prove the property indirectly: after the first
-    // call records (mtime, size, sha256), if we corrupt the file
+    // call records (mtime, size, content_hash), if we corrupt the file
     // in-place AT THE SAME SIZE AND SAME MTIME, the fast path
     // returns the stale (cached) hash. This is the documented
     // fast-path tradeoff.
@@ -336,9 +335,11 @@ describe('createHashCache + within-run hash memoization', () => {
     // (we can't directly observe the fast-path's "no disk read" behavior,
     // but we can verify identity).
     const direct = await cache.hashFile(pj)
-    const hasher = new Bun.CryptoHasher('sha256')
-    hasher.update(await Bun.file(pj).bytes())
-    expect(direct).toBe(hasher.digest('hex'))
+    const expected = Bun.hash
+      .xxHash3(await Bun.file(pj).bytes())
+      .toString(16)
+      .padStart(16, '0')
+    expect(direct).toBe(expected)
   })
 })
 

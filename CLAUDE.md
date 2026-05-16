@@ -133,6 +133,23 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: CACHE_VERSION → v15. Hash algorithm swapped from
+  SHA-256 (`Bun.CryptoHasher`) to xxHash3 (`Bun.hash.xxHash3`) at
+  every cache-key derivation site: `Cache.key()`,
+  `hashFileFromDisk()`, `hashTaskConfig()`, `computeGroupHash()`,
+  `computeWorkspaceFingerprint()`, and the config-load module
+  cache-busting in `project-loader.ts`. Cache keys shrink 64 hex →
+  16 hex (matches Turbo's xxh64 width), derivation is ~5× faster on
+  the cache-warm path. xxHash3 has no streaming Hasher API in Bun,
+  so `Cache.key()` chains updates via the seed parameter
+  (`xxh3(part, prevDigest)`); `hashFileFromDisk` reads the whole
+  file before hashing — fine for source files. New shared helper
+  `src/util/hash.ts` exporting `xxh3`, `xxh3hex`, `xxh3hexOf`.
+  SCHEMA_VERSION bumps to v15 in the same change (PR #86's tar.zst
+  work already took v14): `file_hashes.sha256` column →
+  `content_hash`, and the migration path now `DROP`s stale tables
+  before `CREATE TABLE IF NOT EXISTS` runs so column renames take
+  effect on existing DBs. PR #87.
 - **2026-05**: TUI dropped entirely. After six PRs (#73, #74, #75,
   #76, #77, #79, #80, #81) trying React, then Solid, then patching
   the painter, the user's verdict was "still freezing, no screens

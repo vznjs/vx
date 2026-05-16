@@ -8,6 +8,7 @@ import type { TaskOutcome } from '../graph/scheduler.js'
 import { isGroupTask, type TaskNode } from '../graph/task-graph.js'
 import type { Logger } from './logger.js'
 import type { Observer } from './observer.js'
+import { xxh3hex } from '../util/hash.js'
 import { filterUpstreamHashes } from './upstream.js'
 
 export interface ExecuteArgs {
@@ -49,7 +50,7 @@ export interface ExecuteArgs {
  *     of the same bytes.
  *   - `taskConfig`: keyed by the resolved-config object reference.
  *     Each task's config is created once at prepareRun time; the
- *     JSON.stringify + sha256 of it is deterministic. WeakMap so
+ *     JSON.stringify + xxh3 of it is deterministic. WeakMap so
  *     entries free when the orchestrator is done.
  *
  * Both fields are optional — the helpers fall back to computing
@@ -383,17 +384,17 @@ function taskEnv(node: TaskNode, step: ExecConfig): NodeJS.ProcessEnv {
  * The schema is JSON-serializable by construction (no functions in
  * fields). The `hashCache.taskConfig` WeakMap is consulted first —
  * each task's config object is created once per run, so a hit there
- * skips the JSON.stringify + sha256 entirely.
+ * skips the JSON.stringify + xxh3 entirely.
  */
 function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string {
   if (hashCache) {
     const cached = hashCache.taskConfig.get(cfg)
     if (cached !== undefined) return cached
-    const hash = new Bun.CryptoHasher('sha256').update(JSON.stringify(cfg)).digest('hex')
+    const hash = xxh3hex(JSON.stringify(cfg))
     hashCache.taskConfig.set(cfg, hash)
     return hash
   }
-  return new Bun.CryptoHasher('sha256').update(JSON.stringify(cfg)).digest('hex')
+  return xxh3hex(JSON.stringify(cfg))
 }
 
 /**
@@ -408,7 +409,7 @@ export function computeGroupHash(upstream: TaskOutcome[]): string {
     .map((u) => `${u.node.id}:${u.hash ?? ''}`)
     .sort()
     .join('|')
-  return new Bun.CryptoHasher('sha256').update(`group|${ids}`).digest('hex')
+  return xxh3hex(`group|${ids}`)
 }
 
 /**

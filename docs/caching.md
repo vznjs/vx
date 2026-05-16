@@ -34,7 +34,7 @@ opt _out_ via `cache: false`. We chose the strictest of the three.
 The cache key for one task is a SHA-256 hex digest over (in order):
 
 1. **`CACHE_VERSION`** — the schema-version sentinel
-   (currently `'vx-cache-v14'`, in `src/cache/cache.ts`). Bumped only
+   (currently `'vx-cache-v15'`, in `src/cache/cache.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -395,3 +395,20 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
   could differ (e.g. a previously-mis-handled nested gitignore now
   filters correctly). Pre-alpha tolerates the one-time cache
   invalidation freely.
+- **v14 → v15**: cache-key hash swapped from SHA-256 (via
+  `Bun.CryptoHasher`) to xxHash3 (via `Bun.hash.xxHash3`). Key strings
+  shrink from 64 hex chars to 16, matching Turbo's xxh64 output width;
+  derivation is ~5× faster, dominating the cache-warm path that
+  hashes hundreds of input files. xxHash3 has no streaming Hasher
+  API, so `Cache.key()` chains via the seed parameter (each
+  `xxh3(part, prevDigest)` folds one field into the running digest)
+  and `hashFileFromDisk` reads the whole file before hashing — fine
+  for source files (typically < 1MB each); the throughput win
+  outweighs the memory hit. `SCHEMA_VERSION` bumps to `v15` at the
+  same time (PR #86 already took `v14` for the tar.zst artifact
+  layout): the `file_hashes.sha256` column is renamed to
+  `content_hash`, and the schema-mismatch path now `DROP`s the stale
+  tables before `CREATE TABLE IF NOT EXISTS` runs so the rename
+  actually takes effect on existing DBs. Non-cryptographic by design
+  — cache keys never need collision resistance against an adversary,
+  just uniqueness across honest inputs.
