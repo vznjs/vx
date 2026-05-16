@@ -455,11 +455,11 @@ describePerf('cache baseline: save + restore', () => {
     }
   })
 
-  it('second restore into already-correct tree skips every file (manifest skip)', async () => {
-    // After a cache hit, the on-disk tree matches the cached snapshot
-    // bit-for-bit. The NEXT restore into the same dir must skip-write
-    // every output (size + mode + mtime all match the manifest).
-    const tarMod = (await import('../src/cache/tar.ts')) as typeof import('../src/cache/tar.ts')
+  it('save populates output_files rows; isOutputsCurrent matches on the restored tree', async () => {
+    // v16: manifest data moved out of the tar into the SQLite
+    // `output_files` table. Verify save() inserts rows and
+    // isOutputsCurrent returns true after a cold restore (the tree
+    // is then bit-identical to what save() recorded).
     await cache.save({
       hash: 'mf-direct',
       entry: {
@@ -474,25 +474,24 @@ describePerf('cache baseline: save + restore', () => {
       outputFiles: outFiles,
     })
 
+    // output_files rows exist for this entry.
+    const rows = cache.loadOutputFilesBatch(['mf-direct']).get('mf-direct') ?? []
+    expect(rows.length).toBe(outFiles.length)
+    for (const r of rows) {
+      expect(r.path.startsWith('dist/')).toBe(true)
+      expect(r.size).toBeGreaterThan(0)
+    }
+
+    // Restore into a fresh dir; the tree is then bit-identical to
+    // what save() recorded → isOutputsCurrent returns true.
     const dest = path.join(tmpdir, 'mf-direct-target')
     await mkdir(dest, { recursive: true })
+    await cache.restoreOutputs('mf-direct', dest)
+    expect(await cache.isOutputsCurrent(dest, rows)).toBe(true)
 
-    const compressed = await Bun.file(path.join(tmpdir, '.vx-cache', 'mf-direct.tar.zst')).bytes()
-    const tarBytes = await Bun.zstdDecompress(compressed)
-    const headers = tarMod.parseTarHeaders(tarBytes)
-    const manifestText = tarMod.readTarText(tarBytes, headers, 'manifest.json')
-    expect(manifestText.length).toBeGreaterThan(0)
-    const manifest = JSON.parse(manifestText) as import('../src/cache/tar.ts').Manifest
-
-    // First restore: every file written, none skipped.
-    const first = await tarMod.extractOutputs(tarBytes, dest, manifest)
-    expect(first.written).toBe(outFiles.length)
-    expect(first.skipped).toBe(0)
-
-    // Second restore: every file skipped (manifest match).
-    const second = await tarMod.extractOutputs(tarBytes, dest, manifest)
-    expect(second.written).toBe(0)
-    expect(second.skipped).toBe(outFiles.length)
+    // Corrupt one file → isOutputsCurrent flips to false.
+    await Bun.write(path.join(dest, rows[0]!.path), 'tampered-different-size')
+    expect(await cache.isOutputsCurrent(dest, rows)).toBe(false)
   })
 
   it('restoreOutputs round-trip via Cache: second restore touches no inodes', async () => {

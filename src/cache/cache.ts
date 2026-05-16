@@ -26,13 +26,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { xxh3, xxh3hex, xxh3hexOf } from '../util/hash.js'
 import { relPosix } from '../util/paths.js'
-import {
-  buildManifest,
-  extractOutputs,
-  parseTarHeaders,
-  readTarText,
-  type Manifest,
-} from './tar.js'
+import { extractOutputs, parseTarHeaders, readTarText } from './tar.js'
 
 // v15: cache-key hash swapped from SHA-256 to xxHash3 (~5× faster,
 // 16-hex keys, Turbo parity on width). Schema also bumps to v15:
@@ -44,7 +38,13 @@ import {
 // inside the tar under `outputs/`. Empty tasks produce an empty
 // archive. The entries table remains the queryable index.
 const CACHE_VERSION = 'vx-cache-v15'
-const SCHEMA_VERSION = 'v15'
+// v16: dropped manifest.json from the tar artifact; output-file
+// fingerprints (size, mode, mtime) now live in the SQLite
+// `output_files` table, batch-loaded once at the top of a run. Lets
+// the orchestrator probe "is this entry's tree already current?"
+// via a Map lookup + N stats — no zstd decompress, no tar I/O, no
+// JSON parse on the warm-cache-hit path.
+const SCHEMA_VERSION = 'v16'
 
 export interface CacheKeyInput {
   taskId: string
@@ -192,6 +192,23 @@ export interface CacheEntryMeta {
 }
 
 /**
+ * Per-output-file fingerprint, scoped by the cache entry that
+ * produced it. Batch-loaded once at the top of a run via
+ * `loadOutputFilesBatch(hashes)` so the orchestrator's "is this
+ * tree already current?" probe becomes an in-memory Map lookup
+ * plus N parallel stat calls.
+ *
+ * `path` is project-relative (e.g. `dist/index.js`), matching how
+ * outputs are addressed under `<projectDir>/`.
+ */
+export interface OutputFileRow {
+  path: string
+  size: number
+  mode: number
+  mtimeMs: number
+}
+
+/**
  * The shape every cache implementation honors. `Cache` (the local v10
  * implementation) and `LayeredCache` both `implements` this so the
  * orchestrator's `executeTask` can take either without a discriminated
@@ -213,6 +230,31 @@ export interface CacheLayer {
    * the misses to the scheduler's exec path.
    */
   getMetaBatch(hashes: readonly string[]): Promise<Map<string, CacheEntryMeta>>
+  /**
+   * Batched lookup of per-output-file fingerprints for many cache
+   * entries in one SQL round-trip. Returns a Map keyed by entry hash.
+   *
+   * Orchestrator pattern: call this once at `prepareRun` for every
+   * task whose hash is known up-front, then per-task `executeCachedTask`
+   * does a Map.get (O(1)) + parallel stat checks to decide whether the
+   * on-disk tree is already current.
+   *
+   * Hashes with no rows (cache misses) are absent from the result.
+   */
+  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
+  /**
+   * Stat each `expected` row's target under `projectDir` and return
+   * `true` iff every (size, mode, mtime) matches. Missing files,
+   * stat errors, or any mismatch → `false`.
+   *
+   * Pure FS check — no DB access. Caller batches the expected rows
+   * via `loadOutputFilesBatch`. Lets the orchestrator skip
+   * `cleanOutputs + restoreOutputs` entirely when the cached
+   * snapshot is already in place. Integrity-preserving: detects
+   * out-of-band file edits or deletions and falls through to a real
+   * restore.
+   */
+  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean>
   restoreOutputs(hash: string, projectDir: string): Promise<void>
   save(args: {
     hash: string
@@ -284,6 +326,7 @@ export class Cache implements CacheLayer {
   private readonly insertRun: ReturnType<Database['prepare']>
   private readonly selectFileHash: ReturnType<Database['prepare']>
   private readonly upsertFileHash: ReturnType<Database['prepare']>
+  private readonly insertOutputFile: ReturnType<Database['prepare']>
   /**
    * Single-slot stash of the most recently decompressed tar. Populated
    * by `get()`, consumed by the next matching `restoreOutputs()`. The
@@ -327,7 +370,7 @@ export class Cache implements CacheLayer {
       | undefined
     if (meta && meta.value !== SCHEMA_VERSION) {
       this.db.exec(
-        'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes;',
+        'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS output_files;',
       )
       this.db.prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'").run(SCHEMA_VERSION)
     } else if (!meta) {
@@ -391,6 +434,24 @@ export class Cache implements CacheLayer {
         content_hash TEXT NOT NULL,
         seen_at      INTEGER NOT NULL
       );
+      -- v16: per-output-file fingerprints, scoped by the cache entry
+      -- that produced them. Lets loadOutputFilesBatch(hashes) answer
+      -- "for entry X, what are its outputs supposed to look like?"
+      -- with one SELECT, so the orchestrator can stat-and-skip the
+      -- whole restore when the tree's already current.
+      --
+      -- ON DELETE CASCADE keeps these rows in sync with entries:
+      -- a cache prune that drops an entry sweeps its output rows
+      -- automatically.
+      CREATE TABLE IF NOT EXISTS output_files (
+        entry_hash  TEXT NOT NULL,
+        path        TEXT NOT NULL,
+        size_bytes  INTEGER NOT NULL,
+        mode        INTEGER NOT NULL,
+        mtime_ms    INTEGER NOT NULL,
+        PRIMARY KEY (entry_hash, path),
+        FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
+      );
     `)
 
     this.insertEntry = this.db.prepare(`
@@ -427,6 +488,14 @@ export class Cache implements CacheLayer {
         size_bytes   = excluded.size_bytes,
         content_hash = excluded.content_hash,
         seen_at      = excluded.seen_at
+    `)
+    this.insertOutputFile = this.db.prepare(`
+      INSERT INTO output_files(entry_hash, path, size_bytes, mode, mtime_ms)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(entry_hash, path) DO UPDATE SET
+        size_bytes = excluded.size_bytes,
+        mode       = excluded.mode,
+        mtime_ms   = excluded.mtime_ms
     `)
   }
 
@@ -587,6 +656,59 @@ export class Cache implements CacheLayer {
     return out
   }
 
+  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]> {
+    const out = new Map<string, OutputFileRow[]>()
+    if (hashes.length === 0) return out
+    // Inline placeholders for an IN-list — bun:sqlite doesn't ship
+    // rarray, but `IN (?, ?, …)` with N≤~999 is fast and avoids per-
+    // hash select.get() overhead.
+    const placeholders = hashes.map(() => '?').join(',')
+    const stmt = this.db.prepare(
+      `SELECT entry_hash, path, size_bytes, mode, mtime_ms FROM output_files WHERE entry_hash IN (${placeholders})`,
+    )
+    const rows = stmt.all(...(hashes as readonly SQLQueryBindings[])) as Array<{
+      entry_hash: string
+      path: string
+      size_bytes: number
+      mode: number
+      mtime_ms: number
+    }>
+    for (const r of rows) {
+      let list = out.get(r.entry_hash)
+      if (!list) {
+        list = []
+        out.set(r.entry_hash, list)
+      }
+      list.push({ path: r.path, size: r.size_bytes, mode: r.mode, mtimeMs: r.mtime_ms })
+    }
+    return out
+  }
+
+  async isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean> {
+    // Empty manifest case (a task produced no outputs) → trivially
+    // current; the on-disk tree under projectDir is whatever it was,
+    // and nothing was supposed to land there.
+    if (expected.length === 0) return true
+    const results = await Promise.all(
+      expected.map(async (e) => {
+        try {
+          const s = await stat(path.join(projectDir, e.path))
+          return (
+            s.size === e.size &&
+            (s.mode & 0o777) === (e.mode & 0o777) &&
+            // mtime is restored at seconds-granularity via utimes in
+            // `extractOutputs`, and that's the precision the manifest
+            // stores too — compare at the same precision.
+            Math.floor(s.mtimeMs / 1000) === Math.floor(e.mtimeMs / 1000)
+          )
+        } catch {
+          return false
+        }
+      }),
+    )
+    return results.every(Boolean)
+  }
+
   outputsPath(hash: string): string {
     return this.tarPath(hash)
   }
@@ -598,10 +720,11 @@ export class Cache implements CacheLayer {
     //   - Reuses bytes stashed by the matching `get()` call (single
     //     decompress across the get→restore pair).
     //   - No fork+exec on the hot path (~5-10ms reclaimed per hit).
-    //   - Skip-if-matches via `manifest.json` embedded in the tar:
-    //     when the destination file's (size, mode, mtime) match the
-    //     cached snapshot, we don't write at all. Successive cache
-    //     hits on a stable tree do zero disk writes.
+    //
+    // The "tree is already current" skip-everything check happens at
+    // the orchestrator level (using the batched `output_files` map),
+    // BEFORE this method runs. By the time we're here we've committed
+    // to a fresh extract.
     //
     // `stdout` / `stderr` entries in the archive are ignored on this
     // path — they're surfaced via `get()` for the orchestrator to
@@ -620,18 +743,7 @@ export class Cache implements CacheLayer {
     const headers = parseTarHeaders(tarBytes)
     if (!headers.some((h) => h.name.startsWith('outputs/'))) return
 
-    let manifest: Manifest | undefined
-    const manifestText = readTarText(tarBytes, headers, 'manifest.json')
-    if (manifestText.length > 0) {
-      try {
-        manifest = JSON.parse(manifestText) as Manifest
-      } catch {
-        // Corrupted manifest — treat as legacy artifact (no skip),
-        // every file gets written. Restore stays correct.
-      }
-    }
-
-    await extractOutputs(tarBytes, projectDir, manifest)
+    await extractOutputs(tarBytes, projectDir)
   }
 
   async save(args: {
@@ -662,6 +774,7 @@ export class Cache implements CacheLayer {
     // Stage stdout / stderr / outputs into a temp dir, then tar the
     // contents. Stage paths mirror the final tar layout one-to-one.
     const stage = await mkdtemp(path.join(os.tmpdir(), 'vx-save-'))
+    const outputFileRows: Array<[string, number, number, number]> = []
     try {
       if (args.outputFiles.length > 0) {
         const stageOutputs = path.join(stage, 'outputs')
@@ -672,18 +785,24 @@ export class Cache implements CacheLayer {
           await Bun.write(dest, Bun.file(f))
         })
         await Promise.all(writes)
-        // Manifest of (size, mode, mtime) per output file, embedded in
-        // the tar as `manifest.json`. Lets the NEXT cache hit's restore
-        // skip the per-file write when the on-disk file already matches
-        // the cached snapshot bit-for-bit (Turbo restore-skip pattern).
-        // Built from the staged copies so we capture the exact bytes
-        // that go into the tar, not the live project tree which can
-        // change between save and the next restore.
-        const stagedFiles = args.outputFiles.map((f) =>
-          path.join(stageOutputs, path.relative(args.projectDir, f)),
+        // Stat the STAGED files (not the originals) — those bytes
+        // are what go into the tar, and tar's stored mtime is the
+        // staged file's mtime truncated to seconds. extractOutputs
+        // restores files with that same tar-stored mtime, so
+        // recording the staged file's mtime here makes the saved
+        // fingerprint match what isOutputsCurrent will compare
+        // against post-restore.
+        const stagedStats = await Promise.all(
+          args.outputFiles.map((f) => {
+            const rel = path.relative(args.projectDir, f)
+            return stat(path.join(stageOutputs, rel))
+          }),
         )
-        const manifest = await buildManifest(stagedFiles, stageOutputs)
-        await Bun.write(path.join(stage, 'manifest.json'), JSON.stringify(manifest))
+        for (let i = 0; i < args.outputFiles.length; i++) {
+          const rel = path.relative(args.projectDir, args.outputFiles[i]!).split(path.sep).join('/')
+          const s = stagedStats[i]!
+          outputFileRows.push([rel, s.size, s.mode & 0o777, Math.floor(s.mtimeMs)])
+        }
       }
       if (args.entry.stdout && args.entry.stdout.length > 0) {
         await Bun.write(path.join(stage, 'stdout'), args.entry.stdout)
@@ -693,11 +812,12 @@ export class Cache implements CacheLayer {
       }
 
       // List the top-level entries we just staged so tar emits them
-      // with names like `outputs/...` / `stdout` / `stderr` / `manifest.json`
-      // — no leading `./` prefix that would break the restore's
-      // entry-name matching.
+      // with names like `outputs/...` / `stdout` / `stderr` — no
+      // leading `./` prefix that would break the restore's entry-name
+      // matching. (v16 dropped `manifest.json` — output-file
+      // fingerprints live in the SQLite `output_files` table now.)
       const topLevel: string[] = []
-      if (args.outputFiles.length > 0) topLevel.push('outputs', 'manifest.json')
+      if (args.outputFiles.length > 0) topLevel.push('outputs')
       if (args.entry.stdout && args.entry.stdout.length > 0) topLevel.push('stdout')
       if (args.entry.stderr && args.entry.stderr.length > 0) topLevel.push('stderr')
 
@@ -735,17 +855,32 @@ export class Cache implements CacheLayer {
 
     const [project, task] = splitTaskId(args.entry.taskId)
     const now = Date.now()
-    this.insertEntry.run(
-      args.hash,
-      project,
-      task,
-      args.entry.command,
-      args.entry.exitCode,
-      args.entry.durationMs,
-      totalBytes,
-      now,
-      now,
-    )
+
+    // One transaction for the entries row + every output_files row.
+    // One fsync regardless of output-file count.
+    const insertEntry = this.insertEntry
+    const insertOutputFile = this.insertOutputFile
+    const hash = args.hash
+    const tx = this.db.transaction(() => {
+      insertEntry.run(
+        hash,
+        project,
+        task,
+        args.entry.command,
+        args.entry.exitCode,
+        args.entry.durationMs,
+        totalBytes,
+        now,
+        now,
+      )
+      // Replace the entry's existing output_files rows (an UPDATE
+      // on the same hash should refresh, not append).
+      this.db.prepare('DELETE FROM output_files WHERE entry_hash = ?').run(hash)
+      for (const [rel, size, mode, mtime] of outputFileRows) {
+        insertOutputFile.run(hash, rel, size, mode, mtime)
+      }
+    })
+    tx()
   }
 
   recordRun(run: RunRecord): void {
