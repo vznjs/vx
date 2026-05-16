@@ -827,12 +827,12 @@ describe('Cache schema/version recovery', () => {
         workspaceFingerprint: 'fp',
       }
       const realKey = await cache.key(input)
-      // sha256 hex = 64 chars
-      expect(realKey).toHaveLength(64)
+      // xxh3 hex = 16 chars
+      expect(realKey).toHaveLength(16)
       // A hash derived from the same logical inputs WITHOUT the
-      // CACHE_VERSION sentinel (the trivial sha256 over a different
+      // CACHE_VERSION sentinel (the trivial xxh3 over a different
       // prefix) must differ.
-      const noPrefixHash = new Bun.CryptoHasher('sha256').update('no-prefix').digest('hex')
+      const noPrefixHash = Bun.hash.xxHash3('no-prefix').toString(16).padStart(16, '0')
       expect(realKey).not.toBe(noPrefixHash)
     } finally {
       cache.close()

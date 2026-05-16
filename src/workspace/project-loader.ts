@@ -1,6 +1,7 @@
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { UserError } from '../util/errors.js'
+import { xxh3hex } from '../util/hash.js'
 
 const WORKSPACE_CONFIG_FILENAMES = [
   'vx.workspace.ts',
@@ -19,7 +20,7 @@ const WORKSPACE_CONFIG_FILENAMES = [
 // to the import() evaluation itself.
 async function loadDefaultExport(configPath: string, kind: string): Promise<unknown> {
   const bytes = await Bun.file(configPath).bytes()
-  const bust = new Bun.CryptoHasher('sha256').update(bytes).digest('hex').slice(0, 16)
+  const bust = xxh3hex(bytes)
   const ns = (await import(`${configPath}?vx-bust=${bust}`)) as { default?: unknown }
   const mod = ns?.default
   if (!mod || typeof mod !== 'object') {

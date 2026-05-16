@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { xxh3, xxh3hexOf } from '../util/hash.js'
 
 // Every package-manager lockfile we know about, plus the workspace
 // definition files. Whichever ones exist get folded into the
@@ -28,14 +29,13 @@ const WORKSPACE_FINGERPRINT_FILES = [
  * invalidates every cached entry. Coarse but correct.
  */
 export async function computeWorkspaceFingerprint(workspaceRoot: string): Promise<string> {
-  const h = new Bun.CryptoHasher('sha256')
+  let h = 0n
   for (const f of WORKSPACE_FINGERPRINT_FILES) {
     const full = path.join(workspaceRoot, f)
     const file = Bun.file(full)
     if (!(await file.exists())) continue
-    h.update(`${f}\0`)
-    h.update(await file.bytes())
-    h.update('\n')
+    h = xxh3(`${f}\0`, h)
+    h = xxh3(await file.bytes(), h)
   }
-  return h.digest('hex')
+  return xxh3hexOf(h)
 }
