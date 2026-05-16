@@ -19,7 +19,6 @@
 // behavior as pre-v14.
 
 import path from 'node:path'
-import { existsSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import ignore, { type Ignore } from 'ignore'
 import type { CacheInputs } from '../config.js'
@@ -157,9 +156,9 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   }
   if (gitFiles !== null) {
     const positiveGlobs = positive.map((p) => new Bun.Glob(p))
-    const matches: string[] = []
+    // First pass: glob-filter to candidate absolute paths (no I/O).
+    const candidates: string[] = []
     for (const rel of gitFiles) {
-      // Match against any positive glob (Bun.Glob is per-pattern).
       let matched = false
       for (const g of positiveGlobs) {
         if (g.match(rel)) {
@@ -169,12 +168,16 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
       }
       if (!matched) continue
       if (excludeGlobs.some((g) => g.match(rel))) continue
-      const abs = path.resolve(args.projectDir, rel)
-      // Skip deleted-but-tracked files. `git ls-files --cached` would
-      // surface a stale entry while the working tree has it gone; the
-      // hasher would otherwise throw ENOENT.
-      if (!existsSync(abs)) continue
-      matches.push(abs)
+      candidates.push(path.resolve(args.projectDir, rel))
+    }
+    // Second pass: parallel existence check. `git ls-files --cached`
+    // can surface stale entries when the working tree has the file
+    // gone; the hasher would otherwise throw ENOENT. Parallelizing
+    // turns N serial syscalls into one round-trip's worth of latency.
+    const exists = await Promise.all(candidates.map((abs) => Bun.file(abs).exists()))
+    const matches: string[] = []
+    for (let i = 0; i < candidates.length; i++) {
+      if (exists[i]) matches.push(candidates[i]!)
     }
     return matches.sort()
   }
@@ -194,14 +197,20 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
  * Bun.Glob walker.
  *
  * `-z` gives NUL-separated output so filenames with newlines /
- * spaces survive unparsed.
+ * spaces survive unparsed. This is the per-project entry point;
+ * `populateGitFilesCache` (below) is the bulk entry point used by
+ * the orchestrator to amortize git fork+exec across all projects.
  */
 function listGitTrackedFiles(projectDir: string): readonly string[] | null {
+  return runGitLsFiles(projectDir)
+}
+
+function runGitLsFiles(cwd: string): readonly string[] | null {
   let proc
   try {
     proc = Bun.spawnSync({
       cmd: ['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z', '.'],
-      cwd: projectDir,
+      cwd,
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -219,6 +228,49 @@ function listGitTrackedFiles(projectDir: string): readonly string[] | null {
   // ls-files emits NUL-separated; trailing NUL produces an empty
   // segment we filter out.
   return out.split('\0').filter((s) => s.length > 0)
+}
+
+/**
+ * Run `git ls-files` ONCE at the workspace root, then partition the
+ * result by project. Populates `cache` for every project in
+ * `projectDirs` — values are project-relative path lists matching what
+ * a per-project spawn would have produced, or `null` if the workspace
+ * isn't a git work tree (every project falls back to the Bun.Glob
+ * walker).
+ *
+ * Why bulk: each spawn costs ~5-10ms (fork+exec). On a 200-project
+ * workspace that's 1-2s of pure overhead reclaimed.
+ *
+ * Files in nested-project subtrees stay in their parent's list — the
+ * boundary-ignore globs in `resolveFiles` filter them out the same way
+ * they did before. Cheaper to filter once-per-task than to subtract
+ * here.
+ */
+export function populateGitFilesCache(
+  workspaceRoot: string,
+  projectDirs: readonly string[],
+  cache: Map<string, readonly string[] | null>,
+): void {
+  const all = runGitLsFiles(workspaceRoot)
+  if (all === null) {
+    // Not a git repo, or git missing. Mark every project null so
+    // resolveFiles takes the Bun.Glob fallback without re-spawning.
+    for (const dir of projectDirs) cache.set(dir, null)
+    return
+  }
+  for (const projectDir of projectDirs) {
+    const relPrefix = path.relative(workspaceRoot, projectDir).split(path.sep).join('/')
+    if (relPrefix === '' || relPrefix === '.') {
+      cache.set(projectDir, all)
+      continue
+    }
+    const prefix = `${relPrefix}/`
+    const matches: string[] = []
+    for (const p of all) {
+      if (p.startsWith(prefix)) matches.push(p.slice(prefix.length))
+    }
+    cache.set(projectDir, matches)
+  }
 }
 
 /**
