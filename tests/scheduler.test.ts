@@ -283,4 +283,81 @@ describe('runGraph', () => {
       expect(slots).toEqual([0])
     })
   })
+
+  describe('reverse-dependency scheduling priority', () => {
+    it('prefers the task that blocks the most downstream work', async () => {
+      // Graph:
+      //   root ── ready, blocks 4 transitive descendants (a, b, c, d)
+      //   leaf ── ready, blocks nothing
+      //
+      //   root → a → b → c → d
+      //   leaf (isolated)
+      //
+      // With concurrency=1 only one task can start at a time. The
+      // scheduler must pick `root` first (highest reverse-dep count)
+      // so its 4 dependents can fan out, instead of `leaf` first
+      // which would leave `root` blocking everything until leaf finishes.
+      const root = node('p#root')
+      const a = node('p#a', ['p#root'])
+      const b = node('p#b', ['p#a'])
+      const c = node('p#c', ['p#b'])
+      const d = node('p#d', ['p#c'])
+      const leaf = node('p#leaf')
+
+      // Order the Map so `leaf` comes BEFORE `root` — the pre-sort
+      // patch must override insertion order on the strength of the
+      // reverse-dep count.
+      const m = new Map<string, TaskNode>([
+        ['p#leaf', leaf],
+        ['p#root', root],
+        ['p#a', a],
+        ['p#b', b],
+        ['p#c', c],
+        ['p#d', d],
+      ])
+
+      const started: string[] = []
+      await runGraph({
+        nodes: m,
+        concurrency: 1,
+        execute: async (n) => {
+          started.push(n.id)
+          return success(n)
+        },
+      })
+      // `root` runs before `leaf` despite being inserted later.
+      const rootIdx = started.indexOf('p#root')
+      const leafIdx = started.indexOf('p#leaf')
+      expect(rootIdx).toBeLessThan(leafIdx)
+    })
+
+    it('ties break in graph-insertion order (topo from buildTaskGraph)', async () => {
+      // Two roots with identical reverse-dep count: both block exactly
+      // one downstream task. The scheduler should fall back to
+      // insertion order (i.e., the order the graph builder produced).
+      const r1 = node('p#r1')
+      const r2 = node('p#r2')
+      const c1 = node('p#c1', ['p#r1'])
+      const c2 = node('p#c2', ['p#r2'])
+
+      const m = new Map<string, TaskNode>([
+        ['p#r1', r1],
+        ['p#r2', r2],
+        ['p#c1', c1],
+        ['p#c2', c2],
+      ])
+
+      const started: string[] = []
+      await runGraph({
+        nodes: m,
+        concurrency: 1,
+        execute: async (n) => {
+          started.push(n.id)
+          return success(n)
+        },
+      })
+      // r1 (inserted first) wins the tie over r2.
+      expect(started.indexOf('p#r1')).toBeLessThan(started.indexOf('p#r2'))
+    })
+  })
 })
