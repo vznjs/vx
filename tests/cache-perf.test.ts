@@ -3,12 +3,10 @@
 // rather than asserting wall-clock time (which is too flaky for CI).
 
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
-import { existsSync } from 'node:fs'
 import { mkdtemp, mkdir, rm, writeFile, utimes, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { Cache, type RunRecord } from '../src/cache/cache.js'
-import { outputsMatchCache } from '../src/cache/inputs.js'
 
 describe('Cache.hashFile (mtime+size fast path)', () => {
   let dir: string
@@ -344,13 +342,16 @@ describe('createHashCache + within-run hash memoization', () => {
   })
 })
 
-describe('restoreOutputs uses hardlinks (Turbo-style fast restore)', () => {
+describe('cache layout v15: <hash>.tar single file (Turbo-style)', () => {
   let dir: string
   let cache: Cache
+  let projectDir: string
 
   beforeEach(async () => {
-    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-restore-'))
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-tar-'))
     cache = new Cache(path.join(dir, '.vx-cache'))
+    projectDir = path.join(dir, 'project')
+    await mkdir(projectDir, { recursive: true })
   })
 
   afterEach(async () => {
@@ -358,188 +359,74 @@ describe('restoreOutputs uses hardlinks (Turbo-style fast restore)', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
-  async function seed(hash: string): Promise<{ projectDir: string; outFile: string }> {
-    const projectDir = path.join(dir, 'project')
-    await mkdir(path.join(projectDir, 'dist'), { recursive: true })
-    const outFile = path.join(projectDir, 'dist', 'index.js')
-    await writeFile(outFile, 'BUILT')
+  async function saveSample(hash: string, files: Record<string, string>): Promise<void> {
+    const abs: string[] = []
+    for (const [rel, content] of Object.entries(files)) {
+      const full = path.join(projectDir, rel)
+      await mkdir(path.dirname(full), { recursive: true })
+      await writeFile(full, content)
+      abs.push(full)
+    }
     await cache.save({
       hash,
       projectDir,
-      outputFiles: [outFile],
+      outputFiles: abs,
       entry: {
         taskId: 'pkg#build',
-        command: 'tsc',
+        command: 'noop',
         exitCode: 0,
-        durationMs: 1,
-        stdout: '',
+        durationMs: 5,
+        stdout: 'compiling…',
         stderr: '',
       },
     })
-    return { projectDir, outFile }
   }
 
-  it('restoreOutputs creates a hardlink (same inode as the cache copy)', async () => {
-    const { projectDir, outFile } = await seed('h-link')
-    // Remove the project file so restore needs to create a new entry.
-    await rm(outFile)
-    await cache.restoreOutputs('h-link', projectDir)
-
-    const cacheCopy = path.join(dir, '.vx-cache', 'h-link', 'outputs', 'dist', 'index.js')
-    const a = await stat(outFile)
-    const b = await stat(cacheCopy)
-    expect(a.ino).toBe(b.ino) // same inode → hardlink
-    expect(a.nlink).toBeGreaterThanOrEqual(2) // at least the cache + project entries
-  })
-
-  it('save() does NOT hardlink (a later writeFile to the project copy must not corrupt the cache)', async () => {
-    const { projectDir, outFile } = await seed('h-no-link-on-save')
-    const cacheCopy = path.join(
-      dir,
-      '.vx-cache',
-      'h-no-link-on-save',
-      'outputs',
-      'dist',
-      'index.js',
+  it('save writes a single <hash>.tar file (not a directory)', async () => {
+    await saveSample('h-tar', { 'dist/a.js': 'A', 'dist/b.js': 'B' })
+    const cacheDir = path.join(dir, '.vx-cache')
+    // The artifact is one file, not a directory tree.
+    const stats = await stat(path.join(cacheDir, 'h-tar.tar.zst'))
+    expect(stats.isFile()).toBe(true)
+    // No more <hash>/ subdir layout.
+    expect(await Bun.file(path.join(cacheDir, 'h-tar', 'outputs', 'dist', 'a.js')).exists()).toBe(
+      false,
     )
-    const a = await stat(outFile)
-    const b = await stat(cacheCopy)
-    // save uses real byte-copy → different inodes.
-    expect(a.ino).not.toBe(b.ino)
-
-    // Sanity: corrupting the project copy leaves the cache copy intact.
-    await writeFile(outFile, 'CORRUPTED')
-    const { readFile } = await import('node:fs/promises')
-    expect(await readFile(cacheCopy, 'utf8')).toBe('BUILT')
   })
 
-  it('cleanOutputs unlinks the project copy without affecting the cache copy', async () => {
-    const { projectDir, outFile } = await seed('h-unlink')
-    // Restore so project and cache share an inode.
-    await rm(outFile)
-    await cache.restoreOutputs('h-unlink', projectDir)
-    const cacheCopy = path.join(dir, '.vx-cache', 'h-unlink', 'outputs', 'dist', 'index.js')
-    // Now unlink the project file. Cache copy must survive.
-    await rm(outFile)
-    expect(existsSync(cacheCopy)).toBe(true)
-    const { readFile } = await import('node:fs/promises')
-    expect(await readFile(cacheCopy, 'utf8')).toBe('BUILT')
+  it('stdout/stderr stored in SQLite (not in the tar)', async () => {
+    await saveSample('h-meta', { 'out.txt': 'hi' })
+    const got = await cache.get('h-meta')
+    expect(got?.stdout).toBe('compiling…')
+    expect(got?.stderr).toBe('')
+    // Tar listing should NOT contain stdout/stderr.
+    const list = got?.outputFiles ?? []
+    expect(list).toEqual(['out.txt'])
   })
 
-  it('restoreOutputs handles a stale destination file (EEXIST → unlink + relink)', async () => {
-    const { projectDir, outFile } = await seed('h-eexist')
-    // A stale leftover at the destination must not block link().
-    // (cleanOutputs would normally remove it before restore, but if
-    // it lingers for any reason, restore must still succeed.)
-    await writeFile(outFile, 'STALE')
-    await cache.restoreOutputs('h-eexist', projectDir)
-    const { readFile } = await import('node:fs/promises')
-    expect(await readFile(outFile, 'utf8')).toBe('BUILT')
-  })
-})
-
-describe('outputsMatchCache (cache-hit skip-clean-restore optimization)', () => {
-  let dir: string
-
-  beforeEach(async () => {
-    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-omc-'))
+  it('restoreOutputs extracts the tar back into the project dir', async () => {
+    await saveSample('h-restore', { 'dist/index.js': 'BUILT', 'dist/lib/x.js': 'LIB' })
+    await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
+    await cache.restoreOutputs('h-restore', projectDir)
+    expect(await Bun.file(path.join(projectDir, 'dist', 'index.js')).text()).toBe('BUILT')
+    expect(await Bun.file(path.join(projectDir, 'dist', 'lib', 'x.js')).text()).toBe('LIB')
   })
 
-  afterEach(async () => {
-    await rm(dir, { recursive: true, force: true })
+  it('restoreOutputs is a no-op when the artifact is missing', async () => {
+    // Should not throw — just return without doing anything.
+    await expect(cache.restoreOutputs('does-not-exist', projectDir)).resolves.toBeUndefined()
   })
 
-  async function makeTree(root: string, files: Record<string, string>): Promise<void> {
-    for (const [rel, content] of Object.entries(files)) {
-      const full = path.join(root, rel)
-      await mkdir(path.dirname(full), { recursive: true })
-      await writeFile(full, content)
-    }
-  }
-
-  it('returns true when project tree matches cache snapshot exactly', async () => {
-    const projectDir = path.join(dir, 'project')
-    const outputsDir = path.join(dir, 'cache', 'outputs')
-    await makeTree(projectDir, { 'dist/index.js': 'OUT', 'dist/nested/file.txt': 'NESTED' })
-    await makeTree(outputsDir, { 'dist/index.js': 'OUT', 'dist/nested/file.txt': 'NESTED' })
-
-    const match = await outputsMatchCache({
-      projectDir,
-      outputsDir,
-      outputs: ['dist/**'],
-      nestedProjectDirs: [],
-    })
-    expect(match).toBe(true)
+  it('outputsPath returns the tar file path', () => {
+    const p = cache.outputsPath('h-path')
+    expect(p.endsWith('h-path.tar.zst')).toBe(true)
   })
 
-  it('returns false when a project file is missing vs cache', async () => {
-    const projectDir = path.join(dir, 'project')
-    const outputsDir = path.join(dir, 'cache', 'outputs')
-    await makeTree(projectDir, { 'dist/index.js': 'OUT' })
-    await makeTree(outputsDir, { 'dist/index.js': 'OUT', 'dist/extra.js': 'X' })
-
-    const match = await outputsMatchCache({
-      projectDir,
-      outputsDir,
-      outputs: ['dist/**'],
-      nestedProjectDirs: [],
-    })
-    expect(match).toBe(false)
-  })
-
-  it('returns false when a stale extra file is on disk but not in cache', async () => {
-    const projectDir = path.join(dir, 'project')
-    const outputsDir = path.join(dir, 'cache', 'outputs')
-    await makeTree(projectDir, { 'dist/index.js': 'OUT', 'dist/stale.txt': 'STALE' })
-    await makeTree(outputsDir, { 'dist/index.js': 'OUT' })
-
-    const match = await outputsMatchCache({
-      projectDir,
-      outputsDir,
-      outputs: ['dist/**'],
-      nestedProjectDirs: [],
-    })
-    expect(match).toBe(false)
-  })
-
-  it('returns false when file size differs', async () => {
-    const projectDir = path.join(dir, 'project')
-    const outputsDir = path.join(dir, 'cache', 'outputs')
-    await makeTree(projectDir, { 'dist/index.js': 'SHORT' })
-    await makeTree(outputsDir, { 'dist/index.js': 'LONGER-CONTENT' })
-
-    const match = await outputsMatchCache({
-      projectDir,
-      outputsDir,
-      outputs: ['dist/**'],
-      nestedProjectDirs: [],
-    })
-    expect(match).toBe(false)
-  })
-
-  it('returns false when cache dir does not exist', async () => {
-    const projectDir = path.join(dir, 'project')
-    await makeTree(projectDir, { 'dist/index.js': 'OUT' })
-    const match = await outputsMatchCache({
-      projectDir,
-      outputsDir: path.join(dir, 'missing-cache'),
-      outputs: ['dist/**'],
-      nestedProjectDirs: [],
-    })
-    expect(match).toBe(false)
-  })
-
-  it('returns true when both cache and project are empty', async () => {
-    const projectDir = path.join(dir, 'project')
-    const outputsDir = path.join(dir, 'cache', 'outputs')
-    await mkdir(projectDir, { recursive: true })
-    await mkdir(outputsDir, { recursive: true })
-    const match = await outputsMatchCache({
-      projectDir,
-      outputsDir,
-      outputs: ['dist/**'],
-      nestedProjectDirs: [],
-    })
-    expect(match).toBe(true)
+  it('prune removes the .tar files', async () => {
+    await saveSample('h-prune', { 'a.txt': 'a' })
+    const cacheDir = path.join(dir, '.vx-cache')
+    expect(await Bun.file(path.join(cacheDir, 'h-prune.tar.zst')).exists()).toBe(true)
+    await cache.prune({ olderThanMs: Date.now() + 1_000_000 }) // evict everything
+    expect(await Bun.file(path.join(cacheDir, 'h-prune.tar.zst')).exists()).toBe(false)
   })
 })
