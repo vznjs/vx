@@ -44,15 +44,66 @@ export interface ScheduleOptions {
 }
 
 /**
+ * Compute, for each task in the graph, how many OTHER tasks are
+ * transitively blocked on it. Tasks with the highest count are the
+ * most valuable to schedule first — finishing them unlocks the most
+ * downstream work and minimizes worker idle time at the end of the
+ * run. Matches Nx's `calculateReverseDeps`-driven schedule sort
+ * (`packages/nx/src/tasks-runner/tasks-schedule.ts:166-207`).
+ */
+function computeReverseDepCount(nodes: Map<string, TaskNode>): Map<string, number> {
+  // Direct reverse edges: dep -> set of tasks that name it.
+  const directReverse = new Map<string, Set<string>>()
+  for (const id of nodes.keys()) directReverse.set(id, new Set())
+  for (const node of nodes.values()) {
+    for (const dep of node.deps) {
+      directReverse.get(dep)?.add(node.id)
+    }
+  }
+  // Transitive closure via memoized DFS. Each task's reach is the
+  // union of its direct reverse-edges plus their reaches.
+  const reach = new Map<string, Set<string>>()
+  function reachOf(id: string): Set<string> {
+    const cached = reach.get(id)
+    if (cached) return cached
+    const out = new Set<string>()
+    for (const r of directReverse.get(id) ?? []) {
+      out.add(r)
+      for (const t of reachOf(r)) out.add(t)
+    }
+    reach.set(id, out)
+    return out
+  }
+  const counts = new Map<string, number>()
+  for (const id of nodes.keys()) counts.set(id, reachOf(id).size)
+  return counts
+}
+
+/**
  * Run the task graph. Independent tasks run in parallel up to `concurrency`.
  * If a task fails, its dependents are marked `skipped` but unrelated tasks
  * keep running so the user gets maximum information per invocation.
+ *
+ * Scheduling: when more than one task is ready, the scheduler picks the
+ * one that blocks the most downstream work (most transitive reverse
+ * dependents). Ties break in graph-insertion order (which is the topo
+ * order produced by `buildTaskGraph`). Minimizes worker idle at the
+ * end of the run.
  */
 export async function runGraph(options: ScheduleOptions): Promise<Map<string, TaskOutcome>> {
   const { nodes, concurrency, execute, onStart, onFinish } = options
   const outcomes = new Map<string, TaskOutcome>()
   const remaining = new Set(nodes.keys())
   const inFlight = new Set<string>()
+
+  // Pre-sort node IDs by reverse-dep count (descending). Reverse deps
+  // are static for the duration of a run, so we sort once and iterate
+  // this order on every tick instead of re-sorting `remaining` each
+  // time. O(N log N) once vs O(N log N) per tick.
+  const reverseDepCount = computeReverseDepCount(nodes)
+  const scheduleOrder = [...nodes.keys()].sort(
+    (a, b) => (reverseDepCount.get(b) ?? 0) - (reverseDepCount.get(a) ?? 0),
+  )
 
   // Free-list of worker slots. Lowest-free-index allocation keeps a
   // task that's almost always running pinned to slot 0; idle gaps on
@@ -69,9 +120,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     const tick = (): void => {
       if (resolved) return
 
-      // Snapshot to avoid surprises from concurrent Set mutation during iteration.
-      for (const id of [...remaining]) {
+      // Iterate the pre-sorted schedule order. `remaining` Set
+      // membership tells us what's still pending; we walk the sorted
+      // list (priority order) and pick the first ready node.
+      for (const id of scheduleOrder) {
         if (active >= concurrency) break
+        if (!remaining.has(id)) continue
         if (inFlight.has(id)) continue
         const node = nodes.get(id)
         if (!node) continue
