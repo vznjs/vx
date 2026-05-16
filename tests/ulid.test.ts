@@ -1,31 +1,26 @@
 import { describe, expect, it } from 'bun:test'
 import { ulid } from '../src/util/ulid.js'
 
-describe('ulid', () => {
-  it('produces a 26-character Crockford-base32 string', () => {
+describe('ulid (Bun.randomUUIDv7 wrapper)', () => {
+  it('produces a 36-character UUIDv7 string', () => {
     const id = ulid()
-    expect(id).toHaveLength(26)
-    expect(id).toMatch(/^[0-9A-HJKMNP-TV-Z]+$/)
+    expect(id).toHaveLength(36)
+    // UUIDv7 format: 8-4-4-4-12 hex with version "7" in the 13th char
+    // and variant "8|9|a|b" in the 17th.
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
   })
 
-  it('two ids generated in the same ms are unique (random suffix differs)', () => {
-    const now = Date.now()
+  it('many rapid generations are all unique', () => {
     const ids = new Set<string>()
-    for (let i = 0; i < 1000; i++) ids.add(ulid(now))
+    for (let i = 0; i < 1000; i++) ids.add(ulid())
     expect(ids.size).toBe(1000)
   })
 
-  it('two ids generated 1ms apart sort with the later one greater', () => {
-    const earlier = ulid(1_700_000_000_000)
-    const later = ulid(1_700_000_000_001)
+  it('later IDs sort after earlier ones (timestamp-prefixed = lex-sortable)', async () => {
+    const earlier = ulid()
+    // Sleep > 1ms so the embedded ms-epoch timestamp differs.
+    await Bun.sleep(5)
+    const later = ulid()
     expect(later > earlier).toBe(true)
-  })
-
-  it('time prefix is deterministic for a fixed timestamp', () => {
-    // Same timestamp → same first-10-char prefix (only random suffix varies).
-    const a = ulid(1_700_000_000_000)
-    const b = ulid(1_700_000_000_000)
-    expect(a.slice(0, 10)).toBe(b.slice(0, 10))
-    expect(a.slice(10)).not.toBe(b.slice(10))
   })
 })

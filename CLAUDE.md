@@ -133,6 +133,26 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: Bun-builtins audit. Replaced the hand-rolled 50-LOC
+  Crockford-base32 ULID generator (`src/util/ulid.ts`) with a thin
+  wrapper over `Bun.randomUUIDv7()`. UUIDv7 is RFC 9562's timestamp-
+  prefixed UUID — 48-bit ms-epoch + 74 bits of randomness, lex-
+  sortable, standard format. `run_id` strings change from 26-char
+  Crockford (`01JABC…`) to 36-char hex (`019e3255-9a99-7000-…`); pre-
+  alpha so no migration burden. Wider audit findings recorded for
+  posterity: `Bun.Archive` benchmarked **15-400× slower** than our
+  `extractOutputs` for typical cache artifacts (KB-MB range, flat
+  trees) — fixed JS-bridge overhead dominates Bun.Archive for small
+  archives. Kept our hand-rolled `parseTarHeaders` + `extractOutputs`
+  in `src/cache/tar.ts`. APIs we already use: `Bun.YAML`,
+  `Bun.Glob`, `bun:sqlite`, `Bun.hash.xxHash3`,
+  `Bun.zstdCompress/Decompress`, `Bun.spawn`, `Bun.color`,
+  `Bun.file`, `Bun.write`, `Bun.nanoseconds`, `Bun.sleep`. APIs with
+  no consumer in our code: `Bun.semver`, `Bun.deepEquals`,
+  `Bun.stripANSI`, `Bun.stringWidth`, `Bun.which`, `Bun.JSONC`,
+  `Bun.TOML`, `Bun.password`, `Bun.markdown`, `Bun.serve`. `Bun.env`
+  is an alias for `process.env`; pure cosmetic swap not worth the
+  churn. `fs.watch` in `src/cli/watch.ts` has no Bun equivalent.
 - **2026-05**: CACHE_VERSION → v15. Hash algorithm swapped from
   SHA-256 (`Bun.CryptoHasher`) to xxHash3 (`Bun.hash.xxHash3`) at
   every cache-key derivation site: `Cache.key()`,
