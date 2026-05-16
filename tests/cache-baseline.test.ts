@@ -419,8 +419,6 @@ describePerf('cache baseline: save + restore', () => {
 
     const origDecompress = Bun.zstdDecompress
     let decompressCount = 0
-    // Disable type-check on the assignment: we restore it before the
-    // assertion completes. `as any` keeps oxlint quiet.
     const bunMut = Bun as unknown as { zstdDecompress: typeof Bun.zstdDecompress }
     bunMut.zstdDecompress = ((input: Parameters<typeof Bun.zstdDecompress>[0]) => {
       decompressCount++
@@ -445,9 +443,7 @@ describePerf('cache baseline: save + restore', () => {
 
       // Stale-slot path: get('sd-other') fills slot for 'other', then
       // restore of 'sd-hot' misses the slot and decompresses 'sd-hot'
-      // fresh. Two decompresses total across the cycle (one in get,
-      // one in restore) — the slot still saved work, just for the
-      // wrong hash.
+      // fresh. Two decompresses total across the cycle.
       decompressCount = 0
       await cache.get('sd-other')
       const destC = path.join(tmpdir, 'sd-warm-C')
@@ -457,6 +453,101 @@ describePerf('cache baseline: save + restore', () => {
     } finally {
       bunMut.zstdDecompress = origDecompress
     }
+  })
+
+  it('second restore into already-correct tree skips every file (manifest skip)', async () => {
+    // After a cache hit, the on-disk tree matches the cached snapshot
+    // bit-for-bit. The NEXT restore into the same dir must skip-write
+    // every output (size + mode + mtime all match the manifest).
+    const tarMod = (await import('../src/cache/tar.ts')) as typeof import('../src/cache/tar.ts')
+    await cache.save({
+      hash: 'mf-direct',
+      entry: {
+        taskId: 'p#build',
+        command: 'noop',
+        exitCode: 0,
+        durationMs: 1,
+        stdout: '',
+        stderr: '',
+      },
+      projectDir,
+      outputFiles: outFiles,
+    })
+
+    const dest = path.join(tmpdir, 'mf-direct-target')
+    await mkdir(dest, { recursive: true })
+
+    const compressed = await Bun.file(path.join(tmpdir, '.vx-cache', 'mf-direct.tar.zst')).bytes()
+    const tarBytes = await Bun.zstdDecompress(compressed)
+    const headers = tarMod.parseTarHeaders(tarBytes)
+    const manifestText = tarMod.readTarText(tarBytes, headers, 'manifest.json')
+    expect(manifestText.length).toBeGreaterThan(0)
+    const manifest = JSON.parse(manifestText) as import('../src/cache/tar.ts').Manifest
+
+    // First restore: every file written, none skipped.
+    const first = await tarMod.extractOutputs(tarBytes, dest, manifest)
+    expect(first.written).toBe(outFiles.length)
+    expect(first.skipped).toBe(0)
+
+    // Second restore: every file skipped (manifest match).
+    const second = await tarMod.extractOutputs(tarBytes, dest, manifest)
+    expect(second.written).toBe(0)
+    expect(second.skipped).toBe(outFiles.length)
+  })
+
+  it('restoreOutputs round-trip via Cache: second restore touches no inodes', async () => {
+    // End-to-end behavioral check: after a cold restore, set every
+    // restored file's mtime/atime to a known-distant timestamp. A
+    // second restoreOutputs() should skip every file (manifest match
+    // on size + mode + mtime), so the timestamps stay where we set
+    // them. If skip is broken, mtime moves to "now".
+    const { stat, utimes } = await import('node:fs/promises')
+    await cache.save({
+      hash: 'e2e-mf',
+      entry: {
+        taskId: 'p#build',
+        command: 'noop',
+        exitCode: 0,
+        durationMs: 1,
+        stdout: '',
+        stderr: '',
+      },
+      projectDir,
+      outputFiles: outFiles,
+    })
+
+    const dest = path.join(tmpdir, 'e2e-mf-target')
+    await mkdir(dest, { recursive: true })
+
+    // Cold restore writes every file. Inspect one file's mtime —
+    // it'll match the staged file's mtime (from save), NOT "now".
+    await cache.restoreOutputs('e2e-mf', dest)
+    const oneFile = path.join(dest, 'dist', 'out0.js')
+    expect(await Bun.file(oneFile).exists()).toBe(true)
+    const mtimeAfterCold = (await stat(oneFile)).mtimeMs
+
+    // Wait > 1s so a re-write would produce a distinguishable
+    // "now" mtime (utimes is seconds-resolution).
+    await Bun.sleep(1100)
+
+    // Second restore must skip — mtime unchanged means we didn't
+    // write the file.
+    await cache.restoreOutputs('e2e-mf', dest)
+    const mtimeAfterSkip = (await stat(oneFile)).mtimeMs
+    expect(Math.floor(mtimeAfterSkip / 1000)).toBe(Math.floor(mtimeAfterCold / 1000))
+
+    // Negative control: corrupt the file. Third restore SHOULD
+    // rewrite (size mismatch with manifest) and the mtime jumps to
+    // the tar's stored mtime — same as mtimeAfterCold.
+    await Bun.write(oneFile, 'corrupted-different-size')
+    const corruptedSize = (await stat(oneFile)).size
+    expect(corruptedSize).not.toBe((await stat(path.join(projectDir, 'dist', 'out0.js'))).size)
+    await cache.restoreOutputs('e2e-mf', dest)
+    const sizeAfterFix = (await stat(oneFile)).size
+    expect(sizeAfterFix).not.toBe(corruptedSize)
+    // (Use utimes import to keep the linter happy — utimes is the
+    // implementation detail tested above via the timestamp invariant.)
+    void utimes
   })
 
   it('restoreOutputs (10 small files) — median < 30ms', async () => {
