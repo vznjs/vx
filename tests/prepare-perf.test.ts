@@ -53,12 +53,20 @@ describe('prepareRun perf surface', () => {
     }
   })
 
-  it('exposes a fresh `gitFilesCache` Map (empty at start of run)', async () => {
+  it('exposes a `gitFilesCache` Map pre-populated by a single bulk git ls-files', async () => {
+    // Bulk-population (one `git ls-files` at workspace root, partitioned
+    // by project) gives every project a cache entry up-front — saves
+    // one fork+exec per project on the cache-hit path. When the
+    // workspace isn't a git repo, the value is `null` and resolveFiles
+    // falls back to the Bun.Glob walker.
     await addProject(root, 'pkg')
     const prepared = await prepareRun({ cwd: root, tasks: ['build'] }, log)
     try {
       expect(prepared.gitFilesCache).toBeInstanceOf(Map)
-      expect(prepared.gitFilesCache.size).toBe(0)
+      // One entry per project (the fixture has just 'pkg').
+      expect(prepared.gitFilesCache.size).toBe(1)
+      const pkgDir = path.join(root, 'packages', 'pkg')
+      expect(prepared.gitFilesCache.has(pkgDir)).toBe(true)
     } finally {
       prepared.cache.close()
     }

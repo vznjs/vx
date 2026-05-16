@@ -10,7 +10,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { cleanOutputs, resolveInputs, resolveOutputs } from '../src/cache/inputs.js'
+import {
+  cleanOutputs,
+  populateGitFilesCache,
+  resolveInputs,
+  resolveOutputs,
+} from '../src/cache/inputs.js'
 
 async function write(p: string, content = 'x'): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
@@ -631,5 +636,80 @@ describe('resolveInputs — gitFilesCache memoization', () => {
     void first
     const relsSecond = second.files.map((p) => path.relative(projectDir, p))
     expect(relsSecond).toEqual([]) // 'from-memo.ts' doesn't exist on disk → filtered out
+  })
+})
+
+describe('populateGitFilesCache — single workspace-wide git spawn', () => {
+  let workspaceRoot: string
+
+  async function gitCmd(cwd: string, ...args: string[]): Promise<void> {
+    const proc = Bun.spawnSync({
+      cmd: ['git', '-c', 'commit.gpgsign=false', '-c', 'tag.gpgSign=false', ...args],
+      cwd,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    if (proc.exitCode !== 0) {
+      throw new Error(`git ${args.join(' ')}: ${new TextDecoder().decode(proc.stderr)}`)
+    }
+  }
+
+  beforeEach(async () => {
+    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vx-populate-'))
+    await gitCmd(workspaceRoot, 'init', '-q')
+    await gitCmd(workspaceRoot, 'config', 'user.email', 'test@vx.local')
+    await gitCmd(workspaceRoot, 'config', 'user.name', 'vx test')
+    // Three projects, each with a tracked file.
+    for (const name of ['a', 'b', 'c']) {
+      const dir = path.join(workspaceRoot, 'packages', name)
+      await mkdir(dir, { recursive: true })
+      await writeFile(path.join(dir, 'src.ts'), `export const ${name} = ${name === 'a' ? 1 : 2};\n`)
+    }
+    await gitCmd(workspaceRoot, 'add', '-A')
+    await gitCmd(workspaceRoot, 'commit', '-m', 'init')
+  })
+
+  afterEach(async () => {
+    await rm(workspaceRoot, { recursive: true, force: true })
+  })
+
+  it('spawns git exactly once for N projects (vs N spawns the per-project path used)', async () => {
+    const origSpawnSync = Bun.spawnSync
+    let spawnCount = 0
+    const bunMut = Bun as unknown as { spawnSync: typeof Bun.spawnSync }
+    bunMut.spawnSync = ((...args: Parameters<typeof Bun.spawnSync>) => {
+      const opt = args[0] as { cmd?: readonly string[] } | undefined
+      if (opt && Array.isArray(opt.cmd) && opt.cmd[0] === 'git') spawnCount++
+      return origSpawnSync(...args)
+    }) as typeof Bun.spawnSync
+    try {
+      const cache = new Map<string, readonly string[] | null>()
+      const projectDirs = ['a', 'b', 'c'].map((n) => path.join(workspaceRoot, 'packages', n))
+      populateGitFilesCache(workspaceRoot, projectDirs, cache)
+      expect(spawnCount).toBe(1)
+      // Every project got a non-null entry partitioned from the bulk
+      // listing — `src.ts` shows up project-relative.
+      for (const dir of projectDirs) {
+        expect(cache.get(dir)).toEqual(['src.ts'])
+      }
+    } finally {
+      bunMut.spawnSync = origSpawnSync
+    }
+  })
+
+  it('marks every project null when not in a git repo (single fast-fail)', async () => {
+    // Non-git dir
+    const nonGit = await mkdtemp(path.join(os.tmpdir(), 'vx-nogit-'))
+    try {
+      const cache = new Map<string, readonly string[] | null>()
+      const projectDirs = ['x', 'y'].map((n) => path.join(nonGit, n))
+      for (const dir of projectDirs) {
+        await mkdir(dir, { recursive: true })
+      }
+      populateGitFilesCache(nonGit, projectDirs, cache)
+      for (const dir of projectDirs) expect(cache.get(dir)).toBeNull()
+    } finally {
+      await rm(nonGit, { recursive: true, force: true })
+    }
   })
 })

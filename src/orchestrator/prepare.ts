@@ -9,6 +9,7 @@
 
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { Cache, type CacheLayer } from '../cache/cache.js'
+import { populateGitFilesCache } from '../cache/inputs.js'
 import { buildPackageGraph, type PackageGraph } from '../workspace/package-graph.js'
 import { loadProjectConfig, loadWorkspaceConfig } from '../workspace/project-loader.js'
 import {
@@ -131,6 +132,17 @@ export async function prepareRun(
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
   const gitFilesCache = new Map<string, readonly string[] | null>()
+  // Bulk-populate via a single `git ls-files` at the workspace root —
+  // partitions the output by project. Avoids one fork+exec per project
+  // (~5-10ms each on Linux; the dominant cold-start cost on big
+  // monorepos). Falls back to per-project listing on cache miss when
+  // not in a git work tree (every projectDir gets `null` here, which
+  // resolveFiles interprets as "use the Bun.Glob walker").
+  populateGitFilesCache(
+    workspaceRoot,
+    [...projects.values()].map((p) => p.dir),
+    gitFilesCache,
+  )
   const hashCache = createHashCache()
 
   // Empty-cases bookkeeping. We still construct the cache + fingerprint
