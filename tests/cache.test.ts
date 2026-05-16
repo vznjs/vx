@@ -243,13 +243,14 @@ describe('Cache storage (v10)', () => {
       },
     })
 
-    // Filesystem layout v13: outputs under <hash>/outputs/<rel>, stdout/stderr
-    // as plain files under <hash>/.
-    expect(existsSync(path.join(cacheDir, 'h1', 'outputs', 'dist', 'index.js'))).toBe(true)
-    expect(existsSync(path.join(cacheDir, 'h1', 'stdout'))).toBe(true)
-    expect(existsSync(path.join(cacheDir, 'h1', 'stderr'))).toBe(true)
-    // No v9-style meta.json.
-    expect(existsSync(path.join(cacheDir, 'h1', 'meta.json'))).toBe(false)
+    // Filesystem layout v15: single zstd-compressed tar archive per
+    // entry. stdout/stderr live in the SQLite entries row, not as
+    // separate files.
+    expect(existsSync(path.join(cacheDir, 'h1.tar.zst'))).toBe(true)
+    // No v13-style <hash>/ directory layout.
+    expect(existsSync(path.join(cacheDir, 'h1'))).toBe(false)
+    expect(existsSync(path.join(cacheDir, 'h1', 'stdout'))).toBe(false)
+    expect(existsSync(path.join(cacheDir, 'h1', 'stderr'))).toBe(false)
     // No legacy v12-style sibling logs/ dir.
     expect(existsSync(path.join(cacheDir, 'logs'))).toBe(false)
 
@@ -314,8 +315,8 @@ describe('Cache storage (v10)', () => {
       },
     })
 
-    // Simulate someone deleting the cached dir without touching the DB.
-    await rm(path.join(cacheDir, 'h-orphan'), { recursive: true, force: true })
+    // Simulate someone deleting the cached artifact without touching the DB.
+    await rm(path.join(cacheDir, 'h-orphan.tar.zst'), { force: true })
     expect(await cache.get('h-orphan')).toBeNull()
   })
 
@@ -668,11 +669,11 @@ describe('Cache storage (v10)', () => {
     expect(got?.command).toBe('second')
     expect(got?.durationMs).toBe(2)
     expect(got?.stdout).toBe('replaced')
-    // Stored payload reflects the second-write content.
-    const stored = await readFile(
-      path.join(cacheDir, 'h-overwrite', 'outputs', 'dist', 'out.txt'),
-      'utf8',
-    )
+    // Stored payload reflects the second-write content. Restore into a
+    // sibling dir and read the materialized file.
+    const restoreDir = path.join(workspaceRoot, 'restore-target')
+    await cache.restoreOutputs('h-overwrite', restoreDir)
+    const stored = await readFile(path.join(restoreDir, 'dist', 'out.txt'), 'utf8')
     expect(stored).toBe('second-version-longer')
   })
 

@@ -1,26 +1,38 @@
-// Content-addressed task cache, v10.
+// Content-addressed task cache, v15 (artifact layout) / v14 (schema).
 //
-// SQLite holds metadata + run history (indexed by-hash, queryable for
-// stats and eviction). Output files stay on disk under <cacheDir>/<hash>/
-// so cache-hit restore is a direct file copy. stdout and stderr are
-// kept as separate text files to preserve stream identity on replay.
+// On-disk layout:
+//   <cacheDir>/cache.db            — SQLite index (entries + runs + file_hashes)
+//   <cacheDir>/<hash>.tar.zst      — per-entry artifact: outputs/ + (optional)
+//                                    stdout + (optional) stderr
+//
+// SQLite holds the index — hash, project, task, command, exitCode,
+// durationMs, sizeBytes, timestamps. The artifact is a pure dump of
+// the run's outputs and captured streams. stdout/stderr live in the
+// artifact (not the DB) so a remote pull round-trip carries them
+// with the bytes.
 //
 // Replace this module to plug in remote storage. The contract is:
 //   key()           : derive a stable hash from a task's identity + inputs
 //   get(hash)       : retrieve a previous run's metadata, or null
-//   restoreOutputs  : copy stored output files into the project dir
-//   save            : persist outputs + metadata under a hash
+//   restoreOutputs  : extract the artifact's outputs/ into the project dir
+//   save            : persist outputs + stdout/stderr under a hash
 //   recordRun       : append a row to the run history table (for stats)
 //   close           : release the SQLite handle
 
 import { Database, type SQLQueryBindings } from 'bun:sqlite'
-import { existsSync, mkdirSync } from 'node:fs'
-import { link, mkdir, readdir, rename, rm, stat } from 'node:fs/promises'
+import { mkdirSync } from 'node:fs'
+import { mkdir, mkdtemp, rename, rm, stat } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { relPosix } from '../util/paths.js'
 
 const CACHE_VERSION = 'vx-cache-v14'
-const SCHEMA_VERSION = 'v12'
+// v14: stdout/stderr moved OUT of the entries row and into the
+// `<hash>.tar.zst` artifact (as plain `stdout` / `stderr` entries,
+// only present when non-empty). Output files live inside the tar
+// under `outputs/`. Empty tasks (no outputs, no logs) produce an
+// empty archive. The entries table remains the queryable index.
+const SCHEMA_VERSION = 'v14'
 
 export interface CacheKeyInput {
   taskId: string
@@ -184,11 +196,10 @@ export interface CacheLayer {
    */
   hashFile(filePath: string): Promise<string>
   /**
-   * Absolute path to the on-disk outputs directory for a hash —
-   * `<cacheDir>/<hash>/outputs/`. Returns the path whether or not
-   * the entry exists; callers stat to find out. Used by the cache-
-   * hit fast-path to compare on-disk outputs to the cached snapshot
-   * before deciding whether to clean+restore.
+   * Absolute path to the on-disk outputs artifact for a hash —
+   * `<cacheDir>/<hash>.tar` since v15. Returns the path whether or
+   * not the artifact exists. Exposed for telemetry / dashboards;
+   * `restoreOutputs` is the canonical way to materialize the bytes.
    */
   outputsPath(hash: string): string
   /**
@@ -253,6 +264,11 @@ export class Cache implements CacheLayer {
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
+      -- v14: stdout/stderr moved OUT of the entries row into the
+      -- artifact (so they survive remote round-trips). Everything
+      -- else (command, exit_code, duration_ms, size) stays here as
+      -- the index; the artifact stays a pure dump of outputs/ +
+      -- optional stdout + optional stderr files.
       CREATE TABLE IF NOT EXISTS entries (
         hash         TEXT PRIMARY KEY,
         project      TEXT NOT NULL,
@@ -313,9 +329,57 @@ export class Cache implements CacheLayer {
         .prepare("INSERT INTO schema_meta(key, value) VALUES ('version', ?)")
         .run(SCHEMA_VERSION)
     } else if (meta.value !== SCHEMA_VERSION) {
-      // Pre-alpha: schema mismatch means rebuild. Nuke entries + runs.
-      // Outputs on disk become orphans; they'll be ignored on next miss.
-      this.db.exec('DELETE FROM entries; DELETE FROM runs;')
+      // Pre-alpha: schema mismatch nukes everything. Drop the tables
+      // and let the CREATE-IF-NOT-EXISTS block above re-make them with
+      // the current schema next constructor call. The simplest "make
+      // it consistent" path while we're free to break.
+      this.db.exec(
+        'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes;',
+      )
+      this.db.exec(`
+        CREATE TABLE entries (
+          hash         TEXT PRIMARY KEY,
+          project      TEXT NOT NULL,
+          task         TEXT NOT NULL,
+          command      TEXT NOT NULL,
+          exit_code    INTEGER NOT NULL,
+          duration_ms  INTEGER NOT NULL,
+          size_bytes   INTEGER NOT NULL,
+          created_at   INTEGER NOT NULL,
+          accessed_at  INTEGER NOT NULL
+        );
+        CREATE TABLE runs (
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          hash                TEXT NOT NULL,
+          project             TEXT NOT NULL,
+          task                TEXT NOT NULL,
+          status              TEXT NOT NULL,
+          exit_code           INTEGER NOT NULL,
+          duration_ms         INTEGER NOT NULL,
+          forward_args        TEXT,
+          started_at          INTEGER NOT NULL,
+          ended_at            INTEGER NOT NULL,
+          run_id              TEXT,
+          cpu_ms              INTEGER,
+          peak_rss_bytes      INTEGER,
+          wallclock_start_ns  INTEGER,
+          wallclock_end_ns    INTEGER,
+          cache_hit           INTEGER,
+          bytes_uploaded      INTEGER,
+          bytes_downloaded    INTEGER
+        );
+        CREATE INDEX runs_hash       ON runs(hash);
+        CREATE INDEX runs_started_at ON runs(started_at);
+        CREATE INDEX runs_project    ON runs(project, task);
+        CREATE INDEX runs_run_id     ON runs(run_id);
+        CREATE TABLE file_hashes (
+          path        TEXT PRIMARY KEY,
+          mtime_ms    INTEGER NOT NULL,
+          size_bytes  INTEGER NOT NULL,
+          sha256      TEXT NOT NULL,
+          seen_at     INTEGER NOT NULL
+        );
+      `)
       this.db.prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'").run(SCHEMA_VERSION)
     }
 
@@ -429,19 +493,21 @@ export class Cache implements CacheLayer {
     const row = this.selectEntry.get(hash) as EntryRow | undefined
     if (!row) return null
 
-    // Verify the on-disk artifact actually exists. The DB and the
-    // filesystem can drift if someone manually deletes a <hash>/ dir.
-    // existsSync is required here: `Bun.file(dir).exists()` returns
-    // false for directories — Bun.file is a file-only API.
-    if (!existsSync(this.entryDir(hash))) return null
+    // Verify the tar artifact actually exists. The DB and the
+    // filesystem can drift if someone manually deletes the cache dir.
+    if (!(await Bun.file(this.tarPath(hash)).exists())) return null
 
     this.bumpAccessed.run(Date.now(), hash)
 
-    const stdout = await readMaybe(this.logPath(hash, 'stdout'))
-    const stderr = await readMaybe(this.logPath(hash, 'stderr'))
-    const outputFiles = existsSync(this.outputsDir(hash))
-      ? await listRelativeFiles(this.outputsDir(hash))
-      : []
+    // Read the tar once: get the entry list AND pull `stdout`/`stderr`
+    // contents (if present) in a single decompress. Output file list
+    // ends up filtered to entries under `outputs/`.
+    const compressed = await Bun.file(this.tarPath(hash)).bytes()
+    const tarBytes = await Bun.zstdDecompress(compressed)
+    const peek = await peekTar(tarBytes)
+    const outputFiles = peek.entries
+      .filter((p) => p.startsWith('outputs/'))
+      .map((p) => p.slice('outputs/'.length))
 
     return {
       hash: row.hash,
@@ -450,22 +516,45 @@ export class Cache implements CacheLayer {
       exitCode: row.exit_code,
       durationMs: row.duration_ms,
       outputFiles,
-      stdout,
-      stderr,
+      stdout: peek.stdout,
+      stderr: peek.stderr,
       storedAt: new Date(row.created_at).toISOString(),
       source: 'local',
     }
   }
 
   outputsPath(hash: string): string {
-    return this.outputsDir(hash)
+    return this.tarPath(hash)
   }
 
   async restoreOutputs(hash: string, projectDir: string): Promise<void> {
-    const src = this.outputsDir(hash)
-    // Same caveat as above: src is a directory; use existsSync.
-    if (!existsSync(src)) return
-    await copyDir(src, projectDir)
+    const src = this.tarPath(hash)
+    if (!(await Bun.file(src).exists())) return
+    // Decompress once, then ask `tar` to extract only the `outputs/`
+    // subtree with the prefix stripped so files land at their
+    // project-relative paths. `stdout` and `stderr` entries in the
+    // archive (if any) are ignored — they're surfaced via `get()`
+    // for the orchestrator to replay through the logger.
+    const compressed = await Bun.file(src).bytes()
+    const tarBytes = await Bun.zstdDecompress(compressed)
+    // Peek the tar first — `tar -x outputs/` fails when the archive
+    // has no `outputs/` member (e.g. a stdout-only entry); skip the
+    // extract entirely in that case.
+    const peek = await peekTar(tarBytes)
+    if (!peek.entries.some((e) => e.startsWith('outputs/'))) return
+
+    await mkdir(projectDir, { recursive: true })
+    const proc = Bun.spawn(
+      ['tar', '-xf', '-', '-C', projectDir, '--strip-components=1', 'outputs'],
+      { stdin: 'pipe', stdout: 'ignore', stderr: 'pipe' },
+    )
+    await proc.stdin.write(tarBytes)
+    await proc.stdin.end()
+    await proc.exited
+    if (proc.exitCode !== 0) {
+      const err = await new Response(proc.stderr).text()
+      throw new Error(`restoreOutputs: tar exited ${proc.exitCode}: ${err.trim()}`)
+    }
   }
 
   async save(args: {
@@ -474,43 +563,86 @@ export class Cache implements CacheLayer {
     projectDir: string
     outputFiles: string[]
   }): Promise<void> {
-    // Layout (v13):
-    //   <hash>/
-    //   ├── stdout                ← captured stdout
-    //   ├── stderr                ← captured stderr
-    //   └── outputs/<rel paths>   ← files restoreOutputs() copies back
-    // Stage everything under a sibling tmp dir; rename atomically so
-    // a concurrent reader sees either no entry or a complete one.
-    const dir = this.entryDir(args.hash)
-    const tmp = `${dir}.tmp-${process.pid}-${Date.now()}`
-    await rm(tmp, { recursive: true, force: true })
-    await mkdir(tmp, { recursive: true })
+    // Layout (v15): one `<hash>.tar.zst` per entry. Tar carries ONLY
+    // the things you'd want to re-materialize on a cache hit:
+    //
+    //   outputs/<rel>     — declared output files (omitted entirely
+    //                       when args.outputFiles is empty)
+    //   stdout            — captured stdout (omitted when empty)
+    //   stderr            — captured stderr (omitted when empty)
+    //
+    // If a task has no outputs and produced no stdout/stderr, the
+    // archive is essentially empty (~ a few bytes of zstd framing).
+    // Metadata about the entry — command, exit code, duration —
+    // lives in the SQLite entries row, not the artifact.
+    //
+    // We write to a `.tmp` sibling and rename atomically so a
+    // concurrent reader sees either no entry or a complete one.
+    const finalPath = this.tarPath(args.hash)
+    const tmpPath = `${finalPath}.tmp-${process.pid}-${Date.now()}`
+    await mkdir(this.cacheDir, { recursive: true })
 
-    // Save is a real byte copy (NOT hardlink). If we hardlinked the
-    // project's output file into the cache, a later `writeFile` to
-    // the project file would truncate the shared inode and corrupt
-    // the cache copy too. Restore can hardlink safely because clean
-    // removes the project file first, breaking any prior link.
-    let totalBytes = 0
-    const relOutputs: string[] = []
-    const tmpOutputs = path.join(tmp, 'outputs')
-    const saves = args.outputFiles.map(async (f) => {
-      const rel = path.relative(args.projectDir, f)
-      const dest = path.join(tmpOutputs, rel)
-      // Bun.write auto-creates parent dirs.
-      await Bun.write(dest, Bun.file(f))
-      const s = await stat(dest)
-      totalBytes += s.size
-      relOutputs.push(rel.split(path.sep).join('/'))
-    })
-    await Promise.all(saves)
+    // Stage stdout / stderr / outputs into a temp dir, then tar the
+    // contents. Stage paths mirror the final tar layout one-to-one.
+    const stage = await mkdtemp(path.join(os.tmpdir(), 'vx-save-'))
+    try {
+      if (args.outputFiles.length > 0) {
+        const stageOutputs = path.join(stage, 'outputs')
+        const writes = args.outputFiles.map(async (f) => {
+          const rel = path.relative(args.projectDir, f)
+          const dest = path.join(stageOutputs, rel)
+          // Bun.write creates parent dirs as needed.
+          await Bun.write(dest, Bun.file(f))
+        })
+        await Promise.all(writes)
+      }
+      if (args.entry.stdout && args.entry.stdout.length > 0) {
+        await Bun.write(path.join(stage, 'stdout'), args.entry.stdout)
+      }
+      if (args.entry.stderr && args.entry.stderr.length > 0) {
+        await Bun.write(path.join(stage, 'stderr'), args.entry.stderr)
+      }
 
-    await Bun.write(path.join(tmp, 'stdout'), args.entry.stdout)
-    await Bun.write(path.join(tmp, 'stderr'), args.entry.stderr)
-    totalBytes += Buffer.byteLength(args.entry.stdout) + Buffer.byteLength(args.entry.stderr)
+      // List the top-level entries we just staged so tar emits them
+      // with names like `outputs/...` / `stdout` / `stderr` — no
+      // leading `./` prefix that would break the restore's
+      // `--strip-components=1 outputs` filter.
+      const topLevel: string[] = []
+      if (args.outputFiles.length > 0) topLevel.push('outputs')
+      if (args.entry.stdout && args.entry.stdout.length > 0) topLevel.push('stdout')
+      if (args.entry.stderr && args.entry.stderr.length > 0) topLevel.push('stderr')
 
-    await rm(dir, { recursive: true, force: true })
-    await rename(tmp, dir)
+      let tarBytes: Uint8Array
+      if (topLevel.length === 0) {
+        // Empty archive — task produced no outputs and no captured
+        // logs. Tar requires at least one entry, so build a two-block
+        // zero-padded EOF manually (the on-disk shape of an empty tar).
+        tarBytes = new Uint8Array(1024)
+      } else {
+        const proc = Bun.spawn(['tar', '-cf', '-', '-C', stage, ...topLevel], {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        const [bytes, stderrText] = await Promise.all([
+          new Response(proc.stdout).bytes(),
+          new Response(proc.stderr).text(),
+        ])
+        await proc.exited
+        if (proc.exitCode !== 0) {
+          throw new Error(`save: tar exited ${proc.exitCode}: ${stderrText.trim()}`)
+        }
+        tarBytes = bytes
+      }
+      const compressed = await Bun.zstdCompress(tarBytes)
+      await Bun.write(tmpPath, compressed)
+    } finally {
+      await rm(stage, { recursive: true, force: true })
+    }
+
+    await rm(finalPath, { force: true })
+    await rename(tmpPath, finalPath)
+
+    const totalBytes = (await stat(finalPath)).size
 
     const [project, task] = splitTaskId(args.entry.taskId)
     const now = Date.now()
@@ -721,11 +853,11 @@ export class Cache implements CacheLayer {
       }
     }
 
-    // Perform the deletions: DB row + on-disk dir (logs live inside).
+    // Perform the deletions: DB row + on-disk tar.
     const deleteEntry = this.db.prepare('DELETE FROM entries WHERE hash = ?')
     for (const hash of victims) {
       deleteEntry.run(hash)
-      await rm(this.entryDir(hash), { recursive: true, force: true })
+      await rm(this.tarPath(hash), { force: true })
     }
 
     return { evicted: victims.size, bytesFreed }
@@ -735,17 +867,67 @@ export class Cache implements CacheLayer {
     this.db.close()
   }
 
-  private entryDir(hash: string): string {
-    return path.join(this.cacheDir, hash)
+  private tarPath(hash: string): string {
+    return path.join(this.cacheDir, `${hash}.tar.zst`)
   }
+}
 
-  private outputsDir(hash: string): string {
-    return path.join(this.cacheDir, hash, 'outputs')
-  }
+/**
+ * Single-decompressed-pass inspection of a cache artifact tar.
+ * Returns the list of regular-file entries plus the contents of
+ * `stdout` / `stderr` if those entries are present. Avoids the
+ * second decompress that a separate "list, then extract" approach
+ * would do.
+ *
+ * Implemented by parsing tar headers directly — each header is a
+ * fixed 512-byte block followed by the file data padded up to the
+ * next 512-byte boundary. The POSIX ustar format is simple enough
+ * that this is ~40 LOC and removes the need for a tar subprocess
+ * just to read three short files.
+ */
+async function peekTar(tarBytes: Uint8Array): Promise<{
+  entries: string[]
+  stdout: string
+  stderr: string
+}> {
+  const entries: string[] = []
+  let stdout = ''
+  let stderr = ''
+  const dec = new TextDecoder('utf-8')
+  let off = 0
+  while (off + 512 <= tarBytes.length) {
+    const header = tarBytes.subarray(off, off + 512)
+    // End-of-archive: a block of all zeros (tar pads with two such
+    // blocks). Stop when we see one.
+    let zero = true
+    for (let i = 0; i < 512 && zero; i++) {
+      if (header[i] !== 0) zero = false
+    }
+    if (zero) break
+    // Bytes 0..99 are the file name (null-padded). Use `name` (100 B).
+    let nameEnd = 0
+    while (nameEnd < 100 && header[nameEnd] !== 0) nameEnd++
+    const name = dec.decode(header.subarray(0, nameEnd)).replace(/^\.\//, '')
+    // Bytes 124..135 are size in octal ASCII (null-terminated).
+    // eslint-disable-next-line no-control-regex -- tar pads with NULs
+    const sizeStr = dec.decode(header.subarray(124, 136)).trim().replace(/ +$/, '')
+    const size = parseInt(sizeStr, 8) || 0
+    // Bytes 156 = type flag. '0' or '\0' = regular file; '5' = dir.
+    const typeFlag = header[156]
+    const isDir = typeFlag === 0x35 /* '5' */ || name.endsWith('/')
 
-  private logPath(hash: string, stream: 'stdout' | 'stderr'): string {
-    return path.join(this.cacheDir, hash, stream)
+    const dataStart = off + 512
+    const dataEnd = dataStart + size
+    if (!isDir && name.length > 0) {
+      entries.push(name)
+      if (name === 'stdout') stdout = dec.decode(tarBytes.subarray(dataStart, dataEnd))
+      else if (name === 'stderr') stderr = dec.decode(tarBytes.subarray(dataStart, dataEnd))
+    }
+    // Advance past the file data, padded to next 512-byte block.
+    const padded = Math.ceil(size / 512) * 512
+    off = dataStart + padded
   }
+  return { entries, stdout, stderr }
 }
 
 /**
@@ -781,104 +963,10 @@ function splitTaskId(id: string): [string, string] {
   return [id.slice(0, i), id.slice(i + 1)]
 }
 
-async function readMaybe(p: string): Promise<string> {
-  const f = Bun.file(p)
-  if (!(await f.exists())) return ''
-  return await f.text()
-}
-
-async function listRelativeFiles(root: string, sub = ''): Promise<string[]> {
-  const out: string[] = []
-  const entries = await readdir(path.join(root, sub), { withFileTypes: true })
-  for (const e of entries) {
-    const childRel = sub === '' ? e.name : `${sub}/${e.name}`
-    if (e.isDirectory()) {
-      out.push(...(await listRelativeFiles(root, childRel)))
-    } else if (e.isFile()) {
-      out.push(childRel)
-    }
-  }
-  return out.sort()
-}
-
 async function hashFileFromDisk(filePath: string): Promise<string> {
   const h = new Bun.CryptoHasher('sha256')
   // Bun.file(...).stream() yields Uint8Array chunks lazily — no
   // whole-file load into memory even for large artifacts. Async-iterable.
   for await (const chunk of Bun.file(filePath).stream()) h.update(chunk)
   return h.digest('hex')
-}
-
-/**
- * Materialize a cached output tree into `dest`. Same shape Turbo
- * uses:
- *
- *   - Prefer `link(src, dest)` (POSIX hardlink) — O(1) per file,
- *     no byte copying. The destination is a new directory entry
- *     pointing to the cache's inode. This is what makes Turbo's
- *     restore "instant".
- *   - On `EXDEV` (cross-filesystem mount) or any other link failure,
- *     fall back to a real byte copy via `Bun.write`. We try once per
- *     run — if the cache and the project tree are on different
- *     filesystems, every subsequent file pays the same fallback cost
- *     but we don't keep re-trying link().
- *   - Operations run in **parallel** across the entire tree (was
- *     sequential).
- *
- * Caveat: hardlinks share the inode, so an in-place edit of a
- * restored file would also corrupt the cache copy. Standard
- * cache-runner contract — outputs are owned by the cache; users
- * shouldn't edit them. Same model Turbo and Nx use.
- */
-async function copyDir(src: string, dest: string): Promise<void> {
-  await mkdir(dest, { recursive: true })
-  const work: Array<Promise<void>> = []
-  await collectFiles(src, dest, work)
-  await Promise.all(work)
-}
-
-async function collectFiles(src: string, dest: string, work: Array<Promise<void>>): Promise<void> {
-  const entries = await readdir(src, { withFileTypes: true })
-  // Pre-create directories sequentially per level — link() needs the
-  // parent to exist. Files within a level are linked in parallel.
-  for (const e of entries) {
-    const s = path.join(src, e.name)
-    const d = path.join(dest, e.name)
-    if (e.isDirectory()) {
-      await mkdir(d, { recursive: true })
-      await collectFiles(s, d, work)
-    } else if (e.isFile()) {
-      work.push(linkOrCopy(s, d))
-    }
-  }
-}
-
-let crossFilesystemFallback = false
-
-async function linkOrCopy(src: string, dest: string): Promise<void> {
-  if (crossFilesystemFallback) {
-    await Bun.write(dest, Bun.file(src))
-    return
-  }
-  try {
-    await link(src, dest)
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code
-    if (code === 'EEXIST') {
-      // Stale leftover from a partial restore; unlink and retry.
-      await rm(dest, { force: true })
-      try {
-        await link(src, dest)
-        return
-      } catch {
-        // Fall through to copy.
-      }
-    }
-    if (code === 'EXDEV') {
-      // Cross-filesystem — set the sticky fallback so subsequent
-      // files skip the link() syscall entirely.
-      crossFilesystemFallback = true
-    }
-    await Bun.write(dest, Bun.file(src))
-  }
 }
