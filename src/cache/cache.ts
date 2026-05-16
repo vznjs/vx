@@ -20,7 +20,7 @@
 //   close           : release the SQLite handle
 
 import { Database, type SQLQueryBindings } from 'bun:sqlite'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, statSync } from 'node:fs'
 import { mkdir, mkdtemp, rename, rm, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -175,6 +175,23 @@ export interface PruneResult {
 }
 
 /**
+ * Metadata-only view of a cache entry — the SQL columns, without the
+ * tar artifact's stdout/stderr/outputFiles. Returned by `getMetaBatch`
+ * for fast bulk cache-hit probing: no zstd decompress, no tar header
+ * parse. Callers that need the artifact body call `restoreOutputs`
+ * afterwards. Nx's `cache.ts:getBatch` pattern, scoped to the
+ * metadata layer.
+ */
+export interface CacheEntryMeta {
+  hash: string
+  taskId: string
+  command: string
+  exitCode: number
+  durationMs: number
+  storedAt: string
+}
+
+/**
  * The shape every cache implementation honors. `Cache` (the local v10
  * implementation) and `LayeredCache` both `implements` this so the
  * orchestrator's `executeTask` can take either without a discriminated
@@ -183,6 +200,19 @@ export interface PruneResult {
 export interface CacheLayer {
   key(input: CacheKeyInput): Promise<string>
   get(hash: string): Promise<CacheEntry | null>
+  /**
+   * Batched metadata-only probe. Returns a Map keyed by hash holding
+   * `CacheEntryMeta` for every input hash that resolved to a local
+   * hit. Skips the tar decompress that `get()` does — call
+   * `restoreOutputs` afterwards if the artifact body is needed.
+   *
+   * One SQL query (rarray) covers all hashes; the artifact-existence
+   * check still walks `Bun.file(...).exists()` per hit but does so in
+   * parallel via `Promise.all`. For orchestrator hot-path use: build
+   * the list of leaf-task hashes upfront, batch-probe, dispatch only
+   * the misses to the scheduler's exec path.
+   */
+  getMetaBatch(hashes: readonly string[]): Promise<Map<string, CacheEntryMeta>>
   restoreOutputs(hash: string, projectDir: string): Promise<void>
   save(args: {
     hash: string
@@ -411,7 +441,6 @@ export class Cache implements CacheLayer {
    * the cache key derivation is unchanged. Pure performance win.
    */
   async hashFile(filePath: string): Promise<string> {
-    const statSync = (await import('node:fs')).statSync
     let stat
     try {
       stat = statSync(filePath)
@@ -509,6 +538,53 @@ export class Cache implements CacheLayer {
       storedAt: new Date(row.created_at).toISOString(),
       source: 'local',
     }
+  }
+
+  async getMetaBatch(hashes: readonly string[]): Promise<Map<string, CacheEntryMeta>> {
+    // Single SQL query for all hashes (rarray virtual table via
+    // bun:sqlite's `IN (?)` with a JSON array — bun:sqlite accepts
+    // arrays as bind args via the array-binding form). Avoids N
+    // prepared-statement round-trips.
+    const out = new Map<string, CacheEntryMeta>()
+    if (hashes.length === 0) return out
+    // Inline placeholders — bun:sqlite doesn't ship an rarray extension
+    // by default, but a `WHERE hash IN (?, ?, ?, …)` for N ≤ ~999
+    // hashes is fast and avoids per-hash select.get() overhead.
+    const placeholders = hashes.map(() => '?').join(',')
+    const stmt = this.db.prepare(`SELECT * FROM entries WHERE hash IN (${placeholders})`)
+    const rows = stmt.all(...(hashes as readonly SQLQueryBindings[])) as EntryRow[]
+    // Verify the on-disk artifact for each row in parallel. Skip the
+    // expensive zstd decompress — callers only need the metadata at
+    // this stage. The tar body gets read on the eventual
+    // `restoreOutputs(hash, ...)` call (or not at all on cache miss).
+    const verifyResults = await Promise.all(
+      rows.map(async (row) => ({
+        row,
+        exists: await Bun.file(this.tarPath(row.hash)).exists(),
+      })),
+    )
+    const now = Date.now()
+    const verified: EntryRow[] = []
+    for (const { row, exists } of verifyResults) {
+      if (!exists) continue
+      verified.push(row)
+      out.set(row.hash, {
+        hash: row.hash,
+        taskId: `${row.project}#${row.task}`,
+        command: row.command,
+        exitCode: row.exit_code,
+        durationMs: row.duration_ms,
+        storedAt: new Date(row.created_at).toISOString(),
+      })
+    }
+    // Batch the accessed_at bump too — one transaction vs N.
+    if (verified.length > 0) {
+      const tx = this.db.transaction((items: EntryRow[]) => {
+        for (const r of items) this.bumpAccessed.run(now, r.hash)
+      })
+      tx(verified)
+    }
+    return out
   }
 
   outputsPath(hash: string): string {
