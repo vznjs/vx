@@ -17,6 +17,7 @@ import path from 'node:path'
 import { packAndDiscard, unpackArchive } from './cache-archive.js'
 import type {
   CacheEntry,
+  CacheEntryMeta,
   CacheKeyInput,
   CacheLayer,
   CacheStats,
@@ -173,6 +174,15 @@ export class LayeredCache implements CacheLayer {
       })
       this.reportRemoteError(err)
     }
+  }
+
+  async getMetaBatch(hashes: readonly string[]): Promise<Map<string, CacheEntryMeta>> {
+    // Local-only batched metadata fetch. Remote-cache batching is
+    // deferred — the Turbo /v8/artifacts wire has no bulk endpoint,
+    // and parallel single-hash fetches already saturate the network
+    // path. Callers can fall through to per-hash `get()` for any
+    // hash not in the returned map.
+    return this.local.getMetaBatch(hashes)
   }
 
   recordRun(run: RunRecord): void {

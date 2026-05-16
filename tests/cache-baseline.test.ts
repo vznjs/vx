@@ -599,3 +599,91 @@ describePerf('cache baseline: SQLite writes', () => {
     expect(perRowSingle / perRowBatch).toBeGreaterThanOrEqual(3)
   })
 })
+
+describePerf('cache baseline: batched cache-hit probe (Cache.getMetaBatch)', () => {
+  let tmpdir: string
+  let cache: Cache
+  let projectDir: string
+  let outFiles: string[]
+  let hashes: string[]
+
+  beforeAll(async () => {
+    tmpdir = await mkdtemp(path.join(os.tmpdir(), 'vx-perf-batch-'))
+    cache = new Cache(path.join(tmpdir, '.vx-cache'))
+    projectDir = path.join(tmpdir, 'project')
+    await mkdir(path.join(projectDir, 'dist'), { recursive: true })
+    outFiles = []
+    for (let i = 0; i < 3; i++) {
+      const f = path.join(projectDir, 'dist', `out${i}.js`)
+      await writeFile(f, `console.log(${i});\n`)
+      outFiles.push(f)
+    }
+    // Save 50 entries so the batch has something meaningful to read.
+    hashes = []
+    for (let i = 0; i < 50; i++) {
+      const h = `bm-${i}`
+      hashes.push(h)
+      await cache.save({
+        hash: h,
+        entry: {
+          taskId: 'p#build',
+          command: 'noop',
+          exitCode: 0,
+          durationMs: 1,
+          stdout: '',
+          stderr: '',
+        },
+        projectDir,
+        outputFiles: outFiles,
+      })
+    }
+  })
+
+  afterAll(async () => {
+    cache.close()
+    await rm(tmpdir, { recursive: true, force: true })
+  })
+
+  it('getMetaBatch(50 hashes) is ≥ 5× faster per hash than 50× cache.get', async () => {
+    // Per-hash cache.get does SQL + tar-exists + decompress + peek.
+    // getMetaBatch does ONE SQL + parallel exists; no decompress.
+    // We're explicitly measuring the "we only need metadata" probe
+    // path — the batch should be substantially faster per row.
+    const single = await bench(
+      10,
+      async () => {
+        for (const h of hashes) await cache.get(h)
+      },
+      2,
+    )
+    const batch = await bench(
+      10,
+      async () => {
+        await cache.getMetaBatch(hashes)
+      },
+      2,
+    )
+    const perHashSingle = single.medianNs / hashes.length
+    const perHashBatch = batch.medianNs / hashes.length
+    expect(perHashSingle / perHashBatch).toBeGreaterThanOrEqual(5)
+  })
+
+  it('getMetaBatch returns CacheEntryMeta for every present hash', async () => {
+    // Behavioral: every saved hash appears in the result; missing
+    // hashes are absent.
+    const result = await cache.getMetaBatch([...hashes, 'absent-1', 'absent-2'])
+    expect(result.size).toBe(hashes.length)
+    for (const h of hashes) expect(result.has(h)).toBe(true)
+    expect(result.has('absent-1')).toBe(false)
+    // Verify shape
+    const sample = result.get('bm-0')!
+    expect(sample.hash).toBe('bm-0')
+    expect(sample.exitCode).toBe(0)
+    expect(typeof sample.storedAt).toBe('string')
+  })
+
+  it('getMetaBatch on empty input returns empty Map (no SQL spawn)', async () => {
+    const r = await cache.getMetaBatch([])
+    expect(r.size).toBe(0)
+  })
+})
