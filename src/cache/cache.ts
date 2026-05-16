@@ -26,6 +26,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { xxh3, xxh3hex, xxh3hexOf } from '../util/hash.js'
 import { relPosix } from '../util/paths.js'
+import {
+  buildManifest,
+  extractOutputs,
+  parseTarHeaders,
+  readTarText,
+  type Manifest,
+} from './tar.js'
 
 // v15: cache-key hash swapped from SHA-256 to xxHash3 (~5× faster,
 // 16-hex keys, Turbo parity on width). Schema also bumps to v15:
@@ -477,18 +484,18 @@ export class Cache implements CacheLayer {
     this.bumpAccessed.run(Date.now(), hash)
 
     // Read the tar once: get the entry list AND pull `stdout`/`stderr`
-    // contents (if present) in a single decompress. Output file list
-    // ends up filtered to entries under `outputs/`. The decompressed
+    // contents (if present) in a single decompress. The decompressed
     // bytes are stashed for the matching `restoreOutputs()` call —
-    // the orchestrator's cache-hit path does get→restore back-to-
-    // back so we skip a second decompress on every hit.
+    // the orchestrator's cache-hit path does get→restore back-to-back
+    // so we skip a second decompress on every hit. Manifest entries
+    // are ignored here — they're consumed by `restoreOutputs()`.
     const compressed = await Bun.file(this.tarPath(hash)).bytes()
     const tarBytes = await Bun.zstdDecompress(compressed)
     this.decompressedTar = { hash, bytes: tarBytes }
-    const peek = await peekTar(tarBytes)
-    const outputFiles = peek.entries
-      .filter((p) => p.startsWith('outputs/'))
-      .map((p) => p.slice('outputs/'.length))
+    const headers = parseTarHeaders(tarBytes)
+    const outputFiles = headers
+      .filter((h) => h.name.startsWith('outputs/') && !h.isDir)
+      .map((h) => h.name.slice('outputs/'.length))
 
     return {
       hash: row.hash,
@@ -497,8 +504,8 @@ export class Cache implements CacheLayer {
       exitCode: row.exit_code,
       durationMs: row.duration_ms,
       outputFiles,
-      stdout: peek.stdout,
-      stderr: peek.stderr,
+      stdout: readTarText(tarBytes, headers, 'stdout'),
+      stderr: readTarText(tarBytes, headers, 'stderr'),
       storedAt: new Date(row.created_at).toISOString(),
       source: 'local',
     }
@@ -509,10 +516,20 @@ export class Cache implements CacheLayer {
   }
 
   async restoreOutputs(hash: string, projectDir: string): Promise<void> {
-    // Reuse the bytes stashed by the matching `get()` call when
-    // available — saves a redundant disk read + zstd decompress on
-    // every cache hit. Falls back to fresh decompress when called
-    // standalone (tests, or future callers that skip `get()`).
+    // In-process tar extraction with optional per-file skip + slot reuse.
+    //
+    // Three compounding wins vs the prior subprocess `tar -xf` approach:
+    //   - Reuses bytes stashed by the matching `get()` call (single
+    //     decompress across the get→restore pair).
+    //   - No fork+exec on the hot path (~5-10ms reclaimed per hit).
+    //   - Skip-if-matches via `manifest.json` embedded in the tar:
+    //     when the destination file's (size, mode, mtime) match the
+    //     cached snapshot, we don't write at all. Successive cache
+    //     hits on a stable tree do zero disk writes.
+    //
+    // `stdout` / `stderr` entries in the archive are ignored on this
+    // path — they're surfaced via `get()` for the orchestrator to
+    // replay through the logger.
     let tarBytes: Uint8Array
     if (this.decompressedTar && this.decompressedTar.hash === hash) {
       tarBytes = this.decompressedTar.bytes
@@ -523,27 +540,22 @@ export class Cache implements CacheLayer {
       const compressed = await Bun.file(src).bytes()
       tarBytes = await Bun.zstdDecompress(compressed)
     }
-    // `stdout` and `stderr` entries in the archive (if any) are
-    // ignored on this path — they're surfaced via `get()` for the
-    // orchestrator to replay through the logger.
-    // Peek the tar first — `tar -x outputs/` fails when the archive
-    // has no `outputs/` member (e.g. a stdout-only entry); skip the
-    // extract entirely in that case.
-    const peek = await peekTar(tarBytes)
-    if (!peek.entries.some((e) => e.startsWith('outputs/'))) return
 
-    await mkdir(projectDir, { recursive: true })
-    const proc = Bun.spawn(
-      ['tar', '-xf', '-', '-C', projectDir, '--strip-components=1', 'outputs'],
-      { stdin: 'pipe', stdout: 'ignore', stderr: 'pipe' },
-    )
-    await proc.stdin.write(tarBytes)
-    await proc.stdin.end()
-    await proc.exited
-    if (proc.exitCode !== 0) {
-      const err = await new Response(proc.stderr).text()
-      throw new Error(`restoreOutputs: tar exited ${proc.exitCode}: ${err.trim()}`)
+    const headers = parseTarHeaders(tarBytes)
+    if (!headers.some((h) => h.name.startsWith('outputs/'))) return
+
+    let manifest: Manifest | undefined
+    const manifestText = readTarText(tarBytes, headers, 'manifest.json')
+    if (manifestText.length > 0) {
+      try {
+        manifest = JSON.parse(manifestText) as Manifest
+      } catch {
+        // Corrupted manifest — treat as legacy artifact (no skip),
+        // every file gets written. Restore stays correct.
+      }
     }
+
+    await extractOutputs(tarBytes, projectDir, manifest)
   }
 
   async save(args: {
@@ -584,6 +596,18 @@ export class Cache implements CacheLayer {
           await Bun.write(dest, Bun.file(f))
         })
         await Promise.all(writes)
+        // Manifest of (size, mode, mtime) per output file, embedded in
+        // the tar as `manifest.json`. Lets the NEXT cache hit's restore
+        // skip the per-file write when the on-disk file already matches
+        // the cached snapshot bit-for-bit (Turbo restore-skip pattern).
+        // Built from the staged copies so we capture the exact bytes
+        // that go into the tar, not the live project tree which can
+        // change between save and the next restore.
+        const stagedFiles = args.outputFiles.map((f) =>
+          path.join(stageOutputs, path.relative(args.projectDir, f)),
+        )
+        const manifest = await buildManifest(stagedFiles, stageOutputs)
+        await Bun.write(path.join(stage, 'manifest.json'), JSON.stringify(manifest))
       }
       if (args.entry.stdout && args.entry.stdout.length > 0) {
         await Bun.write(path.join(stage, 'stdout'), args.entry.stdout)
@@ -593,11 +617,11 @@ export class Cache implements CacheLayer {
       }
 
       // List the top-level entries we just staged so tar emits them
-      // with names like `outputs/...` / `stdout` / `stderr` — no
-      // leading `./` prefix that would break the restore's
-      // `--strip-components=1 outputs` filter.
+      // with names like `outputs/...` / `stdout` / `stderr` / `manifest.json`
+      // — no leading `./` prefix that would break the restore's
+      // entry-name matching.
       const topLevel: string[] = []
-      if (args.outputFiles.length > 0) topLevel.push('outputs')
+      if (args.outputFiles.length > 0) topLevel.push('outputs', 'manifest.json')
       if (args.entry.stdout && args.entry.stdout.length > 0) topLevel.push('stdout')
       if (args.entry.stderr && args.entry.stderr.length > 0) topLevel.push('stderr')
 
@@ -860,64 +884,6 @@ export class Cache implements CacheLayer {
   private tarPath(hash: string): string {
     return path.join(this.cacheDir, `${hash}.tar.zst`)
   }
-}
-
-/**
- * Single-decompressed-pass inspection of a cache artifact tar.
- * Returns the list of regular-file entries plus the contents of
- * `stdout` / `stderr` if those entries are present. Avoids the
- * second decompress that a separate "list, then extract" approach
- * would do.
- *
- * Implemented by parsing tar headers directly — each header is a
- * fixed 512-byte block followed by the file data padded up to the
- * next 512-byte boundary. The POSIX ustar format is simple enough
- * that this is ~40 LOC and removes the need for a tar subprocess
- * just to read three short files.
- */
-async function peekTar(tarBytes: Uint8Array): Promise<{
-  entries: string[]
-  stdout: string
-  stderr: string
-}> {
-  const entries: string[] = []
-  let stdout = ''
-  let stderr = ''
-  const dec = new TextDecoder('utf-8')
-  let off = 0
-  while (off + 512 <= tarBytes.length) {
-    const header = tarBytes.subarray(off, off + 512)
-    // End-of-archive: a block of all zeros (tar pads with two such
-    // blocks). Stop when we see one.
-    let zero = true
-    for (let i = 0; i < 512 && zero; i++) {
-      if (header[i] !== 0) zero = false
-    }
-    if (zero) break
-    // Bytes 0..99 are the file name (null-padded). Use `name` (100 B).
-    let nameEnd = 0
-    while (nameEnd < 100 && header[nameEnd] !== 0) nameEnd++
-    const name = dec.decode(header.subarray(0, nameEnd)).replace(/^\.\//, '')
-    // Bytes 124..135 are size in octal ASCII (null-terminated).
-    // eslint-disable-next-line no-control-regex -- tar pads with NULs
-    const sizeStr = dec.decode(header.subarray(124, 136)).trim().replace(/ +$/, '')
-    const size = parseInt(sizeStr, 8) || 0
-    // Bytes 156 = type flag. '0' or '\0' = regular file; '5' = dir.
-    const typeFlag = header[156]
-    const isDir = typeFlag === 0x35 /* '5' */ || name.endsWith('/')
-
-    const dataStart = off + 512
-    const dataEnd = dataStart + size
-    if (!isDir && name.length > 0) {
-      entries.push(name)
-      if (name === 'stdout') stdout = dec.decode(tarBytes.subarray(dataStart, dataEnd))
-      else if (name === 'stderr') stderr = dec.decode(tarBytes.subarray(dataStart, dataEnd))
-    }
-    // Advance past the file data, padded to next 512-byte block.
-    const padded = Math.ceil(size / 512) * 512
-    off = dataStart + padded
-  }
-  return { entries, stdout, stderr }
 }
 
 /**
