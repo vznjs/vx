@@ -153,9 +153,7 @@ export interface SandboxedRunArgs {
  */
 export interface ResolvedSandboxConfig {
   allowRead: readonly string[]
-  denyRead: readonly string[]
   allowWrite: readonly string[]
-  denyWrite: readonly string[]
   allowGitConfig?: boolean
   network?: boolean | SandboxNetworkConfig
   allowPty?: boolean
@@ -181,9 +179,7 @@ export function resolveSandboxConfig(
   }
   const r: ResolvedSandboxConfig = {
     allowRead: (cfg.allowRead ?? []).map(resolve),
-    denyRead: (cfg.denyRead ?? []).map(resolve),
     allowWrite: (cfg.allowWrite ?? []).map(resolve),
-    denyWrite: (cfg.denyWrite ?? []).map(resolve),
   }
   if (cfg.allowGitConfig !== undefined) r.allowGitConfig = cfg.allowGitConfig
   if (cfg.network !== undefined) r.network = cfg.network
@@ -451,16 +447,15 @@ function buildCustomConfig(
 ): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
   const c = args.config
   const allowRead = unique([...args.baseAllowRead, ...c.allowRead])
-  const denyRead = unique([...args.baseDenyRead, ...c.denyRead])
+  const denyRead = unique([...args.baseDenyRead])
   const allowWrite = unique([...args.baseAllowWrite, ...c.allowWrite])
-  const denyWrite = unique([...c.denyWrite])
 
   const custom: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] = {
     filesystem: {
       denyRead,
       allowRead,
       allowWrite,
-      denyWrite,
+      denyWrite: [],
       ...(c.allowGitConfig !== undefined ? { allowGitConfig: c.allowGitConfig } : {}),
     },
   }

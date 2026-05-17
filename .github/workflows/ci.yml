@@ -24,6 +24,21 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # Sandbox runtime deps: bubblewrap (kernel-level isolation) +
+      # socat (network bridge) on Linux, plus strace (per-task
+      # violation detection). Ubuntu 24's default AppArmor profile
+      # blocks unprivileged user namespaces — that breaks bwrap. We
+      # disable the restriction via sysctl so the sandbox tests can
+      # actually exercise bwrap end-to-end in CI.
+      - name: Install sandbox runtime deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap socat strace
+          # Ubuntu 24+ ships with AppArmor restricting unprivileged
+          # user namespaces. bwrap needs them; without this sysctl
+          # tweak it exits non-zero on first use.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
       # Dogfood: vx orchestrates its own format-check / lint / test
       # via vx.config.ts. The `ci` task is a group that fans out to all
       # three. vx itself prepends each project's node_modules/.bin to

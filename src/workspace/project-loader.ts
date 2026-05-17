@@ -168,7 +168,7 @@ function validate(config: ProjectConfig, configPath: string): void {
   }
 }
 
-const SANDBOX_PATH_FIELDS = ['allowRead', 'denyRead', 'allowWrite', 'denyWrite'] as const
+const SANDBOX_PATH_FIELDS = ['allowRead', 'allowWrite'] as const
 const SANDBOX_BOOL_FIELDS = [
   'allowGitConfig',
   'allowPty',

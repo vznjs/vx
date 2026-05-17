@@ -400,6 +400,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
     })
     const baseAllowWrite = outputs.map((g) => path.join(node.projectDir, staticPrefix(g)))
+    // bwrap can't --bind a non-existent host path; the bind silently
+    // becomes a no-op (or a tmpfs that evaporates on exit), and writes
+    // to the path appear to succeed inside the sandbox but never land
+    // on the host. Pre-create every output path so the binds resolve
+    // to real fs entries: globbed outputs (`dist/**`) become empty
+    // dirs; literal outputs (`out.txt`) become empty files.
+    await prepareOutputsForBind(node.projectDir, outputs)
     // Output paths are read+write — a task that declares `dist/**` as
     // output expects to read what it just wrote (e.g. `touch dist/x`
     // stats the file; `tsc --incremental` re-reads .tsbuildinfo). This
@@ -482,6 +489,36 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           sandboxViolationLines: violations.map((v) => v.line),
         }
       : {}),
+  }
+}
+
+/**
+ * Ensure each declared output path exists on the host as either an
+ * empty file (for literal output specs) or a directory (for globbed
+ * specs) so bwrap's --bind can find a real fs entry to mount. Without
+ * this, writes inside the sandbox to a non-existent allowWrite path
+ * silently disappear (bwrap creates a tmpfs that evaporates on exit).
+ *
+ * `cleanOutputs` ran just before this in the cache-enabled path, so
+ * we know any stale content was wiped; what's left is to materialize
+ * the empty skeleton.
+ */
+async function prepareOutputsForBind(
+  projectDir: string,
+  outputs: readonly string[],
+): Promise<void> {
+  const { mkdir } = await import('node:fs/promises')
+  for (const g of outputs) {
+    const hasWildcard = /[*?[\]]/.test(g)
+    if (hasWildcard) {
+      const abs = path.join(projectDir, staticPrefix(g))
+      await mkdir(abs, { recursive: true })
+    } else {
+      const abs = path.join(projectDir, g)
+      await mkdir(path.dirname(abs), { recursive: true })
+      const f = Bun.file(abs)
+      if (!(await f.exists())) await Bun.write(abs, '')
+    }
   }
 }
 

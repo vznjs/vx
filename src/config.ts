@@ -78,8 +78,8 @@ export interface TaskConfig {
  * `@anthropic-ai/sandbox-runtime`'s `SandboxRuntimeConfig`, minus
  * deployment-only fields (binary paths, proxy ports, ripgrep config).
  *
- * Path-list fields (`allowRead`, `denyRead`, `allowWrite`, `denyWrite`,
- * `allowUnixSockets`) accept:
+ * Path-list fields (`allowRead`, `allowWrite`, `network.allowUnixSockets`)
+ * accept:
  *   - relative paths     → resolved against the project dir
  *   - absolute paths     → used as-is (`/etc/passwd`, `/tmp`)
  *   - tilde paths        → expanded against the user's home (`~/.npmrc`)
@@ -95,19 +95,11 @@ export interface SandboxConfig {
    */
   allowRead?: string[]
   /**
-   * Paths to deny reads under. Combined with `allowRead`, "deny X but
-   * allow Y where Y starts with X" means a fine-grained carve-out.
-   * Default deny anchor is the workspace root.
-   */
-  denyRead?: string[]
-  /**
    * Additional write-allowed paths beyond the static prefix of
    * `cache.outputs.files`. Tasks with no declared outputs and no extra
    * `allowWrite` can write to nowhere — typical for `lint`/`typecheck`.
    */
   allowWrite?: string[]
-  /** Paths to deny writes under. */
-  denyWrite?: string[]
   /**
    * Permit writes to `.git/config` files. Default `false` — most build
    * tools should not be reconfiguring git.
