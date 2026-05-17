@@ -828,9 +828,22 @@ export class Cache implements CacheLayer {
         // zero-padded EOF manually (the on-disk shape of an empty tar).
         tarBytes = new Uint8Array(1024)
       } else {
-        const proc = Bun.spawn(['tar', '-cf', '-', '-C', stage, ...topLevel], {
+        // `--format=ustar` forces strict POSIX ustar — no PAX
+        // extended-header records. BSD tar (macOS default) emits PAX
+        // per entry by default for xattrs / mtime-nanos; those
+        // records would otherwise show up as junk `PaxHeaders/<name>`
+        // entries in our restored trees. GNU tar also accepts the
+        // flag (no-op on its side, since it defaults to GNU format
+        // which already avoids PAX). Names > 100 chars still work
+        // via ustar's prefix+name (255 chars) or via GNU longname
+        // fallback if the tar binary chooses to emit one.
+        const proc = Bun.spawn(['tar', '--format=ustar', '-cf', '-', '-C', stage, ...topLevel], {
           stdout: 'pipe',
           stderr: 'pipe',
+          // COPYFILE_DISABLE blocks Apple's copyfile() from
+          // attaching xattrs to staged files via inherited child
+          // copies; tar then has nothing to emit AppleDouble for.
+          env: { ...process.env, COPYFILE_DISABLE: '1' },
         })
         const [bytes, stderrText] = await Promise.all([
           new Response(proc.stdout).bytes(),

@@ -780,3 +780,117 @@ describePerf('cache baseline: batched cache-hit probe (Cache.getMetaBatch)', () 
     expect(r.size).toBe(0)
   })
 })
+
+describePerf('parseTarHeaders — filter macOS / PAX junk entries', () => {
+  /**
+   * Build a tar in memory with three kinds of records:
+   *   - a real `outputs/main.js` file
+   *   - a PAX extended-header entry (typeflag 'x') sitting before it
+   *   - an AppleDouble sibling `outputs/._main.js`
+   *
+   * The parser should yield only the real entry. Test pins the
+   * behavior independent of which tar binary the host happens to
+   * have — we construct the bytes directly.
+   */
+  function octal(n: number, width: number): string {
+    return n.toString(8).padStart(width - 1, '0') + '\0'
+  }
+
+  function makeHeader(opts: {
+    name: string
+    size: number
+    mode?: number
+    typeFlag: string
+  }): Uint8Array {
+    const buf = new Uint8Array(512)
+    const enc = new TextEncoder()
+    // name: bytes 0..99
+    enc.encodeInto(opts.name, buf.subarray(0, 100))
+    // mode: bytes 100..107
+    enc.encodeInto(octal(opts.mode ?? 0o644, 8), buf.subarray(100, 108))
+    // uid/gid: bytes 108..123 → zeros
+    enc.encodeInto(octal(0, 8), buf.subarray(108, 116))
+    enc.encodeInto(octal(0, 8), buf.subarray(116, 124))
+    // size: bytes 124..135
+    enc.encodeInto(octal(opts.size, 12), buf.subarray(124, 136))
+    // mtime: bytes 136..147
+    enc.encodeInto(octal(0, 12), buf.subarray(136, 148))
+    // checksum field: 8 spaces (before computing sum)
+    for (let i = 148; i < 156; i++) buf[i] = 0x20
+    // typeflag: byte 156
+    buf[156] = opts.typeFlag.charCodeAt(0)
+    // magic: ustar\0
+    enc.encodeInto('ustar\0', buf.subarray(257, 263))
+    enc.encodeInto('00', buf.subarray(263, 265))
+    // checksum: sum of all bytes (with checksum field as spaces) in octal
+    let cksum = 0
+    for (let i = 0; i < 512; i++) cksum += buf[i]!
+    enc.encodeInto(octal(cksum, 7), buf.subarray(148, 155))
+    buf[155] = 0x20 // space pad
+    return buf
+  }
+
+  function makeDataBlock(bytes: Uint8Array): Uint8Array {
+    const padded = Math.ceil(bytes.length / 512) * 512
+    const out = new Uint8Array(padded)
+    out.set(bytes, 0)
+    return out
+  }
+
+  it('skips PAX extended-header records (typeflag x), AppleDouble entries (._*), and keeps real files', async () => {
+    const { parseTarHeaders } = await import('../src/cache/tar.ts')
+
+    const paxBody = new TextEncoder().encode('30 mtime=1716913200.123456789\n')
+    const realBody = new TextEncoder().encode('console.log("hi")\n')
+    const appleBody = new TextEncoder().encode('Mac OS X resource fork garbage\n')
+
+    const parts: Uint8Array[] = [
+      // 1. PAX 'x' header preceding the real file
+      makeHeader({ name: 'PaxHeaders/main.js', size: paxBody.length, typeFlag: 'x' }),
+      makeDataBlock(paxBody),
+      // 2. Real file
+      makeHeader({ name: 'outputs/main.js', size: realBody.length, typeFlag: '0' }),
+      makeDataBlock(realBody),
+      // 3. AppleDouble sibling — should be skipped
+      makeHeader({ name: 'outputs/._main.js', size: appleBody.length, typeFlag: '0' }),
+      makeDataBlock(appleBody),
+      // 4. EOF: two zero blocks
+      new Uint8Array(1024),
+    ]
+    const total = parts.reduce((n, p) => n + p.length, 0)
+    const tarBytes = new Uint8Array(total)
+    let off = 0
+    for (const p of parts) {
+      tarBytes.set(p, off)
+      off += p.length
+    }
+
+    const headers = parseTarHeaders(tarBytes)
+    expect(headers.length).toBe(1)
+    expect(headers[0]!.name).toBe('outputs/main.js')
+    expect(headers[0]!.size).toBe(realBody.length)
+  })
+
+  it('skips global PAX records (typeflag g) too', async () => {
+    const { parseTarHeaders } = await import('../src/cache/tar.ts')
+    const globalPax = new TextEncoder().encode('25 comment=globaljunk\n')
+    const realBody = new TextEncoder().encode('x')
+    const parts = [
+      makeHeader({ name: 'pax_global_header', size: globalPax.length, typeFlag: 'g' }),
+      makeDataBlock(globalPax),
+      makeHeader({ name: 'outputs/a.txt', size: realBody.length, typeFlag: '0' }),
+      makeDataBlock(realBody),
+      new Uint8Array(1024),
+    ]
+    const total = parts.reduce((n, p) => n + p.length, 0)
+    const tarBytes = new Uint8Array(total)
+    let off = 0
+    for (const p of parts) {
+      tarBytes.set(p, off)
+      off += p.length
+    }
+    const headers = parseTarHeaders(tarBytes)
+    expect(headers.length).toBe(1)
+    expect(headers[0]!.name).toBe('outputs/a.txt')
+  })
+})
