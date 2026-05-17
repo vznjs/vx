@@ -140,6 +140,7 @@ stays clean).
 | `--concurrency <n>`               | positive int   | `navigator.hardwareConcurrency` | Maximum parallel tasks. `1` serializes.                                                                    |
 | `--no-cache`, `--force`           | boolean        | off                             | Skip cache reads AND writes; output globs are NOT cleaned.                                                 |
 | `--cache`                         | boolean        | off                             | No-op (parity with vite-task).                                                                             |
+| `--sandbox`                       | boolean        | off                             | Wrap each cached task in a filesystem sandbox; violations skip `cache.save` (see [Sandbox](#sandbox)).     |
 | `--verbosity <n>`                 | int (0+)       | `0`                             | `1` prints a per-task summary table after the framed blocks; `2+` reserved.                                |
 | `--dry[=text\|json]`              | optional value | off                             | Print the task graph + predicted cache hit/miss; skip execution.                                           |
 | `--graph[=<path>]`                | optional value | off                             | Emit Graphviz DOT (stdout if no path); skip execution.                                                     |
@@ -290,6 +291,63 @@ from the per-task `hrtime.bigint()` spans the runner captures.
 `cache-hit-remote`, `failed`).
 
 Default path: `profile.json` (cwd-relative).
+
+## Sandbox
+
+`--sandbox` wraps each **cached** task's exec in a filesystem sandbox
+backed by [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime)
+(bwrap on Linux, `sandbox-exec` on macOS). The sandbox denies reads
+outside the task's declared inputs + the project directory; any
+violation marks the task's cache write as **skipped**, so a tainted
+run can't be replayed on a future invocation.
+
+```sh
+vx run build --sandbox
+```
+
+Policy is **detect-and-skip-cache**, not enforce-or-fail:
+
+- The task's exit code passes through unchanged. A noisy violation
+  (e.g. a tool probing many candidate paths) does NOT break the
+  build.
+- `cache.save()` is skipped when violations are detected. The task
+  re-runs next time; no stale-cache risk.
+- The end-of-task framed block prints `vx: <task> — N sandbox
+violation(s); cache.save() skipped` plus up to five violation
+  lines.
+
+Scope:
+
+- **Cached tasks only.** Tasks without a `cache:` block have no
+  declared inputs to enforce, and persistent tasks (dev servers)
+  need unrestricted network. Both bypass the sandbox.
+- **Filesystem only.** Network is allowed freely (we use SRT's
+  `enableWeakerNetworkIsolation`). The remote-cache + git probes
+  the orchestrator runs are unaffected.
+
+Allowed reads per task:
+
+- The project's own directory (its source files).
+- The workspace's root `node_modules` (dep resolution walks up).
+- Every absolute path produced by resolving `cache.inputs.files`.
+
+Everything else inside the workspace root is denied — sibling
+projects, root-level config files not in `inputs`, etc.
+
+Platform behaviour:
+
+| Platform | Behaviour                                                                                                    |
+| -------- | ------------------------------------------------------------------------------------------------------------ |
+| macOS    | Structured detection via the system sandbox log monitor. Violations land in `TaskOutcome.sandboxViolations`. |
+| Linux    | Enforcement-only. bwrap denies undeclared reads at the kernel boundary; tasks needing them fail naturally.   |
+| Windows  | Not supported. `--sandbox` errors with a clear message.                                                      |
+
+If the platform isn't supported OR runtime deps are missing (bwrap on
+Linux, sandbox-exec on macOS), `--sandbox` errors out:
+
+```
+vx: --sandbox not available: bubblewrap (bwrap) not installed; socat not installed
+```
 
 ## `vx watch`
 

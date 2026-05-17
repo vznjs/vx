@@ -36,6 +36,13 @@ export interface TaskOutcome {
    * failed / skipped) — irrelevant there.
    */
   restored?: boolean
+  /**
+   * Count of sandbox violations captured during this task's exec.
+   * Populated only when `--sandbox` was set and the task is cached.
+   * Non-zero values mean the task read files outside its declared
+   * inputs; `cache.save()` was skipped so the result can't be replayed.
+   */
+  sandboxViolations?: number
 }
 
 export interface ScheduleOptions {

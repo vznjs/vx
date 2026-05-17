@@ -25,6 +25,8 @@ export function printHelp(): void {
       '      --excludeDependencies[=names]  Skip dependsOn edges. No value = all; comma list = specific names.',
       '      --no-cache, --force         Skip cache reads AND writes.',
       '      --cache                     No-op (parity with vite-task).',
+      '      --sandbox                   Wrap cached tasks in a filesystem sandbox;',
+      '                                  violations skip cache.save (pass-through exit).',
       '      --verbosity <n>             0=quiet, 1=verbose summary, 2+=debug (reserved).',
       '',
       'Planning (for run — skips execution):',

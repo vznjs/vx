@@ -9,6 +9,8 @@ import { runGraph, type TaskOutcome } from './graph/scheduler.js'
 import { isGroupTask } from './graph/task-graph.js'
 import { ulid } from './util/ulid.js'
 import { executeTask } from './orchestrator/execute-task.ts'
+import { initSandbox, probeSandbox, resetSandbox } from './exec/sandbox-runtime.ts'
+import { UserError } from './util/errors.ts'
 import { defaultLogger, type Logger } from './orchestrator/logger.ts'
 import { detectColors } from './orchestrator/colors.ts'
 import { formatHeader } from './orchestrator/framed-output.ts'
@@ -54,6 +56,15 @@ export interface RunOptions {
    * by the CLI parser, not here.
    */
   profile?: string
+  /**
+   * Enable sandbox-runtime wrapping for cached tasks. When set, each
+   * task's exec runs inside a filesystem sandbox that denies reads
+   * outside the task's declared `cache.inputs.files` and the project
+   * directory. Detected violations DON'T fail the task — they just
+   * cause `cache.save()` to be skipped, so a tainted run can't be
+   * replayed from cache. Disabled by default; opt-in via `--sandbox`.
+   */
+  sandbox?: boolean
   log?: Logger
   /**
    * Optional structural event sink. Independent of `log` — the Logger
@@ -119,6 +130,18 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const startedAtMs = Date.now()
   const remoteCacheEnabled = cache instanceof LayeredCache
 
+  // If the user asked for --sandbox, fail fast when the platform
+  // can't support it. We don't fall back to running unsandboxed —
+  // the user explicitly opted in expecting the safety net.
+  if (options.sandbox) {
+    const avail = await probeSandbox()
+    if (!avail.available) {
+      prepared.cache.close()
+      throw new UserError(`--sandbox not available: ${avail.reason}`)
+    }
+    await initSandbox({ workspaceRoot })
+  }
+
   // Header counts: unique projects covered by the graph (including
   // dependsOn-pulled deps, not just the user-requested set), and the
   // total number of real (non-group) task executions. Mirrors the
@@ -182,6 +205,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         workspaceFingerprint,
         cache,
         noCache: options.noCache ?? false,
+        sandbox: options.sandbox ?? false,
         forwardArgs: options.forwardArgs,
         log,
         observer,
@@ -280,6 +304,18 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   }
   cache.recordRuns(toRecord)
   cache.close()
+
+  // Tear down SRT's network bridge + (on macOS) log monitor. No-op
+  // if --sandbox wasn't set; otherwise SRT keeps proxy servers alive
+  // and the next vx run would init on top of stale state.
+  if (options.sandbox) {
+    try {
+      await resetSandbox()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.status(`vx: sandbox cleanup failed: ${msg}`)
+    }
+  }
 
   return { ok, outcomes: list }
 }

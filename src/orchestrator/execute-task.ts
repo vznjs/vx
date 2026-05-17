@@ -4,6 +4,7 @@ import type { CacheLayer } from '../cache/cache.js'
 import { cleanOutputs, resolveInputs, resolveOutputs } from '../cache/inputs.js'
 import { buildIsolatedEnv } from '../exec/env.js'
 import { runCommand, runPersistent } from '../exec/runner.js'
+import { runSandboxed, type SandboxViolation } from '../exec/sandbox-runtime.js'
 import type { TaskOutcome } from '../graph/scheduler.js'
 import { isGroupTask, type TaskNode } from '../graph/task-graph.js'
 import type { Logger } from './logger.js'
@@ -18,6 +19,14 @@ export interface ExecuteArgs {
   workspaceFingerprint: string
   cache: CacheLayer
   noCache: boolean
+  /**
+   * Enable sandbox-runtime wrapping for this task's exec. Only applies
+   * to cached tasks — group tasks have no exec, persistent tasks need
+   * unrestricted network. When violations are detected, the task still
+   * passes (exit code unchanged) but `cache.save()` is skipped so a
+   * tainted run can't be replayed.
+   */
+  sandbox: boolean
   forwardArgs?: readonly string[] | undefined
   log: Logger
   /**
@@ -360,17 +369,76 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   const env = taskEnv(node, step)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
-  const result = await runCommand({
-    command: step.command,
-    cwd: node.projectDir,
-    env,
-    forwardArgs: effectiveForwardArgs,
-    onStdout: (chunk) => log.taskStdout(node, chunk),
-    onStderr: (chunk) => log.taskStderr(node, chunk),
-  })
+
+  // Sandbox is opt-in (--sandbox) and only meaningful for cached tasks
+  // — tasks without a `cache:` block have no input declarations to
+  // enforce. When enabled, undeclared reads surface as violations and
+  // the task's cache.save() is skipped (but exit code passes through).
+  const useSandbox = args.sandbox && cacheEnabled
+  let violations: SandboxViolation[] = []
+  const result = useSandbox
+    ? await runSandboxedTask()
+    : await runCommand({
+        command: step.command,
+        cwd: node.projectDir,
+        env,
+        forwardArgs: effectiveForwardArgs,
+        onStdout: (chunk) => log.taskStdout(node, chunk),
+        onStderr: (chunk) => log.taskStderr(node, chunk),
+      })
+
+  async function runSandboxedTask(): ReturnType<typeof runCommand> {
+    // Allowed reads = declared input files (resolved to absolute paths)
+    // plus the project's own directory + workspace-root node_modules
+    // (dep resolution walks up). The denyRead anchor is the workspace
+    // root: anything inside it that isn't explicitly allowed (sibling
+    // projects, root-level config files not in inputs) trips a
+    // violation. Project boundaries are the main invariant we protect.
+    const resolved = await resolveInputs({
+      projectDir: node.projectDir,
+      workspaceRoot: args.workspaceRoot,
+      envSource: process.env,
+      inputs: cacheCfg?.inputs,
+      ownOutputs: outputs,
+      nestedProjectDirs: args.nestedProjectDirs,
+      ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+    })
+    const allowRead = [
+      node.projectDir,
+      path.join(args.workspaceRoot, 'node_modules'),
+      ...resolved.files,
+    ]
+    const sandboxResult = await runSandboxed({
+      command: step.command,
+      cwd: node.projectDir,
+      env,
+      forwardArgs: effectiveForwardArgs,
+      onStdout: (chunk) => log.taskStdout(node, chunk),
+      onStderr: (chunk) => log.taskStderr(node, chunk),
+      allowRead,
+      allowWrite: [node.projectDir, '/tmp'],
+      denyRead: [args.workspaceRoot],
+    })
+    violations = sandboxResult.violations
+    // Strip the SandboxedRunResult-specific `violations` field; the
+    // rest of the shape matches RunResult exactly.
+    const { violations: _v, ...runResult } = sandboxResult
+    return runResult
+  }
+
   const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
-  if (result.exitCode === 0 && cacheEnabled) {
+  if (violations.length > 0) {
+    log.status(`vx: ${node.id} — ${violations.length} sandbox violation(s); cache.save() skipped`)
+    for (const v of violations.slice(0, 5)) log.status(`  ${v.line}`)
+    if (violations.length > 5) log.status(`  … +${violations.length - 5} more`)
+  }
+
+  // Skip cache.save() when violations were detected — the task may have
+  // read files outside its declared inputs, so the cache key doesn't
+  // reflect everything it actually depends on. Saving would mean future
+  // runs replay outputs derived from undeclared state.
+  if (result.exitCode === 0 && cacheEnabled && violations.length === 0) {
     const outputFiles = await resolveOutputs({
       projectDir: node.projectDir,
       outputs,
@@ -403,6 +471,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
     wallclockStartNs,
     wallclockEndNs,
+    ...(violations.length > 0 ? { sandboxViolations: violations.length } : {}),
   }
 }
 

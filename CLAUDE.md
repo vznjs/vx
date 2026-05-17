@@ -133,6 +133,35 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: Sandbox revived as opt-in detection layer via
+  `@anthropic-ai/sandbox-runtime` (SRT). New module
+  `src/exec/sandbox-runtime.ts` is a thin wrapper around SRT's
+  `SandboxManager` + `SandboxViolationStore`. New CLI flag
+  `--sandbox` opts in per `vx run`. Policy is
+  **detect-and-skip-cache**, not the enforce-or-fail model of the
+  original 2026-05 removal: violations don't fail the task (exit
+  code passes through) but `cache.save()` is skipped so tainted
+  runs can't be replayed. New `TaskOutcome.sandboxViolations`
+  field surfaces the count for consumers. Wired into
+  `executeCachedTask` only — group tasks (no exec) and persistent
+  tasks (need network) bypass. Allowed reads per task = projectDir
+  - workspace `node_modules` + resolved `cache.inputs.files`;
+    `denyRead` anchored at the workspace root so sibling-project
+    reads + undeclared root-level config reads trip violations.
+    Platform reality: macOS gets structured detection (log monitor
+    populates `SandboxViolationStore`); Linux gets enforcement-only
+    (bwrap denies at kernel boundary; SRT doesn't surface structured
+    events on Linux, so detection there relies on the task failing
+    naturally). Windows unsupported — `--sandbox` errors out with a
+    clear message. On Ubuntu 24's AppArmor block of unprivileged
+    user namespaces, SRT's `checkDependencies` still passes (bwrap
+    binary present), so the failure surfaces when the first task
+    spawns — accepted tradeoff for v1. New module doc
+    `docs/modules/sandbox-runtime.md`, new `## Sandbox` section in
+    `docs/cli.md`. Tests in `tests/sandbox-runtime.test.ts` use
+    `describe.skipIf(!available)` so CI on hosts without bwrap (this
+    container, GitHub Actions ubuntu-latest baseline) skips cleanly.
+
 - **2026-05**: Bun-builtins audit. Replaced the hand-rolled 50-LOC
   Crockford-base32 ULID generator (`src/util/ulid.ts`) with a thin
   wrapper over `Bun.randomUUIDv7()`. UUIDv7 is RFC 9562's timestamp-
