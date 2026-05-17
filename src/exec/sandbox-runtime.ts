@@ -22,6 +22,7 @@
 
 import path from 'node:path'
 import os from 'node:os'
+import { unlink } from 'node:fs/promises'
 import type { SandboxConfig, SandboxNetworkConfig } from '../config.js'
 import { shellQuote, streamToString, resourceUsageToCpuRss, type RunResult } from './runner.js'
 import { xxh3hex } from '../util/hash.js'
@@ -211,9 +212,26 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   const customConfig = buildCustomConfig(args)
   const wrapped = await SandboxManager.wrapWithSandbox(taggedCommand, undefined, customConfig)
 
+  // Linux: SRT's SandboxViolationStore is macOS-only, so structured
+  // detection on Linux requires us to wrap the spawn with strace and
+  // parse the trace for denied syscalls. The trace is per-task (unique
+  // log path keyed by the command tag) so parallel tasks don't share
+  // a stream. Skipped when strace isn't on PATH — bwrap still enforces
+  // structurally; we just lose the structured violation list.
+  const useStrace = await wantsStraceDetection()
+  const straceLog = useStrace ? path.join(os.tmpdir(), `vx-strace-${tag}.log`) : undefined
+  // We trace only `openat` — it's the actual file-read attempt, the
+  // signal the user cares about. `statx` / `newfstatat` / `access`
+  // are mostly shell PATH-walking and stat probes that aren't
+  // actionable (we'd report every node_modules/.bin entry the shell
+  // checks before resolving a command).
+  const spawnArgv = straceLog
+    ? ['strace', '-f', '-e', 'trace=openat', '-o', straceLog, '--', 'sh', '-c', wrapped]
+    : ['sh', '-c', wrapped]
+
   let proc: ReturnType<typeof Bun.spawn>
   try {
-    proc = Bun.spawn(['sh', '-c', wrapped], {
+    proc = Bun.spawn(spawnArgv, {
       cwd: args.cwd,
       env: args.env as Record<string, string>,
       stdin: 'ignore',
@@ -238,12 +256,23 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   await proc.exited
   const exitCode = proc.exitCode ?? (proc.signalCode ? 130 : 1)
 
+  // macOS: read the violation store keyed by our tagged command.
   const store = SandboxManager.getSandboxViolationStore()
-  const matched = store.getViolationsForCommand(taggedCommand)
-  const violations: SandboxViolation[] = matched.map((v) => ({
+  const macViolations = store.getViolationsForCommand(taggedCommand).map((v) => ({
     line: v.line,
     timestamp: v.timestamp,
   }))
+
+  // Linux: parse the strace log and emit one violation per denied
+  // syscall on a path inside denyRead that wasn't unconditionally
+  // allowed. Best-effort — if parsing fails we surface no Linux
+  // violations rather than fail the whole task.
+  const linuxViolations: SandboxViolation[] = straceLog
+    ? await parseStraceViolations(straceLog, args).catch(() => [])
+    : []
+  if (straceLog) await unlink(straceLog).catch(() => undefined)
+
+  const violations: SandboxViolation[] = [...macViolations, ...linuxViolations]
 
   try {
     SandboxManager.cleanupAfterCommand()
@@ -259,6 +288,90 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
     violations,
     ...resourceUsageToCpuRss(proc.resourceUsage()),
   }
+}
+
+/** Memoized check: is `strace` on PATH on a Linux host? */
+let straceAvailableCache: boolean | undefined
+async function wantsStraceDetection(): Promise<boolean> {
+  if (process.platform !== 'linux') return false
+  if (straceAvailableCache !== undefined) return straceAvailableCache
+  try {
+    const p = Bun.spawn(['strace', '--version'], { stdout: 'ignore', stderr: 'ignore' })
+    await p.exited
+    straceAvailableCache = p.exitCode === 0
+  } catch {
+    straceAvailableCache = false
+  }
+  return straceAvailableCache
+}
+
+/**
+ * Parse a strace log for denied filesystem syscalls and convert each
+ * one inside the workspace deny anchor (and not in allowRead) into a
+ * SandboxViolation. Dedups by (syscall, abs-path) so a tool that
+ * statx's the same missing path 10 times in a row produces one line.
+ *
+ * strace line shape (with -f):
+ *   <pid> openat(AT_FDCWD, "<path>", <flags>) = -1 ENOENT (...)
+ *   <pid> access("<path>", <mode>) = -1 EACCES (...)
+ *   <pid> statx(AT_FDCWD, "<path>", <flags>, <mask>, ...) = -1 ENOENT (...)
+ *
+ * We capture the first quoted-string argument as the path. paths that
+ * are relative resolve against the task's cwd (set by Bun.spawn).
+ */
+const STRACE_RE =
+  /^\d+\s+(openat|access|statx|newfstatat)\([^"]*"([^"]+)"[^)]*\)\s*=\s*-1\s+(ENOENT|EACCES|EPERM)/gm
+
+async function parseStraceViolations(
+  logPath: string,
+  args: SandboxedRunArgs,
+): Promise<SandboxViolation[]> {
+  const text = await Bun.file(logPath).text()
+  if (text.length === 0) return []
+
+  // Treat every baseAllow + sandbox.allowRead path as "this was
+  // explicitly permitted; any -ENOENT here is the user's own missing
+  // file, not a sandbox-induced denial". Same for absolute denyRead
+  // checks below.
+  const allowAbs = new Set<string>(
+    [...args.baseAllowRead, ...args.config.allowRead].map((p) => absolutize(p)),
+  )
+  const denyAnchors = args.baseDenyRead.map((p) => absolutize(p))
+
+  const seen = new Set<string>()
+  const out: SandboxViolation[] = []
+  for (const m of text.matchAll(STRACE_RE)) {
+    const [, syscall, rawPath, errno] = m
+    if (!rawPath) continue
+    const abs = absolutize(rawPath, args.cwd)
+    // Only report paths under the workspace-root deny anchor — system
+    // libs / /proc / /sys / etc. probes are not interesting violations.
+    if (!denyAnchors.some((root) => abs === root || abs.startsWith(root + path.sep))) continue
+    // Skip paths the user explicitly allowed (and their descendants).
+    if (isUnderAny(abs, allowAbs)) continue
+    const key = `${syscall}|${abs}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({
+      line: `${syscall}(${rawPath}) = -1 ${errno}  [${abs}]`,
+      timestamp: new Date(),
+    })
+  }
+  return out
+}
+
+function absolutize(p: string, cwd?: string): string {
+  if (p.startsWith('~')) return path.join(os.homedir(), p.slice(1))
+  if (path.isAbsolute(p)) return p
+  return path.resolve(cwd ?? process.cwd(), p)
+}
+
+function isUnderAny(abs: string, allow: Set<string>): boolean {
+  if (allow.has(abs)) return true
+  for (const a of allow) {
+    if (abs === a || abs.startsWith(a + path.sep)) return true
+  }
+  return false
 }
 
 /**

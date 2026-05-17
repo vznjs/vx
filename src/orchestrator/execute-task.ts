@@ -400,6 +400,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
     })
     const baseAllowWrite = outputs.map((g) => path.join(node.projectDir, staticPrefix(g)))
+    // Output paths are read+write — a task that declares `dist/**` as
+    // output expects to read what it just wrote (e.g. `touch dist/x`
+    // stats the file; `tsc --incremental` re-reads .tsbuildinfo). This
+    // isn't magic — the user already declared these paths; we're just
+    // honoring the natural read-write symmetry of an output directory.
     const sandboxResult = await runSandboxed({
       command: step.command,
       cwd: node.projectDir,
@@ -407,7 +412,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       forwardArgs: effectiveForwardArgs,
       onStdout: (chunk) => log.taskStdout(node, chunk),
       onStderr: (chunk) => log.taskStderr(node, chunk),
-      baseAllowRead: resolved.files,
+      baseAllowRead: [...resolved.files, ...baseAllowWrite],
       baseAllowWrite,
       baseDenyRead: [args.workspaceRoot],
       config: resolveSandboxConfig(cfg.sandbox ?? {}, node.projectDir),
