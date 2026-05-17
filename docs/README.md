@@ -58,6 +58,8 @@ every known gap — lives in [`comparison.md`](./comparison.md).
 | Trace what `vx run` actually does | [`execution.md`](./execution.md)                      |
 | Use the CLI from a shell          | [`cli.md`](./cli.md)                                  |
 | Compare to Turbo / Nx / vite-task | [`comparison.md`](./comparison.md)                    |
+| See what we share with Turbo / Nx | [`patterns.md`](./patterns.md)                        |
+| See how fast vx is vs Turbo / Nx  | [`benchmarks.md`](./benchmarks.md)                    |
 | Modify, fork, or replace a module | [`modules/`](./modules/) (one file per source module) |
 | Read forward-looking design notes | [`design/`](./design/)                                |
 
