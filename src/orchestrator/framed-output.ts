@@ -90,6 +90,20 @@ export function formatTaskBlock(
     lines.push(body.replace(/\n$/, ''))
   }
 
+  // Sandbox violations get a dedicated section inside the frame so the
+  // user sees them in context with the failing task, not as loose
+  // status output above the box. Section header uses a T-junction
+  // (├─) to read as part of the frame.
+  const vlines = outcome.sandboxViolationLines
+  if (vlines && vlines.length > 0) {
+    const tee = paint('', '├─', colors, { dim: true })
+    const sectionTitle = paint(ERROR, `Sandbox Violations (${vlines.length})`, colors, {
+      bold: true,
+    })
+    lines.push(`${tee} ${sectionTitle}`)
+    for (const v of vlines) lines.push(`   ${v}`)
+  }
+
   lines.push(`${corner('└─')} ${idPainted} ${corner('──')}${formatBlockFooter(outcome, colors)}`)
   return lines.join('\n') + '\n'
 }

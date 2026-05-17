@@ -424,13 +424,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // boundary; Linux relies on the child failing naturally on ENOENT,
   // so violations.length is always 0 there but the task will already
   // be exit != 0 if it needed the missing file.
+  //
+  // Violations are surfaced via `TaskOutcome.sandboxViolationLines` so
+  // the framed-output renderer can show them inline in the task's
+  // block, not as loose status output above it.
   let effectiveExitCode = result.exitCode
   let effectiveStderr = result.stderr
   if (violations.length > 0) {
-    log.status(`vx: ${node.id} — ${violations.length} sandbox violation(s); task failed`)
-    for (const v of violations.slice(0, 5)) log.status(`  ${v.line}`)
-    if (violations.length > 5) log.status(`  … +${violations.length - 5} more`)
     if (effectiveExitCode === 0) effectiveExitCode = 1
+    // Mirror into stderr for cache-persist + structured consumers; the
+    // framed-output block reads from sandboxViolationLines directly.
     effectiveStderr += '\n[vx] sandbox violations:\n'
     for (const v of violations) effectiveStderr += `  ${v.line}\n`
   }
@@ -468,7 +471,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
     wallclockStartNs,
     wallclockEndNs,
-    ...(violations.length > 0 ? { sandboxViolations: violations.length } : {}),
+    ...(violations.length > 0
+      ? {
+          sandboxViolations: violations.length,
+          sandboxViolationLines: violations.map((v) => v.line),
+        }
+      : {}),
   }
 }
 
