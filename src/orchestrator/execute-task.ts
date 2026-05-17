@@ -42,7 +42,7 @@ export interface ExecuteArgs {
    */
   persistentRegistry?: Map<string, ReturnType<typeof Bun.spawn>>
   /** Per-run memo for `git ls-files` (one entry per project dir). */
-  gitFilesCache?: Map<string, readonly string[] | null>
+  gitFilesCache?: Map<string, readonly string[]>
   /** Per-run memo for derived hashes (package.json bytes + task config). */
   hashCache?: HashCache
 }
@@ -82,7 +82,7 @@ export interface ComputeHashArgs {
   cache: CacheLayer
   forwardArgs?: readonly string[] | undefined
   nestedProjectDirs: string[]
-  gitFilesCache?: Map<string, readonly string[] | null>
+  gitFilesCache?: Map<string, readonly string[]>
   hashCache?: HashCache
 }
 
@@ -334,6 +334,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       if (!skipRestore) {
         if (outputs.length > 0) await cleanOutputs(cleanArgs)
         await cache.restoreOutputs(hash, node.projectDir)
+        // Restored outputs changed the project's tree; any downstream
+        // same-project task that resolves inputs after us would
+        // otherwise see a stale `git ls-files` snapshot taken at the
+        // top of the run. Drop the project's entry so the next
+        // resolveFiles call re-spawns git for that dir.
+        if (outputs.length > 0) args.gitFilesCache?.delete(node.projectDir)
       }
       if (hit.stdout) log.taskStdout(node, hit.stdout)
       const status =
@@ -468,6 +474,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         stdout: result.stdout,
       },
     })
+    // This task just wrote outputs to the project's tree. If a
+    // downstream same-project task is about to resolve inputs, the
+    // bulk `git ls-files` snapshot taken at the top of the run is
+    // stale for that project — drop the entry so resolveFiles
+    // re-spawns git on demand.
+    if (outputFiles.length > 0) args.gitFilesCache?.delete(node.projectDir)
   }
 
   return {

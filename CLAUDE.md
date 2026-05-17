@@ -132,6 +132,26 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: Drop the `ignore` npm dep — vx now hard-requires git.
+  `src/cache/inputs.ts` no longer parses `.gitignore` via the `ignore`
+  library; it defers entirely to `git ls-files --cached --others
+  --exclude-standard` for the input file set. When git is absent or
+  the workspace isn't a git work tree, `resolveFiles` (and
+  `populateGitFilesCache`) throw a `UserError` with a clear "vx
+  requires git: run `git init`…" message instead of silently
+  degrading. Net: -1 npm dep, -~30 LOC (`loadGitignore` gone), tests'
+  `makeWorkspace()` helpers gained a 3-line `git init` block.
+
+  Also fixed: a latent staleness bug in the bulk `gitFilesCache`
+  snapshot. The snapshot is taken at the top of a run; if an
+  upstream task in project P writes outputs, a downstream
+  same-project task that resolves inputs after it would otherwise
+  miss those files. `execute-task.ts` now drops the project's cache
+  entry after cache.save (cache miss) or cache.restoreOutputs
+  (cache hit) when the task has declared outputs — the next
+  resolveFiles call re-spawns git for that dir. Pre-existing bug;
+  the previous non-git fallback masked it by walking the live FS.
+
 - **2026-05**: Cache v17 — artifact carries only logs + outputs;
   unified local/remote format; stderr no longer cached.
 

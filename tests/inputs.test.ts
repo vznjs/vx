@@ -188,10 +188,30 @@ describe('resolveInputs', () => {
   let root: string
   let projectDir: string
 
+  function gitInit(cwd: string): void {
+    const run = (...args: string[]): void => {
+      const p = Bun.spawnSync({
+        cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
+        cwd,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      if (p.exitCode !== 0) {
+        throw new Error(`git ${args.join(' ')} failed`)
+      }
+    }
+    run('init', '-q')
+    run('config', 'user.email', 'test@vx.local')
+    run('config', 'user.name', 'vx test')
+  }
+
   beforeEach(async () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-in-'))
     projectDir = path.join(root, 'pkg')
     await mkdir(projectDir, { recursive: true })
+    // vx requires git for input enumeration — give every fixture a
+    // quiet repo so the call to `git ls-files` succeeds.
+    gitInit(root)
   })
 
   afterEach(async () => {
@@ -284,52 +304,9 @@ describe('resolveInputs', () => {
     expect(got.files).toEqual([path.join(projectDir, 'src', 'keep.ts')])
   })
 
-  it('gitignore at the workspace root filters input files', async () => {
-    // Pattern is anchored to the workspace root via path.relative, so
-    // we name the file by its full workspace-relative path.
-    await write(path.join(root, '.gitignore'), 'pkg/src/skip.ts\n')
-    await write(path.join(projectDir, 'src', 'keep.ts'))
-    await write(path.join(projectDir, 'src', 'skip.ts'))
-    const got = await resolveInputs({
-      projectDir,
-      workspaceRoot: root,
-      envSource: {},
-      inputs: { files: ['src/**'] },
-      ownOutputs: [],
-      nestedProjectDirs: [],
-    })
-    expect(got.files.map((p) => path.relative(projectDir, p))).toContain(
-      path.join('src', 'keep.ts'),
-    )
-    expect(got.files.map((p) => path.relative(projectDir, p))).not.toContain(
-      path.join('src', 'skip.ts'),
-    )
-  })
-
-  it('basename-pattern gitignore at the project root filters matching files', async () => {
-    // Basename-only patterns (no slash) match anywhere — same as git.
-    // Anchored patterns (`src/skip.ts`) in a project-level gitignore
-    // would today be evaluated against the workspace-relative path,
-    // not the project-relative one. That's a known limitation; here
-    // we just verify the basename case which IS portable.
-    await write(path.join(projectDir, '.gitignore'), 'skip.ts\n')
-    await write(path.join(projectDir, 'src', 'keep.ts'))
-    await write(path.join(projectDir, 'src', 'skip.ts'))
-    const got = await resolveInputs({
-      projectDir,
-      workspaceRoot: root,
-      envSource: {},
-      inputs: { files: ['src/**'] },
-      ownOutputs: [],
-      nestedProjectDirs: [],
-    })
-    expect(got.files.map((p) => path.relative(projectDir, p))).toContain(
-      path.join('src', 'keep.ts'),
-    )
-    expect(got.files.map((p) => path.relative(projectDir, p))).not.toContain(
-      path.join('src', 'skip.ts'),
-    )
-  })
+  // (.gitignore-filtering tests live in the "git ls-files path" block
+  // below — git applies the cascade for us, so basename and anchored
+  // patterns and workspace-root .gitignore all "just work" there.)
 
   it('nested-project file paths never enter the parent project inputs', async () => {
     const nestedDir = path.join(projectDir, 'inner')
@@ -595,7 +572,7 @@ describe('resolveInputs — gitFilesCache memoization', () => {
   })
 
   it('populates an empty Map after the first call', async () => {
-    const memo = new Map<string, readonly string[] | null>()
+    const memo = new Map<string, readonly string[]>()
     await resolveInputs({
       projectDir,
       workspaceRoot,
@@ -609,7 +586,7 @@ describe('resolveInputs — gitFilesCache memoization', () => {
   })
 
   it('reuses the cached entry on the second call (no second git spawn)', async () => {
-    const memo = new Map<string, readonly string[] | null>()
+    const memo = new Map<string, readonly string[]>()
     const first = await resolveInputs({
       projectDir,
       workspaceRoot,
@@ -683,7 +660,7 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
       return origSpawnSync(...args)
     }) as typeof Bun.spawnSync
     try {
-      const cache = new Map<string, readonly string[] | null>()
+      const cache = new Map<string, readonly string[]>()
       const projectDirs = ['a', 'b', 'c'].map((n) => path.join(workspaceRoot, 'packages', n))
       populateGitFilesCache(workspaceRoot, projectDirs, cache)
       expect(spawnCount).toBe(1)
@@ -697,17 +674,15 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
     }
   })
 
-  it('marks every project null when not in a git repo (single fast-fail)', async () => {
-    // Non-git dir
+  it('throws a clear UserError when not in a git repo', async () => {
     const nonGit = await mkdtemp(path.join(os.tmpdir(), 'vx-nogit-'))
     try {
-      const cache = new Map<string, readonly string[] | null>()
+      const cache = new Map<string, readonly string[]>()
       const projectDirs = ['x', 'y'].map((n) => path.join(nonGit, n))
       for (const dir of projectDirs) {
         await mkdir(dir, { recursive: true })
       }
-      populateGitFilesCache(nonGit, projectDirs, cache)
-      for (const dir of projectDirs) expect(cache.get(dir)).toBeNull()
+      expect(() => populateGitFilesCache(nonGit, projectDirs, cache)).toThrow(/vx requires git/)
     } finally {
       await rm(nonGit, { recursive: true, force: true })
     }
@@ -730,6 +705,18 @@ describe('resolveInputs — symlink edge cases', () => {
     projectDir = path.join(root, 'pkg')
     await mkdir(path.join(projectDir, 'src'), { recursive: true })
     await writeFile(path.join(projectDir, 'src', 'a.txt'), 'a')
+    // vx requires git for input enumeration.
+    const run = (...args: string[]): void => {
+      Bun.spawnSync({
+        cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+    }
+    run('init', '-q')
+    run('config', 'user.email', 'test@vx.local')
+    run('config', 'user.name', 'vx test')
   })
 
   afterEach(async () => {

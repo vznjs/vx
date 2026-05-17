@@ -38,7 +38,7 @@ export interface PlanArgs {
   noCache: boolean
   forwardArgs?: readonly string[] | undefined
   nestedDirsByProject: Map<string, string[]>
-  gitFilesCache?: Map<string, readonly string[] | null>
+  gitFilesCache?: Map<string, readonly string[]>
   hashCache?: import('./execute-task.js').HashCache
 }
 

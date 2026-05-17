@@ -6,22 +6,22 @@
 // `cache.inputs.env` is the cache-tracking axis for env vars; it's
 // independent of `exec.env`, which controls what reaches the child.
 //
-// File enumeration follows the Turbo / Nx model: when the project is
-// inside a git repo, we ask git for the file set via `git ls-files
-// --cached --others --exclude-standard`. That gives us:
+// File enumeration defers to git — same as Turbo and Nx. We ask git for
+// the file set via `git ls-files --cached --others --exclude-standard`,
+// which gives us:
 //   - all tracked files,
 //   - plus untracked-but-not-ignored files,
 //   - with nested .gitignore + .git/info/exclude + global excludes
 //     correctly applied (because git already does the cascade).
 // The user's `inputs.files` globs are then matched as a *filter* on
-// top of that file set. Outside a git repo, we fall back to a raw
-// Bun.Glob walk with our own `ignore`-library-based filter — same
-// behavior as pre-v14.
+// top of that file set. vx requires git to be installed and the
+// workspace to be a git work tree; non-git environments are not
+// supported.
 
 import path from 'node:path'
 import { rm } from 'node:fs/promises'
-import ignore, { type Ignore } from 'ignore'
 import type { CacheInputs } from '../config.js'
+import { UserError } from '../util/errors.js'
 
 const ALWAYS_IGNORE = ['**/node_modules/**', '**/.git/**', '**/.vx/**', '**/*.tsbuildinfo']
 
@@ -47,7 +47,7 @@ export interface ResolveInputsArgs {
    * memoization we spawn git 3× per project per run. The orchestrator
    * passes a fresh Map at the top of every `vx run`.
    */
-  gitFilesCache?: Map<string, readonly string[] | null>
+  gitFilesCache?: Map<string, readonly string[]>
 }
 
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs> {
@@ -114,7 +114,7 @@ interface ResolveFilesArgs {
   files: string[] | undefined
   ownOutputs: string[]
   nestedProjectDirs: string[]
-  gitFilesCache?: Map<string, readonly string[] | null>
+  gitFilesCache?: Map<string, readonly string[]>
 }
 
 async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
@@ -137,75 +137,64 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
     (p) => new Bun.Glob(p),
   )
 
-  // Try git first (Turbo / Nx model). Returns project-relative paths
-  // for everything `git ls-files --cached --others --exclude-standard`
-  // sees — i.e., tracked + untracked-but-not-ignored. Nested .gitignore
+  // Defer to git for the file set (Turbo / Nx parity). Nested .gitignore
   // files, .git/info/exclude, and global excludes all participate
-  // correctly because git does the cascade for us.
+  // correctly because git applies the cascade for us.
   //
   // Per-run memo: each project's git ls-files output is asked for once
   // per task (build + test + lint + …). Spawning git N times for the
   // same project per run is wasteful; we cache the result for the
   // duration of one orchestrator run.
-  let gitFiles: readonly string[] | null
+  let gitFiles: readonly string[]
   if (args.gitFilesCache !== undefined && args.gitFilesCache.has(args.projectDir)) {
-    gitFiles = args.gitFilesCache.get(args.projectDir)!
+    gitFiles = args.gitFilesCache.get(args.projectDir) as readonly string[]
   } else {
     gitFiles = listGitTrackedFiles(args.projectDir)
     args.gitFilesCache?.set(args.projectDir, gitFiles)
   }
-  if (gitFiles !== null) {
-    const positiveGlobs = positive.map((p) => new Bun.Glob(p))
-    // First pass: glob-filter to candidate absolute paths (no I/O).
-    const candidates: string[] = []
-    for (const rel of gitFiles) {
-      let matched = false
-      for (const g of positiveGlobs) {
-        if (g.match(rel)) {
-          matched = true
-          break
-        }
+  const positiveGlobs = positive.map((p) => new Bun.Glob(p))
+  // First pass: glob-filter to candidate absolute paths (no I/O).
+  const candidates: string[] = []
+  for (const rel of gitFiles) {
+    let matched = false
+    for (const g of positiveGlobs) {
+      if (g.match(rel)) {
+        matched = true
+        break
       }
-      if (!matched) continue
-      if (excludeGlobs.some((g) => g.match(rel))) continue
-      candidates.push(path.resolve(args.projectDir, rel))
     }
-    // Second pass: parallel existence check. `git ls-files --cached`
-    // can surface stale entries when the working tree has the file
-    // gone; the hasher would otherwise throw ENOENT. Parallelizing
-    // turns N serial syscalls into one round-trip's worth of latency.
-    const exists = await Promise.all(candidates.map((abs) => Bun.file(abs).exists()))
-    const matches: string[] = []
-    for (let i = 0; i < candidates.length; i++) {
-      if (exists[i]) matches.push(candidates[i]!)
-    }
-    return matches.sort()
+    if (!matched) continue
+    if (excludeGlobs.some((g) => g.match(rel))) continue
+    candidates.push(path.resolve(args.projectDir, rel))
   }
-
-  // Fallback path — no git available. Use our own gitignore-lib walker.
-  // Behaves as pre-v14: workspace-root + project-root .gitignore are
-  // both consulted, anchored relative to the workspace root.
-  const ig = await loadGitignore(args.workspaceRoot, args.projectDir)
-  const fsMatches = await scanUnion(positive, excludeGlobs, args.projectDir)
-  return [...fsMatches].filter((p) => !ig.ignores(path.relative(args.workspaceRoot, p))).sort()
+  // Second pass: parallel existence check. `git ls-files --cached`
+  // can surface stale entries when the working tree has the file
+  // gone; the hasher would otherwise throw ENOENT. Parallelizing
+  // turns N serial syscalls into one round-trip's worth of latency.
+  const exists = await Promise.all(candidates.map((abs) => Bun.file(abs).exists()))
+  const matches: string[] = []
+  for (let i = 0; i < candidates.length; i++) {
+    if (exists[i]) matches.push(candidates[i]!)
+  }
+  return matches.sort()
 }
 
 /**
  * Return the set of project-relative paths git considers part of
- * the project (tracked + untracked-but-not-ignored). `null` means
- * we're not inside a git work tree — the caller falls back to the
- * Bun.Glob walker.
+ * the project (tracked + untracked-but-not-ignored). Throws
+ * `UserError` if git is unavailable or the project isn't inside a
+ * git work tree — vx requires git.
  *
  * `-z` gives NUL-separated output so filenames with newlines /
  * spaces survive unparsed. This is the per-project entry point;
  * `populateGitFilesCache` (below) is the bulk entry point used by
  * the orchestrator to amortize git fork+exec across all projects.
  */
-function listGitTrackedFiles(projectDir: string): readonly string[] | null {
+function listGitTrackedFiles(projectDir: string): readonly string[] {
   return runGitLsFiles(projectDir)
 }
 
-function runGitLsFiles(cwd: string): readonly string[] | null {
+function runGitLsFiles(cwd: string): readonly string[] {
   let proc
   try {
     proc = Bun.spawnSync({
@@ -215,13 +204,18 @@ function runGitLsFiles(cwd: string): readonly string[] | null {
       stderr: 'pipe',
     })
   } catch {
-    // git binary missing — fall back.
-    return null
+    throw new UserError(
+      `vx requires git: failed to spawn 'git' (working dir: ${cwd}). Install git and re-run.`,
+    )
   }
   if (proc.exitCode !== 0) {
-    // Either not a git repo (exit 128) or some other failure. Either
-    // way, defer to the FS walker.
-    return null
+    // Exit 128 = not a git work tree; other non-zero = git failure.
+    // Either way we can't enumerate inputs reliably.
+    const stderr = new TextDecoder().decode(proc.stderr).trim()
+    throw new UserError(
+      `vx requires git: ${cwd} is not inside a git work tree. ` +
+        `Run 'git init' in your workspace root.${stderr ? ` (git: ${stderr})` : ''}`,
+    )
   }
   const out = new TextDecoder().decode(proc.stdout)
   if (out.length === 0) return []
@@ -233,10 +227,9 @@ function runGitLsFiles(cwd: string): readonly string[] | null {
 /**
  * Run `git ls-files` ONCE at the workspace root, then partition the
  * result by project. Populates `cache` for every project in
- * `projectDirs` — values are project-relative path lists matching what
- * a per-project spawn would have produced, or `null` if the workspace
- * isn't a git work tree (every project falls back to the Bun.Glob
- * walker).
+ * `projectDirs` with project-relative path lists matching what a
+ * per-project spawn would have produced. Throws `UserError` if the
+ * workspace isn't a git work tree (vx requires git).
  *
  * Why bulk: each spawn costs ~5-10ms (fork+exec). On a 200-project
  * workspace that's 1-2s of pure overhead reclaimed.
@@ -249,15 +242,9 @@ function runGitLsFiles(cwd: string): readonly string[] | null {
 export function populateGitFilesCache(
   workspaceRoot: string,
   projectDirs: readonly string[],
-  cache: Map<string, readonly string[] | null>,
+  cache: Map<string, readonly string[]>,
 ): void {
   const all = runGitLsFiles(workspaceRoot)
-  if (all === null) {
-    // Not a git repo, or git missing. Mark every project null so
-    // resolveFiles takes the Bun.Glob fallback without re-spawning.
-    for (const dir of projectDirs) cache.set(dir, null)
-    return
-  }
   for (const projectDir of projectDirs) {
     const relPrefix = path.relative(workspaceRoot, projectDir).split(path.sep).join('/')
     if (relPrefix === '' || relPrefix === '.') {
@@ -299,13 +286,4 @@ function boundaryIgnorePatterns(projectDir: string, nestedDirs: string[]): strin
     const rel = path.relative(projectDir, d).split(path.sep).join('/')
     return `${rel}/**`
   })
-}
-
-async function loadGitignore(workspaceRoot: string, projectDir: string): Promise<Ignore> {
-  const ig = ignore()
-  for (const f of [path.join(workspaceRoot, '.gitignore'), path.join(projectDir, '.gitignore')]) {
-    const file = Bun.file(f)
-    if (await file.exists()) ig.add(await file.text())
-  }
-  return ig
 }

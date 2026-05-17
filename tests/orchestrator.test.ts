@@ -52,7 +52,27 @@ async function makeWorkspace(): Promise<Fixture> {
     JSON.stringify({ name: 'fixture-root', private: true }, null, 2),
   )
   await mkdir(path.join(root, 'packages'), { recursive: true })
+  // vx requires git (it asks `git ls-files` for the input file set).
+  // Init a quiet repo so the orchestrator can enumerate fixture files.
+  initGitRepo(root)
   return { root, log: [], err: [] }
+}
+
+function initGitRepo(cwd: string): void {
+  const run = (...args: string[]): void => {
+    const p = Bun.spawnSync({
+      cmd: ['git', '-c', 'commit.gpgsign=false', '-c', 'tag.gpgSign=false', ...args],
+      cwd,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    if (p.exitCode !== 0) {
+      throw new Error(`git ${args.join(' ')} failed: ${new TextDecoder().decode(p.stderr)}`)
+    }
+  }
+  run('init', '-q')
+  run('config', 'user.email', 'test@vx.local')
+  run('config', 'user.name', 'vx test')
 }
 
 async function addProject(
