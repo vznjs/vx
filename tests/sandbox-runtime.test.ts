@@ -1,14 +1,12 @@
 // Sandbox-runtime integration tests.
 //
-// On the host running these tests we need SRT's runtime deps available
-// (bwrap on Linux, sandbox-exec on macOS). The probe at the top of the
-// file gates the suite — when deps are missing the tests skip cleanly
-// rather than fail, matching how `--sandbox` itself behaves.
+// The suite gates on SRT's runtime deps (bwrap on Linux, sandbox-exec
+// on macOS). When they're absent, every test skips cleanly rather than
+// failing — matches how the orchestrator itself behaves.
 //
-// The shape of each test is: spin up a small workspace, run the
-// orchestrator with `sandbox: true`, assert on the outcomes (cache
-// status, violation count). We don't poke SRT internals directly —
-// the value is verifying the orchestrator-level contract.
+// Shape of each test: spin up a small workspace with a task that
+// declares `sandbox: {...}`, run the orchestrator, assert on the
+// outcome's exit code, cache status, and `sandboxViolations` count.
 
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -65,10 +63,6 @@ async function addProject(
   return dir
 }
 
-// Resolved once at module load — keeps every test in this file from
-// re-running the dep check. SRT itself memoizes after the first call
-// but the cost is the same; doing it here makes the skip condition
-// readable.
 const availability = await probeSandbox()
 
 describe.skipIf(!availability.available)(
@@ -85,11 +79,45 @@ describe.skipIf(!availability.available)(
     })
 
     it(
-      'caches a clean task whose reads stay inside declared inputs',
+      'caches a clean sandboxed task that stays inside declared inputs',
       async () => {
-        // Task reads only `src/x.txt` which is in its declared inputs.
-        // No violations expected; cache.save should fire.
+        // src/x.txt is in the declared inputs; cat reads it and writes
+        // out.txt which is in the declared outputs. No undeclared reads
+        // or writes → no violations → cache.save fires.
         await addProject(fixture.root, 'clean', {
+          files: { 'src/x.txt': 'hello' },
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: { command: 'cat src/x.txt > out.txt' },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                  sandbox: {},
+                },
+              },
+            }
+          `,
+        })
+        const opts: RunOptions = {
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: collectingLogger(fixture),
+        }
+        const first = await run(opts)
+        expect(first.ok).toBe(true)
+        expect(first.outcomes[0]?.status).toBe('success')
+        expect(first.outcomes[0]?.sandboxViolations).toBeUndefined()
+
+        const second = await run({ ...opts, log: collectingLogger(fixture) })
+        expect(second.outcomes[0]?.status).toBe('cache-hit')
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'unsandboxed tasks (no sandbox: {}) run unchanged',
+      async () => {
+        await addProject(fixture.root, 'unsandboxed', {
           files: { 'src/x.txt': 'hello' },
           config: `
             export default {
@@ -102,34 +130,24 @@ describe.skipIf(!availability.available)(
             }
           `,
         })
-        const opts: RunOptions = {
+        const r = await run({
           cwd: fixture.root,
           tasks: ['build'],
-          sandbox: true,
           log: collectingLogger(fixture),
-        }
-        const first = await run(opts)
-        expect(first.ok).toBe(true)
-        expect(first.outcomes[0]?.status).toBe('success')
-        expect(first.outcomes[0]?.sandboxViolations).toBeUndefined()
-
-        // Second run hits the cache — saving succeeded the first time.
-        const second = await run({ ...opts, log: collectingLogger(fixture) })
-        expect(second.outcomes[0]?.status).toBe('cache-hit')
+        })
+        expect(r.outcomes[0]?.status).toBe('success')
+        expect(r.outcomes[0]?.sandboxViolations).toBeUndefined()
       },
       TIMEOUT,
     )
 
     it.skipIf(process.platform !== 'darwin')(
-      'skips cache.save when sandbox violations are detected (macOS)',
+      'fails the task on sandbox violation (macOS)',
       async () => {
-        // Two sibling projects. `reader` declares inputs from src/ only
-        // but reads a file inside sibling project `secret`. The cross-
-        // project read isn't covered by declared inputs, so the sandbox
-        // log monitor records a violation. `|| true` keeps exit 0 so
-        // we can isolate the cache-skip behavior from a normal failure.
-        // macOS-only because Linux bwrap denies the read structurally
-        // without populating SandboxViolationStore.
+        // reader declares inputs from src/ only but reads a sibling
+        // project's file. macOS's log monitor captures the violation;
+        // the new policy fails the task even if the tool tolerated
+        // the EPERM (here `|| true` keeps exit 0 at the shell level).
         await addProject(fixture.root, 'secret', {
           files: { 'token.txt': 'my-secret' },
           config: `export default { tasks: {} }`,
@@ -141,39 +159,144 @@ describe.skipIf(!availability.available)(
               tasks: {
                 leak: {
                   exec: {
-                    command: 'cat src/x.txt > out.txt; cat ../secret/token.txt >> out.txt || true',
+                    command: 'cat src/x.txt > out.txt; cat ../secret/token.txt 2>&1 || true',
                   },
                   cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                  sandbox: {},
                 },
               },
             }
           `,
         })
-        const opts: RunOptions = {
+        const r = await run({
           cwd: fixture.root,
           tasks: ['leak'],
-          sandbox: true,
           log: collectingLogger(fixture),
-        }
-        const first = await run(opts)
-        expect(first.outcomes[0]?.status).toBe('success')
-        expect(first.outcomes[0]?.sandboxViolations).toBeGreaterThan(0)
-
-        // Second run must MISS — violations skipped save the first time.
-        const second = await run({ ...opts, log: collectingLogger(fixture) })
-        expect(second.outcomes[0]?.status).toBe('success')
+        })
+        expect(r.ok).toBe(false)
+        expect(r.outcomes[0]?.status).toBe('failed')
+        expect(r.outcomes[0]?.sandboxViolations).toBeGreaterThan(0)
       },
       TIMEOUT,
     )
   },
 )
 
-describe('sandbox-runtime probe', () => {
+describe('sandbox probe', () => {
   it('returns a stable shape', async () => {
     const a = await probeSandbox()
     expect(typeof a.available).toBe('boolean')
     expect(typeof a.reason).toBe('string')
     if (a.available) expect(a.reason).toBe('')
     else expect(a.reason.length).toBeGreaterThan(0)
+  })
+})
+
+describe('sandbox config validation', () => {
+  let fixture: Fixture
+  beforeEach(async () => {
+    fixture = await makeWorkspace()
+  })
+  afterEach(async () => {
+    await rm(fixture.root, { recursive: true, force: true })
+  })
+
+  it('rejects sandbox: [] (must be an object)', async () => {
+    await addProject(fixture.root, 'bad', {
+      config: `export default { tasks: { x: { exec: { command: 'true' }, sandbox: [] } } }`,
+    })
+    const r = await run({
+      cwd: fixture.root,
+      tasks: ['x'],
+      log: collectingLogger(fixture),
+    }).catch((e: Error) => e)
+    expect(r).toBeInstanceOf(Error)
+    expect((r as Error).message).toContain('sandbox must be an object')
+  })
+
+  it('rejects unknown sandbox fields', async () => {
+    await addProject(fixture.root, 'bad', {
+      config: `export default { tasks: { x: { exec: { command: 'true' }, sandbox: { typo: true } } } }`,
+    })
+    const r = await run({
+      cwd: fixture.root,
+      tasks: ['x'],
+      log: collectingLogger(fixture),
+    }).catch((e: Error) => e)
+    expect(r).toBeInstanceOf(Error)
+    expect((r as Error).message).toContain('sandbox.typo is not a known field')
+  })
+
+  it('rejects globs in allowRead', async () => {
+    await addProject(fixture.root, 'bad', {
+      config: `export default { tasks: { x: { exec: { command: 'true' }, sandbox: { allowRead: ['**/*'] } } } }`,
+    })
+    const r = await run({
+      cwd: fixture.root,
+      tasks: ['x'],
+      log: collectingLogger(fixture),
+    }).catch((e: Error) => e)
+    expect(r).toBeInstanceOf(Error)
+    expect((r as Error).message).toContain('must be path prefixes')
+  })
+
+  it('rejects sandbox on group tasks (no exec)', async () => {
+    await addProject(fixture.root, 'bad', {
+      config: `export default { tasks: { x: { dependsOn: ['^build'], sandbox: {} } } }`,
+    })
+    const r = await run({
+      cwd: fixture.root,
+      tasks: ['x'],
+      log: collectingLogger(fixture),
+    }).catch((e: Error) => e)
+    expect(r).toBeInstanceOf(Error)
+    expect((r as Error).message).toContain('sandbox requires `exec`')
+  })
+
+  it('accepts the full SRT-mirroring shape', async () => {
+    await addProject(fixture.root, 'full', {
+      files: { 'src/x.txt': 'hi' },
+      config: `
+        export default {
+          tasks: {
+            x: {
+              exec: { command: 'cat src/x.txt > out.txt' },
+              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+              sandbox: {
+                allowRead: ['/etc/hosts'],
+                denyRead: [],
+                allowWrite: [],
+                denyWrite: [],
+                allowGitConfig: false,
+                network: { allowedDomains: ['*.example.com'], deniedDomains: [] },
+                allowPty: false,
+                enableWeakerNestedSandbox: false,
+                enableWeakerNetworkIsolation: false,
+                ignoreViolations: { 'cat ': ['/tmp/noisy'] },
+              },
+            },
+          },
+        }
+      `,
+    })
+    // Only validates the config parses + runs through validation; the
+    // actual exec is skipped when sandbox isn't available, but the
+    // parse path is exercised either way.
+    if (!availability.available) {
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['x'],
+        log: collectingLogger(fixture),
+      }).catch((e: Error) => e)
+      // Expect a "sandbox not available" UserError, not a config error.
+      expect((r as Error).message).toContain('sandbox not available')
+      return
+    }
+    const r = await run({
+      cwd: fixture.root,
+      tasks: ['x'],
+      log: collectingLogger(fixture),
+    })
+    expect(r.ok).toBe(true)
   })
 })

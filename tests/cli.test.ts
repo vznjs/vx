@@ -647,11 +647,6 @@ describe('parseRunArgs', () => {
     expect(r.noCache).toBe(false)
   })
 
-  it('parses --sandbox', () => {
-    expect(parseRunArgs(['build', '--sandbox']).sandbox).toBe(true)
-    expect(parseRunArgs(['build']).sandbox).toBe(false)
-  })
-
   it('parses --excludeDependencies as "all" with no value', () => {
     expect(parseRunArgs(['build', '--excludeDependencies']).excludeDependencies).toBe('all')
     expect(parseRunArgs(['build', '--ignore-depends-on']).error).toMatch(/unknown flag/)

@@ -1,31 +1,31 @@
-// Thin wrapper around `@anthropic-ai/sandbox-runtime` (SRT) for detecting
-// undeclared filesystem reads/writes while a task runs.
+// Thin wrapper around `@anthropic-ai/sandbox-runtime` (SRT) for enforcing
+// per-task filesystem + network isolation.
 //
-// Policy: detect-and-skip-cache. The sandbox enforces declared inputs at
-// the kernel level (bwrap on Linux, sandbox-exec on macOS); any read
-// outside the declared `cache.inputs.files` is captured as a violation.
-// Tasks pass through exit code unchanged — we don't fail the build on
-// violations. We DO skip `cache.save()` so a cache hit can't replay
-// outputs derived from undeclared inputs.
+// Design contract:
+//   The caller (executeCachedTask) computes the exact allowRead /
+//   allowWrite paths from the task's declared inputs + outputs + sandbox
+//   block. This module adds nothing implicit — no /tmp, no node_modules,
+//   no project dir. If a task needs them, the user declares them in
+//   their sandbox config. That gives users a complete view of what each
+//   task can touch from a single vx.config.ts file.
 //
-// Platform reality check:
+// Network is opt-in per task. By default the sandbox blocks all outbound
+// traffic; tasks that need it set `sandbox.network: true`.
+//
+// Platform reality:
 //   macOS — `SandboxViolationStore` is populated from the system log
 //   monitor in real time; violations carry the offending command +
-//   syscall line, so we get a structured list back per task.
+//   syscall line, so we get structured detection.
 //   Linux  — bwrap denies the read at the kernel boundary; the child
-//   sees EPERM/EACCES. SRT doesn't surface those structurally, so
-//   detection on Linux is enforcement-only: a task that needed an
-//   undeclared input will fail naturally (and a failed task doesn't
-//   cache anyway). Tasks that tolerate the EPERM silently keep
-//   running, no violation visible.
-//
-// All SRT touchpoints are isolated here so the orchestrator stays free
-// of platform conditionals.
+//   sees ENOENT (or EPERM for some operations). SRT doesn't surface
+//   structured events for Linux, so detection is enforcement-only.
 
+import path from 'node:path'
+import os from 'node:os'
+import type { SandboxConfig, SandboxNetworkConfig } from '../config.js'
 import { shellQuote, streamToString, resourceUsageToCpuRss, type RunResult } from './runner.js'
 import { xxh3hex } from '../util/hash.js'
 
-/** Lazy-loaded SRT module; populated on first use. */
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
 let srtPromise: Promise<SrtModule> | undefined
 
@@ -47,7 +47,7 @@ let availabilityCache: SandboxAvailability | undefined
  * presence + platform check doesn't change within a process.
  *
  * Does NOT detect runtime failures (e.g. Ubuntu 24's AppArmor blocking
- * unprivileged user namespaces while bwrap is still on the PATH). Those
+ * unprivileged user namespaces while bwrap is still on PATH). Those
  * surface when the first task spawns and bwrap exits non-zero.
  */
 export async function probeSandbox(): Promise<SandboxAvailability> {
@@ -66,37 +66,21 @@ export async function probeSandbox(): Promise<SandboxAvailability> {
   return availabilityCache
 }
 
-export interface InitSandboxArgs {
-  workspaceRoot: string
-}
-
 /**
  * One-time SRT initialization per orchestrator run. Starts the proxy
  * servers + (on macOS) the violation log monitor. Safe to call repeatedly
  * — SRT itself returns early on the second call.
  *
- * Network sandboxing is intentionally disabled: we're targeting filesystem
- * detection, and the proxy/seccomp dance for network is expensive and
- * breaks common tasks. `enableWeakerNetworkIsolation: true` skips the
- * macOS network namespace; on Linux SRT still allocates the bridge
- * sockets but the empty allowedDomains means all egress is filtered to
- * the proxy. For v1 we accept that limitation.
+ * The base config sets network to "block everything" (empty allowedDomains).
+ * Per-task wrapping passes a customConfig that re-enables network for
+ * tasks with `sandbox.network: true`.
  */
-export async function initSandbox(_args: InitSandboxArgs): Promise<void> {
+export async function initSandbox(): Promise<void> {
   const { SandboxManager } = await loadSrt()
   await SandboxManager.initialize(
     {
-      // Empty allowedDomains = block everything; we don't care about
-      // network for the violation-detection use case. enableWeaker
-      // sidesteps the macOS network namespace which otherwise costs
-      // a few hundred ms on every wrapWithSandbox.
       network: { allowedDomains: [], deniedDomains: [] },
-      filesystem: {
-        denyRead: [],
-        allowWrite: ['.', '/tmp'],
-        denyWrite: [],
-      },
-      enableWeakerNetworkIsolation: true,
+      filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
     },
     undefined,
     // enableLogMonitor — macOS-only; populates the SandboxViolationStore.
@@ -118,26 +102,78 @@ export interface SandboxedRunArgs {
   onStdout?: (chunk: string) => void
   onStderr?: (chunk: string) => void
   /**
-   * Absolute paths the task may read freely. Typically:
-   *   - the project directory (its own source files)
-   *   - every file resolved from `cache.inputs.files`
-   *   - the workspace root's node_modules (dep resolution)
+   * Baseline reads — paths the sandbox unconditionally allows. The
+   * caller builds this from resolved `cache.inputs.files`.
    */
+  baseAllowRead: readonly string[]
+  /**
+   * Baseline writes — paths the sandbox unconditionally allows for
+   * writes. Built from the static prefix of `cache.outputs.files`.
+   */
+  baseAllowWrite: readonly string[]
+  /**
+   * Read-deny anchor. Combined with allowRead it produces the effective
+   * deny set: anything under one of these paths that isn't in allowRead
+   * is forbidden. Pass `[workspaceRoot]` to enforce project boundaries.
+   */
+  baseDenyRead: readonly string[]
+  /**
+   * User-declared sandbox block (after path-resolution). Path lists are
+   * unioned with the baselines; bool/object fields fall through to SRT.
+   */
+  config: ResolvedSandboxConfig
+}
+
+/**
+ * Sandbox config with all path fields resolved to absolute paths.
+ * Produced by `resolveSandboxConfig`. The shape mirrors `SandboxConfig`
+ * but every string in a path list is guaranteed absolute.
+ */
+export interface ResolvedSandboxConfig {
   allowRead: readonly string[]
-  /**
-   * Absolute paths the task may write to. Typically the project
-   * directory and the cache dir (so cache.save can run). `/tmp` is
-   * always allowed via the base config.
-   */
-  allowWrite: readonly string[]
-  /**
-   * Absolute paths to flag as denied reads. Typically the workspace
-   * root: combined with `allowRead`, this says "deny reading the whole
-   * workspace except for these specific paths". That's how undeclared
-   * inputs (sibling projects, root-level config files not in the
-   * inputs glob) get surfaced as violations.
-   */
   denyRead: readonly string[]
+  allowWrite: readonly string[]
+  denyWrite: readonly string[]
+  allowGitConfig?: boolean
+  network?: boolean | SandboxNetworkConfig
+  allowPty?: boolean
+  enableWeakerNestedSandbox?: boolean
+  enableWeakerNetworkIsolation?: boolean
+  ignoreViolations?: Record<string, string[]>
+}
+
+/**
+ * Convert a user-facing `SandboxConfig` (paths may be relative / tilde)
+ * into a `ResolvedSandboxConfig` (all paths absolute) for a given project.
+ * Relative paths resolve against `projectDir`; tilde paths expand against
+ * the user's home; absolute paths stay literal.
+ */
+export function resolveSandboxConfig(
+  cfg: SandboxConfig,
+  projectDir: string,
+): ResolvedSandboxConfig {
+  const resolve = (p: string): string => {
+    if (p.startsWith('~')) return path.join(os.homedir(), p.slice(1))
+    if (path.isAbsolute(p)) return p
+    return path.resolve(projectDir, p)
+  }
+  const r: ResolvedSandboxConfig = {
+    allowRead: (cfg.allowRead ?? []).map(resolve),
+    denyRead: (cfg.denyRead ?? []).map(resolve),
+    allowWrite: (cfg.allowWrite ?? []).map(resolve),
+    denyWrite: (cfg.denyWrite ?? []).map(resolve),
+  }
+  if (cfg.allowGitConfig !== undefined) r.allowGitConfig = cfg.allowGitConfig
+  if (cfg.network !== undefined) r.network = cfg.network
+  if (cfg.allowPty !== undefined) r.allowPty = cfg.allowPty
+  if (cfg.enableWeakerNestedSandbox !== undefined) {
+    r.enableWeakerNestedSandbox = cfg.enableWeakerNestedSandbox
+  }
+  if (cfg.enableWeakerNetworkIsolation !== undefined) {
+    r.enableWeakerNetworkIsolation = cfg.enableWeakerNetworkIsolation
+  }
+  if (cfg.ignoreViolations !== undefined) r.ignoreViolations = cfg.ignoreViolations
+  return r
 }
 
 export interface SandboxViolation {
@@ -152,17 +188,14 @@ export interface SandboxedRunResult extends RunResult {
 }
 
 /**
- * Run a single task wrapped in the sandbox. Caller is responsible for
- * having called `initSandbox()` first; this function asks SRT for a
- * wrapped command, spawns it via `sh -c`, captures output + resource
- * usage, then reads back any violations the log monitor recorded for
- * this specific command.
+ * Run a single task wrapped in the sandbox. Caller must have called
+ * `initSandbox()` first.
  *
  * Violations are matched by a unique per-task command prefix — SRT's
  * `getViolationsForCommand` keys by base64 of the first 100 chars, so
  * two tasks running the same underlying command (e.g. parallel `tsc`
- * across packages) would otherwise collide. We prepend `: '<tag>';` (the
- * shell no-op builtin) to make every command's first 100 chars unique.
+ * across packages) would otherwise collide. We prepend `: '<tag>';`
+ * (shell no-op) to make every command's first 100 chars unique.
  */
 export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult> {
   const { SandboxManager } = await loadSrt()
@@ -172,20 +205,11 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
       ? args.command + ' ' + args.forwardArgs.map(shellQuote).join(' ')
       : args.command
 
-  // Unique tag: base64-encoded first 100 chars of the COMMAND become
-  // the lookup key in SandboxViolationStore. Without a unique prefix,
-  // sibling projects running the same command would share violations.
   const tag = xxh3hex(`${args.cwd}|${userCommand}|${process.hrtime.bigint()}`).slice(0, 16)
   const taggedCommand = `: 'vx-${tag}'; ${userCommand}`
 
-  const wrapped = await SandboxManager.wrapWithSandbox(taggedCommand, undefined, {
-    filesystem: {
-      denyRead: [...args.denyRead],
-      allowRead: [...args.allowRead],
-      allowWrite: [...args.allowWrite],
-      denyWrite: [],
-    },
-  })
+  const customConfig = buildCustomConfig(args)
+  const wrapped = await SandboxManager.wrapWithSandbox(taggedCommand, undefined, customConfig)
 
   let proc: ReturnType<typeof Bun.spawn>
   try {
@@ -214,10 +238,6 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   await proc.exited
   const exitCode = proc.exitCode ?? (proc.signalCode ? 130 : 1)
 
-  // Read violations for THIS command tag. The log-monitor delivers
-  // events asynchronously on macOS; SRT's own teardown reads them
-  // straight after exit, so by the time `await proc.exited` returns
-  // any in-flight events have landed.
   const store = SandboxManager.getSandboxViolationStore()
   const matched = store.getViolationsForCommand(taggedCommand)
   const violations: SandboxViolation[] = matched.map((v) => ({
@@ -225,12 +245,10 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
     timestamp: v.timestamp,
   }))
 
-  // Best-effort: clear cleanup state SRT keeps around per command (it
-  // tracks bwrap mount points etc.). Silent if not needed.
   try {
     SandboxManager.cleanupAfterCommand()
   } catch {
-    // ignore
+    // ignore; bwrap mount-point cleanup is best-effort
   }
 
   return {
@@ -241,4 +259,74 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
     violations,
     ...resourceUsageToCpuRss(proc.resourceUsage()),
   }
+}
+
+/**
+ * Merge the orchestrator-provided baseline (declared inputs / outputs /
+ * workspace-root anchor) with the user's resolved sandbox block to
+ * produce the SRT customConfig. Path arrays are unioned and deduped.
+ *
+ * Network coercion:
+ *   - missing / undefined / false  → block all (allowedDomains: [])
+ *   - true                          → allow all (allowedDomains: ['*'])
+ *   - object                        → use as-is (no merge with shortcuts)
+ */
+function buildCustomConfig(
+  args: SandboxedRunArgs,
+): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
+  const c = args.config
+  const allowRead = unique([...args.baseAllowRead, ...c.allowRead])
+  const denyRead = unique([...args.baseDenyRead, ...c.denyRead])
+  const allowWrite = unique([...args.baseAllowWrite, ...c.allowWrite])
+  const denyWrite = unique([...c.denyWrite])
+
+  const custom: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] = {
+    filesystem: {
+      denyRead,
+      allowRead,
+      allowWrite,
+      denyWrite,
+      ...(c.allowGitConfig !== undefined ? { allowGitConfig: c.allowGitConfig } : {}),
+    },
+  }
+
+  // Network coercion. SRT requires allowedDomains + deniedDomains to be
+  // present on any network config; we always supply both.
+  if (c.network === true) {
+    custom.network = { allowedDomains: ['*'], deniedDomains: [] }
+  } else if (c.network && typeof c.network === 'object') {
+    custom.network = {
+      allowedDomains: c.network.allowedDomains ?? [],
+      deniedDomains: c.network.deniedDomains ?? [],
+      ...(c.network.allowUnixSockets !== undefined
+        ? { allowUnixSockets: c.network.allowUnixSockets }
+        : {}),
+      ...(c.network.allowAllUnixSockets !== undefined
+        ? { allowAllUnixSockets: c.network.allowAllUnixSockets }
+        : {}),
+      ...(c.network.allowLocalBinding !== undefined
+        ? { allowLocalBinding: c.network.allowLocalBinding }
+        : {}),
+      ...(c.network.allowMachLookup !== undefined
+        ? { allowMachLookup: c.network.allowMachLookup }
+        : {}),
+    }
+  } else {
+    // false / undefined → block all
+    custom.network = { allowedDomains: [], deniedDomains: [] }
+  }
+
+  if (c.allowPty !== undefined) custom.allowPty = c.allowPty
+  if (c.enableWeakerNestedSandbox !== undefined) {
+    custom.enableWeakerNestedSandbox = c.enableWeakerNestedSandbox
+  }
+  if (c.enableWeakerNetworkIsolation !== undefined) {
+    custom.enableWeakerNetworkIsolation = c.enableWeakerNetworkIsolation
+  }
+  if (c.ignoreViolations !== undefined) custom.ignoreViolations = c.ignoreViolations
+  return custom
+}
+
+function unique(arr: readonly string[]): string[] {
+  return [...new Set(arr)]
 }

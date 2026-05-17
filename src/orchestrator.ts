@@ -56,15 +56,6 @@ export interface RunOptions {
    * by the CLI parser, not here.
    */
   profile?: string
-  /**
-   * Enable sandbox-runtime wrapping for cached tasks. When set, each
-   * task's exec runs inside a filesystem sandbox that denies reads
-   * outside the task's declared `cache.inputs.files` and the project
-   * directory. Detected violations DON'T fail the task — they just
-   * cause `cache.save()` to be skipped, so a tainted run can't be
-   * replayed from cache. Disabled by default; opt-in via `--sandbox`.
-   */
-  sandbox?: boolean
   log?: Logger
   /**
    * Optional structural event sink. Independent of `log` — the Logger
@@ -130,16 +121,18 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const startedAtMs = Date.now()
   const remoteCacheEnabled = cache instanceof LayeredCache
 
-  // If the user asked for --sandbox, fail fast when the platform
-  // can't support it. We don't fall back to running unsandboxed —
-  // the user explicitly opted in expecting the safety net.
-  if (options.sandbox) {
+  // Lazy SRT init: only fire it up if at least one task in the graph
+  // opts into sandboxing via its `sandbox: {...}` block. Tasks that
+  // need sandboxing on an unsupported platform get a hard error so
+  // they don't silently run unsandboxed.
+  const anySandboxed = [...nodes.values()].some((n) => n.config.sandbox !== undefined)
+  if (anySandboxed) {
     const avail = await probeSandbox()
     if (!avail.available) {
       prepared.cache.close()
-      throw new UserError(`--sandbox not available: ${avail.reason}`)
+      throw new UserError(`sandbox not available: ${avail.reason}`)
     }
-    await initSandbox({ workspaceRoot })
+    await initSandbox()
   }
 
   // Header counts: unique projects covered by the graph (including
@@ -205,7 +198,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         workspaceFingerprint,
         cache,
         noCache: options.noCache ?? false,
-        sandbox: options.sandbox ?? false,
         forwardArgs: options.forwardArgs,
         log,
         observer,
@@ -305,10 +297,10 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   cache.recordRuns(toRecord)
   cache.close()
 
-  // Tear down SRT's network bridge + (on macOS) log monitor. No-op
-  // if --sandbox wasn't set; otherwise SRT keeps proxy servers alive
-  // and the next vx run would init on top of stale state.
-  if (options.sandbox) {
+  // Tear down SRT's network bridge + (on macOS) log monitor. No-op if
+  // no task was sandboxed; otherwise SRT keeps proxy servers alive and
+  // the next vx run would init on top of stale state.
+  if (anySandboxed) {
     try {
       await resetSandbox()
     } catch (err) {

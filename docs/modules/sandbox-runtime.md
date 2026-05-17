@@ -1,16 +1,67 @@
-# `src/exec/sandbox-runtime.ts` — sandbox wrapper for violation detection
+# `src/exec/sandbox-runtime.ts` — sandbox wrapper for per-task isolation
 
 ## Purpose
 
 Thin wrapper around `@anthropic-ai/sandbox-runtime` (SRT) for running a
-single task inside a filesystem sandbox and reading back any violations
-the sandbox observed. Used by `executeCachedTask` when `--sandbox` is
-set.
+single task inside a filesystem + network sandbox with strict isolation.
+Used by `executeCachedTask` when the task's config declares
+`sandbox: {}` (or `sandbox: { ... }`).
 
-Policy: **detect-and-skip-cache**. Violations don't fail the task — the
-exit code passes through unchanged. They DO cause `cache.save()` to be
-skipped, so a tainted run can't be replayed from cache on a future
-invocation.
+Policy: **fail on violation, no cache for failed tasks.** The sandbox
+enforces declared inputs at the kernel level; any task that reads
+outside the allowed set either fails naturally (Linux structural deny)
+or is detected via the macOS violation store and forced to exit
+non-zero. `cache.save` only fires when the task succeeded AND the
+violation store is empty.
+
+## User-facing config
+
+The task declares its sandbox policy in `vx.config.ts` (the
+`SandboxConfig` type, exported from `src/config.ts`). Path lists
+(`allowRead`, `denyRead`, `allowWrite`, `denyWrite`,
+`network.allowUnixSockets`, `network.allowMachLookup`) accept:
+
+- **relative paths** → resolved against the project directory
+- **absolute paths** → used as-is (`/etc/passwd`, `/tmp`)
+- **tilde paths** → expanded against the user's home (`~/.npmrc`)
+
+No globs in path lists — bwrap on Linux only accepts path prefixes.
+
+The full SRT-mirroring surface:
+
+```ts
+sandbox: {
+  // Filesystem
+  allowRead?: string[]                  // added to resolved cache.inputs.files
+  denyRead?: string[]                   // additional deny anchors
+  allowWrite?: string[]                 // added to static-prefix of cache.outputs.files
+  denyWrite?: string[]                  // additional deny anchors
+  allowGitConfig?: boolean              // permit writes to .git/config
+
+  // Network — false (default) blocks all egress; true allows all; object
+  // gives fine-grained control mirroring SRT's NetworkConfig.
+  network?: boolean | {
+    allowedDomains?: string[]           // wildcards: '*.example.com', '*'
+    deniedDomains?: string[]
+    allowUnixSockets?: string[]
+    allowAllUnixSockets?: boolean
+    allowLocalBinding?: boolean         // permit binding localhost ports
+    allowMachLookup?: string[]          // macOS only
+  }
+
+  // Process
+  allowPty?: boolean                    // permit pseudo-terminal
+  enableWeakerNestedSandbox?: boolean   // Linux: allow nested sandboxes
+  enableWeakerNetworkIsolation?: boolean // macOS: skip network namespace
+
+  // Violation policy
+  ignoreViolations?: Record<string, string[]>  // command-pattern → paths to ignore
+}
+```
+
+There is **no inheritance** from `vx.workspace.ts` and **no built-in
+escapes** for `node_modules` or `/tmp` — declare them in `allowRead` /
+`allowWrite` if you need them.
 
 ## Public surface
 
@@ -21,91 +72,94 @@ export interface SandboxAvailability {
 }
 
 export function probeSandbox(): Promise<SandboxAvailability>
-export function initSandbox(args: { workspaceRoot: string }): Promise<void>
+export function initSandbox(): Promise<void>
 export function resetSandbox(): Promise<void>
 
-export interface SandboxViolation {
-  line: string // raw log entry from SRT
-  timestamp: Date
+export interface ResolvedSandboxConfig {
+  /* same shape as SandboxConfig, paths absolute */
+}
+export function resolveSandboxConfig(cfg: SandboxConfig, projectDir: string): ResolvedSandboxConfig
+
+export interface SandboxedRunArgs {
+  command: string
+  cwd: string
+  env: NodeJS.ProcessEnv
+  forwardArgs?: readonly string[]
+  onStdout?: (chunk: string) => void
+  onStderr?: (chunk: string) => void
+  baseAllowRead: readonly string[] // resolved cache.inputs.files
+  baseAllowWrite: readonly string[] // static prefix of cache.outputs.files
+  baseDenyRead: readonly string[] // typically [workspaceRoot]
+  config: ResolvedSandboxConfig
 }
 
+export interface SandboxViolation {
+  line: string
+  timestamp: Date
+}
 export interface SandboxedRunResult extends RunResult {
   violations: SandboxViolation[]
 }
-
 export function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult>
 ```
-
-`SandboxedRunArgs` mirrors `runner.ts:RunOptions` plus three filesystem
-fields:
-
-- `allowRead` — absolute paths the task may read freely (its project
-  dir, the resolved input files, the workspace's `node_modules`).
-- `allowWrite` — absolute paths the task may write to (project dir +
-  `/tmp`; the cache writes happen outside the sandbox).
-- `denyRead` — absolute paths to flag reads against. Typically just
-  `[workspaceRoot]`: combined with `allowRead`, this says "deny reading
-  anywhere in the workspace except for these specific paths."
 
 ## How it works
 
 1. **`probeSandbox`** asks SRT whether the platform is supported and
-   whether its runtime deps (bwrap on Linux, sandbox-exec on macOS)
-   are present. Memoized — the result doesn't change within a process.
-2. **`initSandbox`** is called once per `vx run`. It calls
-   `SandboxManager.initialize` with `enableWeakerNetworkIsolation:
-true` (we don't restrict network) and starts the macOS log monitor
-   so violations land in the `SandboxViolationStore`.
-3. **`runSandboxed`** is called once per cached task:
-   - Prepends a unique `: 'vx-<hash>';` shell no-op to the command.
-     SRT keys violations by base64 of the first 100 chars of the
-     command; without this, two parallel `tsc` invocations across
-     packages would share the same key.
-   - Calls `SandboxManager.wrapWithSandbox` with a `customConfig` that
-     scopes `filesystem.denyRead` / `allowRead` / `allowWrite` to the
-     calling task.
-   - Spawns the wrapped string via `Bun.spawn(['sh', '-c', wrapped])`
-     and captures stdout/stderr + resource usage exactly like
+   whether its runtime deps (bwrap + socat on Linux, sandbox-exec on
+   macOS) are present. Memoized.
+2. **`initSandbox`** is called once per `vx run` IF at least one task
+   in the graph declares `sandbox`. It calls `SandboxManager.initialize`
+   with a deny-all baseline (network blocked, no filesystem allows);
+   per-task wrapping overrides those defaults.
+3. **`runSandboxed`** is called once per sandboxed task:
+   - Prepends a unique `: 'vx-<hash>';` shell no-op to the command so
+     SRT's `getViolationsForCommand` can disambiguate concurrent tasks
+     with identical commands (it keys by base64 of the first 100 chars).
+   - Builds a `customConfig` by merging the baseline (declared inputs,
+     declared outputs, workspace-root deny anchor) with the user's
+     resolved sandbox block.
+   - Calls `SandboxManager.wrapWithSandbox` to get the wrapped command
+     string, spawns it via `Bun.spawn(['sh', '-c', wrapped])`, and
+     captures stdout/stderr + resource usage exactly like
      `runner.ts:runCommand`.
-   - After `proc.exited`, reads back
-     `SandboxViolationStore.getViolationsForCommand(tagged)` and
-     returns the list alongside the `RunResult`.
-   - Calls `SandboxManager.cleanupAfterCommand()` so bwrap mount-point
-     files don't accumulate.
-4. **`resetSandbox`** tears down SRT's proxy servers and log monitor
-   at the end of `vx run`.
+   - After `proc.exited`, reads back any violations from the macOS
+     log monitor (always empty on Linux), then calls
+     `SandboxManager.cleanupAfterCommand()`.
+4. **`resetSandbox`** tears down SRT's proxy servers + (on macOS) the
+   log monitor at the end of `vx run`.
 
-## Platform reality check
+## Platform behaviour
 
-- **macOS:** `SandboxViolationStore` is populated in real time from
-  the system sandbox log. Violations carry the offending command +
-  syscall line; we get structured detection.
-- **Linux:** bwrap denies the read at the kernel boundary; the child
-  sees EPERM/EACCES. SRT doesn't surface a structured event for that,
-  so detection is enforcement-only. Tasks that genuinely needed an
-  undeclared input will fail naturally (and a failed task doesn't
-  cache anyway). Tasks that swallow the EPERM keep running with no
-  visible violation.
-- **Windows:** not supported by SRT. `probeSandbox` returns
-  `{ available: false }`; `--sandbox` errors out with a clear message.
+| Platform | Behaviour                                                                                                                                          |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS    | sandbox-exec + Seatbelt. Structured violations land in `SandboxViolationStore` via the system log monitor; we force exit 1 when any are recorded.  |
+| Linux    | bwrap mount namespaces. Denied paths are structurally invisible → child sees `ENOENT` and typically fails. No structured violation store on Linux. |
+| Windows  | Not supported by SRT. `probeSandbox` reports unavailable; declaring `sandbox: {}` triggers a UserError before the run starts.                      |
+
+The Linux gap (silent-swallow tools — those that try to read an
+undeclared path, catch the `ENOENT`, and keep running) is acknowledged.
+A follow-up will add optional strace-based detection so silent reads
+still surface as violations on Linux.
 
 ## Integration points
 
-- `src/orchestrator.ts` calls `probeSandbox` + `initSandbox` once at
-  the start of `run()` when `options.sandbox` is set, and
-  `resetSandbox` at the end.
+- `src/orchestrator.ts` calls `probeSandbox` + `initSandbox` at the
+  top of `run()` IFF any node in the graph has `node.config.sandbox`.
+  `resetSandbox` runs at the end.
 - `src/orchestrator/execute-task.ts:executeCachedTask` calls
-  `runSandboxed` instead of `runCommand` when
-  `args.sandbox && cacheEnabled`. On violations: skip `cache.save`,
-  surface a `vx: <task> — N sandbox violation(s); cache.save() skipped`
-  status line, attach `sandboxViolations: N` to the `TaskOutcome`.
+  `runSandboxed` instead of `runCommand` when `cfg.sandbox` is set.
+  On violations: forces exit 1, appends violation lines to stderr,
+  surfaces the count on `TaskOutcome.sandboxViolations`.
 
-## Why not enforce-on-violation?
+## Why fail-on-violation?
 
-The user-facing contract is "your build is correct OR your cache is
-fresh, never both wrong." Skipping `cache.save` gives that: a task
-with violations always re-runs next time, so the cache never returns
-output derived from undeclared inputs. Failing the task on violations
-would block the build for noisy violations (e.g. a tool that probes
-many candidate paths and tolerates EPERM); detect-only keeps the
-loop usable while still protecting the cache.
+The user-facing contract: "if your task can succeed without an
+undeclared path, the sandbox is invisible; if it tries to reach one,
+you find out immediately." Without fail-on-violation, a task that
+tolerates `ENOENT` (e.g. probes for an optional `~/.foorc` then
+proceeds without it) would silently mask a leaked dependency — the
+cache would store output as if no undeclared read happened. Failing
+the task surfaces the problem early so users can update their
+`sandbox.allowRead` (or accept the leak by adding the path) before
+shipping a build that depended on it.

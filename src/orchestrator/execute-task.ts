@@ -4,7 +4,11 @@ import type { CacheLayer } from '../cache/cache.js'
 import { cleanOutputs, resolveInputs, resolveOutputs } from '../cache/inputs.js'
 import { buildIsolatedEnv } from '../exec/env.js'
 import { runCommand, runPersistent } from '../exec/runner.js'
-import { runSandboxed, type SandboxViolation } from '../exec/sandbox-runtime.js'
+import {
+  runSandboxed,
+  resolveSandboxConfig,
+  type SandboxViolation,
+} from '../exec/sandbox-runtime.js'
 import type { TaskOutcome } from '../graph/scheduler.js'
 import { isGroupTask, type TaskNode } from '../graph/task-graph.js'
 import type { Logger } from './logger.js'
@@ -19,14 +23,6 @@ export interface ExecuteArgs {
   workspaceFingerprint: string
   cache: CacheLayer
   noCache: boolean
-  /**
-   * Enable sandbox-runtime wrapping for this task's exec. Only applies
-   * to cached tasks — group tasks have no exec, persistent tasks need
-   * unrestricted network. When violations are detected, the task still
-   * passes (exit code unchanged) but `cache.save()` is skipped so a
-   * tainted run can't be replayed.
-   */
-  sandbox: boolean
   forwardArgs?: readonly string[] | undefined
   log: Logger
   /**
@@ -370,30 +366,30 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const env = taskEnv(node, step)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
-  // Sandbox is opt-in (--sandbox) and only meaningful for cached tasks
-  // — tasks without a `cache:` block have no input declarations to
-  // enforce. When enabled, undeclared reads surface as violations and
-  // the task's cache.save() is skipped (but exit code passes through).
-  const useSandbox = args.sandbox && cacheEnabled
+  // Sandbox is opt-in per task via `sandbox: {}` (or `sandbox: {...}`)
+  // in the task config. No CLI flag, no workspace inheritance — the
+  // task config is the single source of truth.
+  const useSandbox = cfg.sandbox !== undefined
   let violations: SandboxViolation[] = []
-  const result = useSandbox
-    ? await runSandboxedTask()
-    : await runCommand({
-        command: step.command,
-        cwd: node.projectDir,
-        env,
-        forwardArgs: effectiveForwardArgs,
-        onStdout: (chunk) => log.taskStdout(node, chunk),
-        onStderr: (chunk) => log.taskStderr(node, chunk),
-      })
+  const result = useSandbox ? await runSandboxedTask() : await runUnsandboxedTask()
+
+  async function runUnsandboxedTask(): ReturnType<typeof runCommand> {
+    return runCommand({
+      command: step.command,
+      cwd: node.projectDir,
+      env,
+      forwardArgs: effectiveForwardArgs,
+      onStdout: (chunk) => log.taskStdout(node, chunk),
+      onStderr: (chunk) => log.taskStderr(node, chunk),
+    })
+  }
 
   async function runSandboxedTask(): ReturnType<typeof runCommand> {
-    // Allowed reads = declared input files (resolved to absolute paths)
-    // plus the project's own directory + workspace-root node_modules
-    // (dep resolution walks up). The denyRead anchor is the workspace
-    // root: anything inside it that isn't explicitly allowed (sibling
-    // projects, root-level config files not in inputs) trips a
-    // violation. Project boundaries are the main invariant we protect.
+    // Baseline allowRead = resolved cache.inputs.files (absolute paths)
+    // Baseline allowWrite = static prefix of every cache.outputs.files glob
+    // Baseline denyRead = the workspace root, so any read outside the
+    //   project's declared inputs trips the deny boundary.
+    // The user's sandbox block extends each list with explicit additions.
     const resolved = await resolveInputs({
       projectDir: node.projectDir,
       workspaceRoot: args.workspaceRoot,
@@ -403,11 +399,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       nestedProjectDirs: args.nestedProjectDirs,
       ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
     })
-    const allowRead = [
-      node.projectDir,
-      path.join(args.workspaceRoot, 'node_modules'),
-      ...resolved.files,
-    ]
+    const baseAllowWrite = outputs.map((g) => path.join(node.projectDir, staticPrefix(g)))
     const sandboxResult = await runSandboxed({
       command: step.command,
       cwd: node.projectDir,
@@ -415,30 +407,35 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       forwardArgs: effectiveForwardArgs,
       onStdout: (chunk) => log.taskStdout(node, chunk),
       onStderr: (chunk) => log.taskStderr(node, chunk),
-      allowRead,
-      allowWrite: [node.projectDir, '/tmp'],
-      denyRead: [args.workspaceRoot],
+      baseAllowRead: resolved.files,
+      baseAllowWrite,
+      baseDenyRead: [args.workspaceRoot],
+      config: resolveSandboxConfig(cfg.sandbox ?? {}, node.projectDir),
     })
     violations = sandboxResult.violations
-    // Strip the SandboxedRunResult-specific `violations` field; the
-    // rest of the shape matches RunResult exactly.
     const { violations: _v, ...runResult } = sandboxResult
     return runResult
   }
 
   const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
+  // Fail-on-violation. macOS's structured violation store lets us turn
+  // a passing exit code into a failure when the task tripped the
+  // boundary; Linux relies on the child failing naturally on ENOENT,
+  // so violations.length is always 0 there but the task will already
+  // be exit != 0 if it needed the missing file.
+  let effectiveExitCode = result.exitCode
+  let effectiveStderr = result.stderr
   if (violations.length > 0) {
-    log.status(`vx: ${node.id} — ${violations.length} sandbox violation(s); cache.save() skipped`)
+    log.status(`vx: ${node.id} — ${violations.length} sandbox violation(s); task failed`)
     for (const v of violations.slice(0, 5)) log.status(`  ${v.line}`)
     if (violations.length > 5) log.status(`  … +${violations.length - 5} more`)
+    if (effectiveExitCode === 0) effectiveExitCode = 1
+    effectiveStderr += '\n[vx] sandbox violations:\n'
+    for (const v of violations) effectiveStderr += `  ${v.line}\n`
   }
 
-  // Skip cache.save() when violations were detected — the task may have
-  // read files outside its declared inputs, so the cache key doesn't
-  // reflect everything it actually depends on. Saving would mean future
-  // runs replay outputs derived from undeclared state.
-  if (result.exitCode === 0 && cacheEnabled && violations.length === 0) {
+  if (effectiveExitCode === 0 && cacheEnabled) {
     const outputFiles = await resolveOutputs({
       projectDir: node.projectDir,
       outputs,
@@ -451,28 +448,48 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       entry: {
         taskId: node.id,
         command: step.command,
-        exitCode: result.exitCode,
+        exitCode: effectiveExitCode,
         durationMs: result.durationMs,
         stdout: result.stdout,
-        stderr: result.stderr,
+        stderr: effectiveStderr,
       },
     })
   }
 
   return {
     node,
-    status: result.exitCode === 0 ? 'success' : 'failed',
-    exitCode: result.exitCode,
+    status: effectiveExitCode === 0 ? 'success' : 'failed',
+    exitCode: effectiveExitCode,
     durationMs: result.durationMs,
     hash,
     stdout: result.stdout,
-    stderr: result.stderr,
+    stderr: effectiveStderr,
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
     wallclockStartNs,
     wallclockEndNs,
     ...(violations.length > 0 ? { sandboxViolations: violations.length } : {}),
   }
+}
+
+/**
+ * Return the longest prefix of a glob that contains no wildcards. Used
+ * to derive an allowWrite path from each `cache.outputs.files` entry:
+ * `dist/**` → `dist`, `build/output.js` → `build/output.js`, `**` →
+ * `.` (the project dir itself). bwrap binds at the directory level so
+ * a file path covers writes to that file; a dir path covers writes
+ * anywhere underneath.
+ */
+function staticPrefix(glob: string): string {
+  const wildcardIdx = glob.search(/[*?[\]]/)
+  if (wildcardIdx === -1) return glob
+  // Trim back to the last separator before the wildcard so we keep
+  // only complete path components (e.g. `dist/sub-**` → `dist`, not
+  // `dist/sub-`).
+  const head = glob.slice(0, wildcardIdx)
+  const lastSep = head.lastIndexOf('/')
+  if (lastSep === -1) return '.'
+  return head.slice(0, lastSep) || '/'
 }
 
 /**

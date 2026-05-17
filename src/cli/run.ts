@@ -37,7 +37,6 @@ export interface RunArgs {
   excludeDependencies: 'all' | string[]
   concurrency: number | undefined
   noCache: boolean
-  sandbox: boolean
   forwardArgs: string[]
   verbosity: number
   dry: 'text' | 'json' | undefined
@@ -61,7 +60,6 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     excludeDependencies: [],
     concurrency: undefined,
     noCache: false,
-    sandbox: false,
     forwardArgs: [],
     verbosity: 0,
     dry: undefined,
@@ -99,8 +97,6 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
         .filter((s) => s.length > 0)
     } else if (a === '--no-cache' || a === '--force') {
       out.noCache = true
-    } else if (a === '--sandbox') {
-      out.sandbox = true
     } else if (a === '--cache') {
       // No-op: parity with vite-task. Caching is governed by the task's `cache`
       // block in config; this flag is symmetric with --no-cache.
@@ -219,7 +215,6 @@ export async function resolveRunOptions(
     cwd,
     tasks: [...tasks],
     noCache: parsed.noCache,
-    sandbox: parsed.sandbox,
     forwardArgs: parsed.forwardArgs,
   }
   if (parsed.excludeDependencies === 'all') {

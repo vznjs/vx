@@ -133,34 +133,37 @@ bun.lock
 
 ## Decision log
 
-- **2026-05**: Sandbox revived as opt-in detection layer via
+- **2026-05**: Sandbox refactored to per-task config + fail-on-violation.
+  Drops the `--sandbox` CLI flag and `RunOptions.sandbox` entirely;
+  activation is declarative via `sandbox: {}` (or `sandbox: { ... }`)
+  in each task's config. No workspace inheritance, no built-in escapes
+  for `node_modules` / `/tmp` — users declare everything explicitly so
+  a single `vx.config.ts` describes the full task permission surface.
+  `SandboxConfig` in `src/config.ts` mirrors SRT's full user-facing
+  schema (filesystem allow/deny, network as `boolean | NetworkConfig`,
+  `allowGitConfig`, `allowPty`, `enableWeakerNestedSandbox`,
+  `enableWeakerNetworkIsolation`, `ignoreViolations`) with strict
+  loader validation (allowlist of known fields, type checks, no globs
+  in path lists). Policy switched from "detect-and-skip-cache" to
+  **fail-on-violation**: on macOS, a non-empty `SandboxViolationStore`
+  after exec forces exit code 1 + appends violation lines to stderr;
+  on Linux, bwrap's structural deny means the child sees `ENOENT` and
+  typically fails naturally. Lazy SRT init — `probeSandbox` +
+  `initSandbox` only fire when at least one node in the graph has
+  `node.config.sandbox`. Baseline `allowRead` = resolved
+  `cache.inputs.files`; baseline `allowWrite` = static prefix of every
+  `cache.outputs.files` glob; baseline `denyRead` = workspace root.
+  Linux silent-swallow case (tools that catch `ENOENT` and continue)
+  is acknowledged — strace-based per-process detection coming in a
+  follow-up commit on the same branch.
+
+- **2026-05**: Sandbox revived as opt-in layer via
   `@anthropic-ai/sandbox-runtime` (SRT). New module
   `src/exec/sandbox-runtime.ts` is a thin wrapper around SRT's
-  `SandboxManager` + `SandboxViolationStore`. New CLI flag
-  `--sandbox` opts in per `vx run`. Policy is
-  **detect-and-skip-cache**, not the enforce-or-fail model of the
-  original 2026-05 removal: violations don't fail the task (exit
-  code passes through) but `cache.save()` is skipped so tainted
-  runs can't be replayed. New `TaskOutcome.sandboxViolations`
-  field surfaces the count for consumers. Wired into
-  `executeCachedTask` only — group tasks (no exec) and persistent
-  tasks (need network) bypass. Allowed reads per task = projectDir
-  - workspace `node_modules` + resolved `cache.inputs.files`;
-    `denyRead` anchored at the workspace root so sibling-project
-    reads + undeclared root-level config reads trip violations.
-    Platform reality: macOS gets structured detection (log monitor
-    populates `SandboxViolationStore`); Linux gets enforcement-only
-    (bwrap denies at kernel boundary; SRT doesn't surface structured
-    events on Linux, so detection there relies on the task failing
-    naturally). Windows unsupported — `--sandbox` errors out with a
-    clear message. On Ubuntu 24's AppArmor block of unprivileged
-    user namespaces, SRT's `checkDependencies` still passes (bwrap
-    binary present), so the failure surfaces when the first task
-    spawns — accepted tradeoff for v1. New module doc
-    `docs/modules/sandbox-runtime.md`, new `## Sandbox` section in
-    `docs/cli.md`. Tests in `tests/sandbox-runtime.test.ts` use
-    `describe.skipIf(!available)` so CI on hosts without bwrap (this
-    container, GitHub Actions ubuntu-latest baseline) skips cleanly.
+  `SandboxManager` + `SandboxViolationStore`. Initially shipped with
+  a `--sandbox` CLI flag + "detect-and-skip-cache" policy; refactored
+  the same day (see entry above) after user feedback to per-task
+  config + fail-on-violation.
 
 - **2026-05**: Bun-builtins audit. Replaced the hand-rolled 50-LOC
   Crockford-base32 ULID generator (`src/util/ulid.ts`) with a thin
