@@ -119,16 +119,22 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const startedAtMs = Date.now()
   const remoteCacheEnabled = cache instanceof LayeredCache
 
-  // Packages-in-scope for the header: the unique projects covered by
-  // the graph (including dependsOn-pulled deps), not just the
-  // user-requested set.
+  // Header counts: unique projects covered by the graph (including
+  // dependsOn-pulled deps, not just the user-requested set), and the
+  // total number of real (non-group) task executions. Mirrors the
+  // count the end-of-run summary reports under "total".
   const packagesInScope = new Set<string>()
-  for (const node of nodes.values()) packagesInScope.add(node.projectName)
+  let taskCount = 0
+  for (const node of nodes.values()) {
+    packagesInScope.add(node.projectName)
+    if (!isGroupTask(node)) taskCount++
+  }
   for (const line of formatHeader(
     {
       version: VERSION,
-      packages: [...packagesInScope],
+      packageCount: packagesInScope.size,
       tasks: [...new Set(options.tasks.map(unanchored))],
+      taskCount,
       remoteCacheEnabled,
     },
     colors,

@@ -32,21 +32,28 @@ const ERROR = '#ef4444' // red-500 — failed
 
 export interface HeaderInput {
   version: string
-  packages: readonly string[]
+  /** Number of unique projects covered by the graph (group tasks included). */
+  packageCount: number
   /** Display names of the tasks the user requested (already deduped). */
   tasks: readonly string[]
+  /**
+   * Number of (project, task) executions in the graph, excluding group
+   * tasks (no `exec`). This is the count of real work the run will do —
+   * matches the "total" the end-of-run summary reports.
+   */
+  taskCount: number
   remoteCacheEnabled: boolean
 }
 
 export function formatHeader(input: HeaderInput, colors: ColorSupport = NO_COLOR): string[] {
-  const sortedPkgs = [...input.packages].sort()
   const bullet = paint(ACCENT, '•', colors)
   const taskList = input.tasks.length === 1 ? input.tasks[0] : input.tasks.join(', ')
+  const pkgs = `${input.packageCount} package${input.packageCount === 1 ? '' : 's'}`
+  const tasks = `${input.taskCount} task${input.taskCount === 1 ? '' : 's'}`
   return [
     `${bullet} ${paint('', `vx ${input.version}`, colors, { bold: true })}`,
     '',
-    `   ${bullet} Packages in scope: ${sortedPkgs.join(', ')}`,
-    `   ${bullet} Running ${taskList} in ${sortedPkgs.length} package${sortedPkgs.length === 1 ? '' : 's'}`,
+    `   ${bullet} Running ${taskList} in ${pkgs} (${tasks})`,
     `   ${bullet} Remote caching ${input.remoteCacheEnabled ? 'enabled' : 'disabled'}`,
     '',
   ]
@@ -92,15 +99,21 @@ function formatBlockHeader(node: TaskNode, o: TaskOutcome, colors: ColorSupport)
   const dim = (s: string) => paint('', s, colors, { dim: true })
   switch (o.status) {
     case 'cache-hit':
-      return `${paint(SUCCESS, 'cache hit', colors)} ${dim(`• ${shortHash}`)}`
+      if (o.restored === false) {
+        return `${paint(SUCCESS, 'up-to-date', colors)} ${dim(`• ${shortHash}`)}`
+      }
+      return `${paint(SUCCESS, 'local-cache', colors)} ${dim(`• ${shortHash}`)}`
     case 'cache-hit-remote':
-      return `${paint(ACCENT, 'remote cache hit', colors)} ${dim(`• ${shortHash}`)}`
+      if (o.restored === false) {
+        return `${paint(SUCCESS, 'up-to-date', colors)} ${dim(`• ${shortHash}`)}`
+      }
+      return `${paint(ACCENT, 'remote-cache', colors)} ${dim(`• ${shortHash}`)}`
     case 'failed':
       return `$ ${node.config.exec?.command ?? '(no command)'}`
     case 'skipped':
       return paint(WARN, 'skipped (upstream failed)', colors)
     case 'success':
-      return dim('executed')
+      return dim('cache-miss')
     default:
       return o.status
   }
@@ -119,11 +132,11 @@ function formatBlockFooter(o: TaskOutcome, colors: ColorSupport): string {
 function formatStatusTag(o: TaskOutcome, colors: ColorSupport): string {
   switch (o.status) {
     case 'cache-hit':
-      return paint('', 'from local cache', colors, { dim: true })
+      return paint('', o.restored === false ? 'up-to-date' : 'local-cache', colors, { dim: true })
     case 'cache-hit-remote':
-      return paint('', 'from remote cache', colors, { dim: true })
+      return paint('', o.restored === false ? 'up-to-date' : 'remote-cache', colors, { dim: true })
     case 'success':
-      return paint('', 'executed', colors, { dim: true })
+      return paint('', 'cache-miss', colors, { dim: true })
     case 'failed':
       return paint(ERROR, `FAILED (exit ${o.exitCode})`, colors, { bold: true })
     case 'skipped':
