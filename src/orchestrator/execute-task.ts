@@ -290,7 +290,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // shows, not the original exec time stored in the entry.
   if (cacheEnabled) {
     const cacheOpStart = performance.now()
-    const hit = await cache.get(hash)
+    const hit = await cache.get(hash, { taskId: node.id, command: step.command })
     args.observer?.emit({
       kind: 'cacheProbe',
       nodeId: node.id,
@@ -336,7 +336,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         await cache.restoreOutputs(hash, node.projectDir)
       }
       if (hit.stdout) log.taskStdout(node, hit.stdout)
-      if (hit.stderr) log.taskStderr(node, hit.stderr)
       const status =
         hit.exitCode !== 0 ? 'failed' : hit.source === 'remote' ? 'cache-hit-remote' : 'cache-hit'
       // `restored` distinguishes "we just wrote files to disk" from
@@ -467,7 +466,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         exitCode: effectiveExitCode,
         durationMs: result.durationMs,
         stdout: result.stdout,
-        stderr: effectiveStderr,
       },
     })
   }

@@ -1,21 +1,29 @@
-// Content-addressed task cache, v15 (xxh3 keys, tar.zst artifact) / v15 (schema).
+// Content-addressed task cache.
 //
 // On-disk layout:
 //   <cacheDir>/cache.db            — SQLite index (entries + runs + file_hashes)
-//   <cacheDir>/<hash>.tar.zst      — per-entry artifact: outputs/ + (optional)
-//                                    stdout + (optional) stderr
+//   <cacheDir>/<hash>.tar.zst      — per-entry artifact:
+//                                      stdout    (captured stdout, always present)
+//                                      outputs/  (declared output files, when any)
 //
-// SQLite holds the index — hash, project, task, command, exitCode,
-// durationMs, sizeBytes, timestamps. The artifact is a pure dump of
-// the run's outputs and captured streams. stdout/stderr live in the
-// artifact (not the DB) so a remote pull round-trip carries them
-// with the bytes.
+// The artifact carries ONLY replayable bytes (logs + outputs). Entry
+// metadata — taskId, command, exitCode, durationMs, storedAt — lives
+// in the SQLite `entries` row. The same tar.zst bytes ship to a remote
+// cache server unchanged; on remote-hit, the caller supplies metadata
+// via the `ingest(hash, bytes, meta)` API so the local SQL index gets
+// populated without sniffing the artifact.
+//
+// We never cache failed runs, so stderr is dropped from the cached
+// surface entirely. Live runs still stream stderr through the logger
+// for the user to see — but on a cache hit there's nothing to replay
+// (the original run was successful and stderr typically empty).
 //
 // Replace this module to plug in remote storage. The contract is:
 //   key()           : derive a stable hash from a task's identity + inputs
-//   get(hash)       : retrieve a previous run's metadata, or null
+//   get(hash, ctx?) : retrieve a previous run's metadata, or null
 //   restoreOutputs  : extract the artifact's outputs/ into the project dir
-//   save            : persist outputs + stdout/stderr under a hash
+//   save            : persist outputs + stdout under a hash
+//   ingest          : adopt an artifact produced elsewhere (remote-hit path)
 //   recordRun       : append a row to the run history table (for stats)
 //   close           : release the SQLite handle
 
@@ -37,14 +45,13 @@ import { extractOutputs, parseTarHeaders, readTarText } from './tar.js'
 // `stdout` / `stderr` entries only when non-empty. Output files live
 // inside the tar under `outputs/`. Empty tasks produce an empty
 // archive. The entries table remains the queryable index.
-const CACHE_VERSION = 'vx-cache-v15'
-// v16: dropped manifest.json from the tar artifact; output-file
-// fingerprints (size, mode, mtime) now live in the SQLite
-// `output_files` table, batch-loaded once at the top of a run. Lets
-// the orchestrator probe "is this entry's tree already current?"
-// via a Map lookup + N stats — no zstd decompress, no tar I/O, no
-// JSON parse on the warm-cache-hit path.
-const SCHEMA_VERSION = 'v16'
+// v17: artifact carries only logs + outputs (stdout + outputs/<rel>).
+// Local and remote layers transport the SAME tar.zst bytes — no
+// separate stage/meta.json/tar.gz dance for remote, no
+// `cache-archive.ts`. stderr is no longer cached: we only cache
+// successful runs and stderr is rarely meaningful on success.
+const CACHE_VERSION = 'vx-cache-v17'
+const SCHEMA_VERSION = 'v17'
 
 export interface CacheKeyInput {
   taskId: string
@@ -95,8 +102,8 @@ export interface CacheEntry {
   exitCode: number
   durationMs: number
   outputFiles: string[]
+  /** Captured stdout, always present (may be empty). stderr is not cached. */
   stdout: string
-  stderr: string
   storedAt: string
   /**
    * Where this hit was resolved from. `'local'` for a SQLite-backed
@@ -214,9 +221,29 @@ export interface OutputFileRow {
  * orchestrator's `executeTask` can take either without a discriminated
  * union and we get a compile-time guarantee the surfaces stay congruent.
  */
+/**
+ * Context passed to `get()`. Optional, but required when the lookup
+ * may resolve through the remote layer — the local SQL row inserted on
+ * remote-hit needs `taskId` + `command` to be queryable later (the
+ * artifact itself doesn't carry them). `Cache` (local) ignores this
+ * field; `LayeredCache` forwards it to `Cache.ingest`.
+ */
+export interface CacheGetContext {
+  taskId: string
+  command: string
+}
+
+/** Metadata supplied at ingest time — values the artifact does not carry. */
+export interface IngestMeta {
+  taskId: string
+  command: string
+  /** Wall-clock time of the original task execution. */
+  durationMs: number
+}
+
 export interface CacheLayer {
   key(input: CacheKeyInput): Promise<string>
-  get(hash: string): Promise<CacheEntry | null>
+  get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   /**
    * Batched metadata-only probe. Returns a Map keyed by hash holding
    * `CacheEntryMeta` for every input hash that resolved to a local
@@ -262,6 +289,14 @@ export interface CacheLayer {
     projectDir: string
     outputFiles: string[]
   }): Promise<void>
+  /**
+   * Adopt an artifact produced elsewhere — the remote-hit path. Writes
+   * the compressed bytes to `<cacheDir>/<hash>.tar.zst`, parses the
+   * tar headers to populate the `output_files` rows, and inserts the
+   * `entries` row using the caller-supplied `meta`. After this returns,
+   * the next `get(hash)` resolves locally.
+   */
+  ingest(hash: string, compressed: Uint8Array, meta: IngestMeta): Promise<void>
   recordRun(run: RunRecord): void
   /**
    * Append every run in `runs` to the history in a single SQLite
@@ -327,6 +362,7 @@ export class Cache implements CacheLayer {
   private readonly selectFileHash: ReturnType<Database['prepare']>
   private readonly upsertFileHash: ReturnType<Database['prepare']>
   private readonly insertOutputFile: ReturnType<Database['prepare']>
+  private readonly deleteOutputFiles: ReturnType<Database['prepare']>
   /**
    * Single-slot stash of the most recently decompressed tar. Populated
    * by `get()`, consumed by the next matching `restoreOutputs()`. The
@@ -497,6 +533,7 @@ export class Cache implements CacheLayer {
         mode       = excluded.mode,
         mtime_ms   = excluded.mtime_ms
     `)
+    this.deleteOutputFiles = this.db.prepare('DELETE FROM output_files WHERE entry_hash = ?')
   }
 
   /**
@@ -576,7 +613,10 @@ export class Cache implements CacheLayer {
     return xxh3hexOf(h)
   }
 
-  async get(hash: string): Promise<CacheEntry | null> {
+  // ctx is accepted but ignored — the local layer reads metadata from
+  // the entries row. It's part of the contract so LayeredCache can
+  // route metadata to `ingest()` on remote-hit without a separate API.
+  async get(hash: string, _ctx?: CacheGetContext): Promise<CacheEntry | null> {
     const row = this.selectEntry.get(hash) as EntryRow | undefined
     if (!row) return null
 
@@ -586,12 +626,11 @@ export class Cache implements CacheLayer {
 
     this.bumpAccessed.run(Date.now(), hash)
 
-    // Read the tar once: get the entry list AND pull `stdout`/`stderr`
-    // contents (if present) in a single decompress. The decompressed
-    // bytes are stashed for the matching `restoreOutputs()` call —
-    // the orchestrator's cache-hit path does get→restore back-to-back
-    // so we skip a second decompress on every hit. Manifest entries
-    // are ignored here — they're consumed by `restoreOutputs()`.
+    // Read the tar once: get the entry list AND pull `stdout` in a
+    // single decompress. The decompressed bytes are stashed for the
+    // matching `restoreOutputs()` call — the orchestrator's cache-hit
+    // path does get→restore back-to-back for the same hash, so we
+    // skip a second decompress on every hit.
     const compressed = await Bun.file(this.tarPath(hash)).bytes()
     const tarBytes = await Bun.zstdDecompress(compressed)
     this.decompressedTar = { hash, bytes: tarBytes }
@@ -608,7 +647,6 @@ export class Cache implements CacheLayer {
       durationMs: row.duration_ms,
       outputFiles,
       stdout: readTarText(tarBytes, headers, 'stdout'),
-      stderr: readTarText(tarBytes, headers, 'stderr'),
       storedAt: new Date(row.created_at).toISOString(),
       source: 'local',
     }
@@ -757,119 +795,109 @@ export class Cache implements CacheLayer {
     projectDir: string
     outputFiles: string[]
   }): Promise<void> {
-    // Layout (v15): one `<hash>.tar.zst` per entry. Tar carries ONLY
+    // Layout (v17): one `<hash>.tar.zst` per entry. Tar carries ONLY
     // the things you'd want to re-materialize on a cache hit:
     //
-    //   outputs/<rel>     — declared output files (omitted entirely
-    //                       when args.outputFiles is empty)
-    //   stdout            — captured stdout (omitted when empty)
-    //   stderr            — captured stderr (omitted when empty)
+    //   stdout            — captured stdout (ALWAYS present, may be empty)
+    //   outputs/<rel>     — declared output files (omitted when none)
     //
-    // If a task has no outputs and produced no stdout/stderr, the
-    // archive is essentially empty (~ a few bytes of zstd framing).
-    // Metadata about the entry — command, exit code, duration —
-    // lives in the SQLite entries row, not the artifact.
-    //
-    // We write to a `.tmp` sibling and rename atomically so a
-    // concurrent reader sees either no entry or a complete one.
-    // The tmp suffix mixes pid + hrtime + a random hex chunk so two
-    // saves of the same hash from the same process (or from two
-    // forked workers that happen to share a wall-clock ms) don't
-    // pick the same tmp filename and race on the rename.
-    const finalPath = this.tarPath(args.hash)
-    const tmpPath = `${finalPath}.tmp-${process.pid}-${process.hrtime.bigint()}-${Math.random().toString(36).slice(2, 10)}`
-    await mkdir(this.cacheDir, { recursive: true })
+    // Metadata (command, exitCode, durationMs, storedAt) lives in
+    // SQLite, not the artifact. Remote-hit ingestion takes metadata
+    // through `ingest()` arguments — the artifact stays clean bytes.
+    const compressed = await this.packArtifact(args)
+    await this.writeArtifactAndIndex(args.hash, compressed, {
+      taskId: args.entry.taskId,
+      command: args.entry.command,
+      durationMs: args.entry.durationMs,
+    })
+  }
 
-    // Stage stdout / stderr / outputs into a temp dir, then tar the
-    // contents. Stage paths mirror the final tar layout one-to-one.
+  async ingest(hash: string, compressed: Uint8Array, meta: IngestMeta): Promise<void> {
+    await this.writeArtifactAndIndex(hash, compressed, meta)
+  }
+
+  /**
+   * Stage stdout + outputs, tar them, zstd-compress, return the bytes.
+   * No disk write to the final cache path — that's the index step's
+   * job. Pure transform, so `ingest()` can skip this and just hand its
+   * remote-supplied bytes straight to `writeArtifactAndIndex`.
+   */
+  private async packArtifact(args: {
+    hash: string
+    entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles'>
+    projectDir: string
+    outputFiles: string[]
+  }): Promise<Uint8Array> {
     const stage = await mkdtemp(path.join(os.tmpdir(), 'vx-save-'))
-    const outputFileRows: Array<[string, number, number, number]> = []
     try {
       if (args.outputFiles.length > 0) {
         const stageOutputs = path.join(stage, 'outputs')
-        const writes = args.outputFiles.map(async (f) => {
-          const rel = path.relative(args.projectDir, f)
-          const dest = path.join(stageOutputs, rel)
-          // Bun.write creates parent dirs as needed.
-          await Bun.write(dest, Bun.file(f))
-        })
-        await Promise.all(writes)
-        // Stat the STAGED files (not the originals) — those bytes
-        // are what go into the tar, and tar's stored mtime is the
-        // staged file's mtime truncated to seconds. extractOutputs
-        // restores files with that same tar-stored mtime, so
-        // recording the staged file's mtime here makes the saved
-        // fingerprint match what isOutputsCurrent will compare
-        // against post-restore.
-        const stagedStats = await Promise.all(
-          args.outputFiles.map((f) => {
+        await Promise.all(
+          args.outputFiles.map(async (f) => {
             const rel = path.relative(args.projectDir, f)
-            return stat(path.join(stageOutputs, rel))
+            const dest = path.join(stageOutputs, rel)
+            // Bun.write creates parent dirs as needed.
+            await Bun.write(dest, Bun.file(f))
           }),
         )
-        for (let i = 0; i < args.outputFiles.length; i++) {
-          const rel = path.relative(args.projectDir, args.outputFiles[i]!).split(path.sep).join('/')
-          const s = stagedStats[i]!
-          outputFileRows.push([rel, s.size, s.mode & 0o777, Math.floor(s.mtimeMs)])
-        }
       }
-      if (args.entry.stdout && args.entry.stdout.length > 0) {
-        await Bun.write(path.join(stage, 'stdout'), args.entry.stdout)
-      }
-      if (args.entry.stderr && args.entry.stderr.length > 0) {
-        await Bun.write(path.join(stage, 'stderr'), args.entry.stderr)
-      }
+      // stdout is ALWAYS present in the artifact, even if empty, so the
+      // archive layout is predictable: a successful read finds `stdout`
+      // and zero-or-more `outputs/<rel>` entries.
+      await Bun.write(path.join(stage, 'stdout'), args.entry.stdout ?? '')
 
-      // List the top-level entries we just staged so tar emits them
-      // with names like `outputs/...` / `stdout` / `stderr` — no
-      // leading `./` prefix that would break the restore's entry-name
-      // matching. (v16 dropped `manifest.json` — output-file
-      // fingerprints live in the SQLite `output_files` table now.)
-      const topLevel: string[] = []
-      if (args.outputFiles.length > 0) topLevel.push('outputs')
-      if (args.entry.stdout && args.entry.stdout.length > 0) topLevel.push('stdout')
-      if (args.entry.stderr && args.entry.stderr.length > 0) topLevel.push('stderr')
+      const topLevel: string[] = ['stdout']
+      if (args.outputFiles.length > 0) topLevel.unshift('outputs')
 
-      let tarBytes: Uint8Array
-      if (topLevel.length === 0) {
-        // Empty archive — task produced no outputs and no captured
-        // logs. Tar requires at least one entry, so build a two-block
-        // zero-padded EOF manually (the on-disk shape of an empty tar).
-        tarBytes = new Uint8Array(1024)
-      } else {
-        // `--format=ustar` forces strict POSIX ustar — no PAX
-        // extended-header records. BSD tar (macOS default) emits PAX
-        // per entry by default for xattrs / mtime-nanos; those
-        // records would otherwise show up as junk `PaxHeaders/<name>`
-        // entries in our restored trees. GNU tar also accepts the
-        // flag (no-op on its side, since it defaults to GNU format
-        // which already avoids PAX). Names > 100 chars still work
-        // via ustar's prefix+name (255 chars) or via GNU longname
-        // fallback if the tar binary chooses to emit one.
-        const proc = Bun.spawn(['tar', '--format=ustar', '-cf', '-', '-C', stage, ...topLevel], {
-          stdout: 'pipe',
-          stderr: 'pipe',
-          // COPYFILE_DISABLE blocks Apple's copyfile() from
-          // attaching xattrs to staged files via inherited child
-          // copies; tar then has nothing to emit AppleDouble for.
-          env: { ...process.env, COPYFILE_DISABLE: '1' },
-        })
-        const [bytes, stderrText] = await Promise.all([
-          new Response(proc.stdout).bytes(),
-          new Response(proc.stderr).text(),
-        ])
-        await proc.exited
-        if (proc.exitCode !== 0) {
-          throw new Error(`save: tar exited ${proc.exitCode}: ${stderrText.trim()}`)
-        }
-        tarBytes = bytes
+      // `--format=ustar` forces strict POSIX ustar — no PAX extended-
+      // header records. BSD tar (macOS default) emits PAX per entry
+      // by default for xattrs / mtime-nanos; those records would
+      // otherwise show up as junk `PaxHeaders/<name>` entries in our
+      // restored trees. GNU tar also accepts the flag (no-op on its
+      // side). Names > 100 chars still work via ustar's prefix+name
+      // (255 chars) or GNU longname fallback if the tar binary
+      // chooses to emit one.
+      const proc = Bun.spawn(['tar', '--format=ustar', '-cf', '-', '-C', stage, ...topLevel], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+        // COPYFILE_DISABLE blocks Apple's copyfile() from attaching
+        // xattrs to staged files via inherited child copies; tar then
+        // has nothing to emit AppleDouble for.
+        env: { ...process.env, COPYFILE_DISABLE: '1' },
+      })
+      const [tarBytes, stderrText] = await Promise.all([
+        new Response(proc.stdout).bytes(),
+        new Response(proc.stderr).text(),
+      ])
+      await proc.exited
+      if (proc.exitCode !== 0) {
+        throw new Error(`save: tar exited ${proc.exitCode}: ${stderrText.trim()}`)
       }
-      const compressed = await Bun.zstdCompress(tarBytes)
-      await Bun.write(tmpPath, compressed)
+      return await Bun.zstdCompress(tarBytes)
     } finally {
       await rm(stage, { recursive: true, force: true })
     }
+  }
 
+  /**
+   * Atomically write `compressed` to `<hash>.tar.zst` and (re)build
+   * the entries + output_files SQL rows from the tar headers. Shared
+   * by `save()` (we just packed the bytes) and `ingest()` (we got
+   * them from the remote layer).
+   */
+  private async writeArtifactAndIndex(
+    hash: string,
+    compressed: Uint8Array,
+    meta: IngestMeta,
+  ): Promise<void> {
+    const finalPath = this.tarPath(hash)
+    // tmp suffix mixes pid + hrtime + a random hex chunk so two saves
+    // of the same hash from the same process (or from two forked
+    // workers that happen to share a wall-clock ms) don't pick the
+    // same tmp filename and race on the rename.
+    const tmpPath = `${finalPath}.tmp-${process.pid}-${process.hrtime.bigint()}-${Math.random().toString(36).slice(2, 10)}`
+    await mkdir(this.cacheDir, { recursive: true })
+    await Bun.write(tmpPath, compressed)
     // POSIX rename atomically REPLACES the destination if it exists,
     // so we don't need a pre-rm. The pre-rm was actively harmful —
     // it opened a race window where writer B could delete writer A's
@@ -880,29 +908,43 @@ export class Cache implements CacheLayer {
 
     const totalBytes = (await stat(finalPath)).size
 
-    const [project, task] = splitTaskId(args.entry.taskId)
+    // Decompress + parse so `output_files` rows reflect what's
+    // actually in the artifact. Same headers extractOutputs will see
+    // on restore, so the size/mode/mtime fingerprint we store here
+    // matches what isOutputsCurrent will compare against post-restore.
+    const tarBytes = await Bun.zstdDecompress(compressed)
+    const headers = parseTarHeaders(tarBytes)
+    const outputFileRows: Array<[string, number, number, number]> = []
+    for (const h of headers) {
+      if (!h.name.startsWith('outputs/') || h.isDir) continue
+      const rel = h.name.slice('outputs/'.length)
+      if (rel.length === 0) continue
+      outputFileRows.push([rel, h.size, h.mode & 0o777, Math.floor(h.mtimeMs)])
+    }
+
+    const [project, task] = splitTaskId(meta.taskId)
     const now = Date.now()
 
     // One transaction for the entries row + every output_files row.
     // One fsync regardless of output-file count.
     const insertEntry = this.insertEntry
     const insertOutputFile = this.insertOutputFile
-    const hash = args.hash
+    const deleteOutputFiles = this.deleteOutputFiles
     const tx = this.db.transaction(() => {
       insertEntry.run(
         hash,
         project,
         task,
-        args.entry.command,
-        args.entry.exitCode,
-        args.entry.durationMs,
+        meta.command,
+        0, // exitCode: we never cache failures
+        meta.durationMs,
         totalBytes,
         now,
         now,
       )
-      // Replace the entry's existing output_files rows (an UPDATE
-      // on the same hash should refresh, not append).
-      this.db.prepare('DELETE FROM output_files WHERE entry_hash = ?').run(hash)
+      // Replace the entry's existing output_files rows (an UPDATE on
+      // the same hash should refresh, not append).
+      deleteOutputFiles.run(hash)
       for (const [rel, size, mode, mtime] of outputFileRows) {
         insertOutputFile.run(hash, rel, size, mode, mtime)
       }

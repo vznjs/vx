@@ -56,10 +56,9 @@ src/
     task-graph.ts       # builds TaskNode DAG from declared dependsOn
     scheduler.ts        # parallel topo executor
   cache/                # local + remote cache cluster
-    cache.ts            # content-addressed cache (key + save/restore)
-    layered-cache.ts    # local + remote composition
-    remote-cache.ts     # Turbo /v8/artifacts HTTP client
-    cache-archive.ts    # tar.gz pack/unpack for remote artifacts
+    cache.ts            # content-addressed cache (key + save/restore/ingest)
+    layered-cache.ts    # local + remote composition (byte-passthrough)
+    remote-cache.ts     # HTTP client (Turbo wire-compatible PUT/GET)
     inputs.ts           # glob resolution + project-boundary enforcement
   exec/                 # per-task execution primitives
     runner.ts           # Bun.spawn wrapper + shellQuote
@@ -133,6 +132,59 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: Cache v17 — artifact carries only logs + outputs;
+  unified local/remote format; stderr no longer cached.
+
+  The cache artifact (`<cacheDir>/<hash>.tar.zst`) is now exactly:
+
+  ```
+  stdout            (always present; may be empty)
+  outputs/<rel>     (declared output files, when any)
+  ```
+
+  No more `meta.json`, no more stderr entry. The artifact carries only
+  replayable bytes; entry metadata (taskId, command, durationMs,
+  storedAt) lives in the SQLite `entries` row — the queryable index.
+
+  Local and remote layers transport the **same** tar.zst bytes
+  end-to-end. `cache-archive.ts` (the parallel tar.gz format with
+  meta.json) is gone, along with `LayeredCache.stageAndPack` /
+  `unpackArchive` / the stage-dir dance. `LayeredCache.save` reads
+  the just-written local artifact off disk and uploads it verbatim;
+  on remote-hit, the body is written straight to `<hash>.tar.zst`
+  and ingested via `Cache.ingest(hash, bytes, meta)`.
+
+  Metadata routing: `CacheLayer.get(hash, ctx?)` accepts an optional
+  `{ taskId, command }` context. The local Cache ignores it (entries
+  row has everything); the LayeredCache forwards it to `ingest()` on
+  remote-hit alongside `durationMs` pulled from the remote response's
+  `x-artifact-duration` header. Orchestrator + plan call sites have
+  `node` in scope, so passing ctx is essentially free.
+
+  Why drop stderr? We only cache successful runs (the `effectiveExitCode
+=== 0 && cacheEnabled` gate in `execute-task.ts`). Successful runs
+  rarely write meaningful stderr; storing it cost artifact bytes for
+  near-zero value. Live runs still stream stderr through the logger,
+  failed-task stderr still surfaces on the outcome and via the framed
+  block — only the cache-hit replay path changes (stdout only).
+
+  Why always store stdout? Predictability: the archive layout is now
+  exactly "one `stdout` entry + zero-or-more `outputs/<rel>` entries".
+  No conditional branches at extract time, no "is this entry missing
+  because the original stdout was empty, or because the artifact is
+  corrupt?" ambiguity.
+
+  `CACHE_VERSION` + `SCHEMA_VERSION` bumped to v17. Old entries are
+  dropped on first run (schema gate); old artifacts become orphans
+  and reap on `vx cache prune`. Pre-alpha, no migration cost.
+
+  Net: −1 module (`cache-archive.ts`), −1 test file
+  (`cache-archive.test.ts`), 506 tests pass, `oxlint` + `oxfmt` clean.
+  `Cache.save` internally split into `packArtifact` + private
+  `writeArtifactAndIndex`; the latter is the shared path both `save`
+  and `ingest` write through, so the SQL-row insertion logic lives in
+  exactly one place.
+
 - **2026-05**: Refactor pass — perf + simplification, no behavior change.
   Thirteen focused tweaks across the hot paths, all preserving public
   API and cache key derivation:
@@ -142,12 +194,12 @@ bun.lock
      pushed-to on `pending → 0`. Slot allocator switched from a
      sorted free-list (`unshift + sort` per release) to a
      `Uint8Array` busy bitmap with a linear scan over `[0,
-     concurrency)`. Same priority contract: higher transitive-reverse-
+concurrency)`. Same priority contract: higher transitive-reverse-
      dep count first, ties break in graph-insertion order via a
      binary-search-insert that respects existing equals.
   2. **`detectCycle` is iterative** with a numeric-indexed
      `Uint8Array` color array instead of recursion + `Map<string,
-     number>`. Removes V8 stack-frame ceiling risk on deep `dependsOn`
+number>`. Removes V8 stack-frame ceiling risk on deep `dependsOn`
      chains and skips the per-node Map lookup cost.
   3. **`nested-dirs.ts` is O(P log P)** instead of O(P²). Sort projects
      by `dir`; each project's nested set is the contiguous prefix-
@@ -196,7 +248,7 @@ bun.lock
       single-pass `for-of` push.
 
   Verified: 518 tests pass (no test changes); `oxlint --type-aware
-  --type-check` clean; `oxfmt --check` clean. Cache schema/format and
+--type-check` clean; `oxfmt --check` clean. Cache schema/format and
   cache key derivation unchanged — no `CACHE_VERSION` bump needed.
 
 - **2026-05**: Sandbox refactored to per-task config + fail-on-violation.
