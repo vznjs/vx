@@ -59,10 +59,17 @@ export function formatHeader(input: HeaderInput, colors: ColorSupport = NO_COLOR
   ]
 }
 
+export interface TaskBlockBody {
+  /** stdout chunks accumulated during the task. Renders in the body unprefixed-section. */
+  stdout?: string
+  /** stderr chunks. Renders under an `├─ Error` section header. */
+  stderr?: string
+}
+
 export function formatTaskBlock(
   node: TaskNode,
   outcome: TaskOutcome,
-  body: string,
+  body: TaskBlockBody | string,
   colors: ColorSupport = NO_COLOR,
 ): string {
   // Group tasks (no `exec`) do no work and have no body — they're
@@ -72,22 +79,34 @@ export function formatTaskBlock(
   // pass already make.
   if (isGroupTask(node)) return ''
 
+  // Back-compat: string body is treated as stdout. The default logger
+  // passes a TaskBlockBody now; older tests + embedders may still
+  // pass a string.
+  const stdout = typeof body === 'string' ? body : (body.stdout ?? '')
+  const stderr = typeof body === 'string' ? '' : (body.stderr ?? '')
+
   const id = node.id
   const idPainted = paint(ACCENT, id, colors, { bold: true })
   const corner = (s: string) => paint('', s, colors, { dim: true })
+  const bar = corner('│')
+  const tee = corner('├─')
   const header = formatBlockHeader(node, outcome, colors)
   const lines: string[] = [`${corner('┌─')} ${idPainted} ${corner('>')} ${header}`]
 
   // Show the command for executed tasks so the user sees what ran;
   // skip for cache hits (the captured stdout/stderr is the interesting
-  // part).
-  // isGroupTask early-return above guarantees exec is defined; TS
-  // can't see through the predicate's negation, so we re-narrow.
+  // part). isGroupTask early-return above guarantees exec is defined;
+  // TS can't see through the predicate's negation, so we re-narrow.
   const cmd = node.config.exec?.command ?? ''
-  if (outcome.status === 'success') lines.push(paint('', `$ ${cmd}`, colors, { dim: true }))
+  if (outcome.status === 'success') {
+    lines.push(`${bar} ${paint('', `$ ${cmd}`, colors, { dim: true })}`)
+  }
 
-  if (body.length > 0) {
-    lines.push(body.replace(/\n$/, ''))
+  pushBodyLines(lines, stdout, bar)
+
+  if (stderr.length > 0) {
+    lines.push(`${tee} ${paint(ERROR, 'Error', colors, { bold: true })}`)
+    pushBodyLines(lines, stderr, bar)
   }
 
   // Sandbox violations get a dedicated section inside the frame so the
@@ -96,16 +115,29 @@ export function formatTaskBlock(
   // (├─) to read as part of the frame.
   const vlines = outcome.sandboxViolationLines
   if (vlines && vlines.length > 0) {
-    const tee = paint('', '├─', colors, { dim: true })
     const sectionTitle = paint(ERROR, `Sandbox Violations (${vlines.length})`, colors, {
       bold: true,
     })
     lines.push(`${tee} ${sectionTitle}`)
-    for (const v of vlines) lines.push(`   ${v}`)
+    for (const v of vlines) lines.push(`${bar} ${v}`)
   }
 
   lines.push(`${corner('└─')} ${idPainted} ${corner('──')}${formatBlockFooter(outcome, colors)}`)
   return lines.join('\n') + '\n'
+}
+
+/**
+ * Append each line of `text` to `lines`, prefixed by the frame's
+ * vertical bar. Handles empty body (skipped), trailing newlines
+ * (trimmed), and preserves blank lines inside the body (rendered as
+ * the bar followed by a single space).
+ */
+function pushBodyLines(lines: string[], text: string, bar: string): void {
+  if (text.length === 0) return
+  const trimmed = text.replace(/\n$/, '')
+  for (const line of trimmed.split('\n')) {
+    lines.push(line.length > 0 ? `${bar} ${line}` : bar)
+  }
 }
 
 function formatBlockHeader(node: TaskNode, o: TaskOutcome, colors: ColorSupport): string {
