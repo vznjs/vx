@@ -15,12 +15,12 @@ workspace. Updated as the runners evolve.
 
 ## 2026-05
 
-| Runner | No cache | Cache (no restore) | Cache (full restore) |
-| ------ | -------- | ------------------ | -------------------- |
-| BASE¹  | 1:20.00  | —                  | —                    |
-| **vx** | **1:22.95** | **137 ms**      | **159 ms**           |
-| Turbo  | 1:31.38  | 569 ms             | 589 ms               |
-| Nx     | 1:40.62  | 848 ms             | 858 ms               |
+| Runner | No cache    | Cache (no restore) | Cache (full restore) |
+| ------ | ----------- | ------------------ | -------------------- |
+| BASE¹  | 1:20.00     | —                  | —                    |
+| **vx** | **1:22.95** | **137 ms**         | **159 ms**           |
+| Turbo  | 1:31.38     | 569 ms             | 589 ms               |
+| Nx     | 1:40.62     | 848 ms             | 858 ms               |
 
 ¹ `BASE` = running every task command directly via shell with no
 runner. Establishes the irreducible floor; anything above it is
@@ -28,10 +28,10 @@ runner overhead.
 
 ### Read
 
-| Path                       | vx     | Turbo   | Nx      |
-| -------------------------- | ------ | ------- | ------- |
-| Overhead vs BASE, no cache | +2.95s | +11.38s | +20.62s |
-| Per-task overhead, cache (no restore) | 0.46 ms | 1.90 ms | 2.83 ms |
+| Path                                    | vx      | Turbo   | Nx      |
+| --------------------------------------- | ------- | ------- | ------- |
+| Overhead vs BASE, no cache              | +2.95s  | +11.38s | +20.62s |
+| Per-task overhead, cache (no restore)   | 0.46 ms | 1.90 ms | 2.83 ms |
 | Per-task overhead, cache (full restore) | 0.53 ms | 1.96 ms | 2.86 ms |
 | Cache-restore cost (full − no-restore)  | 22 ms   | 20 ms   | 10 ms   |
 

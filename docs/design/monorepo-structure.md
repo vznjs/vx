@@ -101,7 +101,7 @@ The decision log in `CLAUDE.md` records two relevant 2026-05 entries:
 
 1. **PR #25 — "Re-monorepo'd the project."** Root `package.json`
    became a Bun-workspaces manifest (`"workspaces": ["packages/*",
-   "apps/*"]`); the runner moved into `packages/run/src/`. The stated
+"apps/*"]`); the runner moved into `packages/run/src/`. The stated
    convention was "`packages/*` is published libs, `apps/*` is
    end-user applications." The reason for the move was to host
    `apps/dashboard/` (Vite + Solid + UnoCSS) alongside the runner —
@@ -247,8 +247,8 @@ confusion.
   micro-syntax parser) is independently useful.
 - **Test isolation.** A change inside `src/cache/` only needs to
   re-run `cache.test.ts` + `layered-cache.test.ts` + `cache-archive.test.ts`
-  + `inputs.test.ts`. Today every PR runs all 28 test files. With
-  workspace packages, Bun could shard by package.
+  - `inputs.test.ts`. Today every PR runs all 28 test files. With
+    workspace packages, Bun could shard by package.
 - **Versioning independence.** A `CACHE_VERSION` bump (we've done 14
   of these) is a cache-format break; today it forces a `@vzn/vx`
   version bump too. With a split, `@vzn/cache` bumps independently
@@ -309,17 +309,17 @@ confusion.
 The module boundaries are real today. They should stay real, whether
 or not we promote them to packages:
 
-| Module                | May import from                                              | MUST NOT import from              |
-| --------------------- | ------------------------------------------------------------ | --------------------------------- |
-| `src/util/`           | (none — leaf module)                                         | everything else                   |
-| `src/config.ts`       | (none — schema only)                                         | everything else                   |
-| `src/cache/`          | `util/`, `config.ts`                                         | `orchestrator/`, `cli/`, `graph/` |
-| `src/graph/`          | `util/`, `config.ts`, `workspace/` (types only)              | `orchestrator/`, `cli/`, `cache/` |
-| `src/workspace/`      | `util/`, `config.ts`                                         | `orchestrator/`, `cli/`, `cache/`, `graph/` (except types via `workspace/package-graph.ts` reverse) |
-| `src/exec/`           | (none — leaf module aside from `config.ts` types)            | everything else                   |
-| `src/orchestrator/`   | all of the above + `orchestrator.ts`                         | `cli/`, `bin.ts`                  |
-| `src/cli/`            | all of the above                                             | `bin.ts`                          |
-| `src/bin.ts`          | `cli.ts` only                                                | direct imports of anything else   |
+| Module              | May import from                                   | MUST NOT import from                                                                                |
+| ------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `src/util/`         | (none — leaf module)                              | everything else                                                                                     |
+| `src/config.ts`     | (none — schema only)                              | everything else                                                                                     |
+| `src/cache/`        | `util/`, `config.ts`                              | `orchestrator/`, `cli/`, `graph/`                                                                   |
+| `src/graph/`        | `util/`, `config.ts`, `workspace/` (types only)   | `orchestrator/`, `cli/`, `cache/`                                                                   |
+| `src/workspace/`    | `util/`, `config.ts`                              | `orchestrator/`, `cli/`, `cache/`, `graph/` (except types via `workspace/package-graph.ts` reverse) |
+| `src/exec/`         | (none — leaf module aside from `config.ts` types) | everything else                                                                                     |
+| `src/orchestrator/` | all of the above + `orchestrator.ts`              | `cli/`, `bin.ts`                                                                                    |
+| `src/cli/`          | all of the above                                  | `bin.ts`                                                                                            |
+| `src/bin.ts`        | `cli.ts` only                                     | direct imports of anything else                                                                     |
 
 One mild quirk worth noting: `src/graph/task-graph.ts` imports a
 **type** from `src/workspace/package-graph.ts`. That's a structural
@@ -346,10 +346,10 @@ Concretely:
    the deleted dashboard subsystem. Their presence misleads anyone
    reading the repo for the first time.
 4. Update `CLAUDE.md`'s "Repository layout" section to say
-   explicitly: *"`src/` subdirectories are de-facto modules. The
+   explicitly: _"`src/` subdirectories are de-facto modules. The
    project is intentionally single-package; the previous
-   `packages/*`/`apps/*` layout (PR #25, deleted with the dashboard)
-   should not be reintroduced without a concrete forcing function."*
+   `packages/_`/`apps/_` layout (PR #25, deleted with the dashboard)
+   should not be reintroduced without a concrete forcing function."_
 
 If a real split becomes warranted later — say, an external embedder
 asks for `@vzn/cache` standalone, or we decide to publish the cache
