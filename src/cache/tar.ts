@@ -118,6 +118,32 @@ export function parseTarHeaders(tarBytes: Uint8Array): TarHeader[] {
       continue
     }
 
+    // Reject typeflags we don't support: hardlink (1), symlink (2),
+    // char device (3), block device (4), FIFO (6), contiguous (7).
+    // Build outputs are regular files + directories; anything else
+    // is either a producer bug or a smuggled non-file artifact (a
+    // symlink to /etc/passwd, a /dev/null mapping, etc.). Reject
+    // explicitly so future extractors can't be tricked into honoring
+    // these by accident.
+    if (typeFlag === 0x31 /* '1' */) {
+      throw new TarSecurityError(`tar entry typeflag 'hardlink' is unsupported: ${rawName}`)
+    }
+    if (typeFlag === 0x32 /* '2' */) {
+      throw new TarSecurityError(`tar entry typeflag 'symlink' is unsupported: ${rawName}`)
+    }
+    if (typeFlag === 0x33 /* '3' */) {
+      throw new TarSecurityError(`tar entry typeflag 'chardev' is unsupported: ${rawName}`)
+    }
+    if (typeFlag === 0x34 /* '4' */) {
+      throw new TarSecurityError(`tar entry typeflag 'blockdev' is unsupported: ${rawName}`)
+    }
+    if (typeFlag === 0x36 /* '6' */) {
+      throw new TarSecurityError(`tar entry typeflag 'fifo' is unsupported: ${rawName}`)
+    }
+    if (typeFlag === 0x37 /* '7' */) {
+      throw new TarSecurityError(`tar entry typeflag 'contiguous' is unsupported: ${rawName}`)
+    }
+
     const name = pendingLongName ?? rawName
     pendingLongName = null
 
@@ -140,6 +166,16 @@ export function parseTarHeaders(tarBytes: Uint8Array): TarHeader[] {
     }
     if (name.includes('//')) {
       throw new TarSecurityError(`tar entry name has empty path component (unsafe): ${name}`)
+    }
+    // Windows-shaped paths are categorically unsafe to extract on
+    // POSIX hosts (and vice versa): backslash separators, drive
+    // letters, extended-length prefixes. Reject before we touch
+    // anything.
+    if (name.includes('\\')) {
+      throw new TarSecurityError(`tar entry uses backslash separators (windows-unsafe): ${name}`)
+    }
+    if (/^[A-Za-z]:[\\/]/.test(name)) {
+      throw new TarSecurityError(`tar entry has windows drive prefix (unsafe): ${name}`)
     }
 
     // AppleDouble resource-fork siblings — basename starting with

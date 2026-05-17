@@ -235,3 +235,211 @@ describe('parseTarHeaders — security-relevant parse rejections', () => {
     expect(() => parseTarHeaders(tar)).toThrow(/escape|absolute|unsafe/i)
   })
 })
+
+// ─── §5 gaps: typeflag + Windows + symlink + path-length defenses ────
+
+describe('parseTarHeaders — typeflag rejections (hardlink / chardev / blockdev / fifo)', () => {
+  // Build outputs ALWAYS produce regular files / directories. tar
+  // typeflags for hardlinks (1), char devices (3), block devices (4),
+  // FIFOs (6), and contiguous files (7) are out of scope and a
+  // potential vector for surprising filesystem state inside the
+  // destination. Reject at parse time.
+  const REJECTED: Array<{ name: string; typeFlag: string; reason: RegExp }> = [
+    { name: 'outputs/hard.bin', typeFlag: '1', reason: /typeflag|hardlink|unsupported/i },
+    { name: 'outputs/chr.dev', typeFlag: '3', reason: /typeflag|device|unsupported/i },
+    { name: 'outputs/blk.dev', typeFlag: '4', reason: /typeflag|device|unsupported/i },
+    { name: 'outputs/pipe', typeFlag: '6', reason: /typeflag|fifo|unsupported/i },
+    { name: 'outputs/cont.bin', typeFlag: '7', reason: /typeflag|contiguous|unsupported/i },
+  ]
+  for (const { name, typeFlag, reason } of REJECTED) {
+    it(`rejects typeflag '${typeFlag}'`, () => {
+      const tar = tarWithEntry(name, new Uint8Array(0), typeFlag)
+      expect(() => parseTarHeaders(tar)).toThrow(reason)
+    })
+  }
+})
+
+describe('parseTarHeaders — symlink entries (typeflag 2)', () => {
+  // Symlinks ARE a typeflag we could in principle support (build
+  // outputs sometimes include them — e.g. node_modules symlink
+  // farms). For v1 we reject all symlink entries explicitly so a
+  // malicious archive can't smuggle a symlink-to-`/etc/passwd` past
+  // our path-traversal checks via the linkname field.
+  it('rejects symlink entries (typeflag 2) regardless of target', () => {
+    const tar = concatTar([
+      makeHeader({
+        name: 'outputs/link.txt',
+        size: 0,
+        typeFlag: '2',
+        linkname: 'plain-target.txt',
+      }),
+      EOF_BLOCKS,
+    ])
+    expect(() => parseTarHeaders(tar)).toThrow(/symlink|typeflag|unsupported/i)
+  })
+
+  it('rejects symlinks pointing outside the anchor (../escape)', () => {
+    const tar = concatTar([
+      makeHeader({
+        name: 'outputs/link.txt',
+        size: 0,
+        typeFlag: '2',
+        linkname: '../../etc/passwd',
+      }),
+      EOF_BLOCKS,
+    ])
+    expect(() => parseTarHeaders(tar)).toThrow(/symlink|typeflag|unsafe/i)
+  })
+
+  it('rejects symlinks with an empty link target', () => {
+    const tar = concatTar([
+      makeHeader({ name: 'outputs/link.txt', size: 0, typeFlag: '2' }),
+      EOF_BLOCKS,
+    ])
+    expect(() => parseTarHeaders(tar)).toThrow(/symlink|typeflag|unsupported/i)
+  })
+})
+
+describe('parseTarHeaders — Windows-shaped entry names', () => {
+  // A producer on Windows might emit paths with `\` separators or
+  // `C:\...` drive letters. POSIX consumers should treat these as
+  // malformed — they could let an unwary extractor write to unusual
+  // locations (the Windows path becomes a single Linux filename
+  // containing `\`, which is legal-but-surprising). Reject.
+  it('rejects entries with backslash separators', () => {
+    const tar = tarWithEntry('outputs\\foo\\bar.txt', new TextEncoder().encode('x'))
+    expect(() => parseTarHeaders(tar)).toThrow(/windows|backslash|unsafe/i)
+  })
+
+  it('rejects entries with Windows drive-letter prefix', () => {
+    const tar = tarWithEntry('C:/Users/admin/evil.txt', new TextEncoder().encode('x'))
+    expect(() => parseTarHeaders(tar)).toThrow(/windows|drive|unsafe/i)
+  })
+
+  it('rejects entries with Windows extended-length prefix', () => {
+    const tar = tarWithEntry('//?/C:/evil', new TextEncoder().encode('x'))
+    // The `//` empty-component check catches this; verify the path
+    // here AS WELL — defense in depth.
+    expect(() => parseTarHeaders(tar)).toThrow(/escape|empty|windows|unsafe/i)
+  })
+})
+
+describe('parseTarHeaders — pathological lengths', () => {
+  it('handles ustar paths up to 100 chars without crashing', () => {
+    // ustar name field is 100 bytes. Test the boundary.
+    const longName = 'outputs/' + 'a'.repeat(91) // 100 chars total
+    const tar = tarWithEntry(longName, new TextEncoder().encode('x'))
+    const headers = parseTarHeaders(tar)
+    expect(headers.length).toBe(1)
+    expect(headers[0]?.name).toBe(longName)
+  })
+
+  it('handles GNU longname extension for paths > 100 chars', () => {
+    // GNU longname: a typeflag 'L' record with the full path in its
+    // body, followed by the real header (which may truncate at 100).
+    // parseTarHeaders already supports this — pin the round-trip.
+    const longName = 'outputs/' + 'a'.repeat(200) + '/file.txt'
+    const longNameBytes = new TextEncoder().encode(longName + '\0')
+    const tar = concatTar([
+      makeHeader({ name: '././@LongLink', size: longNameBytes.length, typeFlag: 'L' }),
+      makeDataBlock(longNameBytes),
+      makeHeader({
+        name: longName.slice(0, 100), // truncated in the regular header
+        size: 1,
+        typeFlag: '0',
+      }),
+      makeDataBlock(new TextEncoder().encode('x')),
+      EOF_BLOCKS,
+    ])
+    const headers = parseTarHeaders(tar)
+    expect(headers.length).toBe(1)
+    expect(headers[0]?.name).toBe(longName)
+  })
+})
+
+describe('extractOutputs — mixed valid + malicious entries', () => {
+  let dest: string
+
+  beforeEach(async () => {
+    dest = await mkdtemp(path.join(os.tmpdir(), 'vx-tar-mixed-'))
+  })
+
+  afterEach(async () => {
+    await rm(dest, { recursive: true, force: true })
+  })
+
+  it('rejects the WHOLE archive when any entry is malicious (no partial extract)', async () => {
+    // First a benign entry, then a malicious one. The current parser
+    // throws at parse time when it hits the bad entry. We assert
+    // neither the benign nor the malicious file lands on disk —
+    // partial extracts are a TOCTOU escape vector.
+    const tar = concatTar([
+      makeHeader({ name: 'outputs/good.txt', size: 3, typeFlag: '0' }),
+      makeDataBlock(new TextEncoder().encode('ok\n')),
+      makeHeader({ name: 'outputs/../evil.txt', size: 4, typeFlag: '0' }),
+      makeDataBlock(new TextEncoder().encode('bad\n')),
+      EOF_BLOCKS,
+    ])
+    await expect(extractOutputs(tar, dest)).rejects.toThrow(/escape|traversal|unsafe/i)
+    expect(existsSync(path.join(dest, 'good.txt'))).toBe(false)
+    expect(existsSync(path.join(dest, '..', 'evil.txt'))).toBe(false)
+  })
+})
+
+describe('extractOutputs — concurrent restores to the same anchor', () => {
+  let dest: string
+
+  beforeEach(async () => {
+    dest = await mkdtemp(path.join(os.tmpdir(), 'vx-tar-conc-'))
+  })
+
+  afterEach(async () => {
+    await rm(dest, { recursive: true, force: true })
+  })
+
+  it('two parallel extracts of the same payload produce a consistent tree', async () => {
+    // Same payload, two extractors racing on the same destination.
+    // Either writer's bytes are fine (identical content), but the
+    // final on-disk state must be a complete valid tree — not a
+    // truncated file from one extractor's in-flight write being
+    // overwritten by the other's open-truncate.
+    const body = new TextEncoder().encode('payload-payload-payload\n')
+    const tar = tarWithEntry('outputs/concurrent.txt', body)
+    await Promise.all([extractOutputs(tar, dest), extractOutputs(tar, dest)])
+    const restored = await readFile(path.join(dest, 'concurrent.txt'))
+    expect(restored).toEqual(Buffer.from(body))
+  })
+})
+
+describe('extractOutputs — sequential restores: symlink → real directory transition', () => {
+  let dest: string
+
+  beforeEach(async () => {
+    dest = await mkdtemp(path.join(os.tmpdir(), 'vx-tar-seq-'))
+  })
+
+  afterEach(async () => {
+    await rm(dest, { recursive: true, force: true })
+  })
+
+  it('a real file replaces a pre-existing symlink at the same target', async () => {
+    // Setup: pre-existing symlink at <dest>/x.txt (residue from a
+    // user-edited project or previous restore that included one).
+    // The TOCTOU defense added earlier unlinks the symlink before
+    // writing, so the second restore must produce a real file
+    // (not following the link to clobber its target).
+    const elsewhere = await mkdtemp(path.join(os.tmpdir(), 'vx-tar-seq-target-'))
+    const elsewhereFile = path.join(elsewhere, 'unrelated.txt')
+    await writeFile(elsewhereFile, 'unrelated')
+    await symlink(elsewhereFile, path.join(dest, 'x.txt'))
+
+    const tar = tarWithEntry('outputs/x.txt', new TextEncoder().encode('fresh'))
+    await extractOutputs(tar, dest)
+    // The link is gone; x.txt is a real file with the new content.
+    const real = await readFile(path.join(dest, 'x.txt'), 'utf8')
+    expect(real).toBe('fresh')
+    // The link's former target is untouched.
+    expect(await readFile(elsewhereFile, 'utf8')).toBe('unrelated')
+    await rm(elsewhere, { recursive: true, force: true })
+  })
+})
