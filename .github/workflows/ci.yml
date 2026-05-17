@@ -33,7 +33,7 @@ jobs:
       - name: Install sandbox runtime deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y bubblewrap socat strace
+          sudo apt-get install -y bubblewrap socat strace ripgrep
           # Ubuntu 24+ ships with AppArmor restricting unprivileged
           # user namespaces. bwrap needs them; without this sysctl
           # tweak it exits non-zero on first use.
