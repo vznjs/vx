@@ -156,6 +156,54 @@ describe('loadProjectConfig', () => {
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(/env.*non-empty/)
     })
+
+    it('rejects empty-string entries in cache.outputs.files', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: [''] } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/outputs.files.*non-empty/)
+    })
+
+    it('rejects absolute paths in cache.outputs.files (must be project-relative)', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['/tmp/leak.js'] } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/absolute paths are not allowed/)
+    })
+
+    it('rejects non-string entries in cache.outputs.files', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: [42] } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/outputs.files.*non-empty/)
+    })
+
+    it('rejects empty-string entries in cache.inputs.files', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: { inputs: { files: [''] }, outputs: { files: [] } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/inputs.files.*non-empty/)
+    })
   })
 })
 

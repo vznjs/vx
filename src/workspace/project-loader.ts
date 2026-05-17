@@ -184,8 +184,30 @@ function validate(config: ProjectConfig, configPath: string): void {
       if (!outputs || typeof outputs !== 'object') {
         throw new UserError(`${where}.cache.outputs is required when \`cache\` is set`)
       }
-      if (!Array.isArray((outputs as { files?: unknown }).files)) {
+      const outFiles = (outputs as { files?: unknown }).files
+      if (!Array.isArray(outFiles)) {
         throw new UserError(`${where}.cache.outputs.files must be an array of glob strings`)
+      }
+      // Reject zero-length strings and absolute paths up front.
+      // Both reach `resolveOutputs` as undefined behavior; the error
+      // surfaces deep inside the glob resolver with no line pointing
+      // at the user's config. Fail loud at load time.
+      for (const g of outFiles as unknown[]) {
+        if (typeof g !== 'string' || g.length === 0) {
+          throw new UserError(`${where}.cache.outputs.files must be an array of non-empty strings`)
+        }
+        if (g.startsWith('/')) {
+          throw new UserError(
+            `${where}.cache.outputs.files: absolute paths are not allowed (got "${g}") — ` +
+              `outputs must be project-relative globs`,
+          )
+        }
+      }
+      // Same for inputs.files.
+      for (const g of (inputs as { files: unknown[] }).files) {
+        if (typeof g !== 'string' || g.length === 0) {
+          throw new UserError(`${where}.cache.inputs.files must be an array of non-empty strings`)
+        }
       }
     }
     const sandbox = (task as { sandbox?: unknown }).sandbox
