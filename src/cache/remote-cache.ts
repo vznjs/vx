@@ -127,13 +127,11 @@ export class RemoteCache {
     url: string,
     init?: { body?: ArrayBuffer | Uint8Array | string; headers?: Record<string, string> },
   ): Promise<Response> {
-    const ctrl = new AbortController()
     const timeoutMs = this.config.timeoutMs ?? 60_000
-    const t = setTimeout(() => ctrl.abort(), timeoutMs)
     try {
       return await fetch(url, {
         method,
-        signal: ctrl.signal,
+        signal: AbortSignal.timeout(timeoutMs),
         headers: {
           Authorization: `Bearer ${this.config.token}`,
           ...init?.headers,
@@ -141,12 +139,10 @@ export class RemoteCache {
         ...(init?.body !== undefined ? { body: init.body } : {}),
       })
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
+      if (err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
         throw new RemoteCacheError(`${method} ${url} timed out after ${timeoutMs}ms`, 0, err)
       }
       throw new RemoteCacheError(`${method} ${url} failed: ${(err as Error).message}`, 0, err)
-    } finally {
-      clearTimeout(t)
     }
   }
 }

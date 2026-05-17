@@ -52,7 +52,27 @@ async function makeWorkspace(): Promise<Fixture> {
     JSON.stringify({ name: 'fixture-root', private: true }, null, 2),
   )
   await mkdir(path.join(root, 'packages'), { recursive: true })
+  // vx requires git (it asks `git ls-files` for the input file set).
+  // Init a quiet repo so the orchestrator can enumerate fixture files.
+  initGitRepo(root)
   return { root, log: [], err: [] }
+}
+
+function initGitRepo(cwd: string): void {
+  const run = (...args: string[]): void => {
+    const p = Bun.spawnSync({
+      cmd: ['git', '-c', 'commit.gpgsign=false', '-c', 'tag.gpgSign=false', ...args],
+      cwd,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    if (p.exitCode !== 0) {
+      throw new Error(`git ${args.join(' ')} failed: ${new TextDecoder().decode(p.stderr)}`)
+    }
+  }
+  run('init', '-q')
+  run('config', 'user.email', 'test@vx.local')
+  run('config', 'user.name', 'vx test')
 }
 
 async function addProject(
@@ -1105,7 +1125,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'cache hit replays both stdout and stderr',
+    'cache hit replays stdout (stderr is not cached)',
     async () => {
       await addProject(fixture.root, 'logs', {
         config: `
@@ -1127,8 +1147,11 @@ describe('orchestrator e2e', () => {
       fixture.err = []
       const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('cache-hit')
+      // stdout is replayed from the artifact's `stdout` entry...
       expect(fixture.log.join('\n')).toContain('OUT')
-      expect(fixture.err.join('\n')).toContain('ERR')
+      // ...but stderr is intentionally not cached. We only cache
+      // successful runs, so stderr is rarely meaningful on replay.
+      expect(fixture.err.join('\n')).not.toContain('ERR')
     },
     TIMEOUT,
   )

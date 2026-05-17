@@ -1,26 +1,28 @@
-// LayeredCache — composes the local v10 cache with a remote HTTP cache.
+// LayeredCache — composes the local cache with a remote HTTP cache.
 //
-// Read path:  try local. On miss, try remote; on remote hit, materialize
-// the artifact into local so the next read is a local hit.
+// Read path:  try local. On miss, try remote; on remote hit, ingest
+// the artifact bytes into local so the next read is a local hit.
 //
-// Write path: write to local synchronously. Upload to remote as a
-// fire-and-forget background task; failures log a warning but never fail
-// the user's run (the task already succeeded; the only loss is the
-// remote cache entry).
+// Write path: write to local synchronously. Upload the local artifact
+// to remote as a fire-and-forget background task; failures log a
+// warning but never fail the user's run (the task already succeeded;
+// the only loss is the remote cache entry).
 //
-// Same `Cache` shape callers expect (key/get/save/restoreOutputs/recordRun/
-// stats/prune/close) — orchestrator code doesn't change.
+// The local and remote layers share the SAME artifact format — the
+// `<hash>.tar.zst` bytes ship across the wire verbatim. Metadata
+// (taskId, command, durationMs) travels separately: the caller
+// supplies it to `get()` via the `ctx` arg, and the remote layer
+// surfaces `durationMs` from its response. No stage dirs, no
+// meta.json, no tar.gz wrapping — the artifact is what it is.
 
-import { mkdtemp, rm } from 'node:fs/promises'
-import os from 'node:os'
-import path from 'node:path'
-import { packAndDiscard, unpackArchive } from './cache-archive.js'
 import type {
   CacheEntry,
   CacheEntryMeta,
+  CacheGetContext,
   CacheKeyInput,
   CacheLayer,
   CacheStats,
+  IngestMeta,
   OutputFileRow,
   PruneOptions,
   PruneResult,
@@ -55,17 +57,6 @@ export interface LayeredCacheOptions {
   }) => void
 }
 
-/**
- * Shape of `meta.json` inside a remote artifact tarball. Officially
- * derived from `CacheEntry` so the on-disk meta schema stays in sync
- * with the cache contract automatically — adding a field to
- * `CacheEntry` propagates here unless it's one of the three excluded
- * fields (`hash` is the artifact's own filename, `outputFiles` is
- * recovered by listing the unpacked `outputs/` tree, `source` is
- * set per-lookup by the layer that served the hit).
- */
-type OnDiskMeta = Omit<CacheEntry, 'hash' | 'outputFiles' | 'source'>
-
 export class LayeredCache implements CacheLayer {
   constructor(
     private readonly local: CacheLayer,
@@ -77,8 +68,8 @@ export class LayeredCache implements CacheLayer {
     return await this.local.key(input)
   }
 
-  async get(hash: string): Promise<CacheEntry | null> {
-    const localHit = await this.local.get(hash)
+  async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null> {
+    const localHit = await this.local.get(hash, ctx)
     if (localHit) return localHit
 
     let remoteResult
@@ -104,38 +95,25 @@ export class LayeredCache implements CacheLayer {
     })
     if (!remoteResult) return null
 
-    // Materialize the remote artifact into the local cache so future
-    // lookups hit local. We unpack into a temp stage dir that mirrors
-    // the pack layout ({meta.json, outputs/}), then call local.save()
-    // with outputs/ as the "project dir".
-    const stage = await mkdtemp(path.join(os.tmpdir(), 'vx-remote-hit-'))
-    try {
-      await unpackArchive(remoteResult.body, stage)
-      const meta = (await Bun.file(path.join(stage, 'meta.json')).json()) as OnDiskMeta
-      const outputsDir = path.join(stage, 'outputs')
-      const outputFiles = await listFilesRecursive(outputsDir)
-      await this.local.save({
-        hash,
-        projectDir: outputsDir,
-        outputFiles,
-        entry: {
-          taskId: meta.taskId,
-          command: meta.command,
-          exitCode: meta.exitCode,
-          durationMs: meta.durationMs,
-          stdout: meta.stdout,
-          stderr: meta.stderr,
-        },
-      })
-      this.options.onRemoteHit?.(hash, remoteResult.body.byteLength)
-    } finally {
-      await rm(stage, { recursive: true, force: true })
+    // Ingest the remote bytes into local using the caller-supplied
+    // taskId/command plus the remote-reported durationMs. The remote
+    // layer carries durationMs as an HTTP header (x-artifact-duration);
+    // taskId + command come from the orchestrator's TaskNode in scope.
+    // Without `ctx`, we can't populate a meaningful entries row, so
+    // ingest with placeholders — caller-side typing nudges everyone
+    // toward passing ctx.
+    const meta: IngestMeta = {
+      taskId: ctx?.taskId ?? `${hash}#unknown`,
+      command: ctx?.command ?? '',
+      durationMs: remoteResult.durationMs ?? 0,
     }
+    await this.local.ingest(hash, new Uint8Array(remoteResult.body), meta)
+    this.options.onRemoteHit?.(hash, remoteResult.body.byteLength)
 
     // The artifact is now in local, but this *lookup* was a remote
     // hit — flip the source so callers can distinguish "saved work
     // via the remote cache" from "saved work via a prior local run".
-    const materialized = await this.local.get(hash)
+    const materialized = await this.local.get(hash, ctx)
     return materialized ? { ...materialized, source: 'remote' } : null
   }
 
@@ -153,11 +131,13 @@ export class LayeredCache implements CacheLayer {
 
   async save(args: SaveArgs): Promise<void> {
     await this.local.save(args)
-    // Stage + upload. Errors are logged, not propagated — the task
-    // already succeeded; we don't want to fail it on cache-server issues.
+    // Upload the bytes the local layer just wrote — same format on
+    // both sides, no repacking. Errors are logged, not propagated:
+    // the task already succeeded; we don't want to fail it on cache-
+    // server issues.
     const t0 = performance.now()
     try {
-      const bytes = await this.stageAndPack(args)
+      const bytes = await Bun.file(this.local.outputsPath(args.hash)).bytes()
       await this.remote.put(args.hash, bytes, { durationMs: args.entry.durationMs })
       this.options.onRemoteRequest?.({
         op: 'PUT',
@@ -177,12 +157,15 @@ export class LayeredCache implements CacheLayer {
     }
   }
 
+  async ingest(hash: string, compressed: Uint8Array, meta: IngestMeta): Promise<void> {
+    await this.local.ingest(hash, compressed, meta)
+  }
+
   async getMetaBatch(hashes: readonly string[]): Promise<Map<string, CacheEntryMeta>> {
     // Local-only batched metadata fetch. Remote-cache batching is
-    // deferred — the Turbo /v8/artifacts wire has no bulk endpoint,
-    // and parallel single-hash fetches already saturate the network
-    // path. Callers can fall through to per-hash `get()` for any
-    // hash not in the returned map.
+    // deferred — parallel single-hash fetches already saturate the
+    // network path. Callers can fall through to per-hash `get()` for
+    // any hash not in the returned map.
     return this.local.getMetaBatch(hashes)
   }
 
@@ -220,28 +203,6 @@ export class LayeredCache implements CacheLayer {
     this.local.close()
   }
 
-  private async stageAndPack(args: SaveArgs): Promise<Uint8Array> {
-    const stage = await mkdtemp(path.join(os.tmpdir(), 'vx-remote-put-'))
-    const outputsDir = path.join(stage, 'outputs')
-    for (const f of args.outputFiles) {
-      const rel = path.relative(args.projectDir, f)
-      const dest = path.join(outputsDir, rel)
-      // Bun.write auto-creates parent dirs.
-      await Bun.write(dest, Bun.file(f))
-    }
-    const meta: OnDiskMeta = {
-      taskId: args.entry.taskId,
-      command: args.entry.command,
-      exitCode: args.entry.exitCode,
-      durationMs: args.entry.durationMs,
-      stdout: args.entry.stdout,
-      stderr: args.entry.stderr,
-      storedAt: new Date().toISOString(),
-    }
-    await Bun.write(path.join(stage, 'meta.json'), JSON.stringify(meta))
-    return await packAndDiscard(stage)
-  }
-
   private reportRemoteError(err: unknown): void {
     const e = err instanceof Error ? err : new Error(String(err))
     if (this.options.onRemoteError) {
@@ -250,20 +211,4 @@ export class LayeredCache implements CacheLayer {
       process.stderr.write(`[vx] remote cache: ${e.message}\n`)
     }
   }
-}
-
-async function listFilesRecursive(root: string, sub = ''): Promise<string[]> {
-  const { readdir } = await import('node:fs/promises')
-  const here = sub === '' ? root : path.join(root, sub)
-  const out: string[] = []
-  const entries = await readdir(here, { withFileTypes: true })
-  for (const e of entries) {
-    const childRel = sub === '' ? e.name : `${sub}/${e.name}`
-    if (e.isDirectory()) {
-      out.push(...(await listFilesRecursive(root, childRel)))
-    } else if (e.isFile()) {
-      out.push(path.join(root, childRel))
-    }
-  }
-  return out
 }

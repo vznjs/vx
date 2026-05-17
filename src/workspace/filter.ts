@@ -82,11 +82,6 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
   return { raw, negate, withDeps, withDependents, onlyDeps, isPath, matcher }
 }
 
-function globToRegex(glob: string): RegExp {
-  const escaped = glob.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
-  return new RegExp(`^${escaped}$`)
-}
-
 function matchProjects(
   filter: ParsedFilter,
   projects: ProjectMeta[],
@@ -112,9 +107,9 @@ function matchProjects(
     }
     return out
   }
-  const re = globToRegex(filter.matcher)
+  const glob = new Bun.Glob(filter.matcher)
   for (const p of projects) {
-    if (re.test(p.name)) out.push(p.name)
+    if (glob.match(p.name)) out.push(p.name)
   }
   return out
 }

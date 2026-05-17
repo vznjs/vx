@@ -47,7 +47,7 @@ export interface HeaderInput {
 
 export function formatHeader(input: HeaderInput, colors: ColorSupport = NO_COLOR): string[] {
   const bullet = paint(ACCENT, '•', colors)
-  const taskList = input.tasks.length === 1 ? input.tasks[0] : input.tasks.join(', ')
+  const taskList = input.tasks.join(', ')
   const pkgs = `${input.packageCount} package${input.packageCount === 1 ? '' : 's'}`
   const tasks = `${input.taskCount} task${input.taskCount === 1 ? '' : 's'}`
   return [

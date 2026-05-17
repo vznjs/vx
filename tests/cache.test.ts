@@ -260,18 +260,16 @@ describe('Cache storage (v10)', () => {
         exitCode: 0,
         durationMs: 42,
         stdout: 'compiling…\n',
-        stderr: '',
       },
     })
 
-    // Filesystem layout v15: single zstd-compressed tar archive per
-    // entry. stdout/stderr live in the SQLite entries row, not as
-    // separate files.
+    // Filesystem layout v17: single zstd-compressed tar archive per
+    // entry. The artifact carries stdout + outputs/ — entry metadata
+    // (command, exitCode, durationMs) lives in the SQLite entries row.
     expect(existsSync(path.join(cacheDir, 'h1.tar.zst'))).toBe(true)
-    // No v13-style <hash>/ directory layout.
+    // No legacy <hash>/ directory layout.
     expect(existsSync(path.join(cacheDir, 'h1'))).toBe(false)
     expect(existsSync(path.join(cacheDir, 'h1', 'stdout'))).toBe(false)
-    expect(existsSync(path.join(cacheDir, 'h1', 'stderr'))).toBe(false)
     // No legacy v12-style sibling logs/ dir.
     expect(existsSync(path.join(cacheDir, 'logs'))).toBe(false)
 
@@ -281,7 +279,6 @@ describe('Cache storage (v10)', () => {
     expect(got?.exitCode).toBe(0)
     expect(got?.durationMs).toBe(42)
     expect(got?.stdout).toBe('compiling…\n')
-    expect(got?.stderr).toBe('')
     expect(got?.outputFiles).toEqual(['dist/index.js'])
   })
 
@@ -302,7 +299,6 @@ describe('Cache storage (v10)', () => {
         exitCode: 0,
         durationMs: 1,
         stdout: '',
-        stderr: '',
       },
     })
 
@@ -332,7 +328,6 @@ describe('Cache storage (v10)', () => {
         exitCode: 0,
         durationMs: 0,
         stdout: '',
-        stderr: '',
       },
     })
 
@@ -474,7 +469,6 @@ describe('Cache storage (v10)', () => {
         exitCode: 0,
         durationMs: 0,
         stdout: '',
-        stderr: '',
       },
     })
 
@@ -500,7 +494,6 @@ describe('Cache storage (v10)', () => {
         exitCode: 0,
         durationMs: 0,
         stdout: '',
-        stderr: '',
       },
     })
 
@@ -538,7 +531,6 @@ describe('Cache storage (v10)', () => {
           exitCode: 0,
           durationMs: 0,
           stdout: '',
-          stderr: '',
         },
       })
       // Force a measurable accessed_at gap between writes.
@@ -672,7 +664,6 @@ describe('Cache storage (v10)', () => {
             exitCode: 0,
             durationMs: 1,
             stdout: '',
-            stderr: '',
           },
         })
       await Promise.all([saveOnce(cache), saveOnce(second)])
@@ -711,7 +702,6 @@ describe('Cache storage (v10)', () => {
         exitCode: 0,
         durationMs: 1,
         stdout: '',
-        stderr: '',
       },
     })
 
@@ -728,7 +718,6 @@ describe('Cache storage (v10)', () => {
         exitCode: 0,
         durationMs: 2,
         stdout: 'replaced',
-        stderr: '',
       },
     })
 
@@ -790,7 +779,6 @@ describe('Cache storage (v10)', () => {
         exitCode: 0,
         durationMs: 0,
         stdout: '',
-        stderr: '',
       },
     })
     await rm(path.join(cacheDir, 'h-orphan-row'), { recursive: true, force: true })

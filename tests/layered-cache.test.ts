@@ -84,7 +84,6 @@ describe('LayeredCache', () => {
         exitCode: 0,
         durationMs: 5,
         stdout: 'compiling…',
-        stderr: '',
       },
     })
   }
@@ -145,8 +144,13 @@ describe('LayeredCache', () => {
     // Local is empty.
     expect(await local.get('h-remote-only')).toBeNull()
 
-    // get() pulls from remote, materializes locally.
-    const hit = await layered.get('h-remote-only')
+    // get() pulls from remote, materializes locally. Caller passes
+    // taskId/command via ctx so the materialized SQL row carries
+    // queryable metadata (the artifact bytes don't).
+    const hit = await layered.get('h-remote-only', {
+      taskId: 'pkg#build',
+      command: 'echo produced',
+    })
     expect(hit).not.toBeNull()
     expect(hit?.source).toBe('remote')
     expect(hit?.command).toBe('echo produced')

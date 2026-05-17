@@ -378,7 +378,6 @@ describe('cache layout v15: <hash>.tar single file (Turbo-style)', () => {
         exitCode: 0,
         durationMs: 5,
         stdout: 'compiling…',
-        stderr: '',
       },
     })
   }
@@ -395,12 +394,12 @@ describe('cache layout v15: <hash>.tar single file (Turbo-style)', () => {
     )
   })
 
-  it('stdout/stderr stored in SQLite (not in the tar)', async () => {
+  it('stdout stored alongside outputs in the artifact', async () => {
     await saveSample('h-meta', { 'out.txt': 'hi' })
     const got = await cache.get('h-meta')
     expect(got?.stdout).toBe('compiling…')
-    expect(got?.stderr).toBe('')
-    // Tar listing should NOT contain stdout/stderr.
+    // outputFiles lists only the outputs/ entries — stdout doesn't
+    // appear there even though it's in the same tar.
     const list = got?.outputFiles ?? []
     expect(list).toEqual(['out.txt'])
   })

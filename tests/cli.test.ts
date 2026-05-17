@@ -65,6 +65,22 @@ describe('cli run()', () => {
   })
 })
 
+// vx requires git for input enumeration; every fixture workspace
+// gets a quiet repo via this helper before chdir.
+function initGitRepo(cwd: string): void {
+  const run = (...args: string[]): void => {
+    Bun.spawnSync({
+      cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
+      cwd,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+  }
+  run('init', '-q')
+  run('config', 'user.email', 'test@vx.local')
+  run('config', 'user.name', 'vx test')
+}
+
 describe('cli run() end-to-end against a real fixture workspace', () => {
   let workspaceRoot: string
   const origCwd = process.cwd()
@@ -99,6 +115,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
         },
       }`,
     )
+    initGitRepo(workspaceRoot)
     process.chdir(workspaceRoot)
   })
 
@@ -398,6 +415,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
         },
       }`,
     )
+    initGitRepo(workspaceRoot)
     process.chdir(workspaceRoot)
   })
 

@@ -71,7 +71,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
 
   const sepIdx = args.indexOf('--')
   const before = sepIdx === -1 ? args : args.slice(0, sepIdx)
-  out.forwardArgs = sepIdx === -1 ? [] : args.slice(sepIdx + 1).map(String)
+  out.forwardArgs = sepIdx === -1 ? [] : args.slice(sepIdx + 1)
 
   for (let i = 0; i < before.length; i++) {
     const a = before[i]

@@ -1,3 +1,4 @@
+import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import type { ExecConfig, TaskConfig, CacheConfig } from '../config.js'
 import type { CacheLayer } from '../cache/cache.js'
@@ -41,7 +42,7 @@ export interface ExecuteArgs {
    */
   persistentRegistry?: Map<string, ReturnType<typeof Bun.spawn>>
   /** Per-run memo for `git ls-files` (one entry per project dir). */
-  gitFilesCache?: Map<string, readonly string[] | null>
+  gitFilesCache?: Map<string, readonly string[]>
   /** Per-run memo for derived hashes (package.json bytes + task config). */
   hashCache?: HashCache
 }
@@ -81,7 +82,7 @@ export interface ComputeHashArgs {
   cache: CacheLayer
   forwardArgs?: readonly string[] | undefined
   nestedProjectDirs: string[]
-  gitFilesCache?: Map<string, readonly string[] | null>
+  gitFilesCache?: Map<string, readonly string[]>
   hashCache?: HashCache
 }
 
@@ -289,7 +290,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // shows, not the original exec time stored in the entry.
   if (cacheEnabled) {
     const cacheOpStart = performance.now()
-    const hit = await cache.get(hash)
+    const hit = await cache.get(hash, { taskId: node.id, command: step.command })
     args.observer?.emit({
       kind: 'cacheProbe',
       nodeId: node.id,
@@ -333,9 +334,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       if (!skipRestore) {
         if (outputs.length > 0) await cleanOutputs(cleanArgs)
         await cache.restoreOutputs(hash, node.projectDir)
+        // Restored outputs changed the project's tree; any downstream
+        // same-project task that resolves inputs after us would
+        // otherwise see a stale `git ls-files` snapshot taken at the
+        // top of the run. Drop the project's entry so the next
+        // resolveFiles call re-spawns git for that dir.
+        if (outputs.length > 0) args.gitFilesCache?.delete(node.projectDir)
       }
       if (hit.stdout) log.taskStdout(node, hit.stdout)
-      if (hit.stderr) log.taskStderr(node, hit.stderr)
       const status =
         hit.exitCode !== 0 ? 'failed' : hit.source === 'remote' ? 'cache-hit-remote' : 'cache-hit'
       // `restored` distinguishes "we just wrote files to disk" from
@@ -466,9 +472,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         exitCode: effectiveExitCode,
         durationMs: result.durationMs,
         stdout: result.stdout,
-        stderr: effectiveStderr,
       },
     })
+    // This task just wrote outputs to the project's tree. If a
+    // downstream same-project task is about to resolve inputs, the
+    // bulk `git ls-files` snapshot taken at the top of the run is
+    // stale for that project — drop the entry so resolveFiles
+    // re-spawns git on demand.
+    if (outputFiles.length > 0) args.gitFilesCache?.delete(node.projectDir)
   }
 
   return {
@@ -507,7 +518,6 @@ async function prepareOutputsForBind(
   projectDir: string,
   outputs: readonly string[],
 ): Promise<void> {
-  const { mkdir } = await import('node:fs/promises')
   for (const g of outputs) {
     const hasWildcard = /[*?[\]]/.test(g)
     if (hasWildcard) {

@@ -38,29 +38,43 @@ export function defaultLogger(colors: ColorSupport = detectColors()): Logger {
   // section. The price: chunks that interleaved at runtime get
   // re-ordered (all stdout before all stderr). Observers still see
   // the original interleaving via the structural event stream.
-  const stdoutBuffers = new Map<string, string>()
-  const stderrBuffers = new Map<string, string>()
+  //
+  // Chunks are held as a string[] (push + join on flush) instead of
+  // appending via `+=`; concatenating N small chunks via `+=` is O(N²)
+  // because each `+=` allocates a fresh string of the full accumulated
+  // length. Bun-friendly: join('') is a single contiguous allocation.
+  const stdoutBuffers = new Map<string, string[]>()
+  const stderrBuffers = new Map<string, string[]>()
   // Tracks whether we've already emitted at least one task block so
   // we can prefix subsequent blocks with a blank line for visual
   // separation. The header (formatHeader) already ends with a blank
   // line, so the first block doesn't need one.
   let blocksEmitted = 0
+  const pushChunk = (buffers: Map<string, string[]>, id: string, chunk: string): void => {
+    const arr = buffers.get(id)
+    if (arr) arr.push(chunk)
+    else buffers.set(id, [chunk])
+  }
+  const takeChunks = (buffers: Map<string, string[]>, id: string): string => {
+    const arr = buffers.get(id)
+    if (!arr) return ''
+    buffers.delete(id)
+    return arr.length === 1 ? arr[0]! : arr.join('')
+  }
 
   return {
     status(line) {
       process.stdout.write(`${line}\n`)
     },
     taskStdout(node, chunk) {
-      stdoutBuffers.set(node.id, (stdoutBuffers.get(node.id) ?? '') + chunk)
+      pushChunk(stdoutBuffers, node.id, chunk)
     },
     taskStderr(node, chunk) {
-      stderrBuffers.set(node.id, (stderrBuffers.get(node.id) ?? '') + chunk)
+      pushChunk(stderrBuffers, node.id, chunk)
     },
     taskComplete(node, outcome) {
-      const stdout = stdoutBuffers.get(node.id) ?? ''
-      const stderr = stderrBuffers.get(node.id) ?? ''
-      stdoutBuffers.delete(node.id)
-      stderrBuffers.delete(node.id)
+      const stdout = takeChunks(stdoutBuffers, node.id)
+      const stderr = takeChunks(stderrBuffers, node.id)
       // formatTaskBlock returns '' for group tasks (no exec) — skip
       // the write so a stray newline doesn't sneak into the output.
       const block = formatTaskBlock(node, outcome, { stdout, stderr }, colors)

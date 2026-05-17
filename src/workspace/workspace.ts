@@ -105,23 +105,32 @@ export async function loadWorkspace(root: string): Promise<Workspace> {
 }
 
 export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]> {
+  // Run all package globs concurrently. Disk-bound walks parallelize
+  // well; serializing them just stretches the discovery phase by N×.
+  const perPattern = await Promise.all(
+    workspace.packageGlobs.map(async (pattern) => {
+      // Normalize: `"."` -> the root itself; `"foo/"` -> `"foo"`.
+      const normalized = pattern === '.' ? '' : pattern.replace(/\/$/, '')
+      const globPattern = normalized === '' ? 'package.json' : `${normalized}/package.json`
+      const glob = new Bun.Glob(globPattern)
+      const hits: string[] = []
+      for await (const rel of glob.scan({
+        cwd: workspace.root,
+        onlyFiles: true,
+        dot: false,
+      })) {
+        // Skip nested node_modules — workspace package globs shouldn't
+        // ever reach into them, but a pathological pattern like `**`
+        // would. Avoid splitting the path on the hot loop.
+        if (rel.includes(`${path.sep}node_modules${path.sep}`)) continue
+        if (rel.startsWith(`node_modules${path.sep}`)) continue
+        hits.push(path.resolve(workspace.root, rel))
+      }
+      return hits
+    }),
+  )
   const matches = new Set<string>()
-  for (const pattern of workspace.packageGlobs) {
-    // Normalize: `"."` -> the root itself; `"foo/"` -> `"foo"`.
-    const normalized = pattern === '.' ? '' : pattern.replace(/\/$/, '')
-    const globPattern = normalized === '' ? 'package.json' : `${normalized}/package.json`
-    const glob = new Bun.Glob(globPattern)
-    for await (const rel of glob.scan({
-      cwd: workspace.root,
-      onlyFiles: true,
-      dot: false,
-    })) {
-      // Skip nested node_modules — workspace package globs shouldn't ever
-      // reach into them, but a pathological pattern like `**` would.
-      if (rel.split(path.sep).includes('node_modules')) continue
-      matches.add(path.resolve(workspace.root, rel))
-    }
-  }
+  for (const arr of perPattern) for (const m of arr) matches.add(m)
 
   const projects: ProjectMeta[] = []
   const seenName = new Map<string, string>()

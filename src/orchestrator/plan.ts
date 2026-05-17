@@ -38,7 +38,7 @@ export interface PlanArgs {
   noCache: boolean
   forwardArgs?: readonly string[] | undefined
   nestedDirsByProject: Map<string, string[]>
-  gitFilesCache?: Map<string, readonly string[] | null>
+  gitFilesCache?: Map<string, readonly string[]>
   hashCache?: import('./execute-task.js').HashCache
 }
 
@@ -83,7 +83,10 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
       if (!cacheEnabled) {
         status = 'no-cache'
       } else {
-        const hit = await args.cache.get(hash)
+        const hit = await args.cache.get(hash, {
+          taskId: node.id,
+          command: node.config.exec?.command ?? '',
+        })
         status = hit ? (hit.source === 'remote' ? 'hit-remote' : 'hit-local') : 'miss'
       }
       cacheStatusById.set(node.id, status)

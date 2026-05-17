@@ -13,6 +13,18 @@ async function makeWorkspace(): Promise<string> {
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
   await mkdir(path.join(root, 'packages'), { recursive: true })
+  // vx requires git for input enumeration.
+  const run = (...args: string[]): void => {
+    Bun.spawnSync({
+      cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+  }
+  run('init', '-q')
+  run('config', 'user.email', 'test@vx.local')
+  run('config', 'user.name', 'vx test')
   return root
 }
 

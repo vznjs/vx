@@ -47,6 +47,22 @@ async function makeWorkspace(): Promise<Fixture> {
     JSON.stringify({ name: 'fixture-root', private: true }),
   )
   await mkdir(path.join(root, 'packages'), { recursive: true })
+  // vx requires git for input enumeration; init a quiet repo so the
+  // fixture's tasks can resolve their inputs.
+  const run = (...args: string[]): void => {
+    const p = Bun.spawnSync({
+      cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    if (p.exitCode !== 0) {
+      throw new Error(`git ${args.join(' ')} failed: ${new TextDecoder().decode(p.stderr)}`)
+    }
+  }
+  run('init', '-q')
+  run('config', 'user.email', 'test@vx.local')
+  run('config', 'user.name', 'vx test')
   return { root, log: [], err: [] }
 }
 
