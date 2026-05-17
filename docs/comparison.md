@@ -281,3 +281,128 @@ Things `@vzn/vx` does that the others don't:
   smaller.
 - **Explicit `cache + persistent` rejection.** The project loader
   throws — no silent surprise.
+
+## Deliberate divergences from Turbo / Nx
+
+These are places where Turbo or Nx pin a specific behavior in their
+test suites and `vx` deliberately does something else. Listed here so
+the choices don't drift accidentally — if any of these change, the
+rationale below needs revisiting. Sourced from the full gap analysis
+in [`design/turbo-nx-test-gaps.md`](./design/turbo-nx-test-gaps.md).
+
+### Hashing pipeline
+
+- **No `.gitattributes` CRLF normalization.** Turbo replicates git's
+  blob-hashing pipeline (CRLF conversion + `text=auto` + `autocrlf`)
+  so the manual-hash fallback matches `git hash-object` byte-for-byte.
+  vx hashes raw file bytes with xxh3. Tradeoff: a CRLF-converted file
+  on Windows produces a different vx cache key than the same logical
+  content on Linux. Document this if/when we ship Windows support.
+- **No `.gitattributes` binary detection.** Same root: vx hashes raw
+  bytes; we don't need to distinguish text from binary at hash time.
+- **xxHash3 vs git's SHA1 blob hash.** Turbo uses git-object SHA1
+  when files are tracked, falls back to manual hashing otherwise. vx
+  always uses xxh3 of raw bytes. Wins ~5× speed; loses interop with
+  `git hash-object` for tooling that wants to share the digest.
+
+### Task graph
+
+- **`forwardArgs` does NOT inherit into `dependsOn` deps.** Nx
+  forwards args/options into dependents via `options: 'forward'`.
+  vx scopes `forwardArgs` to user-requested nodes only — passing
+  `vx run build -- --foo` does NOT pollute upstream tasks' cache keys.
+  Explicit > magical (see CLAUDE.md decision log entry P1).
+- **No tag-based selectors (`tag:foo`, `!tag:bar`).** Nx has project
+  tags as a generator/devkit concept. vx project identity is
+  workspace path + package.json name only.
+
+### Filter DSL
+
+- **Stacked `--filter name --filter [ref]` is UNION, not intersection.**
+  Turbo's discussion #9096 argues for intersection ("only packages
+  that are both affected AND match the name"). vx unions
+  (tests/filter.test.ts > applyFilters > stacked: --filter ui
+  --filter [main] unions name + affected sets). Mental model: each
+  filter ADDS to the selection; never narrows another filter's set.
+- **Filter mode is not classified into all-vs-exclude-vs-explicit.**
+  Turbo decides whether to start from the universe or the empty set
+  based on whether the filter list contains any positive selector;
+  vx always starts from the universe and applies filters as set ops.
+  Same observable behavior for every documented case; simpler
+  implementation.
+
+### Affected detection
+
+- **Project removal does NOT invalidate every project's cache.** Nx
+  invalidates everything when a project is removed. vx already folds
+  each project's `package.json` bytes into every task's cache key
+  (PR #42, CACHE_VERSION → v12), which catches "project gone" at
+  finer granularity — only tasks that actually consumed the gone
+  project's bytes are busted.
+- **`git diff --no-renames` for affected.** vx flips rename
+  detection OFF so cross-project `git mv` flags BOTH source and
+  destination projects. Turbo's default rename-on would surface only
+  the destination, silently missing the source's affected status.
+
+### Cache storage
+
+- **stdout / stderr stored in SQLite, not in the tar artifact.**
+  Turbo embeds the run's logs as files inside the cache archive.
+  vx separates them: the tar holds outputs only; logs live in the
+  SQLite `runs` table. Decouples log retention from cache eviction;
+  `vx stats` can query log history without unpacking artifacts.
+- **No per-cache-entry SCM metadata.** Turbo writes the git sha +
+  dirty-hash into each cache entry's metadata. vx writes run-level
+  analytics only. Reconsider if we want post-hoc "what git state
+  produced this artifact" queries.
+
+### Remote cache
+
+- **No token refresh on 403.** Turbo refreshes the bearer token on 403. vx remote auth is static; a revoked token surfaces as an
+  immediate failure rather than a silent retry loop. Revisit if
+  hosted-cache use grows.
+
+### Glob walking
+
+- **`**` symlink-following defers to Bun.Glob.\*\* Turbo distinguishes
+  shallow-wildcard vs doublestar follow-link behavior explicitly.
+  vx defers to Bun.Glob's defaults — symlinks under the project
+  directory are followed; the symlink-cycle test pins that the
+  resolver doesn't hang. Document via pinning test rather than
+  reimplementing Turbo's distinction.
+
+### Engine / scheduling
+
+- **No executor batching.** Nx batches same-executor tasks into a
+  single child process. vx has no executor concept — shell is the
+  API. Tradeoff: more spawn overhead; far simpler model.
+- **No incremental watcher state.** Turbo's watcher maintains rich
+  incremental change-accumulator + rediscover state. vx re-runs the
+  orchestrator from scratch on each cycle. Cheap because of
+  `gitFilesCache` + `Cache.hashFile` mtime+size fast path; complexity
+  not yet justified.
+
+### Config schema
+
+- **No `$WORKSPACE_ROOT$` / `$TURBO_ROOT$` token substitution.**
+  Turbo + Nx use template tokens in path strings; vx uses real paths
+  from the project-dir context. The path resolution context is
+  unambiguous because every glob is scoped per-project.
+
+### Env handling
+
+- **No `.env` auto-loading.** Nx auto-loads `.env` files. vx
+  requires explicit `cache.inputs.env` declarations. "Explicit over
+  magical" (architecture principle #1).
+- **No wildcards in `cache.inputs.env`.** Turbo supports `VERCEL_*`
+  expansion. vx rejects wildcards at load time so a typo doesn't
+  silently contribute an empty value to the cache key (pinned by
+  tests/project-loader.test.ts > rejects wildcards in
+  cache.inputs.env).
+
+### Concurrency model
+
+- **Single-event-loop JS, no shared mutex.** Turbo uses
+  `RwLock<TaskHashTracker>` and tests concurrent reads + read/write.
+  vx is single-threaded JS by construction — no shared mutable state
+  across "threads" to race over.

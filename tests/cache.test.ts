@@ -788,6 +788,73 @@ describe('Cache storage (v10)', () => {
     // DB row should be gone.
     expect(await cache.get('h-orphan-row')).toBeNull()
   })
+
+  // ─── §6 functionality: temp file lifecycle ──────────────────────
+
+  it('save() that throws mid-pack leaves no `.tar.zst.tmp-*` debris', async () => {
+    // Trigger a save failure by passing an outputFile that doesn't
+    // exist — Bun.write inside the staging step will reject. The
+    // tmp tar file (if any was created) must be cleaned up. After
+    // the failed save, the cache dir should contain neither a final
+    // `.tar.zst` nor any `.tar.zst.tmp-*` siblings for this hash.
+    const { mkdir, readdir } = await import('node:fs/promises')
+    await mkdir(projectDir, { recursive: true })
+    await expect(
+      cache.save({
+        hash: 'h-bad-save',
+        projectDir,
+        outputFiles: [path.join(projectDir, 'does-not-exist.txt')],
+        entry: {
+          taskId: 'pkg#build',
+          command: 'oops',
+          exitCode: 0,
+          durationMs: 1,
+          stdout: '',
+        },
+      }),
+    ).rejects.toThrow()
+    const entries = await readdir(path.join(cacheDir))
+    const debris = entries.filter((e) => e.startsWith('h-bad-save'))
+    expect(debris).toEqual([])
+  })
+
+  it('save() rename is atomic from a concurrent reader (no half-written .tar.zst)', async () => {
+    // A reader that polls `cache.get(hash)` while a save is in
+    // flight must observe one of two states: NULL (no entry yet) or
+    // a complete, parseable entry. Never a half-written tar that
+    // breaks decompression. We exercise this by running a save in
+    // parallel with rapid get() probes — and decoding each
+    // non-null result.
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    await mkdir(projectDir, { recursive: true })
+    const outFile = path.join(projectDir, 'dist', 'out.txt')
+    await mkdir(path.dirname(outFile), { recursive: true })
+    await writeFile(outFile, 'payload-for-atomicity-test')
+    const second = new Cache(cacheDir)
+    try {
+      const savePromise = cache.save({
+        hash: 'h-atomic',
+        projectDir,
+        outputFiles: [outFile],
+        entry: {
+          taskId: 'pkg#build',
+          command: 'atomic',
+          exitCode: 0,
+          durationMs: 1,
+          stdout: '',
+        },
+      })
+      // Hammer get() while the save runs. Each non-null result must
+      // be a fully-formed entry (no decompression error).
+      const polls: Array<Promise<unknown>> = []
+      for (let i = 0; i < 20; i++) polls.push(second.get('h-atomic'))
+      await Promise.all([savePromise, ...polls])
+      const final = await second.get('h-atomic')
+      expect(final).not.toBeNull()
+    } finally {
+      second.close()
+    }
+  })
 })
 
 // Schema-version + cache-version recovery paths. These exercise the
