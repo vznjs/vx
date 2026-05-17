@@ -38,6 +38,33 @@ jobs:
           # user namespaces. bwrap needs them; without this sysctl
           # tweak it exits non-zero on first use.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          # AppArmor profile-based restriction (Ubuntu 24.04+): some
+          # builds also enforce via the unprivileged_userns profile.
+          if [ -f /etc/apparmor.d/unprivileged_userns ]; then
+            sudo aa-disable /etc/apparmor.d/unprivileged_userns || true
+          fi
+
+      # Diagnose: confirm bwrap actually runs on this host before
+      # firing the test suite. Surfaces install / namespace issues
+      # directly in CI logs instead of as opaque "tests skipped".
+      - name: Diagnose sandbox availability
+        run: |
+          echo "::group::which bwrap"
+          which bwrap || echo "MISSING"
+          bwrap --version || true
+          echo "::endgroup::"
+          echo "::group::sysctl userns"
+          sysctl kernel.unprivileged_userns_clone 2>&1 || true
+          sysctl kernel.apparmor_restrict_unprivileged_userns 2>&1 || true
+          echo "::endgroup::"
+          echo "::group::bwrap minimal exec"
+          bwrap --ro-bind / / --proc /proc --dev /dev /bin/true
+          echo "ok: bwrap exited 0"
+          echo "::endgroup::"
+          echo "::group::probeSandbox()"
+          bun -e 'import("/home/runner/work/vx/vx/src/exec/sandbox-runtime.js").then(m => m.probeSandbox()).then(a => console.log(JSON.stringify(a)))' \
+            || bun -e 'import("./src/exec/sandbox-runtime.js").then(m => m.probeSandbox()).then(a => console.log(JSON.stringify(a)))'
+          echo "::endgroup::"
 
       # Dogfood: vx orchestrates its own format-check / lint / test
       # via vx.config.ts. The `ci` task is a group that fans out to all

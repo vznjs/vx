@@ -47,9 +47,12 @@ let availabilityCache: SandboxAvailability | undefined
  * Probe whether SRT can sandbox on this host. Memoized — the binary
  * presence + platform check doesn't change within a process.
  *
- * Does NOT detect runtime failures (e.g. Ubuntu 24's AppArmor blocking
- * unprivileged user namespaces while bwrap is still on PATH). Those
- * surface when the first task spawns and bwrap exits non-zero.
+ * In addition to SRT's own `checkDependencies` (which only verifies
+ * binary presence on PATH), this runs a minimal bwrap invocation on
+ * Linux to catch the "bwrap installed but unprivileged user namespaces
+ * blocked by AppArmor / sysctl" case that's the default on stock
+ * Ubuntu 24.04. Without this real-execution probe, the unavailability
+ * surfaces only at the first task spawn, deep inside the orchestrator.
  */
 export async function probeSandbox(): Promise<SandboxAvailability> {
   if (availabilityCache) return availabilityCache
@@ -63,8 +66,38 @@ export async function probeSandbox(): Promise<SandboxAvailability> {
     availabilityCache = { available: false, reason: deps.errors.join('; ') }
     return availabilityCache
   }
+  // Linux only: real-execution probe. Run `bwrap` with the minimal
+  // user-namespace invocation it'd attempt for a sandboxed task; if
+  // the kernel rejects (AppArmor / sysctl), surface that here.
+  if (process.platform === 'linux') {
+    const ok = await tryBwrapOnce()
+    if (!ok.available) {
+      availabilityCache = ok
+      return availabilityCache
+    }
+  }
   availabilityCache = { available: true, reason: '' }
   return availabilityCache
+}
+
+async function tryBwrapOnce(): Promise<SandboxAvailability> {
+  try {
+    const proc = Bun.spawn(
+      ['bwrap', '--ro-bind', '/', '/', '--proc', '/proc', '--dev', '/dev', '/bin/true'],
+      { stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' },
+    )
+    const stderr = await new Response(proc.stderr).text()
+    await proc.exited
+    if (proc.exitCode !== 0) {
+      return {
+        available: false,
+        reason: `bwrap probe failed (exit ${proc.exitCode}): ${stderr.trim().slice(0, 200)}`,
+      }
+    }
+    return { available: true, reason: '' }
+  } catch (err) {
+    return { available: false, reason: `bwrap probe threw: ${(err as Error).message}` }
+  }
 }
 
 /**
