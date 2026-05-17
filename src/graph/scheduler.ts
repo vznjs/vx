@@ -115,88 +115,113 @@ function computeReverseDepCount(nodes: Map<string, TaskNode>): Map<string, numbe
 export async function runGraph(options: ScheduleOptions): Promise<Map<string, TaskOutcome>> {
   const { nodes, concurrency, execute, onStart, onFinish } = options
   const outcomes = new Map<string, TaskOutcome>()
-  const remaining = new Set(nodes.keys())
-  const inFlight = new Set<string>()
 
-  // Pre-sort node IDs by reverse-dep count (descending). Reverse deps
-  // are static for the duration of a run, so we sort once and iterate
-  // this order on every tick instead of re-sorting `remaining` each
-  // time. O(N log N) once vs O(N log N) per tick.
-  const reverseDepCount = computeReverseDepCount(nodes)
-  const scheduleOrder = [...nodes.keys()].sort(
-    (a, b) => (reverseDepCount.get(b) ?? 0) - (reverseDepCount.get(a) ?? 0),
-  )
+  // Reverse adjacency + pending dep counts. Built once. A task becomes
+  // ready when its `pending` hits 0, at which point it's pushed to the
+  // ready queue. This replaces the old "scan all of scheduleOrder on
+  // every tick" pattern which was O(N²) over a full run.
+  const dependents = new Map<string, string[]>()
+  const pending = new Map<string, number>()
+  for (const node of nodes.values()) {
+    pending.set(node.id, node.deps.length)
+    for (const dep of node.deps) {
+      const list = dependents.get(dep)
+      if (list) list.push(node.id)
+      else dependents.set(dep, [node.id])
+    }
+  }
 
-  // Free-list of worker slots. Lowest-free-index allocation keeps a
-  // task that's almost always running pinned to slot 0; idle gaps on
-  // higher slot indices stay visible. Stable assignment matters more
-  // to TUI consumers than any scheduling fairness — we already pick
-  // tasks by ready-order.
-  const freeSlots: number[] = Array.from({ length: concurrency }, (_, i) => i)
+  const priority = computeReverseDepCount(nodes)
+
+  // Worker slot allocator: a bitmap of busy slots in [0, concurrency).
+  // Lowest free index wins so a near-full schedule pins the steady-state
+  // task to slot 0 and leaves higher indices visibly idle. Replaces a
+  // sorted-array + unshift+sort-on-release which was O(C log C) per
+  // task completion.
+  const slotBusy = new Uint8Array(concurrency)
   const slotOf = new Map<string, number>()
+  const acquireSlot = (): number => {
+    for (let i = 0; i < concurrency; i++) {
+      if (!slotBusy[i]) {
+        slotBusy[i] = 1
+        return i
+      }
+    }
+    return -1 // unreachable: caller gates on active < concurrency
+  }
+  const releaseSlot = (id: string): void => {
+    const s = slotOf.get(id)
+    if (s !== undefined) {
+      slotBusy[s] = 0
+      slotOf.delete(id)
+    }
+  }
+
+  // Ready queue: tasks whose deps have all completed. Kept sorted on
+  // insert (descending by priority); equal-priority items insert AFTER
+  // existing entries so ties break in graph-insertion order — same
+  // contract the prior `scheduleOrder` sort provided via stable sort.
+  const ready: string[] = []
+  const pushReady = (id: string): void => {
+    const p = priority.get(id) ?? 0
+    let lo = 0
+    let hi = ready.length
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if ((priority.get(ready[mid]!) ?? 0) >= p) lo = mid + 1
+      else hi = mid
+    }
+    ready.splice(lo, 0, id)
+  }
+
+  for (const node of nodes.values()) {
+    if (node.deps.length === 0) pushReady(node.id)
+  }
+
+  let active = 0
+  let resolved = false
 
   return new Promise<Map<string, TaskOutcome>>((resolve) => {
-    let active = 0
-    let resolved = false
+    const finishOne = (id: string, outcome: TaskOutcome): void => {
+      outcomes.set(id, outcome)
+      releaseSlot(id)
+      onFinish?.(outcome)
+      const ds = dependents.get(id)
+      if (!ds) return
+      for (const d of ds) {
+        const rem = (pending.get(d) ?? 0) - 1
+        pending.set(d, rem)
+        if (rem === 0) pushReady(d)
+      }
+    }
 
     const tick = (): void => {
       if (resolved) return
 
-      // Iterate the pre-sorted schedule order. `remaining` Set
-      // membership tells us what's still pending; we walk the sorted
-      // list (priority order) and pick the first ready node.
-      for (const id of scheduleOrder) {
-        if (active >= concurrency) break
-        if (!remaining.has(id)) continue
-        if (inFlight.has(id)) continue
-        const node = nodes.get(id)
-        if (!node) continue
+      while (active < concurrency && ready.length > 0) {
+        const id = ready.shift() as string
+        const node = nodes.get(id) as TaskNode
 
-        const upstream = node.deps.map((d) => outcomes.get(d))
-        if (upstream.some((u) => u === undefined)) continue
-
-        const failedDep = upstream.find(
-          (u) => u && (u.status === 'failed' || u.status === 'skipped'),
-        )
+        // If any upstream failed/skipped, propagate skip synchronously
+        // without running. Skipped tasks still flow through this queue
+        // because dependents are pushed when `pending` hits 0 regardless
+        // of outcome — keeps the propagation logic in one place.
+        const upstream = node.deps.map((d) => outcomes.get(d) as TaskOutcome)
+        const failedDep = upstream.find((u) => u.status === 'failed' || u.status === 'skipped')
         if (failedDep) {
-          const outcome: TaskOutcome = {
-            node,
-            status: 'skipped',
-            exitCode: 1,
-            durationMs: 0,
-          }
-          outcomes.set(id, outcome)
-          remaining.delete(id)
-          onFinish?.(outcome)
+          finishOne(id, { node, status: 'skipped', exitCode: 1, durationMs: 0 })
           continue
         }
 
         active++
-        inFlight.add(id)
-        remaining.delete(id)
-        // shift() returns the lowest-index free slot; we already gated
-        // on `active < concurrency`, so this is always defined.
-        const slot = freeSlots.shift() as number
+        const slot = acquireSlot()
         slotOf.set(id, slot)
         onStart?.(node, slot)
 
-        const upstreamDefined = upstream.filter((u): u is TaskOutcome => u !== undefined)
-        const releaseSlot = (): void => {
-          const s = slotOf.get(id)
-          if (s !== undefined) {
-            slotOf.delete(id)
-            // Insert at the head so the next acquire picks the lowest index.
-            freeSlots.unshift(s)
-            freeSlots.sort((a, b) => a - b)
-          }
-        }
-        execute(node, upstreamDefined, slot)
+        execute(node, upstream, slot)
           .then((outcome) => {
-            outcomes.set(id, outcome)
-            inFlight.delete(id)
             active--
-            releaseSlot()
-            onFinish?.(outcome)
+            finishOne(id, outcome)
             tick()
           })
           .catch((err: unknown) => {
@@ -212,20 +237,14 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               durationMs: 0,
               stderr: `${err instanceof Error && err.name !== 'Error' ? err.name + ': ' : ''}${message}\n`,
             }
-            outcomes.set(id, outcome)
-            inFlight.delete(id)
             active--
-            releaseSlot()
-            onFinish?.(outcome)
+            finishOne(id, outcome)
             process.stderr.write(`[vx] internal error in ${id}: ${message}\n`)
             tick()
           })
       }
 
-      // Re-check completion at the bottom: all remaining nodes may have been
-      // synchronously marked `skipped` above, in which case nothing is in
-      // flight to call us back.
-      if (remaining.size === 0 && active === 0) {
+      if (outcomes.size === nodes.size && active === 0) {
         resolved = true
         resolve(outcomes)
       }

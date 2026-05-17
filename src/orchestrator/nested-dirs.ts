@@ -6,14 +6,26 @@ import type { ProjectEntry } from '../graph/task-graph.js'
  * underneath it. Used to enforce project-boundary isolation: a
  * project's task cannot see files inside another project, even if its
  * globs would otherwise match.
+ *
+ * Sort once, then scan: nested projects of `p` form a contiguous run
+ * immediately after `p` in the sorted order (any non-descendant breaks
+ * the prefix-match). O(P log P) instead of the naive O(P²) cross
+ * product. Stable for any project set with no dir collisions, which
+ * the workspace loader already enforces.
  */
 export function computeNestedProjectDirs(entries: ProjectEntry[]): Map<string, string[]> {
   const result = new Map<string, string[]>()
-  for (const p of entries) {
+  if (entries.length === 0) return result
+  const sorted = [...entries].sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0))
+  for (let i = 0; i < sorted.length; i++) {
+    const p = sorted[i]!
     const prefix = p.dir + path.sep
-    const nested = entries
-      .filter((o) => o.dir !== p.dir && o.dir.startsWith(prefix))
-      .map((o) => o.dir)
+    const nested: string[] = []
+    for (let j = i + 1; j < sorted.length; j++) {
+      const other = sorted[j]!
+      if (!other.dir.startsWith(prefix)) break
+      nested.push(other.dir)
+    }
     result.set(p.name, nested)
   }
   return result

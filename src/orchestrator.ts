@@ -213,14 +213,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // summary. SIGTERM gives well-behaved servers (vite, next, esbuild
   // --watch) a moment to clean up; we don't escalate to SIGKILL —
   // process-group propagation on Ctrl-C handles the unhappy case.
-  for (const [id, child] of persistentRegistry) {
-    try {
-      child.kill('SIGTERM')
-    } catch {
-      // already exited — fine.
-    }
-    void id
-  }
+  // Bun's Subprocess.kill is idempotent on an already-exited child.
+  for (const child of persistentRegistry.values()) child.kill('SIGTERM')
   await Promise.allSettled([...persistentRegistry.values()].map((c) => c.exited))
 
   const list = [...outcomes.values()]

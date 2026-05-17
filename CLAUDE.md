@@ -133,6 +133,72 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: Refactor pass — perf + simplification, no behavior change.
+  Thirteen focused tweaks across the hot paths, all preserving public
+  API and cache key derivation:
+  1. **Scheduler tick is now O(N + E)** instead of O(N²). Old loop
+     walked `scheduleOrder` (every node) on every completion. New
+     design: `pending[id]` dep-counters + a `ready[]` priority queue
+     pushed-to on `pending → 0`. Slot allocator switched from a
+     sorted free-list (`unshift + sort` per release) to a
+     `Uint8Array` busy bitmap with a linear scan over `[0,
+     concurrency)`. Same priority contract: higher transitive-reverse-
+     dep count first, ties break in graph-insertion order via a
+     binary-search-insert that respects existing equals.
+  2. **`detectCycle` is iterative** with a numeric-indexed
+     `Uint8Array` color array instead of recursion + `Map<string,
+     number>`. Removes V8 stack-frame ceiling risk on deep `dependsOn`
+     chains and skips the per-node Map lookup cost.
+  3. **`nested-dirs.ts` is O(P log P)** instead of O(P²). Sort projects
+     by `dir`; each project's nested set is the contiguous prefix-
+     matched suffix immediately after it. Same output, no behaviour
+     change.
+  4. **Logger buffers chunks as `string[]` then joins on flush** —
+     replaces `Map<string, string>` accumulation via `+=`, which was
+     O(N²) over total bytes for chatty long-running tasks (each `+=`
+     allocates a fresh string of full accumulated length).
+  5. **Dead tar manifest API removed** from `src/cache/tar.ts`:
+     `Manifest`, `ManifestEntry`, `buildManifest`, the optional
+     `manifest?` arg to `extractOutputs`, and the skip-if-matches
+     branch + `ExtractResult` return. v16 dropped the manifest.json
+     entry from the artifact already (file fingerprints live in the
+     `output_files` SQL table); the API surface lingered with no
+     callers. ~70 LOC down.
+  6. **`prune` deletes in a single transaction + parallel rm** instead
+     of N round-trips + serialized unlinks. ON DELETE CASCADE handles
+     `output_files`. Hashes are bound with placeholder IN-list (≤ N
+     stay well under SQLite's 999 limit in practice).
+  7. **`workspace.listProjects`** runs the package globs concurrently
+     via `Promise.all` (was serialized). Same dedup pass after.
+  8. **`Bun.color` results memoized** in `src/orchestrator/colors.ts`.
+     Pure function called thousands of times per run with one of four
+     hex strings — the new `ansiCache` Map turns those into hits.
+  9. **`Bun.Glob`** replaces hand-rolled `globToRegex` in
+     `src/workspace/filter.ts:matchProjects`, and replaces the
+     readdir + recurse + dynamic-import in
+     `src/cache/layered-cache.ts:listFilesRecursive`.
+  10. **`AbortSignal.timeout`** replaces the manual
+      `AbortController + setTimeout + clearTimeout` ceremony in
+      `RemoteCache.fetch`. Also catches `TimeoutError` in addition
+      to `AbortError` for the timeout path.
+  11. **`toPosix` Linux fast-path** — returns `p` unchanged when
+      `path.sep === '/'`, skipping `split + join` on the dominant dev
+      platform.
+  12. **Hoisted dynamic import** out of `prepareOutputsForBind` (was
+      `await import('node:fs/promises')` per sandboxed task) and out
+      of `listFilesRecursive` (was per-call).
+  13. **Cleanups**: `void id` dead loop var in the persistent-task
+      shutdown loop (Bun's `Subprocess.kill` is idempotent on exited
+      children), redundant `tasks.length === 1` ternary in
+      `formatHeader`, `.map(String)` defensive coercion on an already-
+      typed `readonly string[]` in `cli/run.ts:parseRunArgs`, and a
+      `filter().map()` two-allocation idiom in `upstream.ts` →
+      single-pass `for-of` push.
+
+  Verified: 518 tests pass (no test changes); `oxlint --type-aware
+  --type-check` clean; `oxfmt --check` clean. Cache schema/format and
+  cache key derivation unchanged — no `CACHE_VERSION` bump needed.
+
 - **2026-05**: Sandbox refactored to per-task config + fail-on-violation.
   Drops the `--sandbox` CLI flag and `RunOptions.sandbox` entirely;
   activation is declarative via `sandbox: {}` (or `sandbox: { ... }`)

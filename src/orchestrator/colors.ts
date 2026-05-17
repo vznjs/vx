@@ -34,6 +34,19 @@ export function detectColors(stream: NodeJS.WriteStream = process.stdout): Color
   return { enabled: stream.isTTY === true }
 }
 
+// Bun.color() is pure for a given (hex, mode) pair but does FFI work
+// on each call. The framed-output renderer paints the same handful of
+// accent colors thousands of times per run; memoizing here turns those
+// into hash-map hits.
+const ansiCache = new Map<string, string>()
+function ansiFor(color: string): string {
+  const cached = ansiCache.get(color)
+  if (cached !== undefined) return cached
+  const v = Bun.color(color, 'ansi-16m') ?? ''
+  ansiCache.set(color, v)
+  return v
+}
+
 export function paint(
   color: string,
   text: string,
@@ -44,7 +57,7 @@ export function paint(
   let prefix = ''
   if (opts.bold) prefix += BOLD
   if (opts.dim) prefix += DIM
-  if (color) prefix += Bun.color(color, 'ansi-16m') ?? ''
+  if (color) prefix += ansiFor(color)
   if (prefix.length === 0) return text
   return `${prefix}${text}${RESET}`
 }

@@ -1,3 +1,4 @@
+import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import type { ExecConfig, TaskConfig, CacheConfig } from '../config.js'
 import type { CacheLayer } from '../cache/cache.js'
@@ -507,7 +508,6 @@ async function prepareOutputsForBind(
   projectDir: string,
   outputs: readonly string[],
 ): Promise<void> {
-  const { mkdir } = await import('node:fs/promises')
   for (const g of outputs) {
     const hasWildcard = /[*?[\]]/.test(g)
     if (hasWildcard) {

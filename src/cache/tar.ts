@@ -1,15 +1,8 @@
 // In-process tar reader (POSIX ustar) for cache-hit restore.
 //
 // We replace `Bun.spawn(['tar', '-xf', ...])` on the cache-hit path
-// for two compounding wins:
-//
-//   1. Per-restore fork+exec saved (~5-10ms on Linux). At 200 cached
-//      tasks per run, that's 1-2s of pure overhead reclaimed.
-//   2. Per-file skip via a manifest embedded in the tar. After a
-//      cache-hit restore, the on-disk tree already matches the
-//      cached snapshot bit-for-bit. The next hit's restore reads the
-//      manifest, stats each target, and skips identical files.
-//      Turbo does the same in `restore_regular.rs:19-25`.
+// to save a per-restore fork+exec (~5-10ms on Linux). At 200 cached
+// tasks per run, that's 1-2s of pure overhead reclaimed.
 //
 // Tar layout we accept (produced by GNU/BSD `tar -cf - -C stage X Y Z`):
 //   - 512-byte POSIX ustar headers
@@ -43,7 +36,7 @@
 // We DO NOT support sparse files, character/block devices, or
 // hardlinks — they don't appear in build outputs.
 
-import { lstat, mkdir, stat, chmod, unlink, utimes } from 'node:fs/promises'
+import { lstat, mkdir, chmod, unlink, utimes } from 'node:fs/promises'
 import path from 'node:path'
 
 export interface TarHeader {
@@ -58,16 +51,6 @@ export interface TarHeader {
   /** Offset in `tarBytes` where the file's data starts. */
   dataOffset: number
 }
-
-/** Per-output-file metadata embedded in the tar as `manifest.json`. */
-export interface ManifestEntry {
-  size: number
-  mode: number
-  mtimeMs: number
-}
-
-/** Manifest keyed by tar entry name (e.g. "outputs/dist/index.js"). */
-export type Manifest = Record<string, ManifestEntry>
 
 /**
  * Walk a tar archive's headers and return them in source order.
@@ -195,7 +178,7 @@ function hasParentSegment(p: string): boolean {
 
 /**
  * Read a single tar entry's text body. Returns '' for missing entries.
- * Used to extract `manifest.json` / `stdout` / `stderr` inline.
+ * Used to extract `stdout` / `stderr` inline.
  */
 export function readTarText(tarBytes: Uint8Array, headers: TarHeader[], name: string): string {
   const h = headers.find((e) => e.name === name)
@@ -203,31 +186,12 @@ export function readTarText(tarBytes: Uint8Array, headers: TarHeader[], name: st
   return new TextDecoder('utf-8').decode(tarBytes.subarray(h.dataOffset, h.dataOffset + h.size))
 }
 
-export interface ExtractResult {
-  /** Files actually written to disk. */
-  written: number
-  /** Files skipped because (size, mode, mtimeMs) matched manifest. */
-  skipped: number
-}
-
 /**
  * Extract a tar's `outputs/<rel>` entries into `destDir/<rel>` (strips
  * the `outputs/` prefix). Entries outside `outputs/` are ignored.
- *
- * When `manifest` is provided, each target is stat'd before writing;
- * if `(size, mode, mtime)` matches the manifest entry, the write is
- * skipped (Turbo's restore-skip pattern). Files not in the manifest
- * are always written.
- *
- * Returns counts for observability.
  */
-export async function extractOutputs(
-  tarBytes: Uint8Array,
-  destDir: string,
-  manifest?: Manifest,
-): Promise<ExtractResult> {
+export async function extractOutputs(tarBytes: Uint8Array, destDir: string): Promise<void> {
   const headers = parseTarHeaders(tarBytes)
-  const result: ExtractResult = { written: 0, skipped: 0 }
 
   await mkdir(destDir, { recursive: true })
 
@@ -259,25 +223,6 @@ export async function extractOutputs(
         throw new TarSecurityError(`tar entry escapes destDir (unsafe): ${h.name}`)
       }
 
-      // Skip-if-matches: stat the target and compare against the
-      // manifest entry for this tar entry name.
-      if (manifest && manifest[h.name]) {
-        const m = manifest[h.name]!
-        try {
-          const s = await stat(target)
-          if (
-            s.size === m.size &&
-            (s.mode & 0o777) === (m.mode & 0o777) &&
-            Math.floor(s.mtimeMs / 1000) === Math.floor(m.mtimeMs / 1000)
-          ) {
-            result.skipped++
-            return
-          }
-        } catch {
-          // Target missing — fall through to write.
-        }
-      }
-
       // Ensure the parent dir exists. Cheap because mkdir(recursive)
       // is a no-op when the dir is already there.
       await mkdir(path.dirname(target), { recursive: true })
@@ -301,37 +246,12 @@ export async function extractOutputs(
       // Native fast path; same correctness contract.
       await Bun.write(target, body)
       // Permission bits + mtime restoration — keeps a re-tar of the
-      // restored tree byte-identical to the original artifact, and
-      // primes the manifest-skip for the NEXT cache hit.
+      // restored tree byte-identical to the original artifact.
       if ((h.mode & 0o777) !== 0) await chmod(target, h.mode & 0o777)
       if (h.mtimeMs > 0) {
         const t = h.mtimeMs / 1000
         await utimes(target, t, t)
       }
-      result.written++
     }),
   )
-
-  return result
-}
-
-/**
- * Build a Manifest for the given absolute file paths. `relRoot` is
- * the directory the paths are relative to; entries are keyed by
- * `outputs/<rel>` (matching the tar entry naming).
- */
-export async function buildManifest(files: readonly string[], relRoot: string): Promise<Manifest> {
-  const m: Manifest = {}
-  await Promise.all(
-    files.map(async (f) => {
-      const s = await stat(f)
-      const rel = path.relative(relRoot, f).split(path.sep).join('/')
-      m[`outputs/${rel}`] = {
-        size: s.size,
-        mode: s.mode & 0o777,
-        mtimeMs: Math.floor(s.mtimeMs),
-      }
-    }),
-  )
-  return m
 }

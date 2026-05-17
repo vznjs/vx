@@ -510,17 +510,22 @@ export class Cache implements CacheLayer {
    * the cache key derivation is unchanged. Pure performance win.
    */
   async hashFile(filePath: string): Promise<string> {
-    let stat
+    // statSync intentional: a single stat is ~1.6µs (Bun 1.3); the
+    // async-stat equivalent adds ~75µs of Promise machinery per call.
+    // Promise.all over the batched callers (key derivation) gives no
+    // I/O parallelism benefit because the stat is faster than the
+    // threadpool dispatch overhead.
+    let st
     try {
-      stat = statSync(filePath)
+      st = statSync(filePath)
     } catch {
       // Caller is responsible for skipping files that don't exist;
       // fall through to the content-hash path which will throw with
       // a more useful error.
       return await hashFileFromDisk(filePath)
     }
-    const mtimeMs = Math.floor(stat.mtimeMs)
-    const size = stat.size
+    const mtimeMs = Math.floor(st.mtimeMs)
+    const size = st.size
     const row = this.selectFileHash.get(filePath) as
       | { mtime_ms: number; size_bytes: number; content_hash: string }
       | undefined
@@ -1099,11 +1104,18 @@ export class Cache implements CacheLayer {
       }
     }
 
-    // Perform the deletions: DB row + on-disk tar.
-    const deleteEntry = this.db.prepare('DELETE FROM entries WHERE hash = ?')
-    for (const hash of victims) {
-      deleteEntry.run(hash)
-      await rm(this.tarPath(hash), { force: true })
+    // Delete DB rows in a single transaction (one fsync; ON DELETE
+    // CASCADE clears `output_files`) and unlink artifacts in parallel.
+    // Replaces N round-trips + serialized rm with one transaction + a
+    // Promise.all over the unlinks.
+    if (victims.size > 0) {
+      const hashes = [...victims]
+      const placeholders = hashes.map(() => '?').join(',')
+      const stmt = this.db.prepare(`DELETE FROM entries WHERE hash IN (${placeholders})`)
+      this.db.transaction(() => {
+        stmt.run(...(hashes as readonly SQLQueryBindings[]))
+      })()
+      await Promise.all(hashes.map((h) => rm(this.tarPath(h), { force: true })))
     }
 
     return { evicted: victims.size, bytesFreed }

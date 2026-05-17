@@ -31,7 +31,11 @@ export function filterUpstreamHashes(
   selfProjectName: string,
   selfTaskId: string,
 ): string[] {
-  if (filter === undefined) return upstream.filter((u) => u.hash).map((u) => u.hash as string)
+  if (filter === undefined) {
+    const out: string[] = []
+    for (const u of upstream) if (u.hash) out.push(u.hash)
+    return out
+  }
 
   const specs: DependencySpec[] = filter.map((raw) => {
     try {

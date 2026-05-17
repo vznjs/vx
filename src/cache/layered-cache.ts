@@ -252,18 +252,14 @@ export class LayeredCache implements CacheLayer {
   }
 }
 
-async function listFilesRecursive(root: string, sub = ''): Promise<string[]> {
-  const { readdir } = await import('node:fs/promises')
-  const here = sub === '' ? root : path.join(root, sub)
+async function listFilesRecursive(root: string): Promise<string[]> {
+  // Bun.Glob.scan beats a hand-rolled readdir+recurse here: native
+  // walker, no per-call dynamic import, and we already use this idiom
+  // everywhere else in the cache layer.
+  const glob = new Bun.Glob('**/*')
   const out: string[] = []
-  const entries = await readdir(here, { withFileTypes: true })
-  for (const e of entries) {
-    const childRel = sub === '' ? e.name : `${sub}/${e.name}`
-    if (e.isDirectory()) {
-      out.push(...(await listFilesRecursive(root, childRel)))
-    } else if (e.isFile()) {
-      out.push(path.join(root, childRel))
-    }
+  for await (const rel of glob.scan({ cwd: root, onlyFiles: true })) {
+    out.push(path.join(root, rel))
   }
   return out
 }
