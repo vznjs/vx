@@ -9,6 +9,8 @@ import { runGraph, type TaskOutcome } from './graph/scheduler.js'
 import { isGroupTask } from './graph/task-graph.js'
 import { ulid } from './util/ulid.js'
 import { executeTask } from './orchestrator/execute-task.ts'
+import { initSandbox, probeSandbox, resetSandbox } from './exec/sandbox-runtime.ts'
+import { UserError } from './util/errors.ts'
 import { defaultLogger, type Logger } from './orchestrator/logger.ts'
 import { detectColors } from './orchestrator/colors.ts'
 import { formatHeader } from './orchestrator/framed-output.ts'
@@ -118,6 +120,20 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const runStartHrTimeNs = process.hrtime.bigint()
   const startedAtMs = Date.now()
   const remoteCacheEnabled = cache instanceof LayeredCache
+
+  // Lazy SRT init: only fire it up if at least one task in the graph
+  // opts into sandboxing via its `sandbox: {...}` block. Tasks that
+  // need sandboxing on an unsupported platform get a hard error so
+  // they don't silently run unsandboxed.
+  const anySandboxed = [...nodes.values()].some((n) => n.config.sandbox !== undefined)
+  if (anySandboxed) {
+    const avail = await probeSandbox()
+    if (!avail.available) {
+      prepared.cache.close()
+      throw new UserError(`sandbox not available: ${avail.reason}`)
+    }
+    await initSandbox()
+  }
 
   // Header counts: unique projects covered by the graph (including
   // dependsOn-pulled deps, not just the user-requested set), and the
@@ -280,6 +296,18 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   }
   cache.recordRuns(toRecord)
   cache.close()
+
+  // Tear down SRT's network bridge + (on macOS) log monitor. No-op if
+  // no task was sandboxed; otherwise SRT keeps proxy servers alive and
+  // the next vx run would init on top of stale state.
+  if (anySandboxed) {
+    try {
+      await resetSandbox()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.status(`vx: sandbox cleanup failed: ${msg}`)
+    }
+  }
 
   return { ok, outcomes: list }
 }

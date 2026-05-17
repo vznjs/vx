@@ -291,6 +291,41 @@ from the per-task `hrtime.bigint()` spans the runner captures.
 
 Default path: `profile.json` (cwd-relative).
 
+## Sandbox
+
+Sandbox isolation is opt-in **per task** via a `sandbox: {}` block in
+the task's config — there is no `--sandbox` CLI flag. See
+[`modules/sandbox-runtime.md`](./modules/sandbox-runtime.md) for the
+full reference.
+
+```ts
+// vx.config.ts
+export default {
+  tasks: {
+    build: {
+      exec: { command: 'tsc' },
+      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+      sandbox: {
+        allowRead: ['../../node_modules'], // workspace-root node_modules
+        allowWrite: ['/tmp'],
+      },
+    },
+  },
+}
+```
+
+Policy: **fail on violation.** The sandbox enforces declared inputs
+at the kernel level; any task that tries to read a path it didn't
+declare either fails naturally (Linux: `ENOENT` from bwrap's
+mount-namespace hide) or is flagged via the macOS violation store
+and forced to exit non-zero. No cache is written for a failed task.
+
+`vx run` lazily initialises the sandbox runtime only when at least
+one task in the graph declares `sandbox: {}`. If runtime deps are
+missing (bwrap on Linux, sandbox-exec on macOS) or the platform is
+unsupported, the orchestrator errors out with a clear message before
+any task runs.
+
 ## `vx watch`
 
 ```

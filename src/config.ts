@@ -45,6 +45,123 @@ export interface TaskConfig {
    * runs.
    */
   cache?: CacheConfig
+  /**
+   * Sandbox configuration. **Sandbox is opt-in per task.**
+   *   - omitted entirely → task runs unsandboxed.
+   *   - `sandbox: {}`    → opts in with the minimum baseline (only
+   *     resolved inputs readable, only static-prefix of outputs
+   *     writable, network blocked).
+   *   - `sandbox: { ... }` → opts in with the explicit options below.
+   *
+   * No inheritance, no workspace defaults, no built-in escapes. The
+   * sandbox sees STRICTLY the union of resolved `cache.inputs.files`
+   * + this block's `allowRead` (for reads) and the static prefix of
+   * `cache.outputs.files` + this block's `allowWrite` (for writes).
+   * If a task needs `node_modules` or `/tmp`, declare them here
+   * explicitly.
+   *
+   * **Policy: fail on violation.** If the sandbox detects an
+   * undeclared read/write (macOS log monitor) or the child returns
+   * non-zero because it couldn't reach a path it expected (Linux
+   * structural deny), the task fails. No cache is written for a
+   * failed task.
+   *
+   * Activation requires `exec` (group tasks have no command to wrap)
+   * and is silently skipped for persistent tasks (dev servers need
+   * unrestricted network + an indefinite process).
+   */
+  sandbox?: SandboxConfig
+}
+
+/**
+ * Per-task sandbox config. Mirrors the user-facing surface of
+ * `@anthropic-ai/sandbox-runtime`'s `SandboxRuntimeConfig`, minus
+ * deployment-only fields (binary paths, proxy ports, ripgrep config).
+ *
+ * Path-list fields (`allowRead`, `allowWrite`, `network.allowUnixSockets`)
+ * accept:
+ *   - relative paths     → resolved against the project dir
+ *   - absolute paths     → used as-is (`/etc/passwd`, `/tmp`)
+ *   - tilde paths        → expanded against the user's home (`~/.npmrc`)
+ *
+ * No globs in path lists — bwrap on Linux only accepts path prefixes.
+ */
+export interface SandboxConfig {
+  // === Filesystem ===
+  /**
+   * Additional read-allowed paths beyond resolved `cache.inputs.files`.
+   * These are unioned with the declared inputs to form the complete
+   * allowRead set passed to the sandbox.
+   */
+  allowRead?: string[]
+  /**
+   * Additional write-allowed paths beyond the static prefix of
+   * `cache.outputs.files`. Tasks with no declared outputs and no extra
+   * `allowWrite` can write to nowhere — typical for `lint`/`typecheck`.
+   */
+  allowWrite?: string[]
+  /**
+   * Permit writes to `.git/config` files. Default `false` — most build
+   * tools should not be reconfiguring git.
+   */
+  allowGitConfig?: boolean
+
+  // === Network ===
+  /**
+   * Network policy.
+   *   - `false` (default) — block all outbound traffic.
+   *   - `true`            — allow all outbound traffic.
+   *   - object            — fine-grained control (domains / sockets / etc.).
+   */
+  network?: boolean | SandboxNetworkConfig
+
+  // === Process behavior ===
+  /**
+   * Allow the task to acquire a pseudo-terminal. Default `false`.
+   * Needed by tasks that interact with a TTY (rare in CI).
+   */
+  allowPty?: boolean
+  /**
+   * Linux only. Allow nested sandboxes (a sandboxed task spawning
+   * another sandboxed task). Default `false`.
+   */
+  enableWeakerNestedSandbox?: boolean
+  /**
+   * macOS only. Skip the network namespace; routes traffic via the
+   * host proxy instead of unsharing networking. Lower overhead but
+   * weaker isolation. Default `false`.
+   */
+  enableWeakerNetworkIsolation?: boolean
+
+  // === Violation policy ===
+  /**
+   * Map of command-substring → list of paths to ignore violations on
+   * for that command. Lets you silence known-noisy probes (e.g. a
+   * compiler that statx's many candidate header paths). Per SRT's
+   * own ignoreViolations field.
+   */
+  ignoreViolations?: Record<string, string[]>
+}
+
+export interface SandboxNetworkConfig {
+  /**
+   * Domain patterns the task may reach. Wildcards: `*.example.com`,
+   * `*` (allow all).
+   */
+  allowedDomains?: string[]
+  /** Domains explicitly blocked, evaluated before allowedDomains. */
+  deniedDomains?: string[]
+  /** Unix socket paths the task may connect to. */
+  allowUnixSockets?: string[]
+  /** Allow any Unix socket. Use with care. */
+  allowAllUnixSockets?: boolean
+  /**
+   * Allow binding to local ports (e.g. a test that boots a server on
+   * localhost for itself to query).
+   */
+  allowLocalBinding?: boolean
+  /** macOS only. Mach service names the task may look up. */
+  allowMachLookup?: string[]
 }
 
 export interface ExecConfig {

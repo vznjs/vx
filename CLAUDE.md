@@ -133,6 +133,38 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: Sandbox refactored to per-task config + fail-on-violation.
+  Drops the `--sandbox` CLI flag and `RunOptions.sandbox` entirely;
+  activation is declarative via `sandbox: {}` (or `sandbox: { ... }`)
+  in each task's config. No workspace inheritance, no built-in escapes
+  for `node_modules` / `/tmp` — users declare everything explicitly so
+  a single `vx.config.ts` describes the full task permission surface.
+  `SandboxConfig` in `src/config.ts` mirrors SRT's full user-facing
+  schema (filesystem allow/deny, network as `boolean | NetworkConfig`,
+  `allowGitConfig`, `allowPty`, `enableWeakerNestedSandbox`,
+  `enableWeakerNetworkIsolation`, `ignoreViolations`) with strict
+  loader validation (allowlist of known fields, type checks, no globs
+  in path lists). Policy switched from "detect-and-skip-cache" to
+  **fail-on-violation**: on macOS, a non-empty `SandboxViolationStore`
+  after exec forces exit code 1 + appends violation lines to stderr;
+  on Linux, bwrap's structural deny means the child sees `ENOENT` and
+  typically fails naturally. Lazy SRT init — `probeSandbox` +
+  `initSandbox` only fire when at least one node in the graph has
+  `node.config.sandbox`. Baseline `allowRead` = resolved
+  `cache.inputs.files`; baseline `allowWrite` = static prefix of every
+  `cache.outputs.files` glob; baseline `denyRead` = workspace root.
+  Linux silent-swallow case (tools that catch `ENOENT` and continue)
+  is acknowledged — strace-based per-process detection coming in a
+  follow-up commit on the same branch.
+
+- **2026-05**: Sandbox revived as opt-in layer via
+  `@anthropic-ai/sandbox-runtime` (SRT). New module
+  `src/exec/sandbox-runtime.ts` is a thin wrapper around SRT's
+  `SandboxManager` + `SandboxViolationStore`. Initially shipped with
+  a `--sandbox` CLI flag + "detect-and-skip-cache" policy; refactored
+  the same day (see entry above) after user feedback to per-task
+  config + fail-on-violation.
+
 - **2026-05**: Bun-builtins audit. Replaced the hand-rolled 50-LOC
   Crockford-base32 ULID generator (`src/util/ulid.ts`) with a thin
   wrapper over `Bun.randomUUIDv7()`. UUIDv7 is RFC 9562's timestamp-

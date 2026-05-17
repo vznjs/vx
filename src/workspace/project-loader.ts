@@ -163,5 +163,125 @@ function validate(config: ProjectConfig, configPath: string): void {
         throw new UserError(`${where}.cache.outputs.files must be an array of glob strings`)
       }
     }
+    const sandbox = (task as { sandbox?: unknown }).sandbox
+    if (sandbox !== undefined) validateSandbox(sandbox, where, exec !== undefined)
+  }
+}
+
+const SANDBOX_PATH_FIELDS = ['allowRead', 'allowWrite'] as const
+const SANDBOX_BOOL_FIELDS = [
+  'allowGitConfig',
+  'allowPty',
+  'enableWeakerNestedSandbox',
+  'enableWeakerNetworkIsolation',
+] as const
+const SANDBOX_NETWORK_PATH_FIELDS = [
+  'allowedDomains',
+  'deniedDomains',
+  'allowUnixSockets',
+  'allowMachLookup',
+] as const
+const SANDBOX_NETWORK_BOOL_FIELDS = ['allowAllUnixSockets', 'allowLocalBinding'] as const
+const SANDBOX_FIELDS = new Set<string>([
+  ...SANDBOX_PATH_FIELDS,
+  ...SANDBOX_BOOL_FIELDS,
+  'network',
+  'ignoreViolations',
+])
+const SANDBOX_NETWORK_FIELDS = new Set<string>([
+  ...SANDBOX_NETWORK_PATH_FIELDS,
+  ...SANDBOX_NETWORK_BOOL_FIELDS,
+])
+
+/**
+ * Validate a `sandbox: {...}` block. The field set mirrors the user-
+ * facing surface of SandboxConfig in src/config.ts; this is the only
+ * place we enforce shape at runtime (TS users get compile-time checks
+ * already).
+ */
+function validateSandbox(sandbox: unknown, where: string, hasExec: boolean): void {
+  if (typeof sandbox !== 'object' || sandbox === null || Array.isArray(sandbox)) {
+    throw new UserError(
+      `${where}.sandbox must be an object (e.g. \`{}\` for the baseline, or ` +
+        `\`{ allowRead: [...], network: true }\`)`,
+    )
+  }
+  if (!hasExec) {
+    throw new UserError(`${where}.sandbox requires \`exec\` — a group task has nothing to wrap`)
+  }
+  for (const key of Object.keys(sandbox as object)) {
+    if (!SANDBOX_FIELDS.has(key)) {
+      throw new UserError(
+        `${where}.sandbox.${key} is not a known field. Allowed: ` +
+          `${[...SANDBOX_FIELDS].sort().join(', ')}`,
+      )
+    }
+  }
+  const obj = sandbox as Record<string, unknown>
+  for (const field of SANDBOX_PATH_FIELDS) {
+    if (obj[field] === undefined) continue
+    assertPathArray(obj[field], `${where}.sandbox.${field}`)
+  }
+  for (const field of SANDBOX_BOOL_FIELDS) {
+    if (obj[field] !== undefined && typeof obj[field] !== 'boolean') {
+      throw new UserError(`${where}.sandbox.${field} must be a boolean`)
+    }
+  }
+  const network = obj.network
+  if (network !== undefined && typeof network !== 'boolean') {
+    if (typeof network !== 'object' || network === null || Array.isArray(network)) {
+      throw new UserError(
+        `${where}.sandbox.network must be a boolean or an object (allowedDomains, ` +
+          `deniedDomains, allowUnixSockets, allowAllUnixSockets, allowLocalBinding, allowMachLookup)`,
+      )
+    }
+    for (const key of Object.keys(network)) {
+      if (!SANDBOX_NETWORK_FIELDS.has(key)) {
+        throw new UserError(
+          `${where}.sandbox.network.${key} is not a known field. Allowed: ` +
+            `${[...SANDBOX_NETWORK_FIELDS].sort().join(', ')}`,
+        )
+      }
+    }
+    const netObj = network as Record<string, unknown>
+    for (const field of SANDBOX_NETWORK_PATH_FIELDS) {
+      if (netObj[field] === undefined) continue
+      assertStringArray(netObj[field], `${where}.sandbox.network.${field}`)
+    }
+    for (const field of SANDBOX_NETWORK_BOOL_FIELDS) {
+      if (netObj[field] !== undefined && typeof netObj[field] !== 'boolean') {
+        throw new UserError(`${where}.sandbox.network.${field} must be a boolean`)
+      }
+    }
+  }
+  const ignoreViolations = obj.ignoreViolations
+  if (ignoreViolations !== undefined) {
+    if (
+      typeof ignoreViolations !== 'object' ||
+      ignoreViolations === null ||
+      Array.isArray(ignoreViolations)
+    ) {
+      throw new UserError(
+        `${where}.sandbox.ignoreViolations must be a record mapping command patterns to arrays of paths`,
+      )
+    }
+    for (const [k, v] of Object.entries(ignoreViolations)) {
+      assertStringArray(v, `${where}.sandbox.ignoreViolations[${JSON.stringify(k)}]`)
+    }
+  }
+}
+
+function assertStringArray(v: unknown, where: string): void {
+  if (!Array.isArray(v) || v.some((s) => typeof s !== 'string' || s.length === 0)) {
+    throw new UserError(`${where} must be an array of non-empty strings`)
+  }
+}
+
+function assertPathArray(v: unknown, where: string): void {
+  assertStringArray(v, where)
+  if ((v as string[]).some((s) => /[*?[\]]/.test(s))) {
+    throw new UserError(
+      `${where} entries must be path prefixes (no globs — bwrap on Linux can't enforce them)`,
+    )
   }
 }

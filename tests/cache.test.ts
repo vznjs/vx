@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -39,6 +39,17 @@ describe('Cache.key', () => {
     }
   }
 
+  /**
+   * Set mtime to "now + 1 second" so the cache's (path, mtimeMs, size)
+   * fast-path treats the file as freshly changed. Used by tests that
+   * rewrite a same-size payload — without this they're flaky on fast
+   * disks where two writeFile calls land in the same millisecond.
+   */
+  async function bumpMtime(filePath: string): Promise<void> {
+    const t = new Date(Date.now() + 1000)
+    await utimes(filePath, t, t)
+  }
+
   it('is deterministic across repeated calls with identical input', async () => {
     const a = await cache.key(baseInput())
     const b = await cache.key(baseInput())
@@ -76,6 +87,12 @@ describe('Cache.key', () => {
     const f = await writeInput('a.txt', 'one')
     const a = await cache.key({ ...baseInput(), inputFiles: [f] })
     await writeFile(f, 'two')
+    // Bump mtime forward so the cache's (path, mtimeMs, size) fast-
+    // path doesn't return the stale hash for `one`. Two writes that
+    // complete inside the same ms (fast CI disk) otherwise share an
+    // mtime — and 'one' / 'two' are both 3 bytes, so size doesn't
+    // disambiguate either.
+    await bumpMtime(f)
     const b = await cache.key({ ...baseInput(), inputFiles: [f] })
     expect(a).not.toBe(b)
   })
@@ -171,6 +188,10 @@ describe('Cache.key', () => {
     await writeFile(p, a)
     const ka = await cache.key({ ...baseInput(), inputFiles: [p] })
     await writeFile(p, b)
+    // Same-length payload + sub-ms write timing means the cache's
+    // mtime+size fast-path can match `a`'s entry on `b`'s stat.
+    // Bump mtime so the fast-path skips and the content hash runs.
+    await bumpMtime(p)
     const kb = await cache.key({ ...baseInput(), inputFiles: [p] })
     expect(ka).not.toBe(kb)
   })

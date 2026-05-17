@@ -80,10 +80,11 @@ For the high-level data flow, read
 
 ## Exec (process primitives)
 
-| File                       | Topic                                                               |
-| -------------------------- | ------------------------------------------------------------------- |
-| [`runner.md`](./runner.md) | `src/exec/runner.ts` — `runCommand`, `runPersistent`, `shellQuote`. |
-| [`env.md`](./env.md)       | `src/exec/env.ts` — child env composition + essential allowlist.    |
+| File                                         | Topic                                                                                                    |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| [`runner.md`](./runner.md)                   | `src/exec/runner.ts` — `runCommand`, `runPersistent`, `shellQuote`.                                      |
+| [`env.md`](./env.md)                         | `src/exec/env.ts` — child env composition + essential allowlist.                                         |
+| [`sandbox-runtime.md`](./sandbox-runtime.md) | `src/exec/sandbox-runtime.ts` — `runSandboxed` + violation tracking via `@anthropic-ai/sandbox-runtime`. |
 
 ## Utilities
 

@@ -4,6 +4,11 @@ import type { CacheLayer } from '../cache/cache.js'
 import { cleanOutputs, resolveInputs, resolveOutputs } from '../cache/inputs.js'
 import { buildIsolatedEnv } from '../exec/env.js'
 import { runCommand, runPersistent } from '../exec/runner.js'
+import {
+  runSandboxed,
+  resolveSandboxConfig,
+  type SandboxViolation,
+} from '../exec/sandbox-runtime.js'
 import type { TaskOutcome } from '../graph/scheduler.js'
 import { isGroupTask, type TaskNode } from '../graph/task-graph.js'
 import type { Logger } from './logger.js'
@@ -360,17 +365,92 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   const env = taskEnv(node, step)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
-  const result = await runCommand({
-    command: step.command,
-    cwd: node.projectDir,
-    env,
-    forwardArgs: effectiveForwardArgs,
-    onStdout: (chunk) => log.taskStdout(node, chunk),
-    onStderr: (chunk) => log.taskStderr(node, chunk),
-  })
+
+  // Sandbox is opt-in per task via `sandbox: {}` (or `sandbox: {...}`)
+  // in the task config. No CLI flag, no workspace inheritance — the
+  // task config is the single source of truth.
+  const useSandbox = cfg.sandbox !== undefined
+  let violations: SandboxViolation[] = []
+  const result = useSandbox ? await runSandboxedTask() : await runUnsandboxedTask()
+
+  async function runUnsandboxedTask(): ReturnType<typeof runCommand> {
+    return runCommand({
+      command: step.command,
+      cwd: node.projectDir,
+      env,
+      forwardArgs: effectiveForwardArgs,
+      onStdout: (chunk) => log.taskStdout(node, chunk),
+      onStderr: (chunk) => log.taskStderr(node, chunk),
+    })
+  }
+
+  async function runSandboxedTask(): ReturnType<typeof runCommand> {
+    // Baseline allowRead = resolved cache.inputs.files (absolute paths)
+    // Baseline allowWrite = static prefix of every cache.outputs.files glob
+    // Baseline denyRead = the workspace root, so any read outside the
+    //   project's declared inputs trips the deny boundary.
+    // The user's sandbox block extends each list with explicit additions.
+    const resolved = await resolveInputs({
+      projectDir: node.projectDir,
+      workspaceRoot: args.workspaceRoot,
+      envSource: process.env,
+      inputs: cacheCfg?.inputs,
+      ownOutputs: outputs,
+      nestedProjectDirs: args.nestedProjectDirs,
+      ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+    })
+    const baseAllowWrite = outputs.map((g) => path.join(node.projectDir, staticPrefix(g)))
+    // bwrap can't --bind a non-existent host path; the bind silently
+    // becomes a no-op (or a tmpfs that evaporates on exit), and writes
+    // to the path appear to succeed inside the sandbox but never land
+    // on the host. Pre-create every output path so the binds resolve
+    // to real fs entries: globbed outputs (`dist/**`) become empty
+    // dirs; literal outputs (`out.txt`) become empty files.
+    await prepareOutputsForBind(node.projectDir, outputs)
+    // Output paths are read+write — a task that declares `dist/**` as
+    // output expects to read what it just wrote (e.g. `touch dist/x`
+    // stats the file; `tsc --incremental` re-reads .tsbuildinfo). This
+    // isn't magic — the user already declared these paths; we're just
+    // honoring the natural read-write symmetry of an output directory.
+    const sandboxResult = await runSandboxed({
+      command: step.command,
+      cwd: node.projectDir,
+      env,
+      forwardArgs: effectiveForwardArgs,
+      onStdout: (chunk) => log.taskStdout(node, chunk),
+      onStderr: (chunk) => log.taskStderr(node, chunk),
+      baseAllowRead: [...resolved.files, ...baseAllowWrite],
+      baseAllowWrite,
+      baseDenyRead: [args.workspaceRoot],
+      config: resolveSandboxConfig(cfg.sandbox ?? {}, node.projectDir),
+    })
+    violations = sandboxResult.violations
+    const { violations: _v, ...runResult } = sandboxResult
+    return runResult
+  }
+
   const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
-  if (result.exitCode === 0 && cacheEnabled) {
+  // Fail-on-violation. macOS's structured violation store lets us turn
+  // a passing exit code into a failure when the task tripped the
+  // boundary; Linux relies on the child failing naturally on ENOENT,
+  // so violations.length is always 0 there but the task will already
+  // be exit != 0 if it needed the missing file.
+  //
+  // Violations are surfaced via `TaskOutcome.sandboxViolationLines` so
+  // the framed-output renderer can show them inline in the task's
+  // block, not as loose status output above it.
+  let effectiveExitCode = result.exitCode
+  let effectiveStderr = result.stderr
+  if (violations.length > 0) {
+    if (effectiveExitCode === 0) effectiveExitCode = 1
+    // Mirror into stderr for cache-persist + structured consumers; the
+    // framed-output block reads from sandboxViolationLines directly.
+    effectiveStderr += '\n[vx] sandbox violations:\n'
+    for (const v of violations) effectiveStderr += `  ${v.line}\n`
+  }
+
+  if (effectiveExitCode === 0 && cacheEnabled) {
     const outputFiles = await resolveOutputs({
       projectDir: node.projectDir,
       outputs,
@@ -383,27 +463,83 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       entry: {
         taskId: node.id,
         command: step.command,
-        exitCode: result.exitCode,
+        exitCode: effectiveExitCode,
         durationMs: result.durationMs,
         stdout: result.stdout,
-        stderr: result.stderr,
+        stderr: effectiveStderr,
       },
     })
   }
 
   return {
     node,
-    status: result.exitCode === 0 ? 'success' : 'failed',
-    exitCode: result.exitCode,
+    status: effectiveExitCode === 0 ? 'success' : 'failed',
+    exitCode: effectiveExitCode,
     durationMs: result.durationMs,
     hash,
     stdout: result.stdout,
-    stderr: result.stderr,
+    stderr: effectiveStderr,
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
     wallclockStartNs,
     wallclockEndNs,
+    ...(violations.length > 0
+      ? {
+          sandboxViolations: violations.length,
+          sandboxViolationLines: violations.map((v) => v.line),
+        }
+      : {}),
   }
+}
+
+/**
+ * Ensure each declared output path exists on the host as either an
+ * empty file (for literal output specs) or a directory (for globbed
+ * specs) so bwrap's --bind can find a real fs entry to mount. Without
+ * this, writes inside the sandbox to a non-existent allowWrite path
+ * silently disappear (bwrap creates a tmpfs that evaporates on exit).
+ *
+ * `cleanOutputs` ran just before this in the cache-enabled path, so
+ * we know any stale content was wiped; what's left is to materialize
+ * the empty skeleton.
+ */
+async function prepareOutputsForBind(
+  projectDir: string,
+  outputs: readonly string[],
+): Promise<void> {
+  const { mkdir } = await import('node:fs/promises')
+  for (const g of outputs) {
+    const hasWildcard = /[*?[\]]/.test(g)
+    if (hasWildcard) {
+      const abs = path.join(projectDir, staticPrefix(g))
+      await mkdir(abs, { recursive: true })
+    } else {
+      const abs = path.join(projectDir, g)
+      await mkdir(path.dirname(abs), { recursive: true })
+      const f = Bun.file(abs)
+      if (!(await f.exists())) await Bun.write(abs, '')
+    }
+  }
+}
+
+/**
+ * Return the longest prefix of a glob that contains no wildcards. Used
+ * to derive an allowWrite path from each `cache.outputs.files` entry:
+ * `dist/**` → `dist`, `build/output.js` → `build/output.js`, `**` →
+ * `.` (the project dir itself). bwrap binds at the directory level so
+ * a file path covers writes to that file; a dir path covers writes
+ * anywhere underneath.
+ */
+function staticPrefix(glob: string): string {
+  const wildcardIdx = glob.search(/[*?[\]]/)
+  if (wildcardIdx === -1) return glob
+  // Trim back to the last separator before the wildcard so we keep
+  // only complete path components (e.g. `dist/sub-**` → `dist`, not
+  // `dist/sub-`).
+  const head = glob.slice(0, wildcardIdx)
+  const lastSep = head.lastIndexOf('/')
+  if (lastSep === -1) return '.'
+  return head.slice(0, lastSep) || '/'
 }
 
 /**

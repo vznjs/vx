@@ -56,6 +56,7 @@ vx run build --dry        # show the plan, don't execute
 | Install                     | **Single binary** — 1 curl line                 | npm package + Node             | npm package + Node            |
 | Watch                       | `vx watch <task>`                               | `turbo watch`                  | `nx watch`                    |
 | Persistent tasks            | `exec.persistent.readyWhen` regex               | `persistent: true` flag        | `continuous: true` flag       |
+| Per-task sandbox            | **Yes** — kernel-level isolation, opt-in        | No                             | No                            |
 
 vx is **the same Turbo cache mental model** with a tighter config story, a smaller surface, and stricter correctness defaults.
 
@@ -100,6 +101,43 @@ vx folds the **resolved post-evaluation config** into the cache key — so a cha
 When you declare `outputs: { files: ['dist/**'] }`, vx **wipes `dist/`** before every cache restore AND before every fresh exec. Your project dir ends every run bit-identical to the cached snapshot. No stale files from a prior build can survive a cache hit.
 
 Turbo and Nx restore additively. If yesterday's build produced `dist/old.js` and today's build doesn't, the file persists into a cache-hit replay — silently shipping stale artifacts. vx makes this impossible.
+
+### Per-task sandbox (kernel-level, opt-in)
+
+Every task runner trusts you to declare the right `cache.inputs.files`. Trust the wrong file set and your cache silently returns stale outputs — a class of bug that's invisible until it ships. vx is the first one that **verifies** that trust.
+
+```ts
+build: {
+  exec: { command: 'tsc -b' },
+  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+  sandbox: {
+    allowRead: ['../../node_modules'],   // beyond declared inputs
+    allowWrite: ['/tmp'],                 // beyond declared outputs
+    network: false,                       // default: blocked
+  },
+},
+```
+
+When a task declares `sandbox: {}`, vx wraps its exec in an OS-level filesystem + network sandbox via [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime) — bubblewrap on Linux, `sandbox-exec` on macOS. The task sees **only** the union of:
+
+- resolved `cache.inputs.files` (the same paths that produced the cache key)
+- static prefix of `cache.outputs.files`
+- whatever `sandbox.allowRead` / `allowWrite` you added explicitly
+
+Everything else inside the workspace is structurally invisible. Sibling projects, root-level config files not in `inputs`, `$HOME`, `/etc` — all denied by default. **Fail-on-violation**: any read outside the allowed set either fails the task naturally (Linux returns `ENOENT`; the build tool propagates the error) or, on macOS, surfaces as a structured violation event that forces exit 1. A failed task is never cached.
+
+The reverse property is what makes this a killer feature: **any task that succeeds inside the sandbox is provably reproducible** from its declared inputs. The cache key is the complete description of what the task depended on. No mystery state. No "works on my machine" because someone's `~/.npmrc` was different.
+
+```
+┌─ @bench/top#build > $ sleep 3 && mkdir -p dist && touch dist/index.js
+├─ Error
+│   touch: dist/index.js: Operation not permitted
+├─ Sandbox Violations (1)
+│   touch(32784) deny(1) file-read-metadata /Users/me/proj/packages/top/dist/index.js
+└─ @bench/top#build ── (3.05s) FAILED (exit 1)
+```
+
+Full schema mirrors the SRT surface: `allowGitConfig`, `allowPty`, `network: boolean | { allowedDomains, allowUnixSockets, ... }`, `ignoreViolations`. No CLI flag — opt in per task in the config so the policy lives next to the command. Group tasks and persistent tasks bypass automatically. See [`docs/modules/sandbox-runtime.md`](./docs/modules/sandbox-runtime.md) for the full reference.
 
 ### Persistent tasks with regex readiness
 
@@ -301,7 +339,7 @@ Full technical docs live under [`docs/`](./docs/):
 
 ## Status
 
-**Pre-alpha.** The schema is settling; we bump `CACHE_VERSION` rather than maintain back-compat. 414 tests; CI green on every commit; the project dogfoods itself (`bun run ci` → `vx run ci`).
+**Pre-alpha.** The schema is settling; we bump `CACHE_VERSION` rather than maintain back-compat. 500+ tests; CI green on every commit; the project dogfoods itself (`bun run ci` → `vx run ci`).
 
 Production readiness: not yet. The semantics are solid; the rough edges are operational (Windows unsupported, no published versions on npm, no managed remote-cache offering).
 

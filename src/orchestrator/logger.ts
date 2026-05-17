@@ -33,35 +33,37 @@ export function noopLogger(): Logger {
 }
 
 export function defaultLogger(colors: ColorSupport = detectColors()): Logger {
-  // Per-task buffer. We don't separate stdout/stderr in the rendered
-  // block — the user sees them in arrival order, same as Turbo.
-  const buffers = new Map<string, string>()
+  // Per-task buffers, split by stream. Splitting lets the framed-output
+  // renderer put stdout in the body and stderr under an `├─ Error`
+  // section. The price: chunks that interleaved at runtime get
+  // re-ordered (all stdout before all stderr). Observers still see
+  // the original interleaving via the structural event stream.
+  const stdoutBuffers = new Map<string, string>()
+  const stderrBuffers = new Map<string, string>()
   // Tracks whether we've already emitted at least one task block so
   // we can prefix subsequent blocks with a blank line for visual
   // separation. The header (formatHeader) already ends with a blank
   // line, so the first block doesn't need one.
   let blocksEmitted = 0
 
-  const append = (node: TaskNode, chunk: string): void => {
-    buffers.set(node.id, (buffers.get(node.id) ?? '') + chunk)
-  }
-
   return {
     status(line) {
       process.stdout.write(`${line}\n`)
     },
     taskStdout(node, chunk) {
-      append(node, chunk)
+      stdoutBuffers.set(node.id, (stdoutBuffers.get(node.id) ?? '') + chunk)
     },
     taskStderr(node, chunk) {
-      append(node, chunk)
+      stderrBuffers.set(node.id, (stderrBuffers.get(node.id) ?? '') + chunk)
     },
     taskComplete(node, outcome) {
-      const body = buffers.get(node.id) ?? ''
-      buffers.delete(node.id)
+      const stdout = stdoutBuffers.get(node.id) ?? ''
+      const stderr = stderrBuffers.get(node.id) ?? ''
+      stdoutBuffers.delete(node.id)
+      stderrBuffers.delete(node.id)
       // formatTaskBlock returns '' for group tasks (no exec) — skip
       // the write so a stray newline doesn't sneak into the output.
-      const block = formatTaskBlock(node, outcome, body, colors)
+      const block = formatTaskBlock(node, outcome, { stdout, stderr }, colors)
       if (block.length === 0) return
       process.stdout.write(blocksEmitted > 0 ? `\n${block}` : block)
       blocksEmitted++

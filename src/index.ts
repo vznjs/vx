@@ -12,6 +12,8 @@ export type {
   CacheConfig,
   CacheInputs,
   CacheOutputs,
+  SandboxConfig,
+  SandboxNetworkConfig,
 } from './config.js'
 export { defineProject, defineWorkspace } from './config.js'
 
