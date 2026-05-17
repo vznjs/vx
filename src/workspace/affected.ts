@@ -29,7 +29,13 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   await verifyRef(args.workspaceRoot, args.since)
 
   const proc = Bun.spawn({
-    cmd: ['git', 'diff', '--name-only', args.since],
+    // `--no-renames` is crucial for project-affected detection: with
+    // git's auto rename-detection on (the default in modern git), a
+    // cross-project `git mv` collapses to a single rename entry that
+    // surfaces only the destination path. We'd then miss flagging the
+    // source project as affected. Treating renames as delete+add gives
+    // us both halves so both projects get correctly marked.
+    cmd: ['git', 'diff', '--no-renames', '--name-only', args.since],
     cwd: args.workspaceRoot,
     stdout: 'pipe',
     stderr: 'pipe',

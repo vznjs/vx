@@ -273,4 +273,55 @@ describe('buildTaskGraph', () => {
     expect(nodes.has('lib#build')).toBe(false)
     expect(nodes.get('app#build')?.deps).toEqual(['app#codegen'])
   })
+
+  // ─── dependsOn rejects wildcards/negation; cache.inputs.tasks accepts ──
+  //
+  // Turbo and Nx draw the same line: dependsOn adds edges to the
+  // graph (must resolve to a concrete target) while inputs.tasks
+  // FILTERS upstream cache contributions (filtering wildcards and
+  // negation makes sense). Pin the asymmetric rule with a parametric
+  // table so a regression on either side is obvious.
+  describe('dependsOn rejects filter-only forms (`*`, `^*`, `!name`)', () => {
+    const cases: Array<{ form: string; reason: RegExp }> = [
+      { form: '*', reason: /wildcard/i },
+      { form: '^*', reason: /wildcard/i },
+      { form: '!build', reason: /negation/i },
+      { form: '!^build', reason: /negation/i },
+      { form: '!pkg#build', reason: /negation/i },
+    ]
+    for (const { form, reason } of cases) {
+      it(`rejects dependsOn: ['${form}']`, () => {
+        expect(() =>
+          buildTaskGraph({
+            projects: projects(project('app', { build: { ...cmd('x'), dependsOn: [form] } })),
+            packageGraph: packageGraph({}),
+            requested: [{ project: 'app', task: 'build' }],
+          }),
+        ).toThrow(reason)
+      })
+    }
+  })
+
+  it('cache.inputs.tasks accepts the same forms dependsOn rejects', () => {
+    // The graph builder ignores cache.inputs.tasks entirely (it's a
+    // cache-key filter, not an edge source). So passing wildcards /
+    // negation through cache.inputs.tasks must succeed without
+    // touching the dependsOn validation.
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', {
+          build: {
+            ...cmd('build'),
+            cache: {
+              inputs: { files: [], tasks: ['*', '^*', '!build', '!^build', '!lib#build'] },
+              outputs: { files: [] },
+            },
+          },
+        }),
+      ),
+      packageGraph: packageGraph({}),
+      requested: [{ project: 'app', task: 'build' }],
+    })
+    expect(nodes.has('app#build')).toBe(true)
+  })
 })

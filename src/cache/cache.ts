@@ -767,8 +767,12 @@ export class Cache implements CacheLayer {
     //
     // We write to a `.tmp` sibling and rename atomically so a
     // concurrent reader sees either no entry or a complete one.
+    // The tmp suffix mixes pid + hrtime + a random hex chunk so two
+    // saves of the same hash from the same process (or from two
+    // forked workers that happen to share a wall-clock ms) don't
+    // pick the same tmp filename and race on the rename.
     const finalPath = this.tarPath(args.hash)
-    const tmpPath = `${finalPath}.tmp-${process.pid}-${Date.now()}`
+    const tmpPath = `${finalPath}.tmp-${process.pid}-${process.hrtime.bigint()}-${Math.random().toString(36).slice(2, 10)}`
     await mkdir(this.cacheDir, { recursive: true })
 
     // Stage stdout / stderr / outputs into a temp dir, then tar the
@@ -861,7 +865,12 @@ export class Cache implements CacheLayer {
       await rm(stage, { recursive: true, force: true })
     }
 
-    await rm(finalPath, { force: true })
+    // POSIX rename atomically REPLACES the destination if it exists,
+    // so we don't need a pre-rm. The pre-rm was actively harmful —
+    // it opened a race window where writer B could delete writer A's
+    // just-renamed file BEFORE A's subsequent stat, producing a
+    // spurious ENOENT. The rename itself preserves the "either-or"
+    // semantics for concurrent readers.
     await rename(tmpPath, finalPath)
 
     const totalBytes = (await stat(finalPath)).size

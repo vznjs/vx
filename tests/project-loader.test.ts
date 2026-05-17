@@ -128,6 +128,34 @@ describe('loadProjectConfig', () => {
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(/`cache` requires `exec`/)
     })
+
+    it('rejects wildcards in cache.inputs.env (no silent literal misinterpretation)', async () => {
+      // Turbo expands `VERCEL_*` in env tracking; vx requires explicit
+      // names so an unset wildcard doesn't silently become an empty
+      // value in the cache key. Reject at load time with a clear
+      // pointer to the workaround (list names individually).
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: { inputs: { files: ['src/**'], env: ['VERCEL_*'] }, outputs: { files: [] } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/wildcards.*env names.*not supported/)
+    })
+
+    it('rejects non-string env entries in cache.inputs.env', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: { inputs: { files: ['src/**'], env: [42] }, outputs: { files: [] } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/env.*non-empty/)
+    })
   })
 })
 
