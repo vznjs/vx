@@ -99,7 +99,7 @@ export function formatTaskBlock(
   // TS can't see through the predicate's negation, so we re-narrow.
   const cmd = node.config.exec?.command ?? ''
   if (outcome.status === 'success') {
-    lines.push(`${bar} ${paint('', `$ ${cmd}`, colors, { dim: true })}`)
+    lines.push(`${bar}   ${paint('', `$ ${cmd}`, colors, { dim: true })}`)
   }
 
   pushBodyLines(lines, stdout, bar)
@@ -119,7 +119,7 @@ export function formatTaskBlock(
       bold: true,
     })
     lines.push(`${tee} ${sectionTitle}`)
-    for (const v of vlines) lines.push(`${bar} ${v}`)
+    for (const v of vlines) lines.push(`${bar}   ${v}`)
   }
 
   lines.push(`${corner('└─')} ${idPainted} ${corner('──')}${formatBlockFooter(outcome, colors)}`)
@@ -128,15 +128,16 @@ export function formatTaskBlock(
 
 /**
  * Append each line of `text` to `lines`, prefixed by the frame's
- * vertical bar. Handles empty body (skipped), trailing newlines
- * (trimmed), and preserves blank lines inside the body (rendered as
- * the bar followed by a single space).
+ * vertical bar with 3 spaces of indent. Indent makes body content
+ * visually nested under section headers (├─ Error, ├─ Sandbox
+ * Violations, etc.). Empty body is skipped; trailing newlines are
+ * trimmed; blank lines inside the body render as a lone bar.
  */
 function pushBodyLines(lines: string[], text: string, bar: string): void {
   if (text.length === 0) return
   const trimmed = text.replace(/\n$/, '')
   for (const line of trimmed.split('\n')) {
-    lines.push(line.length > 0 ? `${bar} ${line}` : bar)
+    lines.push(line.length > 0 ? `${bar}   ${line}` : bar)
   }
 }
 

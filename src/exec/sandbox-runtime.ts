@@ -68,6 +68,26 @@ export async function probeSandbox(): Promise<SandboxAvailability> {
 }
 
 /**
+ * Default `ignoreViolations` we install in the SRT global config.
+ * These are well-known macOS shell-startup probes that SRT's own
+ * sysctl allowlist doesn't cover — every binary launched by sh
+ * (bash, sleep, mkdir, touch, etc.) sysctl-reads them at init, so
+ * without this filter every task floods with noise that isn't
+ * actionable security signal.
+ *
+ * Format mirrors SRT's: `'*'` is a wildcard pattern; entries in the
+ * array are substring-matched against the violation details line.
+ * Users can ADD to this via per-task `sandbox.ignoreViolations`;
+ * those are applied at violation read-back time, on top of the
+ * defaults installed here.
+ */
+const DEFAULT_IGNORE_VIOLATIONS: Record<string, string[]> = {
+  '*': [
+    'kern.iossupportversion', // newer macOS sysctl SRT's allowlist misses
+  ],
+}
+
+/**
  * One-time SRT initialization per orchestrator run. Starts the proxy
  * servers + (on macOS) the violation log monitor. Safe to call repeatedly
  * — SRT itself returns early on the second call.
@@ -82,6 +102,7 @@ export async function initSandbox(): Promise<void> {
     {
       network: { allowedDomains: [], deniedDomains: [] },
       filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
+      ignoreViolations: DEFAULT_IGNORE_VIOLATIONS,
     },
     undefined,
     // enableLogMonitor — macOS-only; populates the SandboxViolationStore.
@@ -272,7 +293,17 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
     : []
   if (straceLog) await unlink(straceLog).catch(() => undefined)
 
-  const violations: SandboxViolation[] = [...macViolations, ...linuxViolations]
+  // Apply the task's own ignoreViolations on top of the global defaults.
+  // SRT's wrapCommandWithSandboxMacOS doesn't actually thread customConfig.
+  // ignoreViolations through to the log monitor — that filter is set
+  // once globally at initSandbox time. So per-task user overrides have
+  // to be applied here, after read-back.
+  const userIgnore = args.config.ignoreViolations
+  const violations: SandboxViolation[] = filterIgnored(
+    [...macViolations, ...linuxViolations],
+    userIgnore,
+    userCommand,
+  )
 
   try {
     SandboxManager.cleanupAfterCommand()
@@ -372,6 +403,37 @@ function isUnderAny(abs: string, allow: Set<string>): boolean {
     if (abs === a || abs.startsWith(a + path.sep)) return true
   }
   return false
+}
+
+/**
+ * Apply the task's user-provided `sandbox.ignoreViolations` map on top
+ * of whatever the macOS log monitor + Linux strace pass produced.
+ * Mirrors SRT's own substring-match semantics:
+ *   - `'*'` entries match every command
+ *   - other keys match commands whose userCommand string CONTAINS the key
+ *   - the array of strings under each key is substring-matched against
+ *     the violation line
+ *
+ * The defaults installed in `initSandbox` already filter on the macOS
+ * side; this pass catches per-task additions + Linux strace results.
+ */
+function filterIgnored(
+  violations: SandboxViolation[],
+  ignore: Record<string, string[]> | undefined,
+  userCommand: string,
+): SandboxViolation[] {
+  if (!ignore) return violations
+  const wildcard = ignore['*'] ?? []
+  const cmdEntries = Object.entries(ignore).filter(([k]) => k !== '*')
+  return violations.filter((v) => {
+    if (wildcard.some((s) => v.line.includes(s))) return false
+    for (const [pattern, needles] of cmdEntries) {
+      if (userCommand.includes(pattern) && needles.some((s) => v.line.includes(s))) {
+        return false
+      }
+    }
+    return true
+  })
 }
 
 /**

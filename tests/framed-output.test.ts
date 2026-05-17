@@ -88,9 +88,9 @@ describe('formatTaskBlock', () => {
     )
     expect(out).toBe(
       '┌─ @vzn/vx#lint > cache-miss\n' +
-        '│ $ oxlint .\n' +
-        '│ Found 0 warnings and 0 errors.\n' +
-        '│ Finished in 327ms.\n' +
+        '│   $ oxlint .\n' +
+        '│   Found 0 warnings and 0 errors.\n' +
+        '│   Finished in 327ms.\n' +
         '└─ @vzn/vx#lint ── (327ms) cache-miss\n',
     )
   })
@@ -109,7 +109,7 @@ describe('formatTaskBlock', () => {
     )
     expect(out).toBe(
       '┌─ @vzn/vx#lint > local-cache • abcdef01\n' +
-        '│ Found 0 warnings and 0 errors.\n' +
+        '│   Found 0 warnings and 0 errors.\n' +
         '└─ @vzn/vx#lint ── (12ms) local-cache\n',
     )
   })
@@ -156,7 +156,7 @@ describe('formatTaskBlock', () => {
     expect(out).toBe(
       '┌─ @vzn/vx#build > $ tsc\n' +
         '├─ Error\n' +
-        '│ error TS1234: oops\n' +
+        '│   error TS1234: oops\n' +
         '└─ @vzn/vx#build ── (1.23s) FAILED (exit 2)\n',
     )
   })
@@ -178,10 +178,10 @@ describe('formatTaskBlock', () => {
     expect(out).toBe(
       '┌─ @bench/top#build > $ sleep 3 && mkdir -p dist && touch dist/index.js\n' +
         '├─ Error\n' +
-        '│ touch: dist/index.js: Operation not permitted\n' +
+        '│   touch: dist/index.js: Operation not permitted\n' +
         '├─ Sandbox Violations (2)\n' +
-        '│ touch(32784) deny(1) sysctl-read kern.iossupportversion\n' +
-        '│ touch(32784) deny(1) file-read-metadata /Users/me/proj/packages/top/dist/index.js\n' +
+        '│   touch(32784) deny(1) sysctl-read kern.iossupportversion\n' +
+        '│   touch(32784) deny(1) file-read-metadata /Users/me/proj/packages/top/dist/index.js\n' +
         '└─ @bench/top#build ── (3.06s) FAILED (exit 1)\n',
     )
   })
