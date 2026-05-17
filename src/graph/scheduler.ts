@@ -27,6 +27,15 @@ export interface TaskOutcome {
    */
   stdout?: string
   stderr?: string
+  /**
+   * For cache-hit statuses: true if outputs were actually written to
+   * disk this run, false if the on-disk state already matched the
+   * cached snapshot (no materialization needed). Lets the formatter
+   * surface "up-to-date" vs "local-cache" / "remote-cache" in the
+   * framed block. Undefined on non-cache-hit outcomes (success /
+   * failed / skipped) — irrelevant there.
+   */
+  restored?: boolean
 }
 
 export interface ScheduleOptions {

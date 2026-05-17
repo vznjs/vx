@@ -333,12 +333,20 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       if (hit.stderr) log.taskStderr(node, hit.stderr)
       const status =
         hit.exitCode !== 0 ? 'failed' : hit.source === 'remote' ? 'cache-hit-remote' : 'cache-hit'
+      // `restored` distinguishes "we just wrote files to disk" from
+      // "disk already matched the cached snapshot". Drives the
+      // "up-to-date" vs "local-cache" / "remote-cache" label in the
+      // framed block. Only meaningful when at least one output was
+      // declared — no-outputs tasks never materialize anything, so
+      // they're vacuously up-to-date.
+      const restored = !skipRestore && outputs.length > 0
       return {
         node,
         status,
         exitCode: hit.exitCode,
         durationMs: Math.round(performance.now() - cacheOpStart),
         hash,
+        restored,
       }
     }
   } else {
