@@ -1,0 +1,482 @@
+# Turbo + Nx test gap analysis
+
+Generated: 2026-05-17. Source enumeration of ~205 Turbo tests (Rust unit + Cucumber-style `.t` integration fixtures across `turborepo-task-hash`, `turborepo-cache`, `turborepo-scm`, `turborepo-scope`, `turborepo-globwalk`, `turborepo-filewatch`, `turborepo-lib`) + ~140 Nx tests (`packages/nx/src/hasher`, `tasks-runner`, `project-graph`, `utils`); deduped to ~165 unique semantic properties. vx covers ~108 of 165; ~57 fillable gaps + ~12 deliberate divergences identified.
+
+## How to read
+
+- **HAVE** rows are pinned; refer to vx test file + describe block.
+- **MISSING — fillable** are candidates for porting; sorted by likely-real-bug severity within each section.
+- **MISSING — design-decision** flag a Turbo/Nx behavior vx chose differently; not a bug, but worth pinning explicitly.
+
+Test-file path conventions in this doc:
+- Turbo: `crates/<crate>/src/<file>.rs:test_name`
+- Nx: `packages/nx/src/<area>/<file>.spec.ts > describe > it`
+- vx: `tests/<file>.test.ts > describe > it`
+
+## Sections
+
+### 1. Cache key derivation (hashing) [29 properties, 9 gaps]
+
+| Property | vx coverage | Turbo source | Nx source | Status |
+| --- | --- | --- | --- | --- |
+| Identical inputs produce identical hash (deterministic) | tests/cache.test.ts > Cache.key > is deterministic across repeated calls with identical input | task-hash/src/lib.rs:test_external_deps_hash_deterministic | hasher/native-task-hasher-impl.spec.ts > should create a task hash | HAVE |
+| Input file content change busts hash | tests/cache.test.ts > Cache.key > changes when an input file content changes | task-hash/src/lib.rs (via expanded_inputs) | hasher/native-task-hasher-impl.spec.ts | HAVE |
+| mtime-only change does NOT bust hash (content-addressed) | tests/cache.test.ts > Cache.key > does not change when only mtime changes | — | — | HAVE |
+| Input file order independence (sorted before hash) | tests/cache.test.ts > Cache.key > is independent of input file order | task-hash/src/lib.rs:test_external_deps_hash_order_independent + test_expanded_inputs_sorted_and_complete | — | HAVE |
+| Env-input value change busts hash | tests/cache.test.ts > Cache.key > changes when an env-input value changes | task-hash global-hash | hasher/native-task-hasher-impl.spec.ts | HAVE |
+| Empty env value vs unset distinguishable | tests/cache.test.ts > Cache.key > distinguishes empty value from unset | — | hasher/task-hasher.spec.ts (env input expansion) | HAVE |
+| Upstream hash change busts dependent hash (cascade) | tests/cache.test.ts > Cache.key > changes when an upstream hash changes | — | hasher/native-task-hasher-impl.spec.ts > project has dependencies | HAVE |
+| Upstream hash order independence | tests/cache.test.ts > Cache.key > is independent of upstream hash order | task-hash/src/lib.rs:test_external_deps_hash_order_independent | — | HAVE |
+| Workspace fingerprint (lockfile) change busts hash | tests/cache.test.ts > Cache.key > changes when the workspace fingerprint changes | (integration: lockfile-aware-caching) | hasher/native-task-hasher-impl.spec.ts > workspace files | HAVE |
+| Two identical relative trees in different projects produce different keys (isolation) | tests/cache.test.ts > Cache.key > produces different keys for two projects with identical relative trees | — | — | HAVE |
+| package.json change busts dependent tasks' hash | tests/cache.test.ts > Cache.key > changes when projectPackageJsonHash changes | (implicit via lockfile-aware-caching) | hasher/native-task-hasher-impl.spec.ts (projectFileMap) | HAVE |
+| No-package.json project deterministically hashes "" | tests/cache.test.ts > Cache.key > treats projectPackageJsonHash = "" deterministically | — | — | HAVE |
+| Zero-byte input files participate in key | tests/cache.test.ts > Cache.key > zero-byte input files participate | — | — | HAVE |
+| Binary input file byte-for-byte | tests/cache.test.ts > Cache.key > binary input file content participates | scm/hash_object.rs:test_blob_hash_matches_git_hash_object | — | HAVE |
+| Large file hash (no truncation) | tests/cache.test.ts > Cache.key > hashes large input files correctly | — | — | HAVE |
+| forwardArgs change busts hash | tests/cache.test.ts > Cache.key > changes when forwardArgs differ | — | — | HAVE |
+| forwardArgs empty == omitted (cache equivalence) | tests/cache.test.ts > Cache.key > treats empty forwardArgs and omitted forwardArgs as equivalent | — | — | HAVE |
+| Empty inputs/env/upstream still produces stable key | tests/cache.test.ts > Cache.key > is stable when inputs / env / upstream are all empty | task-hash:test_external_deps_hash_empty | — | HAVE |
+| Hash output is hex / consistent width (xxh3 16-hex) | tests/cache.test.ts (implicit via key comparison) | scm/hash_object.rs:test_blob_hash_matches_git_hash_object | — | HAVE |
+| Within-run memoization: same taskConfig hashed once | tests/cache-perf.test.ts > createHashCache > taskConfig memo returns identical hash on repeated calls | task-hash:test_hash_tracker_concurrent_reads | hasher/hash-plan-inspector.spec.ts | HAVE |
+| Within-run package.json memo: projectDir resolved once across tasks | tests/cache-perf.test.ts > createHashCache > packageJson memo only resolves projectDir once | task-hash:test_tracker_pre_sized_hashmaps | — | HAVE |
+| Per-project package.json caching (different projects = different entries) | tests/cache-perf.test.ts > createHashCache > different projects each get their own packageJson cache entry | — | — | HAVE |
+| Concurrent hash reads do not deadlock | (no direct test; safe by single-thread JS) | task-hash:test_hash_tracker_concurrent_reads + test_hash_tracker_concurrent_read_write | — | MISSING — design-decision (single-event-loop JS; no shared mutex) |
+| Sort-then-dedup equivalent to HashSet behavior | (sort+dedup not a separate primitive in vx) | task-hash:test_sort_dedup_matches_hashset_behavior | — | MISSING — design-decision |
+| Debug env-vars list excludes values (only names) | (vx logs only env-input names, not values) | task-hash:test_task_hash_debug_env_vars_exclude_values | — | MISSING — fillable (pin "stderr never echoes env values") |
+| Glob patterns in cache.outputs are escaped correctly | (resolveOutputs uses Bun.Glob) | globwalk:test_escape_glob_literals | — | MISSING — fillable |
+| Doublestar glob `**` collapsing/normalization | tests/inputs.test.ts (implicit via glob resolution) | globwalk:test_add_double_star + test_fix_glob_pattern | utils/globs.spec.ts | MISSING — fillable (pin `**` semantics explicitly) |
+| `.gitattributes` CRLF normalization parity (git path vs manual path) | — | scm/package_deps.rs:test_crlf_hash_matches_after_simulated_prune + test_dirty_crlf_file_matches_committed_hash + test_crlf_hash_with_autocrlf_true + test_git_and_manual_paths_agree_for_lf_files | — | MISSING — design-decision (vx uses xxh3 of file bytes verbatim; no git-object SHA1 / CRLF normalization) |
+| `.gitattributes` `text=auto` does not corrupt binary file hashes | — | scm/package_deps.rs:test_binary_files_hash_raw_with_text_auto | — | MISSING — design-decision (same: vx hashes raw bytes) |
+| Symlinks: hashing behavior is defined | tests/inputs.test.ts > symlink edge cases > does not crash on broken/cyclic symlinks | scm/package_deps.rs:test_hash_symlink | — | HAVE |
+| Hashing in linked git worktrees works | — | scm/package_deps.rs:test_package_hashes_in_external_worktree | — | MISSING — fillable |
+| Hashing under a nested turbo-root inside a git repo | tests/inputs.test.ts (project-boundary checks) | scm/package_deps.rs:test_inputs_in_nested_turbo_root | — | HAVE |
+| Package-scoped `.gitattributes` pattern matches | — | scm/package_deps.rs:test_package_scoped_gitattributes_pattern | — | MISSING — design-decision (no .gitattributes interpretation) |
+| Custom named inputs / inheritance (Nx targetDefaults) | — | turbo_json/loader.rs:test_task_access_loading | hasher/task-hasher.spec.ts > splitInputsIntoSelfAndDependencies + expandNamedInput + expandSingleProjectInputs | MISSING — fillable (CLAUDE.md roadmap item #1) |
+| `^{projectRoot}` / `^!{projectRoot}` / `^namedInput` filesets | — | — | hasher/task-hasher.spec.ts > splitInputsIntoSelfAndDependencies (12 sub-tests) | MISSING — fillable (vx has `^*` for tasks; not for files) |
+| Global env / globalDeps participate in every task's hash | tests/cache.test.ts > Cache.key > changes when the workspace fingerprint changes (partial; only lockfile) | task-hash/src/global_hash.rs:test_absolute_path + test_collect_only_yields_files | — | MISSING — fillable (CLAUDE.md roadmap item #6) |
+
+### 2. Task graph (dependsOn) [21 properties, 5 gaps]
+
+| Property | vx coverage | Turbo source | Nx source | Status |
+| --- | --- | --- | --- | --- |
+| Single zero-dep node | tests/task-graph.test.ts > buildTaskGraph > builds a single zero-dependency node | engine/mod.rs:test_get_subgraph_for_package | tasks-runner/create-task-graph.spec.ts > task per project | HAVE |
+| Same-project task dep (`'name'`) | tests/task-graph.test.ts > buildTaskGraph > expands a same-project task dependency via dependsOn.self | engine builder | create-task-graph.spec.ts > should create graphs with dependencies | HAVE |
+| Workspace-dep task dep (`'^name'`) | tests/task-graph.test.ts > buildTaskGraph > expands across all transitive workspace deps via dependsOn.dependencies | engine builder | create-task-graph.spec.ts > should create graphs with dependencies | HAVE |
+| Cross-project task dep (`'pkg#name'`) | tests/task-graph.test.ts (anchored positionals) | engine builder | tasks-runner/utils.spec.ts > expandDependencyConfigSyntaxSugar > project:target | HAVE |
+| Missing same-project dep task errors clearly | tests/task-graph.test.ts > buildTaskGraph > errors when dependsOn.self targets a missing task | engine builder | — | HAVE |
+| Diamond dedupes shared upstream | tests/task-graph.test.ts > buildTaskGraph > dedupes diamond dependency | engine subgraph | create-task-graph.spec.ts > should handle diamond shape dependencies | HAVE |
+| Workspace deps that lack the task are silently skipped | tests/task-graph.test.ts > buildTaskGraph > silently skips workspace deps that have no such task | engine builder | — | HAVE |
+| Cross-project cycle detected | tests/task-graph.test.ts > buildTaskGraph > detects a cross-project cycle | task_graph cycle | tasks-runner/task-graph-utils.spec.ts > findCycle | HAVE |
+| Same-project self-cycle detected | tests/task-graph.test.ts > buildTaskGraph > detects a same-project task self-cycle | task_graph cycle | task-graph-utils.spec.ts | HAVE |
+| Empty graph (no projects) | tests/task-graph.test.ts > buildTaskGraph > returns an empty graph when no projects are requested | engine subgraph | create-task-graph.spec.ts > empty project graph | HAVE |
+| User-requested nodes marked vs pulled-in deps | tests/task-graph.test.ts > buildTaskGraph > marks user-requested nodes; deps pulled in by dependsOn are not requested | engine | — | HAVE |
+| Promotion: implicit node + explicit request | tests/task-graph.test.ts > a node added implicitly and then requested explicitly is promoted | engine | — | HAVE |
+| excludeDependencies=all skips self+deps | tests/task-graph.test.ts > excludeDependencies: "all" skips both self and dependencies expansion | engine | create-task-graph.spec.ts > should exclude task dependencies | HAVE |
+| excludeDependencies=name-list drops only matching | tests/task-graph.test.ts > excludeDependencies: name-list drops only matching edges | — | — | HAVE |
+| dependsOn rejects wildcards/negation (filter-only forms) | tests/task-graph.test.ts > dependsOn rejects filter-only forms (`*`, `^*`, `!name`) | — | — | HAVE |
+| cache.inputs.tasks accepts wildcards (`*`, `^*`, `!name`) | tests/task-graph.test.ts > cache.inputs.tasks accepts the same forms dependsOn rejects | — | utils/utils.spec.ts > expandWildcardDependencies + supports wildcards in targets | HAVE |
+| Multi-task positional (`vx run a b`) shared graph | tests/cli.test.ts > parseRunArgs > multiple positionals are collected as tasks | — | — | HAVE |
+| Mixed bare + `pkg#task` positionals | tests/cli.test.ts > parseRunArgs > mixes bare and pkg#task positionals | — | utils/utils.spec.ts > expandDependencyConfigSyntaxSugar | HAVE |
+| Cycle topologies: partial cycles, indirect self-cycles, two-cycle graphs | tests/task-graph.test.ts (single-cycle case only) | — | create-task-graph.spec.ts > cycles (8 variants) + task-graph-utils.spec.ts > findCycles | MISSING — fillable (port "two cycles in same graph" + "indirect self-cycle via intermediate" + "cycle with partial target presence") |
+| Deterministic task graph regardless of target order | tests/scheduler.test.ts > reverse-dependency scheduling priority > ties break in graph-insertion order (partial) | — | create-task-graph.spec.ts > should create deterministic task graphs regardless of target order | MISSING — fillable (assert two graphs from re-ordered inputs are structurally equal) |
+| Wildcards in dependsOn (`build-*`, `^build-*`) | (rejected today) | — | create-task-graph.spec.ts > should handle glob patterns in dependsOn + should handle negative patterns in dependsOn | MISSING — fillable (CLAUDE.md roadmap item #5) |
+| Deep dependsOn group chains (multi-level) | tests/task-graph.test.ts > expands across all transitive workspace deps | — | create-task-graph.spec.ts > should handle deep dependsOn groups + multiple dependsOn task groups | HAVE |
+| Both self and deps tasks run before dependent | tests/task-graph.test.ts > runs both self and dependencies tasks before the dependent | — | — | HAVE |
+| Diamond / "dummy task" isolation (continuous vs regular deps) | — | — | create-task-graph.spec.ts > should not conflate dependencies of dummy tasks + filterDummyTasks | MISSING — design-decision (vx has no "continuous" task category) |
+| Forward args/options through dependsOn | tests/cli.test.ts > forwards `--` args; tests/orchestrator.test.ts (multiple) | — | create-task-graph.spec.ts > should forward args + forward options | MISSING — design-decision (vx scopes forwardArgs to user-requested nodes only; no inheritance into deps; explicit P1 fix in CLAUDE.md) |
+| forwardArgs does not leak into dependsOn nodes' cache keys | tests/orchestrator.test.ts (P1 regression) | — | — | HAVE |
+
+### 3. Filter DSL [16 properties, 3 gaps]
+
+| Property | vx coverage | Turbo source | Nx source | Status |
+| --- | --- | --- | --- | --- |
+| Bare name as glob matcher | tests/filter.test.ts > parseFilter > parses bare name as glob matcher | scope/filter.rs:filter (selector_name_only) + target_selector.rs:parse_target_selector | utils/find-matching-projects.spec.ts > should support projectNames | HAVE |
+| `pat...` (withDeps) | tests/filter.test.ts > parseFilter > parses pattern... as withDeps; applyFilters > pkg... includes pkg and transitive deps | scope/filter.rs:include_dependencies_traverses_task_graph + selector_include_dependencies_uses_task_graph | — | HAVE |
+| `...pat` (withDependents) | tests/filter.test.ts > parses ...pattern as withDependents; ...pkg includes pkg and transitive dependents | scope/filter.rs:include_dependents_traverses_task_graph | — | HAVE |
+| `pat^...` (onlyDeps) | tests/filter.test.ts > parses pattern^... as onlyDeps; pkg^... includes only the deps, not the package itself | scope/filter.rs:selector_exclude_self_with_dependencies | — | HAVE |
+| `!pat` (negate) | tests/filter.test.ts > parses !pattern as negate; !pkg excludes from the otherwise-full set | scope/filter.rs:filter_mode_single_exclude_is_exclude_only + multiple_excludes_is_exclude_only | find-matching-projects.spec.ts > should support negation "!" | HAVE |
+| `./<dir>` path filter | tests/filter.test.ts > parses ./<dir> as path; path filter selects packages under the directory; absolute path resolves correctly | scope/filter.rs:test_no_directory + filter_mode_exclude_root_by_directory | — | HAVE |
+| `{<dir>}` brace form | tests/filter.test.ts > parses {<dir>} as path | scope/filter.rs:test_filter_from_directory_selects_child_packages + test_issue_11428_filter_from_directory_with_nested_packages + test_subdirectory_filter_from_workspace_directory | — | HAVE |
+| Scoped package globs (`@scope/foo`) | tests/filter.test.ts > preserves scoped glob names | scope/filter.rs:match_scoped_package | find-matching-projects.spec.ts > should handle case where scope and names are the same | HAVE |
+| `[<git-ref>]` since-selector | tests/filter.test.ts > parses [<since>] as a git-relative selector + applyFilters > [<since>] cases | scope/filter.rs:scm + affected_with_git_range_filter_different_ref | — | HAVE |
+| `[<since>]...` since + withDeps composition | tests/filter.test.ts > parses [<since>]... as gitSince + withDeps + applyFilters | scope/filter.rs:scm | — | HAVE |
+| `![<since>]` negated since | tests/filter.test.ts > parses ![<since>] as negated gitSince + applyFilters > ![<since>] excludes | — | — | HAVE |
+| `[<since>]` empty affected = empty (no fallback) | tests/filter.test.ts > [<since>] with empty affected set selects nothing | scope/filter.rs:affected_with_filter_no_overlap_is_empty | — | HAVE |
+| Stacked filters union | tests/filter.test.ts > stacked: --filter ui --filter [main] unions name + affected sets | scope/filter.rs:affected_with_multiple_include_filters | — | HAVE |
+| Combined include/exclude in order | tests/filter.test.ts > mixing include + exclude in order + combined includes union + mixed include + path-filter union | scope/filter.rs:filter_mode_mixed_include_exclude_is_explicit_selection + affected_with_include_and_exclude_filter | — | HAVE |
+| Exact name match takes precedence over glob | tests/filter.test.ts > exact name match | scope/filter.rs:match_exact | — | HAVE |
+| Non-existent name errors; non-existent glob returns empty | tests/cli.test.ts > -F with no match errors clearly | scope/filter.rs:test_no_matching_name | — | HAVE |
+| Filter mode classification (all-vs-explicit-vs-exclude-only) | (vx has no notion; applies filters then runs all matched) | scope/filter.rs:filter_mode_* (8 tests) | — | MISSING — design-decision |
+| Package inference from cwd (when inside a package dir) | tests/cli.test.ts > cwd inside a project package resolves to that project | scope/filter.rs:test_package_inference_inside_package + test_package_inference_selects_deepest_package + test_package_inference_deterministic_with_nested_packages | — | HAVE |
+| Match on name segments (substring/prefix glob behavior) | tests/filter.test.ts > glob name match | find-matching-projects.spec.ts > should match on name segments | HAVE |
+| `*` expands to "all" | tests/filter.test.ts > applyFilters (implicit) | scope/filter.rs:filter_mode_wildcard_exclude_matches_root | find-matching-projects.spec.ts > should expand "*" | HAVE |
+| Tag-based selectors (`tag:foo`, `tag:foo*`, `!tag:bar`) | — | — | find-matching-projects.spec.ts > should support tags (4 tests) | MISSING — design-decision (vx has no project tags concept) |
+| Caching of repeated filter compilation | (no direct test) | — | find-matching-projects.spec.ts > getMatchingStringsWithCache (2 tests) | MISSING — fillable (assert that re-applying the same filter list is constant-time on large project sets) |
+
+### 4. Affected detection [13 properties, 3 gaps]
+
+| Property | vx coverage | Turbo source | Nx source | Status |
+| --- | --- | --- | --- | --- |
+| Empty result when no changes since HEAD | tests/affected.test.ts > affectedProjects > returns empty when nothing changed since HEAD | scope/filter.rs:scm | locators/workspace-projects.spec.ts > getTouchedProjects | HAVE |
+| Only changed projects selected | tests/affected.test.ts > selects only projects whose files changed since HEAD | — | locators/workspace-projects.spec.ts > should return a list of projects for the given changes | HAVE |
+| Multiple projects when changes span them | tests/affected.test.ts > selects multiple projects when changes span them | — | — | HAVE |
+| Commits-since-base when ref provided | tests/affected.test.ts > returns commits-since-base when comparing against an earlier ref + selects via committed-only history | — | — | HAVE |
+| Bad ref errors clearly (UserError) | tests/affected.test.ts > throws UserError when the ref does not resolve | — | — | HAVE |
+| Changes outside any project are ignored | tests/affected.test.ts > ignores changes outside any project directory | — | — | HAVE |
+| Staged-only changes selected | tests/affected.test.ts > staged-only changes are selected | — | — | HAVE |
+| Working-tree-only (uncommitted) changes selected | tests/affected.test.ts > selects the project on a working-tree delete (uncommitted) | — | — | HAVE |
+| Nested-project boundary honored | tests/affected.test.ts > respects the nested-project boundary | scope/filter.rs:test_package_inference_deterministic_with_nested_packages | locators/workspace-projects.spec.ts > should not return parent project if nested project is touched | HAVE |
+| Deleted file selects its owning project | tests/affected.test.ts > selects the project that owned a deleted file | — | — | HAVE |
+| Cross-project rename selects both src+dst | tests/affected.test.ts > selects BOTH source and destination project on cross-project rename | — | — | HAVE |
+| Same-project rename selects project | tests/affected.test.ts > selects the project on a same-project rename | — | — | HAVE |
+| Many-commit base..HEAD handled | tests/affected.test.ts > handles many commits in the base..HEAD range | — | — | HAVE |
+| Defaults: falls back to HEAD~1 when origin/HEAD unset | tests/affected.test.ts > defaultAffectedBase > falls back to HEAD~1 | scope/change_detector.rs (production code only; no spec) | utils/default-base.spec.ts > deduceDefaultBase (3 tests) | HAVE |
+| Project removed entirely affects all projects | — | — | locators/project-glob-changes.spec.ts > should affect all projects if a project is removed | MISSING — design-decision (vx has no "project removed = invalidate everything" semantic; package.json is folded into each task's hash already) |
+| Workspace-root config (nx.json / turbo.json) change affects all | tests/cache.test.ts > Cache.key > changes when the workspace fingerprint changes (only lockfile, not vx.workspace.* changes) | (integration: lockfile-aware-caching) | locators/workspace-projects.spec.ts > should return every project when nx.json is touched + workspace-json-changes.spec.ts (6 tests) | MISSING — fillable (assert that editing vx.workspace.ts forces every project's cache key to change) |
+| namedInputs / globalDeps / global env affects all projects when changed | — | — | locators/workspace-projects.spec.ts > getImplicitlyTouchedProjects (5 tests) | MISSING — fillable (couples with §1 globalInputs feature) |
+| Parser: target selector grammar (parse errors, malformed) | tests/filter.test.ts > parseFilter (various) | scope/target_selector.rs:parse_target_selector + parse_target_selector_invalid | — | HAVE |
+
+### 5. Tar / output capture security [12 properties, 7 gaps]
+
+| Property | vx coverage | Turbo source | Nx source | Status |
+| --- | --- | --- | --- | --- |
+| `..` segment in entry name rejected | tests/tar-security.test.ts > tar extractOutputs > rejects entry with `..` segment + rejects entry with double `..` + embedded `..` segment | cache/cache_archive/restore.rs:test_name_traversal + test_dot_dot_at_start_rejected + test_dot_dot_in_middle_rejected + test_dot_dot_only_path_rejected + test_current_dir_prefix_rejected + test_dot_only_path_rejected | — | HAVE |
+| Absolute path entry rejected | tests/tar-security.test.ts > rejects absolute path entry (outputs//etc/passwd) + rejects entry with leading slash | restore.rs:test_absolute_path_file_rejected + test_absolute_path_directory_rejected + test_root_path_rejected + test_deep_absolute_path_rejected + test_absolute_path_does_not_write_to_filesystem | — | HAVE |
+| Null byte in path rejected | tests/tar-security.test.ts > rejects entry whose name contains a null byte + parseTarHeaders | restore.rs:test_null_byte_in_path | — | HAVE |
+| Resolved path == destDir itself rejected | tests/tar-security.test.ts > rejects entry whose resolved path is destDir itself | — | — | HAVE |
+| Pre-existing symlink in destination not followed (TOCTOU) | tests/tar-security.test.ts > pre-existing symlink in destination is not followed | restore.rs:test_pre_existing_symlink_replaced_cross_platform + test_pre_existing_symlink_does_not_overwrite_target + test_pre_existing_nested_symlink_replaced + test_pre_existing_absolute_symlink_replaced + test_pre_existing_intermediate_symlink_replaced | — | HAVE |
+| Benign entry extracts (positive sanity) | tests/tar-security.test.ts > extracts a benign entry into destDir | restore.rs:test_restore | — | HAVE |
+| parseTarHeaders rejects `..` and absolute name fields | tests/tar-security.test.ts > parseTarHeaders rejections (3) | restore.rs:test_name_traversal | — | HAVE |
+| Windows-absolute / Windows-drive paths rejected on all platforms | — | restore.rs:test_windows_unsafe + restore_rejects_archive_symlink_to_windows_absolute_path | — | MISSING — fillable (vx is cross-platform-readable; bytes from a Windows producer must be rejected) |
+| Symlink in archive pointing outside anchor rejected | — | restore.rs:restore_rejects_archive_symlink_to_parent_directory_without_followup_entry + restore_rejects_archive_symlink_to_absolute_unix_path + restore_preserves_broken_symlink_that_stays_inside_anchor + restore_allows_archive_symlink_that_resolves_inside_anchor_via_parent | — | MISSING — fillable (no test asserts archive symlinks are accepted/rejected per anchor) |
+| Hardlink / character device / block device entries rejected | — | restore.rs:test_hardlink_entry_type_rejected + test_character_device_entry_type_rejected + test_block_device_entry_type_rejected | — | MISSING — fillable (parser should reject typeflag 1/3/4 explicitly) |
+| Symlink with empty link target rejected | — | restore.rs:test_symlink_with_empty_target | — | MISSING — fillable |
+| Empty path entry / double slash rejected | tests/tar-security.test.ts > parseTarHeaders rejections (covers absolute and `..` only) | restore.rs:test_empty_path_in_entry + test_double_slash_in_path | — | MISSING — fillable (currently allowed?) |
+| Unicode lookalikes / bidi-override / NFC-vs-NFD do not enable traversal | — | restore.rs:test_unicode_dot_lookalike_in_path + test_unicode_slash_lookalike_in_path + test_unicode_bidi_override_in_path + test_nfc_vs_nfd_normalization | — | MISSING — fillable (defense in depth — even one bypass = arbitrary file write) |
+| Long path (>260 chars / >4096 chars) handled safely | — | restore.rs:test_path_exceeding_260_chars + test_total_path_length_over_4096 + test_deeply_nested_path | — | MISSING — fillable |
+| Concurrent restore to same anchor is safe | tests/cache.test.ts > two concurrent save()s on the same hash leave a valid artifact (similar but not anchor-safety) | restore.rs:test_concurrent_restore_to_same_anchor + test_concurrent_restore_with_symlink_attack + test_many_concurrent_restores | — | MISSING — fillable (race-window assertion against TOCTOU) |
+| Mixed valid+malicious entries: whole archive rejected (no partial extract) | — | restore.rs:test_mixed_valid_and_malicious_entries | — | MISSING — fillable (we may currently partial-extract before hitting the bad entry) |
+| Completely invalid / truncated tar data handled gracefully | tests/cache-archive.test.ts > unpackArchive rejects a corrupt tarball | restore.rs:test_completely_invalid_tar_data + test_truncated_tar_data | — | HAVE |
+
+### 6. Tar / output capture functionality [11 properties, 4 gaps]
+
+| Property | vx coverage | Turbo source | Nx source | Status |
+| --- | --- | --- | --- | --- |
+| Pack + unpack round-trips stage dir | tests/cache-archive.test.ts > packArchive + unpackArchive > round-trips a stage dir with meta.json and outputs/ | cache/cache_archive/create.rs:test_create + restore.rs:test_restore | utils/collapse-expanded-outputs.spec.ts (related) | HAVE |
+| Binary content byte-for-byte | tests/cache-archive.test.ts > preserves binary content byte-for-byte | — | — | HAVE |
+| Empty stage dir round-trips | tests/cache-archive.test.ts > handles empty stage dirs | — | — | HAVE |
+| Deeply nested tree round-trips | tests/cache-archive.test.ts > handles deeply nested directory trees | restore.rs:test_deeply_nested_path | — | HAVE |
+| Missing source dir errors clearly | tests/cache-archive.test.ts > packArchive rejects when the source dir does not exist | — | — | HAVE |
+| Destination created if missing | tests/cache-archive.test.ts > unpackArchive creates destDir if missing | — | — | HAVE |
+| ArrayBuffer / Buffer input accepted (typed-array compat) | tests/cache-archive.test.ts > accepts ArrayBuffer input | — | — | HAVE |
+| PAX extended headers (typeflag x/g) skipped | tests/cache-baseline.test.ts > parseTarHeaders > skips PAX extended-header records, AppleDouble entries (._*) + skips global PAX records (typeflag g) | — | — | HAVE |
+| AppleDouble (._*) entries filtered | tests/cache-baseline.test.ts > skips ... AppleDouble entries (._*) | — | — | HAVE |
+| Forward-slash path normalization in archive entries | tests/cache-archive.test.ts > tarPath > joins segments with forward slashes + normalizes backslashes + collapses repeated slashes | restore.rs:test_canonicalize_linkname | — | HAVE |
+| Long file/dir names supported | — | cache_archive/create.rs:create_tar_with_really_long_name | — | MISSING — fillable (assert >256-byte names round-trip via PAX or split header) |
+| zstd compression/decompression round-trips | tests/cache-archive.test.ts (round-trip implicitly uses zstd) | cache_archive/create.rs:test_compression | — | HAVE |
+| Temp file cleanup on drop / error during write | tests/cache.test.ts > prune() handles a DB row whose on-disk dir was deleted out of band (partial) | create.rs:test_cachewriter_cleanup_on_drop + test_cachewriter_cleanup_on_error | — | MISSING — fillable (assert that a save() that throws mid-pack leaves no `.tar.tmp` debris) |
+| Atomic rename of temp → final on finish | tests/cache.test.ts > save() overwrites a prior entry at the same hash (partial) | create.rs:test_cachewriter_finish_renames_file + test_generate_temp_path_uniqueness | — | MISSING — fillable (today the test asserts the entry is valid; not that the write was atomic from an observer's perspective) |
+| Adding file through symlinked parent rejected | — | create.rs:add_file_rejects_file_through_symlinked_parent | — | MISSING — fillable |
+| Trailing slash for directory entries (Unix + Windows) | — | create.rs:test_add_trailing_slash_unix + test_add_trailing_slash_windows | — | MISSING — design-decision (vx tar emits directories via parent inference; assert anyway) |
+| uniqueStageDir produces pid+ts-suffixed paths | tests/cache-archive.test.ts > uniqueStageDir > produces a path under the parent with pid + timestamp suffix | — | — | HAVE |
+| Sequential restores: symlink → real directory transition | — | restore.rs:test_sequential_restores_symlink_then_directory | — | MISSING — fillable (cache hit immediately after a symlinked-output run must clobber the symlink) |
+| Restore skips unchanged files (slow path optimization) | tests/cache-baseline.test.ts > restoreOutputs round-trip via Cache: second restore touches no inodes | cache/fs.rs:test_slow_path_skips_unchanged_files | — | HAVE |
+
+### 7. Cache filesystem layer [13 properties, 3 gaps]
+
+| Property | vx coverage | Turbo source | Nx source | Status |
+| --- | --- | --- | --- | --- |
+| Save + get round-trip via SQLite + FS | tests/cache.test.ts > Cache storage (v10) > save() + get() round-trips | cache/fs.rs:test_fs_cache | tasks-runner/cache.spec.ts (parse + format) | HAVE |
+| SQLite db created at `<cacheDir>/cache.db` | tests/cache.test.ts > creates a SQLite db at <cacheDir>/cache.db | — | — | HAVE |
+| restoreOutputs copies cached artifact back | tests/cache.test.ts > restoreOutputs() copies the on-disk artifact back into the project dir | — | — | HAVE |
+| Miss: never-written hash returns null | tests/cache.test.ts > get() returns null when the entry has never been written | — | — | HAVE |
+| Miss: DB row exists but artifact was deleted = null | tests/cache.test.ts > get() returns null when DB row exists but on-disk artifact was deleted | — | — | HAVE |
+| Two concurrent writers do not crash with SQLITE_BUSY | tests/cache.test.ts > two concurrent writers do not crash with SQLITE_BUSY | cache/fs.rs:test_concurrent_writes_same_hash + test_concurrent_writes_cleanup_temp_files + test_read_during_write + test_concurrent_reads | — | HAVE |
+| Two concurrent saves on same hash leave valid artifact | tests/cache.test.ts > two concurrent save()s on the same hash leave a valid artifact | cache/fs.rs:test_concurrent_writes_same_hash | — | HAVE |
+| Same-hash re-save is idempotent (overwrite) | tests/cache.test.ts > save() overwrites a prior entry at the same hash | — | — | HAVE |
+| SCHEMA_VERSION mismatch wipes entries + runs and recreates | tests/cache.test.ts > Cache schema/version recovery > SCHEMA_VERSION mismatch wipes entries + runs and recreates cleanly | — | — | HAVE |
+| CACHE_VERSION mismatch orphans old entries (different key derivation) | tests/cache.test.ts > CACHE_VERSION mismatch orphans old entries | — | — | HAVE |
+| Cache layout: single `<hash>.tar` (Turbo-style) | tests/cache-perf.test.ts > cache layout v15: <hash>.tar single file > save writes a single <hash>.tar file + outputsPath returns the tar file path | — | — | HAVE |
+| stdout/stderr stored in SQLite, not in the tar | tests/cache-perf.test.ts > stdout/stderr stored in SQLite (not in the tar) | (Turbo stores logs as a separate file in the tar) | — | MISSING — design-decision (vx PR for v13 separates logs into SQLite; Turbo nests them in the artifact) |
+| save() populates output_files rows; isOutputsCurrent matches restored tree | tests/cache-baseline.test.ts > save populates output_files rows; isOutputsCurrent matches on the restored tree | — | — | HAVE |
+| Read during write returns old/new/miss, never corruption | tests/cache.test.ts (concurrent writers) | cache/fs.rs:test_read_during_write | — | HAVE |
+| Concurrent reads non-interfering | (no explicit test) | cache/fs.rs:test_concurrent_reads | — | MISSING — fillable (lightweight: spawn N reads of the same hash while a write is in flight, assert all read results are consistent) |
+| SCM metadata (sha, dirty hash) persisted in cache entry | — | cache/fs.rs:test_fs_cache_writes_scm_metadata + test_fs_cache_writes_null_scm_fields_when_none + test_cache_metadata_round_trips_with_scm_fields + test_cache_metadata_deserializes_without_scm_fields | — | MISSING — design-decision (vx records run-level analytics not per-cache-entry SCM; track if/when we want per-entry git sha) |
+
+### 8. Remote cache HTTP wire [10 properties, 6 gaps]
+
+| Property | vx coverage | Turbo source | Nx source | Status |
+| --- | --- | --- | --- | --- |
+| HEAD: 200=true, 404=false, 5xx=throw | tests/remote-cache.test.ts > has(): true on 200, false on 404, throws on 5xx | cache/http.rs:test_http_cache | — | HAVE |
+| HEAD: sends bearer auth + tenancy query params | tests/remote-cache.test.ts > has(): sends HEAD with bearer auth and tenancy query params | — | — | HAVE |
+| GET: returns body + metadata headers; null on 404 | tests/remote-cache.test.ts > get(): returns body + metadata headers; null on 404 | cache/http.rs:test_http_cache | — | HAVE |
+| PUT: sends Authorization, Content-Type, Content-Length, x-artifact-duration | tests/remote-cache.test.ts > put(): sends PUT with Authorization, Content-Type, Content-Length, x-artifact-duration | cache/http.rs:test_http_cache | — | HAVE |
+| PUT: includes optional x-artifact-tag when provided | tests/remote-cache.test.ts > put(): includes optional tag when provided | — | — | HAVE |
+| PUT: non-2xx throws | tests/remote-cache.test.ts > put(): throws on non-2xx response | — | — | HAVE |
+| Batch existence endpoint POST | tests/remote-cache.test.ts > batchExistence(): posts hashes and parses the per-hash metadata response + empty input short-circuits | — | — | HAVE |
+| Fetch errors wrapped in RemoteCacheError | tests/remote-cache.test.ts > wraps fetch errors in RemoteCacheError | — | — | HAVE |
+| Timeout aborts request | tests/remote-cache.test.ts > aborts requests that exceed the configured timeout | — | — | HAVE |
+| 403 forbidden converts to permission-denied message | (no direct test; throws on any non-2xx via RemoteCacheError) | cache/http.rs:test_forbidden_error + test_unknown_status + test_cache_disabled | — | MISSING — fillable (distinguish 401/403/404/5xx in user-visible message) |
+| 403 → token refresh attempt | (no token refresh logic) | cache/http.rs:test_token_refresh_on_403 + test_cache_token_update_after_refresh + test_cache_auth_mutex_thread_safety | — | MISSING — design-decision (vx remote auth is static; no refresh; documented OK per `docs/design/remote-cache.md`) |
+| HMAC-SHA256 signing of artifacts (x-artifact-tag) | (PUT accepts a literal tag; no signing logic) | cache/signature_authentication.rs:test_signatures + test_key_too_short_rejected + test_key_exactly_32_bytes_accepted + test_short_key_still_works_for_signing | — | MISSING — fillable (CLAUDE.md roadmap item #2) |
+| Signature key length enforcement (≥32 bytes) | (no signing) | cache/http.rs:test_short_signature_key_rejected_when_enforced + test_valid_signature_key_accepted_when_enforced + test_short_signature_key_accepted_without_enforcement + test_missing_signature_key_not_rejected_when_enforced | — | MISSING — fillable (same as above) |
+| Local-only cache works without API client | tests/layered-cache.test.ts (delegation tests cover this implicitly) | cache/async_cache.rs:test_local_only_cache_does_not_require_api_client | — | HAVE |
+| Async cache fire-and-forget completion (does not block local return) | tests/layered-cache.test.ts > save() writes local AND uploads to remote + save() does not fail when the remote rejects | cache/async_cache.rs:test_async_cache | — | HAVE |
+| onRemoteRequest fires for GET (hit) / PUT / failure with bytes + ok flag | tests/layered-cache.test.ts > onRemoteRequest fires for GET (hit) with bytes + for PUT + with ok=false on remote failure | — | — | HAVE |
+| get() returns local without touching remote when local has it | tests/layered-cache.test.ts > get() returns local entry without touching remote when local has it | — | — | HAVE |
+| get() falls back to remote and materializes into local (hydrate) | tests/layered-cache.test.ts > get() falls back to remote and materializes into local | — | — | HAVE |
+| get() suppresses remote errors and returns null | tests/layered-cache.test.ts > get() suppresses remote errors and returns null | — | — | HAVE |
+| Pre-signed URL support (POST to obtain URL + PUT to object storage) | — | (Vercel hosted) | — | MISSING — fillable (CLAUDE.md roadmap item #2) |
+| Origin matching for credential leakage prevention | — | run/builder.rs:same_host_different_paths + different_hosts + with_port + different_ports_do_not_match + different_schemes_do_not_match + different_subdomains_do_not_match + case_insensitive + userinfo_host_bypass_does_not_match + same_origin_with_userinfo_does_not_match + api_url_with_userinfo_does_not_match + missing_scheme_returns_false + empty_url_returns_false | — | MISSING — fillable (defense in depth: assert remote-cache URL with embedded `user:pass@` is rejected) |
+
+### 9. Glob walking [10 properties, 4 gaps]
+
+| Property | vx coverage | Turbo source | Nx source | Status |
+| --- | --- | --- | --- | --- |
+| Files matching declared input globs are enumerated | tests/inputs.test.ts > resolveInputs (many) | globwalk/lib.rs:glob_walk + glob_walk_files | utils/globs.spec.ts | HAVE |
+| `*` matches dotfiles (per Turbo `workspace_globbing_includes_dotfiles`) | tests/inputs.test.ts (implicit via Bun.Glob behavior; no explicit assert) | globwalk/lib.rs:workspace_globbing_includes_dotfiles | — | MISSING — fillable (assert `src/*` matches `src/.env`) |
+| Negation pattern strips matched files | tests/inputs.test.ts > resolveInputs > negation in inputs.files strips matched files + under the git path | globwalk:glob_walk_files (includes/excludes combination) | utils/globs.spec.ts > isGlobPattern + nx isGlobPattern | HAVE |
+| Output globs never escape destination dir | tests/inputs.test.ts > resolveOutputs > excludes nested-project files even when the output glob would reach + cleanOutputs > does NOT cross project boundaries | globwalk:glob_walk_err (traversal cannot escape base) | — | HAVE |
+| Empty pattern list → no files | tests/inputs.test.ts > resolveOutputs > returns [] when outputs glob list is empty + resolveInputs > returns [] for files when inputs.files is empty | — | — | HAVE |
+| Symlinks: broken / cyclic do not crash | tests/inputs.test.ts > symlink edge cases > does not crash + does not infinite-loop on a symlink cycle | globwalk:broken_dir_symlink_does_not_crash + symlink_cycle_handled_gracefully | — | HAVE |
+| Symlinks: `**` does not follow by default | — | globwalk:doublestar_without_follow_links_misses_symlinked_package + shallow_wildcard_finds_symlinked_package + doublestar_finds_symlinked_package + mixed_real_and_symlinked_packages | — | MISSING — design-decision (Bun.Glob default behavior; we should pin it) |
+| Always-ignored paths (node_modules, .git, .vx) | tests/inputs.test.ts > resolveInputs > always-ignored paths (node_modules, .git, .vx) never enter the input set + node_modules under a project is always excluded | — | — | HAVE |
+| `.gitignore` at workspace root filters inputs | tests/inputs.test.ts > resolveInputs > gitignore at the workspace root filters input files + git ls-files path | — | — | HAVE |
+| Nested `.gitignore` correctly anchored (v13 footgun) | tests/inputs.test.ts > resolveInputs — git ls-files path (v14) > nested .gitignore patterns are correctly anchored | — | — | HAVE |
+| Basename-pattern `.gitignore` at project root | tests/inputs.test.ts > basename-pattern gitignore at the project root filters matching files | — | — | HAVE |
+| Global excludes (`.git/info/exclude`) honored | tests/inputs.test.ts > global excludes (.git/info/exclude) are honored | — | — | HAVE |
+| Untracked-but-not-ignored files participate (no commit required) | tests/inputs.test.ts > untracked-but-not-ignored files participate in inputs (no commit required) | — | — | HAVE |
+| Deleted-but-tracked files skipped (existsSync guard) | tests/inputs.test.ts > deleted-but-tracked files are skipped (existsSync guard) | — | — | HAVE |
+| Cross-project boundary excludes inner-project files | tests/inputs.test.ts > nested-project boundary still excludes inner-project files | — | locators/workspace-projects.spec.ts > should return the most qualifying match | HAVE |
+| Output globs are not filtered by gitignore (dist/ typically ignored) | tests/inputs.test.ts > resolveOutputs > does not filter outputs through gitignore | — | — | HAVE |
+| Glob walker rejects patterns that would walk outside base | tests/inputs.test.ts (project-boundary) | globwalk:glob_walk_err + test_directory_traversal | — | HAVE |
+| Bracket-containing base paths handled | — | globwalk:test_base_with_brackets + test_weird_filenames | — | MISSING — fillable (assert that a project dir literally containing `[abc]` doesn't get glob-interpreted) |
+| Doublestar `**` collapsing / pattern normalization | (Bun.Glob handles this internally) | globwalk:test_fix_glob_pattern + test_collapse_path + test_add_double_star + test_escape_glob_literals + test_needs_path_cleaning + preprocess_paths_and_globs | utils/globs.spec.ts | MISSING — fillable (lightweight: pin Bun.Glob behavior on `**/` vs `**` vs trailing slash) |
+| git ls-files single workspace-wide spawn | tests/inputs.test.ts > populateGitFilesCache — single workspace-wide git spawn (3 tests) | scm/package_deps.rs:test_get_package_deps | — | HAVE |
+| Memoization: second resolveInputs call doesn't re-spawn git | tests/inputs.test.ts > resolveInputs — gitFilesCache memoization (3 tests) | — | — | HAVE |
+| Fallback to non-git walk when not a git repo | tests/inputs.test.ts > populateGitFilesCache > marks every project null when not in a git repo + tests/affected (similar) | scm/package_deps.rs:test_get_package_deps_fallback | — | HAVE |
+
+### 10. Engine / task scheduling [12 properties, 3 gaps]
+
+| Property | vx coverage | Turbo source | Nx source | Status |
+| --- | --- | --- | --- | --- |
+| Empty graph returns immediately | tests/scheduler.test.ts > runGraph > returns immediately on an empty graph | engine/execute (implicit) | tasks-runner/tasks-schedule.spec.ts > begin with no scheduled tasks | HAVE |
+| Tasks run in dependency order (topo) | tests/scheduler.test.ts > runGraph > runs tasks in dependency order | engine | tasks-schedule.spec.ts > should schedule root tasks first + continue to schedule tasks that have completed dependencies | HAVE |
+| Concurrency cap respected | tests/scheduler.test.ts > runGraph > respects the concurrency cap | — | — | HAVE |
+| Concurrency = 1 serializes execution | tests/scheduler.test.ts > runGraph > serializes execution with concurrency = 1 | — | — | HAVE |
+| Failed task → dependents skipped | tests/scheduler.test.ts > runGraph > skips dependents of a failed task + cascades skips through a chain | — | tasks-schedule.spec.ts > should not schedule any tasks that still have uncompleted dependencies | HAVE |
+| Failed task → independent siblings continue (Turbo middle setting) | tests/scheduler.test.ts > runGraph > continues independent siblings after one fails | — | — | HAVE |
+| Thrown execute() does not crash scheduler | tests/scheduler.test.ts > marks a node failed when its execute() throws and keeps the graph progressing | — | — | HAVE |
+| Upstream outcomes passed to dependent execute() | tests/scheduler.test.ts > runGraph > passes upstream outcomes to dependent execute() | — | — | HAVE |
+| Worker slot allocation: slot 0 first, lowest free, reuse | tests/scheduler.test.ts > worker slot allocation (5 tests) | — | — | HAVE |
+| Reverse-dep priority: schedule blocker-of-most-downstream first | tests/scheduler.test.ts > reverse-dependency scheduling priority > prefers the task that blocks the most downstream work + ties break in graph-insertion order | — | tasks-schedule.spec.ts > should schedule task with longer runtime first + with no historical runtime first | MISSING — fillable (port "runtime-history-aware scheduling" — vx has `getTaskHistory`, could prefer slower tasks first) |
+| Persistent task concurrency counted by task, not package | tests/persistent.test.ts (covers persistent semantics broadly) | engine/mod.rs:issue_4291 | tasks-schedule.spec.ts > should not schedule batches if task has parallelism false (similar) | HAVE |
+| `--continue=<mode>` flag (always vs deps-successful vs never) | tests/scheduler.test.ts > continues independent siblings (covers default "middle"); no explicit flag | opts.rs:test_synthesize_command + test_derive_opts_from_args (ContinueMode) | — | MISSING — fillable (CLAUDE.md roadmap item #4) |
+| Subgraph: prune to only requested package's transitive closure | tests/task-graph.test.ts (user-requested marking; no explicit subgraph method) | engine/mod.rs:test_get_subgraph_for_package + test_subgraph_retains_upstream_dependency + test_subgraph_excludes_non_cacheable_upstream_dependency | — | MISSING — fillable (low-value; we re-run from a fresh graph each invocation) |
+| Batched tasks (same executor, grouped) | (vx has no executor concept) | — | tasks-schedule.spec.ts > batch mode (many) | MISSING — design-decision (no executor plugins) |
+| Dry-run skips concurrency validation | tests/cli.test.ts > --dry-run prints a plan, never invokes the task + --dry-run --json | engine/mod.rs:test_dry_run_skips_concurrency_validation | — | HAVE |
+
+### 11. Persistent tasks [8 properties, 1 gap]
+
+| Property | vx coverage | Turbo source | Nx source | Status |
+| --- | --- | --- | --- | --- |
+| Immediate-ready (no readyWhen) succeeds | tests/persistent.test.ts (immediate-ready case) | — | — | HAVE |
+| Regex readyWhen waits for matching stdout/stderr line | tests/persistent.test.ts (regex-ready case) | — | — | HAVE |
+| Failure before ready surfaces clearly | tests/persistent.test.ts (fail-before-ready case) | — | — | HAVE |
+| Downstream tasks blocked until ready | tests/persistent.test.ts (downstream blocking) | — | — | HAVE |
+| Multi-package concurrent persistent | tests/persistent.test.ts (multi-package concurrent) | engine/mod.rs:issue_4291 | tasks-schedule.spec.ts (continuous tasks) | HAVE |
+| SIGTERM to persistent children when siblings finish | tests/persistent.test.ts (SIGTERM on sibling failure + on completion) | — | — | HAVE |
+| Output streamed pre-ready (not buffered) | tests/persistent.test.ts (output streaming pre-ready) | — | — | HAVE |
+| `cache + persistent` rejected at config load | tests/project-loader.test.ts > rejects cache + persistent | — | — | HAVE |
+| Schema rejection: non-object persistent / non-string readyWhen | tests/project-loader.test.ts > rejects non-string readyWhen + rejects non-object persistent | — | — | HAVE |
+| Persistent process: SIGKILL fallback if SIGTERM ignored | (no test) | — | — | MISSING — fillable (timer-bounded SIGTERM → SIGKILL escalation) |
+
+### 12. Watch mode [6 properties, 4 gaps]
+
+| Property | vx coverage | Turbo source | Nx source | Status |
+| --- | --- | --- | --- | --- |
+| Watch rejects flags that don't make sense in a loop | tests/cli.test.ts > vx watch command (parser-side validation) > rejects --dry / --graph / --summarize / --profile | — | — | HAVE |
+| Watch surfaces parser errors with `watch` prefix | tests/cli.test.ts > surfaces parser errors with the watch prefix | — | — | HAVE |
+| Watch initial run + re-run on fs change (e2e) | tests/cli.test.ts > vx watch end-to-end against a real fixture workspace (5 tests covering re-run, debounce, SIGINT, SIGTERM) | — | — | HAVE |
+| Debounced fs.watch (multiple events collapse into one re-run) | tests/cli.test.ts (e2e covers via consecutive writes assertion; no direct unit test) | filewatch/globwatcher.rs:test_track_outputs + test_track_multiple_hashes + test_watch_single_file + test_output_watcher_delegation_* | — | HAVE (e2e) |
+| Hash-watcher: changed-files-only re-hash | (vx re-runs orchestrator from scratch; no incremental hash) | filewatch/hash_watcher.rs:test_basic_file_changes + test_basic_file_changes_with_inputs + test_negative_inputs + test_inputs_with_turbo_defaults | — | MISSING — design-decision (vx re-uses orchestrator path; cheap due to gitFilesCache + Cache.hashFile fast path) |
+| Git branch switch detected | (no specific test) | filewatch/hash_watcher.rs:test_switch_branch + test_switch_branch_with_inputs | — | MISSING — fillable (assert that a `git checkout` triggers re-evaluation; tests/cli.test.ts watch tests only touch files) |
+| Event during in-flight hash defers follow-up | tests/cli.test.ts (reentrancy guard covered indirectly via repeated writes) | filewatch/hash_watcher.rs:file_event_during_hashing_defers_follow_up_hash | — | HAVE (covered by reentrancy guard) |
+| Watched-set filtering (only re-run touched packages' tasks) | (vx re-runs the whole requested graph) | run/watch.rs:filter_to_watched_removes_unwatched_packages + filter_to_watched_leaves_all_unchanged + filter_to_watched_no_overlap | — | MISSING — fillable (lower priority; cache already handles unaffected tasks fast) |
+| Rediscover-on-package-add transitions state to all-rebuild | (vx re-walks workspace each cycle) | run/watch.rs:handle_change_event_rediscover_sets_all + handle_change_event_rediscover_then_rediscover_stays_all + handle_change_event_package_changed_after_all_is_noop | — | MISSING — design-decision (no incremental change state) |
+| Event accumulates changed files | (not exposed) | run/watch.rs:handle_change_event_accumulates_changed_files + handle_change_event_duplicate_package_deduplicates | — | MISSING — design-decision (rebuilt each tick) |
+
+### 13. Config schema / validation [13 properties, 2 gaps]
+
+| Property | vx coverage | Turbo source | Nx source | Status |
+| --- | --- | --- | --- | --- |
+| defineProject is identity (no schema rewriting) | tests/config.test.ts > defineProject > is an identity function | turbo_json/loader.rs:test_task_access_loading | — | HAVE |
+| defineWorkspace is identity | tests/config.test.ts > defineWorkspace > is an identity function | — | — | HAVE |
+| Loads default-exported object from .mjs/.ts | tests/project-loader.test.ts > loads a default-exported object from .mjs | turbo_json/loader.rs (deserialize_task_definition) | — | HAVE |
+| Non-default-export rejected clearly | tests/project-loader.test.ts > throws clearly when the config did not export a default object + when the default export is not an object | — | — | HAVE |
+| Task with only dependsOn accepted (group task) | tests/project-loader.test.ts > group tasks > accepts a task that has only dependsOn | — | — | HAVE |
+| Task with no exec AND no dependsOn rejected | tests/project-loader.test.ts > rejects a task with no exec and no dependsOn | — | — | HAVE |
+| Description must be string | tests/project-loader.test.ts > accepts a string description + rejects a non-string description | — | — | HAVE |
+| persistent: valid + empty + cache+persistent reject + malformed reject (5) | tests/project-loader.test.ts (5 persistent tests) | — | — | HAVE |
+| Cache on group task rejected | tests/project-loader.test.ts > rejects cache on a group task | — | — | HAVE |
+| Wildcards in cache.inputs.env rejected | tests/project-loader.test.ts > rejects wildcards in cache.inputs.env | — | — | HAVE |
+| Non-string env entries in cache.inputs.env rejected | tests/project-loader.test.ts > rejects non-string env entries in cache.inputs.env | — | — | HAVE |
+| Workspace config: concurrency must be positive integer | tests/project-loader.test.ts > loadWorkspaceConfig > throws when concurrency is non-positive or non-integer + non-number | — | — | HAVE |
+| Workspace config: cacheDir must be string | tests/project-loader.test.ts > throws when cacheDir is not a string | — | — | HAVE |
+| Sandbox schema validation: object, no unknown fields, no globs, group-tasks rejected | tests/sandbox-runtime.test.ts (6 schema tests) | — | — | HAVE |
+| TURBO_ROOT / $TURBO_ROOT$ token substitution in inputs/outputs | — | turbo_json/mod.rs:test_deserialize_task_definition (covers `$TURBO_ROOT$`) | utils/utils.spec.ts > getOutputsForTargetAndConfiguration > should interpolate {workspaceRoot}, {projectRoot}, {projectName} (8+ tests) | MISSING — design-decision (vx uses real paths; no token substitution; document this explicitly) |
+| Output validation: must start with prefix, no array-of-non-string, etc. | tests/inputs.test.ts (cache.outputs.files implicit) | — | utils/utils.spec.ts > validateOutputs (6 tests) | MISSING — fillable (assert that `cache.outputs.files` must be `string[]`, non-empty entries, no absolute paths) |
+| Project-graph builder: tracks both dependencies + devDependencies + peer + optional | tests/package-graph.test.ts > reads all four dependency fields | — | project-graph/build-project-graph.spec.ts | HAVE |
+
+### 14. Output cleaning [4 properties, 1 gap]
+
+| Property | vx coverage | Turbo source | Nx source | Status |
+| --- | --- | --- | --- | --- |
+| cleanOutputs removes files matching declared globs | tests/inputs.test.ts > cleanOutputs > removes files matching declared output globs | — | — | HAVE |
+| cleanOutputs does NOT touch undeclared files (strict ownership) | tests/inputs.test.ts > cleanOutputs > does NOT touch files outside declared output globs (the contract) + treats undeclared dist contents as fair game | — | — | HAVE |
+| cleanOutputs respects project boundaries | tests/inputs.test.ts > cleanOutputs > does NOT cross project boundaries | — | — | HAVE |
+| cleanOutputs no-op when outputs empty (lint-style tasks) | tests/inputs.test.ts > cleanOutputs > is a no-op when outputs array is empty | — | — | HAVE |
+| cleanOutputs tolerates ENOENT mid-iteration | tests/inputs.test.ts > cleanOutputs > tolerates ENOENT mid-iteration | — | — | HAVE |
+| cleanOutputs runs before exec AND before cache restore | tests/orchestrator.test.ts (multiple e2e covers both paths) | — | — | HAVE |
+| `--no-cache` leaves output tree alone (debugging mode) | tests/orchestrator.test.ts (covered in cache-miss tests) | — | — | MISSING — fillable (pin explicitly: `--no-cache` does not invoke cleanOutputs) |
+
+### 15. Cache pruning [6 properties, 1 gap]
+
+| Property | vx coverage | Turbo source | Nx source | Status |
+| --- | --- | --- | --- | --- |
+| `--older-than` TTL eviction | tests/cache.test.ts > prune() with olderThanMs evicts entries last accessed before the cutoff | cache/fs.rs:test_evict_removes_stale_entries + test_evict_keeps_everything_when_all_fresh | tasks-runner/cache.spec.ts > parseMaxCacheSize | HAVE |
+| `--max-size` LRU eviction | tests/cache.test.ts > prune() with maxBytes evicts LRU until under the cap | cache/fs.rs:test_evict_by_size_removes_oldest_first + test_evict_size_noop_when_under_limit | tasks-runner/cache.spec.ts > formatCacheSize | HAVE |
+| Empty options rejected | tests/cache.test.ts > prune() rejects empty options | — | — | HAVE |
+| Empty cache: prune no-ops gracefully | tests/cache.test.ts > prune() handles a DB row whose on-disk dir was deleted out of band + tests/cli.test.ts > vx cache prune command > reports 0 entries pruned from an empty cache | cache/fs.rs:test_evict_empty_cache | — | HAVE |
+| Size parsing: B / K / M / G / T (powers of 1024) | tests/cli.test.ts > parseSize > parses bytes, K, M, G, T (powers of 1024) + accepts optional B suffix and lowercase + rejects malformed values | — | tasks-runner/cache.spec.ts > parseMaxCacheSize (10 tests) | HAVE |
+| Duration parsing: s / m / h / d | tests/cli.test.ts > parseDuration > parses seconds, minutes, hours, days + rejects unknown units | — | — | HAVE |
+| Reports bytes reclaimed | tests/cli.test.ts > vx cache prune command (covers structure) | cache/fs.rs:test_evict_by_size_removes_oldest_first (asserts reclaimed_bytes) | — | MISSING — fillable (assert the CLI exit message includes "reclaimed X bytes") |
+| Concurrent prune + write does not corrupt the cache | — | — | — | MISSING — fillable (race-safety: while prune is iterating, a save() lands a new entry; assert both succeed) |
+
+### 16. Env handling [10 properties, 2 gaps]
+
+| Property | vx coverage | Turbo source | Nx source | Status |
+| --- | --- | --- | --- | --- |
+| Essentials allowlist forwarded | tests/env.test.ts > buildIsolatedEnv > passes essential allowlist values from source + omits essentials that are not set in source | — | tasks-runner/task-env.spec.ts > NX_INVOCATION_ROOT_PID | HAVE |
+| passThrough values forwarded | tests/env.test.ts > forwards passThrough values from source + does not include passThrough vars that are unset | — | task-env.spec.ts | HAVE |
+| define values applied | tests/env.test.ts > applies define values | — | — | HAVE |
+| define overrides passThrough + essentials | tests/env.test.ts > define overrides passThrough values + define overrides essential allowlist values | — | — | HAVE |
+| binPaths prepend onto PATH (priority order) | tests/env.test.ts > prepends binPaths onto PATH (highest priority first) + binPaths becomes PATH when source has no PATH + binPaths prepend even after define overrides PATH | — | — | HAVE |
+| .env file loading + chained expansion | (vx does not load .env files; users opt in via env-input) | — | task-env.spec.ts > loadAndExpandDotEnvFile (2 tests) + getEnvFilesForTask (4 tests) | MISSING — design-decision (.env loading is application concern; declare via cache.inputs.env to opt into) |
+| Env-input names sorted (caller-order-independent for cache stability) | tests/inputs.test.ts > resolveInputs > inputs.env names are sorted | — | — | HAVE |
+| Env-input unset names contribute "" (distinguishable from never-listed) | tests/inputs.test.ts > resolveInputs > inputs.env: unset names contribute "" | — | — | HAVE |
+| globalEnv / globalPassThrough | — | (turbo.json globalEnv) | — | MISSING — fillable (CLAUDE.md roadmap item #6) |
+| Cache-invalidating env vars distinct from passthrough | tests/inputs.test.ts (resolveInputs vs buildIsolatedEnv) | — | — | HAVE |
+| NX_INVOCATION_ROOT_PID-style: parent-process env preserved across nested runs | — | — | task-env.spec.ts > NX_INVOCATION_ROOT_PID > preserve from parent Nx process | MISSING — fillable (low priority; vx doesn't auto-nest) |
+
+### 17. Run analytics [7 properties, 1 gap]
+
+| Property | vx coverage | Turbo source | Nx source | Status |
+| --- | --- | --- | --- | --- |
+| recordRun + stats captures run history | tests/cache.test.ts > recordRun() + stats() captures run history + stats() reports entry count and total bytes | cache/test_cases.rs:validate_analytics + get_test_cases | — | HAVE |
+| v11 analytics columns: cpu_ms, peak_rss_bytes, wallclock_start/end_ns, cache_hit, bytes_uploaded/downloaded | tests/cache.test.ts > recordRun() persists the v11 analytics columns when provided + recordRun() omitting v11 columns stores NULL | — | — | HAVE |
+| cpuMs + peakRssBytes captured from rusage | tests/runner.test.ts > reports cpuMs and peakRssBytes from rusage + captures rusage even when the command exits non-zero | — | — | HAVE |
+| cache-hit-remote: cache_hit=1 + bytes_downloaded set | tests/cache.test.ts > recordRun() persists cache-hit-remote with cache_hit=1 + bytes_downloaded | — | — | HAVE |
+| getTaskHistory: per-(project,task) aggregates + recent rows + filter to taskIds + cap at 50/10 | tests/cache.test.ts > getTaskHistory() (4 tests) | — | — | HAVE |
+| Batched recordRuns equivalent to N single recordRun calls | tests/cache-perf.test.ts > Cache.recordRuns (batched) (4 tests) | — | — | HAVE |
+| writeRunSummary + writeRunProfile (Chrome trace) | tests/run-artifacts.test.ts > writeRunSummary (7 tests) + writeRunProfile (6 tests) | — | — | HAVE |
+| ULID / UUIDv7 run id is sortable + unique | tests/ulid.test.ts (3 tests) | — | — | HAVE |
+| Observer event tagged union + safe wrapper | tests/observer.test.ts (5 tests) | — | — | HAVE |
+| Plan format: human, JSON, DOT | tests/plan-format.test.ts (8 tests) | — | — | HAVE |
+| Per-task time histograms / p50 / p99 | tests/cache.test.ts (covered by getTaskHistory) | — | — | MISSING — fillable (low priority; we expose the data, just no test asserts the calculation method) |
+
+### 18. Sandbox [10 properties, 0 gaps from Turbo/Nx]
+
+(Note: Turbo doesn't sandbox. Nx doesn't sandbox. Section is vx-unique.)
+
+| Property | vx coverage | Turbo source | Nx source | Status |
+| --- | --- | --- | --- | --- |
+| Schema: rejects sandbox: [] (must be object) | tests/sandbox-runtime.test.ts > rejects sandbox: [] | — | — | HAVE |
+| Schema: rejects unknown fields | tests/sandbox-runtime.test.ts > rejects unknown sandbox fields | — | — | HAVE |
+| Schema: rejects denyRead/denyWrite | tests/sandbox-runtime.test.ts > rejects denyRead / denyWrite | — | — | HAVE |
+| Schema: rejects globs in allowRead | tests/sandbox-runtime.test.ts > rejects globs in allowRead | — | — | HAVE |
+| Schema: rejects sandbox on group tasks | tests/sandbox-runtime.test.ts > rejects sandbox on group tasks | — | — | HAVE |
+| Schema: accepts full SRT-mirroring shape | tests/sandbox-runtime.test.ts > accepts the full SRT-mirroring shape | — | — | HAVE |
+| Network: false (default) blocks egress | tests/sandbox-runtime.test.ts > network: false (default) blocks egress | — | — | HAVE |
+| Probe shape is stable | tests/sandbox-runtime.test.ts > sandbox probe > returns a stable shape | — | — | HAVE |
+| Cross-platform: tests skip when SRT unavailable | tests/sandbox-runtime.test.ts (gated probes) | — | — | HAVE |
+| FS allowRead enforced (reads outside allowlist fail) | tests/sandbox-runtime.test.ts (sandbox-runtime fs allow tests) | — | — | HAVE |
+| Linux strace-based per-process violation detection (CLAUDE.md decision: TODO) | (not yet shipped) | — | — | MISSING — fillable (CLAUDE.md "Linux silent-swallow case is acknowledged — strace-based per-process detection coming in a follow-up commit") |
+
+---
+
+## Top-30 missing — prioritized
+
+A flat list of the highest-bug-density "MISSING — fillable" entries across all sections, ranked by likely real-correctness risk if absent.
+
+1. **§5: Symlink-in-archive escapes anchor (allowed-via-parent / absolute-target / outside-anchor variants)** — Arbitrary file write on cache restore from a malicious remote. Defense in depth on top of `..` checks.
+2. **§5: Mixed valid+malicious tar entries → whole archive rejected** — Today the parser may extract good entries before hitting the bad one; partial-extract is a TOCTOU escape vector.
+3. **§5: Unicode lookalike (fullwidth `.`, division slash, bidi-override) in entry names** — Defense in depth; even one bypass = arbitrary write.
+4. **§5: Hardlink / chardev / blockdev tar entry types rejected explicitly** — Producer-crafted archive entries with `typeflag` 1/3/4 currently undefined behavior.
+5. **§5: Long path entries (>260, >4096 chars) handled safely** — Stack overflow or unhandled error in path-resolution code.
+6. **§5: Windows-absolute path entries rejected on all platforms** — A linux-developer-produced archive with `C:\...` paths shouldn't break on a Linux consumer.
+7. **§5: Concurrent restore to same anchor / with symlink attack** — Race-window TOCTOU under parallel `vx run`.
+8. **§5: Symlink with empty link target rejected** — Undefined behavior path.
+9. **§6: Tar pack: file added through symlinked parent dir rejected** — Save-side mirror of the restore-side check.
+10. **§6: CacheWriter temp-file cleanup on drop/error mid-pack** — Crashed run leaves `.tar.tmp` debris in cache dir.
+11. **§6: Atomic temp→final rename on finish** — Observer-visible atomicity; under crash, no half-written `.tar` should appear at the final path.
+12. **§6: Sequential restores transition symlinked-output → real directory** — Stale symlink survives the cleanOutputs step.
+13. **§7: Concurrent reads of the same hash non-interfering** — Stress test: spawn N reads while one write is in flight, assert no transient nulls / partial bytes.
+14. **§8: HMAC-SHA256 artifact signing + signature-key length enforcement** — On vx roadmap (CLAUDE.md item #2); ports straight from `cache/signature_authentication.rs`.
+15. **§8: Pre-signed URL flow** — Roadmap item #2; alternate auth path for hosted caches.
+16. **§8: 401/403/404/5xx distinguished in user-visible message** — Today everything throws `RemoteCacheError`; a permission-denied case (revoked token) deserves a fixit hint.
+17. **§8: Origin matching for credential leakage** — Reject remote-cache URLs containing embedded `user:pass@` (URL-encoded auth bypass).
+18. **§1: globalDeps / globalEnv / globalPassThrough participate in every task's hash** — Roadmap item #6; closes the "missing key for workspace-root config files" gap.
+19. **§1: Named inputs / target defaults (workspace-level reusable input sets)** — Roadmap item #1; the biggest Nx parity gap.
+20. **§4: Workspace-level config (vx.workspace.ts) change invalidates every project's cache key** — Today only `pnpm-workspace.yaml` + lockfile are folded in. Editing `vx.workspace.ts` (concurrency or cacheDir) should not silently leave stale entries — currently does.
+21. **§10: `--continue=<mode>` flag (always / dependencies-successful / never)** — Roadmap item #4; today vx implicitly does "dependencies-successful" but offers no override.
+22. **§2: Wildcards in dependsOn (`build-*`, `^build-*`)** — Roadmap item #5; Nx 19.5+ parity.
+23. **§2: Two-cycles-in-same-graph + partial-target cycle + indirect-self-cycle (via intermediate)** — Today only single cycles tested; cycle detector may miss multi-cycle or indirect cases.
+24. **§2: Deterministic graph regardless of target input order** — Nx pins this explicitly; vx tests rely on insertion order incidentally.
+25. **§9: `*` matches dotfiles in input globs** — Bun.Glob behavior may differ from Turbo's; if a user puts `src/*` and expects `.env` to participate, surprise stale hits.
+26. **§9: Bracket-containing project dirs (`packages/[abc]/...`)** — Glob-literal-vs-pattern interpretation; rare but real.
+27. **§12: Git branch switch detected as fs change** — `git checkout` shuffles many files; watch may miss the trigger entirely.
+28. **§12: Watched-set filtering (only re-run tasks for touched packages)** — Today watch re-runs entire requested graph; cheap due to cache but wasteful.
+29. **§13: Output validation (cache.outputs.files must be string[], non-empty, non-absolute)** — Schema gap; bad values currently produce confusing tar errors.
+30. **§14: `--no-cache` does not invoke cleanOutputs (debugging mode)** — CLAUDE.md states this; no test pins it.
+
+## Divergences inventory
+
+"MISSING — design-decision" entries — Turbo/Nx pin behavior X; vx chose Y. Worth pinning explicitly so the choice doesn't drift.
+
+1. **§1 (concurrent hash-tracker mutex)** — vx is single-event-loop JS; no shared mutex needed. Turbo uses `RwLock<TaskHashTracker>` and tests both concurrent reads + read/write. **Rationale:** Bun's single-threaded JS execution makes this a non-issue.
+
+2. **§1 (sort-then-dedup vs HashSet behavior)** — vx uses JS array + `.sort()` + `.filter((v,i,a) => a.indexOf(v)===i)` patterns; no parity helper. **Rationale:** different ecosystem primitives.
+
+3. **§1 (.gitattributes CRLF normalization + text=auto + binary detection)** — Turbo replicates git's blob-hashing pipeline (CRLF + text=auto + autocrlf) so the manual-hash fallback matches `git hash-object`. vx hashes raw file bytes with xxh3. **Rationale:** vx doesn't need git-object parity; xxh3 of raw bytes is unambiguous and works in non-git checkouts. Trade-off: a CRLF-converted file on Windows vs Linux will produce different vx cache keys; document this if/when we hit a Windows user.
+
+4. **§1 (.gitattributes binary handling for text=auto)** — Same as above.
+
+5. **§1 (package-scoped .gitattributes matching)** — vx ignores `.gitattributes` entirely. **Rationale:** content-addressed hash of raw bytes doesn't need text normalization.
+
+6. **§2 (forwardArgs inheritance into dependsOn deps)** — Nx forwards args/options into dependent tasks via `params: 'forward'` / `options: 'forward'`. vx scopes `forwardArgs` to user-requested nodes only (P1 fix in CLAUDE.md). **Rationale:** "deps inherit args" is a config-by-mention footgun: it pollutes deps' cache keys for free. Explicit > magical.
+
+7. **§2 (dummy tasks / continuous task category)** — Nx has a "continuous" task class with separate dependency tracking. vx has `persistent` (a runtime concept, not a graph node category). **Rationale:** vx's persistent maps cleanly to a process-lifecycle concern, not a graph-edge category.
+
+8. **§3 (filter mode classification: all-vs-exclude-only-vs-explicit)** — Turbo categorizes a filter expression to decide whether to start from the universe or the empty set. vx always starts from the universe and applies filters as set operations. **Rationale:** simpler mental model; tested via `applyFilters > mixing include + exclude in order`.
+
+9. **§3 (tag-based selectors `tag:foo`, `!tag:bar`)** — vx has no project-tag concept. **Rationale:** tags are an Nx generator/devkit concept; vx project identity is workspace path + package.json name only.
+
+10. **§4 (project-removed → all-projects-affected)** — Nx invalidates everything when a project is removed; vx already folds project's `package.json` bytes into every task's cache key (PR #42, CACHE_VERSION → v12). **Rationale:** package.json fold-in covers the "project gone" case at finer granularity (only tasks that depended on the gone project's bytes are busted).
+
+11. **§7 (stdout/stderr stored in SQLite, not in the tar)** — Turbo embeds the run's logs as a file in the cache artifact. vx separates them: tar holds outputs only, logs go in the SQLite `runs` table. **Rationale:** decouples log retention from cache eviction; lets `vx stats` query logs without unpacking artifacts. PR for v13 made this explicit.
+
+12. **§7 (SCM metadata sha + dirty-hash per cache entry)** — Turbo writes the git sha + dirty-hash into each cache entry's metadata. vx writes per-run analytics only. **Rationale:** track if/when we want post-hoc "what git state produced this artifact" queries; not blocking today.
+
+13. **§8 (token refresh on 403)** — Turbo refreshes the bearer token on 403. vx remote auth is static. **Rationale:** documented in `docs/design/remote-cache.md`; revisit if hosted-cache use grows.
+
+14. **§9 (`**` symlink-following default)** — Turbo distinguishes shallow-wildcard vs doublestar follow-link behavior. vx defers to Bun.Glob defaults. **Rationale:** pin Bun.Glob behavior in a test so we notice when it changes upstream.
+
+15. **§10 (batched-task scheduling by executor)** — Nx batches same-executor tasks. vx has no executor concept. **Rationale:** no plugin architecture by design.
+
+16. **§12 (incremental hash watcher / accumulated change state / rediscover state)** — Turbo's watcher maintains rich incremental state. vx re-runs orchestrator from scratch each cycle. **Rationale:** cheap because of `gitFilesCache` + `Cache.hashFile` fast path; complexity not yet justified.
+
+17. **§13 (TURBO_ROOT / workspaceRoot / projectRoot token substitution in inputs/outputs)** — Turbo + Nx use template tokens in path strings; vx uses real paths from the project dir context. **Rationale:** less indirection; the path resolution context (project dir vs workspace root) is unambiguous because every glob is scoped per-project.
+
+18. **§16 (.env file loading + chained expansion)** — Nx auto-loads `.env` files. vx requires explicit `cache.inputs.env` declarations. **Rationale:** "Explicit over magical" (architecture principle #1). Users opt into env-as-cache-input.
