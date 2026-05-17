@@ -135,7 +135,7 @@ bun.lock
 - **2026-05**: Drop the `ignore` npm dep — vx now hard-requires git.
   `src/cache/inputs.ts` no longer parses `.gitignore` via the `ignore`
   library; it defers entirely to `git ls-files --cached --others
-  --exclude-standard` for the input file set. When git is absent or
+--exclude-standard` for the input file set. When git is absent or
   the workspace isn't a git work tree, `resolveFiles` (and
   `populateGitFilesCache`) throw a `UserError` with a clear "vx
   requires git: run `git init`…" message instead of silently
