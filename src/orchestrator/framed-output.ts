@@ -99,7 +99,7 @@ export function formatTaskBlock(
   // TS can't see through the predicate's negation, so we re-narrow.
   const cmd = node.config.exec?.command ?? ''
   if (outcome.status === 'success') {
-    lines.push(`${bar}   ${paint('', `$ ${cmd}`, colors, { dim: true })}`)
+    lines.push(`${bar}   $ ${cmd}`)
   }
 
   pushBodyLines(lines, stdout, bar)
