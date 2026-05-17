@@ -18,15 +18,30 @@
 //   - mtime       : bytes 136..147 (octal ASCII seconds since epoch)
 //   - size        : bytes 124..135 (octal ASCII)
 //   - typeflag    : byte 156       ('0' or '\0' = file, '5' = dir,
-//                                   '2' = symlink, 'L' = GNU longname)
+//                                   '2' = symlink, 'L' = GNU longname,
+//                                   'x' / 'g' / 'X' = PAX extended
+//                                   header — metadata for the next
+//                                   entry, not a file itself)
 //   - data        : `size` bytes, padded up to next 512-byte block
 //   - end         : two 512-byte zero blocks
 //
 // We tolerate the GNU longname extension (typeflag 'L') because some
 // tar binaries emit it for paths > 100 chars even when ustar's
-// prefix+name (256 chars) would suffice. We DO NOT support sparse
-// files, character/block devices, or hardlinks — they don't appear
-// in build outputs.
+// prefix+name (256 chars) would suffice. PAX extended-header records
+// ('x' / 'g' / 'X') are SKIPPED — BSD tar (macOS default) emits one
+// per entry for xattrs / mtime-nanos / SCHILY metadata. We don't
+// need any of that; treating the headers as regular files would put
+// `PaxHeaders/foo` junk entries into the restored tree.
+//
+// AppleDouble files (`._<name>`) are also SKIPPED — macOS Finder /
+// `cp -p` leave these resource-fork siblings around (e.g. `._main.js`
+// next to `main.js`). They're not real outputs; filtering at parse
+// time prevents them from showing up in restored trees even when an
+// older / contaminated cache entry includes them. The matching
+// input-side filter lives in `src/cache/inputs.ts:ALWAYS_IGNORE`.
+//
+// We DO NOT support sparse files, character/block devices, or
+// hardlinks — they don't appear in build outputs.
 
 import { mkdir, stat, chmod, utimes } from 'node:fs/promises'
 import path from 'node:path'
@@ -105,12 +120,40 @@ export function parseTarHeaders(tarBytes: Uint8Array): TarHeader[] {
       continue
     }
 
+    // PAX extended headers: metadata about the next entry (long
+    // names, large sizes, nanosecond mtime, BSD xattrs, etc). Their
+    // own entry name is something like `PaxHeaders/<basename>` or
+    // `./PaxHeader.NNNN/<basename>` — definitely not a file we want
+    // to write to disk. Skip the whole record (header + padded data)
+    // and let the next entry through unchanged.
+    if (
+      typeFlag === 0x78 /* 'x' — per-entry PAX */ ||
+      typeFlag === 0x67 /* 'g' — global PAX */ ||
+      typeFlag === 0x58 /* 'X' — Solaris extended */
+    ) {
+      off = dataStart + padded
+      continue
+    }
+
     const name = pendingLongName ?? rawName
     pendingLongName = null
 
-    if (name.length > 0) {
-      headers.push({ name, size, mode, mtimeMs, isDir, dataOffset: dataStart })
+    if (name.length === 0) {
+      off = dataStart + padded
+      continue
     }
+
+    // AppleDouble resource-fork siblings — basename starting with
+    // `._`. macOS Finder / `cp -p` leave these next to real files
+    // (e.g. `._main.js` shadowing `main.js`). They carry xattrs we
+    // don't care about; restoring them just pollutes the tree.
+    const basename = name.slice(name.lastIndexOf('/') + 1)
+    if (basename.startsWith('._')) {
+      off = dataStart + padded
+      continue
+    }
+
+    headers.push({ name, size, mode, mtimeMs, isDir, dataOffset: dataStart })
     off = dataStart + padded
   }
   return headers
