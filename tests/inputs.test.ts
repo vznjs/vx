@@ -6,7 +6,7 @@
 // regression here can't quietly start eating user files.
 
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -711,5 +711,66 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
     } finally {
       await rm(nonGit, { recursive: true, force: true })
     }
+  })
+})
+
+// ─── Glob walk: pathological filesystem layouts ──────────────────────
+//
+// These pin behaviour for filesystems with broken or cyclic symlinks
+// under a project root. The contract: input resolution must NEVER
+// crash or hang, regardless of what's on disk. Adapted from Turbo's
+// turborepo-globwalk symlink-handling tests.
+
+describe('resolveInputs — symlink edge cases', () => {
+  let root: string
+  let projectDir: string
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-syminput-'))
+    projectDir = path.join(root, 'pkg')
+    await mkdir(path.join(projectDir, 'src'), { recursive: true })
+    await writeFile(path.join(projectDir, 'src', 'a.txt'), 'a')
+  })
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('does not crash when a broken symlink lives under the project dir', async () => {
+    await symlink(
+      path.join(projectDir, 'does-not-exist-target'),
+      path.join(projectDir, 'src', 'dangling.txt'),
+    )
+    const resolved = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['src/**'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    // The walk shouldn't hang or throw. Broken symlinks may or may
+    // not appear in the file list — we just pin "doesn't crash".
+    expect(Array.isArray(resolved.files)).toBe(true)
+  })
+
+  it('does not infinite-loop on a symlink cycle under the project dir', async () => {
+    // Create a directory symlink cycle: <projectDir>/loop -> <projectDir>
+    // A naive recursive walker that follows symlinks loops forever.
+    await symlink(projectDir, path.join(projectDir, 'loop'))
+    const resolved = await Promise.race([
+      resolveInputs({
+        projectDir,
+        workspaceRoot: root,
+        envSource: {},
+        inputs: { files: ['src/**'] },
+        ownOutputs: [],
+        nestedProjectDirs: [],
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('symlink cycle caused hang')), 5_000),
+      ),
+    ])
+    expect(Array.isArray(resolved.files)).toBe(true)
   })
 })

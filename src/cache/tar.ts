@@ -43,7 +43,7 @@
 // We DO NOT support sparse files, character/block devices, or
 // hardlinks — they don't appear in build outputs.
 
-import { mkdir, stat, chmod, utimes } from 'node:fs/promises'
+import { lstat, mkdir, stat, chmod, unlink, utimes } from 'node:fs/promises'
 import path from 'node:path'
 
 export interface TarHeader {
@@ -143,6 +143,22 @@ export function parseTarHeaders(tarBytes: Uint8Array): TarHeader[] {
       continue
     }
 
+    // Path-traversal defense. We only ever want to extract entries
+    // under `outputs/<rel>` where `<rel>` is project-relative and
+    // contains no `..` segments and no absolute prefix. Reject at
+    // parse time so a malicious cache artifact can't write outside
+    // the destination (zip-slip class). Mirrors Turbo's
+    // restore.rs:check_path normalization.
+    if (name.startsWith('/')) {
+      throw new TarSecurityError(`tar entry name is absolute (unsafe): ${name}`)
+    }
+    if (hasParentSegment(name)) {
+      throw new TarSecurityError(`tar entry name escapes via '..' (unsafe): ${name}`)
+    }
+    if (name.includes('//')) {
+      throw new TarSecurityError(`tar entry name has empty path component (unsafe): ${name}`)
+    }
+
     // AppleDouble resource-fork siblings — basename starting with
     // `._`. macOS Finder / `cp -p` leave these next to real files
     // (e.g. `._main.js` shadowing `main.js`). They carry xattrs we
@@ -157,6 +173,24 @@ export function parseTarHeaders(tarBytes: Uint8Array): TarHeader[] {
     off = dataStart + padded
   }
   return headers
+}
+
+/**
+ * Thrown by `parseTarHeaders` when an entry's name would let it
+ * escape the extraction destination (absolute path, `..` traversal,
+ * doubled separators). Callers should treat this as a corrupt /
+ * malicious artifact — log it, drop the cache entry, and re-run.
+ */
+export class TarSecurityError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'TarSecurityError'
+  }
+}
+
+function hasParentSegment(p: string): boolean {
+  if (p === '..' || p.startsWith('../') || p.endsWith('/..')) return true
+  return p.includes('/../')
 }
 
 /**
@@ -211,10 +245,19 @@ export async function extractOutputs(
   const fileEntries = headers.filter(
     (h) => h.name.startsWith('outputs/') && !h.isDir && h.name !== 'outputs/',
   )
+  const destResolved = path.resolve(destDir)
   await Promise.all(
     fileEntries.map(async (h) => {
       const rel = h.name.slice('outputs/'.length)
       const target = path.join(destDir, rel)
+      // Defense in depth — parseTarHeaders already rejects `..` /
+      // absolute paths, but if a future glitch lets one through we
+      // catch it here. path.resolve normalizes `..` components in
+      // the joined path so the comparison is sound.
+      const targetResolved = path.resolve(target)
+      if (targetResolved !== destResolved && !targetResolved.startsWith(destResolved + path.sep)) {
+        throw new TarSecurityError(`tar entry escapes destDir (unsafe): ${h.name}`)
+      }
 
       // Skip-if-matches: stat the target and compare against the
       // manifest entry for this tar entry name.
@@ -238,6 +281,18 @@ export async function extractOutputs(
       // Ensure the parent dir exists. Cheap because mkdir(recursive)
       // is a no-op when the dir is already there.
       await mkdir(path.dirname(target), { recursive: true })
+
+      // Symlink TOCTOU defense: if the target IS a symlink, unlink
+      // it first so the upcoming write doesn't follow the link and
+      // clobber whatever the link points to (e.g. an attacker placed
+      // `<dest>/link -> /etc/passwd` to redirect our write). lstat
+      // doesn't follow the symlink, so we can detect the link itself.
+      try {
+        const ls = await lstat(target)
+        if (ls.isSymbolicLink()) await unlink(target)
+      } catch {
+        // Target doesn't exist — that's the common case; fall through.
+      }
 
       const body = tarBytes.subarray(h.dataOffset, h.dataOffset + h.size)
       // Bun.write benchmarks ~2× faster than fs/promises.writeFile

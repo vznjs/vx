@@ -156,6 +156,31 @@ function validate(config: ProjectConfig, configPath: string): void {
       if (!Array.isArray((inputs as { files?: unknown }).files)) {
         throw new UserError(`${where}.cache.inputs.files must be an array of glob strings`)
       }
+      const envList = (inputs as { env?: unknown }).env
+      if (envList !== undefined) {
+        if (
+          !Array.isArray(envList) ||
+          envList.some((s) => typeof s !== 'string' || s.length === 0)
+        ) {
+          throw new UserError(
+            `${where}.cache.inputs.env must be an array of non-empty env var names`,
+          )
+        }
+        for (const name of envList as string[]) {
+          // Reject wildcards explicitly so users don't silently miss
+          // env vars they thought they were tracking. Turbo supports
+          // `VERCEL_*` expansion; vx requires the literal names. If
+          // we add expansion later it'll be additive — until then,
+          // surface the footgun instead of returning '' for the
+          // literal env name `'VERCEL_*'`.
+          if (/[*?[\]]/.test(name)) {
+            throw new UserError(
+              `${where}.cache.inputs.env: wildcards in env names are not supported ` +
+                `(got "${name}") — list explicit env var names instead`,
+            )
+          }
+        }
+      }
       if (!outputs || typeof outputs !== 'object') {
         throw new UserError(`${where}.cache.outputs is required when \`cache\` is set`)
       }

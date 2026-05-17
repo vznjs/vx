@@ -143,6 +143,53 @@ describe('affectedProjects', () => {
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD~1', projects })
     expect([...out]).toEqual(['b'])
   })
+
+  it('selects the project that owned a deleted file', async () => {
+    // File deleted in project a since HEAD: a should still be flagged
+    // as affected — the deletion is a real change to a's input set.
+    await rm(path.join(root, 'packages/a/file.txt'))
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+    expect([...out]).toEqual(['a'])
+  })
+
+  it('selects BOTH source and destination project on cross-project rename', async () => {
+    // `git mv packages/a/file.txt packages/b/file-from-a.txt`
+    // surfaces as two paths in the diff: one under a (deleted) and
+    // one under b (added). Both projects are affected — a lost an
+    // input, b gained one. Pinning this behavior catches the bug
+    // where rename detection collapses to the destination only.
+    await git(root, 'mv', 'packages/a/file.txt', 'packages/b/file-from-a.txt')
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+    expect([...out].sort()).toEqual(['a', 'b'])
+  })
+
+  it('selects the project on a same-project rename (input set changed)', async () => {
+    await git(root, 'mv', 'packages/a/file.txt', 'packages/a/renamed.txt')
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+    expect([...out]).toEqual(['a'])
+  })
+
+  it('selects the project on a working-tree delete (uncommitted)', async () => {
+    // Same as committed-delete but the deletion lives only in the
+    // working tree. Should still flag — diff-from-HEAD sees the
+    // working tree state.
+    await rm(path.join(root, 'packages/b/file.txt'))
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+    expect([...out]).toEqual(['b'])
+  })
+
+  it('handles many commits in the base..HEAD range without recursion limits', async () => {
+    // Defensive test against git invocations that buffer / recurse
+    // unbounded. Make ~50 commits in project b, ask affected since
+    // the initial commit. We expect b alone, no crash.
+    for (let i = 0; i < 50; i++) {
+      await writeFile(path.join(root, 'packages/b/file.txt'), `b-v${i}`)
+      await git(root, 'add', '.')
+      await git(root, 'commit', '-q', '-m', `b-${i}`)
+    }
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD~50', projects })
+    expect([...out]).toEqual(['b'])
+  })
 })
 
 describe('defaultAffectedBase', () => {

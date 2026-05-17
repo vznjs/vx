@@ -648,6 +648,52 @@ describe('Cache storage (v10)', () => {
     }
   })
 
+  it('two concurrent save()s on the same hash leave a valid artifact', async () => {
+    // Stress the atomic-rename / overwrite path: two writers racing
+    // on the same hash with identical content. After both complete,
+    // the on-disk artifact must be parseable and restoreOutputs must
+    // produce the expected file. Catches the bug where the second
+    // writer truncates the first's in-flight tar mid-write.
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    await mkdir(projectDir, { recursive: true })
+    const outFile = path.join(projectDir, 'dist', 'out.txt')
+    await mkdir(path.dirname(outFile), { recursive: true })
+    await writeFile(outFile, 'concurrent-payload')
+    const second = new Cache(cacheDir)
+    try {
+      const saveOnce = (c: Cache): Promise<void> =>
+        c.save({
+          hash: 'h-concurrent',
+          projectDir,
+          outputFiles: [outFile],
+          entry: {
+            taskId: 'pkg#build',
+            command: 'same',
+            exitCode: 0,
+            durationMs: 1,
+            stdout: '',
+            stderr: '',
+          },
+        })
+      await Promise.all([saveOnce(cache), saveOnce(second)])
+      // Either writer's result is fine — content is identical.
+      const hit = await cache.get('h-concurrent')
+      expect(hit).not.toBeNull()
+      // Restore must produce the expected file (not a truncated /
+      // corrupt one from a partial concurrent write).
+      const restoreDir = await mkdtemp(path.join(os.tmpdir(), 'vx-cc-restore-'))
+      try {
+        await cache.restoreOutputs('h-concurrent', restoreDir)
+        const restored = await readFile(path.join(restoreDir, 'dist/out.txt'), 'utf8')
+        expect(restored).toBe('concurrent-payload')
+      } finally {
+        await rm(restoreDir, { recursive: true, force: true })
+      }
+    } finally {
+      second.close()
+    }
+  })
+
   it('save() overwrites a prior entry at the same hash (idempotent re-save)', async () => {
     const { mkdir, writeFile } = await import('node:fs/promises')
     await mkdir(projectDir, { recursive: true })
