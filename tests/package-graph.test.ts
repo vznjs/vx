@@ -14,13 +14,15 @@ function meta(name: string, deps: Record<string, string> = {}): ProjectMeta {
 describe('buildPackageGraph', () => {
   it('builds an empty graph from no projects', () => {
     const g = buildPackageGraph([])
-    expect(g.byName.size).toBe(0)
+    // No-projects graph still answers queries — they just return [].
+    expect(g.transitiveDeps('anything')).toEqual([])
   })
 
   it('records direct workspace deps only when the dep is in the workspace', () => {
     const g = buildPackageGraph([meta('a', { b: 'workspace:*', external: '^1.0.0' }), meta('b')])
-    expect(g.directDeps.get('a')).toEqual(['b'])
-    expect(g.directDeps.get('b')).toEqual([])
+    // 'external' is not a workspace package — only 'b' counts.
+    expect(g.transitiveDeps('a')).toEqual(['b'])
+    expect(g.transitiveDeps('b')).toEqual([])
   })
 
   it('walks transitive deps and dedupes them', () => {
@@ -68,6 +70,8 @@ describe('buildPackageGraph', () => {
       configPath: null,
     }
     const g = buildPackageGraph([m, meta('b'), meta('c'), meta('d'), meta('e')])
-    expect(g.directDeps.get('a')?.sort()).toEqual(['b', 'c', 'd', 'e'])
+    // All four dep fields contribute, so transitive deps include
+    // every workspace package mentioned in any of them.
+    expect(g.transitiveDeps('a').sort()).toEqual(['b', 'c', 'd', 'e'])
   })
 })

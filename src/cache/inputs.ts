@@ -149,7 +149,7 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   if (args.gitFilesCache !== undefined && args.gitFilesCache.has(args.projectDir)) {
     gitFiles = args.gitFilesCache.get(args.projectDir) as readonly string[]
   } else {
-    gitFiles = listGitTrackedFiles(args.projectDir)
+    gitFiles = runGitLsFiles(args.projectDir)
     args.gitFilesCache?.set(args.projectDir, gitFiles)
   }
   const positiveGlobs = positive.map((p) => new Bun.Glob(p))
@@ -180,20 +180,11 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
 }
 
 /**
- * Return the set of project-relative paths git considers part of
- * the project (tracked + untracked-but-not-ignored). Throws
- * `UserError` if git is unavailable or the project isn't inside a
- * git work tree — vx requires git.
- *
- * `-z` gives NUL-separated output so filenames with newlines /
- * spaces survive unparsed. This is the per-project entry point;
- * `populateGitFilesCache` (below) is the bulk entry point used by
- * the orchestrator to amortize git fork+exec across all projects.
+ * Run `git ls-files --cached --others --exclude-standard -z .` in
+ * `cwd` and return the NUL-split, non-empty entries. Throws a
+ * `UserError` when git is unavailable or `cwd` isn't a git work tree;
+ * vx requires git. `-z` survives filenames with newlines / spaces.
  */
-function listGitTrackedFiles(projectDir: string): readonly string[] {
-  return runGitLsFiles(projectDir)
-}
-
 function runGitLsFiles(cwd: string): readonly string[] {
   let proc
   try {

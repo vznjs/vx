@@ -84,7 +84,7 @@ describe('formatTaskBlock', () => {
     const out = formatTaskBlock(
       node('@vzn/vx#lint', 'oxlint .'),
       outcome('@vzn/vx#lint', 'success', { durationMs: 327, hash: 'abcdef0123456789' }),
-      'Found 0 warnings and 0 errors.\nFinished in 327ms.\n',
+      { stdout: 'Found 0 warnings and 0 errors.\nFinished in 327ms.\n' },
     )
     expect(out).toBe(
       '┌─ @vzn/vx#lint > cache-miss\n' +
@@ -105,7 +105,7 @@ describe('formatTaskBlock', () => {
         hash: 'abcdef0123456789',
         restored: true,
       }),
-      'Found 0 warnings and 0 errors.\n',
+      { stdout: 'Found 0 warnings and 0 errors.\n' },
     )
     expect(out).toBe(
       '┌─ @vzn/vx#lint > local-cache • abcdef01\n' +
@@ -125,7 +125,7 @@ describe('formatTaskBlock', () => {
         hash: 'abcdef0123456789',
         restored: false,
       }),
-      '',
+      {},
     )
     expect(out).toBe(
       '┌─ @vzn/vx#lint > up-to-date • abcdef01\n' + '└─ @vzn/vx#lint ── (3ms) up-to-date\n',
@@ -140,7 +140,7 @@ describe('formatTaskBlock', () => {
         hash: 'fedcba9876543210',
         restored: true,
       }),
-      '',
+      {},
     )
     expect(out).toBe(
       '┌─ @vzn/vx#lint > remote-cache • fedcba98\n' + '└─ @vzn/vx#lint ── (156ms) remote-cache\n',
@@ -190,7 +190,7 @@ describe('formatTaskBlock', () => {
     const out = formatTaskBlock(
       node('@vzn/vx#deploy', 'aws s3 sync'),
       outcome('@vzn/vx#deploy', 'skipped'),
-      '',
+      {},
     )
     expect(out).toBe(
       '┌─ @vzn/vx#deploy > skipped (upstream failed)\n└─ @vzn/vx#deploy ── (0ms) skipped\n',
@@ -198,7 +198,7 @@ describe('formatTaskBlock', () => {
   })
 
   it('emits no block for group tasks (no exec) — they are pure organization', () => {
-    expect(formatTaskBlock(node('@vzn/vx#ci'), outcome('@vzn/vx#ci', 'success'), '')).toBe('')
+    expect(formatTaskBlock(node('@vzn/vx#ci'), outcome('@vzn/vx#ci', 'success'), {})).toBe('')
   })
 
   it('injects ANSI escapes when colors are enabled', () => {
@@ -209,7 +209,7 @@ describe('formatTaskBlock', () => {
         hash: 'abcdef0123456789',
         restored: true,
       }),
-      '',
+      {},
       { enabled: true },
     )
     expect(out).toContain('\x1b[')
@@ -223,7 +223,7 @@ describe('formatTaskBlock', () => {
     const out = formatTaskBlock(
       node('@vzn/vx#build', 'tsc'),
       outcome('@vzn/vx#build', 'failed', { durationMs: 100, exitCode: 2 }),
-      '',
+      {},
       { enabled: true },
     )
     expect(out).toContain('FAILED (exit 2)')

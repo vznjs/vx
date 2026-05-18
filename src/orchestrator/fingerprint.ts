@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { xxh3, xxh3hexOf } from '../util/hash.js'
+import { xxh3 } from '../util/hash.js'
 
 // Every package-manager lockfile we know about, plus the workspace
 // definition files. Whichever ones exist get folded into the
@@ -37,5 +37,5 @@ export async function computeWorkspaceFingerprint(workspaceRoot: string): Promis
     h = xxh3(`${f}\0`, h)
     h = xxh3(await file.bytes(), h)
   }
-  return xxh3hexOf(h)
+  return h.toString(16).padStart(16, '0')
 }

@@ -64,38 +64,7 @@ describe('RemoteCache', () => {
     await fixture.server.stop(true)
   })
 
-  it('has(): true on 200, false on 404, throws on 5xx', async () => {
-    const cache = new RemoteCache({ baseUrl: fixture.baseUrl, token: 'tok' })
-
-    fixture.setHandler(() => new Response(null, { status: 200 }))
-    expect(await cache.has('abc')).toBe(true)
-
-    fixture.setHandler(() => new Response(null, { status: 404 }))
-    expect(await cache.has('def')).toBe(false)
-
-    fixture.setHandler(() => new Response('boom', { status: 503 }))
-    await expect(cache.has('xyz')).rejects.toThrow(RemoteCacheError)
-  })
-
-  it('has(): sends HEAD with bearer auth and tenancy query params', async () => {
-    const cache = new RemoteCache({
-      baseUrl: fixture.baseUrl,
-      token: 'secret',
-      teamId: 'team_abc',
-      slug: 'my-project',
-    })
-    fixture.setHandler(() => new Response(null, { status: 200 }))
-    await cache.has('abc123')
-
-    expect(fixture.requests).toHaveLength(1)
-    const r = fixture.requests[0]!
-    expect(r.method).toBe('HEAD')
-    expect(r.path).toBe('/v8/artifacts/abc123')
-    expect(r.query).toEqual({ teamId: 'team_abc', slug: 'my-project' })
-    expect(r.authorization).toBe('Bearer secret')
-  })
-
-  it('get(): returns body + metadata headers; null on 404', async () => {
+  it('get(): returns body + duration header; null on 404', async () => {
     const cache = new RemoteCache({ baseUrl: fixture.baseUrl, token: 'tok' })
 
     const payload = new TextEncoder().encode('artifact-bytes').buffer
@@ -103,20 +72,34 @@ describe('RemoteCache', () => {
       () =>
         new Response(payload, {
           status: 200,
-          headers: {
-            'x-artifact-duration': '1234',
-            'x-artifact-tag': 'hmac-abc',
-          },
+          headers: { 'x-artifact-duration': '1234' },
         }),
     )
     const got = await cache.get('h')
     expect(got).not.toBeNull()
     expect(new TextDecoder().decode(got!.body)).toBe('artifact-bytes')
     expect(got!.durationMs).toBe(1234)
-    expect(got!.tag).toBe('hmac-abc')
 
     fixture.setHandler(() => new Response(null, { status: 404 }))
     expect(await cache.get('missing')).toBeNull()
+  })
+
+  it('get(): sends GET with bearer auth and tenancy query params', async () => {
+    const cache = new RemoteCache({
+      baseUrl: fixture.baseUrl,
+      token: 'secret',
+      teamId: 'team_abc',
+      slug: 'my-project',
+    })
+    fixture.setHandler(() => new Response(null, { status: 404 }))
+    await cache.get('abc123')
+
+    expect(fixture.requests).toHaveLength(1)
+    const r = fixture.requests[0]!
+    expect(r.method).toBe('GET')
+    expect(r.path).toBe('/v8/artifacts/abc123')
+    expect(r.query).toEqual({ teamId: 'team_abc', slug: 'my-project' })
+    expect(r.authorization).toBe('Bearer secret')
   })
 
   it('put(): sends PUT with Authorization, Content-Type, Content-Length, x-artifact-duration', async () => {
@@ -124,7 +107,7 @@ describe('RemoteCache', () => {
     const body = new TextEncoder().encode('tarball-bytes').buffer
     fixture.setHandler(() => new Response(null, { status: 201 }))
 
-    await cache.put('h', body, { durationMs: 42, ci: 'github', interactive: true })
+    await cache.put('h', body, { durationMs: 42 })
 
     expect(fixture.requests).toHaveLength(1)
     const r = fixture.requests[0]!
@@ -133,16 +116,7 @@ describe('RemoteCache', () => {
     expect(r.headers['content-type']).toBe('application/octet-stream')
     expect(r.headers['content-length']).toBe(String(body.byteLength))
     expect(r.headers['x-artifact-duration']).toBe('42')
-    expect(r.headers['x-artifact-client-ci']).toBe('github')
-    expect(r.headers['x-artifact-client-interactive']).toBe('1')
     expect(new TextDecoder().decode(r.body)).toBe('tarball-bytes')
-  })
-
-  it('put(): includes optional tag when provided', async () => {
-    const cache = new RemoteCache({ baseUrl: fixture.baseUrl, token: 'tok' })
-    fixture.setHandler(() => new Response(null, { status: 200 }))
-    await cache.put('h', new ArrayBuffer(0), { durationMs: 1, tag: 'sig' })
-    expect(fixture.requests[0]!.headers['x-artifact-tag']).toBe('sig')
   })
 
   it('put(): throws on non-2xx response', async () => {
@@ -153,43 +127,11 @@ describe('RemoteCache', () => {
     )
   })
 
-  it('batchExistence(): posts hashes and parses the per-hash metadata response', async () => {
-    const cache = new RemoteCache({
-      baseUrl: fixture.baseUrl,
-      token: 'tok',
-      teamId: 't',
-      slug: 's',
-    })
-    fixture.setHandler((req) => {
-      // Server only returns rows for the hashes the client asked about.
-      expect(req.path).toBe('/v8/artifacts')
-      expect(req.query).toEqual({ teamId: 't', slug: 's' })
-      const body = JSON.parse(new TextDecoder().decode(req.body)) as { hashes: string[] }
-      expect(body.hashes).toEqual(['a', 'b'])
-      return Response.json({
-        a: { size: 1024, taskDurationMs: 500, tag: 'sigA' },
-        // b is missing → client should report a miss
-      })
-    })
-
-    const result = await cache.batchExistence(['a', 'b'])
-    expect(result).toEqual({
-      a: { size: 1024, taskDurationMs: 500, tag: 'sigA' },
-    })
-  })
-
-  it('batchExistence(): empty input short-circuits with no request', async () => {
-    const cache = new RemoteCache({ baseUrl: fixture.baseUrl, token: 'tok' })
-    const result = await cache.batchExistence([])
-    expect(result).toEqual({})
-    expect(fixture.requests).toHaveLength(0)
-  })
-
   it('wraps fetch errors in RemoteCacheError', async () => {
     // Point at a port that's almost certainly not listening; fetch should
     // reject with ECONNREFUSED, which we wrap as RemoteCacheError.
     const cache = new RemoteCache({ baseUrl: 'http://127.0.0.1:1', token: 'tok' })
-    await expect(cache.has('h')).rejects.toThrow(RemoteCacheError)
+    await expect(cache.get('h')).rejects.toThrow(RemoteCacheError)
   })
 
   it('aborts requests that exceed the configured timeout', async () => {
@@ -200,6 +142,6 @@ describe('RemoteCache', () => {
           setTimeout(() => resolve(new Response(null, { status: 200 })), 500)
         }),
     )
-    await expect(cache.has('h')).rejects.toThrow(/timed out after 50ms/)
+    await expect(cache.get('h')).rejects.toThrow(/timed out after 50ms/)
   })
 })

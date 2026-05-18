@@ -13,7 +13,6 @@ import {
 import type { TaskOutcome } from '../graph/scheduler.js'
 import { isGroupTask, type TaskNode } from '../graph/task-graph.js'
 import type { Logger } from './logger.js'
-import type { Observer } from './observer.js'
 import { xxh3hex } from '../util/hash.js'
 import { filterUpstreamHashes } from './upstream.js'
 
@@ -26,12 +25,6 @@ export interface ExecuteArgs {
   noCache: boolean
   forwardArgs?: readonly string[] | undefined
   log: Logger
-  /**
-   * Structural event sink. Wrapped via `makeSafeObserver` at the
-   * orchestrator boundary so `emit` is always safe. Used here for the
-   * `cacheProbe` event after the local + remote lookup resolves.
-   */
-  observer?: Observer
   nestedProjectDirs: string[]
   /** Anchor for hrtime spans across all tasks in this run. */
   runStartHrTimeNs: bigint
@@ -218,14 +211,15 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     await spawn.ready
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    // Surface readiness failure on stderr so the user sees what went
+    // wrong; the buffered stdout/stderr already streamed live via the
+    // logger callbacks during spawn.ready.
+    process.stderr.write(`\n[vx] ${node.id}: persistent task failed to become ready: ${message}\n`)
     return {
       node,
       status: 'failed',
       exitCode: 1,
       durationMs: spawn.readyMs(),
-      stdout: spawn.bufferedStdout(),
-      stderr:
-        spawn.bufferedStderr() + `\n[vx] persistent task failed to become ready: ${message}\n`,
       wallclockStartNs,
       wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
     }
@@ -237,8 +231,6 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     status: 'success',
     exitCode: 0,
     durationMs: spawn.readyMs(),
-    stdout: spawn.bufferedStdout(),
-    stderr: spawn.bufferedStderr(),
     wallclockStartNs,
     wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
   }
@@ -291,11 +283,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   if (cacheEnabled) {
     const cacheOpStart = performance.now()
     const hit = await cache.get(hash, { taskId: node.id, command: step.command })
-    args.observer?.emit({
-      kind: 'cacheProbe',
-      nodeId: node.id,
-      status: hit ? (hit.source === 'remote' ? 'hit-remote' : 'hit-local') : 'miss',
-    })
     if (hit) {
       // "Tree is already current" short-circuit — skip cleanOutputs
       // + restoreOutputs when the on-disk state matches what this
@@ -360,8 +347,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         restored,
       }
     }
-  } else {
-    args.observer?.emit({ kind: 'cacheProbe', nodeId: node.id, status: 'no-cache' })
   }
 
   // Cache miss path (or caching disabled). Clean declared outputs
@@ -488,8 +473,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     exitCode: effectiveExitCode,
     durationMs: result.durationMs,
     hash,
-    stdout: result.stdout,
-    stderr: effectiveStderr,
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
     wallclockStartNs,

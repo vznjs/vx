@@ -10,7 +10,7 @@
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { Cache, type CacheLayer } from '../cache/cache.js'
 import { populateGitFilesCache } from '../cache/inputs.js'
-import { buildPackageGraph, type PackageGraph } from '../workspace/package-graph.js'
+import { buildPackageGraph } from '../workspace/package-graph.js'
 import { loadProjectConfig, loadWorkspaceConfig } from '../workspace/project-loader.js'
 import {
   buildTaskGraph,
@@ -29,7 +29,6 @@ import { computeWorkspaceFingerprint } from './fingerprint.js'
 import { wrapWithRemoteCache } from './remote-cache-setup.js'
 import { createHashCache, type HashCache } from './execute-task.js'
 import type { Logger } from './logger.js'
-import type { Observer, HistoryTable } from './observer.js'
 import type { RunOptions } from '../orchestrator.js'
 
 export interface PreparedRun {
@@ -37,19 +36,9 @@ export interface PreparedRun {
   workspaceConfig: WorkspaceConfig | null
   cacheDir: string
   cache: CacheLayer
-  projects: Map<string, ProjectEntry>
-  packageGraph: PackageGraph
   nodes: Map<string, TaskNode>
   workspaceFingerprint: string
   nestedDirsByProject: Map<string, string[]>
-  /**
-   * Per-task historical aggregates pulled from the `runs` table. Cheap
-   * (one batched SQL transaction) and useful to every downstream:
-   * TUI progress bars / ETAs, `--summarize` JSON enrichment, future
-   * `vx ui` historical browser. Empty map on the no-tasks paths so
-   * consumers never have to null-check.
-   */
-  historyTable: HistoryTable
   /**
    * Per-run memo for `git ls-files` output, keyed by project dir.
    * Without this, every task in a project re-spawns git just to
@@ -89,14 +78,7 @@ export interface PreparedRun {
  * caller-specific (run logs + returns NOT-ok; planRun returns an
  * empty plan).
  */
-export async function prepareRun(
-  options: RunOptions,
-  log: Logger,
-  // Threaded to the LayeredCache wrapper so remote-cache GETs/PUTs
-  // emit `remoteCache` events as they happen. The TUI's RemoteCache
-  // panel reads them directly; non-TUI runs ignore them.
-  observer?: Observer,
-): Promise<PreparedRun> {
+export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun> {
   const workspaceRoot = await findWorkspaceRoot(options.cwd)
   const workspace = await loadWorkspace(workspaceRoot)
   const workspaceConfig = await loadWorkspaceConfig(workspaceRoot)
@@ -128,16 +110,14 @@ export async function prepareRun(
 
   const cacheDir = resolveCacheDir(workspaceRoot, workspaceConfig)
   const localCache = new Cache(cacheDir)
-  const cache = wrapWithRemoteCache(localCache, log, observer)
+  const cache = wrapWithRemoteCache(localCache, log)
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
   const gitFilesCache = new Map<string, readonly string[]>()
   // Bulk-populate via a single `git ls-files` at the workspace root —
   // partitions the output by project. Avoids one fork+exec per project
   // (~5-10ms each on Linux; the dominant cold-start cost on big
-  // monorepos). Falls back to per-project listing on cache miss when
-  // not in a git work tree (every projectDir gets `null` here, which
-  // resolveFiles interprets as "use the Bun.Glob walker").
+  // monorepos).
   populateGitFilesCache(
     workspaceRoot,
     [...projects.values()].map((p) => p.dir),
@@ -153,12 +133,9 @@ export async function prepareRun(
       workspaceConfig,
       cacheDir,
       cache,
-      projects,
-      packageGraph,
       nodes: new Map(),
       workspaceFingerprint,
       nestedDirsByProject,
-      historyTable: new Map(),
       gitFilesCache,
       hashCache,
       empty: 'no-tasks-declared',
@@ -174,22 +151,14 @@ export async function prepareRun(
       : {}),
   })
 
-  // One batched SQL pass to populate ETA / progress / Bottlenecks data
-  // for everything we're about to run. Cheap and safe to do here so
-  // downstream consumers (TUI, --summarize) don't each re-query.
-  const historyTable = cache.getTaskHistory([...nodes.keys()])
-
   return {
     workspaceRoot,
     workspaceConfig,
     cacheDir,
     cache,
-    projects,
-    packageGraph,
     nodes,
     workspaceFingerprint,
     nestedDirsByProject,
-    historyTable,
     gitFilesCache,
     hashCache,
     empty: nodes.size === 0 ? 'empty-graph' : null,

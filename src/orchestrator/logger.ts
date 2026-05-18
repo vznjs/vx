@@ -17,27 +17,11 @@ export interface Logger {
   taskComplete(node: TaskNode, outcome: TaskOutcome): void
 }
 
-/**
- * A Logger that silently drops every call. Pass this to `run()` when
- * another consumer (the TUI) owns the terminal — the default logger
- * writes framed-block output to stdout, which would otherwise bleed
- * through the TUI's alt-screen render and corrupt the UI.
- */
-export function noopLogger(): Logger {
-  return {
-    status: () => undefined,
-    taskStdout: () => undefined,
-    taskStderr: () => undefined,
-    taskComplete: () => undefined,
-  }
-}
-
 export function defaultLogger(colors: ColorSupport = detectColors()): Logger {
   // Per-task buffers, split by stream. Splitting lets the framed-output
   // renderer put stdout in the body and stderr under an `├─ Error`
   // section. The price: chunks that interleaved at runtime get
-  // re-ordered (all stdout before all stderr). Observers still see
-  // the original interleaving via the structural event stream.
+  // re-ordered (all stdout before all stderr).
   //
   // Chunks are held as a string[] (push + join on flush) instead of
   // appending via `+=`; concatenating N small chunks via `+=` is O(N²)
