@@ -40,12 +40,29 @@ export function formatRunSummary(
     ? `  Time:    ${dur} ${paint(SUCCESS, '>>> FULL CACHE', colors, { bold: true })}`
     : `  Time:    ${dur}`
 
-  return [
+  const lines: string[] = [
     '',
     ` Tasks:    ${taskParts.join(', ')}`,
     `Cached:    ${cachedParts.join(', ')}`,
-    timeLine,
   ]
+
+  // Failed-task listing — single `Failed: id1, id2, id3` line, ids
+  // bold-red, comma-joined. Mirrors Turbo's run-summary format
+  // (turborepo-run-summary/src/execution.rs). Surfaces what failed
+  // without needing to scroll back through framed blocks. Skipped
+  // tasks are NOT listed separately: they're inferred from the
+  // dependency chain on a failed task; listing them would just
+  // duplicate the same id under both labels.
+  const failedIds = outcomes
+    .filter((o) => o.status === 'failed')
+    .map((o) => paint(ERROR, o.node.id, colors, { bold: true }))
+    .sort()
+  if (failedIds.length > 0) {
+    lines.push(`Failed:    ${failedIds.join(', ')}`)
+  }
+
+  lines.push(timeLine)
+  return lines
 }
 
 export function formatDuration(ms: number): string {
