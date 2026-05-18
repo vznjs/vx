@@ -122,7 +122,19 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
       do {
         pending = false
         process.stdout.write(`\nvx watch: ${label}; re-running...\n\n`)
-        await runOrchestrator(opts)
+        try {
+          await runOrchestrator(opts)
+        } catch (err) {
+          // A re-run can fail catastrophically when the workspace
+          // itself moved out from under us — e.g. the user deleted
+          // the project dir, or git lost its repo (the watch loop
+          // outlives its own cwd in test teardown). Surface the
+          // message but DON'T let it crash the watch loop; the next
+          // FS event (if any) will retry. The dispose() on SIGINT
+          // is the canonical exit; we don't unilaterally abort here.
+          const message = err instanceof Error ? err.message : String(err)
+          process.stderr.write(`vx watch: cycle failed: ${message}\n`)
+        }
         // If a change arrived mid-run, loop again immediately.
       } while (pending)
     } finally {

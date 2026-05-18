@@ -50,6 +50,37 @@ describe('formatRunSummary', () => {
     expect(lines[2]).toBe('Cached:    0 cached, 2 total')
   })
 
+  it('lists failed task IDs on a single comma-joined line (Turbo format)', () => {
+    // Mirrors Turbo's run-summary format
+    // (turborepo-run-summary/src/execution.rs): one `Failed:` line,
+    // comma-joined task IDs in bold red, sorted. Lets the user
+    // identify what failed without scrolling back through framed
+    // blocks.
+    const lines = formatRunSummary(
+      [
+        outcome('@app/web#build', 'failed', 1),
+        outcome('@app/api#test', 'failed', 2),
+        outcome('lib#build', 'success'),
+      ],
+      1234,
+    )
+    expect(lines).toContain('Failed:    @app/api#test, @app/web#build')
+  })
+
+  it('omits the Failed: line when no tasks failed', () => {
+    const lines = formatRunSummary([outcome('a#x', 'success')], 10)
+    expect(lines.find((l) => l.startsWith('Failed:'))).toBeUndefined()
+  })
+
+  it('does not list skipped tasks separately (Turbo parity)', () => {
+    // Turbo doesn't surface "skipped" as a list — it's inferred from
+    // a failed upstream, and the failing upstream IS listed. Pin
+    // this so future changes don't reintroduce duplicate noise.
+    const lines = formatRunSummary([outcome('a#x', 'failed', 1), outcome('b#x', 'skipped')], 10)
+    expect(lines.find((l) => l.startsWith('Skipped:'))).toBeUndefined()
+    expect(lines).toContain('Failed:    a#x')
+  })
+
   it('reports skipped count when present', () => {
     const lines = formatRunSummary(
       [outcome('a#x', 'success'), outcome('b#x', 'failed', 2), outcome('c#x', 'skipped')],
