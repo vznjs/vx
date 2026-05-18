@@ -20,10 +20,8 @@ import {
   findWorkspaceRoot,
   listProjects,
   loadWorkspace,
-  resolveCacheDir,
   type ProjectMeta,
 } from '../workspace/workspace.js'
-import { loadWorkspaceConfig } from '../workspace/project-loader.js'
 
 /** Wait this long after the last filesystem event before re-running. */
 const DEBOUNCE_MS = 150
@@ -67,8 +65,6 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // project". We watch only those (plus the workspace root, for
   // lockfile changes).
   const workspaceRoot = await findWorkspaceRoot(cwd)
-  const workspaceConfig = await loadWorkspaceConfig(workspaceRoot)
-  const cacheDir = resolveCacheDir(workspaceRoot, workspaceConfig)
   const allProjects = await listProjects(await loadWorkspace(workspaceRoot))
   const scope =
     opts.projects === undefined
@@ -84,18 +80,17 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   process.stdout.write('vx watch: initial run...\n\n')
   await runOrchestrator(opts)
 
-  return await runWatchLoop({ opts, workspaceRoot, cacheDir, projects: scope })
+  return await runWatchLoop({ opts, workspaceRoot, projects: scope })
 }
 
 interface WatchLoopArgs {
   opts: RunOptions
   workspaceRoot: string
-  cacheDir: string
   projects: readonly ProjectMeta[]
 }
 
 async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
-  const { opts, workspaceRoot, cacheDir, projects } = args
+  const { opts, workspaceRoot, projects } = args
 
   // Reentrancy guard — never two orchestrator runs in flight. While
   // one is running, any further events set `pending = true` and the
@@ -190,14 +185,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     process.stderr.write(`vx watch: cannot watch workspace root: ${msg}\n`)
   }
 
-  // Avoid the case where the cacheDir lives inside a project dir
-  // (e.g. `<project>/.vx/cache/`): our own writes would trigger
-  // an immediate cascade. We can't reliably ignore by path because
-  // cacheDir is resolved at orchestrator level, so we just log and
-  // hope IGNORED_SEGMENTS('.vx') covers it. The default config does
-  // place cacheDir under `.vx/`, so the segment filter takes care of
-  // it for now.
-  void cacheDir
+  // The orchestrator's writes into `.vx/cache/` don't trigger
+  // re-runs because IGNORED_SEGMENTS includes `.vx`. Users who
+  // relocate the cache dir outside `.vx/` need their own filtering.
 
   process.stdout.write(`\nvx watch: watching ${projects.length} project(s); press Ctrl+C to stop\n`)
 

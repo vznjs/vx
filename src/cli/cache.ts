@@ -1,6 +1,6 @@
-import path from 'node:path'
 import { Cache } from '../cache/cache.js'
-import { findWorkspaceRoot } from '../workspace/workspace.js'
+import { loadWorkspaceConfig } from '../workspace/project-loader.js'
+import { findWorkspaceRoot, resolveCacheDir } from '../workspace/workspace.js'
 import { formatBytes } from './format.js'
 
 export async function cacheCmd(args: readonly string[]): Promise<number> {
@@ -63,7 +63,11 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`vx cache prune: ${(err as Error).message}\n`)
     return 1
   }
-  const cache = new Cache(path.join(root, '.vx', 'cache'))
+  // Honor `defineWorkspace({ cacheDir: '...' })` — `vx run` and
+  // `vx cache prune` must operate on the same directory or prune
+  // silently no-ops against the wrong path.
+  const workspaceConfig = await loadWorkspaceConfig(root)
+  const cache = new Cache(resolveCacheDir(root, workspaceConfig))
   try {
     const opts: { olderThanMs?: number; maxBytes?: number } = {}
     if (parsed.olderThanMs !== undefined) opts.olderThanMs = parsed.olderThanMs

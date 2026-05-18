@@ -132,6 +132,73 @@ bun.lock
 
 ## Decision log
 
+- **2026-05**: Dead-code cleanup pass — drop the TUI-era observer
+  subsystem and other no-consumer surfaces. -1305 LOC across 28 files,
+  no behaviour change.
+
+  Removed:
+  - **Observer subsystem** (`src/orchestrator/observer.ts` deleted):
+    `Observer`, `ObserverEvent`, `HistoryTable`, `TaskHistory`,
+    `makeSafeObserver`, and the `RunOptions.observer` field. The TUI
+    consumed this; the TUI was deleted weeks ago. Six tests removed
+    (the dedicated observer.test.ts plus the three orchestrator-level
+    observer e2e tests). Scheduler's `slot` parameter on
+    `execute`/`onStart` was part of this surface — dropped along with
+    the `Uint8Array` slot allocator (the no-consumer-side benefit was
+    "stable per-slot timelines for TUI panels" which no longer have
+    a renderer).
+  - **`Cache.getTaskHistory` + `TaskHistoryRow`/`TaskHistoryMap`**:
+    designed to feed TUI ETA + Bottlenecks panels. No production
+    caller. ~110 LOC including the per-pair CTE query.
+  - **`Cache.getMetaBatch` + `CacheEntryMeta`**: batch metadata probe
+    for a leaf-task upfront-batch optimization that never wired into
+    `execute-task.ts`. ~50 LOC + 90 LOC of perf tests.
+  - **`LayeredCacheOptions.onRemoteRequest`/`onRemoteHit`**: drove the
+    TUI's remote-cache panel. Telemetry survived only as the
+    `onRemoteError` hook the CLI uses to log warnings.
+  - **`RemoteCache.has` + `batchExistence` + `RemoteBatchInfo`**:
+    speculative API surface, no caller. Same for `tag`/`ci`/
+    `interactive` metadata on `RemotePutMetadata` and `tag` on
+    `RemoteGetResult`.
+  - **`PreparedRun.projects`/`packageGraph`**: returned but never read
+    by `run()` or `planRun()`. Tests asserting on them rewritten to
+    assert on `nodes`.
+  - **`PackageGraph.byName`/`directDeps`**: on the interface but no
+    consumer reads them outside the constructor. Kept as locals
+    inside `buildPackageGraph`.
+  - **`TaskOutcome.stdout`/`stderr`**: populated by `execute-task.ts`
+    but no production reader (live stream goes through
+    `taskStdout`/`taskStderr` logger callbacks). The two
+    orchestrator tests that asserted on `o.stderr`/`o.stdout` now
+    assert on the live `fixture.err`/`fixture.log` arrays instead.
+  - **`RunRecord.bytesUploaded`/`bytesDownloaded`** + the matching
+    SQL columns: never populated by production. Schema row narrowed.
+  - **`noopLogger()`**: zero callers, comment referenced the deleted
+    TUI.
+  - **`WatchLoopArgs.cacheDir`**: passed through then explicitly
+    `void`-discarded; ~5 LOC + one less file read at startup.
+
+  Refactors:
+  - **`formatTaskBlock(body: TaskBlockBody | string)`** narrowed to
+    `body: TaskBlockBody`. The string-body back-compat existed for
+    "older tests + embedders" — pre-alpha, no embedders, tests
+    rewritten to wrap in `{ stdout: '...' }`.
+  - **`listGitTrackedFiles`** (3-line wrapper around `runGitLsFiles`)
+    inlined. Caller now calls `runGitLsFiles` directly.
+  - **`xxh3hexOf`** (3-line wrapper) deleted; two callers inline
+    `.toString(16).padStart(16, '0')`.
+
+  Bug fix bundled in:
+  - **`vx cache prune` honors `defineWorkspace({ cacheDir: ... })`**.
+    Previously hardcoded `path.join(root, '.vx', 'cache')`, so a
+    user-relocated cache dir was silently pruned against the wrong
+    path. Now uses `resolveCacheDir(root, workspaceConfig)`.
+
+  Verified: 499 tests pass, `oxlint` + `oxfmt` clean. Cache key
+  derivation unchanged; the SQL schema dropped only NULL-only
+  columns. Existing `<hash>.tar.zst` artifacts still load (the v17
+  format from the previous pass is unchanged).
+
 - **2026-05**: Drop the `ignore` npm dep — vx now hard-requires git.
   `src/cache/inputs.ts` no longer parses `.gitignore` via the `ignore`
   library; it defers entirely to `git ls-files --cached --others

@@ -27,8 +27,6 @@ function packageGraph(direct: Record<string, string[]>): PackageGraph {
   }
 
   return {
-    byName: new Map(),
-    directDeps,
     transitiveDeps: (n) => transitive(n),
     transitiveDependents: () => [],
   }

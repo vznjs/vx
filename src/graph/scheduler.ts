@@ -20,14 +20,6 @@ export interface TaskOutcome {
   wallclockStartNs?: bigint
   wallclockEndNs?: bigint
   /**
-   * Captured stdout/stderr from the task's process. Populated on real
-   * `exec` runs (success or failure) so the orchestrator can replay
-   * failed-task output at end of run + persist logs to disk. Empty
-   * strings for cache-hits and group tasks.
-   */
-  stdout?: string
-  stderr?: string
-  /**
    * For cache-hit statuses: true if outputs were actually written to
    * disk this run, false if the on-disk state already matched the
    * cached snapshot (no materialization needed). Lets the formatter
@@ -54,14 +46,8 @@ export interface TaskOutcome {
 export interface ScheduleOptions {
   nodes: Map<string, TaskNode>
   concurrency: number
-  /**
-   * `slot` is a stable lowest-free-index worker slot in `[0, concurrency)`.
-   * Allocated as `execute` is called, released in the task's finally.
-   * Lets dashboards / TUIs render per-slot timelines without inferring
-   * which slot a task ran on from interleaved start events.
-   */
-  execute: (node: TaskNode, upstream: TaskOutcome[], slot: number) => Promise<TaskOutcome>
-  onStart?: (node: TaskNode, slot: number) => void
+  execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
+  onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void
 }
 
@@ -133,30 +119,6 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
 
   const priority = computeReverseDepCount(nodes)
 
-  // Worker slot allocator: a bitmap of busy slots in [0, concurrency).
-  // Lowest free index wins so a near-full schedule pins the steady-state
-  // task to slot 0 and leaves higher indices visibly idle. Replaces a
-  // sorted-array + unshift+sort-on-release which was O(C log C) per
-  // task completion.
-  const slotBusy = new Uint8Array(concurrency)
-  const slotOf = new Map<string, number>()
-  const acquireSlot = (): number => {
-    for (let i = 0; i < concurrency; i++) {
-      if (!slotBusy[i]) {
-        slotBusy[i] = 1
-        return i
-      }
-    }
-    return -1 // unreachable: caller gates on active < concurrency
-  }
-  const releaseSlot = (id: string): void => {
-    const s = slotOf.get(id)
-    if (s !== undefined) {
-      slotBusy[s] = 0
-      slotOf.delete(id)
-    }
-  }
-
   // Ready queue: tasks whose deps have all completed. Kept sorted on
   // insert (descending by priority); equal-priority items insert AFTER
   // existing entries so ties break in graph-insertion order — same
@@ -184,7 +146,6 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   return new Promise<Map<string, TaskOutcome>>((resolve) => {
     const finishOne = (id: string, outcome: TaskOutcome): void => {
       outcomes.set(id, outcome)
-      releaseSlot(id)
       onFinish?.(outcome)
       const ds = dependents.get(id)
       if (!ds) return
@@ -214,11 +175,9 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         }
 
         active++
-        const slot = acquireSlot()
-        slotOf.set(id, slot)
-        onStart?.(node, slot)
+        onStart?.(node)
 
-        execute(node, upstream, slot)
+        execute(node, upstream)
           .then((outcome) => {
             active--
             finishOne(id, outcome)
@@ -226,20 +185,18 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           })
           .catch((err: unknown) => {
             const message = err instanceof Error ? err.message : String(err)
-            // Park the message on the outcome's stderr so end-of-run
-            // failure replay surfaces it. Without this, thrown errors
-            // (spawn failures, config issues, etc.) were lost — users
-            // saw ✗ with no logs.
             const outcome: TaskOutcome = {
               node,
               status: 'failed',
               exitCode: 1,
               durationMs: 0,
-              stderr: `${err instanceof Error && err.name !== 'Error' ? err.name + ': ' : ''}${message}\n`,
             }
             active--
             finishOne(id, outcome)
-            process.stderr.write(`[vx] internal error in ${id}: ${message}\n`)
+            // Surface the error live; the outcome itself doesn't
+            // carry captured stderr (that's the logger's job).
+            const named = err instanceof Error && err.name !== 'Error' ? `${err.name}: ` : ''
+            process.stderr.write(`[vx] internal error in ${id}: ${named}${message}\n`)
             tick()
           })
       }

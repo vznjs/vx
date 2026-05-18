@@ -32,19 +32,10 @@ import { mkdirSync, statSync } from 'node:fs'
 import { mkdir, mkdtemp, rename, rm, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { xxh3, xxh3hex, xxh3hexOf } from '../util/hash.js'
+import { xxh3, xxh3hex } from '../util/hash.js'
 import { relPosix } from '../util/paths.js'
 import { extractOutputs, parseTarHeaders, readTarText } from './tar.js'
 
-// v15: cache-key hash swapped from SHA-256 to xxHash3 (~5× faster,
-// 16-hex keys, Turbo parity on width). Schema also bumps to v15:
-// `file_hashes.sha256` column renamed to `content_hash`; the
-// migration path DROPs stale tables before CREATE TABLE IF NOT
-// EXISTS so column renames take effect on existing DBs. stdout/stderr
-// continue to live in the `<hash>.tar.zst` artifact (from v14), as
-// `stdout` / `stderr` entries only when non-empty. Output files live
-// inside the tar under `outputs/`. Empty tasks produce an empty
-// archive. The entries table remains the queryable index.
 // v17: artifact carries only logs + outputs (stdout + outputs/<rel>).
 // Local and remote layers transport the SAME tar.zst bytes — no
 // separate stage/meta.json/tar.gz dance for remote, no
@@ -137,8 +128,6 @@ export interface RunRecord {
   wallclockStartNs?: bigint // hrtime span relative to run t=0
   wallclockEndNs?: bigint
   cacheHit?: boolean // convenience for flamegraph color; derivable from status
-  bytesUploaded?: number // remote-cache push size; null if no remote layer
-  bytesDownloaded?: number // remote-cache pull size on hit
 }
 
 export interface CacheStats {
@@ -147,24 +136,6 @@ export interface CacheStats {
   runCountLast24h: number
   hitCountLast24h: number
 }
-
-/**
- * Per-task aggregates pulled from the `runs` table for ETA + progress
- * estimation in the TUI / dashboards. Capped at 50 most-recent rows
- * per `(project, task)`; `recent` is the top 10 for live-rendering.
- */
-export interface TaskHistoryRow {
-  runs: number
-  avgMs: number
-  p50Ms: number
-  p99Ms: number
-  successRate: number
-  hitRate: number
-  recent: { startedAt: number; durationMs: number; status: string; hash: string }[]
-}
-
-/** Keyed by `${project}#${task}`. Missing keys = never-run-before task. */
-export type TaskHistoryMap = Map<string, TaskHistoryRow>
 
 export interface PruneOptions {
   /** Drop entries last accessed before this ms-epoch threshold. */
@@ -179,23 +150,6 @@ export interface PruneOptions {
 export interface PruneResult {
   evicted: number
   bytesFreed: number
-}
-
-/**
- * Metadata-only view of a cache entry — the SQL columns, without the
- * tar artifact's stdout/stderr/outputFiles. Returned by `getMetaBatch`
- * for fast bulk cache-hit probing: no zstd decompress, no tar header
- * parse. Callers that need the artifact body call `restoreOutputs`
- * afterwards. Nx's `cache.ts:getBatch` pattern, scoped to the
- * metadata layer.
- */
-export interface CacheEntryMeta {
-  hash: string
-  taskId: string
-  command: string
-  exitCode: number
-  durationMs: number
-  storedAt: string
 }
 
 /**
@@ -244,19 +198,6 @@ export interface IngestMeta {
 export interface CacheLayer {
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
-  /**
-   * Batched metadata-only probe. Returns a Map keyed by hash holding
-   * `CacheEntryMeta` for every input hash that resolved to a local
-   * hit. Skips the tar decompress that `get()` does — call
-   * `restoreOutputs` afterwards if the artifact body is needed.
-   *
-   * One SQL query (rarray) covers all hashes; the artifact-existence
-   * check still walks `Bun.file(...).exists()` per hit but does so in
-   * parallel via `Promise.all`. For orchestrator hot-path use: build
-   * the list of leaf-task hashes upfront, batch-probe, dispatch only
-   * the misses to the scheduler's exec path.
-   */
-  getMetaBatch(hashes: readonly string[]): Promise<Map<string, CacheEntryMeta>>
   /**
    * Batched lookup of per-output-file fingerprints for many cache
    * entries in one SQL round-trip. Returns a Map keyed by entry hash.
@@ -321,12 +262,6 @@ export interface CacheLayer {
    * `restoreOutputs` is the canonical way to materialize the bytes.
    */
   outputsPath(hash: string): string
-  /**
-   * Batched lookup of per-`(project, task)` aggregates over the most
-   * recent 50 runs per pair. One SQL transaction; cheap enough to run
-   * unconditionally at `runStart`.
-   */
-  getTaskHistory(taskIds: readonly string[]): TaskHistoryMap
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
 }
@@ -450,9 +385,7 @@ export class Cache implements CacheLayer {
         peak_rss_bytes      INTEGER,
         wallclock_start_ns  INTEGER,
         wallclock_end_ns    INTEGER,
-        cache_hit           INTEGER,
-        bytes_uploaded      INTEGER,
-        bytes_downloaded    INTEGER
+        cache_hit           INTEGER
       );
       CREATE INDEX IF NOT EXISTS runs_hash       ON runs(hash);
       CREATE INDEX IF NOT EXISTS runs_started_at ON runs(started_at);
@@ -509,9 +442,9 @@ export class Cache implements CacheLayer {
         hash, project, task, status, exit_code, duration_ms, forward_args,
         started_at, ended_at,
         run_id, cpu_ms, peak_rss_bytes, wallclock_start_ns, wallclock_end_ns,
-        cache_hit, bytes_uploaded, bytes_downloaded
+        cache_hit
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,  ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,  ?)
     `)
     this.selectFileHash = this.db.prepare(
       'SELECT mtime_ms, size_bytes, content_hash FROM file_hashes WHERE path = ?',
@@ -610,7 +543,7 @@ export class Cache implements CacheLayer {
       h = xxh3(`${rel}\0${fileHashes[i]!}`, h)
     }
 
-    return xxh3hexOf(h)
+    return h.toString(16).padStart(16, '0')
   }
 
   // ctx is accepted but ignored — the local layer reads metadata from
@@ -650,53 +583,6 @@ export class Cache implements CacheLayer {
       storedAt: new Date(row.created_at).toISOString(),
       source: 'local',
     }
-  }
-
-  async getMetaBatch(hashes: readonly string[]): Promise<Map<string, CacheEntryMeta>> {
-    // Single SQL query for all hashes (rarray virtual table via
-    // bun:sqlite's `IN (?)` with a JSON array — bun:sqlite accepts
-    // arrays as bind args via the array-binding form). Avoids N
-    // prepared-statement round-trips.
-    const out = new Map<string, CacheEntryMeta>()
-    if (hashes.length === 0) return out
-    // Inline placeholders — bun:sqlite doesn't ship an rarray extension
-    // by default, but a `WHERE hash IN (?, ?, ?, …)` for N ≤ ~999
-    // hashes is fast and avoids per-hash select.get() overhead.
-    const placeholders = hashes.map(() => '?').join(',')
-    const stmt = this.db.prepare(`SELECT * FROM entries WHERE hash IN (${placeholders})`)
-    const rows = stmt.all(...(hashes as readonly SQLQueryBindings[])) as EntryRow[]
-    // Verify the on-disk artifact for each row in parallel. Skip the
-    // expensive zstd decompress — callers only need the metadata at
-    // this stage. The tar body gets read on the eventual
-    // `restoreOutputs(hash, ...)` call (or not at all on cache miss).
-    const verifyResults = await Promise.all(
-      rows.map(async (row) => ({
-        row,
-        exists: await Bun.file(this.tarPath(row.hash)).exists(),
-      })),
-    )
-    const now = Date.now()
-    const verified: EntryRow[] = []
-    for (const { row, exists } of verifyResults) {
-      if (!exists) continue
-      verified.push(row)
-      out.set(row.hash, {
-        hash: row.hash,
-        taskId: `${row.project}#${row.task}`,
-        command: row.command,
-        exitCode: row.exit_code,
-        durationMs: row.duration_ms,
-        storedAt: new Date(row.created_at).toISOString(),
-      })
-    }
-    // Batch the accessed_at bump too — one transaction vs N.
-    if (verified.length > 0) {
-      const tx = this.db.transaction((items: EntryRow[]) => {
-        for (const r of items) this.bumpAccessed.run(now, r.hash)
-      })
-      tx(verified)
-    }
-    return out
   }
 
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]> {
@@ -990,117 +876,6 @@ export class Cache implements CacheLayer {
     }
   }
 
-  getTaskHistory(taskIds: readonly string[]): TaskHistoryMap {
-    const out: TaskHistoryMap = new Map()
-    if (taskIds.length === 0) return out
-
-    // Decompose `${project}#${task}` once. Skip malformed ids defensively.
-    const pairs: { project: string; task: string; key: string }[] = []
-    for (const id of taskIds) {
-      const i = id.indexOf('#')
-      if (i < 0) continue
-      pairs.push({ project: id.slice(0, i), task: id.slice(i + 1), key: id })
-    }
-    if (pairs.length === 0) return out
-
-    // SQLite doesn't allow tuple IN (?, ?) parameter binding, so we
-    // build a `(project, task) IN (VALUES (?, ?), (?, ?), ...)` clause
-    // for the row-fetch query; the per-pair fanout for aggregates uses
-    // a CTE-based window function to cap at 50 rows per pair.
-    const placeholders = pairs.map(() => '(?, ?)').join(', ')
-    const bindings: string[] = []
-    for (const p of pairs) {
-      bindings.push(p.project, p.task)
-    }
-
-    // Pull the 50 most-recent rows per (project, task). We do the
-    // aggregation client-side (cheap; ≤ 50 × N rows) so we avoid
-    // depending on SQLite extensions for percentile_cont.
-    const rows = this.db
-      .prepare(
-        `
-        WITH ranked AS (
-          SELECT project, task, started_at, ended_at, duration_ms, status, hash, cache_hit,
-                 ROW_NUMBER() OVER (
-                   PARTITION BY project, task
-                   ORDER BY started_at DESC
-                 ) AS rn
-            FROM runs
-           WHERE (project, task) IN (VALUES ${placeholders})
-        )
-        SELECT project, task, started_at, duration_ms, status, hash, cache_hit
-          FROM ranked
-         WHERE rn <= 50
-         ORDER BY project, task, started_at DESC
-        `,
-      )
-      .all(...bindings) as Array<{
-      project: string
-      task: string
-      started_at: number
-      duration_ms: number
-      status: string
-      hash: string
-      cache_hit: number | null
-    }>
-
-    // Group rows in-order (the SQL ORDER BY guarantees per-key
-    // contiguity, and within each key newest-first).
-    type Row = (typeof rows)[number]
-    const grouped = new Map<string, Row[]>()
-    for (const r of rows) {
-      const key = `${r.project}#${r.task}`
-      let bucket = grouped.get(key)
-      if (!bucket) {
-        bucket = []
-        grouped.set(key, bucket)
-      }
-      bucket.push(r)
-    }
-
-    for (const [key, bucket] of grouped) {
-      const runs = bucket.length
-      let sum = 0
-      let successes = 0
-      let hits = 0
-      const sortedDurations: number[] = []
-      for (const r of bucket) {
-        sum += r.duration_ms
-        if (r.status === 'success' || r.status === 'cache-hit' || r.status === 'cache-hit-remote') {
-          successes++
-        }
-        if (r.cache_hit === 1) hits++
-        sortedDurations.push(r.duration_ms)
-      }
-      sortedDurations.sort((a, b) => a - b)
-      const p = (q: number): number => {
-        if (sortedDurations.length === 0) return 0
-        const idx = Math.min(
-          sortedDurations.length - 1,
-          Math.floor(q * (sortedDurations.length - 1)),
-        )
-        return sortedDurations[idx] ?? 0
-      }
-
-      out.set(key, {
-        runs,
-        avgMs: sum / runs,
-        p50Ms: p(0.5),
-        p99Ms: p(0.99),
-        successRate: successes / runs,
-        hitRate: hits / runs,
-        recent: bucket.slice(0, 10).map((r) => ({
-          startedAt: r.started_at,
-          durationMs: r.duration_ms,
-          status: r.status,
-          hash: r.hash,
-        })),
-      })
-    }
-
-    return out
-  }
-
   async prune(options: PruneOptions): Promise<PruneResult> {
     const { olderThanMs, maxBytes } = options
     if (olderThanMs === undefined && maxBytes === undefined) {
@@ -1195,8 +970,6 @@ function bindRun(run: RunRecord): SQLQueryBindings[] {
     run.wallclockStartNs !== undefined ? run.wallclockStartNs : null,
     run.wallclockEndNs !== undefined ? run.wallclockEndNs : null,
     run.cacheHit === undefined ? null : run.cacheHit ? 1 : 0,
-    run.bytesUploaded ?? null,
-    run.bytesDownloaded ?? null,
   ]
 }
 

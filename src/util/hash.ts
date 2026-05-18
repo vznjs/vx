@@ -23,8 +23,3 @@ export function xxh3(input: string | Uint8Array, seed: bigint = 0n): bigint {
 export function xxh3hex(input: string | Uint8Array, seed: bigint = 0n): string {
   return xxh3(input, seed).toString(16).padStart(16, '0')
 }
-
-/** Format a bigint xxh3 digest as the 16-char hex we use everywhere. */
-export function xxh3hexOf(digest: bigint): string {
-  return digest.toString(16).padStart(16, '0')
-}

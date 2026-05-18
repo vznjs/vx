@@ -1,9 +1,6 @@
 import type { ProjectMeta } from './workspace.js'
 
 export interface PackageGraph {
-  byName: Map<string, ProjectMeta>
-  /** Direct workspace deps for each project. */
-  directDeps: Map<string, string[]>
   /** All transitive workspace deps for each project. */
   transitiveDeps: (name: string) => string[]
   /** All transitive workspace dependents (packages that depend on the named one). */
@@ -68,8 +65,6 @@ export function buildPackageGraph(projects: ProjectMeta[]): PackageGraph {
   const dependentsCache = new Map<string, string[]>()
 
   return {
-    byName,
-    directDeps,
     transitiveDeps: (name) => transitive(name, directDeps, depsCache),
     transitiveDependents: (name) => transitive(name, directDependents, dependentsCache),
   }

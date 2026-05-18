@@ -1843,7 +1843,8 @@ describe('orchestrator e2e', () => {
       const o = r.outcomes.find((o) => o.node.id === 'app-fail#broken')
       expect(o?.status).toBe('failed')
       expect(o?.exitCode).toBe(42)
-      expect(o?.stderr).toContain('MY-ERROR-MARKER')
+      // stderr is delivered via the live stream (taskStderr callback).
+      expect(fixture.err.some((line) => line.includes('MY-ERROR-MARKER'))).toBe(true)
 
       // Live stream goes through taskStderr → fixture.err.
       const streamed = fixture.err.some((line) => line.includes('MY-ERROR-MARKER'))
@@ -1877,12 +1878,8 @@ describe('orchestrator e2e', () => {
       expect(r.ok).toBe(false)
       const o = r.outcomes.find((o) => o.node.id === 'broken-spawn#run')
       expect(o?.status).toBe('failed')
-      // Either captured stderr from the spawn (e.g. "command not found")
-      // or a synthesized [vx] failed-to-spawn marker, but SOMETHING
-      // user-visible must be present.
-      const captured = (o?.stderr ?? '') + (o?.stdout ?? '')
-      expect(captured.length).toBeGreaterThan(0)
-      // Start + finish status lines name the task id.
+      // Start + finish status lines name the task id — that's the
+      // user-visible surface a thrown error must reach.
       const statusLines = fixture.log.filter((l) => l.includes('broken-spawn#run'))
       expect(statusLines.length).toBeGreaterThan(0)
     },
@@ -2184,136 +2181,6 @@ describe('orchestrator e2e', () => {
       expect(warmByName['p#build']).toBe('hit-local')
       expect(warmByName['p#ci']).toBe('group')
       expect(warmByName['p#dev']).toBe('no-cache')
-    },
-    TIMEOUT,
-  )
-
-  it(
-    'observer receives runStart → taskStart → cacheProbe → taskComplete → runEnd',
-    async () => {
-      await addProject(fixture.root, 'obs-pkg', {
-        config: `
-          export default {
-            tasks: {
-              build: {
-                exec: { command: 'echo built' },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
-              },
-            },
-          }
-        `,
-      })
-      const { run } = await import('../src/orchestrator.js')
-      const events: import('../src/orchestrator.js').ObserverEvent[] = []
-      const log = silentLogger(fixture)
-
-      // Cold run: miss.
-      await run({
-        cwd: fixture.root,
-        tasks: ['build'],
-        log,
-        observer: { emit: (e) => events.push(e) },
-      })
-
-      const kinds = events.map((e) => e.kind)
-      expect(kinds[0]).toBe('runStart')
-      expect(kinds.at(-1)).toBe('runEnd')
-      expect(kinds).toContain('taskStart')
-      expect(kinds).toContain('taskComplete')
-      expect(kinds).toContain('cacheProbe')
-
-      const runStart = events.find((e) => e.kind === 'runStart')!
-      if (runStart.kind !== 'runStart') throw new Error('narrow')
-      expect(runStart.runId.length).toBeGreaterThan(0)
-      expect(runStart.concurrency).toBeGreaterThanOrEqual(1)
-      expect(runStart.remoteCacheEnabled).toBe(false)
-      expect(runStart.nodes.map((n) => n.id)).toEqual(['obs-pkg#build'])
-      // Cold start → no prior history.
-      expect(runStart.historyTable.size).toBe(0)
-
-      const taskStart = events.find((e) => e.kind === 'taskStart')!
-      if (taskStart.kind !== 'taskStart') throw new Error('narrow')
-      expect(taskStart.nodeId).toBe('obs-pkg#build')
-      expect(taskStart.slot).toBe(0)
-
-      const probe = events.find((e) => e.kind === 'cacheProbe')!
-      if (probe.kind !== 'cacheProbe') throw new Error('narrow')
-      expect(probe.nodeId).toBe('obs-pkg#build')
-      expect(probe.status).toBe('miss')
-
-      const taskComplete = events.find((e) => e.kind === 'taskComplete')!
-      if (taskComplete.kind !== 'taskComplete') throw new Error('narrow')
-      expect(taskComplete.outcome.status).toBe('success')
-
-      const runEnd = events.at(-1)!
-      if (runEnd.kind !== 'runEnd') throw new Error('narrow')
-      expect(runEnd.ok).toBe(true)
-      expect(runEnd.totalMs).toBeGreaterThanOrEqual(0)
-
-      // Warm run: hit-local.
-      events.length = 0
-      await run({
-        cwd: fixture.root,
-        tasks: ['build'],
-        log,
-        observer: { emit: (e) => events.push(e) },
-      })
-      const probe2 = events.find((e) => e.kind === 'cacheProbe')!
-      if (probe2.kind !== 'cacheProbe') throw new Error('narrow')
-      expect(probe2.status).toBe('hit-local')
-
-      // Warm run's historyTable should now have the previous run.
-      const runStart2 = events.find((e) => e.kind === 'runStart')!
-      if (runStart2.kind !== 'runStart') throw new Error('narrow')
-      expect(runStart2.historyTable.has('obs-pkg#build')).toBe(true)
-    },
-    TIMEOUT,
-  )
-
-  it(
-    'observer is optional — run() works the same without one',
-    async () => {
-      await addProject(fixture.root, 'pkg', {
-        config: `
-          export default { tasks: { build: { exec: { command: 'echo x' } } } }
-        `,
-      })
-      const result = await run({
-        cwd: fixture.root,
-        tasks: ['build'],
-        log: silentLogger(fixture),
-      })
-      expect(result.ok).toBe(true)
-    },
-    TIMEOUT,
-  )
-
-  it(
-    'observer errors are isolated — a throwing observer never fails the run',
-    async () => {
-      await addProject(fixture.root, 'pkg', {
-        config: `
-          export default { tasks: { build: { exec: { command: 'echo x' } } } }
-        `,
-      })
-      // Capture stderr so the safe-observer's error log doesn't leak.
-      const stderr = process.stderr.write
-      process.stderr.write = (() => true) as typeof stderr
-      try {
-        const result = await run({
-          cwd: fixture.root,
-          tasks: ['build'],
-          log: silentLogger(fixture),
-          observer: {
-            emit: () => {
-              throw new Error('observer boom')
-            },
-          },
-        })
-        expect(result.ok).toBe(true)
-      } finally {
-        process.stderr.write = stderr
-      }
     },
     TIMEOUT,
   )

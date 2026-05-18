@@ -69,7 +69,7 @@ export interface TaskBlockBody {
 export function formatTaskBlock(
   node: TaskNode,
   outcome: TaskOutcome,
-  body: TaskBlockBody | string,
+  body: TaskBlockBody,
   colors: ColorSupport = NO_COLOR,
 ): string {
   // Group tasks (no `exec`) do no work and have no body — they're
@@ -79,11 +79,8 @@ export function formatTaskBlock(
   // pass already make.
   if (isGroupTask(node)) return ''
 
-  // Back-compat: string body is treated as stdout. The default logger
-  // passes a TaskBlockBody now; older tests + embedders may still
-  // pass a string.
-  const stdout = typeof body === 'string' ? body : (body.stdout ?? '')
-  const stderr = typeof body === 'string' ? '' : (body.stderr ?? '')
+  const stdout = body.stdout ?? ''
+  const stderr = body.stderr ?? ''
 
   const id = node.id
   const idPainted = paint(ACCENT, id, colors, { bold: true })

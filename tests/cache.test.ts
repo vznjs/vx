@@ -336,94 +336,6 @@ describe('Cache storage (v10)', () => {
     expect(await cache.get('h-orphan')).toBeNull()
   })
 
-  it('getTaskHistory() returns empty maps when no runs match', async () => {
-    const h = cache.getTaskHistory(['pkg#build', 'other#test'])
-    expect(h.size).toBe(0)
-  })
-
-  it('getTaskHistory() aggregates per-(project, task) and returns recent rows', async () => {
-    const now = Date.now()
-    const make = (status: 'success' | 'cache-hit' | 'failed', durationMs: number, offset: number) =>
-      cache.recordRun({
-        hash: `h-${status}-${offset}`,
-        project: 'pkg',
-        task: 'build',
-        status,
-        exitCode: status === 'failed' ? 1 : 0,
-        durationMs,
-        startedAt: now - offset - durationMs,
-        endedAt: now - offset,
-        cacheHit: status === 'cache-hit',
-      })
-    make('success', 100, 1000)
-    make('success', 200, 800)
-    make('cache-hit', 0, 600)
-    make('failed', 50, 400)
-    make('success', 150, 200)
-
-    const h = cache.getTaskHistory(['pkg#build'])
-    const row = h.get('pkg#build')
-    expect(row).toBeDefined()
-    expect(row?.runs).toBe(5)
-    expect(row?.successRate).toBeCloseTo(4 / 5, 5)
-    expect(row?.hitRate).toBeCloseTo(1 / 5, 5)
-    // 4 successful (incl cache-hit at 0ms) + 1 failed at 50ms.
-    expect(row?.avgMs).toBeCloseTo((100 + 200 + 0 + 50 + 150) / 5, 5)
-    // Recent rows are in DESC started_at order. Should be capped at 10.
-    expect(row?.recent.length).toBe(5)
-    expect(row?.recent[0]?.durationMs).toBe(150)
-    expect(row?.recent[4]?.durationMs).toBe(100)
-  })
-
-  it('getTaskHistory() filters to the requested task IDs only', async () => {
-    cache.recordRun({
-      hash: 'h-a',
-      project: 'a',
-      task: 'build',
-      status: 'success',
-      exitCode: 0,
-      durationMs: 10,
-      startedAt: Date.now() - 100,
-      endedAt: Date.now(),
-    })
-    cache.recordRun({
-      hash: 'h-b',
-      project: 'b',
-      task: 'build',
-      status: 'success',
-      exitCode: 0,
-      durationMs: 20,
-      startedAt: Date.now() - 100,
-      endedAt: Date.now(),
-    })
-    const h = cache.getTaskHistory(['a#build'])
-    expect(h.has('a#build')).toBe(true)
-    expect(h.has('b#build')).toBe(false)
-  })
-
-  it('getTaskHistory() caps per-task rows at 50 for the aggregates and 10 for recent', async () => {
-    const base = Date.now() - 60 * 1000
-    for (let i = 0; i < 60; i++) {
-      cache.recordRun({
-        hash: `h-${i}`,
-        project: 'pkg',
-        task: 'build',
-        status: 'success',
-        exitCode: 0,
-        durationMs: i * 10,
-        startedAt: base + i * 100,
-        endedAt: base + i * 100 + i * 10,
-      })
-    }
-    const h = cache.getTaskHistory(['pkg#build'])
-    const row = h.get('pkg#build')
-    // 60 runs total but the aggregate window caps at 50.
-    expect(row?.runs).toBe(50)
-    expect(row?.recent.length).toBe(10)
-    // Recent rows are most-recent-first.
-    expect(row?.recent[0]?.durationMs).toBe(59 * 10)
-  })
-
   it('recordRun() + stats() captures run history', async () => {
     const startedAt = Date.now() - 100
     const endedAt = Date.now()
@@ -568,8 +480,6 @@ describe('Cache storage (v10)', () => {
       wallclockStartNs: 0n,
       wallclockEndNs: 50_000_000n,
       cacheHit: false,
-      bytesUploaded: 4096,
-      bytesDownloaded: 0,
     })
     // Read back via the underlying DB to confirm the columns were stored.
     // Reaches past the public API on purpose — this is a schema test.
@@ -579,13 +489,11 @@ describe('Cache storage (v10)', () => {
       cpu_ms: number
       peak_rss_bytes: number
       cache_hit: number
-      bytes_uploaded: number
     }
     expect(row.run_id).toBe('01JZZZZZZZZZZZZZZZZZZZZZZZ')
     expect(row.cpu_ms).toBe(42)
     expect(row.peak_rss_bytes).toBe(1024 * 1024 * 32)
     expect(row.cache_hit).toBe(0)
-    expect(row.bytes_uploaded).toBe(4096)
   })
 
   it('recordRun() omitting v11 columns stores NULL', async () => {
@@ -733,7 +641,7 @@ describe('Cache storage (v10)', () => {
     expect(stored).toBe('second-version-longer')
   })
 
-  it('recordRun() persists cache-hit-remote with cache_hit=1 + bytes_downloaded', async () => {
+  it('recordRun() persists cache-hit-remote with cache_hit=1', async () => {
     cache.recordRun({
       hash: 'h-remote',
       project: 'pkg',
@@ -745,18 +653,15 @@ describe('Cache storage (v10)', () => {
       endedAt: Date.now() + 5,
       runId: '01ABCDEFG',
       cacheHit: true,
-      bytesDownloaded: 123_456,
     })
     // @ts-expect-error: private member access for testing
     const row = cache.db.prepare('SELECT * FROM runs WHERE hash = ?').get('h-remote') as {
       status: string
       cache_hit: number
-      bytes_downloaded: number
       run_id: string
     }
     expect(row.status).toBe('cache-hit-remote')
     expect(row.cache_hit).toBe(1)
-    expect(row.bytes_downloaded).toBe(123_456)
     expect(row.run_id).toBe('01ABCDEFG')
   })
 

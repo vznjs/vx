@@ -55,10 +55,11 @@ describe('prepareRun perf surface', () => {
     for (const n of ['a', 'b', 'c', 'd', 'e']) await addProject(root, n)
     const prepared = await prepareRun({ cwd: root, tasks: ['build'] }, log)
     try {
-      expect(prepared.projects.size).toBe(5)
+      // After parallel config load, the task graph should contain a
+      // `<name>#build` node for every project that declared the task.
+      expect(prepared.nodes.size).toBe(5)
       for (const n of ['a', 'b', 'c', 'd', 'e']) {
-        expect(prepared.projects.has(n)).toBe(true)
-        expect(prepared.projects.get(n)?.config.tasks?.build).toBeDefined()
+        expect(prepared.nodes.has(`${n}#build`)).toBe(true)
       }
     } finally {
       prepared.cache.close()
@@ -99,8 +100,10 @@ describe('prepareRun perf surface', () => {
 
     const prepared = await prepareRun({ cwd: root, tasks: ['build'] }, log)
     try {
-      expect(prepared.projects.has('configured')).toBe(true)
-      expect(prepared.projects.has('bare')).toBe(false)
+      // Configured project has a node; bare project has no vx.config
+      // so it never enters the graph.
+      expect(prepared.nodes.has('configured#build')).toBe(true)
+      expect(prepared.nodes.has('bare#build')).toBe(false)
     } finally {
       prepared.cache.close()
     }

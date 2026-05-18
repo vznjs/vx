@@ -1,14 +1,8 @@
 // Remote cache HTTP client — speaks the Turborepo /v8/artifacts/ spec.
 //
-// Wire-level only. Knows nothing about local storage, tar formats, or how
-// the orchestrator uses the cache; those concerns live in the LayeredCache
-// + the pack/unpack module (separate PR).
-//
-// Endpoint shape (from docs/design/remote-cache.md):
-//   HEAD /v8/artifacts/<hash>?teamId=&slug=
-//   GET  /v8/artifacts/<hash>?teamId=&slug=
-//   PUT  /v8/artifacts/<hash>?teamId=&slug=
-//   POST /v8/artifacts (batch existence)
+// Wire-level only. Knows nothing about local storage, tar formats, or
+// how the orchestrator uses the cache; those concerns live in the
+// LayeredCache. Two operations only — GET (read) and PUT (write).
 //
 // Reference servers we want to interop with at the HTTP layer:
 //   ducktors/turborepo-remote-cache, Fox32/openturbo-remote-cache,
@@ -29,35 +23,15 @@ export interface RemoteCacheConfig {
 export interface RemotePutMetadata {
   /** Task duration in ms. Sent as x-artifact-duration. */
   durationMs: number
-  /** Optional HMAC tag for payload signing (x-artifact-tag). */
-  tag?: string
-  /** Optional CI name (x-artifact-client-ci). */
-  ci?: string
-  /** Optional interactive flag (x-artifact-client-interactive: "1"). */
-  interactive?: boolean
 }
 
 export interface RemoteGetResult {
   body: ArrayBuffer
   durationMs: number | undefined
-  tag: string | undefined
-}
-
-export interface RemoteBatchInfo {
-  size: number
-  taskDurationMs: number | undefined
-  tag: string | undefined
 }
 
 export class RemoteCache {
   constructor(private readonly config: RemoteCacheConfig) {}
-
-  async has(hash: string): Promise<boolean> {
-    const res = await this.fetch('HEAD', this.artifactUrl(hash))
-    if (res.status === 404) return false
-    if (!res.ok) throw new RemoteCacheError(`HEAD ${hash} → ${res.status}`, res.status)
-    return true
-  }
 
   async get(hash: string): Promise<RemoteGetResult | null> {
     const res = await this.fetch('GET', this.artifactUrl(hash))
@@ -67,7 +41,6 @@ export class RemoteCache {
     return {
       body,
       durationMs: parseIntHeader(res.headers.get('x-artifact-duration')),
-      tag: res.headers.get('x-artifact-tag') ?? undefined,
     }
   }
 
@@ -77,37 +50,11 @@ export class RemoteCache {
       'Content-Length': String(body.byteLength),
       'x-artifact-duration': String(meta.durationMs),
     }
-    if (meta.tag !== undefined) headers['x-artifact-tag'] = meta.tag
-    if (meta.ci !== undefined) headers['x-artifact-client-ci'] = meta.ci
-    if (meta.interactive) headers['x-artifact-client-interactive'] = '1'
 
     const res = await this.fetch('PUT', this.artifactUrl(hash), { body, headers })
     if (!res.ok && res.status !== 200 && res.status !== 201) {
       throw new RemoteCacheError(`PUT ${hash} → ${res.status}`, res.status)
     }
-  }
-
-  async batchExistence(hashes: readonly string[]): Promise<Record<string, RemoteBatchInfo>> {
-    if (hashes.length === 0) return {}
-    const url = this.urlWithTenancy(`${this.config.baseUrl}/v8/artifacts`)
-    const res = await this.fetch('POST', url, {
-      body: JSON.stringify({ hashes }),
-      headers: { 'Content-Type': 'application/json' },
-    })
-    if (!res.ok) throw new RemoteCacheError(`POST /v8/artifacts → ${res.status}`, res.status)
-    const json = (await res.json()) as Record<
-      string,
-      { size: number; taskDurationMs?: number; tag?: string }
-    >
-    const out: Record<string, RemoteBatchInfo> = {}
-    for (const [hash, info] of Object.entries(json)) {
-      out[hash] = {
-        size: info.size,
-        taskDurationMs: info.taskDurationMs,
-        tag: info.tag,
-      }
-    }
-    return out
   }
 
   private artifactUrl(hash: string): string {
