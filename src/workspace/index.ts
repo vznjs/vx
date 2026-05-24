@@ -6,9 +6,9 @@ const WorkspaceSchema = z.strictObject({})
 
 export type Workspace = z.infer<typeof WorkspaceSchema>
 
-export async function loadWorkspace(dir: string): Promise<unknown> {
-  const mod = await import(join(dir, 'vx.workspace'))
-  return mod.default
+export async function loadWorkspace(root: string): Promise<Workspace> {
+  const mod = await import(join(root, 'vx.workspace'))
+  return validateWorkspace(mod.default)
 }
 
 export function validateWorkspace(input: unknown): Workspace {

@@ -5,9 +5,9 @@ const ProjectSchema = z.strictObject({})
 
 export type Project = z.infer<typeof ProjectSchema>
 
-export async function loadProject(dir: string): Promise<unknown> {
+export async function loadProject(dir: string): Promise<Project> {
   const mod = await import(join(dir, 'vx.config'))
-  return mod.default
+  return validateProject(mod.default)
 }
 
 export function validateProject(input: unknown): Project {

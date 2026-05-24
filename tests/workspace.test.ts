@@ -10,40 +10,40 @@ import { makeWorkspaceAsync } from './_testkit/fixtures.ts'
 
 describe('loadWorkspace', () => {
   it('loads vx.workspace.ts', async () => {
-    const dir = await makeWorkspaceAsync({ 'vx.workspace.ts': 'export default {}' })
-    expect(await loadWorkspace(dir)).toEqual({})
+    const root = await makeWorkspaceAsync({ 'vx.workspace.ts': 'export default {}' })
+    expect(await loadWorkspace(root)).toEqual({})
   })
 
   it('loads vx.workspace.mts', async () => {
-    const dir = await makeWorkspaceAsync({ 'vx.workspace.mts': 'export default {}' })
-    expect(await loadWorkspace(dir)).toEqual({})
+    const root = await makeWorkspaceAsync({ 'vx.workspace.mts': 'export default {}' })
+    expect(await loadWorkspace(root)).toEqual({})
   })
 
   it('loads vx.workspace.js', async () => {
-    const dir = await makeWorkspaceAsync({ 'vx.workspace.js': 'export default {}' })
-    expect(await loadWorkspace(dir)).toEqual({})
+    const root = await makeWorkspaceAsync({ 'vx.workspace.js': 'export default {}' })
+    expect(await loadWorkspace(root)).toEqual({})
   })
 
   it('loads vx.workspace.mjs', async () => {
-    const dir = await makeWorkspaceAsync({ 'vx.workspace.mjs': 'export default {}' })
-    expect(await loadWorkspace(dir)).toEqual({})
+    const root = await makeWorkspaceAsync({ 'vx.workspace.mjs': 'export default {}' })
+    expect(await loadWorkspace(root)).toEqual({})
   })
 
-  it('returns the default export unchanged — no validation', async () => {
-    const dir = await makeWorkspaceAsync({
-      'vx.workspace.ts': 'export default { whatever: 7, nested: { x: "y" } }',
+  it('throws on unknown fields (validation is implicit)', async () => {
+    const root = await makeWorkspaceAsync({
+      'vx.workspace.ts': 'export default { whatever: 7 }',
     })
-    expect(await loadWorkspace(dir)).toEqual({ whatever: 7, nested: { x: 'y' } })
+    await expect(loadWorkspace(root)).rejects.toThrow(/whatever/)
   })
 
-  it('returns undefined when the file has no default export', async () => {
-    const dir = await makeWorkspaceAsync({ 'vx.workspace.ts': 'export const x = 1' })
-    expect(await loadWorkspace(dir)).toBeUndefined()
+  it('throws when the file has no default export', async () => {
+    const root = await makeWorkspaceAsync({ 'vx.workspace.ts': 'export const x = 1' })
+    await expect(loadWorkspace(root)).rejects.toThrow()
   })
 
-  it('throws when the directory has no vx.workspace file', async () => {
-    const dir = await makeWorkspaceAsync({ 'random.txt': 'nothing' })
-    await expect(loadWorkspace(dir)).rejects.toThrow()
+  it('throws when the root has no vx.workspace file', async () => {
+    const root = await makeWorkspaceAsync({ 'random.txt': 'nothing' })
+    await expect(loadWorkspace(root)).rejects.toThrow()
   })
 })
 

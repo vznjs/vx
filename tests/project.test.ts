@@ -23,16 +23,16 @@ describe('loadProject', () => {
     expect(await loadProject(dir)).toEqual({})
   })
 
-  it('returns the default export unchanged — no validation', async () => {
+  it('throws on unknown fields (validation is implicit)', async () => {
     const dir = await makeWorkspaceAsync({
-      'vx.config.ts': 'export default { whatever: 7, nested: { x: "y" } }',
+      'vx.config.ts': 'export default { whatever: 7 }',
     })
-    expect(await loadProject(dir)).toEqual({ whatever: 7, nested: { x: 'y' } })
+    await expect(loadProject(dir)).rejects.toThrow(/whatever/)
   })
 
-  it('returns undefined when the file has no default export', async () => {
+  it('throws when the file has no default export', async () => {
     const dir = await makeWorkspaceAsync({ 'vx.config.ts': 'export const x = 1' })
-    expect(await loadProject(dir)).toBeUndefined()
+    await expect(loadProject(dir)).rejects.toThrow()
   })
 
   it('throws when the directory has no vx.config file', async () => {
