@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { join } from 'node:path'
-import { makeWorkspaceAsync } from '../_testkit/fixtures.ts'
-import { graphCommand } from './graph-cmd.ts'
+import { makeWorkspaceAsync } from '../../src/_testkit/fixtures.ts'
+import { graphCommand } from '../../src/cli/graph-cmd.ts'
 
 function collect() {
   const stdoutChunks: string[] = []

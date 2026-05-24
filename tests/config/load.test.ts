@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { join } from 'node:path'
-import { makeWorkspaceAsync } from '../_testkit/fixtures.ts'
-import { loadConfigs } from './load.ts'
+import { makeWorkspaceAsync } from '../../src/_testkit/fixtures.ts'
+import { loadConfigs } from '../../src/config/load.ts'
 
 function ws(dirs: { name: string; dir: string }[]) {
   return { workspace: { projects: dirs } }
@@ -43,7 +43,7 @@ describe('loadConfigs', () => {
     const root = await makeWorkspaceAsync({
       'pkg/a/package.json': '{"name":"a"}',
       'pkg/a/vx.config.ts': `
-        import { defineProject } from '${import.meta.dir.replace(/\\/g, '/')}/index.ts'
+        import { defineProject } from '${join(import.meta.dir, '../../src/config').replace(/\\/g, '/')}/index.ts'
         export default defineProject({
           tasks: { lint: { exec: { command: 'oxlint' } } },
         })

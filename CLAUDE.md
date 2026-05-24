@@ -15,7 +15,8 @@ started over.
 
 1. **Modules-first.** Each concern lives in `src/<module>/` with its own
    `types.ts` (interface contract), default implementation, collocated
-   `*.test.ts` + `*.bench.ts`, and `README.md` describing the contract.
+   `*.bench.ts`, and `README.md` describing the contract. Tests live
+   under `tests/<module>/<name>.test.ts` — a mirror tree of `src/`.
    No back-doors between modules. Anything in module A that wants to
    talk to module B does so through B's `index.ts` public surface.
 2. **Pipeline composition.** The CLI wires modules into a pipeline:
@@ -56,14 +57,12 @@ src/
     types.ts              # Workspace + Project + Discover interface
     discover.ts           # default discovery impl
     find-root.ts          # walk-up to locate workspace root
-    *.test.ts             # collocated unit tests
     discover.bench.ts
     README.md             # contract + replacement guide
     index.ts
   config/                 # vx.config.ts loading + base-schema validation
     types.ts              # ProjectConfig, TaskConfig, defineProject
     load.ts
-    load.test.ts
     load.bench.ts
     README.md
     index.ts
@@ -72,7 +71,6 @@ src/
     dependency-spec.ts    # parser for "name" / "^name" / "pkg#task" / wildcards
     build.ts              # graph assembly + cycle check + topo sort
     format.ts             # text / json / dot renderers
-    *.test.ts
     build.bench.ts
     README.md
     index.ts
@@ -80,10 +78,21 @@ src/
     parse.ts              # pure argv parser
     cli.ts                # entry: runCli(argv, opts)
     graph-cmd.ts          # `vx graph` subcommand
-    *.test.ts
     README.md
     index.ts
 tests/
+  workspace/              # mirror of src/workspace/ — unit tests
+    discover.test.ts
+    find-root.test.ts
+  config/
+    load.test.ts
+  graph/
+    dependency-spec.test.ts
+    build.test.ts
+    format.test.ts
+  cli/
+    parse.test.ts
+    graph-cmd.test.ts
   e2e/                    # spawns the real bin against real fixtures
     graph-cli.test.ts
 .github/workflows/
@@ -132,8 +141,10 @@ not inside it.
   non-obvious decisions or hidden invariants.
 - **No half-finished implementations.** Ship it or don't write it.
 - **Trust internal code.** Validate only at system boundaries.
-- **Tests collocated.** `src/<module>/foo.test.ts` next to `foo.ts`.
-  e2e tests live under `tests/e2e/`.
+- **Tests live under `tests/`.** `tests/<module>/foo.test.ts` mirrors
+  `src/<module>/foo.ts`. End-to-end tests live under `tests/e2e/`.
+  Benchmarks (`*.bench.ts`) stay collocated next to the source they
+  measure.
 - **Underscored folders (`_bench/`, `_testkit/`) are internal-only.**
   Not part of the public API; never re-exported from `src/index.ts`.
 

@@ -30,9 +30,11 @@ bun src/bin.ts graph build --dot | dot -Tsvg > graph.svg
 
 ## Tests
 
+Unit tests live under `tests/<module>/` mirroring `src/<module>/`. End-to-end tests live under `tests/e2e/`.
+
 ```bash
 bun test                  # full suite (unit + e2e)
-bun test src/graph/       # one module
+bun test tests/graph/     # one module
 bun test tests/e2e/       # end-to-end only
 ```
 

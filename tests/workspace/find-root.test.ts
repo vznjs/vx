@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { join } from 'node:path'
-import { makeWorkspaceAsync } from '../_testkit/fixtures.ts'
-import { findWorkspaceRoot } from './find-root.ts'
+import { makeWorkspaceAsync } from '../../src/_testkit/fixtures.ts'
+import { findWorkspaceRoot } from '../../src/workspace/find-root.ts'
 
 describe('findWorkspaceRoot', () => {
   it('returns cwd when pnpm-workspace.yaml is right there', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { DependencySpecError, parseDependencySpec } from './dependency-spec.ts'
+import { DependencySpecError, parseDependencySpec } from '../../src/graph/dependency-spec.ts'
 
 describe('parseDependencySpec', () => {
   it('parses a bare name as a same-project edge', () => {

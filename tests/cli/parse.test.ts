@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { parseArgs } from './parse.ts'
+import { parseArgs } from '../../src/cli/parse.ts'
 
 describe('parseArgs', () => {
   it('returns no command when argv is empty', () => {

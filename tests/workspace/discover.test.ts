@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { join } from 'node:path'
-import { makeWorkspaceAsync } from '../_testkit/fixtures.ts'
-import { discover } from './discover.ts'
+import { makeWorkspaceAsync } from '../../src/_testkit/fixtures.ts'
+import { discover } from '../../src/workspace/discover.ts'
 
 describe('discover', () => {
   it('returns a single project for a bare package.json at root', async () => {

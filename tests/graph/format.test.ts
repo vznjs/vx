@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
-import { buildGraph } from './build.ts'
-import { formatGraph } from './format.ts'
-import type { LoadedConfig } from '../config/types.ts'
+import { buildGraph } from '../../src/graph/build.ts'
+import { formatGraph } from '../../src/graph/format.ts'
+import type { LoadedConfig } from '../../src/config/types.ts'
 
 function project(name: string, tasks: NonNullable<LoadedConfig['config']['tasks']>): LoadedConfig {
   return { project: { name, dir: `/fake/${name}` }, config: { tasks } }
