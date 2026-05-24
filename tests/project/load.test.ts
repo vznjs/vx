@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'bun:test'
 import { join } from 'node:path'
-import { loadConfig } from '../../src/config/load.ts'
+import { loadProject } from '../../src/project/load.ts'
 import { makeWorkspaceAsync } from '../_testkit/fixtures.ts'
 
-describe('loadConfig', () => {
-  it('loads an empty config', async () => {
+describe('loadProject', () => {
+  it('loads an empty project', async () => {
     const root = await makeWorkspaceAsync({
       'vx.config.ts': 'export default {}',
     })
 
-    const config = await loadConfig(join(root, 'vx.config.ts'))
+    const project = await loadProject(join(root, 'vx.config.ts'))
 
-    expect(config).toEqual({})
+    expect(project).toEqual({})
   })
 
   it('returns whatever the user exported (no validation)', async () => {
@@ -19,9 +19,9 @@ describe('loadConfig', () => {
       'vx.config.ts': 'export default { whatever: 7, nested: { x: "y" } }',
     })
 
-    const config = await loadConfig(join(root, 'vx.config.ts'))
+    const project = await loadProject(join(root, 'vx.config.ts'))
 
-    expect(config).toEqual({ whatever: 7, nested: { x: 'y' } } as unknown as Record<
+    expect(project).toEqual({ whatever: 7, nested: { x: 'y' } } as unknown as Record<
       string,
       unknown
     >)

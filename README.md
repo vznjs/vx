@@ -1,17 +1,20 @@
 # @vzn/vx
 
-Pre-alpha. Currently exports one thing: `loadConfig` from `src/config/`.
+Pre-alpha. One module: `src/project/`.
 
 ```ts
-import { loadConfig } from '@vzn/vx'
+import { defineProject, loadProject } from '@vzn/vx'
 
-const config = await loadConfig('/abs/path/to/vx.config.ts')
-// config: whatever the file `export default`-ed, typed as ProjectConfig ({})
+// In vx.config.ts:
+export default defineProject({})
+
+// Anywhere else:
+const project = await loadProject('/abs/path/to/vx.config.ts')
 ```
 
-That's the whole API. No file discovery, no extension iteration, no schema, no validation. The caller picks the path; this module loads it.
+That's the whole API. No file discovery, no extension iteration, no schema, no validation. Caller picks the path; the module loads it. `defineProject` is identity at runtime — it exists for type inference inside config files.
 
-See [`src/config/README.md`](src/config/README.md).
+See [`src/project/README.md`](src/project/README.md).
 
 ## Develop
 
@@ -20,7 +23,7 @@ bun install
 bun test
 bun x oxfmt --check .
 bun x oxlint --type-aware --type-check
-bun bench/config/load.bench.ts
+bun bench/project/load.bench.ts
 ```
 
 ## License

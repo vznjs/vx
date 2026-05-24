@@ -1,2 +1,2 @@
-export type { ProjectConfig } from './config/index.ts'
-export { loadConfig } from './config/index.ts'
+export type { Project } from './project/index.ts'
+export { defineProject, loadProject } from './project/index.ts'

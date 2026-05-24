@@ -1,6 +1,6 @@
 # `@vzn/vx` — project memory for Claude
 
-Pre-alpha. **Currently one module only: `config`.** Every other concern (workspace discovery, task graph, runner, cli, …) is intentionally out of scope until we've nailed config.
+Pre-alpha. **Currently one module only: `project`.** Every other concern (workspace discovery, task graph, runner, cli, …) is intentionally out of scope until we've nailed it.
 
 ## Rules
 
@@ -24,20 +24,23 @@ Pre-alpha. **Currently one module only: `config`.** Every other concern (workspa
 
 ```
 src/
-  index.ts                # re-exports from config
-  config/
-    types.ts              # ProjectConfig (empty)
-    load.ts               # loadConfig(path) — async, returns mod.default
+  index.ts                # re-exports from project
+  project/
+    types.ts              # Project (empty)
+    load.ts               # loadProject(path) — async, returns mod.default
+    define.ts             # defineProject(p) — identity, for type inference
     index.ts
     README.md
 
 tests/
   _testkit/fixtures.ts    # tmp-dir builder shared by tests + benches
-  config/load.test.ts
+  project/
+    load.test.ts
+    define.test.ts
 
 bench/
   _harness.ts             # mitata wrapper
-  config/load.bench.ts
+  project/load.bench.ts
 
 .github/workflows/ci.yml  # install → format-check → lint → test
 package.json              # devDeps only
@@ -50,11 +53,11 @@ LICENSE
 
 ## Status
 
-| Module | Shipped | Surface                                                                                                                        |
-| ------ | :-----: | ------------------------------------------------------------------------------------------------------------------------------ |
-| config |   ✅    | `loadConfig(path)` — async, dynamic-imports the path, returns `mod.default`. Knows nothing about callers, names, or discovery. |
+| Module  | Shipped | Surface                                                                                                         |
+| ------- | :-----: | --------------------------------------------------------------------------------------------------------------- |
+| project |   ✅    | `loadProject(path)` + `defineProject(p)` + `Project` (empty). Knows nothing about callers, names, or discovery. |
 
-2 tests pass. Format + lint clean.
+3 tests pass. Format + lint clean.
 
 ## Operating directive
 
