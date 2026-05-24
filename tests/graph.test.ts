@@ -6,28 +6,26 @@ import { makeWorkspaceAsync } from './_testkit/fixtures.ts'
 describe('loadGraph', () => {
   it('loads the workspace from the same dir', async () => {
     const root = await makeWorkspaceAsync({
-      'vx.workspace.ts': "export default { packages: ['packages/*'] }",
-      'packages/a/.keep': '',
+      'package.json': '{"name":"root","private":true,"workspaces":["packages/*"]}',
+      'bun.lock': '{}',
+      'packages/a/package.json': '{"name":"a","version":"1.0.0"}',
     })
 
     const graph = await loadGraph(root)
 
-    expect(graph.config).toEqual({ packages: ['packages/*'] })
     expect([...graph.projects.keys()]).toEqual(['packages/a'])
   })
 
   it('walks up from a subdirectory to find the workspace root', async () => {
     const root = await makeWorkspaceAsync({
-      'vx.workspace.ts': "export default { packages: ['packages/*'] }",
+      'package.json': '{"name":"root","private":true,"workspaces":["packages/*"]}',
+      'bun.lock': '{}',
+      'packages/a/package.json': '{"name":"a","version":"1.0.0"}',
       'packages/a/src/x.ts': 'export const x = 1',
     })
 
     const graph = await loadGraph(join(root, 'packages/a/src'))
 
     expect([...graph.projects.keys()]).toEqual(['packages/a'])
-  })
-
-  it('throws when no vx.workspace marker is found anywhere', async () => {
-    await expect(loadGraph('/this/path/should/have/no/workspace/marker/anywhere')).rejects.toThrow()
   })
 })

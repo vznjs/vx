@@ -1,45 +1,27 @@
-import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { getPackages } from '@manypkg/get-packages'
 import { z } from 'zod'
 import type { Project } from '../project/index.ts'
 import { loadProject } from '../project/index.ts'
 
-const WorkspaceConfigSchema = z.strictObject({
-  packages: z.array(z.string()).readonly(),
-})
+const WorkspaceConfigSchema = z.strictObject({})
 
 export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>
 
 export interface Workspace {
-  readonly config: WorkspaceConfig
-  /** Relative project dir → loaded project. Inferred from `config.packages`. */
   readonly projects: ReadonlyMap<string, Project>
 }
 
 export async function loadWorkspace(root: string): Promise<Workspace> {
-  const mod = await import(join(root, 'vx.workspace'))
+  const mod = await import(join(root, 'vx.workspace')).catch(() => ({ default: {} }))
   const config = validateWorkspaceConfig(mod.default)
-  const projects = await inferProjects(root, config.packages)
-  return { config, projects }
-}
-
-async function inferProjects(
-  root: string,
-  patterns: readonly string[],
-): Promise<ReadonlyMap<string, Project>> {
-  const seen = new Set<string>()
-  const loads: Promise<[string, Project]>[] = []
-  for (const pattern of patterns) {
-    const glob = new Bun.Glob(pattern)
-    for await (const match of glob.scan({ cwd: root, onlyFiles: false })) {
-      if (seen.has(match)) continue
-      seen.add(match)
-      const s = await stat(join(root, match))
-      if (!s.isDirectory()) continue
-      loads.push(loadProject(join(root, match)).then((p) => [match, p]))
-    }
-  }
-  return new Map(await Promise.all(loads))
+  const { packages } = await getPackages(root)
+  const projects = new Map(
+    await Promise.all(
+      packages.map(async (pkg) => [pkg.relativeDir, await loadProject(pkg.dir)] as const),
+    ),
+  )
+  return { ...config, projects }
 }
 
 export function validateWorkspaceConfig(input: unknown): WorkspaceConfig {

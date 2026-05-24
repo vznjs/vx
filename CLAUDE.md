@@ -51,13 +51,13 @@ LICENSE
 
 ## Status
 
-| Module    | Shipped | Surface                                                                                                                                                                                                                                                                                                                             |
-| --------- | :-----: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| project   |   ✅    | Single file. `ProjectConfig` (raw schema, currently `{}`). `Project = { config: ProjectConfig }`. `loadProject(dir)` imports `vx.config.*` if present and wraps the config; missing config returns `{ config: {} }`. `validateProjectConfig` / `defineProject` operate on the raw config.                                                 |
-| workspace |   ✅    | Single file. `WorkspaceConfig` (raw schema, `{ packages: readonly string[] }`). `Workspace = { config: WorkspaceConfig, projects: Map<dir, Project> }`. `loadWorkspace(root)` imports `vx.workspace.*` and infers projects by globbing each pattern (dirs only). `validateWorkspaceConfig` / `defineWorkspace` operate on the raw config. |
-| graph     |   ✅    | Single file. `Graph` is an alias for `Workspace`. `loadGraph(start)` walks up looking for `vx.workspace.*` to find the root, then calls `loadWorkspace`.                                                                                                                                                                            |
+| Module    | Shipped | Surface                                                                                                                                                                                                                                                                                                                                      |
+| --------- | :-----: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| project   |   ✅    | Single file. `ProjectConfig` (raw schema, currently `{}`). `Project` (loaded shape, currently `{}`). `loadProject(dir)` does `await import(join(dir, 'vx.config'))` (Bun resolves the extension); falls back to `{}` if the file is absent. `validateProjectConfig` + `defineProject` operate on the raw config.                             |
+| workspace |   ✅    | Single file. `WorkspaceConfig` (raw schema, currently `{}`). `Workspace = { projects: Map<relativeDir, Project> }`. `loadWorkspace(root)` imports `vx.workspace.*` (optional) and uses `@manypkg/get-packages` to enumerate projects from the PM's workspace setup. `validateWorkspaceConfig` + `defineWorkspace` operate on the raw config. |
+| graph     |   ✅    | Single file. `Graph` is an alias for `Workspace`. `loadGraph(start)` uses `@manypkg/find-root` to walk up, then calls `loadWorkspace`.                                                                                                                                                                                                       |
 
-29 tests pass. Format + lint clean.
+23 tests pass. Format + lint clean. Runtime deps: `zod`, `@manypkg/get-packages`, `@manypkg/find-root`.
 
 ## Operating directive
 

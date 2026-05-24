@@ -30,6 +30,8 @@
     "access": "public"
   },
   "dependencies": {
+    "@manypkg/find-root": "^3.1.0",
+    "@manypkg/get-packages": "^3.1.0",
     "zod": "^4.4.3"
   }
 }

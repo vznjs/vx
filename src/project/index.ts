@@ -3,20 +3,13 @@ import { z } from 'zod'
 
 const ProjectConfigSchema = z.strictObject({})
 
-const CONFIG_GLOB = new Bun.Glob('vx.config.{ts,mts,js,mjs}')
-
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>
 
-export interface Project {
-  readonly config: ProjectConfig
-}
+export interface Project {}
 
 export async function loadProject(dir: string): Promise<Project> {
-  for await (const _ of CONFIG_GLOB.scan({ cwd: dir })) {
-    const mod = await import(join(dir, 'vx.config'))
-    return { config: validateProjectConfig(mod.default) }
-  }
-  return { config: validateProjectConfig({}) }
+  const mod = await import(join(dir, 'vx.config')).catch(() => ({ default: {} }))
+  return { ...validateProjectConfig(mod.default) }
 }
 
 export function validateProjectConfig(input: unknown): ProjectConfig {

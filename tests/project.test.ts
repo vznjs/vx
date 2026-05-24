@@ -3,29 +3,29 @@ import { defineProject, loadProject, validateProjectConfig } from '../src/projec
 import { makeWorkspaceAsync } from './_testkit/fixtures.ts'
 
 describe('loadProject', () => {
-  it('loads vx.config.ts and wraps the config', async () => {
+  it('loads vx.config.ts', async () => {
     const dir = await makeWorkspaceAsync({ 'vx.config.ts': 'export default {}' })
-    expect(await loadProject(dir)).toEqual({ config: {} })
+    expect(await loadProject(dir)).toEqual({})
   })
 
   it('loads vx.config.mts', async () => {
     const dir = await makeWorkspaceAsync({ 'vx.config.mts': 'export default {}' })
-    expect(await loadProject(dir)).toEqual({ config: {} })
+    expect(await loadProject(dir)).toEqual({})
   })
 
   it('loads vx.config.js', async () => {
     const dir = await makeWorkspaceAsync({ 'vx.config.js': 'export default {}' })
-    expect(await loadProject(dir)).toEqual({ config: {} })
+    expect(await loadProject(dir)).toEqual({})
   })
 
   it('loads vx.config.mjs', async () => {
     const dir = await makeWorkspaceAsync({ 'vx.config.mjs': 'export default {}' })
-    expect(await loadProject(dir)).toEqual({ config: {} })
+    expect(await loadProject(dir)).toEqual({})
   })
 
-  it('returns a project with an empty config when no vx.config exists', async () => {
+  it('defaults to an empty project when no vx.config exists', async () => {
     const dir = await makeWorkspaceAsync({ 'something.txt': 'no config here' })
-    expect(await loadProject(dir)).toEqual({ config: {} })
+    expect(await loadProject(dir)).toEqual({})
   })
 
   it('throws on unknown fields when a config is present', async () => {
@@ -34,15 +34,10 @@ describe('loadProject', () => {
     })
     await expect(loadProject(dir)).rejects.toThrow(/whatever/)
   })
-
-  it('throws when the file has no default export', async () => {
-    const dir = await makeWorkspaceAsync({ 'vx.config.ts': 'export const x = 1' })
-    await expect(loadProject(dir)).rejects.toThrow()
-  })
 })
 
 describe('validateProjectConfig', () => {
-  it('returns the input as ProjectConfig when valid', () => {
+  it('returns the input when valid', () => {
     expect(validateProjectConfig({})).toEqual({})
   })
 

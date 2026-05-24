@@ -3,99 +3,87 @@ import { defineWorkspace, loadWorkspace, validateWorkspaceConfig } from '../src/
 import { makeWorkspaceAsync } from './_testkit/fixtures.ts'
 
 describe('loadWorkspace', () => {
-  it('returns the workspace config plus inferred projects', async () => {
+  it('loads projects from a package.json workspaces declaration', async () => {
     const root = await makeWorkspaceAsync({
-      'vx.workspace.ts': "export default { packages: ['packages/*'] }",
-      'packages/a/.keep': '',
-      'packages/b/.keep': '',
+      'package.json': '{"name":"root","private":true,"workspaces":["packages/*"]}',
+      'bun.lock': '{}',
+      'packages/a/package.json': '{"name":"@scope/a","version":"1.0.0"}',
+      'packages/b/package.json': '{"name":"@scope/b","version":"1.0.0"}',
     })
 
-    const workspace = await loadWorkspace(root)
+    const ws = await loadWorkspace(root)
 
-    expect(workspace.config).toEqual({ packages: ['packages/*'] })
-    expect([...workspace.projects.keys()].sort()).toEqual(['packages/a', 'packages/b'])
-    expect(workspace.projects.get('packages/a')).toEqual({ config: {} })
+    expect([...ws.projects.keys()].sort()).toEqual(['packages/a', 'packages/b'])
+    expect(ws.projects.get('packages/a')).toEqual({})
   })
 
-  it('uses each project’s vx.config when present', async () => {
+  it('loads projects from pnpm-workspace.yaml', async () => {
     const root = await makeWorkspaceAsync({
-      'vx.workspace.ts': "export default { packages: ['packages/*'] }",
+      'package.json': '{"name":"root","private":true}',
+      'pnpm-workspace.yaml': 'packages:\n  - "packages/*"\n',
+      'pnpm-lock.yaml': "lockfileVersion: '9.0'\n",
+      'packages/a/package.json': '{"name":"a","version":"1.0.0"}',
+    })
+
+    const ws = await loadWorkspace(root)
+
+    expect([...ws.projects.keys()]).toEqual(['packages/a'])
+  })
+
+  it("uses each project's vx.config when present", async () => {
+    const root = await makeWorkspaceAsync({
+      'package.json': '{"name":"root","private":true,"workspaces":["packages/*"]}',
+      'bun.lock': '{}',
+      'packages/a/package.json': '{"name":"a","version":"1.0.0"}',
       'packages/a/vx.config.ts': 'export default {}',
-      'packages/b/.keep': '',
+      'packages/b/package.json': '{"name":"b","version":"1.0.0"}',
     })
 
-    const workspace = await loadWorkspace(root)
+    const ws = await loadWorkspace(root)
 
-    expect(workspace.projects.get('packages/a')).toEqual({ config: {} })
-    expect(workspace.projects.get('packages/b')).toEqual({ config: {} })
+    expect(ws.projects.get('packages/a')).toEqual({})
+    expect(ws.projects.get('packages/b')).toEqual({})
   })
 
-  it('handles concrete path entries alongside globs', async () => {
+  it('returns an empty projects map when the workspace declares no packages', async () => {
     const root = await makeWorkspaceAsync({
-      'vx.workspace.ts': "export default { packages: ['packages/*', 'libs/core'] }",
-      'packages/a/.keep': '',
-      'libs/core/.keep': '',
+      'package.json': '{"name":"root","private":true,"workspaces":[]}',
+      'bun.lock': '{}',
     })
 
-    const workspace = await loadWorkspace(root)
+    const ws = await loadWorkspace(root)
 
-    expect([...workspace.projects.keys()].sort()).toEqual(['libs/core', 'packages/a'])
+    expect(ws.projects.size).toBe(0)
   })
 
-  it('skips file matches (only directories become projects)', async () => {
+  it('loads vx.workspace.ts alongside discovered projects', async () => {
     const root = await makeWorkspaceAsync({
-      'vx.workspace.ts': "export default { packages: ['packages/*'] }",
-      'packages/a/.keep': '',
-      'packages/README.md': 'not a project',
+      'package.json': '{"name":"root","private":true,"workspaces":["packages/*"]}',
+      'bun.lock': '{}',
+      'vx.workspace.ts': 'export default {}',
+      'packages/a/package.json': '{"name":"a","version":"1.0.0"}',
     })
 
-    const workspace = await loadWorkspace(root)
+    const ws = await loadWorkspace(root)
 
-    expect([...workspace.projects.keys()]).toEqual(['packages/a'])
-  })
-
-  it('dedupes when multiple patterns match the same dir', async () => {
-    const root = await makeWorkspaceAsync({
-      'vx.workspace.ts': "export default { packages: ['packages/*', 'packages/a'] }",
-      'packages/a/.keep': '',
-    })
-
-    const workspace = await loadWorkspace(root)
-
-    expect([...workspace.projects.keys()]).toEqual(['packages/a'])
-  })
-
-  it('returns an empty projects map for an empty packages list', async () => {
-    const root = await makeWorkspaceAsync({
-      'vx.workspace.ts': 'export default { packages: [] }',
-    })
-
-    const workspace = await loadWorkspace(root)
-
-    expect(workspace.projects.size).toBe(0)
-    expect(workspace.config.packages).toEqual([])
-  })
-
-  it('throws when packages is missing (schema is strict)', async () => {
-    const root = await makeWorkspaceAsync({ 'vx.workspace.ts': 'export default {}' })
-    await expect(loadWorkspace(root)).rejects.toThrow(/packages/)
+    expect([...ws.projects.keys()]).toEqual(['packages/a'])
   })
 
   it('throws on unknown fields in vx.workspace.ts', async () => {
     const root = await makeWorkspaceAsync({
-      'vx.workspace.ts': 'export default { packages: [], whatever: 7 }',
+      'package.json': '{"name":"root","private":true,"workspaces":[]}',
+      'bun.lock': '{}',
+      'vx.workspace.ts': 'export default { whatever: 7 }',
     })
-    await expect(loadWorkspace(root)).rejects.toThrow(/whatever/)
-  })
 
-  it('throws when the root has no vx.workspace file', async () => {
-    const root = await makeWorkspaceAsync({ 'random.txt': 'nothing' })
-    await expect(loadWorkspace(root)).rejects.toThrow()
+    await expect(loadWorkspace(root)).rejects.toThrow(/whatever/)
   })
 
   it('propagates project validation errors', async () => {
     const root = await makeWorkspaceAsync({
-      'vx.workspace.ts': "export default { packages: ['packages/*'] }",
+      'package.json': '{"name":"root","private":true,"workspaces":["packages/*"]}',
+      'bun.lock': '{}',
+      'packages/bad/package.json': '{"name":"bad","version":"1.0.0"}',
       'packages/bad/vx.config.ts': 'export default { whatever: 1 }',
     })
 
@@ -104,18 +92,12 @@ describe('loadWorkspace', () => {
 })
 
 describe('validateWorkspaceConfig', () => {
-  it('returns the input as WorkspaceConfig when valid', () => {
-    expect(validateWorkspaceConfig({ packages: ['packages/*'] })).toEqual({
-      packages: ['packages/*'],
-    })
-  })
-
-  it('throws on missing packages', () => {
-    expect(() => validateWorkspaceConfig({})).toThrow(/packages/)
+  it('returns the input when valid', () => {
+    expect(validateWorkspaceConfig({})).toEqual({})
   })
 
   it('throws on unknown fields (schema is strict)', () => {
-    expect(() => validateWorkspaceConfig({ packages: [], whatever: 7 })).toThrow(/whatever/)
+    expect(() => validateWorkspaceConfig({ whatever: 7 })).toThrow(/whatever/)
   })
 
   it('throws on non-object input', () => {
@@ -126,7 +108,7 @@ describe('validateWorkspaceConfig', () => {
 
 describe('defineWorkspace', () => {
   it('returns its argument unchanged', () => {
-    const input = { packages: ['packages/*'] } as const
+    const input = {} as const
     expect(defineWorkspace(input)).toBe(input)
   })
 })
