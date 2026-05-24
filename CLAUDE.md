@@ -48,10 +48,10 @@ LICENSE
 
 ## Status
 
-| Module    | Shipped | Surface                                                                                                                                                                                                                                            |
-| --------- | :-----: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| project   |   ✅    | Single file. `Project` (type, inferred from an internal zod schema). `loadProject(dir)` imports `vx.config.*`, returns `mod.default`. `validateProject(input)` parses any value through the schema. `defineProject(p)` identity for inference.     |
-| workspace |   ✅    | Single file. `Workspace` (type, inferred from an internal zod schema). `loadWorkspace(dir)` imports `vx.workspace.*`. `validateWorkspace(input)` parses through schema. `defineWorkspace(w)` identity. `findWorkspaceRoot(start)` via `pkg-types`. |
+| Module    | Shipped | Surface                                                                                                                                                                                                                                                                                                                    |
+| --------- | :-----: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| project   |   ✅    | Single file. `Project` (type, inferred from an internal zod schema). `loadProject(dir)` imports `vx.config.*` and validates implicitly. `validateProject(input)` parses any value through the schema. `defineProject(p)` identity for inference.                                                                           |
+| workspace |   ✅    | Single file. `Workspace` (type, inferred from an internal zod schema). `loadWorkspace(root)` imports `vx.workspace.*` and validates implicitly. `validateWorkspace(input)` parses through schema. `defineWorkspace(w)` identity. `findWorkspaceRoot(start)` via `pkg-types`. The only function returning an absolute path. |
 
 25 tests pass. Format + lint clean.
 
