@@ -28,7 +28,7 @@ src/
   index.ts                # re-exports from project
   project/
     schema.ts             # ProjectSchema (zod) + Project (inferred)
-    load.ts               # loadProject(path) — imports + ProjectSchema.parse()
+    load.ts               # loadProject(dir) — finds vx.config.* in dir, imports + ProjectSchema.parse()
     define.ts             # defineProject(p) — identity, for type inference
     index.ts
     README.md
@@ -54,11 +54,11 @@ LICENSE
 
 ## Status
 
-| Module  | Shipped | Surface                                                                                                                                             |
-| ------- | :-----: | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| project |   ✅    | `ProjectSchema` (zod, strict + empty) → `Project` (inferred). `loadProject(path)` parses through schema. `defineProject(p)` identity for inference. |
+| Module  | Shipped | Surface                                                                                                                                                                                    |
+| ------- | :-----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| project |   ✅    | `ProjectSchema` (zod, strict + empty) → `Project` (inferred). `loadProject(dir)` discovers vx.config.{ts,mts,js,mjs} and parses through schema. `defineProject(p)` identity for inference. |
 
-5 tests pass. Format + lint clean.
+10 tests pass. Format + lint clean.
 
 ## Operating directive
 

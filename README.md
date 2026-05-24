@@ -9,10 +9,10 @@ import { defineProject, loadProject } from '@vzn/vx'
 export default defineProject({})
 
 // Anywhere else:
-const project = await loadProject('/abs/path/to/vx.config.ts')
+const project = await loadProject('/abs/path/to/project-dir')
 ```
 
-That's the whole API. No file discovery, no extension iteration, no schema, no validation. Caller picks the path; the module loads it. `defineProject` is identity at runtime — it exists for type inference inside config files.
+`loadProject(dir)` finds `vx.config.{ts,mts,js,mjs}` in the given directory (first match wins, in that order), imports it, and parses the default export through `ProjectSchema` (zod, currently strict + empty). `defineProject` is identity at runtime — it exists for type inference inside config files.
 
 See [`src/project/README.md`](src/project/README.md).
 
