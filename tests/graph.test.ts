@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import { join } from 'node:path'
 import { loadGraph } from '../src/graph/index.ts'
 import { makeWorkspaceAsync } from './_testkit/fixtures.ts'
 
@@ -16,6 +17,19 @@ describe('loadGraph', () => {
     expect([...graph.projects.keys()].sort()).toEqual(['packages/a', 'packages/b'])
     expect(graph.projects.get('packages/a')).toEqual({})
     expect(graph.projects.get('packages/b')).toEqual({})
+  })
+
+  it('walks up from a subdirectory to find the workspace root', async () => {
+    const root = await makeWorkspaceAsync({
+      'pnpm-workspace.yaml': 'packages: ["packages/*"]',
+      'vx.workspace.ts': "export default { packages: ['packages/*'] }",
+      'packages/a/vx.config.ts': 'export default {}',
+      'packages/a/src/x.ts': 'export const x = 1',
+    })
+
+    const graph = await loadGraph(join(root, 'packages/a/src'))
+
+    expect([...graph.projects.keys()]).toEqual(['packages/a'])
   })
 
   it('loads a project from a concrete path entry', async () => {
@@ -83,9 +97,8 @@ describe('loadGraph', () => {
     expect(graph.workspace.packages).toEqual([])
   })
 
-  it('throws when vx.workspace.ts is missing', async () => {
-    const root = await makeWorkspaceAsync({ 'random.txt': 'nothing' })
-    await expect(loadGraph(root)).rejects.toThrow()
+  it('throws when no workspace marker is found anywhere', async () => {
+    await expect(loadGraph('/this/path/should/have/no/workspace/marker/anywhere')).rejects.toThrow()
   })
 
   it('throws when a discovered project has an invalid vx.config', async () => {

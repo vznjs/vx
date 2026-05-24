@@ -1,5 +1,4 @@
 import { join } from 'node:path'
-import { findWorkspaceDir } from 'pkg-types'
 import { z } from 'zod'
 
 const WorkspaceSchema = z.strictObject({
@@ -19,8 +18,4 @@ export function validateWorkspace(input: unknown): Workspace {
 
 export function defineWorkspace<T extends Workspace>(workspace: T): T {
   return workspace
-}
-
-export async function findWorkspaceRoot(start: string): Promise<string> {
-  return findWorkspaceDir(start)
 }

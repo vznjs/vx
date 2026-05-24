@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { join } from 'node:path'
-import {
-  defineWorkspace,
-  findWorkspaceRoot,
-  loadWorkspace,
-  validateWorkspace,
-} from '../src/workspace/index.ts'
+import { defineWorkspace, loadWorkspace, validateWorkspace } from '../src/workspace/index.ts'
 import { makeWorkspaceAsync } from './_testkit/fixtures.ts'
 
 describe('loadWorkspace', () => {
@@ -90,29 +84,5 @@ describe('defineWorkspace', () => {
   it('returns its argument unchanged', () => {
     const input = { packages: ['packages/*'] } as const
     expect(defineWorkspace(input)).toBe(input)
-  })
-})
-
-describe('findWorkspaceRoot', () => {
-  it('returns the dir containing pnpm-workspace.yaml', async () => {
-    const root = await makeWorkspaceAsync({
-      'pnpm-workspace.yaml': 'packages: ["packages/*"]',
-    })
-    expect(await findWorkspaceRoot(root)).toBe(root)
-  })
-
-  it('walks up from a subdirectory to find the workspace root', async () => {
-    const root = await makeWorkspaceAsync({
-      'pnpm-workspace.yaml': 'packages: ["packages/*"]',
-      'packages/a/package.json': '{"name":"a"}',
-      'packages/a/src/x.ts': 'export const x = 1',
-    })
-    expect(await findWorkspaceRoot(join(root, 'packages/a/src'))).toBe(root)
-  })
-
-  it('throws when no workspace marker is found', async () => {
-    await expect(
-      findWorkspaceRoot('/this/path/should/have/no/workspace/marker/anywhere'),
-    ).rejects.toThrow()
   })
 })
