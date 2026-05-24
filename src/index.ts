@@ -1,24 +1,34 @@
-// Public API for @vzn/vx.
+// Public re-exports. Each module owns its own surface; this file is
+// the single entry point for users embedding @vzn/vx programmatically.
 
-export const VERSION = '0.0.0'
+export type { Discover, DiscoverOptions, Project, Workspace } from './workspace/index.ts'
+export { discover, findWorkspaceRoot } from './workspace/index.ts'
 
-// Schema types and helpers (used by user vx.config files and presets).
 export type {
-  WorkspaceConfig,
+  ExecConfig,
+  LoadConfigs,
+  LoadOptions,
+  LoadedConfig,
   ProjectConfig,
   TaskConfig,
-  ExecConfig,
-  ExecEnv,
-  CacheConfig,
-  CacheInputs,
-  CacheOutputs,
-  SandboxConfig,
-  SandboxNetworkConfig,
-} from './config.js'
-export { defineProject, defineWorkspace } from './config.js'
+} from './config/index.ts'
+export { defineProject, loadConfigs } from './config/index.ts'
 
-// Programmatic engine API (for embedding in other tools).
-export { run } from './orchestrator.js'
-export type { Logger, RunOptions, RunSummary } from './orchestrator.js'
-export type { TaskOutcome, TaskStatus } from './graph/scheduler.js'
-export type { TaskNode } from './graph/task-graph.js'
+export type {
+  BuildGraph,
+  BuildOptions,
+  DependencySpec,
+  GraphFormat,
+  TaskGraph,
+  TaskNode,
+} from './graph/index.ts'
+export {
+  DependencySpecError,
+  GraphError,
+  buildGraph,
+  formatGraph,
+  parseDependencySpec,
+} from './graph/index.ts'
+
+export type { CliOptions, ParsedArgs } from './cli/index.ts'
+export { graphCommand, parseArgs, runCli } from './cli/index.ts'

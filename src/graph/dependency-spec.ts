@@ -1,6 +1,6 @@
-// Parser for the Turbo/Nx-style task-edge micro-syntax used in
-// `dependsOn` and `cache.inputs.tasks`. Returns a small discriminated
-// union the graph builder + cache filter both consume.
+// Pure parser for the Turbo/Nx-style task-edge micro-syntax used in
+// `dependsOn` and (future) `cache.inputs.tasks`. No graph state, no
+// FS, no globals — easy to embed in extension modules.
 
 export type DependencySpec =
   | { kind: 'self'; task: string; negated: boolean }
@@ -14,24 +14,11 @@ export class DependencySpecError extends Error {
     public readonly raw: string,
     message: string,
   ) {
-    super(`Invalid dependency spec "${raw}": ${message}`)
+    super(`invalid dependency spec "${raw}": ${message}`)
+    this.name = 'DependencySpecError'
   }
 }
 
-/**
- * Parse one `dependsOn` / `cache.inputs.tasks` entry.
- *
- *   `name`       → self.name
- *   `^name`      → every dep workspace's `name` task
- *   `pkg#name`   → specific package's `name` task (cross-edge)
- *   `*`          → all same-project upstream (filter-only)
- *   `^*`         → all dep upstream (filter-only)
- *   `!<form>`    → negation of any of the above (filter-only)
- *
- * Wildcards and negation are accepted everywhere — callers (the graph
- * builder vs the filter) decide which ones make semantic sense and
- * surface their own validation errors. This keeps the parser pure.
- */
 export function parseDependencySpec(raw: string): DependencySpec {
   if (raw.length === 0) throw new DependencySpecError(raw, 'empty spec')
 
@@ -60,7 +47,7 @@ export function parseDependencySpec(raw: string): DependencySpec {
     const project = s.slice(0, hashIdx)
     const task = s.slice(hashIdx + 1)
     if (!project || !task) {
-      throw new DependencySpecError(raw, 'pkg#task requires a non-empty project AND task')
+      throw new DependencySpecError(raw, 'pkg#task requires non-empty project AND task')
     }
     return { kind: 'cross', project, task, negated }
   }

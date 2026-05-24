@@ -1,0 +1,7 @@
+export type { BuildGraph, BuildOptions, TaskGraph, TaskNode } from './types.ts'
+export { GraphError } from './types.ts'
+export type { DependencySpec } from './dependency-spec.ts'
+export { DependencySpecError, parseDependencySpec } from './dependency-spec.ts'
+export { buildGraph } from './build.ts'
+export { formatGraph } from './format.ts'
+export type { GraphFormat } from './format.ts'

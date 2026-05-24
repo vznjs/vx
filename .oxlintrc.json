@@ -10,5 +10,5 @@
     "typescript/unbound-method": "off",
     "typescript/await-thenable": "off"
   },
-  "ignorePatterns": ["node_modules", "dist"]
+  "ignorePatterns": ["node_modules", "dist", "tests/e2e/fixtures"]
 }
