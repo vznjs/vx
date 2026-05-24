@@ -25,14 +25,17 @@ Pre-alpha. **Currently one module only: `project`.** Every other concern (worksp
 
 ```
 src/
-  index.ts                # re-exports from project
+  index.ts                # re-exports from project + workspace
   project/index.ts        # whole module in one file: schema + load + validate + define
+  workspace/index.ts      # whole module in one file: schema + load + validate + define + findRoot
 
 tests/
   _harness.ts             # mitata wrapper
   _testkit/fixtures.ts    # tmp-dir builder
-  project.test.ts         # unit tests
-  project.bench.ts        # mitata benchmarks
+  project.test.ts
+  project.bench.ts
+  workspace.test.ts
+  workspace.bench.ts
 
 .github/workflows/ci.yml  # install → format-check → lint → test
 package.json              # devDeps only
@@ -45,11 +48,12 @@ LICENSE
 
 ## Status
 
-| Module  | Shipped | Surface                                                                                                                                                                                                                                        |
-| ------- | :-----: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| project |   ✅    | Single file. `Project` (type, inferred from an internal zod schema). `loadProject(dir)` imports `vx.config.*`, returns `mod.default`. `validateProject(input)` parses any value through the schema. `defineProject(p)` identity for inference. |
+| Module    | Shipped | Surface                                                                                                                                                                                                                                            |
+| --------- | :-----: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| project   |   ✅    | Single file. `Project` (type, inferred from an internal zod schema). `loadProject(dir)` imports `vx.config.*`, returns `mod.default`. `validateProject(input)` parses any value through the schema. `defineProject(p)` identity for inference.     |
+| workspace |   ✅    | Single file. `Workspace` (type, inferred from an internal zod schema). `loadWorkspace(dir)` imports `vx.workspace.*`. `validateWorkspace(input)` parses through schema. `defineWorkspace(w)` identity. `findWorkspaceRoot(start)` via `pkg-types`. |
 
-11 tests pass. Format + lint clean.
+25 tests pass. Format + lint clean.
 
 ## Operating directive
 

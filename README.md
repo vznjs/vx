@@ -1,20 +1,33 @@
 # @vzn/vx
 
-Pre-alpha. One module: `src/project/`.
+Pre-alpha. Two modules: `src/project/` and `src/workspace/`.
 
 ```ts
-import { defineProject, loadProject } from '@vzn/vx'
+import {
+  defineProject,
+  loadProject,
+  validateProject,
+  defineWorkspace,
+  loadWorkspace,
+  validateWorkspace,
+  findWorkspaceRoot,
+} from '@vzn/vx'
 
 // In vx.config.ts:
 export default defineProject({})
 
+// In vx.workspace.ts:
+export default defineWorkspace({})
+
 // Anywhere else:
+const root = await findWorkspaceRoot(process.cwd())
+const workspace = await loadWorkspace(root)
 const project = await loadProject('/abs/path/to/project-dir')
 ```
 
-`loadProject(dir)` finds `vx.config.{ts,mts,js,mjs}` in the given directory (first match wins, in that order), imports it, and parses the default export through `ProjectSchema` (zod, currently strict + empty). `defineProject` is identity at runtime — it exists for type inference inside config files.
+Both modules ship the same shape: a zod-validated type, plus `load` / `validate` / `define`. The workspace module also exposes `findWorkspaceRoot(start)` (powered by `pkg-types`) that walks up from a path to the workspace root.
 
-See [`src/project/README.md`](src/project/README.md).
+See [`src/project/index.ts`](src/project/index.ts) and [`src/workspace/index.ts`](src/workspace/index.ts).
 
 ## Develop
 
@@ -24,6 +37,7 @@ bun test
 bun x oxfmt --check .
 bun x oxlint --type-aware --type-check
 bun tests/project.bench.ts
+bun tests/workspace.bench.ts
 ```
 
 ## License
