@@ -1,23 +1,17 @@
 # @vzn/vx
 
-Pre-alpha. Currently exports one thing: `loadConfigs` from `src/config/`.
-
-## What's here
+Pre-alpha. Currently exports one thing: `loadConfig` from `src/config/`.
 
 ```ts
-import { loadConfigs } from '@vzn/vx'
+import { loadConfig } from '@vzn/vx'
 
-const loaded = await loadConfigs([
-  { name: 'pkg-a', dir: '/abs/path/packages/a' },
-  { name: 'pkg-b', dir: '/abs/path/packages/b' },
-])
-
-// loaded: Array<{ source: { name, dir }, config: unknown }>
+const config = await loadConfig('/abs/path/to/vx.config.ts')
+// config: whatever the file `export default`-ed, typed as ProjectConfig ({})
 ```
 
-`loadConfigs` finds `vx.config.{ts,mts,js,mjs}` in each source directory, imports it, and returns whatever the file `export default`-ed. No validation; no schema.
+That's the whole API. No file discovery, no extension iteration, no schema, no validation. The caller picks the path; this module loads it.
 
-See [`src/config/README.md`](src/config/README.md) for the full contract.
+See [`src/config/README.md`](src/config/README.md).
 
 ## Develop
 

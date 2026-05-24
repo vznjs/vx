@@ -26,21 +26,18 @@ Pre-alpha. **Currently one module only: `config`.** Every other concern (workspa
 src/
   index.ts                # re-exports from config
   config/
-    types.ts              # ProjectConfig, ConfigSource, LoadedConfig, LoadConfigs
-    load.ts               # default impl
+    types.ts              # ProjectConfig (empty)
+    load.ts               # loadConfig(path) — async, returns mod.default
     index.ts
     README.md
 
 tests/
-  _testkit/
-    fixtures.ts           # tmp-dir workspace builder shared by tests + benches
-  config/
-    load.test.ts
+  _testkit/fixtures.ts    # tmp-dir builder shared by tests + benches
+  config/load.test.ts
 
 bench/
   _harness.ts             # mitata wrapper
-  config/
-    load.bench.ts
+  config/load.bench.ts
 
 .github/workflows/ci.yml  # install → format-check → lint → test
 package.json              # devDeps only
@@ -53,11 +50,11 @@ LICENSE
 
 ## Status
 
-| Module | Shipped | Surface                                                                          |
-| ------ | :-----: | -------------------------------------------------------------------------------- |
-| config |   ✅    | `loadConfigs(sources)` — finds + loads vx.config.{ts,mts,js,mjs}. No validation. |
+| Module | Shipped | Surface                                                                                                                        |
+| ------ | :-----: | ------------------------------------------------------------------------------------------------------------------------------ |
+| config |   ✅    | `loadConfig(path)` — async, dynamic-imports the path, returns `mod.default`. Knows nothing about callers, names, or discovery. |
 
-5 tests pass. Format + lint clean.
+2 tests pass. Format + lint clean.
 
 ## Operating directive
 
