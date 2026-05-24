@@ -1,7 +1,7 @@
 import { bench, summary } from 'mitata'
-import { runBench } from '../_bench/harness.ts'
-import type { LoadedConfig } from '../config/types.ts'
-import { buildGraph } from './build.ts'
+import { runBench } from '../_harness.ts'
+import type { LoadedConfig } from '../../src/config/types.ts'
+import { buildGraph } from '../../src/graph/build.ts'
 
 function project(name: string, tasks: NonNullable<LoadedConfig['config']['tasks']>): LoadedConfig {
   return { project: { name, dir: `/fake/${name}` }, config: { tasks } }

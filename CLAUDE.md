@@ -13,11 +13,11 @@ started over.
 
 ### Operating principles for the rebuild
 
-1. **Modules-first.** Each concern lives in `src/<module>/` with its own
-   `types.ts` (interface contract), default implementation, collocated
-   `*.bench.ts`, and `README.md` describing the contract. Tests live
-   under `tests/<module>/<name>.test.ts` — a mirror tree of `src/`.
-   No back-doors between modules. Anything in module A that wants to
+1. **Modules-first.** Each concern lives in `src/<module>/` with its
+   own `types.ts` (interface contract), default implementation, and
+   `README.md` describing the contract. Tests mirror under
+   `tests/<module>/`; benches mirror under `bench/<module>/`. No
+   back-doors between modules. Anything in module A that wants to
    talk to module B does so through B's `index.ts` public surface.
 2. **Pipeline composition.** The CLI wires modules into a pipeline:
    `workspace → config → graph → runner → …`. Each step is replaceable
@@ -40,7 +40,7 @@ started over.
 | Runtime | Bun ≥ 1.3 (no Node fallback)                                            |
 | Manager | Bun (`bun install`, `bun.lock`)                                         |
 | Tests   | `bun test` (imports `describe`, `it`, `expect` from `bun:test`)         |
-| Benches | `mitata` via `src/_bench/harness.ts`                                    |
+| Benches | `mitata` via `bench/_harness.ts`                                        |
 | Lint    | `oxlint --type-aware --type-check`                                      |
 | Format  | `oxfmt` (`.oxfmtrc.json`)                                               |
 | Build   | None. TS source ships as the entry; `bin: src/bin.ts` runs via shebang. |
@@ -48,39 +48,40 @@ started over.
 ## Repository layout (current — rebuild PR 1)
 
 ```
-src/
+src/                      # production code only — no tests, no benches
   bin.ts                  # shebang entry
   index.ts                # public re-exports for embedders
-  _bench/                 # shared mitata harness
-  _testkit/               # shared test fixture helpers (underscore = internal)
   workspace/              # project discovery
     types.ts              # Workspace + Project + Discover interface
-    discover.ts           # default discovery impl
-    find-root.ts          # walk-up to locate workspace root
-    discover.bench.ts
-    README.md             # contract + replacement guide
+    discover.ts
+    find-root.ts
+    README.md
     index.ts
   config/                 # vx.config.ts loading + base-schema validation
     types.ts              # ProjectConfig, TaskConfig, defineProject
     load.ts
-    load.bench.ts
     README.md
     index.ts
-  graph/                  # task DAG construction
-    types.ts              # TaskGraph, TaskNode, BuildGraph interface
-    dependency-spec.ts    # parser for "name" / "^name" / "pkg#task" / wildcards
-    build.ts              # graph assembly + cycle check + topo sort
-    format.ts             # text / json / dot renderers
-    build.bench.ts
+  graph/                  # task DAG construction (dormant; runner will consume it)
+    types.ts
+    dependency-spec.ts
+    build.ts
+    README.md
+    index.ts
+  inventory/              # JSON workspace inventory (what `vx graph` emits)
+    types.ts
+    build.ts
     README.md
     index.ts
   cli/                    # argv parser + subcommand dispatcher
-    parse.ts              # pure argv parser
+    parse.ts
     cli.ts                # entry: runCli(argv, opts)
     graph-cmd.ts          # `vx graph` subcommand
     README.md
     index.ts
 tests/
+  _testkit/               # shared fixture helper (underscore = internal)
+    fixtures.ts
   workspace/              # mirror of src/workspace/ — unit tests
     discover.test.ts
     find-root.test.ts
@@ -89,12 +90,18 @@ tests/
   graph/
     dependency-spec.test.ts
     build.test.ts
-    format.test.ts
+  inventory/
+    build.test.ts
   cli/
     parse.test.ts
     graph-cmd.test.ts
   e2e/                    # spawns the real bin against real fixtures
     graph-cli.test.ts
+bench/                    # mitata benchmarks — mirror of src/
+  _harness.ts             # shared bench runner
+  workspace/discover.bench.ts
+  config/load.bench.ts
+  graph/build.bench.ts
 .github/workflows/
   ci.yml                  # bun install → format-check → lint → test
 package.json              # devDeps only: @types/bun, mitata, oxfmt, oxlint, oxlint-tsgolint
@@ -109,18 +116,19 @@ install.sh
 
 ## Module status
 
-| Module        |  Shipped   | Owns                                                          |
-| ------------- | :--------: | ------------------------------------------------------------- |
-| workspace     |     ✅     | Discover projects from disk; find workspace root from a path. |
-| config        |     ✅     | Load + validate `vx.config.{ts,mts,js,mjs}`.                  |
-| graph         |     ✅     | Build DAG; parse dependency micro-syntax; topo sort; format.  |
-| cli           | ✅ partial | `vx graph` subcommand. `vx run`, `vx ls`, `vx watch` pending. |
-| runner        |     ⏳     | Spawn tasks. Next module up.                                  |
-| scheduler     |     ⏳     | Parallel topo executor consuming the graph.                   |
-| logger        |     ⏳     | Structured + framed terminal output.                          |
-| package-graph |     ⏳     | Workspace dep edges from package.json (enables `^name` deps). |
-| cache         |     ⏳     | Content-addressed cache (later, as a separate concern).       |
-| watcher       |     ⏳     | `vx watch` — FS-driven re-runs.                               |
+| Module        |  Shipped   | Owns                                                                             |
+| ------------- | :--------: | -------------------------------------------------------------------------------- |
+| workspace     |     ✅     | Discover projects from disk; find workspace root from a path.                    |
+| config        |     ✅     | Load + validate `vx.config.{ts,mts,js,mjs}`.                                     |
+| inventory     |     ✅     | Workspace inventory as JSON — what `vx graph` emits.                             |
+| graph         |  ✅ idle   | DAG build + dependency-spec parser. Not wired into CLI yet; runner will consume. |
+| cli           | ✅ partial | `vx graph` subcommand. `vx run`, `vx ls`, `vx watch` pending.                    |
+| runner        |     ⏳     | Spawn tasks. Next module up.                                                     |
+| scheduler     |     ⏳     | Parallel topo executor consuming the graph.                                      |
+| logger        |     ⏳     | Structured + framed terminal output.                                             |
+| package-graph |     ⏳     | Workspace dep edges from package.json (enables `^name` deps).                    |
+| cache         |     ⏳     | Content-addressed cache (later, as a separate concern).                          |
+| watcher       |     ⏳     | `vx watch` — FS-driven re-runs.                                                  |
 
 Cache, sandbox, remote-cache, etc. are deliberately deferred — the
 previous build coupled them too tightly to the runner. They will come
@@ -130,7 +138,7 @@ not inside it.
 ## Workflow
 
 - **Branch `main` is protected.** Push to feature branch, open PR, merge.
-- **Tests must pass.** Currently 93 tests / 9 files. Run via `bun test`.
+- **Tests must pass.** Currently 94 tests / 9 files. Run via `bun test`.
 - **Format must be clean.** `bun x oxfmt --check .`
 - **Lint+typecheck must be clean.** `bun x oxlint --type-aware --type-check`
 - **CI gates:** install → format:check → lint → test.
@@ -141,12 +149,12 @@ not inside it.
   non-obvious decisions or hidden invariants.
 - **No half-finished implementations.** Ship it or don't write it.
 - **Trust internal code.** Validate only at system boundaries.
+- **`src/` is production code only.** No tests, no benches, no fixtures.
 - **Tests live under `tests/`.** `tests/<module>/foo.test.ts` mirrors
   `src/<module>/foo.ts`. End-to-end tests live under `tests/e2e/`.
-  Benchmarks (`*.bench.ts`) stay collocated next to the source they
-  measure.
-- **Underscored folders (`_bench/`, `_testkit/`) are internal-only.**
-  Not part of the public API; never re-exported from `src/index.ts`.
+  Shared fixture helpers live in `tests/_testkit/`.
+- **Benches live under `bench/`.** `bench/<module>/foo.bench.ts` mirrors
+  `src/<module>/foo.ts`. Shared harness in `bench/_harness.ts`.
 
 ## Active workstreams (prioritized)
 

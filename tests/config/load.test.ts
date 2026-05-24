@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { join } from 'node:path'
-import { makeWorkspaceAsync } from '../../src/_testkit/fixtures.ts'
+import { makeWorkspaceAsync } from '../_testkit/fixtures.ts'
 import { loadConfigs } from '../../src/config/load.ts'
 
 function ws(dirs: { name: string; dir: string }[]) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { join } from 'node:path'
-import { makeWorkspaceAsync } from '../../src/_testkit/fixtures.ts'
+import { makeWorkspaceAsync } from '../_testkit/fixtures.ts'
 import { discover } from '../../src/workspace/discover.ts'
 
 describe('discover', () => {

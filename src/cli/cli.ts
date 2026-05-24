@@ -6,11 +6,7 @@ const HELP = `vx — a monorepo task runner
 Usage: vx <command> [args...]
 
 Commands:
-  graph [tasks...]   Print the task graph that would run for the given task(s).
-
-Flags for \`graph\`:
-  --json             JSON output (machine-readable)
-  --dot              Graphviz DOT output (pipe to \`dot -Tsvg\`)
+  graph              Print the workspace inventory (projects + targets) as JSON.
 `
 
 export interface CliOptions {

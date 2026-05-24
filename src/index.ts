@@ -15,20 +15,21 @@ export type {
 export { defineProject, loadConfigs } from './config/index.ts'
 
 export type {
+  BuildInventoryOptions,
+  Inventory,
+  InventoryProject,
+  InventoryTarget,
+} from './inventory/index.ts'
+export { buildInventory } from './inventory/index.ts'
+
+export type {
   BuildGraph,
   BuildOptions,
   DependencySpec,
-  GraphFormat,
   TaskGraph,
   TaskNode,
 } from './graph/index.ts'
-export {
-  DependencySpecError,
-  GraphError,
-  buildGraph,
-  formatGraph,
-  parseDependencySpec,
-} from './graph/index.ts'
+export { DependencySpecError, GraphError, buildGraph, parseDependencySpec } from './graph/index.ts'
 
 export type { CliOptions, ParsedArgs } from './cli/index.ts'
 export { graphCommand, parseArgs, runCli } from './cli/index.ts'

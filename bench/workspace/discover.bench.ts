@@ -1,7 +1,7 @@
 import { bench, summary } from 'mitata'
-import { runBench } from '../_bench/harness.ts'
-import { makeWorkspaceAsync } from '../_testkit/fixtures.ts'
-import { discover } from './discover.ts'
+import { runBench } from '../_harness.ts'
+import { makeWorkspaceAsync } from '../../tests/_testkit/fixtures.ts'
+import { discover } from '../../src/workspace/discover.ts'
 
 const single = await makeWorkspaceAsync({
   'package.json': '{"name":"solo"}',

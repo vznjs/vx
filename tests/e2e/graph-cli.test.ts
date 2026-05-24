@@ -1,11 +1,11 @@
 // End-to-end test: spawns `bun src/bin.ts graph ...` against a real
 // fixture workspace and verifies stdout/stderr/exit code. Covers the
 // whole pipeline (bin -> cli dispatcher -> workspace discovery ->
-// config load -> graph build -> format).
+// config load -> inventory build -> JSON output).
 
 import { describe, expect, it } from 'bun:test'
 import { join } from 'node:path'
-import { makeWorkspaceAsync } from '../../src/_testkit/fixtures.ts'
+import { makeWorkspaceAsync } from '../_testkit/fixtures.ts'
 
 const BIN = join(import.meta.dir, '../..', 'src/bin.ts')
 
@@ -23,64 +23,30 @@ async function runVx(
 }
 
 describe('vx graph (e2e)', () => {
-  it('prints the graph for a single-project workspace', async () => {
+  it('emits a JSON inventory for a single-project workspace', async () => {
     const root = await makeWorkspaceAsync({
       'package.json': '{"name":"solo"}',
       'vx.config.ts': `
         export default {
           tasks: {
-            build: { exec: { command: 'echo b' }, dependsOn: ['compile'] },
+            build: { exec: { command: 'tsc' }, dependsOn: ['compile'] },
             compile: { exec: { command: 'echo c' } },
           },
         }
       `,
     })
 
-    const { stdout, code } = await runVx(['graph', 'build'], root)
+    const { stdout, code } = await runVx(['graph'], root)
 
     expect(code).toBe(0)
-    expect(stdout).toContain('solo#compile')
-    expect(stdout).toContain('solo#build')
-    expect(stdout.indexOf('solo#compile')).toBeLessThan(stdout.indexOf('solo#build'))
-  })
-
-  it('emits JSON with --json', async () => {
-    const root = await makeWorkspaceAsync({
-      'package.json': '{"name":"solo"}',
-      'vx.config.ts':
-        'export default { tasks: { x: { description: "ex", exec: { command: "echo x" } } } }',
-    })
-
-    const { stdout, code } = await runVx(['graph', 'x', '--json'], root)
-
-    expect(code).toBe(0)
-    const parsed = JSON.parse(stdout)
-    expect(parsed.nodes).toHaveLength(1)
-    expect(parsed.nodes[0]).toMatchObject({
-      id: 'solo#x',
-      command: 'echo x',
-      description: 'ex',
-    })
-  })
-
-  it('emits DOT with --dot', async () => {
-    const root = await makeWorkspaceAsync({
-      'package.json': '{"name":"solo"}',
-      'vx.config.ts': `
-        export default {
-          tasks: {
-            a: { exec: { command: 'a' }, dependsOn: ['b'] },
-            b: { exec: { command: 'b' } },
-          },
-        }
-      `,
-    })
-
-    const { stdout, code } = await runVx(['graph', 'a', '--dot'], root)
-
-    expect(code).toBe(0)
-    expect(stdout.trim()).toMatch(/^digraph/)
-    expect(stdout).toContain('"solo#b" -> "solo#a"')
+    const inv = JSON.parse(stdout)
+    expect(inv.workspace.root).toBe(root)
+    expect(inv.projects).toHaveLength(1)
+    expect(inv.projects[0].name).toBe('solo')
+    expect(inv.projects[0].targets.map((t: { name: string }) => t.name)).toEqual([
+      'build',
+      'compile',
+    ])
   })
 
   it('walks up to find the workspace root when invoked from a subdirectory', async () => {
@@ -91,22 +57,47 @@ describe('vx graph (e2e)', () => {
       'pkg/a/src/x.ts': 'export const x = 1',
     })
 
-    const { stdout, code } = await runVx(['graph', 'build'], join(root, 'pkg/a/src'))
+    const { stdout, code } = await runVx(['graph'], join(root, 'pkg/a/src'))
 
     expect(code).toBe(0)
-    expect(stdout).toContain('a#build')
+    const inv = JSON.parse(stdout)
+    expect(inv.projects.find((p: { name: string }) => p.name === 'a').targets[0].name).toBe('build')
   })
 
-  it('exits 1 with a clean error when no project declares the task', async () => {
+  it("emits raw ^name deps without resolving (resolution is the runner's job)", async () => {
     const root = await makeWorkspaceAsync({
-      'package.json': '{"name":"solo"}',
-      'vx.config.ts': 'export default { tasks: { x: { exec: { command: "x" } } } }',
+      'package.json': '{"name":"root"}',
+      'pnpm-workspace.yaml': "packages:\n  - 'pkg/*'\n",
+      'pkg/lib/package.json': '{"name":"lib"}',
+      'pkg/lib/vx.config.ts':
+        'export default { tasks: { build: { exec: { command: "lib build" } } } }',
+      'pkg/app/package.json': '{"name":"app"}',
+      'pkg/app/vx.config.ts': `
+        export default {
+          tasks: {
+            installDeps: { exec: { command: 'npm i' }, dependsOn: ['^build'] },
+          },
+        }
+      `,
     })
 
-    const { stderr, code } = await runVx(['graph', 'nope'], root)
+    const { stdout, code } = await runVx(['graph'], root)
+
+    expect(code).toBe(0)
+    const inv = JSON.parse(stdout)
+    const app = inv.projects.find((p: { name: string }) => p.name === 'app')
+    expect(app.targets[0].dependsOn).toEqual(['^build'])
+  })
+
+  it('rejects positional arguments', async () => {
+    const root = await makeWorkspaceAsync({
+      'package.json': '{"name":"solo"}',
+    })
+
+    const { stderr, code } = await runVx(['graph', 'build'], root)
 
     expect(code).toBe(1)
-    expect(stderr).toMatch(/no project declares task "nope"/)
+    expect(stderr).toMatch(/no positional arguments/i)
   })
 
   it('prints help with no command', async () => {
@@ -132,27 +123,16 @@ describe('vx graph (e2e)', () => {
     expect(stderr).toMatch(/unknown command "nonsense"/)
   })
 
-  it('handles a multi-project workspace with cross-project deps', async () => {
+  it('emits an empty inventory shape when the workspace has no projects', async () => {
     const root = await makeWorkspaceAsync({
-      'package.json': '{"name":"root","workspaces":["pkg/*"]}',
-      'pkg/lib/package.json': '{"name":"lib"}',
-      'pkg/lib/vx.config.ts':
-        'export default { tasks: { build: { exec: { command: "lib build" } } } }',
-      'pkg/app/package.json': '{"name":"app"}',
-      'pkg/app/vx.config.ts': `
-        export default {
-          tasks: {
-            build: { exec: { command: 'app build' }, dependsOn: ['lib#build'] },
-          },
-        }
-      `,
+      'random.txt': 'not a workspace',
+      'package.json': '{"name":"solo"}',
     })
 
-    const { stdout, code } = await runVx(['graph', 'app#build'], root)
+    const { stdout, code } = await runVx(['graph'], root)
 
     expect(code).toBe(0)
-    expect(stdout).toContain('lib#build')
-    expect(stdout).toContain('app#build')
-    expect(stdout.indexOf('lib#build')).toBeLessThan(stdout.indexOf('app#build'))
+    const inv = JSON.parse(stdout)
+    expect(inv.projects).toEqual([{ name: 'solo', dir: root, targets: [] }])
   })
 })

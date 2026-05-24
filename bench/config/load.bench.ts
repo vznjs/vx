@@ -1,7 +1,7 @@
 import { bench, summary } from 'mitata'
-import { runBench } from '../_bench/harness.ts'
-import { makeWorkspaceAsync } from '../_testkit/fixtures.ts'
-import { loadConfigs } from './load.ts'
+import { runBench } from '../_harness.ts'
+import { makeWorkspaceAsync } from '../../tests/_testkit/fixtures.ts'
+import { loadConfigs } from '../../src/config/load.ts'
 
 const CONFIG_TS = `
 export default {
