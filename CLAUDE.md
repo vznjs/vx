@@ -26,20 +26,11 @@ Pre-alpha. **Currently one module only: `project`.** Every other concern (worksp
 ```
 src/
   index.ts                # re-exports from project
-  project/
-    schema.ts             # ProjectSchema (zod) + Project (inferred)
-    load.ts               # loadProject(dir) — await import(join(dir, 'vx.config')); returns mod.default, no validation
-    validate.ts           # validateProject(input) — internal schema's .parse()
-    define.ts             # defineProject(p) — identity, for type inference
-    index.ts
-    README.md
+  project/index.ts        # whole module in one file: schema + load + validate + define
 
 tests/
   _testkit/fixtures.ts    # tmp-dir builder shared by tests + benches
-  project/
-    load.test.ts
-    define.test.ts
-    validate.test.ts
+  project.test.ts
 
 bench/
   _harness.ts             # mitata wrapper
@@ -56,9 +47,9 @@ LICENSE
 
 ## Status
 
-| Module  | Shipped | Surface                                                                                                                                                                                                                                     |
-| ------- | :-----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| project |   ✅    | `Project` (type, inferred from an internal zod schema). `loadProject(dir)` imports `vx.config.*`, returns `mod.default` unchanged. `validateProject(input)` parses any value through the schema. `defineProject(p)` identity for inference. |
+| Module  | Shipped | Surface                                                                                                                                                                                                                                        |
+| ------- | :-----: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| project |   ✅    | Single file. `Project` (type, inferred from an internal zod schema). `loadProject(dir)` imports `vx.config.*`, returns `mod.default`. `validateProject(input)` parses any value through the schema. `defineProject(p)` identity for inference. |
 
 11 tests pass. Format + lint clean.
 

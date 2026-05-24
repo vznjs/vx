@@ -1,4 +1,19 @@
-export type { Project } from './schema.ts'
-export { loadProject } from './load.ts'
-export { defineProject } from './define.ts'
-export { validateProject } from './validate.ts'
+import { join } from 'node:path'
+import { z } from 'zod'
+
+const ProjectSchema = z.strictObject({})
+
+export type Project = z.infer<typeof ProjectSchema>
+
+export async function loadProject(dir: string): Promise<unknown> {
+  const mod = await import(join(dir, 'vx.config'))
+  return mod.default
+}
+
+export function validateProject(input: unknown): Project {
+  return ProjectSchema.parse(input)
+}
+
+export function defineProject<T extends Project>(project: T): T {
+  return project
+}
