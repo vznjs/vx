@@ -2,7 +2,9 @@ import { join } from 'node:path'
 import { findWorkspaceDir } from 'pkg-types'
 import { z } from 'zod'
 
-const WorkspaceSchema = z.strictObject({})
+const WorkspaceSchema = z.strictObject({
+  packages: z.array(z.string()).readonly(),
+})
 
 export type Workspace = z.infer<typeof WorkspaceSchema>
 

@@ -5,7 +5,7 @@ import { makeWorkspaceAsync } from './_testkit/fixtures.ts'
 
 const root = await makeWorkspaceAsync({
   'pnpm-workspace.yaml': 'packages: ["packages/*"]',
-  'vx.workspace.ts': 'export default {}',
+  'vx.workspace.ts': "export default { packages: ['packages/*'] }",
 })
 
 bench('findWorkspaceRoot', async () => {
