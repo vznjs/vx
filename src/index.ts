@@ -1,6 +1,6 @@
 export type { Project, ProjectConfig } from './project/index.ts'
-export { defineProject, loadProject, validateProject } from './project/index.ts'
+export { defineProject, loadProject, validateProjectConfig } from './project/index.ts'
 export type { Workspace, WorkspaceConfig } from './workspace/index.ts'
-export { defineWorkspace, loadWorkspace, validateWorkspace } from './workspace/index.ts'
+export { defineWorkspace, loadWorkspace, validateWorkspaceConfig } from './workspace/index.ts'
 export type { Graph } from './graph/index.ts'
 export { loadGraph } from './graph/index.ts'

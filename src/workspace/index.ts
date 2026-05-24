@@ -18,7 +18,7 @@ export interface Workspace {
 
 export async function loadWorkspace(root: string): Promise<Workspace> {
   const mod = await import(join(root, 'vx.workspace'))
-  const config = validateWorkspace(mod.default)
+  const config = validateWorkspaceConfig(mod.default)
   const projects = await inferProjects(root, config.packages)
   return { config, projects }
 }
@@ -42,7 +42,7 @@ async function inferProjects(
   return new Map(await Promise.all(loads))
 }
 
-export function validateWorkspace(input: unknown): WorkspaceConfig {
+export function validateWorkspaceConfig(input: unknown): WorkspaceConfig {
   return WorkspaceConfigSchema.parse(input)
 }
 

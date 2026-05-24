@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { defineWorkspace, loadWorkspace, validateWorkspace } from '../src/workspace/index.ts'
+import { defineWorkspace, loadWorkspace, validateWorkspaceConfig } from '../src/workspace/index.ts'
 import { makeWorkspaceAsync } from './_testkit/fixtures.ts'
 
 describe('loadWorkspace', () => {
@@ -103,22 +103,24 @@ describe('loadWorkspace', () => {
   })
 })
 
-describe('validateWorkspace', () => {
+describe('validateWorkspaceConfig', () => {
   it('returns the input as WorkspaceConfig when valid', () => {
-    expect(validateWorkspace({ packages: ['packages/*'] })).toEqual({ packages: ['packages/*'] })
+    expect(validateWorkspaceConfig({ packages: ['packages/*'] })).toEqual({
+      packages: ['packages/*'],
+    })
   })
 
   it('throws on missing packages', () => {
-    expect(() => validateWorkspace({})).toThrow(/packages/)
+    expect(() => validateWorkspaceConfig({})).toThrow(/packages/)
   })
 
   it('throws on unknown fields (schema is strict)', () => {
-    expect(() => validateWorkspace({ packages: [], whatever: 7 })).toThrow(/whatever/)
+    expect(() => validateWorkspaceConfig({ packages: [], whatever: 7 })).toThrow(/whatever/)
   })
 
   it('throws on non-object input', () => {
-    expect(() => validateWorkspace(42)).toThrow()
-    expect(() => validateWorkspace(null)).toThrow()
+    expect(() => validateWorkspaceConfig(42)).toThrow()
+    expect(() => validateWorkspaceConfig(null)).toThrow()
   })
 })
 

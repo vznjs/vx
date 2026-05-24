@@ -14,12 +14,12 @@ export interface Project {
 export async function loadProject(dir: string): Promise<Project> {
   for await (const _ of CONFIG_GLOB.scan({ cwd: dir })) {
     const mod = await import(join(dir, 'vx.config'))
-    return { config: validateProject(mod.default) }
+    return { config: validateProjectConfig(mod.default) }
   }
-  return { config: validateProject({}) }
+  return { config: validateProjectConfig({}) }
 }
 
-export function validateProject(input: unknown): ProjectConfig {
+export function validateProjectConfig(input: unknown): ProjectConfig {
   return ProjectConfigSchema.parse(input)
 }
 
