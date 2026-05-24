@@ -14,16 +14,27 @@ describe('loadProject', () => {
     expect(project).toEqual({})
   })
 
-  it('returns whatever the user exported (no validation)', async () => {
+  it('throws on unknown fields (schema is strict)', async () => {
     const root = await makeWorkspaceAsync({
-      'vx.config.ts': 'export default { whatever: 7, nested: { x: "y" } }',
+      'vx.config.ts': 'export default { whatever: 7 }',
     })
 
-    const project = await loadProject(join(root, 'vx.config.ts'))
+    await expect(loadProject(join(root, 'vx.config.ts'))).rejects.toThrow(/whatever/)
+  })
 
-    expect(project).toEqual({ whatever: 7, nested: { x: 'y' } } as unknown as Record<
-      string,
-      unknown
-    >)
+  it('throws when the default export is not an object', async () => {
+    const root = await makeWorkspaceAsync({
+      'vx.config.ts': 'export default 42',
+    })
+
+    await expect(loadProject(join(root, 'vx.config.ts'))).rejects.toThrow()
+  })
+
+  it('throws when there is no default export', async () => {
+    const root = await makeWorkspaceAsync({
+      'vx.config.ts': 'export const x = 1',
+    })
+
+    await expect(loadProject(join(root, 'vx.config.ts'))).rejects.toThrow()
   })
 })

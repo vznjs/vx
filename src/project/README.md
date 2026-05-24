@@ -1,13 +1,18 @@
 # project
 
 ```ts
+const ProjectSchema = z.strictObject({})
+type Project = z.infer<typeof ProjectSchema>
+
 async function loadProject(path: string): Promise<Project>
 function defineProject<T extends Project>(project: T): T
-interface Project {}
 ```
 
-Two functions and an empty type. The module cares about itself only — no file discovery, no extension iteration, no validation, no schema, no knowledge of who calls it.
+A zod schema, its inferred type, and two helpers around it.
 
-- `loadProject(path)` — dynamic-import the path, return `mod.default`.
+- `ProjectSchema` — the source of truth. Currently empty + strict; extension modules extend it via `ProjectSchema.extend({...})`.
+- `Project` — the type, inferred from the schema. Don't write the type by hand.
+- `loadProject(path)` — dynamic-imports the path and `.parse()`s the default export through the schema. Throws `ZodError` on invalid input.
 - `defineProject(project)` — identity at runtime; gives type inference inside `vx.config.ts`.
-- `Project` — empty interface. Schema fields will be added by future modules that own them.
+
+The module cares about itself only — no file discovery, no extension iteration, no knowledge of who calls it.

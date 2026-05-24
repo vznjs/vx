@@ -14,6 +14,7 @@ Pre-alpha. **Currently one module only: `project`.** Every other concern (worksp
 | Concern | Tool                                        |
 | ------- | ------------------------------------------- |
 | Runtime | Bun ≥ 1.3                                   |
+| Schema  | `zod` (v4)                                  |
 | Tests   | `bun test` (imports from `bun:test`)        |
 | Benches | `mitata` via `bench/_harness.ts`            |
 | Lint    | `oxlint --type-aware --type-check`          |
@@ -26,8 +27,8 @@ Pre-alpha. **Currently one module only: `project`.** Every other concern (worksp
 src/
   index.ts                # re-exports from project
   project/
-    types.ts              # Project (empty)
-    load.ts               # loadProject(path) — async, returns mod.default
+    schema.ts             # ProjectSchema (zod) + Project (inferred)
+    load.ts               # loadProject(path) — imports + ProjectSchema.parse()
     define.ts             # defineProject(p) — identity, for type inference
     index.ts
     README.md
@@ -53,11 +54,11 @@ LICENSE
 
 ## Status
 
-| Module  | Shipped | Surface                                                                                                         |
-| ------- | :-----: | --------------------------------------------------------------------------------------------------------------- |
-| project |   ✅    | `loadProject(path)` + `defineProject(p)` + `Project` (empty). Knows nothing about callers, names, or discovery. |
+| Module  | Shipped | Surface                                                                                                                                             |
+| ------- | :-----: | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| project |   ✅    | `ProjectSchema` (zod, strict + empty) → `Project` (inferred). `loadProject(path)` parses through schema. `defineProject(p)` identity for inference. |
 
-3 tests pass. Format + lint clean.
+5 tests pass. Format + lint clean.
 
 ## Operating directive
 
