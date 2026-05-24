@@ -25,9 +25,10 @@ Pre-alpha. **Currently one module only: `project`.** Every other concern (worksp
 
 ```
 src/
-  index.ts                # re-exports from project + workspace
+  index.ts                # re-exports from project + workspace + graph
   project/index.ts        # whole module in one file: schema + load + validate + define
   workspace/index.ts      # whole module in one file: schema + load + validate + define + findRoot
+  graph/index.ts          # whole module in one file: loadGraph composes workspace + project
 
 tests/
   _harness.ts             # mitata wrapper
@@ -36,6 +37,8 @@ tests/
   project.bench.ts
   workspace.test.ts
   workspace.bench.ts
+  graph.test.ts
+  graph.bench.ts
 
 .github/workflows/ci.yml  # install → format-check → lint → test
 package.json              # devDeps only
@@ -52,8 +55,9 @@ LICENSE
 | --------- | :-----: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | project   |   ✅    | Single file. `Project` (type, inferred from an internal zod schema). `loadProject(dir)` imports `vx.config.*` and validates implicitly. `validateProject(input)` parses any value through the schema. `defineProject(p)` identity for inference.                                                                                   |
 | workspace |   ✅    | Single file. `Workspace` = `{ packages: readonly string[] }` (globs or paths). `loadWorkspace(root)` imports `vx.workspace.*` and validates implicitly. `validateWorkspace(input)` parses through schema. `defineWorkspace(w)` identity. `findWorkspaceRoot(start)` via `pkg-types`. The only function returning an absolute path. |
+| graph     |   ✅    | Single file. `Graph = { workspace, projects: Map<relativeDir, Project> }`. `loadGraph(root)` calls `loadWorkspace`, expands `packages` via `Bun.Glob` for `vx.config.{ts,mts,js,mjs}`, and loads each project in parallel. Dirs without a vx.config are skipped.                                                                   |
 
-28 tests pass. Format + lint clean.
+36 tests pass. Format + lint clean.
 
 ## Operating directive
 

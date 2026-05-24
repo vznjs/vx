@@ -7,3 +7,5 @@ export {
   loadWorkspace,
   validateWorkspace,
 } from './workspace/index.ts'
+export type { Graph } from './graph/index.ts'
+export { loadGraph } from './graph/index.ts'

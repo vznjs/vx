@@ -1,0 +1,18 @@
+import { bench } from 'mitata'
+import { loadGraph } from '../src/graph/index.ts'
+import { runBench } from './_harness.ts'
+import { makeWorkspaceAsync } from './_testkit/fixtures.ts'
+
+const layout: Record<string, string> = {
+  'vx.workspace.ts': "export default { packages: ['packages/*'] }",
+}
+for (let i = 0; i < 50; i += 1) {
+  layout[`packages/p${i}/vx.config.ts`] = 'export default {}'
+}
+const root = await makeWorkspaceAsync(layout)
+
+bench('loadGraph · 50 projects', async () => {
+  await loadGraph(root)
+})
+
+await runBench()
