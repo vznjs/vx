@@ -1,39 +1,31 @@
 # config
 
-Loads `vx.config.{ts,mts,js,mjs}` from each discovered project and validates the base schema.
+Defines `ProjectConfig` and loads `vx.config.{ts,mts,js,mjs}` files. No validation, no schema enforcement — whatever the user `export default`s is what comes back.
 
 ## Contract
 
 ```ts
-type LoadConfigs = (opts: {
-  workspace: { projects: readonly Project[] }
-}) => Promise<readonly LoadedConfig[]>
-```
+type LoadConfigs = (sources: readonly ConfigSource[]) => Promise<readonly LoadedConfig[]>
 
-A `LoadedConfig` pairs a `Project` with its parsed `ProjectConfig`. Projects without a config file are omitted (a project that declares no tasks contributes nothing to the graph).
-
-## Schema (minimal — base surface)
-
-```ts
-interface ProjectConfig {
-  tasks?: Record<string, TaskConfig>
+interface ConfigSource {
+  name: string // identifier (typically the package name)
+  dir: string // directory to look in
 }
 
-interface TaskConfig {
-  description?: string
-  exec?: { command: string }
-  dependsOn?: readonly string[]
+interface ProjectConfig {} // intentionally empty
+interface LoadedConfig {
+  source: ConfigSource
+  config: ProjectConfig
 }
 ```
 
-Extension modules (cache, sandbox, watch) add fields by reading them off the underlying object — the loader allows unknown fields and never errors on them. Strict validation only covers the base surface above.
+Sources without a config file in their directory are silently omitted from the result.
 
-## Default implementation: `loadConfigs`
+## Default impl
 
-Uses Bun's native TS-as-source import. For each project dir, looks for `vx.config.ts`, then `.mts`, `.js`, `.mjs` in that order. The first one found is `await import(...)`d and its `default` export is validated.
+For each source, in parallel:
 
-A config that fails validation throws — this is a fail-loud module. Authors should see typos immediately, not at task-run time.
+1. Look for `vx.config.ts`, then `.mts`, then `.js`, then `.mjs` in `source.dir`. First match wins.
+2. `import(path)`. Return `{ source, config: mod.default }`.
 
-## Replacing it
-
-Anyone can implement `LoadConfigs`. Use cases: load configs from a database; convert turbo.json on the fly; declarative YAML configs.
+No validation. Bad inputs produce undefined behavior downstream — that's a feature, not a bug. Adding validation is the next module's problem when there's a schema to validate against.

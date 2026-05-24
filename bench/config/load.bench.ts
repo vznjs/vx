@@ -1,49 +1,34 @@
 import { bench, summary } from 'mitata'
-import { runBench } from '../_harness.ts'
-import { makeWorkspaceAsync } from '../../tests/_testkit/fixtures.ts'
 import { loadConfigs } from '../../src/config/load.ts'
+import type { ConfigSource } from '../../src/config/types.ts'
+import { makeWorkspaceAsync } from '../../tests/_testkit/fixtures.ts'
+import { runBench } from '../_harness.ts'
 
-const CONFIG_TS = `
-export default {
-  tasks: {
-    build: { exec: { command: 'echo b' }, dependsOn: ['compile'] },
-    compile: { exec: { command: 'echo c' } },
-    test: { exec: { command: 'bun test' }, dependsOn: ['build'] },
-    lint: { exec: { command: 'oxlint' } },
-  },
-}
-`
+const CONFIG_TS = 'export default {}'
 
-async function buildConfigsWorkspace(count: number) {
-  const layout: Record<string, string> = {
-    'package.json': '{"name":"root","workspaces":["pkg/*"]}',
-  }
-  const projects = []
+async function buildSources(count: number): Promise<ConfigSource[]> {
+  const layout: Record<string, string> = {}
+  const sources: ConfigSource[] = []
   for (let i = 0; i < count; i += 1) {
-    layout[`pkg/p${i}/package.json`] = `{"name":"p${i}"}`
     layout[`pkg/p${i}/vx.config.ts`] = CONFIG_TS
-    projects.push({ name: `p${i}`, dir: '' })
+    sources.push({ name: `p${i}`, dir: '' })
   }
   const root = await makeWorkspaceAsync(layout)
-  return {
-    workspace: {
-      projects: projects.map((p) => ({ ...p, dir: `${root}/pkg/${p.name}` })),
-    },
-  }
+  return sources.map((s) => ({ ...s, dir: `${root}/pkg/${s.name}` }))
 }
 
-const small = await buildConfigsWorkspace(5)
-const medium = await buildConfigsWorkspace(50)
-const large = await buildConfigsWorkspace(200)
+const small = await buildSources(5)
+const medium = await buildSources(50)
+const large = await buildSources(200)
 
 summary(() => {
-  bench('loadConfigs · 5 projects', async () => {
+  bench('loadConfigs · 5 sources', async () => {
     await loadConfigs(small)
   })
-  bench('loadConfigs · 50 projects', async () => {
+  bench('loadConfigs · 50 sources', async () => {
     await loadConfigs(medium)
   })
-  bench('loadConfigs · 200 projects', async () => {
+  bench('loadConfigs · 200 sources', async () => {
     await loadConfigs(large)
   })
 })
