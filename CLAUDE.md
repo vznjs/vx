@@ -29,6 +29,7 @@ src/
   project/
     schema.ts             # ProjectSchema (zod) + Project (inferred)
     load.ts               # loadProject(dir) — await import(join(dir, 'vx.config')); Bun resolves the extension
+    validate.ts           # validateProject(input) — ProjectSchema.parse()
     define.ts             # defineProject(p) — identity, for type inference
     index.ts
     README.md
@@ -38,6 +39,7 @@ tests/
   project/
     load.test.ts
     define.test.ts
+    validate.test.ts
 
 bench/
   _harness.ts             # mitata wrapper
@@ -54,11 +56,11 @@ LICENSE
 
 ## Status
 
-| Module  | Shipped | Surface                                                                                                                                                                            |
-| ------- | :-----: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| project |   ✅    | `ProjectSchema` (zod, strict + empty) → `Project` (inferred). `loadProject(dir)` uses Bun's native `import()` to resolve the extension. `defineProject(p)` identity for inference. |
+| Module  | Shipped | Surface                                                                                                                                                                                                     |
+| ------- | :-----: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| project |   ✅    | `ProjectSchema` (zod, strict + empty) → `Project` (inferred). `validateProject(input)` parses any value. `loadProject(dir)` imports `vx.config.*` and validates. `defineProject(p)` identity for inference. |
 
-9 tests pass. Format + lint clean.
+12 tests pass. Format + lint clean.
 
 ## Operating directive
 
