@@ -1,7 +1,7 @@
 import { bench } from 'mitata'
-import { loadProject } from '../../src/project/index.ts'
-import { makeWorkspaceAsync } from '../../tests/_testkit/fixtures.ts'
-import { runBench } from '../_harness.ts'
+import { loadProject } from '../src/project/index.ts'
+import { runBench } from './_harness.ts'
+import { makeWorkspaceAsync } from './_testkit/fixtures.ts'
 
 const dir = await makeWorkspaceAsync({
   'vx.config.ts': 'export default {}',

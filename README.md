@@ -23,7 +23,7 @@ bun install
 bun test
 bun x oxfmt --check .
 bun x oxlint --type-aware --type-check
-bun bench/project/load.bench.ts
+bun tests/project.bench.ts
 ```
 
 ## License

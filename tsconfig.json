@@ -19,5 +19,5 @@
     "allowImportingTsExtensions": true,
     "types": ["bun"]
   },
-  "include": ["src/**/*", "tests/**/*", "bench/**/*"]
+  "include": ["src/**/*", "tests/**/*"]
 }

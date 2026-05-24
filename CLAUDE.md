@@ -7,7 +7,7 @@ Pre-alpha. **Currently one module only: `project`.** Every other concern (worksp
 1. **One module at a time.** Don't introduce a second module until the current one is settled — interface, implementation, tests, benches, docs all done and reviewed.
 2. **Don't add features that haven't been asked for.** Empty config means empty. No defineProject helper, no schema validation, no cache fields.
 3. **Stop and ask** before bigger changes. Small, reversible edits are fine to ship; structural changes need user sign-off.
-4. **`src/` is production code only.** Tests under `tests/`, benches under `bench/`, helpers under `tests/_testkit/` or `bench/_harness.ts`.
+4. **`src/` is production code only.** Tests and benches live under `tests/` as `*.test.ts` / `*.bench.ts`. Shared helpers live in `tests/_testkit/` and `tests/_harness.ts`.
 
 ## Stack
 
@@ -16,7 +16,7 @@ Pre-alpha. **Currently one module only: `project`.** Every other concern (worksp
 | Runtime | Bun ≥ 1.3                                   |
 | Schema  | `zod` (v4)                                  |
 | Tests   | `bun test` (imports from `bun:test`)        |
-| Benches | `mitata` via `bench/_harness.ts`            |
+| Benches | `mitata` via `tests/_harness.ts`            |
 | Lint    | `oxlint --type-aware --type-check`          |
 | Format  | `oxfmt`                                     |
 | Build   | None. TypeScript source ships as the entry. |
@@ -29,12 +29,10 @@ src/
   project/index.ts        # whole module in one file: schema + load + validate + define
 
 tests/
-  _testkit/fixtures.ts    # tmp-dir builder shared by tests + benches
-  project.test.ts
-
-bench/
   _harness.ts             # mitata wrapper
-  project/load.bench.ts
+  _testkit/fixtures.ts    # tmp-dir builder
+  project.test.ts         # unit tests
+  project.bench.ts        # mitata benchmarks
 
 .github/workflows/ci.yml  # install → format-check → lint → test
 package.json              # devDeps only
