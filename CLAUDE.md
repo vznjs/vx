@@ -28,8 +28,8 @@ src/
   index.ts                # re-exports from project
   project/
     schema.ts             # ProjectSchema (zod) + Project (inferred)
-    load.ts               # loadProject(dir) — await import(join(dir, 'vx.config')); Bun resolves the extension
-    validate.ts           # validateProject(input) — ProjectSchema.parse()
+    load.ts               # loadProject(dir) — await import(join(dir, 'vx.config')); returns mod.default, no validation
+    validate.ts           # validateProject(input) — internal schema's .parse()
     define.ts             # defineProject(p) — identity, for type inference
     index.ts
     README.md
@@ -56,11 +56,11 @@ LICENSE
 
 ## Status
 
-| Module  | Shipped | Surface                                                                                                                                                                                                     |
-| ------- | :-----: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| project |   ✅    | `ProjectSchema` (zod, strict + empty) → `Project` (inferred). `validateProject(input)` parses any value. `loadProject(dir)` imports `vx.config.*` and validates. `defineProject(p)` identity for inference. |
+| Module  | Shipped | Surface                                                                                                                                                                                                                                     |
+| ------- | :-----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| project |   ✅    | `Project` (type, inferred from an internal zod schema). `loadProject(dir)` imports `vx.config.*`, returns `mod.default` unchanged. `validateProject(input)` parses any value through the schema. `defineProject(p)` identity for inference. |
 
-12 tests pass. Format + lint clean.
+11 tests pass. Format + lint clean.
 
 ## Operating directive
 
