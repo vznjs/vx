@@ -4,12 +4,8 @@ import { loadProject } from '../project/index.ts'
 import type { Workspace } from '../workspace/index.ts'
 import { loadWorkspace } from '../workspace/index.ts'
 
-const WORKSPACE_FILES = [
-  'vx.workspace.ts',
-  'vx.workspace.mts',
-  'vx.workspace.js',
-  'vx.workspace.mjs',
-] as const
+const WORKSPACE_MARKER = new Bun.Glob('vx.workspace.{ts,mts,js,mjs}')
+const PROJECT_MARKER = 'vx.config.{ts,mts,js,mjs}'
 
 export interface Graph {
   readonly workspace: Workspace
@@ -30,13 +26,9 @@ export async function loadGraph(start: string): Promise<Graph> {
 async function findRoot(start: string): Promise<string> {
   let current = isAbsolute(start) ? start : resolve(start)
   while (true) {
-    for (const name of WORKSPACE_FILES) {
-      if (await Bun.file(join(current, name)).exists()) return current
-    }
+    for await (const _ of WORKSPACE_MARKER.scan({ cwd: current })) return current
     const parent = dirname(current)
-    if (parent === current) {
-      throw new Error(`no vx workspace found from ${start}`)
-    }
+    if (parent === current) throw new Error(`no vx workspace found from ${start}`)
     current = parent
   }
 }
@@ -48,7 +40,7 @@ async function resolveProjectDirs(
   const dirs = new Set<string>()
   for (const pattern of patterns) {
     const cleaned = pattern.replace(/\/+$/, '')
-    const glob = new Bun.Glob(`${cleaned}/vx.config.{ts,mts,js,mjs}`)
+    const glob = new Bun.Glob(`${cleaned}/${PROJECT_MARKER}`)
     for await (const match of glob.scan({ cwd: root })) {
       const slashIdx = match.lastIndexOf('/vx.config.')
       dirs.add(match.slice(0, slashIdx))
