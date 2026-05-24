@@ -51,13 +51,13 @@ LICENSE
 
 ## Status
 
-| Module    | Shipped | Surface                                                                                                                                                                                                                                                                            |
-| --------- | :-----: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| project   |   ✅    | Single file. `Project` (type, inferred from an internal zod schema). `loadProject(dir)` imports `vx.config.*` and validates implicitly. `validateProject(input)` parses any value through the schema. `defineProject(p)` identity for inference.                                   |
-| workspace |   ✅    | Single file. `Workspace` = `{ packages: readonly string[] }` (globs or paths). `loadWorkspace(root)` imports `vx.workspace.*` and validates implicitly. `validateWorkspace(input)` parses through schema. `defineWorkspace(w)` identity.                                           |
-| graph     |   ✅    | Single file. `Graph = { workspace, projects: Map<relativeDir, Project> }`. `loadGraph(start)` walks up looking for `vx.workspace.*` to find the root, then loads workspace, expands `packages` via `Bun.Glob` for `vx.config.{ts,mts,js,mjs}`, and loads each project in parallel. |
+| Module    | Shipped | Surface                                                                                                                                                                                                                                                                                                                             |
+| --------- | :-----: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| project   |   ✅    | Single file. `ProjectConfig` (raw schema, currently `{}`). `Project = { config: ProjectConfig }`. `loadProject(dir)` imports `vx.config.*` if present and wraps the config; missing config returns `{ config: {} }`. `validateProject` / `defineProject` operate on the raw config.                                                 |
+| workspace |   ✅    | Single file. `WorkspaceConfig` (raw schema, `{ packages: readonly string[] }`). `Workspace = { config: WorkspaceConfig, projects: Map<dir, Project> }`. `loadWorkspace(root)` imports `vx.workspace.*` and infers projects by globbing each pattern (dirs only). `validateWorkspace` / `defineWorkspace` operate on the raw config. |
+| graph     |   ✅    | Single file. `Graph` is an alias for `Workspace`. `loadGraph(start)` walks up looking for `vx.workspace.*` to find the root, then calls `loadWorkspace`.                                                                                                                                                                            |
 
-34 tests pass. Format + lint clean.
+29 tests pass. Format + lint clean.
 
 ## Operating directive
 

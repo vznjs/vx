@@ -3,27 +3,32 @@ import { defineProject, loadProject, validateProject } from '../src/project/inde
 import { makeWorkspaceAsync } from './_testkit/fixtures.ts'
 
 describe('loadProject', () => {
-  it('loads vx.config.ts', async () => {
+  it('loads vx.config.ts and wraps the config', async () => {
     const dir = await makeWorkspaceAsync({ 'vx.config.ts': 'export default {}' })
-    expect(await loadProject(dir)).toEqual({})
+    expect(await loadProject(dir)).toEqual({ config: {} })
   })
 
   it('loads vx.config.mts', async () => {
     const dir = await makeWorkspaceAsync({ 'vx.config.mts': 'export default {}' })
-    expect(await loadProject(dir)).toEqual({})
+    expect(await loadProject(dir)).toEqual({ config: {} })
   })
 
   it('loads vx.config.js', async () => {
     const dir = await makeWorkspaceAsync({ 'vx.config.js': 'export default {}' })
-    expect(await loadProject(dir)).toEqual({})
+    expect(await loadProject(dir)).toEqual({ config: {} })
   })
 
   it('loads vx.config.mjs', async () => {
     const dir = await makeWorkspaceAsync({ 'vx.config.mjs': 'export default {}' })
-    expect(await loadProject(dir)).toEqual({})
+    expect(await loadProject(dir)).toEqual({ config: {} })
   })
 
-  it('throws on unknown fields (validation is implicit)', async () => {
+  it('returns a project with an empty config when no vx.config exists', async () => {
+    const dir = await makeWorkspaceAsync({ 'something.txt': 'no config here' })
+    expect(await loadProject(dir)).toEqual({ config: {} })
+  })
+
+  it('throws on unknown fields when a config is present', async () => {
     const dir = await makeWorkspaceAsync({
       'vx.config.ts': 'export default { whatever: 7 }',
     })
@@ -34,15 +39,10 @@ describe('loadProject', () => {
     const dir = await makeWorkspaceAsync({ 'vx.config.ts': 'export const x = 1' })
     await expect(loadProject(dir)).rejects.toThrow()
   })
-
-  it('throws when the directory has no vx.config file', async () => {
-    const dir = await makeWorkspaceAsync({ 'package.json': '{"name":"a"}' })
-    await expect(loadProject(dir)).rejects.toThrow()
-  })
 })
 
 describe('validateProject', () => {
-  it('returns the input unchanged when it matches the schema', () => {
+  it('returns the input as ProjectConfig when valid', () => {
     expect(validateProject({})).toEqual({})
   })
 
