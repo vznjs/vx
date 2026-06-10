@@ -132,6 +132,22 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: CACHE_VERSION → v18. Env-value folding in `Cache.key()`
+  switched its name/value delimiter from `=` to `\0` — `("A", "B=C")`
+  and `("A=B", "C")` folded identical bytes. Unreachable from a real
+  POSIX environ (names can't contain `=`), bumped anyway: the key
+  derivation's invariant is unambiguous part boundaries, and file
+  inputs already used `\0`. Found by the June 2026 six-reviewer bug
+  sweep, which also produced: run() counting remote hits as failures
+  (PR #109 — the `ok` predicate omitted `cache-hit-remote`; first e2e
+  remote-layer test added), absolute-path validation gap in
+  `cache.inputs.files` (PR #110), macOS sandbox `allowWrite: ['/tmp']`
+  never matching because SRT keeps the literal path when bare-`/tmp`
+  symlink resolution trips its boundary guard — vx now realpaths user
+  sandbox paths itself (PR #111), and corrupt remote artifacts going
+  live before validation + crashing the run instead of degrading to a
+  miss (PR #113, typed `CorruptArtifactError`, validate-before-rename).
+
 - **2026-05**: Dead-code cleanup pass — drop the TUI-era observer
   subsystem and other no-consumer surfaces. -1305 LOC across 28 files,
   no behaviour change.

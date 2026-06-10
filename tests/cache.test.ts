@@ -120,6 +120,16 @@ describe('Cache.key', () => {
     expect(a).not.toBe(b)
   })
 
+  it('env name/value boundary is unambiguous (no `=` delimiter collision)', async () => {
+    // `A` = `B=C` and `A=B` = `C` would both fold the string "A=B=C"
+    // under a naive `${name}=${value}` join. Env names with `=` are
+    // unreachable from a real POSIX environ, but the key derivation
+    // contract is unambiguity, not "unlikely in practice".
+    const a = await cache.key({ ...baseInput(), envValues: [['A', 'B=C']] })
+    const b = await cache.key({ ...baseInput(), envValues: [['A=B', 'C']] })
+    expect(a).not.toBe(b)
+  })
+
   it('distinguishes empty value from unset (different cache keys)', async () => {
     const present = await cache.key({ ...baseInput(), envValues: [['MODE', '']] })
     const absent = await cache.key({ ...baseInput(), envValues: [] })
