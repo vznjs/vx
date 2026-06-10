@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { Cache, type CacheKeyInput } from '../src/cache/cache.js'
+import { Cache, type CacheKeyInput, CorruptArtifactError } from '../src/cache/cache.js'
 
 describe('Cache.key', () => {
   let dir: string
@@ -334,6 +334,28 @@ describe('Cache storage (v10)', () => {
     // Simulate someone deleting the cached artifact without touching the DB.
     await rm(path.join(cacheDir, 'h-orphan.tar.zst'), { force: true })
     expect(await cache.get('h-orphan')).toBeNull()
+  })
+
+  it('ingest() rejects corrupt zstd bytes — no artifact on disk, no SQL row', async () => {
+    const garbage = new Uint8Array([0xde, 0xad, 0xbe, 0xef, 1, 2, 3, 4, 5, 6, 7, 8])
+    await expect(
+      cache.ingest('h-corrupt', garbage, { taskId: 'pkg#build', command: 'tsc', durationMs: 1 }),
+    ).rejects.toThrow(CorruptArtifactError)
+    expect(existsSync(path.join(cacheDir, 'h-corrupt.tar.zst'))).toBe(false)
+    expect(await cache.get('h-corrupt')).toBeNull()
+  })
+
+  it('ingest() rejects valid zstd that is not a vx artifact (no stdout entry)', async () => {
+    const notTar = await Bun.zstdCompress(new TextEncoder().encode('not a tar archive at all'))
+    await expect(
+      cache.ingest('h-not-tar', new Uint8Array(notTar), {
+        taskId: 'pkg#build',
+        command: 'tsc',
+        durationMs: 1,
+      }),
+    ).rejects.toThrow(CorruptArtifactError)
+    expect(existsSync(path.join(cacheDir, 'h-not-tar.tar.zst'))).toBe(false)
+    expect(await cache.get('h-not-tar')).toBeNull()
   })
 
   it('recordRun() + stats() captures run history', async () => {

@@ -165,6 +165,30 @@ describe('LayeredCache', () => {
     expect(next?.source).toBe('local')
   })
 
+  it('get() degrades a corrupt remote artifact to a miss instead of throwing', async () => {
+    // The server "has" the hash, but the body is not a zstd artifact —
+    // a truncated/garbage upload from another writer. The layered cache
+    // must report it via onRemoteError and return null so the run falls
+    // back to executing the task.
+    serverStore.set('h-corrupt', new TextEncoder().encode('definitely not zstd').buffer)
+    const errors: Error[] = []
+    const layered = new LayeredCache(
+      local,
+      new RemoteCache({ baseUrl: `http://localhost:${server.port}`, token: 'tok' }),
+      { onRemoteError: (e) => errors.push(e) },
+    )
+
+    const hit = await layered.get('h-corrupt', { taskId: 'pkg#build', command: 'tsc' })
+    expect(hit).toBeNull()
+    expect(errors).toHaveLength(1)
+
+    // Nothing half-ingested locally, and a later save of the same hash
+    // (the task re-executed) still works.
+    expect(await local.get('h-corrupt')).toBeNull()
+    await saveSample(layered, 'h-corrupt')
+    expect(await local.get('h-corrupt')).not.toBeNull()
+  })
+
   it('get() returns null when both local and remote miss', async () => {
     const layered = makeLayered()
     expect(await layered.get('h-nowhere')).toBeNull()

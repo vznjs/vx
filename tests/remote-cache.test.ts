@@ -119,6 +119,38 @@ describe('RemoteCache', () => {
     expect(new TextDecoder().decode(r.body)).toBe('tarball-bytes')
   })
 
+  it('get(): wraps a truncated body in RemoteCacheError', async () => {
+    // Bun.serve normalizes content-length to the real body size, so lie
+    // at the TCP level: declare 100 bytes, send 3, close. Bun's fetch
+    // surfaces the truncation as a throw from res.arrayBuffer(); the
+    // client must map it to RemoteCacheError so the layered cache
+    // degrades it to onRemoteError + miss instead of crashing the run.
+    const resp = 'HTTP/1.1 200 OK\r\ncontent-length: 100\r\nx-artifact-duration: 5\r\n\r\nabc'
+    const tcp = Bun.listen({
+      hostname: '127.0.0.1',
+      port: 0,
+      socket: {
+        data(sock) {
+          sock.write(resp)
+          sock.flush()
+          setTimeout(() => sock.end(), 20)
+        },
+      },
+    })
+    try {
+      const cache = new RemoteCache({ baseUrl: `http://127.0.0.1:${tcp.port}`, token: 'tok' })
+      await expect(cache.get('h')).rejects.toThrow(RemoteCacheError)
+    } finally {
+      tcp.stop(true)
+    }
+  })
+
+  it('put(): accepts any 2xx — 202 Accepted does not throw', async () => {
+    const cache = new RemoteCache({ baseUrl: fixture.baseUrl, token: 'tok' })
+    fixture.setHandler(() => new Response(null, { status: 202 }))
+    await expect(cache.put('h', new ArrayBuffer(0), { durationMs: 0 })).resolves.toBeUndefined()
+  })
+
   it('put(): throws on non-2xx response', async () => {
     const cache = new RemoteCache({ baseUrl: fixture.baseUrl, token: 'tok' })
     fixture.setHandler(() => new Response('unauthorized', { status: 401 }))
