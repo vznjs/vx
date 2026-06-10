@@ -41,7 +41,7 @@ import { extractOutputs, parseTarHeaders, readTarText } from './tar.js'
 // separate stage/meta.json/tar.gz dance for remote, no
 // `cache-archive.ts`. stderr is no longer cached: we only cache
 // successful runs and stderr is rarely meaningful on success.
-const CACHE_VERSION = 'vx-cache-v17'
+const CACHE_VERSION = 'vx-cache-v18'
 const SCHEMA_VERSION = 'v17'
 
 export interface CacheKeyInput {
@@ -542,7 +542,9 @@ export class Cache implements CacheLayer {
     for (const a of forwarded) h = xxh3(a, h)
 
     h = xxh3(`env-values:${input.envValues.length}`, h)
-    for (const [n, v] of input.envValues) h = xxh3(`${n}=${v}`, h)
+    // \0 delimiter, not `=`: names and values may themselves contain
+    // `=`, and `A` + `B=C` must never fold the same bytes as `A=B` + `C`.
+    for (const [n, v] of input.envValues) h = xxh3(`${n}\0${v}`, h)
 
     const upstream = [...input.upstreamHashes].sort()
     h = xxh3(`upstream:${upstream.length}`, h)

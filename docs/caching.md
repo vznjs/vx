@@ -412,3 +412,18 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
   actually takes effect on existing DBs. Non-cryptographic by design
   — cache keys never need collision resistance against an adversary,
   just uniqueness across honest inputs.
+- **v15 → v16** (PR #86 series): artifact storage moved to a single
+  compressed `<hash>.tar.zst` per entry; the manifest.json entry was
+  dropped (file fingerprints live in the `output_files` table).
+- **v16 → v17**: artifact narrowed to exactly `stdout` +
+  `outputs/<rel>` — no `meta.json`, no stderr (only successful runs
+  are cached and their stderr is near-always empty noise). Local and
+  remote layers transport the same bytes end-to-end; entry metadata
+  lives solely in SQLite.
+- **v17 → v18**: env-value folding in `Cache.key()` switched its
+  name/value delimiter from `=` to `\0`. `${n}=${v}` was ambiguous —
+  `("A", "B=C")` and `("A=B", "C")` folded identical bytes. Env names
+  containing `=` are unreachable from a real POSIX environ, so this
+  is contract hardening rather than a field bug, but the key
+  derivation's stated invariant is unambiguous part boundaries —
+  now it holds everywhere (file inputs already used `\0`).
