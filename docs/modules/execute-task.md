@@ -22,6 +22,7 @@ export interface ExecuteArgs {
   nestedProjectDirs: string[]
   runStartHrTimeNs: bigint
   persistentRegistry?: Map<string, ReturnType<typeof Bun.spawn>>
+  liveChildren?: Set<ReturnType<typeof Bun.spawn>> // run-scoped; signal handler SIGTERMs these
 }
 
 export interface ComputeHashArgs {

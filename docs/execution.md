@@ -73,6 +73,12 @@ terminal and a task succeeding or failing. Read it alongside
  │                spans are stored relative to it.
  │    • persistentRegistry — Map<taskId, Subprocess> of long-running
  │                children. SIGTERMed at end-of-run.
+ │    • liveChildren — Set<Subprocess> of in-flight children; the
+ │                runner adds/removes each around its spawn.
+ │    • SIGINT/SIGTERM handlers (removed in a finally): on signal,
+ │                SIGTERM everything in liveChildren +
+ │                persistentRegistry, close the cache, exit 128+signo
+ │                (SIGINT → 130, SIGTERM → 143).
  │
  ├─ Scheduling (src/graph/scheduler.ts:runGraph)
  │    Up to N tasks concurrently, ordered topologically.

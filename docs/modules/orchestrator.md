@@ -56,21 +56,23 @@ wrapWithRemoteCache`. Returns a `PreparedRun` with the cache
 4. **Concurrency** = `options.concurrency ?? workspaceConfig.concurrency
 ?? navigator.hardwareConcurrency`.
 5. **Run-level state.** `runId` (ULID) + `runStartHrTimeNs` anchor +
-   `persistentRegistry` map. Stays in `run()` — not shared with
-   `planRun()`.
-6. **Header.** Packages-in-scope, task names, remote-cache enabled?
-7. **`runGraph(...)`.** Scheduler executes each ready node via
+   `liveChildren` set + `persistentRegistry` map. Stays in `run()` —
+   not shared with `planRun()`.
+6. **Signal handlers.** SIGINT/SIGTERM handlers are installed here
+   and removed in a `finally` (see "Signal shutdown" below).
+7. **Header.** Packages-in-scope, task names, remote-cache enabled?
+8. **`runGraph(...)`.** Scheduler executes each ready node via
    `executeTask`. Each finished outcome gets `log.taskComplete`.
-8. **Persistent cleanup.** Every entry in `persistentRegistry` is
+9. **Persistent cleanup.** Every entry in `persistentRegistry` is
    SIGTERMed; `Promise.allSettled` waits for exits before continuing.
-9. **Summary.** `formatRunSummary(list, totalMs)` — the shared
-   `tallyOutcomes` helper inside excludes group tasks.
-10. **Optional artifacts.** `writeRunSummary` / `writeRunProfile` when
+10. **Summary.** `formatRunSummary(list, totalMs)` — the shared
+    `tallyOutcomes` helper inside excludes group tasks.
+11. **Optional artifacts.** `writeRunSummary` / `writeRunProfile` when
     `summarize` / `profile` options are set. Errors logged, exit code
     unchanged.
-11. **`recordRun` per real task.** Group tasks skipped (via the
+12. **`recordRun` per real task.** Group tasks skipped (via the
     shared `isGroupTask` predicate).
-12. **`cache.close()`.**
+13. **`cache.close()`.**
 
 `planRun()` mirrors steps 1–2 via the same `prepareRun`, then
 delegates to `orchestrator/plan.ts:plan(...)` inside a try/finally
@@ -101,6 +103,31 @@ dep's build AND keeps upstream cache identity stable across CLI args.
 - We need a single place to SIGTERM them all once the rest of the
   graph drains, regardless of overall success/failure.
 - A registry keyed by `taskId` makes test assertions tractable.
+
+## Signal shutdown
+
+`run()` installs SIGINT + SIGTERM handlers for its own duration
+(unless `RunOptions.handleSignals === false`) and removes them in a
+`finally`, so repeated `run()` calls never stack listeners. On
+signal:
+
+1. SIGTERM every child in `liveChildren` (one-shot spawns; the
+   runner adds/removes each child around its spawn) and every entry
+   in `persistentRegistry`. `Subprocess.kill` is idempotent on
+   already-exited children.
+2. Close the cache handle (double-close vs the normal path is
+   tolerated — we're exiting).
+3. `process.exit(signalExitCode(signal))` — 130 for SIGINT, 143 for
+   SIGTERM.
+
+This covers programmatic signals (CI cancellation, `kill <pid>`)
+that don't benefit from terminal process-group propagation. v1
+doesn't cancel scheduling — the process exits immediately after
+forwarding SIGTERM, so in-flight awaits never settle. Watch mode
+passes `handleSignals: false` for its cycles: the loop owns signal
+disposition for its whole lifetime (its `process.once` handlers
+close watchers and resolve 0), and a cycle must never exit the
+process out from under it.
 
 ## Failure semantics
 

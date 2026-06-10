@@ -163,6 +163,8 @@ export interface SandboxedRunArgs {
   forwardArgs?: readonly string[] | undefined
   onStdout?: (chunk: string) => void
   onStderr?: (chunk: string) => void
+  /** See `RunOptions.liveChildren` — same contract for sandboxed spawns. */
+  liveChildren?: Set<ReturnType<typeof Bun.spawn>>
   /**
    * Baseline reads — paths the sandbox unconditionally allows. The
    * caller builds this from resolved `cache.inputs.files`.
@@ -326,11 +328,13 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
     }
   }
 
+  args.liveChildren?.add(proc)
   const [stdout, stderr] = await Promise.all([
     streamToString(proc.stdout, args.onStdout),
     streamToString(proc.stderr, args.onStderr),
   ])
   await proc.exited
+  args.liveChildren?.delete(proc)
   const exitCode = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)
 
   // macOS: read the violation store keyed by our tagged command.

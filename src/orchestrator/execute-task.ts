@@ -34,6 +34,13 @@ export interface ExecuteArgs {
    * can SIGTERM it once the rest of the graph finishes.
    */
   persistentRegistry?: Map<string, ReturnType<typeof Bun.spawn>>
+  /**
+   * Run-scoped set of in-flight subprocesses (one-shot and
+   * not-yet-ready persistent). The runner adds/removes children
+   * around each spawn; the orchestrator's SIGINT/SIGTERM handler
+   * SIGTERMs whatever is in here.
+   */
+  liveChildren?: Set<ReturnType<typeof Bun.spawn>>
   /** Per-run memo for `git ls-files` (one entry per project dir). */
   gitFilesCache?: Map<string, readonly string[]>
   /** Per-run memo for derived hashes (package.json bytes + task config). */
@@ -201,6 +208,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     env,
     onStdout: (chunk) => log.taskStdout(node, chunk),
     onStderr: (chunk) => log.taskStderr(node, chunk),
+    ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
   }
   if (step.persistent.readyWhen !== undefined) {
     persistentOpts.readyWhen = step.persistent.readyWhen
@@ -372,6 +380,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       forwardArgs: effectiveForwardArgs,
       onStdout: (chunk) => log.taskStdout(node, chunk),
       onStderr: (chunk) => log.taskStderr(node, chunk),
+      ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
     })
   }
 
@@ -410,6 +419,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       forwardArgs: effectiveForwardArgs,
       onStdout: (chunk) => log.taskStdout(node, chunk),
       onStderr: (chunk) => log.taskStderr(node, chunk),
+      ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
       baseAllowRead: [...resolved.files, ...baseAllowWrite],
       baseAllowWrite,
       baseDenyRead: [args.workspaceRoot],

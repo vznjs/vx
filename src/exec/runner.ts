@@ -26,6 +26,12 @@ export interface RunOptions {
   /** Called for each chunk of stdout/stderr as it arrives, for live output. */
   onStdout?: (chunk: string) => void
   onStderr?: (chunk: string) => void
+  /**
+   * Run-scoped registry of in-flight subprocesses. The child is added
+   * on spawn and removed once it exits, so the orchestrator's signal
+   * handler can SIGTERM everything still alive mid-run.
+   */
+  liveChildren?: Set<ReturnType<typeof Bun.spawn>>
 }
 
 export function shellQuote(arg: string): string {
@@ -174,9 +180,12 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   void consumeChunks(child.stdout, false)
   void consumeChunks(child.stderr, true)
 
+  opts.liveChildren?.add(child)
+
   // If the child exits BEFORE ready fires, that's a failure to start
   // — reject the ready promise so the caller can surface it.
   void child.exited.then((code) => {
+    opts.liveChildren?.delete(child)
     if (readyAt === undefined) {
       rejectReady(
         new Error(
@@ -226,11 +235,13 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     }
   }
 
+  opts.liveChildren?.add(proc)
   const [stdout, stderr] = await Promise.all([
     streamToString(proc.stdout, opts.onStdout),
     streamToString(proc.stderr, opts.onStderr),
   ])
   await proc.exited
+  opts.liveChildren?.delete(proc)
   const exitCode = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)
   return {
     exitCode,

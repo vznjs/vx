@@ -15,23 +15,23 @@
 
 ## Quick-scan summary
 
-| Phase               | Turbo                                            | Nx                                               | vx                                                |
-| ------------------- | ------------------------------------------------ | ------------------------------------------------ | ------------------------------------------------- |
-| Cold-start cache    | Daemon-backed; cold path re-discovers workspace  | DB-cache + on-disk project-graph snapshot        | Cold every run — no persistent state              |
-| Workspace discovery | `package.json` walk + lockfile parse             | Plugin pipeline                                  | `pnpm-workspace.yaml` / pkg.json                  |
-| Task graph          | Topo build, Rust                                 | Topo build, TS + Rust hashing                    | TS, `buildTaskGraph`                              |
-| Input enum          | `git ls-files` per package, dedupe across tasks  | Native Rust (hash_array, batched)                | One `git ls-files` at workspace root, partitioned |
-| Input hashing       | xxh64 in Rust                                    | xxh3 in Rust (native)                            | xxh3 in Bun (xxHash3 via `Bun.hash`)              |
-| Cache key           | xxh64 → 16 hex                                   | xxh3 native                                      | xxh3 → 16 hex (seed-chain folded)                 |
-| Cache lookup        | SQLite + tar.zst on disk                         | SQLite (`DbCache.getBatch`) — one query          | SQLite + tar.zst — per-task                       |
-| Restore (warm)      | Per-file skip via sibling `<hash>-manifest.json` | **Always extract** (no per-file skip)            | Skip via `output_files` SQLite + stat-check       |
-| Restore (cold)      | Tar.zst stream extract, parallel writes          | Rust `copyFilesFromCache`                        | In-process tar parse + `Bun.write`                |
-| Save                | tar.zst + sibling `<hash>-manifest.json`         | Rust `storeArtifactInCache`                      | tar.zst + SQLite output_files rows                |
-| Log replay          | Buffer per task, emit on complete                | Buffer per task, emit on complete                | Same — `defaultLogger` per-task buffer            |
-| Integrity (local)   | xxh64 of compressed bytes? No (verified absent)  | Machine-ID gate + checksum-less artifact restore | **None** — gap (see audit doc)                    |
-| Integrity (remote)  | HMAC-SHA256 over `hash‖team‖bytes`, gated by env | No HMAC                                          | **None** — gap                                    |
-| Signal handling     | Cancel token + SIGTERM via tokio                 | IPC signal forwarding to children                | Watch only; main `run()` lacks handlers           |
-| FS robustness       | Retries unclear / inherits OS                    | `tryAndRetry()` exponential backoff              | No retries beyond SQLite `busy_timeout`           |
+| Phase               | Turbo                                            | Nx                                               | vx                                                               |
+| ------------------- | ------------------------------------------------ | ------------------------------------------------ | ---------------------------------------------------------------- |
+| Cold-start cache    | Daemon-backed; cold path re-discovers workspace  | DB-cache + on-disk project-graph snapshot        | Cold every run — no persistent state                             |
+| Workspace discovery | `package.json` walk + lockfile parse             | Plugin pipeline                                  | `pnpm-workspace.yaml` / pkg.json                                 |
+| Task graph          | Topo build, Rust                                 | Topo build, TS + Rust hashing                    | TS, `buildTaskGraph`                                             |
+| Input enum          | `git ls-files` per package, dedupe across tasks  | Native Rust (hash_array, batched)                | One `git ls-files` at workspace root, partitioned                |
+| Input hashing       | xxh64 in Rust                                    | xxh3 in Rust (native)                            | xxh3 in Bun (xxHash3 via `Bun.hash`)                             |
+| Cache key           | xxh64 → 16 hex                                   | xxh3 native                                      | xxh3 → 16 hex (seed-chain folded)                                |
+| Cache lookup        | SQLite + tar.zst on disk                         | SQLite (`DbCache.getBatch`) — one query          | SQLite + tar.zst — per-task                                      |
+| Restore (warm)      | Per-file skip via sibling `<hash>-manifest.json` | **Always extract** (no per-file skip)            | Skip via `output_files` SQLite + stat-check                      |
+| Restore (cold)      | Tar.zst stream extract, parallel writes          | Rust `copyFilesFromCache`                        | In-process tar parse + `Bun.write`                               |
+| Save                | tar.zst + sibling `<hash>-manifest.json`         | Rust `storeArtifactInCache`                      | tar.zst + SQLite output_files rows                               |
+| Log replay          | Buffer per task, emit on complete                | Buffer per task, emit on complete                | Same — `defaultLogger` per-task buffer                           |
+| Integrity (local)   | xxh64 of compressed bytes? No (verified absent)  | Machine-ID gate + checksum-less artifact restore | **None** — gap (see audit doc)                                   |
+| Integrity (remote)  | HMAC-SHA256 over `hash‖team‖bytes`, gated by env | No HMAC                                          | **None** — gap                                                   |
+| Signal handling     | Cancel token + SIGTERM via tokio                 | IPC signal forwarding to children                | Shipped 2026-06: `run()` SIGTERMs live children, exits 128+signo |
+| FS robustness       | Retries unclear / inherits OS                    | `tryAndRetry()` exponential backoff              | No retries beyond SQLite `busy_timeout`                          |
 
 The rest of this doc is per-phase deep-dives. Cells call out **what
 they do**, **where in source**, and **whether we should adopt**.
@@ -155,16 +155,16 @@ restore path; every cache hit re-copies.
 
 ## 8. Task execution (cache miss)
 
-| Step                       | Turbo                                                 | Nx                                                          | vx                                                                              |
-| -------------------------- | ----------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Spawn                      | `std::process::Command`                               | `fork()` (Node IPC) or `spawn()` for shell tasks            | `Bun.spawn` with `stdout: 'pipe', stderr: 'pipe'`                               |
-| PATH augmentation          | Workspace `.bin` + each project's `node_modules/.bin` | Same                                                        | Project's own `node_modules/.bin` prepended (PR #46)                            |
-| stdout/stderr capture      | Streamed to buffer + cache file                       | Streamed to buffer + cache file                             | Streamed to logger buffer (per-task)                                            |
-| Signal forwarding to child | Tokio cancellation token → SIGTERM                    | IPC signal forwarding (`forked-process-task-runner.ts:411`) | **Persistent tasks only** — one-shot children don't get SIGTERM on parent abort |
-| Exit code propagation      | Yes, fail-fast option                                 | Yes, `--continue=<mode>`                                    | Yes — see `comparison.md` for `--continue` gap                                  |
-| Resource accounting        | cpuTime, maxRSS via `wait4`                           | cpuTime via subprocess events                               | `Bun.spawn` + `resourceUsage()` — cpu_ms, peak_rss_bytes recorded (PR #20)      |
+| Step                       | Turbo                                                 | Nx                                                          | vx                                                                                            |
+| -------------------------- | ----------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Spawn                      | `std::process::Command`                               | `fork()` (Node IPC) or `spawn()` for shell tasks            | `Bun.spawn` with `stdout: 'pipe', stderr: 'pipe'`                                             |
+| PATH augmentation          | Workspace `.bin` + each project's `node_modules/.bin` | Same                                                        | Project's own `node_modules/.bin` prepended (PR #46)                                          |
+| stdout/stderr capture      | Streamed to buffer + cache file                       | Streamed to buffer + cache file                             | Streamed to logger buffer (per-task)                                                          |
+| Signal forwarding to child | Tokio cancellation token → SIGTERM                    | IPC signal forwarding (`forked-process-task-runner.ts:411`) | All live children (one-shot + persistent) via run-scoped `liveChildren` set (shipped 2026-06) |
+| Exit code propagation      | Yes, fail-fast option                                 | Yes, `--continue=<mode>`                                    | Yes — see `comparison.md` for `--continue` gap                                                |
+| Resource accounting        | cpuTime, maxRSS via `wait4`                           | cpuTime via subprocess events                               | `Bun.spawn` + `resourceUsage()` — cpu_ms, peak_rss_bytes recorded (PR #20)                    |
 
-**vx gap:** SIGINT/SIGTERM handler in `run()` doesn't propagate to in-flight one-shot tasks (audit doc item #1).
+~~**vx gap:** SIGINT/SIGTERM handler in `run()` doesn't propagate to in-flight one-shot tasks (audit doc item #1).~~ Shipped 2026-06: `run()` installs SIGINT/SIGTERM handlers (removed in a finally), SIGTERMs every live child, closes the cache, exits 130/143.
 
 ---
 
@@ -220,9 +220,9 @@ restore path; every cache hit re-copies.
 | Failed task logs        | Replayed at end-of-run footer   | Replayed                               | Streamed live, NOT replayed at end (PR #46 dropped end-of-run replay)          |
 | Stderr capture on throw | Yes                             | Yes                                    | Yes — scheduler catches throws, parks message on `TaskOutcome.stderr` (PR #17) |
 | Persistent task cleanup | SIGTERM on rest-of-graph-finish | Same                                   | SIGTERM via `persistentRegistry` (PR persistent tasks)                         |
-| Mid-run Ctrl+C          | Cancel token propagates         | IPC signal                             | **Children orphaned** (audit doc item #1)                                      |
+| Mid-run Ctrl+C          | Cancel token propagates         | IPC signal                             | SIGTERM to all live children + exit 128+signo (shipped 2026-06)                |
 
-**vx gap:** mid-run Ctrl+C handling (audit doc item #1).
+~~**vx gap:** mid-run Ctrl+C handling (audit doc item #1).~~ Shipped 2026-06.
 
 ---
 

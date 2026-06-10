@@ -58,7 +58,12 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`vx watch: ${resolved.error}\n`)
     return 1
   }
-  const opts = resolved
+  // The watch loop owns SIGINT/SIGTERM for its whole lifetime (the
+  // process.once handlers below close watchers and resolve 0). A
+  // cycle's run() must not install its exit-the-process handlers —
+  // Ctrl-C mid-cycle would kill the loop with 130 instead of the
+  // loop's own clean shutdown.
+  const opts: RunOptions = { ...resolved, handleSignals: false }
 
   // Enumerate projects-in-scope so we know what dirs to watch.
   // `opts.projects` is the resolved scope; undefined means "every

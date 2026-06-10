@@ -38,6 +38,14 @@ export interface RunOptions {
    * by the CLI parser, not here.
    */
   profile?: string
+  /**
+   * Install SIGINT/SIGTERM handlers for the run's duration: forward
+   * SIGTERM to every live child, close the cache, exit 128+signo
+   * (130/143). Default true. The watch loop disables this — it owns
+   * signal disposition for its whole lifetime and a cycle must never
+   * exit the process out from under it.
+   */
+  handleSignals?: boolean
   log?: Logger
 }
 

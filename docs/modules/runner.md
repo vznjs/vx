@@ -26,9 +26,13 @@ export interface RunOptions {
   forwardArgs?: readonly string[] // appended shell-quoted to `command`
   onStdout?: (chunk: string) => void
   onStderr?: (chunk: string) => void
+  liveChildren?: Set<ReturnType<typeof Bun.spawn>> // run-scoped registry; child added on spawn, removed on exit
 }
 
 export function runCommand(opts: RunOptions): Promise<RunResult>
+
+// POSIX "terminated by signal N" → exit 128+N (SIGINT → 130, SIGTERM → 143).
+export function signalExitCode(signal: NodeJS.Signals): number
 
 export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs'> {
   readyWhen?: string // string regex; matched against streamed output
@@ -126,9 +130,12 @@ outcome.
 - **Doesn't sandbox.** The child has full process privileges. A
   bwrap sandbox was tried and reverted (Ubuntu 24 AppArmor breaks it
   in CI; design-doc/sandbox.md was removed).
-- **Doesn't propagate signals to the child group.** If `vx` is
-  SIGINTed, Bun's default child-process behavior applies; no
-  process-group setup.
+- **Doesn't install signal handlers.** Signal shutdown is the
+  orchestrator's job: it owns the `liveChildren` set this module
+  populates, SIGTERMs everything in it on SIGINT/SIGTERM, and exits
+  `signalExitCode(signal)`. The runner only maintains the registry.
+  No process-group setup — only direct children are signalled, so a
+  task that double-forks can still leave grandchildren behind.
 - **Doesn't strip ANSI.** Color sequences pass through verbatim,
   enabling color-preserving cache-hit replays.
 - **No Windows support.** `sh -c` only.

@@ -5,6 +5,7 @@
 import type { RunRecord } from './cache/cache.js'
 import { LayeredCache } from './cache/layered-cache.js'
 import { VERSION } from './version.js'
+import { signalExitCode } from './exec/runner.js'
 import { runGraph, type TaskOutcome } from './graph/scheduler.js'
 import { isGroupTask } from './graph/task-graph.js'
 import { ulid } from './util/ulid.js'
@@ -61,175 +62,209 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     workspaceConfig?.concurrency ??
     Math.max(1, navigator.hardwareConcurrency)
 
-  // One run-id per `vx run` invocation. Every task in the resulting
-  // graph carries it so analytics queries can group by invocation.
-  const runId = ulid()
-  const runStartHrTimeNs = process.hrtime.bigint()
-  const endedAtMsAtStart = Date.now()
-  const remoteCacheEnabled = cache instanceof LayeredCache
-
-  // Lazy SRT init: only fire it up if at least one task in the graph
-  // opts into sandboxing via its `sandbox: {...}` block. Tasks that
-  // need sandboxing on an unsupported platform get a hard error so
-  // they don't silently run unsandboxed.
-  const anySandboxed = [...nodes.values()].some((n) => n.config.sandbox !== undefined)
-  if (anySandboxed) {
-    const avail = await probeSandbox()
-    if (!avail.available) {
-      prepared.cache.close()
-      throw new UserError(`sandbox not available: ${avail.reason}`)
-    }
-    await initSandbox()
-  }
-
-  // Header counts: unique projects covered by the graph (including
-  // dependsOn-pulled deps, not just the user-requested set), and the
-  // total number of real (non-group) task executions. Mirrors the
-  // count the end-of-run summary reports under "total".
-  const packagesInScope = new Set<string>()
-  let taskCount = 0
-  for (const node of nodes.values()) {
-    packagesInScope.add(node.projectName)
-    if (!isGroupTask(node)) taskCount++
-  }
-  for (const line of formatHeader(
-    {
-      version: VERSION,
-      packageCount: packagesInScope.size,
-      tasks: [...new Set(options.tasks.map(unanchored))],
-      taskCount,
-      remoteCacheEnabled,
-    },
-    colors,
-  ))
-    log.status(line)
-
-  // Persistent (long-running) subprocesses — dev servers, watchers.
-  // executeTask spawns them but does NOT await their exit; ownership
-  // moves to this registry. Once the rest of the graph finishes we
-  // SIGTERM each one so the runner returns cleanly.
+  // Run-scoped registries of live subprocesses:
+  //   - `liveChildren`: in-flight children. The runner adds/removes
+  //     each child around its spawn (persistent children stay until
+  //     they exit).
+  //   - `persistentRegistry`: ready persistent tasks (dev servers,
+  //     watchers). executeTask spawns them but does NOT await their
+  //     exit; ownership moves here so the orchestrator can SIGTERM
+  //     them once the rest of the graph finishes.
+  //
+  // A SIGINT/SIGTERM mid-run forwards SIGTERM to everything live,
+  // closes the cache handle, and exits 128+signo (130/143). Without
+  // this, a programmatic signal to the vx process alone (CI
+  // cancellation, `kill <pid>`) orphans every running child —
+  // terminal Ctrl-C only worked via process-group propagation. The
+  // handlers are removed in the finally below so repeated run()
+  // calls (test suites) never stack listeners.
+  const liveChildren = new Set<ReturnType<typeof Bun.spawn>>()
   const persistentRegistry = new Map<string, ReturnType<typeof Bun.spawn>>()
-
-  const outcomes = await runGraph({
-    nodes,
-    concurrency,
-    onFinish: (o) => {
-      log.taskComplete(o.node, o)
-    },
-    execute: (node, upstream) =>
-      executeTask({
-        node,
-        upstream,
-        workspaceRoot,
-        workspaceFingerprint,
-        cache,
-        noCache: options.noCache ?? false,
-        forwardArgs: options.forwardArgs,
-        log,
-        nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
-        runStartHrTimeNs,
-        persistentRegistry,
-        gitFilesCache,
-        hashCache,
-      }),
-  })
-
-  // Shut down every persistent task before reporting the final
-  // summary. SIGTERM gives well-behaved servers (vite, next, esbuild
-  // --watch) a moment to clean up; we don't escalate to SIGKILL —
-  // process-group propagation on Ctrl-C handles the unhappy case.
-  // Bun's Subprocess.kill is idempotent on an already-exited child.
-  for (const child of persistentRegistry.values()) child.kill('SIGTERM')
-  await Promise.allSettled([...persistentRegistry.values()].map((c) => c.exited))
-
-  const list = [...outcomes.values()]
-  const ok = list.every(
-    (o) => o.status === 'success' || o.status === 'cache-hit' || o.status === 'cache-hit-remote',
-  )
-
-  // The summary + artifact writers + recordRun pass all exclude group
-  // tasks via the shared tallyOutcomes helper. We pass the full
-  // outcome list and let each consumer apply the same filter.
-  const endedAtMs = Date.now()
-  const totalMs = Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000
-  for (const line of formatRunSummary(list, totalMs, colors)) log.status(line)
-
-  // Optional artifacts. Errors are surfaced to the user but don't
-  // change the run's exit code — the run already happened.
-  if (options.summarize !== undefined) {
+  const onSignal = (signal: 'SIGINT' | 'SIGTERM'): void => {
+    for (const child of liveChildren) child.kill('SIGTERM')
+    for (const child of persistentRegistry.values()) child.kill('SIGTERM')
     try {
-      const wrote = await writeRunSummary({
-        target: options.summarize,
-        cacheDir,
-        cwd: options.cwd,
-        runId,
-        startedAtMs: endedAtMsAtStart,
-        endedAtMs,
-        totalMs,
-        outcomes: list,
-      })
-      log.status(`vx: summary written to ${wrote}`)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      log.status(`vx: failed to write summary: ${msg}`)
+      cache.close()
+    } catch {
+      // double-close race with the normal path; we're exiting anyway
     }
+    process.exit(signalExitCode(signal))
   }
-  if (options.profile !== undefined) {
-    try {
-      const wrote = await writeRunProfile({
-        target: options.profile,
-        cwd: options.cwd,
-        outcomes: list,
-      })
-      log.status(`vx: profile written to ${wrote}`)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      log.status(`vx: failed to write profile: ${msg}`)
-    }
+  const onSigint = (): void => onSignal('SIGINT')
+  const onSigterm = (): void => onSignal('SIGTERM')
+  if (options.handleSignals ?? true) {
+    process.on('SIGINT', onSigint)
+    process.on('SIGTERM', onSigterm)
   }
+  try {
+    // One run-id per `vx run` invocation. Every task in the resulting
+    // graph carries it so analytics queries can group by invocation.
+    const runId = ulid()
+    const runStartHrTimeNs = process.hrtime.bigint()
+    const endedAtMsAtStart = Date.now()
+    const remoteCacheEnabled = cache instanceof LayeredCache
 
-  // Record each task to the run history in a single SQLite transaction
-  // (one fsync instead of N). Group tasks (no `exec`) are skipped —
-  // they aren't real runs and the `runs` table is analytics-focused.
-  const now = endedAtMs
-  const toRecord: RunRecord[] = []
-  for (const o of list) {
-    if (!o.hash) continue
-    if (isGroupTask(o.node)) continue
-    toRecord.push({
-      hash: o.hash,
-      project: o.node.projectName,
-      task: o.node.taskName,
-      status: o.status,
-      exitCode: o.exitCode,
-      durationMs: o.durationMs,
-      ...(options.forwardArgs !== undefined ? { forwardArgs: options.forwardArgs } : {}),
-      startedAt: now - o.durationMs,
-      endedAt: now,
-      runId,
-      ...(o.cpuMs !== undefined ? { cpuMs: o.cpuMs } : {}),
-      ...(o.peakRssBytes !== undefined ? { peakRssBytes: o.peakRssBytes } : {}),
-      ...(o.wallclockStartNs !== undefined ? { wallclockStartNs: o.wallclockStartNs } : {}),
-      ...(o.wallclockEndNs !== undefined ? { wallclockEndNs: o.wallclockEndNs } : {}),
-      cacheHit: o.status === 'cache-hit' || o.status === 'cache-hit-remote',
+    // Lazy SRT init: only fire it up if at least one task in the graph
+    // opts into sandboxing via its `sandbox: {...}` block. Tasks that
+    // need sandboxing on an unsupported platform get a hard error so
+    // they don't silently run unsandboxed.
+    const anySandboxed = [...nodes.values()].some((n) => n.config.sandbox !== undefined)
+    if (anySandboxed) {
+      const avail = await probeSandbox()
+      if (!avail.available) {
+        prepared.cache.close()
+        throw new UserError(`sandbox not available: ${avail.reason}`)
+      }
+      await initSandbox()
+    }
+
+    // Header counts: unique projects covered by the graph (including
+    // dependsOn-pulled deps, not just the user-requested set), and the
+    // total number of real (non-group) task executions. Mirrors the
+    // count the end-of-run summary reports under "total".
+    const packagesInScope = new Set<string>()
+    let taskCount = 0
+    for (const node of nodes.values()) {
+      packagesInScope.add(node.projectName)
+      if (!isGroupTask(node)) taskCount++
+    }
+    for (const line of formatHeader(
+      {
+        version: VERSION,
+        packageCount: packagesInScope.size,
+        tasks: [...new Set(options.tasks.map(unanchored))],
+        taskCount,
+        remoteCacheEnabled,
+      },
+      colors,
+    ))
+      log.status(line)
+
+    const outcomes = await runGraph({
+      nodes,
+      concurrency,
+      onFinish: (o) => {
+        log.taskComplete(o.node, o)
+      },
+      execute: (node, upstream) =>
+        executeTask({
+          node,
+          upstream,
+          workspaceRoot,
+          workspaceFingerprint,
+          cache,
+          noCache: options.noCache ?? false,
+          forwardArgs: options.forwardArgs,
+          log,
+          nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
+          runStartHrTimeNs,
+          persistentRegistry,
+          liveChildren,
+          gitFilesCache,
+          hashCache,
+        }),
     })
-  }
-  cache.recordRuns(toRecord)
-  cache.close()
 
-  // Tear down SRT's network bridge + (on macOS) log monitor. No-op if
-  // no task was sandboxed; otherwise SRT keeps proxy servers alive and
-  // the next vx run would init on top of stale state.
-  if (anySandboxed) {
-    try {
-      await resetSandbox()
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      log.status(`vx: sandbox cleanup failed: ${msg}`)
+    // Shut down every persistent task before reporting the final
+    // summary. SIGTERM gives well-behaved servers (vite, next, esbuild
+    // --watch) a moment to clean up; we don't escalate to SIGKILL —
+    // process-group propagation on Ctrl-C handles the unhappy case.
+    // Bun's Subprocess.kill is idempotent on an already-exited child.
+    for (const child of persistentRegistry.values()) child.kill('SIGTERM')
+    await Promise.allSettled([...persistentRegistry.values()].map((c) => c.exited))
+
+    const list = [...outcomes.values()]
+    const ok = list.every(
+      (o) => o.status === 'success' || o.status === 'cache-hit' || o.status === 'cache-hit-remote',
+    )
+
+    // The summary + artifact writers + recordRun pass all exclude group
+    // tasks via the shared tallyOutcomes helper. We pass the full
+    // outcome list and let each consumer apply the same filter.
+    const endedAtMs = Date.now()
+    const totalMs = Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000
+    for (const line of formatRunSummary(list, totalMs, colors)) log.status(line)
+
+    // Optional artifacts. Errors are surfaced to the user but don't
+    // change the run's exit code — the run already happened.
+    if (options.summarize !== undefined) {
+      try {
+        const wrote = await writeRunSummary({
+          target: options.summarize,
+          cacheDir,
+          cwd: options.cwd,
+          runId,
+          startedAtMs: endedAtMsAtStart,
+          endedAtMs,
+          totalMs,
+          outcomes: list,
+        })
+        log.status(`vx: summary written to ${wrote}`)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        log.status(`vx: failed to write summary: ${msg}`)
+      }
     }
-  }
+    if (options.profile !== undefined) {
+      try {
+        const wrote = await writeRunProfile({
+          target: options.profile,
+          cwd: options.cwd,
+          outcomes: list,
+        })
+        log.status(`vx: profile written to ${wrote}`)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        log.status(`vx: failed to write profile: ${msg}`)
+      }
+    }
 
-  return { ok, outcomes: list }
+    // Record each task to the run history in a single SQLite transaction
+    // (one fsync instead of N). Group tasks (no `exec`) are skipped —
+    // they aren't real runs and the `runs` table is analytics-focused.
+    const now = endedAtMs
+    const toRecord: RunRecord[] = []
+    for (const o of list) {
+      if (!o.hash) continue
+      if (isGroupTask(o.node)) continue
+      toRecord.push({
+        hash: o.hash,
+        project: o.node.projectName,
+        task: o.node.taskName,
+        status: o.status,
+        exitCode: o.exitCode,
+        durationMs: o.durationMs,
+        ...(options.forwardArgs !== undefined ? { forwardArgs: options.forwardArgs } : {}),
+        startedAt: now - o.durationMs,
+        endedAt: now,
+        runId,
+        ...(o.cpuMs !== undefined ? { cpuMs: o.cpuMs } : {}),
+        ...(o.peakRssBytes !== undefined ? { peakRssBytes: o.peakRssBytes } : {}),
+        ...(o.wallclockStartNs !== undefined ? { wallclockStartNs: o.wallclockStartNs } : {}),
+        ...(o.wallclockEndNs !== undefined ? { wallclockEndNs: o.wallclockEndNs } : {}),
+        cacheHit: o.status === 'cache-hit' || o.status === 'cache-hit-remote',
+      })
+    }
+    cache.recordRuns(toRecord)
+    cache.close()
+
+    // Tear down SRT's network bridge + (on macOS) log monitor. No-op if
+    // no task was sandboxed; otherwise SRT keeps proxy servers alive and
+    // the next vx run would init on top of stale state.
+    if (anySandboxed) {
+      try {
+        await resetSandbox()
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        log.status(`vx: sandbox cleanup failed: ${msg}`)
+      }
+    }
+
+    return { ok, outcomes: list }
+  } finally {
+    process.off('SIGINT', onSigint)
+    process.off('SIGTERM', onSigterm)
+  }
 }
 
 /**

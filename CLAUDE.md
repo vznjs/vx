@@ -134,6 +134,35 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: SIGINT/SIGTERM handling in `run()`. Closes the
+  runner-comparison gap "children orphaned on mid-run signal": a
+  programmatic signal to the vx process alone (CI cancellation,
+  `kill <pid>`) previously left one-shot AND persistent children
+  running. Design: a run-scoped `liveChildren: Set<Subprocess>` —
+  `runCommand` / `runPersistent` / `runSandboxed` add each child on
+  spawn and remove it on exit (new optional `liveChildren` field on
+  their options). `run()` installs SIGINT/SIGTERM handlers after the
+  cache opens and removes them in a `finally`, so repeated runs in
+  test suites never stack listeners. On signal: SIGTERM everything in
+  `liveChildren` + `persistentRegistry`, close the cache handle, then
+  `process.exit(signalExitCode(signal))` — 130/143 per the POSIX
+  128+signo convention (`signalExitCode` is a new export in
+  `src/exec/runner.ts`). v1 deliberately does NOT cancel scheduling
+  or plumb AbortController through executeTask — the process exits
+  immediately after forwarding SIGTERM. Known limit: only direct
+  children are signalled (no process groups), so a double-forking
+  task can still orphan grandchildren. Watch mode opts out via the
+  new `RunOptions.handleSignals: false` — the loop owns signal
+  disposition for its whole lifetime (its `process.once` handlers
+  close watchers and resolve 0); a cycle's run() exiting the process
+  would kill the loop (and, in tests, the bun test process — the
+  watch e2e suite simulates Ctrl-C with `process.emit('SIGINT')`,
+  which is delivered to every listener in-process). New
+  `tests/signal-handling.test.ts`:
+  3 e2e tests spawn the real CLI and assert exit code + child death
+  via pidfile + `kill(pid, 0)`, 1 in-process test pins listener
+  counts across repeated runs.
+
 - **2026-06**: CACHE_VERSION → v18. Env-value folding in `Cache.key()`
   switched its name/value delimiter from `=` to `\0` — `("A", "B=C")`
   and `("A=B", "C")` folded identical bytes. Unreachable from a real
