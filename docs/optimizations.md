@@ -1,0 +1,81 @@
+# Optimization catalog
+
+Every performance decision that shipped, in one place: what it is,
+where it lives, why it's safe, and the invariant that keeps it valid.
+If you change code near one of these, the invariant column is the
+contract you must re-verify. Measured numbers come from
+[`benchmarks.md`](./benchmarks.md) and the CLAUDE.md decision log.
+
+The headline result: on the 100-project synthetic workspace, vx's
+all-hits path is **~3.9× faster than Turbo and ~5.4× faster than Nx**,
+and the no-cache run lands within 4% of the bare-shell floor.
+
+## Hashing & cache keys
+
+| #   | What                                                                              | Where                                                                                          | Why / effect                                                                                         | Invariant to preserve                                                                                                     |
+| --- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 1   | xxHash3 for every cache-key site (was SHA-256)                                    | `util/hash.ts`, `cache/cache.ts:key`, `execute-task.ts`, `fingerprint.ts`, `project-loader.ts` | ~5× faster derivation on the warm path; 16-hex keys match Turbo's xxh64 width                        | Not cryptographic — fine for content addressing, never use for auth/integrity vs. an adversary                            |
+| 2   | Seed-chained key folding (`xxh3(part, prevDigest)`) instead of a streaming hasher | `cache/cache.ts:key`                                                                           | Bun has no streaming xxh3; chaining avoids concatenating a big key buffer                            | Every variable-length part must be length-prefixed or `\0`-delimited so part boundaries stay unambiguous                  |
+| 3   | Workspace fingerprint computed once per run, folded into every task key           | `orchestrator/fingerprint.ts`                                                                  | One lockfile read/hash instead of N                                                                  | Must cover every supported lockfile + `pnpm-workspace.yaml`; fixed file order                                             |
+| 4   | Config module-cache busting by content hash, not mtime                            | `workspace/project-loader.ts`                                                                  | Same content → Bun module-cache hit; changed content → fresh eval. Hashing a <10 KB config is ~50 µs | The hash must cover the full file bytes; mtime is not reliable (Bun mtimeNs undefined; ms granularity misses rapid edits) |
+| 5   | Per-run `hashCache` for repeated file/config hashes                               | `orchestrator/prepare.ts` → `execute-task.ts`                                                  | Shared files (presets) hash once per run                                                             | Cache is per-run only; nothing may persist across runs without entering the key itself                                    |
+
+## Input enumeration
+
+| #   | What                                                                                       | Where                                               | Why / effect                                                                                                 | Invariant to preserve                                                                                                                                                 |
+| --- | ------------------------------------------------------------------------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 6   | `git ls-files --cached --others --exclude-standard` instead of an FS walk + ignore parsing | `cache/inputs.ts`                                   | Turbo/Nx parity; git's C-speed ignore handling; correct nested-`.gitignore` anchoring (fixed a real v13 bug) | vx hard-requires git — no fallback walker. Absent git → `UserError`, never silent degradation                                                                         |
+| 7   | One workspace-root git snapshot per run, partitioned per project (`gitFilesCache`)         | `cache/inputs.ts`, invalidated in `execute-task.ts` | One `git ls-files` spawn instead of P                                                                        | **Staleness rule:** after a task with declared outputs saves or restores, its project's cache entry must be dropped — downstream same-project tasks must re-enumerate |
+| 8   | O(P log P) nested-project-boundary computation (sort + contiguous prefix scan; was O(P²))  | `orchestrator/nested-dirs.ts`                       | Negligible at 10 projects, real at 1000                                                                      | Prefix match must include the trailing `path.sep` so `pkg/a` is not treated as parent of `pkg/ab`                                                                     |
+
+## Scheduling & graph
+
+| #   | What                                                                                                    | Where                              | Why / effect                                                         | Invariant to preserve                                                                                                                             |
+| --- | ------------------------------------------------------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 9   | O(N + E) scheduler tick: per-node dep counters + ready priority queue (was O(N²) rescan per completion) | `graph/scheduler.ts`               | Tick cost independent of graph size                                  | Priority contract: higher transitive-reverse-dep count first; ties break in graph-insertion order (binary-search insert respects existing equals) |
+| 10  | Iterative cycle detection with `Uint8Array` color array (was recursion + Map)                           | `graph/task-graph.ts:detectCycle`  | No V8 stack ceiling on deep `dependsOn` chains; no per-node Map cost | Must still report the cycle path in the error                                                                                                     |
+| 11  | Group tasks execute with zero I/O — hash rolled up from upstream outcomes                               | `execute-task.ts:computeGroupHash` | Umbrella tasks (`install`, `ci`) cost microseconds                   | Group hash must fold every upstream `id:hash` pair, sorted, so it stays order-independent                                                         |
+
+## Cache store
+
+| #   | What                                                                                  | Where                                  | Why / effect                                                                                                                                                                                | Invariant to preserve                                                                                                                                    |
+| --- | ------------------------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 12  | Hand-rolled in-process tar parse/extract (kept over `Bun.Archive`)                    | `cache/tar.ts`                         | Benchmarked: `Bun.Archive` is **15–400× slower** for our artifact shape (KB–MB, flat trees) — fixed JS-bridge overhead dominates small archives. Also: no `tar` subprocess fork per restore | Security checks are part of the parser: reject absolute paths, `..`, hardlinks; unlink symlinks before write; re-verify resolved target stays under dest |
+| 13  | Restore skip via `output_files` rows + stat check (`isOutputsCurrent`)                | `cache/cache.ts`                       | Warm-warm hit = N stats, zero writes, zero decompress                                                                                                                                       | Stored size/mode/mtime fingerprint must match what `extractOutputs` produces (mtime compared at floor-to-second — tar headers carry seconds)             |
+| 14  | SQLite metadata index, WAL, `busy_timeout = 5000`, one handle per run                 | `cache/cache.ts`                       | Indexed lookups; concurrent `vx run` invocations don't crash                                                                                                                                | Entry metadata lives in SQL only (v17 artifacts carry just stdout + outputs) — never reintroduce a meta.json that can drift from the rows                |
+| 15  | Atomic artifact publish: unique tmp name → `rename` (no pre-rm)                       | `cache/cache.ts:writeArtifactAndIndex` | Concurrent saves of the same hash are either-or; readers never see partial bytes                                                                                                            | POSIX rename replaces atomically; the pre-rm variant reintroduces a delete-after-rename race                                                             |
+| 16  | Single-transaction batch writes: `recordRuns`, prune deletes (+ parallel artifact rm) | `cache/cache.ts`                       | One fsync instead of N                                                                                                                                                                      | Prune's IN-list binding must stay under SQLite's 999-placeholder limit per statement                                                                     |
+| 17  | v17 artifact = exactly `stdout` + `outputs/<rel>`; identical bytes local and remote   | `cache/cache.ts`, `layered-cache.ts`   | No stage-dir repack for upload — `save` re-reads the just-written artifact and PUTs it verbatim; remote hit writes the body straight to disk                                                | Local and remote layers must keep transporting the same byte format; metadata travels out-of-band (SQL row / HTTP headers)                               |
+
+## I/O & process
+
+| #   | What                                                                                           | Where                                           | Why / effect                                            | Invariant to preserve                                                           |
+| --- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| 18  | Logger buffers chunks as `string[]`, joins on flush (was `+=` accumulation)                    | `orchestrator/logger.ts`                        | `+=` was O(N²) over total bytes for chatty tasks        | Per-task ordering within a stream must be append-only                           |
+| 19  | Memoized `Bun.color` ANSI lookups                                                              | `orchestrator/colors.ts`                        | Called thousands of times with one of four hex strings  | Cache key is the color string; gating (NO_COLOR etc.) happens before lookup     |
+| 20  | `Bun.Glob` for filter matching + recursive listing (was hand-rolled regex / readdir recursion) | `workspace/filter.ts`, `cache/layered-cache.ts` | Native glob engine                                      | Glob semantics are now Bun's — brace/bracket behavior changes with Bun upgrades |
+| 21  | Concurrent project discovery (`Promise.all` over package globs)                                | `workspace/workspace.ts`                        | Was serialized                                          | Dedupe pass after must keep deterministic order                                 |
+| 22  | `AbortSignal.timeout` for remote-cache fetches                                                 | `cache/remote-cache.ts`                         | Drops the manual controller + setTimeout ceremony       | Catch both `AbortError` and `TimeoutError`                                      |
+| 23  | `toPosix` fast path when `path.sep === '/'`                                                    | `util/paths.ts`                                 | Skips split/join on the dominant platform               | Windows is unsupported anyway; revisit if that changes                          |
+| 24  | Hoisted dynamic imports out of per-task paths                                                  | `execute-task.ts`, `layered-cache.ts`           | `await import()` per task was measurable                | —                                                                               |
+| 25  | `Bun.spawn` everywhere (with `resourceUsage()`)                                                | `exec/runner.ts`                                | Native spawn + free cpu_ms / peak-RSS capture per child | —                                                                               |
+
+## Known headroom (deliberately not taken yet)
+
+From `benchmarks.md` and the perf-pass backlog — candidates with a
+measured or suspected win, parked until profiled:
+
+- **Batched cache-entry lookup** for the all-hits path (Nx does one
+  `getBatch` query; we probe per task). A previous `getMetaBatch`
+  attempt was removed in the 2026-05 dead-code pass because it never
+  wired into `execute-task.ts` — re-attempt only with the wiring.
+- **Group-task reverse-index** for `^build` fan-out re-resolution.
+- **Memoized `taskConfigHash`** for projects sharing a preset config
+  object (hash by object identity per run).
+- **`relPosix` fast path** for ASCII workspace-root prefixes in the
+  enumeration loop.
+
+Stale claims, for the record: `benchmarks.md`'s "hardlink restore"
+bullet describes a pre-v17 design that never shipped in this form —
+restores are tar extracts with a stat-check fast path (see #12/#13);
+tar hardlink entries are rejected as a security measure.

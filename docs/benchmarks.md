@@ -54,9 +54,10 @@ numbers:
 - **`git ls-files` for input enumeration.** Same pattern Turbo and Nx
   use; cheaper than walking the tree and consulting nested
   `.gitignore` files in JS.
-- **Hardlink restore.** Cache entries land via hardlinks pointing
-  into the cache store — no byte copy. Same model Turbo and Nx use
-  (`src/cache/cache.ts:813`).
+- **Stat-check restore skip.** When every declared output already
+  matches the cached size/mode/mtime fingerprint (`output_files`
+  rows), restore is N stats and zero writes — no decompress, no
+  extraction (`src/cache/cache.ts:isOutputsCurrent`).
 - **In-process tar parser.** No `tar` subprocess on the restore path
   (`src/cache/tar.ts`); saves the fork+exec per cache hit.
 - **SQLite for metadata.** One open DB handle per run; lookups are a
