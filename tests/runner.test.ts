@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { runCommand, shellQuote } from '../src/exec/runner.js'
+import { runCommand, runPersistent, shellQuote, signalExitCode } from '../src/exec/runner.js'
 
 describe('runCommand', () => {
   let cwd: string
@@ -93,6 +93,118 @@ describe('runCommand', () => {
     expect(result.exitCode).toBe(7)
     expect(result.cpuMs).toBeDefined()
     expect(result.peakRssBytes).toBeDefined()
+  })
+
+  it('reports 128+signo for a SIGKILL-killed child (137)', async () => {
+    const result = await runCommand({
+      command: 'kill -KILL $$',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+    })
+    expect(result.exitCode).toBe(137)
+  })
+
+  it('reports 128+signo for a SIGTERM-killed child (143)', async () => {
+    const result = await runCommand({
+      command: 'kill -TERM $$',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+    })
+    expect(result.exitCode).toBe(143)
+  })
+})
+
+describe('signalExitCode', () => {
+  it('maps common signals via the platform signal table', () => {
+    expect(signalExitCode('SIGKILL')).toBe(137)
+    expect(signalExitCode('SIGTERM')).toBe(143)
+    expect(signalExitCode('SIGINT')).toBe(130)
+  })
+
+  it('falls back to 130 for unknown signal names', () => {
+    expect(signalExitCode('SIGNOTREAL')).toBe(130)
+  })
+})
+
+describe('runPersistent', () => {
+  let cwd: string
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-persistent-runner-'))
+  })
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('resolves ready when the marker arrives without a trailing newline', async () => {
+    // Prompt-style banner: no newline after the marker, child stays
+    // alive. Line-by-line-only matching would hang here forever.
+    const spawn = runPersistent({
+      command: `printf 'Listening on :3000'; sleep 30`,
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      readyWhen: 'Listening on',
+    })
+    try {
+      const settled = await Promise.race([
+        spawn.ready.then(() => 'ready'),
+        Bun.sleep(3_000).then(() => 'timed out'),
+      ])
+      expect(settled).toBe('ready')
+      expect(spawn.bufferedStdout()).toContain('Listening on :3000')
+    } finally {
+      spawn.child.kill('SIGKILL')
+      await spawn.child.exited
+    }
+  }, 8_000)
+
+  it('matches a marker split across chunks within one line', async () => {
+    const spawn = runPersistent({
+      command: `printf 'Listen'; sleep 0.15; printf 'ing on :3000'; sleep 30`,
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      readyWhen: 'Listening on',
+    })
+    try {
+      const settled = await Promise.race([
+        spawn.ready.then(() => 'ready'),
+        Bun.sleep(3_000).then(() => 'timed out'),
+      ])
+      expect(settled).toBe('ready')
+    } finally {
+      spawn.child.kill('SIGKILL')
+      await spawn.child.exited
+    }
+  }, 8_000)
+
+  it('still matches a marker on a complete newline-terminated line', async () => {
+    const spawn = runPersistent({
+      command: `echo 'Local: http://localhost:5173'; sleep 30`,
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      readyWhen: 'Local:',
+    })
+    try {
+      const settled = await Promise.race([
+        spawn.ready.then(() => 'ready'),
+        Bun.sleep(3_000).then(() => 'timed out'),
+      ])
+      expect(settled).toBe('ready')
+    } finally {
+      spawn.child.kill('SIGKILL')
+      await spawn.child.exited
+    }
+  }, 8_000)
+
+  it('rejects ready when the child exits before the marker appears', async () => {
+    const spawn = runPersistent({
+      command: 'echo nope; exit 1',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      readyWhen: 'Listening',
+    })
+    await expect(spawn.ready).rejects.toThrow(/exited before becoming ready/)
   })
 })
 

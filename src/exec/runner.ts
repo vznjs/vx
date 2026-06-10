@@ -4,6 +4,8 @@
 // process exits. cpuMs / peakRssBytes are then surfaced on RunResult and
 // folded into the v11 `runs` table by the orchestrator.
 
+import { constants as osConstants } from 'node:os'
+
 export interface RunResult {
   exitCode: number
   durationMs: number
@@ -30,6 +32,17 @@ export function shellQuote(arg: string): string {
   if (arg === '') return `''`
   if (/^[A-Za-z0-9_\-.,/=:@%+]+$/.test(arg)) return arg
   return `'${arg.replace(/'/g, `'\\''`)}'`
+}
+
+/**
+ * POSIX shells report signal death as 128 + signal number (SIGTERM →
+ * 143, SIGKILL → 137). Bun gives us the signal NAME; `os.constants`
+ * maps it to the platform-correct number. Unknown names fall back to
+ * 130 (128 + SIGINT).
+ */
+export function signalExitCode(signal: string): number {
+  const num = (osConstants.signals as Partial<Record<string, number>>)[signal]
+  return num === undefined ? 130 : 128 + num
 }
 
 export interface PersistentSpawn {
@@ -108,41 +121,49 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     }
   }
 
-  // Stream readers — match against `readyWhen` line-by-line. Each
-  // stream owns a pending fragment so a regex match isn't missed
-  // across chunk boundaries.
+  // Stream readers. Each stream owns a pending fragment so a regex
+  // match isn't missed across chunk boundaries. The match runs over
+  // the WHOLE fragment, including a trailing partial line — prompt-
+  // style markers ("Listening on :3000" with no newline) would never
+  // resolve ready under line-by-line-only matching. Complete lines
+  // that didn't match are discarded after each test to bound memory.
   const consumeChunks = async (
     stream: ReadableStream<Uint8Array> | number | undefined,
     isStderr: boolean,
   ): Promise<void> => {
     if (!stream || typeof stream === 'number') return
     let fragment = ''
+    const handleChunk = (chunk: string): void => {
+      if (chunk.length === 0) return
+      if (isStderr) {
+        bufferedStderr += chunk
+        opts.onStderr?.(chunk)
+      } else {
+        bufferedStdout += chunk
+        opts.onStdout?.(chunk)
+      }
+      if (readyRe && readyAt === undefined) {
+        fragment += chunk
+        if (readyRe.test(fragment)) {
+          markReady()
+          fragment = ''
+        } else {
+          const lastNl = fragment.lastIndexOf('\n')
+          if (lastNl >= 0) fragment = fragment.slice(lastNl + 1)
+        }
+      }
+    }
     const reader = stream.getReader()
     const decoder = new TextDecoder()
     try {
       while (true) {
         const { value, done } = await reader.read()
         if (done) break
-        const chunk = decoder.decode(value, { stream: true })
-        if (isStderr) {
-          bufferedStderr += chunk
-          opts.onStderr?.(chunk)
-        } else {
-          bufferedStdout += chunk
-          opts.onStdout?.(chunk)
-        }
-        if (readyRe && readyAt === undefined) {
-          fragment += chunk
-          const lastNl = fragment.lastIndexOf('\n')
-          const scanRegion = lastNl >= 0 ? fragment.slice(0, lastNl) : ''
-          if (readyRe.test(scanRegion)) {
-            markReady()
-            fragment = ''
-          } else if (lastNl >= 0) {
-            fragment = fragment.slice(lastNl + 1)
-          }
-        }
+        handleChunk(decoder.decode(value, { stream: true }))
       }
+      // Flush any undecoded multi-byte tail when the stream closes so
+      // the buffered text (and a final-fragment match) stay complete.
+      handleChunk(decoder.decode())
     } finally {
       reader.releaseLock()
     }
@@ -210,7 +231,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     streamToString(proc.stderr, opts.onStderr),
   ])
   await proc.exited
-  const exitCode = proc.exitCode ?? (proc.signalCode ? 130 : 1)
+  const exitCode = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)
   return {
     exitCode,
     durationMs: Date.now() - start,

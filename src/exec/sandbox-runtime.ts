@@ -25,7 +25,13 @@ import os from 'node:os'
 import { realpathSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import type { SandboxConfig, SandboxNetworkConfig } from '../config.js'
-import { shellQuote, streamToString, resourceUsageToCpuRss, type RunResult } from './runner.js'
+import {
+  shellQuote,
+  signalExitCode,
+  streamToString,
+  resourceUsageToCpuRss,
+  type RunResult,
+} from './runner.js'
 import { xxh3hex } from '../util/hash.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
@@ -325,7 +331,7 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
     streamToString(proc.stderr, args.onStderr),
   ])
   await proc.exited
-  const exitCode = proc.exitCode ?? (proc.signalCode ? 130 : 1)
+  const exitCode = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)
 
   // macOS: read the violation store keyed by our tagged command.
   const store = SandboxManager.getSandboxViolationStore()

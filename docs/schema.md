@@ -131,7 +131,7 @@ the right tool.
 
 ```ts
 interface PersistentConfig {
-  readyWhen?: string // regex (as string); first matching line marks ready
+  readyWhen?: string // regex (as string); first matching output marks ready
 }
 ```
 
@@ -140,8 +140,10 @@ watcher, a daemon. The runner spawns the command but does NOT wait
 for it to exit. Instead it considers the task "ready":
 
 - Immediately on successful spawn when no `readyWhen` is given.
-- On the first stdout/stderr line that matches the `readyWhen`
-  regex string.
+- On the first stdout/stderr output that matches the `readyWhen`
+  regex string. The match also sees a trailing partial line, so
+  prompt-style banners without a newline (`printf 'Listening on
+:3000'`) count.
 
 ```ts
 dev: {

@@ -31,7 +31,7 @@ export interface RunOptions {
 export function runCommand(opts: RunOptions): Promise<RunResult>
 
 export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs'> {
-  readyWhen?: string // string regex; line-by-line match
+  readyWhen?: string // string regex; matched against streamed output
 }
 
 export interface PersistentSpawn {
@@ -45,6 +45,7 @@ export interface PersistentSpawn {
 export function runPersistent(opts: PersistentOptions): PersistentSpawn
 
 export function shellQuote(arg: string): string
+export function signalExitCode(signal: string): number // 128 + signo; 130 fallback
 export function streamToString(
   stream: ReadableStream<Uint8Array> | number | undefined,
   onChunk?: (s: string) => void,
@@ -69,8 +70,10 @@ The promise from `runCommand` always resolves (never rejects) with a
 `RunResult`:
 
 - Normal exit → `exitCode` is the child's exit code.
-- Signal-killed → `exitCode = 130` if no exit code was reported; else
-  the OS's "signal as exit code" convention.
+- Signal-killed → `exitCode = signalExitCode(signalCode)` — the POSIX
+  128 + signo convention (SIGTERM → 143, SIGKILL → 137), falling back
+  to 130 for signal names missing from `os.constants.signals`. The
+  sandboxed runner (`sandbox-runtime.ts`) uses the same helper.
 - `Bun.spawn` itself throwing → `exitCode = 127`, stderr augmented
   with `[vx] failed to spawn: <message>`.
 
@@ -90,16 +93,23 @@ orchestrator persists NULLs in the `runs` table for that task.
 Spawns the child but returns _immediately_ with a `PersistentSpawn`
 descriptor. The `ready` promise:
 
-- Resolves on first stdout/stderr line that matches the compiled
-  `readyWhen` regex.
+- Resolves on the first stdout/stderr output that matches the
+  compiled `readyWhen` regex.
 - Resolves immediately on successful spawn when `readyWhen` is
   undefined.
 - Rejects if the child exits before either condition is met (with a
   message identifying the exit code and noting whether `readyWhen`
   ever matched).
 
-The pattern matcher buffers across chunk boundaries (line-by-line)
-so a match split across two reads isn't missed.
+The pattern matcher buffers across chunk boundaries and tests the
+whole pending fragment — complete lines plus the trailing partial
+line — so neither a match split across two reads nor a prompt-style
+marker without a trailing newline is missed. Complete lines that
+didn't match are discarded after each test to bound memory.
+
+Caveat: a never-matching `readyWhen` on a child that keeps running
+means `ready` never settles — the awaiting run hangs until the child
+exits on its own. There is no readiness timeout yet.
 
 Stream readers run for the child's lifetime; the caller owns the
 `child` handle and is responsible for SIGTERMing it. The orchestrator
@@ -131,9 +141,13 @@ outcome.
 - Failure returns non-zero + captured stderr.
 - Streaming callbacks fire per chunk.
 - Spawn failure (`/bin/sh` missing scenarios) surfaces as exit 127.
+- Signal-killed children map to 128 + signo (`SIGKILL` → 137,
+  `SIGTERM` → 143) plus `signalExitCode` unit coverage.
 - `shellQuote` covers the safe-char and unsafe-char paths.
-- `runPersistent` ready-on-spawn, ready-on-regex, fail-before-ready,
-  fragment-spanning-chunks (covered via the persistent e2e suite).
+- `runPersistent`: marker without trailing newline, marker split
+  across chunks, newline-terminated marker, reject-on-exit-before-
+  ready. Ready-on-spawn + orchestrator wiring are covered by the
+  persistent e2e suite (`tests/persistent.test.ts`).
 
 ## Replacing this module
 
