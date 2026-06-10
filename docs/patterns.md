@@ -56,7 +56,7 @@ config hash and per-task forwarded-args fold — are documented in
 | Pattern                                                         | Source     | vx source                                      |
 | --------------------------------------------------------------- | ---------- | ---------------------------------------------- |
 | Defer to `git ls-files` for tracked + untracked-but-not-ignored | Turbo + Nx | `src/cache/inputs.ts:214` ("Turbo / Nx model") |
-| Project-boundary enforcement (no cross-project globs)           | Turbo + Nx | `src/orchestrator/nested-dirs.ts`              |
+| Project-boundary enforcement (no cross-project globs)           | Turbo + Nx | `src/workspace/nested-dirs.ts`                 |
 | Fallback walker when git not present                            | Turbo      | `src/cache/inputs.ts`                          |
 
 ### `dependsOn` micro-syntax
@@ -88,12 +88,12 @@ Turbo/Nx vocabulary: `src/workspace/project-loader.ts:142`.
 
 ### Workspace discovery
 
-| Capability                                            | Source       | vx source                         |
-| ----------------------------------------------------- | ------------ | --------------------------------- |
-| Read `pnpm-workspace.yaml`                            | pnpm + Turbo | `src/workspace/workspace.ts`      |
-| Read `package.json` `workspaces` (npm/yarn/bun)       | Turbo        | `src/workspace/workspace.ts`      |
-| Build package-dep graph from workspace `dependencies` | Turbo + Nx   | `src/workspace/package-graph.ts`  |
-| Lockfile fingerprint at workspace level               | Turbo + Nx   | `src/orchestrator/fingerprint.ts` |
+| Capability                                            | Source       | vx source                        |
+| ----------------------------------------------------- | ------------ | -------------------------------- |
+| Read `pnpm-workspace.yaml`                            | pnpm + Turbo | `src/workspace/workspace.ts`     |
+| Read `package.json` `workspaces` (npm/yarn/bun)       | Turbo        | `src/workspace/workspace.ts`     |
+| Build package-dep graph from workspace `dependencies` | Turbo + Nx   | `src/workspace/package-graph.ts` |
+| Lockfile fingerprint at workspace level               | Turbo + Nx   | `src/workspace/fingerprint.ts`   |
 
 ### Cache topology
 
@@ -166,7 +166,7 @@ Turbo-aware cache server can transit our blobs unchanged.
 | `--concurrency <n>`                   | Turbo        | `src/cli/run.ts`                    |
 | `--no-cache` + `--force` synonyms     | Turbo        | `src/cli/run.ts`                    |
 | `--dry` / `--dry=json` (plan output)  | Turbo        | `src/orchestrator/plan.ts`          |
-| `--graph[=<path>]` (DOT)              | Turbo + Nx   | `src/orchestrator/plan-format.ts`   |
+| `--graph[=<path>]` (DOT)              | Turbo + Nx   | `src/cli/plan-format.ts`            |
 | `--summarize[=<path>]` (per-run JSON) | Turbo        | `src/orchestrator/run-artifacts.ts` |
 | `--profile[=<path>]` (Chrome-trace)   | Turbo        | `src/orchestrator/run-artifacts.ts` |
 | `--affected[=<base>]`                 | Turbo + Nx   | `src/workspace/affected.ts`         |

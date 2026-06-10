@@ -1,4 +1,4 @@
-# `src/orchestrator/plan-format.ts` — plan → text / JSON / DOT
+# `src/cli/plan-format.ts` — plan → text / JSON / DOT
 
 ## Purpose
 

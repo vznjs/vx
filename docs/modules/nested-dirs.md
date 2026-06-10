@@ -1,4 +1,4 @@
-# `src/orchestrator/nested-dirs.ts` — project-boundary set
+# `src/workspace/nested-dirs.ts` — project-boundary set
 
 ## Purpose
 

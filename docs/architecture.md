@@ -39,6 +39,8 @@ depend on higher ones, so cycles are impossible by construction.
 │   package-graph.ts │  bare pkg.json discovery     │   dependency-spec.ts     │  shared parser
 │   filter.ts        │  pnpm-style --filter DSL     └──────────────────────────┘
 │   affected.ts      │  git-relative --affected
+│   nested-dirs.ts   │  project-boundary set
+│   fingerprint.ts   │  lockfile / workspace-yaml hash
 └────────────────────┘
                 │
         ┌───────▼───────────────────────────────────────────────────┐
@@ -47,14 +49,12 @@ depend on higher ones, so cycles are impossible by construction.
         │ │ execute-task    │ │ cache/inputs    │ │ exec/runner    │ │
         │ │  per-task glue  │ │  glob + boundary│ │  Bun.spawn     │ │
         │ ├─────────────────┤ ├─────────────────┤ ├────────────────┤ │
-        │ │ fingerprint     │ │ cache/cache.ts  │ │ exec/env       │ │
-        │ │ nested-dirs     │ │  SQLite + disk  │ │  allow-list    │ │
-        │ │ upstream        │ │ cache/layered   │ └────────────────┘ │
-        │ │ logger / colors │ │ cache/remote    │                    │
-        │ │ framed-output   │ │ cache/archive   │                    │
-        │ │ summary         │ │                 │                    │
-        │ │ plan / format   │ └─────────────────┘                    │
-        │ │ run-artifacts   │                                        │
+        │ │ upstream        │ │ cache/cache.ts  │ │ exec/env       │ │
+        │ │ logger / colors │ │  SQLite + disk  │ │  allow-list    │ │
+        │ │ framed-output   │ │ cache/layered   │ └────────────────┘ │
+        │ │ summary         │ │ cache/remote    │                    │
+        │ │ plan            │ │ cache/archive   │                    │
+        │ │ run-artifacts   │ └─────────────────┘                    │
         │ │ remote-cache-setup                                       │
         │ └─────────────────┘                                        │
         └────────────────────────────────────────────────────────────┘

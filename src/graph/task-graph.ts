@@ -1,7 +1,12 @@
-import type { ProjectConfig, TaskConfig } from '../config.js'
+import type { TaskConfig } from '../config.js'
 import { UserError } from '../util/errors.js'
 import type { PackageGraph } from '../workspace/package-graph.js'
+import type { ProjectEntry } from '../workspace/workspace.js'
 import { DependencySpecError, parseDependencySpec, type DependencySpec } from './dependency-spec.js'
+
+// Re-exported so existing importers keep working while the type's home
+// moves to workspace (it's the joint product of discovery + loading).
+export type { ProjectEntry } from '../workspace/workspace.js'
 
 export interface TaskNode {
   /** Stable id: `${projectName}#${taskName}`. */
@@ -19,12 +24,6 @@ export interface TaskNode {
    * CLI args don't leak into upstream tasks the user didn't address.
    */
   requested: boolean
-}
-
-export interface ProjectEntry {
-  name: string
-  dir: string
-  config: ProjectConfig
 }
 
 export function taskId(project: string, task: string): string {

@@ -1,4 +1,4 @@
-# `src/orchestrator/fingerprint.ts` — workspace fingerprint
+# `src/workspace/fingerprint.ts` — workspace fingerprint
 
 ## Purpose
 

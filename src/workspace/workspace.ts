@@ -1,5 +1,5 @@
 import path from 'node:path'
-import type { WorkspaceConfig } from '../config.js'
+import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { UserError } from '../util/errors.js'
 
 export interface PackageJson {
@@ -27,6 +27,13 @@ export interface ProjectMeta {
   packageJson: PackageJson
   /** Absolute path to vx.config.{ts,mts,js,mjs} or null. */
   configPath: string | null
+}
+
+/** A discovered project joined with its loaded vx config. */
+export interface ProjectEntry {
+  name: string
+  dir: string
+  config: ProjectConfig
 }
 
 const CONFIG_FILENAMES = ['vx.config.ts', 'vx.config.mts', 'vx.config.js', 'vx.config.mjs']

@@ -89,11 +89,10 @@ src/
     cache.ts                      # `vx cache prune` (and the duration / size parsers)
     help.ts                       # `vx help` text
     format.ts                     # shared formatters (formatBytes, …)
+    plan-format.ts                # plan → text / JSON / Graphviz DOT
   orchestrator.ts                 # run() + planRun(): workspace → graph → schedule
   orchestrator/
     execute-task.ts               # per-task: hash → cache lookup → spawn → save
-    fingerprint.ts                # workspace-fingerprint (lockfiles + workspace yaml)
-    nested-dirs.ts                # project-boundary computation for input globs
     upstream.ts                   # filter upstream cache hashes per inputs.tasks
     remote-cache-setup.ts         # VX_REMOTE_CACHE_* env → LayeredCache wrap
     logger.ts                     # default logger (framed blocks, summary, etc.)
@@ -101,14 +100,15 @@ src/
     colors.ts                     # ANSI truecolor with NO_COLOR / FORCE_COLOR gating
     summary.ts                    # tail summary lines (Tasks / Cached / Time)
     plan.ts                       # `--dry` / `--graph` — predict outcomes, no exec
-    plan-format.ts                # plan → text / JSON / Graphviz DOT
     run-artifacts.ts              # --summarize JSON + --profile Chrome-trace writers
   config.ts                       # public schema: ProjectConfig, TaskConfig, …
   index.ts                        # public re-exports + package VERSION
   workspace/
-    workspace.ts                  # findWorkspaceRoot, listProjects, resolveCacheDir
+    workspace.ts                  # findWorkspaceRoot, listProjects, resolveCacheDir, ProjectEntry
     project-loader.ts             # Bun-native vx.config.* + vx.workspace.* loader
     package-graph.ts              # workspace dep graph
+    nested-dirs.ts                # project-boundary computation for input globs
+    fingerprint.ts                # workspace-fingerprint (lockfiles + workspace yaml)
     filter.ts                     # pnpm-style filter DSL (`--filter`)
     affected.ts                   # git-relative project selection (`--affected`)
   graph/

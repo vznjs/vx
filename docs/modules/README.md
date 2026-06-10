@@ -18,17 +18,18 @@ For the high-level data flow, read
 
 ## Top-level entry
 
-| File                               | Topic                                                              |
-| ---------------------------------- | ------------------------------------------------------------------ |
-| [`bin.md`](./bin.md)               | `src/bin.ts` — shebang entry; wires `process.argv` to `cli.run`.   |
-| [`cli.md`](./cli.md)               | `src/cli.ts` — argv → subcommand dispatcher; re-exports for tests. |
-| [`cli-run.md`](./cli-run.md)       | `src/cli/run.ts` — the `vx run` parser, scope resolver, picker.    |
-| [`cli-watch.md`](./cli-watch.md)   | `src/cli/watch.ts` — `vx watch <task>`: re-run on FS change.       |
-| [`cli-cache.md`](./cli-cache.md)   | `src/cli/cache.ts` — `vx cache prune`, duration / size parsers.    |
-| [`cli-help.md`](./cli-help.md)     | `src/cli/help.ts` — static help text.                              |
-| [`cli-format.md`](./cli-format.md) | `src/cli/format.ts` — `formatBytes` and other shared formatters.   |
-| [`config.md`](./config.md)         | `src/config.ts` — public schema types + `defineProject` helpers.   |
-| [`index.md`](./index.md)           | `src/index.ts` — public re-exports + `VERSION` constant.           |
+| File                                 | Topic                                                              |
+| ------------------------------------ | ------------------------------------------------------------------ |
+| [`bin.md`](./bin.md)                 | `src/bin.ts` — shebang entry; wires `process.argv` to `cli.run`.   |
+| [`cli.md`](./cli.md)                 | `src/cli.ts` — argv → subcommand dispatcher; re-exports for tests. |
+| [`cli-run.md`](./cli-run.md)         | `src/cli/run.ts` — the `vx run` parser, scope resolver, picker.    |
+| [`cli-watch.md`](./cli-watch.md)     | `src/cli/watch.ts` — `vx watch <task>`: re-run on FS change.       |
+| [`cli-cache.md`](./cli-cache.md)     | `src/cli/cache.ts` — `vx cache prune`, duration / size parsers.    |
+| [`cli-help.md`](./cli-help.md)       | `src/cli/help.ts` — static help text.                              |
+| [`cli-format.md`](./cli-format.md)   | `src/cli/format.ts` — `formatBytes` and other shared formatters.   |
+| [`plan-format.md`](./plan-format.md) | `src/cli/plan-format.ts` — plan → text / JSON / DOT.               |
+| [`config.md`](./config.md)           | `src/config.ts` — public schema types + `defineProject` helpers.   |
+| [`index.md`](./index.md)             | `src/index.ts` — public re-exports + `VERSION` constant.           |
 
 ## Orchestrator
 
@@ -36,8 +37,6 @@ For the high-level data flow, read
 | -------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | [`orchestrator.md`](./orchestrator.md)             | `src/orchestrator.ts` — `run()` / `planRun()` entry; workspace → graph → schedule.     |
 | [`execute-task.md`](./execute-task.md)             | `src/orchestrator/execute-task.ts` — per-task: hash → cache lookup → spawn → save.     |
-| [`fingerprint.md`](./fingerprint.md)               | `src/orchestrator/fingerprint.ts` — workspace fingerprint (lockfile + workspace yaml). |
-| [`nested-dirs.md`](./nested-dirs.md)               | `src/orchestrator/nested-dirs.ts` — boundary set (other projects rooted under each).   |
 | [`upstream.md`](./upstream.md)                     | `src/orchestrator/upstream.ts` — filter upstream cache hashes by `cache.inputs.tasks`. |
 | [`remote-cache-setup.md`](./remote-cache-setup.md) | `src/orchestrator/remote-cache-setup.ts` — env → `LayeredCache` wrap.                  |
 | [`logger.md`](./logger.md)                         | `src/orchestrator/logger.ts` — default logger (framed blocks, status, replay).         |
@@ -45,20 +44,21 @@ For the high-level data flow, read
 | [`colors.md`](./colors.md)                         | `src/orchestrator/colors.ts` — ANSI gate + truecolor helpers.                          |
 | [`summary.md`](./summary.md)                       | `src/orchestrator/summary.ts` — tail `Tasks / Cached / Time` block.                    |
 | [`plan.md`](./plan.md)                             | `src/orchestrator/plan.ts` — `--dry` / `--graph` planning (no exec).                   |
-| [`plan-format.md`](./plan-format.md)               | `src/orchestrator/plan-format.ts` — plan → text / JSON / DOT.                          |
 | [`run-artifacts.md`](./run-artifacts.md)           | `src/orchestrator/run-artifacts.ts` — `--summarize` JSON + `--profile` trace writers.  |
 | [`prepare.md`](./prepare.md)                       | `src/orchestrator/prepare.ts` — shared run / planRun setup (workspace, graph, cache).  |
 | [`tally.md`](./tally.md)                           | `src/orchestrator/tally.ts` — shared outcome tally for summary + summarize JSON.       |
 
 ## Workspace + discovery
 
-| File                                       | Topic                                                                            |
-| ------------------------------------------ | -------------------------------------------------------------------------------- |
-| [`workspace.md`](./workspace.md)           | `src/workspace/workspace.ts` — `findWorkspaceRoot`, `listProjects`, cacheDir.    |
-| [`project-loader.md`](./project-loader.md) | `src/workspace/project-loader.ts` — `vx.config.*` / `vx.workspace.*` evaluation. |
-| [`package-graph.md`](./package-graph.md)   | `src/workspace/package-graph.ts` — workspace dep graph from package.json.        |
-| [`filter.md`](./filter.md)                 | `src/workspace/filter.ts` — pnpm-style `--filter` DSL parser + applier.          |
-| [`affected.md`](./affected.md)             | `src/workspace/affected.ts` — git-relative project selection.                    |
+| File                                       | Topic                                                                               |
+| ------------------------------------------ | ----------------------------------------------------------------------------------- |
+| [`workspace.md`](./workspace.md)           | `src/workspace/workspace.ts` — `findWorkspaceRoot`, `listProjects`, cacheDir.       |
+| [`project-loader.md`](./project-loader.md) | `src/workspace/project-loader.ts` — `vx.config.*` / `vx.workspace.*` evaluation.    |
+| [`package-graph.md`](./package-graph.md)   | `src/workspace/package-graph.ts` — workspace dep graph from package.json.           |
+| [`filter.md`](./filter.md)                 | `src/workspace/filter.ts` — pnpm-style `--filter` DSL parser + applier.             |
+| [`affected.md`](./affected.md)             | `src/workspace/affected.ts` — git-relative project selection.                       |
+| [`nested-dirs.md`](./nested-dirs.md)       | `src/workspace/nested-dirs.ts` — boundary set (other projects rooted under each).   |
+| [`fingerprint.md`](./fingerprint.md)       | `src/workspace/fingerprint.ts` — workspace fingerprint (lockfile + workspace yaml). |
 
 ## Graph + scheduler
 

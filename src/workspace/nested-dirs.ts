@@ -1,5 +1,5 @@
 import path from 'node:path'
-import type { ProjectEntry } from '../graph/task-graph.js'
+import type { ProjectEntry } from './workspace.js'
 
 /**
  * For each project, the absolute dirs of other projects that live

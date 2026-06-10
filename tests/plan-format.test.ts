@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { formatGraphDot, formatPlanJson, formatPlanText } from '../src/orchestrator/plan-format.js'
+import { formatGraphDot, formatPlanJson, formatPlanText } from '../src/cli/plan-format.js'
 import type { CacheStatus, PlannedTask, RunPlan } from '../src/orchestrator/plan.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 

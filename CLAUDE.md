@@ -41,17 +41,19 @@ src/
   index.ts              # public re-exports
   orchestrator/         # orchestrator helpers
     execute-task.ts     # per-task execution (cache lookup → spawn → save)
-    fingerprint.ts      # workspace lockfile / yaml hash
-    nested-dirs.ts      # project-boundary computation
     upstream.ts         # filter upstream hashes for cache key
     task-logs.ts        # persist stdout/stderr to <cacheDir>/logs/<run_id>/
     remote-cache-setup.ts # VX_REMOTE_CACHE_* env → LayeredCache
     logger.ts           # default logger + formatOutcome + prefix
+  cli/                  # subcommand parsers + presentation
+    plan-format.ts      # --dry / --graph plan → text / JSON / DOT
   workspace/            # discovery + selection
-    workspace.ts        # discovery: pnpm-workspace.yaml / pkg.json workspaces / bare pkg.json
+    workspace.ts        # discovery: pnpm-workspace.yaml / pkg.json workspaces / bare pkg.json (+ ProjectEntry)
     project-loader.ts   # Bun-native vx.config.* loader (content-hash bust)
     package-graph.ts    # workspace dep graph
     filter.ts           # pnpm-style filter DSL (-F)
+    nested-dirs.ts      # project-boundary computation
+    fingerprint.ts      # workspace lockfile / yaml hash
   graph/                # task graph + scheduling
     task-graph.ts       # builds TaskNode DAG from declared dependsOn
     scheduler.ts        # parallel topo executor

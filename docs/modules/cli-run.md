@@ -88,7 +88,7 @@ If `--dry` or `--graph` is set:
 
 1. `planRun(opts)` — same setup as `run` but stops before the
    scheduler.
-2. Pick a formatter from `orchestrator/plan-format.ts`:
+2. Pick a formatter from `cli/plan-format.ts`:
    - `--dry=json` → `formatPlanJson(plan)` → stdout.
    - `--dry=text` (default) → `formatPlanText(plan)` → stdout.
    - `--graph=''` → `formatGraphDot(plan)` → stdout.

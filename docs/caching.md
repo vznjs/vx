@@ -43,7 +43,7 @@ The cache key for one task is a SHA-256 hex digest over (in order):
    `pkg-b#build` entry.
 3. **Workspace fingerprint** — sha256 of every supported workspace
    marker found at the root (see
-   [`modules/orchestrator/fingerprint.md`](./modules/orchestrator/fingerprint.md)):
+   [`modules/fingerprint.md`](./modules/fingerprint.md)):
    `pnpm-lock.yaml`, `package-lock.json`, `npm-shrinkwrap.json`,
    `yarn.lock`, `bun.lock`, `bun.lockb`, `pnpm-workspace.yaml`. Any
    install-resolved change (a `bun install` that bumps `bun.lock`) or
@@ -198,7 +198,7 @@ re-runs automatically.
 A project's `cache.inputs.files` globs **never** reach into another
 project's directory, even if a `**/*` pattern would otherwise match.
 
-`orchestrator/nested-dirs.ts` computes the set of nested project
+`workspace/nested-dirs.ts` computes the set of nested project
 directories (projects rooted inside this one) once per `vx run`, and
 adds them to the ignore list passed to every glob pass. The only way
 for project A to depend on project B's state is `dependsOn` +

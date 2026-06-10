@@ -296,7 +296,7 @@ The two flags differ only in output format:
 - `--dry[=text|json]` → text (default) or JSON list of predicted
   outcomes per task: `would-cache-hit-local`,
   `would-cache-hit-remote`, `would-exec`, `no-cache`, `group`.
-  Formatter: `orchestrator/plan-format.ts:formatPlanText` /
+  Formatter: `cli/plan-format.ts:formatPlanText` /
   `formatPlanJson`.
 - `--graph[=<path>]` → Graphviz DOT, colored by predicted status.
   Pipe to `dot` for SVG/PNG render. Formatter:

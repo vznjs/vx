@@ -8,7 +8,7 @@ import {
   type RunOptions,
   type RunSummary,
 } from '../orchestrator.js'
-import { formatGraphDot, formatPlanJson, formatPlanText } from '../orchestrator/plan-format.js'
+import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 import { buildPackageGraph } from '../workspace/package-graph.js'
 import { loadProjectConfig } from '../workspace/project-loader.js'
 import {
