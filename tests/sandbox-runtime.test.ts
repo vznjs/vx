@@ -6,12 +6,12 @@
 // runs end-to-end. Local dev hosts without those deps still skip
 // cleanly via probeSandbox.
 
-import { existsSync } from 'node:fs'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { existsSync, realpathSync } from 'node:fs'
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { probeSandbox } from '../src/exec/sandbox-runtime.js'
+import { probeSandbox, resolveSandboxConfig } from '../src/exec/sandbox-runtime.js'
 import { run, type Logger, type RunOptions } from '../src/orchestrator.js'
 
 const TIMEOUT = 60_000
@@ -560,6 +560,28 @@ describe.skipIf(!availability.available)(`sandbox-runtime`, () => {
     },
     TIMEOUT,
   )
+})
+
+describe('resolveSandboxConfig', () => {
+  it('canonicalizes symlinked paths, including non-existent suffixes', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-realpath-'))
+    try {
+      const target = path.join(root, 'target')
+      const link = path.join(root, 'link')
+      await mkdir(target)
+      await symlink(target, link)
+      const realTarget = realpathSync(target)
+
+      const r = resolveSandboxConfig(
+        { allowRead: [link], allowWrite: [path.join(link, 'not', 'yet')] },
+        root,
+      )
+      expect(r.allowRead).toEqual([realTarget])
+      expect(r.allowWrite).toEqual([path.join(realTarget, 'not', 'yet')])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('sandbox probe', () => {

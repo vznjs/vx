@@ -22,6 +22,7 @@
 
 import path from 'node:path'
 import os from 'node:os'
+import { realpathSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import type { SandboxConfig, SandboxNetworkConfig } from '../config.js'
 import { shellQuote, streamToString, resourceUsageToCpuRss, type RunResult } from './runner.js'
@@ -196,19 +197,39 @@ export interface ResolvedSandboxConfig {
 }
 
 /**
+ * Canonicalize a path with realpath, tolerating paths that don't exist
+ * yet: resolve the longest existing ancestor and re-append the rest.
+ *
+ * Why: the sandbox policy matches on canonical paths (macOS seatbelt
+ * evaluates real vnode paths), and SRT's own normalization refuses to
+ * canonicalize bare symlinked roots like `/tmp` → `/private/tmp` (its
+ * boundary check only whitelists `/tmp/<child>` forms). Without this,
+ * `allowWrite: ['/tmp']` silently never matches on macOS.
+ */
+function toRealPath(p: string): string {
+  try {
+    return realpathSync(p)
+  } catch {
+    const parent = path.dirname(p)
+    if (parent === p) return p
+    return path.join(toRealPath(parent), path.basename(p))
+  }
+}
+
+/**
  * Convert a user-facing `SandboxConfig` (paths may be relative / tilde)
- * into a `ResolvedSandboxConfig` (all paths absolute) for a given project.
- * Relative paths resolve against `projectDir`; tilde paths expand against
- * the user's home; absolute paths stay literal.
+ * into a `ResolvedSandboxConfig` (all paths absolute + canonical) for a
+ * given project. Relative paths resolve against `projectDir`; tilde
+ * paths expand against the user's home; symlinks resolve to real paths.
  */
 export function resolveSandboxConfig(
   cfg: SandboxConfig,
   projectDir: string,
 ): ResolvedSandboxConfig {
   const resolve = (p: string): string => {
-    if (p.startsWith('~')) return path.join(os.homedir(), p.slice(1))
-    if (path.isAbsolute(p)) return p
-    return path.resolve(projectDir, p)
+    if (p.startsWith('~')) return toRealPath(path.join(os.homedir(), p.slice(1)))
+    if (path.isAbsolute(p)) return toRealPath(p)
+    return toRealPath(path.resolve(projectDir, p))
   }
   const r: ResolvedSandboxConfig = {
     allowRead: (cfg.allowRead ?? []).map(resolve),
