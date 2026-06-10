@@ -208,6 +208,12 @@ function validate(config: ProjectConfig, configPath: string): void {
         if (typeof g !== 'string' || g.length === 0) {
           throw new UserError(`${where}.cache.inputs.files must be an array of non-empty strings`)
         }
+        if (g.startsWith('/')) {
+          throw new UserError(
+            `${where}.cache.inputs.files: absolute paths are not allowed (got "${g}") — ` +
+              `inputs must be project-relative globs`,
+          )
+        }
       }
     }
     const sandbox = (task as { sandbox?: unknown }).sandbox
