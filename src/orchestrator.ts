@@ -4,7 +4,7 @@
 
 import type { RunRecord } from './cache/cache.js'
 import { LayeredCache } from './cache/layered-cache.js'
-import { VERSION } from './index.js'
+import { VERSION } from './version.js'
 import { runGraph, type TaskOutcome } from './graph/scheduler.js'
 import { isGroupTask } from './graph/task-graph.js'
 import { ulid } from './util/ulid.js'
@@ -20,47 +20,8 @@ import { writeRunProfile, writeRunSummary } from './orchestrator/run-artifacts.t
 import { formatRunSummary } from './orchestrator/summary.ts'
 
 export type { Logger } from './orchestrator/logger.ts'
-
-export interface RunOptions {
-  cwd: string
-  /**
-   * Task specs to run. Each may be a bare task name (`'build'`) —
-   * applied across `projects` to every project that declares it —
-   * or an anchored `'pkg#task'` — added directly to the requested
-   * set regardless of `projects`.
-   */
-  tasks: readonly string[]
-  projects?: string[]
-  concurrency?: number
-  /** Skip cache reads AND writes. Every task runs and nothing is persisted. */
-  noCache?: boolean
-  /**
-   * Filter `dependsOn` expansion. `'all'` drops every edge (just the
-   * requested task runs). A string array drops only those task names
-   * from both `self` and `dependencies` buckets.
-   */
-  excludeDependencies?: 'all' | readonly string[]
-  /** Forwarded to the last step of each task's exec array (shell-quoted). */
-  forwardArgs?: readonly string[]
-  /**
-   * If set, write a per-run JSON summary at end of run. Empty string
-   * picks the default path `<cacheDir>/runs/<run_id>.json`; anything
-   * else is treated as the literal file path (cwd-relative).
-   */
-  summarize?: string
-  /**
-   * If set, write a Chrome-trace JSON profile of the run's wallclock
-   * spans. Path is cwd-relative. Default `profile.json` is selected
-   * by the CLI parser, not here.
-   */
-  profile?: string
-  log?: Logger
-}
-
-export interface RunSummary {
-  ok: boolean
-  outcomes: TaskOutcome[]
-}
+export type { RunOptions, RunSummary } from './orchestrator/options.ts'
+import type { RunOptions, RunSummary } from './orchestrator/options.ts'
 
 export async function run(options: RunOptions): Promise<RunSummary> {
   // Color decision: a custom logger (tests, embedders) handles its
