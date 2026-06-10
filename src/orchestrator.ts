@@ -182,7 +182,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   await Promise.allSettled([...persistentRegistry.values()].map((c) => c.exited))
 
   const list = [...outcomes.values()]
-  const ok = list.every((o) => o.status === 'success' || o.status === 'cache-hit')
+  const ok = list.every(
+    (o) => o.status === 'success' || o.status === 'cache-hit' || o.status === 'cache-hit-remote',
+  )
 
   // The summary + artifact writers + recordRun pass all exclude group
   // tasks via the shared tallyOutcomes helper. We pass the full
