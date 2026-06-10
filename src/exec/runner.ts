@@ -4,6 +4,8 @@
 // process exits. cpuMs / peakRssBytes are then surfaced on RunResult and
 // folded into the v11 `runs` table by the orchestrator.
 
+import { constants as osConstants } from 'node:os'
+
 export interface RunResult {
   exitCode: number
   durationMs: number
@@ -30,6 +32,17 @@ export function shellQuote(arg: string): string {
   if (arg === '') return `''`
   if (/^[A-Za-z0-9_\-.,/=:@%+]+$/.test(arg)) return arg
   return `'${arg.replace(/'/g, `'\\''`)}'`
+}
+
+/**
+ * POSIX shells report signal death as 128 + signal number (SIGTERM →
+ * 143, SIGKILL → 137). Bun gives us the signal NAME; `os.constants`
+ * maps it to the platform-correct number. Unknown names fall back to
+ * 130 (128 + SIGINT).
+ */
+export function signalExitCode(signal: string): number {
+  const num = (osConstants.signals as Partial<Record<string, number>>)[signal]
+  return num === undefined ? 130 : 128 + num
 }
 
 export interface PersistentSpawn {
@@ -218,7 +231,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     streamToString(proc.stderr, opts.onStderr),
   ])
   await proc.exited
-  const exitCode = proc.exitCode ?? (proc.signalCode ? 130 : 1)
+  const exitCode = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)
   return {
     exitCode,
     durationMs: Date.now() - start,

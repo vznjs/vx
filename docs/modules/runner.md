@@ -45,6 +45,7 @@ export interface PersistentSpawn {
 export function runPersistent(opts: PersistentOptions): PersistentSpawn
 
 export function shellQuote(arg: string): string
+export function signalExitCode(signal: string): number // 128 + signo; 130 fallback
 export function streamToString(
   stream: ReadableStream<Uint8Array> | number | undefined,
   onChunk?: (s: string) => void,
@@ -69,8 +70,10 @@ The promise from `runCommand` always resolves (never rejects) with a
 `RunResult`:
 
 - Normal exit → `exitCode` is the child's exit code.
-- Signal-killed → `exitCode = 130` if no exit code was reported; else
-  the OS's "signal as exit code" convention.
+- Signal-killed → `exitCode = signalExitCode(signalCode)` — the POSIX
+  128 + signo convention (SIGTERM → 143, SIGKILL → 137), falling back
+  to 130 for signal names missing from `os.constants.signals`. The
+  sandboxed runner (`sandbox-runtime.ts`) uses the same helper.
 - `Bun.spawn` itself throwing → `exitCode = 127`, stderr augmented
   with `[vx] failed to spawn: <message>`.
 
@@ -138,6 +141,8 @@ outcome.
 - Failure returns non-zero + captured stderr.
 - Streaming callbacks fire per chunk.
 - Spawn failure (`/bin/sh` missing scenarios) surfaces as exit 127.
+- Signal-killed children map to 128 + signo (`SIGKILL` → 137,
+  `SIGTERM` → 143) plus `signalExitCode` unit coverage.
 - `shellQuote` covers the safe-char and unsafe-char paths.
 - `runPersistent`: marker without trailing newline, marker split
   across chunks, newline-terminated marker, reject-on-exit-before-

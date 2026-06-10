@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { runCommand, runPersistent, shellQuote } from '../src/exec/runner.js'
+import { runCommand, runPersistent, shellQuote, signalExitCode } from '../src/exec/runner.js'
 
 describe('runCommand', () => {
   let cwd: string
@@ -93,6 +93,36 @@ describe('runCommand', () => {
     expect(result.exitCode).toBe(7)
     expect(result.cpuMs).toBeDefined()
     expect(result.peakRssBytes).toBeDefined()
+  })
+
+  it('reports 128+signo for a SIGKILL-killed child (137)', async () => {
+    const result = await runCommand({
+      command: 'kill -KILL $$',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+    })
+    expect(result.exitCode).toBe(137)
+  })
+
+  it('reports 128+signo for a SIGTERM-killed child (143)', async () => {
+    const result = await runCommand({
+      command: 'kill -TERM $$',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+    })
+    expect(result.exitCode).toBe(143)
+  })
+})
+
+describe('signalExitCode', () => {
+  it('maps common signals via the platform signal table', () => {
+    expect(signalExitCode('SIGKILL')).toBe(137)
+    expect(signalExitCode('SIGTERM')).toBe(143)
+    expect(signalExitCode('SIGINT')).toBe(130)
+  })
+
+  it('falls back to 130 for unknown signal names', () => {
+    expect(signalExitCode('SIGNOTREAL')).toBe(130)
   })
 })
 
