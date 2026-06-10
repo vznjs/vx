@@ -9,7 +9,7 @@ Vercel's hosted cache).
 
 This module knows nothing about local storage, tar archives, or how the
 orchestrator uses the cache. Those concerns live in `layered-cache.ts`
-and `cache-archive.ts`.
+and `cache.ts` — the artifact bytes pass through this client opaquely.
 
 ## Public surface
 
@@ -73,7 +73,7 @@ On `GET` response:
 
 ## What this does NOT do
 
-- No tar packing/unpacking. That's `cache-archive.ts`.
+- No tar packing/unpacking. Artifact bytes are opaque; `cache.ts` owns the format.
 - No local caching, no key derivation. The hash is supplied by the
   caller (typically `Cache.key()`).
 - No HMAC validation on responses (we send `x-artifact-tag` but don't

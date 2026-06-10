@@ -75,10 +75,11 @@ every module has a corresponding page under [`modules/`](./modules/).
 Tests live under `tests/`, one file per source module.
 
 The cache subsystem is more than one file: `cache/cache.ts` is the
-local SQLite-backed v13 store; `cache/remote-cache.ts` is the Turbo
-HTTP client; `cache/cache-archive.ts` bridges them with tar.gz
-pack/unpack; `cache/layered-cache.ts` composes the two behind the same
-`CacheLayer` interface that the orchestrator consumes.
+local SQLite-backed store (v18 key derivation, tar.zst artifacts);
+`cache/remote-cache.ts` is the Turbo HTTP client;
+`cache/layered-cache.ts` composes the two behind the same `CacheLayer`
+interface that the orchestrator consumes — local and remote transport
+identical artifact bytes, so there is no separate pack/unpack bridge.
 
 ```
 src/
@@ -116,10 +117,9 @@ src/
     scheduler.ts                  # parallel topological executor
     dependency-spec.ts            # shared parser for dependsOn / inputs.tasks micro-syntax
   cache/
-    cache.ts                      # local v13 cache (bun:sqlite + on-disk)
+    cache.ts                      # local cache (bun:sqlite + tar.zst artifacts)
     layered-cache.ts              # local + remote composition (read-through, write-through)
     remote-cache.ts               # Turbo /v8/artifacts/ HTTP client
-    cache-archive.ts              # tar.gz pack/unpack for remote artifacts
     inputs.ts                     # input/output glob resolution + boundary enforcement
   exec/
     runner.ts                     # Bun.spawn wrapper + shellQuote + runPersistent

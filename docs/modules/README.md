@@ -75,7 +75,6 @@ For the high-level data flow, read
 | [`cache.md`](./cache.md)                 | `src/cache/cache.ts` — local v13 cache: `bun:sqlite` + on-disk entry layout.   |
 | [`layered-cache.md`](./layered-cache.md) | `src/cache/layered-cache.ts` — local + remote composition behind `CacheLayer`. |
 | [`remote-cache.md`](./remote-cache.md)   | `src/cache/remote-cache.ts` — Turborepo `/v8/artifacts/` HTTP client.          |
-| [`cache-archive.md`](./cache-archive.md) | `src/cache/cache-archive.ts` — tar.gz pack/unpack bridge for remote artifacts. |
 | [`inputs.md`](./inputs.md)               | `src/cache/inputs.ts` — glob resolution, boundary enforcement, `cleanOutputs`. |
 
 ## Exec (process primitives)

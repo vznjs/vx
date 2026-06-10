@@ -134,7 +134,7 @@ Turbo-aware cache server can transit our blobs unchanged.
 | POSIX ustar headers (no PAX)                  | Turbo (Rust `tar` crate, `Header::new_gnu()`) | `src/cache/cache.ts:831` (`tar --format=ustar`) |
 | No AppleDouble `._*` companions               | Turbo (in-process writer, no recurse)         | `src/cache/cache.ts:831` (`COPYFILE_DISABLE=1`) |
 | Extract-side filter strips legacy PAX + `._*` | (vx-only defense-in-depth)                    | `src/cache/tar.ts:129-153`                      |
-| zstd compression on the wire                  | Turbo                                         | `src/cache/cache-archive.ts`                    |
+| zstd compression on the wire                  | Turbo                                         | `src/cache/cache.ts` (tar.zst artifacts)        |
 
 ### Scheduler + execution
 

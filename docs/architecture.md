@@ -70,13 +70,11 @@ depend on higher ones, so cycles are impossible by construction.
 
 The cache is not a single file. It is composed:
 
-- **`cache.ts`** — local v13 cache. `bun:sqlite` metadata index +
+- **`cache.ts`** — local cache. `bun:sqlite` metadata index +
   on-disk entries at `<cacheDir>/<hash>/{outputs/, stdout, stderr}`.
 - **`remote-cache.ts`** — Turborepo `/v8/artifacts/<hash>` HTTP client.
   Bearer-token authed; speaks the public protocol verbatim so it works
   against any compatible server.
-- **`cache-archive.ts`** — bridges them. Packs / unpacks tar.gz so
-  the remote layer can ship a single artifact per cache key.
 - **`layered-cache.ts`** — composes local + remote behind the same
   `CacheLayer` interface (`key`, `get`, `restoreOutputs`, `save`,
   `recordRun`, `stats`, `prune`, `close`). Read-through (local then
@@ -325,7 +323,6 @@ functions; those are the seam. Internal helpers can change.
 | `graph/scheduler.ts`          | Work-stealing, priority queues, distributed execution                 |
 | `cache/cache.ts`              | Different local store (per-entry manifests, BLOB-in-SQLite, S3-local) |
 | `cache/remote-cache.ts`       | Different remote backend (raw S3, HMAC-signed protocol)               |
-| `cache/cache-archive.ts`      | Swap tar.gz for zstd, zip, JS-native pack                             |
 | `cache/layered-cache.ts`      | Different layering (local → regional → global; warm-cache prefetch)   |
 | `exec/runner.ts`              | Spawn into containers / remote builders                               |
 | `exec/env.ts`                 | Adjust isolation policy (broader allowlist, OS-specific essentials)   |
