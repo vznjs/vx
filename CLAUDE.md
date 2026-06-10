@@ -88,10 +88,10 @@ bun.lock
 
 ## Workflow
 
-- **Branch `main` is protected.** Cannot push directly (HTTP 403). Open
-  feature branches, push, create PR, merge fast. No review wait — owner
-  has authorized this.
-- **PR cadence:** small, focused, reviewable diff per PR.
+- **Push directly to `main`.** Owner instruction (2026-06-10): no PRs.
+  Branch protection is off. Run the full local gate first
+  (`bun src/bin.ts run ci`), then push. Keep commits as small and
+  focused as the PRs used to be — one coherent change per commit.
 - **Commit messages:** imperative present; first line < 72 chars; body
   explains _why_. No co-author lines.
 - **Tests must pass.** 250+ tests today. Use `bun test` locally, or
