@@ -193,6 +193,18 @@ describe('loadProjectConfig', () => {
       await expect(loadProjectConfig(file)).rejects.toThrow(/outputs.files.*non-empty/)
     })
 
+    it('rejects absolute paths in cache.inputs.files (must be project-relative)', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: { inputs: { files: ['/etc/passwd'] }, outputs: { files: [] } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/absolute paths are not allowed/)
+    })
+
     it('rejects empty-string entries in cache.inputs.files', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(
