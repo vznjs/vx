@@ -56,6 +56,8 @@ every known gap — lives in [`comparison.md`](./comparison.md).
 | Author a `vx.config.ts`           | [`schema.md`](./schema.md)                            |
 | Reason about caching              | [`caching.md`](./caching.md)                          |
 | Trace what `vx run` actually does | [`execution.md`](./execution.md)                      |
+| See each scenario as a diagram    | [`flows.md`](./flows.md)                              |
+| See every perf decision + invariant | [`optimizations.md`](./optimizations.md)            |
 | Use the CLI from a shell          | [`cli.md`](./cli.md)                                  |
 | Compare to Turbo / Nx / vite-task | [`comparison.md`](./comparison.md)                    |
 | See what we share with Turbo / Nx | [`patterns.md`](./patterns.md)                        |

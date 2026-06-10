@@ -116,7 +116,7 @@ terminal and a task succeeding or failing. Read it alongside
  │       5. cache.key({ taskId, workspaceFingerprint,
  │                      projectPackageJsonHash, taskConfigHash,
  │                      envValues, inputFiles, upstreamHashes,
- │                      forwardArgs }) → hex sha256
+ │                      forwardArgs }) → 16-hex xxh3
  │       6. If cache is on AND `cache` block exists:
  │            cache.get(hash)
  │              · hit → cleanOutputs → restoreOutputs → replay logs →
