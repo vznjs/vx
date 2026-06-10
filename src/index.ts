@@ -1,6 +1,6 @@
 // Public API for @vzn/vx.
 
-export const VERSION = '0.0.0'
+export { VERSION } from './version.js'
 
 // Schema types and helpers (used by user vx.config files and presets).
 export type {

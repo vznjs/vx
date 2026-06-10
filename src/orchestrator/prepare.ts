@@ -29,7 +29,7 @@ import { computeWorkspaceFingerprint } from './fingerprint.js'
 import { wrapWithRemoteCache } from './remote-cache-setup.js'
 import { createHashCache, type HashCache } from './execute-task.js'
 import type { Logger } from './logger.js'
-import type { RunOptions } from '../orchestrator.js'
+import type { RunOptions } from './options.js'
 
 export interface PreparedRun {
   workspaceRoot: string

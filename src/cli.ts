@@ -2,7 +2,7 @@
 // `src/cli/<name>.ts`. Re-exports below are for the test suite,
 // which asserts on the pure parsers and formatters directly.
 
-import { VERSION } from './index.js'
+import { VERSION } from './version.js'
 import { runCmd } from './cli/run.js'
 import { watchCmd } from './cli/watch.js'
 import { cacheCmd } from './cli/cache.js'
