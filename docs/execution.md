@@ -93,10 +93,11 @@ terminal and a task succeeding or failing. Read it alongside
  │       1. Build isolated env (essentials + passThrough + define +
  │          <projectDir>/node_modules/.bin in PATH).
  │       2. runPersistent — Bun.spawn the command; subscribe to
- │          stdout/stderr line-by-line.
+ │          stdout/stderr chunk-by-chunk.
  │       3. Resolve `ready` when:
  │            - no readyWhen → immediately on spawn
- │            - readyWhen matches a line → on that line
+ │            - readyWhen matches the output (complete lines OR the
+ │              trailing partial line) → on that match
  │            - child exits before either → reject with the captured stderr
  │       4. On ready: stash child in persistentRegistry; return
  │          success. Downstream tasks unblock.
