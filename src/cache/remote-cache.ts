@@ -37,7 +37,22 @@ export class RemoteCache {
     const res = await this.fetch('GET', this.artifactUrl(hash))
     if (res.status === 404) return null
     if (!res.ok) throw new RemoteCacheError(`GET ${hash} → ${res.status}`, res.status)
-    const body = await res.arrayBuffer()
+    // A body that ends before the declared content-length (server died
+    // mid-transfer) throws from arrayBuffer(), not from fetch() — wrap
+    // it here so callers see a typed RemoteCacheError and the layered
+    // cache can degrade it to a miss. (fetch already enforces the
+    // content-length contract: short bodies throw, long bodies are
+    // truncated to the declared length, so no manual byte check.)
+    let body: ArrayBuffer
+    try {
+      body = await res.arrayBuffer()
+    } catch (err) {
+      throw new RemoteCacheError(
+        `GET ${hash} → body read failed: ${(err as Error).message}`,
+        res.status,
+        err,
+      )
+    }
     return {
       body,
       durationMs: parseIntHeader(res.headers.get('x-artifact-duration')),
@@ -52,7 +67,8 @@ export class RemoteCache {
     }
 
     const res = await this.fetch('PUT', this.artifactUrl(hash), { body, headers })
-    if (!res.ok && res.status !== 200 && res.status !== 201) {
+    // Any 2xx is success — Turbo-compatible servers answer 200/201/202.
+    if (!res.ok) {
       throw new RemoteCacheError(`PUT ${hash} → ${res.status}`, res.status)
     }
   }

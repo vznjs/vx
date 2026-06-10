@@ -71,7 +71,16 @@ export class LayeredCache implements CacheLayer {
       command: ctx?.command ?? '',
       durationMs: remoteResult.durationMs ?? 0,
     }
-    await this.local.ingest(hash, new Uint8Array(remoteResult.body), meta)
+    try {
+      await this.local.ingest(hash, new Uint8Array(remoteResult.body), meta)
+    } catch (err) {
+      // The bytes came off the network — a corrupt/truncated remote
+      // artifact must degrade to a cache miss (task re-executes), not
+      // crash the run. Local-layer reads outside this block still
+      // propagate: local corruption is a real fault, not a network one.
+      this.reportRemoteError(err)
+      return null
+    }
 
     // The artifact is now in local, but this *lookup* was a remote
     // hit — flip the source so callers can distinguish "saved work

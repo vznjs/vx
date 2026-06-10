@@ -195,6 +195,24 @@ export interface IngestMeta {
   durationMs: number
 }
 
+/**
+ * The supplied artifact bytes don't decompress/parse as a vx artifact.
+ * Thrown by `save`/`ingest` BEFORE anything reaches the final cache
+ * path — a rejected artifact leaves no `<hash>.tar.zst` and no SQL row.
+ * The LayeredCache treats this as a remote fault on the remote-hit
+ * path (degrades to a cache miss).
+ */
+export class CorruptArtifactError extends Error {
+  constructor(
+    public readonly hash: string,
+    reason: string,
+    public override readonly cause?: unknown,
+  ) {
+    super(`cache: corrupt artifact for ${hash}: ${reason}`)
+    this.name = 'CorruptArtifactError'
+  }
+}
+
 export interface CacheLayer {
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
@@ -776,6 +794,27 @@ export class Cache implements CacheLayer {
     compressed: Uint8Array,
     meta: IngestMeta,
   ): Promise<void> {
+    // Validate BEFORE anything touches the final path. `ingest()` feeds
+    // us network bytes; a truncated/garbage body that went live first
+    // would leave a corrupt `<hash>.tar.zst` behind (with no SQL row,
+    // since the decompress throw aborted indexing) for every later
+    // reader to trip over. Decompress + parse also produce the
+    // `output_files` rows: same headers extractOutputs will see on
+    // restore, so the size/mode/mtime fingerprint we store matches
+    // what isOutputsCurrent will compare against post-restore.
+    let tarBytes: Uint8Array
+    try {
+      tarBytes = await Bun.zstdDecompress(compressed)
+    } catch (err) {
+      throw new CorruptArtifactError(hash, 'zstd decompression failed', err)
+    }
+    const headers = parseTarHeaders(tarBytes)
+    // v17 invariant: every artifact carries a `stdout` entry. Its
+    // absence means the bytes decompressed but aren't a vx artifact.
+    if (!headers.some((h) => h.name === 'stdout' && !h.isDir)) {
+      throw new CorruptArtifactError(hash, 'missing stdout entry')
+    }
+
     const finalPath = this.tarPath(hash)
     // tmp suffix mixes pid + hrtime + a random hex chunk so two saves
     // of the same hash from the same process (or from two forked
@@ -792,14 +831,7 @@ export class Cache implements CacheLayer {
     // semantics for concurrent readers.
     await rename(tmpPath, finalPath)
 
-    const totalBytes = (await stat(finalPath)).size
-
-    // Decompress + parse so `output_files` rows reflect what's
-    // actually in the artifact. Same headers extractOutputs will see
-    // on restore, so the size/mode/mtime fingerprint we store here
-    // matches what isOutputsCurrent will compare against post-restore.
-    const tarBytes = await Bun.zstdDecompress(compressed)
-    const headers = parseTarHeaders(tarBytes)
+    const totalBytes = compressed.byteLength
     const outputFileRows: Array<[string, number, number, number]> = []
     for (const h of headers) {
       if (!h.name.startsWith('outputs/') || h.isDir) continue
