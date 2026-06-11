@@ -13,6 +13,25 @@ workspace. Updated as the runners evolve.
 - Single run invokes all three across all 100 projects → **~300 task
   evaluations per run**.
 
+## 2026-06 — dense-graph stress repo (1090 packages, 100 layers)
+
+The regenerated comparison repo (1090 packages, 100 layers, 30 deps
+per package, build+test+installDeps = 3270 graph nodes) exposed three
+quadratic hot spots in sequence. Wall-clock for `vx run build test
+--all`, fully cached:
+
+| Stage                                                | No-restore | Restore    |
+| ---------------------------------------------------- | ---------- | ---------- |
+| Before (Set-closure scheduler priority)              | 10.2 s     | —          |
+| + bitset scheduler closure                           | 1.27 s     | 1.59 s     |
+| + discovery/partition/package-graph fixes            | 1.03 s     | 1.34 s     |
+| + frontier `^task` expansion (v19, 8.5× fewer edges) | **0.62 s** | **0.87 s** |
+
+Run-phase self-time at the end state: 262 ms / 520 ms. Remaining
+floor: 1090 config imports (~120 ms), one bulk git spawn (~73 ms),
+process boot. Next queued lever: git blob OIDs as file hashes
+(Turbo's `ls-files -s` technique — zero reads/stats for clean files).
+
 ## 2026-06 — warm paths, three-way on the comparison repo
 
 100 projects x (build + test + installDeps), 300 task evaluations,
