@@ -159,6 +159,18 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: `persistent.readyTimeoutMs` shipped. A persistent task
+  whose `readyWhen` never matches while the child keeps running hung
+  the run forever. The timer SIGTERMs the child and rejects ready
+  with a timeout message; cleared the moment ready fires. Requires
+  `readyWhen` (loader-enforced); deliberately no default. Also
+  2026-06: a resolved-config eval cache (cache pure-literal configs
+  on content hash to cut the 199 ms config-eval cost at 1000
+  projects) was designed and REJECTED by the owner — the static
+  purity gate is correctness-critical heuristic machinery for a
+  modest win. Rationale + numbers in docs/benchmarks.md headroom;
+  don't re-propose without a sound dependency story.
+
 - **2026-06**: Module-isolation series complete (steps 1-7 of
   `docs/design/module-isolation-2026-06.md`). `src/` is now eight
   contract modules (`util`, `config`, `workspace`, `graph`, `cache`,

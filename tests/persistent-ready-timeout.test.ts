@@ -8,8 +8,8 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
-import type { Logger } from '../src/orchestrator.js'
-import { run } from '../src/orchestrator.js'
+import type { Logger } from '../src/orchestrator/index.js'
+import { run } from '../src/orchestrator/index.js'
 import { loadProjectConfig } from '../src/workspace/project-loader.js'
 
 const TIMEOUT = 15_000
