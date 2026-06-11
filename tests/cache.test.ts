@@ -218,6 +218,10 @@ describe('Cache.key', () => {
     await writeFile(p, a)
     const ka = await cache.key({ ...baseInput(), inputFiles: [p] })
     await writeFile(p, b)
+    // Same size, and on a fast disk possibly the same mtime tick —
+    // bump mtime so the (path, mtimeMs, size) fast path can't return
+    // the stale hash for `a`.
+    await bumpMtime(p)
     const kb = await cache.key({ ...baseInput(), inputFiles: [p] })
     expect(ka).not.toBe(kb)
   })
