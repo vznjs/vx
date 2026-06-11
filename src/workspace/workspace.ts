@@ -1,3 +1,4 @@
+import { readdir } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { UserError } from '../util/index.js'
@@ -139,11 +140,28 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
   const matches = new Set<string>()
   for (const arr of perPattern) for (const m of arr) matches.add(m)
 
+  // Per-project I/O (manifest read + config discovery) is independent
+  // — run it all concurrently, then a deterministic sequential pass
+  // for the duplicate-name check. One readdir per project replaces
+  // up to four exists() probes (CONFIG_FILENAMES has 4 candidates):
+  // ~5440 awaited syscalls → ~2180 concurrent ones at 1090 projects.
+  const loaded = await Promise.all(
+    [...matches].map(async (pkgJsonPath) => {
+      const dir = path.dirname(pkgJsonPath)
+      const [pkg, entries] = await Promise.all([
+        Bun.file(pkgJsonPath).json() as Promise<PackageJson>,
+        readdir(dir).catch(() => [] as string[]),
+      ])
+      const names = new Set(entries)
+      const configName = CONFIG_FILENAMES.find((f) => names.has(f))
+      const configPath = configName !== undefined ? path.join(dir, configName) : null
+      return { dir, pkg, configPath }
+    }),
+  )
+
   const projects: ProjectMeta[] = []
   const seenName = new Map<string, string>()
-  for (const pkgJsonPath of matches) {
-    const dir = path.dirname(pkgJsonPath)
-    const pkg = (await Bun.file(pkgJsonPath).json()) as PackageJson
+  for (const { dir, pkg, configPath } of loaded) {
     if (!pkg.name) continue
     const previous = seenName.get(pkg.name)
     if (previous) {
@@ -152,15 +170,7 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
       )
     }
     seenName.set(pkg.name, dir)
-    const configPath = await firstExisting(CONFIG_FILENAMES.map((f) => path.join(dir, f)))
     projects.push({ name: pkg.name, dir, packageJson: pkg, configPath })
   }
   return projects.sort((a, b) => a.name.localeCompare(b.name))
-}
-
-async function firstExisting(paths: string[]): Promise<string | null> {
-  for (const p of paths) {
-    if (await Bun.file(p).exists()) return p
-  }
-  return null
 }

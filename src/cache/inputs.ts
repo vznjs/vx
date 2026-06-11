@@ -288,6 +288,23 @@ export function populateGitFilesCache(
   cache: Map<string, readonly string[]>,
 ): void {
   const all = runGitLsFiles(workspaceRoot)
+  // Sort once, then each project's files are a contiguous range found
+  // by binary search on its `dir/` prefix — O((F+P) log F) instead of
+  // the O(P·F) per-project startsWith scan (54 ms at 1090 projects ×
+  // ~9k files; ~5 ms this way). '/' sorts below most filename chars,
+  // so the range [prefix, prefix+'\xff…') is contiguous in the sorted
+  // array; lowerBound on `prefix` and on `prefix + '￿'` bracket it.
+  const sorted = [...all].sort()
+  const lowerBound = (key: string): number => {
+    let lo = 0
+    let hi = sorted.length
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if (sorted[mid]! < key) lo = mid + 1
+      else hi = mid
+    }
+    return lo
+  }
   for (const projectDir of projectDirs) {
     const relPrefix = path.relative(workspaceRoot, projectDir).split(path.sep).join('/')
     if (relPrefix === '' || relPrefix === '.') {
@@ -295,10 +312,10 @@ export function populateGitFilesCache(
       continue
     }
     const prefix = `${relPrefix}/`
+    const start = lowerBound(prefix)
+    const end = lowerBound(`${prefix}￿`)
     const matches: string[] = []
-    for (const p of all) {
-      if (p.startsWith(prefix)) matches.push(p.slice(prefix.length))
-    }
+    for (let i = start; i < end; i++) matches.push(sorted[i]!.slice(prefix.length))
     cache.set(projectDir, matches)
   }
 }
