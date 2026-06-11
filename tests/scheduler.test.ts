@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
+import { computeReverseDepCount, runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
 function node(id: string, deps: string[] = []): TaskNode {
@@ -277,19 +277,29 @@ describe('priority computation scale', () => {
       }
       layers.push(cur)
     }
-    const started = performance.now()
+    // Functional pin: the dense graph still schedules correctly.
     const outcomes = await runGraph({
       nodes: nodes(...all),
       concurrency: 8,
       execute: async (n) => success(n),
     })
-    const elapsed = performance.now() - started
     expect(outcomes.size).toBe(LAYERS * WIDTH)
     expect([...outcomes.values()].every((o) => o.status === 'success')).toBe(true)
-    // Calibration: bitset implementation ~165 ms locally, ~1.6 s on a
-    // loaded 2-core CI runner (dominated by the 3000 no-op task
-    // promises, not the closure). The quadratic Set-DFS this guards
-    // against took 7.2 s locally — far past this bound on any machine.
-    expect(elapsed).toBeLessThan(6000)
+
+    // Perf pin: time ONLY the priority closure (min of 3 — pure CPU,
+    // so min de-noises scheduler-unrelated machine load). Calibration:
+    // bitset implementation ~20-60 ms here; the quadratic Set-DFS it
+    // replaced took ~7 s for this same call. CI slowness moves pure
+    // CPU by single-digit factors, not 20x, so 1500 ms separates
+    // cleanly without end-to-end promise noise (which caused the old
+    // wall-clock bound to flake at 1627 ms vs 1500 ms).
+    const graph = nodes(...all)
+    let best = Infinity
+    for (let i = 0; i < 3; i++) {
+      const t0 = performance.now()
+      computeReverseDepCount(graph)
+      best = Math.min(best, performance.now() - t0)
+    }
+    expect(best).toBeLessThan(1500)
   }, 120_000)
 })

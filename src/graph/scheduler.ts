@@ -65,7 +65,10 @@ export interface ScheduleOptions {
  * run. Matches Nx's `calculateReverseDeps`-driven schedule sort
  * (`packages/nx/src/tasks-runner/tasks-schedule.ts:166-207`).
  */
-function computeReverseDepCount(nodes: Map<string, TaskNode>): Map<string, number> {
+// Exported for the perf guard in tests/scheduler.test.ts, which times
+// this function in isolation — end-to-end runGraph timing drowns the
+// closure cost in task-promise overhead and flakes on slow CI.
+export function computeReverseDepCount(nodes: Map<string, TaskNode>): Map<string, number> {
   // Exact transitive-dependent COUNTS need closure SETS (diamonds
   // double-count under naive summing). Set-of-strings closures are
   // O(N²) entries and took 8.5s on a 1090-package, 100-layer repo;
