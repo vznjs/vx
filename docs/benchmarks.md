@@ -32,6 +32,22 @@ floor: 1090 config imports (~120 ms), one bulk git spawn (~73 ms),
 process boot. Next queued lever: git blob OIDs as file hashes
 (Turbo's `ls-files -s` technique — zero reads/stats for clean files).
 
+## 2026-06 — git blob OIDs as file hashes (v20)
+
+Input-file hashes now come from git's index (`ls-files -s`) for clean
+files; dirty/untracked files get byte-identical blob OIDs computed
+in-process behind the mtime memo. The two git spawns run
+concurrently. The win scales with file count:
+
+| Fixture                       | v19 warm run-phase | v20                                    |
+| ----------------------------- | ------------------ | -------------------------------------- |
+| 1000 projects × 3 files (6k)  | ~393 ms            | ~426 ms (noise-level; degenerate case) |
+| 500 projects × 30 files (15k) | ~245 ms            | **~76 ms (3.2×)**                      |
+
+Cold first runs additionally never read committed file contents at
+all. Real-world repos sit far closer to the 30-files-per-project
+shape than the 3-file one.
+
 ## 2026-06 — warm paths, three-way on the comparison repo
 
 100 projects x (build + test + installDeps), 300 task evaluations,
