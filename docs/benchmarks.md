@@ -97,6 +97,15 @@ Headroom we know about:
 - **Path normalization.** `relPosix` is called in tight loops during
   input enumeration. A specialized fast-path for ASCII-only
   workspace-root prefixes would help.
+- **Config evaluation (measured 2026-06, 1000 projects):**
+  `loadProjectConfig` ×1000 = 199 ms of a 517 ms warm wall; discovery
+  82 ms; package graph 1 ms. A resolved-config eval cache was designed
+  (cache pure-literal configs on content hash) and **rejected by the
+  owner**: soundness requires a static purity gate (no imports, no
+  `process.env`, no dynamic tokens), and a correctness-critical
+  heuristic is too much machinery for ~200 ms at 1000 projects.
+  Configs are programs; their evaluation only re-runs, never caches.
+  Don't re-propose without a sound, non-heuristic dependency story.
 
 None of these would close the gap to BASE; the ~3 s no-cache
 overhead is dominated by `vx.config.ts` evaluation (300 task configs
