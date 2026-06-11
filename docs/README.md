@@ -1,76 +1,141 @@
 # `@vzn/vx` — technical documentation
 
-This directory is the complete technical reference for `@vzn/vx`. Read
-it to understand _what_ and _why_; read the source under `src/` to
-understand _how_. Every doc is intended to be self-contained enough
-that a fresh contributor (or an AI agent) can pick up development
-without back-channel context.
+vx is a **best-in-class task runner and content-addressed build cache**
+for JavaScript monorepos, built Bun-native from the ground up. It runs
+your task graph with maximum parallelism, caches every result by
+content, and replays work it has already done — in milliseconds, with
+correctness guarantees the established runners don't offer.
 
-## What `@vzn/vx` is
+Every claim below is measured, reproducible (`bench/`), and recorded
+with its invariant in [`optimizations.md`](./optimizations.md).
 
-A content-addressed cache + task scheduler for pnpm / npm / yarn / Bun
-workspaces. Authors write a per-package `vx.config.ts`; the CLI
-discovers projects, builds a task graph from declared `dependsOn`,
-hashes every task's inputs deterministically, executes tasks in
-topological order with bounded parallelism, and replays stored outputs
-on a cache hit. Local cache is SQLite-backed; an optional remote layer
-speaks the Turborepo `/v8/artifacts/` HTTP wire so any Turbo-compatible
-cache server works.
+## Why vx
 
-It is shaped most directly after Turborepo (per-package config, opt-in
-caching, content-addressed key, hashes cascade through the dep graph),
-with a smaller surface and four deliberate divergences:
+**Fastest warm paths in its class.** On a 100-project workspace a
+fully-cached run completes in **144 ms wall-clock** — restore costs
+the same as an intact tree. A 1090-package, 100-layer dense graph
+(3270 tasks) runs fully cached in **0.62 s**. At 15k input files,
+deriving every cache key costs **zero file reads, zero stats, zero DB
+lookups** — hashes come straight from git's index.
 
-- **TypeScript config** (`vx.config.ts`) instead of `turbo.json`.
-  Presets are plain TypeScript helpers; computed values participate in
-  the cache key automatically.
-- **Resolved-config hash.** The cache key sees the post-evaluation
-  config object, so imports and `process.env`-derived values get
-  folded in. Turbo and Nx hash the static config file and miss them.
-- **Early cutoff.** Downstream cache keys fold upstream OUTPUT
-  content identity — identical rebuilt outputs stop the miss cascade.
-  See [`differentiators.md`](./differentiators.md).
-- **Strict output ownership.** Declared `cache.outputs.files` are
-  wiped before exec AND before cache restore, so the project dir ends
-  every run bit-identical to the cached snapshot. Turbo / Nx restore
-  additively; stale files from a prior build can survive a cache hit.
+**Smarter caching, not just faster caching.**
 
-Things vx intentionally is _not_, and the rationale:
+- **Early cutoff.** Downstream keys fold the upstream's _output
+  content identity_. Rebuild a library to byte-identical `dist/` and
+  nothing downstream re-runs. Unique to vx.
+- **Resolved-config hashing.** Your `vx.config.ts` is evaluated, then
+  hashed — imports, presets, and computed values all participate in
+  cache identity. Static-file hashers miss them.
+- **Strict output ownership.** Declared outputs are wiped before exec
+  AND restore: the tree ends every run bit-identical to the cached
+  snapshot. No stale stragglers, ever.
+- **Exactness under restore.** Re-enumeration only happens when a
+  downstream task's inputs can actually see a changed path — gitignore
+  semantics stay byte-identical with a single git spawn per run.
 
-- _Not_ an executor framework — no plugin protocol, no JS-function
-  tasks. Shell is the API. Plugins introduce versioned packages and
-  runtime indirection; vx keeps the contract minimal.
-- _Not_ a daemon — every `vx run` is a fresh process. Re-discovery
-  - config evaluation is fast enough on a Bun runtime that a daemon
-    is not worth its operational cost.
-- _Not_ a scaffolding tool, generator, watcher, or TUI. Those are
-  separate problems with separate tools.
-- _Not_ a non-JS runner. Rust / .NET / Gradle projects use their
-  own runners; vx is a JS-monorepo runner specifically.
+**Engineered hot paths.** Bitset graph closures (exact
+most-blocked-first scheduling in O(E·N/32)), one bulk git enumeration
+partitioned by binary search, stat-check restore skips (warm-warm = N
+stats, zero writes), in-process tar, atomic artifact publish,
+single-transaction SQL, xxh3 seed-chained keys with collision-hardened
+delimiters.
 
-A complete side-by-side with Turborepo, Nx, and vite-task — including
-every known gap — lives in [`comparison.md`](./comparison.md).
+**Safe to trust.**
+
+- HMAC artifact signing on the remote wire — a configured key
+  hard-rejects unsigned responses; tampered artifacts degrade to
+  re-execution, never break a run.
+- Corrupt artifacts are validated before they go live and degrade to
+  a miss.
+- SIGINT/SIGTERM reap every child — no orphaned dev servers in CI.
+- Persistent tasks gate downstream work on readiness (`readyWhen`)
+  with a bounded wait (`readyTimeoutMs`).
+- Sandboxed tasks (opt-in, per task) fail on violation.
+
+**Deliberately simple.** No daemon (and still faster cold than
+daemon-warm competitors). No plugins, no executor protocol — shell is
+the API. Eight contract modules with a dependency matrix enforced in
+CI. ~600 tests.
+
+## Adopt it in two minutes
+
+```bash
+bun add -d @vzn/vx          # Bun ≥ 1.3; git required
+```
+
+Drop a `vx.config.ts` next to any workspace package:
+
+```ts
+import { defineProject } from '@vzn/vx'
+
+export default defineProject({
+  tasks: {
+    build: {
+      exec: { command: 'tsc -p .' },
+      cache: {
+        inputs: { files: ['src/**'], env: ['NODE_ENV'] },
+        outputs: { files: ['dist/**'] },
+      },
+    },
+    test: {
+      dependsOn: ['build'],
+      exec: { command: 'bun test' },
+      cache: { inputs: { files: ['src/**', 'tests/**'] }, outputs: { files: [] } },
+    },
+    dev: {
+      exec: { command: 'vite', persistent: { readyWhen: 'Local:', readyTimeoutMs: 30_000 } },
+    },
+  },
+})
+```
+
+Run things:
+
+```bash
+vx run build                # current package (+ its dependency graph)
+vx run build test --all     # every package, shared graph
+vx run build -F "@app/*"    # pnpm-style filters
+vx run test --affected      # only what changed vs the base branch
+vx watch dev                # re-run on file change
+vx run build --dry          # predicted hits/misses, no execution
+vx cache prune --older-than 7d --max-size 5gb
+```
+
+Remote caching is two env vars (`VX_REMOTE_CACHE_URL`,
+`VX_REMOTE_CACHE_TOKEN`) and speaks a standard artifact wire, so
+existing cache servers work unchanged; add
+`VX_REMOTE_CACHE_SIGNATURE_KEY` for signed artifacts.
+
+## Feature map
+
+| Feature                                                                                                       | Where to read                                                                        |
+| ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Task graph: `dependsOn`, `^task` (nearest-holder + sparse bridging), `pkg#task`, group tasks, multi-task runs | [`schema.md`](./schema.md), [`execution.md`](./execution.md)                         |
+| Content-addressed caching: keys, invalidation, early cutoff, artifact format                                  | [`caching.md`](./caching.md)                                                         |
+| Remote cache layer + HMAC signing                                                                             | [`caching.md`](./caching.md), [`modules/remote-cache.md`](./modules/remote-cache.md) |
+| Persistent tasks (`readyWhen` / `readyTimeoutMs`)                                                             | [`schema.md`](./schema.md)                                                           |
+| Watch mode, filters, `--affected`, `--dry` / `--graph`, forwarding `--`                                       | [`cli.md`](./cli.md)                                                                 |
+| Per-task sandboxing (fail-on-violation)                                                                       | [`schema.md`](./schema.md)                                                           |
+| Run analytics (`vx stats`, `--summarize`, `--profile` Chrome traces)                                          | [`cli.md`](./cli.md)                                                                 |
 
 ## Where to start
 
-| You want to…                         | Read                                                  |
-| ------------------------------------ | ----------------------------------------------------- |
-| Understand the overall shape         | [`architecture.md`](./architecture.md)                |
-| Author a `vx.config.ts`              | [`schema.md`](./schema.md)                            |
-| Reason about caching                 | [`caching.md`](./caching.md)                          |
-| Trace what `vx run` actually does    | [`execution.md`](./execution.md)                      |
-| See each scenario as a diagram       | [`flows.md`](./flows.md)                              |
-| See every perf decision + invariant  | [`optimizations.md`](./optimizations.md)              |
-| The pitch: differentiators + numbers | [`differentiators.md`](./differentiators.md)          |
-| Use the CLI from a shell             | [`cli.md`](./cli.md)                                  |
-| Compare to Turbo / Nx / vite-task    | [`comparison.md`](./comparison.md)                    |
-| See what we share with Turbo / Nx    | [`patterns.md`](./patterns.md)                        |
-| See how fast vx is vs Turbo / Nx     | [`benchmarks.md`](./benchmarks.md)                    |
-| Modify, fork, or replace a module    | [`modules/`](./modules/) (one file per source module) |
-| Read forward-looking design notes    | [`design/`](./design/)                                |
+| You want to…                               | Read                                                                   |
+| ------------------------------------------ | ---------------------------------------------------------------------- |
+| The pitch: differentiators + numbers       | [`differentiators.md`](./differentiators.md)                           |
+| Understand the overall shape               | [`architecture.md`](./architecture.md)                                 |
+| Author a `vx.config.ts`                    | [`schema.md`](./schema.md)                                             |
+| Reason about caching                       | [`caching.md`](./caching.md)                                           |
+| Trace what `vx run` actually does          | [`execution.md`](./execution.md)                                       |
+| See each scenario as a diagram             | [`flows.md`](./flows.md)                                               |
+| See every perf decision + invariant        | [`optimizations.md`](./optimizations.md)                               |
+| Use the CLI from a shell                   | [`cli.md`](./cli.md)                                                   |
+| Benchmarks + side-by-side vs other runners | [`benchmarks.md`](./benchmarks.md), [`comparison.md`](./comparison.md) |
+| Modify, fork, or replace a module          | [`modules/`](./modules/) (one file per source module)                  |
+| Read forward-looking design notes          | [`design/`](./design/)                                                 |
 
-If you have ten minutes: read `architecture.md` then `caching.md`.
-Those two cover ~80% of the system.
+If you have ten minutes: read `differentiators.md`, then
+`architecture.md`. Together they cover the why and the shape.
 
 ## Repository layout
 
