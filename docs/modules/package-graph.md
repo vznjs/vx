@@ -11,14 +11,17 @@ traversals.
 
 ```ts
 export interface PackageGraph {
-  byName: Map<string, ProjectMeta>
-  directDeps: Map<string, string[]> // immediate workspace deps
+  directDeps: (name: string) => string[] // immediate workspace deps (sorted)
   transitiveDeps: (name: string) => string[] // all transitive deps
   transitiveDependents: (name: string) => string[] // all transitive dependents
 }
 
 export function buildPackageGraph(projects: ProjectMeta[]): PackageGraph
 ```
+
+`directDeps` is the adjacency `buildTaskGraph` walks for `'^name'`
+frontier expansion; `transitiveDeps` / `transitiveDependents` serve
+`workspace/filter.ts`'s `pkg...` / `...pkg` traversals.
 
 ## Algorithm
 
@@ -29,7 +32,8 @@ self-references).
 
 The graph is precomputed once per `vx run` invocation:
 
-- `directDeps` is materialized eagerly.
+- The direct-deps adjacency is materialized eagerly; `directDeps`
+  reads straight from it.
 - `transitiveDeps` / `transitiveDependents` are memoized lazy
   functions backed by a DFS with cycle protection (a hypothetical
   cyclic workspace doesn't loop forever; it just returns the
@@ -59,6 +63,8 @@ and graph traversal.
 
 - empty workspace.
 - two projects, one depends on the other (directs + transitive).
+- `directDeps` returns immediate workspace deps only, sorted; `[]`
+  for unknown names.
 - diamond (a → b, a → c, both → d). transitiveDeps(a) = [b, c, d].
 - transitiveDependents inverts correctly.
 - external (non-workspace) deps are ignored.

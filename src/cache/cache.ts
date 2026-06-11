@@ -40,7 +40,9 @@ import { extractOutputs, parseTarHeaders, readTarText } from './tar.js'
 // separate stage/meta.json/tar.gz dance for remote, no
 // `cache-archive.ts`. stderr is no longer cached: we only cache
 // successful runs and stderr is rarely meaningful on success.
-const CACHE_VERSION = 'vx-cache-v18'
+// v19: '^task' dependsOn expansion switched from transitive-deps to
+// nearest-holder frontier — upstream-hash sets shrink, so keys change.
+const CACHE_VERSION = 'vx-cache-v19'
 const SCHEMA_VERSION = 'v17'
 
 export interface CacheKeyInput {

@@ -252,7 +252,7 @@ dependsOn?: readonly string[]
 | Form         | Meaning                                                           |
 | ------------ | ----------------------------------------------------------------- |
 | `'name'`     | Same-project task `name`.                                         |
-| `'^name'`    | The `name` task in every transitive workspace dependency.         |
+| `'^name'`    | The `name` task in the nearest workspace deps that declare it.    |
 | `'pkg#name'` | The `name` task in a specific other package (cross-project edge). |
 
 Examples:
@@ -268,10 +268,15 @@ Semantics:
 
 - **Same-project (`'name'`)** — name must exist in this project's
   `tasks` map; missing is a hard error at graph-build time.
-- **`'^name'`** — task is added for every transitive workspace dep
-  that has it. Deps that don't declare it are silently skipped (sparse
-  tasks across a workspace are normal — not every package has a
-  `lint`).
+- **`'^name'`** — nearest-holder frontier. Walk the package dep graph
+  from this project's direct deps; each path stops at the first dep
+  that declares the task and an edge is added to it (Turbo/Nx
+  direct-deps parity). The holder's own `dependsOn` is responsible
+  for anything deeper — chain `'^name'` in the holder to keep the
+  cascade going (the universal pattern). Deps that don't declare the
+  task are passed through, so a sparse dep doesn't break ordering to
+  deeper packages that do (sparse tasks across a workspace are normal
+  — not every package has a `lint`).
 - **`'pkg#name'`** — missing pkg or task is a hard error (you named
   them explicitly).
 - **No wildcards or negation here.** `'*'` / `'^*'` / `'!form'` belong

@@ -52,7 +52,8 @@ terminal and a task succeeding or failing. Read it alongside
  │    Starting from the resolved {project, task}[] pairs, walk
  │    dependsOn:
  │      - 'name'     → same-project task
- │      - '^name'    → task in every transitive workspace dep
+ │      - '^name'    → task in the nearest deps declaring it
+ │                     (frontier walk; non-holders passed through)
  │      - 'pkg#name' → specific package's task
  │    Excluded edges (per --excludeDependencies) are dropped.
  │    Detect cycles — throws with the path.

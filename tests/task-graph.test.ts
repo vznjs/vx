@@ -27,6 +27,7 @@ function packageGraph(direct: Record<string, string[]>): PackageGraph {
   }
 
   return {
+    directDeps: (n) => directDeps.get(n) ?? [],
     transitiveDeps: (n) => transitive(n),
     transitiveDependents: () => [],
   }
@@ -74,20 +75,88 @@ describe('buildTaskGraph', () => {
     ).toThrow(/depends on a#nope/)
   })
 
-  it('expands across all transitive workspace deps via dependsOn.dependencies', () => {
+  // ─── '^name' frontier expansion (nearest-holder semantics) ──────────
+  //
+  // '^task' walks the package dep graph from the project's DIRECT deps
+  // and stops at the first package on each path that declares the task
+  // (Turbo/Nx direct-deps parity). A holder's own dependsOn is
+  // responsible for anything deeper; packages that don't declare the
+  // task are passed through (sparse bridging — vx extension).
+
+  it('^name edges only to the nearest holder; deeper builds order via the holder chaining ^name', () => {
     const nodes = buildTaskGraph({
       projects: projects(
         project('app', {
           build: { ...cmd('build app'), dependsOn: ['^build'] },
         }),
-        project('lib', { build: cmd('build lib') }),
+        project('lib', {
+          build: { ...cmd('build lib'), dependsOn: ['^build'] },
+        }),
         project('deep', { build: cmd('build deep') }),
       ),
       packageGraph: packageGraph({ app: ['lib'], lib: ['deep'] }),
       requested: [{ project: 'app', task: 'build' }],
     })
-    expect(nodes.has('lib#build')).toBe(true)
+    expect(nodes.get('app#build')?.deps).toEqual(['lib#build'])
+    expect(nodes.get('lib#build')?.deps).toEqual(['deep#build'])
     expect(nodes.has('deep#build')).toBe(true)
+  })
+
+  it('^name passes through deps that lack the task to deeper holders (sparse bridge)', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', {
+          build: { ...cmd('build app'), dependsOn: ['^build'] },
+        }),
+        project('mid', { lint: cmd('lint mid') }), // no `build` — bridged through
+        project('leaf', { build: cmd('build leaf') }),
+      ),
+      packageGraph: packageGraph({ app: ['mid'], mid: ['leaf'] }),
+      requested: [{ project: 'app', task: 'build' }],
+    })
+    expect(nodes.get('app#build')?.deps).toEqual(['leaf#build'])
+    expect(nodes.has('leaf#build')).toBe(true)
+  })
+
+  it('^name does not walk past a holder: deeper holders are NOT auto-ordered', () => {
+    // Turbo-parity: `b` declares build WITHOUT chaining '^build', so
+    // c#build never enters the graph from app's expansion — b's config
+    // owns its own dependency story.
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', {
+          build: { ...cmd('build app'), dependsOn: ['^build'] },
+        }),
+        project('b', { build: cmd('build b') }),
+        project('c', { build: cmd('build c') }),
+      ),
+      packageGraph: packageGraph({ app: ['b'], b: ['c'] }),
+      requested: [{ project: 'app', task: 'build' }],
+    })
+    expect(nodes.get('app#build')?.deps).toEqual(['b#build'])
+    expect(nodes.has('c#build')).toBe(false)
+  })
+
+  it('^name dedupes a shared subtree reached via multiple bridged paths', () => {
+    // left and right both lack `build`; both bridge to shared. The
+    // visited-set must collapse the two paths into one edge.
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', {
+          build: { ...cmd('build app'), dependsOn: ['^build'] },
+        }),
+        project('left', { lint: cmd('lint') }),
+        project('right', { lint: cmd('lint') }),
+        project('shared', { build: cmd('build shared') }),
+      ),
+      packageGraph: packageGraph({
+        app: ['left', 'right'],
+        left: ['shared'],
+        right: ['shared'],
+      }),
+      requested: [{ project: 'app', task: 'build' }],
+    })
+    expect(nodes.get('app#build')?.deps).toEqual(['shared#build'])
   })
 
   it('runs both self and dependencies tasks before the dependent', () => {

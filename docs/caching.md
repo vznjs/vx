@@ -34,7 +34,7 @@ opt _out_ via `cache: false`. We chose the strictest of the three.
 The cache key for one task is a SHA-256 hex digest over (in order):
 
 1. **`CACHE_VERSION`** — the schema-version sentinel
-   (currently `'vx-cache-v15'`, in `src/cache/cache.ts`). Bumped only
+   (currently `'vx-cache-v19'`, in `src/cache/cache.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -427,3 +427,12 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
   is contract hardening rather than a field bug, but the key
   derivation's stated invariant is unambiguous part boundaries —
   now it holds everywhere (file inputs already used `\0`).
+- **v18 → v19**: `'^task'` dependsOn expansion switched from
+  transitive-deps to nearest-holder frontier semantics (Turbo/Nx
+  direct-deps parity, plus vx's sparse bridging through deps that
+  don't declare the task). Task graphs lose the redundant deep edges,
+  so the filtered-upstream-hash set (step 8) shrinks for any task
+  whose deps chain `'^task'` themselves — same inputs now derive a
+  different key. Reachability/ordering is unchanged whenever holders
+  chain `'^task'` (the universal pattern); a holder that doesn't is
+  now the documented stopping point. No on-disk format change.

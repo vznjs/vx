@@ -159,6 +159,32 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: CACHE_VERSION → v19. `'^task'` dependsOn expansion
+  switched from transitive-deps to **nearest-holder frontier**: walk
+  the package dep graph from the project's DIRECT deps; each path
+  stops at the first package declaring the task (edge added there);
+  packages without the task are passed through (sparse bridging —
+  vx extension over Turbo); nothing past a holder is walked — the
+  holder's own dependsOn owns deeper ordering. Turbo and Nx are both
+  direct-deps-only; vx's transitive reach existed solely to bridge
+  sparse deps, and on dense graphs it exploded edge count (~10x more
+  edges than needed on the 1090-package/100-layer report repo),
+  driving computeGroupHash sorting (103 ms), addNode dep-sorts
+  (66 ms), scheduler closure size, and upstream-hash folding.
+  Reachability/ordering closure is identical whenever holders chain
+  `'^task'` themselves (the universal pattern); a holder that
+  doesn't is now a documented stopping point (Turbo parity). Bumped
+  because filtered-upstream-hash sets shrink → same inputs derive
+  different keys. Implementation: `PackageGraph.directDeps(name)`
+  accessor reintroduced (reads the eager adjacency; bitset closure
+  code untouched); frontier walk in `task-graph.ts` replaces the
+  `transitiveDeps` loop. `'^*'` in cache.inputs.tasks is a FILTER
+  over graph edges (upstream.ts) — untouched; `filter.ts` /
+  `affected.ts` transitive traversals are non-expansion consumers —
+  untouched. Tests: 4 new frontier pins in tests/task-graph.test.ts
+  (nearest-holder chain, sparse bridge, stop-at-holder, shared-
+  subtree dedup) + directDeps accessor test.
+
 - **2026-06**: Scheduler priority closure switched to bitsets. User
   report: 10 s FULL-CACHE run on a 1090-package, 100-layer dense
   repo. CPU profile: 8.5 s in `reachOf` — the transitive-reverse-dep

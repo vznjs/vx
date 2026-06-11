@@ -173,13 +173,23 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         }
         node.deps.push(child.id)
       } else if (spec.kind === 'deps') {
-        // For each transitive workspace dep, look for the named task.
-        // Missing tasks in particular deps are silently skipped — not
-        // every dep needs to participate.
-        const workspaceDeps = packageGraph.transitiveDeps(projectName)
-        for (const target of workspaceDeps) {
+        // Nearest-holder frontier (Turbo/Nx direct-deps parity +
+        // sparse bridging): walk the package dep graph from this
+        // project's direct deps; each path stops at the FIRST package
+        // declaring the task — a holder's own dependsOn is responsible
+        // for anything deeper. Packages without the task are passed
+        // through so a sparse dep doesn't break ordering to deeper
+        // holders. The visited set both dedupes shared subtrees and
+        // terminates on package-graph cycles (legal in PMs).
+        const visited = new Set<string>()
+        const frontier = [...packageGraph.directDeps(projectName)]
+        while (frontier.length > 0) {
+          const target = frontier.pop()!
+          if (visited.has(target)) continue
+          visited.add(target)
           const child = addNode(target, spec.task, false)
           if (child) node.deps.push(child.id)
+          else frontier.push(...packageGraph.directDeps(target))
         }
       } else {
         // Cross-project edge: pkg#task. Missing target is a hard error

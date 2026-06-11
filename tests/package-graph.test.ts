@@ -25,6 +25,18 @@ describe('buildPackageGraph', () => {
     expect(g.transitiveDeps('b')).toEqual([])
   })
 
+  it('directDeps returns only immediate workspace deps, sorted', () => {
+    const g = buildPackageGraph([
+      meta('a', { c: 'workspace:*', b: 'workspace:*', external: '^1.0.0' }),
+      meta('b', { c: 'workspace:*' }),
+      meta('c'),
+    ])
+    expect(g.directDeps('a')).toEqual(['b', 'c'])
+    expect(g.directDeps('b')).toEqual(['c'])
+    expect(g.directDeps('c')).toEqual([])
+    expect(g.directDeps('unknown')).toEqual([])
+  })
+
   it('walks transitive deps and dedupes them', () => {
     const g = buildPackageGraph([
       meta('a', { b: 'workspace:*' }),
