@@ -5,6 +5,7 @@
 // No execution happens: no spawn, no cleanOutputs, no restoreOutputs.
 // The plan is read-only.
 
+import type { GitFilesCache } from '../cache/index.js'
 import type { CacheLayer } from '../cache/index.js'
 import { isGroupTask, runGraph, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { computeGroupHash, computeTaskHash } from './task-hash.js'
@@ -36,7 +37,7 @@ export interface PlanArgs {
   noCache: boolean
   forwardArgs?: readonly string[] | undefined
   nestedDirsByProject: Map<string, string[]>
-  gitFilesCache?: Map<string, readonly string[]>
+  gitFilesCache?: GitFilesCache
   hashCache?: import('./task-hash.js').HashCache
 }
 

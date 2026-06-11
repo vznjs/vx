@@ -47,7 +47,7 @@ export interface ResolveInputsArgs {
    * memoization we spawn git 3× per project per run. The orchestrator
    * passes a fresh Map at the top of every `vx run`.
    */
-  gitFilesCache?: Map<string, readonly string[]>
+  gitFilesCache?: GitFilesCache
 }
 
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs> {
@@ -101,11 +101,64 @@ export async function cleanOutputs(args: {
   projectDir: string
   outputs: string[]
   nestedProjectDirs: string[]
-}): Promise<void> {
+}): Promise<string[]> {
   const files = await resolveOutputs(args)
   // `force: true` makes rm tolerate ENOENT (e.g. when two output
   // globs overlap and a sibling already deleted a path mid-iteration).
   await Promise.all(files.map((f) => rm(f, { force: true })))
+  // Project-relative posix paths of what was removed — the caller
+  // feeds these to GitFilesCache.markOutputsChanged after a restore.
+  return files.map((f) => path.relative(args.projectDir, f).split(path.sep).join('/'))
+}
+
+/**
+ * Per-run memo of each project's `git ls-files` output, plus the
+ * staleness bookkeeping that lets the warm path avoid re-spawning git.
+ *
+ * After a cache-hit restore we know EXACTLY which paths changed on
+ * disk: the declared outputs `cleanOutputs` wiped plus the artifact's
+ * output files. `markOutputsChanged` records them; `snapshotFor`
+ * hands back the existing snapshot when a resolving task's input
+ * globs can't match any changed path — provably identical to what a
+ * re-spawn would return, since glob matching ignores gitignore status
+ * entirely when the path doesn't match. When globs DO overlap,
+ * returning undefined forces the caller down the re-spawn path so
+ * gitignore semantics stay byte-identical.
+ *
+ * The cache-miss save path still uses plain `delete` — an executed
+ * task may write files outside its declared outputs, and only git can
+ * see those.
+ */
+export class GitFilesCache extends Map<string, readonly string[]> {
+  private changed = new Map<string, string[]>()
+
+  markOutputsChanged(projectDir: string, relPaths: readonly string[]): void {
+    if (!this.has(projectDir)) return
+    const cur = this.changed.get(projectDir)
+    if (cur) cur.push(...relPaths)
+    else this.changed.set(projectDir, [...relPaths])
+  }
+
+  /** Snapshot if still valid for these input globs; undefined → re-spawn. */
+  snapshotFor(projectDir: string, inputGlobs: readonly Bun.Glob[]): readonly string[] | undefined {
+    const snap = this.get(projectDir)
+    if (snap === undefined) return undefined
+    const pending = this.changed.get(projectDir)
+    if (pending !== undefined && pending.some((p) => inputGlobs.some((g) => g.match(p)))) {
+      return undefined
+    }
+    return snap
+  }
+
+  override set(key: string, value: readonly string[]): this {
+    this.changed.delete(key)
+    return super.set(key, value)
+  }
+
+  override delete(key: string): boolean {
+    this.changed.delete(key)
+    return super.delete(key)
+  }
 }
 
 interface ResolveFilesArgs {
@@ -114,7 +167,7 @@ interface ResolveFilesArgs {
   files: string[] | undefined
   ownOutputs: string[]
   nestedProjectDirs: string[]
-  gitFilesCache?: Map<string, readonly string[]>
+  gitFilesCache?: GitFilesCache
 }
 
 async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
@@ -145,14 +198,13 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // per task (build + test + lint + …). Spawning git N times for the
   // same project per run is wasteful; we cache the result for the
   // duration of one orchestrator run.
-  let gitFiles: readonly string[]
-  if (args.gitFilesCache !== undefined && args.gitFilesCache.has(args.projectDir)) {
-    gitFiles = args.gitFilesCache.get(args.projectDir) as readonly string[]
-  } else {
+  const positiveGlobs = positive.map((p) => new Bun.Glob(p))
+  let gitFiles = args.gitFilesCache?.snapshotFor(args.projectDir, positiveGlobs)
+  if (gitFiles === undefined) {
     gitFiles = runGitLsFiles(args.projectDir)
+    // set() also clears the project's pending-changed bookkeeping.
     args.gitFilesCache?.set(args.projectDir, gitFiles)
   }
-  const positiveGlobs = positive.map((p) => new Bun.Glob(p))
   // First pass: glob-filter to candidate absolute paths (no I/O).
   const candidates: string[] = []
   for (const rel of gitFiles) {

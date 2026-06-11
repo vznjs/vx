@@ -12,6 +12,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
   cleanOutputs,
+  GitFilesCache,
   populateGitFilesCache,
   resolveInputs,
   resolveOutputs,
@@ -572,7 +573,7 @@ describe('resolveInputs — gitFilesCache memoization', () => {
   })
 
   it('populates an empty Map after the first call', async () => {
-    const memo = new Map<string, readonly string[]>()
+    const memo = new GitFilesCache()
     await resolveInputs({
       projectDir,
       workspaceRoot,
@@ -586,7 +587,7 @@ describe('resolveInputs — gitFilesCache memoization', () => {
   })
 
   it('reuses the cached entry on the second call (no second git spawn)', async () => {
-    const memo = new Map<string, readonly string[]>()
+    const memo = new GitFilesCache()
     const first = await resolveInputs({
       projectDir,
       workspaceRoot,

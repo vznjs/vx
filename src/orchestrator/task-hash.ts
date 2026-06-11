@@ -1,6 +1,6 @@
 import path from 'node:path'
 import type { TaskConfig, CacheConfig } from '../config.js'
-import { type CacheLayer, resolveInputs } from '../cache/index.js'
+import { type CacheLayer, resolveInputs, type GitFilesCache } from '../cache/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { xxh3hex } from '../util/index.js'
 import { filterUpstreamHashes } from './upstream.js'
@@ -40,7 +40,7 @@ export interface ComputeHashArgs {
   cache: CacheLayer
   forwardArgs?: readonly string[] | undefined
   nestedProjectDirs: string[]
-  gitFilesCache?: Map<string, readonly string[]>
+  gitFilesCache?: GitFilesCache
   hashCache?: HashCache
 }
 

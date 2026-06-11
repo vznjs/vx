@@ -8,7 +8,7 @@
 // try/finally around its plan() call.
 
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { Cache, type CacheLayer, populateGitFilesCache } from '../cache/index.js'
+import { Cache, type CacheLayer, GitFilesCache, populateGitFilesCache } from '../cache/index.js'
 import {
   buildPackageGraph,
   computeNestedProjectDirs,
@@ -41,7 +41,7 @@ export interface PreparedRun {
    * enumerate its input file set (3× per project for build / test /
    * lint, etc.) — observable in cache-hit run times.
    */
-  gitFilesCache: Map<string, readonly string[]>
+  gitFilesCache: GitFilesCache
   /**
    * Per-run memo for derived hashes — project package.json bytes
    * keyed by projectDir, task-config hash keyed by config object
@@ -109,7 +109,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const cache = wrapWithRemoteCache(localCache, log)
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
-  const gitFilesCache = new Map<string, readonly string[]>()
+  const gitFilesCache = new GitFilesCache()
   // Bulk-populate via a single `git ls-files` at the workspace root —
   // partitions the output by project. Avoids one fork+exec per project
   // (~5-10ms each on Linux; the dominant cold-start cost on big

@@ -1,7 +1,13 @@
 import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import type { ExecConfig, TaskConfig, CacheConfig } from '../config.js'
-import { type CacheLayer, cleanOutputs, resolveInputs, resolveOutputs } from '../cache/index.js'
+import {
+  type CacheLayer,
+  cleanOutputs,
+  type GitFilesCache,
+  resolveInputs,
+  resolveOutputs,
+} from '../cache/index.js'
 import {
   buildIsolatedEnv,
   runCommand,
@@ -40,7 +46,7 @@ export interface ExecuteArgs {
    */
   liveChildren?: Set<ReturnType<typeof Bun.spawn>>
   /** Per-run memo for `git ls-files` (one entry per project dir). */
-  gitFilesCache?: Map<string, readonly string[]>
+  gitFilesCache?: GitFilesCache
   /** Per-run memo for derived hashes (package.json bytes + task config). */
   hashCache?: HashCache
 }
@@ -231,14 +237,23 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         }
       }
       if (!skipRestore) {
-        if (outputs.length > 0) await cleanOutputs(cleanArgs)
+        let cleanedRels: string[] = []
+        if (outputs.length > 0) cleanedRels = await cleanOutputs(cleanArgs)
         await cache.restoreOutputs(hash, node.projectDir)
-        // Restored outputs changed the project's tree; any downstream
-        // same-project task that resolves inputs after us would
-        // otherwise see a stale `git ls-files` snapshot taken at the
-        // top of the run. Drop the project's entry so the next
-        // resolveFiles call re-spawns git for that dir.
-        if (outputs.length > 0) args.gitFilesCache?.delete(node.projectDir)
+        // Restored outputs changed the project's tree — but on this
+        // path we know the EXACT changed paths (wiped declared
+        // outputs + the artifact's files). Record them instead of
+        // dropping the snapshot; downstream same-project tasks only
+        // re-spawn git when their input globs can actually see one of
+        // these paths. The cache-miss save path below keeps the
+        // unconditional drop (an executed task may write undeclared
+        // files only git can see).
+        if (outputs.length > 0) {
+          args.gitFilesCache?.markOutputsChanged(node.projectDir, [
+            ...cleanedRels,
+            ...hit.outputFiles,
+          ])
+        }
       }
       if (hit.stdout) log.taskStdout(node, hit.stdout)
       const status =

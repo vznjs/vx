@@ -134,6 +134,26 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: Warm-restore git re-spawn fix. User report: restoring
+  100 tiny outputs took 920 ms vs 113 ms intact (8x). Evidence: a git
+  PATH-shim showed 81 per-project `git ls-files` re-spawns — the
+  post-restore `gitFilesCache.delete` from the v14-era staleness rule.
+  Fix: `GitFilesCache` class (extends Map; same bulk-populate API). On
+  restore we know the exact changed paths (cleaned declared outputs +
+  artifact outputFiles) — `markOutputsChanged` records them and
+  `snapshotFor(globs)` reuses the snapshot when a downstream task's
+  input globs can't match any changed path (provably identical to a
+  re-spawn; glob matching ignores gitignore status when paths don't
+  match). Overlapping globs still re-spawn → gitignore semantics
+  byte-identical. Save path keeps the unconditional drop (undeclared
+  writes are only visible to git). `cleanOutputs` now returns the
+  deleted rel paths. Result on the report repo: 920 ms → 136 ms, git
+  spawns 81 → 1. Tests: tests/restore-git-spawns.test.ts pins both
+  spawn counts AND the fallback's cache-hit stability via a CLI
+  subprocess + PATH shim (in-process PATH mutation doesn't affect
+  Bun.spawn executable resolution). Also: bench/ folded into
+  tsconfig + lint inputs (its absence rode a stale lint cache-hit).
+
 - **2026-06**: SIGINT/SIGTERM handling in `run()`. Closes the
   runner-comparison gap "children orphaned on mid-run signal": a
   programmatic signal to the vx process alone (CI cancellation,

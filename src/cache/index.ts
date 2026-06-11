@@ -3,6 +3,12 @@
 // tar.ts is internal — artifact pack/extract is an implementation detail.
 
 export { Cache, type CacheLayer, type RunRecord } from './cache.js'
-export { cleanOutputs, populateGitFilesCache, resolveInputs, resolveOutputs } from './inputs.js'
+export {
+  cleanOutputs,
+  GitFilesCache,
+  populateGitFilesCache,
+  resolveInputs,
+  resolveOutputs,
+} from './inputs.js'
 export { LayeredCache } from './layered-cache.js'
 export { RemoteCache } from './remote-cache.js'

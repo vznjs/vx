@@ -6,7 +6,7 @@ export default defineProject({
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: { command: 'oxlint --type-aware --type-check' },
       cache: {
-        inputs: { files: ['src/**', 'tests/**', '.oxlintrc.json', 'tsconfig.json'] },
+        inputs: { files: ['src/**', 'tests/**', 'bench/**', '.oxlintrc.json', 'tsconfig.json'] },
         outputs: { files: [] },
       },
     },
