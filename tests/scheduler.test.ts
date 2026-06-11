@@ -286,8 +286,10 @@ describe('priority computation scale', () => {
     const elapsed = performance.now() - started
     expect(outcomes.size).toBe(LAYERS * WIDTH)
     expect([...outcomes.values()].every((o) => o.status === 'success')).toBe(true)
-    // Generous 100x headroom over the fixed implementation; the
-    // quadratic one fails this by an order of magnitude.
-    expect(elapsed).toBeLessThan(1500)
+    // Calibration: bitset implementation ~165 ms locally, ~1.6 s on a
+    // loaded 2-core CI runner (dominated by the 3000 no-op task
+    // promises, not the closure). The quadratic Set-DFS this guards
+    // against took 7.2 s locally — far past this bound on any machine.
+    expect(elapsed).toBeLessThan(6000)
   }, 120_000)
 })
