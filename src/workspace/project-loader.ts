@@ -1,7 +1,6 @@
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { UserError } from '../util/errors.js'
-import { xxh3hex } from '../util/hash.js'
+import { UserError, xxh3hex } from '../util/index.js'
 
 const WORKSPACE_CONFIG_FILENAMES = [
   'vx.workspace.ts',

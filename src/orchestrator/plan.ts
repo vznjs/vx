@@ -5,7 +5,7 @@
 // No execution happens: no spawn, no cleanOutputs, no restoreOutputs.
 // The plan is read-only.
 
-import type { CacheLayer } from '../cache/cache.js'
+import type { CacheLayer } from '../cache/index.js'
 import { isGroupTask, type TaskNode } from '../graph/task-graph.js'
 import type { TaskOutcome } from '../graph/scheduler.js'
 import { runGraph } from '../graph/scheduler.js'

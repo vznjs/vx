@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { xxh3 } from '../util/hash.js'
+import { xxh3 } from '../util/index.js'
 
 // Every package-manager lockfile we know about, plus the workspace
 // definition files. Whichever ones exist get folded into the

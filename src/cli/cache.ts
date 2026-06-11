@@ -1,4 +1,4 @@
-import { Cache } from '../cache/cache.js'
+import { Cache } from '../cache/index.js'
 import { loadWorkspaceConfig } from '../workspace/project-loader.js'
 import { findWorkspaceRoot, resolveCacheDir } from '../workspace/workspace.js'
 import { formatBytes } from './format.js'

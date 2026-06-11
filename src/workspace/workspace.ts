@@ -1,6 +1,6 @@
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { UserError } from '../util/errors.js'
+import { UserError } from '../util/index.js'
 
 export interface PackageJson {
   name: string

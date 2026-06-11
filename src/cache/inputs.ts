@@ -21,7 +21,7 @@
 import path from 'node:path'
 import { rm } from 'node:fs/promises'
 import type { CacheInputs } from '../config.js'
-import { UserError } from '../util/errors.js'
+import { UserError } from '../util/index.js'
 
 const ALWAYS_IGNORE = ['**/node_modules/**', '**/.git/**', '**/.vx/**', '**/*.tsbuildinfo']
 

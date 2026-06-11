@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { run } from './cli.js'
-import { UserError } from './util/errors.js'
+import { UserError } from './util/index.js'
 
 // Wrapped in an explicit async main so `bun build --compile` accepts
 // the file. The compile target doesn't allow top-level await.

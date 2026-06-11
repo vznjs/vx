@@ -8,8 +8,7 @@
 // try/finally around its plan() call.
 
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { Cache, type CacheLayer } from '../cache/cache.js'
-import { populateGitFilesCache } from '../cache/inputs.js'
+import { Cache, type CacheLayer, populateGitFilesCache } from '../cache/index.js'
 import { buildPackageGraph } from '../workspace/package-graph.js'
 import { loadProjectConfig, loadWorkspaceConfig } from '../workspace/project-loader.js'
 import {

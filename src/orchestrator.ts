@@ -2,16 +2,13 @@
 // run with caching. Each step delegates to a single-purpose module under
 // ./orchestrator/ so the layers can be swapped without touching the others.
 
-import type { RunRecord } from './cache/cache.js'
-import { LayeredCache } from './cache/layered-cache.js'
+import { LayeredCache, type RunRecord } from './cache/index.js'
 import { VERSION } from './version.js'
-import { signalExitCode } from './exec/runner.js'
+import { initSandbox, probeSandbox, resetSandbox, signalExitCode } from './exec/index.js'
 import { runGraph, type TaskOutcome } from './graph/scheduler.js'
 import { isGroupTask } from './graph/task-graph.js'
-import { ulid } from './util/ulid.js'
+import { ulid, UserError } from './util/index.js'
 import { executeTask } from './orchestrator/execute-task.ts'
-import { initSandbox, probeSandbox, resetSandbox } from './exec/sandbox-runtime.ts'
-import { UserError } from './util/errors.ts'
 import { defaultLogger, type Logger } from './orchestrator/logger.ts'
 import { detectColors } from './orchestrator/colors.ts'
 import { formatHeader } from './orchestrator/framed-output.ts'

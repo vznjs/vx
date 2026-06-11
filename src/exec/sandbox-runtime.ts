@@ -32,7 +32,7 @@ import {
   resourceUsageToCpuRss,
   type RunResult,
 } from './runner.js'
-import { xxh3hex } from '../util/hash.js'
+import { xxh3hex } from '../util/index.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
 let srtPromise: Promise<SrtModule> | undefined

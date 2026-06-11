@@ -10,7 +10,7 @@
 // + index + unstaged. Matches Turbo's `[<since>]` filter semantics.
 
 import path from 'node:path'
-import { UserError } from '../util/errors.js'
+import { UserError } from '../util/index.js'
 import type { ProjectMeta } from './workspace.js'
 
 export interface AffectedArgs {

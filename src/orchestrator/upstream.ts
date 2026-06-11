@@ -4,7 +4,7 @@ import {
   type DependencySpec,
 } from '../graph/dependency-spec.js'
 import type { TaskOutcome } from '../graph/scheduler.js'
-import { UserError } from '../util/errors.js'
+import { UserError } from '../util/index.js'
 
 /**
  * Pick which upstream task hashes participate in the current task's

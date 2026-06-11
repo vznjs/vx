@@ -1,15 +1,15 @@
 import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import type { ExecConfig, TaskConfig, CacheConfig } from '../config.js'
-import type { CacheLayer } from '../cache/cache.js'
-import { cleanOutputs, resolveInputs, resolveOutputs } from '../cache/inputs.js'
-import { buildIsolatedEnv } from '../exec/env.js'
-import { runCommand, runPersistent } from '../exec/runner.js'
+import { type CacheLayer, cleanOutputs, resolveInputs, resolveOutputs } from '../cache/index.js'
 import {
+  buildIsolatedEnv,
+  runCommand,
+  runPersistent,
   runSandboxed,
   resolveSandboxConfig,
   type SandboxViolation,
-} from '../exec/sandbox-runtime.js'
+} from '../exec/index.js'
 import type { TaskOutcome } from '../graph/scheduler.js'
 import { isGroupTask, type TaskNode } from '../graph/task-graph.js'
 import type { Logger } from './logger.js'

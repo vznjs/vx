@@ -1,10 +1,9 @@
 import path from 'node:path'
 import type { TaskConfig, CacheConfig } from '../config.js'
-import type { CacheLayer } from '../cache/cache.js'
-import { resolveInputs } from '../cache/inputs.js'
+import { type CacheLayer, resolveInputs } from '../cache/index.js'
 import type { TaskOutcome } from '../graph/scheduler.js'
 import type { TaskNode } from '../graph/task-graph.js'
-import { xxh3hex } from '../util/hash.js'
+import { xxh3hex } from '../util/index.js'
 import { filterUpstreamHashes } from './upstream.js'
 
 /**

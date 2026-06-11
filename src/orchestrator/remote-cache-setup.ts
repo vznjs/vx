@@ -1,6 +1,4 @@
-import { Cache, type CacheLayer } from '../cache/cache.js'
-import { LayeredCache } from '../cache/layered-cache.js'
-import { RemoteCache } from '../cache/remote-cache.js'
+import { Cache, type CacheLayer, LayeredCache, RemoteCache } from '../cache/index.js'
 import type { Logger } from './logger.js'
 
 /**

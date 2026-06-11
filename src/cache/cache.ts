@@ -32,8 +32,7 @@ import { mkdirSync, statSync } from 'node:fs'
 import { mkdir, mkdtemp, rename, rm, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { xxh3, xxh3hex } from '../util/hash.js'
-import { relPosix } from '../util/paths.js'
+import { relPosix, xxh3, xxh3hex } from '../util/index.js'
 import { extractOutputs, parseTarHeaders, readTarText } from './tar.js'
 
 // v17: artifact carries only logs + outputs (stdout + outputs/<rel>).

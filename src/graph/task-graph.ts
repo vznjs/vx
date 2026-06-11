@@ -1,5 +1,5 @@
 import type { TaskConfig } from '../config.js'
-import { UserError } from '../util/errors.js'
+import { UserError } from '../util/index.js'
 import type { PackageGraph } from '../workspace/package-graph.js'
 import type { ProjectEntry } from '../workspace/workspace.js'
 import { DependencySpecError, parseDependencySpec, type DependencySpec } from './dependency-spec.js'
