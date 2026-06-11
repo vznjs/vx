@@ -1,6 +1,7 @@
 # Module isolation — design
 
-> **Status:** accepted, in progress (June 2026)
+> **Status:** complete (June 2026) — all seven steps landed; the
+> boundary law runs in CI with every directory module contracted.
 > **Feeds:** Phase 4 of `architecture-overhaul-2026-06.md`
 > **Principle source:** PR #108 (modules-first), adopted in place — no rebuild.
 
@@ -110,7 +111,8 @@ Primary: `tests/module-boundaries.test.ts` — scans `src/**/*.ts`
 import specifiers, asserts (rule 1) every cross-module edge is in the
 ALLOWED matrix, and (rule 2) imports of modules listed in a
 `CONTRACTED` set target the module's `index.ts` only. `CONTRACTED`
-starts empty and grows as contract PRs land — a ratchet. Tests in
+started empty and grew as contract PRs landed — a ratchet, complete
+since step 6 (every directory module is contracted). Tests in
 `tests/` are exempt (they may exercise internals). Zero new deps;
 runs under the existing `bun test` CI gate.
 
@@ -120,15 +122,17 @@ cycles either way.
 
 ## 3. Migration plan (each PR: zero behavior change, suite green)
 
-| PR  | What                                                                                                                |
-| --- | ------------------------------------------------------------------------------------------------------------------- |
-| 1   | This doc + boundary test (matrix law from day one) + cycle breaks: `version.ts`, `orchestrator/options.ts`          |
-| 2   | Relocations: `ProjectEntry` → workspace; `nested-dirs`, `fingerprint` → workspace; `plan-format` → cli              |
-| 3   | Split `execute-task.ts` hashing surface → `orchestrator/task-hash.ts`                                               |
-| 4   | Contracts: `cache/index.ts`, `exec/index.ts`, `util/index.ts`; rewrite importers; CONTRACTED += {cache, exec, util} |
-| 5   | Contracts: `workspace/index.ts`, `graph/index.ts`; CONTRACTED += {workspace, graph}                                 |
-| 6   | Entries: `orchestrator.ts` → `orchestrator/{index,run}.ts`; `cli.ts` → `cli/index.ts`; CONTRACTED complete          |
-| 7   | Docs: architecture.md module map, modules/ pages, CLAUDE.md layout                                                  |
+All seven steps landed (June 2026).
+
+| PR  | Status | What                                                                                                                |
+| --- | ------ | ------------------------------------------------------------------------------------------------------------------- |
+| 1   | ✅     | This doc + boundary test (matrix law from day one) + cycle breaks: `version.ts`, `orchestrator/options.ts`          |
+| 2   | ✅     | Relocations: `ProjectEntry` → workspace; `nested-dirs`, `fingerprint` → workspace; `plan-format` → cli              |
+| 3   | ✅     | Split `execute-task.ts` hashing surface → `orchestrator/task-hash.ts`                                               |
+| 4   | ✅     | Contracts: `cache/index.ts`, `exec/index.ts`, `util/index.ts`; rewrite importers; CONTRACTED += {cache, exec, util} |
+| 5   | ✅     | Contracts: `workspace/index.ts`, `graph/index.ts`; CONTRACTED += {workspace, graph}                                 |
+| 6   | ✅     | Entries: `orchestrator.ts` → `orchestrator/{index,run}.ts`; `cli.ts` → `cli/index.ts`; CONTRACTED complete          |
+| 7   | ✅     | Docs: architecture.md module map, modules/ pages, CLAUDE.md layout                                                  |
 
 ## Out of scope
 

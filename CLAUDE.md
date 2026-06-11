@@ -30,52 +30,77 @@ Configs:
 
 ## Repository layout
 
-Single-package project. Flat src/ at root.
+Single-package project. `src/` is eight modules — each directory's
+`index.ts` is its contract; cross-module imports go through it only
+(enforced by `tests/module-boundaries.test.ts`) — plus three root
+files. Full dependency matrix in `docs/architecture.md`.
 
 ```
 src/
-  bin.ts                # shebang; wires process.argv -> cli.run
-  cli.ts                # argv parser, dispatcher, interactive picker
-  orchestrator.ts       # run() entry: discover → load → graph → schedule
+  bin.ts                # shebang; wires process.argv -> cli run
+  index.ts              # public package façade (re-exports only)
+  version.ts            # VERSION constant (cycle-free leaf)
   config.ts             # public schema (ProjectConfig, TaskConfig, …)
-  index.ts              # public re-exports
-  orchestrator/         # orchestrator helpers
-    execute-task.ts     # per-task execution (cache lookup → spawn → save)
-    upstream.ts         # filter upstream hashes for cache key
-    task-logs.ts        # persist stdout/stderr to <cacheDir>/logs/<run_id>/
-    remote-cache-setup.ts # VX_REMOTE_CACHE_* env → LayeredCache
-    logger.ts           # default logger + formatOutcome + prefix
   cli/                  # subcommand parsers + presentation
+    index.ts            # contract: dispatcher + test-facing re-exports
+    run.ts              # `vx run` parser, scope resolver, picker
+    watch.ts            # `vx watch` re-run loop
+    cache.ts            # `vx cache prune` + duration/size parsers
+    help.ts             # help text
+    format.ts           # shared formatters (formatBytes, …)
     plan-format.ts      # --dry / --graph plan → text / JSON / DOT
+  orchestrator/         # run composition
+    index.ts            # contract: run, planRun, options/plan types, Logger
+    run.ts              # run() + planRun(): discover → load → graph → schedule
+    options.ts          # RunOptions / RunSummary declarations
+    prepare.ts          # shared run/planRun setup
+    plan.ts             # --dry / --graph prediction (no exec)
+    execute-task.ts     # per-task execution (cache lookup → spawn → save)
+    task-hash.ts        # cache-key derivation (computeTaskHash & co.)
+    upstream.ts         # filter upstream hashes for cache key
+    remote-cache-setup.ts # VX_REMOTE_CACHE_* env → LayeredCache
+    logger.ts           # default logger + framed-output/colors/summary/tally helpers alongside
   workspace/            # discovery + selection
+    index.ts            # contract
     workspace.ts        # discovery: pnpm-workspace.yaml / pkg.json workspaces / bare pkg.json (+ ProjectEntry)
     project-loader.ts   # Bun-native vx.config.* loader (content-hash bust)
     package-graph.ts    # workspace dep graph
     filter.ts           # pnpm-style filter DSL (-F)
+    affected.ts         # git-relative selection (--affected)
     nested-dirs.ts      # project-boundary computation
     fingerprint.ts      # workspace lockfile / yaml hash
   graph/                # task graph + scheduling
+    index.ts            # contract (TaskNode/TaskOutcome/TaskStatus live here)
     task-graph.ts       # builds TaskNode DAG from declared dependsOn
     scheduler.ts        # parallel topo executor
+    dependency-spec.ts  # dependsOn / inputs.tasks micro-syntax parser
   cache/                # local + remote cache cluster
+    index.ts            # contract (tar.ts stays internal)
     cache.ts            # content-addressed cache (key + save/restore/ingest)
     layered-cache.ts    # local + remote composition (byte-passthrough)
     remote-cache.ts     # HTTP client (Turbo wire-compatible PUT/GET)
     inputs.ts           # glob resolution + project-boundary enforcement
   exec/                 # per-task execution primitives
-    runner.ts           # Bun.spawn wrapper + shellQuote
+    index.ts            # contract
+    runner.ts           # Bun.spawn wrapper + shellQuote + runPersistent
     env.ts              # env composition
+    sandbox-runtime.ts  # opt-in SRT sandbox (runSandboxed)
   util/                 # tiny shared helpers
+    index.ts            # contract
     paths.ts            # tiny POSIX-path helper
-    ulid.ts             # tiny ULID generator (run-id stamping; no deps)
+    hash.ts             # xxHash3 helpers (cache-key hashing)
+    ulid.ts             # run-id generator (Bun.randomUUIDv7 wrapper)
     errors.ts           # UserError class — clean error output without a stack
+bench/                # synthetic-workspace generator + benchmark runner
 docs/
   README.md         # index
-  architecture.md   # module map, data flow, design principles
+  architecture.md   # module map, dependency matrix, data flow, design principles
   schema.md         # every config field
   caching.md        # cache key derivation, invalidation table
   execution.md      # what happens during a `vx run`
   cli.md            # CLI reference (flags, filter DSL, forwarding)
+  flows.md          # per-scenario Mermaid diagrams
+  optimizations.md  # shipped-optimization catalog + invariants
   modules/<name>.md # per-module reference
   design/           # forward-looking proposals
 .claude/agents/     # subagent definitions
@@ -133,6 +158,31 @@ bun.lock
    another project's dir.
 
 ## Decision log
+
+- **2026-06**: Module-isolation series complete (steps 1-7 of
+  `docs/design/module-isolation-2026-06.md`). `src/` is now eight
+  contract modules (`util`, `config`, `workspace`, `graph`, `cache`,
+  `exec`, `orchestrator`, `cli`) plus three root files (`bin.ts`,
+  `index.ts`, `version.ts`). Each directory module's `index.ts` is
+  its contract; cross-module imports of internals fail
+  `tests/module-boundaries.test.ts`, which also pins the allowed
+  dependency matrix (composition only at orchestrator + cli;
+  `cli → exec` deliberately absent). What landed across the series:
+  cycle breaks via `version.ts` + `orchestrator/options.ts` (step 1);
+  `ProjectEntry`/`nested-dirs`/`fingerprint` → workspace and
+  `plan-format` → cli relocations (step 2); hashing surface split out
+  of `execute-task.ts` into `orchestrator/task-hash.ts` — kept in
+  orchestrator, NOT cache, because key-part selection composes graph
+  types (step 3); leaf contracts cache/exec/util (step 4), then
+  workspace/graph (step 5); finally `orchestrator.ts` →
+  `orchestrator/{index,run}.ts` and `cli.ts` → `cli/index.ts`, with
+  CONTRACTED covering every directory module (step 6) and the docs
+  refresh (step 7). Zero behavior change throughout; public API of
+  `src/index.ts` byte-identical; no CACHE_VERSION bump (key
+  derivation untouched). Convention going forward: new cross-module
+  surface is exported from the owning module's `index.ts`, and any
+  new top-level file/dir forces an explicit matrix decision in the
+  boundary test.
 
 - **2026-06**: HMAC artifact signing for the remote cache, gated by
   `VX_REMOTE_CACHE_SIGNATURE_KEY` (roadmap item #2's signing half;

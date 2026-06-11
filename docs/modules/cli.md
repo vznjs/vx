@@ -1,10 +1,11 @@
-# `src/cli.ts` — top-level command dispatcher
+# `src/cli/index.ts` — top-level command dispatcher
 
 ## Purpose
 
-Argv → subcommand dispatch. Hand-rolled (no commander / yargs / cac)
-to keep the dependency tree slim and behaviour trivially predictable.
-Each subcommand handler lives in `src/cli/<name>.ts`.
+Argv → subcommand dispatch; the cli module's contract. Hand-rolled
+(no commander / yargs / cac) to keep the dependency tree slim and
+behaviour trivially predictable. Each subcommand handler lives in a
+sibling `src/cli/<name>.ts`.
 
 ## Public surface
 
@@ -12,9 +13,9 @@ Each subcommand handler lives in `src/cli/<name>.ts`.
 export async function run(argv: readonly string[]): Promise<number>
 
 // Re-exports for tests:
-export { parseRunArgs, type RunArgs } from './cli/run.js'
-export { parsePruneArgs, parseDuration, parseSize } from './cli/cache.js'
-export { formatBytes } from './cli/format.js'
+export { parseRunArgs, type RunArgs } from './run.js'
+export { parsePruneArgs, parseDuration, parseSize } from './cache.js'
+export { formatBytes } from './format.js'
 ```
 
 `run(argv)` returns the exit code. `bin.ts` calls
@@ -25,6 +26,7 @@ export { formatBytes } from './cli/format.js'
 | Argv first token                     | Handler                                    |
 | ------------------------------------ | ------------------------------------------ |
 | `run`                                | `cli/run.ts:runCmd(rest)`                  |
+| `watch`                              | `cli/watch.ts:watchCmd(rest)`              |
 | `cache`                              | `cli/cache.ts:cacheCmd(rest)`              |
 | `help` / `--help` / `-h` / _(empty)_ | `cli/help.ts:printHelp()`                  |
 | `version` / `--version`              | `process.stdout.write('vx <VERSION>\n')`   |
@@ -34,6 +36,7 @@ Per-subcommand parsers / handlers carry their own argv-walk loops.
 See:
 
 - [`cli-run.md`](./cli-run.md) — `vx run`
+- [`cli-watch.md`](./cli-watch.md) — `vx watch`
 - [`cli-cache.md`](./cli-cache.md) — `vx cache prune`
 - [`cli-help.md`](./cli-help.md) — `vx help`
 - [`cli-format.md`](./cli-format.md) — shared formatters

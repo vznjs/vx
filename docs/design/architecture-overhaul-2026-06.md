@@ -90,24 +90,29 @@ scenario.
       vs Bun.Archive benchmark, v17 single-format artifact) — each
       with: what, why, measured effect, where (file), and the
       invariant that must hold to keep it valid.
-- [ ] Refresh `docs/architecture.md` module map + data-flow diagram.
+- [x] Refresh `docs/architecture.md` module map + data-flow diagram.
+      (Done with Phase 4 step 7 — eight-module contract map +
+      Mermaid dependency diagram + matrix table.)
 
-### Phase 4 — Module isolation restructure (PR series e…) — GATED on audit
+### Phase 4 — Module isolation restructure (PR series e…) — COMPLETE
 
-- [ ] Architect-agent audit of current `src/` import graph: list every
+Executed as the seven-step series in
+[`module-isolation-2026-06.md`](./module-isolation-2026-06.md).
+
+- [x] Architect-agent audit of current `src/` import graph: list every
       cross-module deep import (e.g. orchestrator reaching into
       `cache/inputs.ts` internals), every type that leaks across a
       boundary, every file with mixed concerns.
-- [ ] Design doc: target module set + public contract per module
+- [x] Design doc: target module set + public contract per module
       (`index.ts` re-exports only), composition points (cli, orchestrator),
       allowed dependency direction (workspace ← graph ← orchestrator →
       cache/exec; util leaf).
-- [ ] Execute as mechanical PRs (one module per PR): add `index.ts`
-      contract, rewrite importers, lint rule/check to prevent deep
-      imports (oxlint `no-restricted-imports`-equivalent or a tiny
-      `bun test` import-graph assertion).
-- [ ] Zero behaviour change per PR; full suite green per PR.
-- [ ] Move per-module docs in `docs/modules/` to match.
+- [x] Execute as mechanical PRs (one module per PR): add `index.ts`
+      contract, rewrite importers, enforcement via
+      `tests/module-boundaries.test.ts` (import-graph assertion under
+      the normal `bun test` gate).
+- [x] Zero behaviour change per PR; full suite green per PR.
+- [x] Move per-module docs in `docs/modules/` to match.
 
 ### Phase 5 — Perf pass (PR f) — after restructure
 

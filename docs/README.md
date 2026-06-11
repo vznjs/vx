@@ -70,9 +70,13 @@ Those two cover ~80% of the system.
 
 ## Repository layout
 
-`@vzn/vx` is a single-package project. All source lives under `src/`;
-every module has a corresponding page under [`modules/`](./modules/).
-Tests live under `tests/`, one file per source module.
+`@vzn/vx` is a single-package project. All source lives under `src/`,
+organised as eight modules — each a directory whose `index.ts` is the
+module contract; cross-module imports go through it only, enforced by
+`tests/module-boundaries.test.ts` (see
+[`architecture.md`](./architecture.md)). Every source file has a
+corresponding page under [`modules/`](./modules/). Tests live under
+`tests/`, one file per source module.
 
 The cache subsystem is more than one file: `cache/cache.ts` is the
 local SQLite-backed store (v18 key derivation, tar.zst artifacts);
@@ -83,28 +87,36 @@ identical artifact bytes, so there is no separate pack/unpack bridge.
 
 ```
 src/
-  bin.ts                          # shebang entrypoint; forwards process.argv → cli.run
-  cli.ts                          # top-level argv → subcommand dispatcher
+  bin.ts                          # shebang entrypoint; forwards process.argv → cli run
+  index.ts                        # public package façade (re-exports only)
+  version.ts                      # the VERSION constant (cycle-free leaf)
+  config.ts                       # public schema: ProjectConfig, TaskConfig, …
   cli/
+    index.ts                      # module contract: argv → subcommand dispatcher + test re-exports
     run.ts                        # `vx run` parser + handler
+    watch.ts                      # `vx watch` — re-run on FS change
     cache.ts                      # `vx cache prune` (and the duration / size parsers)
     help.ts                       # `vx help` text
     format.ts                     # shared formatters (formatBytes, …)
     plan-format.ts                # plan → text / JSON / Graphviz DOT
-  orchestrator.ts                 # run() + planRun(): workspace → graph → schedule
   orchestrator/
+    index.ts                      # module contract: run, planRun, options/plan types, Logger
+    run.ts                        # run() + planRun(): workspace → graph → schedule
+    options.ts                    # RunOptions / RunSummary declarations
+    prepare.ts                    # shared run/planRun setup (discover → load → graph → cache)
+    plan.ts                       # `--dry` / `--graph` — predict outcomes, no exec
     execute-task.ts               # per-task: hash → cache lookup → spawn → save
+    task-hash.ts                  # cache-key derivation (computeTaskHash & co.)
     upstream.ts                   # filter upstream cache hashes per inputs.tasks
     remote-cache-setup.ts         # VX_REMOTE_CACHE_* env → LayeredCache wrap
     logger.ts                     # default logger (framed blocks, summary, etc.)
     framed-output.ts              # ┌─ task ─┐ output format
     colors.ts                     # ANSI truecolor with NO_COLOR / FORCE_COLOR gating
     summary.ts                    # tail summary lines (Tasks / Cached / Time)
-    plan.ts                       # `--dry` / `--graph` — predict outcomes, no exec
+    tally.ts                      # shared outcome tally (summary + summarize JSON)
     run-artifacts.ts              # --summarize JSON + --profile Chrome-trace writers
-  config.ts                       # public schema: ProjectConfig, TaskConfig, …
-  index.ts                        # public re-exports + package VERSION
   workspace/
+    index.ts                      # module contract
     workspace.ts                  # findWorkspaceRoot, listProjects, resolveCacheDir, ProjectEntry
     project-loader.ts             # Bun-native vx.config.* + vx.workspace.* loader
     package-graph.ts              # workspace dep graph
@@ -113,21 +125,32 @@ src/
     filter.ts                     # pnpm-style filter DSL (`--filter`)
     affected.ts                   # git-relative project selection (`--affected`)
   graph/
+    index.ts                      # module contract
     task-graph.ts                 # TaskNode DAG builder + cycle detection
     scheduler.ts                  # parallel topological executor
     dependency-spec.ts            # shared parser for dependsOn / inputs.tasks micro-syntax
   cache/
+    index.ts                      # module contract
     cache.ts                      # local cache (bun:sqlite + tar.zst artifacts)
     layered-cache.ts              # local + remote composition (read-through, write-through)
     remote-cache.ts               # Turbo /v8/artifacts/ HTTP client
     inputs.ts                     # input/output glob resolution + boundary enforcement
+    tar.ts                        # tar pack/extract primitives (module-internal)
   exec/
+    index.ts                      # module contract
     runner.ts                     # Bun.spawn wrapper + shellQuote + runPersistent
     env.ts                        # child-env composition + essential allowlist
+    sandbox-runtime.ts            # opt-in SRT sandbox (runSandboxed + violations)
   util/
+    index.ts                      # module contract
     paths.ts                      # tiny POSIX-path normalizer for stable cache keys
-    ulid.ts                       # ULID generator (run-id stamping; no deps)
+    hash.ts                       # xxHash3 helpers (cache-key hashing)
+    ulid.ts                       # run-id generator (Bun.randomUUIDv7 wrapper)
     errors.ts                     # UserError — clean stack-less error reporting
+
+bench/
+  generate.ts                     # synthetic-workspace generator
+  run.ts                          # cold/warm benchmark runner (vx vs Turbo vs Nx)
 
 docs/
   README.md                       # this file
@@ -157,15 +180,18 @@ docs/
   pre-alpha).
 - **Remote-cache wire.** Verbatim Turbo `/v8/artifacts/` — see
   [`design/remote-cache.md`](./design/remote-cache.md).
-- **Module boundaries.** Every src file has a docs/modules/ page
-  listing its public exports. Internal helpers are not part of the
-  contract and can change without notice.
+- **Module boundaries.** Each module's `index.ts` is its contract;
+  cross-module imports of anything else fail
+  `tests/module-boundaries.test.ts`. Every src file has a
+  docs/modules/ page listing its public exports. Internal helpers are
+  not part of the contract and can change without notice.
 
 ## Out of scope (by design)
 
 These are deliberate non-features. Don't add them without a design pass:
 
-- **Watch mode**, daemon, persistent project-graph process.
+- **Daemon / persistent project-graph process.** (`vx watch` exists,
+  but it is a plain re-run loop, not a daemon.)
 - **Generators / scaffolding.**
 - **Executor / plugin protocol**, JS-function tasks.
 - **TUI / interactive panes** beyond the framed-block stream output.
@@ -191,7 +217,7 @@ vx assumes Bun ≥ 1.3. We rely directly on:
 - `Bun.spawn` (`resourceUsage()` for cpu_ms + peak RSS)
 - `Bun.file` / `Bun.write` (stream I/O)
 - `Bun.Glob` (input/output resolution)
-- `Bun.CryptoHasher` (sha256 file content + config hashing)
+- `Bun.hash.xxHash3` (cache-key + file-content hashing)
 - `Bun.YAML` (`pnpm-workspace.yaml` parse)
 - Native `await import()` of `.ts` (vx.config.ts loader; no jiti)
 

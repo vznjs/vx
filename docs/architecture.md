@@ -5,73 +5,89 @@ This is the design map of `@vzn/vx`. Read it after
 
 ## Module map
 
-`@vzn/vx` is a single-package project. Every module lives under
-`src/`; each file is one focused module with a single responsibility.
-Internal imports are unidirectional: lower modules in this map don't
-depend on higher ones, so cycles are impossible by construction.
+`@vzn/vx` is a single-package project organised as **eight modules**
+plus three root files. A module is a directory under `src/` with an
+`index.ts` contract — cross-module imports go through that contract,
+never into internal files — or a single root file when it has no
+internals to hide. The design and migration history live in
+[`design/module-isolation-2026-06.md`](./design/module-isolation-2026-06.md).
 
-```
-                          ┌────────────────┐
-                          │     bin.ts     │   shebang entry; forwards process.argv → cli.run
-                          └────────┬───────┘
-                                   │
-                          ┌────────▼───────┐
-                          │     cli.ts     │   top-level dispatch
-                          └────────┬───────┘
-                                   │
-                ┌──────────────────┼──────────────────┐
-                │                  │                  │
-       ┌────────▼─────────┐ ┌──────▼──────┐  ┌────────▼────────┐
-       │   cli/run.ts     │ │ cli/cache   │  │   cli/help      │
-       │   parser + flow  │ │ prune / TTL │  │   help text     │
-       └────────┬─────────┘ └─────────────┘  └─────────────────┘
-                │
-       ┌────────▼─────────┐
-       │ orchestrator.ts  │   run() / planRun(): workspace → graph → schedule
-       └────────┬─────────┘
-                │
-     ┌──────────┴─────────────────────────────────────────┐
-     │                                                    │
-┌────▼───────────────┐                              ┌─────▼────────────────────┐
-│ workspace/         │                              │ graph/                   │
-│   workspace.ts     │  pnpm-workspace.yaml /       │   task-graph.ts          │  TaskNode DAG
-│   project-loader.ts│  package.json workspaces /   │   scheduler.ts           │  parallel topo
-│   package-graph.ts │  bare pkg.json discovery     │   dependency-spec.ts     │  shared parser
-│   filter.ts        │  pnpm-style --filter DSL     └──────────────────────────┘
-│   affected.ts      │  git-relative --affected
-│   nested-dirs.ts   │  project-boundary set
-│   fingerprint.ts   │  lockfile / workspace-yaml hash
-└────────────────────┘
-                │
-        ┌───────▼───────────────────────────────────────────────────┐
-        │  task lifecycle (orchestrator/* + cache/* + exec/*)        │
-        │ ┌─────────────────┐ ┌─────────────────┐ ┌────────────────┐ │
-        │ │ execute-task    │ │ cache/inputs    │ │ exec/runner    │ │
-        │ │  per-task glue  │ │  glob + boundary│ │  Bun.spawn     │ │
-        │ ├─────────────────┤ ├─────────────────┤ ├────────────────┤ │
-        │ │ upstream        │ │ cache/cache.ts  │ │ exec/env       │ │
-        │ │ logger / colors │ │  SQLite + disk  │ │  allow-list    │ │
-        │ │ framed-output   │ │ cache/layered   │ └────────────────┘ │
-        │ │ summary         │ │ cache/remote    │                    │
-        │ │ plan            │ │ cache/archive   │                    │
-        │ │ run-artifacts   │ └─────────────────┘                    │
-        │ │ remote-cache-setup                                       │
-        │ └─────────────────┘                                        │
-        └────────────────────────────────────────────────────────────┘
+| Module         | Form                        | Contract highlights                                                                                                                       |
+| -------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `util`         | dir + `index.ts`            | `UserError`, `xxh3*` hashing, `relPosix`/`toPosix`, `ulid`                                                                                |
+| `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                              |
+| `workspace`    | dir + `index.ts`            | discovery, config loaders, package graph, filter DSL, affected, `ProjectEntry`, `computeNestedProjectDirs`, `computeWorkspaceFingerprint` |
+| `graph`        | dir + `index.ts`            | task-graph builder, scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                              |
+| `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `RemoteCache`, input/output resolution. `tar.ts` stays internal                                    |
+| `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, sandbox runtime, env composition                                                                           |
+| `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `RunOptions`/`RunSummary`, `Logger`/`defaultLogger`, `RunPlan` types                                                    |
+| `cli`          | dir + `index.ts`            | dispatcher (`run(argv)`) + test-facing parser/formatter re-exports                                                                        |
 
-     config.ts:   the public schema (ProjectConfig, TaskConfig, ExecConfig, …)
-     index.ts:    re-exports the public surface (defineProject, defineWorkspace, run, …)
-     util/paths:  POSIX-path normaliser for stable cache keys across OSes
-     util/ulid:   ULID generator for run_id stamping (no deps)
-     util/errors: UserError — clean error reporting without a stack trace
+Root files outside the module set: `bin.ts` (shebang entry),
+`index.ts` (public package façade), `version.ts` (the `VERSION`
+constant, extracted so `index`/`cli`/`orchestrator` don't form a
+cycle through it).
+
+```mermaid
+graph TD
+  bin["bin.ts"] --> cli
+  index["index.ts (public façade)"] --> orchestrator
+  index --> graph
+  index --> config
+  cli --> orchestrator
+  cli --> workspace
+  cli --> cache
+  orchestrator --> workspace
+  orchestrator --> graph
+  orchestrator --> cache
+  orchestrator --> exec
+  graph --> workspace
+  workspace --> config
+  graph --> config
+  cache --> config
+  exec --> config
+  workspace --> util
+  graph --> util
+  cache --> util
+  exec --> util
+  orchestrator --> util
+  cli --> util
 ```
+
+### Allowed dependency matrix (rows import columns, via index only)
+
+|                  | util | config | version | workspace | graph | cache | exec | orchestrator | cli |
+| ---------------- | ---- | ------ | ------- | --------- | ----- | ----- | ---- | ------------ | --- |
+| **workspace**    | ✓    | ✓      |         | —         |       |       |      |              |     |
+| **graph**        | ✓    | ✓      |         | ✓         | —     |       |      |              |     |
+| **cache**        | ✓    | ✓      |         |           |       | —     |      |              |     |
+| **exec**         | ✓    | ✓      |         |           |       |       | —    |              |     |
+| **orchestrator** | ✓    | ✓      | ✓       | ✓         | ✓     | ✓     | ✓    | —            |     |
+| **cli**          | ✓    | ✓      | ✓       | ✓         | ✓     | ✓     |      | ✓            | —   |
+| **index**        |      | ✓      | ✓       |           | ✓     |       |      | ✓            |     |
+| **bin**          | ✓    |        |         |           |       |       |      |              | ✓   |
+
+Composition happens only at `orchestrator` (wires workspace → graph →
+cache → exec into a run) and `cli` (wires argv → orchestrator).
+`cli → cache` is deliberate — `vx cache prune` / `vx stats` open the
+cache without a run. `cli → exec` is deliberately absent.
+
+### Enforcement
+
+The matrix is law, not convention: `tests/module-boundaries.test.ts`
+scans every import specifier under `src/` and fails the suite when
+(rule 1) a cross-module edge isn't in the matrix, or (rule 2) a
+cross-module import of a contracted module targets anything but its
+`index.ts`. Every directory module is contracted. Tests under
+`tests/` are exempt — they may exercise internals.
 
 ### The cache cluster (`src/cache/`)
 
 The cache is not a single file. It is composed:
 
 - **`cache.ts`** — local cache. `bun:sqlite` metadata index +
-  on-disk entries at `<cacheDir>/<hash>/{outputs/, stdout, stderr}`.
+  one `<cacheDir>/<hash>.tar.zst` artifact per entry (`stdout` +
+  `outputs/<rel>`; metadata lives in the SQLite `entries` row).
 - **`remote-cache.ts`** — Turborepo `/v8/artifacts/<hash>` HTTP client.
   Bearer-token authed; speaks the public protocol verbatim so it works
   against any compatible server.
@@ -121,18 +137,19 @@ bufferedStderr(), readyMs() }`. `ready` resolves when a regex match
   appears in stdout/stderr (or immediately when no `readyWhen` is set).
   If the child exits before ready, `ready` rejects.
 
-There is intentionally **no sandboxing layer**. Under-declared
-`cache.inputs.files` will silently produce stale cache hits, which is
-the standard task-runner tradeoff (Turbo and Nx behave the same).
-A previous bwrap-based sandbox was removed (Ubuntu 24 default
-AppArmor profile blocks unprivileged user namespaces, breaking it in CI).
+- **`runSandboxed`** (`exec/sandbox-runtime.ts`) — opt-in per-task
+  sandboxing via `@anthropic-ai/sandbox-runtime`, activated by a
+  `sandbox: {...}` block in the task config. Fail-on-violation policy.
+  Without that block, tasks run unsandboxed and under-declared
+  `cache.inputs.files` silently produce stale cache hits — the
+  standard task-runner tradeoff (Turbo and Nx behave the same).
 
 ## Data flow on `vx run <task>`
 
 1. **`bin.ts`** spawns with the user's argv. Forwards everything
-   after the binary name to `cli.run`.
-2. **`cli.ts`** dispatches by subcommand: `run`, `cache`, `help`,
-   `version`.
+   after the binary name to the cli module's `run`.
+2. **`cli/index.ts`** dispatches by subcommand: `run`, `watch`,
+   `cache`, `help`, `version`.
 3. **`cli/run.ts:parseRunArgs`** parses the argv into a `RunArgs`
    object. Surfaces parse errors as `RunArgs.error` so the caller
    prints + exits before doing any I/O.
@@ -145,7 +162,8 @@ AppArmor profile blocks unprivileged user namespaces, breaking it in CI).
      resolved via git.
    - No positionals + TTY → interactive picker → emits a single
      `pkg#task`.
-5. **`orchestrator.ts:run()`** is called with `RunOptions`. From here:
+5. **`orchestrator/run.ts:run()`** (via the orchestrator contract) is
+   called with `RunOptions`. From here:
    1. `findWorkspaceRoot(cwd)` walks up looking for any of:
       `pnpm-workspace.yaml`, `package.json` with a `workspaces` field
       (npm / yarn / Bun), or a bare `package.json` (single-project mode).
@@ -159,7 +177,7 @@ AppArmor profile blocks unprivileged user namespaces, breaking it in CI).
       detects duplicate names (hard error).
    5. `loadProjectConfig(configPath)` per project. Native Bun
       `await import()` with a content-hash query string
-      (`?vx-bust=<sha256>`) so config edits across same-process calls
+      (`?vx-bust=<xxh3>`) so config edits across same-process calls
       are picked up. The full project config object is captured.
    6. `buildPackageGraph(projects)` builds workspace dep edges from
       each project's `package.json`. Workspace-internal deps only.
@@ -207,7 +225,7 @@ excludeDependencies? })` walks `dependsOn` into the full DAG
       to the upstream outcomes (default = all upstream).
       c. `hashTaskConfig` (resolved config JSON) +
       `hashProjectPackageJson` (project package.json bytes).
-      d. `cache.key({...})` → hex sha256.
+      d. `cache.key({...})` → 16-hex xxHash3 key.
       e. If caching is on: `cache.get(hash)`. On hit, `cleanOutputs`
       - `restoreOutputs` + replay captured logs → `cache-hit`. The
         entry's `source: 'local' | 'remote'` distinguishes local vs.
@@ -230,7 +248,7 @@ excludeDependencies? })` walks `dependsOn` into the full DAG
 `workspace/project-loader.ts` loads each `vx.config.{ts,mts,js,mjs}`
 via Bun's native `await import()` — no jiti, no esbuild, no
 transpile-on-load step. We append a content-hash query string
-(`?vx-bust=<sha256>`) to the import specifier so:
+(`?vx-bust=<xxh3>`) to the import specifier so:
 
 - Same content → same URL → Bun's module cache hits (fast).
 - Changed content → new URL → fresh re-evaluation (correct).
@@ -331,8 +349,8 @@ functions; those are the seam. Internal helpers can change.
 
 ## Remote-cache subsystem (detail)
 
-`vx run` reads `VX_REMOTE_CACHE_URL` + `VX_REMOTE_CACHE_TOKEN` at the
-top of `orchestrator.run()`. When both are present:
+`vx run` reads `VX_REMOTE_CACHE_URL` + `VX_REMOTE_CACHE_TOKEN` during
+run preparation. When both are present:
 
 1. `wrapWithRemoteCache(localCache, log)` constructs a `RemoteCache`
    with the URL, token, and optional `teamId` / `slug` / `timeoutMs`
@@ -349,11 +367,12 @@ shouldn't fail the build.
 The wire spec is Turborepo `/v8/artifacts/{hash}` verbatim, so the
 client interops with any Turbo-compatible server
 (`ducktors/turborepo-remote-cache`, `Fox32/openturbo-remote-cache`,
-Vercel's hosted cache). The **tar interior** is ours — `outputs/`
-plus stdout/stderr alongside — not Turbo's specific layout. Since
+Vercel's hosted cache). The **tar interior** is ours — one `stdout`
+entry plus `outputs/<rel>` — not Turbo's specific layout. Since
 servers don't inspect the payload, the difference is invisible to
-them. See [`design/remote-cache.md`](./design/remote-cache.md) for
-the wire-level details and the open HMAC-signing workstream.
+them. Local and remote layers transport the same tar.zst bytes
+end-to-end. See [`design/remote-cache.md`](./design/remote-cache.md)
+for the wire-level details and the open HMAC-signing workstream.
 
 ## Run-history analytics
 
@@ -374,7 +393,6 @@ row per executed task to the `runs` table in `cache.db`. Columns:
 | `peak_rss_bytes`                          | resource-usage max RSS                                              |
 | `wallclock_start_ns` / `wallclock_end_ns` | hrtime ns relative to run t=0                                       |
 | `cache_hit`                               | convenience boolean (derivable from status)                         |
-| `bytes_uploaded` / `bytes_downloaded`     | remote-cache push / pull sizes                                      |
 
 Group tasks (no `exec`) are deliberately not recorded — they aren't
 real runs. Failed tasks ARE recorded for postmortem (the `status` +
@@ -450,10 +468,7 @@ architecture:
   reporting is the task. For parallelism, define separate tasks
   linked by `dependsOn`. For chained commands inside one task, use
   shell composition in `exec.command`.
-- **No sandboxing.** Under-declared inputs produce stale cache hits;
-  that's the accepted tradeoff. Turbo and Nx behave the same. A
-  bwrap-based sandbox was tried and reverted (Ubuntu 24's default
-  AppArmor profile blocks unprivileged user namespaces, breaking it
-  in CI).
-- **No watch mode** (yet). Per-tool watchers (Vite, tsc -b -w,
-  bun --watch) do this well already.
+- **No mandatory sandboxing.** Sandboxing is opt-in per task via
+  `sandbox: {...}` (SRT-backed). Without it, under-declared inputs
+  produce stale cache hits; that's the accepted tradeoff. Turbo and
+  Nx behave the same.

@@ -1,8 +1,12 @@
-# `src/orchestrator.ts` — end-to-end glue
+# `src/orchestrator/{index,run}.ts` — end-to-end glue
 
 ## Purpose
 
-The top-level entry point invoked by `cli/run.ts`. Discovers the
+The orchestrator module's entry. `run.ts` hosts `run()` / `planRun()`;
+`index.ts` is the module contract re-exporting them with
+`RunOptions` / `RunSummary` ([`options.md`](./options.md)), `Logger` /
+`defaultLogger` ([`logger.md`](./logger.md)), and the `RunPlan` types
+([`plan.md`](./plan.md)). Invoked by `cli/run.ts`. Discovers the
 workspace, loads configs, builds the task graph, opens the cache,
 schedules execution, manages persistent subprocesses, writes optional
 artifacts, and records the run history.
@@ -24,6 +28,7 @@ export interface RunOptions {
   summarize?: string // path or '' for default
   profile?: string // path or '' for default
   log?: Logger
+  handleSignals?: boolean // default true; watch mode passes false
 }
 
 export interface RunSummary {
@@ -34,8 +39,9 @@ export interface RunSummary {
 export function run(options: RunOptions): Promise<RunSummary>
 export function planRun(options: RunOptions): Promise<RunPlan>
 
-export type { Logger } from './orchestrator/logger.js'
-export type { RunPlan, PlannedTask, CacheStatus } from './orchestrator/plan.js'
+// via index.ts (the module contract):
+export { defaultLogger, type Logger } from './logger.js'
+export type { RunPlan, PlannedTask, CacheStatus } from './plan.js'
 ```
 
 ## Algorithm — `run()`
@@ -160,7 +166,7 @@ End-to-end coverage of:
 
 The smallest extension surface in the codebase. To extend, you
 typically replace something downstream and leave this module alone.
-Cases where you'd touch `orchestrator.ts` itself:
+Cases where you'd touch `orchestrator/run.ts` itself:
 
 - **Different scheduler.** Construct your own scheduler that consumes
   the same `runGraph` signature.

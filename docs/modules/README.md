@@ -16,27 +16,35 @@ Internal helpers are not part of the contract; they can change.
 For the high-level data flow, read
 [`../architecture.md`](../architecture.md) first.
 
-## Top-level entry
+## Root files
 
-| File                                 | Topic                                                              |
-| ------------------------------------ | ------------------------------------------------------------------ |
-| [`bin.md`](./bin.md)                 | `src/bin.ts` — shebang entry; wires `process.argv` to `cli.run`.   |
-| [`cli.md`](./cli.md)                 | `src/cli.ts` — argv → subcommand dispatcher; re-exports for tests. |
-| [`cli-run.md`](./cli-run.md)         | `src/cli/run.ts` — the `vx run` parser, scope resolver, picker.    |
-| [`cli-watch.md`](./cli-watch.md)     | `src/cli/watch.ts` — `vx watch <task>`: re-run on FS change.       |
-| [`cli-cache.md`](./cli-cache.md)     | `src/cli/cache.ts` — `vx cache prune`, duration / size parsers.    |
-| [`cli-help.md`](./cli-help.md)       | `src/cli/help.ts` — static help text.                              |
-| [`cli-format.md`](./cli-format.md)   | `src/cli/format.ts` — `formatBytes` and other shared formatters.   |
-| [`plan-format.md`](./plan-format.md) | `src/cli/plan-format.ts` — plan → text / JSON / DOT.               |
-| [`config.md`](./config.md)           | `src/config.ts` — public schema types + `defineProject` helpers.   |
-| [`index.md`](./index.md)             | `src/index.ts` — public re-exports + `VERSION` constant.           |
+| File                         | Topic                                                            |
+| ---------------------------- | ---------------------------------------------------------------- |
+| [`bin.md`](./bin.md)         | `src/bin.ts` — shebang entry; wires `process.argv` to cli `run`. |
+| [`config.md`](./config.md)   | `src/config.ts` — public schema types + `defineProject` helpers. |
+| [`index.md`](./index.md)     | `src/index.ts` — public package façade (re-exports only).        |
+| [`version.md`](./version.md) | `src/version.ts` — the `VERSION` constant (cycle-free leaf).     |
+
+## CLI
+
+| File                                 | Topic                                                                    |
+| ------------------------------------ | ------------------------------------------------------------------------ |
+| [`cli.md`](./cli.md)                 | `src/cli/index.ts` — module contract: dispatcher + re-exports for tests. |
+| [`cli-run.md`](./cli-run.md)         | `src/cli/run.ts` — the `vx run` parser, scope resolver, picker.          |
+| [`cli-watch.md`](./cli-watch.md)     | `src/cli/watch.ts` — `vx watch <task>`: re-run on FS change.             |
+| [`cli-cache.md`](./cli-cache.md)     | `src/cli/cache.ts` — `vx cache prune`, duration / size parsers.          |
+| [`cli-help.md`](./cli-help.md)       | `src/cli/help.ts` — static help text.                                    |
+| [`cli-format.md`](./cli-format.md)   | `src/cli/format.ts` — `formatBytes` and other shared formatters.         |
+| [`plan-format.md`](./plan-format.md) | `src/cli/plan-format.ts` — plan → text / JSON / DOT.                     |
 
 ## Orchestrator
 
 | File                                               | Topic                                                                                  |
 | -------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| [`orchestrator.md`](./orchestrator.md)             | `src/orchestrator.ts` — `run()` / `planRun()` entry; workspace → graph → schedule.     |
+| [`orchestrator.md`](./orchestrator.md)             | `src/orchestrator/{index,run}.ts` — module contract + `run()` / `planRun()` entry.     |
+| [`options.md`](./options.md)                       | `src/orchestrator/options.ts` — `RunOptions` / `RunSummary` declarations.              |
 | [`execute-task.md`](./execute-task.md)             | `src/orchestrator/execute-task.ts` — per-task: hash → cache lookup → spawn → save.     |
+| [`task-hash.md`](./task-hash.md)                   | `src/orchestrator/task-hash.ts` — cache-key derivation (`computeTaskHash` & co.).      |
 | [`upstream.md`](./upstream.md)                     | `src/orchestrator/upstream.ts` — filter upstream cache hashes by `cache.inputs.tasks`. |
 | [`remote-cache-setup.md`](./remote-cache-setup.md) | `src/orchestrator/remote-cache-setup.ts` — env → `LayeredCache` wrap.                  |
 | [`logger.md`](./logger.md)                         | `src/orchestrator/logger.ts` — default logger (framed blocks, status, replay).         |
@@ -72,7 +80,7 @@ For the high-level data flow, read
 
 | File                                     | Topic                                                                          |
 | ---------------------------------------- | ------------------------------------------------------------------------------ |
-| [`cache.md`](./cache.md)                 | `src/cache/cache.ts` — local v13 cache: `bun:sqlite` + on-disk entry layout.   |
+| [`cache.md`](./cache.md)                 | `src/cache/cache.ts` — local cache: `bun:sqlite` index + tar.zst artifacts.    |
 | [`layered-cache.md`](./layered-cache.md) | `src/cache/layered-cache.ts` — local + remote composition behind `CacheLayer`. |
 | [`remote-cache.md`](./remote-cache.md)   | `src/cache/remote-cache.ts` — Turborepo `/v8/artifacts/` HTTP client.          |
 | [`inputs.md`](./inputs.md)               | `src/cache/inputs.ts` — glob resolution, boundary enforcement, `cleanOutputs`. |
@@ -87,11 +95,12 @@ For the high-level data flow, read
 
 ## Utilities
 
-| File                                 | Topic                                                                    |
-| ------------------------------------ | ------------------------------------------------------------------------ |
-| [`util-paths.md`](./util-paths.md)   | `src/util/paths.ts` — POSIX-path normaliser for stable cache keys.       |
-| [`util-ulid.md`](./util-ulid.md)     | `src/util/ulid.ts` — ULID generator (run-id stamping; no deps).          |
-| [`util-errors.md`](./util-errors.md) | `src/util/errors.ts` — `UserError` class for stack-less error reporting. |
+| File                                 | Topic                                                                     |
+| ------------------------------------ | ------------------------------------------------------------------------- |
+| [`util-paths.md`](./util-paths.md)   | `src/util/paths.ts` — POSIX-path normaliser for stable cache keys.        |
+| [`util-hash.md`](./util-hash.md)     | `src/util/hash.ts` — xxHash3 helpers shared by every key-derivation site. |
+| [`util-ulid.md`](./util-ulid.md)     | `src/util/ulid.ts` — run-id generator (`Bun.randomUUIDv7` wrapper).       |
+| [`util-errors.md`](./util-errors.md) | `src/util/errors.ts` — `UserError` class for stack-less error reporting.  |
 
 For the public package surface (what `import('@vzn/vx')` resolves to)
 see [`index.md`](./index.md).
