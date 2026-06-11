@@ -132,6 +132,7 @@ the right tool.
 ```ts
 interface PersistentConfig {
   readyWhen?: string // regex (as string); first matching output marks ready
+  readyTimeoutMs?: number // bound the readiness wait; requires readyWhen
 }
 ```
 
@@ -149,7 +150,7 @@ for it to exit. Instead it considers the task "ready":
 dev: {
   exec: {
     command: 'vite',
-    persistent: { readyWhen: 'Local:' },
+    persistent: { readyWhen: 'Local:', readyTimeoutMs: 30_000 },
   },
 }
 
@@ -609,7 +610,7 @@ export default defineProject({
       description: 'vite dev server',
       exec: {
         command: 'vite',
-        persistent: { readyWhen: 'Local:' },
+        persistent: { readyWhen: 'Local:', readyTimeoutMs: 30_000 },
         env: { passThrough: ['VITE_API_URL'] },
       },
     },

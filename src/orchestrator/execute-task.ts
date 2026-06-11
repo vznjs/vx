@@ -123,6 +123,9 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   if (step.persistent.readyWhen !== undefined) {
     persistentOpts.readyWhen = step.persistent.readyWhen
   }
+  if (step.persistent.readyTimeoutMs !== undefined) {
+    persistentOpts.readyTimeoutMs = step.persistent.readyTimeoutMs
+  }
 
   const spawn = runPersistent(persistentOpts)
   try {

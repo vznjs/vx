@@ -111,9 +111,12 @@ line — so neither a match split across two reads nor a prompt-style
 marker without a trailing newline is missed. Complete lines that
 didn't match are discarded after each test to bound memory.
 
-Caveat: a never-matching `readyWhen` on a child that keeps running
-means `ready` never settles — the awaiting run hangs until the child
-exits on its own. There is no readiness timeout yet.
+A never-matching `readyWhen` on a child that keeps running would hang
+the run forever — bound the wait with `readyTimeoutMs`: when set, a
+timer SIGTERMs the child and rejects `ready` with a clear timeout
+message once the window passes. The timer is cleared the moment ready
+fires, so a healthy server is never killed late. No default — opting
+into a readiness signal is explicit, and so is bounding it.
 
 Stream readers run for the child's lifetime; the caller owns the
 `child` handle and is responsible for SIGTERMing it. The orchestrator
@@ -125,8 +128,9 @@ outcome.
 
 ## What this does NOT do
 
-- **Doesn't time out.** A hung command hangs forever. Could add
-  `timeoutMs` if the use case appears.
+- **Doesn't time out `runCommand`.** One-shot commands run as long
+  as they run; only persistent readiness has a bound
+  (`readyTimeoutMs`).
 - **Doesn't sandbox.** The child has full process privileges. A
   bwrap sandbox was tried and reverted (Ubuntu 24 AppArmor breaks it
   in CI; design-doc/sandbox.md was removed).

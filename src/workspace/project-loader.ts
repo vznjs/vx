@@ -108,6 +108,24 @@ function validate(config: ProjectConfig, configPath: string): void {
         if (readyWhen !== undefined && typeof readyWhen !== 'string') {
           throw new UserError(`${where}.exec.persistent.readyWhen must be a string regex`)
         }
+        const readyTimeoutMs = (persistent as { readyTimeoutMs?: unknown }).readyTimeoutMs
+        if (readyTimeoutMs !== undefined) {
+          if (readyWhen === undefined) {
+            throw new UserError(
+              `${where}.exec.persistent.readyTimeoutMs requires \`readyWhen\` — ` +
+                `a task that is ready on spawn has nothing to time out`,
+            )
+          }
+          if (
+            typeof readyTimeoutMs !== 'number' ||
+            !Number.isInteger(readyTimeoutMs) ||
+            readyTimeoutMs <= 0
+          ) {
+            throw new UserError(
+              `${where}.exec.persistent.readyTimeoutMs must be a positive integer (milliseconds)`,
+            )
+          }
+        }
         if (cache !== undefined) {
           throw new UserError(
             `${where}: \`cache\` is not allowed on a persistent task — persistent tasks ` +

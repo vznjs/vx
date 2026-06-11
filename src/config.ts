@@ -196,6 +196,15 @@ export interface PersistentConfig {
    * dev server is up — `readyWhen: 'Local:'` waits for that line.
    */
   readyWhen?: string
+  /**
+   * Upper bound (ms) on the readiness wait. If `readyWhen` hasn't
+   * matched within this window the child is SIGTERMed and the task
+   * fails — without it, a server that prints an unexpected banner
+   * hangs the run forever. Requires `readyWhen` (meaningless for
+   * ready-on-spawn tasks). No default: opting into a readiness
+   * signal is explicit, and so is bounding it.
+   */
+  readyTimeoutMs?: number
 }
 
 export interface ExecEnv {

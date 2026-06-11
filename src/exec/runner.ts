@@ -74,6 +74,12 @@ export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs'> {
    * "ready". Undefined → ready immediately on spawn.
    */
   readyWhen?: string
+  /**
+   * Bound the readiness wait: if `readyWhen` hasn't matched within
+   * this window, the child is SIGTERMed and `ready` rejects. Only
+   * meaningful together with `readyWhen` (the loader enforces that).
+   */
+  readyTimeoutMs?: number
 }
 
 /**
@@ -123,6 +129,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   const markReady = (): void => {
     if (readyAt === undefined) {
       readyAt = Date.now()
+      if (readyTimer !== undefined) clearTimeout(readyTimer)
       resolveReady()
     }
   }
@@ -182,10 +189,30 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
 
   opts.liveChildren?.add(child)
 
+  // Readiness deadline. Reject FIRST so the failure reads as a
+  // timeout, then SIGTERM — the exit handler's later reject is a
+  // no-op on the settled promise. Cleared the moment ready fires so
+  // a healthy server is never killed by a stale timer.
+  let readyTimer: ReturnType<typeof setTimeout> | undefined
+  if (readyRe && opts.readyTimeoutMs !== undefined) {
+    readyTimer = setTimeout(() => {
+      if (readyAt === undefined) {
+        rejectReady(
+          new Error(
+            `persistent task not ready within ${opts.readyTimeoutMs}ms — ` +
+              `readyWhen pattern never matched; child killed`,
+          ),
+        )
+        child.kill('SIGTERM')
+      }
+    }, opts.readyTimeoutMs)
+  }
+
   // If the child exits BEFORE ready fires, that's a failure to start
   // — reject the ready promise so the caller can surface it.
   void child.exited.then((code) => {
     opts.liveChildren?.delete(child)
+    if (readyTimer !== undefined) clearTimeout(readyTimer)
     if (readyAt === undefined) {
       rejectReady(
         new Error(
