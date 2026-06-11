@@ -19,7 +19,7 @@ cache server works.
 
 It is shaped most directly after Turborepo (per-package config, opt-in
 caching, content-addressed key, hashes cascade through the dep graph),
-with a smaller surface and three deliberate divergences:
+with a smaller surface and four deliberate divergences:
 
 - **TypeScript config** (`vx.config.ts`) instead of `turbo.json`.
   Presets are plain TypeScript helpers; computed values participate in
@@ -27,6 +27,9 @@ with a smaller surface and three deliberate divergences:
 - **Resolved-config hash.** The cache key sees the post-evaluation
   config object, so imports and `process.env`-derived values get
   folded in. Turbo and Nx hash the static config file and miss them.
+- **Early cutoff.** Downstream cache keys fold upstream OUTPUT
+  content identity — identical rebuilt outputs stop the miss cascade.
+  See [`differentiators.md`](./differentiators.md).
 - **Strict output ownership.** Declared `cache.outputs.files` are
   wiped before exec AND before cache restore, so the project dir ends
   every run bit-identical to the cached snapshot. Turbo / Nx restore
@@ -80,7 +83,7 @@ corresponding page under [`modules/`](./modules/). Tests live under
 `tests/`, one file per source module.
 
 The cache subsystem is more than one file: `cache/cache.ts` is the
-local SQLite-backed store (v18 key derivation, tar.zst artifacts);
+local SQLite-backed store (v21 key derivation, tar.zst artifacts);
 `cache/remote-cache.ts` is the Turbo HTTP client;
 `cache/layered-cache.ts` composes the two behind the same `CacheLayer`
 interface that the orchestrator consumes — local and remote transport
