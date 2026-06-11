@@ -20,8 +20,11 @@ upstream repo so future revisions can be diffed against reality.
   repo:_ `nrwl/nx`.
 - **vite-task** — Rust-fast, smallest schema, novel **filesystem-spy
   auto-input inference** (default `{auto: true}`). Pre/post script
-  lifecycle from `package.json` scripts. Materialized-artifact local
-  cache; no remote yet. _Reference repo:_ `voidzero-dev/vite-task`.
+  lifecycle from `package.json` scripts. SQLite + tar.zst local cache
+  with make-style validate-at-lookup (traced reads re-fingerprinted on
+  every hit — gives early cutoff, but the key isn't derivable before
+  execution, which is why it has no remote cache). _Reference repo:_
+  `voidzero-dev/vite-task`.
 - **`@vzn/vx`** — TypeScript-native config, opt-in caching, Turbo-shape
   cache key with two extensions (project package.json folded in;
   resolved-config hash captures TS imports). Bun-only. Smallest CLI
@@ -80,7 +83,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Wildcards in `dependsOn`                             | —                                                    | v19.5+: `build-*`, `^build-*`              | —                                  | — **gap**                                       |
 | Group / umbrella tasks                               | tasks with `dependsOn` only                          | (achieved via target groups)               | (none)                             | yes — tasks with no `exec`                      |
 | Input declarations                                   | `inputs: [...]` + `$TURBO_DEFAULT$` etc.             | `inputs: [...]` w/ rich types              | `input: glob` or `{auto:true}`     | `cache.inputs.files: string[]`                  |
-| Auto-input inference                                 | —                                                    | —                                          | **yes** (`fspy` LD_PRELOAD)        | — **gap**                                       |
+| Auto-input inference                                 | —                                                    | —                                          | **yes** (`fspy`, see §3)           | — out of scope (see §3)                         |
 | Named / reusable input sets                          | (none)                                               | `namedInputs` at workspace + project level | (none)                             | — **gap**                                       |
 | Per-task env inputs                                  | `env: ["NODE_ENV"]`                                  | `inputs: [{env: "NODE_ENV"}]`              | `env: [...]` + `untrackedEnv`      | `cache.inputs.env: string[]`                    |
 | Pass-through env                                     | `passThroughEnv`                                     | (always pass through)                      | `untrackedEnv` (passed, no hash)   | `exec.env.passThrough`                          |
@@ -143,11 +146,19 @@ upstream repos.
    - Turbo: `extends` + task `extends`.
    - Nx: `targetDefaults` (priority-resolved).
 
-3. **Auto-input inference via filesystem tracing.** The single
-   highest-leverage UX improvement over the current "you must list
-   every input" rule. Big engineering lift — needs an `fspy`-
-   equivalent per OS (LD_PRELOAD on Linux, Detours on Windows,
-   seccomp_unotify or DTrace on macOS).
+3. **Auto-input inference via filesystem tracing.** Re-classified
+   **out of scope** for vx (2026-06) after studying vite-task's
+   implementation. Doing this soundly is a multi-platform native
+   systems project — vite-task ships ~9 Rust crates for it:
+   LD_PRELOAD / DYLD_INSERT_LIBRARIES interposition for glibc/macOS,
+   a `seccomp_unotify` kernel supervisor for static binaries
+   (esbuild, Go tools) that bypass libc, Microsoft Detours on
+   Windows, a 4 GiB shared-memory IPC channel, and — because macOS
+   SIP strips DYLD injection from Apple-signed binaries — their own
+   shipped shell + coreutils to run commands under. Traced reads are
+   re-validated at every cache lookup (not key-folded). vx cannot
+   ship per-OS native helper binaries without abandoning its
+   no-build-step distribution; explicit inputs stay the contract.
    - vite-task: `{auto: true}` is the default; backed by `crates/fspy*`.
 
 4. **Output log modes.** A `--output-logs=full|hash-only|errors-only|none`
