@@ -77,6 +77,9 @@ function executeGroupTask(args: ExecuteArgs): TaskOutcome {
     exitCode: 0,
     durationMs: 0,
     hash: computeGroupHash(args.upstream),
+    // Groups have no outputs of their own; their cutoff identity is
+    // the rollup itself, which already folds members' outputsHash.
+    outputsHash: computeGroupHash(args.upstream),
     wallclockStartNs: wallclockNs,
     wallclockEndNs: wallclockNs,
   }
@@ -274,6 +277,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         exitCode: hit.exitCode,
         durationMs: Math.round(performance.now() - cacheOpStart),
         hash,
+        ...(hit.outputsHash !== undefined ? { outputsHash: hit.outputsHash } : {}),
         restored,
       }
     }
@@ -373,13 +377,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     for (const v of violations) effectiveStderr += `  ${v.line}\n`
   }
 
+  let savedOutputsHash: string | null = null
   if (effectiveExitCode === 0 && cacheEnabled) {
     const outputFiles = await resolveOutputs({
       projectDir: node.projectDir,
       outputs,
       nestedProjectDirs: args.nestedProjectDirs,
     })
-    await cache.save({
+    savedOutputsHash = await cache.save({
       hash,
       projectDir: node.projectDir,
       outputFiles,
@@ -405,6 +410,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     exitCode: effectiveExitCode,
     durationMs: result.durationMs,
     hash,
+    ...(savedOutputsHash !== null ? { outputsHash: savedOutputsHash } : {}),
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
     wallclockStartNs,

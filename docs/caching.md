@@ -361,6 +361,16 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
 
 ### History
 
+- **v21 → early cutoff** (+ SCHEMA v19): downstream keys fold the
+  upstream task's **output content identity** (`outputsHash`: sorted
+  fold of every artifact `outputs/<rel>` entry's path + bytes; mtimes
+  excluded) instead of its task hash, whenever the upstream declares
+  outputs. An upstream that re-executes (comment edit, env change)
+  but reproduces byte-identical outputs no longer cascades misses.
+  No declared outputs → falls back to the task hash (old behavior);
+  group tasks roll up members' cutoff identities. `entries` gains an
+  `outputs_hash` column; `CacheLayer.save` returns it.
+
 - **v7 → v8** (PR #2): folded `forwardArgs` into the key for CLI
   argument-forwarding alignment.
 - **v8 → v9** (PR #3): `TaskConfig` shape changed — `exec` collapsed

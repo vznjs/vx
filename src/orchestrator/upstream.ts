@@ -33,7 +33,7 @@ export function filterUpstreamHashes(
 ): string[] {
   if (filter === undefined) {
     const out: string[] = []
-    for (const u of upstream) if (u.hash) out.push(u.hash)
+    for (const u of upstream) if (u.hash) out.push(u.outputsHash ?? u.hash)
     return out
   }
 
@@ -54,8 +54,9 @@ export function filterUpstreamHashes(
       if (!u.hash) continue
       const isSelf = u.node.projectName === selfProjectName
       if (!matches(spec, u, isSelf)) continue
-      if (spec.negated) selected.delete(u.hash)
-      else selected.add(u.hash)
+      const id = u.outputsHash ?? u.hash
+      if (spec.negated) selected.delete(id)
+      else selected.add(id)
     }
   }
   return [...selected]

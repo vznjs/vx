@@ -33,7 +33,7 @@ import { mkdir, mkdtemp, rename, rm, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { relPosix, xxh3 } from '../util/index.js'
-import { extractOutputs, parseTarHeaders, readTarText } from './tar.js'
+import { extractOutputs, parseTarHeaders, readTarText, type TarHeader } from './tar.js'
 
 // v17: artifact carries only logs + outputs (stdout + outputs/<rel>).
 // Local and remote layers transport the SAME tar.zst bytes — no
@@ -49,8 +49,8 @@ import { extractOutputs, parseTarHeaders, readTarText } from './tar.js'
 // file's hash bytes change → bump. SCHEMA_VERSION moves with it:
 // pre-v20 `file_hashes.content_hash` rows hold xxh3 digests that
 // must not leak into the OID domain via the mtime+size memo.
-const CACHE_VERSION = 'vx-cache-v20'
-const SCHEMA_VERSION = 'v18'
+const CACHE_VERSION = 'vx-cache-v21'
+const SCHEMA_VERSION = 'v19'
 
 export interface CacheKeyInput {
   taskId: string
@@ -113,6 +113,15 @@ export interface CacheEntry {
   outputFiles: string[]
   /** Captured stdout, always present (may be empty). stderr is not cached. */
   stdout: string
+  /**
+   * Content identity of the declared outputs: fold of every
+   * `outputs/<rel>` entry's (path, bytes), or undefined when the
+   * task declares no outputs. Downstream cache keys fold THIS
+   * instead of the task hash when present (early cutoff): an
+   * upstream that re-executes but reproduces identical outputs no
+   * longer cascades misses.
+   */
+  outputsHash?: string
   storedAt: string
   /**
    * Where this hit was resolved from. `'local'` for a SQLite-backed
@@ -265,7 +274,7 @@ export interface CacheLayer {
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles'>
     projectDir: string
     outputFiles: string[]
-  }): Promise<void>
+  }): Promise<string | null>
   /**
    * Adopt an artifact produced elsewhere — the remote-hit path. Writes
    * the compressed bytes to `<cacheDir>/<hash>.tar.zst`, parses the
@@ -320,6 +329,7 @@ interface EntryRow {
   exit_code: number
   duration_ms: number
   size_bytes: number
+  outputs_hash: string | null
   created_at: number
   accessed_at: number
 }
@@ -401,6 +411,7 @@ export class Cache implements CacheLayer {
         exit_code    INTEGER NOT NULL,
         duration_ms  INTEGER NOT NULL,
         size_bytes   INTEGER NOT NULL,
+        outputs_hash TEXT,
         created_at   INTEGER NOT NULL,
         accessed_at  INTEGER NOT NULL
       );
@@ -462,9 +473,10 @@ export class Cache implements CacheLayer {
     `)
 
     this.insertEntry = this.db.prepare(`
-      INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, outputs_hash, created_at, accessed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(hash) DO UPDATE SET
+        outputs_hash = excluded.outputs_hash,
         project      = excluded.project,
         task         = excluded.task,
         command      = excluded.command,
@@ -668,6 +680,7 @@ export class Cache implements CacheLayer {
       durationMs: row.duration_ms,
       outputFiles,
       stdout: readTarText(tarBytes, headers, 'stdout'),
+      ...(row.outputs_hash ? { outputsHash: row.outputs_hash } : {}),
       storedAt: new Date(row.created_at).toISOString(),
       source: 'local',
     }
@@ -768,7 +781,7 @@ export class Cache implements CacheLayer {
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles'>
     projectDir: string
     outputFiles: string[]
-  }): Promise<void> {
+  }): Promise<string | null> {
     // Layout (v17): one `<hash>.tar.zst` per entry. Tar carries ONLY
     // the things you'd want to re-materialize on a cache hit:
     //
@@ -779,7 +792,7 @@ export class Cache implements CacheLayer {
     // SQLite, not the artifact. Remote-hit ingestion takes metadata
     // through `ingest()` arguments — the artifact stays clean bytes.
     const compressed = await this.packArtifact(args)
-    await this.writeArtifactAndIndex(args.hash, compressed, {
+    return this.writeArtifactAndIndex(args.hash, compressed, {
       taskId: args.entry.taskId,
       command: args.entry.command,
       durationMs: args.entry.durationMs,
@@ -787,7 +800,9 @@ export class Cache implements CacheLayer {
   }
 
   async ingest(hash: string, compressed: Uint8Array, meta: IngestMeta): Promise<void> {
-    await this.writeArtifactAndIndex(hash, compressed, meta)
+    // Return value (outputs hash) intentionally dropped: remote-hit
+    // ingestion happens inside get(), which re-reads the entry row.
+    void (await this.writeArtifactAndIndex(hash, compressed, meta))
   }
 
   /**
@@ -863,7 +878,7 @@ export class Cache implements CacheLayer {
     hash: string,
     compressed: Uint8Array,
     meta: IngestMeta,
-  ): Promise<void> {
+  ): Promise<string | null> {
     // Validate BEFORE anything touches the final path. `ingest()` feeds
     // us network bytes; a truncated/garbage body that went live first
     // would leave a corrupt `<hash>.tar.zst` behind (with no SQL row,
@@ -903,11 +918,27 @@ export class Cache implements CacheLayer {
 
     const totalBytes = compressed.byteLength
     const outputFileRows: Array<[string, number, number, number]> = []
+    // Early-cutoff identity: fold (rel, bytes) of every output entry,
+    // sorted by path so the fold is independent of tar member order.
+    // Header mtimes deliberately do NOT participate — a rebuild that
+    // reproduces identical bytes must produce the same identity.
+    const outputEntries: TarHeader[] = []
     for (const h of headers) {
       if (!h.name.startsWith('outputs/') || h.isDir) continue
       const rel = h.name.slice('outputs/'.length)
       if (rel.length === 0) continue
       outputFileRows.push([rel, h.size, h.mode & 0o777, Math.floor(h.mtimeMs)])
+      outputEntries.push(h)
+    }
+    let outputsHash: string | null = null
+    if (outputEntries.length > 0) {
+      outputEntries.sort((a, b) => (a.name < b.name ? -1 : 1))
+      let oh = xxh3('outputs-content:v1')
+      for (const h of outputEntries) {
+        oh = xxh3(`${h.name}\0`, oh)
+        oh = xxh3(tarBytes.subarray(h.dataOffset, h.dataOffset + h.size), oh)
+      }
+      outputsHash = oh.toString(16).padStart(16, '0')
     }
 
     const [project, task] = splitTaskId(meta.taskId)
@@ -927,6 +958,7 @@ export class Cache implements CacheLayer {
         0, // exitCode: we never cache failures
         meta.durationMs,
         totalBytes,
+        outputsHash,
         now,
         now,
       )
@@ -938,6 +970,7 @@ export class Cache implements CacheLayer {
       }
     })
     tx()
+    return outputsHash
   }
 
   recordRun(run: RunRecord): void {

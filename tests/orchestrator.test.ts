@@ -230,7 +230,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'upstream cache-key change invalidates dependent (Turbo-style)',
+    'upstream output change invalidates dependent; identical outputs cut off early',
     async () => {
       await addProject(fixture.root, 'lib', {
         files: { 'src/x.txt': 'v1' },
@@ -268,15 +268,24 @@ describe('orchestrator e2e', () => {
       const r2 = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(r2.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
 
-      // Touch a file in lib that is NOT in lib's outputs. With Turbo-style
-      // caching, lib's key changes, so app's key must change too.
+      // Touch a file in lib that does NOT affect lib's output bytes.
+      // lib's key changes (it re-runs), but dist.txt is byte-identical
+      // — early cutoff (v21): app folds lib's OUTPUT identity, not its
+      // task hash, so app stays a cache hit.
       await new Promise((r) => setTimeout(r, 5))
       await writeFile(path.join(fixture.root, 'packages/lib/NOTES.md'), 'something')
 
       const r3 = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
-      expect(r3.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
-      const appOut3 = await readFile(path.join(appDir, 'out.txt'), 'utf8')
-      expect(appOut3).not.toBe(appOut1)
+      expect(r3.outcomes.find((o) => o.node.id === 'lib#build')?.status).toBe('success')
+      expect(r3.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
+      expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).toBe(appOut1)
+
+      // Change a file that DOES flow into lib's output: dist.txt's
+      // bytes change, so the cutoff identity changes and app re-runs.
+      await writeFile(path.join(fixture.root, 'packages/lib/src/x.txt'), 'v2')
+      const r4 = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+      expect(r4.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
+      expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).not.toBe(appOut1)
     },
     TIMEOUT,
   )
@@ -1157,7 +1166,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'upstream env-input change invalidates dependent (Turbo-style propagation, env edition)',
+    'upstream env change without output change cuts off early (env edition)',
     async () => {
       await addProject(fixture.root, 'lib', {
         files: { 'src/x.txt': 'v1' },
@@ -1200,14 +1209,15 @@ describe('orchestrator e2e', () => {
       expect(r2.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
       expect(r2.outcomes.find((o) => o.node.id === 'lib#build')?.status).toBe('cache-hit')
 
-      // Change API_URL: lib's env input changes -> lib reruns -> app's
-      // upstream hash changes -> app must rerun even though no file changed
-      // anywhere.
+      // Change API_URL: lib's env input changes -> lib reruns. Its
+      // output bytes are unchanged (the command ignores the env), so
+      // early cutoff (v21) keeps app a cache hit — env changes only
+      // propagate when they alter upstream OUTPUTS.
       process.env.API_URL = 'https://b.example'
       const r3 = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(r3.outcomes.find((o) => o.node.id === 'lib#build')?.status).toBe('success')
-      expect(r3.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
-      expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).not.toBe(appOut1)
+      expect(r3.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
+      expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).toBe(appOut1)
 
       delete process.env.API_URL
     },

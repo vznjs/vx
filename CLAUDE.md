@@ -159,6 +159,19 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: CACHE_VERSION → v21 + SCHEMA v19: **early cutoff**
+  (vite-task-inspired, adapted to pre-execution keys). Downstream
+  keys fold upstream `outputsHash` — content identity of the
+  artifact's `outputs/<rel>` entries (path+bytes, sorted, mtimes
+  excluded; computed in `writeArtifactAndIndex` for save AND ingest)
+  — instead of the upstream task hash. Identical rebuilt outputs no
+  longer cascade misses through the graph. Fallback to task hash
+  when no outputs are declared (side-effect safety); groups roll up
+  members' cutoff identities so cutoff propagates through umbrella
+  tasks; plan path threads entry outputsHash so --dry predictions
+  match runs. Two cascade tests re-pinned to the new contract
+  (identical-output → dependent hits; output-change → re-runs).
+
 - **2026-06**: CACHE_VERSION → v20 + SCHEMA_VERSION → v18. Input-file
   hashing switched from xxh3-of-content to **git blob OIDs** (Turbo's
   technique): the bulk enumeration spawn became `git ls-files -s

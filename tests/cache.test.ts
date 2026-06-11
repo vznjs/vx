@@ -597,7 +597,7 @@ describe('Cache storage (v10)', () => {
     await writeFile(outFile, 'concurrent-payload')
     const second = new Cache(cacheDir)
     try {
-      const saveOnce = (c: Cache): Promise<void> =>
+      const saveOnce = (c: Cache): Promise<string | null> =>
         c.save({
           hash: 'h-concurrent',
           projectDir,
