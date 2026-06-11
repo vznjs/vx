@@ -13,6 +13,24 @@ workspace. Updated as the runners evolve.
 - Single run invokes all three across all 100 projects → **~300 task
   evaluations per run**.
 
+## 2026-06 — warm paths, three-way on the comparison repo
+
+100 projects x (build + test + installDeps), 300 task evaluations,
+direct binaries (no pnpm exec wrapper), median-ish of repeated runs,
+after the restore-path git-respawn fix:
+
+| Runner | Warm, intact tree | Warm, outputs wiped (restore) |
+| ------ | ----------------- | ----------------------------- |
+| **vx** | **144 ms**        | **137 ms**                    |
+| Turbo  | 279 ms            | 287 ms                        |
+| Nx     | 583-934 ms        | 583 ms                        |
+
+vx's restore now costs the same as an intact-tree run — the fix
+eliminated the 81 per-project `git ls-files` re-spawns that made the
+same scenario take 920 ms (8x the intact run). Nx numbers vary with
+daemon state; Nx requires a pnpm-installed node_modules to parse
+pnpm-lock.yaml (it hard-fails on a Bun-installed tree).
+
 ## 2026-05
 
 | Runner | No cache    | Cache (no restore) | Cache (full restore) |
