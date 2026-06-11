@@ -32,7 +32,7 @@ import { mkdirSync, statSync } from 'node:fs'
 import { mkdir, mkdtemp, rename, rm, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { relPosix, xxh3, xxh3hex } from '../util/index.js'
+import { relPosix, xxh3 } from '../util/index.js'
 import { extractOutputs, parseTarHeaders, readTarText } from './tar.js'
 
 // v17: artifact carries only logs + outputs (stdout + outputs/<rel>).
@@ -42,8 +42,15 @@ import { extractOutputs, parseTarHeaders, readTarText } from './tar.js'
 // successful runs and stderr is rarely meaningful on success.
 // v19: '^task' dependsOn expansion switched from transitive-deps to
 // nearest-holder frontier — upstream-hash sets shrink, so keys change.
-const CACHE_VERSION = 'vx-cache-v19'
-const SCHEMA_VERSION = 'v17'
+// v20: input-file content hashes switched from xxh3 to git blob OIDs
+// (Turbo parity). Clean tracked files take their OID straight from
+// the index (harvested by the bulk `git ls-files -s`); dirty /
+// untracked files get the identical OID computed in-process. Every
+// file's hash bytes change → bump. SCHEMA_VERSION moves with it:
+// pre-v20 `file_hashes.content_hash` rows hold xxh3 digests that
+// must not leak into the OID domain via the mtime+size memo.
+const CACHE_VERSION = 'vx-cache-v20'
+const SCHEMA_VERSION = 'v18'
 
 export interface CacheKeyInput {
   taskId: string
@@ -85,6 +92,16 @@ export interface CacheKeyInput {
    * requires one — but we don't fail-loud here).
    */
   projectPackageJsonHash: string
+  /**
+   * Precomputed content hashes (git blob OIDs) keyed by absolute
+   * path — typically the trusted-index OID map harvested by the
+   * run's bulk `git ls-files -s`. Paths present here skip `hashFile`
+   * entirely (no stat, no SQLite, no read); missing paths fall back
+   * to `hashFile`, which computes the byte-identical blob OID from
+   * disk. Pure fast path: the derived key never depends on whether a
+   * hash arrived via the map or the fallback.
+   */
+  fileHashes?: ReadonlyMap<string, string>
 }
 
 export interface CacheEntry {
@@ -326,6 +343,8 @@ export class Cache implements CacheLayer {
    * cleared on close().
    */
   private decompressedTar: { hash: string; bytes: Uint8Array } | null = null
+  /** Memoized repo object format for blob-OID hashing (lazy-detected). */
+  private objectFormat: 'sha1' | 'sha256' | null = null
 
   constructor(private readonly cacheDir: string) {
     // Ensure the directory exists before opening the DB — bun:sqlite
@@ -489,14 +508,17 @@ export class Cache implements CacheLayer {
   }
 
   /**
-   * Content-hash a file with an mtime+size fast path. If the
-   * `file_hashes` table has a row for `path` whose `(mtime_ms,
-   * size_bytes)` match the current stat, we reuse the stored
-   * content_hash (a memory + SQLite lookup, no disk read). Otherwise
-   * we read + hash + upsert.
+   * Content-hash a file (as a git blob OID, v20) with an mtime+size
+   * fast path. If the `file_hashes` table has a row for `path` whose
+   * `(mtime_ms, size_bytes)` match the current stat, we reuse the
+   * stored content_hash (a memory + SQLite lookup, no disk read).
+   * Otherwise we read + hash + upsert.
    *
-   * This produces the exact same hash a fresh content-hash would, so
-   * the cache key derivation is unchanged. Pure performance win.
+   * The OID is byte-identical to what `git hash-object` (and the git
+   * index) computes for the same content, so this fallback and the
+   * `CacheKeyInput.fileHashes` index-OID fast path never diverge —
+   * a file's key contribution can't flip across dirty↔clean
+   * transitions.
    */
   async hashFile(filePath: string): Promise<string> {
     // statSync intentional: a single stat is ~1.6µs (Bun 1.3); the
@@ -511,7 +533,7 @@ export class Cache implements CacheLayer {
       // Caller is responsible for skipping files that don't exist;
       // fall through to the content-hash path which will throw with
       // a more useful error.
-      return await hashFileFromDisk(filePath)
+      return await this.hashFileFromDisk(filePath)
     }
     const mtimeMs = Math.floor(st.mtimeMs)
     const size = st.size
@@ -521,9 +543,50 @@ export class Cache implements CacheLayer {
     if (row && row.mtime_ms === mtimeMs && row.size_bytes === size) {
       return row.content_hash
     }
-    const ch = await hashFileFromDisk(filePath)
+    const ch = await this.hashFileFromDisk(filePath)
     this.upsertFileHash.run(filePath, mtimeMs, size, ch, Date.now())
     return ch
+  }
+
+  /**
+   * Git blob OID of the file's bytes:
+   * `hex(HASH("blob " + byteLength + "\0" + content))`, where HASH is
+   * the repo's object format. Same value `git hash-object` prints and
+   * the same value the index stores. Computed in-process — no git
+   * spawn per file.
+   */
+  private async hashFileFromDisk(filePath: string): Promise<string> {
+    const bytes = await Bun.file(filePath).bytes()
+    const hasher = new Bun.CryptoHasher(this.objectFormat ?? this.detectObjectFormat(filePath))
+    hasher.update(`blob ${bytes.byteLength}\0`)
+    hasher.update(bytes)
+    return hasher.digest('hex')
+  }
+
+  /**
+   * Repo object format — sha1 unless the repo was created with
+   * `--object-format=sha256`. One `git rev-parse` spawn per Cache
+   * lifetime, and only when at least one file misses the mtime+size
+   * memo. Outside a repo (unit fixtures) we default to sha1, which is
+   * still a deterministic blob-OID domain.
+   */
+  private detectObjectFormat(nearPath: string): 'sha1' | 'sha256' {
+    let detected: 'sha1' | 'sha256' = 'sha1'
+    try {
+      const proc = Bun.spawnSync({
+        cmd: ['git', 'rev-parse', '--show-object-format'],
+        cwd: path.dirname(nearPath),
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      if (proc.exitCode === 0 && new TextDecoder().decode(proc.stdout).trim() === 'sha256') {
+        detected = 'sha256'
+      }
+    } catch {
+      // git unavailable → sha1 default keeps hashing deterministic.
+    }
+    this.objectFormat = detected
+    return detected
   }
 
   async key(input: CacheKeyInput): Promise<string> {
@@ -553,11 +616,15 @@ export class Cache implements CacheLayer {
 
     const sortedInputs = [...input.inputFiles].sort()
     h = xxh3(`inputs:${sortedInputs.length}`, h)
-    // Hash in parallel via the mtime+size fast-path. Unchanged files
-    // reuse the stored content_hash (no disk read); changed/new files
-    // do the full content hash and upsert. The fold order is locked
-    // to `sortedInputs` so results are stable across runs.
-    const fileHashes = await Promise.all(sortedInputs.map((f) => this.hashFile(f)))
+    // Per-file hash source, in preference order: the caller-supplied
+    // index-OID map (clean tracked files — zero I/O), then hashFile's
+    // mtime+size memo (no read), then a full in-process blob-OID
+    // computation. All three produce identical bytes for identical
+    // content. The fold order is locked to `sortedInputs` so results
+    // are stable across runs.
+    const fileHashes = await Promise.all(
+      sortedInputs.map((f) => input.fileHashes?.get(f) ?? this.hashFile(f)),
+    )
     for (let i = 0; i < sortedInputs.length; i++) {
       const file = sortedInputs[i]!
       const rel = relPosix(input.workspaceRoot, file)
@@ -1012,13 +1079,4 @@ function splitTaskId(id: string): [string, string] {
   const i = id.indexOf('#')
   if (i < 0) return [id, '']
   return [id.slice(0, i), id.slice(i + 1)]
-}
-
-async function hashFileFromDisk(filePath: string): Promise<string> {
-  // Bun.hash.xxHash3 has no streaming API, so we load the whole file.
-  // Input files are source code (typically < 1MB each); the memory
-  // hit is bounded and the ~5× throughput win vs sha256-streaming
-  // dominates on a cache-warm path that hashes hundreds of them.
-  const bytes = await Bun.file(filePath).bytes()
-  return xxh3hex(bytes)
 }

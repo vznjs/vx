@@ -159,6 +159,53 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: CACHE_VERSION → v20 + SCHEMA_VERSION → v18. Input-file
+  hashing switched from xxh3-of-content to **git blob OIDs** (Turbo's
+  technique): the bulk enumeration spawn became `git ls-files -s
+--others --exclude-standard -z` — `-s` lines carry `<mode> <oid>
+<stage>\t<path>`, so ONE spawn yields the file lists AND every
+  tracked file's index OID; one `git status --porcelain -z` spawn
+  prunes paths whose worktree diverges (renames drop both sides,
+  stage>0 and symlinks/gitlinks never get one — symlink index OIDs
+  hash the target STRING, not content). Clean-tree key derivation
+  now costs zero reads / zero per-file stats / zero SQLite (the
+  resolveFiles exists-probe is also skipped for OID-trusted paths).
+  Everything else falls back to `Cache.hashFile`, which computes the
+  byte-identical blob OID in-process (`HASH("blob <len>\0"+bytes)`,
+  object format lazily detected via `git rev-parse
+--show-object-format`, sha1 default outside repos) behind the
+  existing mtime+size memo — so a file's key contribution NEVER
+  flips across dirty↔clean transitions (pinned by test: dirty-but-
+  identical content == clean key; committing an untracked file
+  doesn't change the key). Seam: `CacheKeyInput.fileHashes?:
+ReadonlyMap<abs, oid>`; carrier: `GitFilesCache.setOids/oidsFor`
+  per projectDir, populated by `populateGitFilesCache` (signature
+  now takes GitFilesCache), dropped wholesale on `set`/`delete`
+  (mid-run re-enumeration can't re-trust index OIDs without a fresh
+  status — fallback is identical-value, so purely a perf
+  concession) and per-path on `markOutputsChanged`. File-set
+  visibility byte-identical to the old `--cached --others` (verified
+  empirically incl. staged-but-deleted, conflict stage-duplicates,
+  tab-containing filenames; `-z` disables quotePath so the
+  fixed-form `^[0-7]{6} [0-9a-f]{40,64} [0-3]\t` prefix is the
+  disambiguator). SCHEMA bump because pre-v20 `file_hashes.
+content_hash` rows hold xxh3 digests that must not leak into the
+  OID domain via the memo. package.json hashing rides the same map.
+  Tests: tests/git-oid.test.ts (18: hash-object KATs incl. sha256
+  repos, harvest/trust rules, GitFilesCache bookkeeping, fileHashes
+  seam, dirty↔clean key-stability guardrails, zero-read clean-tree
+  pin). The two git spawns run CONCURRENTLY
+  (`populateGitFilesCache` is now async; the bulk path uses
+  Bun.spawn, the per-project fallback stays spawnSync) — serial
+  spawning measurably regressed few-files-per-project fixtures,
+  since `git status` alone costs ~74 ms on a 1000-project tree.
+  Measured: at 1-3 files/project the change is noise (the degenerate
+  case); at a realistic 30 files/project (500 projects, 15k files)
+  warm run-phase drops 245 ms → 76 ms — 3.2× — and the win scales
+  with file count (per-file stat+SELECT replaced by git's C-speed
+  scan). Cold first runs also win: committed file contents are never
+  read by vx at all.
+
 - **2026-06**: CACHE_VERSION → v19. `'^task'` dependsOn expansion
   switched from transitive-deps to **nearest-holder frontier**: walk
   the package dep graph from the project's DIRECT deps; each path

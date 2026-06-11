@@ -131,12 +131,41 @@ export async function cleanOutputs(args: {
  */
 export class GitFilesCache extends Map<string, readonly string[]> {
   private changed = new Map<string, string[]>()
+  /**
+   * Per-project trusted index OIDs: absolute path → git blob OID, for
+   * tracked regular files whose working-tree state matched the index
+   * at populate time (per one `git status --porcelain` snapshot).
+   * These feed `Cache.key` via `CacheKeyInput.fileHashes` so a clean
+   * tree derives input hashes with zero reads / stats / SQLite.
+   *
+   * Dropped wholesale on `set` / `delete`: a mid-run re-enumeration
+   * proves the project's tree changed, and index OIDs can't be
+   * re-trusted without a fresh status — the per-file fallback
+   * (`Cache.hashFile`) computes the identical blob OID from disk, so
+   * dropping is a pure perf concession, never a correctness one.
+   */
+  private oids = new Map<string, Map<string, string>>()
 
   markOutputsChanged(projectDir: string, relPaths: readonly string[]): void {
     if (!this.has(projectDir)) return
     const cur = this.changed.get(projectDir)
     if (cur) cur.push(...relPaths)
     else this.changed.set(projectDir, [...relPaths])
+    // These paths just changed on disk; their index OIDs (if any) no
+    // longer describe the working-tree content.
+    const projOids = this.oids.get(projectDir)
+    if (projOids) {
+      for (const rel of relPaths) projOids.delete(path.resolve(projectDir, rel))
+    }
+  }
+
+  /** Trusted index OIDs for a project (abs path → oid), if any survive. */
+  oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined {
+    return this.oids.get(projectDir)
+  }
+
+  setOids(projectDir: string, oids: Map<string, string>): void {
+    this.oids.set(projectDir, oids)
   }
 
   /** Snapshot if still valid for these input globs; undefined → re-spawn. */
@@ -152,11 +181,13 @@ export class GitFilesCache extends Map<string, readonly string[]> {
 
   override set(key: string, value: readonly string[]): this {
     this.changed.delete(key)
+    this.oids.delete(key)
     return super.set(key, value)
   }
 
   override delete(key: string): boolean {
     this.changed.delete(key)
+    this.oids.delete(key)
     return super.delete(key)
   }
 }
@@ -201,7 +232,12 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   const positiveGlobs = positive.map((p) => new Bun.Glob(p))
   let gitFiles = args.gitFilesCache?.snapshotFor(args.projectDir, positiveGlobs)
   if (gitFiles === undefined) {
-    gitFiles = runGitLsFiles(args.projectDir)
+    // Mid-run re-enumeration. The OIDs this spawn could yield are NOT
+    // trusted (no fresh `git status` to vouch for them — the project's
+    // tree just changed); set() drops the project's OID slot and these
+    // files fall back to Cache.hashFile, which computes the identical
+    // blob OID from disk.
+    gitFiles = runGitLsFiles(args.projectDir).files
     // set() also clears the project's pending-changed bookkeeping.
     args.gitFilesCache?.set(args.projectDir, gitFiles)
   }
@@ -219,11 +255,17 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
     if (excludeGlobs.some((g) => g.match(rel))) continue
     candidates.push(path.resolve(args.projectDir, rel))
   }
-  // Second pass: parallel existence check. `git ls-files --cached`
-  // can surface stale entries when the working tree has the file
-  // gone; the hasher would otherwise throw ENOENT. Parallelizing
-  // turns N serial syscalls into one round-trip's worth of latency.
-  const exists = await Promise.all(candidates.map((abs) => Bun.file(abs).exists()))
+  // Second pass: parallel existence check — but ONLY for paths
+  // without a trusted index OID. A clean-per-status tracked file
+  // necessarily exists on disk, so skipping its probe keeps the warm
+  // path free of per-file syscalls. Paths without an OID keep the
+  // probe: `git ls-files -s` can surface staged entries whose
+  // working-tree file is gone; the hasher would otherwise throw
+  // ENOENT.
+  const oids = args.gitFilesCache?.oidsFor(args.projectDir)
+  const exists = await Promise.all(
+    candidates.map((abs) => oids?.has(abs) === true || Bun.file(abs).exists()),
+  )
   const matches: string[] = []
   for (let i = 0; i < candidates.length; i++) {
     if (exists[i]) matches.push(candidates[i]!)
@@ -231,17 +273,42 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   return matches.sort()
 }
 
+interface GitLsResult {
+  /** cwd-relative paths — same visibility set as `--cached --others`. */
+  files: string[]
+  /**
+   * cwd-relative path → index blob OID, for tracked REGULAR files
+   * (mode 100644 / 100755) at stage 0 only. Symlinks are excluded
+   * (their OID hashes the link-target string, not the dereferenced
+   * content our fallback hasher would read); merge-conflict stages
+   * and gitlinks are excluded too. NOT yet filtered by working-tree
+   * dirtiness — callers intersect with `git status` before trusting.
+   */
+  oids: Map<string, string>
+}
+
+// `<mode> <oid> <stage>\t<path>` — the staged-entry form of
+// `ls-files -s`. `--others` paths print bare; with `-z`,
+// core.quotePath quoting is off, so a bare path containing a literal
+// tab still can't match this fixed-form prefix.
+const LS_FILES_STAGE_RE = /^([0-7]{6}) ([0-9a-f]{40,64}) ([0-3])\t/
+
 /**
- * Run `git ls-files --cached --others --exclude-standard -z .` in
- * `cwd` and return the NUL-split, non-empty entries. Throws a
- * `UserError` when git is unavailable or `cwd` isn't a git work tree;
- * vx requires git. `-z` survives filenames with newlines / spaces.
+ * Run `git ls-files -s --others --exclude-standard -z .` in `cwd`.
+ * One spawn yields BOTH the file list (identical visibility to the
+ * pre-v20 `--cached --others` form, verified empirically: same set
+ * including staged-but-deleted files and per-stage conflict
+ * duplicates) AND each tracked file's index OID — the heart of the
+ * Turbo-parity "hashes come from git's index" fast path. Throws a
+ * `UserError` when git is unavailable or `cwd` isn't a git work
+ * tree; vx requires git. `-z` survives filenames with newlines /
+ * spaces.
  */
-function runGitLsFiles(cwd: string): readonly string[] {
+function runGitLsFiles(cwd: string): GitLsResult {
   let proc
   try {
     proc = Bun.spawnSync({
-      cmd: ['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z', '.'],
+      cmd: ['git', 'ls-files', '-s', '--others', '--exclude-standard', '-z', '.'],
       cwd,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -260,11 +327,47 @@ function runGitLsFiles(cwd: string): readonly string[] {
         `Run 'git init' in your workspace root.${stderr ? ` (git: ${stderr})` : ''}`,
     )
   }
-  const out = new TextDecoder().decode(proc.stdout)
-  if (out.length === 0) return []
-  // ls-files emits NUL-separated; trailing NUL produces an empty
-  // segment we filter out.
-  return out.split('\0').filter((s) => s.length > 0)
+  return parseLsFilesOutput(new TextDecoder().decode(proc.stdout))
+}
+
+function parseLsFilesOutput(out: string): GitLsResult {
+  const files: string[] = []
+  const oids = new Map<string, string>()
+  if (out.length === 0) return { files, oids }
+  // NUL-separated; trailing NUL produces an empty segment we skip.
+  for (const record of out.split('\0')) {
+    if (record.length === 0) continue
+    const m = LS_FILES_STAGE_RE.exec(record)
+    if (m === null) {
+      files.push(record) // --others entry: bare path
+      continue
+    }
+    const filePath = record.slice(m[0].length)
+    files.push(filePath)
+    const mode = m[1]!
+    const stage = m[3]!
+    if ((mode === '100644' || mode === '100755') && stage === '0') {
+      oids.set(filePath, m[2]!)
+    }
+  }
+  return { files, oids }
+}
+
+function parseStatusOutput(out: string): Set<string> {
+  const tokens = out.split('\0')
+  const dirty = new Set<string>()
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]!
+    if (token.length < 4) continue
+    dirty.add(token.slice(3))
+    // X = R or C → the next token is the rename/copy source path.
+    const x = token[0]
+    if ((x === 'R' || x === 'C') && i + 1 < tokens.length && tokens[i + 1]!.length > 0) {
+      i++
+      dirty.add(tokens[i]!)
+    }
+  }
+  return dirty
 }
 
 /**
@@ -281,13 +384,63 @@ function runGitLsFiles(cwd: string): readonly string[] {
  * boundary-ignore globs in `resolveFiles` filter them out the same way
  * they did before. Cheaper to filter once-per-task than to subtract
  * here.
+ *
+ * v20: the same `ls-files -s` spawn also yields each tracked file's
+ * index OID. A second spawn (`git status --porcelain`) prunes paths
+ * whose working tree diverges from the index; what survives is
+ * stored per project via `cache.setOids` and feeds `Cache.key`
+ * directly — clean-tree input hashing costs zero reads/stats/SQLite.
  */
-export function populateGitFilesCache(
+export async function populateGitFilesCache(
   workspaceRoot: string,
   projectDirs: readonly string[],
-  cache: Map<string, readonly string[]>,
-): void {
-  const all = runGitLsFiles(workspaceRoot)
+  cache: GitFilesCache,
+): Promise<void> {
+  // The two spawns are independent — run them concurrently so the
+  // bulk-populate costs max(ls-files, status) wall time, not the sum
+  // (status alone is ~74 ms on a 1000-project tree; serial spawning
+  // was a measurable warm-path regression vs the pre-OID code).
+  const spawnGit = async (args: string[]) => {
+    try {
+      const proc = Bun.spawn({
+        cmd: ['git', ...args],
+        cwd: workspaceRoot,
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ])
+      return { exitCode, stdout, stderr }
+    } catch {
+      return null
+    }
+  }
+  const [ls, status] = await Promise.all([
+    spawnGit(['ls-files', '-s', '--others', '--exclude-standard', '-z', '.']),
+    spawnGit(['status', '--porcelain', '-z']),
+  ])
+  if (ls === null) {
+    throw new UserError(
+      `vx requires git: failed to spawn 'git' (working dir: ${workspaceRoot}). Install git and re-run.`,
+    )
+  }
+  if (ls.exitCode !== 0) {
+    const stderr = ls.stderr.trim()
+    throw new UserError(
+      `vx requires git: ${workspaceRoot} is not inside a git work tree. ` +
+        `Run 'git init' in your workspace root.${stderr ? ` (git: ${stderr})` : ''}`,
+    )
+  }
+  const { files: all, oids } = parseLsFilesOutput(ls.stdout)
+  const dirty = status !== null && status.exitCode === 0 ? parseStatusOutput(status.stdout) : null
+  const trusted = dirty === null ? new Map<string, string>() : oids
+  if (dirty !== null) {
+    for (const rel of dirty) trusted.delete(rel)
+  }
   // Sort once, then each project's files are a contiguous range found
   // by binary search on its `dir/` prefix — O((F+P) log F) instead of
   // the O(P·F) per-project startsWith scan (54 ms at 1090 projects ×
@@ -309,14 +462,25 @@ export function populateGitFilesCache(
     const relPrefix = path.relative(workspaceRoot, projectDir).split(path.sep).join('/')
     if (relPrefix === '' || relPrefix === '.') {
       cache.set(projectDir, all)
+      const rootOids = new Map<string, string>()
+      for (const [rel, oid] of trusted) rootOids.set(path.join(workspaceRoot, rel), oid)
+      cache.setOids(projectDir, rootOids)
       continue
     }
     const prefix = `${relPrefix}/`
     const start = lowerBound(prefix)
     const end = lowerBound(`${prefix}￿`)
     const matches: string[] = []
-    for (let i = start; i < end; i++) matches.push(sorted[i]!.slice(prefix.length))
+    const projOids = new Map<string, string>()
+    for (let i = start; i < end; i++) {
+      const rel = sorted[i]!
+      matches.push(rel.slice(prefix.length))
+      const oid = trusted.get(rel)
+      if (oid !== undefined) projOids.set(path.join(workspaceRoot, rel), oid)
+    }
+    // setOids AFTER set — set() drops the project's OID slot.
     cache.set(projectDir, matches)
+    cache.setOids(projectDir, projOids)
   }
 }
 

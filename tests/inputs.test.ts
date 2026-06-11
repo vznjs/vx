@@ -651,20 +651,36 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
     await rm(workspaceRoot, { recursive: true, force: true })
   })
 
-  it('spawns git exactly once for N projects (vs N spawns the per-project path used)', async () => {
+  it('spawns git exactly twice for N projects (ls-files + status, vs N spawns per-project)', async () => {
+    // The bulk populate uses async Bun.spawn (ls-files + status run
+    // concurrently); the per-project fallback uses spawnSync. Count
+    // both so a regression to per-project spawning is caught either way.
     const origSpawnSync = Bun.spawnSync
+    const origSpawn = Bun.spawn
     let spawnCount = 0
-    const bunMut = Bun as unknown as { spawnSync: typeof Bun.spawnSync }
-    bunMut.spawnSync = ((...args: Parameters<typeof Bun.spawnSync>) => {
+    const countGit = (args: unknown[]): void => {
       const opt = args[0] as { cmd?: readonly string[] } | undefined
       if (opt && Array.isArray(opt.cmd) && opt.cmd[0] === 'git') spawnCount++
+    }
+    const bunMut = Bun as unknown as {
+      spawnSync: typeof Bun.spawnSync
+      spawn: typeof Bun.spawn
+    }
+    bunMut.spawnSync = ((...args: Parameters<typeof Bun.spawnSync>) => {
+      countGit(args)
       return origSpawnSync(...args)
     }) as typeof Bun.spawnSync
+    bunMut.spawn = ((...args: Parameters<typeof Bun.spawn>) => {
+      countGit(args)
+      return origSpawn(...args)
+    }) as typeof Bun.spawn
     try {
-      const cache = new Map<string, readonly string[]>()
+      const cache = new GitFilesCache()
       const projectDirs = ['a', 'b', 'c'].map((n) => path.join(workspaceRoot, 'packages', n))
-      populateGitFilesCache(workspaceRoot, projectDirs, cache)
-      expect(spawnCount).toBe(1)
+      await populateGitFilesCache(workspaceRoot, projectDirs, cache)
+      // One bulk `ls-files -s --others` (file list + index OIDs) plus
+      // one `status --porcelain` (dirty set) — never per-project.
+      expect(spawnCount).toBe(2)
       // Every project got a non-null entry partitioned from the bulk
       // listing — `src.ts` shows up project-relative.
       for (const dir of projectDirs) {
@@ -672,13 +688,14 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
       }
     } finally {
       bunMut.spawnSync = origSpawnSync
+      bunMut.spawn = origSpawn
     }
   })
 
   it('throws a clear UserError when not in a git repo', async () => {
     const nonGit = await mkdtemp(path.join(os.tmpdir(), 'vx-nogit-'))
     try {
-      const cache = new Map<string, readonly string[]>()
+      const cache = new GitFilesCache()
       const projectDirs = ['x', 'y'].map((n) => path.join(nonGit, n))
       for (const dir of projectDirs) {
         await mkdir(dir, { recursive: true })

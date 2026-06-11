@@ -8,6 +8,15 @@ import os from 'node:os'
 import path from 'node:path'
 import { Cache, type RunRecord } from '../src/cache/cache.js'
 
+/** Git blob OID (sha1 domain — fixtures live outside any repo). */
+function blobOid(content: string): string {
+  const bytes = new TextEncoder().encode(content)
+  const hasher = new Bun.CryptoHasher('sha1')
+  hasher.update(`blob ${bytes.byteLength}\0`)
+  hasher.update(bytes)
+  return hasher.digest('hex')
+}
+
 describe('Cache.hashFile (mtime+size fast path)', () => {
   let dir: string
   let cache: Cache
@@ -22,12 +31,13 @@ describe('Cache.hashFile (mtime+size fast path)', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
-  it('returns the correct xxh3 digest on first call (cold path)', async () => {
+  it('returns the git blob OID on first call (cold path)', async () => {
     const f = path.join(dir, 'hello.txt')
     await writeFile(f, 'hello world')
     const h = await cache.hashFile(f)
-    // Pre-computed Bun.hash.xxHash3 of "hello world" (16-char hex)
-    expect(h).toBe('d447b1ea40e6988b')
+    // git's well-known blob OID for "hello world" (no trailing newline).
+    expect(h).toBe('95d09f2b10159347eece71399a7e2e907ea3df4f')
+    expect(h).toBe(blobOid('hello world'))
   })
 
   it('returns identical hash on second call (warm path)', async () => {
@@ -57,9 +67,8 @@ describe('Cache.hashFile (mtime+size fast path)', () => {
     await Bun.sleep(20)
     await writeFile(f, 'v2-longer-content')
     const second = await cache.hashFile(f)
-    // Hash matches direct xxh3 of the new bytes.
-    const expected = Bun.hash.xxHash3('v2-longer-content').toString(16).padStart(16, '0')
-    expect(second).toBe(expected)
+    // Hash matches the blob OID of the new bytes.
+    expect(second).toBe(blobOid('v2-longer-content'))
   })
 
   it('reuses stored digest when stat is unchanged (does not re-read disk)', async () => {
@@ -335,11 +344,7 @@ describe('createHashCache + within-run hash memoization', () => {
     // (we can't directly observe the fast-path's "no disk read" behavior,
     // but we can verify identity).
     const direct = await cache.hashFile(pj)
-    const expected = Bun.hash
-      .xxHash3(await Bun.file(pj).bytes())
-      .toString(16)
-      .padStart(16, '0')
-    expect(direct).toBe(expected)
+    expect(direct).toBe(blobOid(JSON.stringify({ name: 'pkg' })))
   })
 })
 

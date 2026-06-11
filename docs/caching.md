@@ -34,7 +34,7 @@ opt _out_ via `cache: false`. We chose the strictest of the three.
 The cache key for one task is a SHA-256 hex digest over (in order):
 
 1. **`CACHE_VERSION`** — the schema-version sentinel
-   (currently `'vx-cache-v19'`, in `src/cache/cache.ts`). Bumped only
+   (currently `'vx-cache-v20'`, in `src/cache/cache.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -83,9 +83,21 @@ The cache key for one task is a SHA-256 hex digest over (in order):
    beneath you changes, your hash changes too.
 9. **Input files' content hashes** — `cache.inputs.files` resolved to
    a concrete list of project-relative paths (gitignore-aware,
-   declared-outputs-excluded, nested-projects-excluded), each file's
-   bytes hashed via sha256. Folded as `(relPath, sha256)` pairs,
-   sorted by relPath for stability across OSes and walk orders.
+   declared-outputs-excluded, nested-projects-excluded), each file
+   contributing its **git blob OID** (v20). On a clean tree the OID
+   comes straight from the index — the same bulk
+   `git ls-files -s --others` spawn that enumerates files also yields
+   every tracked file's OID, and one `git status --porcelain` prunes
+   paths whose working tree diverges, so deriving these hashes costs
+   zero file reads, zero per-file stats, zero SQLite lookups. Dirty /
+   untracked files (and symlinks) fall back to an in-process
+   `HASH("blob " + len + "\0" + content)` computation (sha1, or
+   sha256 in `--object-format=sha256` repos) with the
+   `file_hashes` mtime+size memo as the fast path — byte-identical
+   to the index OID for identical content, so a file's contribution
+   never flips across dirty↔clean transitions. Folded as
+   `(relPath, oid)` pairs, sorted by relPath for stability across
+   OSes and walk orders.
 
 The composition is hash-then-concat-then-hash: each step appends
 length-prefixed bytes to the running hasher, so two different field
@@ -231,7 +243,7 @@ manifest to worry about.
 ### SQLite tables
 
 ```sql
--- src/cache/cache.ts schema (SCHEMA_VERSION = 'v11')
+-- src/cache/cache.ts schema (SCHEMA_VERSION = 'v18')
 
 CREATE TABLE schema_meta (
   key   TEXT PRIMARY KEY,  -- 'version'
@@ -436,3 +448,22 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
   different key. Reachability/ordering is unchanged whenever holders
   chain `'^task'` (the universal pattern); a holder that doesn't is
   now the documented stopping point. No on-disk format change.
+- **v19 → v20**: input-file content hashes switched from xxh3 to
+  **git blob OIDs** (Turbo's technique). The bulk enumeration spawn
+  became `git ls-files -s --others --exclude-standard` — `-s` lines
+  carry `<mode> <oid> <stage>\t<path>` for tracked files, so one
+  spawn yields the file list AND the index OIDs; a second
+  `git status --porcelain -z` spawn prunes OIDs for paths whose
+  working tree diverges from the index (renames drop both sides;
+  stage>0 conflict entries and symlinks never get one). A clean
+  tree's key derivation does zero reads / stats / SQLite per file.
+  Everything else falls back to `Cache.hashFile`, which now computes
+  the identical blob OID in-process (object format auto-detected via
+  `git rev-parse --show-object-format`, sha1 default) behind the
+  existing mtime+size memo. `SCHEMA_VERSION` bumps to `v18` in the
+  same change: pre-v20 `file_hashes.content_hash` rows store 16-hex
+  xxh3 digests that must not leak into the OID domain through the
+  memo. File-set visibility semantics are unchanged (verified: the
+  `-s --others` path set is identical to `--cached --others`,
+  including staged-but-deleted files and per-stage conflict
+  duplicates).

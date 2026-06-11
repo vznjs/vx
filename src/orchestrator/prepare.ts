@@ -114,7 +114,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // partitions the output by project. Avoids one fork+exec per project
   // (~5-10ms each on Linux; the dominant cold-start cost on big
   // monorepos).
-  populateGitFilesCache(
+  await populateGitFilesCache(
     workspaceRoot,
     [...projects.values()].map((p) => p.dir),
     gitFilesCache,

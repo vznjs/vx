@@ -77,11 +77,17 @@ export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
     args.node.projectName,
     args.node.id,
   )
+  // Trusted index-OID map for this project (populated by the run's
+  // bulk `git ls-files -s` + `git status` pass). Mapped files skip
+  // hashFile entirely; everything else falls back to the identical
+  // in-process blob-OID computation.
+  const fileHashes = args.gitFilesCache?.oidsFor(args.node.projectDir)
   const taskConfigHash = hashTaskConfig(cfg, args.hashCache)
   const projectPackageJsonHash = await hashProjectPackageJson(
     args.node.projectDir,
     args.cache,
     args.hashCache,
+    fileHashes,
   )
 
   const effectiveForwardArgs = args.node.requested ? (args.forwardArgs ?? []) : []
@@ -96,6 +102,7 @@ export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
     upstreamHashes,
     workspaceFingerprint: args.workspaceFingerprint,
     forwardArgs: effectiveForwardArgs,
+    ...(fileHashes !== undefined ? { fileHashes } : {}),
   })
 }
 
@@ -157,16 +164,25 @@ async function hashProjectPackageJson(
   projectDir: string,
   cache: CacheLayer,
   hashCache?: HashCache,
+  fileHashes?: ReadonlyMap<string, string>,
 ): Promise<string> {
   const cached = hashCache?.packageJson.get(projectDir)
   if (cached !== undefined) return cached
-  const promise = doHashProjectPackageJson(projectDir, cache)
+  const promise = doHashProjectPackageJson(projectDir, cache, fileHashes)
   hashCache?.packageJson.set(projectDir, promise)
   return promise
 }
 
-async function doHashProjectPackageJson(projectDir: string, cache: CacheLayer): Promise<string> {
+async function doHashProjectPackageJson(
+  projectDir: string,
+  cache: CacheLayer,
+  fileHashes?: ReadonlyMap<string, string>,
+): Promise<string> {
   const filePath = path.join(projectDir, 'package.json')
+  // Clean tracked package.json: its index OID is already in hand —
+  // no exists probe, no stat, no SQLite.
+  const oid = fileHashes?.get(filePath)
+  if (oid !== undefined) return oid
   if (!(await Bun.file(filePath).exists())) return ''
   // Route through the cache layer's mtime+size fast path so the
   // typical re-run sees a stat + SQLite lookup instead of a file read.

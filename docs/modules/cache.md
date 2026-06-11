@@ -57,6 +57,7 @@ export interface CacheKeyInput {
   upstreamHashes: string[]
   workspaceFingerprint: string
   forwardArgs?: readonly string[] // CLI args after `--`
+  fileHashes?: ReadonlyMap<string, string> // (v20) abs path → git blob OID; mapped paths skip hashFile
 }
 
 export interface CacheEntry {
@@ -122,9 +123,15 @@ inputs:<n>\n
   <relPath>\0<fileHash>\n (n times, after we sort inputFiles inside key())
 ```
 
-`<fileHash>` is sha256 of the file contents. `<relPath>` is the POSIX-
-relative path from `workspaceRoot` (so cache keys are stable across
-platforms).
+`<fileHash>` is the file's **git blob OID** (v20):
+`hex(HASH("blob " + byteLength + "\0" + content))` in the repo's
+object format (sha1 unless the repo uses `--object-format=sha256`).
+The OID arrives from `CacheKeyInput.fileHashes` when the run's bulk
+`git ls-files -s` harvested it (clean tracked files — no I/O at all),
+otherwise from `Cache.hashFile`, which computes the identical value
+in-process behind the `file_hashes` mtime+size memo. `<relPath>` is
+the POSIX-relative path from `workspaceRoot` (so cache keys are
+stable across platforms).
 
 Determinism notes:
 
@@ -227,7 +234,7 @@ A `vx stats` CLI command can ship later; the data is captured today.
 
 ## `CACHE_VERSION`
 
-Currently `'vx-cache-v14'`. Bump when:
+Currently `'vx-cache-v20'`. Bump when:
 
 - A new field is added to `CacheKeyInput`.
 - The order or framing of existing key fields changes.
