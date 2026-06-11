@@ -252,3 +252,42 @@ describe('runGraph', () => {
     })
   })
 })
+
+describe('priority computation scale', () => {
+  it('dense 100-layer graph schedules in linear-ish time, not closure time', async () => {
+    // 100 layers x 30 nodes, every node depending on the whole
+    // previous layer: 3000 nodes, ~87k edges, transitive closures
+    // averaging ~half the graph. The Set-based closure walk this
+    // guards against took tens of seconds here (8.5s of a 10s warm
+    // run on the 1090-package report repo); the bitset reverse-topo
+    // version is single-digit milliseconds.
+    const LAYERS = 100
+    const WIDTH = 30
+    const all: TaskNode[] = []
+    const layers: string[][] = []
+    for (let l = 0; l < LAYERS; l++) {
+      const cur: string[] = []
+      // Mirror dependsOn's transitive ^task expansion: edges reach
+      // SEVERAL layers down, not just the adjacent one.
+      const deps = layers.slice(Math.max(0, l - 5), l).flat()
+      for (let w = 0; w < WIDTH; w++) {
+        const id = `l${l}-${w}#build`
+        all.push(node(id, deps))
+        cur.push(id)
+      }
+      layers.push(cur)
+    }
+    const started = performance.now()
+    const outcomes = await runGraph({
+      nodes: nodes(...all),
+      concurrency: 8,
+      execute: async (n) => success(n),
+    })
+    const elapsed = performance.now() - started
+    expect(outcomes.size).toBe(LAYERS * WIDTH)
+    expect([...outcomes.values()].every((o) => o.status === 'success')).toBe(true)
+    // Generous 100x headroom over the fixed implementation; the
+    // quadratic one fails this by an order of magnitude.
+    expect(elapsed).toBeLessThan(1500)
+  }, 120_000)
+})

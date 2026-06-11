@@ -159,6 +159,18 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: Scheduler priority closure switched to bitsets. User
+  report: 10 s FULL-CACHE run on a 1090-package, 100-layer dense
+  repo. CPU profile: 8.5 s in `reachOf` — the transitive-reverse-dep
+  priority computed via memoized DFS over `Set<string>`s, O(N²)
+  entries on dense layered graphs. Replaced with an exact bitset
+  closure swept in reverse-topo order (own Kahn pass — correctness
+  must not hinge on Map insertion order being topo): O(E·N/32),
+  ~1.3 MB at 3270 tasks. Same priority contract, byte-identical
+  scheduling. Result: 10.2 s → 1.27 s wall on the report repo.
+  Perf guard in tests/scheduler.test.ts (dense 100×30 graph with
+  5-layer-deep edges; old code 7.2 s, bound 1.5 s, new code ~50 ms).
+
 - **2026-06**: `persistent.readyTimeoutMs` shipped. A persistent task
   whose `readyWhen` never matches while the child keeps running hung
   the run forever. The timer SIGTERMs the child and rejects ready

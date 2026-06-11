@@ -60,30 +60,70 @@ export interface ScheduleOptions {
  * (`packages/nx/src/tasks-runner/tasks-schedule.ts:166-207`).
  */
 function computeReverseDepCount(nodes: Map<string, TaskNode>): Map<string, number> {
-  // Direct reverse edges: dep -> set of tasks that name it.
-  const directReverse = new Map<string, Set<string>>()
-  for (const id of nodes.keys()) directReverse.set(id, new Set())
+  // Exact transitive-dependent COUNTS need closure SETS (diamonds
+  // double-count under naive summing). Set-of-strings closures are
+  // O(N²) entries and took 8.5s on a 1090-package, 100-layer repo;
+  // bitsets make the same closure O(E·N/32) time and N²/8 bits of
+  // memory (3270 tasks ≈ 1.3 MB) — single-digit ms at that scale.
+  const ids = [...nodes.keys()]
+  const index = new Map<string, number>()
+  for (let i = 0; i < ids.length; i++) index.set(ids[i]!, i)
+  const n = ids.length
+  const words = (n + 31) >>> 5
+
+  // Direct dependents as index lists + in-degree for the topo pass.
+  const directReverse: number[][] = Array.from({ length: n }, () => [])
+  const indegree = new Uint32Array(n)
   for (const node of nodes.values()) {
+    const ni = index.get(node.id)!
     for (const dep of node.deps) {
-      directReverse.get(dep)?.add(node.id)
+      const di = index.get(dep)
+      if (di === undefined) continue
+      directReverse[di]!.push(ni)
+      indegree[ni]!++
     }
   }
-  // Transitive closure via memoized DFS. Each task's reach is the
-  // union of its direct reverse-edges plus their reaches.
-  const reach = new Map<string, Set<string>>()
-  function reachOf(id: string): Set<string> {
-    const cached = reach.get(id)
-    if (cached) return cached
-    const out = new Set<string>()
-    for (const r of directReverse.get(id) ?? []) {
-      out.add(r)
-      for (const t of reachOf(r)) out.add(t)
+
+  // Kahn topo order over dependency edges (deps before dependents).
+  // Insertion order is topo today, but the closure's correctness
+  // must not hinge on an unstated property of buildTaskGraph.
+  const topo = new Int32Array(n)
+  let head = 0
+  let tail = 0
+  for (let i = 0; i < n; i++) if (indegree[i] === 0) topo[tail++] = i
+  while (head < tail) {
+    const v = topo[head++]!
+    for (const r of directReverse[v]!) {
+      if (--indegree[r]! === 0) topo[tail++] = r
     }
-    reach.set(id, out)
-    return out
   }
+
+  // Reverse-topo sweep: every direct dependent's closure is final
+  // before its dependency folds it in. closure[i] = bitset over node
+  // indices of i's transitive dependents.
+  const closure = new Uint32Array(n * words)
   const counts = new Map<string, number>()
-  for (const id of nodes.keys()) counts.set(id, reachOf(id).size)
+  for (let t = tail - 1; t >= 0; t--) {
+    const i = topo[t]!
+    const base = i * words
+    for (const r of directReverse[i]!) {
+      closure[base + (r >>> 5)]! |= 1 << (r & 31)
+      const rbase = r * words
+      for (let w = 0; w < words; w++) closure[base + w]! |= closure[rbase + w]!
+    }
+    let count = 0
+    for (let w = 0; w < words; w++) {
+      let v = closure[base + w]!
+      v = v - ((v >>> 1) & 0x55555555)
+      v = (v & 0x33333333) + ((v >>> 2) & 0x33333333)
+      count += (((v + (v >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24
+    }
+    counts.set(ids[i]!, count)
+  }
+  // Cycle-stranded nodes (never topo-visited) can't occur — the graph
+  // builder rejects cycles — but a missing Map entry would silently
+  // sort as undefined, so default them defensively to 0.
+  for (const id of ids) if (!counts.has(id)) counts.set(id, 0)
   return counts
 }
 
