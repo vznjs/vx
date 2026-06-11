@@ -89,8 +89,10 @@ function startArtifactServer(): {
   server: ReturnType<typeof Bun.serve>
   baseUrl: string
   store: Map<string, Uint8Array>
+  tags: Map<string, string>
 } {
   const store = new Map<string, Uint8Array>()
+  const tags = new Map<string, string>()
   const server = Bun.serve({
     port: 0,
     async fetch(req) {
@@ -100,20 +102,22 @@ function startArtifactServer(): {
       const hash = m[1]!
       if (req.method === 'PUT') {
         store.set(hash, new Uint8Array(await req.arrayBuffer()))
+        const tag = req.headers.get('x-artifact-tag')
+        if (tag) tags.set(hash, tag)
         return new Response(JSON.stringify({ urls: [] }), { status: 200 })
       }
       if (req.method === 'GET') {
         const body = store.get(hash)
         if (!body) return new Response('not found', { status: 404 })
-        return new Response(body, {
-          status: 200,
-          headers: { 'x-artifact-duration': '12' },
-        })
+        const headers: Record<string, string> = { 'x-artifact-duration': '12' }
+        const tag = tags.get(hash)
+        if (tag) headers['x-artifact-tag'] = tag
+        return new Response(body, { status: 200, headers })
       }
       return new Response('method not allowed', { status: 405 })
     },
   })
-  return { server, baseUrl: `http://localhost:${server.port}`, store }
+  return { server, baseUrl: `http://localhost:${server.port}`, store, tags }
 }
 
 describe('orchestrator e2e: remote cache', () => {
@@ -124,11 +128,16 @@ describe('orchestrator e2e: remote cache', () => {
   beforeEach(async () => {
     fixture = await makeWorkspace()
     remote = startArtifactServer()
-    for (const k of ['VX_REMOTE_CACHE_URL', 'VX_REMOTE_CACHE_TOKEN']) {
+    for (const k of [
+      'VX_REMOTE_CACHE_URL',
+      'VX_REMOTE_CACHE_TOKEN',
+      'VX_REMOTE_CACHE_SIGNATURE_KEY',
+    ]) {
       savedEnv[k] = process.env[k]
     }
     process.env.VX_REMOTE_CACHE_URL = remote.baseUrl
     process.env.VX_REMOTE_CACHE_TOKEN = 'test-token'
+    delete process.env.VX_REMOTE_CACHE_SIGNATURE_KEY
   })
 
   afterEach(async () => {
@@ -177,6 +186,63 @@ describe('orchestrator e2e: remote cache', () => {
       })
       expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
       expect(second.ok).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'VX_REMOTE_CACHE_SIGNATURE_KEY signs uploads and verifies downloads end-to-end',
+    async () => {
+      process.env.VX_REMOTE_CACHE_SIGNATURE_KEY = 'e2e-signing-key-0123456789abcdef'
+      await addProject(fixture.root, 'app', {
+        files: { 'src/in.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: 'echo built > out.txt' },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+
+      const first = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        log: silentLogger(fixture),
+      })
+      expect(first.ok).toBe(true)
+      // The upload carried an x-artifact-tag.
+      expect(remote.tags.size).toBe(1)
+
+      await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+
+      // Round trip: the tagged artifact passes verification on the way back.
+      const second = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        log: silentLogger(fixture),
+      })
+      expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
+
+      // Tamper the stored artifact: verification fails, the run degrades
+      // to re-execution instead of restoring poisoned bytes.
+      const [hash, body] = [...remote.store.entries()][0]!
+      const flipped = new Uint8Array(body)
+      flipped[0] = flipped[0]! ^ 0xff
+      remote.store.set(hash, flipped)
+      await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+
+      const third = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        log: silentLogger(fixture),
+      })
+      expect(third.ok).toBe(true)
+      expect(third.outcomes[0]!.status).toBe('success')
+      expect(fixture.log.join('\n')).toMatch(/signature mismatch/)
     },
     TIMEOUT,
   )

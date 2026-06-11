@@ -162,6 +162,12 @@ adversarial case is covered by item #4 below for the remote path.
 
 ### 4. No HMAC on remote cache artifacts — MEDIUM, only when remote is shared
 
+> **Shipped 2026-06** via `VX_REMOTE_CACHE_SIGNATURE_KEY`. We followed
+> Turbo's exact construction (`hash || teamId || body`, not the
+> `taskId` variant sketched below) for wire-level interop with the
+> existing signing ecosystem. See
+> [`remote-cache.md` § Authentication](remote-cache.md#authentication).
+
 **The gap.** Our remote cache (`src/cache/remote-cache.ts`) PUTs and
 GETs tar.gz artifacts with no signing layer. Anyone with write
 access to the remote bucket can substitute artifacts; we'd happily

@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { RemoteCache, RemoteCacheError } from '../src/cache/remote-cache.js'
 
@@ -175,5 +176,108 @@ describe('RemoteCache', () => {
         }),
     )
     await expect(cache.get('h')).rejects.toThrow(/timed out after 50ms/)
+  })
+
+  describe('artifact signing (x-artifact-tag)', () => {
+    const key = 'vx-test-signature-key-0123456789abcdef'
+
+    // Turbo's construction: base64(HMAC-SHA256(key, hash || teamId || body)).
+    // Computed here with node:crypto directly so the test pins the exact
+    // byte concatenation independently of the implementation.
+    function tagFor(hash: string, teamId: string, body: Uint8Array): string {
+      return createHmac('sha256', key).update(hash).update(teamId).update(body).digest('base64')
+    }
+
+    it('put(): sends x-artifact-tag = HMAC-SHA256(key, hash + teamId + body)', async () => {
+      const cache = new RemoteCache({
+        baseUrl: fixture.baseUrl,
+        token: 'tok',
+        teamId: 'team_abc',
+        signatureKey: key,
+      })
+      const body = new TextEncoder().encode('tarball-bytes')
+      fixture.setHandler(() => new Response(null, { status: 201 }))
+
+      await cache.put('h1', body, { durationMs: 7 })
+
+      expect(fixture.requests[0]!.headers['x-artifact-tag']).toBe(tagFor('h1', 'team_abc', body))
+    })
+
+    it('put(): unset teamId folds as the empty string', async () => {
+      const cache = new RemoteCache({ baseUrl: fixture.baseUrl, token: 'tok', signatureKey: key })
+      const body = new TextEncoder().encode('tarball-bytes')
+      fixture.setHandler(() => new Response(null, { status: 201 }))
+
+      await cache.put('h1', body, { durationMs: 7 })
+
+      expect(fixture.requests[0]!.headers['x-artifact-tag']).toBe(tagFor('h1', '', body))
+    })
+
+    it('put(): no signatureKey → no x-artifact-tag header', async () => {
+      const cache = new RemoteCache({ baseUrl: fixture.baseUrl, token: 'tok' })
+      fixture.setHandler(() => new Response(null, { status: 201 }))
+
+      await cache.put('h1', new TextEncoder().encode('b'), { durationMs: 0 })
+
+      expect(fixture.requests[0]!.headers['x-artifact-tag']).toBeUndefined()
+    })
+
+    it('get(): accepts a response whose tag matches the body', async () => {
+      const cache = new RemoteCache({
+        baseUrl: fixture.baseUrl,
+        token: 'tok',
+        teamId: 'team_abc',
+        signatureKey: key,
+      })
+      const body = new TextEncoder().encode('artifact-bytes')
+      fixture.setHandler(
+        () =>
+          new Response(body, {
+            status: 200,
+            headers: { 'x-artifact-tag': tagFor('h2', 'team_abc', body) },
+          }),
+      )
+
+      const got = await cache.get('h2')
+      expect(new TextDecoder().decode(got!.body)).toBe('artifact-bytes')
+    })
+
+    it('get(): rejects a tampered body with RemoteCacheError', async () => {
+      const cache = new RemoteCache({ baseUrl: fixture.baseUrl, token: 'tok', signatureKey: key })
+      const original = new TextEncoder().encode('artifact-bytes')
+      const tampered = new TextEncoder().encode('artifact-bytEs')
+      fixture.setHandler(
+        () =>
+          new Response(tampered, {
+            status: 200,
+            headers: { 'x-artifact-tag': tagFor('h3', '', original) },
+          }),
+      )
+
+      await expect(cache.get('h3')).rejects.toThrow(RemoteCacheError)
+      await expect(cache.get('h3')).rejects.toThrow(/signature mismatch/)
+    })
+
+    it('get(): rejects a missing tag when signing is enabled', async () => {
+      const cache = new RemoteCache({ baseUrl: fixture.baseUrl, token: 'tok', signatureKey: key })
+      fixture.setHandler(() => new Response(new TextEncoder().encode('b'), { status: 200 }))
+
+      await expect(cache.get('h4')).rejects.toThrow(RemoteCacheError)
+      await expect(cache.get('h4')).rejects.toThrow(/x-artifact-tag/)
+    })
+
+    it('get(): ignores x-artifact-tag entirely when no key is configured', async () => {
+      const cache = new RemoteCache({ baseUrl: fixture.baseUrl, token: 'tok' })
+      fixture.setHandler(
+        () =>
+          new Response(new TextEncoder().encode('artifact-bytes'), {
+            status: 200,
+            headers: { 'x-artifact-tag': 'garbage-not-a-real-tag' },
+          }),
+      )
+
+      const got = await cache.get('h5')
+      expect(new TextDecoder().decode(got!.body)).toBe('artifact-bytes')
+    })
   })
 })

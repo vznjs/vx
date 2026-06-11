@@ -8,6 +8,8 @@
 //   ducktors/turborepo-remote-cache, Fox32/openturbo-remote-cache,
 //   Vercel hosted cache.
 
+import { createHmac, timingSafeEqual } from 'node:crypto'
+
 export interface RemoteCacheConfig {
   /** Base URL of the cache server, e.g. https://cache.example.com */
   baseUrl: string
@@ -18,6 +20,13 @@ export interface RemoteCacheConfig {
   slug?: string
   /** Per-request timeout in ms. Default 60_000. */
   timeoutMs?: number
+  /**
+   * HMAC artifact-signing key (Turbo's `remoteCache.signature` scheme).
+   * When set, every PUT carries an `x-artifact-tag` over the artifact
+   * and every GET response must carry a matching tag — a missing or
+   * mismatched tag is a `RemoteCacheError`, never a silent accept.
+   */
+  signatureKey?: string
 }
 
 export interface RemotePutMetadata {
@@ -53,6 +62,20 @@ export class RemoteCache {
         err,
       )
     }
+    if (this.config.signatureKey !== undefined) {
+      const received = res.headers.get('x-artifact-tag')
+      if (received === null) {
+        // A signing deployment must not silently accept unsigned
+        // artifacts — that would let an attacker strip the tag.
+        throw new RemoteCacheError(
+          `GET ${hash} → signature verification enabled but response carries no x-artifact-tag`,
+          res.status,
+        )
+      }
+      if (!this.tagMatches(hash, new Uint8Array(body), received)) {
+        throw new RemoteCacheError(`GET ${hash} → x-artifact-tag signature mismatch`, res.status)
+      }
+    }
     return {
       body,
       durationMs: parseIntHeader(res.headers.get('x-artifact-duration')),
@@ -65,12 +88,35 @@ export class RemoteCache {
       'Content-Length': String(body.byteLength),
       'x-artifact-duration': String(meta.durationMs),
     }
+    if (this.config.signatureKey !== undefined) {
+      headers['x-artifact-tag'] = this.artifactTag(
+        hash,
+        body instanceof Uint8Array ? body : new Uint8Array(body),
+      )
+    }
 
     const res = await this.fetch('PUT', this.artifactUrl(hash), { body, headers })
     // Any 2xx is success — Turbo-compatible servers answer 200/201/202.
     if (!res.ok) {
       throw new RemoteCacheError(`PUT ${hash} → ${res.status}`, res.status)
     }
+  }
+
+  // Turbo's construction (crates/turborepo-cache/src/signature_authentication.rs):
+  // base64(HMAC-SHA256(key, utf8(hash) || utf8(teamId ?? '') || body)).
+  // Byte-compatible with Turbo so signing servers/clients interop.
+  private artifactTag(hash: string, body: Uint8Array): string {
+    return createHmac('sha256', this.config.signatureKey!)
+      .update(hash)
+      .update(this.config.teamId ?? '')
+      .update(body)
+      .digest('base64')
+  }
+
+  private tagMatches(hash: string, body: Uint8Array, received: string): boolean {
+    const expected = Buffer.from(this.artifactTag(hash, body), 'base64')
+    const actual = Buffer.from(received, 'base64')
+    return expected.length === actual.length && timingSafeEqual(expected, actual)
   }
 
   private artifactUrl(hash: string): string {

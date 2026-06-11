@@ -187,11 +187,49 @@ no archive bytes ever touch disk in the happy path.
 `VX_REMOTE_CACHE_TOKEN` env var. Standard, easy to rotate, easy to
 scope per project.
 
-**v1.5 (optional):** Payload signing via `x-artifact-tag` header,
-matching Turbo's HMAC scheme. We send it on PUT when the client
-configures a signing key; we receive it on GET but don't currently
-verify. Off by default; opt-in for users who don't trust their cache
-server's transport.
+**v1.5 (shipped 2026-06):** Payload signing via the `x-artifact-tag`
+header, byte-compatible with Turbo's HMAC scheme
+(`crates/turborepo-cache/src/signature_authentication.rs`). Opt-in via
+`VX_REMOTE_CACHE_SIGNATURE_KEY`; off by default.
+
+Tag construction (identical to Turbo, so vx interops with servers and
+clients that already speak Turbo signing):
+
+```
+tag = base64( HMAC-SHA256( key, utf8(hash) || utf8(teamId) || artifactBytes ) )
+```
+
+- `key` is the UTF-8 bytes of `VX_REMOTE_CACHE_SIGNATURE_KEY`. No
+  minimum length is enforced (Turbo only enforces ≥ 32 bytes behind a
+  separate opt-in flag; plain signing accepts any key there too).
+- `hash` is the artifact's cache key (the `{hash}` path segment).
+- `teamId` folds in as the **empty string when unset** — Turbo
+  concatenates `format!("{}{}", hash, team_id)`, and an absent team is
+  the empty string. This binds artifacts to a tenant: a valid artifact
+  from another team can't be replayed into ours.
+- base64 is standard alphabet with padding.
+
+Semantics when the key is configured:
+
+- **PUT** computes the tag over the outgoing bytes and sends
+  `x-artifact-tag`.
+- **GET** verifies the response's `x-artifact-tag` against the received
+  body using a constant-time comparison (`crypto.timingSafeEqual`).
+  A mismatch **or a missing tag** is a hard `RemoteCacheError` — a
+  signing deployment must not silently accept unsigned artifacts, or
+  stripping the header would defeat the scheme. The `LayeredCache`
+  maps the error to `onRemoteError` + a cache miss, so a tampered
+  artifact degrades to re-executing the task rather than failing the
+  run or restoring poisoned bytes.
+
+When the key is NOT configured, behavior is byte-identical to v1: no
+header sent on PUT, no verification on GET (any `x-artifact-tag` the
+server sends is ignored).
+
+The earlier fix sketch in `integrity-audit-2026-05.md` proposed folding
+`taskId` into the tag instead of `teamId`; we deliberately follow
+Turbo's `hash || teamId || body` instead — wire-level interop with the
+existing signing ecosystem outweighs the marginally tighter binding.
 
 **v2 (planned):** Pre-signed URLs when fronting S3-compatible storage
 directly. Client makes a side call to a tiny "signer" service, then
@@ -261,13 +299,14 @@ directly.
 
 ## Configuration (v1, shipped)
 
-| Env var                      | Required? | Notes                                       |
-| ---------------------------- | --------- | ------------------------------------------- |
-| `VX_REMOTE_CACHE_URL`        | yes       | Base URL, e.g. `https://cache.example.com`. |
-| `VX_REMOTE_CACHE_TOKEN`      | yes       | Bearer token sent on every request.         |
-| `VX_REMOTE_CACHE_TEAM_ID`    | no        | Sent as `?teamId=` (Turbo tenancy).         |
-| `VX_REMOTE_CACHE_SLUG`       | no        | Sent as `?slug=`.                           |
-| `VX_REMOTE_CACHE_TIMEOUT_MS` | no        | Per-request timeout. Default `60000`.       |
+| Env var                         | Required? | Notes                                       |
+| ------------------------------- | --------- | ------------------------------------------- |
+| `VX_REMOTE_CACHE_URL`           | yes       | Base URL, e.g. `https://cache.example.com`. |
+| `VX_REMOTE_CACHE_TOKEN`         | yes       | Bearer token sent on every request.         |
+| `VX_REMOTE_CACHE_TEAM_ID`       | no        | Sent as `?teamId=` (Turbo tenancy).         |
+| `VX_REMOTE_CACHE_SLUG`          | no        | Sent as `?slug=`.                           |
+| `VX_REMOTE_CACHE_TIMEOUT_MS`    | no        | Per-request timeout. Default `60000`.       |
+| `VX_REMOTE_CACHE_SIGNATURE_KEY` | no        | HMAC signing key — see § Authentication.    |
 
 Missing either of the two required vars → local cache only. The
 orchestrator logs `remote cache: <url>` at the top of a run when the
@@ -281,10 +320,6 @@ timeoutMs }` to `WorkspaceConfig` exists.
 
 ## Open workstreams
 
-- **HMAC artifact signing.** Turbo's `remoteCache.signature: true`
-  - `x-artifact-tag` HMAC of the body. We send `x-artifact-tag` on
-    PUT today but don't verify the one we receive. Roadmap item; see
-    [`comparison.md` § Gaps](../comparison.md#likely-worth-adding).
 - **Pre-signed URLs.** Turbo and Nx both offer them. Lets the server
   redirect uploads/downloads to an S3 bucket directly. We don't
   implement them yet.

@@ -134,6 +134,33 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: HMAC artifact signing for the remote cache, gated by
+  `VX_REMOTE_CACHE_SIGNATURE_KEY` (roadmap item #2's signing half;
+  pre-signed URLs still open). Byte-compatible with Turbo's
+  `signature_authentication.rs` scheme so vx interops with signing
+  servers/clients: `tag = base64(HMAC-SHA256(key, utf8(hash) ||
+utf8(teamId ?? '') || artifactBytes))`, carried in `x-artifact-tag`.
+  Implementation lives entirely in `RemoteCache`
+  (`RemoteCacheConfig.signatureKey?: string`; env parsed in
+  `remote-cache-setup.ts`): PUT signs the outgoing bytes, GET verifies
+  the response tag against the received body via
+  `crypto.timingSafeEqual`. Two deliberate calls: (a) missing tag on
+  GET is a hard `RemoteCacheError` when the key is set — a signing
+  deployment must not silently accept unsigned artifacts (Turbo
+  verifies too; the hard-fail-on-missing is stricter); (b) we kept
+  Turbo's `teamId` in the construction, NOT the `taskId` variant the
+  integrity-audit sketch proposed — interop wins. No key → behavior
+  byte-identical to before (no header, no verification). LayeredCache
+  needed zero changes: the verification error rides the existing
+  RemoteCacheError → `onRemoteError` + cache-miss degradation, so a
+  tampered artifact re-executes the task. Tests: signing block in
+  `tests/remote-cache.test.ts` (tag KAT computed in-test with
+  node:crypto, missing-tag, tamper, no-key passthrough, empty-teamId
+  folding), tamper-degrades-to-miss e2e in
+  `tests/layered-cache.test.ts`, env→wire round-trip + tamper-recovery
+  e2e in `tests/orchestrator-remote.test.ts`. No CACHE_VERSION bump —
+  the artifact bytes and key derivation are untouched.
+
 - **2026-06**: Warm-restore git re-spawn fix. User report: restoring
   100 tiny outputs took 920 ms vs 113 ms intact (8x). Evidence: a git
   PATH-shim showed 81 per-project `git ls-files` re-spawns — the
@@ -1025,8 +1052,9 @@ the gap analysis against Turbo / Nx / vite-task with sourced cites.
 1. **Named inputs + target defaults.** Workspace-level reusable input
    sets + per-task inheritance. Reduces glob duplication across tasks.
    See Nx `namedInputs` / `targetDefaults`.
-2. **Pre-signed URL auth + HMAC signing** (`x-artifact-tag`) for the
-   remote cache. v2 per `docs/design/remote-cache.md`.
+2. **Pre-signed URL auth** for the remote cache. v2 per
+   `docs/design/remote-cache.md`. (The HMAC-signing half shipped
+   2026-06 via `VX_REMOTE_CACHE_SIGNATURE_KEY`.)
 3. **Output log modes** (`--output-logs=full|errors-only|hash-only|none`).
 4. **`--continue=<mode>`.** Today vx aborts a failed task's
    transitive dependents but continues independent siblings — Turbo's

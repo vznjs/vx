@@ -29,7 +29,7 @@
 | Save                | tar.zst + sibling `<hash>-manifest.json`         | Rust `storeArtifactInCache`                      | tar.zst + SQLite output_files rows                               |
 | Log replay          | Buffer per task, emit on complete                | Buffer per task, emit on complete                | Same — `defaultLogger` per-task buffer                           |
 | Integrity (local)   | xxh64 of compressed bytes? No (verified absent)  | Machine-ID gate + checksum-less artifact restore | **None** — gap (see audit doc)                                   |
-| Integrity (remote)  | HMAC-SHA256 over `hash‖team‖bytes`, gated by env | No HMAC                                          | **None** — gap                                                   |
+| Integrity (remote)  | HMAC-SHA256 over `hash‖team‖bytes`, gated by env | No HMAC                                          | Shipped 2026-06: same scheme, `VX_REMOTE_CACHE_SIGNATURE_KEY`    |
 | Signal handling     | Cancel token + SIGTERM via tokio                 | IPC signal forwarding to children                | Shipped 2026-06: `run()` SIGTERMs live children, exits 128+signo |
 | FS robustness       | Retries unclear / inherits OS                    | `tryAndRetry()` exponential backoff              | No retries beyond SQLite `busy_timeout`                          |
 
@@ -179,9 +179,11 @@ restore path; every cache hit re-copies.
 | Atomic publish         | tmp + rename                                  | tmp + rename           | tmp `.tmp-<pid>-<ts>` + `rename` (PR #86)                                                         |
 | Metadata write         | SQLite insert in same transaction             | SQLite insert via Rust | SQLite `entries` + `output_files` rows in one `db.transaction` (PR #95)                           |
 | Remote upload          | Background, fire-and-forget                   | Background             | `LayeredCache.save` fires remote PUT async; errors logged not propagated (PR #13)                 |
-| Sign artifact (remote) | HMAC-SHA256 over hash+team+bytes (env-gated)  | No                     | **None** (audit doc item #4)                                                                      |
+| Sign artifact (remote) | HMAC-SHA256 over hash+team+bytes (env-gated)  | No                     | Shipped 2026-06: Turbo-compatible scheme, gated by `VX_REMOTE_CACHE_SIGNATURE_KEY`                |
 
-**vx gap:** no HMAC on remote artifacts. Defer until shared-cache users appear.
+**vx gap (closed 2026-06):** HMAC on remote artifacts shipped — same
+construction as Turbo, plus GET-side verification (which Turbo also
+does; vx additionally hard-fails on a missing tag).
 
 ---
 
@@ -245,7 +247,7 @@ restore path; every cache hit re-copies.
 | Mechanism                        | Turbo                    | Nx                                            | vx                               |
 | -------------------------------- | ------------------------ | --------------------------------------------- | -------------------------------- |
 | Local artifact corruption detect | No                       | No                                            | **No** (audit doc item #3)       |
-| Remote artifact tamper detect    | HMAC-SHA256 env-gated    | No                                            | **No** (audit doc item #4)       |
+| Remote artifact tamper detect    | HMAC-SHA256 env-gated    | No                                            | Yes — shipped 2026-06            |
 | Path-traversal in tar extract    | Lexical canonicalization | Native trust                                  | **No check** (audit doc item #2) |
 | Machine-ID gate (cross-machine)  | No                       | Yes (`machine_id` hash + env-gated rejection) | **No** (audit doc item #5)       |
 | Symlink restore order            | Topological              | Native                                        | We don't restore symlinks        |

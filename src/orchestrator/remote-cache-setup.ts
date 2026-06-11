@@ -8,7 +8,9 @@ import type { Logger } from './logger.js'
  * the local cache unchanged.
  *
  * Optional env: `VX_REMOTE_CACHE_TEAM_ID`, `VX_REMOTE_CACHE_SLUG`
- * (tenancy query params), `VX_REMOTE_CACHE_TIMEOUT_MS`.
+ * (tenancy query params), `VX_REMOTE_CACHE_TIMEOUT_MS`,
+ * `VX_REMOTE_CACHE_SIGNATURE_KEY` (HMAC artifact signing — see
+ * docs/design/remote-cache.md § Authentication).
  */
 export function wrapWithRemoteCache(local: Cache, log: Logger): CacheLayer {
   const url = process.env.VX_REMOTE_CACHE_URL
@@ -25,6 +27,8 @@ export function wrapWithRemoteCache(local: Cache, log: Logger): CacheLayer {
     const n = Number(timeoutMs)
     if (Number.isFinite(n) && n > 0) config.timeoutMs = n
   }
+  const signatureKey = process.env.VX_REMOTE_CACHE_SIGNATURE_KEY
+  if (signatureKey) config.signatureKey = signatureKey
 
   log.status(`remote cache: ${url}`)
   return new LayeredCache(local, new RemoteCache(config), {

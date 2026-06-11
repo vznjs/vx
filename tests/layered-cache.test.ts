@@ -14,6 +14,7 @@ describe('LayeredCache', () => {
   let server: ReturnType<typeof Bun.serve>
   let serverRequests: Array<{ method: string; path: string; body: ArrayBuffer }>
   let serverStore: Map<string, ArrayBuffer>
+  let serverTags: Map<string, string>
 
   beforeEach(async () => {
     workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vx-layered-'))
@@ -24,6 +25,7 @@ describe('LayeredCache', () => {
 
     serverRequests = []
     serverStore = new Map()
+    serverTags = new Map()
     server = Bun.serve({
       port: 0,
       async fetch(req) {
@@ -41,10 +43,15 @@ describe('LayeredCache', () => {
         if (req.method === 'GET') {
           const stored = serverStore.get(hash)
           if (!stored) return new Response(null, { status: 404 })
-          return new Response(stored, { status: 200, headers: { 'x-artifact-duration': '42' } })
+          const headers: Record<string, string> = { 'x-artifact-duration': '42' }
+          const tag = serverTags.get(hash)
+          if (tag) headers['x-artifact-tag'] = tag
+          return new Response(stored, { status: 200, headers })
         }
         if (req.method === 'PUT') {
           serverStore.set(hash, body)
+          const tag = req.headers.get('x-artifact-tag')
+          if (tag) serverTags.set(hash, tag)
           return new Response(null, { status: 201 })
         }
         return new Response(null, { status: 405 })
@@ -58,15 +65,21 @@ describe('LayeredCache', () => {
     await rm(workspaceRoot, { recursive: true, force: true })
   })
 
-  function makeLayered(): LayeredCache {
+  function makeLayered(opts?: {
+    signatureKey?: string
+    onRemoteError?: (e: Error) => void
+  }): LayeredCache {
     const remote = new RemoteCache({
       baseUrl: `http://localhost:${server.port}`,
       token: 'tok',
+      ...(opts?.signatureKey !== undefined ? { signatureKey: opts.signatureKey } : {}),
     })
     return new LayeredCache(local, remote, {
-      onRemoteError: () => {
-        /* suppress; tests assert via serverRequests when relevant */
-      },
+      onRemoteError:
+        opts?.onRemoteError ??
+        (() => {
+          /* suppress; tests assert via serverRequests when relevant */
+        }),
     })
   }
 
@@ -214,6 +227,48 @@ describe('LayeredCache', () => {
       workspaceFingerprint: 'ws',
     }
     expect(await layered.key(input)).toBe(await local.key(input))
+  })
+
+  it('signing round-trip: save() uploads a tagged artifact a verifying reader accepts', async () => {
+    const key = 'vx-layered-signing-key-0123456789abcdef'
+    const seeder = makeLayered({ signatureKey: key })
+    await saveSample(seeder, 'h-signed')
+    expect(serverTags.get('h-signed')).toBeDefined()
+
+    // Fresh local cache → the only source is the (tagged) remote entry.
+    local.close()
+    await rm(cacheDir, { recursive: true, force: true })
+    local = new Cache(cacheDir)
+
+    const reader = makeLayered({ signatureKey: key })
+    const hit = await reader.get('h-signed', { taskId: 'pkg#build', command: 'echo produced' })
+    expect(hit).not.toBeNull()
+    expect(hit?.source).toBe('remote')
+  })
+
+  it('signing: tampered remote bytes degrade to a miss and fire onRemoteError', async () => {
+    const key = 'vx-layered-signing-key-0123456789abcdef'
+    const seeder = makeLayered({ signatureKey: key })
+    await saveSample(seeder, 'h-tampered')
+
+    // Flip one byte of the stored artifact (the view aliases the map's
+    // ArrayBuffer); the tag still covers the original bytes, so
+    // verification must fail on the next read.
+    const stored = new Uint8Array(serverStore.get('h-tampered')!)
+    stored[stored.length - 1] = stored[stored.length - 1]! ^ 0xff
+
+    local.close()
+    await rm(cacheDir, { recursive: true, force: true })
+    local = new Cache(cacheDir)
+
+    const errors: Error[] = []
+    const reader = makeLayered({ signatureKey: key, onRemoteError: (e) => errors.push(e) })
+    const hit = await reader.get('h-tampered', { taskId: 'pkg#build', command: 'echo produced' })
+    expect(hit).toBeNull()
+    expect(errors).toHaveLength(1)
+    expect(errors[0]!.message).toMatch(/signature mismatch/)
+    // Nothing half-ingested locally — the run re-executes the task.
+    expect(await local.get('h-tampered')).toBeNull()
   })
 
   it('stats() / recordRun() / prune() delegate to local', async () => {

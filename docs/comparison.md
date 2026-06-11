@@ -158,10 +158,11 @@ upstream repos.
 5. **Wildcards in `dependsOn`.** `build-*`, `^build-*`.
    - Nx 19.5+.
 
-6. **HMAC artifact signing + pre-signed URLs** on the remote cache.
-   Open workstream; design at
+6. **Pre-signed URLs** on the remote cache. Open workstream; design at
    [`design/remote-cache.md`](./design/remote-cache.md).
-   - Turbo `remoteCache.signature: true`, plus pre-signed upload URLs.
+   - Turbo `remoteCache.signature: true` equivalent **shipped 2026-06**
+     (`VX_REMOTE_CACHE_SIGNATURE_KEY`, Turbo-compatible
+     `x-artifact-tag`); pre-signed upload URLs remain.
 
 7. **`--continue=<mode>`.** Today vx aborts a failed task's transitive
    dependents but continues independent siblings — Turbo's middle

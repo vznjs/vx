@@ -64,8 +64,10 @@ local concerns.
 
 ## What this does NOT do
 
-- No HMAC validation (we send `x-artifact-tag` on PUT if configured;
-  we don't verify the one we receive).
+- No HMAC computation/verification of its own — that lives inside
+  `RemoteCache` (opt-in `signatureKey`). A signature mismatch on GET
+  surfaces here as a `RemoteCacheError`, which this layer degrades to
+  `onRemoteError` + a cache miss like any other remote fault.
 - No pre-signed URLs (v2 of the remote-cache design).
 - No write-batching or retry on transient errors. v1 fire-and-forget.
 - No event posting (`POST /v8/artifacts/events`).

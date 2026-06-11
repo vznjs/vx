@@ -500,13 +500,14 @@ Writes go to local immediately, then upload to remote in the
 background — failures are logged via `onRemoteError` but do not
 fail the user's build.
 
-| Env var                      | Required? | Notes                                       |
-| ---------------------------- | --------- | ------------------------------------------- |
-| `VX_REMOTE_CACHE_URL`        | yes       | Base URL, e.g. `https://cache.example.com`. |
-| `VX_REMOTE_CACHE_TOKEN`      | yes       | Bearer token sent on every request.         |
-| `VX_REMOTE_CACHE_TEAM_ID`    | no        | Sent as `?teamId=` (Turbo tenancy).         |
-| `VX_REMOTE_CACHE_SLUG`       | no        | Sent as `?slug=`.                           |
-| `VX_REMOTE_CACHE_TIMEOUT_MS` | no        | Per-request timeout. Default `60000`.       |
+| Env var                         | Required? | Notes                                                                                                                                                                      |
+| ------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VX_REMOTE_CACHE_URL`           | yes       | Base URL, e.g. `https://cache.example.com`.                                                                                                                                |
+| `VX_REMOTE_CACHE_TOKEN`         | yes       | Bearer token sent on every request.                                                                                                                                        |
+| `VX_REMOTE_CACHE_TEAM_ID`       | no        | Sent as `?teamId=` (Turbo tenancy).                                                                                                                                        |
+| `VX_REMOTE_CACHE_SLUG`          | no        | Sent as `?slug=`.                                                                                                                                                          |
+| `VX_REMOTE_CACHE_TIMEOUT_MS`    | no        | Per-request timeout. Default `60000`.                                                                                                                                      |
+| `VX_REMOTE_CACHE_SIGNATURE_KEY` | no        | HMAC artifact signing (Turbo-compatible `x-artifact-tag`). When set, uploads are signed and downloads are verified — a missing or mismatched tag degrades to a cache miss. |
 
 Wire spec is Turborepo `/v8/artifacts/`. Compatible servers include
 `ducktors/turborepo-remote-cache`, `Fox32/openturbo-remote-cache`, and
