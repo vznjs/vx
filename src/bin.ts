@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { run } from './cli.js'
+import { run } from './cli/index.js'
 import { UserError } from './util/index.js'
 
 // Wrapped in an explicit async main so `bun build --compile` accepts

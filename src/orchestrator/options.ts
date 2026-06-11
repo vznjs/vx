@@ -1,9 +1,9 @@
 // Run option/summary types live in a leaf file (not the module entry)
 // so internals like prepare.ts can import them without an upward
-// import of orchestrator.ts — the module entry must stay cycle-free.
+// import of index.ts — the module entry must stay cycle-free.
 
 import type { TaskOutcome } from '../graph/index.js'
-import type { Logger } from './logger.ts'
+import type { Logger } from './logger.js'
 
 export interface RunOptions {
   cwd: string

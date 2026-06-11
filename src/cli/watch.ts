@@ -15,7 +15,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { parseRunArgs, resolveRunOptions } from './run.js'
-import { run as runOrchestrator, type RunOptions } from '../orchestrator.js'
+import { run as runOrchestrator, type RunOptions } from '../orchestrator/index.js'
 import {
   findWorkspaceRoot,
   listProjects,

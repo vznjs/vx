@@ -18,7 +18,7 @@ const SRC = path.join(import.meta.dir, '..', 'src')
 function moduleOf(rel: string): string {
   const seg = rel.split('/')
   if (seg.length > 1) return seg[0]!
-  return rel.replace(/\.ts$/, '') // bin / index / cli / orchestrator / config / version
+  return rel.replace(/\.ts$/, '') // bin / index / config / version
 }
 
 const ALLOWED: Record<string, readonly string[]> = {
@@ -36,8 +36,16 @@ const ALLOWED: Record<string, readonly string[]> = {
 }
 
 // Modules whose contract (index.ts) is the only legal cross-module
-// import target. Grows per migration PR; target: every directory module.
-const CONTRACTED: readonly string[] = ['cache', 'exec', 'util', 'workspace', 'graph']
+// import target. The ratchet is complete: every directory module.
+const CONTRACTED: readonly string[] = [
+  'cache',
+  'exec',
+  'util',
+  'workspace',
+  'graph',
+  'orchestrator',
+  'cli',
+]
 
 interface Edge {
   from: string

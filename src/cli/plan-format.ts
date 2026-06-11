@@ -1,6 +1,6 @@
 // Formatters for `--dry-run` (human / JSON) and `--graph` (DOT).
 
-import type { CacheStatus, RunPlan } from '../orchestrator/plan.js'
+import type { CacheStatus, RunPlan } from '../orchestrator/index.js'
 
 /**
  * Human-readable preview. One line per real task (groups hidden, same

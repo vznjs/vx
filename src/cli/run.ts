@@ -17,7 +17,7 @@ import {
   planRun,
   type RunOptions,
   type RunSummary,
-} from '../orchestrator.js'
+} from '../orchestrator/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 import type { TaskOutcome } from '../graph/index.js'
 

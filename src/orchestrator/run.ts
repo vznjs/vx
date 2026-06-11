@@ -1,24 +1,21 @@
 // End-to-end wiring: discover workspace -> load configs -> build graph ->
-// run with caching. Each step delegates to a single-purpose module under
-// ./orchestrator/ so the layers can be swapped without touching the others.
+// run with caching. Each step delegates to a single-purpose sibling file
+// so the layers can be swapped without touching the others.
 
-import { LayeredCache, type RunRecord } from './cache/index.js'
-import { VERSION } from './version.js'
-import { initSandbox, probeSandbox, resetSandbox, signalExitCode } from './exec/index.js'
-import { isGroupTask, runGraph, type TaskOutcome } from './graph/index.js'
-import { ulid, UserError } from './util/index.js'
-import { executeTask } from './orchestrator/execute-task.ts'
-import { defaultLogger, type Logger } from './orchestrator/logger.ts'
-import { detectColors } from './orchestrator/colors.ts'
-import { formatHeader } from './orchestrator/framed-output.ts'
-import { plan, type RunPlan } from './orchestrator/plan.ts'
-import { prepareRun } from './orchestrator/prepare.ts'
-import { writeRunProfile, writeRunSummary } from './orchestrator/run-artifacts.ts'
-import { formatRunSummary } from './orchestrator/summary.ts'
-
-export type { Logger } from './orchestrator/logger.ts'
-export type { RunOptions, RunSummary } from './orchestrator/options.ts'
-import type { RunOptions, RunSummary } from './orchestrator/options.ts'
+import { LayeredCache, type RunRecord } from '../cache/index.js'
+import { VERSION } from '../version.js'
+import { initSandbox, probeSandbox, resetSandbox, signalExitCode } from '../exec/index.js'
+import { isGroupTask, runGraph } from '../graph/index.js'
+import { ulid, UserError } from '../util/index.js'
+import { executeTask } from './execute-task.js'
+import { defaultLogger } from './logger.js'
+import { detectColors } from './colors.js'
+import { formatHeader } from './framed-output.js'
+import { plan, type RunPlan } from './plan.js'
+import { prepareRun } from './prepare.js'
+import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
+import { formatRunSummary } from './summary.js'
+import type { RunOptions, RunSummary } from './options.js'
 
 export async function run(options: RunOptions): Promise<RunSummary> {
   // Color decision: a custom logger (tests, embedders) handles its
@@ -299,5 +296,3 @@ function unanchored(spec: string): string {
   const idx = spec.indexOf('#')
   return idx >= 0 ? spec.slice(idx + 1) : spec
 }
-
-export type { RunPlan, PlannedTask, CacheStatus } from './orchestrator/plan.ts'

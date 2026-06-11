@@ -12,7 +12,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { probeSandbox, resolveSandboxConfig } from '../src/exec/sandbox-runtime.js'
-import { run, type Logger, type RunOptions } from '../src/orchestrator.js'
+import { run, type Logger, type RunOptions } from '../src/orchestrator/index.js'
 
 const TIMEOUT = 60_000
 

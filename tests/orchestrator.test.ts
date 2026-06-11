@@ -3,8 +3,8 @@ import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import type { Logger } from '../src/orchestrator.js'
-import { run } from '../src/orchestrator.js'
+import type { Logger } from '../src/orchestrator/index.js'
+import { run } from '../src/orchestrator/index.js'
 
 interface Fixture {
   root: string
@@ -2146,7 +2146,7 @@ describe('orchestrator e2e', () => {
       // Property: for the same workspace + cache state, what planRun
       // predicts must match what run produces. Catches drift between
       // `computeTaskHash` and the executor.
-      const { planRun } = await import('../src/orchestrator.js')
+      const { planRun } = await import('../src/orchestrator/index.js')
       await addProject(fixture.root, 'p', {
         config: `
           export default {

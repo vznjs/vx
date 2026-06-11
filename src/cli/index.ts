@@ -1,12 +1,12 @@
-// Top-level CLI dispatcher. Each subcommand handler lives in
-// `src/cli/<name>.ts`. Re-exports below are for the test suite,
-// which asserts on the pure parsers and formatters directly.
+// Module contract for `cli`: the top-level dispatcher plus re-exports
+// for the test suite, which asserts on the pure parsers and formatters
+// directly. Each subcommand handler lives in a sibling `<name>.ts`.
 
-import { VERSION } from './version.js'
-import { runCmd } from './cli/run.js'
-import { watchCmd } from './cli/watch.js'
-import { cacheCmd } from './cli/cache.js'
-import { printHelp } from './cli/help.js'
+import { VERSION } from '../version.js'
+import { runCmd } from './run.js'
+import { watchCmd } from './watch.js'
+import { cacheCmd } from './cache.js'
+import { printHelp } from './help.js'
 
 export async function run(argv: readonly string[]): Promise<number> {
   const [command, ...rest] = argv
@@ -36,6 +36,6 @@ export async function run(argv: readonly string[]): Promise<number> {
 }
 
 // Re-exports for tests + programmatic embedders.
-export { parseRunArgs, type RunArgs } from './cli/run.js'
-export { parsePruneArgs, parseDuration, parseSize } from './cli/cache.js'
-export { formatBytes } from './cli/format.js'
+export { parseRunArgs, type RunArgs } from './run.js'
+export { parsePruneArgs, parseDuration, parseSize } from './cache.js'
+export { formatBytes } from './format.js'

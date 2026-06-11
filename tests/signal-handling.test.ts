@@ -10,7 +10,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { run, type Logger } from '../src/orchestrator.js'
+import { run, type Logger } from '../src/orchestrator/index.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 20_000

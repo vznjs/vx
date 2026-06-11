@@ -18,6 +18,6 @@ export type {
 export { defineProject, defineWorkspace } from './config.js'
 
 // Programmatic engine API (for embedding in other tools).
-export { run } from './orchestrator.js'
-export type { Logger, RunOptions, RunSummary } from './orchestrator.js'
+export { run } from './orchestrator/index.js'
+export type { Logger, RunOptions, RunSummary } from './orchestrator/index.js'
 export type { TaskNode, TaskOutcome, TaskStatus } from './graph/index.js'
