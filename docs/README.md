@@ -50,20 +50,21 @@ every known gap — lives in [`comparison.md`](./comparison.md).
 
 ## Where to start
 
-| You want to…                        | Read                                                  |
-| ----------------------------------- | ----------------------------------------------------- |
-| Understand the overall shape        | [`architecture.md`](./architecture.md)                |
-| Author a `vx.config.ts`             | [`schema.md`](./schema.md)                            |
-| Reason about caching                | [`caching.md`](./caching.md)                          |
-| Trace what `vx run` actually does   | [`execution.md`](./execution.md)                      |
-| See each scenario as a diagram      | [`flows.md`](./flows.md)                              |
-| See every perf decision + invariant | [`optimizations.md`](./optimizations.md)              |
-| Use the CLI from a shell            | [`cli.md`](./cli.md)                                  |
-| Compare to Turbo / Nx / vite-task   | [`comparison.md`](./comparison.md)                    |
-| See what we share with Turbo / Nx   | [`patterns.md`](./patterns.md)                        |
-| See how fast vx is vs Turbo / Nx    | [`benchmarks.md`](./benchmarks.md)                    |
-| Modify, fork, or replace a module   | [`modules/`](./modules/) (one file per source module) |
-| Read forward-looking design notes   | [`design/`](./design/)                                |
+| You want to…                         | Read                                                  |
+| ------------------------------------ | ----------------------------------------------------- |
+| Understand the overall shape         | [`architecture.md`](./architecture.md)                |
+| Author a `vx.config.ts`              | [`schema.md`](./schema.md)                            |
+| Reason about caching                 | [`caching.md`](./caching.md)                          |
+| Trace what `vx run` actually does    | [`execution.md`](./execution.md)                      |
+| See each scenario as a diagram       | [`flows.md`](./flows.md)                              |
+| See every perf decision + invariant  | [`optimizations.md`](./optimizations.md)              |
+| The pitch: differentiators + numbers | [`differentiators.md`](./differentiators.md)          |
+| Use the CLI from a shell             | [`cli.md`](./cli.md)                                  |
+| Compare to Turbo / Nx / vite-task    | [`comparison.md`](./comparison.md)                    |
+| See what we share with Turbo / Nx    | [`patterns.md`](./patterns.md)                        |
+| See how fast vx is vs Turbo / Nx     | [`benchmarks.md`](./benchmarks.md)                    |
+| Modify, fork, or replace a module    | [`modules/`](./modules/) (one file per source module) |
+| Read forward-looking design notes    | [`design/`](./design/)                                |
 
 If you have ten minutes: read `architecture.md` then `caching.md`.
 Those two cover ~80% of the system.
