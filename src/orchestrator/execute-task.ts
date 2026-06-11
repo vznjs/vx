@@ -10,8 +10,7 @@ import {
   resolveSandboxConfig,
   type SandboxViolation,
 } from '../exec/index.js'
-import type { TaskOutcome } from '../graph/scheduler.js'
-import { isGroupTask, type TaskNode } from '../graph/task-graph.js'
+import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import type { Logger } from './logger.js'
 import { computeGroupHash, computeTaskHash, type HashCache } from './task-hash.js'
 

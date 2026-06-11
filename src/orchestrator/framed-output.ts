@@ -18,8 +18,7 @@
 // price is no live progress within a task. This matches Turbo's
 // `--ui=stream` mode.
 
-import { isGroupTask, type TaskNode } from '../graph/task-graph.js'
-import type { TaskOutcome } from '../graph/scheduler.js'
+import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { paint, type ColorSupport } from './colors.js'
 import { formatDuration } from './summary.js'
 

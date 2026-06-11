@@ -37,7 +37,7 @@ const ALLOWED: Record<string, readonly string[]> = {
 
 // Modules whose contract (index.ts) is the only legal cross-module
 // import target. Grows per migration PR; target: every directory module.
-const CONTRACTED: readonly string[] = ['cache', 'exec', 'util']
+const CONTRACTED: readonly string[] = ['cache', 'exec', 'util', 'workspace', 'graph']
 
 interface Edge {
   from: string

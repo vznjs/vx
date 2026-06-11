@@ -21,7 +21,7 @@ import {
   listProjects,
   loadWorkspace,
   type ProjectMeta,
-} from '../workspace/workspace.js'
+} from '../workspace/index.js'
 
 /** Wait this long after the last filesystem event before re-running. */
 const DEBOUNCE_MS = 150

@@ -6,9 +6,7 @@
 // The plan is read-only.
 
 import type { CacheLayer } from '../cache/index.js'
-import { isGroupTask, type TaskNode } from '../graph/task-graph.js'
-import type { TaskOutcome } from '../graph/scheduler.js'
-import { runGraph } from '../graph/scheduler.js'
+import { isGroupTask, runGraph, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { computeGroupHash, computeTaskHash } from './task-hash.js'
 
 export type CacheStatus =

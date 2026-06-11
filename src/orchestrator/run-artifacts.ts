@@ -14,7 +14,7 @@
 // Both are no-ops if the corresponding RunOptions field is undefined.
 
 import path from 'node:path'
-import type { TaskOutcome } from '../graph/scheduler.js'
+import type { TaskOutcome } from '../graph/index.js'
 import { tallyOutcomes } from './tally.js'
 
 export interface SummarizeArgs {

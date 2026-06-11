@@ -1,6 +1,5 @@
 import { Cache } from '../cache/index.js'
-import { loadWorkspaceConfig } from '../workspace/project-loader.js'
-import { findWorkspaceRoot, resolveCacheDir } from '../workspace/workspace.js'
+import { findWorkspaceRoot, loadWorkspaceConfig, resolveCacheDir } from '../workspace/index.js'
 import { formatBytes } from './format.js'
 
 export async function cacheCmd(args: readonly string[]): Promise<number> {

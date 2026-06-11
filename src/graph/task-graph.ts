@@ -1,12 +1,11 @@
 import type { TaskConfig } from '../config.js'
 import { UserError } from '../util/index.js'
-import type { PackageGraph } from '../workspace/package-graph.js'
-import type { ProjectEntry } from '../workspace/workspace.js'
+import type { PackageGraph, ProjectEntry } from '../workspace/index.js'
 import { DependencySpecError, parseDependencySpec, type DependencySpec } from './dependency-spec.js'
 
 // Re-exported so existing importers keep working while the type's home
 // moves to workspace (it's the joint product of discovery + loading).
-export type { ProjectEntry } from '../workspace/workspace.js'
+export type { ProjectEntry } from '../workspace/index.js'
 
 export interface TaskNode {
   /** Stable id: `${projectName}#${taskName}`. */

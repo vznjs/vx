@@ -9,22 +9,19 @@
 
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { Cache, type CacheLayer, populateGitFilesCache } from '../cache/index.js'
-import { buildPackageGraph } from '../workspace/package-graph.js'
-import { loadProjectConfig, loadWorkspaceConfig } from '../workspace/project-loader.js'
 import {
-  buildTaskGraph,
-  expandRequested,
-  type ProjectEntry,
-  type TaskNode,
-} from '../graph/task-graph.js'
-import {
+  buildPackageGraph,
+  computeNestedProjectDirs,
+  computeWorkspaceFingerprint,
   findWorkspaceRoot,
   listProjects,
+  loadProjectConfig,
   loadWorkspace,
+  loadWorkspaceConfig,
   resolveCacheDir,
-} from '../workspace/workspace.js'
-import { computeNestedProjectDirs } from '../workspace/nested-dirs.js'
-import { computeWorkspaceFingerprint } from '../workspace/fingerprint.js'
+  type ProjectEntry,
+} from '../workspace/index.js'
+import { buildTaskGraph, expandRequested, type TaskNode } from '../graph/index.js'
 import { wrapWithRemoteCache } from './remote-cache-setup.js'
 import { createHashCache, type HashCache } from './task-hash.js'
 import type { Logger } from './logger.js'

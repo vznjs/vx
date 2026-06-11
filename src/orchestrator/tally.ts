@@ -2,8 +2,7 @@
 // block) and `run-artifacts.ts` (`--summarize` JSON) count the same
 // numbers; centralising it keeps the two surfaces consistent.
 
-import type { TaskOutcome } from '../graph/scheduler.js'
-import { isGroupTask } from '../graph/task-graph.js'
+import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 
 export interface Tally {
   successful: number

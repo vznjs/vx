@@ -3,7 +3,7 @@
 // shared `tallyOutcomes` helper, which excludes group tasks — they
 // aren't real work and would inflate "N total" misleadingly.
 
-import type { TaskOutcome } from '../graph/scheduler.js'
+import type { TaskOutcome } from '../graph/index.js'
 import { paint, type ColorSupport } from './colors.js'
 import { tallyOutcomes } from './tally.js'
 

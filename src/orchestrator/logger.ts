@@ -1,5 +1,4 @@
-import type { TaskNode } from '../graph/task-graph.js'
-import type { TaskOutcome } from '../graph/scheduler.js'
+import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { detectColors, type ColorSupport } from './colors.js'
 import { formatTaskBlock } from './framed-output.js'
 

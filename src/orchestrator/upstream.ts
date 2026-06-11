@@ -2,8 +2,8 @@ import {
   DependencySpecError,
   parseDependencySpec,
   type DependencySpec,
-} from '../graph/dependency-spec.js'
-import type { TaskOutcome } from '../graph/scheduler.js'
+  type TaskOutcome,
+} from '../graph/index.js'
 import { UserError } from '../util/index.js'
 
 /**

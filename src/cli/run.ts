@@ -1,7 +1,17 @@
 import readline from 'node:readline/promises'
 import path from 'node:path'
-import { affectedProjects, defaultAffectedBase } from '../workspace/affected.js'
-import { applyFilters, parseFilter } from '../workspace/filter.js'
+import {
+  affectedProjects,
+  applyFilters,
+  buildPackageGraph,
+  defaultAffectedBase,
+  findWorkspaceRoot,
+  listProjects,
+  loadProjectConfig,
+  loadWorkspace,
+  parseFilter,
+  type ProjectMeta,
+} from '../workspace/index.js'
 import {
   run as runOrchestrator,
   planRun,
@@ -9,15 +19,7 @@ import {
   type RunSummary,
 } from '../orchestrator.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
-import { buildPackageGraph } from '../workspace/package-graph.js'
-import { loadProjectConfig } from '../workspace/project-loader.js'
-import {
-  findWorkspaceRoot,
-  listProjects,
-  loadWorkspace,
-  type ProjectMeta,
-} from '../workspace/workspace.js'
-import type { TaskOutcome } from '../graph/scheduler.js'
+import type { TaskOutcome } from '../graph/index.js'
 
 export interface RunArgs {
   /**
