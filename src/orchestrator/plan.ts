@@ -9,7 +9,7 @@ import type { CacheLayer } from '../cache/cache.js'
 import { isGroupTask, type TaskNode } from '../graph/task-graph.js'
 import type { TaskOutcome } from '../graph/scheduler.js'
 import { runGraph } from '../graph/scheduler.js'
-import { computeGroupHash, computeTaskHash } from './execute-task.js'
+import { computeGroupHash, computeTaskHash } from './task-hash.js'
 
 export type CacheStatus =
   | 'hit-local' // entry exists in local cache
@@ -39,7 +39,7 @@ export interface PlanArgs {
   forwardArgs?: readonly string[] | undefined
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache?: Map<string, readonly string[]>
-  hashCache?: import('./execute-task.js').HashCache
+  hashCache?: import('./task-hash.js').HashCache
 }
 
 /**

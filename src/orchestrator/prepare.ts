@@ -27,7 +27,7 @@ import {
 import { computeNestedProjectDirs } from '../workspace/nested-dirs.js'
 import { computeWorkspaceFingerprint } from '../workspace/fingerprint.js'
 import { wrapWithRemoteCache } from './remote-cache-setup.js'
-import { createHashCache, type HashCache } from './execute-task.js'
+import { createHashCache, type HashCache } from './task-hash.js'
 import type { Logger } from './logger.js'
 import type { RunOptions } from './options.js'
 

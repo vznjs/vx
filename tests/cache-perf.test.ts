@@ -155,7 +155,7 @@ describe('createHashCache + within-run hash memoization', () => {
   })
 
   it('taskConfig memo returns identical hash on repeated calls (same object)', async () => {
-    const { createHashCache, computeTaskHash } = await import('../src/orchestrator/execute-task.ts')
+    const { createHashCache, computeTaskHash } = await import('../src/orchestrator/task-hash.ts')
     const hashCache = createHashCache()
     const sharedConfig = {
       exec: { command: 'noop' },
@@ -198,7 +198,7 @@ describe('createHashCache + within-run hash memoization', () => {
     await mkdir(projectDir, { recursive: true })
     await writeFile(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'pkg' }))
 
-    const { createHashCache, computeTaskHash } = await import('../src/orchestrator/execute-task.ts')
+    const { createHashCache, computeTaskHash } = await import('../src/orchestrator/task-hash.ts')
     const hashCache = createHashCache()
     const baseNode = {
       projectName: 'pkg',
@@ -259,7 +259,7 @@ describe('createHashCache + within-run hash memoization', () => {
     await writeFile(path.join(a, 'package.json'), JSON.stringify({ name: 'a' }))
     await writeFile(path.join(b, 'package.json'), JSON.stringify({ name: 'b' }))
 
-    const { createHashCache, computeTaskHash } = await import('../src/orchestrator/execute-task.ts')
+    const { createHashCache, computeTaskHash } = await import('../src/orchestrator/task-hash.ts')
     const hashCache = createHashCache()
     const cfg = { exec: { command: 'x' }, cache: { inputs: { files: [] }, outputs: { files: [] } } }
 
@@ -310,7 +310,7 @@ describe('createHashCache + within-run hash memoization', () => {
     const pj = path.join(projectDir, 'package.json')
     await writeFile(pj, JSON.stringify({ name: 'pkg' }))
 
-    const { createHashCache, computeTaskHash } = await import('../src/orchestrator/execute-task.ts')
+    const { createHashCache, computeTaskHash } = await import('../src/orchestrator/task-hash.ts')
     await computeTaskHash({
       node: {
         id: 'pkg#x',
