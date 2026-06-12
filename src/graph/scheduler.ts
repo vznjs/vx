@@ -15,6 +15,13 @@ export interface TaskOutcome {
    * persistent, group rollup) → downstream folds `hash` instead.
    */
   outputsHash?: string
+  /**
+   * Why this task missed the cache, when a previous build existed:
+   * 'command changed' or 'inputs, config, or upstream outputs
+   * changed (previous <hash>)'. Rendered inside the task's frame so
+   * the explanation can't detach from the task under concurrency.
+   */
+  missReason?: string
   /** v11 analytics: CPU time + peak RSS for this task's child process. */
   cpuMs?: number
   peakRssBytes?: number

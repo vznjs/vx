@@ -88,6 +88,11 @@ export function formatTaskBlock(
   const tee = corner('├─')
   const header = formatBlockHeader(node, outcome, colors)
   const lines: string[] = [`${corner('┌─')} ${idPainted} ${corner('>')} ${header}`]
+  if (outcome.missReason !== undefined) {
+    lines.push(
+      `${corner('│')}  ${paint('', `cache miss — ${outcome.missReason}`, colors, { dim: true })}`,
+    )
+  }
 
   // Show the command for executed tasks so the user sees what ran;
   // skip for cache hits (the captured stdout/stderr is the interesting

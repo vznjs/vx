@@ -285,15 +285,18 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   // Miss-reason diagnostic (vite-task-inspired): only when a previous
   // build of this task exists — first builds stay silent, fully-cached
-  // runs print nothing. One indexed SQL lookup, misses only.
+  // runs print nothing. One indexed SQL lookup, misses only. Carried
+  // on the outcome and rendered inside the task's frame — a loose
+  // status line detaches from its task under concurrency.
+  let missReason: string | undefined
   if (cacheEnabled) {
     const prev = cache.lastEntryForTask(node.id)
     if (prev !== null && prev.hash !== hash) {
-      const reason =
+      const what =
         prev.command !== step.command
           ? 'command changed'
           : 'inputs, config, or upstream outputs changed'
-      log.status(`vx: ${node.id} cache miss — ${reason} (previous ${prev.hash})`)
+      missReason = `${what} (previous ${prev.hash})`
     }
   }
 
@@ -425,6 +428,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     durationMs: result.durationMs,
     hash,
     ...(savedOutputsHash !== null ? { outputsHash: savedOutputsHash } : {}),
+    ...(missReason !== undefined ? { missReason } : {}),
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
     wallclockStartNs,

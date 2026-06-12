@@ -25,7 +25,10 @@ const logger = (): Logger => ({
   },
   taskStdout() {},
   taskStderr() {},
-  taskComplete() {},
+  taskComplete(_node, outcome) {
+    if (outcome.missReason !== undefined)
+      log.push(`miss(${outcome.node.id}): ${outcome.missReason}`)
+  },
 })
 
 async function makeWorkspace(): Promise<void> {
@@ -86,13 +89,13 @@ describe('miss-reason diagnostic', () => {
       const dir = await addProject('app', 'echo built > out.txt')
 
       await run({ cwd: root, tasks: ['build'], log: logger() })
-      expect(log.join('\n')).not.toContain('cache miss —')
+      expect(log.join('\n')).not.toContain('miss(')
 
       log = []
       await writeFile(path.join(dir, 'src', 'in.txt'), 'v2')
       await run({ cwd: root, tasks: ['build'], log: logger() })
       expect(log.join('\n')).toContain(
-        'app#build cache miss — inputs, config, or upstream outputs changed',
+        'miss(app#build): inputs, config, or upstream outputs changed',
       )
 
       log = []
@@ -109,12 +112,12 @@ describe('miss-reason diagnostic', () => {
         `,
       )
       await run({ cwd: root, tasks: ['build'], log: logger() })
-      expect(log.join('\n')).toContain('app#build cache miss — command changed')
+      expect(log.join('\n')).toContain('miss(app#build): command changed')
 
       // Steady state: a hit prints no diagnostic.
       log = []
       await run({ cwd: root, tasks: ['build'], log: logger() })
-      expect(log.join('\n')).not.toContain('cache miss —')
+      expect(log.join('\n')).not.toContain('miss(')
     },
     TIMEOUT,
   )
