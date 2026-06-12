@@ -205,9 +205,13 @@ bun.lock
     `$TURBO_ROOT$/x` + `{workspaceRoot}/x` map to the new fields
     (negation preserved); turbo `globalDependencies` preset spread
     re-pointed into inputs.workspaceFiles — the old files-list mapping
-    was wrong (they're root-relative by definition). Watch caveat
-    documented (root watcher is non-recursive; workspaceFiles edits in
-    root subdirs may not retrigger). Files: config.ts, project-loader,
+    was wrong (they're root-relative by definition). Watch gap closed
+    in a follow-up: when any config declares inputs.workspaceFiles,
+    `vx watch` swaps its per-project watchers for ONE recursive root
+    watcher (boundaries are off, so any workspace file can be an
+    input; the ignore filter still drops node_modules/.git/.vx churn;
+    gate checks ALL projects' configs, broken ones skipped per
+    scoped-run semantics). Files: config.ts, project-loader,
     cache/{inputs,cache,tar,layered-cache}, orchestrator/{task-hash,
     execute-task,prepare}, cli/migrate-{turbo,nx}; 23 tests in
     tests/workspace-files.test.ts + repinned migrate tests.

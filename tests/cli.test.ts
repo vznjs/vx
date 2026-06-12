@@ -596,6 +596,54 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
     },
     { timeout: 20_000 },
   )
+
+  it(
+    'workspaceFiles inputs switch to a recursive root watcher — root-subdir change re-runs',
+    async () => {
+      const path = await import('node:path')
+      const { mkdir, writeFile } = await import('node:fs/promises')
+
+      // Shared root-subdir file the task reads via inputs.workspaceFiles.
+      await mkdir(path.join(workspaceRoot, 'shared'), { recursive: true })
+      await writeFile(path.join(workspaceRoot, 'shared', 'base.txt'), 'ws0')
+      await writeFile(
+        path.join(workspaceRoot, 'packages', 'one', 'vx.config.mjs'),
+        `export default {
+          tasks: {
+            hello: {
+              exec: { command: "cat ../../shared/base.txt" },
+              cache: {
+                inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] },
+                outputs: { files: [] },
+              },
+            },
+          },
+        }`,
+      )
+
+      let stdout = ''
+      vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk)
+        return true
+      })
+      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+      const cmd = run(['watch', '--all', 'hello'])
+      await waitFor(() => stdout.includes('watching the workspace root'))
+
+      // A change in a ROOT SUBDIR (not any project dir, not a lockfile)
+      // must trigger a cycle — the per-project watchers can't see it.
+      await writeFile(path.join(workspaceRoot, 'shared', 'base.txt'), 'ws1')
+      await waitFor(() => stdout.includes('ws1'))
+
+      process.emit('SIGINT')
+      const code = await cmd
+      expect(code).toBe(0)
+      expect(stdout).toContain('ws0')
+      expect(stdout).toContain('ws1')
+    },
+    { timeout: 20_000 },
+  )
 })
 
 async function writeFor(

@@ -19,6 +19,7 @@ import { run as runOrchestrator, type RunOptions } from '../orchestrator/index.j
 import {
   findWorkspaceRoot,
   listProjects,
+  loadProjectConfig,
   loadWorkspace,
   type ProjectMeta,
 } from '../workspace/index.js'
@@ -85,17 +86,47 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   process.stdout.write('vx watch: initial run...\n\n')
   await runOrchestrator(opts)
 
-  return await runWatchLoop({ opts, workspaceRoot, projects: scope })
+  return await runWatchLoop({
+    opts,
+    workspaceRoot,
+    projects: scope,
+    workspaceWide: await anyTaskUsesWorkspaceFiles(allProjects),
+  })
+}
+
+/**
+ * `inputs.workspaceFiles` globs have no project boundary — any file in
+ * the workspace can be an input. When any config declares them, the
+ * per-project watchers can't see all triggering paths, so the loop
+ * switches to one recursive root watcher. Checked across ALL projects
+ * (not just the scope) because dependsOn can pull tasks from anywhere;
+ * a broken out-of-scope config is skipped, matching scoped-run
+ * semantics (it surfaces when that project enters scope).
+ */
+async function anyTaskUsesWorkspaceFiles(projects: readonly ProjectMeta[]): Promise<boolean> {
+  for (const p of projects) {
+    if (p.configPath === null) continue
+    try {
+      const config = await loadProjectConfig(p.configPath)
+      for (const task of Object.values(config.tasks ?? {})) {
+        if ((task.cache?.inputs?.workspaceFiles?.length ?? 0) > 0) return true
+      }
+    } catch {
+      // broken config — out of this concern's scope
+    }
+  }
+  return false
 }
 
 interface WatchLoopArgs {
   opts: RunOptions
   workspaceRoot: string
   projects: readonly ProjectMeta[]
+  workspaceWide: boolean
 }
 
 async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
-  const { opts, workspaceRoot, projects } = args
+  const { opts, workspaceRoot, projects, workspaceWide } = args
 
   // Reentrancy guard — never two orchestrator runs in flight. While
   // one is running, any further events set `pending = true` and the
@@ -154,47 +185,74 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
 
   const watchers: fs.FSWatcher[] = []
 
-  // One recursive watcher per project. Each project owns its own
-  // subtree; we don't watch the workspace root recursively (would
-  // cover every project + node_modules + caches).
-  for (const proj of projects) {
+  if (workspaceWide) {
+    // workspaceFiles inputs in play: any file in the workspace can be
+    // an input, so one recursive root watcher replaces the per-project
+    // ones (it also covers lockfile / pnpm-workspace.yaml edits). The
+    // ignore filter keeps node_modules / .git / .vx churn out; edits
+    // outside any task's inputs still cost only a cache-hit cycle.
     try {
-      const w = fs.watch(proj.dir, { recursive: true, persistent: true }, (_event, filename) => {
-        if (filename == null) return
-        if (typeof filename !== 'string') return
-        if (isIgnoredPath(filename)) return
-        trigger(`${proj.name} ${filename}`)
-      })
+      const w = fs.watch(
+        workspaceRoot,
+        { recursive: true, persistent: true },
+        (_event, filename) => {
+          if (filename == null || typeof filename !== 'string') return
+          if (isIgnoredPath(filename)) return
+          trigger(`root ${filename}`)
+        },
+      )
       watchers.push(w)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      process.stderr.write(`vx watch: cannot watch ${proj.dir}: ${msg}\n`)
+      process.stderr.write(`vx watch: cannot watch workspace root: ${msg}\n`)
     }
-  }
+  } else {
+    // One recursive watcher per project. Each project owns its own
+    // subtree; we don't watch the workspace root recursively (would
+    // cover every project + node_modules + caches).
+    for (const proj of projects) {
+      try {
+        const w = fs.watch(proj.dir, { recursive: true, persistent: true }, (_event, filename) => {
+          if (filename == null) return
+          if (typeof filename !== 'string') return
+          if (isIgnoredPath(filename)) return
+          trigger(`${proj.name} ${filename}`)
+        })
+        watchers.push(w)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        process.stderr.write(`vx watch: cannot watch ${proj.dir}: ${msg}\n`)
+      }
+    }
 
-  // Plus the workspace root itself (non-recursive) so lockfile +
-  // pnpm-workspace.yaml edits trigger re-runs even when no project
-  // dir saw the change.
-  try {
-    const w = fs.watch(
-      workspaceRoot,
-      { recursive: false, persistent: true },
-      (_event, filename) => {
-        if (filename == null || typeof filename !== 'string') return
-        if (isWorkspaceFingerprintFile(filename)) trigger(`root ${filename}`)
-      },
-    )
-    watchers.push(w)
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    process.stderr.write(`vx watch: cannot watch workspace root: ${msg}\n`)
+    // Plus the workspace root itself (non-recursive) so lockfile +
+    // pnpm-workspace.yaml edits trigger re-runs even when no project
+    // dir saw the change.
+    try {
+      const w = fs.watch(
+        workspaceRoot,
+        { recursive: false, persistent: true },
+        (_event, filename) => {
+          if (filename == null || typeof filename !== 'string') return
+          if (isWorkspaceFingerprintFile(filename)) trigger(`root ${filename}`)
+        },
+      )
+      watchers.push(w)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      process.stderr.write(`vx watch: cannot watch workspace root: ${msg}\n`)
+    }
   }
 
   // The orchestrator's writes into `.vx/cache/` don't trigger
   // re-runs because IGNORED_SEGMENTS includes `.vx`. Users who
   // relocate the cache dir outside `.vx/` need their own filtering.
 
-  process.stdout.write(`\nvx watch: watching ${projects.length} project(s); press Ctrl+C to stop\n`)
+  process.stdout.write(
+    workspaceWide
+      ? `\nvx watch: watching the workspace root (workspaceFiles inputs in use); press Ctrl+C to stop\n`
+      : `\nvx watch: watching ${projects.length} project(s); press Ctrl+C to stop\n`,
+  )
 
   return await new Promise<number>((resolve) => {
     const cleanup = (): void => {

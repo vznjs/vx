@@ -375,10 +375,10 @@ Still applied: the always-ignored set (`node_modules/**`, `.git/**`,
 `.vx/**`, `*.tsbuildinfo`) and the task's own declared
 `outputs.workspaceFiles` (a task never invalidates itself).
 
-`vx watch` caveat: the workspace-root watcher is non-recursive, so a
-change to a `workspaceFiles` input inside a root subdirectory (e.g.
-`shared/config.json`) may not re-trigger a watch cycle. Changes inside
-project dirs and direct root-level files do.
+`vx watch`: when any config declares `inputs.workspaceFiles`, the loop
+watches the workspace root recursively (any file can be an input once
+boundaries are off), so root-subdir changes re-trigger cycles like any
+other edit. The always-ignored set still filters the noise.
 
 ##### `inputs.env` (optional, default `[]`)
 
