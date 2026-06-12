@@ -441,6 +441,7 @@ export class Cache implements CacheLayer {
       CREATE INDEX IF NOT EXISTS runs_hash       ON runs(hash);
       CREATE INDEX IF NOT EXISTS runs_started_at ON runs(started_at);
       CREATE INDEX IF NOT EXISTS runs_project    ON runs(project, task);
+      CREATE INDEX IF NOT EXISTS runs_ended      ON runs(ended_at);
       CREATE INDEX IF NOT EXISTS runs_run_id     ON runs(run_id);
       -- Per-file (mtime, size, content_hash) cache. Lets Cache.key()
       -- skip the content-hash on inputs whose stat hasn't changed
@@ -1090,6 +1091,18 @@ export class Cache implements CacheLayer {
   }
 
   close(): void {
+    // Run-history retention: the runs table grows by one row per
+    // executed task per invocation — a 2000-task repo accretes ~20k
+    // rows in days, inflating insert and checkpoint cost forever.
+    // 30 days comfortably covers `vx stats` (24 h windows) and any
+    // CI-side analytics consumers.
+    try {
+      this.db
+        .prepare('DELETE FROM runs WHERE ended_at < ?')
+        .run(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    } catch {
+      // Retention is best-effort; never block closing the handle.
+    }
     this.flushAccessed()
     this.db.close()
   }
