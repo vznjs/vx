@@ -419,9 +419,16 @@ export async function populateGitFilesCache(
       return null
     }
   }
+  // Pathspec scoping: when the run only needs a handful of projects
+  // (scoped config loading), let git scan just those dirs — 75 ms →
+  // 11 ms on an 11k-file repo. Above 64 dirs (or when a project IS
+  // the root) the whole-tree scan wins on arg/exec overhead anyway.
+  const rels = projectDirs.map((d) => path.relative(workspaceRoot, d).split(path.sep).join('/'))
+  const scoped = rels.length > 0 && rels.length <= 64 && rels.every((r) => r !== '' && r !== '.')
+  const pathspecs = scoped ? rels : ['.']
   const [ls, status] = await Promise.all([
-    spawnGit(['ls-files', '-s', '--others', '--exclude-standard', '-z', '.']),
-    spawnGit(['status', '--porcelain', '-z']),
+    spawnGit(['ls-files', '-s', '--others', '--exclude-standard', '-z', '--', ...pathspecs]),
+    spawnGit(['status', '--porcelain', '-z', '--', ...pathspecs]),
   ])
   if (ls === null) {
     throw new UserError(
