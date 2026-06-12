@@ -71,7 +71,10 @@ import { defineProject } from '@vzn/vx'
 export default defineProject({
   tasks: {
     build: {
-      exec: { command: 'tsc -p .' },
+      // Cache-input env vars must ALSO be passed through — the child
+      // env is isolated, and a key that varies on a var the task
+      // can't see is incoherent.
+      exec: { command: 'tsc -p .', env: { passThrough: ['NODE_ENV'] } },
       cache: {
         inputs: { files: ['src/**'], env: ['NODE_ENV'] },
         outputs: { files: ['dist/**'] },

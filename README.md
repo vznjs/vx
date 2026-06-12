@@ -164,7 +164,10 @@ import { defineProject } from '@vzn/vx'
 export default defineProject({
   tasks: {
     build: {
-      exec: { command: 'tsc -b' }, // ← name the command (Turbo reads package.json scripts)
+      // Name the command (Turbo reads package.json scripts). The child
+      // env is ISOLATED: a cache-input env var must also be passed
+      // through, or the key would vary while the task can't see it.
+      exec: { command: 'tsc -b', env: { passThrough: ['NODE_ENV'] } },
       dependsOn: ['^build'],
       cache: {
         inputs: { files: ['src/**'], env: ['NODE_ENV'] },

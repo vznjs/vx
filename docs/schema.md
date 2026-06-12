@@ -365,6 +365,12 @@ inputs: {
 }
 ```
 
+A cache-input env var the task actually reads must ALSO appear in
+`exec.env.passThrough` (or `define`) — the child environment is
+isolated, so without it the key varies on a value the command never
+sees. Tracking-only declarations (an env var that influences inputs
+some other way) are legal but rare; if in doubt, declare both.
+
 Unset names contribute the empty string to the key — and that's
 distinguishable from a name that was never listed (the count of names
 
@@ -571,7 +577,9 @@ export default defineProject({
     // Real cached task with file inputs, env tracking, and outputs.
     build: {
       description: 'compile TypeScript to dist/',
-      exec: { command: 'tsc -b' },
+      // NODE_ENV is a cache input below, so it must reach the child
+      // too — the exec env is isolated, not inherited.
+      exec: { command: 'tsc -b', env: { passThrough: ['NODE_ENV'] } },
       dependsOn: ['^build'],
       cache: {
         inputs: {
