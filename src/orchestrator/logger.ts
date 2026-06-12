@@ -110,9 +110,9 @@ export function defaultLogger(
   out: StatusStream = process.stdout,
 ): Logger {
   // Per-task buffers, split by stream. Splitting lets the framed-output
-  // renderer put stdout in the body and stderr under an `├─ Error`
-  // section. The price: chunks that interleaved at runtime get
-  // re-ordered (all stdout before all stderr).
+  // renderer put stdout under `├─ stdout` and stderr under `├─ stderr`.
+  // The price: chunks that interleaved at runtime get re-ordered (all
+  // stdout before all stderr).
   //
   // Chunks are held as a string[] (push + join on flush) instead of
   // appending via `+=`; concatenating N small chunks via `+=` is O(N²)
@@ -120,11 +120,11 @@ export function defaultLogger(
   // length. Bun-friendly: join('') is a single contiguous allocation.
   const stdoutBuffers = new Map<string, string[]>()
   const stderrBuffers = new Map<string, string[]>()
-  // Separator bookkeeping: frames get a leading blank line whenever
-  // anything (a previous frame, a one-liner, streamed output) was
-  // already emitted. The header (formatHeader) already ends with a
-  // blank line, so the first block doesn't need one.
-  let blocksEmitted = 0
+  // Separator bookkeeping: blocks are blank-line-delimited on BOTH
+  // sides — raw (unprefixed) frame content must never collide with a
+  // neighbouring one-liner (owner feedback). A block leaves its own
+  // trailing blank, so a block following a block needs no leading one;
+  // a one-liner or streamed output since the last block does.
   let lineEmitted = false
   let streamedSinceBlock = false
   // Ids whose output went straight to the terminal (focused mode).
@@ -213,8 +213,15 @@ export function defaultLogger(
   // write so a stray newline doesn't sneak into the output.
   const emitBlock = (block: string): void => {
     if (block.length === 0) return
-    writer.write(blocksEmitted > 0 || lineEmitted || streamedSinceBlock ? `\n${block}` : block)
-    blocksEmitted++
+    const lead = lineEmitted || streamedSinceBlock ? '\n' : ''
+    writer.write(`${lead}${block}\n`)
+    lineEmitted = false
+    streamedSinceBlock = false
+  }
+  // Live-frame close lines end a frame the same way emitBlock does:
+  // with a trailing blank line, resetting the separator state.
+  const emitFrameClose = (line: string): void => {
+    writer.write(`${line}\n\n`)
     lineEmitted = false
     streamedSinceBlock = false
   }
@@ -354,7 +361,7 @@ export function defaultLogger(
               writer.write('\n')
               streamMidLine = false
             }
-            emitLine(formatFrameClose(node, outcome, colors))
+            emitFrameClose(formatFrameClose(node, outcome, colors))
             return
           }
           // Dependency-pulled nodes: silent on success, framed on

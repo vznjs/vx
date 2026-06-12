@@ -8,10 +8,17 @@
 //      • Remote caching disabled
 //
 // Per-task block:
-//   ┌─ @vzn/vx#lint > restored-local • abc12345
-//   $ oxlint --type-aware --type-check
+//   ┌─ @vzn/vx#lint > success
+//   ├─ command
+//   oxlint --type-aware --type-check
+//   ├─ stdout
 //   Found 0 warnings and 0 errors.
-//   └─ @vzn/vx#lint ──
+//   └─ @vzn/vx#lint ── (327ms) success
+//
+// Content lines are RAW — no left border, no indent. A border would
+// collide with terminal wrapping on long lines and pollute
+// copy/paste; the dim ├─ section headers carry the structure instead
+// (owner feedback, 2026-06).
 //
 // Output is buffered per-task and the whole block is emitted at task
 // completion — concurrent tasks don't interleave their lines, but the
@@ -76,9 +83,9 @@ export function formatHeader(input: HeaderInput, colors: ColorSupport = NO_COLOR
 }
 
 export interface TaskBlockBody {
-  /** stdout chunks accumulated during the task. Renders in the body unprefixed-section. */
+  /** stdout chunks accumulated during the task. Renders under `├─ stdout`. */
   stdout?: string
-  /** stderr chunks. Renders under an `├─ Error` section header. */
+  /** stderr chunks. Renders under `├─ stderr`. */
   stderr?: string
 }
 
@@ -100,38 +107,34 @@ export function formatTaskBlock(
 
   const idPainted = paintTaskId(node, colors, { bold: true })
   const corner = (s: string) => paint('', s, colors, { dim: true })
-  const bar = corner('│')
-  const tee = corner('├─')
-  const header = formatBlockHeader(node, outcome, colors)
+  const section = (title: string) => corner(`├─ ${title}`)
+  const header = formatBlockHeader(outcome, colors)
   const lines: string[] = [`${corner('┌─')} ${idPainted} ${corner('>')} ${header}`]
 
-  // Show the command for executed tasks so the user sees what ran;
-  // skip for cache hits (the captured stdout/stderr is the interesting
-  // part). isGroupTask early-return above guarantees exec is defined;
-  // TS can't see through the predicate's negation, so we re-narrow.
-  const cmd = node.config.exec?.command ?? ''
-  if (outcome.status === 'success') {
-    lines.push(`${bar}   $ ${cmd}`)
+  // The command section shows what actually ran — executed tasks only
+  // (success and failed); cache hits replay stored output and skip it,
+  // skips never ran anything.
+  if (outcome.status === 'success' || outcome.status === 'failed') {
+    lines.push(section('command'), node.config.exec?.command ?? '')
   }
 
-  pushBodyLines(lines, stdout, bar)
+  if (stdout.trim().length > 0) {
+    lines.push(section('stdout'))
+    pushBodyLines(lines, stdout)
+  }
 
-  if (stderr.length > 0) {
-    lines.push(`${tee} ${paint(ERROR, 'Error', colors, { bold: true })}`)
-    pushBodyLines(lines, stderr, bar)
+  if (stderr.trim().length > 0) {
+    lines.push(section('stderr'))
+    pushBodyLines(lines, stderr)
   }
 
   // Sandbox violations get a dedicated section inside the frame so the
   // user sees them in context with the failing task, not as loose
-  // status output above the box. Section header uses a T-junction
-  // (├─) to read as part of the frame.
+  // status output above the box.
   const vlines = outcome.sandboxViolationLines
   if (vlines && vlines.length > 0) {
-    const sectionTitle = paint(ERROR, `Sandbox Violations (${vlines.length})`, colors, {
-      bold: true,
-    })
-    lines.push(`${tee} ${sectionTitle}`)
-    for (const v of vlines) lines.push(`${bar}   ${v}`)
+    lines.push(section(`sandbox violations (${vlines.length})`))
+    for (const v of vlines) lines.push(v)
   }
 
   lines.push(`${corner('└─')} ${idPainted} ${corner('──')}${formatBlockFooter(outcome, colors)}`)
@@ -139,18 +142,12 @@ export function formatTaskBlock(
 }
 
 /**
- * Append each line of `text` to `lines`, prefixed by the frame's
- * vertical bar with 3 spaces of indent. Indent makes body content
- * visually nested under section headers (├─ Error, ├─ Sandbox
- * Violations, etc.). Empty body is skipped; trailing newlines are
- * trimmed; blank lines inside the body render as a lone bar.
+ * Append each line of `text` raw. Content carries no border/indent so
+ * terminal wrapping never collides with frame glyphs and copy/paste
+ * stays clean; trailing newline is trimmed so the frame stays tight.
  */
-function pushBodyLines(lines: string[], text: string, bar: string): void {
-  if (text.length === 0) return
-  const trimmed = text.replace(/\n$/, '')
-  for (const line of trimmed.split('\n')) {
-    lines.push(line.length > 0 ? `${bar}   ${line}` : bar)
-  }
+function pushBodyLines(lines: string[], text: string): void {
+  for (const line of text.replace(/\n$/, '').split('\n')) lines.push(line)
 }
 
 /** Stable per-project hue: FNV-style fold of the name into the palette. */
@@ -260,7 +257,7 @@ export function formatFrameClose(
   return `${corner('└─')} ${paintTaskId(node, colors, { bold: true })} ${corner('──')}${formatBlockFooter(outcome, colors)}`
 }
 
-function formatBlockHeader(node: TaskNode, o: TaskOutcome, colors: ColorSupport): string {
+function formatBlockHeader(o: TaskOutcome, colors: ColorSupport): string {
   const shortHash = o.hash ? o.hash.slice(0, 8) : ''
   const dim = (s: string) => paint('', s, colors, { dim: true })
   switch (o.status) {
@@ -275,7 +272,9 @@ function formatBlockHeader(node: TaskNode, o: TaskOutcome, colors: ColorSupport)
       }
       return `${paint(ACCENT, 'restored-remote', colors)} ${dim(`• ${shortHash}`)}`
     case 'failed':
-      return `$ ${node.config.exec?.command ?? '(no command)'}`
+      // The command lives in its own `├─ command` section; the header
+      // carries the outcome like every other status.
+      return paint(ERROR, `failed (exit ${o.exitCode})`, colors, { bold: true })
     case 'skipped':
       return paint(WARN, 'skipped (upstream failed)', colors)
     case 'success':

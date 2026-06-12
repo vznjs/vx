@@ -83,7 +83,7 @@ describe('formatHeader', () => {
 })
 
 describe('formatTaskBlock', () => {
-  it('renders an executed task with command + body + (op time) + executed status', () => {
+  it('renders an executed task with command + stdout sections, content raw (no border)', () => {
     const out = formatTaskBlock(
       node('@vzn/vx#lint', 'oxlint .'),
       outcome('@vzn/vx#lint', 'success', { durationMs: 327, hash: 'abcdef0123456789' }),
@@ -91,14 +91,30 @@ describe('formatTaskBlock', () => {
     )
     expect(out).toBe(
       '┌─ @vzn/vx#lint > success\n' +
-        '│   $ oxlint .\n' +
-        '│   Found 0 warnings and 0 errors.\n' +
-        '│   Finished in 327ms.\n' +
+        '├─ command\n' +
+        'oxlint .\n' +
+        '├─ stdout\n' +
+        'Found 0 warnings and 0 errors.\n' +
+        'Finished in 327ms.\n' +
         '└─ @vzn/vx#lint ── (327ms) success\n',
     )
   })
 
-  it('local cache hit (restored) shows "restored-local" in header + footer', () => {
+  it('whitespace-only stdout renders no stdout section', () => {
+    const out = formatTaskBlock(
+      node('@vzn/vx#lint', 'oxlint .'),
+      outcome('@vzn/vx#lint', 'success', { durationMs: 5 }),
+      { stdout: '   \n\n' },
+    )
+    expect(out).toBe(
+      '┌─ @vzn/vx#lint > success\n' +
+        '├─ command\n' +
+        'oxlint .\n' +
+        '└─ @vzn/vx#lint ── (5ms) success\n',
+    )
+  })
+
+  it('local cache hit (restored) shows "restored-local" + stdout section, no command', () => {
     // durationMs here is the wallclock for clean+restore+log-replay,
     // measured by execute-task. Tiny but non-zero in the wild.
     const out = formatTaskBlock(
@@ -112,7 +128,8 @@ describe('formatTaskBlock', () => {
     )
     expect(out).toBe(
       '┌─ @vzn/vx#lint > restored-local • abcdef01\n' +
-        '│   Found 0 warnings and 0 errors.\n' +
+        '├─ stdout\n' +
+        'Found 0 warnings and 0 errors.\n' +
         '└─ @vzn/vx#lint ── (12ms) restored-local\n',
     )
   })
@@ -151,21 +168,23 @@ describe('formatTaskBlock', () => {
     )
   })
 
-  it('failures show op time + bold failed tag with exit code', () => {
+  it('failures put the outcome in the header and the command in its own section', () => {
     const out = formatTaskBlock(
       node('@vzn/vx#build', 'tsc'),
       outcome('@vzn/vx#build', 'failed', { durationMs: 1234, exitCode: 2 }),
       { stderr: 'error TS1234: oops\n' },
     )
     expect(out).toBe(
-      '┌─ @vzn/vx#build > $ tsc\n' +
-        '├─ Error\n' +
-        '│   error TS1234: oops\n' +
+      '┌─ @vzn/vx#build > failed (exit 2)\n' +
+        '├─ command\n' +
+        'tsc\n' +
+        '├─ stderr\n' +
+        'error TS1234: oops\n' +
         '└─ @vzn/vx#build ── (1.23s) failed (exit 2)\n',
     )
   })
 
-  it('renders a Sandbox Violations section when outcome carries violation lines', () => {
+  it('renders a sandbox violations section when outcome carries violation lines', () => {
     const out = formatTaskBlock(
       node('@bench/top#build', 'sleep 3 && mkdir -p dist && touch dist/index.js'),
       outcome('@bench/top#build', 'failed', {
@@ -180,12 +199,14 @@ describe('formatTaskBlock', () => {
       { stderr: 'touch: dist/index.js: Operation not permitted\n' },
     )
     expect(out).toBe(
-      '┌─ @bench/top#build > $ sleep 3 && mkdir -p dist && touch dist/index.js\n' +
-        '├─ Error\n' +
-        '│   touch: dist/index.js: Operation not permitted\n' +
-        '├─ Sandbox Violations (2)\n' +
-        '│   touch(32784) deny(1) sysctl-read kern.iossupportversion\n' +
-        '│   touch(32784) deny(1) file-read-metadata /Users/me/proj/packages/top/dist/index.js\n' +
+      '┌─ @bench/top#build > failed (exit 1)\n' +
+        '├─ command\n' +
+        'sleep 3 && mkdir -p dist && touch dist/index.js\n' +
+        '├─ stderr\n' +
+        'touch: dist/index.js: Operation not permitted\n' +
+        '├─ sandbox violations (2)\n' +
+        'touch(32784) deny(1) sysctl-read kern.iossupportversion\n' +
+        'touch(32784) deny(1) file-read-metadata /Users/me/proj/packages/top/dist/index.js\n' +
         '└─ @bench/top#build ── (3.06s) failed (exit 1)\n',
     )
   })
@@ -224,6 +245,21 @@ describe('formatTaskBlock', () => {
     expect(out).toContain('lint')
     expect(out).toContain('restored-local')
     expect(out).toContain('abcdef01')
+  })
+
+  it('section headers render dim; content lines stay raw (no border, no indent)', () => {
+    const out = formatTaskBlock(
+      node('@vzn/vx#build', 'tsc'),
+      outcome('@vzn/vx#build', 'failed', { durationMs: 1, exitCode: 1 }),
+      { stdout: 'out line\n', stderr: 'err line\n' },
+      { enabled: true },
+    )
+    expect(out).toContain('\x1b[2m├─ command\x1b[0m')
+    expect(out).toContain('\x1b[2m├─ stdout\x1b[0m')
+    expect(out).toContain('\x1b[2m├─ stderr\x1b[0m')
+    expect(out).toContain('\nout line\n')
+    expect(out).toContain('\nerr line\n')
+    expect(out).not.toContain('│')
   })
 
   it('failed tasks colorize the failed tag', () => {

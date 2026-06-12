@@ -174,8 +174,10 @@ describe('defaultLogger visibility matrix — focused', () => {
     expect(out.text()).toBe('┌─ one#test > $ noop\nline 1\n')
     log.taskStderr(n, 'warn 1\n')
     log.taskComplete(n, mkOutcome(n, 'success'))
+    // Frame close always leaves a blank line so the next emission
+    // never glues onto the frame.
     expect(out.text()).toBe(
-      '┌─ one#test > $ noop\nline 1\nwarn 1\n└─ one#test ── (100ms) success\n',
+      '┌─ one#test > $ noop\nline 1\nwarn 1\n└─ one#test ── (100ms) success\n\n',
     )
   })
 
@@ -185,7 +187,7 @@ describe('defaultLogger visibility matrix — focused', () => {
     const n = mkNode('one#test', { requested: true })
     log.taskStart?.(n)
     log.taskComplete(n, mkOutcome(n, 'cache-hit', { restored: true }))
-    expect(out.text()).toBe('┌─ one#test > $ noop\n└─ one#test ── (100ms) restored-local\n')
+    expect(out.text()).toBe('┌─ one#test > $ noop\n└─ one#test ── (100ms) restored-local\n\n')
   })
 
   it('requested cache hit with replay → framed live stream', () => {
@@ -196,7 +198,7 @@ describe('defaultLogger visibility matrix — focused', () => {
     log.taskStdout(n, 'replayed\n')
     log.taskComplete(n, mkOutcome(n, 'cache-hit', { restored: true }))
     expect(out.text()).toBe(
-      '┌─ one#test > $ noop\nreplayed\n└─ one#test ── (100ms) restored-local\n',
+      '┌─ one#test > $ noop\nreplayed\n└─ one#test ── (100ms) restored-local\n\n',
     )
   })
 
@@ -236,6 +238,50 @@ describe('defaultLogger visibility matrix — focused', () => {
     expect(text).toContain('┌─ lib#build')
     expect(text).toContain('tsc exploded')
     expect(text).toContain('failed (exit 2)')
+  })
+})
+
+describe('defaultLogger block separation', () => {
+  it('a block is blank-line-delimited on both sides of a one-liner', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)
+    const ok = mkNode('one#a')
+    log.taskComplete(ok, mkOutcome(ok, 'success'))
+    const bad = mkNode('one#boom')
+    log.taskComplete(bad, mkOutcome(bad, 'failed'))
+    const ok2 = mkNode('one#b')
+    log.taskComplete(ok2, mkOutcome(ok2, 'success'))
+    expect(out.text()).toBe(
+      '● one#a ── success • 100ms\n' +
+        '\n' +
+        '┌─ one#boom > failed (exit 1)\n' +
+        '├─ command\n' +
+        'noop\n' +
+        '└─ one#boom ── (100ms) failed (exit 1)\n' +
+        '\n' +
+        '● one#b ── success • 100ms\n',
+    )
+  })
+
+  it('block follows block: exactly one blank line between, one after', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'errors-only' }, out)
+    for (const id of ['one#x', 'one#y']) {
+      const n = mkNode(id)
+      log.taskComplete(n, mkOutcome(n, 'failed'))
+    }
+    expect(out.text()).toBe(
+      '┌─ one#x > failed (exit 1)\n' +
+        '├─ command\n' +
+        'noop\n' +
+        '└─ one#x ── (100ms) failed (exit 1)\n' +
+        '\n' +
+        '┌─ one#y > failed (exit 1)\n' +
+        '├─ command\n' +
+        'noop\n' +
+        '└─ one#y ── (100ms) failed (exit 1)\n' +
+        '\n',
+    )
   })
 })
 

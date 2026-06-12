@@ -270,7 +270,7 @@ describe('defaultLogger status line integration', () => {
     expect(s.chunks.slice(before)).toEqual(['raw output\n'])
     log.taskComplete(req, mkOutcome(req, 'success'))
     log.runEnd?.()
-    expect(s.text().endsWith('└─ one#test ── (100ms) success\n')).toBe(true)
+    expect(s.text().endsWith('└─ one#test ── (100ms) success\n\n')).toBe(true)
   })
 
   it('group-task starts do not disturb the status line', () => {
