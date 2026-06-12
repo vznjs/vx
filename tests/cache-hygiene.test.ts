@@ -7,23 +7,12 @@ import { mkdtemp, mkdir, rm, writeFile, readdir } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import type { Logger } from '../src/orchestrator/index.js'
-import { run } from '../src/orchestrator/index.js'
 
 const TIMEOUT = 30_000
 const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
 
 let root: string
 let log: string[]
-
-const logger = (): Logger => ({
-  status(line) {
-    log.push(line)
-  },
-  taskStdout() {},
-  taskStderr() {},
-  taskComplete() {},
-})
 
 async function makeWorkspace(): Promise<void> {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-hygiene-'))

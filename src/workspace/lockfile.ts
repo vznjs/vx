@@ -13,7 +13,7 @@
 
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
-import { relPosix, UserError, xxh3hex } from '../util/index.js'
+import { relPosix, UserError } from '../util/index.js'
 import { validateProjectConfig } from './project-loader.js'
 
 export const LOCKFILE_NAME = 'vx-lock.json'
