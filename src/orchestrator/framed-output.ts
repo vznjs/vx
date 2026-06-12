@@ -39,6 +39,8 @@ const ACCENT = '#06b6d4' // cyan-500 — bullets, remote-hit hint
 // the project palette so the two halves always read apart.
 // Section rules + the summary rule share one frame width.
 const FRAME_WIDTH = 60
+/** Header scope bar matches the summary meters' width. */
+const SCOPE_BAR_WIDTH = 50
 
 const PROJECT_PALETTE = [
   '#a78bfa', // violet-400
@@ -68,32 +70,53 @@ export interface HeaderInput {
   remoteCacheEnabled: boolean
   /** Worker-pool size for this run; shown so the region rows have context. */
   concurrency?: number
+  /** Total projects discovery found (already enumerated for boundary
+   *  geometry — free); drives the affected-projects scope bar. */
+  workspaceProjectCount?: number
 }
 
 export function formatHeader(input: HeaderInput, colors: ColorSupport = NO_COLOR): string[] {
-  // Same visual language as the run summary: gradient wordmark rule
-  // (version embedded) + dim-label rows. The old `\u2022` bullet style was
-  // the last surface speaking its own dialect.
+  // Same visual language as the run summary: bars with legends BELOW,
+  // dim-label rows, gradient wordmark rule (version embedded) at the
+  // bottom closing the header off from the stream.
   const dim = (t: string) => paint('', t, colors, { dim: true })
-  const row = (label: string, value: string): string => `  ${dim(label.padEnd(6))}  ${value}`
+  // Header labels pad to 'projects' (8) — wider than the summary's
+  // 6-char column, but aligned within the header block.
+  const row = (label: string, value: string): string => `  ${dim(label.padEnd(8))}  ${value}`
+  const legend = (value: string): string => `${' '.repeat(12)}${value}`
   const sep = ` ${dim('\u00b7')} `
-  const taskList = paint('', input.tasks.join(', '), colors, { bold: true })
-  const parts = [
-    taskList,
-    `${input.packageCount} project${input.packageCount === 1 ? '' : 's'}`,
+
+  const lines: string[] = ['']
+  // Affected-projects scope bar (yellow affected / gray rest of the
+  // workspace). Total TASK count stays off the bar — counting it
+  // would force evaluating out-of-scope configs, which scoped
+  // loading exists to avoid; the project list is already enumerated.
+  const total = input.workspaceProjectCount
+  if (total !== undefined && total > 0) {
+    const cells = Math.min(
+      SCOPE_BAR_WIDTH,
+      Math.max(1, Math.round((input.packageCount / total) * SCOPE_BAR_WIDTH)),
+    )
+    const bar =
+      paint(WARN, '\u25b0'.repeat(cells), colors) +
+      paint('', '\u25b1'.repeat(SCOPE_BAR_WIDTH - cells), colors, { dim: true })
+    lines.push(
+      row('projects', bar),
+      legend(`${input.packageCount} affected ${dim('\u00b7')} ${total} total`),
+    )
+  }
+  const items = [
+    paint('', input.tasks.join(', '), colors, { bold: true }),
     `${input.taskCount} task${input.taskCount === 1 ? '' : 's'}`,
   ]
-  if (input.concurrency !== undefined) parts.push(`${input.concurrency} workers`)
-  // Rule at the BOTTOM (owner): it closes the header off from the
-  // task stream and mirrors the summary's rule — the run's output
-  // lives between the two wordmark rules.
-  return [
-    '',
-    row('run', parts.join(sep)),
+  if (input.concurrency !== undefined) items.push(`${input.concurrency} workers`)
+  lines.push(
+    row('tasks', items.join(sep)),
     row('cache', input.remoteCacheEnabled ? 'local + remote' : 'local only'),
     gradientRule(colors, `vx ${input.version}`),
     '',
-  ]
+  )
+  return lines
 }
 
 export interface TaskBlockBody {

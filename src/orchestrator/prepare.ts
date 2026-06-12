@@ -45,6 +45,8 @@ export interface PreparedRun {
    * lint, etc.) — observable in cache-hit run times.
    */
   gitFilesCache: GitFilesCache
+  /** Every project discovery found, in or out of scope — header scope bar. */
+  workspaceProjectCount: number
   /**
    * Per-run memo for derived hashes — project package.json bytes
    * keyed by projectDir, task-config hash keyed by config object
@@ -202,6 +204,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       nestedDirsByProject,
       gitFilesCache,
       hashCache,
+      workspaceProjectCount: projectMetas.length,
       empty: 'no-tasks-declared',
     }
   }
@@ -225,6 +228,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     nestedDirsByProject,
     gitFilesCache,
     hashCache,
+    workspaceProjectCount: projectMetas.length,
     empty: nodes.size === 0 ? 'empty-graph' : null,
   }
 }

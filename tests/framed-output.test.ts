@@ -28,7 +28,7 @@ function outcome(
 }
 
 describe('formatHeader', () => {
-  it('renders the gradient rule + run/cache rows in the summary style', () => {
+  it('renders scope bar + legend, items row, cache row, rule at the bottom', () => {
     expect(
       formatHeader({
         version: '1.2.3',
@@ -36,17 +36,20 @@ describe('formatHeader', () => {
         tasks: ['lint'],
         taskCount: 1,
         remoteCacheEnabled: false,
+        workspaceProjectCount: 4,
       }),
     ).toEqual([
       '',
-      '  run     lint · 1 project · 1 task',
-      '  cache   local only',
+      '  projects  ' + '▰'.repeat(13) + '▱'.repeat(37),
+      '            1 affected · 4 total',
+      '  tasks     lint · 1 task',
+      '  cache     local only',
       '─ vx 1.2.3 ' + '─'.repeat(49),
       '',
     ])
   })
 
-  it('lists multiple tasks comma-separated, pluralizes counts, shows workers', () => {
+  it('omits the scope bar without a workspace total; lists tasks + workers as items', () => {
     const lines = formatHeader({
       version: '0.0.0',
       packageCount: 3,
@@ -55,20 +58,9 @@ describe('formatHeader', () => {
       remoteCacheEnabled: true,
       concurrency: 8,
     })
-    expect(lines).toContain('  run     build, lint, test · 3 projects · 3 tasks · 8 workers')
-    expect(lines).toContain('  cache   local + remote')
-  })
-
-  it('shows non-square task/package counts (e.g. task not defined everywhere)', () => {
-    // 5 packages, but only 3 of them have `lint` declared → 3 tasks.
-    const lines = formatHeader({
-      version: '0.0.0',
-      packageCount: 5,
-      tasks: ['lint'],
-      taskCount: 3,
-      remoteCacheEnabled: false,
-    })
-    expect(lines).toContain('  run     lint · 5 projects · 3 tasks')
+    expect(lines).toContain('  tasks     build, lint, test · 3 tasks · 8 workers')
+    expect(lines).toContain('  cache     local + remote')
+    expect(lines.find((l) => l.includes('projects'))).toBeUndefined()
   })
 })
 

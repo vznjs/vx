@@ -15,7 +15,7 @@ import {
   type StatusStream,
   type WorkerSlot,
 } from './status-line.js'
-import { formatDuration } from './summary.js'
+import { formatDuration, formatSummarySection } from './summary.js'
 import { isGroupTask } from '../graph/index.js'
 
 export interface Logger {
@@ -177,6 +177,13 @@ export function defaultLogger(
   let upToDate = 0
   let restoredLocal = 0
   let restoredRemote = 0
+  let skippedCount = 0
+  // Cache-miss duration spread, accumulated incrementally (the same
+  // numbers the final summary computes from the outcome list).
+  let spreadMax = 0
+  let spreadMin = Infinity
+  let spreadSum = 0
+  let spreadCount = 0
   // Pinned zones above the worker rows: failures accumulate as they
   // happen; persistent tasks pin at ready (their outcome lands while
   // the child keeps running). Both live until runEnd kills the region.
@@ -188,22 +195,36 @@ export function defaultLogger(
 
   const refresh = (force: boolean): void => {
     if (statusDead) return
+    // The live summary IS the final summary's section, built from the
+    // same formatter so the region visually becomes the printout.
+    const summaryLines = formatSummarySection(
+      {
+        failed,
+        successful: succeeded + upToDate + restoredLocal + restoredRemote,
+        skipped: skippedCount,
+        total,
+        upToDate,
+        restoredLocal,
+        restoredRemote,
+        miss: succeeded + failed,
+        left: total - done,
+        spread:
+          spreadCount > 0
+            ? { maxMs: spreadMax, minMs: spreadMin, sumMs: spreadSum, count: spreadCount }
+            : null,
+      },
+      Date.now() - startedAtMs,
+      colors,
+    )
     writer.setRegion(
       formatStatusRegion(
         {
           pinnedPersistent,
           slots,
-          done,
-          total,
-          succeeded,
-          upToDate,
-          restoredLocal,
-          restoredRemote,
-          failed,
           overflow: slotQueue.length,
-          elapsedMs: Date.now() - startedAtMs,
           nowMs: Date.now(),
           spinnerFrame,
+          summaryLines,
         },
         colors,
       ),
@@ -352,6 +373,15 @@ export function defaultLogger(
             if (outcome.restored === false) upToDate++
             else restoredRemote++
             break
+          case 'skipped':
+            skippedCount++
+            break
+        }
+        if (outcome.status === 'success' || outcome.status === 'failed') {
+          spreadMax = Math.max(spreadMax, outcome.durationMs)
+          spreadMin = Math.min(spreadMin, outcome.durationMs)
+          spreadSum += outcome.durationMs
+          spreadCount++
         }
         refresh(true)
       }

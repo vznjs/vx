@@ -86,12 +86,12 @@ describe('formatRunSummary', () => {
 
   // The ⚡ instant stamp was removed by owner decision — full-cache
   // runs read from the full meter bar instead.
-  it('full-cache run: plain time row, full meter bar', () => {
+  it('full-cache run: plain time row (spread counts misses only), full meter bar', () => {
     const lines = formatRunSummary(
       [outcome('a#x', 'cache-hit'), outcome('b#x', 'cache-hit-remote')],
       42,
     )
-    expect(lines.at(-1)).toBe('  time    42ms · max 100ms · avg 100ms · min 100ms')
+    expect(lines.at(-1)).toBe('  time    42ms')
   })
 
   it('partial-cache run: plain time row', () => {

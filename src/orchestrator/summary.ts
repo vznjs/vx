@@ -13,6 +13,10 @@ const NO_COLOR: ColorSupport = { enabled: false }
 const SUCCESS = '#22c55e'
 const WARN = '#eab308'
 const ACCENT = '#06b6d4'
+// Cache provenance hues (owner): local light blue, remote dark blue —
+// yellow is skipped's color on both meters.
+const LOCAL = '#38bdf8' // sky-400
+const REMOTE = '#2563eb' // blue-600
 const ERROR = '#ef4444'
 
 const BAR_WIDTH = 50
@@ -53,7 +57,7 @@ export function gradientRule(colors: ColorSupport, mark = 'vx'): string {
  * the bar.
  */
 function segmentBar(
-  segments: readonly { n: number; color: string }[],
+  segments: readonly { n: number; color: string; glyph?: string; dim?: boolean }[],
   colors: ColorSupport,
 ): string {
   const total = segments.reduce((sum, seg) => sum + seg.n, 0)
@@ -76,35 +80,63 @@ function segmentBar(
       cells[i] = 1
     }
   }
-  return segments.map((seg, i) => paint(seg.color, '\u25b0'.repeat(cells[i]!), colors)).join('')
+  return segments
+    .map((seg, i) =>
+      paint(seg.color, (seg.glyph ?? '\u25b0').repeat(cells[i]!), colors, {
+        ...(seg.dim === true ? { dim: true } : {}),
+      }),
+    )
+    .join('')
 }
 
-export function formatRunSummary(
-  outcomes: readonly TaskOutcome[],
+/** Aggregate counts feeding the summary section — buildable from a
+ *  finished outcome list (formatRunSummary) or incrementally by the
+ *  live logger, so the in-flight region and the final summary are the
+ *  SAME section, one filling in as the other will print. */
+export interface SummaryStats {
+  failed: number
+  /** Ended OK — executed successes AND cache hits. */
+  successful: number
+  skipped: number
+  total: number
+  upToDate: number
+  restoredLocal: number
+  restoredRemote: number
+  /** Tasks that executed (success + failed) — the cache misses. */
+  miss: number
+  /** Still to run (live section only; 0 in the final summary) — renders
+   *  as a gray ▱ remainder so the live meters FILL toward the final. */
+  left?: number
+  /** Cache-miss duration spread (only tasks that actually executed). */
+  spread: { maxMs: number; minMs: number; sumMs: number; count: number } | null
+}
+
+export function formatSummarySection(
+  stats: SummaryStats,
   totalMs: number,
   colors: ColorSupport = NO_COLOR,
 ): string[] {
-  const t = tallyOutcomes(outcomes)
-  const hits = t.cachedLocal + t.cachedRemote
-  // Skipped tasks never had a shot at the cache; the cache meter
-  // covers the tasks that actually resolved.
-  const denom = t.total - t.skipped
-  const miss = denom - hits
+  const hits = stats.upToDate + stats.restoredLocal + stats.restoredRemote
+  const miss = stats.miss
+  const left = stats.left ?? 0
+  const remainder = { n: left, color: '', glyph: '\u25b1', dim: true }
 
   const dim = (txt: string) => paint('', txt, colors, { dim: true })
   const row = (label: string, value: string): string => `  ${dim(label.padEnd(6))}  ${value}`
   const join = (parts: string[]): string => parts.join(` ${dim('\u00b7')} `)
 
-  // Tasks meter + numbers, live-line order: failed · success · skipped.
+  // Tasks meter + numbers, fixed order: failed · success · skipped.
   const taskParts: string[] = []
-  if (t.failed > 0) taskParts.push(paint(ERROR, `${t.failed} failed`, colors, { bold: true }))
-  if (t.successful > 0) taskParts.push(paint(SUCCESS, `${t.successful} success`, colors))
-  if (t.skipped > 0) taskParts.push(paint(WARN, `${t.skipped} skipped`, colors))
+  if (stats.failed > 0)
+    taskParts.push(paint(ERROR, `${stats.failed} failed`, colors, { bold: true }))
+  if (stats.successful > 0) taskParts.push(paint(SUCCESS, `${stats.successful} success`, colors))
+  if (stats.skipped > 0) taskParts.push(paint(WARN, `${stats.skipped} skipped`, colors))
   const taskBar = segmentBar(
     [
-      { n: t.failed, color: ERROR },
-      { n: t.successful, color: SUCCESS },
-      { n: t.skipped, color: WARN },
+      { n: stats.failed, color: ERROR },
+      { n: stats.successful, color: SUCCESS },
+      { n: stats.skipped, color: WARN },
+      remainder,
     ],
     colors,
   )
@@ -113,45 +145,88 @@ export function formatRunSummary(
   const legend = (parts: string[]): string => `${' '.repeat(10)}${join(parts)}`
   const lines: string[] = ['', gradientRule(colors)]
   if (taskBar.length > 0) {
-    lines.push(row('tasks', taskBar), legend(taskParts))
+    lines.push(row('tasks', taskBar))
+    // No legend line until the first bucket lands (live: all-gray bar).
+    if (taskParts.length > 0) lines.push(legend(taskParts))
   } else {
     lines.push(row('tasks', dim('0 tasks')))
   }
 
-  // Cache meter + numbers, live-line order: miss · up-to-date · local
-  // · remote.
-  if (denom > 0) {
+  // Cache meter + numbers, fixed order: miss · up-to-date · local ·
+  // remote.
+  if (miss + hits + left + stats.skipped > 0) {
     const cacheBar = segmentBar(
       [
         { n: miss, color: ERROR },
-        { n: t.upToDate, color: SUCCESS },
-        { n: t.restoredLocal, color: WARN },
-        { n: t.restoredRemote, color: ACCENT },
+        { n: stats.upToDate, color: SUCCESS },
+        { n: stats.restoredLocal, color: LOCAL },
+        { n: stats.restoredRemote, color: REMOTE },
+        { n: stats.skipped, color: WARN },
+        remainder,
       ],
       colors,
     )
     const cacheParts: string[] = []
     if (miss > 0) cacheParts.push(paint(ERROR, `${miss} miss`, colors))
-    if (t.upToDate > 0) cacheParts.push(paint(SUCCESS, `${t.upToDate} up-to-date`, colors))
-    if (t.restoredLocal > 0) cacheParts.push(paint(WARN, `${t.restoredLocal} local`, colors))
-    if (t.restoredRemote > 0) cacheParts.push(paint(ACCENT, `${t.restoredRemote} remote`, colors))
-    lines.push(row('cache', cacheBar), legend(cacheParts))
+    if (stats.upToDate > 0) cacheParts.push(paint(SUCCESS, `${stats.upToDate} up-to-date`, colors))
+    if (stats.restoredLocal > 0)
+      cacheParts.push(paint(LOCAL, `${stats.restoredLocal} local`, colors))
+    if (stats.restoredRemote > 0)
+      cacheParts.push(paint(REMOTE, `${stats.restoredRemote} remote`, colors))
+    // Skipped tasks have no cache provenance, but omitting them made
+    // the cache legend sum below the tasks legend (owner-reported
+    // confusion) — on the bar and in the legend, yellow like the
+    // tasks meter.
+    if (stats.skipped > 0) cacheParts.push(paint(WARN, `${stats.skipped} skipped`, colors))
+    lines.push(row('cache', cacheBar))
+    if (cacheParts.length > 0) lines.push(legend(cacheParts))
   }
 
-  // Per-task duration spread (skipped tasks never ran — excluding
-  // them keeps min honest). Dim: context, not headline.
-  const durations = outcomes
-    .filter((o) => o.status !== 'skipped' && !isGroupTask(o.node))
-    .map((o) => o.durationMs)
+  // Cache-miss duration spread (owner: hits' restore times polluted
+  // it — only tasks that actually executed count). Dim: context.
   let spread = ''
-  if (durations.length > 0) {
-    const max = Math.max(...durations)
-    const min = Math.min(...durations)
-    const avg = durations.reduce((sum, d) => sum + d, 0) / durations.length
-    spread = ` ${dim(`\u00b7 max ${formatDuration(max)} \u00b7 avg ${formatDuration(avg)} \u00b7 min ${formatDuration(min)}`)}`
+  if (stats.spread !== null && stats.spread.count > 0) {
+    const { maxMs, minMs, sumMs, count } = stats.spread
+    spread = ` ${dim(`\u00b7 max ${formatDuration(maxMs)} \u00b7 avg ${formatDuration(sumMs / count)} \u00b7 min ${formatDuration(minMs)}`)}`
   }
   lines.push('', row('time', `${formatDuration(totalMs)}${spread}`))
   return lines
+}
+
+export function formatRunSummary(
+  outcomes: readonly TaskOutcome[],
+  totalMs: number,
+  colors: ColorSupport = NO_COLOR,
+): string[] {
+  const t = tallyOutcomes(outcomes)
+  // Spread over executed tasks only — `success`/`failed` statuses ran
+  // a command; cache-hit statuses replayed one.
+  const durations = outcomes
+    .filter((o) => (o.status === 'success' || o.status === 'failed') && !isGroupTask(o.node))
+    .map((o) => o.durationMs)
+  return formatSummarySection(
+    {
+      failed: t.failed,
+      successful: t.successful,
+      skipped: t.skipped,
+      total: t.total,
+      upToDate: t.upToDate,
+      restoredLocal: t.restoredLocal,
+      restoredRemote: t.restoredRemote,
+      miss: t.total - t.skipped - (t.cachedLocal + t.cachedRemote),
+      spread:
+        durations.length > 0
+          ? {
+              maxMs: Math.max(...durations),
+              minMs: Math.min(...durations),
+              sumMs: durations.reduce((sum, d) => sum + d, 0),
+              count: durations.length,
+            }
+          : null,
+    },
+    totalMs,
+    colors,
+  )
 }
 
 export function formatDuration(ms: number): string {

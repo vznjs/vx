@@ -257,16 +257,20 @@ describe('defaultLogger status line integration', () => {
     const s = tty()
     const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
     log.runStart?.({ total: 2, concurrency: 2 })
-    // Fixed-height region from the start: idle slots + stats line.
+    // Region from the start: idle slots + the live summary section.
     expect(s.text()).toContain('idle')
-    expect(s.text()).toContain('idle')
-    expect(s.text()).toContain('▶ 0 failed · 0 success · 2 left · 2 total')
+    expect(s.text()).toContain('─ vx ')
+    expect(s.text()).toContain('▱')
     const a = mkNode('one#a')
     log.taskStart?.(a)
     expect(s.chunks[s.chunks.length - 1]).toContain('one#a')
     log.taskComplete(a, mkOutcome(a, 'success'))
     const after = s.chunks[s.chunks.length - 1]!
-    expect(after).toContain('▶ 0 failed · 1 success · 1 left · 2 total')
+    // The live section speaks the summary's language as it fills in.
+    expect(after).toContain('1 success')
+    expect(after).toContain('1 miss')
+    expect(after).toContain('▱')
+    expect(after).toContain('  time  ')
     log.runEnd?.()
     log.status(' Tasks:    1 successful, 1 total')
     const text = s.text()
@@ -327,7 +331,7 @@ describe('defaultLogger status line integration', () => {
     finish('c#x', 'cache-hit-remote', true)
     finish('d#x', 'failed')
     const last = s.chunks[s.chunks.length - 1]!
-    expect(last).toContain('1 failed · 0 success · 0 left · 4 total')
+    expect(last).toContain('1 failed · 3 success')
     expect(last).toContain('1 miss · 1 up-to-date · 1 local · 1 remote')
     log.runEnd?.()
   })
@@ -434,59 +438,36 @@ describe('defaultLogger status line integration', () => {
 })
 
 describe('formatStatusRegion', () => {
+  const SUMMARY = ['', '─ vx ──', '  tasks   …']
   const base = {
     pinnedPersistent: [],
-    done: 0,
-    total: 8,
-    succeeded: 0,
-    upToDate: 0,
-    restoredLocal: 0,
-    restoredRemote: 0,
-    failed: 0,
     overflow: 0,
-    elapsedMs: 5000,
     nowMs: 10_000,
     spinnerFrame: 0,
+    summaryLines: SUMMARY,
   }
   const slot = (id: string, startedMs = 8000): WorkerSlot => ({ id, startedMs })
 
-  it('renders one row per slot plus the stats line, idle slots dimmed-but-present', () => {
+  it('renders slot rows then the live summary section verbatim', () => {
     const lines = formatStatusRegion({ ...base, slots: [slot('a#build'), null] })
-    expect(lines).toHaveLength(3)
+    expect(lines).toHaveLength(5)
     expect(lines[0]).toContain('a#build')
     expect(lines[0]).toContain('2.0s')
     expect(lines[1]).toContain('idle')
-    expect(lines[2]).toBe(
-      '▶ 0 failed · 0 success · 8 left · 8 total │ 0 miss · 0 up-to-date · 0 local · 0 remote │ 00:05',
-    )
+    expect(lines.slice(2)).toEqual(SUMMARY)
   })
 
-  it('idle rows hold their place so the region height never changes', () => {
+  it('idle rows hold their place so the slot zone height never changes', () => {
     const slots = Array.from({ length: 10 }, () => null)
     const lines = formatStatusRegion({ ...base, slots })
-    expect(lines).toHaveLength(11)
+    expect(lines).toHaveLength(13)
     expect(lines.slice(0, 10).every((l) => l.includes('idle'))).toBe(true)
   })
 
-  it('every bucket is always present in fixed order — no layout shift', () => {
-    const lines = formatStatusRegion({
-      ...base,
-      slots: [null],
-      done: 7,
-      succeeded: 2,
-      upToDate: 3,
-      restoredLocal: 1,
-      restoredRemote: 1,
-      failed: 0,
-    })
-    expect(lines.at(-1)).toBe(
-      '▶ 0 failed · 2 success · 1 left · 8 total │ 2 miss · 3 up-to-date · 1 local · 1 remote │ 00:05',
-    )
-  })
-
-  it('overflow appends "+k more"', () => {
+  it('overflow gets its own dim line between slots and summary', () => {
     const lines = formatStatusRegion({ ...base, slots: [slot('a#x')], overflow: 3 })
-    expect(lines.at(-1)).toContain('· +3 more')
+    expect(lines[1]).toBe('… +3 more running')
+    expect(lines.slice(2)).toEqual(SUMMARY)
   })
 
   it('long ids middle-truncate to keep the column stable', () => {
@@ -502,10 +483,11 @@ describe('formatStatusRegion', () => {
       pinnedPersistent: ['web#dev', 'api#dev'],
       slots: [null],
     })
-    expect(lines).toHaveLength(4)
+    expect(lines).toHaveLength(6)
     expect(lines[0]).toBe('▸ web#dev ── running')
     expect(lines[1]).toBe('▸ api#dev ── running')
     expect(lines[2]).toContain('idle')
+    expect(lines.slice(3)).toEqual(SUMMARY)
   })
 
   it('persistent pins keep ids identity-colored, never status-colored', () => {

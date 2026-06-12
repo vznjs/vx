@@ -49,6 +49,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     nestedDirsByProject,
     gitFilesCache,
     hashCache,
+    workspaceProjectCount,
   } = prepared
   const concurrency =
     options.concurrency ??
@@ -129,6 +130,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         taskCount,
         remoteCacheEnabled,
         concurrency,
+        workspaceProjectCount,
       },
       colors,
     ))

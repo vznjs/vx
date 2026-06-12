@@ -184,28 +184,19 @@ export interface StatusRegionState {
   pinnedPersistent: readonly string[]
   /** Fixed-size slot array; null = idle worker. Index = display row. */
   slots: readonly (WorkerSlot | null)[]
-  done: number
-  total: number
-  succeeded: number
-  upToDate: number
-  restoredLocal: number
-  restoredRemote: number
-  failed: number
   /** Running tasks beyond the displayed slots. */
   overflow: number
-  elapsedMs: number
   /** Clock value used for per-slot elapsed (injectable for tests). */
   nowMs: number
   /** Monotonic redraw counter driving the spinner animation. */
   spinnerFrame: number
-}
-
-/** Elapsed run time as mm:ss (61s → 01:01). */
-function formatClock(ms: number): string {
-  const total = Math.floor(ms / 1000)
-  const m = Math.floor(total / 60)
-  const sec = total % 60
-  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+  /**
+   * The live summary section (built by the logger via
+   * formatSummarySection) — the SAME section the final summary
+   * prints, filling in as the run progresses. Rendered verbatim
+   * below the worker rows.
+   */
+  summaryLines: readonly string[]
 }
 
 function truncateId(id: string, width: number): string {
@@ -289,22 +280,11 @@ export function formatStatusRegion(
     const elapsed = `${(Math.max(0, s.nowMs - slot.startedMs) / 1000).toFixed(1)}s`
     lines.push(`${spin} ${paintSlotId(slot.id, width, colors)} ${elapsed}`)
   }
-  // Labeled colored pairs in two groups: run progress, then cache
-  // provenance. Every bucket always present in fixed order.
-  const progress = [
-    paint(ERROR, `${s.failed} failed`, colors),
-    paint(SUCCESS, `${s.succeeded} success`, colors),
-    paint(WARN, `${s.total - s.done} left`, colors),
-    paint(ACCENT, `${s.total} total`, colors),
-  ].join(' · ')
-  const cache = [
-    paint(ERROR, `${s.succeeded + s.failed} miss`, colors),
-    paint(SUCCESS, `${s.upToDate} up-to-date`, colors),
-    paint(WARN, `${s.restoredLocal} local`, colors),
-    paint(ACCENT, `${s.restoredRemote} remote`, colors),
-  ].join(' · ')
-  let stats = `▶ ${progress} ${dim('│')} ${cache} ${dim('│')} ${formatClock(s.elapsedMs)}`
-  if (s.overflow > 0) stats += ` · +${s.overflow} more`
-  lines.push(stats)
+  if (s.overflow > 0) {
+    lines.push(dim(`\u2026 +${s.overflow} more running`))
+  }
+  // The live summary section — identical shape to the final printout,
+  // so the region visually BECOMES the summary when the run ends.
+  lines.push(...s.summaryLines)
   return lines
 }
