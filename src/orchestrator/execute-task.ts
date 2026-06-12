@@ -283,6 +283,20 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
+  // Miss-reason diagnostic (vite-task-inspired): only when a previous
+  // build of this task exists — first builds stay silent, fully-cached
+  // runs print nothing. One indexed SQL lookup, misses only.
+  if (cacheEnabled) {
+    const prev = cache.lastEntryForTask(node.id)
+    if (prev !== null && prev.hash !== hash) {
+      const reason =
+        prev.command !== step.command
+          ? 'command changed'
+          : 'inputs, config, or upstream outputs changed'
+      log.status(`vx: ${node.id} cache miss — ${reason} (previous ${prev.hash})`)
+    }
+  }
+
   // Cache miss path (or caching disabled). Clean declared outputs
   // before exec so a stale prior-build artifact can't survive into a
   // fresh run.

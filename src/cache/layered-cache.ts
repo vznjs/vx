@@ -116,6 +116,10 @@ export class LayeredCache implements CacheLayer {
     return outputsHash
   }
 
+  lastEntryForTask(taskId: string): { hash: string; command: string } | null {
+    return this.local.lastEntryForTask(taskId)
+  }
+
   async ingest(hash: string, compressed: Uint8Array, meta: IngestMeta): Promise<void> {
     await this.local.ingest(hash, compressed, meta)
   }
