@@ -91,11 +91,14 @@ describe('formatTaskBlock', () => {
     )
     expect(out).toBe(
       '┌─ @vzn/vx#lint > success\n' +
-        '├─ command\n' +
-        'oxlint .\n' +
-        '├─ stdout\n' +
+        '\n' +
+        '$ oxlint .\n' +
+        '\n' +
+        '├─ STDOUT ──────────────────────────────────────────────────\n' +
+        '\n' +
         'Found 0 warnings and 0 errors.\n' +
         'Finished in 327ms.\n' +
+        '\n' +
         '└─ @vzn/vx#lint ── (327ms) success\n',
     )
   })
@@ -108,8 +111,9 @@ describe('formatTaskBlock', () => {
     )
     expect(out).toBe(
       '┌─ @vzn/vx#lint > success\n' +
-        '├─ command\n' +
-        'oxlint .\n' +
+        '\n' +
+        '$ oxlint .\n' +
+        '\n' +
         '└─ @vzn/vx#lint ── (5ms) success\n',
     )
   })
@@ -128,8 +132,10 @@ describe('formatTaskBlock', () => {
     )
     expect(out).toBe(
       '┌─ @vzn/vx#lint > restored-local • abcdef01\n' +
-        '├─ stdout\n' +
+        '├─ STDOUT ──────────────────────────────────────────────────\n' +
+        '\n' +
         'Found 0 warnings and 0 errors.\n' +
+        '\n' +
         '└─ @vzn/vx#lint ── (12ms) restored-local\n',
     )
   })
@@ -168,7 +174,7 @@ describe('formatTaskBlock', () => {
     )
   })
 
-  it('failures put the outcome in the header and the command in its own section', () => {
+  it('failures put the outcome in the header, command as a dim $ line', () => {
     const out = formatTaskBlock(
       node('@vzn/vx#build', 'tsc'),
       outcome('@vzn/vx#build', 'failed', { durationMs: 1234, exitCode: 2 }),
@@ -176,10 +182,13 @@ describe('formatTaskBlock', () => {
     )
     expect(out).toBe(
       '┌─ @vzn/vx#build > failed (exit 2)\n' +
-        '├─ command\n' +
-        'tsc\n' +
-        '├─ stderr\n' +
+        '\n' +
+        '$ tsc\n' +
+        '\n' +
+        '├─ STDERR ──────────────────────────────────────────────────\n' +
+        '\n' +
         'error TS1234: oops\n' +
+        '\n' +
         '└─ @vzn/vx#build ── (1.23s) failed (exit 2)\n',
     )
   })
@@ -200,13 +209,18 @@ describe('formatTaskBlock', () => {
     )
     expect(out).toBe(
       '┌─ @bench/top#build > failed (exit 1)\n' +
-        '├─ command\n' +
-        'sleep 3 && mkdir -p dist && touch dist/index.js\n' +
-        '├─ stderr\n' +
+        '\n' +
+        '$ sleep 3 && mkdir -p dist && touch dist/index.js\n' +
+        '\n' +
+        '├─ STDERR ──────────────────────────────────────────────────\n' +
+        '\n' +
         'touch: dist/index.js: Operation not permitted\n' +
-        '├─ sandbox violations (2)\n' +
+        '\n' +
+        '├─ SANDBOX VIOLATIONS (2) ──────────────────────────────────\n' +
+        '\n' +
         'touch(32784) deny(1) sysctl-read kern.iossupportversion\n' +
         'touch(32784) deny(1) file-read-metadata /Users/me/proj/packages/top/dist/index.js\n' +
+        '\n' +
         '└─ @bench/top#build ── (3.06s) failed (exit 1)\n',
     )
   })
@@ -254,9 +268,11 @@ describe('formatTaskBlock', () => {
       { stdout: 'out line\n', stderr: 'err line\n' },
       { enabled: true },
     )
-    expect(out).toContain('\x1b[2m├─ command\x1b[0m')
-    expect(out).toContain('\x1b[2m├─ stdout\x1b[0m')
-    expect(out).toContain('\x1b[2m├─ stderr\x1b[0m')
+    // command renders as a dim `$ cmd` line; section labels are
+    // bold + state-colored with a dim trailing rule.
+    expect(out).toContain('\x1b[2m$ tsc\x1b[0m')
+    expect(out).toContain('\x1b[1m\x1b[38;2;34;197;94mSTDOUT\x1b[0m')
+    expect(out).toContain('\x1b[1m\x1b[38;2;239;68;68mSTDERR\x1b[0m')
     expect(out).toContain('\nout line\n')
     expect(out).toContain('\nerr line\n')
     expect(out).not.toContain('│')

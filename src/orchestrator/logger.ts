@@ -9,6 +9,7 @@ import {
 } from './framed-output.js'
 import {
   createOutputWriter,
+  formatFailurePins,
   formatStatusRegion,
   type PinnedFailure,
   type StatusStream,
@@ -181,6 +182,7 @@ export function defaultLogger(
   // the child keeps running). Both live until runEnd kills the region.
   const pinnedFailures: PinnedFailure[] = []
   const pinnedPersistent: string[] = []
+  let flushedFailures = false
 
   const refresh = (force: boolean): void => {
     if (statusDead) return
@@ -286,6 +288,19 @@ export function defaultLogger(
     },
     runEnd() {
       killStatus()
+      // The region (and its pinned ✗ zone) is gone now — re-emit the
+      // failure pins as PERMANENT lines right above the summary, in
+      // every mode and on every stream: "pinned to the end" must
+      // survive the run, and the bottom of the log is where eyes
+      // land. Guarded for repeat runEnd calls. Blocks already end
+      // with a trailing blank; only loose lines need a separator.
+      if (!flushedFailures && pinnedFailures.length > 0) {
+        flushedFailures = true
+        if (lineEmitted || streamedSinceBlock) writer.write('\n')
+        for (const line of formatFailurePins(pinnedFailures, colors)) {
+          writer.write(`${line}\n`)
+        }
+      }
     },
     taskStdout(node, chunk) {
       if (streamsLive(node)) {

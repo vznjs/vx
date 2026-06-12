@@ -255,8 +255,9 @@ describe('defaultLogger block separation', () => {
       '● one#a ── success • 100ms\n' +
         '\n' +
         '┌─ one#boom > failed (exit 1)\n' +
-        '├─ command\n' +
-        'noop\n' +
+        '\n' +
+        '$ noop\n' +
+        '\n' +
         '└─ one#boom ── (100ms) failed (exit 1)\n' +
         '\n' +
         '● one#b ── success • 100ms\n',
@@ -272,13 +273,15 @@ describe('defaultLogger block separation', () => {
     }
     expect(out.text()).toBe(
       '┌─ one#x > failed (exit 1)\n' +
-        '├─ command\n' +
-        'noop\n' +
+        '\n' +
+        '$ noop\n' +
+        '\n' +
         '└─ one#x ── (100ms) failed (exit 1)\n' +
         '\n' +
         '┌─ one#y > failed (exit 1)\n' +
-        '├─ command\n' +
-        'noop\n' +
+        '\n' +
+        '$ noop\n' +
+        '\n' +
         '└─ one#y ── (100ms) failed (exit 1)\n' +
         '\n',
     )

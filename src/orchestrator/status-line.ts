@@ -260,22 +260,37 @@ function paintPinnedId(id: string, colors: ColorSupport): string {
  * order (stable layout beats compactness: layout shift IS the bug
  * this display exists to fix). Height varies only when pins arrive.
  */
-export function formatStatusRegion(
-  s: StatusRegionState,
+/**
+ * Failure pin lines — shared by the live region (top zone) and the
+ * logger's runEnd flush, which re-emits them as PERMANENT scrollback
+ * right above the summary: the region is erased at run end, and
+ * "pinned to the end" must survive it.
+ */
+export function formatFailurePins(
+  failures: readonly PinnedFailure[],
   colors: ColorSupport = NO_COLOR,
 ): string[] {
   const dim = (t: string) => paint('', t, colors, { dim: true })
   const lines: string[] = []
-  for (const f of s.pinnedFailures.slice(0, FAILURE_PIN_CAP)) {
+  for (const f of failures.slice(0, FAILURE_PIN_CAP)) {
     // Glyph + outcome in status red; the id keeps identity coloring
     // (an id must never read as an outcome).
     lines.push(
       `${paint(ERROR, '✗', colors)} ${paintPinnedId(f.id, colors)} ${dim('──')} ${paint(ERROR, `failed (exit ${f.exitCode})`, colors)}`,
     )
   }
-  if (s.pinnedFailures.length > FAILURE_PIN_CAP) {
-    lines.push(dim(`… +${s.pinnedFailures.length - FAILURE_PIN_CAP} more failed`))
+  if (failures.length > FAILURE_PIN_CAP) {
+    lines.push(dim(`… +${failures.length - FAILURE_PIN_CAP} more failed`))
   }
+  return lines
+}
+
+export function formatStatusRegion(
+  s: StatusRegionState,
+  colors: ColorSupport = NO_COLOR,
+): string[] {
+  const dim = (t: string) => paint('', t, colors, { dim: true })
+  const lines: string[] = [...formatFailurePins(s.pinnedFailures, colors)]
   for (const id of s.pinnedPersistent) {
     lines.push(
       `${paint(ACCENT, '▸', colors)} ${paintPinnedId(id, colors)} ${dim('──')} ${paint(ACCENT, 'running', colors)}`,

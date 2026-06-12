@@ -37,6 +37,9 @@ const ACCENT = '#06b6d4' // cyan-500 — bullets, remote-hit hint
 // Projects hash to a stable hue (same project = same color in every
 // run, list, and region row); tasks keep one fixed hue excluded from
 // the project palette so the two halves always read apart.
+// Section rules + the summary rule share one frame width.
+const FRAME_WIDTH = 60
+
 const PROJECT_PALETTE = [
   '#a78bfa', // violet-400
   '#60a5fa', // blue-400
@@ -107,7 +110,16 @@ export function formatTaskBlock(
 
   const idPainted = paintTaskId(node, colors, { bold: true })
   const corner = (s: string) => paint('', s, colors, { dim: true })
-  const section = (title: string) => corner(`├─ ${title}`)
+  // Section labels are bold + state-colored (owner design): stdout
+  // green, stderr red, sandbox yellow, command plain white — only
+  // the command CONTENT is greyed (context, not signal). A dim rule
+  // trails each label to the frame width, and sections get vertical
+  // margins so content stands clear of the furniture.
+  const section = (title: string, color?: string) => {
+    const label = paint(color ?? '', title, colors, { bold: true })
+    const rule = corner('\u2500'.repeat(Math.max(1, FRAME_WIDTH - 4 - title.length)))
+    return `${corner('\u251c\u2500')} ${label} ${rule}`
+  }
   const header = formatBlockHeader(outcome, colors)
   const lines: string[] = [`${corner('┌─')} ${idPainted} ${corner('>')} ${header}`]
 
@@ -115,17 +127,21 @@ export function formatTaskBlock(
   // (success and failed); cache hits replay stored output and skip it,
   // skips never ran anything.
   if (outcome.status === 'success' || outcome.status === 'failed') {
-    lines.push(section('command'), node.config.exec?.command ?? '')
+    // No section label for the command (owner cut it) — the dim `$ `
+    // line under the header reads as the command on its own.
+    lines.push('', corner(`$ ${node.config.exec?.command ?? ''}`), '')
   }
 
   if (stdout.trim().length > 0) {
-    lines.push(section('stdout'))
+    lines.push(section('STDOUT', SUCCESS), '')
     pushBodyLines(lines, stdout)
+    lines.push('')
   }
 
   if (stderr.trim().length > 0) {
-    lines.push(section('stderr'))
+    lines.push(section('STDERR', ERROR), '')
     pushBodyLines(lines, stderr)
+    lines.push('')
   }
 
   // Sandbox violations get a dedicated section inside the frame so the
@@ -133,8 +149,9 @@ export function formatTaskBlock(
   // status output above the box.
   const vlines = outcome.sandboxViolationLines
   if (vlines && vlines.length > 0) {
-    lines.push(section(`sandbox violations (${vlines.length})`))
+    lines.push(section(`SANDBOX VIOLATIONS (${vlines.length})`, WARN), '')
     for (const v of vlines) lines.push(v)
+    lines.push('')
   }
 
   lines.push(`${corner('└─')} ${idPainted} ${corner('──')}${formatBlockFooter(outcome, colors)}`)
