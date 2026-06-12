@@ -260,8 +260,11 @@ function buildTask(
 
   if (cacheEnabled) {
     const files: (string | RawExpr)[] = []
+    const wsFiles: (string | RawExpr)[] = []
+    // globalDependencies are workspace-root-relative by definition —
+    // they map to inputs.workspaceFiles, not project-relative files.
     if (globals.inputs) {
-      files.push({ raw: '...globalInputs' })
+      wsFiles.push({ raw: '...globalInputs' })
       used.add('globalInputs')
     }
     if (def.inputs === undefined) {
@@ -269,22 +272,37 @@ function buildTask(
       files.push('**/*')
     } else {
       for (const i of def.inputs) {
-        if (i === '$TURBO_DEFAULT$') files.push('**/*')
-        else if (i.includes('$TURBO_ROOT$')) {
+        if (i === '$TURBO_DEFAULT$') {
+          files.push('**/*')
+          continue
+        }
+        const neg = i.startsWith('!')
+        const body = neg ? i.slice(1) : i
+        if (body.startsWith('$TURBO_ROOT$/')) {
+          wsFiles.push((neg ? '!' : '') + body.slice('$TURBO_ROOT$/'.length))
+        } else if (i.includes('$TURBO_ROOT$')) {
           todos.push(
-            `input ${JSON.stringify(i)} uses $TURBO_ROOT$ — vx inputs are project-relative; ` +
-              'relocate the file or fold it into vx-preset.ts globalInputs manually',
+            `input ${JSON.stringify(i)}: $TURBO_ROOT$ only maps as a '$TURBO_ROOT$/<path>' ` +
+              'prefix (→ cache.inputs.workspaceFiles) — map manually',
           )
         } else files.push(i)
       }
     }
 
     const outFiles: string[] = []
+    const wsOutFiles: string[] = []
     for (const o of def.outputs ?? []) {
       if (o.startsWith('!')) {
         todos.push(
           `output ${JSON.stringify(o)}: vx outputs have no negation — narrow the positive ` +
             'globs instead',
+        )
+      } else if (o.startsWith('$TURBO_ROOT$/')) {
+        wsOutFiles.push(o.slice('$TURBO_ROOT$/'.length))
+      } else if (o.includes('$TURBO_ROOT$')) {
+        todos.push(
+          `output ${JSON.stringify(o)}: $TURBO_ROOT$ only maps as a '$TURBO_ROOT$/<path>' ` +
+            'prefix (→ cache.outputs.workspaceFiles) — map manually',
         )
       } else outFiles.push(o)
     }
@@ -294,8 +312,11 @@ function buildTask(
     cacheEnv.push(...envNames)
 
     const inputs: Record<string, unknown> = { files }
+    if (wsFiles.length > 0) inputs.workspaceFiles = wsFiles
     if (cacheEnv.length > 0) inputs.env = cacheEnv
-    task.cache = { inputs, outputs: { files: outFiles } }
+    const outputs: Record<string, unknown> = { files: outFiles }
+    if (wsOutFiles.length > 0) outputs.workspaceFiles = wsOutFiles
+    task.cache = { inputs, outputs }
   }
 
   return { name, todos, task }
@@ -318,9 +339,8 @@ function renderPreset(inputs: string[], env: string[], pass: string[]): string {
   if (inputs.length > 0) {
     lines.push(
       '',
-      '// From globalDependencies. Turbo resolved these against the workspace',
-      '// root; vx input globs are project-relative, so entries naming',
-      '// root-only files may need to move into the projects that read them.',
+      '// From globalDependencies — workspace-root-relative, spread into each',
+      '// task’s cache.inputs.workspaceFiles (the $TURBO_ROOT$ equivalent).',
       `export const globalInputs = ${arr(inputs)}`,
     )
   }

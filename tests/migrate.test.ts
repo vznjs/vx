@@ -74,7 +74,7 @@ const TURBO_JSON = {
       outputs: ['dist/**', '!dist/**/*.map'],
       env: ['NODE_ENV', 'VERCEL_*'],
     },
-    codegen: { outputs: ['src/gen/**'] },
+    codegen: { outputs: ['src/gen/**', '$TURBO_ROOT$/generated/api.ts'] },
     lint: { cache: false },
     dev: { cache: false, persistent: true },
     test: { passThroughEnv: ['CI'], interactive: true, outputs: [] },
@@ -130,8 +130,14 @@ describe('vx migrate (turbo)', () => {
       expect(build.exec?.command).toBe('tsc -b')
       expect(build.dependsOn).toEqual(['^build', 'codegen'])
       // $TURBO_DEFAULT$ → '**/*' position preserved; negation passes
-      // through; $TURBO_ROOT$ input dropped; globalDependencies spread first.
-      expect(build.cache?.inputs.files).toEqual(['tsconfig.base.json', '**/*', '!**/*.md'])
+      // through. $TURBO_ROOT$/<path> inputs and globalDependencies are
+      // both root-relative → inputs.workspaceFiles (preset spread first,
+      // then the explicit entry — duplicates are a faithful mapping).
+      expect(build.cache?.inputs.files).toEqual(['**/*', '!**/*.md'])
+      expect(build.cache?.inputs.workspaceFiles).toEqual([
+        'tsconfig.base.json',
+        'tsconfig.base.json',
+      ])
       // env → BOTH cache.inputs.env and passThrough; globalEnv spread into
       // both; globalPassThroughEnv into passThrough only; wildcard dropped.
       expect(build.cache?.inputs.env).toEqual(['GLOBAL_MODE', 'NODE_ENV'])
@@ -140,11 +146,14 @@ describe('vx migrate (turbo)', () => {
       expect(build.cache?.outputs.files).toEqual(['dist/**'])
 
       // No inputs declared → turbo default = all package files.
+      // $TURBO_ROOT$/<path> output → outputs.workspaceFiles.
       const codegen = tasks.codegen!
       expect(codegen.exec?.command).toBe('node gen.js')
-      expect(codegen.cache?.inputs.files).toEqual(['tsconfig.base.json', '**/*'])
+      expect(codegen.cache?.inputs.files).toEqual(['**/*'])
+      expect(codegen.cache?.inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
       expect(codegen.cache?.inputs.env).toEqual(['GLOBAL_MODE'])
       expect(codegen.cache?.outputs.files).toEqual(['src/gen/**'])
+      expect(codegen.cache?.outputs.workspaceFiles).toEqual(['generated/api.ts'])
 
       // cache:false → no cache block at all.
       const lint = tasks.lint!
@@ -179,7 +188,11 @@ describe('vx migrate (turbo)', () => {
       expect(build.cache?.outputs.files).toEqual(['lib/**'])
       // Inherited inputs from root; same-project dep `codegen` dropped
       // silently because lib has no codegen script (turbo semantics).
-      expect(build.cache?.inputs.files).toEqual(['tsconfig.base.json', '**/*', '!**/*.md'])
+      expect(build.cache?.inputs.files).toEqual(['**/*', '!**/*.md'])
+      expect(build.cache?.inputs.workspaceFiles).toEqual([
+        'tsconfig.base.json',
+        'tsconfig.base.json',
+      ])
       expect(build.dependsOn).toEqual(['^build'])
     },
     TIMEOUT,
@@ -193,12 +206,13 @@ describe('vx migrate (turbo)', () => {
   })
 
   it('reports clean/TODO counts and lists each TODO as project#task: reason', () => {
-    // app: codegen + lint clean; build 4 TODOs ($TURBO_ROOT$ dep,
-    // $TURBO_ROOT$ input, output negation, env wildcard), dev 1
-    // (readyWhen), test 1 (interactive). lib#build 3 (inherited
-    // $TURBO_ROOT$ dep + input, env wildcard).
+    // app: codegen + lint clean; build 3 TODOs ($TURBO_ROOT$ dep,
+    // output negation, env wildcard — the $TURBO_ROOT$ input now maps
+    // to inputs.workspaceFiles instead of a TODO), dev 1 (readyWhen),
+    // test 1 (interactive). lib#build 2 (inherited $TURBO_ROOT$ dep,
+    // env wildcard).
     expect(result.out).toContain('2 tasks migrated clean')
-    expect(result.out).toContain('9 TODO')
+    expect(result.out).toContain('7 TODO')
     expect(result.out).toMatch(/app#build: .*\$TURBO_ROOT\$/)
     expect(result.out).toMatch(/app#dev: .*readyWhen/)
     expect(result.out).toMatch(/app#test: .*interactive/)
@@ -304,6 +318,7 @@ const NX_GRAPH = {
                 '{projectRoot}/dist',
                 '{options.outFile}',
                 '{projectRoot}/coverage/lcov.info',
+                '{workspaceRoot}/reports/build.json',
               ],
               dependsOn: [
                 '^build',
@@ -402,13 +417,17 @@ describe('vx migrate (nx)', () => {
       // commands array joined with ' && '.
       expect(build.exec?.command).toBe('tsc -b && echo done')
       // namedInputs expansion: production → default + spec exclusion.
+      // {workspaceRoot}/<path> → inputs.workspaceFiles, not a TODO.
       expect(build.cache?.inputs.files).toEqual(['**/*', '!**/*.spec.ts'])
+      expect(build.cache?.inputs.workspaceFiles).toEqual(['babel.config.json'])
       // {env: X} → cache input AND passThrough (isolated child env).
       expect(build.cache?.inputs.env).toEqual(['NODE_ENV'])
       expect(build.exec?.env?.passThrough).toEqual(['NODE_ENV'])
       // outputs: dir heuristic, {options.*} resolution + project-prefix
-      // strip, file with extension kept verbatim.
+      // strip, file with extension kept verbatim; {workspaceRoot}/<path>
+      // → outputs.workspaceFiles.
       expect(build.cache?.outputs.files).toEqual(['dist/**', 'build/main.js', 'coverage/lcov.info'])
+      expect(build.cache?.outputs.workspaceFiles).toEqual(['reports/build.json'])
       // dependsOn object forms.
       expect(build.dependsOn).toEqual(['^build', 'codegen', '^prebuild', 'pkg-b#tool', 'fmt'])
 
@@ -454,7 +473,8 @@ describe('vx migrate (nx)', () => {
 
   it('reports nx TODO reasons per task', () => {
     expect(result.out).toMatch(/pkg-a#build: .*\^production/)
-    expect(result.out).toMatch(/pkg-a#build: .*workspaceRoot/)
+    // {workspaceRoot}/<path> entries map to workspaceFiles — no TODO.
+    expect(result.out).not.toMatch(/pkg-a#build: .*workspaceRoot/)
     expect(result.out).toMatch(/pkg-a#build: .*externalDependencies/)
     expect(result.out).toMatch(/pkg-a#build: .*params/)
     expect(result.out).toMatch(/pkg-a#serve: .*@nx\/webpack:dev-server/)

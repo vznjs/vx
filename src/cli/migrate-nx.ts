@@ -173,6 +173,7 @@ function buildTask(
   const command = mapCommand(targetName, target, options, projectRel, scripts, todos)
 
   const files: string[] = []
+  const wsFiles: string[] = []
   const envNames: string[] = []
   const expandInput = (entry: unknown, seen: Set<string>): void => {
     if (typeof entry === 'string') {
@@ -186,11 +187,8 @@ function buildTask(
         files.push(neg + s.slice('{projectRoot}/'.length))
         return
       }
-      if (s.startsWith('{workspaceRoot}')) {
-        todos.push(
-          `input ${JSON.stringify(entry)} is workspace-root-relative — vx inputs are ` +
-            'project-relative; relocate manually',
-        )
+      if (s.startsWith('{workspaceRoot}/')) {
+        wsFiles.push(neg + s.slice('{workspaceRoot}/'.length))
         return
       }
       if (s.startsWith('^')) {
@@ -257,10 +255,14 @@ function buildTask(
   for (const entry of target.inputs ?? []) expandInput(entry, new Set())
 
   const outFiles: string[] = []
-  const pushOut = (rel: string): void => {
+  const wsOutFiles: string[] = []
+  // Heuristic: a bare directory path captures its whole subtree.
+  const dirGlob = (rel: string): string => {
     const last = rel.split('/').at(-1)!
-    // Heuristic: a bare directory path captures its whole subtree.
-    outFiles.push(!rel.includes('*') && !last.includes('.') ? `${rel}/**` : rel)
+    return !rel.includes('*') && !last.includes('.') ? `${rel}/**` : rel
+  }
+  const pushOut = (rel: string): void => {
+    outFiles.push(dirGlob(rel))
   }
   for (const o of target.outputs ?? []) {
     let s = o
@@ -280,10 +282,8 @@ function buildTask(
       pushOut(s.slice('{projectRoot}/'.length))
       continue
     }
-    if (s.startsWith('{workspaceRoot}')) {
-      todos.push(
-        `output ${JSON.stringify(o)} is workspace-root-relative — vx outputs are project-relative`,
-      )
+    if (s.startsWith('{workspaceRoot}/')) {
+      wsOutFiles.push(dirGlob(s.slice('{workspaceRoot}/'.length)))
       continue
     }
     if (s.includes('{')) {
@@ -295,8 +295,8 @@ function buildTask(
     else if (s.startsWith(`${projectRel}/`)) pushOut(s.slice(projectRel.length + 1))
     else {
       todos.push(
-        `output ${JSON.stringify(o)} falls outside the project dir — vx outputs are ` +
-          'project-relative',
+        `output ${JSON.stringify(o)} falls outside the project dir — declare it in ` +
+          'cache.outputs.workspaceFiles (workspace-root-relative) if intended',
       )
     }
   }
@@ -366,8 +366,11 @@ function buildTask(
       )
     }
     const inputs: Record<string, unknown> = { files }
+    if (wsFiles.length > 0) inputs.workspaceFiles = wsFiles
     if (envNames.length > 0) inputs.env = envNames
-    task.cache = { inputs, outputs: { files: outFiles } }
+    const outputs: Record<string, unknown> = { files: outFiles }
+    if (wsOutFiles.length > 0) outputs.workspaceFiles = wsOutFiles
+    task.cache = { inputs, outputs }
   }
 
   return { name: targetName, todos, task }
