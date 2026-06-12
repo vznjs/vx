@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'bun:test'
 import {
   createOutputWriter,
+  formatFailureLine,
   formatStatusRegion,
   type StatusStream,
   type WorkerSlot,
@@ -364,20 +365,21 @@ describe('defaultLogger status line integration', () => {
     log.runEnd?.()
   })
 
-  it('a failed task pins to the top of the region and stays until runEnd', () => {
-    const s = tty()
-    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
-    log.runStart?.({ total: 3, concurrency: 1 })
+  it('a failure logs a permanent ✗ line; its frame replays at runEnd', () => {
+    const s2 = tty()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s2, { forceFloorMs: 0 })
+    log.runStart?.({ total: 2, concurrency: 1 })
     const bad = mkNode('one#boom')
     log.taskStart?.(bad)
-    log.taskComplete(bad, mkOutcome(bad, 'failed', { exitCode: 7 }))
-    expect(regionRows(s.chunks[s.chunks.length - 1]!)[0]).toBe('✗ one#boom ── failed (exit 7)')
-    // Pin survives later task churn.
-    const ok = mkNode('two#x')
-    log.taskStart?.(ok)
-    log.taskComplete(ok, mkOutcome(ok, 'success'))
-    expect(regionRows(s.chunks[s.chunks.length - 1]!)[0]).toBe('✗ one#boom ── failed (exit 7)')
+    log.taskStderr(bad, 'kaput\n')
+    log.taskComplete(bad, mkOutcome(bad, 'failed'))
+    // ✗ marker is permanent scrollback, not a region pin.
+    expect(s2.text()).toContain('✗ one#boom ── failed (exit 1)')
+    expect(s2.text()).not.toContain('┌─ one#boom')
     log.runEnd?.()
+    // Full frame replays after the region is gone, above the summary.
+    expect(s2.text()).toContain('┌─ one#boom > failed (exit 1)')
+    expect(s2.text()).toContain('kaput')
   })
 
   it('a ready persistent task pins as running until runEnd', () => {
@@ -433,7 +435,6 @@ describe('defaultLogger status line integration', () => {
 
 describe('formatStatusRegion', () => {
   const base = {
-    pinnedFailures: [],
     pinnedPersistent: [],
     done: 0,
     total: 8,
@@ -495,61 +496,33 @@ describe('formatStatusRegion', () => {
     expect(lines[0]!.length).toBeLessThan(60)
   })
 
-  it('pinned failures render above the worker rows', () => {
+  it('pinned persistent tasks render above the worker rows', () => {
     const lines = formatStatusRegion({
       ...base,
-      pinnedFailures: [{ id: 'a#build', exitCode: 2 }],
-      slots: [slot('b#build'), null],
-    })
-    expect(lines).toHaveLength(4)
-    expect(lines[0]).toBe('✗ a#build ── failed (exit 2)')
-    expect(lines[1]).toContain('b#build')
-  })
-
-  it('failure pins cap at 5 + a dim "+K more failed" line', () => {
-    const pinnedFailures = Array.from({ length: 8 }, (_, i) => ({
-      id: `p${i}#build`,
-      exitCode: 1,
-    }))
-    const lines = formatStatusRegion({ ...base, pinnedFailures, slots: [null] })
-    expect(lines).toHaveLength(8) // 5 pins + more-line + 1 slot + stats
-    expect(lines[0]).toBe('✗ p0#build ── failed (exit 1)')
-    expect(lines[4]).toBe('✗ p4#build ── failed (exit 1)')
-    expect(lines[5]).toBe('… +3 more failed')
-    expect(lines[6]).toContain('idle')
-  })
-
-  it('pinned persistent tasks render between failures and worker rows', () => {
-    const lines = formatStatusRegion({
-      ...base,
-      pinnedFailures: [{ id: 'a#test', exitCode: 1 }],
       pinnedPersistent: ['web#dev', 'api#dev'],
       slots: [null],
     })
-    expect(lines).toHaveLength(5)
-    expect(lines[0]).toBe('✗ a#test ── failed (exit 1)')
-    expect(lines[1]).toBe('▸ web#dev ── running')
-    expect(lines[2]).toBe('▸ api#dev ── running')
-    expect(lines[3]).toContain('idle')
+    expect(lines).toHaveLength(4)
+    expect(lines[0]).toBe('▸ web#dev ── running')
+    expect(lines[1]).toBe('▸ api#dev ── running')
+    expect(lines[2]).toContain('idle')
   })
 
-  it('pins keep ids identity-colored, never status-colored', () => {
+  it('persistent pins keep ids identity-colored, never status-colored', () => {
     const lines = formatStatusRegion(
-      {
-        ...base,
-        pinnedFailures: [{ id: 'a#test', exitCode: 1 }],
-        pinnedPersistent: ['web#dev'],
-        slots: [null],
-      },
+      { ...base, pinnedPersistent: ['web#dev'], slots: [null] },
       { enabled: true },
     )
-    // The ✗ glyph and outcome words are status-colored; the id halves
-    // carry their own identity escapes between them.
-    expect(lines[0]).toContain('✗')
-    expect(lines[0]).toContain('failed (exit 1)')
-    expect(lines[1]).toContain('running')
+    expect(lines[0]).toContain('running')
     expect(lines[0]).toContain('\x1b[')
-    expect(lines[1]).toContain('\x1b[')
+  })
+
+  it('formatFailureLine: red glyph + outcome, identity-colored id', () => {
+    expect(formatFailureLine('a#build', 2)).toBe('✗ a#build ── failed (exit 2)')
+    const colored = formatFailureLine('a#build', 2, { enabled: true })
+    expect(colored).toContain('✗')
+    expect(colored).toContain('failed (exit 2)')
+    expect(colored).toContain('\x1b[')
   })
 })
 

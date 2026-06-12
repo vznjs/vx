@@ -139,7 +139,9 @@ describe('defaultLogger visibility matrix — broad', () => {
     log.taskStdout(n, 'partial work\n')
     log.taskStderr(n, 'kaboom\n')
     log.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 3 }))
+    log.runEnd?.()
     const text = out.text()
+    expect(text).toContain('✗ one#boom ── failed (exit 3)')
     expect(text).toContain('┌─ one#boom')
     expect(text).toContain('partial work')
     expect(text).toContain('kaboom')
@@ -234,7 +236,9 @@ describe('defaultLogger visibility matrix — focused', () => {
     const dep = mkNode('lib#build')
     log.taskStderr(dep, 'tsc exploded\n')
     log.taskComplete(dep, mkOutcome(dep, 'failed', { exitCode: 2 }))
+    log.runEnd?.()
     const text = out.text()
+    expect(text).toContain('✗ lib#build ── failed (exit 2)')
     expect(text).toContain('┌─ lib#build')
     expect(text).toContain('tsc exploded')
     expect(text).toContain('failed (exit 2)')
@@ -242,7 +246,7 @@ describe('defaultLogger visibility matrix — focused', () => {
 })
 
 describe('defaultLogger block separation', () => {
-  it('a block is blank-line-delimited on both sides of a one-liner', () => {
+  it('broad: failure logs an ✗ line inline; the frame replays at runEnd', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)
     const ok = mkNode('one#a')
@@ -251,28 +255,34 @@ describe('defaultLogger block separation', () => {
     log.taskComplete(bad, mkOutcome(bad, 'failed'))
     const ok2 = mkNode('one#b')
     log.taskComplete(ok2, mkOutcome(ok2, 'success'))
+    log.runEnd?.()
     expect(out.text()).toBe(
       '● one#a ── success • 100ms\n' +
+        '✗ one#boom ── failed (exit 1)\n' +
+        '● one#b ── success • 100ms\n' +
         '\n' +
         '┌─ one#boom > failed (exit 1)\n' +
         '\n' +
         '$ noop\n' +
         '\n' +
         '└─ one#boom ── (100ms) failed (exit 1)\n' +
-        '\n' +
-        '● one#b ── success • 100ms\n',
+        '\n',
     )
   })
 
-  it('block follows block: exactly one blank line between, one after', () => {
+  it('deferred frames at runEnd: exactly one blank line between, one after', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'errors-only' }, out)
     for (const id of ['one#x', 'one#y']) {
       const n = mkNode(id)
       log.taskComplete(n, mkOutcome(n, 'failed'))
     }
+    log.runEnd?.()
     expect(out.text()).toBe(
-      '┌─ one#x > failed (exit 1)\n' +
+      '✗ one#x ── failed (exit 1)\n' +
+        '✗ one#y ── failed (exit 1)\n' +
+        '\n' +
+        '┌─ one#x > failed (exit 1)\n' +
         '\n' +
         '$ noop\n' +
         '\n' +

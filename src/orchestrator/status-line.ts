@@ -174,21 +174,7 @@ export interface WorkerSlot {
   startedMs: number
 }
 
-export interface PinnedFailure {
-  id: string
-  exitCode: number
-}
-
-/** Failure pins beyond this collapse into one dim `… +K more failed`. */
-const FAILURE_PIN_CAP = 5
-
 export interface StatusRegionState {
-  /**
-   * Failed tasks, pinned to the top of the region until runEnd so
-   * failures never scroll out of sight under later output (owner:
-   * "pin errors always to the end … on top of the workers").
-   */
-  pinnedFailures: readonly PinnedFailure[]
   /**
    * Ready persistent tasks (dev servers …) whose children keep
    * running after their outcome lands. Pinned until runEnd — the
@@ -261,28 +247,18 @@ function paintPinnedId(id: string, colors: ColorSupport): string {
  * this display exists to fix). Height varies only when pins arrive.
  */
 /**
- * Failure pin lines — shared by the live region (top zone) and the
- * logger's runEnd flush, which re-emits them as PERMANENT scrollback
- * right above the summary: the region is erased at run end, and
- * "pinned to the end" must survive it.
+ * Permanent one-liner logged the moment a task fails (owner design:
+ * "log ✗ … and continue, and at the end log all full frames"). Glyph
+ * + outcome in status red; the id keeps identity coloring (an id
+ * must never read as an outcome).
  */
-export function formatFailurePins(
-  failures: readonly PinnedFailure[],
+export function formatFailureLine(
+  id: string,
+  exitCode: number,
   colors: ColorSupport = NO_COLOR,
-): string[] {
+): string {
   const dim = (t: string) => paint('', t, colors, { dim: true })
-  const lines: string[] = []
-  for (const f of failures.slice(0, FAILURE_PIN_CAP)) {
-    // Glyph + outcome in status red; the id keeps identity coloring
-    // (an id must never read as an outcome).
-    lines.push(
-      `${paint(ERROR, '✗', colors)} ${paintPinnedId(f.id, colors)} ${dim('──')} ${paint(ERROR, `failed (exit ${f.exitCode})`, colors)}`,
-    )
-  }
-  if (failures.length > FAILURE_PIN_CAP) {
-    lines.push(dim(`… +${failures.length - FAILURE_PIN_CAP} more failed`))
-  }
-  return lines
+  return `${paint(ERROR, '✗', colors)} ${paintPinnedId(id, colors)} ${dim('──')} ${paint(ERROR, `failed (exit ${exitCode})`, colors)}`
 }
 
 export function formatStatusRegion(
@@ -290,7 +266,7 @@ export function formatStatusRegion(
   colors: ColorSupport = NO_COLOR,
 ): string[] {
   const dim = (t: string) => paint('', t, colors, { dim: true })
-  const lines: string[] = [...formatFailurePins(s.pinnedFailures, colors)]
+  const lines: string[] = []
   for (const id of s.pinnedPersistent) {
     lines.push(
       `${paint(ACCENT, '▸', colors)} ${paintPinnedId(id, colors)} ${dim('──')} ${paint(ACCENT, 'running', colors)}`,

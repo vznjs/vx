@@ -205,6 +205,23 @@ bun.lock
   {framed-output,logger,status-line}.ts; repinned framed-output/
   output-flow/status-line suites.
 
+- **2026-06**: Failure rendering, final contract (owner-picked
+  option B after rejecting both the inline frame and the runEnd ✗
+  recap): when a task fails in broad / errors-only / focused-dep
+  modes, the stream gets ONE permanent `✗ id ── failed (exit N)`
+  line and the run continues; ALL full failure frames replay
+  together at runEnd, right above the summary — failures read last,
+  uncapped ("at the end logs all full frames of failures"). The
+  region's pinned-✗ zone was REMOVED (✗ lines live in scrollback
+  now; the stats line keeps the red count); the ▸ persistent zone
+  stays. full/CI modes keep frames inline (chronological logs +
+  GHA annotations). formatFailurePins → formatFailureLine.
+  Frame sections also finalized this round: UPPERCASE bold
+  state-colored labels with dim trailing rules to 60 cols (STDOUT
+  green / STDERR red / SANDBOX VIOLATIONS yellow), vertical margins
+  around content, COMMAND label cut — a dim `$ cmd` line under the
+  header carries it.
+
 - **2026-06**: Summary v3 — stacked state meters (owner-driven
   iteration over five revisions in one session; picked from a
   15-design visualization file at /tmp/vx-summary-designs.txt). The
