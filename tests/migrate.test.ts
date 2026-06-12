@@ -486,7 +486,7 @@ describe('vx migrate source detection', () => {
   )
 
   it(
-    'both turbo.json and nx present is an error asking to delete one',
+    'both turbo.json and nx present requires --from to disambiguate',
     async () => {
       const root = await makeRoot('vx-migrate-det2-')
       try {
@@ -496,7 +496,7 @@ describe('vx migrate source detection', () => {
         expect(r.code).toBe(1)
         expect(r.err).toContain('turbo.json')
         expect(r.err).toContain('nx')
-        expect(r.err.toLowerCase()).toContain('delete')
+        expect(r.err).toContain('--from')
       } finally {
         await rm(root, { recursive: true, force: true })
       }
