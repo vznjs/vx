@@ -27,7 +27,7 @@
 
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { paint, type ColorSupport } from './colors.js'
-import { formatDuration } from './summary.js'
+import { formatDuration, gradientRule } from './summary.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
 
@@ -71,16 +71,27 @@ export interface HeaderInput {
 }
 
 export function formatHeader(input: HeaderInput, colors: ColorSupport = NO_COLOR): string[] {
-  const bullet = paint(ACCENT, '•', colors)
-  const taskList = input.tasks.join(', ')
-  const pkgs = `${input.packageCount} package${input.packageCount === 1 ? '' : 's'}`
-  const tasks = `${input.taskCount} task${input.taskCount === 1 ? '' : 's'}`
-  const workers = input.concurrency !== undefined ? `, ${input.concurrency} workers` : ''
+  // Same visual language as the run summary: gradient wordmark rule
+  // (version embedded) + dim-label rows. The old `\u2022` bullet style was
+  // the last surface speaking its own dialect.
+  const dim = (t: string) => paint('', t, colors, { dim: true })
+  const row = (label: string, value: string): string => `  ${dim(label.padEnd(6))}  ${value}`
+  const sep = ` ${dim('\u00b7')} `
+  const taskList = paint('', input.tasks.join(', '), colors, { bold: true })
+  const parts = [
+    taskList,
+    `${input.packageCount} project${input.packageCount === 1 ? '' : 's'}`,
+    `${input.taskCount} task${input.taskCount === 1 ? '' : 's'}`,
+  ]
+  if (input.concurrency !== undefined) parts.push(`${input.concurrency} workers`)
+  // Rule at the BOTTOM (owner): it closes the header off from the
+  // task stream and mirrors the summary's rule — the run's output
+  // lives between the two wordmark rules.
   return [
-    `${bullet} ${paint('', `vx ${input.version}`, colors, { bold: true })}`,
     '',
-    `   ${bullet} Running ${taskList} in ${pkgs} (${tasks}${workers})`,
-    `   ${bullet} Remote caching ${input.remoteCacheEnabled ? 'enabled' : 'disabled'}`,
+    row('run', parts.join(sep)),
+    row('cache', input.remoteCacheEnabled ? 'local + remote' : 'local only'),
+    gradientRule(colors, `vx ${input.version}`),
     '',
   ]
 }
@@ -259,7 +270,7 @@ export function formatTaskExecutedLine(
  */
 export function formatTaskSkippedLine(node: TaskNode, colors: ColorSupport = NO_COLOR): string {
   const dim = (s: string) => paint('', s, colors, { dim: true })
-  const mark = paint(WARN, '⊘', colors)
+  const mark = paint(WARN, '●', colors)
   return `${mark} ${paintTaskId(node, colors)} ${dim('──')} ${paint(WARN, 'skipped', colors)} ${dim('• upstream failed')}`
 }
 

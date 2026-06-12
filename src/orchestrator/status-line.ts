@@ -258,7 +258,7 @@ export function formatFailureLine(
   colors: ColorSupport = NO_COLOR,
 ): string {
   const dim = (t: string) => paint('', t, colors, { dim: true })
-  return `${paint(ERROR, '✗', colors)} ${paintPinnedId(id, colors)} ${dim('──')} ${paint(ERROR, `failed (exit ${exitCode})`, colors)}`
+  return `${paint(ERROR, '●', colors)} ${paintPinnedId(id, colors)} ${dim('──')} ${paint(ERROR, `failed (exit ${exitCode})`, colors)}`
 }
 
 export function formatStatusRegion(

@@ -205,6 +205,20 @@ bun.lock
   {framed-output,logger,status-line}.ts; repinned framed-output/
   output-flow/status-line suites.
 
+- **2026-06**: Header v2 + glyph unification (owner). The run header
+  now speaks the summary's language: dim-label rows (`run` = task
+  names · N projects · N tasks · N workers; `cache` = local only /
+  local + remote), gradient wordmark rule WITH the version at the
+  BOTTOM of the header (owner) — the run's output lives between the
+  header rule and the summary rule. "packages" → "projects" in user
+  copy (owner). Margin (blank line) above. Glyphs unified on
+  circles: ● success (green) / failed (red) / skipped (yellow),
+  ◌ hits, ▸ persistent, ▶ stats, ▰ meter, braille spinner — the ✗
+  and ⊘ glyphs are gone from output (comments may still reference
+  the old ✗ contract). Skipped one-liner: `● id ── skipped •
+upstream failed`; requested-task skip stays logged in focused
+  (the asked-for task's fate must be reported — owner agreed).
+
 - **2026-06**: Failure rendering, final contract (owner-picked
   option B after rejecting both the inline frame and the runEnd ✗
   recap): when a task fails in broad / errors-only / focused-dep

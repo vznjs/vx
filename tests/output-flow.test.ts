@@ -141,7 +141,7 @@ describe('defaultLogger visibility matrix — broad', () => {
     log.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 3 }))
     log.runEnd?.()
     const text = out.text()
-    expect(text).toContain('✗ one#boom ── failed (exit 3)')
+    expect(text).toContain('● one#boom ── failed (exit 3)')
     expect(text).toContain('┌─ one#boom')
     expect(text).toContain('partial work')
     expect(text).toContain('kaboom')
@@ -209,7 +209,7 @@ describe('defaultLogger visibility matrix — focused', () => {
     const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
     const n = mkNode('one#test', { requested: true })
     log.taskComplete(n, mkOutcome(n, 'skipped'))
-    expect(out.text()).toBe('⊘ one#test ── skipped • upstream failed\n')
+    expect(out.text()).toBe('● one#test ── skipped • upstream failed\n')
   })
 
   it('dependency success with output → silent', () => {
@@ -238,7 +238,7 @@ describe('defaultLogger visibility matrix — focused', () => {
     log.taskComplete(dep, mkOutcome(dep, 'failed', { exitCode: 2 }))
     log.runEnd?.()
     const text = out.text()
-    expect(text).toContain('✗ lib#build ── failed (exit 2)')
+    expect(text).toContain('● lib#build ── failed (exit 2)')
     expect(text).toContain('┌─ lib#build')
     expect(text).toContain('tsc exploded')
     expect(text).toContain('failed (exit 2)')
@@ -258,7 +258,7 @@ describe('defaultLogger block separation', () => {
     log.runEnd?.()
     expect(out.text()).toBe(
       '● one#a ── success • 100ms\n' +
-        '✗ one#boom ── failed (exit 1)\n' +
+        '● one#boom ── failed (exit 1)\n' +
         '● one#b ── success • 100ms\n' +
         '\n' +
         '┌─ one#boom > failed (exit 1)\n' +
@@ -279,8 +279,8 @@ describe('defaultLogger block separation', () => {
     }
     log.runEnd?.()
     expect(out.text()).toBe(
-      '✗ one#x ── failed (exit 1)\n' +
-        '✗ one#y ── failed (exit 1)\n' +
+      '● one#x ── failed (exit 1)\n' +
+        '● one#y ── failed (exit 1)\n' +
         '\n' +
         '┌─ one#x > failed (exit 1)\n' +
         '\n' +
@@ -583,7 +583,7 @@ describe('flow e2e against a real fixture workspace', () => {
     expect(text()).toContain('DEPBAD-NOISE')
     expect(text()).toContain('failed (exit 3)')
     // Requested task never ran; its skip is framed.
-    expect(text()).toContain('⊘ one#consumebad ── skipped • upstream failed')
+    expect(text()).toContain('● one#consumebad ── skipped • upstream failed')
     expect(text()).not.toContain('NEVER-RUNS')
   })
 

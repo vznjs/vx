@@ -24,10 +24,10 @@ const GRADIENT_TO = [0xf4, 0x72, 0xb6] as const
 // Rule ends flush with the bars: 2 indent + 6 label + 2 gap + 50 cells.
 const RULE_DASHES = 55
 
-function gradientRule(colors: ColorSupport): string {
+/** Total visible rule width: `\u2500 <mark> ` + dashes. Shared by summary + header. */
+export function gradientRule(colors: ColorSupport, mark = 'vx'): string {
   const head = `\u2500 `
-  const mark = 'vx'
-  const dashes = '\u2500'.repeat(RULE_DASHES)
+  const dashes = '\u2500'.repeat(Math.max(8, RULE_DASHES + 2 - mark.length))
   if (!colors.enabled) return `${head}${mark} ${dashes}`
   const chunks = 8
   const per = Math.ceil(RULE_DASHES / chunks)

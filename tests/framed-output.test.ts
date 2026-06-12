@@ -28,7 +28,7 @@ function outcome(
 }
 
 describe('formatHeader', () => {
-  it('renders the standard three lines + blanks for a single task', () => {
+  it('renders the gradient rule + run/cache rows in the summary style', () => {
     expect(
       formatHeader({
         version: '1.2.3',
@@ -38,35 +38,25 @@ describe('formatHeader', () => {
         remoteCacheEnabled: false,
       }),
     ).toEqual([
-      '• vx 1.2.3',
       '',
-      '   • Running lint in 1 package (1 task)',
-      '   • Remote caching disabled',
+      '  run     lint · 1 project · 1 task',
+      '  cache   local only',
+      '─ vx 1.2.3 ' + '─'.repeat(49),
       '',
     ])
   })
 
-  it('lists multiple tasks comma-separated on the Running line', () => {
-    const lines = formatHeader({
-      version: '0.0.0',
-      packageCount: 1,
-      tasks: ['build', 'lint', 'test'],
-      taskCount: 3,
-      remoteCacheEnabled: false,
-    })
-    expect(lines).toContain('   • Running build, lint, test in 1 package (3 tasks)')
-  })
-
-  it('pluralizes "packages" and "tasks" past one', () => {
+  it('lists multiple tasks comma-separated, pluralizes counts, shows workers', () => {
     const lines = formatHeader({
       version: '0.0.0',
       packageCount: 3,
-      tasks: ['build'],
+      tasks: ['build', 'lint', 'test'],
       taskCount: 3,
       remoteCacheEnabled: true,
+      concurrency: 8,
     })
-    expect(lines).toContain('   • Running build in 3 packages (3 tasks)')
-    expect(lines).toContain('   • Remote caching enabled')
+    expect(lines).toContain('  run     build, lint, test · 3 projects · 3 tasks · 8 workers')
+    expect(lines).toContain('  cache   local + remote')
   })
 
   it('shows non-square task/package counts (e.g. task not defined everywhere)', () => {
@@ -78,7 +68,7 @@ describe('formatHeader', () => {
       taskCount: 3,
       remoteCacheEnabled: false,
     })
-    expect(lines).toContain('   • Running lint in 5 packages (3 tasks)')
+    expect(lines).toContain('  run     lint · 5 projects · 3 tasks')
   })
 })
 

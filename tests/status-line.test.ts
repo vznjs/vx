@@ -374,7 +374,7 @@ describe('defaultLogger status line integration', () => {
     log.taskStderr(bad, 'kaput\n')
     log.taskComplete(bad, mkOutcome(bad, 'failed'))
     // ✗ marker is permanent scrollback, not a region pin.
-    expect(s2.text()).toContain('✗ one#boom ── failed (exit 1)')
+    expect(s2.text()).toContain('● one#boom ── failed (exit 1)')
     expect(s2.text()).not.toContain('┌─ one#boom')
     log.runEnd?.()
     // Full frame replays after the region is gone, above the summary.
@@ -518,9 +518,9 @@ describe('formatStatusRegion', () => {
   })
 
   it('formatFailureLine: red glyph + outcome, identity-colored id', () => {
-    expect(formatFailureLine('a#build', 2)).toBe('✗ a#build ── failed (exit 2)')
+    expect(formatFailureLine('a#build', 2)).toBe('● a#build ── failed (exit 2)')
     const colored = formatFailureLine('a#build', 2, { enabled: true })
-    expect(colored).toContain('✗')
+    expect(colored).toContain('●')
     expect(colored).toContain('failed (exit 2)')
     expect(colored).toContain('\x1b[')
   })
