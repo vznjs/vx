@@ -8,7 +8,7 @@ import { initSandbox, probeSandbox, resetSandbox, signalExitCode } from '../exec
 import { isGroupTask, runGraph } from '../graph/index.js'
 import { ulid, UserError } from '../util/index.js'
 import { executeTask } from './execute-task.js'
-import { defaultLogger } from './logger.js'
+import { defaultLogger, resolveOutputView } from './logger.js'
 import { detectColors } from './colors.js'
 import { formatHeader } from './framed-output.js'
 import { plan, type RunPlan } from './plan.js'
@@ -23,7 +23,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // ANSI escapes for them. Only the defaultLogger (real terminal
   // output) gets colors, gated by NO_COLOR / FORCE_COLOR / isTTY.
   const colors = options.log ? { enabled: false } : detectColors()
-  const log = options.log ?? defaultLogger(colors, options.outputLogs ?? 'full')
+  const log = options.log ?? defaultLogger(colors, resolveOutputView(options))
 
   const prepared = await prepareRun(options, log)
   if (prepared.empty !== null) {

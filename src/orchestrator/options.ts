@@ -28,12 +28,21 @@ export interface RunOptions {
    */
   frozen?: boolean
   /**
-   * Per-task output volume for the default logger. 'full' (default):
-   * frames for work + one-liners for quiet hits. 'errors-only':
-   * only failed tasks print. 'none': no per-task output at all.
-   * Status lines (header, summary) always print.
+   * Explicit per-task output volume for the default logger. ALWAYS
+   * overrides the flow default. 'full': frames for work + one-liners
+   * for quiet hits. 'errors-only': only failed tasks print. 'none':
+   * no per-task output at all. Status lines (header, summary) always
+   * print.
    */
   outputLogs?: 'full' | 'errors-only' | 'none'
+  /**
+   * Run intent, derived by the CLI from selection flags: 'broad' iff
+   * `--all` / `--filter` / `--affected` was passed, else 'focused'.
+   * Drives the default logger's per-task output policy when neither
+   * `outputLogs` nor a truthy CI env overrides it. Undefined
+   * (programmatic callers) behaves like today's 'full'.
+   */
+  flow?: 'focused' | 'broad'
   /**
    * Filter `dependsOn` expansion. `'all'` drops every edge (just the
    * requested task runs). A string array drops only those task names

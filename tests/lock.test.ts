@@ -122,14 +122,22 @@ describe('vx lock (e2e)', () => {
       expect(checkDrift.err).toContain('env-dependent config?')
 
       // Plain `vx run` evaluates LIVE — local truth, no lock consumed.
-      const live = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'b' })
+      const live = await vx(
+        root,
+        ['run', 'build', '--all', '--no-cache', '--output-logs', 'full'],
+        { X: 'b' },
+      )
       expect(live.code).toBe(0)
       expect(live.out).toContain('flavor-b')
 
       // `--frozen` consumes the lock: frozen value wins regardless of env.
-      const frozen = await vx(root, ['run', 'build', '--all', '--no-cache', '--frozen'], {
-        X: 'b',
-      })
+      const frozen = await vx(
+        root,
+        ['run', 'build', '--all', '--no-cache', '--frozen', '--output-logs', 'full'],
+        {
+          X: 'b',
+        },
+      )
       expect(frozen.code).toBe(0)
       expect(frozen.out).toContain('flavor-a')
       expect(frozen.out).not.toContain('flavor-b')
@@ -154,25 +162,37 @@ describe('vx lock (e2e)', () => {
 
       // Plain runs evaluate live — the edit takes effect immediately,
       // stale lock or not.
-      const live = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })
+      const live = await vx(
+        root,
+        ['run', 'build', '--all', '--no-cache', '--output-logs', 'full'],
+        { X: 'a' },
+      )
       expect(live.code).toBe(0)
       expect(live.out).toContain('edited')
 
       // --frozen trusts the lock outright — no staleness checks; the
       // pipeline's `vx lock --check` (above, exit 1) is the guard.
       // It runs the FROZEN config, not the edited file.
-      const frozen = await vx(root, ['run', 'build', '--all', '--no-cache', '--frozen'], {
-        X: 'a',
-      })
+      const frozen = await vx(
+        root,
+        ['run', 'build', '--all', '--no-cache', '--frozen', '--output-logs', 'full'],
+        {
+          X: 'a',
+        },
+      )
       expect(frozen.code).toBe(0)
       expect(frozen.out).toContain('flavor-a')
       expect(frozen.out).not.toContain('edited')
 
       // Re-lock brings the edit into the frozen graph.
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
-      const healed = await vx(root, ['run', 'build', '--all', '--no-cache', '--frozen'], {
-        X: 'a',
-      })
+      const healed = await vx(
+        root,
+        ['run', 'build', '--all', '--no-cache', '--frozen', '--output-logs', 'full'],
+        {
+          X: 'a',
+        },
+      )
       expect(healed.code).toBe(0)
       expect(healed.out).toContain('edited')
     },

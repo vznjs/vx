@@ -1,6 +1,6 @@
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { detectColors, type ColorSupport } from './colors.js'
-import { formatTaskBlock, formatTaskHitLine } from './framed-output.js'
+import { formatTaskBlock, formatTaskExecutedLine, formatTaskHitLine } from './framed-output.js'
 import { isGroupTask } from '../graph/index.js'
 
 export interface Logger {
@@ -17,9 +17,47 @@ export interface Logger {
   taskComplete(node: TaskNode, outcome: TaskOutcome): void
 }
 
+/**
+ * The default logger's per-task output policy. Resolved once per run
+ * from (in priority order) the explicit `--output-logs` override, a
+ * truthy `CI` env, and the CLI-detected flow:
+ *
+ *   full        — frames for executed work, one-liners for quiet hits.
+ *                 Today's CI behavior; also the programmatic default.
+ *   errors-only — only failed tasks print.
+ *   none        — no per-task output at all.
+ *   focused     — requested nodes stream raw output live (running the
+ *                 task should feel like running the command directly);
+ *                 dependency-pulled nodes are silent unless they fail.
+ *   broad       — news only: one `executed` line per executed task,
+ *                 full frames for failures, silence for cache hits.
+ */
+export type OutputView =
+  | { mode: 'full' }
+  | { mode: 'errors-only' }
+  | { mode: 'none' }
+  | { mode: 'focused' }
+  | { mode: 'broad' }
+
+/** CI=0 / CI=false count as "not CI" — several vendors use CI=true. */
+function truthyEnv(v: string | undefined): boolean {
+  return v !== undefined && v !== '' && v !== '0' && v !== 'false'
+}
+
+export function resolveOutputView(
+  options: { outputLogs?: 'full' | 'errors-only' | 'none'; flow?: 'focused' | 'broad' },
+  env: Record<string, string | undefined> = process.env,
+): OutputView {
+  if (options.outputLogs !== undefined) return { mode: options.outputLogs }
+  if (truthyEnv(env['CI'])) return { mode: 'full' }
+  if (options.flow !== undefined) return { mode: options.flow }
+  return { mode: 'full' }
+}
+
 export function defaultLogger(
   colors: ColorSupport = detectColors(),
-  outputLogs: 'full' | 'errors-only' | 'none' = 'full',
+  view: OutputView = { mode: 'full' },
+  out: { write(chunk: string): unknown } = process.stdout,
 ): Logger {
   // Per-task buffers, split by stream. Splitting lets the framed-output
   // renderer put stdout in the body and stderr under an `├─ Error`
@@ -32,12 +70,15 @@ export function defaultLogger(
   // length. Bun-friendly: join('') is a single contiguous allocation.
   const stdoutBuffers = new Map<string, string[]>()
   const stderrBuffers = new Map<string, string[]>()
-  // Tracks whether we've already emitted at least one task block so
-  // we can prefix subsequent blocks with a blank line for visual
-  // separation. The header (formatHeader) already ends with a blank
-  // line, so the first block doesn't need one.
+  // Separator bookkeeping: frames get a leading blank line whenever
+  // anything (a previous frame, a one-liner, streamed output) was
+  // already emitted. The header (formatHeader) already ends with a
+  // blank line, so the first block doesn't need one.
   let blocksEmitted = 0
-  let hitLinesEmitted = false
+  let lineEmitted = false
+  let streamedSinceBlock = false
+  // Ids whose output went straight to the terminal (focused mode).
+  const streamed = new Set<string>()
   const pushChunk = (buffers: Map<string, string[]>, id: string, chunk: string): void => {
     const arr = buffers.get(id)
     if (arr) arr.push(chunk)
@@ -50,41 +91,106 @@ export function defaultLogger(
     return arr.length === 1 ? arr[0]! : arr.join('')
   }
 
+  const emitLine = (line: string): void => {
+    out.write(`${line}\n`)
+    lineEmitted = true
+  }
+  // formatTaskBlock returns '' for group tasks (no exec) — skip the
+  // write so a stray newline doesn't sneak into the output.
+  const emitBlock = (block: string): void => {
+    if (block.length === 0) return
+    out.write(blocksEmitted > 0 || lineEmitted || streamedSinceBlock ? `\n${block}` : block)
+    blocksEmitted++
+    lineEmitted = false
+    streamedSinceBlock = false
+  }
+
+  // Focused mode streams requested nodes' output live and raw —
+  // `vx run test` should feel like running the command directly.
+  // Cache-hit replay arrives through the same taskStdout path, so it
+  // streams identically.
+  const streamsLive = (node: TaskNode): boolean =>
+    view.mode === 'focused' && node.requested && !isGroupTask(node)
+
   return {
     status(line) {
-      process.stdout.write(`${line}\n`)
+      out.write(`${line}\n`)
     },
     taskStdout(node, chunk) {
+      if (streamsLive(node)) {
+        streamed.add(node.id)
+        streamedSinceBlock = true
+        out.write(chunk)
+        return
+      }
       pushChunk(stdoutBuffers, node.id, chunk)
     },
     taskStderr(node, chunk) {
+      if (streamsLive(node)) {
+        streamed.add(node.id)
+        streamedSinceBlock = true
+        out.write(chunk)
+        return
+      }
       pushChunk(stderrBuffers, node.id, chunk)
     },
     taskComplete(node, outcome) {
       const stdout = takeChunks(stdoutBuffers, node.id)
       const stderr = takeChunks(stderrBuffers, node.id)
-      if (outputLogs === 'none') return
-      if (outputLogs === 'errors-only' && outcome.status !== 'failed') return
-      // Cache hits with nothing to replay compress to ONE line — every
-      // task stays visible, but at 2000+ tasks the two-line frames
-      // would drown what actually happened. Hits WITH replayed stdout
-      // keep their frame (the output is the point); misses/failures
-      // are always framed. Group tasks print nothing either way.
+      // Group tasks (no exec) do no work — no surface prints them.
+      if (isGroupTask(node)) return
       const isHit = outcome.status === 'cache-hit' || outcome.status === 'cache-hit-remote'
-      if (isHit && stdout.trim().length === 0 && stderr.trim().length === 0) {
-        if (!isGroupTask(node)) {
-          process.stdout.write(`${formatTaskHitLine(node, outcome, colors)}\n`)
-          hitLinesEmitted = true
+      switch (view.mode) {
+        case 'none':
+          return
+        case 'errors-only':
+          if (outcome.status !== 'failed') return
+          emitBlock(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
+          return
+        case 'broad':
+          // News only: executed work gets a one-liner, failures get
+          // the full frame. Hits (including up-to-date) are silent —
+          // their replay buffers are deliberately dropped; the counts
+          // surface in the end-of-run summary.
+          if (outcome.status === 'failed') {
+            emitBlock(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
+          } else if (outcome.status === 'success') {
+            emitLine(formatTaskExecutedLine(node, outcome, colors))
+          }
+          return
+        case 'focused':
+          if (node.requested) {
+            // Output (exec or hit replay) already streamed live. A
+            // quiet hit never streamed anything — the one-liner is its
+            // only trace. Skips are framed: the task never produced
+            // output, and "didn't run" is exactly the news.
+            if (isHit && !streamed.has(node.id)) {
+              emitLine(formatTaskHitLine(node, outcome, colors))
+            } else if (outcome.status === 'skipped') {
+              emitBlock(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
+            }
+            return
+          }
+          // Dependency-pulled nodes: silent on success, framed on
+          // failure (the buffered output is the evidence).
+          if (outcome.status === 'failed') {
+            emitBlock(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
+          }
+          return
+        case 'full': {
+          // Cache hits with nothing to replay compress to ONE line —
+          // every task stays visible, but at 2000+ tasks the two-line
+          // frames would drown what actually happened. Hits WITH
+          // replayed stdout keep their frame (the output is the
+          // point); misses/failures are always framed.
+          if (isHit && stdout.trim().length === 0 && stderr.trim().length === 0) {
+            emitLine(formatTaskHitLine(node, outcome, colors))
+            return
+          }
+          emitBlock(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
+          return
         }
-        return
       }
-      // formatTaskBlock returns '' for group tasks (no exec) — skip
-      // the write so a stray newline doesn't sneak into the output.
-      const block = formatTaskBlock(node, outcome, { stdout, stderr }, colors)
-      if (block.length === 0) return
-      process.stdout.write(blocksEmitted > 0 || hitLinesEmitted ? `\n${block}` : block)
-      blocksEmitted++
-      hitLinesEmitted = false
     },
   }
 }

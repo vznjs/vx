@@ -160,6 +160,21 @@ export function formatTaskHitLine(
   return `${mark} ${node.id} ${dim('──')} ${label} ${dim(`• ${shortHash}`)}`
 }
 
+/**
+ * Compact one-liner for an executed task in broad mode. Same shape as
+ * the hit one-liner so the two read as one list; the extra after the
+ * label is the exec duration instead of a cache hash.
+ */
+export function formatTaskExecutedLine(
+  node: TaskNode,
+  o: TaskOutcome,
+  colors: ColorSupport = NO_COLOR,
+): string {
+  const dim = (s: string) => paint('', s, colors, { dim: true })
+  const mark = paint(SUCCESS, '●', colors)
+  return `${mark} ${node.id} ${dim('──')} executed ${dim(`• ${formatDuration(o.durationMs)}`)}`
+}
+
 function formatBlockHeader(node: TaskNode, o: TaskOutcome, colors: ColorSupport): string {
   const shortHash = o.hash ? o.hash.slice(0, 8) : ''
   const dim = (s: string) => paint('', s, colors, { dim: true })

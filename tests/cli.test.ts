@@ -84,8 +84,16 @@ function initGitRepo(cwd: string): void {
 describe('cli run() end-to-end against a real fixture workspace', () => {
   let workspaceRoot: string
   const origCwd = process.cwd()
+  const savedEnv: Record<string, string | undefined> = {}
 
   beforeEach(async () => {
+    // Output defaults are env-sensitive (truthy CI → full grouped
+    // output). Pin a non-CI env so assertions on the flow defaults
+    // hold both locally and on GitHub Actions.
+    savedEnv['CI'] = process.env['CI']
+    savedEnv['GITHUB_ACTIONS'] = process.env['GITHUB_ACTIONS']
+    delete process.env['CI']
+    delete process.env['GITHUB_ACTIONS']
     const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises')
     const os = await import('node:os')
     const path = await import('node:path')
@@ -120,6 +128,10 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
   })
 
   afterEach(async () => {
+    for (const [k, v] of Object.entries(savedEnv)) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
     process.chdir(origCwd)
     const { rm } = await import('node:fs/promises')
     await rm(workspaceRoot, { recursive: true, force: true })
@@ -173,7 +185,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stdout).not.toContain('hello-cli')
   })
 
-  it('exits 0 and prints task output when run with -r from workspace root', async () => {
+  it('--all is a broad run: executed one-liner, raw output suppressed', async () => {
     let stdout = ''
     let stderr = ''
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
@@ -187,7 +199,8 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
 
     const code = await run(['run', '--all', 'hello'])
     expect(code).toBe(0)
-    expect(stdout).toContain('hello-cli')
+    expect(stdout).toContain('● one#hello ── executed •')
+    expect(stdout).not.toContain('hello-cli')
   })
 
   it('errors when at workspace root with no scope flag (default = current project)', async () => {
@@ -231,7 +244,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stdout).toContain('hello-cli')
   })
 
-  it('-F filter selects matching projects', async () => {
+  it('-F filter selects matching projects (broad: executed one-liner)', async () => {
     let stdout = ''
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
       stdout += String(chunk)
@@ -241,7 +254,8 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
 
     const code = await run(['run', '--filter', 'one', 'hello'])
     expect(code).toBe(0)
-    expect(stdout).toContain('hello-cli')
+    expect(stdout).toContain('● one#hello ── executed •')
+    expect(stdout).not.toContain('hello-cli')
   })
 
   it('-F with no match errors clearly', async () => {
@@ -320,7 +334,16 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     })
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
-    const code = await run(['run', '--all', 'echo', '--', 'hello', 'world'])
+    const code = await run([
+      'run',
+      '--all',
+      'echo',
+      '--output-logs',
+      'full',
+      '--',
+      'hello',
+      'world',
+    ])
     expect(code).toBe(0)
     expect(stdout).toMatch(/forwarded: hello world/)
   })
@@ -382,8 +405,13 @@ describe('vx watch command (parser-side validation)', () => {
 describe('vx watch end-to-end against a real fixture workspace', () => {
   let workspaceRoot: string
   const origCwd = process.cwd()
+  const savedEnv: Record<string, string | undefined> = {}
 
   beforeEach(async () => {
+    savedEnv['CI'] = process.env['CI']
+    savedEnv['GITHUB_ACTIONS'] = process.env['GITHUB_ACTIONS']
+    delete process.env['CI']
+    delete process.env['GITHUB_ACTIONS']
     const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises')
     const os = await import('node:os')
     const path = await import('node:path')
@@ -420,6 +448,10 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
   })
 
   afterEach(async () => {
+    for (const [k, v] of Object.entries(savedEnv)) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
     process.chdir(origCwd)
     const { rm } = await import('node:fs/promises')
     await rm(workspaceRoot, { recursive: true, force: true })
@@ -443,7 +475,10 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
         return true
       })
 
-      const cmd = run(['watch', '--all', 'hello'])
+      // --output-logs full: watch cycles inherit the broad flow from
+      // --all, which suppresses task output; the override keeps the
+      // content assertions on `cat`'s output meaningful.
+      const cmd = run(['watch', '--all', 'hello', '--output-logs', 'full'])
 
       // Wait for the initial run to appear in stdout, then write a change.
       await waitFor(() => stdout.includes('v0'))
@@ -523,7 +558,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       })
       vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
-      const cmd = run(['watch', '--all', 'hello'])
+      const cmd = run(['watch', '--all', 'hello', '--output-logs', 'full'])
       await waitFor(() => stdout.includes('watching 1 project'))
 
       // Burst-write 5 versions of the same file within < debounce
@@ -628,7 +663,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       })
       vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
-      const cmd = run(['watch', '--all', 'hello'])
+      const cmd = run(['watch', '--all', 'hello', '--output-logs', 'full'])
       await waitFor(() => stdout.includes('watching the workspace root'))
 
       // A change in a ROOT SUBDIR (not any project dir, not a lockfile)

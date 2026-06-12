@@ -160,6 +160,22 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
 }
 
 /**
+ * Classify the run's intent from its selection flags. BROAD iff the
+ * invocation used `--all` / `--filter` / `--affected` — the user asked
+ * about a swath of the workspace and wants news, not output. Everything
+ * else is FOCUSED — the user is running "their" task and wants to see
+ * it. Owner decision: cwd and task count are irrelevant ("when just run
+ * no --all etc then single. cwd does not matter").
+ */
+export function detectFlow(
+  parsed: Pick<RunArgs, 'all' | 'filters' | 'affected'>,
+): 'focused' | 'broad' {
+  return parsed.all || parsed.filters.length > 0 || parsed.affected !== undefined
+    ? 'broad'
+    : 'focused'
+}
+
+/**
  * Resolve parsed `vx run` argv into the `RunOptions` the orchestrator
  * consumes. Shared between `runCmd` and `watchCmd` so both subcommands
  * honor the same selection semantics (cwd / `--all` / `--filter` /
@@ -225,6 +241,7 @@ export async function resolveRunOptions(
     cwd,
     tasks: [...tasks],
     noCache: parsed.noCache,
+    flow: detectFlow(parsed),
     ...(parsed.frozen ? { frozen: true } : {}),
     ...(parsed.outputLogs !== undefined ? { outputLogs: parsed.outputLogs } : {}),
     forwardArgs: parsed.forwardArgs,
