@@ -39,6 +39,7 @@ export interface RunArgs {
   excludeDependencies: 'all' | string[]
   concurrency: number | undefined
   noCache: boolean
+  frozen: boolean
   forwardArgs: string[]
   verbosity: number
   dry: 'text' | 'json' | undefined
@@ -62,6 +63,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     excludeDependencies: [],
     concurrency: undefined,
     noCache: false,
+    frozen: false,
     forwardArgs: [],
     verbosity: 0,
     dry: undefined,
@@ -97,6 +99,8 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
         .split(',')
         .map((s) => s.trim())
         .filter((s) => s.length > 0)
+    } else if (a === '--frozen') {
+      out.frozen = true
     } else if (a === '--no-cache' || a === '--force') {
       out.noCache = true
     } else if (a === '--cache') {
@@ -217,6 +221,7 @@ export async function resolveRunOptions(
     cwd,
     tasks: [...tasks],
     noCache: parsed.noCache,
+    ...(parsed.frozen ? { frozen: true } : {}),
     forwardArgs: parsed.forwardArgs,
   }
   if (parsed.excludeDependencies === 'all') {

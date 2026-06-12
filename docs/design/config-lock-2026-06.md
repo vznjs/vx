@@ -184,3 +184,21 @@ them to infer dependencies from source imports and compute production
 file sets; vx's graph is declared, not inferred. Those fields still
 participate in cache identity byte-wise through the manifest hash —
 changing them invalidates correctly without vx understanding them.
+
+## Semantics revision (2026-06-13, owner decision)
+
+Byte-hashing a config file cannot see its IMPORT CLOSURE: editing a
+shared preset changes the resolved config while the config file's
+bytes — and therefore the staleness tripwire — stay unchanged.
+Consuming the lock on every local run therefore gave false
+confidence. Revised contract:
+
+- `vx run` — ALWAYS live evaluation. Local truth has no asterisks;
+  costs the eval time (~120 ms / 1000 pkgs).
+- `vx run --frozen` — CI mode: configs from the lock (hash tripwire
+  still catches direct config edits; import-closure/env drift is
+  --check's job). Errors if no lock exists.
+- `vx lock` / `vx lock --check` — unchanged: the only full-graph
+  operations. pnpm-style auto-relock on plain runs was considered
+  and rejected: scoped runs evaluate only a dep closure and cannot
+  correctly rewrite a whole-workspace lock.

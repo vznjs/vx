@@ -8,6 +8,7 @@
 // try/finally around its plan() call.
 
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
+import { UserError } from '../util/index.js'
 import { Cache, type CacheLayer, GitFilesCache, populateGitFilesCache } from '../cache/index.js'
 import {
   buildPackageGraph,
@@ -126,12 +127,19 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
 
   const projects = new Map<string, ProjectEntry>()
   const toLoad = projectsWithConfigs.filter((m) => needed.has(m.name))
-  // Frozen-env semantics: when `vx-lock.json` exists, runs load each config
-  // FROM the lock after a content-hash check — no evaluation, so
-  // env-dependent configs keep the values they were locked under.
-  // Runs trust the lock; `vx lock --check` is the audit that
-  // re-evaluates. See docs/design/config-lock-2026-06.md.
-  const lock = await readLockfile(workspaceRoot)
+  // Frozen mode (--frozen, CI): configs load FROM vx-lock.json after a
+  // content-hash tripwire — no evaluation; env-dependent configs keep
+  // their locked values. Default (local) runs ALWAYS evaluate live:
+  // a byte hash can't see a config's import closure (shared presets),
+  // so consuming the lock by default would silently serve stale
+  // freezes. `vx lock --check` is the full re-evaluation audit.
+  // See docs/design/config-lock-2026-06.md.
+  const lock = options.frozen === true ? await readLockfile(workspaceRoot) : null
+  if (options.frozen === true && lock === null) {
+    throw new UserError(
+      `--frozen requires vx-lock.json at the workspace root — run 'vx lock' and commit it`,
+    )
+  }
   const configs = await Promise.all(
     toLoad.map((m) =>
       lock ? frozenProjectConfig(lock, m, workspaceRoot) : loadProjectConfig(m.configPath),

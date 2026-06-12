@@ -159,6 +159,17 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: Lock consumption moved behind `--frozen` (owner
+  decision after a correct soundness rebuttal): byte-hashing a
+  config can't see its IMPORT CLOSURE (shared presets), so default
+  lock consumption gave false confidence locally. `vx run` = always
+  live eval; `vx run --frozen` = configs from vx-lock.json (CI),
+  hash tripwire + hard error when lockless; `vx lock`/`--check`
+  unchanged as the only full-graph operations. pnpm-style
+  auto-relock rejected: scoped runs evaluate only a dep closure and
+  can't rewrite a whole-workspace lock. Lockfile renamed
+  vx-lock.json (editor JSON recognition, package-lock precedent).
+
 - **2026-06**: `vx lock` / `vx-lock.json` — frozen resolved-config
   lockfile. `vx lock` freshly evaluates every project config in the
   current env (per-invocation module-cache bust; the content-hash

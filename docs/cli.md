@@ -443,6 +443,16 @@ prune command currently always uses the default `.vx/cache/`; a
 workspace-config `cacheDir` override is not yet honored by this path
 (tracked).
 
+## `--frozen` (run flag)
+
+`vx run ... --frozen` loads configs from the committed `vx-lock.json`
+instead of evaluating them — CI reproducibility mode. Plain `vx run`
+always evaluates live (a byte hash can't see a config's import
+closure, so silently consuming the lock locally would risk stale
+freezes). `--frozen` errors when no lock exists, and its hash
+tripwire fails on directly edited config files; pair with
+`vx lock --check` for the full re-evaluation audit.
+
 ## `vx lock`
 
 Freeze every project's **resolved** config into `vx-lock.json` at the

@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "projects": {
+    "@vzn/vx": {
+      "configPath": "vx.config.ts",
+      "configHash": "91f7e483f71e5b8a",
+      "config": {
+        "tasks": {
+          "lint": {
+            "description": "oxlint with tsgolint-backed type-aware checks",
+            "exec": {
+              "command": "oxlint --type-aware --type-check"
+            },
+            "cache": {
+              "inputs": {
+                "files": [
+                  "src/**",
+                  "tests/**",
+                  "bench/**",
+                  ".oxlintrc.json",
+                  "tsconfig.json"
+                ]
+              },
+              "outputs": {
+                "files": []
+              }
+            }
+          },
+          "format-check": {
+            "description": "oxfmt --check (no rewrite; CI-safe)",
+            "exec": {
+              "command": "oxfmt --check ."
+            },
+            "cache": {
+              "inputs": {
+                "files": [
+                  "**/*"
+                ]
+              },
+              "outputs": {
+                "files": []
+              }
+            }
+          },
+          "format": {
+            "description": "oxfmt . — rewrite formatting in place",
+            "exec": {
+              "command": "oxfmt ."
+            }
+          },
+          "test": {
+            "description": "bun test against the tests/ tree",
+            "exec": {
+              "command": "bun test"
+            },
+            "cache": {
+              "inputs": {
+                "files": [
+                  "src/**",
+                  "tests/**",
+                  "package.json"
+                ]
+              },
+              "outputs": {
+                "files": []
+              }
+            }
+          },
+          "ci": {
+            "description": "format-check + lint + test (CI gate)",
+            "dependsOn": [
+              "format-check",
+              "lint",
+              "test"
+            ]
+          },
+          "build.linux-x64": {
+            "description": "compile standalone binary (linux x64)",
+            "exec": {
+              "command": "bun build --compile --minify --bytecode --target=bun-linux-x64 src/bin.ts --outfile dist/vx-linux-x64"
+            },
+            "cache": {
+              "inputs": {
+                "files": [
+                  "**/*"
+                ]
+              },
+              "outputs": {
+                "files": [
+                  "dist/vx-linux-x64"
+                ]
+              }
+            }
+          },
+          "build.linux-arm64": {
+            "description": "compile standalone binary (linux arm64)",
+            "exec": {
+              "command": "bun build --compile --minify --bytecode --target=bun-linux-arm64 src/bin.ts --outfile dist/vx-linux-arm64"
+            },
+            "cache": {
+              "inputs": {
+                "files": [
+                  "**/*"
+                ]
+              },
+              "outputs": {
+                "files": [
+                  "dist/vx-linux-arm64"
+                ]
+              }
+            }
+          },
+          "build.darwin-x64": {
+            "description": "compile standalone binary (darwin x64)",
+            "exec": {
+              "command": "bun build --compile --minify --bytecode --target=bun-darwin-x64 src/bin.ts --outfile dist/vx-darwin-x64"
+            },
+            "cache": {
+              "inputs": {
+                "files": [
+                  "**/*"
+                ]
+              },
+              "outputs": {
+                "files": [
+                  "dist/vx-darwin-x64"
+                ]
+              }
+            }
+          },
+          "build.darwin-arm64": {
+            "description": "compile standalone binary (darwin arm64)",
+            "exec": {
+              "command": "bun build --compile --minify --bytecode --target=bun-darwin-arm64 src/bin.ts --outfile dist/vx-darwin-arm64"
+            },
+            "cache": {
+              "inputs": {
+                "files": [
+                  "**/*"
+                ]
+              },
+              "outputs": {
+                "files": [
+                  "dist/vx-darwin-arm64"
+                ]
+              }
+            }
+          },
+          "build": {
+            "description": "compile standalone binaries for every target",
+            "dependsOn": [
+              "build.linux-x64",
+              "build.linux-arm64",
+              "build.darwin-x64",
+              "build.darwin-arm64"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

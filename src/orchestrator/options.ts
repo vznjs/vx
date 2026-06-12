@@ -19,6 +19,15 @@ export interface RunOptions {
   /** Skip cache reads AND writes. Every task runs and nothing is persisted. */
   noCache?: boolean
   /**
+   * CI mode: load configs FROM the committed vx-lock.json instead of
+   * evaluating them (frozen-env reproducibility). Requires the lock
+   * to exist and pass its content-hash tripwire. Local runs default
+   * to live evaluation — byte hashes can't see a config's import
+   * closure, so a strict local mode would give false confidence.
+   * Pair with `vx lock --check` in CI for the full evaluation audit.
+   */
+  frozen?: boolean
+  /**
    * Filter `dependsOn` expansion. `'all'` drops every edge (just the
    * requested task runs). A string array drops only those task names
    * from both `self` and `dependencies` buckets.
