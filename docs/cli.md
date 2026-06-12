@@ -512,7 +512,7 @@ Turbo or Nx setup. The source is auto-detected at the workspace root:
   frozen as static config (noted in the report header). When `nx.json`
   exists but the graph file is missing, the error tells you to run any
   nx command once (or `nx graph --file=.nx/workspace-data/project-graph.json`).
-- Both present → error asking to delete the one you're not migrating
+- Both present → pass `--from turbo` or `--from nx` to disambiguate
   from.
 
 ```

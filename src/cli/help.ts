@@ -8,7 +8,7 @@ export function printHelp(): void {
       '  vx watch [OPTIONS] TASK [-- forwarded-args...]',
       '  vx cache prune [--older-than <duration>] [--max-size <bytes>]',
       '  vx lock [--check]',
-      '  vx migrate [--dry] [--force]',
+      '  vx migrate [--from turbo|nx] [--dry] [--force]',
       '  vx show [PROJECT[#TASK]] [--format pretty|json]',
       '  vx info',
       '  vx help',

@@ -19,15 +19,21 @@ import { migrateTurbo } from './migrate-turbo.js'
 export interface MigrateArgs {
   dry: boolean
   force: boolean
+  from?: 'turbo' | 'nx'
   error?: string
 }
 
 export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
   const out: MigrateArgs = { dry: false, force: false }
-  for (const a of args) {
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]
     if (a === '--dry') out.dry = true
     else if (a === '--force') out.force = true
-    else if (a.startsWith('-')) return { ...out, error: `unknown flag: ${a}` }
+    else if (a === '--from' || a?.startsWith('--from=')) {
+      const v = a === '--from' ? args[++i] : a.slice('--from='.length)
+      if (v !== 'turbo' && v !== 'nx') return { ...out, error: `--from must be turbo or nx` }
+      out.from = v
+    } else if (a?.startsWith('-')) return { ...out, error: `unknown flag: ${a}` }
     else return { ...out, error: `unexpected argument: ${a}` }
   }
   return out
@@ -79,27 +85,36 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   const hasGraph = await Bun.file(path.join(root, graphRel)).exists()
   const hasNxJson = await Bun.file(path.join(root, 'nx.json')).exists()
 
-  if (hasTurbo && (hasGraph || hasNxJson)) {
+  // Evaluating teams routinely have both runners checked in — never
+  // ask anyone to delete anything; --from disambiguates.
+  if (parsed.from === undefined && hasTurbo && (hasGraph || hasNxJson)) {
     throw new UserError(
-      'both turbo.json and an nx workspace are present — delete the one you are ' +
-        'not migrating from, then re-run vx migrate',
+      'both turbo.json and an nx workspace are present — pass --from turbo or --from nx',
     )
+  }
+  if (parsed.from === 'turbo' && !hasTurbo) {
+    throw new UserError('--from turbo, but no turbo.json at the workspace root')
   }
 
   let source: string
   let plan: MigrationPlan
-  if (hasTurbo) {
+  if (parsed.from === 'nx' || (parsed.from === undefined && !hasTurbo)) {
+    if (hasGraph) {
+      source = '.nx/workspace-data/project-graph.json'
+      plan = await migrateNx(root, metas)
+    } else if (hasNxJson || parsed.from === 'nx') {
+      // Modern Nx stores the graph in SQLite — the JSON snapshot only
+      // exists when exported explicitly.
+      throw new UserError(
+        'no resolved Nx graph found — export one with ' +
+          '`nx graph --file=.nx/workspace-data/project-graph.json`, then re-run vx migrate',
+      )
+    } else {
+      throw new UserError('nothing to migrate: no turbo.json or nx.json at the workspace root')
+    }
+  } else if (hasTurbo) {
     source = 'turbo.json'
     plan = await migrateTurbo(root, metas)
-  } else if (hasGraph) {
-    source = '.nx/workspace-data/project-graph.json'
-    plan = await migrateNx(root, metas)
-  } else if (hasNxJson) {
-    throw new UserError(
-      'nx.json found but .nx/workspace-data/project-graph.json is missing — run any nx ' +
-        'command once (or `nx graph --file=.nx/workspace-data/project-graph.json`) to ' +
-        'produce the resolved graph, then re-run vx migrate',
-    )
   } else {
     throw new UserError('nothing to migrate: no turbo.json or nx.json at the workspace root')
   }
