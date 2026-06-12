@@ -22,6 +22,7 @@ vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] TASK [-- forwarded-args...]
 vx cache prune [--older-than <duration>] [--max-size <bytes>]
 vx lock [--check]
+vx migrate [--dry] [--force]
 vx show [PROJECT[#TASK]] [--format pretty|json]
 vx info
 vx stats              # deprecated alias of vx info
@@ -494,6 +495,75 @@ Exit codes:
 - `1` — parse error, workspace-discovery error, missing lock
   (`--check` without one), or any drift (every mismatched project is
   listed on stderr).
+
+## `vx migrate`
+
+Generate one `vx.config.ts` per workspace package from an existing
+Turbo or Nx setup. The source is auto-detected at the workspace root:
+
+- `turbo.json` → **Turbo path**. Reads the root pipeline (`tasks` in
+  turbo 2, `pipeline` in turbo 1), per-package `turbo.json` `extends`
+  overlays (per-key merge over the root task), and each package's
+  `package.json` scripts. A task is emitted for a package only when
+  the package declares the matching script (turbo semantics); the
+  script body is inlined as `exec.command`.
+- `.nx/workspace-data/project-graph.json` → **Nx path**. Migrates
+  from the resolved graph snapshot ONLY — plugin-inferred targets are
+  frozen as static config (noted in the report header). When `nx.json`
+  exists but the graph file is missing, the error tells you to run any
+  nx command once (or `nx graph --file=.nx/workspace-data/project-graph.json`).
+- Both present → error asking to delete the one you're not migrating
+  from.
+
+```
+vx migrate           # write vx.config.ts files (and vx-preset.ts when needed)
+vx migrate --dry     # print the generated file contents instead of writing
+vx migrate --force   # overwrite existing vx.config.* / vx-preset.ts
+```
+
+Existing `vx.config.*` files are **never** overwritten without
+`--force` — conflicts abort the whole run before anything is written.
+
+Mapping highlights:
+
+- **Turbo**: `dependsOn` copies verbatim (same micro-syntax);
+  `inputs` → `cache.inputs.files` (`$TURBO_DEFAULT$` expands to
+  `'**/*'` in place, `!` negation passes through); `outputs` →
+  `cache.outputs.files` (vx outputs have no negation — negated
+  entries become TODOs); `env` → `cache.inputs.env` AND
+  `exec.env.passThrough` (vx child envs are isolated, so a hashed
+  env var must also be forwarded); `passThroughEnv` → passThrough
+  only; `cache: false` omits the cache block; `persistent: true` →
+  `exec.persistent: {}` plus a TODO suggesting `readyWhen`.
+  `globalEnv` / `globalPassThroughEnv` / `globalDependencies` become
+  exported arrays in a generated root `vx-preset.ts` that each config
+  imports and spreads — TypeScript composition replaces turbo's
+  global fields. `$TURBO_ROOT$` forms are not representable → TODO.
+- **Nx**: `nx:run-commands` joins `commands` with `' && '` (a `cwd`
+  differing from the project root is a TODO); `nx:run-script` inlines
+  the package.json script body; any other executor emits a valid
+  placeholder command (`echo 'TODO(vx-migrate): fill in' && exit 1`)
+  with a TODO carrying the executor + its options JSON. Inputs strip
+  `{projectRoot}/`, expand named inputs from `nx.json`, route
+  `{env: X}` to `cache.inputs.env` + passThrough, and TODO the rest
+  (`{workspaceRoot}`, `^deps-inputs`, `externalDependencies`,
+  `dependentTasksOutputFiles` — vx folds upstream via `dependsOn`
+  already). Outputs strip `{projectRoot}/`, resolve literal
+  `{options.x}` tokens, and append `/**` to bare directory paths.
+  `dependsOn` objects map `projects: 'dependencies'` → `'^target'`,
+  `'self'`/absent → `'target'`, project lists → `'proj#target'`.
+  The graph's dependency edges are ignored (vx derives package edges
+  from manifests); edges with no manifest counterpart produce one
+  report line ("N implicit Nx deps not representable").
+
+Everything unmappable becomes a `// TODO(vx-migrate): …` comment in
+the generated file — TODOs are always comments, never values, so
+every generated config loads and validates as-is. The run ends with a
+report: tasks migrated clean, TODO count with `project#task: reason`
+lines, and the files written.
+
+Exit codes: `0` success (TODOs don't fail the run); `1` parse error,
+detection error, or overwrite conflict without `--force`.
 
 ## `vx show`
 

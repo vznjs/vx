@@ -47,6 +47,9 @@ src/
     watch.ts            # `vx watch` re-run loop
     cache.ts            # `vx cache prune` + duration/size parsers
     lock.ts             # `vx lock` / `--check` (freeze + audit vx-lock.json)
+    migrate.ts          # `vx migrate` — detection, TS emission, overwrite guard, report
+    migrate-turbo.ts    # turbo.json → vx.config.ts mapping (+ vx-preset.ts globals)
+    migrate-nx.ts       # nx project-graph.json → vx.config.ts mapping
     show.ts             # `vx show` — live resolved-config introspection
     info.ts             # `vx info` doctor printout (`vx stats` = alias)
     help.ts             # help text
@@ -161,6 +164,33 @@ bun.lock
    another project's dir.
 
 ## Decision log
+
+- **2026-06**: `vx migrate [--dry] [--force]` — onboarding generator
+  from Turbo/Nx. Auto-detects: turbo.json → Turbo path (root
+  tasks/pipeline + per-pkg `extends` per-key merge + scripts inlined
+  as exec.command; task emitted only where the script exists);
+  `.nx/workspace-data/project-graph.json` → Nx path (resolved
+  snapshot ONLY — "plugin-inferred targets are frozen as static
+  config" in the report header; nx.json-but-no-graph errors with the
+  `nx graph --file=…` fixit; both sources → delete-one error).
+  Deliberate calls: (a) TODOs are ALWAYS comments, never values —
+  every generated config round-trips through loadProjectConfig in
+  tests; human-input tasks get the valid placeholder
+  `echo 'TODO(vx-migrate): fill in' && exit 1`; (b) turbo `env` maps
+  to cache.inputs.env AND exec.env.passThrough (isolated-child-env
+  rule), passThroughEnv to passThrough only; (c) turbo globals
+  (globalEnv/globalPassThroughEnv/globalDependencies) become exported
+  arrays in a generated root `vx-preset.ts` that configs import +
+  spread — TS composition replaces turbo's global fields (consistent
+  with the rejected named-inputs schema machinery); (d) generated
+  configs are plain `export default { … }` with no `@vzn/vx` import —
+  loadable in workspaces that haven't installed vx yet; a header
+  comment points at defineProject(); (e) nx graph dependency edges
+  are ignored (vx derives edges from manifests) except one report
+  line counting edges with no manifest dep; (f) never overwrites
+  vx.config.\* / vx-preset.ts without --force, and conflicts abort
+  before ANY write. Files: `src/cli/migrate{,-turbo,-nx}.ts`; 23
+  tests in tests/migrate.test.ts; docs/cli.md `## vx migrate`.
 
 - **2026-06**: Introspection subcommands. `vx show [target]
 [--format pretty|json]` prints LIVE resolved configs (same loader as

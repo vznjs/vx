@@ -1,0 +1,207 @@
+// `vx migrate [--dry] [--force]` — generate per-package vx.config.ts
+// from an existing Turbo or Nx setup. Source auto-detect: turbo.json →
+// Turbo; .nx/workspace-data/project-graph.json → Nx (the resolved
+// snapshot). Mappers live in migrate-turbo.ts / migrate-nx.ts and
+// return an IR; this file owns detection, TS emission, the overwrite
+// guard, and the final report.
+
+import path from 'node:path'
+import { relPosix, UserError } from '../util/index.js'
+import {
+  findWorkspaceRoot,
+  listProjects,
+  loadWorkspace,
+  type ProjectMeta,
+} from '../workspace/index.js'
+import { migrateNx } from './migrate-nx.js'
+import { migrateTurbo } from './migrate-turbo.js'
+
+export interface MigrateArgs {
+  dry: boolean
+  force: boolean
+  error?: string
+}
+
+export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
+  const out: MigrateArgs = { dry: false, force: false }
+  for (const a of args) {
+    if (a === '--dry') out.dry = true
+    else if (a === '--force') out.force = true
+    else if (a.startsWith('-')) return { ...out, error: `unknown flag: ${a}` }
+    else return { ...out, error: `unexpected argument: ${a}` }
+  }
+  return out
+}
+
+/** Verbatim TS expression spliced into a generated array (preset spreads). */
+export interface RawExpr {
+  readonly raw: string
+}
+
+export interface GeneratedTask {
+  name: string
+  /** Rendered as `// TODO(vx-migrate): …` above the task + listed in the report. */
+  todos: string[]
+  /** TaskConfig-shaped object; arrays may contain RawExpr splices. */
+  task: Record<string, unknown>
+}
+
+export interface GeneratedProject {
+  /** package.json name */
+  name: string
+  /** absolute project dir */
+  dir: string
+  importLines: string[]
+  tasks: GeneratedTask[]
+}
+
+export interface MigrationPlan {
+  /** report lines printed right under the source line */
+  headerNotes: string[]
+  projects: GeneratedProject[]
+  /** extra root-relative files (e.g. the preset) */
+  extraFiles: { relPath: string; contents: string }[]
+  /** trailing report lines (e.g. implicit Nx deps) */
+  notes: string[]
+}
+
+export async function migrateCmd(args: readonly string[]): Promise<number> {
+  const parsed = parseMigrateArgs(args)
+  if (parsed.error) {
+    process.stderr.write(`vx migrate: ${parsed.error}\n`)
+    return 1
+  }
+  const root = await findWorkspaceRoot(process.cwd())
+  const metas = await listProjects(await loadWorkspace(root))
+
+  const hasTurbo = await Bun.file(path.join(root, 'turbo.json')).exists()
+  const graphRel = path.join('.nx', 'workspace-data', 'project-graph.json')
+  const hasGraph = await Bun.file(path.join(root, graphRel)).exists()
+  const hasNxJson = await Bun.file(path.join(root, 'nx.json')).exists()
+
+  if (hasTurbo && (hasGraph || hasNxJson)) {
+    throw new UserError(
+      'both turbo.json and an nx workspace are present — delete the one you are ' +
+        'not migrating from, then re-run vx migrate',
+    )
+  }
+
+  let source: string
+  let plan: MigrationPlan
+  if (hasTurbo) {
+    source = 'turbo.json'
+    plan = await migrateTurbo(root, metas)
+  } else if (hasGraph) {
+    source = '.nx/workspace-data/project-graph.json'
+    plan = await migrateNx(root, metas)
+  } else if (hasNxJson) {
+    throw new UserError(
+      'nx.json found but .nx/workspace-data/project-graph.json is missing — run any nx ' +
+        'command once (or `nx graph --file=.nx/workspace-data/project-graph.json`) to ' +
+        'produce the resolved graph, then re-run vx migrate',
+    )
+  } else {
+    throw new UserError('nothing to migrate: no turbo.json or nx.json at the workspace root')
+  }
+
+  const files: { relPath: string; abs: string; contents: string }[] = []
+  for (const p of plan.projects) {
+    if (p.tasks.length === 0) continue
+    const abs = path.join(p.dir, 'vx.config.ts')
+    files.push({ relPath: relPosix(root, abs), abs, contents: renderConfigFile(source, p) })
+  }
+  for (const f of plan.extraFiles) {
+    files.push({ relPath: f.relPath, abs: path.join(root, f.relPath), contents: f.contents })
+  }
+
+  if (!parsed.dry && !parsed.force) {
+    const conflicts: string[] = []
+    for (const p of plan.projects) {
+      if (p.tasks.length === 0) continue
+      const meta = metas.find((m) => m.dir === p.dir)
+      if (meta?.configPath) conflicts.push(relPosix(root, meta.configPath))
+    }
+    for (const f of plan.extraFiles) {
+      if (await Bun.file(path.join(root, f.relPath)).exists()) conflicts.push(f.relPath)
+    }
+    if (conflicts.length > 0) {
+      throw new UserError(
+        'refusing to overwrite existing files (pass --force to overwrite):\n' +
+          `  ${conflicts.join('\n  ')}`,
+      )
+    }
+  }
+
+  if (parsed.dry) {
+    for (const f of files) {
+      process.stdout.write(`── ${f.relPath} ──\n${f.contents}\n`)
+    }
+  } else {
+    for (const f of files) await Bun.write(f.abs, f.contents)
+  }
+
+  const todoList: string[] = []
+  let clean = 0
+  for (const p of plan.projects) {
+    for (const t of p.tasks) {
+      if (t.todos.length === 0) clean++
+      for (const reason of t.todos) todoList.push(`${p.name}#${t.name}: ${reason}`)
+    }
+  }
+  const report: string[] = [`vx migrate: ${source} → vx.config.ts`]
+  for (const n of plan.headerNotes) report.push(`note: ${n}`)
+  report.push(
+    '',
+    `${clean} task${clean === 1 ? '' : 's'} migrated clean, ` +
+      `${todoList.length} TODO${todoList.length === 1 ? '' : 's'}${todoList.length > 0 ? ':' : ''}`,
+  )
+  for (const line of todoList) report.push(`  ${line}`)
+  report.push(...plan.notes)
+  report.push(parsed.dry ? 'files (dry run, nothing written):' : 'files written:')
+  for (const f of files) report.push(`  ${f.relPath}`)
+  process.stdout.write(`${report.join('\n')}\n`)
+  return 0
+}
+
+// ─── TS emission ──────────────────────────────────────────────────────
+
+const IDENT = /^[A-Za-z_$][\w$]*$/
+
+function quote(s: string): string {
+  return `'${s.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`
+}
+
+function isRawExpr(v: unknown): v is RawExpr {
+  return typeof v === 'object' && v !== null && typeof (v as RawExpr).raw === 'string'
+}
+
+function renderValue(v: unknown, indent: string): string {
+  if (isRawExpr(v)) return v.raw
+  if (typeof v === 'string') return quote(v)
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v)
+  if (Array.isArray(v)) return `[${v.map((x) => renderValue(x, indent)).join(', ')}]`
+  const entries = Object.entries(v as Record<string, unknown>).filter(([, x]) => x !== undefined)
+  if (entries.length === 0) return '{}'
+  const inner = `${indent}  `
+  const body = entries.map(
+    ([k, x]) => `${inner}${IDENT.test(k) ? k : quote(k)}: ${renderValue(x, inner)},`,
+  )
+  return `{\n${body.join('\n')}\n${indent}}`
+}
+
+function renderConfigFile(source: string, p: GeneratedProject): string {
+  const lines: string[] = [
+    `// Generated by \`vx migrate\` from ${source}. Review the TODO(vx-migrate)`,
+    "// comments, then wrap the object in defineProject() from '@vzn/vx' for",
+    '// editor type-checking.',
+  ]
+  if (p.importLines.length > 0) lines.push(...p.importLines)
+  lines.push('', 'export default {', '  tasks: {')
+  for (const t of p.tasks) {
+    for (const todo of t.todos) lines.push(`    // TODO(vx-migrate): ${todo}`)
+    const key = IDENT.test(t.name) ? t.name : quote(t.name)
+    lines.push(`    ${key}: ${renderValue(t.task, '    ')},`)
+  }
+  lines.push('  },', '}', '')
+  return lines.join('\n')
+}
