@@ -199,7 +199,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
 
     const code = await run(['run', '--all', 'hello'])
     expect(code).toBe(0)
-    expect(stdout).toContain('● one#hello ── executed •')
+    expect(stdout).toContain('● one#hello ── success •')
     expect(stdout).not.toContain('hello-cli')
   })
 
@@ -254,7 +254,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
 
     const code = await run(['run', '--filter', 'one', 'hello'])
     expect(code).toBe(0)
-    expect(stdout).toContain('● one#hello ── executed •')
+    expect(stdout).toContain('● one#hello ── success •')
     expect(stdout).not.toContain('hello-cli')
   })
 

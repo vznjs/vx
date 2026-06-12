@@ -165,6 +165,39 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: Status display v2 — worker region (owner-driven
+  iteration, same day). The single status line "jumped too much" on
+  broad runs (running count 1→10, names churning), so it became a
+  FIXED-HEIGHT WORKER REGION on every interactive view: one row per
+  worker slot, sized min(concurrency, 10) — the display derives from
+  the stable worker set, not the churning task set. A task takes the
+  lowest free row and STAYS there for its whole life; idle rows hold
+  their place dimmed; overflow queues for a freed row and shows as
+  `+k more`. No worker indexes (owner cut them) — instead the run
+  header states the pool: `(N tasks, C workers)`; runStart hook
+  carries `concurrency`. Stats line iterated through three owner
+  designs (worded buckets → colored bare fractions → REJECTED as
+  unreadable in the wild) and landed on labeled colored pairs in two
+  groups, every bucket always present in fixed order, miss first in
+  the cache group: `▶ 1 failed · 78 success · 759 left · 1090 total
+│ 79 miss · 252 up-to-date · 0 local · 0 remote │ 16s` (local =
+  yellow, remote = cyan — owner-set). Vocabulary change: `executed`
+  → `success` ("executed wording is ambiguous"). Identity coloring
+  shipped with it: project half of every id gets a STABLE hue hashed
+  from the project name (6-hue cool palette), task half fixed pink,
+  separator dim — both deliberately outside the status palette so an
+  id can never read as an outcome; applied in frames, one-liners,
+  and region rows (region pads by visible length, hue hashes from
+  the full name so it survives truncation). formatStatusLine deleted
+  (no consumer). Writer gained setRegion: single line keeps legacy
+  ESC[2K\r bytes; taller regions erase via `\r ESC[nA ESC[J`.
+  Focused replay pin added: requested cache hits stream stored
+  stdout raw for EVERY hit kind, up-to-date included (execute-task
+  replay is unconditional — owner requirement). Files:
+  orchestrator/{status-line,logger,framed-output,run}.ts; tests in
+  status-line.test.ts (region mechanics, slot stability, overflow,
+  buckets) + repinned framed-output/output-flow/cli suites.
+
 - **2026-06**: Output redesign — flow-aware views + status line.
   OWNER RULES, do not re-litigate: flow is decided by SELECTION FLAGS
   ONLY — BROAD iff `--all` / `--filter` / `--affected` was passed,

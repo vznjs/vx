@@ -24,7 +24,21 @@ import { formatDuration } from './summary.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
 
-const ACCENT = '#06b6d4' // cyan-500 — bullets, task ids, remote-hit hint
+const ACCENT = '#06b6d4' // cyan-500 — bullets, remote-hit hint
+// Identity hues — deliberately outside the status palette (green /
+// red / yellow / cyan) so a task id can never read as an outcome.
+// Projects hash to a stable hue (same project = same color in every
+// run, list, and region row); tasks keep one fixed hue excluded from
+// the project palette so the two halves always read apart.
+const PROJECT_PALETTE = [
+  '#a78bfa', // violet-400
+  '#60a5fa', // blue-400
+  '#e879f9', // fuchsia-400
+  '#818cf8', // indigo-400
+  '#c084fc', // purple-400
+  '#93c5fd', // blue-300
+] as const
+const TASK = '#f472b6' // pink-400 — task part of an id
 const SUCCESS = '#22c55e' // green-500 — local cache-hit hint
 const WARN = '#eab308' // yellow-500 — skipped
 const ERROR = '#ef4444' // red-500 — failed
@@ -42,6 +56,8 @@ export interface HeaderInput {
    */
   taskCount: number
   remoteCacheEnabled: boolean
+  /** Worker-pool size for this run; shown so the region rows have context. */
+  concurrency?: number
 }
 
 export function formatHeader(input: HeaderInput, colors: ColorSupport = NO_COLOR): string[] {
@@ -49,10 +65,11 @@ export function formatHeader(input: HeaderInput, colors: ColorSupport = NO_COLOR
   const taskList = input.tasks.join(', ')
   const pkgs = `${input.packageCount} package${input.packageCount === 1 ? '' : 's'}`
   const tasks = `${input.taskCount} task${input.taskCount === 1 ? '' : 's'}`
+  const workers = input.concurrency !== undefined ? `, ${input.concurrency} workers` : ''
   return [
     `${bullet} ${paint('', `vx ${input.version}`, colors, { bold: true })}`,
     '',
-    `   ${bullet} Running ${taskList} in ${pkgs} (${tasks})`,
+    `   ${bullet} Running ${taskList} in ${pkgs} (${tasks}${workers})`,
     `   ${bullet} Remote caching ${input.remoteCacheEnabled ? 'enabled' : 'disabled'}`,
     '',
   ]
@@ -81,8 +98,7 @@ export function formatTaskBlock(
   const stdout = body.stdout ?? ''
   const stderr = body.stderr ?? ''
 
-  const id = node.id
-  const idPainted = paint(ACCENT, id, colors, { bold: true })
+  const idPainted = paintTaskId(node, colors, { bold: true })
   const corner = (s: string) => paint('', s, colors, { dim: true })
   const bar = corner('│')
   const tee = corner('├─')
@@ -137,6 +153,53 @@ function pushBodyLines(lines: string[], text: string, bar: string): void {
   }
 }
 
+/** Stable per-project hue: FNV-style fold of the name into the palette. */
+export function projectColor(projectName: string): string {
+  let h = 0
+  for (let i = 0; i < projectName.length; i++) {
+    h = (h * 31 + projectName.charCodeAt(i)) >>> 0
+  }
+  return PROJECT_PALETTE[h % PROJECT_PALETTE.length]!
+}
+
+/**
+ * `project#task` halves in distinct identity hues (never status
+ * colors); the dim separator keeps them reading apart. `hueSource`
+ * exists for truncated display strings: the hue must hash from the
+ * FULL project name so it survives truncation.
+ */
+export function paintIdParts(
+  hueSource: string,
+  projectText: string,
+  taskText: string,
+  colors: ColorSupport,
+  opts: { bold?: boolean } = {},
+): string {
+  const dim = (t: string) => paint('', t, colors, { dim: true })
+  return (
+    paint(projectColor(hueSource), projectText, colors, opts) +
+    dim('#') +
+    paint(TASK, taskText, colors, opts)
+  )
+}
+
+export function paintId(
+  projectName: string,
+  taskName: string,
+  colors: ColorSupport,
+  opts: { bold?: boolean } = {},
+): string {
+  return paintIdParts(projectName, projectName, taskName, colors, opts)
+}
+
+export function paintTaskId(
+  node: TaskNode,
+  colors: ColorSupport,
+  opts: { bold?: boolean } = {},
+): string {
+  return paintId(node.projectName, node.taskName, colors, opts)
+}
+
 /**
  * Compact one-liner for a cache hit with nothing to replay. Every
  * task stays visible in the log, but a hit costs one line instead of
@@ -157,7 +220,7 @@ export function formatTaskHitLine(
         ? paint(ACCENT, 'restored-remote', colors)
         : paint(SUCCESS, 'restored-local', colors)
   const mark = paint(SUCCESS, '◌', colors)
-  return `${mark} ${node.id} ${dim('──')} ${label} ${dim(`• ${shortHash}`)}`
+  return `${mark} ${paintTaskId(node, colors)} ${dim('──')} ${label} ${dim(`• ${shortHash}`)}`
 }
 
 /**
@@ -172,7 +235,7 @@ export function formatTaskExecutedLine(
 ): string {
   const dim = (s: string) => paint('', s, colors, { dim: true })
   const mark = paint(SUCCESS, '●', colors)
-  return `${mark} ${node.id} ${dim('──')} executed ${dim(`• ${formatDuration(o.durationMs)}`)}`
+  return `${mark} ${paintTaskId(node, colors)} ${dim('──')} success ${dim(`• ${formatDuration(o.durationMs)}`)}`
 }
 
 function formatBlockHeader(node: TaskNode, o: TaskOutcome, colors: ColorSupport): string {
@@ -194,7 +257,7 @@ function formatBlockHeader(node: TaskNode, o: TaskOutcome, colors: ColorSupport)
     case 'skipped':
       return paint(WARN, 'skipped (upstream failed)', colors)
     case 'success':
-      return dim('executed')
+      return dim('success')
     default:
       return o.status
   }
@@ -221,7 +284,7 @@ function formatStatusTag(o: TaskOutcome, colors: ColorSupport): string {
         dim: true,
       })
     case 'success':
-      return paint('', 'executed', colors, { dim: true })
+      return paint('', 'success', colors, { dim: true })
     case 'failed':
       return paint(ERROR, `failed (exit ${o.exitCode})`, colors, { bold: true })
     case 'skipped':

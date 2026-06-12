@@ -1,7 +1,12 @@
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { detectColors, type ColorSupport } from './colors.js'
 import { formatTaskBlock, formatTaskExecutedLine, formatTaskHitLine } from './framed-output.js'
-import { createOutputWriter, formatStatusLine, type StatusStream } from './status-line.js'
+import {
+  createOutputWriter,
+  formatStatusRegion,
+  type StatusStream,
+  type WorkerSlot,
+} from './status-line.js'
 import { formatDuration } from './summary.js'
 import { isGroupTask } from '../graph/index.js'
 
@@ -22,7 +27,7 @@ export interface Logger {
    * present; the default logger uses them to drive its dynamic
    * status line. Custom loggers can ignore them.
    */
-  runStart?(info: { total: number }): void
+  runStart?(info: { total: number; concurrency?: number }): void
   taskStart?(node: TaskNode): void
   /** Run finished (any outcome). Idempotent. */
   runEnd?(): void
@@ -40,7 +45,7 @@ export interface Logger {
  *   focused     — requested nodes stream raw output live (running the
  *                 task should feel like running the command directly);
  *                 dependency-pulled nodes are silent unless they fail.
- *   broad       — news only: one `executed` line per executed task,
+ *   broad       — news only: one `success` line per executed task,
  *                 full frames for failures, silence for cache hits.
  *
  * `gha` (full mode only): wrap each task's block in `::group::` /
@@ -66,7 +71,7 @@ function truthyEnv(v: string | undefined): boolean {
 function outcomeWord(o: TaskOutcome): string {
   switch (o.status) {
     case 'success':
-      return 'executed'
+      return 'success'
     case 'cache-hit':
       return o.restored === false ? 'up-to-date' : 'restored-local'
     case 'cache-hit-remote':
@@ -135,19 +140,47 @@ export function defaultLogger(
   // streams and in CI.
   const writer = createOutputWriter(out, { enabled: view.ci !== true })
 
-  // Status-line state, driven by the optional lifecycle hooks.
+  // Status-display state, driven by the optional lifecycle hooks.
   let total = 0
   let done = 0
   let failed = 0
   let startedAtMs = Date.now()
-  const runningIds: string[] = []
   let ticker: ReturnType<typeof setInterval> | null = null
   let statusDead = !writer.enabled
+
+  // Every interactive view renders the fixed-height worker region:
+  // one row per worker slot so a task's name never moves while it
+  // runs (the display derives from the stable worker set, not the
+  // churning task set). Sized at runStart from concurrency, capped at
+  // 10 rows; excess running tasks queue for a freed slot and surface
+  // as `+k more` on the stats line. Focused flow keeps its lifecycle:
+  // the region dies the moment a requested node starts streaming.
+  let slots: (WorkerSlot | null)[] = []
+  const slotQueue: WorkerSlot[] = []
+  let spinnerFrame = 0
+  let succeeded = 0
+  let upToDate = 0
+  let restoredLocal = 0
+  let restoredRemote = 0
+
   const refresh = (force: boolean): void => {
     if (statusDead) return
-    writer.setStatus(
-      formatStatusLine(
-        { running: runningIds, done, total, failed, elapsedMs: Date.now() - startedAtMs },
+    writer.setRegion(
+      formatStatusRegion(
+        {
+          slots,
+          done,
+          total,
+          succeeded,
+          upToDate,
+          restoredLocal,
+          restoredRemote,
+          failed,
+          overflow: slotQueue.length,
+          elapsedMs: Date.now() - startedAtMs,
+          nowMs: Date.now(),
+          spinnerFrame,
+        },
         colors,
       ),
       { force },
@@ -191,11 +224,16 @@ export function defaultLogger(
     runStart(info) {
       total = info.total
       startedAtMs = Date.now()
+      const cap = Math.max(1, Math.min(info.concurrency ?? 10, 10))
+      slots = Array.from({ length: cap }, () => null)
       if (writer.enabled && !statusDead && ticker === null) {
-        // Keeps the elapsed counter moving between task events. The
-        // writer throttles unforced redraws, and unref means a stray
-        // ticker can never hold the process open.
-        ticker = setInterval(() => refresh(false), 100)
+        // Keeps the elapsed counter + spinner moving between task
+        // events. The writer throttles unforced redraws, and unref
+        // means a stray ticker can never hold the process open.
+        ticker = setInterval(() => {
+          spinnerFrame++
+          refresh(false)
+        }, 100)
         ticker.unref?.()
       }
       refresh(true)
@@ -209,7 +247,10 @@ export function defaultLogger(
         killStatus()
         return
       }
-      runningIds.push(node.id)
+      const slot: WorkerSlot = { id: node.id, startedMs: Date.now() }
+      const free = slots.indexOf(null)
+      if (free >= 0) slots[free] = slot
+      else slotQueue.push(slot)
       refresh(true)
     },
     runEnd() {
@@ -238,10 +279,29 @@ export function defaultLogger(
       const stderr = takeChunks(stderrBuffers, node.id)
       // Group tasks (no exec) do no work — no surface prints them.
       if (!isGroupTask(node)) {
-        const idx = runningIds.indexOf(node.id)
-        if (idx >= 0) runningIds.splice(idx, 1)
         done++
         if (outcome.status === 'failed') failed++
+        // Free the task's slot; the longest-waiting queued task
+        // (if any) takes it over, keeping lowest-index-first reuse.
+        const si = slots.findIndex((s) => s !== null && s.id === node.id)
+        if (si >= 0) slots[si] = slotQueue.shift() ?? null
+        else {
+          const qi = slotQueue.findIndex((s) => s.id === node.id)
+          if (qi >= 0) slotQueue.splice(qi, 1)
+        }
+        switch (outcome.status) {
+          case 'success':
+            succeeded++
+            break
+          case 'cache-hit':
+            if (outcome.restored === false) upToDate++
+            else restoredLocal++
+            break
+          case 'cache-hit-remote':
+            if (outcome.restored === false) upToDate++
+            else restoredRemote++
+            break
+        }
         refresh(true)
       }
       if (isGroupTask(node)) return

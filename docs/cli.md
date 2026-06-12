@@ -187,13 +187,30 @@ broad mode silences per-task surface there. A focused `vx run test`
 is meant to feel like running the test command directly — same
 output, just faster.
 
-On an interactive terminal (TTY stdout, not CI) a single bottom
-status line tracks progress live — `▶ 2 running · 5/12 · one#build,
-two#build · 4s`, plus a red `· n failed` when anything failed. It's
-rewritten in place (one clear-line escape; not a TUI) and removed
-before the summary prints. In the focused flow it only lives while
-dependencies run; it disappears for good the moment the requested
-task starts streaming.
+On an interactive terminal (TTY stdout, not CI) a fixed-height
+worker region tracks the run live: one row per worker (sized from
+concurrency, capped at 10 — the header states the pool as
+`(N tasks, C workers)`), each showing a spinner, the running task's
+identity-colored id, and its elapsed time. A task stays in its row
+for its whole life and idle rows hold their place dimmed, so nothing
+ever jumps. The bottom stats line shows every bucket in fixed order:
+
+```
+▶ 1 failed · 78 success · 759 left · 1090 total │ 79 miss · 252 up-to-date · 0 local · 0 remote │ 16s
+```
+
+(red failed/miss, green success/up-to-date, yellow left/local, cyan
+total/remote; `+k more` appears when more tasks run than rows). The
+region is redrawn in place (cursor-up + clear; not a TUI — no
+alternate screen) and erased before the summary prints. In the
+focused flow it only lives while dependencies run; it disappears for
+good the moment the requested task starts streaming.
+
+Identity coloring: every `project#task` renders its project half in
+a stable hue hashed from the project name (same project = same color
+in every run and every surface) and its task half in a fixed pink —
+both deliberately outside the status palette, so an id can never
+read as an outcome.
 
 On GitHub Actions (`GITHUB_ACTIONS` truthy, full output mode), each
 task's block is wrapped in `::group::<id> (<outcome> <duration>)` /

@@ -112,7 +112,7 @@ describe('defaultLogger visibility matrix — broad', () => {
     const n = mkNode('one#build', { requested: true })
     log.taskStdout(n, 'noisy build output\n')
     log.taskComplete(n, mkOutcome(n, 'success', { durationMs: 1200 }))
-    expect(out.text()).toBe('● one#build ── executed • 1.20s\n')
+    expect(out.text()).toBe('● one#build ── success • 1.20s\n')
   })
 
   it('cache hit with replayed stdout → silent', () => {
@@ -243,7 +243,7 @@ describe('defaultLogger visibility matrix — overrides', () => {
     const text = out.text()
     expect(text).toContain('┌─ one#build')
     expect(text).toContain('work')
-    expect(text).toContain('executed')
+    expect(text).toContain('success')
   })
 
   it('errors-only: success and hits silent, failures framed', () => {
@@ -307,7 +307,7 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
     log.taskStdout(n, 'work\n')
     log.taskComplete(n, mkOutcome(n, 'success', { durationMs: 1200 }))
     const text = out.text()
-    expect(text).toContain('::group::one#build (executed 1.20s)\n')
+    expect(text).toContain('::group::one#build (success 1.20s)\n')
     expect(text).toContain('┌─ one#build')
     expect(text).toContain('::endgroup::\n')
     // group opens before the frame, closes after it
@@ -476,7 +476,7 @@ describe('flow e2e against a real fixture workspace', () => {
     expect(code).toBe(1)
 
     // Executed task: one-liner, no raw output.
-    expect(text()).toContain('● one#fresh ── executed •')
+    expect(text()).toContain('● one#fresh ── success •')
     expect(text()).not.toContain('FRESH-OUTPUT')
     // Cache hit: completely silent per-task (no replay, no one-liner).
     expect(text()).not.toContain('CACHED-OUTPUT')
@@ -560,7 +560,7 @@ describe('flow e2e against a real fixture workspace', () => {
       expect(code).toBe(1)
 
       // Executed + replayed-hit blocks are grouped...
-      expect(out).toMatch(/::group::one#fresh \(executed [^)]+\)\n/)
+      expect(out).toMatch(/::group::one#fresh \(success [^)]+\)\n/)
       // No declared outputs → the replayed hit reads as up-to-date.
       expect(out).toMatch(/::group::one#cached \(up-to-date [^)]+\)\n/)
       // ...and every group is closed.

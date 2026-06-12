@@ -4,8 +4,11 @@ import type { TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
 function node(id: string, command?: string): TaskNode {
+  const sep = id.indexOf('#')
   return {
     id,
+    projectName: sep >= 0 ? id.slice(0, sep) : id,
+    taskName: sep >= 0 ? id.slice(sep + 1) : id,
     config: command ? { exec: { command } } : {},
   } as unknown as TaskNode
 }
@@ -87,11 +90,11 @@ describe('formatTaskBlock', () => {
       { stdout: 'Found 0 warnings and 0 errors.\nFinished in 327ms.\n' },
     )
     expect(out).toBe(
-      '┌─ @vzn/vx#lint > executed\n' +
+      '┌─ @vzn/vx#lint > success\n' +
         '│   $ oxlint .\n' +
         '│   Found 0 warnings and 0 errors.\n' +
         '│   Finished in 327ms.\n' +
-        '└─ @vzn/vx#lint ── (327ms) executed\n',
+        '└─ @vzn/vx#lint ── (327ms) success\n',
     )
   })
 
@@ -215,7 +218,10 @@ describe('formatTaskBlock', () => {
     )
     expect(out).toContain('\x1b[')
     expect(out).toContain('\x1b[0m')
-    expect(out).toContain('@vzn/vx#lint')
+    // The id renders as two identity-colored halves with a dim
+    // separator, so the contiguous string only exists uncolored.
+    expect(out).toContain('@vzn/vx')
+    expect(out).toContain('lint')
     expect(out).toContain('restored-local')
     expect(out).toContain('abcdef01')
   })
