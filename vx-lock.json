@@ -13,7 +13,13 @@
             },
             "cache": {
               "inputs": {
-                "files": ["src/**", "tests/**", "bench/**", ".oxlintrc.json", "tsconfig.json"]
+                "files": [
+                  "src/**",
+                  "tests/**",
+                  "bench/**",
+                  ".oxlintrc.json",
+                  "tsconfig.json"
+                ]
               },
               "outputs": {
                 "files": []
@@ -27,7 +33,9 @@
             },
             "cache": {
               "inputs": {
-                "files": ["**/*"]
+                "files": [
+                  "**/*"
+                ]
               },
               "outputs": {
                 "files": []
@@ -47,7 +55,11 @@
             },
             "cache": {
               "inputs": {
-                "files": ["src/**", "tests/**", "package.json"]
+                "files": [
+                  "src/**",
+                  "tests/**",
+                  "package.json"
+                ]
               },
               "outputs": {
                 "files": []
@@ -56,7 +68,11 @@
           },
           "ci": {
             "description": "format-check + lint + test (CI gate)",
-            "dependsOn": ["format-check", "lint", "test"]
+            "dependsOn": [
+              "format-check",
+              "lint",
+              "test"
+            ]
           },
           "build.linux-x64": {
             "description": "compile standalone binary (linux x64)",
@@ -65,10 +81,14 @@
             },
             "cache": {
               "inputs": {
-                "files": ["**/*"]
+                "files": [
+                  "**/*"
+                ]
               },
               "outputs": {
-                "files": ["dist/vx-linux-x64"]
+                "files": [
+                  "dist/vx-linux-x64"
+                ]
               }
             }
           },
@@ -79,10 +99,14 @@
             },
             "cache": {
               "inputs": {
-                "files": ["**/*"]
+                "files": [
+                  "**/*"
+                ]
               },
               "outputs": {
-                "files": ["dist/vx-linux-arm64"]
+                "files": [
+                  "dist/vx-linux-arm64"
+                ]
               }
             }
           },
@@ -93,10 +117,14 @@
             },
             "cache": {
               "inputs": {
-                "files": ["**/*"]
+                "files": [
+                  "**/*"
+                ]
               },
               "outputs": {
-                "files": ["dist/vx-darwin-x64"]
+                "files": [
+                  "dist/vx-darwin-x64"
+                ]
               }
             }
           },
@@ -107,10 +135,14 @@
             },
             "cache": {
               "inputs": {
-                "files": ["**/*"]
+                "files": [
+                  "**/*"
+                ]
               },
               "outputs": {
-                "files": ["dist/vx-darwin-arm64"]
+                "files": [
+                  "dist/vx-darwin-arm64"
+                ]
               }
             }
           },
