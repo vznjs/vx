@@ -46,12 +46,13 @@ export function formatRunSummary(
     pair(t.restoredRemote, 'remote', ACCENT),
   ]
 
-  // Motif printed when every real task came from the cache (local or
-  // remote). Mirrors Turbo's `>>> FULL TURBO`.
+  // vx's own full-cache stamp (owner-picked over the Turbo-shaped
+  // `>>> FULL ...` shout): printed when every real task came from
+  // the cache — vx executed nothing.
   const fullCache = t.total > 0 && hits === t.total
   const dur = formatDuration(totalMs)
   const timeLine = fullCache
-    ? `  Time:    ${dur} ${paint(SUCCESS, '>>> FULL CACHE', colors, { bold: true })}`
+    ? `  Time:    ${dur} ${paint(WARN, '⚡', colors)} ${paint(SUCCESS, 'instant', colors, { bold: true })}`
     : `  Time:    ${dur}`
 
   const lines: string[] = [

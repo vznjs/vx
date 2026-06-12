@@ -95,25 +95,25 @@ describe('formatRunSummary', () => {
     expect(lines[2]).toBe(' Cache:    0 miss · 1 up-to-date · 0 local · 0 remote')
   })
 
-  it('appends >>> FULL CACHE when every real task came from the cache', () => {
+  it('appends the ⚡ instant stamp when every real task came from the cache', () => {
     const lines = formatRunSummary(
       [outcome('a#x', 'cache-hit'), outcome('b#x', 'cache-hit-remote')],
       42,
     )
-    expect(lines[3]).toBe('  Time:    42ms >>> FULL CACHE')
+    expect(lines[3]).toBe('  Time:    42ms ⚡ instant')
   })
 
-  it('omits >>> FULL CACHE when at least one task actually ran', () => {
+  it('omits the instant stamp when at least one task actually ran', () => {
     const lines = formatRunSummary([outcome('a#x', 'cache-hit'), outcome('b#x', 'success')], 42)
     expect(lines[3]).toBe('  Time:    42ms')
   })
 
-  it('omits >>> FULL CACHE on an empty run (no tasks)', () => {
+  it('omits the instant stamp on an empty run (no tasks)', () => {
     const lines = formatRunSummary([], 0)
     expect(lines[3]).toBe('  Time:    0ms')
   })
 
-  it('injects ANSI escapes around counts + FULL CACHE when colors are enabled', () => {
+  it('injects ANSI escapes around counts + stamp when colors are enabled', () => {
     const lines = formatRunSummary([outcome('a#x', 'cache-hit'), outcome('b#x', 'failed', 1)], 42, {
       enabled: true,
     })
@@ -123,9 +123,10 @@ describe('formatRunSummary', () => {
     expect(lines[1]).toContain('1 failed')
   })
 
-  it('FULL CACHE motif gets bold + green when colors are enabled', () => {
+  it('instant stamp gets bold + green when colors are enabled', () => {
     const lines = formatRunSummary([outcome('a#x', 'cache-hit')], 10, { enabled: true })
-    expect(lines[3]).toContain('>>> FULL CACHE')
+    expect(lines[3]).toContain('⚡')
+    expect(lines[3]).toContain('instant')
     expect(lines[3]).toContain('\x1b[1m')
   })
 })

@@ -36,7 +36,7 @@ Colors:
 - `successful` is green.
 - `failed` is bold red (only shown when N > 0).
 - `skipped` is yellow (only shown when N > 0).
-- `>>> FULL CACHE` motif appended to the time line when every task in
+- `⚡ instant` motif appended to the time line when every task in
   the run came from cache (local or remote). Mirrors Turbo's
   `>>> FULL TURBO`.
 

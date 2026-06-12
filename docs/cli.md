@@ -747,11 +747,11 @@ $ bun test
  Tasks:    3 successful, 3 total
  Cache:    1 miss · 0 up-to-date · 2 local · 0 remote
   Time:    5.34s
->>> FULL CACHE
+⚡ instant
 ```
 
 Group tasks emit no framed block by design (they aren't real tasks).
-`>>> FULL CACHE` appears when every executable task in the run was
+`⚡ instant` appears when every executable task in the run was
 served from cache.
 
 ### Colors
