@@ -10,6 +10,7 @@ import {
 import {
   createOutputWriter,
   formatStatusRegion,
+  type PinnedFailure,
   type StatusStream,
   type WorkerSlot,
 } from './status-line.js'
@@ -171,12 +172,19 @@ export function defaultLogger(
   let upToDate = 0
   let restoredLocal = 0
   let restoredRemote = 0
+  // Pinned zones above the worker rows: failures accumulate as they
+  // happen; persistent tasks pin at ready (their outcome lands while
+  // the child keeps running). Both live until runEnd kills the region.
+  const pinnedFailures: PinnedFailure[] = []
+  const pinnedPersistent: string[] = []
 
   const refresh = (force: boolean): void => {
     if (statusDead) return
     writer.setRegion(
       formatStatusRegion(
         {
+          pinnedFailures,
+          pinnedPersistent,
           slots,
           done,
           total,
@@ -301,7 +309,15 @@ export function defaultLogger(
       // Group tasks (no exec) do no work — no surface prints them.
       if (!isGroupTask(node)) {
         done++
-        if (outcome.status === 'failed') failed++
+        if (outcome.status === 'failed') {
+          failed++
+          pinnedFailures.push({ id: node.id, exitCode: outcome.exitCode })
+        } else if (node.config.exec?.persistent !== undefined && outcome.status === 'success') {
+          // A persistent task's outcome arrives at READY; the child
+          // keeps running until the orchestrator SIGTERMs it at run
+          // end — pin it so its liveness stays visible.
+          pinnedPersistent.push(node.id)
+        }
         // Free the task's slot; the longest-waiting queued task
         // (if any) takes it over, keeping lowest-index-first reuse.
         const si = slots.findIndex((s) => s !== null && s.id === node.id)

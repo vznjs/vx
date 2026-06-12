@@ -124,7 +124,10 @@ describe('createOutputWriter', () => {
   })
 })
 
-function mkNode(id: string, opts: { requested?: boolean; group?: boolean } = {}): TaskNode {
+function mkNode(
+  id: string,
+  opts: { requested?: boolean; group?: boolean; persistent?: boolean } = {},
+): TaskNode {
   const [project, task] = id.split('#')
   return {
     id,
@@ -132,7 +135,9 @@ function mkNode(id: string, opts: { requested?: boolean; group?: boolean } = {})
     taskName: task,
     requested: opts.requested ?? false,
     deps: [],
-    config: opts.group ? {} : { exec: { command: 'noop' } },
+    config: opts.group
+      ? {}
+      : { exec: { command: 'noop', ...(opts.persistent ? { persistent: {} } : {}) } },
   } as unknown as TaskNode
 }
 
@@ -152,6 +157,14 @@ function mkOutcome(
 }
 
 const NO_COLORS = { enabled: false }
+
+/** Region rows from a redraw chunk, with the erase prefix stripped. */
+function regionRows(chunk: string): string[] {
+  let c = chunk
+  if (c.startsWith(CLEAR)) c = c.slice(CLEAR.length)
+  else if (c.startsWith('\r')) c = c.slice(c.indexOf('\x1b[J') + '\x1b[J'.length)
+  return c.split('\n')
+}
 
 describe('defaultLogger status line integration', () => {
   it('non-TTY: lifecycle hooks are completely inert (no escapes, no ticker)', () => {
@@ -286,6 +299,48 @@ describe('defaultLogger status line integration', () => {
     log.runEnd?.()
   })
 
+  it('a failed task pins to the top of the region and stays until runEnd', () => {
+    const s = tty()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s)
+    log.runStart?.({ total: 3, concurrency: 1 })
+    const bad = mkNode('one#boom')
+    log.taskStart?.(bad)
+    log.taskComplete(bad, mkOutcome(bad, 'failed', { exitCode: 7 }))
+    expect(regionRows(s.chunks[s.chunks.length - 1]!)[0]).toBe('✗ one#boom ── failed (exit 7)')
+    // Pin survives later task churn.
+    const ok = mkNode('two#x')
+    log.taskStart?.(ok)
+    log.taskComplete(ok, mkOutcome(ok, 'success'))
+    expect(regionRows(s.chunks[s.chunks.length - 1]!)[0]).toBe('✗ one#boom ── failed (exit 7)')
+    log.runEnd?.()
+  })
+
+  it('a ready persistent task pins as running until runEnd', () => {
+    const s = tty()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s)
+    log.runStart?.({ total: 2, concurrency: 1 })
+    const dev = mkNode('web#dev', { persistent: true })
+    log.taskStart?.(dev)
+    // Persistent outcome arrives at READY while the child keeps
+    // running — from here the pin is the visible evidence it's alive.
+    log.taskComplete(dev, mkOutcome(dev, 'success'))
+    expect(regionRows(s.chunks[s.chunks.length - 1]!)[0]).toBe('▸ web#dev ── running')
+    log.runEnd?.()
+  })
+
+  it('a non-persistent success never pins', () => {
+    const s = tty()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s)
+    log.runStart?.({ total: 1, concurrency: 1 })
+    const ok = mkNode('one#x')
+    log.taskStart?.(ok)
+    log.taskComplete(ok, mkOutcome(ok, 'success'))
+    const last = s.chunks[s.chunks.length - 1]!
+    expect(last).not.toContain('▸')
+    expect(last).not.toContain('✗')
+    log.runEnd?.()
+  })
+
   it('runEnd is idempotent', () => {
     const s = tty()
     const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s)
@@ -299,6 +354,8 @@ describe('defaultLogger status line integration', () => {
 
 describe('formatStatusRegion', () => {
   const base = {
+    pinnedFailures: [],
+    pinnedPersistent: [],
     done: 0,
     total: 8,
     succeeded: 0,
@@ -358,6 +415,63 @@ describe('formatStatusRegion', () => {
     expect(lines[0]).toContain('…')
     expect(lines[0]!.length).toBeLessThan(60)
   })
+
+  it('pinned failures render above the worker rows', () => {
+    const lines = formatStatusRegion({
+      ...base,
+      pinnedFailures: [{ id: 'a#build', exitCode: 2 }],
+      slots: [slot('b#build'), null],
+    })
+    expect(lines).toHaveLength(4)
+    expect(lines[0]).toBe('✗ a#build ── failed (exit 2)')
+    expect(lines[1]).toContain('b#build')
+  })
+
+  it('failure pins cap at 5 + a dim "+K more failed" line', () => {
+    const pinnedFailures = Array.from({ length: 8 }, (_, i) => ({
+      id: `p${i}#build`,
+      exitCode: 1,
+    }))
+    const lines = formatStatusRegion({ ...base, pinnedFailures, slots: [null] })
+    expect(lines).toHaveLength(8) // 5 pins + more-line + 1 slot + stats
+    expect(lines[0]).toBe('✗ p0#build ── failed (exit 1)')
+    expect(lines[4]).toBe('✗ p4#build ── failed (exit 1)')
+    expect(lines[5]).toBe('… +3 more failed')
+    expect(lines[6]).toContain('idle')
+  })
+
+  it('pinned persistent tasks render between failures and worker rows', () => {
+    const lines = formatStatusRegion({
+      ...base,
+      pinnedFailures: [{ id: 'a#test', exitCode: 1 }],
+      pinnedPersistent: ['web#dev', 'api#dev'],
+      slots: [null],
+    })
+    expect(lines).toHaveLength(5)
+    expect(lines[0]).toBe('✗ a#test ── failed (exit 1)')
+    expect(lines[1]).toBe('▸ web#dev ── running')
+    expect(lines[2]).toBe('▸ api#dev ── running')
+    expect(lines[3]).toContain('idle')
+  })
+
+  it('pins keep ids identity-colored, never status-colored', () => {
+    const lines = formatStatusRegion(
+      {
+        ...base,
+        pinnedFailures: [{ id: 'a#test', exitCode: 1 }],
+        pinnedPersistent: ['web#dev'],
+        slots: [null],
+      },
+      { enabled: true },
+    )
+    // The ✗ glyph and outcome words are status-colored; the id halves
+    // carry their own identity escapes between them.
+    expect(lines[0]).toContain('✗')
+    expect(lines[0]).toContain('failed (exit 1)')
+    expect(lines[1]).toContain('running')
+    expect(lines[0]).toContain('\x1b[')
+    expect(lines[1]).toContain('\x1b[')
+  })
 })
 
 describe('createOutputWriter region mechanics', () => {
@@ -377,6 +491,22 @@ describe('createOutputWriter region mechanics', () => {
     const before = s.chunks.length
     w.write('content\n')
     expect(s.chunks.slice(before)).toEqual(['\r\x1b[1A\x1b[J', 'content\n', `${CLEAR}l1\nl2`])
+  })
+
+  it('variable region height: erase always uses the previously drawn height', () => {
+    const s = tty()
+    const w = createOutputWriter(s)
+    w.setRegion(['l1', 'l2'], { force: true })
+    expect(s.chunks.at(-1)).toBe(`${CLEAR}l1\nl2`)
+    // Grow 2 → 4: erase moves up 1 (old height 2), draws 4 lines.
+    w.setRegion(['g1', 'g2', 'g3', 'g4'], { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[1A\x1b[Jg1\ng2\ng3\ng4')
+    // Shrink 4 → 1: erase moves up 3 (old height 4), draws 1 line.
+    w.setRegion(['solo'], { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[3A\x1b[Jsolo')
+    // A foreign write after the shrink erases exactly the 1-line region.
+    w.write('content\n')
+    expect(s.chunks.slice(-3)).toEqual([CLEAR, 'content\n', `${CLEAR}solo`])
   })
 
   it('clearStatus erases the region permanently', () => {

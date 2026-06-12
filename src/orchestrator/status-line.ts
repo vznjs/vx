@@ -133,7 +133,28 @@ export interface WorkerSlot {
   startedMs: number
 }
 
+export interface PinnedFailure {
+  id: string
+  exitCode: number
+}
+
+/** Failure pins beyond this collapse into one dim `… +K more failed`. */
+const FAILURE_PIN_CAP = 5
+
 export interface StatusRegionState {
+  /**
+   * Failed tasks, pinned to the top of the region until runEnd so
+   * failures never scroll out of sight under later output (owner:
+   * "pin errors always to the end … on top of the workers").
+   */
+  pinnedFailures: readonly PinnedFailure[]
+  /**
+   * Ready persistent tasks (dev servers …) whose children keep
+   * running after their outcome lands. Pinned until runEnd — the
+   * orchestrator SIGTERMs them when the graph finishes, so runEnd is
+   * the honest end of their life.
+   */
+  pinnedPersistent: readonly string[]
   /** Fixed-size slot array; null = idle worker. Index = display row. */
   slots: readonly (WorkerSlot | null)[]
   done: number
@@ -182,18 +203,44 @@ function paintSlotId(id: string, width: number, colors: ColorSupport): string {
   return paintIdParts(fullProject, vis.slice(0, sep), vis.slice(sep + 1), colors) + pad
 }
 
+/** Identity-colored id for a pinned row — full id, no padding. */
+function paintPinnedId(id: string, colors: ColorSupport): string {
+  const sep = id.indexOf('#')
+  if (sep < 0) return id
+  return paintIdParts(id.slice(0, sep), id.slice(0, sep), id.slice(sep + 1), colors)
+}
+
 /**
- * Fixed-height worker region. One row per worker slot — a task stays
- * in its slot for its whole life, so names never jump — plus a stats
- * line at the bottom: two labeled groups (run progress, then cache
- * provenance) with every bucket always present in fixed order (stable
- * layout beats compactness: layout shift IS the bug this display
- * exists to fix).
+ * Worker region with pinned zones. Top to bottom: pinned failures
+ * (capped), pinned ready persistent tasks, one row per worker slot —
+ * a task stays in its slot for its whole life, so names never jump —
+ * plus a stats line at the bottom: two labeled groups (run progress,
+ * then cache provenance) with every bucket always present in fixed
+ * order (stable layout beats compactness: layout shift IS the bug
+ * this display exists to fix). Height varies only when pins arrive.
  */
 export function formatStatusRegion(
   s: StatusRegionState,
   colors: ColorSupport = NO_COLOR,
 ): string[] {
+  const dim = (t: string) => paint('', t, colors, { dim: true })
+  const lines: string[] = []
+  for (const f of s.pinnedFailures.slice(0, FAILURE_PIN_CAP)) {
+    // Glyph + outcome in status red; the id keeps identity coloring
+    // (an id must never read as an outcome).
+    lines.push(
+      `${paint(ERROR, '✗', colors)} ${paintPinnedId(f.id, colors)} ${dim('──')} ${paint(ERROR, `failed (exit ${f.exitCode})`, colors)}`,
+    )
+  }
+  if (s.pinnedFailures.length > FAILURE_PIN_CAP) {
+    lines.push(dim(`… +${s.pinnedFailures.length - FAILURE_PIN_CAP} more failed`))
+  }
+  for (const id of s.pinnedPersistent) {
+    lines.push(
+      `${paint(ACCENT, '▸', colors)} ${paintPinnedId(id, colors)} ${dim('──')} ${paint(ACCENT, 'running', colors)}`,
+    )
+  }
+
   const spin = SPINNER[s.spinnerFrame % SPINNER.length]!
   const width = Math.min(
     Math.max(4, ...s.slots.map((slot) => (slot ? slot.id.length : 0))),
@@ -201,15 +248,17 @@ export function formatStatusRegion(
   )
   // No worker indexes — the rows ARE the workers (the header already
   // states the pool size). Idle rows hold their place dimmed so the
-  // region height never changes.
-  const lines = s.slots.map((slot) => {
-    if (slot === null) return `  ${paint(IDLE, 'idle', colors, { dim: true })}`
+  // slot zone's height never changes.
+  for (const slot of s.slots) {
+    if (slot === null) {
+      lines.push(`  ${paint(IDLE, 'idle', colors, { dim: true })}`)
+      continue
+    }
     const elapsed = `${(Math.max(0, s.nowMs - slot.startedMs) / 1000).toFixed(1)}s`
-    return `${spin} ${paintSlotId(slot.id, width, colors)} ${elapsed}`
-  })
+    lines.push(`${spin} ${paintSlotId(slot.id, width, colors)} ${elapsed}`)
+  }
   // Labeled colored pairs in two groups: run progress, then cache
   // provenance. Every bucket always present in fixed order.
-  const dim = (t: string) => paint('', t, colors, { dim: true })
   const progress = [
     paint(ERROR, `${s.failed} failed`, colors),
     paint(SUCCESS, `${s.succeeded} success`, colors),
