@@ -283,7 +283,6 @@ export interface CacheLayer {
    * the next `get(hash)` resolves locally.
    */
   ingest(hash: string, compressed: Uint8Array, meta: IngestMeta): Promise<void>
-  lastEntryForTask(taskId: string): { hash: string; command: string } | null
   recordRun(run: RunRecord): void
   /**
    * Append every run in `runs` to the history in a single SQLite
@@ -339,7 +338,6 @@ export class Cache implements CacheLayer {
   private readonly db: Database
   private readonly insertEntry: ReturnType<Database['prepare']>
   private readonly selectEntry: ReturnType<Database['prepare']>
-  private readonly selectLastForTask: ReturnType<Database['prepare']>
   private readonly bumpAccessed: ReturnType<Database['prepare']>
   private readonly insertRun: ReturnType<Database['prepare']>
   private readonly selectFileHash: ReturnType<Database['prepare']>
@@ -441,7 +439,6 @@ export class Cache implements CacheLayer {
       CREATE INDEX IF NOT EXISTS runs_hash       ON runs(hash);
       CREATE INDEX IF NOT EXISTS runs_started_at ON runs(started_at);
       CREATE INDEX IF NOT EXISTS runs_project    ON runs(project, task);
-      CREATE INDEX IF NOT EXISTS entries_task     ON entries(project, task);
       CREATE INDEX IF NOT EXISTS runs_run_id     ON runs(run_id);
       -- Per-file (mtime, size, content_hash) cache. Lets Cache.key()
       -- skip the content-hash on inputs whose stat hasn't changed
@@ -489,9 +486,6 @@ export class Cache implements CacheLayer {
         accessed_at  = excluded.accessed_at
     `)
     this.selectEntry = this.db.prepare('SELECT * FROM entries WHERE hash = ?')
-    this.selectLastForTask = this.db.prepare(
-      'SELECT hash, command FROM entries WHERE project = ? AND task = ? ORDER BY created_at DESC LIMIT 1',
-    )
     this.bumpAccessed = this.db.prepare('UPDATE entries SET accessed_at = ? WHERE hash = ?')
     this.insertRun = this.db.prepare(`
       INSERT INTO runs(
@@ -977,21 +971,6 @@ export class Cache implements CacheLayer {
     })
     tx()
     return outputsHash
-  }
-
-  /**
-   * Most recent entry for a task id, regardless of hash. Powers the
-   * miss-reason diagnostic: a miss WITH a previous entry means
-   * something changed (command vs inputs/config/upstream); a miss
-   * without one is just a first build and stays silent.
-   */
-  lastEntryForTask(taskId: string): { hash: string; command: string } | null {
-    const [project, task] = splitTaskId(taskId)
-    const row = this.selectLastForTask.get(project, task) as {
-      hash: string
-      command: string
-    } | null
-    return row ?? null
   }
 
   recordRun(run: RunRecord): void {

@@ -1,8 +1,5 @@
-// Two cache-hygiene contracts (June 2026, vite-task research adopts):
-// 1. Miss-reason diagnostic: a miss with a previous build prints WHY
-//    (command vs inputs/config/upstream); first builds stay silent.
-// 2. An interrupted run never publishes a cache entry for in-flight
-//    work — no partial artifacts, no entries row.
+// Cache-hygiene contract: an interrupted run never publishes a cache
+// entry for in-flight work — no partial artifacts, no entries row.
 
 import { Database } from 'bun:sqlite'
 import { existsSync } from 'node:fs'
@@ -25,10 +22,7 @@ const logger = (): Logger => ({
   },
   taskStdout() {},
   taskStderr() {},
-  taskComplete(_node, outcome) {
-    if (outcome.missReason !== undefined)
-      log.push(`miss(${outcome.node.id}): ${outcome.missReason}`)
-  },
+  taskComplete() {},
 })
 
 async function makeWorkspace(): Promise<void> {
@@ -76,52 +70,6 @@ async function addProject(name: string, command: string): Promise<string> {
   )
   return dir
 }
-
-describe('miss-reason diagnostic', () => {
-  beforeEach(makeWorkspace)
-  afterEach(async () => {
-    await rm(root, { recursive: true, force: true })
-  })
-
-  it(
-    'first build silent; input change and command change name their reason',
-    async () => {
-      const dir = await addProject('app', 'echo built > out.txt')
-
-      await run({ cwd: root, tasks: ['build'], log: logger() })
-      expect(log.join('\n')).not.toContain('miss(')
-
-      log = []
-      await writeFile(path.join(dir, 'src', 'in.txt'), 'v2')
-      await run({ cwd: root, tasks: ['build'], log: logger() })
-      expect(log.join('\n')).toContain(
-        'miss(app#build): inputs, config, or upstream outputs changed',
-      )
-
-      log = []
-      await writeFile(
-        path.join(dir, 'vx.config.mjs'),
-        `export default {
-          tasks: {
-            build: {
-              exec: { command: 'echo rebuilt > out.txt' },
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-            },
-          },
-        }
-        `,
-      )
-      await run({ cwd: root, tasks: ['build'], log: logger() })
-      expect(log.join('\n')).toContain('miss(app#build): command changed')
-
-      // Steady state: a hit prints no diagnostic.
-      log = []
-      await run({ cwd: root, tasks: ['build'], log: logger() })
-      expect(log.join('\n')).not.toContain('miss(')
-    },
-    TIMEOUT,
-  )
-})
 
 describe('interrupted run publishes nothing', () => {
   beforeEach(makeWorkspace)
