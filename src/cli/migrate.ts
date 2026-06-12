@@ -48,8 +48,9 @@ export interface GeneratedTask {
   name: string
   /** Rendered as `// TODO(vx-migrate): …` above the task + listed in the report. */
   todos: string[]
-  /** TaskConfig-shaped object; arrays may contain RawExpr splices. */
-  task: Record<string, unknown>
+  /** TaskConfig-shaped object; arrays may contain RawExpr splices.
+   *  null = target has no vx representation (skipped; todos explain). */
+  task: Record<string, unknown> | null
 }
 
 export interface GeneratedProject {
@@ -159,7 +160,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   let clean = 0
   for (const p of plan.projects) {
     for (const t of p.tasks) {
-      if (t.todos.length === 0) clean++
+      if (t.todos.length === 0 && t.task !== null) clean++
       for (const reason of t.todos) todoList.push(`${p.name}#${t.name}: ${reason}`)
     }
   }
@@ -214,6 +215,7 @@ function renderConfigFile(source: string, p: GeneratedProject): string {
   lines.push('', 'export default {', '  tasks: {')
   for (const t of p.tasks) {
     for (const todo of t.todos) lines.push(`    // TODO(vx-migrate): ${todo}`)
+    if (t.task === null) continue // skipped target — the TODO above explains
     const key = IDENT.test(t.name) ? t.name : quote(t.name)
     lines.push(`    ${key}: ${renderValue(t.task, '    ')},`)
   }

@@ -260,12 +260,33 @@ describe('vx migrate --dry (turbo)', () => {
 const NX_GRAPH = {
   graph: {
     nodes: {
+      'bench-root': {
+        name: 'bench-root',
+        type: 'app',
+        data: {
+          root: '.',
+          targets: {
+            'ci-all': {
+              executor: 'nx:run-commands',
+              options: { command: 'echo root ci' },
+              cache: false,
+            },
+          },
+        },
+      },
       'pkg-a': {
         name: 'pkg-a',
         type: 'lib',
         data: {
           root: 'packages/pkg-a',
           targets: {
+            umbrella: {
+              executor: 'nx:noop',
+              dependsOn: ['build', 'test'],
+            },
+            'dead-noop': {
+              executor: 'nx:noop',
+            },
             build: {
               executor: 'nx:run-commands',
               options: {
@@ -467,6 +488,36 @@ describe('vx migrate (nx)', () => {
 })
 
 // ─── Detection ────────────────────────────────────────────────────────
+
+describe('vx migrate (nx) — noop and root', () => {
+  let root: string
+  beforeAll(async () => {
+    root = await makeNxWorkspace()
+    await vx(root, ['migrate'])
+  })
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('nx:noop with dependsOn becomes a group task (no exec, no cache)', async () => {
+    const config = await loadProjectConfig(path.join(root, 'packages', 'pkg-a', 'vx.config.ts'))
+    const umbrella = config.tasks!.umbrella!
+    expect(umbrella.exec).toBeUndefined()
+    expect(umbrella.cache).toBeUndefined()
+    expect(umbrella.dependsOn).toEqual(['build', 'test'])
+  })
+
+  it('nx:noop without dependsOn is skipped with a report line', async () => {
+    const text = await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.config.ts')).text()
+    expect(text).not.toContain('dead-noop:')
+    expect(text).toContain('nx:noop target with no dependsOn')
+  })
+
+  it('the root project node migrates to a root vx.config.ts', async () => {
+    const config = await loadProjectConfig(path.join(root, 'vx.config.ts'))
+    expect(config.tasks!['ci-all']!.exec?.command).toBe('echo root ci')
+  })
+})
 
 describe('vx migrate source detection', () => {
   it(

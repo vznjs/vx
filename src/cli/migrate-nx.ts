@@ -76,14 +76,49 @@ export async function migrateNx(
     }
   }
 
+  // Graph nodes with no discovered counterpart: the ROOT project is
+  // the common case — `packages/*` discovery never lists the
+  // workspace root, but Nx routinely defines root targets. Synthesize
+  // a meta for any unmatched node whose root resolves inside the
+  // workspace, so its targets migrate too.
+  const allMetas: ProjectMeta[] = [...metas]
+  for (const [nodeName, node] of Object.entries(nodeMap)) {
+    if (metaByNode.has(nodeName)) continue
+    const relRoot = normRel(node?.data?.root ?? '')
+    if (node?.data?.targets === undefined) continue
+    const dir = relRoot === '' || relRoot === '.' ? root : path.join(root, relRoot)
+    let pkg: ProjectMeta['packageJson'] = { name: nodeName }
+    try {
+      pkg = (await Bun.file(path.join(dir, 'package.json')).json()) as ProjectMeta['packageJson']
+    } catch {
+      // No manifest at the node root — keep the synthetic one.
+    }
+    const synthetic: ProjectMeta = {
+      name: pkg.name || nodeName,
+      dir,
+      packageJson: pkg,
+      configPath: null,
+    }
+    allMetas.push(synthetic)
+    metaByNode.set(nodeName, synthetic)
+    nodeByMeta.set(synthetic, node)
+  }
+
   const projects: GeneratedProject[] = []
-  for (const meta of metas) {
+  for (const meta of allMetas) {
     const node = nodeByMeta.get(meta)
     const targets = node?.data?.targets
     if (!targets) continue
     const tasks: GeneratedTask[] = []
     for (const [targetName, target] of Object.entries(targets)) {
-      tasks.push(buildTask(root, meta, targetName, target, namedInputs, metaByNode))
+      const t = buildTask(root, meta, targetName, target, namedInputs, metaByNode)
+      // task === null → no vx representation; surface the reason in
+      // the report but emit nothing into the config.
+      if (t.task === null && t.todos.length > 0) {
+        tasks.push(t)
+        continue
+      }
+      tasks.push(t)
     }
     projects.push({ name: meta.name, dir: meta.dir, importLines: [], tasks })
   }
@@ -308,6 +343,17 @@ function buildTask(
     target.cache === true ||
     (target.cache === undefined && (target.inputs !== undefined || target.outputs !== undefined))
 
+  if (command === null) {
+    // nx:noop → vx group task: dependsOn only, no exec, no cache
+    // (vx forbids cache on groups). A noop with nothing to chain has
+    // no vx representation — skipped with a report line.
+    if (deps.length === 0) {
+      todos.push('nx:noop target with no dependsOn — nothing to represent; skipped')
+      return { name: targetName, task: null, todos }
+    }
+    return { name: targetName, task: { dependsOn: deps }, todos }
+  }
+
   const exec: Record<string, unknown> = { command }
   if (envNames.length > 0) exec.env = { passThrough: envNames }
   const task: Record<string, unknown> = { exec }
@@ -334,8 +380,13 @@ function mapCommand(
   projectRel: string,
   scripts: Record<string, string>,
   todos: string[],
-): string {
+): string | null {
   const executor = target.executor
+  if (executor === 'nx:noop') {
+    // No command by definition — the vx equivalent is a group task
+    // (handled by the caller; nothing to map here).
+    return null
+  }
   if (executor === 'nx:run-commands') {
     if (typeof options.cwd === 'string' && normRel(options.cwd) !== projectRel) {
       todos.push(
