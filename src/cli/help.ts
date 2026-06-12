@@ -55,7 +55,7 @@ export function printHelp(): void {
       '',
       'Config lock:',
       '  vx lock              Evaluate every vx.config in the current environment and',
-      '                       freeze the resolved objects into vx.lock. While the lock',
+      '                       freeze the resolved objects into vx-lock.json. While the lock',
       '                       exists, runs load configs from it (hash-verified, no',
       '                       re-evaluation — frozen-env semantics).',
       '  vx lock --check      Audit the lock: hash checks PLUS a full re-evaluation',

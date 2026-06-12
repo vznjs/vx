@@ -126,7 +126,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
 
   const projects = new Map<string, ProjectEntry>()
   const toLoad = projectsWithConfigs.filter((m) => needed.has(m.name))
-  // Frozen-env semantics: when `vx.lock` exists, runs load each config
+  // Frozen-env semantics: when `vx-lock.json` exists, runs load each config
   // FROM the lock after a content-hash check — no evaluation, so
   // env-dependent configs keep the values they were locked under.
   // Runs trust the lock; `vx lock --check` is the audit that

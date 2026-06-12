@@ -1,4 +1,4 @@
-// `vx lock` — freeze every resolved vx.config.* into vx.lock.
+// `vx lock` — freeze every resolved vx.config.* into vx-lock.json.
 // `vx lock --check` — audit the lock against a fresh evaluation in the
 // current environment. Design: docs/design/config-lock-2026-06.md.
 

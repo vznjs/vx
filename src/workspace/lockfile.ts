@@ -1,8 +1,8 @@
-// vx.lock — frozen resolved-config lockfile.
+// vx-lock.json — frozen resolved-config lockfile.
 //
 // `vx lock` evaluates every project's vx.config.* in the CURRENT
 // environment and freezes the resolved objects (plus a content hash of
-// each config file) into `vx.lock` at the workspace root. While the
+// each config file) into `vx-lock.json` at the workspace root. While the
 // lock exists, runs load configs from it instead of evaluating —
 // frozen-env semantics. See docs/design/config-lock-2026-06.md.
 //
@@ -16,7 +16,7 @@ import type { ProjectConfig } from '../config.js'
 import { relPosix, UserError, xxh3hex } from '../util/index.js'
 import { validateProjectConfig } from './project-loader.js'
 
-export const LOCKFILE_NAME = 'vx.lock'
+export const LOCKFILE_NAME = 'vx-lock.json'
 export const LOCKFILE_VERSION = 1
 
 export interface LockfileEntry {
@@ -38,7 +38,7 @@ export function lockfilePath(root: string): string {
 }
 
 /**
- * Read and shape-validate `vx.lock`. Returns `null` when no lock
+ * Read and shape-validate `vx-lock.json`. Returns `null` when no lock
  * exists (the common case — the feature is opt-in). The lock is a
  * user-editable file, so this is a system boundary: malformed content
  * throws a `UserError` instead of crashing deeper in the run.

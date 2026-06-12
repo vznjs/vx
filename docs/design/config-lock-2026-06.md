@@ -1,4 +1,4 @@
-# Config lock — `vx lock` / `vx.lock` (2026-06)
+# Config lock — `vx lock` / `vx-lock.json` (2026-06)
 
 Status: **shipped**.
 
@@ -36,7 +36,7 @@ lock is the sound dependency story that rejection asked for:
 
 ## Format
 
-`vx.lock` at the workspace root:
+`vx-lock.json` at the workspace root:
 
 ```json
 {
@@ -75,7 +75,7 @@ writes the lock. Exit 0.
 
 ### Runs (`vx run`, `vx watch`, `--dry` / `--graph`) — TRUST
 
-When `vx.lock` exists, `prepareRun` loads each in-scope project's
+When `vx-lock.json` exists, `prepareRun` loads each in-scope project's
 config **from the lock** after a content-hash check of the config
 file. **No evaluation happens** — frozen-env semantics: a config that
 read `process.env.X` at lock time keeps the locked value no matter
@@ -83,16 +83,16 @@ what `X` is at run time.
 
 Hash-only verification, hard failures (`UserError`, exit 1):
 
-| condition                                         | outcome                                                          |
-| ------------------------------------------------- | ---------------------------------------------------------------- |
-| file hash matches lock entry                      | frozen config used, eval-free                                    |
-| config file changed since lock                    | `vx.lock is stale: <path> changed since \`vx lock\` (<project>)` |
-| project has a config but no lock entry (or moved) | `vx.lock has no entry for "<project>"`                           |
+| condition                                         | outcome                                                               |
+| ------------------------------------------------- | --------------------------------------------------------------------- |
+| file hash matches lock entry                      | frozen config used, eval-free                                         |
+| config file changed since lock                    | `vx-lock.json is stale: <path> changed since \`vx lock\` (<project>)` |
+| project has a config but no lock entry (or moved) | `vx-lock.json has no entry for "<project>"`                           |
 
 There is deliberately **no silent fallback to evaluation**: the lock's
 contract is "what runs is what was locked". Falling back would
 reintroduce exactly the env-dependence the user locked against. The
-frozen config is still shape-validated on load — `vx.lock` is a
+frozen config is still shape-validated on load — `vx-lock.json` is a
 hand-editable file, i.e. a system boundary.
 
 Cache-key interaction: keys hash the resolved config object (principle

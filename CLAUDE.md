@@ -159,12 +159,12 @@ bun.lock
 
 ## Decision log
 
-- **2026-06**: `vx lock` / `vx.lock` — frozen resolved-config
+- **2026-06**: `vx lock` / `vx-lock.json` — frozen resolved-config
   lockfile. `vx lock` freshly evaluates every project config in the
   current env (per-invocation module-cache bust; the content-hash
   bust would replay a stale-env evaluation in-process) and writes
   `{ configPath, configHash (xxh3 of file bytes), config (resolved,
-JSON-normalized) }` per project to `vx.lock`. Deliberate
+JSON-normalized) }` per project to `vx-lock.json`. Deliberate
   ASYMMETRY: **runs trust the lock** — when it exists, `prepareRun`
   loads configs from it after a hash-only file check, zero eval,
   frozen-env semantics (env reads keep lock-time values); stale

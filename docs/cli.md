@@ -445,17 +445,17 @@ workspace-config `cacheDir` override is not yet honored by this path
 
 ## `vx lock`
 
-Freeze every project's **resolved** config into `vx.lock` at the
+Freeze every project's **resolved** config into `vx-lock.json` at the
 workspace root. Configs are programs; `vx lock` evaluates them in the
 current environment and stores the post-evaluation objects plus a
 content hash of each config file.
 
 ```
-vx lock              # Evaluate all vx.config.* now; write vx.lock.
+vx lock              # Evaluate all vx.config.* now; write vx-lock.json.
 vx lock --check      # Audit: hash checks + full re-evaluation vs the lock. Exit 1 on drift.
 ```
 
-While `vx.lock` exists, **runs load configs from the lock** after a
+While `vx-lock.json` exists, **runs load configs from the lock** after a
 hash-only staleness check — no config evaluation at all (frozen-env
 semantics: env reads in a config keep their lock-time values). A
 changed config file or an unlocked project is a hard error pointing at

@@ -1,4 +1,4 @@
-// vx.lock e2e. Each step spawns the real CLI as a subprocess because
+// vx-lock.json e2e. Each step spawns the real CLI as a subprocess because
 // the whole point is cross-invocation env drift: the lock is written
 // under one environment and checked / run under another.
 //
@@ -99,7 +99,7 @@ describe('vx lock (e2e)', () => {
       // Lock under X=a — the resolved command is frozen with 'a'.
       const lock = await vx(root, ['lock'], { X: 'a' })
       expect(lock.code).toBe(0)
-      const lockJson = (await Bun.file(path.join(root, 'vx.lock')).json()) as {
+      const lockJson = (await Bun.file(path.join(root, 'vx-lock.json')).json()) as {
         version: number
         projects: Record<string, { config: { tasks: { build: { exec: { command: string } } } } }>
       }
@@ -150,7 +150,7 @@ describe('vx lock (e2e)', () => {
       // error, not a silent fallback to evaluation.
       const run = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })
       expect(run.code).not.toBe(0)
-      expect(run.err).toContain('vx.lock is stale')
+      expect(run.err).toContain('vx-lock.json is stale')
 
       // Re-lock heals both paths.
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
