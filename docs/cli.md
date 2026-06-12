@@ -21,6 +21,7 @@ bun src/bin.ts --version
 vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] TASK [-- forwarded-args...]
 vx cache prune [--older-than <duration>] [--max-size <bytes>]
+vx lock [--check]
 vx help
 vx --help, -h
 vx version
@@ -441,6 +442,37 @@ Exit codes:
 prune command currently always uses the default `.vx/cache/`; a
 workspace-config `cacheDir` override is not yet honored by this path
 (tracked).
+
+## `vx lock`
+
+Freeze every project's **resolved** config into `vx.lock` at the
+workspace root. Configs are programs; `vx lock` evaluates them in the
+current environment and stores the post-evaluation objects plus a
+content hash of each config file.
+
+```
+vx lock              # Evaluate all vx.config.* now; write vx.lock.
+vx lock --check      # Audit: hash checks + full re-evaluation vs the lock. Exit 1 on drift.
+```
+
+While `vx.lock` exists, **runs load configs from the lock** after a
+hash-only staleness check — no config evaluation at all (frozen-env
+semantics: env reads in a config keep their lock-time values). A
+changed config file or an unlocked project is a hard error pointing at
+`vx lock`; there is no silent fallback to evaluation.
+
+`--check` is strictly stronger than what runs verify: it re-evaluates
+every config in the current environment and `Bun.deepEquals`-compares
+the result against the frozen object, catching eval-time env-var drift
+that file hashes cannot see. Runs trust the lock; `--check` audits it.
+Full design: `docs/design/config-lock-2026-06.md`.
+
+Exit codes:
+
+- `0` — lock written / lock is up to date.
+- `1` — parse error, workspace-discovery error, missing lock
+  (`--check` without one), or any drift (every mismatched project is
+  listed on stderr).
 
 ## Output format
 

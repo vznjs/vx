@@ -17,9 +17,17 @@ const WORKSPACE_CONFIG_FILENAMES = [
 // on Linux/macOS, and ms-resolution mtime misses rapid edits in tests.
 // Hashing a typical <10 KB config file is ~50µs — not measurable next
 // to the import() evaluation itself.
-async function loadDefaultExport(configPath: string, kind: string): Promise<unknown> {
+async function loadDefaultExport(
+  configPath: string,
+  kind: string,
+  fresh = false,
+): Promise<unknown> {
   const bytes = await Bun.file(configPath).bytes()
-  const bust = xxh3hex(bytes)
+  // `fresh` opts out of module-cache reuse entirely: `vx lock` and
+  // `vx lock --check` must observe the CURRENT environment, and the
+  // content-hash bust would replay an evaluation made under earlier
+  // env values when the file bytes are unchanged in this process.
+  const bust = fresh ? `${xxh3hex(bytes)}-${Bun.randomUUIDv7()}` : xxh3hex(bytes)
   const ns = (await import(`${configPath}?vx-bust=${bust}`)) as { default?: unknown }
   const mod = ns?.default
   if (!mod || typeof mod !== 'object') {
@@ -28,9 +36,16 @@ async function loadDefaultExport(configPath: string, kind: string): Promise<unkn
   return mod
 }
 
-export async function loadProjectConfig(configPath: string): Promise<ProjectConfig> {
-  const mod = (await loadDefaultExport(configPath, 'Project')) as ProjectConfig
-  validate(mod, configPath)
+export async function loadProjectConfig(
+  configPath: string,
+  opts?: { fresh?: boolean },
+): Promise<ProjectConfig> {
+  const mod = (await loadDefaultExport(
+    configPath,
+    'Project',
+    opts?.fresh === true,
+  )) as ProjectConfig
+  validateProjectConfig(mod, configPath)
   return mod
 }
 
@@ -75,9 +90,10 @@ function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
  * shape at edit-time, but `vx run` may load configs that were never
  * typechecked (plain .js, or TS with errors ignored). Catch the worst
  * shape problems early with a clear message rather than letting them
- * crash deeper in the orchestrator.
+ * crash deeper in the orchestrator. Also applied to configs loaded
+ * back from `vx.lock` (a hand-editable file — same boundary).
  */
-function validate(config: ProjectConfig, configPath: string): void {
+export function validateProjectConfig(config: ProjectConfig, configPath: string): void {
   const tasks = config.tasks
   if (tasks === undefined) return
   if (typeof tasks !== 'object' || tasks === null) {

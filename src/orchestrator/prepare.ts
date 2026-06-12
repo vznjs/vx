@@ -14,10 +14,12 @@ import {
   computeNestedProjectDirs,
   computeWorkspaceFingerprint,
   findWorkspaceRoot,
+  frozenProjectConfig,
   listProjects,
   loadProjectConfig,
   loadWorkspace,
   loadWorkspaceConfig,
+  readLockfile,
   resolveCacheDir,
   type ProjectEntry,
 } from '../workspace/index.js'
@@ -124,7 +126,17 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
 
   const projects = new Map<string, ProjectEntry>()
   const toLoad = projectsWithConfigs.filter((m) => needed.has(m.name))
-  const configs = await Promise.all(toLoad.map((m) => loadProjectConfig(m.configPath)))
+  // Frozen-env semantics: when `vx.lock` exists, runs load each config
+  // FROM the lock after a content-hash check — no evaluation, so
+  // env-dependent configs keep the values they were locked under.
+  // Runs trust the lock; `vx lock --check` is the audit that
+  // re-evaluates. See docs/design/config-lock-2026-06.md.
+  const lock = await readLockfile(workspaceRoot)
+  const configs = await Promise.all(
+    toLoad.map((m) =>
+      lock ? frozenProjectConfig(lock, m, workspaceRoot) : loadProjectConfig(m.configPath),
+    ),
+  )
   for (let i = 0; i < toLoad.length; i++) {
     const meta = toLoad[i]!
     const config = configs[i] as ProjectConfig

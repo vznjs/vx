@@ -159,6 +159,29 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: `vx lock` / `vx.lock` — frozen resolved-config
+  lockfile. `vx lock` freshly evaluates every project config in the
+  current env (per-invocation module-cache bust; the content-hash
+  bust would replay a stale-env evaluation in-process) and writes
+  `{ configPath, configHash (xxh3 of file bytes), config (resolved,
+JSON-normalized) }` per project to `vx.lock`. Deliberate
+  ASYMMETRY: **runs trust the lock** — when it exists, `prepareRun`
+  loads configs from it after a hash-only file check, zero eval,
+  frozen-env semantics (env reads keep lock-time values); stale
+  file / missing entry is a hard UserError, never a silent fallback
+  to evaluation. **`vx lock --check` audits it** — hash checks PLUS
+  full re-eval + strict `Bun.deepEquals` against the stored object,
+  catching eval-time env drift hashes can't see; mismatches exit 1
+  naming each project ("lock differs from fresh evaluation in this
+  environment (<project>) — env-dependent config? …"). This is the
+  sound-dependency-story answer to the REJECTED transparent eval
+  cache: explicit user action instead of purity heuristics. Only
+  project configs are locked (not vx.workspace.\*). No CACHE_VERSION
+  bump — keys still hash the resolved config object; the lock just
+  pins it. Files: `src/workspace/lockfile.ts`, `src/cli/lock.ts`,
+  one hook in `prepare.ts`; e2e in `tests/lock.test.ts`; design in
+  `docs/design/config-lock-2026-06.md`.
+
 - **2026-06**: Scoped config loading. prepare evaluated every
   project's vx.config.\* regardless of scope — 1090 imports (~200 ms
   - syscall churn) to run one task. Now only in-scope projects and

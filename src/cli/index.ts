@@ -6,6 +6,7 @@ import { VERSION } from '../version.js'
 import { runCmd } from './run.js'
 import { watchCmd } from './watch.js'
 import { cacheCmd } from './cache.js'
+import { lockCmd } from './lock.js'
 import { printHelp } from './help.js'
 
 export async function run(argv: readonly string[]): Promise<number> {
@@ -28,6 +29,8 @@ export async function run(argv: readonly string[]): Promise<number> {
       return await watchCmd(rest)
     case 'cache':
       return await cacheCmd(rest)
+    case 'lock':
+      return await lockCmd(rest)
     default:
       process.stderr.write(`vx: unknown command: ${command}\n`)
       printHelp()
@@ -38,4 +41,5 @@ export async function run(argv: readonly string[]): Promise<number> {
 // Re-exports for tests + programmatic embedders.
 export { parseRunArgs, type RunArgs } from './run.js'
 export { parsePruneArgs, parseDuration, parseSize } from './cache.js'
+export { parseLockArgs, type LockArgs } from './lock.js'
 export { formatBytes } from './format.js'

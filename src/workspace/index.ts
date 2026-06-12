@@ -6,6 +6,16 @@ export { applyFilters, parseFilter } from './filter.js'
 export { computeWorkspaceFingerprint } from './fingerprint.js'
 export { computeNestedProjectDirs } from './nested-dirs.js'
 export { buildPackageGraph, type PackageGraph } from './package-graph.js'
+export {
+  frozenProjectConfig,
+  LOCKFILE_NAME,
+  LOCKFILE_VERSION,
+  lockfilePath,
+  readLockfile,
+  writeLockfile,
+  type Lockfile,
+  type LockfileEntry,
+} from './lockfile.js'
 export { loadProjectConfig, loadWorkspaceConfig } from './project-loader.js'
 export {
   findWorkspaceRoot,
