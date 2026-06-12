@@ -187,13 +187,23 @@ broad mode silences per-task surface there. A focused `vx run test`
 is meant to feel like running the test command directly — same
 output, just faster.
 
-On an interactive terminal (TTY stdout, not CI) a fixed-height
-worker region tracks the run live: one row per worker (sized from
-concurrency, capped at 10 — the header states the pool as
-`(N tasks, C workers)`), each showing a spinner, the running task's
-identity-colored id, and its elapsed time. A task stays in its row
-for its whole life and idle rows hold their place dimmed, so nothing
-ever jumps. The bottom stats line shows every bucket in fixed order:
+On an interactive terminal (TTY stdout, not CI) a status region
+tracks the run live. Top to bottom:
+
+1. **Pinned failures** — `✗ <id> ── failed (exit N)`, one per failed
+   task, accumulating as failures happen and staying until run end so
+   they can never scroll out of sight. Capped at 5 lines plus a dim
+   `… +K more failed`.
+2. **Pinned persistent tasks** — `▸ <id> ── running` for every
+   persistent task that became ready. The pin lives until run end
+   (vx SIGTERMs persistent children when the graph finishes), so it
+   is the visible evidence the dev server is still alive.
+3. **Worker rows** — one per worker (sized from concurrency, capped
+   at 10 — the header states the pool as `(N tasks, C workers)`),
+   each showing a spinner, the running task's identity-colored id,
+   and its elapsed time. A task stays in its row for its whole life
+   and idle rows hold their place dimmed, so nothing ever jumps.
+4. **Stats line** — every bucket in fixed order:
 
 ```
 ▶ 1 failed · 78 success · 759 left · 1090 total │ 79 miss · 252 up-to-date · 0 local · 0 remote │ 00:16
@@ -205,6 +215,11 @@ region is redrawn in place (cursor-up + clear; not a TUI — no
 alternate screen) and erased before the summary prints. In the
 focused flow it only lives while dependencies run; it disappears for
 good the moment the requested task starts streaming.
+
+Redraw cost is bounded: task events force a redraw, but forced
+redraws within 30 ms of the last draw coalesce into a single
+trailing draw when the floor expires (the final state always lands).
+On a 3,270-task warm run this cuts ~6.7 MB of redraw ANSI to ~20 KB.
 
 Identity coloring: every `project#task` renders its project half in
 a stable hue hashed from the project name (same project = same color
@@ -721,40 +736,60 @@ remote cache:   no
 
 ## Output format
 
-`vx run` emits Turbo-style framed blocks. Stdout/stderr from each
-task is buffered until completion, then dumped inside the block — so
+`vx run` emits framed blocks. Stdout/stderr from each task is
+buffered until completion, then dumped inside the block — so
 concurrent tasks never interleave their lines.
+
+Frame anatomy:
+
+```
+┌─ <id> > <outcome header>      restored-local • abc12345 / failed (exit N) / …
+├─ command                      only for executed tasks (success or failed)
+<the command, raw>
+├─ stdout                       only when non-empty
+<stdout lines, raw>
+├─ stderr                       only when non-empty
+<stderr lines, raw>
+├─ sandbox violations (N)       when the sandbox recorded violations
+<violation lines, raw>
+└─ <id> ── (<duration>) <outcome word>
+```
+
+Section headers (`├─ …`) and frame corners render dim; the id keeps
+its identity coloring. Content lines are **raw** — no left border, no
+indent — so long lines wrap without colliding with frame glyphs and
+copy/paste yields the verbatim output. Every block (and every live
+frame close in focused flow) is followed by a blank line so frames
+never collide with the next one-liner.
 
 ```
 • vx 0.0.0
 
-   • Packages in scope: @vzn/vx
-   • Running ci in 1 package
+   • Running ci in 1 package (3 tasks)
    • Remote caching disabled
 
-┌─ @vzn/vx#format-check > cache hit • 02bfe8a9
-└─ @vzn/vx#format-check ── (3ms) from local cache
+◌ @vzn/vx#format-check ── restored-local • 02bfe8a9
 
-┌─ @vzn/vx#lint > cache hit • d66cfed2
+┌─ @vzn/vx#lint > restored-local • d66cfed2
+├─ stdout
 Found 0 warnings and 0 errors.
-└─ @vzn/vx#lint ── (4ms) from local cache
+└─ @vzn/vx#lint ── (4ms) restored-local
 
-┌─ @vzn/vx#test > executed
-$ bun test
+┌─ @vzn/vx#test > success
+├─ command
+bun test
+├─ stdout
 ... test output ...
-└─ @vzn/vx#test ── (5.20s) executed
+└─ @vzn/vx#test ── (5.20s) success
 
   tasks   <stacked 50-cell meter>
           3 success
   cache   <stacked 50-cell meter>
           1 miss · 2 local
-  Time:    5.34s
-⚡ instant
+  time    5.34s
 ```
 
 Group tasks emit no framed block by design (they aren't real tasks).
-`⚡ instant` appears when every executable task in the run was
-served from cache.
 
 ### Colors
 

@@ -165,6 +165,46 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: Frame sections + pinned zones + force-floor (owner
+  feedback: "hard to see what is a command what is STDOUT. maybe all
+  STDOUT and COMMAND should have a group like we have ERROR and
+  rename ERROR to STDERR? and no left border | so text wont overlap,
+  and easier to copy? also frame need new line at the end to not
+  colide with others. Are we able to kind of pin errors always to
+  the end? like right after workers? on top of them? Same for
+  continuous task always pinned until exit"). Three changes:
+  (1) FRAME REDESIGN — blocks are now `┌─ id > <outcome header>`,
+  dim section headers `├─ command` (executed tasks only — success +
+  failed; the command moved OUT of the failed header, which now
+  carries `failed (exit N)` like every other status), `├─ stdout` /
+  `├─ stderr` (renamed from Error; only when non-empty after trim),
+  `├─ sandbox violations (N)`, then the unchanged footer. Content
+  lines are RAW — no `│` border, no indent — because the border
+  collided with terminal wrapping and polluted copy/paste. Every
+  block AND focused frame-close gets a blank line after (logger
+  bookkeeping — emitBlock/emitFrameClose; formatter stays pure), no
+  doubles between adjacent blocks. Live frame-open keeps its `$ cmd`
+  (the command shares the open line there).
+  (2) PINNED ZONES in the status region, top to bottom: failures
+  `✗ id ── failed (exit N)` (cap 5 + dim `… +K more failed`,
+  accumulate until runEnd — owner picked ON TOP of the workers),
+  ready persistent tasks `▸ id ── running` (outcome lands at ready
+  while the child runs; SIGTERM at graph end makes runEnd the honest
+  end), then worker rows + stats. Pins keep identity-colored ids
+  (ids never read as outcomes). Region height now varies; the
+  writer's erase-old-height/draw-new-height math handles it (pinned
+  by a grow/shrink test).
+  (3) FORCE-FLOOR COALESCING — 6,540 forced redraws ≈ 6.7 MB ANSI
+  (~5.3µs + ~1KB each) on a 3,270-task warm run. Forced sets within
+  30 ms of the last draw mark dirty + schedule ONE trailing draw at
+  floor expiry (unref'd; canceled by any draw / clearStatus); final
+  state always lands; first draw after idle immediate. 6.7 MB →
+  ~20 KB. `OutputWriterOptions.forceFloorMs` (default 30, 0
+  disables) + defaultLogger 4th-arg pass-through for tests that
+  assert region bytes synchronously. Files: orchestrator/
+  {framed-output,logger,status-line}.ts; repinned framed-output/
+  output-flow/status-line suites.
+
 - **2026-06**: Summary v3 — stacked state meters (owner-driven
   iteration over five revisions in one session; picked from a
   15-design visualization file at /tmp/vx-summary-designs.txt). The

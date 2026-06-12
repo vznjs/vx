@@ -20,8 +20,8 @@ export interface HeaderInput {
 export function formatHeader(input: HeaderInput, colors?: ColorSupport): string[]
 
 export interface TaskBlockBody {
-  stdout?: string
-  stderr?: string // rendered under an `├─ Error` section
+  stdout?: string // rendered under `├─ stdout`
+  stderr?: string // rendered under `├─ stderr`
 }
 
 export function formatTaskBlock(
@@ -53,19 +53,30 @@ Bullets are tinted with the accent color (`#06b6d4` cyan); the
 ## Task block shape
 
 ```
-┌─ @vzn/vx#lint > restored-local • 7da42dfe
-│   Found 0 warnings and 0 errors.
-└─ @vzn/vx#lint ── (4ms) restored-local
+┌─ @vzn/vx#lint > success
+├─ command
+oxlint --type-aware --type-check
+├─ stdout
+Found 0 warnings and 0 errors.
+└─ @vzn/vx#lint ── (327ms) success
 ```
 
 The block format is:
 
 - **Top line:** `┌─ <task-id> > <status header>`
-- **Optional command echo:** `$ <command>` (success path only —
-  cache hits already have the body)
-- **Body:** captured stdout (bar-prefixed), then stderr under an
-  `├─ Error` section, then any `├─ Sandbox Violations (n)` section
+- **`├─ command` section:** executed tasks only (success and failed);
+  cache hits replay stored output and skip it, skips never ran
+- **`├─ stdout` / `├─ stderr` sections:** present only when the
+  stream is non-empty after trim
+- **`├─ sandbox violations (n)` section:** when present
 - **Bottom line:** `└─ <task-id> ── (<duration>) <status tag>`
+
+Section headers and corners render dim; ids keep identity coloring.
+Content lines are **raw** — no `│` border, no indent — so terminal
+wrapping never collides with frame glyphs and copy/paste is clean
+(owner feedback, 2026-06). The logger blank-line-delimits blocks on
+both sides (the formatter stays pure — no trailing blank inside the
+returned string beyond the final newline).
 
 Group tasks (no `exec`) render empty string — they aren't real tasks.
 
@@ -77,11 +88,11 @@ verbose table): `executed` / `restored-local` / `restored-remote` /
 
 | Status                            | Header                          | Footer tag                 |
 | --------------------------------- | ------------------------------- | -------------------------- |
-| `success`                         | dim `executed`                  | dim `executed`             |
+| `success`                         | dim `success`                   | dim `success`              |
 | `cache-hit` (restored)            | green `restored-local • <hash>` | dim `restored-local`       |
 | `cache-hit-remote` (restored)     | cyan `restored-remote • <hash>` | dim `restored-remote`      |
 | either hit with `restored: false` | green `up-to-date • <hash>`     | dim `up-to-date`           |
-| `failed`                          | `$ <command>`                   | bold red `failed (exit N)` |
+| `failed`                          | bold red `failed (exit N)`      | bold red `failed (exit N)` |
 | `skipped`                         | yellow `skipped (upstream …)`   | yellow `skipped`           |
 
 Duration formats: `<1s` → `Nms`, ≥1s → `N.NNs`.

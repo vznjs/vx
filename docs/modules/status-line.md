@@ -1,8 +1,8 @@
 # `orchestrator/status-line.ts` — dynamic worker region
 
 The live status display for interactive runs. **Not a TUI**: a
-fixed-height region redrawn in place with cursor-up + clear-line
-escapes — no alternate screen, no cursor addressing beyond that.
+region redrawn in place with cursor-up + clear-line escapes — no
+alternate screen, no cursor addressing beyond that.
 
 ## OutputWriter
 
@@ -13,19 +13,40 @@ when disabled (CI). When active:
 - `setRegion(lines)` / `setStatus(line)` replace the display; unforced
   redraws are throttled (`minRedrawMs`, default 100 ms), task
   start/finish events force.
+- Forced redraws coalesce behind `forceFloorMs` (default 30 ms, 0
+  disables): a forced set within the floor marks the content dirty
+  and schedules ONE trailing draw (unref'd; canceled by any draw and
+  by `clearStatus`) for floor expiry, so the final state always
+  lands. First draw after idle is immediate. Measured: 6,540 forced
+  redraws ≈ 6.7 MB of ANSI on a 3,270-task warm run → ~20 KB.
 - `write(chunk)` — any ordinary content — erases the region first
   (single line: `ESC[2K\r`; taller: `\r ESC[nA ESC[J`), writes the
   content, then redraws. The region can never interleave with task
-  output.
+  output. The erase always uses the height of the **previous** draw;
+  the new draw establishes the new height, so the region may grow and
+  shrink freely (pins arriving).
 - A chunk ending mid-line (focused streaming) holds redraws until a
   newline restores column 0.
 - `clearStatus()` is permanent (run end).
 
 ## formatStatusRegion
 
-One row per worker slot plus a stats line. Slot rules (the point of
-the design — the display derives from the **stable worker set**, not
-the churning task set):
+Pinned zones, then one row per worker slot, then a stats line.
+
+Pinned zones (owner: failures "on top of" the workers; persistent
+"always pinned until exit"):
+
+- **Failures** — `✗ <id> ── failed (exit N)` per failed task, capped
+  at 5 + dim `… +K more failed`. Accumulate as failures happen; stay
+  until runEnd.
+- **Persistent** — `▸ <id> ── running` for every ready persistent
+  task (its outcome lands at ready while the child keeps running; the
+  orchestrator SIGTERMs persistent children when the graph finishes,
+  so runEnd is the honest end). Pins keep identity-colored ids —
+  status colors only on glyph + outcome.
+
+Slot rules (the point of the design — the display derives from the
+**stable worker set**, not the churning task set):
 
 - Sized `min(concurrency, 10)` at runStart; the run header states the
   pool (`(N tasks, C workers)`).
