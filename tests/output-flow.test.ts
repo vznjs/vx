@@ -538,7 +538,9 @@ describe('flow e2e against a real fixture workspace', () => {
     expect(text()).toContain('failed (exit 7)')
     // Summary still prints.
     expect(text()).toContain('─ vx ')
-    expect(text()).toContain('  failed  one#boom')
+    // No failed-id row in the summary (count in legend; frame above).
+    expect(text()).not.toContain('  failed  one#boom')
+    expect(text()).toContain('1 failed')
   })
 
   it('focused run streams requested output raw and silences successful deps', async () => {

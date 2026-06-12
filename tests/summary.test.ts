@@ -51,15 +51,12 @@ describe('formatRunSummary', () => {
       850,
     )
     expect(lines[3]).toBe('          1 failed · 1 success')
-    expect(lines[6]).toBe('          2 miss')
+    expect(lines[5]).toBe('          2 miss')
   })
 
-  it('lists failed task IDs on a single comma-joined line (Turbo format)', () => {
-    // Mirrors Turbo's run-summary format
-    // (turborepo-run-summary/src/execution.rs): one `Failed:` line,
-    // comma-joined task IDs in bold red, sorted. Lets the user
-    // identify what failed without scrolling back through framed
-    // blocks.
+  it('never lists failed task ids — count lives in the legend (owner: can be hundreds)', () => {
+    // Failures get full frames in the stream AND pinned ✗ lines in
+    // the live region; a summary id list would explode on broad runs.
     const lines = formatRunSummary(
       [
         outcome('@app/web#build', 'failed', 1),
@@ -68,21 +65,9 @@ describe('formatRunSummary', () => {
       ],
       1234,
     )
-    expect(lines).toContain('  failed  @app/api#test, @app/web#build')
-  })
-
-  it('omits the Failed: line when no tasks failed', () => {
-    const lines = formatRunSummary([outcome('a#x', 'success')], 10)
-    expect(lines.find((l) => l.includes('failed ·'))).toBeUndefined()
-  })
-
-  it('does not list skipped tasks separately (Turbo parity)', () => {
-    // Turbo doesn't surface "skipped" as a list — it's inferred from
-    // a failed upstream, and the failing upstream IS listed. Pin
-    // this so future changes don't reintroduce duplicate noise.
-    const lines = formatRunSummary([outcome('a#x', 'failed', 1), outcome('b#x', 'skipped')], 10)
-    expect(lines.find((l) => l.startsWith('Skipped:'))).toBeUndefined()
-    expect(lines).toContain('  failed  a#x')
+    expect(lines.find((l) => l.includes('@app/web#build'))).toBeUndefined()
+    expect(lines.find((l) => l.includes('failed  '))).toBeUndefined()
+    expect(lines.find((l) => l.includes('2 failed'))).toBeDefined()
   })
 
   it('reports skipped count when present', () => {

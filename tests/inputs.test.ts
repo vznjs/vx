@@ -9,7 +9,11 @@ import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
+
+// Fixture hooks git-init real repos; under load (full suite after a
+// warm day of runs) the default 5s hook timeout flakes. File-scoped.
+setDefaultTimeout(30_000)
 import {
   cleanOutputs,
   GitFilesCache,

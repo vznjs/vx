@@ -16,7 +16,6 @@ const ACCENT = '#06b6d4'
 const ERROR = '#ef4444'
 
 const BAR_WIDTH = 50
-const FAILED_LIST_CAP = 5
 // Brand gradient for the rule: identity violet → pink (the project /
 // task hues), faded across the dash run. Plain dashes when colors
 // are off.
@@ -117,21 +116,6 @@ export function formatRunSummary(
     lines.push(row('tasks', taskBar), legend(taskParts))
   } else {
     lines.push(row('tasks', dim('0 tasks')))
-  }
-
-  // Failure index, capped — broad runs can fail hundreds of tasks and
-  // each already printed its full frame above; the summary lists the
-  // first few as pointers, the tasks row carries the count.
-  const failedIds = outcomes
-    .filter((o) => o.status === 'failed')
-    .map((o) => o.node.id)
-    .sort()
-  if (failedIds.length > 0) {
-    const shown = failedIds
-      .slice(0, FAILED_LIST_CAP)
-      .map((id) => paint(ERROR, id, colors, { bold: true }))
-    const more = failedIds.length - FAILED_LIST_CAP
-    lines.push(row('failed', shown.join(', ') + (more > 0 ? dim(` \u2026 +${more} more`) : '')))
   }
 
   // Cache meter + numbers, live-line order: miss · up-to-date · local
