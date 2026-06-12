@@ -80,23 +80,63 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const workspaceConfig = await loadWorkspaceConfig(workspaceRoot)
   const projectMetas = await listProjects(workspace)
 
-  // Load every project's `vx.config.*` in parallel. Each load is a
-  // `jiti`/Bun import call; bunched across 100 projects this is the
-  // biggest single overhead in startup.
-  const projects = new Map<string, ProjectEntry>()
+  // SCOPED config loading: configs are programs, and evaluating 1090
+  // of them costs ~200 ms — the dominant fixed cost of small runs.
+  // Only the in-scope projects and their transitive dependency
+  // closure can contribute graph nodes (frontier '^task' expansion
+  // never escapes the closure), so only those configs are evaluated.
+  // Side effect, deliberate and Turbo-like: a broken config in an
+  // unrelated package no longer fails a scoped run — it surfaces
+  // when that package enters a run's scope.
+  const packageGraph = buildPackageGraph(projectMetas)
   const projectsWithConfigs = projectMetas.filter(
     (m): m is typeof m & { configPath: string } =>
       typeof m.configPath === 'string' && m.configPath.length > 0,
   )
-  const configs = await Promise.all(projectsWithConfigs.map((m) => loadProjectConfig(m.configPath)))
-  for (let i = 0; i < projectsWithConfigs.length; i++) {
-    const meta = projectsWithConfigs[i]!
+  const haveConfig = new Set(projectsWithConfigs.map((m) => m.name))
+
+  // Seeds: explicit scope, plus anchored pkg#task targets (which
+  // bypass scope by design). With no explicit scope, bare task names
+  // fan out across the whole workspace — but when EVERY spec is
+  // anchored, the anchors alone are the scope and nothing else needs
+  // its config evaluated.
+  const anchored: string[] = []
+  let hasBare = false
+  for (const spec of options.tasks) {
+    const hashIdx = spec.indexOf('#')
+    if (hashIdx > 0) anchored.push(spec.slice(0, hashIdx))
+    else hasBare = true
+  }
+  const seeds = new Set<string>(
+    options.projects
+      ? options.projects.filter((p) => haveConfig.has(p))
+      : hasBare
+        ? haveConfig
+        : [],
+  )
+  for (const project of anchored) {
+    if (haveConfig.has(project)) seeds.add(project)
+  }
+  const needed = new Set<string>(seeds)
+  for (const seed of seeds) {
+    for (const dep of packageGraph.transitiveDeps(seed)) needed.add(dep)
+  }
+
+  const projects = new Map<string, ProjectEntry>()
+  const toLoad = projectsWithConfigs.filter((m) => needed.has(m.name))
+  const configs = await Promise.all(toLoad.map((m) => loadProjectConfig(m.configPath)))
+  for (let i = 0; i < toLoad.length; i++) {
+    const meta = toLoad[i]!
     const config = configs[i] as ProjectConfig
     projects.set(meta.name, { name: meta.name, dir: meta.dir, config })
   }
 
-  const packageGraph = buildPackageGraph(projectMetas)
-  const nestedDirsByProject = computeNestedProjectDirs([...projects.values()])
+  // Boundary geometry considers every config-bearing project in the
+  // workspace, loaded or not — an out-of-scope nested project must
+  // still fence its files off from its parent's globs.
+  const nestedDirsByProject = computeNestedProjectDirs(
+    projectsWithConfigs.map((m) => ({ name: m.name, dir: m.dir })),
+  )
 
   const candidateProjects = options.projects
     ? options.projects.filter((p) => projects.has(p))

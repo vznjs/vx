@@ -159,6 +159,23 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: Scoped config loading. prepare evaluated every
+  project's vx.config.\* regardless of scope — 1090 imports (~200 ms
+  - syscall churn) to run one task. Now only in-scope projects and
+    their transitive dep closure load (frontier '^task' expansion
+    never escapes the closure); anchored-only invocations scope to
+    their anchors. Single-task wall on the 1090-package repo:
+    0.32 s → ~0.19 s (turbo: 0.27 s). Deliberate Turbo-like semantic
+    change: a BROKEN config in an out-of-scope package no longer
+    fails a scoped run — it surfaces when that package enters scope
+    (pinned in tests/scoped-config-loading.test.ts). Boundary
+    geometry still considers every config-bearing project, loaded or
+    not. Also: cache.get() became pure SQL (stdout in entries row,
+    SCHEMA v20) — hit cost no longer scales with artifact size
+    (118 ms → 5 ms for four ~70 MB binaries); and accessed_at bumps
+    batch at flush (247 → ~190 ms on the stress repo, before the
+    config-scoping win landed on top).
+
 - **2026-06**: CACHE_VERSION → v21 + SCHEMA v19: **early cutoff**
   (vite-task-inspired, adapted to pre-execution keys). Downstream
   keys fold upstream `outputsHash` — content identity of the

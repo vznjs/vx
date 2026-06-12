@@ -13,7 +13,9 @@ import type { ProjectEntry } from './workspace.js'
  * product. Stable for any project set with no dir collisions, which
  * the workspace loader already enforces.
  */
-export function computeNestedProjectDirs(entries: ProjectEntry[]): Map<string, string[]> {
+export function computeNestedProjectDirs(
+  entries: Array<Pick<ProjectEntry, 'name' | 'dir'>>,
+): Map<string, string[]> {
   const result = new Map<string, string[]>()
   if (entries.length === 0) return result
   const sorted = [...entries].sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0))
