@@ -25,7 +25,7 @@ export function printHelp(): void {
       '      --concurrency <n>           Max parallel tasks (default: CPU count).',
       '      --excludeDependencies[=names]  Skip dependsOn edges. No value = all; comma list = specific names.',
       '      --no-cache, --force         Skip cache reads AND writes.',
-      --frozen            load configs from vx-lock.json (CI; pair with `vx lock --check`)
+      '      --frozen                    Load configs from vx-lock.json (CI; pair with vx lock --check).',
       '      --cache                     No-op (parity with vite-task).',
       '      --verbosity <n>             0=quiet, 1=verbose summary, 2+=debug (reserved).',
       '',
