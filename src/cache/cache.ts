@@ -50,7 +50,7 @@ import { extractOutputs, parseTarHeaders, readTarText, type TarHeader } from './
 // pre-v20 `file_hashes.content_hash` rows hold xxh3 digests that
 // must not leak into the OID domain via the mtime+size memo.
 const CACHE_VERSION = 'vx-cache-v21'
-const SCHEMA_VERSION = 'v19'
+const SCHEMA_VERSION = 'v20'
 
 export interface CacheKeyInput {
   taskId: string
@@ -330,6 +330,7 @@ interface EntryRow {
   duration_ms: number
   size_bytes: number
   outputs_hash: string | null
+  stdout: string
   created_at: number
   accessed_at: number
 }
@@ -353,7 +354,6 @@ export class Cache implements CacheLayer {
    * round of zstd decompression on every hit. Evicted on hash change,
    * cleared on close().
    */
-  private decompressedTar: { hash: string; bytes: Uint8Array } | null = null
   /** Memoized repo object format for blob-OID hashing (lazy-detected). */
   private objectFormat: 'sha1' | 'sha256' | null = null
 
@@ -413,6 +413,7 @@ export class Cache implements CacheLayer {
         duration_ms  INTEGER NOT NULL,
         size_bytes   INTEGER NOT NULL,
         outputs_hash TEXT,
+        stdout       TEXT NOT NULL DEFAULT '',
         created_at   INTEGER NOT NULL,
         accessed_at  INTEGER NOT NULL
       );
@@ -474,10 +475,11 @@ export class Cache implements CacheLayer {
     `)
 
     this.insertEntry = this.db.prepare(`
-      INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, outputs_hash, created_at, accessed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, outputs_hash, stdout, created_at, accessed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(hash) DO UPDATE SET
         outputs_hash = excluded.outputs_hash,
+        stdout       = excluded.stdout,
         project      = excluded.project,
         task         = excluded.task,
         command      = excluded.command,
@@ -664,18 +666,12 @@ export class Cache implements CacheLayer {
     // is when accessed_at is actually read.
     this.touched.add(hash)
 
-    // Read the tar once: get the entry list AND pull `stdout` in a
-    // single decompress. The decompressed bytes are stashed for the
-    // matching `restoreOutputs()` call — the orchestrator's cache-hit
-    // path does get→restore back-to-back for the same hash, so we
-    // skip a second decompress on every hit.
-    const compressed = await Bun.file(this.tarPath(hash)).bytes()
-    const tarBytes = await Bun.zstdDecompress(compressed)
-    this.decompressedTar = { hash, bytes: tarBytes }
-    const headers = parseTarHeaders(tarBytes)
-    const outputFiles = headers
-      .filter((h) => h.name.startsWith('outputs/') && !h.isDir)
-      .map((h) => h.name.slice('outputs/'.length))
+    // Pure SQL: outputFiles come from the output_files rows and
+    // stdout from the entries row. The artifact is NOT touched here —
+    // decompressing it made hit cost scale with artifact size (73 ms
+    // for four up-to-date hits on ~70 MB binaries). restoreOutputs
+    // reads the artifact itself, only when extraction actually runs.
+    const fileRows = this.loadOutputFilesBatch([hash]).get(hash) ?? []
 
     return {
       hash: row.hash,
@@ -683,8 +679,8 @@ export class Cache implements CacheLayer {
       command: row.command,
       exitCode: row.exit_code,
       durationMs: row.duration_ms,
-      outputFiles,
-      stdout: readTarText(tarBytes, headers, 'stdout'),
+      outputFiles: fileRows.map((r) => r.path),
+      stdout: row.stdout,
       ...(row.outputs_hash ? { outputsHash: row.outputs_hash } : {}),
       storedAt: new Date(row.created_at).toISOString(),
       source: 'local',
@@ -764,16 +760,10 @@ export class Cache implements CacheLayer {
     // `stdout` / `stderr` entries in the archive are ignored on this
     // path — they're surfaced via `get()` for the orchestrator to
     // replay through the logger.
-    let tarBytes: Uint8Array
-    if (this.decompressedTar && this.decompressedTar.hash === hash) {
-      tarBytes = this.decompressedTar.bytes
-      this.decompressedTar = null
-    } else {
-      const src = this.tarPath(hash)
-      if (!(await Bun.file(src).exists())) return
-      const compressed = await Bun.file(src).bytes()
-      tarBytes = await Bun.zstdDecompress(compressed)
-    }
+    const src = this.tarPath(hash)
+    if (!(await Bun.file(src).exists())) return
+    const compressed = await Bun.file(src).bytes()
+    const tarBytes = await Bun.zstdDecompress(compressed)
 
     const headers = parseTarHeaders(tarBytes)
     if (!headers.some((h) => h.name.startsWith('outputs/'))) return
@@ -935,6 +925,7 @@ export class Cache implements CacheLayer {
       outputFileRows.push([rel, h.size, h.mode & 0o777, Math.floor(h.mtimeMs)])
       outputEntries.push(h)
     }
+    const stdoutText = readTarText(tarBytes, headers, 'stdout')
     let outputsHash: string | null = null
     if (outputEntries.length > 0) {
       outputEntries.sort((a, b) => (a.name < b.name ? -1 : 1))
@@ -964,6 +955,7 @@ export class Cache implements CacheLayer {
         meta.durationMs,
         totalBytes,
         outputsHash,
+        stdoutText,
         now,
         now,
       )
@@ -1099,7 +1091,6 @@ export class Cache implements CacheLayer {
 
   close(): void {
     this.flushAccessed()
-    this.decompressedTar = null
     this.db.close()
   }
 

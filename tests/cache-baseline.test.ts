@@ -381,13 +381,11 @@ describePerf('cache baseline: save + restore', () => {
     assertBudget(r, budget)
   })
 
-  it('get → restoreOutputs back-to-back reuses get() decompress (no second zstd)', async () => {
-    // Direct behavioral check: count Bun.zstdDecompress invocations
-    // across a full cache-hit cycle. With the single-slot stash in
-    // Cache, `get(hash)` decompresses once and `restoreOutputs(hash)`
-    // reuses the bytes — so the count must be exactly 1, never 2.
-    // After eviction (get of a different hash), the next
-    // restoreOutputs of the original hash must decompress fresh again.
+  it('get() never touches the artifact; only an actual restore decompresses', async () => {
+    // Hit cost must not scale with artifact size: get() is pure SQL
+    // (entries + output_files rows carry everything, stdout included
+    // since schema v20). Decompression happens exactly once, inside
+    // restoreOutputs, and only when extraction actually runs.
     await cache.save({
       hash: 'sd-hot',
       entry: {
@@ -395,19 +393,7 @@ describePerf('cache baseline: save + restore', () => {
         command: 'noop',
         exitCode: 0,
         durationMs: 1,
-        stdout: '',
-      },
-      projectDir,
-      outputFiles: outFiles,
-    })
-    await cache.save({
-      hash: 'sd-other',
-      entry: {
-        taskId: 'p#build',
-        command: 'noop',
-        exitCode: 0,
-        durationMs: 1,
-        stdout: '',
+        stdout: 'hello from the build',
       },
       projectDir,
       outputFiles: outFiles,
@@ -421,31 +407,16 @@ describePerf('cache baseline: save + restore', () => {
       return origDecompress(input)
     }) as typeof Bun.zstdDecompress
     try {
-      // Warm cycle: 1 decompress total (get fills slot, restore reuses).
       decompressCount = 0
-      await cache.get('sd-hot')
+      const hit = await cache.get('sd-hot')
+      expect(hit?.stdout).toBe('hello from the build') // served from SQL
+      expect(hit?.outputFiles.length).toBeGreaterThan(0) // from output_files rows
+      expect(decompressCount).toBe(0)
+
       const destA = path.join(tmpdir, 'sd-warm-A')
       await mkdir(destA, { recursive: true })
       await cache.restoreOutputs('sd-hot', destA)
       expect(decompressCount).toBe(1)
-
-      // Slot is now empty (consumed). Standalone restore of a
-      // different hash must decompress fresh: 1 decompress.
-      decompressCount = 0
-      const destB = path.join(tmpdir, 'sd-warm-B')
-      await mkdir(destB, { recursive: true })
-      await cache.restoreOutputs('sd-other', destB)
-      expect(decompressCount).toBe(1)
-
-      // Stale-slot path: get('sd-other') fills slot for 'other', then
-      // restore of 'sd-hot' misses the slot and decompresses 'sd-hot'
-      // fresh. Two decompresses total across the cycle.
-      decompressCount = 0
-      await cache.get('sd-other')
-      const destC = path.join(tmpdir, 'sd-warm-C')
-      await mkdir(destC, { recursive: true })
-      await cache.restoreOutputs('sd-hot', destC)
-      expect(decompressCount).toBe(2)
     } finally {
       bunMut.zstdDecompress = origDecompress
     }
