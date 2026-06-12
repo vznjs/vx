@@ -31,8 +31,8 @@ export function formatRunSummary(
   // up-to-date on disk (zero writes). Shown whenever anything hit.
   const cachedParts: string[] = []
   if (cached > 0) {
-    cachedParts.push(`${t.restoredLocal} local-restore`)
-    cachedParts.push(`${t.restoredRemote} remote-restore`)
+    cachedParts.push(`${t.restoredLocal} restored-local`)
+    cachedParts.push(`${t.restoredRemote} restored-remote`)
     cachedParts.push(`${t.upToDate} up-to-date`)
   } else {
     cachedParts.push('0 cached')

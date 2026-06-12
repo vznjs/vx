@@ -430,15 +430,22 @@ function printSummary(summary: RunSummary): void {
 }
 
 function formatRow(o: TaskOutcome): { task: string; status: string; duration: string } {
+  // Same outcome vocabulary as the framed blocks + summary:
+  // executed / restored-local / restored-remote / up-to-date /
+  // failed / skipped.
   const status =
     o.status === 'cache-hit'
-      ? 'cache'
+      ? o.restored === false
+        ? 'up-to-date'
+        : 'restored-local'
       : o.status === 'cache-hit-remote'
-        ? 'remote'
+        ? o.restored === false
+          ? 'up-to-date'
+          : 'restored-remote'
         : o.status === 'success'
-          ? 'ok'
+          ? 'executed'
           : o.status === 'failed'
-            ? `fail(${o.exitCode})`
+            ? `failed (exit ${o.exitCode})`
             : o.status
   return {
     task: o.node.id,

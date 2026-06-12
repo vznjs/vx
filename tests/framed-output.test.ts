@@ -80,22 +80,22 @@ describe('formatHeader', () => {
 })
 
 describe('formatTaskBlock', () => {
-  it('renders an executed task with command + body + (op time) + cache-miss status', () => {
+  it('renders an executed task with command + body + (op time) + executed status', () => {
     const out = formatTaskBlock(
       node('@vzn/vx#lint', 'oxlint .'),
       outcome('@vzn/vx#lint', 'success', { durationMs: 327, hash: 'abcdef0123456789' }),
       { stdout: 'Found 0 warnings and 0 errors.\nFinished in 327ms.\n' },
     )
     expect(out).toBe(
-      '┌─ @vzn/vx#lint > cache-miss\n' +
+      '┌─ @vzn/vx#lint > executed\n' +
         '│   $ oxlint .\n' +
         '│   Found 0 warnings and 0 errors.\n' +
         '│   Finished in 327ms.\n' +
-        '└─ @vzn/vx#lint ── (327ms) cache-miss\n',
+        '└─ @vzn/vx#lint ── (327ms) executed\n',
     )
   })
 
-  it('local cache hit (restored) shows "local-cache" in header + footer', () => {
+  it('local cache hit (restored) shows "restored-local" in header + footer', () => {
     // durationMs here is the wallclock for clean+restore+log-replay,
     // measured by execute-task. Tiny but non-zero in the wild.
     const out = formatTaskBlock(
@@ -108,13 +108,13 @@ describe('formatTaskBlock', () => {
       { stdout: 'Found 0 warnings and 0 errors.\n' },
     )
     expect(out).toBe(
-      '┌─ @vzn/vx#lint > local-cache • abcdef01\n' +
+      '┌─ @vzn/vx#lint > restored-local • abcdef01\n' +
         '│   Found 0 warnings and 0 errors.\n' +
-        '└─ @vzn/vx#lint ── (12ms) local-cache\n',
+        '└─ @vzn/vx#lint ── (12ms) restored-local\n',
     )
   })
 
-  it('local cache hit (already up-to-date) shows "up-to-date" instead of "local-cache"', () => {
+  it('local cache hit (already up-to-date) shows "up-to-date" instead of "restored-local"', () => {
     // restored: false means the on-disk tree already matched the
     // cached snapshot, so cleanOutputs + restoreOutputs were skipped.
     // The user sees "up-to-date" to confirm nothing was rewritten.
@@ -132,7 +132,7 @@ describe('formatTaskBlock', () => {
     )
   })
 
-  it('remote cache hit (restored) shows "remote-cache" in header + footer', () => {
+  it('remote cache hit (restored) shows "restored-remote" in header + footer', () => {
     const out = formatTaskBlock(
       node('@vzn/vx#lint', 'oxlint .'),
       outcome('@vzn/vx#lint', 'cache-hit-remote', {
@@ -143,11 +143,12 @@ describe('formatTaskBlock', () => {
       {},
     )
     expect(out).toBe(
-      '┌─ @vzn/vx#lint > remote-cache • fedcba98\n' + '└─ @vzn/vx#lint ── (156ms) remote-cache\n',
+      '┌─ @vzn/vx#lint > restored-remote • fedcba98\n' +
+        '└─ @vzn/vx#lint ── (156ms) restored-remote\n',
     )
   })
 
-  it('failures show op time + bold FAILED tag with exit code', () => {
+  it('failures show op time + bold failed tag with exit code', () => {
     const out = formatTaskBlock(
       node('@vzn/vx#build', 'tsc'),
       outcome('@vzn/vx#build', 'failed', { durationMs: 1234, exitCode: 2 }),
@@ -157,7 +158,7 @@ describe('formatTaskBlock', () => {
       '┌─ @vzn/vx#build > $ tsc\n' +
         '├─ Error\n' +
         '│   error TS1234: oops\n' +
-        '└─ @vzn/vx#build ── (1.23s) FAILED (exit 2)\n',
+        '└─ @vzn/vx#build ── (1.23s) failed (exit 2)\n',
     )
   })
 
@@ -182,7 +183,7 @@ describe('formatTaskBlock', () => {
         '├─ Sandbox Violations (2)\n' +
         '│   touch(32784) deny(1) sysctl-read kern.iossupportversion\n' +
         '│   touch(32784) deny(1) file-read-metadata /Users/me/proj/packages/top/dist/index.js\n' +
-        '└─ @bench/top#build ── (3.06s) FAILED (exit 1)\n',
+        '└─ @bench/top#build ── (3.06s) failed (exit 1)\n',
     )
   })
 
@@ -215,18 +216,18 @@ describe('formatTaskBlock', () => {
     expect(out).toContain('\x1b[')
     expect(out).toContain('\x1b[0m')
     expect(out).toContain('@vzn/vx#lint')
-    expect(out).toContain('local-cache')
+    expect(out).toContain('restored-local')
     expect(out).toContain('abcdef01')
   })
 
-  it('failed tasks colorize the FAILED tag', () => {
+  it('failed tasks colorize the failed tag', () => {
     const out = formatTaskBlock(
       node('@vzn/vx#build', 'tsc'),
       outcome('@vzn/vx#build', 'failed', { durationMs: 100, exitCode: 2 }),
       {},
       { enabled: true },
     )
-    expect(out).toContain('FAILED (exit 2)')
+    expect(out).toContain('failed (exit 2)')
     expect(out).toContain('\x1b[1m')
     expect(out).toMatch(/\[38;2;\d+;\d+;\d+m/)
   })

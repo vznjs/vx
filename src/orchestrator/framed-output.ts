@@ -8,7 +8,7 @@
 //      • Remote caching disabled
 //
 // Per-task block:
-//   ┌─ @vzn/vx#lint > cache hit • abc12345
+//   ┌─ @vzn/vx#lint > restored-local • abc12345
 //   $ oxlint --type-aware --type-check
 //   Found 0 warnings and 0 errors.
 //   └─ @vzn/vx#lint ──
@@ -154,8 +154,8 @@ export function formatTaskHitLine(
     o.restored === false
       ? paint(SUCCESS, 'up-to-date', colors)
       : o.status === 'cache-hit-remote'
-        ? paint(ACCENT, 'remote-cache', colors)
-        : paint(SUCCESS, 'local-cache', colors)
+        ? paint(ACCENT, 'restored-remote', colors)
+        : paint(SUCCESS, 'restored-local', colors)
   const mark = paint(SUCCESS, '◌', colors)
   return `${mark} ${node.id} ${dim('──')} ${label} ${dim(`• ${shortHash}`)}`
 }
@@ -168,18 +168,18 @@ function formatBlockHeader(node: TaskNode, o: TaskOutcome, colors: ColorSupport)
       if (o.restored === false) {
         return `${paint(SUCCESS, 'up-to-date', colors)} ${dim(`• ${shortHash}`)}`
       }
-      return `${paint(SUCCESS, 'local-cache', colors)} ${dim(`• ${shortHash}`)}`
+      return `${paint(SUCCESS, 'restored-local', colors)} ${dim(`• ${shortHash}`)}`
     case 'cache-hit-remote':
       if (o.restored === false) {
         return `${paint(SUCCESS, 'up-to-date', colors)} ${dim(`• ${shortHash}`)}`
       }
-      return `${paint(ACCENT, 'remote-cache', colors)} ${dim(`• ${shortHash}`)}`
+      return `${paint(ACCENT, 'restored-remote', colors)} ${dim(`• ${shortHash}`)}`
     case 'failed':
       return `$ ${node.config.exec?.command ?? '(no command)'}`
     case 'skipped':
       return paint(WARN, 'skipped (upstream failed)', colors)
     case 'success':
-      return dim('cache-miss')
+      return dim('executed')
     default:
       return o.status
   }
@@ -198,13 +198,17 @@ function formatBlockFooter(o: TaskOutcome, colors: ColorSupport): string {
 function formatStatusTag(o: TaskOutcome, colors: ColorSupport): string {
   switch (o.status) {
     case 'cache-hit':
-      return paint('', o.restored === false ? 'up-to-date' : 'local-cache', colors, { dim: true })
+      return paint('', o.restored === false ? 'up-to-date' : 'restored-local', colors, {
+        dim: true,
+      })
     case 'cache-hit-remote':
-      return paint('', o.restored === false ? 'up-to-date' : 'remote-cache', colors, { dim: true })
+      return paint('', o.restored === false ? 'up-to-date' : 'restored-remote', colors, {
+        dim: true,
+      })
     case 'success':
-      return paint('', 'cache-miss', colors, { dim: true })
+      return paint('', 'executed', colors, { dim: true })
     case 'failed':
-      return paint(ERROR, `FAILED (exit ${o.exitCode})`, colors, { bold: true })
+      return paint(ERROR, `failed (exit ${o.exitCode})`, colors, { bold: true })
     case 'skipped':
       return paint(WARN, 'skipped', colors)
     default:
