@@ -167,3 +167,20 @@ cross-invocation by nature):
    (file-changed), `vx run` hard-fails with the stale-lock error,
    re-lock heals both.
 3. `--check` with no lock present → exit 1, points at `vx lock`.
+
+## FAQ (owner questions, 2026-06)
+
+**Why isn't package.json in the lock?** Configs are frozen because
+they're _programs_ — evaluation can differ per machine (env,
+imports). Manifests are committed _data_: local and CI parse the same
+bytes from git, so they're reproducible without freezing, and edits
+flow live (dep edges reshape the graph immediately; the whole-file
+byte hash already shifts every cache key via the v12 implicit-
+dependency rule). Freezing them would mean relocking on every version
+bump for zero reproducibility gain.
+
+**Do we need to parse `exports` / `files` like Nx?** No. Nx parses
+them to infer dependencies from source imports and compute production
+file sets; vx's graph is declared, not inferred. Those fields still
+participate in cache identity byte-wise through the manifest hash —
+changing them invalidates correctly without vx understanding them.
