@@ -4,9 +4,12 @@ import type { ExecConfig, TaskConfig, CacheConfig } from '../config.js'
 import {
   type CacheLayer,
   cleanOutputs,
+  cleanWorkspaceOutputs,
   type GitFilesCache,
   resolveInputs,
   resolveOutputs,
+  resolveWorkspaceOutputs,
+  WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import {
   buildIsolatedEnv,
@@ -173,6 +176,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const cacheEnabled = cacheCfg !== undefined && !noCache
 
   const outputs = cacheCfg?.outputs.files ?? []
+  const wsOutputs = cacheCfg?.outputs.workspaceFiles ?? []
+  const anyOutputs = outputs.length > 0 || wsOutputs.length > 0
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
 
   // Prefer the hash precomputed in `prepareRun` (batched topo-walk).
@@ -200,6 +205,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     outputs,
     nestedProjectDirs: args.nestedProjectDirs,
   }
+  const wsCleanArgs = { workspaceRoot: args.workspaceRoot, outputs: wsOutputs }
 
   // Cache lookup. On hit, time the user-perceived restore op
   // (clean+restore+log-replay) — that's what the framed-block footer
@@ -223,29 +229,50 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // cache hit here. Still beats reading the manifest from the
       // tar (decompress + parse) at the same point.
       let skipRestore = false
-      if (outputs.length > 0) {
+      if (anyOutputs) {
         const expected = cache.loadOutputFilesBatch([hash]).get(hash) ?? []
         if (expected.length > 0) {
+          // Two namespaces in the rows: bare rels are project outputs,
+          // `workspace-outputs/<rel>` rows anchor at the workspace root.
+          const projExpected = expected.filter((e) => !e.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
+          const wsExpected = expected
+            .filter((e) => e.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
+            .map((e) => ({ ...e, path: e.path.slice(WORKSPACE_OUTPUT_PREFIX.length) }))
           const actualAbs = await resolveOutputs({
             projectDir: node.projectDir,
             outputs,
             nestedProjectDirs: args.nestedProjectDirs,
           })
-          const expectedRels = new Set(expected.map((e) => e.path))
+          const actualWsAbs = await resolveWorkspaceOutputs({
+            workspaceRoot: args.workspaceRoot,
+            outputs: wsOutputs,
+          })
+          const setsMatch = (
+            actual: readonly string[],
+            exp: ReadonlyArray<{ path: string }>,
+          ): boolean => {
+            const expSet = new Set(exp.map((e) => e.path))
+            return actual.length === expSet.size && actual.every((r) => expSet.has(r))
+          }
           const actualRels = actualAbs.map((p) =>
             path.relative(node.projectDir, p).split(path.sep).join('/'),
           )
-          const setMatches =
-            actualRels.length === expectedRels.size && actualRels.every((r) => expectedRels.has(r))
-          if (setMatches) {
-            skipRestore = await cache.isOutputsCurrent(node.projectDir, expected)
+          const actualWsRels = actualWsAbs.map((p) =>
+            path.relative(args.workspaceRoot, p).split(path.sep).join('/'),
+          )
+          if (setsMatch(actualRels, projExpected) && setsMatch(actualWsRels, wsExpected)) {
+            skipRestore =
+              (await cache.isOutputsCurrent(node.projectDir, projExpected)) &&
+              (await cache.isOutputsCurrent(args.workspaceRoot, wsExpected))
           }
         }
       }
       if (!skipRestore) {
         let cleanedRels: string[] = []
+        let cleanedWsRels: string[] = []
         if (outputs.length > 0) cleanedRels = await cleanOutputs(cleanArgs)
-        await cache.restoreOutputs(hash, node.projectDir)
+        if (wsOutputs.length > 0) cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
+        await cache.restoreOutputs(hash, node.projectDir, args.workspaceRoot)
         // Restored outputs changed the project's tree — but on this
         // path we know the EXACT changed paths (wiped declared
         // outputs + the artifact's files). Record them instead of
@@ -257,7 +284,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         if (outputs.length > 0) {
           args.gitFilesCache?.markOutputsChanged(node.projectDir, [
             ...cleanedRels,
-            ...hit.outputFiles,
+            ...hit.outputFiles.filter((p) => !p.startsWith(WORKSPACE_OUTPUT_PREFIX)),
+          ])
+        }
+        if (wsOutputs.length > 0) {
+          args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, [
+            ...cleanedWsRels,
+            ...hit.outputFiles
+              .filter((p) => p.startsWith(WORKSPACE_OUTPUT_PREFIX))
+              .map((p) => p.slice(WORKSPACE_OUTPUT_PREFIX.length)),
           ])
         }
       }
@@ -270,7 +305,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // framed block. Only meaningful when at least one output was
       // declared — no-outputs tasks never materialize anything, so
       // they're vacuously up-to-date.
-      const restored = !skipRestore && outputs.length > 0
+      const restored = !skipRestore && anyOutputs
       return {
         node,
         status,
@@ -287,6 +322,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // before exec so a stale prior-build artifact can't survive into a
   // fresh run.
   if (cacheEnabled && outputs.length > 0) await cleanOutputs(cleanArgs)
+  if (cacheEnabled && wsOutputs.length > 0) {
+    // Root-anchored deletions can land in other projects' dirs; mark
+    // them so stale per-project git snapshots can't survive the wipe.
+    const cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
+    args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, cleanedWsRels)
+  }
 
   const env = taskEnv(node, step)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
@@ -322,10 +363,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       envSource: process.env,
       inputs: cacheCfg?.inputs,
       ownOutputs: outputs,
+      ownWorkspaceOutputs: wsOutputs,
       nestedProjectDirs: args.nestedProjectDirs,
       ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
     })
-    const baseAllowWrite = outputs.map((g) => path.join(node.projectDir, staticPrefix(g)))
+    const baseAllowWrite = [
+      ...outputs.map((g) => path.join(node.projectDir, staticPrefix(g))),
+      // Workspace outputs anchor their write prefixes at the root.
+      ...wsOutputs.map((g) => path.join(args.workspaceRoot, staticPrefix(g))),
+    ]
     // bwrap can't --bind a non-existent host path; the bind silently
     // becomes a no-op (or a tmpfs that evaporates on exit), and writes
     // to the path appear to succeed inside the sandbox but never land
@@ -333,6 +379,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // to real fs entries: globbed outputs (`dist/**`) become empty
     // dirs; literal outputs (`out.txt`) become empty files.
     await prepareOutputsForBind(node.projectDir, outputs)
+    await prepareOutputsForBind(args.workspaceRoot, wsOutputs)
     // Output paths are read+write — a task that declares `dist/**` as
     // output expects to read what it just wrote (e.g. `touch dist/x`
     // stats the file; `tsc --incremental` re-reads .tsbuildinfo). This
@@ -384,10 +431,17 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       outputs,
       nestedProjectDirs: args.nestedProjectDirs,
     })
+    const wsOutputFiles = await resolveWorkspaceOutputs({
+      workspaceRoot: args.workspaceRoot,
+      outputs: wsOutputs,
+    })
     savedOutputsHash = await cache.save({
       hash,
       projectDir: node.projectDir,
       outputFiles,
+      ...(wsOutputFiles.length > 0
+        ? { workspaceOutputFiles: wsOutputFiles, workspaceRoot: args.workspaceRoot }
+        : {}),
       entry: {
         taskId: node.id,
         command: step.command,
@@ -402,6 +456,21 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // stale for that project — drop the entry so resolveFiles
     // re-spawns git on demand.
     if (outputFiles.length > 0) args.gitFilesCache?.delete(node.projectDir)
+    // Declared workspace outputs may have landed inside OTHER
+    // projects' dirs (no-boundary escape hatch) — mark the exact
+    // paths against every partition that can see them.
+    if (wsOutputFiles.length > 0) {
+      args.gitFilesCache?.markWorkspaceOutputsChanged(
+        args.workspaceRoot,
+        wsOutputFiles.map((f) => path.relative(args.workspaceRoot, f).split(path.sep).join('/')),
+      )
+    }
+    // The workspace-wide partition (when one exists) spans this
+    // project's subtree, so it inherits the same "undeclared writes
+    // are only visible to git" rule as the project drop above.
+    if (outputFiles.length + wsOutputFiles.length > 0) {
+      args.gitFilesCache?.invalidateWorkspacePartition()
+    }
   }
 
   return {

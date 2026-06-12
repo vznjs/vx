@@ -248,9 +248,36 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
           )
         }
       }
+      // workspaceFiles mirror the files validation: non-empty strings,
+      // never absolute (they're workspace-root-relative by definition).
+      const wsInputs = (inputs as { workspaceFiles?: unknown }).workspaceFiles
+      if (wsInputs !== undefined) {
+        validateWorkspaceGlobs(wsInputs, `${where}.cache.inputs.workspaceFiles`)
+      }
+      const wsOutputs = (outputs as { workspaceFiles?: unknown }).workspaceFiles
+      if (wsOutputs !== undefined) {
+        validateWorkspaceGlobs(wsOutputs, `${where}.cache.outputs.workspaceFiles`)
+      }
     }
     const sandbox = (task as { sandbox?: unknown }).sandbox
     if (sandbox !== undefined) validateSandbox(sandbox, where, exec !== undefined)
+  }
+}
+
+function validateWorkspaceGlobs(v: unknown, where: string): void {
+  if (!Array.isArray(v)) {
+    throw new UserError(`${where} must be an array of glob strings`)
+  }
+  for (const g of v as unknown[]) {
+    if (typeof g !== 'string' || g.length === 0) {
+      throw new UserError(`${where} must be an array of non-empty strings`)
+    }
+    if (g.startsWith('/') || g.startsWith('!/')) {
+      throw new UserError(
+        `${where}: absolute paths are not allowed (got "${g}") — ` +
+          `entries are workspace-root-relative globs`,
+      )
+    }
   }
 }
 

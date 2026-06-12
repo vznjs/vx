@@ -3,8 +3,10 @@
 // On-disk layout:
 //   <cacheDir>/cache.db            — SQLite index (entries + runs + file_hashes)
 //   <cacheDir>/<hash>.tar.zst      — per-entry artifact:
-//                                      stdout    (captured stdout, always present)
-//                                      outputs/  (declared output files, when any)
+//                                      stdout             (captured stdout, always present)
+//                                      outputs/           (declared output files, when any)
+//                                      workspace-outputs/ (declared outputs.workspaceFiles,
+//                                                          root-relative, when any)
 //
 // The artifact carries ONLY replayable bytes (logs + outputs). Entry
 // metadata — taskId, command, exitCode, durationMs, storedAt — lives
@@ -51,6 +53,17 @@ import { extractOutputs, parseTarHeaders, readTarText, type TarHeader } from './
 // must not leak into the OID domain via the mtime+size memo.
 const CACHE_VERSION = 'vx-cache-v21'
 const SCHEMA_VERSION = 'v20'
+
+/**
+ * Artifact + `output_files` namespace prefix for workspace-root-
+ * anchored outputs (`cache.outputs.workspaceFiles`). Project outputs
+ * keep their bare project-relative `path` rows; workspace rows store
+ * the full `workspace-outputs/<rel-to-root>` tar entry name as the
+ * discriminator — least-invasive row format, no schema change. A
+ * project output dir literally named `workspace-outputs/` would
+ * collide with the namespace; the name is reserved.
+ */
+export const WORKSPACE_OUTPUT_PREFIX = 'workspace-outputs/'
 
 export interface CacheKeyInput {
   taskId: string
@@ -187,7 +200,10 @@ export interface PruneResult {
  * plus N parallel stat calls.
  *
  * `path` is project-relative (e.g. `dist/index.js`), matching how
- * outputs are addressed under `<projectDir>/`.
+ * outputs are addressed under `<projectDir>/` — except workspace
+ * outputs, which carry the full `workspace-outputs/<rel-to-root>`
+ * tar entry name (see `WORKSPACE_OUTPUT_PREFIX`); callers split on
+ * the prefix and anchor those at the workspace root.
  */
 export interface OutputFileRow {
   path: string
@@ -268,12 +284,26 @@ export interface CacheLayer {
    * restore.
    */
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean>
-  restoreOutputs(hash: string, projectDir: string): Promise<void>
+  /**
+   * Extract the artifact's `outputs/` entries into `projectDir` and —
+   * when `workspaceRoot` is given — its `workspace-outputs/` entries
+   * into the workspace root. Callers restoring entries that may carry
+   * workspace outputs must pass `workspaceRoot`.
+   */
+  restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
   save(args: {
     hash: string
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles'>
     projectDir: string
     outputFiles: string[]
+    /**
+     * Resolved `outputs.workspaceFiles` (absolute paths) + the root
+     * they're relative to. Packed under `workspace-outputs/<rel>`.
+     * Omitted → artifact bytes identical to the pre-workspaceFiles
+     * format.
+     */
+    workspaceOutputFiles?: string[]
+    workspaceRoot?: string
   }): Promise<string | null>
   /**
    * Adopt an artifact produced elsewhere — the remote-hit path. Writes
@@ -745,7 +775,7 @@ export class Cache implements CacheLayer {
     return this.tarPath(hash)
   }
 
-  async restoreOutputs(hash: string, projectDir: string): Promise<void> {
+  async restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void> {
     // In-process tar extraction with optional per-file skip + slot reuse.
     //
     // Three compounding wins vs the prior subprocess `tar -xf` approach:
@@ -767,9 +797,15 @@ export class Cache implements CacheLayer {
     const tarBytes = await Bun.zstdDecompress(compressed)
 
     const headers = parseTarHeaders(tarBytes)
-    if (!headers.some((h) => h.name.startsWith('outputs/'))) return
+    if (
+      !headers.some(
+        (h) => h.name.startsWith('outputs/') || h.name.startsWith(WORKSPACE_OUTPUT_PREFIX),
+      )
+    ) {
+      return
+    }
 
-    await extractOutputs(tarBytes, projectDir)
+    await extractOutputs(tarBytes, projectDir, workspaceRoot)
   }
 
   async save(args: {
@@ -777,12 +813,17 @@ export class Cache implements CacheLayer {
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles'>
     projectDir: string
     outputFiles: string[]
+    workspaceOutputFiles?: string[]
+    workspaceRoot?: string
   }): Promise<string | null> {
-    // Layout (v17): one `<hash>.tar.zst` per entry. Tar carries ONLY
-    // the things you'd want to re-materialize on a cache hit:
+    // Layout (v17, extended additively for workspaceFiles): one
+    // `<hash>.tar.zst` per entry. Tar carries ONLY the things you'd
+    // want to re-materialize on a cache hit:
     //
-    //   stdout            — captured stdout (ALWAYS present, may be empty)
-    //   outputs/<rel>     — declared output files (omitted when none)
+    //   stdout                      — captured stdout (ALWAYS present, may be empty)
+    //   outputs/<rel>               — declared output files (omitted when none)
+    //   workspace-outputs/<rel>     — declared outputs.workspaceFiles,
+    //                                 rel to the WORKSPACE ROOT (omitted when none)
     //
     // Metadata (command, exitCode, durationMs, storedAt) lives in
     // SQLite, not the artifact. Remote-hit ingestion takes metadata
@@ -812,7 +853,10 @@ export class Cache implements CacheLayer {
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles'>
     projectDir: string
     outputFiles: string[]
+    workspaceOutputFiles?: string[]
+    workspaceRoot?: string
   }): Promise<Uint8Array> {
+    const wsOutputFiles = args.workspaceOutputFiles ?? []
     const stage = await mkdtemp(path.join(os.tmpdir(), 'vx-save-'))
     try {
       if (args.outputFiles.length > 0) {
@@ -826,12 +870,25 @@ export class Cache implements CacheLayer {
           }),
         )
       }
+      if (wsOutputFiles.length > 0) {
+        // Caller passes workspaceRoot whenever workspaceOutputFiles is
+        // non-empty; the rels are root-anchored by construction.
+        const stageWs = path.join(stage, 'workspace-outputs')
+        await Promise.all(
+          wsOutputFiles.map(async (f) => {
+            const rel = path.relative(args.workspaceRoot!, f)
+            await Bun.write(path.join(stageWs, rel), Bun.file(f))
+          }),
+        )
+      }
       // stdout is ALWAYS present in the artifact, even if empty, so the
       // archive layout is predictable: a successful read finds `stdout`
-      // and zero-or-more `outputs/<rel>` entries.
+      // and zero-or-more `outputs/<rel>` / `workspace-outputs/<rel>`
+      // entries.
       await Bun.write(path.join(stage, 'stdout'), args.entry.stdout ?? '')
 
       const topLevel: string[] = ['stdout']
+      if (wsOutputFiles.length > 0) topLevel.unshift('workspace-outputs')
       if (args.outputFiles.length > 0) topLevel.unshift('outputs')
 
       // `--format=ustar` forces strict POSIX ustar — no PAX extended-
@@ -914,16 +971,27 @@ export class Cache implements CacheLayer {
 
     const totalBytes = compressed.byteLength
     const outputFileRows: Array<[string, number, number, number]> = []
-    // Early-cutoff identity: fold (rel, bytes) of every output entry,
-    // sorted by path so the fold is independent of tar member order.
-    // Header mtimes deliberately do NOT participate — a rebuild that
-    // reproduces identical bytes must produce the same identity.
+    // Early-cutoff identity: fold (name, bytes) of every output entry
+    // — BOTH namespaces — sorted by tar name so the fold is
+    // independent of member order. The namespace prefix participates
+    // via the name (`outputs/x` vs `workspace-outputs/x` fold
+    // differently). Header mtimes deliberately do NOT participate — a
+    // rebuild that reproduces identical bytes must produce the same
+    // identity. Row paths: project entries store the bare rel
+    // (`outputs/` stripped); workspace entries keep the full
+    // `workspace-outputs/<rel>` name as the namespace discriminator.
     const outputEntries: TarHeader[] = []
     for (const h of headers) {
-      if (!h.name.startsWith('outputs/') || h.isDir) continue
-      const rel = h.name.slice('outputs/'.length)
-      if (rel.length === 0) continue
-      outputFileRows.push([rel, h.size, h.mode & 0o777, Math.floor(h.mtimeMs)])
+      if (h.isDir) continue
+      let rowPath: string | null = null
+      if (h.name.startsWith('outputs/')) {
+        const rel = h.name.slice('outputs/'.length)
+        if (rel.length > 0) rowPath = rel
+      } else if (h.name.startsWith(WORKSPACE_OUTPUT_PREFIX)) {
+        if (h.name.length > WORKSPACE_OUTPUT_PREFIX.length) rowPath = h.name
+      }
+      if (rowPath === null) continue
+      outputFileRows.push([rowPath, h.size, h.mode & 0o777, Math.floor(h.mtimeMs)])
       outputEntries.push(h)
     }
     const stdoutText = readTarText(tarBytes, headers, 'stdout')

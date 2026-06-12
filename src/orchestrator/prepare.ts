@@ -173,11 +173,19 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // Bulk-populate via a single `git ls-files` at the workspace root —
   // partitions the output by project. Avoids one fork+exec per project
   // (~5-10ms each on Linux; the dominant cold-start cost on big
-  // monorepos).
+  // monorepos). When any loaded task declares inputs.workspaceFiles,
+  // the enumeration must see every file from the root (no pathspec
+  // scoping) and additionally stores a workspace-wide partition.
+  const usesWorkspaceInputs = [...projects.values()].some((p) =>
+    Object.values(p.config.tasks ?? {}).some(
+      (t) => (t.cache?.inputs.workspaceFiles?.length ?? 0) > 0,
+    ),
+  )
   await populateGitFilesCache(
     workspaceRoot,
     [...projects.values()].map((p) => p.dir),
     gitFilesCache,
+    usesWorkspaceInputs,
   )
   const hashCache = createHashCache()
 

@@ -238,6 +238,17 @@ export interface CacheOutputs {
    * like `dist/` and `coverage/` are captured normally even when ignored.
    */
   files: string[]
+  /**
+   * Files produced OUTSIDE the project dir, as workspace-root-relative
+   * globs (the Turbo `$TURBO_ROOT$` / Nx `{workspaceRoot}` escape
+   * hatch). NO project-boundary rule applies: these globs may capture
+   * files anywhere in the workspace, including inside other projects'
+   * directories. Deliberate escape hatch — prefer project-relative
+   * `files` whenever the task can write inside its own dir. Two tasks
+   * declaring overlapping workspace outputs is user responsibility;
+   * vx does not police it.
+   */
+  workspaceFiles?: string[]
 }
 
 export interface CacheInputs {
@@ -252,6 +263,20 @@ export interface CacheInputs {
    * across project boundaries.
    */
   files: string[]
+  /**
+   * Workspace-root-relative globs (the Turbo `$TURBO_ROOT$` / Nx
+   * `{workspaceRoot}` equivalent), for inputs that live outside the
+   * project dir — a root tsconfig, shared codegen output, etc. Same
+   * syntax as `files` (`!` negation supported), resolved against the
+   * workspace-wide git file set (gitignored files are invisible).
+   *
+   * NO project-boundary rule applies: these globs may match files
+   * inside other projects' directories. Deliberate escape hatch —
+   * prefer project-relative `files` declarations where possible.
+   * Declared `outputs.workspaceFiles` are excluded automatically (a
+   * task cannot invalidate itself).
+   */
+  workspaceFiles?: string[]
   /**
    * Env var names whose runtime values from parent `process.env` are
    * folded into the cache key. **Independent of `exec.env`** — declaring

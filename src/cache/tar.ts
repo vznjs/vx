@@ -224,32 +224,52 @@ export function readTarText(tarBytes: Uint8Array, headers: TarHeader[], name: st
 
 /**
  * Extract a tar's `outputs/<rel>` entries into `destDir/<rel>` (strips
- * the `outputs/` prefix). Entries outside `outputs/` are ignored.
+ * the `outputs/` prefix), and — when `workspaceDest` is given — its
+ * `workspace-outputs/<rel>` entries into `workspaceDest/<rel>`.
+ * Entries in neither namespace are ignored; workspace entries are
+ * also ignored when no `workspaceDest` is supplied.
  */
-export async function extractOutputs(tarBytes: Uint8Array, destDir: string): Promise<void> {
+export async function extractOutputs(
+  tarBytes: Uint8Array,
+  destDir: string,
+  workspaceDest?: string,
+): Promise<void> {
   const headers = parseTarHeaders(tarBytes)
 
   await mkdir(destDir, { recursive: true })
 
+  // Each namespace anchors at its own destination dir.
+  const destFor = (name: string): { base: string; rel: string } | null => {
+    if (name.startsWith('outputs/')) {
+      return { base: destDir, rel: name.slice('outputs/'.length) }
+    }
+    if (workspaceDest !== undefined && name.startsWith('workspace-outputs/')) {
+      return { base: workspaceDest, rel: name.slice('workspace-outputs/'.length) }
+    }
+    return null
+  }
+
   // Two passes: directories first (depth-first via sort), then files.
   // Keeps file writes from racing with their parent dir creation.
   const dirEntries = headers
-    .filter((h) => h.name.startsWith('outputs/') && h.isDir)
-    .map((h) => h.name.slice('outputs/'.length))
-    .filter((rel) => rel.length > 0)
-    .sort()
-  for (const rel of dirEntries) {
-    await mkdir(path.join(destDir, rel), { recursive: true })
+    .filter((h) => h.isDir)
+    .map((h) => destFor(h.name))
+    .filter((d): d is { base: string; rel: string } => d !== null && d.rel.length > 0)
+    .sort((a, b) => (a.rel < b.rel ? -1 : 1))
+  for (const d of dirEntries) {
+    await mkdir(path.join(d.base, d.rel), { recursive: true })
   }
 
-  const fileEntries = headers.filter(
-    (h) => h.name.startsWith('outputs/') && !h.isDir && h.name !== 'outputs/',
-  )
-  const destResolved = path.resolve(destDir)
+  const fileEntries = headers
+    .map((h) => ({ h, dest: destFor(h.name) }))
+    .filter(
+      (e): e is { h: TarHeader; dest: { base: string; rel: string } } =>
+        e.dest !== null && !e.h.isDir && e.dest.rel.length > 0,
+    )
   await Promise.all(
-    fileEntries.map(async (h) => {
-      const rel = h.name.slice('outputs/'.length)
-      const target = path.join(destDir, rel)
+    fileEntries.map(async ({ h, dest }) => {
+      const destResolved = path.resolve(dest.base)
+      const target = path.join(dest.base, dest.rel)
       // Defense in depth — parseTarHeaders already rejects `..` /
       // absolute paths, but if a future glitch lets one through we
       // catch it here. path.resolve normalizes `..` components in

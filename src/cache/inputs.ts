@@ -39,6 +39,9 @@ export interface ResolveInputsArgs {
   inputs: CacheInputs | undefined
   /** Project-relative output globs to exclude from inputs. */
   ownOutputs: string[]
+  /** Root-relative `outputs.workspaceFiles` globs to exclude from
+   *  `inputs.workspaceFiles` (a task cannot invalidate itself). */
+  ownWorkspaceOutputs?: string[]
   /** Absolute dirs of nested projects (cross-boundary isolation). */
   nestedProjectDirs: string[]
   /**
@@ -51,17 +54,89 @@ export interface ResolveInputsArgs {
 }
 
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs> {
-  return {
-    files: await resolveFiles({
-      projectDir: args.projectDir,
+  const projectFiles = await resolveFiles({
+    projectDir: args.projectDir,
+    workspaceRoot: args.workspaceRoot,
+    files: args.inputs?.files,
+    ownOutputs: args.ownOutputs,
+    nestedProjectDirs: args.nestedProjectDirs,
+    ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+  })
+  let files = projectFiles
+  const wsDecl = args.inputs?.workspaceFiles
+  if (wsDecl !== undefined && wsDecl.length > 0) {
+    const wsFiles = await resolveWorkspaceFiles({
       workspaceRoot: args.workspaceRoot,
-      files: args.inputs?.files,
-      ownOutputs: args.ownOutputs,
-      nestedProjectDirs: args.nestedProjectDirs,
+      workspaceFiles: wsDecl,
+      ownWorkspaceOutputs: args.ownWorkspaceOutputs ?? [],
       ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-    }),
+    })
+    // Dedupe: when the project dir IS the workspace root (or a glob
+    // overlaps), the same absolute path can arrive via both lists —
+    // it must contribute to the key exactly once.
+    if (wsFiles.length > 0) files = [...new Set([...projectFiles, ...wsFiles])].sort()
+  }
+  return {
+    files,
     envValues: resolveEnvValues(args.inputs?.env ?? [], args.envSource),
   }
+}
+
+/**
+ * Resolve `cache.inputs.workspaceFiles` — workspace-root-relative
+ * globs matched against the workspace-wide git file set (tracked +
+ * untracked-not-ignored, same visibility as project inputs).
+ *
+ * Deliberately NO project-boundary rule: a workspaceFiles glob may
+ * match files inside any project's directory. This is the documented
+ * escape hatch for root-level shared inputs (root tsconfig, shared
+ * codegen); the hard boundary continues to apply to project-relative
+ * `files` globs only.
+ */
+async function resolveWorkspaceFiles(args: {
+  workspaceRoot: string
+  workspaceFiles: readonly string[]
+  ownWorkspaceOutputs: readonly string[]
+  gitFilesCache?: GitFilesCache
+}): Promise<string[]> {
+  const positive: string[] = []
+  const negative: string[] = []
+  for (const entry of args.workspaceFiles) {
+    if (entry.startsWith('!')) negative.push(entry.slice(1))
+    else positive.push(entry)
+  }
+  if (positive.length === 0) return []
+
+  const excludeGlobs = [...ALWAYS_IGNORE, ...args.ownWorkspaceOutputs, ...negative].map(
+    (p) => new Bun.Glob(p),
+  )
+  const positiveGlobs = positive.map((p) => new Bun.Glob(p))
+  // Workspace-wide partition, keyed by the workspace root. Populated
+  // up-front by `populateGitFilesCache(..., workspaceWide: true)` when
+  // any loaded task declares workspaceFiles; a missing/invalidated
+  // partition re-spawns git at the root on demand.
+  let gitFiles = args.gitFilesCache?.snapshotFor(args.workspaceRoot, positiveGlobs)
+  if (gitFiles === undefined) {
+    gitFiles = runGitLsFiles(args.workspaceRoot).files
+    args.gitFilesCache?.set(args.workspaceRoot, gitFiles)
+  }
+  const candidates: string[] = []
+  for (const rel of gitFiles) {
+    if (!positiveGlobs.some((g) => g.match(rel))) continue
+    if (excludeGlobs.some((g) => g.match(rel))) continue
+    candidates.push(path.resolve(args.workspaceRoot, rel))
+  }
+  // Same OID-trust shortcut as project files: a clean-per-status
+  // tracked file necessarily exists on disk.
+  const oids = args.gitFilesCache?.oidsFor(args.workspaceRoot)
+  const exists = await Promise.all(
+    candidates.map((abs) => oids?.has(abs) === true || Bun.file(abs).exists()),
+  )
+  const matches: string[] = []
+  for (let i = 0; i < candidates.length; i++) {
+    if (exists[i]) matches.push(candidates[i]!)
+  }
+  return matches.sort()
 }
 
 function resolveEnvValues(
@@ -112,6 +187,38 @@ export async function cleanOutputs(args: {
 }
 
 /**
+ * Resolve declared `outputs.workspaceFiles` globs (workspace-root-
+ * relative) to actual produced files. Live-FS glob like
+ * `resolveOutputs`, anchored at the workspace root — and deliberately
+ * with NO project-dir exclusion: workspace outputs are the documented
+ * boundary escape hatch.
+ */
+export async function resolveWorkspaceOutputs(args: {
+  workspaceRoot: string
+  outputs: string[]
+}): Promise<string[]> {
+  if (args.outputs.length === 0) return []
+  return [...(await scanUnion(args.outputs, [], args.workspaceRoot))].sort()
+}
+
+/**
+ * `cleanOutputs` for the workspace-output namespace: wipe every file
+ * currently matching the declared root-relative globs. Same contract
+ * (clean slate before restore AND before exec), same caching gate at
+ * the call site. Returns root-relative posix paths of what was
+ * removed — the caller feeds these to
+ * `GitFilesCache.markWorkspaceOutputsChanged`.
+ */
+export async function cleanWorkspaceOutputs(args: {
+  workspaceRoot: string
+  outputs: string[]
+}): Promise<string[]> {
+  const files = await resolveWorkspaceOutputs(args)
+  await Promise.all(files.map((f) => rm(f, { force: true })))
+  return files.map((f) => path.relative(args.workspaceRoot, f).split(path.sep).join('/'))
+}
+
+/**
  * Per-run memo of each project's `git ls-files` output, plus the
  * staleness bookkeeping that lets the warm path avoid re-spawning git.
  *
@@ -145,17 +252,79 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    * dropping is a pure perf concession, never a correctness one.
    */
   private oids = new Map<string, Map<string, string>>()
+  /**
+   * Set when `populateGitFilesCache` stored a WORKSPACE-WIDE partition
+   * (any loaded task declares `inputs.workspaceFiles`). Null when the
+   * feature is unused — every workspace-partition hook below is then a
+   * no-op, so unused-feature behavior stays byte-identical.
+   */
+  private wsRoot: string | null = null
+
+  setWorkspaceRoot(root: string): void {
+    this.wsRoot = root
+  }
 
   markOutputsChanged(projectDir: string, relPaths: readonly string[]): void {
-    if (!this.has(projectDir)) return
-    const cur = this.changed.get(projectDir)
+    this.recordChanged(projectDir, relPaths)
+    // The workspace-wide partition sees the same files under
+    // root-relative names; forward so a downstream workspaceFiles
+    // task can't reuse a snapshot its globs could now contradict.
+    if (this.wsRoot !== null && this.wsRoot !== projectDir) {
+      this.recordChanged(
+        this.wsRoot,
+        relPaths.map((rel) =>
+          path.relative(this.wsRoot!, path.resolve(projectDir, rel)).split(path.sep).join('/'),
+        ),
+      )
+    }
+  }
+
+  /**
+   * Record root-anchored changed paths (cleaned/restored workspace
+   * outputs) against EVERY partition that can see them: the workspace
+   * partition under their root-relative names, and any project
+   * partition whose dir contains them (workspace outputs may land
+   * inside other projects' dirs — the no-boundary escape hatch).
+   */
+  markWorkspaceOutputsChanged(workspaceRoot: string, relPaths: readonly string[]): void {
+    if (relPaths.length === 0) return
+    for (const key of this.keys()) {
+      if (key === workspaceRoot) {
+        this.recordChanged(key, relPaths)
+        continue
+      }
+      const under: string[] = []
+      for (const rel of relPaths) {
+        const abs = path.resolve(workspaceRoot, rel)
+        if (abs.startsWith(key + path.sep)) {
+          under.push(path.relative(key, abs).split(path.sep).join('/'))
+        }
+      }
+      if (under.length > 0) this.recordChanged(key, under)
+    }
+  }
+
+  /**
+   * Drop the workspace-wide partition (if one exists). Called after a
+   * cache-miss save — an executed task may have written undeclared
+   * files anywhere in its project dir, and the workspace partition
+   * spans that subtree; only a fresh enumeration can see them. No-op
+   * when the feature is unused.
+   */
+  invalidateWorkspacePartition(): void {
+    if (this.wsRoot !== null) this.delete(this.wsRoot)
+  }
+
+  private recordChanged(partitionDir: string, relPaths: readonly string[]): void {
+    if (!this.has(partitionDir)) return
+    const cur = this.changed.get(partitionDir)
     if (cur) cur.push(...relPaths)
-    else this.changed.set(projectDir, [...relPaths])
+    else this.changed.set(partitionDir, [...relPaths])
     // These paths just changed on disk; their index OIDs (if any) no
     // longer describe the working-tree content.
-    const projOids = this.oids.get(projectDir)
-    if (projOids) {
-      for (const rel of relPaths) projOids.delete(path.resolve(projectDir, rel))
+    const partitionOids = this.oids.get(partitionDir)
+    if (partitionOids) {
+      for (const rel of relPaths) partitionOids.delete(path.resolve(partitionDir, rel))
     }
   }
 
@@ -390,11 +559,20 @@ function parseStatusOutput(out: string): Set<string> {
  * whose working tree diverges from the index; what survives is
  * stored per project via `cache.setOids` and feeds `Cache.key`
  * directly — clean-tree input hashing costs zero reads/stats/SQLite.
+ *
+ * `workspaceWide`: set when any loaded task declares
+ * `cache.inputs.workspaceFiles`. Disables pathspec scoping (those
+ * globs must see every file from the root) and additionally stores a
+ * workspace-wide partition keyed by `workspaceRoot` (files + trusted
+ * OIDs), which `resolveWorkspaceFiles` consumes. When false, the
+ * enumeration behavior — pathspecs, spawn count, stored partitions —
+ * is byte-identical to the pre-workspaceFiles code.
  */
 export async function populateGitFilesCache(
   workspaceRoot: string,
   projectDirs: readonly string[],
   cache: GitFilesCache,
+  workspaceWide = false,
 ): Promise<void> {
   // The two spawns are independent — run them concurrently so the
   // bulk-populate costs max(ls-files, status) wall time, not the sum
@@ -424,7 +602,11 @@ export async function populateGitFilesCache(
   // 11 ms on an 11k-file repo. Above 64 dirs (or when a project IS
   // the root) the whole-tree scan wins on arg/exec overhead anyway.
   const rels = projectDirs.map((d) => path.relative(workspaceRoot, d).split(path.sep).join('/'))
-  const scoped = rels.length > 0 && rels.length <= 64 && rels.every((r) => r !== '' && r !== '.')
+  const scoped =
+    !workspaceWide &&
+    rels.length > 0 &&
+    rels.length <= 64 &&
+    rels.every((r) => r !== '' && r !== '.')
   const pathspecs = scoped ? rels : ['.']
   const [ls, status] = await Promise.all([
     spawnGit(['ls-files', '-s', '--others', '--exclude-standard', '-z', '--', ...pathspecs]),
@@ -488,6 +670,13 @@ export async function populateGitFilesCache(
     // setOids AFTER set — set() drops the project's OID slot.
     cache.set(projectDir, matches)
     cache.setOids(projectDir, projOids)
+  }
+  if (workspaceWide) {
+    const rootOids = new Map<string, string>()
+    for (const [rel, oid] of trusted) rootOids.set(path.join(workspaceRoot, rel), oid)
+    cache.set(workspaceRoot, all)
+    cache.setOids(workspaceRoot, rootOids)
+    cache.setWorkspaceRoot(workspaceRoot)
   }
 }
 

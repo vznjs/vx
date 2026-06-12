@@ -67,6 +67,7 @@ export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
     envSource: process.env,
     inputs: cacheCfg?.inputs,
     ownOutputs: outputs,
+    ownWorkspaceOutputs: cacheCfg?.outputs.workspaceFiles ?? [],
     nestedProjectDirs: args.nestedProjectDirs,
     ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
   })
@@ -80,8 +81,16 @@ export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
   // Trusted index-OID map for this project (populated by the run's
   // bulk `git ls-files -s` + `git status` pass). Mapped files skip
   // hashFile entirely; everything else falls back to the identical
-  // in-process blob-OID computation.
-  const fileHashes = args.gitFilesCache?.oidsFor(args.node.projectDir)
+  // in-process blob-OID computation. Tasks declaring workspaceFiles
+  // also merge the workspace-wide partition's OIDs (keyed by abs
+  // path, so the two maps agree wherever they overlap).
+  let fileHashes = args.gitFilesCache?.oidsFor(args.node.projectDir)
+  if ((cacheCfg?.inputs.workspaceFiles?.length ?? 0) > 0) {
+    const wsOids = args.gitFilesCache?.oidsFor(args.workspaceRoot)
+    if (wsOids !== undefined && wsOids !== fileHashes) {
+      fileHashes = fileHashes === undefined ? wsOids : new Map([...wsOids, ...fileHashes])
+    }
+  }
   const taskConfigHash = hashTaskConfig(cfg, args.hashCache)
   const projectPackageJsonHash = await hashProjectPackageJson(
     args.node.projectDir,
