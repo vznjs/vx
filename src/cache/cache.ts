@@ -339,6 +339,7 @@ export class Cache implements CacheLayer {
   private readonly insertEntry: ReturnType<Database['prepare']>
   private readonly selectEntry: ReturnType<Database['prepare']>
   private readonly bumpAccessed: ReturnType<Database['prepare']>
+  private readonly touched = new Set<string>()
   private readonly insertRun: ReturnType<Database['prepare']>
   private readonly selectFileHash: ReturnType<Database['prepare']>
   private readonly upsertFileHash: ReturnType<Database['prepare']>
@@ -657,7 +658,11 @@ export class Cache implements CacheLayer {
     // filesystem can drift if someone manually deletes the cache dir.
     if (!(await Bun.file(this.tarPath(hash)).exists())) return null
 
-    this.bumpAccessed.run(Date.now(), hash)
+    // Deferred: per-hit UPDATEs cost ~60 ms across 2000+ probes on a
+    // full-cache run. Hashes are collected and flushed as ONE batched
+    // UPDATE by flushAccessed() (called from prune/stats/close), which
+    // is when accessed_at is actually read.
+    this.touched.add(hash)
 
     // Read the tar once: get the entry list AND pull `stdout` in a
     // single decompress. The decompressed bytes are stashed for the
@@ -973,6 +978,23 @@ export class Cache implements CacheLayer {
     return outputsHash
   }
 
+  /** Apply the deferred accessed_at bumps in one statement. */
+  private flushAccessed(): void {
+    if (this.touched.size === 0) return
+    const hashes = [...this.touched]
+    this.touched.clear()
+    const now = Date.now()
+    // Chunked: SQLite's bound-parameter ceiling is 32k on modern
+    // builds, but 900 keeps us safe on any build at negligible cost.
+    for (let i = 0; i < hashes.length; i += 900) {
+      const chunk = hashes.slice(i, i + 900)
+      const placeholders = chunk.map(() => '?').join(',')
+      this.db
+        .prepare(`UPDATE entries SET accessed_at = ? WHERE hash IN (${placeholders})`)
+        .run(now, ...chunk)
+    }
+  }
+
   recordRun(run: RunRecord): void {
     this.insertRun.run(...bindRun(run))
   }
@@ -994,6 +1016,7 @@ export class Cache implements CacheLayer {
   }
 
   stats(): CacheStats {
+    this.flushAccessed()
     const aggregate = this.db
       .prepare('SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS bytes FROM entries')
       .get() as { n: number; bytes: number }
@@ -1012,6 +1035,7 @@ export class Cache implements CacheLayer {
   }
 
   async prune(options: PruneOptions): Promise<PruneResult> {
+    this.flushAccessed()
     const { olderThanMs, maxBytes } = options
     if (olderThanMs === undefined && maxBytes === undefined) {
       throw new Error('prune: pass at least one of `olderThanMs` or `maxBytes`')
@@ -1074,6 +1098,7 @@ export class Cache implements CacheLayer {
   }
 
   close(): void {
+    this.flushAccessed()
     this.decompressedTar = null
     this.db.close()
   }
