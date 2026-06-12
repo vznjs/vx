@@ -57,6 +57,7 @@ fi
 chmod +x "$dest.tmp"
 mv "$dest.tmp" "$dest"
 
+# Later upgrades: re-run this script, or just `vx upgrade`.
 # --- post-install hint ------------------------------------------------------
 
 printf '\nvx: installed %s\n' "$("$dest" --version 2>/dev/null || echo "(version check failed)")"

@@ -9,6 +9,7 @@ export function printHelp(): void {
       '  vx cache prune [--older-than <duration>] [--max-size <bytes>]',
       '  vx lock [--check]',
       '  vx migrate [--from turbo|nx] [--dry] [--force]',
+      '  vx upgrade [tag]',
       '  vx show [PROJECT[#TASK]] [--format pretty|json]',
       '  vx info',
       '  vx help',

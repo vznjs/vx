@@ -496,6 +496,15 @@ Exit codes:
   (`--check` without one), or any drift (every mismatched project is
   listed on stderr).
 
+## `vx upgrade`
+
+Self-update the compiled binary in place: downloads the release asset
+for this platform and atomically replaces the running executable
+(`vx upgrade <tag>` pins a specific release; default latest). Named
+`upgrade` per CLI convention (`bun upgrade`, `deno upgrade`). Refuses
+when running from source — use `git pull`. Re-running `install.sh`
+remains equivalent.
+
 ## `vx migrate`
 
 Generate one `vx.config.ts` per workspace package from an existing

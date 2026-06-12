@@ -8,6 +8,7 @@ import { watchCmd } from './watch.js'
 import { cacheCmd } from './cache.js'
 import { lockCmd } from './lock.js'
 import { migrateCmd } from './migrate.js'
+import { upgradeCmd } from './upgrade.js'
 import { showCmd } from './show.js'
 import { infoCmd } from './info.js'
 import { printHelp } from './help.js'
@@ -36,6 +37,8 @@ export async function run(argv: readonly string[]): Promise<number> {
       return await lockCmd(rest)
     case 'migrate':
       return await migrateCmd(rest)
+    case 'upgrade':
+      return await upgradeCmd(rest)
     case 'show':
       return await showCmd(rest)
     case 'info':
