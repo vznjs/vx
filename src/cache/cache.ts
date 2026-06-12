@@ -339,6 +339,7 @@ export class Cache implements CacheLayer {
   private readonly db: Database
   private readonly insertEntry: ReturnType<Database['prepare']>
   private readonly selectEntry: ReturnType<Database['prepare']>
+  private readonly selectLastForTask: ReturnType<Database['prepare']>
   private readonly bumpAccessed: ReturnType<Database['prepare']>
   private readonly insertRun: ReturnType<Database['prepare']>
   private readonly selectFileHash: ReturnType<Database['prepare']>
@@ -488,6 +489,9 @@ export class Cache implements CacheLayer {
         accessed_at  = excluded.accessed_at
     `)
     this.selectEntry = this.db.prepare('SELECT * FROM entries WHERE hash = ?')
+    this.selectLastForTask = this.db.prepare(
+      'SELECT hash, command FROM entries WHERE project = ? AND task = ? ORDER BY created_at DESC LIMIT 1',
+    )
     this.bumpAccessed = this.db.prepare('UPDATE entries SET accessed_at = ? WHERE hash = ?')
     this.insertRun = this.db.prepare(`
       INSERT INTO runs(
@@ -983,11 +987,10 @@ export class Cache implements CacheLayer {
    */
   lastEntryForTask(taskId: string): { hash: string; command: string } | null {
     const [project, task] = splitTaskId(taskId)
-    const row = this.db
-      .prepare(
-        'SELECT hash, command FROM entries WHERE project = ? AND task = ? ORDER BY created_at DESC LIMIT 1',
-      )
-      .get(project, task) as { hash: string; command: string } | null
+    const row = this.selectLastForTask.get(project, task) as {
+      hash: string
+      command: string
+    } | null
     return row ?? null
   }
 
