@@ -14,6 +14,10 @@ const WARN = '#eab308'
 const ACCENT = '#06b6d4'
 const ERROR = '#ef4444'
 
+/** Label column: name + dim dot leaders, value starts at one column. */
+const LEADER_WIDTH = 15
+const RULE = `\u2500 vx ${'\u2500'.repeat(38)}`
+
 export function formatRunSummary(
   outcomes: readonly TaskOutcome[],
   totalMs: number,
@@ -23,60 +27,44 @@ export function formatRunSummary(
   const hits = t.cachedLocal + t.cachedRemote
   const miss = t.total - t.skipped - hits
 
-  // Same language as the live stats line: labeled colored pairs,
-  // every bucket always present. Zero-valued buckets render dim so
-  // the non-zero numbers are the only things that pull the eye.
-  // `Tasks:` partitions by how things ended; `Cache:` by where the
-  // results came from (miss + up-to-date + local + remote = total
-  // - skipped).
-  const pair = (n: number, label: string, color: string, opts: { bold?: boolean } = {}): string =>
-    n === 0
-      ? paint('', `${n} ${label}`, colors, { dim: true })
-      : paint(color, `${n} ${label}`, colors, opts)
-  const taskParts = [
-    pair(t.failed, 'failed', ERROR, { bold: true }),
-    pair(t.successful, 'success', SUCCESS),
-    pair(t.skipped, 'skipped', WARN),
-    paint(ACCENT, `${t.total} total`, colors),
-  ]
-  const cacheParts = [
-    pair(miss, 'miss', ERROR),
-    pair(t.upToDate, 'up-to-date', SUCCESS),
-    pair(t.restoredLocal, 'local', WARN),
-    pair(t.restoredRemote, 'remote', ACCENT),
-  ]
+  // Mission-readout summary (owner-picked design): dim dotted
+  // leaders, colored values, only non-zero buckets — the final
+  // report is static, so zero-suppression reads cleaner than the
+  // live line's fixed layout.
+  const dim = (txt: string) => paint('', txt, colors, { dim: true })
+  const row = (label: string, value: string): string =>
+    `  ${dim(label + ' ' + '\u00b7'.repeat(Math.max(1, LEADER_WIDTH - label.length - 1)))} ${value}`
+  const join = (parts: string[]): string => parts.join(` ${dim('\u00b7')} `)
+
+  const taskParts: string[] = []
+  if (t.failed > 0) taskParts.push(paint(ERROR, `${t.failed} failed`, colors, { bold: true }))
+  if (t.successful > 0) taskParts.push(paint(SUCCESS, `${t.successful} success`, colors))
+  if (t.skipped > 0) taskParts.push(paint(WARN, `${t.skipped} skipped`, colors))
+  if (taskParts.length === 0) taskParts.push(dim('0 tasks'))
+
+  const cacheParts: string[] = []
+  if (miss > 0) cacheParts.push(paint(ERROR, `${miss} miss`, colors))
+  if (t.upToDate > 0) cacheParts.push(paint(SUCCESS, `${t.upToDate} up-to-date`, colors))
+  if (t.restoredLocal > 0) cacheParts.push(paint(WARN, `${t.restoredLocal} local`, colors))
+  if (t.restoredRemote > 0) cacheParts.push(paint(ACCENT, `${t.restoredRemote} remote`, colors))
 
   // vx's own full-cache stamp (owner-picked over the Turbo-shaped
-  // `>>> FULL ...` shout): printed when every real task came from
-  // the cache — vx executed nothing.
+  // `>>> FULL ...` shout): every real task came from the cache —
+  // vx executed nothing.
   const fullCache = t.total > 0 && hits === t.total
   const dur = formatDuration(totalMs)
-  const timeLine = fullCache
-    ? `  Time:    ${dur} ${paint(WARN, '⚡', colors)} ${paint(SUCCESS, 'instant', colors, { bold: true })}`
-    : `  Time:    ${dur}`
+  const time = fullCache
+    ? `${dur} ${paint(WARN, '\u26a1', colors)} ${paint(SUCCESS, 'instant', colors, { bold: true })}`
+    : dur
 
-  const lines: string[] = [
-    '',
-    ` Tasks:    ${taskParts.join(' · ')}`,
-    ` Cache:    ${cacheParts.join(' · ')}`,
-  ]
-
-  // Failed-task listing — single `Failed: id1, id2, id3` line, ids
-  // bold-red, comma-joined. Mirrors Turbo's run-summary format
-  // (turborepo-run-summary/src/execution.rs). Surfaces what failed
-  // without needing to scroll back through framed blocks. Skipped
-  // tasks are NOT listed separately: they're inferred from the
-  // dependency chain on a failed task; listing them would just
-  // duplicate the same id under both labels.
+  const lines: string[] = ['', dim(RULE), row('tasks', join(taskParts))]
   const failedIds = outcomes
     .filter((o) => o.status === 'failed')
     .map((o) => paint(ERROR, o.node.id, colors, { bold: true }))
     .sort()
-  if (failedIds.length > 0) {
-    lines.push(`Failed:    ${failedIds.join(', ')}`)
-  }
-
-  lines.push(timeLine)
+  if (failedIds.length > 0) lines.push(row('failed', failedIds.join(', ')))
+  if (cacheParts.length > 0) lines.push(row('cache', join(cacheParts)))
+  lines.push(row('time', time))
   return lines
 }
 
