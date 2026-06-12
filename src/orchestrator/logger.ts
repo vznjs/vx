@@ -58,6 +58,13 @@ export function defaultLogger(colors: ColorSupport = detectColors()): Logger {
     taskComplete(node, outcome) {
       const stdout = takeChunks(stdoutBuffers, node.id)
       const stderr = takeChunks(stderrBuffers, node.id)
+      // Cache hits with nothing to replay print no frame at all — at
+      // 2000+ tasks the per-hit frames drown what actually happened.
+      // The end-of-run summary carries the hit/up-to-date counts;
+      // hits WITH replayed stdout keep their frame (the output is
+      // the point), and misses/failures are always framed.
+      const isHit = outcome.status === 'cache-hit' || outcome.status === 'cache-hit-remote'
+      if (isHit && stdout.trim().length === 0 && stderr.trim().length === 0) return
       // formatTaskBlock returns '' for group tasks (no exec) — skip
       // the write so a stray newline doesn't sneak into the output.
       const block = formatTaskBlock(node, outcome, { stdout, stderr }, colors)

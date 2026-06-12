@@ -26,10 +26,17 @@ export function formatRunSummary(
   if (t.skipped > 0) taskParts.push(paint(WARN, `${t.skipped} skipped`, colors))
   taskParts.push(`${t.total} total`)
 
+  // Disjoint buckets that partition the hit count: restored from the
+  // local artifact, restored after a remote pull, or already
+  // up-to-date on disk (zero writes). Shown whenever anything hit.
   const cachedParts: string[] = []
-  if (t.cachedLocal > 0) cachedParts.push(`${t.cachedLocal} local`)
-  if (t.cachedRemote > 0) cachedParts.push(`${t.cachedRemote} remote`)
-  if (cachedParts.length === 0) cachedParts.push('0 cached')
+  if (cached > 0) {
+    cachedParts.push(`${t.restoredLocal} local-restore`)
+    cachedParts.push(`${t.restoredRemote} remote-restore`)
+    cachedParts.push(`${t.upToDate} up-to-date`)
+  } else {
+    cachedParts.push('0 cached')
+  }
   cachedParts.push(`${t.total} total`)
 
   // Motif printed when every real task came from the cache (local or

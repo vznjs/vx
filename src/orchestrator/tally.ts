@@ -9,6 +9,12 @@ export interface Tally {
   failed: number
   skipped: number
   cachedLocal: number
+  /** Hits that materialized files from the local artifact. */
+  restoredLocal: number
+  /** Hits that materialized files pulled from the remote layer. */
+  restoredRemote: number
+  /** Cache hits whose tree already matched — nothing was written. */
+  upToDate: number
   cachedRemote: number
   /** Tasks counted toward `total`. Group tasks are excluded by default. */
   total: number
@@ -33,6 +39,9 @@ export function tallyOutcomes(outcomes: readonly TaskOutcome[]): Tally {
     failed: 0,
     skipped: 0,
     cachedLocal: 0,
+    restoredLocal: 0,
+    restoredRemote: 0,
+    upToDate: 0,
     cachedRemote: 0,
     total: 0,
   }
@@ -43,9 +52,13 @@ export function tallyOutcomes(outcomes: readonly TaskOutcome[]): Tally {
     else if (o.status === 'cache-hit') {
       t.successful++
       t.cachedLocal++
+      if (o.restored === true) t.restoredLocal++
+      else t.upToDate++
     } else if (o.status === 'cache-hit-remote') {
       t.successful++
       t.cachedRemote++
+      if (o.restored === true) t.restoredRemote++
+      else t.upToDate++
     } else if (o.status === 'failed') t.failed++
     else if (o.status === 'skipped') t.skipped++
   }

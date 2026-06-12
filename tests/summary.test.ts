@@ -37,7 +37,7 @@ describe('formatRunSummary', () => {
       420,
     )
     expect(lines[1]).toBe(' Tasks:    3 successful, 3 total')
-    expect(lines[2]).toBe('Cached:    1 local, 1 remote, 3 total')
+    expect(lines[2]).toBe('Cached:    0 local-restore, 0 remote-restore, 2 up-to-date, 3 total')
     expect(lines[3]).toBe('  Time:    420ms')
   })
 
@@ -92,7 +92,7 @@ describe('formatRunSummary', () => {
   it('treats cache-hit-remote as successful', () => {
     const lines = formatRunSummary([outcome('a#x', 'cache-hit-remote')], 10)
     expect(lines[1]).toBe(' Tasks:    1 successful, 1 total')
-    expect(lines[2]).toBe('Cached:    1 remote, 1 total')
+    expect(lines[2]).toBe('Cached:    0 local-restore, 0 remote-restore, 1 up-to-date, 1 total')
   })
 
   it('appends >>> FULL CACHE when every real task came from the cache', () => {

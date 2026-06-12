@@ -67,6 +67,7 @@ async function collectEdges(): Promise<Edge[]> {
     for (const m of text.matchAll(/^(?:import|export)[^'"]*from\s+['"]([^'"]+)['"]/gm)) {
       const spec = m[1]!
       if (!spec.startsWith('.')) continue // bare imports = packages, not modules
+      if (spec.endsWith('.json')) continue // JSON is data (e.g. version.ts → package.json)
       const resolved = path
         .normalize(path.join(path.dirname(norm), spec))
         .split(path.sep)
