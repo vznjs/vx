@@ -25,6 +25,8 @@ export interface RunOptions {
   noCache?: boolean
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
+  outputLogs?: 'full' | 'errors-only' | 'none' // explicit output override
+  flow?: 'focused' | 'broad' // CLI-detected run intent (see logger.md)
   summarize?: string // path or '' for default
   profile?: string // path or '' for default
   log?: Logger
@@ -40,7 +42,8 @@ export function run(options: RunOptions): Promise<RunSummary>
 export function planRun(options: RunOptions): Promise<RunPlan>
 
 // via index.ts (the module contract):
-export { defaultLogger, type Logger } from './logger.js'
+export { defaultLogger, resolveOutputView } from './logger.js'
+export type { Logger, OutputView } from './logger.js'
 export type { RunPlan, PlannedTask, CacheStatus } from './plan.js'
 ```
 
@@ -67,10 +70,14 @@ wrapWithRemoteCache`. Returns a `PreparedRun` with the cache
 6. **Signal handlers.** SIGINT/SIGTERM handlers are installed here
    and removed in a `finally` (see "Signal shutdown" below).
 7. **Header.** Packages-in-scope, task names, remote-cache enabled?
+   Then `log.runStart?.({ total })` seeds the status line.
 8. **`runGraph(...)`.** Scheduler executes each ready node via
-   `executeTask`. Each finished outcome gets `log.taskComplete`.
+   `executeTask`. Starts call `log.taskStart?.`; each finished
+   outcome gets `log.taskComplete`.
 9. **Persistent cleanup.** Every entry in `persistentRegistry` is
    SIGTERMed; `Promise.allSettled` waits for exits before continuing.
+   Then `log.runEnd?.()` clears the status line (also called from the
+   `finally` so a thrown cycle can't leave it behind).
 10. **Summary.** `formatRunSummary(list, totalMs)` — the shared
     `tallyOutcomes` helper inside excludes group tasks.
 11. **Optional artifacts.** `writeRunSummary` / `writeRunProfile` when

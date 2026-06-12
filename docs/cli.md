@@ -158,10 +158,53 @@ Mutual exclusion:
 
 Unknown flags are a parse error (`unknown flag: --foo`).
 
+### Output
+
+What a run prints is derived from the run's intent (its "flow"),
+unless explicitly overridden:
+
+- **FOCUSED** — no selection flag was passed. The user is running
+  "their" task; cwd and task count are irrelevant to the
+  classification.
+- **BROAD** — the invocation used `--all`, `--filter`, or
+  `--affected`. The user asked about a swath of the workspace and
+  wants news, not output.
+- **CI** — the `CI` env var is truthy (`CI=0` / `CI=false` don't
+  count). Wins over the flow.
+
+Per-task visibility by outcome:
+
+| Outcome                | focused (requested task)    | focused (dependency) | broad                  | CI / `full`                  |
+| ---------------------- | --------------------------- | -------------------- | ---------------------- | ---------------------------- |
+| executed               | raw output, streamed live   | silent               | `● id ── executed • t` | frame                        |
+| restored-local/-remote | replayed stdout, streamed   | silent               | silent                 | frame, or one-liner if quiet |
+| up-to-date             | one-liner (nothing to show) | silent               | silent                 | one-liner                    |
+| failed                 | raw output, streamed live   | full frame           | full frame             | frame                        |
+| skipped                | frame                       | silent               | silent                 | frame                        |
+
+The header and end-of-run summary always print; cache-hit counts that
+broad mode silences per-task surface there. A focused `vx run test`
+is meant to feel like running the test command directly — same
+output, just faster.
+
+On an interactive terminal (TTY stdout, not CI) a single bottom
+status line tracks progress live — `▶ 2 running · 5/12 · one#build,
+two#build · 4s`, plus a red `· n failed` when anything failed. It's
+rewritten in place (one clear-line escape; not a TUI) and removed
+before the summary prints. In the focused flow it only lives while
+dependencies run; it disappears for good the moment the requested
+task starts streaming.
+
+On GitHub Actions (`GITHUB_ACTIONS` truthy, full output mode), each
+task's block is wrapped in `::group::<id> (<outcome> <duration>)` /
+`::endgroup::` so it collapses in the log viewer. Failed tasks stay
+pre-expanded and emit an `::error title=<id>::failed (exit N)`
+annotation instead.
+
 ### `--output-logs <mode>`
 
-Per-task output volume for the default logger: `full` (default —
-frames for executed work, one-liners for quiet cache hits),
+Explicit override; always beats the flow and CI defaults. `full`
+(frames for executed work, one-liners for quiet cache hits),
 `errors-only` (only failed tasks print; the CI noise budget), `none`
 (no per-task output). The header and end-of-run summary always print.
 

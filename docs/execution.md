@@ -234,32 +234,56 @@ status.
 
 ## Output capture and rendering
 
-- **Buffered, framed.** `runCommand` listens to the child's
-  stdout/stderr and calls `onStdout` / `onStderr` per chunk. The
-  default logger buffers the chunks per-task and dumps the full body
-  as a Turbo-style framed block on task completion. No per-line
-  prefix, no interleaving between concurrent tasks.
-- **Cache write.** Full stdout / stderr text is stored as
-  `<hash>/stdout` and `<hash>/stderr` alongside the entry's outputs.
-- **Cache hit replay.** The stored stdout / stderr is fed through the
-  same logger path so the framed block looks the same as a fresh run.
+- **Flow-aware policy.** What gets rendered depends on the run's
+  intent: FOCUSED (no selection flag) streams the requested task's
+  output raw and live and silences successful dependencies; BROAD
+  (`--all` / `--filter` / `--affected`) prints news only — one
+  `executed` line per executed task, full frames for failures,
+  silence for cache hits; truthy `CI` env (and the programmatic
+  default) keeps full grouped output. `--output-logs` overrides
+  everything. Full table in [`cli.md`](./cli.md#output).
+- **Buffered, framed (non-focused paths).** `runCommand` listens to
+  the child's stdout/stderr and calls `onStdout` / `onStderr` per
+  chunk. Outside focused streaming, the default logger buffers the
+  chunks per-task and dumps the full body as a Turbo-style framed
+  block on task completion. No per-line prefix, no interleaving
+  between concurrent tasks.
+- **Cache write.** Full stdout text is stored in the entry; replay is
+  stdout-only (v17).
+- **Cache hit replay.** The stored stdout is fed through the same
+  logger path, so it renders per the active flow (streamed raw for a
+  focused requested task, framed in full mode, silent in broad).
 - **Live stream for failures.** Even though cached output is not
   written for failures, the live stream means the user sees the
-  failure as it happens; `TaskOutcome.stderr` carries the captured
-  text for programmatic embedders.
+  failure as it happens.
+- **Status line.** On TTY stdout outside CI, a single bottom line
+  shows running/done/total/elapsed (+failed), rewritten in place via
+  one clear-line escape and removed before the summary. All
+  default-logger writes are serialized through one writer so content
+  and the status line never interleave.
+- **GitHub Actions.** With `GITHUB_ACTIONS` truthy in full mode, task
+  blocks collapse under `::group::` commands; failures stay open and
+  emit `::error` annotations.
 
 There is no special handling for binary output, very large output, or
 interactive prompts. Stdin is `'ignore'` (child sees a closed stdin)
 — tasks that need TTY input won't work and shouldn't be cached anyway.
+
+Every surface uses one outcome vocabulary: `executed`,
+`restored-local`, `restored-remote`, `up-to-date`, `failed`,
+`skipped`.
 
 The colors / framing modules:
 
 - `orchestrator/colors.ts` — ANSI truecolor (`ansi-16m`), gated by
   `NO_COLOR` / `FORCE_COLOR` / `isTTY`. Programmatic-logger callers
   always see plain text.
-- `orchestrator/framed-output.ts` — the `┌─ task ─┐` borders.
-- `orchestrator/logger.ts` — composes the two; surfaces per-task
-  start, stdout, stderr, completion, status replay.
+- `orchestrator/framed-output.ts` — the `┌─ task ─┐` borders +
+  one-liners.
+- `orchestrator/status-line.ts` — the serialized writer + the bottom
+  status line.
+- `orchestrator/logger.ts` — composes them; resolves the output view
+  and applies the per-flow visibility policy.
 - `orchestrator/summary.ts` — the closing `Tasks / Cached / Time`
   block.
 

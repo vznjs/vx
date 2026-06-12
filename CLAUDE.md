@@ -165,6 +165,41 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: Output redesign — flow-aware views + status line.
+  OWNER RULES, do not re-litigate: flow is decided by SELECTION FLAGS
+  ONLY — BROAD iff `--all` / `--filter` / `--affected` was passed,
+  otherwise FOCUSED ("when just run no --all etc then single. cwd
+  does not matter" — cwd and task count are irrelevant); broad mode
+  keeps one `executed` one-liner per executed task (the news
+  principle: executed work IS news, cache hits aren't — hits are
+  per-task silent, replay dropped, counts live in the summary).
+  Truthy `CI` env (not '0'/'false') → today's full grouped output;
+  explicit `--output-logs` ALWAYS overrides. FOCUSED streams
+  requested nodes raw + live (hit replay included — `vx run test`
+  feels like running the command, just faster; quiet hits keep the
+  one-liner, skips frame), deps silent-on-success / framed-on-fail.
+  Programmatic run() without `flow` keeps 'full'. One outcome
+  vocabulary everywhere: executed / restored-local / restored-remote
+  / up-to-date / failed / skipped (TaskStatus enum + --summarize JSON
+  keep raw enum values; bucket partition semantics unchanged). GHA:
+  in full mode with GITHUB_ACTIONS truthy, blocks wrap in
+  `::group::<id> (<word> <dur>)`/`::endgroup::`; FAILED tasks stay
+  ungrouped + `::error title=<id>::failed (exit N)`; quiet-hit
+  one-liners ungrouped. Status line (TTY && !CI only): single
+  `▶ n running · d/t · ids · es [· f failed]` line, ESC[2K+\r rewrite
+  (NOT a TUI), 100ms throttle + forced on task events; ALL
+  default-logger stdout serializes through one writer
+  (orchestrator/status-line.ts) — clear → content → redraw, redraw
+  held while focused streaming sits mid-line; cleared permanently at
+  runEnd and on first requested-task start in focused. Logger gained
+  OPTIONAL runStart/taskStart/runEnd hooks (custom loggers
+  unaffected). Test consequence: e2e suites that assert on default-
+  logger output must pin env (delete CI/GITHUB_ACTIONS) or pass
+  `--output-logs full` — otherwise they behave differently locally
+  vs in Actions. Files: cli/run.ts (detectFlow),
+  orchestrator/{logger,status-line,framed-output,run,options}.ts;
+  tests/{output-flow,status-line}.test.ts.
+
 - **2026-06**: `workspaceFiles` (owner-named) — workspace-root-anchored
   `cache.inputs.workspaceFiles` + `cache.outputs.workspaceFiles`, the
   Turbo `$TURBO_ROOT$` / Nx `{workspaceRoot}` equivalent. OWNER CALL,
