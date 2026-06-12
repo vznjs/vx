@@ -28,6 +28,13 @@ export interface RunOptions {
    */
   frozen?: boolean
   /**
+   * Per-task output volume for the default logger. 'full' (default):
+   * frames for work + one-liners for quiet hits. 'errors-only':
+   * only failed tasks print. 'none': no per-task output at all.
+   * Status lines (header, summary) always print.
+   */
+  outputLogs?: 'full' | 'errors-only' | 'none'
+  /**
    * Filter `dependsOn` expansion. `'all'` drops every edge (just the
    * requested task runs). A string array drops only those task names
    * from both `self` and `dependencies` buckets.

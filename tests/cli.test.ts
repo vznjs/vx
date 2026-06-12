@@ -659,10 +659,12 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--force']).noCache).toBe(true)
   })
 
-  it('--cache is accepted as a no-op (parity flag)', () => {
-    const r = parseRunArgs(['build', '--cache'])
-    expect(r.error).toBeUndefined()
-    expect(r.noCache).toBe(false)
+  it('--output-logs validates its mode and threads through', () => {
+    const ok = parseRunArgs(['build', '--output-logs', 'errors-only'])
+    expect(ok.error).toBeUndefined()
+    expect(ok.outputLogs).toBe('errors-only')
+    const bad = parseRunArgs(['build', '--output-logs', 'loud'])
+    expect(bad.error).toContain('--output-logs must be')
   })
 
   it('parses --excludeDependencies as "all" with no value', () => {

@@ -140,7 +140,6 @@ stays clean).
 | `--excludeDependencies[=<names>]` | optional value | off                             | Drop `dependsOn` edges. No value = all (just the requested task runs); comma-list = drop only those names. |
 | `--concurrency <n>`               | positive int   | `navigator.hardwareConcurrency` | Maximum parallel tasks. `1` serializes.                                                                    |
 | `--no-cache`, `--force`           | boolean        | off                             | Skip cache reads AND writes; output globs are NOT cleaned.                                                 |
-| `--cache`                         | boolean        | off                             | No-op (parity with vite-task).                                                                             |
 | `--verbosity <n>`                 | int (0+)       | `0`                             | `1` prints a per-task summary table after the framed blocks; `2+` reserved.                                |
 | `--dry[=text\|json]`              | optional value | off                             | Print the task graph + predicted cache hit/miss; skip execution.                                           |
 | `--graph[=<path>]`                | optional value | off                             | Emit Graphviz DOT (stdout if no path); skip execution.                                                     |
@@ -154,6 +153,13 @@ Mutual exclusion:
   two need a real run.
 
 Unknown flags are a parse error (`unknown flag: --foo`).
+
+### `--output-logs <mode>`
+
+Per-task output volume for the default logger: `full` (default —
+frames for executed work, one-liners for quiet cache hits),
+`errors-only` (only failed tasks print; the CI noise budget), `none`
+(no per-task output). The header and end-of-run summary always print.
 
 ## Planning mode (`--dry`, `--graph`)
 

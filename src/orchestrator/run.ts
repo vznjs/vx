@@ -23,7 +23,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // ANSI escapes for them. Only the defaultLogger (real terminal
   // output) gets colors, gated by NO_COLOR / FORCE_COLOR / isTTY.
   const colors = options.log ? { enabled: false } : detectColors()
-  const log = options.log ?? defaultLogger(colors)
+  const log = options.log ?? defaultLogger(colors, options.outputLogs ?? 'full')
 
   const prepared = await prepareRun(options, log)
   if (prepared.empty !== null) {

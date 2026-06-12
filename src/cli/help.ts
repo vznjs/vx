@@ -26,7 +26,7 @@ export function printHelp(): void {
       '      --excludeDependencies[=names]  Skip dependsOn edges. No value = all; comma list = specific names.',
       '      --no-cache, --force         Skip cache reads AND writes.',
       '      --frozen                    Load configs from vx-lock.json (CI; pair with vx lock --check).',
-      '      --cache                     No-op (parity with vite-task).',
+      '      --output-logs <mode>        full (default) | errors-only | none — per-task output volume.',
       '      --verbosity <n>             0=quiet, 1=verbose summary, 2+=debug (reserved).',
       '',
       'Planning (for run — skips execution):',

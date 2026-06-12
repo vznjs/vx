@@ -17,7 +17,10 @@ export interface Logger {
   taskComplete(node: TaskNode, outcome: TaskOutcome): void
 }
 
-export function defaultLogger(colors: ColorSupport = detectColors()): Logger {
+export function defaultLogger(
+  colors: ColorSupport = detectColors(),
+  outputLogs: 'full' | 'errors-only' | 'none' = 'full',
+): Logger {
   // Per-task buffers, split by stream. Splitting lets the framed-output
   // renderer put stdout in the body and stderr under an `├─ Error`
   // section. The price: chunks that interleaved at runtime get
@@ -60,6 +63,8 @@ export function defaultLogger(colors: ColorSupport = detectColors()): Logger {
     taskComplete(node, outcome) {
       const stdout = takeChunks(stdoutBuffers, node.id)
       const stderr = takeChunks(stderrBuffers, node.id)
+      if (outputLogs === 'none') return
+      if (outputLogs === 'errors-only' && outcome.status !== 'failed') return
       // Cache hits with nothing to replay compress to ONE line — every
       // task stays visible, but at 2000+ tasks the two-line frames
       // would drown what actually happened. Hits WITH replayed stdout

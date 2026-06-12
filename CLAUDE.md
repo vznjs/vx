@@ -159,6 +159,15 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: CLI pass. `--output-logs full|errors-only|none`
+  shipped (logger-level gate; summary always prints). The `--cache`
+  no-op flag REMOVED (a silently-accepted flag that does nothing is
+  a footgun; vite-task parity not worth it). Interactive picker got
+  injectable IO + its first tests. Named inputs and target defaults
+  (old roadmap #1) REJECTED by owner: TypeScript configs compose —
+  shared presets via import ARE our named inputs/defaults; schema
+  machinery would duplicate the language. Don't re-propose.
+
 - **2026-06**: Lock consumption moved behind `--frozen` (owner
   decision after a correct soundness rebuttal): byte-hashing a
   config can't see its IMPORT CLOSURE (shared presets), so default
@@ -1260,20 +1269,16 @@ LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
 Roadmap is derived from [`docs/comparison.md`](docs/comparison.md) —
 the gap analysis against Turbo / Nx / vite-task with sourced cites.
 
-1. **Named inputs + target defaults.** Workspace-level reusable input
-   sets + per-task inheritance. Reduces glob duplication across tasks.
-   See Nx `namedInputs` / `targetDefaults`.
-2. **Pre-signed URL auth** for the remote cache. v2 per
+1. **Pre-signed URL auth** for the remote cache. v2 per
    `docs/design/remote-cache.md`. (The HMAC-signing half shipped
    2026-06 via `VX_REMOTE_CACHE_SIGNATURE_KEY`.)
-3. **Output log modes** (`--output-logs=full|errors-only|hash-only|none`).
-4. **`--continue=<mode>`.** Today vx aborts a failed task's
-   transitive dependents but continues independent siblings — Turbo's
-   middle setting. Add the explicit flag plus a `--continue=always`
-   for more lenient runs.
-5. **Wildcards in `dependsOn`** (`build-*`, `^build-*` — Nx 19.5+).
-6. **Workspace-level `globalInputs` / `globalEnv` / `globalPassThrough`.**
-7. **Auto-input inference** (vite-task's `{auto:true}` via filesystem
+2. 4. **`--continue=<mode>`.** Today vx aborts a failed task's
+      transitive dependents but continues independent siblings — Turbo's
+      middle setting. Add the explicit flag plus a `--continue=always`
+      for more lenient runs.
+3. **Wildcards in `dependsOn`** (`build-*`, `^build-*` — Nx 19.5+).
+4. **Workspace-level `globalInputs` / `globalEnv` / `globalPassThrough`.**
+5. **Auto-input inference** (vite-task's `{auto:true}` via filesystem
    tracing). Biggest UX win, biggest engineering lift; needs an
    `fspy`-equivalent per OS.
 

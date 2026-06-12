@@ -40,6 +40,7 @@ export interface RunArgs {
   concurrency: number | undefined
   noCache: boolean
   frozen: boolean
+  outputLogs?: 'full' | 'errors-only' | 'none'
   forwardArgs: string[]
   verbosity: number
   dry: 'text' | 'json' | undefined
@@ -101,11 +102,14 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
         .filter((s) => s.length > 0)
     } else if (a === '--frozen') {
       out.frozen = true
+    } else if (a === '--output-logs') {
+      const v = before[++i]
+      if (v !== 'full' && v !== 'errors-only' && v !== 'none') {
+        return { ...out, error: `--output-logs must be full, errors-only, or none` }
+      }
+      out.outputLogs = v
     } else if (a === '--no-cache' || a === '--force') {
       out.noCache = true
-    } else if (a === '--cache') {
-      // No-op: parity with vite-task. Caching is governed by the task's `cache`
-      // block in config; this flag is symmetric with --no-cache.
     } else if (a === '--verbosity') {
       const v = before[++i]
       if (v === undefined) return { ...out, error: `${a} requires a value` }
@@ -222,6 +226,7 @@ export async function resolveRunOptions(
     tasks: [...tasks],
     noCache: parsed.noCache,
     ...(parsed.frozen ? { frozen: true } : {}),
+    ...(parsed.outputLogs !== undefined ? { outputLogs: parsed.outputLogs } : {}),
     forwardArgs: parsed.forwardArgs,
   }
   if (parsed.excludeDependencies === 'all') {
@@ -350,7 +355,10 @@ interface PickedTask {
   description?: string
 }
 
-async function pickTask(cwd: string): Promise<PickedTask | null> {
+export async function pickTask(
+  cwd: string,
+  io: { input?: NodeJS.ReadableStream; output?: NodeJS.WritableStream } = {},
+): Promise<PickedTask | null> {
   const projects = await loadWorkspaceProjects(cwd)
   const entries: PickedTask[] = []
   for (const meta of projects) {
@@ -366,16 +374,20 @@ async function pickTask(cwd: string): Promise<PickedTask | null> {
     process.stderr.write(`vx run: no tasks declared in any project\n`)
     return null
   }
+  const out = io.output ?? process.stdout
   const numW = String(entries.length).length
   const idW = Math.max(...entries.map((e) => `${e.project}#${e.task}`.length))
-  process.stdout.write('Tasks:\n')
+  out.write('Tasks:\n')
   entries.forEach((e, i) => {
     const n = String(i + 1).padStart(numW, ' ')
     const id = `${e.project}#${e.task}`.padEnd(idW)
     const desc = e.description ? `  ${e.description}` : ''
-    process.stdout.write(`  ${n}. ${id}${desc}\n`)
+    out.write(`  ${n}. ${id}${desc}\n`)
   })
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  const rl = readline.createInterface({
+    input: io.input ?? process.stdin,
+    output: io.output ?? process.stdout,
+  })
   try {
     const answer = (await rl.question(`Pick a task [1-${entries.length}]: `)).trim()
     const n = Number(answer)
