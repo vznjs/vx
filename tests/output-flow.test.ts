@@ -274,6 +274,81 @@ describe('defaultLogger visibility matrix — overrides', () => {
   })
 })
 
+describe('GitHub Actions renderer (full mode + gha)', () => {
+  it('resolveOutputView attaches gha only when GITHUB_ACTIONS is truthy', () => {
+    expect(resolveOutputView({}, { CI: '1', GITHUB_ACTIONS: 'true' })).toEqual({
+      mode: 'full',
+      gha: true,
+    })
+    expect(resolveOutputView({}, { CI: '1' })).toEqual({ mode: 'full' })
+    expect(resolveOutputView({}, { CI: '1', GITHUB_ACTIONS: 'false' })).toEqual({ mode: 'full' })
+    expect(resolveOutputView({ outputLogs: 'full' }, { GITHUB_ACTIONS: 'true' })).toEqual({
+      mode: 'full',
+      gha: true,
+    })
+    // Non-full modes never group.
+    expect(resolveOutputView({ outputLogs: 'errors-only' }, { GITHUB_ACTIONS: 'true' })).toEqual({
+      mode: 'errors-only',
+    })
+  })
+
+  it('wraps a successful task block in ::group:: with outcome word + duration', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
+    const n = mkNode('one#build', { requested: true })
+    log.taskStdout(n, 'work\n')
+    log.taskComplete(n, mkOutcome(n, 'success', { durationMs: 1200 }))
+    const text = out.text()
+    expect(text).toContain('::group::one#build (executed 1.20s)\n')
+    expect(text).toContain('┌─ one#build')
+    expect(text).toContain('::endgroup::\n')
+    // group opens before the frame, closes after it
+    expect(text.indexOf('::group::')).toBeLessThan(text.indexOf('┌─ one#build'))
+    expect(text.indexOf('::endgroup::')).toBeGreaterThan(text.indexOf('└─ one#build'))
+  })
+
+  it('hit-with-replay blocks group with the cache outcome word', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
+    const n = mkNode('one#build')
+    log.taskStdout(n, 'replayed\n')
+    log.taskComplete(n, mkOutcome(n, 'cache-hit', { restored: true, durationMs: 12 }))
+    expect(out.text()).toContain('::group::one#build (restored-local 12ms)\n')
+  })
+
+  it('failed tasks stay UNGROUPED and emit an ::error annotation', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
+    const n = mkNode('one#boom')
+    log.taskStderr(n, 'kaboom\n')
+    log.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 7 }))
+    const text = out.text()
+    expect(text).toContain('::error title=one#boom::failed (exit 7)\n')
+    expect(text).toContain('┌─ one#boom')
+    expect(text).not.toContain('::group::')
+    expect(text).not.toContain('::endgroup::')
+  })
+
+  it('quiet hit one-liners stay plain (not a block, nothing to collapse)', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
+    const n = mkNode('one#build')
+    log.taskComplete(n, mkOutcome(n, 'cache-hit', { restored: true }))
+    const text = out.text()
+    expect(text).toContain('◌ one#build ── restored-local')
+    expect(text).not.toContain('::group::')
+  })
+
+  it('without gha, full mode emits no workflow commands', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full' }, out)
+    const n = mkNode('one#build')
+    log.taskStdout(n, 'work\n')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    expect(out.text()).not.toContain('::group::')
+  })
+})
+
 // vx requires git for input enumeration; every fixture workspace
 // gets a quiet repo via this helper before chdir.
 function initGitRepo(cwd: string): void {
@@ -451,4 +526,46 @@ describe('flow e2e against a real fixture workspace', () => {
     expect(text()).toContain('┌─ one#fresh')
     expect(text()).toContain('FRESH-OUTPUT')
   })
+
+  it(
+    'GITHUB_ACTIONS subprocess: tasks collapse in ::group::, failures stay open + annotate',
+    async () => {
+      const path = await import('node:path')
+      const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+      const ghaEnv = { ...process.env, CI: '1', GITHUB_ACTIONS: 'true' }
+      const vx = async (args: string[]): Promise<{ code: number; out: string }> => {
+        const proc = Bun.spawn([process.execPath, BIN, ...args], {
+          cwd: workspaceRoot,
+          env: ghaEnv,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+        return { code, out }
+      }
+
+      // Prime `cached` so the second run replays it (hit-with-replay
+      // block → grouped with the cache outcome word).
+      expect((await vx(['run', '--all', 'cached'])).code).toBe(0)
+
+      const { code, out } = await vx(['run', '--all', 'cached', 'fresh', 'boom'])
+      expect(code).toBe(1)
+
+      // Executed + replayed-hit blocks are grouped...
+      expect(out).toMatch(/::group::one#fresh \(executed [^)]+\)\n/)
+      // No declared outputs → the replayed hit reads as up-to-date.
+      expect(out).toMatch(/::group::one#cached \(up-to-date [^)]+\)\n/)
+      // ...and every group is closed.
+      const groups = (out.match(/::group::/g) ?? []).length
+      const endgroups = (out.match(/::endgroup::/g) ?? []).length
+      expect(groups).toBe(endgroups)
+      expect(groups).toBe(2)
+      // The failed task is pre-expanded: no group, an ::error
+      // annotation, and the frame still present.
+      expect(out).not.toContain('::group::one#boom')
+      expect(out).toContain('::error title=one#boom::failed (exit 7)')
+      expect(out).toContain('┌─ one#boom')
+    },
+    { timeout: 20_000 },
+  )
 })

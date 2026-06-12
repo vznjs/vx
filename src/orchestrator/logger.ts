@@ -1,6 +1,7 @@
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { detectColors, type ColorSupport } from './colors.js'
 import { formatTaskBlock, formatTaskExecutedLine, formatTaskHitLine } from './framed-output.js'
+import { formatDuration } from './summary.js'
 import { isGroupTask } from '../graph/index.js'
 
 export interface Logger {
@@ -31,9 +32,14 @@ export interface Logger {
  *                 dependency-pulled nodes are silent unless they fail.
  *   broad       — news only: one `executed` line per executed task,
  *                 full frames for failures, silence for cache hits.
+ *
+ * `gha` (full mode only): wrap each task's block in `::group::` /
+ * `::endgroup::` workflow commands so tasks collapse in the GitHub
+ * Actions log viewer — except failed tasks, which stay pre-expanded
+ * and emit an `::error` annotation instead.
  */
 export type OutputView =
-  | { mode: 'full' }
+  | { mode: 'full'; gha?: boolean }
   | { mode: 'errors-only' }
   | { mode: 'none' }
   | { mode: 'focused' }
@@ -44,14 +50,32 @@ function truthyEnv(v: string | undefined): boolean {
   return v !== undefined && v !== '' && v !== '0' && v !== 'false'
 }
 
+/** The unified outcome vocabulary word for a non-failed outcome. */
+function outcomeWord(o: TaskOutcome): string {
+  switch (o.status) {
+    case 'success':
+      return 'executed'
+    case 'cache-hit':
+      return o.restored === false ? 'up-to-date' : 'restored-local'
+    case 'cache-hit-remote':
+      return o.restored === false ? 'up-to-date' : 'restored-remote'
+    default:
+      return o.status
+  }
+}
+
 export function resolveOutputView(
   options: { outputLogs?: 'full' | 'errors-only' | 'none'; flow?: 'focused' | 'broad' },
   env: Record<string, string | undefined> = process.env,
 ): OutputView {
-  if (options.outputLogs !== undefined) return { mode: options.outputLogs }
-  if (truthyEnv(env['CI'])) return { mode: 'full' }
+  const gha = truthyEnv(env['GITHUB_ACTIONS'])
+  const full = (): OutputView => (gha ? { mode: 'full', gha: true } : { mode: 'full' })
+  if (options.outputLogs !== undefined) {
+    return options.outputLogs === 'full' ? full() : { mode: options.outputLogs }
+  }
+  if (truthyEnv(env['CI'])) return full()
   if (options.flow !== undefined) return { mode: options.flow }
-  return { mode: 'full' }
+  return full()
 }
 
 export function defaultLogger(
@@ -182,12 +206,28 @@ export function defaultLogger(
           // every task stays visible, but at 2000+ tasks the two-line
           // frames would drown what actually happened. Hits WITH
           // replayed stdout keep their frame (the output is the
-          // point); misses/failures are always framed.
+          // point); misses/failures are always framed. One-liners
+          // stay outside ::group:: — there's nothing to collapse.
           if (isHit && stdout.trim().length === 0 && stderr.trim().length === 0) {
             emitLine(formatTaskHitLine(node, outcome, colors))
             return
           }
-          emitBlock(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
+          const block = formatTaskBlock(node, outcome, { stdout, stderr }, colors)
+          if (block.length === 0) return
+          if (view.gha) {
+            // Failed tasks stay pre-expanded in the Actions viewer:
+            // an ::error annotation instead of a collapsed group.
+            if (outcome.status === 'failed') {
+              emitBlock(`::error title=${node.id}::failed (exit ${outcome.exitCode})\n${block}`)
+            } else {
+              emitBlock(
+                `::group::${node.id} (${outcomeWord(outcome)} ${formatDuration(outcome.durationMs)})\n` +
+                  `${block}::endgroup::\n`,
+              )
+            }
+            return
+          }
+          emitBlock(block)
           return
         }
       }
