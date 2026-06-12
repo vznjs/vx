@@ -204,12 +204,12 @@ describe('defaultLogger visibility matrix — focused', () => {
     )
   })
 
-  it('requested skipped → frame (the news is it did not run)', () => {
+  it('requested skipped → one-liner (a skip has no output; a frame is empty furniture)', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
     const n = mkNode('one#test', { requested: true })
     log.taskComplete(n, mkOutcome(n, 'skipped'))
-    expect(out.text()).toContain('skipped (upstream failed)')
+    expect(out.text()).toBe('⊘ one#test ── skipped • upstream failed\n')
   })
 
   it('dependency success with output → silent', () => {
@@ -572,7 +572,7 @@ describe('flow e2e against a real fixture workspace', () => {
     expect(text()).not.toContain('one#dep ──')
   })
 
-  it('focused run frames a failing dependency and the skipped requested task', async () => {
+  it('focused run defers the failing dep frame; skipped requested gets a one-liner', async () => {
     const path = await import('node:path')
     process.chdir(path.join(workspaceRoot, 'packages', 'one'))
     const text = captureStdout()
@@ -583,7 +583,7 @@ describe('flow e2e against a real fixture workspace', () => {
     expect(text()).toContain('DEPBAD-NOISE')
     expect(text()).toContain('failed (exit 3)')
     // Requested task never ran; its skip is framed.
-    expect(text()).toContain('skipped (upstream failed)')
+    expect(text()).toContain('⊘ one#consumebad ── skipped • upstream failed')
     expect(text()).not.toContain('NEVER-RUNS')
   })
 

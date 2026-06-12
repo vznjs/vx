@@ -6,6 +6,7 @@ import {
   formatTaskBlock,
   formatTaskExecutedLine,
   formatTaskHitLine,
+  formatTaskSkippedLine,
 } from './framed-output.js'
 import {
   createOutputWriter,
@@ -380,9 +381,10 @@ export function defaultLogger(
         case 'focused':
           if (node.requested) {
             // Skipped tasks never started (upstream failed), so no
-            // frame-open fired — emit the complete block instead.
+            // frame-open fired — and a skip has no output, so a
+            // one-liner carries everything a frame would.
             if (outcome.status === 'skipped') {
-              emitBlock(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
+              emitLine(formatTaskSkippedLine(node, colors))
               return
             }
             // Output (exec or hit replay) streamed live between the
@@ -412,6 +414,10 @@ export function defaultLogger(
           // stay outside ::group:: — there's nothing to collapse.
           if (isHit && stdout.trim().length === 0 && stderr.trim().length === 0) {
             emitLine(formatTaskHitLine(node, outcome, colors))
+            return
+          }
+          if (outcome.status === 'skipped') {
+            emitLine(formatTaskSkippedLine(node, colors))
             return
           }
           const block = formatTaskBlock(node, outcome, { stdout, stderr }, colors)

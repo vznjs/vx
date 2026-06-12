@@ -253,6 +253,17 @@ export function formatTaskExecutedLine(
 }
 
 /**
+ * Compact one-liner for a skipped task — a skip produces no output by
+ * definition, so a frame would be furniture without content. The
+ * upstream-failed reason rides where the others carry hash/duration.
+ */
+export function formatTaskSkippedLine(node: TaskNode, colors: ColorSupport = NO_COLOR): string {
+  const dim = (s: string) => paint('', s, colors, { dim: true })
+  const mark = paint(WARN, '⊘', colors)
+  return `${mark} ${paintTaskId(node, colors)} ${dim('──')} ${paint(WARN, 'skipped', colors)} ${dim('• upstream failed')}`
+}
+
+/**
  * Live-frame brackets for focused mode: the requested task's output
  * streams raw between an opening line (id + command) and a closing
  * line (id + duration + outcome). Same visual language as
