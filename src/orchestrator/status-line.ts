@@ -47,6 +47,14 @@ export interface OutputWriterOptions {
   enabled?: boolean
   /** Minimum interval between unforced redraws. */
   minRedrawMs?: number
+  /**
+   * Floor between FORCED redraws. Task events force a redraw each; a
+   * 3,270-task warm run produced 6,540 forced redraws ≈ 6.7 MB of
+   * ANSI to the terminal. A forced set inside the floor marks the
+   * content dirty and ONE trailing draw lands the final state when
+   * the floor expires. 0 disables (tests asserting synchronously).
+   */
+  forceFloorMs?: number
   /** Injectable clock for tests. */
   now?: () => number
 }
@@ -57,6 +65,7 @@ export function createOutputWriter(
 ): OutputWriter {
   const enabled = (opts.enabled ?? true) && stream.isTTY === true
   const minRedrawMs = opts.minRedrawMs ?? 100
+  const forceFloorMs = opts.forceFloorMs ?? 30
   const now = opts.now ?? Date.now
 
   let current: readonly string[] | null = null
@@ -64,10 +73,19 @@ export function createOutputWriter(
   let shownHeight = 0
   let dead = false
   let lastDraw = -Infinity
+  // Trailing draw scheduled when a forced set lands inside the floor.
+  let trailing: ReturnType<typeof setTimeout> | null = null
   // Streamed task output (focused mode) can end mid-line; redrawing
   // the status display would wipe the partial line, so we hold off
   // until a write restores column 0.
   let atLineStart = true
+
+  const cancelTrailing = (): void => {
+    if (trailing !== null) {
+      clearTimeout(trailing)
+      trailing = null
+    }
+  }
 
   // Erase sequence for whatever is currently shown. Single line keeps
   // the exact legacy bytes (ESC[2K\r); a taller region moves to its
@@ -75,6 +93,9 @@ export function createOutputWriter(
   const eraseSeq = (): string => (shownHeight > 1 ? `\r\x1b[${shownHeight - 1}A\x1b[J` : CLEAR)
 
   const draw = (): void => {
+    // Whatever was pending is now painted — the trailing draw would
+    // only repeat these bytes.
+    cancelTrailing()
     const erase = shown ? eraseSeq() : CLEAR
     stream.write(erase + current!.join('\n'))
     shown = true
@@ -85,7 +106,26 @@ export function createOutputWriter(
     if (!enabled || dead) return
     current = lines
     if (!atLineStart) return
-    if (o.force || now() - lastDraw >= minRedrawMs) draw()
+    const since = now() - lastDraw
+    if (o.force) {
+      if (since >= forceFloorMs) {
+        draw()
+        return
+      }
+      // Coalesce the burst: `current` is already the latest state, so
+      // one trailing draw at floor expiry lands it. unref — a stray
+      // timer must never hold the process open.
+      if (trailing === null) {
+        trailing = setTimeout(() => {
+          trailing = null
+          if (dead || current === null || !atLineStart) return
+          draw()
+        }, forceFloorMs - since)
+        trailing.unref?.()
+      }
+      return
+    }
+    if (since >= minRedrawMs) draw()
   }
 
   return {
@@ -114,6 +154,7 @@ export function createOutputWriter(
       if (!enabled || dead) return
       dead = true
       current = null
+      cancelTrailing()
       if (shown) {
         stream.write(eraseSeq())
         shown = false

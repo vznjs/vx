@@ -109,6 +109,7 @@ export function defaultLogger(
   colors: ColorSupport = detectColors(),
   view: OutputView = { mode: 'full' },
   out: StatusStream = process.stdout,
+  opts: { forceFloorMs?: number } = {},
 ): Logger {
   // Per-task buffers, split by stream. Splitting lets the framed-output
   // renderer put stdout under `├─ stdout` and stderr under `├─ stderr`.
@@ -148,7 +149,10 @@ export function defaultLogger(
   // All stdout flows through the writer so the status line can never
   // interleave with content. Inert (pure passthrough) on non-TTY
   // streams and in CI.
-  const writer = createOutputWriter(out, { enabled: view.ci !== true })
+  const writer = createOutputWriter(out, {
+    enabled: view.ci !== true,
+    ...(opts.forceFloorMs !== undefined ? { forceFloorMs: opts.forceFloorMs } : {}),
+  })
 
   // Status-display state, driven by the optional lifecycle hooks.
   let total = 0

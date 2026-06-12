@@ -85,7 +85,7 @@ describe('createOutputWriter', () => {
   it('throttles unforced redraws to minRedrawMs; force always draws', () => {
     let nowMs = 0
     const s = tty()
-    const w = createOutputWriter(s, { minRedrawMs: 100, now: () => nowMs })
+    const w = createOutputWriter(s, { minRedrawMs: 100, forceFloorMs: 0, now: () => nowMs })
     w.setStatus('v1', { force: true })
     nowMs = 50
     w.setStatus('v2')
@@ -108,6 +108,71 @@ describe('createOutputWriter', () => {
     expect(s.text()).toBe('')
     w.write('after\n')
     expect(s.chunks).toEqual(['after\n'])
+  })
+
+  it('forced redraws are coalesced: a burst within the floor lands as ONE trailing draw', async () => {
+    let nowMs = 0
+    const s = tty()
+    const w = createOutputWriter(s, { forceFloorMs: 30, now: () => nowMs })
+    // First draw after idle is immediate.
+    w.setStatus('v1', { force: true })
+    expect(s.text()).toBe(`${CLEAR}v1`)
+    nowMs = 10
+    w.setStatus('v2', { force: true })
+    w.setStatus('v3', { force: true })
+    // Burst suppressed synchronously...
+    expect(s.text()).toBe(`${CLEAR}v1`)
+    // ...but the final state always lands via one trailing draw.
+    await Bun.sleep(45)
+    expect(s.text()).toBe(`${CLEAR}v1${CLEAR}v3`)
+  })
+
+  it('the force floor is on by default: back-to-back forced draws coalesce', async () => {
+    const s = tty()
+    const w = createOutputWriter(s)
+    w.setStatus('v1', { force: true })
+    w.setStatus('v2', { force: true })
+    expect(s.text()).toBe(`${CLEAR}v1`)
+    await Bun.sleep(45)
+    expect(s.text()).toBe(`${CLEAR}v1${CLEAR}v2`)
+  })
+
+  it('a forced set after the floor expires draws immediately', () => {
+    let nowMs = 0
+    const s = tty()
+    const w = createOutputWriter(s, { forceFloorMs: 30, now: () => nowMs })
+    w.setStatus('v1', { force: true })
+    nowMs = 31
+    w.setStatus('v2', { force: true })
+    expect(s.text()).toBe(`${CLEAR}v1${CLEAR}v2`)
+  })
+
+  it('clearStatus cancels the pending trailing draw', async () => {
+    let nowMs = 0
+    const s = tty()
+    const w = createOutputWriter(s, { forceFloorMs: 30, now: () => nowMs })
+    w.setStatus('v1', { force: true })
+    nowMs = 10
+    w.setStatus('v2', { force: true })
+    w.clearStatus()
+    const len = s.chunks.length
+    await Bun.sleep(45)
+    expect(s.chunks.length).toBe(len)
+  })
+
+  it('a content write redraws the latest state and cancels the trailing draw', async () => {
+    let nowMs = 0
+    const s = tty()
+    const w = createOutputWriter(s, { forceFloorMs: 30, now: () => nowMs })
+    w.setStatus('v1', { force: true })
+    nowMs = 10
+    w.setStatus('v2', { force: true })
+    w.write('content\n')
+    // The write's own redraw already painted v2 — no trailing draw.
+    expect(s.chunks.at(-1)).toBe(`${CLEAR}v2`)
+    const len = s.chunks.length
+    await Bun.sleep(45)
+    expect(s.chunks.length).toBe(len)
   })
 
   it('holds the redraw while a streamed chunk leaves the cursor mid-line', () => {
@@ -169,7 +234,7 @@ function regionRows(chunk: string): string[] {
 describe('defaultLogger status line integration', () => {
   it('non-TTY: lifecycle hooks are completely inert (no escapes, no ticker)', () => {
     const s = pipe()
-    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s)
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
     log.runStart?.({ total: 2 })
     const n = mkNode('one#build')
     log.taskStart?.(n)
@@ -189,7 +254,7 @@ describe('defaultLogger status line integration', () => {
 
   it('TTY broad run: worker region appears, tracks progress, and is erased before the summary', () => {
     const s = tty()
-    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s)
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
     log.runStart?.({ total: 2, concurrency: 2 })
     // Fixed-height region from the start: idle slots + stats line.
     expect(s.text()).toContain('idle')
@@ -212,7 +277,7 @@ describe('defaultLogger status line integration', () => {
 
   it('broad region: slots are stable — finishing one task never moves the others', () => {
     const s = tty()
-    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s)
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
     log.runStart?.({ total: 4, concurrency: 2 })
     const a = mkNode('aa#x')
     const b = mkNode('bb#x')
@@ -233,7 +298,7 @@ describe('defaultLogger status line integration', () => {
 
   it('broad region: overflow beyond displayed slots surfaces as "+k more" and queues for a freed slot', () => {
     const s = tty()
-    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s)
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
     log.runStart?.({ total: 4, concurrency: 2 })
     const nodes = ['a#x', 'b#x', 'c#x'].map((id) => mkNode(id))
     for (const n of nodes) log.taskStart?.(n)
@@ -249,7 +314,7 @@ describe('defaultLogger status line integration', () => {
 
   it('broad region: every cache bucket lands in the stats line', () => {
     const s = tty()
-    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s)
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
     log.runStart?.({ total: 4, concurrency: 1 })
     const finish = (id: string, status: TaskOutcome['status'], restored?: boolean): void => {
       const n = mkNode(id)
@@ -268,7 +333,7 @@ describe('defaultLogger status line integration', () => {
 
   it('focused: status lives only while deps run; a requested start kills it for good', () => {
     const s = tty()
-    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, s)
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, s, { forceFloorMs: 0 })
     log.runStart?.({ total: 2 })
     const dep = mkNode('lib#build')
     log.taskStart?.(dep)
@@ -288,7 +353,7 @@ describe('defaultLogger status line integration', () => {
 
   it('group-task starts do not disturb the status line', () => {
     const s = tty()
-    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, s)
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, s, { forceFloorMs: 0 })
     log.runStart?.({ total: 1 })
     const group = mkNode('one#ci', { requested: true, group: true })
     log.taskStart?.(group)
@@ -301,7 +366,7 @@ describe('defaultLogger status line integration', () => {
 
   it('a failed task pins to the top of the region and stays until runEnd', () => {
     const s = tty()
-    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s)
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
     log.runStart?.({ total: 3, concurrency: 1 })
     const bad = mkNode('one#boom')
     log.taskStart?.(bad)
@@ -317,7 +382,7 @@ describe('defaultLogger status line integration', () => {
 
   it('a ready persistent task pins as running until runEnd', () => {
     const s = tty()
-    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s)
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
     log.runStart?.({ total: 2, concurrency: 1 })
     const dev = mkNode('web#dev', { persistent: true })
     log.taskStart?.(dev)
@@ -330,7 +395,7 @@ describe('defaultLogger status line integration', () => {
 
   it('a non-persistent success never pins', () => {
     const s = tty()
-    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s)
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
     log.runStart?.({ total: 1, concurrency: 1 })
     const ok = mkNode('one#x')
     log.taskStart?.(ok)
@@ -341,9 +406,23 @@ describe('defaultLogger status line integration', () => {
     log.runEnd?.()
   })
 
+  it('rapid task events coalesce into a trailing redraw (forced floor)', async () => {
+    const s = tty()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 30 })
+    log.runStart?.({ total: 2, concurrency: 2 })
+    const a = mkNode('one#a')
+    log.taskStart?.(a)
+    // Within the floor: the start event marks dirty, no draw yet...
+    expect(s.text()).not.toContain('one#a')
+    // ...and the trailing draw lands the latest state.
+    await Bun.sleep(45)
+    expect(s.text()).toContain('one#a')
+    log.runEnd?.()
+  })
+
   it('runEnd is idempotent', () => {
     const s = tty()
-    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s)
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
     log.runStart?.({ total: 1 })
     log.runEnd?.()
     const len = s.chunks.length
@@ -477,7 +556,7 @@ describe('formatStatusRegion', () => {
 describe('createOutputWriter region mechanics', () => {
   it('multi-line redraw moves to the region top and clears to screen end', () => {
     const s = tty()
-    const w = createOutputWriter(s)
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
     w.setRegion(['l1', 'l2', 'l3'], { force: true })
     expect(s.chunks.at(-1)).toBe(`${CLEAR}l1\nl2\nl3`)
     w.setRegion(['x1', 'x2', 'x3'], { force: true })
@@ -495,7 +574,7 @@ describe('createOutputWriter region mechanics', () => {
 
   it('variable region height: erase always uses the previously drawn height', () => {
     const s = tty()
-    const w = createOutputWriter(s)
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
     w.setRegion(['l1', 'l2'], { force: true })
     expect(s.chunks.at(-1)).toBe(`${CLEAR}l1\nl2`)
     // Grow 2 → 4: erase moves up 1 (old height 2), draws 4 lines.
@@ -521,7 +600,7 @@ describe('createOutputWriter region mechanics', () => {
 
   it('focused replay pin: a requested cache hit streams its stored stdout raw', () => {
     const s = tty()
-    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, s)
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, s, { forceFloorMs: 0 })
     log.runStart?.({ total: 1, concurrency: 1 })
     const req = mkNode('one#build', { requested: true })
     log.taskStart?.(req)
