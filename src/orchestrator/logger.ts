@@ -1,6 +1,7 @@
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { detectColors, type ColorSupport } from './colors.js'
-import { formatTaskBlock } from './framed-output.js'
+import { formatTaskBlock, formatTaskHitLine } from './framed-output.js'
+import { isGroupTask } from '../graph/index.js'
 
 export interface Logger {
   /** Header / footer / status text. Written verbatim, one trailing \n added. */
@@ -33,6 +34,7 @@ export function defaultLogger(colors: ColorSupport = detectColors()): Logger {
   // separation. The header (formatHeader) already ends with a blank
   // line, so the first block doesn't need one.
   let blocksEmitted = 0
+  let hitLinesEmitted = false
   const pushChunk = (buffers: Map<string, string[]>, id: string, chunk: string): void => {
     const arr = buffers.get(id)
     if (arr) arr.push(chunk)
@@ -58,19 +60,26 @@ export function defaultLogger(colors: ColorSupport = detectColors()): Logger {
     taskComplete(node, outcome) {
       const stdout = takeChunks(stdoutBuffers, node.id)
       const stderr = takeChunks(stderrBuffers, node.id)
-      // Cache hits with nothing to replay print no frame at all — at
-      // 2000+ tasks the per-hit frames drown what actually happened.
-      // The end-of-run summary carries the hit/up-to-date counts;
-      // hits WITH replayed stdout keep their frame (the output is
-      // the point), and misses/failures are always framed.
+      // Cache hits with nothing to replay compress to ONE line — every
+      // task stays visible, but at 2000+ tasks the two-line frames
+      // would drown what actually happened. Hits WITH replayed stdout
+      // keep their frame (the output is the point); misses/failures
+      // are always framed. Group tasks print nothing either way.
       const isHit = outcome.status === 'cache-hit' || outcome.status === 'cache-hit-remote'
-      if (isHit && stdout.trim().length === 0 && stderr.trim().length === 0) return
+      if (isHit && stdout.trim().length === 0 && stderr.trim().length === 0) {
+        if (!isGroupTask(node)) {
+          process.stdout.write(`${formatTaskHitLine(node, outcome, colors)}\n`)
+          hitLinesEmitted = true
+        }
+        return
+      }
       // formatTaskBlock returns '' for group tasks (no exec) — skip
       // the write so a stray newline doesn't sneak into the output.
       const block = formatTaskBlock(node, outcome, { stdout, stderr }, colors)
       if (block.length === 0) return
-      process.stdout.write(blocksEmitted > 0 ? `\n${block}` : block)
+      process.stdout.write(blocksEmitted > 0 || hitLinesEmitted ? `\n${block}` : block)
       blocksEmitted++
+      hitLinesEmitted = false
     },
   }
 }

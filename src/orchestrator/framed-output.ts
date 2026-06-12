@@ -137,6 +137,29 @@ function pushBodyLines(lines: string[], text: string, bar: string): void {
   }
 }
 
+/**
+ * Compact one-liner for a cache hit with nothing to replay. Every
+ * task stays visible in the log, but a hit costs one line instead of
+ * a two-line frame — at 2000+ tasks that's the difference between a
+ * scannable log and noise.
+ */
+export function formatTaskHitLine(
+  node: TaskNode,
+  o: TaskOutcome,
+  colors: ColorSupport = NO_COLOR,
+): string {
+  const shortHash = o.hash ? o.hash.slice(0, 8) : ''
+  const dim = (s: string) => paint('', s, colors, { dim: true })
+  const label =
+    o.restored === false
+      ? paint(SUCCESS, 'up-to-date', colors)
+      : o.status === 'cache-hit-remote'
+        ? paint(ACCENT, 'remote-cache', colors)
+        : paint(SUCCESS, 'local-cache', colors)
+  const mark = paint(SUCCESS, '◌', colors)
+  return `${mark} ${node.id} ${dim('──')} ${label} ${dim(`• ${shortHash}`)}`
+}
+
 function formatBlockHeader(node: TaskNode, o: TaskOutcome, colors: ColorSupport): string {
   const shortHash = o.hash ? o.hash.slice(0, 8) : ''
   const dim = (s: string) => paint('', s, colors, { dim: true })
