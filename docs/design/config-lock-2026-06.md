@@ -202,3 +202,10 @@ confidence. Revised contract:
   operations. pnpm-style auto-relock on plain runs was considered
   and rejected: scoped runs evaluate only a dep closure and cannot
   correctly rewrite a whole-workspace lock.
+
+**Revision (owner, 2026-06-13):** `--frozen` performs no staleness
+checks at all — in the canonical pipeline `vx lock --check` runs
+first and re-evaluates everything, so a per-file byte-hash re-check
+inside the run is redundant work wearing a safety costume. configHash
+remains in the lock purely for `--check`'s fast "file changed"
+reporting.

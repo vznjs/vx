@@ -449,9 +449,10 @@ workspace-config `cacheDir` override is not yet honored by this path
 instead of evaluating them — CI reproducibility mode. Plain `vx run`
 always evaluates live (a byte hash can't see a config's import
 closure, so silently consuming the lock locally would risk stale
-freezes). `--frozen` errors when no lock exists, and its hash
-tripwire fails on directly edited config files; pair with
-`vx lock --check` for the full re-evaluation audit.
+freezes). `--frozen` errors only when no lock exists or a project
+is missing from it — it performs NO staleness checks of its own:
+run `vx lock --check` first in the pipeline; that audit re-evaluates
+everything, making any per-run re-check redundant.
 
 ## `vx lock`
 

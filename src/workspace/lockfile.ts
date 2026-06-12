@@ -105,13 +105,12 @@ export async function frozenProjectConfig(
         `run \`vx lock\` to refresh, or delete ${LOCKFILE_NAME}`,
     )
   }
-  const hash = xxh3hex(await Bun.file(meta.configPath).bytes())
-  if (hash !== entry.configHash) {
-    throw new UserError(
-      `${LOCKFILE_NAME} is stale: ${rel} changed since \`vx lock\` (${meta.name}) — ` +
-        `run \`vx lock\` to refresh, or delete ${LOCKFILE_NAME}`,
-    )
-  }
+  // No staleness checks here, deliberately: --frozen runs after
+  // `vx lock --check` in any sane pipeline, and that audit re-
+  // evaluates everything — a per-file byte-hash re-check would be
+  // redundant work and a weaker guarantee pretending to add safety
+  // (it can't see import closures or env anyway). configHash stays
+  // in the file solely for --check's fast file-changed reporting.
   // The lock is hand-editable; the stored config crosses the same
   // boundary a freshly evaluated one does.
   validateProjectConfig(entry.config, `${LOCKFILE_NAME} (${meta.name})`)

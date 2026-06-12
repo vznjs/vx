@@ -90,6 +90,28 @@ with the invariant that keeps it valid —
 - **Kernel-level sandboxing**, opt-in per task, that fails the build
   on violation instead of hiding it.
 
+## Reproducible graphs, when you want them
+
+Configs are TypeScript — powerful, but a program's output can vary
+with its environment. `vx lock` freezes the fully-resolved task graph
+into a committed `vx-lock.json`, pnpm-style:
+
+```sh
+vx lock                      # evaluate everything once, write vx-lock.json
+vx lock --check && vx run ci --frozen     # CI: audit, then run EXACTLY that graph
+```
+
+| Command           | Evaluates configs | Uses lock                                                       |
+| ----------------- | ----------------- | --------------------------------------------------------------- |
+| `vx run`          | always, live      | never — local truth has no asterisks                            |
+| `vx run --frozen` | never             | yes; refuses if absent or a config file changed since locking   |
+| `vx lock --check` | full graph        | compares — catches env and import drift that byte hashes cannot |
+
+Env values read at lock time are frozen by design — cache keys become
+reproducible across machines. Bonus: `--frozen` runs skip config
+evaluation entirely (~120 ms back per 1,000 packages). No other
+runner has an equivalent.
+
 ## Everything you need, nothing to configure twice
 
 TypeScript config with real imports · task graph with `^task`

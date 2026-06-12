@@ -43,7 +43,15 @@ history in CLAUDE.md's decision log; raw numbers in
    (`x-artifact-tag`), but a configured key REJECTS unsigned
    responses — header-stripping can't bypass it. Tampered artifacts
    degrade to re-execution, never fail the run.
-7. **Daemonless by design** — and still faster cold than Nx's daemon
+7. **A committed graph lockfile.** `vx lock` freezes the
+   fully-resolved task graph (env values included) into
+   `vx-lock.json`; CI audits it with a full re-evaluation
+   (`vx lock --check`) and executes exactly it (`--frozen`) with
+   zero config evaluation. Local runs always evaluate live. Turbo
+   and Nx have no equivalent — their static-JSON configs dodge the
+   problem by being less expressive; vx keeps code-as-config AND
+   reproducibility.
+8. **Daemonless by design** — and still faster cold than Nx's daemon
    warm. No background process, no staleness window, no socket state.
 
 ## Perf tricks under the hood

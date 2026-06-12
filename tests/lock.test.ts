@@ -138,7 +138,7 @@ describe('vx lock (e2e)', () => {
   )
 
   it(
-    'a changed config file: live runs use the edit; --frozen fails until re-lock',
+    'a changed config file: live runs use the edit; --frozen keeps the freeze until re-lock',
     async () => {
       const dir = await addProject(root, 'app', ENV_CONFIG)
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
@@ -158,15 +158,17 @@ describe('vx lock (e2e)', () => {
       expect(live.code).toBe(0)
       expect(live.out).toContain('edited')
 
-      // --frozen performs the hash tripwire — a stale lock is a hard
-      // error there, never a silent fallback to evaluation.
+      // --frozen trusts the lock outright — no staleness checks; the
+      // pipeline's `vx lock --check` (above, exit 1) is the guard.
+      // It runs the FROZEN config, not the edited file.
       const frozen = await vx(root, ['run', 'build', '--all', '--no-cache', '--frozen'], {
         X: 'a',
       })
-      expect(frozen.code).not.toBe(0)
-      expect(frozen.err).toContain('vx-lock.json is stale')
+      expect(frozen.code).toBe(0)
+      expect(frozen.out).toContain('flavor-a')
+      expect(frozen.out).not.toContain('edited')
 
-      // Re-lock heals the frozen path.
+      // Re-lock brings the edit into the frozen graph.
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
       const healed = await vx(root, ['run', 'build', '--all', '--no-cache', '--frozen'], {
         X: 'a',
