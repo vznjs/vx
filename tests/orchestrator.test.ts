@@ -1789,12 +1789,10 @@ describe('orchestrator e2e', () => {
         `,
       })
       await run({ cwd: fixture.root, tasks: ['ci'], log: silentLogger(fixture) })
-      const summary = fixture.log.filter(
-        (l) => l.startsWith('  tasks ·') || l.startsWith('  cache ·'),
-      )
+      const legends = fixture.log.filter((l) => l.startsWith('          '))
       // Only the executable `build` task counts — the `ci` group is hidden.
-      expect(summary[0]).toBe('  tasks ········· 1 success')
-      expect(summary[1]).toBe('  cache ········· 1 miss')
+      expect(legends[0]).toBe('          1 success')
+      expect(legends[1]).toBe('          1 miss')
     },
     TIMEOUT,
   )

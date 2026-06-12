@@ -21,10 +21,13 @@ describe('formatRunSummary', () => {
     const lines = formatRunSummary([outcome('a#x', 'success'), outcome('b#x', 'success')], 1234)
     expect(lines).toEqual([
       '',
-      '─ vx ──────────────────────────────────────',
-      '  tasks ········· 2 success',
-      '  cache ········· 2 miss',
-      '  time ·········· 1.23s',
+      '─ vx ' + '─'.repeat(55),
+      '  tasks   ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰',
+      '          2 success',
+      '  cache   ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰',
+      '          2 miss',
+      '',
+      '  time    1.23s · max 100ms · avg 100ms · min 100ms',
     ])
   })
 
@@ -37,9 +40,9 @@ describe('formatRunSummary', () => {
       ],
       420,
     )
-    expect(lines[2]).toBe('  tasks ········· 3 success')
-    expect(lines[3]).toBe('  cache ········· 1 miss · 2 up-to-date')
-    expect(lines[4]).toBe('  time ·········· 420ms')
+    expect(lines[3]).toBe('          3 success')
+    expect(lines[5]).toBe('          1 miss · 2 up-to-date')
+    expect(lines.at(-1)).toBe('  time    420ms' + ' · max 100ms · avg 100ms · min 100ms')
   })
 
   it('reports failures separately from total', () => {
@@ -47,8 +50,8 @@ describe('formatRunSummary', () => {
       [outcome('a#test', 'success'), outcome('b#test', 'failed', 1)],
       850,
     )
-    expect(lines[2]).toBe('  tasks ········· 1 failed · 1 success')
-    expect(lines[4]).toBe('  cache ········· 2 miss')
+    expect(lines[3]).toBe('          1 failed · 1 success')
+    expect(lines[6]).toBe('          2 miss')
   })
 
   it('lists failed task IDs on a single comma-joined line (Turbo format)', () => {
@@ -65,7 +68,7 @@ describe('formatRunSummary', () => {
       ],
       1234,
     )
-    expect(lines).toContain('  failed ········ @app/api#test, @app/web#build')
+    expect(lines).toContain('  failed  @app/api#test, @app/web#build')
   })
 
   it('omits the Failed: line when no tasks failed', () => {
@@ -79,7 +82,7 @@ describe('formatRunSummary', () => {
     // this so future changes don't reintroduce duplicate noise.
     const lines = formatRunSummary([outcome('a#x', 'failed', 1), outcome('b#x', 'skipped')], 10)
     expect(lines.find((l) => l.startsWith('Skipped:'))).toBeUndefined()
-    expect(lines).toContain('  failed ········ a#x')
+    expect(lines).toContain('  failed  a#x')
   })
 
   it('reports skipped count when present', () => {
@@ -87,48 +90,50 @@ describe('formatRunSummary', () => {
       [outcome('a#x', 'success'), outcome('b#x', 'failed', 2), outcome('c#x', 'skipped')],
       50,
     )
-    expect(lines[2]).toBe('  tasks ········· 1 failed · 1 success · 1 skipped')
+    expect(lines[3]).toBe('          1 failed · 1 success · 1 skipped')
   })
 
   it('treats cache-hit-remote as successful', () => {
     const lines = formatRunSummary([outcome('a#x', 'cache-hit-remote')], 10)
-    expect(lines[2]).toBe('  tasks ········· 1 success')
-    expect(lines[3]).toBe('  cache ········· 1 up-to-date')
+    expect(lines[3]).toBe('          1 success')
+    expect(lines[5]).toBe('          1 up-to-date')
   })
 
-  it('appends the ⚡ instant stamp when every real task came from the cache', () => {
+  // The ⚡ instant stamp was removed by owner decision — full-cache
+  // runs read from the full meter bar instead.
+  it('full-cache run: plain time row, full meter bar', () => {
     const lines = formatRunSummary(
       [outcome('a#x', 'cache-hit'), outcome('b#x', 'cache-hit-remote')],
       42,
     )
-    expect(lines.at(-1)).toBe('  time ·········· 42ms ⚡ instant')
+    expect(lines.at(-1)).toBe('  time    42ms · max 100ms · avg 100ms · min 100ms')
   })
 
-  it('omits the instant stamp when at least one task actually ran', () => {
+  it('partial-cache run: plain time row', () => {
     const lines = formatRunSummary([outcome('a#x', 'cache-hit'), outcome('b#x', 'success')], 42)
-    expect(lines.at(-1)).toBe('  time ·········· 42ms')
+    expect(lines.at(-1)).toBe('  time    42ms · max 100ms · avg 100ms · min 100ms')
   })
 
-  it('omits the instant stamp on an empty run (no tasks)', () => {
+  it('empty run: 0 tasks row, no cache row', () => {
     const lines = formatRunSummary([], 0)
-    expect(lines.at(-1)).toBe('  time ·········· 0ms')
+    expect(lines.at(-1)).toBe('  time    0ms')
+    expect(lines.find((l) => l.includes('from cache'))).toBeUndefined()
   })
 
   it('injects ANSI escapes around counts + stamp when colors are enabled', () => {
     const lines = formatRunSummary([outcome('a#x', 'cache-hit'), outcome('b#x', 'failed', 1)], 42, {
       enabled: true,
     })
-    // success count colorized (tasks row sits after blank + rule)
-    expect(lines[2]).toContain('\x1b[')
-    expect(lines[2]).toContain('1 success')
-    expect(lines[2]).toContain('1 failed')
+    // legend line colorized (sits below the tasks bar)
+    expect(lines[3]).toContain('\x1b[')
+    expect(lines[3]).toContain('1 success')
+    expect(lines[3]).toContain('1 failed')
   })
 
-  it('instant stamp gets bold + green when colors are enabled', () => {
+  it('gradient rule injects color escapes when enabled', () => {
     const lines = formatRunSummary([outcome('a#x', 'cache-hit')], 10, { enabled: true })
-    expect(lines.at(-1)).toContain('⚡')
-    expect(lines.at(-1)).toContain('instant')
-    expect(lines.at(-1)).toContain('\x1b[1m')
+    expect(lines[1]).toContain('\x1b[38;2;')
+    expect(lines[1]).toContain('vx')
   })
 })
 

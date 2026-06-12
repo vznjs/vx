@@ -744,8 +744,10 @@ $ bun test
 ... test output ...
 └─ @vzn/vx#test ── (5.20s) executed
 
- Tasks:    3 successful, 3 total
- Cache:    1 miss · 0 up-to-date · 2 local · 0 remote
+  tasks   <stacked 50-cell meter>
+          3 success
+  cache   <stacked 50-cell meter>
+          1 miss · 2 local
   Time:    5.34s
 ⚡ instant
 ```

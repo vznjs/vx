@@ -165,6 +165,25 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: Summary v3 — stacked state meters (owner-driven
+  iteration over five revisions in one session; picked from a
+  15-design visualization file at /tmp/vx-summary-designs.txt). The
+  summary is now: gradient wordmark rule (identity violet→pink
+  lerped across the dashes, plain when colors off); a 50-cell
+  TASKS meter (failed/success/skipped segments, largest-remainder
+  cell allocation, non-zero buckets guaranteed ≥1 cell) with its
+  color-coded legend on the line BELOW the bar; failed-id index
+  capped at 5 + dim '… +N more' (owner: "there can be hundreds");
+  a 50-cell CACHE meter (miss/up-to-date/local/remote) + legend;
+  blank line; time row = total + dim 'max · avg · min' per-task
+  spread (skipped excluded so min stays honest). The ⚡ instant
+  stamp was added (owner-picked over '>>> FULL CACHE' Turbo clone)
+  then REMOVED same session (owner: full meter bar carries the
+  message). Bars always sum to width; NO_COLOR renders plain ▰ runs
+  with the legends carrying the data. Files: orchestrator/summary.ts
+  (segmentBar, gradientRule); pins in tests/summary.test.ts +
+  output-flow/orchestrator e2e.
+
 - **2026-06**: Focused frames + summary v2 (owner-driven, same
   session). FOCUSED requested tasks now get a LIVE FRAME for every
   outcome — `┌─ id > $ cmd` at taskStart, raw stream between (exec or
