@@ -34,9 +34,12 @@ describe('resolveOutputView', () => {
     expect(resolveOutputView({ flow: 'broad' }, {})).toEqual({ mode: 'broad' })
   })
 
-  it('truthy CI overrides the flow with full', () => {
-    expect(resolveOutputView({ flow: 'broad' }, { CI: '1' })).toEqual({ mode: 'full' })
-    expect(resolveOutputView({ flow: 'focused' }, { CI: 'true' })).toEqual({ mode: 'full' })
+  it('truthy CI overrides the flow with full (and is flagged on the view)', () => {
+    expect(resolveOutputView({ flow: 'broad' }, { CI: '1' })).toEqual({ mode: 'full', ci: true })
+    expect(resolveOutputView({ flow: 'focused' }, { CI: 'true' })).toEqual({
+      mode: 'full',
+      ci: true,
+    })
   })
 
   it('false-y CI values do not count as CI', () => {
@@ -48,6 +51,7 @@ describe('resolveOutputView', () => {
   it('explicit --output-logs beats both CI and flow', () => {
     expect(resolveOutputView({ outputLogs: 'errors-only', flow: 'broad' }, { CI: '1' })).toEqual({
       mode: 'errors-only',
+      ci: true,
     })
     expect(resolveOutputView({ outputLogs: 'none', flow: 'focused' }, {})).toEqual({ mode: 'none' })
     expect(resolveOutputView({ outputLogs: 'full', flow: 'broad' }, {})).toEqual({ mode: 'full' })
@@ -279,9 +283,13 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
     expect(resolveOutputView({}, { CI: '1', GITHUB_ACTIONS: 'true' })).toEqual({
       mode: 'full',
       gha: true,
+      ci: true,
     })
-    expect(resolveOutputView({}, { CI: '1' })).toEqual({ mode: 'full' })
-    expect(resolveOutputView({}, { CI: '1', GITHUB_ACTIONS: 'false' })).toEqual({ mode: 'full' })
+    expect(resolveOutputView({}, { CI: '1' })).toEqual({ mode: 'full', ci: true })
+    expect(resolveOutputView({}, { CI: '1', GITHUB_ACTIONS: 'false' })).toEqual({
+      mode: 'full',
+      ci: true,
+    })
     expect(resolveOutputView({ outputLogs: 'full' }, { GITHUB_ACTIONS: 'true' })).toEqual({
       mode: 'full',
       gha: true,

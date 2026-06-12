@@ -133,9 +133,16 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     ))
       log.status(line)
 
+    // Lifecycle hooks drive the default logger's dynamic status line
+    // (TTY-only); custom loggers may ignore them.
+    log.runStart?.({ total: taskCount })
+
     const outcomes = await runGraph({
       nodes,
       concurrency,
+      onStart: (node) => {
+        log.taskStart?.(node)
+      },
       onFinish: (o) => {
         log.taskComplete(o.node, o)
       },
@@ -165,6 +172,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // Bun's Subprocess.kill is idempotent on an already-exited child.
     for (const child of persistentRegistry.values()) child.kill('SIGTERM')
     await Promise.allSettled([...persistentRegistry.values()].map((c) => c.exited))
+
+    // Clear the status line for good before the summary prints.
+    log.runEnd?.()
 
     const list = [...outcomes.values()]
     const ok = list.every(
@@ -255,6 +265,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 
     return { ok, outcomes: list }
   } finally {
+    // Idempotent; also reached on mid-run throws, so a crashed cycle
+    // can't leave a live status-line ticker behind.
+    log.runEnd?.()
     process.off('SIGINT', onSigint)
     process.off('SIGTERM', onSigterm)
   }

@@ -1,6 +1,7 @@
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { detectColors, type ColorSupport } from './colors.js'
 import { formatTaskBlock, formatTaskExecutedLine, formatTaskHitLine } from './framed-output.js'
+import { createOutputWriter, formatStatusLine, type StatusStream } from './status-line.js'
 import { formatDuration } from './summary.js'
 import { isGroupTask } from '../graph/index.js'
 
@@ -16,6 +17,15 @@ export interface Logger {
    * per task on completion (success, failure, cache hit, or skip).
    */
   taskComplete(node: TaskNode, outcome: TaskOutcome): void
+  /**
+   * Optional lifecycle hooks. The orchestrator calls them when
+   * present; the default logger uses them to drive its dynamic
+   * status line. Custom loggers can ignore them.
+   */
+  runStart?(info: { total: number }): void
+  taskStart?(node: TaskNode): void
+  /** Run finished (any outcome). Idempotent. */
+  runEnd?(): void
 }
 
 /**
@@ -37,13 +47,15 @@ export interface Logger {
  * `::endgroup::` workflow commands so tasks collapse in the GitHub
  * Actions log viewer — except failed tasks, which stay pre-expanded
  * and emit an `::error` annotation instead.
+ *
+ * `ci`: a truthy CI env was detected. Suppresses the dynamic status
+ * line even if stdout happens to be a TTY.
  */
-export type OutputView =
-  | { mode: 'full'; gha?: boolean }
-  | { mode: 'errors-only' }
-  | { mode: 'none' }
-  | { mode: 'focused' }
-  | { mode: 'broad' }
+export interface OutputView {
+  mode: 'full' | 'errors-only' | 'none' | 'focused' | 'broad'
+  gha?: boolean
+  ci?: boolean
+}
 
 /** CI=0 / CI=false count as "not CI" — several vendors use CI=true. */
 function truthyEnv(v: string | undefined): boolean {
@@ -68,20 +80,23 @@ export function resolveOutputView(
   options: { outputLogs?: 'full' | 'errors-only' | 'none'; flow?: 'focused' | 'broad' },
   env: Record<string, string | undefined> = process.env,
 ): OutputView {
+  const ci = truthyEnv(env['CI'])
   const gha = truthyEnv(env['GITHUB_ACTIONS'])
-  const full = (): OutputView => (gha ? { mode: 'full', gha: true } : { mode: 'full' })
-  if (options.outputLogs !== undefined) {
-    return options.outputLogs === 'full' ? full() : { mode: options.outputLogs }
-  }
-  if (truthyEnv(env['CI'])) return full()
-  if (options.flow !== undefined) return { mode: options.flow }
-  return full()
+  const mk = (mode: OutputView['mode']): OutputView => ({
+    mode,
+    ...(mode === 'full' && gha ? { gha: true } : {}),
+    ...(ci ? { ci: true } : {}),
+  })
+  if (options.outputLogs !== undefined) return mk(options.outputLogs)
+  if (ci) return mk('full')
+  if (options.flow !== undefined) return mk(options.flow)
+  return mk('full')
 }
 
 export function defaultLogger(
   colors: ColorSupport = detectColors(),
   view: OutputView = { mode: 'full' },
-  out: { write(chunk: string): unknown } = process.stdout,
+  out: StatusStream = process.stdout,
 ): Logger {
   // Per-task buffers, split by stream. Splitting lets the framed-output
   // renderer put stdout in the body and stderr under an `├─ Error`
@@ -115,15 +130,48 @@ export function defaultLogger(
     return arr.length === 1 ? arr[0]! : arr.join('')
   }
 
+  // All stdout flows through the writer so the status line can never
+  // interleave with content. Inert (pure passthrough) on non-TTY
+  // streams and in CI.
+  const writer = createOutputWriter(out, { enabled: view.ci !== true })
+
+  // Status-line state, driven by the optional lifecycle hooks.
+  let total = 0
+  let done = 0
+  let failed = 0
+  let startedAtMs = Date.now()
+  const runningIds: string[] = []
+  let ticker: ReturnType<typeof setInterval> | null = null
+  let statusDead = !writer.enabled
+  const refresh = (force: boolean): void => {
+    if (statusDead) return
+    writer.setStatus(
+      formatStatusLine(
+        { running: runningIds, done, total, failed, elapsedMs: Date.now() - startedAtMs },
+        colors,
+      ),
+      { force },
+    )
+  }
+  const killStatus = (): void => {
+    if (ticker !== null) {
+      clearInterval(ticker)
+      ticker = null
+    }
+    if (statusDead) return
+    statusDead = true
+    writer.clearStatus()
+  }
+
   const emitLine = (line: string): void => {
-    out.write(`${line}\n`)
+    writer.write(`${line}\n`)
     lineEmitted = true
   }
   // formatTaskBlock returns '' for group tasks (no exec) — skip the
   // write so a stray newline doesn't sneak into the output.
   const emitBlock = (block: string): void => {
     if (block.length === 0) return
-    out.write(blocksEmitted > 0 || lineEmitted || streamedSinceBlock ? `\n${block}` : block)
+    writer.write(blocksEmitted > 0 || lineEmitted || streamedSinceBlock ? `\n${block}` : block)
     blocksEmitted++
     lineEmitted = false
     streamedSinceBlock = false
@@ -138,13 +186,40 @@ export function defaultLogger(
 
   return {
     status(line) {
-      out.write(`${line}\n`)
+      writer.write(`${line}\n`)
+    },
+    runStart(info) {
+      total = info.total
+      startedAtMs = Date.now()
+      if (writer.enabled && !statusDead && ticker === null) {
+        // Keeps the elapsed counter moving between task events. The
+        // writer throttles unforced redraws, and unref means a stray
+        // ticker can never hold the process open.
+        ticker = setInterval(() => refresh(false), 100)
+        ticker.unref?.()
+      }
+      refresh(true)
+    },
+    taskStart(node) {
+      if (isGroupTask(node)) return
+      // Focused flow: the status line exists for the dependency
+      // phase only. The moment a requested node starts streaming,
+      // clear it for good — its raw output owns the terminal now.
+      if (streamsLive(node)) {
+        killStatus()
+        return
+      }
+      runningIds.push(node.id)
+      refresh(true)
+    },
+    runEnd() {
+      killStatus()
     },
     taskStdout(node, chunk) {
       if (streamsLive(node)) {
         streamed.add(node.id)
         streamedSinceBlock = true
-        out.write(chunk)
+        writer.write(chunk)
         return
       }
       pushChunk(stdoutBuffers, node.id, chunk)
@@ -153,7 +228,7 @@ export function defaultLogger(
       if (streamsLive(node)) {
         streamed.add(node.id)
         streamedSinceBlock = true
-        out.write(chunk)
+        writer.write(chunk)
         return
       }
       pushChunk(stderrBuffers, node.id, chunk)
@@ -162,6 +237,13 @@ export function defaultLogger(
       const stdout = takeChunks(stdoutBuffers, node.id)
       const stderr = takeChunks(stderrBuffers, node.id)
       // Group tasks (no exec) do no work — no surface prints them.
+      if (!isGroupTask(node)) {
+        const idx = runningIds.indexOf(node.id)
+        if (idx >= 0) runningIds.splice(idx, 1)
+        done++
+        if (outcome.status === 'failed') failed++
+        refresh(true)
+      }
       if (isGroupTask(node)) return
       const isHit = outcome.status === 'cache-hit' || outcome.status === 'cache-hit-remote'
       switch (view.mode) {
