@@ -117,6 +117,9 @@ terminal and a task succeeding or failing. Read it alongside
  │       1. resolveInputs(files, env)
  │            - glob inputs.files (gitignore-aware, declared-outputs-
  │              excluded, nested-projects-excluded)
+ │            - glob inputs.workspaceFiles from the WORKSPACE ROOT
+ │              (git-aware, NO boundary rule — the documented escape
+ │              hatch); resolved paths join the same input list
  │            - read host process.env values for inputs.env names
  │       2. hashTaskConfig (resolved config JSON)
  │       3. hashProjectPackageJson (project package.json bytes)
@@ -136,9 +139,11 @@ terminal and a task succeeding or failing. Read it alongside
  │          (shell-quoted). Buffer chunks via onStdout/onStderr (the
  │          logger flushes them as one framed block on completion).
  │       9. On exit 0 + cache enabled:
- │            resolveOutputs(outputs) → file list
- │            cache.save(...) — copy outputs into <hash>/outputs/<rel>,
- │              write <hash>/stdout + <hash>/stderr, upsert SQLite row.
+ │            resolveOutputs(outputs) + resolveWorkspaceOutputs(
+ │              outputs.workspaceFiles, root-anchored) → file lists
+ │            cache.save(...) — pack <hash>.tar.zst with stdout +
+ │              outputs/<rel> (+ workspace-outputs/<rel-to-root> when
+ │              declared), upsert SQLite rows.
  │      10. Return TaskOutcome { node, status, exitCode, durationMs,
  │            hash, stdout, stderr, cpuMs?, peakRssBytes?,
  │            wallclockStartNs, wallclockEndNs }.

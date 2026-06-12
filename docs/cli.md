@@ -547,18 +547,26 @@ Mapping highlights:
   `globalEnv` / `globalPassThroughEnv` / `globalDependencies` become
   exported arrays in a generated root `vx-preset.ts` that each config
   imports and spreads — TypeScript composition replaces turbo's
-  global fields. `$TURBO_ROOT$` forms are not representable → TODO.
+  global fields (`globalInputs` spreads into
+  `cache.inputs.workspaceFiles`: globalDependencies are
+  root-relative by definition). `$TURBO_ROOT$/<path>` inputs map to
+  `cache.inputs.workspaceFiles` (negation keeps `!`), outputs to
+  `cache.outputs.workspaceFiles`; `$TURBO_ROOT$` in `dependsOn` (and
+  non-prefix forms) stays a TODO — vx has no workspace-root tasks.
 - **Nx**: `nx:run-commands` joins `commands` with `' && '` (a `cwd`
   differing from the project root is a TODO); `nx:run-script` inlines
   the package.json script body; any other executor emits a valid
   placeholder command (`echo 'TODO(vx-migrate): fill in' && exit 1`)
   with a TODO carrying the executor + its options JSON. Inputs strip
-  `{projectRoot}/`, expand named inputs from `nx.json`, route
-  `{env: X}` to `cache.inputs.env` + passThrough, and TODO the rest
-  (`{workspaceRoot}`, `^deps-inputs`, `externalDependencies`,
-  `dependentTasksOutputFiles` — vx folds upstream via `dependsOn`
-  already). Outputs strip `{projectRoot}/`, resolve literal
-  `{options.x}` tokens, and append `/**` to bare directory paths.
+  `{projectRoot}/`, map `{workspaceRoot}/<path>` to
+  `cache.inputs.workspaceFiles` (negation keeps `!`), expand named
+  inputs from `nx.json`, route `{env: X}` to `cache.inputs.env` +
+  passThrough, and TODO the rest (`^deps-inputs`,
+  `externalDependencies`, `dependentTasksOutputFiles` — vx folds
+  upstream via `dependsOn` already). Outputs strip `{projectRoot}/`,
+  map `{workspaceRoot}/<path>` to `cache.outputs.workspaceFiles`,
+  resolve literal `{options.x}` tokens, and append `/**` to bare
+  directory paths.
   `dependsOn` objects map `projects: 'dependencies'` → `'^target'`,
   `'self'`/absent → `'target'`, project lists → `'proj#target'`.
   The graph's dependency edges are ignored (vx derives package edges

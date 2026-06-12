@@ -17,8 +17,10 @@ and key derivation logic live here.
 export interface CacheLayer {
   key(input: CacheKeyInput): Promise<string>
   get(hash: string): Promise<CacheEntry | null>
-  restoreOutputs(hash: string, projectDir: string): Promise<void>
-  save(args: SaveArgs): Promise<void>
+  // workspaceRoot anchors the artifact's `workspace-outputs/` entries
+  // (cache.outputs.workspaceFiles); omitted → only `outputs/` restores.
+  restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
+  save(args: SaveArgs): Promise<string | null>
   recordRun(run: RunRecord): void
   stats(): CacheStats
   prune(options: PruneOptions): Promise<PruneResult>
@@ -30,7 +32,15 @@ export type SaveArgs = {
   entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles'>
   projectDir: string
   outputFiles: string[] // absolute paths
+  workspaceOutputFiles?: string[] // absolute paths of outputs.workspaceFiles matches
+  workspaceRoot?: string // required alongside workspaceOutputFiles
 }
+
+// Namespace discriminator for workspace outputs in the artifact and
+// the output_files rows: project rows store the bare project-relative
+// path; workspace rows store the full `workspace-outputs/<rel-to-root>`
+// tar entry name.
+export const WORKSPACE_OUTPUT_PREFIX = 'workspace-outputs/'
 
 export class Cache implements CacheLayer {
   constructor(cacheDir: string)
@@ -148,11 +158,14 @@ Determinism notes:
 ```
 <cacheDir>/
 ├── cache.db                 # SQLite (with cache.db-wal, cache.db-shm)
-└── <hash>/
-    ├── stdout               # captured stdout
-    ├── stderr               # captured stderr
-    └── outputs/             # declared output files, project-relative
-        └── dist/...
+└── <hash>.tar.zst           # per-entry artifact:
+    ├── stdout               #   captured stdout (always present)
+    ├── outputs/             #   declared output files, project-relative
+    └── workspace-outputs/   #   declared outputs.workspaceFiles,
+                             #   WORKSPACE-ROOT-relative (when any;
+                             #   additive — absent for tasks without
+                             #   the field, keeping their artifacts
+                             #   byte-identical to plain v17)
 ```
 
 SQLite stores metadata only:
@@ -187,11 +200,13 @@ Reads via `get()` are non-blocking thanks to WAL.
 
 ## Restore semantics
 
-`restoreOutputs(hash, projectDir)`:
+`restoreOutputs(hash, projectDir, workspaceRoot?)`:
 
-- If `<cacheDir>/<hash>/outputs/` doesn't exist, no-op.
-- Otherwise recursively copies its contents into `projectDir`,
-  creating parent directories as needed.
+- If the artifact has no `outputs/` or `workspace-outputs/` entries,
+  no-op.
+- Otherwise extracts `outputs/<rel>` into `projectDir/<rel>` and —
+  when `workspaceRoot` is given — `workspace-outputs/<rel>` into
+  `workspaceRoot/<rel>`, creating parent directories as needed.
 - Pre-existing local files at output paths are **overwritten**.
 
 `get(hash)`:

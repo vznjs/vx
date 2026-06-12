@@ -312,6 +312,7 @@ to revisit the config. The cost of a single forgotten cache miss
 ```ts
 interface CacheInputs {
   files: string[] // required
+  workspaceFiles?: string[] // optional; workspace-root-relative
   env?: string[] // optional
   tasks?: readonly string[] // optional; same micro-syntax as dependsOn
 }
@@ -344,6 +345,40 @@ Always applied to every glob pass (regardless of what you wrote):
   inside this one's dir are excluded. No cross-project leakage via
   globs; the only cross-project relationship is `dependsOn` +
   upstream-hash propagation.
+
+##### `inputs.workspaceFiles` (optional, default `[]`)
+
+Workspace-root-relative globs — the Turbo `$TURBO_ROOT$` / Nx
+`{workspaceRoot}` equivalent, for inputs that live outside the project
+dir (a root `tsconfig.base.json`, shared codegen output, …). Same
+syntax as `files` (`!` negation, last-write-wins), same git-aware
+resolution (tracked + untracked-not-ignored; gitignored files are
+invisible), and the resolved paths join the same cache-key file list.
+
+```ts
+inputs: {
+  files: ['src/**'],
+  workspaceFiles: ['tsconfig.base.json', 'shared/**', '!shared/README.md'],
+}
+```
+
+**No boundary rule — deliberate escape hatch.** Unlike `files`,
+`workspaceFiles` globs may match files anywhere in the workspace,
+including inside other projects' directories. That's bad practice
+(prefer project-relative declarations plus `dependsOn` + upstream-hash
+propagation for cross-project relationships), but it is there for the
+cases that genuinely need root-anchored inputs. The hard
+project-boundary rule continues to apply to project-relative `files`
+globs only.
+
+Still applied: the always-ignored set (`node_modules/**`, `.git/**`,
+`.vx/**`, `*.tsbuildinfo`) and the task's own declared
+`outputs.workspaceFiles` (a task never invalidates itself).
+
+`vx watch` caveat: the workspace-root watcher is non-recursive, so a
+change to a `workspaceFiles` input inside a root subdirectory (e.g.
+`shared/config.json`) may not re-trigger a watch cycle. Changes inside
+project dirs and direct root-level files do.
 
 ##### `inputs.env` (optional, default `[]`)
 
@@ -417,6 +452,7 @@ task's outputs. Typical case: an integration-test task `dependsOn`s
 ```ts
 interface CacheOutputs {
   files: string[] // required
+  workspaceFiles?: string[] // optional; workspace-root-relative
 }
 ```
 
@@ -458,6 +494,28 @@ run is a no-op too.
 Skipped when `cache.outputs.files` is empty (nothing declared as
 output) AND when `--no-cache` is set (the user is debugging and
 managing the tree themselves).
+
+##### `outputs.workspaceFiles` (optional, default `[]`)
+
+Workspace-root-relative globs for outputs the task writes OUTSIDE its
+project dir (e.g. a root-level generated file). Same capture / restore
+/ wipe semantics as `files`, anchored at the workspace root; packed
+into the artifact under a separate `workspace-outputs/<rel-to-root>`
+namespace so project and workspace outputs never collide.
+
+```ts
+outputs: {
+  files: ['out.txt'],
+  workspaceFiles: ['generated/**'],
+}
+```
+
+**No boundary rule — deliberate escape hatch.** These globs may
+capture (and on restore, overwrite; on clean, wipe) files anywhere in
+the workspace, including inside other projects' dirs. Prefer
+project-relative `files` whenever the task can write inside its own
+dir. Two tasks declaring overlapping workspace outputs is user
+responsibility — vx does not police it; last restore wins.
 
 ## Group tasks (no `exec`)
 

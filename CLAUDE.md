@@ -165,6 +165,53 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: `workspaceFiles` (owner-named) — workspace-root-anchored
+  `cache.inputs.workspaceFiles` + `cache.outputs.workspaceFiles`, the
+  Turbo `$TURBO_ROOT$` / Nx `{workspaceRoot}` equivalent. OWNER CALL,
+  do not re-litigate: **no boundary rule** — these globs resolve from
+  the workspace root and may match/capture files inside other
+  projects' dirs ("they don't care about boundaries. it is bad
+  practice but is there"); the hard nested-dir boundary keeps applying
+  to project-relative `files`/`outputs` only, and the docs frame
+  workspaceFiles as the documented escape hatch. **No CACHE_VERSION
+  bump**, twice over: (a) inputs — resolved workspaceFiles (absolute
+  paths) are appended to the same `inputFiles` list; rels are already
+  workspaceRoot-relative in `Cache.key`, so they share the namespace
+  naturally and a task without the field derives byte-identical keys
+  (`workspaceFiles: []` vs absent pinned equal at the resolution+key
+  level; the taskConfigHash still differs for the literal `[]` — by
+  design, resolved-config hashing); (b) outputs — additive second
+  artifact namespace `workspace-outputs/<rel-to-root>` beside
+  `outputs/<rel>`; non-users produce byte-identical artifacts.
+  outputsHash folds tar names, so the namespace prefix participates
+  (`outputs/x` ≠ `workspace-outputs/x`). `output_files` rows: project
+  rows stay bare rels; workspace rows store the full
+  `workspace-outputs/<rel>` name as discriminator (no SCHEMA bump;
+  `workspace-outputs/` is a reserved name for project output rels).
+  Input resolution is git-aware via a workspace-wide GitFilesCache
+  partition keyed by workspaceRoot: when any loaded config declares
+  inputs.workspaceFiles, `populateGitFilesCache(..., workspaceWide)`
+  drops pathspec scoping (enumerate '.') and stores files+OIDs for the
+  root; unused → enumeration/spawns byte-identical (restore-git-spawns
+  - git-oid suites unchanged). Staleness: `markOutputsChanged`
+    forwards root-relative paths to the ws partition;
+    `markWorkspaceOutputsChanged` fans root-anchored changed paths to
+    every partition containing them; cache-miss saves with outputs also
+    `invalidateWorkspacePartition()` (undeclared writes are only visible
+    to git). `restoreOutputs`/`save` grew optional workspaceRoot /
+    workspaceOutputFiles params. Overlapping workspace outputs between
+    tasks = user responsibility (documented, not policed). Sandbox
+    baseline allowWrite gains root-anchored static prefixes. Migrate:
+    `$TURBO_ROOT$/x` + `{workspaceRoot}/x` map to the new fields
+    (negation preserved); turbo `globalDependencies` preset spread
+    re-pointed into inputs.workspaceFiles — the old files-list mapping
+    was wrong (they're root-relative by definition). Watch caveat
+    documented (root watcher is non-recursive; workspaceFiles edits in
+    root subdirs may not retrigger). Files: config.ts, project-loader,
+    cache/{inputs,cache,tar,layered-cache}, orchestrator/{task-hash,
+    execute-task,prepare}, cli/migrate-{turbo,nx}; 23 tests in
+    tests/workspace-files.test.ts + repinned migrate tests.
+
 - **2026-06**: `vx migrate [--dry] [--force]` — onboarding generator
   from Turbo/Nx. Auto-detects: turbo.json → Turbo path (root
   tasks/pipeline + per-pkg `extends` per-key merge + scripts inlined

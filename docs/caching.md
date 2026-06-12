@@ -185,21 +185,22 @@ function of the cache key.
 
 A task's cache becomes invalid when any of these change:
 
-| Trigger                                                               | Mechanism                                                                |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Edit a file in the task's `inputs.files` set                          | step 9 of key derivation                                                 |
-| Any package manager updates a lockfile (`pnpm`, `npm`, `yarn`, `bun`) | step 3 (workspace fingerprint)                                           |
-| Edit `pnpm-workspace.yaml` or `package.json`'s `workspaces` field     | step 3                                                                   |
-| Edit the project's `package.json` (dep / version / scripts change)    | step 4 (project package.json hash)                                       |
-| Edit the task's `vx.config.ts`                                        | step 5 (task config hash)                                                |
-| Edit a config file that the task config imports                       | step 5 (configHash sees the resolved object after Bun evaluates imports) |
-| Change a `cache.inputs.env` host value                                | step 6                                                                   |
-| Change CLI `forwardArgs` (after `--`)                                 | step 7                                                                   |
-| Upstream task's cache key changes (because its inputs changed)        | step 8                                                                   |
-| Bump `CACHE_VERSION`                                                  | step 1 — orphans every entry                                             |
-| Change `exec.env.passThrough` _values_ alone                          | **NOT a trigger** by design — passThrough values are host-specific       |
-| Change a file not in `inputs.files`                                   | **NOT a trigger** by design — declare it explicitly                      |
-| Change a file in a nested project's dir                               | **NOT a trigger** for the parent — project boundaries are hard           |
+| Trigger                                                                                                                                  | Mechanism                                                                                                                 |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Edit a file in the task's `inputs.files` set                                                                                             | step 9 of key derivation                                                                                                  |
+| Edit a file in the task's `inputs.workspaceFiles` set (root-anchored; may live in ANY project's dir — the documented boundary exception) | step 9 — resolved workspace files join the same input-file list                                                           |
+| Any package manager updates a lockfile (`pnpm`, `npm`, `yarn`, `bun`)                                                                    | step 3 (workspace fingerprint)                                                                                            |
+| Edit `pnpm-workspace.yaml` or `package.json`'s `workspaces` field                                                                        | step 3                                                                                                                    |
+| Edit the project's `package.json` (dep / version / scripts change)                                                                       | step 4 (project package.json hash)                                                                                        |
+| Edit the task's `vx.config.ts`                                                                                                           | step 5 (task config hash)                                                                                                 |
+| Edit a config file that the task config imports                                                                                          | step 5 (configHash sees the resolved object after Bun evaluates imports)                                                  |
+| Change a `cache.inputs.env` host value                                                                                                   | step 6                                                                                                                    |
+| Change CLI `forwardArgs` (after `--`)                                                                                                    | step 7                                                                                                                    |
+| Upstream task's cache key changes (because its inputs changed)                                                                           | step 8                                                                                                                    |
+| Bump `CACHE_VERSION`                                                                                                                     | step 1 — orphans every entry                                                                                              |
+| Change `exec.env.passThrough` _values_ alone                                                                                             | **NOT a trigger** by design — passThrough values are host-specific                                                        |
+| Change a file not in `inputs.files` / `inputs.workspaceFiles`                                                                            | **NOT a trigger** by design — declare it explicitly                                                                       |
+| Change a file in a nested project's dir                                                                                                  | **NOT a trigger** for the parent's `files` globs — project boundaries are hard (workspaceFiles is the explicit exception) |
 
 The cascade in row 9 is what makes monorepo caching work: edit a file
 in `lib/`, and every package that depends on `lib`'s `build` task
@@ -213,32 +214,40 @@ project's directory, even if a `**/*` pattern would otherwise match.
 `workspace/nested-dirs.ts` computes the set of nested project
 directories (projects rooted inside this one) once per `vx run`, and
 adds them to the ignore list passed to every glob pass. The only way
-for project A to depend on project B's state is `dependsOn` +
-upstream-hash propagation (step 8). There is no file-glob escape
-hatch.
+for project A to depend on project B's state via project-relative
+globs is `dependsOn` + upstream-hash propagation (step 8).
 
-## Storage layout (v13)
+**Exception:** `cache.inputs.workspaceFiles` /
+`cache.outputs.workspaceFiles` are workspace-root-anchored and apply
+NO boundary rule — a deliberate escape hatch (owner call: "they don't
+care about boundaries; it is bad practice but is there"). Prefer
+project-relative declarations; reach for workspaceFiles only for
+genuinely root-anchored files.
+
+## Storage layout (v17+)
 
 ```
 <workspaceRoot>/.vx/cache/                  (configurable via vx.workspace.ts cacheDir)
 ├── cache.db                                SQLite metadata + run history
 ├── cache.db-wal                            write-ahead log
 ├── cache.db-shm                            shared memory
-└── <hash>/                                 one directory per cache entry
-    ├── stdout                              captured stdout (text)
-    ├── stderr                              captured stderr (text)
-    └── outputs/                            declared output files, project-relative
-        └── dist/
-            └── ... (mirroring project-relative paths)
+└── <hash>.tar.zst                          one artifact per cache entry:
+    ├── stdout                              captured stdout (always present, may be empty)
+    ├── outputs/<rel>                       declared output files, project-relative (when any)
+    └── workspace-outputs/<rel>             declared outputs.workspaceFiles,
+                                            WORKSPACE-ROOT-relative (when any)
 ```
 
-`<hash>` is the full sha256 hex string. No subdirectory bucketing
-(`a/b/abcd…` shards) yet — fine for thousands of entries; would want
-sharding past that.
+`<hash>` is the 16-hex xxh3 key. The `workspace-outputs/` namespace is
+additive: tasks that don't declare `outputs.workspaceFiles` produce
+byte-identical artifacts to the plain v17 format (which is why the
+field needed no `CACHE_VERSION` bump). `output_files` rows mirror the
+two namespaces — project rows store the bare rel, workspace rows store
+the full `workspace-outputs/<rel>` name as the discriminator.
 
-**Key property:** one entry is one directory. Eviction is a single
-`rm -rf <hash>/`. There is no separate `logs/` tree or per-entry
-manifest to worry about.
+**Key property:** one entry is one file. Eviction is a single unlink.
+There is no separate `logs/` tree or per-entry manifest to worry
+about.
 
 ### SQLite tables
 
@@ -363,9 +372,11 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
 
 - **v21 → early cutoff** (+ SCHEMA v19): downstream keys fold the
   upstream task's **output content identity** (`outputsHash`: sorted
-  fold of every artifact `outputs/<rel>` entry's path + bytes; mtimes
-  excluded) instead of its task hash, whenever the upstream declares
-  outputs. An upstream that re-executes (comment edit, env change)
+  fold of every artifact `outputs/<rel>` — and, since workspaceFiles
+  landed, `workspace-outputs/<rel>` — entry's name + bytes; the
+  namespace prefix participates, so `outputs/x` and
+  `workspace-outputs/x` fold differently; mtimes excluded) instead of
+  its task hash, whenever the upstream declares outputs. An upstream that re-executes (comment edit, env change)
   but reproduces byte-identical outputs no longer cascades misses.
   No declared outputs → falls back to the task hash (old behavior);
   group tasks roll up members' cutoff identities. `entries` gains an
