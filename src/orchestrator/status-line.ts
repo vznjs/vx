@@ -152,6 +152,14 @@ export interface StatusRegionState {
   spinnerFrame: number
 }
 
+/** Elapsed run time as mm:ss (61s → 01:01). */
+function formatClock(ms: number): string {
+  const total = Math.floor(ms / 1000)
+  const m = Math.floor(total / 60)
+  const sec = total % 60
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+}
+
 function truncateId(id: string, width: number): string {
   if (id.length <= width) return id
   const head = Math.ceil((width - 1) / 2)
@@ -214,7 +222,7 @@ export function formatStatusRegion(
     paint(WARN, `${s.restoredLocal} local`, colors),
     paint(ACCENT, `${s.restoredRemote} remote`, colors),
   ].join(' · ')
-  let stats = `▶ ${progress} ${dim('│')} ${cache} ${dim('│')} ${Math.floor(s.elapsedMs / 1000)}s`
+  let stats = `▶ ${progress} ${dim('│')} ${cache} ${dim('│')} ${formatClock(s.elapsedMs)}`
   if (s.overflow > 0) stats += ` · +${s.overflow} more`
   lines.push(stats)
   return lines

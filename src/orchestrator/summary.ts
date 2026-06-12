@@ -11,6 +11,7 @@ const NO_COLOR: ColorSupport = { enabled: false }
 
 const SUCCESS = '#22c55e'
 const WARN = '#eab308'
+const ACCENT = '#06b6d4'
 const ERROR = '#ef4444'
 
 export function formatRunSummary(
@@ -19,29 +20,35 @@ export function formatRunSummary(
   colors: ColorSupport = NO_COLOR,
 ): string[] {
   const t = tallyOutcomes(outcomes)
-  const cached = t.cachedLocal + t.cachedRemote
+  const hits = t.cachedLocal + t.cachedRemote
+  const miss = t.total - t.skipped - hits
 
-  const taskParts = [paint(SUCCESS, `${t.successful} successful`, colors)]
-  if (t.failed > 0) taskParts.push(paint(ERROR, `${t.failed} failed`, colors, { bold: true }))
-  if (t.skipped > 0) taskParts.push(paint(WARN, `${t.skipped} skipped`, colors))
-  taskParts.push(`${t.total} total`)
-
-  // Disjoint buckets that partition the hit count: restored from the
-  // local artifact, restored after a remote pull, or already
-  // up-to-date on disk (zero writes). Shown whenever anything hit.
-  const cachedParts: string[] = []
-  if (cached > 0) {
-    cachedParts.push(`${t.restoredLocal} restored-local`)
-    cachedParts.push(`${t.restoredRemote} restored-remote`)
-    cachedParts.push(`${t.upToDate} up-to-date`)
-  } else {
-    cachedParts.push('0 cached')
-  }
-  cachedParts.push(`${t.total} total`)
+  // Same language as the live stats line: labeled colored pairs,
+  // every bucket always present. Zero-valued buckets render dim so
+  // the non-zero numbers are the only things that pull the eye.
+  // `Tasks:` partitions by how things ended; `Cache:` by where the
+  // results came from (miss + up-to-date + local + remote = total
+  // - skipped).
+  const pair = (n: number, label: string, color: string, opts: { bold?: boolean } = {}): string =>
+    n === 0
+      ? paint('', `${n} ${label}`, colors, { dim: true })
+      : paint(color, `${n} ${label}`, colors, opts)
+  const taskParts = [
+    pair(t.failed, 'failed', ERROR, { bold: true }),
+    pair(t.successful, 'success', SUCCESS),
+    pair(t.skipped, 'skipped', WARN),
+    paint(ACCENT, `${t.total} total`, colors),
+  ]
+  const cacheParts = [
+    pair(miss, 'miss', ERROR),
+    pair(t.upToDate, 'up-to-date', SUCCESS),
+    pair(t.restoredLocal, 'local', WARN),
+    pair(t.restoredRemote, 'remote', ACCENT),
+  ]
 
   // Motif printed when every real task came from the cache (local or
   // remote). Mirrors Turbo's `>>> FULL TURBO`.
-  const fullCache = t.total > 0 && cached === t.total
+  const fullCache = t.total > 0 && hits === t.total
   const dur = formatDuration(totalMs)
   const timeLine = fullCache
     ? `  Time:    ${dur} ${paint(SUCCESS, '>>> FULL CACHE', colors, { bold: true })}`
@@ -49,8 +56,8 @@ export function formatRunSummary(
 
   const lines: string[] = [
     '',
-    ` Tasks:    ${taskParts.join(', ')}`,
-    `Cached:    ${cachedParts.join(', ')}`,
+    ` Tasks:    ${taskParts.join(' · ')}`,
+    ` Cache:    ${cacheParts.join(' · ')}`,
   ]
 
   // Failed-task listing — single `Failed: id1, id2, id3` line, ids

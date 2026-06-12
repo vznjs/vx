@@ -164,34 +164,40 @@ describe('defaultLogger visibility matrix — broad', () => {
 })
 
 describe('defaultLogger visibility matrix — focused', () => {
-  it('requested node streams raw output live (before completion)', () => {
+  it('requested node: live frame-open, raw stream, frame-close', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
     const n = mkNode('one#test', { requested: true })
+    log.taskStart?.(n)
+    expect(out.text()).toBe('┌─ one#test > $ noop\n')
     log.taskStdout(n, 'line 1\n')
-    expect(out.text()).toBe('line 1\n')
+    expect(out.text()).toBe('┌─ one#test > $ noop\nline 1\n')
     log.taskStderr(n, 'warn 1\n')
-    expect(out.text()).toBe('line 1\nwarn 1\n')
     log.taskComplete(n, mkOutcome(n, 'success'))
-    // No frame, no one-liner after the stream.
-    expect(out.text()).toBe('line 1\nwarn 1\n')
+    expect(out.text()).toBe(
+      '┌─ one#test > $ noop\nline 1\nwarn 1\n└─ one#test ── (100ms) success\n',
+    )
   })
 
-  it('requested quiet cache hit → hit one-liner', () => {
+  it('requested quiet cache hit → full frame, no one-liner (owner: always full frame)', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
     const n = mkNode('one#test', { requested: true })
+    log.taskStart?.(n)
     log.taskComplete(n, mkOutcome(n, 'cache-hit', { restored: true }))
-    expect(out.text()).toBe('◌ one#test ── restored-local • abcdef01\n')
+    expect(out.text()).toBe('┌─ one#test > $ noop\n└─ one#test ── (100ms) restored-local\n')
   })
 
-  it('requested cache hit with replay → raw stream, no one-liner', () => {
+  it('requested cache hit with replay → framed live stream', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
     const n = mkNode('one#test', { requested: true })
+    log.taskStart?.(n)
     log.taskStdout(n, 'replayed\n')
     log.taskComplete(n, mkOutcome(n, 'cache-hit', { restored: true }))
-    expect(out.text()).toBe('replayed\n')
+    expect(out.text()).toBe(
+      '┌─ one#test > $ noop\nreplayed\n└─ one#test ── (100ms) restored-local\n',
+    )
   })
 
   it('requested skipped → frame (the news is it did not run)', () => {
@@ -495,9 +501,11 @@ describe('flow e2e against a real fixture workspace', () => {
     const text = captureStdout()
     const code = await cliRun(['run', 'consume'])
     expect(code).toBe(0)
-    // Requested task streams raw — no frame around its output.
+    // Requested task: live frame around the raw stream (owner:
+    // always full frame for a single task).
     expect(text()).toContain('CONSUME-OUTPUT')
-    expect(text()).not.toContain('┌─ one#consume')
+    expect(text()).toContain('┌─ one#consume')
+    expect(text()).toContain('└─ one#consume ──')
     // Successful dependency is silent.
     expect(text()).not.toContain('DEP-NOISE')
     expect(text()).not.toContain('one#dep ──')

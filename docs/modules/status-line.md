@@ -43,7 +43,7 @@ Stats line, every bucket always present in fixed order (stable layout
 beats compactness):
 
 ```
-▶ 1 failed · 78 success · 759 left · 1090 total │ 79 miss · 252 up-to-date · 0 local · 0 remote │ 16s
+▶ 1 failed · 78 success · 759 left · 1090 total │ 79 miss · 252 up-to-date · 0 local · 0 remote │ 00:16
 ```
 
 The buckets feed from the same outcome predicates as the end-of-run

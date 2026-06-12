@@ -263,14 +263,14 @@ describe('defaultLogger status line integration', () => {
     log.taskComplete(dep, mkOutcome(dep, 'success'))
     const req = mkNode('one#test', { requested: true })
     log.taskStart?.(req)
-    // Permanently cleared: streamed output flows raw with no status
-    // rewrites around it.
+    // Permanently cleared: after the frame-open, streamed output
+    // flows raw with no status rewrites around it.
     const before = s.chunks.length
     log.taskStdout(req, 'raw output\n')
     expect(s.chunks.slice(before)).toEqual(['raw output\n'])
     log.taskComplete(req, mkOutcome(req, 'success'))
     log.runEnd?.()
-    expect(s.text().endsWith('raw output\n')).toBe(true)
+    expect(s.text().endsWith('└─ one#test ── (100ms) success\n')).toBe(true)
   })
 
   it('group-task starts do not disturb the status line', () => {
@@ -320,7 +320,7 @@ describe('formatStatusRegion', () => {
     expect(lines[0]).toContain('2.0s')
     expect(lines[1]).toContain('idle')
     expect(lines[2]).toBe(
-      '▶ 0 failed · 0 success · 8 left · 8 total │ 0 miss · 0 up-to-date · 0 local · 0 remote │ 5s',
+      '▶ 0 failed · 0 success · 8 left · 8 total │ 0 miss · 0 up-to-date · 0 local · 0 remote │ 00:05',
     )
   })
 
@@ -343,7 +343,7 @@ describe('formatStatusRegion', () => {
       failed: 0,
     })
     expect(lines.at(-1)).toBe(
-      '▶ 0 failed · 2 success · 1 left · 8 total │ 2 miss · 3 up-to-date · 1 local · 1 remote │ 5s',
+      '▶ 0 failed · 2 success · 1 left · 8 total │ 2 miss · 3 up-to-date · 1 local · 1 remote │ 00:05',
     )
   })
 
@@ -401,8 +401,9 @@ describe('createOutputWriter region mechanics', () => {
     log.taskStdout(req, 'replayed build output\n')
     log.taskComplete(req, mkOutcome(req, 'cache-hit', { restored: false }))
     log.runEnd?.()
+    expect(s.text()).toContain('┌─ one#build > $ noop')
     expect(s.text()).toContain('replayed build output\n')
-    // No one-liner duplication for a streamed hit.
-    expect(s.text()).not.toContain('──')
+    // Full frame even for an up-to-date hit (owner rule).
+    expect(s.text()).toContain('└─ one#build ── (100ms) up-to-date')
   })
 })

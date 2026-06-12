@@ -27,7 +27,7 @@ apart from the last framed block.
 
 ```
  Tasks:    3 successful, 1 failed, 4 total
-Cached:    2 local, 1 remote, 4 total
+ Cache:    1 miss · 0 up-to-date · 2 local · 1 remote
   Time:    5.34s
 ```
 

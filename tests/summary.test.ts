@@ -21,8 +21,8 @@ describe('formatRunSummary', () => {
     const lines = formatRunSummary([outcome('a#x', 'success'), outcome('b#x', 'success')], 1234)
     expect(lines).toEqual([
       '',
-      ' Tasks:    2 successful, 2 total',
-      'Cached:    0 cached, 2 total',
+      ' Tasks:    0 failed · 2 success · 0 skipped · 2 total',
+      ' Cache:    2 miss · 0 up-to-date · 0 local · 0 remote',
       '  Time:    1.23s',
     ])
   })
@@ -36,8 +36,8 @@ describe('formatRunSummary', () => {
       ],
       420,
     )
-    expect(lines[1]).toBe(' Tasks:    3 successful, 3 total')
-    expect(lines[2]).toBe('Cached:    0 restored-local, 0 restored-remote, 2 up-to-date, 3 total')
+    expect(lines[1]).toBe(' Tasks:    0 failed · 3 success · 0 skipped · 3 total')
+    expect(lines[2]).toBe(' Cache:    1 miss · 2 up-to-date · 0 local · 0 remote')
     expect(lines[3]).toBe('  Time:    420ms')
   })
 
@@ -46,8 +46,8 @@ describe('formatRunSummary', () => {
       [outcome('a#test', 'success'), outcome('b#test', 'failed', 1)],
       850,
     )
-    expect(lines[1]).toBe(' Tasks:    1 successful, 1 failed, 2 total')
-    expect(lines[2]).toBe('Cached:    0 cached, 2 total')
+    expect(lines[1]).toBe(' Tasks:    1 failed · 1 success · 0 skipped · 2 total')
+    expect(lines[2]).toBe(' Cache:    2 miss · 0 up-to-date · 0 local · 0 remote')
   })
 
   it('lists failed task IDs on a single comma-joined line (Turbo format)', () => {
@@ -86,13 +86,13 @@ describe('formatRunSummary', () => {
       [outcome('a#x', 'success'), outcome('b#x', 'failed', 2), outcome('c#x', 'skipped')],
       50,
     )
-    expect(lines[1]).toBe(' Tasks:    1 successful, 1 failed, 1 skipped, 3 total')
+    expect(lines[1]).toBe(' Tasks:    1 failed · 1 success · 1 skipped · 3 total')
   })
 
   it('treats cache-hit-remote as successful', () => {
     const lines = formatRunSummary([outcome('a#x', 'cache-hit-remote')], 10)
-    expect(lines[1]).toBe(' Tasks:    1 successful, 1 total')
-    expect(lines[2]).toBe('Cached:    0 restored-local, 0 restored-remote, 1 up-to-date, 1 total')
+    expect(lines[1]).toBe(' Tasks:    0 failed · 1 success · 0 skipped · 1 total')
+    expect(lines[2]).toBe(' Cache:    0 miss · 1 up-to-date · 0 local · 0 remote')
   })
 
   it('appends >>> FULL CACHE when every real task came from the cache', () => {
@@ -119,7 +119,7 @@ describe('formatRunSummary', () => {
     })
     // success count colorized
     expect(lines[1]).toContain('\x1b[')
-    expect(lines[1]).toContain('1 successful')
+    expect(lines[1]).toContain('1 success')
     expect(lines[1]).toContain('1 failed')
   })
 

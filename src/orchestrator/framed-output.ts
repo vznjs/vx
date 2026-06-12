@@ -238,6 +238,28 @@ export function formatTaskExecutedLine(
   return `${mark} ${paintTaskId(node, colors)} ${dim('──')} success ${dim(`• ${formatDuration(o.durationMs)}`)}`
 }
 
+/**
+ * Live-frame brackets for focused mode: the requested task's output
+ * streams raw between an opening line (id + command) and a closing
+ * line (id + duration + outcome). Same visual language as
+ * formatTaskBlock, but emitted in real time around the live stream
+ * instead of buffered.
+ */
+export function formatFrameOpen(node: TaskNode, colors: ColorSupport = NO_COLOR): string {
+  const corner = (t: string) => paint('', t, colors, { dim: true })
+  const cmd = node.config.exec?.command ?? ''
+  return `${corner('┌─')} ${paintTaskId(node, colors, { bold: true })} ${corner('>')} $ ${cmd}`
+}
+
+export function formatFrameClose(
+  node: TaskNode,
+  outcome: TaskOutcome,
+  colors: ColorSupport = NO_COLOR,
+): string {
+  const corner = (t: string) => paint('', t, colors, { dim: true })
+  return `${corner('└─')} ${paintTaskId(node, colors, { bold: true })} ${corner('──')}${formatBlockFooter(outcome, colors)}`
+}
+
 function formatBlockHeader(node: TaskNode, o: TaskOutcome, colors: ColorSupport): string {
   const shortHash = o.hash ? o.hash.slice(0, 8) : ''
   const dim = (s: string) => paint('', s, colors, { dim: true })

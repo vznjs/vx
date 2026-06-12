@@ -1,6 +1,12 @@
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { detectColors, type ColorSupport } from './colors.js'
-import { formatTaskBlock, formatTaskExecutedLine, formatTaskHitLine } from './framed-output.js'
+import {
+  formatFrameClose,
+  formatFrameOpen,
+  formatTaskBlock,
+  formatTaskExecutedLine,
+  formatTaskHitLine,
+} from './framed-output.js'
 import {
   createOutputWriter,
   formatStatusRegion,
@@ -123,6 +129,9 @@ export function defaultLogger(
   let streamedSinceBlock = false
   // Ids whose output went straight to the terminal (focused mode).
   const streamed = new Set<string>()
+  // True while the live stream sits mid-line (chunk without trailing
+  // newline) — the frame close must not glue onto partial output.
+  let streamMidLine = false
   const pushChunk = (buffers: Map<string, string[]>, id: string, chunk: string): void => {
     const arr = buffers.get(id)
     if (arr) arr.push(chunk)
@@ -245,6 +254,9 @@ export function defaultLogger(
       // clear it for good — its raw output owns the terminal now.
       if (streamsLive(node)) {
         killStatus()
+        // Open the live frame: full task info even when the command
+        // streams nothing (or the hit replays nothing).
+        emitLine(formatFrameOpen(node, colors))
         return
       }
       const slot: WorkerSlot = { id: node.id, startedMs: Date.now() }
@@ -260,6 +272,7 @@ export function defaultLogger(
       if (streamsLive(node)) {
         streamed.add(node.id)
         streamedSinceBlock = true
+        if (chunk.length > 0) streamMidLine = !chunk.endsWith('\n')
         writer.write(chunk)
         return
       }
@@ -269,6 +282,7 @@ export function defaultLogger(
       if (streamsLive(node)) {
         streamed.add(node.id)
         streamedSinceBlock = true
+        if (chunk.length > 0) streamMidLine = !chunk.endsWith('\n')
         writer.write(chunk)
         return
       }
@@ -326,15 +340,21 @@ export function defaultLogger(
           return
         case 'focused':
           if (node.requested) {
-            // Output (exec or hit replay) already streamed live. A
-            // quiet hit never streamed anything — the one-liner is its
-            // only trace. Skips are framed: the task never produced
-            // output, and "didn't run" is exactly the news.
-            if (isHit && !streamed.has(node.id)) {
-              emitLine(formatTaskHitLine(node, outcome, colors))
-            } else if (outcome.status === 'skipped') {
+            // Skipped tasks never started (upstream failed), so no
+            // frame-open fired — emit the complete block instead.
+            if (outcome.status === 'skipped') {
               emitBlock(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
+              return
             }
+            // Output (exec or hit replay) streamed live between the
+            // frame-open (taskStart) and this close — full task info
+            // for every outcome, cached and up-to-date included
+            // (owner: "always full frame for a single task").
+            if (streamMidLine) {
+              writer.write('\n')
+              streamMidLine = false
+            }
+            emitLine(formatFrameClose(node, outcome, colors))
             return
           }
           // Dependency-pulled nodes: silent on success, framed on

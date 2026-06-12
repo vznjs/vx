@@ -165,6 +165,24 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: Focused frames + summary v2 (owner-driven, same
+  session). FOCUSED requested tasks now get a LIVE FRAME for every
+  outcome — `┌─ id > $ cmd` at taskStart, raw stream between (exec or
+  hit replay), `└─ id ── (dur) <word>` at completion — "always full
+  frame for a single task even if cached or up to date"; silent
+  commands no longer vanish. Skipped requested tasks keep the
+  buffered block (they never start, so no open fires). Quiet-hit
+  one-liners are gone from focused. formatFrameOpen/Close exported
+  from framed-output. END SUMMARY rewritten in the live-line
+  language: ` Tasks:    0 failed · 23 success · 0 skipped · 23 total`
+  / ` Cache:    23 miss · 0 up-to-date · 0 local · 0 remote` — Tasks
+  partitions by how things ended (success includes hits), Cache by
+  where results came from (miss+up-to-date+local+remote = total -
+  skipped); ZERO-valued buckets render dim, non-zero in live-line
+  colors; Failed: listing + >>> FULL CACHE kept. Region stats elapsed
+  switched to mm:ss (owner). Files: orchestrator/{logger,
+  framed-output,summary,status-line}.ts.
+
 - **2026-06**: Status display v2 — worker region (owner-driven
   iteration, same day). The single status line "jumped too much" on
   broad runs (running count 1→10, names churning), so it became a

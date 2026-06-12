@@ -196,7 +196,7 @@ for its whole life and idle rows hold their place dimmed, so nothing
 ever jumps. The bottom stats line shows every bucket in fixed order:
 
 ```
-▶ 1 failed · 78 success · 759 left · 1090 total │ 79 miss · 252 up-to-date · 0 local · 0 remote │ 16s
+▶ 1 failed · 78 success · 759 left · 1090 total │ 79 miss · 252 up-to-date · 0 local · 0 remote │ 00:16
 ```
 
 (red failed/miss, green success/up-to-date, yellow left/local, cyan
@@ -745,7 +745,7 @@ $ bun test
 └─ @vzn/vx#test ── (5.20s) executed
 
  Tasks:    3 successful, 3 total
-Cached:    2 local, 3 total
+ Cache:    1 miss · 0 up-to-date · 2 local · 0 remote
   Time:    5.34s
 >>> FULL CACHE
 ```
