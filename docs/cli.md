@@ -475,16 +475,17 @@ vx lock              # Evaluate all vx.config.* now; write vx-lock.json.
 vx lock --check      # Audit: hash checks + full re-evaluation vs the lock. Exit 1 on drift.
 ```
 
-While `vx-lock.json` exists, **runs load configs from the lock** after a
-hash-only staleness check — no config evaluation at all (frozen-env
-semantics: env reads in a config keep their lock-time values). A
-changed config file or an unlocked project is a hard error pointing at
-`vx lock`; there is no silent fallback to evaluation.
+Plain runs ALWAYS evaluate live — the lock's existence changes
+nothing. Only `vx run --frozen` consumes it: configs come from the
+lock with no evaluation and no staleness checks of its own (frozen-env
+semantics: env reads in a config keep their lock-time values; a
+project absent from the lock or a missing lock is a hard error).
 
-`--check` is strictly stronger than what runs verify: it re-evaluates
-every config in the current environment and `Bun.deepEquals`-compares
-the result against the frozen object, catching eval-time env-var drift
-that file hashes cannot see. Runs trust the lock; `--check` audits it.
+`--check` is the audit: it reports changed config files via the
+stored hashes AND re-evaluates every config in the current
+environment, `Bun.deepEquals`-comparing against the frozen objects —
+catching eval-time env and import-closure drift that byte hashes
+cannot see. The CI recipe is `vx lock --check && vx run … --frozen`.
 Full design: `docs/design/config-lock-2026-06.md`.
 
 Exit codes:
