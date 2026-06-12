@@ -22,6 +22,9 @@ vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] TASK [-- forwarded-args...]
 vx cache prune [--older-than <duration>] [--max-size <bytes>]
 vx lock [--check]
+vx show [PROJECT[#TASK]] [--format pretty|json]
+vx info
+vx stats              # deprecated alias of vx info
 vx help
 vx --help, -h
 vx version
@@ -491,6 +494,83 @@ Exit codes:
   (`--check` without one), or any drift (every mismatched project is
   listed on stderr).
 
+## `vx show`
+
+Introspect the workspace's **live resolved configs** — what a run
+would see right now. Configs are evaluated with the same loader the
+run path uses; `vx show` never reads `vx-lock.json` (the lock is
+already the frozen JSON — open it directly if you want the frozen
+view).
+
+```
+vx show                          # list every project
+vx show <project>                # one project's resolved config
+vx show <pkg>#<task>             # a single task
+vx show ... --format json        # machine-readable (default: pretty)
+```
+
+No target: one line per project — name, root-relative dir, declared
+task count, and a `(no vx config)` marker for config-less packages.
+With `--format json` it's an array of `{ name, dir, tasks: string[] }`.
+
+```
+$ vx show
+app   packages/app   3 tasks
+bare  packages/bare  (no vx config)
+```
+
+`vx show <project>` prints a block per task: description, command
+(`(group)` for group tasks), `dependsOn`, `cache.inputs.files` /
+`.env` / `.tasks`, `cache.outputs.files`, and persistent fields.
+`--format json` emits `{ name, dir, config }` with the config exactly
+as resolved. `vx show <pkg>#<task>` narrows to one task
+(`{ name, dir, task, config }` in JSON).
+
+```
+$ vx show app#build
+app — packages/app
+
+build
+  description:   compile the app
+  command:       tsc -b
+  dependsOn:     ^build
+  inputs.files:  src/**
+  inputs.env:    NODE_ENV
+  outputs.files: dist/**
+```
+
+Unknown project / task names exit `1` with includes-match suggestions
+(`unknown project: "ap" — did you mean app?`).
+
+Exit codes: `0` success; `1` parse error or unknown target.
+
+## `vx info`
+
+Workspace doctor — one screen of facts for bug reports and sanity
+checks (pretty only):
+
+```
+$ vx info
+vx:             0.0.0
+bun:            1.3.14
+git:            2.53.0
+workspace root: /work/repo
+projects:       12 (34 tasks)
+cache dir:      /work/repo/.vx/cache
+cache entries:  42 (1.3 GB)
+runs (24h):     7 (5 cache hits)
+vx-lock.json:   yes
+remote cache:   no
+```
+
+- `git` shows `(not found)` when the binary is missing; a broken
+  project config contributes zero tasks instead of failing the
+  printout.
+- `remote cache` is `yes` when both `VX_REMOTE_CACHE_URL` and
+  `VX_REMOTE_CACHE_TOKEN` are set.
+- `vx stats` is a **deprecated alias** of `vx info` (info absorbed
+  it); it prints byte-identical output.
+
 ## Output format
 
 `vx run` emits Turbo-style framed blocks. Stdout/stderr from each
@@ -564,9 +644,11 @@ Vercel's hosted Turbo cache. See
 [`design/remote-cache.md`](./design/remote-cache.md) for the full
 protocol.
 
-## Run analytics (no CLI yet)
+## Run analytics
 
-vx records every task to a `runs` table in `cache.db` — ULID
+`vx info` surfaces the aggregate cache stats (entry count, total
+size, runs + hits in the last 24 h). For anything deeper, vx records
+every task to a `runs` table in `cache.db` — ULID
 `run_id`, hrtime wallclock spans, cpu_ms, peak RSS, status, cache_hit
 flag, bytes_uploaded / \_downloaded for the remote layer. The
 SQLite file IS the API:
@@ -580,9 +662,8 @@ sqlite3 .vx/cache/cache.db "
 "
 ```
 
-A dedicated `vx stats` subcommand is not currently implemented —
-direct SQL queries cover every consumer we have. The schema is
-documented in [`caching.md` § SQLite tables](./caching.md#sqlite-tables).
+The schema is documented in
+[`caching.md` § SQLite tables](./caching.md#sqlite-tables).
 
 ## What's still missing vs Turbo
 

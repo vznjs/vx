@@ -46,6 +46,9 @@ src/
     run.ts              # `vx run` parser, scope resolver, picker
     watch.ts            # `vx watch` re-run loop
     cache.ts            # `vx cache prune` + duration/size parsers
+    lock.ts             # `vx lock` / `--check` (freeze + audit vx-lock.json)
+    show.ts             # `vx show` — live resolved-config introspection
+    info.ts             # `vx info` doctor printout (`vx stats` = alias)
     help.ts             # help text
     format.ts           # shared formatters (formatBytes, …)
     plan-format.ts      # --dry / --graph plan → text / JSON / DOT
@@ -158,6 +161,21 @@ bun.lock
    another project's dir.
 
 ## Decision log
+
+- **2026-06**: Introspection subcommands. `vx show [target]
+[--format pretty|json]` prints LIVE resolved configs (same loader as
+  the run path, scoped to the named project; deliberately NOT the
+  lock — vx-lock.json is already the frozen JSON) — no target lists
+  projects with task counts, `<project>` prints per-task blocks,
+  `<pkg>#<task>` narrows to one; unknown targets are UserErrors with
+  includes-match suggestions. `vx info` is the doctor printout
+  (vx/bun/git versions, project + task counts, cache dir/entries/
+  size/24h runs via Cache.stats, lock + remote-cache presence) and
+  ABSORBED `vx stats`: `stats` stays as a deprecated alias of `info`
+  (byte-identical output, help says so). Broken pieces degrade
+  per-line (`git: (not found)`, broken config = 0 tasks), never fail
+  the printout. Files: `src/cli/{show,info}.ts`; e2e + parser tests
+  in `tests/show-info.test.ts`.
 
 - **2026-06**: CLI pass. `--output-logs full|errors-only|none`
   shipped (logger-level gate; summary always prints). The `--cache`

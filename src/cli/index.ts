@@ -7,6 +7,8 @@ import { runCmd } from './run.js'
 import { watchCmd } from './watch.js'
 import { cacheCmd } from './cache.js'
 import { lockCmd } from './lock.js'
+import { showCmd } from './show.js'
+import { infoCmd } from './info.js'
 import { printHelp } from './help.js'
 
 export async function run(argv: readonly string[]): Promise<number> {
@@ -31,6 +33,11 @@ export async function run(argv: readonly string[]): Promise<number> {
       return await cacheCmd(rest)
     case 'lock':
       return await lockCmd(rest)
+    case 'show':
+      return await showCmd(rest)
+    case 'info':
+    case 'stats': // deprecated alias — `vx info` absorbed `vx stats`
+      return await infoCmd(rest)
     default:
       process.stderr.write(`vx: unknown command: ${command}\n`)
       printHelp()
@@ -42,4 +49,5 @@ export async function run(argv: readonly string[]): Promise<number> {
 export { parseRunArgs, type RunArgs } from './run.js'
 export { parsePruneArgs, parseDuration, parseSize } from './cache.js'
 export { parseLockArgs, type LockArgs } from './lock.js'
+export { parseShowArgs, type ShowArgs } from './show.js'
 export { formatBytes } from './format.js'
