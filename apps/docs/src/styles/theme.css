@@ -120,20 +120,21 @@
   background: var(--vx-grad);
 }
 
-/* Cards: gradient-border lift on hover, subtle glow. */
+/* Cards: static gradient border + glow — no motion, no lift. */
 .landing .card {
   position: relative;
-  border: 1px solid var(--sl-color-gray-5);
-  background: color-mix(in srgb, var(--sl-color-black) 35%, transparent);
-  transition:
-    transform 0.2s ease,
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
+  border: 1px solid transparent;
+  border-radius: 0.75rem;
+  /* Gradient border via padding-box bg + border-box gradient. */
+  background:
+    linear-gradient(var(--sl-color-bg), var(--sl-color-bg)) padding-box,
+    var(--vx-grad) border-box;
+  box-shadow: 0 0 26px color-mix(in srgb, var(--vx-violet) 13%, transparent);
+  transition: box-shadow 0.25s ease;
 }
 .landing .card:hover {
-  transform: translateY(-5px);
-  border-color: color-mix(in srgb, var(--vx-violet) 60%, transparent);
-  box-shadow: 0 16px 44px color-mix(in srgb, var(--vx-violet) 22%, transparent);
+  /* Glow brightens on hover — no transform, no bump. */
+  box-shadow: 0 0 42px color-mix(in srgb, var(--vx-pink) 24%, transparent);
 }
 .landing .card .icon {
   background: color-mix(in srgb, var(--vx-violet) 16%, transparent);
