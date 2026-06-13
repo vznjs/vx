@@ -165,54 +165,6 @@ bun.lock
 
 ## Decision log
 
-- **2026-06**: Upfront batched cache classification (owner: "I want
-  to see this bar fulfilled before any work"). The cache meter
-  (miss · up-to-date · local · remote) previously filled
-  incrementally as the scheduler reached each node. Pure-input
-  transitive keys (v22) unlocked the batch: every key is computable
-  before execution, so a new `orchestrator/classify.ts:classifyTasks`
-  walks the graph in TOPO order, folds each task's own inputs with its
-  upstreams' already-derived KEYS (synthetic `{node,hash}` upstream
-  outcomes — `filterUpstreamHashes`/`computeGroupHash` only read those
-  two fields), batch-probes the LOCAL cache, and classifies every task
-  miss / up-to-date / restored-local. `run()` fires a new
-  `Logger.cacheClassified(predicted)` hook so the CACHE meter renders
-  its full breakdown BEFORE any task runs; the TASKS meter stays
-  completion-driven (a miss must run to learn its outcome — outcomes
-  are NOT predicted). NO CACHE_VERSION bump — display + optimization,
-  the final per-task cache decision and outputs are byte-identical to
-  the per-task path. Reuses the run-scoped `hashCache` so the
-  scheduler's later derivation hits the memo (no double hashing).
-  STABLE-vs-RECOMPUTE split (the load-bearing caveat): execute-task
-  reuses the precomputed key only for a task whose inputs are provably
-  stable; a task whose `cache.inputs.files` can match an in-scope
-  upstream's declared output (e.g. `'**/*'` over a dir a `codegen`
-  step writes `generated.txt` into) is FLAGGED and recomputes its key
-  mid-run after upstreams materialize — its upfront key is preliminary
-  (meter only). Detection (`classify.ts:computeRecomputeFlags` +
-  `globsCanOverlap`): same-project upstream output that could fall
-  under this task's input globs (`**`/`*`-anywhere input → always; else
-  static-prefix nesting both ways), OR any upstream workspace output +
-  any non-empty input scope; the flag PROPAGATES downstream (folding a
-  preliminary upstream key makes you preliminary). Conservative —
-  recompute when unsure, correctness over the optimization. REMOTE is
-  async: classification probes the LOCAL cache only (`prepareRun` now
-  exposes `localCache`), so a local miss never blocks the run on a
-  network round-trip; a local-miss-but-remote-hit reconciles
-  miss→remote at completion via the layered cache's existing
-  read-through. `--force`/`--no-cache` skips classification entirely.
-  Logger reconciliation: `cacheClassified` seeds the cache buckets;
-  `taskComplete` decrements the predicted bucket + increments the
-  actual one (no double counting); tasks-meter "successful" is now
-  executed-successes + completed-hits (decoupled from the pre-seeded
-  cache buckets); `SummaryStats.cacheLeft` lets the cache bar read
-  full from start while the tasks bar fills. Files:
-  `orchestrator/{classify,run,execute-task,prepare,logger,summary}.ts`;
-  tests `tests/classify.test.ts`, `tests/upfront-classify-e2e.test.ts`
-  (ordering, cold-miss, codegen→consumer caveat, --force skip) +
-  remote-reconcile e2e in `tests/orchestrator-remote.test.ts`;
-  docs/execution.md + docs/optimizations.md (#5b).
-
 - **2026-06**: CACHE_VERSION → v22 + SCHEMA v21: **reverted v21
   early cutoff → pure-input transitive hashing** (owner: "simplify,
   rely only on task input hashes, no output hashes"). Downstream keys

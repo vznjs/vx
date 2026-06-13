@@ -81,33 +81,6 @@ terminal and a task succeeding or failing. Read it alongside
  │                persistentRegistry, close the cache, exit 128+signo
  │                (SIGINT → 130, SIGTERM → 143).
  │
- ├─ Upfront cache classification (src/orchestrator/classify.ts)
- │    Runs AFTER the graph is built, BEFORE scheduling. Pure-input
- │    transitive keys (v22) make every task's cache key computable
- │    without executing anything: a task's key folds its OWN inputs
- │    plus its upstreams' already-derived KEYS.
- │      1. Walk the graph in topological order; for each task derive
- │         its key via the same computeTaskHash machinery used at
- │         execution, with synthetic {node, key} upstream entries.
- │         Reuses the run-scoped hashCache so the scheduler's later
- │         derivation (for stable-input tasks) hits the memo.
- │      2. Batch-probe the LOCAL cache for every key (one SQL pass +
- │         isOutputsCurrent). Each task → miss / up-to-date /
- │         restored-local. (Remote is NOT probed here — a local miss
- │         must not block the run on a network round-trip; remote hits
- │         reconcile during execution.)
- │      3. Feed the counts to the logger (cacheClassified hook) so the
- │         CACHE meter shows its FULL breakdown before any task runs.
- │         The TASKS meter still fills during execution — a miss must
- │         run to know its outcome.
- │    Skipped entirely under --force / --no-cache (everything runs).
- │    CAVEAT — a task whose cache.inputs.files can match an upstream's
- │    declared output (e.g. '**/*' over a dir a codegen step writes
- │    into) has inputs that aren't final until that upstream runs; its
- │    upfront key is PRELIMINARY (meter only) and execute-task
- │    recomputes it mid-run. Detected conservatively; the flag
- │    propagates to downstream tasks that fold a preliminary key.
- │
  ├─ Scheduling (src/graph/scheduler.ts:runGraph)
  │    Up to N tasks concurrently, ordered topologically.
  │    For each ready node: execute(node, upstream) → TaskOutcome.
@@ -154,11 +127,7 @@ terminal and a task succeeding or failing. Read it alongside
  │       5. cache.key({ taskId, workspaceFingerprint,
  │                      projectPackageJsonHash, taskConfigHash,
  │                      envValues, inputFiles, upstreamHashes,
- │                      forwardArgs }) → 16-hex xxh3.
- │          For a STABLE-input task the upfront-classified key is
- │          reused (no recompute); a FLAGGED task (inputs can match an
- │          upstream output) recomputes here, now that upstreams have
- │          materialized.
+ │                      forwardArgs }) → 16-hex xxh3
  │       6. If cache is on AND `cache` block exists:
  │            cache.get(hash)
  │              · hit → cleanOutputs → restoreOutputs → replay logs →
