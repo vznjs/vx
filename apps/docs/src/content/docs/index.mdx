@@ -1,0 +1,104 @@
+---
+title: vx
+description: A content-addressed cache and task scheduler for JavaScript monorepos, built Bun-native from the ground up.
+template: splash
+hero:
+  tagline: A content-addressed cache and task scheduler for JavaScript monorepos — built Bun-native, with the fastest warm paths in its class.
+  image:
+    file: ../../assets/logo.svg
+  actions:
+    - text: Get started
+      link: /getting-started/
+      icon: right-arrow
+      variant: primary
+    - text: Why vx
+      link: /differentiators/
+      icon: open-book
+      variant: minimal
+    - text: View on GitHub
+      link: https://github.com/vznjs/vx
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components'
+
+## Run less. Cache everything.
+
+vx discovers your workspace projects, builds a task graph from declared
+`dependsOn`, hashes inputs deterministically, and executes tasks in
+topological order with maximum parallelism. Cache hits replay stored
+outputs in milliseconds — with correctness guarantees the established
+runners don't offer.
+
+<CardGrid stagger>
+  <Card title="Fastest warm paths" icon="rocket">
+    A 100-project workspace runs fully cached in **144&nbsp;ms**. A
+    1090-package, 100-layer graph (3270 tasks) replays in **0.62&nbsp;s**.
+    At 15k input files, deriving every key costs zero file reads — hashes
+    come straight from git's index.
+  </Card>
+  <Card title="Smarter caching" icon="approve-check">
+    Resolved-config hashing means imports and computed values participate
+    in cache identity. Declared outputs are wiped before exec **and**
+    restore, so the tree ends every run bit-identical to the cached
+    snapshot.
+  </Card>
+  <Card title="Deliberately simple" icon="setting">
+    No daemon. No plugins, no executor protocol — **shell is the API**.
+    Eight contract modules with a dependency matrix enforced in CI, and
+    ~600 tests behind every claim.
+  </Card>
+  <Card title="Safe to trust" icon="seti:lock">
+    HMAC artifact signing on the remote wire, corrupt-artifact validation
+    that degrades to a miss, and SIGINT/SIGTERM reaping so no dev server
+    is ever orphaned in CI.
+  </Card>
+</CardGrid>
+
+## Adopt it in two minutes
+
+```bash
+bun add -d @vzn/vx          # Bun ≥ 1.3; git required
+```
+
+```ts
+// vx.config.ts — next to any workspace package
+import { defineProject } from '@vzn/vx'
+
+export default defineProject({
+  tasks: {
+    build: {
+      exec: { command: 'tsc -p .' },
+      cache: {
+        inputs: { files: ['src/**'] },
+        outputs: { files: ['dist/**'] },
+      },
+    },
+    test: {
+      dependsOn: ['build'],
+      exec: { command: 'bun test' },
+      cache: { inputs: { files: ['src/**', 'tests/**'] }, outputs: { files: [] } },
+    },
+  },
+})
+```
+
+```bash
+vx run build                # current package (+ its dependency graph)
+vx run build test --all     # every package, shared graph
+vx run test --affected      # only what changed vs the base branch
+vx watch dev                # re-run on file change
+vx run build --dry          # predicted hits/misses, no execution
+```
+
+## Find your way around
+
+<CardGrid>
+  <LinkCard title="Getting started" href="/getting-started/" description="Install vx, author your first vx.config.ts, and run a cached task graph." />
+  <LinkCard title="Architecture" href="/architecture/" description="The eight contract modules, the data flow, and the design principles." />
+  <LinkCard title="Caching" href="/caching/" description="Cache key derivation, the invalidation table, early cutoff, and the artifact format." />
+  <LinkCard title="CLI reference" href="/cli/" description="Every flag, the filter DSL, argument forwarding, exit codes, and env vars." />
+  <LinkCard title="Config schema" href="/schema/" description="Every field of ProjectConfig, TaskConfig, and the cache contract." />
+  <LinkCard title="vs Turbo / Nx" href="/comparison/" description="A sourced, side-by-side gap analysis against the established runners." />
+</CardGrid>

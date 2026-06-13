@@ -1,0 +1,9 @@
+# Astro build output + generated types
+dist/
+.astro/
+
+# Content generated from the repo's docs/ tree by scripts/import-docs.ts.
+# docs/ stays the single source of truth; the dev/build scripts regenerate
+# these before every run. Hand-authored pages are negated below.
+/src/content/docs/**/*.md
+!/src/content/docs/getting-started.md

@@ -1,0 +1,43 @@
+/* vx identity palette — violet → pink gradient wordmark. */
+:root {
+  --sl-color-accent-low: #241a4d;
+  --sl-color-accent: #7c5cff;
+  --sl-color-accent-high: #c9bdff;
+
+  --vx-grad: linear-gradient(120deg, #7c5cff 0%, #ff5cc8 100%);
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #e3dcff;
+  --sl-color-accent: #6b3cf0;
+  --sl-color-accent-high: #2a1466;
+}
+
+/* Gradient hero title on the splash page. */
+.hero h1 {
+  background: var(--vx-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Mermaid diagrams: centered, transparent, no code-block chrome. */
+pre.mermaid {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 1.25rem 0;
+  text-align: center;
+  overflow-x: auto;
+}
+
+pre.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Tighten wide reference tables so the comparison pages stay readable. */
+.sl-markdown-content table {
+  display: block;
+  overflow-x: auto;
+}

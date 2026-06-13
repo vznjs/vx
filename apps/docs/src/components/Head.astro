@@ -1,0 +1,47 @@
+---
+import Default from '@astrojs/starlight/components/Head.astro'
+---
+
+<Default><slot /></Default>
+
+<script>
+  // Self-hosted, lazy mermaid rendering. mermaid is only fetched on pages
+  // that actually contain a <pre class="mermaid"> block (dynamic import =
+  // its own chunk), and re-renders when Starlight toggles the theme.
+  const sources = new WeakMap<Element, string>()
+
+  async function renderMermaid() {
+    const blocks = Array.from(
+      document.querySelectorAll<HTMLElement>('pre.mermaid'),
+    )
+    if (blocks.length === 0) return
+
+    const { default: mermaid } = await import('mermaid')
+    const dark = document.documentElement.dataset.theme === 'dark'
+
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: 'loose',
+      theme: dark ? 'dark' : 'neutral',
+      fontFamily: 'inherit',
+    })
+
+    for (const el of blocks) {
+      if (!sources.has(el)) sources.set(el, el.textContent ?? '')
+      el.removeAttribute('data-processed')
+      el.innerHTML = sources.get(el) ?? ''
+    }
+
+    await mermaid.run({ nodes: blocks })
+  }
+
+  renderMermaid()
+  // Re-render after Starlight's view-transition navigations.
+  document.addEventListener('astro:after-swap', renderMermaid)
+
+  // Re-render on light/dark toggle so diagram colors track the theme.
+  const observer = new MutationObserver((records) => {
+    if (records.some((r) => r.attributeName === 'data-theme')) renderMermaid()
+  })
+  observer.observe(document.documentElement, { attributes: true })
+</script>

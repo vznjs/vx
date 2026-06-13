@@ -165,6 +165,39 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: **Docs site (`apps/docs`) + GitHub Pages.** Owner ask:
+  "a website with docs guide refs architecture and everything like
+  Turborepo or NX … add a new pnpm workspace with a project like this
+  and deploy it to GitHub Pages." Built on **Astro Starlight**; the
+  repo root became a **Bun workspace** (`workspaces: [".", "apps/*"]`)
+  rather than introducing pnpm (owner picked Bun-isolated-app-dir over
+  literal pnpm). **The `"."` member is load-bearing**: vx's own
+  discovery (`loadWorkspace`) switches from single-project mode to
+  glob mode the moment `workspaces` is set, so without `"."` the root
+  vx.config.ts (lint/test/ci/build tasks) stops being a project and
+  `vx run ci` / `release.yml` break. Bun tolerates `"."` as a member.
+  **`docs/` stays the single source of truth** — `apps/docs/scripts/
+  import-docs.ts` copies `docs/**/*.md` into the Starlight content
+  collection, adding frontmatter (first H1 → title) and rewriting
+  internal `.md` links to depth-relative clean URLs (base-safe; no
+  hardcoded `/vx`). The transform is code-span/fence-aware and escapes
+  bare `<placeholder>` tokens in prose so Markdown doesn't eat them as
+  HTML. Generated content is git-ignored and regenerated on every
+  dev/build; only `index.mdx` (splash landing) + `getting-started.md`
+  are hand-authored. Mermaid (architecture.md, flows.md) renders
+  client-side: a remark plugin emits `<pre class="mermaid">`,
+  `Head.astro` lazy-imports mermaid only on diagram pages and
+  re-renders on theme toggle. **oxc guard**: `apps` added to
+  `.oxlintrc.json` + `.oxfmtrc.json` `ignorePatterns` so the root
+  `oxfmt --check .` / `oxlint` (which scan cwd) don't choke on the
+  app. Deploy: `.github/workflows/docs.yml` (Pages, path-filtered on
+  `docs/**` + `apps/docs/**`); base `/vx` for the project-site URL,
+  `BASE_PATH`/`SITE_URL` overridable for a custom domain. Pages must
+  be enabled once (Settings → Pages → Source: GitHub Actions). No vx
+  CACHE_VERSION/test impact; the full `vx run ci` gate stays green.
+  NOTE: this work shipped via a feature branch + PR per the web
+  session's harness directive, NOT the usual push-to-main rule.
+
 - **2026-06**: **Async remote-cache prefetch (remote-only).** Owner
   ask, quoted: "do the remote cache async calls. when exec task probes
   for it it should just get the resolved or pending promise." For runs
