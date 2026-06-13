@@ -155,12 +155,25 @@ build: {
 }
 ```
 
+## Beyond the basics
+
+A task can also declare:
+
+- **`exec.env`** — control the child's environment
+  ([Environment variables](../environment-variables/)).
+- **`exec.persistent`** — long-running dev servers and watchers
+  ([Dev & long-running tasks](../dev-tasks/)).
+- **`sandbox`** — run under an OS-level allow-list of files and network
+  ([Sandboxing tasks](../sandboxing/)).
+
+Workspace-wide settings (`concurrency`, `cacheDir`) live in a root
+`vx.workspace.ts` — see [Workspace configuration](../workspace-config/).
+
 ## Next steps
 
 - **[Caching tasks](../caching/)** — inputs, outputs, env, and
   correctness.
 - **[Task dependencies](../task-dependencies/)** — `^`, `pkg#task`, and
   cross-package graphs.
-- **[Dev & long-running tasks](../dev-tasks/)** — dev servers via
-  `persistent`.
-- **[Configuration reference](../../schema/)** — every field.
+- **[Configuration reference](../../schema/)** — every field, including
+  the full `sandbox` surface.
