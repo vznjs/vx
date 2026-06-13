@@ -557,6 +557,13 @@ describe('resolveInputs — gitFilesCache memoization', () => {
     Bun.spawnSync({
       cmd: [
         'git',
+        // Disable signing — otherwise the commit inherits a global
+        // commit.gpgsign + 1Password/GPG agent and HANGS waiting for
+        // approval (30s hook timeout). Test repos never sign.
+        '-c',
+        'commit.gpgsign=false',
+        '-c',
+        'tag.gpgSign=false',
         '-c',
         'user.email=t@t',
         '-c',
