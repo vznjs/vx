@@ -20,7 +20,6 @@ import {
   type SandboxViolation,
 } from '../exec/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
-import type { ClassifiedTask } from './classify.js'
 import type { Logger } from './logger.js'
 import { computeGroupHash, computeTaskHash, type HashCache } from './task-hash.js'
 
@@ -53,14 +52,6 @@ export interface ExecuteArgs {
   gitFilesCache?: GitFilesCache
   /** Per-run memo for derived hashes (package.json bytes + task config). */
   hashCache?: HashCache
-  /**
-   * Upfront classification for this node (from `classifyTasks`). When
-   * present and NOT flagged for mid-run recompute, its `key` is reused
-   * — the topo-walk already derived it (no double hashing). A flagged
-   * task (its inputs can match an upstream's output) recomputes the
-   * key here, after upstreams have materialized.
-   */
-  classified?: ClassifiedTask
 }
 
 /**
@@ -186,34 +177,25 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const anyOutputs = outputs.length > 0 || wsOutputs.length > 0
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
 
-  // Reuse the upfront-classified key when this task's inputs are
-  // provably stable (no upstream output can match its input globs, and
-  // no upstream key it folds was preliminary). The classification's
-  // topo-walk already derived this exact key — no double hashing.
-  //
-  // A FLAGGED task recomputes here: its `cache.inputs.files` can match
-  // an upstream's declared output (e.g. `'**/*'` over a dir a `codegen`
-  // step wrote `generated.txt` into), so its inputs aren't final until
-  // the upstream materialized — which it now has (the scheduler ran
-  // deps first). Same model as Turbo / Nx; the upfront key for such a
-  // task was best-effort for the meter only.
-  const reuseKey =
-    args.classified !== undefined && !args.classified.needsRecompute
-      ? args.classified.key
-      : undefined
-  const hash =
-    reuseKey ??
-    (await computeTaskHash({
-      node,
-      upstream,
-      workspaceRoot: args.workspaceRoot,
-      workspaceFingerprint: args.workspaceFingerprint,
-      cache,
-      forwardArgs: args.forwardArgs,
-      nestedProjectDirs: args.nestedProjectDirs,
-      ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-      ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-    }))
+  // Prefer the hash precomputed in `prepareRun` (batched topo-walk).
+  // Falls back to per-task computation only when a caller skips the
+  // upfront pass (legacy entry points, focused tests).
+  // Hash is computed mid-run, not at prepareRun time. Tasks whose
+  // `cache.inputs.files` matches sibling outputs (e.g. `'**/*'` after
+  // a `codegen` step has written `generated.txt`) need the upstream
+  // outputs ALREADY on disk when their hash is computed — so we
+  // can't lift this into prepareRun. Same model as Turbo / Nx.
+  const hash = await computeTaskHash({
+    node,
+    upstream,
+    workspaceRoot: args.workspaceRoot,
+    workspaceFingerprint: args.workspaceFingerprint,
+    cache,
+    forwardArgs: args.forwardArgs,
+    nestedProjectDirs: args.nestedProjectDirs,
+    ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+    ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+  })
 
   const cleanArgs = {
     projectDir: node.projectDir,

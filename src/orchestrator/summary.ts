@@ -107,13 +107,6 @@ export interface SummaryStats {
   /** Still to run (live section only; 0 in the final summary) — renders
    *  as a gray ▱ remainder so the live meters FILL toward the final. */
   left?: number
-  /**
-   * Cache-meter-only remainder. With upfront classification every task
-   * is pre-bucketed, so the CACHE meter is complete from run start
-   * (0 remainder) while the TASKS meter still fills via `left`.
-   * Defaults to `left` when omitted — the pre-classification behavior
-   * where both meters fill together. */
-  cacheLeft?: number
   /** Cache-miss duration spread (only tasks that actually executed). */
   spread: { maxMs: number; minMs: number; sumMs: number; count: number } | null
 }
@@ -126,9 +119,7 @@ export function formatSummarySection(
   const hits = stats.upToDate + stats.restoredLocal + stats.restoredRemote
   const miss = stats.miss
   const left = stats.left ?? 0
-  const cacheLeft = stats.cacheLeft ?? left
   const remainder = { n: left, color: '', glyph: '\u25b1', dim: true }
-  const cacheRemainder = { n: cacheLeft, color: '', glyph: '\u25b1', dim: true }
 
   const dim = (txt: string) => paint('', txt, colors, { dim: true })
   const row = (label: string, value: string): string => `  ${dim(label.padEnd(6))}  ${value}`
@@ -163,7 +154,7 @@ export function formatSummarySection(
 
   // Cache meter + numbers, fixed order: miss · up-to-date · local ·
   // remote.
-  if (miss + hits + cacheLeft + stats.skipped > 0) {
+  if (miss + hits + left + stats.skipped > 0) {
     const cacheBar = segmentBar(
       [
         { n: miss, color: ERROR },
@@ -171,7 +162,7 @@ export function formatSummarySection(
         { n: stats.restoredLocal, color: LOCAL },
         { n: stats.restoredRemote, color: REMOTE },
         { n: stats.skipped, color: WARN },
-        cacheRemainder,
+        remainder,
       ],
       colors,
     )
