@@ -57,7 +57,9 @@ CI. ~600 tests.
 ## Adopt it in two minutes
 
 ```bash
-bun add -d @vzn/vx          # Bun ≥ 1.3; git required
+bun add -d @vzn/vx
+# …or grab the standalone binary (no Node or Bun required):
+curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
 ```
 
 Drop a `vx.config.ts` next to any workspace package:
@@ -111,7 +113,7 @@ existing cache servers work unchanged; add
 | Feature                                                                                                       | Where to read                                                                        |
 | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | Task graph: `dependsOn`, `^task` (nearest-holder + sparse bridging), `pkg#task`, group tasks, multi-task runs | [`schema.md`](./schema.md), [`execution.md`](./execution.md)                         |
-| Content-addressed caching: keys, invalidation, early cutoff, artifact format                                  | [`caching.md`](./caching.md)                                                         |
+| Content-addressed caching: keys, invalidation table, transitive cascade, artifact format                      | [`caching.md`](./caching.md)                                                         |
 | Remote cache layer + HMAC signing                                                                             | [`caching.md`](./caching.md), [`modules/remote-cache.md`](./modules/remote-cache.md) |
 | Persistent tasks (`readyWhen` / `readyTimeoutMs`)                                                             | [`schema.md`](./schema.md)                                                           |
 | Watch mode, filters, `--affected`, `--dry` / `--graph`, forwarding `--`                                       | [`cli.md`](./cli.md)                                                                 |

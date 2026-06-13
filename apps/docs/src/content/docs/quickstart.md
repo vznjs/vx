@@ -16,6 +16,8 @@ guides ([Turborepo](../migrate/from-turborepo/),
 
 ```bash
 bun add -d @vzn/vx
+# …or grab the standalone binary (no Node or Bun required):
+curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
 ```
 
 This puts the `vx` binary in your workspace. vx prepends each package's

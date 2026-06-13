@@ -15,6 +15,8 @@ Migrating *from* a specific tool? Those guides generate config for you:
 
 ```bash
 bun add -d @vzn/vx
+# …or grab the standalone binary (no Node or Bun required):
+curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
 ```
 
 vx discovers your workspace automatically from `pnpm-workspace.yaml`, a
