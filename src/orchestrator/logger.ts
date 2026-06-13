@@ -1,3 +1,4 @@
+import type { ClassifiedStatus } from './classify.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { detectColors, type ColorSupport } from './colors.js'
 import {
@@ -37,6 +38,16 @@ export interface Logger {
    */
   runStart?(info: { total: number; concurrency?: number; requestedCount?: number }): void
   taskStart?(node: TaskNode): void
+  /**
+   * Upfront cache classification (after the graph is built, before
+   * execution). Carries the predicted cache status of every node so
+   * the cache meter renders its FULL breakdown
+   * (miss · up-to-date · local) at run start — pure-input keys make
+   * every key computable before any task runs. Per-task completion
+   * later reconciles each node from its prediction into its actual
+   * bucket (no double counting). Custom loggers may ignore it.
+   */
+  cacheClassified?(predicted: ReadonlyMap<string, ClassifiedStatus>): void
   /** Run finished (any outcome). Idempotent. */
   runEnd?(): void
 }
@@ -86,6 +97,44 @@ function outcomeWord(o: TaskOutcome): string {
       return o.restored === false ? 'up-to-date' : 'restored-remote'
     default:
       return o.status
+  }
+}
+
+type CacheBucket = 'miss' | 'upToDate' | 'restoredLocal' | 'restoredRemote'
+
+/**
+ * Map an upfront classification to the cache-meter bucket it seeds.
+ * `no-cache` tasks always execute, so they seed the miss bucket (the
+ * final summary counts them as misses too); `group` tasks have no
+ * cache provenance. The classifier never predicts `restoredRemote` —
+ * remote probing is async and reconciles at completion.
+ */
+function predictedCacheBucket(status: ClassifiedStatus): CacheBucket | null {
+  switch (status) {
+    case 'miss':
+    case 'no-cache':
+      return 'miss'
+    case 'up-to-date':
+      return 'upToDate'
+    case 'restored-local':
+      return 'restoredLocal'
+    case 'group':
+      return null
+  }
+}
+
+/** The cache-meter bucket a finished task actually landed in. */
+function actualCacheBucket(outcome: TaskOutcome): CacheBucket | null {
+  switch (outcome.status) {
+    case 'success':
+    case 'failed':
+      return 'miss' // executed — a cache miss (or caching disabled)
+    case 'cache-hit':
+      return outcome.restored === false ? 'upToDate' : 'restoredLocal'
+    case 'cache-hit-remote':
+      return outcome.restored === false ? 'upToDate' : 'restoredRemote'
+    case 'skipped':
+      return null
   }
 }
 
@@ -181,10 +230,27 @@ export function defaultLogger(
   const slotQueue: WorkerSlot[] = []
   let spinnerFrame = 0
   let succeeded = 0
+  // Cache meter buckets. Seeded by `cacheClassified` from the upfront
+  // probe so the meter shows its full breakdown before any task runs,
+  // then reconciled per completion (predicted bucket -=, actual +=).
+  // Without classification (custom-logger paths never call it) they
+  // start at 0 and `cacheHitsDone` / miss-from-execution drive them
+  // exactly as before.
+  let miss = 0
   let upToDate = 0
   let restoredLocal = 0
   let restoredRemote = 0
   let skippedCount = 0
+  // True once cacheClassified seeded the cache buckets: completion
+  // reconciles (decrement prediction, increment actual) instead of
+  // counting from zero. Holds each node's predicted bucket so a
+  // task's completion knows what to subtract.
+  let classified = false
+  const predictedBucketById = new Map<string, CacheBucket | null>()
+  // Tasks-meter "successful" = executed successes + completed hits.
+  // Separate from the cache buckets (which are pre-seeded) so the
+  // tasks meter still FILLS during execution.
+  let cacheHitsDone = 0
   // Cache-miss duration spread, accumulated incrementally (the same
   // numbers the final summary computes from the outcome list).
   let spreadMax = 0
@@ -207,14 +273,23 @@ export function defaultLogger(
     const summaryLines = formatSummarySection(
       {
         failed,
-        successful: succeeded + upToDate + restoredLocal + restoredRemote,
+        // Tasks meter fills during execution: executed successes plus
+        // completed cache hits. Independent of the (pre-seeded when
+        // classified) cache buckets.
+        successful: succeeded + cacheHitsDone,
         skipped: skippedCount,
         total,
         upToDate,
         restoredLocal,
         restoredRemote,
-        miss: succeeded + failed,
+        // Cache meter. Classified: buckets were seeded upfront +
+        // reconciled per completion, so `miss` is a live bucket and
+        // the cache bar is FULL from run start (cacheLeft = 0).
+        // Unclassified: legacy behavior — miss = executed tasks, the
+        // bar fills with the tasks meter via the shared `left`.
+        miss: classified ? miss : succeeded + failed,
         left: total - done,
+        ...(classified ? { cacheLeft: 0 } : {}),
         spread:
           spreadCount > 0
             ? { maxMs: spreadMax, minMs: spreadMin, sumMs: spreadSum, count: spreadCount }
@@ -318,6 +393,22 @@ export function defaultLogger(
       else slotQueue.push(slot)
       refresh(true)
     },
+    cacheClassified(predicted) {
+      // Seed the cache meter with the upfront prediction so its full
+      // breakdown renders BEFORE any task runs. Each prediction maps
+      // to a cache bucket (no-cache → miss, since those tasks always
+      // execute; group → no bucket). taskComplete reconciles by
+      // subtracting the prediction and adding the actual outcome.
+      classified = true
+      for (const [id, status] of predicted) {
+        const bucket = predictedCacheBucket(status)
+        predictedBucketById.set(id, bucket)
+        if (bucket === 'miss') miss++
+        else if (bucket === 'upToDate') upToDate++
+        else if (bucket === 'restoredLocal') restoredLocal++
+      }
+      refresh(true)
+    },
     runEnd() {
       killStatus()
       // Failures end the log: every deferred frame replays here, right
@@ -371,19 +462,46 @@ export function defaultLogger(
           const qi = slotQueue.findIndex((s) => s.id === node.id)
           if (qi >= 0) slotQueue.splice(qi, 1)
         }
+        // Classified runs reconcile the cache buckets from the upfront
+        // prediction; unclassified runs count them from zero (legacy).
+        // Either way the actual bucket reflects what really happened —
+        // a flagged task whose mid-run key changed reconciles
+        // up-to-date/local → miss; a local miss that turned out to be a
+        // remote hit reconciles miss → remote.
+        if (classified) {
+          const predicted = predictedBucketById.get(node.id) ?? null
+          const actual = actualCacheBucket(outcome)
+          if (predicted !== actual) {
+            if (predicted === 'miss') miss--
+            else if (predicted === 'upToDate') upToDate--
+            else if (predicted === 'restoredLocal') restoredLocal--
+            if (actual === 'miss') miss++
+            else if (actual === 'upToDate') upToDate++
+            else if (actual === 'restoredLocal') restoredLocal++
+            else if (actual === 'restoredRemote') restoredRemote++
+          }
+        }
         switch (outcome.status) {
           case 'success':
             succeeded++
             break
           case 'cache-hit':
-            if (outcome.restored === false) upToDate++
-            else restoredLocal++
-            break
           case 'cache-hit-remote':
-            if (outcome.restored === false) upToDate++
-            else restoredRemote++
+            cacheHitsDone++
+            if (!classified) {
+              if (outcome.status === 'cache-hit') {
+                if (outcome.restored === false) upToDate++
+                else restoredLocal++
+              } else {
+                if (outcome.restored === false) upToDate++
+                else restoredRemote++
+              }
+            }
             break
           case 'skipped':
+            // A skipped task never executes; the reconciliation block
+            // above already retracted its prediction (actual bucket is
+            // null), so its slot just moves to the skipped segment.
             skippedCount++
             break
         }

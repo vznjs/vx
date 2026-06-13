@@ -7,6 +7,7 @@ import { VERSION } from '../version.js'
 import { initSandbox, probeSandbox, resetSandbox, signalExitCode } from '../exec/index.js'
 import { isGroupTask, runGraph } from '../graph/index.js'
 import { ulid, UserError } from '../util/index.js'
+import { classifyTasks, type ClassifiedStatus } from './classify.js'
 import { executeTask } from './execute-task.js'
 import { defaultLogger, resolveOutputView } from './logger.js'
 import { detectColors } from './colors.js'
@@ -44,6 +45,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     workspaceConfig,
     cacheDir,
     cache,
+    localCache,
     nodes,
     workspaceFingerprint,
     nestedDirsByProject,
@@ -144,6 +146,36 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // (TTY-only); custom loggers may ignore them.
     log.runStart?.({ total: taskCount, concurrency, requestedCount })
 
+    // Upfront cache classification. Pure-input transitive keys (v22)
+    // make every task's key computable before execution, so we derive
+    // them all in one topo walk, batch-probe the local cache, and feed
+    // the FULL cache breakdown to the logger BEFORE any task runs —
+    // the owner's "fill the bar before any work" requirement. The same
+    // keys are reused by executeTask (no double hashing) for tasks
+    // whose inputs are provably stable; flagged tasks recompute mid-run
+    // (see classify.ts). Skipped entirely under --force / --no-cache:
+    // everything runs, there's nothing to probe.
+    let classification: Awaited<ReturnType<typeof classifyTasks>> | null = null
+    if (!(options.noCache ?? false)) {
+      classification = await classifyTasks({
+        nodes,
+        workspaceRoot,
+        workspaceFingerprint,
+        // Local-only probe: a local miss must NOT block on a remote
+        // round-trip here (step 5) — remote hits reconcile during
+        // execution, which uses the layered `cache`.
+        cache: localCache,
+        noCache: false,
+        forwardArgs: options.forwardArgs,
+        nestedDirsByProject,
+        gitFilesCache,
+        hashCache,
+      })
+      const predicted = new Map<string, ClassifiedStatus>()
+      for (const [id, c] of classification.byId) predicted.set(id, c.status)
+      log.cacheClassified?.(predicted)
+    }
+
     const outcomes = await runGraph({
       nodes,
       concurrency,
@@ -169,6 +201,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
           liveChildren,
           gitFilesCache,
           hashCache,
+          ...(classification?.byId.get(node.id) !== undefined
+            ? { classified: classification.byId.get(node.id)! }
+            : {}),
         }),
     })
 

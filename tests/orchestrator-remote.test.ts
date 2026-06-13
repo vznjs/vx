@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import type { ClassifiedStatus } from '../src/orchestrator/classify.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 
@@ -243,6 +244,51 @@ describe('orchestrator e2e: remote cache', () => {
       expect(third.ok).toBe(true)
       expect(third.outcomes[0]!.status).toBe('success')
       expect(fixture.log.join('\n')).toMatch(/signature mismatch/)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a local-miss that is a remote hit classifies as miss upfront, then reconciles to remote',
+    async () => {
+      await addProject(fixture.root, 'app', {
+        files: { 'src/in.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: 'echo built > out.txt' },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+
+      // First run populates the remote.
+      await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+      expect(remote.store.size).toBe(1)
+
+      // Wipe local so the artifact only lives remotely. The upfront
+      // probe (local-only) sees a MISS; execution does the remote
+      // read-through and the outcome reconciles to cache-hit-remote.
+      await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+
+      const predicted = new Map<string, ClassifiedStatus>()
+      const rec: Fixture = { root: fixture.root, log: [], err: [] }
+      const logger: Logger = {
+        ...silentLogger(rec),
+        cacheClassified(p) {
+          for (const [k, v] of p) predicted.set(k, v)
+        },
+      }
+      const r = await run({ cwd: fixture.root, tasks: ['build'], log: logger })
+
+      // Upfront: local miss (NOT blocked on a remote round-trip).
+      expect(predicted.get('app#build')).toBe('miss')
+      // Final: the remote hit reconciled in.
+      expect(r.outcomes[0]!.status).toBe('cache-hit-remote')
+      expect(r.ok).toBe(true)
     },
     TIMEOUT,
   )

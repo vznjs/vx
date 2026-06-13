@@ -35,6 +35,14 @@ export interface PreparedRun {
   workspaceConfig: WorkspaceConfig | null
   cacheDir: string
   cache: CacheLayer
+  /**
+   * The bare LOCAL cache (the same object `cache` wraps when a remote
+   * layer is configured; identical to `cache` otherwise). Upfront
+   * classification probes THIS, not the layered `cache`, so a local
+   * miss stays a miss instead of blocking the run on a remote
+   * round-trip — remote hits reconcile during execution (which uses
+   * the layered `cache`). */
+  localCache: CacheLayer
   nodes: Map<string, TaskNode>
   workspaceFingerprint: string
   nestedDirsByProject: Map<string, string[]>
@@ -199,6 +207,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       workspaceConfig,
       cacheDir,
       cache,
+      localCache,
       nodes: new Map(),
       workspaceFingerprint,
       nestedDirsByProject,
@@ -223,6 +232,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     workspaceConfig,
     cacheDir,
     cache,
+    localCache,
     nodes,
     workspaceFingerprint,
     nestedDirsByProject,
