@@ -1,21 +1,19 @@
 ---
 title: vx
-description: The monorepo task runner for people who outgrew Turborepo and don't want Nx. Content-addressed caching, a daemonless design, and the fastest warm builds in its class.
+description: The monorepo build engine that ends the Nx-or-Turbo compromise — Nx-scale power, Turbo-grade simplicity, faster than both, with the tradeoffs of neither.
 template: splash
 hero:
-  tagline: The monorepo task runner for people who outgrew Turborepo and don't want Nx. Content-addressed caching, shell-as-the-API simplicity, and the fastest warm builds in its class — no daemon, no plugins, no lock-in.
-  image:
-    file: ../../assets/logo.svg
+  tagline: "For years you've had two choices for your monorepo — and paid for both. vx is the one that didn't exist: Nx-scale power, Turbo-grade simplicity, faster than either, with the tradeoffs of neither."
   actions:
     - text: Get started
       link: quickstart/
       icon: right-arrow
       variant: primary
-    - text: Coming from Turborepo?
-      link: migrate/from-turborepo/
-      icon: open-book
+    - text: See the numbers
+      link: benchmarks/
+      icon: rocket
       variant: secondary
-    - text: View on GitHub
+    - text: GitHub
       link: https://github.com/vznjs/vx
       icon: external
       variant: minimal
@@ -23,80 +21,76 @@ hero:
 
 import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components'
 
+<div class="landing">
+
+## For years, you had two choices. Both cost you.
+
+For mid-to-large monorepos, **Nx** was the only real answer — and you paid
+the platform tax: a background daemon, a plugin graph, generators, a config
+surface you *maintain* instead of ship. For small-to-mid, **Turborepo** was
+the easy pick — until you hit the ceiling: static JSON config, additive
+restores that leak stale files, a cache blind to your computed inputs.
+
+Every team picks the tradeoff that hurts least and calls it a decision.
+You've been a hostage to the lesser evil. There was never a third option.
+
+## Now there is.
+
+**vx** is the alternative that didn't exist — the power that pushed you to
+Nx, the simplicity that drew you to Turbo, **faster than either**, and the
+tradeoffs of neither. One self-contained binary. Config that's real
+TypeScript. Shell is the API. No daemon, no plugins, no platform to serve —
+just your tasks, cached and correct, replaying in **milliseconds**.
+
 ## Your monorepo isn't slow. Your runner is.
 
-Watching builds creep toward ten minutes as your repo grows? Cached runs
-that *still* take seconds? You didn't start writing slower code and your
-tasks didn't get heavier — your task runner's per-task overhead did.
+The same **3,270-task monorepo** (100 dependency layers), run three ways on
+the same machine:
 
-Here's the **same 3,270-task monorepo** (100 dependency layers), run three
-ways on the same machine:
+<div class="stat-table">
 
 | | vx | Turborepo | Nx |
 | --- | --- | --- | --- |
-| **Cold build** (nothing cached) | **3m 48s** | 8m 18s | 8m 27s |
+| **Cold build** | **3m 48s** | 8m 18s | 8m 27s |
 | **Cached**, nothing to rebuild | **0.55s** | 1.60s | 9.86s |
 | **Cached**, restore outputs | **0.89s** | 2.00s | 10.44s |
-| **Total CPU burned** | **23s** | 1,250s | 2,037s |
+| **CPU burned** (same 3,270 tasks) | **23s** | 1,250s | 2,037s |
 
-A cold build finishes in **under 4 minutes** where Turborepo and Nx take
-**over 8**. A fully-cached run lands in **half a second** — not 1.6s, not
-nearly 10s. Same tasks, same hardware.
+</div>
 
-And it's not a trick. For those 3,270 tasks vx spent **23 seconds of CPU**;
-Turborepo spent **1,250**; Nx spent **2,037**. vx does roughly **50× less
-work per task** — so the bigger and more complex your graph, the wider the
-gap.
+A cold build in **under 4 minutes** where the others take **over 8**. A
+fully-cached check of 3,270 tasks in **half a second**. And the last row is
+the foundation: for the *same work*, vx burns **~50× less CPU per task** —
+so the bigger and more tangled your graph, the wider the gap grows.
 
-**vx doesn't compete on speed. Speed is the foundation it's built on** —
-see the full [benchmarks](benchmarks/) (reproduce them yourself with
-`bun bench/compare.ts`).
+**vx doesn't compete on speed. Speed is the foundation it's built on.**
 
-## Monorepo tooling shouldn't make you choose
+## What you stop trading away
 
-**Turborepo** is simple but hits a ceiling — static JSON config, additive
-restores that leak stale files, a cache that can't see your computed
-inputs. **Nx** is powerful but heavy — a daemon, a plugin graph, codegen,
-and a learning curve that never ends.
-
-vx is the third option: **as simple as Turborepo, more capable than both,
-and the fastest on the runs you do all day** — warm, cached builds. Your
-config is real TypeScript. Your tasks are shell commands. There's no
-daemon and no plugin protocol to learn. And it caches with correctness
-guarantees the others don't offer.
-
-<CardGrid>
-  <Card title="Fast at any scale" icon="rocket">
-    A fully-cached run of a 3,270-task monorepo finishes in **0.55s** —
-    versus 1.6s for Turborepo and 9.9s for Nx. Cold, it's **2× faster
-    than both**. The gap widens as your graph grows, because vx's
-    per-task overhead is ~50× lower. Reproduce it: `bun bench/compare.ts`.
+<CardGrid stagger>
+  <Card title="Scale without the platform" icon="rocket">
+    Nx-grade graphs — 3,270 tasks, 100 layers — run fully cached in **0.55s**,
+    2× faster than Turbo cold and **5–18× faster than Nx**. No daemon to
+    babysit, no `nx reset`, no plugin graph to keep in sync. The win *grows*
+    with your repo instead of shrinking.
   </Card>
-  <Card title="Caching that's actually correct" icon="approve-check">
-    **Resolved-config hashing** — your imports, presets, and computed
-    values are part of the cache key (vx hashes the *evaluated* config,
-    not the JSON text). **Strict output ownership** — declared outputs
-    are wiped before every build *and* restore, so no stale file ever
-    survives. Neither exists in Turborepo or Nx.
+  <Card title="Simplicity without the ceiling" icon="seti:typescript">
+    Turbo-easy, minus the wall you hit. Config is real **TypeScript** —
+    imports, presets, and computed values are part of the cache key. Tasks
+    are shell commands. `vx migrate` reads your `turbo.json` or Nx graph and
+    writes it for you.
   </Card>
-  <Card title="No daemon, no plugins, no lock-in" icon="setting">
-    Shell is the API — any command works, no executor protocol. One
-    binary, no background process, no staleness window. Drop-in
-    compatible with the Turborepo remote-cache wire, so existing cache
-    servers just work.
+  <Card title="Caching you can actually trust" icon="approve-check">
+    **Strict output ownership** — declared outputs are wiped before every
+    build *and* restore, so no stale file ever survives. **Resolved-config
+    hashing** sees what static-JSON hashers miss. Neither exists in Turbo
+    or Nx.
   </Card>
   <Card title="Sandboxed builds, built in" icon="seti:lock">
     Run any task under an **OS-level allow-list** of files and network —
-    opt-in per task, fail-on-violation. A build that secretly reads an
-    undeclared file or phones home **fails the run** instead of shipping a
-    stale or compromised artifact. Turborepo and Nx have nothing like it.
-    Hermetic builds should be table stakes — with vx they're one line:
-    `sandbox: {}`.
-  </Card>
-  <Card title="Built for the people leaving" icon="seti:typescript">
-    `vx migrate` reads your `turbo.json` or Nx project graph and writes
-    `vx.config.ts` files for you. The `dependsOn` syntax, `--filter` DSL,
-    and `--affected` selection are the ones you already know.
+    one line, `sandbox: {}`. A build that reads an undeclared file or phones
+    home **fails the run** instead of shipping something compromised. No
+    other runner has it.
   </Card>
 </CardGrid>
 
@@ -135,13 +129,13 @@ vx run test --affected      # only what changed vs the base branch
 vx run build                # again → replays from cache in milliseconds
 ```
 
-## Start where you are
+## Stop renting your build system
 
 <CardGrid>
+  <LinkCard title="Coming from Turborepo →" href="migrate/from-turborepo/" description="Keep the syntax you know; lose the ceiling. What maps 1:1, and vx migrate." />
+  <LinkCard title="Coming from Nx →" href="migrate/from-nx/" description="Drop the daemon, the plugins, the platform — keep the affected graph and the speed." />
   <LinkCard title="Quickstart" href="quickstart/" description="Zero to a cached, parallel task graph in five minutes." />
-  <LinkCard title="Coming from Turborepo" href="migrate/from-turborepo/" description="What maps 1:1, what's better, and how to run vx migrate." />
-  <LinkCard title="Coming from Nx" href="migrate/from-nx/" description="Drop the daemon and the plugins — keep the speed and the affected graph." />
-  <LinkCard title="Configuring tasks" href="guides/tasks/" description="Write vx.config.ts: commands, dependencies, and cache contracts." />
-  <LinkCard title="Caching tasks" href="guides/caching/" description="Declare inputs and outputs so every run is correct and fast." />
-  <LinkCard title="Why vx is fast" href="concepts/why-vx-is-fast/" description="Resolved-config hashing, git-OID hashing, bitset scheduling — the real mechanics." />
+  <LinkCard title="See the benchmarks" href="benchmarks/" description="The full head-to-head, reproducible with bun bench/compare.ts." />
 </CardGrid>
+
+</div>

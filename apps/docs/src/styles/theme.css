@@ -4,6 +4,8 @@
   --sl-color-accent: #7c5cff;
   --sl-color-accent-high: #c9bdff;
 
+  --vx-violet: #7c5cff;
+  --vx-pink: #ff5cc8;
   --vx-grad: linear-gradient(120deg, #7c5cff 0%, #ff5cc8 100%);
 }
 
@@ -13,15 +15,182 @@
   --sl-color-accent-high: #2a1466;
 }
 
-/* Gradient hero title on the splash page. */
+/* ───────────────────────────  Splash hero  ─────────────────────────── */
+
+/* A futuristic, glowing backdrop behind the hero. */
+.hero {
+  position: relative;
+  isolation: isolate;
+  padding-block: clamp(2rem, 8vw, 5rem);
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: -30% -20% auto -20%;
+  height: 130%;
+  z-index: -1;
+  background:
+    radial-gradient(60% 55% at 50% 18%, color-mix(in srgb, var(--vx-violet) 38%, transparent), transparent 70%),
+    radial-gradient(45% 45% at 78% 8%, color-mix(in srgb, var(--vx-pink) 30%, transparent), transparent 70%);
+  filter: blur(8px);
+  opacity: 0.9;
+  animation: vx-pulse 9s ease-in-out infinite;
+}
+
+/* Faint perspective grid — the "engine" feel. */
+.hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--vx-violet) 9%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--vx-violet) 9%, transparent) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(70% 60% at 50% 30%, #000 0%, transparent 75%);
+  opacity: 0.5;
+}
+
+:root[data-theme='light'] .hero::before {
+  opacity: 0.5;
+}
+
+/* Oversized gradient wordmark with glow. */
 .hero h1 {
-  background: var(--vx-grad);
+  font-size: clamp(4rem, 15vw, 9.5rem);
+  line-height: 0.9;
+  letter-spacing: -0.04em;
+  font-weight: 800;
+  background: linear-gradient(120deg, #b9a7ff 0%, var(--vx-violet) 40%, var(--vx-pink) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  filter: drop-shadow(0 6px 40px color-mix(in srgb, var(--vx-violet) 45%, transparent));
 }
 
-/* Mermaid diagrams: centered, transparent, no code-block chrome. */
+.hero .tagline {
+  font-size: clamp(1.05rem, 2.1vw, 1.4rem);
+  line-height: 1.5;
+  max-width: 46ch;
+  color: var(--sl-color-white);
+  opacity: 0.92;
+}
+
+/* Action buttons — gradient primary with a glow + lift. */
+.hero .action.primary {
+  background: var(--vx-grad);
+  border: none;
+  color: #fff;
+  box-shadow: 0 8px 30px color-mix(in srgb, var(--vx-violet) 45%, transparent);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.hero .action.primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px color-mix(in srgb, var(--vx-pink) 55%, transparent);
+}
+.hero .action.secondary {
+  border: 1px solid color-mix(in srgb, var(--vx-violet) 55%, transparent);
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease;
+}
+.hero .action.secondary:hover {
+  transform: translateY(-2px);
+  border-color: var(--vx-pink);
+}
+
+/* ───────────────────────────  Landing body  ────────────────────────── */
+
+/* Section headings get a gradient accent rule. */
+.landing h2 {
+  font-size: clamp(1.6rem, 3.4vw, 2.3rem);
+  letter-spacing: -0.02em;
+  margin-top: 3.5rem;
+}
+.landing h2::after {
+  content: '';
+  display: block;
+  width: 3.5rem;
+  height: 3px;
+  margin-top: 0.6rem;
+  border-radius: 2px;
+  background: var(--vx-grad);
+}
+
+/* Cards: gradient-border lift on hover, subtle glow. */
+.landing .card {
+  position: relative;
+  border: 1px solid var(--sl-color-gray-5);
+  background: color-mix(in srgb, var(--sl-color-black) 35%, transparent);
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.landing .card:hover {
+  transform: translateY(-5px);
+  border-color: color-mix(in srgb, var(--vx-violet) 60%, transparent);
+  box-shadow: 0 16px 44px color-mix(in srgb, var(--vx-violet) 22%, transparent);
+}
+.landing .card .icon {
+  background: color-mix(in srgb, var(--vx-violet) 16%, transparent);
+  color: var(--vx-pink);
+  border-radius: 10px;
+  padding: 0.35rem;
+}
+
+/* Headline stat table — sleek, mono numbers, vx column highlighted. */
+.stat-table {
+  margin: 1.5rem 0;
+}
+.stat-table table {
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid var(--sl-color-gray-5);
+}
+.stat-table th,
+.stat-table td {
+  padding: 0.7rem 1rem;
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--sl-color-gray-5) 60%, transparent);
+  text-align: right;
+}
+.stat-table th:first-child,
+.stat-table td:first-child {
+  text-align: left;
+  color: var(--sl-color-gray-2);
+  font-weight: 500;
+}
+.stat-table thead th {
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+}
+/* The vx column (2nd) glows. */
+.stat-table th:nth-child(2),
+.stat-table td:nth-child(2) {
+  background: color-mix(in srgb, var(--vx-violet) 12%, transparent);
+  color: var(--sl-color-white);
+  font-family:
+    ui-monospace, 'SFMono-Regular', 'Cascadia Code', 'Source Code Pro', monospace;
+}
+.stat-table thead th:nth-child(2) {
+  color: var(--vx-pink);
+  font-weight: 700;
+  font-family: inherit;
+}
+.stat-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ───────────────────────────  Diagrams  ────────────────────────────── */
+
 pre.mermaid {
   background: transparent;
   border: none;
@@ -30,7 +199,6 @@ pre.mermaid {
   text-align: center;
   overflow-x: auto;
 }
-
 pre.mermaid svg {
   max-width: 100%;
   height: auto;
@@ -40,4 +208,32 @@ pre.mermaid svg {
 .sl-markdown-content table {
   display: block;
   overflow-x: auto;
+}
+.stat-table table {
+  display: table;
+}
+
+/* ───────────────────────────  Motion safety  ───────────────────────── */
+
+@keyframes vx-pulse {
+  0%,
+  100% {
+    opacity: 0.78;
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-1.5%) scale(1.04);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero::before {
+    animation: none;
+  }
+  .landing .card,
+  .hero .action.primary,
+  .hero .action.secondary {
+    transition: none;
+  }
 }
