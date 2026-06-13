@@ -325,6 +325,19 @@ describe('defaultLogger focused — multiple requested tasks (atomic blocks)', (
     )
   })
 
+  it('multi-requested cache hit shows the `$ cmd` line — frame identical to a miss', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    log.runStart?.({ total: 2, requestedCount: 2 })
+    const a = mkNode('one#build', { requested: true })
+    log.taskStart?.(a)
+    log.taskComplete(a, mkOutcome(a, 'cache-hit', { restored: false }))
+    // The command line is present for the hit (forceCommand), so the
+    // asked-for task's frame reads the same whether it ran or cached.
+    expect(out.text()).toContain('$ noop')
+    expect(out.text()).toContain('┌─ one#build > up-to-date')
+  })
+
   it('multi-requested skipped task gets the skipped one-liner', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)

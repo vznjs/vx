@@ -135,6 +135,10 @@ export function formatTaskBlock(
   outcome: TaskOutcome,
   body: TaskBlockBody,
   colors: ColorSupport = NO_COLOR,
+  // Force the `$ cmd` line even for cache hits. Focused requested
+  // tasks set this so a requested task's frame is identical whether it
+  // ran or was cached — you asked for it, you see what it would run.
+  forceCommand = false,
 ): string {
   // Group tasks (no `exec`) do no work and have no body — they're
   // organizational nodes the user wrote so a `vx run ci` invocation
@@ -161,10 +165,11 @@ export function formatTaskBlock(
   const header = formatBlockHeader(outcome, colors)
   const lines: string[] = [`${corner('┌─')} ${idPainted} ${corner('>')} ${header}`]
 
-  // The command section shows what actually ran — executed tasks only
-  // (success and failed); cache hits replay stored output and skip it,
-  // skips never ran anything.
-  if (outcome.status === 'success' || outcome.status === 'failed') {
+  // The command section shows what actually ran — executed tasks
+  // (success and failed). Cache hits normally skip it (the stored
+  // output is the interesting part), but `forceCommand` keeps it for
+  // focused requested tasks so their frame is hit/miss-identical.
+  if (forceCommand || outcome.status === 'success' || outcome.status === 'failed') {
     // No section label for the command (owner cut it) — the dim `$ `
     // line under the header reads as the command on its own.
     lines.push('', corner(`$ ${node.config.exec?.command ?? ''}`), '')

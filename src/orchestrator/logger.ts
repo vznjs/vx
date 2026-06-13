@@ -449,7 +449,9 @@ export function defaultLogger(
               deferredFailures.push(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
               return
             }
-            emitBlock(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
+            // forceCommand: a requested task's frame shows `$ cmd`
+            // whether it ran or was cached — same frame every run.
+            emitBlock(formatTaskBlock(node, outcome, { stdout, stderr }, colors, true))
             return
           }
           // Dependency-pulled nodes: silent on success; failures get
