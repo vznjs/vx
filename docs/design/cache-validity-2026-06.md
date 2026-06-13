@@ -1,7 +1,19 @@
 # Validity-filtered caching (replaces output-fold early cutoff)
 
-Status: approved by owner 2026-06-13. Replaces the v21 "early cutoff"
-key fold. Bumps `CACHE_VERSION`/`SCHEMA_VERSION`.
+Status: **deferred** (2026-06-13). A complete, green foundation is
+built on branch `claude/cache-validity` (CACHE v22 / SCHEMA v21) and
+NOT merged. Deep review found it correct but **perf-neutral as built**:
+the execute path still derives `artifactId = H(inputKey + expects)`
+mid-run and cascades exactly like v21, and `probeByInputKeys` (the
+upfront batch — the entire point) is unwired. Merging would bump
+`CACHE_VERSION` (one forced rebuild for every user) for zero current
+benefit. The real win needs a phase-2 orchestrator rewrite (consume
+the batch probe → resolve validity upfront → parallel-restore), which
+is a sizeable, risky change to the hottest path for a cascade cost we
+have never measured. Revisit only when a warm-run profile shows the
+per-task cache cascade is actually material. The one genuinely
+valuable finding from the review — the skip-restore staleness bug —
+was extracted and fixed on `main` independently (see decision log).
 
 ## The problem with output-fold (v21)
 
