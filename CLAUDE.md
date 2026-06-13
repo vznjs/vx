@@ -165,6 +165,38 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: **Cold-run optimization — no per-project git re-spawn on
+  cache-miss save** + a real vs-Turbo-vs-Nx benchmark. Owner: "we should
+  be faster on cold … use bun --profile to find exactly what's causing
+  it and optimize." `bun --cpu-prof --cpu-prof-md` on a cold run showed
+  `spawnSync` at **22% of CPU**: `execute-task.ts` called
+  `gitFilesCache.delete(projectDir)` after every cache-MISS save with
+  outputs, so the same-project downstream task (e.g. `test` after
+  `build`) re-spawned `git ls-files` SYNCHRONOUSLY — one blocking spawn
+  per project. Fix: replace the `delete` with `markOutputsChanged(<rel
+output paths>)` — the SAME mechanism the cache-HIT restore path already
+  uses — so `snapshotFor` skips the re-spawn when a downstream task's
+  input globs can't match the (declared) output paths. Cold A/B (200-pkg
+  synthetic, compiled binary): **1534 ms → 1109 ms (-28%)**, spawnSync
+  gone from the profile; head-to-head (`bench/compare.ts`, 300-pkg): vx
+  cold now **ties Turbo** (was losing at 0.7×), wins both warm states,
+  and is **3.9-6.3× faster than Nx** everywhere. **No CACHE_VERSION
+  bump** — key derivation and artifact bytes are untouched; only WHEN
+  the in-run git snapshot is invalidated changed. Tradeoff (identical to
+  what the restore path already accepts, now extended to save): a task
+  that writes files OUTSIDE its `cache.outputs.files` which a same-
+  project downstream task reads is undeclared behavior and won't trigger
+  a re-enumeration — declare your outputs. All 753 tests pass
+  (restore-git-spawns.test.ts unaffected). New `bench/compare.ts`:
+  scaffolds ONE shared repo (default 1000 pkgs × 10 layers, build+test,
+  identical shell commands across runners), runs vx (compiled binary,
+  the real artifact) / Turbo / Nx across fresh / warm-no-restore /
+  warm-restore, writes committed `bench/RESULTS.md` + `bench/results.json`.
+  Fairness fixes baked in: generated workspace gitignores
+  node_modules/.vx/.turbo/.nx (else vx's git enumeration walks
+  node_modules, a handicap the JSON-config runners dodge), clean commit
+  before measuring (vx's zero-read clean-tree OID path).
+
 - **2026-06**: **Docs site (`apps/docs`) + GitHub Pages.** Owner ask:
   "a website with docs guide refs architecture and everything like
   Turborepo or NX … add a new pnpm workspace with a project like this

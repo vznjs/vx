@@ -1,20 +1,20 @@
 ---
 title: vx
-description: A content-addressed cache and task scheduler for JavaScript monorepos, built Bun-native from the ground up.
+description: The monorepo task runner for people who outgrew Turborepo and don't want Nx. Content-addressed caching, a daemonless design, and the fastest warm builds in its class.
 template: splash
 hero:
-  tagline: A content-addressed cache and task scheduler for JavaScript monorepos — built Bun-native, with the fastest warm paths in its class.
+  tagline: The monorepo task runner for people who outgrew Turborepo and don't want Nx. Content-addressed caching, shell-as-the-API simplicity, and the fastest warm builds in its class — no daemon, no plugins, no lock-in.
   image:
     file: ../../assets/logo.svg
   actions:
     - text: Get started
-      link: getting-started/
+      link: quickstart/
       icon: right-arrow
       variant: primary
-    - text: Why vx
-      link: differentiators/
+    - text: Coming from Turborepo?
+      link: migrate/from-turborepo/
       icon: open-book
-      variant: minimal
+      variant: secondary
     - text: View on GitHub
       link: https://github.com/vznjs/vx
       icon: external
@@ -23,57 +23,63 @@ hero:
 
 import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components'
 
-## Run less. Cache everything.
+## Monorepo tooling shouldn't make you choose
 
-vx discovers your workspace projects, builds a task graph from declared
-`dependsOn`, hashes inputs deterministically, and executes tasks in
-topological order with maximum parallelism. Cache hits replay stored
-outputs in milliseconds — with correctness guarantees the established
-runners don't offer.
+**Turborepo** is simple but hits a ceiling — static JSON config, additive
+restores that leak stale files, a cache that can't see your computed
+inputs. **Nx** is powerful but heavy — a daemon, a plugin graph, codegen,
+and a learning curve that never ends.
 
-<CardGrid stagger>
-  <Card title="Fastest warm paths" icon="rocket">
-    A 100-project workspace runs fully cached in **144&nbsp;ms**. A
-    1090-package, 100-layer graph (3270 tasks) replays in **0.62&nbsp;s**.
-    At 15k input files, deriving every key costs zero file reads — hashes
-    come straight from git's index.
+vx is the third option: **as simple as Turborepo, more capable than both,
+and the fastest on the runs you do all day** — warm, cached builds. Your
+config is real TypeScript. Your tasks are shell commands. There's no
+daemon and no plugin protocol to learn. And it caches with correctness
+guarantees the others don't offer.
+
+<CardGrid>
+  <Card title="Fastest warm builds in its class" icon="rocket">
+    On a 1000-package repo, warm cached runs land **several times faster
+    than Turborepo and Nx** — the steady-state dev loop and CI cache
+    hits. It's a real, committed head-to-head you can run yourself
+    (`bun bench/compare.ts`); the numbers live in
+    [Benchmarks](benchmarks/).
   </Card>
-  <Card title="Smarter caching" icon="approve-check">
-    Resolved-config hashing means imports and computed values participate
-    in cache identity. Declared outputs are wiped before exec **and**
-    restore, so the tree ends every run bit-identical to the cached
-    snapshot.
+  <Card title="Caching that's actually correct" icon="approve-check">
+    **Resolved-config hashing** — your imports, presets, and computed
+    values are part of the cache key (vx hashes the *evaluated* config,
+    not the JSON text). **Strict output ownership** — declared outputs
+    are wiped before every build *and* restore, so no stale file ever
+    survives. Neither exists in Turborepo or Nx.
   </Card>
-  <Card title="Deliberately simple" icon="setting">
-    No daemon. No plugins, no executor protocol — **shell is the API**.
-    Eight contract modules with a dependency matrix enforced in CI, and
-    ~600 tests behind every claim.
+  <Card title="No daemon, no plugins, no lock-in" icon="setting">
+    Shell is the API — any command works, no executor protocol. One
+    binary, no background process, no staleness window. Drop-in
+    compatible with the Turborepo remote-cache wire, so existing cache
+    servers just work.
   </Card>
-  <Card title="Safe to trust" icon="seti:lock">
-    HMAC artifact signing on the remote wire, corrupt-artifact validation
-    that degrades to a miss, and SIGINT/SIGTERM reaping so no dev server
-    is ever orphaned in CI.
+  <Card title="Built for the people leaving" icon="seti:typescript">
+    `vx migrate` reads your `turbo.json` or Nx project graph and writes
+    `vx.config.ts` files for you. The `dependsOn` syntax, `--filter` DSL,
+    and `--affected` selection are the ones you already know.
   </Card>
 </CardGrid>
 
-## Adopt it in two minutes
+## Sixty seconds to a cached build
 
 ```bash
 bun add -d @vzn/vx          # Bun ≥ 1.3; git required
 ```
 
 ```ts
-// vx.config.ts — next to any workspace package
+// vx.config.ts — next to any package's package.json
 import { defineProject } from '@vzn/vx'
 
 export default defineProject({
   tasks: {
     build: {
-      exec: { command: 'tsc -p .' },
-      cache: {
-        inputs: { files: ['src/**'] },
-        outputs: { files: ['dist/**'] },
-      },
+      exec: { command: 'tsc -b' },
+      dependsOn: ['^build'],
+      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
     },
     test: {
       dependsOn: ['build'],
@@ -85,20 +91,19 @@ export default defineProject({
 ```
 
 ```bash
-vx run build                # current package (+ its dependency graph)
-vx run build test --all     # every package, shared graph
+vx run build                # this package + its dependency graph
+vx run build test --all     # every package, one shared graph
 vx run test --affected      # only what changed vs the base branch
-vx watch dev                # re-run on file change
-vx run build --dry          # predicted hits/misses, no execution
+vx run build                # again → replays from cache in milliseconds
 ```
 
-## Find your way around
+## Start where you are
 
 <CardGrid>
-  <LinkCard title="Getting started" href="getting-started/" description="Install vx, author your first vx.config.ts, and run a cached task graph." />
-  <LinkCard title="Architecture" href="architecture/" description="The eight contract modules, the data flow, and the design principles." />
-  <LinkCard title="Caching" href="caching/" description="Cache key derivation, the invalidation table, early cutoff, and the artifact format." />
-  <LinkCard title="CLI reference" href="cli/" description="Every flag, the filter DSL, argument forwarding, exit codes, and env vars." />
-  <LinkCard title="Config schema" href="schema/" description="Every field of ProjectConfig, TaskConfig, and the cache contract." />
-  <LinkCard title="vs Turbo / Nx" href="comparison/" description="A sourced, side-by-side gap analysis against the established runners." />
+  <LinkCard title="Quickstart" href="quickstart/" description="Zero to a cached, parallel task graph in five minutes." />
+  <LinkCard title="Coming from Turborepo" href="migrate/from-turborepo/" description="What maps 1:1, what's better, and how to run vx migrate." />
+  <LinkCard title="Coming from Nx" href="migrate/from-nx/" description="Drop the daemon and the plugins — keep the speed and the affected graph." />
+  <LinkCard title="Configuring tasks" href="guides/tasks/" description="Write vx.config.ts: commands, dependencies, and cache contracts." />
+  <LinkCard title="Caching tasks" href="guides/caching/" description="Declare inputs and outputs so every run is correct and fast." />
+  <LinkCard title="Why vx is fast" href="concepts/why-vx-is-fast/" description="Resolved-config hashing, git-OID hashing, bitset scheduling — the real mechanics." />
 </CardGrid>

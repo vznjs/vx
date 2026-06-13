@@ -2,8 +2,21 @@
 dist/
 .astro/
 
-# Content generated from the repo's docs/ tree by scripts/import-docs.ts.
-# docs/ stays the single source of truth; the dev/build scripts regenerate
-# these before every run. Hand-authored pages are negated below.
-/src/content/docs/**/*.md
-!/src/content/docs/getting-started.md
+# Reference pages generated from the repo's docs/ tree by
+# scripts/import-docs.ts (docs/ stays the single source of truth; the
+# dev/build scripts regenerate these). Hand-authored guides, concepts,
+# and migration pages live alongside and ARE tracked.
+/src/content/docs/overview.md
+/src/content/docs/architecture.md
+/src/content/docs/benchmarks.md
+/src/content/docs/caching.md
+/src/content/docs/cli.md
+/src/content/docs/comparison.md
+/src/content/docs/differentiators.md
+/src/content/docs/execution.md
+/src/content/docs/flows.md
+/src/content/docs/optimizations.md
+/src/content/docs/patterns.md
+/src/content/docs/schema.md
+/src/content/docs/modules/
+/src/content/docs/design/

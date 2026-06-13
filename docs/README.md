@@ -20,9 +20,6 @@ lookups** — hashes come straight from git's index.
 
 **Smarter caching, not just faster caching.**
 
-- **Early cutoff.** Downstream keys fold the upstream's _output
-  content identity_. Rebuild a library to byte-identical `dist/` and
-  nothing downstream re-runs. Unique to vx.
 - **Resolved-config hashing.** Your `vx.config.ts` is evaluated, then
   hashed — imports, presets, and computed values all participate in
   cache identity. Static-file hashers miss them.
@@ -97,7 +94,7 @@ Run things:
 ```bash
 vx run build                # current package (+ its dependency graph)
 vx run build test --all     # every package, shared graph
-vx run build -F "@app/*"    # pnpm-style filters
+vx run build --filter "@app/*"  # pnpm-style filters
 vx run test --affected      # only what changed vs the base branch
 vx watch dev                # re-run on file change
 vx run build --dry          # predicted hits/misses, no execution
