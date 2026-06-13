@@ -41,6 +41,15 @@ re-running the work. One caveat worth stating: out of the box vx caps
 concurrency at CPU cores while Turbo uses 10, so on a many-core-light,
 I/O-heavy workload you may want to pass `--concurrency` explicitly.
 
+**`vx lock` + `--frozen`.** The benchmark also measures a `vx (frozen)`
+variant: `vx lock` freezes the resolved task graph into `vx-lock.json`,
+and `vx run --frozen` executes from it with **zero per-run config
+evaluation**. Skipping the re-parse of every `vx.config.ts` makes warm
+runs **~12–21% faster** (e.g. 339 ms → 298 ms at 300 packages), so frozen
+warm edges out both live vx and Turbo. It's the recommended CI path —
+deterministic and eval-free. Generate it in the benchmark automatically;
+in your repo, run `vx lock` and commit `vx-lock.json`.
+
 ## Workspace shape
 
 - **100 projects**, each with three tasks:

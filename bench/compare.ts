@@ -276,6 +276,27 @@ async function buildRunners(dir: string): Promise<Runner[]> {
     clear: () => rm(path.join(dir, '.vx'), { recursive: true, force: true }),
   })
 
+  // vx (frozen): freeze the resolved config graph into vx-lock.json once,
+  // then run from it (no per-run config evaluation — the CI fast path).
+  const locked = await sh([...vxRun, 'lock'], dir)
+  if (compiled.ok && locked.ok) {
+    runners.push({
+      name: 'vx (frozen)',
+      version: vxVer || 'workspace',
+      run: [
+        ...vxRun,
+        'run',
+        'build',
+        'test',
+        '--all',
+        '--concurrency',
+        String(CONCURRENCY),
+        '--frozen',
+      ],
+      clear: () => rm(path.join(dir, '.vx'), { recursive: true, force: true }),
+    })
+  }
+
   // turbo + nx — installed into the generated workspace.
   const bin = (t: string) => path.join(dir, 'node_modules', '.bin', t)
   const turboV = await sh([bin('turbo'), '--version'], dir)
