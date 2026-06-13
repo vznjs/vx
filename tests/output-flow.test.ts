@@ -243,6 +243,121 @@ describe('defaultLogger visibility matrix — focused', () => {
     expect(text).toContain('tsc exploded')
     expect(text).toContain('failed (exit 2)')
   })
+
+  it('single requested task streams live even when it is the only node', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    log.runStart?.({ total: 1, requestedCount: 1 })
+    const n = mkNode('one#test', { requested: true })
+    log.taskStart?.(n)
+    expect(out.text()).toBe('┌─ one#test > $ noop\n')
+    log.taskStdout(n, 'line 1\n')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    expect(out.text()).toBe('┌─ one#test > $ noop\nline 1\n└─ one#test ── (100ms) success\n\n')
+  })
+})
+
+describe('defaultLogger focused — multiple requested tasks (atomic blocks)', () => {
+  it('two concurrent requested tasks never interleave their frames', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    log.runStart?.({ total: 2, requestedCount: 2 })
+    const a = mkNode('one#build', { requested: true })
+    const b = mkNode('one#test', { requested: true })
+    // Both start; interleaved output streams in. NOTHING must reach
+    // the terminal yet (no live frame-open for requested nodes).
+    log.taskStart?.(a)
+    log.taskStart?.(b)
+    log.taskStdout(a, 'A-line-1\n')
+    log.taskStdout(b, 'B-line-1\n')
+    log.taskStdout(a, 'A-line-2\n')
+    log.taskStderr(b, 'B-warn\n')
+    expect(out.text()).toBe('')
+    // a completes → its entire block lands atomically.
+    log.taskComplete(a, mkOutcome(a, 'success'))
+    const afterA = out.text()
+    expect(afterA).toContain('┌─ one#build')
+    expect(afterA).toContain('A-line-1')
+    expect(afterA).toContain('A-line-2')
+    expect(afterA).toContain('└─ one#build')
+    // a's block is contiguous: nothing from b's id appears between
+    // a's open and close.
+    const aOpen = afterA.indexOf('┌─ one#build')
+    const aClose = afterA.indexOf('└─ one#build')
+    expect(afterA.slice(aOpen, aClose)).not.toContain('one#test')
+    expect(afterA).not.toContain('B-line-1')
+    // b completes → its block lands, fully after a's.
+    log.taskComplete(b, mkOutcome(b, 'success'))
+    const text = out.text()
+    expect(text.indexOf('┌─ one#test')).toBeGreaterThan(text.indexOf('└─ one#build'))
+    expect(text).toContain('B-line-1')
+    expect(text).toContain('B-warn')
+  })
+
+  it('two concurrent requested up-to-date hits render as clean atomic frames', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    log.runStart?.({ total: 2, requestedCount: 2 })
+    const a = mkNode('@bench/l3-1#build', { requested: true })
+    const b = mkNode('@bench/l3-1#test', { requested: true })
+    log.taskStart?.(a)
+    log.taskStart?.(b)
+    log.taskComplete(a, mkOutcome(a, 'cache-hit', { restored: false }))
+    log.taskComplete(b, mkOutcome(b, 'cache-hit', { restored: false }))
+    const text = out.text()
+    // No interleaved garbage: a's full frame precedes any of b's lines.
+    const aClose = text.indexOf('└─ @bench/l3-1#build')
+    const bOpen = text.indexOf('┌─ @bench/l3-1#test')
+    expect(aClose).toBeGreaterThanOrEqual(0)
+    expect(bOpen).toBeGreaterThan(aClose)
+    expect(text).toContain('up-to-date')
+  })
+
+  it('multi-requested success with no output still gets a full atomic frame', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    log.runStart?.({ total: 2, requestedCount: 2 })
+    const a = mkNode('one#build', { requested: true })
+    log.taskStart?.(a)
+    log.taskComplete(a, mkOutcome(a, 'success'))
+    expect(out.text()).toBe(
+      '┌─ one#build > success\n\n$ noop\n\n└─ one#build ── (100ms) success\n\n',
+    )
+  })
+
+  it('multi-requested skipped task gets the skipped one-liner', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    log.runStart?.({ total: 2, requestedCount: 2 })
+    const a = mkNode('one#build', { requested: true })
+    log.taskComplete(a, mkOutcome(a, 'skipped'))
+    expect(out.text()).toBe('● one#build ── skipped • upstream failed\n')
+  })
+
+  it('multi-requested failure defers its frame to runEnd with an inline ✗ line', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    log.runStart?.({ total: 2, requestedCount: 2 })
+    const a = mkNode('one#build', { requested: true })
+    log.taskStdout(a, 'partial\n')
+    log.taskComplete(a, mkOutcome(a, 'failed', { exitCode: 4 }))
+    expect(out.text()).toContain('● one#build ── failed (exit 4)')
+    log.runEnd?.()
+    const text = out.text()
+    expect(text).toContain('┌─ one#build')
+    expect(text).toContain('partial')
+    expect(text).toContain('failed (exit 4)')
+  })
+
+  it('dependency nodes stay silent on success while requested tasks buffer', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    log.runStart?.({ total: 3, requestedCount: 2 })
+    const dep = mkNode('lib#build')
+    log.taskStdout(dep, 'dep noise\n')
+    log.taskComplete(dep, mkOutcome(dep, 'success'))
+    expect(out.text()).toBe('')
+  })
 })
 
 describe('defaultLogger block separation', () => {

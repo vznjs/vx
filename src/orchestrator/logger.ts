@@ -35,7 +35,7 @@ export interface Logger {
    * present; the default logger uses them to drive its dynamic
    * status line. Custom loggers can ignore them.
    */
-  runStart?(info: { total: number; concurrency?: number }): void
+  runStart?(info: { total: number; concurrency?: number; requestedCount?: number }): void
   taskStart?(node: TaskNode): void
   /** Run finished (any outcome). Idempotent. */
   runEnd?(): void
@@ -157,6 +157,13 @@ export function defaultLogger(
 
   // Status-display state, driven by the optional lifecycle hooks.
   let total = 0
+  // Live open/close framing only works when ONE requested task owns
+  // the terminal between its open and close. With multiple requested
+  // tasks streaming concurrently, frames interleave into garbage —
+  // so we buffer each requested node and emit an atomic block at
+  // completion instead. Default-safe: undefined / 0 / 1 keeps the
+  // single-target live experience byte-identical.
+  let requestedCount = 1
   let done = 0
   let failed = 0
   let startedAtMs = Date.now()
@@ -265,9 +272,11 @@ export function defaultLogger(
   // Focused mode streams requested nodes' output live and raw —
   // `vx run test` should feel like running the command directly.
   // Cache-hit replay arrives through the same taskStdout path, so it
-  // streams identically.
+  // streams identically. Only with a SINGLE requested task, though:
+  // concurrent live frames interleave (see requestedCount above), so
+  // multiple requested tasks buffer and emit atomic blocks instead.
   const streamsLive = (node: TaskNode): boolean =>
-    view.mode === 'focused' && node.requested && !isGroupTask(node)
+    view.mode === 'focused' && node.requested && !isGroupTask(node) && requestedCount <= 1
 
   return {
     status(line) {
@@ -275,6 +284,7 @@ export function defaultLogger(
     },
     runStart(info) {
       total = info.total
+      requestedCount = info.requestedCount ?? requestedCount
       startedAtMs = Date.now()
       const cap = Math.max(1, Math.min(info.concurrency ?? 10, 10))
       slots = Array.from({ length: cap }, () => null)
@@ -417,15 +427,29 @@ export function defaultLogger(
               emitLine(formatTaskSkippedLine(node, colors))
               return
             }
-            // Output (exec or hit replay) streamed live between the
-            // frame-open (taskStart) and this close — full task info
-            // for every outcome, cached and up-to-date included
-            // (owner: "always full frame for a single task").
-            if (streamMidLine) {
-              writer.write('\n')
-              streamMidLine = false
+            if (streamsLive(node)) {
+              // Single requested task: output (exec or hit replay)
+              // streamed live between the frame-open (taskStart) and
+              // this close — full task info for every outcome, cached
+              // and up-to-date included (owner: "always full frame
+              // for a single task").
+              if (streamMidLine) {
+                writer.write('\n')
+                streamMidLine = false
+              }
+              emitFrameClose(formatFrameClose(node, outcome, colors))
+              return
             }
-            emitFrameClose(formatFrameClose(node, outcome, colors))
+            // Multiple requested tasks: no live frame was opened (it
+            // would interleave with siblings). Failures still defer
+            // to runEnd like everywhere else; everything else emits
+            // ONE atomic block from the buffered output.
+            if (outcome.status === 'failed') {
+              emitLine(formatFailureLine(node.id, outcome.exitCode, colors))
+              deferredFailures.push(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
+              return
+            }
+            emitBlock(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
             return
           }
           // Dependency-pulled nodes: silent on success; failures get

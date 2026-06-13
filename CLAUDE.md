@@ -165,6 +165,20 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: Focused-flow live framing gated on a single requested
+  task (owner bug report: two concurrent requested tasks interleaved
+  `┌─`/`└─` frames into garbage). Live open-at-taskStart /
+  close-at-taskComplete only works when ONE task owns the terminal
+  between its brackets. Fix: `run()` counts requested non-group nodes
+  and threads `requestedCount` into `log.runStart`; the focused logger
+  streams live only when `requestedCount <= 1` (0/undefined/1 are the
+  live path — default-safe, single-target experience byte-identical).
+  With >1 requested task, requested nodes buffer like deps and emit
+  ONE atomic block at completion (full frame for success / failure /
+  hit-with-replay, one-liner for up-to-date / skipped; failures still
+  defer to runEnd). Files: `orchestrator/{logger,run}.ts`; tests in
+  `tests/output-flow.test.ts`; `docs/cli.md` focused-flow note.
+
 - **2026-06**: Frame sections + pinned zones + force-floor (owner
   feedback: "hard to see what is a command what is STDOUT. maybe all
   STDOUT and COMMAND should have a group like we have ERROR and

@@ -187,6 +187,17 @@ broad mode silences per-task surface there. A focused `vx run test`
 is meant to feel like running the test command directly — same
 output, just faster.
 
+Live streaming applies only when there is exactly **one** requested
+task. Live open/close framing assumes a single task owns the terminal
+between its open (`┌─`) and close (`└─`) lines — with two requested
+tasks running concurrently their frames would interleave into garbage.
+So when more than one task is requested (`vx run build test`), each
+requested task instead **buffers** its output and renders as a single
+atomic block at completion (success/failure/cache-hit-with-replay get
+a full frame, up-to-date/skipped get a one-liner). The blocks are
+blank-line separated and never interleave. A single `vx run test`
+keeps the live-stream experience unchanged.
+
 On an interactive terminal (TTY stdout, not CI) a status region
 tracks the run live. Top to bottom:
 

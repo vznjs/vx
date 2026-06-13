@@ -118,9 +118,13 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // count the end-of-run summary reports under "total".
     const packagesInScope = new Set<string>()
     let taskCount = 0
+    let requestedCount = 0
     for (const node of nodes.values()) {
       packagesInScope.add(node.projectName)
-      if (!isGroupTask(node)) taskCount++
+      if (!isGroupTask(node)) {
+        taskCount++
+        if (node.requested) requestedCount++
+      }
     }
     for (const line of formatHeader(
       {
@@ -138,7 +142,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 
     // Lifecycle hooks drive the default logger's dynamic status line
     // (TTY-only); custom loggers may ignore them.
-    log.runStart?.({ total: taskCount, concurrency })
+    log.runStart?.({ total: taskCount, concurrency, requestedCount })
 
     const outcomes = await runGraph({
       nodes,
