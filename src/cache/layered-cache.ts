@@ -210,10 +210,19 @@ export class LayeredCache implements CacheLayer {
 
   private reportRemoteError(err: unknown): void {
     const e = err instanceof Error ? err : new Error(String(err))
-    if (this.options.onRemoteError) {
-      this.options.onRemoteError(e)
-    } else {
-      process.stderr.write(`[vx] remote cache: ${e.message}\n`)
+    // The remote cache is fully optional: NO remote failure — a 500, a
+    // network drop, a corrupt artifact, even a throwing onRemoteError
+    // callback — may ever fail the run. We report and degrade to a
+    // cache miss. The callback is guarded so a buggy reporter can't
+    // turn an optional-cache hiccup into a run failure.
+    try {
+      if (this.options.onRemoteError) {
+        this.options.onRemoteError(e)
+      } else {
+        process.stderr.write(`[vx] remote cache: ${e.message}\n`)
+      }
+    } catch {
+      // swallow — reporting must never escalate
     }
   }
 }

@@ -98,7 +98,7 @@ interface ArtifactServer {
 
 /** Minimal in-memory Turbo /v8/artifacts server. `getLatencyMs` lets a
  *  test hold GETs open so prefetch overlap is observable. */
-function startArtifactServer(opts?: { getLatencyMs?: number }): ArtifactServer {
+function startArtifactServer(opts?: { getLatencyMs?: number; failAll?: boolean }): ArtifactServer {
   const store = new Map<string, Uint8Array>()
   const tags = new Map<string, string>()
   const getCounts = new Map<string, number>()
@@ -107,6 +107,10 @@ function startArtifactServer(opts?: { getLatencyMs?: number }): ArtifactServer {
   const server = Bun.serve({
     port: 0,
     async fetch(req) {
+      // Simulate a fully-broken remote: every request 500s. The run
+      // must still succeed — remote cache is optional, errors degrade
+      // to a miss.
+      if (opts?.failAll) return new Response('boom', { status: 500 })
       const url = new URL(req.url)
       const m = url.pathname.match(/^\/v8\/artifacts\/([0-9a-f]+)$/)
       if (!m) return new Response('not found', { status: 404 })
@@ -212,6 +216,46 @@ describe('orchestrator e2e: remote cache', () => {
       })
       expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
       expect(second.ok).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a remote that 500s on every request never fails the run (optional cache degrades to miss)',
+    async () => {
+      // Point at a fully-broken remote: GET, PUT, and the prefetch
+      // probe all 500. Nothing may escalate to a run failure.
+      const broken = startArtifactServer({ failAll: true })
+      process.env.VX_REMOTE_CACHE_URL = broken.baseUrl
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: { command: 'echo built > out.txt' },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                },
+              },
+            }
+          `,
+        })
+        // Cold run: prefetch GET 500s → miss → executes → write-through
+        // PUT 500s → swallowed. Run succeeds.
+        const first = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+        expect(first.ok).toBe(true)
+        expect(first.outcomes[0]!.status).toBe('success')
+        // Warm run: local hit (remote never contributed). Still ok.
+        const second = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+        })
+        expect(second.ok).toBe(true)
+      } finally {
+        await broken.server.stop(true)
+      }
     },
     TIMEOUT,
   )

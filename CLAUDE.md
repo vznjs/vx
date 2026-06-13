@@ -220,6 +220,32 @@ bun.lock
     spy). Docs: docs/caching.md § Remote prefetch, docs/optimizations.md
     row 17b.
 
+- **2026-06**: Async remote-cache prefetch (REMOTE-ONLY) + never-fail
+  hardening. Owner asks: (1) "do the remote cache async calls — when
+  exec task probes it should just get the resolved or pending
+  promise"; (2) "remote cache should never fail anything — 500 or any
+  error → fall back to cache miss, continue; it's fully optional".
+  Design: when a run is backed by a LayeredCache, `startRemotePrefetch`
+  (src/orchestrator/remote-prefetch.ts) derives every STABLE cacheable
+  task's pure-input key upfront (reusing the run hashCache memo — no
+  double hashing; skips inputs-glob-includes-upstream-output tasks
+  whose key is preliminary) and fires `LayeredCache.prefetch(key)`
+  under a bounded pool, NOT awaited before scheduling (overlap) but
+  awaited before cache.close (no ingest-into-closed-DB). LayeredCache
+  gained an `inflight` map + shared `pullFromRemote`: prefetch and the
+  lazy get() read-through share ONE in-flight promise per hash → AT
+  MOST ONE remote GET per key; execute-task's `cache.get` transparently
+  awaits any in-flight prefetch (no execute-task change). Provenance
+  stays `cache-hit-remote` via a `remoteSourced` set. GATED ENTIRELY on
+  a remote layer — local-only runs derive nothing, prefetch nothing,
+  add NO upfront local probe/stat (this is what makes it safe vs the
+  reverted local classification that regressed warm runs +57%). Never-
+  fail: every remote path (get/put/ingest/prefetch/key-derivation/pool)
+  catches ALL errors and degrades to miss; reportRemoteError now also
+  guards a throwing onRemoteError callback. Pinned by a test where the
+  remote 500s on EVERY request and both cold+warm runs still succeed.
+  No CACHE_VERSION bump (only WHEN the remote GET fires changed).
+
 - **2026-06**: **Upfront cache classification — built then REVERTED.**
   An upfront pass (`classify.ts`) computed every task's key + probed
   the cache before execution so the live cache meter (miss /
