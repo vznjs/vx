@@ -13,6 +13,7 @@ import { detectColors } from './colors.js'
 import { formatHeader } from './framed-output.js'
 import { plan, type RunPlan } from './plan.js'
 import { prepareRun } from './prepare.js'
+import { startRemotePrefetch } from './remote-prefetch.js'
 import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
 import { formatRunSummary } from './summary.js'
 import type { RunOptions, RunSummary } from './options.js'
@@ -144,6 +145,29 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // (TTY-only); custom loggers may ignore them.
     log.runStart?.({ total: taskCount, concurrency, requestedCount })
 
+    // Remote-only: kick off background prefetches so remote-GET latency
+    // overlaps execution. Fire-and-forget — execution starts on the next
+    // line; LayeredCache ingests hits into local and de-dups so
+    // execute-task's cache.get awaits the in-flight promise (one remote
+    // GET per key). Gated entirely on a remote layer being configured;
+    // local-only runs never reach here, so their behavior + perf is
+    // unchanged (no upfront key pass, no local probing).
+    let prefetchDone: Promise<void> = Promise.resolve()
+    if (cache instanceof LayeredCache) {
+      prefetchDone = startRemotePrefetch({
+        nodes,
+        cache,
+        workspaceRoot,
+        workspaceFingerprint,
+        forwardArgs: options.forwardArgs,
+        nestedDirsByProject,
+        gitFilesCache,
+        hashCache,
+        concurrency,
+        noCache: options.noCache ?? false,
+      })
+    }
+
     const outcomes = await runGraph({
       nodes,
       concurrency,
@@ -256,6 +280,11 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       })
     }
     cache.recordRuns(toRecord)
+    // Drain any still-in-flight background prefetches before closing the
+    // cache handle — a prefetch ingesting into a closed SQLite DB would
+    // throw. Tasks that resolved as local hits never awaited their
+    // prefetch, so some may still be running here.
+    await prefetchDone
     cache.close()
 
     // Tear down SRT's network bridge + (on macOS) log monitor. No-op if
