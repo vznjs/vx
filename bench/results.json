@@ -1,29 +1,40 @@
 {
-  "packages": 60,
   "layers": 10,
+  "perLayer": 5,
+  "packages": 46,
+  "depsPerPkg": 30,
+  "concurrency": 10,
   "reps": 1,
-  "date": "2026-06-13T17:03:52.933Z",
+  "buildSleep": "1",
+  "date": "2026-06-13T20:15:56.492Z",
   "rows": [
     {
       "runner": "vx",
       "version": "vx 0.0.0",
-      "fresh": 10395.739024,
-      "warmNoRestore": 117.15738,
-      "warmRestore": 133.099797
+      "fresh": 10472.621993,
+      "warmNoRestore": 127.348157,
+      "warmRestore": 150.505175
+    },
+    {
+      "runner": "vx (frozen)",
+      "version": "vx 0.0.0",
+      "fresh": 10496.036714,
+      "warmNoRestore": 117.008483,
+      "warmRestore": 148.281775
     },
     {
       "runner": "turbo",
       "version": "2.9.18",
-      "fresh": 10369.240491,
-      "warmNoRestore": 138.234692,
-      "warmRestore": 165.821416
+      "fresh": 10658.648992,
+      "warmNoRestore": 244.717051,
+      "warmRestore": 282.779775
     },
     {
       "runner": "nx",
       "version": "22.7.5",
-      "fresh": 11412.564473,
-      "warmNoRestore": 750.994512,
-      "warmRestore": 727.838589
+      "fresh": 29280.459861,
+      "warmNoRestore": 879.126253,
+      "warmRestore": 872.083235
     }
   ]
 }
