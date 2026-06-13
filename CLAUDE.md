@@ -165,6 +165,61 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: **Async remote-cache prefetch (remote-only).** Owner
+  ask, quoted: "do the remote cache async calls. when exec task probes
+  for it it should just get the resolved or pending promise." For runs
+  backed by a `LayeredCache`, `run()` now derives every cacheable
+  task's pure-input key UP FRONT in topo order (reusing the run's
+  `hashCache` memo — execute-task's later `computeTaskHash` hits the
+  memo, no double hashing; derivation touches NO cache layer, keys
+  only) and fires the remote GETs concurrently in the background under
+  a bounded pool (the run's concurrency) BEFORE scheduling, so network
+  latency overlaps execution. `LayeredCache.prefetch(hash, ctx)`
+  ingests a hit into LOCAL; an `inflight: Map<hash, Promise<boolean>>`
+  shared by `prefetch` AND `get` guarantees **at most ONE remote GET
+  per key** (a settled-`false` miss blocks a second lazy probe). When
+  execute-task calls `cache.get`, `LayeredCache.get` awaits any
+  in-flight prefetch for that key before deciding — so it
+  "transparently gets the resolved-or-pending promise" with no
+  execute-task change beyond what already existed. Provenance: a
+  remote-sourced hash reports `source: 'remote'` even when a later
+  `get` finds it locally (a `remoteSourced` set), so the outcome stays
+  `cache-hit-remote`. The local `Cache` gets a no-op `prefetch`
+  returning `false` (CacheLayer contract). This is the
+  remote-prefetch follow-up the reverted upfront-classification entry
+  said was abandoned — REVIVED on a sound footing: it does NOT depend
+  on upfront LOCAL classification (the thing that double-probed and
+  regressed warm runs +57%). The hard scoping is what makes it safe —
+  gated ENTIRELY on `cache instanceof LayeredCache`; a local-only run
+  derives no upfront keys, prefetches nothing, adds NO upfront local
+  `get`/`isOutputsCurrent`/stat pass, and is byte-identical (behavior
+  - perf) to before. **Stable-key gate** (slim, boolean-only revival
+    of the rejected computeRecomputeFlags idea — no statuses, no
+    probes): a task whose `cache.inputs.files` could match an upstream's
+    declared output has a PRELIMINARY key until that upstream runs, so
+    it's skipped from prefetch (lazy read-through stays correct);
+    conservatively a task is unstable if a same-project upstream
+    declares `outputs.files`, or it reads `inputs.workspaceFiles` and an
+    upstream declares `outputs.workspaceFiles`, or it folds an unstable
+    upstream — when unsure, unstable. `--no-cache` fires no prefetch.
+    Lifecycle: `startRemotePrefetch` returns a handle `run()` awaits
+    before `cache.close()` (a still-in-flight prefetch ingesting into a
+    closed SQLite DB would throw) but does NOT await before scheduling
+    (that's the overlap). No CACHE_VERSION bump — key derivation and
+    artifact bytes are untouched; this only changes WHEN the remote GET
+    fires. Files: `src/orchestrator/remote-prefetch.ts` (new),
+    `src/orchestrator/run.ts` (wire + drain), `src/cache/cache.ts`
+    (`CacheLayer.prefetch` + Cache no-op), `src/cache/layered-cache.ts`
+    (`prefetch` + `inflight`/`remoteSourced` + shared `pullFromRemote`).
+    Tests: 5 LayeredCache unit tests (prefetch pull+provenance, miss,
+    at-most-once with injected latency — guard FAILS at 2 if de-dup
+    removed, prefetch-miss-no-second-GET, concurrent-prefetch idempotent)
+  - 4 orchestrator e2e (at-most-once + overlap on a real CLI run,
+    codegen→consumer stable-key correctness, --no-cache no GET,
+    local-only-never-prefetch via a `LayeredCache.prototype.prefetch`
+    spy). Docs: docs/caching.md § Remote prefetch, docs/optimizations.md
+    row 17b.
+
 - **2026-06**: **Upfront cache classification — built then REVERTED.**
   An upfront pass (`classify.ts`) computed every task's key + probed
   the cache before execution so the live cache meter (miss /

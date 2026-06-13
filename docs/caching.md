@@ -124,6 +124,51 @@ On a hit:
 The cached `exitCode` is preserved. A cached non-zero exit is
 impossible by construction — see [§ Cache write](#cache-write).
 
+### Remote prefetch (async, remote-only)
+
+When a run is backed by a remote cache (`VX_REMOTE_CACHE_URL` +
+`VX_REMOTE_CACHE_TOKEN`), the network latency of every remote GET
+would otherwise sit on the critical path of the task that needs it.
+So before execution starts, `run()` kicks off **background prefetches**:
+
+1. Every cacheable task's key is derived once, up front, in
+   topological order (reusing the run's `hashCache` memo, so
+   `execute-task`'s later `computeTaskHash` for the same task hits the
+   memo — no double hashing). This derivation touches **no cache layer**
+   — keys only.
+2. Each **stable-key** task's remote GET is fired concurrently under a
+   bounded pool (the run's concurrency). The prefetch ingests a hit
+   into the _local_ cache; misses/errors degrade to `false`.
+3. Execution starts immediately — the prefetches race alongside it, so
+   remote latency overlaps real work instead of blocking it.
+4. When `execute-task` later calls `cache.get(hash)`, the `LayeredCache`
+   **awaits the already-in-flight (resolved-or-pending) prefetch** for
+   that key rather than starting a fresh round-trip: **at most ONE
+   remote GET per key**, whether it was served by the prefetch, the
+   lazy read-through, or both.
+
+Hard invariants:
+
+- **Remote-only.** This entire path is gated on a `LayeredCache` being
+  configured. A local-only run never derives the upfront keys, never
+  prefetches, and is byte-for-byte identical (behavior and perf) to a
+  run without this feature. It never adds an upfront _local_ `get` /
+  `isOutputsCurrent` / stat pass.
+- **Stable keys only.** A task whose `cache.inputs.files` could match
+  an upstream's declared output has a _preliminary_ key until that
+  upstream runs (e.g. a consumer that globs `**/*` over a sibling's
+  `generated.txt`). Prefetching it would target the wrong artifact, so
+  it's skipped — its key resolves correctly via the lazy read-through
+  in `execute-task`. Instability propagates: a task that folds an
+  unstable upstream is itself unstable. When in doubt, skip.
+- **At most once.** The `LayeredCache` keeps an in-flight map keyed by
+  hash; `prefetch` and `get` share it, and a settled `false` (remote
+  miss) prevents a second lazy probe of the same dead key.
+- **Provenance preserved.** A hash pulled from remote — even when a
+  later `get` finds it as a now-local hit — still reports
+  `source: 'remote'`, so the outcome is `cache-hit-remote`.
+- **`--no-cache`** fires no prefetch.
+
 ## Cache write
 
 A miss runs the task. If the final exit code is `0` and caching is
