@@ -12,7 +12,7 @@ files — and `vx migrate` writes them for you.
 ## Let `vx migrate` do it
 
 ```bash
-bun add -d @vzn/vx
+curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
 vx migrate --dry        # preview the generated files + a report
 vx migrate              # write them (won't overwrite without --force)
 ```
@@ -61,9 +61,7 @@ the script of the same name; vx makes the command explicit in `exec`).
 
 ```ts
 // packages/app/vx.config.ts  (generated, then reviewed)
-import { defineProject } from '@vzn/vx'
-
-export default defineProject({
+export default {
   tasks: {
     build: {
       exec: { command: 'tsc -b', env: { passThrough: ['NODE_ENV'] } },
@@ -79,8 +77,11 @@ export default defineProject({
       cache: { inputs: { files: ['src/**', 'tests/**'] }, outputs: { files: [] } },
     },
   },
-})
+}
 ```
+
+`vx migrate` emits plain config objects (no `@vzn/vx` import), so they
+load even before the package is installed.
 
 Note `env` becomes **two** entries: `inputs.env` (so a change busts the
 cache) and `exec.env.passThrough` (so the command can see it). vx isolates
@@ -124,7 +125,9 @@ Your remote cache server works unchanged — vx speaks the same
   broken artifact. `vx migrate` fills these in from your `turbo.json`.
 - **One command per task.** No `commands` array — chain with `&&` or split
   into `dependsOn`-linked tasks (which also lets each step cache).
-- **Bun is required** (≥ 1.3); there's no Node runtime for vx itself.
+- **Nothing to install but git.** The `vx` binary is self-contained — no
+  Node, no separate Bun runtime. git is required (vx hashes inputs via
+  git's index).
 
 ## Next steps
 

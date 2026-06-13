@@ -44,7 +44,7 @@ including plugin-inferred targets) rather than guessing from `nx.json`:
 # generate the resolved graph Nx uses internally
 nx graph --file=.nx/workspace-data/project-graph.json
 
-bun add -d @vzn/vx
+curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
 vx migrate --dry        # preview generated vx.config.ts files + report
 vx migrate              # write them (won't overwrite without --force)
 ```

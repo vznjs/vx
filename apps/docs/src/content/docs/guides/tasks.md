@@ -10,24 +10,28 @@ For the exhaustive field-by-field reference, see
 
 ## The basic shape
 
-```ts
-import { defineProject } from '@vzn/vx'
+A config exports a plain object:
 
-export default defineProject({
+```ts
+export default {
   tasks: {
     build: {
       exec: { command: 'tsc -b' },
       cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
     },
   },
-})
+}
 ```
 
 - `tasks` is a map of task name → task config. Names are arbitrary
   strings, referenced by the CLI (`vx run build`) and by other tasks'
   `dependsOn`.
-- `defineProject` is an identity function — it exists only so TypeScript
-  gives you autocomplete and validates the object. No runtime cost.
+
+The examples below wrap configs in `defineProject({ … })`. That helper
+(and `defineWorkspace`) ships with the **`@vzn/vx` npm package, coming
+soon**; it's an identity function that adds TypeScript autocomplete and
+schema validation with zero runtime effect, so the plain object above is
+equivalent and works with today's binary install.
 
 ## A task is one shell command
 

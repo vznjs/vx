@@ -103,14 +103,12 @@ guarantees the others don't offer.
 ## Sixty seconds to a cached build
 
 ```bash
-bun add -d @vzn/vx          # Bun ≥ 1.3; git required
+curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh   # self-contained binary → ~/.local/bin; git required
 ```
 
 ```ts
 // vx.config.ts — next to any package's package.json
-import { defineProject } from '@vzn/vx'
-
-export default defineProject({
+export default {
   tasks: {
     build: {
       exec: { command: 'tsc -b' },
@@ -123,7 +121,7 @@ export default defineProject({
       cache: { inputs: { files: ['src/**', 'tests/**'] }, outputs: { files: [] } },
     },
   },
-})
+}
 ```
 
 ```bash
