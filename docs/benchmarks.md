@@ -22,6 +22,12 @@ Read it: vx runs the cold build in **under 4 minutes** where both others
 take **over 8** (2.2× faster), and a fully-cached run in **0.55s** — 2.9×
 faster than Turbo and **17.8× faster than Nx**.
 
+Add `vx lock` + `vx run --frozen` (the CI path — execute the frozen graph
+with **zero per-run config evaluation**) and the warm runs drop further
+still: **0.49s** with nothing to rebuild and **0.80s** restoring outputs,
+another ~10–12% off — at which point a fully-cached check of 3,270 tasks
+is faster than most single test files.
+
 The last row is the foundation. For the _same 3,270 tasks_, vx spent
 **~23 seconds of CPU**; Turborepo spent **~1,250**; Nx spent **~2,037**.
 That's roughly **50× less work per task** — and it's why the gap _widens_
