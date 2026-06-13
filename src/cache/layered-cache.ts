@@ -101,8 +101,8 @@ export class LayeredCache implements CacheLayer {
     await this.local.restoreOutputs(hash, projectDir, workspaceRoot)
   }
 
-  async save(args: SaveArgs): Promise<string | null> {
-    const outputsHash = await this.local.save(args)
+  async save(args: SaveArgs): Promise<void> {
+    await this.local.save(args)
     // Upload the bytes the local layer just wrote — same format on
     // both sides, no repacking. Errors are logged, not propagated:
     // the task already succeeded; we don't want to fail it on cache-
@@ -113,7 +113,6 @@ export class LayeredCache implements CacheLayer {
     } catch (err) {
       this.reportRemoteError(err)
     }
-    return outputsHash
   }
 
   async ingest(hash: string, compressed: Uint8Array, meta: IngestMeta): Promise<void> {

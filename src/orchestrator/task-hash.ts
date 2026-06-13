@@ -147,7 +147,7 @@ function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string {
  */
 export function computeGroupHash(upstream: TaskOutcome[]): string {
   const ids = upstream
-    .map((u) => `${u.node.id}:${u.outputsHash ?? u.hash ?? ''}`)
+    .map((u) => `${u.node.id}:${u.hash ?? ''}`)
     .sort()
     .join('|')
   return xxh3hex(`group|${ids}`)

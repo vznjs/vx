@@ -165,6 +165,35 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: CACHE_VERSION → v22 + SCHEMA v21: **reverted v21
+  early cutoff → pure-input transitive hashing** (owner: "simplify,
+  rely only on task input hashes, no output hashes"). Downstream keys
+  fold the upstream's INPUT key (its own task hash) again, not its
+  output content — a pure function of the filesystem, like Turbo/Nx.
+  `upstream.ts` folds `u.hash` (was `u.outputsHash ?? u.hash`); the
+  aggregate `outputsHash` machinery is gone (computation in
+  writeArtifactAndIndex, `CacheEntry.outputsHash`,
+  `TaskOutcome.outputsHash`, `entries.outputs_hash` column,
+  `CacheLayer.save` return value, plan threading, group rollup → all
+  removed). **Early cutoff dropped**: an upstream that re-runs but
+  emits byte-identical output now still re-runs dependents — rare in
+  practice, and folding output into keys was what blocked any
+  upfront/batched cache probe. **Multi-state preserved**: branch
+  ping-pong A→B→A still re-hits, because the upstream's input differs
+  per state and folds transitively into every dependent key (pinned
+  by a new orchestrator e2e). Two v21 cutoff tests inverted to the
+  no-cutoff contract; the `outputsHash`-namespace test removed. This
+  followed a deep multi-agent review that found the elaborate v22
+  "validity-filter" branch (separate input_key + stored `expects`
+  columns) correct but PERF-NEUTRAL as built (it kept the cascade and
+  left `probeByInputKeys` unwired) — shelved as
+  docs/design/cache-validity-2026-06.md; pure-input is the simpler win
+  that actually enables future upfront batching. KNOWN-OPEN: the
+  skip-restore "tree already current" check (`isOutputsCurrent`) still
+  compares size+mode+second-mtime and can leave stale bytes on a hit
+  for same-size/same-second/different-content outputs — pre-existing,
+  to be fixed separately with a per-output content hash.
+
 - **2026-06**: Focused-flow live framing gated on a single requested
   task (owner bug report: two concurrent requested tasks interleaved
   `┌─`/`└─` frames into garbage). Live open-at-taskStart /

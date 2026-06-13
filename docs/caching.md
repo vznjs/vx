@@ -370,17 +370,23 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
 
 ### History
 
-- **v21 → early cutoff** (+ SCHEMA v19): downstream keys fold the
-  upstream task's **output content identity** (`outputsHash`: sorted
-  fold of every artifact `outputs/<rel>` — and, since workspaceFiles
-  landed, `workspace-outputs/<rel>` — entry's name + bytes; the
-  namespace prefix participates, so `outputs/x` and
-  `workspace-outputs/x` fold differently; mtimes excluded) instead of
-  its task hash, whenever the upstream declares outputs. An upstream that re-executes (comment edit, env change)
-  but reproduces byte-identical outputs no longer cascades misses.
-  No declared outputs → falls back to the task hash (old behavior);
-  group tasks roll up members' cutoff identities. `entries` gains an
-  `outputs_hash` column; `CacheLayer.save` returns it.
+- **v22 → pure-input transitive** (+ SCHEMA v21): reverted the v21
+  output-fold. Downstream keys fold the upstream's **input key** (its
+  own task hash) — a pure function of the filesystem, like Turbo/Nx.
+  No output content participates in any cache key. **Early cutoff is
+  gone**: an upstream that re-executes (comment edit, env change) but
+  reproduces byte-identical output now still re-runs its dependents.
+  This was a deliberate simplification — cutoff is rare in practice
+  and not worth the cascade complexity (it forced output content into
+  keys, which blocks any upfront/batched probe). **Multi-state is
+  preserved**: branch ping-pong A→B→A still re-hits, because the
+  upstream's _input_ differs per state and folds transitively into
+  every dependent key. SCHEMA v21 drops the now-unused `outputs_hash`
+  column; `CacheLayer.save` returns `void`.
+
+- **v21 → early cutoff** (+ SCHEMA v19, **reverted in v22**):
+  downstream keys folded the upstream's output content identity
+  (`outputsHash`) instead of its task hash. Removed — see v22.
 
 - **v7 → v8** (PR #2): folded `forwardArgs` into the key for CLI
   argument-forwarding alignment.

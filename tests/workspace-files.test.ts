@@ -350,28 +350,6 @@ describe('workspace-outputs artifact namespace', () => {
     expect(existsSync(path.join(p2, 'workspace-outputs'))).toBe(false)
   })
 
-  it('outputsHash differs across namespaces for identical rel + bytes', async () => {
-    await write(path.join(projectDir, 'x'), 'same-bytes')
-    await write(path.join(wsRoot, 'x'), 'same-bytes')
-    const projHash = await cache.save({
-      hash: 'ns-proj',
-      entry,
-      projectDir,
-      outputFiles: [path.join(projectDir, 'x')],
-    })
-    const wsHash = await cache.save({
-      hash: 'ns-ws',
-      entry,
-      projectDir,
-      outputFiles: [],
-      workspaceOutputFiles: [path.join(wsRoot, 'x')],
-      workspaceRoot: wsRoot,
-    })
-    expect(projHash).not.toBeNull()
-    expect(wsHash).not.toBeNull()
-    expect(projHash).not.toBe(wsHash)
-  })
-
   it('tasks without the field produce the pre-workspaceFiles artifact layout', async () => {
     await write(path.join(projectDir, 'out.txt'), 'v')
     await cache.save({

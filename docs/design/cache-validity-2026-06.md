@@ -1,5 +1,13 @@
 # Validity-filtered caching (replaces output-fold early cutoff)
 
+Status: **superseded** (2026-06-13) by the pure-input transitive
+simplification (CACHE v22 — it removed the v21 output-fold this design
+was built to replace, the simpler way). The validity-filter branch is
+abandoned. NOTE: the skip-restore staleness bug surfaced in the review
+of this design is **still open on main** — it was NOT extracted/fixed
+here (an earlier draft of this doc wrongly said it was); it remains a
+separate follow-up. Original deferral note below.
+
 Status: **deferred** (2026-06-13). A complete, green foundation is
 built on branch `claude/cache-validity` (CACHE v22 / SCHEMA v21) and
 NOT merged. Deep review found it correct but **perf-neutral as built**:

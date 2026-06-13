@@ -62,7 +62,7 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
     execute: async (node, upstream) => {
       if (isGroupTask(node)) {
         cacheStatusById.set(node.id, 'group')
-        return planOutcome(node, computeGroupHash(upstream), computeGroupHash(upstream))
+        return planOutcome(node, computeGroupHash(upstream))
       }
 
       const hash = await computeTaskHash({
@@ -88,9 +88,7 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
         })
         status = hit ? (hit.source === 'remote' ? 'hit-remote' : 'hit-local') : 'miss'
         cacheStatusById.set(node.id, status)
-        // Thread the entry's cutoff identity so downstream predicted
-        // keys match what a real run derives.
-        return planOutcome(node, hash, hit?.outputsHash)
+        return planOutcome(node, hash)
       }
       cacheStatusById.set(node.id, status)
       return planOutcome(node, hash)
@@ -112,13 +110,12 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
   return { tasks }
 }
 
-function planOutcome(node: TaskNode, hash: string, outputsHash?: string): TaskOutcome {
+function planOutcome(node: TaskNode, hash: string): TaskOutcome {
   return {
     node,
     status: 'success',
     exitCode: 0,
     durationMs: 0,
     hash,
-    ...(outputsHash !== undefined ? { outputsHash } : {}),
   }
 }

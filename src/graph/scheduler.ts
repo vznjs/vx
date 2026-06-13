@@ -7,14 +7,9 @@ export interface TaskOutcome {
   status: TaskStatus
   exitCode: number
   durationMs: number
-  /** Cache key hash, if one was computed. Folded into dependents' keys. */
+  /** Cache key hash, if one was computed. Folded into dependents' keys
+   *  (pure-input transitive — the upstream's input key, not its output). */
   hash?: string
-  /**
-   * Early-cutoff identity for downstream keys: content hash of this
-   * task's declared outputs when it has any. Absent (no outputs,
-   * persistent, group rollup) → downstream folds `hash` instead.
-   */
-  outputsHash?: string
   /** v11 analytics: CPU time + peak RSS for this task's child process. */
   cpuMs?: number
   peakRssBytes?: number

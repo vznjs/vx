@@ -230,7 +230,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'upstream output change invalidates dependent; identical outputs cut off early',
+    'any upstream change invalidates the dependent (pure-input transitive; no early cutoff)',
     async () => {
       await addProject(fixture.root, 'lib', {
         files: { 'src/x.txt': 'v1' },
@@ -269,23 +269,73 @@ describe('orchestrator e2e', () => {
       expect(r2.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
 
       // Touch a file in lib that does NOT affect lib's output bytes.
-      // lib's key changes (it re-runs), but dist.txt is byte-identical
-      // — early cutoff (v21): app folds lib's OUTPUT identity, not its
-      // task hash, so app stays a cache hit.
+      // lib's key changes (it re-runs) and dist.txt is byte-identical —
+      // but with pure-input transitive hashing (early cutoff removed),
+      // app folds lib's INPUT key, not its output identity, so app
+      // RE-RUNS. (v21 would have kept app a cache hit here; that cutoff
+      // was deliberately dropped — rare, not worth the cascade.)
       await new Promise((r) => setTimeout(r, 5))
       await writeFile(path.join(fixture.root, 'packages/lib/NOTES.md'), 'something')
 
       const r3 = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(r3.outcomes.find((o) => o.node.id === 'lib#build')?.status).toBe('success')
-      expect(r3.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
-      expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).toBe(appOut1)
+      expect(r3.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
 
-      // Change a file that DOES flow into lib's output: dist.txt's
-      // bytes change, so the cutoff identity changes and app re-runs.
+      // A file that DOES flow into lib's output also invalidates app.
       await writeFile(path.join(fixture.root, 'packages/lib/src/x.txt'), 'v2')
       const r4 = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(r4.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
       expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).not.toBe(appOut1)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'multi-state: upstream input A -> B -> back to A re-hits the original entries (branch ping-pong)',
+    async () => {
+      await addProject(fixture.root, 'lib', {
+        files: { 'src/x.txt': 'A' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: "cat src/x.txt > dist.txt" },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['dist.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+      await addProject(fixture.root, 'app', {
+        deps: { lib: 'workspace:*' },
+        files: { 'src/y.txt': 'app' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: ${JSON.stringify(STAMP_CMD)} },
+                dependsOn: ['^build'],
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+      const x = path.join(fixture.root, 'packages/lib/src/x.txt')
+
+      // State A: build everything.
+      await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+      // State B: change lib's input → lib + app re-run (distinct entries).
+      await writeFile(x, 'B')
+      const rB = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+      expect(rB.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
+      // Back to A: the A-state entries still exist (keyed by lib's
+      // input key, which folds transitively into app's key), so both
+      // re-hit — pure-input transitive preserves multi-state caching.
+      await writeFile(x, 'A')
+      const rA = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+      expect(rA.outcomes.find((o) => o.node.id === 'lib#build')?.status).toBe('cache-hit')
+      expect(rA.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
     },
     TIMEOUT,
   )
@@ -1166,7 +1216,7 @@ describe('orchestrator e2e', () => {
   )
 
   it(
-    'upstream env change without output change cuts off early (env edition)',
+    'upstream env change invalidates the dependent (pure-input transitive; no cutoff)',
     async () => {
       await addProject(fixture.root, 'lib', {
         files: { 'src/x.txt': 'v1' },
@@ -1209,15 +1259,15 @@ describe('orchestrator e2e', () => {
       expect(r2.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
       expect(r2.outcomes.find((o) => o.node.id === 'lib#build')?.status).toBe('cache-hit')
 
-      // Change API_URL: lib's env input changes -> lib reruns. Its
-      // output bytes are unchanged (the command ignores the env), so
-      // early cutoff (v21) keeps app a cache hit — env changes only
-      // propagate when they alter upstream OUTPUTS.
+      // Change API_URL: lib's env input changes -> lib's key changes ->
+      // lib reruns. Even though its output bytes are unchanged, app
+      // folds lib's INPUT key (no early cutoff), so app RE-RUNS too.
       process.env.API_URL = 'https://b.example'
       const r3 = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(r3.outcomes.find((o) => o.node.id === 'lib#build')?.status).toBe('success')
-      expect(r3.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
-      expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).toBe(appOut1)
+      expect(r3.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
+      // app re-stamped a fresh out.txt.
+      expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).not.toBe(appOut1)
 
       delete process.env.API_URL
     },

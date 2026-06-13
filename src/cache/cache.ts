@@ -51,8 +51,14 @@ import { extractOutputs, parseTarHeaders, readTarText, type TarHeader } from './
 // file's hash bytes change → bump. SCHEMA_VERSION moves with it:
 // pre-v20 `file_hashes.content_hash` rows hold xxh3 digests that
 // must not leak into the OID domain via the mtime+size memo.
-const CACHE_VERSION = 'vx-cache-v21'
-const SCHEMA_VERSION = 'v20'
+// v22: reverted the v21 output-fold "early cutoff". Downstream keys
+// fold the upstream's INPUT key (its task hash) again — pure-input
+// transitive hashing (Turbo/Nx model). No output content participates
+// in any cache key. SCHEMA v21 drops the now-unused outputs_hash
+// column. Early cutoff removed (an upstream that re-emits identical
+// output still re-runs dependents) — rare, not worth the cascade.
+const CACHE_VERSION = 'vx-cache-v22'
+const SCHEMA_VERSION = 'v21'
 
 /**
  * Artifact + `output_files` namespace prefix for workspace-root-
@@ -126,15 +132,6 @@ export interface CacheEntry {
   outputFiles: string[]
   /** Captured stdout, always present (may be empty). stderr is not cached. */
   stdout: string
-  /**
-   * Content identity of the declared outputs: fold of every
-   * `outputs/<rel>` entry's (path, bytes), or undefined when the
-   * task declares no outputs. Downstream cache keys fold THIS
-   * instead of the task hash when present (early cutoff): an
-   * upstream that re-executes but reproduces identical outputs no
-   * longer cascades misses.
-   */
-  outputsHash?: string
   storedAt: string
   /**
    * Where this hit was resolved from. `'local'` for a SQLite-backed
@@ -304,7 +301,7 @@ export interface CacheLayer {
      */
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
-  }): Promise<string | null>
+  }): Promise<void>
   /**
    * Adopt an artifact produced elsewhere — the remote-hit path. Writes
    * the compressed bytes to `<cacheDir>/<hash>.tar.zst`, parses the
@@ -359,7 +356,6 @@ interface EntryRow {
   exit_code: number
   duration_ms: number
   size_bytes: number
-  outputs_hash: string | null
   stdout: string
   created_at: number
   accessed_at: number
@@ -442,7 +438,6 @@ export class Cache implements CacheLayer {
         exit_code    INTEGER NOT NULL,
         duration_ms  INTEGER NOT NULL,
         size_bytes   INTEGER NOT NULL,
-        outputs_hash TEXT,
         stdout       TEXT NOT NULL DEFAULT '',
         created_at   INTEGER NOT NULL,
         accessed_at  INTEGER NOT NULL
@@ -506,10 +501,9 @@ export class Cache implements CacheLayer {
     `)
 
     this.insertEntry = this.db.prepare(`
-      INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, outputs_hash, stdout, created_at, accessed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(hash) DO UPDATE SET
-        outputs_hash = excluded.outputs_hash,
         stdout       = excluded.stdout,
         project      = excluded.project,
         task         = excluded.task,
@@ -712,7 +706,6 @@ export class Cache implements CacheLayer {
       durationMs: row.duration_ms,
       outputFiles: fileRows.map((r) => r.path),
       stdout: row.stdout,
-      ...(row.outputs_hash ? { outputsHash: row.outputs_hash } : {}),
       storedAt: new Date(row.created_at).toISOString(),
       source: 'local',
     }
@@ -815,7 +808,7 @@ export class Cache implements CacheLayer {
     outputFiles: string[]
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
-  }): Promise<string | null> {
+  }): Promise<void> {
     // Layout (v17, extended additively for workspaceFiles): one
     // `<hash>.tar.zst` per entry. Tar carries ONLY the things you'd
     // want to re-materialize on a cache hit:
@@ -829,7 +822,7 @@ export class Cache implements CacheLayer {
     // SQLite, not the artifact. Remote-hit ingestion takes metadata
     // through `ingest()` arguments — the artifact stays clean bytes.
     const compressed = await this.packArtifact(args)
-    return this.writeArtifactAndIndex(args.hash, compressed, {
+    await this.writeArtifactAndIndex(args.hash, compressed, {
       taskId: args.entry.taskId,
       command: args.entry.command,
       durationMs: args.entry.durationMs,
@@ -837,9 +830,7 @@ export class Cache implements CacheLayer {
   }
 
   async ingest(hash: string, compressed: Uint8Array, meta: IngestMeta): Promise<void> {
-    // Return value (outputs hash) intentionally dropped: remote-hit
-    // ingestion happens inside get(), which re-reads the entry row.
-    void (await this.writeArtifactAndIndex(hash, compressed, meta))
+    await this.writeArtifactAndIndex(hash, compressed, meta)
   }
 
   /**
@@ -931,7 +922,7 @@ export class Cache implements CacheLayer {
     hash: string,
     compressed: Uint8Array,
     meta: IngestMeta,
-  ): Promise<string | null> {
+  ): Promise<void> {
     // Validate BEFORE anything touches the final path. `ingest()` feeds
     // us network bytes; a truncated/garbage body that went live first
     // would leave a corrupt `<hash>.tar.zst` behind (with no SQL row,
@@ -971,16 +962,10 @@ export class Cache implements CacheLayer {
 
     const totalBytes = compressed.byteLength
     const outputFileRows: Array<[string, number, number, number]> = []
-    // Early-cutoff identity: fold (name, bytes) of every output entry
-    // — BOTH namespaces — sorted by tar name so the fold is
-    // independent of member order. The namespace prefix participates
-    // via the name (`outputs/x` vs `workspace-outputs/x` fold
-    // differently). Header mtimes deliberately do NOT participate — a
-    // rebuild that reproduces identical bytes must produce the same
-    // identity. Row paths: project entries store the bare rel
-    // (`outputs/` stripped); workspace entries keep the full
+    // Per-output-file fingerprint rows feed the skip-restore check.
+    // Row paths: project entries store the bare rel (`outputs/`
+    // stripped); workspace entries keep the full
     // `workspace-outputs/<rel>` name as the namespace discriminator.
-    const outputEntries: TarHeader[] = []
     for (const h of headers) {
       if (h.isDir) continue
       let rowPath: string | null = null
@@ -992,19 +977,8 @@ export class Cache implements CacheLayer {
       }
       if (rowPath === null) continue
       outputFileRows.push([rowPath, h.size, h.mode & 0o777, Math.floor(h.mtimeMs)])
-      outputEntries.push(h)
     }
     const stdoutText = readTarText(tarBytes, headers, 'stdout')
-    let outputsHash: string | null = null
-    if (outputEntries.length > 0) {
-      outputEntries.sort((a, b) => (a.name < b.name ? -1 : 1))
-      let oh = xxh3('outputs-content:v1')
-      for (const h of outputEntries) {
-        oh = xxh3(`${h.name}\0`, oh)
-        oh = xxh3(tarBytes.subarray(h.dataOffset, h.dataOffset + h.size), oh)
-      }
-      outputsHash = oh.toString(16).padStart(16, '0')
-    }
 
     const [project, task] = splitTaskId(meta.taskId)
     const now = Date.now()
@@ -1023,7 +997,6 @@ export class Cache implements CacheLayer {
         0, // exitCode: we never cache failures
         meta.durationMs,
         totalBytes,
-        outputsHash,
         stdoutText,
         now,
         now,
@@ -1036,7 +1009,6 @@ export class Cache implements CacheLayer {
       }
     })
     tx()
-    return outputsHash
   }
 
   /** Apply the deferred accessed_at bumps in one statement. */

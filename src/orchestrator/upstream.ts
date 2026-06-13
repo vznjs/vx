@@ -8,7 +8,13 @@ import { UserError } from '../util/index.js'
 
 /**
  * Pick which upstream task hashes participate in the current task's
- * cache key, filtered by `cache.inputs.tasks`.
+ * cache key, filtered by `cache.inputs.tasks`. The folded value is the
+ * upstream's own cache key (its input-based task hash) — pure-input
+ * transitive hashing, like Turbo/Nx. An upstream change propagates
+ * through its key into every dependent's key. There is deliberately NO
+ * output-content folding: an upstream that re-runs but emits identical
+ * output still re-runs its dependents (early cutoff was removed —
+ * rare in practice, not worth the cascade complexity).
  *
  * Patterns (Turbo/Nx micro-syntax + filter extensions):
  *   '*'         all same-project upstream
@@ -33,7 +39,7 @@ export function filterUpstreamHashes(
 ): string[] {
   if (filter === undefined) {
     const out: string[] = []
-    for (const u of upstream) if (u.hash) out.push(u.outputsHash ?? u.hash)
+    for (const u of upstream) if (u.hash) out.push(u.hash)
     return out
   }
 
@@ -54,7 +60,7 @@ export function filterUpstreamHashes(
       if (!u.hash) continue
       const isSelf = u.node.projectName === selfProjectName
       if (!matches(spec, u, isSelf)) continue
-      const id = u.outputsHash ?? u.hash
+      const id = u.hash
       if (spec.negated) selected.delete(id)
       else selected.add(id)
     }

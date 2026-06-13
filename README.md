@@ -50,10 +50,6 @@ vx run build --dry        # show the plan, don't execute
 Every task runner caches. vx caches _correctly_ — and stops work
 others would redo:
 
-- **Early cutoff.** Downstream keys are derived from the upstream's
-  _output bytes_, not its inputs. Edit a comment in a library,
-  rebuild it to identical `dist/` — and nothing downstream runs.
-  No other runner does this.
 - **Config is code, and the cache knows it.** `vx.config.ts` is
   evaluated before hashing, so imports, presets, and computed values
   all participate in cache identity. Change a shared preset, and
@@ -124,17 +120,16 @@ traces · `vx cache prune` with TTL and size caps.
 
 ## How it compares
 
-|                           | vx                                           | Turborepo                      | Nx               |
-| ------------------------- | -------------------------------------------- | ------------------------------ | ---------------- |
-| Fully cached, 100 pkgs¹   | **144 ms**                                   | 279 ms                         | 583+ ms          |
-| Early cutoff              | **Yes** — identical outputs stop the cascade | No                             | No               |
-| Config                    | TypeScript, evaluated into the cache key     | JSON (static)                  | JSON (static)    |
-| Output ownership          | **Strict** — wiped before exec AND restore   | Additive (stale files survive) | Additive         |
-| Clean-tree hashing        | **Zero reads** (git index OIDs)              | git OIDs                       | re-hash / daemon |
-| Daemon required for speed | **No**                                       | Optional                       | Yes              |
-| Artifact signing          | **Hard-fail** on unsigned                    | Soft                           | No               |
-| Per-task sandbox          | **Yes** — kernel-level, opt-in               | No                             | No               |
-| Install                   | **Single binary** — 1 curl line              | npm + Node                     | npm + Node       |
+|                           | vx                                         | Turborepo                      | Nx               |
+| ------------------------- | ------------------------------------------ | ------------------------------ | ---------------- |
+| Fully cached, 100 pkgs¹   | **144 ms**                                 | 279 ms                         | 583+ ms          |
+| Config                    | TypeScript, evaluated into the cache key   | JSON (static)                  | JSON (static)    |
+| Output ownership          | **Strict** — wiped before exec AND restore | Additive (stale files survive) | Additive         |
+| Clean-tree hashing        | **Zero reads** (git index OIDs)            | git OIDs                       | re-hash / daemon |
+| Daemon required for speed | **No**                                     | Optional                       | Yes              |
+| Artifact signing          | **Hard-fail** on unsigned                  | Soft                           | No               |
+| Per-task sandbox          | **Yes** — kernel-level, opt-in             | No                             | No               |
+| Install                   | **Single binary** — 1 curl line            | npm + Node                     | npm + Node       |
 
 ¹ Wall-clock, direct binaries, same machine and workspace — full
 methodology and more scenarios in
