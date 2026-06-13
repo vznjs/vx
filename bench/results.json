@@ -1,0 +1,29 @@
+{
+  "packages": 60,
+  "layers": 10,
+  "reps": 1,
+  "date": "2026-06-13T17:03:52.933Z",
+  "rows": [
+    {
+      "runner": "vx",
+      "version": "vx 0.0.0",
+      "fresh": 10395.739024,
+      "warmNoRestore": 117.15738,
+      "warmRestore": 133.099797
+    },
+    {
+      "runner": "turbo",
+      "version": "2.9.18",
+      "fresh": 10369.240491,
+      "warmNoRestore": 138.234692,
+      "warmRestore": 165.821416
+    },
+    {
+      "runner": "nx",
+      "version": "22.7.5",
+      "fresh": 11412.564473,
+      "warmNoRestore": 750.994512,
+      "warmRestore": 727.838589
+    }
+  ]
+}

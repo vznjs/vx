@@ -11,3 +11,7 @@ coverage
 .vx
 .nxt
 .claude/worktrees/
+.nx
+.turbo
+*.cpuprofile
+*.heapsnapshot
