@@ -11,5 +11,5 @@
     "typescript/await-thenable": "off",
     "import/no-cycle": "error"
   },
-  "ignorePatterns": ["node_modules", "dist"]
+  "ignorePatterns": ["node_modules", "apps", "dist"]
 }

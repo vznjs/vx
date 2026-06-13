@@ -9,6 +9,9 @@ tasks. Measured, reproducible, on hardware you own.
 
 One binary. No daemon. No Node. Nothing to babysit.
 
+📖 **[Documentation site →](https://vznjs.github.io/vx/)** — guides,
+architecture, caching, and the full CLI / config reference.
+
 ```sh
 curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
 ```

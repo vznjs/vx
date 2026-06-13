@@ -22,6 +22,10 @@
   "engines": {
     "bun": ">=1.3"
   },
+  "workspaces": [
+    ".",
+    "apps/*"
+  ],
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "^0.0.51"
   },
