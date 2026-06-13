@@ -14,12 +14,10 @@ Migrating *from* a specific tool? Those guides generate config for you:
 ## 1. Install at the workspace root
 
 ```bash
+bun add -d @vzn/vx
+# …or grab the standalone binary (no Node or Bun required):
 curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
 ```
-
-This installs a self-contained binary to `~/.local/bin`. (An `@vzn/vx`
-npm package with the typed `defineProject` helper is coming soon; today
-configs are plain objects, as below.)
 
 vx discovers your workspace automatically from `pnpm-workspace.yaml`, a
 `package.json` `workspaces` field (npm / yarn / Bun), or a bare
@@ -34,7 +32,9 @@ Pick a package with a clear build step and add a `vx.config.ts` next to
 its `package.json`. Point the command at the script you already run:
 
 ```ts
-export default {
+import { defineProject } from '@vzn/vx'
+
+export default defineProject({
   tasks: {
     build: {
       // whatever your package.json "build" script already does
@@ -45,7 +45,7 @@ export default {
       },
     },
   },
-}
+})
 ```
 
 ```bash

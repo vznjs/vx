@@ -57,15 +57,17 @@ CI. ~600 tests.
 ## Adopt it in two minutes
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh   # self-contained binary → ~/.local/bin; git required
+bun add -d @vzn/vx
+# …or grab the standalone binary (no Node or Bun required):
+curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
 ```
 
-Drop a `vx.config.ts` next to any workspace package (a plain config
-object — the typed `defineProject` helper ships with the `@vzn/vx` npm
-package, coming soon):
+Drop a `vx.config.ts` next to any workspace package:
 
 ```ts
-export default {
+import { defineProject } from '@vzn/vx'
+
+export default defineProject({
   tasks: {
     build: {
       // Cache-input env vars must ALSO be passed through — the child
@@ -86,7 +88,7 @@ export default {
       exec: { command: 'vite', persistent: { readyWhen: 'Local:', readyTimeoutMs: 30_000 } },
     },
   },
-}
+})
 ```
 
 Run things:

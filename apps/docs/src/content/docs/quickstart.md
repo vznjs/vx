@@ -15,29 +15,24 @@ guides ([Turborepo](../migrate/from-turborepo/),
 ## 1. Install
 
 ```bash
+bun add -d @vzn/vx
+# …or grab the standalone binary (no Node or Bun required):
 curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
 ```
 
-This installs the self-contained `vx` binary to `~/.local/bin` — no Node,
-no separate Bun runtime, nothing else to set up.
-
-> An `@vzn/vx` **npm package** — `bun add -d @vzn/vx` plus the typed
-> `defineProject` / `defineWorkspace` config helpers — is publishing soon.
-> Until then, install the binary with the line above and write configs as
-> plain objects (below).
-
-Each task runs with the package's own `node_modules/.bin` prepended to
-`PATH`, so `tsc`, `vite`, `eslint`, etc. resolve from a bare command — no
-`npx` needed.
+This puts the `vx` binary in your workspace. vx prepends each package's
+`node_modules/.bin` to `PATH` per task, so `tsc`, `vite`, `eslint`, etc.
+resolve from a bare command — no `npx` needed.
 
 ## 2. Describe a task
 
-Drop a `vx.config.ts` next to any package's `package.json`. It exports a
-plain config object:
+Drop a `vx.config.ts` next to any package's `package.json`:
 
 ```ts
 // packages/app/vx.config.ts
-export default {
+import { defineProject } from '@vzn/vx'
+
+export default defineProject({
   tasks: {
     build: {
       exec: { command: 'tsc -b' },
@@ -47,7 +42,7 @@ export default {
       },
     },
   },
-}
+})
 ```
 
 Two things to internalize early:
@@ -60,9 +55,8 @@ Two things to internalize early:
   Chain steps with `&&`, or split them into separate tasks wired with
   `dependsOn` so each step caches independently.
 
-Once the `@vzn/vx` package ships, wrap the object in `defineProject(…)`
-for autocomplete and schema validation — it's an identity function with
-zero runtime effect, so the plain object above works identically.
+`defineProject` is just an identity function for TypeScript autocomplete
+and validation — it has zero runtime effect.
 
 ## 3. Run it
 

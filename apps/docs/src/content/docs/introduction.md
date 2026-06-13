@@ -66,19 +66,13 @@ is the better fit and that's fine.
 
 ## Requirements
 
+- **Bun ≥ 1.3.** vx is Bun-native — it ships as TypeScript that Bun runs
+  directly, with no build step. There is no Node fallback.
 - **git.** vx uses git's index to enumerate and hash inputs (the same
   technique Turborepo uses), so your workspace must be a git repository.
 - **A pnpm / npm / yarn / Bun workspace** — anything with a
   `pnpm-workspace.yaml` or a `workspaces` field. A single-package repo
   works too.
-
-That's it — the `vx` binary is self-contained (it embeds its Bun runtime),
-so there's no Node or separate Bun to install. vx is Bun-native under the
-hood and ships TypeScript with no build step.
-
-> An `@vzn/vx` npm package (`bun add -d @vzn/vx`, with the typed
-> `defineProject` / `defineWorkspace` helpers) is coming soon; today vx
-> installs as a single binary via the [Quickstart](../quickstart/).
 
 ## Next steps
 

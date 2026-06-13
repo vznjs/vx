@@ -59,9 +59,9 @@ Notes:
 - **`--affected=origin/<base>`** — on a PR, diff against the target
   branch; on a push to `main`, fall back to `main`. Changed packages (and
   their dependents) run; the rest restore from cache.
-- **`vx` is the curl-installed binary** on `PATH` — no `npx`/`bun x`
-  needed. (An `@vzn/vx` npm package is coming soon; until then, install
-  the binary as above.)
+- **`vx` is the curl-installed binary** on `PATH` — no wrapper needed. (Or
+  install it as a dependency with `bun add -d @vzn/vx` and invoke it
+  through your package manager.)
 - **Pin the version** with `VX_VERSION=<tag>` before the install line for
   byte-stable CI.
 - **Remote cache secrets** as `env` — see
