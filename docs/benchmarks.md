@@ -37,58 +37,55 @@ runner. vx doesn't chase speed as a feature; low overhead is structural
 (no daemon, git-OID hashing, an O(N+E) bitset scheduler).
 
 > Methodology note: a synthetic graph with `sleep`-based tasks isolates
-> _runner_ overhead from real compilation. Each runner uses its idiomatic
-> config (Turbo/Nx hash `**/*`; vx hashes `src/**`). The smaller
-> head-to-head below is fully reproducible from this repo.
+> _runner_ overhead from real compilation. All three runners are
+> configured **identically** — same commands, the same `src/**` inputs and
+> `dist/**` outputs, the same concurrency. (Hashing `**/*` instead would
+> include each task's own output in its inputs and break caching for
+> everyone.) The smaller head-to-head below is fully reproducible here.
 
 ## Reproducible head-to-head (vx vs Turborepo vs Nx)
 
-`bench/compare.ts` scaffolds **one** shared monorepo (packages × layers,
-a `build` + `test` task per package with the **identical** shell command
-for every runner), then runs vx, Turbo, and Nx across three cache states.
-Fairness is deliberate: vx runs as the **compiled binary** real users
-install (not TS source); the workspace is git-committed with
-`node_modules`/`.turbo`/`.nx` ignored; and **every runner is pinned to
-the same max concurrency** so no tool is advantaged by a different default
-(vx defaults to CPU cores, Turbo to 10, Nx to 3). The `build` task
-`sleep`s 1 s to simulate real work, so a warm cache hit visibly skips it.
+`bench/compare.ts` scaffolds **one** shared monorepo matching the shape
+above — `layers` × `perLayer` packages, ~30 deps each, three tasks
+(`build` + `installDeps` + `test`) with the **identical** shell command,
+`src/**` inputs, and `dist/**` outputs for every runner — then runs vx,
+Turbo, and Nx across three cache states. Fairness is deliberate: vx runs
+as the **compiled binary** real users install (not TS source); the
+workspace is git-committed with `node_modules`/`.turbo`/`.nx` ignored;
+**every runner is pinned to the same concurrency**; and runners are
+measured **strictly one at a time**, daemons stopped between them, so they
+never fight for CPU. `build`/`test` `sleep 1 s` so a warm hit visibly
+skips the work.
 
 ```bash
-bun bench/compare.ts 60 10 1                 # 60 packages, 10 layers, sleep 1 s
-CONCURRENCY=16 bun bench/compare.ts 60 10 1  # pin a different concurrency
-BUILD_SLEEP=0 bun bench/compare.ts 1000 10   # 1000 pkgs, pure framework overhead
+bun bench/compare.ts                 # 100 layers × 11 (3,270 nodes) — the full shape (slow)
+bun bench/compare.ts 10 5 1          # 46 packages, 10 layers — quick
+BUILD_SLEEP=0 bun bench/compare.ts 20 11 2   # deep graph, pure framework overhead
 ```
 
 It writes [`bench/RESULTS.md`](https://github.com/vznjs/vx/blob/main/bench/RESULTS.md)
-(committed, so the numbers can be referenced from a commit). A
-representative run — 60 packages, 1 s builds, concurrency 10 for all:
+(committed, so the numbers can be referenced from a commit). A quick run —
+46 packages, 10 layers, 1 s tasks, concurrency 10 for all:
 
-| Runner | Fresh (cold)      | Warm (no restore) | Warm (restore)   |
-| ------ | ----------------- | ----------------- | ---------------- |
-| **vx** | **10.38 s**       | **121 ms**        | **135 ms**       |
-| turbo  | 10.37 s (1.0× vx) | 116 ms (1.0× vx)  | 140 ms (1.0× vx) |
-| nx     | 11.16 s (1.1× vx) | 750 ms (6.2× vx)  | 983 ms (7.3× vx) |
+| Runner      | Fresh (cold)      | Warm (no restore) | Warm (restore)   |
+| ----------- | ----------------- | ----------------- | ---------------- |
+| **vx**      | **10.47 s**       | **127 ms**        | **151 ms**       |
+| vx (frozen) | 10.50 s (1.0× vx) | **117 ms (0.9×)** | 148 ms (1.0× vx) |
+| turbo       | 10.66 s (1.0× vx) | 245 ms (1.9× vx)  | 283 ms (1.9× vx) |
+| nx          | 29.28 s (2.8× vx) | 879 ms (6.9× vx)  | 872 ms (5.8× vx) |
 
-**Reading it honestly.** At this small scale with equal concurrency,
-**cold is roughly a tie with Turbo** — a shallow graph is overhead-light,
-so cold time is dominated by the task commands every runner pays equally,
-while vx beats Nx. (On the deep 3,270-task graph above, vx's far lower
-per-task overhead pulls it ~2× ahead on cold, too — the gap is a function
-of scale.) **Warm** runs (cache hits — the steady-state dev loop and CI, what you
-do all day) are where the cache design shows: vx ties Turbo and is **6–7×
-faster than Nx**, because a warm hit restores in milliseconds instead of
-re-running the work. One caveat worth stating: out of the box vx caps
-concurrency at CPU cores while Turbo uses 10, so on a many-core-light,
-I/O-heavy workload you may want to pass `--concurrency` explicitly.
+**Reading it honestly.** At this small scale the cold run is dominated by
+the `sleep` work every runner pays equally, so vx **ties Turbo on cold**
+and is already 2.8× faster than Nx. **Warm** is where the design shows: vx
+is **1.9× faster than Turbo and ~7× faster than Nx**, because a cache hit
+restores in milliseconds instead of re-running. The deep 3,270-task graph
+at the top is the same comparison at scale, where vx's far lower per-task
+overhead pulls it ~2× ahead on cold, too.
 
-**`vx lock` + `--frozen`.** The benchmark also measures a `vx (frozen)`
-variant: `vx lock` freezes the resolved task graph into `vx-lock.json`,
-and `vx run --frozen` executes from it with **zero per-run config
-evaluation**. Skipping the re-parse of every `vx.config.ts` makes warm
-runs **~12–21% faster** (e.g. 339 ms → 298 ms at 300 packages), so frozen
-warm edges out both live vx and Turbo. It's the recommended CI path —
-deterministic and eval-free. Generate it in the benchmark automatically;
-in your repo, run `vx lock` and commit `vx-lock.json`.
+**`vx lock` + `--frozen`** is measured as its own row: it executes the
+frozen `vx-lock.json` graph with **zero per-run config evaluation**, which
+trims another ~10% off the warm path (117 ms here) and is the recommended
+CI configuration. In your repo: `vx lock`, then commit `vx-lock.json`.
 
 ## Workspace shape
 
