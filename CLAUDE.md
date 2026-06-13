@@ -165,6 +165,27 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: **Upfront cache classification — built then REVERTED.**
+  An upfront pass (`classify.ts`) computed every task's key + probed
+  the cache before execution so the live cache meter (miss /
+  up-to-date / local) filled before any work. Pure-input keys (v22)
+  made it possible. But it REGRESSED warm runs ~57% (127 ms → 200 ms
+  on the 1090-pkg repo, measured A/B): `execute-task` still re-probed
+  - re-stat'd every task, so the cache.get + loadOutputFilesBatch +
+    isOutputsCurrent ran TWICE per task. The owner caught it ("this
+    should do less work not more"). Reverted — the warm bar fills
+    imperceptibly fast anyway (~120 ms), the regression hit EVERY run,
+    and making it net-free would require reusing the probe result
+    through the delicate restore path (entry threading + identical
+    skip-restore determination shared between classify and execute) —
+    real critical-path risk for an essentially-cosmetic warm-run win.
+    Lazy per-task resolution restored (back to ~120 ms). If the upfront
+    breakdown is ever wanted for LONG miss runs specifically, `vx run
+--dry` already previews it; revisit only with a do-less design that
+    has execute reuse the classification probe (no second pass). The
+    remote-prefetch follow-up (built on a branch) is also abandoned —
+    it depended on this.
+
 - **2026-06**: CACHE_VERSION → v22 + SCHEMA v21: **reverted v21
   early cutoff → pure-input transitive hashing** (owner: "simplify,
   rely only on task input hashes, no output hashes"). Downstream keys
