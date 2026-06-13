@@ -3,6 +3,44 @@
 Empirical overhead numbers vs. Turborepo and Nx on a synthetic
 workspace. Updated as the runners evolve.
 
+## Reproducible head-to-head (vx vs Turborepo vs Nx)
+
+`bench/compare.ts` scaffolds **one** shared monorepo (packages × layers,
+a `build` + `test` task per package with the **identical** shell command
+for every runner), then runs vx, Turbo, and Nx across three cache states.
+Fairness is deliberate: vx runs as the **compiled binary** real users
+install (not TS source); the workspace is git-committed with
+`node_modules`/`.turbo`/`.nx` ignored; and **every runner is pinned to
+the same max concurrency** so no tool is advantaged by a different default
+(vx defaults to CPU cores, Turbo to 10, Nx to 3). The `build` task
+`sleep`s 1 s to simulate real work, so a warm cache hit visibly skips it.
+
+```bash
+bun bench/compare.ts 60 10 1                 # 60 packages, 10 layers, sleep 1 s
+CONCURRENCY=16 bun bench/compare.ts 60 10 1  # pin a different concurrency
+BUILD_SLEEP=0 bun bench/compare.ts 1000 10   # 1000 pkgs, pure framework overhead
+```
+
+It writes [`bench/RESULTS.md`](https://github.com/vznjs/vx/blob/main/bench/RESULTS.md)
+(committed, so the numbers can be referenced from a commit). A
+representative run — 60 packages, 1 s builds, concurrency 10 for all:
+
+| Runner | Fresh (cold)      | Warm (no restore) | Warm (restore)   |
+| ------ | ----------------- | ----------------- | ---------------- |
+| **vx** | **10.38 s**       | **121 ms**        | **135 ms**       |
+| turbo  | 10.37 s (1.0× vx) | 116 ms (1.0× vx)  | 140 ms (1.0× vx) |
+| nx     | 11.16 s (1.1× vx) | 750 ms (6.2× vx)  | 983 ms (7.3× vx) |
+
+**Reading it honestly.** With equal concurrency and realistic per-task
+work, **cold is a dead heat with Turbo** — cold time is dominated by your
+actual build commands, which every runner pays equally — while vx beats
+Nx. **Warm** runs (cache hits — the steady-state dev loop and CI, what you
+do all day) are where the cache design shows: vx ties Turbo and is **6–7×
+faster than Nx**, because a warm hit restores in milliseconds instead of
+re-running the work. One caveat worth stating: out of the box vx caps
+concurrency at CPU cores while Turbo uses 10, so on a many-core-light,
+I/O-heavy workload you may want to pass `--concurrency` explicitly.
+
 ## Workspace shape
 
 - **100 projects**, each with three tasks:

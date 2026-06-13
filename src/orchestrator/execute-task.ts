@@ -445,12 +445,22 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         stdout: result.stdout,
       },
     })
-    // This task just wrote outputs to the project's tree. If a
-    // downstream same-project task is about to resolve inputs, the
-    // bulk `git ls-files` snapshot taken at the top of the run is
-    // stale for that project — drop the entry so resolveFiles
-    // re-spawns git on demand.
-    if (outputFiles.length > 0) args.gitFilesCache?.delete(node.projectDir)
+    // This task just wrote outputs to the project's tree. Record the
+    // exact declared-output paths as changed (same as the cache-hit
+    // restore path) instead of dropping the whole snapshot: a downstream
+    // same-project task then re-spawns git ONLY when its input globs can
+    // actually see one of these paths. On a 1000-package cold run this
+    // removes ~one synchronous `git ls-files` spawn per project (the
+    // single largest cold-run cost — 22% of CPU in profiling). Contract:
+    // outputs must be declared — an executed task that writes files
+    // outside `cache.outputs.files` which a same-project downstream task
+    // reads is undeclared behavior (the restore path already assumes it).
+    if (outputFiles.length > 0) {
+      args.gitFilesCache?.markOutputsChanged(
+        node.projectDir,
+        outputFiles.map((p) => path.relative(node.projectDir, p).split(path.sep).join('/')),
+      )
+    }
     // Declared workspace outputs may have landed inside OTHER
     // projects' dirs (no-boundary escape hatch) — mark the exact
     // paths against every partition that can see them.

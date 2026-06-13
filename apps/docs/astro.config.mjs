@@ -41,47 +41,70 @@ export default defineConfig({
       },
       sidebar: [
         {
-          label: 'Start here',
+          label: 'Get started',
           items: [
-            { label: 'Introduction', link: '/overview/' },
-            { label: 'Getting started', link: '/getting-started/' },
-            { label: 'Why vx', link: '/differentiators/' },
+            { label: 'Introduction', link: '/introduction/' },
+            { label: 'Quickstart', link: '/quickstart/' },
+            { label: 'Add vx to an existing repo', link: '/add-to-existing-repo/' },
           ],
         },
         {
-          label: 'Core concepts',
+          label: 'Build your monorepo',
           items: [
-            { label: 'Architecture', link: '/architecture/' },
+            { label: 'Configuring tasks', link: '/guides/tasks/' },
+            { label: 'Caching tasks', link: '/guides/caching/' },
+            { label: 'Task dependencies', link: '/guides/task-dependencies/' },
+            { label: 'Running & filtering tasks', link: '/guides/running-tasks/' },
+            { label: 'Dev & long-running tasks', link: '/guides/dev-tasks/' },
+            { label: 'Environment variables', link: '/guides/environment-variables/' },
+            { label: 'Remote caching', link: '/guides/remote-caching/' },
+            { label: 'Continuous integration', link: '/guides/ci/' },
+          ],
+        },
+        {
+          label: 'Migrate to vx',
+          items: [
+            { label: 'From Turborepo', link: '/migrate/from-turborepo/' },
+            { label: 'From Nx', link: '/migrate/from-nx/' },
+          ],
+        },
+        {
+          label: 'Concepts',
+          items: [
+            { label: 'How vx works', link: '/concepts/how-vx-works/' },
+            { label: 'Why vx is fast', link: '/concepts/why-vx-is-fast/' },
+            { label: 'Caching deep dive', link: '/caching/' },
             { label: 'Execution lifecycle', link: '/execution/' },
-            { label: 'Caching', link: '/caching/' },
-            { label: 'Flows', link: '/flows/' },
-          ],
-        },
-        {
-          label: 'Guides',
-          items: [
-            { label: 'Configuration patterns', link: '/patterns/' },
-            { label: 'Optimizations', link: '/optimizations/' },
-            { label: 'Benchmarks', link: '/benchmarks/' },
+            { label: 'vx vs Turborepo vs Nx', link: '/comparison/' },
           ],
         },
         {
           label: 'Reference',
           items: [
             { label: 'CLI', link: '/cli/' },
-            { label: 'Config schema', link: '/schema/' },
-            { label: 'vs Turbo / Nx', link: '/comparison/' },
+            { label: 'Configuration', link: '/schema/' },
+            { label: 'Benchmarks', link: '/benchmarks/' },
           ],
         },
         {
-          label: 'Modules',
+          label: 'Internals',
           collapsed: true,
-          items: [{ autogenerate: { directory: 'modules' } }],
-        },
-        {
-          label: 'Design notes',
-          collapsed: true,
-          items: [{ autogenerate: { directory: 'design' } }],
+          items: [
+            { label: 'Architecture', link: '/architecture/' },
+            { label: 'Optimizations', link: '/optimizations/' },
+            { label: 'Shared patterns with Turbo / Nx', link: '/patterns/' },
+            { label: 'Diagrams', link: '/flows/' },
+            {
+              label: 'Module reference',
+              collapsed: true,
+              items: [{ autogenerate: { directory: 'modules' } }],
+            },
+            {
+              label: 'Design notes',
+              collapsed: true,
+              items: [{ autogenerate: { directory: 'design' } }],
+            },
+          ],
         },
       ],
     }),

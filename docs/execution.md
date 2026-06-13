@@ -291,8 +291,8 @@ The colors / framing modules:
 
 - **Default** — `navigator.hardwareConcurrency` (Bun's CPU-count
   primitive), or `vx.workspace.ts`'s `concurrency` field when set.
-- **Override** — `--concurrency N` or `-c N` (CLI). CLI wins over
-  workspace config.
+- **Override** — `--concurrency N` (CLI). CLI wins over workspace
+  config.
 - **`concurrency: 1`** serializes execution while still respecting
   topo order.
 - The scheduler never exceeds the cap; tasks queue.

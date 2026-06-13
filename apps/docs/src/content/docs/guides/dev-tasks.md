@@ -1,0 +1,107 @@
+---
+title: Dev & long-running tasks
+description: Run dev servers, watchers, and daemons with persistent tasks — gate downstream work on readiness with readyWhen, and let vx clean them up automatically.
+---
+
+Some tasks don't finish — a dev server, a file watcher, a background
+daemon. vx models these as **persistent** tasks: it spawns them, decides
+when they're "ready," lets downstream tasks proceed, and tears them down
+when the run ends.
+
+## Declaring a persistent task
+
+```ts
+dev: {
+  exec: {
+    command: 'vite',
+    persistent: { readyWhen: 'Local:', readyTimeoutMs: 30_000 },
+  },
+}
+```
+
+```bash
+vx run dev
+```
+
+`persistent` tells vx not to wait for the process to exit. Instead:
+
+- With **`readyWhen`**, the task is "ready" the moment a line of its
+  output matches that regex (here, Vite's `Local:` banner). The match
+  also sees trailing partial lines, so a no-newline prompt like
+  `Listening on :3000` works.
+- **`readyTimeoutMs`** bounds the wait. If readiness never matches in
+  time, vx kills the process and fails the task instead of hanging
+  forever. (It requires `readyWhen`.)
+- With **no `readyWhen`** (`persistent: {}`), the task is ready as soon
+  as it spawns — fine for daemons with no observable ready signal that
+  nothing needs to gate on.
+
+## Gating downstream work on readiness
+
+The point of `readyWhen` is to start dependent work only once the server
+is actually up. Classic case: end-to-end tests against a dev server.
+
+```ts
+tasks: {
+  dev: {
+    exec: { command: 'vite', persistent: { readyWhen: 'Local:', readyTimeoutMs: 30_000 } },
+  },
+  e2e: {
+    dependsOn: ['dev'],
+    exec: { command: 'playwright test' },
+    cache: { inputs: { files: ['e2e/**'], tasks: [] }, outputs: { files: ['playwright-report/**'] } },
+  },
+}
+```
+
+```bash
+vx run e2e        # starts dev → waits for "Local:" → runs playwright → tears dev down
+```
+
+`tasks: []` keeps the dev server's hash out of `e2e`'s cache key — the
+dependency is for *ordering*, not output identity. See
+[Task dependencies](../task-dependencies/#ordering-vs-cache-identity).
+
+## Lifecycle and cleanup
+
+- **Exit before ready ⇒ failure.** If a persistent task crashes or exits
+  before `readyWhen` matches, vx reports it as failed (and frees anything
+  waiting on it).
+- **Automatic teardown.** Once the rest of the graph finishes — success
+  or failure — vx sends `SIGTERM` to every persistent process and waits
+  for them to exit before returning. No orphaned dev servers left running
+  in CI, and `Ctrl-C` reaps them too.
+- **No caching.** Persistent tasks can't have a `cache` block — there's
+  no exit code to cache and no well-defined moment to capture outputs.
+  The config loader rejects `persistent` + `cache`.
+
+## Watchers: persistent vs. `vx watch`
+
+These are two different things:
+
+- A **persistent task with a watcher command** (`tsc --watch`) runs that
+  watcher as a long-lived process for the duration of the run.
+  ```ts
+  typecheck: {
+    exec: { command: 'tsc --watch --preserveWatchOutput',
+            persistent: { readyWhen: 'Watching for file changes' } },
+  }
+  ```
+- **`vx watch <task>`** is vx itself re-running a *normal, cached* task
+  whenever files change — you get cache hits between runs. Reach for this
+  for a fast test/lint/typecheck loop:
+  ```bash
+  vx watch test
+  ```
+
+Use `vx watch` for "re-run this cached task on change"; use `persistent`
+for "keep this process alive and gate other tasks on it."
+
+## Next steps
+
+- **[Task dependencies](../task-dependencies/)** — gating order and cache
+  identity.
+- **[Running & filtering tasks](../running-tasks/)** — `vx watch` and run
+  flags.
+- **[Configuration reference](../../schema/)** — every `persistent`
+  field.
