@@ -85,6 +85,14 @@ guarantees the others don't offer.
     compatible with the Turborepo remote-cache wire, so existing cache
     servers just work.
   </Card>
+  <Card title="Sandboxed builds, built in" icon="seti:lock">
+    Run any task under an **OS-level allow-list** of files and network —
+    opt-in per task, fail-on-violation. A build that secretly reads an
+    undeclared file or phones home **fails the run** instead of shipping a
+    stale or compromised artifact. Turborepo and Nx have nothing like it.
+    Hermetic builds should be table stakes — with vx they're one line:
+    `sandbox: {}`.
+  </Card>
   <Card title="Built for the people leaving" icon="seti:typescript">
     `vx migrate` reads your `turbo.json` or Nx project graph and writes
     `vx.config.ts` files for you. The `dependsOn` syntax, `--filter` DSL,

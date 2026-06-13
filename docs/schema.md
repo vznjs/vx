@@ -51,6 +51,7 @@ interface TaskConfig {
   exec?: ExecConfig // omit to declare a group task
   dependsOn?: readonly string[] // Turbo/Nx micro-syntax
   cache?: CacheConfig // caching is opt-in; requires `exec`
+  sandbox?: SandboxConfig // opt-in OS sandbox; requires `exec`
 }
 ```
 
@@ -516,6 +517,55 @@ the workspace, including inside other projects' dirs. Prefer
 project-relative `files` whenever the task can write inside its own
 dir. Two tasks declaring overlapping workspace outputs is user
 responsibility — vx does not police it; last restore wins.
+
+### `sandbox` (optional)
+
+Opt a task into an OS-level sandbox. Requires `exec`; silently skipped for
+persistent tasks. **Opt-in per task — omit it and the task runs
+unsandboxed.** Full walkthrough in the
+[sandboxing guide](https://vznjs.github.io/vx/guides/sandboxing/).
+
+```ts
+interface SandboxConfig {
+  // Filesystem — paths are project-relative / absolute / `~`-expanded.
+  // NO globs (bwrap accepts path prefixes only).
+  allowRead?: string[] // extra readable paths beyond resolved cache.inputs.files
+  allowWrite?: string[] // extra writable paths beyond the cache.outputs.files prefix
+  allowGitConfig?: boolean // permit writes to .git/config (default false)
+
+  // Network — blocked by default.
+  network?: boolean | SandboxNetworkConfig // false (default) | true | fine-grained
+
+  // Process behavior.
+  allowPty?: boolean // acquire a TTY (default false)
+  enableWeakerNestedSandbox?: boolean // Linux: nested sandboxes (default false)
+  enableWeakerNetworkIsolation?: boolean // macOS: host-proxy net, lower isolation (default false)
+
+  // Silence known-noisy probes: command-substring → paths to ignore.
+  ignoreViolations?: Record<string, string[]>
+}
+
+interface SandboxNetworkConfig {
+  allowedDomains?: string[] // wildcards ok: `*.example.com`, `*`
+  deniedDomains?: string[] // evaluated before allowedDomains
+  allowUnixSockets?: string[]
+  allowAllUnixSockets?: boolean
+  allowLocalBinding?: boolean // bind localhost ports (e.g. a self-querying test server)
+  allowMachLookup?: string[] // macOS only
+}
+```
+
+**Baseline** (`sandbox: {}`): read only resolved `cache.inputs.files`,
+write only the static prefix of `cache.outputs.files` (a task with empty
+outputs writes nowhere), no network. No inheritance, no workspace
+defaults, no built-in escapes — declare everything explicitly.
+
+**Policy: fail on violation.** An undeclared read/write (macOS log
+monitor) or a child that fails because it couldn't reach a path (Linux
+bwrap structural deny) fails the task; a failed task is never cached.
+Activation is lazy (only when some task declares `sandbox`); on an
+unsupported platform a sandboxed task fails fast rather than running
+unsandboxed. Linux needs `bubblewrap` + `socat` installed.
 
 ## Group tasks (no `exec`)
 
