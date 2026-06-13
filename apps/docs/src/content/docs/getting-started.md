@@ -59,7 +59,7 @@ Two rules worth internalizing early:
 - **One command per task.** `exec` is a single command. Chain in the
   shell with `&&`, or split into multiple tasks wired with `dependsOn`.
 
-See the [config schema](/schema/) for every field.
+See the [config schema](../schema/) for every field.
 
 ## 3. Run tasks
 
@@ -92,7 +92,7 @@ vx run build --graph        # the task graph as text / DOT
 vx derives the cross-package edges from your manifests, then folds each
 upstream's input hash into the dependent's cache key — so an upstream
 change cascades a rebuild through everything that depends on it. The
-[execution lifecycle](/execution/) traces exactly what happens during a
+[execution lifecycle](../execution/) traces exactly what happens during a
 run.
 
 ## 5. Cache across machines (optional)
@@ -110,11 +110,11 @@ export VX_REMOTE_CACHE_SIGNATURE_KEY=…
 Remote lookups fire concurrently in the background before scheduling, so
 network latency overlaps execution, and the remote layer is fully
 optional — any error degrades to a local cache miss and the run
-continues. Details in [caching](/caching/).
+continues. Details in [caching](../caching/).
 
 ## Where to go next
 
-- **[Why vx](/differentiators/)** — the pitch, with the numbers.
-- **[Architecture](/architecture/)** — the shape of the system.
-- **[Caching](/caching/)** — keys, invalidation, and early cutoff.
-- **[CLI reference](/cli/)** — every flag and exit code.
+- **[Why vx](../differentiators/)** — the pitch, with the numbers.
+- **[Architecture](../architecture/)** — the shape of the system.
+- **[Caching](../caching/)** — keys, invalidation, and early cutoff.
+- **[CLI reference](../cli/)** — every flag and exit code.
