@@ -177,7 +177,7 @@ bun.lock
   vx.config.ts (lint/test/ci/build tasks) stops being a project and
   `vx run ci` / `release.yml` break. Bun tolerates `"."` as a member.
   **`docs/` stays the single source of truth** — `apps/docs/scripts/
-  import-docs.ts` copies `docs/**/*.md` into the Starlight content
+import-docs.ts` copies `docs/**/*.md` into the Starlight content
   collection, adding frontmatter (first H1 → title) and rewriting
   internal `.md` links to depth-relative clean URLs (base-safe; no
   hardcoded `/vx`). The transform is code-span/fence-aware and escapes
