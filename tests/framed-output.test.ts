@@ -42,11 +42,31 @@ describe('formatHeader', () => {
       '',
       '  projects  ' + '▰'.repeat(13) + '▱'.repeat(37),
       '            1 affected · 4 total',
+      '',
       '  tasks     lint · 1 task',
       '  cache     local only',
+      '',
       '─ vx 1.2.3 ' + '─'.repeat(49),
       '',
     ])
+  })
+
+  it('paints affected yellow and total dim when colors are enabled', () => {
+    const lines = formatHeader(
+      {
+        version: '1.2.3',
+        packageCount: 1,
+        tasks: ['lint'],
+        taskCount: 1,
+        remoteCacheEnabled: false,
+        workspaceProjectCount: 4,
+      },
+      { enabled: true },
+    )
+    const legend = lines.find((l) => l.includes('affected'))!
+    // affected = yellow (#eab308), total = dim
+    expect(legend).toContain('\x1b[38;2;234;179;8m1 affected\x1b[0m')
+    expect(legend).toContain('\x1b[2m4 total\x1b[0m')
   })
 
   it('omits the scope bar without a workspace total; lists tasks + workers as items', () => {

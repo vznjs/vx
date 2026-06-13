@@ -102,7 +102,10 @@ export function formatHeader(input: HeaderInput, colors: ColorSupport = NO_COLOR
       paint('', '\u25b1'.repeat(SCOPE_BAR_WIDTH - cells), colors, { dim: true })
     lines.push(
       row('projects', bar),
-      legend(`${input.packageCount} affected ${dim('\u00b7')} ${total} total`),
+      legend(
+        `${paint(WARN, `${input.packageCount} affected`, colors)} ${dim('\u00b7')} ${dim(`${total} total`)}`,
+      ),
+      '',
     )
   }
   const items = [
@@ -113,6 +116,7 @@ export function formatHeader(input: HeaderInput, colors: ColorSupport = NO_COLOR
   lines.push(
     row('tasks', items.join(sep)),
     row('cache', input.remoteCacheEnabled ? 'local + remote' : 'local only'),
+    '',
     gradientRule(colors, `vx ${input.version}`),
     '',
   )
