@@ -23,6 +23,35 @@ hero:
 
 import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components'
 
+## Your monorepo isn't slow. Your runner is.
+
+Watching builds creep toward ten minutes as your repo grows? Cached runs
+that *still* take seconds? You didn't start writing slower code and your
+tasks didn't get heavier — your task runner's per-task overhead did.
+
+Here's the **same 3,270-task monorepo** (100 dependency layers), run three
+ways on the same machine:
+
+| | vx | Turborepo | Nx |
+| --- | --- | --- | --- |
+| **Cold build** (nothing cached) | **3m 48s** | 8m 18s | 8m 27s |
+| **Cached**, nothing to rebuild | **0.55s** | 1.60s | 9.86s |
+| **Cached**, restore outputs | **0.89s** | 2.00s | 10.44s |
+| **Total CPU burned** | **23s** | 1,250s | 2,037s |
+
+A cold build finishes in **under 4 minutes** where Turborepo and Nx take
+**over 8**. A fully-cached run lands in **half a second** — not 1.6s, not
+nearly 10s. Same tasks, same hardware.
+
+And it's not a trick. For those 3,270 tasks vx spent **23 seconds of CPU**;
+Turborepo spent **1,250**; Nx spent **2,037**. vx does roughly **50× less
+work per task** — so the bigger and more complex your graph, the wider the
+gap.
+
+**vx doesn't compete on speed. Speed is the foundation it's built on** —
+see the full [benchmarks](benchmarks/) (reproduce them yourself with
+`bun bench/compare.ts`).
+
 ## Monorepo tooling shouldn't make you choose
 
 **Turborepo** is simple but hits a ceiling — static JSON config, additive
@@ -37,12 +66,11 @@ daemon and no plugin protocol to learn. And it caches with correctness
 guarantees the others don't offer.
 
 <CardGrid>
-  <Card title="Fastest warm builds in its class" icon="rocket">
-    On a 1000-package repo, warm cached runs land **several times faster
-    than Turborepo and Nx** — the steady-state dev loop and CI cache
-    hits. It's a real, committed head-to-head you can run yourself
-    (`bun bench/compare.ts`); the numbers live in
-    [Benchmarks](benchmarks/).
+  <Card title="Fast at any scale" icon="rocket">
+    A fully-cached run of a 3,270-task monorepo finishes in **0.55s** —
+    versus 1.6s for Turborepo and 9.9s for Nx. Cold, it's **2× faster
+    than both**. The gap widens as your graph grows, because vx's
+    per-task overhead is ~50× lower. Reproduce it: `bun bench/compare.ts`.
   </Card>
   <Card title="Caching that's actually correct" icon="approve-check">
     **Resolved-config hashing** — your imports, presets, and computed

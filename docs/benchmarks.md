@@ -1,7 +1,39 @@
 # Benchmarks
 
-Empirical overhead numbers vs. Turborepo and Nx on a synthetic
-workspace. Updated as the runners evolve.
+Empirical overhead numbers vs. Turborepo and Nx on synthetic workspaces.
+Updated as the runners evolve.
+
+## A real monorepo: 3,270 tasks, 100 layers
+
+The shape that actually stresses a task runner: **100 dependency layers**,
+~11 packages per layer, ~30 deps per package, three tasks each
+(`build` + `installDeps` + `test`, `sleep 1` for build and test) — **3,270
+task nodes**. Same repo, same hardware, same task commands; Turbo and Nx
+pinned to `--concurrency=10` / `parallel: 10`.
+
+|                              | vx         | Turborepo | Nx       |
+| ---------------------------- | ---------- | --------- | -------- |
+| **Cold** (nothing cached)    | **3m 48s** | 8m 18s    | 8m 27s   |
+| **Warm**, nothing to rebuild | **0.55s**  | 1.60s     | 9.86s    |
+| **Warm**, restore outputs    | **0.89s**  | 2.00s     | 10.44s   |
+| **Total CPU burned** (user)  | **22.7s**  | 1,250.4s  | 2,037.5s |
+
+Read it: vx runs the cold build in **under 4 minutes** where both others
+take **over 8** (2.2× faster), and a fully-cached run in **0.55s** — 2.9×
+faster than Turbo and **17.8× faster than Nx**.
+
+The last row is the foundation. For the _same 3,270 tasks_, vx spent
+**~23 seconds of CPU**; Turborepo spent **~1,250**; Nx spent **~2,037**.
+That's roughly **50× less work per task** — and it's why the gap _widens_
+as the graph grows: vx's overhead barely registers, so wall-clock tracks
+the actual work, while the others spend most of their time being a task
+runner. vx doesn't chase speed as a feature; low overhead is structural
+(no daemon, git-OID hashing, an O(N+E) bitset scheduler).
+
+> Methodology note: a synthetic graph with `sleep`-based tasks isolates
+> _runner_ overhead from real compilation. Each runner uses its idiomatic
+> config (Turbo/Nx hash `**/*`; vx hashes `src/**`). The smaller
+> head-to-head below is fully reproducible from this repo.
 
 ## Reproducible head-to-head (vx vs Turborepo vs Nx)
 
@@ -31,10 +63,12 @@ representative run — 60 packages, 1 s builds, concurrency 10 for all:
 | turbo  | 10.37 s (1.0× vx) | 116 ms (1.0× vx)  | 140 ms (1.0× vx) |
 | nx     | 11.16 s (1.1× vx) | 750 ms (6.2× vx)  | 983 ms (7.3× vx) |
 
-**Reading it honestly.** With equal concurrency and realistic per-task
-work, **cold is a dead heat with Turbo** — cold time is dominated by your
-actual build commands, which every runner pays equally — while vx beats
-Nx. **Warm** runs (cache hits — the steady-state dev loop and CI, what you
+**Reading it honestly.** At this small scale with equal concurrency,
+**cold is roughly a tie with Turbo** — a shallow graph is overhead-light,
+so cold time is dominated by the task commands every runner pays equally,
+while vx beats Nx. (On the deep 3,270-task graph above, vx's far lower
+per-task overhead pulls it ~2× ahead on cold, too — the gap is a function
+of scale.) **Warm** runs (cache hits — the steady-state dev loop and CI, what you
 do all day) are where the cache design shows: vx ties Turbo and is **6–7×
 faster than Nx**, because a warm hit restores in milliseconds instead of
 re-running the work. One caveat worth stating: out of the box vx caps
