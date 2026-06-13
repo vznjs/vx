@@ -11,7 +11,7 @@ Today a downstream key folds its upstream's `outputsHash`:
 key(app) = H(app.inputs + config + … + outputsHash(lib))
 ```
 
-Because the upstream's *output identity* is inside the key, you cannot
+Because the upstream's _output identity_ is inside the key, you cannot
 look `app` up until `lib` has resolved — so even a fully-cached run
 walks the graph top-to-bottom, one SQL read gating the next. There is
 no way to know the plan upfront, no batched probe, no parallel restore.
