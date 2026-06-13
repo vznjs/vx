@@ -36,6 +36,28 @@ export interface LayeredCacheOptions {
 }
 
 export class LayeredCache implements CacheLayer {
+  /**
+   * In-flight remote pulls keyed by hash. `prefetch` and `get` both go
+   * through here, so a key probed concurrently by both resolves a
+   * SINGLE remote GET. Each promise resolves `true` iff the artifact
+   * was successfully ingested into local. Entries are retained for the
+   * run's lifetime: a settled `false` records "remote already had no
+   * such artifact (or it was corrupt)", which lets `get` skip a second
+   * lazy probe of the same dead hash. The map is bounded by the number
+   * of distinct task keys in a run — negligible.
+   */
+  private readonly inflight = new Map<string, Promise<boolean>>()
+
+  /**
+   * Hashes whose local artifact was materialized FROM the remote layer
+   * this run (by `prefetch` or `get`'s read-through). A later `get`
+   * finds them as a local hit, but the work was still saved by the
+   * remote cache — so we flip `source` to `'remote'` and the
+   * orchestrator reports `cache-hit-remote`. Without this, a prefetch
+   * followed by a `get` would mislabel a genuine remote hit as local.
+   */
+  private readonly remoteSourced = new Set<string>()
+
   constructor(
     private readonly local: CacheLayer,
     private readonly remote: RemoteCache,
@@ -46,18 +68,59 @@ export class LayeredCache implements CacheLayer {
     return await this.local.key(input)
   }
 
+  async prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean> {
+    return await this.pullFromRemote(hash, ctx)
+  }
+
   async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null> {
     const localHit = await this.local.get(hash, ctx)
-    if (localHit) return localHit
+    if (localHit) {
+      // A prefetch this run may have materialized this entry FROM
+      // remote; the local row exists now, but the work was saved by
+      // the remote cache, so the provenance stays 'remote'.
+      return this.remoteSourced.has(hash) ? { ...localHit, source: 'remote' } : localHit
+    }
 
+    // A prefetch may already have probed this hash (resolved) or be
+    // mid-flight. Awaiting the shared promise guarantees AT MOST ONE
+    // remote GET per key: a settled `false` means remote had nothing
+    // (no second probe), and a settled/in-flight `true` means the
+    // artifact was/will-be ingested locally — re-read below.
+    const ingested = await this.pullFromRemote(hash, ctx)
+    if (!ingested) return null
+
+    // The artifact is now in local, but this *lookup* was a remote
+    // hit — flip the source so callers can distinguish "saved work
+    // via the remote cache" from "saved work via a prior local run".
+    const materialized = await this.local.get(hash, ctx)
+    return materialized ? { ...materialized, source: 'remote' } : null
+  }
+
+  /**
+   * Single implementation of the remote read-through, shared by
+   * `prefetch` and `get`. Idempotent per hash via `inflight`: the first
+   * caller starts the GET + validate + ingest; concurrent and later
+   * callers await the same promise. Resolves `true` when the artifact
+   * ends up in local, `false` on a remote miss / error / corruption
+   * (degrades to a cache miss; the error is reported, never thrown).
+   */
+  private pullFromRemote(hash: string, ctx?: CacheGetContext): Promise<boolean> {
+    const existing = this.inflight.get(hash)
+    if (existing) return existing
+    const p = this.doPullFromRemote(hash, ctx)
+    this.inflight.set(hash, p)
+    return p
+  }
+
+  private async doPullFromRemote(hash: string, ctx?: CacheGetContext): Promise<boolean> {
     let remoteResult
     try {
       remoteResult = await this.remote.get(hash)
     } catch (err) {
       this.reportRemoteError(err)
-      return null
+      return false
     }
-    if (!remoteResult) return null
+    if (!remoteResult) return false
 
     // Ingest the remote bytes into local using the caller-supplied
     // taskId/command plus the remote-reported durationMs. The remote
@@ -79,14 +142,10 @@ export class LayeredCache implements CacheLayer {
       // crash the run. Local-layer reads outside this block still
       // propagate: local corruption is a real fault, not a network one.
       this.reportRemoteError(err)
-      return null
+      return false
     }
-
-    // The artifact is now in local, but this *lookup* was a remote
-    // hit — flip the source so callers can distinguish "saved work
-    // via the remote cache" from "saved work via a prior local run".
-    const materialized = await this.local.get(hash, ctx)
-    return materialized ? { ...materialized, source: 'remote' } : null
+    this.remoteSourced.add(hash)
+    return true
   }
 
   outputsPath(hash: string): string {

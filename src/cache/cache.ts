@@ -257,6 +257,16 @@ export interface CacheLayer {
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   /**
+   * Best-effort warm of `hash` from a slower layer (the remote cache)
+   * into this one, so a later `get(hash)` resolves locally without a
+   * round-trip on the task's critical path. Returns `true` if the
+   * artifact is now present locally, `false` on a miss / error
+   * (degrades, never throws). The local `Cache` is a no-op (nothing
+   * slower to warm from); `LayeredCache` owns the real implementation
+   * plus the in-flight de-dup so prefetch + get share ONE remote GET.
+   */
+  prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
+  /**
    * Batched lookup of per-output-file fingerprints for many cache
    * entries in one SQL round-trip. Returns a Map keyed by entry hash.
    *
@@ -709,6 +719,13 @@ export class Cache implements CacheLayer {
       storedAt: new Date(row.created_at).toISOString(),
       source: 'local',
     }
+  }
+
+  // Local cache has no slower layer to warm from — prefetch is a no-op.
+  // The contract still resolves false so callers can treat every layer
+  // uniformly (LayeredCache overrides with the real remote pull).
+  async prefetch(_hash: string, _ctx?: CacheGetContext): Promise<boolean> {
+    return false
   }
 
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]> {

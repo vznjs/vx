@@ -271,6 +271,134 @@ describe('LayeredCache', () => {
     expect(await local.get('h-tampered')).toBeNull()
   })
 
+  it('prefetch() pulls a remote-only artifact into local, and a later get() is a remote-source hit', async () => {
+    const seeder = makeLayered()
+    await saveSample(seeder, 'h-pf')
+
+    local.close()
+    await rm(cacheDir, { recursive: true, force: true })
+    local = new Cache(cacheDir)
+    const layered = makeLayered()
+
+    const pulled = await layered.prefetch('h-pf', { taskId: 'pkg#build', command: 'echo produced' })
+    expect(pulled).toBe(true)
+    // The artifact is now materialized locally.
+    expect(await local.get('h-pf')).not.toBeNull()
+
+    // get() after a prefetch still reports source='remote' (this lookup
+    // was served by the remote layer) and fires NO new remote GET.
+    serverRequests.length = 0
+    const hit = await layered.get('h-pf', { taskId: 'pkg#build', command: 'echo produced' })
+    expect(hit?.source).toBe('remote')
+    expect(serverRequests.filter((r) => r.method === 'GET')).toHaveLength(0)
+  })
+
+  it('prefetch() returns false on a remote miss (degrades, never throws)', async () => {
+    const layered = makeLayered()
+    expect(await layered.prefetch('h-absent', { taskId: 'pkg#x', command: 'c' })).toBe(false)
+  })
+
+  it('prefetch() + get() issue AT MOST ONE remote GET per hash', async () => {
+    const seeder = makeLayered()
+    await saveSample(seeder, 'h-once')
+
+    local.close()
+    await rm(cacheDir, { recursive: true, force: true })
+    local = new Cache(cacheDir)
+
+    // Inject latency so prefetch is still in flight when get() arrives —
+    // this is the race the inflight map must collapse to one GET. The
+    // guard FAILS at 2 if the de-dup is removed.
+    await server.stop(true)
+    let getCount = 0
+    server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const url = new URL(req.url)
+        const hash = decodeURIComponent(url.pathname.split('/').pop()!)
+        if (req.method === 'GET') {
+          getCount++
+          await Bun.sleep(60)
+          const stored = serverStore.get(hash)
+          if (!stored) return new Response(null, { status: 404 })
+          return new Response(stored, { status: 200, headers: { 'x-artifact-duration': '7' } })
+        }
+        return new Response(null, { status: 405 })
+      },
+    })
+    const remote = new RemoteCache({ baseUrl: `http://localhost:${server.port}`, token: 'tok' })
+    const layered = new LayeredCache(local, remote, { onRemoteError: () => {} })
+
+    // Kick off prefetch (in flight), then immediately get() the same hash.
+    const pf = layered.prefetch('h-once', { taskId: 'pkg#build', command: 'echo produced' })
+    const hit = await layered.get('h-once', { taskId: 'pkg#build', command: 'echo produced' })
+    await pf
+    expect(hit?.source).toBe('remote')
+    expect(getCount).toBe(1)
+  })
+
+  it('prefetch-miss does not trigger a SECOND remote GET on the following get()', async () => {
+    local.close()
+    await rm(cacheDir, { recursive: true, force: true })
+    local = new Cache(cacheDir)
+
+    let getCount = 0
+    await server.stop(true)
+    server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        if (req.method === 'GET') getCount++
+        return new Response(null, { status: 404 })
+      },
+    })
+    const remote = new RemoteCache({ baseUrl: `http://localhost:${server.port}`, token: 'tok' })
+    const layered = new LayeredCache(local, remote, { onRemoteError: () => {} })
+
+    expect(await layered.prefetch('h-pm', { taskId: 'pkg#x', command: 'c' })).toBe(false)
+    const hit = await layered.get('h-pm', { taskId: 'pkg#x', command: 'c' })
+    expect(hit).toBeNull()
+    // The prefetch already probed remote and found nothing; get() must
+    // reuse that result, not probe again.
+    expect(getCount).toBe(1)
+  })
+
+  it('prefetch() is idempotent — two concurrent prefetches share one remote GET', async () => {
+    const seeder = makeLayered()
+    await saveSample(seeder, 'h-dup')
+
+    local.close()
+    await rm(cacheDir, { recursive: true, force: true })
+    local = new Cache(cacheDir)
+
+    await server.stop(true)
+    let getCount = 0
+    server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const url = new URL(req.url)
+        const hash = decodeURIComponent(url.pathname.split('/').pop()!)
+        if (req.method === 'GET') {
+          getCount++
+          await Bun.sleep(40)
+          const stored = serverStore.get(hash)
+          if (!stored) return new Response(null, { status: 404 })
+          return new Response(stored, { status: 200, headers: { 'x-artifact-duration': '7' } })
+        }
+        return new Response(null, { status: 405 })
+      },
+    })
+    const remote = new RemoteCache({ baseUrl: `http://localhost:${server.port}`, token: 'tok' })
+    const layered = new LayeredCache(local, remote, { onRemoteError: () => {} })
+
+    const [a, b] = await Promise.all([
+      layered.prefetch('h-dup', { taskId: 'pkg#build', command: 'echo produced' }),
+      layered.prefetch('h-dup', { taskId: 'pkg#build', command: 'echo produced' }),
+    ])
+    expect(a).toBe(true)
+    expect(b).toBe(true)
+    expect(getCount).toBe(1)
+  })
+
   it('stats() / recordRun() / prune() delegate to local', async () => {
     const layered = makeLayered()
     layered.recordRun({
