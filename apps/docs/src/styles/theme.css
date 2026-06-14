@@ -144,9 +144,9 @@
 }
 
 /* Headline benchmark — three metric groups (cold / cached / restore) as
-   bars. Only the COLD group animates (a race); the rest are static. Large
-   ratios are capped at ~3× so the layout stays readable — real times are
-   always labelled. */
+   bars. Every bar grows in once on load, then holds. Large ratios are
+   capped at ~3× so the layout stays readable — real times are always
+   labelled. */
 .bench-race {
   margin: 1.75rem 0 1rem;
   display: grid;
@@ -220,7 +220,10 @@
   box-shadow: 0 0 14px color-mix(in srgb, var(--vx-pink) 50%, transparent);
 }
 
-/* Static groups: bar length ∝ time, capped at ~3× so vx stays visible. */
+/* Bar length ∝ time, capped at ~3× so vx stays visible in every group. */
+.bench-group.racing .lane-vx .fill { width: 45%; }
+.bench-group.racing .lane-turbo .fill { width: 98%; }
+.bench-group.racing .lane-nx .fill { width: 100%; }
 .bench-group.cached .lane-vx .fill { width: 33%; }
 .bench-group.cached .lane-turbo .fill { width: 58%; }
 .bench-group.cached .lane-nx .fill { width: 100%; }
@@ -228,24 +231,10 @@
 .bench-group.restore .lane-turbo .fill { width: 55%; }
 .bench-group.restore .lane-nx .fill { width: 100%; }
 
-/* Cold group: bars grow ONCE to their real (capped ~3×) widths, each over a
-   duration proportional to its real time, then hold. vx finishes first and
-   stays done — no loop, no replay. */
-.bench-group.racing .fill {
-  width: var(--w);
-  animation: bench-grow var(--d) cubic-bezier(0.22, 0.61, 0.36, 1) both;
-}
-.bench-group.racing .lane-vx .fill {
-  --w: 45%;
-  --d: 1.7s;
-}
-.bench-group.racing .lane-turbo .fill {
-  --w: 98%;
-  --d: 3.7s;
-}
-.bench-group.racing .lane-nx .fill {
-  --w: 100%;
-  --d: 3.8s;
+/* Every bar grows in ONCE to its width, uniformly — same gentle reveal for
+   all, then holds. No proportional racing, no loop. */
+.bench-race .fill {
+  animation: bench-grow 1.1s cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
 @keyframes bench-grow {
   from { width: 0; }
@@ -323,9 +312,9 @@ pre.mermaid svg {
   .hero .action.secondary {
     transition: none;
   }
-  /* No grow animation — bars render at their final widths (var(--w) for the
-     cold group, the static rules for cached/restore). */
-  .bench-group.racing .fill {
+  /* No grow animation — bars render at their final widths from the static
+     per-group rules. */
+  .bench-race .fill {
     animation: none;
   }
 }
