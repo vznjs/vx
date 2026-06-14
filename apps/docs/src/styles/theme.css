@@ -17,25 +17,10 @@
 
 /* ───────────────────────────  Splash hero  ─────────────────────────── */
 
-/* A futuristic, glowing backdrop behind the hero. */
 .hero {
   position: relative;
   isolation: isolate;
   padding-block: clamp(2rem, 8vw, 5rem);
-}
-
-.hero::before {
-  content: '';
-  position: absolute;
-  inset: -30% -20% auto -20%;
-  height: 130%;
-  z-index: -1;
-  background:
-    radial-gradient(60% 55% at 50% 18%, color-mix(in srgb, var(--vx-violet) 38%, transparent), transparent 70%),
-    radial-gradient(45% 45% at 78% 8%, color-mix(in srgb, var(--vx-pink) 30%, transparent), transparent 70%);
-  filter: blur(8px);
-  opacity: 0.9;
-  animation: vx-pulse 9s ease-in-out infinite;
 }
 
 /* Faint perspective grid — the "engine" feel. */
@@ -52,24 +37,14 @@
   opacity: 0.5;
 }
 
-:root[data-theme='light'] .hero::before {
-  opacity: 0.5;
-}
-
-/* Oversized gradient wordmark. The glow comes from the hero's ::before
-   backdrop, NOT a filter on this element — `filter` on top of
-   `background-clip: text` breaks the text clip on mobile browsers (the
-   gradient renders as a filled box). */
+/* Oversized wordmark — solid, theme-aware (inherits the default heading
+   color). No gradient fill. */
 .hero h1 {
   display: inline-block;
   font-size: clamp(4rem, 15vw, 9.5rem);
   line-height: 0.9;
   letter-spacing: -0.04em;
   font-weight: 800;
-  background: linear-gradient(120deg, #b9a7ff 0%, var(--vx-violet) 40%, var(--vx-pink) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
 }
 
 .hero .tagline {
@@ -197,22 +172,7 @@ pre.mermaid svg {
 
 /* ───────────────────────────  Motion safety  ───────────────────────── */
 
-@keyframes vx-pulse {
-  0%,
-  100% {
-    opacity: 0.78;
-    transform: translateY(0) scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: translateY(-1.5%) scale(1.04);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .hero::before {
-    animation: none;
-  }
   .landing .card,
   .hero .action.primary,
   .hero .action.secondary {
