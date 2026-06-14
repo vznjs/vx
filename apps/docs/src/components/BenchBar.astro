@@ -1,39 +1,38 @@
 ---
-// One benchmark row: runner name · relative-length bar · value label.
+// One benchmark row: runner name · relative-length bar · live timer.
 //
-// The BAR width is the runner's time relative to the slowest in the group
-// (slowest = full width), so every row shows its real magnitude up front — a
-// faint "ghost" of the full length. A progress fill then sweeps INSIDE that
-// bar from 0 to 100% over `dur` seconds.
-//
-// Because `dur` is proportional to the bar's length (see BenchChart) the fill
-// FRONT advances at the same speed on every row — one shared timeline. So the
-// rows race: vx's short bar fills and stops while Turbo/Nx keep grinding past
-// the point where vx already finished. The value reveals the instant its row
-// completes. CSS owns the final fixed state, so it stays legible without JS.
+// The BAR shows the runner's full relative length (slowest in the group = full
+// width) — always visible, so you read the magnitude at a glance. The fill and
+// the timer are driven by the live simulation in BenchChart: the timer ticks
+// up in real time while the fill sweeps, then both freeze at the real value.
+// The defaults below render the final fixed state, so it reads fine with no JS.
 interface Props {
   name: string
   value: string
+  n: number
   pct: number
-  dur: number
+  format: 'duration' | 'cpu'
   hero?: boolean
 }
-const { name, value, pct, dur, hero = false } = Astro.props
-const style = `--pct:${pct}%;--dur:${dur}s`
+const { name, value, n, pct, format, hero = false } = Astro.props
 ---
 
-<div class:list={['lane', { hero }]} style={style}>
+<div
+  class:list={['lane', { hero }]}
+  style={`--pct:${pct}%`}
+  data-n={n}
+  data-fmt={format}
+  data-value={value}
+>
   <span class="name">{name}</span>
-  <div class="track">
-    <div class="bar"><span class="prog"></span></div>
-  </div>
+  <div class="track"><div class="bar"><span class="prog"></span></div></div>
   <span class="value">{value}</span>
 </div>
 
 <style>
   .lane {
     display: grid;
-    grid-template-columns: 5rem 1fr 4.6rem;
+    grid-template-columns: 5rem 1fr 4.8rem;
     align-items: center;
     gap: 0.75rem;
   }
@@ -57,126 +56,50 @@ const style = `--pct:${pct}%;--dur:${dur}s`
     color: var(--vx-pink);
     font-weight: 700;
   }
+  /* dimmed while the timer is still counting; full once it locks in */
+  .lane.counting .value {
+    opacity: 0.5;
+  }
 
-  /* The track is the shared measuring space; the bar's width is this runner's
-     time relative to the slowest (the visible "fixed" length). */
   .track {
     width: 100%;
   }
+  /* The bar is the runner's full relative length — always visible, solid. */
   .bar {
     position: relative;
     width: var(--pct);
-    min-width: 3px;
-    height: 0.7rem;
+    min-width: 4px;
+    height: 0.8rem;
     border-radius: 999px;
     overflow: hidden;
-    /* faint ghost showing the full relative length before it fills */
-    background: color-mix(in srgb, var(--sl-color-gray-4) 24%, transparent);
+    background: color-mix(in srgb, var(--sl-color-gray-4) 55%, transparent);
   }
   .hero .bar {
-    background: color-mix(in srgb, var(--vx-violet) 18%, transparent);
-    box-shadow: 0 0 14px color-mix(in srgb, var(--vx-pink) 45%, transparent);
+    background: color-mix(in srgb, var(--vx-violet) 30%, transparent);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--vx-pink) 40%, transparent);
   }
 
-  /* The realtime progress fill, sweeping inside the bar. */
+  /* Brighter progress fill. Width is set live by the simulation; the default
+     (100%) is the final fixed state for no-JS / reduced motion. */
   .prog {
     position: absolute;
     inset: 0 auto 0 0;
     width: 100%;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--sl-color-gray-2) 68%, transparent);
+    background: var(--sl-color-gray-1);
   }
   .hero .prog {
     background: var(--vx-grad);
   }
-  /* bright leading edge — the moving "now" front */
-  .prog::after {
-    content: '';
-    position: absolute;
-    inset: 0 0 0 auto;
-    width: 0.9rem;
-    border-radius: 999px;
-    opacity: 0;
-    background: linear-gradient(90deg, transparent, color-mix(in srgb, #fff 75%, transparent));
-  }
-  .hero .prog::after {
-    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--vx-pink) 95%, transparent));
-  }
-
-  /* JS-ready: collapse the fill to the start line, waiting to run.
-     Without JS (or reduced motion) the defaults render the final state. */
-  :global(.chart.ready) .prog {
-    width: 0;
-  }
-  :global(.chart.ready) .value {
-    opacity: 0;
-  }
-
-  /* Running: sweep the fill, the edge glow, then reveal the value on finish. */
-  :global(.chart.run) .prog {
-    animation: grow var(--dur) linear both;
-  }
-  :global(.chart.run) .prog::after {
-    animation: edge var(--dur) linear both;
-  }
-  :global(.chart.run) .value {
-    animation: reveal 0.3s ease both;
-    animation-delay: var(--dur);
-  }
-
-  @keyframes grow {
-    from {
-      width: 0;
-    }
-    to {
-      width: 100%;
-    }
-  }
-  @keyframes edge {
-    0% {
-      opacity: 0;
-    }
-    8%,
-    72% {
-      opacity: 1;
-    }
-    100% {
-      opacity: 0;
-    }
-  }
-  @keyframes reveal {
-    from {
-      opacity: 0;
-      transform: translateX(-0.25rem);
-    }
-    to {
-      opacity: 1;
-      transform: none;
-    }
-  }
 
   @media (max-width: 30rem) {
     .lane {
-      grid-template-columns: 3.6rem 1fr 3.6rem;
+      grid-template-columns: 3.4rem 1fr 3.8rem;
       gap: 0.5rem;
     }
     .name,
     .value {
       font-size: 0.78rem;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    :global(.chart.ready) .prog {
-      width: 100%;
-    }
-    :global(.chart.ready) .value {
-      opacity: 1;
-    }
-    :global(.chart.run) .prog,
-    :global(.chart.run) .prog::after,
-    :global(.chart.run) .value {
-      animation: none;
     }
   }
 </style>
