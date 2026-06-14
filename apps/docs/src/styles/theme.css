@@ -224,27 +224,28 @@
   box-shadow: 0 0 14px color-mix(in srgb, var(--vx-pink) 50%, transparent);
 }
 
-/* ONE shared timescale across every group: 100% = the slowest run anywhere
-   (cold Nx, 507s). Bars are directly comparable as durations — which is why
-   the warm runs are barely a sliver next to a cold build. Exact times are
-   always labelled. */
-/* Cold: 228s / 498s / 507s. */
-.bench-group.racing .lane-vx .fill { width: 45%; }
-.bench-group.racing .lane-turbo .fill { width: 98.2%; }
-.bench-group.racing .lane-nx .fill { width: 100%; }
-/* Cached: 0.55s / 1.60s / 9.86s. */
-.bench-group.cached .lane-vx .fill { width: 0.11%; }
-.bench-group.cached .lane-turbo .fill { width: 0.32%; }
-.bench-group.cached .lane-nx .fill { width: 1.95%; }
-/* Restore: 0.89s / 2.00s / 10.44s. */
-.bench-group.restore .lane-vx .fill { width: 0.18%; }
-.bench-group.restore .lane-turbo .fill { width: 0.39%; }
-.bench-group.restore .lane-nx .fill { width: 2.06%; }
+/* One shared timescale PER CATEGORY: within each group the longest run is
+   100% and every other bar is relative to it. The ratios are true to the
+   numbers; exact times are always labelled. */
+/* Cold: 228s / 498s / 507s → /507s. --d is the (scaled) real fill time. */
+.bench-group.racing .lane-vx .fill { width: 45%; --d: 1.8s; }
+.bench-group.racing .lane-turbo .fill { width: 98.2%; --d: 3.9s; }
+.bench-group.racing .lane-nx .fill { width: 100%; --d: 4s; }
+/* Cached: 0.55s / 1.60s / 9.86s → /9.86s. */
+.bench-group.cached .lane-vx .fill { width: 5.6%; }
+.bench-group.cached .lane-turbo .fill { width: 16.2%; }
+.bench-group.cached .lane-nx .fill { width: 100%; }
+/* Restore: 0.89s / 2.00s / 10.44s → /10.44s. */
+.bench-group.restore .lane-vx .fill { width: 8.5%; }
+.bench-group.restore .lane-turbo .fill { width: 19.2%; }
+.bench-group.restore .lane-nx .fill { width: 100%; }
 
-/* Every bar grows in ONCE to its width, uniformly — same gentle reveal for
-   all, then holds. No proportional racing, no loop. */
+/* The fill plays in (scaled) REAL time, once, then holds. Cold bars take a
+   few seconds to fill — vx finishes first, Nx last — while warm runs snap in
+   (~0.5s). --d is set per cold lane; warm lanes use the fallback. Linear =
+   honest constant-speed elapsed time, no loop. */
 .bench-race .fill {
-  animation: bench-grow 1.1s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation: bench-grow var(--d, 0.5s) linear both;
 }
 @keyframes bench-grow {
   from { width: 0; }
