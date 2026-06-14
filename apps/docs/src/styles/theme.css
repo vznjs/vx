@@ -144,9 +144,9 @@
 }
 
 /* Headline benchmark — three metric groups (cold / cached / restore) as
-   bars. Every bar grows in once on load, then holds. Large ratios are
-   capped at ~3× so the layout stays readable — real times are always
-   labelled. */
+   bars. Every bar grows in once on load, then holds. Bar length is the
+   true time ratio within each group (slowest = 100%); real times are
+   always labelled. */
 .bench-race {
   margin: 1.75rem 0 1rem;
   display: grid;
@@ -197,13 +197,14 @@
   position: relative;
   height: 0.8rem;
   border-radius: 999px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--sl-color-gray-5) 45%, transparent);
+  /* No gray remainder — the colored bar IS the elapsed time. */
 }
 .bench-race .fill {
   position: absolute;
   inset: 0 auto 0 0;
   width: 0;
+  /* Never fully vanish — a tiny-but-fast bar still reads as a pill. */
+  min-width: 0.8rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--sl-color-gray-4) 75%, transparent);
 }
@@ -220,15 +221,20 @@
   box-shadow: 0 0 14px color-mix(in srgb, var(--vx-pink) 50%, transparent);
 }
 
-/* Bar length ∝ time, capped at ~3× so vx stays visible in every group. */
+/* Bar length is the real time ratio, normalised so the slowest bar in each
+   group is 100%. The gaps are true to the numbers — vx barely registers
+   warm because it really is that much faster. */
+/* Cold: 228s / 498s / 507s. */
 .bench-group.racing .lane-vx .fill { width: 45%; }
-.bench-group.racing .lane-turbo .fill { width: 98%; }
+.bench-group.racing .lane-turbo .fill { width: 98.2%; }
 .bench-group.racing .lane-nx .fill { width: 100%; }
-.bench-group.cached .lane-vx .fill { width: 33%; }
-.bench-group.cached .lane-turbo .fill { width: 58%; }
+/* Cached: 0.55s / 1.60s / 9.86s. */
+.bench-group.cached .lane-vx .fill { width: 5.6%; }
+.bench-group.cached .lane-turbo .fill { width: 16.2%; }
 .bench-group.cached .lane-nx .fill { width: 100%; }
-.bench-group.restore .lane-vx .fill { width: 33%; }
-.bench-group.restore .lane-turbo .fill { width: 55%; }
+/* Restore: 0.89s / 2.00s / 10.44s. */
+.bench-group.restore .lane-vx .fill { width: 8.5%; }
+.bench-group.restore .lane-turbo .fill { width: 19.2%; }
 .bench-group.restore .lane-nx .fill { width: 100%; }
 
 /* Every bar grows in ONCE to its width, uniformly — same gentle reveal for
