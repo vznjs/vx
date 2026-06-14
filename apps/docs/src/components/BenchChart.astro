@@ -1,10 +1,11 @@
 ---
 // One benchmark group: a label plus a row per runner, driven as a LIVE
-// SIMULATION. Every row shares one clock: the timers tick up in real time and
-// the fills sweep together, each freezing at its real value — so the runners
-// race, vx locks in (near-instant) while Turbo/Nx keep counting. Bar lengths
-// are relative to the slowest in the group (slowest = full width). The clock is
-// sped up so the slowest run plays out over WINDOW real seconds.
+// SIMULATION. Every row shares one clock; the fills sweep together in real
+// time, each freezing when its run finishes — so the runners race, vx locks
+// in (near-instant) while Turbo/Nx keep going. The final time is always
+// shown, and bar lengths are relative to the slowest in the group (slowest =
+// full width). The clock is sped up so the slowest run plays out over WINDOW
+// real seconds.
 import BenchBar from './BenchBar.astro'
 
 interface Row {
@@ -17,10 +18,9 @@ interface Props {
   title: string
   note?: string
   rows: Row[]
-  format?: 'duration' | 'cpu'
 }
 
-const { title, note, rows, format = 'duration' } = Astro.props
+const { title, note, rows } = Astro.props
 const max = Math.max(...rows.map((r) => r.n))
 ---
 
@@ -29,16 +29,7 @@ const max = Math.max(...rows.map((r) => r.n))
   {
     rows.map((r) => {
       const pct = Math.round((r.n / max) * 1000) / 10
-      return (
-        <BenchBar
-          name={r.name}
-          value={r.value}
-          n={r.n}
-          pct={pct}
-          format={format}
-          hero={r.hero ?? false}
-        />
-      )
+      return <BenchBar name={r.name} value={r.value} n={r.n} pct={pct} hero={r.hero ?? false} />
     })
   }
 </div>
@@ -71,56 +62,24 @@ const max = Math.max(...rows.map((r) => r.n))
 
 <script>
   // Live simulation: one shared clock per chart, sped up so the slowest run
-  // plays out over WINDOW seconds. Each row's timer ticks to its real value
-  // and the fill sweeps in lockstep; the fill front advances at one speed for
-  // all rows (shared timeline), so the fastest finishes first. Replays on
-  // scroll into view. CSS owns the final fixed state, so this is pure
-  // enhancement — no JS still shows correct, readable charts.
+  // plays out over WINDOW seconds. Each row's fill sweeps in real time and
+  // freezes when its run finishes; the front advances at one speed for all
+  // rows (shared timeline), so the fastest finishes first. The final time is
+  // always shown (rendered server-side). Replays on scroll into view. CSS owns
+  // the final fixed state, so no-JS / reduced-motion shows correct charts.
   const WINDOW = 3.4 // real seconds for the slowest bar in a chart
-
-  const pad2 = (x: number) => String(x).padStart(2, '0')
-  function fmt(t: number, mode: string): string {
-    if (mode === 'cpu') {
-      return t < 100 ? `${t.toFixed(1)}s` : `${Math.round(t).toLocaleString('en-US')}s`
-    }
-    if (t >= 60) return `${Math.floor(t / 60)}m ${pad2(Math.floor(t % 60))}s`
-    return `${t.toFixed(2)}s`
-  }
 
   interface Lane {
     n: number
-    fmt: string
-    final: string
-    el: HTMLElement
     prog: HTMLElement
-    val: HTMLElement
   }
-
   function lanesOf(chart: HTMLElement): Lane[] {
     return [...chart.querySelectorAll<HTMLElement>('.lane')].map((el) => ({
       n: Number(el.dataset.n),
-      fmt: el.dataset.fmt ?? 'duration',
-      final: el.dataset.value ?? '',
-      el,
       prog: el.querySelector<HTMLElement>('.prog')!,
-      val: el.querySelector<HTMLElement>('.value')!,
     }))
   }
-
-  function reset(lanes: Lane[]) {
-    for (const L of lanes) {
-      L.prog.style.width = '0%'
-      L.val.textContent = fmt(0, L.fmt)
-      L.el.classList.add('counting')
-    }
-  }
-  function finalize(lanes: Lane[]) {
-    for (const L of lanes) {
-      L.prog.style.width = '100%'
-      L.val.textContent = L.final
-      L.el.classList.remove('counting')
-    }
-  }
+  const setWidth = (lanes: Lane[], pct: string) => lanes.forEach((L) => (L.prog.style.width = pct))
 
   const raf = new WeakMap<HTMLElement, number>()
   function play(chart: HTMLElement) {
@@ -129,7 +88,7 @@ const max = Math.max(...rows.map((r) => r.n))
     const speed = max / WINDOW // simulated seconds per real second
     const prev = raf.get(chart)
     if (prev) cancelAnimationFrame(prev)
-    reset(lanes)
+    setWidth(lanes, '0%')
     let start = 0
     const frame = (ts: number) => {
       if (!start) start = ts
@@ -138,13 +97,7 @@ const max = Math.max(...rows.map((r) => r.n))
       for (const L of lanes) {
         const t = Math.min(sim, L.n)
         L.prog.style.width = `${(t / L.n) * 100}%`
-        if (sim < L.n) {
-          L.val.textContent = fmt(t, L.fmt)
-          done = false
-        } else if (L.el.classList.contains('counting')) {
-          L.val.textContent = L.final
-          L.el.classList.remove('counting')
-        }
+        if (sim < L.n) done = false
       }
       if (!done) raf.set(chart, requestAnimationFrame(frame))
     }
@@ -154,11 +107,9 @@ const max = Math.max(...rows.map((r) => r.n))
   const charts = document.querySelectorAll<HTMLElement>('.chart')
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
 
-  if (reduced) {
-    charts.forEach((c) => finalize(lanesOf(c)))
-  } else {
+  if (!reduced) {
     // Start collapsed so scrolling a chart into view plays it from zero.
-    charts.forEach((c) => reset(lanesOf(c)))
+    charts.forEach((c) => setWidth(lanesOf(c), '0%'))
     const io = new IntersectionObserver(
       (entries) => {
         for (const e of entries) {
@@ -167,7 +118,7 @@ const max = Math.max(...rows.map((r) => r.n))
           else {
             const id = raf.get(c)
             if (id) cancelAnimationFrame(id)
-            reset(lanesOf(c))
+            setWidth(lanesOf(c), '0%')
           }
         }
       },

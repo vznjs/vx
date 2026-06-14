@@ -1,29 +1,22 @@
 ---
-// One benchmark row: runner name · relative-length bar · live timer.
+// One benchmark row: runner name · relative-length bar · final time.
 //
 // The BAR shows the runner's full relative length (slowest in the group = full
-// width) — always visible, so you read the magnitude at a glance. The fill and
-// the timer are driven by the live simulation in BenchChart: the timer ticks
-// up in real time while the fill sweeps, then both freeze at the real value.
-// The defaults below render the final fixed state, so it reads fine with no JS.
+// width) and the final time is always visible. The fill is driven by the live
+// simulation in BenchChart — it sweeps in real time and freezes when the run
+// finishes. The defaults below render the final fixed state, so it reads fine
+// with no JS.
 interface Props {
   name: string
   value: string
   n: number
   pct: number
-  format: 'duration' | 'cpu'
   hero?: boolean
 }
-const { name, value, n, pct, format, hero = false } = Astro.props
+const { name, value, n, pct, hero = false } = Astro.props
 ---
 
-<div
-  class:list={['lane', { hero }]}
-  style={`--pct:${pct}%`}
-  data-n={n}
-  data-fmt={format}
-  data-value={value}
->
+<div class:list={['lane', { hero }]} style={`--pct:${pct}%`} data-n={n}>
   <span class="name">{name}</span>
   <div class="track"><div class="bar"><span class="prog"></span></div></div>
   <span class="value">{value}</span>
@@ -55,10 +48,6 @@ const { name, value, n, pct, format, hero = false } = Astro.props
   .hero .value {
     color: var(--vx-pink);
     font-weight: 700;
-  }
-  /* dimmed while the timer is still counting; full once it locks in */
-  .lane.counting .value {
-    opacity: 0.5;
   }
 
   .track {
