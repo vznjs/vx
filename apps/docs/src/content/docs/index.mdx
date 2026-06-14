@@ -32,79 +32,49 @@ either**, the tradeoffs of neither.
 
 ## 3,270 tasks — time and CPU.
 
-<div class="bench-race" role="img" aria-label="A 3,270-task monorepo. Cold from scratch: vx 3m 48s, Turborepo 8m 18s, Nx 8m 27s. Fully cached: vx 0.55s, Turborepo 1.60s, Nx 9.86s. Restoring outputs: vx 0.89s, Turborepo 2.00s, Nx 10.44s. CPU burned on the cold build: vx 22.7s, Turborepo 1,250s, Nx 2,038s.">
-  <div class="bench-group racing">
-    <p class="group-label">Cold — built from scratch</p>
-    <div class="lane lane-vx">
-      <span class="rname">vx</span>
-      <div class="track"><div class="fill"></div></div>
-      <span class="rtime">3m 48s</span>
-    </div>
-    <div class="lane lane-turbo">
-      <span class="rname">Turborepo</span>
-      <div class="track"><div class="fill"></div></div>
-      <span class="rtime">8m 18s</span>
-    </div>
-    <div class="lane lane-nx">
-      <span class="rname">Nx</span>
-      <div class="track"><div class="fill"></div></div>
-      <span class="rtime">8m 27s</span>
-    </div>
-  </div>
-  <div class="bench-group cached">
-    <p class="group-label">Fully cached <span>nothing to rebuild</span></p>
-    <div class="lane lane-vx">
-      <span class="rname">vx</span>
-      <div class="track"><div class="fill"></div></div>
-      <span class="rtime">0.55s</span>
-    </div>
-    <div class="lane lane-turbo">
-      <span class="rname">Turborepo</span>
-      <div class="track"><div class="fill"></div></div>
-      <span class="rtime">1.60s</span>
-    </div>
-    <div class="lane lane-nx">
-      <span class="rname">Nx</span>
-      <div class="track"><div class="fill"></div></div>
-      <span class="rtime">9.86s</span>
-    </div>
-  </div>
-  <div class="bench-group restore">
-    <p class="group-label">Restoring outputs <span>cache → disk</span></p>
-    <div class="lane lane-vx">
-      <span class="rname">vx</span>
-      <div class="track"><div class="fill"></div></div>
-      <span class="rtime">0.89s</span>
-    </div>
-    <div class="lane lane-turbo">
-      <span class="rname">Turborepo</span>
-      <div class="track"><div class="fill"></div></div>
-      <span class="rtime">2.00s</span>
-    </div>
-    <div class="lane lane-nx">
-      <span class="rname">Nx</span>
-      <div class="track"><div class="fill"></div></div>
-      <span class="rtime">10.44s</span>
-    </div>
-  </div>
-  <div class="bench-group cpu">
-    <p class="group-label">CPU burned <span>cold build · user time</span></p>
-    <div class="lane lane-vx">
-      <span class="rname">vx</span>
-      <div class="track"><div class="fill"></div></div>
-      <span class="rtime">22.7s</span>
-    </div>
-    <div class="lane lane-turbo">
-      <span class="rname">Turborepo</span>
-      <div class="track"><div class="fill"></div></div>
-      <span class="rtime">1,250s</span>
-    </div>
-    <div class="lane lane-nx">
-      <span class="rname">Nx</span>
-      <div class="track"><div class="fill"></div></div>
-      <span class="rtime">2,038s</span>
-    </div>
-  </div>
+import BenchChart from '../../components/BenchChart.astro'
+
+<div role="img" aria-label="A 3,270-task monorepo. Cold from scratch: vx 3m 48s, Turborepo 8m 18s, Nx 8m 27s. Fully cached: vx 0.55s, Turborepo 1.60s, Nx 9.86s. Restoring outputs: vx 0.89s, Turborepo 2.00s, Nx 10.44s. CPU burned on the cold build: vx 22.7s, Turborepo 1,250s, Nx 2,038s.">
+
+<BenchChart
+  title="Cold — built from scratch"
+  rows={[
+    { name: 'vx', value: '3m 48s', n: 228, hero: true, dur: 0.6 },
+    { name: 'Turborepo', value: '8m 18s', n: 498, from: 45.78, dur: 8, loop: true },
+    { name: 'Nx', value: '8m 27s', n: 507, from: 44.97, dur: 8, loop: true },
+  ]}
+/>
+
+<BenchChart
+  title="Fully cached"
+  note="nothing to rebuild"
+  rows={[
+    { name: 'vx', value: '0.55s', n: 0.55, hero: true },
+    { name: 'Turborepo', value: '1.60s', n: 1.6 },
+    { name: 'Nx', value: '9.86s', n: 9.86 },
+  ]}
+/>
+
+<BenchChart
+  title="Restoring outputs"
+  note="cache → disk"
+  rows={[
+    { name: 'vx', value: '0.89s', n: 0.89, hero: true },
+    { name: 'Turborepo', value: '2.00s', n: 2.0 },
+    { name: 'Nx', value: '10.44s', n: 10.44 },
+  ]}
+/>
+
+<BenchChart
+  title="CPU burned"
+  note="cold build · user time"
+  rows={[
+    { name: 'vx', value: '22.7s', n: 22.7, hero: true },
+    { name: 'Turborepo', value: '1,250s', n: 1250 },
+    { name: 'Nx', value: '2,038s', n: 2038 },
+  ]}
+/>
+
 </div>
 
 vx builds the whole graph in **under 4 minutes** where Turborepo and Nx
