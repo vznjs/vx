@@ -146,10 +146,9 @@
   padding: 0.35rem;
 }
 
-/* Headline benchmark — three metric groups (cold / cached / restore) as
-   bars. Every bar grows in once on load, then holds. Bar length is the
-   true time ratio within each group (slowest = 100%); real times are
-   always labelled. */
+/* Headline benchmark — four bar groups (cold / cached / restore / CPU). Each
+   bar's length is its value relative to the group's slowest (= 100%); the
+   bright fill animates over --dur and the cold Turbo/Nx loop the slowdown. */
 .bench-race {
   margin: 1.75rem 0 1rem;
   display: grid;
@@ -213,6 +212,14 @@
   min-width: 0.3rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--sl-color-gray-2) 80%, transparent);
+  /* One animation for every bar: fill from --from (0, unless a cold bar
+     starts mid-run) up to full, over --dur, repeating --rep times. */
+  animation: bench-fill var(--dur, 1s) linear var(--rep, 1) both;
+}
+@keyframes bench-fill {
+  from {
+    width: var(--from, 0);
+  }
 }
 /* vx is the gradient/glow bar with the brightest label, in every group. */
 .lane-vx .rname {
@@ -250,59 +257,26 @@
   }
 }
 
-/* Timeline with a live fill. Each bar's TRACK is the full length for its run
-   time (normalised per category, longest = 100%) and shows muted; the bright
-   fill sweeps that track in real time so you compare total lengths AND watch
-   the progress at once. Exact times are labelled. */
-
-/* Cold starts the clock the moment VX FINISHES — vx is already done (full)
-   and we watch Turbo and Nx grind on past it in real time. The loop covers
-   just that slowdown window, from vx's 3m48s to Nx's 8m27s (279s), then
-   restarts. At the window's start Turbo/Nx are already ~45% filled (228s of
-   their run elapsed); Turbo finishes at 96.8% of the window (498s total), Nx
-   at 100% (507s). */
-.bench-group.racing .lane-vx .track { width: 45%; }
-.bench-group.racing .lane-turbo .track { width: 98.2%; }
-.bench-group.racing .lane-nx .track { width: 100%; }
-.bench-group.racing .lane-vx .fill { animation: none; } /* done — stays full */
-.bench-group.racing .lane-turbo .fill { animation: fill-turbo 279s linear infinite; }
-.bench-group.racing .lane-nx .fill { animation: fill-nx 279s linear infinite; }
-@keyframes fill-turbo {
-  0% { width: 45.78%; }
-  96.77% { width: 100%; }
-  100% { width: 100%; }
-}
-@keyframes fill-nx {
-  0% { width: 44.97%; }
-  100% { width: 100%; }
-}
-
-/* Warm runs are sub-10s, so they play once over their real duration (--d)
-   and hold — no loop needed. */
-/* Cached: 0.55s / 1.60s / 9.86s. */
-.bench-group.cached .lane-vx .track { width: 5.6%; --d: 0.55s; }
-.bench-group.cached .lane-turbo .track { width: 16.2%; --d: 1.6s; }
-.bench-group.cached .lane-nx .track { width: 100%; --d: 9.86s; }
-/* Restore: 0.89s / 2.00s / 10.44s. */
-.bench-group.restore .lane-vx .track { width: 8.5%; --d: 0.89s; }
-.bench-group.restore .lane-turbo .track { width: 19.2%; --d: 2s; }
-.bench-group.restore .lane-nx .track { width: 100%; --d: 10.44s; }
-
-/* CPU burned on the cold build (user-time seconds): 22.7s / 1,250.4s /
-   2,037.5s → normalised to Nx = 100%. vx is a sliver: ~90× less CPU. The
-   bars reveal at a constant speed (--d ∝ length) on load. */
-.bench-group.cpu .lane-vx .track { width: 1.1%; --d: 0.3s; }
-.bench-group.cpu .lane-turbo .track { width: 61.4%; --d: 1s; }
-.bench-group.cpu .lane-nx .track { width: 100%; --d: 1.6s; }
-
-.bench-group.cached .fill,
-.bench-group.restore .fill,
-.bench-group.cpu .fill {
-  animation: bench-grow var(--d, 1s) linear both;
-}
-@keyframes bench-grow {
-  from { width: 0; }
-}
+/* Per-lane data, one line each. width = bar length (∝ time or CPU, normalised
+   per group so the slowest is 100%); --dur = fill time. The cold Turbo/Nx
+   start mid-run (--from ≈ 45%, where they are when vx finishes) and loop, so
+   you watch them grind on past a finished vx. Real numbers labelled per row. */
+/* Cold — vx done; Turbo/Nx loop the slowdown. */
+.bench-group.racing .lane-vx .track { width: 45%; --dur: 0.6s; }
+.bench-group.racing .lane-turbo .track { width: 98.2%; --from: 45.78%; --dur: 8s; --rep: infinite; }
+.bench-group.racing .lane-nx .track { width: 100%; --from: 44.97%; --dur: 8s; --rep: infinite; }
+/* Cached — 0.55 / 1.60 / 9.86 s. */
+.bench-group.cached .lane-vx .track { width: 5.6%; --dur: 0.55s; }
+.bench-group.cached .lane-turbo .track { width: 16.2%; --dur: 1.6s; }
+.bench-group.cached .lane-nx .track { width: 100%; --dur: 9.86s; }
+/* Restore — 0.89 / 2.00 / 10.44 s. */
+.bench-group.restore .lane-vx .track { width: 8.5%; --dur: 0.89s; }
+.bench-group.restore .lane-turbo .track { width: 19.2%; --dur: 2s; }
+.bench-group.restore .lane-nx .track { width: 100%; --dur: 10.44s; }
+/* CPU burned, cold build — 22.7 / 1,250 / 2,038 s → Nx = 100%; vx ~90× less. */
+.bench-group.cpu .lane-vx .track { width: 1.1%; --dur: 0.3s; }
+.bench-group.cpu .lane-turbo .track { width: 61.4%; --dur: 1s; }
+.bench-group.cpu .lane-nx .track { width: 100%; --dur: 1.6s; }
 
 /* ───────────────────────────  Diagrams  ────────────────────────────── */
 
