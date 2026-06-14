@@ -203,8 +203,8 @@
   position: absolute;
   inset: 0 auto 0 0;
   width: 0;
-  /* Never fully vanish — a tiny-but-fast bar still reads as a pill. */
-  min-width: 0.8rem;
+  /* Never fully vanish — a tiny-but-fast bar still shows a hairline sliver. */
+  min-width: 0.3rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--sl-color-gray-4) 75%, transparent);
 }
@@ -221,21 +221,22 @@
   box-shadow: 0 0 14px color-mix(in srgb, var(--vx-pink) 50%, transparent);
 }
 
-/* Bar length is the real time ratio, normalised so the slowest bar in each
-   group is 100%. The gaps are true to the numbers — vx barely registers
-   warm because it really is that much faster. */
+/* ONE shared timescale across every group: 100% = the slowest run anywhere
+   (cold Nx, 507s). Bars are directly comparable as durations — which is why
+   the warm runs are barely a sliver next to a cold build. Exact times are
+   always labelled. */
 /* Cold: 228s / 498s / 507s. */
 .bench-group.racing .lane-vx .fill { width: 45%; }
 .bench-group.racing .lane-turbo .fill { width: 98.2%; }
 .bench-group.racing .lane-nx .fill { width: 100%; }
 /* Cached: 0.55s / 1.60s / 9.86s. */
-.bench-group.cached .lane-vx .fill { width: 5.6%; }
-.bench-group.cached .lane-turbo .fill { width: 16.2%; }
-.bench-group.cached .lane-nx .fill { width: 100%; }
+.bench-group.cached .lane-vx .fill { width: 0.11%; }
+.bench-group.cached .lane-turbo .fill { width: 0.32%; }
+.bench-group.cached .lane-nx .fill { width: 1.95%; }
 /* Restore: 0.89s / 2.00s / 10.44s. */
-.bench-group.restore .lane-vx .fill { width: 8.5%; }
-.bench-group.restore .lane-turbo .fill { width: 19.2%; }
-.bench-group.restore .lane-nx .fill { width: 100%; }
+.bench-group.restore .lane-vx .fill { width: 0.18%; }
+.bench-group.restore .lane-turbo .fill { width: 0.39%; }
+.bench-group.restore .lane-nx .fill { width: 2.06%; }
 
 /* Every bar grows in ONCE to its width, uniformly — same gentle reveal for
    all, then holds. No proportional racing, no loop. */
@@ -265,6 +266,11 @@ pre.mermaid svg {
 .sl-markdown-content table {
   display: block;
   overflow-x: auto;
+}
+
+/* Drop the per-heading anchor ("copy link") icons. */
+.sl-markdown-content .sl-anchor-link {
+  display: none;
 }
 
 /* ───────────────────────────  Responsive  ──────────────────────────── */
