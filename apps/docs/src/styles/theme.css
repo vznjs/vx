@@ -228,15 +228,34 @@
 }
 
 /* Timeline with a live fill. Each bar's TRACK is the full length for its run
-   time (normalised per category, longest = 100%) and shows muted; --d is the
-   run's LITERAL real duration, inherited by the fill. So you can compare the
-   total lengths AND watch each fill sweep its track in real time — vx's short
-   track fills and finishes at 3m48s while Nx's long track is still filling at
-   8m27s. Exact times are labelled. */
-/* Cold: 228s / 498s / 507s. */
-.bench-group.racing .lane-vx .track { width: 45%; --d: 228s; }
-.bench-group.racing .lane-turbo .track { width: 98.2%; --d: 498s; }
-.bench-group.racing .lane-nx .track { width: 100%; --d: 507s; }
+   time (normalised per category, longest = 100%) and shows muted; the bright
+   fill sweeps that track in real time so you compare total lengths AND watch
+   the progress at once. Exact times are labelled. */
+
+/* Cold starts the clock the moment VX FINISHES — vx is already done (full)
+   and we watch Turbo and Nx grind on past it in real time. The loop covers
+   just that slowdown window, from vx's 3m48s to Nx's 8m27s (279s), then
+   restarts. At the window's start Turbo/Nx are already ~45% filled (228s of
+   their run elapsed); Turbo finishes at 96.8% of the window (498s total), Nx
+   at 100% (507s). */
+.bench-group.racing .lane-vx .track { width: 45%; }
+.bench-group.racing .lane-turbo .track { width: 98.2%; }
+.bench-group.racing .lane-nx .track { width: 100%; }
+.bench-group.racing .lane-vx .fill { animation: none; } /* done — stays full */
+.bench-group.racing .lane-turbo .fill { animation: fill-turbo 279s linear infinite; }
+.bench-group.racing .lane-nx .fill { animation: fill-nx 279s linear infinite; }
+@keyframes fill-turbo {
+  0% { width: 45.78%; }
+  96.77% { width: 100%; }
+  100% { width: 100%; }
+}
+@keyframes fill-nx {
+  0% { width: 44.97%; }
+  100% { width: 100%; }
+}
+
+/* Warm runs are sub-10s, so they play once over their real duration (--d)
+   and hold — no loop needed. */
 /* Cached: 0.55s / 1.60s / 9.86s. */
 .bench-group.cached .lane-vx .track { width: 5.6%; --d: 0.55s; }
 .bench-group.cached .lane-turbo .track { width: 16.2%; --d: 1.6s; }
@@ -245,10 +264,8 @@
 .bench-group.restore .lane-vx .track { width: 8.5%; --d: 0.89s; }
 .bench-group.restore .lane-turbo .track { width: 19.2%; --d: 2s; }
 .bench-group.restore .lane-nx .track { width: 100%; --d: 10.44s; }
-
-/* The bright fill sweeps the full track once over the run's real duration
-   (--d), then holds full. Linear = constant-speed real time, no loop. */
-.bench-race .fill {
+.bench-group.cached .fill,
+.bench-group.restore .fill {
   animation: bench-grow var(--d, 1s) linear both;
 }
 @keyframes bench-grow {
