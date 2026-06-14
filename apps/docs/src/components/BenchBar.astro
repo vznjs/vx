@@ -1,30 +1,34 @@
 ---
-// One benchmark row: runner name · bar (length = pct) · value label.
-// The fill animates from `from`% to full over `dur`s; looping rows keep a
-// soft sheen so an in-progress run reads as "still working".
+// One benchmark row: runner name · full-width track · value label.
+//
+// Every row shares the SAME full-width track (the timeline). The fill grows
+// to `pct` of that track over `dur` seconds — and because the whole group
+// runs on one shared window (longest run = full window, see BenchChart), the
+// rows race against each other in real time: the fastest fills and stops
+// while the slow ones keep grinding. A leading edge-glow marks an in-progress
+// fill; the value label reveals the moment that row completes. Animation is
+// gated on the parent `.chart.run` class so it can replay on scroll.
 interface Props {
   name: string
   value: string
   pct: number
   dur: number
-  from?: number
-  loop?: boolean
   hero?: boolean
 }
-const { name, value, pct, dur, from = 0, loop = false, hero = false } = Astro.props
-const style = `--pct:${pct}%;--from:${from}%;--dur:${dur}s;--rep:${loop ? 'infinite' : 1}`
+const { name, value, pct, dur, hero = false } = Astro.props
+const style = `--pct:${pct}%;--dur:${dur}s`
 ---
 
 <div class:list={['lane', { hero }]} style={style}>
   <span class="name">{name}</span>
-  <div class="track"><span class:list={['fill', { sheen: loop }]}></span></div>
+  <div class="track"><span class="fill"></span></div>
   <span class="value">{value}</span>
 </div>
 
 <style>
   .lane {
     display: grid;
-    grid-template-columns: 5rem 1fr 4.4rem;
+    grid-template-columns: 5rem 1fr 4.6rem;
     align-items: center;
     gap: 0.75rem;
   }
@@ -49,61 +53,108 @@ const style = `--pct:${pct}%;--from:${from}%;--dur:${dur}s;--rep:${loop ? 'infin
     font-weight: 700;
   }
 
+  /* Full-width shared track — the timeline every row is measured against. */
   .track {
     position: relative;
-    width: var(--pct);
-    min-width: 0.4rem;
+    width: 100%;
     height: 0.7rem;
     border-radius: 999px;
     overflow: hidden;
-    background: color-mix(in srgb, var(--sl-color-gray-4) 20%, transparent);
+    background: color-mix(in srgb, var(--sl-color-gray-4) 22%, transparent);
   }
-  /* Glow on the track, not the fill — a fill box-shadow would be clipped by
-     the track's overflow:hidden. */
   .hero .track {
-    overflow: visible;
-    box-shadow: 0 0 12px color-mix(in srgb, var(--vx-pink) 45%, transparent);
+    background: color-mix(in srgb, var(--vx-violet) 14%, transparent);
   }
+
   .fill {
     position: absolute;
     inset: 0 auto 0 0;
-    width: 100%;
+    width: var(--pct);
     border-radius: 999px;
-    background: color-mix(in srgb, var(--sl-color-gray-2) 70%, transparent);
-    animation: fill var(--dur) linear var(--rep) both;
+    background: color-mix(in srgb, var(--sl-color-gray-2) 65%, transparent);
   }
   .hero .fill {
     background: var(--vx-grad);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--vx-pink) 50%, transparent);
   }
-  /* Moving sheen — only on looping (still-running) bars. */
-  .sheen::after {
+  /* Bright leading edge — reads as "still advancing" while the bar grows. */
+  .fill::after {
     content: '';
     position: absolute;
-    inset: 0;
+    inset: 0 0 0 auto;
+    width: 1.1rem;
+    border-radius: 999px;
+    opacity: 0;
     background: linear-gradient(
       90deg,
       transparent,
-      color-mix(in srgb, #fff 38%, transparent),
-      transparent
+      color-mix(in srgb, #fff 70%, transparent)
     );
-    transform: translateX(-100%);
-    animation: sheen 1.8s ease-in-out infinite;
+  }
+  .hero .fill::after {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--vx-pink) 90%, transparent)
+    );
   }
 
-  @keyframes fill {
+  /* JS-ready: collapse to the start line, waiting for the run to trigger.
+     Without JS (or with reduced motion) the defaults above render the final,
+     fixed state — fully accessible, no animation required. */
+  :global(.chart.ready) .fill {
+    width: 0;
+  }
+  :global(.chart.ready) .value {
+    opacity: 0;
+  }
+
+  /* Running: grow the fill, sweep the edge glow, reveal the value on finish. */
+  :global(.chart.run) .fill {
+    animation: grow var(--dur) linear both;
+  }
+  :global(.chart.run) .fill::after {
+    animation: edge var(--dur) linear both;
+  }
+  :global(.chart.run) .value {
+    animation: reveal 0.3s ease both;
+    animation-delay: var(--dur);
+  }
+
+  @keyframes grow {
     from {
-      width: var(--from);
+      width: 0;
+    }
+    to {
+      width: var(--pct);
     }
   }
-  @keyframes sheen {
+  @keyframes edge {
+    0% {
+      opacity: 0;
+    }
+    8%,
+    78% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes reveal {
+    from {
+      opacity: 0;
+      transform: translateX(-0.25rem);
+    }
     to {
-      transform: translateX(100%);
+      opacity: 1;
+      transform: none;
     }
   }
 
   @media (max-width: 30rem) {
     .lane {
-      grid-template-columns: 3.5rem 1fr 3.4rem;
+      grid-template-columns: 3.6rem 1fr 3.6rem;
       gap: 0.5rem;
     }
     .name,
@@ -113,11 +164,16 @@ const style = `--pct:${pct}%;--from:${from}%;--dur:${dur}s;--rep:${loop ? 'infin
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .fill {
-      animation: none;
+    :global(.chart.ready) .fill {
+      width: var(--pct);
     }
-    .sheen::after {
-      display: none;
+    :global(.chart.ready) .value {
+      opacity: 1;
+    }
+    :global(.chart.run) .fill,
+    :global(.chart.run) .fill::after,
+    :global(.chart.run) .value {
+      animation: none;
     }
   }
 </style>

@@ -1,9 +1,12 @@
 ---
-// One benchmark group: a label plus a row per runner. Bar lengths are
-// normalised so the slowest run in the group is 100%. Reveal durations are
-// derived from the bar length (constant-speed fill) unless a row overrides
-// `dur` / `from` / `loop` (the cold group does, to show vx done while
-// Turbo and Nx grind on).
+// One benchmark group: a label plus a row per runner.
+//
+// Bars are normalised to the SLOWEST run in the group (longest = 100%). The
+// whole group animates on one shared window: the slowest bar fills over the
+// full `window` seconds and every other bar fills proportionally — a real
+// relative timeline, so the rows visibly race and the fastest finishes first.
+// Reveal durations are derived from each bar's share of that window; nothing
+// is hand-tuned per row.
 import BenchBar from './BenchBar.astro'
 
 interface Row {
@@ -11,17 +14,15 @@ interface Row {
   value: string
   n: number
   hero?: boolean
-  from?: number
-  dur?: number
-  loop?: boolean
 }
 interface Props {
   title: string
   note?: string
   rows: Row[]
+  window?: number
 }
 
-const { title, note, rows } = Astro.props
+const { title, note, rows, window = 2.6 } = Astro.props
 const max = Math.max(...rows.map((r) => r.n))
 ---
 
@@ -30,17 +31,8 @@ const max = Math.max(...rows.map((r) => r.n))
   {
     rows.map((r) => {
       const pct = Math.round((r.n / max) * 1000) / 10
-      return (
-        <BenchBar
-          name={r.name}
-          value={r.value}
-          pct={pct}
-          dur={r.dur ?? Math.round((0.3 + (pct / 100) * 1.1) * 100) / 100}
-          from={r.from ?? 0}
-          loop={r.loop ?? false}
-          hero={r.hero ?? false}
-        />
-      )
+      const dur = Math.max(0.2, Math.round((window * pct) / 100 * 100) / 100)
+      return <BenchBar name={r.name} value={r.value} pct={pct} dur={dur} hero={r.hero ?? false} />
     })
   }
 </div>
@@ -70,3 +62,29 @@ const max = Math.max(...rows.map((r) => r.n))
     border-radius: 999px;
   }
 </style>
+
+<script>
+  // Drive the realtime fill: collapse each chart to the start line, then run
+  // (and replay) the race whenever it scrolls into view. CSS owns the final,
+  // fixed state, so charts are fully legible if this never runs.
+  const charts = document.querySelectorAll<HTMLElement>('.chart')
+  charts.forEach((c) => c.classList.add('ready'))
+
+  const io = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        const c = e.target as HTMLElement
+        if (e.isIntersecting) {
+          // Restart the animation cleanly on each entry.
+          c.classList.remove('run')
+          void c.offsetWidth
+          c.classList.add('run')
+        } else {
+          c.classList.remove('run')
+        }
+      }
+    },
+    { threshold: 0.4 },
+  )
+  charts.forEach((c) => io.observe(c))
+</script>
