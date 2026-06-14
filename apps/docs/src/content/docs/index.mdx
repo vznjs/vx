@@ -1,15 +1,15 @@
 ---
 title: vx
-description: The monorepo build engine that ends the Nx-or-Turbo compromise — Nx-scale power, Turbo-grade simplicity, faster than both, with the tradeoffs of neither.
+description: The monorepo build engine that ends the Nx-or-Turbo compromise — Nx-scale power, Turbo-grade simplicity, faster than both.
 template: splash
 hero:
-  tagline: "For years you've had two choices for your monorepo — and paid for both. vx is the one that didn't exist: Nx-scale power, Turbo-grade simplicity, faster than either, with the tradeoffs of neither."
+  tagline: End the Nx-or-Turbo compromise. Nx-scale power, Turbo-grade simplicity — faster than both, with the tradeoffs of neither.
   actions:
     - text: Get started
       link: quickstart/
       icon: right-arrow
       variant: primary
-    - text: See the numbers
+    - text: See the benchmarks
       link: benchmarks/
       icon: rocket
       variant: secondary
@@ -23,74 +23,57 @@ import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components'
 
 <div class="landing">
 
-## For years, you had two choices. Both cost you.
+## Two choices for years. Both cost you.
 
-For mid-to-large monorepos, **Nx** was the only real answer — and you paid
-the platform tax: a background daemon, a plugin graph, generators, a config
-surface you *maintain* instead of ship. For small-to-mid, **Turborepo** was
-the easy pick — until you hit the ceiling: static JSON config, additive
-restores that leak stale files, a cache blind to your computed inputs.
+**Nx** for big repos — and the platform tax: a daemon, a plugin graph,
+generators. **Turborepo** for small — until you hit the ceiling. vx is the
+third option that never existed: the power, the simplicity, **faster than
+either**, the tradeoffs of neither.
 
-Every team picks the tradeoff that hurts least and calls it a decision.
-You've been a hostage to the lesser evil. There was never a third option.
+## 3,270 tasks, built from scratch.
 
-## Now there is.
-
-**vx** is the alternative that didn't exist — the power that pushed you to
-Nx, the simplicity that drew you to Turbo, **faster than either**, and the
-tradeoffs of neither. One self-contained binary. Config that's real
-TypeScript. Shell is the API. No daemon, no plugins, no platform to serve —
-just your tasks, cached and correct, replaying in **milliseconds**.
-
-## Your monorepo isn't slow. Your runner is.
-
-The same **3,270-task monorepo** (100 dependency layers), run three ways on
-the same machine:
-
-<div class="stat-table">
-
-| | vx | Turborepo | Nx |
-| --- | --- | --- | --- |
-| **Cold build** | **3m 48s** | 8m 18s | 8m 27s |
-| **Cached**, nothing to rebuild | **0.55s** | 1.60s | 9.86s |
-| **Cached**, restore outputs | **0.89s** | 2.00s | 10.44s |
-| **CPU burned** (same 3,270 tasks) | **23s** | 1,250s | 2,037s |
-
+<div class="bench-race" role="img" aria-label="Cold build of a 3,270-task monorepo from scratch — vx 3m 48s, Turborepo 8m 18s, Nx 8m 27s.">
+  <div class="lane lane-vx">
+    <span class="rname">vx</span>
+    <div class="track"><div class="fill"></div></div>
+    <span class="rtime">⚡ 3m 48s</span>
+  </div>
+  <div class="lane lane-turbo">
+    <span class="rname">Turborepo</span>
+    <div class="track"><div class="fill"></div></div>
+    <span class="rtime">8m 18s</span>
+  </div>
+  <div class="lane lane-nx">
+    <span class="rname">Nx</span>
+    <div class="track"><div class="fill"></div></div>
+    <span class="rtime">8m 27s</span>
+  </div>
 </div>
 
-A cold build in **under 4 minutes** where the others take **over 8**. A
-fully-cached check of 3,270 tasks in **half a second**. And the last row is
-the foundation: for the *same work*, vx burns **~50× less CPU per task** —
-so the bigger and more tangled your graph, the wider the gap grows.
-
-**vx doesn't compete on speed. Speed is the foundation it's built on.**
+vx builds the whole graph in **under 4 minutes** where Turborepo and Nx
+take **over 8** — burning **~50× less CPU** doing it. (And once it's
+cached, every repeat run replays in **milliseconds**.)
+[Full benchmarks →](benchmarks/)
 
 ## What you stop trading away
 
-<CardGrid stagger>
+<CardGrid>
   <Card title="Scale without the platform" icon="rocket">
-    Nx-grade graphs — 3,270 tasks, 100 layers — run fully cached in **0.55s**,
-    2× faster than Turbo cold and **5–18× faster than Nx**. No daemon to
-    babysit, no `nx reset`, no plugin graph to keep in sync. The win *grows*
-    with your repo instead of shrinking.
+    Nx-grade graphs **build ~2× faster**, and replay fully cached in
+    **0.55s**. No daemon, no `nx reset`, no plugin graph — the win *grows*
+    with your repo.
   </Card>
   <Card title="Simplicity without the ceiling" icon="seti:typescript">
-    Turbo-easy, minus the wall you hit. Config is real **TypeScript** —
-    imports, presets, and computed values are part of the cache key. Tasks
-    are shell commands. `vx migrate` reads your `turbo.json` or Nx graph and
-    writes it for you.
+    Turbo-easy, no wall. Config is real **TypeScript**, tasks are shell
+    commands, and `vx migrate` converts your `turbo.json` or Nx graph for you.
   </Card>
-  <Card title="Caching you can actually trust" icon="approve-check">
-    **Strict output ownership** — declared outputs are wiped before every
-    build *and* restore, so no stale file ever survives. **Resolved-config
-    hashing** sees what static-JSON hashers miss. Neither exists in Turbo
-    or Nx.
+  <Card title="Caching you can trust" icon="approve-check">
+    Stale files wiped before *every* run; **resolved-config hashing** sees
+    what JSON hashers miss. Neither exists in Turbo or Nx.
   </Card>
   <Card title="Sandboxed builds, built in" icon="seti:lock">
-    Run any task under an **OS-level allow-list** of files and network —
-    one line, `sandbox: {}`. A build that reads an undeclared file or phones
-    home **fails the run** instead of shipping something compromised. No
-    other runner has it.
+    Any task under an OS-level file + network allow-list — `sandbox: {}`. An
+    undeclared read or a phone-home **fails the run**. No other runner has it.
   </Card>
 </CardGrid>
 
@@ -123,7 +106,6 @@ export default defineProject({
 ```
 
 ```bash
-vx run build                # this package + its dependency graph
 vx run build test --all     # every package, one shared graph
 vx run test --affected      # only what changed vs the base branch
 vx run build                # again → replays from cache in milliseconds
@@ -132,10 +114,10 @@ vx run build                # again → replays from cache in milliseconds
 ## Stop renting your build system
 
 <CardGrid>
-  <LinkCard title="Coming from Turborepo →" href="migrate/from-turborepo/" description="Keep the syntax you know; lose the ceiling. What maps 1:1, and vx migrate." />
-  <LinkCard title="Coming from Nx →" href="migrate/from-nx/" description="Drop the daemon, the plugins, the platform — keep the affected graph and the speed." />
+  <LinkCard title="Coming from Turborepo →" href="migrate/from-turborepo/" description="Keep the syntax; lose the ceiling. vx migrate does the conversion." />
+  <LinkCard title="Coming from Nx →" href="migrate/from-nx/" description="Drop the daemon and plugins; keep the affected graph and the speed." />
   <LinkCard title="Quickstart" href="quickstart/" description="Zero to a cached, parallel task graph in five minutes." />
-  <LinkCard title="See the benchmarks" href="benchmarks/" description="The full head-to-head, reproducible with bun bench/compare.ts." />
+  <LinkCard title="See the benchmarks" href="benchmarks/" description="The full head-to-head, reproducible with one command." />
 </CardGrid>
 
 </div>
