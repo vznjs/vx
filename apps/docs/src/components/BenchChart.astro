@@ -1,12 +1,12 @@
 ---
 // One benchmark group: a label plus a row per runner.
 //
-// Bars are normalised to the SLOWEST run in the group (longest = 100%). The
-// whole group animates on one shared window: the slowest bar fills over the
-// full `window` seconds and every other bar fills proportionally — a real
-// relative timeline, so the rows visibly race and the fastest finishes first.
-// Reveal durations are derived from each bar's share of that window; nothing
-// is hand-tuned per row.
+// Bar lengths are normalised to the SLOWEST run in the group (slowest = full
+// width), so each bar shows its real magnitude. Each bar's fill duration is
+// its share of one shared `window` (slowest = full window), which makes the
+// fill FRONT advance at the same speed on every row across every group — a
+// single shared timeline. The rows race in real time: the fastest fills and
+// stops while the slow ones keep going past it. Nothing is hand-tuned per row.
 import BenchBar from './BenchBar.astro'
 
 interface Row {
@@ -22,7 +22,7 @@ interface Props {
   window?: number
 }
 
-const { title, note, rows, window = 2.6 } = Astro.props
+const { title, note, rows, window = 2.4 } = Astro.props
 const max = Math.max(...rows.map((r) => r.n))
 ---
 
@@ -31,7 +31,8 @@ const max = Math.max(...rows.map((r) => r.n))
   {
     rows.map((r) => {
       const pct = Math.round((r.n / max) * 1000) / 10
-      const dur = Math.max(0.2, Math.round((window * pct) / 100 * 100) / 100)
+      // dur ∝ length → the fill front moves at a constant speed across all rows
+      const dur = Math.max(0.12, Math.round((window * pct) / 100 * 100) / 100)
       return <BenchBar name={r.name} value={r.value} pct={pct} dur={dur} hero={r.hero ?? false} />
     })
   }

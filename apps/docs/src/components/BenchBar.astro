@@ -1,13 +1,16 @@
 ---
-// One benchmark row: runner name · full-width track · value label.
+// One benchmark row: runner name · relative-length bar · value label.
 //
-// Every row shares the SAME full-width track (the timeline). The fill grows
-// to `pct` of that track over `dur` seconds — and because the whole group
-// runs on one shared window (longest run = full window, see BenchChart), the
-// rows race against each other in real time: the fastest fills and stops
-// while the slow ones keep grinding. A leading edge-glow marks an in-progress
-// fill; the value label reveals the moment that row completes. Animation is
-// gated on the parent `.chart.run` class so it can replay on scroll.
+// The BAR width is the runner's time relative to the slowest in the group
+// (slowest = full width), so every row shows its real magnitude up front — a
+// faint "ghost" of the full length. A progress fill then sweeps INSIDE that
+// bar from 0 to 100% over `dur` seconds.
+//
+// Because `dur` is proportional to the bar's length (see BenchChart) the fill
+// FRONT advances at the same speed on every row — one shared timeline. So the
+// rows race: vx's short bar fills and stops while Turbo/Nx keep grinding past
+// the point where vx already finished. The value reveals the instant its row
+// completes. CSS owns the final fixed state, so it stays legible without JS.
 interface Props {
   name: string
   value: string
@@ -21,7 +24,9 @@ const style = `--pct:${pct}%;--dur:${dur}s`
 
 <div class:list={['lane', { hero }]} style={style}>
   <span class="name">{name}</span>
-  <div class="track"><span class="fill"></span></div>
+  <div class="track">
+    <div class="bar"><span class="prog"></span></div>
+  </div>
   <span class="value">{value}</span>
 </div>
 
@@ -53,67 +58,65 @@ const style = `--pct:${pct}%;--dur:${dur}s`
     font-weight: 700;
   }
 
-  /* Full-width shared track — the timeline every row is measured against. */
+  /* The track is the shared measuring space; the bar's width is this runner's
+     time relative to the slowest (the visible "fixed" length). */
   .track {
-    position: relative;
     width: 100%;
+  }
+  .bar {
+    position: relative;
+    width: var(--pct);
+    min-width: 3px;
     height: 0.7rem;
     border-radius: 999px;
     overflow: hidden;
-    background: color-mix(in srgb, var(--sl-color-gray-4) 22%, transparent);
+    /* faint ghost showing the full relative length before it fills */
+    background: color-mix(in srgb, var(--sl-color-gray-4) 24%, transparent);
   }
-  .hero .track {
-    background: color-mix(in srgb, var(--vx-violet) 14%, transparent);
+  .hero .bar {
+    background: color-mix(in srgb, var(--vx-violet) 18%, transparent);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--vx-pink) 45%, transparent);
   }
 
-  .fill {
+  /* The realtime progress fill, sweeping inside the bar. */
+  .prog {
     position: absolute;
     inset: 0 auto 0 0;
-    width: var(--pct);
+    width: 100%;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--sl-color-gray-2) 65%, transparent);
+    background: color-mix(in srgb, var(--sl-color-gray-2) 68%, transparent);
   }
-  .hero .fill {
+  .hero .prog {
     background: var(--vx-grad);
-    box-shadow: 0 0 14px color-mix(in srgb, var(--vx-pink) 50%, transparent);
   }
-  /* Bright leading edge — reads as "still advancing" while the bar grows. */
-  .fill::after {
+  /* bright leading edge — the moving "now" front */
+  .prog::after {
     content: '';
     position: absolute;
     inset: 0 0 0 auto;
-    width: 1.1rem;
+    width: 0.9rem;
     border-radius: 999px;
     opacity: 0;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      color-mix(in srgb, #fff 70%, transparent)
-    );
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, #fff 75%, transparent));
   }
-  .hero .fill::after {
-    background: linear-gradient(
-      90deg,
-      transparent,
-      color-mix(in srgb, var(--vx-pink) 90%, transparent)
-    );
+  .hero .prog::after {
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--vx-pink) 95%, transparent));
   }
 
-  /* JS-ready: collapse to the start line, waiting for the run to trigger.
-     Without JS (or with reduced motion) the defaults above render the final,
-     fixed state — fully accessible, no animation required. */
-  :global(.chart.ready) .fill {
+  /* JS-ready: collapse the fill to the start line, waiting to run.
+     Without JS (or reduced motion) the defaults render the final state. */
+  :global(.chart.ready) .prog {
     width: 0;
   }
   :global(.chart.ready) .value {
     opacity: 0;
   }
 
-  /* Running: grow the fill, sweep the edge glow, reveal the value on finish. */
-  :global(.chart.run) .fill {
+  /* Running: sweep the fill, the edge glow, then reveal the value on finish. */
+  :global(.chart.run) .prog {
     animation: grow var(--dur) linear both;
   }
-  :global(.chart.run) .fill::after {
+  :global(.chart.run) .prog::after {
     animation: edge var(--dur) linear both;
   }
   :global(.chart.run) .value {
@@ -126,7 +129,7 @@ const style = `--pct:${pct}%;--dur:${dur}s`
       width: 0;
     }
     to {
-      width: var(--pct);
+      width: 100%;
     }
   }
   @keyframes edge {
@@ -134,7 +137,7 @@ const style = `--pct:${pct}%;--dur:${dur}s`
       opacity: 0;
     }
     8%,
-    78% {
+    72% {
       opacity: 1;
     }
     100% {
@@ -164,14 +167,14 @@ const style = `--pct:${pct}%;--dur:${dur}s`
   }
 
   @media (prefers-reduced-motion: reduce) {
-    :global(.chart.ready) .fill {
-      width: var(--pct);
+    :global(.chart.ready) .prog {
+      width: 100%;
     }
     :global(.chart.ready) .value {
       opacity: 1;
     }
-    :global(.chart.run) .fill,
-    :global(.chart.run) .fill::after,
+    :global(.chart.run) .prog,
+    :global(.chart.run) .prog::after,
     :global(.chart.run) .value {
       animation: none;
     }
