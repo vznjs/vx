@@ -146,137 +146,8 @@
   padding: 0.35rem;
 }
 
-/* Headline benchmark — four bar groups (cold / cached / restore / CPU). Each
-   bar's length is its value relative to the group's slowest (= 100%); the
-   bright fill animates over --dur and the cold Turbo/Nx loop the slowdown. */
-.bench-race {
-  margin: 1.75rem 0 1rem;
-  display: grid;
-  gap: 1.5rem;
-}
-.bench-group {
-  display: grid;
-  gap: 0.5rem;
-}
-.bench-group .group-label {
-  margin: 0;
-  font-size: 0.82rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  color: var(--sl-color-gray-3);
-}
-.bench-group .group-label span {
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 0.78rem;
-  margin-left: 0.55rem;
-  color: var(--vx-pink);
-  background: color-mix(in srgb, var(--vx-violet) 15%, transparent);
-  padding: 0.05rem 0.5rem;
-  border-radius: 999px;
-}
-.bench-race .lane {
-  display: grid;
-  grid-template-columns: 5.5rem 1fr 4.6rem;
-  align-items: center;
-  gap: 0.75rem;
-}
-.bench-race .rname {
-  font-weight: 600;
-  font-size: 0.92rem;
-  color: var(--sl-color-gray-2);
-}
-.bench-race .rtime {
-  font-family: ui-monospace, 'SFMono-Regular', 'Cascadia Code', monospace;
-  font-variant-numeric: tabular-nums;
-  font-size: 0.88rem;
-  color: var(--sl-color-gray-3);
-  text-align: right;
-  white-space: nowrap;
-}
-.bench-race .track {
-  position: relative;
-  height: 0.8rem;
-  border-radius: 999px;
-  overflow: hidden;
-  /* The track IS the full bar for this run's time (length ∝ time); the
-     bright fill below sweeps across it in real time. */
-  background: color-mix(in srgb, var(--sl-color-gray-5) 45%, transparent);
-}
-.bench-race .fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 100%;
-  /* Never fully vanish — a tiny-but-fast bar still shows a hairline sliver. */
-  min-width: 0.3rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--sl-color-gray-2) 80%, transparent);
-  /* One animation for every bar: fill from --from (0, unless a cold bar
-     starts mid-run) up to full, over --dur, repeating --rep times. */
-  animation: bench-fill var(--dur, 1s) linear var(--rep, 1) both;
-}
-@keyframes bench-fill {
-  from {
-    width: var(--from, 0);
-  }
-}
-/* vx is the gradient/glow bar with the brightest label, in every group. */
-.lane-vx .rname {
-  color: var(--sl-color-white);
-}
-.lane-vx .rtime {
-  color: var(--vx-pink);
-  font-weight: 700;
-}
-.lane-vx .fill {
-  background: var(--vx-grad);
-  box-shadow: 0 0 14px color-mix(in srgb, var(--vx-pink) 50%, transparent);
-}
+/* Benchmark visuals live in the BenchChart / BenchBar components. */
 
-/* A soft light sweeps across only the bars that are still RUNNING — the cold
-   Turbo/Nx grinders that loop. Everything that's finished (vx, the warm runs,
-   the CPU bars) holds steady with no shimmer. */
-.bench-group.racing .lane-turbo .fill::after,
-.bench-group.racing .lane-nx .fill::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in srgb, #fff 40%, transparent) 50%,
-    transparent 100%
-  );
-  transform: translateX(-100%);
-  animation: bench-sheen 2s ease-in-out infinite;
-}
-@keyframes bench-sheen {
-  to {
-    transform: translateX(100%);
-  }
-}
-
-/* Per-lane data, one line each. width = bar length (∝ time or CPU, normalised
-   per group so the slowest is 100%); --dur = fill time. The cold Turbo/Nx
-   start mid-run (--from ≈ 45%, where they are when vx finishes) and loop, so
-   you watch them grind on past a finished vx. Real numbers labelled per row. */
-/* Cold — vx done; Turbo/Nx loop the slowdown. */
-.bench-group.racing .lane-vx .track { width: 45%; --dur: 0.6s; }
-.bench-group.racing .lane-turbo .track { width: 98.2%; --from: 45.78%; --dur: 8s; --rep: infinite; }
-.bench-group.racing .lane-nx .track { width: 100%; --from: 44.97%; --dur: 8s; --rep: infinite; }
-/* Cached — 0.55 / 1.60 / 9.86 s. */
-.bench-group.cached .lane-vx .track { width: 5.6%; --dur: 0.55s; }
-.bench-group.cached .lane-turbo .track { width: 16.2%; --dur: 1.6s; }
-.bench-group.cached .lane-nx .track { width: 100%; --dur: 9.86s; }
-/* Restore — 0.89 / 2.00 / 10.44 s. */
-.bench-group.restore .lane-vx .track { width: 8.5%; --dur: 0.89s; }
-.bench-group.restore .lane-turbo .track { width: 19.2%; --dur: 2s; }
-.bench-group.restore .lane-nx .track { width: 100%; --dur: 10.44s; }
-/* CPU burned, cold build — 22.7 / 1,250 / 2,038 s → Nx = 100%; vx ~90× less. */
-.bench-group.cpu .lane-vx .track { width: 1.1%; --dur: 0.3s; }
-.bench-group.cpu .lane-turbo .track { width: 61.4%; --dur: 1s; }
-.bench-group.cpu .lane-nx .track { width: 100%; --dur: 1.6s; }
 
 /* ───────────────────────────  Diagrams  ────────────────────────────── */
 
@@ -322,14 +193,6 @@ pre.mermaid svg {
   .landing h2 {
     margin-top: 2.5rem;
   }
-  .bench-race .lane {
-    grid-template-columns: 3.9rem 1fr 3.6rem;
-    gap: 0.5rem;
-  }
-  .bench-race .rname,
-  .bench-race .rtime {
-    font-size: 0.78rem;
-  }
 }
 
 /* ───────────────────────────  Motion safety  ───────────────────────── */
@@ -354,13 +217,5 @@ pre.mermaid svg {
   .hero .action.primary,
   .hero .action.secondary {
     transition: none;
-  }
-  /* No animation — bars render at their final timeline lengths from the
-     per-category rules above; the sweeping sheen is dropped entirely. */
-  .bench-race .fill {
-    animation: none;
-  }
-  .bench-race .fill::after {
-    display: none;
   }
 }

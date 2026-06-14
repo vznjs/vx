@@ -1,0 +1,72 @@
+---
+// One benchmark group: a label plus a row per runner. Bar lengths are
+// normalised so the slowest run in the group is 100%. Reveal durations are
+// derived from the bar length (constant-speed fill) unless a row overrides
+// `dur` / `from` / `loop` (the cold group does, to show vx done while
+// Turbo and Nx grind on).
+import BenchBar from './BenchBar.astro'
+
+interface Row {
+  name: string
+  value: string
+  n: number
+  hero?: boolean
+  from?: number
+  dur?: number
+  loop?: boolean
+}
+interface Props {
+  title: string
+  note?: string
+  rows: Row[]
+}
+
+const { title, note, rows } = Astro.props
+const max = Math.max(...rows.map((r) => r.n))
+---
+
+<div class="chart">
+  <p class="label">{title}{note ? <span>{note}</span> : null}</p>
+  {
+    rows.map((r) => {
+      const pct = Math.round((r.n / max) * 1000) / 10
+      return (
+        <BenchBar
+          name={r.name}
+          value={r.value}
+          pct={pct}
+          dur={r.dur ?? Math.round((0.3 + (pct / 100) * 1.1) * 100) / 100}
+          from={r.from ?? 0}
+          loop={r.loop ?? false}
+          hero={r.hero ?? false}
+        />
+      )
+    })
+  }
+</div>
+
+<style>
+  .chart {
+    display: grid;
+    gap: 0.5rem;
+    margin-bottom: 1.6rem;
+  }
+  .label {
+    margin: 0 0 0.1rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--sl-color-gray-3);
+  }
+  .label span {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.76rem;
+    margin-left: 0.5rem;
+    color: var(--vx-pink);
+    background: color-mix(in srgb, var(--vx-violet) 15%, transparent);
+    padding: 0.05rem 0.5rem;
+    border-radius: 999px;
+  }
+</style>
