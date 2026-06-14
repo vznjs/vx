@@ -56,8 +56,12 @@
   opacity: 0.5;
 }
 
-/* Oversized gradient wordmark with glow. */
+/* Oversized gradient wordmark. The glow comes from the hero's ::before
+   backdrop, NOT a filter on this element — `filter` on top of
+   `background-clip: text` breaks the text clip on mobile browsers (the
+   gradient renders as a filled box). */
 .hero h1 {
+  display: inline-block;
   font-size: clamp(4rem, 15vw, 9.5rem);
   line-height: 0.9;
   letter-spacing: -0.04em;
@@ -66,7 +70,6 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  filter: drop-shadow(0 6px 40px color-mix(in srgb, var(--vx-violet) 45%, transparent));
 }
 
 .hero .tagline {
