@@ -224,26 +224,27 @@
   box-shadow: 0 0 14px color-mix(in srgb, var(--vx-pink) 50%, transparent);
 }
 
-/* Each bar is a PROGRESS bar that loads 0 → 100% over its LITERAL real run
-   time (--d). The fastest run completes first: vx fills in 3m48s while Turbo
-   and Nx are still loading past 8 minutes. Exact times are labelled. */
+/* A timeline drawn in real time: each bar's LENGTH is its time (normalised
+   per category, longest = 100%) and it draws itself over its LITERAL real
+   duration (--d). Within a group every bar advances along the time axis at
+   the same constant speed and stops when its run finishes — vx stops at
+   3m48s, Nx runs on to 8m27s. Exact times are labelled. */
 /* Cold: 228s / 498s / 507s. */
-.bench-group.racing .lane-vx .fill { --d: 228s; }
-.bench-group.racing .lane-turbo .fill { --d: 498s; }
-.bench-group.racing .lane-nx .fill { --d: 507s; }
+.bench-group.racing .lane-vx .fill { width: 45%; --d: 228s; }
+.bench-group.racing .lane-turbo .fill { width: 98.2%; --d: 498s; }
+.bench-group.racing .lane-nx .fill { width: 100%; --d: 507s; }
 /* Cached: 0.55s / 1.60s / 9.86s. */
-.bench-group.cached .lane-vx .fill { --d: 0.55s; }
-.bench-group.cached .lane-turbo .fill { --d: 1.6s; }
-.bench-group.cached .lane-nx .fill { --d: 9.86s; }
+.bench-group.cached .lane-vx .fill { width: 5.6%; --d: 0.55s; }
+.bench-group.cached .lane-turbo .fill { width: 16.2%; --d: 1.6s; }
+.bench-group.cached .lane-nx .fill { width: 100%; --d: 9.86s; }
 /* Restore: 0.89s / 2.00s / 10.44s. */
-.bench-group.restore .lane-vx .fill { --d: 0.89s; }
-.bench-group.restore .lane-turbo .fill { --d: 2s; }
-.bench-group.restore .lane-nx .fill { --d: 10.44s; }
+.bench-group.restore .lane-vx .fill { width: 8.5%; --d: 0.89s; }
+.bench-group.restore .lane-turbo .fill { width: 19.2%; --d: 2s; }
+.bench-group.restore .lane-nx .fill { width: 100%; --d: 10.44s; }
 
-/* Progress bar: loads to 100% once over its real duration (--d), then holds
-   full. Linear = honest constant-speed progress. No loop. */
+/* Draws to its final length once over its real duration (--d), then holds.
+   Linear = honest constant-speed timeline, no loop. */
 .bench-race .fill {
-  width: 100%;
   animation: bench-grow var(--d, 1s) linear both;
 }
 @keyframes bench-grow {
@@ -327,18 +328,9 @@ pre.mermaid svg {
   .hero .action.secondary {
     transition: none;
   }
-  /* No animation — fall back to static bars scaled per category (longest =
-     100%) so there's still a visible comparison without the progress race. */
+  /* No animation — bars render at their final timeline lengths from the
+     per-category rules above. */
   .bench-race .fill {
     animation: none;
   }
-  .bench-group.racing .lane-vx .fill { width: 45%; }
-  .bench-group.racing .lane-turbo .fill { width: 98.2%; }
-  .bench-group.racing .lane-nx .fill { width: 100%; }
-  .bench-group.cached .lane-vx .fill { width: 5.6%; }
-  .bench-group.cached .lane-turbo .fill { width: 16.2%; }
-  .bench-group.cached .lane-nx .fill { width: 100%; }
-  .bench-group.restore .lane-vx .fill { width: 8.5%; }
-  .bench-group.restore .lane-turbo .fill { width: 19.2%; }
-  .bench-group.restore .lane-nx .fill { width: 100%; }
 }
