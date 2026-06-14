@@ -227,6 +227,31 @@
   box-shadow: 0 0 14px color-mix(in srgb, var(--vx-pink) 50%, transparent);
 }
 
+/* A soft light sweeps across each actively-filling bar — a subtle "working"
+   sheen that makes the running bars feel alive. */
+.bench-race .fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, #fff 40%, transparent) 50%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: bench-sheen 2s ease-in-out infinite;
+}
+/* vx in the cold group is already done — no sweep. */
+.bench-group.racing .lane-vx .fill::after {
+  display: none;
+}
+@keyframes bench-sheen {
+  to {
+    transform: translateX(100%);
+  }
+}
+
 /* Timeline with a live fill. Each bar's TRACK is the full length for its run
    time (normalised per category, longest = 100%) and shows muted; the bright
    fill sweeps that track in real time so you compare total lengths AND watch
@@ -264,8 +289,17 @@
 .bench-group.restore .lane-vx .track { width: 8.5%; --d: 0.89s; }
 .bench-group.restore .lane-turbo .track { width: 19.2%; --d: 2s; }
 .bench-group.restore .lane-nx .track { width: 100%; --d: 10.44s; }
+
+/* CPU burned on the cold build (user-time seconds): 22.7s / 1,250.4s /
+   2,037.5s → normalised to Nx = 100%. vx is a sliver: ~90× less CPU. The
+   bars reveal at a constant speed (--d ∝ length) on load. */
+.bench-group.cpu .lane-vx .track { width: 1.1%; --d: 0.3s; }
+.bench-group.cpu .lane-turbo .track { width: 61.4%; --d: 1s; }
+.bench-group.cpu .lane-nx .track { width: 100%; --d: 1.6s; }
+
 .bench-group.cached .fill,
-.bench-group.restore .fill {
+.bench-group.restore .fill,
+.bench-group.cpu .fill {
   animation: bench-grow var(--d, 1s) linear both;
 }
 @keyframes bench-grow {
@@ -350,8 +384,11 @@ pre.mermaid svg {
     transition: none;
   }
   /* No animation — bars render at their final timeline lengths from the
-     per-category rules above. */
+     per-category rules above; the sweeping sheen is dropped entirely. */
   .bench-race .fill {
     animation: none;
+  }
+  .bench-race .fill::after {
+    display: none;
   }
 }
