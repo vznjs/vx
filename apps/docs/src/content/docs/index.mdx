@@ -30,29 +30,68 @@ generators. **Turborepo** for small — until you hit the ceiling. vx is the
 third option that never existed: the power, the simplicity, **faster than
 either**, the tradeoffs of neither.
 
-## 3,270 tasks, built from scratch.
+## 3,270 tasks, three cache states.
 
-<div class="bench-race" role="img" aria-label="Cold build of a 3,270-task monorepo from scratch — vx 3m 48s, Turborepo 8m 18s, Nx 8m 27s.">
-  <div class="lane lane-vx">
-    <span class="rname">vx</span>
-    <div class="track"><div class="fill"></div></div>
-    <span class="rtime">⚡ 3m 48s</span>
+<div class="bench-race" role="img" aria-label="A 3,270-task monorepo across three cache states. Cold from scratch: vx 3m 48s, Turborepo 8m 18s, Nx 8m 27s. Fully cached: vx 0.55s, Turborepo 1.60s, Nx 9.86s. Restoring outputs: vx 0.89s, Turborepo 2.00s, Nx 10.44s.">
+  <div class="bench-group racing">
+    <p class="group-label">Cold — built from scratch</p>
+    <div class="lane lane-vx">
+      <span class="rname">vx</span>
+      <div class="track"><div class="fill"></div></div>
+      <span class="rtime">⚡ 3m 48s</span>
+    </div>
+    <div class="lane lane-turbo">
+      <span class="rname">Turborepo</span>
+      <div class="track"><div class="fill"></div></div>
+      <span class="rtime">8m 18s</span>
+    </div>
+    <div class="lane lane-nx">
+      <span class="rname">Nx</span>
+      <div class="track"><div class="fill"></div></div>
+      <span class="rtime">8m 27s</span>
+    </div>
   </div>
-  <div class="lane lane-turbo">
-    <span class="rname">Turborepo</span>
-    <div class="track"><div class="fill"></div></div>
-    <span class="rtime">8m 18s</span>
+  <div class="bench-group cached">
+    <p class="group-label">Fully cached <span>nothing to rebuild</span></p>
+    <div class="lane lane-vx">
+      <span class="rname">vx</span>
+      <div class="track"><div class="fill"></div></div>
+      <span class="rtime">0.55s</span>
+    </div>
+    <div class="lane lane-turbo">
+      <span class="rname">Turborepo</span>
+      <div class="track"><div class="fill"></div></div>
+      <span class="rtime">1.60s</span>
+    </div>
+    <div class="lane lane-nx">
+      <span class="rname">Nx</span>
+      <div class="track"><div class="fill"></div></div>
+      <span class="rtime">9.86s</span>
+    </div>
   </div>
-  <div class="lane lane-nx">
-    <span class="rname">Nx</span>
-    <div class="track"><div class="fill"></div></div>
-    <span class="rtime">8m 27s</span>
+  <div class="bench-group restore">
+    <p class="group-label">Restoring outputs <span>cache → disk</span></p>
+    <div class="lane lane-vx">
+      <span class="rname">vx</span>
+      <div class="track"><div class="fill"></div></div>
+      <span class="rtime">0.89s</span>
+    </div>
+    <div class="lane lane-turbo">
+      <span class="rname">Turborepo</span>
+      <div class="track"><div class="fill"></div></div>
+      <span class="rtime">2.00s</span>
+    </div>
+    <div class="lane lane-nx">
+      <span class="rname">Nx</span>
+      <div class="track"><div class="fill"></div></div>
+      <span class="rtime">10.44s</span>
+    </div>
   </div>
 </div>
 
 vx builds the whole graph in **under 4 minutes** where Turborepo and Nx
-take **over 8** — burning **~50× less CPU** doing it. (And once it's
-cached, every repeat run replays in **milliseconds**.)
+take **over 8** — burning **~50× less CPU** doing it. Once it's cached,
+every repeat run replays in **under a second**, and Nx never catches up.
 [Full benchmarks →](benchmarks/)
 
 ## What you stop trading away

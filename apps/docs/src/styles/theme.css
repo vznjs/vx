@@ -143,11 +143,36 @@
   padding: 0.35rem;
 }
 
-/* Headline benchmark — an animated race: bars fill left→right, vx first. */
+/* Headline benchmark — three metric groups (cold / cached / restore) as
+   bars. Only the COLD group animates (a race); the rest are static. Large
+   ratios are capped at ~3× so the layout stays readable — real times are
+   always labelled. */
 .bench-race {
   margin: 1.75rem 0 1rem;
   display: grid;
-  gap: 0.85rem;
+  gap: 1.5rem;
+}
+.bench-group {
+  display: grid;
+  gap: 0.5rem;
+}
+.bench-group .group-label {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--sl-color-gray-3);
+}
+.bench-group .group-label span {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.78rem;
+  margin-left: 0.55rem;
+  color: var(--vx-pink);
+  background: color-mix(in srgb, var(--vx-violet) 15%, transparent);
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
 }
 .bench-race .lane {
   display: grid;
@@ -157,20 +182,20 @@
 }
 .bench-race .rname {
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   color: var(--sl-color-gray-2);
 }
 .bench-race .rtime {
   font-family: ui-monospace, 'SFMono-Regular', 'Cascadia Code', monospace;
   font-variant-numeric: tabular-nums;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   color: var(--sl-color-gray-3);
   text-align: right;
   white-space: nowrap;
 }
 .bench-race .track {
   position: relative;
-  height: 0.85rem;
+  height: 0.8rem;
   border-radius: 999px;
   overflow: hidden;
   background: color-mix(in srgb, var(--sl-color-gray-5) 45%, transparent);
@@ -180,12 +205,9 @@
   inset: 0 auto 0 0;
   width: 0;
   border-radius: 999px;
-  background: var(--sl-color-gray-4);
-  animation-duration: 5s;
-  animation-iteration-count: infinite;
-  animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
+  background: color-mix(in srgb, var(--sl-color-gray-4) 75%, transparent);
 }
-/* vx wins: gradient fill + glow + the brightest label. */
+/* vx is the gradient/glow bar with the brightest label, in every group. */
 .lane-vx .rname {
   color: var(--sl-color-white);
 }
@@ -195,54 +217,38 @@
 }
 .lane-vx .fill {
   background: var(--vx-grad);
-  box-shadow: 0 0 16px color-mix(in srgb, var(--vx-pink) 55%, transparent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--vx-pink) 50%, transparent);
 }
-.lane-turbo .fill {
-  background: color-mix(in srgb, var(--sl-color-gray-3) 75%, transparent);
+
+/* Static groups: bar length ∝ time, capped at ~3× so vx stays visible. */
+.bench-group.cached .lane-vx .fill { width: 33%; }
+.bench-group.cached .lane-turbo .fill { width: 58%; }
+.bench-group.cached .lane-nx .fill { width: 100%; }
+.bench-group.restore .lane-vx .fill { width: 33%; }
+.bench-group.restore .lane-turbo .fill { width: 55%; }
+.bench-group.restore .lane-nx .fill { width: 100%; }
+
+/* Cold group: bars grow ONCE to their real (capped ~3×) widths, each over a
+   duration proportional to its real time, then hold. vx finishes first and
+   stays done — no loop, no replay. */
+.bench-group.racing .fill {
+  width: var(--w);
+  animation: bench-grow var(--d) cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
-.lane-nx .fill {
-  background: color-mix(in srgb, var(--sl-color-gray-4) 75%, transparent);
+.bench-group.racing .lane-vx .fill {
+  --w: 45%;
+  --d: 1.7s;
 }
-.lane-vx .fill {
-  animation-name: race-vx;
+.bench-group.racing .lane-turbo .fill {
+  --w: 98%;
+  --d: 3.7s;
 }
-.lane-turbo .fill {
-  animation-name: race-turbo;
+.bench-group.racing .lane-nx .fill {
+  --w: 100%;
+  --d: 3.8s;
 }
-.lane-nx .fill {
-  animation-name: race-nx;
-}
-/* A light streak across the vx bar — the "speed" cue. */
-.lane-vx .fill::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-  transform: translateX(-100%);
-  animation: bench-shimmer 1.6s linear infinite;
-}
-/* One shared 5s cycle; each bar reaches 100% at its real cold-build ratio
-   (vx 3m48s · Turbo 8m18s · Nx 8m27s) — vx crosses ~2× sooner. */
-@keyframes race-vx {
-  0% { width: 0; }
-  40% { width: 100%; }
-  92% { width: 100%; }
-  100% { width: 0; }
-}
-@keyframes race-turbo {
-  0% { width: 0; }
-  86% { width: 100%; }
-  92% { width: 100%; }
-  100% { width: 0; }
-}
-@keyframes race-nx {
-  0% { width: 0; }
-  88% { width: 100%; }
-  92% { width: 100%; }
-  100% { width: 0; }
-}
-@keyframes bench-shimmer {
-  to { transform: translateX(220%); }
+@keyframes bench-grow {
+  from { width: 0; }
 }
 
 /* ───────────────────────────  Diagrams  ────────────────────────────── */
@@ -317,20 +323,9 @@ pre.mermaid svg {
   .hero .action.secondary {
     transition: none;
   }
-  /* Freeze the race at the moment vx finishes: vx full, the others ~halfway. */
-  .bench-race .fill {
+  /* No grow animation — bars render at their final widths (var(--w) for the
+     cold group, the static rules for cached/restore). */
+  .bench-group.racing .fill {
     animation: none;
-  }
-  .lane-vx .fill {
-    width: 100%;
-  }
-  .lane-turbo .fill {
-    width: 47%;
-  }
-  .lane-nx .fill {
-    width: 45%;
-  }
-  .lane-vx .fill::after {
-    display: none;
   }
 }
