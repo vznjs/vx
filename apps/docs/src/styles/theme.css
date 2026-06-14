@@ -221,23 +221,24 @@
   transform: translateX(-100%);
   animation: bench-shimmer 1.6s linear infinite;
 }
-/* One shared 5s cycle; each bar reaches 100% at its real time ratio. */
+/* One shared 5s cycle; each bar reaches 100% at its real cold-build ratio
+   (vx 3m48s · Turbo 8m18s · Nx 8m27s) — vx crosses ~2× sooner. */
 @keyframes race-vx {
   0% { width: 0; }
-  6% { width: 100%; }
-  90% { width: 100%; }
+  40% { width: 100%; }
+  92% { width: 100%; }
   100% { width: 0; }
 }
 @keyframes race-turbo {
   0% { width: 0; }
-  16% { width: 100%; }
-  90% { width: 100%; }
+  86% { width: 100%; }
+  92% { width: 100%; }
   100% { width: 0; }
 }
 @keyframes race-nx {
   0% { width: 0; }
   88% { width: 100%; }
-  90% { width: 100%; }
+  92% { width: 100%; }
   100% { width: 0; }
 }
 @keyframes bench-shimmer {
@@ -316,7 +317,7 @@ pre.mermaid svg {
   .hero .action.secondary {
     transition: none;
   }
-  /* Freeze the race at the moment vx finishes: vx full, the others mid-run. */
+  /* Freeze the race at the moment vx finishes: vx full, the others ~halfway. */
   .bench-race .fill {
     animation: none;
   }
@@ -324,10 +325,10 @@ pre.mermaid svg {
     width: 100%;
   }
   .lane-turbo .fill {
-    width: 34%;
+    width: 47%;
   }
   .lane-nx .fill {
-    width: 6%;
+    width: 45%;
   }
   .lane-vx .fill::after {
     display: none;

@@ -30,29 +30,30 @@ generators. **Turborepo** for small — until you hit the ceiling. vx is the
 third option that never existed: the power, the simplicity, **faster than
 either**, the tradeoffs of neither.
 
-## One fully-cached run. 3,270 tasks.
+## 3,270 tasks, built from scratch.
 
-<div class="bench-race" role="img" aria-label="Fully cached run of a 3,270-task monorepo — vx 0.55s, Turborepo 1.60s, Nx 9.86s.">
+<div class="bench-race" role="img" aria-label="Cold build of a 3,270-task monorepo from scratch — vx 3m 48s, Turborepo 8m 18s, Nx 8m 27s.">
   <div class="lane lane-vx">
     <span class="rname">vx</span>
     <div class="track"><div class="fill"></div></div>
-    <span class="rtime">⚡ 0.55s</span>
+    <span class="rtime">⚡ 3m 48s</span>
   </div>
   <div class="lane lane-turbo">
     <span class="rname">Turborepo</span>
     <div class="track"><div class="fill"></div></div>
-    <span class="rtime">1.60s</span>
+    <span class="rtime">8m 18s</span>
   </div>
   <div class="lane lane-nx">
     <span class="rname">Nx</span>
     <div class="track"><div class="fill"></div></div>
-    <span class="rtime">9.86s</span>
+    <span class="rtime">8m 27s</span>
   </div>
 </div>
 
-vx replays in **half a second** what takes Turborepo 1.6s and Nx nearly 10
-— its per-task overhead is **~50× lower**, so the bigger your repo, the
-wider the gap. [Full benchmarks →](benchmarks/)
+vx builds the whole graph in **under 4 minutes** where Turborepo and Nx
+take **over 8** — burning **~50× less CPU** doing it. (And once it's
+cached, every repeat run replays in **milliseconds**.)
+[Full benchmarks →](benchmarks/)
 
 ## What you stop trading away
 
