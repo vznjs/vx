@@ -58,12 +58,6 @@ const style = `--pct:${pct}%;--from:${from}%;--dur:${dur}s;--rep:${loop ? 'infin
     overflow: hidden;
     background: color-mix(in srgb, var(--sl-color-gray-4) 20%, transparent);
   }
-  /* Glow on the track, not the fill — a fill box-shadow would be clipped by
-     the track's overflow:hidden. */
-  .hero .track {
-    overflow: visible;
-    box-shadow: 0 0 12px color-mix(in srgb, var(--vx-pink) 45%, transparent);
-  }
   .fill {
     position: absolute;
     inset: 0 auto 0 0;

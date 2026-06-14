@@ -113,15 +113,6 @@
   letter-spacing: -0.02em;
   margin-top: 3.5rem;
 }
-.landing h2::after {
-  content: '';
-  display: block;
-  width: 3.5rem;
-  height: 3px;
-  margin-top: 0.6rem;
-  border-radius: 2px;
-  background: var(--vx-grad);
-}
 
 /* Cards: static gradient border + glow — no motion, no lift. */
 .landing .card {
