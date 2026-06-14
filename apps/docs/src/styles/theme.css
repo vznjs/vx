@@ -227,6 +227,31 @@
   box-shadow: 0 0 14px color-mix(in srgb, var(--vx-pink) 50%, transparent);
 }
 
+/* A soft light sweeps across each actively-filling bar — a subtle "working"
+   sheen that makes the running bars feel alive. */
+.bench-race .fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, #fff 40%, transparent) 50%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: bench-sheen 2s ease-in-out infinite;
+}
+/* vx in the cold group is already done — no sweep. */
+.bench-group.racing .lane-vx .fill::after {
+  display: none;
+}
+@keyframes bench-sheen {
+  to {
+    transform: translateX(100%);
+  }
+}
+
 /* Timeline with a live fill. Each bar's TRACK is the full length for its run
    time (normalised per category, longest = 100%) and shows muted; the bright
    fill sweeps that track in real time so you compare total lengths AND watch
@@ -350,8 +375,11 @@ pre.mermaid svg {
     transition: none;
   }
   /* No animation — bars render at their final timeline lengths from the
-     per-category rules above. */
+     per-category rules above; the sweeping sheen is dropped entirely. */
   .bench-race .fill {
     animation: none;
+  }
+  .bench-race .fill::after {
+    display: none;
   }
 }
