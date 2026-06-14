@@ -289,8 +289,17 @@
 .bench-group.restore .lane-vx .track { width: 8.5%; --d: 0.89s; }
 .bench-group.restore .lane-turbo .track { width: 19.2%; --d: 2s; }
 .bench-group.restore .lane-nx .track { width: 100%; --d: 10.44s; }
+
+/* CPU burned on the cold build (user-time seconds): 22.7s / 1,250.4s /
+   2,037.5s → normalised to Nx = 100%. vx is a sliver: ~90× less CPU. The
+   bars reveal at a constant speed (--d ∝ length) on load. */
+.bench-group.cpu .lane-vx .track { width: 1.1%; --d: 0.3s; }
+.bench-group.cpu .lane-turbo .track { width: 61.4%; --d: 1s; }
+.bench-group.cpu .lane-nx .track { width: 100%; --d: 1.6s; }
+
 .bench-group.cached .fill,
-.bench-group.restore .fill {
+.bench-group.restore .fill,
+.bench-group.cpu .fill {
   animation: bench-grow var(--d, 1s) linear both;
 }
 @keyframes bench-grow {
