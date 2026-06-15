@@ -30,6 +30,8 @@ const DEFAULT_FILE_GLOBS: readonly string[] = ['**/*']
 export interface ResolvedInputs {
   files: string[]
   envValues: Array<[name: string, value: string]>
+  runtimeValues: Array<[command: string, output: string]>
+  workspaceRuntimeValues: Array<[command: string, output: string]>
 }
 
 export interface ResolveInputsArgs {
@@ -51,6 +53,18 @@ export interface ResolveInputsArgs {
    * passes a fresh Map at the top of every `vx run`.
    */
   gitFilesCache?: GitFilesCache
+  /**
+   * Run-scoped memo for `cache.inputs.runtime` command execution, keyed
+   * by `projectDir + '\0' + command`. Shared across a run's tasks so a
+   * project's command runs once even across build/test/lint and across
+   * the hash + sandbox-baseline resolveInputs calls.
+   */
+  runtimeCache?: Map<string, Promise<string>>
+  /**
+   * Run-scoped memo for `cache.inputs.workspaceRuntime`, keyed by command
+   * only — global dedup so a root-level probe spawns once per run.
+   */
+  workspaceRuntimeCache?: Map<string, Promise<string>>
 }
 
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs> {
@@ -76,9 +90,25 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
     // it must contribute to the key exactly once.
     if (wsFiles.length > 0) files = [...new Set([...projectFiles, ...wsFiles])].sort()
   }
+  const [runtimeValues, workspaceRuntimeValues] = await Promise.all([
+    resolveRuntimeValues(
+      args.inputs?.runtime ?? [],
+      args.projectDir,
+      args.runtimeCache,
+      `${args.projectDir}\0`,
+    ),
+    resolveRuntimeValues(
+      args.inputs?.workspaceRuntime ?? [],
+      args.workspaceRoot,
+      args.workspaceRuntimeCache,
+      '',
+    ),
+  ])
   return {
     files,
     envValues: resolveEnvValues(args.inputs?.env ?? [], args.envSource),
+    runtimeValues,
+    workspaceRuntimeValues,
   }
 }
 
@@ -144,6 +174,68 @@ function resolveEnvValues(
   source: NodeJS.ProcessEnv,
 ): Array<[string, string]> {
   return [...names].sort().map((name) => [name, source[name] ?? ''] as [string, string])
+}
+
+/**
+ * Run one runtime-input command via `sh -c` (so pipelines / redirects
+ * work — "shell is the API"). Returns trimmed stdout+stderr. A non-zero
+ * exit is a hard UserError naming the command (fail-loud, like git).
+ */
+async function runRuntimeCommand(command: string, cwd: string): Promise<string> {
+  let proc
+  try {
+    proc = Bun.spawn(['sh', '-c', command], {
+      cwd,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+  } catch {
+    throw new UserError(`cache.inputs runtime command failed to spawn: ${command} (cwd: ${cwd})`)
+  }
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  const output = `${stdout}${stderr}`.trim()
+  if (exitCode !== 0) {
+    throw new UserError(
+      `cache.inputs runtime command exited ${exitCode}: ${command} (cwd: ${cwd})` +
+        (output ? `\n${output}` : ''),
+    )
+  }
+  return output
+}
+
+/**
+ * Resolve a list of runtime-input commands to sorted [command, output]
+ * pairs. Dedups via the shared `memo` (Promise per key): the first
+ * caller fires the spawn, concurrent callers await the same promise.
+ * `memoKeyPrefix` namespaces project (`projectDir + '\0'`) vs workspace
+ * (`''`) so the two scopes never collide in one map (they're separate
+ * maps anyway, but the prefix keeps intent explicit). Distinct commands
+ * run concurrently via Promise.all.
+ */
+async function resolveRuntimeValues(
+  commands: readonly string[],
+  cwd: string,
+  memo: Map<string, Promise<string>> | undefined,
+  memoKeyPrefix: string,
+): Promise<Array<[string, string]>> {
+  if (commands.length === 0) return []
+  const unique = [...new Set(commands)].sort()
+  return Promise.all(
+    unique.map(async (cmd) => {
+      const key = `${memoKeyPrefix}${cmd}`
+      let p = memo?.get(key)
+      if (p === undefined) {
+        p = runRuntimeCommand(cmd, cwd)
+        memo?.set(key, p)
+      }
+      return [cmd, await p] as [string, string]
+    }),
+  )
 }
 
 /** Resolve declared output globs (project-relative) to actual produced files. */

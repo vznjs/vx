@@ -6,7 +6,7 @@
 // regression here can't quietly start eating user files.
 
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
@@ -788,5 +788,97 @@ describe('resolveInputs — symlink edge cases', () => {
       ),
     ])
     expect(Array.isArray(resolved.files)).toBe(true)
+  })
+})
+
+describe('resolveInputs — runtime values', () => {
+  let root: string
+  let projectDir: string
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-runtime-'))
+    projectDir = path.join(root, 'pkg')
+    await mkdir(projectDir, { recursive: true })
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  function args(inputs: Partial<import('../src/config.js').CacheInputs>) {
+    return {
+      projectDir,
+      workspaceRoot: root,
+      envSource: {} as NodeJS.ProcessEnv,
+      inputs: { files: [], ...inputs } as import('../src/config.js').CacheInputs,
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    }
+  }
+
+  it('folds trimmed stdout of a runtime command', async () => {
+    const r = await resolveInputs(args({ runtime: ['echo hello'] }))
+    expect(r.runtimeValues).toEqual([['echo hello', 'hello']])
+  })
+
+  it('combines stdout and stderr, trimmed', async () => {
+    const r = await resolveInputs(args({ runtime: ['sh -c "echo out; echo err 1>&2"'] }))
+    expect(r.runtimeValues[0]![1]).toContain('out')
+    expect(r.runtimeValues[0]![1]).toContain('err')
+  })
+
+  it('sorts runtime pairs by command for deterministic folding', async () => {
+    const r = await resolveInputs(args({ runtime: ['echo b', 'echo a'] }))
+    expect(r.runtimeValues.map(([c]) => c)).toEqual(['echo a', 'echo b'])
+  })
+
+  // `pwd` resolves the macOS /var → /private/var symlink, so compare
+  // against the realpath of the expected cwd, not the mkdtemp path.
+  it('resolves workspaceRuntime at the workspace root', async () => {
+    const r = await resolveInputs(args({ workspaceRuntime: ['pwd'] }))
+    expect(r.workspaceRuntimeValues[0]![1]).toBe(await realpath(root))
+  })
+
+  it('resolves runtime in the project dir', async () => {
+    const r = await resolveInputs(args({ runtime: ['pwd'] }))
+    expect(r.runtimeValues[0]![1]).toBe(await realpath(projectDir))
+  })
+
+  it('throws UserError naming the command on non-zero exit', async () => {
+    await expect(
+      resolveInputs(args({ runtime: ['sh -c "echo boom 1>&2; exit 3"'] })),
+    ).rejects.toThrow(/runtime command exited 3: sh -c "echo boom 1>&2; exit 3"/)
+  })
+
+  it('empty fields produce empty arrays', async () => {
+    const r = await resolveInputs(args({}))
+    expect(r.runtimeValues).toEqual([])
+    expect(r.workspaceRuntimeValues).toEqual([])
+  })
+
+  it('dedups by (projectDir, command) via the runtimeCache memo (runs once)', async () => {
+    const runtimeCache = new Map<string, Promise<string>>()
+    // A command with a side effect: append to a counter file, echo its length.
+    const counter = path.join(root, 'count')
+    const cmd = `sh -c 'printf x >> ${counter}; wc -c < ${counter}'`
+    await resolveInputs({ ...args({ runtime: [cmd] }), runtimeCache })
+    await resolveInputs({ ...args({ runtime: [cmd] }), runtimeCache })
+    const bytes = await readFile(counter, 'utf8')
+    expect(bytes.length).toBe(1) // ran exactly once despite two resolveInputs calls
+  })
+
+  it('global dedup for workspaceRuntime: two projects, one spawn', async () => {
+    const workspaceRuntimeCache = new Map<string, Promise<string>>()
+    const counter = path.join(root, 'wscount')
+    const cmd = `sh -c 'printf x >> ${counter}; echo ok'`
+    const projectB = path.join(root, 'pkgB')
+    await mkdir(projectB, { recursive: true })
+    await resolveInputs({ ...args({ workspaceRuntime: [cmd] }), workspaceRuntimeCache })
+    await resolveInputs({
+      ...args({ workspaceRuntime: [cmd] }),
+      projectDir: projectB,
+      workspaceRuntimeCache,
+    })
+    const bytes = await readFile(counter, 'utf8')
+    expect(bytes.length).toBe(1)
   })
 })
