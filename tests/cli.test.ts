@@ -498,7 +498,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       // Silence the stderr-may-have-content lint by referencing it.
       void stderr
     },
-    { timeout: 20_000 },
+    { timeout: 30_000 },
   )
 
   it(
@@ -542,7 +542,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       process.emit('SIGINT')
       await cmd
     },
-    { timeout: 20_000 },
+    { timeout: 30_000 },
   )
 
   it(
@@ -582,7 +582,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       process.emit('SIGINT')
       await cmd
     },
-    { timeout: 20_000 },
+    { timeout: 30_000 },
   )
 
   it(
@@ -609,7 +609,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       process.emit('SIGINT')
       await cmd
     },
-    { timeout: 20_000 },
+    { timeout: 30_000 },
   )
 
   it(
@@ -629,7 +629,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       const code = await cmd
       expect(code).toBe(0)
     },
-    { timeout: 20_000 },
+    { timeout: 30_000 },
   )
 
   it(
@@ -677,19 +677,22 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       expect(stdout).toContain('ws0')
       expect(stdout).toContain('ws1')
     },
-    { timeout: 20_000 },
+    { timeout: 30_000 },
   )
 })
 
 async function writeFor(
   _label: string,
   predicate: () => boolean,
-  timeoutMs = 10_000,
+  timeoutMs = 25_000,
 ): Promise<void> {
   await waitFor(predicate, timeoutMs)
 }
 
-async function waitFor(predicate: () => boolean, timeoutMs = 10_000): Promise<void> {
+// Default well under the watch tests' 30s wrapper but far above the old
+// 10s — these e2e watch tests drive a debounced fs.watch + a full re-run
+// and flake under concurrent suite load when the inner budget is tight.
+async function waitFor(predicate: () => boolean, timeoutMs = 25_000): Promise<void> {
   const start = Date.now()
   while (!predicate()) {
     if (Date.now() - start > timeoutMs) {
