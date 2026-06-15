@@ -2,23 +2,18 @@
 
 ## Purpose
 
-Format the run-header banner, the per-task framed output block, and
-the two compact one-liners (quiet cache hit, broad-mode executed).
-Pure functions; the logger calls them at the right moments.
+Format the per-task framed output block and the two compact one-liners
+(quiet cache hit, broad-mode executed). Pure functions; the logger
+calls them at the right moments.
+
+There is no top-of-run header. The run banner — version, requested
+tasks, project/task/worker counts, cache mode, affected-scope bar —
+lives in the **footer** (`summary.ts`'s `RunContext`), printed once at
+the end where the eye lands. See `docs/modules/summary.md`.
 
 ## Public surface
 
 ```ts
-export interface HeaderInput {
-  version: string
-  packageCount: number
-  tasks: readonly string[]
-  taskCount: number
-  remoteCacheEnabled: boolean
-}
-
-export function formatHeader(input: HeaderInput, colors?: ColorSupport): string[]
-
 export interface TaskBlockBody {
   stdout?: string // rendered under `├─ stdout`
   stderr?: string // rendered under `├─ stderr`
@@ -37,18 +32,6 @@ export function formatTaskHitLine(node, outcome, colors?): string
 // `● <id> ── executed • <duration>` — broad-mode executed task
 export function formatTaskExecutedLine(node, outcome, colors?): string
 ```
-
-## Header shape
-
-```
-• vx 0.0.0
-
-   • Running ci in 2 packages (3 tasks)
-   • Remote caching disabled
-```
-
-Bullets are tinted with the accent color (`#06b6d4` cyan); the
-`vx <version>` line is bold.
 
 ## Task block shape
 
@@ -101,7 +84,6 @@ Duration formats: `<1s` → `Nms`, ≥1s → `N.NNs`.
 
 `tests/framed-output.test.ts`:
 
-- Header pluralization ("1 package" vs "N packages").
 - Block shape per status (cache-hit, success, failed, skipped, remote,
   up-to-date, sandbox violations).
 - Group task elision.

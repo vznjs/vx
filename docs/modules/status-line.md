@@ -48,8 +48,8 @@ Pinned zones (owner: failures "on top of" the workers; persistent
 Slot rules (the point of the design — the display derives from the
 **stable worker set**, not the churning task set):
 
-- Sized `min(concurrency, 10)` at runStart; the run header states the
-  pool (`(N tasks, C workers)`).
+- Sized `min(concurrency, 10)` at runStart; the footer's `run` row
+  states the pool (`N tasks · C workers`).
 - A task takes the lowest free row and **stays there for its whole
   life**; idle rows hold their place dimmed, so the height and the
   rows never shift.

@@ -111,10 +111,32 @@ export interface SummaryStats {
   spread: { maxMs: number; minMs: number; sumMs: number; count: number } | null
 }
 
+/**
+ * Run context the footer carries (final summary only — the live region
+ * passes none). This is the data the top-of-run header used to show:
+ * what the run covered + version + cache mode. Folded into the footer
+ * so the run has one banner, at the end, where the eye lands.
+ */
+export interface RunContext {
+  version: string
+  /** Display names of the tasks the user requested (already deduped). */
+  tasks: readonly string[]
+  /** Real (non-group) task executions in the graph. */
+  taskCount: number
+  /** Unique projects covered by the graph. */
+  packageCount: number
+  /** Worker-pool size for this run. */
+  concurrency?: number
+  remoteCacheEnabled: boolean
+  /** Total projects discovery found — drives the affected-scope bar. */
+  workspaceProjectCount?: number
+}
+
 export function formatSummarySection(
   stats: SummaryStats,
   totalMs: number,
   colors: ColorSupport = NO_COLOR,
+  context?: RunContext,
 ): string[] {
   const hits = stats.upToDate + stats.restoredLocal + stats.restoredRemote
   const miss = stats.miss
@@ -143,7 +165,42 @@ export function formatSummarySection(
   // Bars on the label row, color-coded legend on its own line below,
   // indented to the bar column.
   const legend = (parts: string[]): string => `${' '.repeat(10)}${join(parts)}`
-  const lines: string[] = ['', gradientRule(colors)]
+  // Version rides the wordmark rule when run context is present (final
+  // footer); the live region passes none and keeps a bare `vx`.
+  const lines: string[] = [
+    '',
+    gradientRule(colors, context !== undefined ? `vx ${context.version}` : 'vx'),
+  ]
+
+  // Run context (final footer only): what this run covered, plus the
+  // affected-scope bar when discovery enumerated the whole workspace.
+  if (context !== undefined) {
+    const items = [
+      paint('', context.tasks.join(', '), colors, { bold: true }),
+      `${context.packageCount} project${context.packageCount === 1 ? '' : 's'}`,
+      `${context.taskCount} task${context.taskCount === 1 ? '' : 's'}`,
+    ]
+    if (context.concurrency !== undefined)
+      items.push(`${context.concurrency} worker${context.concurrency === 1 ? '' : 's'}`)
+    items.push(dim(context.remoteCacheEnabled ? 'local + remote cache' : 'local cache'))
+    lines.push(row('run', join(items)))
+    const wsTotal = context.workspaceProjectCount
+    if (wsTotal !== undefined && wsTotal > 0) {
+      const cells = Math.min(
+        BAR_WIDTH,
+        Math.max(1, Math.round((context.packageCount / wsTotal) * BAR_WIDTH)),
+      )
+      const bar =
+        paint(WARN, '▰'.repeat(cells), colors) +
+        paint('', '▱'.repeat(BAR_WIDTH - cells), colors, { dim: true })
+      lines.push(
+        row('scope', bar),
+        legend([paint(WARN, `${context.packageCount} affected`, colors), dim(`${wsTotal} total`)]),
+      )
+    }
+    lines.push('')
+  }
+
   if (taskBar.length > 0) {
     lines.push(row('tasks', taskBar))
     // No legend line until the first bucket lands (live: all-gray bar).
@@ -197,6 +254,7 @@ export function formatRunSummary(
   outcomes: readonly TaskOutcome[],
   totalMs: number,
   colors: ColorSupport = NO_COLOR,
+  context?: RunContext,
 ): string[] {
   const t = tallyOutcomes(outcomes)
   // Spread over executed tasks only — `success`/`failed` statuses ran
@@ -226,6 +284,7 @@ export function formatRunSummary(
     },
     totalMs,
     colors,
+    context,
   )
 }
 

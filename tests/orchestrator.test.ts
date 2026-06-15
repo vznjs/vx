@@ -1839,7 +1839,9 @@ describe('orchestrator e2e', () => {
         `,
       })
       await run({ cwd: fixture.root, tasks: ['ci'], log: silentLogger(fixture) })
-      const legends = fixture.log.filter((l) => /^ {10}\S/.test(l))
+      // Meter legends only — the footer's affected-scope legend shares
+      // the 10-space indent but carries projects, not task/cache counts.
+      const legends = fixture.log.filter((l) => /^ {10}\S/.test(l) && !l.includes('affected'))
       // Only the executable `build` task counts — the `ci` group is hidden.
       expect(legends[0]).toBe('          1 success')
       expect(legends[1]).toBe('          1 miss')

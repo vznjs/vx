@@ -27,7 +27,7 @@
 
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { paint, type ColorSupport } from './colors.js'
-import { formatDuration, gradientRule } from './summary.js'
+import { formatDuration } from './summary.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
 
@@ -39,8 +39,6 @@ const ACCENT = '#06b6d4' // cyan-500 — bullets, remote-hit hint
 // the project palette so the two halves always read apart.
 // Section rules + the summary rule share one frame width.
 const FRAME_WIDTH = 60
-/** Header scope bar matches the summary meters' width. */
-const SCOPE_BAR_WIDTH = 50
 
 const PROJECT_PALETTE = [
   '#a78bfa', // violet-400
@@ -54,74 +52,6 @@ const TASK = '#f472b6' // pink-400 — task part of an id
 const SUCCESS = '#22c55e' // green-500 — local cache-hit hint
 const WARN = '#eab308' // yellow-500 — skipped
 const ERROR = '#ef4444' // red-500 — failed
-
-export interface HeaderInput {
-  version: string
-  /** Number of unique projects covered by the graph (group tasks included). */
-  packageCount: number
-  /** Display names of the tasks the user requested (already deduped). */
-  tasks: readonly string[]
-  /**
-   * Number of (project, task) executions in the graph, excluding group
-   * tasks (no `exec`). This is the count of real work the run will do —
-   * matches the "total" the end-of-run summary reports.
-   */
-  taskCount: number
-  remoteCacheEnabled: boolean
-  /** Worker-pool size for this run; shown so the region rows have context. */
-  concurrency?: number
-  /** Total projects discovery found (already enumerated for boundary
-   *  geometry — free); drives the affected-projects scope bar. */
-  workspaceProjectCount?: number
-}
-
-export function formatHeader(input: HeaderInput, colors: ColorSupport = NO_COLOR): string[] {
-  // Same visual language as the run summary: bars with legends BELOW,
-  // dim-label rows, gradient wordmark rule (version embedded) at the
-  // bottom closing the header off from the stream.
-  const dim = (t: string) => paint('', t, colors, { dim: true })
-  // Header labels pad to 'projects' (8) — wider than the summary's
-  // 6-char column, but aligned within the header block.
-  const row = (label: string, value: string): string => `  ${dim(label.padEnd(8))}  ${value}`
-  const legend = (value: string): string => `${' '.repeat(12)}${value}`
-  const sep = ` ${dim('\u00b7')} `
-
-  const lines: string[] = ['']
-  // Affected-projects scope bar (yellow affected / gray rest of the
-  // workspace). Total TASK count stays off the bar — counting it
-  // would force evaluating out-of-scope configs, which scoped
-  // loading exists to avoid; the project list is already enumerated.
-  const total = input.workspaceProjectCount
-  if (total !== undefined && total > 0) {
-    const cells = Math.min(
-      SCOPE_BAR_WIDTH,
-      Math.max(1, Math.round((input.packageCount / total) * SCOPE_BAR_WIDTH)),
-    )
-    const bar =
-      paint(WARN, '\u25b0'.repeat(cells), colors) +
-      paint('', '\u25b1'.repeat(SCOPE_BAR_WIDTH - cells), colors, { dim: true })
-    lines.push(
-      row('projects', bar),
-      legend(
-        `${paint(WARN, `${input.packageCount} affected`, colors)} ${dim('\u00b7')} ${dim(`${total} total`)}`,
-      ),
-      '',
-    )
-  }
-  const items = [
-    paint('', input.tasks.join(', '), colors, { bold: true }),
-    `${input.taskCount} task${input.taskCount === 1 ? '' : 's'}`,
-  ]
-  if (input.concurrency !== undefined) items.push(`${input.concurrency} workers`)
-  lines.push(
-    row('tasks', items.join(sep)),
-    row('cache', input.remoteCacheEnabled ? 'local + remote' : 'local only'),
-    '',
-    gradientRule(colors, `vx ${input.version}`),
-    '',
-  )
-  return lines
-}
 
 export interface TaskBlockBody {
   /** stdout chunks accumulated during the task. Renders under `├─ stdout`. */

@@ -10,7 +10,6 @@ import { ulid, UserError } from '../util/index.js'
 import { executeTask } from './execute-task.js'
 import { defaultLogger, resolveOutputView } from './logger.js'
 import { detectColors } from './colors.js'
-import { formatHeader } from './framed-output.js'
 import { plan, type RunPlan } from './plan.js'
 import { prepareRun } from './prepare.js'
 import { startRemotePrefetch } from './remote-prefetch.js'
@@ -127,19 +126,17 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         if (node.requested) requestedCount++
       }
     }
-    for (const line of formatHeader(
-      {
-        version: VERSION,
-        packageCount: packagesInScope.size,
-        tasks: [...new Set(options.tasks.map(unanchored))],
-        taskCount,
-        remoteCacheEnabled,
-        concurrency,
-        workspaceProjectCount,
-      },
-      colors,
-    ))
-      log.status(line)
+    // Run context for the footer. The top-of-run header is gone — the
+    // banner now lives in the summary, where the eye lands at the end.
+    const runContext = {
+      version: VERSION,
+      packageCount: packagesInScope.size,
+      tasks: [...new Set(options.tasks.map(unanchored))],
+      taskCount,
+      remoteCacheEnabled,
+      concurrency,
+      workspaceProjectCount,
+    }
 
     // Lifecycle hooks drive the default logger's dynamic status line
     // (TTY-only); custom loggers may ignore them.
@@ -217,7 +214,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // outcome list and let each consumer apply the same filter.
     const endedAtMs = Date.now()
     const totalMs = Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000
-    for (const line of formatRunSummary(list, totalMs, colors)) log.status(line)
+    for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
 
     // Optional artifacts. Errors are surfaced to the user but don't
     // change the run's exit code — the run already happened.

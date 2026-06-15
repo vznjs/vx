@@ -170,6 +170,37 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06**: **Header folded into the footer; top-of-run banner
+  removed** (owner: "logs header should [be] in footer. we don't need
+  the header"). `formatHeader` + `HeaderInput` deleted from
+  `framed-output.ts` (and `SCOPE_BAR_WIDTH`, its lone consumer); the
+  run no longer prints anything before task output. The run context —
+  version (on the wordmark rule), requested task names, project / task
+  / worker counts, cache mode, and the affected-scope bar — now rides
+  the **footer** above the result meters via a new optional
+  `RunContext` param on `formatRunSummary` / `formatSummarySection`
+  (`summary.ts`). The footer gains a `run` row (`names · N projects · N
+tasks · N workers · <cache mode>` — projects now always shown, where
+  the header only showed them on affected runs via the bar) and, on
+  affected runs, a `scope` bar + `N affected · N total` legend, both at
+  the summary's 6-pad / 10-indent column. Cache mode is a dim suffix on
+  the `run` row (`local cache` / `local + remote cache`) — avoids a
+  second `cache` label colliding with the meter row. **Live region
+  unchanged**: the status region calls `formatSummarySection` with NO
+  context, so the rule stays a bare `vx` and no run rows render —
+  byte-identical to before, the meters still fill in place. Custom
+  loggers (tests) previously received header lines via `log.status`;
+  they now receive the same data in the footer instead (one fewer
+  block). No CACHE_VERSION/behavior impact — pure output formatting.
+  `run.ts` builds a `runContext` object (was the `formatHeader` call)
+  and threads it to `formatRunSummary`. Tests: `formatHeader` block in
+  `framed-output.test.ts` removed; footer-context + scope-bar +
+  no-context-parity pins added to `summary.test.ts`; the group-totals
+  e2e in `orchestrator.test.ts` now filters the affected legend out of
+  its 10-indent legend scan. Docs: `docs/modules/summary.md` (RunContext
+  - new format) + `framed-output.md` (header section deleted, points at
+    the footer) + `status-line.md` worker-pool note.
+
 - **2026-06**: **Runtime inputs — `cache.inputs.runtime` /
   `cache.inputs.workspaceRuntime`.** The single canonical mechanism for
   folding a shell command's OUTPUT into a task's cache key (tool/runtime

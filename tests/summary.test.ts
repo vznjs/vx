@@ -120,6 +120,54 @@ describe('formatRunSummary', () => {
     expect(lines[1]).toContain('\x1b[38;2;')
     expect(lines[1]).toContain('vx')
   })
+
+  it('folds run context into the footer: version on the rule, run row + cache mode', () => {
+    const lines = formatRunSummary(
+      [outcome('a#x', 'success'), outcome('b#x', 'success')],
+      1234,
+      {
+        enabled: false,
+      },
+      {
+        version: '1.2.3',
+        tasks: ['build', 'test'],
+        taskCount: 2,
+        packageCount: 5,
+        concurrency: 8,
+        remoteCacheEnabled: true,
+      },
+    )
+    expect(lines[1]).toBe('─ vx 1.2.3 ' + '─'.repeat(49))
+    expect(lines).toContain(
+      '  run     build, test · 5 projects · 2 tasks · 8 workers · local + remote cache',
+    )
+  })
+
+  it('renders the affected-scope bar when a workspace total is given', () => {
+    const lines = formatRunSummary(
+      [outcome('a#x', 'success')],
+      10,
+      { enabled: false },
+      {
+        version: '0.0.0',
+        tasks: ['lint'],
+        taskCount: 1,
+        packageCount: 1,
+        remoteCacheEnabled: false,
+        workspaceProjectCount: 4,
+      },
+    )
+    expect(lines).toContain('  scope   ' + '▰'.repeat(13) + '▱'.repeat(37))
+    expect(lines).toContain('          1 affected · 4 total')
+    // local-only mode reads on the run row
+    expect(lines.find((l) => l.includes('local cache'))).toBeDefined()
+  })
+
+  it('no context keeps a bare `vx` rule and no run row (live-region parity)', () => {
+    const lines = formatRunSummary([outcome('a#x', 'success')], 10)
+    expect(lines[1]).toBe('─ vx ' + '─'.repeat(55))
+    expect(lines.find((l) => l.startsWith('  run '))).toBeUndefined()
+  })
 })
 
 describe('formatDuration', () => {

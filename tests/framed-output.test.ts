@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { formatHeader, formatTaskBlock } from '../src/orchestrator/framed-output.js'
+import { formatTaskBlock } from '../src/orchestrator/framed-output.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
@@ -26,63 +26,6 @@ function outcome(
     ...extra,
   }
 }
-
-describe('formatHeader', () => {
-  it('renders scope bar + legend, items row, cache row, rule at the bottom', () => {
-    expect(
-      formatHeader({
-        version: '1.2.3',
-        packageCount: 1,
-        tasks: ['lint'],
-        taskCount: 1,
-        remoteCacheEnabled: false,
-        workspaceProjectCount: 4,
-      }),
-    ).toEqual([
-      '',
-      '  projects  ' + '▰'.repeat(13) + '▱'.repeat(37),
-      '            1 affected · 4 total',
-      '',
-      '  tasks     lint · 1 task',
-      '  cache     local only',
-      '',
-      '─ vx 1.2.3 ' + '─'.repeat(49),
-      '',
-    ])
-  })
-
-  it('paints affected yellow and total dim when colors are enabled', () => {
-    const lines = formatHeader(
-      {
-        version: '1.2.3',
-        packageCount: 1,
-        tasks: ['lint'],
-        taskCount: 1,
-        remoteCacheEnabled: false,
-        workspaceProjectCount: 4,
-      },
-      { enabled: true },
-    )
-    const legend = lines.find((l) => l.includes('affected'))!
-    // affected = yellow (#eab308), total = dim
-    expect(legend).toContain('\x1b[38;2;234;179;8m1 affected\x1b[0m')
-    expect(legend).toContain('\x1b[2m4 total\x1b[0m')
-  })
-
-  it('omits the scope bar without a workspace total; lists tasks + workers as items', () => {
-    const lines = formatHeader({
-      version: '0.0.0',
-      packageCount: 3,
-      tasks: ['build', 'lint', 'test'],
-      taskCount: 3,
-      remoteCacheEnabled: true,
-      concurrency: 8,
-    })
-    expect(lines).toContain('  tasks     build, lint, test · 3 tasks · 8 workers')
-    expect(lines).toContain('  cache     local + remote')
-    expect(lines.find((l) => l.includes('projects'))).toBeUndefined()
-  })
-})
 
 describe('formatTaskBlock', () => {
   it('renders an executed task with command + stdout sections, content raw (no border)', () => {
