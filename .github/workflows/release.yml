@@ -25,10 +25,10 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
 
-      # Dogfood: `build` is a vx group task fanning out to
-      # `build:<target>` for each platform. Each sub-task is
-      # individually cached, so re-running this workflow on the same
-      # commit is essentially free.
+      # Dogfood: `build` is a vx group task fanning out to `build.bun`,
+      # which fans out to `build.bun.<target>` for each platform. Each
+      # sub-task is individually cached, so re-running this workflow on
+      # the same commit is essentially free.
       - run: bun src/bin.ts run build
 
       - uses: softprops/action-gh-release@v2

@@ -3,10 +3,54 @@
   "projects": {
     "@vzn/vx": {
       "configPath": "vx.config.ts",
-      "configHash": "91f7e483f71e5b8a",
+      "configHash": "34c18489aeeb729e",
       "config": {
         "tasks": {
+          "ci": {
+            "dependsOn": [
+              "lint",
+              "test",
+              "build"
+            ]
+          },
+          "install": {
+            "dependsOn": [
+              "^build"
+            ]
+          },
+          "build": {
+            "dependsOn": [
+              "build.bun"
+            ]
+          },
           "lint": {
+            "dependsOn": [
+              "lint.oxlint",
+              "lint.oxfmt"
+            ]
+          },
+          "test": {
+            "description": "bun test against the tests/ tree",
+            "exec": {
+              "command": "bun test"
+            },
+            "dependsOn": [
+              "install"
+            ],
+            "cache": {
+              "inputs": {
+                "files": [
+                  "src/**",
+                  "tests/**",
+                  "package.json"
+                ]
+              },
+              "outputs": {
+                "files": []
+              }
+            }
+          },
+          "lint.oxlint": {
             "description": "oxlint with tsgolint-backed type-aware checks",
             "exec": {
               "command": "oxlint --type-aware --type-check"
@@ -26,7 +70,7 @@
               }
             }
           },
-          "format-check": {
+          "lint.oxfmt": {
             "description": "oxfmt --check (no rewrite; CI-safe)",
             "exec": {
               "command": "oxfmt --check ."
@@ -42,40 +86,26 @@
               }
             }
           },
-          "format": {
+          "lint.oxfmt.fix": {
             "description": "oxfmt . — rewrite formatting in place",
             "exec": {
               "command": "oxfmt ."
             }
           },
-          "test": {
-            "description": "bun test against the tests/ tree",
-            "exec": {
-              "command": "bun test"
-            },
-            "cache": {
-              "inputs": {
-                "files": [
-                  "src/**",
-                  "tests/**",
-                  "package.json"
-                ]
-              },
-              "outputs": {
-                "files": []
-              }
-            }
-          },
-          "ci": {
-            "description": "format-check + lint + test (CI gate)",
+          "build.bun": {
+            "description": "compile standalone binaries for every target",
             "dependsOn": [
-              "format-check",
-              "lint",
-              "test"
+              "build.bun.linux-x64",
+              "build.bun.linux-arm64",
+              "build.bun.darwin-x64",
+              "build.bun.darwin-arm64"
             ]
           },
-          "build.linux-x64": {
+          "build.bun.linux-x64": {
             "description": "compile standalone binary (linux x64)",
+            "dependsOn": [
+              "install"
+            ],
             "exec": {
               "command": "bun build --compile --minify --bytecode --target=bun-linux-x64 src/bin.ts --outfile dist/vx-linux-x64"
             },
@@ -92,8 +122,11 @@
               }
             }
           },
-          "build.linux-arm64": {
+          "build.bun.linux-arm64": {
             "description": "compile standalone binary (linux arm64)",
+            "dependsOn": [
+              "install"
+            ],
             "exec": {
               "command": "bun build --compile --minify --bytecode --target=bun-linux-arm64 src/bin.ts --outfile dist/vx-linux-arm64"
             },
@@ -110,8 +143,11 @@
               }
             }
           },
-          "build.darwin-x64": {
+          "build.bun.darwin-x64": {
             "description": "compile standalone binary (darwin x64)",
+            "dependsOn": [
+              "install"
+            ],
             "exec": {
               "command": "bun build --compile --minify --bytecode --target=bun-darwin-x64 src/bin.ts --outfile dist/vx-darwin-x64"
             },
@@ -128,8 +164,11 @@
               }
             }
           },
-          "build.darwin-arm64": {
+          "build.bun.darwin-arm64": {
             "description": "compile standalone binary (darwin arm64)",
+            "dependsOn": [
+              "install"
+            ],
             "exec": {
               "command": "bun build --compile --minify --bytecode --target=bun-darwin-arm64 src/bin.ts --outfile dist/vx-darwin-arm64"
             },
@@ -145,15 +184,6 @@
                 ]
               }
             }
-          },
-          "build": {
-            "description": "compile standalone binaries for every target",
-            "dependsOn": [
-              "build.linux-x64",
-              "build.linux-arm64",
-              "build.darwin-x64",
-              "build.darwin-arm64"
-            ]
           }
         }
       }

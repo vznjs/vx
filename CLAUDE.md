@@ -127,11 +127,16 @@ bun.lock
   explains _why_. No co-author lines.
 - **Tests must pass.** 250+ tests today. Use `bun test` locally, or
   `bun src/bin.ts run test` to drive it through vx itself.
-- **Format must be clean.** Run via vx: `bun src/bin.ts run format`.
-- **Lint+typecheck must be clean.** Run via vx: `bun src/bin.ts run lint`.
-  No `package.json` scripts — dogfooded through vx's own task graph.
-- **CI gates:** install → format:check → lint → test, all under Bun.
-  CI workflow is `.github/workflows/ci.yml`.
+- **Format must be clean.** Rewrite via vx: `bun src/bin.ts run
+lint.oxfmt.fix`; the check-only gate is `lint.oxfmt` (part of `lint`).
+- **Lint+typecheck must be clean.** Run via vx: `bun src/bin.ts run lint`
+  — a group fanning out to `lint.oxlint` (oxlint + tsgolint) and
+  `lint.oxfmt` (oxfmt --check). No `package.json` scripts — dogfooded
+  through vx's own task graph.
+- **CI gate:** `bun src/bin.ts run ci` — a group fanning out to `lint`
+  (→ `lint.oxlint` + `lint.oxfmt`), `test`, and `build` (→ the four
+  `build.bun.*` cross-compiled binaries). CI workflow is
+  `.github/workflows/ci.yml`.
 
 ## Conventions
 

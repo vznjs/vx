@@ -66,9 +66,11 @@ jobs:
             || bun -e 'import("./src/exec/sandbox-runtime.js").then(m => m.probeSandbox()).then(a => console.log(JSON.stringify(a)))'
           echo "::endgroup::"
 
-      # Dogfood: vx orchestrates its own format-check / lint / test
-      # via vx.config.ts. The `ci` task is a group that fans out to all
-      # three. vx itself prepends each project's node_modules/.bin to
-      # PATH per task, so oxlint / oxfmt resolve from a raw shell.
+      # Dogfood: vx orchestrates its own gate via vx.config.ts. The `ci`
+      # task is a group fanning out to `lint` (→ lint.oxlint +
+      # lint.oxfmt), `test`, and `build` (→ the four build.bun.*
+      # cross-compiled binaries). vx prepends each project's
+      # node_modules/.bin to PATH per task, so oxlint / oxfmt resolve
+      # from a raw shell.
       - name: vx run ci
         run: bun src/bin.ts run ci
