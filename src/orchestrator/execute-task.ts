@@ -426,6 +426,22 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     for (const v of violations) effectiveStderr += `  ${v.line}\n`
   }
 
+  // A child killed by a shutdown signal (Ctrl-C / SIGTERM teardown)
+  // never finished on its own terms — revert it to aborted so it's
+  // neither cached, counted, nor shown. SIGKILL (OOM, forced) stays a
+  // real failure.
+  if (result.signal === 'SIGINT' || result.signal === 'SIGTERM') {
+    return {
+      node,
+      status: 'aborted',
+      exitCode: effectiveExitCode,
+      durationMs: result.durationMs,
+      hash,
+      wallclockStartNs,
+      wallclockEndNs,
+    }
+  }
+
   if (effectiveExitCode === 0 && cacheEnabled) {
     const outputFiles = await resolveOutputs({
       projectDir: node.projectDir,

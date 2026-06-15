@@ -47,6 +47,9 @@ export function tallyOutcomes(outcomes: readonly TaskOutcome[]): Tally {
   }
   for (const o of outcomes) {
     if (isGroupTask(o.node)) continue
+    // aborted (killed by a shutdown signal) is no work — excluded
+    // from totals and every bucket, exactly like a group task.
+    if (o.status === 'aborted') continue
     t.total++
     if (o.status === 'success') t.successful++
     else if (o.status === 'cache-hit') {

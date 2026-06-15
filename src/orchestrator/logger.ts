@@ -365,6 +365,19 @@ export function defaultLogger(
     taskComplete(node, outcome) {
       const stdout = takeChunks(stdoutBuffers, node.id)
       const stderr = takeChunks(stderrBuffers, node.id)
+      // An aborted task (child killed by a shutdown signal) reverts
+      // to pending: free its worker slot, but never count or render it
+      // — the run is tearing down and it has no honest outcome.
+      if (outcome.status === 'aborted') {
+        const si = slots.findIndex((s) => s !== null && s.id === node.id)
+        if (si >= 0) slots[si] = slotQueue.shift() ?? null
+        else {
+          const qi = slotQueue.findIndex((s) => s.id === node.id)
+          if (qi >= 0) slotQueue.splice(qi, 1)
+        }
+        refresh(true)
+        return
+      }
       // Group tasks (no exec) do no work — no surface prints them.
       if (!isGroupTask(node)) {
         done++

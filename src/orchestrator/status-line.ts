@@ -237,7 +237,9 @@ export function formatStatusRegion(
   colors: ColorSupport = NO_COLOR,
 ): string[] {
   const dim = (t: string) => paint('', t, colors, { dim: true })
-  const lines: string[] = []
+  // Leading blank separates the live running region from the completed
+  // task list scrolling above it (owner: "separate running from list").
+  const lines: string[] = ['']
   // Persistent (dev-server) rows: ▸ glyph, no elapsed, `running`, no
   // cache state (it's still alive).
   for (const id of s.pinnedPersistent) {
@@ -255,8 +257,8 @@ export function formatStatusRegion(
     )
   }
 
-  // Worker rows: the ⦿ pending glyph + live elapsed time (no spinner —
-  // the ticking time IS the motion) + `running`, full id (never
+  // Worker rows: NO glyph — the live elapsed time leads (no spinner;
+  // the ticking time IS the motion), then `running`, full id (never
   // truncated — name is the last column). Idle rows hold their slot's
   // place, dim, aligned under the status column.
   for (const slot of s.slots) {
@@ -266,7 +268,7 @@ export function formatStatusRegion(
     }
     lines.push(
       formatTaskRow(
-        paint(ACCENT, '⦿', colors),
+        ' ',
         Math.max(0, s.nowMs - slot.startedMs),
         'running',
         ACCENT,

@@ -1,7 +1,16 @@
 import { UserError } from '../util/index.js'
 import type { TaskNode } from './task-graph.js'
 
-export type TaskStatus = 'success' | 'cache-hit' | 'cache-hit-remote' | 'failed' | 'skipped'
+export type TaskStatus =
+  | 'success'
+  | 'cache-hit'
+  | 'cache-hit-remote'
+  | 'failed'
+  | 'skipped'
+  // A child killed by a shutdown signal (SIGINT/SIGTERM — e.g. Ctrl-C):
+  // the task never finished on its own terms, so it reverts to
+  // aborted — not counted, not shown (the run is tearing down).
+  | 'aborted'
 
 export interface TaskOutcome {
   node: TaskNode

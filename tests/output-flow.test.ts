@@ -167,6 +167,16 @@ describe('defaultLogger visibility matrix — broad', () => {
     log.taskComplete(n, mkOutcome(n, 'success'))
     expect(out.text()).toBe('')
   })
+
+  it('aborted (killed by a shutdown signal) → silent, not counted as failed', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)
+    const n = mkNode('one#build')
+    log.taskStderr(n, 'partial\n')
+    log.taskComplete(n, mkOutcome(n, 'aborted', { exitCode: 143 }))
+    log.runEnd?.()
+    expect(out.text()).toBe('')
+  })
 })
 
 describe('defaultLogger visibility matrix — focused', () => {

@@ -11,6 +11,10 @@ export interface RunResult {
   durationMs: number
   stdout: string
   stderr: string
+  /** The signal that killed the child, if any (Bun's `signalCode`).
+   *  SIGINT/SIGTERM here means a Ctrl-C / shutdown teardown — the
+   *  orchestrator reverts such a task to aborted, not failed. */
+  signal?: string
   /** Total user+system CPU time for the child, in milliseconds. */
   cpuMs?: number
   /** Peak resident set size for the child, in bytes. */
@@ -275,6 +279,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     durationMs: Date.now() - start,
     stdout,
     stderr,
+    ...(proc.signalCode ? { signal: proc.signalCode } : {}),
     ...resourceUsageToCpuRss(proc.resourceUsage()),
   }
 }

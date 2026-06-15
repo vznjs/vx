@@ -170,6 +170,30 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-15**: **Output redesign follow-ups + `aborted` status**
+  (owner-driven). (1) **Worker rows have no glyph** — the live elapsed
+  time leads (`     568ms running  <id>`); the glyph column is blank
+  (persistent dev-server rows keep `▸`). (2) **Live region separated
+  from the list** — a leading blank line tops the status region so the
+  in-flight rows sit apart from the completed-task scrollback. (3)
+  **Footer is identical live and final** — the live region now receives
+  the run `RunContext` via `runStart` and renders the SAME
+  `formatSummarySection` (version + `projects` bar + meters + `info` +
+  `time`); previously the live footer was a bare `vx`. (4) **`aborted`
+  status** — a child killed by a SHUTDOWN signal (SIGINT/SIGTERM, i.e.
+  Ctrl-C teardown) is classified `aborted`, NOT `failed`: not cached,
+  not counted (excluded from `tallyOutcomes` + `recordRun`), not shown
+  (logger `taskComplete` frees the slot and returns). SIGKILL/OOM stays
+  a real failure. Fixes the owner bug where Ctrl-C left in-flight tasks
+  reported as `failed` (the TTY signal kills the children, whose
+  143/130 exits were recorded before `process.exit`). New `TaskStatus`
+  member `'aborted'`; `RunResult.signal` carries `proc.signalCode`;
+  classification in `execute-task.ts`. Files: `graph/scheduler.ts`,
+  `exec/runner.ts`, `orchestrator/{execute-task,logger,tally,run,
+status-line}.ts`. Tests repinned (region row offsets for the leading
+  blank; aborted-is-silent pin). NB: on a TTY the frozen region isn't
+  yet erased on exit (cosmetic; non-TTY prints nothing).
+
 - **2026-06-15**: **Per-task output redesign — two-axis glyph grid**
   (owner-driven, many iterations). Reported task lines and live worker
   rows are now ONE column grid: ` <glyph> <time> <status> <cache>

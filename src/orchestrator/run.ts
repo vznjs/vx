@@ -264,6 +264,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     for (const o of list) {
       if (!o.hash) continue
       if (isGroupTask(o.node)) continue
+      // aborted (killed by a shutdown signal) isn't a real run.
+      if (o.status === 'aborted') continue
       toRecord.push({
         hash: o.hash,
         project: o.node.projectName,

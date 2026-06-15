@@ -288,16 +288,17 @@ describe('defaultLogger status line integration', () => {
     const b = mkNode('bb#x')
     log.taskStart?.(a)
     log.taskStart?.(b)
-    let rows = s.chunks[s.chunks.length - 1]!.split('\n')
-    expect(rows[0]).toContain('aa#x')
-    expect(rows[1]).toContain('bb#x')
+    // rows[0] is the region's leading blank separator; slots start at [1].
+    let rows = regionRows(s.chunks[s.chunks.length - 1]!)
+    expect(rows[1]).toContain('aa#x')
+    expect(rows[2]).toContain('bb#x')
     // a finishes; b must stay in row 2; c reuses row 1.
     log.taskComplete(a, mkOutcome(a, 'success'))
     const c = mkNode('cc#x')
     log.taskStart?.(c)
-    rows = s.chunks[s.chunks.length - 1]!.split('\n')
-    expect(rows[0]).toContain('cc#x')
-    expect(rows[1]).toContain('bb#x')
+    rows = regionRows(s.chunks[s.chunks.length - 1]!)
+    expect(rows[1]).toContain('cc#x')
+    expect(rows[2]).toContain('bb#x')
     log.runEnd?.()
   })
 
@@ -312,7 +313,8 @@ describe('defaultLogger status line integration', () => {
     expect(last).not.toContain('c#x')
     log.taskComplete(nodes[0]!, mkOutcome(nodes[0]!, 'success'))
     last = s.chunks[s.chunks.length - 1]!
-    expect(last.split('\n')[0]).toContain('c#x')
+    // rows[0] is the leading blank; the freed slot's task is the first row.
+    expect(regionRows(last)[1]).toContain('c#x')
     expect(last).not.toContain('more')
     log.runEnd?.()
   })
@@ -395,7 +397,8 @@ describe('defaultLogger status line integration', () => {
     // Persistent outcome arrives at READY while the child keeps
     // running — from here the pin is the visible evidence it's alive.
     log.taskComplete(dev, mkOutcome(dev, 'success'))
-    expect(regionRows(s.chunks[s.chunks.length - 1]!)[0]).toBe(' ▸         running        web#dev')
+    // [0] is the region's leading blank separator; the pin is [1].
+    expect(regionRows(s.chunks[s.chunks.length - 1]!)[1]).toBe(' ▸         running        web#dev')
     log.runEnd?.()
   })
 
@@ -447,35 +450,38 @@ describe('formatStatusRegion', () => {
   }
   const slot = (id: string, startedMs = 8000): WorkerSlot => ({ id, startedMs })
 
+  // The region leads with a blank line separating it from the
+  // completed-task list scrolling above (owner request).
   it('renders slot rows then the live summary section verbatim', () => {
     const lines = formatStatusRegion({ ...base, slots: [slot('a#build'), null] })
-    expect(lines).toHaveLength(5)
-    expect(lines[0]).toContain('a#build')
+    expect(lines).toHaveLength(6)
+    expect(lines[0]).toBe('')
+    expect(lines[1]).toContain('a#build')
     // Live elapsed (right-aligned) + the `running` tag, no spinner.
-    expect(lines[0]).toContain('2.00s')
-    expect(lines[0]).toContain('running')
-    expect(lines[1]).toContain('idle')
-    expect(lines.slice(2)).toEqual(SUMMARY)
+    expect(lines[1]).toContain('2.00s')
+    expect(lines[1]).toContain('running')
+    expect(lines[2]).toContain('idle')
+    expect(lines.slice(3)).toEqual(SUMMARY)
   })
 
   it('idle rows hold their place so the slot zone height never changes', () => {
     const slots = Array.from({ length: 10 }, () => null)
     const lines = formatStatusRegion({ ...base, slots })
-    expect(lines).toHaveLength(13)
-    expect(lines.slice(0, 10).every((l) => l.includes('idle'))).toBe(true)
+    expect(lines).toHaveLength(14)
+    expect(lines.slice(1, 11).every((l) => l.includes('idle'))).toBe(true)
   })
 
   it('overflow gets its own dim line between slots and summary', () => {
     const lines = formatStatusRegion({ ...base, slots: [slot('a#x')], overflow: 3 })
-    expect(lines[1]).toBe('… +3 more running')
-    expect(lines.slice(2)).toEqual(SUMMARY)
+    expect(lines[2]).toBe('… +3 more running')
+    expect(lines.slice(3)).toEqual(SUMMARY)
   })
 
   it('long ids are shown in full (never truncated — name is the last column)', () => {
     const long = '@scope/very-long-package-name-here#build-something-long'
     const lines = formatStatusRegion({ ...base, slots: [slot(long)] })
-    expect(lines[0]).toContain(long)
-    expect(lines[0]).not.toContain('…')
+    expect(lines[1]).toContain(long)
+    expect(lines[1]).not.toContain('…')
   })
 
   it('pinned persistent tasks render above the worker rows', () => {
@@ -484,11 +490,11 @@ describe('formatStatusRegion', () => {
       pinnedPersistent: ['web#dev', 'api#dev'],
       slots: [null],
     })
-    expect(lines).toHaveLength(6)
-    expect(lines[0]).toBe(' ▸         running        web#dev')
-    expect(lines[1]).toBe(' ▸         running        api#dev')
-    expect(lines[2]).toContain('idle')
-    expect(lines.slice(3)).toEqual(SUMMARY)
+    expect(lines).toHaveLength(7)
+    expect(lines[1]).toBe(' ▸         running        web#dev')
+    expect(lines[2]).toBe(' ▸         running        api#dev')
+    expect(lines[3]).toContain('idle')
+    expect(lines.slice(4)).toEqual(SUMMARY)
   })
 
   it('persistent pins keep ids identity-colored, never status-colored', () => {
@@ -496,8 +502,8 @@ describe('formatStatusRegion', () => {
       { ...base, pinnedPersistent: ['web#dev'], slots: [null] },
       { enabled: true },
     )
-    expect(lines[0]).toContain('running')
-    expect(lines[0]).toContain('\x1b[')
+    expect(lines[1]).toContain('running')
+    expect(lines[1]).toContain('\x1b[')
   })
 
   it('formatFailureLine: red ◼︎ glyph + exec time + failed + miss + id (no exit code)', () => {
