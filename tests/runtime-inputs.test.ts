@@ -155,6 +155,9 @@ describe('runtime inputs — e2e', () => {
     const r = await vx(root, ['run', 'build', '--all'])
     expect(r.code).not.toBe(0)
     expect(`${r.out}${r.err}`).toMatch(/runtime command exited 7/)
+    // A failed runtime command is a user/config error, not a vx bug —
+    // it must not be reported as an "internal error".
+    expect(`${r.out}${r.err}`).not.toMatch(/internal error/)
   })
 
   it('workspaceRuntime shared by two projects spawns once', async () => {

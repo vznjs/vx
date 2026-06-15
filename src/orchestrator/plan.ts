@@ -2,8 +2,11 @@
 // probe the cache to predict what would happen if `vx run` actually
 // ran. Used by `--dry-run` (preview output) and `--graph` (DOT export).
 //
-// No execution happens: no spawn, no cleanOutputs, no restoreOutputs.
-// The plan is read-only.
+// No TASK execution happens: no task spawn, no cleanOutputs, no
+// restoreOutputs. The plan is read-only — with one deliberate
+// exception: `cache.inputs.runtime` / `workspaceRuntime` probe commands
+// DO run, because predicting a task's key requires resolving them (same
+// as a real run). Keep runtime inputs side-effect-free pure probes.
 
 import type { GitFilesCache } from '../cache/index.js'
 import type { CacheLayer } from '../cache/index.js'

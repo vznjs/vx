@@ -1,3 +1,4 @@
+import { UserError } from '../util/index.js'
 import type { TaskNode } from './task-graph.js'
 
 export type TaskStatus = 'success' | 'cache-hit' | 'cache-hit-remote' | 'failed' | 'skipped'
@@ -238,9 +239,16 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             active--
             finishOne(id, outcome)
             // Surface the error live; the outcome itself doesn't
-            // carry captured stderr (that's the logger's job).
-            const named = err instanceof Error && err.name !== 'Error' ? `${err.name}: ` : ''
-            process.stderr.write(`[vx] internal error in ${id}: ${named}${message}\n`)
+            // carry captured stderr (that's the logger's job). A
+            // UserError is a config/input failure (e.g. a failed
+            // `cache.inputs.runtime` command), not a vx bug — report it
+            // plainly, never as an "internal error".
+            if (err instanceof UserError) {
+              process.stderr.write(`[vx] ${id}: ${message}\n`)
+            } else {
+              const named = err instanceof Error && err.name !== 'Error' ? `${err.name}: ` : ''
+              process.stderr.write(`[vx] internal error in ${id}: ${named}${message}\n`)
+            }
             tick()
           })
       }
