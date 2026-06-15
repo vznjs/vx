@@ -9,12 +9,12 @@ run time** into the key — e.g. the toolchain version (`node -v`,
 `rustc --version`), the OS, the current date, or the output of a
 content probe against an external system.
 
-Nx supports this as *runtime inputs* (`{ "runtime": "node --version" }`
+Nx supports this as _runtime inputs_ (`{ "runtime": "node --version" }`
 — run the command, fold its stdout into the hash). Turbo does **not**
 (open request: vercel/turborepo#4124; Turbo doesn't even fold the Node
 version into its hash).
 
-vx has an *accidental* escape hatch — because the resolved config
+vx has an _accidental_ escape hatch — because the resolved config
 object is hashed, a value computed in `vx.config.ts` (e.g.
 `execSync('node -v')` baked into `exec.env`) participates in the key.
 **But it breaks under `--frozen`**: with a lockfile, config eval
@@ -32,15 +32,15 @@ canonical mechanism** that is correct in every mode, including frozen.
   `process.env` inside `resolveInputs` (`inputs.ts:81`), so they are
   fresh on every run including `--frozen`.
 
-Runtime inputs are the same shape: freeze the *command strings*,
-resolve the *command output* live at hash time. This is the only
+Runtime inputs are the same shape: freeze the _command strings_,
+resolve the _command output_ live at hash time. This is the only
 mechanism that survives `--frozen` — there is nothing to "freeze"
 about the output, so it cannot go stale.
 
-| | frozen in lock | resolved live at hash time |
-|---|---|---|
-| `inputs.env` | the names `['NODE_ENV']` | the values from `process.env` |
-| `inputs.runtime` | the commands `['node -v']` | the command output |
+|                  | frozen in lock             | resolved live at hash time    |
+| ---------------- | -------------------------- | ----------------------------- |
+| `inputs.env`     | the names `['NODE_ENV']`   | the values from `process.env` |
+| `inputs.runtime` | the commands `['node -v']` | the command output            |
 
 ## Schema
 
@@ -108,17 +108,17 @@ command for deterministic folding.
 ### Execution — fastest path, blocks only what it needs
 
 - Run via async `Bun.spawn(['sh', '-c', cmd], { cwd, stdout: 'pipe',
-  stderr: 'pipe', stdin: 'ignore' })` — `sh -c` so pipelines /
+stderr: 'pipe', stdin: 'ignore' })` — `sh -c` so pipelines /
   redirects work ("shell is the API"); async (never `spawnSync`) so
   spawns overlap.
 - **Two run-scoped dedup memos** threaded through `ComputeHashArgs`
   alongside `gitFilesCache` / `hashCache`:
   - project: `Map<projectDir + '\0' + command, Promise<string>>`
   - workspace: `Map<command, Promise<string>>`
-  Each stores a `Promise` — the first task to need a command fires the
-  spawn; concurrent tasks await the same promise. Each unique command
-  therefore runs **once** per its dedup scope, and distinct commands
-  run **concurrently**.
+    Each stores a `Promise` — the first task to need a command fires the
+    spawn; concurrent tasks await the same promise. Each unique command
+    therefore runs **once** per its dedup scope, and distinct commands
+    run **concurrently**.
 - A task's `computeTaskHash` awaits **only its own** declared
   commands' promises — never the full set — so nothing blocks more
   than it must.
@@ -157,8 +157,8 @@ for (const [c, o] of input.workspaceRuntimeValues) h = xxh3(`${c}\0${o}`, h)
 No special handling, none added. The lock stores only the command
 strings (they live in the resolved config); `lock --check` re-evals
 config and compares — the strings match. Output drift is invisible to
-the lock **by design**, identical to how env-*value* drift is
-invisible (the lock freezes env *names*, not values). One doc line in
+the lock **by design**, identical to how env-_value_ drift is
+invisible (the lock freezes env _names_, not values). One doc line in
 `docs/caching.md` notes this parallel.
 
 ## Cache version
@@ -171,6 +171,7 @@ in-memory key derivation gains two folded sections).
 ## Testing
 
 Unit (`tests/inputs.test.ts` / a new `tests/runtime-inputs.test.ts`):
+
 - a unique command runs exactly once per dedup scope (inject latency;
   guard a spawn counter — fails if dedup removed);
 - distinct commands run concurrently;
@@ -185,6 +186,7 @@ Unit (`tests/inputs.test.ts` / a new `tests/runtime-inputs.test.ts`):
 - absent fields → key byte-identical to pre-change.
 
 e2e (`tests/orchestrator*.test.ts`):
+
 - changing a command's output across runs flips the key (cache miss);
 - a `--frozen` run re-resolves the output live (the headline
   correctness property — escape hatch can't do this);
@@ -205,5 +207,5 @@ e2e (`tests/orchestrator*.test.ts`):
   (rejected global-config-inputs territory; use a shared imported
   preset for reach).
 - Timeouts / caching command output across runs (a runtime input is
-  *defined* by re-resolving every run).
+  _defined_ by re-resolving every run).
 - Per-command cwd override (the two-field split is the cwd control).

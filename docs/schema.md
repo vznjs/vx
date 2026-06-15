@@ -315,6 +315,8 @@ interface CacheInputs {
   files: string[] // required
   workspaceFiles?: string[] // optional; workspace-root-relative
   env?: string[] // optional
+  runtime?: string[] // optional; project-dir shell commands
+  workspaceRuntime?: string[] // optional; workspace-root shell commands
   tasks?: readonly string[] // optional; same micro-syntax as dependsOn
 }
 ```
@@ -411,6 +413,61 @@ Unset names contribute the empty string to the key — and that's
 distinguishable from a name that was never listed (the count of names
 
 - the names themselves are also in the key).
+
+##### `inputs.runtime` (optional, default `[]`)
+
+Shell commands whose **combined, trimmed stdout + stderr** is folded
+into the cache key — the runtime-output analog of `inputs.env`. The Nx
+[`runtime` input](https://nx.dev/recipes/running-tasks/configure-inputs)
+equivalent (Turbo has no built-in for this — see
+[vercel/turborepo#4124](https://github.com/vercel/turborepo/issues/4124)).
+Use it for tool/runtime versions, OS info, or a project-local probe
+script whose value should bust the cache when it changes.
+
+```ts
+inputs: {
+  files: ['src/**'],
+  runtime: ['./scripts/probe.sh', 'rustc --version'],
+}
+```
+
+Semantics:
+
+- Each command runs in the **project dir** (cwd = the project's
+  directory), via `sh -c`, so pipelines and redirects work ("shell is
+  the API"). Deduped per `(projectDir, command)` within a run — a
+  command declared by both `build` and `test` in the same project runs
+  once.
+- The **output is resolved live at hash time on every run** (inside
+  `resolveInputs`), exactly like `inputs.env` reads host env values
+  live. `vx lock` freezes the command _strings_ (they're in the
+  resolved config), not their output, so the field stays correct under
+  `vx run --frozen` — the changed output of a frozen command still
+  busts the cache.
+- A **non-zero exit fails the run** (a hard `UserError` naming the
+  command and exit code) — fail-loud, like a missing git binary. A
+  flaky probe should not silently degrade to a stale hit.
+
+##### `inputs.workspaceRuntime` (optional, default `[]`)
+
+Like `runtime`, but commands run at the **workspace root** (cwd = the
+workspace root) and are deduped **globally per command** across the
+whole run — a `node -v` declared in 500 projects spawns exactly once.
+The runtime-input analog of `workspaceFiles`: per-task, root-anchored.
+Use it for global tool versions, OS info, or any probe whose value is
+the same for every project.
+
+```ts
+inputs: {
+  files: ['src/**'],
+  workspaceRuntime: ['node -v'], // runs once per run, root cwd
+}
+```
+
+Same `sh -c` execution, live-at-hash-time resolution (frozen-safe), and
+non-zero-exit-fails semantics as `runtime`. The two fields are folded
+into the cache key in **distinct namespaces**, so an identical
+`(command, output)` pair never aliases between them.
 
 ##### `inputs.tasks` (optional, default = all upstream)
 
@@ -859,24 +916,26 @@ the `cache` block).
 The loader (`src/workspace/project-loader.ts`) validates at load time
 and surfaces `UserError` (clean output, no stack):
 
-| Symptom                                            | Cause                                              |
-| -------------------------------------------------- | -------------------------------------------------- |
-| `did not export a default object`                  | Forgot `export default`, or exported a non-object. |
-| `tasks must be an object`                          | `tasks` field is missing or not an object.         |
-| `tasks.<name> must be an object`                   | The task value is null / a string / etc.           |
-| `exec must be an object with a command string`     | `exec` is malformed.                               |
-| `exec.command must be a non-empty string`          | Forgot `command`, or empty string.                 |
-| `exec.persistent must be an object (or omitted)`   | Wrong shape.                                       |
-| `exec.persistent.readyWhen must be a string regex` | Non-string `readyWhen`.                            |
-| `cache is not allowed on a persistent task`        | persistent + cache combined.                       |
-| `a task with no exec must declare dependsOn`       | Group task with no edges.                          |
-| `cache requires exec`                              | Group task with `cache`.                           |
-| `dependsOn must be an array of strings`            | Wrong shape.                                       |
-| `cache.inputs is required when cache is set`       | Forgot `inputs`.                                   |
-| `cache.inputs.files must be an array`              | Wrong shape.                                       |
-| `cache.outputs is required when cache is set`      | Forgot `outputs`.                                  |
-| `cache.outputs.files must be an array`             | Wrong shape.                                       |
-| `description must be a string`                     | Non-string description.                            |
+| Symptom                                                                             | Cause                                              |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `did not export a default object`                                                   | Forgot `export default`, or exported a non-object. |
+| `tasks must be an object`                                                           | `tasks` field is missing or not an object.         |
+| `tasks.<name> must be an object`                                                    | The task value is null / a string / etc.           |
+| `exec must be an object with a command string`                                      | `exec` is malformed.                               |
+| `exec.command must be a non-empty string`                                           | Forgot `command`, or empty string.                 |
+| `exec.persistent must be an object (or omitted)`                                    | Wrong shape.                                       |
+| `exec.persistent.readyWhen must be a string regex`                                  | Non-string `readyWhen`.                            |
+| `cache is not allowed on a persistent task`                                         | persistent + cache combined.                       |
+| `a task with no exec must declare dependsOn`                                        | Group task with no edges.                          |
+| `cache requires exec`                                                               | Group task with `cache`.                           |
+| `dependsOn must be an array of strings`                                             | Wrong shape.                                       |
+| `cache.inputs is required when cache is set`                                        | Forgot `inputs`.                                   |
+| `cache.inputs.files must be an array`                                               | Wrong shape.                                       |
+| `cache.inputs.runtime must be an array of non-empty shell command strings`          | Non-string / empty entry.                          |
+| `cache.inputs.workspaceRuntime must be an array of non-empty shell command strings` | Non-string / empty entry.                          |
+| `cache.outputs is required when cache is set`                                       | Forgot `outputs`.                                  |
+| `cache.outputs.files must be an array`                                              | Wrong shape.                                       |
+| `description must be a string`                                                      | Non-string description.                            |
 
 Workspace-config errors:
 

@@ -165,6 +165,48 @@ bun.lock
 
 ## Decision log
 
+- **2026-06**: **Runtime inputs — `cache.inputs.runtime` /
+  `cache.inputs.workspaceRuntime`.** The single canonical mechanism for
+  folding a shell command's OUTPUT into a task's cache key (tool/runtime
+  versions, OS info, project-local probes). Modeled exactly on
+  `inputs.env`: the command STRINGS live in the resolved config (frozen
+  into `vx-lock.json`), the OUTPUT is resolved live at hash time inside
+  `resolveInputs` on EVERY run — so it stays correct under `--frozen`,
+  precisely where the TS escape hatch (`define: { X: execSync(...) }`)
+  goes stale (its value was baked into the config object at lock time).
+  `runtime` commands run in the PROJECT dir, deduped per
+  `(projectDir, command)`; `workspaceRuntime` commands run at the
+  WORKSPACE ROOT, deduped GLOBALLY per command (a `node -v` in 500
+  projects spawns once). Both run via `sh -c` ("shell is the API" —
+  pipelines/redirects work). Output = combined trimmed stdout+stderr,
+  folded into `Cache.key` as TWO namespaced sections
+  (`runtime-values:` / `ws-runtime-values:`) right after env-values, so
+  an identical `(command, output)` never aliases between the two
+  scopes. A non-zero exit is a hard `UserError` naming the command +
+  exit code (fail-loud, like a missing git binary). Dedup uses
+  run-scoped `Promise` memos on `HashCache` (`runtime` /
+  `workspaceRuntime` maps) shared by the hash path AND the sandbox-
+  baseline `resolveInputs` — the first task to need a command fires the
+  spawn, the rest await the same promise; each task awaits only its OWN
+  commands (no upfront global pass). **CACHE_VERSION → v23, no SCHEMA
+  bump** — only `Cache.key` derivation gained two sections; tasks
+  declaring neither field fold a `:0` count for both and derive
+  byte-identical keys to before. **Nx parity** (Nx has a `runtime`
+  input; Turbo lacks this — vercel/turborepo#4124). Files: `config.ts`
+  (two `CacheInputs` fields), `workspace/project-loader.ts`
+  (validation: non-empty string arrays), `cache/inputs.ts`
+  (`runRuntimeCommand` + `resolveRuntimeValues` + `ResolvedInputs` /
+  `ResolveInputsArgs` extensions), `cache/cache.ts` (`CacheKeyInput`
+  fields + `key()` fold + version bump), `orchestrator/task-hash.ts`
+  (`HashCache` memos + threading), `orchestrator/execute-task.ts`
+  (sandbox-baseline memo passthrough). Tests: `tests/inputs.test.ts`
+  (resolver: cwd split, dedup-runs-once, stdout+stderr, sort, non-zero
+  fail), `tests/cache.test.ts` (key folding + namespacing + absent ==
+  empty), `tests/project-loader.test.ts` (validation), and
+  `tests/runtime-inputs.test.ts` (real-CLI e2e: output drift → miss,
+  live under `--frozen`, global dedup one-spawn, non-zero fails the
+  run). Reference `docs/design/runtime-inputs-2026-06.md`.
+
 - **2026-06**: **Cold-run optimization — no per-project git re-spawn on
   cache-miss save** + a real vs-Turbo-vs-Nx benchmark. Owner: "we should
   be faster on cold … use bun --profile to find exactly what's causing

@@ -72,32 +72,42 @@ The cache key for one task is a SHA-256 hex digest over (in order):
    read from host `process.env` at hash time. Listed names get their
    current values; unset names contribute the empty string (and the
    count of names + the names themselves are also folded in).
-7. **`forwardArgs`** — CLI args passed after `--`. Folded into the
+7. **`cache.inputs.runtime` resolved output** — `[command, output]`
+   pairs, where `output` is the combined, trimmed stdout + stderr of
+   each command run via `sh -c` in the **project dir** at hash time.
+   The runtime-output analog of step 6: the command _strings_ are in
+   the resolved config (step 5), their _output_ is resolved live every
+   run. Folded with the command count + each `command\0output` pair.
+8. **`cache.inputs.workspaceRuntime` resolved output** — same as step
+   7 but commands run at the **workspace root**, and the pairs fold
+   into a **distinct namespace** (`ws-runtime-values:`) so an identical
+   `(command, output)` never aliases the project-cwd `runtime` values.
+9. **`forwardArgs`** — CLI args passed after `--`. Folded into the
    key so `vx run test -- --watch` doesn't cache-hit a previous
    `vx run test`. Scoped to the user-requested tasks only — dependsOn-
    pulled deps don't see them (their cache identity stays clean).
-8. **Filtered upstream task cache hashes** — every upstream task's
-   own cache key, filtered by `cache.inputs.tasks` (default: all of
-   them). Sorted by hash before folding so the ordering of `dependsOn`
-   doesn't change the key. This is the cascade mechanism: if anything
-   beneath you changes, your hash changes too.
-9. **Input files' content hashes** — `cache.inputs.files` resolved to
-   a concrete list of project-relative paths (gitignore-aware,
-   declared-outputs-excluded, nested-projects-excluded), each file
-   contributing its **git blob OID** (v20). On a clean tree the OID
-   comes straight from the index — the same bulk
-   `git ls-files -s --others` spawn that enumerates files also yields
-   every tracked file's OID, and one `git status --porcelain` prunes
-   paths whose working tree diverges, so deriving these hashes costs
-   zero file reads, zero per-file stats, zero SQLite lookups. Dirty /
-   untracked files (and symlinks) fall back to an in-process
-   `HASH("blob " + len + "\0" + content)` computation (sha1, or
-   sha256 in `--object-format=sha256` repos) with the
-   `file_hashes` mtime+size memo as the fast path — byte-identical
-   to the index OID for identical content, so a file's contribution
-   never flips across dirty↔clean transitions. Folded as
-   `(relPath, oid)` pairs, sorted by relPath for stability across
-   OSes and walk orders.
+10. **Filtered upstream task cache hashes** — every upstream task's
+    own cache key, filtered by `cache.inputs.tasks` (default: all of
+    them). Sorted by hash before folding so the ordering of `dependsOn`
+    doesn't change the key. This is the cascade mechanism: if anything
+    beneath you changes, your hash changes too.
+11. **Input files' content hashes** — `cache.inputs.files` resolved to
+    a concrete list of project-relative paths (gitignore-aware,
+    declared-outputs-excluded, nested-projects-excluded), each file
+    contributing its **git blob OID** (v20). On a clean tree the OID
+    comes straight from the index — the same bulk
+    `git ls-files -s --others` spawn that enumerates files also yields
+    every tracked file's OID, and one `git status --porcelain` prunes
+    paths whose working tree diverges, so deriving these hashes costs
+    zero file reads, zero per-file stats, zero SQLite lookups. Dirty /
+    untracked files (and symlinks) fall back to an in-process
+    `HASH("blob " + len + "\0" + content)` computation (sha1, or
+    sha256 in `--object-format=sha256` repos) with the
+    `file_hashes` mtime+size memo as the fast path — byte-identical
+    to the index OID for identical content, so a file's contribution
+    never flips across dirty↔clean transitions. Folded as
+    `(relPath, oid)` pairs, sorted by relPath for stability across
+    OSes and walk orders.
 
 The composition is hash-then-concat-then-hash: each step appends
 length-prefixed bytes to the running hasher, so two different field
@@ -232,22 +242,24 @@ A task's cache becomes invalid when any of these change:
 
 | Trigger                                                                                                                                  | Mechanism                                                                                                                 |
 | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Edit a file in the task's `inputs.files` set                                                                                             | step 9 of key derivation                                                                                                  |
-| Edit a file in the task's `inputs.workspaceFiles` set (root-anchored; may live in ANY project's dir — the documented boundary exception) | step 9 — resolved workspace files join the same input-file list                                                           |
+| Edit a file in the task's `inputs.files` set                                                                                             | step 11 of key derivation                                                                                                 |
+| Edit a file in the task's `inputs.workspaceFiles` set (root-anchored; may live in ANY project's dir — the documented boundary exception) | step 11 — resolved workspace files join the same input-file list                                                          |
 | Any package manager updates a lockfile (`pnpm`, `npm`, `yarn`, `bun`)                                                                    | step 3 (workspace fingerprint)                                                                                            |
 | Edit `pnpm-workspace.yaml` or `package.json`'s `workspaces` field                                                                        | step 3                                                                                                                    |
 | Edit the project's `package.json` (dep / version / scripts change)                                                                       | step 4 (project package.json hash)                                                                                        |
 | Edit the task's `vx.config.ts`                                                                                                           | step 5 (task config hash)                                                                                                 |
 | Edit a config file that the task config imports                                                                                          | step 5 (configHash sees the resolved object after Bun evaluates imports)                                                  |
 | Change a `cache.inputs.env` host value                                                                                                   | step 6                                                                                                                    |
-| Change CLI `forwardArgs` (after `--`)                                                                                                    | step 7                                                                                                                    |
-| Upstream task's cache key changes (because its inputs changed)                                                                           | step 8                                                                                                                    |
+| Change the combined stdout+stderr of a `cache.inputs.runtime` command (resolved at hash time)                                            | step 7                                                                                                                    |
+| Change the combined stdout+stderr of a `cache.inputs.workspaceRuntime` command (resolved at hash time)                                   | step 8                                                                                                                    |
+| Change CLI `forwardArgs` (after `--`)                                                                                                    | step 9                                                                                                                    |
+| Upstream task's cache key changes (because its inputs changed)                                                                           | step 10                                                                                                                   |
 | Bump `CACHE_VERSION`                                                                                                                     | step 1 — orphans every entry                                                                                              |
 | Change `exec.env.passThrough` _values_ alone                                                                                             | **NOT a trigger** by design — passThrough values are host-specific                                                        |
 | Change a file not in `inputs.files` / `inputs.workspaceFiles`                                                                            | **NOT a trigger** by design — declare it explicitly                                                                       |
 | Change a file in a nested project's dir                                                                                                  | **NOT a trigger** for the parent's `files` globs — project boundaries are hard (workspaceFiles is the explicit exception) |
 
-The cascade in row 9 is what makes monorepo caching work: edit a file
+The cascade in row 11 is what makes monorepo caching work: edit a file
 in `lib/`, and every package that depends on `lib`'s `build` task
 re-runs automatically.
 
@@ -260,7 +272,7 @@ project's directory, even if a `**/*` pattern would otherwise match.
 directories (projects rooted inside this one) once per `vx run`, and
 adds them to the ignore list passed to every glob pass. The only way
 for project A to depend on project B's state via project-relative
-globs is `dependsOn` + upstream-hash propagation (step 8).
+globs is `dependsOn` + upstream-hash propagation (step 10).
 
 **Exception:** `cache.inputs.workspaceFiles` /
 `cache.outputs.workspaceFiles` are workspace-root-anchored and apply
@@ -268,6 +280,34 @@ NO boundary rule — a deliberate escape hatch (owner call: "they don't
 care about boundaries; it is bad practice but is there"). Prefer
 project-relative declarations; reach for workspaceFiles only for
 genuinely root-anchored files.
+
+## Runtime inputs and the lock (the env parallel)
+
+`cache.inputs.runtime` / `cache.inputs.workspaceRuntime` are modeled
+exactly on `cache.inputs.env`, and they share its asymmetry with the
+lockfile:
+
+- **The command _strings_ live in the resolved config**, so `vx lock`
+  freezes them into `vx-lock.json` (just as it freezes the env _names_
+  a task declares).
+- **The command _output_ is resolved live at hash time on every run**
+  — inside `resolveInputs`, the same place env _values_ are read from
+  the host `process.env`. The lock never stores it.
+
+So `vx run --frozen` loads the frozen command strings but still spawns
+them and folds their current output into the key. A `node -v` that goes
+from `v20` to `v22` after the lock was written busts the cache under
+`--frozen`, exactly as a changed `NODE_ENV` value would — the TypeScript
+escape hatch (`define: { TSC_VERSION: execSync(...) }`) goes stale here
+because its value was baked into the config object at lock time, whereas
+a runtime input re-resolves.
+
+Consequently **`vx lock --check` does not — and need not — flag
+runtime-output drift.** `lock --check` audits that the frozen config
+object still matches a fresh evaluation; the command output was never
+part of that object (only the strings are), so a changed probe output
+is correct, expected, live behavior rather than lock drift. This is the
+same reason `lock --check` ignores `inputs.env` value changes.
 
 ## Storage layout (v17+)
 
@@ -415,6 +455,16 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
 
 ### History
 
+- **v22 → v23**: fold `cache.inputs.runtime` / `workspaceRuntime`
+  command output into the key (two namespaced sections after
+  env-values). The command _strings_ stay in the config hash (step 5);
+  their combined trimmed stdout+stderr is resolved live at hash time
+  and folded as `runtime-values:` (project-cwd) and `ws-runtime-values:`
+  (root-cwd) sections, each `command\0output`. No SCHEMA bump — only
+  `Cache.key` derivation gained two sections; the on-disk format is
+  unchanged. Tasks declaring neither field fold a `:0` count for both
+  and derive byte-identical keys to before the bump.
+
 - **v22 → pure-input transitive** (+ SCHEMA v21): reverted the v21
   output-fold. Downstream keys fold the upstream's **input key** (its
   own task hash) — a pure function of the filesystem, like Turbo/Nx.
@@ -515,7 +565,7 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
   transitive-deps to nearest-holder frontier semantics (Turbo/Nx
   direct-deps parity, plus vx's sparse bridging through deps that
   don't declare the task). Task graphs lose the redundant deep edges,
-  so the filtered-upstream-hash set (step 8) shrinks for any task
+  so the filtered-upstream-hash set (step 10) shrinks for any task
   whose deps chain `'^task'` themselves — same inputs now derive a
   different key. Reachability/ordering is unchanged whenever holders
   chain `'^task'` (the universal pattern); a holder that doesn't is

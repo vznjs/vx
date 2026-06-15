@@ -62,6 +62,8 @@ export interface CacheKeyInput {
   taskConfigHash: string
   projectPackageJsonHash: string // (v12) project's package.json bytes
   envValues: Array<[name: string, value: string]>
+  runtimeValues?: Array<[command: string, output: string]> // (v23) cache.inputs.runtime; folded as a namespaced section
+  workspaceRuntimeValues?: Array<[command: string, output: string]> // (v23) cache.inputs.workspaceRuntime; distinct namespace
   inputFiles: string[] // absolute paths (sorted by caller before pass)
   workspaceRoot: string
   upstreamHashes: string[]

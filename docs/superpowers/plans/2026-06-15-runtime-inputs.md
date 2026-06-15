@@ -4,7 +4,7 @@
 
 **Goal:** Add `cache.inputs.runtime` and `cache.inputs.workspaceRuntime` — shell commands whose combined stdout+stderr is folded into a task's cache key, resolved live at hash time so they stay correct under `--frozen`.
 
-**Architecture:** Mirror `cache.inputs.env` exactly: the command *strings* live in the resolved config (frozen into `vx-lock.json`), the command *output* is resolved live inside `resolveInputs` on every run. `runtime` commands run in the project dir (deduped per `(projectDir, command)`); `workspaceRuntime` commands run at the workspace root (deduped globally per command). Dedup uses run-scoped `Promise` memos on the existing `HashCache`, so the first task to need a command fires it and the rest await the same promise; each task awaits only its own commands. Output is folded into `Cache.key` as two namespaced sections.
+**Architecture:** Mirror `cache.inputs.env` exactly: the command _strings_ live in the resolved config (frozen into `vx-lock.json`), the command _output_ is resolved live inside `resolveInputs` on every run. `runtime` commands run in the project dir (deduped per `(projectDir, command)`); `workspaceRuntime` commands run at the workspace root (deduped globally per command). Dedup uses run-scoped `Promise` memos on the existing `HashCache`, so the first task to need a command fires it and the rest await the same promise; each task awaits only its own commands. Output is folded into `Cache.key` as two namespaced sections.
 
 **Tech Stack:** Bun (`Bun.spawn`, `bun:test`), TypeScript, xxHash3 key derivation.
 
@@ -29,6 +29,7 @@
 ## Task 1: Schema fields + loader validation
 
 **Files:**
+
 - Modify: `src/config.ts:254-308` (add two fields to `CacheInputs`)
 - Modify: `src/workspace/project-loader.ts` (add validation after the `env` block, before `workspaceFiles` at `:253`)
 - Test: `tests/project-loader.test.ts`
@@ -75,7 +76,9 @@ it('rejects empty-string workspaceRuntime entries', async () => {
           cache: { inputs: { files: [], workspaceRuntime: [''] }, outputs: { files: [] } } } }
       }
     `),
-  ).rejects.toThrow(/cache\.inputs\.workspaceRuntime must be an array of non-empty shell command strings/)
+  ).rejects.toThrow(
+    /cache\.inputs\.workspaceRuntime must be an array of non-empty shell command strings/,
+  )
 })
 ```
 
@@ -115,19 +118,16 @@ In `src/config.ts`, inside `interface CacheInputs` (after the `tasks?` field, be
 In `src/workspace/project-loader.ts`, immediately before the `workspaceFiles` block at `:253` (`const wsInputs = (inputs as ...).workspaceFiles`), insert:
 
 ```ts
-      for (const field of ['runtime', 'workspaceRuntime'] as const) {
-        const list = (inputs as Record<string, unknown>)[field]
-        if (list !== undefined) {
-          if (
-            !Array.isArray(list) ||
-            list.some((s) => typeof s !== 'string' || s.length === 0)
-          ) {
-            throw new UserError(
-              `${where}.cache.inputs.${field} must be an array of non-empty shell command strings`,
-            )
-          }
-        }
-      }
+for (const field of ['runtime', 'workspaceRuntime'] as const) {
+  const list = (inputs as Record<string, unknown>)[field]
+  if (list !== undefined) {
+    if (!Array.isArray(list) || list.some((s) => typeof s !== 'string' || s.length === 0)) {
+      throw new UserError(
+        `${where}.cache.inputs.${field} must be an array of non-empty shell command strings`,
+      )
+    }
+  }
+}
 ```
 
 - [ ] **Step 5: Run tests to verify they pass**
@@ -147,6 +147,7 @@ git commit -m "Add cache.inputs.runtime/workspaceRuntime schema + loader validat
 ## Task 2: Runtime resolver in `inputs.ts`
 
 **Files:**
+
 - Modify: `src/cache/inputs.ts` (`ResolvedInputs`, `ResolveInputsArgs`, `resolveInputs`; add `runRuntimeCommand` + `resolveRuntimeValues`)
 - Test: `tests/inputs.test.ts`
 
@@ -206,9 +207,9 @@ describe('resolveInputs — runtime values', () => {
   })
 
   it('throws UserError naming the command on non-zero exit', async () => {
-    await expect(resolveInputs(args({ runtime: ['sh -c "echo boom 1>&2; exit 3"'] }))).rejects.toThrow(
-      /runtime command exited 3: sh -c "echo boom 1>&2; exit 3"/,
-    )
+    await expect(
+      resolveInputs(args({ runtime: ['sh -c "echo boom 1>&2; exit 3"'] })),
+    ).rejects.toThrow(/runtime command exited 3: sh -c "echo boom 1>&2; exit 3"/)
   })
 
   it('empty fields produce empty arrays', async () => {
@@ -303,9 +304,7 @@ async function runRuntimeCommand(command: string, cwd: string): Promise<string> 
       stderr: 'pipe',
     })
   } catch {
-    throw new UserError(
-      `cache.inputs runtime command failed to spawn: ${command} (cwd: ${cwd})`,
-    )
+    throw new UserError(`cache.inputs runtime command failed to spawn: ${command} (cwd: ${cwd})`)
   }
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
@@ -358,26 +357,26 @@ async function resolveRuntimeValues(
 In `src/cache/inputs.ts`, change the `return` of `resolveInputs` (`:79-82`) to resolve both runtime lists concurrently:
 
 ```ts
-  const [runtimeValues, workspaceRuntimeValues] = await Promise.all([
-    resolveRuntimeValues(
-      args.inputs?.runtime ?? [],
-      args.projectDir,
-      args.runtimeCache,
-      `${args.projectDir}\0`,
-    ),
-    resolveRuntimeValues(
-      args.inputs?.workspaceRuntime ?? [],
-      args.workspaceRoot,
-      args.workspaceRuntimeCache,
-      '',
-    ),
-  ])
-  return {
-    files,
-    envValues: resolveEnvValues(args.inputs?.env ?? [], args.envSource),
-    runtimeValues,
-    workspaceRuntimeValues,
-  }
+const [runtimeValues, workspaceRuntimeValues] = await Promise.all([
+  resolveRuntimeValues(
+    args.inputs?.runtime ?? [],
+    args.projectDir,
+    args.runtimeCache,
+    `${args.projectDir}\0`,
+  ),
+  resolveRuntimeValues(
+    args.inputs?.workspaceRuntime ?? [],
+    args.workspaceRoot,
+    args.workspaceRuntimeCache,
+    '',
+  ),
+])
+return {
+  files,
+  envValues: resolveEnvValues(args.inputs?.env ?? [], args.envSource),
+  runtimeValues,
+  workspaceRuntimeValues,
+}
 ```
 
 - [ ] **Step 6: Run tests to verify they pass**
@@ -397,6 +396,7 @@ git commit -m "Resolve runtime/workspaceRuntime command outputs in resolveInputs
 ## Task 3: Fold into the cache key + thread memos + CACHE_VERSION bump
 
 **Files:**
+
 - Modify: `src/cache/cache.ts` (`CacheKeyInput`, `key()`, `CACHE_VERSION`)
 - Modify: `src/orchestrator/task-hash.ts` (`HashCache`, `createHashCache`, `computeTaskHash`)
 - Modify: `src/orchestrator/execute-task.ts:356` (pass memos to the sandbox-baseline `resolveInputs`)
@@ -457,13 +457,13 @@ In `src/cache/cache.ts`, inside `interface CacheKeyInput` (after `envValues` at 
 In `src/cache/cache.ts`, in `key()`, immediately after the env-values loop (`:661`, the `for (const [n, v] of input.envValues) ...` line):
 
 ```ts
-    const runtimeValues = input.runtimeValues ?? []
-    h = xxh3(`runtime-values:${runtimeValues.length}`, h)
-    for (const [c, o] of runtimeValues) h = xxh3(`${c}\0${o}`, h)
+const runtimeValues = input.runtimeValues ?? []
+h = xxh3(`runtime-values:${runtimeValues.length}`, h)
+for (const [c, o] of runtimeValues) h = xxh3(`${c}\0${o}`, h)
 
-    const wsRuntimeValues = input.workspaceRuntimeValues ?? []
-    h = xxh3(`ws-runtime-values:${wsRuntimeValues.length}`, h)
-    for (const [c, o] of wsRuntimeValues) h = xxh3(`${c}\0${o}`, h)
+const wsRuntimeValues = input.workspaceRuntimeValues ?? []
+h = xxh3(`ws-runtime-values:${wsRuntimeValues.length}`, h)
+for (const [c, o] of wsRuntimeValues) h = xxh3(`${c}\0${o}`, h)
 ```
 
 - [ ] **Step 5: Run cache-key tests to verify they pass**
@@ -551,6 +551,7 @@ git commit -m "Fold runtime inputs into cache key; bump CACHE_VERSION to v23"
 ## Task 4: End-to-end tests (real CLI subprocess)
 
 **Files:**
+
 - Create: `tests/runtime-inputs.test.ts`
 
 Mirror the harness in `tests/lock.test.ts` (`makeWorkspace`, `addProject`, `vx` subprocess helpers — copy them into the new file; the suite spawns the real CLI so frozen-mode is exercised honestly).
@@ -578,7 +579,8 @@ function git(cwd: string, ...args: string[]): void {
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  if (p.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${new TextDecoder().decode(p.stderr)}`)
+  if (p.exitCode !== 0)
+    throw new Error(`git ${args.join(' ')}: ${new TextDecoder().decode(p.stderr)}`)
 }
 
 async function makeWorkspace(): Promise<string> {
@@ -760,6 +762,7 @@ git commit -m "Add runtime-inputs e2e tests (output drift, --frozen live, dedup,
 ## Task 5: Docs + decision log
 
 **Files:**
+
 - Modify: `docs/schema.md` (document the two fields)
 - Modify: `docs/caching.md` (invalidation table + CACHE_VERSION bump note + env-parallel asymmetry)
 - Modify: `docs/modules/cache.md` (CacheKeyInput shape, if it lists fields)
@@ -785,8 +788,9 @@ cache: {
 - [ ] **Step 2: Update caching docs**
 
 In `docs/caching.md`:
+
 - Add invalidation-table rows: `cache.inputs.runtime` / `cache.inputs.workspaceRuntime` → "combined stdout+stderr of the command(s), resolved at hash time".
-- Add a short subsection noting the env-parallel asymmetry: the lock freezes the command *strings* (they're in the resolved config) but the *output* is resolved live every run — identical to how the lock freezes env *names* but reads env *values* live, so `lock --check` does not (and need not) flag runtime-output drift.
+- Add a short subsection noting the env-parallel asymmetry: the lock freezes the command _strings_ (they're in the resolved config) but the _output_ is resolved live every run — identical to how the lock freezes env _names_ but reads env _values_ live, so `lock --check` does not (and need not) flag runtime-output drift.
 - Append to the "Bumping `CACHE_VERSION`" section: `v22 → v23: fold cache.inputs.runtime / workspaceRuntime command output into the key (two namespaced sections after env-values).`
 
 - [ ] **Step 3: Update the cache module doc**
