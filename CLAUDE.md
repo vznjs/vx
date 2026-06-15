@@ -170,6 +170,54 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-15**: **Task hierarchy — dotted-namespace group composition.**
+  The repo's own `vx.config.ts` tasks were restructured so groups
+  compose by dotted name: `lint` → `lint.oxlint` + `lint.oxfmt` (+
+  `lint.oxfmt.fix` to rewrite); `build` → `build.bun` →
+  `build.bun.{linux-x64,linux-arm64,darwin-x64,darwin-arm64}` (one real
+  cross-compile task per platform); `ci` → `lint` + `test`. Dotted
+  names are a pure convention (no schema feature) — they read as a
+  folder tree and pair with the transparent-folder focused output (see
+  the entry below; `vx run lint` surfaces `lint.oxlint`/`lint.oxfmt`).
+  `vx-lock.json` regenerated, CI/release workflow comments + the
+  Workflow/CI sections of this file updated to the new names. NB: `ci`
+  initially also chained `build` but that was dropped same day
+  (`build.bun.*` OOM-killed on the CI runner) — the four binaries build
+  only in `release.yml` via `vx run build`. No CACHE_VERSION impact
+  (resolved-config hashing keys each task independently of its name).
+
+- **2026-06-15**: **`dependsOn` bare entries type-checked against task
+  keys.** `defineProject` now constrains each task's `dependsOn` so a
+  BARE entry (`'build'`) must be one of that config's own task keys — a
+  typo (`'biuld'`) is a compile error with a "did you mean" hint. The
+  `'^name'` (workspace-dep, incl. `'^all'`) and `'pkg#name'`
+  (cross-project) forms reference OTHER projects' tasks and stay free
+  strings (this config can't see their keys). Compile-time only:
+  `defineProject` stays an identity function at runtime, and
+  `TaskConfig.dependsOn` keeps its loose `readonly string[]` for the
+  loader/graph (which validate dynamically). Files: `src/config.ts`,
+  `tests/config.test.ts`.
+
+- **2026-06-13/14**: **Docs-site adopter overhaul + animated landing
+  benchmark.** A large body of `apps/docs` (Astro Starlight) work,
+  shipped via web-session PRs per that harness's directive (NOT the
+  push-to-main rule): (a) the guide/reference content was overhauled
+  for ADOPTERS — every config prop covered, new sandboxing +
+  workspace-config guides, install instructions corrected (`bun add` +
+  `curl` both shown, `defineProject` kept), `vx lock` / `--frozen` in
+  CI documented, several verified inaccuracies corrected; (b) the docs
+  LEAD with real large-monorepo benchmark numbers (deep-graph shape,
+  Turbo caching fixed in the harness, a `vx (frozen)` variant + frozen
+  warm numbers added); (c) the LANDING page was redesigned
+  (speed-forward, mobile-responsive, gradient-bordered cards) with an
+  animated **benchmark race** — `BenchBar.astro` / `BenchChart.astro`
+  render each runner's bar as a relative-length, real-time progress
+  fill (cold starts at vx's finish line and watches Turbo/Nx grind on;
+  bars share one timescale; a sheen sweeps only still-running bars).
+  `docs/**` stays the source of truth for the reference pages; landing
+  - benchmark visuals are hand-authored components. No core/runtime
+    change — `docs/` + `apps/docs/` only.
+
 - **2026-06**: **Groups are transparent folders in focused output**
   (owner: "treat groups as transparent folders — running them should
   show real tasks"; `vx run build` where `build` is a group printed
