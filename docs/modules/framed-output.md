@@ -6,10 +6,10 @@ Format the per-task framed output block and the two compact one-liners
 (quiet cache hit, broad-mode executed). Pure functions; the logger
 calls them at the right moments.
 
-There is no top-of-run header. The run banner — version, requested
-tasks, project/task/worker counts, cache mode, affected-scope bar —
-lives in the **footer** (`summary.ts`'s `RunContext`), printed once at
-the end where the eye lands. See `docs/modules/summary.md`.
+There is no top-of-run header. The run banner — version, the
+affected-projects bar, worker pool, cache mode — lives in the
+**footer** (`summary.ts`'s `RunContext`), printed once at the end
+where the eye lands. See `docs/modules/summary.md`.
 
 ## Public surface
 

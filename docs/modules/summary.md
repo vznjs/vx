@@ -15,12 +15,10 @@ upstream by `orchestrator.run` before this function is called.
 ```ts
 export interface RunContext {
   version: string
-  tasks: readonly string[] // requested task names (deduped)
-  taskCount: number // real (non-group) executions
-  packageCount: number // projects covered by the graph
-  concurrency?: number // worker-pool size
+  packageCount: number // projects covered → the bar's "affected" half
+  concurrency?: number // worker-pool size (info row)
   remoteCacheEnabled: boolean
-  workspaceProjectCount?: number // total projects → affected-scope bar
+  workspaceProjectCount?: number // total projects → the bar's denominator
 }
 
 export function formatRunSummary(
@@ -37,28 +35,31 @@ export function formatDuration(ms: number): string
 `log.status`). Leading blank line is included so the summary stands
 apart from the last framed block. When `context` is omitted (the live
 status region, which fills in the meters as the run proceeds) the rule
-reads a bare `vx` and the run rows are skipped — byte-identical to the
+reads a bare `vx` and the `projects` / `info` rows are skipped — the
 meters-only section the region renders.
 
 ## Format
 
 ```
-─ vx 0.0.0 ──────────────────────────────────────────────────
-  run     build, test · 5 projects · 23 tasks · 8 workers · local + remote cache
-  scope   ▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱
-          5 affected · 12 total
+─ vx 0.0.0 ───────────────────────────────────────────────────
+  projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱
+            1 affected · 2 total
+  tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
+            4 success · 4 total
+  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
+            4 miss
 
-  tasks   ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-          1 failed · 20 success · 2 skipped
-  cache   ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-          18 miss · 3 up-to-date · 2 local
-
-  time    5.2s · max 1.8s · avg 230ms · min 4ms
+  info      10 workers · local cache
+  time      248ms · max 239ms · avg 215ms · min 190ms
 ```
 
-The `run` row always shows; the `scope` bar only when
-`workspaceProjectCount` is set (affected runs). Cache mode (`local
-cache` / `local + remote cache`) is a dim suffix on the `run` row.
+Labels pad to 8, bars start at column 12, the rule + bars span 50
+cells. `projects` (affected vs workspace total) leads the meter stack;
+`tasks` and `cache` follow, the tasks legend carrying a dim `N total`.
+A blank line separates the meters from the `info` row (worker pool +
+cache mode) and the `time` row. `projects` and `info` only render when
+a `RunContext` is passed (the final footer); the live region shows the
+meters alone.
 
 Colors:
 

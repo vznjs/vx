@@ -21,13 +21,13 @@ describe('formatRunSummary', () => {
     const lines = formatRunSummary([outcome('a#x', 'success'), outcome('b#x', 'success')], 1234)
     expect(lines).toEqual([
       '',
-      '─ vx ' + '─'.repeat(55),
-      '  tasks   ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰',
-      '          2 success',
-      '  cache   ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰',
-      '          2 miss',
+      '─ vx ' + '─'.repeat(57),
+      '  tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰',
+      '            2 success · 2 total',
+      '  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰',
+      '            2 miss',
       '',
-      '  time    1.23s · max 100ms · avg 100ms · min 100ms',
+      '  time      1.23s · max 100ms · avg 100ms · min 100ms',
     ])
   })
 
@@ -40,9 +40,9 @@ describe('formatRunSummary', () => {
       ],
       420,
     )
-    expect(lines[3]).toBe('          3 success')
-    expect(lines[5]).toBe('          1 miss · 2 up-to-date')
-    expect(lines.at(-1)).toBe('  time    420ms' + ' · max 100ms · avg 100ms · min 100ms')
+    expect(lines[3]).toBe('            3 success · 3 total')
+    expect(lines[5]).toBe('            1 miss · 2 up-to-date')
+    expect(lines.at(-1)).toBe('  time      420ms' + ' · max 100ms · avg 100ms · min 100ms')
   })
 
   it('reports failures separately from total', () => {
@@ -50,8 +50,8 @@ describe('formatRunSummary', () => {
       [outcome('a#test', 'success'), outcome('b#test', 'failed', 1)],
       850,
     )
-    expect(lines[3]).toBe('          1 failed · 1 success')
-    expect(lines[5]).toBe('          2 miss')
+    expect(lines[3]).toBe('            1 failed · 1 success · 2 total')
+    expect(lines[5]).toBe('            2 miss')
   })
 
   it('never lists failed task ids — count lives in the legend (owner: can be hundreds)', () => {
@@ -75,13 +75,13 @@ describe('formatRunSummary', () => {
       [outcome('a#x', 'success'), outcome('b#x', 'failed', 2), outcome('c#x', 'skipped')],
       50,
     )
-    expect(lines[3]).toBe('          1 failed · 1 success · 1 skipped')
+    expect(lines[3]).toBe('            1 failed · 1 success · 1 skipped · 3 total')
   })
 
   it('treats cache-hit-remote as successful', () => {
     const lines = formatRunSummary([outcome('a#x', 'cache-hit-remote')], 10)
-    expect(lines[3]).toBe('          1 success')
-    expect(lines[5]).toBe('          1 up-to-date')
+    expect(lines[3]).toBe('            1 success · 1 total')
+    expect(lines[5]).toBe('            1 up-to-date')
   })
 
   // The ⚡ instant stamp was removed by owner decision — full-cache
@@ -91,17 +91,17 @@ describe('formatRunSummary', () => {
       [outcome('a#x', 'cache-hit'), outcome('b#x', 'cache-hit-remote')],
       42,
     )
-    expect(lines.at(-1)).toBe('  time    42ms')
+    expect(lines.at(-1)).toBe('  time      42ms')
   })
 
   it('partial-cache run: plain time row', () => {
     const lines = formatRunSummary([outcome('a#x', 'cache-hit'), outcome('b#x', 'success')], 42)
-    expect(lines.at(-1)).toBe('  time    42ms · max 100ms · avg 100ms · min 100ms')
+    expect(lines.at(-1)).toBe('  time      42ms · max 100ms · avg 100ms · min 100ms')
   })
 
   it('empty run: 0 tasks row, no cache row', () => {
     const lines = formatRunSummary([], 0)
-    expect(lines.at(-1)).toBe('  time    0ms')
+    expect(lines.at(-1)).toBe('  time      0ms')
     expect(lines.find((l) => l.includes('from cache'))).toBeUndefined()
   })
 
@@ -121,52 +121,46 @@ describe('formatRunSummary', () => {
     expect(lines[1]).toContain('vx')
   })
 
-  it('folds run context into the footer: version on the rule, run row + cache mode', () => {
+  it('folds run context into the footer: version on the rule + info row', () => {
     const lines = formatRunSummary(
       [outcome('a#x', 'success'), outcome('b#x', 'success')],
       1234,
-      {
-        enabled: false,
-      },
+      { enabled: false },
       {
         version: '1.2.3',
-        tasks: ['build', 'test'],
-        taskCount: 2,
         packageCount: 5,
         concurrency: 8,
         remoteCacheEnabled: true,
+        workspaceProjectCount: 12,
       },
     )
-    expect(lines[1]).toBe('─ vx 1.2.3 ' + '─'.repeat(49))
-    expect(lines).toContain(
-      '  run     build, test · 5 projects · 2 tasks · 8 workers · local + remote cache',
-    )
+    expect(lines[1]).toBe('─ vx 1.2.3 ' + '─'.repeat(51))
+    expect(lines).toContain('  info      8 workers · local + remote cache')
   })
 
-  it('renders the affected-scope bar when a workspace total is given', () => {
+  it('leads with the projects bar (affected vs workspace total)', () => {
     const lines = formatRunSummary(
       [outcome('a#x', 'success')],
       10,
       { enabled: false },
       {
         version: '0.0.0',
-        tasks: ['lint'],
-        taskCount: 1,
         packageCount: 1,
         remoteCacheEnabled: false,
         workspaceProjectCount: 4,
       },
     )
-    expect(lines).toContain('  scope   ' + '▰'.repeat(13) + '▱'.repeat(37))
-    expect(lines).toContain('          1 affected · 4 total')
-    // local-only mode reads on the run row
-    expect(lines.find((l) => l.includes('local cache'))).toBeDefined()
+    expect(lines[2]).toBe('  projects  ' + '▰'.repeat(13) + '▱'.repeat(37))
+    expect(lines[3]).toBe('            1 affected · 4 total')
+    // local-only mode reads on the info row (no worker count here)
+    expect(lines).toContain('  info      local cache')
   })
 
-  it('no context keeps a bare `vx` rule and no run row (live-region parity)', () => {
+  it('no context keeps a bare `vx` rule and no projects/info rows (live-region parity)', () => {
     const lines = formatRunSummary([outcome('a#x', 'success')], 10)
-    expect(lines[1]).toBe('─ vx ' + '─'.repeat(55))
-    expect(lines.find((l) => l.startsWith('  run '))).toBeUndefined()
+    expect(lines[1]).toBe('─ vx ' + '─'.repeat(57))
+    expect(lines.find((l) => l.startsWith('  projects'))).toBeUndefined()
+    expect(lines.find((l) => l.startsWith('  info'))).toBeUndefined()
   })
 })
 

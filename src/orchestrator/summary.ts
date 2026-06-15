@@ -25,8 +25,8 @@ const BAR_WIDTH = 50
 // are off.
 const GRADIENT_FROM = [0xa7, 0x8b, 0xfa] as const
 const GRADIENT_TO = [0xf4, 0x72, 0xb6] as const
-// Rule ends flush with the bars: 2 indent + 6 label + 2 gap + 50 cells.
-const RULE_DASHES = 55
+// Rule ends flush with the bars: 2 indent + 8 label + 2 gap + 50 cells.
+const RULE_DASHES = 57
 
 /** Total visible rule width: `\u2500 <mark> ` + dashes. Shared by summary + header. */
 export function gradientRule(colors: ColorSupport, mark = 'vx'): string {
@@ -119,16 +119,12 @@ export interface SummaryStats {
  */
 export interface RunContext {
   version: string
-  /** Display names of the tasks the user requested (already deduped). */
-  tasks: readonly string[]
-  /** Real (non-group) task executions in the graph. */
-  taskCount: number
-  /** Unique projects covered by the graph. */
+  /** Projects covered by the graph — the "affected" half of the bar. */
   packageCount: number
-  /** Worker-pool size for this run. */
+  /** Worker-pool size for this run; shown on the `info` row. */
   concurrency?: number
   remoteCacheEnabled: boolean
-  /** Total projects discovery found — drives the affected-scope bar. */
+  /** Total projects discovery found — the bar's denominator. */
   workspaceProjectCount?: number
 }
 
@@ -144,15 +140,17 @@ export function formatSummarySection(
   const remainder = { n: left, color: '', glyph: '\u25b1', dim: true }
 
   const dim = (txt: string) => paint('', txt, colors, { dim: true })
-  const row = (label: string, value: string): string => `  ${dim(label.padEnd(6))}  ${value}`
+  const row = (label: string, value: string): string => `  ${dim(label.padEnd(8))}  ${value}`
   const join = (parts: string[]): string => parts.join(` ${dim('\u00b7')} `)
 
-  // Tasks meter + numbers, fixed order: failed · success · skipped.
+  // Tasks meter + numbers, fixed order: failed · success · skipped,
+  // then a dim total so the legend reads against the whole graph.
   const taskParts: string[] = []
   if (stats.failed > 0)
     taskParts.push(paint(ERROR, `${stats.failed} failed`, colors, { bold: true }))
   if (stats.successful > 0) taskParts.push(paint(SUCCESS, `${stats.successful} success`, colors))
   if (stats.skipped > 0) taskParts.push(paint(WARN, `${stats.skipped} skipped`, colors))
+  if (stats.total > 0) taskParts.push(dim(`${stats.total} total`))
   const taskBar = segmentBar(
     [
       { n: stats.failed, color: ERROR },
@@ -163,8 +161,8 @@ export function formatSummarySection(
     colors,
   )
   // Bars on the label row, color-coded legend on its own line below,
-  // indented to the bar column.
-  const legend = (parts: string[]): string => `${' '.repeat(10)}${join(parts)}`
+  // indented to the bar column (2 indent + 8 label + 2 gap = 12).
+  const legend = (parts: string[]): string => `${' '.repeat(12)}${join(parts)}`
   // Version rides the wordmark rule when run context is present (final
   // footer); the live region passes none and keeps a bare `vx`.
   const lines: string[] = [
@@ -172,18 +170,9 @@ export function formatSummarySection(
     gradientRule(colors, context !== undefined ? `vx ${context.version}` : 'vx'),
   ]
 
-  // Run context (final footer only): what this run covered, plus the
-  // affected-scope bar when discovery enumerated the whole workspace.
+  // Run context (final footer only): the projects bar leads the meter
+  // stack — affected (yellow) vs the rest of the workspace (dim).
   if (context !== undefined) {
-    const items = [
-      paint('', context.tasks.join(', '), colors, { bold: true }),
-      `${context.packageCount} project${context.packageCount === 1 ? '' : 's'}`,
-      `${context.taskCount} task${context.taskCount === 1 ? '' : 's'}`,
-    ]
-    if (context.concurrency !== undefined)
-      items.push(`${context.concurrency} worker${context.concurrency === 1 ? '' : 's'}`)
-    items.push(dim(context.remoteCacheEnabled ? 'local + remote cache' : 'local cache'))
-    lines.push(row('run', join(items)))
     const wsTotal = context.workspaceProjectCount
     if (wsTotal !== undefined && wsTotal > 0) {
       const cells = Math.min(
@@ -194,11 +183,10 @@ export function formatSummarySection(
         paint(WARN, '▰'.repeat(cells), colors) +
         paint('', '▱'.repeat(BAR_WIDTH - cells), colors, { dim: true })
       lines.push(
-        row('scope', bar),
+        row('projects', bar),
         legend([paint(WARN, `${context.packageCount} affected`, colors), dim(`${wsTotal} total`)]),
       )
     }
-    lines.push('')
   }
 
   if (taskBar.length > 0) {
@@ -246,7 +234,17 @@ export function formatSummarySection(
     const { maxMs, minMs, sumMs, count } = stats.spread
     spread = ` ${dim(`\u00b7 max ${formatDuration(maxMs)} \u00b7 avg ${formatDuration(sumMs / count)} \u00b7 min ${formatDuration(minMs)}`)}`
   }
-  lines.push('', row('time', `${formatDuration(totalMs)}${spread}`))
+  // Run-shape footer (final summary only): worker pool + cache mode,
+  // grouped with time under a blank line below the meters.
+  if (context !== undefined) {
+    const info: string[] = []
+    if (context.concurrency !== undefined)
+      info.push(`${context.concurrency} worker${context.concurrency === 1 ? '' : 's'}`)
+    info.push(context.remoteCacheEnabled ? 'local + remote cache' : 'local cache')
+    lines.push('', row('info', join(info)), row('time', `${formatDuration(totalMs)}${spread}`))
+  } else {
+    lines.push('', row('time', `${formatDuration(totalMs)}${spread}`))
+  }
   return lines
 }
 

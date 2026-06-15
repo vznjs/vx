@@ -131,8 +131,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     const runContext = {
       version: VERSION,
       packageCount: packagesInScope.size,
-      tasks: [...new Set(options.tasks.map(unanchored))],
-      taskCount,
       remoteCacheEnabled,
       concurrency,
       workspaceProjectCount,
@@ -336,9 +334,4 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
   } finally {
     prepared.cache.close()
   }
-}
-
-function unanchored(spec: string): string {
-  const idx = spec.indexOf('#')
-  return idx >= 0 ? spec.slice(idx + 1) : spec
 }
