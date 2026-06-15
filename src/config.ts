@@ -32,9 +32,13 @@ export interface TaskConfig {
   /**
    * Tasks that must complete successfully before this task runs.
    * Turbo/Nx-style micro-syntax:
-   *   - `'name'`       — same-project task named `name`.
-   *   - `'^name'`      — task `name` in every transitive workspace dep.
-   *   - `'pkg#name'`   — specific package's `name` task.
+   *   - `'name'`       — same-project task named `name`. When authored
+   *                      through `defineProject`, a bare entry is
+   *                      **type-checked against this config's task keys**
+   *                      (a typo is a compile error).
+   *   - `'^name'`      — task `name` in every transitive workspace dep
+   *                      (e.g. `'^build'`, `'^all'`); not key-checked.
+   *   - `'pkg#name'`   — specific package's `name` task; not key-checked.
    */
   dependsOn?: readonly string[]
   /**
@@ -324,8 +328,35 @@ export interface CacheInputs {
   workspaceRuntime?: string[]
 }
 
-export function defineProject<T extends ProjectConfig>(config: T): T {
-  return config
+/**
+ * A valid `dependsOn` entry, given the set of sibling task names `K`:
+ *   - `K`                — a same-project task; type-checked against the
+ *                          keys of THIS config's `tasks` (typo → error).
+ *   - `` `^${string}` `` — a task in workspace deps (e.g. `'^build'`,
+ *                          `'^all'`); the dep's task names aren't known
+ *                          here, so any `^`-prefixed string is allowed.
+ *   - `` `${string}#${string}` `` — a specific package's task
+ *                          (`'pkg#build'`); cross-project, not key-checked.
+ */
+type DependsOnEntry<K extends string> = K | `^${string}` | `${string}#${string}`
+
+/**
+ * Identity function — exists only so TypeScript narrows literal types
+ * and, crucially, **validates `dependsOn` against this project's own
+ * task names**. A bare entry that isn't a declared task key is a compile
+ * error; `^name` / `pkg#name` forms reference other projects and stay
+ * free strings. Runtime behavior is unchanged (it returns its input).
+ */
+export function defineProject<const T extends ProjectConfig>(
+  config: T & {
+    tasks?: {
+      [K in keyof NonNullable<T['tasks']>]?: {
+        dependsOn?: readonly DependsOnEntry<Extract<keyof NonNullable<T['tasks']>, string>>[]
+      }
+    }
+  },
+): T {
+  return config as T
 }
 
 export function defineWorkspace<T extends WorkspaceConfig>(config: T): T {
