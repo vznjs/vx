@@ -170,6 +170,27 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-15**: **`vx upgrade` fixed for curl-installed binaries —
+  detection keyed off `Bun.main`, not `import.meta.path`.** Owner report:
+  curl-installed `vx` couldn't self-upgrade and "vx points to bun".
+  Root cause: `isCompiledBinary()` checked `import.meta.path.startsWith
+  ('/$bunfs')`, but vx's release binaries are built `--minify
+--bytecode`, and under those flags Bun reports `import.meta.path` as
+  the ORIGINAL SOURCE path (e.g. `/private/tmp/bin.ts`), NOT the bunfs
+  path — so EVERY installed binary misread as "running from source" and
+  `vx upgrade` refused with the git-pull message. `Bun.main` and
+  `process.argv[1]` stay the bunfs path (`/$bunfs/root/…`) under every
+  compile-flag combo, so detection now keys off those (import.meta.path
+  kept as a third fallback). `dest = process.execPath` was always
+  correct (it resolves to the real standalone binary, not bun — the
+  "points to bun" was the refusal + `process.argv[0]` literally being
+  the string `"bun"` in standalone binaries). Verified end-to-end:
+  compiled a `--minify --bytecode` binary, `vx upgrade` now downloads
+  `latest`, atomically replaces itself, and the new binary runs.
+  Extracted pure `isBunfsPath(p)` (exported) for the markers; files:
+  `src/cli/upgrade.ts`, `tests/upgrade.test.ts` (marker unit tests +
+  the kept source-mode refusal e2e).
+
 - **2026-06-15**: **Task hierarchy — dotted-namespace group composition.**
   The repo's own `vx.config.ts` tasks were restructured so groups
   compose by dotted name: `lint` → `lint.oxlint` + `lint.oxfmt` (+

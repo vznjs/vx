@@ -10,9 +10,28 @@ import { VERSION } from '../version.js'
 
 const REPO = 'vznjs/vx'
 
-/** True when running as a `bun build --compile` binary (bunfs marker). */
+/**
+ * A Bun standalone-binary path lives under the bunfs virtual root.
+ * Marker differs by platform / Bun version: `/$bunfs/...` (posix) and
+ * `B:\~BUN\...` or `B:/~BUN/...` (windows).
+ */
+export function isBunfsPath(p: string): boolean {
+  return p.startsWith('/$bunfs') || p.startsWith('B:\\~BUN') || p.startsWith('B:/~BUN')
+}
+
+/**
+ * True when running as a `bun build --compile` binary. Keys off
+ * `Bun.main` (and argv[1]) rather than `import.meta.path`: with
+ * `--minify --bytecode` — vx's release build flags — `import.meta.path`
+ * reports the ORIGINAL SOURCE path, not the bunfs path, so the old
+ * check silently failed for every curl-installed binary and `vx
+ * upgrade` refused with "running from source". `Bun.main` stays the
+ * bunfs path under every compile-flag combination.
+ */
 function isCompiledBinary(): boolean {
-  return import.meta.path.startsWith('/$bunfs') || import.meta.path.startsWith('B:\\~BUN')
+  return (
+    isBunfsPath(Bun.main) || isBunfsPath(process.argv[1] ?? '') || isBunfsPath(import.meta.path)
+  )
 }
 
 function assetName(): string {

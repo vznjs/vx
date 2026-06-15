@@ -7,12 +7,29 @@ import { mkdtempSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { replaceBinary } from '../src/cli/upgrade.js'
+import { isBunfsPath, replaceBinary } from '../src/cli/upgrade.js'
 
 const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-upgrade-'))
 
 afterAll(async () => {
   await rm(dir, { recursive: true, force: true })
+})
+
+describe('isBunfsPath', () => {
+  it('matches the bunfs virtual-root markers (posix + windows)', () => {
+    expect(isBunfsPath('/$bunfs/root/vx')).toBe(true)
+    expect(isBunfsPath('B:\\~BUN\\root\\vx')).toBe(true)
+    expect(isBunfsPath('B:/~BUN/root/vx')).toBe(true)
+  })
+
+  it('rejects real source paths — the source-mode signal', () => {
+    // Under `--minify --bytecode`, import.meta.path is the SOURCE path;
+    // keying compiled-binary detection off it (the old bug) misread
+    // every curl-installed binary as "running from source".
+    expect(isBunfsPath('/Users/me/vx/src/bin.ts')).toBe(false)
+    expect(isBunfsPath('/private/tmp/probe.ts')).toBe(false)
+    expect(isBunfsPath('')).toBe(false)
+  })
 })
 
 describe('replaceBinary', () => {
