@@ -134,9 +134,9 @@ lint.oxfmt.fix`; the check-only gate is `lint.oxfmt` (part of `lint`).
   `lint.oxfmt` (oxfmt --check). No `package.json` scripts — dogfooded
   through vx's own task graph.
 - **CI gate:** `bun src/bin.ts run ci` — a group fanning out to `lint`
-  (→ `lint.oxlint` + `lint.oxfmt`), `test`, and `build` (→ the four
-  `build.bun.*` cross-compiled binaries). CI workflow is
-  `.github/workflows/ci.yml`.
+  (→ `lint.oxlint` + `lint.oxfmt`) and `test`. The four `build.bun.*`
+  cross-compiled binaries are built only in `release.yml` (`vx run
+build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Conventions
 

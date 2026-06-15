@@ -68,9 +68,10 @@ jobs:
 
       # Dogfood: vx orchestrates its own gate via vx.config.ts. The `ci`
       # task is a group fanning out to `lint` (→ lint.oxlint +
-      # lint.oxfmt), `test`, and `build` (→ the four build.bun.*
-      # cross-compiled binaries). vx prepends each project's
-      # node_modules/.bin to PATH per task, so oxlint / oxfmt resolve
-      # from a raw shell.
+      # lint.oxfmt) and `test`. The release binaries are built separately
+      # in release.yml (`vx run build`) — cross-compiling all four here
+      # alongside lint+test starves the runner. vx prepends each
+      # project's node_modules/.bin to PATH per task, so oxlint / oxfmt
+      # resolve from a raw shell.
       - name: vx run ci
         run: bun src/bin.ts run ci

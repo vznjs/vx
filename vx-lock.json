@@ -3,14 +3,13 @@
   "projects": {
     "@vzn/vx": {
       "configPath": "vx.config.ts",
-      "configHash": "34c18489aeeb729e",
+      "configHash": "9bca48e07cbb2005",
       "config": {
         "tasks": {
           "ci": {
             "dependsOn": [
               "lint",
-              "test",
-              "build"
+              "test"
             ]
           },
           "install": {

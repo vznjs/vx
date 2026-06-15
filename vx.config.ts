@@ -2,8 +2,13 @@ import { defineProject } from './src/index.ts'
 
 export default defineProject({
   tasks: {
+    // CI gate = fast feedback: lint + test only. Building the four
+    // cross-compiled release binaries lives in `release.yml` (`vx run
+    // build`), which runs them alone — fanning all four out concurrently
+    // alongside lint + test starves the ubuntu runner and a darwin
+    // cross-compile gets OOM-killed.
     ci: {
-      dependsOn: ['lint', 'test', 'build'],
+      dependsOn: ['lint', 'test'],
     },
 
     install: {
