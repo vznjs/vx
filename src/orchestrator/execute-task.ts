@@ -362,6 +362,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       ownWorkspaceOutputs: wsOutputs,
       nestedProjectDirs: args.nestedProjectDirs,
       ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+      ...(args.hashCache !== undefined
+        ? {
+            runtimeCache: args.hashCache.runtime,
+            workspaceRuntimeCache: args.hashCache.workspaceRuntime,
+          }
+        : {}),
     })
     const baseAllowWrite = [
       ...outputs.map((g) => path.join(node.projectDir, staticPrefix(g))),

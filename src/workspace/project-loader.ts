@@ -251,10 +251,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       for (const field of ['runtime', 'workspaceRuntime'] as const) {
         const list = (inputs as Record<string, unknown>)[field]
         if (list !== undefined) {
-          if (
-            !Array.isArray(list) ||
-            list.some((s) => typeof s !== 'string' || s.length === 0)
-          ) {
+          if (!Array.isArray(list) || list.some((s) => typeof s !== 'string' || s.length === 0)) {
             throw new UserError(
               `${where}.cache.inputs.${field} must be an array of non-empty shell command strings`,
             )

@@ -57,7 +57,12 @@ import { extractOutputs, parseTarHeaders, readTarText, type TarHeader } from './
 // in any cache key. SCHEMA v21 drops the now-unused outputs_hash
 // column. Early cutoff removed (an upstream that re-emits identical
 // output still re-runs dependents) — rare, not worth the cascade.
-const CACHE_VERSION = 'vx-cache-v22'
+// v23: fold cache.inputs.runtime / workspaceRuntime command output into
+// the key (two namespaced sections after env-values). Command strings
+// live in the resolved config (frozen by `vx lock`); the OUTPUT is
+// resolved live every run, so it stays correct under --frozen. No
+// SCHEMA bump — only Cache.key derivation changed.
+const CACHE_VERSION = 'vx-cache-v23'
 const SCHEMA_VERSION = 'v21'
 
 /**
@@ -85,6 +90,14 @@ export interface CacheKeyInput {
    * time). Independent of `exec.env`; lives here for cache identity.
    */
   envValues: Array<[name: string, value: string]>
+  /**
+   * Resolved `cache.inputs.runtime` commands as [command, output] pairs
+   * (output = trimmed stdout+stderr, resolved live at hash time). Folded
+   * into the key in a namespace distinct from workspaceRuntimeValues.
+   */
+  runtimeValues?: Array<[command: string, output: string]>
+  /** Resolved `cache.inputs.workspaceRuntime` pairs (root-cwd commands). */
+  workspaceRuntimeValues?: Array<[command: string, output: string]>
   /** Absolute paths to input files. */
   inputFiles: string[]
   workspaceRoot: string
@@ -659,6 +672,14 @@ export class Cache implements CacheLayer {
     // \0 delimiter, not `=`: names and values may themselves contain
     // `=`, and `A` + `B=C` must never fold the same bytes as `A=B` + `C`.
     for (const [n, v] of input.envValues) h = xxh3(`${n}\0${v}`, h)
+
+    const runtimeValues = input.runtimeValues ?? []
+    h = xxh3(`runtime-values:${runtimeValues.length}`, h)
+    for (const [c, o] of runtimeValues) h = xxh3(`${c}\0${o}`, h)
+
+    const wsRuntimeValues = input.workspaceRuntimeValues ?? []
+    h = xxh3(`ws-runtime-values:${wsRuntimeValues.length}`, h)
+    for (const [c, o] of wsRuntimeValues) h = xxh3(`${c}\0${o}`, h)
 
     const upstream = [...input.upstreamHashes].sort()
     h = xxh3(`upstream:${upstream.length}`, h)

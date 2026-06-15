@@ -136,6 +136,30 @@ describe('Cache.key', () => {
     expect(present).not.toBe(absent)
   })
 
+  it('different runtime output → different key', async () => {
+    const a = await cache.key({ ...baseInput(), runtimeValues: [['node -v', 'v20']] })
+    const b = await cache.key({ ...baseInput(), runtimeValues: [['node -v', 'v22']] })
+    expect(a).not.toBe(b)
+  })
+
+  it('same runtime output → same key', async () => {
+    const a = await cache.key({ ...baseInput(), runtimeValues: [['node -v', 'v20']] })
+    const b = await cache.key({ ...baseInput(), runtimeValues: [['node -v', 'v20']] })
+    expect(a).toBe(b)
+  })
+
+  it('runtime vs workspaceRuntime are namespaced (no aliasing)', async () => {
+    const a = await cache.key({ ...baseInput(), runtimeValues: [['cmd', 'out']] })
+    const b = await cache.key({ ...baseInput(), workspaceRuntimeValues: [['cmd', 'out']] })
+    expect(a).not.toBe(b)
+  })
+
+  it('absent runtime fields → key unchanged vs explicit empty', async () => {
+    const a = await cache.key(baseInput())
+    const b = await cache.key({ ...baseInput(), runtimeValues: [], workspaceRuntimeValues: [] })
+    expect(a).toBe(b)
+  })
+
   it('changes when an upstream hash changes', async () => {
     const a = await cache.key({ ...baseInput(), upstreamHashes: ['aaa'] })
     const b = await cache.key({ ...baseInput(), upstreamHashes: ['bbb'] })

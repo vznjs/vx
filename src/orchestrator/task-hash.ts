@@ -23,12 +23,16 @@ import { filterUpstreamHashes } from './upstream.js'
 export interface HashCache {
   packageJson: Map<string, Promise<string>>
   taskConfig: WeakMap<TaskConfig, string>
+  runtime: Map<string, Promise<string>>
+  workspaceRuntime: Map<string, Promise<string>>
 }
 
 export function createHashCache(): HashCache {
   return {
     packageJson: new Map(),
     taskConfig: new WeakMap(),
+    runtime: new Map(),
+    workspaceRuntime: new Map(),
   }
 }
 
@@ -70,6 +74,12 @@ export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
     ownWorkspaceOutputs: cacheCfg?.outputs.workspaceFiles ?? [],
     nestedProjectDirs: args.nestedProjectDirs,
     ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+    ...(args.hashCache !== undefined
+      ? {
+          runtimeCache: args.hashCache.runtime,
+          workspaceRuntimeCache: args.hashCache.workspaceRuntime,
+        }
+      : {}),
   })
 
   const upstreamHashes = filterUpstreamHashes(
@@ -106,6 +116,8 @@ export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
     taskConfigHash,
     projectPackageJsonHash,
     envValues: resolved.envValues,
+    runtimeValues: resolved.runtimeValues,
+    workspaceRuntimeValues: resolved.workspaceRuntimeValues,
     inputFiles: resolved.files,
     workspaceRoot: args.workspaceRoot,
     upstreamHashes,
