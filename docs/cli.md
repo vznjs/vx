@@ -182,10 +182,22 @@ Per-task visibility by outcome:
 | failed                 | raw output, streamed live   | full frame           | full frame             | frame                        |
 | skipped                | frame                       | silent               | silent                 | frame                        |
 
-The header and end-of-run summary always print; cache-hit counts that
-broad mode silences per-task surface there. A focused `vx run test`
-is meant to feel like running the test command directly — same
-output, just faster.
+The end-of-run summary always prints; cache-hit counts that broad
+mode silences per-task surface there. A focused `vx run test` is meant
+to feel like running the test command directly — same output, just
+faster.
+
+**Groups are transparent folders.** A group task (no `exec`, just
+`dependsOn`) has no output of its own, so running one focused —
+`vx run build` where `build` chains `build.bun` which chains
+`build.bun.darwin-arm64` … — surfaces the **real tasks** it stands for
+and shows them like requested tasks. The walk descends through nested
+groups but never leaves the requested project (`^`/cross-project deps
+aren't surfaced) and never goes past a real task into its own deps.
+The requested count for the live-vs-buffered decision counts the
+surfaced tasks: one real task streams live, several buffer into atomic
+blocks. (Surfacing is display-only — it does not make those tasks
+"requested", so `--` `forwardArgs` still go only to what you named.)
 
 Live streaming applies only when there is exactly **one** requested
 task. Live open/close framing assumes a single task owns the terminal

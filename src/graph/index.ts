@@ -3,4 +3,10 @@
 
 export { DependencySpecError, parseDependencySpec, type DependencySpec } from './dependency-spec.js'
 export { runGraph, type TaskOutcome, type TaskStatus } from './scheduler.js'
-export { buildTaskGraph, expandRequested, isGroupTask, type TaskNode } from './task-graph.js'
+export {
+  buildTaskGraph,
+  expandRequested,
+  isGroupTask,
+  markSurfacedDeps,
+  type TaskNode,
+} from './task-graph.js'

@@ -23,6 +23,15 @@ export interface TaskNode {
    * CLI args don't leak into upstream tasks the user didn't address.
    */
   requested: boolean
+  /**
+   * Display-only: a same-project, non-group, direct `dependsOn` task of
+   * a REQUESTED GROUP. A group produces no output of its own, so in
+   * focused flow we surface the work it stands for one level down (no
+   * recursion, no `^`/cross-project deps — see `markSurfacedDeps`). The
+   * focused logger shows these like requested tasks; it does NOT make
+   * them `requested`, so `forwardArgs` scoping is unaffected.
+   */
+  surfaced?: boolean
 }
 
 export function taskId(project: string, task: string): string {
@@ -41,6 +50,51 @@ export function taskId(project: string, task: string): string {
  */
 export function isGroupTask(node: TaskNode): boolean {
   return node.config.exec === undefined
+}
+
+/**
+ * Mark, for focused-flow display, the real tasks a requested GROUP
+ * stands for. A group has no output of its own, so `vx run build`
+ * (where `build` is a group) would otherwise print nothing.
+ *
+ * Walk `dependsOn` from the requested group, DESCENDING THROUGH nested
+ * same-project groups (e.g. `build` → `build.bun` → `build.bun.*`), and
+ * surface the first non-group task on each path. Two hard limits:
+ *   - never leave the requested project — `^`/cross-project deps are
+ *     not entered (the user asked to run THIS project's group),
+ *   - never descend past a real task — its own `dependsOn` is its
+ *     implementation detail, not work the group "is".
+ *
+ * Display-only: it never flips `requested`, so `forwardArgs` scoping
+ * stays put. Returns the count of newly surfaced nodes.
+ */
+export function markSurfacedDeps(nodes: Map<string, TaskNode>): number {
+  let surfaced = 0
+  for (const node of nodes.values()) {
+    if (!node.requested || !isGroupTask(node)) continue
+    const project = node.projectName
+    const stack = [...node.deps]
+    const visited = new Set<string>()
+    while (stack.length > 0) {
+      const depId = stack.pop()!
+      if (visited.has(depId)) continue
+      visited.add(depId)
+      const dep = nodes.get(depId)
+      // Stay inside the requested project; `^`/cross-project deps are
+      // neither surfaced nor traversed.
+      if (!dep || dep.projectName !== project) continue
+      if (isGroupTask(dep)) {
+        // A nested group: keep descending, don't surface the group.
+        for (const next of dep.deps) stack.push(next)
+        continue
+      }
+      if (dep.surfaced !== true) {
+        dep.surfaced = true
+        surfaced++
+      }
+    }
+  }
+  return surfaced
 }
 
 /**

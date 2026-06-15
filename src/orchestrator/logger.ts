@@ -275,8 +275,12 @@ export function defaultLogger(
   // streams identically. Only with a SINGLE requested task, though:
   // concurrent live frames interleave (see requestedCount above), so
   // multiple requested tasks buffer and emit atomic blocks instead.
+  // A requested task — or a non-group dep surfaced from a requested
+  // group (see markSurfacedDeps) — is a "primary" node the focused
+  // view shows. Groups never stream (no output of their own).
+  const isPrimary = (node: TaskNode): boolean => node.requested || node.surfaced === true
   const streamsLive = (node: TaskNode): boolean =>
-    view.mode === 'focused' && node.requested && !isGroupTask(node) && requestedCount <= 1
+    view.mode === 'focused' && isPrimary(node) && !isGroupTask(node) && requestedCount <= 1
 
   return {
     status(line) {
@@ -419,7 +423,7 @@ export function defaultLogger(
           }
           return
         case 'focused':
-          if (node.requested) {
+          if (isPrimary(node)) {
             // Skipped tasks never started (upstream failed), so no
             // frame-open fired — and a skip has no output, so a
             // one-liner carries everything a frame would.

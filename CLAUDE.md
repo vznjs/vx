@@ -170,6 +170,36 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06**: **Groups are transparent folders in focused output**
+  (owner: "treat groups as transparent folders — running them should
+  show real tasks"; `vx run build` where `build` is a group printed
+  nothing but the footer). In FOCUSED flow a requested GROUP now
+  surfaces the real tasks it stands for and displays them like
+  requested tasks. New `markSurfacedDeps(nodes)` in
+  `graph/task-graph.ts` walks `dependsOn` from each requested group,
+  DESCENDING THROUGH nested same-project groups (`build` → `build.bun`
+  → `build.bun.*`) and marking the first non-group task on each path
+  `node.surfaced = true`. Two hard limits: never leave the requested
+  project (`^`/cross-project deps are neither surfaced nor traversed —
+  owner: "only if those deps are in this project eg no ^"), and never
+  descend past a real task into its own deps (that's its implementation
+  detail). `surfaced` is **display-only** — deliberately NOT
+  `requested`, because `requested` also scopes `--` `forwardArgs`
+  (`execute-task.ts`); flipping it would leak trailing args into the
+  surfaced tasks. `run.ts` calls `markSurfacedDeps` after graph build
+  and counts surfaced nodes toward `requestedCount` (so one surfaced
+  task streams live, several buffer into atomic blocks — the existing
+  multi-requested path). The logger gained an `isPrimary(node) =
+requested || surfaced` predicate driving `streamsLive` and the
+  focused branch; everything else (broad/full/CI/none/errors-only)
+  ignores `surfaced`. No CACHE_VERSION/behavior impact — purely which
+  tasks the focused logger shows. Tests: `markSurfacedDeps` unit suite
+  in `tests/task-graph.test.ts` (descend-through-nested-groups,
+  same-project-only, stop-at-real-task, non-group-requested→0) +
+  focused surfaced-streams-live / non-surfaced-dep-silent pins in
+  `tests/output-flow.test.ts`. Docs: `docs/cli.md` focused-flow
+  "transparent folders" note.
+
 - **2026-06**: **Header folded into the footer; top-of-run banner
   removed** (owner: "logs header should [be] in footer. we don't need
   the header" → then a hand-drawn target layout). `formatHeader` +

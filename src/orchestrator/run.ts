@@ -5,7 +5,7 @@
 import { LayeredCache, type RunRecord } from '../cache/index.js'
 import { VERSION } from '../version.js'
 import { initSandbox, probeSandbox, resetSandbox, signalExitCode } from '../exec/index.js'
-import { isGroupTask, runGraph } from '../graph/index.js'
+import { isGroupTask, markSurfacedDeps, runGraph } from '../graph/index.js'
 import { ulid, UserError } from '../util/index.js'
 import { executeTask } from './execute-task.js'
 import { defaultLogger, resolveOutputView } from './logger.js'
@@ -112,10 +112,18 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       await initSandbox()
     }
 
+    // Focused flow: a requested GROUP has no output of its own, so
+    // surface the same-project, non-group tasks it chains (one level)
+    // for display. Marks `node.surfaced`; never touches `requested`.
+    markSurfacedDeps(nodes)
+
     // Header counts: unique projects covered by the graph (including
     // dependsOn-pulled deps, not just the user-requested set), and the
     // total number of real (non-group) task executions. Mirrors the
-    // count the end-of-run summary reports under "total".
+    // count the end-of-run summary reports under "total". The
+    // requested count drives the focused logger's live-vs-buffered
+    // decision, so surfaced nodes count toward it too — they display
+    // like requested tasks.
     const packagesInScope = new Set<string>()
     let taskCount = 0
     let requestedCount = 0
@@ -123,7 +131,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       packagesInScope.add(node.projectName)
       if (!isGroupTask(node)) {
         taskCount++
-        if (node.requested) requestedCount++
+        if (node.requested || node.surfaced === true) requestedCount++
       }
     }
     // Run context for the footer. The top-of-run header is gone — the

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import type { TaskConfig } from '../src/config.js'
 import type { PackageGraph } from '../src/workspace/package-graph.js'
-import { buildTaskGraph, type ProjectEntry } from '../src/graph/task-graph.js'
+import { buildTaskGraph, markSurfacedDeps, type ProjectEntry } from '../src/graph/task-graph.js'
 
 function project(name: string, tasks: Record<string, TaskConfig>): ProjectEntry {
   return { name, dir: `/ws/${name}`, config: { tasks } }
@@ -390,5 +390,87 @@ describe('buildTaskGraph', () => {
       requested: [{ project: 'app', task: 'build' }],
     })
     expect(nodes.has('app#build')).toBe(true)
+  })
+})
+
+const group = (deps: string[]): TaskConfig => ({ dependsOn: deps })
+
+describe('markSurfacedDeps', () => {
+  const surfaced = (nodes: Map<string, { surfaced?: boolean }>): string[] =>
+    [...nodes.entries()]
+      .filter(([, n]) => n.surfaced === true)
+      .map(([id]) => id)
+      .sort()
+
+  it('descends through nested same-project groups to the first real tasks', () => {
+    // build (group) → build.bun (group) → build.bun.{x,y} (real).
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', {
+          build: group(['build.bun']),
+          'build.bun': group(['build.bun.x', 'build.bun.y']),
+          'build.bun.x': cmd('compile x'),
+          'build.bun.y': cmd('compile y'),
+        }),
+      ),
+      packageGraph: packageGraph({}),
+      requested: [{ project: 'app', task: 'build' }],
+    })
+    expect(markSurfacedDeps(nodes)).toBe(2)
+    expect(surfaced(nodes)).toEqual(['app#build.bun.x', 'app#build.bun.y'])
+    // The intermediate group is never surfaced.
+    expect(nodes.get('app#build.bun')?.surfaced).toBeUndefined()
+  })
+
+  it('never leaves the requested project (no `^`/cross-project deps)', () => {
+    // build deps on a same-project real task, a workspace dep (^build),
+    // and a same-project group whose only dep is cross-project.
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', {
+          build: group(['compile', '^build', 'checks']),
+          compile: cmd('compile app'),
+          checks: group(['lib#lint']),
+        }),
+        project('lib', { build: cmd('build lib'), lint: cmd('lint lib') }),
+      ),
+      packageGraph: packageGraph({ app: ['lib'] }),
+      requested: [{ project: 'app', task: 'build' }],
+    })
+    markSurfacedDeps(nodes)
+    // Only the same-project real task surfaces; lib#build (^) and
+    // lib#lint (reached through a group but cross-project) do not.
+    expect(surfaced(nodes)).toEqual(['app#compile'])
+  })
+
+  it('does not descend past a real task into its own deps', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', {
+          build: group(['compile']),
+          compile: { ...cmd('compile'), dependsOn: ['codegen'] },
+          codegen: cmd('codegen'),
+        }),
+      ),
+      packageGraph: packageGraph({}),
+      requested: [{ project: 'app', task: 'build' }],
+    })
+    markSurfacedDeps(nodes)
+    // compile is the first real task; its own dep codegen stays hidden.
+    expect(surfaced(nodes)).toEqual(['app#compile'])
+  })
+
+  it('surfaces nothing for a requested non-group task', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', {
+          build: { ...cmd('build'), dependsOn: ['compile'] },
+          compile: cmd('compile'),
+        }),
+      ),
+      packageGraph: packageGraph({}),
+      requested: [{ project: 'app', task: 'build' }],
+    })
+    expect(markSurfacedDeps(nodes)).toBe(0)
   })
 })

@@ -76,13 +76,17 @@ function sink(): { chunks: string[]; write(c: string): boolean; text(): string }
   }
 }
 
-function mkNode(id: string, opts: { requested?: boolean; group?: boolean } = {}): TaskNode {
+function mkNode(
+  id: string,
+  opts: { requested?: boolean; group?: boolean; surfaced?: boolean } = {},
+): TaskNode {
   const [project, task] = id.split('#')
   return {
     id,
     projectName: project,
     taskName: task,
     requested: opts.requested ?? false,
+    surfaced: opts.surfaced ?? false,
     deps: [],
     config: opts.group ? {} : { exec: { command: 'noop' } },
   } as unknown as TaskNode
@@ -254,6 +258,32 @@ describe('defaultLogger visibility matrix — focused', () => {
     log.taskStdout(n, 'line 1\n')
     log.taskComplete(n, mkOutcome(n, 'success'))
     expect(out.text()).toBe('┌─ one#test > $ noop\nline 1\n└─ one#test ── (100ms) success\n\n')
+  })
+
+  it('surfaced task (real work behind a requested group) streams like a requested one', () => {
+    // `vx run build` where build is a group: groups are transparent
+    // folders, so the real task they stand for shows in focused flow.
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    log.runStart?.({ total: 1, requestedCount: 1 })
+    const real = mkNode('one#build.bun.x', { surfaced: true })
+    log.taskStart?.(real)
+    expect(out.text()).toBe('┌─ one#build.bun.x > $ noop\n')
+    log.taskStdout(real, 'compiling\n')
+    log.taskComplete(real, mkOutcome(real, 'success'))
+    expect(out.text()).toBe(
+      '┌─ one#build.bun.x > $ noop\ncompiling\n└─ one#build.bun.x ── (100ms) success\n\n',
+    )
+  })
+
+  it('a non-surfaced dependency stays silent even with a surfaced sibling in play', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    log.runStart?.({ total: 2, requestedCount: 2 })
+    const dep = mkNode('lib#prep')
+    log.taskStdout(dep, 'dep noise\n')
+    log.taskComplete(dep, mkOutcome(dep, 'success'))
+    expect(out.text()).toBe('')
   })
 })
 
