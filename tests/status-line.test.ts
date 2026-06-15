@@ -378,7 +378,7 @@ describe('defaultLogger status line integration', () => {
     log.taskStderr(bad, 'kaput\n')
     log.taskComplete(bad, mkOutcome(bad, 'failed'))
     // ✗ marker is permanent scrollback, not a region pin.
-    expect(s2.text()).toContain('● one#boom ── failed (exit 1)')
+    expect(s2.text()).toContain('failed  miss   one#boom')
     expect(s2.text()).not.toContain('┌─ one#boom')
     log.runEnd?.()
     // Full frame replays after the region is gone, above the summary.
@@ -395,7 +395,7 @@ describe('defaultLogger status line integration', () => {
     // Persistent outcome arrives at READY while the child keeps
     // running — from here the pin is the visible evidence it's alive.
     log.taskComplete(dev, mkOutcome(dev, 'success'))
-    expect(regionRows(s.chunks[s.chunks.length - 1]!)[0]).toBe('▸ web#dev ── running')
+    expect(regionRows(s.chunks[s.chunks.length - 1]!)[0]).toBe(' ▸         running        web#dev')
     log.runEnd?.()
   })
 
@@ -443,7 +443,6 @@ describe('formatStatusRegion', () => {
     pinnedPersistent: [],
     overflow: 0,
     nowMs: 10_000,
-    spinnerFrame: 0,
     summaryLines: SUMMARY,
   }
   const slot = (id: string, startedMs = 8000): WorkerSlot => ({ id, startedMs })
@@ -452,7 +451,9 @@ describe('formatStatusRegion', () => {
     const lines = formatStatusRegion({ ...base, slots: [slot('a#build'), null] })
     expect(lines).toHaveLength(5)
     expect(lines[0]).toContain('a#build')
-    expect(lines[0]).toContain('2.0s')
+    // Live elapsed (right-aligned) + the `running` tag, no spinner.
+    expect(lines[0]).toContain('2.00s')
+    expect(lines[0]).toContain('running')
     expect(lines[1]).toContain('idle')
     expect(lines.slice(2)).toEqual(SUMMARY)
   })
@@ -470,11 +471,11 @@ describe('formatStatusRegion', () => {
     expect(lines.slice(2)).toEqual(SUMMARY)
   })
 
-  it('long ids middle-truncate to keep the column stable', () => {
+  it('long ids are shown in full (never truncated — name is the last column)', () => {
     const long = '@scope/very-long-package-name-here#build-something-long'
     const lines = formatStatusRegion({ ...base, slots: [slot(long)] })
-    expect(lines[0]).toContain('…')
-    expect(lines[0]!.length).toBeLessThan(60)
+    expect(lines[0]).toContain(long)
+    expect(lines[0]).not.toContain('…')
   })
 
   it('pinned persistent tasks render above the worker rows', () => {
@@ -484,8 +485,8 @@ describe('formatStatusRegion', () => {
       slots: [null],
     })
     expect(lines).toHaveLength(6)
-    expect(lines[0]).toBe('▸ web#dev ── running')
-    expect(lines[1]).toBe('▸ api#dev ── running')
+    expect(lines[0]).toBe(' ▸         running        web#dev')
+    expect(lines[1]).toBe(' ▸         running        api#dev')
     expect(lines[2]).toContain('idle')
     expect(lines.slice(3)).toEqual(SUMMARY)
   })
@@ -499,11 +500,11 @@ describe('formatStatusRegion', () => {
     expect(lines[0]).toContain('\x1b[')
   })
 
-  it('formatFailureLine: red glyph + outcome, identity-colored id', () => {
-    expect(formatFailureLine('a#build', 2)).toBe('● a#build ── failed (exit 2)')
-    const colored = formatFailureLine('a#build', 2, { enabled: true })
-    expect(colored).toContain('●')
-    expect(colored).toContain('failed (exit 2)')
+  it('formatFailureLine: red ◼︎ glyph + exec time + failed + miss + id (no exit code)', () => {
+    expect(formatFailureLine('a#build', 100)).toBe(' ◼︎   100ms failed  miss   a#build')
+    const colored = formatFailureLine('a#build', 100, { enabled: true })
+    expect(colored).toContain('◼︎')
+    expect(colored).toContain('failed')
     expect(colored).toContain('\x1b[')
   })
 })

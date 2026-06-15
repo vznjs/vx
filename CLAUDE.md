@@ -170,6 +170,44 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-15**: **Per-task output redesign — two-axis glyph grid**
+  (owner-driven, many iterations). Reported task lines and live worker
+  rows are now ONE column grid: ` <glyph> <time> <status> <cache>
+<name>` (leading space; single-space separators; time right-aligned
+  in a 7-cell column; status 7-wide, cache 6-wide; name LAST so nothing
+  shifts with id length — layout shift was the bug). **Two orthogonal
+  axes** (owner reframed the old fused vocabulary `restored-local /
+up-to-date / success` as task×cache): the GLYPH shape encodes the
+  CACHE axis — `⏺` miss (ran) · `►` fresh (up-to-date) · `⇢` local ·
+  `⇣` remote · `◼` failed · `⊘` skipped · `⦿` running (worker) · `▸`
+  persistent — and the glyph COLOR encodes the TASK axis (green success
+  / red failed / yellow skipped / cyan running). The `status` word
+  (success/failed/skipped/running, task-colored) and the `cache` word
+  (miss dim / fresh green / local sky / remote blue) spell both axes
+  out. NO exit code on the line — all detail (exit N, stdout/stderr)
+  lives in the framed block that already replays. `⏺` and `◼` carry a
+  U+FE0E text-presentation selector so terminals render them narrow
+  (Bun.stringWidth sees them as width-1; without VS15 many terminals
+  emoji-widen them and the time column jitters). **Footer is identical
+  live and final**: the live status region now receives the run
+  `RunContext` via `runStart` and renders the SAME
+  `formatSummarySection` (version on the wordmark rule + `projects`
+  bar + meters + `info` row + `time`) — previously the live footer was
+  a bare `vx` with no context (owner: "footer always the same"). Worker
+  region: no spinner (the ticking elapsed time IS the motion), ids
+  never truncated. Files: `orchestrator/framed-output.ts` (`taskGlyph`
+  / `glyphShape` / `statusOf` / `cacheOf` / `formatTaskRow` grid),
+  `status-line.ts` (`formatFailureLine` + region rows on the grid),
+  `logger.ts` (thread `RunContext` into the live region; spinner
+  removed), `summary.ts` (`RunContext`), `run.ts` (pass context to
+  `runStart`). No CACHE_VERSION/behavior impact — pure presentation.
+  Tests repinned across `output-flow`/`status-line`/`framed-output`/
+  `cli`. KNOWN-OPEN (owner asks, not yet done): on SIGINT/SIGTERM the
+  live region is left frozen on a TTY (non-TTY prints nothing — already
+  correct); killed in-flight tasks already get NO outcome (process.exit
+  is immediate, before any taskComplete) so they're never counted
+  failed/skipped — but the frozen TTY region should be cleared on exit.
+
 - **2026-06-15**: **`vx upgrade` fixed for curl-installed binaries —
   detection keyed off `Bun.main`, not `import.meta.path`.** Owner report:
   curl-installed `vx` couldn't self-upgrade and "vx points to bun".

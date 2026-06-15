@@ -6,7 +6,7 @@
 // then redraws, so the display can never interleave with task output.
 
 import { paint, type ColorSupport } from './colors.js'
-import { paintIdParts } from './framed-output.js'
+import { formatTaskRow, paintIdParts, TIME_COL } from './framed-output.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
 // Same palette as framed-output.ts so glyphs and stats agree.
@@ -164,10 +164,7 @@ export function createOutputWriter(
   }
 }
 
-const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 const IDLE = '#6b7280'
-/** Slot-id column never exceeds this; longer ids middle-truncate. */
-const MAX_ID_WIDTH = 40
 
 export interface WorkerSlot {
   id: string
@@ -188,8 +185,6 @@ export interface StatusRegionState {
   overflow: number
   /** Clock value used for per-slot elapsed (injectable for tests). */
   nowMs: number
-  /** Monotonic redraw counter driving the spinner animation. */
-  spinnerFrame: number
   /**
    * The live summary section (built by the logger via
    * formatSummarySection) — the SAME section the final summary
@@ -199,29 +194,7 @@ export interface StatusRegionState {
   summaryLines: readonly string[]
 }
 
-function truncateId(id: string, width: number): string {
-  if (id.length <= width) return id
-  const head = Math.ceil((width - 1) / 2)
-  const tail = width - 1 - head
-  return `${id.slice(0, head)}…${id.slice(id.length - tail)}`
-}
-
-/**
- * Identity-colored slot id padded to `width` by VISIBLE length (the
- * ANSI escapes from paintIdParts would defeat padEnd). The hue hashes
- * from the FULL project name so it survives truncation; if truncation
- * ate the separator the remnant prints plain.
- */
-function paintSlotId(id: string, width: number, colors: ColorSupport): string {
-  const vis = truncateId(id, width)
-  const pad = ' '.repeat(Math.max(0, width - vis.length))
-  const sep = vis.indexOf('#')
-  if (sep < 0) return vis + pad
-  const fullProject = id.slice(0, id.indexOf('#'))
-  return paintIdParts(fullProject, vis.slice(0, sep), vis.slice(sep + 1), colors) + pad
-}
-
-/** Identity-colored id for a pinned row — full id, no padding. */
+/** Identity-colored id, full (never truncated) — name is the last column. */
 function paintPinnedId(id: string, colors: ColorSupport): string {
   const sep = id.indexOf('#')
   if (sep < 0) return id
@@ -229,56 +202,80 @@ function paintPinnedId(id: string, colors: ColorSupport): string {
 }
 
 /**
- * Worker region with pinned zones. Top to bottom: pinned failures
- * (capped), pinned ready persistent tasks, one row per worker slot —
- * a task stays in its slot for its whole life, so names never jump —
- * plus a stats line at the bottom: two labeled groups (run progress,
- * then cache provenance) with every bucket always present in fixed
- * order (stable layout beats compactness: layout shift IS the bug
- * this display exists to fix). Height varies only when pins arrive.
- */
-/**
  * Permanent one-liner logged the moment a task fails (owner design:
- * "log ✗ … and continue, and at the end log all full frames"). Glyph
- * + outcome in status red; the id keeps identity coloring (an id
- * must never read as an outcome).
+ * "log the failure and continue, full frames at the end"). On the grid:
+ * red ◼ glyph + exec time + `failed` + `miss` + id. The exit code and
+ * output live in the framed block that replays at runEnd, not the line.
  */
 export function formatFailureLine(
   id: string,
-  exitCode: number,
+  durationMs: number | null,
   colors: ColorSupport = NO_COLOR,
 ): string {
-  const dim = (t: string) => paint('', t, colors, { dim: true })
-  return `${paint(ERROR, '●', colors)} ${paintPinnedId(id, colors)} ${dim('──')} ${paint(ERROR, `failed (exit ${exitCode})`, colors)}`
+  return formatTaskRow(
+    paint(ERROR, '◼\uFE0E', colors),
+    durationMs,
+    'failed',
+    ERROR,
+    'miss',
+    '',
+    paintPinnedId(id, colors),
+    colors,
+  )
 }
 
+/**
+ * Worker region: pinned ready persistent tasks, one row per worker
+ * slot — a task stays in its slot for its whole life so names never
+ * jump — then the live summary section. Every row sits on the shared
+ * column grid (see formatTaskRow), so nothing shifts with id length:
+ * layout shift IS the bug this display exists to fix. Height varies
+ * only when pins arrive.
+ */
 export function formatStatusRegion(
   s: StatusRegionState,
   colors: ColorSupport = NO_COLOR,
 ): string[] {
   const dim = (t: string) => paint('', t, colors, { dim: true })
   const lines: string[] = []
+  // Persistent (dev-server) rows: ▸ glyph, no elapsed, `running`, no
+  // cache state (it's still alive).
   for (const id of s.pinnedPersistent) {
     lines.push(
-      `${paint(ACCENT, '▸', colors)} ${paintPinnedId(id, colors)} ${dim('──')} ${paint(ACCENT, 'running', colors)}`,
+      formatTaskRow(
+        paint(ACCENT, '▸', colors),
+        null,
+        'running',
+        ACCENT,
+        '',
+        '',
+        paintPinnedId(id, colors),
+        colors,
+      ),
     )
   }
 
-  const spin = SPINNER[s.spinnerFrame % SPINNER.length]!
-  const width = Math.min(
-    Math.max(4, ...s.slots.map((slot) => (slot ? slot.id.length : 0))),
-    MAX_ID_WIDTH,
-  )
-  // No worker indexes — the rows ARE the workers (the header already
-  // states the pool size). Idle rows hold their place dimmed so the
-  // slot zone's height never changes.
+  // Worker rows: the ⦿ pending glyph + live elapsed time (no spinner —
+  // the ticking time IS the motion) + `running`, full id (never
+  // truncated — name is the last column). Idle rows hold their slot's
+  // place, dim, aligned under the status column.
   for (const slot of s.slots) {
     if (slot === null) {
-      lines.push(`  ${paint(IDLE, 'idle', colors, { dim: true })}`)
+      lines.push(`${' '.repeat(3 + TIME_COL + 1)}${paint(IDLE, 'idle', colors, { dim: true })}`)
       continue
     }
-    const elapsed = `${(Math.max(0, s.nowMs - slot.startedMs) / 1000).toFixed(1)}s`
-    lines.push(`${spin} ${paintSlotId(slot.id, width, colors)} ${elapsed}`)
+    lines.push(
+      formatTaskRow(
+        paint(ACCENT, '⦿', colors),
+        Math.max(0, s.nowMs - slot.startedMs),
+        'running',
+        ACCENT,
+        '',
+        '',
+        paintPinnedId(slot.id, colors),
+        colors,
+      ),
+    )
   }
   if (s.overflow > 0) {
     lines.push(dim(`\u2026 +${s.overflow} more running`))

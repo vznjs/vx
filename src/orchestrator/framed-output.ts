@@ -49,9 +49,11 @@ const PROJECT_PALETTE = [
   '#93c5fd', // blue-300
 ] as const
 const TASK = '#f472b6' // pink-400 — task part of an id
-const SUCCESS = '#22c55e' // green-500 — local cache-hit hint
+const SUCCESS = '#22c55e' // green-500 — success / fresh
 const WARN = '#eab308' // yellow-500 — skipped
 const ERROR = '#ef4444' // red-500 — failed
+const LOCAL = '#38bdf8' // sky-400 — local cache hit
+const REMOTE = '#2563eb' // blue-600 — remote cache hit
 
 export interface TaskBlockBody {
   /** stdout chunks accumulated during the task. Renders under `├─ stdout`. */
@@ -187,53 +189,164 @@ export function paintTaskId(
   return paintId(node.projectName, node.taskName, colors, opts)
 }
 
+// ── Reported-line grid: glyph · time · status · cache · name ────────
+// glyph SHAPE encodes the cache axis (⏺ miss · ► fresh · ⇢ local · ⇣
+// remote; ◼ failed · ⊘ skipped · ⦿ running), glyph COLOR encodes the
+// task axis (green/red/yellow/cyan). The status and cache WORDS spell
+// the two axes out, each in its own color. Time is right-aligned in a
+// fixed cell so durations line up and a ticking elapsed never shifts
+// the row. All detail (exit code, output) lives in the framed block.
+export const TIME_COL = 7 // "0ms" … "999.99s"
+export const STATUS_COL = 7 // "success" / "running" / "skipped"
+export const CACHE_COL = 6 // "remote" / "local" / "fresh" / "miss"
+
+/** Right-align the duration in a TIME_COL cell (pad on the left). */
+function timeCell(ms: number | null, colors: ColorSupport): string {
+  const raw = ms === null ? '' : formatDuration(ms)
+  return ' '.repeat(Math.max(0, TIME_COL - raw.length)) + paint('', raw, colors, { dim: true })
+}
+
 /**
- * Compact one-liner for a cache hit with nothing to replay. Every
- * task stays visible in the log, but a hit costs one line instead of
- * a two-line frame — at 2000+ tasks that's the difference between a
- * scannable log and noise.
+ * Paint `text` then pad to `width` by VISIBLE length (trailing spaces).
+ * An empty color string renders the text dim (used for the `miss` cache
+ * word); empty text is a blank cell.
  */
+function cell(text: string, color: string, width: number, colors: ColorSupport): string {
+  const painted =
+    text === ''
+      ? ''
+      : color === ''
+        ? paint('', text, colors, { dim: true })
+        : paint(color, text, colors)
+  return painted + ' '.repeat(Math.max(0, width - text.length))
+}
+
+/** The cache-shape glyph (task-shape for non-success). */
+function glyphShape(o: TaskOutcome): string {
+  switch (o.status) {
+    case 'success':
+      return '⏺\uFE0E' // ⏺ miss (ran), text-presentation (narrow)
+    case 'cache-hit':
+      return o.restored === false ? '\u25ba' : '\u21e2' // ► fresh : ⇢ local
+    case 'cache-hit-remote':
+      return o.restored === false ? '\u25ba' : '\u21e3' // ► fresh : ⇣ remote
+    case 'failed':
+      return '\u25fc\uFE0E' // ◼ failed, text-presentation (narrow)
+    case 'skipped':
+      return '\u2298' // ⊘ skipped
+    default:
+      return '⏺\uFE0E'
+  }
+}
+
+/** Task-axis word + color (a cache hit is a success). */
+function statusOf(o: TaskOutcome): { word: string; color: string } {
+  switch (o.status) {
+    case 'failed':
+      return { word: 'failed', color: ERROR }
+    case 'skipped':
+      return { word: 'skipped', color: WARN }
+    default:
+      return { word: 'success', color: SUCCESS }
+  }
+}
+
+/** Cache-axis word + color. Empty for states that never reached the cache. */
+function cacheOf(o: TaskOutcome): { word: string; color: string } {
+  switch (o.status) {
+    case 'success':
+    case 'failed':
+      return { word: 'miss', color: '' } // dim
+    case 'cache-hit':
+      return o.restored === false
+        ? { word: 'fresh', color: SUCCESS }
+        : { word: 'local', color: LOCAL }
+    case 'cache-hit-remote':
+      return o.restored === false
+        ? { word: 'fresh', color: SUCCESS }
+        : { word: 'remote', color: REMOTE }
+    default:
+      return { word: '', color: '' }
+  }
+}
+
+/** The painted status glyph (shape = cache axis, color = task axis). */
+export function taskGlyph(o: TaskOutcome, colors: ColorSupport): string {
+  return paint(statusOf(o).color, glyphShape(o), colors)
+}
+
+/**
+ * One reported task row: `<glyph> <time> <status> <cache> <name>`.
+ * `glyph` is pre-painted; status/cache are raw text + color, padded to
+ * their columns; `paintedId` carries identity coloring. `ms = null`
+ * blanks the time (e.g. a skip never ran); `cache = ''` blanks it.
+ */
+export function formatTaskRow(
+  glyph: string,
+  ms: number | null,
+  status: string,
+  statusColor: string,
+  cache: string,
+  cacheColor: string,
+  paintedId: string,
+  colors: ColorSupport = NO_COLOR,
+): string {
+  const st = cell(status, statusColor, STATUS_COL, colors)
+  const ca = cell(cache, cacheColor, CACHE_COL, colors)
+  return ` ${glyph} ${timeCell(ms, colors)} ${st} ${ca} ${paintedId}`
+}
+
+/** Compact one-liner for a cache hit with nothing to replay. */
 export function formatTaskHitLine(
   node: TaskNode,
   o: TaskOutcome,
   colors: ColorSupport = NO_COLOR,
 ): string {
-  const shortHash = o.hash ? o.hash.slice(0, 8) : ''
-  const dim = (s: string) => paint('', s, colors, { dim: true })
-  const label =
-    o.restored === false
-      ? paint(SUCCESS, 'up-to-date', colors)
-      : o.status === 'cache-hit-remote'
-        ? paint(ACCENT, 'restored-remote', colors)
-        : paint(SUCCESS, 'restored-local', colors)
-  const mark = paint(SUCCESS, '◌', colors)
-  return `${mark} ${paintTaskId(node, colors)} ${dim('──')} ${label} ${dim(`• ${shortHash}`)}`
+  return formatOutcomeRow(o, paintTaskId(node, colors), o.durationMs, colors)
 }
 
-/**
- * Compact one-liner for an executed task in broad mode. Same shape as
- * the hit one-liner so the two read as one list; the extra after the
- * label is the exec duration instead of a cache hash.
- */
+/** Compact one-liner for an executed task in broad mode. */
 export function formatTaskExecutedLine(
   node: TaskNode,
   o: TaskOutcome,
   colors: ColorSupport = NO_COLOR,
 ): string {
-  const dim = (s: string) => paint('', s, colors, { dim: true })
-  const mark = paint(SUCCESS, '●', colors)
-  return `${mark} ${paintTaskId(node, colors)} ${dim('──')} success ${dim(`• ${formatDuration(o.durationMs)}`)}`
+  return formatOutcomeRow(o, paintTaskId(node, colors), o.durationMs, colors)
 }
 
-/**
- * Compact one-liner for a skipped task — a skip produces no output by
- * definition, so a frame would be furniture without content. The
- * upstream-failed reason rides where the others carry hash/duration.
- */
+/** Shared: render any outcome on the grid. */
+function formatOutcomeRow(
+  o: TaskOutcome,
+  paintedId: string,
+  ms: number | null,
+  colors: ColorSupport,
+): string {
+  const st = statusOf(o)
+  const ca = cacheOf(o)
+  return formatTaskRow(
+    taskGlyph(o, colors),
+    ms,
+    st.word,
+    st.color,
+    ca.word,
+    ca.color,
+    paintedId,
+    colors,
+  )
+}
+
+/** Compact one-liner for a skipped task — it never ran (blank time). */
 export function formatTaskSkippedLine(node: TaskNode, colors: ColorSupport = NO_COLOR): string {
-  const dim = (s: string) => paint('', s, colors, { dim: true })
-  const mark = paint(WARN, '●', colors)
-  return `${mark} ${paintTaskId(node, colors)} ${dim('──')} ${paint(WARN, 'skipped', colors)} ${dim('• upstream failed')}`
+  return formatTaskRow(
+    paint(WARN, '\u2298', colors),
+    null,
+    'skipped',
+    WARN,
+    '',
+    '',
+    paintTaskId(node, colors),
+    colors,
+  )
 }
 
 /**

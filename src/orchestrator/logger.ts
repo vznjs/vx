@@ -15,7 +15,7 @@ import {
   type StatusStream,
   type WorkerSlot,
 } from './status-line.js'
-import { formatDuration, formatSummarySection } from './summary.js'
+import { formatDuration, formatSummarySection, type RunContext } from './summary.js'
 import { isGroupTask } from '../graph/index.js'
 
 export interface Logger {
@@ -35,7 +35,13 @@ export interface Logger {
    * present; the default logger uses them to drive its dynamic
    * status line. Custom loggers can ignore them.
    */
-  runStart?(info: { total: number; concurrency?: number; requestedCount?: number }): void
+  runStart?(info: {
+    total: number
+    concurrency?: number
+    requestedCount?: number
+    /** Run banner context — so the live region footer matches the final summary. */
+    context?: RunContext
+  }): void
   taskStart?(node: TaskNode): void
   /** Run finished (any outcome). Idempotent. */
   runEnd?(): void
@@ -164,6 +170,9 @@ export function defaultLogger(
   // completion instead. Default-safe: undefined / 0 / 1 keeps the
   // single-target live experience byte-identical.
   let requestedCount = 1
+  // Run banner context — rendered in the live region's summary section
+  // so the in-flight footer matches the final summary exactly.
+  let runContext: RunContext | undefined
   let done = 0
   let failed = 0
   let startedAtMs = Date.now()
@@ -179,7 +188,6 @@ export function defaultLogger(
   // the region dies the moment a requested node starts streaming.
   let slots: (WorkerSlot | null)[] = []
   const slotQueue: WorkerSlot[] = []
-  let spinnerFrame = 0
   let succeeded = 0
   let upToDate = 0
   let restoredLocal = 0
@@ -222,6 +230,7 @@ export function defaultLogger(
       },
       Date.now() - startedAtMs,
       colors,
+      runContext,
     )
     writer.setRegion(
       formatStatusRegion(
@@ -230,7 +239,6 @@ export function defaultLogger(
           slots,
           overflow: slotQueue.length,
           nowMs: Date.now(),
-          spinnerFrame,
           summaryLines,
         },
         colors,
@@ -289,15 +297,16 @@ export function defaultLogger(
     runStart(info) {
       total = info.total
       requestedCount = info.requestedCount ?? requestedCount
+      runContext = info.context
       startedAtMs = Date.now()
       const cap = Math.max(1, Math.min(info.concurrency ?? 10, 10))
       slots = Array.from({ length: cap }, () => null)
       if (writer.enabled && !statusDead && ticker === null) {
-        // Keeps the elapsed counter + spinner moving between task
-        // events. The writer throttles unforced redraws, and unref
-        // means a stray ticker can never hold the process open.
+        // Keeps the per-worker elapsed time ticking between task events
+        // (the time IS the motion — there's no spinner). The writer
+        // throttles unforced redraws, and unref means a stray ticker
+        // can never hold the process open.
         ticker = setInterval(() => {
-          spinnerFrame++
           refresh(false)
         }, 100)
         ticker.unref?.()
@@ -406,7 +415,7 @@ export function defaultLogger(
           return
         case 'errors-only':
           if (outcome.status !== 'failed') return
-          emitLine(formatFailureLine(node.id, outcome.exitCode, colors))
+          emitLine(formatFailureLine(node.id, outcome.durationMs, colors))
           deferredFailures.push(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
           return
         case 'broad':
@@ -416,7 +425,7 @@ export function defaultLogger(
           // surface in the end-of-run summary.
           if (outcome.status === 'failed') {
             // ✗ marker now; the full frame replays at runEnd.
-            emitLine(formatFailureLine(node.id, outcome.exitCode, colors))
+            emitLine(formatFailureLine(node.id, outcome.durationMs, colors))
             deferredFailures.push(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
           } else if (outcome.status === 'success') {
             emitLine(formatTaskExecutedLine(node, outcome, colors))
@@ -449,7 +458,7 @@ export function defaultLogger(
             // to runEnd like everywhere else; everything else emits
             // ONE atomic block from the buffered output.
             if (outcome.status === 'failed') {
-              emitLine(formatFailureLine(node.id, outcome.exitCode, colors))
+              emitLine(formatFailureLine(node.id, outcome.durationMs, colors))
               deferredFailures.push(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
               return
             }
@@ -461,7 +470,7 @@ export function defaultLogger(
           // Dependency-pulled nodes: silent on success; failures get
           // the ✗ marker now and their frame replayed at runEnd.
           if (outcome.status === 'failed') {
-            emitLine(formatFailureLine(node.id, outcome.exitCode, colors))
+            emitLine(formatFailureLine(node.id, outcome.durationMs, colors))
             deferredFailures.push(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
           }
           return

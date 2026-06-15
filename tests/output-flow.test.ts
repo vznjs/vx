@@ -116,7 +116,7 @@ describe('defaultLogger visibility matrix — broad', () => {
     const n = mkNode('one#build', { requested: true })
     log.taskStdout(n, 'noisy build output\n')
     log.taskComplete(n, mkOutcome(n, 'success', { durationMs: 1200 }))
-    expect(out.text()).toBe('● one#build ── success • 1.20s\n')
+    expect(out.text()).toBe(' ⏺︎   1.20s success miss   one#build\n')
   })
 
   it('cache hit with replayed stdout → silent', () => {
@@ -145,7 +145,7 @@ describe('defaultLogger visibility matrix — broad', () => {
     log.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 3 }))
     log.runEnd?.()
     const text = out.text()
-    expect(text).toContain('● one#boom ── failed (exit 3)')
+    expect(text).toContain('◼︎   100ms failed  miss   one#boom')
     expect(text).toContain('┌─ one#boom')
     expect(text).toContain('partial work')
     expect(text).toContain('kaboom')
@@ -213,7 +213,7 @@ describe('defaultLogger visibility matrix — focused', () => {
     const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
     const n = mkNode('one#test', { requested: true })
     log.taskComplete(n, mkOutcome(n, 'skipped'))
-    expect(out.text()).toBe('● one#test ── skipped • upstream failed\n')
+    expect(out.text()).toBe(' ⊘         skipped        one#test\n')
   })
 
   it('dependency success with output → silent', () => {
@@ -242,7 +242,7 @@ describe('defaultLogger visibility matrix — focused', () => {
     log.taskComplete(dep, mkOutcome(dep, 'failed', { exitCode: 2 }))
     log.runEnd?.()
     const text = out.text()
-    expect(text).toContain('● lib#build ── failed (exit 2)')
+    expect(text).toContain('◼︎   100ms failed  miss   lib#build')
     expect(text).toContain('┌─ lib#build')
     expect(text).toContain('tsc exploded')
     expect(text).toContain('failed (exit 2)')
@@ -374,7 +374,7 @@ describe('defaultLogger focused — multiple requested tasks (atomic blocks)', (
     log.runStart?.({ total: 2, requestedCount: 2 })
     const a = mkNode('one#build', { requested: true })
     log.taskComplete(a, mkOutcome(a, 'skipped'))
-    expect(out.text()).toBe('● one#build ── skipped • upstream failed\n')
+    expect(out.text()).toBe(' ⊘         skipped        one#build\n')
   })
 
   it('multi-requested failure defers its frame to runEnd with an inline ✗ line', () => {
@@ -384,7 +384,7 @@ describe('defaultLogger focused — multiple requested tasks (atomic blocks)', (
     const a = mkNode('one#build', { requested: true })
     log.taskStdout(a, 'partial\n')
     log.taskComplete(a, mkOutcome(a, 'failed', { exitCode: 4 }))
-    expect(out.text()).toContain('● one#build ── failed (exit 4)')
+    expect(out.text()).toContain('◼︎   100ms failed  miss   one#build')
     log.runEnd?.()
     const text = out.text()
     expect(text).toContain('┌─ one#build')
@@ -415,9 +415,9 @@ describe('defaultLogger block separation', () => {
     log.taskComplete(ok2, mkOutcome(ok2, 'success'))
     log.runEnd?.()
     expect(out.text()).toBe(
-      '● one#a ── success • 100ms\n' +
-        '● one#boom ── failed (exit 1)\n' +
-        '● one#b ── success • 100ms\n' +
+      ' ⏺︎   100ms success miss   one#a\n' +
+        ' ◼︎   100ms failed  miss   one#boom\n' +
+        ' ⏺︎   100ms success miss   one#b\n' +
         '\n' +
         '┌─ one#boom > failed (exit 1)\n' +
         '\n' +
@@ -437,8 +437,8 @@ describe('defaultLogger block separation', () => {
     }
     log.runEnd?.()
     expect(out.text()).toBe(
-      '● one#x ── failed (exit 1)\n' +
-        '● one#y ── failed (exit 1)\n' +
+      ' ◼︎   100ms failed  miss   one#x\n' +
+        ' ◼︎   100ms failed  miss   one#y\n' +
         '\n' +
         '┌─ one#x > failed (exit 1)\n' +
         '\n' +
@@ -481,7 +481,7 @@ describe('defaultLogger visibility matrix — overrides', () => {
     const bad = mkNode('one#c')
     log.taskStderr(bad, 'oops\n')
     log.taskComplete(bad, mkOutcome(bad, 'failed'))
-    expect(out.text()).toContain('failed (exit 1)')
+    expect(out.text()).toContain('failed  miss   one#c')
   })
 
   it('none: nothing per-task, ever', () => {
@@ -566,7 +566,7 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
     const n = mkNode('one#build')
     log.taskComplete(n, mkOutcome(n, 'cache-hit', { restored: true }))
     const text = out.text()
-    expect(text).toContain('◌ one#build ── restored-local')
+    expect(text).toContain('local  one#build')
     expect(text).not.toContain('::group::')
   })
 
@@ -699,7 +699,7 @@ describe('flow e2e against a real fixture workspace', () => {
     expect(code).toBe(1)
 
     // Executed task: one-liner, no raw output.
-    expect(text()).toContain('● one#fresh ── success •')
+    expect(text()).toContain('success miss   one#fresh')
     expect(text()).not.toContain('FRESH-OUTPUT')
     // Cache hit: completely silent per-task (no replay, no one-liner).
     expect(text()).not.toContain('CACHED-OUTPUT')
@@ -741,7 +741,7 @@ describe('flow e2e against a real fixture workspace', () => {
     expect(text()).toContain('DEPBAD-NOISE')
     expect(text()).toContain('failed (exit 3)')
     // Requested task never ran; its skip is framed.
-    expect(text()).toContain('● one#consumebad ── skipped • upstream failed')
+    expect(text()).toContain('skipped        one#consumebad')
     expect(text()).not.toContain('NEVER-RUNS')
   })
 
