@@ -305,6 +305,23 @@ export interface CacheInputs {
    * - `[]` → fully decoupled; no upstream contributes.
    */
   tasks?: readonly string[]
+  /**
+   * Shell commands run in the PROJECT dir at hash time; their combined,
+   * trimmed (stdout + stderr) output is folded into the cache key.
+   * Deduped per (projectDir, command) within a run. A non-zero exit
+   * fails the run. Modeled on `env`: the COMMANDS are frozen in the
+   * lock, the OUTPUT is resolved live every run — correct under
+   * `--frozen`. Use for project-specific runtime probes.
+   */
+  runtime?: string[]
+  /**
+   * Like `runtime`, but commands run at the WORKSPACE ROOT and are
+   * deduped GLOBALLY per command across the whole run — a `node -v`
+   * declared in 500 projects spawns exactly once. The runtime-input
+   * analog of `workspaceFiles`: per-task, root-anchored. Use for global
+   * tool versions, OS info, etc.
+   */
+  workspaceRuntime?: string[]
 }
 
 export function defineProject<T extends ProjectConfig>(config: T): T {

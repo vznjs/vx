@@ -216,6 +216,51 @@ describe('loadProjectConfig', () => {
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(/inputs.files.*non-empty/)
     })
+
+    it('accepts cache.inputs.runtime and workspaceRuntime as string arrays', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'echo hi' },
+          cache: {
+            inputs: { files: ['src/**'], runtime: ['node -v'], workspaceRuntime: ['uname -s'] },
+            outputs: { files: [] },
+          },
+        } } }`,
+      )
+      const cfg = await loadProjectConfig(file)
+      expect(cfg.tasks?.build?.cache?.inputs.runtime).toEqual(['node -v'])
+      expect(cfg.tasks?.build?.cache?.inputs.workspaceRuntime).toEqual(['uname -s'])
+    })
+
+    it('rejects non-string runtime entries', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'x' },
+          cache: { inputs: { files: [], runtime: [123] }, outputs: { files: [] } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(
+        /cache\.inputs\.runtime must be an array of non-empty shell command strings/,
+      )
+    })
+
+    it('rejects empty-string workspaceRuntime entries', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'x' },
+          cache: { inputs: { files: [], workspaceRuntime: [''] }, outputs: { files: [] } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(
+        /cache\.inputs\.workspaceRuntime must be an array of non-empty shell command strings/,
+      )
+    })
   })
 })
 
