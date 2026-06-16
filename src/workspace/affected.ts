@@ -11,6 +11,7 @@
 
 import path from 'node:path'
 import { UserError } from '../util/index.js'
+import { LOCKFILE_NAME } from './lockfile.js'
 import type { ProjectMeta } from './workspace.js'
 
 export interface AffectedArgs {
@@ -47,7 +48,9 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
     throw new UserError(`git diff failed (exit ${exit}): ${stderr.trim()}`)
   }
 
-  const changed = stdout.split('\n').filter((s) => s.length > 0)
+  // vx-lock.json (workspace-root metadata) is excluded like a gitignored
+  // file: re-running `vx lock` must not mark every project affected.
+  const changed = stdout.split('\n').filter((s) => s.length > 0 && s !== LOCKFILE_NAME)
   return projectsContaining(args.workspaceRoot, changed, args.projects)
 }
 

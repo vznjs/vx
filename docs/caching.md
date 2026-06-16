@@ -455,6 +455,15 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
 
 ### History
 
+- **v23 → v24**: exclude `vx-lock.json` from the input file set
+  globally (`ALWAYS_IGNORE` in `cache/inputs.ts`). The lockfile is
+  committed, so git enumerates it, but it's vx's own frozen-config
+  metadata — never a task input. Without this, a `vx lock` re-write
+  busts every key on a project that globs the root lockfile (a broad
+  `**/*` on the root project). Tasks whose `cache.inputs.files` never
+  matched it derive byte-identical keys. No SCHEMA bump — only the
+  hashed file set changed, not the key layout or on-disk format.
+
 - **v22 → v23**: fold `cache.inputs.runtime` / `workspaceRuntime`
   command output into the key (two namespaced sections after
   env-values). The command _strings_ stay in the config hash (step 5);

@@ -98,6 +98,35 @@ describe('affectedProjects', () => {
     expect([...out]).toEqual([])
   })
 
+  it('a vx-lock.json change never marks a project affected, even the root project', async () => {
+    // The root is a project here, so a root-level file edit WOULD map to
+    // it — proving the exclusion is the lock filter, not "root isn't a
+    // project". A README edit at root still marks it; vx-lock.json never.
+    const withRoot: ProjectMeta[] = [
+      ...projects,
+      { name: 'root', dir: root, configPath: null, packageJson: { name: 'root' } },
+    ]
+    // Commit both root files so `git diff` (tracked changes only) can see
+    // edits to them.
+    await writeFile(path.join(root, 'vx-lock.json'), '{"v":1}')
+    await writeFile(path.join(root, 'README.md'), 'v1')
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'add lock + readme')
+
+    // Editing only the lock → nothing affected.
+    await writeFile(path.join(root, 'vx-lock.json'), '{"v":2}')
+    expect([
+      ...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: withRoot })),
+    ]).toEqual([])
+
+    // Control: editing another root file DOES mark root (proving the
+    // exclusion is the lock filter, not that root files are ignored).
+    await writeFile(path.join(root, 'README.md'), 'v2')
+    expect([
+      ...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: withRoot })),
+    ]).toEqual(['root'])
+  })
+
   it('staged-only changes are selected (working-tree diff includes the index)', async () => {
     // `git diff --name-only <since>` compares <since> to working tree,
     // which includes staged + unstaged. A `git add`-then-no-commit

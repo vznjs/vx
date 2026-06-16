@@ -170,6 +170,25 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-16**: **`vx-lock.json` globally excluded from cache inputs
+  and `--affected`** (owner: "vx lock should be globally excluded from
+  affected and cache, like gitignored"). The lockfile is committed, so
+  git enumeration includes it, but it's vx's own frozen-config metadata
+  — never a task input. (1) **Cache**: added `**/vx-lock.json` to
+  `ALWAYS_IGNORE` in `cache/inputs.ts` (covers both project `files` and
+  `workspaceFiles` resolution — both fold ALWAYS_IGNORE into their
+  exclude globs). Hardcoded literal, NOT the workspace `LOCKFILE_NAME`
+  constant: cache is a leaf module and must not import from workspace.
+  **CACHE_VERSION → v24** (no SCHEMA bump): a task whose globs matched
+  the root lockfile (broad `**/*` on the root `.` project) drops it
+  from the hashed set, so those keys change; tasks that never matched
+  it stay byte-identical. (2) **Affected**: `affected.ts` filters the
+  exact root-relative `LOCKFILE_NAME` out of the `git diff --name-only`
+  changed set before mapping to projects (uses the constant — same
+  module), so a `vx lock` re-write can't mark every project affected.
+  Files: `cache/cache.ts` (version + comment), `cache/inputs.ts`,
+  `workspace/affected.ts`, `docs/caching.md` history.
+
 - **2026-06-16**: **Requested persistent task keeps the run in the
   foreground** (owner bug: `vx run @vzn/vx-docs#dev` "is not
   persisting"). A persistent task that is the terminal/edge node (the

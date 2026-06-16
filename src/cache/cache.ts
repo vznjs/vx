@@ -62,7 +62,12 @@ import { extractOutputs, parseTarHeaders, readTarText, type TarHeader } from './
 // live in the resolved config (frozen by `vx lock`); the OUTPUT is
 // resolved live every run, so it stays correct under --frozen. No
 // SCHEMA bump — only Cache.key derivation changed.
-const CACHE_VERSION = 'vx-cache-v23'
+// v24: vx-lock.json added to the always-ignored input set (cache/
+// inputs.ts ALWAYS_IGNORE). A task whose globs matched the root
+// lockfile (broad `**/*` on the root project) drops it from the hashed
+// file set, so those keys change; tasks that never matched it are
+// byte-identical. No SCHEMA bump — only the input file set changed.
+const CACHE_VERSION = 'vx-cache-v24'
 const SCHEMA_VERSION = 'v21'
 
 /**

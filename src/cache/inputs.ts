@@ -23,7 +23,18 @@ import { rm } from 'node:fs/promises'
 import type { CacheInputs } from '../config.js'
 import { UserError } from '../util/index.js'
 
-const ALWAYS_IGNORE = ['**/node_modules/**', '**/.git/**', '**/.vx/**', '**/*.tsbuildinfo']
+// vx-lock.json is committed (so git enumerates it) but it's vx's own
+// frozen-config metadata — never a task input. Excluded globally so a
+// re-lock can't bust every cache key the way a tracked source file
+// would. (Literal pattern, not the workspace `LOCKFILE_NAME` constant:
+// cache is a leaf module and must not import from workspace.)
+const ALWAYS_IGNORE = [
+  '**/node_modules/**',
+  '**/.git/**',
+  '**/.vx/**',
+  '**/*.tsbuildinfo',
+  '**/vx-lock.json',
+]
 
 const DEFAULT_FILE_GLOBS: readonly string[] = ['**/*']
 
