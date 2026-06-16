@@ -1,0 +1,531 @@
+---
+// vx landing page — standalone marketing homepage.
+//
+// Ported from the Vx Design System website UI kit
+// (claude.ai/design handoff bundle). This is a full custom page that
+// REPLACES the Starlight splash homepage: it ships its own nav, footer
+// and dark "phosphor-on-ink" theme. Docs pages stay Starlight-themed.
+import '../styles/landing.css'
+
+const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
+const href = (p: string) => `${base}${p}`
+const GH = 'https://github.com/vznjs/vx'
+
+// Terminal meters (▰ filled / ▱ empty) — faithful to real `vx run` output.
+const meter = (on: number, total = 50) => ({
+  on: '▰'.repeat(on),
+  off: '▱'.repeat(Math.max(total - on, 0)),
+})
+const projects = meter(25) // round(1 affected / 2 total · 50)
+const tasks = meter(50)
+const cache = meter(50)
+const dashes = '─'.repeat(80)
+
+// Real `vx run` rows. The id paints as project-hue `@vzn/vx` + dim `#` +
+// pink task, exactly like the CLI's identity coloring.
+const termTasks = [
+  { time: '241ms', proj: '@vzn/vx', task: 'build.bun.darwin-x64' },
+  { time: '243ms', proj: '@vzn/vx', task: 'build.bun.linux-arm64' },
+  { time: '242ms', proj: '@vzn/vx', task: 'build.bun.darwin-arm64' },
+  { time: '245ms', proj: '@vzn/vx', task: 'build.bun.linux-x64' },
+]
+
+// Differentiators only — the things Turbo and Nx can't do. Every claim
+// traces to README.md / docs (no table-stakes like "affected graph",
+// which both competitors already ship).
+const features = [
+  {
+    icon: 'cache',
+    tone: 'var(--phosphor)',
+    title: 'The cache understands your config',
+    body: 'vx.config.ts is evaluated before hashing, so imports, shared presets and computed values all participate in the cache key. Change a preset and exactly the right tasks re-run. Turbo and Nx hash static JSON — they can’t see this.',
+  },
+  {
+    icon: 'box',
+    tone: 'var(--plasma)',
+    title: 'Outputs are owned',
+    body: 'Declared outputs are wiped before every run and every restore, so your tree ends bit-identical to the cache — stale files cannot survive. Turbo and Nx are additive: leftovers linger.',
+  },
+  {
+    icon: 'bolt',
+    tone: 'var(--amber)',
+    title: 'No daemon to babysit',
+    body: 'One binary, no Node, nothing long-lived. On a clean tree, every cache key comes from the git index with zero file reads — 3.2× faster warm at 15k files. Nx needs a daemon for this; vx doesn’t.',
+  },
+  {
+    icon: 'shield',
+    tone: 'var(--phosphor)',
+    title: 'Per-task kernel sandbox',
+    body: 'Run any task under an OS-level file + network allow-list with sandbox: {}. An undeclared read or a phone-home fails the build instead of hiding it. No other runner has it.',
+  },
+  {
+    icon: 'lock',
+    tone: 'var(--plasma)',
+    title: 'Signed, verified artifacts',
+    body: 'HMAC-signed remote cache: with a key set, unsigned or tampered artifacts are rejected and the task just re-runs. A poisoned cache can’t reach your machines. Turbo signs softly; Nx not at all.',
+  },
+  {
+    icon: 'graph',
+    tone: 'var(--amber)',
+    title: 'Reproducible when you want',
+    body: 'vx lock freezes the fully-resolved task graph into vx-lock.json; --frozen runs skip evaluation entirely and run exactly that graph. No other runner has an equivalent.',
+  },
+]
+
+const featIcons: Record<string, string> = {
+  cache:
+    '<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.66 3.58 3 8 3s8-1.34 8-3V6"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/>',
+  graph:
+    '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.7 7.8L10.5 16M16.3 7.8L13.5 16"/>',
+  shield: '<path d="M12 2l8 3v6c0 5-3.4 8.5-8 10-4.6-1.5-8-5-8-10V5l8-3z"/><path d="M9 12l2 2 4-4"/>',
+  bolt: '<path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/>',
+  box: '<path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3.5 8l8.5 5 8.5-5M12 13v8"/>',
+  lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>',
+}
+
+const benchRows = [
+  {
+    task: 'Cold build · from scratch',
+    bars: [
+      { name: 'vx', val: 228, disp: '3m 48s', c: 'var(--phosphor)', best: true },
+      { name: 'turbo', val: 498, disp: '8m 18s', c: 'var(--c-turbo)' },
+      { name: 'nx', val: 507, disp: '8m 27s', c: 'var(--c-nx)' },
+    ],
+  },
+  {
+    task: 'Fully cached · nothing to rebuild',
+    bars: [
+      { name: 'vx', val: 0.55, disp: '0.55s', c: 'var(--phosphor)', best: true },
+      { name: 'turbo', val: 1.6, disp: '1.60s', c: 'var(--c-turbo)' },
+      { name: 'nx', val: 9.86, disp: '9.86s', c: 'var(--c-nx)' },
+    ],
+  },
+  {
+    task: 'Restoring outputs · cache → disk',
+    bars: [
+      { name: 'vx', val: 0.89, disp: '0.89s', c: 'var(--phosphor)', best: true },
+      { name: 'turbo', val: 2.0, disp: '2.00s', c: 'var(--c-turbo)' },
+      { name: 'nx', val: 10.44, disp: '10.44s', c: 'var(--c-nx)' },
+    ],
+  },
+  {
+    task: 'CPU burned · cold build, user time',
+    bars: [
+      { name: 'vx', val: 22.7, disp: '22.7s', c: 'var(--phosphor)', best: true },
+      { name: 'turbo', val: 1250, disp: '1,250s', c: 'var(--c-turbo)' },
+      { name: 'nx', val: 2038, disp: '2,038s', c: 'var(--c-nx)' },
+    ],
+  },
+]
+
+const footCols = {
+  product: [
+    { t: 'Benchmarks', h: href('benchmarks/') },
+    { t: 'Quickstart', h: href('quickstart/') },
+    { t: 'Architecture', h: href('architecture/') },
+    { t: 'Comparison', h: href('comparison/') },
+  ],
+  docs: [
+    { t: 'Quickstart', h: href('quickstart/') },
+    { t: 'Config', h: href('schema/') },
+    { t: 'CLI reference', h: href('cli/') },
+    { t: 'Sandboxing', h: href('guides/sandboxing/') },
+  ],
+  migrate: [
+    { t: 'From Turborepo', h: href('migrate/from-turborepo/') },
+    { t: 'From Nx', h: href('migrate/from-nx/') },
+  ],
+  community: [{ t: 'GitHub', h: GH }],
+}
+---
+
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>vx — End the Nx-or-Turbo compromise</title>
+    <meta
+      name="description"
+      content="vx is a Bun-native task runner and build cache for JavaScript monorepos. Nx-scale power, Turbo-grade simplicity — faster than both, with the tradeoffs of neither."
+    />
+    <link rel="icon" href={href('logo-mark.svg')} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap"
+    />
+    <style is:global>
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="vx-landing">
+      <!-- ===================== Nav ===================== -->
+      <header class="nav">
+        <div class="nav-left">
+          <a class="brand" href={base}>
+            <img src={href('logo-mark.svg')} width="26" height="26" alt="vx" />
+            <span class="word">vx</span>
+          </a>
+          <nav class="nav-links">
+            <a href={href('quickstart/')}>docs</a>
+            <a href={href('benchmarks/')}>benchmarks</a>
+            <a href={href('migrate/from-turborepo/')}>migrate</a>
+            <a href={href('concepts/why-vx-is-fast/')}>concepts</a>
+          </nav>
+        </div>
+        <div class="nav-right">
+          <a class="btn-github" href={GH}>
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"
+              ><path
+                d="M8 0C3.58 0 0 3.58 0 8a8 8 0 005.47 7.59c.4.07.55-.17.55-.38v-1.33c-2.23.49-2.7-1.07-2.7-1.07-.36-.93-.89-1.18-.89-1.18-.73-.5.05-.49.05-.49.81.06 1.24.83 1.24.83.71 1.23 1.87.87 2.33.67.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.01.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 014 0c1.53-1.03 2.2-.82 2.2-.82.44 1.11.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0016 8c0-4.42-3.58-8-8-8z"
+              ></path></svg
+            >
+            GitHub
+          </a>
+          <a class="btn btn-primary btn-sm" href={href('quickstart/')}
+            >Get started <span class="arr">→</span></a
+          >
+        </div>
+      </header>
+
+      <!-- ===================== Hero ===================== -->
+      <section class="hero vx-grid-bg">
+        <div class="bloom"></div>
+        <div class="fade"></div>
+        <div class="hero-grid container">
+          <div>
+            <div class="badges">
+              <span class="badge badge-phosphor"><span class="dot"></span>Bun-native</span>
+              <span class="badge">No daemon</span>
+              <span class="badge">MIT licensed</span>
+            </div>
+            <h1>The monorepo orchestrator<br /><span class="phosphor">you were waiting for</span></h1>
+            <p class="lede">
+              A build tool shouldn't make you choose between fast and flexible, or between powerful
+              and free. vx is fast and simple from the first task, fully extensible in real
+              TypeScript as you scale, and yours to keep — no daemon, no proprietary cloud, nothing
+              to lock you in.
+            </p>
+            <div class="actions">
+              <a class="btn btn-primary btn-lg" href={href('quickstart/')}
+                >Get started <span class="arr">→</span></a
+              >
+              <button class="install-pill" data-copy="bun add -d @vzn/vx" type="button">
+                <span class="dollar">$</span>
+                <span class="cmd">bun add -d @vzn/vx</span>
+                <span class="copy">
+                  <svg
+                    class="icon-copy"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    ><rect x="9" y="9" width="11" height="11" rx="2"></rect><path
+                      d="M5 15V5a2 2 0 012-2h10"></path></svg
+                  >
+                  <svg
+                    class="icon-check"
+                    width="15"
+                    height="15"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"><path d="M20 6L9 17l-5-5"></path></svg
+                  >
+                </span>
+              </button>
+            </div>
+            <div class="stats">
+              <div class="stat">
+                <span class="val"><span class="num">2</span><span class="unit">×</span></span>
+                <span class="label">Faster cold builds</span>
+                <span class="sub">vs Turbo &amp; Nx</span>
+              </div>
+              <div class="stat plasma">
+                <span class="val"><span class="num">0.55</span><span class="unit">s</span></span>
+                <span class="label">Full cache replay</span>
+                <span class="sub">3,270 tasks</span>
+              </div>
+              <div class="stat amber">
+                <span class="val"><span class="num">50</span><span class="unit">×</span></span>
+                <span class="label">Less CPU burned</span>
+                <span class="sub">vs Turbo &amp; Nx</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Terminal -->
+          <div class="term">
+            <div class="term-bar-top">
+              <span class="tdot" style="background:#ff5f57"></span>
+              <span class="tdot" style="background:#febc2e"></span>
+              <span class="tdot" style="background:#28c840"></span>
+              <span class="ttitle">zsh — vx</span>
+            </div>
+            <div class="term-body">
+              <div class="term-prompt">
+                <span class="caret">❯ </span><span class="cmd">vx run build --affected</span>
+              </div>
+              {
+                termTasks.map((t) => (
+                  <div class="term-task">
+                    <span class="glyph">⏺ </span>
+                    <span class="time">{t.time}</span>
+                    <span class="ok">success</span>
+                    <span class="cache">miss</span>
+                    <span class="target">
+                      <span class="t-proj">{t.proj}</span><span class="t-dim">#</span><span
+                        class="t-pink">{t.task}</span
+                      >
+                    </span>
+                  </div>
+                ))
+              }
+              <div class="term-gap"></div>
+              <div class="term-rule">
+                <span class="t-dim">─ </span><span class="mark">vx 0.0.0</span><span class="t-dim"
+                  > </span
+                ><span class="fill">{dashes}</span>
+              </div>
+              <div style="height:4px"></div>
+              <div class="term-row">
+                <span class="lbl">projects</span>
+                <span class="v"
+                  ><span class="term-meter"
+                    ><span class="t-yellow">{projects.on}</span><span class="off"
+                      >{projects.off}</span
+                    ></span
+                  ></span
+                >
+              </div>
+              <div class="term-row">
+                <span class="lbl"></span><span class="v"
+                  ><span class="t-yellow">1 affected</span><span class="t-dim"> · 2 total</span></span
+                >
+              </div>
+              <div style="height:6px"></div>
+              <div class="term-row">
+                <span class="lbl">tasks</span>
+                <span class="v"
+                  ><span class="term-meter"
+                    ><span class="t-green">{tasks.on}</span><span class="off">{tasks.off}</span></span
+                  ></span
+                >
+              </div>
+              <div class="term-row">
+                <span class="lbl"></span><span class="v"
+                  ><span class="t-green">4 success</span><span class="t-dim"> · 4 total</span></span
+                >
+              </div>
+              <div style="height:6px"></div>
+              <div class="term-row">
+                <span class="lbl">cache</span>
+                <span class="v"
+                  ><span class="term-meter"
+                    ><span class="t-red">{cache.on}</span><span class="off">{cache.off}</span></span
+                  ></span
+                >
+              </div>
+              <div class="term-row">
+                <span class="lbl"></span><span class="v"><span class="t-red">4 miss</span></span>
+              </div>
+              <div class="term-gap"></div>
+              <div class="term-row">
+                <span class="lbl">info</span><span class="v t-dim">10 workers · local cache</span>
+              </div>
+              <div class="term-row">
+                <span class="lbl">time</span>
+                <span class="v"
+                  ><span class="term-time">252ms</span><span class="term-time-rest"
+                    > · max 245ms · avg 243ms · min 241ms</span
+                  ></span
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== Features ===================== -->
+      <section class="section container">
+        <div class="section-head">
+          <p class="vx-kicker">// only in vx</p>
+          <h2>What sets vx apart.</h2>
+        </div>
+        <div class="feat-grid">
+          {
+            features.map((f) => (
+              <div class="feat-card" style={`--c:${f.tone}`}>
+                <span class="ico">
+                  <svg
+                    width="21"
+                    height="21"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    set:html={featIcons[f.icon]}
+                  />
+                </span>
+                <h3>{f.title}</h3>
+                <p>{f.body}</p>
+              </div>
+            ))
+          }
+        </div>
+      </section>
+
+      <!-- ===================== Benchmark ===================== -->
+      <section class="bench">
+        <div class="bench-panel container vx-scanlines">
+          <div class="bench-head">
+            <div>
+              <p class="vx-kicker">// 3,270 tasks</p>
+              <h2>Lower is better. We checked.</h2>
+            </div>
+            <div class="bench-legend">
+              <span class="legend"><span class="sw" style="background:var(--phosphor)"></span>vx</span>
+              <span class="legend"
+                ><span class="sw" style="background:var(--c-turbo)"></span>turborepo</span
+              >
+              <span class="legend"><span class="sw" style="background:var(--c-nx)"></span>nx</span>
+            </div>
+          </div>
+          <div class="bench-rows">
+            {
+              benchRows.map((r) => {
+                const rowMax = Math.max(...r.bars.map((b) => b.val))
+                return (
+                  <div class="bench-row">
+                    <p class="task">{r.task}</p>
+                    {r.bars.map((b) => {
+                      const pct = Math.max((b.val / rowMax) * 100, 3)
+                      return (
+                        <div
+                          class={`bench-bar${b.best ? ' best' : ''}`}
+                          style={`--c:${b.c};--w:${pct}%`}
+                        >
+                          <span class="name">{b.name}</span>
+                          <span class="track">
+                            <span class="fill" />
+                          </span>
+                          <span class="disp">{b.disp}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })
+            }
+          </div>
+          <div class="bench-note">
+            <p>
+              vx builds the whole graph in <strong>under 4 minutes</strong> where Turborepo and Nx take
+              <strong>over 8</strong> — burning <span class="accent">~50× less CPU</span> doing it. Once
+              cached, every repeat run replays in <span class="accent">under a second</span>, and Nx never
+              catches up.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== Config ===================== -->
+      <section class="config">
+        <div class="config-grid container">
+          <div>
+            <p class="vx-kicker">// configuration</p>
+            <h2>Config is just<br />TypeScript.</h2>
+            <p>
+              Not JSON, not YAML. <code>vx.config.ts</code> is evaluated before hashing, so imports,
+              shared presets and computed values all participate in the cache key. Tasks are shell
+              commands; declare inputs and outputs with full type-safety.
+            </p>
+            <a class="btn btn-ghost" href={href('schema/')}
+              >Read the config reference <span class="arr">→</span></a
+            >
+          </div>
+          <div class="code-card">
+            <div class="bar"><span class="dot"></span><span class="name">vx.config.ts</span></div>
+            <pre><div><span class="tk-com">// vx.config.ts — next to any package.json</span></div><div><span class="tk-kw">import</span><span class="tk-txt"> {'{'} </span><span class="tk-fn">defineProject</span><span class="tk-txt"> {'}'} </span><span class="tk-kw">from</span><span class="tk-str"> '@vzn/vx'</span></div><div style="height:10px"></div><div><span class="tk-kw">export default</span><span class="tk-txt"> </span><span class="tk-fn">defineProject</span><span class="tk-punc">{'({'}</span></div><div><span class="tk-txt">  tasks: {'{'}</span></div><div><span class="tk-txt">    build: {'{'}</span></div><div><span class="tk-txt">      exec: {'{'} command: </span><span class="tk-str">'tsc -b'</span><span class="tk-txt"> {'}'},</span></div><div><span class="tk-txt">      dependsOn: [</span><span class="tk-str">'^build'</span><span class="tk-txt">],</span></div><div><span class="tk-txt">      cache: {'{'}</span></div><div><span class="tk-txt">        inputs: {'{'} files: [</span><span class="tk-str">'src/**'</span><span class="tk-txt">] {'}'},</span></div><div><span class="tk-txt">        outputs: {'{'} files: [</span><span class="tk-str">'dist/**'</span><span class="tk-txt">] {'}'},</span></div><div><span class="tk-txt">      {'}'},</span></div><div><span class="tk-txt">    {'}'},</span></div><div><span class="tk-txt">    test: {'{'}</span></div><div><span class="tk-txt">      exec: {'{'} command: </span><span class="tk-str">'bun test'</span><span class="tk-txt"> {'}'},</span></div><div><span class="tk-txt">      dependsOn: [</span><span class="tk-str">'build'</span><span class="tk-txt">],</span></div><div><span class="tk-txt">      cache: {'{'} inputs: {'{'} files: [</span><span class="tk-str">'src/**'</span><span class="tk-txt">] {'}'}, outputs: {'{'} files: [] {'}'} {'}'},</span></div><div><span class="tk-txt">    {'}'},</span></div><div><span class="tk-txt">  {'}'},</span></div><div><span class="tk-punc">{'})'}</span></div></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== Migrate CTA ===================== -->
+      <section class="migrate vx-grid-bg">
+        <div class="glow"></div>
+        <div class="inner">
+          <p class="vx-kicker">// migrate</p>
+          <h2>Switch in an <span class="phosphor">afternoon</span>.</h2>
+          <p>
+            <code>vx migrate</code> converts your <code class="turbo">turbo.json</code> or{' '}
+            <code class="nx">Nx project graph</code> into a real <code>vx.config.ts</code>. The
+            mapping is mechanical — keep your task graph and your speed, drop the daemon and the
+            plugins.
+          </p>
+          <div class="row">
+            <div class="cmd-pill"><span class="dollar">$</span> vx migrate</div>
+            <a class="btn btn-primary btn-lg" href={href('migrate/from-turborepo/')}
+              >Read migration guide <span class="arr">→</span></a
+            >
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== Footer ===================== -->
+      <footer class="footer">
+        <div class="foot-grid container">
+          <div class="foot-brand">
+            <div class="row">
+              <img src={href('logo-mark.svg')} width="24" height="24" alt="vx" />
+              <span class="word">vx</span>
+            </div>
+            <p>
+              The monorepo build engine that ends the Nx-or-Turbo compromise. Bun-native · MIT licensed.
+            </p>
+          </div>
+          {
+            Object.entries(footCols).map(([title, links]) => (
+              <div class="foot-col">
+                <p class="title">{title}</p>
+                <div class="links">
+                  {links.map((l) => (
+                    <a href={l.h}>{l.t}</a>
+                  ))}
+                </div>
+              </div>
+            ))
+          }
+        </div>
+        <div class="foot-bottom container">
+          <span>© 2026 vx contributors</span>
+          <span>MIT licensed · @vzn/vx</span>
+        </div>
+      </footer>
+    </div>
+
+    <script>
+      // Install-pill: copy the command, flip to a checkmark briefly.
+      document.querySelectorAll<HTMLButtonElement>('.install-pill').forEach((pill) => {
+        pill.addEventListener('click', () => {
+          const cmd = pill.dataset.copy ?? ''
+          navigator.clipboard?.writeText(cmd).catch(() => {})
+          pill.classList.add('copied')
+          setTimeout(() => pill.classList.remove('copied'), 1400)
+        })
+      })
+    </script>
+  </body>
+</html>
