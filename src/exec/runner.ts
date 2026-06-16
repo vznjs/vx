@@ -15,6 +15,10 @@ export interface RunResult {
    *  SIGINT/SIGTERM here means a Ctrl-C / shutdown teardown — the
    *  orchestrator reverts such a task to aborted, not failed. */
   signal?: string
+  /** True when vx's own `timeout` timer fired and SIGTERMed the child.
+   *  Distinguishes a timeout (a real `failed`) from a Ctrl-C shutdown
+   *  SIGTERM (which the orchestrator reverts to `aborted`). */
+  timedOut?: boolean
   /** Total user+system CPU time for the child, in milliseconds. */
   cpuMs?: number
   /** Peak resident set size for the child, in bytes. */
@@ -30,6 +34,12 @@ export interface RunOptions {
   /** Called for each chunk of stdout/stderr as it arrives, for live output. */
   onStdout?: (chunk: string) => void
   onStderr?: (chunk: string) => void
+  /**
+   * Upper bound (ms) on the child's run time. When it elapses the
+   * child is SIGTERMed and the result is flagged `timedOut`. Undefined
+   * → no limit.
+   */
+  timeoutMs?: number
   /**
    * Run-scoped registry of in-flight subprocesses. The child is added
    * on spawn and removed once it exits, so the orchestrator's signal
@@ -53,6 +63,27 @@ export function shellQuote(arg: string): string {
 export function signalExitCode(signal: string): number {
   const num = (osConstants.signals as Partial<Record<string, number>>)[signal]
   return num === undefined ? 130 : 128 + num
+}
+
+/**
+ * Arm a SIGTERM timeout on a spawned child. Returns a handle whose
+ * `timedOut()` reports whether the timer fired — so the caller can
+ * classify the resulting SIGTERM as a real failure rather than a
+ * Ctrl-C abort — and `clear()` cancels the timer once the child exits
+ * on its own. A no-op (never fires, nothing to clear) when `timeoutMs`
+ * is undefined.
+ */
+export function armTimeout(
+  proc: ReturnType<typeof Bun.spawn>,
+  timeoutMs: number | undefined,
+): { timedOut: () => boolean; clear: () => void } {
+  if (timeoutMs === undefined) return { timedOut: () => false, clear: () => {} }
+  let fired = false
+  const timer = setTimeout(() => {
+    fired = true
+    proc.kill('SIGTERM')
+  }, timeoutMs)
+  return { timedOut: () => fired, clear: () => clearTimeout(timer) }
 }
 
 export interface PersistentSpawn {
@@ -81,9 +112,10 @@ export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs'> {
   /**
    * Bound the readiness wait: if `readyWhen` hasn't matched within
    * this window, the child is SIGTERMed and `ready` rejects. Only
-   * meaningful together with `readyWhen` (the loader enforces that).
+   * meaningful together with `readyWhen` (a ready-on-spawn task
+   * resolves before the timer can fire).
    */
-  readyTimeoutMs?: number
+  timeoutMs?: number
 }
 
 /**
@@ -198,18 +230,18 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // no-op on the settled promise. Cleared the moment ready fires so
   // a healthy server is never killed by a stale timer.
   let readyTimer: ReturnType<typeof setTimeout> | undefined
-  if (readyRe && opts.readyTimeoutMs !== undefined) {
+  if (readyRe && opts.timeoutMs !== undefined) {
     readyTimer = setTimeout(() => {
       if (readyAt === undefined) {
         rejectReady(
           new Error(
-            `persistent task not ready within ${opts.readyTimeoutMs}ms — ` +
+            `persistent task not ready within ${opts.timeoutMs}ms — ` +
               `readyWhen pattern never matched; child killed`,
           ),
         )
         child.kill('SIGTERM')
       }
-    }, opts.readyTimeoutMs)
+    }, opts.timeoutMs)
   }
 
   // If the child exits BEFORE ready fires, that's a failure to start
@@ -267,11 +299,19 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   }
 
   opts.liveChildren?.add(proc)
-  const [stdout, stderr] = await Promise.all([
-    streamToString(proc.stdout, opts.onStdout),
-    streamToString(proc.stderr, opts.onStderr),
+  const timeout = armTimeout(proc, opts.timeoutMs)
+  const ac = new AbortController()
+  const streams = Promise.all([
+    streamToString(proc.stdout, opts.onStdout, ac.signal),
+    streamToString(proc.stderr, opts.onStderr, ac.signal),
   ])
+  // Gate on the child's own exit, not on stream EOF: a timeout SIGTERM
+  // kills `sh` but an orphaned grandchild can keep the pipe open, so we
+  // abort the readers once the child is gone rather than wait forever.
   await proc.exited
+  timeout.clear()
+  if (timeout.timedOut()) ac.abort()
+  const [stdout, stderr] = await streams
   opts.liveChildren?.delete(proc)
   const exitCode = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)
   return {
@@ -280,6 +320,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     stdout,
     stderr,
     ...(proc.signalCode ? { signal: proc.signalCode } : {}),
+    ...(timeout.timedOut() ? { timedOut: true } : {}),
     ...resourceUsageToCpuRss(proc.resourceUsage()),
   }
 }
@@ -291,6 +332,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
 export async function streamToString(
   stream: ReadableStream<Uint8Array> | number | undefined,
   onChunk?: (s: string) => void,
+  signal?: AbortSignal,
 ): Promise<string> {
   // Bun.spawn types stdout/stderr as `ReadableStream | number | undefined`
   // — the `number` is for inheritance modes, only present when the caller
@@ -301,6 +343,14 @@ export async function streamToString(
   let full = ''
   const reader = stream.getReader()
   const decoder = new TextDecoder()
+  // On abort, cancel the read so a pending `reader.read()` resolves
+  // `done` and we return whatever we captured. Needed for the timeout
+  // path: SIGTERMing `sh` doesn't close the pipe if an orphaned
+  // grandchild still holds the write end, so EOF never arrives — the
+  // abort breaks us out instead of hanging the run.
+  const onAbort = (): void => void reader.cancel().catch(() => {})
+  if (signal?.aborted) onAbort()
+  else signal?.addEventListener('abort', onAbort, { once: true })
   try {
     while (true) {
       const { value, done } = await reader.read()
@@ -315,6 +365,7 @@ export async function streamToString(
       onChunk?.(tail)
     }
   } finally {
+    signal?.removeEventListener('abort', onAbort)
     reader.releaseLock()
   }
   return full

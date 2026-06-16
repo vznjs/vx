@@ -126,8 +126,9 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   if (step.persistent.readyWhen !== undefined) {
     persistentOpts.readyWhen = step.persistent.readyWhen
   }
-  if (step.persistent.readyTimeoutMs !== undefined) {
-    persistentOpts.readyTimeoutMs = step.persistent.readyTimeoutMs
+  // For a persistent task `exec.timeout` bounds the readiness wait.
+  if (step.timeout !== undefined) {
+    persistentOpts.timeoutMs = step.timeout
   }
 
   const spawn = runPersistent(persistentOpts)
@@ -344,6 +345,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       onStdout: (chunk) => log.taskStdout(node, chunk),
       onStderr: (chunk) => log.taskStderr(node, chunk),
       ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
+      ...(step.timeout !== undefined ? { timeoutMs: step.timeout } : {}),
     })
   }
 
@@ -395,6 +397,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       onStdout: (chunk) => log.taskStdout(node, chunk),
       onStderr: (chunk) => log.taskStderr(node, chunk),
       ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
+      ...(step.timeout !== undefined ? { timeoutMs: step.timeout } : {}),
       baseAllowRead: [...resolved.files, ...baseAllowWrite],
       baseAllowWrite,
       baseDenyRead: [args.workspaceRoot],
@@ -426,11 +429,20 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     for (const v of violations) effectiveStderr += `  ${v.line}\n`
   }
 
+  // A child we SIGTERMed for exceeding `exec.timeout` is a genuine
+  // failure (timed out) — stream a clear line into the framed block so
+  // the 143 exit reads as a timeout, and fall through to the normal
+  // exit-code path (failed, never cached).
+  if (result.timedOut) {
+    log.taskStderr(node, `\n[vx] timed out after ${step.timeout}ms — killed (SIGTERM)\n`)
+  }
+
   // A child killed by a shutdown signal (Ctrl-C / SIGTERM teardown)
   // never finished on its own terms — revert it to aborted so it's
   // neither cached, counted, nor shown. SIGKILL (OOM, forced) stays a
-  // real failure.
-  if (result.signal === 'SIGINT' || result.signal === 'SIGTERM') {
+  // real failure. A timeout also SIGTERMs, but `timedOut` marks it as
+  // our own deadline, not a shutdown — so it stays a real failure.
+  if ((result.signal === 'SIGINT' || result.signal === 'SIGTERM') && !result.timedOut) {
     return {
       node,
       status: 'aborted',

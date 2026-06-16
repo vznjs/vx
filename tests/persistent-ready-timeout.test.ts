@@ -1,7 +1,8 @@
-// persistent.readyTimeoutMs — bounds the readiness wait. Without it,
-// a persistent task whose readyWhen never matches while the child
-// stays alive hangs the run forever (found while refuting the
-// zombie-child report, June 2026).
+// exec.timeout — the single timeout knob. For a NORMAL task it bounds
+// the run time (SIGTERM + reported failed). For a PERSISTENT task it
+// bounds the readiness wait: without it, a persistent task whose
+// readyWhen never matches while the child stays alive hangs the run
+// forever (found while refuting the zombie-child report, June 2026).
 
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
@@ -36,7 +37,7 @@ const silentLogger = (f: Fixture): Logger => ({
 })
 
 async function makeWorkspace(): Promise<Fixture> {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'vx-readyto-'))
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vx-timeout-'))
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await writeFile(
     path.join(root, 'package.json'),
@@ -69,7 +70,77 @@ async function addProject(root: string, name: string, config: string): Promise<s
   return dir
 }
 
-describe('persistent.readyTimeoutMs', () => {
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+describe('exec.timeout — normal task', () => {
+  beforeEach(async () => {
+    fixture = await makeWorkspace()
+  })
+  afterEach(async () => {
+    await rm(fixture.root, { recursive: true, force: true })
+  })
+
+  it(
+    'a task that overruns is SIGTERMed, reported failed, and not cached',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'slow',
+        `export default {
+          tasks: {
+            build: {
+              exec: { command: 'echo $$ > pid.txt && sleep 30', timeout: 300 },
+              cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+            },
+          },
+        }
+        `,
+      )
+      const started = Date.now()
+      const r = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+      // Fast failure, not a 30s hang on the sleep.
+      expect(Date.now() - started).toBeLessThan(5000)
+      expect(r.ok).toBe(false)
+      expect(r.outcomes[0]!.status).toBe('failed')
+      // The timeout note streamed into the task's output.
+      expect(fixture.err.join('\n')).toContain('timed out after 300ms')
+      // The child must be dead once the run returns.
+      const pid = Number(readFileSync(path.join(dir, 'pid.txt'), 'utf8').trim())
+      await Bun.sleep(200)
+      expect(isAlive(pid)).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a task that finishes within the budget is unaffected',
+    async () => {
+      await addProject(
+        fixture.root,
+        'quick',
+        `export default {
+          tasks: {
+            build: { exec: { command: 'echo done', timeout: 10000 } },
+          },
+        }
+        `,
+      )
+      const r = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+      expect(r.ok).toBe(true)
+      expect(r.outcomes[0]!.status).toBe('success')
+    },
+    TIMEOUT,
+  )
+})
+
+describe('exec.timeout — persistent task (readiness bound)', () => {
   beforeEach(async () => {
     fixture = await makeWorkspace()
   })
@@ -89,7 +160,8 @@ describe('persistent.readyTimeoutMs', () => {
             dev: {
               exec: {
                 command: 'echo $$ > pid.txt && echo wrong-banner && sleep 30',
-                persistent: { readyWhen: 'Listening', readyTimeoutMs: 300 },
+                timeout: 300,
+                persistent: { readyWhen: 'Listening' },
               },
             },
           },
@@ -109,13 +181,7 @@ describe('persistent.readyTimeoutMs', () => {
       // The child must be dead once the run returns.
       const pid = Number(readFileSync(path.join(dir, 'pid.txt'), 'utf8').trim())
       await Bun.sleep(200)
-      let alive = true
-      try {
-        process.kill(pid, 0)
-      } catch {
-        alive = false
-      }
-      expect(alive).toBe(false)
+      expect(isAlive(pid)).toBe(false)
     },
     TIMEOUT,
   )
@@ -131,7 +197,8 @@ describe('persistent.readyTimeoutMs', () => {
             dev: {
               exec: {
                 command: 'echo Listening on :3000 && echo lived > lived.txt && sleep 30',
-                persistent: { readyWhen: 'Listening', readyTimeoutMs: 5000 },
+                timeout: 5000,
+                persistent: { readyWhen: 'Listening' },
               },
             },
           },
@@ -145,44 +212,36 @@ describe('persistent.readyTimeoutMs', () => {
     },
     TIMEOUT,
   )
+})
 
-  describe('loader validation', () => {
-    let dir: string
-    beforeEach(async () => {
-      dir = await mkdtemp(path.join(os.tmpdir(), 'vx-readyto-loader-'))
-    })
-    afterEach(async () => {
-      await rm(dir, { recursive: true, force: true })
-    })
+describe('exec.timeout — loader validation', () => {
+  let dir: string
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-timeout-loader-'))
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
 
-    const load = async (persistent: string) => {
-      const file = path.join(dir, 'vx.config.mjs')
-      await writeFile(
-        file,
-        `export default { tasks: { dev: { exec: { command: 'x', persistent: ${persistent} } } } }`,
-      )
-      return loadProjectConfig(file)
-    }
+  const load = async (exec: string) => {
+    const file = path.join(dir, 'vx.config.mjs')
+    await writeFile(file, `export default { tasks: { dev: { exec: ${exec} } } }`)
+    return loadProjectConfig(file)
+  }
 
-    it('rejects readyTimeoutMs without readyWhen', async () => {
-      await expect(load(`{ readyTimeoutMs: 1000 }`)).rejects.toThrow(/requires.*readyWhen/)
-    })
+  it('rejects non-positive-integer timeout', async () => {
+    await expect(load(`{ command: 'x', timeout: 0 }`)).rejects.toThrow(/positive integer/)
+    await expect(load(`{ command: 'x', timeout: 1.5 }`)).rejects.toThrow(/positive integer/)
+    await expect(load(`{ command: 'x', timeout: '5s' }`)).rejects.toThrow(/positive integer/)
+  })
 
-    it('rejects non-positive-integer readyTimeoutMs', async () => {
-      await expect(load(`{ readyWhen: 'up', readyTimeoutMs: 0 }`)).rejects.toThrow(
-        /positive integer/,
-      )
-      await expect(load(`{ readyWhen: 'up', readyTimeoutMs: 1.5 }`)).rejects.toThrow(
-        /positive integer/,
-      )
-      await expect(load(`{ readyWhen: 'up', readyTimeoutMs: '5s' }`)).rejects.toThrow(
-        /positive integer/,
-      )
-    })
+  it('accepts a positive integer timeout', async () => {
+    const cfg = await load(`{ command: 'x', timeout: 30000 }`)
+    expect(cfg.tasks?.dev?.exec?.timeout).toBe(30000)
+  })
 
-    it('accepts readyWhen + positive integer readyTimeoutMs', async () => {
-      const cfg = await load(`{ readyWhen: 'up', readyTimeoutMs: 30000 }`)
-      expect(cfg.tasks?.dev?.exec?.persistent?.readyTimeoutMs).toBe(30000)
-    })
+  it('accepts timeout on a ready-on-spawn persistent task (no-op, not an error)', async () => {
+    const cfg = await load(`{ command: 'x', timeout: 1000, persistent: {} }`)
+    expect(cfg.tasks?.dev?.exec?.timeout).toBe(1000)
   })
 })

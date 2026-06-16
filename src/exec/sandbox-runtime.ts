@@ -26,6 +26,7 @@ import { realpathSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import type { SandboxConfig, SandboxNetworkConfig } from '../config.js'
 import {
+  armTimeout,
   shellQuote,
   signalExitCode,
   streamToString,
@@ -165,6 +166,8 @@ export interface SandboxedRunArgs {
   onStderr?: (chunk: string) => void
   /** See `RunOptions.liveChildren` — same contract for sandboxed spawns. */
   liveChildren?: Set<ReturnType<typeof Bun.spawn>>
+  /** See `RunOptions.timeoutMs` — SIGTERM the child after this many ms. */
+  timeoutMs?: number
   /**
    * Baseline reads — paths the sandbox unconditionally allows. The
    * caller builds this from resolved `cache.inputs.files`.
@@ -329,11 +332,18 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   }
 
   args.liveChildren?.add(proc)
-  const [stdout, stderr] = await Promise.all([
-    streamToString(proc.stdout, args.onStdout),
-    streamToString(proc.stderr, args.onStderr),
+  const timeout = armTimeout(proc, args.timeoutMs)
+  const ac = new AbortController()
+  const streams = Promise.all([
+    streamToString(proc.stdout, args.onStdout, ac.signal),
+    streamToString(proc.stderr, args.onStderr, ac.signal),
   ])
+  // See runCommand: gate on child exit, abort the readers on timeout so
+  // a lingering grandchild pipe can't hang the run.
   await proc.exited
+  timeout.clear()
+  if (timeout.timedOut()) ac.abort()
+  const [stdout, stderr] = await streams
   args.liveChildren?.delete(proc)
   const exitCode = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)
 
@@ -377,6 +387,8 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
     stdout,
     stderr,
     violations,
+    ...(proc.signalCode ? { signal: proc.signalCode } : {}),
+    ...(timeout.timedOut() ? { timedOut: true } : {}),
     ...resourceUsageToCpuRss(proc.resourceUsage()),
   }
 }

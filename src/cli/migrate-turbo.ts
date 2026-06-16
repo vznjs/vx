@@ -251,7 +251,7 @@ function buildTask(
     exec.persistent = {}
     todos.push(
       'persistent task — set persistent.readyWhen (regex matched against output) so ' +
-        'dependents unblock on readiness, and consider readyTimeoutMs',
+        'dependents unblock on readiness, and consider exec.timeout to bound the wait',
     )
   }
 

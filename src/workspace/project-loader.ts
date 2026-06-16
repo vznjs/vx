@@ -115,6 +115,12 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       if (typeof command !== 'string' || command.length === 0) {
         throw new UserError(`${where}.exec.command must be a non-empty string`)
       }
+      const timeout = (exec as { timeout?: unknown }).timeout
+      if (timeout !== undefined) {
+        if (typeof timeout !== 'number' || !Number.isInteger(timeout) || timeout <= 0) {
+          throw new UserError(`${where}.exec.timeout must be a positive integer (milliseconds)`)
+        }
+      }
       const persistent = (exec as { persistent?: unknown }).persistent
       if (persistent !== undefined) {
         if (typeof persistent !== 'object' || persistent === null) {
@@ -123,24 +129,6 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         const readyWhen = (persistent as { readyWhen?: unknown }).readyWhen
         if (readyWhen !== undefined && typeof readyWhen !== 'string') {
           throw new UserError(`${where}.exec.persistent.readyWhen must be a string regex`)
-        }
-        const readyTimeoutMs = (persistent as { readyTimeoutMs?: unknown }).readyTimeoutMs
-        if (readyTimeoutMs !== undefined) {
-          if (readyWhen === undefined) {
-            throw new UserError(
-              `${where}.exec.persistent.readyTimeoutMs requires \`readyWhen\` — ` +
-                `a task that is ready on spawn has nothing to time out`,
-            )
-          }
-          if (
-            typeof readyTimeoutMs !== 'number' ||
-            !Number.isInteger(readyTimeoutMs) ||
-            readyTimeoutMs <= 0
-          ) {
-            throw new UserError(
-              `${where}.exec.persistent.readyTimeoutMs must be a positive integer (milliseconds)`,
-            )
-          }
         }
         if (cache !== undefined) {
           throw new UserError(

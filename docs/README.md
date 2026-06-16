@@ -46,7 +46,7 @@ delimiters.
   a miss.
 - SIGINT/SIGTERM reap every child — no orphaned dev servers in CI.
 - Persistent tasks gate downstream work on readiness (`readyWhen`)
-  with a bounded wait (`readyTimeoutMs`).
+  with a bounded wait (`exec.timeout`).
 - Sandboxed tasks (opt-in, per task) fail on violation.
 
 **Deliberately simple.** No daemon (and still faster cold than
@@ -85,7 +85,7 @@ export default defineProject({
       cache: { inputs: { files: ['src/**', 'tests/**'] }, outputs: { files: [] } },
     },
     dev: {
-      exec: { command: 'vite', persistent: { readyWhen: 'Local:', readyTimeoutMs: 30_000 } },
+      exec: { command: 'vite', timeout: 30_000, persistent: { readyWhen: 'Local:' } },
     },
   },
 })
@@ -115,7 +115,7 @@ existing cache servers work unchanged; add
 | Task graph: `dependsOn`, `^task` (nearest-holder + sparse bridging), `pkg#task`, group tasks, multi-task runs | [`schema.md`](./schema.md), [`execution.md`](./execution.md)                         |
 | Content-addressed caching: keys, invalidation table, transitive cascade, artifact format                      | [`caching.md`](./caching.md)                                                         |
 | Remote cache layer + HMAC signing                                                                             | [`caching.md`](./caching.md), [`modules/remote-cache.md`](./modules/remote-cache.md) |
-| Persistent tasks (`readyWhen` / `readyTimeoutMs`)                                                             | [`schema.md`](./schema.md)                                                           |
+| Persistent tasks (`readyWhen`) + task `timeout`                                                               | [`schema.md`](./schema.md)                                                           |
 | Watch mode, filters, `--affected`, `--dry` / `--graph`, forwarding `--`                                       | [`cli.md`](./cli.md)                                                                 |
 | Per-task sandboxing (fail-on-violation)                                                                       | [`schema.md`](./schema.md)                                                           |
 | Run analytics (`vx stats`, `--summarize`, `--profile` Chrome traces)                                          | [`cli.md`](./cli.md)                                                                 |

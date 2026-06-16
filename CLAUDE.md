@@ -170,6 +170,48 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-16**: **Unified `exec.timeout` — one knob, two meanings**
+  (owner-driven). One `exec.timeout` (ms) field replaces the old
+  `persistent.readyTimeoutMs`. Single mental model: "how long before vx
+  SIGTERMs the child." For a NORMAL task it bounds total run time — an
+  overrun is SIGTERMed and reported `failed` (timed out), never cached.
+  For a PERSISTENT task it bounds the READINESS wait (exactly what
+  `readyTimeoutMs` did: SIGTERM + reject `ready` when `readyWhen` never
+  matches); a ready-on-spawn persistent task resolves before the timer
+  can fire, so it's a harmless no-op (no loader error — a general field
+  shouldn't carry a context-specific rejection). Key subtlety: a
+  timeout SIGTERMs, but the existing Ctrl-C teardown classifier already
+  reverts ANY SIGTERM/SIGINT to `aborted` — so the runner flags
+  `RunResult.timedOut` when ITS OWN timer fired, and `execute-task`
+  guards the abort check with `!result.timedOut` (timeout → real
+  `failed`, exit 143, not cached; streams a `timed out after Nms` line
+  into the framed block). Second subtlety: SIGTERMing `sh` doesn't close
+  the stdout pipe if an orphaned grandchild (`sleep 30`) still holds the
+  write end, so `streamToString` would never see EOF and the run hung —
+  `runCommand`/`runSandboxed` now gate on `proc.exited` (not stream
+  EOF) and abort the readers via an `AbortSignal` once the child dies on
+  timeout, returning captured-so-far output. New shared
+  `armTimeout(proc, ms)` helper in `runner.ts` (exported; used by both
+  `runCommand` and `runSandboxed`); `streamToString` gained an optional
+  `signal` param. Grandchild orphaning is the documented known-limit
+  (no process groups) — the killed `sh` pid dies, the orphaned `sleep`
+  lingers; matches the existing SIGINT/SIGTERM-reaping caveat. NO
+  CACHE_VERSION bump — `hashTaskConfig` JSON-stringifies the whole
+  config, so a task declaring `timeout` gets a distinct key while tasks
+  without it stay byte-identical (same pattern as `persistent` /
+  `readyTimeoutMs`, neither bumped). Files: `config.ts` (ExecConfig
+  `timeout`; PersistentConfig `readyTimeoutMs` removed), `exec/runner.ts`
+  (`armTimeout`, `RunResult.timedOut`, `RunOptions.timeoutMs`,
+  cancellable `streamToString`, persistent `readyTimeoutMs`→`timeoutMs`),
+  `exec/sandbox-runtime.ts` (`timeoutMs` + abort), `orchestrator/
+execute-task.ts` (thread `step.timeout`; abort-check guard; timeout
+  stderr line), `workspace/project-loader.ts` (validate `exec.timeout`;
+  drop readyTimeoutMs validation), `cli/show.ts`, `cli/migrate-turbo.ts`
+  (comment). Tests: `tests/persistent-ready-timeout.test.ts` rewritten
+  (normal-task overrun-kills-fast-not-cached + within-budget, persistent
+  readiness bound preserved, loader validation). Docs: `schema.md`
+  (`timeout` section), `README.md`, `modules/runner.md`.
+
 - **2026-06-15**: **Output redesign follow-ups + `aborted` status**
   (owner-driven). (1) **Worker rows have no glyph** — the live elapsed
   time leads (`     568ms running  <id>`); the glyph column is blank

@@ -92,6 +92,7 @@ test: {
 interface ExecConfig {
   command: string // shell command, run from the project's dir
   env?: ExecEnv // optional per-task env layering
+  timeout?: number // ms before vx SIGTERMs the child (see below)
   persistent?: PersistentConfig // long-running task (dev server, watcher)
 }
 ```
@@ -122,6 +123,25 @@ vx run test -- --bail --watch
 Forwarded args are folded into the cache key — different args produce
 distinct cache entries.
 
+#### `timeout` (optional)
+
+Maximum time in milliseconds before vx SIGTERMs the child. Omitted →
+no limit.
+
+```ts
+build: { exec: { command: 'tsc -b', timeout: 120_000 } }
+```
+
+- For a **normal task**, `timeout` bounds the total run time. A task
+  that overruns is killed and reported `failed` (timed out) — never
+  cached. (A timeout SIGTERM is a real failure, distinct from a Ctrl-C
+  teardown, which is reported `aborted`.)
+- For a **persistent task**, `timeout` bounds the **readiness wait**
+  instead: if `readyWhen` hasn't matched within the window the child is
+  SIGTERMed and the task fails — see `persistent` below. A persistent
+  task that's ready on spawn (no `readyWhen`) becomes ready before the
+  timer can fire, so the timeout is a no-op for it.
+
 **Why no multi-step `commands: string[]`?** Per-task caching is the
 right granularity for invalidation. If you'd benefit from caching each
 step independently (e.g. `codegen` then `build`), split into two
@@ -133,7 +153,6 @@ the right tool.
 ```ts
 interface PersistentConfig {
   readyWhen?: string // regex (as string); first matching output marks ready
-  readyTimeoutMs?: number // bound the readiness wait; requires readyWhen
 }
 ```
 
@@ -151,7 +170,8 @@ for it to exit. Instead it considers the task "ready":
 dev: {
   exec: {
     command: 'vite',
-    persistent: { readyWhen: 'Local:', readyTimeoutMs: 30_000 },
+    timeout: 30_000, // bound the readiness wait
+    persistent: { readyWhen: 'Local:' },
   },
 }
 
@@ -802,7 +822,8 @@ export default defineProject({
       description: 'vite dev server',
       exec: {
         command: 'vite',
-        persistent: { readyWhen: 'Local:', readyTimeoutMs: 30_000 },
+        timeout: 30_000,
+        persistent: { readyWhen: 'Local:' },
         env: { passThrough: ['VITE_API_URL'] },
       },
     },

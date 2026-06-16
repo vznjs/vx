@@ -28,7 +28,8 @@ const APP_CONFIG = `
       dev: {
         exec: {
           command: 'echo dev',
-          persistent: { readyWhen: 'ready', readyTimeoutMs: 5000 },
+          timeout: 5000,
+          persistent: { readyWhen: 'ready' },
         },
       },
       ci: { dependsOn: ['build'] },

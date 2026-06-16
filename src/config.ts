@@ -174,6 +174,19 @@ export interface ExecConfig {
   /** Environment exposed to the child process. */
   env?: ExecEnv
   /**
+   * Upper bound (ms) before vx SIGTERMs the child. A normal task that
+   * runs longer is killed and reported `failed` (timed out) — never
+   * cached. Omitted → no limit.
+   *
+   * For a `persistent` task this bounds the READINESS wait instead: if
+   * `readyWhen` hasn't matched within the window the child is SIGTERMed
+   * and the task fails — without it a server that prints an unexpected
+   * banner would hang the run forever. A persistent task that's ready
+   * on spawn (no `readyWhen`) becomes ready before the timer can fire,
+   * so the timeout is a no-op for it.
+   */
+  timeout?: number
+  /**
    * Long-running / continuous task (dev server, watcher, daemon).
    * When present, the task is spawned but the runner does NOT wait
    * for it to exit. Instead it considers the task "ready" — either
@@ -200,15 +213,6 @@ export interface PersistentConfig {
    * dev server is up — `readyWhen: 'Local:'` waits for that line.
    */
   readyWhen?: string
-  /**
-   * Upper bound (ms) on the readiness wait. If `readyWhen` hasn't
-   * matched within this window the child is SIGTERMed and the task
-   * fails — without it, a server that prints an unexpected banner
-   * hangs the run forever. Requires `readyWhen` (meaningless for
-   * ready-on-spawn tasks). No default: opting into a readiness
-   * signal is explicit, and so is bounding it.
-   */
-  readyTimeoutMs?: number
 }
 
 export interface ExecEnv {

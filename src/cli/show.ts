@@ -188,13 +188,11 @@ function taskBlock(taskName: string, task: TaskConfig): string {
     }
     rows.push(['outputs.files', task.cache.outputs.files.join(', ')])
   }
+  if (task.exec?.timeout !== undefined) rows.push(['timeout', `${task.exec.timeout}ms`])
   const persistent = task.exec?.persistent
   if (persistent !== undefined) {
     const fields: string[] = []
     if (persistent.readyWhen !== undefined) fields.push(`readyWhen: ${persistent.readyWhen}`)
-    if (persistent.readyTimeoutMs !== undefined) {
-      fields.push(`readyTimeoutMs: ${persistent.readyTimeoutMs}`)
-    }
     rows.push(['persistent', fields.length > 0 ? fields.join(', ') : 'yes'])
   }
   const labelW = Math.max(...rows.map(([label]) => label.length))
