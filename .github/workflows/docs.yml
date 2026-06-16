@@ -35,9 +35,11 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build site
-        run: bun run build
-        working-directory: apps/docs
+      # Dogfood: build the docs site through vx from the repo root, scoped
+      # to the docs project. `import` regenerates the Starlight content from
+      # docs/, then `astro build` writes apps/docs/dist.
+      - name: vx run build
+        run: bun src/bin.ts run build --filter @vzn/vx-docs
 
       - uses: actions/upload-pages-artifact@v3
         with:

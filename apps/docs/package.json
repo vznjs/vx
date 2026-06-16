@@ -3,13 +3,6 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "scripts": {
-    "import": "bun scripts/import-docs.ts",
-    "dev": "bun scripts/import-docs.ts && astro dev",
-    "build": "bun scripts/import-docs.ts && astro build",
-    "preview": "astro preview",
-    "astro": "astro"
-  },
   "dependencies": {
     "@astrojs/starlight": "^0.40.0",
     "astro": "^6.4.6",
