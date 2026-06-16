@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test'
-import { formatTaskBlock } from '../src/orchestrator/framed-output.js'
+import {
+  formatFrameClose,
+  formatFrameOpen,
+  formatPersistentList,
+  formatTaskBlock,
+} from '../src/orchestrator/framed-output.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
@@ -10,6 +15,16 @@ function node(id: string, command?: string): TaskNode {
     projectName: sep >= 0 ? id.slice(0, sep) : id,
     taskName: sep >= 0 ? id.slice(sep + 1) : id,
     config: command ? { exec: { command } } : {},
+  } as unknown as TaskNode
+}
+
+function persistentNode(id: string, command: string): TaskNode {
+  const sep = id.indexOf('#')
+  return {
+    id,
+    projectName: sep >= 0 ? id.slice(0, sep) : id,
+    taskName: sep >= 0 ? id.slice(sep + 1) : id,
+    config: { exec: { command, persistent: { readyWhen: 'Local' } } },
   } as unknown as TaskNode
 }
 
@@ -233,5 +248,31 @@ describe('formatTaskBlock', () => {
     expect(out).toContain('failed (exit 2)')
     expect(out).toContain('\x1b[1m')
     expect(out).toMatch(/\[38;2;\d+;\d+;\d+m/)
+  })
+})
+
+describe('persistent task framing', () => {
+  it('marks both frame ends with ▸ and closes as running, not success', () => {
+    const n = persistentNode('@vzn/vx-docs#dev', 'astro dev')
+    const open = formatFrameOpen(n)
+    const close = formatFrameClose(n, outcome('@vzn/vx-docs#dev', 'success', { durationMs: 1810 }))
+    expect(open).toBe('┌─ ▸ @vzn/vx-docs#dev > $ astro dev')
+    expect(close).toBe('└─ ▸ @vzn/vx-docs#dev ── (1.81s) running')
+  })
+
+  it('a non-persistent task frame is unmarked and closes as success', () => {
+    const n = node('@vzn/vx#lint', 'oxlint .')
+    expect(formatFrameOpen(n)).toBe('┌─ @vzn/vx#lint > $ oxlint .')
+    expect(formatFrameClose(n, outcome('@vzn/vx#lint', 'success'))).toBe(
+      '└─ @vzn/vx#lint ── (0ms) success',
+    )
+  })
+
+  it('formatPersistentList renders one ▸ running row per task', () => {
+    const lines = formatPersistentList([
+      persistentNode('@vzn/vx-docs#dev', 'astro dev'),
+      persistentNode('@app/api#dev', 'tsx watch'),
+    ])
+    expect(lines).toEqual(['  ▸ @vzn/vx-docs#dev running', '  ▸ @app/api#dev running'])
   })
 })

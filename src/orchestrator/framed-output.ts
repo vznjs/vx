@@ -359,7 +359,8 @@ export function formatTaskSkippedLine(node: TaskNode, colors: ColorSupport = NO_
 export function formatFrameOpen(node: TaskNode, colors: ColorSupport = NO_COLOR): string {
   const corner = (t: string) => paint('', t, colors, { dim: true })
   const cmd = node.config.exec?.command ?? ''
-  return `${corner('┌─')} ${paintTaskId(node, colors, { bold: true })} ${corner('>')} $ ${cmd}`
+  const mark = isPersistentNode(node) ? `${paint(ACCENT, '▸', colors)} ` : ''
+  return `${corner('┌─')} ${mark}${paintTaskId(node, colors, { bold: true })} ${corner('>')} $ ${cmd}`
 }
 
 export function formatFrameClose(
@@ -368,7 +369,37 @@ export function formatFrameClose(
   colors: ColorSupport = NO_COLOR,
 ): string {
   const corner = (t: string) => paint('', t, colors, { dim: true })
-  return `${corner('└─')} ${paintTaskId(node, colors, { bold: true })} ${corner('──')}${formatBlockFooter(outcome, colors)}`
+  const persistent = isPersistentNode(node)
+  const mark = persistent ? `${paint(ACCENT, '▸', colors)} ` : ''
+  // A persistent task's child keeps running past this "ready" outcome,
+  // so the close reads `running` (accent), not `success` — the ▸ marks
+  // both ends of the frame as a long-lived task.
+  const tail =
+    persistent && outcome.status === 'success'
+      ? ` ${paint('', `(${formatDuration(outcome.durationMs)})`, colors, { dim: true })} ${paint(ACCENT, 'running', colors)}`
+      : formatBlockFooter(outcome, colors)
+  return `${corner('└─')} ${mark}${paintTaskId(node, colors, { bold: true })} ${corner('──')}${tail}`
+}
+
+function isPersistentNode(node: TaskNode): boolean {
+  return node.config.exec?.persistent !== undefined
+}
+
+/**
+ * Between the requested task's frame and the summary footer, list the
+ * persistent tasks (dev servers / watchers) the run is keeping alive in
+ * the foreground — one `▸ <id> running` row each, so it's clear which
+ * children are still up and how many. Same ▸ vocabulary as the frame
+ * marks and the live region's persistent pins.
+ */
+export function formatPersistentList(
+  nodes: readonly TaskNode[],
+  colors: ColorSupport = NO_COLOR,
+): string[] {
+  return nodes.map(
+    (n) =>
+      `  ${paint(ACCENT, '▸', colors)} ${paintTaskId(n, colors)} ${paint('', 'running', colors, { dim: true })}`,
+  )
 }
 
 function formatBlockHeader(o: TaskOutcome, colors: ColorSupport): string {

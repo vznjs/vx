@@ -5,11 +5,12 @@
 import { LayeredCache, type RunRecord } from '../cache/index.js'
 import { VERSION } from '../version.js'
 import { initSandbox, probeSandbox, resetSandbox, signalExitCode } from '../exec/index.js'
-import { isGroupTask, markSurfacedDeps, runGraph } from '../graph/index.js'
+import { isGroupTask, markSurfacedDeps, runGraph, type TaskNode } from '../graph/index.js'
 import { ulid, UserError } from '../util/index.js'
 import { executeTask } from './execute-task.js'
 import { defaultLogger, resolveOutputView } from './logger.js'
 import { detectColors } from './colors.js'
+import { formatPersistentList } from './framed-output.js'
 import { plan, type RunPlan } from './plan.js'
 import { prepareRun } from './prepare.js'
 import { startRemotePrefetch } from './remote-prefetch.js'
@@ -199,13 +200,41 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         }),
     })
 
-    // Shut down every persistent task before reporting the final
-    // summary. SIGTERM gives well-behaved servers (vite, next, esbuild
-    // --watch) a moment to clean up; we don't escalate to SIGKILL —
-    // process-group propagation on Ctrl-C handles the unhappy case.
+    // A persistent task the user REQUESTED (a dev server / watcher) is
+    // the run's whole purpose — don't tear it down the instant it's
+    // ready. We leave those running and block on them at the very end
+    // (after the normal summary prints); everything else (persistent
+    // tasks pulled in only as dependencies of now-finished work) is
+    // SIGTERMed here as before. Scoped to the real CLI foreground:
+    // `options.log === undefined` means the default logger (a `vx run`
+    // invocation), and `handleSignals` excludes watch mode (own signal
+    // loop) and embedders that manage lifecycle themselves — both expect
+    // run() to return, not block on a server.
+    const foreground = options.log === undefined && (options.handleSignals ?? true)
+    const keepAliveNodes: TaskNode[] = []
+    const keepAlive: ReturnType<typeof Bun.spawn>[] = []
+    if (foreground) {
+      for (const [id, child] of persistentRegistry) {
+        const n = nodes.get(id)
+        if (n !== undefined && (n.requested || n.surfaced === true)) {
+          keepAliveNodes.push(n)
+          keepAlive.push(child)
+        }
+      }
+    }
+    const keepAliveSet = new Set(keepAlive)
+
+    // Shut down the dependency-only persistent tasks before reporting the
+    // final summary. SIGTERM gives well-behaved servers (vite, next,
+    // esbuild --watch) a moment to clean up; we don't escalate to SIGKILL
+    // — process-group propagation on Ctrl-C handles the unhappy case.
     // Bun's Subprocess.kill is idempotent on an already-exited child.
-    for (const child of persistentRegistry.values()) child.kill('SIGTERM')
-    await Promise.allSettled([...persistentRegistry.values()].map((c) => c.exited))
+    for (const child of persistentRegistry.values()) {
+      if (!keepAliveSet.has(child)) child.kill('SIGTERM')
+    }
+    await Promise.allSettled(
+      [...persistentRegistry.values()].filter((c) => !keepAliveSet.has(c)).map((c) => c.exited),
+    )
 
     // Clear the status line for good before the summary prints.
     log.runEnd?.()
@@ -220,6 +249,11 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // outcome list and let each consumer apply the same filter.
     const endedAtMs = Date.now()
     const totalMs = Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000
+    // Foreground dev mode: between the task frame and the footer, list
+    // the persistent tasks still running (see the keep-alive block below).
+    if (keepAliveNodes.length > 0) {
+      for (const line of formatPersistentList(keepAliveNodes, colors)) log.status(line)
+    }
     for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
 
     // Optional artifacts. Errors are surfaced to the user but don't
@@ -302,6 +336,18 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         const msg = err instanceof Error ? err.message : String(err)
         log.status(`vx: sandbox cleanup failed: ${msg}`)
       }
+    }
+
+    // Edge case the summary already reported: the user requested a
+    // persistent task (dev server / watcher). The run is "done" in every
+    // bookkeeping sense — summary printed, history recorded — but the
+    // server is still up and that's the point. Stay in the foreground
+    // until it exits: Ctrl-C hits the whole process group (the server
+    // dies; our SIGINT handler also exits 130), and a crash resolves the
+    // wait so the run returns. Nothing here prints — the UI is unchanged.
+    if (keepAlive.length > 0) {
+      await Promise.allSettled(keepAlive.map((c) => c.exited))
+      for (const child of keepAlive) child.kill('SIGTERM')
     }
 
     return { ok, outcomes: list }

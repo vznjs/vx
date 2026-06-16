@@ -170,6 +170,39 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-16**: **Requested persistent task keeps the run in the
+  foreground** (owner bug: `vx run @vzn/vx-docs#dev` "is not
+  persisting"). A persistent task that is the terminal/edge node (the
+  user requested it, nothing downstream depends on it) was SIGTERMed
+  the instant it became ready — the dev server died in milliseconds.
+  Now `run()` distinguishes persistent tasks that exist only to support
+  now-finished work (SIGTERMed at end-of-graph, as before) from
+  persistent tasks the user REQUESTED (`node.requested || surfaced`):
+  the latter are left running and the run blocks on their `exited` at
+  the very END (after the summary prints + history is recorded), so
+  Ctrl-C (process-group, plus the existing SIGINT handler → exit 130)
+  reaps them and a crash resolves the wait. **Footer/UI unchanged** —
+  the owner's first concern was an earlier attempt that called
+  `runEnd` early + printed a custom hint + skipped `formatRunSummary`;
+  reverted. The summary prints at its normal spot; the block is silent
+  and purely defers process exit. **Display (owner-specified, kept
+  simple, no region overhaul):** (1) the focused live frame for a lone
+  persistent task is MARKED persistent — `formatFrameOpen`/`Close` add a
+  cyan `▸` after `┌─`/`└─` when `exec.persistent` is set, and the close
+  reads `running` (accent), not `success`, since the child is still
+  alive; (2) between the frame and the `─ vx` footer, `run()` emits
+  `formatPersistentList(keepAliveNodes)` — one `▸ <id> running` row per
+  kept-alive task, so it's clear which are persistent and how many. New
+  export `formatPersistentList` in `framed-output.ts`. **Scoped to the real CLI foreground**
+  via `options.log === undefined && (handleSignals ?? true)`: a custom
+  logger (tests/embedders) or `handleSignals: false` (watch) keeps the
+  old return-after-teardown contract, so the persistent-task test
+  suites (which request persistent tasks and assert run() returns) stay
+  green — gating on `handleSignals` alone hung them. Known limit
+  (pre-existing, unchanged): `sh -c '<server>'` grandchildren orphan on
+  a lone `kill <pid>` (no process groups); real-terminal Ctrl-C reaps
+  via the tty foreground group. File: `orchestrator/run.ts`.
+
 - **2026-06-16**: **Unified `exec.timeout` — one knob, two meanings**
   (owner-driven). One `exec.timeout` (ms) field replaces the old
   `persistent.readyTimeoutMs`. Single mental model: "how long before vx
