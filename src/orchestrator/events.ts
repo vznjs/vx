@@ -52,7 +52,21 @@ export function createEventBus(): EventBus {
       // the terminal renderer's contract (a stdout chunk must reach it
       // before the task's completion block; block-separator bookkeeping
       // depends on it), so emit must never reorder or defer.
-      for (const subscriber of subscribers) subscriber(event)
+      //
+      // A throwing subscriber must NEVER break the run — the whole point
+      // of the bus is that a surface (the devframe dev server, a future
+      // TUI) is isolated from execution. We swallow per-subscriber so one
+      // bad surface can't crash the user's build (mirrors the deleted
+      // Observer's makeSafeObserver contract). The terminal renderer is
+      // trusted and output-tested, so a real renderer bug still surfaces
+      // as wrong output, not a silent hang.
+      for (const subscriber of subscribers) {
+        try {
+          subscriber(event)
+        } catch {
+          // isolate: a surface fault can't propagate into the orchestrator
+        }
+      }
     },
     subscribe(subscriber) {
       subscribers.push(subscriber)

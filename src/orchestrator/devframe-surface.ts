@@ -51,15 +51,23 @@ export function createVxSurface(bus: EventBus, options: VxSurfaceOptions = {}): 
       // patch). Kept beside the shared state rather than read back from it
       // so reduction never depends on devframe's immutable accessors.
       let snapshot = initRunState()
+      // `run()` emits `run:end` more than once (the normal end + a `finally`
+      // safety call) plus summary `run:status` lines AFTER the first
+      // `run:end`. Once the stream is closed, ignore everything — writing
+      // to a closed stream throws (StreamClosedError), and the run is over.
+      let closed = false
 
       bus.subscribe((event) => {
+        if (closed) return
         stream.write(toWireEvent(event))
         snapshot = reduce(snapshot, event)
-        const next = snapshot
         state.mutate((draft) => {
-          Object.assign(draft, next)
+          Object.assign(draft, snapshot)
         })
-        if (event.kind === 'run:end') stream.close()
+        if (event.kind === 'run:end') {
+          stream.close()
+          closed = true
+        }
       })
     },
   }

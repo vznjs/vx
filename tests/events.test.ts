@@ -66,6 +66,18 @@ describe('createEventBus', () => {
     expect(order).toEqual(['first', 'second'])
   })
 
+  it('isolates a throwing subscriber — the run is never broken', () => {
+    const bus = createEventBus()
+    const seen: string[] = []
+    bus.subscribe(() => {
+      throw new Error('surface blew up')
+    })
+    bus.subscribe((e) => seen.push(e.kind))
+    // emit must not throw, and the healthy subscriber still receives.
+    expect(() => bus.emit({ kind: 'run:end' })).not.toThrow()
+    expect(seen).toEqual(['run:end'])
+  })
+
   it('the disposer removes a subscriber', () => {
     const bus = createEventBus()
     let count = 0

@@ -25,8 +25,13 @@ function mkNode(id: string): TaskNode {
 function mockCtx() {
   const writes: WireEvent[] = []
   let closed = false
+  // Mirror the real devframe sink: writing after close throws
+  // (StreamClosedError). Lets us pin that the surface stops on run:end.
   const sink = {
-    write: (c: WireEvent) => writes.push(c),
+    write: (c: WireEvent) => {
+      if (closed) throw new Error('Cannot write to a closed stream')
+      writes.push(c)
+    },
     close: () => (closed = true),
     error: () => {},
   }
@@ -87,5 +92,22 @@ describe('createVxSurface', () => {
 
     // run:end closes the stream.
     expect(m.isClosed()).toBe(true)
+  })
+
+  it('ignores events after run:end (duplicate run:end + trailing status)', async () => {
+    const bus = createEventBus()
+    const def = createVxSurface(bus)
+    const m = mockCtx()
+    await def.setup(m.ctx)
+
+    // `run()` emits run:end, then summary status lines, then a second
+    // run:end from its finally — all AFTER the stream is closed.
+    bus.emit({ kind: 'run:end' })
+    expect(() => {
+      bus.emit({ kind: 'run:status', line: 'summary' })
+      bus.emit({ kind: 'run:end' })
+    }).not.toThrow()
+    // Only the first run:end was written; nothing after close.
+    expect(m.writes.map((w) => w.kind)).toEqual(['run:end'])
   })
 })
