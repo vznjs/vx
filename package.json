@@ -30,7 +30,9 @@
     "@anthropic-ai/sandbox-runtime": "^0.0.51"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/bun": "^1.3.0",
+    "devframe": "^0.5.4",
     "oxfmt": "^0.48.0",
     "oxlint": "^1.63.0",
     "oxlint-tsgolint": "^0.22.1"

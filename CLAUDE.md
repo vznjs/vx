@@ -170,6 +170,39 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-17**: **Run event stream + devframe surface (Phase 1, owner
+  ask: "use devframe for internals logging; drive our terminal output
+  through it; build live CLI/web devtools").** Foundational refactor:
+  `run()` no longer calls a `Logger` directly. New
+  `src/orchestrator/events.ts` — an in-process `RunEvent` bus
+  (`createEventBus`, synchronous order-preserving fan-out), a
+  `Logger`-shaped `busLogger` facade, and `terminalSubscriber(sink)` that
+  drives the concrete renderer. `run.ts` threads `busLogger` as `log`, so
+  every existing `log.X(...)` call emits a `RunEvent` → bus →
+  terminalSubscriber → the **untouched** `defaultLogger`. **Output
+  byte-identical** (all output suites green, nothing repinned). The same
+  file ships the serializable wire contract (`TaskView` / `OutcomeView` /
+  `projectNode` / `projectOutcome` / `WireEvent` / `toWireEvent`) the
+  off-thread boundary needs — raw `TaskOutcome`s carry bigint wallclock ns
+  (`JSON.stringify` throws) + a back-ref to the whole `TaskNode` graph, so
+  crossing a worker/RPC requires ids + decimal-string ns. Phase 1b:
+  `src/orchestrator/run-state.ts` (`RunState` + pure `reduce` mirroring the
+  logger's inline counters) and `src/orchestrator/devframe-surface.ts`
+  (`createVxSurface(bus)` → a `DevframeDefinition` forwarding bus events
+  onto a `vx:events` streaming channel + a `vx:run` reduced shared state).
+  **devframe is a `devDependency`, touched only via type-only imports** in
+  devframe-surface.ts + dynamic import at the host — core `vx run` stays at
+  19 deps; surface tests use a mock ctx so they never ride devframe's
+  runtime. **devframe@0.5.4 due-diligence:** ~33-package closure (native
+  oxc-parser + h3-rc HTTP stack); three rough edges worked around
+  (`defineDevframe` mis-exported → author the object directly;
+  `createSharedState({enablePatches})` throws on uninitialized Immer;
+  MCP adapter needs `@modelcontextprotocol/sdk` peer). No CACHE_VERSION
+  impact (pure orchestration/output plumbing). NEXT: host wiring — `vx run
+--ui` (createDevServer, bridge mode) + `vx mcp` (createMcpServer, stdio)
+  over the same definition. Design + phasing:
+  `docs/design/event-stream-2026-06.md`.
+
 - **2026-06-16**: **`vx-lock.json` globally excluded from cache inputs
   and `--affected`** (owner: "vx lock should be globally excluded from
   affected and cache, like gitignored"). The lockfile is committed, so

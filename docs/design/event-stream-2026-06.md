@@ -263,24 +263,35 @@ deps.** The renderer is untouched (still reads `TaskNode`); the wire
 projections are the forward-looking contract for off-thread consumers,
 landed with unit tests (`tests/events.test.ts`).
 
-1b. **Reducer + formatter narrowing (DEFERRED).** The `reduce` /
-`RunState` extraction and narrowing the formatters from `TaskNode` to
-`TaskView` were intentionally NOT done yet: in Phase 1a the terminal
-renderer is in-process and reads the live node directly, so neither
-has a consumer. Building them now would be exactly the speculative
-no-consumer surface this repo deletes. They land with the first
-off-thread surface (Phase 3), which is what forces a serializable
-view-model and `TaskView`-only rendering.
+1b. **Reducer + devframe definition (SHIPPED 2026-06-17).**
+`src/orchestrator/run-state.ts`: `RunState` + `initRunState` + a pure
+`reduce(state, event)` mirroring `defaultLogger`'s inline counters
+(group-task exclusion, aborted-reverts-to-pending, success+failed
+spread). `src/orchestrator/devframe-surface.ts`: `createVxSurface(bus)`
+returns a `DevframeDefinition` whose `setup` forwards every bus event
+onto a `vx:events` streaming channel and folds it into a `vx:run` shared
+state via `reduce`. devframe is touched **only through type-only
+imports**, so core never gains a runtime dep; the host that boots a real
+server imports the runtime adapter dynamically (Phase 2). Tested via a
+mock ctx (`tests/devframe-surface.test.ts`) so the suite never rides
+devframe's buggy 0.5.x runtime. **Formatter narrowing to `TaskView`
+stays deferred** — the in-process terminal still reads the live node;
+narrowing only pays off when an off-thread renderer needs the
+serializable form.
 
-2. **devframe transport, in-process.** Wrap the stream/state in
-   `defineDevframe`; terminal adapter subscribes through it. Still one
-   thread. Proves the wire contract serializes (the cycle/bigint fixes
-   from §4.2 are real here).
-3. **Off-thread web devtool.** First _new_ surface: the SPA adapter on a
-   worker/server, rendering `RunState` reactively. Behind `vx run --ui`.
-   This is devframe's sweet spot (browser renders; transport done for us).
-4. **MCP surface.** Agent-facing functions over the same definition — the
-   most on-thesis surface for an agent-owned project.
+2. **Host wiring (NEXT).** `vx run --ui` dynamically imports
+   `devframe/adapters/dev` and boots `createDevServer(createVxSurface(bus))`
+   in bridge mode (h3 + WS serving `vx:events` / `vx:run`), keeping the run
+   in the foreground like a requested persistent task. A `vx mcp` command
+   boots `createMcpServer` (stdio) over the same definition, exposing
+   `vx:run` as an MCP resource. Both host the already-tested definition;
+   the rough edges in §10 are handled at this boundary.
+3. **Off-thread web devtool.** A real SPA (instead of bridge mode),
+   rendering `RunState` reactively. devframe's sweet spot (browser
+   renders; transport done for us). This is the front-end build.
+4. **MCP surface polish.** Agent-flagged RPC actions (e.g. `run`,
+   `tailTask`) over the same definition — the most on-thesis surface for
+   an agent-owned project.
 5. **TUI (optional, later).** Only once 1–4 are stable. The substrate now
    structurally cannot freeze the run; the remaining risk is purely the
    ANSI _painter quality_ (the OpenTUI leakiness, "no screens for tasks
@@ -288,16 +299,28 @@ view-model and `TaskView`-only rendering.
 
 ## 10. Risks, non-goals, open questions
 
-- **Dep weight.** birpc + valibot land in the tree. We went 304 → 19
-  packages on purpose. Mitigation: Phase 1 adds _zero_ deps; devframe deps
-  only enter at Phase 2, and only on the `--ui`/MCP paths, never the
-  default `vx run`. **Open: is devframe's dep closure acceptable for a
-  pre-alpha that prizes minimalism?** Measure it before Phase 2.
-- **devframe maturity.** It is itself early. We are coupling new surfaces
-  (not the default path) to a young framework — the inverse of the OpenTUI
-  mistake only if the terminal never depends on it. The Phase-1 substrate
-  is devframe-agnostic precisely so a devframe pivot costs us one adapter,
-  not the logger.
+- **Dep weight (MEASURED 2026-06-17).** devframe@0.5.4 resolves to **~33
+  packages** on a given machine (54 total, 22 platform-optional native
+  bindings) — a +170% jump on core's 19. It pulls a **native TS parser**
+  (`oxc-parser` + binaries, via `unplugin`), a **full HTTP/ws stack**
+  (`h3@2.0.1-rc`, `srvx`, `ws`, `rou3`), and `valibot` + `birpc`. Owner
+  call (2026-06-17): deps are acceptable, but **never in core's hard
+  closure** — devframe is a `devDependency`, type-only-imported in
+  `devframe-surface.ts` and dynamically imported by the host, so a default
+  `vx run` install stays at 19. `@modelcontextprotocol/sdk` is a devDep
+  too (the MCP adapter's uninstalled peer).
+- **devframe maturity (DUE-DILIGENCE 2026-06-17).** It is genuinely early
+  — three rough edges surfaced in the first few API calls: (1)
+  `defineDevframe` is typed as exported from `.` but the runtime
+  `index.mjs` only ships `defineRpcFunction` (it's an identity fn at
+  `devframe/types`; we author the definition object directly and skip the
+  mis-export); (2) `createSharedState({ enablePatches: true })` throws —
+  Immer's patches plugin isn't initialized (the host enables it; standalone
+  use must not); (3) the MCP adapter needs `@modelcontextprotocol/sdk` as
+  an uninstalled peer. All worked around. Because the Phase-1a/1b substrate
+  is devframe-agnostic (the bus, reducer, and projections have zero
+  devframe imports), a pivot to birpc+valibot-direct would cost us one
+  adapter file (`devframe-surface.ts`), not the logger or the stream.
 - **Validation philosophy.** §8 — validate once at the deserialization
   edge, not on in-process emits. Needs a written rule so we don't sprinkle
   valibot through the hot path.
