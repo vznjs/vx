@@ -247,11 +247,13 @@ describe('toWireEvent', () => {
     }
   })
 
-  it('carries the task table on run:start and ids elsewhere', () => {
+  it('carries the TaskView on task:start and ids/views elsewhere', () => {
     const node = mkNode({ id: 'a#build', command: 'x' })
-    const tasks = [projectNode(node)]
-    const start = toWireEvent({ kind: 'run:start', info: { total: 1 } }, tasks)
-    expect(start).toEqual({ kind: 'run:start', info: { total: 1 }, tasks })
+    const start = toWireEvent({ kind: 'run:start', info: { total: 1 } })
+    expect(start).toEqual({ kind: 'run:start', info: { total: 1 } })
+
+    const taskStart = toWireEvent({ kind: 'task:start', node })
+    expect(taskStart).toEqual({ kind: 'task:start', task: projectNode(node) })
 
     const stdout = toWireEvent({ kind: 'task:stdout', node, chunk: 'c' })
     expect(stdout).toEqual({ kind: 'task:stdout', taskId: 'a#build', chunk: 'c' })

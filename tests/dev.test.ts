@@ -33,7 +33,7 @@ describe('startDevHub', () => {
         socket: { data() {}, open() {}, close() {}, error() {} },
       })
       const node = mkNode('a#build')
-      const fwd = wireForwarder((line) => sock.write(line))
+      const fwd = wireForwarder((event) => sock.write(`${JSON.stringify(event)}\n`))
       fwd({ kind: 'run:start', info: { total: 1 } })
       fwd({ kind: 'task:start', node })
       fwd({
@@ -85,9 +85,9 @@ describe('startDevHub', () => {
 })
 
 describe('wireForwarder', () => {
-  it('drops group-task start/complete and serializes the rest', () => {
-    const lines: string[] = []
-    const fwd = wireForwarder((l) => lines.push(l))
+  it('drops group-task start/complete and projects the rest', () => {
+    const events: WireEvent[] = []
+    const fwd = wireForwarder((e) => events.push(e))
     const group = mkNode('a#ci', true)
     const real = mkNode('a#build')
     fwd({ kind: 'task:start', node: group })
@@ -98,17 +98,16 @@ describe('wireForwarder', () => {
     })
     fwd({ kind: 'task:start', node: real })
     fwd({ kind: 'run:end' })
-    const kinds = lines.map((l) => (JSON.parse(l) as WireEvent).kind)
-    expect(kinds).toEqual(['task:start', 'run:end'])
+    expect(events.map((e) => e.kind)).toEqual(['task:start', 'run:end'])
   })
 
   it('forwards a single run:end despite the double emit + trailing status', () => {
-    const lines: string[] = []
-    const fwd = wireForwarder((l) => lines.push(l))
+    const events: WireEvent[] = []
+    const fwd = wireForwarder((e) => events.push(e))
     fwd({ kind: 'run:end' })
     fwd({ kind: 'run:status', line: 'summary' })
     fwd({ kind: 'run:end' })
-    expect(lines.map((l) => (JSON.parse(l) as WireEvent).kind)).toEqual(['run:end'])
+    expect(events.map((e) => e.kind)).toEqual(['run:end'])
   })
 })
 

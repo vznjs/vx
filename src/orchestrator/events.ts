@@ -132,17 +132,17 @@ export function terminalSubscriber(sink: Logger): RunEventSubscriber {
 }
 
 /**
- * A bus subscriber that serializes each event to one NDJSON line and
- * hands it to `write` — the run→`vx dev` forwarding path. Group-task
- * start/complete events are dropped (no command, pure scheduling noise);
- * everything else is projected to its wire form. `write` must be
- * fire-and-forget and tolerant of its own failures (a dead socket can
- * never break the run); the bus already isolates subscriber throws.
+ * A bus subscriber that projects each event to its `WireEvent` and hands
+ * it to `send` — the shared run→consumer forwarding path (the `vx dev`
+ * hub frames each as NDJSON; the `vx serve` protocol wraps each in an
+ * envelope). Group-task start/complete events are dropped (no command,
+ * pure scheduling noise). `run()` emits run:end twice (normal + finally)
+ * plus trailing summary status lines; we forward the run once and then go
+ * quiet, so a consumer sees exactly one terminal frame per run. `send`
+ * must be fire-and-forget and tolerant of its own failures (a dead
+ * consumer can never break the run); the bus already isolates throws.
  */
-export function wireForwarder(write: (line: string) => void): RunEventSubscriber {
-  // `run()` emits run:end twice (normal + finally) plus trailing summary
-  // status lines; forward the run once and then go quiet, so the hub sees
-  // exactly one terminal frame per run.
+export function wireForwarder(send: (event: WireEvent) => void): RunEventSubscriber {
   let ended = false
   return (event) => {
     if (ended) return
@@ -152,7 +152,7 @@ export function wireForwarder(write: (line: string) => void): RunEventSubscriber
     ) {
       return
     }
-    write(`${JSON.stringify(toWireEvent(event))}\n`)
+    send(toWireEvent(event))
     if (event.kind === 'run:end') ended = true
   }
 }
@@ -235,33 +235,28 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
 }
 
 /**
- * The serializable form of a RunEvent — ids + views, JSON / structured-
- * clone safe. The off-thread boundary maps each in-process event through
- * `toWireEvent` before it crosses; `run:start` additionally carries the
- * one-time task table so consumers can key everything by id.
+ * The serializable form of a RunEvent — JSON / structured-clone safe, the
+ * wire contract a non-local consumer (devframe, `vx serve` client) reads.
+ * `task:start` carries the full `TaskView` so a consumer can rebuild a
+ * node-shaped object incrementally (no upfront table needed); later
+ * task events reference the id, which the consumer already holds.
  */
 export type WireEvent =
-  | { kind: 'run:start'; info: RunStartInfo; tasks: TaskView[] }
-  | { kind: 'task:start'; taskId: string }
+  | { kind: 'run:start'; info: RunStartInfo }
+  | { kind: 'task:start'; task: TaskView }
   | { kind: 'task:stdout'; taskId: string; chunk: string }
   | { kind: 'task:stderr'; taskId: string; chunk: string }
   | { kind: 'task:complete'; outcome: OutcomeView }
   | { kind: 'run:status'; line: string }
   | { kind: 'run:end' }
 
-/**
- * Map an in-process event to its serializable wire form. `run:start`
- * needs the graph's nodes to build the task table (the event alone
- * doesn't carry them), so it's assembled by the boundary that has the
- * nodes map and passes them in; every other event projects from its own
- * payload.
- */
-export function toWireEvent(event: RunEvent, tasks: TaskView[] = []): WireEvent {
+/** Map an in-process event to its serializable wire form. */
+export function toWireEvent(event: RunEvent): WireEvent {
   switch (event.kind) {
     case 'run:start':
-      return { kind: 'run:start', info: event.info, tasks }
+      return { kind: 'run:start', info: event.info }
     case 'task:start':
-      return { kind: 'task:start', taskId: event.node.id }
+      return { kind: 'task:start', task: projectNode(event.node) }
     case 'task:stdout':
       return { kind: 'task:stdout', taskId: event.node.id, chunk: event.chunk }
     case 'task:stderr':

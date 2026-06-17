@@ -15,16 +15,16 @@ import {
 import {
   run as runOrchestrator,
   planRun,
-  createEventBus,
-  wireForwarder,
+  optionsToRequest,
+  projectOutcome,
+  type OutcomeView,
   type RunOptions,
-  type RunSummary,
+  type RunResult,
 } from '../orchestrator/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 import { startUiServer } from './ui-server.js'
-import { connectDevForwarder } from './dev-client.js'
+import { resolveBackend } from './backend.js'
 import { UserError } from '../util/index.js'
-import type { TaskOutcome } from '../graph/index.js'
 
 export interface RunArgs {
   /**
@@ -358,7 +358,9 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     opts.bus = ui.bus
     process.stdout.write(`vx: devtools live at ${ui.origin}\n\n`)
     const summary = await runOrchestrator(opts)
-    if (parsed.verbosity > 0) printSummary(summary)
+    if (parsed.verbosity > 0) {
+      printSummary({ ok: summary.ok, outcomes: summary.outcomes.map(projectOutcome) })
+    }
     process.stdout.write(`\nvx: serving devtools at ${ui.origin} — press Ctrl-C to stop\n`)
     await new Promise<void>((resolve) => {
       const stop = (): void => resolve()
@@ -369,19 +371,14 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     return summary.ok ? 0 : 1
   }
 
-  // If a `vx dev` hub is running for this workspace, forward the run's
-  // events to it (additive — terminal output is unchanged). Never blocks
-  // or fails the run: a missing/stale hub just yields no forwarder.
-  const forwarder = await connectDevForwarder(cwd)
-  if (forwarder) {
-    const bus = createEventBus()
-    bus.subscribe(wireForwarder(forwarder.write))
-    opts.bus = bus
-  }
-  const summary = await runOrchestrator(opts)
-  if (forwarder) await forwarder.close()
-  if (parsed.verbosity > 0) printSummary(summary)
-  return summary.ok ? 0 : 1
+  // Resolve where this run executes: a running `vx serve` (local or
+  // hosted) if one is reachable, else in-process. The client renders the
+  // same either way; a missing/unreachable service falls back to local.
+  const request = optionsToRequest(opts)
+  const backend = await resolveBackend(cwd)
+  const result = await backend.run(request)
+  if (parsed.verbosity > 0) printSummary(result)
+  return result.ok ? 0 : 1
 }
 
 async function loadWorkspaceProjects(cwd: string): Promise<ProjectMeta[]> {
@@ -485,7 +482,7 @@ export async function pickTask(
   }
 }
 
-function printSummary(summary: RunSummary): void {
+function printSummary(summary: RunResult): void {
   const rows = summary.outcomes.map((o) => formatRow(o))
   if (rows.length === 0) return
   const widths = {
@@ -513,7 +510,7 @@ function printSummary(summary: RunSummary): void {
   }
 }
 
-function formatRow(o: TaskOutcome): { task: string; status: string; duration: string } {
+function formatRow(o: OutcomeView): { task: string; status: string; duration: string } {
   // Same outcome vocabulary as the framed blocks + summary:
   // executed / restored-local / restored-remote / up-to-date /
   // failed / skipped.
@@ -532,7 +529,7 @@ function formatRow(o: TaskOutcome): { task: string; status: string; duration: st
             ? `failed (exit ${o.exitCode})`
             : o.status
   return {
-    task: o.node.id,
+    task: o.taskId,
     status,
     duration: `${o.durationMs}ms`,
   }

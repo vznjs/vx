@@ -81,7 +81,7 @@ describe('createVxSurface', () => {
       'run:end',
     ])
     const start = m.writes[1] as Extract<WireEvent, { kind: 'task:start' }>
-    expect(start.taskId).toBe('a#build')
+    expect(start.task.id).toBe('a#build')
 
     // Reduced aggregate in shared state.
     expect(m.state.total).toBe(1)
