@@ -81,6 +81,14 @@ export interface RunOptions {
    * default output is unchanged. Default: a fresh internal bus.
    */
   bus?: EventBus
+  /**
+   * Shared in-flight execution registry, keyed by task hash. Supplied by a
+   * long-lived service (`vx serve`) so concurrent runs DEDUP work: a task
+   * already executing for one run is awaited by another (which then
+   * restores the just-saved artifact from cache) instead of re-running.
+   * A stateless `vx run` passes none and is byte-identical to before.
+   */
+  inflight?: Map<string, Promise<void>>
 }
 
 export interface RunSummary {

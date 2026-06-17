@@ -38,6 +38,7 @@ const silentLogger: Logger = {
 async function executeRequest(
   send: (message: ServerMessage) => void,
   request: RunRequest,
+  inflight: Map<string, Promise<void>>,
 ): Promise<boolean> {
   const bus = createEventBus()
   bus.subscribe(wireForwarder((event) => send({ t: 'event', event })))
@@ -46,6 +47,9 @@ async function executeRequest(
       ...requestToOptions(request),
       bus,
       log: silentLogger,
+      // The shared registry that lets concurrent delegated runs dedup
+      // in-flight work — the service's reason to exist.
+      inflight,
       // The service owns signal disposition for its whole lifetime; a
       // delegated run must never exit the process out from under it.
       handleSignals: false,
@@ -71,6 +75,9 @@ export async function startServe(opts: {
   port?: number
   onRun?: (request: RunRequest, ok: boolean) => void
 }): Promise<ServeServer> {
+  // One registry for the service's whole lifetime — concurrent runs share
+  // it to dedup in-flight task execution.
+  const inflight = new Map<string, Promise<void>>()
   const server = Bun.serve({
     port: opts.port ?? 0,
     fetch(req, srv) {
@@ -96,7 +103,7 @@ export async function startServe(opts: {
             // client vanished mid-run; the run still completes server-side
           }
         }
-        const ok = await executeRequest(send, message.request)
+        const ok = await executeRequest(send, message.request, inflight)
         opts.onRun?.(message.request, ok)
       },
     },

@@ -5,9 +5,16 @@
 import { LayeredCache, type RunRecord } from '../cache/index.js'
 import { VERSION } from '../version.js'
 import { initSandbox, probeSandbox, resetSandbox, signalExitCode } from '../exec/index.js'
-import { isGroupTask, markSurfacedDeps, runGraph, type TaskNode } from '../graph/index.js'
+import {
+  isGroupTask,
+  markSurfacedDeps,
+  runGraph,
+  type TaskNode,
+  type TaskOutcome,
+} from '../graph/index.js'
 import { ulid, UserError } from '../util/index.js'
 import { executeTask } from './execute-task.js'
+import { computeTaskHash } from './task-hash.js'
 import { busLogger, createEventBus, terminalSubscriber } from './events.js'
 import { defaultLogger, resolveOutputView } from './logger.js'
 import { detectColors } from './colors.js'
@@ -187,6 +194,77 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       })
     }
 
+    const buildExecuteArgs = (node: TaskNode, upstream: TaskOutcome[]) => ({
+      node,
+      upstream,
+      workspaceRoot,
+      workspaceFingerprint,
+      cache,
+      noCache: options.noCache ?? false,
+      forwardArgs: options.forwardArgs,
+      log,
+      nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
+      runStartHrTimeNs,
+      persistentRegistry,
+      liveChildren,
+      gitFilesCache,
+      hashCache,
+    })
+
+    // In-flight dedup. Only when a service supplies a shared `inflight`
+    // registry (concurrent runs in one `vx serve`); a stateless `vx run`
+    // passes none and takes the untouched path. Gated to cacheable tasks —
+    // the join works by waiting for the sibling to populate the cache, then
+    // letting executeTask cache-hit on it. executeTask stays unchanged.
+    const inflight = options.inflight
+    const executeWithDedup = async (
+      node: TaskNode,
+      upstream: TaskOutcome[],
+    ): Promise<TaskOutcome> => {
+      const cacheable =
+        !isGroupTask(node) &&
+        node.config.exec?.persistent === undefined &&
+        node.config.cache !== undefined &&
+        !(options.noCache ?? false)
+      if (inflight === undefined || !cacheable) {
+        return executeTask(buildExecuteArgs(node, upstream))
+      }
+      const hash = await computeTaskHash({
+        node,
+        upstream,
+        workspaceRoot,
+        workspaceFingerprint,
+        cache,
+        forwardArgs: options.forwardArgs,
+        nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
+        gitFilesCache,
+        hashCache,
+      })
+      const existing = inflight.get(hash)
+      if (existing !== undefined) {
+        // Join a sibling already computing this exact task: wait, then
+        // executeTask cache-hits on the artifact it just saved.
+        await existing.catch(() => {})
+        return executeTask(buildExecuteArgs(node, upstream))
+      }
+      // Become the executor: register a barrier siblings await. get→set has
+      // no await between, so registration is atomic — at most one executor
+      // per hash. Released on every exit (success / failure / throw).
+      let release!: () => void
+      inflight.set(
+        hash,
+        new Promise<void>((resolve) => {
+          release = resolve
+        }),
+      )
+      try {
+        return await executeTask(buildExecuteArgs(node, upstream))
+      } finally {
+        inflight.delete(hash)
+        release()
+      }
+    }
+
     const outcomes = await runGraph({
       nodes,
       concurrency,
@@ -196,23 +274,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       onFinish: (o) => {
         log.taskComplete(o.node, o)
       },
-      execute: (node, upstream) =>
-        executeTask({
-          node,
-          upstream,
-          workspaceRoot,
-          workspaceFingerprint,
-          cache,
-          noCache: options.noCache ?? false,
-          forwardArgs: options.forwardArgs,
-          log,
-          nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
-          runStartHrTimeNs,
-          persistentRegistry,
-          liveChildren,
-          gitFilesCache,
-          hashCache,
-        }),
+      execute: executeWithDedup,
     })
 
     // A persistent task the user REQUESTED (a dev server / watcher) is
