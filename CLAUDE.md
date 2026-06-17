@@ -170,6 +170,41 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-17**: **Execution as a pluggable backend + `vx serve` (owner
+  ask: "one process doing all the work; runs inform it what to run and
+  subscribe; treat vx as a service with clients; later a hosted service").**
+  `vx run` no longer always executes in-process: it resolves a
+  `RunBackend` and submits a `RunRequest`, agnostic to where work happens —
+  the cache's local/remote split applied to EXECUTION. Files (each
+  isolated/swappable): `orchestrator/protocol.ts` (wire contract:
+  `RunRequest`/`RunResult`/`Server|ClientMessage` + `RunOptions⇄RunRequest`
+  mappers, transport-agnostic), `orchestrator/wire-render.ts` (inverse of
+  `wireForwarder` — rebuild node-shaped objects from `WireEvent`s and drive
+  a normal `Logger`, so a DELEGATED run renders identically with the
+  terminal renderer UNTOUCHED), `cli/serve.ts` (`vx serve`: Bun.serve + ws,
+  dep-free, hosted-ready; runs the same `run()` with a silent logger +
+  `handleSignals:false`, streams events, returns a result; advertises
+  `.vx/serve.json` + `/health`), `cli/backend.ts` (`RunBackend` +
+  `localBackend` (byte-identical in-process, mirrors to a `vx dev` hub) +
+  `serviceBackend(origin, sink?)` (ws client; render sink INJECTABLE —
+  hardcoding `defaultLogger` caused a cross-test hang via its status-region
+  ticker) + `resolveBackend` (`VX_SERVICE_URL` → local service → in-process;
+  FAIL-SAFE: any doubt → local, a service never blocks/breaks a run, 300ms
+  health timeout)). **WireEvent reshaped**: `task:start` carries the full
+  `TaskView` (consumer rebuilds incrementally, no upfront table);
+  `wireForwarder` now EMITS `WireEvent`s (callers frame them: NDJSON for the
+  dev socket, enveloped JSON for serve) and dedupes the double `run:end`
+  while STILL forwarding the post-run:end summary footer (`run:status`
+  lines) — else delegated runs lost their footer. Verified e2e: `vx serve`
+  up, a separate `vx run` delegates, task runs server-side, full framed
+  output + footer stream back and render identically, service logs
+  activity, info file cleaned up on exit. 834 tests pass (all via local
+  fallback) + new `wire-render`/`serve` suites. No CACHE_VERSION impact.
+  Design + the deferred roadmap (in-flight dedup via
+  `Map<taskHash,Promise>`, one global scheduler, watch+supersede staleness,
+  serve/dev convergence, hosted execution):
+  `docs/design/execution-service-2026-06.md`.
+
 - **2026-06-17**: **Run event stream + devframe surface (Phase 1, owner
   ask: "use devframe for internals logging; drive our terminal output
   through it; build live CLI/web devtools").** Foundational refactor:

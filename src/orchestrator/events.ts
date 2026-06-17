@@ -143,17 +143,23 @@ export function terminalSubscriber(sink: Logger): RunEventSubscriber {
  * consumer can never break the run); the bus already isolates throws.
  */
 export function wireForwarder(send: (event: WireEvent) => void): RunEventSubscriber {
-  let ended = false
+  // run() emits run:end TWICE (normal + finally), with the summary footer
+  // (run:status lines) emitted in BETWEEN. Drop the duplicate run:end, but
+  // keep forwarding everything else — including those post-run:end status
+  // lines, so a consumer that renders them (the serve client) gets the
+  // footer. A consumer that ignores run:status (the dev hub) is unaffected.
+  let endForwarded = false
   return (event) => {
-    if (ended) return
-    if (
+    if (event.kind === 'run:end') {
+      if (endForwarded) return
+      endForwarded = true
+    } else if (
       (event.kind === 'task:start' || event.kind === 'task:complete') &&
       isGroupTask(event.node)
     ) {
       return
     }
     send(toWireEvent(event))
-    if (event.kind === 'run:end') ended = true
   }
 }
 
