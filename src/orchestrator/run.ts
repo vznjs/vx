@@ -8,6 +8,7 @@ import { initSandbox, probeSandbox, resetSandbox, signalExitCode } from '../exec
 import { isGroupTask, markSurfacedDeps, runGraph, type TaskNode } from '../graph/index.js'
 import { ulid, UserError } from '../util/index.js'
 import { executeTask } from './execute-task.js'
+import { busLogger, createEventBus, terminalSubscriber } from './events.js'
 import { defaultLogger, resolveOutputView } from './logger.js'
 import { detectColors } from './colors.js'
 import { formatPersistentList } from './framed-output.js'
@@ -24,7 +25,19 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // ANSI escapes for them. Only the defaultLogger (real terminal
   // output) gets colors, gated by NO_COLOR / FORCE_COLOR / isTTY.
   const colors = options.log ? { enabled: false } : detectColors()
-  const log = options.log ?? defaultLogger(colors, resolveOutputView(options))
+  // The concrete renderer (default terminal logger, or a custom embedder
+  // logger) no longer receives orchestrator calls directly — it SUBSCRIBES
+  // to the run event bus as the always-on, in-process terminal surface.
+  // Every existing `log.X(...)` call site emits a RunEvent through
+  // `busLogger`, so the same output flows through the event stream and
+  // future off-thread surfaces (web devtool, TUI, MCP) attach as
+  // additional subscribers. The fan-out is synchronous and order-
+  // preserving, so terminal output is byte-identical to a direct call.
+  // See docs/design/event-stream-2026-06.md.
+  const sink = options.log ?? defaultLogger(colors, resolveOutputView(options))
+  const bus = createEventBus()
+  bus.subscribe(terminalSubscriber(sink))
+  const log = busLogger(bus)
 
   const prepared = await prepareRun(options, log)
   if (prepared.empty !== null) {
