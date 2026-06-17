@@ -15,11 +15,14 @@ import {
 import {
   run as runOrchestrator,
   planRun,
+  createEventBus,
+  wireForwarder,
   type RunOptions,
   type RunSummary,
 } from '../orchestrator/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 import { startUiServer } from './ui-server.js'
+import { connectDevForwarder } from './dev-client.js'
 import { UserError } from '../util/index.js'
 import type { TaskOutcome } from '../graph/index.js'
 
@@ -366,7 +369,17 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     return summary.ok ? 0 : 1
   }
 
+  // If a `vx dev` hub is running for this workspace, forward the run's
+  // events to it (additive — terminal output is unchanged). Never blocks
+  // or fails the run: a missing/stale hub just yields no forwarder.
+  const forwarder = await connectDevForwarder(cwd)
+  if (forwarder) {
+    const bus = createEventBus()
+    bus.subscribe(wireForwarder(forwarder.write))
+    opts.bus = bus
+  }
   const summary = await runOrchestrator(opts)
+  if (forwarder) await forwarder.close()
   if (parsed.verbosity > 0) printSummary(summary)
   return summary.ok ? 0 : 1
 }

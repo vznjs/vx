@@ -4,6 +4,7 @@
 
 import { VERSION } from '../version.js'
 import { runCmd } from './run.js'
+import { devCmd } from './dev.js'
 import { watchCmd } from './watch.js'
 import { cacheCmd } from './cache.js'
 import { lockCmd } from './lock.js'
@@ -29,6 +30,8 @@ export async function run(argv: readonly string[]): Promise<number> {
       return 0
     case 'run':
       return await runCmd(rest)
+    case 'dev':
+      return await devCmd(rest)
     case 'watch':
       return await watchCmd(rest)
     case 'cache':

@@ -131,6 +131,32 @@ export function terminalSubscriber(sink: Logger): RunEventSubscriber {
   }
 }
 
+/**
+ * A bus subscriber that serializes each event to one NDJSON line and
+ * hands it to `write` — the run→`vx dev` forwarding path. Group-task
+ * start/complete events are dropped (no command, pure scheduling noise);
+ * everything else is projected to its wire form. `write` must be
+ * fire-and-forget and tolerant of its own failures (a dead socket can
+ * never break the run); the bus already isolates subscriber throws.
+ */
+export function wireForwarder(write: (line: string) => void): RunEventSubscriber {
+  // `run()` emits run:end twice (normal + finally) plus trailing summary
+  // status lines; forward the run once and then go quiet, so the hub sees
+  // exactly one terminal frame per run.
+  let ended = false
+  return (event) => {
+    if (ended) return
+    if (
+      (event.kind === 'task:start' || event.kind === 'task:complete') &&
+      isGroupTask(event.node)
+    ) {
+      return
+    }
+    write(`${JSON.stringify(toWireEvent(event))}\n`)
+    if (event.kind === 'run:end') ended = true
+  }
+}
+
 // --- Serializable projections (the off-thread / devframe wire form) ----
 //
 // The in-process bus carries live refs; crossing a worker postMessage or
