@@ -35,7 +35,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // preserving, so terminal output is byte-identical to a direct call.
   // See docs/design/event-stream-2026-06.md.
   const sink = options.log ?? defaultLogger(colors, resolveOutputView(options))
-  const bus = createEventBus()
+  // An injected bus (e.g. from `--ui`) already has surfaces subscribed;
+  // we just add the terminal renderer. Otherwise a fresh internal bus.
+  const bus = options.bus ?? createEventBus()
   bus.subscribe(terminalSubscriber(sink))
   const log = busLogger(bus)
 

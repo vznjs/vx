@@ -198,10 +198,18 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
   (`defineDevframe` mis-exported → author the object directly;
   `createSharedState({enablePatches})` throws on uninitialized Immer;
   MCP adapter needs `@modelcontextprotocol/sdk` peer). No CACHE_VERSION
-  impact (pure orchestration/output plumbing). NEXT: host wiring — `vx run
---ui` (createDevServer, bridge mode) + `vx mcp` (createMcpServer, stdio)
-  over the same definition. Design + phasing:
-  `docs/design/event-stream-2026-06.md`.
+  impact (pure orchestration/output plumbing). **`vx run --ui` shipped
+  same day**: `src/cli/ui-server.ts` `startUiServer(port?)` dynamically
+  imports `devframe/adapters/dev`, boots `createDevServer` over the vx
+  surface, returns the bus; new `RunOptions.bus` lets `runCmd` inject it
+  so the surface subscribes before the run emits, then the CLI keeps
+  serving until Ctrl-C. `--ui` / `--ui-port` flags; devframe stays
+  optional (dynamic import + UserError install hint). Verified e2e (real
+  server boots, forwards events, serves `__connection.json`) — the host
+  initializes Immer patches so the standalone shared-state bug doesn't
+  bite. Bridge mode (no bundled SPA yet; clients connect over WS). NEXT:
+  `vx mcp` (createMcpServer, stdio) over the same definition + a real SPA.
+  Design + phasing: `docs/design/event-stream-2026-06.md`.
 
 - **2026-06-16**: **`vx-lock.json` globally excluded from cache inputs
   and `--affected`** (owner: "vx lock should be globally excluded from

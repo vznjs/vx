@@ -19,6 +19,8 @@ import {
   type RunSummary,
 } from '../orchestrator/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
+import { startUiServer } from './ui-server.js'
+import { UserError } from '../util/index.js'
 import type { TaskOutcome } from '../graph/index.js'
 
 export interface RunArgs {
@@ -53,6 +55,10 @@ export interface RunArgs {
    * `defaultAffectedBase`). Any other string is an explicit git ref.
    */
   affected: string | undefined
+  /** `--ui`: serve a live devframe devtool (h3 + WS) for the run. */
+  ui: boolean
+  /** `--ui-port <n>`: preferred port for the `--ui` dev server. */
+  uiPort: number | undefined
   error?: string
 }
 
@@ -72,6 +78,8 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     summarize: undefined,
     profile: undefined,
     affected: undefined,
+    ui: false,
+    uiPort: undefined,
   }
 
   const sepIdx = args.indexOf('--')
@@ -140,6 +148,23 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       out.affected = ''
     } else if (a?.startsWith('--affected=')) {
       out.affected = a.slice('--affected='.length)
+    } else if (a === '--ui') {
+      out.ui = true
+    } else if (a === '--ui-port') {
+      const v = before[++i]
+      if (v === undefined) return { ...out, error: `${a} requires a value` }
+      const n = Number(v)
+      if (!Number.isInteger(n) || n < 0 || n > 65535) {
+        return { ...out, error: `invalid --ui-port: ${v}` }
+      }
+      out.uiPort = n
+    } else if (a?.startsWith('--ui-port=')) {
+      const v = a.slice('--ui-port='.length)
+      const n = Number(v)
+      if (!Number.isInteger(n) || n < 0 || n > 65535) {
+        return { ...out, error: `invalid --ui-port: ${v}` }
+      }
+      out.uiPort = n
     } else if (a !== undefined && a.startsWith('-')) {
       return { ...out, error: `unknown flag: ${a}` }
     } else if (a !== undefined) {
@@ -155,6 +180,9 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
   }
   if (out.graph !== undefined && (out.summarize !== undefined || out.profile !== undefined)) {
     return { ...out, error: '--graph skips execution; --summarize / --profile need a real run' }
+  }
+  if (out.ui && (out.dry !== undefined || out.graph !== undefined)) {
+    return { ...out, error: '--ui needs a real run; it is incompatible with --dry / --graph' }
   }
   return out
 }
@@ -310,6 +338,32 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       process.stdout.write(formatPlanText(plan))
     }
     return 0
+  }
+
+  // `--ui`: boot the devframe dev server, inject its bus so the surface
+  // sees the run live, then keep serving after the run until Ctrl-C.
+  if (parsed.ui) {
+    let ui
+    try {
+      ui = await startUiServer(parsed.uiPort)
+    } catch (err) {
+      const msg =
+        err instanceof UserError ? err.message : err instanceof Error ? err.message : String(err)
+      process.stderr.write(`vx run: ${msg}\n`)
+      return 1
+    }
+    opts.bus = ui.bus
+    process.stdout.write(`vx: devtools live at ${ui.origin}\n\n`)
+    const summary = await runOrchestrator(opts)
+    if (parsed.verbosity > 0) printSummary(summary)
+    process.stdout.write(`\nvx: serving devtools at ${ui.origin} — press Ctrl-C to stop\n`)
+    await new Promise<void>((resolve) => {
+      const stop = (): void => resolve()
+      process.once('SIGINT', stop)
+      process.once('SIGTERM', stop)
+    })
+    await ui.close()
+    return summary.ok ? 0 : 1
   }
 
   const summary = await runOrchestrator(opts)

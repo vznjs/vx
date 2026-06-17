@@ -3,6 +3,7 @@
 // import of index.ts — the module entry must stay cycle-free.
 
 import type { TaskOutcome } from '../graph/index.js'
+import type { EventBus } from './events.js'
 import type { Logger } from './logger.js'
 
 export interface RunOptions {
@@ -72,6 +73,14 @@ export interface RunOptions {
    */
   handleSignals?: boolean
   log?: Logger
+  /**
+   * Inject the run's event bus. When provided, the orchestrator emits
+   * onto it instead of creating its own — letting a caller subscribe a
+   * surface (e.g. the `--ui` devframe dev server) BEFORE the run starts
+   * emitting. The terminal renderer is still attached as a subscriber, so
+   * default output is unchanged. Default: a fresh internal bus.
+   */
+  bus?: EventBus
 }
 
 export interface RunSummary {

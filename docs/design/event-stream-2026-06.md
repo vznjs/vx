@@ -279,13 +279,20 @@ stays deferred** — the in-process terminal still reads the live node;
 narrowing only pays off when an off-thread renderer needs the
 serializable form.
 
-2. **Host wiring (NEXT).** `vx run --ui` dynamically imports
-   `devframe/adapters/dev` and boots `createDevServer(createVxSurface(bus))`
-   in bridge mode (h3 + WS serving `vx:events` / `vx:run`), keeping the run
-   in the foreground like a requested persistent task. A `vx mcp` command
-   boots `createMcpServer` (stdio) over the same definition, exposing
-   `vx:run` as an MCP resource. Both host the already-tested definition;
-   the rough edges in §10 are handled at this boundary.
+2. **`vx run --ui` host (SHIPPED 2026-06-17).** `src/cli/ui-server.ts`
+   `startUiServer(port?)` dynamically imports `devframe/adapters/dev` and
+   boots `createDevServer(createVxSurface(bus))` (h3 + WS serving
+   `vx:events` / `vx:run`), returning the bus + origin + a close handle.
+   `RunOptions.bus` lets `runCmd` inject that bus into `run()` so the
+   surface is subscribed BEFORE the run emits; after the run finishes the
+   CLI keeps serving until Ctrl-C, then closes. devframe stays optional
+   (dynamic import; a clear UserError + install hint when absent).
+   Verified end-to-end: a real dev server boots, forwards events without
+   throwing (the host initializes Immer patches, so the standalone
+   shared-state bug doesn't bite), and serves `__connection.json`
+   (`tests/ui-server.test.ts` + a manual `vx run lint.oxfmt --ui` smoke).
+   Bridge mode for now — no bundled SPA; clients connect over the WS
+   backend. `vx mcp` (stdio, `createMcpServer`) is the remaining host.
 3. **Off-thread web devtool.** A real SPA (instead of bridge mode),
    rendering `RunState` reactively. devframe's sweet spot (browser
    renders; transport done for us). This is the front-end build.
