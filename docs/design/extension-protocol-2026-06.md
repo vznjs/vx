@@ -17,13 +17,13 @@ minutes and 50 lines of code.
 This is what unlocks the "openness vs nx and turbo" story. Turbo
 exposes nothing programmatic. Nx exposes a plugin API but it's tied
 to their TS runtime + executor schema. vx exposes a **wire protocol**
-+ a small SDK that targets the wire — language-agnostic, transport-
-agnostic, no Bun lock-in for consumers.
+plus a small SDK that targets the wire — language-agnostic,
+transport-agnostic, no Bun lock-in for consumers.
 
 ## 2. Three roles for extensions
 
-Every extension fits one of three roles, distinguished by *what data
-flows in which direction*:
+Every extension fits one of three roles, distinguished by _what data
+flows in which direction_:
 
 ### 2.1 Subscriber — read-only consumer of the event stream
 
@@ -32,6 +32,7 @@ The simplest case. Connects to `vx serve` (or a `vx run` with
 Doesn't write back.
 
 Use cases:
+
 - **Custom CI annotators**: a tool that posts `run:end` summaries to
   Slack with custom formatting.
 - **Cost trackers**: tally CPU-minutes per task across the team.
@@ -48,6 +49,7 @@ the run.**
 
 A subscriber, but instead of subscribing to a live stream, makes
 typed RPC queries against vx state:
+
 - `getRunState(runId)` → `RunState`
 - `getRunHistory(filter)` → `Run[]` (uses the `vx-cloud` data model)
 - `getTaskLogs(runId, taskId)` → `string`
@@ -60,7 +62,8 @@ and IDE plugins ("show me cache hit rate for the file I'm editing").
 
 ### 2.3 Driver — write-capable submitter
 
-A driver *submits work* to vx. Use cases:
+A driver _submits work_ to vx. Use cases:
+
 - **Custom dispatchers**: a tool that watches GitHub PR comments and
   submits `vx run pr-validate` on `/test` commands.
 - **AI agents**: an autonomous coding agent that submits builds
@@ -101,7 +104,7 @@ type SubmitResponse =             // streamed
 
 The transport is **WebSocket + birpc + valibot** (we already pulled
 this in via devframe). The schemas live in `src/orchestrator/
-protocol.ts` and are *the* version-controlled artifact — everything
+protocol.ts` and are _the_ version-controlled artifact — everything
 else is implementation.
 
 ### 3.1 Versioning
@@ -117,7 +120,7 @@ protocols.
 
 Local: no auth (loopback). Hosted/remote: bearer token in the WS
 handshake. The vx-cloud proposal (`vx-cloud-2026-06.md`) defines the
-token model; extension protocol *uses* it.
+token model; extension protocol _uses_ it.
 
 ## 4. The SDK
 
@@ -164,7 +167,7 @@ Shell scripts and `jq`-pipelined dashboards. The escape hatch.
 
 ## 5. Plugin model (in-process extensions)
 
-A class of extension *runs in the same process as `vx run`* — it
+A class of extension _runs in the same process as `vx run`_ — it
 observes the run from inside the host, doesn't go over a wire. Use
 case: a config-side hook ("run `npm audit` after every install
 task," "annotate every task with cost data," "send failures to
@@ -179,10 +182,7 @@ import { sentryPlugin } from '@vzn/vx-plugin-sentry'
 import { costTracker } from './plugins/cost-tracker'
 
 export default defineWorkspace({
-  plugins: [
-    sentryPlugin({ dsn: process.env.SENTRY_DSN }),
-    costTracker({ ratePerCpuMin: 0.0001 }),
-  ],
+  plugins: [sentryPlugin({ dsn: process.env.SENTRY_DSN }), costTracker({ ratePerCpuMin: 0.0001 })],
 })
 ```
 
@@ -202,7 +202,7 @@ type PluginContext = {
 }
 ```
 
-This is *exactly* what `terminalSubscriber` is today, generalized to
+This is _exactly_ what `terminalSubscriber` is today, generalized to
 allow N subscribers from config. The terminal renderer becomes the
 first built-in plugin; user plugins layer on top.
 
@@ -213,7 +213,7 @@ we extend it to N subscribers.)
 
 ## 6. RPC plugins — extending the inspector surface
 
-A plugin can also *register* RPC methods, exposing them on
+A plugin can also _register_ RPC methods, exposing them on
 `vx:rpc`:
 
 ```ts
@@ -256,13 +256,14 @@ agents to scrape ANSI; we give them a typed surface.
 ## 8. Discovery — how a plugin gets loaded
 
 `defineWorkspace.plugins` is the canonical source. Plugins:
+
 1. Resolve as ordinary npm/Bun packages: `import { foo } from
-   '@vendor/vx-plugin-foo'`.
+'@vendor/vx-plugin-foo'`.
 2. Get a chance to validate the workspace before the run starts
    (return a `UserError` to abort with a clean message).
-3. Get instantiated *once per `vx run`* — same lifetime as the bus.
+3. Get instantiated _once per `vx run`_ — same lifetime as the bus.
 
-For *cloud-deployed* extensions (a subscriber running in a SaaS), we
+For _cloud-deployed_ extensions (a subscriber running in a SaaS), we
 provide an OPT-IN registration: `vx insights link --org acme`
 registers the local insights uploader with the cloud, so every local
 run uploads. This is the connection between in-process plugins and
@@ -309,15 +310,15 @@ three times — and the lesson directly informs this design.
 
 ## 11. Phasing
 
-| Phase | Ships                                                                                                                                       | Validates                                                  |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| **A** | `@vzn/vx-client` (TS SDK). Connects to existing `vx serve` and consumes `vx:events`. Documented. The subscriber role is real.               | One-direction streaming API works.                         |
-| **B** | RPC server in `vx serve`. Inspector role with 4-5 built-in methods (`getCacheStats`, `getRunHistory`, `explainCacheKey`, …).               | Read-only typed queries work.                              |
-| **C** | Driver role — clients submit runs via SDK. Same code path as the existing serviceBackend, exposed publicly.                                  | Hosted + agent use cases unlocked.                         |
-| **D** | In-process Plugin API on `defineWorkspace`. The bus exposes itself to user code.                                                            | Custom in-process extensions work.                         |
-| **E** | RPC plugins — third-party RPCs on top. `@vzn/vx-plugin-sentry|slack|influx` reference impls.                                                | Open-platform story complete.                              |
-| **F** | Python SDK + the `vx-client` CLI helper. Language coverage.                                                                                 | Cross-runtime is real.                                     |
-| **G** | MCP adapter for agents. (Already on the `event-stream` roadmap as Phase 4.)                                                                | Agent-native ergonomics shipped.                           |
+| Phase | Ships                                                                                                                         | Validates                          |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ------------------------ | ----------------------------- |
+| **A** | `@vzn/vx-client` (TS SDK). Connects to existing `vx serve` and consumes `vx:events`. Documented. The subscriber role is real. | One-direction streaming API works. |
+| **B** | RPC server in `vx serve`. Inspector role with 4-5 built-in methods (`getCacheStats`, `getRunHistory`, `explainCacheKey`, …).  | Read-only typed queries work.      |
+| **C** | Driver role — clients submit runs via SDK. Same code path as the existing serviceBackend, exposed publicly.                   | Hosted + agent use cases unlocked. |
+| **D** | In-process Plugin API on `defineWorkspace`. The bus exposes itself to user code.                                              | Custom in-process extensions work. |
+| **E** | RPC plugins — third-party RPCs on top. `@vzn/vx-plugin-sentry                                                                 | slack                              | influx` reference impls. | Open-platform story complete. |
+| **F** | Python SDK + the `vx-client` CLI helper. Language coverage.                                                                   | Cross-runtime is real.             |
+| **G** | MCP adapter for agents. (Already on the `event-stream` roadmap as Phase 4.)                                                   | Agent-native ergonomics shipped.   |
 
 Phase A is small — the SDK is a thin wrapper on existing primitives.
 Each subsequent phase adds value without breaking the previous.
@@ -338,7 +339,7 @@ Each subsequent phase adds value without breaking the previous.
 ## 13. Open questions
 
 - **Multi-version plugin loading.** What happens when two plugins
-  depend on different vx versions? Plugins are *compiled against* a
+  depend on different vx versions? Plugins are _compiled against_ a
   vx API version; the host runtime negotiates. Today's npm peer-dep
   model is sufficient.
 - **Plugin order.** Plugins see events in the order they're declared

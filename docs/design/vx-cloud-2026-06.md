@@ -4,7 +4,7 @@ Status: proposal (2026-06-20). Owner ask: "hosted service where people
 could see local and company-wide things." Pairs with
 `distributed-ci-2026-06.md` (the execution protocol) and
 `remote-cache.md` (the existing cache transport). This is the
-*observability + multi-tenancy* layer on top.
+_observability + multi-tenancy_ layer on top.
 
 ## 1. The pitch in one paragraph
 
@@ -36,6 +36,7 @@ that's the only consumer.
 Tomorrow: `vx insights serve` opens a localhost web UI that reads
 `cache.db` directly (no daemon, no upload). The same SPA the hosted
 product serves, pointed at a local SQLite. A developer can answer:
+
 - "Why was that last run slow? Show me the spans."
 - "What's my hit rate on this branch?"
 - "What's eaten the most CPU this week?"
@@ -47,7 +48,7 @@ cpu/rss, cache provenance — all v11+ columns). The UI is purely
 historical-read; no live coupling to the orchestrator that killed the
 previous attempt. And the `RunState` reducer + `WireEvent` stream from
 `event-stream-2026-06.md` already give us a fully-typed live view to
-*also* render on the same UI for in-flight runs.
+_also_ render on the same UI for in-flight runs.
 
 ### 2.2 Team face — `vx insights upload`
 
@@ -59,6 +60,7 @@ job. The data model is **append-only** — runs are immutable facts.
 The UI does analytics on top.
 
 The web UI gains team-only views:
+
 - **Per-project trends** — was this project's `test` task always 12s,
   or did it creep up?
 - **Per-author breakdown** — who's writing tasks that miss the cache
@@ -141,12 +143,12 @@ run_events (
 `run_events` is the **full event log** — exactly the WireEvents the
 orchestrator emits today. Replaying them rebuilds the timeline
 exactly: the same data that drives a live UI drives a historical one.
-This is *the* design unification: **one event stream, two consumers
+This is _the_ design unification: **one event stream, two consumers
 (live + history)**.
 
 The hosted variant pages event blobs out to S3-compatible storage
 when individual events grow large (long stdout dumps). The pointer
-+ a content hash stays in SQLite (or PostgreSQL for the hosted
+plus a content hash stays in SQLite (or PostgreSQL for the hosted
 multi-tenant case).
 
 ## 4. Architecture
@@ -185,6 +187,7 @@ stateful tier.
 ## 5. Identity, authz, multi-tenancy
 
 The honest tradeoffs:
+
 - **Identity**: GitHub OAuth + a generic OIDC fallback. No
   proprietary user database; you bring your own SSO.
 - **API tokens**: scoped to (org, role, expiry). Used by CI and by
@@ -236,14 +239,16 @@ fall back to the local data path.
 ## 7. Privacy & data minimization
 
 What we DO NOT collect:
+
 - **Stdout/stderr contents by default.** Logs stay local unless the
   user opts in (per-org policy). The hosted UI can show "logs not
   uploaded" rather than the bytes.
-- **Source code.** We never ship source. The cache stores *outputs*,
+- **Source code.** We never ship source. The cache stores _outputs_,
   which the user has explicitly declared.
 - **Telemetry beyond the user's runs.** No hidden pings.
 
 What we DO collect:
+
 - The run metadata: durations, statuses, hashes, cache
   provenance. This is what powers the analytics. It's the same data
   Nx Cloud + Turbo collect for paying customers.
@@ -287,19 +292,19 @@ proprietary component. The hosted runtime is the OSS runtime.
 ```
 
 `devframe-surface.ts` already exposes the stream. The Insights
-uploader is *just another subscriber* — a batched HTTP-POST sink
+uploader is _just another subscriber_ — a batched HTTP-POST sink
 that flushes events to the cloud API. No new abstraction; one more
 adapter on the substrate `event-stream-2026-06.md` built.
 
 ## 10. Phasing
 
-| Phase | Ships                                                                                                            | Validates                                                              |
-| ----- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| **A** | `vx insights serve` — local SPA over local `cache.db`. Run history, flamegraph, per-task trends. No upload, no cloud. | The UI is real and useful before any infra exists.                     |
-| **B** | The data model extension (`org_id`, `run_tasks`, `run_events`). Migration of `cache.db` schema. Run-event sink interface. | Persisted state survives schema changes; can be replayed/exported.     |
-| **C** | `vx cloud serve` — single-binary self-hosted backend. Postgres + S3, no auth (token-only). Reference impl ships first. | Self-hostable from day one. The OSS-first promise.                     |
-| **D** | OAuth + multi-tenant + RBAC. Production-grade self-hosted.                                                         | Real teams deploy it.                                                  |
-| **E** | Hosted SaaS at `cloud.vx.dev`. Trial tier + paid tiers. Same binary, managed.                                     | The commercial path. Funds development.                                |
+| Phase | Ships                                                                                                                     | Validates                                                          |
+| ----- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| **A** | `vx insights serve` — local SPA over local `cache.db`. Run history, flamegraph, per-task trends. No upload, no cloud.     | The UI is real and useful before any infra exists.                 |
+| **B** | The data model extension (`org_id`, `run_tasks`, `run_events`). Migration of `cache.db` schema. Run-event sink interface. | Persisted state survives schema changes; can be replayed/exported. |
+| **C** | `vx cloud serve` — single-binary self-hosted backend. Postgres + S3, no auth (token-only). Reference impl ships first.    | Self-hostable from day one. The OSS-first promise.                 |
+| **D** | OAuth + multi-tenant + RBAC. Production-grade self-hosted.                                                                | Real teams deploy it.                                              |
+| **E** | Hosted SaaS at `cloud.vx.dev`. Trial tier + paid tiers. Same binary, managed.                                             | The commercial path. Funds development.                            |
 
 ## 11. Non-goals
 

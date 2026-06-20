@@ -3,8 +3,8 @@
 Status: synthesis proposal (2026-06-20). Reads the four
 companion proposals together — `distributed-ci-2026-06.md`,
 `vx-cloud-2026-06.md`, `extension-protocol-2026-06.md`,
-`predictive-execution-2026-06.md` — and answers: *what does vx look
-like at the end of this arc, and what does each step buy us?*
+`predictive-execution-2026-06.md` — and answers: _what does vx look
+like at the end of this arc, and what does each step buy us?_
 
 ## 1. The end-state vision (one screen)
 
@@ -12,7 +12,7 @@ like at the end of this arc, and what does each step buy us?*
 >
 > A single binary, OSS, that runs locally with zero infra and scales
 > with one config flip into a self-hosted (or hosted) team execution
-> + observability platform. Every internal event is on a typed
+> and observability platform. Every internal event is on a typed
 > serializable bus; every surface — terminal output, web UI, IDE
 > plugin, MCP server, CI annotator, cloud uploader — is a subscriber
 > on that bus. Tasks are content-addressed, executions are fungible,
@@ -104,12 +104,13 @@ hook into a serializable contract, not into orchestrator internals.
 ### 3.3 Fail-safe to local, never block
 
 Every external dependency degrades to local:
+
 - Remote cache down → cache miss, run continues.
 - Coordinator down → fall back to in-process scheduling.
 - Cloud uploader down → events queue locally, flush later.
 - Subscriber wedged → drop it, run continues.
 
-The local path is *the* path. Everything else is overlay.
+The local path is _the_ path. Everything else is overlay.
 
 ### 3.4 Shell is the API for tasks
 
@@ -141,7 +142,7 @@ multiplies when the others land. The bow-tie diagram:
 - **distributed-ci** depends on the event substrate (for streaming
   outputs back) and a remote cache (already shipped). It produces
   events that the cloud + extensions consume.
-- **vx-cloud** is *the historical store* of those events; it powers
+- **vx-cloud** is _the historical store_ of those events; it powers
   the HistoryTable that **predictive-execution** uses.
 - **extension-protocol** is how third-party tools consume the cloud
   data and the live event stream.
@@ -149,6 +150,7 @@ multiplies when the others land. The bow-tie diagram:
   and feeds it back into scheduling — closing the learning loop.
 
 Each individually delivers value:
+
 - **distributed-ci alone** → free Nx-Cloud DTE for OSS users.
 - **vx-cloud alone** → Nx Cloud / Turbo dashboards for OSS users.
 - **extension-protocol alone** → ecosystem of community tools.
@@ -229,8 +231,8 @@ What we promise users:
 1. **Zero-install onboarding**: `bunx vx migrate` in any Turbo or Nx
    monorepo emits a working `vx.config.ts` + report. Already true.
 2. **One-flag distributed**: `vx run --coordinator <url>` is the
-   *only* knob needed to go distributed. Workers join with `vx run
-   --worker <url>`. No YAML, no orchestration files.
+   _only_ knob needed to go distributed. Workers join with `vx run
+--worker <url>`. No YAML, no orchestration files.
 3. **Live insights**: `vx insights` opens a browser to a UI of the
    user's runs. No login, no upload, no cloud account.
 4. **Optional everything**: cloud, hosted, distributed, predictive,
@@ -241,7 +243,7 @@ What we promise users:
 
 ## 8. The openness commitments
 
-What we promise *the ecosystem*:
+What we promise _the ecosystem_:
 
 1. **All protocols are SemVer-published**: wire schemas live in
    `protocol.ts`, validated by `valibot`, versioned.
@@ -256,18 +258,18 @@ What we promise *the ecosystem*:
 
 ## 9. The competitive picture
 
-| Capability                        | Turbo    | Nx (OSS) | Nx Cloud   | vx (today) | vx (north star) |
-| --------------------------------- | -------- | -------- | ---------- | ---------- | --------------- |
-| Local task graph + cache          | ✓        | ✓        | ✓          | ✓          | ✓               |
-| Remote cache                      | ✓        | ✓        | ✓          | ✓          | ✓               |
-| Distributed CI execution          | ✗        | ✗        | ✓ (paid)   | partial    | ✓ (OSS)         |
-| Web analytics                     | ✓ (paid) | ✗        | ✓ (paid)   | ✗          | ✓ (OSS)         |
-| Self-hostable analytics           | ✗        | ✗        | ✗          | ✗          | ✓               |
-| Predictive scheduling             | ✗        | ✗        | ✗          | ✗          | ✓               |
-| Public extension protocol         | ✗        | partial  | ✗          | ✗          | ✓               |
-| Agent-native (MCP)                | ✗        | ✗        | ✗          | planned    | ✓               |
-| Wire interop with competitors     | ✗        | ✗        | ✗          | ✓ (Turbo)  | ✓               |
-| Bun runtime (fast)                | ✗        | ✗        | ✗          | ✓          | ✓               |
+| Capability                    | Turbo    | Nx (OSS) | Nx Cloud | vx (today) | vx (north star) |
+| ----------------------------- | -------- | -------- | -------- | ---------- | --------------- |
+| Local task graph + cache      | ✓        | ✓        | ✓        | ✓          | ✓               |
+| Remote cache                  | ✓        | ✓        | ✓        | ✓          | ✓               |
+| Distributed CI execution      | ✗        | ✗        | ✓ (paid) | partial    | ✓ (OSS)         |
+| Web analytics                 | ✓ (paid) | ✗        | ✓ (paid) | ✗          | ✓ (OSS)         |
+| Self-hostable analytics       | ✗        | ✗        | ✗        | ✗          | ✓               |
+| Predictive scheduling         | ✗        | ✗        | ✗        | ✗          | ✓               |
+| Public extension protocol     | ✗        | partial  | ✗        | ✗          | ✓               |
+| Agent-native (MCP)            | ✗        | ✗        | ✗        | planned    | ✓               |
+| Wire interop with competitors | ✗        | ✗        | ✗        | ✓ (Turbo)  | ✓               |
+| Bun runtime (fast)            | ✗        | ✗        | ✗        | ✓          | ✓               |
 
 The north star is a strict superset.
 
@@ -278,7 +280,7 @@ Three risks materially above zero:
 ### 10.1 Scope blowout
 
 The single biggest threat. The proposals collectively describe
-~6 months of work for a team. They're *individually* shippable; the
+~6 months of work for a team. They're _individually_ shippable; the
 risk is dilution — work in flight on too many fronts. Mitigation:
 **Wave 2 first**, validate the substrate with HistoryTable + SDK +
 local insights before any cloud work begins. Don't open multiple
@@ -288,7 +290,7 @@ big fronts.
 
 Hosted requires real engineering (auth, billing, multi-tenancy) AND
 real ops (uptime, on-call, support). We can ship the self-hosted
-binary as Wave 4-5 and *defer* hosted indefinitely. The OSS story
+binary as Wave 4-5 and _defer_ hosted indefinitely. The OSS story
 stands alone.
 
 ### 10.3 Plugin compat over time

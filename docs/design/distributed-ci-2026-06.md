@@ -31,8 +31,8 @@ addressing, fundamentally more parallelism.
 
 **Turbo Remote Cache** ships hits but never executes work for you.
 A 30-package CI build on Turbo is a 30-package serial-or-shard exercise
-on your CI host; the remote cache eliminates redundant *recompilation*
-across runs, never *intra-run* parallelism beyond `--concurrency`.
+on your CI host; the remote cache eliminates redundant _recompilation_
+across runs, never _intra-run_ parallelism beyond `--concurrency`.
 
 **Nx Cloud DTE** (distributed task execution) does ship this, but it
 is a hosted-only commercial product. The OSS Nx CLI does not include a
@@ -113,16 +113,16 @@ keeps working unchanged:
 // Coordinator-side messages (NEW)
 type WorkerToCoord =
   | { t: 'worker:hello'; workerId: string; capacity: number; labels: string[] }
-  | { t: 'worker:pull'; available: number }                  // backpressure-aware pull
+  | { t: 'worker:pull'; available: number } // backpressure-aware pull
   | { t: 'worker:start'; taskHash: string; pid?: number }
   | { t: 'worker:stdout' | 'worker:stderr'; taskHash: string; chunk: string }
-  | { t: 'worker:done'; taskHash: string; outcome: WireOutcome }  // outcome carries: exit, cpu, rss, cache provenance
+  | { t: 'worker:done'; taskHash: string; outcome: WireOutcome } // outcome carries: exit, cpu, rss, cache provenance
   | { t: 'worker:bye'; reason: 'idle-timeout' | 'shutdown' }
 
 type CoordToWorker =
   | { t: 'task:assign'; node: WireTaskNode; hash: string }
-  | { t: 'cache:exists'; hash: string; present: boolean }    // pre-spawn shortcut
-  | { t: 'drain' }                                            // graceful shutdown
+  | { t: 'cache:exists'; hash: string; present: boolean } // pre-spawn shortcut
+  | { t: 'drain' } // graceful shutdown
 ```
 
 Submitter↔coordinator reuses today's `RunRequest` → streamed
@@ -136,7 +136,7 @@ with hash `H`, every downstream node that folds `H` becomes a
 candidate for the ready queue, regardless of which worker produced it.
 Output bytes live in the cache (local→remote), keyed by `H`, so the
 next consumer that needs them pulls from there. The coordinator
-forwards *log* output back to the submitter; it does not move artifact
+forwards _log_ output back to the submitter; it does not move artifact
 bytes.
 
 ## 5. Assignment policy
@@ -146,7 +146,7 @@ gets the next ready task). Sufficient for homogeneous matrices. Three
 extensions land as evidence demands:
 
 1. **Capability labels.** A worker registers `labels: ['linux-x64',
-   'docker', 'gpu']`; a task can declare `runOn: ['gpu']` in its
+'docker', 'gpu']`; a task can declare `runOn: ['gpu']` in its
    config and the coordinator only assigns to matching workers. Same
    shape as GitHub Actions `runs-on`; we adopt the syntax to remove a
    concept users already know.
@@ -160,19 +160,19 @@ extensions land as evidence demands:
    the longest remaining path. Today's scheduler does this in-process;
    the coordinator does the same across workers.
 
-Priority + assignment is the *only* moving piece in the coordinator.
+Priority + assignment is the _only_ moving piece in the coordinator.
 Everything else is bookkeeping.
 
 ## 6. Failure modes (cataloged, each with a deliberate behavior)
 
-| Failure                            | Behavior                                                                                                                                                                          |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Worker disconnects mid-task        | Task transitions back to `ready`; reassign. Output of a dead task is uncacheable (process gone), so this is safe — we just re-execute on another worker.                          |
-| Worker disconnects after `done`    | Outcome is already in the coordinator + the artifact is already saved to the remote cache (worker uploads before `worker:done`). No loss.                                         |
-| Coordinator dies                   | Whole run dies. The submitter receives `{ t: 'error' }` and falls back to local (the existing fail-safe). Acceptable — coordinator owns the run.                                  |
-| Submitter dies                     | Coordinator detects WS close; **continues** the run (artifacts still go to remote cache for future runs to hit). This is the in-flight-dedup pattern from `execution-service-2026-06.md` generalized to dropped clients. |
-| Network partition between workers  | Workers don't talk to each other; nothing to partition.                                                                                                                           |
-| Coordinator OOM on huge graphs     | Per-task state is small (hash + status + slot). 100k tasks ≈ a few MB. Not a near-term concern.                                                                                   |
+| Failure                           | Behavior                                                                                                                                                                                                                 |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Worker disconnects mid-task       | Task transitions back to `ready`; reassign. Output of a dead task is uncacheable (process gone), so this is safe — we just re-execute on another worker.                                                                 |
+| Worker disconnects after `done`   | Outcome is already in the coordinator + the artifact is already saved to the remote cache (worker uploads before `worker:done`). No loss.                                                                                |
+| Coordinator dies                  | Whole run dies. The submitter receives `{ t: 'error' }` and falls back to local (the existing fail-safe). Acceptable — coordinator owns the run.                                                                         |
+| Submitter dies                    | Coordinator detects WS close; **continues** the run (artifacts still go to remote cache for future runs to hit). This is the in-flight-dedup pattern from `execution-service-2026-06.md` generalized to dropped clients. |
+| Network partition between workers | Workers don't talk to each other; nothing to partition.                                                                                                                                                                  |
+| Coordinator OOM on huge graphs    | Per-task state is small (hash + status + slot). 100k tasks ≈ a few MB. Not a near-term concern.                                                                                                                          |
 
 The cache layer's existing **never-fail** rule (remote errors → local
 miss, run continues) extends naturally: a worker that can't reach the
@@ -192,7 +192,7 @@ jobs:
   build:
     strategy:
       matrix:
-        worker: [0, 1, 2, 3, 4, 5, 6, 7]   # 8-way parallelism
+        worker: [0, 1, 2, 3, 4, 5, 6, 7] # 8-way parallelism
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -204,9 +204,10 @@ jobs:
 ```
 
 Behind the scenes:
+
 - All matrix runners share a step in which they read a
   build-scoped token (GitHub's `${{ runner.os }}-${{ github.run_id }}-${{
-  github.run_attempt }}`) and a coordinator address (the public
+github.run_attempt }}`) and a coordinator address (the public
   hostname of matrix `0`, exposed via tailscale/cloudflared/ngrok or
   the action's own short-lived tunnel).
 - Matrix `0` runs `vx coordinator --tasks <tasks>` which builds the
@@ -259,7 +260,7 @@ is a sharp tool. Mitigations, in order:
 
 1. **Default deny untrusted submissions.** A worker only accepts
    `task:assign` for tasks whose `taskConfigHash` it can verify
-   against a *signed manifest* the submitter pre-published. The
+   against a _signed manifest_ the submitter pre-published. The
    manifest pins every task's command + inputs + env capture, signed
    with the same HMAC key vx already uses for the remote cache. A
    worker that can't verify the manifest refuses the assignment.
@@ -278,13 +279,13 @@ from anywhere."
 
 ## 10. Phasing (each phase ships independent value)
 
-| Phase | Ships                                                                                                                                                       | Validates                                                                                                                                |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| **A** | Coordinator role inside `vx serve`. One worker (the same process). All-in-one binary. The submitter pattern works end-to-end against a single in-proc worker. | The protocol is sound. No new transport surface.                                                                                         |
-| **B** | Multi-worker. `vx run --worker <coord>`. Least-loaded assignment. Cache-affinity hints deferred.                                                              | Multi-process work flows; failures handled per §6.                                                                                       |
-| **C** | GitHub Actions composite. Matrix orchestration as documented in §7.1. Real CI smoketest.                                                                     | The user-facing story is real. Numbers from a real monorepo on real GHA.                                                                 |
-| **D** | Capability labels + critical-path priority + cache-affinity. Submitter retry on coord failure.                                                                | Production-grade. Heterogeneous fleets work.                                                                                             |
-| **E** | Signed manifests + sparse-clone worker. Trust story for "rent a worker."                                                                                     | Hosted/3rd-party-worker viable. Foundation for `vx cloud` (see `vx-cloud-2026-06.md`).                                                   |
+| Phase | Ships                                                                                                                                                         | Validates                                                                              |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **A** | Coordinator role inside `vx serve`. One worker (the same process). All-in-one binary. The submitter pattern works end-to-end against a single in-proc worker. | The protocol is sound. No new transport surface.                                       |
+| **B** | Multi-worker. `vx run --worker <coord>`. Least-loaded assignment. Cache-affinity hints deferred.                                                              | Multi-process work flows; failures handled per §6.                                     |
+| **C** | GitHub Actions composite. Matrix orchestration as documented in §7.1. Real CI smoketest.                                                                      | The user-facing story is real. Numbers from a real monorepo on real GHA.               |
+| **D** | Capability labels + critical-path priority + cache-affinity. Submitter retry on coord failure.                                                                | Production-grade. Heterogeneous fleets work.                                           |
+| **E** | Signed manifests + sparse-clone worker. Trust story for "rent a worker."                                                                                      | Hosted/3rd-party-worker viable. Foundation for `vx cloud` (see `vx-cloud-2026-06.md`). |
 
 Phase A is small (the in-process refactor: extract `WorkerLoop` from
 the existing scheduler; the coordinator hosts a queue the worker
@@ -296,7 +297,7 @@ no half-built coordinator behind a flag, ship it or don't.
 The promise the architecture makes:
 
 > A `vx run` of an N-task graph, parallelism-bound on K workers,
-> completes in time *T(serial) / min(K, P)* where P is the graph's
+> completes in time _T(serial) / min(K, P)_ where P is the graph's
 > critical path. Cache hits are subtracted from `T(serial)`. The
 > distributed-coordination overhead is sub-second for graphs ≤ 10k
 > tasks.
@@ -323,10 +324,10 @@ that vx ships it as OSS, self-hostable, free.
 
 - **Cross-language workers.** Workers run the same Bun runtime; we
   don't define a language-agnostic execution gRPC. (A `vx worker
-  --shell-only` mode might come later for non-Bun infra, but it
+--shell-only` mode might come later for non-Bun infra, but it
   doesn't change the protocol.)
 - **Cluster scheduling.** We're not building Kubernetes. A worker is
-  a long-lived process; orchestrating *its* lifecycle is the user's
+  a long-lived process; orchestrating _its_ lifecycle is the user's
   job. We provide health endpoints and graceful drain.
 - **Persistent run history.** The `runs` table already records what
   ran; that's enough. The coordinator is ephemeral by design.
@@ -336,7 +337,7 @@ that vx ships it as OSS, self-hostable, free.
 - **Backpressure on stdout fan-out.** A worker streams every byte to
   the coordinator, which fans out to every connected submitter. If
   10 submitters watch the same run, that's 10× egress for each
-  stdout chunk. Solution path: only the *primary* submitter (first
+  stdout chunk. Solution path: only the _primary_ submitter (first
   to attach) gets full output; secondary submitters subscribe to a
   reduced channel (status + summary). Defer until measured.
 - **Eviction of stale `recentHashes` hints.** A worker that's been
