@@ -19,11 +19,15 @@
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/api-logs": "^0.205.0",
     "@opentelemetry/exporter-logs-otlp-http": "^0.205.0",
-    "@opentelemetry/sdk-logs": "^0.205.0",
-    "@vzn/vx": "workspace:*"
+    "@opentelemetry/sdk-logs": "^0.205.0"
   },
   "peerDependencies": {
     "@vzn/vx": "*"
+  },
+  "peerDependenciesMeta": {
+    "@vzn/vx": {
+      "optional": true
+    }
   },
   "publishConfig": {
     "access": "public"

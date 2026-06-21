@@ -83,6 +83,26 @@ function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
   if (config.cacheDir !== undefined && typeof config.cacheDir !== 'string') {
     throw new UserError(`${configPath}: \`cacheDir\` must be a string`)
   }
+  if (config.plugins !== undefined) {
+    if (!Array.isArray(config.plugins)) {
+      throw new UserError(`${configPath}: \`plugins\` must be an array of plugin objects`)
+    }
+    for (const [i, p] of config.plugins.entries()) {
+      if (p === null || typeof p !== 'object') {
+        throw new UserError(`${configPath}: \`plugins[${i}]\` must be an object`)
+      }
+      const plug = p as { name?: unknown; setup?: unknown }
+      if (typeof plug.name !== 'string' || plug.name.length === 0) {
+        throw new UserError(`${configPath}: \`plugins[${i}].name\` must be a non-empty string`)
+      }
+      if (typeof plug.setup !== 'function') {
+        throw new UserError(`${configPath}: \`plugins[${i}].setup\` must be a function`)
+      }
+    }
+  }
+  if (config.predictive !== undefined && typeof config.predictive !== 'boolean') {
+    throw new UserError(`${configPath}: \`predictive\` must be a boolean`)
+  }
 }
 
 /**

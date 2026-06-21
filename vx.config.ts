@@ -25,7 +25,11 @@ export default defineProject({
 
     test: {
       description: 'bun test against the tests/ tree',
-      exec: { command: 'bun test' },
+      // Scope to ./tests so workspace-member tests (packages/**/tests/) stay
+      // isolated to their own packages — `bun test` without a path scans
+      // recursively and would pick up packages/otel-bridge/tests/ which
+      // imports through @vzn/vx (not self-resolvable inside the root pkg).
+      exec: { command: 'bun test tests/' },
       dependsOn: ['install'],
       cache: {
         inputs: { files: ['src/**', 'tests/**', 'package.json'] },

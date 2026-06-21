@@ -19,3 +19,19 @@ export { createVxSurface } from './devframe-surface.js'
 export { createWireRenderer } from './wire-render.js'
 export { optionsToRequest, requestToOptions } from './protocol.js'
 export type { RunRequest, RunResult, ServerMessage, ClientMessage } from './protocol.js'
+export {
+  EmptyHistoryProvider,
+  type HistoryProvider,
+  type HistoryTable,
+  LocalHistoryProvider,
+  type TaskHistory,
+} from './history.js'
+export { computePredictedPriorities } from './predict.js'
+export {
+  installPlugins,
+  type InstallPluginsArgs,
+  type Plugin,
+  type PluginContext,
+  type PluginHookHandlers,
+  type PluginHookName,
+} from './plugin.js'
