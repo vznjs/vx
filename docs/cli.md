@@ -18,6 +18,7 @@ bun src/bin.ts --version
 ## Top-level shape
 
 ```
+# Core
 vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] TASK [-- forwarded-args...]
 vx cache prune [--older-than <duration>] [--max-size <bytes>]
@@ -26,6 +27,16 @@ vx migrate [--dry] [--force]
 vx show [PROJECT[#TASK]] [--format pretty|json]
 vx info
 vx stats              # deprecated alias of vx info
+
+# Platform — the 2026-06 arc
+vx mcp [--stdio]                                       # MCP server for AI agents
+vx coordinator <tasks…> [--port N] [--host H] [--workers N]
+vx run --worker <coord-url> [--capacity N] [--label L] # join a coordinator as a worker
+vx serve [--port N]                                    # WS + SSE + NDJSON event service
+vx dev                                                 # local devtools hub
+vx insights serve [--port N]                           # local Solid+DuckDB-WASM SPA
+
+# Meta
 vx help
 vx --help, -h
 vx version
@@ -756,6 +767,196 @@ remote cache:   no
   `VX_REMOTE_CACHE_TOKEN` are set.
 - `vx stats` is a **deprecated alias** of `vx info` (info absorbed
   it); it prints byte-identical output.
+
+## `vx mcp` — Model Context Protocol server
+
+Boot an MCP server so AI coding agents (Claude Code, Cursor,
+Continue.dev, VS Code GitHub Copilot, …) can query vx state through
+the standard agent-tool protocol. Stdio transport only.
+
+```
+vx mcp                           # stdio transport (default)
+vx mcp --stdio                   # explicit
+```
+
+Add to an MCP client config (Claude Code example):
+
+```jsonc
+// ~/.claude/mcp.json
+{
+  "mcpServers": {
+    "vx": { "command": "vx", "args": ["mcp"] },
+  },
+}
+```
+
+Tools exposed:
+
+| Tool              | Purpose                                                                                                                     |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `getCacheStats`   | Aggregate cache stats (entries, total size, runs/hits last 24h, hit rate)                                                   |
+| `getRunHistory`   | Recent runs filtered by `project` / `task` / `limit`, with per-pair p50/p99/successRate/hitRate aggregates                  |
+| `explainCacheKey` | Persisted entry metadata for a `project#task` (hash, command, exit code, duration, size, created_at)                        |
+| `whyDidThisRerun` | Compares a `(runId, taskId)` against the immediately preceding run for the same task; reports whether the cache key changed |
+
+All tools read the local `cache.db` opened on demand. No network, no
+auth (stdio is process-private). Future tools (`runTasks`,
+`getRunState`) ship under the `vx:rpc` channel when the inspector WS
+surface lands.
+
+## `vx coordinator` — distributed-CI coordinator
+
+Start a per-build coordinator that holds the task graph + ready queue
+and dispatches assignments to attached workers over WebSocket.
+Content-addressed: any worker producing artifact `<hash>` satisfies
+every consumer of `<hash>`, so workers are fungible.
+
+```
+vx coordinator <tasks…>          # positional tasks (e.g. lint test build)
+    --port <n>                   # default 5180
+    --host <h>                   # default 127.0.0.1
+    --workers <n>                # expected workers (display only)
+```
+
+Behavior:
+
+- Boots `Bun.serve` WS at `http://<host>:<port>`.
+- Runs `prepareRun` against the workspace to build the same graph
+  the local CLI would.
+- Computes the v22 cache hash per node — the assignment key.
+- Workers register via `worker:hello`, pull via `worker:pull`,
+  report outcomes via `worker:done`.
+- A worker that disconnects mid-task strands its in-flight; those
+  hashes go back on the ready queue for the next attached worker.
+- Exits 0 when every task ends in a terminal state with
+  `outcome.status === 'success'`, 1 otherwise.
+- Writes `<workspaceRoot>/.vx/coordinator.json` advertising the
+  origin + pid (cleaned up on stop).
+
+GHA-style usage:
+
+```yaml
+jobs:
+  coord:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: vx coordinator lint test build --port 5180 --workers 4 &
+        # expose 5180 to peers via tailscale / cloudflared / direct GHA runner IPs
+  worker:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        worker: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - run: vx run --worker ws://coord:5180 --capacity 2
+```
+
+Phase A-B only today: real coordinator + worker, content-addressed
+dispatch, disconnect recovery. Capability labels, cache-affinity
+hints, and Buck2-style hybrid execution land later
+(`docs/design/distributed-ci-2026-06.md`).
+
+## `vx run --worker` / `--coordinator` — distributed-CI worker
+
+Attach to a coordinator and execute its assignments. Stateless and
+fungible.
+
+```
+vx run --worker ws://coord:5180  # connect, register, pull, execute
+    --capacity <n>               # max concurrent in-flight (default 1)
+    --label <l>                  # capability label (repeatable; default linux-x64)
+```
+
+`--coordinator` is a synonym of `--worker`. Behavior:
+
+- Connects to the coordinator's WS endpoint.
+- Sends `worker:hello { workerId, capacity, labels }`.
+- Pulls work via `worker:pull { available }`.
+- On `task:assign`, spawns the command via `runCommand`
+  (orchestrator-level helper), streams stdout/stderr back over
+  `worker:stdout` / `worker:stderr`, reports `worker:done` with the
+  outcome.
+- On `coord:drain`, waits for in-flight to finish, sends
+  `worker:bye`, exits.
+- Exits 0 if every assigned task succeeded, 1 otherwise.
+
+Workers do NOT yet probe the remote cache before executing — every
+assigned task spawns fresh. Cache integration is the next iteration.
+
+## `vx insights serve` — historical run dashboard (local)
+
+Boot a Solid + UnoCSS + DuckDB-WASM SPA against the workspace's
+`cache.db`. Pure read-only analytics — no backend, no upload, no
+daemon.
+
+```
+vx insights serve                # SPA dev server on port 5290
+    --port <n>                   # override SPA port
+```
+
+What it does:
+
+- Starts a tiny static HTTP server exposing `cache.db` at
+  `/cache.db` with the SQLite MIME (kernel-assigned port).
+- Boots Vite dev for `apps/insights/` with
+  `VITE_CACHE_DB_URL=http://127.0.0.1:<staticPort>/cache.db`.
+- The SPA lazy-loads DuckDB-WASM (~30 MB on first query), ATTACHes
+  the SQLite file via DuckDB's `sqlite_scanner` extension, and runs
+  every aggregation client-side.
+
+Pages: Overview (recent runs list, click to detail) → Run detail
+(per-task flamegraph, durations, cache provenance).
+
+Requires `apps/insights/` to be on disk — set `VX_INSIGHTS_DIR` to
+point at a checkout if the installed binary can't find it
+adjacent to `import.meta.dir`. A first run is needed to populate
+`cache.db`; an empty workspace prints a clean hint and exits.
+
+## `vx serve` — execution + event-stream service
+
+WebSocket + SSE + NDJSON service that other clients connect to and
+either (a) submit runs for delegated execution or (b) subscribe to
+the live event stream.
+
+```
+vx serve                         # bind a kernel-assigned port
+    --port <n>                   # explicit
+```
+
+HTTP routes (all return JSON unless noted):
+
+| Route            | Purpose                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------ |
+| `GET /health`    | Liveness probe (`200 ok`)                                                                  |
+| `GET /version`   | Protocol version + channels + RPC capability list                                          |
+| `GET /events`    | Server-Sent Events stream of every envelope from every concurrent run                      |
+| `GET /stream`    | NDJSON stream (jq-friendly) of the same                                                    |
+| `WS /` (upgrade) | Bidirectional; accepts both legacy `{ t: 'run', ... }` and JSON-RPC `submit.run` envelopes |
+
+Every wire frame is a JSON-RPC 2.0 envelope per
+`docs/design/wire-protocol-2026-06.md`. Service-emitted events use
+the `events.append` notification method; client-submitted runs use
+the `submit.run` request method. A `vx run` against a workspace where
+`vx serve` is already up auto-delegates via `.vx/serve.json`
+discovery + a 300 ms `/health` probe.
+
+`curl -N http://localhost:<port>/events` prints every envelope as
+SSE; `curl -N http://localhost:<port>/stream | jq` for one envelope
+per line.
+
+## `vx dev` — devtools hub
+
+Foreground devtools hub that ingests forwarded NDJSON events from a
+local `vx run` and renders them through a connected web client.
+
+```
+vx dev                           # bind a kernel-assigned local socket
+```
+
+Optional and dev-time only. Production observability is the OTel
+bridge (set `OTEL_EXPORTER_OTLP_ENDPOINT`).
 
 ## Output format
 

@@ -646,6 +646,28 @@ body:has(.vx-landing) {
   margin: 14px 0 0;
   max-width: 620px;
 }
+.section-head .vx-sub {
+  color: var(--text-md);
+  margin-top: 14px;
+  max-width: 620px;
+  line-height: 1.55;
+}
+a.platform-card {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+a.platform-card .learn {
+  display: inline-block;
+  margin-top: 12px;
+  color: color-mix(in srgb, var(--c) 88%, var(--text-hi));
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+a.platform-card:hover .learn {
+  color: var(--c);
+}
 .feat-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
