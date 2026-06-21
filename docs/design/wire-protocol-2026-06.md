@@ -1,12 +1,26 @@
 # Wire protocol — JSON-RPC 2.0 + OTel LogRecord payload
 
-Status: proposal-to-spec (2026-06-20). Owner-blocking decision called
-out in `architecture-review-2026-06.md` §7 — the single biggest
-leverage move is to commit one envelope across every vx wire surface
-(WS, SSE, NDJSON, MCP, A2A, OTLP bridge). This doc IS the commitment.
-Everything downstream of it (the MCP adapter, the Hono migration, the
-distributed-coordinator protocol, the cloud upload format, the OTel
-bridge package) reads off this contract.
+Status: **SHIPPED 2026-06-21** as `src/orchestrator/wire.ts` (~280
+LOC). The single biggest leverage move from
+`architecture-review-2026-06.md` §7 — one envelope across every vx
+wire surface (WS, SSE, NDJSON, MCP, A2A, OTLP bridge). Every
+downstream surface now reads off this contract.
+
+## Implementation snapshot (2026-06-21)
+
+| Item                                                                      | Status                                     | Where                                                  |
+| ------------------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------ |
+| `Envelope` union (Request/Response/Error/Notification)                    | ✓ shipped                                  | `src/orchestrator/wire.ts`                             |
+| Envelope builders + type guards                                           | ✓ shipped                                  | same                                                   |
+| `ENVELOPE_ERRORS` code namespace (vx-specific in -32000..-32099)          | ✓ shipped                                  | same                                                   |
+| `serverMessageToEnvelope` / `envelopeToServerMessage`                     | ✓ shipped                                  | same                                                   |
+| `clientMessageToEnvelope` / `envelopeToClientMessage`                     | ✓ shipped                                  | same                                                   |
+| `encodeForWS` / `encodeForSSE` / `encodeForNDJSON` / `decodeEnvelope`     | ✓ shipped                                  | same                                                   |
+| `WIRE_PROTOCOL_VERSION` + `WIRE_CHANNELS` constants                       | ✓ shipped                                  | same                                                   |
+| `vx serve` `/version` returns capability list                             | ✓ shipped                                  | `src/cli/serve.ts`                                     |
+| `vx serve` `/events` (SSE), `/stream` (NDJSON)                            | ✓ shipped                                  | `src/cli/serve.ts`; `tests/serve-transports.test.ts`   |
+| `vx serve` WS accepts BOTH legacy `t:'run'` and new `submit.run` envelope | ✓ shipped                                  | `src/cli/serve.ts`                                     |
+| Tests                                                                     | ✓ 22 wire tests + 3 serve-transports tests | `tests/wire.test.ts`, `tests/serve-transports.test.ts` |
 
 ## 1. The choice in one sentence
 

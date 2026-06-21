@@ -1,8 +1,25 @@
 # Predictive execution — using history to win the perf war
 
-Status: proposal (2026-06-20). Pure performance proposal. Builds on
-the `runs` / `run_tasks` data model (`vx-cloud-2026-06.md`) and the
-existing scheduler (`graph/scheduler.ts`).
+Status: **Phase A-B SHIPPED 2026-06-21** — `HistoryTable` revival +
+critical-path-from-history priority feeding the scheduler (opt-in via
+`defineWorkspace({ predictive: true })`). Phases C-F (speculative
+pre-warm, bandit retry, regression detection, default-on) deferred.
+Pure performance proposal. Builds on the `runs` / `run_tasks` data
+model (`vx-cloud-2026-06.md`) and the existing scheduler
+(`graph/scheduler.ts`).
+
+## Implementation snapshot (2026-06-21)
+
+| Phase                                                                     | Status                                               | Where                                                                                                               |
+| ------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Phase A: `HistoryTable` revival via SQL CTE                               | ✓ shipped                                            | `src/orchestrator/history.ts`, `tests/history.test.ts`                                                              |
+| Phase B: Critical-path-from-history scheduler priority                    | ✓ shipped (opt-in `predictive: true`)                | `src/orchestrator/predict.ts`, `src/graph/scheduler.ts` `ScheduleOptions.priorities`, `tests/predict.test.ts`       |
+| Prepare-time wiring (load history, compute priorities, hand to scheduler) | ✓ shipped                                            | `src/orchestrator/prepare.ts` `PreparedRun.history` + `.priorities`; `src/orchestrator/run.ts` threads them through |
+| MCP `getRunHistory` surfaces the same data                                | ✓ shipped                                            | `src/cli/mcp-rpc.ts`                                                                                                |
+| Phase C: Speculative pre-warming (input WILLNEED, module preload)         | ✗ deferred                                           |
+| Phase D: Bandit-driven retry                                              | ✗ deferred — needs flakiness telemetry               |
+| Phase E: Regression detection at runEnd                                   | ✗ deferred                                           |
+| Phase F: Default-on `predictive: true`                                    | ✗ deferred — gated on observed wall-time improvement |
 
 ## 1. The premise
 

@@ -1,9 +1,26 @@
 # Distributed execution on CI — the killer-feature roadmap
 
-Status: proposal (2026-06-20). Owner ask: "distributed tasks execution
-on CI easily." Builds on `execution-service-2026-06.md` (the pluggable
-`RunBackend` + `vx serve` foundation) and the cache layer cluster
-(local + remote, Turbo-wire-compatible).
+Status: **Phase A-B SHIPPED 2026-06-21** (real coordinator + worker; see
+`docs/progress/implementation-log-2026-06.md` Step 4). Phase C-E
+deferred. Owner ask: "distributed tasks execution on CI easily." Builds
+on `execution-service-2026-06.md` (the pluggable `RunBackend` + `vx
+serve` foundation) and the cache layer cluster (local + remote,
+Turbo-wire-compatible).
+
+## Implementation snapshot (2026-06-21)
+
+| Phase                                                                     | Status                                                                                                               | Commit / Files                                                      |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Phase A: Coordinator inside `vx serve`                                    | ✓ shipped (own subcommand, not inside `vx serve`)                                                                    | `src/cli/coordinator.ts`, `src/orchestrator/coordinator-prepare.ts` |
+| Phase B: Multi-worker, `vx run --worker`                                  | ✓ shipped                                                                                                            | `src/cli/worker.ts`, `src/orchestrator/worker-exec.ts`              |
+| Protocol extension (worker:\*, task:assign, cache:exists, coord:drain)    | ✓ shipped                                                                                                            | `src/orchestrator/protocol.ts`                                      |
+| JSON-RPC 2.0 envelope adapters for distributed messages                   | ✓ shipped                                                                                                            | `src/orchestrator/wire.ts` (worker._ + coord._ namespaces)          |
+| Per-node cache hash dispatch (content addressing for assignment)          | ✓ shipped                                                                                                            | `coordinator-prepare.ts:computeTaskHashForCoord`                    |
+| Disconnect recovery (stranded in-flight → re-queued)                      | ✓ shipped                                                                                                            | `coordinator.ts websocket.close`                                    |
+| End-to-end tests                                                          | ✓ shipped                                                                                                            | `tests/distributed-e2e.test.ts`, `tests/distributed.test.ts`        |
+| Phase C: GHA composite (`vx/distributed-action`)                          | ✗ deferred — needs a real testbed                                                                                    |
+| Phase D: Capability labels filter, critical-path priority, cache-affinity | ✗ deferred — predictive priorities are wired (Step 1); coordinator just doesn't read them yet                        |
+| Phase E: Signed manifests, sparse-clone worker                            | ✗ deferred — HMAC signing already shipped for the cache layer (apps/cloud Step 5); the worker side is the open piece |
 
 ## 1. The one-paragraph pitch
 

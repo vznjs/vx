@@ -1,9 +1,27 @@
 # Extension protocol — third-party tooling on top of vx
 
-Status: proposal (2026-06-20). Builds on `event-stream-2026-06.md`
-(`WireEvent` + devframe surface), `execution-service-2026-06.md`
-(backend protocol), and the `vx serve` / `vx dev` plumbing already
-shipped.
+Status: **Phase 1 SHIPPED 2026-06-21** — the wire substrate (JSON-RPC
+2.0 + OTel LogRecord), three transports (WS/SSE/NDJSON), MCP server,
+in-process Plugin API, otel-bridge are all live. Phase 2 (driver SDK)
+and Phase 3 (Python SDK + ref plugins) deferred. Builds on
+`event-stream-2026-06.md` (`WireEvent` + devframe surface),
+`execution-service-2026-06.md` (backend protocol), and the `vx serve`
+/ `vx dev` plumbing already shipped.
+
+## Implementation snapshot (2026-06-21)
+
+| Role                                            | Status                                                         | Where                                                                                 |
+| ----------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Subscriber (read-only events)                   | ✓ shipped via SSE + NDJSON on `vx serve`                       | `src/cli/serve.ts` `/events`, `/stream`; `tests/serve-transports.test.ts`             |
+| Inspector (read-only RPC)                       | ✓ shipped via `vx mcp` (stdio)                                 | `src/cli/mcp.ts`, `src/cli/mcp-rpc.ts`; 4 tools answer live cache.db queries (Step 3) |
+| Driver (write-capable submit)                   | ✓ shipped (legacy `t:'run'` + new `submit.run` envelope)       | `src/cli/serve.ts` WS endpoint accepts both formats                                   |
+| In-process Plugin API                           | ✓ shipped — `defineWorkspace({ plugins })` actually loads them | `src/orchestrator/plugin.ts`, `src/config.ts`, `tests/plugin-e2e.test.ts`             |
+| JSON-RPC 2.0 wire envelope                      | ✓ shipped                                                      | `src/orchestrator/wire.ts`                                                            |
+| OTel CI/CD-conventions bridge                   | ✓ shipped (env-var opt-in: `OTEL_EXPORTER_OTLP_ENDPOINT`)      | `packages/otel-bridge/`, `src/orchestrator/run.ts` (dynamic import attach)            |
+| `@vzn/vx-client` TS SDK                         | ✗ deferred — the wire works with any JSON-RPC client today     |
+| `@vzn/vx-client-py` Python SDK                  | ✗ deferred                                                     |
+| `vx-client` shell helper                        | ✗ deferred                                                     |
+| Reference plugins (`sentry`, `slack`, `influx`) | ✗ deferred                                                     |
 
 ## 1. The pitch
 
