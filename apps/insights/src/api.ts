@@ -66,6 +66,8 @@ export interface RunSummaryRow {
   endedAt: number
   cacheHit: boolean | null
   hash: string
+  cpuMs: number | null
+  peakRssBytes: number | null
   wallclockStartNs: string | null
   wallclockEndNs: string | null
 }
@@ -97,12 +99,73 @@ export interface CacheStats {
 
 export interface TaskHistoryRow {
   id: string
+  project: string
+  task: string
   runs: number
+  successes: number
+  failures: number
+  hits: number
   successRate: number
   hitRate: number
   failureMode: 'stable' | 'flaky-recoverable' | 'flaky-fatal'
   p50DurationMs: number | undefined
   p99DurationMs: number | undefined
+  minDurationMs: number | undefined
+  maxDurationMs: number | undefined
+  avgDurationMs: number | undefined
+  totalDurationMs: number
+  lastSeenAt: number | undefined
+}
+
+export interface TopTaskRow {
+  id: string
+  project: string
+  task: string
+  runs: number
+  totalDurationMs: number
+  avgDurationMs: number
+}
+
+export interface FailureRow {
+  runId: string | null
+  project: string
+  task: string
+  exitCode: number
+  durationMs: number
+  startedAt: number
+  hash: string
+}
+
+export interface CacheEntryRow {
+  hash: string
+  project: string
+  task: string
+  command: string
+  exitCode: number
+  durationMs: number
+  sizeBytes: number
+  createdAt: number
+  accessedAt: number
+}
+
+export interface CacheProjectRow {
+  project: string
+  entries: number
+  totalBytes: number
+}
+
+export interface CacheSavings {
+  hitsLast24h: number
+  estimatedTimeSavedMs: number
+  estimatedTimeSavedTotalMs: number
+}
+
+export interface TaskDetail {
+  project: string
+  task: string
+  aggregate: TaskHistoryRow | null
+  recent: RunSummaryRow[]
+  latestEntry: CacheEntryRow | null
 }
 
 export interface CacheKeyExplanation {
@@ -173,4 +236,68 @@ export async function getHistory(args: { limit?: number } = {}): Promise<TaskHis
 
 export async function explainCacheKey(taskId: string): Promise<CacheKeyExplanation> {
   return await getJson<CacheKeyExplanation>(`/v1/explain/${encodeURIComponent(taskId)}`)
+}
+
+export async function getTopTasks(limit = 10): Promise<TopTaskRow[]> {
+  const r = await getJson<{ tasks: TopTaskRow[] }>(`/v1/top-tasks?limit=${limit}`)
+  return r.tasks
+}
+
+export async function getFailures(limit = 25): Promise<FailureRow[]> {
+  const r = await getJson<{ failures: FailureRow[] }>(`/v1/failures?limit=${limit}`)
+  return r.failures
+}
+
+export async function getCacheSavings(): Promise<CacheSavings> {
+  return await getJson<CacheSavings>('/v1/cache/savings')
+}
+
+export async function getCacheBreakdown(limit = 20): Promise<CacheProjectRow[]> {
+  const r = await getJson<{ projects: CacheProjectRow[] }>(`/v1/cache/breakdown?limit=${limit}`)
+  return r.projects
+}
+
+export async function listCacheEntries(
+  args: {
+    limit?: number
+    orderBy?: 'created_at' | 'accessed_at' | 'size_bytes' | 'duration_ms'
+    project?: string
+  } = {},
+): Promise<CacheEntryRow[]> {
+  const params = new URLSearchParams()
+  if (args.limit !== undefined) params.set('limit', String(args.limit))
+  if (args.orderBy !== undefined) params.set('orderBy', args.orderBy)
+  if (args.project !== undefined) params.set('project', args.project)
+  const r = await getJson<{ entries: CacheEntryRow[] }>(`/v1/cache/entries?${params.toString()}`)
+  return r.entries
+}
+
+export async function getTaskDetail(taskId: string): Promise<TaskDetail | null> {
+  try {
+    return await getJson<TaskDetail>(`/v1/tasks/${encodeURIComponent(taskId)}`)
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('404')) return null
+    throw err
+  }
+}
+
+/**
+ * Subscribe to live event stream via SSE. Returns an unsubscribe fn.
+ * The hosted SPA uses this to overlay running tasks on the Overview.
+ */
+export function subscribeEvents(onMessage: (event: unknown) => void): () => void {
+  const origin = getOrigin()
+  const source = new EventSource(`${origin}/v1/events`)
+  source.onmessage = (e) => {
+    try {
+      onMessage(JSON.parse(e.data))
+    } catch {
+      // ignore malformed
+    }
+  }
+  source.onerror = () => {
+    // Connection lost — EventSource will auto-retry. The picker's
+    // status dot reflects connectedness via the /version probe.
+  }
+  return () => source.close()
 }

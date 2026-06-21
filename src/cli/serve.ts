@@ -18,10 +18,16 @@ import {
   encodeForSSE,
   envelopeToClientMessage,
   explainCacheKeyQuery,
+  getCacheBreakdown,
+  getCacheSavings,
   getCacheStatsSql,
   getHistory,
+  getRecentFailures,
   getRun,
+  getTaskDetail,
+  getTopTimeBurners,
   isEnvelope,
+  listCacheEntries,
   listInvocations,
   listRuns,
   serverMessageToEnvelope,
@@ -193,6 +199,39 @@ export async function startServe(opts: {
       if (url.pathname === '/v1/cache/stats') {
         return jsonResponse(getCacheStatsSql(cache.dbHandle()))
       }
+      if (url.pathname === '/v1/cache/breakdown') {
+        const limit = Number(url.searchParams.get('limit') ?? '20')
+        return jsonResponse({ projects: getCacheBreakdown(cache.dbHandle(), limit) })
+      }
+      if (url.pathname === '/v1/cache/savings') {
+        return jsonResponse(getCacheSavings(cache.dbHandle()))
+      }
+      if (url.pathname === '/v1/cache/entries') {
+        const params = url.searchParams
+        const args: Parameters<typeof listCacheEntries>[1] = {}
+        const limitRaw = params.get('limit')
+        if (limitRaw !== null) args.limit = Number(limitRaw)
+        const orderBy = params.get('orderBy')
+        if (
+          orderBy === 'created_at' ||
+          orderBy === 'accessed_at' ||
+          orderBy === 'size_bytes' ||
+          orderBy === 'duration_ms'
+        ) {
+          args.orderBy = orderBy
+        }
+        const project = params.get('project')
+        if (project !== null) args.project = project
+        return jsonResponse({ entries: listCacheEntries(cache.dbHandle(), args) })
+      }
+      if (url.pathname === '/v1/top-tasks') {
+        const limit = Number(url.searchParams.get('limit') ?? '10')
+        return jsonResponse({ tasks: getTopTimeBurners(cache.dbHandle(), limit) })
+      }
+      if (url.pathname === '/v1/failures') {
+        const limit = Number(url.searchParams.get('limit') ?? '25')
+        return jsonResponse({ failures: getRecentFailures(cache.dbHandle(), limit) })
+      }
       if (url.pathname === '/v1/history') {
         const params = url.searchParams
         const args: Parameters<typeof getHistory>[1] = {}
@@ -203,6 +242,14 @@ export async function startServe(opts: {
         const task = params.get('task')
         if (task !== null) args.task = task
         return jsonResponse({ history: getHistory(cache.dbHandle(), args) })
+      }
+      {
+        const m = /^\/v1\/tasks\/(.+)$/.exec(url.pathname)
+        if (m) {
+          const detail = getTaskDetail(cache.dbHandle(), decodeURIComponent(m[1]!))
+          if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
+          return jsonResponse(detail)
+        }
       }
       {
         const m = /^\/v1\/explain\/(.+)$/.exec(url.pathname)
