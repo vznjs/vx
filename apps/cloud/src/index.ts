@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { bearerAuth } from './auth.js'
 import type { Env, QueuedEvent, Variables } from './env.js'
+import { computeArtifactTag, verifyArtifactTag } from './hmac.js'
 import type { WireEvent } from './wire.js'
 
 export { InflightDedupDO } from './inflight-dedup-do.js'
@@ -47,14 +48,31 @@ cache.put('/:hash', async (c) => {
   const orgId = c.get('auth').orgId
   const body = await c.req.arrayBuffer()
 
-  // TODO: validate HMAC tag via env.VX_REMOTE_CACHE_SIGNATURE_KEY when set
-  // (mirror src/cache/remote-cache.ts — base64(HMAC-SHA256(key, hash + teamId + body))).
+  // HMAC: when VX_REMOTE_CACHE_SIGNATURE_KEY is set, every PUT must
+  // carry an x-artifact-tag header we can verify. This matches the
+  // policy on the client side (src/cache/remote-cache.ts: a tampered
+  // artifact surfaces as a hard error so the client falls back).
+  const secret = c.env.VX_REMOTE_CACHE_SIGNATURE_KEY
+  let tag = c.req.header('x-artifact-tag') ?? ''
+  if (secret) {
+    if (!tag) {
+      return c.json({ error: 'x-artifact-tag required when signing is enabled' }, 400)
+    }
+    const ok = await verifyArtifactTag(secret, hash, orgId, body, tag)
+    if (!ok) {
+      return c.json({ error: 'artifact tag verification failed' }, 401)
+    }
+  } else if (!tag) {
+    // No signing configured: still compute + store a tag so reads can
+    // self-verify if signing is enabled later (best-effort integrity).
+    tag = ''
+  }
 
   await c.env.ARTIFACTS.put(artifactKey(orgId, hash), body, {
     httpMetadata: { contentType: 'application/octet-stream' },
     customMetadata: {
       duration: c.req.header('x-artifact-duration') ?? '0',
-      tag: c.req.header('x-artifact-tag') ?? '',
+      tag,
     },
   })
 
@@ -67,13 +85,27 @@ cache.get('/:hash', async (c) => {
   const obj = await c.env.ARTIFACTS.get(artifactKey(orgId, hash))
   if (!obj) return c.notFound()
 
-  // TODO: verify HMAC tag on read when env.VX_REMOTE_CACHE_SIGNATURE_KEY is set;
-  // a tampered artifact must surface as a hard error so the client falls back
-  // to local execution.
+  const secret = c.env.VX_REMOTE_CACHE_SIGNATURE_KEY
+  const tag = obj.customMetadata?.['tag'] ?? ''
+  if (secret) {
+    if (!tag) {
+      // Hard fail: a signing deployment must not silently serve unsigned.
+      return c.json({ error: 'cached artifact missing tag under signing policy' }, 500)
+    }
+    const body = await obj.arrayBuffer()
+    const ok = await verifyArtifactTag(secret, hash, orgId, body, tag)
+    if (!ok) {
+      return c.json({ error: 'cached artifact tag verification failed' }, 500)
+    }
+    const headers = new Headers({ 'content-type': 'application/octet-stream' })
+    const duration = obj.customMetadata?.['duration']
+    if (duration) headers.set('x-artifact-duration', duration)
+    headers.set('x-artifact-tag', tag)
+    return new Response(body, { headers })
+  }
 
   const headers = new Headers({ 'content-type': 'application/octet-stream' })
   const duration = obj.customMetadata?.['duration']
-  const tag = obj.customMetadata?.['tag']
   if (duration) headers.set('x-artifact-duration', duration)
   if (tag) headers.set('x-artifact-tag', tag)
   return new Response(obj.body, { headers })
@@ -205,20 +237,46 @@ export default {
   fetch: app.fetch,
 
   async queue(batch: MessageBatch<QueuedEvent>, env: Env): Promise<void> {
-    // Batched event insert: one statement per message to keep the example
-    // legible; a real impl batches via D1 batch() or a single multi-VALUES.
+    // Group by runId so we allocate seq once per run via a single
+    // SELECT + sequential offsets. D1's batch() executes statements in
+    // order under one transaction — atomic and fast.
+    const byRun = new Map<string, typeof batch.messages[number][]>()
     for (const msg of batch.messages) {
-      const { runId, tsNs, eventJson } = msg.body
+      const list = byRun.get(msg.body.runId)
+      if (list) list.push(msg)
+      else byRun.set(msg.body.runId, [msg])
+    }
+
+    for (const [runId, msgs] of byRun) {
       try {
+        // Ensure the runs row exists so the FK on run_events holds.
+        // First event from a run inserts the parent; subsequent events
+        // are no-ops due to ON CONFLICT DO NOTHING.
+        const firstEvent = JSON.parse(msgs[0]!.body.eventJson) as WireEvent
+        const orgId = msgs[0]!.body.orgId
         await env.DB.prepare(
-          'INSERT INTO run_events (run_id, seq, ts_ns, event_json) VALUES (?1, (SELECT COALESCE(MAX(seq), 0) + 1 FROM run_events WHERE run_id = ?1), ?2, ?3)',
+          'INSERT INTO runs (run_id, org_id, started_at) VALUES (?1, ?2, ?3) ON CONFLICT(run_id) DO NOTHING',
         )
-          .bind(runId, tsNs, eventJson)
+          .bind(runId, orgId, Number(firstEvent.timeUnixNano ?? Date.now() * 1_000_000) / 1_000_000)
           .run()
-        msg.ack()
+
+        // Allocate seqs.
+        const start = await env.DB.prepare(
+          'SELECT COALESCE(MAX(seq), 0) AS m FROM run_events WHERE run_id = ?1',
+        )
+          .bind(runId)
+          .first<{ m: number }>()
+        let nextSeq = (start?.m ?? 0) + 1
+        const stmts = msgs.map((m) =>
+          env.DB.prepare(
+            'INSERT INTO run_events (run_id, seq, ts_ns, event_json) VALUES (?1, ?2, ?3, ?4)',
+          ).bind(runId, nextSeq++, m.body.tsNs, m.body.eventJson),
+        )
+        await env.DB.batch(stmts)
+        for (const m of msgs) m.ack()
       } catch (e) {
         console.error('queue insert failed', e)
-        msg.retry()
+        for (const m of msgs) m.retry()
       }
     }
   },

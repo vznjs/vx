@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "tail": "wrangler tail"
+    "tail": "wrangler tail",
+    "test": "bun test tests/"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260601.0",

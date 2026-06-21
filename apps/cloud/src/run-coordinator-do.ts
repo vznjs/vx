@@ -65,15 +65,35 @@ export class RunCoordinatorDO extends DurableObject<Env> {
 
     const { id, method, params } = envelope
     switch (method) {
-      case 'submit.run':
-        // TODO: persist a runs row, fan tasks out to workers via inflight-dedup DOs.
-        ws.send(JSON.stringify(ok(id, { accepted: true })))
+      case 'submit.run': {
+        // Persist the run in storage; the per-task fan-out via inflight-
+        // dedup DOs lands as a follow-up — the contract is here and
+        // matches the local in-process executor.
+        const p = (params ?? {}) as { runId?: string; orgId?: string; tasks?: string[] }
+        const runId = p.runId ?? this.ctx.id.toString()
+        const orgId = p.orgId ?? 'unknown'
+        await this.ctx.storage.put<RunMeta>('meta', {
+          runId,
+          orgId,
+          startedAt: Date.now(),
+          status: 'running',
+        })
+        ws.send(JSON.stringify(ok(id, { accepted: true, runId })))
         return
+      }
       case 'state.snapshot':
         ws.send(JSON.stringify(ok(id, await this.snapshot())))
         return
       case 'events.append': {
         await this.appendEvent(params as WireEvent)
+        ws.send(JSON.stringify(ok(id, { ok: true })))
+        return
+      }
+      case 'run.end': {
+        const meta = await this.snapshot()
+        if (meta) {
+          await this.ctx.storage.put<RunMeta>('meta', { ...meta, status: 'ended' })
+        }
         ws.send(JSON.stringify(ok(id, { ok: true })))
         return
       }
