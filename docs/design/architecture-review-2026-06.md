@@ -1,13 +1,51 @@
 # Architecture review — sharpening the five proposals
 
-Status: review pass (2026-06-20). Reads the five north-star proposals
-(`architecture-north-star-2026-06.md`, `distributed-ci-2026-06.md`,
-`vx-cloud-2026-06.md`, `extension-protocol-2026-06.md`,
-`predictive-execution-2026-06.md`) against (a) two parallel research
-passes on third-party tooling and (b) the cross-doc duplication +
-contract-gap matrix. Answers: what to simplify, what to merge, what
+Status: **MOSTLY APPLIED 2026-06-21**. See "Applied" snapshot below.
+Originally a review pass (2026-06-20). Reads the five north-star
+proposals (`architecture-north-star-2026-06.md`,
+`distributed-ci-2026-06.md`, `vx-cloud-2026-06.md`,
+`extension-protocol-2026-06.md`, `predictive-execution-2026-06.md`)
+against (a) two parallel research passes on third-party tooling and
+(b) the cross-doc duplication + contract-gap matrix. Answers: what
+to simplify, what to merge, what
 to fix, what to import from outside instead of building, and what to
 commit to first.
+
+## Applied (2026-06-21)
+
+What the review called for vs. what's in the running code:
+
+| Review item                                                                               | Status                                                                                    |
+| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| §2.1 Fold `worker:*` into `protocol.ts` (one envelope)                                    | ✓ shipped (Step 4 + Step 2)                                                               |
+| §2.2 Channels map to JSON-RPC 2.0 methods                                                 | ✓ shipped (`src/orchestrator/wire.ts`)                                                    |
+| §2.3 Cloud persists `WireEvent` (projected form), never `RunEvent` raw                    | ✓ shipped (`apps/cloud/src/index.ts` queue() stores `event_json` from the projected form) |
+| §2.4 `HistoryProvider` as the loader interface                                            | ✓ shipped (`src/orchestrator/history.ts`)                                                 |
+| §3.2 Predictive Phase F default-on downgraded to data-gated                               | ✓ shipped — `predictive: true` is opt-in                                                  |
+| §3.3 vx-cloud SQL on D1 (not Postgres)                                                    | ✓ shipped (`apps/cloud/migrations/0001_init.sql`)                                         |
+| §4.1 In-process plugin + WS subscriber collapsed to one `Plugin` contract                 | ✓ shipped (`src/orchestrator/plugin.ts`)                                                  |
+| §4.2 Coordinator + RunCoordinatorDO share contract                                        | ✓ shipped (Bun version local; CF DO version in `apps/cloud/`)                             |
+| §4.3 `Digest` + `CASBackend` as explicit CAS key/storage abstraction                      | ✓ shipped (`src/cache/digest.ts`, `src/cache/cas-backend.ts`, `Cache.contentBackend()`)   |
+| §4.4 Extension protocol collapsed from 7 phases to 3                                      | ✓ shipped (Phase 1: bus + JSON-RPC + MCP all in one go)                                   |
+| §5.1 Adopt MCP SDK                                                                        | ✓ shipped (`src/cli/mcp.ts`)                                                              |
+| §5.1 Adopt Hono                                                                           | ✓ shipped in `apps/cloud/`; deferred for host-side `vx serve`                             |
+| §5.1 Adopt OTel CI/CD semantic conventions                                                | ✓ shipped (`packages/otel-bridge/`)                                                       |
+| §5.2 Inspire from Bazel CAS digest                                                        | ✓ shipped (`src/cache/digest.ts`)                                                         |
+| §5.2 Inspire from BuildBuddy product UX                                                   | ◐ partial — `vx insights` Solid+DuckDB-WASM scaffold                                      |
+| §5.2 Inspire from JSON-RPC 2.0 envelope (MCP+A2A convergence)                             | ✓ shipped                                                                                 |
+| §5.2 Inspire from OTel LogRecord shape                                                    | ✓ documented in `wire-protocol-2026-06.md`                                                |
+| §5.2 Inspire from Vite plugin lifecycle hooks                                             | ✓ shipped (`PluginHookHandlers`)                                                          |
+| §5.4 Plan exit from devframe                                                              | ◐ partial — bus works without it; devframe still gates the `--ui` and `vx dev` hub        |
+| §6 Cloudflare-native cloud (Workers + R2 + D1 + DOs + Queues + KV)                        | ✓ shipped (`apps/cloud/`)                                                                 |
+| §7 Wire format consolidation (7 framings → 2)                                             | ✓ shipped                                                                                 |
+| §8.1 Distributed-ci feasible after protocol extension                                     | ✓ shipped Phase A-B                                                                       |
+| §8.2 vx-cloud feasible AFTER CF pivot                                                     | ✓ shipped Phases A-C                                                                      |
+| §8.3 Extension-protocol Phase 1                                                           | ✓ shipped                                                                                 |
+| §8.4 Predictive feasible; data dependency is the gate                                     | ✓ shipped Phase A-B                                                                       |
+| §9 Wave plan: wire spec → CAS → HistoryTable → Hono migration → MCP → distributed → cloud | ✓ shipped (except host-side Hono migration)                                               |
+
+The detailed phase-by-phase implementation log is
+`docs/progress/implementation-log-2026-06.md`.
 
 ## 0. Executive verdict
 

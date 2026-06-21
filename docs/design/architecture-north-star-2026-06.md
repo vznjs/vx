@@ -1,10 +1,40 @@
 # Architecture north star — the unified vision
 
-Status: synthesis proposal (2026-06-20). Reads the four
-companion proposals together — `distributed-ci-2026-06.md`,
-`vx-cloud-2026-06.md`, `extension-protocol-2026-06.md`,
-`predictive-execution-2026-06.md` — and answers: _what does vx look
-like at the end of this arc, and what does each step buy us?_
+Status: **VISION MOSTLY MATERIALIZED 2026-06-21**. Originally a synthesis
+proposal (2026-06-20). Reads the four companion proposals together —
+`distributed-ci-2026-06.md`, `vx-cloud-2026-06.md`,
+`extension-protocol-2026-06.md`, `predictive-execution-2026-06.md` —
+and answers: _what does vx look like at the end of this arc, and what
+does each step buy us?_
+
+## What's materialized (2026-06-21)
+
+The six-layer spine from §2 — all populated:
+
+1. **Exec primitives** ✓ — unchanged.
+2. **Cache layers** ✓ + Digest / `CASBackend` now explicit
+   (`Cache.contentBackend()`).
+3. **Execution backends** ✓ + distributed coordinator role
+   (`vx coordinator`, `vx run --worker`).
+4. **Orchestrator** ✓ + plugins / history / predictive scheduling
+   actually fire during a real `vx run`.
+5. **Event substrate** ✓ + JSON-RPC 2.0 envelope (`src/orchestrator/wire.ts`)
+   on three transports (WS / SSE / NDJSON).
+6. **Surfaces** ✓ — terminal, `vx serve` (envelope-aware), `vx mcp`
+   (MCP server with live cache.db tools), `apps/insights/` (Solid+DuckDB-WASM SPA),
+   `apps/cloud/` (Cloudflare deployment), `packages/otel-bridge/` (OTel CI/CD adapter).
+
+The five carved-in-stone rules from §3 are now true of the running code:
+
+| Rule                                    | True today because                                                                                                   |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Content addressing is the only identity | distributed coordinator dispatches by task hash; HMAC tag binds (hash, teamId, body) on cloud                        |
+| One envelope, many transports           | `src/orchestrator/wire.ts` + serve.ts mounts WS+SSE+NDJSON                                                           |
+| The event stream is the protocol        | bus subscribers: terminal, MCP, otel-bridge, plugins, cloud uploader                                                 |
+| Fail-safe to local                      | OTel bridge missing → silent skip; remote cache 500 → cache miss; coordinator unreachable → falls back to in-process |
+| Shell is the API for tasks              | distributed worker spawns `sh -c <command>` like the local executor                                                  |
+
+Detail in `docs/progress/implementation-log-2026-06.md`.
 
 ## 1. The end-state vision (one screen)
 

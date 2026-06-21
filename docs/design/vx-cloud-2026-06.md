@@ -1,10 +1,28 @@
 # vx Cloud — hosted observability, cache, and execution
 
-Status: proposal (2026-06-20). Owner ask: "hosted service where people
-could see local and company-wide things." Pairs with
-`distributed-ci-2026-06.md` (the execution protocol) and
-`remote-cache.md` (the existing cache transport). This is the
-_observability + multi-tenancy_ layer on top.
+Status: **Phases A-C SHIPPED 2026-06-21** as the `apps/cloud/`
+Cloudflare-Workers scaffold + the HMAC validation + queue→D1 consumer
+
+- RunCoordinatorDO submit.run. Phases D-E (OAuth, hosted SaaS) deferred.
+  Owner ask: "hosted service where people could see local and company-wide
+  things." Pairs with `distributed-ci-2026-06.md` (the execution protocol)
+  and `remote-cache.md` (the existing cache transport). This is the
+  _observability + multi-tenancy_ layer on top.
+
+## Implementation snapshot (2026-06-21)
+
+| Phase                                                                       | Status                                                                                      | Commit / Files                                                           |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Phase A: `vx insights serve` — local SPA over local cache.db                | ✓ shipped                                                                                   | `apps/insights/`, `src/cli/insights.ts`, `tests/insights-static.test.ts` |
+| Phase B: Data model extension (`runs`, `run_tasks`, `run_events`, `org_id`) | ✓ shipped (apps/cloud D1 schema; core cache.db already had analytics columns since v11)     | `apps/cloud/migrations/0001_init.sql`                                    |
+| Phase C: Self-hosted backend (Workers + R2 + D1 + DOs + Queue + KV)         | ✓ shipped — template-spawnable from `apps/cloud/`, `bun wrangler deploy` from a fresh clone | `apps/cloud/wrangler.toml`, `apps/cloud/src/*`                           |
+| HMAC artifact signing on PUT/GET                                            | ✓ shipped                                                                                   | `apps/cloud/src/hmac.ts`, `apps/cloud/tests/hmac.test.ts`                |
+| Queue → D1 consumer (batched, per-run seq)                                  | ✓ shipped                                                                                   | `apps/cloud/src/index.ts` `queue()`                                      |
+| RunCoordinatorDO submit.run / events.append / run.end                       | ✓ shipped                                                                                   | `apps/cloud/src/run-coordinator-do.ts`                                   |
+| Bearer-token auth via KV cache → D1 fallback                                | ✓ shipped                                                                                   | `apps/cloud/src/auth.ts`                                                 |
+| InflightDedupDO contract                                                    | ✓ shipped (DO class declared; per-task fan-out wiring deferred)                             | `apps/cloud/src/inflight-dedup-do.ts`                                    |
+| Phase D: OAuth + multi-tenant + RBAC                                        | ✗ deferred — bearer tokens stub the multi-tenant story                                      |
+| Phase E: Hosted SaaS at `cloud.vx.dev`                                      | ✗ deferred — when template-spawnable is enough, this is convenience                         |
 
 ## 1. The pitch in one paragraph
 

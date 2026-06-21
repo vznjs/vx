@@ -3,6 +3,8 @@
 // tar.ts is internal — artifact pack/extract is an implementation detail.
 
 export { Cache, type CacheLayer, type RunRecord, WORKSPACE_OUTPUT_PREFIX } from './cache.js'
+export { type CASBackend, FsCASBackend, MemoryCASBackend } from './cas-backend.js'
+export { type Digest, digestEqual, digestString, makeDigest, parseDigest } from './digest.js'
 export {
   cleanOutputs,
   cleanWorkspaceOutputs,

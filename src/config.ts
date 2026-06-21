@@ -5,6 +5,29 @@ export interface WorkspaceConfig {
   concurrency?: number
   /** Cache directory, relative to the workspace root. Defaults to `.vx/cache`. */
   cacheDir?: string
+  /**
+   * Plugins registered for this workspace. Each plugin is an
+   * in-process subscriber on the run event bus, installed once per
+   * `vx run`. See `docs/design/extension-protocol-2026-06.md` §5.
+   */
+  plugins?: readonly Plugin[]
+  /**
+   * Opt in to history-aware predictive scheduling. When `true` and
+   * `cache.db` has prior runs, the scheduler picks the next ready
+   * task by expected remaining critical-path duration (HistoryTable
+   * p50) instead of the static reverse-deps count.
+   */
+  predictive?: boolean
+}
+
+/**
+ * Structural plugin shape (`{ name, setup(ctx) }`). The full type
+ * lives in `src/orchestrator/plugin.ts`; this is a re-declaration so
+ * `config.ts` stays a leaf module (no orchestrator import).
+ */
+export interface Plugin {
+  readonly name: string
+  setup(ctx: unknown): void | Promise<void>
 }
 
 export interface ProjectConfig {

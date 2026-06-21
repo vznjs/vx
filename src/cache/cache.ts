@@ -35,6 +35,7 @@ import { mkdir, mkdtemp, rename, rm, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { relPosix, xxh3 } from '../util/index.js'
+import { FsCASBackend } from './cas-backend.js'
 import { extractOutputs, parseTarHeaders, readTarText, type TarHeader } from './tar.js'
 
 // v17: artifact carries only logs + outputs (stdout + outputs/<rel>).
@@ -1069,6 +1070,29 @@ export class Cache implements CacheLayer {
         .prepare(`UPDATE entries SET accessed_at = ? WHERE hash IN (${placeholders})`)
         .run(now, ...chunk)
     }
+  }
+
+  /**
+   * Raw `bun:sqlite` Database handle. Exposed for subsystems that
+   * need to issue their own queries (LocalHistoryProvider's CTE,
+   * future analytics consumers) without us proxying every method.
+   * Callers must NOT close the handle directly — `Cache.close()` owns
+   * the lifetime.
+   */
+  dbHandle(): Database {
+    return this.db
+  }
+
+  /**
+   * Content-addressed storage view over the same artifacts directory.
+   * Returns an `FsCASBackend` pointing at `cacheDir`, so external
+   * subsystems (R2 mirror, REAPI CAS bridge, analytics scanners) can
+   * read raw bytes with a `Digest`-keyed API without coupling to
+   * Cache's internal save path. Read/write semantics match what
+   * Cache.save writes (`<cacheDir>/<hash>.tar.zst`).
+   */
+  contentBackend(): FsCASBackend {
+    return new FsCASBackend(this.cacheDir)
   }
 
   recordRun(run: RunRecord): void {

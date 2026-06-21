@@ -18,4 +18,58 @@ export type {
 export { createVxSurface } from './devframe-surface.js'
 export { createWireRenderer } from './wire-render.js'
 export { optionsToRequest, requestToOptions } from './protocol.js'
-export type { RunRequest, RunResult, ServerMessage, ClientMessage } from './protocol.js'
+export type {
+  ClientMessage,
+  RunRequest,
+  RunResult,
+  ServerMessage,
+  WireOutcome,
+  WireTaskNode,
+} from './protocol.js'
+export {
+  clientMessageToEnvelope,
+  decodeEnvelope,
+  encodeForNDJSON,
+  encodeForSSE,
+  encodeForWS,
+  ENVELOPE_ERRORS,
+  envelopeToClientMessage,
+  envelopeToServerMessage,
+  isEnvelope,
+  isNotification,
+  isRequest,
+  makeError,
+  makeNotification,
+  makeRequest,
+  makeResponse,
+  serverMessageToEnvelope,
+  WIRE_CHANNELS,
+  WIRE_PROTOCOL_VERSION,
+} from './wire.js'
+export type {
+  Envelope,
+  ErrorResponse,
+  Notification,
+  Request as WireRequest,
+  Response as WireResponse,
+  WireChannel,
+} from './wire.js'
+export {
+  EmptyHistoryProvider,
+  type HistoryProvider,
+  type HistoryTable,
+  LocalHistoryProvider,
+  type TaskHistory,
+} from './history.js'
+export { computePredictedPriorities } from './predict.js'
+export {
+  installPlugins,
+  type InstallPluginsArgs,
+  type Plugin,
+  type PluginContext,
+  type PluginHookHandlers,
+  type PluginHookName,
+} from './plugin.js'
+export { prepareForCoordinator, computeTaskHashForCoord } from './coordinator-prepare.js'
+export { workerExecute } from './worker-exec.js'
+export type { WorkerExecArgs, WorkerExecResult } from './worker-exec.js'

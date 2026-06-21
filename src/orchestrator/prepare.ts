@@ -29,12 +29,33 @@ import { wrapWithRemoteCache } from './remote-cache-setup.js'
 import { createHashCache, type HashCache } from './task-hash.js'
 import type { Logger } from './logger.js'
 import type { RunOptions } from './options.js'
+import {
+  EmptyHistoryProvider,
+  type HistoryProvider,
+  type HistoryTable,
+  LocalHistoryProvider,
+} from './history.js'
+import { computePredictedPriorities } from './predict.js'
 
 export interface PreparedRun {
   workspaceRoot: string
   workspaceConfig: WorkspaceConfig | null
   cacheDir: string
   cache: CacheLayer
+  /**
+   * The local Cache handle (unwrapped). `cache` may be a LayeredCache
+   * wrapping this; subsystems that need the raw SQLite (e.g.
+   * LocalHistoryProvider) read directly from here.
+   */
+  localCache: Cache
+  /** History lookup provider — local cache.db today; remote-RPC later. */
+  history: HistoryProvider
+  /**
+   * Predicted priorities (history-aware critical-path). Populated only
+   * when the workspace opts in via `defineWorkspace({ predictive: true })`.
+   * Empty map otherwise — scheduler falls back to its baseline.
+   */
+  priorities: ReadonlyMap<string, number>
   nodes: Map<string, TaskNode>
   workspaceFingerprint: string
   nestedDirsByProject: Map<string, string[]>
@@ -199,6 +220,9 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       workspaceConfig,
       cacheDir,
       cache,
+      localCache,
+      history: new EmptyHistoryProvider(),
+      priorities: new Map(),
       nodes: new Map(),
       workspaceFingerprint,
       nestedDirsByProject,
@@ -218,11 +242,35 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       : {}),
   })
 
+  // Predictive scheduling (architecture-review §8.4 / Phase 4): when
+  // the workspace opts in via `predictive: true`, load history for
+  // every node in the graph + compute expected-critical-path weights.
+  // The scheduler applies them on top of the static baseline. Failing
+  // open: any error in history loading degrades to baseline-only,
+  // never to a broken run.
+  let history: HistoryProvider = new EmptyHistoryProvider()
+  let priorities: ReadonlyMap<string, number> = new Map()
+  if (workspaceConfig?.predictive === true) {
+    history = new LocalHistoryProvider(localCache.dbHandle())
+    try {
+      const ids = [...nodes.keys()]
+      const table: HistoryTable = await history.loadFor(ids)
+      priorities = computePredictedPriorities([...nodes.values()], table)
+    } catch (err) {
+      log.status(
+        `[vx] predictive scheduling fell back to baseline: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+  }
+
   return {
     workspaceRoot,
     workspaceConfig,
     cacheDir,
     cache,
+    localCache,
+    history,
+    priorities,
     nodes,
     workspaceFingerprint,
     nestedDirsByProject,

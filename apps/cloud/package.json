@@ -1,0 +1,18 @@
+{
+  "name": "@vzn/vx-cloud",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "vx Cloud — Cloudflare Workers reference deployment for hosted observability, cache, and execution.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "test": "bun test tests/"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260601.0",
+    "hono": "^4.7.0",
+    "wrangler": "^4.0.0"
+  }
+}

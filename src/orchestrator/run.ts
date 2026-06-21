@@ -15,7 +15,8 @@ import {
 import { ulid, UserError } from '../util/index.js'
 import { executeTask } from './execute-task.js'
 import { computeTaskHash } from './task-hash.js'
-import { busLogger, createEventBus, terminalSubscriber } from './events.js'
+import { busLogger, createEventBus, terminalSubscriber, type EventBus } from './events.js'
+import { installPlugins } from './plugin.js'
 import { defaultLogger, resolveOutputView } from './logger.js'
 import { detectColors } from './colors.js'
 import { formatPersistentList } from './framed-output.js'
@@ -48,6 +49,32 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   bus.subscribe(terminalSubscriber(sink))
   const log = busLogger(bus)
 
+  // OTel bridge — when OTEL_EXPORTER_OTLP_ENDPOINT is set AND
+  // @vzn/vx-otel-bridge is installed, attach it as an additional
+  // subscriber. Pure dynamic import so core stays free of OTel deps.
+  // Failure to import logs a hint and continues; never blocks a run.
+  let detachOtel: (() => void) | undefined
+  if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT && options.log === undefined) {
+    try {
+      // Dynamic specifier so TS doesn't try to resolve the optional
+      // peer at type-check time. @vzn/vx-otel-bridge isn't in core's
+      // dep tree; users add it to opt in.
+      const specifier = '@vzn/vx-otel-bridge'
+      const mod = (await import(specifier)) as {
+        createOtelBridge: (opts?: { endpoint?: string; serviceName?: string }) => {
+          attach: (bus: EventBus) => () => void
+        }
+      }
+      const bridge = mod.createOtelBridge({
+        endpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+        serviceName: process.env.OTEL_SERVICE_NAME ?? 'vx',
+      })
+      detachOtel = bridge.attach(bus)
+    } catch {
+      // not installed — silently skip; the env var is the opt-in.
+    }
+  }
+
   const prepared = await prepareRun(options, log)
   if (prepared.empty !== null) {
     // `no-tasks-declared` is almost always a typo in CI; we surface
@@ -61,6 +88,25 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     log.status(msg)
     prepared.cache.close()
     return { ok: false, outcomes: [] }
+  }
+  // Install user plugins as additional bus subscribers BEFORE the run
+  // starts emitting events. Failure of a plugin's setup() aborts the
+  // run with a clean UserError naming the plugin (per the Plugin API
+  // contract in src/orchestrator/plugin.ts).
+  let disposePlugins: (() => void) | undefined
+  if (prepared.workspaceConfig?.plugins && prepared.workspaceConfig.plugins.length > 0) {
+    try {
+      disposePlugins = await installPlugins({
+        plugins: prepared.workspaceConfig.plugins as never,
+        bus,
+        workspaceRoot: prepared.workspaceRoot,
+        cacheDir: prepared.cacheDir,
+        warn: (m) => log.status(m),
+      })
+    } catch (err) {
+      prepared.cache.close()
+      throw err
+    }
   }
   const {
     workspaceRoot,
@@ -275,6 +321,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         log.taskComplete(o.node, o)
       },
       execute: executeWithDedup,
+      // Predictive scheduling: empty map when not opted in, in which
+      // case the scheduler keeps the static baseline behavior.
+      priorities: prepared.priorities,
     })
 
     // A persistent task the user REQUESTED (a dev server / watcher) is
@@ -434,6 +483,10 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     log.runEnd?.()
     process.off('SIGINT', onSigint)
     process.off('SIGTERM', onSigterm)
+    // Plugins installed at the top of run() get their bus subscriptions
+    // released here. Idempotent; safe even if installPlugins threw.
+    disposePlugins?.()
+    detachOtel?.()
   }
 }
 

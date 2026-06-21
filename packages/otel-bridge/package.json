@@ -1,0 +1,35 @@
+{
+  "name": "@vzn/vx-otel-bridge",
+  "version": "0.0.0",
+  "description": "Thin one-direction adapter that subscribes to the vx event bus and exports OTel LogRecords over OTLP.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/api-logs": "^0.205.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.205.0",
+    "@opentelemetry/sdk-logs": "^0.205.0"
+  },
+  "peerDependencies": {
+    "@vzn/vx": "*"
+  },
+  "peerDependenciesMeta": {
+    "@vzn/vx": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

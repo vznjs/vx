@@ -13,6 +13,10 @@ import { migrateCmd } from './migrate.js'
 import { upgradeCmd } from './upgrade.js'
 import { showCmd } from './show.js'
 import { infoCmd } from './info.js'
+import { insightsCmd } from './insights.js'
+import { mcpCmd } from './mcp.js'
+import { coordinatorCmd } from './coordinator.js'
+import { workerCmd } from './worker.js'
 import { printHelp } from './help.js'
 
 export async function run(argv: readonly string[]): Promise<number> {
@@ -50,6 +54,14 @@ export async function run(argv: readonly string[]): Promise<number> {
     case 'info':
     case 'stats': // deprecated alias — `vx info` absorbed `vx stats`
       return await infoCmd(rest)
+    case 'insights':
+      return await insightsCmd(rest)
+    case 'mcp':
+      return await mcpCmd(rest)
+    case 'coordinator':
+      return await coordinatorCmd(rest)
+    case 'worker':
+      return await workerCmd(rest)
     default:
       process.stderr.write(`vx: unknown command: ${command}\n`)
       printHelp()
@@ -63,4 +75,15 @@ export { parsePruneArgs, parseDuration, parseSize } from './cache.js'
 export { parseLockArgs, type LockArgs } from './lock.js'
 export { parseMigrateArgs, type MigrateArgs } from './migrate.js'
 export { parseShowArgs, type ShowArgs } from './show.js'
+export { parseInsightsArgs, startStaticServer } from './insights.js'
+export { parseMcpArgs, type McpArgs } from './mcp.js'
+export {
+  handleMcpRequest,
+  listMcpTools,
+  setMcpContext,
+  type McpContext,
+  type McpToolDef,
+} from './mcp-rpc.js'
+export { parseCoordinatorArgs, type CoordinatorArgs } from './coordinator.js'
+export { parseWorkerArgs, type WorkerArgs } from './worker.js'
 export { formatBytes } from './format.js'
