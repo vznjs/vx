@@ -18,17 +18,25 @@ import {
   encodeForSSE,
   envelopeToClientMessage,
   explainCacheKeyQuery,
+  getBottlenecks,
   getCacheBreakdown,
   getCacheSavings,
   getCacheStatsSql,
+  getFlakiestTasks,
   getHistory,
+  getParallelismHistory,
+  getPrunableEntries,
   getRecentFailures,
   getRun,
+  getRunHeatmap,
+  getRunTrends,
+  getStorageGrowth,
   getTaskDetail,
   getTopTimeBurners,
   isEnvelope,
   listCacheEntries,
   listInvocations,
+  listProjects,
   listRuns,
   serverMessageToEnvelope,
   whyDidThisRerunQuery,
@@ -237,6 +245,53 @@ export async function startServe(opts: {
       if (url.pathname === '/v1/failures') {
         const limit = Number(url.searchParams.get('limit') ?? '25')
         return jsonResponse({ failures: getRecentFailures(cache.dbHandle(), limit) })
+      }
+      if (url.pathname === '/v1/projects') {
+        const limit = Number(url.searchParams.get('limit') ?? '100')
+        return jsonResponse({ projects: listProjects(cache.dbHandle(), limit) })
+      }
+      if (url.pathname === '/v1/trends/runs') {
+        const params = url.searchParams
+        const bucketRaw = params.get('bucket')
+        const bucket = bucketRaw === 'day' || bucketRaw === 'hour' ? bucketRaw : 'hour'
+        const args: Parameters<typeof getRunTrends>[1] = { bucket }
+        const fromRaw = params.get('from')
+        if (fromRaw !== null) args.from = Number(fromRaw)
+        const toRaw = params.get('to')
+        if (toRaw !== null) args.to = Number(toRaw)
+        return jsonResponse({ bucket, points: getRunTrends(cache.dbHandle(), args) })
+      }
+      if (url.pathname === '/v1/trends/heatmap') {
+        const days = Number(url.searchParams.get('days') ?? '30')
+        return jsonResponse({ days, cells: getRunHeatmap(cache.dbHandle(), days) })
+      }
+      if (url.pathname === '/v1/trends/storage') {
+        const days = Number(url.searchParams.get('days') ?? '30')
+        return jsonResponse({ days, points: getStorageGrowth(cache.dbHandle(), days) })
+      }
+      if (url.pathname === '/v1/trends/parallelism') {
+        const limit = Number(url.searchParams.get('limit') ?? '50')
+        return jsonResponse({ points: getParallelismHistory(cache.dbHandle(), limit) })
+      }
+      if (url.pathname === '/v1/flakiness') {
+        const limit = Number(url.searchParams.get('limit') ?? '25')
+        return jsonResponse({ tasks: getFlakiestTasks(cache.dbHandle(), limit) })
+      }
+      if (url.pathname === '/v1/bottlenecks') {
+        const lookbackDays = Number(url.searchParams.get('days') ?? '14')
+        const limit = Number(url.searchParams.get('limit') ?? '15')
+        return jsonResponse({
+          lookbackDays,
+          bottlenecks: getBottlenecks(cache.dbHandle(), lookbackDays, limit),
+        })
+      }
+      if (url.pathname === '/v1/cache/prunable') {
+        const minAgeDays = Number(url.searchParams.get('minAgeDays') ?? '7')
+        const limit = Number(url.searchParams.get('limit') ?? '50')
+        return jsonResponse({
+          minAgeDays,
+          entries: getPrunableEntries(cache.dbHandle(), minAgeDays, limit),
+        })
       }
       if (url.pathname === '/v1/history') {
         const params = url.searchParams

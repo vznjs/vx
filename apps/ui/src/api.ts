@@ -12,10 +12,12 @@ import { createSignal } from 'solid-js'
 const STORAGE_KEY = 'vx-ui:origin'
 
 function defaultOrigin(): string {
-  // The dev server injects this; the hosted build falls back to the user
-  // choosing via the connection picker.
+  // The dev server injects this; the hosted build falls back to the page's
+  // own origin (correct when vx serve --ui hosts the SPA), and finally the
+  // canonical local port.
   const injected = import.meta.env.VITE_DEFAULT_ORIGIN
   if (typeof injected === 'string' && injected.length > 0) return injected
+  if (typeof window !== 'undefined' && window.location?.origin) return window.location.origin
   return 'http://localhost:4321'
 }
 
@@ -279,6 +281,140 @@ export async function getTaskDetail(taskId: string): Promise<TaskDetail | null> 
     if (err instanceof Error && err.message.includes('404')) return null
     throw err
   }
+}
+
+// -- Analytics shapes (mirrored from src/orchestrator/metrics.ts) -----------
+
+export interface ProjectRollup {
+  project: string
+  taskCount: number
+  runs: number
+  failures: number
+  hits: number
+  hitRate: number
+  totalDurationMs: number
+  avgDurationMs: number
+  cacheBytes: number
+  cacheEntries: number
+  lastRunAt: number | undefined
+  estimatedTimeSavedMs: number
+}
+
+export interface TrendPoint {
+  t: number
+  runs: number
+  hits: number
+  failures: number
+  totalDurationMs: number
+}
+
+export interface HeatmapCellApi {
+  dayOfWeek: number
+  hourOfDay: number
+  runs: number
+  totalDurationMs: number
+}
+
+export interface FlakyTask {
+  id: string
+  project: string
+  task: string
+  runs: number
+  failures: number
+  failureRate: number
+  durationTailRatio: number | undefined
+  p50DurationMs: number | undefined
+  p99DurationMs: number | undefined
+}
+
+export interface BottleneckRow {
+  id: string
+  project: string
+  task: string
+  runsRecent: number
+  totalDurationMs: number
+  avgDurationMs: number
+  runsPerDay: number
+  weeklySavingsAt25PctCutMs: number
+}
+
+export interface ParallelismPoint {
+  runId: string
+  startedAt: number
+  cpuSumMs: number
+  wallMs: number
+  factor: number
+  taskCount: number
+}
+
+export interface StoragePoint {
+  t: number
+  bytesAdded: number
+  entriesAdded: number
+}
+
+export interface PrunableEntry {
+  hash: string
+  project: string
+  task: string
+  sizeBytes: number
+  createdAt: number
+  accessedAt: number
+  ageDays: number
+}
+
+export async function listProjects(limit = 100): Promise<ProjectRollup[]> {
+  const r = await getJson<{ projects: ProjectRollup[] }>(`/v1/projects?limit=${limit}`)
+  return r.projects
+}
+
+export async function getRunTrends(args: {
+  bucket?: 'hour' | 'day'
+  from?: number
+  to?: number
+} = {}): Promise<{ bucket: string; points: TrendPoint[] }> {
+  const params = new URLSearchParams()
+  if (args.bucket) params.set('bucket', args.bucket)
+  if (args.from !== undefined) params.set('from', String(args.from))
+  if (args.to !== undefined) params.set('to', String(args.to))
+  return await getJson(`/v1/trends/runs?${params}`)
+}
+
+export async function getHeatmap(days = 30): Promise<HeatmapCellApi[]> {
+  const r = await getJson<{ cells: HeatmapCellApi[] }>(`/v1/trends/heatmap?days=${days}`)
+  return r.cells
+}
+
+export async function getStorageGrowth(days = 30): Promise<StoragePoint[]> {
+  const r = await getJson<{ points: StoragePoint[] }>(`/v1/trends/storage?days=${days}`)
+  return r.points
+}
+
+export async function getParallelismHistory(limit = 50): Promise<ParallelismPoint[]> {
+  const r = await getJson<{ points: ParallelismPoint[] }>(`/v1/trends/parallelism?limit=${limit}`)
+  return r.points
+}
+
+export async function getFlakiest(limit = 25): Promise<FlakyTask[]> {
+  const r = await getJson<{ tasks: FlakyTask[] }>(`/v1/flakiness?limit=${limit}`)
+  return r.tasks
+}
+
+export async function getBottlenecks(days = 14, limit = 15): Promise<BottleneckRow[]> {
+  const r = await getJson<{ bottlenecks: BottleneckRow[] }>(
+    `/v1/bottlenecks?days=${days}&limit=${limit}`,
+  )
+  return r.bottlenecks
+}
+
+export async function getPrunable(
+  minAgeDays = 7,
+  limit = 50,
+): Promise<PrunableEntry[]> {
+  const r = await getJson<{ entries: PrunableEntry[] }>(
+    `/v1/cache/prunable?minAgeDays=${minAgeDays}&limit=${limit}`,
+  )
+  return r.entries
 }
 
 /**

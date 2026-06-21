@@ -16,14 +16,18 @@ function singleFile(): Plugin {
       const html = bundle['index.html']
       if (!html || html.type !== 'asset') return
       let src = String(html.source)
+      // CRITICAL: pass the replacement as a FUNCTION so `$&`, `` $` ``, `$1`
+      // etc. in the bundled JS/CSS aren't interpreted as String.replace
+      // substitution patterns. A literal `$&` in a regex body would otherwise
+      // splice the matched HTML tag into the middle of the script.
       for (const [name, chunk] of Object.entries(bundle)) {
         if (chunk.type === 'chunk' && chunk.fileName.endsWith('.js')) {
           const tag = new RegExp(`<script[^>]*src="[^"]*${chunk.fileName}"[^>]*></script>`)
-          src = src.replace(tag, `<script type="module">${chunk.code}</script>`)
+          src = src.replace(tag, () => `<script type="module">${chunk.code}</script>`)
           delete bundle[name]
         } else if (chunk.type === 'asset' && chunk.fileName.endsWith('.css')) {
           const link = new RegExp(`<link[^>]*href="[^"]*${chunk.fileName}"[^>]*>`)
-          src = src.replace(link, `<style>${String(chunk.source)}</style>`)
+          src = src.replace(link, () => `<style>${String(chunk.source)}</style>`)
           delete bundle[name]
         }
       }

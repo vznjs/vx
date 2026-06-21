@@ -1,190 +1,239 @@
-import { For, Show, createResource } from 'solid-js'
-import { useNavigate, A } from '@solidjs/router'
+import { For, Show, createMemo, createResource, createSignal, onCleanup, onMount } from 'solid-js'
+import { A, useNavigate } from '@solidjs/router'
 import {
-  getCacheBreakdown,
   getCacheSavings,
   getCacheStats,
   getFailures,
   getOriginSignal,
+  getRunTrends,
   getTopTasks,
   listInvocations,
+  listProjects,
+  subscribeEvents,
 } from '../api.ts'
-import { formatBytes, formatDuration, formatPercent, formatRelativeTime } from '../format.ts'
+import { LineChart, Treemap } from '../components/charts.tsx'
+import { Card, EmptyState, MetricCard } from '../components/ui.tsx'
+import { formatBytes, formatCount, formatDuration, formatHour, formatPercent, formatRelativeTime, paletteFor } from '../format.ts'
 
 export function Overview() {
   const origin = getOriginSignal()
-  const [runs] = createResource(origin, () => listInvocations(25))
-  const [stats] = createResource(origin, () => getCacheStats())
-  const [savings] = createResource(origin, () => getCacheSavings())
-  const [topTasks] = createResource(origin, () => getTopTasks(10))
-  const [failures] = createResource(origin, () => getFailures(10))
-  const [breakdown] = createResource(origin, () => getCacheBreakdown(5))
   const navigate = useNavigate()
 
+  const [stats] = createResource(origin, () => getCacheStats())
+  const [savings] = createResource(origin, () => getCacheSavings())
+  const [topTasks] = createResource(origin, () => getTopTasks(8))
+  const [failures] = createResource(origin, () => getFailures(8))
+  const [projects] = createResource(origin, () => listProjects(50))
+  const [invocations] = createResource(origin, () => listInvocations(12))
+  const [trend24h] = createResource(origin, () => getRunTrends({ bucket: 'hour' }))
+
+  // Live event ticker — newest first, keep last 12.
+  const [live, setLive] = createSignal<Array<{ id: number; kind: string; label: string; t: number }>>([])
+  let liveSeq = 0
+  onMount(() => {
+    const unsub = subscribeEvents((env: unknown) => {
+      const ev = (env as { params?: { kind?: string; node?: { id?: string }; outcome?: { node?: { id?: string }; status?: string } } }).params
+      if (!ev?.kind) return
+      let label = ''
+      if (ev.kind === 'task:start') label = `▶ ${ev.node?.id ?? ''}`
+      else if (ev.kind === 'task:complete') label = `${ev.outcome?.status === 'failed' ? '✗' : '✓'} ${ev.outcome?.node?.id ?? ''}`
+      else if (ev.kind === 'run:start') label = '· run started'
+      else if (ev.kind === 'run:end') label = '· run finished'
+      else return
+      setLive((prev) => [{ id: ++liveSeq, kind: ev.kind, label, t: Date.now() }, ...prev].slice(0, 12))
+    })
+    onCleanup(unsub)
+  })
+
+  const last24hRuns = createMemo(() => trend24h()?.points.reduce((a, p) => a + p.runs, 0) ?? 0)
+  const last24hHits = createMemo(() => trend24h()?.points.reduce((a, p) => a + p.hits, 0) ?? 0)
+  const last24hFails = createMemo(() => trend24h()?.points.reduce((a, p) => a + p.failures, 0) ?? 0)
+
+  const trendXs = () => trend24h()?.points.map((p) => p.t) ?? []
+  const trendRuns = () => trend24h()?.points.map((p) => p.runs) ?? []
+  const trendDur = () => trend24h()?.points.map((p) => p.totalDurationMs) ?? []
+
   return (
-    <div class="flex flex-col gap-6">
-      {/* Hero stats: the four numbers a dev cares about */}
-      <Show when={stats() !== undefined && savings() !== undefined}>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Stat
+    <div class="flex flex-col gap-5">
+      <Show when={stats() && savings()}>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <MetricCard
             label="Time saved (24h)"
             value={formatDuration(savings()!.estimatedTimeSavedMs)}
             sub={`${savings()!.hitsLast24h} cache hits`}
-            highlight={savings()!.estimatedTimeSavedMs > 0}
+            tone={savings()!.estimatedTimeSavedMs > 0 ? 'good' : 'default'}
           />
-          <Stat
+          <MetricCard
             label="Hit rate (24h)"
-            value={formatPercent(stats()!.hitRate24h)}
+            value={formatPercent(stats()!.hitRate24h, 0)}
             sub={`${stats()!.hitCountLast24h} / ${stats()!.runCountLast24h} runs`}
+            tone={stats()!.hitRate24h > 0.5 ? 'good' : stats()!.hitRate24h < 0.2 && stats()!.runCountLast24h > 5 ? 'warn' : 'default'}
           />
-          <Stat
-            label="Cache entries"
-            value={String(stats()!.entryCount)}
-            sub={formatBytes(stats()!.totalBytes)}
+          <MetricCard
+            label="Failures (24h)"
+            value={String(last24hFails())}
+            sub={last24hRuns() > 0 ? `${formatPercent(last24hFails() / last24hRuns(), 0)} of runs` : 'no runs yet'}
+            tone={last24hFails() > 0 ? 'bad' : 'good'}
           />
-          <Stat
-            label="Time saved (total)"
-            value={formatDuration(savings()!.estimatedTimeSavedTotalMs)}
-            sub="all-time, estimated"
+          <MetricCard
+            label="Cache footprint"
+            value={formatBytes(stats()!.totalBytes)}
+            sub={`${stats()!.entryCount} entries`}
           />
         </div>
       </Show>
 
-      {/* Two-column layout: top time burners + recent failures */}
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card title="Top time-burners" linkHref="/tasks" linkLabel="all tasks →">
-          <Show
-            when={topTasks() !== undefined && topTasks()!.length > 0}
-            fallback={<EmptyHint />}
-          >
-            <table class="w-full text-sm">
-              <tbody>
-                <For each={topTasks()}>
-                  {(t) => (
-                    <tr
-                      class="border-t border-border-muted hover:bg-bg-elevated cursor-pointer"
-                      onClick={() => navigate(`/tasks/${encodeURIComponent(t.id)}`)}
-                    >
-                      <td class="px-3 py-2 font-mono text-xs">{t.id}</td>
-                      <td class="px-3 py-2 text-right text-fg-muted text-xs">{t.runs} runs</td>
-                      <td class="px-3 py-2 text-right">
-                        {formatDuration(t.totalDurationMs)}
-                      </td>
-                      <td class="px-3 py-2 text-right text-fg-muted text-xs">
-                        ~{formatDuration(t.avgDurationMs)} avg
-                      </td>
-                    </tr>
-                  )}
-                </For>
-              </tbody>
-            </table>
+      <div class="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
+        <Card title="Activity — last 24h" action={<span class="text-[10px] text-fg-3 font-mono">runs · failures</span>}>
+          <Show when={trend24h()?.points.length} fallback={<EmptyState title="No runs in the last 24h" cmd="vx run <task>" />}>
+            <LineChart
+              xs={trendXs()}
+              series={[
+                { name: 'runs', strokeClass: 'stroke-accent', areaClass: 'fill-accent/10', data: trendRuns() },
+                { name: 'failures', strokeClass: 'stroke-danger', data: trend24h()?.points.map((p) => p.failures) ?? [] },
+              ]}
+              formatX={(t) => formatHour(t)}
+              formatY={(v) => formatCount(v)}
+              height={180}
+            />
+            <div class="text-[11px] text-fg-3 mt-2 font-mono">
+              {last24hRuns()} runs · {formatDuration(trendDur().reduce((a, b) => a + b, 0))} total · {last24hHits()} hits
+            </div>
           </Show>
         </Card>
 
-        <Card title="Recent failures" linkHref="/tasks" linkLabel="">
-          <Show
-            when={failures() !== undefined && failures()!.length > 0}
-            fallback={<div class="px-3 py-6 text-fg-muted text-sm">No failures recorded.</div>}
-          >
-            <table class="w-full text-sm">
-              <tbody>
-                <For each={failures()}>
-                  {(f) => (
-                    <tr
-                      class="border-t border-border-muted hover:bg-bg-elevated cursor-pointer"
-                      onClick={() =>
-                        navigate(`/tasks/${encodeURIComponent(`${f.project}#${f.task}`)}`)
-                      }
-                    >
-                      <td class="px-3 py-2 font-mono text-xs">
-                        {f.project}#{f.task}
-                      </td>
-                      <td class="px-3 py-2 text-failure text-xs">exit {f.exitCode}</td>
-                      <td class="px-3 py-2 text-right text-fg-muted text-xs">
-                        {formatRelativeTime(f.startedAt)}
-                      </td>
-                    </tr>
-                  )}
-                </For>
-              </tbody>
-            </table>
+        <Card title="Live activity" action={<span class="inline-flex items-center gap-1 text-[10px] text-success font-mono"><span class="inline-block w-1.5 h-1.5 rounded-full bg-success animate-pulse" />SSE</span>}>
+          <Show when={live().length > 0} fallback={<div class="text-fg-3 text-xs text-center py-6">Waiting for events…</div>}>
+            <div class="flex flex-col gap-1 max-h-[200px] overflow-y-auto">
+              <For each={live()}>
+                {(e) => (
+                  <div class="flex items-center gap-2 text-[11px] font-mono">
+                    <span class="text-fg-3 w-12 shrink-0">{formatHour(e.t)}</span>
+                    <span class={
+                      e.kind === 'task:complete' && e.label.startsWith('✗') ? 'text-danger truncate' :
+                      e.kind === 'task:complete' ? 'text-success truncate' :
+                      e.kind.startsWith('run:') ? 'text-fg-3 truncate' :
+                      'text-fg-1 truncate'
+                    }>{e.label}</span>
+                  </div>
+                )}
+              </For>
+            </div>
           </Show>
         </Card>
       </div>
 
-      {/* Cache breakdown by project */}
-      <Card title="Cache by project" linkHref="/cache" linkLabel="all entries →">
-        <Show
-          when={breakdown() !== undefined && breakdown()!.length > 0}
-          fallback={<EmptyHint />}
-        >
-          <table class="w-full text-sm">
-            <tbody>
-              <For each={breakdown()}>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card title="Top time-burners" action={<A href="/tasks" class="text-[11px] text-accent no-underline hover:underline">all tasks</A>} noPad>
+          <Show when={topTasks()?.length} fallback={<EmptyState title="Nothing executed yet" cmd="vx run <task>" />}>
+            <div class="flex flex-col">
+              <For each={topTasks()!}>
+                {(t, i) => (
+                  <button
+                    onClick={() => navigate(`/tasks/${encodeURIComponent(t.id)}`)}
+                    class="flex items-center gap-2 px-4 py-2 hover:bg-surface-hover text-left border-t border-border first:border-t-0"
+                  >
+                    <span class="text-[10px] font-mono text-fg-3 w-4">{i() + 1}.</span>
+                    <span class="text-[12px] font-mono truncate flex-1">{t.id}</span>
+                    <span class="text-[11px] text-fg-3 font-mono">{t.runs}×</span>
+                    <span class="text-[12px] font-mono text-fg ml-2">{formatDuration(t.totalDurationMs)}</span>
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
+        </Card>
+
+        <Card title="Recent failures" action={<A href="/tasks" class="text-[11px] text-accent no-underline hover:underline">all tasks</A>} noPad>
+          <Show when={failures()?.length} fallback={<div class="text-fg-3 text-xs text-center py-12">No failures. <span class="text-success">🎉</span></div>}>
+            <div class="flex flex-col">
+              <For each={failures()!}>
+                {(f) => (
+                  <button
+                    onClick={() => navigate(`/tasks/${encodeURIComponent(`${f.project}#${f.task}`)}`)}
+                    class="flex items-center gap-2 px-4 py-2 hover:bg-surface-hover text-left border-t border-border first:border-t-0"
+                  >
+                    <span class="text-[12px] font-mono truncate flex-1">{f.project}<span class="text-fg-3">#</span>{f.task}</span>
+                    <span class="text-[10px] text-danger font-mono">exit {f.exitCode}</span>
+                    <span class="text-[10px] text-fg-3 font-mono w-16 text-right">{formatRelativeTime(f.startedAt)}</span>
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
+        </Card>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
+        <Card title="Cache footprint by project" action={<A href="/cache" class="text-[11px] text-accent no-underline hover:underline">cache</A>}>
+          <Show when={projects()?.some((p) => p.cacheBytes > 0)} fallback={<EmptyState title="No cached output yet" />}>
+            <Treemap
+              data={(projects() ?? []).filter((p) => p.cacheBytes > 0).map((p) => ({
+                label: p.project,
+                value: p.cacheBytes,
+                colorClass: `bg-${paletteFor(p.project)}`,
+              }))}
+              format={(v) => formatBytes(v)}
+              height={240}
+            />
+          </Show>
+        </Card>
+
+        <Card title="Project leaderboard" action={<A href="/projects" class="text-[11px] text-accent no-underline hover:underline">all</A>} noPad>
+          <Show when={projects()?.length} fallback={<EmptyState title="No projects discovered" />}>
+            <div class="flex flex-col">
+              <For each={(projects() ?? []).slice(0, 6)}>
                 {(p) => {
-                  const widthPct = () => {
-                    const max = Math.max(...(breakdown() ?? []).map((x) => x.totalBytes))
-                    return max > 0 ? (p.totalBytes / max) * 100 : 0
-                  }
+                  const maxTime = Math.max(...(projects() ?? []).map((x) => x.totalDurationMs))
+                  const pct = maxTime > 0 ? (p.totalDurationMs / maxTime) * 100 : 0
                   return (
-                    <tr class="border-t border-border-muted">
-                      <td class="px-3 py-2 font-mono text-xs w-1/4">{p.project}</td>
-                      <td class="px-3 py-2">
-                        <div class="h-2 bg-bg rounded overflow-hidden">
-                          <div
-                            class="h-full bg-accent/60"
-                            style={{ width: `${widthPct().toFixed(1)}%` }}
-                          />
-                        </div>
-                      </td>
-                      <td class="px-3 py-2 text-right text-xs text-fg-muted">{p.entries} entries</td>
-                      <td class="px-3 py-2 text-right">{formatBytes(p.totalBytes)}</td>
-                    </tr>
+                    <button
+                      onClick={() => navigate(`/projects/${encodeURIComponent(p.project)}`)}
+                      class="flex flex-col gap-1 px-4 py-2 hover:bg-surface-hover text-left border-t border-border first:border-t-0"
+                    >
+                      <div class="flex items-center gap-2 text-[12px]">
+                        <span class="font-mono truncate flex-1">{p.project}</span>
+                        <span class="text-fg-3 font-mono text-[10px]">{p.runs}×</span>
+                        <span class="font-mono">{formatDuration(p.totalDurationMs)}</span>
+                      </div>
+                      <div class="h-1 bg-surface-2 rounded-full overflow-hidden">
+                        <div class={`h-full bg-${paletteFor(p.project)}`} style={{ width: `${pct.toFixed(1)}%` }} />
+                      </div>
+                    </button>
                   )
                 }}
               </For>
-            </tbody>
-          </table>
-        </Show>
-      </Card>
+            </div>
+          </Show>
+        </Card>
+      </div>
 
-      {/* Recent invocations */}
-      <Card title="Recent invocations" linkHref="" linkLabel="">
-        <Show when={runs.loading}>
-          <div class="px-3 py-6 text-fg-muted text-sm">Loading…</div>
-        </Show>
-        <Show when={runs() !== undefined && runs()!.length > 0} fallback={<EmptyHint />}>
-          <table class="w-full text-sm">
-            <thead class="bg-bg-elevated text-fg-muted text-xs uppercase tracking-wider">
-              <tr>
-                <th class="text-left px-3 py-2 font-medium">Run</th>
-                <th class="text-right px-3 py-2 font-medium">Started</th>
-                <th class="text-right px-3 py-2 font-medium">Duration</th>
-                <th class="text-right px-3 py-2 font-medium">Tasks</th>
-                <th class="text-right px-3 py-2 font-medium">Failed</th>
-                <th class="text-right px-3 py-2 font-medium">Cache hits</th>
+      <Card title="Recent invocations" noPad>
+        <Show when={invocations()?.length} fallback={<EmptyState title="No invocations yet" cmd="vx run <task>" />}>
+          <table class="w-full text-[12px]">
+            <thead class="bg-surface-2/40">
+              <tr class="text-fg-3 text-[10px] uppercase tracking-wider">
+                <th class="text-left px-4 py-2 font-semibold">Run</th>
+                <th class="text-right px-4 py-2 font-semibold">Started</th>
+                <th class="text-right px-4 py-2 font-semibold">Duration</th>
+                <th class="text-right px-4 py-2 font-semibold">Tasks</th>
+                <th class="text-right px-4 py-2 font-semibold">Failed</th>
+                <th class="text-right px-4 py-2 font-semibold">Hits</th>
               </tr>
             </thead>
             <tbody>
-              <For each={runs() ?? []}>
+              <For each={invocations()!}>
                 {(r) => (
                   <tr
-                    class="border-t border-border-muted hover:bg-bg-elevated cursor-pointer"
+                    class="border-t border-border hover:bg-surface-hover cursor-pointer"
                     onClick={() => navigate(`/runs/${r.runId}`)}
                   >
-                    <td class="px-3 py-2 font-mono text-xs">{r.runId.slice(0, 8)}…</td>
-                    <td class="px-3 py-2 text-right text-fg-muted">
-                      {formatRelativeTime(r.startedAt)}
-                    </td>
-                    <td class="px-3 py-2 text-right">{formatDuration(r.totalDurationMs)}</td>
-                    <td class="px-3 py-2 text-right">{r.taskCount}</td>
-                    <td
-                      class="px-3 py-2 text-right"
-                      classList={{ 'text-failure': r.failedCount > 0 }}
-                    >
-                      {r.failedCount}
-                    </td>
-                    <td class="px-3 py-2 text-right text-cache">{r.hitCount}</td>
+                    <td class="px-4 py-1.5 font-mono text-[11px] text-fg-2">{r.runId.slice(0, 8)}…</td>
+                    <td class="px-4 py-1.5 text-right text-fg-3 font-mono">{formatRelativeTime(r.startedAt)}</td>
+                    <td class="px-4 py-1.5 text-right font-mono">{formatDuration(r.totalDurationMs)}</td>
+                    <td class="px-4 py-1.5 text-right font-mono">{r.taskCount}</td>
+                    <td class="px-4 py-1.5 text-right font-mono" classList={{ 'text-danger': r.failedCount > 0 }}>{r.failedCount}</td>
+                    <td class="px-4 py-1.5 text-right text-cache-local font-mono">{r.hitCount}</td>
                   </tr>
                 )}
               </For>
@@ -192,52 +241,6 @@ export function Overview() {
           </table>
         </Show>
       </Card>
-    </div>
-  )
-}
-
-function Stat(props: { label: string; value: string; sub?: string; highlight?: boolean }) {
-  return (
-    <div
-      class="border border-border-muted rounded px-3 py-2 bg-bg-elevated"
-      classList={{ 'border-success/40 bg-success/5': props.highlight === true }}
-    >
-      <div class="text-fg-muted text-[10px] uppercase tracking-wider">{props.label}</div>
-      <div class="text-lg font-mono">{props.value}</div>
-      <Show when={props.sub}>
-        <div class="text-[10px] text-fg-muted">{props.sub}</div>
-      </Show>
-    </div>
-  )
-}
-
-function Card(props: {
-  title: string
-  linkHref: string
-  linkLabel: string
-  children: ReturnType<typeof Element>
-}) {
-  return (
-    <div class="border border-border-muted rounded overflow-hidden">
-      <div class="flex items-center justify-between px-3 py-2 bg-bg-elevated border-b border-border-muted">
-        <h2 class="text-xs font-semibold m-0 uppercase tracking-wider text-fg-muted">
-          {props.title}
-        </h2>
-        <Show when={props.linkHref && props.linkLabel}>
-          <A href={props.linkHref} class="text-xs text-accent no-underline">
-            {props.linkLabel}
-          </A>
-        </Show>
-      </div>
-      {props.children}
-    </div>
-  )
-}
-
-function EmptyHint() {
-  return (
-    <div class="px-3 py-6 text-fg-muted text-sm">
-      No data yet. Run a task with <code>vx run</code> to populate this view.
     </div>
   )
 }
