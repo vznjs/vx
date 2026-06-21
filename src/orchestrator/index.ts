@@ -73,3 +73,23 @@ export {
 export { prepareForCoordinator, computeTaskHashForCoord } from './coordinator-prepare.js'
 export { workerExecute } from './worker-exec.js'
 export type { WorkerExecArgs, WorkerExecResult } from './worker-exec.js'
+export {
+  explainCacheKey as explainCacheKeyQuery,
+  getCacheStatsSql,
+  getHistory,
+  getRun,
+  listInvocations,
+  listRuns,
+  whyDidThisRerun as whyDidThisRerunQuery,
+} from './insights-queries.js'
+export type {
+  CacheKeyExplanation,
+  CacheStatsResult,
+  GetHistoryArgs,
+  InvocationRow,
+  ListRunsArgs,
+  RunDetail,
+  RunSummaryRow,
+  TaskHistoryRow,
+  WhyDidThisRerun,
+} from './insights-queries.js'

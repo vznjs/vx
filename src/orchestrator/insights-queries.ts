@@ -1,0 +1,339 @@
+// Insights query module — pure functions over a `bun:sqlite` Database.
+//
+// One module, two callers: `vx serve` (over Bun.serve HTTP routes) and
+// the same shape on `apps/cloud` (over Cloudflare D1 — same SQL,
+// different driver). The SPA in `apps/insights` calls /v1/* routes
+// backed by these functions.
+//
+// Pure SQL + JSON-safe return shapes. No Cache lifecycle here; the
+// caller opens and closes. bigints are serialized as decimal strings
+// for JSON compatibility (matches the WireEvent timeUnixNano rule).
+
+import type { Database } from 'bun:sqlite'
+
+// ---------------------------------------------------------------------------
+// Run listing + detail
+// ---------------------------------------------------------------------------
+
+export interface RunSummaryRow {
+  runId: string | null
+  project: string
+  task: string
+  status: string
+  exitCode: number
+  durationMs: number
+  startedAt: number
+  endedAt: number
+  cacheHit: boolean | null
+  hash: string
+}
+
+export interface ListRunsArgs {
+  limit?: number
+  project?: string
+  task?: string
+  runId?: string
+}
+
+export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[] {
+  const limit = clampInt(args.limit ?? 100, 1, 500)
+  const where: string[] = []
+  const params: (string | number)[] = []
+  if (args.project) {
+    where.push('project = ?')
+    params.push(args.project)
+  }
+  if (args.task) {
+    where.push('task = ?')
+    params.push(args.task)
+  }
+  if (args.runId) {
+    where.push('run_id = ?')
+    params.push(args.runId)
+  }
+  const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
+  const rows = db
+    .query(
+      `SELECT run_id AS runId, project, task, status, exit_code AS exitCode,
+              duration_ms AS durationMs, started_at AS startedAt, ended_at AS endedAt,
+              cache_hit AS cacheHit, hash
+       FROM runs ${clause} ORDER BY started_at DESC LIMIT ?`,
+    )
+    .all(...params, limit) as RunSummaryRow[]
+  return rows.map((r) => ({
+    ...r,
+    cacheHit: r.cacheHit === null ? null : Boolean(r.cacheHit),
+  }))
+}
+
+/**
+ * Group recent runs by `runId` — what the SPA's overview page wants
+ * (one row per `vx run` invocation, not per task).
+ */
+export interface InvocationRow {
+  runId: string
+  startedAt: number
+  endedAt: number
+  taskCount: number
+  failedCount: number
+  hitCount: number
+  totalDurationMs: number
+}
+
+export function listInvocations(db: Database, limit = 50): InvocationRow[] {
+  return db
+    .query(
+      `SELECT
+         run_id AS runId,
+         MIN(started_at) AS startedAt,
+         MAX(ended_at) AS endedAt,
+         COUNT(*) AS taskCount,
+         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failedCount,
+         SUM(CASE WHEN cache_hit = 1 OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END) AS hitCount,
+         SUM(duration_ms) AS totalDurationMs
+       FROM runs
+       WHERE run_id IS NOT NULL
+       GROUP BY run_id
+       ORDER BY MAX(started_at) DESC
+       LIMIT ?`,
+    )
+    .all(clampInt(limit, 1, 500)) as InvocationRow[]
+}
+
+export interface RunDetail {
+  runId: string
+  startedAt: number
+  endedAt: number
+  tasks: RunSummaryRow[]
+}
+
+export function getRun(db: Database, runId: string): RunDetail | null {
+  const tasks = listRuns(db, { runId, limit: 500 })
+  if (tasks.length === 0) return null
+  const startedAt = Math.min(...tasks.map((t) => t.startedAt))
+  const endedAt = Math.max(...tasks.map((t) => t.endedAt))
+  return { runId, startedAt, endedAt, tasks }
+}
+
+// ---------------------------------------------------------------------------
+// Cache stats
+// ---------------------------------------------------------------------------
+
+export interface CacheStatsResult {
+  entryCount: number
+  totalBytes: number
+  runCountLast24h: number
+  hitCountLast24h: number
+  hitRate24h: number
+}
+
+export function getCacheStatsSql(db: Database): CacheStatsResult {
+  const aggregate = db
+    .query('SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS bytes FROM entries')
+    .get() as { n: number; bytes: number }
+  const since = Date.now() - 24 * 60 * 60 * 1000
+  const runs = db
+    .query(
+      "SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN status = 'cache-hit' OR status = 'cache-hit-remote' THEN 1 ELSE 0 END), 0) AS hits FROM runs WHERE started_at >= ?",
+    )
+    .get(since) as { total: number; hits: number }
+  return {
+    entryCount: aggregate.n,
+    totalBytes: aggregate.bytes,
+    runCountLast24h: runs.total,
+    hitCountLast24h: runs.hits,
+    hitRate24h: runs.total > 0 ? runs.hits / runs.total : 0,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Task history (the same SQL CTE LocalHistoryProvider uses)
+// ---------------------------------------------------------------------------
+
+export interface TaskHistoryRow {
+  id: string
+  runs: number
+  successRate: number
+  hitRate: number
+  failureMode: 'stable' | 'flaky-recoverable' | 'flaky-fatal'
+  p50DurationMs: number | undefined
+  p99DurationMs: number | undefined
+}
+
+export interface GetHistoryArgs {
+  project?: string
+  task?: string
+  limit?: number
+}
+
+export function getHistory(db: Database, args: GetHistoryArgs = {}): TaskHistoryRow[] {
+  const limit = clampInt(args.limit ?? 50, 1, 500)
+  const where: string[] = []
+  const params: (string | number)[] = []
+  if (args.project) {
+    where.push('project = ?')
+    params.push(args.project)
+  }
+  if (args.task) {
+    where.push('task = ?')
+    params.push(args.task)
+  }
+  const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
+  const pairs = db.query(`SELECT DISTINCT project, task FROM runs ${clause}`).all(...params) as {
+    project: string
+    task: string
+  }[]
+
+  return pairs.slice(0, limit).map((p) => {
+    const aggregate = db
+      .query(
+        `SELECT
+           COUNT(*) AS total,
+           SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS successes,
+           SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
+           SUM(CASE WHEN cache_hit = 1 OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END) AS hits
+         FROM runs WHERE project = ? AND task = ?
+         ORDER BY started_at DESC LIMIT 50`,
+      )
+      .get(p.project, p.task) as {
+      total: number
+      successes: number
+      failures: number
+      hits: number
+    }
+    const total = aggregate.total || 0
+    const failures = aggregate.failures || 0
+    const failureMode: TaskHistoryRow['failureMode'] =
+      failures === 0 ? 'stable' : failures < total / 5 ? 'flaky-recoverable' : 'flaky-fatal'
+    const durations = db
+      .query(
+        `SELECT duration_ms FROM runs
+         WHERE project = ? AND task = ?
+           AND (cache_hit IS NULL OR cache_hit = 0)
+           AND status = 'success'
+         ORDER BY started_at DESC LIMIT 50`,
+      )
+      .all(p.project, p.task) as { duration_ms: number }[]
+    const sorted = durations.map((r) => r.duration_ms).sort((a, b) => a - b)
+    return {
+      id: `${p.project}#${p.task}`,
+      runs: total,
+      successRate: total > 0 ? (aggregate.successes || 0) / total : 0,
+      hitRate: total > 0 ? (aggregate.hits || 0) / total : 0,
+      failureMode,
+      p50DurationMs: pickPercentile(sorted, 0.5),
+      p99DurationMs: pickPercentile(sorted, 0.99),
+    }
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Cache key explain — latest entries row
+// ---------------------------------------------------------------------------
+
+export interface CacheKeyExplanation {
+  taskId: string
+  project: string
+  task: string
+  latestEntry: {
+    hash: string
+    command: string
+    exitCode: number
+    durationMs: number
+    sizeBytes: number
+    createdAt: number
+  } | null
+  note: string
+}
+
+export function explainCacheKey(db: Database, taskId: string): CacheKeyExplanation {
+  const [project, task] = taskId.split('#', 2) as [string, string]
+  const entry = db
+    .query(
+      `SELECT hash, command, exit_code AS exitCode, duration_ms AS durationMs,
+              size_bytes AS sizeBytes, created_at AS createdAt
+       FROM entries WHERE project = ? AND task = ? ORDER BY created_at DESC LIMIT 1`,
+    )
+    .get(project, task) as CacheKeyExplanation['latestEntry']
+  return {
+    taskId,
+    project,
+    task,
+    latestEntry: entry ?? null,
+    note: 'cache key components (files / env / runtime / upstream) require live config evaluation; this surface returns persisted entry metadata',
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Why did this rerun — compare two runs
+// ---------------------------------------------------------------------------
+
+export interface WhyDidThisRerun {
+  runId: string
+  taskId: string
+  found: boolean
+  thisRun?: { hash: string; status: string; cacheHit: boolean | null; startedAt: number }
+  previousRun?: { hash: string; status: string; cacheHit: boolean | null; startedAt: number } | null
+  hashChanged?: boolean | null
+  note: string
+}
+
+export function whyDidThisRerun(db: Database, runId: string, taskId: string): WhyDidThisRerun {
+  const [project, task] = taskId.split('#', 2) as [string, string]
+  const this_ = db
+    .query(
+      `SELECT hash, status, cache_hit AS cacheHit, started_at AS startedAt
+       FROM runs WHERE run_id = ? AND project = ? AND task = ?`,
+    )
+    .get(runId, project, task) as
+    | { hash: string; status: string; cacheHit: number | null; startedAt: number }
+    | undefined
+  if (!this_) {
+    return {
+      runId,
+      taskId,
+      found: false,
+      note: 'no row matching that runId + taskId',
+    }
+  }
+  const prev = db
+    .query(
+      `SELECT hash, status, cache_hit AS cacheHit, started_at AS startedAt
+       FROM runs WHERE project = ? AND task = ? AND started_at < ?
+       ORDER BY started_at DESC LIMIT 1`,
+    )
+    .get(project, task, this_.startedAt) as
+    | { hash: string; status: string; cacheHit: number | null; startedAt: number }
+    | undefined
+  return {
+    runId,
+    taskId,
+    found: true,
+    thisRun: { ...this_, cacheHit: this_.cacheHit === null ? null : Boolean(this_.cacheHit) },
+    previousRun: prev
+      ? { ...prev, cacheHit: prev.cacheHit === null ? null : Boolean(prev.cacheHit) }
+      : null,
+    hashChanged: prev ? prev.hash !== this_.hash : null,
+    note:
+      prev && prev.hash !== this_.hash
+        ? 'cache key changed between the previous run and this one (inputs differ)'
+        : prev
+          ? 'cache key unchanged — re-run with the same key (likely --no-cache or unrelated)'
+          : 'no prior run for this (project, task)',
+  }
+}
+
+// ---------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------
+
+function clampInt(n: number, min: number, max: number): number {
+  if (!Number.isFinite(n)) return min
+  return Math.min(max, Math.max(min, Math.floor(n)))
+}
+
+function pickPercentile(sorted: number[], q: number): number | undefined {
+  if (sorted.length === 0) return undefined
+  const idx = Math.min(sorted.length - 1, Math.floor(q * sorted.length))
+  return sorted[idx]
+}

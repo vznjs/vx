@@ -15,7 +15,8 @@ import {
 import { ulid, UserError } from '../util/index.js'
 import { executeTask } from './execute-task.js'
 import { computeTaskHash } from './task-hash.js'
-import { busLogger, createEventBus, terminalSubscriber, type EventBus } from './events.js'
+import { busLogger, createEventBus, terminalSubscriber } from './events.js'
+import { attachOtelEmit } from './otel-emit.js'
 import { installPlugins } from './plugin.js'
 import { defaultLogger, resolveOutputView } from './logger.js'
 import { detectColors } from './colors.js'
@@ -49,30 +50,14 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   bus.subscribe(terminalSubscriber(sink))
   const log = busLogger(bus)
 
-  // OTel bridge — when OTEL_EXPORTER_OTLP_ENDPOINT is set AND
-  // @vzn/vx-otel-bridge is installed, attach it as an additional
-  // subscriber. Pure dynamic import so core stays free of OTel deps.
-  // Failure to import logs a hint and continues; never blocks a run.
+  // Native OTel CI/CD-conventions emit (core, no bridge package). When
+  // OTEL_EXPORTER_OTLP_ENDPOINT is set AND the @opentelemetry/*
+  // optional peer deps are installed, every event flows to OTLP.
+  // Missing deps = silent skip; never blocks a run.
   let detachOtel: (() => void) | undefined
-  if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT && options.log === undefined) {
-    try {
-      // Dynamic specifier so TS doesn't try to resolve the optional
-      // peer at type-check time. @vzn/vx-otel-bridge isn't in core's
-      // dep tree; users add it to opt in.
-      const specifier = '@vzn/vx-otel-bridge'
-      const mod = (await import(specifier)) as {
-        createOtelBridge: (opts?: { endpoint?: string; serviceName?: string }) => {
-          attach: (bus: EventBus) => () => void
-        }
-      }
-      const bridge = mod.createOtelBridge({
-        endpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
-        serviceName: process.env.OTEL_SERVICE_NAME ?? 'vx',
-      })
-      detachOtel = bridge.attach(bus)
-    } catch {
-      // not installed — silently skip; the env var is the opt-in.
-    }
+  if (options.log === undefined) {
+    const stop = await attachOtelEmit(bus)
+    if (stop) detachOtel = stop
   }
 
   const prepared = await prepareRun(options, log)
