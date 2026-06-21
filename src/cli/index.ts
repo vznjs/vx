@@ -75,7 +75,7 @@ export { parsePruneArgs, parseDuration, parseSize } from './cache.js'
 export { parseLockArgs, type LockArgs } from './lock.js'
 export { parseMigrateArgs, type MigrateArgs } from './migrate.js'
 export { parseShowArgs, type ShowArgs } from './show.js'
-export { parseInsightsArgs } from './insights.js'
+export { parseInsightsArgs, startStaticServer } from './insights.js'
 export { parseMcpArgs, type McpArgs } from './mcp.js'
 export {
   handleMcpRequest,

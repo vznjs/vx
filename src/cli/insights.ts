@@ -74,8 +74,10 @@ interface RunningServers {
  * fetches it once and hands the bytes to DuckDB-WASM for in-browser
  * querying. We deliberately do NOT proxy queries — analytics stays
  * client-side per the design.
+ *
+ * Exported for tests; the regular CLI path uses it internally.
  */
-function startStaticServer(cacheDbPath: string): { port: number; stop: () => void } {
+export function startStaticServer(cacheDbPath: string): { port: number; stop: () => void } {
   const server = Bun.serve({
     port: 0,
     fetch(req) {
