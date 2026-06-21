@@ -77,7 +77,13 @@ export { parseMigrateArgs, type MigrateArgs } from './migrate.js'
 export { parseShowArgs, type ShowArgs } from './show.js'
 export { parseInsightsArgs } from './insights.js'
 export { parseMcpArgs, type McpArgs } from './mcp.js'
-export { listMcpTools, handleMcpRequest, type McpToolDef } from './mcp-rpc.js'
+export {
+  handleMcpRequest,
+  listMcpTools,
+  setMcpContext,
+  type McpContext,
+  type McpToolDef,
+} from './mcp-rpc.js'
 export { parseCoordinatorArgs, type CoordinatorArgs } from './coordinator.js'
 export { parseWorkerArgs, type WorkerArgs } from './worker.js'
 export { formatBytes } from './format.js'
