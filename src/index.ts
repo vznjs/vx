@@ -21,3 +21,14 @@ export { defineProject, defineWorkspace } from './config.js'
 export { run } from './orchestrator/index.js'
 export type { Logger, RunOptions, RunSummary } from './orchestrator/index.js'
 export type { TaskNode, TaskOutcome, TaskStatus } from './graph/index.js'
+
+// Event bus + wire form — adapters (otel-bridge, custom subscribers) ride this.
+export { createEventBus, wireForwarder, toWireEvent } from './orchestrator/index.js'
+export type {
+  EventBus,
+  RunEvent,
+  RunEventSubscriber,
+  WireEvent,
+  TaskView,
+  OutcomeView,
+} from './orchestrator/index.js'
