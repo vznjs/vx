@@ -32,9 +32,8 @@ vx stats              # deprecated alias of vx info
 vx mcp [--stdio]                                       # MCP server for AI agents
 vx coordinator <tasks…> [--port N] [--host H] [--workers N]
 vx run --worker <coord-url> [--capacity N] [--label L] # join a coordinator as a worker
-vx serve [--port N]                                    # WS + SSE + NDJSON event service
+vx serve [--port N] [--ui] [--open]                    # unified backend (HTTP /v1/* + WS + SSE + bundled SPA)
 vx dev                                                 # local devtools hub
-vx insights serve [--port N]                           # local Solid+DuckDB-WASM SPA
 
 # Meta
 vx help
@@ -885,44 +884,17 @@ vx run --worker ws://coord:5180  # connect, register, pull, execute
 Workers do NOT yet probe the remote cache before executing — every
 assigned task spawns fresh. Cache integration is the next iteration.
 
-## `vx insights serve` — historical run dashboard (local)
+## `vx serve` — unified backend (execution + insights + UI)
 
-Boot a Solid + UnoCSS + DuckDB-WASM SPA against the workspace's
-`cache.db`. Pure read-only analytics — no backend, no upload, no
-daemon.
-
-```
-vx insights serve                # SPA dev server on port 5290
-    --port <n>                   # override SPA port
-```
-
-What it does:
-
-- Starts a tiny static HTTP server exposing `cache.db` at
-  `/cache.db` with the SQLite MIME (kernel-assigned port).
-- Boots Vite dev for `apps/insights/` with
-  `VITE_CACHE_DB_URL=http://127.0.0.1:<staticPort>/cache.db`.
-- The SPA lazy-loads DuckDB-WASM (~30 MB on first query), ATTACHes
-  the SQLite file via DuckDB's `sqlite_scanner` extension, and runs
-  every aggregation client-side.
-
-Pages: Overview (recent runs list, click to detail) → Run detail
-(per-task flamegraph, durations, cache provenance).
-
-Requires `apps/insights/` to be on disk — set `VX_INSIGHTS_DIR` to
-point at a checkout if the installed binary can't find it
-adjacent to `import.meta.dir`. A first run is needed to populate
-`cache.db`; an empty workspace prints a clean hint and exits.
-
-## `vx serve` — execution + event-stream service
-
-WebSocket + SSE + NDJSON service that other clients connect to and
-either (a) submit runs for delegated execution or (b) subscribe to
-the live event stream.
+The same backend powers `vx run` delegation, the insights JSON API,
+the event stream, and (when `--ui` is set) the bundled Solid SPA.
+One process, one stack, runs locally or in Docker.
 
 ```
 vx serve                         # bind a kernel-assigned port
     --port <n>                   # explicit
+    --ui                         # also serve the bundled SPA at /
+    --open                       # open the UI in the default browser (implies --ui)
 ```
 
 HTTP routes (all return JSON unless noted):

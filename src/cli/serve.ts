@@ -113,9 +113,51 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return withCors(Response.json(body, init))
 }
 
+const SPA_MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.json': 'application/json; charset=utf-8',
+  '.map': 'application/json; charset=utf-8',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+}
+
+/**
+ * Serve a file from `uiDir` for `pathname`. Returns null when the requested
+ * pathname escapes the directory or doesn't exist; the caller falls back to
+ * `index.html` for hash-router routes that aren't real files.
+ */
+async function serveStatic(uiDir: string, pathname: string): Promise<Response | null> {
+  const rel = pathname === '/' ? '/index.html' : pathname
+  const abs = path.join(uiDir, rel)
+  // Containment check — never escape uiDir even if pathname has ../
+  const resolved = path.resolve(abs)
+  if (!resolved.startsWith(path.resolve(uiDir))) return null
+  const file = Bun.file(resolved)
+  if (!(await file.exists())) return null
+  const ext = path.extname(resolved).toLowerCase()
+  const headers: Record<string, string> = {
+    'Content-Type': SPA_MIME[ext] ?? 'application/octet-stream',
+  }
+  // Hashed asset URLs (Vite emits `index-<hash>.{js,css}`) can be cached
+  // forever; HTML must not be cached or the picker won't pick up a redeploy.
+  if (ext === '.html') headers['Cache-Control'] = 'no-store'
+  else if (resolved.includes(`${path.sep}assets${path.sep}`))
+    headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+  return new Response(file, { headers })
+}
+
 export async function startServe(opts: {
   root: string
   port?: number
+  /** Absolute path to a pre-built SPA `dist/`. When set, `/` serves it. */
+  uiDir?: string
   onRun?: (request: RunRequest, ok: boolean) => void
 }): Promise<ServeServer> {
   // One registry for the service's whole lifetime — concurrent runs share
@@ -325,6 +367,17 @@ export async function startServe(opts: {
         )
       }
       if (srv.upgrade(req)) return undefined
+      // When --ui is set, serve the bundled SPA from `uiDir`. Hash-router
+      // routes that aren't real files fall back to index.html (SPA fallback).
+      if (opts.uiDir !== undefined) {
+        return (async (): Promise<Response> => {
+          const res = await serveStatic(opts.uiDir!, url.pathname)
+          if (res) return withCors(res)
+          const index = await serveStatic(opts.uiDir!, '/index.html')
+          if (index) return withCors(index)
+          return withCors(new Response('not found', { status: 404 }))
+        })()
+      }
       return withCors(new Response('vx serve'))
     },
     websocket: {
@@ -381,39 +434,100 @@ export async function startServe(opts: {
   }
 }
 
-function parsePort(args: readonly string[]): { port?: number; error?: string } {
-  const out: { port?: number; error?: string } = {}
+interface ServeArgs {
+  port?: number
+  ui?: boolean
+  open?: boolean
+  error?: string
+}
+
+export function parseServeArgs(args: readonly string[]): ServeArgs {
+  const out: ServeArgs = {}
   for (let i = 0; i < args.length; i++) {
     const a = args[i]
+    if (a === '--ui') {
+      out.ui = true
+      continue
+    }
+    if (a === '--open') {
+      out.open = true
+      continue
+    }
     const v = a === '--port' ? args[++i] : a?.startsWith('--port=') ? a.slice(7) : undefined
-    if (v === undefined) return { error: `unknown flag: ${a}` }
+    if (v === undefined) return { ...out, error: `unknown flag: ${a}` }
     const n = Number(v)
-    if (!Number.isInteger(n) || n < 0 || n > 65535) return { error: `invalid --port: ${v}` }
+    if (!Number.isInteger(n) || n < 0 || n > 65535) return { ...out, error: `invalid --port: ${v}` }
     out.port = n
   }
   return out
 }
 
+/**
+ * Resolve the bundled SPA dist. Mirrors apps/docs and apps/insights resolution:
+ * the repo lives alongside the running source, even when installed. Allows
+ * `VX_INSIGHTS_DIST` for a custom checkout.
+ */
+function resolveUiDist(): string | null {
+  const env = process.env.VX_INSIGHTS_DIST
+  if (env !== undefined && env.length > 0) return env
+  const candidate = path.resolve(import.meta.dir, '..', '..', 'apps', 'insights', 'dist')
+  return candidate
+}
+
+function openInBrowser(url: string): void {
+  // Best-effort cross-platform open. Failures are silent — Ctrl-C is fine.
+  const cmd =
+    process.platform === 'darwin'
+      ? ['open', url]
+      : process.platform === 'win32'
+        ? ['cmd', '/c', 'start', '""', url]
+        : ['xdg-open', url]
+  try {
+    const child = Bun.spawn({ cmd, stdout: 'ignore', stderr: 'ignore' })
+    child.unref?.()
+  } catch {
+    // no opener available — user can paste the URL
+  }
+}
+
 export async function serveCmd(args: readonly string[]): Promise<number> {
-  const parsed = parsePort(args)
+  const parsed = parseServeArgs(args)
   if (parsed.error) {
     process.stderr.write(`vx serve: ${parsed.error}\n`)
     return 1
   }
   const root = await findWorkspaceRoot(process.cwd())
+
+  let uiDir: string | undefined
+  if (parsed.ui) {
+    const candidate = resolveUiDist()
+    if (candidate === null || !(await Bun.file(path.join(candidate, 'index.html')).exists())) {
+      process.stderr.write(
+        `vx serve: --ui requires apps/insights/dist (run \`bun --cwd apps/insights run build\` first, or set VX_INSIGHTS_DIST)\n`,
+      )
+      return 1
+    }
+    uiDir = candidate
+  }
+
   const server = await startServe({
     root,
     ...(parsed.port !== undefined ? { port: parsed.port } : {}),
+    ...(uiDir !== undefined ? { uiDir } : {}),
     onRun: (request, ok) => {
       process.stdout.write(`  ${ok ? '✓' : '✗'} ${request.tasks.join(', ')}\n`)
     },
   })
 
+  const uiLine = uiDir !== undefined ? `vx serve: UI   ${server.origin}/\n` : ''
   process.stdout.write(
-    `vx serve: ${server.origin}\n` +
+    `vx serve: API  ${server.origin}\n` +
+      uiLine +
       `vx serve: ready — \`vx run\` in this workspace will delegate here\n` +
       `(press Ctrl-C to stop)\n\n`,
   )
+
+  if (parsed.open && uiDir !== undefined) openInBrowser(server.origin)
 
   await new Promise<void>((resolve) => {
     process.once('SIGINT', () => resolve())

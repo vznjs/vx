@@ -60,10 +60,7 @@ vx mcp                                    # Model Context Protocol server (stdio
 vx coordinator build test --workers 4     # start a distributed-CI coordinator
 vx run --worker ws://coord:5180           # pull tasks from a coordinator and execute them
 
-vx insights                               # localhost Solid SPA over vx serve's /v1/* API
-                                          # — historical run flamegraphs, cache stats
-
-vx serve                                  # the unified backend — local OR Docker
+vx serve --ui --open                      # unified backend + bundled insights SPA + open browser
                                           # /v1/* JSON, SSE events, WS run protocol, CORS *
 ```
 
@@ -91,9 +88,10 @@ vx serve                                  # the unified backend — local OR Doc
 - **Self-host vx serve.** Same backend everywhere — laptop, Docker,
   any container runtime. JSON `/v1/*` insights API + WebSocket run
   protocol + SSE event stream + permissive CORS. One stack.
-- **`vx insights`** — Solid SPA that talks to `vx serve` over HTTP.
-  Connection picker switches between local and hosted backends;
-  same UI for both. No DuckDB-WASM, no 30MB payload.
+- **Insights dashboard built in.** `vx serve --ui` bundles a Solid
+  SPA at `/` — task averages, p50/p99, cache savings, recent runs,
+  flamegraphs. Connection picker switches between local and hosted
+  backends; same UI for both.
 
 Each lives behind a one-paragraph design doc under
 `docs/design/*-2026-06.md`. Phase-by-phase implementation log:
@@ -174,23 +172,23 @@ traces · `vx cache prune` with TTL and size caps.
 
 ## How it compares
 
-|                           | vx                                                                  | Turborepo                      | Nx                  |
-| ------------------------- | ------------------------------------------------------------------- | ------------------------------ | ------------------- |
-| Fully cached, 100 pkgs¹   | **144 ms**                                                          | 279 ms                         | 583+ ms             |
-| Config                    | TypeScript, evaluated into the cache key                            | JSON (static)                  | JSON (static)       |
-| Output ownership          | **Strict** — wiped before exec AND restore                          | Additive (stale files survive) | Additive            |
-| Clean-tree hashing        | **Zero reads** (git index OIDs)                                     | git OIDs                       | re-hash / daemon    |
-| Daemon required for speed | **No**                                                              | Optional                       | Yes                 |
-| Artifact signing          | **Hard-fail** on unsigned                                           | Soft                           | No                  |
-| Per-task sandbox          | **Yes** — kernel-level, opt-in                                      | No                             | No                  |
-| MCP server for AI agents  | **Yes** (`vx mcp`, stdio)                                           | No                             | No                  |
-| Distributed CI execution  | **Yes** — OSS, self-hostable (`vx coordinator` + `vx run --worker`) | No                             | Paid (Nx Cloud DTE) |
-| Dashboard SPA             | **Yes** (`vx insights`, Solid, talks HTTP to `vx serve`)            | No                             | Paid                |
-| Self-hosted cloud         | **Yes** — same `vx serve` in Docker; one stack                      | Vercel-only                    | No (proprietary)    |
-| Plugin API                | **Yes** — Vite-style lifecycle hooks                                | No                             | Yes (TS-tied)       |
-| Predictive scheduling     | **Yes** (opt-in: `predictive: true`)                                | No                             | No                  |
-| OTel CI/CD spans          | **Yes** (`OTEL_EXPORTER_OTLP_ENDPOINT`)                             | No                             | Paid                |
-| Install                   | **Single binary** — 1 curl line                                     | npm + Node                     | npm + Node          |
+|                           | vx                                                                   | Turborepo                      | Nx                  |
+| ------------------------- | -------------------------------------------------------------------- | ------------------------------ | ------------------- |
+| Fully cached, 100 pkgs¹   | **144 ms**                                                           | 279 ms                         | 583+ ms             |
+| Config                    | TypeScript, evaluated into the cache key                             | JSON (static)                  | JSON (static)       |
+| Output ownership          | **Strict** — wiped before exec AND restore                           | Additive (stale files survive) | Additive            |
+| Clean-tree hashing        | **Zero reads** (git index OIDs)                                      | git OIDs                       | re-hash / daemon    |
+| Daemon required for speed | **No**                                                               | Optional                       | Yes                 |
+| Artifact signing          | **Hard-fail** on unsigned                                            | Soft                           | No                  |
+| Per-task sandbox          | **Yes** — kernel-level, opt-in                                       | No                             | No                  |
+| MCP server for AI agents  | **Yes** (`vx mcp`, stdio)                                            | No                             | No                  |
+| Distributed CI execution  | **Yes** — OSS, self-hostable (`vx coordinator` + `vx run --worker`)  | No                             | Paid (Nx Cloud DTE) |
+| Dashboard SPA             | **Yes** — bundled into `vx serve --ui`, Solid + p50/p99 + sparklines | No                             | Paid                |
+| Self-hosted cloud         | **Yes** — same `vx serve` in Docker; one stack                       | Vercel-only                    | No (proprietary)    |
+| Plugin API                | **Yes** — Vite-style lifecycle hooks                                 | No                             | Yes (TS-tied)       |
+| Predictive scheduling     | **Yes** (opt-in: `predictive: true`)                                 | No                             | No                  |
+| OTel CI/CD spans          | **Yes** (`OTEL_EXPORTER_OTLP_ENDPOINT`)                              | No                             | Paid                |
+| Install                   | **Single binary** — 1 curl line                                      | npm + Node                     | npm + Node          |
 
 ¹ Wall-clock, direct binaries, same machine and workspace — full
 methodology and more scenarios in
