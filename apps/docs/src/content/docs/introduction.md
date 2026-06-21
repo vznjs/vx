@@ -55,6 +55,36 @@ The full, sourced comparison lives in
 [vx vs Turborepo vs Nx](../comparison/). The performance mechanics are in
 [Why vx is fast](../concepts/why-vx-is-fast/).
 
+## The open platform layer
+
+Beyond the core task runner, vx ships an OSS open platform — every
+contract is documented; every wire is JSON-RPC 2.0. None of these
+require additional services:
+
+- **[vx mcp](../guides/mcp/)** — Model Context Protocol server (stdio).
+  Claude Code, Cursor, Continue.dev query cache stats and run history
+  through the standard agent-tool protocol.
+- **[Distributed CI](../guides/distributed-ci/)** — `vx coordinator` +
+  `vx run --worker` dispatch tasks across machines. Content-addressed.
+- **[Plugin API](../guides/plugins/)** — register lifecycle hooks in
+  `vx.workspace.ts`. Forward outcomes to Sentry, post to Slack, ship
+  metrics anywhere.
+- **[Predictive scheduling](../guides/predictive-scheduling/)** — opt
+  in with `predictive: true`; the scheduler reads run history and
+  dispatches by expected remaining critical path.
+- **[vx Cloud (Cloudflare)](../guides/vx-cloud/)** — `bun wrangler
+  deploy` from a fresh clone of `apps/cloud/` gives you a private vx
+  Cloud in your CF account in 5 minutes.
+- **[vx insights serve](../guides/insights/)** — localhost
+  Solid+DuckDB-WASM SPA over your `cache.db`. Historical run
+  flamegraphs, no backend.
+- **[OpenTelemetry CI/CD spans](../guides/otel-bridge/)** — single env
+  var, single npm install; every event lands in Grafana / Honeycomb /
+  Datadog / Tempo.
+- **[Wire protocol](../guides/wire-protocol/)** — `vx serve` speaks
+  JSON-RPC 2.0 over WS, SSE, and NDJSON. `curl -N
+  http://localhost:5176/events | jq` streams every envelope.
+
 ## What vx is *not*
 
 vx is small on purpose. It deliberately has **no** generators or

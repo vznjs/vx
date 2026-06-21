@@ -72,6 +72,47 @@ const features = [
   },
 ]
 
+// Platform layer — capabilities Nx and Turbo don't have OSS. Every claim
+// shipped in the 2026-06 arc (see docs/design/*-2026-06.md).
+const platform = [
+  {
+    icon: 'spark',
+    tone: 'var(--phosphor)',
+    title: 'MCP for AI agents',
+    body: 'vx mcp boots a Model Context Protocol server over stdio. Claude Code, Cursor, Continue.dev query cache stats, run history, and rebuild causes through the standard agent-tool protocol. No other runner ships an MCP surface.',
+  },
+  {
+    icon: 'mesh',
+    tone: 'var(--plasma)',
+    title: 'Distributed CI, OSS',
+    body: 'vx coordinator + vx run --worker dispatch your task graph across machines. Content-addressed: any worker producing artifact <hash> satisfies every consumer. Nx Cloud DTE without the paywall.',
+  },
+  {
+    icon: 'plug',
+    tone: 'var(--amber)',
+    title: 'Plugin API',
+    body: 'Register plugins in vx.workspace.ts to subscribe to lifecycle hooks. Forward outcomes to Sentry, post to Slack, ship metrics anywhere. Vite-style lifecycle hooks, crash-isolated per hook.',
+  },
+  {
+    icon: 'wire',
+    tone: 'var(--phosphor)',
+    title: 'Open wire protocol',
+    body: 'vx serve speaks JSON-RPC 2.0 over WS, SSE and NDJSON. Any JSON-RPC client works — curl streams events, jq filters them, MCP and A2A interop free. No proprietary protocol.',
+  },
+  {
+    icon: 'cloud',
+    tone: 'var(--plasma)',
+    title: 'Cloudflare-template hosted',
+    body: 'apps/cloud is a Wrangler project. bun wrangler deploy gives you a private vx Cloud in your CF account in 5 minutes — Workers + R2 + D1 + Durable Objects + Queues + KV. Template-spawnable, OSS-first.',
+  },
+  {
+    icon: 'brain',
+    tone: 'var(--amber)',
+    title: 'Predictive scheduling',
+    body: 'predictive: true and the scheduler reads run history, computes expected remaining critical-path per task, and dispatches by it. The only task runner that learns from itself.',
+  },
+]
+
 const featIcons: Record<string, string> = {
   cache:
     '<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.66 3.58 3 8 3s8-1.34 8-3V6"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/>',
@@ -81,6 +122,13 @@ const featIcons: Record<string, string> = {
   bolt: '<path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/>',
   box: '<path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3.5 8l8.5 5 8.5-5M12 13v8"/>',
   lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>',
+  // Platform icons
+  spark: '<path d="M12 2v6M12 16v6M2 12h6M16 12h6M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3"/>',
+  mesh: '<circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/><circle cx="12" cy="12" r="2"/><path d="M8 7l3 4M16 7l-3 4M11 13l-3 3M13 13l3 3"/>',
+  plug: '<path d="M9 2v6M15 2v6M7 8h10v4a5 5 0 01-10 0V8zM12 17v5"/>',
+  wire: '<path d="M3 8h6l3 8h6M3 16h6l3-8h6"/>',
+  cloud: '<path d="M17.5 19a4.5 4.5 0 100-9 6 6 0 00-11.5 1.5A4.5 4.5 0 006.5 19h11z"/>',
+  brain: '<path d="M9 3a3 3 0 00-3 3v1a3 3 0 00-3 3v2a3 3 0 003 3v1a3 3 0 003 3M15 3a3 3 0 013 3v1a3 3 0 013 3v2a3 3 0 01-3 3v1a3 3 0 01-3 3M9 12h6M9 7h6M9 17h6"/>',
 }
 
 const benchRows = [
@@ -382,6 +430,59 @@ const footCols = {
                 <h3>{f.title}</h3>
                 <p>{f.body}</p>
               </div>
+            ))
+          }
+        </div>
+      </section>
+
+      <!-- ===================== Platform layer ===================== -->
+      <section class="section container">
+        <div class="section-head">
+          <p class="vx-kicker">// beyond a task runner</p>
+          <h2>The open platform layer.</h2>
+          <p class="vx-sub">
+            One binary. Eight surfaces. Every contract is documented; every wire
+            is JSON-RPC 2.0. Subscribe, query, drive, extend — your stack, your
+            tools, your data.
+          </p>
+        </div>
+        <div class="feat-grid">
+          {
+            platform.map((f) => (
+              <a
+                class="feat-card platform-card"
+                style={`--c:${f.tone}`}
+                href={
+                  f.icon === 'spark'
+                    ? href('guides/mcp/')
+                    : f.icon === 'mesh'
+                      ? href('guides/distributed-ci/')
+                      : f.icon === 'plug'
+                        ? href('guides/plugins/')
+                        : f.icon === 'wire'
+                          ? href('guides/wire-protocol/')
+                          : f.icon === 'cloud'
+                            ? href('guides/vx-cloud/')
+                            : href('guides/predictive-scheduling/')
+                }
+              >
+                <span class="ico">
+                  <svg
+                    width="21"
+                    height="21"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    set:html={featIcons[f.icon]}
+                  />
+                </span>
+                <h3>{f.title}</h3>
+                <p>{f.body}</p>
+                <span class="learn">Learn more →</span>
+              </a>
             ))
           }
         </div>

@@ -64,6 +64,19 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Platform & extensions',
+          items: [
+            { label: 'vx mcp — AI agents', link: '/guides/mcp/' },
+            { label: 'Distributed CI execution', link: '/guides/distributed-ci/' },
+            { label: 'Writing a vx plugin', link: '/guides/plugins/' },
+            { label: 'Predictive scheduling', link: '/guides/predictive-scheduling/' },
+            { label: 'vx insights — local dashboard', link: '/guides/insights/' },
+            { label: 'vx Cloud (Cloudflare deploy)', link: '/guides/vx-cloud/' },
+            { label: 'OpenTelemetry CI/CD spans', link: '/guides/otel-bridge/' },
+            { label: 'vx serve wire protocol', link: '/guides/wire-protocol/' },
+          ],
+        },
+        {
           label: 'Migrate to vx',
           items: [
             { label: 'From Turborepo', link: '/migrate/from-turborepo/' },
