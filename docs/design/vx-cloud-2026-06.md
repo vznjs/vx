@@ -153,51 +153,122 @@ multi-tenant case).
 
 ## 4. Architecture
 
+**The cloud is Cloudflare-native.** Edge compute (Workers) + edge
+SQLite (D1) + S3-compatible object storage (R2) + stateful actor
+runtimes (Durable Objects) + queues (Queues). Self-hostable by
+**deploying the template into your own Cloudflare account** — `npx
+wrangler deploy` from the cloned repo, done in five minutes. No
+PostgreSQL, no S3 contract, no container orchestrator, no on-call.
+
+This choice is deliberate. The combination of (a) global edge
+distribution, (b) generous free tier (10M Worker requests/month, 10GB
+R2/month, 5GB D1/month free), (c) zero-egress R2, and (d) Wrangler's
+one-command deploy collapses "spin up a vx cloud for your team" from
+a Kubernetes adventure into a script. Anyone can fork the template
+and have a private hosted backend running before lunch.
+
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                          vx cloud                                │
-│                                                                  │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐ │
-│  │  Insights  │  │   Cache    │  │ Coordinator│  │   Auth +   │ │
-│  │    API     │  │  (Turbo-   │  │  (DTE per  │  │   Org      │ │
-│  │ + Web SPA  │  │   wire)    │  │  build)    │  │  identity  │ │
-│  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘ │
-│        │ event log     │ artifacts     │ task graph    │        │
-│        ▼               ▼               ▼               │        │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │  Storage (PostgreSQL + S3-compat object store)            │  │
-│  │  • runs, run_tasks, run_events                            │  │
-│  │  • org, project, member, role                             │  │
-│  │  • cache artifacts (per-org bucket)                       │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
-        ▲                ▲                ▲                ▲
-        │ POST events    │ PUT/GET tar    │ WS task RPCs   │ OIDC
-        │                │                │                │
-   ┌────┴────┐      ┌────┴────┐      ┌────┴────┐      ┌────┴────┐
-   │  vx run │      │  vx run │      │ vx run  │      │ Browser │
-   │ (local) │      │  (CI)   │      │ --worker│      │  user   │
-   └─────────┘      └─────────┘      └─────────┘      └─────────┘
+┌──────────────────── Cloudflare account (yours or hosted) ────────────────────┐
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │  Workers (edge compute)                                              │    │
+│  │  • /v8/artifacts/*    — Turbo-wire cache (PUT/GET/HEAD)             │    │
+│  │  • /v1/events/ingest  — batched WireEvent uploader                   │    │
+│  │  • /v1/runs/* etc.    — Insights API                                 │    │
+│  │  • /v1/coord/*        — distributed-execution submission             │    │
+│  │  • /v1/ws             — WS upgrade to the per-run Durable Object     │    │
+│  │  • Static asset binding — serves the SPA built from /apps/insights   │    │
+│  └─────────────┬─────────────────────────┬─────────────────────┬───────┘    │
+│                │                         │                     │            │
+│                ▼                         ▼                     ▼            │
+│  ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────────┐  │
+│  │  R2 (objects)    │    │  D1 (SQLite/edge)│    │ Durable Objects      │  │
+│  │  • <hash>.tar.zst│    │  • runs          │    │ • RunCoordinatorDO   │  │
+│  │  • event blobs   │    │  • run_tasks     │    │   (1 per active run; │  │
+│  │  • per-org prefix│    │  • orgs/members  │    │    holds graph state,│  │
+│  │  • presigned PUT │    │  • api_tokens    │    │    fans WS to subs)  │  │
+│  │  • zero egress   │    │  • global indexes│    │ • InflightDedupDO    │  │
+│  └──────────────────┘    └──────────────────┘    │   (per-hash; the     │  │
+│                                                  │    join-not-rerun    │  │
+│  ┌──────────────────┐    ┌──────────────────┐    │    pattern from      │  │
+│  │  Queues          │    │  KV              │    │    execution-service)│  │
+│  │  • event ingest  │    │  • org-token     │    └──────────────────────┘  │
+│  │    buffering     │    │    lookup cache  │                              │
+│  │  • aggregation   │    │  • feature flags │                              │
+│  └──────────────────┘    └──────────────────┘                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+    ▲              ▲              ▲                    ▲
+    │ PUT/GET tar  │ POST events  │ WS task RPCs       │ OAuth
+    │              │              │                    │
+┌───┴────┐    ┌────┴────┐    ┌────┴────┐    ┌────┴────┐
+│ vx run │    │ vx run  │    │ vx run  │    │ Browser │
+│ (local)│    │  (CI)   │    │ --worker│    │  user   │
+└────────┘    └─────────┘    └─────────┘    └─────────┘
 ```
 
-Three services behind one frontend, all stateless except the
-storage. Each can scale horizontally; PostgreSQL + S3 are the only
-stateful tier.
+**Why each piece.**
+
+- **Workers** for stateless HTTP. They scale to zero, run at the
+  edge close to users, no provisioning. Free tier covers most teams
+  forever. The Workers runtime is V8-isolate-based — fast cold
+  starts (~5ms), but watch out for the 30s CPU-time cap per request
+  (irrelevant for our request shape; nothing we do takes that long).
+
+- **R2** for the cache artifacts and the larger event blobs.
+  S3-API-compatible, **zero egress fees** (unique to R2 — this
+  changes the cost model for a cache that's read 100× more than
+  it's written). Presigned URLs for the actual byte transfer so
+  Workers don't proxy bytes.
+
+- **D1** for the relational store. SQLite on the edge, read-replicated
+  globally, 10GB free per database. Our schema is small (rows per
+  task, not per file). Wrangler-managed migrations. For accounts
+  that outgrow D1's 10GB cap, **Hyperdrive** bridges to an external
+  Postgres — same Workers code, different binding.
+
+- **Durable Objects** for stateful per-run coordination. The single
+  most important piece: a `RunCoordinatorDO` is a per-run singleton
+  with strong consistency, holds the graph + ready queue + worker
+  registrations + WS connections. Solves the "where does the live
+  state live" problem that would otherwise require Redis. Pairs
+  natively with WebSocket Hibernation (DO sleeps between events;
+  no $/idle-connection). The `InflightDedupDO` is the
+  content-addressed dedup pattern from
+  `execution-service-2026-06.md` materialized as a global edge
+  service — one DO per task hash, holds the in-flight promise so a
+  second submitter joins instead of re-running.
+
+- **Queues** to buffer event-ingestion spikes. A noisy CI run sends
+  500 events/second; the queue absorbs and the consumer Worker
+  batches into D1/R2. Backpressure-friendly, retry on failure.
+
+- **KV** for low-latency global reads of small hot data — token →
+  org lookup, public-key cache for HMAC verification, per-org
+  feature flags. Eventually consistent but cheap.
+
+The whole stack is **one repo, one `wrangler.toml`, one
+`bun wrangler deploy` command** to bring up.
 
 ## 5. Identity, authz, multi-tenancy
 
 The honest tradeoffs:
 
-- **Identity**: GitHub OAuth + a generic OIDC fallback. No
-  proprietary user database; you bring your own SSO.
-- **API tokens**: scoped to (org, role, expiry). Used by CI and by
-  the worker registration handshake.
-- **Per-org isolation**: every storage row carries `org_id`; every
-  query is `org_id`-scoped. Row-level security in PostgreSQL.
-  S3 buckets per-org (or per-org prefix in shared bucket).
+- **Identity**: GitHub OAuth (via Workers OAuth helper, ~50 LOC) +
+  a generic OIDC fallback. No proprietary user database; you bring
+  your own SSO. Sessions live in **D1**; auth state per-request
+  validated against a **KV**-cached lookup (sub-ms p99).
+- **API tokens**: scoped to (org, role, expiry), stored hashed in
+  D1, lookup-cached in KV. Used by CI and by the worker
+  registration handshake. Token revocation purges the KV entry
+  immediately.
+- **Per-org isolation**: every D1 row carries `org_id`; every query
+  filtered through a tiny middleware that injects the auth context.
+  R2 objects use a per-org key prefix (`<org_id>/<hash>.tar.zst`)
+  so a misconfigured presigned URL cannot leak cross-org.
 - **No cross-org leakage**: a hash collision across orgs returns
   miss for the org that doesn't own it. Hashes are not assumed
-  globally unique; the (org_id, hash) tuple is the key.
+  globally unique; the `(org_id, hash)` tuple is the cache key
+  enforced at the Worker layer.
 
 The cache wire stays Turbo-compatible — the team ID + token model
 maps straight onto our (org_id, api_token) tuple. Existing Turbo
@@ -259,23 +330,67 @@ Hosted is the only place this matters; self-hosted means it stays on
 your boxes regardless. The OSS surface treats local SQLite as the
 canonical store.
 
-## 8. The OSS reference implementation
+## 8. The OSS reference implementation — `apps/cloud/`
 
-We ship `packages/vx-cloud-server` (Bun) — the same code that runs the
-hosted service. Single-binary deploy:
+The cloud lives in this repo as `apps/cloud/`, a Cloudflare Workers
+project. The same code runs the hosted SaaS at `cloud.vx.dev`. The
+**README is the deploy guide**:
 
 ```bash
-$ vx cloud serve --postgres postgres://... --s3 s3://...
-→ vx cloud listening on :8080
+$ git clone https://github.com/vznjs/vx
+$ cd vx/apps/cloud
+$ bun install
+$ bun wrangler login          # one-time auth to your CF account
+$ bun wrangler d1 create vx_cloud
+$ bun wrangler r2 bucket create vx-cloud-artifacts
+$ bun wrangler deploy
+→ Deployed to https://vx-cloud-<your-subdomain>.workers.dev
 ```
 
-Helm chart and docker-compose for the common deploy patterns. The
-hosted SaaS at `cloud.vx.dev` runs this exact binary, version-tagged.
-Customers who outgrow the SaaS migrate by `pg_dump` → `pg_restore`;
-their data is theirs.
+That's five minutes to a private hosted vx for your team. The
+`wrangler.toml` defines every binding (D1, R2, DOs, Queue, KV) so a
+fresh clone is provisionable verbatim. Migrations live as `.sql`
+files under `apps/cloud/migrations/` and apply via
+`wrangler d1 migrations apply`.
+
+**Template-spawnable.** We publish the same source as a `cloudflare/
+templates`-registered template so users can `npx create-cloudflare
+vx-cloud` and skip the clone-and-configure dance entirely — the
+template wizard prompts for the bucket/D1 names and writes
+`wrangler.toml` for you. The result is **a hosted vx that the user
+owns, in their CF account, with their billing**, deployed by typing
+~3 commands.
 
 This is the structural answer to "open vs. proprietary": there is no
-proprietary component. The hosted runtime is the OSS runtime.
+proprietary component. The hosted runtime is the OSS runtime, the
+hosted SaaS is just one deployed instance. If `cloud.vx.dev` goes
+away tomorrow, every customer can spin their own up in an afternoon.
+
+### 8.1 Why not a portable backend?
+
+We considered Postgres + S3 + a generic container deployment (Helm,
+docker-compose). **The user-experience math doesn't work.** A team
+trying to evaluate vx Cloud should not need to provision a database,
+an object store, and a container orchestrator. Cloudflare is the
+_only_ stack where the entire surface (compute + relational store +
+object store + actor runtime + queue) is one provider, one CLI, one
+account, with a free tier that covers small teams forever.
+
+For users who DO want to bring their own storage (Postgres, S3, a
+container farm), the **execution-service-2026-06.md** path stays
+open — `vx serve` runs anywhere a Bun process runs, and a future
+`vx serve --backend postgres` adapter would let it persist. We
+ship the CF target first because it removes friction; the
+generic-backend target is a follow-up driven by a real ask.
+
+### 8.2 Hyperdrive escape hatch
+
+D1's 10GB-per-database cap is generous but finite. When a team
+outgrows it, the **Hyperdrive** binding lets the same Workers code
+talk to an external Postgres (RDS, Neon, Supabase) with edge-cached
+connection pooling. Migration is one `wrangler.toml` change + a SQL
+dump/restore; no code change. So the CF-native default is not a
+dead-end.
 
 ## 9. The big architectural payoff: one event stream feeds everything
 
