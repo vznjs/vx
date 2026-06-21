@@ -22,12 +22,12 @@ export function RunDetail() {
       <Show when={run.error}>
         <div class="text-failure font-mono text-sm">Failed to load: {String(run.error)}</div>
       </Show>
-      <Show when={run() !== undefined}>
+      <Show when={run() !== null && run() !== undefined}>
         <div class="text-sm text-fg-muted">
           {run()!.tasks.length} task(s)
           {' · '}
           {formatDuration(
-            run()!.tasks.reduce((acc, t) => acc + Number(t.duration_ms ?? 0), 0),
+            run()!.tasks.reduce((acc, t) => acc + Number(t.durationMs ?? 0), 0),
           )}{' '}
           total
         </div>
@@ -50,9 +50,9 @@ export function RunDetail() {
                       {t.project}#{t.task}
                     </td>
                     <td class="px-3 py-2 text-xs">{t.status}</td>
-                    <td class="px-3 py-2 text-right">{formatDuration(Number(t.duration_ms))}</td>
+                    <td class="px-3 py-2 text-right">{formatDuration(t.durationMs)}</td>
                     <td class="px-3 py-2 text-right text-cache">
-                      {(t.cache_hit ?? 0) === 1 ? 'hit' : 'miss'}
+                      {t.cacheHit === true ? 'hit' : 'miss'}
                     </td>
                   </tr>
                 )}
@@ -60,6 +60,9 @@ export function RunDetail() {
             </tbody>
           </table>
         </div>
+      </Show>
+      <Show when={run() === null}>
+        <div class="text-fg-muted text-sm">Run not found.</div>
       </Show>
     </div>
   )

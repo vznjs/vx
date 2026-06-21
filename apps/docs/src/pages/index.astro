@@ -102,8 +102,8 @@ const platform = [
   {
     icon: 'cloud',
     tone: 'var(--plasma)',
-    title: 'Cloudflare-template hosted',
-    body: 'apps/cloud is a Wrangler project. bun wrangler deploy gives you a private vx Cloud in your CF account in 5 minutes — Workers + R2 + D1 + Durable Objects + Queues + KV. Template-spawnable, OSS-first.',
+    title: 'Self-hostable, Docker-ready',
+    body: 'vx serve runs locally or in Docker — same backend everywhere. The hosted insights SPA points at any reachable origin via a connection picker. No separate cloud stack, no CF lock-in.',
   },
   {
     icon: 'brain',
@@ -462,7 +462,7 @@ const footCols = {
                         : f.icon === 'wire'
                           ? href('guides/wire-protocol/')
                           : f.icon === 'cloud'
-                            ? href('guides/vx-cloud/')
+                            ? href('guides/self-hosting/')
                             : href('guides/predictive-scheduling/')
                 }
               >

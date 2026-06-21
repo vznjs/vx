@@ -735,3 +735,68 @@ plus most of Wave 2-3 (HistoryTable, MCP, plugin API, predictive)
 and the Wave 4 scaffolds (apps/cloud, apps/insights). The PR
 materializes the carved-in-stone rules from
 `architecture-north-star-2026-06.md §3.x` as actual code.
+
+---
+
+## Unification step — vx serve is the cloud (2026-06-21)
+
+Owner directive, same day: "vx cloud is exactly the same as vx serve.
+We don't need a separate stack for it. It can run in Docker just fine.
+Cf is no longer a requirement. Simplify and unify architecture where
+possible only what we really need. Also instead of Otel bridge we
+could natively talk in that. No custom format and standard."
+
+**Shipped.**
+
+- Delete `apps/cloud/` (entire CF Workers project — wrangler.toml,
+  R2/D1/DO/Queue/KV bindings, HMAC wrapper, queue→D1 consumer).
+- Delete `packages/otel-bridge/` and `packages/*` from root workspaces.
+- Inline OTel emit into core as `src/orchestrator/otel-emit.ts` using
+  dynamic specifier imports of three optional `@opentelemetry/*` peer
+  deps; missing peers / missing env var = silent skip.
+- New `src/orchestrator/insights-queries.ts` — pure SQL over a
+  `bun:sqlite` Database (listRuns / listInvocations / getRun /
+  getCacheStatsSql / getHistory / explainCacheKey / whyDidThisRerun).
+  10 unit tests in `tests/insights-queries.test.ts`.
+- Extend `vx serve` with `GET /v1/runs`, `/v1/invocations`,
+  `/v1/runs/:id`, `/v1/cache/stats`, `/v1/history`, `/v1/explain/:id`,
+  `/v1/why/:runId/:taskId`, `/v1/events`, plus `Access-Control-Allow-
+Origin: *` on every response and an `OPTIONS` 204 handler. `/version`
+  now also carries the workspace root.
+- Rewrite `apps/insights/` SPA to drop DuckDB-WASM entirely and talk
+  to `vx serve` over HTTP. New connection picker in `Shell` (URL chip
+  - status dot, localStorage-persisted, defaults from
+    `VITE_DEFAULT_ORIGIN` at dev time). 13 files changed,
+    +422/-603 LOC.
+- Simplify `vx insights` to boot `vx serve` + the SPA dev server and
+  pass `VITE_DEFAULT_ORIGIN` through. Drop the static cache.db
+  server.
+- Docs: replace `vx-cloud.md` with `self-hosting.md` (Docker compose
+  example + Caddy auth/TLS recipe + the browser-localhost gotcha
+  documented); rewrite `otel-bridge.md` to "OpenTelemetry — native";
+  rewrite `insights.md` with the connection-picker UX; update README
+  - introduction + landing page; mark `vx-cloud-2026-06.md` design
+    as superseded.
+
+**Decisions.**
+
+- **One SQL backend, one schema.** bun:sqlite for everything. The
+  CF/D1 path had its own (compatible) schema, queries, migrations;
+  the unification cut that surface entirely.
+- **Wide-open CORS on `/v1/*`.** The hosted SPA must reach localhost
+  from a foreign origin. The surface is read-only + the WS run-
+  submission is gated by network reachability (vx serve binds to
+  localhost by default; production deploys front it with auth at a
+  reverse proxy).
+- **OTel inline, not a package.** Dynamic-specifier import of three
+  `@opentelemetry/*` peers means a user opts in by setting the env
+  var _and_ installing the peers. Core's 19-dep tree stays untouched
+  for everyone else.
+
+**Tests.** 923 pass / 17 skip / 0 fail (was 919/17). Added 4 serve
+HTTP-API tests + 10 insights-queries tests; removed 3 obsolete
+static-server tests.
+
+**Net.** −1646/+896 LOC across 25 files in the first commit; another
+−603/+422 across 13 files in the SPA refactor. One stack everywhere;
+the SPA is a thin client; `vx serve` is the only backend.

@@ -1,13 +1,18 @@
 # vx Cloud — hosted observability, cache, and execution
 
-Status: **Phases A-C SHIPPED 2026-06-21** as the `apps/cloud/`
-Cloudflare-Workers scaffold + the HMAC validation + queue→D1 consumer
+> **SUPERSEDED 2026-06-21 (same day).** This design called for a
+> separate Cloudflare-Workers stack (`apps/cloud/`) with its own SQL
+> backend (D1), runtime, and deploy story. After shipping Phases A-C
+> the owner cut it: "vx cloud is exactly the same as vx serve. We
+> don't need a separate stack for it. It can run in Docker just
+> fine." The unified path: `vx serve` is the cloud — same Bun
+> binary, same `bun:sqlite` cache, same `/v1/*` HTTP shape — and it
+> runs in Docker for hosted use. See
+> [`apps/docs/src/content/docs/guides/self-hosting.md`](../../apps/docs/src/content/docs/guides/self-hosting.md)
+> for the deploy story. `apps/cloud/` was deleted along with this
+> directive.
 
-- RunCoordinatorDO submit.run. Phases D-E (OAuth, hosted SaaS) deferred.
-  Owner ask: "hosted service where people could see local and company-wide
-  things." Pairs with `distributed-ci-2026-06.md` (the execution protocol)
-  and `remote-cache.md` (the existing cache transport). This is the
-  _observability + multi-tenancy_ layer on top.
+Status: **SUPERSEDED.** Original framing preserved below for context.
 
 ## Implementation snapshot (2026-06-21)
 

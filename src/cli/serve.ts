@@ -7,18 +7,25 @@
 
 import path from 'node:path'
 import { mkdir, unlink, writeFile } from 'node:fs/promises'
+import { Cache } from '../cache/index.js'
 import {
   run as runOrchestrator,
   createEventBus,
   wireForwarder,
   requestToOptions,
   projectOutcome,
-  decodeEnvelope,
   encodeForNDJSON,
   encodeForSSE,
   envelopeToClientMessage,
+  explainCacheKeyQuery,
+  getCacheStatsSql,
+  getHistory,
+  getRun,
   isEnvelope,
+  listInvocations,
+  listRuns,
   serverMessageToEnvelope,
+  whyDidThisRerunQuery,
   WIRE_CHANNELS,
   WIRE_PROTOCOL_VERSION,
   type ClientMessage,
@@ -28,7 +35,7 @@ import {
   type ServerMessage,
 } from '../orchestrator/index.js'
 import { VERSION } from '../version.js'
-import { findWorkspaceRoot } from '../workspace/index.js'
+import { findWorkspaceRoot, loadWorkspaceConfig, resolveCacheDir } from '../workspace/index.js'
 
 /** Where `vx serve` advertises itself and `vx run` looks for it. */
 export function serveInfoPath(workspaceRoot: string): string {
@@ -80,6 +87,26 @@ export interface ServeServer {
   stop: () => Promise<void>
 }
 
+// CORS is wide-open: the hosted SPA needs to reach localhost from a foreign
+// origin, and the surface is read-only insights + an authenticated WS run
+// submission. Any tighter policy would break the "host the SPA once, point
+// it at any vx serve" UX.
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Max-Age': '86400',
+}
+
+function withCors(res: Response): Response {
+  for (const [k, v] of Object.entries(CORS_HEADERS)) res.headers.set(k, v)
+  return res
+}
+
+function jsonResponse(body: unknown, init?: ResponseInit): Response {
+  return withCors(Response.json(body, init))
+}
+
 export async function startServe(opts: {
   root: string
   port?: number
@@ -88,6 +115,13 @@ export async function startServe(opts: {
   // One registry for the service's whole lifetime — concurrent runs share
   // it to dedup in-flight task execution.
   const inflight = new Map<string, Promise<void>>()
+
+  // Read-only handle to the workspace's cache.db, opened once and reused
+  // for every /v1/* query. The query module is pure — opens nothing —
+  // so the lifetime lives here.
+  const workspaceConfig = await loadWorkspaceConfig(opts.root)
+  const cacheDir = resolveCacheDir(opts.root, workspaceConfig)
+  const cache = new Cache(cacheDir)
 
   // Read-only event subscribers (SSE / NDJSON). Each callback gets every
   // event from every concurrent run as a notification envelope so a `curl`
@@ -110,20 +144,87 @@ export async function startServe(opts: {
     port: opts.port ?? 0,
     fetch(req, srv) {
       const url = new URL(req.url)
+      // Browser preflight — answer everything with CORS-permissive headers.
+      if (req.method === 'OPTIONS') {
+        return withCors(new Response(null, { status: 204 }))
+      }
       // Liveness probe — `vx run` health-checks this before delegating.
-      if (url.pathname === '/health') return new Response('ok')
+      if (url.pathname === '/health') return withCors(new Response('ok'))
       // Capability handshake — what protocol version + channels + RPCs.
       if (url.pathname === '/version') {
-        return Response.json({
+        return jsonResponse({
           protocol: WIRE_PROTOCOL_VERSION,
           vx: VERSION,
           channels: WIRE_CHANNELS,
           rpc: ['getCacheStats', 'getRunHistory', 'explainCacheKey', 'whyDidThisRerun'],
+          workspace: opts.root,
         })
+      }
+      // -----------------------------------------------------------------
+      // Insights HTTP surface — JSON read APIs over cache.db. The hosted
+      // SPA in apps/insights/ calls these directly; same shape will be
+      // mirrored by a future hosted multi-tenant deployment.
+      // -----------------------------------------------------------------
+      if (url.pathname === '/v1/runs') {
+        const params = url.searchParams
+        const args: Parameters<typeof listRuns>[1] = {}
+        const limitRaw = params.get('limit')
+        if (limitRaw !== null) args.limit = Number(limitRaw)
+        const project = params.get('project')
+        if (project !== null) args.project = project
+        const task = params.get('task')
+        if (task !== null) args.task = task
+        const runId = params.get('runId')
+        if (runId !== null) args.runId = runId
+        return jsonResponse({ runs: listRuns(cache.dbHandle(), args) })
+      }
+      if (url.pathname === '/v1/invocations') {
+        const limit = Number(url.searchParams.get('limit') ?? '50')
+        return jsonResponse({ invocations: listInvocations(cache.dbHandle(), limit) })
+      }
+      {
+        const m = /^\/v1\/runs\/([^/]+)$/.exec(url.pathname)
+        if (m) {
+          const detail = getRun(cache.dbHandle(), decodeURIComponent(m[1]!))
+          if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
+          return jsonResponse(detail)
+        }
+      }
+      if (url.pathname === '/v1/cache/stats') {
+        return jsonResponse(getCacheStatsSql(cache.dbHandle()))
+      }
+      if (url.pathname === '/v1/history') {
+        const params = url.searchParams
+        const args: Parameters<typeof getHistory>[1] = {}
+        const limitRaw = params.get('limit')
+        if (limitRaw !== null) args.limit = Number(limitRaw)
+        const project = params.get('project')
+        if (project !== null) args.project = project
+        const task = params.get('task')
+        if (task !== null) args.task = task
+        return jsonResponse({ history: getHistory(cache.dbHandle(), args) })
+      }
+      {
+        const m = /^\/v1\/explain\/(.+)$/.exec(url.pathname)
+        if (m) {
+          return jsonResponse(explainCacheKeyQuery(cache.dbHandle(), decodeURIComponent(m[1]!)))
+        }
+      }
+      {
+        const m = /^\/v1\/why\/([^/]+)\/(.+)$/.exec(url.pathname)
+        if (m) {
+          return jsonResponse(
+            whyDidThisRerunQuery(
+              cache.dbHandle(),
+              decodeURIComponent(m[1]!),
+              decodeURIComponent(m[2]!),
+            ),
+          )
+        }
       }
       // Server-Sent Events — broadcasts the same event envelopes the WS
       // sees, but on a one-way stream. `curl -N http://.../events` works.
-      if (url.pathname === '/events') {
+      if (url.pathname === '/events' || url.pathname === '/v1/events') {
         const stream = new ReadableStream<Uint8Array>({
           start(controller) {
             const enc = new TextEncoder()
@@ -139,13 +240,15 @@ export async function startServe(opts: {
             })
           },
         })
-        return new Response(stream, {
-          headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-store',
-            Connection: 'keep-alive',
-          },
-        })
+        return withCors(
+          new Response(stream, {
+            headers: {
+              'Content-Type': 'text/event-stream',
+              'Cache-Control': 'no-store',
+              Connection: 'keep-alive',
+            },
+          }),
+        )
       }
       // NDJSON — one envelope per line, no SSE framing. `jq`-friendly.
       if (url.pathname === '/stream') {
@@ -165,15 +268,17 @@ export async function startServe(opts: {
             })
           },
         })
-        return new Response(stream, {
-          headers: {
-            'Content-Type': 'application/x-ndjson',
-            'Cache-Control': 'no-store',
-          },
-        })
+        return withCors(
+          new Response(stream, {
+            headers: {
+              'Content-Type': 'application/x-ndjson',
+              'Cache-Control': 'no-store',
+            },
+          }),
+        )
       }
       if (srv.upgrade(req)) return undefined
-      return new Response('vx serve')
+      return withCors(new Response('vx serve'))
     },
     websocket: {
       async message(ws, raw) {
@@ -215,6 +320,11 @@ export async function startServe(opts: {
     origin,
     stop: async () => {
       await server.stop(true)
+      try {
+        cache.close()
+      } catch {
+        // already closed
+      }
       try {
         await unlink(infoPath)
       } catch {

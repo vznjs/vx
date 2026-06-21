@@ -174,7 +174,7 @@ Bearer <token>` header on every request and on the WS handshake.
 Bash one-liner using SSE:
 
 ```sh
-curl -N https://vx-cloud-xxx.workers.dev/events \
+curl -N https://vx.your-company.com/events \
   -H "Authorization: Bearer $TOKEN" \
   | jq -r '.params | select(.kind == "run:end")' \
   | while read; do curl -X POST https://api.pushover.net/1/messages.json \

@@ -85,6 +85,116 @@ describe('vx serve delegation', () => {
   })
 })
 
+describe('vx serve /v1/* insights API', () => {
+  it('serves runs / invocations / cache stats / history after a delegated run', async () => {
+    const root = await makeWorkspace()
+    const server = await startServe({ root })
+    try {
+      // Execute one delegated run to populate cache.db
+      const backend = serviceBackend(server.origin, captureLogger([]))
+      await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
+
+      // /v1/runs
+      const runs = (await (await fetch(`${server.origin}/v1/runs`)).json()) as {
+        runs: { project: string; task: string }[]
+      }
+      expect(runs.runs.length).toBeGreaterThanOrEqual(1)
+      expect(runs.runs[0]!.project).toBe('demo')
+      expect(runs.runs[0]!.task).toBe('hello')
+
+      // /v1/invocations
+      const inv = (await (await fetch(`${server.origin}/v1/invocations`)).json()) as {
+        invocations: { runId: string; taskCount: number }[]
+      }
+      expect(inv.invocations.length).toBeGreaterThanOrEqual(1)
+      expect(inv.invocations[0]!.taskCount).toBeGreaterThanOrEqual(1)
+
+      // /v1/cache/stats
+      const stats = (await (await fetch(`${server.origin}/v1/cache/stats`)).json()) as {
+        entryCount: number
+        runCountLast24h: number
+      }
+      expect(stats.runCountLast24h).toBeGreaterThanOrEqual(1)
+
+      // /v1/history
+      const hist = (await (await fetch(`${server.origin}/v1/history`)).json()) as {
+        history: { id: string; runs: number }[]
+      }
+      expect(hist.history.length).toBeGreaterThanOrEqual(1)
+      expect(hist.history.find((h) => h.id === 'demo#hello')).toBeTruthy()
+
+      // /v1/runs/:runId
+      const runId = inv.invocations[0]!.runId
+      const detail = (await (await fetch(`${server.origin}/v1/runs/${runId}`)).json()) as {
+        runId: string
+        tasks: { task: string }[]
+      }
+      expect(detail.runId).toBe(runId)
+      expect(detail.tasks.length).toBeGreaterThanOrEqual(1)
+
+      // /v1/explain/:taskId
+      const explain = (await (
+        await fetch(`${server.origin}/v1/explain/${encodeURIComponent('demo#hello')}`)
+      ).json()) as { taskId: string; project: string; task: string }
+      expect(explain.taskId).toBe('demo#hello')
+      expect(explain.project).toBe('demo')
+      expect(explain.task).toBe('hello')
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('returns 404 for an unknown run id', async () => {
+    const root = await makeWorkspace()
+    const server = await startServe({ root })
+    try {
+      const res = await fetch(`${server.origin}/v1/runs/does-not-exist`)
+      expect(res.status).toBe(404)
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('answers CORS preflight + emits permissive headers on JSON responses', async () => {
+    const root = await makeWorkspace()
+    const server = await startServe({ root })
+    try {
+      const pre = await fetch(`${server.origin}/v1/runs`, {
+        method: 'OPTIONS',
+        headers: { Origin: 'https://example.com' },
+      })
+      expect(pre.status).toBe(204)
+      expect(pre.headers.get('access-control-allow-origin')).toBe('*')
+
+      const res = await fetch(`${server.origin}/v1/runs`)
+      expect(res.headers.get('access-control-allow-origin')).toBe('*')
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('advertises workspace + RPC capabilities on /version', async () => {
+    const root = await makeWorkspace()
+    const server = await startServe({ root })
+    try {
+      const v = (await (await fetch(`${server.origin}/version`)).json()) as {
+        vx: string
+        workspace: string
+        rpc: string[]
+      }
+      expect(typeof v.vx).toBe('string')
+      expect(v.workspace).toBe(root)
+      expect(v.rpc).toContain('getCacheStats')
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('resolveBackend', () => {
   it('falls back to local when no service is reachable', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'vx-nosvc-'))

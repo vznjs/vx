@@ -1,44 +1,41 @@
 ---
-title: vx insights — local run dashboard
-description: Boot a Solid + DuckDB-WASM SPA against your workspace's cache.db. Historical run flamegraphs, per-task trends, no backend, no daemon.
+title: vx insights — local & hosted dashboard
+description: A Solid SPA that talks to vx serve over HTTP. Same UI locally or against a remote server. Run history, flamegraphs, cache stats, no daemon.
 ---
 
-`vx insights serve` opens a localhost dashboard backed by your
-workspace's `cache.db`. Pure read-only analytics — no backend, no
-upload, no daemon. The page reads SQLite in the browser via DuckDB-WASM.
+`vx insights` opens a dashboard backed by `vx serve` — the same
+unified backend used everywhere. Run it locally for a private,
+client-side view of your workspace; or point a hosted copy of the
+SPA at any reachable `vx serve` for a team view. One platform.
 
 ## Quick start
 
 ```sh
 cd your-workspace
-vx insights serve
+vx insights
 ```
 
-That prints two URLs:
+This boots two foreground processes:
 
-- The SPA on `http://127.0.0.1:5290` (Vite dev server).
-- A tiny static HTTP server (kernel-assigned port) exposing
-  `cache.db` at `/cache.db` with the SQLite MIME so the SPA can
-  fetch it.
+- **`vx serve`** on a kernel-assigned port, exposing the JSON `/v1/*`
+  insights API + the WebSocket run-submission protocol.
+- **The SPA** (Vite dev server) on `http://127.0.0.1:5290`.
 
-`Ctrl-C` stops both.
-
-Override the SPA port with `--port`:
-
-```sh
-vx insights serve --port 7000
-```
+`Ctrl-C` stops both. Override the SPA port with `--port`.
 
 ## What you see
 
-Two pages:
-
-- **Overview** — recent runs list, sorted by start time descending.
-  Each row shows project, task name, status, duration, cache
-  source. Click a row → run detail.
+- **Overview** — cache stats cards (entries, total bytes, 24h hit
+  rate, runs/24h) plus a list of recent invocations sorted by start
+  time. Click a row → run detail.
 - **Run detail** — per-task timeline (flamegraph), one lane per
-  project, bars colored by status / cache source. The same data
-  drives both — replayable in the browser.
+  project, bars colored by status / cache source, plus the task
+  table.
+
+A **connection picker** in the top-right shows the current server
+origin and a status dot. Click to paste a different URL and the
+SPA reconnects — `http://localhost:4321` for another local server,
+or `https://vx.your-company.com` for a hosted one.
 
 ## How it works
 
@@ -46,19 +43,20 @@ Two pages:
    Browser
    ┌─────────────────────────────┐
    │ apps/insights SPA (Solid)   │
-   │  • UnoCSS dark theme        │
-   │  • Solid Router (hash)      │
-   │  • DuckDB-WASM (~30 MB lazy)│
+   │  • connection picker        │
+   │  • fetch over HTTP          │
    └────────┬────────────────────┘
-            │ fetch /cache.db
+            │ GET /v1/runs, /v1/invocations, …
+            │ WS /  (delegated run submission)
             ▼
    ┌─────────────────────────────┐
-   │ Tiny static server (Bun)    │
-   │  • cache.db @ vnd.sqlite3   │
+   │ vx serve (Bun.serve)        │
+   │  • /v1/* JSON over cache.db │
    │  • CORS *                   │
-   │  • /health                  │
+   │  • SSE event stream         │
+   │  • WS run protocol          │
    └────────┬────────────────────┘
-            │ reads
+            │ bun:sqlite
             ▼
    ┌─────────────────────────────┐
    │ <workspaceRoot>/.vx/cache/  │
@@ -66,54 +64,57 @@ Two pages:
    └─────────────────────────────┘
 ```
 
-DuckDB-WASM reads SQLite files directly via the `sqlite_scanner`
-extension — no ETL, no conversion. The SPA `ATTACH`-es the fetched
-bytes as a database, runs aggregations client-side, renders Solid
-components. Queries stay in the browser.
+The SPA is platform-agnostic — every read is an HTTP call to a
+configurable origin. Same JSON shape locally or hosted.
 
-## What's needed on disk
+## HTTP surface
 
-- `<workspaceRoot>/.vx/cache/cache.db` — at least one `vx run`
-  in the workspace.
-- `<vx checkout>/apps/insights/` — the SPA source. Set
-  `VX_INSIGHTS_DIR` if the installed binary can't find a checkout
-  alongside its `import.meta.dir`.
+`vx serve` exposes a small JSON API:
 
-If `cache.db` is missing, `vx insights` prints a clean hint and
-exits 1. If the SPA scaffold is missing, the binary points you at
-`VX_INSIGHTS_DIR`.
+| Path | Returns |
+| --- | --- |
+| `GET /health` | `ok` |
+| `GET /version` | `{ vx, protocol, workspace, channels, rpc }` |
+| `GET /v1/runs?project=&task=&runId=&limit=` | per-task run rows |
+| `GET /v1/invocations?limit=` | grouped per `runId` |
+| `GET /v1/runs/:runId` | full run detail + tasks |
+| `GET /v1/cache/stats` | entry count, size, 24h hit rate |
+| `GET /v1/history?project=&task=&limit=` | per-task rollups + p50/p99 |
+| `GET /v1/explain/:taskId` | latest cache-key entry for a task |
+| `GET /v1/why/:runId/:taskId` | compare hash with previous run |
+| `GET /events`, `GET /v1/events` | SSE stream of run events |
 
-## Why client-side analytics
+All routes ship `Access-Control-Allow-Origin: *` — the hosted SPA
+must be able to reach localhost from a foreign origin.
 
-- **Zero backend.** Nothing to provision, nothing to operate. The
-  static server just serves bytes.
-- **Privacy by default.** Data never leaves your laptop.
-- **Read-only by construction.** The SPA fetches `cache.db` once
-  per page load. Mutating queries can't touch your real cache.
-- **Open at the data layer.** Anyone can write a DuckDB query
-  against `cache.db` directly — the SPA is just a UI on top.
+## Host the SPA once, point it anywhere
 
-For team-wide analytics, see the
-[vx Cloud guide](/vx/guides/vx-cloud/).
+Build `apps/insights/` once, deploy the static `dist/` to any
+host. Users open it, paste their `vx serve` origin into the
+connection picker, and the SPA does its thing. Browsers allow
+HTTPS pages to call `http://localhost:*` per the Secure Context
+exception, so a hosted `https://insights.example.com` can read
+from a local `vx serve` running on `http://localhost:4321`.
+
+This is the "Cloud" model — but the cloud is just a deployment
+of `vx serve` (in Docker, on a VM, anywhere). No separate stack,
+no Cloudflare Workers, no D1.
+
+## Privacy
+
+When you run `vx insights` locally, nothing leaves your machine.
+A hosted SPA pointed at `http://localhost:*` is also entirely
+local — the picker is just configuration; the page reads from
+your machine, not a third party.
 
 ## Known limits
 
-- **DuckDB-WASM is heavy** (~30 MB). First query is slow because
-  the WASM bundle and SQLite extension download. Subsequent queries
-  are fast.
-- **No real-time.** The page snapshots `cache.db` on load. Reload
+- **No real-time view yet.** SSE event streaming exists on the
+  server (`/v1/events`) but the SPA doesn't subscribe yet. Reload
   to see new runs.
-- **Charts are minimal today.** The Overview and Run detail pages
-  ship; cache hit-rate trends, per-author breakdowns, and the
-  "Bottleneck atlas" from the cloud spec are scaffold-pending.
+- **No auth.** vx serve binds to localhost by default; trust is by
+  network reachability. Add a reverse proxy with auth for hosted
+  deployments.
 
-## What's coming
-
-- More pages (per-task trends, cache cliff detection, regression
-  surfacing).
-- Auto-refresh when `cache.db` mtime changes.
-- An option to embed the SPA inside `vx serve` for an in-browser
-  live view of running runs.
-
-See also: `docs/design/vx-cloud-2026-06.md` §2.1 (local face),
-`apps/insights/README.md`.
+See also: [`Self-hosting`](/vx/guides/self-hosting/),
+[`Wire protocol`](/vx/guides/wire-protocol/).
