@@ -94,7 +94,7 @@ function startStaticServer(cacheDbPath: string): { port: number; stop: () => voi
       return new Response('not found', { status: 404 })
     },
   })
-  return { port: server.port, stop: () => server.stop() }
+  return { port: server.port ?? 0, stop: () => server.stop() }
 }
 
 async function startSpa(
