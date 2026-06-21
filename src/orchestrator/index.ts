@@ -27,6 +27,34 @@ export type {
   WireTaskNode,
 } from './protocol.js'
 export {
+  clientMessageToEnvelope,
+  decodeEnvelope,
+  encodeForNDJSON,
+  encodeForSSE,
+  encodeForWS,
+  ENVELOPE_ERRORS,
+  envelopeToClientMessage,
+  envelopeToServerMessage,
+  isEnvelope,
+  isNotification,
+  isRequest,
+  makeError,
+  makeNotification,
+  makeRequest,
+  makeResponse,
+  serverMessageToEnvelope,
+  WIRE_CHANNELS,
+  WIRE_PROTOCOL_VERSION,
+} from './wire.js'
+export type {
+  Envelope,
+  ErrorResponse,
+  Notification,
+  Request as WireRequest,
+  Response as WireResponse,
+  WireChannel,
+} from './wire.js'
+export {
   EmptyHistoryProvider,
   type HistoryProvider,
   type HistoryTable,

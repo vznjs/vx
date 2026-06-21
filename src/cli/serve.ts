@@ -13,11 +13,21 @@ import {
   wireForwarder,
   requestToOptions,
   projectOutcome,
+  decodeEnvelope,
+  encodeForNDJSON,
+  encodeForSSE,
+  envelopeToClientMessage,
+  isEnvelope,
+  serverMessageToEnvelope,
+  WIRE_CHANNELS,
+  WIRE_PROTOCOL_VERSION,
   type ClientMessage,
+  type Envelope,
   type Logger,
   type RunRequest,
   type ServerMessage,
 } from '../orchestrator/index.js'
+import { VERSION } from '../version.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 
 /** Where `vx serve` advertises itself and `vx run` looks for it. */
@@ -78,25 +88,112 @@ export async function startServe(opts: {
   // One registry for the service's whole lifetime — concurrent runs share
   // it to dedup in-flight task execution.
   const inflight = new Map<string, Promise<void>>()
+
+  // Read-only event subscribers (SSE / NDJSON). Each callback gets every
+  // event from every concurrent run as a notification envelope so a `curl`
+  // user sees activity across the service.
+  type ReadSubscriber = (env: Envelope) => void
+  const readSubscribers = new Set<ReadSubscriber>()
+  const broadcast = (msg: ServerMessage): void => {
+    if (readSubscribers.size === 0) return
+    const env = serverMessageToEnvelope(msg)
+    for (const fn of readSubscribers) {
+      try {
+        fn(env)
+      } catch {
+        // a wedged subscriber can't break the run; drop silently
+      }
+    }
+  }
+
   const server = Bun.serve({
     port: opts.port ?? 0,
     fetch(req, srv) {
       const url = new URL(req.url)
       // Liveness probe — `vx run` health-checks this before delegating.
       if (url.pathname === '/health') return new Response('ok')
+      // Capability handshake — what protocol version + channels + RPCs.
+      if (url.pathname === '/version') {
+        return Response.json({
+          protocol: WIRE_PROTOCOL_VERSION,
+          vx: VERSION,
+          channels: WIRE_CHANNELS,
+          rpc: ['getCacheStats', 'getRunHistory', 'explainCacheKey', 'whyDidThisRerun'],
+        })
+      }
+      // Server-Sent Events — broadcasts the same event envelopes the WS
+      // sees, but on a one-way stream. `curl -N http://.../events` works.
+      if (url.pathname === '/events') {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            const enc = new TextEncoder()
+            const sub: ReadSubscriber = (env) => controller.enqueue(enc.encode(encodeForSSE(env)))
+            readSubscribers.add(sub)
+            req.signal.addEventListener('abort', () => {
+              readSubscribers.delete(sub)
+              try {
+                controller.close()
+              } catch {
+                // already closed
+              }
+            })
+          },
+        })
+        return new Response(stream, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-store',
+            Connection: 'keep-alive',
+          },
+        })
+      }
+      // NDJSON — one envelope per line, no SSE framing. `jq`-friendly.
+      if (url.pathname === '/stream') {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            const enc = new TextEncoder()
+            const sub: ReadSubscriber = (env) =>
+              controller.enqueue(enc.encode(encodeForNDJSON(env)))
+            readSubscribers.add(sub)
+            req.signal.addEventListener('abort', () => {
+              readSubscribers.delete(sub)
+              try {
+                controller.close()
+              } catch {
+                // already closed
+              }
+            })
+          },
+        })
+        return new Response(stream, {
+          headers: {
+            'Content-Type': 'application/x-ndjson',
+            'Cache-Control': 'no-store',
+          },
+        })
+      }
       if (srv.upgrade(req)) return undefined
       return new Response('vx serve')
     },
     websocket: {
       async message(ws, raw) {
-        let message: ClientMessage
+        const text = String(raw)
+        // Parse once; classify into legacy ClientMessage or new envelope.
+        let parsed: unknown
         try {
-          message = JSON.parse(String(raw)) as ClientMessage
+          parsed = JSON.parse(text)
         } catch {
           return
         }
-        if (message.t !== 'run') return
+        let message: ClientMessage | null = null
+        if (isEnvelope(parsed)) {
+          message = envelopeToClientMessage(parsed)
+        } else if (parsed && typeof parsed === 'object' && 't' in (parsed as object)) {
+          message = parsed as ClientMessage
+        }
+        if (!message || message.t !== 'run') return
         const send = (m: ServerMessage): void => {
+          broadcast(m)
           try {
             ws.send(JSON.stringify(m))
           } catch {
