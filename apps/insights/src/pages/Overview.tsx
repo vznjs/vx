@@ -1,21 +1,37 @@
 import { For, Show, createResource } from 'solid-js'
 import { useNavigate } from '@solidjs/router'
-import { listRuns } from '../api.ts'
+import { getCacheStats, getOriginSignal, listInvocations } from '../api.ts'
 import { formatDuration, formatRelativeTime } from '../format.ts'
 
 export function Overview() {
-  const [runs] = createResource(() => listRuns(50))
+  const origin = getOriginSignal()
+  const [runs] = createResource(origin, () => listInvocations(50))
+  const [stats] = createResource(origin, () => getCacheStats())
   const navigate = useNavigate()
   return (
-    <div class="flex flex-col gap-4">
-      <h1 class="text-xl font-semibold m-0">Recent runs</h1>
+    <div class="flex flex-col gap-6">
+      <Show when={stats() !== undefined}>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Stat label="Cache entries" value={String(stats()!.entryCount)} />
+          <Stat
+            label="Cache size"
+            value={`${(stats()!.totalBytes / 1024 / 1024).toFixed(1)} MB`}
+          />
+          <Stat label="Runs (24h)" value={String(stats()!.runCountLast24h)} />
+          <Stat
+            label="Hit rate (24h)"
+            value={`${(stats()!.hitRate24h * 100).toFixed(0)}%`}
+          />
+        </div>
+      </Show>
+      <h2 class="text-base font-semibold m-0">Recent invocations</h2>
       <Show when={runs.error}>
         <div class="text-failure font-mono text-sm">
-          Failed to load runs: {String(runs.error)}
+          Failed to load: {String(runs.error)}. Is vx serve running at <code>{origin()}</code>?
         </div>
       </Show>
       <Show when={runs.loading}>
-        <div class="text-fg-muted text-sm">Loading DuckDB (one-time, ~30MB)…</div>
+        <div class="text-fg-muted text-sm">Loading…</div>
       </Show>
       <Show when={runs() !== undefined}>
         <div class="border border-border-muted rounded overflow-hidden">
@@ -35,21 +51,21 @@ export function Overview() {
                 {(r) => (
                   <tr
                     class="border-t border-border-muted hover:bg-bg-elevated cursor-pointer"
-                    onClick={() => navigate(`/runs/${r.run_id}`)}
+                    onClick={() => navigate(`/runs/${r.runId}`)}
                   >
-                    <td class="px-3 py-2 font-mono text-xs">{r.run_id.slice(0, 8)}…</td>
+                    <td class="px-3 py-2 font-mono text-xs">{r.runId.slice(0, 8)}…</td>
                     <td class="px-3 py-2 text-right text-fg-muted">
-                      {formatRelativeTime(Number(r.started_at))}
+                      {formatRelativeTime(r.startedAt)}
                     </td>
-                    <td class="px-3 py-2 text-right">{formatDuration(Number(r.duration_ms))}</td>
-                    <td class="px-3 py-2 text-right">{Number(r.total)}</td>
+                    <td class="px-3 py-2 text-right">{formatDuration(r.totalDurationMs)}</td>
+                    <td class="px-3 py-2 text-right">{r.taskCount}</td>
                     <td
                       class="px-3 py-2 text-right"
-                      classList={{ 'text-failure': Number(r.failed) > 0 }}
+                      classList={{ 'text-failure': r.failedCount > 0 }}
                     >
-                      {Number(r.failed)}
+                      {r.failedCount}
                     </td>
-                    <td class="px-3 py-2 text-right text-cache">{Number(r.cache_hits)}</td>
+                    <td class="px-3 py-2 text-right text-cache">{r.hitCount}</td>
                   </tr>
                 )}
               </For>
@@ -62,6 +78,15 @@ export function Overview() {
           </Show>
         </div>
       </Show>
+    </div>
+  )
+}
+
+function Stat(props: { label: string; value: string }) {
+  return (
+    <div class="border border-border-muted rounded px-3 py-2 bg-bg-elevated">
+      <div class="text-fg-muted text-[10px] uppercase tracking-wider">{props.label}</div>
+      <div class="text-lg font-mono">{props.value}</div>
     </div>
   )
 }

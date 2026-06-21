@@ -1,5 +1,5 @@
 import { For } from 'solid-js'
-import type { RunRow } from '../api.ts'
+import type { RunSummaryRow } from '../api.ts'
 import { layout, type LayoutInput } from '../flamegraph-layout.ts'
 
 const LANE_HEIGHT = 22
@@ -12,17 +12,17 @@ function colorFor(status: string, cacheHit: boolean): string {
   return 'bg-success/70'
 }
 
-export function Flamegraph(props: { tasks: readonly RunRow[] }) {
+export function Flamegraph(props: { tasks: readonly RunSummaryRow[] }) {
   const inputs = (): LayoutInput[] =>
     props.tasks
-      .filter((t) => t.wallclock_start_ns !== null && t.wallclock_end_ns !== null)
+      .filter((t) => t.wallclockStartNs !== null && t.wallclockEndNs !== null)
       .map((t) => ({
         taskId: `${t.project}#${t.task}`,
         project: t.project,
-        startNs: Number(t.wallclock_start_ns),
-        endNs: Number(t.wallclock_end_ns),
+        startNs: Number(t.wallclockStartNs),
+        endNs: Number(t.wallclockEndNs),
         status: t.status,
-        cacheHit: (t.cache_hit ?? 0) === 1,
+        cacheHit: t.cacheHit === true,
       }))
 
   const l = () => layout(inputs())

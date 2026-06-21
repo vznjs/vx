@@ -1,13 +1,16 @@
-// `vx insights serve` — boot the local SPA + static cache.db server.
-// The SPA (apps/insights) is a Solid + DuckDB-WASM client that reads
-// the workspace's cache.db directly. This command runs two things in
-// foreground: (1) Vite dev for the SPA, (2) a tiny static HTTP server
-// that exposes cache.db so the browser can fetch it. Ctrl-C stops both.
+// `vx insights` — boot the local insights SPA pointed at a local `vx serve`.
+//
+// The SPA (apps/insights) is a Solid client that reads cache.db via the
+// HTTP /v1/* surface vx serve exposes. This command runs two things in
+// foreground: (1) vx serve, the same backend used everywhere, (2) the
+// Vite dev server for the SPA with VITE_DEFAULT_ORIGIN pointed at the
+// server's origin. Ctrl-C stops both.
 
 import path from 'node:path'
 import { existsSync } from 'node:fs'
-import { findWorkspaceRoot, loadWorkspaceConfig, resolveCacheDir } from '../workspace/index.js'
+import { findWorkspaceRoot } from '../workspace/index.js'
 import { UserError } from '../util/index.js'
+import { startServe } from './serve.js'
 
 interface InsightsArgs {
   port: number
@@ -48,9 +51,6 @@ export function parseInsightsArgs(args: readonly string[]): InsightsArgs {
 function resolveInsightsDir(): string {
   const env = process.env.VX_INSIGHTS_DIR
   if (env !== undefined && env.length > 0) return env
-  // import.meta.dir is src/cli when running from source, irrelevant when
-  // compiled. We resolve via the repo root: vx is shipped from this repo,
-  // so apps/insights/ sits alongside the running source tree.
   return path.resolve(import.meta.dir, '..', '..', 'apps', 'insights')
 }
 
@@ -63,53 +63,17 @@ function ensureScaffoldPresent(insightsDir: string): void {
   }
 }
 
-interface RunningServers {
-  staticPort: number
-  cacheDbPath: string
-  stop: () => Promise<void>
-}
-
-/**
- * Tiny static server: exposes cache.db read-only at /cache.db. The SPA
- * fetches it once and hands the bytes to DuckDB-WASM for in-browser
- * querying. We deliberately do NOT proxy queries — analytics stays
- * client-side per the design.
- *
- * Exported for tests; the regular CLI path uses it internally.
- */
-export function startStaticServer(cacheDbPath: string): { port: number; stop: () => void } {
-  const server = Bun.serve({
-    port: 0,
-    fetch(req) {
-      const url = new URL(req.url)
-      if (url.pathname === '/cache.db') {
-        const file = Bun.file(cacheDbPath)
-        return new Response(file, {
-          headers: {
-            'content-type': 'application/vnd.sqlite3',
-            'access-control-allow-origin': '*',
-            'cache-control': 'no-store',
-          },
-        })
-      }
-      if (url.pathname === '/health') return new Response('ok')
-      return new Response('not found', { status: 404 })
-    },
-  })
-  return { port: server.port ?? 0, stop: () => server.stop() }
-}
-
 async function startSpa(
   insightsDir: string,
   port: number,
-  cacheDbUrl: string,
+  defaultOrigin: string,
 ): Promise<{ stop: () => Promise<void> }> {
   const child = Bun.spawn({
     cmd: ['bun', 'run', 'dev', '--', '--port', String(port)],
     cwd: insightsDir,
     stdout: 'inherit',
     stderr: 'inherit',
-    env: { ...process.env, VITE_CACHE_DB_URL: cacheDbUrl },
+    env: { ...process.env, VITE_DEFAULT_ORIGIN: defaultOrigin },
   })
   return {
     stop: async () => {
@@ -119,35 +83,6 @@ async function startSpa(
       } catch {
         // already gone
       }
-    },
-  }
-}
-
-async function startServers(workspaceRoot: string, port: number): Promise<RunningServers> {
-  const config = await loadWorkspaceConfig(workspaceRoot)
-  const cacheDir = resolveCacheDir(workspaceRoot, config)
-  const cacheDbPath = path.join(cacheDir, 'cache.db')
-
-  if (!existsSync(cacheDbPath)) {
-    throw new UserError(
-      `vx insights: no cache.db found at ${cacheDbPath}. ` +
-        'Run `vx run <task>` at least once to populate it.',
-    )
-  }
-
-  const insightsDir = resolveInsightsDir()
-  ensureScaffoldPresent(insightsDir)
-
-  const stat = startStaticServer(cacheDbPath)
-  const cacheDbUrl = `http://127.0.0.1:${stat.port}/cache.db`
-  const spa = await startSpa(insightsDir, port, cacheDbUrl)
-
-  return {
-    staticPort: stat.port,
-    cacheDbPath,
-    stop: async () => {
-      stat.stop()
-      await spa.stop()
     },
   }
 }
@@ -162,24 +97,31 @@ export async function insightsCmd(args: readonly string[]): Promise<number> {
       return 1
     }
     const root = await findWorkspaceRoot(process.cwd())
-    let servers: RunningServers
+    const insightsDir = resolveInsightsDir()
     try {
-      servers = await startServers(root, parsed.port)
+      ensureScaffoldPresent(insightsDir)
     } catch (err) {
       const msg = err instanceof UserError || err instanceof Error ? err.message : String(err)
       process.stderr.write(`vx insights: ${msg}\n`)
       return 1
     }
+
+    // Boot vx serve — the same backend that powers everything else. The
+    // SPA talks to it via /v1/* HTTP routes.
+    const server = await startServe({ root })
+    const spa = await startSpa(insightsDir, parsed.port, server.origin)
+
     process.stdout.write(
       `vx insights: SPA on http://127.0.0.1:${parsed.port}\n` +
-        `vx insights: serving cache.db from ${servers.cacheDbPath} (port ${servers.staticPort})\n` +
+        `vx insights: API   on ${server.origin}\n` +
         '(press Ctrl-C to stop)\n\n',
     )
     await new Promise<void>((resolve) => {
       process.once('SIGINT', () => resolve())
       process.once('SIGTERM', () => resolve())
     })
-    await servers.stop()
+    await spa.stop()
+    await server.stop()
     process.stdout.write('\nvx insights: stopped\n')
     return 0
   }

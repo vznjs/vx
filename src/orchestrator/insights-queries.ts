@@ -26,6 +26,10 @@ export interface RunSummaryRow {
   endedAt: number
   cacheHit: boolean | null
   hash: string
+  // High-precision spans relative to run start. Decimal strings on the wire
+  // (bigints aren't JSON-safe); use BigInt or Number on the client.
+  wallclockStartNs: string | null
+  wallclockEndNs: string | null
 }
 
 export interface ListRunsArgs {
@@ -52,17 +56,25 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
     params.push(args.runId)
   }
   const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
+  type RawRow = Omit<RunSummaryRow, 'cacheHit' | 'wallclockStartNs' | 'wallclockEndNs'> & {
+    cacheHit: number | null
+    wallclockStartNs: bigint | null
+    wallclockEndNs: bigint | null
+  }
   const rows = db
     .query(
       `SELECT run_id AS runId, project, task, status, exit_code AS exitCode,
               duration_ms AS durationMs, started_at AS startedAt, ended_at AS endedAt,
-              cache_hit AS cacheHit, hash
+              cache_hit AS cacheHit, hash,
+              wallclock_start_ns AS wallclockStartNs, wallclock_end_ns AS wallclockEndNs
        FROM runs ${clause} ORDER BY started_at DESC LIMIT ?`,
     )
-    .all(...params, limit) as RunSummaryRow[]
+    .all(...params, limit) as RawRow[]
   return rows.map((r) => ({
     ...r,
     cacheHit: r.cacheHit === null ? null : Boolean(r.cacheHit),
+    wallclockStartNs: r.wallclockStartNs === null ? null : r.wallclockStartNs.toString(),
+    wallclockEndNs: r.wallclockEndNs === null ? null : r.wallclockEndNs.toString(),
   }))
 }
 
