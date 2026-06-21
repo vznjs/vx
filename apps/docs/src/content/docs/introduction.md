@@ -72,15 +72,16 @@ require additional services:
 - **[Predictive scheduling](../guides/predictive-scheduling/)** — opt
   in with `predictive: true`; the scheduler reads run history and
   dispatches by expected remaining critical path.
-- **[vx Cloud (Cloudflare)](../guides/vx-cloud/)** — `bun wrangler
-  deploy` from a fresh clone of `apps/cloud/` gives you a private vx
-  Cloud in your CF account in 5 minutes.
-- **[vx insights serve](../guides/insights/)** — localhost
-  Solid+DuckDB-WASM SPA over your `cache.db`. Historical run
-  flamegraphs, no backend.
-- **[OpenTelemetry CI/CD spans](../guides/otel-bridge/)** — single env
-  var, single npm install; every event lands in Grafana / Honeycomb /
-  Datadog / Tempo.
+- **[Self-host vx serve](../guides/self-hosting/)** — drop the binary
+  in Docker, get a hosted backend with the same JSON `/v1/*` shape
+  the local one has. One stack, no separate cloud project.
+- **[vx insights](../guides/insights/)** — Solid SPA over `vx serve`.
+  Run history, flamegraphs, cache stats. Connection picker switches
+  between local and hosted servers.
+- **[OpenTelemetry CI/CD spans](../guides/otel-bridge/)** — set
+  `OTEL_EXPORTER_OTLP_ENDPOINT`, install the three OTel peers; every
+  event lands in Grafana / Honeycomb / Datadog / Tempo natively, no
+  bridge package.
 - **[Wire protocol](../guides/wire-protocol/)** — `vx serve` speaks
   JSON-RPC 2.0 over WS, SSE, and NDJSON. `curl -N
   http://localhost:5176/events | jq` streams every envelope.

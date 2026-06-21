@@ -60,11 +60,11 @@ vx mcp                                    # Model Context Protocol server (stdio
 vx coordinator build test --workers 4     # start a distributed-CI coordinator
 vx run --worker ws://coord:5180           # pull tasks from a coordinator and execute them
 
-vx insights serve                         # localhost Solid+DuckDB-WASM SPA over cache.db
-                                          # — historical run flamegraphs, no backend
+vx insights                               # localhost Solid SPA over vx serve's /v1/* API
+                                          # — historical run flamegraphs, cache stats
 
-vx serve                                  # WebSocket + SSE + NDJSON event stream
-                                          # GET /version /events /stream — `curl` works
+vx serve                                  # the unified backend — local OR Docker
+                                          # /v1/* JSON, SSE events, WS run protocol, CORS *
 ```
 
 ### Open platform highlights
@@ -84,15 +84,16 @@ vx serve                                  # WebSocket + SSE + NDJSON event strea
 - **Distributed CI.** `vx coordinator` + `vx run --worker` over the
   same protocol. Content-addressed: any worker producing
   `<hash>` satisfies every consumer of `<hash>`.
-- **OTel CI/CD spans.** Set `OTEL_EXPORTER_OTLP_ENDPOINT` and
-  install `@vzn/vx-otel-bridge` — every event flows to Grafana /
-  Honeycomb / Datadog / Tempo with zero config.
-- **vx Cloud (Cloudflare-native).** `apps/cloud/` is a Wrangler
-  project: `bun wrangler deploy` from your fork gives you a private
-  hosted vx in your CF account in ~5 minutes — Workers + R2 + D1 +
-  Durable Objects + Queues + KV, with HMAC artifact signing.
-- **`vx insights serve`** — Solid + UnoCSS + DuckDB-WASM SPA that
-  reads the workspace's `cache.db` directly. No backend, no daemon.
+- **OTel CI/CD spans (native).** Set `OTEL_EXPORTER_OTLP_ENDPOINT`,
+  install the three `@opentelemetry/*` peer deps — core speaks OTel
+  natively; every event flows to Grafana / Honeycomb / Datadog /
+  Tempo with zero bridge package.
+- **Self-host vx serve.** Same backend everywhere — laptop, Docker,
+  any container runtime. JSON `/v1/*` insights API + WebSocket run
+  protocol + SSE event stream + permissive CORS. One stack.
+- **`vx insights`** — Solid SPA that talks to `vx serve` over HTTP.
+  Connection picker switches between local and hosted backends;
+  same UI for both. No DuckDB-WASM, no 30MB payload.
 
 Each lives behind a one-paragraph design doc under
 `docs/design/*-2026-06.md`. Phase-by-phase implementation log:
@@ -184,8 +185,8 @@ traces · `vx cache prune` with TTL and size caps.
 | Per-task sandbox          | **Yes** — kernel-level, opt-in                                      | No                             | No                  |
 | MCP server for AI agents  | **Yes** (`vx mcp`, stdio)                                           | No                             | No                  |
 | Distributed CI execution  | **Yes** — OSS, self-hostable (`vx coordinator` + `vx run --worker`) | No                             | Paid (Nx Cloud DTE) |
-| Local-only dashboard SPA  | **Yes** (`vx insights serve`, DuckDB-WASM)                          | No                             | Paid                |
-| Cloudflare-template cloud | **Yes** (`apps/cloud/`, `wrangler deploy`)                          | Vercel-only                    | No (proprietary)    |
+| Dashboard SPA             | **Yes** (`vx insights`, Solid, talks HTTP to `vx serve`)            | No                             | Paid                |
+| Self-hosted cloud         | **Yes** — same `vx serve` in Docker; one stack                      | Vercel-only                    | No (proprietary)    |
 | Plugin API                | **Yes** — Vite-style lifecycle hooks                                | No                             | Yes (TS-tied)       |
 | Predictive scheduling     | **Yes** (opt-in: `predictive: true`)                                | No                             | No                  |
 | OTel CI/CD spans          | **Yes** (`OTEL_EXPORTER_OTLP_ENDPOINT`)                             | No                             | Paid                |
@@ -285,7 +286,7 @@ Full technical docs live under [`docs/`](./docs/):
 - [`architecture-review-2026-06.md`](./docs/design/architecture-review-2026-06.md) — review + applied checklist
 - [`wire-protocol-2026-06.md`](./docs/design/wire-protocol-2026-06.md) — JSON-RPC 2.0 + OTel envelope (shipped)
 - [`distributed-ci-2026-06.md`](./docs/design/distributed-ci-2026-06.md) — coordinator + worker (Phase A-B shipped)
-- [`vx-cloud-2026-06.md`](./docs/design/vx-cloud-2026-06.md) — Cloudflare cloud (Phases A-C shipped)
+- [`vx-cloud-2026-06.md`](./docs/design/vx-cloud-2026-06.md) — original CF cloud (superseded; vx serve now runs in Docker)
 - [`extension-protocol-2026-06.md`](./docs/design/extension-protocol-2026-06.md) — subscriber/inspector/driver/plugin (Phase 1 shipped)
 - [`predictive-execution-2026-06.md`](./docs/design/predictive-execution-2026-06.md) — history-aware scheduling (Phase A-B shipped)
 - [`docs/progress/implementation-log-2026-06.md`](./docs/progress/implementation-log-2026-06.md) — phase-by-phase narrative
@@ -302,17 +303,16 @@ published versions on npm).
 
 Production readiness for the **2026-06 platform layer**:
 
-| Surface                                      | Maturity                         | Notes                                                                    |
-| -------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------ |
-| Core task runner + caching                   | **production-ready**             | dogfooded continuously; 836 tests pre-existing, all green                |
-| `vx mcp`                                     | **shippable**                    | live cache.db tools, stdio; agents work today                            |
-| `vx serve` (WS + SSE + NDJSON, JSON-RPC 2.0) | **shippable**                    | accepts both legacy + new envelope; `curl` works                         |
-| `vx coordinator` + `vx run --worker`         | **shippable for self-hosted CI** | content-addressed assignment, disconnect recovery                        |
-| Plugin API                                   | **shippable**                    | crash-isolated, lifecycle hooks fire end-to-end                          |
-| Predictive scheduling                        | **shippable as opt-in**          | gated on `predictive: true` + observed data                              |
-| `apps/cloud/` (Cloudflare deployment)        | **shippable scaffold**           | HMAC verify + queue→D1 + DO submit live; OAuth deferred                  |
-| `apps/insights/` (Solid SPA)                 | **scaffold**                     | DuckDB-WASM cache.db read works; the SPA pages need real-world iteration |
-| `packages/otel-bridge/`                      | **shippable**                    | env-var auto-attach in `run()`; ships event stream to any OTLP backend   |
+| Surface                                            | Maturity                         | Notes                                                                  |
+| -------------------------------------------------- | -------------------------------- | ---------------------------------------------------------------------- |
+| Core task runner + caching                         | **production-ready**             | dogfooded continuously; 836 tests pre-existing, all green              |
+| `vx mcp`                                           | **shippable**                    | live cache.db tools, stdio; agents work today                          |
+| `vx serve` (WS + SSE + NDJSON, JSON-RPC 2.0)       | **shippable**                    | accepts both legacy + new envelope; `curl` works                       |
+| `vx coordinator` + `vx run --worker`               | **shippable for self-hosted CI** | content-addressed assignment, disconnect recovery                      |
+| Plugin API                                         | **shippable**                    | crash-isolated, lifecycle hooks fire end-to-end                        |
+| Predictive scheduling                              | **shippable as opt-in**          | gated on `predictive: true` + observed data                            |
+| `apps/insights/` (Solid SPA → vx serve HTTP)       | **scaffold**                     | connection picker, HTTP /v1/\* reads; pages need real-world iteration  |
+| OTel native emit (`src/orchestrator/otel-emit.ts`) | **shippable**                    | env-var auto-attach in `run()`; ships event stream to any OTLP backend |
 
 ## Development
 
