@@ -60,6 +60,14 @@ export interface ScheduleOptions {
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
   onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void
+  /**
+   * Optional priority override: callers pass their own per-node weight
+   * (e.g. `computePredictedPriorities` from the orchestrator's history
+   * data). The scheduler picks the highest-weight ready task next.
+   * When undefined, falls back to the static reverse-deps-count
+   * heuristic (the default and historically the only behavior).
+   */
+  priorities?: ReadonlyMap<string, number>
 }
 
 /**
@@ -171,7 +179,14 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     }
   }
 
-  const priority = computeReverseDepCount(nodes)
+  // Override hook (predictive scheduling): when the caller passes a
+  // priorities map (e.g. from history-aware critical-path estimation),
+  // use those weights. Falls back to the reverse-deps-count heuristic
+  // for nodes the caller didn't score, so partial coverage works.
+  const baseline = computeReverseDepCount(nodes)
+  const priority: ReadonlyMap<string, number> = options.priorities
+    ? mergePriorities(baseline, options.priorities)
+    : baseline
 
   // Ready queue: tasks whose deps have all completed. Kept sorted on
   // insert (descending by priority); equal-priority items insert AFTER
@@ -270,4 +285,22 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
 
     tick()
   })
+}
+
+function mergePriorities(
+  baseline: ReadonlyMap<string, number>,
+  overrides: ReadonlyMap<string, number>,
+): ReadonlyMap<string, number> {
+  // The override caller scored "expected critical-path duration" in ms.
+  // Baseline reverse-deps counts are bounded by N; scale the override so
+  // it sorts above the baseline for any node it covers, and add the
+  // baseline as a tie-break for parity within the override set.
+  const SCALE = 1 << 20
+  const out = new Map<string, number>()
+  for (const [id, w] of baseline) out.set(id, w)
+  for (const [id, w] of overrides) {
+    const b = baseline.get(id) ?? 0
+    out.set(id, w * SCALE + b)
+  }
+  return out
 }

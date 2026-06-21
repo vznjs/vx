@@ -1071,6 +1071,17 @@ export class Cache implements CacheLayer {
     }
   }
 
+  /**
+   * Raw `bun:sqlite` Database handle. Exposed for subsystems that
+   * need to issue their own queries (LocalHistoryProvider's CTE,
+   * future analytics consumers) without us proxying every method.
+   * Callers must NOT close the handle directly — `Cache.close()` owns
+   * the lifetime.
+   */
+  dbHandle(): Database {
+    return this.db
+  }
+
   recordRun(run: RunRecord): void {
     this.insertRun.run(...bindRun(run))
   }
