@@ -27,8 +27,8 @@
         "unist-util-visit": "^5.1.0",
       },
     },
-    "apps/insights": {
-      "name": "@vzn/vx-insights",
+    "apps/ui": {
+      "name": "@vzn/vx-ui",
       "version": "0.0.0",
       "devDependencies": {
         "@solidjs/router": "^0.16.1",
@@ -663,7 +663,7 @@
 
     "@vzn/vx-docs": ["@vzn/vx-docs@workspace:apps/docs"],
 
-    "@vzn/vx-insights": ["@vzn/vx-insights@workspace:apps/insights"],
+    "@vzn/vx-ui": ["@vzn/vx-ui@workspace:apps/ui"],
 
     "accepts": ["accepts@2.0.0", "", { "dependencies": { "mime-types": "^3.0.0", "negotiator": "^1.0.0" } }, "sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng=="],
 

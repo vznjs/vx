@@ -60,7 +60,7 @@ vx mcp                                    # Model Context Protocol server (stdio
 vx coordinator build test --workers 4     # start a distributed-CI coordinator
 vx run --worker ws://coord:5180           # pull tasks from a coordinator and execute them
 
-vx serve --ui --open                      # unified backend + bundled insights SPA + open browser
+vx serve --ui --open                      # unified backend + embedded dashboard + open browser
                                           # /v1/* JSON, SSE events, WS run protocol, CORS *
 ```
 
@@ -86,12 +86,12 @@ vx serve --ui --open                      # unified backend + bundled insights S
   natively; every event flows to Grafana / Honeycomb / Datadog /
   Tempo with zero bridge package.
 - **Self-host vx serve.** Same backend everywhere — laptop, Docker,
-  any container runtime. JSON `/v1/*` insights API + WebSocket run
+  any container runtime. JSON `/v1/*` metrics API + WebSocket run
   protocol + SSE event stream + permissive CORS. One stack.
-- **Insights dashboard built in.** `vx serve --ui` bundles a Solid
+- **Dashboard embedded in the binary.** `vx serve --ui` serves a Solid
   SPA at `/` — task averages, p50/p99, cache savings, recent runs,
-  flamegraphs. Connection picker switches between local and hosted
-  backends; same UI for both.
+  flamegraphs — compiled into `vx` itself, nothing to install.
+  Connection picker switches between local and hosted backends.
 
 Each lives behind a one-paragraph design doc under
 `docs/design/*-2026-06.md`. Phase-by-phase implementation log:
@@ -309,7 +309,7 @@ Production readiness for the **2026-06 platform layer**:
 | `vx coordinator` + `vx run --worker`               | **shippable for self-hosted CI** | content-addressed assignment, disconnect recovery                      |
 | Plugin API                                         | **shippable**                    | crash-isolated, lifecycle hooks fire end-to-end                        |
 | Predictive scheduling                              | **shippable as opt-in**          | gated on `predictive: true` + observed data                            |
-| `apps/insights/` (Solid SPA → vx serve HTTP)       | **scaffold**                     | connection picker, HTTP /v1/\* reads; pages need real-world iteration  |
+| `apps/ui/` (Solid dashboard, embedded in binary)   | **scaffold**                     | connection picker, HTTP /v1/\* reads; pages need real-world iteration  |
 | OTel native emit (`src/orchestrator/otel-emit.ts`) | **shippable**                    | env-var auto-attach in `run()`; ships event stream to any OTLP backend |
 
 ## Development

@@ -42,7 +42,7 @@ function mkRun(
 }
 
 function withCache(fn: (cache: Cache) => void) {
-  const dir = mkdtempSync(path.join(tmpdir(), 'vx-insights-q-'))
+  const dir = mkdtempSync(path.join(tmpdir(), 'vx-metrics-q-'))
   const cache = new Cache(dir)
   try {
     fn(cache)

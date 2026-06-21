@@ -1,4 +1,4 @@
-// HTTP client for the vx serve insights API. Same shape locally or
+// HTTP client for the vx serve metrics API. Same shape locally or
 // against a remote/hosted vx serve — the SPA is platform-agnostic.
 //
 // The base URL is resolved from the connection store; that store
@@ -9,11 +9,11 @@
 
 import { createSignal } from 'solid-js'
 
-const STORAGE_KEY = 'vx-insights:origin'
+const STORAGE_KEY = 'vx-ui:origin'
 
 function defaultOrigin(): string {
-  // `vx insights` injects this at dev time; the hosted build falls back
-  // to the user choosing via the connection picker.
+  // The dev server injects this; the hosted build falls back to the user
+  // choosing via the connection picker.
   const injected = import.meta.env.VITE_DEFAULT_ORIGIN
   if (typeof injected === 'string' && injected.length > 0) return injected
   return 'http://localhost:4321'
@@ -52,7 +52,7 @@ async function getJson<T>(pathname: string): Promise<T> {
 }
 
 // ---------------------------------------------------------------------------
-// Types — mirror src/orchestrator/insights-queries.ts return shapes.
+// Types — mirror src/orchestrator/metrics.ts return shapes.
 // ---------------------------------------------------------------------------
 
 export interface RunSummaryRow {

@@ -1,9 +1,8 @@
-// Insights query module — pure functions over a `bun:sqlite` Database.
+// Metrics query module — pure functions over a `bun:sqlite` Database.
 //
-// One module, two callers: `vx serve` (over Bun.serve HTTP routes) and
-// the same shape on `apps/cloud` (over Cloudflare D1 — same SQL,
-// different driver). The SPA in `apps/insights` calls /v1/* routes
-// backed by these functions.
+// `vx serve` exposes these as /v1/* HTTP routes; the dashboard SPA in
+// apps/ui and `vx mcp` both read through them. One canonical home for
+// every aggregate over the runs / entries tables.
 //
 // Pure SQL + JSON-safe return shapes. No Cache lifecycle here; the
 // caller opens and closes. bigints are serialized as decimal strings

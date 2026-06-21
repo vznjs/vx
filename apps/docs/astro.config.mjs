@@ -70,7 +70,7 @@ export default defineConfig({
             { label: 'Distributed CI execution', link: '/guides/distributed-ci/' },
             { label: 'Writing a vx plugin', link: '/guides/plugins/' },
             { label: 'Predictive scheduling', link: '/guides/predictive-scheduling/' },
-            { label: 'Insights dashboard', link: '/guides/insights/' },
+            { label: 'Dashboard', link: '/guides/dashboard/' },
             { label: 'Self-host vx serve', link: '/guides/self-hosting/' },
             { label: 'OpenTelemetry CI/CD spans', link: '/guides/otel-bridge/' },
             { label: 'vx serve wire protocol', link: '/guides/wire-protocol/' },

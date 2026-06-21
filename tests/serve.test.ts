@@ -85,7 +85,7 @@ describe('vx serve delegation', () => {
   })
 })
 
-describe('vx serve /v1/* insights API', () => {
+describe('vx serve /v1/* metrics API', () => {
   it('serves runs / invocations / cache stats / history after a delegated run', async () => {
     const root = await makeWorkspace()
     const server = await startServe({ root })
@@ -195,52 +195,39 @@ describe('vx serve /v1/* insights API', () => {
   })
 })
 
-describe('vx serve --ui (bundled SPA)', () => {
-  it('serves uiDir at / with the correct MIME and SPA fallback', async () => {
+describe('vx serve --ui (embedded single-file dashboard)', () => {
+  it('serves the embedded HTML for every non-API route', async () => {
     const root = await makeWorkspace()
-    const uiDir = await mkdtemp(path.join(tmpdir(), 'vx-ui-'))
-    await writeFile(path.join(uiDir, 'index.html'), '<!doctype html><title>vx</title>')
-    await mkdir(path.join(uiDir, 'assets'), { recursive: true })
-    await writeFile(path.join(uiDir, 'assets', 'app.js'), 'console.log(1)')
+    const uiHtmlPath = path.join(await mkdtemp(path.join(tmpdir(), 'vx-ui-')), 'index.html')
+    await writeFile(uiHtmlPath, '<!doctype html><title>vx dashboard</title>')
 
-    const server = await startServe({ root, uiDir })
+    const server = await startServe({ root, uiHtmlPath })
     try {
-      // Root → index.html with no-store cache control
-      const root_ = await fetch(`${server.origin}/`)
-      expect(root_.status).toBe(200)
-      expect(root_.headers.get('content-type')).toContain('text/html')
-      expect(root_.headers.get('cache-control')).toBe('no-store')
+      // Root → the embedded HTML, no-store so a binary upgrade isn't cached
+      const home = await fetch(`${server.origin}/`)
+      expect(home.status).toBe(200)
+      expect(home.headers.get('content-type')).toContain('text/html')
+      expect(home.headers.get('cache-control')).toBe('no-store')
+      expect(await home.text()).toContain('vx dashboard')
 
-      // Hashed asset → immutable cache
-      const asset = await fetch(`${server.origin}/assets/app.js`)
-      expect(asset.status).toBe(200)
-      expect(asset.headers.get('content-type')).toContain('javascript')
-      expect(asset.headers.get('cache-control')).toContain('immutable')
-
-      // SPA hash-router fallback: unknown path serves index.html
+      // SPA hash-router fallback: every unknown route serves the same HTML
       const fallback = await fetch(`${server.origin}/tasks/pkg%23build`)
       expect(fallback.status).toBe(200)
       expect(fallback.headers.get('content-type')).toContain('text/html')
+      expect(await fallback.text()).toContain('vx dashboard')
 
-      // /v1/* still wins over the static handler
+      // /v1/* still wins over the UI catch-all
       const api = await fetch(`${server.origin}/v1/cache/stats`)
       expect(api.status).toBe(200)
       expect(api.headers.get('content-type')).toContain('json')
-
-      // Path traversal containment
-      const escape = await fetch(`${server.origin}/../../etc/passwd`)
-      // The URL parser normalizes ../, but a direct attempt with encoded
-      // dots is what we really want to test; the simpler containment check
-      // already covers the resolved-path comparison.
-      expect([200, 404]).toContain(escape.status)
     } finally {
       await server.stop()
       await rm(root, { recursive: true, force: true })
-      await rm(uiDir, { recursive: true, force: true })
+      await rm(path.dirname(uiHtmlPath), { recursive: true, force: true })
     }
   })
 
-  it('does not serve any UI when uiDir is unset', async () => {
+  it('does not serve any UI when uiHtmlPath is unset', async () => {
     const root = await makeWorkspace()
     const server = await startServe({ root })
     try {

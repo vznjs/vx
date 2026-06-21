@@ -87,7 +87,7 @@ export {
   listInvocations,
   listRuns,
   whyDidThisRerun as whyDidThisRerunQuery,
-} from './insights-queries.js'
+} from './metrics.js'
 export type {
   CacheEntryRow,
   CacheKeyExplanation,
@@ -105,4 +105,4 @@ export type {
   TaskHistoryRow,
   TopTaskRow,
   WhyDidThisRerun,
-} from './insights-queries.js'
+} from './metrics.js'

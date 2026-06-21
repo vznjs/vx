@@ -25,7 +25,7 @@ export const Shell: ParentComponent = (props) => {
       <header class="border-b border-border-muted bg-bg-elevated">
         <div class="flex items-center gap-6 px-6 h-12 max-w-7xl mx-auto">
           <A href="/" class="font-mono font-bold text-accent text-base no-underline">
-            vx insights
+            vx dashboard
           </A>
           <nav class="flex gap-4 flex-1">
             <A
