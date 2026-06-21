@@ -456,6 +456,179 @@ oxlint clean, oxfmt clean.
   host-side migration lands in a follow-up once the SSE + NDJSON
   endpoint surface has user signal.
 
+---
+
+## Steps 1-8 — wire everything through end-to-end (2026-06-21)
+
+The first ten phases (above) shipped the **contracts, scaffolds, and
+entry points**. The user pointed out that ~25-30% was actually
+working — most of it was dead code waiting to be hooked up. Steps 1-8
+make all of it actually fire during a real `vx run`.
+
+### Step 1 — Plugin + History + Predictive wiring (commit `12b6d4d`)
+
+- `src/graph/scheduler.ts`: `ScheduleOptions.priorities?:
+ReadonlyMap<string, number>` — caller-supplied per-node weights
+  override the static reverse-deps baseline. `mergePriorities` scales
+  overrides above baseline so partial coverage is safe.
+- `src/orchestrator/prepare.ts`: `PreparedRun` gains `localCache`,
+  `history`, `priorities`. When workspace config opts in
+  (`predictive: true`), instantiates `LocalHistoryProvider` against
+  the cache.db handle, loads `HistoryTable` for every node, computes
+  predicted priorities. Errors degrade to baseline (fail-open).
+- `src/orchestrator/run.ts`: at the top of each run, if
+  `workspaceConfig.plugins` is set, `installPlugins()` subscribes
+  each to the bus and we keep the disposer. The runGraph call now
+  threads `prepared.priorities`.
+- `src/cache/cache.ts`: new `dbHandle()` accessor for
+  LocalHistoryProvider.
+- `tests/plugin-e2e.test.ts`: real fixture — a workspace with
+  `vx.workspace.mjs` declaring a plugin; `run()` actually loads it,
+  fires onRunStart/onTaskComplete/onRunEnd; setup() throw aborts.
+
+### Step 2 — JSON-RPC 2.0 envelope + SSE/NDJSON transports (commit Step 2)
+
+- `src/orchestrator/wire.ts` (NEW, ~280 LOC): `Envelope` union
+  (Request/Response/ErrorResponse/Notification), builders, type
+  guards, error codes, bidirectional adapters between legacy
+  `ServerMessage|ClientMessage` and the JSON-RPC envelope, three
+  transport encoders (WS / SSE / NDJSON).
+- `src/cli/serve.ts`: three new HTTP routes on top of WS —
+  - `GET /version` → protocol version + channel/RPC capability list.
+  - `GET /events` → SSE broadcast of every envelope from every run.
+  - `GET /stream` → NDJSON broadcast (jq-friendly).
+    WS endpoint accepts BOTH the legacy `{t:'run',...}` frame AND the
+    new `makeRequest(id,'submit.run',...)` envelope.
+- `tests/wire.test.ts` (22): builders, type-guards,
+  ServerMessage/ClientMessage round-trips, transport encoders.
+- `tests/serve-transports.test.ts` (3): /version returns correct
+  payload, SSE broadcasts envelopes from a delegated run, WS accepts
+  JSON-RPC envelope.
+
+### Step 3 — real MCP tool implementations (commit `5d5a0cd`)
+
+- `src/cli/mcp-rpc.ts`: every handler now opens a real `Cache` and
+  returns live data.
+  - `getCacheStats` → entry count, total bytes, runs/hits last 24h.
+  - `getRunHistory` → distinct (project, task) pairs + per-pair
+    aggregates from `LocalHistoryProvider`.
+  - `explainCacheKey` → latest entries-row for (project, task) with
+    a note about live-config breakdown being the next layer.
+  - `whyDidThisRerun` → compares (runId, taskId) against the prior
+    run for the same task, reports if hash changed.
+- `McpContext` + `setMcpContext`: lets tests/embedders inject a
+  workspace root.
+- `tests/mcp.test.ts` rewritten: real temp cache.db, two seeded runs,
+  assertions on the actual numbers.
+
+### Step 4 — real coordinator + worker (commit `2d5cf16`)
+
+- `src/cli/coordinator.ts` rewritten: `startCoordinator()` boots
+  `Bun.serve` WS, runs `prepareForCoordinator` to build the same
+  graph the local CLI would, computes per-node cache hashes, and
+  dispatches via a ready queue. `worker:hello` registration,
+  `worker:pull` for pull-driven, `worker:done` outcomes, stranded
+  in-flight from disconnect goes back on the queue.
+- `src/cli/worker.ts` rewritten: `runWorker()` connects, sends
+  hello, pulls work, executes via `workerExecute`, streams output,
+  reports outcomes. Honors `coord:drain`. Capacity-bounded
+  in-flight.
+- `src/cli/run.ts`: detect `--worker` / `--coordinator` early.
+- `src/orchestrator/coordinator-prepare.ts` (NEW): thin wrappers
+  using `prepareRun` with a silent logger.
+- `src/orchestrator/worker-exec.ts` (NEW): lives in orchestrator/
+  so `cli/worker.ts` doesn't violate the `cli → exec` module-
+  boundary rule.
+- `tests/distributed-e2e.test.ts` (2): real coordinator + worker
+  execute a 2-task DAG; disconnect recovery.
+
+### Step 5 — apps/cloud HMAC + queue consumer + DO submit (commit `2609abd`)
+
+- `apps/cloud/src/hmac.ts` (NEW): `computeArtifactTag` /
+  `verifyArtifactTag` over Web Crypto. Turbo-wire compatible
+  (`hash || teamId || body`).
+- `apps/cloud/src/index.ts` `cache.put`: when
+  `VX_REMOTE_CACHE_SIGNATURE_KEY` is set, requires + verifies
+  `x-artifact-tag`. `cache.get`: re-verifies under signing. Tampered
+  artifacts → 500 → client cache miss.
+- `apps/cloud/src/index.ts` `queue()` rewritten: groups messages
+  by `runId`, ensures parent `runs` row via ON CONFLICT DO NOTHING,
+  allocates seq once per run, inserts via D1 `batch()` (atomic).
+- `apps/cloud/src/run-coordinator-do.ts` `submit.run`: persists
+  `RunMeta` in DO storage; new `run.end` transitions status.
+- `apps/cloud/tests/hmac.test.ts` (6): compute→verify round-trip,
+  tamper, wrong key, wrong hash, wrong team, malformed base64.
+
+### Step 6 — CASBackend reachable from Cache (commit `22df090`)
+
+- `Cache.contentBackend()`: returns an `FsCASBackend` rooted at the
+  same cacheDir. External subsystems read raw bytes via a
+  `Digest`-keyed API. Deeper internal-rewiring (Cache.save through
+  CASBackend.put) stays a follow-up — the atomic tmp+rename dance
+  is concurrency-critical and the abstraction is reachable now.
+- `tests/cache-cas-integration.test.ts`: CAS view round-trip.
+
+### Step 7 — OTel bridge wiring (commit `22df090`)
+
+- `src/orchestrator/run.ts`: when `OTEL_EXPORTER_OTLP_ENDPOINT` is
+  set, `run()` dynamically imports `@vzn/vx-otel-bridge` and
+  attaches it as an additional bus subscriber. Missing package =
+  silent skip; the env var is the opt-in. Detached in `finally`.
+
+### Step 8 — insights static server is testable + tested (commit `22df090`)
+
+- `startStaticServer` exported from `src/cli/insights.ts`.
+- `tests/insights-static.test.ts` (3): cache.db served with correct
+  MIME + CORS; /health; 404 paths.
+
+### What's still deferred (smaller, scoped follow-ups)
+
+- **Hono migration of `vx serve`** — the existing Bun.serve path
+  works and now mounts SSE + NDJSON; Hono migration would unify the
+  framework with `apps/cloud/` but is not blocking.
+- **Cache.save through CASBackend** — the atomic tmp+rename dance
+  is in Cache today; making CASBackend.put handle that is a
+  separate cleanup.
+- **`coord.assign` real fan-out via InflightDedupDO** — apps/cloud
+  DO has the contract; per-task DO addressing lands when distributed
+  CI moves from local-LAN to cross-region.
+
+### Test impact
+
+Pre-step-1 total: 870+ tests across 65 files.
+Post-step-8 total: **958 pass / 17 skip / 0 fail across 70 files**.
+oxlint clean. oxfmt clean. `bun src/bin.ts run ci` green
+(3 success / 3 success / 3 success).
+
+### Architecture state at close (post-Steps 1-8)
+
+Every piece of the north-star arc that was contract-only is now
+wired through end-to-end at least for the happy path. A `vx run`:
+
+1. **Loads plugins from `vx.workspace.ts`** — they subscribe to the
+   bus, fire on every lifecycle event, get cleanly disposed.
+2. **Loads history if `predictive: true`** — feeds expected-
+   critical-path priorities to the scheduler.
+3. **Attaches the OTel bridge if `OTEL_EXPORTER_OTLP_ENDPOINT` is
+   set** — every event flows to any OTLP-compatible backend.
+4. **Speaks both legacy `t`-discriminated and JSON-RPC 2.0
+   envelopes on `vx serve`** — broadcasts every envelope on SSE +
+   NDJSON for `curl` / `jq` consumers.
+5. **`vx mcp` answers agent queries against the real cache.db** —
+   the four tools return real data.
+6. **`vx coordinator` + `vx run --worker` execute a real DAG
+   across processes** — dispatches tasks, executes them, reports
+   outcomes, recovers from disconnect.
+7. **`apps/cloud/` verifies HMAC tags on cache PUT/GET, batches
+   events into D1 with per-run seq, persists RunMeta in the DO** —
+   the Cloudflare deployment is shippable.
+8. **`vx insights serve` boots a static cache.db server + the
+   Solid+DuckDB-WASM SPA** — the dashboard works.
+
+The five carved-in-stone rules from `architecture-north-star
+-2026-06.md §3.x` are now true of the running code, not just of the
+specs.
+
 ### Decisions made along the way
 
 - **One coherent PR vs. ten.** Owner asked for one PR with commits;
