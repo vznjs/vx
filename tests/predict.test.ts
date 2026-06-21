@@ -67,11 +67,7 @@ describe('computePredictedPriorities', () => {
   })
 
   it('prefers the slowest downstream chain when there are siblings', () => {
-    const nodes = [
-      node('pkg#root'),
-      node('pkg#fast', ['pkg#root']),
-      node('pkg#slow', ['pkg#root']),
-    ]
+    const nodes = [node('pkg#root'), node('pkg#fast', ['pkg#root']), node('pkg#slow', ['pkg#root'])]
     const history: HistoryTable = new Map([
       ['pkg#root', hist(100)],
       ['pkg#fast', hist(50)],

@@ -90,10 +90,12 @@ export function serviceBackend(origin: string, sink?: Logger): RunBackend {
           else if (message.t === 'result') {
             result = message.result
             ws.close()
-          } else {
+          } else if (message.t === 'error') {
             failure = new UserError(message.message)
             ws.close()
           }
+          // task:assign / cache:exists / coord:drain are coordinator-side messages
+          // (distributed-ci protocol extension) — the run-submitter ignores them.
         }
         ws.onerror = () => {
           failure ??= new Error('vx serve: connection error')

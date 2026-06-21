@@ -107,34 +107,37 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       on(hook, handler) {
         const dispose = bus.subscribe((event) => {
           if (disabled.has(plugin.name)) return
+          // void each handler call: hooks may return Promise; we
+          // intentionally don't await (the bus is synchronous;
+          // long-running plugin work happens off the critical path).
           try {
             switch (hook) {
               case 'onRunStart':
                 if (event.kind === 'run:start')
-                  (handler as PluginHookHandlers['onRunStart'])(event.info)
+                  void (handler as PluginHookHandlers['onRunStart'])(event.info)
                 break
               case 'onTaskStart':
                 if (event.kind === 'task:start')
-                  (handler as PluginHookHandlers['onTaskStart'])(event.node)
+                  void (handler as PluginHookHandlers['onTaskStart'])(event.node)
                 break
               case 'onTaskStdout':
                 if (event.kind === 'task:stdout')
-                  (handler as PluginHookHandlers['onTaskStdout'])(event.node, event.chunk)
+                  void (handler as PluginHookHandlers['onTaskStdout'])(event.node, event.chunk)
                 break
               case 'onTaskStderr':
                 if (event.kind === 'task:stderr')
-                  (handler as PluginHookHandlers['onTaskStderr'])(event.node, event.chunk)
+                  void (handler as PluginHookHandlers['onTaskStderr'])(event.node, event.chunk)
                 break
               case 'onTaskComplete':
                 if (event.kind === 'task:complete')
-                  (handler as PluginHookHandlers['onTaskComplete'])(event.node, event.outcome)
+                  void (handler as PluginHookHandlers['onTaskComplete'])(event.node, event.outcome)
                 break
               case 'onRunStatus':
                 if (event.kind === 'run:status')
-                  (handler as PluginHookHandlers['onRunStatus'])(event.line)
+                  void (handler as PluginHookHandlers['onRunStatus'])(event.line)
                 break
               case 'onRunEnd':
-                if (event.kind === 'run:end') (handler as PluginHookHandlers['onRunEnd'])()
+                if (event.kind === 'run:end') void (handler as PluginHookHandlers['onRunEnd'])()
                 break
             }
           } catch (err) {

@@ -2,18 +2,18 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { Cache } from '../src/cache/index.js'
+import { Cache, type RunRecord } from '../src/cache/index.js'
 import { EmptyHistoryProvider, LocalHistoryProvider } from '../src/orchestrator/index.js'
 
 function mkRun(args: {
   hash: string
   project: string
   task: string
-  status: 'success' | 'failed' | 'skipped' | 'aborted'
+  status: RunRecord['status']
   cacheHit?: boolean
   durationMs: number
   startedAt: number
-}) {
+}): RunRecord {
   return {
     hash: args.hash,
     project: args.project,
@@ -21,7 +21,7 @@ function mkRun(args: {
     status: args.status,
     exitCode: args.status === 'success' ? 0 : 1,
     durationMs: args.durationMs,
-    forwardArgs: '',
+    forwardArgs: [],
     startedAt: args.startedAt,
     endedAt: args.startedAt + args.durationMs,
     runId: 'r-' + args.startedAt,
@@ -44,7 +44,7 @@ describe('LocalHistoryProvider', () => {
   let cacheDir: string
   function makeCache(): Cache {
     cacheDir = mkdtempSync(path.join(tmpdir(), 'vx-history-'))
-    return new Cache(cacheDir, '/ws')
+    return new Cache(cacheDir)
   }
 
   it('aggregates success/failure/hit counts over recent runs', async () => {

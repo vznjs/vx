@@ -37,9 +37,44 @@ export type ServerMessage =
   | { t: 'event'; event: WireEvent }
   | { t: 'result'; result: RunResult }
   | { t: 'error'; message: string }
+  // Coordinator → worker (distributed execution). Extends today's serve
+  // protocol; clients that don't speak these messages ignore them.
+  // distributed-ci-2026-06.md + architecture-review-2026-06.md §2.1.
+  | { t: 'task:assign'; node: WireTaskNode; hash: string }
+  | { t: 'cache:exists'; hash: string; present: boolean }
+  | { t: 'coord:drain' }
 
 /** client → service. */
-export type ClientMessage = { t: 'run'; request: RunRequest }
+export type ClientMessage =
+  | { t: 'run'; request: RunRequest }
+  // Worker → coordinator. Worker identity is implicit from the WS
+  // connection (one connection per worker).
+  | { t: 'worker:hello'; workerId: string; capacity: number; labels: readonly string[] }
+  | { t: 'worker:pull'; available: number }
+  | { t: 'worker:start'; taskHash: string; pid?: number }
+  | { t: 'worker:stdout'; taskHash: string; chunk: string }
+  | { t: 'worker:stderr'; taskHash: string; chunk: string }
+  | { t: 'worker:done'; taskHash: string; outcome: WireOutcome }
+  | { t: 'worker:bye'; reason: 'idle-timeout' | 'shutdown' }
+
+/** Minimal task description on the wire (serializable subset of TaskNode). */
+export interface WireTaskNode {
+  id: string
+  projectName: string
+  projectDir: string
+  taskName: string
+  command: string
+  env?: Record<string, string | null>
+  cacheable: boolean
+}
+
+/** Worker-side outcome report. */
+export interface WireOutcome {
+  status: 'success' | 'failed' | 'skipped' | 'aborted'
+  exitCode: number
+  durationMs: number
+  cacheSource: 'miss' | 'fresh' | 'local' | 'remote'
+}
 
 /** Project resolved `RunOptions` down to the serializable request. */
 export function optionsToRequest(options: RunOptions): RunRequest {

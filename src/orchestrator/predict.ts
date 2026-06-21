@@ -34,7 +34,9 @@ export function computePredictedPriorities(
   }
   p50s.sort((a, b) => a - b)
   const workspaceMedian =
-    p50s.length > 0 ? (p50s[Math.floor(p50s.length / 2)] ?? DEFAULT_DURATION_MS) : DEFAULT_DURATION_MS
+    p50s.length > 0
+      ? (p50s[Math.floor(p50s.length / 2)] ?? DEFAULT_DURATION_MS)
+      : DEFAULT_DURATION_MS
 
   // Build a reverse-adjacency map so we can resolve dependents per
   // node in O(1). The TaskNode graph carries dependsOn (upstream); we

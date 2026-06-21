@@ -18,7 +18,14 @@ export type {
 export { createVxSurface } from './devframe-surface.js'
 export { createWireRenderer } from './wire-render.js'
 export { optionsToRequest, requestToOptions } from './protocol.js'
-export type { RunRequest, RunResult, ServerMessage, ClientMessage } from './protocol.js'
+export type {
+  ClientMessage,
+  RunRequest,
+  RunResult,
+  ServerMessage,
+  WireOutcome,
+  WireTaskNode,
+} from './protocol.js'
 export {
   EmptyHistoryProvider,
   type HistoryProvider,

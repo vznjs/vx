@@ -40,7 +40,7 @@ export interface HistoryProvider {
 
 /** A no-op provider — every lookup returns an empty table. */
 export class EmptyHistoryProvider implements HistoryProvider {
-  async loadFor(): Promise<HistoryTable> {
+  async loadFor(_taskIds: readonly string[]): Promise<HistoryTable> {
     return new Map()
   }
 }
