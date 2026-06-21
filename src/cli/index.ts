@@ -13,7 +13,6 @@ import { migrateCmd } from './migrate.js'
 import { upgradeCmd } from './upgrade.js'
 import { showCmd } from './show.js'
 import { infoCmd } from './info.js'
-import { insightsCmd } from './insights.js'
 import { mcpCmd } from './mcp.js'
 import { coordinatorCmd } from './coordinator.js'
 import { workerCmd } from './worker.js'
@@ -54,8 +53,6 @@ export async function run(argv: readonly string[]): Promise<number> {
     case 'info':
     case 'stats': // deprecated alias — `vx info` absorbed `vx stats`
       return await infoCmd(rest)
-    case 'insights':
-      return await insightsCmd(rest)
     case 'mcp':
       return await mcpCmd(rest)
     case 'coordinator':
@@ -75,7 +72,7 @@ export { parsePruneArgs, parseDuration, parseSize } from './cache.js'
 export { parseLockArgs, type LockArgs } from './lock.js'
 export { parseMigrateArgs, type MigrateArgs } from './migrate.js'
 export { parseShowArgs, type ShowArgs } from './show.js'
-export { parseInsightsArgs } from './insights.js'
+export { parseServeArgs } from './serve.js'
 export { parseMcpArgs, type McpArgs } from './mcp.js'
 export {
   handleMcpRequest,

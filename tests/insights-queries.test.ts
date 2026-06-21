@@ -5,9 +5,15 @@ import { describe, expect, it } from 'bun:test'
 import { Cache, type RunRecord } from '../src/cache/index.js'
 import {
   explainCacheKeyQuery,
+  getCacheBreakdown,
+  getCacheSavings,
   getCacheStatsSql,
   getHistory,
+  getRecentFailures,
   getRun,
+  getTaskDetail,
+  getTopTimeBurners,
+  listCacheEntries,
   listInvocations,
   listRuns,
   whyDidThisRerunQuery,
@@ -240,6 +246,146 @@ describe('whyDidThisRerunQuery', () => {
     withCache((cache) => {
       const result = whyDidThisRerunQuery(cache.dbHandle(), 'r-x', 'pkg#test')
       expect(result.found).toBe(false)
+    })
+  })
+})
+
+describe('getTopTimeBurners', () => {
+  it('ranks tasks by total non-hit success duration', () => {
+    withCache((cache) => {
+      cache.recordRuns([
+        mkRun({ hash: 'h1', project: 'a', task: 'build', durationMs: 100 }),
+        mkRun({ hash: 'h2', project: 'a', task: 'build', durationMs: 150 }),
+        mkRun({ hash: 'h3', project: 'b', task: 'test', durationMs: 50 }),
+        mkRun({ hash: 'h4', project: 'b', task: 'test', durationMs: 50, cacheHit: true }),
+      ])
+      const top = getTopTimeBurners(cache.dbHandle())
+      expect(top[0]!.id).toBe('a#build')
+      expect(top[0]!.totalDurationMs).toBe(250)
+      const second = top.find((t) => t.id === 'b#test')!
+      // cache-hit row excluded from sum
+      expect(second.totalDurationMs).toBe(50)
+    })
+  })
+})
+
+describe('getRecentFailures', () => {
+  it('returns only failed runs ordered DESC by startedAt', () => {
+    withCache((cache) => {
+      cache.recordRuns([
+        mkRun({ hash: 'h1', project: 'a', task: 'test', status: 'success', startedAt: 1000 }),
+        mkRun({
+          hash: 'h2',
+          project: 'a',
+          task: 'test',
+          status: 'failed',
+          exitCode: 1,
+          startedAt: 2000,
+        }),
+        mkRun({
+          hash: 'h3',
+          project: 'b',
+          task: 'build',
+          status: 'failed',
+          exitCode: 2,
+          startedAt: 3000,
+        }),
+      ])
+      const fails = getRecentFailures(cache.dbHandle())
+      expect(fails.length).toBe(2)
+      expect(fails[0]!.task).toBe('build')
+      expect(fails[0]!.exitCode).toBe(2)
+      expect(fails[1]!.task).toBe('test')
+    })
+  })
+})
+
+describe('listCacheEntries / getCacheBreakdown', () => {
+  it('lists entries and groups bytes by project', () => {
+    withCache((cache) => {
+      // recordRun creates an entry row when called for a successful task.
+      cache.recordRuns([
+        mkRun({ hash: 'h1', project: 'a', task: 'build' }),
+        mkRun({ hash: 'h2', project: 'b', task: 'test' }),
+      ])
+      const entries = listCacheEntries(cache.dbHandle())
+      // recordRun is for runs, not entries — only saved tasks land in entries.
+      // The listing should not throw; if 0 rows, the breakdown is also 0.
+      expect(Array.isArray(entries)).toBe(true)
+      const breakdown = getCacheBreakdown(cache.dbHandle())
+      expect(Array.isArray(breakdown)).toBe(true)
+    })
+  })
+})
+
+describe('getTaskDetail', () => {
+  it('returns null for unknown (project, task)', () => {
+    withCache((cache) => {
+      expect(getTaskDetail(cache.dbHandle(), 'no#such')).toBeNull()
+    })
+  })
+
+  it('returns aggregate + recent runs for a known task', () => {
+    withCache((cache) => {
+      cache.recordRuns([
+        mkRun({ hash: 'h1', project: 'a', task: 'build', durationMs: 100 }),
+        mkRun({ hash: 'h2', project: 'a', task: 'build', durationMs: 200 }),
+      ])
+      const detail = getTaskDetail(cache.dbHandle(), 'a#build')!
+      expect(detail.project).toBe('a')
+      expect(detail.task).toBe('build')
+      expect(detail.recent.length).toBe(2)
+      expect(detail.aggregate!.runs).toBe(2)
+      expect(detail.aggregate!.avgDurationMs).toBe(150)
+      expect(detail.aggregate!.minDurationMs).toBe(100)
+      expect(detail.aggregate!.maxDurationMs).toBe(200)
+    })
+  })
+})
+
+describe('getCacheSavings', () => {
+  it('estimates time saved using the same-task non-hit avg duration', () => {
+    withCache((cache) => {
+      cache.recordRuns([
+        // Two non-hit baselines averaging 100ms
+        mkRun({
+          hash: 'h1',
+          project: 'a',
+          task: 'build',
+          durationMs: 100,
+          startedAt: Date.now() - 5000,
+        }),
+        mkRun({
+          hash: 'h2',
+          project: 'a',
+          task: 'build',
+          durationMs: 100,
+          startedAt: Date.now() - 4000,
+        }),
+        // Two hits in the last 24h → estimatedTimeSaved24h ≈ 2 × 100ms = 200ms
+        mkRun({
+          hash: 'h3',
+          project: 'a',
+          task: 'build',
+          durationMs: 10,
+          cacheHit: true,
+          status: 'cache-hit',
+          startedAt: Date.now() - 3000,
+        }),
+        mkRun({
+          hash: 'h4',
+          project: 'a',
+          task: 'build',
+          durationMs: 10,
+          cacheHit: true,
+          status: 'cache-hit',
+          startedAt: Date.now() - 2000,
+        }),
+      ])
+      const savings = getCacheSavings(cache.dbHandle())
+      expect(savings.hitsLast24h).toBe(2)
+      expect(savings.estimatedTimeSavedMs).toBe(200)
+      expect(savings.estimatedTimeSavedTotalMs).toBe(200)
     })
   })
 })

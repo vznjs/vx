@@ -26,6 +26,8 @@ export interface RunSummaryRow {
   endedAt: number
   cacheHit: boolean | null
   hash: string
+  cpuMs: number | null
+  peakRssBytes: number | null
   // High-precision spans relative to run start. Decimal strings on the wire
   // (bigints aren't JSON-safe); use BigInt or Number on the client.
   wallclockStartNs: string | null
@@ -66,6 +68,7 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
       `SELECT run_id AS runId, project, task, status, exit_code AS exitCode,
               duration_ms AS durationMs, started_at AS startedAt, ended_at AS endedAt,
               cache_hit AS cacheHit, hash,
+              cpu_ms AS cpuMs, peak_rss_bytes AS peakRssBytes,
               wallclock_start_ns AS wallclockStartNs, wallclock_end_ns AS wallclockEndNs
        FROM runs ${clause} ORDER BY started_at DESC LIMIT ?`,
     )
@@ -164,12 +167,22 @@ export function getCacheStatsSql(db: Database): CacheStatsResult {
 
 export interface TaskHistoryRow {
   id: string
+  project: string
+  task: string
   runs: number
+  successes: number
+  failures: number
+  hits: number
   successRate: number
   hitRate: number
   failureMode: 'stable' | 'flaky-recoverable' | 'flaky-fatal'
   p50DurationMs: number | undefined
   p99DurationMs: number | undefined
+  minDurationMs: number | undefined
+  maxDurationMs: number | undefined
+  avgDurationMs: number | undefined
+  totalDurationMs: number
+  lastSeenAt: number | undefined
 }
 
 export interface GetHistoryArgs {
@@ -203,15 +216,18 @@ export function getHistory(db: Database, args: GetHistoryArgs = {}): TaskHistory
            COUNT(*) AS total,
            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS successes,
            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
-           SUM(CASE WHEN cache_hit = 1 OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END) AS hits
-         FROM runs WHERE project = ? AND task = ?
-         ORDER BY started_at DESC LIMIT 50`,
+           SUM(CASE WHEN cache_hit = 1 OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END) AS hits,
+           SUM(duration_ms) AS totalDurationMs,
+           MAX(ended_at) AS lastSeenAt
+         FROM runs WHERE project = ? AND task = ?`,
       )
       .get(p.project, p.task) as {
       total: number
       successes: number
       failures: number
       hits: number
+      totalDurationMs: number | null
+      lastSeenAt: number | null
     }
     const total = aggregate.total || 0
     const failures = aggregate.failures || 0
@@ -227,16 +243,247 @@ export function getHistory(db: Database, args: GetHistoryArgs = {}): TaskHistory
       )
       .all(p.project, p.task) as { duration_ms: number }[]
     const sorted = durations.map((r) => r.duration_ms).sort((a, b) => a - b)
+    const avg = sorted.length > 0 ? sorted.reduce((a, b) => a + b, 0) / sorted.length : undefined
     return {
       id: `${p.project}#${p.task}`,
+      project: p.project,
+      task: p.task,
       runs: total,
+      successes: aggregate.successes || 0,
+      failures,
+      hits: aggregate.hits || 0,
       successRate: total > 0 ? (aggregate.successes || 0) / total : 0,
       hitRate: total > 0 ? (aggregate.hits || 0) / total : 0,
       failureMode,
       p50DurationMs: pickPercentile(sorted, 0.5),
       p99DurationMs: pickPercentile(sorted, 0.99),
+      minDurationMs: sorted[0],
+      maxDurationMs: sorted[sorted.length - 1],
+      avgDurationMs: avg !== undefined ? Math.round(avg) : undefined,
+      totalDurationMs: aggregate.totalDurationMs ?? 0,
+      lastSeenAt: aggregate.lastSeenAt ?? undefined,
     }
   })
+}
+
+// ---------------------------------------------------------------------------
+// Top time-burners — where to invest
+// ---------------------------------------------------------------------------
+
+export interface TopTaskRow {
+  id: string
+  project: string
+  task: string
+  runs: number
+  totalDurationMs: number
+  avgDurationMs: number
+}
+
+export function getTopTimeBurners(db: Database, limit = 10): TopTaskRow[] {
+  return db
+    .query(
+      `SELECT project || '#' || task AS id, project, task,
+              COUNT(*) AS runs,
+              SUM(duration_ms) AS totalDurationMs,
+              CAST(AVG(duration_ms) AS INTEGER) AS avgDurationMs
+       FROM runs
+       WHERE (cache_hit IS NULL OR cache_hit = 0) AND status = 'success'
+       GROUP BY project, task
+       ORDER BY SUM(duration_ms) DESC
+       LIMIT ?`,
+    )
+    .all(clampInt(limit, 1, 100)) as TopTaskRow[]
+}
+
+// ---------------------------------------------------------------------------
+// Recent failures — what's bleeding right now
+// ---------------------------------------------------------------------------
+
+export interface FailureRow {
+  runId: string | null
+  project: string
+  task: string
+  exitCode: number
+  durationMs: number
+  startedAt: number
+  hash: string
+}
+
+export function getRecentFailures(db: Database, limit = 25): FailureRow[] {
+  return db
+    .query(
+      `SELECT run_id AS runId, project, task, exit_code AS exitCode,
+              duration_ms AS durationMs, started_at AS startedAt, hash
+       FROM runs
+       WHERE status = 'failed'
+       ORDER BY started_at DESC
+       LIMIT ?`,
+    )
+    .all(clampInt(limit, 1, 200)) as FailureRow[]
+}
+
+// ---------------------------------------------------------------------------
+// Cache entries — what's actually stored
+// ---------------------------------------------------------------------------
+
+export interface CacheEntryRow {
+  hash: string
+  project: string
+  task: string
+  command: string
+  exitCode: number
+  durationMs: number
+  sizeBytes: number
+  createdAt: number
+  accessedAt: number
+}
+
+export interface ListCacheEntriesArgs {
+  limit?: number
+  orderBy?: 'created_at' | 'accessed_at' | 'size_bytes' | 'duration_ms'
+  project?: string
+}
+
+export function listCacheEntries(db: Database, args: ListCacheEntriesArgs = {}): CacheEntryRow[] {
+  const limit = clampInt(args.limit ?? 100, 1, 500)
+  const orderBy = args.orderBy ?? 'created_at'
+  const allowed = new Set(['created_at', 'accessed_at', 'size_bytes', 'duration_ms'])
+  const order = allowed.has(orderBy) ? orderBy : 'created_at'
+  const where: string[] = []
+  const params: (string | number)[] = []
+  if (args.project) {
+    where.push('project = ?')
+    params.push(args.project)
+  }
+  const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
+  return db
+    .query(
+      `SELECT hash, project, task, command, exit_code AS exitCode,
+              duration_ms AS durationMs, size_bytes AS sizeBytes,
+              created_at AS createdAt, accessed_at AS accessedAt
+       FROM entries ${clause}
+       ORDER BY ${order} DESC
+       LIMIT ?`,
+    )
+    .all(...params, limit) as CacheEntryRow[]
+}
+
+// ---------------------------------------------------------------------------
+// Cache breakdown — bytes per project
+// ---------------------------------------------------------------------------
+
+export interface CacheProjectRow {
+  project: string
+  entries: number
+  totalBytes: number
+}
+
+export function getCacheBreakdown(db: Database, limit = 20): CacheProjectRow[] {
+  return db
+    .query(
+      `SELECT project,
+              COUNT(*) AS entries,
+              COALESCE(SUM(size_bytes), 0) AS totalBytes
+       FROM entries
+       GROUP BY project
+       ORDER BY SUM(size_bytes) DESC
+       LIMIT ?`,
+    )
+    .all(clampInt(limit, 1, 100)) as CacheProjectRow[]
+}
+
+// ---------------------------------------------------------------------------
+// Task detail — full history for one (project, task)
+// ---------------------------------------------------------------------------
+
+export interface TaskDetail {
+  project: string
+  task: string
+  aggregate: TaskHistoryRow | null
+  recent: RunSummaryRow[]
+  latestEntry: CacheEntryRow | null
+}
+
+export function getTaskDetail(db: Database, taskId: string): TaskDetail | null {
+  const [project, task] = taskId.split('#', 2) as [string, string]
+  const existsRow = db
+    .query('SELECT 1 FROM runs WHERE project = ? AND task = ? LIMIT 1')
+    .get(project, task) as { 1: number } | undefined
+  if (!existsRow) {
+    const entryProbe = db
+      .query('SELECT 1 FROM entries WHERE project = ? AND task = ? LIMIT 1')
+      .get(project, task)
+    if (!entryProbe) return null
+  }
+  const recent = listRuns(db, { project, task, limit: 100 })
+  const histRows = getHistory(db, { project, task, limit: 1 })
+  const entry = db
+    .query(
+      `SELECT hash, project, task, command, exit_code AS exitCode,
+              duration_ms AS durationMs, size_bytes AS sizeBytes,
+              created_at AS createdAt, accessed_at AS accessedAt
+       FROM entries WHERE project = ? AND task = ?
+       ORDER BY created_at DESC LIMIT 1`,
+    )
+    .get(project, task) as CacheEntryRow | undefined
+  return {
+    project,
+    task,
+    aggregate: histRows[0] ?? null,
+    recent,
+    latestEntry: entry ?? null,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cache savings — how much time the cache saved you (rough estimate)
+// ---------------------------------------------------------------------------
+
+export interface CacheSavings {
+  hitsLast24h: number
+  estimatedTimeSavedMs: number
+  estimatedTimeSavedTotalMs: number
+}
+
+/**
+ * For each cache-hit run, attribute the avg non-hit duration of the
+ * same (project, task) as "time saved." Rough but useful — shows the
+ * payoff of caching at a glance.
+ */
+export function getCacheSavings(db: Database): CacheSavings {
+  const since = Date.now() - 24 * 60 * 60 * 1000
+  const r24 = db
+    .query(
+      `SELECT COALESCE(SUM(avgDur), 0) AS saved, COUNT(*) AS hits FROM (
+         SELECT r.project, r.task,
+                (SELECT CAST(AVG(duration_ms) AS INTEGER) FROM runs s
+                 WHERE s.project = r.project AND s.task = r.task
+                   AND (s.cache_hit IS NULL OR s.cache_hit = 0)
+                   AND s.status = 'success') AS avgDur
+         FROM runs r
+         WHERE r.started_at >= ?
+           AND (r.cache_hit = 1 OR r.status LIKE 'cache-hit%')
+       ) WHERE avgDur IS NOT NULL`,
+    )
+    .get(since) as { saved: number; hits: number }
+  const rAll = db
+    .query(
+      `SELECT COALESCE(SUM(avgDur), 0) AS saved FROM (
+         SELECT r.project, r.task,
+                (SELECT CAST(AVG(duration_ms) AS INTEGER) FROM runs s
+                 WHERE s.project = r.project AND s.task = r.task
+                   AND (s.cache_hit IS NULL OR s.cache_hit = 0)
+                   AND s.status = 'success') AS avgDur
+         FROM runs r
+         WHERE (r.cache_hit = 1 OR r.status LIKE 'cache-hit%')
+       ) WHERE avgDur IS NOT NULL`,
+    )
+    .get() as { saved: number }
+  return {
+    hitsLast24h: r24.hits,
+    estimatedTimeSavedMs: r24.saved,
+    estimatedTimeSavedTotalMs: rAll.saved,
+  }
 }
 
 // ---------------------------------------------------------------------------

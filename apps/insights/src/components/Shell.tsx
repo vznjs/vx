@@ -36,6 +36,20 @@ export const Shell: ParentComponent = (props) => {
             >
               Overview
             </A>
+            <A
+              href="/tasks"
+              class="text-fg-muted hover:text-fg no-underline text-sm"
+              activeClass="text-fg"
+            >
+              Tasks
+            </A>
+            <A
+              href="/cache"
+              class="text-fg-muted hover:text-fg no-underline text-sm"
+              activeClass="text-fg"
+            >
+              Cache
+            </A>
           </nav>
           <Show
             when={editing()}

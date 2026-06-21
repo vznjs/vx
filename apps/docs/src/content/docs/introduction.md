@@ -75,9 +75,9 @@ require additional services:
 - **[Self-host vx serve](../guides/self-hosting/)** — drop the binary
   in Docker, get a hosted backend with the same JSON `/v1/*` shape
   the local one has. One stack, no separate cloud project.
-- **[vx insights](../guides/insights/)** — Solid SPA over `vx serve`.
-  Run history, flamegraphs, cache stats. Connection picker switches
-  between local and hosted servers.
+- **[Insights dashboard](../guides/insights/)** — Solid SPA bundled
+  into `vx serve --ui`. Run history, per-task averages, cache stats.
+  Connection picker switches between local and hosted servers.
 - **[OpenTelemetry CI/CD spans](../guides/otel-bridge/)** — set
   `OTEL_EXPORTER_OTLP_ENDPOINT`, install the three OTel peers; every
   event lands in Grafana / Honeycomb / Datadog / Tempo natively, no
