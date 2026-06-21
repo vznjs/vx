@@ -10,7 +10,14 @@
 // Pure types + a small adapter pair. No transport here; the Hono
 // router in src/cli/serve.ts wires the byte frames.
 
-import type { RunResult, ServerMessage, ClientMessage } from './protocol.js'
+import type {
+  RunRequest,
+  RunResult,
+  ServerMessage,
+  ClientMessage,
+  WireOutcome,
+  WireTaskNode as WireTaskNodeShape,
+} from './protocol.js'
 import type { WireEvent as InternalWireEvent } from './events.js'
 
 /** Protocol version returned by GET /version. */
@@ -165,14 +172,7 @@ export function envelopeToServerMessage(env: Envelope): ServerMessage | null {
       return { t: 'event', event: env.params as InternalWireEvent }
     }
     if (env.method === 'coord.assign') {
-      const p = env.params as {
-        hash: string
-        node: ServerMessage extends infer S
-          ? S extends { t: 'task:assign' }
-            ? S['node']
-            : never
-          : never
-      }
+      const p = env.params as { hash: string; node: WireTaskNodeShape }
       return { t: 'task:assign', hash: p.hash, node: p.node }
     }
     if (env.method === 'coord.cacheExists') {
@@ -225,14 +225,7 @@ export function clientMessageToEnvelope(msg: ClientMessage, id?: number | string
 /** Project an envelope back to a legacy ClientMessage. */
 export function envelopeToClientMessage(env: Envelope): ClientMessage | null {
   if (isRequest(env) && env.method === 'submit.run') {
-    return {
-      t: 'run',
-      request: env.params as ClientMessage extends infer C
-        ? C extends { t: 'run' }
-          ? C['request']
-          : never
-        : never,
-    }
+    return { t: 'run', request: env.params as RunRequest }
   }
   if (isNotification(env)) {
     const m = env.method
@@ -246,8 +239,11 @@ export function envelopeToClientMessage(env: Envelope): ClientMessage | null {
       }
     }
     if (m === 'worker.pull') return { t: 'worker:pull', available: p.available as number }
-    if (m === 'worker.start')
-      return { t: 'worker:start', taskHash: p.taskHash as string, pid: p.pid as number | undefined }
+    if (m === 'worker.start') {
+      const out: ClientMessage = { t: 'worker:start', taskHash: p.taskHash as string }
+      if (p.pid !== undefined) out.pid = p.pid as number
+      return out
+    }
     if (m === 'worker.stdout')
       return { t: 'worker:stdout', taskHash: p.taskHash as string, chunk: p.chunk as string }
     if (m === 'worker.stderr')
@@ -256,11 +252,7 @@ export function envelopeToClientMessage(env: Envelope): ClientMessage | null {
       return {
         t: 'worker:done',
         taskHash: p.taskHash as string,
-        outcome: p.outcome as ClientMessage extends infer C
-          ? C extends { t: 'worker:done' }
-            ? C['outcome']
-            : never
-          : never,
+        outcome: p.outcome as WireOutcome,
       }
     }
     if (m === 'worker.bye') {

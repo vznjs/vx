@@ -174,7 +174,7 @@ async function getRunHistory(args: Record<string, unknown>): Promise<Record<stri
         const h = table.get(id)
         return h ? { id, ...h } : null
       })
-      .filter((x): x is { id: string } & ReturnType<typeof Array.prototype.values> => x !== null)
+      .filter((x) => x !== null)
     // Most-recent N rows for the timeline view.
     const recent = db
       .query(

@@ -291,6 +291,14 @@ export async function resolveRunOptions(
 }
 
 export async function runCmd(args: readonly string[]): Promise<number> {
+  // Distributed-CI worker shortcut: `vx run --worker <coord-url>` (and
+  // its `--coordinator` synonym) attaches as a worker instead of
+  // submitting a local run. Bypasses the full parseRunArgs so worker-
+  // specific flags don't have to live in RunArgs.
+  if (args.includes('--worker') || args.includes('--coordinator')) {
+    const { workerCmd } = await import('./worker.js')
+    return await workerCmd(args)
+  }
   const parsed = parseRunArgs(args)
   if (parsed.error) {
     process.stderr.write(`vx run: ${parsed.error}\n`)

@@ -44,7 +44,10 @@ describe('handleMcpRequest — against a real workspace + cache.db', () => {
   // don't depend on the test runner's cwd.
   function setupWorkspace(): { root: string; cleanup: () => void } {
     const root = mkdtempSync(path.join(tmpdir(), 'vx-mcp-real-'))
-    Bun.write(path.join(root, 'package.json'), JSON.stringify({ name: 'r', workspaces: ['pkg'] }))
+    void Bun.write(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'r', workspaces: ['pkg'] }),
+    )
     // .vx/cache is what resolveCacheDir produces by default
     return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) }
   }

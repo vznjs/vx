@@ -70,3 +70,6 @@ export {
   type PluginHookHandlers,
   type PluginHookName,
 } from './plugin.js'
+export { prepareForCoordinator, computeTaskHashForCoord } from './coordinator-prepare.js'
+export { workerExecute } from './worker-exec.js'
+export type { WorkerExecArgs, WorkerExecResult } from './worker-exec.js'

@@ -1,19 +1,21 @@
-// `vx run --worker <coord-url>` — distributed-CI worker handler. Scaffold
-// (Phase B of distributed-ci-2026-06.md). Speaks the protocol extension
-// from src/orchestrator/protocol.ts: hello → pull → start → done loop.
-// Stateless and fungible; content addressing makes work assignable.
-//
-// v1 is a SCAFFOLD: parses the coordinator URL, prints the wire shape
-// it would speak. The pull loop + exec integration lands when the
-// coordinator (cli/coordinator.ts) gains its real handler.
+// `vx run --worker <coord-url>` — distributed-CI worker handler
+// (architecture-review §2.1 + distributed-ci-2026-06.md Phase B).
+// Stateless and fungible: connect, send worker:hello, pull tasks,
+// execute, report. Content addressing makes work assignable across
+// any worker that holds the same workspace checkout.
 
+import {
+  workerExecute,
+  type ClientMessage,
+  type ServerMessage,
+  type WireOutcome,
+  type WireTaskNode,
+} from '../orchestrator/index.js'
 import { UserError } from '../util/index.js'
 
 export interface WorkerArgs {
   coordinatorUrl: string
-  /** Worker concurrency — how many tasks to pull at once. */
   capacity: number
-  /** Capability labels reported to the coordinator (`linux-x64`, `gpu`, etc.). */
   labels: readonly string[]
 }
 
@@ -45,15 +47,116 @@ export function parseWorkerArgs(args: readonly string[]): WorkerArgs {
   return { coordinatorUrl, capacity, labels: labels.length === 0 ? ['linux-x64'] : labels }
 }
 
+/**
+ * Real worker loop. Connects, registers, pulls, executes via runCommand,
+ * reports outcomes back. Returns when the coordinator drains us or the
+ * connection closes.
+ */
+export async function runWorker(opts: {
+  coordinatorUrl: string
+  capacity: number
+  labels: readonly string[]
+  onStatus?: (line: string) => void
+}): Promise<{ ok: boolean }> {
+  const status = opts.onStatus ?? (() => undefined)
+  const workerId = Bun.randomUUIDv7()
+  const wsUrl = opts.coordinatorUrl.replace(/^http/, 'ws')
+
+  let ok = true
+  let inFlight = 0
+  let drained = false
+  const ws = new WebSocket(wsUrl)
+  return await new Promise<{ ok: boolean }>((resolve) => {
+    const send = (msg: ClientMessage): void => {
+      try {
+        ws.send(JSON.stringify(msg))
+      } catch {
+        // socket closed mid-write; close handler resolves us
+      }
+    }
+    ws.onopen = () => {
+      send({ t: 'worker:hello', workerId, capacity: opts.capacity, labels: opts.labels })
+      send({ t: 'worker:pull', available: opts.capacity })
+    }
+    ws.onclose = () => {
+      resolve({ ok })
+    }
+    ws.onerror = () => {
+      ok = false
+    }
+    ws.onmessage = async (ev) => {
+      let msg: ServerMessage
+      try {
+        msg = JSON.parse(String(ev.data)) as ServerMessage
+      } catch {
+        return
+      }
+      if (msg.t === 'task:assign') {
+        inFlight++
+        void executeAssigned(msg.node, msg.hash)
+      } else if (msg.t === 'coord:drain') {
+        drained = true
+        if (inFlight === 0) {
+          send({ t: 'worker:bye', reason: 'shutdown' })
+          ws.close()
+        }
+      }
+    }
+
+    async function executeAssigned(node: WireTaskNode, hash: string): Promise<void> {
+      send({ t: 'worker:start', taskHash: hash })
+      status(`▶ ${node.id}`)
+      const t0 = Date.now()
+      let outcome: WireOutcome
+      try {
+        const result = await workerExecute({
+          command: node.command,
+          cwd: node.projectDir,
+          env: { ...process.env },
+          onStdout: (chunk) => send({ t: 'worker:stdout', taskHash: hash, chunk }),
+          onStderr: (chunk) => send({ t: 'worker:stderr', taskHash: hash, chunk }),
+        })
+        outcome = {
+          status: result.exitCode === 0 ? 'success' : 'failed',
+          exitCode: result.exitCode,
+          durationMs: result.durationMs,
+          cacheSource: 'miss',
+        }
+      } catch (err) {
+        outcome = {
+          status: 'failed',
+          exitCode: 1,
+          durationMs: Date.now() - t0,
+          cacheSource: 'miss',
+        }
+        const msg = err instanceof Error ? err.message : String(err)
+        send({ t: 'worker:stderr', taskHash: hash, chunk: msg + '\n' })
+      }
+      if (outcome.status !== 'success') ok = false
+      send({ t: 'worker:done', taskHash: hash, outcome })
+      status(`${outcome.status === 'success' ? '✓' : '✗'} ${node.id} (${outcome.durationMs}ms)`)
+      inFlight--
+      if (drained && inFlight === 0) {
+        send({ t: 'worker:bye', reason: 'shutdown' })
+        ws.close()
+      } else {
+        send({ t: 'worker:pull', available: opts.capacity - inFlight })
+      }
+    }
+  })
+}
+
 export async function workerCmd(args: readonly string[]): Promise<number> {
   const parsed = parseWorkerArgs(args)
   process.stdout.write(
-    `vx worker scaffold — would attach to ${parsed.coordinatorUrl}\n` +
-      `  workerId: ${Bun.randomUUIDv7()}\n` +
-      `  capacity: ${parsed.capacity}\n` +
-      `  labels:   ${parsed.labels.join(', ')}\n` +
-      `  protocol: ClientMessage/ServerMessage extension in src/orchestrator/protocol.ts\n` +
-      `  see:      docs/design/distributed-ci-2026-06.md\n`,
+    `vx worker: connecting to ${parsed.coordinatorUrl} (cap=${parsed.capacity}, labels=${parsed.labels.join(',')})\n`,
   )
-  return 0
+  const result = await runWorker({
+    coordinatorUrl: parsed.coordinatorUrl,
+    capacity: parsed.capacity,
+    labels: parsed.labels,
+    onStatus: (line) => process.stdout.write(`  ${line}\n`),
+  })
+  process.stdout.write(`\nvx worker: ${result.ok ? 'done' : 'failed'}\n`)
+  return result.ok ? 0 : 1
 }

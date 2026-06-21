@@ -74,22 +74,17 @@ describe('envelope type-guards', () => {
 
 describe('round-trip — ServerMessage ⇄ Envelope', () => {
   it('event ⇄ events.append notification', () => {
-    const msg: ServerMessage = {
-      t: 'event',
+    const msg = {
+      t: 'event' as const,
       event: {
         kind: 'task:start',
         run: { id: 'r1', startedAt: 0 },
         node: { id: 'a#b' },
-      } as ServerMessage extends infer S ? (S extends { t: 'event' } ? S['event'] : never) : never,
-    }
-    const env = envelopeToServerMessage.bind(null) // ensure import is used
-    const out = envelopeToServerMessage(
-      // round through the encoder
-      // @ts-expect-error — accessing the typed builder via a generic
-      JSON.parse(encodeForWS(serverMessageToEnvelopeWrap(msg))),
-    )
+      } as unknown,
+    } as ServerMessage
+    const encoded = encodeForWS(serverMessageToEnvelopeWrap(msg))
+    const out = envelopeToServerMessage(JSON.parse(encoded))
     expect(out?.t).toBe('event')
-    void env
   })
 
   it('result ⇄ submit.run response', () => {
