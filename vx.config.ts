@@ -70,13 +70,41 @@ export default defineProject({
       ],
     },
 
+    // Build the embedded dashboard (apps/ui → single-file dist/index.html).
+    // The compile step embeds it via `with { type: 'file' }`, so it must
+    // exist first. Uses workspaceFiles (boundary-free) because apps/ui is a
+    // separate project; this keeps the binary tasks' dependency same-project
+    // (no cross-project ref that scoped loading wouldn't pull into scope).
+    'build.ui': {
+      description: 'build the embedded dashboard SPA (apps/ui)',
+      dependsOn: ['install'],
+      exec: { command: 'cd apps/ui && bun run build' },
+      cache: {
+        inputs: {
+          files: [],
+          workspaceFiles: [
+            'apps/ui/src/**',
+            'apps/ui/index.html',
+            'apps/ui/package.json',
+            'apps/ui/vite.config.ts',
+            'apps/ui/uno.config.ts',
+            'apps/ui/tsconfig.json',
+          ],
+        },
+        outputs: { files: [], workspaceFiles: ['apps/ui/dist/index.html'] },
+      },
+    },
+
     // Cross-target standalone binaries. One task per (os, arch) so
     // each gets its own cache slot. `dist/` is wiped before each
     // build by output cleaning, so the binary on disk always matches
     // the cached one.
     'build.bun.linux-x64': {
       description: 'compile standalone binary (linux x64)',
-      dependsOn: ['install'],
+      // The dashboard SPA is embedded via `with { type: 'file' }`; build it
+      // first so apps/ui/dist/index.html exists when the compile resolves
+      // the import (and so a UI change cascades into the binary cache key).
+      dependsOn: ['install', 'build.ui'],
       exec: {
         command:
           'bun build --compile --minify --bytecode --target=bun-linux-x64 src/bin.ts --outfile dist/vx-linux-x64',
@@ -88,7 +116,7 @@ export default defineProject({
     },
     'build.bun.linux-arm64': {
       description: 'compile standalone binary (linux arm64)',
-      dependsOn: ['install'],
+      dependsOn: ['install', 'build.ui'],
       exec: {
         command:
           'bun build --compile --minify --bytecode --target=bun-linux-arm64 src/bin.ts --outfile dist/vx-linux-arm64',
@@ -100,7 +128,7 @@ export default defineProject({
     },
     'build.bun.darwin-x64': {
       description: 'compile standalone binary (darwin x64)',
-      dependsOn: ['install'],
+      dependsOn: ['install', 'build.ui'],
       exec: {
         command:
           'bun build --compile --minify --bytecode --target=bun-darwin-x64 src/bin.ts --outfile dist/vx-darwin-x64',
@@ -112,7 +140,7 @@ export default defineProject({
     },
     'build.bun.darwin-arm64': {
       description: 'compile standalone binary (darwin arm64)',
-      dependsOn: ['install'],
+      dependsOn: ['install', 'build.ui'],
       exec: {
         command:
           'bun build --compile --minify --bytecode --target=bun-darwin-arm64 src/bin.ts --outfile dist/vx-darwin-arm64',

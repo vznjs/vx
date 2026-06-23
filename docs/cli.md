@@ -884,18 +884,22 @@ vx run --worker ws://coord:5180  # connect, register, pull, execute
 Workers do NOT yet probe the remote cache before executing — every
 assigned task spawns fresh. Cache integration is the next iteration.
 
-## `vx serve` — unified backend (execution + insights + UI)
+## `vx serve` — unified backend (execution + metrics + UI)
 
-The same backend powers `vx run` delegation, the insights JSON API,
-the event stream, and (when `--ui` is set) the bundled Solid SPA.
+The same backend powers `vx run` delegation, the metrics JSON API,
+the event stream, and (when `--ui` is set) the embedded dashboard SPA.
 One process, one stack, runs locally or in Docker.
 
 ```
 vx serve                         # bind a kernel-assigned port
     --port <n>                   # explicit
-    --ui                         # also serve the bundled SPA at /
-    --open                       # open the UI in the default browser (implies --ui)
+    --ui                         # also serve the embedded dashboard at /
+    --open                       # open the dashboard in the default browser (implies --ui)
 ```
+
+The dashboard is embedded in the binary (a single self-contained
+`apps/ui/dist/index.html` compiled in via `with { type: 'file' }`), so
+`--ui` works from a bare `vx` with nothing else on disk.
 
 HTTP routes (all return JSON unless noted):
 

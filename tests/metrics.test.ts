@@ -5,16 +5,24 @@ import { describe, expect, it } from 'bun:test'
 import { Cache, type RunRecord } from '../src/cache/index.js'
 import {
   explainCacheKeyQuery,
+  getBottlenecks,
   getCacheBreakdown,
   getCacheSavings,
   getCacheStatsSql,
+  getFlakiestTasks,
   getHistory,
+  getParallelismHistory,
+  getPrunableEntries,
   getRecentFailures,
   getRun,
+  getRunHeatmap,
+  getRunTrends,
+  getStorageGrowth,
   getTaskDetail,
   getTopTimeBurners,
   listCacheEntries,
   listInvocations,
+  listProjects,
   listRuns,
   whyDidThisRerunQuery,
 } from '../src/orchestrator/index.js'
@@ -42,7 +50,7 @@ function mkRun(
 }
 
 function withCache(fn: (cache: Cache) => void) {
-  const dir = mkdtempSync(path.join(tmpdir(), 'vx-insights-q-'))
+  const dir = mkdtempSync(path.join(tmpdir(), 'vx-metrics-q-'))
   const cache = new Cache(dir)
   try {
     fn(cache)
@@ -386,6 +394,148 @@ describe('getCacheSavings', () => {
       expect(savings.hitsLast24h).toBe(2)
       expect(savings.estimatedTimeSavedMs).toBe(200)
       expect(savings.estimatedTimeSavedTotalMs).toBe(200)
+    })
+  })
+})
+
+describe('listProjects', () => {
+  it('rolls per-project totals + cache entries', () => {
+    withCache((cache) => {
+      cache.recordRuns([
+        mkRun({ hash: 'h1', project: 'a', task: 'build', durationMs: 100 }),
+        mkRun({ hash: 'h2', project: 'a', task: 'test', durationMs: 50 }),
+        mkRun({ hash: 'h3', project: 'b', task: 'build', durationMs: 200 }),
+      ])
+      const rows = listProjects(cache.dbHandle())
+      expect(rows.length).toBe(2)
+      const a = rows.find((r) => r.project === 'a')!
+      expect(a.taskCount).toBe(2)
+      expect(a.totalDurationMs).toBe(150)
+      expect(a.runs).toBe(2)
+    })
+  })
+})
+
+describe('getRunTrends', () => {
+  it('returns a densified time series with hour buckets', () => {
+    withCache((cache) => {
+      const now = Date.now()
+      cache.recordRuns([
+        mkRun({ hash: 'h1', project: 'a', task: 'b', startedAt: now - 60_000 }),
+        mkRun({ hash: 'h2', project: 'a', task: 'b', startedAt: now - 60_000 }),
+      ])
+      const pts = getRunTrends(cache.dbHandle(), { bucket: 'hour' })
+      // 24h of hourly buckets ≈ 25 cells (start + end inclusive).
+      expect(pts.length).toBeGreaterThan(20)
+      const total = pts.reduce((acc, p) => acc + p.runs, 0)
+      expect(total).toBe(2)
+    })
+  })
+})
+
+describe('getRunHeatmap', () => {
+  it('emits a 7×24 grid (168 cells) and counts runs in the right cell', () => {
+    withCache((cache) => {
+      const now = Date.now()
+      cache.recordRun(mkRun({ hash: 'h1', project: 'a', task: 'b', startedAt: now }))
+      const cells = getRunHeatmap(cache.dbHandle())
+      expect(cells.length).toBe(168)
+      const total = cells.reduce((acc, c) => acc + c.runs, 0)
+      expect(total).toBe(1)
+    })
+  })
+})
+
+describe('getFlakiestTasks', () => {
+  it('surfaces tasks with mixed pass/fail or wide p99/p50', () => {
+    withCache((cache) => {
+      const now = Date.now()
+      cache.recordRuns([
+        mkRun({ hash: 'h1', project: 'a', task: 't', status: 'success', startedAt: now - 5000 }),
+        mkRun({
+          hash: 'h2',
+          project: 'a',
+          task: 't',
+          status: 'failed',
+          exitCode: 1,
+          startedAt: now - 4000,
+        }),
+        mkRun({ hash: 'h3', project: 'a', task: 't', status: 'success', startedAt: now - 3000 }),
+        mkRun({ hash: 'h4', project: 'a', task: 't', status: 'success', startedAt: now - 2000 }),
+      ])
+      const flaky = getFlakiestTasks(cache.dbHandle())
+      expect(flaky.length).toBeGreaterThan(0)
+      expect(flaky[0]!.id).toBe('a#t')
+      expect(flaky[0]!.failures).toBe(1)
+    })
+  })
+})
+
+describe('getBottlenecks', () => {
+  it('ranks by extrapolated weekly burn at 25% cut', () => {
+    withCache((cache) => {
+      const now = Date.now()
+      cache.recordRuns([
+        mkRun({ hash: 'h1', project: 'a', task: 'slow', durationMs: 1000, startedAt: now - 1000 }),
+        mkRun({ hash: 'h2', project: 'a', task: 'slow', durationMs: 1000, startedAt: now - 500 }),
+        mkRun({ hash: 'h3', project: 'a', task: 'fast', durationMs: 10, startedAt: now - 100 }),
+      ])
+      const b = getBottlenecks(cache.dbHandle())
+      expect(b[0]!.task).toBe('slow')
+      expect(b[0]!.weeklySavingsAt25PctCutMs).toBeGreaterThan(0)
+    })
+  })
+})
+
+describe('getParallelismHistory', () => {
+  it('computes cpuSum / wall per runId', () => {
+    withCache((cache) => {
+      cache.recordRuns([
+        mkRun({
+          hash: 'h1',
+          project: 'a',
+          task: 't1',
+          runId: 'r1',
+          startedAt: 1000,
+          endedAt: 1100,
+          durationMs: 100,
+        }),
+        mkRun({
+          hash: 'h2',
+          project: 'a',
+          task: 't2',
+          runId: 'r1',
+          startedAt: 1010,
+          endedAt: 1080,
+          durationMs: 70,
+        }),
+      ])
+      const pts = getParallelismHistory(cache.dbHandle())
+      expect(pts.length).toBe(1)
+      expect(pts[0]!.runId).toBe('r1')
+      // cpuSum (cpu_ms fallback to duration_ms via COALESCE in SQL) >= wall
+      expect(pts[0]!.factor).toBeGreaterThan(0)
+    })
+  })
+})
+
+describe('getStorageGrowth', () => {
+  it('returns a densified daily series', () => {
+    withCache((cache) => {
+      cache.recordRun(mkRun({ hash: 'h1', project: 'a', task: 'b' }))
+      const pts = getStorageGrowth(cache.dbHandle(), 7)
+      // 7 days of daily buckets ≈ 7–8 cells.
+      expect(pts.length).toBeGreaterThanOrEqual(7)
+    })
+  })
+})
+
+describe('getPrunableEntries', () => {
+  it('returns empty when nothing is older than the threshold', () => {
+    withCache((cache) => {
+      cache.recordRun(mkRun({ hash: 'h1', project: 'a', task: 'b' }))
+      const entries = getPrunableEntries(cache.dbHandle(), 365)
+      expect(entries).toEqual([])
     })
   })
 })

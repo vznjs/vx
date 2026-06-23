@@ -800,3 +800,37 @@ static-server tests.
 **Net.** −1646/+896 LOC across 25 files in the first commit; another
 −603/+422 across 13 files in the SPA refactor. One stack everywhere;
 the SPA is a thin client; `vx serve` is the only backend.
+
+---
+
+## Embed the dashboard in the binary + drop "insights" naming (2026-06-21)
+
+Owner reports: `vx serve --ui` failed with "--ui requires apps/insights/dist"
+from a compiled binary, and "remove all insights naming".
+
+**Embedding.** apps/ui (renamed from apps/insights) now builds to a single
+self-contained `dist/index.html` (JS + CSS inlined via a tiny `generateBundle`
+plugin in vite.config.ts). `src/cli/ui-asset.ts` imports it with
+`with { type: 'file' }`, so `bun build --compile` embeds the bytes inside the
+standalone binary; the import resolves to a bunfs path that `Bun.file()` reads.
+`vx serve --ui` serves that one file for every non-API GET (hash-router SPA).
+Verified: compiled a binary, moved apps/ui/dist away entirely, `vx serve --ui`
+still served the embedded dashboard. The module is dynamically imported only on
+`--ui`, so a source checkout that hasn't built the UI doesn't break `vx run`.
+
+`build.ui` task (root project, `cd apps/ui && bun run build`, boundary-free
+workspaceFiles inputs/outputs) builds the SPA; the four `build.bun.*` compile
+tasks depend on it so a fresh UI is embedded and a UI change cascades into the
+binary cache key. Same-project dep (not a cross-project `@vzn/vx-ui#build` ref)
+so scoped loading always has it in scope and `vx run test`/CI aren't polluted
+with a UI build.
+
+**Rename.** apps/insights → apps/ui; `@vzn/vx-insights` → `@vzn/vx-ui`;
+`src/orchestrator/insights-queries.ts` → `metrics.ts`;
+`tests/insights-queries.test.ts` → `metrics.test.ts`; guide insights.md →
+dashboard.md; brand "vx insights" → "vx dashboard"; localStorage key
+`vx-insights:origin` → `vx-ui:origin`; help/README/cli/landing/introduction
+copy. `VX_INSIGHTS_DIST` removed (embedded, no on-disk dist to point at).
+
+No CACHE_VERSION impact. Module-boundaries test gained a `.html` asset carve-out
+(mirrors the existing `.json` one). Full gate green.

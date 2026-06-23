@@ -1,9 +1,8 @@
-// Insights query module — pure functions over a `bun:sqlite` Database.
+// Metrics query module — pure functions over a `bun:sqlite` Database.
 //
-// One module, two callers: `vx serve` (over Bun.serve HTTP routes) and
-// the same shape on `apps/cloud` (over Cloudflare D1 — same SQL,
-// different driver). The SPA in `apps/insights` calls /v1/* routes
-// backed by these functions.
+// `vx serve` exposes these as /v1/* HTTP routes; the dashboard SPA in
+// apps/ui and `vx mcp` both read through them. One canonical home for
+// every aggregate over the runs / entries tables.
 //
 // Pure SQL + JSON-safe return shapes. No Cache lifecycle here; the
 // caller opens and closes. bigints are serialized as decimal strings
@@ -595,4 +594,425 @@ function pickPercentile(sorted: number[], q: number): number | undefined {
   if (sorted.length === 0) return undefined
   const idx = Math.min(sorted.length - 1, Math.floor(q * sorted.length))
   return sorted[idx]
+}
+
+// ---------------------------------------------------------------------------
+// Project-level rollups — where the time and storage actually sit
+// ---------------------------------------------------------------------------
+
+export interface ProjectRollup {
+  project: string
+  taskCount: number
+  runs: number
+  failures: number
+  hits: number
+  hitRate: number
+  totalDurationMs: number
+  avgDurationMs: number
+  cacheBytes: number
+  cacheEntries: number
+  lastRunAt: number | undefined
+  estimatedTimeSavedMs: number
+}
+
+export function listProjects(db: Database, limit = 100): ProjectRollup[] {
+  const rows = db
+    .query(
+      `SELECT project,
+              COUNT(DISTINCT task) AS taskCount,
+              COUNT(*) AS runs,
+              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
+              SUM(CASE WHEN cache_hit = 1 OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END) AS hits,
+              SUM(duration_ms) AS totalDurationMs,
+              CAST(AVG(duration_ms) AS INTEGER) AS avgDurationMs,
+              MAX(ended_at) AS lastRunAt
+       FROM runs GROUP BY project ORDER BY SUM(duration_ms) DESC LIMIT ?`,
+    )
+    .all(clampInt(limit, 1, 500)) as Array<{
+    project: string
+    taskCount: number
+    runs: number
+    failures: number
+    hits: number
+    totalDurationMs: number | null
+    avgDurationMs: number | null
+    lastRunAt: number | null
+  }>
+  return rows.map((r) => {
+    const ent = db
+      .query(
+        'SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS b FROM entries WHERE project = ?',
+      )
+      .get(r.project) as { n: number; b: number }
+    const saved = db
+      .query(
+        `SELECT COALESCE(SUM(avg), 0) AS saved FROM (
+           SELECT (SELECT CAST(AVG(duration_ms) AS INTEGER) FROM runs s
+                   WHERE s.project = r.project AND s.task = r.task
+                     AND (s.cache_hit IS NULL OR s.cache_hit = 0)
+                     AND s.status = 'success') AS avg
+           FROM runs r WHERE r.project = ?
+             AND (r.cache_hit = 1 OR r.status LIKE 'cache-hit%')
+         ) WHERE avg IS NOT NULL`,
+      )
+      .get(r.project) as { saved: number }
+    return {
+      project: r.project,
+      taskCount: r.taskCount,
+      runs: r.runs,
+      failures: r.failures,
+      hits: r.hits,
+      hitRate: r.runs > 0 ? r.hits / r.runs : 0,
+      totalDurationMs: r.totalDurationMs ?? 0,
+      avgDurationMs: r.avgDurationMs ?? 0,
+      cacheBytes: ent.b,
+      cacheEntries: ent.n,
+      lastRunAt: r.lastRunAt ?? undefined,
+      estimatedTimeSavedMs: saved.saved,
+    }
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Trends — bucketed time-series for charts
+// ---------------------------------------------------------------------------
+
+export type TrendBucket = 'hour' | 'day'
+
+export interface TrendPoint {
+  /** Epoch ms at the start of the bucket. */
+  t: number
+  runs: number
+  hits: number
+  failures: number
+  /** Sum of duration_ms in the bucket. */
+  totalDurationMs: number
+}
+
+/**
+ * Bucketed run counts + failure/hit/duration over time. Default range = last
+ * 24h for hour buckets, last 30d for day buckets — picked to match the chart
+ * defaults clients use.
+ */
+export function getRunTrends(
+  db: Database,
+  args: { bucket?: TrendBucket; from?: number; to?: number } = {},
+): TrendPoint[] {
+  const bucket: TrendBucket = args.bucket ?? 'hour'
+  const to = args.to ?? Date.now()
+  const defaultRangeMs = bucket === 'hour' ? 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000
+  const from = args.from ?? to - defaultRangeMs
+  const bucketMs = bucket === 'hour' ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000
+  // Floor each timestamp to its bucket boundary in SQL so partial buckets line
+  // up cleanly. `started_at` is already epoch-ms.
+  const rows = db
+    .query(
+      `SELECT (started_at / ?) * ? AS t,
+              COUNT(*) AS runs,
+              SUM(CASE WHEN cache_hit = 1 OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END) AS hits,
+              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
+              SUM(duration_ms) AS totalDurationMs
+       FROM runs
+       WHERE started_at >= ? AND started_at <= ?
+       GROUP BY t ORDER BY t ASC`,
+    )
+    .all(bucketMs, bucketMs, from, to) as TrendPoint[]
+  // Densify — emit zeros for empty buckets so the chart line stays continuous.
+  const start = Math.floor(from / bucketMs) * bucketMs
+  const end = Math.floor(to / bucketMs) * bucketMs
+  const byT = new Map(rows.map((r) => [r.t, r]))
+  const out: TrendPoint[] = []
+  for (let t = start; t <= end; t += bucketMs) {
+    out.push(byT.get(t) ?? { t, runs: 0, hits: 0, failures: 0, totalDurationMs: 0 })
+  }
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// Heatmap — runs per (hour-of-day, day-of-week)
+// ---------------------------------------------------------------------------
+
+export interface HeatmapCell {
+  /** 0 = Sun … 6 = Sat */
+  dayOfWeek: number
+  /** 0 … 23, local time */
+  hourOfDay: number
+  runs: number
+  totalDurationMs: number
+}
+
+/** When do builds happen? Surfaces a 7×24 grid for the last `days` days. */
+export function getRunHeatmap(db: Database, days = 30): HeatmapCell[] {
+  const since = Date.now() - days * 24 * 60 * 60 * 1000
+  // Pull raw rows; bucket in JS (timezone math is ugly in pure SQLite, and
+  // `days * 24 * runs/day` rows is a few thousand at most).
+  const rows = db
+    .query('SELECT started_at, duration_ms FROM runs WHERE started_at >= ?')
+    .all(since) as { started_at: number; duration_ms: number }[]
+  const grid: HeatmapCell[] = []
+  for (let d = 0; d < 7; d++)
+    for (let h = 0; h < 24; h++)
+      grid.push({ dayOfWeek: d, hourOfDay: h, runs: 0, totalDurationMs: 0 })
+  for (const r of rows) {
+    const date = new Date(r.started_at)
+    const cell = grid[date.getDay() * 24 + date.getHours()]!
+    cell.runs++
+    cell.totalDurationMs += r.duration_ms
+  }
+  return grid
+}
+
+// ---------------------------------------------------------------------------
+// Flakiness — tasks that fail unpredictably or whose p99/p50 gap is wide
+// ---------------------------------------------------------------------------
+
+export interface FlakyTask {
+  id: string
+  project: string
+  task: string
+  runs: number
+  failures: number
+  failureRate: number
+  /** p99 / p50 ratio for successful non-hit runs; >3 flags wide tail. */
+  durationTailRatio: number | undefined
+  p50DurationMs: number | undefined
+  p99DurationMs: number | undefined
+}
+
+export function getFlakiestTasks(db: Database, limit = 25): FlakyTask[] {
+  const pairs = db
+    .query(
+      `SELECT project, task, COUNT(*) AS runs,
+              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures
+       FROM runs GROUP BY project, task HAVING runs >= 3`,
+    )
+    .all() as { project: string; task: string; runs: number; failures: number }[]
+  return pairs
+    .map((p) => {
+      const durs = db
+        .query(
+          `SELECT duration_ms FROM runs
+           WHERE project = ? AND task = ?
+             AND (cache_hit IS NULL OR cache_hit = 0) AND status = 'success'
+           ORDER BY started_at DESC LIMIT 50`,
+        )
+        .all(p.project, p.task) as { duration_ms: number }[]
+      const sorted = durs.map((r) => r.duration_ms).sort((a, b) => a - b)
+      const p50 = pickPercentile(sorted, 0.5)
+      const p99 = pickPercentile(sorted, 0.99)
+      const ratio = p50 && p50 > 0 && p99 !== undefined ? p99 / p50 : undefined
+      return {
+        id: `${p.project}#${p.task}`,
+        project: p.project,
+        task: p.task,
+        runs: p.runs,
+        failures: p.failures,
+        failureRate: p.runs > 0 ? p.failures / p.runs : 0,
+        durationTailRatio: ratio,
+        p50DurationMs: p50,
+        p99DurationMs: p99,
+      } satisfies FlakyTask
+    })
+    .filter(
+      (r) => r.failureRate > 0 || (r.durationTailRatio !== undefined && r.durationTailRatio > 2),
+    )
+    .sort((a, b) => {
+      // Rank by a composite score: failure rate dominates, tail ratio breaks ties.
+      const sa = a.failureRate * 10 + (a.durationTailRatio ?? 1)
+      const sb = b.failureRate * 10 + (b.durationTailRatio ?? 1)
+      return sb - sa
+    })
+    .slice(0, clampInt(limit, 1, 200))
+}
+
+// ---------------------------------------------------------------------------
+// Bottlenecks — "if you sped up X, you'd save Y per week"
+// ---------------------------------------------------------------------------
+
+export interface BottleneckRow {
+  id: string
+  project: string
+  task: string
+  /** Runs in the last `lookbackDays`. */
+  runsRecent: number
+  /** Total non-hit success duration over the lookback. */
+  totalDurationMs: number
+  avgDurationMs: number
+  /** Runs/day extrapolated from the lookback. */
+  runsPerDay: number
+  /** Time you'd save per week if you cut avg duration by 25%. */
+  weeklySavingsAt25PctCutMs: number
+}
+
+/** Highest-leverage targets ranked by extrapolated weekly burn. */
+export function getBottlenecks(db: Database, lookbackDays = 14, limit = 15): BottleneckRow[] {
+  const since = Date.now() - lookbackDays * 24 * 60 * 60 * 1000
+  const rows = db
+    .query(
+      `SELECT project, task,
+              COUNT(*) AS runsRecent,
+              SUM(duration_ms) AS totalDurationMs,
+              CAST(AVG(duration_ms) AS INTEGER) AS avgDurationMs
+       FROM runs
+       WHERE started_at >= ?
+         AND (cache_hit IS NULL OR cache_hit = 0) AND status = 'success'
+       GROUP BY project, task
+       ORDER BY SUM(duration_ms) DESC
+       LIMIT ?`,
+    )
+    .all(since, clampInt(limit, 1, 100)) as Array<{
+    project: string
+    task: string
+    runsRecent: number
+    totalDurationMs: number
+    avgDurationMs: number
+  }>
+  return rows.map((r) => {
+    const runsPerDay = r.runsRecent / Math.max(1, lookbackDays)
+    const weeklySavings = Math.round(runsPerDay * 7 * r.avgDurationMs * 0.25)
+    return {
+      id: `${r.project}#${r.task}`,
+      project: r.project,
+      task: r.task,
+      runsRecent: r.runsRecent,
+      totalDurationMs: r.totalDurationMs,
+      avgDurationMs: r.avgDurationMs,
+      runsPerDay,
+      weeklySavingsAt25PctCutMs: weeklySavings,
+    } satisfies BottleneckRow
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Parallelism factor — how many workers you actually utilized
+// ---------------------------------------------------------------------------
+
+export interface ParallelismPoint {
+  runId: string
+  startedAt: number
+  /** Total task CPU time. */
+  cpuSumMs: number
+  /** Wallclock from first task start to last task end. */
+  wallMs: number
+  /** cpuSumMs / wallMs — effective parallelism (1 = serial). */
+  factor: number
+  taskCount: number
+}
+
+/** Per-invocation parallelism, recent first. */
+export function getParallelismHistory(db: Database, limit = 50): ParallelismPoint[] {
+  const rows = db
+    .query(
+      `SELECT run_id AS runId,
+              MIN(started_at) AS startedAt,
+              MIN(started_at) AS minStart,
+              MAX(ended_at) AS maxEnd,
+              SUM(COALESCE(cpu_ms, duration_ms)) AS cpuSumMs,
+              COUNT(*) AS taskCount
+       FROM runs
+       WHERE run_id IS NOT NULL
+       GROUP BY run_id
+       HAVING taskCount > 0
+       ORDER BY MAX(started_at) DESC
+       LIMIT ?`,
+    )
+    .all(clampInt(limit, 1, 500)) as Array<{
+    runId: string
+    startedAt: number
+    minStart: number
+    maxEnd: number
+    cpuSumMs: number | null
+    taskCount: number
+  }>
+  return rows.map((r) => {
+    const wallMs = Math.max(1, r.maxEnd - r.minStart)
+    const cpuSumMs = r.cpuSumMs ?? 0
+    return {
+      runId: r.runId,
+      startedAt: r.startedAt,
+      cpuSumMs,
+      wallMs,
+      factor: cpuSumMs / wallMs,
+      taskCount: r.taskCount,
+    } satisfies ParallelismPoint
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Cache storage growth — bytes over time, with prunable hint
+// ---------------------------------------------------------------------------
+
+export interface StoragePoint {
+  /** Epoch ms at bucket start. */
+  t: number
+  /** Bytes added in the bucket. */
+  bytesAdded: number
+  entriesAdded: number
+}
+
+/**
+ * Daily storage growth from the entries table. NOTE: this reflects the rows
+ * still in entries (prune evicts; we can't reconstruct pruned bytes). For most
+ * workspaces it's the right "what's the cache doing" view.
+ */
+export function getStorageGrowth(db: Database, days = 30): StoragePoint[] {
+  const since = Date.now() - days * 24 * 60 * 60 * 1000
+  const bucketMs = 24 * 60 * 60 * 1000
+  const rows = db
+    .query(
+      `SELECT (created_at / ?) * ? AS t,
+              COALESCE(SUM(size_bytes), 0) AS bytesAdded,
+              COUNT(*) AS entriesAdded
+       FROM entries WHERE created_at >= ?
+       GROUP BY t ORDER BY t ASC`,
+    )
+    .all(bucketMs, bucketMs, since) as StoragePoint[]
+  const start = Math.floor(since / bucketMs) * bucketMs
+  const end = Math.floor(Date.now() / bucketMs) * bucketMs
+  const byT = new Map(rows.map((r) => [r.t, r]))
+  const out: StoragePoint[] = []
+  for (let t = start; t <= end; t += bucketMs) {
+    out.push(byT.get(t) ?? { t, bytesAdded: 0, entriesAdded: 0 })
+  }
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// Stale / prunable entries — what to evict first
+// ---------------------------------------------------------------------------
+
+export interface PrunableEntry {
+  hash: string
+  project: string
+  task: string
+  sizeBytes: number
+  createdAt: number
+  accessedAt: number
+  /** Days since last access. */
+  ageDays: number
+}
+
+/** Entries unused for ≥ `minAgeDays`, ordered by size — best prune targets. */
+export function getPrunableEntries(db: Database, minAgeDays = 7, limit = 50): PrunableEntry[] {
+  const since = Date.now() - minAgeDays * 24 * 60 * 60 * 1000
+  const rows = db
+    .query(
+      `SELECT hash, project, task, size_bytes AS sizeBytes,
+              created_at AS createdAt, accessed_at AS accessedAt
+       FROM entries WHERE accessed_at <= ?
+       ORDER BY size_bytes DESC LIMIT ?`,
+    )
+    .all(since, clampInt(limit, 1, 500)) as Array<{
+    hash: string
+    project: string
+    task: string
+    sizeBytes: number
+    createdAt: number
+    accessedAt: number
+  }>
+  const now = Date.now()
+  return rows.map((r) => ({
+    ...r,
+    ageDays: Math.max(0, Math.floor((now - r.accessedAt) / (24 * 60 * 60 * 1000))),
+  }))
 }

@@ -18,17 +18,25 @@ import {
   encodeForSSE,
   envelopeToClientMessage,
   explainCacheKeyQuery,
+  getBottlenecks,
   getCacheBreakdown,
   getCacheSavings,
   getCacheStatsSql,
+  getFlakiestTasks,
   getHistory,
+  getParallelismHistory,
+  getPrunableEntries,
   getRecentFailures,
   getRun,
+  getRunHeatmap,
+  getRunTrends,
+  getStorageGrowth,
   getTaskDetail,
   getTopTimeBurners,
   isEnvelope,
   listCacheEntries,
   listInvocations,
+  listProjects,
   listRuns,
   serverMessageToEnvelope,
   whyDidThisRerunQuery,
@@ -93,10 +101,10 @@ export interface ServeServer {
   stop: () => Promise<void>
 }
 
-// CORS is wide-open: the hosted SPA needs to reach localhost from a foreign
-// origin, and the surface is read-only insights + an authenticated WS run
-// submission. Any tighter policy would break the "host the SPA once, point
-// it at any vx serve" UX.
+// CORS is wide-open: a hosted dashboard needs to reach localhost from a
+// foreign origin, and the surface is read-only metrics + an authenticated WS
+// run submission. Any tighter policy would break the "host the SPA once,
+// point it at any vx serve" UX.
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -113,51 +121,15 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return withCors(Response.json(body, init))
 }
 
-const SPA_MIME: Record<string, string> = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.json': 'application/json; charset=utf-8',
-  '.map': 'application/json; charset=utf-8',
-  '.ico': 'image/x-icon',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-}
-
-/**
- * Serve a file from `uiDir` for `pathname`. Returns null when the requested
- * pathname escapes the directory or doesn't exist; the caller falls back to
- * `index.html` for hash-router routes that aren't real files.
- */
-async function serveStatic(uiDir: string, pathname: string): Promise<Response | null> {
-  const rel = pathname === '/' ? '/index.html' : pathname
-  const abs = path.join(uiDir, rel)
-  // Containment check — never escape uiDir even if pathname has ../
-  const resolved = path.resolve(abs)
-  if (!resolved.startsWith(path.resolve(uiDir))) return null
-  const file = Bun.file(resolved)
-  if (!(await file.exists())) return null
-  const ext = path.extname(resolved).toLowerCase()
-  const headers: Record<string, string> = {
-    'Content-Type': SPA_MIME[ext] ?? 'application/octet-stream',
-  }
-  // Hashed asset URLs (Vite emits `index-<hash>.{js,css}`) can be cached
-  // forever; HTML must not be cached or the picker won't pick up a redeploy.
-  if (ext === '.html') headers['Cache-Control'] = 'no-store'
-  else if (resolved.includes(`${path.sep}assets${path.sep}`))
-    headers['Cache-Control'] = 'public, max-age=31536000, immutable'
-  return new Response(file, { headers })
-}
-
 export async function startServe(opts: {
   root: string
   port?: number
-  /** Absolute path to a pre-built SPA `dist/`. When set, `/` serves it. */
-  uiDir?: string
+  /**
+   * Path to the single-file dashboard HTML (the embedded `apps/ui` build).
+   * When set, every non-API GET serves it — the SPA is one self-contained
+   * file with a hash router, so all routes return the same bytes.
+   */
+  uiHtmlPath?: string
   onRun?: (request: RunRequest, ok: boolean) => void
 }): Promise<ServeServer> {
   // One registry for the service's whole lifetime — concurrent runs share
@@ -209,9 +181,9 @@ export async function startServe(opts: {
         })
       }
       // -----------------------------------------------------------------
-      // Insights HTTP surface — JSON read APIs over cache.db. The hosted
-      // SPA in apps/insights/ calls these directly; same shape will be
-      // mirrored by a future hosted multi-tenant deployment.
+      // Metrics HTTP surface — JSON read APIs over cache.db. The dashboard
+      // SPA in apps/ui calls these directly; same shape will be mirrored by
+      // a future hosted multi-tenant deployment.
       // -----------------------------------------------------------------
       if (url.pathname === '/v1/runs') {
         const params = url.searchParams
@@ -273,6 +245,53 @@ export async function startServe(opts: {
       if (url.pathname === '/v1/failures') {
         const limit = Number(url.searchParams.get('limit') ?? '25')
         return jsonResponse({ failures: getRecentFailures(cache.dbHandle(), limit) })
+      }
+      if (url.pathname === '/v1/projects') {
+        const limit = Number(url.searchParams.get('limit') ?? '100')
+        return jsonResponse({ projects: listProjects(cache.dbHandle(), limit) })
+      }
+      if (url.pathname === '/v1/trends/runs') {
+        const params = url.searchParams
+        const bucketRaw = params.get('bucket')
+        const bucket = bucketRaw === 'day' || bucketRaw === 'hour' ? bucketRaw : 'hour'
+        const args: Parameters<typeof getRunTrends>[1] = { bucket }
+        const fromRaw = params.get('from')
+        if (fromRaw !== null) args.from = Number(fromRaw)
+        const toRaw = params.get('to')
+        if (toRaw !== null) args.to = Number(toRaw)
+        return jsonResponse({ bucket, points: getRunTrends(cache.dbHandle(), args) })
+      }
+      if (url.pathname === '/v1/trends/heatmap') {
+        const days = Number(url.searchParams.get('days') ?? '30')
+        return jsonResponse({ days, cells: getRunHeatmap(cache.dbHandle(), days) })
+      }
+      if (url.pathname === '/v1/trends/storage') {
+        const days = Number(url.searchParams.get('days') ?? '30')
+        return jsonResponse({ days, points: getStorageGrowth(cache.dbHandle(), days) })
+      }
+      if (url.pathname === '/v1/trends/parallelism') {
+        const limit = Number(url.searchParams.get('limit') ?? '50')
+        return jsonResponse({ points: getParallelismHistory(cache.dbHandle(), limit) })
+      }
+      if (url.pathname === '/v1/flakiness') {
+        const limit = Number(url.searchParams.get('limit') ?? '25')
+        return jsonResponse({ tasks: getFlakiestTasks(cache.dbHandle(), limit) })
+      }
+      if (url.pathname === '/v1/bottlenecks') {
+        const lookbackDays = Number(url.searchParams.get('days') ?? '14')
+        const limit = Number(url.searchParams.get('limit') ?? '15')
+        return jsonResponse({
+          lookbackDays,
+          bottlenecks: getBottlenecks(cache.dbHandle(), lookbackDays, limit),
+        })
+      }
+      if (url.pathname === '/v1/cache/prunable') {
+        const minAgeDays = Number(url.searchParams.get('minAgeDays') ?? '7')
+        const limit = Number(url.searchParams.get('limit') ?? '50')
+        return jsonResponse({
+          minAgeDays,
+          entries: getPrunableEntries(cache.dbHandle(), minAgeDays, limit),
+        })
       }
       if (url.pathname === '/v1/history') {
         const params = url.searchParams
@@ -367,16 +386,15 @@ export async function startServe(opts: {
         )
       }
       if (srv.upgrade(req)) return undefined
-      // When --ui is set, serve the bundled SPA from `uiDir`. Hash-router
-      // routes that aren't real files fall back to index.html (SPA fallback).
-      if (opts.uiDir !== undefined) {
-        return (async (): Promise<Response> => {
-          const res = await serveStatic(opts.uiDir!, url.pathname)
-          if (res) return withCors(res)
-          const index = await serveStatic(opts.uiDir!, '/index.html')
-          if (index) return withCors(index)
-          return withCors(new Response('not found', { status: 404 }))
-        })()
+      // When --ui is set, serve the single-file dashboard for every non-API
+      // GET. It's one self-contained HTML with a hash router, so every route
+      // (/, /tasks, /cache, …) returns the same bytes.
+      if (opts.uiHtmlPath !== undefined) {
+        return withCors(
+          new Response(Bun.file(opts.uiHtmlPath), {
+            headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+          }),
+        )
       }
       return withCors(new Response('vx serve'))
     },
@@ -463,15 +481,20 @@ export function parseServeArgs(args: readonly string[]): ServeArgs {
 }
 
 /**
- * Resolve the bundled SPA dist. Mirrors apps/docs and apps/insights resolution:
- * the repo lives alongside the running source, even when installed. Allows
- * `VX_INSIGHTS_DIST` for a custom checkout.
+ * Load the embedded single-file dashboard. The asset module embeds
+ * apps/ui/dist/index.html into the binary; in a source checkout the dynamic
+ * import resolves the real file, which only exists after `apps/ui` is built —
+ * so a missing build only affects `--ui`, never a normal `vx run`.
  */
-function resolveUiDist(): string | null {
-  const env = process.env.VX_INSIGHTS_DIST
-  if (env !== undefined && env.length > 0) return env
-  const candidate = path.resolve(import.meta.dir, '..', '..', 'apps', 'insights', 'dist')
-  return candidate
+async function loadUiHtmlPath(): Promise<string | null> {
+  try {
+    const mod = await import('./ui-asset.js')
+    const p = mod.UI_HTML_PATH
+    if (!(await Bun.file(p).exists())) return null
+    return p
+  } catch {
+    return null
+  }
 }
 
 function openInBrowser(url: string): void {
@@ -498,28 +521,30 @@ export async function serveCmd(args: readonly string[]): Promise<number> {
   }
   const root = await findWorkspaceRoot(process.cwd())
 
-  let uiDir: string | undefined
+  let uiHtmlPath: string | undefined
   if (parsed.ui) {
-    const candidate = resolveUiDist()
-    if (candidate === null || !(await Bun.file(path.join(candidate, 'index.html')).exists())) {
+    const p = await loadUiHtmlPath()
+    if (p === null) {
+      // Only reachable in a source checkout that hasn't built the dashboard;
+      // a compiled binary embeds it, so this never fires for end users.
       process.stderr.write(
-        `vx serve: --ui requires apps/insights/dist (run \`bun --cwd apps/insights run build\` first, or set VX_INSIGHTS_DIST)\n`,
+        `vx serve: dashboard not built — run \`bun run --filter @vzn/vx-ui build\` (only needed when running from source)\n`,
       )
       return 1
     }
-    uiDir = candidate
+    uiHtmlPath = p
   }
 
   const server = await startServe({
     root,
     ...(parsed.port !== undefined ? { port: parsed.port } : {}),
-    ...(uiDir !== undefined ? { uiDir } : {}),
+    ...(uiHtmlPath !== undefined ? { uiHtmlPath } : {}),
     onRun: (request, ok) => {
       process.stdout.write(`  ${ok ? '✓' : '✗'} ${request.tasks.join(', ')}\n`)
     },
   })
 
-  const uiLine = uiDir !== undefined ? `vx serve: UI   ${server.origin}/\n` : ''
+  const uiLine = uiHtmlPath !== undefined ? `vx serve: UI   ${server.origin}/\n` : ''
   process.stdout.write(
     `vx serve: API  ${server.origin}\n` +
       uiLine +
@@ -527,7 +552,7 @@ export async function serveCmd(args: readonly string[]): Promise<number> {
       `(press Ctrl-C to stop)\n\n`,
   )
 
-  if (parsed.open && uiDir !== undefined) openInBrowser(server.origin)
+  if (parsed.open && uiHtmlPath !== undefined) openInBrowser(server.origin)
 
   await new Promise<void>((resolve) => {
     process.once('SIGINT', () => resolve())

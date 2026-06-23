@@ -84,25 +84,28 @@ vx.example.com {
 }
 ```
 
-## Point the SPA at it
+## Dashboard
 
-Build `apps/insights/` once and host the resulting `dist/`. Users
-open it, paste the server origin into the connection picker, and
-the SPA reads via `/v1/*`. No build step per user, no per-user
-config — same SPA, any backend.
+`vx serve --ui` serves the dashboard at `/` directly from the binary
+(it's embedded — no asset directory to deploy). For a hosted
+deployment behind a proxy, that's all you need.
+
+If you'd rather host the dashboard separately, build the single-file
+bundle and drop it on any static host. The connection picker means
+the same bundle works against any reachable `vx serve`:
 
 ```sh
-cd apps/insights
+cd apps/ui
 bun install
 bun run build
-# Deploy dist/ to any static host (S3 + CloudFront, Vercel, GitHub
-# Pages, your own nginx — anywhere).
+# Deploy the single dist/index.html anywhere (S3 + CloudFront, Vercel,
+# GitHub Pages, your own nginx).
 ```
 
 ## Browser → localhost gotcha
 
 The Secure Context exception in WHATWG lets HTTPS pages call
-`http://localhost:*`. So a hosted `https://insights.example.com`
+`http://localhost:*`. So a hosted `https://dash.example.com`
 can read from `http://localhost:4321` without breaking the mixed-
 content rule — that's intentional, and what the connection picker
 exploits.
@@ -120,5 +123,5 @@ story. We unified on `vx serve`:
 - The hosted SPA sees the same `/v1/*` shape locally or against a
   multi-tenant deployment — no shimming.
 
-See also: [`insights`](/vx/guides/insights/),
+See also: [`dashboard`](/vx/guides/dashboard/),
 [`wire protocol`](/vx/guides/wire-protocol/).

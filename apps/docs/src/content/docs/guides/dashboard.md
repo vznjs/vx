@@ -1,11 +1,12 @@
 ---
-title: Insights dashboard
-description: A Solid SPA bundled into vx serve. Run history, per-task averages, cache stats. One flag, no daemon.
+title: Dashboard
+description: A Solid SPA bundled into the vx binary. Run history, per-task averages, cache stats. One flag, no daemon, nothing to install.
 ---
 
-The insights dashboard ships inside `vx serve` itself. Pass `--ui`
-and the same backend that drives `vx run` delegation also serves
-the SPA at `/`. One process, one stack.
+The dashboard ships **inside the `vx` binary**. Pass `--ui` to
+`vx serve` and the same backend that drives `vx run` delegation also
+serves the dashboard at `/`. No separate install, no asset directory
+on disk — the SPA is embedded in the executable.
 
 ## Quick start
 
@@ -17,11 +18,11 @@ vx serve --ui --open
 That:
 
 1. boots `vx serve` on a kernel-assigned port,
-2. serves the bundled insights SPA at `/`,
+2. serves the embedded dashboard at `/`,
 3. opens your default browser at the same origin.
 
-`Ctrl-C` stops it. Drop `--open` if you'd rather not auto-launch
-a browser; drop `--ui` to get just the JSON API + WS + SSE.
+`Ctrl-C` stops it. Drop `--open` if you'd rather not auto-launch a
+browser; drop `--ui` to get just the JSON API + WS + SSE.
 
 Pin a port with `--port`:
 
@@ -57,7 +58,7 @@ host the SPA once and let everyone aim it at their own backend.
 ```
    Browser
    ┌─────────────────────────────┐
-   │ apps/insights SPA (Solid)   │
+   │ apps/ui SPA (Solid)         │
    │  • connection picker        │
    │  • fetch over HTTP          │
    └────────┬────────────────────┘
@@ -67,7 +68,7 @@ host the SPA once and let everyone aim it at their own backend.
    ┌─────────────────────────────┐
    │ vx serve --ui  (Bun.serve)  │
    │  • /v1/* JSON over cache.db │
-   │  • SPA static at /          │
+   │  • SPA embedded in binary   │
    │  • CORS *                   │
    │  • SSE event stream         │
    │  • WS run protocol          │
@@ -79,6 +80,10 @@ host the SPA once and let everyone aim it at their own backend.
    │  cache.db                   │
    └─────────────────────────────┘
 ```
+
+The dashboard builds to a single self-contained `index.html` (JS +
+CSS inlined), which the binary embeds via Bun's `with { type: 'file' }`.
+A compiled `vx` carries it with nothing else on disk.
 
 ## HTTP surface
 
@@ -107,19 +112,19 @@ All routes ship `Access-Control-Allow-Origin: *`.
 
 ## Host the SPA once, point it anywhere
 
-You can also build `apps/insights/dist/` and deploy it to any static
-host. The connection picker means the same hosted bundle works
-against any reachable `vx serve` — browsers allow HTTPS pages to
-call `http://localhost:*` per the Secure Context exception, so a
-hosted `https://insights.example.com` reading from a local
-`http://localhost:4321` Just Works.
+You can also build `apps/ui/dist/` and deploy the single
+`index.html` to any static host. The connection picker means the
+same hosted bundle works against any reachable `vx serve` — browsers
+allow HTTPS pages to call `http://localhost:*` per the Secure
+Context exception, so a hosted `https://dash.example.com` reading
+from a local `http://localhost:4321` Just Works.
 
 ## Privacy
 
 When you run `vx serve --ui` locally, nothing leaves your machine.
 A hosted SPA pointed at `http://localhost:*` is also entirely
-local — the picker is just configuration; the page reads from
-your machine, not a third party.
+local — the picker is just configuration; the page reads from your
+machine, not a third party.
 
 ## Known limits
 
@@ -127,8 +132,8 @@ your machine, not a third party.
   server (`/v1/events`) but the SPA doesn't subscribe yet. Reload
   to see new runs.
 - **No auth.** `vx serve` binds to localhost by default; trust is
-  by network reachability. Add a reverse proxy with auth for
-  hosted deployments.
+  by network reachability. Add a reverse proxy with auth for hosted
+  deployments.
 
 See also: [`Self-hosting`](/vx/guides/self-hosting/),
 [`Wire protocol`](/vx/guides/wire-protocol/).

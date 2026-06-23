@@ -1,5 +1,5 @@
 {
-  "name": "@vzn/vx-insights",
+  "name": "@vzn/vx-ui",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@iconify-json/tabler": "^1.2.35",
     "@solidjs/router": "^0.16.1",
     "@unocss/preset-icons": "^66.7.2",
     "@unocss/preset-uno": "^66.7.2",
