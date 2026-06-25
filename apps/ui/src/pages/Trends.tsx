@@ -99,16 +99,16 @@ export function Trends() {
           </div>
           <div class="mt-4">
             <LineChart
-              xs={[...((parallel() ?? []).map((p, i) => i))].reverse()}
+              xs={[...(parallel() ?? [])].reverse().map((p) => p.startedAt)}
               series={[
                 {
                   name: 'parallelism',
                   strokeClass: 'stroke-chart-3',
                   areaClass: 'fill-chart-3/10',
-                  data: [...(parallel() ?? []).map((p) => p.factor)].reverse(),
+                  data: [...(parallel() ?? [])].reverse().map((p) => p.factor),
                 },
               ]}
-              formatX={(x) => `#${x}`}
+              formatX={(t) => formatDate(t)}
               formatY={(v) => v.toFixed(1) + '×'}
               height={140}
             />

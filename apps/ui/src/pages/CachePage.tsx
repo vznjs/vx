@@ -53,7 +53,7 @@ export function CachePage() {
         <Card title="Storage by project">
           <Show when={breakdown()?.some((p) => p.totalBytes > 0)} fallback={<EmptyState title="No cached output yet" />}>
             <Treemap
-              data={(breakdown() ?? []).map((p) => ({ label: p.project, value: p.totalBytes, colorClass: `bg-${paletteFor(p.project)}` }))}
+              data={(breakdown() ?? []).map((p) => ({ label: p.project, value: p.totalBytes, colorClass: `fill-${paletteFor(p.project)}` }))}
               format={(v) => formatBytes(v)}
               height={240}
             />

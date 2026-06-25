@@ -901,6 +901,9 @@ export interface ParallelismPoint {
 
 /** Per-invocation parallelism, recent first. */
 export function getParallelismHistory(db: Database, limit = 50): ParallelismPoint[] {
+  // Filter out trivially-short invocations (wall &lt; 50 ms): the cpu/wall
+  // ratio is dominated by measurement noise there and produces 0.5×/2×
+  // junk that pollutes the chart's average.
   const rows = db
     .query(
       `SELECT run_id AS runId,
@@ -912,7 +915,7 @@ export function getParallelismHistory(db: Database, limit = 50): ParallelismPoin
        FROM runs
        WHERE run_id IS NOT NULL
        GROUP BY run_id
-       HAVING taskCount > 0
+       HAVING taskCount > 1 AND (MAX(ended_at) - MIN(started_at)) >= 50
        ORDER BY MAX(started_at) DESC
        LIMIT ?`,
     )

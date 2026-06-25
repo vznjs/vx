@@ -3,6 +3,19 @@ import { defineConfig, presetIcons, presetUno, transformerVariantGroup } from 'u
 export default defineConfig({
   presets: [presetUno(), presetIcons({ scale: 1.0 })],
   transformers: [transformerVariantGroup()],
+  // Chart palette classes are computed from project names at runtime via
+  // `paletteFor()` — UnoCSS's static analyzer can't see them, so we list
+  // them explicitly.
+  safelist: [
+    ...['1', '2', '3', '4', '5', '6', '7', '8'].flatMap((n) => [
+      `bg-chart-${n}`,
+      `text-chart-${n}`,
+      `stroke-chart-${n}`,
+      `fill-chart-${n}`,
+      `fill-chart-${n}/10`,
+      `border-chart-${n}`,
+    ]),
+  ],
   theme: {
     colors: {
       // Surfaces
