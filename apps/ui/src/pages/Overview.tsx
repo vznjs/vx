@@ -13,7 +13,7 @@ import {
 } from '../api.ts'
 import { LineChart, Treemap } from '../components/charts.tsx'
 import { Card, EmptyState, MetricCard } from '../components/ui.tsx'
-import { formatBytes, formatCount, formatDuration, formatHour, formatPercent, formatRelativeTime, paletteFor } from '../format.ts'
+import { formatBytes, formatCount, formatDate, formatDuration, formatHour, formatPercent, formatRelativeTime, paletteFor } from '../format.ts'
 
 export function Overview() {
   const origin = getOriginSignal()
@@ -25,7 +25,9 @@ export function Overview() {
   const [failures] = createResource(origin, () => getFailures(8))
   const [projects] = createResource(origin, () => listProjects(50))
   const [invocations] = createResource(origin, () => listInvocations(12))
-  const [trend24h] = createResource(origin, () => getRunTrends({ bucket: 'hour' }))
+  // 30-day day-bucketed series → real signal even on workspaces whose last
+  // run was &gt;24h ago. A 24h hour-bucket chart goes blank too easily.
+  const [trend30d] = createResource(origin, () => getRunTrends({ bucket: 'day' }))
 
   // Live event ticker — newest first, keep last 12.
   const [live, setLive] = createSignal<Array<{ id: number; kind: string; label: string; t: number }>>([])
@@ -45,35 +47,40 @@ export function Overview() {
     onCleanup(unsub)
   })
 
-  const last24hRuns = createMemo(() => trend24h()?.points.reduce((a, p) => a + p.runs, 0) ?? 0)
-  const last24hHits = createMemo(() => trend24h()?.points.reduce((a, p) => a + p.hits, 0) ?? 0)
-  const last24hFails = createMemo(() => trend24h()?.points.reduce((a, p) => a + p.failures, 0) ?? 0)
+  // Lifetime totals — always have signal, unlike 24h windows.
+  const totalRuns = createMemo(() => (projects() ?? []).reduce((a, p) => a + p.runs, 0))
+  const totalHits = createMemo(() => (projects() ?? []).reduce((a, p) => a + p.hits, 0))
+  const totalFails = createMemo(() => (projects() ?? []).reduce((a, p) => a + p.failures, 0))
+  const lifetimeHitRate = createMemo(() => (totalRuns() > 0 ? totalHits() / totalRuns() : 0))
 
-  const trendXs = () => trend24h()?.points.map((p) => p.t) ?? []
-  const trendRuns = () => trend24h()?.points.map((p) => p.runs) ?? []
-  const trendDur = () => trend24h()?.points.map((p) => p.totalDurationMs) ?? []
+  const last30dRuns = createMemo(() => trend30d()?.points.reduce((a, p) => a + p.runs, 0) ?? 0)
+  const last30dDur = createMemo(() => trend30d()?.points.reduce((a, p) => a + p.totalDurationMs, 0) ?? 0)
+  const last30dHits = createMemo(() => trend30d()?.points.reduce((a, p) => a + p.hits, 0) ?? 0)
+
+  const trendXs = () => trend30d()?.points.map((p) => p.t) ?? []
+  const trendRuns = () => trend30d()?.points.map((p) => p.runs) ?? []
 
   return (
     <div class="flex flex-col gap-5">
       <Show when={stats() && savings()}>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <MetricCard
-            label="Time saved (24h)"
-            value={formatDuration(savings()!.estimatedTimeSavedMs)}
-            sub={`${savings()!.hitsLast24h} cache hits`}
-            tone={savings()!.estimatedTimeSavedMs > 0 ? 'good' : 'default'}
+            label="Time saved"
+            value={formatDuration(savings()!.estimatedTimeSavedTotalMs)}
+            sub={`${totalHits()} cache hits`}
+            tone={savings()!.estimatedTimeSavedTotalMs > 0 ? 'good' : 'default'}
           />
           <MetricCard
-            label="Hit rate (24h)"
-            value={formatPercent(stats()!.hitRate24h, 0)}
-            sub={`${stats()!.hitCountLast24h} / ${stats()!.runCountLast24h} runs`}
-            tone={stats()!.hitRate24h > 0.5 ? 'good' : stats()!.hitRate24h < 0.2 && stats()!.runCountLast24h > 5 ? 'warn' : 'default'}
+            label="Hit rate"
+            value={formatPercent(lifetimeHitRate(), 0)}
+            sub={`${totalHits()} / ${totalRuns()} runs`}
+            tone={lifetimeHitRate() > 0.5 ? 'good' : lifetimeHitRate() < 0.2 && totalRuns() > 5 ? 'warn' : 'default'}
           />
           <MetricCard
-            label="Failures (24h)"
-            value={String(last24hFails())}
-            sub={last24hRuns() > 0 ? `${formatPercent(last24hFails() / last24hRuns(), 0)} of runs` : 'no runs yet'}
-            tone={last24hFails() > 0 ? 'bad' : 'good'}
+            label="Total runs"
+            value={String(totalRuns())}
+            sub={totalFails() > 0 ? `${totalFails()} failed (${formatPercent(totalFails() / Math.max(1, totalRuns()), 0)})` : 'no failures'}
+            tone={totalFails() > 0 ? 'bad' : 'good'}
           />
           <MetricCard
             label="Cache footprint"
@@ -84,20 +91,20 @@ export function Overview() {
       </Show>
 
       <div class="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
-        <Card title="Activity — last 24h" action={<span class="text-[10px] text-fg-3 font-mono">runs · failures</span>}>
-          <Show when={trend24h()?.points.length} fallback={<EmptyState title="No runs in the last 24h" cmd="vx run <task>" />}>
+        <Card title="Activity — last 30 days" action={<span class="text-[10px] text-fg-3 font-mono">runs · failures</span>}>
+          <Show when={last30dRuns() > 0} fallback={<EmptyState title="No runs in the last 30 days" cmd="vx run <task>" />}>
             <LineChart
               xs={trendXs()}
               series={[
                 { name: 'runs', strokeClass: 'stroke-accent', areaClass: 'fill-accent/10', data: trendRuns() },
-                { name: 'failures', strokeClass: 'stroke-danger', data: trend24h()?.points.map((p) => p.failures) ?? [] },
+                { name: 'failures', strokeClass: 'stroke-danger', data: trend30d()?.points.map((p) => p.failures) ?? [] },
               ]}
-              formatX={(t) => formatHour(t)}
+              formatX={(t) => formatDate(t)}
               formatY={(v) => formatCount(v)}
               height={180}
             />
             <div class="text-[11px] text-fg-3 mt-2 font-mono">
-              {last24hRuns()} runs · {formatDuration(trendDur().reduce((a, b) => a + b, 0))} total · {last24hHits()} hits
+              {last30dRuns()} runs · {formatDuration(last30dDur())} total · {last30dHits()} hits
             </div>
           </Show>
         </Card>
@@ -171,7 +178,7 @@ export function Overview() {
               data={(projects() ?? []).filter((p) => p.cacheBytes > 0).map((p) => ({
                 label: p.project,
                 value: p.cacheBytes,
-                colorClass: `bg-${paletteFor(p.project)}`,
+                colorClass: `fill-${paletteFor(p.project)}`,
               }))}
               format={(v) => formatBytes(v)}
               height={240}

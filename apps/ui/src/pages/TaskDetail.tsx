@@ -7,9 +7,11 @@ import { formatBytes, formatCount, formatDuration, formatPercent, formatRelative
 
 export function TaskDetail() {
   const params = useParams<{ id: string }>()
+  // @solidjs/router gives the raw URL segment; decode for display + API use.
+  const taskId = () => decodeURIComponent(params.id)
   const origin = getOriginSignal()
   const [detail] = createResource(
-    () => ({ id: params.id, o: origin() }),
+    () => ({ id: taskId(), o: origin() }),
     (args) => getTaskDetail(args.id),
   )
 
@@ -23,7 +25,7 @@ export function TaskDetail() {
     <div class="flex flex-col gap-5">
       <div class="flex items-center gap-3">
         <A href="/tasks" class="text-fg-3 hover:text-fg no-underline text-[11px] font-mono">← tasks</A>
-        <h1 class="text-base font-semibold m-0 font-mono">{params.id}</h1>
+        <h1 class="text-base font-semibold m-0 font-mono">{taskId()}</h1>
       </div>
 
       <Show when={detail.loading}>
@@ -33,7 +35,7 @@ export function TaskDetail() {
         <div class="text-danger font-mono text-sm">Failed to load: {String(detail.error)}</div>
       </Show>
       <Show when={detail() === null}>
-        <EmptyState title="No data for this task" cmd={`vx run ${params.id}`} />
+        <EmptyState title="No data for this task" cmd={`vx run ${taskId()}`} />
       </Show>
 
       <Show when={detail() !== undefined && detail() !== null}>

@@ -308,7 +308,8 @@ export function Treemap(props: {
           h: horizontal ? len : strip,
           label: r.label,
           value: r.value,
-          colorClass: r.colorClass ?? 'bg-chart-1',
+          // Treemap renders SVG <rect>; callers must pass `fill-…` classes.
+          colorClass: r.colorClass ?? 'fill-chart-1',
           idx: r.idx,
         })
         cursor += len

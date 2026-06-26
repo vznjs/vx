@@ -7,12 +7,14 @@ import { formatBytes, formatDuration, formatPercent, formatRelativeTime, palette
 
 export function ProjectDetail() {
   const params = useParams<{ name: string }>()
+  // @solidjs/router gives the raw URL segment; decode for display + API use.
+  const projectName = () => decodeURIComponent(params.name)
   const origin = getOriginSignal()
   const navigate = useNavigate()
 
-  const [projects] = createResource(() => ({ name: params.name, o: origin() }), async () => listProjects(500))
+  const [projects] = createResource(() => ({ name: projectName(), o: origin() }), async () => listProjects(500))
   const [tasks] = createResource(
-    () => ({ name: params.name, o: origin() }),
+    () => ({ name: projectName(), o: origin() }),
     async (args) => {
       const all = await getHistory(500)
       return all.filter((t: TaskHistoryRow) => t.project === args.name)
@@ -20,7 +22,7 @@ export function ProjectDetail() {
   )
 
   const summary = createMemo<ProjectRollup | undefined>(() =>
-    (projects() ?? []).find((p) => p.project === params.name),
+    (projects() ?? []).find((p) => p.project === projectName()),
   )
   const maxTotal = createMemo(() => Math.max(1, ...(tasks() ?? []).map((t) => t.totalDurationMs)))
 
@@ -28,8 +30,8 @@ export function ProjectDetail() {
     <div class="flex flex-col gap-5">
       <div class="flex items-center gap-3">
         <A href="/projects" class="text-fg-3 hover:text-fg no-underline text-[11px] font-mono">← projects</A>
-        <span class={`inline-block w-2 h-2 rounded-full bg-${paletteFor(params.name)}`} />
-        <h1 class="text-base font-semibold m-0 font-mono">{params.name}</h1>
+        <span class={`inline-block w-2 h-2 rounded-full bg-${paletteFor(projectName())}`} />
+        <h1 class="text-base font-semibold m-0 font-mono">{projectName()}</h1>
       </div>
 
       <Show when={summary()} fallback={<EmptyState title="No data for this project" />}>
