@@ -1,68 +1,84 @@
 import { createMemo, createResource } from 'solid-js'
 import { useParams } from '@solidjs/router'
-import { type RunDetail as RunDetailData, getOriginSignal, getRun } from '../api.ts'
-import { type Node, el, toSpec } from '../jr/spec.ts'
-import { DashRenderer } from '../jr/renderer.tsx'
-import { formatBytes, formatDuration, formatRelativeTime } from '../format.ts'
+import { getOriginSignal, getRun } from '../api.ts'
+import { C, S, el, toSpec } from '../jr/spec.ts'
+import { Dash } from '../jr/renderer.tsx'
+import { formatRelativeTime } from '../format.ts'
 
 const enc = encodeURIComponent
+const vis = (s: string) => ({ visible: { $state: '/status', eq: s } })
 
-function build(id: string, run: RunDetailData | null | undefined): Node {
-  const head = { backHref: '/', backLabel: 'runs', title: `Run ${id.slice(0, 12)}`, mono: true }
-  if (run === undefined) return el('Page', head, [el('Text', { text: 'Loading…', tone: 'faint' })])
-  if (run === null) return el('Page', head, [el('Empty', { title: 'Run not found' })])
+const SPEC = toSpec(
+  el('Page', { backHref: '/', backLabel: 'runs', title: S('/title'), mono: true }, [
+    el('Text', { text: 'Loading…', tone: 'faint' }, undefined, vis('loading')),
+    el('Empty', { title: 'Run not found' }, undefined, vis('missing')),
 
-  const tasks = run.tasks
-  const total = tasks.reduce((a, t) => a + (t.durationMs ?? 0), 0)
-  const successes = tasks.filter((t) => t.status === 'success').length
-  const failures = tasks.filter((t) => t.status === 'failed').length
-  const hits = tasks.filter((t) => t.cacheHit === true).length
-  const cpu = tasks.reduce((a, t) => a + (t.cpuMs ?? 0), 0)
-  const startMs = Math.min(...tasks.map((x) => x.startedAt))
-  const wall = Math.max(...tasks.map((x) => x.endedAt)) - startMs
+    el('Grid', { variant: 'metrics-5' }, [
+      el('Metric', { label: 'Tasks', value: C('fmtNumber', { n: S('/taskCount') }), sub: S('/tasksSub') }),
+      el('Metric', { label: 'Wall time', value: C('fmtDuration', { ms: S('/wallMs') }), sub: S('/wallSub') }),
+      el('Metric', { label: 'Total task time', value: C('fmtDuration', { ms: S('/totalMs') }), sub: 'sum across all tasks' }),
+      el('Metric', { label: 'CPU time', value: C('fmtDuration', { ms: S('/cpuMs') }), sub: S('/cpuSub') }),
+      el('Metric', { label: 'Outcome', value: S('/outcome'), tone: S('/outcomeTone') }),
+    ], vis('ok')),
 
-  const metrics = el('Grid', { variant: 'metrics-5' }, [
-    el('Metric', { label: 'Tasks', value: String(tasks.length), sub: `${successes} ok · ${failures} fail · ${hits} hits` }),
-    el('Metric', { label: 'Wall time', value: formatDuration(wall), sub: `started ${formatRelativeTime(startMs)}` }),
-    el('Metric', { label: 'Total task time', value: formatDuration(total), sub: 'sum across all tasks' }),
-    el('Metric', { label: 'CPU time', value: formatDuration(cpu), sub: wall > 0 ? `${(cpu / wall).toFixed(2)}× parallelism` : '' }),
-    el('Metric', { label: 'Outcome', value: failures > 0 ? 'failed' : 'success', tone: failures > 0 ? 'bad' : 'good' }),
-  ])
+    el('Card', { title: 'Timeline' }, [el('Flamegraph', { tasks: S('/tasks') })], vis('ok')),
 
-  const timeline = el('Card', { title: 'Timeline' }, [el('Flamegraph', { tasks })])
-
-  const table = el('Card', { title: `Tasks (${tasks.length})`, noPad: true }, [
-    el('DataTable', {
-      emptyTitle: 'No tasks',
-      columns: [
-        { key: 'task', label: 'Task' },
-        { key: 'status', label: 'Status' },
-        { key: 'duration', label: 'Duration', align: 'right' },
-        { key: 'cpu', label: 'CPU', align: 'right' },
-        { key: 'rss', label: 'Peak RSS', align: 'right' },
-        { key: 'cache', label: 'Cache', align: 'right' },
-      ],
-      rows: tasks.map((t) => ({
-        href: `/tasks/${enc(`${t.project}#${t.task}`)}`,
-        cells: {
-          task: { kind: 'projtask', project: t.project, task: t.task },
-          status: { kind: 'status', status: t.status, cacheHit: t.cacheHit },
-          duration: formatDuration(t.durationMs),
-          cpu: { kind: 'tone', v: t.cpuMs !== null ? formatDuration(t.cpuMs) : '—', tone: 'faint' },
-          rss: { kind: 'tone', v: t.peakRssBytes !== null && t.peakRssBytes > 0 ? formatBytes(t.peakRssBytes) : '—', tone: 'faint' },
-          cache: { kind: 'tone', v: t.cacheHit === true ? 'hit' : 'miss', tone: 'cache' },
-        },
-      })),
-    }),
-  ])
-
-  return el('Page', head, [metrics, timeline, table])
-}
+    el('Card', { title: S('/tasksTitle'), noPad: true }, [
+      el('DataTable', {
+        rows: S('/rows'),
+        rowHrefKey: '_href',
+        emptyTitle: 'No tasks',
+        columns: [
+          { key: 'task', label: 'Task', kind: 'projtask' },
+          { key: 'status', label: 'Status', kind: 'status' },
+          { key: 'durationMs', label: 'Duration', align: 'right', kind: 'duration' },
+          { key: 'cpuMs', label: 'CPU', align: 'right', kind: 'duration', baseTone: 'faint' },
+          { key: '_rss', label: 'Peak RSS', align: 'right', kind: 'bytes', baseTone: 'faint' },
+          { key: 'cacheHit', label: 'Cache', align: 'right', kind: 'cache' },
+        ],
+      }),
+    ], vis('ok')),
+  ]),
+)
 
 export function RunDetail() {
   const params = useParams<{ id: string }>()
   const origin = getOriginSignal()
   const [run] = createResource(() => ({ id: params.id, o: origin() }), (args) => getRun(args.id))
-  const spec = createMemo(() => toSpec(build(params.id, run())))
-  return <DashRenderer spec={spec()} />
+
+  const state = createMemo<Record<string, unknown>>(() => {
+    const r = run()
+    const status = r === undefined ? 'loading' : r === null ? 'missing' : 'ok'
+    const base = { title: `Run ${params.id.slice(0, 12)}`, status }
+    if (!r) return base
+    const tasks = r.tasks
+    const total = tasks.reduce((a, t) => a + (t.durationMs ?? 0), 0)
+    const cpu = tasks.reduce((a, t) => a + (t.cpuMs ?? 0), 0)
+    const successes = tasks.filter((t) => t.status === 'success').length
+    const failures = tasks.filter((t) => t.status === 'failed').length
+    const hits = tasks.filter((t) => t.cacheHit === true).length
+    const startMs = Math.min(...tasks.map((x) => x.startedAt))
+    const wall = Math.max(...tasks.map((x) => x.endedAt)) - startMs
+    return {
+      ...base,
+      taskCount: tasks.length,
+      tasksSub: `${successes} ok · ${failures} fail · ${hits} hits`,
+      wallMs: wall,
+      wallSub: `started ${formatRelativeTime(startMs)}`,
+      totalMs: total,
+      cpuMs: cpu,
+      cpuSub: wall > 0 ? `${(cpu / wall).toFixed(2)}× parallelism` : '',
+      outcome: failures > 0 ? 'failed' : 'success',
+      outcomeTone: failures > 0 ? 'bad' : 'good',
+      tasks,
+      tasksTitle: `Tasks (${tasks.length})`,
+      rows: tasks.map((t) => ({
+        ...t,
+        _rss: t.peakRssBytes && t.peakRssBytes > 0 ? t.peakRssBytes : null,
+        _href: `/tasks/${enc(`${t.project}#${t.task}`)}`,
+      })),
+    }
+  })
+
+  return <Dash spec={SPEC} state={state()} />
 }

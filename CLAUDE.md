@@ -170,6 +170,85 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-27**: **Dashboard UI (`apps/ui`) rewritten on json-render**
+  (owner: "completely redo whole ui using https://json-render.dev/" —
+  chosen with the tradeoffs made explicit). The entire page layer now
+  renders through json-render (`@json-render/solid` + `@json-render/core`)
+  instead of hand-written Solid pages — used the intended way: a component
+  **catalog** + per-page **data specs** the `Renderer` instantiates. New
+  `apps/ui/src/jr/`: `catalog.ts` (`defineCatalog` — the component
+  vocabulary), `components.tsx` (the Solid impls behind each name: layout
+  `Page`/`Stack`/`Grid`/`Card`, content `Metric`/`Text`/`Facts`/`Empty`,
+  chart wrappers `LineChart`/`Treemap`/`Heatmap`/`Flamegraph`, and the rich
+  self-contained widgets `DataTable` (client sort/filter + clickable rows),
+  `RankList`, `LiveActivity` SSE ticker), `renderer.tsx`
+  (`createRenderer(catalog, components)` → `<DashRenderer>` — a
+  self-contained renderer; it wires the State/Action/Functions providers
+  internally), `spec.ts` (`el()`/`toSpec()` — author a nested tree, flatten
+  to the json-render `Spec` via the library's own `nestedToFlat`),
+  `hints.ts` (declarative format/tone hints so specs stay **pure JSON** — no
+  formatter functions on the wire; charts take `xFormat`/`yFormat` hint
+  strings, table cells carry a `kind` + tone token). Every page (Overview,
+  Tasks, TaskDetail, Projects, ProjectDetail, Cache, Trends, RunDetail,
+  Bottlenecks) renders the same `/v1/*` resources through `Dash`. **`api.ts`,
+  `format.ts`,
+  `charts.tsx`, `ui.tsx` and the router are UNCHANGED** — the proven
+  chart/UI code is reused as json-render's component library (the right way
+  to adopt it). Carried-over fixes preserved: CPU utilization % (avg/max
+  card + per-run column, green >100%), correct cross-platform peak RSS,
+  full-size ResizeObserver-measured charts. UnoCSS `safelist` extended for
+  the semantic dot/bar tones the catalog references by token (chart-1..8
+  already listed; added `bg-/text-` for success/warn/danger/accent/
+  cache-local/info). Deps added to `apps/ui` ONLY (`@json-render/core`,
+  `@json-render/solid`, `zod` — 4 packages); **core `vx` untouched** (still
+  19 deps). Embedded single-file SPA grew ~131 KB → 242 KB raw / 71 KB gzip
+  (the interpreter) — acceptable for the embed. **Caveat to remember:**
+  UnoCSS's static extractor parses `text-[${expr}]` arbitrary-value
+  template literals and emits invalid CSS — never interpolate into bracket
+  utilities in a scanned file; pass arbitrary classes through a `class`
+  prop literal in page source instead. Verified e2e with Playwright against
+  the real workspace `cache.db` (259 runs, 70 entries) across all 9 routes:
+  0 console errors, real data, correct nav, charts filling cards. No
+  CACHE_VERSION/core-test impact (UI-only; `apps` is excluded from
+  oxlint/oxfmt and not covered by `bun test`, so validated at build +
+  runtime). PRs #149 (RSS/CPU%/chart fixes) + #150 (initial rewrite) +
+  #151 (idiomatic refactor). NB: json-render did not itself fix any
+  data/chart complaint (those were backend/component issues fixed in #149)
+  — its value is that the dashboard is now spec-driven, so a view could
+  later be AI-generated against the same catalog.
+
+  **Idiomatic refactor (owner: "why is it so complex? json-render should
+  have easier ways?").** #150's pages built specs imperatively
+  (`build(data) → Spec`) and tables carried a per-cell display-object DSL —
+  real custom syntax. Reworked to json-render's intended data-binding model
+  (owner picked it over trimming or reverting, tradeoffs explicit): each
+  page is now a **static, data-independent `Spec`** (module constant) whose
+  props bind to the page's **raw `state`** via `$state` / `$computed`
+  (formatters live in `jr/functions.ts`, keyed by name) / `$template` /
+  `$cond`, with sections gated by element-level `visible` conditions.
+  `DataTable`/`RankList` take **raw rows + declarative columns** (`kind` +
+  optional `baseTone`/`tone` rule + `*Key` field refs); the component
+  formats internally via `format.ts` — **the per-cell DSL is gone**, pages
+  just shape `state` (raw API rows + a few derived `_frac`/`_color`/`_href`
+  fields). `spec.ts` gained `el(type,props,children,opts)` (opts carries
+  `visible`/`repeat`, both preserved by `nestedToFlat`) + `S`/`C`/`T`
+  directive shorthands; `renderer.tsx` exposes `Dash` (injects the
+  `functions` map). **Hard-won reactivity bug:** json-render passes the
+  resolved `element` to components as a REACTIVE getter (it tracks the
+  resolved-props memo), so a component must read `rp.element.props` LIVE —
+  snapshotting `const p = rp.element.props` once at setup freezes the
+  loading-state props and the view never updates when async resources
+  resolve. Ungated tables stayed empty while `visible`-gated detail pages
+  (which remount after load) worked, which is what surfaced it. Fix:
+  `px(rp)` returns a Proxy that forwards every access to the current
+  resolved props, so reading `p.x` inside JSX/memos stays reactive.
+  `StateProvider` reactivity confirmed from source — it diffs
+  `props.initialState` by reference and `store.update`s changed JSON
+  pointers, so passing a fresh `state()` object each tick re-renders;
+  `flattenToPointers` treats arrays as leaf values so `{$state:'/rows'}`
+  yields the whole array. Re-verified e2e across all 9 routes (0 errors,
+  full fidelity — sortable headers, dots, tone bars, CPU%/RSS).
+
 - **2026-06-17**: **Execution as a pluggable backend + `vx serve` (owner
   ask: "one process doing all the work; runs inform it what to run and
   subscribe; treat vx as a service with clients; later a hosted service").**

@@ -28,6 +28,7 @@ export type FormatHint =
   | 'hour'
   | 'number'
   | 'multiplier'
+  | 'cpuPct'
   | 'text'
 
 export function formatValue(hint: FormatHint | undefined, v: number): string {
@@ -54,6 +55,9 @@ export function formatValue(hint: FormatHint | undefined, v: number): string {
       return Number.isFinite(v) ? String(Math.round(v)) : '—'
     case 'multiplier':
       return `${v.toFixed(2)}×`
+    case 'cpuPct':
+      // v is already a percentage (e.g. 76 → "76%"), not a 0..1 ratio.
+      return Number.isFinite(v) ? `${Math.round(v)}%` : '—'
     default:
       return String(v)
   }
