@@ -1,10 +1,11 @@
 // Catalog component library for the json-render dashboard.
 //
 // These are the concrete Solid implementations behind every catalog component
-// name. Page specs (specs/*.ts) reference them by name; the json-render
-// Renderer instantiates them. They wrap the proven chart/ui primitives and add
-// the rich, self-contained widgets the dashboard needs (DataTable, RankList,
-// LiveActivity) so the specs stay pure data.
+// name. Static page specs reference them by name; the json-render Renderer
+// resolves each spec's props ($state/$computed/$template/$cond) against the
+// page's raw state and instantiates these. Tables/lists take RAW rows + a
+// declarative column/item config and format internally — so the specs stay
+// pure data and the pages only shape state, never per-cell display objects.
 
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
 import { A, useNavigate } from '@solidjs/router'
@@ -15,12 +16,23 @@ import { Flamegraph } from '../components/Flamegraph.tsx'
 import { formatHour } from '../format.ts'
 import { type FormatHint, type Tone, axisFormatter, formatValue, toneText } from './hints.ts'
 
-// Render context shape from json-render's createRenderer.
+// Render context shape from json-render's createRenderer. `rp.element` is a
+// reactive getter (it tracks the resolved-props memo), so props must be read
+// LIVE, never snapshotted at setup. This proxy forwards every access to the
+// current resolved props, so reading `p.x` inside JSX/memos stays reactive and
+// updates when state changes (e.g. async resources resolving).
 interface Ctx<P = Record<string, unknown>> {
   element: { props: P }
   children?: unknown
 }
-const px = <P,>(rp: Ctx<P>): P => rp.element.props
+const px = <P,>(rp: Ctx<P>): P =>
+  new Proxy({} as Record<string, unknown>, {
+    get: (_t, key) => (rp.element.props as Record<string, unknown>)[key as string],
+  }) as P
+
+function Dot(props: { color: string }) {
+  return <span class={`inline-block w-1.5 h-1.5 rounded-full bg-${props.color} shrink-0`} />
+}
 
 // --- Layout -----------------------------------------------------------------
 
@@ -161,8 +173,8 @@ export function LineChartEl(
   const p = px(rp)
   return (
     <LineChart
-      xs={p.xs}
-      series={p.series}
+      xs={p.xs ?? []}
+      series={p.series ?? []}
       formatX={axisFormatter(p.xFormat)}
       formatY={axisFormatter(p.yFormat)}
       height={p.height}
@@ -175,7 +187,7 @@ export function TreemapEl(
   rp: Ctx<{ data: Array<{ label: string; value: number; colorClass?: string }>; height?: number; valueFormat?: FormatHint }>,
 ) {
   const p = px(rp)
-  return <Treemap data={p.data} height={p.height} format={(v) => formatValue(p.valueFormat, v)} />
+  return <Treemap data={p.data ?? []} height={p.height} format={(v) => formatValue(p.valueFormat, v)} />
 }
 
 export function HeatmapEl(
@@ -184,7 +196,7 @@ export function HeatmapEl(
   const p = px(rp)
   return (
     <Heatmap
-      data={p.data}
+      data={p.data ?? []}
       cellSize={p.cellSize}
       format={(v) => (p.valueFormat ? formatValue(p.valueFormat, v) : `${v} runs`)}
     />
@@ -192,93 +204,123 @@ export function HeatmapEl(
 }
 
 export function FlamegraphEl(rp: Ctx<{ tasks: Parameters<typeof Flamegraph>[0]['tasks'] }>) {
-  return <Flamegraph tasks={px(rp).tasks} />
+  return <Flamegraph tasks={px(rp).tasks ?? []} />
 }
 
-// --- DataTable --------------------------------------------------------------
+// --- DataTable (raw rows + declarative columns; formats internally) ---------
 
-type Cell =
-  | string
-  | number
-  | { kind: 'muted'; v: string }
-  | { kind: 'tone'; v: string; tone: Tone }
-  | { kind: 'status'; status: string; cacheHit?: boolean | null }
-  | { kind: 'projtask'; project: string; task: string; n?: number }
-  | { kind: 'dots'; dots: string[]; v: string; sub?: string }
-  | { kind: 'index'; n: number; v: string }
-  | { kind: 'bar'; v: string; fraction: number; color: string }
+type CellKind =
+  | 'text'
+  | 'mono'
+  | 'muted'
+  | 'faint'
+  | FormatHint
+  | 'status'
+  | 'cache'
+  | 'projtask'
+  | 'bar'
+  | 'dots'
+
+// Conditional tone on a numeric field value, e.g. { gt: 0, tone: 'danger' }.
+interface ToneRule {
+  gt?: number
+  lt?: number
+  ge?: number
+  le?: number
+  tone: Tone
+  else?: Tone
+}
 
 interface Column {
-  key: string
+  key: string // field on the raw row (also the default sort key)
   label: string
   align?: 'left' | 'right'
   sortable?: boolean
-}
-interface Row {
-  cells: Record<string, Cell>
-  sort?: Record<string, number | string>
-  href?: string
-  filter?: string
+  kind?: CellKind // how to render the field (default: plain text)
+  format?: FormatHint // value format for kind:'bar'
+  baseTone?: Tone // unconditional tone (e.g. dim/cache columns)
+  tone?: ToneRule // conditional tone on the numeric field value (overrides baseTone)
+  // kind-specific field references (with sensible defaults):
+  statusKey?: string // 'status'
+  cacheHitKey?: string // 'status'/'cache'
+  projectKey?: string // 'projtask'
+  taskKey?: string // 'projtask'
+  nKey?: string // 'projtask' optional leading "1." index field
+  fracKey?: string // 'bar' fraction (0..1) field — default '_frac'
+  colorKey?: string // 'bar'/'dots' color-token field — default '_color'
+  dotsKeys?: string[] // 'dots' fields whose values are color tokens
+  subKey?: string // 'dots' trailing sub-note field
 }
 
-function Dot(props: { color: string }) {
-  return <span class={`inline-block w-1.5 h-1.5 rounded-full bg-${props.color} shrink-0`} />
+const TEXTISH = new Set(['text', 'mono', 'muted', 'faint'])
+
+function fieldTone(rule: ToneRule, v: number): Tone {
+  const hit =
+    (rule.gt !== undefined && v > rule.gt) ||
+    (rule.lt !== undefined && v < rule.lt) ||
+    (rule.ge !== undefined && v >= rule.ge) ||
+    (rule.le !== undefined && v <= rule.le)
+  return hit ? rule.tone : (rule.else ?? 'default')
 }
 
-function renderCell(cell: Cell) {
-  if (cell === null || cell === undefined) return <span class="text-fg-3">—</span>
-  if (typeof cell === 'string' || typeof cell === 'number') return <>{cell}</>
-  switch (cell.kind) {
-    case 'muted':
-      return <span class="text-fg-3 text-[10px]">{cell.v}</span>
-    case 'tone':
-      return <span class={toneText(cell.tone)}>{cell.v}</span>
+function renderField(col: Column, row: Record<string, unknown>) {
+  const raw = row[col.key]
+  switch (col.kind) {
     case 'status':
-      return <StatusBadge status={cell.status} cacheHit={cell.cacheHit} />
+      return (
+        <StatusBadge
+          status={String(row[col.statusKey ?? 'status'] ?? '')}
+          cacheHit={row[col.cacheHitKey ?? 'cacheHit'] as boolean | null}
+        />
+      )
+    case 'cache':
+      return <span class={toneText('cache')}>{row[col.cacheHitKey ?? 'cacheHit'] === true ? 'hit' : 'miss'}</span>
     case 'projtask':
       return (
         <span>
-          <Show when={cell.n !== undefined}>
-            <span class="text-fg-3 text-[10px] mr-2">{cell.n}.</span>
+          <Show when={col.nKey !== undefined && row[col.nKey!] !== undefined}>
+            <span class="text-fg-3 text-[10px] mr-2">{String(row[col.nKey!])}.</span>
           </Show>
-          <span class="text-fg-3">{cell.project}#</span>
-          {cell.task}
+          <span class="text-fg-3">{String(row[col.projectKey ?? 'project'])}#</span>
+          {String(row[col.taskKey ?? 'task'])}
         </span>
       )
     case 'dots':
       return (
         <div class="flex items-center gap-2 min-w-0">
-          <For each={cell.dots}>{(c) => <Dot color={c} />}</For>
-          <span class="truncate">{cell.v}</span>
-          <Show when={cell.sub}>
-            <span class="text-fg-3 text-[10px] shrink-0">{cell.sub}</span>
+          <For each={(col.dotsKeys ?? []).map((k) => row[k]).filter(Boolean) as string[]}>{(c) => <Dot color={c} />}</For>
+          <span class="truncate">{String(raw)}</span>
+          <Show when={col.subKey && row[col.subKey] !== undefined}>
+            <span class="text-fg-3 text-[10px] shrink-0">{String(row[col.subKey!])}</span>
           </Show>
         </div>
-      )
-    case 'index':
-      return (
-        <span>
-          <span class="text-fg-3 text-[10px] mr-2">{cell.n}.</span>
-          {cell.v}
-        </span>
       )
     case 'bar':
       return (
         <div class="flex items-center gap-2 justify-end">
-          <span class="w-16 text-right">{cell.v}</span>
+          <span class="w-16 text-right">{formatValue(col.format, Number(raw))}</span>
           <div class="w-20">
-            <HBar fraction={cell.fraction} colorClass={`bg-${cell.color}`} />
+            <HBar fraction={Number(row[col.fracKey ?? '_frac'] ?? 0)} colorClass={`bg-${row[col.colorKey ?? '_color'] ?? 'accent'}`} />
           </div>
         </div>
       )
   }
+  if (raw === null || raw === undefined || raw === '') return <span class="text-fg-3">—</span>
+  const display = col.kind && !TEXTISH.has(col.kind) ? formatValue(col.kind as FormatHint, Number(raw)) : String(raw)
+  const tone = col.tone
+    ? fieldTone(col.tone, Number(raw))
+    : (col.baseTone ?? (col.kind === 'muted' || col.kind === 'faint' ? 'faint' : undefined))
+  const cls = [tone ? toneText(tone) : '', col.kind === 'muted' ? 'text-[10px]' : ''].filter(Boolean).join(' ')
+  return cls ? <span class={cls}>{display}</span> : <>{display}</>
 }
 
 export function DataTable(
   rp: Ctx<{
+    rows: Array<Record<string, unknown>>
     columns: Column[]
-    rows: Row[]
+    rowHrefKey?: string // field holding the row link (e.g. '_href')
     filter?: boolean
+    filterKey?: string // field with searchable text (e.g. '_filter')
     filterPlaceholder?: string
     initialSort?: { key: string; desc?: boolean }
     emptyTitle?: string
@@ -293,14 +335,17 @@ export function DataTable(
   const [filterText, setFilterText] = createSignal('')
 
   const rows = createMemo(() => {
-    let rs = p.rows
+    let rs = p.rows ?? []
     const f = filterText().toLowerCase().trim()
-    if (f) rs = rs.filter((r) => (r.filter ?? '').includes(f))
+    if (f) {
+      const fk = p.filterKey
+      rs = rs.filter((r) => String(fk ? (r[fk] ?? '') : JSON.stringify(r)).toLowerCase().includes(f))
+    }
     const k = sortKey()
     if (k) {
       rs = [...rs].sort((a, b) => {
-        const av = a.sort?.[k] ?? 0
-        const bv = b.sort?.[k] ?? 0
+        const av = (a[k] ?? 0) as number | string
+        const bv = (b[k] ?? 0) as number | string
         const cmp = av === bv ? 0 : av > bv ? 1 : -1
         return sortDesc() ? -cmp : cmp
       })
@@ -316,6 +361,8 @@ export function DataTable(
       setSortDesc(true)
     }
   }
+
+  const hrefOf = (row: Record<string, unknown>) => (p.rowHrefKey ? (row[p.rowHrefKey] as string | undefined) : undefined)
 
   return (
     <div>
@@ -360,24 +407,27 @@ export function DataTable(
           </thead>
           <tbody>
             <For each={rows()}>
-              {(row) => (
-                <tr
-                  class="border-t border-border"
-                  classList={{ 'hover:bg-surface-hover cursor-pointer': !!row.href }}
-                  onClick={() => row.href && navigate(row.href)}
-                >
-                  <For each={p.columns}>
-                    {(col) => (
-                      <td
-                        class="px-4 py-2 font-mono"
-                        classList={{ 'text-left': col.align !== 'right', 'text-right': col.align === 'right' }}
-                      >
-                        {renderCell(row.cells[col.key] ?? '—')}
-                      </td>
-                    )}
-                  </For>
-                </tr>
-              )}
+              {(row) => {
+                const href = hrefOf(row)
+                return (
+                  <tr
+                    class="border-t border-border"
+                    classList={{ 'hover:bg-surface-hover cursor-pointer': !!href }}
+                    onClick={() => href && navigate(href)}
+                  >
+                    <For each={p.columns}>
+                      {(col) => (
+                        <td
+                          class="px-4 py-2 font-mono"
+                          classList={{ 'text-left': col.align !== 'right', 'text-right': col.align === 'right' }}
+                        >
+                          {renderField(col, row)}
+                        </td>
+                      )}
+                    </For>
+                  </tr>
+                )
+              }}
             </For>
           </tbody>
         </table>
@@ -386,52 +436,71 @@ export function DataTable(
   )
 }
 
-// --- RankList (leaderboard-style rows with optional progress bars) ----------
+// --- RankList (leaderboard-style rows from raw items) -----------------------
 
-interface RankItem {
-  index?: number
-  dots?: string[]
-  label: string
-  sub?: string
-  metaRight?: string
-  value: string
-  fraction?: number
-  color?: string
-  href?: string
-}
-
-export function RankList(rp: Ctx<{ items: RankItem[]; emptyTitle?: string; emptyCmd?: string }>) {
+export function RankList(
+  rp: Ctx<{
+    items: Array<Record<string, unknown>>
+    labelKey: string
+    valueKey: string
+    valueFormat?: FormatHint
+    indexed?: boolean
+    metaKey?: string
+    metaPrefix?: string
+    metaSuffix?: string
+    metaFormat?: FormatHint
+    dotsKeys?: string[]
+    colorKey?: string // color token field — default '_color'
+    fracKey?: string // fraction field (0..1) — default '_frac'
+    hrefKey?: string // row link field — default '_href'
+    subKey?: string
+    emptyTitle?: string
+    emptyCmd?: string
+  }>,
+) {
   const p = px(rp)
   const navigate = useNavigate()
+  const meta = (it: Record<string, unknown>) => {
+    if (!p.metaKey || it[p.metaKey] === undefined) return undefined
+    const v = p.metaFormat ? formatValue(p.metaFormat, Number(it[p.metaKey])) : String(it[p.metaKey])
+    return `${p.metaPrefix ?? ''}${v}${p.metaSuffix ?? ''}`
+  }
   return (
-    <Show when={p.items.length > 0} fallback={<EmptyState title={p.emptyTitle ?? 'Nothing yet'} cmd={p.emptyCmd} />}>
+    <Show
+      when={(p.items ?? []).length > 0}
+      fallback={<EmptyState title={p.emptyTitle ?? 'Nothing yet'} cmd={p.emptyCmd} />}
+    >
       <div class="flex flex-col">
         <For each={p.items}>
-          {(it) => (
-            <button
-              onClick={() => it.href && navigate(it.href)}
-              class="flex flex-col gap-1 px-4 py-2 text-left border-t border-border first:border-t-0"
-              classList={{ 'hover:bg-surface-hover': !!it.href, 'cursor-default': !it.href }}
-            >
-              <div class="flex items-center gap-2 text-[12px] min-w-0">
-                <Show when={it.index !== undefined}>
-                  <span class="text-[10px] font-mono text-fg-3 w-4 shrink-0">{it.index}.</span>
+          {(it, i) => {
+            const href = it[p.hrefKey ?? '_href'] as string | undefined
+            const frac = it[p.fracKey ?? '_frac'] as number | undefined
+            return (
+              <button
+                onClick={() => href && navigate(href)}
+                class="flex flex-col gap-1 px-4 py-2 text-left border-t border-border first:border-t-0"
+                classList={{ 'hover:bg-surface-hover': !!href, 'cursor-default': !href }}
+              >
+                <div class="flex items-center gap-2 text-[12px] min-w-0">
+                  <Show when={p.indexed}>
+                    <span class="text-[10px] font-mono text-fg-3 w-4 shrink-0">{i() + 1}.</span>
+                  </Show>
+                  <For each={(p.dotsKeys ?? []).map((k) => it[k]).filter(Boolean) as string[]}>{(c) => <Dot color={c} />}</For>
+                  <span class="font-mono truncate flex-1">{String(it[p.labelKey])}</span>
+                  <Show when={p.subKey && it[p.subKey] !== undefined}>
+                    <span class="text-fg-3 text-[10px] shrink-0">{String(it[p.subKey!])}</span>
+                  </Show>
+                  <Show when={meta(it) !== undefined}>
+                    <span class="text-fg-3 font-mono text-[10px] shrink-0">{meta(it)}</span>
+                  </Show>
+                  <span class="font-mono shrink-0">{formatValue(p.valueFormat, Number(it[p.valueKey]))}</span>
+                </div>
+                <Show when={frac !== undefined}>
+                  <HBar fraction={frac!} colorClass={`bg-${it[p.colorKey ?? '_color'] ?? 'accent'}`} />
                 </Show>
-                <For each={it.dots ?? []}>{(c) => <Dot color={c} />}</For>
-                <span class="font-mono truncate flex-1">{it.label}</span>
-                <Show when={it.sub}>
-                  <span class="text-fg-3 text-[10px] shrink-0">{it.sub}</span>
-                </Show>
-                <Show when={it.metaRight}>
-                  <span class="text-fg-3 font-mono text-[10px] shrink-0">{it.metaRight}</span>
-                </Show>
-                <span class="font-mono shrink-0">{it.value}</span>
-              </div>
-              <Show when={it.fraction !== undefined}>
-                <HBar fraction={it.fraction!} colorClass={`bg-${it.color ?? 'accent'}`} />
-              </Show>
-            </button>
-          )}
+              </button>
+            )
+          }}
         </For>
       </div>
     </Show>

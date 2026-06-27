@@ -190,8 +190,8 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
   formatter functions on the wire; charts take `xFormat`/`yFormat` hint
   strings, table cells carry a `kind` + tone token). Every page (Overview,
   Tasks, TaskDetail, Projects, ProjectDetail, Cache, Trends, RunDetail,
-  Bottlenecks) is now a `build(data) → Spec` function over the same `/v1/*`
-  resources, rendered by the one `DashRenderer`. **`api.ts`, `format.ts`,
+  Bottlenecks) renders the same `/v1/*` resources through `Dash`. **`api.ts`,
+  `format.ts`,
   `charts.tsx`, `ui.tsx` and the router are UNCHANGED** — the proven
   chart/UI code is reused as json-render's component library (the right way
   to adopt it). Carried-over fixes preserved: CPU utilization % (avg/max
@@ -211,11 +211,43 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
   0 console errors, real data, correct nav, charts filling cards. No
   CACHE_VERSION/core-test impact (UI-only; `apps` is excluded from
   oxlint/oxfmt and not covered by `bun test`, so validated at build +
-  runtime). PRs #149 (RSS/CPU%/chart fixes) + #150 (the rewrite). NB:
-  json-render did not itself fix any data/chart complaint (those were
-  backend/component issues fixed in #149) — its value is that the dashboard
-  is now spec-driven, so a view could later be AI-generated against the
-  same catalog.
+  runtime). PRs #149 (RSS/CPU%/chart fixes) + #150 (initial rewrite) +
+  #151 (idiomatic refactor). NB: json-render did not itself fix any
+  data/chart complaint (those were backend/component issues fixed in #149)
+  — its value is that the dashboard is now spec-driven, so a view could
+  later be AI-generated against the same catalog.
+
+  **Idiomatic refactor (owner: "why is it so complex? json-render should
+  have easier ways?").** #150's pages built specs imperatively
+  (`build(data) → Spec`) and tables carried a per-cell display-object DSL —
+  real custom syntax. Reworked to json-render's intended data-binding model
+  (owner picked it over trimming or reverting, tradeoffs explicit): each
+  page is now a **static, data-independent `Spec`** (module constant) whose
+  props bind to the page's **raw `state`** via `$state` / `$computed`
+  (formatters live in `jr/functions.ts`, keyed by name) / `$template` /
+  `$cond`, with sections gated by element-level `visible` conditions.
+  `DataTable`/`RankList` take **raw rows + declarative columns** (`kind` +
+  optional `baseTone`/`tone` rule + `*Key` field refs); the component
+  formats internally via `format.ts` — **the per-cell DSL is gone**, pages
+  just shape `state` (raw API rows + a few derived `_frac`/`_color`/`_href`
+  fields). `spec.ts` gained `el(type,props,children,opts)` (opts carries
+  `visible`/`repeat`, both preserved by `nestedToFlat`) + `S`/`C`/`T`
+  directive shorthands; `renderer.tsx` exposes `Dash` (injects the
+  `functions` map). **Hard-won reactivity bug:** json-render passes the
+  resolved `element` to components as a REACTIVE getter (it tracks the
+  resolved-props memo), so a component must read `rp.element.props` LIVE —
+  snapshotting `const p = rp.element.props` once at setup freezes the
+  loading-state props and the view never updates when async resources
+  resolve. Ungated tables stayed empty while `visible`-gated detail pages
+  (which remount after load) worked, which is what surfaced it. Fix:
+  `px(rp)` returns a Proxy that forwards every access to the current
+  resolved props, so reading `p.x` inside JSX/memos stays reactive.
+  `StateProvider` reactivity confirmed from source — it diffs
+  `props.initialState` by reference and `store.update`s changed JSON
+  pointers, so passing a fresh `state()` object each tick re-renders;
+  `flattenToPointers` treats arrays as leaf values so `{$state:'/rows'}`
+  yields the whole array. Re-verified e2e across all 9 routes (0 errors,
+  full fidelity — sortable headers, dots, tone bars, CPU%/RSS).
 
 - **2026-06-17**: **Execution as a pluggable backend + `vx serve` (owner
   ask: "one process doing all the work; runs inform it what to run and

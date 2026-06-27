@@ -1,64 +1,55 @@
 import { createMemo, createResource } from 'solid-js'
-import { type ProjectRollup, getOriginSignal, listProjects } from '../api.ts'
-import { type Node, el, toSpec } from '../jr/spec.ts'
-import { DashRenderer } from '../jr/renderer.tsx'
-import { formatBytes, formatDuration, formatPercent, formatRelativeTime, paletteFor } from '../format.ts'
+import { getOriginSignal, listProjects } from '../api.ts'
+import { S, el, toSpec } from '../jr/spec.ts'
+import { Dash } from '../jr/renderer.tsx'
+import { paletteFor } from '../format.ts'
 
 const enc = encodeURIComponent
 
-function build(data: ProjectRollup[] | undefined): Node {
-  const rows = data ?? []
-  const maxTime = Math.max(1, ...rows.map((p) => p.totalDurationMs))
-  return el('Page', { title: 'Projects' }, [
+const SPEC = toSpec(
+  el('Page', { title: 'Projects' }, [
     el('Card', { noPad: true }, [
       el('DataTable', {
+        rows: S('/rows'),
+        rowHrefKey: '_href',
         filter: true,
+        filterKey: '_filter',
         filterPlaceholder: 'filter…',
-        initialSort: { key: 'total', desc: true },
+        initialSort: { key: 'totalDurationMs', desc: true },
         emptyTitle: 'No projects discovered',
         emptyCmd: 'vx run <task>',
         columns: [
-          { key: 'name', label: 'Project', sortable: true },
+          { key: 'project', label: 'Project', sortable: true, kind: 'dots', dotsKeys: ['_projColor'], subKey: '_tasks' },
           { key: 'runs', label: 'Runs', align: 'right', sortable: true },
-          { key: 'failures', label: 'Failures', align: 'right', sortable: true },
-          { key: 'hitRate', label: 'Hit %', align: 'right', sortable: true },
-          { key: 'total', label: 'Total time', align: 'right', sortable: true },
-          { key: 'saved', label: 'Saved', align: 'right', sortable: true },
-          { key: 'cache', label: 'Cache', align: 'right', sortable: true },
-          { key: 'last', label: 'Last run', align: 'right', sortable: true },
+          { key: 'failures', label: 'Failures', align: 'right', sortable: true, tone: { gt: 0, tone: 'danger' } },
+          { key: 'hitRate', label: 'Hit %', align: 'right', sortable: true, kind: 'percent0', baseTone: 'cache' },
+          { key: 'totalDurationMs', label: 'Total time', align: 'right', sortable: true, kind: 'bar', format: 'duration' },
+          { key: 'estimatedTimeSavedMs', label: 'Saved', align: 'right', sortable: true, kind: 'duration', baseTone: 'success' },
+          { key: 'cacheBytes', label: 'Cache', align: 'right', sortable: true, kind: 'bytes' },
+          { key: 'lastRunAt', label: 'Last run', align: 'right', sortable: true, kind: 'relativeTime', baseTone: 'faint' },
         ],
-        rows: rows.map((p) => ({
-          href: `/projects/${enc(p.project)}`,
-          filter: p.project.toLowerCase(),
-          sort: {
-            name: p.project,
-            runs: p.runs,
-            failures: p.failures,
-            hitRate: p.hitRate,
-            total: p.totalDurationMs,
-            saved: p.estimatedTimeSavedMs,
-            cache: p.cacheBytes,
-            last: p.lastRunAt ?? 0,
-          },
-          cells: {
-            name: { kind: 'dots', dots: [paletteFor(p.project)], v: p.project, sub: `· ${p.taskCount} tasks` },
-            runs: String(p.runs),
-            failures: { kind: 'tone', v: String(p.failures), tone: p.failures > 0 ? 'danger' : 'default' },
-            hitRate: { kind: 'tone', v: formatPercent(p.hitRate, 0), tone: 'cache' },
-            total: { kind: 'bar', v: formatDuration(p.totalDurationMs), fraction: p.totalDurationMs / maxTime, color: paletteFor(p.project) },
-            saved: { kind: 'tone', v: formatDuration(p.estimatedTimeSavedMs), tone: 'success' },
-            cache: formatBytes(p.cacheBytes),
-            last: { kind: 'tone', v: p.lastRunAt ? formatRelativeTime(p.lastRunAt) : '—', tone: 'faint' },
-          },
-        })),
       }),
     ]),
-  ])
-}
+  ]),
+)
 
 export function Projects() {
   const origin = getOriginSignal()
   const [data] = createResource(origin, () => listProjects(500))
-  const spec = createMemo(() => toSpec(build(data())))
-  return <DashRenderer spec={spec()} />
+  const state = createMemo<Record<string, unknown>>(() => {
+    const rows = data() ?? []
+    const maxTime = Math.max(1, ...rows.map((p) => p.totalDurationMs))
+    return {
+      rows: rows.map((p) => ({
+        ...p,
+        _projColor: paletteFor(p.project),
+        _tasks: `· ${p.taskCount} tasks`,
+        _frac: p.totalDurationMs / maxTime,
+        _color: paletteFor(p.project),
+        _href: `/projects/${enc(p.project)}`,
+        _filter: p.project.toLowerCase(),
+      })),
+    }
+  })
+  return <Dash spec={SPEC} state={state()} />
 }
