@@ -1,13 +1,12 @@
 // The JSON-spec rendering path for the catalog.
 //
-// The SAME plain components used directly in JSX (components.tsx) are exposed to
-// json-render here via the documented `defineRegistry` + `<Renderer>` API. The
-// only glue is `adapt`: json-render hands a component its resolved props as
-// `ctx.props` (a reactive getter) + `ctx.children`; `adapt` forwards those to a
-// plain component as ordinary props (through a live proxy so prop reads stay
-// reactive when async state resolves).
+// The catalog components (components.tsx) are native json-render components —
+// each takes `BaseComponentProps<P>` — so they register DIRECTLY via the
+// documented `defineRegistry` API with no adapter. `defineRegistry` hands each
+// component a reactive `props` getter, so prop reads stay live as async state
+// resolves.
 //
-// Pages render in JSX directly. `Dash` is for raw-JSON / AI-generated specs:
+// `Dash` is the render entry for a pure-JSON spec bound to raw `state`:
 //   <Dash spec={json} state={rawData} />
 
 import type { JSX } from 'solid-js'
@@ -18,43 +17,23 @@ import { catalog } from './catalog.ts'
 import { FUNCTIONS } from './functions.ts'
 import * as C from './components.tsx'
 
-// json-render render ctx → plain props. `ctx.props` is a reactive getter, so we
-// proxy rather than snapshot — reading `props.x` in the component stays live.
-interface JrCtx {
-  // json-render types resolved props as `unknown` (the catalog uses z.any()).
-  props: unknown
-  children?: unknown
-}
-type PlainComponent = (props: Record<string, unknown>) => JSX.Element
-const adapt =
-  (Comp: PlainComponent) =>
-  (ctx: JrCtx): JSX.Element =>
-    Comp(
-      new Proxy(
-        {},
-        {
-          get: (_t, key) => (key === 'children' ? ctx.children : (ctx.props as Record<string, unknown>)[key as string]),
-        },
-      ) as Record<string, unknown>,
-    )
-
 const { registry } = defineRegistry(catalog, {
   components: {
-    Page: adapt(C.Page as PlainComponent),
-    Stack: adapt(C.Stack as PlainComponent),
-    Grid: adapt(C.Grid as PlainComponent),
-    Card: adapt(C.Card as PlainComponent),
-    Metric: adapt(C.Metric as PlainComponent),
-    Text: adapt(C.Text as PlainComponent),
-    Empty: adapt(C.Empty as PlainComponent),
-    Facts: adapt(C.Facts as PlainComponent),
-    LineChart: adapt(C.LineChart as PlainComponent),
-    Treemap: adapt(C.Treemap as PlainComponent),
-    Heatmap: adapt(C.Heatmap as PlainComponent),
-    Flamegraph: adapt(C.Flamegraph as PlainComponent),
-    DataTable: adapt(C.DataTable as PlainComponent),
-    RankList: adapt(C.RankList as PlainComponent),
-    LiveActivity: adapt(C.LiveActivity as PlainComponent),
+    Page: C.Page,
+    Stack: C.Stack,
+    Grid: C.Grid,
+    Card: C.Card,
+    Metric: C.Metric,
+    Text: C.Text,
+    Empty: C.Empty,
+    Facts: C.Facts,
+    LineChart: C.LineChart,
+    Treemap: C.Treemap,
+    Heatmap: C.Heatmap,
+    Flamegraph: C.Flamegraph,
+    DataTable: C.DataTable,
+    RankList: C.RankList,
+    LiveActivity: C.LiveActivity,
   },
 })
 

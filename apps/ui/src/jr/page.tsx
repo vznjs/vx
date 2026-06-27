@@ -5,7 +5,7 @@
 // gating, and renders the spec through the shared registry. This is the ONLY
 // per-page machinery — the pages themselves are pure data.
 
-import { type JSX, createMemo, createResource } from 'solid-js'
+import { type JSX, ErrorBoundary, createMemo, createResource } from 'solid-js'
 import { useParams } from '@solidjs/router'
 import { nestedToFlat } from '@json-render/core'
 import type { Spec } from '@json-render/solid'
@@ -22,6 +22,17 @@ export interface JsonView {
 }
 
 const toFlat = (spec: Record<string, unknown>): Spec => ('elements' in spec ? (spec as unknown as Spec) : nestedToFlat(spec))
+
+/** Last-resort fallback so an unexpected render throw shows a message, not a blank page. */
+function PageError(props: { error: unknown }): JSX.Element {
+  const msg = props.error instanceof Error ? props.error.message : String(props.error)
+  return (
+    <div class="m-6 rounded-lg border border-danger/40 bg-danger/5 p-4 text-sm">
+      <div class="font-semibold text-danger">Failed to render this view</div>
+      <div class="mt-1 font-mono text-xs text-fg-3">{msg}</div>
+    </div>
+  )
+}
 
 /** Build a route component from a pure-JSON page definition. */
 export function jsonPage(view: JsonView): () => JSX.Element {
@@ -42,12 +53,27 @@ export function jsonPage(view: JsonView): () => JSX.Element {
     const state = createMemo<Record<string, unknown>>(() => {
       const s: Record<string, unknown> = { params: decoded(), ...(view.state ?? {}) }
       for (const { key, res } of resources) {
-        const v = res()
+        // Read `res.error` BEFORE the value: calling an errored resource's
+        // accessor re-throws, which (with no per-source boundary) would blank
+        // the whole page. Degrade a failed source to an 'error' status so only
+        // its own section falls back to an empty state, never the entire view.
+        let v: unknown
+        let status: 'loading' | 'error' | 'missing' | 'ok'
+        if (res.loading) status = 'loading'
+        else if (res.error) status = 'error'
+        else {
+          v = res()
+          status = v === null ? 'missing' : v === undefined ? 'loading' : 'ok'
+        }
         s[key] = v
-        s[`${key}Status`] = res.loading ? 'loading' : v === null ? 'missing' : v === undefined ? 'loading' : 'ok'
+        s[`${key}Status`] = status
       }
       return s
     })
-    return <Dash spec={flat} state={state()} />
+    return (
+      <ErrorBoundary fallback={(err) => <PageError error={err} />}>
+        <Dash spec={flat} state={state()} />
+      </ErrorBoundary>
+    )
   }
 }
