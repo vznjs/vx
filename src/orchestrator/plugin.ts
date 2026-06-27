@@ -18,9 +18,92 @@
 // it). One write-capable hook is reserved for a future iteration —
 // onCacheLookup returning { skip: true } — but not in v1.
 
+import type { Cache, CacheLayer, CachePolicy } from '../cache/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { UserError } from '../util/index.js'
-import type { EventBus, RunStartInfo } from './events.js'
+import type { EventBus, RunStartInfo, WireEvent } from './events.js'
+import type { RunBackend, RunRequest } from './protocol.js'
+
+/**
+ * A vx plugin. Contributes any subset of three RUN-LEVEL infrastructure
+ * capabilities — where work routes (backend), which cache is used (cache),
+ * who observes the run (eventSink). It NEVER changes how a task executes
+ * (Architecture principle #3: shell is the API). Registered explicitly in
+ * vx.workspace.ts via defineWorkspace({ plugins: [...] }). No auto-discovery.
+ *
+ * The old observe-only `Plugin` (`{ name, setup(ctx) }`) is a subset of
+ * this shape: a plugin with only `setup` installs and runs exactly as
+ * before via `installPlugins`. The new capabilities are consulted by
+ * `plugin-host.ts`, each falling back to today's default.
+ */
+export interface VxPlugin {
+  /** Stable identifier, convention `'org/name'`. Used in errors + precedence logs. */
+  readonly name: string
+
+  /**
+   * Contribute a run backend. Returns a RunBackend (run(request) → result),
+   * or undefined to decline (core then tries the next plugin, else the
+   * fallback). Consulted ONCE per run, before scheduling. At most one
+   * plugin's backend is used (first non-undefined, in declaration order).
+   */
+  backend?(ctx: BackendContext): RunBackend | undefined | Promise<RunBackend | undefined>
+
+  /**
+   * Contribute a cache layer. Returns a CacheLayer wrapping (or replacing)
+   * the local Cache, or undefined to decline. Consulted ONCE per prepareRun.
+   * Precedence: first non-undefined plugin cache wins; else core's env-var
+   * Turbo-wire LayeredCache; else the bare local Cache.
+   */
+  cache?(ctx: CacheContext): CacheLayer | undefined | Promise<CacheLayer | undefined>
+
+  /**
+   * Contribute an event sink — a consumer of the serializable WireEvent
+   * stream, subscribed for the whole run via wireForwarder. Fire-and-forget;
+   * a throwing sink is isolated and cannot break the run. This is the
+   * generalization of the old observe-only Plugin: an uploader, an OTel
+   * exporter, a Slack notifier all fit here.
+   */
+  eventSink?(ctx: EventSinkContext): EventSink | undefined | Promise<EventSink | undefined>
+
+  /**
+   * Optional one-time setup before any capability is consulted (validate the
+   * workspace, open a connection, read a token). Throwing aborts the run with
+   * a clean UserError naming the plugin — same contract as the old setup().
+   */
+  setup?(ctx: PluginSetupContext): void | Promise<void>
+
+  /** Optional teardown at end-of-run (flush a sink, close a socket). Errors are logged, never thrown. */
+  teardown?(): void | Promise<void>
+}
+
+/** A WireEvent consumer. onEvent is fire-and-forget; flush is awaited at teardown. */
+export interface EventSink {
+  onEvent(event: WireEvent): void
+  flush?(): Promise<void>
+}
+
+/** Shared, read-only context every capability factory receives. */
+interface BaseContext {
+  readonly workspaceRoot: string
+  readonly cacheDir: string
+  /** Funnel warnings into the run:status channel (framed output). */
+  warn(message: string): void
+}
+
+export interface PluginSetupContext extends BaseContext {}
+export interface EventSinkContext extends BaseContext {}
+
+export interface BackendContext extends BaseContext {
+  /** The resolved RunRequest about to be executed — cwd, tasks, policy, flow. */
+  readonly request: RunRequest
+}
+
+export interface CacheContext extends BaseContext {
+  /** The local Cache handle the plugin may wrap (LayeredCache(local, remote)). */
+  readonly localCache: Cache
+  /** The run's cache policy (the 4 read/write axes). */
+  readonly policy: CachePolicy
+}
 
 export interface PluginContext {
   /** Where the workspace lives on disk. */
@@ -63,8 +146,12 @@ export interface Plugin {
    * `ctx.on(name, fn)` or subscribe to `ctx.bus` directly. Returning
    * a promise lets a plugin do async setup; the bus subscription must
    * be installed synchronously inside setup() so no events are missed.
+   *
+   * OPTIONAL: a capability-only plugin (one that contributes
+   * `backend`/`cache`/`eventSink` but no `setup`) is simply skipped by
+   * `installPlugins` — its capabilities are consulted by `plugin-host.ts`.
    */
-  setup(ctx: PluginContext): void | Promise<void>
+  setup?(ctx: PluginContext): void | Promise<void>
 }
 
 export interface InstallPluginsArgs {
@@ -81,10 +168,14 @@ export interface InstallPluginsArgs {
 }
 
 /**
- * Install every plugin against a shared bus + context. Synchronous
- * loop; setup() promises are awaited in order so a plugin's hooks are
- * subscribed before the next plugin's setup runs. Throws if any
+ * Install every plugin's `setup` hook against a shared bus + context.
+ * Synchronous loop; setup() promises are awaited in order so a plugin's
+ * hooks are subscribed before the next plugin's setup runs. Throws if any
  * plugin's setup() throws (the run cannot start with a broken plugin).
+ *
+ * A plugin without a `setup` is a capability-only plugin (backend / cache
+ * / eventSink) — skipped here; those capabilities are consulted by
+ * `plugin-host.ts`.
  */
 export async function installPlugins(args: InstallPluginsArgs): Promise<() => void> {
   const { plugins, bus, workspaceRoot, cacheDir } = args
@@ -96,8 +187,12 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
     if (typeof plugin.name !== 'string' || plugin.name.length === 0) {
       throw new UserError('plugin missing `name` field')
     }
+    // No setup → a capability-only plugin (backend / cache / eventSink),
+    // consulted by plugin-host.ts; skip the hook install. A setup that's
+    // present but not callable is a real authoring error — reject it.
+    if (plugin.setup === undefined) continue
     if (typeof plugin.setup !== 'function') {
-      throw new UserError(`plugin '${plugin.name}' missing setup() function`)
+      throw new UserError(`plugin '${plugin.name}' setup is not a function`)
     }
 
     const ctx: PluginContext = {

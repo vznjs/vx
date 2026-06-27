@@ -33,6 +33,8 @@ import {
 } from '../workspace/index.js'
 import { buildTaskGraph, expandRequested, type TaskNode } from '../graph/index.js'
 import { wrapWithRemoteCache } from './remote-cache-setup.js'
+import { resolveCache } from './plugin-host.js'
+import type { VxPlugin } from './plugin.js'
 import { createHashCache, type HashCache } from './task-hash.js'
 import type { Logger } from './logger.js'
 import type { RunOptions } from './options.js'
@@ -197,7 +199,17 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const policy: CachePolicy = options.cache ?? FULL_CACHE_POLICY
   const cacheDir = resolveCacheDir(workspaceRoot, workspaceConfig)
   const localCache = new Cache(cacheDir, { read: policy.localRead, write: policy.localWrite })
-  const cache = wrapWithRemoteCache(localCache, log, policy)
+  // Cache seam: a plugin's `cache` capability takes precedence; otherwise
+  // the env-var Turbo-wire fallback (today's unconditional behavior). With
+  // no cache plugin this is byte-identical to wrapWithRemoteCache.
+  const plugins = (workspaceConfig?.plugins ?? []) as readonly VxPlugin[]
+  const cache = await resolveCache(
+    plugins,
+    localCache,
+    { workspaceRoot, cacheDir, warn: (m) => log.status(m), localCache, policy },
+    log,
+    () => wrapWithRemoteCache(localCache, log, policy),
+  )
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
   const gitFilesCache = new GitFilesCache()

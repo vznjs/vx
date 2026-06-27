@@ -33,6 +33,18 @@ export interface RunResult {
   outcomes: OutcomeView[]
 }
 
+/**
+ * Where a `vx run` executes. The client submits a serializable
+ * `RunRequest` and gets back a `RunResult`; it neither knows nor cares
+ * whether the work happened in-process or was delegated to a service.
+ * This is the currency of the `backend` plugin capability — part of the
+ * public wire contract (it lives here, not in `cli`, so a plugin can
+ * reference it without a `cli` import).
+ */
+export interface RunBackend {
+  run(request: RunRequest): Promise<RunResult>
+}
+
 /** service → client. */
 export type ServerMessage =
   | { t: 'event'; event: WireEvent }

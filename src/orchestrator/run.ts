@@ -23,6 +23,8 @@ import { computeTaskHash } from './task-hash.js'
 import { busLogger, createEventBus, terminalSubscriber } from './events.js'
 import { attachOtelEmit } from './otel-emit.js'
 import { installPlugins } from './plugin.js'
+import type { VxPlugin } from './plugin.js'
+import { subscribeEventSinks } from './plugin-host.js'
 import { defaultLogger, resolveOutputView } from './logger.js'
 import { detectColors } from './colors.js'
 import { formatPersistentList } from './framed-output.js'
@@ -80,11 +82,21 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     return { ok: false, outcomes: [] }
   }
   // Install user plugins as additional bus subscribers BEFORE the run
-  // starts emitting events. Failure of a plugin's setup() aborts the
-  // run with a clean UserError naming the plugin (per the Plugin API
-  // contract in src/orchestrator/plugin.ts).
+  // starts emitting events. `installPlugins` runs each plugin's optional
+  // `setup` hook (the old observe-only path); `subscribeEventSinks` wires
+  // each plugin's `eventSink` capability onto the bus via wireForwarder.
+  // Both fail-fast on a setup() throw with a clean UserError naming the
+  // plugin; eventSink init failures are isolated (observability never
+  // breaks a run). With no plugin, both are no-ops.
   let disposePlugins: (() => void) | undefined
+  let disposeSinks: (() => void) | undefined
   if (prepared.workspaceConfig?.plugins && prepared.workspaceConfig.plugins.length > 0) {
+    const plugins = prepared.workspaceConfig.plugins as readonly VxPlugin[]
+    const pluginCtx = {
+      workspaceRoot: prepared.workspaceRoot,
+      cacheDir: prepared.cacheDir,
+      warn: (m: string) => log.status(m),
+    }
     try {
       disposePlugins = await installPlugins({
         plugins: prepared.workspaceConfig.plugins as never,
@@ -93,7 +105,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         cacheDir: prepared.cacheDir,
         warn: (m) => log.status(m),
       })
+      disposeSinks = await subscribeEventSinks(plugins, bus, pluginCtx)
     } catch (err) {
+      disposePlugins?.()
       prepared.cache.close()
       throw err
     }
@@ -482,6 +496,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // Plugins installed at the top of run() get their bus subscriptions
     // released here. Idempotent; safe even if installPlugins threw.
     disposePlugins?.()
+    disposeSinks?.()
     detachOtel?.()
   }
 }

@@ -18,7 +18,7 @@ import {
   wireForwarder,
   type ClientMessage,
   type Logger,
-  type RunRequest,
+  type RunBackend,
   type RunResult,
   type ServerMessage,
 } from '../orchestrator/index.js'
@@ -26,10 +26,6 @@ import { findWorkspaceRoot } from '../workspace/index.js'
 import { UserError } from '../util/index.js'
 import { connectDevForwarder } from './dev-client.js'
 import { serveInfoPath } from './serve.js'
-
-export interface RunBackend {
-  run(request: RunRequest): Promise<RunResult>
-}
 
 /**
  * Run in-process via `run()` — today's behaviour, byte-identical. If a

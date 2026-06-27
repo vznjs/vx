@@ -22,6 +22,20 @@ export { run, FULL_CACHE_POLICY, parseCachePolicy } from './orchestrator/index.j
 export type { CachePolicy, Logger, RunOptions, RunSummary } from './orchestrator/index.js'
 export type { TaskNode, TaskOutcome, TaskStatus } from './graph/index.js'
 
+// Plugin API — the three run-level extension points (backend / cache /
+// eventSink). A plugin is declared in vx.workspace.ts via
+// defineWorkspace({ plugins: [...] }). See
+// docs/design/core-cloud-split-2026-06.md.
+export type {
+  VxPlugin,
+  EventSink,
+  BackendContext,
+  CacheContext,
+  EventSinkContext,
+  PluginSetupContext,
+  RunBackend,
+} from './orchestrator/index.js'
+
 // Event bus + wire form — adapters (otel-bridge, custom subscribers) ride this.
 export { createEventBus, wireForwarder, toWireEvent } from './orchestrator/index.js'
 export type {

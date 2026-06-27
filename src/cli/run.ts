@@ -9,7 +9,9 @@ import {
   listProjects,
   loadProjectConfig,
   loadWorkspace,
+  loadWorkspaceConfig,
   parseFilter,
+  resolveCacheDir,
   type ProjectMeta,
 } from '../workspace/index.js'
 import {
@@ -17,9 +19,11 @@ import {
   planRun,
   optionsToRequest,
   projectOutcome,
+  resolveBackend as resolvePluginBackend,
   type OutcomeView,
   type RunOptions,
   type RunResult,
+  type VxPlugin,
 } from '../orchestrator/index.js'
 import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
@@ -423,11 +427,24 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     return summary.ok ? 0 : 1
   }
 
-  // Resolve where this run executes: a running `vx serve` (local or
-  // hosted) if one is reachable, else in-process. The client renders the
-  // same either way; a missing/unreachable service falls back to local.
+  // Resolve where this run executes. A plugin's `backend` capability wins
+  // first; otherwise the built-in fallback — a running `vx serve` (local
+  // or hosted) if one is reachable, else in-process. The client renders
+  // the same either way; a missing/unreachable service falls back to local.
   const request = optionsToRequest(opts)
-  const backend = await resolveBackend(cwd)
+  const root = await findWorkspaceRoot(cwd)
+  const workspaceConfig = await loadWorkspaceConfig(root)
+  const plugins = (workspaceConfig?.plugins ?? []) as readonly VxPlugin[]
+  const backend = await resolvePluginBackend(
+    plugins,
+    {
+      workspaceRoot: root,
+      cacheDir: resolveCacheDir(root, workspaceConfig),
+      warn: (m) => process.stderr.write(`${m}\n`),
+      request,
+    },
+    () => resolveBackend(cwd),
+  )
   const result = await backend.run(request)
   if (parsed.verbosity > 0) printSummary(result)
   return result.ok ? 0 : 1

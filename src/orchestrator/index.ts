@@ -24,6 +24,7 @@ export { createWireRenderer } from './wire-render.js'
 export { optionsToRequest, requestToOptions } from './protocol.js'
 export type {
   ClientMessage,
+  RunBackend,
   RunRequest,
   RunResult,
   ServerMessage,
@@ -68,12 +69,19 @@ export {
 export { computePredictedPriorities } from './predict.js'
 export {
   installPlugins,
+  type BackendContext,
+  type CacheContext,
+  type EventSink,
+  type EventSinkContext,
   type InstallPluginsArgs,
   type Plugin,
   type PluginContext,
   type PluginHookHandlers,
   type PluginHookName,
+  type PluginSetupContext,
+  type VxPlugin,
 } from './plugin.js'
+export { resolveBackend, resolveCache, subscribeEventSinks } from './plugin-host.js'
 export { prepareForCoordinator, computeTaskHashForCoord } from './coordinator-prepare.js'
 export { workerExecute } from './worker-exec.js'
 export type { WorkerExecArgs, WorkerExecResult } from './worker-exec.js'

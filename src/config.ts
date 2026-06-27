@@ -21,13 +21,21 @@ export interface WorkspaceConfig {
 }
 
 /**
- * Structural plugin shape (`{ name, setup(ctx) }`). The full type
- * lives in `src/orchestrator/plugin.ts`; this is a re-declaration so
- * `config.ts` stays a leaf module (no orchestrator import).
+ * Structural plugin shape — any subset of the three run-level
+ * capabilities (`backend`/`cache`/`eventSink`) plus optional
+ * `setup`/`teardown`. The fully-typed `VxPlugin` lives in
+ * `src/orchestrator/plugin.ts` and is what users import; this is a
+ * re-declaration with opaque function types so `config.ts` stays a leaf
+ * module (no orchestrator import). The orchestrator casts to `VxPlugin`
+ * before consulting capabilities.
  */
 export interface Plugin {
   readonly name: string
-  setup(ctx: unknown): void | Promise<void>
+  backend?(ctx: unknown): unknown
+  cache?(ctx: unknown): unknown
+  eventSink?(ctx: unknown): unknown
+  setup?(ctx: unknown): void | Promise<void>
+  teardown?(): void | Promise<void>
 }
 
 export interface ProjectConfig {
