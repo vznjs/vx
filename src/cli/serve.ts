@@ -10,6 +10,7 @@ import { mkdir, unlink, writeFile } from 'node:fs/promises'
 import { Cache } from '../cache/index.js'
 import {
   run as runOrchestrator,
+  planRun,
   createEventBus,
   wireForwarder,
   requestToOptions,
@@ -210,6 +211,37 @@ export async function startServe(opts: {
         if (url.pathname === '/v1/invocations') {
           const limit = Number(url.searchParams.get('limit') ?? '50')
           return jsonResponse({ invocations: listInvocations(cache.dbHandle(), limit) })
+        }
+        // The task DAG for a set of requested tasks: nodes + dependency edges +
+        // predicted cache status, via a no-exec planRun. The run cockpit lays
+        // this out and overlays live status from the WS run stream.
+        if (url.pathname === '/v1/graph') {
+          const tasks = (url.searchParams.get('tasks') ?? '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+          if (tasks.length === 0)
+            return jsonResponse({ error: 'tasks query param required' }, { status: 400 })
+          return (async () => {
+            try {
+              const plan = await planRun({ cwd: opts.root, tasks, log: silentLogger })
+              return jsonResponse({
+                nodes: plan.tasks.map((t) => ({
+                  id: t.node.id,
+                  project: t.node.projectName,
+                  task: t.node.taskName,
+                  isGroup: t.node.config.exec === undefined,
+                  deps: t.deps,
+                  cacheStatus: t.cacheStatus,
+                })),
+              })
+            } catch (err) {
+              return jsonResponse(
+                { error: err instanceof Error ? err.message : String(err) },
+                { status: 400 },
+              )
+            }
+          })()
         }
         {
           const m = /^\/v1\/runs\/([^/]+)$/.exec(url.pathname)

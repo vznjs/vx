@@ -11,6 +11,7 @@ interface NavItem {
 }
 
 const NAV: NavItem[] = [
+  { href: '/run', label: 'Run', icon: 'i-tabler-player-play' },
   { href: '/', label: 'Overview', icon: 'i-tabler-layout-dashboard' },
   { href: '/projects', label: 'Projects', icon: 'i-tabler-stack-2' },
   { href: '/tasks', label: 'Tasks', icon: 'i-tabler-list-details' },

@@ -170,6 +170,44 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-27**: **Dashboard restyle + run-centric cockpit with a live
+  task graph** (owner: "make the ui prettier… make it modern" → "focus the
+  ui on flows of actual development… from working with nx locally" → "runs
+  should be visualized with a graph, each node with status + a progress
+  bar… display logs for a task… rerun while in progress" → "let's forbid
+  running while in progress for now"). Two strands, owner-picked via
+  AskUserQuestion (refined custom theme over DaisyUI — DaisyUI's current
+  major is Tailwind-4-first and doesn't plug into our UnoCSS; run-centric
+  focus over analytics). **(1) Restyle** (`bfe…`/`73252c0`): modern dark
+  look — violet/cyan aurora bg, rounded-xl cards + shadows, pill badges,
+  gradient-tinted metric cards, glassy chrome, **detached floating
+  sidebar**. Fixed a SYSTEMIC bug found along the way: color tokens were
+  hex `var()`s, so UnoCSS silently DROPPED every `/N` alpha
+  (`.bg-accent/10 → background:var(--accent)` full-strength) — that's why
+  the analytics cards rendered loud/unreadable and the active nav was a
+  solid block. Tokens are now RGB CHANNELS exposed via `rgb(var(--x) /
+<alpha-value>)`, so opacity modifiers work everywhere (one raw usage,
+  StatusDot, wrapped in `rgb()`). **(2) Run cockpit** (`/run`, new
+  `RunConsole.tsx`, dedicated interactive route — NOT pure-JSON, since a
+  live WS-driven console can't be expressed as data): enter a task → it
+  fetches the DAG and opens a WS to vx serve; streamed `task:start/stdout/
+stderr/complete` events drive each node's live status, an overall
+  progress bar, and per-task log capture (ANSI-stripped). The graph is a
+  real DAG — new server endpoint `GET /v1/graph?tasks=…` runs a no-exec
+  `planRun` and returns nodes + dependency edges + predicted cache status
+  (`src/cli/serve.ts`); the client lays it out layered (longest-path
+  layering, `run-graph-layout.ts`) with SVG edges, clickable nodes →
+  log panel. **Rerun is FORBIDDEN while a run is in progress** (Run button
+  disabled until it finishes) — one run at a time sidesteps the
+  output-cleaning race between overlapping different-hash runs (the
+  in-flight hash-dedup already makes same-input reruns safe; true
+  concurrent safety needs the global scheduler / output RW-locks in
+  docs/design/execution-service-2026-06.md — deferred). Nav now leads with
+  Run. Verified e2e: triggered a real `lint` run, watched 3 nodes + 2
+  edges go success/failed live, progress 2/2, logs streamed on click, 0
+  console errors. New `/v1/graph` server test. apps + serve only; core
+  cache/exec untouched, no CACHE_VERSION impact.
+
 - **2026-06-27**: **`vx serve` defaults to a STABLE port** (owner: "when
   I stop the server and rerun I get a new port even if old is unused
   why"). Root cause: `startServe` bound `port: opts.port ?? 0`, and port

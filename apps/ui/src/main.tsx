@@ -2,6 +2,7 @@ import { render } from 'solid-js/web'
 import { HashRouter, Route } from '@solidjs/router'
 import 'virtual:uno.css'
 import { Shell } from './components/Shell.tsx'
+import { RunConsole } from './components/RunConsole.tsx'
 import { jsonPage } from './jr/page.tsx'
 // Every page/view is a pure JSON file in `views/`, rendered through the catalog.
 import OVERVIEW from './views/overview.json'
@@ -21,6 +22,7 @@ if (!root) throw new Error('#root missing')
 render(
   () => (
     <HashRouter root={Shell}>
+      <Route path="/run" component={RunConsole} />
       <Route path="/" component={jsonPage(OVERVIEW)} />
       <Route path="/projects" component={jsonPage(PROJECTS)} />
       <Route path="/projects/:name" component={jsonPage(PROJECT_DETAIL)} />

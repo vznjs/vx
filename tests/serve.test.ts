@@ -281,6 +281,36 @@ describe('resolveBackend', () => {
     }
   })
 
+  it('serves the task DAG (nodes + deps) for /v1/graph', async () => {
+    const root = await makeWorkspace()
+    const server = await startServe({ root })
+    try {
+      const res = await fetch(`${server.origin}/v1/graph?tasks=hello`)
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as {
+        nodes: Array<{
+          id: string
+          project: string
+          task: string
+          isGroup: boolean
+          deps: string[]
+        }>
+      }
+      expect(body.nodes.length).toBe(1)
+      expect(body.nodes[0]!.id).toBe('demo#hello')
+      expect(body.nodes[0]!.project).toBe('demo')
+      expect(body.nodes[0]!.task).toBe('hello')
+      expect(body.nodes[0]!.isGroup).toBe(false)
+      expect(body.nodes[0]!.deps).toEqual([])
+      // Missing tasks param → 400.
+      const bad = await fetch(`${server.origin}/v1/graph`)
+      expect(bad.status).toBe(400)
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('ignores a stale info file (unreachable origin) and falls back', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'vx-stale-'))
     await mkdir(path.join(root, '.vx'), { recursive: true })

@@ -437,3 +437,79 @@ export function subscribeEvents(onMessage: (event: unknown) => void): () => void
   }
   return () => source.close()
 }
+
+// ---------------------------------------------------------------------------
+// Run cockpit — task graph + live run submission over WebSocket
+// ---------------------------------------------------------------------------
+
+export interface GraphNode {
+  id: string
+  project: string
+  task: string
+  isGroup: boolean
+  deps: readonly string[]
+  cacheStatus: 'hit-local' | 'hit-remote' | 'miss' | 'no-cache' | 'group'
+}
+
+/** Fetch the task DAG (nodes + edges + predicted cache status) for a task set. */
+export async function getGraph(tasks: readonly string[]): Promise<GraphNode[]> {
+  const r = await getJson<{ nodes: GraphNode[] }>(`/v1/graph?tasks=${encodeURIComponent(tasks.join(','))}`)
+  return r.nodes
+}
+
+/** Live event from a delegated run (mirrors src/orchestrator/events.ts WireEvent). */
+export type WireEvent =
+  | { kind: 'run:start'; info: { total: number; concurrency?: number } }
+  | { kind: 'task:start'; task: { id: string; project: string; task: string; isGroup: boolean; persistent: boolean; command?: string } }
+  | { kind: 'task:stdout'; taskId: string; chunk: string }
+  | { kind: 'task:stderr'; taskId: string; chunk: string }
+  | { kind: 'task:complete'; outcome: { taskId: string; status: string; exitCode: number; durationMs: number; restored?: boolean; hash?: string; cpuMs?: number; peakRssBytes?: number } }
+  | { kind: 'run:status'; line: string }
+  | { kind: 'run:end' }
+
+export interface RunHandlers {
+  onEvent: (ev: WireEvent) => void
+  onResult: (result: { ok: boolean }) => void
+  onError: (message: string) => void
+}
+
+/**
+ * Submit a run to `vx serve` over WebSocket and stream its events back.
+ * Returns a cancel fn that closes the socket (the run keeps going
+ * server-side, but the cockpit stops listening — used for supersede).
+ */
+export function runTasks(tasks: readonly string[], cwd: string, h: RunHandlers): () => void {
+  const wsOrigin = getOrigin().replace(/^http/, 'ws')
+  let ws: WebSocket
+  try {
+    ws = new WebSocket(wsOrigin)
+  } catch (err) {
+    h.onError(err instanceof Error ? err.message : String(err))
+    return () => {}
+  }
+  ws.onopen = () => ws.send(JSON.stringify({ t: 'run', request: { tasks: [...tasks], cwd } }))
+  ws.onmessage = (e) => {
+    let m: { t: string; event?: WireEvent; result?: { ok: boolean }; message?: string }
+    try {
+      m = JSON.parse(String(e.data))
+    } catch {
+      return
+    }
+    if (m.t === 'event' && m.event) h.onEvent(m.event)
+    else if (m.t === 'result' && m.result) {
+      h.onResult(m.result)
+      ws.close()
+    } else if (m.t === 'error') {
+      h.onError(m.message ?? 'run error')
+      ws.close()
+    }
+  }
+  ws.onerror = () => h.onError('connection error')
+  return () => {
+    try {
+      ws.close()
+    } catch {
+      // already closed
+    }
+  }
+}
