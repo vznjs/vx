@@ -2,6 +2,8 @@ import { render } from 'solid-js/web'
 import { HashRouter, Route } from '@solidjs/router'
 import 'virtual:uno.css'
 import { Shell } from './components/Shell.tsx'
+import { jsonPage } from './jr/page.tsx'
+import { OVERVIEW } from './pages/overview.ts'
 import { Overview } from './pages/Overview.tsx'
 import { Projects } from './pages/Projects.tsx'
 import { ProjectDetail } from './pages/ProjectDetail.tsx'
@@ -19,7 +21,7 @@ if (!root) throw new Error('#root missing')
 render(
   () => (
     <HashRouter root={Shell}>
-      <Route path="/" component={Overview} />
+      <Route path="/" component={jsonPage(OVERVIEW)} />
       <Route path="/projects" component={Projects} />
       <Route path="/projects/:name" component={ProjectDetail} />
       <Route path="/tasks" component={Tasks} />
