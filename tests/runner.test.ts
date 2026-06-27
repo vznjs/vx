@@ -2,7 +2,13 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { runCommand, runPersistent, shellQuote, signalExitCode } from '../src/exec/runner.js'
+import {
+  resourceUsageToCpuRss,
+  runCommand,
+  runPersistent,
+  shellQuote,
+  signalExitCode,
+} from '../src/exec/runner.js'
 
 describe('runCommand', () => {
   let cwd: string
@@ -267,5 +273,31 @@ line`, // embedded newline
     } finally {
       await (await import('node:fs/promises')).rm(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('resourceUsageToCpuRss — peak RSS unit per platform', () => {
+  // maxRSS's unit differs by OS: Linux returns kilobytes, macOS/BSD bytes.
+  // Treating macOS's byte value as KB inflates peak RSS by 1024×.
+  // Only the fields the converter reads; cast through unknown for the rest.
+  const usage = {
+    cpuTime: { total: 1_500_000n },
+    maxRSS: 480_000, // raw ru_maxrss
+  } as unknown as Parameters<typeof resourceUsageToCpuRss>[0]
+
+  it('Linux: maxRSS is kilobytes → ×1024 to bytes', async () => {
+    const r = resourceUsageToCpuRss(usage, 'linux')
+    expect(r.peakRssBytes).toBe(480_000 * 1024)
+    expect(r.cpuMs).toBe(1500)
+  })
+
+  it('macOS: maxRSS is already bytes → no multiply', async () => {
+    const r = resourceUsageToCpuRss(usage, 'darwin')
+    expect(r.peakRssBytes).toBe(480_000)
+  })
+
+  it('Windows: PeakWorkingSetSize is bytes → no multiply', async () => {
+    const r = resourceUsageToCpuRss(usage, 'win32')
+    expect(r.peakRssBytes).toBe(480_000)
   })
 })

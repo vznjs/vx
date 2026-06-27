@@ -379,13 +379,18 @@ export async function streamToString(
  */
 export function resourceUsageToCpuRss(
   usage: ReturnType<ReturnType<typeof Bun.spawn>['resourceUsage']>,
+  platform: NodeJS.Platform = process.platform,
 ): { cpuMs?: number; peakRssBytes?: number } {
   if (!usage) return {}
-  // cpuTime.total is microseconds as a bigint; maxRSS is kilobytes (Linux)
-  // or bytes (macOS depending on Bun version) — Bun normalizes to KB on
-  // Linux/macOS, returning the kernel value directly. We treat it as KB
-  // consistently with Bun's docs and convert to bytes.
+  // cpuTime.total is microseconds as a bigint → ms.
   const cpuMs = Number(usage.cpuTime.total) / 1000
-  const peakRssBytes = usage.maxRSS * 1024
+  // maxRSS is the raw kernel `ru_maxrss`, whose UNIT IS PLATFORM-SPECIFIC and
+  // Bun does NOT normalize it:
+  //   • Linux   → kilobytes  (multiply by 1024 for bytes)
+  //   • macOS / BSD → bytes  (already bytes; do NOT multiply)
+  //   • Windows → bytes (PeakWorkingSetSize)
+  // Treating macOS's byte value as KB inflates peak RSS by 1024× — e.g. a
+  // real 460 MB showed up as 460 GB. Convert per platform.
+  const peakRssBytes = platform === 'linux' ? usage.maxRSS * 1024 : usage.maxRSS
   return { cpuMs, peakRssBytes }
 }
