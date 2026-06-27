@@ -309,6 +309,29 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
     dots, bars, charts/treemap/heatmap/flamegraph). `spec.ts`'s `el/toSpec`
     helpers are now unused (the loader uses `nestedToFlat` directly) but kept.
 
+        **Follow-up fixes (owner: "tons of ts errors. Not working cache tab, no
+        runs, not working flame graph. no cpu % on tasks in runs").** The
+        views/\*.json conversion shipped with a stale `dist` and three real
+        regressions, all fixed: (1) ~21 TS errors — `getHistory` takes
+        `{limit}` not a number (data.ts, CommandPalette), optional route params
+        need a `?? ''` fallback (`getTaskDetail`/`getRun`), json-render's ctx
+        props are typed `unknown` not `Record` (renderer.tsx `JrCtx`), and the
+        catalog was missing the required `actions: {}` (catalog.ts); tsc now
+        clean. (2) Flamegraph dropped EVERY cache-hit task — it keyed off
+        `wallclockStartNs/EndNs`, which are null for restored tasks, so a 3-task
+        run drew 1 bar. Switched the time base to `startedAt`/`endedAt` (epoch
+        ms, present on every row) and replaced project-lanes with greedy
+        time-packing (`flamegraph-layout.ts` — first lane whose previous bar
+        finished), so lanes now reveal parallelism and cache hits show as thin
+        marks. (3) Run-detail tasks table had CPU time but no utilization % —
+        added a `cpuPct` column (dashed for cache hits, green >100%), matching
+        task-detail. The "cache tab not working / no runs" report did NOT
+        reproduce in a fresh build (all metrics + 76 entries + 12 invocations
+        render) — it was the 43-byte-stale committed `dist`; rebuilt + recommitted.
+        Re-verified e2e across all 9 routes: 0 console errors, flamegraph draws
+        all tasks, run detail shows 369% CPU for the one executed task. Pushed
+        direct to main (no PR, per owner workflow).
+
 - **2026-06-17**: **Execution as a pluggable backend + `vx serve` (owner
   ask: "one process doing all the work; runs inform it what to run and
   subscribe; treat vx as a service with clients; later a hosted service").**
