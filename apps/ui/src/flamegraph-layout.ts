@@ -1,6 +1,7 @@
-// Pure layout math for the flamegraph. Lane = project; bar position is
-// proportional to (span_start_ns, span_end_ns) within the run's wallclock
-// window. The Solid component just maps these to absolute-positioned divs.
+// Pure layout math for the flamegraph. Bars are greedily packed into lanes
+// (first lane whose previous bar finished), so lanes reveal parallelism rather
+// than grouping by project; position is proportional to (start, end) within the
+// run window. The Solid component maps these to absolute-positioned divs.
 
 export interface LayoutInput {
   taskId: string
@@ -32,22 +33,31 @@ export function layout(input: readonly LayoutInput[]): Layout {
   const minStart = Math.min(...input.map((t) => t.startNs))
   const maxEnd = Math.max(...input.map((t) => t.endNs))
   const totalNs = Math.max(1, maxEnd - minStart)
-  const lanes: string[] = []
-  for (const t of input) if (!lanes.includes(t.project)) lanes.push(t.project)
-  lanes.sort()
-  const bars = input.map<LayoutBar>((t) => {
-    const lane = lanes.indexOf(t.project)
-    const leftPct = ((t.startNs - minStart) / totalNs) * 100
-    const widthPct = Math.max(0.2, ((t.endNs - t.startNs) / totalNs) * 100)
-    return {
-      taskId: t.taskId,
-      project: t.project,
-      lane,
-      leftPct,
-      widthPct,
-      status: t.status,
-      cacheHit: t.cacheHit,
+  // Greedy time-packing: each task takes the first lane whose previous bar
+  // already finished; otherwise a new lane. This shows every task (cache hits
+  // included) and reveals parallelism, instead of piling a project into one row.
+  const order = input.map((t, i) => ({ t, i })).sort((a, b) => a.t.startNs - b.t.startNs)
+  const laneEnds: number[] = []
+  const laneByIndex = new Array<number>(input.length)
+  for (const { t, i } of order) {
+    let lane = laneEnds.findIndex((end) => end <= t.startNs)
+    if (lane === -1) {
+      lane = laneEnds.length
+      laneEnds.push(t.endNs)
+    } else {
+      laneEnds[lane] = t.endNs
     }
-  })
+    laneByIndex[i] = lane
+  }
+  const bars = input.map<LayoutBar>((t, i) => ({
+    taskId: t.taskId,
+    project: t.project,
+    lane: laneByIndex[i]!,
+    leftPct: ((t.startNs - minStart) / totalNs) * 100,
+    widthPct: Math.max(0.6, ((t.endNs - t.startNs) / totalNs) * 100),
+    status: t.status,
+    cacheHit: t.cacheHit,
+  }))
+  const lanes = laneEnds.map((_, i) => String(i)) // count only — drives height
   return { bars, lanes, totalNs }
 }

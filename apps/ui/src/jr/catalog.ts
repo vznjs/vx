@@ -29,4 +29,5 @@ export const catalog = defineCatalog(schema, {
     RankList: anyProps(),
     LiveActivity: anyProps(),
   },
+  actions: {},
 })

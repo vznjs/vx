@@ -21,7 +21,8 @@ import * as C from './components.tsx'
 // json-render render ctx → plain props. `ctx.props` is a reactive getter, so we
 // proxy rather than snapshot — reading `props.x` in the component stays live.
 interface JrCtx {
-  props: Record<string, unknown>
+  // json-render types resolved props as `unknown` (the catalog uses z.any()).
+  props: unknown
   children?: unknown
 }
 type PlainComponent = (props: Record<string, unknown>) => JSX.Element
@@ -32,7 +33,7 @@ const adapt =
       new Proxy(
         {},
         {
-          get: (_t, key) => (key === 'children' ? ctx.children : ctx.props[key as string]),
+          get: (_t, key) => (key === 'children' ? ctx.children : (ctx.props as Record<string, unknown>)[key as string]),
         },
       ) as Record<string, unknown>,
     )

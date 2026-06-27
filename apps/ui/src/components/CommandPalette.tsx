@@ -28,7 +28,7 @@ export function CommandPalette(props: {
   )
   const [tasks] = createResource(
     () => props.open,
-    async (open) => (open ? await getHistory(500) : []),
+    async (open) => (open ? await getHistory({ limit: 500 }) : []),
   )
 
   const all = createMemo<Item[]>(() => {

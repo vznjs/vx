@@ -284,6 +284,12 @@
                   "baseTone": "faint"
                 },
                 {
+                  "key": "cpuMs",
+                  "label": "CPU %",
+                  "align": "right",
+                  "kind": "cpuPct"
+                },
+                {
                   "key": "peakRssBytes",
                   "label": "Peak RSS",
                   "align": "right",

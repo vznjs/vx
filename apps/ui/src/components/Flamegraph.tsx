@@ -13,17 +13,19 @@ function colorFor(status: string, cacheHit: boolean): string {
 }
 
 export function Flamegraph(props: { tasks: readonly RunSummaryRow[] }) {
+  // Use startedAt/endedAt (epoch ms, present for EVERY task) as the uniform
+  // time base — wallclock ns spans are null for cache hits, so keying off them
+  // dropped every restored task from the chart. ms units are fine: the layout
+  // normalizes against the run window, so only relative proportions matter.
   const inputs = (): LayoutInput[] =>
-    props.tasks
-      .filter((t) => t.wallclockStartNs !== null && t.wallclockEndNs !== null)
-      .map((t) => ({
-        taskId: `${t.project}#${t.task}`,
-        project: t.project,
-        startNs: Number(t.wallclockStartNs),
-        endNs: Number(t.wallclockEndNs),
-        status: t.status,
-        cacheHit: t.cacheHit === true,
-      }))
+    props.tasks.map((t) => ({
+      taskId: `${t.project}#${t.task}`,
+      project: t.project,
+      startNs: t.startedAt,
+      endNs: t.endedAt,
+      status: t.status,
+      cacheHit: t.cacheHit === true,
+    }))
 
   const l = () => layout(inputs())
 
@@ -35,19 +37,6 @@ export function Flamegraph(props: { tasks: readonly RunSummaryRow[] }) {
           height: `${Math.max(1, l().lanes.length) * (LANE_HEIGHT + LANE_PAD) + LANE_PAD}px`,
         }}
       >
-        <For each={l().lanes}>
-          {(lane, i) => (
-            <div
-              class="absolute left-0 right-0 border-b border-border/40 text-fg-3 text-[10px] pl-1 font-mono"
-              style={{
-                top: `${i() * (LANE_HEIGHT + LANE_PAD) + LANE_PAD}px`,
-                height: `${LANE_HEIGHT}px`,
-              }}
-            >
-              {lane}
-            </div>
-          )}
-        </For>
         <For each={l().bars}>
           {(bar) => (
             <div

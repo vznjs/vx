@@ -35,7 +35,7 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   projectsAll: () => listProjects(500),
   invocations: () => listInvocations(12),
   trends: () => getRunTrends({ bucket: 'day' }).then((r) => r.points),
-  history: () => getHistory(500),
+  history: () => getHistory({ limit: 500 }),
   cacheBreakdown: () => getCacheBreakdown(100),
   storage: () => getStorageGrowth(30),
   cacheEntries: () => listCacheEntries({ limit: 200, orderBy: 'size_bytes' }),
@@ -45,8 +45,8 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   flaky: () => getFlakiest(25),
   prunable: () => getPrunable(7, 25),
   // param-based (route params, already decoded by the loader)
-  taskDetail: (p) => getTaskDetail(p.id),
-  run: (p) => getRun(p.id),
-  projectTasks: (p) => getHistory(500).then((h) => h.filter((t) => t.project === p.name)),
+  taskDetail: (p) => getTaskDetail(p.id ?? ''),
+  run: (p) => getRun(p.id ?? ''),
+  projectTasks: (p) => getHistory({ limit: 500 }).then((h) => h.filter((t) => t.project === p.name)),
   projectSummary: (p) => listProjects(500).then((ps) => ps.find((x) => x.project === p.name) ?? null),
 }
