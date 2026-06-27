@@ -53,33 +53,33 @@ export const Shell: ParentComponent = (props) => {
 
   return (
     <div class="min-h-full flex bg-bg">
-      {/* Sidebar */}
-      <aside class="w-48 shrink-0 border-r border-border bg-surface flex flex-col">
-        <div class="h-12 px-4 flex items-center gap-2 border-b border-border">
-          <div class="w-6 h-6 rounded bg-gradient-to-br from-accent to-accent-2 flex items-center justify-center text-bg font-bold text-xs">
+      {/* Sidebar — detached floating card */}
+      <aside class="w-56 shrink-0 m-3 rounded-2xl border border-border/70 bg-surface/60 backdrop-blur-xl shadow-elevated flex flex-col sticky top-3 self-start h-[calc(100vh-1.5rem)] overflow-hidden">
+        <div class="h-14 px-4 flex items-center gap-2.5 border-b border-border/70">
+          <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-accent to-accent-2 flex items-center justify-center text-bg font-bold text-[13px] shadow-glow">
             vx
           </div>
-          <span class="font-mono text-sm text-fg-1 font-medium">dashboard</span>
+          <span class="font-mono text-sm text-fg-1 font-semibold tracking-tight">vx insights</span>
         </div>
-        <nav class="flex-1 p-2 flex flex-col gap-0.5">
+        <nav class="flex-1 p-2.5 flex flex-col gap-0.5">
           {NAV.map((item) => (
             <A
               href={item.href}
               end={item.href === '/'}
-              class="flex items-center gap-2 px-2.5 py-1.5 rounded text-fg-2 hover:text-fg hover:bg-surface-hover transition-colors text-[13px] no-underline"
-              activeClass="!text-fg !bg-surface-hover"
+              class="group flex items-center gap-2.5 px-3 py-2 rounded-lg text-fg-2 hover:text-fg hover:bg-surface-hover/70 transition-all text-[13px] no-underline"
+              activeClass="!text-accent !bg-accent/10 font-medium ring-1 ring-inset ring-accent/20"
             >
-              <span class={`${item.icon} text-sm shrink-0`} aria-hidden="true" />
+              <span class={`${item.icon} text-base shrink-0 opacity-80 group-hover:opacity-100`} aria-hidden="true" />
               <span>{item.label}</span>
             </A>
           ))}
         </nav>
-        <div class="p-2 border-t border-border">
+        <div class="p-2.5 border-t border-border/70">
           <button
             onClick={() => setPaletteOpen(true)}
-            class="w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-fg-3 hover:text-fg hover:bg-surface-hover text-[12px] transition-colors"
+            class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-fg-3 hover:text-fg hover:bg-surface-hover/70 text-[12px] transition-all"
           >
-            <span class="i-tabler-search text-sm shrink-0" />
+            <span class="i-tabler-search text-base shrink-0" />
             <span>Search</span>
             <kbd class="ml-auto">⌘K</kbd>
           </button>
@@ -89,7 +89,7 @@ export const Shell: ParentComponent = (props) => {
       {/* Main */}
       <div class="flex-1 min-w-0 flex flex-col">
         {/* Topbar */}
-        <header class="h-12 px-4 border-b border-border bg-surface/50 backdrop-blur flex items-center gap-3 sticky top-0 z-10">
+        <header class="h-14 px-5 border-b border-border/70 bg-bg/60 backdrop-blur-xl flex items-center gap-3 sticky top-0 z-10">
           <Breadcrumb pathname={location.pathname} />
           <div class="flex-1" />
           <Show
@@ -133,7 +133,7 @@ export const Shell: ParentComponent = (props) => {
           </Show>
         </header>
 
-        <main class="flex-1 p-5 max-w-[1400px] w-full mx-auto">{props.children}</main>
+        <main class="flex-1 p-6 max-w-[1440px] w-full mx-auto">{props.children}</main>
 
         <footer class="px-4 py-2 border-t border-border text-[11px] text-fg-3 text-center">
           <Show

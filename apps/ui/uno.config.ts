@@ -1,5 +1,11 @@
 import { defineConfig, presetIcons, presetUno, transformerVariantGroup } from 'unocss'
 
+// Theme colors are stored as SPACE-SEPARATED RGB CHANNELS (e.g. --accent:
+// 167 139 250) and exposed to UnoCSS as `rgb(var(--x) / <alpha-value>)`, so
+// opacity modifiers (`bg-accent/10`, `border-danger/25`) actually apply. With
+// hex vars UnoCSS silently drops the alpha and every tint renders full-strength.
+const rgb = (v: string) => `rgb(var(${v}) / <alpha-value>)`
+
 export default defineConfig({
   presets: [presetUno(), presetIcons({ scale: 1.0 })],
   transformers: [transformerVariantGroup()],
@@ -28,40 +34,45 @@ export default defineConfig({
   theme: {
     colors: {
       // Surfaces
-      bg: 'var(--bg)',
-      surface: 'var(--surface)',
-      'surface-2': 'var(--surface-2)',
-      'surface-hover': 'var(--surface-hover)',
+      bg: rgb('--bg'),
+      surface: rgb('--surface'),
+      'surface-2': rgb('--surface-2'),
+      'surface-hover': rgb('--surface-hover'),
       // Text
-      fg: 'var(--fg)',
-      'fg-1': 'var(--fg-1)',
-      'fg-2': 'var(--fg-2)',
-      'fg-3': 'var(--fg-3)',
+      fg: rgb('--fg'),
+      'fg-1': rgb('--fg-1'),
+      'fg-2': rgb('--fg-2'),
+      'fg-3': rgb('--fg-3'),
       // Borders
-      border: 'var(--border)',
-      'border-strong': 'var(--border-strong)',
+      border: rgb('--border'),
+      'border-strong': rgb('--border-strong'),
       // Brand + semantic
-      accent: 'var(--accent)',
-      'accent-2': 'var(--accent-2)',
-      success: 'var(--success)',
-      warn: 'var(--warn)',
-      danger: 'var(--danger)',
-      info: 'var(--info)',
+      accent: rgb('--accent'),
+      'accent-2': rgb('--accent-2'),
+      success: rgb('--success'),
+      warn: rgb('--warn'),
+      danger: rgb('--danger'),
+      info: rgb('--info'),
       // Cache provenance
-      'cache-local': 'var(--cache-local)',
-      'cache-remote': 'var(--cache-remote)',
+      'cache-local': rgb('--cache-local'),
+      'cache-remote': rgb('--cache-remote'),
       // Chart palette (8-step categorical, colorblind-friendlier)
-      'chart-1': 'var(--chart-1)',
-      'chart-2': 'var(--chart-2)',
-      'chart-3': 'var(--chart-3)',
-      'chart-4': 'var(--chart-4)',
-      'chart-5': 'var(--chart-5)',
-      'chart-6': 'var(--chart-6)',
-      'chart-7': 'var(--chart-7)',
-      'chart-8': 'var(--chart-8)',
+      'chart-1': rgb('--chart-1'),
+      'chart-2': rgb('--chart-2'),
+      'chart-3': rgb('--chart-3'),
+      'chart-4': rgb('--chart-4'),
+      'chart-5': rgb('--chart-5'),
+      'chart-6': rgb('--chart-6'),
+      'chart-7': rgb('--chart-7'),
+      'chart-8': rgb('--chart-8'),
     },
     fontFamily: {
       mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+    },
+    boxShadow: {
+      card: '0 1px 2px 0 rgb(0 0 0 / 0.4)',
+      elevated: '0 8px 32px -12px rgb(0 0 0 / 0.7), 0 2px 8px -4px rgb(0 0 0 / 0.5)',
+      glow: '0 0 0 1px rgb(167 139 250 / 0.25), 0 12px 32px -12px rgb(167 139 250 / 0.35)',
     },
   },
   preflights: [
@@ -69,77 +80,96 @@ export default defineConfig({
       getCSS: () => `
         :root {
           color-scheme: dark;
+          --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-          /* Surfaces — graded for layered depth */
-          --bg: #07080a;
-          --surface: #0e1014;
-          --surface-2: #14171c;
-          --surface-hover: #1a1e24;
+          /* Tokens are RGB CHANNELS (see top of file) — graded for depth. */
+          --bg: 8 9 14;
+          --surface: 15 17 23;
+          --surface-2: 22 25 34;
+          --surface-hover: 28 32 41;
 
-          /* Text */
-          --fg: #e7e9ee;
-          --fg-1: #c2c7d0;
-          --fg-2: #8a92a0;
-          --fg-3: #5a6270;
+          --fg: 236 238 243;
+          --fg-1: 197 202 212;
+          --fg-2: 139 147 163;
+          --fg-3: 91 99 113;
 
-          /* Borders */
-          --border: #1d2128;
-          --border-strong: #2a2f37;
+          --border: 30 34 43;
+          --border-strong: 44 49 60;
 
-          /* Brand */
-          --accent: #a78bfa;
-          --accent-2: #c084fc;
+          --accent: 167 139 250;
+          --accent-2: 192 132 252;
 
-          /* Semantic */
-          --success: #4ade80;
-          --warn: #facc15;
-          --danger: #f87171;
-          --info: #38bdf8;
+          --success: 74 222 128;
+          --warn: 250 204 21;
+          --danger: 248 113 113;
+          --info: 56 189 248;
 
-          /* Cache provenance */
-          --cache-local: #38bdf8;
-          --cache-remote: #818cf8;
+          --cache-local: 56 189 248;
+          --cache-remote: 129 140 248;
 
-          /* Chart palette */
-          --chart-1: #a78bfa;
-          --chart-2: #38bdf8;
-          --chart-3: #4ade80;
-          --chart-4: #facc15;
-          --chart-5: #f472b6;
-          --chart-6: #fb923c;
-          --chart-7: #818cf8;
-          --chart-8: #2dd4bf;
+          --chart-1: 167 139 250;
+          --chart-2: 56 189 248;
+          --chart-3: 74 222 128;
+          --chart-4: 250 204 21;
+          --chart-5: 244 114 182;
+          --chart-6: 251 146 60;
+          --chart-7: 129 140 248;
+          --chart-8: 45 212 191;
         }
 
         html, body, #root { height: 100%; }
         body {
           margin: 0;
-          background: var(--bg);
-          color: var(--fg);
+          background: rgb(var(--bg));
+          /* Subtle violet aurora behind everything for depth. */
+          background-image:
+            radial-gradient(1100px 520px at 18% -8%, rgb(var(--accent) / 0.10), transparent 60%),
+            radial-gradient(900px 480px at 100% 0%, rgb(var(--info) / 0.05), transparent 55%);
+          background-attachment: fixed;
+          color: rgb(var(--fg));
           font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
           font-size: 13px;
           line-height: 1.5;
           font-feature-settings: "cv11", "ss01", "ss03";
           -webkit-font-smoothing: antialiased;
+          text-rendering: optimizeLegibility;
         }
         ::-webkit-scrollbar { width: 10px; height: 10px; }
         ::-webkit-scrollbar-thumb {
-          background: var(--border);
-          border-radius: 6px;
-          border: 2px solid var(--bg);
+          background: rgb(var(--border-strong));
+          border-radius: 8px;
+          border: 2px solid transparent;
+          background-clip: padding-box;
         }
-        ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+        ::-webkit-scrollbar-thumb:hover { background: rgb(58 65 80); background-clip: padding-box; }
+        ::-webkit-scrollbar-corner { background: transparent; }
+        * { scrollbar-width: thin; scrollbar-color: rgb(var(--border-strong)) transparent; }
+
         button, input, select { font: inherit; color: inherit; }
         button { background: none; border: none; cursor: pointer; }
-        input, select { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
-        input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.15); }
+        ::selection { background: rgb(var(--accent) / 0.3); }
+        input, select {
+          background: rgb(var(--surface-2));
+          border: 1px solid rgb(var(--border));
+          border-radius: 8px;
+          padding: 7px 11px;
+          transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+        }
+        input::placeholder { color: rgb(var(--fg-3)); }
+        input:focus, select:focus {
+          outline: none;
+          border-color: rgb(var(--accent));
+          box-shadow: 0 0 0 3px rgb(var(--accent) / 0.18);
+        }
         kbd {
           display: inline-flex; align-items: center;
-          padding: 2px 6px; border-radius: 4px;
-          background: var(--surface-2); border: 1px solid var(--border);
-          font-family: var(--mono); font-size: 11px; color: var(--fg-2);
+          padding: 1px 6px; border-radius: 5px;
+          background: rgb(var(--surface-2)); border: 1px solid rgb(var(--border));
+          border-bottom-width: 2px;
+          font-family: var(--mono); font-size: 10px; color: rgb(var(--fg-2));
         }
         code { font-family: var(--mono); }
+        a { text-decoration: none; }
       `,
     },
   ],
