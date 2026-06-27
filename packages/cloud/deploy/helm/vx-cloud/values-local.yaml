@@ -1,0 +1,27 @@
+# Collapsed-local overlay (§8.1) — one `vx-cloud serve` pod that is
+# coordinator + worker + dashboard + cache + insights. No worker fleet, no HPA.
+#
+#   helm install vx-cloud packages/cloud/deploy/helm/vx-cloud -f \
+#     packages/cloud/deploy/helm/vx-cloud/values-local.yaml
+#
+# For a single local container without k8s, just:
+#   docker run -p 4321:4321 vx-cloud:latest serve --ui
+
+mode: local
+
+serve:
+  replicas: 1
+  port: 4321
+  ui: true
+
+# Single pod = RWO PVCs are fine (nothing else mounts them).
+cache:
+  backend: fs
+  fs:
+    accessMode: ReadWriteOnce
+    size: 10Gi
+
+insights:
+  store: sqlite
+  sqlite:
+    size: 2Gi

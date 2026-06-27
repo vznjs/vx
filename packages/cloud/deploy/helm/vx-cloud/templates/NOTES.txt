@@ -1,0 +1,22 @@
+vx-cloud {{ .Chart.AppVersion }} deployed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Topology:
+  coordinator   {{ .Values.coordinator.replicas }} replica(s) on port {{ .Values.coordinator.port }}
+  worker        {{ if .Values.worker.hpa.enabled }}HPA {{ .Values.worker.minReplicas }}–{{ .Values.worker.maxReplicas }} (CPU {{ .Values.worker.hpa.targetCPUUtilizationPercentage }}%){{ else }}{{ .Values.worker.minReplicas }} replica(s){{ end }}, capacity {{ .Values.worker.capacity }}/pod
+  cache         {{ .Values.cache.backend }}{{ if eq .Values.cache.backend "fs" }} (PVC {{ .Values.cache.fs.size }}){{ else }} ({{ .Values.cache.s3.bucket }}){{ end }}
+  insights      {{ .Values.insights.store }}
+
+Workers dial the coordinator at:
+  {{ include "vx-cloud.coordinatorUrl" . }}
+
+Reach the coordinator's metrics API + run-submit WS:
+{{- if .Values.coordinator.ingress.enabled }}
+  http{{ if .Values.coordinator.ingress.tls.enabled }}s{{ end }}://{{ .Values.coordinator.ingress.host }}
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "vx-cloud.fullname" . }}-coordinator {{ .Values.coordinator.port }}:{{ .Values.coordinator.port }}
+  # then: curl http://127.0.0.1:{{ .Values.coordinator.port }}/health
+{{- end }}
+
+k8s owns pod lifecycle; vx owns which ready task each connected worker pulls.
+Scaling workers up/down is safe — a draining worker finishes its in-flight
+task (coord:drain -> worker:bye) before exiting.

@@ -1,0 +1,110 @@
+{{- if eq .Values.mode "hosted" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vx-cloud.fullname" . }}-coordinator
+  labels:
+    {{- include "vx-cloud.labels" . | nindent 4 }}
+    app.kubernetes.io/component: coordinator
+spec:
+  replicas: {{ .Values.coordinator.replicas }}
+  selector:
+    matchLabels:
+      {{- include "vx-cloud.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: coordinator
+  template:
+    metadata:
+      labels:
+        {{- include "vx-cloud.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: coordinator
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "vx-cloud.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.coordinator.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.coordinator.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.coordinator.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: coordinator
+          image: {{ include "vx-cloud.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - coordinator
+            - --host
+            - 0.0.0.0
+            - --port
+            - {{ .Values.coordinator.port | quote }}
+            {{- with .Values.coordinator.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.coordinator.port }}
+          env:
+            {{- include "vx-cloud.commonEnv" . | nindent 12 }}
+            {{- if eq .Values.insights.store "sqlite" }}
+            - name: VX_CLOUD_INSIGHTS_STORE
+              value: "sqlite"
+            - name: VX_CLOUD_INSIGHTS_DIR
+              value: {{ .Values.insights.sqlite.mountPath | quote }}
+            {{- else }}
+            - name: VX_CLOUD_INSIGHTS_STORE
+              value: "postgres"
+            - name: VX_CLOUD_INSIGHTS_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.insights.postgres.existingSecret | default (printf "%s-insights" (include "vx-cloud.fullname" .)) }}
+                  key: {{ .Values.insights.postgres.secretKey }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          startupProbe:
+            httpGet:
+              path: /version
+              port: http
+            failureThreshold: 30
+            periodSeconds: 2
+          resources:
+            {{- toYaml .Values.coordinator.resources | nindent 12 }}
+          volumeMounts:
+            {{- if eq .Values.cache.backend "fs" }}
+            - name: cache
+              mountPath: {{ .Values.cache.fs.mountPath }}
+            {{- end }}
+            {{- if eq .Values.insights.store "sqlite" }}
+            - name: insights
+              mountPath: {{ .Values.insights.sqlite.mountPath }}
+            {{- end }}
+      volumes:
+        {{- if eq .Values.cache.backend "fs" }}
+        - name: cache
+          persistentVolumeClaim:
+            claimName: {{ include "vx-cloud.fullname" . }}-cache
+        {{- end }}
+        {{- if eq .Values.insights.store "sqlite" }}
+        - name: insights
+          persistentVolumeClaim:
+            claimName: {{ include "vx-cloud.fullname" . }}-insights
+        {{- end }}
+{{- end -}}

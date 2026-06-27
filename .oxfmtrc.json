@@ -13,6 +13,7 @@
     "coverage",
     "*.tsbuildinfo",
     "pnpm-lock.yaml",
-    "vx-lock.json"
+    "vx-lock.json",
+    "packages/cloud/deploy"
   ]
 }

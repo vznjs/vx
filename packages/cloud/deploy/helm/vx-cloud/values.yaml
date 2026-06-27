@@ -1,0 +1,188 @@
+# vx-cloud — default values.
+#
+# Hosted topology: a coordinator Deployment + Service (+ optional Ingress for
+# wss://), a worker Deployment + HPA, a shared content-addressed cache (an fs
+# PVC or an external S3/R2 bucket), and an insights store (SQLite PVC or
+# Postgres). For the collapsed-local single-pod mode see values-local.yaml.
+
+# Deployment shape:
+#   hosted — coordinator Deployment + worker Deployment + HPA + shared cache.
+#   local  — ONE `serve` pod = coordinator + worker + dashboard + cache + insights
+#            (the collapsed-local face, §8.1). See values-local.yaml.
+mode: hosted
+
+# Same image for every role; the role is the container's first arg
+# (serve | coordinator | worker).
+image:
+  repository: ghcr.io/vznjs/vx-cloud
+  tag: "" # defaults to .Chart.AppVersion when empty
+  pullPolicy: IfNotPresent
+
+# Optional registry pull secret(s), e.g. [{ name: ghcr-creds }].
+imagePullSecrets: []
+
+# Override the generated resource name prefix.
+nameOverride: ""
+fullnameOverride: ""
+
+# -----------------------------------------------------------------------------
+# Collapsed-local (mode: local) — one `serve` pod is coordinator + worker +
+# dashboard + cache + insights. Ignored when mode is hosted.
+# -----------------------------------------------------------------------------
+serve:
+  replicas: 1
+  # Matches the binary's DEFAULT_SERVE_PORT.
+  port: 4321
+  # Serve the bundled dashboard SPA at / (`serve --ui`).
+  ui: true
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+
+# -----------------------------------------------------------------------------
+# Coordinator — holds the global ready-queue + run state + WS fan-out. Exposes
+# /v1/* (metrics), the run-submit WS, /health, /version.
+# -----------------------------------------------------------------------------
+coordinator:
+  # 1 today (ephemeral-per-run). Leader-elected multi-replica is Phase 5 — keep
+  # at 1 until the persistent coordinator ships.
+  replicas: 1
+  # Port the coordinator binds. Matches the binary's default --port.
+  port: 5180
+  # Extra args appended after `coordinator`, e.g. ["--workers", "4"].
+  extraArgs: []
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    # The wss:// host clients (`vx run`) connect to.
+    host: vx-cloud.example.com
+    tls:
+      enabled: false
+      # The Secret holding the TLS cert/key for `host`.
+      secretName: vx-cloud-tls
+
+# -----------------------------------------------------------------------------
+# Worker — stateless, fungible: pull a ready task, run the shell command, upload
+# the artifact, report. HPA-scaled. k8s scales pods; vx assigns tasks.
+# -----------------------------------------------------------------------------
+worker:
+  minReplicas: 1
+  maxReplicas: 10
+  # Tasks each worker runs concurrently (`worker --capacity`).
+  capacity: 4
+  # Labels advertised to the coordinator (`worker --label`), e.g. ["linux-x64"].
+  labels: []
+  # Long enough for the coord:drain -> worker:bye graceful handshake: on
+  # SIGTERM the coordinator broadcasts coord:drain, a worker finishes its
+  # in-flight tasks then replies worker:bye and exits. Size this above the
+  # longest single task you expect a draining worker to be mid-flight on.
+  terminationGracePeriodSeconds: 120
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  hpa:
+    enabled: true
+    targetCPUUtilizationPercentage: 70
+    # Optional queue-depth scaling: scale on the coordinator's ready-queue
+    # depth, not just CPU. Needs a metrics adapter (e.g. prometheus-adapter)
+    # exposing `queue_depth` as a Pods/External custom metric — leave disabled
+    # until that adapter is installed.
+    queueDepth:
+      enabled: false
+      # Average ready tasks per worker pod to target.
+      averageValue: "5"
+
+# -----------------------------------------------------------------------------
+# Shared content-addressed cache — where <hash>.tar.zst artifacts live. `fs`
+# rides FsCASBackend on a PVC; `s3`/`r2` ride the CASBackend interface against
+# an external endpoint (a config swap, not a code change).
+# -----------------------------------------------------------------------------
+cache:
+  # fs | s3 | r2
+  backend: fs
+
+  # backend: fs — a ReadWriteMany PVC mounted into the workers + coordinator.
+  fs:
+    storageClassName: ""
+    # RWX so every worker can read/write the shared artifact store.
+    accessMode: ReadWriteMany
+    size: 50Gi
+    mountPath: /var/lib/vx-cloud/cache
+
+  # backend: s3 | r2 — an external object store. The bucket creds live in a
+  # Secret; set existingSecret to bring your own, else one is rendered from
+  # accessKeyId/secretAccessKey below.
+  s3:
+    endpoint: "" # e.g. https://<accountid>.r2.cloudflarestorage.com
+    region: auto
+    bucket: vx-cloud-cache
+    existingSecret: ""
+    accessKeyId: ""
+    secretAccessKey: ""
+
+# -----------------------------------------------------------------------------
+# Insights store — the cache.db the /v1/* metrics surface reads.
+# -----------------------------------------------------------------------------
+insights:
+  # sqlite | postgres
+  store: sqlite
+
+  # store: sqlite — a small PVC on the coordinator.
+  sqlite:
+    storageClassName: ""
+    size: 5Gi
+    mountPath: /var/lib/vx-cloud/insights
+
+  # store: postgres — an external DSN (in a Secret).
+  postgres:
+    existingSecret: ""
+    # Key in existingSecret holding the connection URL.
+    secretKey: dsn
+    # Inline DSN; rendered into a Secret when existingSecret is empty.
+    dsn: ""
+
+# -----------------------------------------------------------------------------
+# Auth — the shared token clients present and workers carry. Stored in a Secret.
+# -----------------------------------------------------------------------------
+auth:
+  # Set a token to require auth. Empty = open (local/trusted-network only).
+  token: ""
+  # Bring your own Secret instead (key: token).
+  existingSecret: ""
+
+# Extra env injected into every role's container, e.g.
+#   - name: VX_REMOTE_CACHE_URL
+#     value: https://cache.example.com
+extraEnv: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podAnnotations: {}
+podLabels: {}

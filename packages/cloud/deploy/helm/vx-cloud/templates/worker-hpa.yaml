@@ -1,0 +1,34 @@
+{{- if and (eq .Values.mode "hosted") .Values.worker.hpa.enabled -}}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "vx-cloud.fullname" . }}-worker
+  labels:
+    {{- include "vx-cloud.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "vx-cloud.fullname" . }}-worker
+  minReplicas: {{ .Values.worker.minReplicas }}
+  maxReplicas: {{ .Values.worker.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.worker.hpa.targetCPUUtilizationPercentage }}
+    {{- if .Values.worker.hpa.queueDepth.enabled }}
+    # Scale on the coordinator's ready-queue depth. Requires a custom-metrics
+    # adapter (e.g. prometheus-adapter) exposing `queue_depth` as a Pods metric.
+    - type: Pods
+      pods:
+        metric:
+          name: queue_depth
+        target:
+          type: AverageValue
+          averageValue: {{ .Values.worker.hpa.queueDepth.averageValue | quote }}
+    {{- end }}
+{{- end -}}

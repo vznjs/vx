@@ -170,6 +170,56 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-27**: **Core/cloud split — Phase 4: Docker image + Helm
+  chart skeleton for `@vzn/vx-cloud`** (completes the "do all t final
+  state" arc; Phases 5–7 stay deferred as future designs per
+  `docs/design/core-cloud-split-2026-06.md` §11). Implements §8 ("local
+  or hosted — same artifact, roles collapse locally, scale out
+  hosted"). New `packages/cloud/Dockerfile` (multi-stage, ROOT build
+  context `docker build -f packages/cloud/Dockerfile -t vx-cloud .`):
+  build stage `oven/bun:1.3` → `COPY . .` → `bun install
+--frozen-lockfile` (runs the `scripts/link-self.ts` postinstall that
+  re-creates `node_modules/@vzn/vx → root`) → `bun build --compile
+packages/cloud/src/cli/bin.ts` to one standalone binary; runtime stage
+  `oven/bun:1.3-slim`, non-root `bun` user, `EXPOSE 4321 5180`,
+  `HEALTHCHECK` on `/health`, `ENTRYPOINT ["vx-cloud"]` + `CMD
+["serve"]` (role chosen by CMD: serve = collapsed-local, coordinator,
+  worker). The SPA is NOT rebuilt — the committed `apps/ui/dist/
+index.html` is authoritative (embedded by `ui-asset.ts` at compile
+  time), keeping the image lean + the build read-only w.r.t. the repo
+  (the `vite build` alternative is documented in a Dockerfile comment).
+  `packages/cloud/.dockerignore` keeps the context lean. New Helm chart
+  `packages/cloud/deploy/helm/vx-cloud/` (Chart.yaml v2 / values.yaml /
+  values-local.yaml + 12 templates): coordinator Deployment+Service
+  (+Ingress gated `ingress.enabled`, TLS/wss; readiness `/health`,
+  startup `/version`), worker Deployment (`--coordinator <svc-dns>`,
+  `terminationGracePeriodSeconds: 120` for the `coord:drain`→`worker:bye`
+  graceful drain), worker HPA (CPU target + an optional `queue_depth`
+  custom metric, DISABLED by default with a metrics-adapter note), cache
+  PVC (gated `cache.backend == fs`; `s3`/`r2` are values knobs riding
+  the `CASBackend` interface), insights PVC (gated `sqlite`), secrets,
+  serviceaccount, NOTES. A `mode: hosted|local` toggle makes §8.1's
+  collapsed-local single `serve` pod a first-class installable mode
+  (`serve-deployment.yaml`), not just a documented `docker run`.
+  `deploy/README.md` documents both topologies, the exact build/install
+  commands, the values knobs, and — honestly — that this is a SKELETON:
+  the coordinator is still ephemeral-per-run and the `s3`/`r2`/`postgres`
+  + `VX_CLOUD_*` env knobs are forward-looking wiring for Phases 5/6
+  (persistent coordinator, blob-CAS input shipping) that the binary does
+  not yet read; defaults (`coordinator.replicas: 1`, `cache.backend:
+fs`) reflect today's reality. **One tracked-file edit:** `.oxfmtrc.json`
+  added `packages/cloud/deploy` to `ignorePatterns` (same precedent as
+  the `apps` exclusion) so `oxfmt --check .` doesn't try to format the
+  Helm template YAML (which contains `{{ }}`) and fail the gate. **No
+  core `src/` changes, no tests, no CACHE_VERSION bump** — pure additive
+  infra. Docker build NOT exercised end-to-end (no daemon/socket in this
+  env — verified the Dockerfile by review + the load-bearing `bun build
+--compile` step independently: 183 modules → runnable `vx-cloud 0.0.0`);
+  Chart/values parse as YAML, all 12 templates have balanced braces +
+  `if/range/with`↔`end`, worker-deployment renders to valid k8s with
+  defaults. CI gate green. **Recommend a one-off `docker build` on a
+  host with a running daemon before relying on the image.**
+
 - **2026-06-27**: **Core/cloud split — Phase 3: the first-party
   `cloud()` plugin** (owner: "cloud should be integrated through a
   plugin… anyone could choose to do differently" → "do all t final
