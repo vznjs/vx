@@ -15,6 +15,11 @@ export default defineConfig({
       `fill-chart-${n}/10`,
       `border-chart-${n}`,
     ]),
+    // Semantic dot/bar colors referenced by catalog components via tone tokens.
+    ...['success', 'warn', 'danger', 'accent', 'accent-2', 'cache-local', 'info'].flatMap((c) => [
+      `bg-${c}`,
+      `text-${c}`,
+    ]),
   ],
   theme: {
     colors: {
