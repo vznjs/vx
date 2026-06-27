@@ -9,6 +9,7 @@ const AXIS_TICKS = 5
 
 function colorFor(status: string, cacheHit: boolean): string {
   if (status === 'failed') return 'bg-danger/80'
+  if (status === 'running') return 'bg-accent/70'
   if (status === 'skipped') return 'bg-warn/70'
   if (cacheHit) return 'bg-cache-local/70'
   return 'bg-success/70'

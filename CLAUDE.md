@@ -197,7 +197,11 @@ stderr/complete` events drive each node's live status, an overall
   `planRun` and returns nodes + dependency edges + predicted cache status
   (`src/cli/serve.ts`); the client lays it out layered (longest-path
   layering, `run-graph-layout.ts`) with SVG edges, clickable nodes →
-  log panel. **Rerun is FORBIDDEN while a run is in progress** (Run button
+  log panel. A **Graph/Flame toggle** switches the SAME live run between
+  the DAG and a flamegraph timeline (reusing the run-detail
+  `FlamegraphPrimitive`, fed by client-recorded task start/end timings;
+  in-progress bars grow via a 250ms tick; clicking a bar selects the task
+  and shows its logs too). **Rerun is FORBIDDEN while a run is in progress** (Run button
   disabled until it finishes) — one run at a time sidesteps the
   output-cleaning race between overlapping different-hash runs (the
   in-flight hash-dedup already makes same-input reruns safe; true

@@ -8,9 +8,10 @@
 // overlapping different-hash runs (docs/design/execution-service-2026-06.md).
 // Stop abandons watching the current run so the UI can recover.
 
-import { For, Show, batch, createMemo, createResource, createSignal, onCleanup } from 'solid-js'
-import { type GraphNode, type WireEvent, getGraph, getOrigin, getHistory, getVersion, runTasks } from '../api.ts'
+import { For, Show, batch, createMemo, createResource, createSignal, onCleanup, onMount } from 'solid-js'
+import { type GraphNode, type RunSummaryRow, type WireEvent, getGraph, getOrigin, getHistory, getVersion, runTasks } from '../api.ts'
 import { layoutGraph } from '../run-graph-layout.ts'
+import { Flamegraph as FlameView } from './Flamegraph.tsx'
 import { EmptyState } from './ui.tsx'
 
 const NODE_W = 178
@@ -63,29 +64,82 @@ export function RunConsole() {
   const [taskInput, setTaskInput] = createSignal('')
   const [nodes, setNodes] = createSignal<GraphNode[]>([])
   const [statuses, setStatuses] = createSignal<Record<string, NodeStatus>>({})
+  // Per-task wall-clock window, observed from when each event arrives (the
+  // outcome carries durationMs but cache hits have no wallclock ns) — enough to
+  // draw a live flamegraph of the current run.
+  const [timing, setTiming] = createSignal<Record<string, { startedAt: number; endedAt?: number }>>({})
   const [logs, setLogs] = createSignal<Record<string, string>>({})
   const [selected, setSelected] = createSignal<string | null>(null)
   const [running, setRunning] = createSignal(false)
   const [started, setStarted] = createSignal(false)
+  const [view, setView] = createSignal<'graph' | 'flame'>('graph')
+  const [now, setNow] = createSignal(0)
   const [progress, setProgress] = createSignal({ done: 0, total: 0 })
   const [runError, setRunError] = createSignal<string | null>(null)
   const [ok, setOk] = createSignal<boolean | null>(null)
 
   let cancel: (() => void) | null = null
   onCleanup(() => cancel?.())
+  // Ticks only while a run is live so in-progress flame bars grow.
+  onMount(() => {
+    const id = setInterval(() => running() && setNow(Date.now()), 250)
+    onCleanup(() => clearInterval(id))
+  })
 
   const layout = createMemo(() => layoutGraph(nodes()))
 
+  // Build flamegraph rows (RunSummaryRow shape) from live timing + status.
+  const flameRows = createMemo<RunSummaryRow[]>(() => {
+    const tm = timing()
+    const st = statuses()
+    const clock = now()
+    return nodes()
+      .filter((n) => tm[n.id])
+      .map((n) => {
+        const t = tm[n.id]!
+        const state = st[n.id]?.state ?? 'running'
+        const status = state === 'queued' ? 'running' : state
+        const startedAt = t.startedAt
+        const endedAt = t.endedAt ?? Math.max(clock, startedAt)
+        return {
+          runId: null,
+          project: n.project,
+          task: n.task,
+          status,
+          exitCode: st[n.id]?.exitCode ?? 0,
+          durationMs: st[n.id]?.durationMs ?? endedAt - startedAt,
+          startedAt,
+          endedAt,
+          cacheHit: state === 'cache-hit',
+          hash: '',
+          cpuMs: null,
+          peakRssBytes: null,
+          wallclockStartNs: null,
+          wallclockEndNs: null,
+        }
+      })
+  })
+
   function handleEvent(ev: WireEvent) {
     if (ev.kind === 'run:start') setProgress({ done: 0, total: ev.info.total })
-    else if (ev.kind === 'task:start') setStatuses((p) => ({ ...p, [ev.task.id]: { state: 'running' } }))
-    else if (ev.kind === 'task:stdout' || ev.kind === 'task:stderr')
+    else if (ev.kind === 'task:start') {
+      setStatuses((p) => ({ ...p, [ev.task.id]: { state: 'running' } }))
+      setTiming((p) => ({ ...p, [ev.task.id]: { startedAt: Date.now() } }))
+    } else if (ev.kind === 'task:stdout' || ev.kind === 'task:stderr')
       setLogs((p) => ({ ...p, [ev.taskId]: (p[ev.taskId] ?? '') + ev.chunk }))
     else if (ev.kind === 'task:complete') {
+      const end = Date.now()
       setStatuses((p) => ({
         ...p,
         [ev.outcome.taskId]: { state: mapStatus(ev.outcome.status), durationMs: ev.outcome.durationMs, exitCode: ev.outcome.exitCode },
       }))
+      setTiming((p) => {
+        const prev = p[ev.outcome.taskId]
+        // Cache hits/instant tasks may complete without a start event — seed a
+        // window from the reported duration so the bar still has width.
+        const startedAt = prev?.startedAt ?? end - ev.outcome.durationMs
+        return { ...p, [ev.outcome.taskId]: { startedAt, endedAt: end } }
+      })
       setProgress((p) => ({ ...p, done: p.done + 1 }))
     }
   }
@@ -97,11 +151,13 @@ export function RunConsole() {
     if (tasks.length === 0 || !root) return
     batch(() => {
       setStatuses({})
+      setTiming({})
       setLogs({})
       setSelected(null)
       setProgress({ done: 0, total: 0 })
       setRunError(null)
       setOk(null)
+      setNow(Date.now())
       setRunning(true)
       setStarted(true)
       setNodes([])
@@ -207,6 +263,19 @@ export function RunConsole() {
             <Show when={running()}> · running</Show>
             <Show when={!running() && ok() !== null}> · {ok() ? 'passed' : 'failed'}</Show>
           </div>
+          <div class="flex items-center gap-0.5 shrink-0 rounded-lg border border-border bg-surface-2/50 p-0.5 text-[12px]">
+            <For each={['graph', 'flame'] as const}>
+              {(v) => (
+                <button
+                  onClick={() => setView(v)}
+                  class="px-3 py-1 rounded-md transition capitalize"
+                  classList={{ 'bg-surface-hover text-fg': view() === v, 'text-fg-3 hover:text-fg-2': view() !== v }}
+                >
+                  {v}
+                </button>
+              )}
+            </For>
+          </div>
         </div>
       </Show>
 
@@ -226,9 +295,19 @@ export function RunConsole() {
         <div class="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 min-h-0">
           {/* DAG */}
           <div class="rounded-xl border border-border bg-surface/40 overflow-auto p-5 min-h-0">
-            <Show when={nodes().length > 0} fallback={<div class="text-fg-3 text-sm p-4">Resolving graph…</div>}>
-              <div
-                class="relative"
+            <Show when={view() === 'flame'}>
+              <Show when={flameRows().length > 0} fallback={<div class="text-fg-3 text-sm p-4">Waiting for tasks…</div>}>
+                <FlameView
+                  tasks={flameRows()}
+                  selectedId={selected() ?? undefined}
+                  onSelect={(t) => setSelected(`${t.project}#${t.task}`)}
+                />
+              </Show>
+            </Show>
+            <Show when={view() === 'graph'}>
+              <Show when={nodes().length > 0} fallback={<div class="text-fg-3 text-sm p-4">Resolving graph…</div>}>
+                <div
+                  class="relative"
                 style={{
                   width: `${layout().layerCount * (NODE_W + COL_GAP)}px`,
                   height: `${Math.max(1, layout().maxRows) * (NODE_H + ROW_GAP)}px`,
@@ -302,7 +381,8 @@ export function RunConsole() {
                     )
                   }}
                 </For>
-              </div>
+                </div>
+              </Show>
             </Show>
           </div>
 
