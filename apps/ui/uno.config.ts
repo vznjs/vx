@@ -3,6 +3,10 @@ import { defineConfig, presetIcons, presetUno, transformerVariantGroup } from 'u
 export default defineConfig({
   presets: [presetUno(), presetIcons({ scale: 1.0 })],
   transformers: [transformerVariantGroup()],
+  // The page views are pure .json (src/views) — UnoCSS only scans code files by
+  // default, so include the JSON so chart stroke-/fill- tokens declared there
+  // (e.g. "strokeClass": "stroke-accent") are generated.
+  content: { filesystem: ['src/views/**/*.json'] },
   // Chart palette classes are computed from project names at runtime via
   // `paletteFor()` — UnoCSS's static analyzer can't see them, so we list
   // them explicitly.

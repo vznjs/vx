@@ -277,6 +277,38 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
   (raw JSON, `$computed`/`$state`-bound metrics + DataTable) render against
   the real cache.db, 0 errors. PR #152.
 
+  **Fully pure-JSON pages (owner: "make only components, define registry,
+  all pages/views pure json — no generation, new syntax" + "we should have
+  a folder called views with all json files").** The JSX pages are GONE;
+  every view is now a pure JSON file in `apps/ui/src/views/*.json`
+  (`{ data, spec }` — `data` maps a state key to a named source, `spec` is a
+  nested json-render tree). The ONLY code is: the catalog components
+  (`jr/components.tsx`, now fully data-driven — they absorb ALL derivation
+  so the JSON stays raw: `rowHref`/`rowTaskRef` link templates, `colorFrom`
+  palette, auto bar-max + fraction, `dots:[{field,map}]`, `cpuPct`/`bar`/
+  `shorthash` column kinds, charts take `rows`+field keys, `Facts` takes
+  `entry`+field list), the registry (`defineRegistry`), a generic loader
+  (`jr/page.tsx` `jsonPage(view)` — fetches each declared source into
+  `state`, exposes decoded route `params` + a `<key>Status`
+  loading/missing/ok flag for `visible` gating, flattens nested→flat via
+  `nestedToFlat`, renders through `Dash`), named data sources
+  (`jr/data.ts`), and `$computed` helpers (`jr/functions.ts`: formatters +
+  `agg`/`aggFmt`/`ratioFmt`/`aggTone` array aggregations + `text` templating
+  - `gt`/`lt`/`palette`/`countWhere`/`span`/`cpuStat`). Metric values/subs
+    are `$computed` over raw `$state` arrays (e.g. total runs =
+    `aggFmt(sum projects.runs)`; run wall time = `span(tasks)`; CPU% =
+    `cpuStat(recent)`); tones via `$computed`/`$cond`; section gating via
+    element `visible` on `<key>Status`. **UnoCSS gotcha:** UnoCSS only scans
+    code files, so chart `stroke-`/`fill-` tokens that now live ONLY in the
+    JSON were dropped until `uno.config.ts` got `content.filesystem:
+['src/views/**/*.json']`. Net: the dashboard is spec-driven end to end —
+    a view is data, hand-authored OR machine-generated, against one catalog;
+    json-render is the engine (always bundled now, ~248 KB / 72 KB gzip).
+    Verified e2e against the real cache.db, all 9 routes, 0 console errors,
+    full fidelity (CPU%/RSS, `span`/`countWhere` run metrics, tones, palette
+    dots, bars, charts/treemap/heatmap/flamegraph). `spec.ts`'s `el/toSpec`
+    helpers are now unused (the loader uses `nestedToFlat` directly) but kept.
+
 - **2026-06-17**: **Execution as a pluggable backend + `vx serve` (owner
   ask: "one process doing all the work; runs inform it what to run and
   subscribe; treat vx as a service with clients; later a hosted service").**

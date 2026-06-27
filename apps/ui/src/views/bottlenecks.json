@@ -1,0 +1,173 @@
+{
+  "data": {
+    "bottlenecks": "bottlenecks",
+    "flaky": "flaky",
+    "prunable": "prunable"
+  },
+  "spec": {
+    "type": "Page",
+    "props": {
+      "title": "Bottlenecks",
+      "subtitle": "High-leverage targets — ranked by where you'd save the most time."
+    },
+    "children": [
+      {
+        "type": "Card",
+        "props": {
+          "title": "Where to invest",
+          "actionText": "14-day lookback · savings = 25% cut, weekly",
+          "noPad": true
+        },
+        "children": [
+          {
+            "type": "DataTable",
+            "props": {
+              "rows": {
+                "$state": "/bottlenecks"
+              },
+              "rowHref": "/tasks/{id}",
+              "emptyTitle": "Not enough runs to rank bottlenecks",
+              "emptyHint": "Run a few tasks and come back.",
+              "columns": [
+                {
+                  "key": "task",
+                  "label": "Task",
+                  "kind": "projtask"
+                },
+                {
+                  "key": "runsPerDay",
+                  "label": "Runs / day",
+                  "align": "right",
+                  "kind": "fixed1"
+                },
+                {
+                  "key": "avgDurationMs",
+                  "label": "Avg",
+                  "align": "right",
+                  "kind": "duration"
+                },
+                {
+                  "key": "totalDurationMs",
+                  "label": "Total burn",
+                  "align": "right",
+                  "kind": "duration"
+                },
+                {
+                  "key": "weeklySavingsAt25PctCutMs",
+                  "label": "Weekly savings",
+                  "align": "right",
+                  "kind": "bar",
+                  "format": "duration",
+                  "color": "success"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "Grid",
+        "props": {
+          "variant": "cols-2"
+        },
+        "children": [
+          {
+            "type": "Card",
+            "props": {
+              "title": "Flaky tasks",
+              "actionText": "failure rate + tail ratio",
+              "noPad": true
+            },
+            "children": [
+              {
+                "type": "DataTable",
+                "props": {
+                  "rows": {
+                    "$state": "/flaky"
+                  },
+                  "rowHref": "/tasks/{id}",
+                  "emptyTitle": "No flaky tasks 🎉",
+                  "columns": [
+                    {
+                      "key": "task",
+                      "label": "Task",
+                      "kind": "projtask"
+                    },
+                    {
+                      "key": "failureRate",
+                      "label": "Fail %",
+                      "align": "right",
+                      "kind": "percent0",
+                      "tone": {
+                        "gt": 0.1,
+                        "tone": "danger"
+                      }
+                    },
+                    {
+                      "key": "durationTailRatio",
+                      "label": "p99/p50",
+                      "align": "right",
+                      "kind": "multiplier",
+                      "tone": {
+                        "gt": 3,
+                        "tone": "warn"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "type": "Card",
+            "props": {
+              "title": "Prunable cache entries",
+              "actionText": "unused ≥7d",
+              "noPad": true
+            },
+            "children": [
+              {
+                "type": "DataTable",
+                "props": {
+                  "rows": {
+                    "$state": "/prunable"
+                  },
+                  "emptyTitle": "Everything's been accessed recently",
+                  "columns": [
+                    {
+                      "key": "task",
+                      "label": "Task",
+                      "kind": "projtask"
+                    },
+                    {
+                      "key": "sizeBytes",
+                      "label": "Size",
+                      "align": "right",
+                      "kind": "bytes"
+                    },
+                    {
+                      "key": "accessedAt",
+                      "label": "Last hit",
+                      "align": "right",
+                      "kind": "relativeTime",
+                      "baseTone": "faint"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "Text",
+                "props": {
+                  "text": "Tip: vx cache prune --older-than 7d",
+                  "tone": "faint",
+                  "mono": true,
+                  "class": "px-4 py-2 border-t border-border"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
