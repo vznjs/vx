@@ -170,6 +170,23 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-27**: **`vx serve` defaults to a STABLE port** (owner: "when
+  I stop the server and rerun I get a new port even if old is unused
+  why"). Root cause: `startServe` bound `port: opts.port ?? 0`, and port
+  0 makes the kernel hand out a fresh ephemeral port every run — it never
+  tried a stable default, so the old port being free was irrelevant. Now
+  the default is `DEFAULT_SERVE_PORT = 4321` (matching the dashboard SPA's
+  own default origin in `apps/ui/src/api.ts`), so the URL is the same
+  across restarts. If 4321 is already taken, `startServe` falls back to an
+  ephemeral port instead of crashing — UNLESS the user pinned `--port`,
+  in which case a busy port surfaces the bind error (explicit intent is
+  honored). The big `Bun.serve({...})` literal was factored into a
+  `listen(port)` arrow so it can be retried on a second port. `.vx/
+serve.json` still advertises the chosen origin for `vx run` delegation.
+  Files: `src/cli/serve.ts` (constant + try/fallback), `src/cli/help.ts`,
+  `docs/cli.md`. Verified: restart reuses :4321; a second concurrent
+  instance falls back to an ephemeral port.
+
 - **2026-06-27**: **Dashboard `jr` folder made idiomatic + interactive
   flamegraph + Runs tab** (owner: "simplify jr code folder... all by the
   book. study each page of docs from gh" → then "flame graph need to be

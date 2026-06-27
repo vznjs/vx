@@ -56,6 +56,14 @@ export function serveInfoPath(workspaceRoot: string): string {
   return path.join(workspaceRoot, '.vx', 'serve.json')
 }
 
+/**
+ * Default port when `--port` is not given. A STABLE default (matching the
+ * dashboard SPA's own default origin) so the URL is the same across restarts —
+ * binding to port 0 each time handed out a fresh random port every run. If this
+ * port is already taken we fall back to an ephemeral one rather than crash.
+ */
+export const DEFAULT_SERVE_PORT = 4321
+
 // The service renders nothing to its own terminal for delegated runs — the
 // CLIENT renders the streamed events. A no-op Logger keeps `run()` quiet.
 const silentLogger: Logger = {
@@ -160,274 +168,287 @@ export async function startServe(opts: {
     }
   }
 
-  const server = Bun.serve({
-    port: opts.port ?? 0,
-    fetch(req, srv) {
-      const url = new URL(req.url)
-      // Browser preflight — answer everything with CORS-permissive headers.
-      if (req.method === 'OPTIONS') {
-        return withCors(new Response(null, { status: 204 }))
-      }
-      // Liveness probe — `vx run` health-checks this before delegating.
-      if (url.pathname === '/health') return withCors(new Response('ok'))
-      // Capability handshake — what protocol version + channels + RPCs.
-      if (url.pathname === '/version') {
-        return jsonResponse({
-          protocol: WIRE_PROTOCOL_VERSION,
-          vx: VERSION,
-          channels: WIRE_CHANNELS,
-          rpc: ['getCacheStats', 'getRunHistory', 'explainCacheKey', 'whyDidThisRerun'],
-          workspace: opts.root,
-        })
-      }
-      // -----------------------------------------------------------------
-      // Metrics HTTP surface — JSON read APIs over cache.db. The dashboard
-      // SPA in apps/ui calls these directly; same shape will be mirrored by
-      // a future hosted multi-tenant deployment.
-      // -----------------------------------------------------------------
-      if (url.pathname === '/v1/runs') {
-        const params = url.searchParams
-        const args: Parameters<typeof listRuns>[1] = {}
-        const limitRaw = params.get('limit')
-        if (limitRaw !== null) args.limit = Number(limitRaw)
-        const project = params.get('project')
-        if (project !== null) args.project = project
-        const task = params.get('task')
-        if (task !== null) args.task = task
-        const runId = params.get('runId')
-        if (runId !== null) args.runId = runId
-        return jsonResponse({ runs: listRuns(cache.dbHandle(), args) })
-      }
-      if (url.pathname === '/v1/invocations') {
-        const limit = Number(url.searchParams.get('limit') ?? '50')
-        return jsonResponse({ invocations: listInvocations(cache.dbHandle(), limit) })
-      }
-      {
-        const m = /^\/v1\/runs\/([^/]+)$/.exec(url.pathname)
-        if (m) {
-          const detail = getRun(cache.dbHandle(), decodeURIComponent(m[1]!))
-          if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
-          return jsonResponse(detail)
+  const listen = (port: number) =>
+    Bun.serve({
+      port,
+      fetch(req, srv) {
+        const url = new URL(req.url)
+        // Browser preflight — answer everything with CORS-permissive headers.
+        if (req.method === 'OPTIONS') {
+          return withCors(new Response(null, { status: 204 }))
         }
-      }
-      if (url.pathname === '/v1/cache/stats') {
-        return jsonResponse(getCacheStatsSql(cache.dbHandle()))
-      }
-      if (url.pathname === '/v1/cache/breakdown') {
-        const limit = Number(url.searchParams.get('limit') ?? '20')
-        return jsonResponse({ projects: getCacheBreakdown(cache.dbHandle(), limit) })
-      }
-      if (url.pathname === '/v1/cache/savings') {
-        return jsonResponse(getCacheSavings(cache.dbHandle()))
-      }
-      if (url.pathname === '/v1/cache/entries') {
-        const params = url.searchParams
-        const args: Parameters<typeof listCacheEntries>[1] = {}
-        const limitRaw = params.get('limit')
-        if (limitRaw !== null) args.limit = Number(limitRaw)
-        const orderBy = params.get('orderBy')
-        if (
-          orderBy === 'created_at' ||
-          orderBy === 'accessed_at' ||
-          orderBy === 'size_bytes' ||
-          orderBy === 'duration_ms'
-        ) {
-          args.orderBy = orderBy
+        // Liveness probe — `vx run` health-checks this before delegating.
+        if (url.pathname === '/health') return withCors(new Response('ok'))
+        // Capability handshake — what protocol version + channels + RPCs.
+        if (url.pathname === '/version') {
+          return jsonResponse({
+            protocol: WIRE_PROTOCOL_VERSION,
+            vx: VERSION,
+            channels: WIRE_CHANNELS,
+            rpc: ['getCacheStats', 'getRunHistory', 'explainCacheKey', 'whyDidThisRerun'],
+            workspace: opts.root,
+          })
         }
-        const project = params.get('project')
-        if (project !== null) args.project = project
-        return jsonResponse({ entries: listCacheEntries(cache.dbHandle(), args) })
-      }
-      if (url.pathname === '/v1/top-tasks') {
-        const limit = Number(url.searchParams.get('limit') ?? '10')
-        return jsonResponse({ tasks: getTopTimeBurners(cache.dbHandle(), limit) })
-      }
-      if (url.pathname === '/v1/failures') {
-        const limit = Number(url.searchParams.get('limit') ?? '25')
-        return jsonResponse({ failures: getRecentFailures(cache.dbHandle(), limit) })
-      }
-      if (url.pathname === '/v1/projects') {
-        const limit = Number(url.searchParams.get('limit') ?? '100')
-        return jsonResponse({ projects: listProjects(cache.dbHandle(), limit) })
-      }
-      if (url.pathname === '/v1/trends/runs') {
-        const params = url.searchParams
-        const bucketRaw = params.get('bucket')
-        const bucket = bucketRaw === 'day' || bucketRaw === 'hour' ? bucketRaw : 'hour'
-        const args: Parameters<typeof getRunTrends>[1] = { bucket }
-        const fromRaw = params.get('from')
-        if (fromRaw !== null) args.from = Number(fromRaw)
-        const toRaw = params.get('to')
-        if (toRaw !== null) args.to = Number(toRaw)
-        return jsonResponse({ bucket, points: getRunTrends(cache.dbHandle(), args) })
-      }
-      if (url.pathname === '/v1/trends/heatmap') {
-        const days = Number(url.searchParams.get('days') ?? '30')
-        return jsonResponse({ days, cells: getRunHeatmap(cache.dbHandle(), days) })
-      }
-      if (url.pathname === '/v1/trends/storage') {
-        const days = Number(url.searchParams.get('days') ?? '30')
-        return jsonResponse({ days, points: getStorageGrowth(cache.dbHandle(), days) })
-      }
-      if (url.pathname === '/v1/trends/parallelism') {
-        const limit = Number(url.searchParams.get('limit') ?? '50')
-        return jsonResponse({ points: getParallelismHistory(cache.dbHandle(), limit) })
-      }
-      if (url.pathname === '/v1/flakiness') {
-        const limit = Number(url.searchParams.get('limit') ?? '25')
-        return jsonResponse({ tasks: getFlakiestTasks(cache.dbHandle(), limit) })
-      }
-      if (url.pathname === '/v1/bottlenecks') {
-        const lookbackDays = Number(url.searchParams.get('days') ?? '14')
-        const limit = Number(url.searchParams.get('limit') ?? '15')
-        return jsonResponse({
-          lookbackDays,
-          bottlenecks: getBottlenecks(cache.dbHandle(), lookbackDays, limit),
-        })
-      }
-      if (url.pathname === '/v1/cache/prunable') {
-        const minAgeDays = Number(url.searchParams.get('minAgeDays') ?? '7')
-        const limit = Number(url.searchParams.get('limit') ?? '50')
-        return jsonResponse({
-          minAgeDays,
-          entries: getPrunableEntries(cache.dbHandle(), minAgeDays, limit),
-        })
-      }
-      if (url.pathname === '/v1/history') {
-        const params = url.searchParams
-        const args: Parameters<typeof getHistory>[1] = {}
-        const limitRaw = params.get('limit')
-        if (limitRaw !== null) args.limit = Number(limitRaw)
-        const project = params.get('project')
-        if (project !== null) args.project = project
-        const task = params.get('task')
-        if (task !== null) args.task = task
-        return jsonResponse({ history: getHistory(cache.dbHandle(), args) })
-      }
-      {
-        const m = /^\/v1\/tasks\/(.+)$/.exec(url.pathname)
-        if (m) {
-          const detail = getTaskDetail(cache.dbHandle(), decodeURIComponent(m[1]!))
-          if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
-          return jsonResponse(detail)
+        // -----------------------------------------------------------------
+        // Metrics HTTP surface — JSON read APIs over cache.db. The dashboard
+        // SPA in apps/ui calls these directly; same shape will be mirrored by
+        // a future hosted multi-tenant deployment.
+        // -----------------------------------------------------------------
+        if (url.pathname === '/v1/runs') {
+          const params = url.searchParams
+          const args: Parameters<typeof listRuns>[1] = {}
+          const limitRaw = params.get('limit')
+          if (limitRaw !== null) args.limit = Number(limitRaw)
+          const project = params.get('project')
+          if (project !== null) args.project = project
+          const task = params.get('task')
+          if (task !== null) args.task = task
+          const runId = params.get('runId')
+          if (runId !== null) args.runId = runId
+          return jsonResponse({ runs: listRuns(cache.dbHandle(), args) })
         }
-      }
-      {
-        const m = /^\/v1\/explain\/(.+)$/.exec(url.pathname)
-        if (m) {
-          return jsonResponse(explainCacheKeyQuery(cache.dbHandle(), decodeURIComponent(m[1]!)))
+        if (url.pathname === '/v1/invocations') {
+          const limit = Number(url.searchParams.get('limit') ?? '50')
+          return jsonResponse({ invocations: listInvocations(cache.dbHandle(), limit) })
         }
-      }
-      {
-        const m = /^\/v1\/why\/([^/]+)\/(.+)$/.exec(url.pathname)
-        if (m) {
-          return jsonResponse(
-            whyDidThisRerunQuery(
-              cache.dbHandle(),
-              decodeURIComponent(m[1]!),
-              decodeURIComponent(m[2]!),
-            ),
-          )
-        }
-      }
-      // Server-Sent Events — broadcasts the same event envelopes the WS
-      // sees, but on a one-way stream. `curl -N http://.../events` works.
-      if (url.pathname === '/events' || url.pathname === '/v1/events') {
-        const stream = new ReadableStream<Uint8Array>({
-          start(controller) {
-            const enc = new TextEncoder()
-            const sub: ReadSubscriber = (env) => controller.enqueue(enc.encode(encodeForSSE(env)))
-            readSubscribers.add(sub)
-            req.signal.addEventListener('abort', () => {
-              readSubscribers.delete(sub)
-              try {
-                controller.close()
-              } catch {
-                // already closed
-              }
-            })
-          },
-        })
-        return withCors(
-          new Response(stream, {
-            headers: {
-              'Content-Type': 'text/event-stream',
-              'Cache-Control': 'no-store',
-              Connection: 'keep-alive',
-            },
-          }),
-        )
-      }
-      // NDJSON — one envelope per line, no SSE framing. `jq`-friendly.
-      if (url.pathname === '/stream') {
-        const stream = new ReadableStream<Uint8Array>({
-          start(controller) {
-            const enc = new TextEncoder()
-            const sub: ReadSubscriber = (env) =>
-              controller.enqueue(enc.encode(encodeForNDJSON(env)))
-            readSubscribers.add(sub)
-            req.signal.addEventListener('abort', () => {
-              readSubscribers.delete(sub)
-              try {
-                controller.close()
-              } catch {
-                // already closed
-              }
-            })
-          },
-        })
-        return withCors(
-          new Response(stream, {
-            headers: {
-              'Content-Type': 'application/x-ndjson',
-              'Cache-Control': 'no-store',
-            },
-          }),
-        )
-      }
-      if (srv.upgrade(req)) return undefined
-      // When --ui is set, serve the single-file dashboard for every non-API
-      // GET. It's one self-contained HTML with a hash router, so every route
-      // (/, /tasks, /cache, …) returns the same bytes.
-      if (opts.uiHtmlPath !== undefined) {
-        return withCors(
-          new Response(Bun.file(opts.uiHtmlPath), {
-            headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
-          }),
-        )
-      }
-      return withCors(new Response('vx serve'))
-    },
-    websocket: {
-      async message(ws, raw) {
-        const text = String(raw)
-        // Parse once; classify into legacy ClientMessage or new envelope.
-        let parsed: unknown
-        try {
-          parsed = JSON.parse(text)
-        } catch {
-          return
-        }
-        let message: ClientMessage | null = null
-        if (isEnvelope(parsed)) {
-          message = envelopeToClientMessage(parsed)
-        } else if (parsed && typeof parsed === 'object' && 't' in (parsed as object)) {
-          message = parsed as ClientMessage
-        }
-        if (!message || message.t !== 'run') return
-        const send = (m: ServerMessage): void => {
-          broadcast(m)
-          try {
-            ws.send(JSON.stringify(m))
-          } catch {
-            // client vanished mid-run; the run still completes server-side
+        {
+          const m = /^\/v1\/runs\/([^/]+)$/.exec(url.pathname)
+          if (m) {
+            const detail = getRun(cache.dbHandle(), decodeURIComponent(m[1]!))
+            if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
+            return jsonResponse(detail)
           }
         }
-        const ok = await executeRequest(send, message.request, inflight)
-        opts.onRun?.(message.request, ok)
+        if (url.pathname === '/v1/cache/stats') {
+          return jsonResponse(getCacheStatsSql(cache.dbHandle()))
+        }
+        if (url.pathname === '/v1/cache/breakdown') {
+          const limit = Number(url.searchParams.get('limit') ?? '20')
+          return jsonResponse({ projects: getCacheBreakdown(cache.dbHandle(), limit) })
+        }
+        if (url.pathname === '/v1/cache/savings') {
+          return jsonResponse(getCacheSavings(cache.dbHandle()))
+        }
+        if (url.pathname === '/v1/cache/entries') {
+          const params = url.searchParams
+          const args: Parameters<typeof listCacheEntries>[1] = {}
+          const limitRaw = params.get('limit')
+          if (limitRaw !== null) args.limit = Number(limitRaw)
+          const orderBy = params.get('orderBy')
+          if (
+            orderBy === 'created_at' ||
+            orderBy === 'accessed_at' ||
+            orderBy === 'size_bytes' ||
+            orderBy === 'duration_ms'
+          ) {
+            args.orderBy = orderBy
+          }
+          const project = params.get('project')
+          if (project !== null) args.project = project
+          return jsonResponse({ entries: listCacheEntries(cache.dbHandle(), args) })
+        }
+        if (url.pathname === '/v1/top-tasks') {
+          const limit = Number(url.searchParams.get('limit') ?? '10')
+          return jsonResponse({ tasks: getTopTimeBurners(cache.dbHandle(), limit) })
+        }
+        if (url.pathname === '/v1/failures') {
+          const limit = Number(url.searchParams.get('limit') ?? '25')
+          return jsonResponse({ failures: getRecentFailures(cache.dbHandle(), limit) })
+        }
+        if (url.pathname === '/v1/projects') {
+          const limit = Number(url.searchParams.get('limit') ?? '100')
+          return jsonResponse({ projects: listProjects(cache.dbHandle(), limit) })
+        }
+        if (url.pathname === '/v1/trends/runs') {
+          const params = url.searchParams
+          const bucketRaw = params.get('bucket')
+          const bucket = bucketRaw === 'day' || bucketRaw === 'hour' ? bucketRaw : 'hour'
+          const args: Parameters<typeof getRunTrends>[1] = { bucket }
+          const fromRaw = params.get('from')
+          if (fromRaw !== null) args.from = Number(fromRaw)
+          const toRaw = params.get('to')
+          if (toRaw !== null) args.to = Number(toRaw)
+          return jsonResponse({ bucket, points: getRunTrends(cache.dbHandle(), args) })
+        }
+        if (url.pathname === '/v1/trends/heatmap') {
+          const days = Number(url.searchParams.get('days') ?? '30')
+          return jsonResponse({ days, cells: getRunHeatmap(cache.dbHandle(), days) })
+        }
+        if (url.pathname === '/v1/trends/storage') {
+          const days = Number(url.searchParams.get('days') ?? '30')
+          return jsonResponse({ days, points: getStorageGrowth(cache.dbHandle(), days) })
+        }
+        if (url.pathname === '/v1/trends/parallelism') {
+          const limit = Number(url.searchParams.get('limit') ?? '50')
+          return jsonResponse({ points: getParallelismHistory(cache.dbHandle(), limit) })
+        }
+        if (url.pathname === '/v1/flakiness') {
+          const limit = Number(url.searchParams.get('limit') ?? '25')
+          return jsonResponse({ tasks: getFlakiestTasks(cache.dbHandle(), limit) })
+        }
+        if (url.pathname === '/v1/bottlenecks') {
+          const lookbackDays = Number(url.searchParams.get('days') ?? '14')
+          const limit = Number(url.searchParams.get('limit') ?? '15')
+          return jsonResponse({
+            lookbackDays,
+            bottlenecks: getBottlenecks(cache.dbHandle(), lookbackDays, limit),
+          })
+        }
+        if (url.pathname === '/v1/cache/prunable') {
+          const minAgeDays = Number(url.searchParams.get('minAgeDays') ?? '7')
+          const limit = Number(url.searchParams.get('limit') ?? '50')
+          return jsonResponse({
+            minAgeDays,
+            entries: getPrunableEntries(cache.dbHandle(), minAgeDays, limit),
+          })
+        }
+        if (url.pathname === '/v1/history') {
+          const params = url.searchParams
+          const args: Parameters<typeof getHistory>[1] = {}
+          const limitRaw = params.get('limit')
+          if (limitRaw !== null) args.limit = Number(limitRaw)
+          const project = params.get('project')
+          if (project !== null) args.project = project
+          const task = params.get('task')
+          if (task !== null) args.task = task
+          return jsonResponse({ history: getHistory(cache.dbHandle(), args) })
+        }
+        {
+          const m = /^\/v1\/tasks\/(.+)$/.exec(url.pathname)
+          if (m) {
+            const detail = getTaskDetail(cache.dbHandle(), decodeURIComponent(m[1]!))
+            if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
+            return jsonResponse(detail)
+          }
+        }
+        {
+          const m = /^\/v1\/explain\/(.+)$/.exec(url.pathname)
+          if (m) {
+            return jsonResponse(explainCacheKeyQuery(cache.dbHandle(), decodeURIComponent(m[1]!)))
+          }
+        }
+        {
+          const m = /^\/v1\/why\/([^/]+)\/(.+)$/.exec(url.pathname)
+          if (m) {
+            return jsonResponse(
+              whyDidThisRerunQuery(
+                cache.dbHandle(),
+                decodeURIComponent(m[1]!),
+                decodeURIComponent(m[2]!),
+              ),
+            )
+          }
+        }
+        // Server-Sent Events — broadcasts the same event envelopes the WS
+        // sees, but on a one-way stream. `curl -N http://.../events` works.
+        if (url.pathname === '/events' || url.pathname === '/v1/events') {
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              const enc = new TextEncoder()
+              const sub: ReadSubscriber = (env) => controller.enqueue(enc.encode(encodeForSSE(env)))
+              readSubscribers.add(sub)
+              req.signal.addEventListener('abort', () => {
+                readSubscribers.delete(sub)
+                try {
+                  controller.close()
+                } catch {
+                  // already closed
+                }
+              })
+            },
+          })
+          return withCors(
+            new Response(stream, {
+              headers: {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-store',
+                Connection: 'keep-alive',
+              },
+            }),
+          )
+        }
+        // NDJSON — one envelope per line, no SSE framing. `jq`-friendly.
+        if (url.pathname === '/stream') {
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              const enc = new TextEncoder()
+              const sub: ReadSubscriber = (env) =>
+                controller.enqueue(enc.encode(encodeForNDJSON(env)))
+              readSubscribers.add(sub)
+              req.signal.addEventListener('abort', () => {
+                readSubscribers.delete(sub)
+                try {
+                  controller.close()
+                } catch {
+                  // already closed
+                }
+              })
+            },
+          })
+          return withCors(
+            new Response(stream, {
+              headers: {
+                'Content-Type': 'application/x-ndjson',
+                'Cache-Control': 'no-store',
+              },
+            }),
+          )
+        }
+        if (srv.upgrade(req)) return undefined
+        // When --ui is set, serve the single-file dashboard for every non-API
+        // GET. It's one self-contained HTML with a hash router, so every route
+        // (/, /tasks, /cache, …) returns the same bytes.
+        if (opts.uiHtmlPath !== undefined) {
+          return withCors(
+            new Response(Bun.file(opts.uiHtmlPath), {
+              headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+            }),
+          )
+        }
+        return withCors(new Response('vx serve'))
       },
-    },
-  })
+      websocket: {
+        async message(ws, raw) {
+          const text = String(raw)
+          // Parse once; classify into legacy ClientMessage or new envelope.
+          let parsed: unknown
+          try {
+            parsed = JSON.parse(text)
+          } catch {
+            return
+          }
+          let message: ClientMessage | null = null
+          if (isEnvelope(parsed)) {
+            message = envelopeToClientMessage(parsed)
+          } else if (parsed && typeof parsed === 'object' && 't' in (parsed as object)) {
+            message = parsed as ClientMessage
+          }
+          if (!message || message.t !== 'run') return
+          const send = (m: ServerMessage): void => {
+            broadcast(m)
+            try {
+              ws.send(JSON.stringify(m))
+            } catch {
+              // client vanished mid-run; the run still completes server-side
+            }
+          }
+          const ok = await executeRequest(send, message.request, inflight)
+          opts.onRun?.(message.request, ok)
+        },
+      },
+    })
+
+  // Prefer a stable default port; fall back to ephemeral only if it's taken
+  // (and only when the user didn't pin one — an explicit --port surfaces the
+  // bind error instead of silently moving).
+  const wantPort = opts.port ?? DEFAULT_SERVE_PORT
+  let server
+  try {
+    server = listen(wantPort)
+  } catch (err) {
+    if (opts.port !== undefined) throw err
+    server = listen(0)
+  }
 
   const origin = `http://localhost:${server.port}`
   const infoPath = serveInfoPath(opts.root)

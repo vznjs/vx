@@ -935,8 +935,8 @@ the event stream, and (when `--ui` is set) the embedded dashboard SPA.
 One process, one stack, runs locally or in Docker.
 
 ```
-vx serve                         # bind a kernel-assigned port
-    --port <n>                   # explicit
+vx serve                         # bind port 4321 (falls back to a free port if taken)
+    --port <n>                   # explicit (a busy pinned port is a hard error)
     --ui                         # also serve the embedded dashboard at /
     --open                       # open the dashboard in the default browser (implies --ui)
 ```

@@ -61,7 +61,7 @@ export function printHelp(): void {
       '                           metrics JSON API at /v1/* and SSE / NDJSON event',
       '                           streams. No service running = runs execute in-process',
       '                           as before. Ctrl-C stops it.',
-      '      --port <n>           Bind port (default: an open one).',
+      '      --port <n>           Bind port (default: 4321, or an open one if taken).',
       '      --ui                 Also serve the bundled dashboard SPA at /.',
       '      --open               Open the UI in the default browser (implies --ui).',
       '  VX_SERVICE_URL=<origin>  Delegate to an explicit (e.g. hosted) service origin',
