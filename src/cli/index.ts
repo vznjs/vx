@@ -47,6 +47,17 @@ export async function run(argv: readonly string[]): Promise<number> {
       return await infoCmd(rest)
     case 'mcp':
       return await mcpCmd(rest)
+    case 'serve':
+    case 'dev':
+    case 'coordinator':
+    case 'worker':
+      process.stderr.write(
+        `vx: '${command}' moved to the @vzn/vx-cloud package — core vx has no service CLI.\n` +
+          `  run:      vx-cloud ${command}${command === 'serve' ? ' --ui' : ''}\n` +
+          `  install:  bun add -D @vzn/vx-cloud   (then 'vx-cloud' is on PATH)\n` +
+          `  in-repo:  bun packages/cloud/src/cli/bin.ts ${command}\n`,
+      )
+      return 1
     default:
       process.stderr.write(`vx: unknown command: ${command}\n`)
       printHelp()

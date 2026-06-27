@@ -170,6 +170,35 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-27**: **Split fallout fix — `vx serve` launch path restored
+  (owner: "it is all not working. seams like you have shitt tests").**
+  The core/cloud split removed serve/dev/coordinator/worker from core
+  (the owner's explicit "no cli in core"), but left no bridge: typing
+  `vx serve --ui` hit a bare `vx: unknown command: serve` and the
+  replacement `vx-cloud` was not runnable in-repo (not on PATH, not in
+  `node_modules/.bin`). Diagnosis (drove the real app over the Chrome
+  DevTools Protocol + a live WS run, not just unit tests): the dashboard,
+  `/v1/*` API, `/v1/graph`, and the live cockpit at `/#/run` all WORK via
+  `vx-cloud serve` — the break was purely the CLI launch path, and the
+  tests missed it because they exercise serve via `startServe`/the bin
+  file, never the command a user types nor whether `/` actually serves
+  the SPA. Fixes, all additive: (1) core's dispatcher now answers
+  serve/dev/coordinator/worker with a clear redirect (run `vx-cloud
+<cmd>`, install `@vzn/vx-cloud`, or `bun packages/cloud/src/cli/bin.ts
+<cmd>` in-repo) instead of a dead-end; (2) `scripts/link-self.ts`
+  postinstall now also symlinks `node_modules/.bin/vx-cloud` → the cloud
+  bin and chmods it `0755`, so `bunx vx-cloud serve --ui` works in-repo
+  and survives a frozen install; (3) two regression tests that would
+  have caught it — core CLI asserts each moved command redirects to
+  `@vzn/vx-cloud` (not "unknown command"), and the serve suite asserts
+  `GET /` serves the embedded dashboard HTML and a deep app route falls
+  through to the SPA while `/health` stays JSON. Verified e2e: launched
+  via `bunx vx-cloud serve --ui`, all routes render real data with a
+  clean console; root `bun test` 984 pass/0 fail. No core behavior or
+  CACHE_VERSION change. Owner's workflow is `vx-cloud serve --ui` now
+  (one word longer than before); if that friction isn't wanted, pulling
+  serve back into core is the open alternative.
+
 - **2026-06-27**: **Core/cloud split — Phase 4: Docker image + Helm
   chart skeleton for `@vzn/vx-cloud`** (completes the "do all t final
   state" arc; Phases 5–7 stay deferred as future designs per

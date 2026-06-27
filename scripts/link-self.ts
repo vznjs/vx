@@ -8,7 +8,7 @@
 // postinstall so a fresh `bun install` (including `--frozen-lockfile` in CI)
 // re-creates it.
 
-import { symlinkSync, mkdirSync, existsSync, lstatSync, rmSync } from 'node:fs'
+import { symlinkSync, mkdirSync, existsSync, lstatSync, rmSync, chmodSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -25,6 +25,21 @@ if (existsSync(link) || isSymlink(link)) {
 
 // Relative target so the link is location-independent.
 symlinkSync(path.relative(scopeDir, root), link, 'dir')
+
+// Expose the `vx-cloud` bin on node_modules/.bin so `bunx vx-cloud` (and a
+// PATH that includes node_modules/.bin) launch the service CLI in-repo. Bun
+// does not auto-link a workspace member's bin to the root .bin under the
+// self-link layout above, so we create it here — same postinstall, same
+// idempotent re-create on a frozen install.
+const binDir = path.join(root, 'node_modules', '.bin')
+const binLink = path.join(binDir, 'vx-cloud')
+const binTarget = path.join(root, 'packages', 'cloud', 'src', 'cli', 'bin.ts')
+mkdirSync(binDir, { recursive: true })
+chmodSync(binTarget, 0o755) // the shebang makes it directly executable via the symlink
+if (existsSync(binLink) || isSymlink(binLink)) {
+  rmSync(binLink, { force: true })
+}
+symlinkSync(path.relative(binDir, binTarget), binLink, 'file')
 
 function isSymlink(p: string): boolean {
   try {

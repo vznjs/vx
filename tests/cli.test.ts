@@ -44,6 +44,20 @@ describe('cli run()', () => {
     expect(stderr).toContain('unknown command')
   })
 
+  // The core/cloud split moved serve/dev/coordinator/worker to @vzn/vx-cloud.
+  // Core must not silently dead-end on the old commands — it points at the
+  // cloud binary so the launch path is discoverable (regression guard for the
+  // "vx serve is unknown command" UX break).
+  it.each(['serve', 'dev', 'coordinator', 'worker'])(
+    "redirects the moved service command '%s' to @vzn/vx-cloud",
+    async (cmd) => {
+      expect(await run([cmd])).toBe(1)
+      expect(stderr).toContain('@vzn/vx-cloud')
+      expect(stderr).toContain(`vx-cloud ${cmd}`)
+      expect(stderr).not.toContain('unknown command')
+    },
+  )
+
   it('rejects run with no task', async () => {
     expect(await run(['run'])).toBe(1)
     expect(stderr).toContain('missing task name')

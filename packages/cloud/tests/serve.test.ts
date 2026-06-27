@@ -83,6 +83,36 @@ describe('vx serve delegation', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+
+  // The dashboard SPA is the whole point of `--ui`. With uiHtmlPath set, `/`
+  // and every non-API app route must serve the embedded index.html so the
+  // client-side hash router can take over — this is the "does the dashboard
+  // actually load" coverage that query-module unit tests can't give.
+  it('serves the embedded dashboard SPA at / and falls back for app routes', async () => {
+    const root = await makeWorkspace()
+    const uiHtmlPath = path.resolve(import.meta.dir, '../../..', 'apps/ui/dist/index.html')
+    const server = await startServe({ root, uiHtmlPath })
+    try {
+      const index = await fetch(`${server.origin}/`)
+      expect(index.ok).toBe(true)
+      expect(index.headers.get('content-type')).toContain('text/html')
+      const html = await index.text()
+      expect(html).toContain('<!doctype html>')
+      expect(html).toContain('vx dashboard')
+
+      // A deep app path (not /v1/*, not a real asset) serves the SPA shell.
+      const deep = await fetch(`${server.origin}/run`)
+      expect(deep.ok).toBe(true)
+      expect(await deep.text()).toContain('<!doctype html>')
+
+      // The API is still JSON, not swallowed by the SPA fallback.
+      const health = await fetch(`${server.origin}/health`)
+      expect(await health.text()).toBe('ok')
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('vx serve /v1/* metrics API', () => {
