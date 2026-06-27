@@ -170,6 +170,53 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-27**: **Dashboard UI (`apps/ui`) rewritten on json-render**
+  (owner: "completely redo whole ui using https://json-render.dev/" —
+  chosen with the tradeoffs made explicit). The entire page layer now
+  renders through json-render (`@json-render/solid` + `@json-render/core`)
+  instead of hand-written Solid pages — used the intended way: a component
+  **catalog** + per-page **data specs** the `Renderer` instantiates. New
+  `apps/ui/src/jr/`: `catalog.ts` (`defineCatalog` — the component
+  vocabulary), `components.tsx` (the Solid impls behind each name: layout
+  `Page`/`Stack`/`Grid`/`Card`, content `Metric`/`Text`/`Facts`/`Empty`,
+  chart wrappers `LineChart`/`Treemap`/`Heatmap`/`Flamegraph`, and the rich
+  self-contained widgets `DataTable` (client sort/filter + clickable rows),
+  `RankList`, `LiveActivity` SSE ticker), `renderer.tsx`
+  (`createRenderer(catalog, components)` → `<DashRenderer>` — a
+  self-contained renderer; it wires the State/Action/Functions providers
+  internally), `spec.ts` (`el()`/`toSpec()` — author a nested tree, flatten
+  to the json-render `Spec` via the library's own `nestedToFlat`),
+  `hints.ts` (declarative format/tone hints so specs stay **pure JSON** — no
+  formatter functions on the wire; charts take `xFormat`/`yFormat` hint
+  strings, table cells carry a `kind` + tone token). Every page (Overview,
+  Tasks, TaskDetail, Projects, ProjectDetail, Cache, Trends, RunDetail,
+  Bottlenecks) is now a `build(data) → Spec` function over the same `/v1/*`
+  resources, rendered by the one `DashRenderer`. **`api.ts`, `format.ts`,
+  `charts.tsx`, `ui.tsx` and the router are UNCHANGED** — the proven
+  chart/UI code is reused as json-render's component library (the right way
+  to adopt it). Carried-over fixes preserved: CPU utilization % (avg/max
+  card + per-run column, green >100%), correct cross-platform peak RSS,
+  full-size ResizeObserver-measured charts. UnoCSS `safelist` extended for
+  the semantic dot/bar tones the catalog references by token (chart-1..8
+  already listed; added `bg-/text-` for success/warn/danger/accent/
+  cache-local/info). Deps added to `apps/ui` ONLY (`@json-render/core`,
+  `@json-render/solid`, `zod` — 4 packages); **core `vx` untouched** (still
+  19 deps). Embedded single-file SPA grew ~131 KB → 242 KB raw / 71 KB gzip
+  (the interpreter) — acceptable for the embed. **Caveat to remember:**
+  UnoCSS's static extractor parses `text-[${expr}]` arbitrary-value
+  template literals and emits invalid CSS — never interpolate into bracket
+  utilities in a scanned file; pass arbitrary classes through a `class`
+  prop literal in page source instead. Verified e2e with Playwright against
+  the real workspace `cache.db` (259 runs, 70 entries) across all 9 routes:
+  0 console errors, real data, correct nav, charts filling cards. No
+  CACHE_VERSION/core-test impact (UI-only; `apps` is excluded from
+  oxlint/oxfmt and not covered by `bun test`, so validated at build +
+  runtime). PRs #149 (RSS/CPU%/chart fixes) + #150 (the rewrite). NB:
+  json-render did not itself fix any data/chart complaint (those were
+  backend/component issues fixed in #149) — its value is that the dashboard
+  is now spec-driven, so a view could later be AI-generated against the
+  same catalog.
+
 - **2026-06-17**: **Execution as a pluggable backend + `vx serve` (owner
   ask: "one process doing all the work; runs inform it what to run and
   subscribe; treat vx as a service with clients; later a hosted service").**
