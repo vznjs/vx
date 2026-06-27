@@ -203,22 +203,23 @@ index.html` is authoritative (embedded by `ui-asset.ts` at compile
   (`serve-deployment.yaml`), not just a documented `docker run`.
   `deploy/README.md` documents both topologies, the exact build/install
   commands, the values knobs, and — honestly — that this is a SKELETON:
-  the coordinator is still ephemeral-per-run and the `s3`/`r2`/`postgres`
-  + `VX_CLOUD_*` env knobs are forward-looking wiring for Phases 5/6
-  (persistent coordinator, blob-CAS input shipping) that the binary does
-  not yet read; defaults (`coordinator.replicas: 1`, `cache.backend:
-fs`) reflect today's reality. **One tracked-file edit:** `.oxfmtrc.json`
-  added `packages/cloud/deploy` to `ignorePatterns` (same precedent as
-  the `apps` exclusion) so `oxfmt --check .` doesn't try to format the
-  Helm template YAML (which contains `{{ }}`) and fail the gate. **No
-  core `src/` changes, no tests, no CACHE_VERSION bump** — pure additive
-  infra. Docker build NOT exercised end-to-end (no daemon/socket in this
-  env — verified the Dockerfile by review + the load-bearing `bun build
---compile` step independently: 183 modules → runnable `vx-cloud 0.0.0`);
-  Chart/values parse as YAML, all 12 templates have balanced braces +
-  `if/range/with`↔`end`, worker-deployment renders to valid k8s with
-  defaults. CI gate green. **Recommend a one-off `docker build` on a
-  host with a running daemon before relying on the image.**
+  the coordinator is still ephemeral-per-run and the
+  `s3`/`r2`/`postgres` and `VX_CLOUD_*` env knobs are forward-looking
+  wiring for Phases 5/6 (persistent coordinator, blob-CAS input
+  shipping) that the binary does not yet read; defaults
+  (`coordinator.replicas: 1`, `cache.backend: fs`) reflect today's
+  reality. One tracked-file edit: `.oxfmtrc.json` added
+  `packages/cloud/deploy` to `ignorePatterns` (same precedent as the
+  `apps` exclusion) so `oxfmt --check .` doesn't try to format the Helm
+  template YAML (which contains braces) and fail the gate. No core
+  `src/` changes, no tests, no CACHE_VERSION bump — pure additive infra.
+  Docker build NOT exercised end-to-end (no daemon/socket in this env —
+  verified the Dockerfile by review and the load-bearing `bun build
+  --compile` step independently: 183 modules to a runnable binary);
+  Chart/values parse as YAML, all 12 templates have balanced braces and
+  blocks, worker-deployment renders to valid k8s with defaults. CI gate
+  green. Recommend a one-off `docker build` on a host with a running
+  daemon before relying on the image.
 
 - **2026-06-27**: **Core/cloud split — Phase 3: the first-party
   `cloud()` plugin** (owner: "cloud should be integrated through a

@@ -30,10 +30,13 @@ vx stats              # deprecated alias of vx info
 
 # Platform — the 2026-06 arc
 vx mcp [--stdio]                                       # MCP server for AI agents
-vx coordinator <tasks…> [--port N] [--host H] [--workers N]
-vx run --worker <coord-url> [--capacity N] [--label L] # join a coordinator as a worker
-vx serve [--port N] [--ui] [--open]                    # unified backend (HTTP /v1/* + WS + SSE + bundled SPA)
-vx dev                                                 # local devtools hub
+vx upgrade                                             # self-update a curl-installed binary
+
+# Cloud — the @vzn/vx-cloud package (separately installed; the `vx-cloud` binary)
+vx-cloud serve [--port N] [--ui] [--open]              # unified backend (HTTP /v1/* + WS + SSE + bundled SPA)
+vx-cloud coordinator <tasks…> [--port N] [--host H] [--workers N]
+vx-cloud worker --coordinator <coord-url> [--capacity N] [--label L]
+vx-cloud dev                                           # local devtools hub
 
 # Meta
 vx help
@@ -847,7 +850,26 @@ auth (stdio is process-private). Future tools (`runTasks`,
 `getRunState`) ship under the `vx:rpc` channel when the inspector WS
 surface lands.
 
-## `vx coordinator` — distributed-CI coordinator
+# Cloud commands — the `@vzn/vx-cloud` package
+
+The service layer (`serve` / `coordinator` / `worker` / `dev`, the
+`/v1/*` metrics API, the bundled dashboard) lives in a **separate
+package, `@vzn/vx-cloud`**, which ships its own `vx-cloud` binary. Core
+`vx` stays limited to discovery / graph / cache / exec / the in-process
+run. Install it alongside core to get the commands below:
+
+```
+bun add -D @vzn/vx-cloud        # or run it from the package's vx-cloud bin
+```
+
+Core integrates with cloud through the first-party `cloud()` plugin —
+declare it in `vx.workspace.ts` and a plain `vx run` routes to a
+local-or-hosted `vx-cloud serve`, hits the cloud cache, and uploads
+insights (`defineWorkspace({ plugins: [cloud()] })`). Anyone can write a
+different plugin against the same `VxPlugin` interface. See
+`docs/design/core-cloud-split-2026-06.md`.
+
+## `vx-cloud coordinator` — distributed-CI coordinator
 
 Start a per-build coordinator that holds the task graph + ready queue
 and dispatches assignments to attached workers over WebSocket.
@@ -855,7 +877,7 @@ Content-addressed: any worker producing artifact `<hash>` satisfies
 every consumer of `<hash>`, so workers are fungible.
 
 ```
-vx coordinator <tasks…>          # positional tasks (e.g. lint test build)
+vx-cloud coordinator <tasks…>    # positional tasks (e.g. lint test build)
     --port <n>                   # default 5180
     --host <h>                   # default 127.0.0.1
     --workers <n>                # expected workers (display only)
@@ -884,7 +906,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: vx coordinator lint test build --port 5180 --workers 4 &
+      - run: vx-cloud coordinator lint test build --port 5180 --workers 4 &
         # expose 5180 to peers via tailscale / cloudflared / direct GHA runner IPs
   worker:
     runs-on: ubuntu-latest
@@ -893,7 +915,7 @@ jobs:
         worker: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
-      - run: vx run --worker ws://coord:5180 --capacity 2
+      - run: vx-cloud worker --coordinator ws://coord:5180 --capacity 2
 ```
 
 Phase A-B only today: real coordinator + worker, content-addressed
@@ -901,18 +923,18 @@ dispatch, disconnect recovery. Capability labels, cache-affinity
 hints, and Buck2-style hybrid execution land later
 (`docs/design/distributed-ci-2026-06.md`).
 
-## `vx run --worker` / `--coordinator` — distributed-CI worker
+## `vx-cloud worker` — distributed-CI worker
 
 Attach to a coordinator and execute its assignments. Stateless and
 fungible.
 
 ```
-vx run --worker ws://coord:5180  # connect, register, pull, execute
+vx-cloud worker --coordinator ws://coord:5180  # connect, register, pull, execute
     --capacity <n>               # max concurrent in-flight (default 1)
     --label <l>                  # capability label (repeatable; default linux-x64)
 ```
 
-`--coordinator` is a synonym of `--worker`. Behavior:
+Behavior:
 
 - Connects to the coordinator's WS endpoint.
 - Sends `worker:hello { workerId, capacity, labels }`.
@@ -928,14 +950,15 @@ vx run --worker ws://coord:5180  # connect, register, pull, execute
 Workers do NOT yet probe the remote cache before executing — every
 assigned task spawns fresh. Cache integration is the next iteration.
 
-## `vx serve` — unified backend (execution + metrics + UI)
+## `vx-cloud serve` — unified backend (execution + metrics + UI)
 
 The same backend powers `vx run` delegation, the metrics JSON API,
 the event stream, and (when `--ui` is set) the embedded dashboard SPA.
-One process, one stack, runs locally or in Docker.
+One process, one stack, runs locally or in Docker (see
+`packages/cloud/deploy/`).
 
 ```
-vx serve                         # bind port 4321 (falls back to a free port if taken)
+vx-cloud serve                   # bind port 4321 (falls back to a free port if taken)
     --port <n>                   # explicit (a busy pinned port is a hard error)
     --ui                         # also serve the embedded dashboard at /
     --open                       # open the dashboard in the default browser (implies --ui)
@@ -943,7 +966,7 @@ vx serve                         # bind port 4321 (falls back to a free port if 
 
 The dashboard is embedded in the binary (a single self-contained
 `apps/ui/dist/index.html` compiled in via `with { type: 'file' }`), so
-`--ui` works from a bare `vx` with nothing else on disk.
+`--ui` works from a bare `vx-cloud` with nothing else on disk.
 
 HTTP routes (all return JSON unless noted):
 
@@ -958,21 +981,22 @@ HTTP routes (all return JSON unless noted):
 Every wire frame is a JSON-RPC 2.0 envelope per
 `docs/design/wire-protocol-2026-06.md`. Service-emitted events use
 the `events.append` notification method; client-submitted runs use
-the `submit.run` request method. A `vx run` against a workspace where
-`vx serve` is already up auto-delegates via `.vx/serve.json`
-discovery + a 300 ms `/health` probe.
+the `submit.run` request method. With the `cloud()` plugin declared, a
+`vx run` against a workspace where `vx-cloud serve` is already up
+auto-delegates via `.vx/serve.json` discovery + a 300 ms `/health`
+probe.
 
 `curl -N http://localhost:<port>/events` prints every envelope as
 SSE; `curl -N http://localhost:<port>/stream | jq` for one envelope
 per line.
 
-## `vx dev` — devtools hub
+## `vx-cloud dev` — devtools hub
 
 Foreground devtools hub that ingests forwarded NDJSON events from a
 local `vx run` and renders them through a connected web client.
 
 ```
-vx dev                           # bind a kernel-assigned local socket
+vx-cloud dev                     # bind a kernel-assigned local socket
 ```
 
 Optional and dev-time only. Production observability is the OTel
