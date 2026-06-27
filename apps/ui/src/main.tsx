@@ -12,6 +12,7 @@ import TASK_DETAIL from './views/taskDetail.json'
 import CACHE from './views/cache.json'
 import BOTTLENECKS from './views/bottlenecks.json'
 import TRENDS from './views/trends.json'
+import RUNS from './views/runs.json'
 import RUN_DETAIL from './views/runDetail.json'
 
 const root = document.getElementById('root')
@@ -25,6 +26,7 @@ render(
       <Route path="/projects/:name" component={jsonPage(PROJECT_DETAIL)} />
       <Route path="/tasks" component={jsonPage(TASKS)} />
       <Route path="/tasks/:id" component={jsonPage(TASK_DETAIL)} />
+      <Route path="/runs" component={jsonPage(RUNS)} />
       <Route path="/bottlenecks" component={jsonPage(BOTTLENECKS)} />
       <Route path="/trends" component={jsonPage(TRENDS)} />
       <Route path="/cache" component={jsonPage(CACHE)} />

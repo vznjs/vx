@@ -10,9 +10,9 @@
 // JSON.
 
 import { For, Show, type JSX, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
-import type { BaseComponentProps } from '@json-render/solid'
+import { type BaseComponentProps, useStateBinding } from '@json-render/solid'
 import { A, useNavigate } from '@solidjs/router'
-import { subscribeEvents } from '../api.ts'
+import { type RunSummaryRow, subscribeEvents } from '../api.ts'
 import { HBar, Heatmap as HeatmapPrimitive, LineChart as LineChartPrimitive, Treemap as TreemapPrimitive } from '../components/charts.tsx'
 import { Card as UiCard, EmptyState, MetricCard, StatusBadge } from '../components/ui.tsx'
 import { Flamegraph as FlamegraphPrimitive } from '../components/Flamegraph.tsx'
@@ -196,8 +196,16 @@ export function Heatmap(c: C<{ rows: Row[]; dayKey?: string; hourKey?: string; v
   )
 }
 
-export function Flamegraph(c: C<{ rows: Parameters<typeof FlamegraphPrimitive>[0]['tasks'] }>) {
-  return <FlamegraphPrimitive tasks={c.props.rows ?? []} />
+// Interactive flamegraph: clicking a bar writes the task to `/selectedTask`
+// (json-render state via useStateBinding), which a `visible`-gated detail panel
+// in the spec binds to. The selected id flows back in to highlight the bar.
+export function Flamegraph(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string }>) {
+  const [selected, setSelected] = useStateBinding<RunSummaryRow>(c.props.selectKey ?? '/selectedTask')
+  const selectedId = () => {
+    const s = selected()
+    return s ? `${s.project}#${s.task}` : undefined
+  }
+  return <FlamegraphPrimitive tasks={c.props.rows ?? []} selectedId={selectedId()} onSelect={(t) => setSelected(t)} />
 }
 
 // --- DataTable --------------------------------------------------------------

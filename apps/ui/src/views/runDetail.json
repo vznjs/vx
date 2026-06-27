@@ -209,7 +209,8 @@
       {
         "type": "Card",
         "props": {
-          "title": "Timeline"
+          "title": "Timeline",
+          "actionText": "click a bar for details"
         },
         "visible": {
           "$state": "/runStatus",
@@ -222,6 +223,38 @@
               "rows": {
                 "$state": "/run/tasks"
               }
+            }
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": {
+            "$computed": "text",
+            "args": {
+              "tpl": "{p}#{t}",
+              "p": { "$state": "/selectedTask/project" },
+              "t": { "$state": "/selectedTask/task" }
+            }
+          }
+        },
+        "visible": { "$state": "/selectedTask" },
+        "children": [
+          {
+            "type": "Facts",
+            "props": {
+              "entry": { "$state": "/selectedTask" },
+              "fields": [
+                { "label": "Status", "key": "status", "kind": "text" },
+                { "label": "Started", "key": "startedAt", "kind": "dateTime" },
+                { "label": "Ended", "key": "endedAt", "kind": "dateTime" },
+                { "label": "Duration", "key": "durationMs", "kind": "duration" },
+                { "label": "CPU", "key": "cpuMs", "kind": "duration" },
+                { "label": "Peak RSS", "key": "peakRssBytes", "kind": "bytes" },
+                { "label": "Exit", "key": "exitCode", "kind": "text" },
+                { "label": "Hash", "key": "hash", "kind": "shorthash16" }
+              ]
             }
           }
         ]

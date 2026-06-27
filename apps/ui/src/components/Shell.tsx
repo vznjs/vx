@@ -14,6 +14,7 @@ const NAV: NavItem[] = [
   { href: '/', label: 'Overview', icon: 'i-tabler-layout-dashboard' },
   { href: '/projects', label: 'Projects', icon: 'i-tabler-stack-2' },
   { href: '/tasks', label: 'Tasks', icon: 'i-tabler-list-details' },
+  { href: '/runs', label: 'Runs', icon: 'i-tabler-history' },
   { href: '/bottlenecks', label: 'Bottlenecks', icon: 'i-tabler-flame' },
   { href: '/trends', label: 'Trends', icon: 'i-tabler-chart-line' },
   { href: '/cache', label: 'Cache', icon: 'i-tabler-database' },
