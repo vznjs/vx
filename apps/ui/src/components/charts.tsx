@@ -7,9 +7,28 @@
 //  - All numeric inputs are nullable-safe via the caller (no NaN propagates).
 //  - Strokes use semantic / chart-palette CSS variables so theming Just Works.
 
-import { For, Show, createMemo, createSignal } from 'solid-js'
+import { For, Show, createMemo, createSignal, onCleanup } from 'solid-js'
 
-const MARGIN = { top: 8, right: 8, bottom: 18, left: 36 }
+const MARGIN = { top: 10, right: 12, bottom: 22, left: 44 }
+
+/**
+ * Track a container element's width via ResizeObserver so an SVG can fill it.
+ * Without this, a fixed-viewBox SVG with width=100% letterboxes its content
+ * into a small centered box — the chart looks tiny in a wide column.
+ */
+function useContainerWidth(fallback: number): [() => number, (el: HTMLElement) => void] {
+  const [w, setW] = createSignal(fallback)
+  const ref = (el: HTMLElement) => {
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver((entries) => {
+      const cw = entries[0]?.contentRect.width
+      if (cw && cw > 0) setW(Math.floor(cw))
+    })
+    ro.observe(el)
+    onCleanup(() => ro.disconnect())
+  }
+  return [w, ref]
+}
 
 interface LineSeries {
   name: string
@@ -33,8 +52,9 @@ export interface LineChartProps {
 }
 
 export function LineChart(props: LineChartProps) {
-  const W = () => props.width ?? 600
-  const H = () => props.height ?? 180
+  const [measuredW, containerRef] = useContainerWidth(props.width ?? 800)
+  const W = () => props.width ?? measuredW()
+  const H = () => props.height ?? 260
   const innerW = () => W() - MARGIN.left - MARGIN.right
   const innerH = () => H() - MARGIN.top - MARGIN.bottom
 
@@ -101,6 +121,7 @@ export function LineChart(props: LineChartProps) {
   const onLeave = () => setHoverIdx(null)
 
   return (
+    <div ref={containerRef} class="w-full">
     <svg
       viewBox={`0 0 ${W()} ${H()}`}
       width="100%"
@@ -238,6 +259,7 @@ export function LineChart(props: LineChartProps) {
         })()}
       </Show>
     </svg>
+    </div>
   )
 }
 

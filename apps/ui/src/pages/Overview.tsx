@@ -101,7 +101,7 @@ export function Overview() {
               ]}
               formatX={(t) => formatDate(t)}
               formatY={(v) => formatCount(v)}
-              height={180}
+              height={300}
             />
             <div class="text-[11px] text-fg-3 mt-2 font-mono">
               {last30dRuns()} runs · {formatDuration(last30dDur())} total · {last30dHits()} hits

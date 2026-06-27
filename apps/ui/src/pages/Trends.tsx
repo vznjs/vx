@@ -35,7 +35,7 @@ export function Trends() {
             ]}
             formatX={(t) => formatDate(t)}
             formatY={(v) => formatCount(v)}
-            height={200}
+            height={320}
           />
         </Show>
       </Card>
@@ -50,7 +50,7 @@ export function Trends() {
               ]}
               formatX={(t) => formatDate(t)}
               formatY={(v) => formatDuration(v)}
-              height={200}
+              height={320}
             />
           </Show>
         </Card>
@@ -75,7 +75,7 @@ export function Trends() {
             ]}
             formatX={(t) => formatDate(t)}
             formatY={(v) => formatBytes(v)}
-            height={180}
+            height={280}
           />
         </Show>
       </Card>
@@ -110,7 +110,7 @@ export function Trends() {
               ]}
               formatX={(t) => formatDate(t)}
               formatY={(v) => v.toFixed(1) + '×'}
-              height={140}
+              height={240}
             />
           </div>
         </Show>

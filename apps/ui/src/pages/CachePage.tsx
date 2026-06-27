@@ -91,7 +91,7 @@ export function CachePage() {
             ]}
             formatX={(t) => formatDate(t)}
             formatY={(v) => formatBytes(v)}
-            height={160}
+            height={240}
           />
         </Show>
       </Card>
