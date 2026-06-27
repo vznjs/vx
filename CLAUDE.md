@@ -249,6 +249,34 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
   yields the whole array. Re-verified e2e across all 9 routes (0 errors,
   full fidelity — sortable headers, dots, tone bars, CPU%/RSS).
 
+  **Two-way catalog (owner: "make it 2-way — either raw JSON or JSX with
+  components, one catalog to build UI" + "why not use defineRegistry +
+  Renderer?").** The catalog is now ONE set of **plain Solid components**
+  (`jr/components.tsx`: `Page`/`Grid`/`Card`/`Metric`/`Text`/`Facts`/`Empty`/
+  `LineChart`/`Treemap`/`Heatmap`/`Flamegraph`/`DataTable`/`RankList`/
+  `LiveActivity` — each takes ordinary props + `children`), usable two ways:
+  (1) **directly in JSX** — the 9 pages are now plain Solid
+  (`<Card noPad><DataTable rows={rows()} columns={COLS} /></Card>`), no
+  specs/`$state`/`toSpec`; (2) **via raw-JSON specs** through json-render —
+  `jr/renderer.tsx` exposes the SAME components to json-render via the
+  documented `defineRegistry` + `<Renderer>` API (switched off
+  `createRenderer`, which was just sugar over providers), wrapped in
+  `JSONUIProvider` for `$state`/`$computed` binding and rendered by `Dash`.
+  Glue is one `adapt(Comp)` that forwards json-render's reactive
+  `ctx.props`/`ctx.children` to a plain component via a live proxy (same
+  reactivity reason as before). `pages/SpecDemo.tsx` (route `/spec`, not in
+  nav) renders a literal flat `Spec` bound to live `state` — proof + living
+  reference for the JSON path. **Net: the dashboard is back to plain Solid**
+  (pages dropped all spec machinery), and **json-render is now OPTIONAL** —
+  with no routed page using `Dash` the whole interpreter tree-shakes out
+  (bundle 246 KB → 119 KB / 35 KB gzip); the `/spec` demo is what pulls it
+  back in (245 KB). So: simple hand-authored pages by default, json-render
+  available the moment a JSON/AI-generated view is wanted, both off one
+  catalog. `spec.ts` (`el`/`toSpec`/`S`/`C`/`T`) kept as the ergonomic
+  JSON-spec authoring helper. Verified e2e: all 9 JSX routes + `/spec`
+  (raw JSON, `$computed`/`$state`-bound metrics + DataTable) render against
+  the real cache.db, 0 errors. PR #152.
+
 - **2026-06-17**: **Execution as a pluggable backend + `vx serve` (owner
   ask: "one process doing all the work; runs inform it what to run and
   subscribe; treat vx as a service with clients; later a hosted service").**
