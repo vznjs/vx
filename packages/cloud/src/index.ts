@@ -1,10 +1,13 @@
-// Public API for @vzn/vx-cloud — the orchestrator service.
+// Public API for @vzn/vx-cloud — the orchestrator service + the first-party
+// cloud plugin.
 //
-// For now this re-exports the service starters (the building blocks the
-// service CLI uses). The first-party `cloud()` VxPlugin — contributing the
-// backend / cache / eventSink capabilities — lands in Phase 3
-// (docs/design/core-cloud-split-2026-06.md §11).
+// `cloud()` is the VxPlugin contributing the backend / cache / eventSink
+// capabilities against core's plugin interface (Phase 3 of
+// docs/design/core-cloud-split-2026-06.md §11). The rest re-exports the
+// service starters (the building blocks the service CLI uses).
 
+export { cloud } from './plugin.js'
+export type { CloudPluginOptions } from './plugin.js'
 export { startServe, parseServeArgs, serveInfoPath, DEFAULT_SERVE_PORT } from './cli/serve.js'
 export type { ServeServer } from './cli/serve.js'
 export { startCoordinator, parseCoordinatorArgs } from './cli/coordinator.js'

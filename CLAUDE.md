@@ -170,6 +170,50 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-27**: **Core/cloud split — Phase 3: the first-party
+  `cloud()` plugin** (owner: "cloud should be integrated through a
+  plugin… anyone could choose to do differently" → "do all t final
+  state"). Implements Phase 3 of
+  `docs/design/core-cloud-split-2026-06.md`. New
+  `packages/cloud/src/plugin.ts` exports `cloud(opts?:
+CloudPluginOptions): VxPlugin` (name `'vzn/cloud'`), declared via
+  `defineWorkspace({ plugins: [cloud()] })`, contributing all three
+  run-level capabilities against core's shipped `VxPlugin` interface —
+  each independent and zero-config via env-var fallbacks: **(backend)**
+  returns the cloud `resolveBackend(cwd, undefined, serviceUrl)` —
+  delegate to a reachable `vx-cloud serve` (the serve-info discovery
+  that LEFT core in Phase 2), else local-dev mirror; always returns a
+  backend, so with the plugin present runs behave like pre-split core,
+  without it core uses plain `localBackend()`. **(cache)** when
+  `cacheUrl`+`cacheToken` (or `VX_REMOTE_CACHE_*`) are set, builds `new
+LayeredCache(localCache, new RemoteCache({…}), { policy, onRemoteError
+})` faithfully mirroring core's `remote-cache-setup.ts`
+  (teamId/slug/signatureKey/timeoutMs honored); declines (`undefined`)
+  when unconfigured → core's env fallback still applies. **(eventSink)**
+  when `insightsUrl` (or `VX_CLOUD_INSIGHTS_URL`) is set, an
+  `InsightsSink` buffers WireEvents and POSTs them as one NDJSON body
+  with a Bearer token; declines when unconfigured. **(setup)** validates
+  the three URLs are well-formed (boundary check → `UserError`).
+  **Lifecycle finding (load-bearing):** core never invokes
+  `plugin.teardown()` nor `EventSink.flush()` — `run.ts`'s finally only
+  disposes bus subscriptions (`plugin-host.ts`'s `subscribeEventSinks`
+  disposer just unsubscribes). So `InsightsSink` self-flushes on the
+  terminal `run:end` WireEvent inside `onEvent` (idempotent via an
+  `uploaded` guard); `flush()` is kept as a best-effort fallback for a
+  future host that does await it. `onEvent` never throws (fetch errors
+  swallowed, 5s timeout) — observability can't break a run. **One
+  minimal core-of-cloud change:** `packages/cloud/src/cli/backend.ts`'s
+  `resolveBackend` gained an optional third `serviceUrl?` param
+  (preferred over `VX_SERVICE_URL`/serve-info when set); the existing
+  env→serve-info→local fail-safe chain is unchanged. **No core `src/`
+  changes, no CACHE_VERSION/SCHEMA bump** — additive in `packages/cloud`
+  only (4 files: new `plugin.ts` + `tests/plugin.test.ts`, modified
+  `index.ts` exports + `backend.ts` param). Verified: core gate green,
+  root `bun test` 979 pass/0 fail (996 across 71 files), cloud
+  standalone 48 pass/0 fail (11 new plugin tests), boundary guard
+  intact. NEXT: Phase 4 — Docker + Helm skeleton (multi-role vx-cloud
+  image; coordinator Service, worker Deployment + HPA, shared CAS).
+
 - **2026-06-27**: **Core/cloud split — Phase 2: `@vzn/vx-cloud`
   extracted to `packages/cloud`** (owner: "I would want a total split.
   2 packages. Vx that is core and vx cloud that is a hosted service
