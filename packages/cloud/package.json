@@ -1,0 +1,34 @@
+{
+  "name": "@vzn/vx-cloud",
+  "version": "0.0.0",
+  "description": "The vx orchestrator service — vx serve / coordinator / worker / dev, plus the first-party cloud plugin.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "bin": {
+    "vx-cloud": "./src/cli/bin.ts"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "bun": ">=1.3"
+  },
+  "dependencies": {
+    "@vzn/vx-ui": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "devframe": "^0.5.4"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

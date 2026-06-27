@@ -31,7 +31,7 @@ const ALLOWED: Record<string, readonly string[]> = {
   exec: ['util', 'config'],
   orchestrator: ['util', 'config', 'version', 'workspace', 'graph', 'cache', 'exec'],
   cli: ['util', 'config', 'version', 'workspace', 'graph', 'cache', 'orchestrator'],
-  index: ['config', 'version', 'graph', 'orchestrator'],
+  index: ['util', 'config', 'version', 'workspace', 'graph', 'cache', 'orchestrator'],
   bin: ['util', 'cli'],
 }
 

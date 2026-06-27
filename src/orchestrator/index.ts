@@ -2,6 +2,8 @@
 // through here (enforced by tests/module-boundaries.test.ts).
 
 export { run, planRun } from './run.js'
+export { prepareRun, type PreparedRun } from './prepare.js'
+export { computeTaskHash, createHashCache, type HashCache } from './task-hash.js'
 export type { RunOptions, RunSummary } from './options.js'
 // Re-surface the cache policy contract (defined in the cache module) so
 // embedders constructing RunOptions.cache and the package façade can
@@ -10,7 +12,13 @@ export { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/
 export { defaultLogger, resolveOutputView } from './logger.js'
 export type { Logger, OutputView } from './logger.js'
 export type { RunPlan, PlannedTask, CacheStatus } from './plan.js'
-export { createEventBus, wireForwarder, toWireEvent, projectOutcome } from './events.js'
+export {
+  createEventBus,
+  wireForwarder,
+  toWireEvent,
+  projectNode,
+  projectOutcome,
+} from './events.js'
 export type {
   EventBus,
   RunEvent,
@@ -22,15 +30,7 @@ export type {
 export { createVxSurface } from './devframe-surface.js'
 export { createWireRenderer } from './wire-render.js'
 export { optionsToRequest, requestToOptions } from './protocol.js'
-export type {
-  ClientMessage,
-  RunBackend,
-  RunRequest,
-  RunResult,
-  ServerMessage,
-  WireOutcome,
-  WireTaskNode,
-} from './protocol.js'
+export type { ClientMessage, RunBackend, RunRequest, RunResult, ServerMessage } from './protocol.js'
 export {
   clientMessageToEnvelope,
   decodeEnvelope,
@@ -82,7 +82,6 @@ export {
   type VxPlugin,
 } from './plugin.js'
 export { resolveBackend, resolveCache, subscribeEventSinks } from './plugin-host.js'
-export { prepareForCoordinator, computeTaskHashForCoord } from './coordinator-prepare.js'
 export { workerExecute } from './worker-exec.js'
 export type { WorkerExecArgs, WorkerExecResult } from './worker-exec.js'
 export {

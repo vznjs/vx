@@ -14,6 +14,9 @@
   "bin": {
     "vx": "./src/bin.ts"
   },
+  "scripts": {
+    "postinstall": "bun run scripts/link-self.ts"
+  },
   "files": [
     "src",
     "README.md"
@@ -24,7 +27,8 @@
   },
   "workspaces": [
     ".",
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "^0.0.56"

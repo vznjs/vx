@@ -170,6 +170,58 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-27**: **Core/cloud split — Phase 2: `@vzn/vx-cloud`
+  extracted to `packages/cloud`** (owner: "I would want a total split.
+  2 packages. Vx that is core and vx cloud that is a hosted service
+  that orchestrates… cloud should be integrated through a plugin… No
+  cli. Vx cloud can have its own cli. Vx is limited… Do it nicely the
+  best you can keep separation and plugin flexibility" → "do all t
+  final state"). Implements Phase 2 of
+  `docs/design/core-cloud-split-2026-06.md` (Phase 1 = plugin
+  extension points, `495ac66`). The service layer LEFT core: `cli/
+{serve,coordinator,worker,dev,dev-client,ui-asset,ui-server}.ts` +
+  `orchestrator/coordinator-prepare.ts` moved to `packages/cloud/src/`,
+  rewired to import core via the bare `@vzn/vx` specifier; new
+  cloud-only `protocol-dist.ts` (the `WireTaskNode`/`WireOutcome` +
+  `worker:*`/`coord:*` JSON-RPC families), `cli/backend.ts`
+  (`serviceBackend`/`resolveBackend`/`localDevBackend`), `cli/bin.ts`
+  (the `vx-cloud` dispatcher), `index.ts`. **`worker-exec.ts` and
+  `metrics.ts` STAYED in core** (exported publicly — they're execution/
+  query primitives, not service plumbing). Core `cli/run.ts`'s backend
+  fallback is now `() => Promise.resolve(localBackend())` — pure core
+  no longer auto-delegates to a running serve (cloud owns delegation in
+  Phase 3 via its plugin). Core `vx --help` drops serve/dev/worker/
+  coordinator and points at the `vx-cloud` binary; `vx-cloud --help`
+  dispatches them. `protocol.ts`/`wire.ts` narrowed to the base
+  envelope + event/result/error/run messages; `src/index.ts` expanded
+  to the ~80-symbol public API the cloud package consumes (pinned by
+  the boundary test). **Load-bearing infra:** Bun can't resolve a
+  member's `"@vzn/vx": "workspace:*"` against the root `"."` member, so
+  `packages/cloud` does NOT declare `@vzn/vx` as a dep — a root
+  `postinstall` (`scripts/link-self.ts`) symlinks `node_modules/@vzn/vx
+→ <root>` and cloud imports the bare `'@vzn/vx'` through the root's
+  `exports` map; survives `bun install --frozen-lockfile` (CI's
+  command, verified). `packages` removed from oxlint/oxfmt
+  `ignorePatterns` (cloud is linted/formatted like core; `apps` stays
+  ignored for solid-js JSX); `scripts/**` added to tsconfig include.
+  Dogfood `test` task switched `bun test tests/` → `bun test ./tests/`
+  so the bare substring no longer pulls `packages/cloud/tests/` into
+  the core gate (cloud tests run via the package's own `bun test`; a
+  clean root `bun test` still runs everything). Tests relocated to
+  `packages/cloud/tests/` (serve/distributed/ui-server/dev-hub/wire-
+  dist); `tests/package-boundaries.test.ts` added (core never imports
+  `@vzn/vx-cloud`; cloud imports core only via the bare specifier). No
+  CACHE_VERSION/SCHEMA bump (key derivation + artifact bytes
+  untouched). Verified: core gate green, root `bun test` 968 pass/0
+  fail (985 across 70 files), core-only 931 pass, cloud standalone 37
+  pass, boundaries 3 pass, frozen install re-links + cloud resolves 81
+  core exports. **Known follow-up:** the broader `docs/` (architecture/
+  cli refs still calling `vx serve` a core command) are stale — a doc
+  pass is pending. NEXT: Phase 3 — the first-party `cloud()` plugin
+  (`packages/cloud/src/plugin.ts`) contributing backend (submit to
+  coordinator + serve-info discovery, moved out of core) / cache /
+  eventSink.
+
 - **2026-06-27**: **Dashboard restyle + run-centric cockpit with a live
   task graph** (owner: "make the ui prettier… make it modern" → "focus the
   ui on flows of actual development… from working with nx locally" → "runs

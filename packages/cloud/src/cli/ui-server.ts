@@ -4,8 +4,7 @@
 // `vx run` never loads it. Missing → a clear UserError with the hint.
 
 import type { DevframeDefinition } from 'devframe'
-import { createEventBus, createVxSurface, type EventBus } from '../orchestrator/index.js'
-import { UserError } from '../util/index.js'
+import { createEventBus, createVxSurface, UserError, type EventBus } from '@vzn/vx'
 
 export interface DevframeServer {
   /** Origin the dev server bound to, e.g. `http://localhost:9999`. */

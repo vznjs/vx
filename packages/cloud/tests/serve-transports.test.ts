@@ -7,14 +7,14 @@ import { describe, expect, it } from 'bun:test'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { startServe } from '../src/cli/serve.js'
 import {
   decodeEnvelope,
   isEnvelope,
   isNotification,
   makeRequest,
   WIRE_PROTOCOL_VERSION,
-} from '../src/orchestrator/index.js'
+} from '@vzn/vx'
+import { startServe } from '../src/cli/serve.js'
 
 async function setupWorkspace(): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), 'vx-serve-transport-'))

@@ -5,7 +5,7 @@
 // forwarding" and the run proceeds exactly as it would without `vx dev`.
 
 import { existsSync } from 'node:fs'
-import { findWorkspaceRoot } from '../workspace/index.js'
+import { findWorkspaceRoot } from '@vzn/vx'
 import { devSocketPath } from './dev.js'
 
 export interface DevForwarder {

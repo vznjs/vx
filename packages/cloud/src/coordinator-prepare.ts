@@ -3,10 +3,7 @@
 // per-node computes the cache key used as the assignment hash.
 // Workers receive only the resolved descriptor + the hash.
 
-import { prepareRun } from './prepare.js'
-import type { PreparedRun } from './prepare.js'
-import type { TaskNode } from '../graph/index.js'
-import { computeTaskHash } from './task-hash.js'
+import { prepareRun, computeTaskHash, type PreparedRun, type TaskNode } from '@vzn/vx'
 
 const silentLogger = {
   status() {},

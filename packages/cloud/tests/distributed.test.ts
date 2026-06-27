@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'bun:test'
-import { parseCoordinatorArgs, parseWorkerArgs } from '../src/cli/index.js'
+import { parseCoordinatorArgs } from '../src/cli/coordinator.js'
+import { parseWorkerArgs } from '../src/cli/worker.js'
 import type {
-  ClientMessage,
-  ServerMessage,
+  DistClientMessage,
+  DistServerMessage,
   WireOutcome,
   WireTaskNode,
-} from '../src/orchestrator/index.js'
+} from '../src/protocol-dist.js'
 
 describe('parseCoordinatorArgs', () => {
   it('accepts a bare task list with defaults', () => {
@@ -70,15 +71,15 @@ describe('parseWorkerArgs', () => {
 })
 
 describe('protocol shape', () => {
-  it('ClientMessage tags worker:* messages', () => {
-    const hello: ClientMessage = {
+  it('DistClientMessage tags worker:* messages', () => {
+    const hello: DistClientMessage = {
       t: 'worker:hello',
       workerId: 'w1',
       capacity: 4,
       labels: ['linux-x64'],
     }
-    const pull: ClientMessage = { t: 'worker:pull', available: 2 }
-    const done: ClientMessage = {
+    const pull: DistClientMessage = { t: 'worker:pull', available: 2 }
+    const done: DistClientMessage = {
       t: 'worker:done',
       taskHash: 'cafebabe',
       outcome: { status: 'success', exitCode: 0, durationMs: 12, cacheSource: 'miss' },
@@ -88,8 +89,8 @@ describe('protocol shape', () => {
     expect(done.t).toBe('worker:done')
   })
 
-  it('ServerMessage tags task:assign / cache:exists / coord:drain', () => {
-    const assign: ServerMessage = {
+  it('DistServerMessage tags task:assign / cache:exists / coord:drain', () => {
+    const assign: DistServerMessage = {
       t: 'task:assign',
       hash: 'deadbeef',
       node: {
@@ -101,8 +102,8 @@ describe('protocol shape', () => {
         cacheable: true,
       },
     }
-    const exists: ServerMessage = { t: 'cache:exists', hash: 'd', present: true }
-    const drain: ServerMessage = { t: 'coord:drain' }
+    const exists: DistServerMessage = { t: 'cache:exists', hash: 'd', present: true }
+    const drain: DistServerMessage = { t: 'coord:drain' }
     expect(assign.t).toBe('task:assign')
     expect(exists.t).toBe('cache:exists')
     expect(drain.t).toBe('coord:drain')

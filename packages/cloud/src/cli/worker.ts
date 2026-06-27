@@ -1,17 +1,16 @@
-// `vx run --worker <coord-url>` — distributed-CI worker handler
-// (architecture-review §2.1 + distributed-ci-2026-06.md Phase B).
+// `vx-cloud worker --coordinator <coord-url>` — distributed-CI worker
+// handler (architecture-review §2.1 + distributed-ci-2026-06.md Phase B).
 // Stateless and fungible: connect, send worker:hello, pull tasks,
 // execute, report. Content addressing makes work assignable across
 // any worker that holds the same workspace checkout.
 
-import {
-  workerExecute,
-  type ClientMessage,
-  type ServerMessage,
-  type WireOutcome,
-  type WireTaskNode,
-} from '../orchestrator/index.js'
-import { UserError } from '../util/index.js'
+import { workerExecute, UserError } from '@vzn/vx'
+import type {
+  DistClientMessage,
+  DistServerMessage,
+  WireOutcome,
+  WireTaskNode,
+} from '../protocol-dist.js'
 
 export interface WorkerArgs {
   coordinatorUrl: string
@@ -67,7 +66,7 @@ export async function runWorker(opts: {
   let drained = false
   const ws = new WebSocket(wsUrl)
   return await new Promise<{ ok: boolean }>((resolve) => {
-    const send = (msg: ClientMessage): void => {
+    const send = (msg: DistClientMessage): void => {
       try {
         ws.send(JSON.stringify(msg))
       } catch {
@@ -85,9 +84,9 @@ export async function runWorker(opts: {
       ok = false
     }
     ws.onmessage = async (ev) => {
-      let msg: ServerMessage
+      let msg: DistServerMessage
       try {
-        msg = JSON.parse(String(ev.data)) as ServerMessage
+        msg = JSON.parse(String(ev.data)) as DistServerMessage
       } catch {
         return
       }

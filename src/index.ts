@@ -1,6 +1,15 @@
 // Public API for @vzn/vx.
+//
+// This is the stable cross-package contract — `@vzn/vx-cloud` (and any
+// third-party plugin) imports everything it needs from here via the bare
+// `'@vzn/vx'` specifier (never a deep `src/...` path). The surface is pinned
+// by tests/package-boundaries.test.ts; a widening updates that snapshot
+// deliberately. See docs/design/core-cloud-split-2026-06.md §3.5.
 
 export { VERSION } from './version.js'
+
+// Clean error type — user-input failures print a message without a stack.
+export { UserError } from './util/index.js'
 
 // Schema types and helpers (used by user vx.config files and presets).
 export type {
@@ -17,10 +26,44 @@ export type {
 } from './config.js'
 export { defineProject, defineWorkspace } from './config.js'
 
-// Programmatic engine API (for embedding in other tools).
-export { run, FULL_CACHE_POLICY, parseCachePolicy } from './orchestrator/index.js'
-export type { CachePolicy, Logger, RunOptions, RunSummary } from './orchestrator/index.js'
+// Programmatic engine API (run / plan / prepare) + the graph primitives a
+// coordinator/worker reason over + the cache-key hashing seam.
+export { run, planRun, prepareRun } from './orchestrator/index.js'
+export type { PreparedRun } from './orchestrator/index.js'
+export { computeTaskHash, createHashCache } from './orchestrator/index.js'
+export type { HashCache } from './orchestrator/index.js'
+export { FULL_CACHE_POLICY, parseCachePolicy } from './orchestrator/index.js'
+export type {
+  CachePolicy,
+  Logger,
+  OutputView,
+  RunOptions,
+  RunSummary,
+} from './orchestrator/index.js'
+export { defaultLogger, resolveOutputView } from './orchestrator/index.js'
+export { buildTaskGraph, expandRequested, isGroupTask, markSurfacedDeps } from './graph/index.js'
 export type { TaskNode, TaskOutcome, TaskStatus } from './graph/index.js'
+
+// Cache classes + the layer interface (the `cache` capability's currency)
+// and the blob-CAS / input-output resolution substrate.
+export {
+  Cache,
+  LayeredCache,
+  RemoteCache,
+  GitFilesCache,
+  resolveInputs,
+  resolveOutputs,
+  FsCASBackend,
+  MemoryCASBackend,
+  makeDigest,
+  parseDigest,
+  digestEqual,
+  digestString,
+} from './cache/index.js'
+export type { CacheLayer, RunRecord, CASBackend, Digest } from './cache/index.js'
+
+// Workspace discovery — cloud's CLI + coordinator need these.
+export { findWorkspaceRoot, loadWorkspaceConfig, resolveCacheDir } from './workspace/index.js'
 
 // Plugin API — the three run-level extension points (backend / cache /
 // eventSink). A plugin is declared in vx.workspace.ts via
@@ -33,11 +76,33 @@ export type {
   CacheContext,
   EventSinkContext,
   PluginSetupContext,
+} from './orchestrator/index.js'
+
+// The submitter wire contract + backend interface (the `backend`
+// capability's currency) and the serializable event projection.
+export {
+  optionsToRequest,
+  requestToOptions,
+  projectNode,
+  projectOutcome,
+  createWireRenderer,
+  workerExecute,
+} from './orchestrator/index.js'
+export type {
   RunBackend,
+  RunRequest,
+  RunResult,
+  ClientMessage,
+  ServerMessage,
 } from './orchestrator/index.js'
 
 // Event bus + wire form — adapters (otel-bridge, custom subscribers) ride this.
-export { createEventBus, wireForwarder, toWireEvent } from './orchestrator/index.js'
+export {
+  createEventBus,
+  wireForwarder,
+  toWireEvent,
+  createVxSurface,
+} from './orchestrator/index.js'
 export type {
   EventBus,
   RunEvent,
@@ -45,4 +110,60 @@ export type {
   WireEvent,
   TaskView,
   OutcomeView,
+} from './orchestrator/index.js'
+
+// The JSON-RPC 2.0 wire envelope — cloud's serve speaks this framing.
+export {
+  clientMessageToEnvelope,
+  decodeEnvelope,
+  encodeForNDJSON,
+  encodeForSSE,
+  encodeForWS,
+  ENVELOPE_ERRORS,
+  envelopeToClientMessage,
+  envelopeToServerMessage,
+  isEnvelope,
+  isNotification,
+  isRequest,
+  makeError,
+  makeNotification,
+  makeRequest,
+  makeResponse,
+  serverMessageToEnvelope,
+  WIRE_CHANNELS,
+  WIRE_PROTOCOL_VERSION,
+} from './orchestrator/index.js'
+export type {
+  Envelope,
+  ErrorResponse,
+  Notification,
+  WireRequest,
+  WireResponse,
+  WireChannel,
+} from './orchestrator/index.js'
+
+// Metrics / analytics query layer over cache.db — cloud's /v1/* surface
+// reads from these (the queries stay in core; cloud serves them over HTTP).
+export {
+  explainCacheKeyQuery,
+  getBottlenecks,
+  getCacheBreakdown,
+  getCacheSavings,
+  getCacheStatsSql,
+  getFlakiestTasks,
+  getHistory,
+  getParallelismHistory,
+  getPrunableEntries,
+  getRecentFailures,
+  getRun,
+  getRunHeatmap,
+  getRunTrends,
+  getStorageGrowth,
+  getTaskDetail,
+  getTopTimeBurners,
+  listCacheEntries,
+  listInvocations,
+  listProjects,
+  listRuns,
+  whyDidThisRerunQuery,
 } from './orchestrator/index.js'

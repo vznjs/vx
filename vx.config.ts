@@ -27,9 +27,11 @@ export default defineProject({
       description: 'bun test against the tests/ tree',
       // Scope to ./tests so workspace-member tests (packages/**/tests/) stay
       // isolated to their own packages — `bun test` without a path scans
-      // recursively and would pick up packages/otel-bridge/tests/ which
-      // imports through @vzn/vx (not self-resolvable inside the root pkg).
-      exec: { command: 'bun test tests/' },
+      // recursively, and the bare `tests/` filter substring-matches
+      // packages/cloud/tests/ too. The leading `./` anchors the scan to the
+      // root tests/ dir only (the cloud package's tests run via its own
+      // `bun test`). `bun test` from a clean root still runs everything.
+      exec: { command: 'bun test ./tests/' },
       dependsOn: ['install'],
       cache: {
         inputs: { files: ['src/**', 'tests/**', 'package.json'] },

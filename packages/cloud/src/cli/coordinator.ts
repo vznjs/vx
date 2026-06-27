@@ -1,7 +1,7 @@
-// `vx coordinator` — distributed task execution coordinator
+// `vx-cloud coordinator` — distributed task execution coordinator
 // (architecture-review §2.1 + distributed-ci-2026-06.md). Holds the
 // per-run graph + ready queue + worker registrations; assigns tasks
-// to workers via the protocol extension in src/orchestrator/protocol.ts.
+// to workers via the protocol extension in ../protocol-dist.ts.
 //
 // v1 implementation: in-process scheduler, real WS server, real fan-out.
 // Content addressing = (project#task → hash) is the assignment key. The
@@ -10,16 +10,9 @@
 
 import path from 'node:path'
 import { mkdir, writeFile, unlink } from 'node:fs/promises'
-import {
-  computeTaskHashForCoord,
-  createEventBus,
-  prepareForCoordinator,
-  type ClientMessage,
-  type ServerMessage,
-  type WireTaskNode,
-} from '../orchestrator/index.js'
-import { findWorkspaceRoot } from '../workspace/index.js'
-import { UserError } from '../util/index.js'
+import { createEventBus, findWorkspaceRoot, UserError } from '@vzn/vx'
+import { computeTaskHashForCoord, prepareForCoordinator } from '../coordinator-prepare.js'
+import type { DistClientMessage, DistServerMessage, WireTaskNode } from '../protocol-dist.js'
 
 export interface CoordinatorArgs {
   tasks: readonly string[]
@@ -68,7 +61,7 @@ interface WorkerHandle {
   capacity: number
   labels: readonly string[]
   inFlight: Set<string>
-  send: (msg: ServerMessage) => void
+  send: (msg: DistServerMessage) => void
   ws: { close(): void; send(s: string): void }
 }
 
@@ -186,9 +179,9 @@ export async function startCoordinator(opts: {
     },
     websocket: {
       message(ws, raw) {
-        let msg: ClientMessage
+        let msg: DistClientMessage
         try {
-          msg = JSON.parse(String(raw)) as ClientMessage
+          msg = JSON.parse(String(raw)) as DistClientMessage
         } catch {
           return
         }

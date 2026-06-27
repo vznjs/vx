@@ -10,14 +10,7 @@
 // Pure types + a small adapter pair. No transport here; the Hono
 // router in src/cli/serve.ts wires the byte frames.
 
-import type {
-  RunRequest,
-  RunResult,
-  ServerMessage,
-  ClientMessage,
-  WireOutcome,
-  WireTaskNode as WireTaskNodeShape,
-} from './protocol.js'
+import type { RunRequest, RunResult, ServerMessage, ClientMessage } from './protocol.js'
 import type { WireEvent as InternalWireEvent } from './events.js'
 
 /** Protocol version returned by GET /version. */
@@ -137,11 +130,10 @@ export function isNotification(env: Envelope): env is Notification {
 // ---------------------------------------------------------------------------
 
 /**
- * Project a legacy ServerMessage to an envelope. Events become
- * `events.append` notifications; results become `submit.run` responses;
- * errors become error responses. The legacy coordinator/worker
- * messages (task:assign, cache:exists, coord:drain) get mapped to the
- * `coord.*` method namespace.
+ * Project a ServerMessage to an envelope. Events become `events.append`
+ * notifications; results become `submit.run` responses; errors become
+ * error responses. The distributed coordinator messages map to the
+ * `coord.*` namespace in `@vzn/vx-cloud`'s own adapters.
  */
 export function serverMessageToEnvelope(msg: ServerMessage, id?: number | string): Envelope {
   switch (msg.t) {
@@ -152,36 +144,17 @@ export function serverMessageToEnvelope(msg: ServerMessage, id?: number | string
       return makeResponse(id ?? 0, msg.result)
     case 'error':
       return makeError(id ?? 0, ENVELOPE_ERRORS.USER_ERROR, msg.message)
-    case 'task:assign':
-      return makeNotification('coord.assign', { hash: msg.hash, node: msg.node })
-    case 'cache:exists':
-      return makeNotification('coord.cacheExists', { hash: msg.hash, present: msg.present })
-    case 'coord:drain':
-      return makeNotification('coord.drain', {})
   }
 }
 
 /**
- * Project an envelope back to a legacy ServerMessage where one exists.
- * Returns null for envelopes that don't have a legacy mapping (e.g.
- * state.snapshot responses — pure JSON-RPC, no legacy form).
+ * Project an envelope back to a ServerMessage where one exists. Returns
+ * null for envelopes that don't have a mapping (e.g. state.snapshot
+ * responses — pure JSON-RPC, no submitter form).
  */
 export function envelopeToServerMessage(env: Envelope): ServerMessage | null {
-  if (isNotification(env)) {
-    if (env.method === 'events.append') {
-      return { t: 'event', event: env.params as InternalWireEvent }
-    }
-    if (env.method === 'coord.assign') {
-      const p = env.params as { hash: string; node: WireTaskNodeShape }
-      return { t: 'task:assign', hash: p.hash, node: p.node }
-    }
-    if (env.method === 'coord.cacheExists') {
-      const p = env.params as { hash: string; present: boolean }
-      return { t: 'cache:exists', hash: p.hash, present: p.present }
-    }
-    if (env.method === 'coord.drain') {
-      return { t: 'coord:drain' }
-    }
+  if (isNotification(env) && env.method === 'events.append') {
+    return { t: 'event', event: env.params as InternalWireEvent }
   }
   if ('result' in env) {
     return { t: 'result', result: env.result as RunResult }
@@ -192,72 +165,15 @@ export function envelopeToServerMessage(env: Envelope): ServerMessage | null {
   return null
 }
 
-/**
- * Project a legacy ClientMessage to an envelope. `run` becomes a
- * `submit.run` request; the worker:* messages get mapped to the
- * `worker.*` notification namespace.
- */
+/** Project a ClientMessage to an envelope. `run` becomes a `submit.run` request. */
 export function clientMessageToEnvelope(msg: ClientMessage, id?: number | string): Envelope {
-  switch (msg.t) {
-    case 'run':
-      return makeRequest(id ?? 1, 'submit.run', msg.request)
-    case 'worker:hello':
-      return makeNotification('worker.hello', {
-        workerId: msg.workerId,
-        capacity: msg.capacity,
-        labels: msg.labels,
-      })
-    case 'worker:pull':
-      return makeNotification('worker.pull', { available: msg.available })
-    case 'worker:start':
-      return makeNotification('worker.start', { taskHash: msg.taskHash, pid: msg.pid })
-    case 'worker:stdout':
-      return makeNotification('worker.stdout', { taskHash: msg.taskHash, chunk: msg.chunk })
-    case 'worker:stderr':
-      return makeNotification('worker.stderr', { taskHash: msg.taskHash, chunk: msg.chunk })
-    case 'worker:done':
-      return makeNotification('worker.done', { taskHash: msg.taskHash, outcome: msg.outcome })
-    case 'worker:bye':
-      return makeNotification('worker.bye', { reason: msg.reason })
-  }
+  return makeRequest(id ?? 1, 'submit.run', msg.request)
 }
 
-/** Project an envelope back to a legacy ClientMessage. */
+/** Project an envelope back to a ClientMessage. */
 export function envelopeToClientMessage(env: Envelope): ClientMessage | null {
   if (isRequest(env) && env.method === 'submit.run') {
     return { t: 'run', request: env.params as RunRequest }
-  }
-  if (isNotification(env)) {
-    const m = env.method
-    const p = env.params as Record<string, unknown>
-    if (m === 'worker.hello') {
-      return {
-        t: 'worker:hello',
-        workerId: p.workerId as string,
-        capacity: p.capacity as number,
-        labels: p.labels as readonly string[],
-      }
-    }
-    if (m === 'worker.pull') return { t: 'worker:pull', available: p.available as number }
-    if (m === 'worker.start') {
-      const out: ClientMessage = { t: 'worker:start', taskHash: p.taskHash as string }
-      if (p.pid !== undefined) out.pid = p.pid as number
-      return out
-    }
-    if (m === 'worker.stdout')
-      return { t: 'worker:stdout', taskHash: p.taskHash as string, chunk: p.chunk as string }
-    if (m === 'worker.stderr')
-      return { t: 'worker:stderr', taskHash: p.taskHash as string, chunk: p.chunk as string }
-    if (m === 'worker.done') {
-      return {
-        t: 'worker:done',
-        taskHash: p.taskHash as string,
-        outcome: p.outcome as WireOutcome,
-      }
-    }
-    if (m === 'worker.bye') {
-      return { t: 'worker:bye', reason: p.reason as 'idle-timeout' | 'shutdown' }
-    }
   }
   return null
 }

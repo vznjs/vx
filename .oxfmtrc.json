@@ -9,7 +9,6 @@
   "ignorePatterns": [
     "node_modules",
     "apps",
-    "packages",
     "dist",
     "coverage",
     "*.tsbuildinfo",

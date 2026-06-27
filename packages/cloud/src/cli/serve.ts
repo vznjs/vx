@@ -1,4 +1,4 @@
-// `vx serve` — the foreground execution service. Clients (`vx run`)
+// `vx-cloud serve` — the foreground execution service. Clients (`vx run`)
 // connect over WebSocket, submit a RunRequest, and the service executes it
 // in-process via the same `run()` the CLI uses, streaming WireEvents back
 // and returning a RunResult. The transport is Bun-native (Bun.serve + ws),
@@ -7,8 +7,8 @@
 
 import path from 'node:path'
 import { mkdir, unlink, writeFile } from 'node:fs/promises'
-import { Cache } from '../cache/index.js'
 import {
+  Cache,
   run as runOrchestrator,
   planRun,
   createEventBus,
@@ -43,16 +43,18 @@ import {
   whyDidThisRerunQuery,
   WIRE_CHANNELS,
   WIRE_PROTOCOL_VERSION,
+  VERSION,
+  findWorkspaceRoot,
+  loadWorkspaceConfig,
+  resolveCacheDir,
   type ClientMessage,
   type Envelope,
   type Logger,
   type RunRequest,
   type ServerMessage,
-} from '../orchestrator/index.js'
-import { VERSION } from '../version.js'
-import { findWorkspaceRoot, loadWorkspaceConfig, resolveCacheDir } from '../workspace/index.js'
+} from '@vzn/vx'
 
-/** Where `vx serve` advertises itself and `vx run` looks for it. */
+/** Where `vx-cloud serve` advertises itself and `vx run` looks for it. */
 export function serveInfoPath(workspaceRoot: string): string {
   return path.join(workspaceRoot, '.vx', 'serve.json')
 }

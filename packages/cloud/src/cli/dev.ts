@@ -1,5 +1,5 @@
-// `vx dev` — the foreground devtools hub. NOT a background daemon: you run
-// it in a terminal, it serves a devframe dev server (browser/TUI clients
+// `vx-cloud dev` — the foreground devtools hub. NOT a background daemon: you
+// run it in a terminal, it serves a devframe dev server (browser/TUI clients
 // connect) and listens on a per-workspace unix socket for forwarded runs.
 // Every `vx run` while it's up streams its events here (see dev-client.ts);
 // when it's down, runs behave exactly as before. Ctrl-C stops it.
@@ -7,10 +7,7 @@
 import path from 'node:path'
 import { mkdir, unlink } from 'node:fs/promises'
 import type { DevframeDefinition, DevframeNodeContext, RpcStreamingChannel } from 'devframe'
-import { findWorkspaceRoot } from '../workspace/index.js'
-import type { WireEvent } from '../orchestrator/index.js'
-import { VERSION } from '../version.js'
-import { UserError } from '../util/index.js'
+import { findWorkspaceRoot, UserError, VERSION, type WireEvent } from '@vzn/vx'
 import { bootDevframeServer } from './ui-server.js'
 
 /** Per-workspace socket path the hub listens on and runs forward to. */

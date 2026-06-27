@@ -4,8 +4,6 @@
 
 import { VERSION } from '../version.js'
 import { runCmd } from './run.js'
-import { devCmd } from './dev.js'
-import { serveCmd } from './serve.js'
 import { watchCmd } from './watch.js'
 import { cacheCmd } from './cache.js'
 import { lockCmd } from './lock.js'
@@ -14,8 +12,6 @@ import { upgradeCmd } from './upgrade.js'
 import { showCmd } from './show.js'
 import { infoCmd } from './info.js'
 import { mcpCmd } from './mcp.js'
-import { coordinatorCmd } from './coordinator.js'
-import { workerCmd } from './worker.js'
 import { printHelp } from './help.js'
 
 export async function run(argv: readonly string[]): Promise<number> {
@@ -34,10 +30,6 @@ export async function run(argv: readonly string[]): Promise<number> {
       return 0
     case 'run':
       return await runCmd(rest)
-    case 'dev':
-      return await devCmd(rest)
-    case 'serve':
-      return await serveCmd(rest)
     case 'watch':
       return await watchCmd(rest)
     case 'cache':
@@ -55,10 +47,6 @@ export async function run(argv: readonly string[]): Promise<number> {
       return await infoCmd(rest)
     case 'mcp':
       return await mcpCmd(rest)
-    case 'coordinator':
-      return await coordinatorCmd(rest)
-    case 'worker':
-      return await workerCmd(rest)
     default:
       process.stderr.write(`vx: unknown command: ${command}\n`)
       printHelp()
@@ -72,7 +60,6 @@ export { parsePruneArgs, parseDuration, parseSize } from './cache.js'
 export { parseLockArgs, type LockArgs } from './lock.js'
 export { parseMigrateArgs, type MigrateArgs } from './migrate.js'
 export { parseShowArgs, type ShowArgs } from './show.js'
-export { parseServeArgs } from './serve.js'
 export { parseMcpArgs, type McpArgs } from './mcp.js'
 export {
   handleMcpRequest,
@@ -81,6 +68,4 @@ export {
   type McpContext,
   type McpToolDef,
 } from './mcp-rpc.js'
-export { parseCoordinatorArgs, type CoordinatorArgs } from './coordinator.js'
-export { parseWorkerArgs, type WorkerArgs } from './worker.js'
 export { formatBytes } from './format.js'

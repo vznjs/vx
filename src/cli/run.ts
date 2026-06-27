@@ -15,10 +15,8 @@ import {
   type ProjectMeta,
 } from '../workspace/index.js'
 import {
-  run as runOrchestrator,
   planRun,
   optionsToRequest,
-  projectOutcome,
   resolveBackend as resolvePluginBackend,
   type OutcomeView,
   type RunOptions,
@@ -27,9 +25,7 @@ import {
 } from '../orchestrator/index.js'
 import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
-import { startUiServer } from './ui-server.js'
-import { resolveBackend } from './backend.js'
-import { UserError } from '../util/index.js'
+import { localBackend } from './backend.js'
 
 export interface RunArgs {
   /**
@@ -67,10 +63,6 @@ export interface RunArgs {
    * `defaultAffectedBase`). Any other string is an explicit git ref.
    */
   affected: string | undefined
-  /** `--ui`: serve a live devframe devtool (h3 + WS) for the run. */
-  ui: boolean
-  /** `--ui-port <n>`: preferred port for the `--ui` dev server. */
-  uiPort: number | undefined
   error?: string
 }
 
@@ -90,8 +82,6 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     summarize: undefined,
     profile: undefined,
     affected: undefined,
-    ui: false,
-    uiPort: undefined,
   }
 
   const sepIdx = args.indexOf('--')
@@ -186,23 +176,6 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       out.affected = ''
     } else if (a?.startsWith('--affected=')) {
       out.affected = a.slice('--affected='.length)
-    } else if (a === '--ui') {
-      out.ui = true
-    } else if (a === '--ui-port') {
-      const v = before[++i]
-      if (v === undefined) return { ...out, error: `${a} requires a value` }
-      const n = Number(v)
-      if (!Number.isInteger(n) || n < 0 || n > 65535) {
-        return { ...out, error: `invalid --ui-port: ${v}` }
-      }
-      out.uiPort = n
-    } else if (a?.startsWith('--ui-port=')) {
-      const v = a.slice('--ui-port='.length)
-      const n = Number(v)
-      if (!Number.isInteger(n) || n < 0 || n > 65535) {
-        return { ...out, error: `invalid --ui-port: ${v}` }
-      }
-      out.uiPort = n
     } else if (a !== undefined && a.startsWith('-')) {
       return { ...out, error: `unknown flag: ${a}` }
     } else if (a !== undefined) {
@@ -231,9 +204,6 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
   }
   if (out.graph !== undefined && (out.summarize !== undefined || out.profile !== undefined)) {
     return { ...out, error: '--graph skips execution; --summarize / --profile need a real run' }
-  }
-  if (out.ui && (out.dry !== undefined || out.graph !== undefined)) {
-    return { ...out, error: '--ui needs a real run; it is incompatible with --dry / --graph' }
   }
   return out
 }
@@ -339,14 +309,6 @@ export async function resolveRunOptions(
 }
 
 export async function runCmd(args: readonly string[]): Promise<number> {
-  // Distributed-CI worker shortcut: `vx run --worker <coord-url>` (and
-  // its `--coordinator` synonym) attaches as a worker instead of
-  // submitting a local run. Bypasses the full parseRunArgs so worker-
-  // specific flags don't have to live in RunArgs.
-  if (args.includes('--worker') || args.includes('--coordinator')) {
-    const { workerCmd } = await import('./worker.js')
-    return await workerCmd(args)
-  }
   const parsed = parseRunArgs(args)
   if (parsed.error) {
     process.stderr.write(`vx run: ${parsed.error}\n`)
@@ -399,38 +361,10 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     return 0
   }
 
-  // `--ui`: boot the devframe dev server, inject its bus so the surface
-  // sees the run live, then keep serving after the run until Ctrl-C.
-  if (parsed.ui) {
-    let ui
-    try {
-      ui = await startUiServer(parsed.uiPort)
-    } catch (err) {
-      const msg =
-        err instanceof UserError ? err.message : err instanceof Error ? err.message : String(err)
-      process.stderr.write(`vx run: ${msg}\n`)
-      return 1
-    }
-    opts.bus = ui.bus
-    process.stdout.write(`vx: devtools live at ${ui.origin}\n\n`)
-    const summary = await runOrchestrator(opts)
-    if (parsed.verbosity > 0) {
-      printSummary({ ok: summary.ok, outcomes: summary.outcomes.map(projectOutcome) })
-    }
-    process.stdout.write(`\nvx: serving devtools at ${ui.origin} — press Ctrl-C to stop\n`)
-    await new Promise<void>((resolve) => {
-      const stop = (): void => resolve()
-      process.once('SIGINT', stop)
-      process.once('SIGTERM', stop)
-    })
-    await ui.close()
-    return summary.ok ? 0 : 1
-  }
-
   // Resolve where this run executes. A plugin's `backend` capability wins
-  // first; otherwise the built-in fallback — a running `vx serve` (local
-  // or hosted) if one is reachable, else in-process. The client renders
-  // the same either way; a missing/unreachable service falls back to local.
+  // first (e.g. @vzn/vx-cloud routes to a local-or-hosted service);
+  // otherwise core's default is pure in-process. Core names no service —
+  // delegation is entirely a plugin concern.
   const request = optionsToRequest(opts)
   const root = await findWorkspaceRoot(cwd)
   const workspaceConfig = await loadWorkspaceConfig(root)
@@ -443,7 +377,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       warn: (m) => process.stderr.write(`${m}\n`),
       request,
     },
-    () => resolveBackend(cwd),
+    () => Promise.resolve(localBackend()),
   )
   const result = await backend.run(request)
   if (parsed.verbosity > 0) printSummary(result)

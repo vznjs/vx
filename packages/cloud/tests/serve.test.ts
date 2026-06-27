@@ -3,9 +3,9 @@ import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import type { Logger, RunRequest } from '@vzn/vx'
 import { startServe, serveInfoPath } from '../src/cli/serve.js'
 import { serviceBackend, resolveBackend } from '../src/cli/backend.js'
-import type { Logger, RunRequest } from '../src/orchestrator/index.js'
 
 /** A non-rendering Logger that records the event kinds it sees. */
 function captureLogger(seen: string[]): Logger {
