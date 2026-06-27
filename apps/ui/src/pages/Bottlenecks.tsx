@@ -1,136 +1,104 @@
-import { For, Show, createResource } from 'solid-js'
-import { useNavigate } from '@solidjs/router'
-import { getBottlenecks, getFlakiest, getOriginSignal, getPrunable } from '../api.ts'
-import { Card, EmptyState } from '../components/ui.tsx'
-import { HBar } from '../components/charts.tsx'
+import { createMemo, createResource } from 'solid-js'
+import {
+  type BottleneckRow,
+  type FlakyTask,
+  type PrunableEntry,
+  getBottlenecks,
+  getFlakiest,
+  getOriginSignal,
+  getPrunable,
+} from '../api.ts'
+import { type Node, el, toSpec } from '../jr/spec.ts'
+import { DashRenderer } from '../jr/renderer.tsx'
 import { formatBytes, formatDuration, formatPercent, formatRelativeTime } from '../format.ts'
+
+const enc = encodeURIComponent
+
+interface Data {
+  bottlenecks?: BottleneckRow[]
+  flaky?: FlakyTask[]
+  prunable?: PrunableEntry[]
+}
+
+function build(d: Data): Node {
+  const bottlenecks = d.bottlenecks ?? []
+  const flaky = d.flaky ?? []
+  const prunable = d.prunable ?? []
+  const maxSavings = Math.max(1, ...bottlenecks.map((x) => x.weeklySavingsAt25PctCutMs))
+
+  const invest = el('Card', { title: 'Where to invest', actionText: '14-day lookback · savings = 25% cut, weekly', noPad: true }, [
+    el('DataTable', {
+      emptyTitle: 'Not enough runs to rank bottlenecks',
+      emptyHint: 'Run a few tasks and come back.',
+      columns: [
+        { key: 'task', label: 'Task' },
+        { key: 'perday', label: 'Runs / day', align: 'right' },
+        { key: 'avg', label: 'Avg', align: 'right' },
+        { key: 'burn', label: 'Total burn', align: 'right' },
+        { key: 'savings', label: 'Weekly savings', align: 'right' },
+      ],
+      rows: bottlenecks.map((b, i) => ({
+        href: `/tasks/${enc(b.id)}`,
+        cells: {
+          task: { kind: 'projtask', n: i + 1, project: b.project, task: b.task },
+          perday: b.runsPerDay.toFixed(1),
+          avg: formatDuration(b.avgDurationMs),
+          burn: formatDuration(b.totalDurationMs),
+          savings: { kind: 'bar', v: formatDuration(b.weeklySavingsAt25PctCutMs), fraction: b.weeklySavingsAt25PctCutMs / maxSavings, color: 'success' },
+        },
+      })),
+    }),
+  ])
+
+  const flakyCard = el('Card', { title: 'Flaky tasks', actionText: 'failure rate + tail ratio', noPad: true }, [
+    el('DataTable', {
+      emptyTitle: 'No flaky tasks 🎉',
+      columns: [
+        { key: 'task', label: 'Task' },
+        { key: 'fail', label: 'Fail %', align: 'right' },
+        { key: 'tail', label: 'p99/p50', align: 'right' },
+      ],
+      rows: flaky.map((f) => ({
+        href: `/tasks/${enc(f.id)}`,
+        cells: {
+          task: { kind: 'projtask', project: f.project, task: f.task },
+          fail: { kind: 'tone', v: formatPercent(f.failureRate, 0), tone: f.failureRate > 0.1 ? 'danger' : 'default' },
+          tail: { kind: 'tone', v: f.durationTailRatio !== undefined ? `${f.durationTailRatio.toFixed(1)}×` : '—', tone: (f.durationTailRatio ?? 0) > 3 ? 'warn' : 'default' },
+        },
+      })),
+    }),
+  ])
+
+  const prunableCard = el('Card', { title: 'Prunable cache entries', actionText: 'unused ≥7d', noPad: true }, [
+    el('DataTable', {
+      emptyTitle: "Everything's been accessed recently",
+      columns: [
+        { key: 'task', label: 'Task' },
+        { key: 'size', label: 'Size', align: 'right' },
+        { key: 'last', label: 'Last hit', align: 'right' },
+      ],
+      rows: prunable.map((e) => ({
+        cells: {
+          task: { kind: 'projtask', project: e.project, task: e.task },
+          size: formatBytes(e.sizeBytes),
+          last: { kind: 'tone', v: formatRelativeTime(e.accessedAt), tone: 'faint' },
+        },
+      })),
+    }),
+    prunable.length > 0 && el('Text', { text: 'Tip: vx cache prune --older-than 7d', tone: 'faint', mono: true, class: 'px-4 py-2 border-t border-border' }),
+  ])
+
+  return el('Page', { title: 'Bottlenecks', subtitle: "High-leverage targets — ranked by where you'd save the most time." }, [
+    invest,
+    el('Grid', { variant: 'cols-2' }, [flakyCard, prunableCard]),
+  ])
+}
 
 export function Bottlenecks() {
   const origin = getOriginSignal()
-  const navigate = useNavigate()
   const [bottlenecks] = createResource(origin, () => getBottlenecks(14, 25))
   const [flaky] = createResource(origin, () => getFlakiest(25))
   const [prunable] = createResource(origin, () => getPrunable(7, 25))
-
-  return (
-    <div class="flex flex-col gap-5">
-      <div>
-        <h1 class="text-base font-semibold m-0">Bottlenecks</h1>
-        <p class="text-fg-3 text-[12px] mt-1">High-leverage targets — ranked by where you'd save the most time.</p>
-      </div>
-
-      <Card
-        title="Where to invest"
-        action={<span class="text-[10px] text-fg-3 font-mono">14-day lookback · savings = 25% cut, extrapolated weekly</span>}
-        noPad
-      >
-        <Show when={(bottlenecks() ?? []).length > 0} fallback={<EmptyState title="Not enough runs to rank bottlenecks" hint="Run a few tasks and come back." />}>
-          <table class="w-full text-[12px]">
-            <thead class="bg-surface-2/40">
-              <tr class="text-fg-3 text-[10px] uppercase tracking-wider">
-                <th class="text-left px-4 py-2 font-semibold">Task</th>
-                <th class="text-right px-4 py-2 font-semibold">Runs / day</th>
-                <th class="text-right px-4 py-2 font-semibold">Avg</th>
-                <th class="text-right px-4 py-2 font-semibold">Total burn</th>
-                <th class="text-right px-4 py-2 font-semibold">Weekly savings</th>
-              </tr>
-            </thead>
-            <tbody>
-              <For each={bottlenecks()!}>
-                {(b, i) => {
-                  const max = Math.max(...(bottlenecks() ?? []).map((x) => x.weeklySavingsAt25PctCutMs))
-                  return (
-                    <tr
-                      class="border-t border-border hover:bg-surface-hover cursor-pointer"
-                      onClick={() => navigate(`/tasks/${encodeURIComponent(b.id)}`)}
-                    >
-                      <td class="px-4 py-2 font-mono">
-                        <span class="text-fg-3 text-[10px] mr-2">{i() + 1}.</span>
-                        <span class="text-fg-3">{b.project}#</span>{b.task}
-                      </td>
-                      <td class="px-4 py-2 text-right font-mono">{b.runsPerDay.toFixed(1)}</td>
-                      <td class="px-4 py-2 text-right font-mono">{formatDuration(b.avgDurationMs)}</td>
-                      <td class="px-4 py-2 text-right font-mono">{formatDuration(b.totalDurationMs)}</td>
-                      <td class="px-4 py-2 text-right font-mono text-success">
-                        <div class="flex items-center gap-2 justify-end">
-                          <span class="w-16">{formatDuration(b.weeklySavingsAt25PctCutMs)}</span>
-                          <div class="w-20"><HBar fraction={b.weeklySavingsAt25PctCutMs / max} colorClass="bg-success" /></div>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                }}
-              </For>
-            </tbody>
-          </table>
-        </Show>
-      </Card>
-
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card title="Flaky tasks" action={<span class="text-[10px] text-fg-3 font-mono">failure rate + tail ratio</span>} noPad>
-          <Show when={(flaky() ?? []).length > 0} fallback={<div class="text-fg-3 text-xs text-center py-12">No flaky tasks. <span class="text-success">🎉</span></div>}>
-            <table class="w-full text-[12px]">
-              <thead class="bg-surface-2/40">
-                <tr class="text-fg-3 text-[10px] uppercase tracking-wider">
-                  <th class="text-left px-4 py-2 font-semibold">Task</th>
-                  <th class="text-right px-4 py-2 font-semibold">Fail %</th>
-                  <th class="text-right px-4 py-2 font-semibold">p99/p50</th>
-                </tr>
-              </thead>
-              <tbody>
-                <For each={flaky()!}>
-                  {(f) => (
-                    <tr
-                      class="border-t border-border hover:bg-surface-hover cursor-pointer"
-                      onClick={() => navigate(`/tasks/${encodeURIComponent(f.id)}`)}
-                    >
-                      <td class="px-4 py-2 font-mono">
-                        <span class="text-fg-3">{f.project}#</span>{f.task}
-                      </td>
-                      <td class="px-4 py-2 text-right font-mono" classList={{ 'text-danger': f.failureRate > 0.1 }}>
-                        {formatPercent(f.failureRate, 0)}
-                      </td>
-                      <td class="px-4 py-2 text-right font-mono" classList={{ 'text-warn': (f.durationTailRatio ?? 0) > 3 }}>
-                        {f.durationTailRatio?.toFixed(1) ?? '—'}×
-                      </td>
-                    </tr>
-                  )}
-                </For>
-              </tbody>
-            </table>
-          </Show>
-        </Card>
-
-        <Card title="Prunable cache entries" action={<span class="text-[10px] text-fg-3 font-mono">unused ≥7d</span>} noPad>
-          <Show when={(prunable() ?? []).length > 0} fallback={<div class="text-fg-3 text-xs text-center py-12">Everything's been accessed recently.</div>}>
-            <table class="w-full text-[12px]">
-              <thead class="bg-surface-2/40">
-                <tr class="text-fg-3 text-[10px] uppercase tracking-wider">
-                  <th class="text-left px-4 py-2 font-semibold">Task</th>
-                  <th class="text-right px-4 py-2 font-semibold">Size</th>
-                  <th class="text-right px-4 py-2 font-semibold">Last hit</th>
-                </tr>
-              </thead>
-              <tbody>
-                <For each={prunable()!}>
-                  {(e) => (
-                    <tr class="border-t border-border">
-                      <td class="px-4 py-2 font-mono">
-                        <span class="text-fg-3">{e.project}#</span>{e.task}
-                      </td>
-                      <td class="px-4 py-2 text-right font-mono">{formatBytes(e.sizeBytes)}</td>
-                      <td class="px-4 py-2 text-right font-mono text-fg-3">{formatRelativeTime(e.accessedAt)}</td>
-                    </tr>
-                  )}
-                </For>
-              </tbody>
-            </table>
-            <div class="px-4 py-2 text-[10px] text-fg-3 font-mono border-t border-border">
-              Tip: <code class="text-fg-1">vx cache prune --older-than 7d</code>
-            </div>
-          </Show>
-        </Card>
-      </div>
-    </div>
-  )
+  const spec = createMemo(() => toSpec(build({ bottlenecks: bottlenecks(), flaky: flaky(), prunable: prunable() })))
+  return <DashRenderer spec={spec()} />
 }
