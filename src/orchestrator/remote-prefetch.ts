@@ -32,14 +32,15 @@ export interface PrefetchArgs {
   hashCache: HashCache
   /** Cap on concurrent in-flight prefetches — the run's concurrency. */
   concurrency: number
-  noCache: boolean
+  /** When false (remote reads disabled), no prefetch fires. */
+  remoteRead: boolean
 }
 
 /**
  * Fire remote prefetches for every STABLE cached task in the graph.
  * Fire-and-forget from the caller's perspective: this kicks off an
  * async derivation + bounded prefetch pool and returns immediately so
- * execution starts concurrently. `noCache` (--no-cache) short-circuits.
+ * execution starts concurrently. A remote-read-off policy short-circuits.
  *
  * Stability gate: a task's key is "stable" only if its inputs can't be
  * altered by an upstream task's outputs (a `cache.inputs.files` glob
@@ -50,7 +51,7 @@ export interface PrefetchArgs {
  * when unsure, treat as unstable and skip.
  */
 export function startRemotePrefetch(args: PrefetchArgs): Promise<void> {
-  if (args.noCache) return Promise.resolve()
+  if (!args.remoteRead) return Promise.resolve()
   // Detached from EXECUTION: the caller does NOT await this before
   // scheduling, so prefetch network latency overlaps the run. But the
   // caller DOES await the returned handle before closing the cache, so

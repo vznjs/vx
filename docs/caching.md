@@ -177,13 +177,44 @@ Hard invariants:
 - **Provenance preserved.** A hash pulled from remote — even when a
   later `get` finds it as a now-local hit — still reports
   `source: 'remote'`, so the outcome is `cache-hit-remote`.
-- **`--no-cache`** fires no prefetch.
+- **A remote-read-off policy** (`--no-cache`, `--force`, or
+  `--cache=remote:`) fires no prefetch.
+
+## Cache policy (read/write axes)
+
+Caching is controlled by a four-axis `CachePolicy` — **localRead**,
+**localWrite**, **remoteRead**, **remoteWrite** — independent toggles,
+each enforced inside the matching cache layer at construction time. The
+local `Cache` gets a `{ read, write }` slice gating only its task
+artifact get/save (never `recordRun` / `stats` / `prune` / ingest /
+hashing); the `LayeredCache` additionally gates its own remote
+read-through (`remoteRead`), upload (`remoteWrite`), and prefetch
+(`remoteRead`). The orchestrator derives two booleans per task:
+
+- `willRead = task has a cache block AND (localRead || remoteRead)`
+- `willWrite = task has a cache block AND (localWrite || remoteWrite)`
+
+A task reads the cache only when `willRead`, saves only when
+`willWrite`, and cleans its declared outputs before exec only when
+`willWrite`.
+
+The CLI maps three flags to a policy (precedence: start all-on → apply
+`--cache` → `--no-cache` forces all off → `--force` forces both reads
+off): `--no-cache` = everything off (no read, no write, no output
+clean); `--force` = reads off / writes on (re-execute and refresh the
+cache, outputs cleaned); `--cache=<spec>` = explicit per-layer control.
+See `docs/cli.md` § Cache control.
+
+One subtlety: when `localWrite` is off but `remoteWrite` is on
+(`--cache=local:,remote:rw`), there's no on-disk artifact for the
+`LayeredCache` to read before uploading — so it packs the tar.zst bytes
+in memory (`Cache.packArtifactBytes`) and uploads those.
 
 ## Cache write
 
-A miss runs the task. If the final exit code is `0` and caching is
-enabled (i.e. the task has a `cache` block AND `--no-cache` is not
-set):
+A miss runs the task. If the final exit code is `0` and the task's
+`willWrite` is true (it has a `cache` block AND at least one write axis
+is on):
 
 1. `cache.outputs.files` is resolved against the project dir.
 2. Matching files are copied into `<cacheDir>/<hash>.tmp-<pid>-<ms>/outputs/<rel>`.
@@ -222,7 +253,10 @@ Both branches use the same `cleanOutputs` helper (`src/cache/inputs.ts`)
 with the same boundary rules. Skipped when:
 
 - `cache.outputs.files` is empty (nothing declared as output).
-- `--no-cache` is set (the user is debugging and managing the tree).
+- The task's `willWrite` is false — no write axis is enabled (e.g.
+  `--no-cache`, or a read-only `--cache=local:r`). The user is debugging
+  and managing the tree, so vx leaves it alone. `--force` keeps writes
+  on, so it DOES clean (the saved snapshot must be clean).
 
 Why so strict? Turbo and Nx restore additively — files from a prior
 state can survive. We've seen this cause:

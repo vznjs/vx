@@ -32,7 +32,7 @@ export interface PlanArgs {
   workspaceRoot: string
   workspaceFingerprint: string
   cache: CacheLayer
-  noCache: boolean
+  cachePolicy?: CachePolicy // a no-read policy predicts misses
   forwardArgs?: readonly string[]
   nestedDirsByProject: Map<string, string[]>
 }

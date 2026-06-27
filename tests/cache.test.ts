@@ -3,7 +3,82 @@ import { mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { Cache, type CacheKeyInput, CorruptArtifactError } from '../src/cache/cache.js'
+import {
+  Cache,
+  type CacheKeyInput,
+  CorruptArtifactError,
+  FULL_CACHE_POLICY,
+  parseCachePolicy,
+} from '../src/cache/cache.js'
+import { UserError } from '../src/util/index.js'
+
+describe('parseCachePolicy', () => {
+  it('defaults every axis on with an empty spec', () => {
+    expect(parseCachePolicy('')).toEqual(FULL_CACHE_POLICY)
+  })
+
+  it('local:rw,remote:r → remote read-only (local stays rw)', () => {
+    expect(parseCachePolicy('local:rw,remote:r')).toEqual({
+      localRead: true,
+      localWrite: true,
+      remoteRead: true,
+      remoteWrite: false,
+    })
+  })
+
+  it('local:r leaves remote at its base value', () => {
+    expect(parseCachePolicy('local:r')).toEqual({
+      localRead: true,
+      localWrite: false,
+      remoteRead: true,
+      remoteWrite: true,
+    })
+  })
+
+  it('remote: with empty flags turns remote fully off', () => {
+    expect(parseCachePolicy('remote:')).toEqual({
+      localRead: true,
+      localWrite: true,
+      remoteRead: false,
+      remoteWrite: false,
+    })
+  })
+
+  it('flag order is irrelevant (wr == rw)', () => {
+    expect(parseCachePolicy('local:wr')).toEqual(parseCachePolicy('local:rw'))
+  })
+
+  it('applies on top of a provided base', () => {
+    const base = { localRead: false, localWrite: false, remoteRead: false, remoteWrite: false }
+    expect(parseCachePolicy('local:r', base)).toEqual({
+      localRead: true,
+      localWrite: false,
+      remoteRead: false,
+      remoteWrite: false,
+    })
+  })
+
+  it('throws on an unknown layer', () => {
+    expect(() => parseCachePolicy('disk:r')).toThrow(UserError)
+    expect(() => parseCachePolicy('disk:r')).toThrow(/invalid --cache layer/)
+  })
+
+  it('throws on an unknown flag', () => {
+    expect(() => parseCachePolicy('local:x')).toThrow(/invalid --cache flag/)
+  })
+
+  it('throws on a missing colon', () => {
+    expect(() => parseCachePolicy('local')).toThrow(/invalid --cache segment/)
+  })
+
+  it('throws on a repeated flag', () => {
+    expect(() => parseCachePolicy('local:rr')).toThrow(/repeated/)
+  })
+
+  it('throws on a repeated layer', () => {
+    expect(() => parseCachePolicy('local:r,local:w')).toThrow(/specified twice/)
+  })
+})
 
 describe('Cache.key', () => {
   let dir: string

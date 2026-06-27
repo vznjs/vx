@@ -146,19 +146,21 @@ stays clean).
 
 ### Flags
 
-| Flag                              | Type           | Default                         | Description                                                                                                |
-| --------------------------------- | -------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `--filter <pattern>`              | repeatable     | (none)                          | pnpm-style filter DSL (see above).                                                                         |
-| `--all`                           | boolean        | off                             | Select every project that declares the task.                                                               |
-| `--affected[=<base>]`             | optional value | off                             | Filter to projects changed since `<base>` (default `origin/HEAD`).                                         |
-| `--excludeDependencies[=<names>]` | optional value | off                             | Drop `dependsOn` edges. No value = all (just the requested task runs); comma-list = drop only those names. |
-| `--concurrency <n>`               | positive int   | `navigator.hardwareConcurrency` | Maximum parallel tasks. `1` serializes.                                                                    |
-| `--no-cache`, `--force`           | boolean        | off                             | Skip cache reads AND writes; output globs are NOT cleaned.                                                 |
-| `--verbosity <n>`                 | int (0+)       | `0`                             | `1` prints a per-task summary table after the framed blocks; `2+` reserved.                                |
-| `--dry[=text\|json]`              | optional value | off                             | Print the task graph + predicted cache hit/miss; skip execution.                                           |
-| `--graph[=<path>]`                | optional value | off                             | Emit Graphviz DOT (stdout if no path); skip execution.                                                     |
-| `--summarize[=<path>]`            | optional value | off                             | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                              |
-| `--profile[=<path>]`              | optional value | off (`profile.json` when set)   | Write Chrome-trace JSON of the run's wallclock spans.                                                      |
+| Flag                              | Type           | Default                         | Description                                                                                                                                       |
+| --------------------------------- | -------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--filter <pattern>`              | repeatable     | (none)                          | pnpm-style filter DSL (see above).                                                                                                                |
+| `--all`                           | boolean        | off                             | Select every project that declares the task.                                                                                                      |
+| `--affected[=<base>]`             | optional value | off                             | Filter to projects changed since `<base>` (default `origin/HEAD`).                                                                                |
+| `--excludeDependencies[=<names>]` | optional value | off                             | Drop `dependsOn` edges. No value = all (just the requested task runs); comma-list = drop only those names.                                        |
+| `--concurrency <n>`               | positive int   | `navigator.hardwareConcurrency` | Maximum parallel tasks. `1` serializes.                                                                                                           |
+| `--no-cache`                      | boolean        | off                             | Disable caching entirely (no reads, no writes); output globs are NOT cleaned.                                                                     |
+| `--force`                         | boolean        | off                             | Re-execute everything (skip cache reads) but still REFRESH the cache (writes stay on). Output globs are cleaned (so the saved snapshot is clean). |
+| `--cache <spec>`                  | value          | all axes on                     | Per-layer read/write control. See below.                                                                                                          |
+| `--verbosity <n>`                 | int (0+)       | `0`                             | `1` prints a per-task summary table after the framed blocks; `2+` reserved.                                                                       |
+| `--dry[=text\|json]`              | optional value | off                             | Print the task graph + predicted cache hit/miss; skip execution.                                                                                  |
+| `--graph[=<path>]`                | optional value | off                             | Emit Graphviz DOT (stdout if no path); skip execution.                                                                                            |
+| `--summarize[=<path>]`            | optional value | off                             | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                                                                     |
+| `--profile[=<path>]`              | optional value | off (`profile.json` when set)   | Write Chrome-trace JSON of the run's wallclock spans.                                                                                             |
 
 Mutual exclusion:
 
@@ -167,6 +169,48 @@ Mutual exclusion:
   two need a real run.
 
 Unknown flags are a parse error (`unknown flag: --foo`).
+
+#### Cache control: `--cache`, `--no-cache`, `--force`
+
+The cache has four independent axes — **localRead**, **localWrite**,
+**remoteRead**, **remoteWrite** — and the three flags above resolve
+them in this precedence order:
+
+1. Start with every axis **on** (the default).
+2. Apply each `--cache=<spec>` segment (the base).
+3. If `--no-cache` was passed, force **all four off**.
+4. If `--force` was passed, force **both reads off** (writes stay
+   whatever the base / `--cache` left them).
+
+So `--no-cache` always wins over `--force`. The common cases:
+
+- `--no-cache` → nothing reads, nothing writes, and declared output
+  globs are left untouched (you're debugging; vx won't manage your
+  tree).
+- `--force` → re-execute every task (reads off) but still write fresh
+  artifacts to both layers (writes on). Output globs ARE cleaned
+  before each task so the saved snapshot is clean. This is the "rebuild
+  and refresh the cache" flag.
+
+`--cache=<spec>` is a comma-separated list of `<layer>:<flags>`
+segments. `layer` is `local` or `remote`; `flags` is any subset of `r`
+(read) and `w` (write), order-independent and possibly empty. A
+**mentioned** layer is set EXACTLY to its flags; an **unmentioned**
+layer keeps its current value. Both `--cache=<spec>` and the space form
+`--cache <spec>` are accepted.
+
+| Spec                        | Effect                                                  |
+| --------------------------- | ------------------------------------------------------- |
+| `--cache=local:rw,remote:r` | remote read-only (won't upload); local full             |
+| `--cache=local:r`           | local read-only; remote untouched (still full)          |
+| `--cache=remote:`           | remote fully off; local untouched                       |
+| `--cache=local:,remote:rw`  | don't touch the local cache, but still upload to remote |
+
+Combine with `--force` for "re-execute and refresh only the remote":
+`--cache=local: --force` (local off, reads off, remote write-only).
+
+Invalid layers/flags are a parse error
+(`invalid --cache layer 'disk'`, `invalid --cache flag 'x'`, …).
 
 ### Output
 
@@ -1073,7 +1117,8 @@ const summary = await run({
   cwd: process.cwd(),
   tasks: ['build', 'test'],
   concurrency: 4,
-  noCache: false,
+  // Optional 4-axis cache control; omit for everything-on.
+  cache: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true },
 })
 // summary.ok: boolean; summary.outcomes: TaskOutcome[]
 

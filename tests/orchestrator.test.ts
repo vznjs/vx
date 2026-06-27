@@ -14,6 +14,22 @@ interface Fixture {
 
 const TIMEOUT = 30_000
 
+/** The 4-axis policy for `--no-cache`: everything off. */
+const NO_CACHE = {
+  localRead: false,
+  localWrite: false,
+  remoteRead: false,
+  remoteWrite: false,
+} as const
+
+/** `--force`: skip reads, keep writes (re-execute + refresh the cache). */
+const FORCE = {
+  localRead: false,
+  localWrite: true,
+  remoteRead: false,
+  remoteWrite: true,
+} as const
+
 const silentLogger = (fixture: Fixture): Logger => {
   const buffers = new Map<string, string>()
   return {
@@ -919,7 +935,7 @@ describe('orchestrator e2e', () => {
       expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('x')
 
       // With --no-cache: command runs again, appends another 'x'.
-      await run({ cwd: fixture.root, tasks: ['run'], noCache: true, log: silentLogger(fixture) })
+      await run({ cwd: fixture.root, tasks: ['run'], cache: NO_CACHE, log: silentLogger(fixture) })
       expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('xx')
 
       // --no-cache also skipped the WRITE: the next default run sees the
@@ -927,6 +943,118 @@ describe('orchestrator e2e', () => {
       // overwriting the file back to 'x'.
       await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('x')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '--force skips reads (re-executes) but still WRITES, refreshing the cache',
+    async () => {
+      const dir = await addProject(fixture.root, 'forced-write', {
+        config: `
+          export default {
+            tasks: {
+              run: {
+                exec: {
+                  command: "node -e 'require(\\"fs\\").appendFileSync(\\"runs.txt\\", \\"x\\")'",
+                },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['runs.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+
+      // First run: miss, executes → 'x', and caches it.
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
+      expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('x')
+
+      // --force: skips the read, so the command runs again. Because
+      // outputs are wiped before exec (writes on), the file is reset to
+      // empty then appended once → 'x' again (NOT 'xx').
+      const forced = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        cache: FORCE,
+        log: silentLogger(fixture),
+      })
+      expect(forced.outcomes[0]?.status).toBe('success')
+      expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('x')
+
+      // --force WROTE the artifact: the subsequent plain run is a hit
+      // (no re-execution), restoring the refreshed 'x'.
+      const after = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
+      expect(after.outcomes[0]?.status).toBe('cache-hit')
+      expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('x')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'local read-only (--cache=local:r) restores a hit but does NOT write a miss',
+    async () => {
+      const dir = await addProject(fixture.root, 'local-read-only', {
+        files: { 'src/in.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              run: {
+                exec: {
+                  command: "node -e 'require(\\"fs\\").appendFileSync(\\"runs.txt\\", \\"x\\"); require(\\"fs\\").writeFileSync(\\"out.txt\\", \\"o\\")'",
+                },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt', 'runs.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+
+      // Warm the cache: miss, executes, writes the entry.
+      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
+      expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('x')
+
+      const readOnly = {
+        localRead: true,
+        localWrite: false,
+        remoteRead: false,
+        remoteWrite: false,
+      } as const
+
+      // Same inputs: local read-only HITS, restores outputs as-is (no
+      // re-execution, runs.txt unchanged).
+      const hit = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        cache: readOnly,
+        log: silentLogger(fixture),
+      })
+      expect(hit.outcomes[0]?.status).toBe('cache-hit')
+      expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('x')
+
+      // Change inputs so the next read MISSES; under local:r the miss
+      // executes (appends — writes off means no pre-exec clean) but does
+      // NOT write the entry.
+      await writeFile(path.join(dir, 'src/in.txt'), 'v2')
+      const miss = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        cache: readOnly,
+        log: silentLogger(fixture),
+      })
+      expect(miss.outcomes[0]?.status).toBe('success')
+      expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('xx')
+
+      // The miss was NOT persisted: re-running with the SAME (v2) inputs
+      // under local:r misses again (no entry to read) and appends again.
+      // Had the previous miss written the entry, this would be a hit.
+      const again = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        cache: readOnly,
+        log: silentLogger(fixture),
+      })
+      expect(again.outcomes[0]?.status).toBe('success')
+      expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('xxx')
     },
     TIMEOUT,
   )
@@ -1609,7 +1737,7 @@ describe('orchestrator e2e', () => {
       const r = await run({
         cwd: fixture.root,
         tasks: ['run'],
-        noCache: true,
+        cache: NO_CACHE,
         log: silentLogger(fixture),
       })
       expect(r.outcomes[0]?.status).toBe('success')

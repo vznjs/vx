@@ -11,7 +11,7 @@ live in a leaf file (not the module entry) so internals like
 
 ```ts
 export interface RunOptions {
-  /* cwd, tasks, projects?, concurrency?, noCache?, forwardArgs?,
+  /* cwd, tasks, projects?, concurrency?, cache? (CachePolicy), forwardArgs?,
      excludeDependencies?, summarize?, profile?, log?, handleSignals? */
 }
 export interface RunSummary {
@@ -28,5 +28,6 @@ documented with their consumer.
 
 ## What it does NOT do
 
-No logic, no defaults. Default resolution (`concurrency`, `noCache`,
-`handleSignals`) happens in `run.ts` at the use sites.
+No logic, no defaults. Default resolution (`concurrency`, `cache`,
+`handleSignals`) happens in `run.ts` at the use sites (`cache` defaults
+to `FULL_CACHE_POLICY` — every read/write axis on).

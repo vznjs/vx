@@ -34,7 +34,7 @@ import { mkdirSync, statSync } from 'node:fs'
 import { mkdir, mkdtemp, rename, rm, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { relPosix, xxh3 } from '../util/index.js'
+import { relPosix, UserError, xxh3 } from '../util/index.js'
 import { FsCASBackend } from './cas-backend.js'
 import { extractOutputs, parseTarHeaders, readTarText, type TarHeader } from './tar.js'
 
@@ -81,6 +81,86 @@ const SCHEMA_VERSION = 'v21'
  * collide with the namespace; the name is reserved.
  */
 export const WORKSPACE_OUTPUT_PREFIX = 'workspace-outputs/'
+
+/**
+ * Independent read/write control over the two cache layers (local +
+ * remote). Replaces the old single `noCache` boolean: each axis can be
+ * toggled on its own so `--force` (re-execute but still refresh the
+ * cache) is distinct from `--no-cache` (disable everything).
+ *
+ * Only the task-artifact get/save path is gated. `recordRun`, `stats`,
+ * `prune`, key derivation, and prefetch-ingest are never affected — they
+ * are bookkeeping/analytics that a run policy has no business disabling.
+ */
+export interface CachePolicy {
+  localRead: boolean
+  localWrite: boolean
+  remoteRead: boolean
+  remoteWrite: boolean
+}
+
+/** All four axes on — the default when no cache flag is passed. */
+export const FULL_CACHE_POLICY: CachePolicy = {
+  localRead: true,
+  localWrite: true,
+  remoteRead: true,
+  remoteWrite: true,
+}
+
+/**
+ * Parse a `--cache=<spec>` value into a `CachePolicy`, starting from a
+ * base (defaults to {@link FULL_CACHE_POLICY}). The spec is a
+ * comma-separated list of `layer:flags` segments where `layer` is
+ * `local` or `remote` and `flags` is any subset of `r` (read) and `w`
+ * (write), order-independent and possibly empty.
+ *
+ * A mentioned layer is set EXACTLY to its flags (read = includes `r`,
+ * write = includes `w`); an unmentioned layer keeps its base value.
+ * So `local:rw,remote:r` = remote read-only, `remote:` = remote fully
+ * off, `local:r` = local read-only with remote untouched.
+ *
+ * Throws a {@link UserError} on an unknown layer, an unknown flag, a
+ * duplicated flag, a missing colon, or a repeated layer.
+ */
+export function parseCachePolicy(spec: string, base: CachePolicy = FULL_CACHE_POLICY): CachePolicy {
+  const out: CachePolicy = { ...base }
+  const seen = new Set<string>()
+  for (const rawSeg of spec.split(',')) {
+    const seg = rawSeg.trim()
+    if (seg.length === 0) continue
+    const colon = seg.indexOf(':')
+    if (colon < 0) {
+      throw new UserError(`invalid --cache segment '${seg}': expected '<layer>:<flags>'`)
+    }
+    const layer = seg.slice(0, colon)
+    const flags = seg.slice(colon + 1)
+    if (layer !== 'local' && layer !== 'remote') {
+      throw new UserError(`invalid --cache layer '${layer}': expected 'local' or 'remote'`)
+    }
+    if (seen.has(layer)) {
+      throw new UserError(`--cache layer '${layer}' specified twice`)
+    }
+    seen.add(layer)
+    const flagSet = new Set<string>()
+    for (const ch of flags) {
+      if (ch !== 'r' && ch !== 'w') {
+        throw new UserError(`invalid --cache flag '${ch}' for '${layer}': expected 'r' and/or 'w'`)
+      }
+      if (flagSet.has(ch)) {
+        throw new UserError(`--cache flag '${ch}' repeated for '${layer}'`)
+      }
+      flagSet.add(ch)
+    }
+    if (layer === 'local') {
+      out.localRead = flagSet.has('r')
+      out.localWrite = flagSet.has('w')
+    } else {
+      out.remoteRead = flagSet.has('r')
+      out.remoteWrite = flagSet.has('w')
+    }
+  }
+  return out
+}
 
 export interface CacheKeyInput {
   taskId: string
@@ -412,7 +492,22 @@ export class Cache implements CacheLayer {
   /** Memoized repo object format for blob-OID hashing (lazy-detected). */
   private objectFormat: 'sha1' | 'sha256' | null = null
 
-  constructor(private readonly cacheDir: string) {
+  /**
+   * Local-layer read/write gates for the task ARTIFACT path only.
+   * `get()` returns null when `!read`; `save()` skips the artifact +
+   * index write when `!write`. Everything else (recordRun, stats,
+   * prune, ingest, hashing) is unaffected — those are bookkeeping a
+   * run policy must not disable. Default: both true.
+   */
+  private readonly read: boolean
+  private readonly write: boolean
+
+  constructor(
+    private readonly cacheDir: string,
+    localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
+  ) {
+    this.read = localPolicy.read
+    this.write = localPolicy.write
     // Ensure the directory exists before opening the DB — bun:sqlite
     // won't create parent dirs for us. The constructor stays sync
     // because callers use `new Cache(...)` directly; `mkdirSync` keeps
@@ -715,6 +810,9 @@ export class Cache implements CacheLayer {
   // the entries row. It's part of the contract so LayeredCache can
   // route metadata to `ingest()` on remote-hit without a separate API.
   async get(hash: string, _ctx?: CacheGetContext): Promise<CacheEntry | null> {
+    // Local reads disabled (e.g. `--force` / `--cache=local:w`): report a
+    // miss so the task re-executes. The artifact + index are untouched.
+    if (!this.read) return null
     const row = this.selectEntry.get(hash) as EntryRow | undefined
     if (!row) return null
 
@@ -865,12 +963,36 @@ export class Cache implements CacheLayer {
     // Metadata (command, exitCode, durationMs, storedAt) lives in
     // SQLite, not the artifact. Remote-hit ingestion takes metadata
     // through `ingest()` arguments — the artifact stays clean bytes.
+    //
+    // Local writes disabled (e.g. `--cache=local:,remote:rw`): produce
+    // no `<hash>.tar.zst` and no index row. The LayeredCache wrapping us
+    // still uploads to remote — it calls `packArtifact` itself to get
+    // the bytes, since there's no local artifact to read off disk.
+    if (!this.write) return
     const compressed = await this.packArtifact(args)
     await this.writeArtifactAndIndex(args.hash, compressed, {
       taskId: args.entry.taskId,
       command: args.entry.command,
       durationMs: args.entry.durationMs,
     })
+  }
+
+  /**
+   * Whether this local layer persists artifacts. The LayeredCache reads
+   * it to decide between uploading the on-disk artifact (write enabled)
+   * vs. packing bytes in memory (write disabled) for a remote upload.
+   */
+  get localWritesEnabled(): boolean {
+    return this.write
+  }
+
+  /**
+   * Pack the save args into tar.zst bytes WITHOUT touching disk or the
+   * index. Used by the LayeredCache when local writes are disabled but
+   * a remote upload still needs the artifact bytes.
+   */
+  async packArtifactBytes(args: SaveArgs): Promise<Uint8Array> {
+    return await this.packArtifact(args)
   }
 
   async ingest(hash: string, compressed: Uint8Array, meta: IngestMeta): Promise<void> {

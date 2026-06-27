@@ -21,6 +21,7 @@ import {
   type RunOptions,
   type RunResult,
 } from '../orchestrator/index.js'
+import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 import { startUiServer } from './ui-server.js'
 import { resolveBackend } from './backend.js'
@@ -43,7 +44,11 @@ export interface RunArgs {
    */
   excludeDependencies: 'all' | string[]
   concurrency: number | undefined
-  noCache: boolean
+  /**
+   * Resolved 4-axis cache policy after applying `--cache` / `--no-cache`
+   * / `--force` in precedence order. Defaults to all-on.
+   */
+  cache: CachePolicy
   frozen: boolean
   outputLogs?: 'full' | 'errors-only' | 'none'
   forwardArgs: string[]
@@ -72,7 +77,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     all: false,
     excludeDependencies: [],
     concurrency: undefined,
-    noCache: false,
+    cache: { ...FULL_CACHE_POLICY },
     frozen: false,
     forwardArgs: [],
     verbosity: 0,
@@ -88,6 +93,15 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
   const sepIdx = args.indexOf('--')
   const before = sepIdx === -1 ? args : args.slice(0, sepIdx)
   out.forwardArgs = sepIdx === -1 ? [] : args.slice(sepIdx + 1)
+
+  // Cache policy is resolved AFTER the loop in precedence order:
+  // start all-true → apply each `--cache` spec → `--no-cache` forces
+  // all false → `--force` forces both reads false. So `--no-cache`
+  // beats `--force`, and `--cache` is the base both may override.
+  let cachePolicy: CachePolicy = { ...FULL_CACHE_POLICY }
+  let cacheSpecError: string | undefined
+  let noCacheFlag = false
+  let forceFlag = false
 
   for (let i = 0; i < before.length; i++) {
     const a = before[i]
@@ -119,8 +133,25 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
         return { ...out, error: `--output-logs must be full, errors-only, or none` }
       }
       out.outputLogs = v
-    } else if (a === '--no-cache' || a === '--force') {
-      out.noCache = true
+    } else if (a === '--cache') {
+      const v = before[++i]
+      if (v === undefined) return { ...out, error: `${a} requires a value` }
+      try {
+        cachePolicy = parseCachePolicy(v, cachePolicy)
+      } catch (err) {
+        cacheSpecError = err instanceof Error ? err.message : String(err)
+      }
+    } else if (a?.startsWith('--cache=')) {
+      const v = a.slice('--cache='.length)
+      try {
+        cachePolicy = parseCachePolicy(v, cachePolicy)
+      } catch (err) {
+        cacheSpecError = err instanceof Error ? err.message : String(err)
+      }
+    } else if (a === '--no-cache') {
+      noCacheFlag = true
+    } else if (a === '--force') {
+      forceFlag = true
     } else if (a === '--verbosity') {
       const v = before[++i]
       if (v === undefined) return { ...out, error: `${a} requires a value` }
@@ -174,6 +205,19 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       out.tasks.push(a)
     }
   }
+
+  if (cacheSpecError !== undefined) {
+    return { ...out, error: cacheSpecError }
+  }
+  // Precedence: --no-cache (all off) beats --force (reads off, writes
+  // kept), both layered on top of any --cache spec.
+  if (noCacheFlag) {
+    cachePolicy = { localRead: false, localWrite: false, remoteRead: false, remoteWrite: false }
+  }
+  if (forceFlag) {
+    cachePolicy = { ...cachePolicy, localRead: false, remoteRead: false }
+  }
+  out.cache = cachePolicy
 
   if (out.dry !== undefined && out.graph !== undefined) {
     return { ...out, error: '--dry and --graph are mutually exclusive' }
@@ -271,7 +315,7 @@ export async function resolveRunOptions(
   const opts: RunOptions = {
     cwd,
     tasks: [...tasks],
-    noCache: parsed.noCache,
+    cache: parsed.cache,
     flow: detectFlow(parsed),
     ...(parsed.frozen ? { frozen: true } : {}),
     ...(parsed.outputLogs !== undefined ? { outputLogs: parsed.outputLogs } : {}),

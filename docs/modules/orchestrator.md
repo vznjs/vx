@@ -22,7 +22,7 @@ export interface RunOptions {
   tasks: readonly string[] // mixed bare + `pkg#task` positionals
   projects?: string[] // pre-resolved scope (from cli/run.ts)
   concurrency?: number
-  noCache?: boolean
+  cache?: CachePolicy // 4-axis read/write control; undefined → everything on
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   outputLogs?: 'full' | 'errors-only' | 'none' // explicit output override

@@ -2,7 +2,12 @@
 // run with caching. Each step delegates to a single-purpose sibling file
 // so the layers can be swapped without touching the others.
 
-import { LayeredCache, type RunRecord } from '../cache/index.js'
+import {
+  type CachePolicy,
+  FULL_CACHE_POLICY,
+  LayeredCache,
+  type RunRecord,
+} from '../cache/index.js'
 import { VERSION } from '../version.js'
 import { initSandbox, probeSandbox, resetSandbox, signalExitCode } from '../exec/index.js'
 import {
@@ -151,6 +156,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     const runStartHrTimeNs = process.hrtime.bigint()
     const endedAtMsAtStart = Date.now()
     const remoteCacheEnabled = cache instanceof LayeredCache
+    const policy: CachePolicy = options.cache ?? FULL_CACHE_POLICY
 
     // Lazy SRT init: only fire it up if at least one task in the graph
     // opts into sandboxing via its `sandbox: {...}` block. Tasks that
@@ -221,7 +227,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         gitFilesCache,
         hashCache,
         concurrency,
-        noCache: options.noCache ?? false,
+        remoteRead: policy.remoteRead,
       })
     }
 
@@ -231,7 +237,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       workspaceRoot,
       workspaceFingerprint,
       cache,
-      noCache: options.noCache ?? false,
+      cachePolicy: policy,
       forwardArgs: options.forwardArgs,
       log,
       nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
@@ -252,11 +258,16 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       node: TaskNode,
       upstream: TaskOutcome[],
     ): Promise<TaskOutcome> => {
+      // Dedup only helps when the sibling will WRITE the artifact and
+      // this task can READ it back — i.e. both axes effectively on.
+      const canRead = policy.localRead || policy.remoteRead
+      const canWrite = policy.localWrite || policy.remoteWrite
       const cacheable =
         !isGroupTask(node) &&
         node.config.exec?.persistent === undefined &&
         node.config.cache !== undefined &&
-        !(options.noCache ?? false)
+        canRead &&
+        canWrite
       if (inflight === undefined || !cacheable) {
         return executeTask(buildExecuteArgs(node, upstream))
       }
@@ -496,7 +507,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       workspaceRoot: prepared.workspaceRoot,
       workspaceFingerprint: prepared.workspaceFingerprint,
       cache: prepared.cache,
-      noCache: options.noCache ?? false,
+      cachePolicy: options.cache ?? FULL_CACHE_POLICY,
       forwardArgs: options.forwardArgs,
       nestedDirsByProject: prepared.nestedDirsByProject,
       gitFilesCache: prepared.gitFilesCache,

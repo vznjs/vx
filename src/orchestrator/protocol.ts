@@ -4,6 +4,7 @@
 // local unix/ws hop today or a hosted `wss://` link tomorrow. Pure types +
 // the RunOptions⇄RunRequest mapping; no transport, no execution here.
 
+import type { CachePolicy } from '../cache/index.js'
 import type { OutcomeView, WireEvent } from './events.js'
 import type { RunOptions } from './options.js'
 
@@ -17,7 +18,7 @@ export interface RunRequest {
   cwd: string
   projects?: readonly string[]
   concurrency?: number
-  noCache?: boolean
+  cache?: CachePolicy
   frozen?: boolean
   flow?: 'focused' | 'broad'
   outputLogs?: 'full' | 'errors-only' | 'none'
@@ -81,7 +82,7 @@ export function optionsToRequest(options: RunOptions): RunRequest {
   const req: RunRequest = { tasks: options.tasks, cwd: options.cwd }
   if (options.projects !== undefined) req.projects = options.projects
   if (options.concurrency !== undefined) req.concurrency = options.concurrency
-  if (options.noCache !== undefined) req.noCache = options.noCache
+  if (options.cache !== undefined) req.cache = options.cache
   if (options.frozen !== undefined) req.frozen = options.frozen
   if (options.flow !== undefined) req.flow = options.flow
   if (options.outputLogs !== undefined) req.outputLogs = options.outputLogs
@@ -102,7 +103,7 @@ export function requestToOptions(request: RunRequest): RunOptions {
   const options: RunOptions = { cwd: request.cwd, tasks: [...request.tasks] }
   if (request.projects !== undefined) options.projects = [...request.projects]
   if (request.concurrency !== undefined) options.concurrency = request.concurrency
-  if (request.noCache !== undefined) options.noCache = request.noCache
+  if (request.cache !== undefined) options.cache = request.cache
   if (request.frozen !== undefined) options.frozen = request.frozen
   if (request.flow !== undefined) options.flow = request.flow
   if (request.outputLogs !== undefined) options.outputLogs = request.outputLogs

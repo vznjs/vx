@@ -9,7 +9,14 @@
 
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { UserError } from '../util/index.js'
-import { Cache, type CacheLayer, GitFilesCache, populateGitFilesCache } from '../cache/index.js'
+import {
+  Cache,
+  type CacheLayer,
+  type CachePolicy,
+  FULL_CACHE_POLICY,
+  GitFilesCache,
+  populateGitFilesCache,
+} from '../cache/index.js'
 import {
   buildPackageGraph,
   computeNestedProjectDirs,
@@ -187,9 +194,10 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
 
   const requested = expandRequested(options.tasks, candidateProjects, projects)
 
+  const policy: CachePolicy = options.cache ?? FULL_CACHE_POLICY
   const cacheDir = resolveCacheDir(workspaceRoot, workspaceConfig)
-  const localCache = new Cache(cacheDir)
-  const cache = wrapWithRemoteCache(localCache, log)
+  const localCache = new Cache(cacheDir, { read: policy.localRead, write: policy.localWrite })
+  const cache = wrapWithRemoteCache(localCache, log, policy)
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
   const gitFilesCache = new GitFilesCache()

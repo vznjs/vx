@@ -3,8 +3,10 @@ import path from 'node:path'
 import type { ExecConfig, TaskConfig, CacheConfig } from '../config.js'
 import {
   type CacheLayer,
+  type CachePolicy,
   cleanOutputs,
   cleanWorkspaceOutputs,
+  FULL_CACHE_POLICY,
   type GitFilesCache,
   resolveInputs,
   resolveOutputs,
@@ -29,7 +31,8 @@ export interface ExecuteArgs {
   workspaceRoot: string
   workspaceFingerprint: string
   cache: CacheLayer
-  noCache: boolean
+  /** Granular cache read/write policy. Undefined → everything on. */
+  cachePolicy?: CachePolicy
   forwardArgs?: readonly string[] | undefined
   log: Logger
   nestedProjectDirs: string[]
@@ -167,11 +170,19 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
  * spawn the command, save on success.
  */
 async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
-  const { node, upstream, cache, noCache, log } = args
+  const { node, upstream, cache, log } = args
   const cfg: TaskConfig = node.config
   const step = cfg.exec as ExecConfig // dispatcher guarantees exec is present
   const cacheCfg: CacheConfig | undefined = cfg.cache
-  const cacheEnabled = cacheCfg !== undefined && !noCache
+  const policy = args.cachePolicy ?? FULL_CACHE_POLICY
+  const cfgCacheable = cacheCfg !== undefined
+  // We may READ when at least one read axis is on (the cache layer
+  // refines local vs remote), and WRITE when at least one write axis is
+  // on. Output management (clean before exec) keys off writes — so
+  // `--no-cache` (all off) leaves the user's tree alone, while `--force`
+  // (reads off, writes on) still wipes + repopulates a clean snapshot.
+  const willRead = cfgCacheable && (policy.localRead || policy.remoteRead)
+  const willWrite = cfgCacheable && (policy.localWrite || policy.remoteWrite)
 
   const outputs = cacheCfg?.outputs.files ?? []
   const wsOutputs = cacheCfg?.outputs.workspaceFiles ?? []
@@ -208,7 +219,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // Cache lookup. On hit, time the user-perceived restore op
   // (clean+restore+log-replay) — that's what the framed-block footer
   // shows, not the original exec time stored in the entry.
-  if (cacheEnabled) {
+  if (willRead) {
     const cacheOpStart = performance.now()
     const hit = await cache.get(hash, { taskId: node.id, command: step.command })
     if (hit) {
@@ -317,9 +328,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   // Cache miss path (or caching disabled). Clean declared outputs
   // before exec so a stale prior-build artifact can't survive into a
-  // fresh run.
-  if (cacheEnabled && outputs.length > 0) await cleanOutputs(cleanArgs)
-  if (cacheEnabled && wsOutputs.length > 0) {
+  // fresh run. Gated on WRITES: a no-write policy (`--no-cache`) leaves
+  // the user's tree alone (they're debugging); a write-but-no-read
+  // policy (`--force`) wipes so the saved snapshot is clean.
+  if (willWrite && outputs.length > 0) await cleanOutputs(cleanArgs)
+  if (willWrite && wsOutputs.length > 0) {
     // Root-anchored deletions can land in other projects' dirs; mark
     // them so stale per-project git snapshots can't survive the wipe.
     const cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
@@ -454,7 +467,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
-  if (effectiveExitCode === 0 && cacheEnabled) {
+  if (effectiveExitCode === 0 && willWrite) {
     const outputFiles = await resolveOutputs({
       projectDir: node.projectDir,
       outputs,

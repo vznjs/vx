@@ -1,4 +1,11 @@
-import { Cache, type CacheLayer, LayeredCache, RemoteCache } from '../cache/index.js'
+import {
+  Cache,
+  type CacheLayer,
+  type CachePolicy,
+  FULL_CACHE_POLICY,
+  LayeredCache,
+  RemoteCache,
+} from '../cache/index.js'
 import type { Logger } from './logger.js'
 
 /**
@@ -12,7 +19,11 @@ import type { Logger } from './logger.js'
  * `VX_REMOTE_CACHE_SIGNATURE_KEY` (HMAC artifact signing — see
  * docs/design/remote-cache.md § Authentication).
  */
-export function wrapWithRemoteCache(local: Cache, log: Logger): CacheLayer {
+export function wrapWithRemoteCache(
+  local: Cache,
+  log: Logger,
+  policy: CachePolicy = FULL_CACHE_POLICY,
+): CacheLayer {
   const url = process.env.VX_REMOTE_CACHE_URL
   const token = process.env.VX_REMOTE_CACHE_TOKEN
   if (!url || !token) return local
@@ -33,5 +44,6 @@ export function wrapWithRemoteCache(local: Cache, log: Logger): CacheLayer {
   log.status(`remote cache: ${url}`)
   return new LayeredCache(local, new RemoteCache(config), {
     onRemoteError: (err) => log.status(`[vx] remote cache: ${err.message}`),
+    policy,
   })
 }

@@ -16,7 +16,7 @@ export interface RunArgs {
   all: boolean
   excludeDependencies: 'all' | string[]
   concurrency: number | undefined
-  noCache: boolean
+  cache: CachePolicy // resolved from --cache / --no-cache / --force (default all-on)
   forwardArgs: string[] // everything after `--`
   verbosity: number
   dry: 'text' | 'json' | undefined

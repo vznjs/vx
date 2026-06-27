@@ -170,6 +170,90 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-27**: **Dashboard `jr` folder made idiomatic + interactive
+  flamegraph + Runs tab** (owner: "simplify jr code folder... all by the
+  book. study each page of docs from gh" → then "flame graph need to be
+  more interactive with a timeline and a point of time. i should be able
+  to click on tasks to see details in some panel... start end and
+  duration. Add Runs tab. cache tab still shows nothing"). Studied the
+  json-render docs + Solid example in the `vercel-labs/json-render` repo
+  (the site 403s automation; the repo source is authoritative). Key
+  finding from the compiled `@json-render/solid`: `defineRegistry` ALREADY
+  wraps each component with a reactive `get props()` returning
+  `element.props` live AND wraps every element in its own `ErrorBoundary`
+  — so the prior `adapt()` + `px` Proxy bridge in `jr/renderer.tsx` was
+  redundant double-wrapping. **Refactor (#14):** every catalog component
+  is now a native json-render component taking `BaseComponentProps<P>`,
+  reading `c.props.X` / `c.children` / `c.emit` live; they register
+  DIRECTLY (no adapter). Deleted dead `jr/spec.ts` (nothing imported it;
+  the loader uses `nestedToFlat`). Hardened `jr/page.tsx`: it reads
+  `res.error` BEFORE the resource value (an errored resource accessor
+  re-throws, which blanked the whole page) and wraps render in an
+  `ErrorBoundary` — a single failing data source now degrades to a
+  per-section empty state. This is the real fix for the **"cache tab shows
+  nothing"** class (could not reproduce against the committed dist — 77
+  entries + all metrics render — so on the owner's machine it is a stale
+  COMPILED binary, which embeds the SPA at `bun build --compile` time;
+  rebuild the binary or run from source). Zero behavior change, verified
+  e2e across all routes. **Runs tab (#12):** new top-level nav entry +
+  `views/runs.json` (summary metrics + sortable/filterable table of all
+  invocations, rows link to run detail) + `invocationsAll` source.
+  **Interactive flamegraph (#13):** `components/Flamegraph.tsx` gained a
+  duration time axis, a point-of-time hover cursor (vertical line + time
+  readout), and clickable bars. Clicking writes the task to
+  `/selectedTask` via json-render's `useStateBinding` (the idiomatic
+  hook-driven path for a self-contained widget); a `visible`-gated detail
+  panel in `runDetail.json` binds to it and shows status / started / ended
+  / duration / CPU / peak RSS / exit / hash; the selected bar is outlined.
+  apps-only; core `vx` untouched, no CACHE_VERSION impact. Commits
+  `bfe8142` (refactor + loader) and `547a2cb` (Runs + flamegraph).
+
+- **2026-06-27**: **Granular cache read/write control — 4-axis
+  `CachePolicy` replaces the single `noCache` boolean; `--force` is no
+  longer an alias of `--no-cache`.** The cache now has four independent
+  axes — `localRead` / `localWrite` / `remoteRead` / `remoteWrite` —
+  defined in `cache/cache.ts` (`CachePolicy`, `FULL_CACHE_POLICY`,
+  `parseCachePolicy`) and re-exported from `cache/index.ts`. Enforcement
+  lives INSIDE the cache layers at construction: `new Cache(dir, {read,
+write})` gates ONLY the task-artifact `get`/`save` (returns null when
+  `!read`, skips the artifact + index row when `!write`) — `recordRun` /
+  `stats` / `prune` / `ingest` / hashing are untouched; `LayeredCache`
+  takes the full policy and gates its own remote read-through (`get`),
+  upload (`save`), and `prefetch` (no-op when `!remoteRead`).
+  **Subtle-correctness fix:** when `localWrite` off but `remoteWrite` on
+  (`--cache=local:,remote:rw`), there's no on-disk artifact to upload, so
+  `LayeredCache.save` packs the tar.zst bytes in memory via the new
+  `Cache.packArtifactBytes` (gated on `Cache.localWritesEnabled`) — pinned
+  by a new e2e test. `LayeredCache`'s `local` param tightened `CacheLayer`
+  → `Cache` (always was). CLI (`cli/run.ts`): three flags resolve a policy
+  in precedence order — start all-on → apply each `--cache=<spec>` /
+  `--cache <spec>` (comma list of `<layer>:<flags>`, layer∈{local,remote},
+  flags⊆{r,w}; a named layer set EXACTLY, unnamed kept) → `--no-cache`
+  forces all four false → `--force` forces both reads false (writes kept).
+  So **`--no-cache` beats `--force`**, and `--force` now means
+  "re-execute everything but still refresh the cache" (writes on → outputs
+  ARE cleaned before exec). `RunArgs.noCache` → `RunArgs.cache:
+CachePolicy`; `RunOptions.noCache` → `RunOptions.cache?: CachePolicy`
+  (default FULL). Threaded end-to-end, REPLACING `noCache`:
+  `orchestrator/{options,run,execute-task,plan,remote-prefetch,protocol,
+prepare,remote-cache-setup}.ts` + `cli/run.ts`. `execute-task`'s
+  `cacheEnabled` became `willRead = cfgCacheable && (localRead ||
+remoteRead)` / `willWrite = cfgCacheable && (localWrite || remoteWrite)`;
+  the pre-exec output wipe (`cleanOutputs`) now gates on `willWrite` (so
+  `--no-cache` still leaves the tree alone, `--force` cleans). `plan.ts`
+  predicts misses for a no-read policy (correct — those tasks WOULD
+  re-execute). `remote-prefetch` short-circuits on `!remoteRead`. Wire
+  `RunRequest.noCache` → `cache?: CachePolicy` (both mappers). **No
+  CACHE_VERSION / SCHEMA bump** — key derivation and artifact bytes are
+  untouched; only WHEN reads/writes fire changed. Tests: `parseCachePolicy`
+  unit suite (cache.test.ts), CLI parser suite for all three flags +
+  precedence + invalid specs (cli.test.ts), e2e for `--force`
+  (re-execute + refresh → next run hits), `local:r` (hit restores, miss
+  doesn't write), `local:,remote:rw` (uploads without a local artifact),
+  plus the existing `--no-cache` e2e updated to the renamed field. Docs:
+  `docs/cli.md` § Cache control, `docs/caching.md` § Cache policy. 956
+  tests pass, lint+format clean.
+
 - **2026-06-27**: **Dashboard UI (`apps/ui`) rewritten on json-render**
   (owner: "completely redo whole ui using https://json-render.dev/" —
   chosen with the tradeoffs made explicit). The entire page layer now

@@ -16,7 +16,7 @@ export interface ExecuteArgs {
   workspaceRoot: string
   workspaceFingerprint: string
   cache: CacheLayer
-  noCache: boolean
+  cachePolicy?: CachePolicy // 4-axis read/write control; undefined → everything on
   forwardArgs?: readonly string[]
   log: Logger
   nestedProjectDirs: string[]

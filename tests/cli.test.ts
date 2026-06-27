@@ -708,7 +708,12 @@ describe('parseRunArgs', () => {
     expect(r.tasks).toEqual(['build'])
     expect(r.filters).toEqual([])
     expect(r.all).toBe(false)
-    expect(r.noCache).toBe(false)
+    expect(r.cache).toEqual({
+      localRead: true,
+      localWrite: true,
+      remoteRead: true,
+      remoteWrite: true,
+    })
     expect(r.excludeDependencies).toEqual([])
     expect(r.verbosity).toBe(0)
     expect(r.dry).toBeUndefined()
@@ -740,9 +745,81 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--recursive']).error).toMatch(/unknown flag: --recursive/)
   })
 
-  it('parses --no-cache and --force (alias)', () => {
-    expect(parseRunArgs(['build', '--no-cache']).noCache).toBe(true)
-    expect(parseRunArgs(['build', '--force']).noCache).toBe(true)
+  it('--no-cache disables every cache axis', () => {
+    expect(parseRunArgs(['build', '--no-cache']).cache).toEqual({
+      localRead: false,
+      localWrite: false,
+      remoteRead: false,
+      remoteWrite: false,
+    })
+  })
+
+  it('--force skips reads but keeps writes (re-execute + refresh)', () => {
+    expect(parseRunArgs(['build', '--force']).cache).toEqual({
+      localRead: false,
+      localWrite: true,
+      remoteRead: false,
+      remoteWrite: true,
+    })
+  })
+
+  it('--cache=<spec> sets named layers exactly and leaves others (= and space forms)', () => {
+    // remote read-only: local stays rw (default), remote drops write.
+    expect(parseRunArgs(['build', '--cache=local:rw,remote:r']).cache).toEqual({
+      localRead: true,
+      localWrite: true,
+      remoteRead: true,
+      remoteWrite: false,
+    })
+    // local read-only, remote untouched (still rw).
+    expect(parseRunArgs(['build', '--cache=local:r']).cache).toEqual({
+      localRead: true,
+      localWrite: false,
+      remoteRead: true,
+      remoteWrite: true,
+    })
+    // remote: with empty flags turns remote fully off; local untouched.
+    expect(parseRunArgs(['build', '--cache=remote:']).cache).toEqual({
+      localRead: true,
+      localWrite: true,
+      remoteRead: false,
+      remoteWrite: false,
+    })
+    // Space form parses identically to the = form.
+    expect(parseRunArgs(['build', '--cache', 'local:r']).cache).toEqual({
+      localRead: true,
+      localWrite: false,
+      remoteRead: true,
+      remoteWrite: true,
+    })
+  })
+
+  it('--cache rejects unknown layers and flags', () => {
+    expect(parseRunArgs(['build', '--cache=disk:r']).error).toMatch(/invalid --cache layer/)
+    expect(parseRunArgs(['build', '--cache=local:x']).error).toMatch(/invalid --cache flag/)
+    expect(parseRunArgs(['build', '--cache=local']).error).toMatch(/invalid --cache segment/)
+  })
+
+  it('--no-cache beats --force regardless of order', () => {
+    const allOff = {
+      localRead: false,
+      localWrite: false,
+      remoteRead: false,
+      remoteWrite: false,
+    }
+    expect(parseRunArgs(['build', '--no-cache', '--force']).cache).toEqual(allOff)
+    expect(parseRunArgs(['build', '--force', '--no-cache']).cache).toEqual(allOff)
+  })
+
+  it('--force layers on top of a --cache base (reads off, writes from spec)', () => {
+    // --cache=remote: turns remote off; --force then drops reads. Result:
+    // local write-only re-exec with remote fully off.
+    expect(parseRunArgs(['build', '--cache=remote:', '--force']).cache).toEqual({
+      localRead: false,
+      localWrite: true,
+      remoteRead: false,
+      remoteWrite: false,
+    })
   })
 
   it('--output-logs validates its mode and threads through', () => {
@@ -829,7 +906,12 @@ describe('parseRunArgs', () => {
     expect(r.all).toBe(true)
     expect(r.tasks).toEqual(['build'])
     expect(r.verbosity).toBe(0)
-    expect(r.noCache).toBe(false)
+    expect(r.cache).toEqual({
+      localRead: true,
+      localWrite: true,
+      remoteRead: true,
+      remoteWrite: true,
+    })
     expect(r.forwardArgs).toEqual(['--verbosity', '--no-cache'])
   })
 

@@ -8,8 +8,8 @@
 // DO run, because predicting a task's key requires resolving them (same
 // as a real run). Keep runtime inputs side-effect-free pure probes.
 
-import type { GitFilesCache } from '../cache/index.js'
-import type { CacheLayer } from '../cache/index.js'
+import type { CacheLayer, CachePolicy, GitFilesCache } from '../cache/index.js'
+import { FULL_CACHE_POLICY } from '../cache/index.js'
 import { isGroupTask, runGraph, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { computeGroupHash, computeTaskHash } from './task-hash.js'
 
@@ -37,7 +37,7 @@ export interface PlanArgs {
   workspaceRoot: string
   workspaceFingerprint: string
   cache: CacheLayer
-  noCache: boolean
+  cachePolicy?: CachePolicy
   forwardArgs?: readonly string[] | undefined
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache?: GitFilesCache
@@ -80,7 +80,14 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
         ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
       })
 
-      const cacheEnabled = node.config.cache !== undefined && !args.noCache
+      // Prediction keys off READS: a no-read policy (--no-cache /
+      // --force / --cache=local:,remote:) would re-execute every task,
+      // so we predict misses for it. The probe below routes through the
+      // policy-aware cache layer, which itself respects local/remote
+      // read gating.
+      const policy = args.cachePolicy ?? FULL_CACHE_POLICY
+      const cacheEnabled =
+        node.config.cache !== undefined && (policy.localRead || policy.remoteRead)
       let status: CacheStatus
       if (!cacheEnabled) {
         status = 'no-cache'

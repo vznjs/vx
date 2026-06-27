@@ -438,12 +438,59 @@ describe('orchestrator e2e: remote cache', () => {
       const res = await run({
         cwd: fixture.root,
         tasks: ['build'],
-        noCache: true,
+        cache: { localRead: false, localWrite: false, remoteRead: false, remoteWrite: false },
         log: silentLogger(fixture),
       })
       expect(res.ok).toBe(true)
       expect(res.outcomes[0]!.status).toBe('success')
       expect([...remote.getCounts.values()]).toHaveLength(0)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'local:,remote:rw uploads to remote even with local writes disabled (packs bytes in memory)',
+    async () => {
+      await remote.server.stop(true)
+      remote = startArtifactServer()
+      process.env.VX_REMOTE_CACHE_URL = remote.baseUrl
+      await addProject(fixture.root, 'app', {
+        files: { 'src/in.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: 'echo built > out.txt' },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+
+      // local: (no read, no write), remote:rw — there is NO local
+      // artifact to read off disk, so the upload path must pack the
+      // bytes in memory.
+      const res = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        cache: { localRead: false, localWrite: false, remoteRead: true, remoteWrite: true },
+        log: silentLogger(fixture),
+      })
+      expect(res.ok).toBe(true)
+      expect(res.outcomes[0]!.status).toBe('success')
+      // The artifact landed on the remote despite no local write.
+      expect(remote.store.size).toBe(1)
+      // No local cache.db entry was written (local writes were off);
+      // the next run with remote reads on serves the artifact from the
+      // remote layer.
+      await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+      const second = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        log: silentLogger(fixture),
+      })
+      expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
     },
     TIMEOUT,
   )

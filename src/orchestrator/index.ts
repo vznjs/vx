@@ -3,6 +3,10 @@
 
 export { run, planRun } from './run.js'
 export type { RunOptions, RunSummary } from './options.js'
+// Re-surface the cache policy contract (defined in the cache module) so
+// embedders constructing RunOptions.cache and the package façade can
+// reach it without importing the cache module directly.
+export { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
 export { defaultLogger, resolveOutputView } from './logger.js'
 export type { Logger, OutputView } from './logger.js'
 export type { RunPlan, PlannedTask, CacheStatus } from './plan.js'

@@ -15,11 +15,13 @@
 // surfaces `durationMs` from its response. No stage dirs, no
 // meta.json, no tar.gz wrapping — the artifact is what it is.
 
+import type { Cache } from './cache.js'
 import type {
   CacheEntry,
   CacheGetContext,
   CacheKeyInput,
   CacheLayer,
+  CachePolicy,
   CacheStats,
   IngestMeta,
   OutputFileRow,
@@ -28,11 +30,19 @@ import type {
   RunRecord,
   SaveArgs,
 } from './cache.js'
+import { FULL_CACHE_POLICY } from './cache.js'
 import type { RemoteCache } from './remote-cache.js'
 
 export interface LayeredCacheOptions {
   /** Called for remote-related errors that the layer suppresses. */
   onRemoteError?: (err: Error) => void
+  /**
+   * The 4-axis read/write policy. The local slice (read/write) is
+   * already applied to the inner `Cache` by the caller; this layer reads
+   * `remoteRead` / `remoteWrite` to gate its OWN remote operations.
+   * Default: everything on.
+   */
+  policy?: CachePolicy
 }
 
 export class LayeredCache implements CacheLayer {
@@ -58,17 +68,23 @@ export class LayeredCache implements CacheLayer {
    */
   private readonly remoteSourced = new Set<string>()
 
+  private readonly policy: CachePolicy
+
   constructor(
-    private readonly local: CacheLayer,
+    private readonly local: Cache,
     private readonly remote: RemoteCache,
     private readonly options: LayeredCacheOptions = {},
-  ) {}
+  ) {
+    this.policy = options.policy ?? FULL_CACHE_POLICY
+  }
 
   async key(input: CacheKeyInput): Promise<string> {
     return await this.local.key(input)
   }
 
   async prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean> {
+    // No-op when remote reads are off — there's nothing to warm from.
+    if (!this.policy.remoteRead) return false
     return await this.pullFromRemote(hash, ctx)
   }
 
@@ -80,6 +96,10 @@ export class LayeredCache implements CacheLayer {
       // the remote cache, so the provenance stays 'remote'.
       return this.remoteSourced.has(hash) ? { ...localHit, source: 'remote' } : localHit
     }
+
+    // Remote reads disabled (e.g. `--cache=remote:`): a local miss is a
+    // real miss; never touch the remote layer.
+    if (!this.policy.remoteRead) return null
 
     // A prefetch may already have probed this hash (resolved) or be
     // mid-flight. Awaiting the shared promise guarantees AT MOST ONE
@@ -161,13 +181,20 @@ export class LayeredCache implements CacheLayer {
   }
 
   async save(args: SaveArgs): Promise<void> {
+    // Local write honors its own gate inside Cache.save (no-op when
+    // local writes are disabled).
     await this.local.save(args)
-    // Upload the bytes the local layer just wrote — same format on
-    // both sides, no repacking. Errors are logged, not propagated:
-    // the task already succeeded; we don't want to fail it on cache-
+    if (!this.policy.remoteWrite) return
+    // Upload to remote. Normally we read the bytes the local layer just
+    // wrote (same format on both sides, no repacking). But when local
+    // writes are disabled (`--cache=local:,remote:rw`) there's no on-disk
+    // artifact — pack the bytes in memory instead. Errors are logged, not
+    // propagated: the task already succeeded; we don't fail it on cache-
     // server issues.
     try {
-      const bytes = await Bun.file(this.local.outputsPath(args.hash)).bytes()
+      const bytes = this.local.localWritesEnabled
+        ? await Bun.file(this.local.outputsPath(args.hash)).bytes()
+        : await this.local.packArtifactBytes(args)
       await this.remote.put(args.hash, bytes, { durationMs: args.entry.durationMs })
     } catch (err) {
       this.reportRemoteError(err)

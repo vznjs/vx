@@ -2,6 +2,7 @@
 // so internals like prepare.ts can import them without an upward
 // import of index.ts — the module entry must stay cycle-free.
 
+import type { CachePolicy } from '../cache/index.js'
 import type { TaskOutcome } from '../graph/index.js'
 import type { EventBus } from './events.js'
 import type { Logger } from './logger.js'
@@ -17,8 +18,14 @@ export interface RunOptions {
   tasks: readonly string[]
   projects?: string[]
   concurrency?: number
-  /** Skip cache reads AND writes. Every task runs and nothing is persisted. */
-  noCache?: boolean
+  /**
+   * Granular cache read/write control across the local + remote layers.
+   * Each of the four axes (localRead / localWrite / remoteRead /
+   * remoteWrite) is independent. Undefined → {@link FULL_CACHE_POLICY}
+   * (everything on). `--no-cache` sets all four false; `--force` sets
+   * both reads false (re-execute, still refresh the cache).
+   */
+  cache?: CachePolicy
   /**
    * CI mode: load configs FROM the committed vx-lock.json instead of
    * evaluating them (frozen-env reproducibility). Requires the lock
