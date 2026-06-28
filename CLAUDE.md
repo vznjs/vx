@@ -170,6 +170,59 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-28**: **Stable local cache hits restore AHEAD of their deps —
+  two-tier scheduler** (owner saw `@vzn/vx-docs#build` waiting on
+  `@vzn/vx-docs#import` though build was a warm hit: "it should know right
+  away if it can be used from cache or not… restoration should always run
+  first no matter of order. we know right away what can be restored, they
+  should not fall into topology" + "prioritize running cache misses though,
+  only if required or free workers add cache restores" + "this should be
+  actual faster not slower"). `dependsOn` is an ordering gate, so a
+  dependent couldn't restore until its upstream finished RUNNING — but a
+  STABLE-key task's key is provably independent of any upstream's OUTPUTS,
+  so its cache hit is knowable up front and its restore needs none of the
+  deps' output. New up-front CLASSIFY (`src/orchestrator/
+local-shortcircuit.ts`): derive every stable-key, cacheable, local-read
+  task's key (reusing the run's `hashCache` memo) and probe `cache.get`
+  ONCE → a `preProbed` map (hits AND stable misses) + a `restoreTier` set
+  (confirmed hits). **Two-tier scheduler** (`graph/scheduler.ts`): two
+  ready queues — restore-tier tasks are ready IMMEDIATELY (bypass the
+  dep-gate, bypass the failed-dep→skip check — their key is dep-success-
+  independent) at LOW priority (`restoreReady`); everything else is
+  exec-tier, dep-gated, NORMAL priority (`execReady`). `takeReady` drains
+  execReady FIRST, so cache MISSES own the worker pool and restores only
+  backfill idle capacity — exactly the owner's "misses first, restores
+  backfill" rule. **Probe reuse:** `execute-task.ts` consumes `preProbed`
+  (extracted `restoreHit`), so the up-front probes ARE the probes execute()
+  would have done, hoisted — no double work (the double-probe is what
+  tanked the reverted `classify.ts`, +57%). Every task still flows through
+  execute() so logger output is unchanged. **Safety:** only stable-key
+  tasks classified (`stable-keys.ts` `dependsOnSiblingOutputs` — a same-
+  project upstream with declared `outputs.files`, or a `workspaceFiles`
+  overlap, makes the key preliminary → unstable → stays lazy/dep-gated); a
+  graph declaring `outputs.workspaceFiles` (boundary-ignoring) disables the
+  restore tier graph-wide (probe reuse still applies); gated on
+  `localRead` + ≥1 dep edge; NOT for LayeredCache runs (remote-prefetch
+  owns those); never throws (degrades to the normal schedule). `deriveStableKeys`
+  factored out of `remote-prefetch.ts` so the two callers can't drift on
+  the stability gate. **No CACHE_VERSION/SCHEMA bump** — key derivation +
+  artifact bytes untouched; only WHEN a restore fires changed. **Measured
+  (A/B on vs off, git-stash toggle):** mixed workload (a slow uncacheable
+  upstream feeding many stable cached downstream tasks — the docs case)
+  488ms → 456ms (**−6.6%**); warm all-hit at **parity** (paired/
+  interleaved bench cancels VM drift: median delta within noise, 6 reps
+  faster / 6 slower — there are no misses to overlap, so parity is the
+  ceiling and the hoisted classify costs nothing net). The naive all-ON-
+  then-all-OFF bench had shown a phantom +2.9% that was pure machine drift.
+  Files: `src/orchestrator/{stable-keys,local-shortcircuit,run,execute-task,
+remote-prefetch}.ts`, `src/graph/scheduler.ts`, `src/cache/index.ts`
+  (export `CacheEntry`); tests `tests/local-shortcircuit.test.ts` (7 e2e:
+  cross-project restore-tier correctness, codegen-consumer stays exec-tier,
+  workspace-outputs disables tier, --no-cache no-probe, no-double-probe =
+  exactly 2 `Cache.get` for 2 warm tasks, restore-tier hit stable even when
+  a dep FAILS, flat graph), `tests/scheduler.test.ts` (+4 two-tier). Design
+  `docs/design/local-cache-shortcircuit-2026-06.md`.
+
 - **2026-06-28**: **Run graph redesigned as a staged, Linear-style flow —
   REVERSES the Cytoscape adoption** (owner: "graphs are super ugly, there were
   so nice Linear style now they are shit. they need to simulate stages of runs
