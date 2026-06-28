@@ -39,7 +39,16 @@ export interface OtelSinkConfig {
 }
 
 const defaultPost: PostFn = async (url, body, headers) => {
-  await fetch(url, { method: 'POST', body, headers, signal: AbortSignal.timeout(15_000) })
+  // Clearable timer, not AbortSignal.timeout: the latter's internal timer is
+  // not unref'd and would keep a CLI process alive until it fires, well after
+  // the POST resolved.
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 15_000)
+  try {
+    await fetch(url, { method: 'POST', body, headers, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 function genId(bytes: number): string {

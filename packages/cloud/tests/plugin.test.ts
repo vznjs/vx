@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -284,6 +284,43 @@ describe('cloud() telemetry capability', () => {
       if (prevInsights !== undefined) process.env['VX_CLOUD_INSIGHTS_URL'] = prevInsights
     }
   })
+
+  it('AUTO-DETECTS a local vx-cloud serve via .vx/serve.json and pushes there', async () => {
+    const prevIngest = process.env['VX_CLOUD_INGEST_URL']
+    const prevInsights = process.env['VX_CLOUD_INSIGHTS_URL']
+    delete process.env['VX_CLOUD_INGEST_URL']
+    delete process.env['VX_CLOUD_INSIGHTS_URL']
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-autodetect-'))
+    const received: string[] = []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        received.push(new URL(req.url).pathname)
+        await req.text()
+        return new Response('ok')
+      },
+    })
+    try {
+      // Simulate a running serve advertising itself in the workspace.
+      await mkdir(path.join(root, '.vx'), { recursive: true })
+      await writeFile(
+        path.join(root, '.vx', 'serve.json'),
+        // A DIFFERENT pid — simulates a serve running in another process (the
+        // same-pid case is "self" and is intentionally NOT auto-pushed to).
+        JSON.stringify({ origin: `http://localhost:${server.port}`, pid: process.pid + 1 }),
+      )
+      const sink = (await cloud().telemetry!(telemetryCtx(root))) as TelemetrySink
+      expect(sink).toBeDefined()
+      sink.onRunSummary!(fakeSummary())
+      await sink.flush!()
+      expect(received).toContain('/v1/ingest')
+    } finally {
+      void server.stop(true)
+      await rm(root, { recursive: true, force: true })
+      if (prevIngest !== undefined) process.env['VX_CLOUD_INGEST_URL'] = prevIngest
+      if (prevInsights !== undefined) process.env['VX_CLOUD_INSIGHTS_URL'] = prevInsights
+    }
+  })
 })
 
 describe('cloud() end-to-end through defineWorkspace', () => {
@@ -301,6 +338,15 @@ describe('cloud() end-to-end through defineWorkspace', () => {
           '',
         ].join('\n'),
       )
+      // The in-process serve advertises itself in `.vx/serve.json`. Remove it
+      // before spawning so the subprocess's telemetry auto-detect declines —
+      // this test exercises the EXPLICIT-serviceUrl backend path, not the push.
+      // (Why it must go: `spawnSync` blocks THIS process's event loop while the
+      // CLI runs, so the in-process serve can't answer an auto-detected POST
+      // back to it, and `flush()` would wait the full timeout — a test-only
+      // artifact. The dedicated auto-detect test covers the push with a
+      // separate, responsive process. See cloud()'s detectLocalIngestUrl.)
+      await rm(path.join(root, '.vx', 'serve.json'), { force: true })
       // Drive the real CLI: it loads the workspace config, sees the plugin,
       // and routes the run through cloud()'s backend (the reachable serve).
       const binPath = path.join(import.meta.dir, '..', '..', '..', 'src', 'bin.ts')

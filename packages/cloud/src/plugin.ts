@@ -19,6 +19,8 @@
 // zero-config form (it behaves like pre-split core: delegate-or-dev-mirror,
 // env-configured cache, no telemetry push).
 
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import {
   LayeredCache,
   RemoteCache,
@@ -119,7 +121,12 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
     },
 
     telemetry(ctx: TelemetryContext): TelemetrySink | undefined {
-      const url = ingestUrlOf(opts)
+      // Explicit config wins; otherwise AUTO-DETECT a vx-cloud serve running
+      // in this workspace via the `.vx/serve.json` it advertises (carrying the
+      // real origin + port), so a local dashboard is zero-config: start
+      // `vx-cloud serve`, and every `vx run` here pushes to it automatically.
+      // No serve running (and no env) → decline, so a plain run is unaffected.
+      const url = ingestUrlOf(opts) ?? detectLocalIngestUrl(ctx.workspaceRoot)
       if (!url) return undefined
       const token = opts.ingestToken ?? ingestTokenFromEnv()
       return new CloudIngestSink(url, token, (m) => ctx.warn(m))
@@ -139,6 +146,32 @@ function ingestUrlOf(opts: CloudPluginOptions): string | undefined {
 
 function ingestTokenFromEnv(): string | undefined {
   return process.env['VX_CLOUD_INGEST_TOKEN'] ?? process.env['VX_CLOUD_INSIGHTS_TOKEN']
+}
+
+/**
+ * Auto-detect a vx-cloud serve running in this workspace. `vx-cloud serve`
+ * advertises its chosen origin (incl. the actual port) in `.vx/serve.json`;
+ * if that file is present + parseable, push telemetry to `<origin>/v1/ingest`.
+ * Returns undefined when no serve is running (a plain `vx run` then declines).
+ * Pure fs read — no network, no heavy import.
+ */
+function detectLocalIngestUrl(workspaceRoot: string): string | undefined {
+  try {
+    const info = JSON.parse(
+      readFileSync(path.join(workspaceRoot, '.vx', 'serve.json'), 'utf8'),
+    ) as { origin?: unknown; pid?: unknown }
+    // Never push to a serve running in THIS process — that's the serve
+    // executing a delegated run, and POSTing to itself mid-request deadlocks
+    // (the WS handler would await an ingest request it must answer). The serve
+    // records its own pid in serve.json, so a same-pid match means "self".
+    if (typeof info.pid === 'number' && info.pid === process.pid) return undefined
+    if (typeof info.origin === 'string' && info.origin.length > 0) {
+      return `${info.origin.replace(/\/+$/, '')}/v1/ingest`
+    }
+  } catch {
+    // no serve.json (no local serve) → not detected
+  }
+  return undefined
 }
 
 function assertWellFormedUrl(value: string | undefined, field: string): void {
@@ -179,16 +212,23 @@ class CloudIngestSink implements TelemetrySink {
     this.uploaded = true
     const headers: Record<string, string> = { 'content-type': 'application/json' }
     if (this.token) headers['authorization'] = `Bearer ${this.token}`
+    // A clearable timer (NOT AbortSignal.timeout, whose internal timer is not
+    // unref'd and would keep the CLI process alive for the full timeout after
+    // the POST already resolved — a 5s "hang" at the end of every run).
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 5000)
     try {
       await fetch(this.url, {
         method: 'POST',
         headers,
         body: JSON.stringify(this.summary),
-        signal: AbortSignal.timeout(5000),
+        signal: controller.signal,
       })
     } catch (err) {
       // telemetry push is fully optional — a down endpoint never affects a run
       this.warn(`[vx] cloud ingest: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      clearTimeout(timer)
     }
   }
 }
