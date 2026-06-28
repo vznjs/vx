@@ -112,7 +112,7 @@ All routes ship `Access-Control-Allow-Origin: *`.
 
 ## Host the SPA once, point it anywhere
 
-You can also build `apps/ui/dist/` and deploy the single
+You can also build `packages/cloud/ui/dist/` and deploy the single
 `index.html` to any static host. The connection picker means the
 same hosted bundle works against any reachable `vx serve` — browsers
 allow HTTPS pages to call `http://localhost:*` per the Secure

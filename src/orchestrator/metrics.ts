@@ -1,8 +1,8 @@
 // Metrics query module — pure functions over a `bun:sqlite` Database.
 //
-// `vx serve` exposes these as /v1/* HTTP routes; the dashboard SPA in
-// apps/ui and `vx mcp` both read through them. One canonical home for
-// every aggregate over the runs / entries tables.
+// `vx serve` exposes these as /v1/* HTTP routes; the dashboard SPA
+// (packages/cloud/ui) and `vx mcp` both read through them. One canonical home
+// for every aggregate over the runs / entries tables.
 //
 // Pure SQL + JSON-safe return shapes. No Cache lifecycle here; the
 // caller opens and closes. bigints are serialized as decimal strings

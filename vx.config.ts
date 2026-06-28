@@ -104,8 +104,8 @@ export default defineProject({
     'build.bun.linux-x64': {
       description: 'compile standalone binary (linux x64)',
       // The dashboard SPA is embedded via `with { type: 'file' }`; build it
-      // first so apps/ui/dist/index.html exists when the compile resolves
-      // the import (and so a UI change cascades into the binary cache key).
+      // first so packages/cloud/ui/dist/index.html exists when the compile
+      // resolves the import (and so a UI change cascades into the binary key).
       dependsOn: ['install', 'build.ui'],
       exec: {
         command:

@@ -1005,7 +1005,7 @@ vx-cloud serve                   # bind port 4321 (falls back to a free port if 
 ```
 
 The dashboard is embedded in the binary (a single self-contained
-`apps/ui/dist/index.html` compiled in via `with { type: 'file' }`), so
+`packages/cloud/ui/dist/index.html` compiled in via `with { type: 'file' }`), so
 `--ui` works from a bare `vx-cloud` with nothing else on disk.
 
 HTTP routes (all return JSON unless noted):
