@@ -160,6 +160,9 @@ function changeToken(change: string): 'stable' | 'flaky-recoverable' | 'cold' {
 // (env/runtime/forward) show verbatim. A null side renders as "∅".
 const HASH_KINDS = new Set(['file', 'upstream', 'package', 'config', 'workspace'])
 function diffText(r: Row): string {
+  // Reason-only rows (first run / not cacheable) carry no component — render
+  // an empty cell, not "∅ → ∅".
+  if (r.before == null && r.after == null) return ''
   const short = (v: unknown) => (v == null ? '∅' : HASH_KINDS.has(String(r.kind)) ? `${String(v).slice(0, 12)}…` : String(v))
   return `${short(r.before)} → ${short(r.after)}`
 }

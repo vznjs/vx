@@ -477,8 +477,19 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         exitCode: o.exitCode,
         durationMs: o.durationMs,
         ...(options.forwardArgs !== undefined ? { forwardArgs: options.forwardArgs } : {}),
-        startedAt: now - o.durationMs,
-        endedAt: now,
+        // Anchor to the REAL per-task wall-clock window: run-start wall time +
+        // the task's ns offset (captured for hits and executed tasks alike).
+        // The `now - duration` fallback only applies to outcomes without an
+        // offset (none today). Using run-end-minus-duration for everything was
+        // the old bug that piled every task at the right edge of the timeline.
+        startedAt:
+          o.wallclockStartNs !== undefined
+            ? endedAtMsAtStart + Math.round(Number(o.wallclockStartNs) / 1e6)
+            : now - o.durationMs,
+        endedAt:
+          o.wallclockEndNs !== undefined
+            ? endedAtMsAtStart + Math.round(Number(o.wallclockEndNs) / 1e6)
+            : now,
         runId,
         ...(o.cpuMs !== undefined ? { cpuMs: o.cpuMs } : {}),
         ...(o.peakRssBytes !== undefined ? { peakRssBytes: o.peakRssBytes } : {}),

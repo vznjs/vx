@@ -39,14 +39,16 @@ interface WhyRow {
   taskId: string
   project: string
   task: string
-  /** Component kind: file | env | runtime | ws-runtime | upstream | package | config | forward | workspace. */
+  /** Why this task RE-RAN: 'inputs changed' | 'first run' | 'not cacheable / forced'. */
+  reason: string
+  /** Component kind (only for 'inputs changed' rows): file | env | runtime | … ; '' otherwise. */
   kind: string
-  /** Component name (file path, env var, command string, upstream task id, …). */
+  /** Component name (file path, env var, …); '' for non-component reason rows. */
   name: string
-  change: 'added' | 'removed' | 'changed'
-  /** The component's hash in the previous run (null when `added`). */
+  change: 'added' | 'removed' | 'changed' | ''
+  /** The component's hash in the previous run (null when `added` or not applicable). */
   before: string | null
-  /** The component's hash in this run (null when `removed`). */
+  /** The component's hash in this run (null when `removed` or not applicable). */
   after: string | null
 }
 
@@ -62,24 +64,33 @@ async function runWhy(runId: string): Promise<WhyRow[]> {
   if (!run) return []
   const perTask = await Promise.all(
     run.tasks.map(async (t): Promise<WhyRow[]> => {
+      // Only tasks that actually RE-RAN belong in a "why did this re-run"
+      // panel. Cache hits (cache-hit / cache-hit-remote) and skips did not
+      // re-run, so they're excluded — listing them was the "everything shows
+      // up" bug.
+      if (t.status !== 'success' && t.status !== 'failed') return []
       const taskId = `${t.project}#${t.task}`
+      const base = { taskId, project: t.project, task: t.task }
+      let diff
       try {
-        const diff = await cacheKeyDiff(runId, taskId)
-        return diff.entries.map(
-          (e): WhyRow => ({
-            taskId,
-            project: t.project,
-            task: t.task,
-            kind: e.kind,
-            name: e.name,
-            change: e.change,
-            before: e.before,
-            after: e.after,
-          }),
-        )
+        diff = await cacheKeyDiff(runId, taskId)
       } catch {
-        return []
+        return [{ ...base, reason: 'ran', kind: '', name: '', change: '', before: null, after: null }]
       }
+      if (!diff.found || diff.previousRunId === null) {
+        // No prior run of this task to diff against.
+        return [{ ...base, reason: 'first run', kind: '', name: '', change: '', before: null, after: null }]
+      }
+      if (diff.entries.length > 0) {
+        // The cache key changed — one row per changed input component.
+        return diff.entries.map(
+          (e): WhyRow => ({ ...base, reason: 'inputs changed', kind: e.kind, name: e.name, change: e.change, before: e.before, after: e.after }),
+        )
+      }
+      // Ran with the SAME key as the previous run: the task isn't cached
+      // (no `cache:` config / outputs) or caching was bypassed (--force /
+      // --no-cache). Honest, single reason row.
+      return [{ ...base, reason: 'not cacheable / forced', kind: '', name: '', change: '', before: null, after: null }]
     }),
   )
   return perTask.flat()

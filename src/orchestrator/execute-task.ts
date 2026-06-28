@@ -194,6 +194,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const anyOutputs = outputs.length > 0 || wsOutputs.length > 0
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
 
+  // When the task started, as a ns offset from run start — captured for
+  // EVERY outcome (hits included) so the run-detail timeline reflects when
+  // each task actually ran, not a fabricated `runEnd - duration` window.
+  const taskStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
+
   // Hash is computed mid-run, not at prepareRun time. Tasks whose
   // `cache.inputs.files` matches sibling outputs (e.g. `'**/*'` after
   // a `codegen` step has written `generated.txt`) need the upstream
@@ -335,6 +340,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         durationMs: Math.round(performance.now() - cacheOpStart),
         hash,
         restored,
+        wallclockStartNs: taskStartNs,
+        wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
       }
     }
   }

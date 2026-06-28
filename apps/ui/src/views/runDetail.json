@@ -345,7 +345,7 @@
         "type": "Card",
         "props": {
           "title": "Why did this re-run?",
-          "actionText": "exact inputs that changed since the previous run",
+          "actionText": "only tasks that executed — cache hits are excluded",
           "noPad": true
         },
         "visible": {
@@ -364,15 +364,19 @@
                   }
                 }
               },
-              "emptyTitle": "No inputs changed since the previous run (or first run)",
+              "emptyTitle": "Nothing re-ran — every task was a cache hit",
               "filter": true,
-              "filterFrom": ["taskId", "kind", "name", "change"],
-              "filterPlaceholder": "filter by task, kind, or input name…",
+              "filterFrom": ["taskId", "reason", "kind", "name", "change"],
+              "filterPlaceholder": "filter by task, reason, or input name…",
               "columns": [
                 {
                   "key": "task",
                   "label": "Task",
                   "kind": "projtask"
+                },
+                {
+                  "key": "reason",
+                  "label": "Reason"
                 },
                 {
                   "key": "kind",
