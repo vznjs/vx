@@ -78,10 +78,18 @@ export function RunConsole() {
     return 0
   }
 
+  // A cache HIT restores ahead of its deps (the two-tier scheduler's restore
+  // tier), so it doesn't wait for them — exclude it from the dependency-timing
+  // chain or the floor counts upstream runtime the hit never waited for.
+  const restoresAhead = (id: string): boolean => {
+    const s = statuses()[id]?.state
+    return s === 'cache-hit' || s === 'cache-hit-remote'
+  }
+
   // Longest-duration dependency chain (the wall-time floor) over the live graph.
   const critical = createMemo(() => {
     now() // track the tick so in-progress chains grow
-    return criticalPath(nodes(), durationOf)
+    return criticalPath(nodes(), durationOf, restoresAhead)
   })
   const criticalSet = createMemo(() => new Set(critical().chain))
 
@@ -396,7 +404,7 @@ export function RunConsole() {
               >
                 <div class="overflow-auto min-h-0">
                   <div class="px-4 py-1.5 text-[10px] text-fg-3">
-                    These {critical().chain.length} task{critical().chain.length === 1 ? '' : 's'} are your {fmtDur(critical().totalMs)} floor.
+                    {critical().chain.length === 1 ? 'This' : 'These'} {critical().chain.length} task{critical().chain.length === 1 ? ' is' : 's are'} your {fmtDur(critical().totalMs)} floor.
                   </div>
                   <For each={critical().chain}>
                     {(id, i) => {

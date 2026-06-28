@@ -27,10 +27,19 @@ export interface CriticalPath {
  * deps starts at t=0; a node's finish is its own duration plus the max finish
  * among its (known) deps. The chain is the back-trace from the node with the
  * greatest finish.
+ *
+ * `independent(id)` (optional) marks a node whose start is NOT gated by its
+ * deps — a stable cache HIT restored ahead of the schedule (the two-tier
+ * scheduler's restore tier). Such a node's restore needs none of its deps'
+ * output, so it starts at t=0 regardless of `deps`: its chain begins fresh at
+ * itself. Without this, a cached dependent inflates the "floor" by the runtime
+ * of an upstream it never actually waited for (e.g. `docs#build` restoring in
+ * parallel with a slow `docs#import` was reported as `import + build` summed).
  */
 export function criticalPath(
   nodes: readonly CriticalPathInput[],
   durationMs: (id: string) => number,
+  independent?: (id: string) => boolean,
 ): CriticalPath {
   if (nodes.length === 0) return { chain: [], totalMs: 0 }
 
@@ -48,12 +57,16 @@ export function criticalPath(
     visiting.add(id)
     let bestDep = -1
     let bestDepId: string | null = null
-    for (const dep of byId.get(id)?.deps ?? []) {
-      if (!byId.has(dep)) continue // dep outside this node set
-      const f = finish(dep)
-      if (f > bestDep) {
-        bestDep = f
-        bestDepId = dep
+    // A dependency-independent node (a cache hit restored ahead of its deps)
+    // ignores its deps' finish times — its chain starts fresh at itself.
+    if (independent?.(id) !== true) {
+      for (const dep of byId.get(id)?.deps ?? []) {
+        if (!byId.has(dep)) continue // dep outside this node set
+        const f = finish(dep)
+        if (f > bestDep) {
+          bestDep = f
+          bestDepId = dep
+        }
       }
     }
     visiting.delete(id)

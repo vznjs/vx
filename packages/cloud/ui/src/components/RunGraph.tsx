@@ -208,7 +208,7 @@ export function RunGraph(props: {
 
       {/* honesty caption: columns are dependency depth, not timed waves */}
       <div class="absolute bottom-3 left-3 text-[10px] text-fg-3/70 font-mono pointer-events-none select-none">
-        levels = dependency depth · a task starts when its own deps finish
+        levels = dependency depth · cache hits restore immediately, ahead of their deps
       </div>
 
       {/* zoom controls */}
