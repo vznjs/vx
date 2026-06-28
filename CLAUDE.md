@@ -170,6 +170,73 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-28**: **Observability + integration architecture — telemetry
+  capability + canonical export contract; OTel/HTTP/cloud as plugins**
+  (owner: "design some better architecture, extensible and isolated. vx is
+  core, exposes API to integrate with but not behavior change. all data
+  sent by OTEL or manual API through plugins. vx cloud integrates through a
+  plugin"). Design doc `docs/design/observability-architecture-2026-06.md`;
+  implemented in four units, all on `main`, full root suite 1100 pass / 0
+  fail, dogfood `vx run ci` green. **Unit A (core):** a new observe-only
+  `telemetry` capability on `VxPlugin`, cleanly separated from the behavior
+  capabilities (`backend`/`cache`). Neutral BY CONSTRUCTION — a
+  `TelemetrySink` receives only immutable records and a `TelemetryContext`
+  with read-only metadata (no bus, no Cache, no request), so there is no
+  API path back into scheduling/caching/exec. New `src/orchestrator/
+telemetry.ts` is THE canonical, versioned export contract
+  (`TELEMETRY_SCHEMA_VERSION = 1`): `TelemetryRecord` (per-event:
+  run.start/task.start/task.log/task.end/run.end) + `RunSummaryRecord`
+  (per-run), with `cacheSource` derived ONCE (`deriveCacheSource`) and
+  git/CI/host `RunContextRecord` pre-folded — ending the per-exporter
+  re-derivation from the rendering-oriented `WireEvent` stream.
+  `createTelemetrySource` projects the bus once + fans to sinks under crash
+  isolation (a throwing sink is disabled for the run, never propagates);
+  `task.log` is OPT-IN via `TelemetrySink.wants` (default excludes it).
+  `telemetry-host.ts` consults the capability and — **the perf invariant** —
+  returns `undefined` when no sink is contributed, so a run with no
+  telemetry plugin (or one whose plugins all decline) adds NO bus
+  subscriber AND builds no summary: the hot path is byte-identical
+  (`runContextRecord`/`summaryTasks` are allocated only when plugins
+  exist). Wired into `run.ts` (consult after the git/CI/host capture,
+  before `run:start`; emit the summary + flush at run:end; dispose in
+  finally). `eventSink` stays as a back-compat capability. Exports added to
+  `src/index.ts` (boundary snapshot +`TELEMETRY_SCHEMA_VERSION`/
+  `deriveCacheSource`); `project-loader.ts` plugin validation accepts
+  `telemetry`. **Unit B (`@vzn/vx-otel`):** moves OTel OUT of core — deleted
+  `src/orchestrator/otel-emit.ts` + its unconditional `attachOtelEmit(bus)`
+  in `run.ts`. The new package's `otel()` telemetry plugin maps a run to
+  OTLP traces (a `vx.run` root span + `vx.task` children, CI/CD + VCS
+  semconv) + metrics, speaking OTLP/HTTP **JSON directly — NO OpenTelemetry
+  SDK dependency** (zero-dep, testable here, no SDK-version drift; the
+  design's preferred lighter option since the SDK isn't installable in this
+  env). **Behavior change (intended de-hardcoding):** `OTEL_EXPORTER_OTLP_
+ENDPOINT` alone no longer auto-exports — declare `otel()` in
+  `vx.workspace.ts`. The repo sets no endpoint, so its own runs are
+  unaffected; no `vx.workspace.ts` was added to the repo (a pointless
+  always-declining plugin). **Unit C (`@vzn/vx-http`):** `httpTelemetry({
+url })` — the generalized manual-API exporter, POSTs the canonical
+  contract; `summary` mode (one `RunSummaryRecord`/run, default) or `stream`
+  mode (batched NDJSON/JSON, opt-in `task.log`); Bearer, time-bounded,
+  never-fail, idempotent. **Unit D (`@vzn/vx-cloud`):** the cloud plugin's
+  `eventSink` (raw WireEvents) becomes a `telemetry` sink POSTing the
+  `RunSummaryRecord` to the cloud's `POST /v1/ingest` (options renamed
+  `insightsUrl/Token`→`ingestUrl/Token`, env back-compat kept). New
+  `IngestStore` = a core `Cache` at a cloud-owned path, so core's runs +
+  invocations schema + `recordRunBundle` persist the pushed summary and
+  EVERY `metrics.ts` query reads it unchanged (idempotent on runId).
+  `serve.ts` gained `POST /v1/ingest` + a `source` switch (`cache` default
+  | `ingest`) + `--source` flag: **local serve keeps reading `cache.db`
+  directly (zero-config L2, unchanged); hosted serve reads the push-fed
+  ingest store**, so core's `cache.db` becomes private to a hosted
+  deployment. `InvocationRecord` now public from `@vzn/vx`. Owner decisions
+  taken (per the design's recommendations): L2 local-cache.db reader,
+  hosted = run/task analytics only (cache inventory stays local), and accept
+  the OTel de-hardcoding. The package-boundaries guard generalized to every
+  `packages/*/src` (bare `@vzn/vx` only; core imports no sibling
+  `@vzn/vx-*`). No CACHE_VERSION/SCHEMA bump — telemetry is a pure
+  side-channel of events already emitted. Tests: `tests/telemetry.test.ts`
+  - per-package suites (vx-otel 22, vx-http 19, cloud ingest/plugin).
+
 - **2026-06-28**: **Dashboard Tier 3 — Phase B: the input-fingerprint
   diff, invocation context, tags/report, hit split** (read-side over the
   Phase-A schema; parallel agents on disjoint files). Queries
