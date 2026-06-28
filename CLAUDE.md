@@ -170,6 +170,52 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-28**: **Run graph redesigned as a staged, Linear-style flow —
+  REVERSES the Cytoscape adoption** (owner: "graphs are super ugly, there were
+  so nice Linear style now they are shit. they need to simulate stages of runs
+  with marked bottlenecks times etc ram cpu"; chose "Staged DAG (columns)" via
+  AskUserQuestion). The canvas-rendered Cytoscape graph looked generic and
+  off-theme (canvas can't pick up the dashboard's gradients/typography) and
+  showed no metrics. Replaced with a CUSTOM DOM + SVG **staged DAG**
+  (`components/RunGraph.tsx` rewritten; `cytoscape`/`cytoscape-dagre`/
+  `@types/cytoscape` removed — embedded SPA 780 KB → 313 KB / 237 → 85 KB
+  gzip). Tasks lay out in left-to-right STAGES (topological waves via
+  `run-graph-layout.ts` `layoutStages` — longest-path depth); each stage column
+  has a header with its parallel wall-time. The BOTTLENECK (critical path)
+  glows amber — cards get a ring + a flame marker, edges thicken. Every card
+  shows duration + CPU% + peak RAM (from recorded rows on run-detail; from live
+  `task:complete` cpuMs/peakRssBytes in the cockpit — `RunConsole` now captures
+  both). Linear polish: gradient cards, status rail, hover lift, mono type;
+  scroll-to-pan + a zoom control (no drag — positions are meaningful in a
+  staged layout). Groups stay dashed folders (the groups-as-pending fix holds).
+  Deterministic fixed-grid layout → edges drawn from computed coords, no DOM
+  measurement; status is plain reactive props so live ticks repaint in place.
+  **UnoCSS gotcha (again):** status classes are LITERAL strings in a state→class
+  map (+ safelisted) so the static extractor emits them — never `border-${x}`.
+  Verified e2e over CDP (temp workspace, diamond + two groups): stages, the
+  bottleneck glow, CPU/RAM chips, the cache-hit blue overlay on run-detail; 0
+  console errors (screenshots confirmed). Core untouched; cloud-dashboard only.
+
+- **2026-06-28**: **Advertise the serve at a per-user (machine-level) path so
+  it's found from ANY workspace** (owner: "no serve.json, nothing guarantees vx
+  cloud will run from any workspace"). The serve advertisement lived at
+  `<workspaceRoot>/.vx/serve.json`, so a `vx run` only discovered the local
+  serve when it shared that exact root — no guarantee from another workspace.
+  New light `packages/cloud/src/serve-info.ts` (`serveInfoPath` /
+  `readServeInfo` / `pidAlive`) puts ONE per-user advertisement at
+  `$XDG_RUNTIME_DIR/vx-cloud/serve.json` (else a per-uid temp dir;
+  `VX_CLOUD_SERVE_INFO` pins an exact path / used by tests). A `vx run` in any
+  workspace now finds it, and the deterministic serve port means there's only
+  ever one local serve. Shared by `serve.ts` (writes it), `backend.ts`
+  (delegation discovery — was `serveInfoPath(findWorkspaceRoot(cwd))`) and the
+  `cloud()` plugin (telemetry push), keeping the lean `@vzn/vx-cloud/plugin`
+  import free of the service layer. The plugin push also now ignores a STALE
+  advertisement (`pidAlive` false) so a serve that died without cleanup doesn't
+  cost every run a swallowed POST. A remote/Docker serve isn't advertised here —
+  that uses explicit `VX_CLOUD_INGEST_URL` / `VX_SERVICE_URL`, which always
+  wins. Also fixed all 8 oxlint `no-unused-vars` warnings repo-wide (zero
+  warnings now).
+
 - **2026-06-28**: **Local serve port is now DETERMINISTIC — same URL across
   restarts, override via `VX_CLOUD_PORT`** (owner: "locally we should use same
   port unless env var specified"). REVERSES the earlier "fall back to an
