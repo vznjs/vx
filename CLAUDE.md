@@ -170,6 +170,26 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-28**: **Local serve port is now DETERMINISTIC — same URL across
+  restarts, override via `VX_CLOUD_PORT`** (owner: "locally we should use same
+  port unless env var specified"). REVERSES the earlier "fall back to an
+  ephemeral port when 4321 is taken" rule — that silent fallback was exactly
+  what made the dashboard URL move between restarts. Port resolution is now
+  `--port` > `VX_CLOUD_PORT` > `DEFAULT_SERVE_PORT` (4321), bound exactly; a
+  busy port surfaces a clean error ("free it, or pick another with --port /
+  VX_CLOUD_PORT") instead of moving on its own. The stable-default POLICY moved
+  to the CLI (`resolveServePort` in `serveCmd`); `startServe` is now
+  mechanism-only — it binds exactly the port passed, or an ephemeral one when
+  none is (tests / embedders), so test serves never contend for 4321 (no test
+  asserted the default was 4321; they read the chosen `server.port`). New
+  `VX_CLOUD_PORT` env + help text + `resolveServePort` unit tests
+  (default / flag-wins / env-override / empty-env / malformed). The api.ts SPA
+  default origin (`http://localhost:4321`) and the deterministic default now
+  agree again. Verified: A on default → 4321; a 2nd default serve → clean bind
+  error (no move); kill + restart → 4321 again; `VX_CLOUD_PORT=4399` → 4399;
+  malformed env → invalid error. Files: `packages/cloud/src/cli/serve.ts`,
+  `packages/cloud/src/cli/bin.ts`, `packages/cloud/tests/serve.test.ts`.
+
 - **2026-06-28**: **Run DAG rendered with Cytoscape (interactive) + added to
   run-detail; groups no longer render as "pending"** (owner: "we should have
   run graphs like in run section. the graph is wrong, shows groups as pending.
