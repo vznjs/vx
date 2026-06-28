@@ -68,8 +68,28 @@ import { extractOutputs, parseTarHeaders, readTarText, type TarHeader } from './
 // lockfile (broad `**/*` on the root project) drops it from the hashed
 // file set, so those keys change; tasks that never matched it are
 // byte-identical. No SCHEMA bump — only the input file set changed.
+//
+// CACHE_VERSION stays v24 through the Tier-3 schema roll (SCHEMA v22).
+// Tier 3 persists the very components already fed to `Cache.key()` —
+// it adds nothing to, reorders nothing in, and reweights nothing
+// inside the key fold (the new `captureInto` sink is a pure
+// side-channel). A task's hash is byte-identical before and after, so
+// existing artifacts stay valid and there is no cache-version bump.
 const CACHE_VERSION = 'vx-cache-v24'
-const SCHEMA_VERSION = 'v21'
+// SCHEMA history (drop+recreate on mismatch; pre-alpha, no migrations):
+//   v20: file_hashes.content_hash (git blob OIDs).
+//   v21: dropped the unused outputs_hash column (pure-input hashing).
+//   v22: Tier-3 dashboard tables — `invocations` (one header row per
+//        `vx run` with git/CI/host context + tags) and `entry_inputs`
+//        (one row per cache-key component, keyed by the cache-entry
+//        HASH, the input-fingerprint moat). `entry_inputs` is written
+//        INSIDE the entry-save transaction (only on a miss/save), so a
+//        warm all-cache-hit run writes nothing to it — the warm path
+//        does zero extra work. `invocations` is still recorded once per
+//        run via `recordRunBundle`. The cache KEY is unchanged
+//        (CACHE_VERSION not bumped) — these tables persist analytics
+//        derived from the same `CacheKeyInput` the key already consumes.
+const SCHEMA_VERSION = 'v22'
 
 /**
  * Artifact + `output_files` namespace prefix for workspace-root-
@@ -190,6 +210,14 @@ export interface CacheKeyInput {
   /** Cache keys of upstream tasks this one depends on, sorted. */
   upstreamHashes: string[]
   /**
+   * Upstream hash → upstream task id, for `captureInto` row NAMING only.
+   * Never folded into the digest — the key already folds the sorted
+   * hashes. Lets the persisted `entry_inputs` row name which upstream
+   * task a hash came from (the diff reads better than a bare hash). When
+   * absent, the captured `upstream` row falls back to `name = hash`.
+   */
+  upstreamIds?: ReadonlyMap<string, string>
+  /**
    * Workspace-level fingerprint — typically a hash of `pnpm-lock.yaml` +
    * `pnpm-workspace.yaml`. Folds resolved dep versions and workspace shape
    * into every task's key, so a lockfile bump invalidates everything.
@@ -220,6 +248,20 @@ export interface CacheKeyInput {
    * hash arrived via the map or the fallback.
    */
   fileHashes?: ReadonlyMap<string, string>
+  /**
+   * When set, `key()` pushes each component (kind, name, hash) it folds
+   * — at the same fold sites, in fold order. Pure SIDE-CHANNEL: it does
+   * not change the returned digest in any way. On a cache MISS the
+   * orchestrator allocates an array, passes it here, and persists the
+   * rows to `entry_inputs` (inside the entry-save transaction) so a
+   * later run can diff its inputs against this one (the Tier-3 "why did
+   * this re-run?" moat). Capturing at the fold sites keeps the
+   * recorded set in lockstep with the key by construction: a future
+   * component that forgets to capture is a one-line miss, not silent
+   * drift. The per-file OIDs are already awaited here, so file rows cost
+   * zero extra I/O — just array pushes.
+   */
+  captureInto?: Array<{ kind: string; name: string; hash: string }>
 }
 
 export interface CacheEntry {
@@ -264,6 +306,58 @@ export interface RunRecord {
   wallclockStartNs?: bigint // hrtime span relative to run t=0
   wallclockEndNs?: bigint
   cacheHit?: boolean // convenience for flamegraph color; derivable from status
+}
+
+/**
+ * One header row per `vx run` invocation (the `invocations` table). All
+ * fields mirror the columns; nullable VCS/host columns are `null` when
+ * the probe failed (not a git repo, hostname unavailable). Recorded
+ * once per run inside the same transaction as the per-task `runs` rows.
+ */
+export interface InvocationRecord {
+  runId: string
+  command: string
+  /** JSON-serialized `string[]` of the requested task names. */
+  requestedTasks: string
+  /** Compact policy flags, e.g. `'lR,lW,rR,rW'` (an axis omitted = off). */
+  cachePolicy: string
+  concurrency: number
+  flow: 'focused' | 'broad' | null
+  startedAt: number
+  endedAt: number
+  totalDurationMs: number
+  taskCount: number
+  failedCount: number
+  hitCount: number
+  hitLocalCount: number
+  hitRemoteCount: number
+  exitOk: boolean
+  commitSha: string | null
+  branch: string | null
+  dirty: boolean | null
+  ci: boolean
+  ciProvider: string | null
+  host: string | null
+  os: string | null
+  arch: string | null
+  vxVersion: string
+  /** JSON object `{k:v}` of `--tag` pairs. */
+  tags: string
+}
+
+/**
+ * One cache-key component row for the `entry_inputs` table — keyed by
+ * the cache-entry HASH it belongs to, not a run. Written inside the
+ * entry-save transaction (`writeArtifactAndIndex`) on a miss/save; a
+ * cache HIT does not save, so it persists nothing (warm runs are free).
+ * The diff (Phase B/B1) reads these by the run's task hash
+ * (`runs.hash → entry_inputs[entry_hash]`).
+ */
+export interface TaskInputRow {
+  entryHash: string
+  kind: string
+  name: string
+  hash: string
 }
 
 export interface CacheStats {
@@ -332,6 +426,14 @@ export interface IngestMeta {
   command: string
   /** Wall-clock time of the original task execution. */
   durationMs: number
+  /**
+   * Cache-key components (Tier-3 input fingerprint) to persist into
+   * `entry_inputs` in the same transaction as the entry row. Omitted on
+   * the remote-hit ingest path (the artifact doesn't carry them — the
+   * fingerprint is the saving machine's local moat). Only computed on a
+   * miss/save, so a cache hit never reaches here.
+   */
+  inputComponents?: readonly TaskInputRow[]
 }
 
 /**
@@ -410,6 +512,14 @@ export interface CacheLayer {
      */
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
+    /**
+     * Cache-key components for this entry (the Tier-3 input
+     * fingerprint). Persisted to `entry_inputs` inside the same
+     * transaction as the entry row, via `INSERT OR IGNORE` (a re-save
+     * of the same hash is a no-op). Omitted/empty → nothing written.
+     * Only computed on the miss/save path — never on a hit.
+     */
+    inputComponents?: readonly TaskInputRow[]
   }): Promise<void>
   /**
    * Adopt an artifact produced elsewhere — the remote-hit path. Writes
@@ -426,6 +536,15 @@ export interface CacheLayer {
    * `runs.length > ~50` (one fsync vs. N).
    */
   recordRuns(runs: readonly RunRecord[]): void
+  /**
+   * Record a whole `vx run` atomically: the per-task `runs` rows and
+   * the one `invocations` header row — in a SINGLE transaction (one
+   * fsync). Replaces the bare `recordRuns` call in the orchestrator's
+   * end-of-run path. Input-fingerprint rows are NOT written here — they
+   * ride the entry-save transaction (`save`/`ingest`) so a warm
+   * all-cache-hit run writes nothing.
+   */
+  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   stats(): CacheStats
   /**
    * Content-hash a file with an mtime+size fast path. If the
@@ -477,6 +596,8 @@ export class Cache implements CacheLayer {
   private readonly bumpAccessed: ReturnType<Database['prepare']>
   private readonly touched = new Set<string>()
   private readonly insertRun: ReturnType<Database['prepare']>
+  private readonly insertInvocation: ReturnType<Database['prepare']>
+  private readonly insertEntryInput: ReturnType<Database['prepare']>
   private readonly selectFileHash: ReturnType<Database['prepare']>
   private readonly upsertFileHash: ReturnType<Database['prepare']>
   private readonly insertOutputFile: ReturnType<Database['prepare']>
@@ -540,7 +661,7 @@ export class Cache implements CacheLayer {
       | undefined
     if (meta && meta.value !== SCHEMA_VERSION) {
       this.db.exec(
-        'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS output_files;',
+        'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs;',
       )
       this.db.prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'").run(SCHEMA_VERSION)
     } else if (!meta) {
@@ -622,6 +743,59 @@ export class Cache implements CacheLayer {
         PRIMARY KEY (entry_hash, path),
         FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
       );
+      -- v22 (Tier 3): one header row per vx-run invocation. The runs
+      -- table is per-task; this is the per-invocation record that
+      -- carries git/CI/host context, the command, tags, and run-level
+      -- counts so the dashboard never reconstructs a header with a
+      -- lossy GROUP BY over runs.
+      CREATE TABLE IF NOT EXISTS invocations (
+        run_id            TEXT PRIMARY KEY,
+        command           TEXT NOT NULL,
+        requested_tasks   TEXT NOT NULL,
+        cache_policy      TEXT NOT NULL,
+        concurrency       INTEGER NOT NULL,
+        flow              TEXT,
+        started_at        INTEGER NOT NULL,
+        ended_at          INTEGER NOT NULL,
+        total_duration_ms INTEGER NOT NULL,
+        task_count        INTEGER NOT NULL,
+        failed_count      INTEGER NOT NULL,
+        hit_count         INTEGER NOT NULL,
+        hit_local_count   INTEGER NOT NULL,
+        hit_remote_count  INTEGER NOT NULL,
+        exit_ok           INTEGER NOT NULL,
+        commit_sha        TEXT,
+        branch            TEXT,
+        dirty             INTEGER,
+        ci                INTEGER NOT NULL,
+        ci_provider       TEXT,
+        host              TEXT,
+        os                TEXT,
+        arch              TEXT,
+        vx_version        TEXT NOT NULL,
+        tags              TEXT NOT NULL DEFAULT '{}'
+      );
+      CREATE INDEX IF NOT EXISTS invocations_started ON invocations(started_at);
+      CREATE INDEX IF NOT EXISTS invocations_branch  ON invocations(branch);
+      CREATE INDEX IF NOT EXISTS invocations_ci      ON invocations(ci);
+      -- v22 (Tier 3): the input-fingerprint moat. One row per cache-key
+      -- component, keyed by the cache-ENTRY hash it belongs to (NOT a
+      -- run id). Written inside the entry-save transaction — only on a
+      -- miss/save, never on a hit — so a warm all-cache-hit run writes
+      -- nothing here (the warm path does zero extra work). The
+      -- why-did-this-re-run diff reads two entry hashes (this run's
+      -- runs.hash and the previous run's) and anti-joins their rows in
+      -- SQL over (kind,name,hash); a JSON blob would force an app-side
+      -- parse + compare on every probe. ON DELETE CASCADE keeps these
+      -- rows in sync with entries (a prune sweeps them automatically).
+      CREATE TABLE IF NOT EXISTS entry_inputs (
+        entry_hash TEXT NOT NULL,
+        kind       TEXT NOT NULL,
+        name       TEXT NOT NULL,
+        hash       TEXT NOT NULL,
+        PRIMARY KEY (entry_hash, kind, name),
+        FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
+      );
     `)
 
     this.insertEntry = this.db.prepare(`
@@ -647,6 +821,25 @@ export class Cache implements CacheLayer {
         cache_hit
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,  ?)
+    `)
+    this.insertInvocation = this.db.prepare(`
+      INSERT INTO invocations(
+        run_id, command, requested_tasks, cache_policy, concurrency, flow,
+        started_at, ended_at, total_duration_ms,
+        task_count, failed_count, hit_count, hit_local_count, hit_remote_count,
+        exit_ok,
+        commit_sha, branch, dirty, ci, ci_provider,
+        host, os, arch, vx_version, tags
+      )
+      VALUES (?, ?, ?, ?, ?, ?,  ?, ?, ?,  ?, ?, ?, ?, ?,  ?,  ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?)
+      ON CONFLICT(run_id) DO NOTHING
+    `)
+    // INSERT OR IGNORE: re-saving the same hash (idempotent ingest /
+    // overlapping concurrent saves) leaves the existing rows untouched —
+    // identical inputs derive the identical hash, so the rows are too.
+    this.insertEntryInput = this.db.prepare(`
+      INSERT OR IGNORE INTO entry_inputs(entry_hash, kind, name, hash)
+      VALUES (?, ?, ?, ?)
     `)
     this.selectFileHash = this.db.prepare(
       'SELECT mtime_ms, size_bytes, content_hash FROM file_hashes WHERE path = ?',
@@ -759,32 +952,53 @@ export class Cache implements CacheLayer {
     // old CryptoHasher.update() pattern, no intermediate buffer.
     // Field-order matters; each line is prefixed with its label so
     // adjacent fields can't collide via concat.
+    // Optional capture sink — see CacheKeyInput.captureInto. Pure
+    // side-channel; every push below mirrors the fold immediately
+    // above/beside it so the recorded set can't drift from the key.
+    const cap = input.captureInto
     let h = xxh3(CACHE_VERSION)
     h = xxh3(`task:${input.taskId}`, h)
     h = xxh3(`workspace:${input.workspaceFingerprint}`, h)
     h = xxh3(`pkg:${input.projectPackageJsonHash}`, h)
     h = xxh3(`config:${input.taskConfigHash}`, h)
+    if (cap) {
+      cap.push({ kind: 'workspace', name: 'fingerprint', hash: input.workspaceFingerprint })
+      cap.push({ kind: 'package', name: 'package.json', hash: input.projectPackageJsonHash })
+      cap.push({ kind: 'config', name: 'config', hash: input.taskConfigHash })
+    }
 
     const forwarded = input.forwardArgs ?? []
     h = xxh3(`forward-args:${forwarded.length}`, h)
     for (const a of forwarded) h = xxh3(a, h)
+    if (cap && forwarded.length > 0) {
+      cap.push({ kind: 'forward', name: 'argv', hash: JSON.stringify(forwarded) })
+    }
 
     h = xxh3(`env-values:${input.envValues.length}`, h)
     // \0 delimiter, not `=`: names and values may themselves contain
     // `=`, and `A` + `B=C` must never fold the same bytes as `A=B` + `C`.
     for (const [n, v] of input.envValues) h = xxh3(`${n}\0${v}`, h)
+    if (cap) for (const [n, v] of input.envValues) cap.push({ kind: 'env', name: n, hash: v })
 
     const runtimeValues = input.runtimeValues ?? []
     h = xxh3(`runtime-values:${runtimeValues.length}`, h)
     for (const [c, o] of runtimeValues) h = xxh3(`${c}\0${o}`, h)
+    if (cap) for (const [c, o] of runtimeValues) cap.push({ kind: 'runtime', name: c, hash: o })
 
     const wsRuntimeValues = input.workspaceRuntimeValues ?? []
     h = xxh3(`ws-runtime-values:${wsRuntimeValues.length}`, h)
     for (const [c, o] of wsRuntimeValues) h = xxh3(`${c}\0${o}`, h)
+    if (cap)
+      for (const [c, o] of wsRuntimeValues) cap.push({ kind: 'ws-runtime', name: c, hash: o })
 
     const upstream = [...input.upstreamHashes].sort()
     h = xxh3(`upstream:${upstream.length}`, h)
     for (const u of upstream) h = xxh3(u, h)
+    if (cap) {
+      for (const u of upstream) {
+        cap.push({ kind: 'upstream', name: input.upstreamIds?.get(u) ?? u, hash: u })
+      }
+    }
 
     const sortedInputs = [...input.inputFiles].sort()
     h = xxh3(`inputs:${sortedInputs.length}`, h)
@@ -800,7 +1014,10 @@ export class Cache implements CacheLayer {
     for (let i = 0; i < sortedInputs.length; i++) {
       const file = sortedInputs[i]!
       const rel = relPosix(input.workspaceRoot, file)
-      h = xxh3(`${rel}\0${fileHashes[i]!}`, h)
+      const oid = fileHashes[i]!
+      h = xxh3(`${rel}\0${oid}`, h)
+      // The OID is already awaited — file capture is zero extra I/O.
+      if (cap) cap.push({ kind: 'file', name: rel, hash: oid })
     }
 
     return h.toString(16).padStart(16, '0')
@@ -950,6 +1167,7 @@ export class Cache implements CacheLayer {
     outputFiles: string[]
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
+    inputComponents?: readonly TaskInputRow[]
   }): Promise<void> {
     // Layout (v17, extended additively for workspaceFiles): one
     // `<hash>.tar.zst` per entry. Tar carries ONLY the things you'd
@@ -974,6 +1192,7 @@ export class Cache implements CacheLayer {
       taskId: args.entry.taskId,
       command: args.entry.command,
       durationMs: args.entry.durationMs,
+      ...(args.inputComponents !== undefined ? { inputComponents: args.inputComponents } : {}),
     })
   }
 
@@ -1149,11 +1368,16 @@ export class Cache implements CacheLayer {
     const [project, task] = splitTaskId(meta.taskId)
     const now = Date.now()
 
-    // One transaction for the entries row + every output_files row.
-    // One fsync regardless of output-file count.
+    // One transaction for the entries row + every output_files row +
+    // the Tier-3 entry_inputs fingerprint rows. One fsync regardless of
+    // row count. The fingerprint rows ride this save-time transaction
+    // (not the per-run path) so a warm all-cache-hit run — which never
+    // saves — writes none of them.
     const insertEntry = this.insertEntry
     const insertOutputFile = this.insertOutputFile
     const deleteOutputFiles = this.deleteOutputFiles
+    const insertEntryInput = this.insertEntryInput
+    const inputComponents = meta.inputComponents
     const tx = this.db.transaction(() => {
       insertEntry.run(
         hash,
@@ -1172,6 +1396,13 @@ export class Cache implements CacheLayer {
       deleteOutputFiles.run(hash)
       for (const [rel, size, mode, mtime] of outputFileRows) {
         insertOutputFile.run(hash, rel, size, mode, mtime)
+      }
+      // INSERT OR IGNORE: identical inputs derive this same hash, so a
+      // re-save's rows are identical — keep the first set, skip the rest.
+      if (inputComponents !== undefined) {
+        for (const c of inputComponents) {
+          insertEntryInput.run(hash, c.kind, c.name, c.hash)
+        }
       }
     })
     tx()
@@ -1235,6 +1466,21 @@ export class Cache implements CacheLayer {
       for (const r of batch) insert.run(...bindRun(r))
     })
     tx(runs)
+  }
+
+  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
+    // Whole run records atomically — one transaction, one fsync: the
+    // per-task `runs` rows and the one `invocations` header. The
+    // input-fingerprint rows do NOT live here: they're written inside
+    // the entry-save transaction (`save`/`ingest`) so a warm
+    // all-cache-hit run — which writes no `runs`-vs-`entry_inputs`
+    // mismatch — pays nothing for the moat it isn't refreshing.
+    const insertRun = this.insertRun
+    const insertInvocation = this.insertInvocation
+    this.db.transaction(() => {
+      for (const r of bundle.runs) insertRun.run(...bindRun(r))
+      insertInvocation.run(...bindInvocation(bundle.invocation))
+    })()
   }
 
   stats(): CacheStats {
@@ -1363,6 +1609,41 @@ function bindRun(run: RunRecord): SQLQueryBindings[] {
     run.wallclockStartNs !== undefined ? run.wallclockStartNs : null,
     run.wallclockEndNs !== undefined ? run.wallclockEndNs : null,
     run.cacheHit === undefined ? null : run.cacheHit ? 1 : 0,
+  ]
+}
+
+/**
+ * Bind an InvocationRecord to the positional parameters of the
+ * `insertInvocation` prepared statement (25 columns). Booleans map to
+ * 0/1; null-or-bool columns (`dirty`) keep null distinct from 0.
+ */
+function bindInvocation(inv: InvocationRecord): SQLQueryBindings[] {
+  return [
+    inv.runId,
+    inv.command,
+    inv.requestedTasks,
+    inv.cachePolicy,
+    inv.concurrency,
+    inv.flow,
+    inv.startedAt,
+    inv.endedAt,
+    inv.totalDurationMs,
+    inv.taskCount,
+    inv.failedCount,
+    inv.hitCount,
+    inv.hitLocalCount,
+    inv.hitRemoteCount,
+    inv.exitOk ? 1 : 0,
+    inv.commitSha,
+    inv.branch,
+    inv.dirty === null ? null : inv.dirty ? 1 : 0,
+    inv.ci ? 1 : 0,
+    inv.ciProvider,
+    inv.host,
+    inv.os,
+    inv.arch,
+    inv.vxVersion,
+    inv.tags,
   ]
 }
 

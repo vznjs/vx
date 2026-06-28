@@ -2374,4 +2374,107 @@ describe('orchestrator e2e', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'records a Tier-3 invocation row + per-entry input rows on save; warm hit writes none',
+    async () => {
+      await addProject(fixture.root, 'app-rec', {
+        files: { 'src/x.txt': 'hello' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+
+      const { Database } = await import('bun:sqlite')
+      const dbPath = path.join(fixture.root, '.vx', 'cache', 'cache.db')
+
+      // First run: miss. Tagged + a custom command + broad flow.
+      const first = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        flow: 'broad',
+        command: 'vx run build --all',
+        tags: { team: 'core', env: 'ci' },
+        log: silentLogger(fixture),
+      })
+      expect(first.outcomes[0]?.status).toBe('success')
+
+      let totalAfterMiss = 0
+      {
+        const db = new Database(dbPath, { readonly: true })
+        const invs = db.prepare('SELECT * FROM invocations').all() as Array<Record<string, unknown>>
+        expect(invs).toHaveLength(1)
+        const inv = invs[0]!
+        expect(inv.command).toBe('vx run build --all')
+        expect(inv.requested_tasks).toBe(JSON.stringify(['build']))
+        expect(inv.flow).toBe('broad')
+        expect(inv.task_count).toBe(1)
+        expect(inv.failed_count).toBe(0)
+        expect(inv.exit_ok).toBe(1)
+        // Tags round-trip; committed fixture repo gives a real sha/branch.
+        expect(JSON.parse(inv.tags as string)).toEqual({ team: 'core', env: 'ci' })
+        expect(inv.vx_version).toBeTruthy()
+
+        // The miss saved an entry with its input fingerprint rows. They're
+        // keyed by the entry hash — reachable via runs.hash for this task.
+        const rows = db
+          .prepare(
+            `SELECT ei.kind, ei.name FROM entry_inputs ei
+             JOIN runs r ON r.hash = ei.entry_hash
+             WHERE r.project = ? AND r.task = ?`,
+          )
+          .all('app-rec', 'build') as Array<{ kind: string; name: string }>
+        const kinds = new Set(rows.map((r) => r.kind))
+        expect(kinds.has('config')).toBe(true)
+        expect(kinds.has('package')).toBe(true)
+        expect(kinds.has('workspace')).toBe(true)
+        expect(rows.some((r) => r.kind === 'file')).toBe(true)
+        totalAfterMiss = (
+          db.prepare('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }
+        ).n
+        expect(totalAfterMiss).toBeGreaterThan(0)
+        db.close()
+      }
+
+      // Second run: cache hit. A hit never saves, so it writes ZERO new
+      // entry_inputs rows — the whole point of the persistence redesign.
+      const second = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        log: silentLogger(fixture),
+      })
+      expect(second.outcomes[0]?.status).toBe('cache-hit')
+
+      {
+        const db = new Database(dbPath, { readonly: true })
+        const invs = db
+          .prepare('SELECT run_id FROM invocations ORDER BY started_at')
+          .all() as Array<{
+          run_id: string
+        }>
+        expect(invs).toHaveLength(2)
+        // Warm run adds no entry_inputs rows.
+        const totalAfterHit = (
+          db.prepare('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }
+        ).n
+        expect(totalAfterHit).toBe(totalAfterMiss)
+        // But the hit's invocation header is still recorded.
+        const hitRunId = invs[1]!.run_id
+        const hitInv = db
+          .prepare('SELECT hit_local_count, hit_count FROM invocations WHERE run_id = ?')
+          .get(hitRunId) as { hit_local_count: number; hit_count: number }
+        expect(hitInv.hit_local_count).toBe(1)
+        expect(hitInv.hit_count).toBe(1)
+        db.close()
+      }
+    },
+    TIMEOUT,
+  )
 })

@@ -8,6 +8,7 @@ import {
   type CacheKeyInput,
   CorruptArtifactError,
   FULL_CACHE_POLICY,
+  type InvocationRecord,
   parseCachePolicy,
 } from '../src/cache/cache.js'
 import { UserError } from '../src/util/index.js'
@@ -331,6 +332,95 @@ describe('Cache.key', () => {
     const a = await cache.key({ ...baseInput() })
     const b = await cache.key({ ...baseInput() })
     expect(a).toBe(b)
+  })
+
+  // Tier-3 capture is a PURE side-channel. These guard the
+  // CACHE_VERSION-not-bumped claim: the digest must be byte-identical
+  // with and without `captureInto`, across a fully-populated input.
+  it('captureInto does not change the derived key (pure side-channel)', async () => {
+    const f1 = await writeInput('cap-a.txt', 'alpha')
+    const f2 = await writeInput('cap-b.txt', 'beta')
+    const full: CacheKeyInput = {
+      ...baseInput(),
+      taskId: 'pkg#build',
+      taskConfigHash: 'cfg-1',
+      projectPackageJsonHash: 'pkg-1',
+      workspaceFingerprint: 'ws-1',
+      forwardArgs: ['--watch', '--bail'],
+      envValues: [['MODE', 'prod']],
+      runtimeValues: [['node -v', 'v20']],
+      workspaceRuntimeValues: [['uname', 'Linux']],
+      upstreamHashes: ['up-aaa', 'up-bbb'],
+      upstreamIds: new Map([
+        ['up-aaa', 'dep-a#build'],
+        ['up-bbb', 'dep-b#build'],
+      ]),
+      inputFiles: [f1, f2],
+    }
+    const without = await cache.key({ ...full })
+    const sink: Array<{ kind: string; name: string; hash: string }> = []
+    const withCap = await cache.key({ ...full, captureInto: sink })
+    expect(withCap).toBe(without)
+    // Re-run to confirm full determinism with capture present.
+    const again = await cache.key({ ...full, captureInto: [] })
+    expect(again).toBe(without)
+  })
+
+  it('captureInto records exactly one row per component, per the fold map', async () => {
+    const f1 = await writeInput('one.txt', '1')
+    const f2 = await writeInput('two.txt', '2')
+    const sink: Array<{ kind: string; name: string; hash: string }> = []
+    await cache.key({
+      ...baseInput(),
+      taskConfigHash: 'cfg-x',
+      projectPackageJsonHash: 'pkg-x',
+      workspaceFingerprint: 'ws-x',
+      forwardArgs: ['--flag'],
+      envValues: [
+        ['MODE', 'a'],
+        ['DEBUG', '1'],
+      ],
+      runtimeValues: [['node -v', 'v20']],
+      workspaceRuntimeValues: [['uname', 'Linux']],
+      upstreamHashes: ['up-1'],
+      upstreamIds: new Map([['up-1', 'dep#build']]),
+      inputFiles: [f1, f2],
+      captureInto: sink,
+    })
+
+    const byKind = (kind: string): Array<{ name: string; hash: string }> =>
+      sink.filter((r) => r.kind === kind).map((r) => ({ name: r.name, hash: r.hash }))
+
+    expect(byKind('workspace')).toEqual([{ name: 'fingerprint', hash: 'ws-x' }])
+    expect(byKind('package')).toEqual([{ name: 'package.json', hash: 'pkg-x' }])
+    expect(byKind('config')).toEqual([{ name: 'config', hash: 'cfg-x' }])
+    expect(byKind('forward')).toEqual([{ name: 'argv', hash: JSON.stringify(['--flag']) }])
+    expect(byKind('env')).toEqual([
+      { name: 'MODE', hash: 'a' },
+      { name: 'DEBUG', hash: '1' },
+    ])
+    expect(byKind('runtime')).toEqual([{ name: 'node -v', hash: 'v20' }])
+    expect(byKind('ws-runtime')).toEqual([{ name: 'uname', hash: 'Linux' }])
+    expect(byKind('upstream')).toEqual([{ name: 'dep#build', hash: 'up-1' }])
+    // File rows: workspace-relative name, content OID as hash, one per file.
+    const files = byKind('file')
+    expect(files.map((r) => r.name).sort()).toEqual(['one.txt', 'two.txt'])
+    // Total rows = sum of every component above.
+    expect(sink.length).toBe(1 + 1 + 1 + 1 + 2 + 1 + 1 + 1 + 2)
+  })
+
+  it('captureInto omits the forward row when forwardArgs is empty', async () => {
+    const sink: Array<{ kind: string; name: string; hash: string }> = []
+    await cache.key({ ...baseInput(), forwardArgs: [], captureInto: sink })
+    expect(sink.filter((r) => r.kind === 'forward')).toEqual([])
+  })
+
+  it('captureInto upstream row falls back to the hash when no upstreamIds map', async () => {
+    const sink: Array<{ kind: string; name: string; hash: string }> = []
+    await cache.key({ ...baseInput(), upstreamHashes: ['bare-hash'], captureInto: sink })
+    expect(sink.filter((r) => r.kind === 'upstream')).toEqual([
+      { kind: 'upstream', name: 'bare-hash', hash: 'bare-hash' },
+    ])
   })
 })
 
@@ -950,6 +1040,18 @@ describe('Cache schema/version recovery', () => {
     const c2 = new Cache(cacheDir)
     try {
       expect(c2.stats().runCountLast24h).toBe(0)
+      // The Tier-3 tables are recreated as part of the gate.
+      const db = c2.dbHandle()
+      const tables = (
+        db
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('invocations','entry_inputs')",
+          )
+          .all() as Array<{ name: string }>
+      )
+        .map((r) => r.name)
+        .sort()
+      expect(tables).toEqual(['entry_inputs', 'invocations'])
       // Write succeeds (tables exist).
       c2.recordRun({
         hash: 'h-new',
@@ -998,6 +1100,235 @@ describe('Cache schema/version recovery', () => {
       expect(realKey).not.toBe(noPrefixHash)
     } finally {
       cache.close()
+    }
+  })
+})
+
+describe('Cache.recordRunBundle (Tier 3)', () => {
+  let workspaceRoot: string
+  let cacheDir: string
+
+  beforeEach(async () => {
+    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vx-cache-bundle-'))
+    cacheDir = path.join(workspaceRoot, '.vx', 'cache')
+  })
+
+  afterEach(async () => {
+    await rm(workspaceRoot, { recursive: true, force: true })
+  })
+
+  function invocation(runId: string): InvocationRecord {
+    return {
+      runId,
+      command: 'vx run build --all',
+      requestedTasks: JSON.stringify(['build']),
+      cachePolicy: 'lR,lW,rR,rW',
+      concurrency: 4,
+      flow: 'broad',
+      startedAt: Date.now() - 100,
+      endedAt: Date.now(),
+      totalDurationMs: 100,
+      taskCount: 2,
+      failedCount: 0,
+      hitCount: 1,
+      hitLocalCount: 1,
+      hitRemoteCount: 0,
+      exitOk: true,
+      commitSha: 'abc123',
+      branch: 'main',
+      dirty: false,
+      ci: true,
+      ciProvider: 'github',
+      host: 'runner',
+      os: 'linux',
+      arch: 'x64',
+      vxVersion: '0.0.0',
+      tags: JSON.stringify({ team: 'core' }),
+    }
+  }
+
+  // Save an entry carrying Tier-3 input components. Mirrors the
+  // orchestrator's miss/save path — `entry_inputs` rides this
+  // transaction, not `recordRunBundle`.
+  async function saveWithInputs(
+    cache: Cache,
+    hash: string,
+    components: ReadonlyArray<{ kind: string; name: string; hash: string }>,
+  ): Promise<void> {
+    const projectDir = path.join(workspaceRoot, `proj-${hash}`)
+    await cache.save({
+      hash,
+      projectDir,
+      outputFiles: [],
+      inputComponents: components.map((c) => ({ entryHash: hash, ...c })),
+      entry: { taskId: 'pkg#build', command: 'build', exitCode: 0, durationMs: 1, stdout: '' },
+    })
+  }
+
+  it('writes the invocation header row atomically (no input rows here)', async () => {
+    const cache = new Cache(cacheDir)
+    const runId = 'run-1'
+    const runs = [
+      {
+        hash: 'h-a',
+        project: 'pkg-a',
+        task: 'build',
+        status: 'success' as const,
+        exitCode: 0,
+        durationMs: 50,
+        startedAt: Date.now() - 50,
+        endedAt: Date.now(),
+        runId,
+      },
+      {
+        hash: 'h-b',
+        project: 'pkg-b',
+        task: 'build',
+        status: 'cache-hit' as const,
+        exitCode: 0,
+        durationMs: 1,
+        startedAt: Date.now() - 1,
+        endedAt: Date.now(),
+        runId,
+      },
+    ]
+    try {
+      cache.recordRunBundle({ runs, invocation: invocation(runId) })
+      const db = cache.dbHandle()
+
+      const inv = db.prepare('SELECT * FROM invocations WHERE run_id = ?').get(runId) as Record<
+        string,
+        unknown
+      >
+      expect(inv.command).toBe('vx run build --all')
+      expect(inv.branch).toBe('main')
+      expect(inv.commit_sha).toBe('abc123')
+      expect(inv.ci).toBe(1)
+      expect(inv.ci_provider).toBe('github')
+      expect(inv.dirty).toBe(0)
+      expect(inv.exit_ok).toBe(1)
+      expect(inv.hit_local_count).toBe(1)
+      expect(inv.hit_remote_count).toBe(0)
+      expect(inv.tags).toBe(JSON.stringify({ team: 'core' }))
+
+      // recordRunBundle does NOT touch entry_inputs — those ride the
+      // save transaction (a warm run that only hits writes none).
+      const total = db.prepare('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }
+      expect(total.n).toBe(0)
+
+      // The runs rows landed in the same transaction.
+      expect(cache.stats().runCountLast24h).toBe(2)
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('persists entry_inputs inside the entry-save transaction (miss path)', async () => {
+    const cache = new Cache(cacheDir)
+    try {
+      await saveWithInputs(cache, 'h-save', [
+        { kind: 'config', name: 'config', hash: 'cfg-a' },
+        { kind: 'file', name: 'src/a.ts', hash: 'oid-a' },
+        { kind: 'env', name: 'MODE', hash: 'prod' },
+        { kind: 'upstream', name: 'pkg-a#build', hash: 'up-a' },
+      ])
+      const db = cache.dbHandle()
+      const rows = db
+        .prepare('SELECT kind, name, hash FROM entry_inputs WHERE entry_hash = ? ORDER BY kind')
+        .all('h-save') as Array<{ kind: string; name: string; hash: string }>
+      expect(rows).toHaveLength(4)
+      expect(rows.map((r) => r.kind).sort()).toEqual(['config', 'env', 'file', 'upstream'])
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('a warm cache hit writes NOTHING to entry_inputs (idempotent re-save)', async () => {
+    const cache = new Cache(cacheDir)
+    try {
+      const db = cache.dbHandle()
+      // Cold: a miss/save populates the rows for this hash.
+      await saveWithInputs(cache, 'h-warm', [
+        { kind: 'config', name: 'config', hash: 'cfg' },
+        { kind: 'file', name: 'src/x.ts', hash: 'oid-x' },
+      ])
+      const after1 = (db.prepare('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }).n
+      expect(after1).toBe(2)
+
+      // Warm: a cache hit never calls save, so it writes nothing. We
+      // assert the invariant directly — recording the run touches only
+      // runs + invocations.
+      cache.recordRunBundle({
+        runs: [
+          {
+            hash: 'h-warm',
+            project: 'pkg',
+            task: 'build',
+            status: 'cache-hit',
+            exitCode: 0,
+            durationMs: 1,
+            startedAt: Date.now() - 1,
+            endedAt: Date.now(),
+            runId: 'warm-run',
+          },
+        ],
+        invocation: invocation('warm-run'),
+      })
+      const after2 = (db.prepare('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }).n
+      expect(after2).toBe(after1)
+
+      // And even a defensive re-save of the same hash (INSERT OR IGNORE)
+      // adds no rows — identical inputs derive the identical hash.
+      await saveWithInputs(cache, 'h-warm', [
+        { kind: 'config', name: 'config', hash: 'cfg' },
+        { kind: 'file', name: 'src/x.ts', hash: 'oid-x' },
+      ])
+      const after3 = (db.prepare('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }).n
+      expect(after3).toBe(after1)
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('a null dirty flag stays null (distinct from 0)', async () => {
+    const cache = new Cache(cacheDir)
+    const runId = 'run-nogit'
+    try {
+      const inv = { ...invocation(runId), dirty: null, commitSha: null, branch: null }
+      cache.recordRunBundle({ runs: [], invocation: inv })
+      const row = cache
+        .dbHandle()
+        .prepare('SELECT dirty, commit_sha, branch FROM invocations WHERE run_id = ?')
+        .get(runId) as { dirty: number | null; commit_sha: string | null; branch: string | null }
+      expect(row.dirty).toBeNull()
+      expect(row.commit_sha).toBeNull()
+      expect(row.branch).toBeNull()
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('survives a close/reopen round-trip', async () => {
+    const runId = 'run-persist'
+    const c1 = new Cache(cacheDir)
+    c1.recordRunBundle({ runs: [], invocation: invocation(runId) })
+    await saveWithInputs(c1, 'h-persist', [{ kind: 'config', name: 'config', hash: 'c' }])
+    c1.close()
+
+    const c2 = new Cache(cacheDir)
+    try {
+      const n = c2
+        .dbHandle()
+        .prepare('SELECT COUNT(*) AS n FROM entry_inputs WHERE entry_hash = ?')
+        .get('h-persist') as { n: number }
+      expect(n.n).toBe(1)
+      const inv = c2
+        .dbHandle()
+        .prepare('SELECT command FROM invocations WHERE run_id = ?')
+        .get(runId)
+      expect(inv).not.toBeNull()
+    } finally {
+      c2.close()
     }
   })
 })

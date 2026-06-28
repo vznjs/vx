@@ -30,16 +30,24 @@ import { UserError } from '../util/index.js'
  * Defaults:
  *   - `filter === undefined` → all upstream contribute.
  *   - `filter === []`        → none contribute (fully decoupled).
+ *
+ * Returns `[upstreamTaskId, hash]` pairs. The hash is the only thing
+ * folded into the cache key (the fold sorts by hash, so ordering here
+ * doesn't affect derivation); the task id rides along so Tier-3's
+ * `entry_inputs` rows can NAME which upstream a hash came from. The
+ * filter dedups by hash, as before — two upstream tasks with identical
+ * hashes contribute one pair (first id wins; their key contribution is
+ * identical anyway).
  */
 export function filterUpstreamHashes(
   upstream: TaskOutcome[],
   filter: readonly string[] | undefined,
   selfProjectName: string,
   selfTaskId: string,
-): string[] {
+): Array<[upstreamTaskId: string, hash: string]> {
   if (filter === undefined) {
-    const out: string[] = []
-    for (const u of upstream) if (u.hash) out.push(u.hash)
+    const out: Array<[string, string]> = []
+    for (const u of upstream) if (u.hash) out.push([u.node.id, u.hash])
     return out
   }
 
@@ -54,18 +62,19 @@ export function filterUpstreamHashes(
     }
   })
 
-  const selected = new Set<string>()
+  // Dedup by hash (the key fold's unit), but remember the first task id
+  // seen for each hash so the diff row can name the upstream.
+  const selected = new Map<string, string>()
   for (const spec of specs) {
     for (const u of upstream) {
       if (!u.hash) continue
       const isSelf = u.node.projectName === selfProjectName
       if (!matches(spec, u, isSelf)) continue
-      const id = u.hash
-      if (spec.negated) selected.delete(id)
-      else selected.add(id)
+      if (spec.negated) selected.delete(u.hash)
+      else if (!selected.has(u.hash)) selected.set(u.hash, u.node.id)
     }
   }
-  return [...selected]
+  return [...selected].map(([hash, id]) => [id, hash])
 }
 
 function matches(spec: DependencySpec, u: TaskOutcome, isSelf: boolean): boolean {

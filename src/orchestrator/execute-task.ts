@@ -23,7 +23,12 @@ import {
 } from '../exec/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import type { Logger } from './logger.js'
-import { computeGroupHash, computeTaskHash, type HashCache } from './task-hash.js'
+import {
+  computeGroupHash,
+  computeTaskHash,
+  type HashCache,
+  type TaskInputComponent,
+} from './task-hash.js'
 
 export interface ExecuteArgs {
   node: TaskNode
@@ -189,14 +194,22 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const anyOutputs = outputs.length > 0 || wsOutputs.length > 0
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
 
-  // Prefer the hash precomputed in `prepareRun` (batched topo-walk).
-  // Falls back to per-task computation only when a caller skips the
-  // upfront pass (legacy entry points, focused tests).
   // Hash is computed mid-run, not at prepareRun time. Tasks whose
   // `cache.inputs.files` matches sibling outputs (e.g. `'**/*'` after
   // a `codegen` step has written `generated.txt`) need the upstream
   // outputs ALREADY on disk when their hash is computed — so we
   // can't lift this into prepareRun. Same model as Turbo / Nx.
+  //
+  // The PROBE hash is computed WITHOUT capture — a warm all-cache-hit
+  // run allocates no component array and pushes nothing (the warm path
+  // does zero extra Tier-3 work). The cache-key components for the
+  // Tier-3 input fingerprint are captured only on a MISS, right before
+  // `cache.save`, by a second `computeTaskHash` with `captureInto` set
+  // — the HashCache memos (package.json bytes, task config, runtime
+  // command output) plus the gitFilesCache OID map make that second
+  // pass a fold + array pushes, no re-stat / re-hash I/O. It runs on
+  // the miss path only, where the task is about to spawn a subprocess
+  // anyway, so its cost is in the noise.
   const hash = await computeTaskHash({
     node,
     upstream,
@@ -477,6 +490,26 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       workspaceRoot: args.workspaceRoot,
       outputs: wsOutputs,
     })
+    // Tier-3 input fingerprint: capture the cache-key components for
+    // THIS entry, persisted with the entry inside `cache.save`'s
+    // transaction. Miss path only — the warm/hit path never reaches
+    // here, so it allocates no array and pushes nothing. The HashCache
+    // memos + gitFilesCache OID map make this second `computeTaskHash`
+    // a fold + array pushes (no re-stat / re-hash I/O), negligible next
+    // to the subprocess this task just ran.
+    const captured: TaskInputComponent[] = []
+    await computeTaskHash({
+      node,
+      upstream,
+      workspaceRoot: args.workspaceRoot,
+      workspaceFingerprint: args.workspaceFingerprint,
+      cache,
+      forwardArgs: args.forwardArgs,
+      nestedProjectDirs: args.nestedProjectDirs,
+      captureInto: captured,
+      ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+      ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+    })
     await cache.save({
       hash,
       projectDir: node.projectDir,
@@ -484,6 +517,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       ...(wsOutputFiles.length > 0
         ? { workspaceOutputFiles: wsOutputFiles, workspaceRoot: args.workspaceRoot }
         : {}),
+      inputComponents: captured.map((c) => ({ entryHash: hash, ...c })),
       entry: {
         taskId: node.id,
         command: step.command,

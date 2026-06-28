@@ -362,9 +362,26 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    * no-op, so unused-feature behavior stays byte-identical.
    */
   private wsRoot: string | null = null
+  /**
+   * Whether the worktree had any uncommitted changes at populate time,
+   * derived from the SAME `git status --porcelain` spawn that prunes
+   * dirty paths from the trusted-OID set. Lets the Tier-3 invocation
+   * record report `dirty` without a SECOND status spawn. `null` until
+   * populate runs, or when the status spawn failed (non-repo).
+   */
+  private dirty: boolean | null = null
 
   setWorkspaceRoot(root: string): void {
     this.wsRoot = root
+  }
+
+  /** Aggregate worktree dirtiness from the populate-time status spawn. */
+  get worktreeDirty(): boolean | null {
+    return this.dirty
+  }
+
+  setWorktreeDirty(dirty: boolean | null): void {
+    this.dirty = dirty
   }
 
   markOutputsChanged(projectDir: string, relPaths: readonly string[]): void {
@@ -729,6 +746,10 @@ export async function populateGitFilesCache(
   }
   const { files: all, oids } = parseLsFilesOutput(ls.stdout)
   const dirty = status !== null && status.exitCode === 0 ? parseStatusOutput(status.stdout) : null
+  // Aggregate dirtiness for the Tier-3 invocation record — derived from
+  // this same status spawn so `run()` needs no second `git status`.
+  // null when the status spawn failed (non-repo / git error).
+  cache.setWorktreeDirty(dirty === null ? null : dirty.size > 0)
   const trusted = dirty === null ? new Map<string, string>() : oids
   if (dirty !== null) {
     for (const rel of dirty) trusted.delete(rel)

@@ -28,14 +28,18 @@ version.
 
 ## Access pattern (this drives the schema)
 
-- **Write:** once per `vx run`, batched. One `invocations` row; N
-  `run_task_inputs` rows (one per cache-key component, per task, ~10–100
-  components × ~1–3000 tasks). All in **one transaction** alongside the existing
-  `recordRuns`. The component values **already exist in memory** at hash time
-  (`CacheKeyInput`) — we are persisting, not recomputing.
-- **Read (diff):** "for run R, task T, what changed vs the previous run of T?"
-  = two indexed `SELECT`s on `run_task_inputs` + a SQL anti-join. Pure SQL,
-  no app-side recompute.
+- **Write:** the input-fingerprint rows are written **per cache-entry hash, only
+  when an entry is SAVED** (a cache MISS), inside the same transaction that
+  writes the `entries` row — via `INSERT OR IGNORE` (a re-save of the same hash
+  is a no-op). A cache HIT does not save, so it writes nothing: a warm
+  all-cache-hit run does **zero** extra input-fingerprint work. The per-`vx run`
+  `invocations` header row is still written once per run (with `runs`) in one
+  transaction. The component values **already exist in memory** at hash time
+  (`CacheKeyInput`) — we persist, not recompute, and only on the miss path.
+- **Read (diff):** "for run R, task T, what changed vs the previous run of T?" =
+  map each run to its task hash (`runs.hash`), then two indexed `SELECT`s on
+  `entry_inputs` (this run's hash + the previous run's hash) + a SQL anti-join.
+  Pure SQL, no app-side recompute.
 - **Read (filter):** "invocations on branch X / with ci=1 / tagged k=v" =
   indexed `SELECT` on `invocations`.
 
@@ -43,9 +47,18 @@ Normalized rows beat a JSON blob here precisely because the hot read is a
 **diff** — `(kind,name,hash)` rows anti-join in SQL; a JSON blob would force a
 full app-side parse + compare of every component on every probe.
 
+**Why keyed by entry hash, not run id (the warm-path rule).** An earlier draft
+keyed these rows by `(run_id, task_id)` and wrote them on **every** run including
+all-cache-hit warm runs (~one INSERT per component per task per run). That
+regressed warm `vx run` ~21% on an 800-package workspace — pure waste, since a
+hit re-derives the exact same components it persisted on the cold run. Keying by
+the **cache-entry hash** and writing **only on save** means identical inputs
+(same hash) never re-write, and a warm run writes nothing. The owner's hard rule
+— **Tier 3 must not impact run performance** — is satisfied by construction.
+
 ## Version decision
 
-- `SCHEMA_VERSION` → **v22**. New tables (`invocations`, `run_task_inputs`) +
+- `SCHEMA_VERSION` → **v22**. New tables (`invocations`, `entry_inputs`) +
   added `runs` columns. The gate drops the old set and recreates.
 - `CACHE_VERSION` stays **v24**. The cache **key derivation is unchanged** — we
   persist components already fed to `Cache.key()`; we do not add to, reorder, or
@@ -60,6 +73,7 @@ The DROP-gate line (cache.ts ~L543) becomes:
 DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs;
 DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS output_files;
 DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs;
+DROP TABLE IF EXISTS entry_inputs;
 ```
 
 ## Concrete schema (DDL)
@@ -106,45 +120,51 @@ Tags filtering is by `tags LIKE '%"k":"v"%'` (good enough; the table is small).
 A normalized `invocation_tags(run_id, key, value)` side table is the clean
 alternative but unnecessary at this scale — **out of scope**.
 
-### `run_task_inputs` — the input-fingerprint moat
+### `entry_inputs` — the input-fingerprint moat
 
-One row per cache-key component, per task, per invocation. Captured for
-**hits and misses alike** (a hit still needs the row so the *next* run can diff
-against it).
+One row per cache-key component, keyed by the cache-**entry** hash it belongs to
+(NOT a run id). Written **inside the entry-save transaction** — only on a cache
+MISS, never on a hit — via `INSERT OR IGNORE`. A warm all-cache-hit run writes
+nothing here; identical inputs derive the same hash, whose rows already exist, so
+the idempotent insert is a no-op. The diff resolves a run to its entry hash via
+`runs.hash`.
 
 ```sql
-CREATE TABLE IF NOT EXISTS run_task_inputs (
-  run_id   TEXT NOT NULL,            -- == runs.run_id / invocations.run_id
-  task_id  TEXT NOT NULL,            -- "project#task"
-  kind     TEXT NOT NULL,            -- file|env|runtime|ws-runtime|upstream|package|config|forward|workspace
-  name     TEXT NOT NULL,            -- file: workspace-rel path; env: var name;
+CREATE TABLE IF NOT EXISTS entry_inputs (
+  entry_hash TEXT NOT NULL,          -- == entries.hash / runs.hash
+  kind       TEXT NOT NULL,          -- file|env|runtime|ws-runtime|upstream|package|config|forward|workspace
+  name       TEXT NOT NULL,          -- file: workspace-rel path; env: var name;
                                      -- runtime/ws-runtime: command string;
                                      -- upstream: upstream task id;
                                      -- package: "package.json"; config: "config";
                                      -- forward: "argv"; workspace: "fingerprint"
-  hash     TEXT NOT NULL,            -- the component's contribution to the key
+  hash       TEXT NOT NULL,          -- the component's contribution to the key
                                      -- (file: blob OID; env/runtime: value;
                                      --  upstream: upstream hash; package/config/
                                      --  workspace: the hash; forward: joined argv)
-  PRIMARY KEY (run_id, task_id, kind, name)
+  PRIMARY KEY (entry_hash, kind, name),
+  FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS rti_task ON run_task_inputs(task_id, run_id);
 ```
+
+`ON DELETE CASCADE` keeps these rows in sync with `entries` — a `vx cache prune`
+that drops an entry sweeps its input rows automatically (no `run_id`-keyed orphan
+rows accumulating per run).
 
 Component → row mapping (mirrors the `key()` fold order exactly so the set is
 complete and lossless):
 
-| `CacheKeyInput` field        | kind        | name (per row)        | hash (per row)        |
-| ---------------------------- | ----------- | --------------------- | --------------------- |
-| `inputFiles` + `fileHashes`  | `file`      | workspace-rel path    | blob OID              |
-| `envValues`                  | `env`       | var name              | value                 |
-| `runtimeValues`              | `runtime`   | command               | trimmed output        |
-| `workspaceRuntimeValues`     | `ws-runtime`| command               | trimmed output        |
-| `upstreamHashes`             | `upstream`  | upstream task id*     | upstream hash         |
-| `projectPackageJsonHash`     | `package`   | `package.json`        | hash                  |
-| `taskConfigHash`             | `config`    | `config`              | hash                  |
-| `workspaceFingerprint`       | `workspace` | `fingerprint`         | hash                  |
-| `forwardArgs`                | `forward`   | `argv`                | JSON-joined args      |
+| `CacheKeyInput` field       | kind         | name (per row)     | hash (per row)   |
+| --------------------------- | ------------ | ------------------ | ---------------- |
+| `inputFiles` + `fileHashes` | `file`       | workspace-rel path | blob OID         |
+| `envValues`                 | `env`        | var name           | value            |
+| `runtimeValues`             | `runtime`    | command            | trimmed output   |
+| `workspaceRuntimeValues`    | `ws-runtime` | command            | trimmed output   |
+| `upstreamHashes`            | `upstream`   | upstream task id\* | upstream hash    |
+| `projectPackageJsonHash`    | `package`    | `package.json`     | hash             |
+| `taskConfigHash`            | `config`     | `config`           | hash             |
+| `workspaceFingerprint`      | `workspace`  | `fingerprint`      | hash             |
+| `forwardArgs`               | `forward`    | `argv`             | JSON-joined args |
 
 \* `upstreamHashes` is currently a bare `string[]` of hashes with no task id.
 To name the upstream in the diff, `filterUpstreamHashes` must return
@@ -169,7 +189,11 @@ out-param** so the components escape without any extra work:
 
 ```ts
 // task-hash.ts
-export interface TaskInputComponent { kind: string; name: string; hash: string }
+export interface TaskInputComponent {
+  kind: string
+  name: string
+  hash: string
+}
 
 export interface ComputeHashArgs {
   // ...existing fields...
@@ -192,7 +216,7 @@ avoid a second hash pass, refactor `key()`'s per-file `Promise.all` result to be
 reusable, OR (simpler, recommended) capture in `key()` itself — see option B.
 
 **Recommended capture point — option B (capture inside `cache.key`).** `key()`
-is where every component is already in hand *and* the per-file OIDs are already
+is where every component is already in hand _and_ the per-file OIDs are already
 awaited. Add an optional sink to `CacheKeyInput`:
 
 ```ts
@@ -211,39 +235,45 @@ just allocates the array and threads it through.
 Cost: a few array pushes per task. **No second hash, no second stat, no second
 git spawn.** Hot path unaffected.
 
-### 2. Carry components on the outcome
+### 2. Capture on the MISS path only; persist with the entry (revised)
 
-`executeCachedTask` (execute-task.ts) calls `computeTaskHash` once at L200.
-Allocate `const inputComponents: TaskInputComponent[] = []`, pass
-`captureInto: inputComponents`, and attach to **every** returned `TaskOutcome`
-(hit path L318, abort path L459 — skip, miss path L528). Add to `TaskOutcome`
-(src/graph/scheduler.ts):
+The original draft captured on every task (including hits) and carried the
+components on the `TaskOutcome` for `run()` to persist per run. **That is the
+warm-path regression — removed.** The shipped design:
 
-```ts
-/** Cache-key components captured at hash time. Persisted to
- *  run_task_inputs so a later run can diff against this one. Present
- *  on cached-task outcomes (hit + miss); absent on group/persistent/
- *  aborted. */
-inputComponents?: TaskInputComponent[]
-```
+- `executeCachedTask` (execute-task.ts) computes the **probe** hash with **no**
+  `captureInto`. A warm hit allocates no component array and pushes nothing.
+- On a cache **miss**, right before `cache.save`, a second `computeTaskHash` runs
+  with `captureInto` set. The `HashCache` memos (package.json bytes, task config,
+  runtime command output) and the `GitFilesCache` OID map make that second pass a
+  fold + array pushes — no re-stat, no re-hash I/O. It runs only on the miss
+  path, where the task is about to spawn a subprocess anyway, so its cost is in
+  the noise.
+- The captured components are passed to `cache.save({ ..., inputComponents })` as
+  `{ entryHash, kind, name, hash }` rows and written to `entry_inputs` inside the
+  save transaction.
 
-The in-flight-dedup path in run.ts (L288) computes a hash with no
-`captureInto` — that's fine; the real `executeTask` call that follows captures.
+`TaskOutcome.inputComponents` is **dropped** (no longer needed — the save reads
+components directly). The in-flight-dedup path in run.ts still computes a hash
+with no `captureInto` — fine; the real `executeTask` call that follows captures
+on its own miss path.
 
 ### 3. Capture run-level context once (run.ts)
 
 In `run()`, after `runId`/`runStartHrTimeNs` are set (~L169) and before
 scheduling, gather context **once**:
 
-- **git** — one `git` spawn (cheap, ~one-time). Add a helper
-  `captureGitContext(workspaceRoot)` in a new file
-  `src/orchestrator/run-context.ts`:
-  - `commit_sha`: `git rev-parse HEAD` (spawnSync, ignore-on-fail → null).
-  - `branch`: `git rev-parse --abbrev-ref HEAD`.
-  - `dirty`: `git status --porcelain` non-empty → 1.
-  Run these as one `git -C <root> ...` batch where possible; on any failure each
-  field degrades to null (the doctor pattern — never fail a run for telemetry).
-  Use `Bun.spawnSync` (these are short; one-time per run; mirrors affected.ts).
+- **git** — ONE `git` spawn (cheap, one-time). `captureGitContext(workspaceRoot,
+dirty)` in `src/orchestrator/run-context.ts`:
+  - `commit_sha` + `branch`: a single `git rev-parse HEAD --abbrev-ref HEAD`
+    (commit on line 1, branch on line 2) — half the spawns of two `rev-parse`
+    calls. spawnSync, ignore-on-fail → null per field.
+  - `dirty`: **not probed here.** The run's `GitFilesCache` populate already ran
+    `git status --porcelain` for input enumeration; the aggregate dirtiness from
+    that spawn is stored on the cache (`GitFilesCache.worktreeDirty`) and passed
+    in. No second status spawn. `null` when the status spawn failed (non-repo).
+    On any failure each field degrades to null (the doctor pattern — never fail a
+    run for telemetry). Net: **≤ 1 extra cheap git spawn per run.**
 - **CI** — `detectCi(env)` in the same file: `ci=1` if any of `CI`,
   `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI` is truthy (not
   `'0'`/`'false'`); `ci_provider` from which one matched.
@@ -260,41 +290,38 @@ This block is **skipped entirely when `options.log !== undefined`** is NOT the
 gate — context is cheap and useful for embedders too; gate only the git spawns
 behind a try/catch. Keep it unconditional.
 
-### 4. Persist once, in the existing transaction (run.ts + cache.ts)
+### 4. Persist the invocation per run; the input rows ride the save (revised)
 
-After the existing `cache.recordRuns(toRecord)` (run.ts ~L457), build the
-invocation row and the input rows from `list` and call **one new method** that
-wraps everything in a single transaction:
+Two disjoint write paths:
 
-```ts
-// cache.ts
-recordInvocation(inv: InvocationRecord, inputs: readonly TaskInputRow[]): void
-```
+- **Per run** (run.ts end-of-run): build the invocation header from `list` and
+  call `recordRunBundle({ runs, invocation })` — one transaction inserting the
+  per-task `runs` rows + the one `invocations` header. **No input rows here.** A
+  warm all-cache-hit run does only this (cheap, bounded by task count, one
+  fsync).
+- **Per cache save** (cache.ts `save`/`writeArtifactAndIndex`, miss path only):
+  the captured `entry_inputs` rows are `INSERT OR IGNORE`'d inside the SAME
+  transaction as the `entries` row. Idempotent — re-saving the same hash adds no
+  rows. A hit never saves, so it writes none.
 
-`InvocationRecord` mirrors the `invocations` columns; `TaskInputRow` is
-`{ runId, taskId, kind, name, hash }`. Implementation: one `db.transaction`
-that inserts the invocation row then `INSERT`s all input rows via a prepared
-statement. For a 3000-task run × ~30 components = ~90k rows — bind in the
-transaction (one fsync). Measure; if 90k inserts is slow, chunk, but a single
-transaction of prepared-stmt runs is typically fine (bun:sqlite does ~1M
-inserts/s in a tx).
-
-**Move the `recordRuns` + `recordInvocation` into one transaction** so the whole
-run records atomically: add `recordRunBundle({ runs, invocation, inputs })` to
-`Cache` that opens one transaction and does all three inserts, replacing the
-bare `recordRuns` call in run.ts. This is the only run.ts recording change.
-
-Skip input rows for outcomes without `inputComponents` (group/persistent/
-aborted) — same filter as `toRecord`.
+`recordRunBundle({ runs, invocation })` replaces the bare `recordRuns` call. The
+original draft's `recordRunBundle({ runs, invocation, inputs })` (input rows in
+the per-run transaction, written on every run) is **gone** — that was the warm
+regression.
 
 ### Perf summary
 
-- Capture: array pushes inside the already-running `key()` fold. **0 extra
-  hashing/IO.**
-- Git context: 1–3 spawnSync per *run* (not per task), behind try/catch.
+- Capture: on the **miss** path only — a second `computeTaskHash` that reuses the
+  `HashCache` memos + `GitFilesCache` OID map, so it's a fold + array pushes (no
+  re-stat / re-hash I/O), negligible next to the subprocess the task ran. **Warm
+  path: zero capture, zero allocation.**
+- Recording: per-run transaction is `runs` + `invocations` only (no input rows).
+  Input rows ride the per-entry save transaction (miss only), `INSERT OR IGNORE`.
+- Git context: **≤ 1** extra spawnSync per _run_ (commit+branch in one
+  `rev-parse`; `dirty` reuses the populate-time `git status`), behind try/catch.
 - Recording: one transaction (one fsync) for runs + invocation + inputs.
-- Reads are all indexed `run_task_inputs(task_id, run_id)` /
-  `invocations(...)`.
+- Reads are all indexed: `entry_inputs(entry_hash)` (its primary key) joined via
+  `runs.hash`, and `invocations(...)`.
 
 ## Queries (metrics.ts)
 
@@ -303,30 +330,43 @@ aborted) — same filter as `toRecord`.
 Keep the existing function (UI relies on `hashChanged`) and add the actual diff:
 
 ```ts
-export interface InputDiffEntry { kind: string; name: string;
-  change: 'added' | 'removed' | 'changed'; before: string | null; after: string | null }
+export interface InputDiffEntry {
+  kind: string
+  name: string
+  change: 'added' | 'removed' | 'changed'
+  before: string | null
+  after: string | null
+}
 export interface CacheKeyDiff {
-  runId: string; taskId: string; found: boolean;
-  previousRunId: string | null;
-  entries: InputDiffEntry[];     // only changed/added/removed components
-  unchangedCount: number;
-  note: string;
+  runId: string
+  taskId: string
+  found: boolean
+  previousRunId: string | null
+  entries: InputDiffEntry[] // only changed/added/removed components
+  unchangedCount: number
+  note: string
 }
 export function cacheKeyDiff(db: Database, runId: string, taskId: string): CacheKeyDiff
 ```
 
-Implementation (pure SQL, no recompute):
-1. Find this run's components: `SELECT kind,name,hash FROM run_task_inputs
-   WHERE run_id=? AND task_id=?`.
-2. Find the previous run id for this task:
-   `SELECT run_id FROM run_task_inputs rti JOIN runs r ON r.run_id=rti.run_id
-    AND r.project||'#'||r.task=? WHERE rti.task_id=? AND r.started_at <
-    (this run's started_at) ORDER BY r.started_at DESC LIMIT 1` — or simpler,
-    reuse `whyDidThisRerun`'s previous-run lookup to get the prev `run_id`, then
-    pull its components.
+Implementation (pure SQL, no recompute) — `entry_inputs` is keyed by the cache
+ENTRY hash, so the diff resolves each run to its task hash via `runs.hash`:
+
+1. Find this run's entry hash for the task:
+   `SELECT hash FROM runs WHERE run_id=? AND project||'#'||task=?`, then this
+   run's components: `SELECT kind,name,hash FROM entry_inputs WHERE entry_hash=?`.
+2. Find the previous run's entry hash for this task:
+   `SELECT hash FROM runs r WHERE r.project||'#'||r.task=? AND r.started_at <
+(this run's started_at) ORDER BY r.started_at DESC LIMIT 1`, then pull its
+   components by that hash. (If the two hashes are equal — a re-run that hit —
+   there's nothing to diff: `entries:[]`.)
 3. Full outer join the two `(kind,name)` sets in app code (both are small):
    present-in-both-with-different-hash → `changed`; only-in-this → `added`;
    only-in-prev → `removed`; equal → bump `unchangedCount`.
+
+Note: because rows are keyed by entry hash (not run id), two runs that share the
+same inputs share the same `entry_inputs` rows — the diff between them is
+correctly empty without storing duplicate per-run copies.
 
 This is the Wave-1 "why" panel upgraded from "hash changed" to
 **"these 3 files + this env var changed, here's the OID before/after."**
@@ -334,11 +374,18 @@ This is the Wave-1 "why" panel upgraded from "hash changed" to
 ### `getInvocation` + reworked `listInvocations`
 
 ```ts
-export interface InvocationDetail { /* every invocations column, camelCased,
-  tags parsed to Record<string,string>, dirty/ci/exitOk as booleans */ }
+export interface InvocationDetail {
+  /* every invocations column, camelCased,
+  tags parsed to Record<string,string>, dirty/ci/exitOk as booleans */
+}
 export function getInvocation(db: Database, runId: string): InvocationDetail | null
-export interface ListInvocationsArgs { limit?: number; branch?: string;
-  ci?: boolean; tagKey?: string; tagValue?: string }
+export interface ListInvocationsArgs {
+  limit?: number
+  branch?: string
+  ci?: boolean
+  tagKey?: string
+  tagValue?: string
+}
 export function listInvocations(db: Database, args?: ListInvocationsArgs): InvocationDetail[]
 ```
 
@@ -416,23 +463,32 @@ not per-agent.
 
 Must land first; everything else reads what it writes. Files:
 
-- `src/cache/cache.ts` — DROP-gate lines; new tables; `CacheKeyInput.captureInto`
-  + the per-fold push in `key()`; `InvocationRecord`/`TaskInputRow` types;
-  `recordInvocation` / `recordRunBundle` + prepared statements; `SCHEMA_VERSION`
-  → v22; CACHE_VERSION comment confirming **no bump**.
+- `src/cache/cache.ts` — DROP-gate lines (drop both legacy `run_task_inputs`
+  AND `entry_inputs`); new tables (`invocations`, `entry_inputs` keyed by entry
+  hash, FK→entries ON DELETE CASCADE); `CacheKeyInput.captureInto` + the per-fold
+  push in `key()`; `InvocationRecord`/`TaskInputRow` (`{entryHash,kind,name,hash}`)
+  types; `save`/`writeArtifactAndIndex` write `entry_inputs` via `INSERT OR IGNORE`
+  inside the entry transaction; `recordRunBundle({ runs, invocation })` (no input
+  rows) + prepared statements; `SCHEMA_VERSION` → v22; CACHE_VERSION comment
+  confirming **no bump**.
 - `src/orchestrator/task-hash.ts` — `TaskInputComponent` type; thread
   `captureInto` through `computeTaskHash` (allocate + pass to `key()`).
 - `src/orchestrator/upstream.ts` — **the upstream-id seam**:
   `filterUpstreamHashes` → return `Array<[taskId, hash]>` (update its callers in
   task-hash.ts; the key fold sorts by hash, unchanged ordering).
-- `src/graph/scheduler.ts` — `TaskOutcome.inputComponents`.
-- `src/orchestrator/execute-task.ts` — allocate `inputComponents`, pass
-  `captureInto`, attach to hit + miss outcomes.
-- `src/orchestrator/run-context.ts` (new) — `captureGitContext`, `detectCi`,
-  host/os/arch helpers.
-- `src/orchestrator/run.ts` — capture context once; build invocation + input
-  rows from `list`; call `recordRunBundle` (replacing `recordRuns`); thread
-  `options.tags`/`options.command`.
+- `src/graph/scheduler.ts` — (no `TaskOutcome` change; the dropped
+  `inputComponents` field is not added — the save reads components directly).
+- `src/orchestrator/execute-task.ts` — probe hash with NO capture (warm path
+  free); on a MISS, a second `computeTaskHash` with `captureInto` → pass the
+  rows to `cache.save({ inputComponents })`.
+- `src/orchestrator/run-context.ts` (new) — `captureGitContext(root, dirty)` (one
+  commit+branch spawn; dirty passed in), `detectCi`, host/os/arch helpers.
+- `src/cache/inputs.ts` — `GitFilesCache.worktreeDirty` (aggregate dirtiness from
+  the populate-time `git status --porcelain`, so run.ts needs no second spawn).
+- `src/orchestrator/run.ts` — capture context once (dirty from
+  `gitFilesCache.worktreeDirty`); build the invocation header from `list`; call
+  `recordRunBundle({ runs, invocation })` (replacing `recordRuns`, no input rows);
+  thread `options.tags`/`options.command`.
 - `src/orchestrator/options.ts` — `RunOptions.tags`, `.command`, `.report`.
 - Bump-cache-version skill checklist (SCHEMA bump touches these even though
   CACHE_VERSION is unchanged — update the SCHEMA history note in each):
@@ -446,15 +502,15 @@ units never touch them.
 
 ### Phase B — independent units, parallelizable (disjoint files)
 
-| Unit | Owns (exclusive) | Depends on |
-| ---- | ---------------- | ---------- |
-| **B1 Queries** | `src/orchestrator/metrics.ts` | A (tables) |
-| **B2 Endpoints** | `packages/cloud/src/cli/serve.ts` | B1 (query sigs) |
-| **B3 CLI tags+report** | `src/cli/run.ts`, `src/orchestrator/run-report.ts` (new), `docs/cli.md` | A (options.tags/command/report exist) |
-| **B4 UI data layer** | `apps/ui/src/api.ts`, `apps/ui/src/jr/data.ts` | B2 (endpoints) |
-| **B5 UI views** | `apps/ui/src/views/runDetail.json`, `runs.json`, `cache.json`, `overview.json` | B4 |
+| Unit                   | Owns (exclusive)                                                               | Depends on                            |
+| ---------------------- | ------------------------------------------------------------------------------ | ------------------------------------- |
+| **B1 Queries**         | `src/orchestrator/metrics.ts`                                                  | A (tables)                            |
+| **B2 Endpoints**       | `packages/cloud/src/cli/serve.ts`                                              | B1 (query sigs)                       |
+| **B3 CLI tags+report** | `src/cli/run.ts`, `src/orchestrator/run-report.ts` (new), `docs/cli.md`        | A (options.tags/command/report exist) |
+| **B4 UI data layer**   | `apps/ui/src/api.ts`, `apps/ui/src/jr/data.ts`                                 | B2 (endpoints)                        |
+| **B5 UI views**        | `apps/ui/src/views/runDetail.json`, `runs.json`, `cache.json`, `overview.json` | B4                                    |
 
-B1 → B2 → (B4 → B5) is a chain on the *contract*, but each owns disjoint files,
+B1 → B2 → (B4 → B5) is a chain on the _contract_, but each owns disjoint files,
 so they can be developed against the agreed signatures in parallel and
 integrated in order. B3 is fully independent of B1/B2/B4 (it only needs Phase A
 options). No two units write the same file. The shared plumbing
@@ -465,20 +521,24 @@ cache.ts+run.ts→Phase A only.
 ## Test plan
 
 **Phase A** (`tests/cache.test.ts`, `tests/orchestrator*.test.ts`):
-- Schema gate: open v21 DB, reopen → `invocations`/`run_task_inputs` exist,
-  old rows dropped.
+
+- Schema gate: open a stale-version DB, reopen → `invocations`/`entry_inputs`
+  exist, old rows dropped.
 - **Key unchanged:** compute a task's hash with and without `captureInto` →
-  identical digest. A fixture asserting a known hash string is byte-identical to
-  pre-Tier-3 (guards CACHE_VERSION-not-bumped).
+  identical digest (guards CACHE_VERSION-not-bumped).
 - `captureInto` completeness: a task with files+env+runtime+upstream+forward →
   the captured set has one row per component, matching the fold table above.
-- `recordRunBundle`: one run → one `invocations` row with correct
-  git/ci/host/tags; `run_task_inputs` row count == sum of components; all in the
-  DB after a single `close`. Cache-hit task also gets input rows (capture-for-
-  hits).
-- `captureGitContext`/`detectCi`: in a temp git repo (commit + dirty file) →
-  correct sha/branch/dirty; CI env matrix → provider detection; non-git dir →
-  all-null, no throw.
+- **Entry-save persistence + warm-writes-nothing:** a `cache.save({ inputComponents })`
+  populates `entry_inputs` for that hash; a subsequent cache hit (and a defensive
+  idempotent re-save of the same hash) adds ZERO new rows.
+- `recordRunBundle`: one run → one `invocations` row with correct git/ci/host/tags
+  and the `runs` rows, in one `close`; it does NOT touch `entry_inputs`.
+- e2e (orchestrator): a cold miss writes `entry_inputs` (reachable via
+  `runs.hash`); the warm hit run adds no `entry_inputs` rows but still records its
+  `invocations` header.
+- `captureGitContext`/`detectCi`: a temp git repo → correct sha/branch (one
+  spawn); supplied `dirty` passes straight through; CI env matrix → provider
+  detection; non-git dir → null commit/branch, no throw.
 
 **B1** (`tests/metrics.test.ts`): seed two runs of a task with a changed file +
 changed env → `cacheKeyDiff` returns exactly those as `changed`, others

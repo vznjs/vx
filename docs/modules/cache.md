@@ -22,6 +22,13 @@ export interface CacheLayer {
   restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
   save(args: SaveArgs): Promise<string | null>
   recordRun(run: RunRecord): void
+  recordRuns(runs: readonly RunRecord[]): void
+  // (Tier 3) Records a whole `vx run` atomically: the per-task `runs`
+  // rows + one `invocations` header row in ONE transaction. Replaces
+  // the bare recordRuns call in the orchestrator's end-of-run path. The
+  // input-fingerprint rows (entry_inputs) do NOT live here — they ride
+  // the entry-save transaction (miss path only), so a warm run is free.
+  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   stats(): CacheStats
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
@@ -67,9 +74,55 @@ export interface CacheKeyInput {
   inputFiles: string[] // absolute paths (sorted by caller before pass)
   workspaceRoot: string
   upstreamHashes: string[]
+  upstreamIds?: ReadonlyMap<string, string> // (Tier 3) hash → upstream task id, capture-NAMING only (not folded)
   workspaceFingerprint: string
   forwardArgs?: readonly string[] // CLI args after `--`
   fileHashes?: ReadonlyMap<string, string> // (v20) abs path → git blob OID; mapped paths skip hashFile
+  // (Tier 3) Pure side-channel: when set, key() pushes each component
+  // (kind,name,hash) it folds, at the same fold sites. Does NOT change
+  // the digest — used (on a cache MISS only) to persist entry_inputs
+  // for the input diff. The warm/hit path passes no captureInto.
+  captureInto?: Array<{ kind: string; name: string; hash: string }>
+}
+
+// (Tier 3) One header row per `vx run` invocation — see the
+// `invocations` table in docs/caching.md.
+export interface InvocationRecord {
+  runId: string
+  command: string
+  requestedTasks: string // JSON string[]
+  cachePolicy: string // compact flags, e.g. 'lR,lW,rR,rW'
+  concurrency: number
+  flow: 'focused' | 'broad' | null
+  startedAt: number
+  endedAt: number
+  totalDurationMs: number
+  taskCount: number
+  failedCount: number
+  hitCount: number
+  hitLocalCount: number
+  hitRemoteCount: number
+  exitOk: boolean
+  commitSha: string | null
+  branch: string | null
+  dirty: boolean | null
+  ci: boolean
+  ciProvider: string | null
+  host: string | null
+  os: string | null
+  arch: string | null
+  vxVersion: string
+  tags: string // JSON object {k:v}
+}
+
+// (Tier 3) One cache-key component row for `entry_inputs`, keyed by the
+// cache-entry hash. Persisted inside the entry-save transaction (miss
+// path only), via INSERT OR IGNORE.
+export interface TaskInputRow {
+  entryHash: string
+  kind: string // file|env|runtime|ws-runtime|upstream|package|config|forward|workspace
+  name: string
+  hash: string
 }
 
 export interface CacheEntry {
@@ -224,8 +277,14 @@ Reads via `get()` are non-blocking thanks to WAL.
 ## Run history & stats
 
 `recordRun()` appends one row to `runs` for every task — cache hits
-and misses, successes and failures. `stats()` aggregates the last 24h
-plus the entry table summary:
+and misses, successes and failures. The orchestrator's end-of-run path
+uses `recordRunBundle()` instead, which records the per-task `runs`
+rows and one `invocations` header row (command, git/CI/host context,
+tags, run-level counts) **atomically in one transaction**. The Tier-3
+input-fingerprint rows (`entry_inputs`) are NOT written here — they
+ride each entry's save transaction (`save`/`ingest`, miss path only)
+via `INSERT OR IGNORE`, so a warm all-cache-hit run writes none of them.
+`stats()` aggregates the last 24h plus the entry table summary:
 
 ```ts
 interface CacheStats {
@@ -249,18 +308,27 @@ A `vx stats` CLI command can ship later; the data is captured today.
 - Doesn't verify entries are intact byte-for-byte. The file existence
   check is the only integrity gate.
 
-## `CACHE_VERSION`
+## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-Currently `'vx-cache-v20'`. Bump when:
+`CACHE_VERSION` is currently `'vx-cache-v24'`; `SCHEMA_VERSION` is
+`'v22'`. Bump `CACHE_VERSION` when:
 
-- A new field is added to `CacheKeyInput`.
+- A new field is added to the cache KEY derivation (folded inside
+  `key()`).
 - The order or framing of existing key fields changes.
-- The on-disk layout changes (file placement, log paths).
-- The SQLite schema changes in a way that affects existing rows.
+- The on-disk artifact layout changes (file placement, log paths).
 
-Bumping invalidates every previously-stored entry. Pre-alpha tolerates
-this freely. See `.claude/skills/bump-cache-version/SKILL.md` for the
-file checklist.
+Bump `SCHEMA_VERSION` (independently — the gate drops + recreates
+tables) when the SQLite schema changes. A new `CacheKeyInput` field that
+is **NOT folded** (a pure side-channel like `captureInto` /
+`upstreamIds`) needs neither bump: the key is byte-identical. The Tier-3
+tables (`invocations`, `entry_inputs`) rolled `SCHEMA_VERSION` to `v22`
+but left `CACHE_VERSION` at `v24` for exactly this reason — they persist
+components already fed to `key()`.
+
+Bumping `CACHE_VERSION` invalidates every previously-stored entry.
+Pre-alpha tolerates this freely. See
+`.claude/skills/bump-cache-version/SKILL.md` for the file checklist.
 
 ## Tests
 

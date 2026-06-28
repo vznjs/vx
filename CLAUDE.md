@@ -170,6 +170,115 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-28**: **Dashboard Tier 3 — Phase A: schema + recording
+  foundation (SCHEMA v22, NO `CACHE_VERSION` bump).** Implements the
+  Phase-A slice of `docs/design/dashboard-tier3-2026-06.md` — the durable
+  schema everything else reads. Two new SQLite tables. `invocations` is
+  one header row per `vx run` (command, requested tasks, compact cache
+  policy, concurrency, flow, started/ended, total duration, task/failed/
+  hit counts split local-vs-remote, exit_ok, git commit/branch/dirty, ci
+  - provider, host/os/arch, vx version, tags JSON). `run_task_inputs` is
+    the input-fingerprint moat — one row per cache-key component per task
+    per run (kind file/env/runtime/ws-runtime/upstream/package/config/
+    forward/workspace, name, hash), captured for hits AND misses so the
+    next run can diff against it. Both added to the schema DROP-gate;
+    `SCHEMA_VERSION` rolled v21 to v22 (gate drops + recreates, pre-alpha
+    no migration). The CACHE KEY is provably unchanged so `CACHE_VERSION`
+    stays v24 — capture is a pure side-channel inside `Cache.key()`. New
+    `CacheKeyInput.captureInto` is an optional sink that `key()` pushes
+    each folded component into at the same fold sites (file rows reuse the
+    already-awaited per-file OID — zero extra hash/stat/IO); a guard test
+    proves a task's digest is byte-identical with and without
+    `captureInto`. New `CacheKeyInput.upstreamIds` (hash to task id) is
+    capture-naming only, never folded. The upstream-id seam:
+    `filterUpstreamHashes` now returns `Array<[upstreamTaskId, hash]>`
+    (dedup still by hash, the key fold still sorts by hash so derivation is
+    identical); its lone caller is `task-hash.ts`, which splits the pairs
+    back into `upstreamHashes` + an `upstreamIds` map. `TaskInputComponent`
+    type lives in `task-hash.ts`, threaded through `computeTaskHash` via
+    `captureInto`. `execute-task.ts` allocates the component array, passes
+    it to the hash, and attaches it to the hit + miss outcomes (skipped on
+    group/persistent/aborted). `TaskOutcome.inputComponents` is declared
+    structurally inline in `scheduler.ts` (graph cannot import
+    orchestrator). Recording: `Cache.recordRunBundle({runs, invocation,
+inputs})` writes runs + the invocation row + all input rows in ONE
+    transaction (one fsync); `InvocationRecord`/`TaskInputRow` types
+    exported from cache. `run.ts` captures run context once
+    (`run-context.ts`: `captureGitContext` = one git spawn per run behind
+    try/catch with each field null-on-fail, `detectCi` over a CI env
+    matrix, host/os/arch helpers), builds the invocation + input rows from
+    the recorded list, and replaces the bare `recordRuns` call with
+    `recordRunBundle`. New `RunOptions.tags`/`.command`/`.report` fields
+    (CLI parsing is Phase B3; run.ts reads tags/command into the invocation
+    row, defaulting command to `process.argv.slice(1).join(' ')`). Trust
+    boundary called out in docs: `run_task_inputs` stores env/runtime
+    values verbatim, consistent with cache.db already being a local
+    gitignored single-user file; redaction is out of scope. Files: core
+    `src/cache/{cache,layered-cache,index}.ts`,
+    `src/orchestrator/{task-hash,upstream,execute-task,run,options,
+run-context}.ts`, `src/graph/scheduler.ts`; docs `caching.md`,
+    `modules/cache.md`; tests `cache.test.ts` (schema-gate recreates both
+    tables, key-unchanged guard, captureInto completeness per the fold
+    map, recordRunBundle round-trip with a cache-hit task getting input
+    rows), `run-context.test.ts` (temp git repo sha/branch/dirty, CI
+    matrix, non-git all-null no-throw), `orchestrator.test.ts` (e2e
+    invocation row + per-task input rows over a real cache.db, hit
+    included). Phase B (queries/endpoints/CLI tags+report/UI) is owned by
+    other agents and never touches these files.
+
+- **2026-06-28**: **Tier 3 Phase A — warm-path redesign (`run_task_inputs`
+  → `entry_inputs`; capture is miss-only; ≤1 git spawn).** The first
+  Phase-A cut above regressed WARM `vx run` ~21% (457ms baseline → 560ms
+  on an 800-pkg/1600-task workspace) — it persisted per-task input rows
+  keyed by `(run_id, task_id)` on EVERY run (incl. all-cache-hit warm
+  runs, ~8000 INSERTs/run via `recordRunBundle`) and allocated +
+  populated the `captureInto` component array on the HIT path too. Owner
+  hard rule: **Tier 3 must not impact run performance.** Redesign,
+  measured back to parity (warm median ~465-485ms vs an on-this-machine
+  baseline of ~451-464ms — within noise; the regressed cut was 560ms).
+  (1) **`run_task_inputs` → `entry_inputs`**, keyed by the cache-ENTRY
+  hash (PK `(entry_hash,kind,name)`, FK→entries ON DELETE CASCADE), not
+  a run. Written INSIDE the entry-save transaction
+  (`writeArtifactAndIndex`) via `INSERT OR IGNORE` — so it persists ONLY
+  on a cache miss/save; a HIT never saves, writes nothing; identical
+  inputs (same hash) never re-write. DROP-gate drops both legacy
+  `run_task_inputs` AND `entry_inputs`. `SCHEMA_VERSION` stays v22
+  (uncommitted/unreleased; the bench clears the cache so a fresh gate
+  recreates). (2) **Capture is miss-only.** `execute-task.ts` computes
+  the PROBE hash with NO `captureInto` (warm path allocates nothing); on
+  a miss, a second `computeTaskHash` with `captureInto` runs right before
+  `cache.save` — the HashCache memos + gitFilesCache OID map make it a
+  fold + array pushes (no re-stat/re-hash I/O), and it runs only where
+  the task is about to spawn a subprocess anyway. The components pass to
+  `cache.save({ inputComponents })` as `{entryHash,kind,name,hash}` rows.
+  (3) **`recordRunBundle({runs,invocation})`** no longer takes/writes
+  `inputs` — per-run recording is runs + the invocation header only.
+  `run.ts` drops the per-task component loop. (4) **`TaskOutcome.
+inputComponents` DROPPED** (the save reads components directly; no
+  outcome plumbing). (5) **Git context cheapened**: `captureGitContext`
+  is ONE spawn (`git rev-parse HEAD --abbrev-ref HEAD` → commit+branch);
+  `dirty` is no longer probed there — it reuses the `git status
+--porcelain` the `GitFilesCache` populate ALREADY runs for input
+  enumeration, surfaced via new `GitFilesCache.worktreeDirty` and passed
+  into `captureGitContext(root, dirty)`. Net ≤1 extra git spawn/run,
+  still behind try/catch. The cache KEY is still byte-identical
+  (`captureInto` remains a pure side-channel of `key()`; the
+  key-unchanged guard test passes) — no `CACHE_VERSION` bump. Tests
+  updated: `cache.test.ts` (entry_inputs populated on save, a
+  warm-run-writes-nothing assertion, idempotent re-save adds nothing,
+  schema-gate recreates `entry_inputs`), `orchestrator.test.ts` (miss
+  writes entry_inputs reachable via `runs.hash`; warm hit adds zero
+  rows but still records its invocation header), `run-context.test.ts`
+  (one-spawn commit+branch, dirty passes straight through). Docs
+  (`dashboard-tier3-2026-06.md` persistence + query sections,
+  `caching.md`, `modules/cache.md`) updated to `entry_inputs` +
+  `runs.hash → entry_inputs[entry_hash]` diff. Phase B's future
+  `cacheKeyDiff` reads `entry_inputs` by the two runs' task hashes (not
+  built). Files: `src/cache/{cache,inputs,layered-cache}.ts`,
+  `src/orchestrator/{execute-task,run,run-context,task-hash,upstream}.ts`,
+  `src/graph/scheduler.ts`. Full root `bun test` 1009 pass/0 fail; CI
+  gate green.
+
 - **2026-06-28**: **Dashboard competitive upgrade — Wave 2: run
   comparison + cache-entry inventory** (continues the competitive-
   research arc; see `docs/design/dashboard-competitive-2026-06.md`). Two

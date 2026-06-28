@@ -7,8 +7,10 @@ export {
   type CacheLayer,
   type CachePolicy,
   FULL_CACHE_POLICY,
+  type InvocationRecord,
   parseCachePolicy,
   type RunRecord,
+  type TaskInputRow,
   WORKSPACE_OUTPUT_PREFIX,
 } from './cache.js'
 export { type CASBackend, FsCASBackend, MemoryCASBackend } from './cas-backend.js'

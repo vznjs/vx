@@ -24,6 +24,7 @@ import type {
   CachePolicy,
   CacheStats,
   IngestMeta,
+  InvocationRecord,
   OutputFileRow,
   PruneOptions,
   PruneResult,
@@ -221,6 +222,10 @@ export class LayeredCache implements CacheLayer {
 
   recordRuns(runs: readonly RunRecord[]): void {
     this.local.recordRuns(runs)
+  }
+
+  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
+    this.local.recordRunBundle(bundle)
   }
 
   stats(): CacheStats {

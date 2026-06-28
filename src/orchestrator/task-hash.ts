@@ -36,6 +36,20 @@ export function createHashCache(): HashCache {
   }
 }
 
+/**
+ * One cache-key component captured at hash time. On a cache MISS the
+ * orchestrator persists these to `entry_inputs` (keyed by the entry
+ * hash, inside the save transaction) so a later run can diff its inputs
+ * against this one (the Tier-3 "why did this re-run?" moat). A cache
+ * HIT never saves, so it captures nothing — the warm path is free.
+ * Mirrors `Cache.key()`'s fold-site rows one-for-one.
+ */
+export interface TaskInputComponent {
+  kind: string
+  name: string
+  hash: string
+}
+
 export interface ComputeHashArgs {
   node: TaskNode
   upstream: TaskOutcome[]
@@ -46,6 +60,14 @@ export interface ComputeHashArgs {
   nestedProjectDirs: string[]
   gitFilesCache?: GitFilesCache
   hashCache?: HashCache
+  /**
+   * When provided, the resolved `CacheKeyInput` components are pushed
+   * here (one per key contribution) so the caller can persist them.
+   * No effect on the returned hash — pure capture of values `key()`
+   * already folds. The push happens inside `cache.key()` at each fold
+   * site, so the recorded set can't drift from the key.
+   */
+  captureInto?: TaskInputComponent[]
 }
 
 /**
@@ -82,12 +104,15 @@ export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
       : {}),
   })
 
-  const upstreamHashes = filterUpstreamHashes(
+  const upstreamPairs = filterUpstreamHashes(
     args.upstream,
     cacheCfg?.inputs?.tasks,
     args.node.projectName,
     args.node.id,
   )
+  const upstreamHashes = upstreamPairs.map(([, hash]) => hash)
+  // hash → upstream task id, for capture-row naming only (not folded).
+  const upstreamIds = new Map(upstreamPairs.map(([id, hash]) => [hash, id]))
   // Trusted index-OID map for this project (populated by the run's
   // bulk `git ls-files -s` + `git status` pass). Mapped files skip
   // hashFile entirely; everything else falls back to the identical
@@ -121,9 +146,11 @@ export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
     inputFiles: resolved.files,
     workspaceRoot: args.workspaceRoot,
     upstreamHashes,
+    upstreamIds,
     workspaceFingerprint: args.workspaceFingerprint,
     forwardArgs: effectiveForwardArgs,
     ...(fileHashes !== undefined ? { fileHashes } : {}),
+    ...(args.captureInto !== undefined ? { captureInto: args.captureInto } : {}),
   })
 }
 

@@ -371,7 +371,7 @@ about.
 ### SQLite tables
 
 ```sql
--- src/cache/cache.ts schema (SCHEMA_VERSION = 'v18')
+-- src/cache/cache.ts schema (SCHEMA_VERSION = 'v22')
 
 CREATE TABLE schema_meta (
   key   TEXT PRIMARY KEY,  -- 'version'
@@ -415,11 +415,79 @@ CREATE INDEX runs_hash       ON runs(hash);
 CREATE INDEX runs_started_at ON runs(started_at);
 CREATE INDEX runs_project    ON runs(project, task);
 CREATE INDEX runs_run_id     ON runs(run_id);
+
+-- v22 (Tier 3): one header row per `vx run` invocation. The `runs`
+-- table is per-task; this is the per-invocation record carrying the
+-- command, git/CI/host context, tags, and run-level counts. Recorded
+-- atomically alongside `runs` via recordRunBundle (one transaction).
+CREATE TABLE invocations (
+  run_id            TEXT PRIMARY KEY,         -- ULID, == runs.run_id
+  command           TEXT NOT NULL,            -- full argv, e.g. "vx run build --all"
+  requested_tasks   TEXT NOT NULL,            -- JSON string[] of options.tasks
+  cache_policy      TEXT NOT NULL,            -- compact flags, e.g. "lR,lW,rR,rW"
+  concurrency       INTEGER NOT NULL,
+  flow              TEXT,                     -- 'focused' | 'broad' | NULL (programmatic)
+  started_at        INTEGER NOT NULL,         -- ms-epoch
+  ended_at          INTEGER NOT NULL,
+  total_duration_ms INTEGER NOT NULL,         -- wall clock of the whole run
+  task_count        INTEGER NOT NULL,         -- non-group, non-aborted tasks recorded
+  failed_count      INTEGER NOT NULL,
+  hit_count         INTEGER NOT NULL,         -- cache-hit + cache-hit-remote
+  hit_local_count   INTEGER NOT NULL,         -- cache-hit
+  hit_remote_count  INTEGER NOT NULL,         -- cache-hit-remote
+  exit_ok           INTEGER NOT NULL,         -- 1 if the run's `ok`
+  commit_sha        TEXT,                     -- nullable: not a git repo / probe failed
+  branch            TEXT,
+  dirty             INTEGER,                  -- 1 if worktree had uncommitted changes
+  ci                INTEGER NOT NULL,         -- 1 if a CI env was detected
+  ci_provider       TEXT,                     -- 'github' | 'gitlab' | 'buildkite' | 'circleci' | 'generic'
+  host              TEXT,                     -- os.hostname()
+  os                TEXT,                     -- process.platform
+  arch              TEXT,                     -- process.arch
+  vx_version        TEXT NOT NULL,
+  tags              TEXT NOT NULL DEFAULT '{}' -- JSON object {k:v} from --tag
+);
+CREATE INDEX invocations_started ON invocations(started_at);
+CREATE INDEX invocations_branch  ON invocations(branch);
+CREATE INDEX invocations_ci      ON invocations(ci);
+
+-- v22 (Tier 3): the input-fingerprint moat. One row per cache-key
+-- component, keyed by the cache-ENTRY hash it belongs to (NOT a run
+-- id). Written INSIDE the entry-save transaction — only on a cache
+-- MISS, never on a hit — via INSERT OR IGNORE. A warm all-cache-hit
+-- run writes nothing here. The "why did this re-run?" diff resolves a
+-- run to its task hash (runs.hash), then anti-joins two entries'
+-- (kind,name,hash) rows in SQL, no app-side recompute. ON DELETE
+-- CASCADE sweeps the rows when a prune drops the entry.
+CREATE TABLE entry_inputs (
+  entry_hash TEXT NOT NULL,          -- == entries.hash / runs.hash
+  kind       TEXT NOT NULL,          -- file|env|runtime|ws-runtime|upstream|package|config|forward|workspace
+  name       TEXT NOT NULL,          -- file: workspace-rel path; env: var name; upstream: task id; …
+  hash       TEXT NOT NULL,          -- the component's contribution to the key
+  PRIMARY KEY (entry_hash, kind, name),
+  FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
+);
 ```
 
 WAL mode is on; readers don't block writers. `PRAGMA busy_timeout =
 5000` makes concurrent `vx run` invocations queue instead of failing
 with `SQLITE_BUSY`.
+
+> **Trust boundary (Tier 3):** `entry_inputs` stores `env` / `runtime`
+> component values verbatim, so a secret read as a cache input can land
+> in `cache.db`. This is consistent with the existing trust boundary —
+> `cache.db` is already a local, gitignored, single-user file that
+> records commands and captured stdout. Redaction / an opt-out
+> (`cache.inputs.env` `secret: true`) is out of scope for Tier 3.
+
+The Tier-3 tables persist components that were **already fed to
+`Cache.key()`** — the cache key derivation is unchanged, so the
+`CACHE_VERSION` is NOT bumped (only `SCHEMA_VERSION` rolls to `v22`).
+Capture happens as a pure side-channel inside the existing `key()` fold
+(`CacheKeyInput.captureInto`), **only on a cache miss** (the warm path
+captures nothing), and the rows are persisted with the entry — so a
+warm all-cache-hit run does no extra hashing, I/O, or DB writes for the
+moat.
 
 ### Why SQLite + on-disk outputs
 
@@ -489,6 +557,20 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
 
 ### History
 
+- **SCHEMA v21 → v22 (no `CACHE_VERSION` bump)**: Tier-3 dashboard
+  tables — `invocations` (one header row per `vx run` with command,
+  git/CI/host context, tags, and run-level counts, recorded with `runs`
+  via `Cache.recordRunBundle`) and `entry_inputs` (one row per cache-key
+  component, keyed by the cache-ENTRY hash — the input-fingerprint
+  moat). `entry_inputs` is written **inside the entry-save transaction,
+  only on a cache miss** (`INSERT OR IGNORE`), so a warm all-cache-hit
+  run writes nothing for the moat — Tier 3 has **zero warm-run cost**.
+  The cache KEY derivation is unchanged: these tables persist components
+  already fed to `Cache.key()` (captured via a pure side-channel,
+  `CacheKeyInput.captureInto`, at the same fold sites — only on a miss),
+  so existing artifacts stay valid and `CACHE_VERSION` stays `v24`. The
+  schema gate drops + recreates on the version mismatch (pre-alpha, no
+  migration).
 - **v23 → v24**: exclude `vx-lock.json` from the input file set
   globally (`ALWAYS_IGNORE` in `cache/inputs.ts`). The lockfile is
   committed, so git enumerates it, but it's vx's own frozen-config

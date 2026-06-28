@@ -5,6 +5,7 @@
 import {
   type CachePolicy,
   FULL_CACHE_POLICY,
+  type InvocationRecord,
   LayeredCache,
   type RunRecord,
 } from '../cache/index.js'
@@ -30,10 +31,25 @@ import { detectColors } from './colors.js'
 import { formatPersistentList } from './framed-output.js'
 import { plan, type RunPlan } from './plan.js'
 import { prepareRun } from './prepare.js'
+import { captureGitContext, captureHostContext, detectCi } from './run-context.js'
 import { startRemotePrefetch } from './remote-prefetch.js'
 import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
 import { formatRunSummary } from './summary.js'
 import type { RunOptions, RunSummary } from './options.js'
+
+/**
+ * Compact the 4-axis cache policy into the `invocations.cache_policy`
+ * column string. Each enabled axis contributes its flag; a fully-on
+ * policy reads `'lR,lW,rR,rW'`. Pure presentation — never affects the key.
+ */
+function compactCachePolicy(p: CachePolicy): string {
+  const parts: string[] = []
+  if (p.localRead) parts.push('lR')
+  if (p.localWrite) parts.push('lW')
+  if (p.remoteRead) parts.push('rR')
+  if (p.remoteWrite) parts.push('rW')
+  return parts.join(',')
+}
 
 export async function run(options: RunOptions): Promise<RunSummary> {
   // Color decision: a custom logger (tests, embedders) handles its
@@ -171,6 +187,15 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     const endedAtMsAtStart = Date.now()
     const remoteCacheEnabled = cache instanceof LayeredCache
     const policy: CachePolicy = options.cache ?? FULL_CACHE_POLICY
+
+    // Per-run context for the Tier-3 `invocations` header row. Captured
+    // ONCE (git is ONE spawn for commit+branch, behind try/catch; never
+    // fails a run). `dirty` reuses the `git status --porcelain` the
+    // GitFilesCache populate already ran for input enumeration — no
+    // second status spawn.
+    const gitContext = captureGitContext(workspaceRoot, gitFilesCache.worktreeDirty)
+    const ciContext = detectCi(process.env)
+    const hostContext = captureHostContext()
 
     // Lazy SRT init: only fire it up if at least one task in the graph
     // opts into sandboxing via its `sandbox: {...}` block. Tasks that
@@ -429,8 +454,16 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // Record each task to the run history in a single SQLite transaction
     // (one fsync instead of N). Group tasks (no `exec`) are skipped —
     // they aren't real runs and the `runs` table is analytics-focused.
+    // One invocation header row is written alongside, atomically via
+    // recordRunBundle. The Tier-3 input-fingerprint rows (entry_inputs)
+    // are NOT built here — they're persisted inside each entry's save
+    // transaction (miss path only), so a warm all-cache-hit run does no
+    // extra recording work.
     const now = endedAtMs
     const toRecord: RunRecord[] = []
+    let failedCount = 0
+    let hitLocalCount = 0
+    let hitRemoteCount = 0
     for (const o of list) {
       if (!o.hash) continue
       if (isGroupTask(o.node)) continue
@@ -453,8 +486,38 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         ...(o.wallclockEndNs !== undefined ? { wallclockEndNs: o.wallclockEndNs } : {}),
         cacheHit: o.status === 'cache-hit' || o.status === 'cache-hit-remote',
       })
+      if (o.status === 'failed') failedCount++
+      if (o.status === 'cache-hit') hitLocalCount++
+      if (o.status === 'cache-hit-remote') hitRemoteCount++
     }
-    cache.recordRuns(toRecord)
+    const invocation: InvocationRecord = {
+      runId,
+      command: options.command ?? process.argv.slice(1).join(' '),
+      requestedTasks: JSON.stringify([...options.tasks]),
+      cachePolicy: compactCachePolicy(policy),
+      concurrency,
+      flow: options.flow ?? null,
+      startedAt: endedAtMsAtStart,
+      endedAt: endedAtMs,
+      totalDurationMs: Math.round(totalMs),
+      taskCount: toRecord.length,
+      failedCount,
+      hitCount: hitLocalCount + hitRemoteCount,
+      hitLocalCount,
+      hitRemoteCount,
+      exitOk: ok,
+      commitSha: gitContext.commitSha,
+      branch: gitContext.branch,
+      dirty: gitContext.dirty,
+      ci: ciContext.ci,
+      ciProvider: ciContext.provider,
+      host: hostContext.host,
+      os: hostContext.os,
+      arch: hostContext.arch,
+      vxVersion: VERSION,
+      tags: JSON.stringify(options.tags ?? {}),
+    }
+    cache.recordRunBundle({ runs: toRecord, invocation })
     // Drain any still-in-flight background prefetches before closing the
     // cache handle — a prefetch ingesting into a closed SQLite DB would
     // throw. Tasks that resolved as local hits never awaited their
