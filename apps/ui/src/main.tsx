@@ -15,6 +15,7 @@ import BOTTLENECKS from './views/bottlenecks.json'
 import TRENDS from './views/trends.json'
 import RUNS from './views/runs.json'
 import RUN_DETAIL from './views/runDetail.json'
+import COMPARE from './views/compare.json'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('#root missing')
@@ -33,6 +34,7 @@ render(
       <Route path="/trends" component={jsonPage(TRENDS)} />
       <Route path="/cache" component={jsonPage(CACHE)} />
       <Route path="/runs/:id" component={jsonPage(RUN_DETAIL)} />
+      <Route path="/compare/:id" component={jsonPage(COMPARE)} />
     </HashRouter>
   ),
   root,

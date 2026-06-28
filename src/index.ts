@@ -145,6 +145,7 @@ export type {
 // Metrics / analytics query layer over cache.db — cloud's /v1/* surface
 // reads from these (the queries stay in core; cloud serves them over HTTP).
 export {
+  compareRuns,
   explainCacheKeyQuery,
   getBottlenecks,
   getCacheBreakdown,

@@ -202,6 +202,43 @@ export interface WhyDidThisRerun {
   note: string
 }
 
+export interface CompareTaskSide {
+  status: string
+  durationMs: number
+  hash: string
+  cacheHit: boolean | null
+  exitCode: number
+}
+
+export interface CompareTaskRow {
+  taskId: string
+  project: string
+  task: string
+  a: CompareTaskSide | null
+  b: CompareTaskSide | null
+  hashChanged: boolean
+  durationDeltaMs: number | null
+  statusChanged: boolean
+}
+
+export interface CompareRuns {
+  runId: string
+  previousRunId: string | null
+  startedAt: number | null
+  prevStartedAt: number | null
+  found: boolean
+  summary: {
+    aTotalMs: number
+    bTotalMs: number
+    totalDeltaMs: number
+    tasksChanged: number
+    tasksOnlyInA: number
+    tasksOnlyInB: number
+  }
+  tasks: CompareTaskRow[]
+  note: string
+}
+
 export interface ServerVersion {
   protocol: string
   vx: string
@@ -265,6 +302,15 @@ export async function whyDidThisRerun(runId: string, taskId: string): Promise<Wh
   return await getJson<WhyDidThisRerun>(
     `/v1/why/${encodeURIComponent(runId)}/${encodeURIComponent(taskId)}`,
   )
+}
+
+/**
+ * Diff a run against the immediately-previous invocation: per-task duration /
+ * status / cache-key deltas. Always resolves (a missing/no-previous run is a
+ * `found: false` body, not an HTTP error).
+ */
+export async function compareRuns(runId: string): Promise<CompareRuns> {
+  return await getJson<CompareRuns>(`/v1/compare/${encodeURIComponent(runId)}`)
 }
 
 export async function getTopTasks(limit = 10): Promise<TopTaskRow[]> {

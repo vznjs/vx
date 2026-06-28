@@ -582,6 +582,151 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
 }
 
 // ---------------------------------------------------------------------------
+// Run comparison — diff a run against the immediately-previous invocation
+// ---------------------------------------------------------------------------
+
+/** One task's outcome on one side of a comparison. */
+export interface CompareTaskSide {
+  status: string
+  durationMs: number
+  hash: string
+  cacheHit: boolean | null
+  exitCode: number
+}
+
+/** A per-task diff row. `a` = this run, `b` = the previous run. */
+export interface CompareTaskRow {
+  taskId: string
+  project: string
+  task: string
+  a: CompareTaskSide | null
+  b: CompareTaskSide | null
+  /** Cache key differs (or the task is only on one side). */
+  hashChanged: boolean
+  /** a.durationMs − b.durationMs; null when either side is absent. */
+  durationDeltaMs: number | null
+  /** Outcome status differs (or the task is only on one side). */
+  statusChanged: boolean
+}
+
+export interface CompareRuns {
+  runId: string
+  previousRunId: string | null
+  startedAt: number | null
+  prevStartedAt: number | null
+  found: boolean
+  summary: {
+    aTotalMs: number
+    bTotalMs: number
+    totalDeltaMs: number
+    tasksChanged: number
+    tasksOnlyInA: number
+    tasksOnlyInB: number
+  }
+  tasks: CompareTaskRow[]
+  note: string
+}
+
+function sideOf(row: RunSummaryRow): CompareTaskSide {
+  return {
+    status: row.status,
+    durationMs: row.durationMs,
+    hash: row.hash,
+    cacheHit: row.cacheHit,
+    exitCode: row.exitCode,
+  }
+}
+
+/**
+ * Compare a run to the immediately-previous invocation (the one with the
+ * largest `started_at` strictly before this run's start). For every task in
+ * either invocation, emit a diff row. Tasks present on only one side carry a
+ * null on the missing side and count as changed.
+ */
+export function compareRuns(db: Database, runId: string): CompareRuns {
+  const aRun = getRun(db, runId)
+  if (!aRun) {
+    return {
+      runId,
+      previousRunId: null,
+      startedAt: null,
+      prevStartedAt: null,
+      found: false,
+      summary: {
+        aTotalMs: 0,
+        bTotalMs: 0,
+        totalDeltaMs: 0,
+        tasksChanged: 0,
+        tasksOnlyInA: 0,
+        tasksOnlyInB: 0,
+      },
+      tasks: [],
+      note: 'no run matching that runId',
+    }
+  }
+  const prev = db
+    .query(
+      `SELECT run_id AS runId, MIN(started_at) AS startedAt
+       FROM runs
+       WHERE run_id IS NOT NULL AND run_id != ? AND started_at < ?
+       GROUP BY run_id
+       ORDER BY MIN(started_at) DESC
+       LIMIT 1`,
+    )
+    .get(runId, aRun.startedAt) as { runId: string; startedAt: number } | undefined
+
+  const bRun = prev ? getRun(db, prev.runId) : null
+
+  // Key by project#task; a run can list a task once per invocation.
+  const byKeyA = new Map(aRun.tasks.map((t) => [`${t.project}#${t.task}`, t]))
+  const byKeyB = new Map((bRun?.tasks ?? []).map((t) => [`${t.project}#${t.task}`, t]))
+  const keys = [...new Set([...byKeyA.keys(), ...byKeyB.keys()])].sort()
+
+  let aTotalMs = 0
+  let bTotalMs = 0
+  let tasksChanged = 0
+  let tasksOnlyInA = 0
+  let tasksOnlyInB = 0
+
+  const tasks: CompareTaskRow[] = keys.map((key) => {
+    const ra = byKeyA.get(key)
+    const rb = byKeyB.get(key)
+    const a = ra ? sideOf(ra) : null
+    const b = rb ? sideOf(rb) : null
+    if (a) aTotalMs += a.durationMs
+    if (b) bTotalMs += b.durationMs
+    const hashChanged = a !== null && b !== null ? a.hash !== b.hash : true
+    const statusChanged = a !== null && b !== null ? a.status !== b.status : true
+    const durationDeltaMs = a !== null && b !== null ? a.durationMs - b.durationMs : null
+    if (!b) tasksOnlyInA++
+    if (!a) tasksOnlyInB++
+    if (hashChanged || statusChanged) tasksChanged++
+    const [project, task] = key.split('#', 2) as [string, string]
+    return { taskId: key, project, task, a, b, hashChanged, durationDeltaMs, statusChanged }
+  })
+
+  return {
+    runId,
+    previousRunId: prev?.runId ?? null,
+    startedAt: aRun.startedAt,
+    prevStartedAt: prev?.startedAt ?? null,
+    found: prev != null,
+    summary: {
+      aTotalMs,
+      bTotalMs,
+      totalDeltaMs: aTotalMs - bTotalMs,
+      tasksChanged,
+      tasksOnlyInA,
+      tasksOnlyInB,
+    },
+    tasks,
+    note: prev
+      ? 'compared against the immediately-previous invocation'
+      : 'no previous invocation to compare against',
+  }
+}
+
+// ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
 

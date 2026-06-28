@@ -85,6 +85,7 @@ export { resolveBackend, resolveCache, subscribeEventSinks } from './plugin-host
 export { workerExecute } from './worker-exec.js'
 export type { WorkerExecArgs, WorkerExecResult } from './worker-exec.js'
 export {
+  compareRuns,
   explainCacheKey as explainCacheKeyQuery,
   getBottlenecks,
   getCacheBreakdown,
@@ -114,6 +115,9 @@ export type {
   CacheProjectRow,
   CacheSavings,
   CacheStatsResult,
+  CompareRuns,
+  CompareTaskRow,
+  CompareTaskSide,
   FailureRow,
   FlakyTask,
   GetHistoryArgs,

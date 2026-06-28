@@ -9,6 +9,7 @@ import path from 'node:path'
 import { mkdir, unlink, writeFile } from 'node:fs/promises'
 import {
   Cache,
+  compareRuns,
   run as runOrchestrator,
   planRun,
   createEventBus,
@@ -188,7 +189,13 @@ export async function startServe(opts: {
             protocol: WIRE_PROTOCOL_VERSION,
             vx: VERSION,
             channels: WIRE_CHANNELS,
-            rpc: ['getCacheStats', 'getRunHistory', 'explainCacheKey', 'whyDidThisRerun'],
+            rpc: [
+              'getCacheStats',
+              'getRunHistory',
+              'explainCacheKey',
+              'whyDidThisRerun',
+              'compareRuns',
+            ],
             workspace: opts.root,
           })
         }
@@ -251,6 +258,15 @@ export async function startServe(opts: {
             const detail = getRun(cache.dbHandle(), decodeURIComponent(m[1]!))
             if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
             return jsonResponse(detail)
+          }
+        }
+        // Diff a run against the immediately-previous invocation — the "why is
+        // this run different" surface. Always 200 (a missing/no-previous run is
+        // a clear shape in the body, not an HTTP error).
+        {
+          const m = /^\/v1\/compare\/([^/]+)$/.exec(url.pathname)
+          if (m) {
+            return jsonResponse(compareRuns(cache.dbHandle(), decodeURIComponent(m[1]!)))
           }
         }
         if (url.pathname === '/v1/cache/stats') {

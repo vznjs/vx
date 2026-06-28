@@ -170,6 +170,37 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-28**: **Dashboard competitive upgrade — Wave 2: run
+  comparison + cache-entry inventory** (continues the competitive-
+  research arc; see `docs/design/dashboard-competitive-2026-06.md`). Two
+  parallel developer agents, disjoint file ownership. (C) **Run
+  comparison** — the Develocity/BuildBuddy "diff two runs" marquee, MVP
+  = a run vs its immediately-previous invocation: new core query
+  `compareRuns(db, runId)` in `metrics.ts` (resolves the prior
+  invocation by `started_at` like `whyDidThisRerun`, emits per-task diff
+  rows `{a, b, hashChanged, durationDeltaMs, statusChanged}` + a
+  summary), exported through `orchestrator/index.ts` + `src/index.ts`
+  (boundary-test snapshot updated); a `GET /v1/compare/:runId` endpoint
+  (cloud `serve.ts`, mirrors `/v1/runs/:id`); a `/#/compare/:id` view
+  with header delta cards (this vs previous total, tone via `gt`) + a
+  task diff `DataTable`; a "Compare to previous" entry card on the Runs
+  page. (D) **Cache-entry inventory** — the Blacksmith "is my key
+  actually hitting?" idea: the Cache page entries table gained a Heat
+  column (cold = written but never re-hit since creation, i.e.
+  `accessedAt − createdAt ≤ 2s`; stale = not hit in 14d), "Cold entries"
+  - "Reclaimable bytes" headline metrics, Age/Last-hit columns, and a
+    `vx cache prune` footnote — all via `functions.ts` `$computed` helpers
+    reusing the existing `cacheEntries` source + `DataTable` dots (no
+    api.ts/data.ts change). Read-only throughout: no CACHE_VERSION/SCHEMA
+    bump. Verified e2e over the Chrome DevTools Protocol against the real
+    cache.db — both `/#/compare/:id` (real prev-run diff, −179ms delta)
+    and the enhanced `/#/cache` render console-clean. Full suite 990 pass/
+    0 fail (1007 across 71 files, incl. new metrics + serve compare
+    tests); lint+oxfmt clean; dist rebuilt once (298 KB / 82 KB gzip).
+    Tier 3 (git/commit context, persisted per-run input fingerprints for
+    a full input-file diff, invocation header table + tags, local-vs-
+    remote hit-rate split) remains a deferred schema-bump follow-up.
+
 - **2026-06-28**: **Dashboard competitive upgrade — Wave 1: cache-miss
   explainability + critical-path cockpit** (owner: "deep research on nx
   cloud nx and turbo repo and others… what features they have in

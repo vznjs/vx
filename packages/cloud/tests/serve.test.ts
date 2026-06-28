@@ -175,6 +175,55 @@ describe('vx serve /v1/* metrics API', () => {
     }
   })
 
+  it('compares a run against the previous invocation via /v1/compare/:runId', async () => {
+    const root = await makeWorkspace()
+    const server = await startServe({ root })
+    try {
+      const backend = serviceBackend(server.origin, captureLogger([]))
+      // Two invocations so the second has a previous one to diff against.
+      await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
+      await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
+
+      const inv = (await (await fetch(`${server.origin}/v1/invocations`)).json()) as {
+        invocations: { runId: string }[]
+      }
+      expect(inv.invocations.length).toBeGreaterThanOrEqual(2)
+      const latest = inv.invocations[0]!.runId
+
+      const cmp = (await (
+        await fetch(`${server.origin}/v1/compare/${encodeURIComponent(latest)}`)
+      ).json()) as {
+        runId: string
+        previousRunId: string | null
+        found: boolean
+        tasks: { taskId: string }[]
+        summary: { aTotalMs: number; bTotalMs: number; totalDeltaMs: number }
+      }
+      expect(cmp.runId).toBe(latest)
+      expect(cmp.found).toBe(true)
+      expect(cmp.previousRunId).not.toBeNull()
+      expect(cmp.tasks.find((t) => t.taskId === 'demo#hello')).toBeTruthy()
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('returns a no-previous-run shape (not an error) for an unknown run id', async () => {
+    const root = await makeWorkspace()
+    const server = await startServe({ root })
+    try {
+      const res = await fetch(`${server.origin}/v1/compare/does-not-exist`)
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { found: boolean; tasks: unknown[] }
+      expect(body.found).toBe(false)
+      expect(body.tasks).toEqual([])
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('returns 404 for an unknown run id', async () => {
     const root = await makeWorkspace()
     const server = await startServe({ root })

@@ -4,6 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { Cache, type RunRecord } from '../src/cache/index.js'
 import {
+  compareRuns,
   explainCacheKeyQuery,
   getBottlenecks,
   getCacheBreakdown,
@@ -254,6 +255,106 @@ describe('whyDidThisRerunQuery', () => {
     withCache((cache) => {
       const result = whyDidThisRerunQuery(cache.dbHandle(), 'r-x', 'pkg#test')
       expect(result.found).toBe(false)
+    })
+  })
+})
+
+describe('compareRuns', () => {
+  it('diffs a run against the immediately-previous invocation', () => {
+    withCache((cache) => {
+      cache.recordRuns([
+        // previous invocation r-1: build (h1, 100ms), test (h2, 200ms)
+        mkRun({
+          hash: 'h1',
+          project: 'pkg',
+          task: 'build',
+          runId: 'r-1',
+          startedAt: 1000,
+          durationMs: 100,
+        }),
+        mkRun({
+          hash: 'h2',
+          project: 'pkg',
+          task: 'test',
+          runId: 'r-1',
+          startedAt: 1100,
+          durationMs: 200,
+        }),
+        // newest invocation r-2: build re-keyed (h3, 150ms), test unchanged key but faster (h2, 120ms)
+        mkRun({
+          hash: 'h3',
+          project: 'pkg',
+          task: 'build',
+          runId: 'r-2',
+          startedAt: 2000,
+          durationMs: 150,
+        }),
+        mkRun({
+          hash: 'h2',
+          project: 'pkg',
+          task: 'test',
+          runId: 'r-2',
+          startedAt: 2100,
+          durationMs: 120,
+        }),
+      ])
+      const cmp = compareRuns(cache.dbHandle(), 'r-2')
+      expect(cmp.found).toBe(true)
+      expect(cmp.previousRunId).toBe('r-1')
+      expect(cmp.summary.aTotalMs).toBe(270)
+      expect(cmp.summary.bTotalMs).toBe(300)
+      expect(cmp.summary.totalDeltaMs).toBe(-30)
+      expect(cmp.tasks.length).toBe(2)
+      const build = cmp.tasks.find((t) => t.taskId === 'pkg#build')!
+      expect(build.hashChanged).toBe(true)
+      expect(build.durationDeltaMs).toBe(50)
+      const test = cmp.tasks.find((t) => t.taskId === 'pkg#test')!
+      expect(test.hashChanged).toBe(false)
+      expect(test.durationDeltaMs).toBe(-80)
+      // build's key changed → tasksChanged counts it; test's key + status held.
+      expect(cmp.summary.tasksChanged).toBe(1)
+    })
+  })
+
+  it('flags tasks present on only one side as changed', () => {
+    withCache((cache) => {
+      cache.recordRuns([
+        mkRun({ hash: 'h1', project: 'pkg', task: 'build', runId: 'r-1', startedAt: 1000 }),
+        // r-2 drops build and adds lint
+        mkRun({ hash: 'h2', project: 'pkg', task: 'lint', runId: 'r-2', startedAt: 2000 }),
+      ])
+      const cmp = compareRuns(cache.dbHandle(), 'r-2')
+      expect(cmp.found).toBe(true)
+      const lint = cmp.tasks.find((t) => t.taskId === 'pkg#lint')!
+      expect(lint.b).toBeNull()
+      expect(lint.hashChanged).toBe(true)
+      expect(lint.durationDeltaMs).toBeNull()
+      const build = cmp.tasks.find((t) => t.taskId === 'pkg#build')!
+      expect(build.a).toBeNull()
+      expect(cmp.summary.tasksOnlyInA).toBe(1)
+      expect(cmp.summary.tasksOnlyInB).toBe(1)
+    })
+  })
+
+  it('reports no previous invocation when this is the only run', () => {
+    withCache((cache) => {
+      cache.recordRun(
+        mkRun({ hash: 'h1', project: 'pkg', task: 'build', runId: 'r-1', startedAt: 1000 }),
+      )
+      const cmp = compareRuns(cache.dbHandle(), 'r-1')
+      expect(cmp.found).toBe(false)
+      expect(cmp.previousRunId).toBeNull()
+      // The run itself is still resolved (its own tasks are listed, b = null).
+      expect(cmp.tasks.length).toBe(1)
+      expect(cmp.tasks[0]!.b).toBeNull()
+    })
+  })
+
+  it('returns found=false with no tasks for an unknown runId', () => {
+    withCache((cache) => {
+      const cmp = compareRuns(cache.dbHandle(), 'nope')
+      expect(cmp.found).toBe(false)
+      expect(cmp.tasks).toEqual([])
     })
   })
 })

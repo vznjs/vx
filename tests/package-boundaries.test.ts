@@ -70,6 +70,7 @@ describe('package boundaries', () => {
       'WIRE_PROTOCOL_VERSION',
       'buildTaskGraph',
       'clientMessageToEnvelope',
+      'compareRuns',
       'computeTaskHash',
       'createEventBus',
       'createHashCache',

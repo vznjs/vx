@@ -178,6 +178,55 @@
         ]
       },
       {
+        "type": "Grid",
+        "props": {
+          "variant": "metrics-4"
+        },
+        "visible": {
+          "$state": "/entriesStatus",
+          "eq": "ok"
+        },
+        "children": [
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Cold entries",
+              "value": {
+                "$computed": "fmtNumber",
+                "args": {
+                  "n": {
+                    "$computed": "countCold",
+                    "args": {
+                      "arr": {
+                        "$state": "/entries"
+                      }
+                    }
+                  }
+                }
+              },
+              "sub": "written, never re-hit",
+              "tone": "warn"
+            }
+          },
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Reclaimable",
+              "value": {
+                "$computed": "coldBytes",
+                "args": {
+                  "arr": {
+                    "$state": "/entries"
+                  }
+                }
+              },
+              "sub": "size of cold entries",
+              "tone": "warn"
+            }
+          }
+        ]
+      },
+      {
         "type": "Card",
         "props": {
           "title": "Entries",
@@ -188,15 +237,21 @@
             "type": "DataTable",
             "props": {
               "rows": {
-                "$state": "/entries"
+                "$computed": "coldEntries",
+                "args": {
+                  "arr": {
+                    "$state": "/entries"
+                  }
+                }
               },
               "filter": true,
               "filterFrom": [
                 "project",
                 "task",
-                "hash"
+                "hash",
+                "_heat"
               ],
-              "filterPlaceholder": "filter by task or hash…",
+              "filterPlaceholder": "filter by task, hash, or cold/stale/warm…",
               "initialSort": {
                 "key": "sizeBytes",
                 "desc": true
@@ -204,6 +259,17 @@
               "rowTaskRef": {},
               "emptyTitle": "No matching entries",
               "columns": [
+                {
+                  "key": "_heat",
+                  "label": "Heat",
+                  "kind": "dots",
+                  "dots": [
+                    {
+                      "field": "_heatToken",
+                      "map": "failureMode"
+                    }
+                  ]
+                },
                 {
                   "key": "task",
                   "label": "Task",
@@ -231,7 +297,7 @@
                 },
                 {
                   "key": "createdAt",
-                  "label": "Created",
+                  "label": "Age",
                   "align": "right",
                   "kind": "relativeTime",
                   "baseTone": "faint",
@@ -239,7 +305,7 @@
                 },
                 {
                   "key": "accessedAt",
-                  "label": "Accessed",
+                  "label": "Last hit",
                   "align": "right",
                   "kind": "relativeTime",
                   "baseTone": "faint",
@@ -249,6 +315,14 @@
             }
           }
         ]
+      },
+      {
+        "type": "Text",
+        "props": {
+          "text": "Cold = written but never restored since creation (accessed ≈ created). These cache keys never paid off — review inputs or prune with `vx cache prune`.",
+          "tone": "faint",
+          "class": "px-1"
+        }
       }
     ]
   }
