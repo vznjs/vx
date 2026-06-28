@@ -31,6 +31,7 @@ const { registry } = defineRegistry(catalog, {
     Treemap: C.Treemap,
     Heatmap: C.Heatmap,
     Flamegraph: C.Flamegraph,
+    RunGraph: C.RunGraph,
     DataTable: C.DataTable,
     RankList: C.RankList,
     LiveActivity: C.LiveActivity,

@@ -10,40 +10,16 @@
 
 import { For, Show, batch, createMemo, createResource, createSignal, onCleanup, onMount } from 'solid-js'
 import { type GraphNode, type RunSummaryRow, type WireEvent, getGraph, getOrigin, getHistory, getVersion, runTasks } from '../api.ts'
-import { layoutGraph } from '../run-graph-layout.ts'
 import { criticalPath, parallelism } from './critical-path.ts'
 import { Flamegraph as FlameView } from './Flamegraph.tsx'
+import { RunGraph, type RunGraphState } from './RunGraph.tsx'
 import { EmptyState } from './ui.tsx'
-
-const NODE_W = 178
-const NODE_H = 56
-const COL_GAP = 60
-const ROW_GAP = 16
 
 type NodeState = 'queued' | 'running' | 'success' | 'cache-hit' | 'failed' | 'skipped' | 'aborted'
 interface NodeStatus {
   state: NodeState
   durationMs?: number
   exitCode?: number
-}
-
-const STATE_STYLE: Record<NodeState, string> = {
-  queued: 'border-border bg-surface text-fg-3',
-  running: 'border-accent/60 bg-accent/10 text-fg-1 shadow-glow',
-  success: 'border-success/50 bg-success/10 text-fg-1',
-  'cache-hit': 'border-cache-local/50 bg-cache-local/10 text-fg-1',
-  failed: 'border-danger/60 bg-danger/10 text-fg-1',
-  skipped: 'border-warn/50 bg-warn/10 text-fg-2',
-  aborted: 'border-border bg-surface-2 text-fg-3',
-}
-const STATE_ICON: Record<NodeState, string> = {
-  queued: 'i-tabler-circle-dashed text-fg-3',
-  running: 'i-tabler-loader-2 animate-spin text-accent',
-  success: 'i-tabler-circle-check text-success',
-  'cache-hit': 'i-tabler-bolt text-cache-local',
-  failed: 'i-tabler-circle-x text-danger',
-  skipped: 'i-tabler-circle-minus text-warn',
-  aborted: 'i-tabler-ban text-fg-3',
 }
 
 function mapStatus(status: string): NodeState {
@@ -89,8 +65,6 @@ export function RunConsole() {
     onCleanup(() => clearInterval(id))
   })
 
-  const layout = createMemo(() => layoutGraph(nodes()))
-
   // Per-node duration (ms): the reported duration once complete, else the live
   // elapsed time for a running task, else 0 (queued). Recomputes as `now` ticks
   // so the critical path grows during the run and settles on completion.
@@ -108,14 +82,6 @@ export function RunConsole() {
     return criticalPath(nodes(), durationOf)
   })
   const criticalSet = createMemo(() => new Set(critical().chain))
-  // Adjacent (dep → dependent) pairs on the chain, keyed "dep>dependent", so an
-  // edge can light up only when it actually lies on the critical path.
-  const criticalEdges = createMemo(() => {
-    const c = critical().chain
-    const s = new Set<string>()
-    for (let i = 1; i < c.length; i++) s.add(`${c[i - 1]}>${c[i]}`)
-    return s
-  })
 
   // Observed concurrency from the live per-task windows.
   const parallel = createMemo(() => {
@@ -334,100 +300,30 @@ export function RunConsole() {
         }
       >
         <div class="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 min-h-0">
-          {/* DAG */}
-          <div class="rounded-xl border border-border bg-surface/40 overflow-auto p-5 min-h-0">
+          {/* DAG / flamegraph */}
+          <div class="rounded-xl border border-border bg-surface/40 overflow-hidden min-h-0 relative">
             <Show when={view() === 'flame'}>
-              <Show when={flameRows().length > 0} fallback={<div class="text-fg-3 text-sm p-4">Waiting for tasks…</div>}>
-                <FlameView
-                  tasks={flameRows()}
-                  selectedId={selected() ?? undefined}
-                  highlightIds={criticalSet()}
-                  onSelect={(t) => setSelected(`${t.project}#${t.task}`)}
-                />
-              </Show>
+              <div class="overflow-auto p-5 h-full">
+                <Show when={flameRows().length > 0} fallback={<div class="text-fg-3 text-sm p-4">Waiting for tasks…</div>}>
+                  <FlameView
+                    tasks={flameRows()}
+                    selectedId={selected() ?? undefined}
+                    highlightIds={criticalSet()}
+                    onSelect={(t) => setSelected(`${t.project}#${t.task}`)}
+                  />
+                </Show>
+              </div>
             </Show>
             <Show when={view() === 'graph'}>
               <Show when={nodes().length > 0} fallback={<div class="text-fg-3 text-sm p-4">Resolving graph…</div>}>
-                <div
-                  class="relative"
-                style={{
-                  width: `${layout().layerCount * (NODE_W + COL_GAP)}px`,
-                  height: `${Math.max(1, layout().maxRows) * (NODE_H + ROW_GAP)}px`,
-                }}
-              >
-                {/* edges */}
-                <svg class="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
-                  <For each={nodes()}>
-                    {(n) => {
-                      const to = () => layout().nodes.get(n.id)
-                      return (
-                        <For each={n.deps}>
-                          {(depId) => {
-                            const from = () => layout().nodes.get(depId)
-                            return (
-                              <Show when={from() && to()}>
-                                {(() => {
-                                  const sx = from()!.layer * (NODE_W + COL_GAP) + NODE_W
-                                  const sy = from()!.row * (NODE_H + ROW_GAP) + NODE_H / 2
-                                  const tx = to()!.layer * (NODE_W + COL_GAP)
-                                  const ty = to()!.row * (NODE_H + ROW_GAP) + NODE_H / 2
-                                  const mx = (sx + tx) / 2
-                                  const onPath = criticalEdges().has(`${depId}>${n.id}`)
-                                  return (
-                                    <path
-                                      d={`M ${sx},${sy} C ${mx},${sy} ${mx},${ty} ${tx},${ty}`}
-                                      fill="none"
-                                      class={onPath ? 'stroke-warn/80' : 'stroke-border-strong'}
-                                      stroke-width={onPath ? 2.5 : 1.5}
-                                    />
-                                  )
-                                })()}
-                              </Show>
-                            )
-                          }}
-                        </For>
-                      )
-                    }}
-                  </For>
-                </svg>
-                {/* nodes */}
-                <For each={nodes()}>
-                  {(n) => {
-                    const pos = () => layout().nodes.get(n.id)
-                    const st = () => statuses()[n.id]?.state ?? 'queued'
-                    return (
-                      <Show when={pos()}>
-                        <button
-                          onClick={() => setSelected(n.id)}
-                          class={`absolute rounded-lg border px-3 py-2 text-left transition-all flex flex-col justify-center gap-0.5 ${STATE_STYLE[st()]}`}
-                          classList={{
-                            'ring-2 ring-accent ring-offset-2 ring-offset-bg': selected() === n.id,
-                            'ring-2 ring-warn/70 ring-offset-2 ring-offset-bg': selected() !== n.id && criticalSet().has(n.id),
-                          }}
-                          style={{
-                            left: `${pos()!.layer * (NODE_W + COL_GAP)}px`,
-                            top: `${pos()!.row * (NODE_H + ROW_GAP)}px`,
-                            width: `${NODE_W}px`,
-                            height: `${NODE_H}px`,
-                          }}
-                          title={n.id}
-                        >
-                          <div class="flex items-center gap-1.5 min-w-0">
-                            <span class={`${STATE_ICON[st()]} text-sm shrink-0`} />
-                            <span class="font-mono text-[12px] truncate">{n.task}</span>
-                          </div>
-                          <div class="flex items-center gap-1.5 text-[10px] text-fg-3 font-mono">
-                            <span class="truncate">{n.project}</span>
-                            <Show when={statuses()[n.id]?.durationMs !== undefined}>
-                              <span class="ml-auto shrink-0">{fmtDur(statuses()[n.id]?.durationMs)}</span>
-                            </Show>
-                          </div>
-                        </button>
-                      </Show>
-                    )
-                  }}
-                </For>
-                </div>
+                <RunGraph
+                  nodes={nodes()}
+                  stateOf={(id) => (statuses()[id]?.state ?? 'queued') as RunGraphState}
+                  durationOf={durationOf}
+                  selectedId={selected()}
+                  highlightIds={criticalSet()}
+                  onSelect={setSelected}
+                />
               </Show>
             </Show>
           </div>

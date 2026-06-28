@@ -210,6 +210,28 @@
       {
         "type": "Card",
         "props": {
+          "title": "Graph",
+          "actionText": "drag to pan · scroll to zoom · click a node",
+          "noPad": true
+        },
+        "visible": {
+          "$state": "/runStatus",
+          "eq": "ok"
+        },
+        "children": [
+          {
+            "type": "RunGraph",
+            "props": {
+              "rows": {
+                "$state": "/run/tasks"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
           "title": "Timeline",
           "actionText": "click a bar for details"
         },

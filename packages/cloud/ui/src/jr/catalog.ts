@@ -25,6 +25,7 @@ export const catalog = defineCatalog(schema, {
     Treemap: anyProps(),
     Heatmap: anyProps(),
     Flamegraph: anyProps(),
+    RunGraph: anyProps(),
     DataTable: anyProps(),
     RankList: anyProps(),
     LiveActivity: anyProps(),

@@ -9,13 +9,14 @@
 // CPU%, chart field extraction, truncation) lives HERE, so the pages stay pure
 // JSON.
 
-import { For, Show, type JSX, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
+import { For, Show, type JSX, createMemo, createResource, createSignal, onCleanup, onMount } from 'solid-js'
 import { type BaseComponentProps, useStateBinding } from '@json-render/solid'
 import { A, useNavigate } from '@solidjs/router'
-import { type RunSummaryRow, subscribeEvents } from '../api.ts'
+import { type RunSummaryRow, getGraph, subscribeEvents } from '../api.ts'
 import { HBar, Heatmap as HeatmapPrimitive, LineChart as LineChartPrimitive, Treemap as TreemapPrimitive } from '../components/charts.tsx'
 import { Card as UiCard, EmptyState, MetricCard, StatusBadge } from '../components/ui.tsx'
 import { Flamegraph as FlamegraphPrimitive } from '../components/Flamegraph.tsx'
+import { RunGraph as RunGraphPrimitive, type RunGraphNode, type RunGraphState } from '../components/RunGraph.tsx'
 import { formatHour, paletteFor } from '../format.ts'
 import { type FormatHint, type Tone, axisFormatter, formatValue, toneText } from './hints.ts'
 
@@ -206,6 +207,78 @@ export function Flamegraph(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: st
     return s ? `${s.project}#${s.task}` : undefined
   }
   return <FlamegraphPrimitive tasks={c.props.rows ?? []} selectedId={selectedId()} onSelect={(t) => setSelected(t)} />
+}
+
+// Map a recorded outcome status to a graph display state.
+function recordedState(status: string, cacheHit: boolean): RunGraphState {
+  if (status === 'failed') return 'failed'
+  if (status === 'cache-hit' || status === 'cache-hit-remote' || cacheHit) return 'cache-hit'
+  if (status === 'skipped') return 'skipped'
+  if (status === 'aborted') return 'aborted'
+  return 'success'
+}
+
+// Interactive run DAG for a RECORDED run: the structure (nodes + edges) is
+// rebuilt from the workspace via /v1/graph using the run's task ids, then the
+// recorded per-task status/duration is overlaid. Clicking a node writes the
+// matching task to `/selectedTask` (same binding the Flamegraph + Facts panel
+// use). The graph needs a colocated workspace (a local `vx-cloud serve`); when
+// served remotely /v1/graph declines and we show a clear hint.
+export function RunGraph(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string }>) {
+  const [selected, setSelected] = useStateBinding<RunSummaryRow>(c.props.selectKey ?? '/selectedTask')
+  const rows = (): readonly RunSummaryRow[] => c.props.rows ?? []
+  const rowById = createMemo(() => {
+    const m = new Map<string, RunSummaryRow>()
+    for (const r of rows()) m.set(`${r.project}#${r.task}`, r)
+    return m
+  })
+  // Refetch the graph whenever the recorded task set changes (by id).
+  const specs = createMemo(() => Array.from(rowById().keys()))
+  const [graph] = createResource(specs, async (s) => {
+    if (s.length === 0) return []
+    try {
+      return await getGraph(s)
+    } catch {
+      return []
+    }
+  })
+  const nodes = createMemo<RunGraphNode[]>(() =>
+    (graph() ?? []).map((g) => ({ id: g.id, project: g.project, task: g.task, isGroup: g.isGroup, deps: g.deps })),
+  )
+  const stateOf = (id: string): RunGraphState => {
+    const r = rowById().get(id)
+    return r ? recordedState(r.status, r.cacheHit === true) : 'queued'
+  }
+  const selectedId = () => {
+    const s = selected()
+    return s ? `${s.project}#${s.task}` : null
+  }
+  return (
+    <Show when={!graph.loading} fallback={<div class="p-6 text-fg-3 text-sm">Resolving graph…</div>}>
+      <Show
+        when={nodes().length > 0}
+        fallback={
+          <EmptyState
+            title="Graph unavailable"
+            hint="The run graph is rebuilt from the workspace — run vx-cloud serve in the project to view it."
+          />
+        }
+      >
+        <div class="h-[460px] w-full">
+          <RunGraphPrimitive
+            nodes={nodes()}
+            stateOf={stateOf}
+            durationOf={(id) => rowById().get(id)?.durationMs}
+            selectedId={selectedId()}
+            onSelect={(id) => {
+              const r = rowById().get(id)
+              if (r) setSelected(r)
+            }}
+          />
+        </div>
+      </Show>
+    </Show>
+  )
 }
 
 // --- DataTable --------------------------------------------------------------
