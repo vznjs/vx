@@ -22,7 +22,6 @@ import { ulid, UserError } from '../util/index.js'
 import { executeTask } from './execute-task.js'
 import { computeTaskHash } from './task-hash.js'
 import { busLogger, createEventBus, terminalSubscriber } from './events.js'
-import { attachOtelEmit } from './otel-emit.js'
 import { installPlugins } from './plugin.js'
 import type { VxPlugin } from './plugin.js'
 import { subscribeEventSinks } from './plugin-host.js'
@@ -75,16 +74,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const bus = options.bus ?? createEventBus()
   bus.subscribe(terminalSubscriber(sink))
   const log = busLogger(bus)
-
-  // Native OTel CI/CD-conventions emit (core, no bridge package). When
-  // OTEL_EXPORTER_OTLP_ENDPOINT is set AND the @opentelemetry/*
-  // optional peer deps are installed, every event flows to OTLP.
-  // Missing deps = silent skip; never blocks a run.
-  let detachOtel: (() => void) | undefined
-  if (options.log === undefined) {
-    const stop = await attachOtelEmit(bus)
-    if (stop) detachOtel = stop
-  }
 
   const prepared = await prepareRun(options, log)
   if (prepared.empty !== null) {
@@ -655,7 +644,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     disposePlugins?.()
     disposeSinks?.()
     telemetry?.dispose()
-    detachOtel?.()
   }
 }
 
