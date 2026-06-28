@@ -26,6 +26,9 @@ import { attachOtelEmit } from './otel-emit.js'
 import { installPlugins } from './plugin.js'
 import type { VxPlugin } from './plugin.js'
 import { subscribeEventSinks } from './plugin-host.js'
+import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
+import { deriveCacheSource, TELEMETRY_SCHEMA_VERSION } from './telemetry.js'
+import type { RunContextRecord, RunSummaryRecord, TaskTelemetry } from './telemetry.js'
 import { defaultLogger, resolveOutputView } from './logger.js'
 import { detectColors } from './colors.js'
 import { formatPersistentList } from './framed-output.js'
@@ -106,6 +109,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // breaks a run). With no plugin, both are no-ops.
   let disposePlugins: (() => void) | undefined
   let disposeSinks: (() => void) | undefined
+  let telemetry: TelemetryHandle | undefined
   if (prepared.workspaceConfig?.plugins && prepared.workspaceConfig.plugins.length > 0) {
     const plugins = prepared.workspaceConfig.plugins as readonly VxPlugin[]
     const pluginCtx = {
@@ -196,6 +200,42 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     const gitContext = captureGitContext(workspaceRoot, gitFilesCache.worktreeDirty)
     const ciContext = detectCi(process.env)
     const hostContext = captureHostContext()
+
+    // The canonical run-context record — the same git/CI/host data the
+    // invocation header uses, shaped as the telemetry export contract.
+    // Built + consulted ONLY when plugins are declared (an explicit opt-in),
+    // and BEFORE run:start is emitted so a sink catches the whole stream.
+    // subscribeTelemetry returns undefined when no sink is contributed (no
+    // telemetry plugin, or all declined — e.g. otel() with no OTLP endpoint),
+    // so a plain run does ZERO extra work: no record allocation, no bus
+    // subscriber, no summary building. The hot path stays off-limits.
+    let runContextRecord: RunContextRecord | undefined
+    if (prepared.workspaceConfig?.plugins && prepared.workspaceConfig.plugins.length > 0) {
+      runContextRecord = {
+        runId,
+        vxVersion: VERSION,
+        command: options.command ?? process.argv.slice(1).join(' '),
+        requestedTasks: [...options.tasks],
+        cachePolicy: compactCachePolicy(policy),
+        concurrency,
+        flow: options.flow ?? null,
+        commitSha: gitContext.commitSha,
+        branch: gitContext.branch,
+        dirty: gitContext.dirty,
+        ci: ciContext.ci,
+        ciProvider: ciContext.provider,
+        host: hostContext.host,
+        os: hostContext.os,
+        arch: hostContext.arch,
+        tags: options.tags ?? {},
+      }
+      telemetry = await subscribeTelemetry(
+        prepared.workspaceConfig.plugins as readonly VxPlugin[],
+        bus,
+        { workspaceRoot, cacheDir, warn: (m: string) => log.status(m) },
+        runContextRecord,
+      )
+    }
 
     // Lazy SRT init: only fire it up if at least one task in the graph
     // opts into sandboxing via its `sandbox: {...}` block. Tasks that
@@ -461,6 +501,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // extra recording work.
     const now = endedAtMs
     const toRecord: RunRecord[] = []
+    // Per-task telemetry mirrors `toRecord` 1:1 — built only when a
+    // telemetry sink is active, so a no-telemetry run allocates nothing.
+    const summaryTasks: TaskTelemetry[] = []
     let failedCount = 0
     let hitLocalCount = 0
     let hitRemoteCount = 0
@@ -469,6 +512,23 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       if (isGroupTask(o.node)) continue
       // aborted (killed by a shutdown signal) isn't a real run.
       if (o.status === 'aborted') continue
+      if (telemetry !== undefined) {
+        const t: TaskTelemetry = {
+          taskId: o.node.id,
+          project: o.node.projectName,
+          task: o.node.taskName,
+          status: o.status,
+          cacheSource: deriveCacheSource(o.status),
+          exitCode: o.exitCode,
+          durationMs: o.durationMs,
+        }
+        if (o.hash !== undefined) t.hash = o.hash
+        if (o.cpuMs !== undefined) t.cpuMs = o.cpuMs
+        if (o.peakRssBytes !== undefined) t.peakRssBytes = o.peakRssBytes
+        if (o.wallclockStartNs !== undefined) t.wallclockStartNs = o.wallclockStartNs.toString()
+        if (o.wallclockEndNs !== undefined) t.wallclockEndNs = o.wallclockEndNs.toString()
+        summaryTasks.push(t)
+      }
       toRecord.push({
         hash: o.hash,
         project: o.node.projectName,
@@ -529,6 +589,29 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       tags: JSON.stringify(options.tags ?? {}),
     }
     cache.recordRunBundle({ runs: toRecord, invocation })
+    // Hand the per-run summary to the telemetry sinks + drain them. Only
+    // when a sink is active (telemetry !== undefined) — otherwise this
+    // whole block is skipped and the run is byte-identical to before.
+    // emitSummary/flush are crash-isolated, so a faulty sink can't fail
+    // the run; flush is the sink's last chance to ship buffered records.
+    if (telemetry !== undefined && runContextRecord !== undefined) {
+      const summary: RunSummaryRecord = {
+        v: TELEMETRY_SCHEMA_VERSION,
+        run: runContextRecord,
+        startedAt: endedAtMsAtStart,
+        endedAt: endedAtMs,
+        totalDurationMs: Math.round(totalMs),
+        taskCount: toRecord.length,
+        failedCount,
+        hitCount: hitLocalCount + hitRemoteCount,
+        hitLocalCount,
+        hitRemoteCount,
+        exitOk: ok,
+        tasks: summaryTasks,
+      }
+      telemetry.emitSummary(summary)
+      await telemetry.flush()
+    }
     // Drain any still-in-flight background prefetches before closing the
     // cache handle — a prefetch ingesting into a closed SQLite DB would
     // throw. Tasks that resolved as local hits never awaited their
@@ -571,6 +654,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // released here. Idempotent; safe even if installPlugins threw.
     disposePlugins?.()
     disposeSinks?.()
+    telemetry?.dispose()
     detachOtel?.()
   }
 }

@@ -1,0 +1,331 @@
+// The telemetry contract — THE canonical, versioned data-export shape.
+//
+// This is the one neutral boundary the observability/integration design
+// (docs/design/observability-architecture-2026-06.md) is built around.
+// Core projects its live `RunEvent` stream into these records ONCE, in
+// one place (`createTelemetrySource`), and hands them to every registered
+// `TelemetrySink`. Exporters (OTel, a manual HTTP POST, vx-cloud) all read
+// the SAME records — with the analytics fields + git/CI context already
+// folded in — instead of each re-deriving an ad-hoc shape from the raw,
+// rendering-oriented `WireEvent` stream.
+//
+// A sink is observe-only BY CONSTRUCTION: its only input is an immutable
+// record; its `TelemetryContext` carries read-only metadata and NO mutable
+// run handle (no bus, no Cache, no RunRequest). There is no API path from a
+// sink back into scheduling/caching/exec — telemetry provably cannot change
+// what or how tasks run. Contrast `backend`/`cache`, which return objects
+// core calls INTO; those are the behavior capabilities, kept separate.
+
+import type { TaskStatus } from '../graph/index.js'
+import type { RunEvent, RunEventSubscriber } from './events.js'
+
+/** Bumped when the record shape changes. Readers MUST check `v`. */
+export const TELEMETRY_SCHEMA_VERSION = 1
+
+/** Where a task's result came from, derived ONCE in core from the status. */
+export type CacheSource = 'miss' | 'local' | 'remote' | 'none'
+
+/**
+ * Map a task outcome status to its cache source. `success`/`failed` ran
+ * (a miss as far as the cache read is concerned); the two cache-hit
+ * statuses restored from local/remote; `skipped`/`aborted` never engaged
+ * the cache. Pure function — the single place this mapping is decided, so
+ * no consumer re-implements `status LIKE 'cache-hit%'`.
+ */
+export function deriveCacheSource(status: TaskStatus): CacheSource {
+  switch (status) {
+    case 'cache-hit':
+      return 'local'
+    case 'cache-hit-remote':
+      return 'remote'
+    case 'success':
+    case 'failed':
+      return 'miss'
+    case 'skipped':
+    case 'aborted':
+      return 'none'
+  }
+}
+
+/** Identifies which run a record belongs to + its captured context. Maps
+ *  cleanly onto OTel CI/CD + VCS resource attributes. */
+export interface RunContextRecord {
+  /** ULID, shared by every record in one `vx run`. */
+  runId: string
+  vxVersion: string
+  /** The invocation command line (process.argv-derived). */
+  command: string
+  requestedTasks: readonly string[]
+  /** Compact cache-policy flags, e.g. `'lR,lW,rR,rW'`. */
+  cachePolicy: string
+  concurrency: number
+  flow: 'focused' | 'broad' | null
+  // git / CI / host — straight from run-context.ts.
+  commitSha: string | null
+  branch: string | null
+  dirty: boolean | null
+  ci: boolean
+  ciProvider: string | null
+  host: string | null
+  os: string
+  arch: string
+  /** `--tag k=v` pairs. */
+  tags: Readonly<Record<string, string>>
+}
+
+/** Denormalized per-task analytics — shared by the streaming `task.end`
+ *  record and the per-run summary's `tasks[]`. */
+export interface TaskTelemetry {
+  taskId: string
+  project: string
+  task: string
+  status: TaskStatus
+  cacheSource: CacheSource
+  exitCode: number
+  durationMs: number
+  hash?: string
+  cpuMs?: number
+  peakRssBytes?: number
+  /** bigint hrtime ns relative to run t=0, encoded as a decimal string. */
+  wallclockStartNs?: string
+  wallclockEndNs?: string
+}
+
+/**
+ * A streaming telemetry record — one per lifecycle event. A superset of the
+ * rendering-oriented `WireEvent`: it carries the run context + the per-task
+ * analytics fields a consumer needs WITHOUT re-deriving from the stream.
+ * `task.log` records are large and OPT-IN (see `TelemetrySink.wants`).
+ */
+export type TelemetryRecord =
+  | { v: number; kind: 'run.start'; run: RunContextRecord; total: number; ts: number }
+  | {
+      v: number
+      kind: 'task.start'
+      runId: string
+      taskId: string
+      project: string
+      task: string
+      command?: string
+      ts: number
+    }
+  | {
+      v: number
+      kind: 'task.log'
+      runId: string
+      taskId: string
+      stream: 'stdout' | 'stderr'
+      chunk: string
+      ts: number
+    }
+  | ({ v: number; kind: 'task.end'; runId: string; ts: number } & TaskTelemetry)
+  | { v: number; kind: 'run.end'; runId: string; ts: number }
+
+/**
+ * A per-run SUMMARY record — the denormalized invocation header plus the
+ * per-task outcome list, emitted once at run:end. An ingesting store can
+ * persist a whole run in one write without replaying the stream. The
+ * manual-API exporter + cloud ingest primarily speak this shape.
+ */
+export interface RunSummaryRecord {
+  v: number
+  run: RunContextRecord
+  startedAt: number
+  endedAt: number
+  totalDurationMs: number
+  taskCount: number
+  failedCount: number
+  hitCount: number
+  hitLocalCount: number
+  hitRemoteCount: number
+  exitOk: boolean
+  tasks: readonly TaskTelemetry[]
+}
+
+/** A telemetry consumer. Observe-only: receives records, holds no run handle. */
+export interface TelemetrySink {
+  readonly name?: string
+  /**
+   * Which streaming record kinds to receive. Default (undefined): all
+   * EXCEPT `task.log` (large; most sinks don't want build-log chunks).
+   * The source checks this before projecting/cloning, so a sink pays
+   * nothing for kinds it declines.
+   */
+  readonly wants?: ReadonlyArray<TelemetryRecord['kind']>
+  /** A streaming record. MUST return promptly — buffer; do NOT await I/O. */
+  onRecord?(record: TelemetryRecord): void
+  /** The per-run summary, at run:end. MUST return promptly. */
+  onRunSummary?(summary: RunSummaryRecord): void
+  /** Drain buffered data. Awaited (time-bounded by the sink) at run:end. */
+  flush?(): Promise<void>
+}
+
+/** Read-only context a sink is created with. No mutable run handle — the
+ *  isolation guarantee is structural. */
+export interface TelemetryContext {
+  readonly workspaceRoot: string
+  /** A STRING, not a Cache handle — a sink cannot reach the cache. */
+  readonly cacheDir: string
+  warn(message: string): void
+}
+
+/** A live telemetry source: a bus subscriber + the run-summary emit + flush. */
+export interface TelemetrySource {
+  /** Subscribe this to the run event bus to stream records to the sinks. */
+  readonly subscriber: RunEventSubscriber
+  /** Fan the per-run summary to every sink's `onRunSummary` (crash-isolated). */
+  emitSummary(summary: RunSummaryRecord): void
+  /** Await every sink's `flush()` (each crash-isolated). */
+  flush(): Promise<void>
+}
+
+const DEFAULT_KINDS: ReadonlyArray<TelemetryRecord['kind']> = [
+  'run.start',
+  'task.start',
+  'task.end',
+  'run.end',
+]
+
+/**
+ * Build a telemetry source over a fixed set of sinks. The returned
+ * `subscriber` projects each `RunEvent` into a `TelemetryRecord` and fans
+ * it to the sinks that want its kind, under crash isolation (a throwing
+ * sink is disabled for the rest of the run, never propagating into the
+ * orchestrator). `task.log` is projected ONLY if some sink opted in — so
+ * the large-payload path costs nothing by default.
+ *
+ * The `run` context (captured once by run.ts) is stamped onto `run.start`
+ * and supplies the `runId` every other record carries.
+ */
+export function createTelemetrySource(args: {
+  sinks: readonly TelemetrySink[]
+  run: RunContextRecord
+}): TelemetrySource {
+  const { sinks, run } = args
+  const runId = run.runId
+  // A sink is disabled the first time it throws — its name (or index) goes
+  // here and it's skipped for the rest of the run.
+  const disabled = new Set<TelemetrySink>()
+  // Precompute which sinks want each kind, so per-event fan-out is a plain
+  // array walk with no per-record `wants` scanning.
+  const wantsLog = sinks.some((s) => (s.wants ?? DEFAULT_KINDS).includes('task.log'))
+
+  function deliver(record: TelemetryRecord): void {
+    for (const sink of sinks) {
+      if (disabled.has(sink) || sink.onRecord === undefined) continue
+      const kinds = sink.wants ?? DEFAULT_KINDS
+      if (!kinds.includes(record.kind)) continue
+      try {
+        sink.onRecord(record)
+      } catch {
+        disabled.add(sink)
+      }
+    }
+  }
+
+  let endEmitted = false
+  const subscriber: RunEventSubscriber = (event: RunEvent) => {
+    const ts = Date.now()
+    switch (event.kind) {
+      case 'run:start':
+        deliver({
+          v: TELEMETRY_SCHEMA_VERSION,
+          kind: 'run.start',
+          run,
+          total: event.info.total,
+          ts,
+        })
+        return
+      case 'task:start': {
+        const node = event.node
+        if (node.config.exec === undefined) return // group task — no command, skip
+        const rec: TelemetryRecord = {
+          v: TELEMETRY_SCHEMA_VERSION,
+          kind: 'task.start',
+          runId,
+          taskId: node.id,
+          project: node.projectName,
+          task: node.taskName,
+          ts,
+        }
+        if (node.config.exec.command !== undefined) rec.command = node.config.exec.command
+        deliver(rec)
+        return
+      }
+      case 'task:stdout':
+      case 'task:stderr': {
+        if (!wantsLog) return // nobody wants logs — pay nothing
+        deliver({
+          v: TELEMETRY_SCHEMA_VERSION,
+          kind: 'task.log',
+          runId,
+          taskId: event.node.id,
+          stream: event.kind === 'task:stdout' ? 'stdout' : 'stderr',
+          chunk: event.chunk,
+          ts,
+        })
+        return
+      }
+      case 'task:complete': {
+        const { node, outcome } = event
+        if (node.config.exec === undefined) return // group task
+        const rec: TelemetryRecord = {
+          v: TELEMETRY_SCHEMA_VERSION,
+          kind: 'task.end',
+          runId,
+          ts,
+          taskId: node.id,
+          project: node.projectName,
+          task: node.taskName,
+          status: outcome.status,
+          cacheSource: deriveCacheSource(outcome.status),
+          exitCode: outcome.exitCode,
+          durationMs: outcome.durationMs,
+        }
+        if (outcome.hash !== undefined) rec.hash = outcome.hash
+        if (outcome.cpuMs !== undefined) rec.cpuMs = outcome.cpuMs
+        if (outcome.peakRssBytes !== undefined) rec.peakRssBytes = outcome.peakRssBytes
+        if (outcome.wallclockStartNs !== undefined)
+          rec.wallclockStartNs = outcome.wallclockStartNs.toString()
+        if (outcome.wallclockEndNs !== undefined)
+          rec.wallclockEndNs = outcome.wallclockEndNs.toString()
+        deliver(rec)
+        return
+      }
+      case 'run:status':
+        return // status lines are terminal-rendering noise, not telemetry
+      case 'run:end':
+        // run() emits run:end twice (normal + finally); emit one record.
+        if (endEmitted) return
+        endEmitted = true
+        deliver({ v: TELEMETRY_SCHEMA_VERSION, kind: 'run.end', runId, ts })
+        return
+    }
+  }
+
+  return {
+    subscriber,
+    emitSummary(summary: RunSummaryRecord): void {
+      for (const sink of sinks) {
+        if (disabled.has(sink) || sink.onRunSummary === undefined) continue
+        try {
+          sink.onRunSummary(summary)
+        } catch {
+          disabled.add(sink)
+        }
+      }
+    },
+    async flush(): Promise<void> {
+      await Promise.all(
+        sinks.map(async (sink) => {
+          if (sink.flush === undefined) return
+          try {
+            await sink.flush()
+          } catch {
+            // a sink's flush failure can never break the run
+          }
+        }),
+      )
+    },
+  }
+}

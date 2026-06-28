@@ -83,6 +83,18 @@ export {
   type VxPlugin,
 } from './plugin.js'
 export { resolveBackend, resolveCache, subscribeEventSinks } from './plugin-host.js'
+export { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
+export { createTelemetrySource, deriveCacheSource, TELEMETRY_SCHEMA_VERSION } from './telemetry.js'
+export type {
+  CacheSource,
+  RunContextRecord,
+  RunSummaryRecord,
+  TaskTelemetry,
+  TelemetryContext,
+  TelemetryRecord,
+  TelemetrySink,
+  TelemetrySource,
+} from './telemetry.js'
 export { workerExecute } from './worker-exec.js'
 export type { WorkerExecArgs, WorkerExecResult } from './worker-exec.js'
 export {

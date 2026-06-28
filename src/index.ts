@@ -65,10 +65,11 @@ export type { CacheLayer, RunRecord, CASBackend, Digest } from './cache/index.js
 // Workspace discovery — cloud's CLI + coordinator need these.
 export { findWorkspaceRoot, loadWorkspaceConfig, resolveCacheDir } from './workspace/index.js'
 
-// Plugin API — the three run-level extension points (backend / cache /
-// eventSink). A plugin is declared in vx.workspace.ts via
-// defineWorkspace({ plugins: [...] }). See
-// docs/design/core-cloud-split-2026-06.md.
+// Plugin API — the run-level extension points. Behavior capabilities
+// (backend / cache) change WHAT/HOW work runs; the observe-only `telemetry`
+// capability is the canonical data-export path and cannot change behavior.
+// A plugin is declared in vx.workspace.ts via defineWorkspace({ plugins }).
+// See docs/design/observability-architecture-2026-06.md.
 export type {
   VxPlugin,
   EventSink,
@@ -76,6 +77,21 @@ export type {
   CacheContext,
   EventSinkContext,
   PluginSetupContext,
+} from './orchestrator/index.js'
+
+// Telemetry — THE canonical, versioned data-export contract every exporter
+// (vx-otel, vx-http, vx-cloud) reads. A sink implements TelemetrySink and is
+// returned from VxPlugin.telemetry(); it receives immutable records and holds
+// no run handle (observe-only by construction).
+export { TELEMETRY_SCHEMA_VERSION, deriveCacheSource } from './orchestrator/index.js'
+export type {
+  CacheSource,
+  RunContextRecord,
+  RunSummaryRecord,
+  TaskTelemetry,
+  TelemetryContext,
+  TelemetryRecord,
+  TelemetrySink,
 } from './orchestrator/index.js'
 
 // The submitter wire contract + backend interface (the `backend`

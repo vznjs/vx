@@ -23,6 +23,7 @@ import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { UserError } from '../util/index.js'
 import type { EventBus, RunStartInfo, WireEvent } from './events.js'
 import type { RunBackend, RunRequest } from './protocol.js'
+import type { TelemetryContext, TelemetrySink } from './telemetry.js'
 
 /**
  * A vx plugin. Contributes any subset of three RUN-LEVEL infrastructure
@@ -40,6 +41,8 @@ export interface VxPlugin {
   /** Stable identifier, convention `'org/name'`. Used in errors + precedence logs. */
   readonly name: string
 
+  // --- BEHAVIOR capabilities (change WHAT/HOW work runs — opt-in) -----------
+
   /**
    * Contribute a run backend. Returns a RunBackend (run(request) → result),
    * or undefined to decline (core then tries the next plugin, else the
@@ -56,12 +59,31 @@ export interface VxPlugin {
    */
   cache?(ctx: CacheContext): CacheLayer | undefined | Promise<CacheLayer | undefined>
 
+  // --- OBSERVE-ONLY capability (cannot change behavior — by construction) ---
+
   /**
-   * Contribute an event sink — a consumer of the serializable WireEvent
-   * stream, subscribed for the whole run via wireForwarder. Fire-and-forget;
-   * a throwing sink is isolated and cannot break the run. This is the
-   * generalization of the old observe-only Plugin: an uploader, an OTel
-   * exporter, a Slack notifier all fit here.
+   * Contribute one or more telemetry sinks — the canonical data-export path.
+   * A sink receives versioned `TelemetryRecord` / `RunSummaryRecord` values
+   * and holds NO run handle (no bus, no cache, no request), so it provably
+   * cannot change what or how tasks run. ALL plugins' sinks are active at
+   * once (additive); a throwing/slow sink is isolated and can never fail or
+   * stall a run. This is THE export contract OTel, the manual HTTP API, and
+   * vx-cloud all speak. See docs/design/observability-architecture-2026-06.md.
+   */
+  telemetry?(
+    ctx: TelemetryContext,
+  ):
+    | TelemetrySink
+    | TelemetrySink[]
+    | undefined
+    | Promise<TelemetrySink | TelemetrySink[] | undefined>
+
+  /**
+   * @deprecated Prefer `telemetry`. Contribute an event sink — a consumer of
+   * the serializable WireEvent stream, subscribed for the whole run via
+   * wireForwarder. Fire-and-forget; a throwing sink is isolated and cannot
+   * break the run. Kept as a back-compat path; `telemetry` is the canonical,
+   * analytics-shaped export contract.
    */
   eventSink?(ctx: EventSinkContext): EventSink | undefined | Promise<EventSink | undefined>
 
