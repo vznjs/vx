@@ -10,12 +10,25 @@
 
 import { For, Show, batch, createMemo, createResource, createSignal, onCleanup, onMount } from 'solid-js'
 import { type GraphNode, type RunSummaryRow, type WireEvent, getGraph, getOrigin, getHistory, getVersion, runTasks } from '../api.ts'
+import { formatBytes } from '../format.ts'
 import { criticalPath, parallelism } from './critical-path.ts'
 import { Flamegraph as FlameView } from './Flamegraph.tsx'
 import { RunGraph, type RunGraphState } from './RunGraph.tsx'
 import { EmptyState } from './ui.tsx'
 
 type NodeState = 'queued' | 'running' | 'success' | 'cache-hit' | 'failed' | 'skipped' | 'aborted'
+
+// Status → icon + color (matches the graph card vocabulary).
+const STATUS_META: Record<NodeState, { icon: string; color: string; label: string }> = {
+  queued: { icon: 'i-tabler-circle-dashed', color: 'text-fg-3', label: 'queued' },
+  running: { icon: 'i-tabler-loader-2', color: 'text-accent', label: 'running' },
+  success: { icon: 'i-tabler-circle-check', color: 'text-success', label: 'success' },
+  'cache-hit': { icon: 'i-tabler-bolt', color: 'text-cache-local', label: 'cache hit' },
+  failed: { icon: 'i-tabler-circle-x', color: 'text-danger', label: 'failed' },
+  skipped: { icon: 'i-tabler-circle-minus', color: 'text-warn', label: 'skipped' },
+  aborted: { icon: 'i-tabler-ban', color: 'text-fg-3', label: 'aborted' },
+}
+const fmtClock = (ms?: number): string => (ms === undefined ? '—' : new Date(ms).toLocaleTimeString())
 interface NodeStatus {
   state: NodeState
   durationMs?: number
@@ -85,6 +98,19 @@ export function RunConsole() {
   })
   const criticalSet = createMemo(() => new Set(critical().chain))
 
+  // Selected-task accessors for the detail panel.
+  const selectedStatus = (): NodeStatus | undefined => {
+    const id = selected()
+    return id ? statuses()[id] : undefined
+  }
+  const selectedState = (): NodeState => selectedStatus()?.state ?? 'queued'
+  const selectedCpuPct = (): number | undefined => {
+    const st = selectedStatus()
+    const id = selected()
+    const dur = id ? durationOf(id) : 0
+    return st?.cpuMs !== undefined && dur > 0 ? Math.round((st.cpuMs / dur) * 100) : undefined
+  }
+
   // Observed concurrency from the live per-task windows.
   const parallel = createMemo(() => {
     const tm = timing()
@@ -99,7 +125,9 @@ export function RunConsole() {
     const st = statuses()
     const clock = now()
     return nodes()
-      .filter((n) => tm[n.id])
+      // Groups (umbrella tasks) emit task events but do no work — exclude them
+      // from the timeline entirely; the flame is about real execution windows.
+      .filter((n) => tm[n.id] && !n.isGroup)
       .map((n) => {
         const t = tm[n.id]!
         const state = st[n.id]?.state ?? 'running'
@@ -396,19 +424,42 @@ export function RunConsole() {
               </Show>
             </div>
 
-            {/* Log panel */}
+            {/* Task detail panel: facts + logs */}
             <div class="rounded-xl border border-border bg-surface/40 flex flex-col flex-1 min-h-0 overflow-hidden">
               <div class="px-4 py-2.5 border-b border-border/70 flex items-center gap-2">
-                <span class="i-tabler-terminal-2 text-fg-3" />
+                <Show when={selected()} fallback={<span class="i-tabler-info-circle text-fg-3" />}>
+                  <span class={`${STATUS_META[selectedState()].icon} ${STATUS_META[selectedState()].color} shrink-0`} classList={{ 'animate-spin': selectedState() === 'running' }} />
+                </Show>
                 <span class="text-[11px] font-semibold uppercase tracking-wider text-fg-2 truncate">
-                  {selected() ? selected() : 'Logs'}
+                  {selected() ?? 'Task details'}
                 </span>
               </div>
               <Show
                 when={selected()}
-                fallback={<div class="flex-1 grid place-items-center text-fg-3 text-[12px] p-4 text-center">Click a node to view its output.</div>}
+                fallback={<div class="flex-1 grid place-items-center text-fg-3 text-[12px] p-4 text-center">Click a node to view its details + output.</div>}
               >
-                <pre class="flex-1 overflow-auto m-0 p-4 text-[11px] leading-relaxed font-mono text-fg-1 whitespace-pre-wrap break-words">
+                {/* Facts grid */}
+                <div class="px-4 py-3 border-b border-border/70 grid grid-cols-2 gap-x-5 gap-y-2 text-[11px] shrink-0">
+                  <Fact label="Status">
+                    <span class={`inline-flex items-center gap-1 ${STATUS_META[selectedState()].color}`}>
+                      <span class={`${STATUS_META[selectedState()].icon}`} classList={{ 'animate-spin': selectedState() === 'running' }} />
+                      {STATUS_META[selectedState()].label}
+                    </span>
+                  </Fact>
+                  <Fact label="Duration">{fmtDur(durationOf(selected()!))}</Fact>
+                  <Fact label="CPU">{selectedCpuPct() === undefined ? '—' : `${selectedCpuPct()}%`}</Fact>
+                  <Fact label="Peak RAM">{selectedStatus()?.peakRssBytes !== undefined ? formatBytes(selectedStatus()!.peakRssBytes!) : '—'}</Fact>
+                  <Fact label="Started">{fmtClock(timing()[selected()!]?.startedAt)}</Fact>
+                  <Fact label="Ended">{fmtClock(timing()[selected()!]?.endedAt)}</Fact>
+                  <Fact label="Exit code">{selectedStatus()?.exitCode ?? '—'}</Fact>
+                  <Fact label="Project">{nodes().find((n) => n.id === selected())?.project ?? '—'}</Fact>
+                </div>
+                {/* Logs */}
+                <div class="px-4 pt-2 pb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-fg-3 shrink-0">
+                  <span class="i-tabler-terminal-2" />
+                  output
+                </div>
+                <pre class="flex-1 overflow-auto m-0 px-4 pb-4 text-[11px] leading-relaxed font-mono text-fg-1 whitespace-pre-wrap break-words">
                   {stripAnsi(logs()[selected()!] ?? '') || '— no output —'}
                 </pre>
               </Show>
@@ -416,6 +467,15 @@ export function RunConsole() {
           </div>
         </div>
       </Show>
+    </div>
+  )
+}
+
+function Fact(props: { label: string; children: import('solid-js').JSX.Element }) {
+  return (
+    <div class="flex flex-col gap-0.5 min-w-0">
+      <span class="text-[10px] uppercase tracking-wider text-fg-3">{props.label}</span>
+      <span class="font-mono text-fg-1 truncate tabular-nums">{props.children}</span>
     </div>
   )
 }

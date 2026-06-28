@@ -15,6 +15,14 @@ function colorFor(status: string, cacheHit: boolean): string {
   return 'bg-success/70'
 }
 
+function iconFor(status: string, cacheHit: boolean): string {
+  if (status === 'failed') return 'i-tabler-circle-x'
+  if (status === 'running') return 'i-tabler-loader-2'
+  if (status === 'skipped') return 'i-tabler-circle-minus'
+  if (cacheHit) return 'i-tabler-bolt'
+  return 'i-tabler-circle-check'
+}
+
 const idOf = (t: RunSummaryRow): string => `${t.project}#${t.task}`
 
 export function Flamegraph(props: {
@@ -73,7 +81,7 @@ export function Flamegraph(props: {
             const onPath = () => props.highlightIds?.has(bar.taskId) === true
             return (
               <div
-                class={`absolute rounded text-[10px] text-bg font-medium overflow-hidden whitespace-nowrap [text-indent:3px] cursor-pointer transition-[outline] ${colorFor(bar.status, bar.cacheHit)}`}
+                class={`absolute rounded text-[10px] text-bg font-medium overflow-hidden whitespace-nowrap cursor-pointer transition-[outline] flex items-center gap-0.5 pl-1 ${colorFor(bar.status, bar.cacheHit)}`}
                 classList={{
                   'outline outline-2 outline-fg-1 z-20': selected(),
                   'outline outline-2 outline-warn z-10': !selected() && onPath(),
@@ -84,7 +92,6 @@ export function Flamegraph(props: {
                   width: `${bar.widthPct}%`,
                   top: `${bar.lane * (LANE_HEIGHT + LANE_PAD) + LANE_PAD}px`,
                   height: `${LANE_HEIGHT}px`,
-                  'line-height': `${LANE_HEIGHT}px`,
                 }}
                 title={bar.taskId}
                 onClick={() => {
@@ -92,7 +99,8 @@ export function Flamegraph(props: {
                   if (t) props.onSelect?.(t)
                 }}
               >
-                {bar.taskId}
+                <span class={`${iconFor(bar.status, bar.cacheHit)} shrink-0 text-[9px]`} classList={{ 'animate-spin': bar.status === 'running' }} />
+                <span class="truncate">{bar.taskId}</span>
               </div>
             )
           }}
