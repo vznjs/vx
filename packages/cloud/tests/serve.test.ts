@@ -544,6 +544,36 @@ describe('parseServeArgs', () => {
   })
 })
 
+describe('resolveServePort', () => {
+  it('uses the stable default when neither --port nor env is set', async () => {
+    const { resolveServePort, DEFAULT_SERVE_PORT } = await import('../src/cli/serve.js')
+    expect(resolveServePort(undefined, {})).toEqual({ port: DEFAULT_SERVE_PORT })
+  })
+
+  it('an explicit --port wins over the env var', async () => {
+    const { resolveServePort } = await import('../src/cli/serve.js')
+    expect(resolveServePort(5000, { VX_CLOUD_PORT: '6000' })).toEqual({ port: 5000 })
+  })
+
+  it('VX_CLOUD_PORT overrides the default', async () => {
+    const { resolveServePort } = await import('../src/cli/serve.js')
+    expect(resolveServePort(undefined, { VX_CLOUD_PORT: '7777' })).toEqual({ port: 7777 })
+  })
+
+  it('an empty env var falls back to the default', async () => {
+    const { resolveServePort, DEFAULT_SERVE_PORT } = await import('../src/cli/serve.js')
+    expect(resolveServePort(undefined, { VX_CLOUD_PORT: '' })).toEqual({ port: DEFAULT_SERVE_PORT })
+  })
+
+  it('rejects a malformed env var', async () => {
+    const { resolveServePort } = await import('../src/cli/serve.js')
+    expect(resolveServePort(undefined, { VX_CLOUD_PORT: 'nope' })).toEqual({
+      error: 'invalid VX_CLOUD_PORT: nope',
+    })
+    expect('error' in resolveServePort(undefined, { VX_CLOUD_PORT: '99999' })).toBe(true)
+  })
+})
+
 describe('resolveBackend', () => {
   it('falls back to local when no service is reachable', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'vx-nosvc-'))

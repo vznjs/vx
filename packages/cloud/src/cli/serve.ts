@@ -63,12 +63,38 @@ export function serveInfoPath(workspaceRoot: string): string {
 }
 
 /**
- * Default port when `--port` is not given. A STABLE default (matching the
- * dashboard SPA's own default origin) so the URL is the same across restarts —
- * binding to port 0 each time handed out a fresh random port every run. If this
- * port is already taken we fall back to an ephemeral one rather than crash.
+ * Default port for `vx-cloud serve`, used when neither `--port` nor the
+ * `VX_CLOUD_PORT` env var is set. A STABLE default (matching the dashboard
+ * SPA's own default origin) so the URL is the same across restarts. The port
+ * is now DETERMINISTIC — we no longer silently fall back to a random ephemeral
+ * port when it's taken (that's exactly what made the URL move); a busy port
+ * surfaces a clear error telling the user to free it or set `VX_CLOUD_PORT`.
  */
 export const DEFAULT_SERVE_PORT = 4321
+
+/** Env var overriding the serve port (below an explicit `--port`). */
+export const SERVE_PORT_ENV = 'VX_CLOUD_PORT'
+
+/**
+ * Resolve the serve port for the CLI: an explicit `--port` wins, then
+ * `VX_CLOUD_PORT`, then the stable default. Returns an error string for a
+ * malformed env value (a bad `--port` is already caught in parseServeArgs).
+ */
+export function resolveServePort(
+  flagPort: number | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): { port: number } | { error: string } {
+  if (flagPort !== undefined) return { port: flagPort }
+  const raw = env[SERVE_PORT_ENV]
+  if (raw !== undefined && raw !== '') {
+    const n = Number(raw)
+    if (!Number.isInteger(n) || n < 0 || n > 65535) {
+      return { error: `invalid ${SERVE_PORT_ENV}: ${raw}` }
+    }
+    return { port: n }
+  }
+  return { port: DEFAULT_SERVE_PORT }
+}
 
 // The service renders nothing to its own terminal for delegated runs — the
 // CLIENT renders the streamed events. A no-op Logger keeps `run()` quiet.
@@ -560,17 +586,11 @@ export async function startServe(opts: {
       },
     })
 
-  // Prefer a stable default port; fall back to ephemeral only if it's taken
-  // (and only when the user didn't pin one — an explicit --port surfaces the
-  // bind error instead of silently moving).
-  const wantPort = opts.port ?? DEFAULT_SERVE_PORT
-  let server
-  try {
-    server = listen(wantPort)
-  } catch (err) {
-    if (opts.port !== undefined) throw err
-    server = listen(0)
-  }
+  // Bind exactly the requested port — a busy port throws (the CLI catches it
+  // and prints a clean message). When no port is given (tests / embedders),
+  // bind an ephemeral one. The STABLE-default policy lives in the CLI
+  // (`serveCmd`), so a `vx-cloud serve` always lands on the same URL.
+  const server = listen(opts.port ?? 0)
 
   const origin = `http://localhost:${server.port}`
   // Advertise the local serve so `vx run` in this workspace delegates here.
@@ -696,15 +716,34 @@ export async function serveCmd(args: readonly string[]): Promise<number> {
     return 1
   }
 
-  const server = await startServe({
-    root,
-    ...(parsed.port !== undefined ? { port: parsed.port } : {}),
-    ...(uiHtmlPath !== undefined ? { uiHtmlPath } : {}),
-    ...(parsed.ingestDir !== undefined ? { ingestDir: parsed.ingestDir } : {}),
-    onRun: (request, ok) => {
-      process.stdout.write(`  ${ok ? '✓' : '✗'} ${request.tasks.join(', ')}\n`)
-    },
-  })
+  // Stable, DETERMINISTIC port: --port > VX_CLOUD_PORT > 4321. No silent
+  // ephemeral fallback — a busy port surfaces a clear error so the URL never
+  // moves on its own.
+  const portResult = resolveServePort(parsed.port)
+  if ('error' in portResult) {
+    process.stderr.write(`vx serve: ${portResult.error}\n`)
+    return 1
+  }
+
+  let server
+  try {
+    server = await startServe({
+      root,
+      port: portResult.port,
+      ...(uiHtmlPath !== undefined ? { uiHtmlPath } : {}),
+      ...(parsed.ingestDir !== undefined ? { ingestDir: parsed.ingestDir } : {}),
+      onRun: (request, ok) => {
+        process.stdout.write(`  ${ok ? '✓' : '✗'} ${request.tasks.join(', ')}\n`)
+      },
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    process.stderr.write(
+      `vx serve: could not bind port ${portResult.port}: ${msg}\n` +
+        `  free the port, or pick another with --port <n> or ${SERVE_PORT_ENV}=<n>\n`,
+    )
+    return 1
+  }
 
   const uiLine = uiHtmlPath !== undefined ? `vx serve: UI   ${server.origin}/\n` : ''
   process.stdout.write(
