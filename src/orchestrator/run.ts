@@ -35,6 +35,9 @@ import { plan, type RunPlan } from './plan.js'
 import { prepareRun } from './prepare.js'
 import { captureGitContext, captureHostContext, detectCi } from './run-context.js'
 import { startRemotePrefetch } from './remote-prefetch.js'
+import { startLocalShortCircuit, type ShortCircuit } from './local-shortcircuit.js'
+
+const EMPTY_SHORT_CIRCUIT: ShortCircuit = { preProbed: new Map(), restoreTier: new Set() }
 import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
 import { formatRunSummary } from './summary.js'
 import type { RunOptions, RunSummary } from './options.js'
@@ -51,6 +54,25 @@ function compactCachePolicy(p: CachePolicy): string {
   if (p.remoteRead) parts.push('rR')
   if (p.remoteWrite) parts.push('rW')
   return parts.join(',')
+}
+
+/**
+ * The perf firewall for the local short-circuit. Always-on; the only
+ * gates are correctness/no-op gates:
+ *   - the policy reads locally (a `--no-cache`/`--force`/`--cache=local:`
+ *     run reads nothing locally → nothing to restore → skip);
+ *   - the graph has at least one dependency edge (a flat graph has no
+ *     ordering to bypass — restoring is what execute() already does, so
+ *     there's no upside and we avoid the upfront probe pass).
+ * Deliberately NOT gated on LayeredCache: this is a LOCAL optimization
+ * that applies to the common local-only `vx run`. The per-task
+ * correctness gates (stable key, no workspace-outputs in graph) live in
+ * `startLocalShortCircuit`.
+ */
+function shouldShortCircuit(nodes: Map<string, TaskNode>, policy: CachePolicy): boolean {
+  if (!policy.localRead) return false
+  for (const node of nodes.values()) if (node.deps.length > 0) return true
+  return false
 }
 
 export async function run(options: RunOptions): Promise<RunSummary> {
@@ -299,22 +321,49 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       })
     }
 
-    const buildExecuteArgs = (node: TaskNode, upstream: TaskOutcome[]) => ({
-      node,
-      upstream,
-      workspaceRoot,
-      workspaceFingerprint,
-      cache,
-      cachePolicy: policy,
-      forwardArgs: options.forwardArgs,
-      log,
-      nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
-      runStartHrTimeNs,
-      persistentRegistry,
-      liveChildren,
-      gitFilesCache,
-      hashCache,
-    })
+    // Local cache short-circuit (default-on). Up-front classify: derive
+    // every stable+cacheable+local-read task's key and probe local ONCE.
+    // The result drives two-tier scheduling — confirmed hits become a
+    // restore-tier the scheduler runs ahead of their deps but only as
+    // worker-slot backfill (misses own the pool) — and execute reuses
+    // each probe, so there is no second cache.get. Gated by
+    // shouldShortCircuit (localRead + has-deps); when off, both maps are
+    // empty and the run is byte-identical.
+    let shortCircuit: ShortCircuit = EMPTY_SHORT_CIRCUIT
+    if (shouldShortCircuit(nodes, policy)) {
+      shortCircuit = await startLocalShortCircuit({
+        nodes,
+        cache,
+        workspaceRoot,
+        workspaceFingerprint,
+        forwardArgs: options.forwardArgs,
+        nestedDirsByProject,
+        gitFilesCache,
+        hashCache,
+        concurrency,
+      })
+    }
+
+    const buildExecuteArgs = (node: TaskNode, upstream: TaskOutcome[]) => {
+      const probe = shortCircuit.preProbed.get(node.id)
+      return {
+        node,
+        upstream,
+        workspaceRoot,
+        workspaceFingerprint,
+        cache,
+        cachePolicy: policy,
+        forwardArgs: options.forwardArgs,
+        log,
+        nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
+        runStartHrTimeNs,
+        persistentRegistry,
+        liveChildren,
+        gitFilesCache,
+        hashCache,
+        ...(probe !== undefined ? { preProbed: probe } : {}),
+      }
+    }
 
     // In-flight dedup. Only when a service supplies a shared `inflight`
     // registry (concurrent runs in one `vx serve`); a stateless `vx run`
@@ -336,7 +385,13 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         node.config.cache !== undefined &&
         canRead &&
         canWrite
-      if (inflight === undefined || !cacheable) {
+      // A restore-tier task (confirmed local hit, may run before its
+      // deps) needs no dedup — it's a restore, not an executor, and its
+      // live `upstream` is incomplete, so the dedup hash recompute would
+      // be wrong. Route it straight to executeTask, which reuses the
+      // up-front probe.
+      const restorable = shortCircuit.restoreTier.has(node.id)
+      if (inflight === undefined || !cacheable || restorable) {
         return executeTask(buildExecuteArgs(node, upstream))
       }
       const hash = await computeTaskHash({
@@ -388,6 +443,10 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       // Predictive scheduling: empty map when not opted in, in which
       // case the scheduler keeps the static baseline behavior.
       priorities: prepared.priorities,
+      // Local short-circuit: confirmed stable local hits the scheduler
+      // runs ahead of their deps as low-priority worker-slot backfill.
+      // Empty when the short-circuit didn't fire → byte-identical.
+      restoreTier: shortCircuit.restoreTier,
     })
 
     // A persistent task the user REQUESTED (a dev server / watcher) is
@@ -604,7 +663,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // Drain any still-in-flight background prefetches before closing the
     // cache handle — a prefetch ingesting into a closed SQLite DB would
     // throw. Tasks that resolved as local hits never awaited their
-    // prefetch, so some may still be running here.
+    // prefetch, so some may still be running here. (The local
+    // short-circuit's probes are awaited inside startLocalShortCircuit
+    // before scheduling, so nothing of its is in flight here.)
     await prefetchDone
     cache.close()
 

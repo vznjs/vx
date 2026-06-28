@@ -2,6 +2,7 @@ import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import type { ExecConfig, TaskConfig, CacheConfig } from '../config.js'
 import {
+  type CacheEntry,
   type CacheLayer,
   type CachePolicy,
   cleanOutputs,
@@ -60,6 +61,18 @@ export interface ExecuteArgs {
   gitFilesCache?: GitFilesCache
   /** Per-run memo for derived hashes (package.json bytes + task config). */
   hashCache?: HashCache
+  /**
+   * Up-front probe result from the local short-circuit classify, when
+   * this task was stable + cacheable + local-read. Reused here so there
+   * is NO second `cache.get`:
+   *   - `hit` present  → restore that entry directly (restore-tier; may
+   *     run before deps, so the up-front `hash` is used verbatim rather
+   *     than recomputed against an incomplete upstream).
+   *   - `hit` null     → a confirmed stable miss; skip the probe, go to
+   *     the run path.
+   * Absent → probe lazily, exactly as today (unstable / unclassified).
+   */
+  preProbed?: { hash: string; hit: CacheEntry | null }
 }
 
 /**
@@ -191,7 +204,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   const outputs = cacheCfg?.outputs.files ?? []
   const wsOutputs = cacheCfg?.outputs.workspaceFiles ?? []
-  const anyOutputs = outputs.length > 0 || wsOutputs.length > 0
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
 
   // When the task started, as a ns offset from run start — captured for
@@ -215,17 +227,27 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // pass a fold + array pushes, no re-stat / re-hash I/O. It runs on
   // the miss path only, where the task is about to spawn a subprocess
   // anyway, so its cost is in the noise.
-  const hash = await computeTaskHash({
-    node,
-    upstream,
-    workspaceRoot: args.workspaceRoot,
-    workspaceFingerprint: args.workspaceFingerprint,
-    cache,
-    forwardArgs: args.forwardArgs,
-    nestedProjectDirs: args.nestedProjectDirs,
-    ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-    ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-  })
+  //
+  // Local short-circuit reuse: when the classify phase already derived
+  // this task's stable key + probed it, reuse the up-front hash verbatim
+  // (no recompute — a restore-tier task may run before its deps finish,
+  // so its live `upstream` is incomplete; the up-front hash is the
+  // authoritative stable key) and skip the probe below.
+  const preProbed = args.preProbed
+  const hash =
+    preProbed !== undefined
+      ? preProbed.hash
+      : await computeTaskHash({
+          node,
+          upstream,
+          workspaceRoot: args.workspaceRoot,
+          workspaceFingerprint: args.workspaceFingerprint,
+          cache,
+          forwardArgs: args.forwardArgs,
+          nestedProjectDirs: args.nestedProjectDirs,
+          ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+          ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+        })
 
   const cleanArgs = {
     projectDir: node.projectDir,
@@ -236,112 +258,21 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   // Cache lookup. On hit, time the user-perceived restore op
   // (clean+restore+log-replay) — that's what the framed-block footer
-  // shows, not the original exec time stored in the entry.
+  // shows, not the original exec time stored in the entry. The
+  // short-circuit's up-front probe is reused: a `preProbed` entry means
+  // the probe already ran — restore its hit, or (null hit) fall straight
+  // to the run path as a known stable miss. No second cache.get.
   if (willRead) {
     const cacheOpStart = performance.now()
-    const hit = await cache.get(hash, { taskId: node.id, command: step.command })
-    if (hit) {
-      // "Tree is already current" short-circuit — skip cleanOutputs
-      // + restoreOutputs when the on-disk state matches what this
-      // entry recorded at save time. Integrity-preserving: we
-      // require BOTH that the output-glob walk yields exactly the
-      // expected paths (no strays, no missing) AND that every file's
-      // (size, mode, mtime) matches the stored fingerprint. Any
-      // divergence falls through to a real clean + restore.
-      //
-      // The output-file fingerprints can't be batch-loaded at
-      // prepareRun time — non-leaf task hashes depend on upstream
-      // outputs that haven't been written yet, so hashes are
-      // necessarily computed mid-run. We do one extra SELECT per
-      // cache hit here. Still beats reading the manifest from the
-      // tar (decompress + parse) at the same point.
-      let skipRestore = false
-      if (anyOutputs) {
-        const expected = cache.loadOutputFilesBatch([hash]).get(hash) ?? []
-        if (expected.length > 0) {
-          // Two namespaces in the rows: bare rels are project outputs,
-          // `workspace-outputs/<rel>` rows anchor at the workspace root.
-          const projExpected = expected.filter((e) => !e.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
-          const wsExpected = expected
-            .filter((e) => e.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
-            .map((e) => ({ ...e, path: e.path.slice(WORKSPACE_OUTPUT_PREFIX.length) }))
-          const actualAbs = await resolveOutputs({
-            projectDir: node.projectDir,
-            outputs,
-            nestedProjectDirs: args.nestedProjectDirs,
-          })
-          const actualWsAbs = await resolveWorkspaceOutputs({
-            workspaceRoot: args.workspaceRoot,
-            outputs: wsOutputs,
-          })
-          const setsMatch = (
-            actual: readonly string[],
-            exp: ReadonlyArray<{ path: string }>,
-          ): boolean => {
-            const expSet = new Set(exp.map((e) => e.path))
-            return actual.length === expSet.size && actual.every((r) => expSet.has(r))
-          }
-          const actualRels = actualAbs.map((p) =>
-            path.relative(node.projectDir, p).split(path.sep).join('/'),
-          )
-          const actualWsRels = actualWsAbs.map((p) =>
-            path.relative(args.workspaceRoot, p).split(path.sep).join('/'),
-          )
-          if (setsMatch(actualRels, projExpected) && setsMatch(actualWsRels, wsExpected)) {
-            skipRestore =
-              (await cache.isOutputsCurrent(node.projectDir, projExpected)) &&
-              (await cache.isOutputsCurrent(args.workspaceRoot, wsExpected))
-          }
-        }
+    if (preProbed !== undefined) {
+      if (preProbed.hit !== null) {
+        return restoreHit({ args, hash, hit: preProbed.hit, cacheOpStart, taskStartNs })
       }
-      if (!skipRestore) {
-        let cleanedRels: string[] = []
-        let cleanedWsRels: string[] = []
-        if (outputs.length > 0) cleanedRels = await cleanOutputs(cleanArgs)
-        if (wsOutputs.length > 0) cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
-        await cache.restoreOutputs(hash, node.projectDir, args.workspaceRoot)
-        // Restored outputs changed the project's tree — but on this
-        // path we know the EXACT changed paths (wiped declared
-        // outputs + the artifact's files). Record them instead of
-        // dropping the snapshot; downstream same-project tasks only
-        // re-spawn git when their input globs can actually see one of
-        // these paths. The cache-miss save path below keeps the
-        // unconditional drop (an executed task may write undeclared
-        // files only git can see).
-        if (outputs.length > 0) {
-          args.gitFilesCache?.markOutputsChanged(node.projectDir, [
-            ...cleanedRels,
-            ...hit.outputFiles.filter((p) => !p.startsWith(WORKSPACE_OUTPUT_PREFIX)),
-          ])
-        }
-        if (wsOutputs.length > 0) {
-          args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, [
-            ...cleanedWsRels,
-            ...hit.outputFiles
-              .filter((p) => p.startsWith(WORKSPACE_OUTPUT_PREFIX))
-              .map((p) => p.slice(WORKSPACE_OUTPUT_PREFIX.length)),
-          ])
-        }
-      }
-      if (hit.stdout) log.taskStdout(node, hit.stdout)
-      const status =
-        hit.exitCode !== 0 ? 'failed' : hit.source === 'remote' ? 'cache-hit-remote' : 'cache-hit'
-      // `restored` distinguishes "we just wrote files to disk" from
-      // "disk already matched the cached snapshot". Drives the
-      // "up-to-date" vs "local-cache" / "remote-cache" label in the
-      // framed block. Only meaningful when at least one output was
-      // declared — no-outputs tasks never materialize anything, so
-      // they're vacuously up-to-date.
-      const restored = !skipRestore && anyOutputs
-      return {
-        node,
-        status,
-        exitCode: hit.exitCode,
-        durationMs: Math.round(performance.now() - cacheOpStart),
-        hash,
-        restored,
-        wallclockStartNs: taskStartNs,
-        wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+      // Confirmed stable miss — skip the probe, fall through to run.
+    } else {
+      const hit = await cache.get(hash, { taskId: node.id, command: step.command })
+      if (hit) {
+        return restoreHit({ args, hash, hit, cacheOpStart, taskStartNs })
       }
     }
   }
@@ -582,6 +513,144 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           sandboxViolationLines: violations.map((v) => v.line),
         }
       : {}),
+  }
+}
+
+export interface RestoreHitArgs {
+  args: ExecuteArgs
+  hash: string
+  hit: CacheEntry
+  /** `performance.now()` when the cache op (probe) started — the
+   *  user-perceived restore duration is measured from here. */
+  cacheOpStart: number
+  /** ns offset from run start for the outcome's wallclock window. */
+  taskStartNs: bigint
+}
+
+/**
+ * Materialize a confirmed cache hit: decide skip-restore, clean +
+ * restore declared outputs, mark the exact changed paths so downstream
+ * same-project tasks needn't re-spawn git, replay stored stdout, and
+ * build the cache-hit `TaskOutcome`. Extracted from `executeCachedTask`
+ * so the local short-circuit can restore a stable-key hit ahead of the
+ * schedule using the IDENTICAL logic — there is one restore path, not
+ * two that could drift.
+ */
+export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> {
+  const { args, hash, hit, cacheOpStart, taskStartNs } = restore
+  const { node, log } = args
+  const cacheCfg: CacheConfig | undefined = node.config.cache
+  const outputs = cacheCfg?.outputs.files ?? []
+  const wsOutputs = cacheCfg?.outputs.workspaceFiles ?? []
+  const anyOutputs = outputs.length > 0 || wsOutputs.length > 0
+  const cleanArgs = {
+    projectDir: node.projectDir,
+    outputs,
+    nestedProjectDirs: args.nestedProjectDirs,
+  }
+  const wsCleanArgs = { workspaceRoot: args.workspaceRoot, outputs: wsOutputs }
+
+  // "Tree is already current" short-circuit — skip cleanOutputs
+  // + restoreOutputs when the on-disk state matches what this
+  // entry recorded at save time. Integrity-preserving: we
+  // require BOTH that the output-glob walk yields exactly the
+  // expected paths (no strays, no missing) AND that every file's
+  // (size, mode, mtime) matches the stored fingerprint. Any
+  // divergence falls through to a real clean + restore.
+  //
+  // The output-file fingerprints can't be batch-loaded at
+  // prepareRun time — non-leaf task hashes depend on upstream
+  // outputs that haven't been written yet, so hashes are
+  // necessarily computed mid-run. We do one extra SELECT per
+  // cache hit here. Still beats reading the manifest from the
+  // tar (decompress + parse) at the same point.
+  let skipRestore = false
+  if (anyOutputs) {
+    const expected = args.cache.loadOutputFilesBatch([hash]).get(hash) ?? []
+    if (expected.length > 0) {
+      // Two namespaces in the rows: bare rels are project outputs,
+      // `workspace-outputs/<rel>` rows anchor at the workspace root.
+      const projExpected = expected.filter((e) => !e.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
+      const wsExpected = expected
+        .filter((e) => e.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
+        .map((e) => ({ ...e, path: e.path.slice(WORKSPACE_OUTPUT_PREFIX.length) }))
+      const actualAbs = await resolveOutputs({
+        projectDir: node.projectDir,
+        outputs,
+        nestedProjectDirs: args.nestedProjectDirs,
+      })
+      const actualWsAbs = await resolveWorkspaceOutputs({
+        workspaceRoot: args.workspaceRoot,
+        outputs: wsOutputs,
+      })
+      const setsMatch = (
+        actual: readonly string[],
+        exp: ReadonlyArray<{ path: string }>,
+      ): boolean => {
+        const expSet = new Set(exp.map((e) => e.path))
+        return actual.length === expSet.size && actual.every((r) => expSet.has(r))
+      }
+      const actualRels = actualAbs.map((p) =>
+        path.relative(node.projectDir, p).split(path.sep).join('/'),
+      )
+      const actualWsRels = actualWsAbs.map((p) =>
+        path.relative(args.workspaceRoot, p).split(path.sep).join('/'),
+      )
+      if (setsMatch(actualRels, projExpected) && setsMatch(actualWsRels, wsExpected)) {
+        skipRestore =
+          (await args.cache.isOutputsCurrent(node.projectDir, projExpected)) &&
+          (await args.cache.isOutputsCurrent(args.workspaceRoot, wsExpected))
+      }
+    }
+  }
+  if (!skipRestore) {
+    let cleanedRels: string[] = []
+    let cleanedWsRels: string[] = []
+    if (outputs.length > 0) cleanedRels = await cleanOutputs(cleanArgs)
+    if (wsOutputs.length > 0) cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
+    await args.cache.restoreOutputs(hash, node.projectDir, args.workspaceRoot)
+    // Restored outputs changed the project's tree — but on this
+    // path we know the EXACT changed paths (wiped declared
+    // outputs + the artifact's files). Record them instead of
+    // dropping the snapshot; downstream same-project tasks only
+    // re-spawn git when their input globs can actually see one of
+    // these paths. The cache-miss save path keeps the
+    // unconditional drop (an executed task may write undeclared
+    // files only git can see).
+    if (outputs.length > 0) {
+      args.gitFilesCache?.markOutputsChanged(node.projectDir, [
+        ...cleanedRels,
+        ...hit.outputFiles.filter((p) => !p.startsWith(WORKSPACE_OUTPUT_PREFIX)),
+      ])
+    }
+    if (wsOutputs.length > 0) {
+      args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, [
+        ...cleanedWsRels,
+        ...hit.outputFiles
+          .filter((p) => p.startsWith(WORKSPACE_OUTPUT_PREFIX))
+          .map((p) => p.slice(WORKSPACE_OUTPUT_PREFIX.length)),
+      ])
+    }
+  }
+  if (hit.stdout) log.taskStdout(node, hit.stdout)
+  const status =
+    hit.exitCode !== 0 ? 'failed' : hit.source === 'remote' ? 'cache-hit-remote' : 'cache-hit'
+  // `restored` distinguishes "we just wrote files to disk" from
+  // "disk already matched the cached snapshot". Drives the
+  // "up-to-date" vs "local-cache" / "remote-cache" label in the
+  // framed block. Only meaningful when at least one output was
+  // declared — no-outputs tasks never materialize anything, so
+  // they're vacuously up-to-date.
+  const restored = !skipRestore && anyOutputs
+  return {
+    node,
+    status,
+    exitCode: hit.exitCode,
+    durationMs: Math.round(performance.now() - cacheOpStart),
+    hash,
+    restored,
+    wallclockStartNs: taskStartNs,
+    wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
   }
 }
 

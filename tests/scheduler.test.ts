@@ -303,3 +303,82 @@ describe('priority computation scale', () => {
     expect(best).toBeLessThan(1500)
   }, 120_000)
 })
+
+describe('runGraph restore-tier (local short-circuit)', () => {
+  const hit = (n: TaskNode): TaskOutcome => ({
+    node: n,
+    status: 'cache-hit',
+    exitCode: 0,
+    durationMs: 0,
+    hash: `h-${n.id}`,
+  })
+
+  it('runs a restore-tier task BEFORE its (unfinished) deps', async () => {
+    // up#prep is a slow exec; down#build is its dep but a confirmed
+    // local hit (restore-tier). The restore must start without waiting
+    // for up#prep to finish — its dep edge is ordering-only.
+    const order: string[] = []
+    const out = await runGraph({
+      nodes: nodes(node('up#prep'), node('down#build', ['up#prep'])),
+      concurrency: 4,
+      restoreTier: new Set(['down#build']),
+      execute: async (n) => {
+        order.push(`start-${n.id}`)
+        if (n.id === 'up#prep') await new Promise((r) => setTimeout(r, 30))
+        order.push(`end-${n.id}`)
+        return n.id === 'down#build' ? hit(n) : success(n)
+      },
+    })
+    expect(out.get('down#build')?.status).toBe('cache-hit')
+    // The restore started before the slow dep finished — the win.
+    expect(order.indexOf('start-down#build')).toBeLessThan(order.indexOf('end-up#prep'))
+  })
+
+  it('exec-tier (misses) own the pool; restores backfill only idle slots', async () => {
+    // 2 workers. Two exec misses + two restore hits, all independent.
+    // With exec drained first, both misses start before any restore
+    // when the pool is saturated.
+    const starts: string[] = []
+    const execIds = new Set(['e1#run', 'e2#run'])
+    await runGraph({
+      nodes: nodes(node('e1#run'), node('e2#run'), node('r1#run'), node('r2#run')),
+      concurrency: 2,
+      restoreTier: new Set(['r1#run', 'r2#run']),
+      execute: async (n) => {
+        starts.push(n.id)
+        await new Promise((r) => setTimeout(r, 10))
+        return execIds.has(n.id) ? success(n) : hit(n)
+      },
+    })
+    // Both misses were picked before either restore (exec-tier first).
+    expect(starts.indexOf('e1#run')).toBeLessThan(starts.indexOf('r1#run'))
+    expect(starts.indexOf('e2#run')).toBeLessThan(starts.indexOf('r1#run'))
+  })
+
+  it('restore-tier task reports cache-hit even when a dep FAILED', async () => {
+    // up#prep fails; down#build depends on it but is restore-tier.
+    // It must NOT be skipped — its key is dep-success-independent.
+    for (let i = 0; i < 5; i++) {
+      const out = await runGraph({
+        nodes: nodes(node('up#prep'), node('down#build', ['up#prep'])),
+        concurrency: 4,
+        restoreTier: new Set(['down#build']),
+        execute: async (n) => (n.id === 'up#prep' ? failed(n) : hit(n)),
+      })
+      expect(out.get('up#prep')?.status).toBe('failed')
+      // Deterministic across runs: restore-tier bypasses failedDep.
+      expect(out.get('down#build')?.status).toBe('cache-hit')
+    }
+  })
+
+  it('an EXEC-tier dependent of a failed dep is still skipped', async () => {
+    // Sanity: the failedDep→skipped path is intact for non-restore deps.
+    const out = await runGraph({
+      nodes: nodes(node('up#prep'), node('down#build', ['up#prep'])),
+      concurrency: 4,
+      restoreTier: new Set(), // down#build is exec-tier
+      execute: async (n) => (n.id === 'up#prep' ? failed(n) : success(n)),
+    })
+    expect(out.get('down#build')?.status).toBe('skipped')
+  })
+})

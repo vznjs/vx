@@ -68,6 +68,24 @@ export interface ScheduleOptions {
    * heuristic (the default and historically the only behavior).
    */
   priorities?: ReadonlyMap<string, number>
+  /**
+   * Restore-tier task ids: confirmed stable-key LOCAL cache hits (the
+   * local short-circuit). A restore-tier task:
+   *   - becomes READY IMMEDIATELY — its `pending` does NOT gate it, since
+   *     a stable hit's restore needs none of its deps' output;
+   *   - is LOW priority — exec-tier work (cache misses + unstable tasks)
+   *     owns the worker pool, restores only backfill idle capacity (or
+   *     run when an exec is blocked on a restorable dep and nothing else
+   *     is runnable — then the restore is the only ready task and unblocks
+   *     it);
+   *   - bypasses the `failedDep`→`skipped` check (its key is independent
+   *     of dep success — pure-input transitive hashing — so a valid cached
+   *     output is reported `cache-hit` regardless of a dep failing).
+   * It still runs through `execute()` (so the logger frame is unchanged);
+   * the orchestrator's execute reuses the up-front probe, so there is no
+   * second cache.get. When undefined/empty, behavior is byte-identical.
+   */
+  restoreTier?: ReadonlySet<string>
 }
 
 /**
@@ -188,25 +206,36 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     ? mergePriorities(baseline, options.priorities)
     : baseline
 
-  // Ready queue: tasks whose deps have all completed. Kept sorted on
+  // Two ready queues — exec-tier (cache misses + unstable tasks) and
+  // restore-tier (confirmed stable local hits). Both are kept sorted on
   // insert (descending by priority); equal-priority items insert AFTER
   // existing entries so ties break in graph-insertion order — same
   // contract the prior `scheduleOrder` sort provided via stable sort.
-  const ready: string[] = []
-  const pushReady = (id: string): void => {
+  // The tick loop drains execReady FIRST, so misses own the worker pool
+  // and restores only backfill idle capacity (or run when an exec is
+  // blocked on a restorable dep and nothing else is runnable).
+  const restoreTier = options.restoreTier
+  const execReady: string[] = []
+  const restoreReady: string[] = []
+  const insertSorted = (queue: string[], id: string): void => {
     const p = priority.get(id) ?? 0
     let lo = 0
-    let hi = ready.length
+    let hi = queue.length
     while (lo < hi) {
       const mid = (lo + hi) >>> 1
-      if ((priority.get(ready[mid]!) ?? 0) >= p) lo = mid + 1
+      if ((priority.get(queue[mid]!) ?? 0) >= p) lo = mid + 1
       else hi = mid
     }
-    ready.splice(lo, 0, id)
+    queue.splice(lo, 0, id)
   }
-
+  // A restore-tier task is dep-independent (a stable hit's restore needs
+  // none of its deps' output), so it's ready immediately; its `pending`
+  // decrements still happen (in finishOne) but never re-enqueue it.
+  // Everything else enqueues on the exec-tier the moment its deps
+  // complete.
   for (const node of nodes.values()) {
-    if (node.deps.length === 0) pushReady(node.id)
+    if (restoreTier?.has(node.id)) insertSorted(restoreReady, node.id)
+    else if (node.deps.length === 0) insertSorted(execReady, node.id)
   }
 
   let active = 0
@@ -221,26 +250,42 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       for (const d of ds) {
         const rem = (pending.get(d) ?? 0) - 1
         pending.set(d, rem)
-        if (rem === 0) pushReady(d)
+        // Restore-tier dependents were already enqueued at startup (they
+        // don't wait on deps); only re-enqueue an exec-tier dependent.
+        if (rem === 0 && !restoreTier?.has(d)) insertSorted(execReady, d)
       }
     }
+
+    // Drain a worker slot: prefer an exec-tier task (misses own the
+    // pool); only when none is ready does a restore-tier task backfill.
+    const takeReady = (): string | undefined =>
+      execReady.length > 0 ? execReady.shift() : restoreReady.shift()
 
     const tick = (): void => {
       if (resolved) return
 
-      while (active < concurrency && ready.length > 0) {
-        const id = ready.shift() as string
+      while (active < concurrency && (execReady.length > 0 || restoreReady.length > 0)) {
+        const id = takeReady() as string
         const node = nodes.get(id) as TaskNode
+        const isRestore = restoreTier?.has(id) === true
 
         // If any upstream failed/skipped, propagate skip synchronously
         // without running. Skipped tasks still flow through this queue
         // because dependents are pushed when `pending` hits 0 regardless
         // of outcome — keeps the propagation logic in one place.
+        //
+        // Restore-tier tasks BYPASS this check: their key is independent
+        // of any dep's success (pure-input transitive hashing), so a
+        // valid cached output is reported `cache-hit` even if a dep
+        // failed — and they're dep-independent, so they typically
+        // restore before a dep could fail anyway.
         const upstream = node.deps.map((d) => outcomes.get(d) as TaskOutcome)
-        const failedDep = upstream.find((u) => u.status === 'failed' || u.status === 'skipped')
-        if (failedDep) {
-          finishOne(id, { node, status: 'skipped', exitCode: 1, durationMs: 0 })
-          continue
+        if (!isRestore) {
+          const failedDep = upstream.find((u) => u.status === 'failed' || u.status === 'skipped')
+          if (failedDep) {
+            finishOne(id, { node, status: 'skipped', exitCode: 1, durationMs: 0 })
+            continue
+          }
         }
 
         active++

@@ -4,6 +4,7 @@
 
 export {
   Cache,
+  type CacheEntry,
   type CacheLayer,
   type CachePolicy,
   FULL_CACHE_POLICY,
