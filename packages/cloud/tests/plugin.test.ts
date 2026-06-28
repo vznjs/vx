@@ -22,7 +22,10 @@ import { serveInfoPath } from '../src/serve-info.js'
 // touch a real local serve's file on the machine.
 const prevServeInfo = process.env['VX_CLOUD_SERVE_INFO']
 beforeAll(() => {
-  process.env['VX_CLOUD_SERVE_INFO'] = path.join(tmpdir(), `vx-serveinfo-plugin-${process.pid}.json`)
+  process.env['VX_CLOUD_SERVE_INFO'] = path.join(
+    tmpdir(),
+    `vx-serveinfo-plugin-${process.pid}.json`,
+  )
 })
 afterAll(async () => {
   await rm(serveInfoPath(), { force: true })
