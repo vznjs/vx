@@ -170,6 +170,42 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-28**: **Dashboard competitive upgrade — Wave 1: cache-miss
+  explainability + critical-path cockpit** (owner: "deep research on nx
+  cloud nx and turbo repo and others… what features they have in
+  dashboard what they miss how could we make them better and implement.
+  Spawn agents parallel"). A six-agent parallel research sweep (Nx
+  Cloud, Turborepo/Vercel, Gradle Develocity, BuildBuddy/Bazel, a
+  second-tier roundup, plus an inventory of our own UI/serve/metrics/
+  cache.db) produced `docs/design/dashboard-competitive-2026-06.md` — a
+  ranked Tier 1-3 gap analysis. Key finding: the field's #1 feature
+  (cache-miss "why") was already ~80% built in our backend
+  (`whyDidThisRerun` + `/v1/why/:runId/:taskId`, and `explainCacheKey` +
+  `/v1/explain/:taskId`) with ZERO UI. Wave 1 (two parallel
+  developer agents, disjoint file ownership): (A) surfaced both — a
+  "Why did this re-run?" card on run-detail (per-task hash-changed +
+  reason, prev→current key, via a `runWhy` source that fetches the run
+  then fans out `/v1/why` per task) and a "Cache key" card on
+  task-detail (the existing `explainCacheKey` wrapper); honest framing,
+  no false input-file-diff claim (the full per-file diff needs persisted
+  fingerprints, deferred Tier 3). (B) added a `critical-path.ts` util
+  (longest-duration dependency chain, O(N+E), cycle-guarded) + a live
+  Critical-path panel in the run cockpit: ordered clickable chain with
+  the wall-time floor, DAG/flamegraph highlight of the chain, and a
+  parallelism callout (observed peak concurrent vs the worker count from
+  `run:start.info.concurrency`). Frontend-only; the two endpoints +
+  queries already existed, so no `src/`/`packages/` change, no
+  CACHE_VERSION bump. Verified e2e over the Chrome DevTools Protocol
+  against the real cache.db: both cards render (console clean) and a
+  driven live `lint` run computes + renders "These N tasks are your X
+  floor" with the parallelism callout. Embedded SPA dist rebuilt once at
+  integration (293 KB / 81 KB gzip). Core gate green (952 tests, 0
+  fail). NEXT (Wave 2): run comparison (diff two runs), a filterable
+  cache-entry inventory with a cold/never-rehit flag, and a local-vs-
+  remote hit-rate split. Tier 3 (git/commit context, persisted input
+  fingerprints for the full Develocity-grade diff, invocation header
+  table + tags) is a deferred schema-bump follow-up.
+
 - **2026-06-27**: **Split fallout fix — `vx serve` launch path restored
   (owner: "it is all not working. seams like you have shitt tests").**
   The core/cloud split removed serve/dev/coordinator/worker from core

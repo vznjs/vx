@@ -1,6 +1,7 @@
 {
   "data": {
-    "detail": "taskDetail"
+    "detail": "taskDetail",
+    "cacheKey": "cacheKey"
   },
   "spec": {
     "type": "Page",
@@ -318,6 +319,74 @@
                   "key": "exitCode"
                 }
               ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Cache key"
+        },
+        "visible": {
+          "$state": "/cacheKeyStatus",
+          "eq": "ok"
+        },
+        "children": [
+          {
+            "type": "Facts",
+            "props": {
+              "entry": {
+                "$state": "/cacheKey/latestEntry"
+              },
+              "commandKey": "command",
+              "fields": [
+                {
+                  "label": "hash",
+                  "key": "hash",
+                  "kind": "shorthash16"
+                },
+                {
+                  "label": "exit",
+                  "key": "exitCode"
+                },
+                {
+                  "label": "duration",
+                  "key": "durationMs",
+                  "kind": "duration"
+                },
+                {
+                  "label": "size",
+                  "key": "sizeBytes",
+                  "kind": "bytes"
+                },
+                {
+                  "label": "created",
+                  "key": "createdAt",
+                  "kind": "relativeTime"
+                }
+              ]
+            }
+          },
+          {
+            "type": "Empty",
+            "props": {
+              "title": "No cached entry yet",
+              "hint": "run this task once to populate its cache key"
+            },
+            "visible": {
+              "$state": "/cacheKey/latestEntry",
+              "eq": null
+            }
+          },
+          {
+            "type": "Text",
+            "props": {
+              "text": {
+                "$state": "/cacheKey/note"
+              },
+              "tone": "faint",
+              "class": "mt-3"
             }
           }
         ]

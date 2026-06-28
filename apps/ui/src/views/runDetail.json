@@ -1,6 +1,7 @@
 {
   "data": {
-    "run": "run"
+    "run": "run",
+    "runWhy": "runWhy"
   },
   "spec": {
     "type": "Page",
@@ -334,6 +335,65 @@
                   "label": "Cache",
                   "align": "right",
                   "kind": "cache"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Why did this re-run?",
+          "actionText": "hash changed since previous run",
+          "noPad": true
+        },
+        "visible": {
+          "$state": "/runWhyStatus",
+          "eq": "ok"
+        },
+        "children": [
+          {
+            "type": "DataTable",
+            "props": {
+              "rows": {
+                "$state": "/runWhy"
+              },
+              "rowTaskRef": {},
+              "emptyTitle": "No tasks to compare",
+              "filter": true,
+              "filterFrom": ["taskId", "reason"],
+              "filterPlaceholder": "filter tasks…",
+              "columns": [
+                {
+                  "key": "task",
+                  "label": "Task",
+                  "kind": "projtask"
+                },
+                {
+                  "key": "reason",
+                  "label": "Reason",
+                  "kind": "dots",
+                  "dots": [
+                    {
+                      "field": "reason",
+                      "map": "palette"
+                    }
+                  ]
+                },
+                {
+                  "key": "previousHash",
+                  "label": "Previous key",
+                  "align": "right",
+                  "kind": "shorthash",
+                  "len": 12
+                },
+                {
+                  "key": "currentHash",
+                  "label": "Current key",
+                  "align": "right",
+                  "kind": "shorthash",
+                  "len": 12
                 }
               ]
             }

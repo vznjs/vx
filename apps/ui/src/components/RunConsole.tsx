@@ -11,6 +11,7 @@
 import { For, Show, batch, createMemo, createResource, createSignal, onCleanup, onMount } from 'solid-js'
 import { type GraphNode, type RunSummaryRow, type WireEvent, getGraph, getOrigin, getHistory, getVersion, runTasks } from '../api.ts'
 import { layoutGraph } from '../run-graph-layout.ts'
+import { criticalPath, parallelism } from './critical-path.ts'
 import { Flamegraph as FlameView } from './Flamegraph.tsx'
 import { EmptyState } from './ui.tsx'
 
@@ -77,6 +78,8 @@ export function RunConsole() {
   const [progress, setProgress] = createSignal({ done: 0, total: 0 })
   const [runError, setRunError] = createSignal<string | null>(null)
   const [ok, setOk] = createSignal<boolean | null>(null)
+  // Configured worker count from run:start (undefined if the server didn't send it).
+  const [concurrency, setConcurrency] = createSignal<number | undefined>(undefined)
 
   let cancel: (() => void) | null = null
   onCleanup(() => cancel?.())
@@ -87,6 +90,40 @@ export function RunConsole() {
   })
 
   const layout = createMemo(() => layoutGraph(nodes()))
+
+  // Per-node duration (ms): the reported duration once complete, else the live
+  // elapsed time for a running task, else 0 (queued). Recomputes as `now` ticks
+  // so the critical path grows during the run and settles on completion.
+  const durationOf = (id: string): number => {
+    const st = statuses()[id]
+    if (st?.durationMs !== undefined) return st.durationMs
+    const t = timing()[id]
+    if (t && st?.state === 'running') return Math.max(0, (t.endedAt ?? now()) - t.startedAt)
+    return 0
+  }
+
+  // Longest-duration dependency chain (the wall-time floor) over the live graph.
+  const critical = createMemo(() => {
+    now() // track the tick so in-progress chains grow
+    return criticalPath(nodes(), durationOf)
+  })
+  const criticalSet = createMemo(() => new Set(critical().chain))
+  // Adjacent (dep → dependent) pairs on the chain, keyed "dep>dependent", so an
+  // edge can light up only when it actually lies on the critical path.
+  const criticalEdges = createMemo(() => {
+    const c = critical().chain
+    const s = new Set<string>()
+    for (let i = 1; i < c.length; i++) s.add(`${c[i - 1]}>${c[i]}`)
+    return s
+  })
+
+  // Observed concurrency from the live per-task windows.
+  const parallel = createMemo(() => {
+    const tm = timing()
+    const clock = now()
+    const intervals = Object.values(tm).map((t) => ({ startedAt: t.startedAt, endedAt: t.endedAt ?? Math.max(clock, t.startedAt) }))
+    return parallelism(intervals)
+  })
 
   // Build flamegraph rows (RunSummaryRow shape) from live timing + status.
   const flameRows = createMemo<RunSummaryRow[]>(() => {
@@ -121,7 +158,10 @@ export function RunConsole() {
   })
 
   function handleEvent(ev: WireEvent) {
-    if (ev.kind === 'run:start') setProgress({ done: 0, total: ev.info.total })
+    if (ev.kind === 'run:start') {
+      setProgress({ done: 0, total: ev.info.total })
+      setConcurrency(ev.info.concurrency)
+    }
     else if (ev.kind === 'task:start') {
       setStatuses((p) => ({ ...p, [ev.task.id]: { state: 'running' } }))
       setTiming((p) => ({ ...p, [ev.task.id]: { startedAt: Date.now() } }))
@@ -157,6 +197,7 @@ export function RunConsole() {
       setProgress({ done: 0, total: 0 })
       setRunError(null)
       setOk(null)
+      setConcurrency(undefined)
       setNow(Date.now())
       setRunning(true)
       setStarted(true)
@@ -300,6 +341,7 @@ export function RunConsole() {
                 <FlameView
                   tasks={flameRows()}
                   selectedId={selected() ?? undefined}
+                  highlightIds={criticalSet()}
                   onSelect={(t) => setSelected(`${t.project}#${t.task}`)}
                 />
               </Show>
@@ -330,12 +372,13 @@ export function RunConsole() {
                                   const tx = to()!.layer * (NODE_W + COL_GAP)
                                   const ty = to()!.row * (NODE_H + ROW_GAP) + NODE_H / 2
                                   const mx = (sx + tx) / 2
+                                  const onPath = criticalEdges().has(`${depId}>${n.id}`)
                                   return (
                                     <path
                                       d={`M ${sx},${sy} C ${mx},${sy} ${mx},${ty} ${tx},${ty}`}
                                       fill="none"
-                                      class="stroke-border-strong"
-                                      stroke-width="1.5"
+                                      class={onPath ? 'stroke-warn/80' : 'stroke-border-strong'}
+                                      stroke-width={onPath ? 2.5 : 1.5}
                                     />
                                   )
                                 })()}
@@ -357,7 +400,10 @@ export function RunConsole() {
                         <button
                           onClick={() => setSelected(n.id)}
                           class={`absolute rounded-lg border px-3 py-2 text-left transition-all flex flex-col justify-center gap-0.5 ${STATE_STYLE[st()]}`}
-                          classList={{ 'ring-2 ring-accent ring-offset-2 ring-offset-bg': selected() === n.id }}
+                          classList={{
+                            'ring-2 ring-accent ring-offset-2 ring-offset-bg': selected() === n.id,
+                            'ring-2 ring-warn/70 ring-offset-2 ring-offset-bg': selected() !== n.id && criticalSet().has(n.id),
+                          }}
                           style={{
                             left: `${pos()!.layer * (NODE_W + COL_GAP)}px`,
                             top: `${pos()!.row * (NODE_H + ROW_GAP)}px`,
@@ -386,22 +432,79 @@ export function RunConsole() {
             </Show>
           </div>
 
-          {/* Log panel */}
-          <div class="rounded-xl border border-border bg-surface/40 flex flex-col min-h-0 overflow-hidden">
-            <div class="px-4 py-2.5 border-b border-border/70 flex items-center gap-2">
-              <span class="i-tabler-terminal-2 text-fg-3" />
-              <span class="text-[11px] font-semibold uppercase tracking-wider text-fg-2 truncate">
-                {selected() ? selected() : 'Logs'}
-              </span>
+          {/* Right column: critical path + parallelism, then logs */}
+          <div class="flex flex-col gap-4 min-h-0">
+            {/* Critical path + parallelism */}
+            <div class="rounded-xl border border-border bg-surface/40 flex flex-col overflow-hidden shrink-0 max-h-[45%]">
+              <div class="px-4 py-2.5 border-b border-border/70 flex items-center gap-2">
+                <span class="i-tabler-route text-warn" />
+                <span class="text-[11px] font-semibold uppercase tracking-wider text-fg-2">Critical path</span>
+                <Show when={critical().chain.length > 0}>
+                  <span class="ml-auto text-[11px] font-mono text-warn tabular-nums">{fmtDur(critical().totalMs)}</span>
+                </Show>
+              </div>
+
+              {/* Parallelism callout */}
+              <div class="px-4 py-2 border-b border-border/70 flex items-center gap-3 text-[11px] text-fg-2">
+                <span class="i-tabler-arrows-split-2 text-accent shrink-0" />
+                <span class="font-mono tabular-nums">
+                  <span class="text-fg-1 font-semibold">{parallel().maxConcurrent}</span>
+                  <Show when={concurrency() !== undefined}>
+                    <span class="text-fg-3"> / {concurrency()}</span>
+                  </Show>
+                  <span class="text-fg-3"> peak parallel</span>
+                </span>
+                <Show when={parallel().spanMs > 0}>
+                  <span class="ml-auto text-fg-3 font-mono tabular-nums">{Math.round((parallel().busyMs / parallel().spanMs) * 10) / 10}× avg</span>
+                </Show>
+              </div>
+
+              <Show
+                when={critical().chain.length > 0}
+                fallback={<div class="flex-1 grid place-items-center text-fg-3 text-[12px] p-4 text-center">{started() ? 'Computing…' : 'Run to see the wall-time floor.'}</div>}
+              >
+                <div class="overflow-auto min-h-0">
+                  <div class="px-4 py-1.5 text-[10px] text-fg-3">
+                    These {critical().chain.length} task{critical().chain.length === 1 ? '' : 's'} are your {fmtDur(critical().totalMs)} floor.
+                  </div>
+                  <For each={critical().chain}>
+                    {(id, i) => {
+                      const node = () => nodes().find((n) => n.id === id)
+                      return (
+                        <button
+                          onClick={() => setSelected(id)}
+                          class="w-full text-left px-4 py-1.5 flex items-center gap-2 hover:bg-surface-hover transition border-l-2"
+                          classList={{ 'border-accent bg-accent/5': selected() === id, 'border-transparent': selected() !== id }}
+                        >
+                          <span class="text-[10px] text-fg-3 font-mono w-4 shrink-0 tabular-nums">{i() + 1}</span>
+                          <span class="font-mono text-[12px] text-fg-1 truncate">{node()?.task ?? id}</span>
+                          <span class="text-[10px] text-fg-3 font-mono truncate hidden sm:inline">{node()?.project}</span>
+                          <span class="ml-auto text-[11px] font-mono text-fg-2 tabular-nums shrink-0">{fmtDur(durationOf(id))}</span>
+                        </button>
+                      )
+                    }}
+                  </For>
+                </div>
+              </Show>
             </div>
-            <Show
-              when={selected()}
-              fallback={<div class="flex-1 grid place-items-center text-fg-3 text-[12px] p-4 text-center">Click a node to view its output.</div>}
-            >
-              <pre class="flex-1 overflow-auto m-0 p-4 text-[11px] leading-relaxed font-mono text-fg-1 whitespace-pre-wrap break-words">
-                {stripAnsi(logs()[selected()!] ?? '') || '— no output —'}
-              </pre>
-            </Show>
+
+            {/* Log panel */}
+            <div class="rounded-xl border border-border bg-surface/40 flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div class="px-4 py-2.5 border-b border-border/70 flex items-center gap-2">
+                <span class="i-tabler-terminal-2 text-fg-3" />
+                <span class="text-[11px] font-semibold uppercase tracking-wider text-fg-2 truncate">
+                  {selected() ? selected() : 'Logs'}
+                </span>
+              </div>
+              <Show
+                when={selected()}
+                fallback={<div class="flex-1 grid place-items-center text-fg-3 text-[12px] p-4 text-center">Click a node to view its output.</div>}
+              >
+                <pre class="flex-1 overflow-auto m-0 p-4 text-[11px] leading-relaxed font-mono text-fg-1 whitespace-pre-wrap break-words">
+                  {stripAnsi(logs()[selected()!] ?? '') || '— no output —'}
+                </pre>
+              </Show>
+            </div>
           </div>
         </div>
       </Show>

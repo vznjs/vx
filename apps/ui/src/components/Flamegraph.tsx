@@ -20,6 +20,8 @@ const idOf = (t: RunSummaryRow): string => `${t.project}#${t.task}`
 export function Flamegraph(props: {
   tasks: readonly RunSummaryRow[]
   selectedId?: string
+  // Bars whose `${project}#${task}` id is in this set get a critical-path ring.
+  highlightIds?: ReadonlySet<string>
   onSelect?: (task: RunSummaryRow) => void
 }) {
   // Use startedAt/endedAt (epoch ms, present for EVERY task) as the uniform
@@ -68,10 +70,15 @@ export function Flamegraph(props: {
           {(bar, i) => {
             const task = () => props.tasks[i()]
             const selected = () => props.selectedId === bar.taskId
+            const onPath = () => props.highlightIds?.has(bar.taskId) === true
             return (
               <div
                 class={`absolute rounded text-[10px] text-bg font-medium overflow-hidden whitespace-nowrap px-1 cursor-pointer transition-[outline] ${colorFor(bar.status, bar.cacheHit)}`}
-                classList={{ 'outline outline-2 outline-fg-1 z-20': selected(), 'hover:brightness-110': !selected() }}
+                classList={{
+                  'outline outline-2 outline-fg-1 z-20': selected(),
+                  'outline outline-2 outline-warn z-10': !selected() && onPath(),
+                  'hover:brightness-110': !selected(),
+                }}
                 style={{
                   left: `${bar.leftPct}%`,
                   width: `${bar.widthPct}%`,

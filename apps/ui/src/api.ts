@@ -185,6 +185,23 @@ export interface CacheKeyExplanation {
   note: string
 }
 
+export interface WhyRunSide {
+  hash: string
+  status: string
+  cacheHit: boolean | null
+  startedAt: number
+}
+
+export interface WhyDidThisRerun {
+  runId: string
+  taskId: string
+  found: boolean
+  thisRun?: WhyRunSide
+  previousRun?: WhyRunSide | null
+  hashChanged?: boolean | null
+  note: string
+}
+
 export interface ServerVersion {
   protocol: string
   vx: string
@@ -238,6 +255,16 @@ export async function getHistory(args: { limit?: number } = {}): Promise<TaskHis
 
 export async function explainCacheKey(taskId: string): Promise<CacheKeyExplanation> {
   return await getJson<CacheKeyExplanation>(`/v1/explain/${encodeURIComponent(taskId)}`)
+}
+
+/**
+ * Compare a run's task hash to the previous run's: `hashChanged` flags whether
+ * the cache key shifted (inputs differ) since the prior run of that task.
+ */
+export async function whyDidThisRerun(runId: string, taskId: string): Promise<WhyDidThisRerun> {
+  return await getJson<WhyDidThisRerun>(
+    `/v1/why/${encodeURIComponent(runId)}/${encodeURIComponent(taskId)}`,
+  )
 }
 
 export async function getTopTasks(limit = 10): Promise<TopTaskRow[]> {
