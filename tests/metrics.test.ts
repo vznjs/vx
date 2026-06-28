@@ -2,8 +2,9 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { Cache, type RunRecord } from '../src/cache/index.js'
+import { type InvocationRecord, Cache, type RunRecord } from '../src/cache/index.js'
 import {
+  cacheKeyDiff,
   compareRuns,
   explainCacheKeyQuery,
   getBottlenecks,
@@ -12,6 +13,8 @@ import {
   getCacheStatsSql,
   getFlakiestTasks,
   getHistory,
+  getHitRateSplit,
+  getInvocation,
   getParallelismHistory,
   getPrunableEntries,
   getRecentFailures,
@@ -47,6 +50,55 @@ function mkRun(
     wallclockStartNs: 0n,
     wallclockEndNs: 0n,
     cacheHit: args.cacheHit ?? false,
+  }
+}
+
+function mkInvocation(args: Partial<InvocationRecord> & { runId: string }): InvocationRecord {
+  return {
+    runId: args.runId,
+    command: args.command ?? 'vx run build',
+    requestedTasks: args.requestedTasks ?? JSON.stringify(['build']),
+    cachePolicy: args.cachePolicy ?? 'lR,lW,rR,rW',
+    concurrency: args.concurrency ?? 8,
+    flow: args.flow ?? 'broad',
+    startedAt: args.startedAt ?? 1000,
+    endedAt: args.endedAt ?? 1100,
+    totalDurationMs: args.totalDurationMs ?? 100,
+    taskCount: args.taskCount ?? 1,
+    failedCount: args.failedCount ?? 0,
+    hitCount: args.hitCount ?? 0,
+    hitLocalCount: args.hitLocalCount ?? 0,
+    hitRemoteCount: args.hitRemoteCount ?? 0,
+    exitOk: args.exitOk ?? true,
+    commitSha: args.commitSha ?? 'abc123',
+    branch: args.branch ?? 'main',
+    dirty: args.dirty ?? false,
+    ci: args.ci ?? false,
+    ciProvider: args.ciProvider ?? null,
+    host: args.host ?? 'box',
+    os: args.os ?? 'linux',
+    arch: args.arch ?? 'x64',
+    vxVersion: args.vxVersion ?? '0.0.0',
+    tags: args.tags ?? '{}',
+  }
+}
+
+/** Write entry_inputs rows directly — the diff reads them by entry hash. */
+function seedEntryInputs(
+  cache: Cache,
+  entryHash: string,
+  rows: { kind: string; name: string; hash: string }[],
+): void {
+  const db = cache.dbHandle()
+  // entry_inputs has an FK to entries(hash); satisfy it with a stub row.
+  db.query(
+    `INSERT OR IGNORE INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
+     VALUES (?, 'pkg', 'test', 'cmd', 0, 0, 0, '', 0, 0)`,
+  ).run(entryHash)
+  for (const r of rows) {
+    db.query(
+      'INSERT OR IGNORE INTO entry_inputs(entry_hash, kind, name, hash) VALUES (?, ?, ?, ?)',
+    ).run(entryHash, r.kind, r.name, r.hash)
   }
 }
 
@@ -92,45 +144,249 @@ describe('listRuns', () => {
 })
 
 describe('listInvocations', () => {
-  it('groups by run_id with per-invocation aggregates', () => {
+  it('reads the invocations table newest-first with the richer detail shape', () => {
     withCache((cache) => {
-      cache.recordRuns([
-        mkRun({
-          hash: 'h1',
-          project: 'pkg',
-          task: 'build',
+      cache.recordRunBundle({
+        runs: [mkRun({ hash: 'h1', project: 'pkg', task: 'build', runId: 'r-1' })],
+        invocation: mkInvocation({
           runId: 'r-1',
           startedAt: 1000,
-          durationMs: 100,
+          endedAt: 1300,
+          taskCount: 2,
+          failedCount: 1,
+          totalDurationMs: 300,
         }),
-        mkRun({
-          hash: 'h2',
-          project: 'pkg',
-          task: 'test',
-          runId: 'r-1',
-          startedAt: 1100,
-          durationMs: 200,
-          status: 'failed',
-        }),
-        mkRun({
-          hash: 'h3',
-          project: 'pkg',
-          task: 'build',
+      })
+      cache.recordRunBundle({
+        runs: [mkRun({ hash: 'h3', project: 'pkg', task: 'build', runId: 'r-2' })],
+        invocation: mkInvocation({
           runId: 'r-2',
           startedAt: 2000,
-          durationMs: 50,
-          cacheHit: true,
-          status: 'cache-hit',
+          hitCount: 1,
+          hitLocalCount: 1,
         }),
-      ])
+      })
       const rows = listInvocations(cache.dbHandle())
       expect(rows.length).toBe(2)
+      // newest first
+      expect(rows[0]!.runId).toBe('r-2')
       const r1 = rows.find((r) => r.runId === 'r-1')!
       expect(r1.taskCount).toBe(2)
       expect(r1.failedCount).toBe(1)
       expect(r1.totalDurationMs).toBe(300)
+      // richer detail superset
+      expect(r1.branch).toBe('main')
+      expect(r1.requestedTasks).toEqual(['build'])
       const r2 = rows.find((r) => r.runId === 'r-2')!
       expect(r2.hitCount).toBe(1)
+      expect(r2.hitLocalCount).toBe(1)
+    })
+  })
+
+  it('accepts a bare number for the limit (back-compat)', () => {
+    withCache((cache) => {
+      for (let i = 0; i < 5; i++) {
+        cache.recordRunBundle({
+          runs: [mkRun({ hash: `h${i}`, project: 'pkg', task: 'build', runId: `r-${i}` })],
+          invocation: mkInvocation({ runId: `r-${i}`, startedAt: 1000 + i }),
+        })
+      }
+      expect(listInvocations(cache.dbHandle(), 2).length).toBe(2)
+    })
+  })
+
+  it('filters by branch, ci, and tag', () => {
+    withCache((cache) => {
+      cache.recordRunBundle({
+        runs: [mkRun({ hash: 'h1', project: 'pkg', task: 'build', runId: 'r-main' })],
+        invocation: mkInvocation({
+          runId: 'r-main',
+          startedAt: 1000,
+          branch: 'main',
+          ci: false,
+          tags: JSON.stringify({ env: 'dev' }),
+        }),
+      })
+      cache.recordRunBundle({
+        runs: [mkRun({ hash: 'h2', project: 'pkg', task: 'build', runId: 'r-feat' })],
+        invocation: mkInvocation({
+          runId: 'r-feat',
+          startedAt: 2000,
+          branch: 'feature',
+          ci: true,
+          ciProvider: 'github',
+          tags: JSON.stringify({ env: 'prod', pr: '42' }),
+        }),
+      })
+
+      const byBranch = listInvocations(cache.dbHandle(), { branch: 'feature' })
+      expect(byBranch.map((r) => r.runId)).toEqual(['r-feat'])
+
+      const byCi = listInvocations(cache.dbHandle(), { ci: true })
+      expect(byCi.map((r) => r.runId)).toEqual(['r-feat'])
+      expect(byCi[0]!.ciProvider).toBe('github')
+
+      const notCi = listInvocations(cache.dbHandle(), { ci: false })
+      expect(notCi.map((r) => r.runId)).toEqual(['r-main'])
+
+      const byTag = listInvocations(cache.dbHandle(), { tagKey: 'env', tagValue: 'prod' })
+      expect(byTag.map((r) => r.runId)).toEqual(['r-feat'])
+      expect(byTag[0]!.tags).toEqual({ env: 'prod', pr: '42' })
+
+      const byTagDev = listInvocations(cache.dbHandle(), { tagKey: 'env', tagValue: 'dev' })
+      expect(byTagDev.map((r) => r.runId)).toEqual(['r-main'])
+    })
+  })
+})
+
+describe('getInvocation', () => {
+  it('round-trips a recorded invocation, camelCased with parsed booleans/JSON', () => {
+    withCache((cache) => {
+      cache.recordRunBundle({
+        runs: [mkRun({ hash: 'h1', project: 'pkg', task: 'build', runId: 'r-1' })],
+        invocation: mkInvocation({
+          runId: 'r-1',
+          command: 'vx run build test --all',
+          requestedTasks: JSON.stringify(['build', 'test']),
+          dirty: true,
+          ci: true,
+          ciProvider: 'gitlab',
+          exitOk: false,
+          tags: JSON.stringify({ team: 'core' }),
+        }),
+      })
+      const inv = getInvocation(cache.dbHandle(), 'r-1')!
+      expect(inv.command).toBe('vx run build test --all')
+      expect(inv.requestedTasks).toEqual(['build', 'test'])
+      expect(inv.dirty).toBe(true)
+      expect(inv.ci).toBe(true)
+      expect(inv.ciProvider).toBe('gitlab')
+      expect(inv.exitOk).toBe(false)
+      expect(inv.tags).toEqual({ team: 'core' })
+    })
+  })
+
+  it('returns null for an unknown runId', () => {
+    withCache((cache) => {
+      expect(getInvocation(cache.dbHandle(), 'nope')).toBeNull()
+    })
+  })
+})
+
+describe('cacheKeyDiff', () => {
+  it('names the changed / added / removed components vs the previous run', () => {
+    withCache((cache) => {
+      // Previous run of pkg#test → hash hPrev
+      cache.recordRun(
+        mkRun({ hash: 'hPrev', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
+      )
+      seedEntryInputs(cache, 'hPrev', [
+        { kind: 'file', name: 'src/a.ts', hash: 'oidA1' },
+        { kind: 'file', name: 'src/stable.ts', hash: 'oidStable' },
+        { kind: 'env', name: 'NODE_ENV', hash: 'development' },
+        { kind: 'env', name: 'OLD_ONLY', hash: 'gone' },
+      ])
+      // This run of pkg#test → hash hCur
+      cache.recordRun(
+        mkRun({ hash: 'hCur', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
+      )
+      seedEntryInputs(cache, 'hCur', [
+        { kind: 'file', name: 'src/a.ts', hash: 'oidA2' }, // changed
+        { kind: 'file', name: 'src/stable.ts', hash: 'oidStable' }, // unchanged
+        { kind: 'env', name: 'NODE_ENV', hash: 'production' }, // changed
+        { kind: 'file', name: 'src/new.ts', hash: 'oidNew' }, // added
+      ])
+
+      const diff = cacheKeyDiff(cache.dbHandle(), 'r-2', 'pkg#test')
+      expect(diff.found).toBe(true)
+      expect(diff.previousRunId).toBe('r-1')
+      expect(diff.unchangedCount).toBe(1) // src/stable.ts
+
+      const byName = new Map(diff.entries.map((e) => [`${e.kind}:${e.name}`, e]))
+      expect(byName.get('file:src/a.ts')).toEqual({
+        kind: 'file',
+        name: 'src/a.ts',
+        change: 'changed',
+        before: 'oidA1',
+        after: 'oidA2',
+      })
+      expect(byName.get('env:NODE_ENV')).toEqual({
+        kind: 'env',
+        name: 'NODE_ENV',
+        change: 'changed',
+        before: 'development',
+        after: 'production',
+      })
+      expect(byName.get('file:src/new.ts')).toEqual({
+        kind: 'file',
+        name: 'src/new.ts',
+        change: 'added',
+        before: null,
+        after: 'oidNew',
+      })
+      expect(byName.get('env:OLD_ONLY')).toEqual({
+        kind: 'env',
+        name: 'OLD_ONLY',
+        change: 'removed',
+        before: 'gone',
+        after: null,
+      })
+      // exactly those four diffs, nothing else
+      expect(diff.entries.length).toBe(4)
+    })
+  })
+
+  it('first run of a task → found, no previous, empty diff', () => {
+    withCache((cache) => {
+      cache.recordRun(
+        mkRun({ hash: 'hOnly', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
+      )
+      seedEntryInputs(cache, 'hOnly', [{ kind: 'file', name: 'src/a.ts', hash: 'oid' }])
+      const diff = cacheKeyDiff(cache.dbHandle(), 'r-1', 'pkg#test')
+      expect(diff.found).toBe(true)
+      expect(diff.previousRunId).toBeNull()
+      expect(diff.entries).toEqual([])
+    })
+  })
+
+  it('same hash across two runs → found, empty diff (nothing changed)', () => {
+    withCache((cache) => {
+      cache.recordRun(
+        mkRun({ hash: 'hSame', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
+      )
+      cache.recordRun(
+        mkRun({ hash: 'hSame', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
+      )
+      seedEntryInputs(cache, 'hSame', [{ kind: 'file', name: 'src/a.ts', hash: 'oid' }])
+      const diff = cacheKeyDiff(cache.dbHandle(), 'r-2', 'pkg#test')
+      expect(diff.found).toBe(true)
+      expect(diff.previousRunId).toBe('r-1')
+      expect(diff.entries).toEqual([])
+    })
+  })
+
+  it('returns found=false for an unknown runId + taskId', () => {
+    withCache((cache) => {
+      const diff = cacheKeyDiff(cache.dbHandle(), 'nope', 'pkg#test')
+      expect(diff.found).toBe(false)
+      expect(diff.entries).toEqual([])
+    })
+  })
+
+  it('degrades gracefully when fingerprint rows were pruned', () => {
+    withCache((cache) => {
+      // Two runs with different hashes but no entry_inputs rows recorded.
+      cache.recordRun(
+        mkRun({ hash: 'hP', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
+      )
+      cache.recordRun(
+        mkRun({ hash: 'hC', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
+      )
+      const diff = cacheKeyDiff(cache.dbHandle(), 'r-2', 'pkg#test')
+      expect(diff.found).toBe(true)
+      expect(diff.previousRunId).toBe('r-1')
+      expect(diff.entries).toEqual([])
+      expect(diff.note).toContain('unavailable')
     })
   })
 })
@@ -171,28 +427,78 @@ describe('getRun', () => {
 })
 
 describe('getCacheStatsSql', () => {
-  it('counts entries + computes hit rate from runs in last 24h', () => {
+  it('counts entries + computes hit rate + local/remote split from runs in last 24h', () => {
     withCache((cache) => {
+      const now = Date.now()
       cache.recordRuns([
         mkRun({
           hash: 'h1',
           project: 'pkg',
           task: 'build',
           status: 'success',
-          startedAt: Date.now() - 1000,
+          startedAt: now - 1500,
         }),
         mkRun({
           hash: 'h2',
           project: 'pkg',
           task: 'build',
           status: 'cache-hit',
-          startedAt: Date.now() - 500,
+          startedAt: now - 1000,
+        }),
+        mkRun({
+          hash: 'h3',
+          project: 'pkg',
+          task: 'test',
+          status: 'cache-hit-remote',
+          startedAt: now - 500,
         }),
       ])
       const stats = getCacheStatsSql(cache.dbHandle())
-      expect(stats.runCountLast24h).toBe(2)
-      expect(stats.hitCountLast24h).toBe(1)
-      expect(stats.hitRate24h).toBeCloseTo(0.5)
+      expect(stats.runCountLast24h).toBe(3)
+      expect(stats.hitCountLast24h).toBe(2)
+      expect(stats.hitLocalCountLast24h).toBe(1)
+      expect(stats.hitRemoteCountLast24h).toBe(1)
+      expect(stats.hitRate24h).toBeCloseTo(2 / 3)
+    })
+  })
+})
+
+describe('getHitRateSplit', () => {
+  it('counts local vs remote hits and computes shares', () => {
+    withCache((cache) => {
+      const now = Date.now()
+      cache.recordRuns([
+        mkRun({ hash: 'h1', project: 'pkg', task: 'a', status: 'success', startedAt: now - 4000 }),
+        mkRun({
+          hash: 'h2',
+          project: 'pkg',
+          task: 'a',
+          status: 'cache-hit',
+          startedAt: now - 3000,
+        }),
+        mkRun({
+          hash: 'h3',
+          project: 'pkg',
+          task: 'a',
+          status: 'cache-hit',
+          startedAt: now - 2000,
+        }),
+        mkRun({
+          hash: 'h4',
+          project: 'pkg',
+          task: 'b',
+          status: 'cache-hit-remote',
+          startedAt: now - 1000,
+        }),
+      ])
+      const split = getHitRateSplit(cache.dbHandle())
+      expect(split.total).toBe(4)
+      expect(split.hits).toBe(3)
+      expect(split.hitLocal).toBe(2)
+      expect(split.hitRemote).toBe(1)
+      expect(split.hitRate).toBeCloseTo(0.75)
+      expect(split.localShare).toBeCloseTo(2 / 3)
+      expect(split.remoteShare).toBeCloseTo(1 / 3)
     })
   })
 })
@@ -518,18 +824,33 @@ describe('listProjects', () => {
 })
 
 describe('getRunTrends', () => {
-  it('returns a densified time series with hour buckets', () => {
+  it('returns a densified time series with hour buckets + local/remote hit series', () => {
     withCache((cache) => {
       const now = Date.now()
       cache.recordRuns([
         mkRun({ hash: 'h1', project: 'a', task: 'b', startedAt: now - 60_000 }),
-        mkRun({ hash: 'h2', project: 'a', task: 'b', startedAt: now - 60_000 }),
+        mkRun({
+          hash: 'h2',
+          project: 'a',
+          task: 'b',
+          status: 'cache-hit',
+          startedAt: now - 60_000,
+        }),
+        mkRun({
+          hash: 'h3',
+          project: 'a',
+          task: 'b',
+          status: 'cache-hit-remote',
+          startedAt: now - 60_000,
+        }),
       ])
       const pts = getRunTrends(cache.dbHandle(), { bucket: 'hour' })
       // 24h of hourly buckets ≈ 25 cells (start + end inclusive).
       expect(pts.length).toBeGreaterThan(20)
-      const total = pts.reduce((acc, p) => acc + p.runs, 0)
-      expect(total).toBe(2)
+      expect(pts.reduce((acc, p) => acc + p.runs, 0)).toBe(3)
+      expect(pts.reduce((acc, p) => acc + p.hitsLocal, 0)).toBe(1)
+      expect(pts.reduce((acc, p) => acc + p.hitsRemote, 0)).toBe(1)
+      expect(pts.reduce((acc, p) => acc + p.hits, 0)).toBe(2)
     })
   })
 })

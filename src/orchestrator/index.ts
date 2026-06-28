@@ -31,6 +31,7 @@ export { createVxSurface } from './devframe-surface.js'
 export { createWireRenderer } from './wire-render.js'
 export { optionsToRequest, requestToOptions } from './protocol.js'
 export type { ClientMessage, RunBackend, RunRequest, RunResult, ServerMessage } from './protocol.js'
+export { formatRunReportMarkdown } from './run-report.js'
 export {
   clientMessageToEnvelope,
   decodeEnvelope,
@@ -85,6 +86,7 @@ export { resolveBackend, resolveCache, subscribeEventSinks } from './plugin-host
 export { workerExecute } from './worker-exec.js'
 export type { WorkerExecArgs, WorkerExecResult } from './worker-exec.js'
 export {
+  cacheKeyDiff,
   compareRuns,
   explainCacheKey as explainCacheKeyQuery,
   getBottlenecks,
@@ -93,6 +95,8 @@ export {
   getCacheStatsSql,
   getFlakiestTasks,
   getHistory,
+  getHitRateSplit,
+  getInvocation,
   getParallelismHistory,
   getPrunableEntries,
   getRecentFailures,
@@ -111,6 +115,7 @@ export {
 export type {
   BottleneckRow,
   CacheEntryRow,
+  CacheKeyDiff,
   CacheKeyExplanation,
   CacheProjectRow,
   CacheSavings,
@@ -122,8 +127,12 @@ export type {
   FlakyTask,
   GetHistoryArgs,
   HeatmapCell,
+  HitRateSplit,
+  InputDiffEntry,
+  InvocationDetail,
   InvocationRow,
   ListCacheEntriesArgs,
+  ListInvocationsArgs,
   ListRunsArgs,
   ParallelismPoint,
   PrunableEntry,

@@ -164,6 +164,8 @@ stays clean).
 | `--graph[=<path>]`                | optional value | off                             | Emit Graphviz DOT (stdout if no path); skip execution.                                                                                            |
 | `--summarize[=<path>]`            | optional value | off                             | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                                                                     |
 | `--profile[=<path>]`              | optional value | off (`profile.json` when set)   | Write Chrome-trace JSON of the run's wallclock spans.                                                                                             |
+| `--tag <k=v>`                     | repeatable     | (none)                          | Label this invocation. Recorded on the run's `invocations` row so dashboards can filter runs. `--tag=k=v` form too.                               |
+| `--report[=markdown]`             | optional value | off                             | After the run, print a markdown run report to stdout. Only `markdown` is supported (`json` is reserved).                                          |
 
 Mutual exclusion:
 
@@ -456,6 +458,44 @@ from the per-task `hrtime.bigint()` spans the runner captures.
 `cache-hit-remote`, `failed`).
 
 Default path: `profile.json` (cwd-relative).
+
+### `--report[=markdown]`
+
+After a real run completes, prints a markdown run report to **stdout**
+(not the status logger — it stays machine-clean). One header line of
+totals plus a table, one row per task:
+
+```markdown
+## vx run — passed
+
+**3 tasks** · 3 success · 0 failed · 2 cached · 1.23s total · 8ms saved
+
+| Task      | Status  | Cache      | Duration |
+| --------- | ------- | ---------- | -------- |
+| web#build | success | miss       | 1.23s    |
+| web#test  | success | local      | 5ms      |
+| api#test  | success | up-to-date | 3ms      |
+```
+
+`Status` is the task outcome (`success` / `failed (exit N)` / `skipped`);
+`Cache` is its provenance (`miss` / `local` / `remote` / `up-to-date` /
+`—`). Aborted tasks (a Ctrl-C teardown) are excluded.
+
+Only `markdown` is supported today (`json` is reserved; a bad value is a
+parse error). Built purely from the run's outcomes after it returns — it
+adds zero cost when the flag is absent. The intended use is CI step
+summaries:
+
+```sh
+vx run ci --report=markdown >> "$GITHUB_STEP_SUMMARY"
+```
+
+### `--tag <k=v>`
+
+Labels the invocation. Repeatable; `--tag=k=v` form too. The pair is
+split on the **first** `=`, so values may contain `=` (e.g. a URL). An
+empty key is a parse error. Tags are recorded on the run's
+`invocations` row so dashboards can filter runs by label.
 
 ## Sandbox
 

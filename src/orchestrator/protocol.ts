@@ -26,6 +26,10 @@ export interface RunRequest {
   forwardArgs?: readonly string[]
   summarize?: string
   profile?: string
+  /** Free-form key/value labels from `--tag`, persisted on the invocation row. */
+  tags?: Record<string, string>
+  /** The raw `vx run …` command string, recorded on the invocation row. */
+  command?: string
 }
 
 export interface RunResult {
@@ -77,6 +81,8 @@ export function optionsToRequest(options: RunOptions): RunRequest {
   if (options.forwardArgs !== undefined) req.forwardArgs = options.forwardArgs
   if (options.summarize !== undefined) req.summarize = options.summarize
   if (options.profile !== undefined) req.profile = options.profile
+  if (options.tags !== undefined) req.tags = options.tags
+  if (options.command !== undefined) req.command = options.command
   return req
 }
 
@@ -99,5 +105,7 @@ export function requestToOptions(request: RunRequest): RunOptions {
   if (request.forwardArgs !== undefined) options.forwardArgs = request.forwardArgs
   if (request.summarize !== undefined) options.summarize = request.summarize
   if (request.profile !== undefined) options.profile = request.profile
+  if (request.tags !== undefined) options.tags = request.tags
+  if (request.command !== undefined) options.command = request.command
   return options
 }

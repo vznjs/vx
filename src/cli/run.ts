@@ -16,6 +16,7 @@ import {
 } from '../workspace/index.js'
 import {
   planRun,
+  formatRunReportMarkdown,
   optionsToRequest,
   resolveBackend as resolvePluginBackend,
   type OutcomeView,
@@ -63,6 +64,10 @@ export interface RunArgs {
    * `defaultAffectedBase`). Any other string is an explicit git ref.
    */
   affected: string | undefined
+  /** `--tag k=v` pairs (repeatable). Empty key is a parse error. */
+  tags: Record<string, string>
+  /** `--report[=markdown]`. Undefined when the flag wasn't passed. */
+  report: 'markdown' | undefined
   error?: string
 }
 
@@ -82,6 +87,8 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     summarize: undefined,
     profile: undefined,
     affected: undefined,
+    tags: {},
+    report: undefined,
   }
 
   const sepIdx = args.indexOf('--')
@@ -176,6 +183,21 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       out.affected = ''
     } else if (a?.startsWith('--affected=')) {
       out.affected = a.slice('--affected='.length)
+    } else if (a === '--tag' || a?.startsWith('--tag=')) {
+      const raw = a === '--tag' ? before[++i] : a.slice('--tag='.length)
+      if (raw === undefined) return { ...out, error: `${a} requires a value` }
+      // Split on the FIRST `=` so values may contain `=` (e.g. a URL).
+      const eq = raw.indexOf('=')
+      if (eq <= 0) return { ...out, error: `invalid --tag (expected k=v): ${raw}` }
+      out.tags[raw.slice(0, eq)] = raw.slice(eq + 1)
+    } else if (a === '--report') {
+      out.report = 'markdown'
+    } else if (a?.startsWith('--report=')) {
+      const fmt = a.slice('--report='.length)
+      if (fmt !== 'markdown') {
+        return { ...out, error: `invalid --report value: ${fmt} (only markdown)` }
+      }
+      out.report = fmt
     } else if (a !== undefined && a.startsWith('-')) {
       return { ...out, error: `unknown flag: ${a}` }
     } else if (a !== undefined) {
@@ -304,6 +326,8 @@ export async function resolveRunOptions(
   if (parsed.concurrency !== undefined) opts.concurrency = parsed.concurrency
   if (parsed.summarize !== undefined) opts.summarize = parsed.summarize
   if (parsed.profile !== undefined) opts.profile = parsed.profile
+  if (Object.keys(parsed.tags).length > 0) opts.tags = parsed.tags
+  if (parsed.report !== undefined) opts.report = parsed.report
 
   return opts
 }
@@ -337,6 +361,9 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     return 1
   }
   const opts = resolved
+  // The raw invocation, recorded on the `invocations` row so dashboards
+  // show what was actually run. `args` is everything after `run`.
+  opts.command = ['vx', 'run', ...args].join(' ')
 
   // Planning paths short-circuit execution. Both build the full task
   // graph + probe the cache; the difference is just the formatter.
@@ -381,6 +408,12 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   )
   const result = await backend.run(request)
   if (parsed.verbosity > 0) printSummary(result)
+  // Report generation is post-run, gated on the flag — zero cost when
+  // absent. Goes to stdout (NOT the status logger) so it stays
+  // machine-clean for `vx run ci --report=markdown >> $GITHUB_STEP_SUMMARY`.
+  if (parsed.report === 'markdown') {
+    process.stdout.write(formatRunReportMarkdown(result))
+  }
   return result.ok ? 0 : 1
 }
 

@@ -81,37 +81,185 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
 }
 
 /**
- * Group recent runs by `runId` — what the SPA's overview page wants
- * (one row per `vx run` invocation, not per task).
+ * One `vx run` invocation header — every `invocations` column, camelCased,
+ * `tags` parsed to a `Record<string,string>` and `dirty`/`ci`/`exitOk`
+ * surfaced as booleans. Superset of the old `InvocationRow`: the SPA's
+ * existing fields (runId / startedAt / endedAt / taskCount / failedCount /
+ * hitCount / totalDurationMs) are all present, so existing views keep working.
  */
-export interface InvocationRow {
+export interface InvocationDetail {
   runId: string
+  command: string
+  /** The requested task names, parsed from the persisted JSON string[]. */
+  requestedTasks: string[]
+  cachePolicy: string
+  concurrency: number
+  flow: 'focused' | 'broad' | null
   startedAt: number
   endedAt: number
+  totalDurationMs: number
   taskCount: number
   failedCount: number
   hitCount: number
-  totalDurationMs: number
+  hitLocalCount: number
+  hitRemoteCount: number
+  exitOk: boolean
+  commitSha: string | null
+  branch: string | null
+  dirty: boolean | null
+  ci: boolean
+  ciProvider: string | null
+  host: string | null
+  os: string | null
+  arch: string | null
+  vxVersion: string
+  tags: Record<string, string>
 }
 
-export function listInvocations(db: Database, limit = 50): InvocationRow[] {
-  return db
+/** @deprecated kept as an alias of `InvocationDetail` for older callers. */
+export type InvocationRow = InvocationDetail
+
+interface InvocationRawRow {
+  runId: string
+  command: string
+  requestedTasks: string
+  cachePolicy: string
+  concurrency: number
+  flow: string | null
+  startedAt: number
+  endedAt: number
+  totalDurationMs: number
+  taskCount: number
+  failedCount: number
+  hitCount: number
+  hitLocalCount: number
+  hitRemoteCount: number
+  exitOk: number
+  commitSha: string | null
+  branch: string | null
+  dirty: number | null
+  ci: number
+  ciProvider: string | null
+  host: string | null
+  os: string | null
+  arch: string | null
+  vxVersion: string
+  tags: string
+}
+
+const INVOCATION_COLUMNS = `
+  run_id AS runId, command, requested_tasks AS requestedTasks,
+  cache_policy AS cachePolicy, concurrency, flow,
+  started_at AS startedAt, ended_at AS endedAt, total_duration_ms AS totalDurationMs,
+  task_count AS taskCount, failed_count AS failedCount, hit_count AS hitCount,
+  hit_local_count AS hitLocalCount, hit_remote_count AS hitRemoteCount,
+  exit_ok AS exitOk,
+  commit_sha AS commitSha, branch, dirty, ci, ci_provider AS ciProvider,
+  host, os, arch, vx_version AS vxVersion, tags`
+
+function mapInvocation(r: InvocationRawRow): InvocationDetail {
+  let requestedTasks: string[] = []
+  try {
+    const parsed = JSON.parse(r.requestedTasks) as unknown
+    if (Array.isArray(parsed)) requestedTasks = parsed.map(String)
+  } catch {}
+  let tags: Record<string, string> = {}
+  try {
+    const parsed = JSON.parse(r.tags) as unknown
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      tags = Object.fromEntries(
+        Object.entries(parsed as Record<string, unknown>).map(([k, v]) => [k, String(v)]),
+      )
+    }
+  } catch {}
+  return {
+    runId: r.runId,
+    command: r.command,
+    requestedTasks,
+    cachePolicy: r.cachePolicy,
+    concurrency: r.concurrency,
+    flow: r.flow === 'focused' || r.flow === 'broad' ? r.flow : null,
+    startedAt: r.startedAt,
+    endedAt: r.endedAt,
+    totalDurationMs: r.totalDurationMs,
+    taskCount: r.taskCount,
+    failedCount: r.failedCount,
+    hitCount: r.hitCount,
+    hitLocalCount: r.hitLocalCount,
+    hitRemoteCount: r.hitRemoteCount,
+    exitOk: Boolean(r.exitOk),
+    commitSha: r.commitSha,
+    branch: r.branch,
+    dirty: r.dirty === null ? null : Boolean(r.dirty),
+    ci: Boolean(r.ci),
+    ciProvider: r.ciProvider,
+    host: r.host,
+    os: r.os,
+    arch: r.arch,
+    vxVersion: r.vxVersion,
+    tags,
+  }
+}
+
+export function getInvocation(db: Database, runId: string): InvocationDetail | null {
+  const row = db
+    .query(`SELECT ${INVOCATION_COLUMNS} FROM invocations WHERE run_id = ?`)
+    .get(runId) as InvocationRawRow | undefined
+  return row ? mapInvocation(row) : null
+}
+
+export interface ListInvocationsArgs {
+  limit?: number
+  branch?: string
+  ci?: boolean
+  tagKey?: string
+  tagValue?: string
+}
+
+/**
+ * List `vx run` invocations newest-first from the `invocations` header table
+ * with optional branch / ci / tag filters. Reading the dedicated header table
+ * (vs the old `GROUP BY run_id` over `runs`) is lossless — git/ci/tag context
+ * survives. Accepts a bare `number` for the limit (back-compat with the old
+ * `listInvocations(db, 50)` signature).
+ */
+export function listInvocations(
+  db: Database,
+  args: ListInvocationsArgs | number = {},
+): InvocationDetail[] {
+  const opts: ListInvocationsArgs = typeof args === 'number' ? { limit: args } : args
+  const limit = clampInt(opts.limit ?? 50, 1, 500)
+  const where: string[] = []
+  const params: (string | number)[] = []
+  if (opts.branch !== undefined) {
+    where.push('branch = ?')
+    params.push(opts.branch)
+  }
+  if (opts.ci !== undefined) {
+    where.push('ci = ?')
+    params.push(opts.ci ? 1 : 0)
+  }
+  if (opts.tagKey !== undefined && opts.tagValue !== undefined) {
+    // The tags column is a JSON object {"k":"v"}; a LIKE over the serialized
+    // pair is adequate at this table's scale (see the design doc).
+    where.push('tags LIKE ?')
+    params.push(`%${jsonPairFragment(opts.tagKey, opts.tagValue)}%`)
+  }
+  const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
+  const rows = db
     .query(
-      `SELECT
-         run_id AS runId,
-         MIN(started_at) AS startedAt,
-         MAX(ended_at) AS endedAt,
-         COUNT(*) AS taskCount,
-         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failedCount,
-         SUM(CASE WHEN cache_hit = 1 OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END) AS hitCount,
-         SUM(duration_ms) AS totalDurationMs
-       FROM runs
-       WHERE run_id IS NOT NULL
-       GROUP BY run_id
-       ORDER BY MAX(started_at) DESC
-       LIMIT ?`,
+      `SELECT ${INVOCATION_COLUMNS} FROM invocations ${clause}
+       ORDER BY started_at DESC LIMIT ?`,
     )
-    .all(clampInt(limit, 1, 500)) as InvocationRow[]
+    .all(...params, limit) as InvocationRawRow[]
+  return rows.map(mapInvocation)
+}
+
+/** The `"key":"value"` fragment as it appears in `JSON.stringify({k:v})`. */
+function jsonPairFragment(key: string, value: string): string {
+  const k = JSON.stringify(key).slice(1, -1)
+  const v = JSON.stringify(value).slice(1, -1)
+  return `"${k}":"${v}"`
 }
 
 export interface RunDetail {
@@ -139,6 +287,10 @@ export interface CacheStatsResult {
   runCountLast24h: number
   hitCountLast24h: number
   hitRate24h: number
+  /** `status = 'cache-hit'` over the last 24h. */
+  hitLocalCountLast24h: number
+  /** `status = 'cache-hit-remote'` over the last 24h. */
+  hitRemoteCountLast24h: number
 }
 
 export function getCacheStatsSql(db: Database): CacheStatsResult {
@@ -148,15 +300,57 @@ export function getCacheStatsSql(db: Database): CacheStatsResult {
   const since = Date.now() - 24 * 60 * 60 * 1000
   const runs = db
     .query(
-      "SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN status = 'cache-hit' OR status = 'cache-hit-remote' THEN 1 ELSE 0 END), 0) AS hits FROM runs WHERE started_at >= ?",
+      `SELECT COUNT(*) AS total,
+              COALESCE(SUM(CASE WHEN status = 'cache-hit' THEN 1 ELSE 0 END), 0) AS hitLocal,
+              COALESCE(SUM(CASE WHEN status = 'cache-hit-remote' THEN 1 ELSE 0 END), 0) AS hitRemote
+       FROM runs WHERE started_at >= ?`,
     )
-    .get(since) as { total: number; hits: number }
+    .get(since) as { total: number; hitLocal: number; hitRemote: number }
+  const hits = runs.hitLocal + runs.hitRemote
   return {
     entryCount: aggregate.n,
     totalBytes: aggregate.bytes,
     runCountLast24h: runs.total,
-    hitCountLast24h: runs.hits,
-    hitRate24h: runs.total > 0 ? runs.hits / runs.total : 0,
+    hitCountLast24h: hits,
+    hitRate24h: runs.total > 0 ? hits / runs.total : 0,
+    hitLocalCountLast24h: runs.hitLocal,
+    hitRemoteCountLast24h: runs.hitRemote,
+  }
+}
+
+export interface HitRateSplit {
+  total: number
+  hits: number
+  hitLocal: number
+  hitRemote: number
+  hitRate: number
+  localShare: number
+  remoteShare: number
+}
+
+/**
+ * Local-vs-remote cache hit split over the last `days` days. `cache-hit` is a
+ * local restore; `cache-hit-remote` was pulled over the network.
+ */
+export function getHitRateSplit(db: Database, days = 1): HitRateSplit {
+  const since = Date.now() - days * 24 * 60 * 60 * 1000
+  const r = db
+    .query(
+      `SELECT COUNT(*) AS total,
+              COALESCE(SUM(CASE WHEN status = 'cache-hit' THEN 1 ELSE 0 END), 0) AS hitLocal,
+              COALESCE(SUM(CASE WHEN status = 'cache-hit-remote' THEN 1 ELSE 0 END), 0) AS hitRemote
+       FROM runs WHERE started_at >= ?`,
+    )
+    .get(since) as { total: number; hitLocal: number; hitRemote: number }
+  const hits = r.hitLocal + r.hitRemote
+  return {
+    total: r.total,
+    hits,
+    hitLocal: r.hitLocal,
+    hitRemote: r.hitRemote,
+    hitRate: r.total > 0 ? hits / r.total : 0,
+    localShare: hits > 0 ? r.hitLocal / hits : 0,
+    remoteShare: hits > 0 ? r.hitRemote / hits : 0,
   }
 }
 
@@ -582,6 +776,168 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
 }
 
 // ---------------------------------------------------------------------------
+// Cache-key diff — the input-fingerprint moat
+// ---------------------------------------------------------------------------
+
+/** One changed/added/removed cache-key component between two runs of a task. */
+export interface InputDiffEntry {
+  kind: string
+  name: string
+  change: 'added' | 'removed' | 'changed'
+  /** The component's hash in the previous run (null when `added`). */
+  before: string | null
+  /** The component's hash in this run (null when `removed`). */
+  after: string | null
+}
+
+export interface CacheKeyDiff {
+  runId: string
+  taskId: string
+  found: boolean
+  previousRunId: string | null
+  /** Only changed / added / removed components. Unchanged ones are counted. */
+  entries: InputDiffEntry[]
+  unchangedCount: number
+  note: string
+}
+
+interface EntryInputRow {
+  kind: string
+  name: string
+  hash: string
+}
+
+function loadEntryInputs(db: Database, entryHash: string): Map<string, EntryInputRow> {
+  const rows = db
+    .query('SELECT kind, name, hash FROM entry_inputs WHERE entry_hash = ?')
+    .all(entryHash) as EntryInputRow[]
+  return new Map(rows.map((r) => [`${r.kind}\0${r.name}`, r]))
+}
+
+/**
+ * The moat: name the exact cache-key components (files / env / runtime /
+ * upstream …) that differ between this run of a task and its immediately-
+ * previous run. Resolves each run to its task hash via `runs.hash`, then
+ * full-outer-joins the two runs' `entry_inputs` rows (keyed by the entry
+ * hash) over `(kind, name)`:
+ *
+ * - present in both with a different hash → `changed`
+ * - only in this run → `added`
+ * - only in the previous run → `removed`
+ * - equal → counted as unchanged
+ *
+ * Pure SQL + an app-side set join — no config re-evaluation, no re-hash.
+ * Always returns a value (never throws); `found:false` when the run/task pair
+ * has no row, `entries:[]` for the first run of a task.
+ */
+export function cacheKeyDiff(db: Database, runId: string, taskId: string): CacheKeyDiff {
+  const [project, task] = taskId.split('#', 2) as [string, string]
+  const this_ = db
+    .query(
+      'SELECT hash, started_at AS startedAt FROM runs WHERE run_id = ? AND project = ? AND task = ?',
+    )
+    .get(runId, project, task) as { hash: string; startedAt: number } | undefined
+  if (!this_) {
+    return {
+      runId,
+      taskId,
+      found: false,
+      previousRunId: null,
+      entries: [],
+      unchangedCount: 0,
+      note: 'no row matching that runId + taskId',
+    }
+  }
+
+  const prev = db
+    .query(
+      `SELECT run_id AS runId, hash FROM runs
+       WHERE project = ? AND task = ? AND started_at < ?
+       ORDER BY started_at DESC LIMIT 1`,
+    )
+    .get(project, task, this_.startedAt) as { runId: string | null; hash: string } | undefined
+
+  if (!prev) {
+    return {
+      runId,
+      taskId,
+      found: true,
+      previousRunId: null,
+      entries: [],
+      unchangedCount: 0,
+      note: 'no prior run for this (project, task) — nothing to diff',
+    }
+  }
+
+  if (prev.hash === this_.hash) {
+    return {
+      runId,
+      taskId,
+      found: true,
+      previousRunId: prev.runId,
+      entries: [],
+      unchangedCount: 0,
+      note: 'cache key unchanged between the previous run and this one (same inputs)',
+    }
+  }
+
+  const cur = loadEntryInputs(db, this_.hash)
+  const old = loadEntryInputs(db, prev.hash)
+
+  // Input fingerprints are pruned with their entry (ON DELETE CASCADE); if
+  // either side's rows are gone, we can name the hash change but not the
+  // component-level diff.
+  if (cur.size === 0 || old.size === 0) {
+    return {
+      runId,
+      taskId,
+      found: true,
+      previousRunId: prev.runId,
+      entries: [],
+      unchangedCount: 0,
+      note: 'cache key changed but input fingerprints are unavailable (entry pruned); only the hash change is known',
+    }
+  }
+
+  const entries: InputDiffEntry[] = []
+  let unchangedCount = 0
+  const keys = new Set<string>([...cur.keys(), ...old.keys()])
+  for (const key of keys) {
+    const a = cur.get(key)
+    const b = old.get(key)
+    if (a && b) {
+      if (a.hash === b.hash) unchangedCount++
+      else
+        entries.push({
+          kind: a.kind,
+          name: a.name,
+          change: 'changed',
+          before: b.hash,
+          after: a.hash,
+        })
+    } else if (a) {
+      entries.push({ kind: a.kind, name: a.name, change: 'added', before: null, after: a.hash })
+    } else if (b) {
+      entries.push({ kind: b.kind, name: b.name, change: 'removed', before: b.hash, after: null })
+    }
+  }
+  entries.sort((x, y) => x.kind.localeCompare(y.kind) || x.name.localeCompare(y.name))
+
+  return {
+    runId,
+    taskId,
+    found: true,
+    previousRunId: prev.runId,
+    entries,
+    unchangedCount,
+    note:
+      entries.length > 0
+        ? `${entries.length} cache-key component(s) changed since the previous run`
+        : 'cache key changed but no component-level difference was recorded',
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Run comparison — diff a run against the immediately-previous invocation
 // ---------------------------------------------------------------------------
 
@@ -829,6 +1185,10 @@ export interface TrendPoint {
   t: number
   runs: number
   hits: number
+  /** `status = 'cache-hit'` in the bucket (local restores). */
+  hitsLocal: number
+  /** `status = 'cache-hit-remote'` in the bucket (remote pulls). */
+  hitsRemote: number
   failures: number
   /** Sum of duration_ms in the bucket. */
   totalDurationMs: number
@@ -855,6 +1215,8 @@ export function getRunTrends(
       `SELECT (started_at / ?) * ? AS t,
               COUNT(*) AS runs,
               SUM(CASE WHEN cache_hit = 1 OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END) AS hits,
+              SUM(CASE WHEN status = 'cache-hit' THEN 1 ELSE 0 END) AS hitsLocal,
+              SUM(CASE WHEN status = 'cache-hit-remote' THEN 1 ELSE 0 END) AS hitsRemote,
               SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
               SUM(duration_ms) AS totalDurationMs
        FROM runs
@@ -868,7 +1230,17 @@ export function getRunTrends(
   const byT = new Map(rows.map((r) => [r.t, r]))
   const out: TrendPoint[] = []
   for (let t = start; t <= end; t += bucketMs) {
-    out.push(byT.get(t) ?? { t, runs: 0, hits: 0, failures: 0, totalDurationMs: 0 })
+    out.push(
+      byT.get(t) ?? {
+        t,
+        runs: 0,
+        hits: 0,
+        hitsLocal: 0,
+        hitsRemote: 0,
+        failures: 0,
+        totalDurationMs: 0,
+      },
+    )
   }
   return out
 }

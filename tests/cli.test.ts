@@ -7,6 +7,7 @@ import {
   parseSize,
   run,
 } from '../src/cli/index.js'
+import { formatRunReportMarkdown } from '../src/orchestrator/index.js'
 
 describe('cli run()', () => {
   let stdout: string
@@ -360,6 +361,48 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     ])
     expect(code).toBe(0)
     expect(stdout).toMatch(/forwarded: hello world/)
+  })
+
+  it('--report=markdown prints a markdown table to stdout', async () => {
+    let stdout = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    const code = await run(['run', '--all', 'hello', '--report=markdown'])
+    expect(code).toBe(0)
+    // Header + the moon-style table with one row for the task.
+    expect(stdout).toContain('## vx run')
+    expect(stdout).toContain('| Task | Status | Cache | Duration |')
+    expect(stdout).toMatch(/\| one#hello \| success \| miss \|/)
+  })
+
+  it('bare --report defaults to markdown', async () => {
+    let stdout = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    const code = await run(['run', '--all', 'hello', '--report'])
+    expect(code).toBe(0)
+    expect(stdout).toContain('| Task | Status | Cache | Duration |')
+  })
+
+  it('no --report flag prints no markdown table', async () => {
+    let stdout = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    const code = await run(['run', '--all', 'hello'])
+    expect(code).toBe(0)
+    expect(stdout).not.toContain('| Task | Status | Cache | Duration |')
   })
 })
 
@@ -964,6 +1007,46 @@ describe('parseRunArgs', () => {
       'lint',
     ])
   })
+
+  it('parses --tag k=v (space form) and is repeatable', () => {
+    const r = parseRunArgs(['build', '--tag', 'env=ci', '--tag', 'branch=main'])
+    expect(r.error).toBeUndefined()
+    expect(r.tags).toEqual({ env: 'ci', branch: 'main' })
+  })
+
+  it('parses --tag=k=v (equals form)', () => {
+    expect(parseRunArgs(['build', '--tag=env=ci']).tags).toEqual({ env: 'ci' })
+  })
+
+  it('--tag splits on the first = so values may contain =', () => {
+    expect(parseRunArgs(['build', '--tag=url=https://x?a=b']).tags).toEqual({
+      url: 'https://x?a=b',
+    })
+  })
+
+  it('defaults --tag to an empty object', () => {
+    expect(parseRunArgs(['build']).tags).toEqual({})
+  })
+
+  it('rejects --tag with an empty key', () => {
+    expect(parseRunArgs(['build', '--tag', '=ci']).error).toMatch(/invalid --tag/)
+    expect(parseRunArgs(['build', '--tag=']).error).toMatch(/invalid --tag/)
+    expect(parseRunArgs(['build', '--tag=novalue']).error).toMatch(/invalid --tag/)
+  })
+
+  it('parses --report and --report=markdown', () => {
+    expect(parseRunArgs(['build', '--report']).report).toBe('markdown')
+    expect(parseRunArgs(['build', '--report=markdown']).report).toBe('markdown')
+  })
+
+  it('defaults --report to undefined', () => {
+    expect(parseRunArgs(['build']).report).toBeUndefined()
+  })
+
+  it('rejects a non-markdown --report value (json reserved)', () => {
+    expect(parseRunArgs(['build', '--report=json']).error).toMatch(/invalid --report value/)
+    expect(parseRunArgs(['build', '--report=foo']).error).toMatch(/invalid --report value/)
+  })
 })
 
 describe('formatBytes', () => {
@@ -1116,5 +1199,60 @@ describe('vx cache prune command', () => {
     const code = await run(['cache', 'nope'])
     expect(code).toBe(1)
     expect(stderr).toContain('unknown subcommand')
+  })
+})
+
+describe('formatRunReportMarkdown', () => {
+  it('renders a totals header and one table row per task', () => {
+    const md = formatRunReportMarkdown({
+      ok: true,
+      outcomes: [
+        { taskId: 'web#build', status: 'success', exitCode: 0, durationMs: 1234 },
+        { taskId: 'web#test', status: 'cache-hit', exitCode: 0, durationMs: 5, restored: true },
+        {
+          taskId: 'api#test',
+          status: 'cache-hit-remote',
+          exitCode: 0,
+          durationMs: 3,
+          restored: false,
+        },
+      ],
+    })
+    expect(md).toContain('## vx run — passed')
+    expect(md).toContain('**3 tasks**')
+    expect(md).toContain('3 success')
+    expect(md).toContain('2 cached')
+    expect(md).toContain('| Task | Status | Cache | Duration |')
+    expect(md).toContain('| web#build | success | miss | 1.23s |')
+    expect(md).toContain('| web#test | success | local | 5ms |')
+    // remote hit with restored:false materialized nothing → up-to-date.
+    expect(md).toContain('| api#test | success | up-to-date | 3ms |')
+  })
+
+  it('marks the header failed and renders the exit code', () => {
+    const md = formatRunReportMarkdown({
+      ok: false,
+      outcomes: [
+        { taskId: 'web#build', status: 'failed', exitCode: 2, durationMs: 40 },
+        { taskId: 'web#test', status: 'skipped', exitCode: 0, durationMs: 0 },
+      ],
+    })
+    expect(md).toContain('## vx run — failed')
+    expect(md).toContain('1 failed')
+    expect(md).toContain('1 skipped')
+    expect(md).toContain('| web#build | failed (exit 2) | miss | 40ms |')
+    expect(md).toContain('| web#test | skipped | — | 0ms |')
+  })
+
+  it('excludes aborted tasks from totals and the table', () => {
+    const md = formatRunReportMarkdown({
+      ok: true,
+      outcomes: [
+        { taskId: 'web#build', status: 'success', exitCode: 0, durationMs: 10 },
+        { taskId: 'web#dev', status: 'aborted', exitCode: 143, durationMs: 99 },
+      ],
+    })
+    expect(md).toContain('**1 task**')
+    expect(md).not.toContain('web#dev')
   })
 })
