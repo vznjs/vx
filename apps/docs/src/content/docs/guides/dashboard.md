@@ -58,7 +58,7 @@ host the SPA once and let everyone aim it at their own backend.
 ```
    Browser
    ┌─────────────────────────────┐
-   │ apps/ui SPA (Solid)         │
+   │ dashboard SPA (Solid)       │
    │  • connection picker        │
    │  • fetch over HTTP          │
    └────────┬────────────────────┘

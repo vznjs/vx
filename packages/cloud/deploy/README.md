@@ -10,8 +10,9 @@ it rides on top of one.
 
 ## The image
 
-Build context is the **repo root** — core (`src/`), `packages/cloud`, and
-`apps/ui` share one workspace and one lockfile:
+Build context is the **repo root** — core (`src/`) and `packages/cloud`
+(which now contains its own embedded dashboard at `packages/cloud/ui`) share
+one workspace and one lockfile:
 
 ```sh
 docker build -f packages/cloud/Dockerfile -t vx-cloud .
@@ -25,9 +26,9 @@ binary; the `oven/bun:1.3-slim` runtime stage carries only that binary, runs as
 the non-root `bun` user, and `HEALTHCHECK`s `/health`.
 
 The bundled dashboard SPA is **not** rebuilt in the image — the committed
-`apps/ui/dist/index.html` is authoritative and `ui-asset.ts` embeds it at
-compile time. To rebuild the SPA instead, run `bun run --filter '@vzn/vx-ui'
-build` before the compile step.
+`packages/cloud/ui/dist/index.html` is authoritative and `ui-asset.ts` embeds
+it at compile time. To rebuild the SPA instead, run
+`bun run --filter '@vzn/vx-ui' build` before the compile step.
 
 ## Local — one collapsed process
 

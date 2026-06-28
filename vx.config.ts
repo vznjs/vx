@@ -72,28 +72,28 @@ export default defineProject({
       ],
     },
 
-    // Build the embedded dashboard (apps/ui → single-file dist/index.html).
-    // The compile step embeds it via `with { type: 'file' }`, so it must
-    // exist first. Uses workspaceFiles (boundary-free) because apps/ui is a
-    // separate project; this keeps the binary tasks' dependency same-project
-    // (no cross-project ref that scoped loading wouldn't pull into scope).
+    // Build the embedded dashboard (packages/cloud/ui → single-file
+    // dist/index.html). The compile step embeds it via `with { type: 'file' }`,
+    // so it must exist first. Uses workspaceFiles (boundary-free) because the
+    // dashboard is a separate project; this keeps the binary tasks' dependency
+    // same-project (no cross-project ref that scoped loading wouldn't pull in).
     'build.ui': {
-      description: 'build the embedded dashboard SPA (apps/ui)',
+      description: 'build the embedded dashboard SPA (packages/cloud/ui)',
       dependsOn: ['install'],
-      exec: { command: 'cd apps/ui && bun run build' },
+      exec: { command: 'cd packages/cloud/ui && bun run build' },
       cache: {
         inputs: {
           files: [],
           workspaceFiles: [
-            'apps/ui/src/**',
-            'apps/ui/index.html',
-            'apps/ui/package.json',
-            'apps/ui/vite.config.ts',
-            'apps/ui/uno.config.ts',
-            'apps/ui/tsconfig.json',
+            'packages/cloud/ui/src/**',
+            'packages/cloud/ui/index.html',
+            'packages/cloud/ui/package.json',
+            'packages/cloud/ui/vite.config.ts',
+            'packages/cloud/ui/uno.config.ts',
+            'packages/cloud/ui/tsconfig.json',
           ],
         },
-        outputs: { files: [], workspaceFiles: ['apps/ui/dist/index.html'] },
+        outputs: { files: [], workspaceFiles: ['packages/cloud/ui/dist/index.html'] },
       },
     },
 

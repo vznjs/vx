@@ -1,4 +1,4 @@
-import { defineProject } from '../../src/index.ts'
+import { defineProject } from '@vzn/vx'
 
 export default defineProject({
   tasks: {

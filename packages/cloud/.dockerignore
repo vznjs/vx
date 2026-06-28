@@ -1,7 +1,7 @@
 # Build context is the REPO ROOT (`docker build -f packages/cloud/Dockerfile .`),
 # so these patterns prune the root tree handed to the daemon. Keep it lean:
-# the build stage only needs source + lockfile + the committed apps/ui/dist
-# (which ui-asset.ts embeds via `with { type: 'file' }`).
+# the build stage only needs source + lockfile + the committed
+# packages/cloud/ui/dist (which ui-asset.ts embeds via `with { type: 'file' }`).
 
 # Installed deps + their symlinks — `bun install` reproduces them in-image.
 node_modules
@@ -38,11 +38,11 @@ bench
 # The docs site app and its generated content are irrelevant to the image.
 apps/docs
 
-# Built dashboard from a `vite build` — we use the COMMITTED apps/ui/dist
-# only; any locally-built variant (vite's own dist dir nesting) is excluded.
-# NB: apps/ui/dist/index.html IS needed and is whitelisted below.
-apps/ui/node_modules
+# The dashboard SPA's node_modules are not needed — the COMMITTED
+# packages/cloud/ui/dist is what the binary embeds.
+# NB: packages/cloud/ui/dist/index.html IS needed and is whitelisted below.
+packages/cloud/ui/node_modules
 
 # Re-include the committed single-file dashboard the binary embeds.
-!apps/ui/dist
-!apps/ui/dist/index.html
+!packages/cloud/ui/dist
+!packages/cloud/ui/dist/index.html

@@ -170,6 +170,37 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-28**: **Dashboard moved INTO the cloud package — `apps/ui` →
+  `packages/cloud/ui`, so `@vzn/vx-cloud` is self-contained** (owner: "why do
+  we need apps/ui? cloud should be self contained"). The dashboard SPA was a
+  separate top-level app (`@vzn/vx-ui` in `apps/ui`) that cloud declared as a
+  `workspace:*` dep and embedded — so cloud reached OUTSIDE its directory for
+  its own UI. Now the SPA lives at `packages/cloud/ui` (git-moved), and:
+  `ui-asset.ts` embeds it via a RELATIVE `import '../../ui/dist/index.html'
+with { type: 'file' }` (no `@vzn/vx-ui` resolution); cloud's package.json
+  DROPS the `@vzn/vx-ui` dependency and adds `ui/dist` to `files` (the
+  published package carries the dashboard). `packages/cloud/ui` is registered
+  as a nested workspace member (explicit entry in the root `workspaces`
+  array — Bun's `packages/*` glob doesn't match one level deeper) so its Vite/
+  Solid build deps install; its `vx.config.ts` import switched from the
+  now-wrong `../../src/index.ts` to the bare `@vzn/vx`. The SPA's Solid JSX is
+  kept OUT of the core gate exactly as `apps` was — added `packages/cloud/ui`
+  to `.oxlintrc.json` + `.oxfmtrc.json` `ignorePatterns` (the
+  `package-boundaries` guard's `*/src` glob doesn't reach `cloud/ui/src`, so
+  no false violations). Rewired the build pointer (`vx.config.ts` `build.ui`:
+  `cd packages/cloud/ui && bun run build` + workspaceFiles inputs), the dist
+  whitelist (`.gitignore` + cloud `.dockerignore`: `apps/ui/dist` →
+  `packages/cloud/ui/dist`), the Dockerfile/deploy/README/serve comments, and
+  the self-hosting/dashboard guides. `@vzn/vx-ui` keeps its name (so
+  `bun run --filter @vzn/vx-ui build` still works); only its LOCATION changed.
+  `apps/` now holds only the docs site. Verified end-to-end: the SPA rebuilds
+  at the new path (vite, 140 modules → single-file dist), `bun build --compile`
+  embeds it (187 modules → standalone binary) and the COMPILED binary serves
+  the dashboard at `/` + SQLite `/v1/*` from a bare non-workspace dir; frozen
+  install (`--frozen-lockfile`) re-links cleanly; full root suite 1088 pass /
+  0 fail; dogfood `vx run ci` exit 0. The committed dist is byte-unchanged
+  (restored after the build-verify) so this commit is a pure move + rewire.
+
 - **2026-06-28**: **vx-cloud is a STANDALONE, independent service — fed only
   by the plugin push, never reads vx's cache.db; vx-http dropped; plugins
   declared in `vx.workspace.ts`** (owner: "remove vx-http for now, just cloud

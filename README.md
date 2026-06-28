@@ -301,16 +301,16 @@ published versions on npm).
 
 Production readiness for the **2026-06 platform layer**:
 
-| Surface                                            | Maturity                         | Notes                                                                  |
-| -------------------------------------------------- | -------------------------------- | ---------------------------------------------------------------------- |
-| Core task runner + caching                         | **production-ready**             | dogfooded continuously; 836 tests pre-existing, all green              |
-| `vx mcp`                                           | **shippable**                    | live cache.db tools, stdio; agents work today                          |
-| `vx serve` (WS + SSE + NDJSON, JSON-RPC 2.0)       | **shippable**                    | accepts both legacy + new envelope; `curl` works                       |
-| `vx coordinator` + `vx run --worker`               | **shippable for self-hosted CI** | content-addressed assignment, disconnect recovery                      |
-| Plugin API                                         | **shippable**                    | crash-isolated, lifecycle hooks fire end-to-end                        |
-| Predictive scheduling                              | **shippable as opt-in**          | gated on `predictive: true` + observed data                            |
-| `apps/ui/` (Solid dashboard, embedded in binary)   | **scaffold**                     | connection picker, HTTP /v1/\* reads; pages need real-world iteration  |
-| OTel native emit (`src/orchestrator/otel-emit.ts`) | **shippable**                    | env-var auto-attach in `run()`; ships event stream to any OTLP backend |
+| Surface                                       | Maturity                         | Notes                                                                    |
+| --------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------ |
+| Core task runner + caching                    | **production-ready**             | dogfooded continuously; 836 tests pre-existing, all green                |
+| `vx mcp`                                      | **shippable**                    | live cache.db tools, stdio; agents work today                            |
+| `vx serve` (WS + SSE + NDJSON, JSON-RPC 2.0)  | **shippable**                    | accepts both legacy + new envelope; `curl` works                         |
+| `vx coordinator` + `vx run --worker`          | **shippable for self-hosted CI** | content-addressed assignment, disconnect recovery                        |
+| Plugin API                                    | **shippable**                    | crash-isolated, lifecycle hooks fire end-to-end                          |
+| Predictive scheduling                         | **shippable as opt-in**          | gated on `predictive: true` + observed data                              |
+| Dashboard SPA (`packages/cloud/ui`, embedded) | **scaffold**                     | served by `vx-cloud`; HTTP /v1/\* reads; pages need real-world iteration |
+| OTel export (`@vzn/vx-otel` telemetry plugin) | **shippable**                    | declare `otel()` in `vx.workspace.ts`; OTLP traces + metrics             |
 
 ## Development
 

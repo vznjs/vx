@@ -95,7 +95,7 @@ bundle and drop it on any static host. The connection picker means
 the same bundle works against any reachable `vx serve`:
 
 ```sh
-cd apps/ui
+cd packages/cloud/ui
 bun install
 bun run build
 # Deploy the single dist/index.html anywhere (S3 + CloudFront, Vercel,

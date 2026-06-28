@@ -139,7 +139,7 @@ export async function startServe(opts: {
   root: string
   port?: number
   /**
-   * Path to the single-file dashboard HTML (the embedded `apps/ui` build).
+   * Path to the single-file dashboard HTML (the embedded `packages/cloud/ui` build).
    * When set, every non-API GET serves it — the SPA is one self-contained
    * file with a hash router, so all routes return the same bytes.
    */
@@ -235,7 +235,7 @@ export async function startServe(opts: {
         // -----------------------------------------------------------------
         // Metrics HTTP surface — JSON read APIs over the selected store
         // (local cache.db by default, the ingest store when hosted). The
-        // dashboard SPA in apps/ui calls these directly.
+        // dashboard SPA (packages/cloud/ui) calls these directly.
         // -----------------------------------------------------------------
         if (url.pathname === '/v1/runs') {
           const params = url.searchParams
@@ -640,9 +640,9 @@ export function parseServeArgs(args: readonly string[]): ServeArgs {
 
 /**
  * Load the embedded single-file dashboard. The asset module embeds
- * apps/ui/dist/index.html into the binary; in a source checkout the dynamic
- * import resolves the real file, which only exists after `apps/ui` is built —
- * so a missing build only affects `--ui`, never a normal `vx run`.
+ * packages/cloud/ui/dist/index.html into the binary; in a source checkout the
+ * dynamic import resolves the real file, which only exists after the SPA is
+ * built — so a missing build only affects the UI, never the API/ingest.
  */
 async function loadUiHtmlPath(): Promise<string | null> {
   try {

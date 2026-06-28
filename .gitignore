@@ -1,10 +1,10 @@
 node_modules
 dist
-# apps/ui/dist is the prebuilt single-file dashboard the binary embeds via
-# `with { type: 'file' }`. Committing it means `bun build --compile` works
-# straight out of a fresh checkout — no SPA build step required to produce
+# packages/cloud/ui/dist is the prebuilt single-file dashboard the cloud binary
+# embeds via `with { type: 'file' }`. Committing it means `bun build --compile`
+# works straight out of a fresh checkout — no SPA build step required to produce
 # the binary.
-!apps/ui/dist/
+!packages/cloud/ui/dist/
 *.tsbuildinfo
 coverage
 .DS_Store

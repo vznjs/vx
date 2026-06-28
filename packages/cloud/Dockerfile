@@ -1,6 +1,6 @@
 # @vzn/vx-cloud — the orchestrator service image.
 #
-# Build context is the REPO ROOT (core + cloud + apps/ui share one workspace
+# Build context is the REPO ROOT (core + cloud share one workspace
 # and one lockfile):
 #
 #   docker build -f packages/cloud/Dockerfile -t vx-cloud .
@@ -18,9 +18,9 @@
 FROM oven/bun:1.3 AS build
 WORKDIR /app
 
-# Whole workspace: core `src/`, `packages/cloud`, `apps/ui` (its committed
-# `dist/index.html` is embedded by ui-asset.ts via `with { type: 'file' }`),
-# the root package.json + bun.lock + scripts/link-self.ts.
+# Whole workspace: core `src/`, `packages/cloud` (incl. its embedded dashboard
+# `packages/cloud/ui`, whose committed `dist/index.html` ui-asset.ts embeds via
+# `with { type: 'file' }`), the root package.json + bun.lock + link-self.ts.
 COPY . .
 
 # Reproduces the workspace resolution; the root postinstall (scripts/link-self.ts)
@@ -28,11 +28,11 @@ COPY . .
 # bare `import … from '@vzn/vx'` resolves to core's src/index.ts.
 RUN bun install --frozen-lockfile
 
-# The dashboard is NOT rebuilt here. apps/ui/dist/index.html is committed and
-# authoritative (whitelisted in .gitignore + .dockerignore); ui-asset.ts embeds
-# it at compile time. Skipping `vite build` keeps the image lean and the build
-# read-only w.r.t. the repo. (To rebuild the SPA instead, run
-# `bun run --filter '@vzn/vx-ui' build` before the compile step.)
+# The dashboard is NOT rebuilt here. packages/cloud/ui/dist/index.html is
+# committed and authoritative (whitelisted in .gitignore + .dockerignore);
+# ui-asset.ts embeds it at compile time. Skipping `vite build` keeps the image
+# lean and the build read-only w.r.t. the repo. (To rebuild the SPA instead,
+# run `bun run --filter '@vzn/vx-ui' build` before the compile step.)
 
 # bun build --compile bundles @vzn/vx-cloud + its @vzn/vx workspace dep + the
 # embedded SPA into one self-contained binary. This is the load-bearing step.

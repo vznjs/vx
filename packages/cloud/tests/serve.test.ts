@@ -161,7 +161,7 @@ describe('vx serve delegation', () => {
   // actually load" coverage that query-module unit tests can't give.
   it('serves the embedded dashboard SPA at / and falls back for app routes', async () => {
     const root = await makeWorkspace()
-    const uiHtmlPath = path.resolve(import.meta.dir, '../../..', 'apps/ui/dist/index.html')
+    const uiHtmlPath = path.resolve(import.meta.dir, '..', 'ui/dist/index.html')
     const server = await startServe({ root, uiHtmlPath })
     try {
       const index = await fetch(`${server.origin}/`)
