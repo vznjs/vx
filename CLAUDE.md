@@ -170,6 +170,69 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-28**: **Run DAG rendered with Cytoscape (interactive) + added to
+  run-detail; groups no longer render as "pending"** (owner: "we should have
+  run graphs like in run section. the graph is wrong, shows groups as pending.
+  use some good library for flows visualization where I can click on items see
+  details move around etc"). Replaced the hand-rolled SVG/Sugiyama layout
+  (`run-graph-layout.ts`, deleted) with **Cytoscape.js + cytoscape-dagre** —
+  a framework-agnostic flow lib (mounts into a div, so it works under Solid)
+  with pan/zoom/drag/click built in. ONE reusable `components/RunGraph.tsx`
+  primitive drives both surfaces. **Reactivity model that matters:** the
+  STRUCTURE (node set + edges) is rebuilt + re-laid-out ONLY when it changes
+  (a structure-signature guard short-circuits before `cy.elements().remove()`),
+  so live status ticks update per-node color/duration in place via `cy.batch`
+  WITHOUT disturbing the user's pan/zoom/drag; selection + critical-path
+  classes update in place too. Theme colors are read from the CSS `--token`
+  RGB-channel vars at mount (Cytoscape paints to canvas, so it needs real
+  rgba(), not UnoCSS classes). **Groups-as-pending fix:** umbrella tasks
+  (`isGroup`, no exec) are forced to a `group` display state — a dashed folder
+  with no status color — instead of inheriting the `queued`/pending look they
+  could never leave (groups emit no task events). **Run-detail graph** (new
+  `RunGraph` json-render catalog component + a Graph card in `runDetail.json`):
+  rebuilds the DAG from the workspace via the existing `/v1/graph` (a colocated
+  `planRun`) using the recorded task ids, then overlays each task's recorded
+  status/duration (a cache-hit task renders blue, etc.); clicking a node writes
+  `/selectedTask` (same binding the Flamegraph + Facts panel use). Degrades to
+  a clear "start vx-cloud serve in the project" hint when served with no
+  colocated workspace. **Deliberately NO core change:** edges are reconstructed
+  from `/v1/graph` (an already-sanctioned colocated live feature), so no
+  telemetry-contract field, no schema bump, and ZERO run hot-path cost — the
+  perf rule holds. Cloud-dashboard only; the core `vx` binary is untouched. The
+  embedded SPA grows to ~780 KB / 237 KB gzip (the Cytoscape runtime — the cost
+  of a real flow library), rebuilt into the committed `packages/cloud/ui/dist`.
+  Deps added to `packages/cloud/ui` ONLY (`cytoscape`, `cytoscape-dagre`,
+  `@types/cytoscape`); frozen install re-resolves clean. Verified e2e over the
+  Chrome DevTools Protocol in a temp workspace with a real diamond + two group
+  tasks: cockpit ran `ci` (4/4 passed) with `check`/`ci` drawn as dashed
+  folders (not pending) and the critical path lit; run-detail rendered the
+  reconstructed graph with the cache-hit task overlaid blue; 0 console errors.
+  (Screenshots confirmed visually.)
+
+- **2026-06-28**: **`cloud()` auto-detects a local `vx-cloud serve` for the
+  telemetry push** (owner: "we should auto detect vx cloud running locally").
+  The `cloud()` plugin's telemetry capability now, with no explicit ingest
+  config, reads the `.vx/serve.json` a `vx-cloud serve` advertises (origin +
+  pid) and pushes the `RunSummaryRecord` to `<origin>/v1/ingest` — so a local
+  dashboard is zero-config: start the serve, and every `vx run` in the
+  workspace shows up. Explicit config (`ingestUrl` / `VX_CLOUD_INGEST_URL`)
+  still WINS, so a remote/Docker cloud takes precedence over local auto-detect;
+  no serve + no env → decline, so a plain run is unaffected (perf rule holds —
+  the detect is one fs read inside the telemetry-sink construction, which only
+  happens when a telemetry plugin exists). **Pid-guard:** never push to a serve
+  running in THIS process (serve.json records the serve's own pid) — that is
+  the serve executing a delegated run, and POSTing to itself mid-request would
+  deadlock. Also hardened both telemetry flush paths (cloud ingest + otel
+  export) to a clearable `AbortController`+`setTimeout` instead of
+  `AbortSignal.timeout`, whose internal timer is not unref'd and would keep the
+  CLI alive for the full timeout after the POST already resolved (a phantom
+  end-of-run hang). The backend-routing e2e removes the in-process serve's
+  serve.json before its `spawnSync` (which blocks the test event loop, so the
+  in-process serve can't answer an auto-detected POST back to it — a test-only
+  artifact); the push path is covered by a dedicated test with a separate,
+  responsive server. Files: `packages/cloud/src/plugin.ts`,
+  `packages/vx-otel/src/sink.ts`, `packages/cloud/tests/plugin.test.ts`.
+
 - **2026-06-28**: **Dashboard moved INTO the cloud package — `apps/ui` →
   `packages/cloud/ui`, so `@vzn/vx-cloud` is self-contained** (owner: "why do
   we need apps/ui? cloud should be self contained"). The dashboard SPA was a
