@@ -197,18 +197,6 @@ export function Heatmap(c: C<{ rows: Row[]; dayKey?: string; hourKey?: string; v
   )
 }
 
-// Interactive flamegraph: clicking a bar writes the task to `/selectedTask`
-// (json-render state via useStateBinding), which a `visible`-gated detail panel
-// in the spec binds to. The selected id flows back in to highlight the bar.
-export function Flamegraph(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string }>) {
-  const [selected, setSelected] = useStateBinding<RunSummaryRow>(c.props.selectKey ?? '/selectedTask')
-  const selectedId = () => {
-    const s = selected()
-    return s ? `${s.project}#${s.task}` : undefined
-  }
-  return <FlamegraphPrimitive tasks={c.props.rows ?? []} selectedId={selectedId()} onSelect={(t) => setSelected(t)} />
-}
-
 // Map a recorded outcome status to a graph display state.
 function recordedState(status: string, cacheHit: boolean): RunGraphState {
   if (status === 'failed') return 'failed'
@@ -218,13 +206,15 @@ function recordedState(status: string, cacheHit: boolean): RunGraphState {
   return 'success'
 }
 
-// Interactive run DAG for a RECORDED run: the structure (nodes + edges) is
-// rebuilt from the workspace via /v1/graph using the run's task ids, then the
-// recorded per-task status/duration is overlaid. Clicking a node writes the
-// matching task to `/selectedTask` (same binding the Flamegraph + Facts panel
-// use). The graph needs a colocated workspace (a local `vx-cloud serve`); when
-// served remotely /v1/graph declines and we show a clear hint.
-export function RunGraph(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string }>) {
+// Two views of a RECORDED run, switchable: GRAPH (dependency structure — the
+// DAG rebuilt from the workspace via /v1/graph, with recorded status/CPU/RAM
+// overlaid) and FLAME (by ACTUAL time — bars positioned by each task's real
+// start/end, so overlap = real concurrency, NOT the dependency layout). Both
+// write the clicked task to `/selectedTask` (the Facts panel binding). The
+// graph view needs a colocated workspace (a local `vx-cloud serve`); the flame
+// view works from recorded timings alone, so it's always available.
+export function RunViz(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string }>) {
+  const [view, setView] = createSignal<'graph' | 'flame'>('graph')
   const [selected, setSelected] = useStateBinding<RunSummaryRow>(c.props.selectKey ?? '/selectedTask')
   const rows = (): readonly RunSummaryRow[] => c.props.rows ?? []
   const rowById = createMemo(() => {
@@ -251,40 +241,69 @@ export function RunGraph(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: stri
   }
   const selectedId = () => {
     const s = selected()
-    return s ? `${s.project}#${s.task}` : null
+    return s ? `${s.project}#${s.task}` : undefined
   }
   return (
-    <Show when={!graph.loading} fallback={<div class="p-6 text-fg-3 text-sm">Resolving graph…</div>}>
-      <Show
-        when={nodes().length > 0}
-        fallback={
-          <EmptyState
-            title="Graph unavailable"
-            hint="The run graph is rebuilt from the workspace — run vx-cloud serve in the project to view it."
-          />
-        }
-      >
-        <div class="h-[460px] w-full">
-          <RunGraphPrimitive
-            nodes={nodes()}
-            stateOf={stateOf}
-            statsOf={(id) => {
-              const r = rowById().get(id)
-              return {
-                durationMs: r?.durationMs,
-                cpuMs: r?.cpuMs ?? undefined,
-                peakRssBytes: r?.peakRssBytes ?? undefined,
-              }
-            }}
-            selectedId={selectedId()}
-            onSelect={(id) => {
-              const r = rowById().get(id)
-              if (r) setSelected(r)
-            }}
-          />
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center gap-2.5">
+        <div class="flex items-center gap-0.5 rounded-lg border border-border bg-surface-2/50 p-0.5 text-[12px]">
+          <For each={['graph', 'flame'] as const}>
+            {(v) => (
+              <button
+                onClick={() => setView(v)}
+                class="px-3 py-1 rounded-md transition"
+                classList={{ 'bg-surface-hover text-fg': view() === v, 'text-fg-3 hover:text-fg-2': view() !== v }}
+              >
+                {v === 'graph' ? 'Graph' : 'Flame'}
+              </button>
+            )}
+          </For>
         </div>
-      </Show>
-    </Show>
+        <span class="text-[11px] text-fg-3">
+          {view() === 'graph' ? 'dependency structure' : 'by actual time — overlap is real concurrency'}
+        </span>
+      </div>
+      <div class="h-[460px] w-full">
+        <Show when={view() === 'flame'}>
+          <div class="h-full overflow-auto p-1">
+            <Show when={rows().length > 0} fallback={<EmptyState title="No tasks" />}>
+              <FlamegraphPrimitive tasks={rows()} selectedId={selectedId()} onSelect={(t) => setSelected(t)} />
+            </Show>
+          </div>
+        </Show>
+        <Show when={view() === 'graph'}>
+          <Show when={!graph.loading} fallback={<div class="p-6 text-fg-3 text-sm">Resolving graph…</div>}>
+            <Show
+              when={nodes().length > 0}
+              fallback={
+                <EmptyState
+                  title="Graph unavailable"
+                  hint="The dependency graph is rebuilt from the workspace — run vx-cloud serve in the project, or use the Flame view (always available)."
+                />
+              }
+            >
+              <RunGraphPrimitive
+                nodes={nodes()}
+                stateOf={stateOf}
+                statsOf={(id) => {
+                  const r = rowById().get(id)
+                  return {
+                    durationMs: r?.durationMs,
+                    cpuMs: r?.cpuMs ?? undefined,
+                    peakRssBytes: r?.peakRssBytes ?? undefined,
+                  }
+                }}
+                selectedId={selectedId()}
+                onSelect={(id) => {
+                  const r = rowById().get(id)
+                  if (r) setSelected(r)
+                }}
+              />
+            </Show>
+          </Show>
+        </Show>
+      </div>
+    </div>
   )
 }
 

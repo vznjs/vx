@@ -210,9 +210,8 @@
       {
         "type": "Card",
         "props": {
-          "title": "Graph",
-          "actionText": "dependency depth · scroll to pan · click a node",
-          "noPad": true
+          "title": "Run",
+          "actionText": "Graph = dependency structure · Flame = by actual time · click to inspect"
         },
         "visible": {
           "$state": "/runStatus",
@@ -220,28 +219,7 @@
         },
         "children": [
           {
-            "type": "RunGraph",
-            "props": {
-              "rows": {
-                "$state": "/run/tasks"
-              }
-            }
-          }
-        ]
-      },
-      {
-        "type": "Card",
-        "props": {
-          "title": "Timeline",
-          "actionText": "click a bar for details"
-        },
-        "visible": {
-          "$state": "/runStatus",
-          "eq": "ok"
-        },
-        "children": [
-          {
-            "type": "Flamegraph",
+            "type": "RunViz",
             "props": {
               "rows": {
                 "$state": "/run/tasks"
