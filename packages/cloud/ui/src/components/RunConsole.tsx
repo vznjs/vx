@@ -20,6 +20,8 @@ interface NodeStatus {
   state: NodeState
   durationMs?: number
   exitCode?: number
+  cpuMs?: number
+  peakRssBytes?: number
 }
 
 function mapStatus(status: string): NodeState {
@@ -137,7 +139,13 @@ export function RunConsole() {
       const end = Date.now()
       setStatuses((p) => ({
         ...p,
-        [ev.outcome.taskId]: { state: mapStatus(ev.outcome.status), durationMs: ev.outcome.durationMs, exitCode: ev.outcome.exitCode },
+        [ev.outcome.taskId]: {
+          state: mapStatus(ev.outcome.status),
+          durationMs: ev.outcome.durationMs,
+          exitCode: ev.outcome.exitCode,
+          cpuMs: ev.outcome.cpuMs,
+          peakRssBytes: ev.outcome.peakRssBytes,
+        },
       }))
       setTiming((p) => {
         const prev = p[ev.outcome.taskId]
@@ -319,7 +327,11 @@ export function RunConsole() {
                 <RunGraph
                   nodes={nodes()}
                   stateOf={(id) => (statuses()[id]?.state ?? 'queued') as RunGraphState}
-                  durationOf={durationOf}
+                  statsOf={(id) => ({
+                    durationMs: durationOf(id),
+                    cpuMs: statuses()[id]?.cpuMs,
+                    peakRssBytes: statuses()[id]?.peakRssBytes,
+                  })}
                   selectedId={selected()}
                   highlightIds={criticalSet()}
                   onSelect={setSelected}

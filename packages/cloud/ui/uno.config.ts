@@ -30,6 +30,15 @@ export default defineConfig({
       `bg-${c}`,
       `text-${c}`,
     ]),
+    // RunGraph status styles — applied via a state→class map + computed classList
+    // keys, so guarantee they're generated regardless of static extraction.
+    ...['border', 'border-strong', 'accent', 'success', 'cache-local', 'danger', 'warn', 'fg-3'].flatMap(
+      (c) => [`bg-${c}`, `text-${c}`, `border-${c}`, `border-${c}/40`, `border-${c}/50`, `border-${c}/70`],
+    ),
+    'stroke-warn',
+    'stroke-border-strong',
+    'ring-accent/40',
+    'ring-warn/40',
   ],
   theme: {
     colors: {

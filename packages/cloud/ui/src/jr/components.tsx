@@ -268,7 +268,14 @@ export function RunGraph(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: stri
           <RunGraphPrimitive
             nodes={nodes()}
             stateOf={stateOf}
-            durationOf={(id) => rowById().get(id)?.durationMs}
+            statsOf={(id) => {
+              const r = rowById().get(id)
+              return {
+                durationMs: r?.durationMs,
+                cpuMs: r?.cpuMs ?? undefined,
+                peakRssBytes: r?.peakRssBytes ?? undefined,
+              }
+            }}
             selectedId={selectedId()}
             onSelect={(id) => {
               const r = rowById().get(id)
