@@ -73,7 +73,7 @@ export function Flamegraph(props: {
             const onPath = () => props.highlightIds?.has(bar.taskId) === true
             return (
               <div
-                class={`absolute rounded text-[10px] text-bg font-medium overflow-hidden whitespace-nowrap px-1 cursor-pointer transition-[outline] ${colorFor(bar.status, bar.cacheHit)}`}
+                class={`absolute rounded text-[10px] text-bg font-medium overflow-hidden whitespace-nowrap [text-indent:3px] cursor-pointer transition-[outline] ${colorFor(bar.status, bar.cacheHit)}`}
                 classList={{
                   'outline outline-2 outline-fg-1 z-20': selected(),
                   'outline outline-2 outline-warn z-10': !selected() && onPath(),
