@@ -19,8 +19,6 @@
 // zero-config form (it behaves like pre-split core: delegate-or-dev-mirror,
 // env-configured cache, no telemetry push).
 
-import { readFileSync } from 'node:fs'
-import path from 'node:path'
 import {
   LayeredCache,
   RemoteCache,
@@ -31,6 +29,7 @@ import {
   type TelemetrySink,
   type VxPlugin,
 } from '@vzn/vx'
+import { pidAlive, readServeInfo } from './serve-info.js'
 
 // NB: the heavy service machinery (backend resolution → serve / dev hub) is
 // loaded LAZILY inside `backend()` via a dynamic import, so merely DECLARING
@@ -121,12 +120,12 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
     },
 
     telemetry(ctx: TelemetryContext): TelemetrySink | undefined {
-      // Explicit config wins; otherwise AUTO-DETECT a vx-cloud serve running
-      // in this workspace via the `.vx/serve.json` it advertises (carrying the
-      // real origin + port), so a local dashboard is zero-config: start
-      // `vx-cloud serve`, and every `vx run` here pushes to it automatically.
-      // No serve running (and no env) → decline, so a plain run is unaffected.
-      const url = ingestUrlOf(opts) ?? detectLocalIngestUrl(ctx.workspaceRoot)
+      // Explicit config wins; otherwise AUTO-DETECT a local `vx-cloud serve` via
+      // its per-user advertisement (carrying the real origin + port), so a local
+      // dashboard is zero-config from ANY workspace: start `vx-cloud serve`, and
+      // every `vx run` pushes to it. No serve running (and no env) → decline, so
+      // a plain run is unaffected.
+      const url = ingestUrlOf(opts) ?? detectLocalIngestUrl()
       if (!url) return undefined
       const token = opts.ingestToken ?? ingestTokenFromEnv()
       return new CloudIngestSink(url, token, (m) => ctx.warn(m))
@@ -149,29 +148,24 @@ function ingestTokenFromEnv(): string | undefined {
 }
 
 /**
- * Auto-detect a vx-cloud serve running in this workspace. `vx-cloud serve`
- * advertises its chosen origin (incl. the actual port) in `.vx/serve.json`;
- * if that file is present + parseable, push telemetry to `<origin>/v1/ingest`.
- * Returns undefined when no serve is running (a plain `vx run` then declines).
- * Pure fs read — no network, no heavy import.
+ * Auto-detect a local `vx-cloud serve` via its per-user advertisement (origin +
+ * pid, written at a MACHINE-LEVEL path so it's found from any workspace). When
+ * present + alive, push telemetry to `<origin>/v1/ingest`. Returns undefined
+ * when no serve is running (a plain `vx run` then declines). One fs read — no
+ * network, no heavy import.
  */
-function detectLocalIngestUrl(workspaceRoot: string): string | undefined {
-  try {
-    const info = JSON.parse(
-      readFileSync(path.join(workspaceRoot, '.vx', 'serve.json'), 'utf8'),
-    ) as { origin?: unknown; pid?: unknown }
-    // Never push to a serve running in THIS process — that's the serve
-    // executing a delegated run, and POSTing to itself mid-request deadlocks
-    // (the WS handler would await an ingest request it must answer). The serve
-    // records its own pid in serve.json, so a same-pid match means "self".
-    if (typeof info.pid === 'number' && info.pid === process.pid) return undefined
-    if (typeof info.origin === 'string' && info.origin.length > 0) {
-      return `${info.origin.replace(/\/+$/, '')}/v1/ingest`
-    }
-  } catch {
-    // no serve.json (no local serve) → not detected
-  }
-  return undefined
+function detectLocalIngestUrl(): string | undefined {
+  const info = readServeInfo()
+  if (info === undefined) return undefined
+  // Never push to a serve running in THIS process — that's the serve executing
+  // a delegated run, and POSTing to itself mid-request would deadlock (the WS
+  // handler would await an ingest request it must answer). The serve records
+  // its own pid, so a same-pid match means "self".
+  if (info.pid === process.pid) return undefined
+  // Ignore a stale advertisement left by a serve that died without cleanup —
+  // otherwise every run wastes a (swallowed) POST to a dead origin.
+  if (!pidAlive(info.pid)) return undefined
+  return `${info.origin.replace(/\/+$/, '')}/v1/ingest`
 }
 
 function assertWellFormedUrl(value: string | undefined, field: string): void {

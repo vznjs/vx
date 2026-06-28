@@ -6,14 +6,11 @@
 // blocks the first-party `cloud()` plugin's `backend` capability composes
 // (Phase 3).
 
-import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
 import {
   run as runOrchestrator,
   createEventBus,
   createWireRenderer,
   defaultLogger,
-  findWorkspaceRoot,
   projectOutcome,
   requestToOptions,
   resolveOutputView,
@@ -26,7 +23,7 @@ import {
   type ServerMessage,
 } from '@vzn/vx'
 import { connectDevForwarder } from './dev-client.js'
-import { serveInfoPath } from './serve.js'
+import { readServeInfo } from '../serve-info.js'
 
 /**
  * Run in-process via `run()`, mirroring the run's events to a live `vx dev`
@@ -123,13 +120,13 @@ export async function resolveBackend(
   if (envUrl !== undefined && envUrl !== '' && (await reachable(envUrl))) {
     return serviceBackend(envUrl, sink)
   }
+  // Auto-detect a local serve via its per-user advertisement (machine-level, so
+  // it's found from any workspace). `reachable` confirms it's actually up, so a
+  // stale file just falls through to local.
   try {
-    const infoPath = serveInfoPath(await findWorkspaceRoot(cwd))
-    if (existsSync(infoPath)) {
-      const info = JSON.parse(await readFile(infoPath, 'utf8')) as { origin?: string }
-      if (info.origin !== undefined && (await reachable(info.origin))) {
-        return serviceBackend(info.origin, sink)
-      }
+    const info = readServeInfo()
+    if (info !== undefined && (await reachable(info.origin))) {
+      return serviceBackend(info.origin, sink)
     }
   } catch {
     // any failure → local

@@ -56,11 +56,7 @@ import {
   type ServerMessage,
 } from '@vzn/vx'
 import { IngestStore } from '../ingest-store.js'
-
-/** Where `vx-cloud serve` advertises itself and `vx run` looks for it. */
-export function serveInfoPath(workspaceRoot: string): string {
-  return path.join(workspaceRoot, '.vx', 'serve.json')
-}
+import { serveInfoPath } from '../serve-info.js'
 
 /**
  * Default port for `vx-cloud serve`, used when neither `--port` nor the
@@ -593,15 +589,15 @@ export async function startServe(opts: {
   const server = listen(opts.port ?? 0)
 
   const origin = `http://localhost:${server.port}`
-  // Advertise the local serve so `vx run` in this workspace delegates here.
-  // Best-effort: a hosted/read-only root has nothing to advertise to and must
-  // not fail startup over it.
-  const infoPath = serveInfoPath(opts.root)
+  // Advertise the local serve at a per-user, MACHINE-LEVEL path so a `vx run`
+  // in ANY workspace discovers it (not just one started in this serve's root).
+  // Best-effort: a read-only runtime dir must not fail startup over it.
+  const infoPath = serveInfoPath()
   try {
     await mkdir(path.dirname(infoPath), { recursive: true })
     await writeFile(infoPath, JSON.stringify({ origin, pid: process.pid }))
   } catch {
-    // read-only root (hosted) — skip the advertisement
+    // can't advertise (read-only runtime dir) — explicit config still works
   }
 
   return {

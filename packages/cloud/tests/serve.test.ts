@@ -1,11 +1,24 @@
-import { describe, it, expect } from 'bun:test'
+import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import type { Logger, RunRequest, RunSummaryRecord } from '@vzn/vx'
-import { startServe, serveInfoPath } from '../src/cli/serve.js'
+import { startServe } from '../src/cli/serve.js'
+import { serveInfoPath } from '../src/serve-info.js'
 import { serviceBackend, resolveBackend } from '../src/cli/backend.js'
+
+// Isolate the per-user serve advertisement at a temp path so these tests never
+// touch (or collide with) a real local serve's file on the machine.
+const prevServeInfo = process.env['VX_CLOUD_SERVE_INFO']
+beforeAll(() => {
+  process.env['VX_CLOUD_SERVE_INFO'] = path.join(tmpdir(), `vx-serveinfo-serve-${process.pid}.json`)
+})
+afterAll(async () => {
+  await rm(serveInfoPath(), { force: true })
+  if (prevServeInfo === undefined) delete process.env['VX_CLOUD_SERVE_INFO']
+  else process.env['VX_CLOUD_SERVE_INFO'] = prevServeInfo
+})
 
 // vx-cloud reads ONLY its own ingest store; runs reach it via POST /v1/ingest
 // (the cloud() plugin's push), never from a workspace cache.db. These helpers
@@ -148,7 +161,7 @@ describe('vx serve delegation', () => {
     try {
       const res = await fetch(`${server.origin}/health`)
       expect(res.ok).toBe(true)
-      expect((await Bun.file(serveInfoPath(root)).json()).origin).toBe(server.origin)
+      expect((await Bun.file(serveInfoPath()).json()).origin).toBe(server.origin)
     } finally {
       await server.stop()
       await rm(root, { recursive: true, force: true })
@@ -635,11 +648,12 @@ describe('resolveBackend', () => {
 
   it('ignores a stale info file (unreachable origin) and falls back', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'vx-stale-'))
-    await mkdir(path.join(root, '.vx'), { recursive: true })
+    await mkdir(path.dirname(serveInfoPath()), { recursive: true })
     // A port nothing listens on → health check fails → local fallback.
-    await writeFile(serveInfoPath(root), JSON.stringify({ origin: 'http://localhost:1', pid: 1 }))
+    await writeFile(serveInfoPath(), JSON.stringify({ origin: 'http://localhost:1', pid: 1 }))
     const backend = await resolveBackend(root)
     expect(typeof backend.run).toBe('function')
+    await rm(serveInfoPath(), { force: true })
     await rm(root, { recursive: true, force: true })
   })
 })
