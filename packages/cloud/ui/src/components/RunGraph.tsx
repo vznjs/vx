@@ -14,7 +14,7 @@
 
 import { For, Show, createMemo, createSignal } from 'solid-js'
 import { formatBytes, formatDuration } from '../format.ts'
-import { layoutStages } from './run-graph-layout.ts'
+import { layoutLevels } from './run-graph-layout.ts'
 
 export interface RunGraphNode {
   id: string
@@ -85,14 +85,14 @@ export function RunGraph(props: {
   const effState = (n: RunGraphNode): RunGraphState => (n.isGroup ? 'group' : props.stateOf(n.id))
   const statsFor = (id: string): RunGraphStats => props.statsOf?.(id) ?? {}
 
-  const layout = createMemo(() => layoutStages(props.nodes, (id) => statsFor(id).durationMs))
-  const width = () => Math.max(1, layout().stageCount) * COL_STRIDE - COL_GAP + 24
+  const layout = createMemo(() => layoutLevels(props.nodes))
+  const width = () => Math.max(1, layout().levelCount) * COL_STRIDE - COL_GAP + 24
   const height = () => HEADER_H + Math.max(1, layout().maxRows) * ROW_STRIDE + 8
 
   const [zoom, setZoom] = createSignal(1)
   const nudge = (d: number) => setZoom((z) => Math.min(1.6, Math.max(0.4, Math.round((z + d) * 10) / 10)))
 
-  const xOf = (stage: number) => stage * COL_STRIDE
+  const xOf = (level: number) => level * COL_STRIDE
   const yOf = (row: number) => HEADER_H + row * ROW_STRIDE
 
   const edges = createMemo(() => {
@@ -104,9 +104,9 @@ export function RunGraph(props: {
       for (const dep of n.deps) {
         const from = l.pos.get(dep)
         if (!from) continue
-        const sx = xOf(from.stage) + CARD_W
+        const sx = xOf(from.level) + CARD_W
         const sy = yOf(from.row) + CARD_H / 2
-        const tx = xOf(to.stage)
+        const tx = xOf(to.level)
         const ty = yOf(to.row) + CARD_H / 2
         const mx = sx + (tx - sx) / 2
         out.push({
@@ -118,11 +118,11 @@ export function RunGraph(props: {
     return out
   })
 
-  const stages = createMemo(() =>
-    Array.from({ length: layout().stageCount }, (_, i) => ({
+  const levels = createMemo(() =>
+    Array.from({ length: layout().levelCount }, (_, i) => ({
       i,
       x: xOf(i),
-      durationMs: layout().stageDurationMs[i] ?? 0,
+      count: layout().levelSizes[i] ?? 0,
     })),
   )
 
@@ -138,8 +138,8 @@ export function RunGraph(props: {
             'transform-origin': '0 0',
           }}
         >
-          {/* stage guides + headers */}
-          <For each={stages()}>
+          {/* depth-level guides + headers (structure, NOT execution waves) */}
+          <For each={levels()}>
             {(s) => (
               <>
                 <div
@@ -147,10 +147,10 @@ export function RunGraph(props: {
                   style={{ left: `${s.x - 10}px`, width: `${CARD_W + 20}px` }}
                 />
                 <div class="absolute flex items-baseline gap-2" style={{ left: `${s.x}px`, top: '4px', width: `${CARD_W}px` }}>
-                  <span class="text-[10px] font-semibold uppercase tracking-wider text-fg-3">Stage {s.i + 1}</span>
-                  <Show when={s.durationMs > 0}>
-                    <span class="text-[10px] font-mono text-fg-3/70 tabular-nums">~{formatDuration(s.durationMs)}</span>
-                  </Show>
+                  <span class="text-[10px] font-semibold uppercase tracking-wider text-fg-3">Level {s.i + 1}</span>
+                  <span class="text-[10px] font-mono text-fg-3/60 tabular-nums">
+                    {s.count} task{s.count === 1 ? '' : 's'}
+                  </span>
                 </div>
               </>
             )}
@@ -191,7 +191,7 @@ export function RunGraph(props: {
                       'border-warn/70 ring-2 ring-warn/40': crit() && !selected(),
                     }}
                     style={{
-                      left: `${xOf(pos()!.stage)}px`,
+                      left: `${xOf(pos()!.level)}px`,
                       top: `${yOf(pos()!.row)}px`,
                       width: `${CARD_W}px`,
                       height: `${CARD_H}px`,
@@ -228,6 +228,11 @@ export function RunGraph(props: {
             }}
           </For>
         </div>
+      </div>
+
+      {/* honesty caption: columns are dependency depth, not timed waves */}
+      <div class="absolute bottom-3 left-3 text-[10px] text-fg-3/70 font-mono pointer-events-none select-none">
+        levels = dependency depth · a task starts when its own deps finish
       </div>
 
       {/* zoom controls */}

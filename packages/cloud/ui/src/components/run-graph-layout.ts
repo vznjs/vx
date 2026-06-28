@@ -1,50 +1,56 @@
-// Staged (topological-wave) layout for the run DAG. A node's STAGE is the
-// longest dependency path to a root, so each stage is a set of tasks that can
-// run once everything before it is done — the run's natural "stages". Deps
-// always sit in an earlier stage (to the left) than their dependents. Within a
-// stage, nodes pack in input order. The component maps (stage, row) → pixels
-// and draws edges between them.
+// Dependency-DEPTH layout for the run DAG — a layout device, NOT execution
+// stages. A node's LEVEL is the longest dependency chain before it
+// (1 + max level of its deps), so a dependency always sits in a lower level
+// (to the left) than the things that depend on it.
+//
+// This is purely structural. vx's scheduler has NO stage/wave barriers: a task
+// starts the moment its OWN deps finish and a worker is free (see
+// graph/scheduler.ts — `pending` hits 0 → pushed to the ready queue). So a
+// level-2 task whose single dep was a fast level-1 task can run while a SLOW
+// level-1 task is still going. Levels order the columns; they are not time
+// windows. The real timing lives in the critical path + the timeline view.
+//
+// Within a level, nodes pack in input order.
 
-export interface StageLayout {
-  pos: Map<string, { stage: number; row: number }>
-  stageCount: number
+export interface DepthLayout {
+  pos: Map<string, { level: number; row: number }>
+  levelCount: number
   maxRows: number
-  /** Per-stage parallel wall-time proxy = the longest task in that stage. */
-  stageDurationMs: number[]
+  /** Task count at each level — for the column header. */
+  levelSizes: number[]
 }
 
-export function layoutStages(
+export function layoutLevels(
   nodes: ReadonlyArray<{ id: string; deps: readonly string[] }>,
-  durationOf?: (id: string) => number | undefined,
-): StageLayout {
+): DepthLayout {
   const byId = new Map(nodes.map((n) => [n.id, n]))
-  const stageOf = new Map<string, number>()
+  const levelOf = new Map<string, number>()
   const visiting = new Set<string>()
-  const stage = (id: string): number => {
-    const cached = stageOf.get(id)
+  const level = (id: string): number => {
+    const cached = levelOf.get(id)
     if (cached !== undefined) return cached
     if (visiting.has(id)) return 0 // cycle guard — the graph is a DAG, but be safe
     visiting.add(id)
     const deps = (byId.get(id)?.deps ?? []).filter((d) => byId.has(d))
-    const s = deps.length === 0 ? 0 : 1 + Math.max(...deps.map(stage))
+    const l = deps.length === 0 ? 0 : 1 + Math.max(...deps.map(level))
     visiting.delete(id)
-    stageOf.set(id, s)
-    return s
+    levelOf.set(id, l)
+    return l
   }
-  for (const n of nodes) stage(n.id)
+  for (const n of nodes) level(n.id)
 
   const rowCounter = new Map<number, number>()
-  const pos = new Map<string, { stage: number; row: number }>()
-  const stageDurationMs: number[] = []
+  const pos = new Map<string, { level: number; row: number }>()
+  const levelSizes: number[] = []
   for (const n of nodes) {
-    const s = stageOf.get(n.id) ?? 0
-    const row = rowCounter.get(s) ?? 0
-    rowCounter.set(s, row + 1)
-    pos.set(n.id, { stage: s, row })
-    stageDurationMs[s] = Math.max(stageDurationMs[s] ?? 0, durationOf?.(n.id) ?? 0)
+    const l = levelOf.get(n.id) ?? 0
+    const row = rowCounter.get(l) ?? 0
+    rowCounter.set(l, row + 1)
+    pos.set(n.id, { level: l, row })
+    levelSizes[l] = (levelSizes[l] ?? 0) + 1
   }
-  const stageCount = nodes.length === 0 ? 0 : Math.max(...stageOf.values()) + 1
+  const levelCount = nodes.length === 0 ? 0 : Math.max(...levelOf.values()) + 1
   let maxRows = 0
   for (const c of rowCounter.values()) maxRows = Math.max(maxRows, c)
-  return { pos, stageCount, maxRows, stageDurationMs }
+  return { pos, levelCount, maxRows, levelSizes }
 }
