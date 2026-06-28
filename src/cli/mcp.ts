@@ -48,7 +48,7 @@ export async function mcpCmd(args: readonly string[]): Promise<number> {
     const sdkStdio = await import('@modelcontextprotocol/sdk/server/stdio.js')
     McpServer = (sdkServer as { Server: any }).Server
     StdioServerTransport = (sdkStdio as { StdioServerTransport: any }).StdioServerTransport
-  } catch (err) {
+  } catch {
     throw new UserError(
       `vx mcp requires @modelcontextprotocol/sdk to be installed. ` +
         `Add it to your package.json or install with: bun add @modelcontextprotocol/sdk`,

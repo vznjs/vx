@@ -7,12 +7,7 @@
 
 import path from 'node:path'
 import { relPosix, UserError } from '../util/index.js'
-import {
-  findWorkspaceRoot,
-  listProjects,
-  loadWorkspace,
-  type ProjectMeta,
-} from '../workspace/index.js'
+import { findWorkspaceRoot, listProjects, loadWorkspace } from '../workspace/index.js'
 import { migrateNx } from './migrate-nx.js'
 import { migrateTurbo } from './migrate-turbo.js'
 

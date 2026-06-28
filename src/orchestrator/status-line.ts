@@ -11,8 +11,6 @@ import { formatTaskRow, paintIdParts, TIME_COL } from './framed-output.js'
 const NO_COLOR: ColorSupport = { enabled: false }
 // Same palette as framed-output.ts so glyphs and stats agree.
 const ACCENT = '#06b6d4'
-const SUCCESS = '#22c55e'
-const WARN = '#eab308'
 const ERROR = '#ef4444'
 
 /** Erase the current line and return the cursor to column 0. */

@@ -12,11 +12,9 @@ const TIMEOUT = 30_000
 const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
 
 let root: string
-let log: string[]
 
 async function makeWorkspace(): Promise<void> {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-hygiene-'))
-  log = []
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await writeFile(
     path.join(root, 'package.json'),

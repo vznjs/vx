@@ -8,7 +8,7 @@
 // reads the priorities at queue time, picks the max.
 
 import type { TaskNode } from '../graph/index.js'
-import type { HistoryTable, TaskHistory } from './history.js'
+import type { HistoryTable } from './history.js'
 
 /** Default duration when neither task history nor workspace median exists. */
 const DEFAULT_DURATION_MS = 1000

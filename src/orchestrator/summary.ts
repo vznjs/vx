@@ -12,7 +12,6 @@ const NO_COLOR: ColorSupport = { enabled: false }
 
 const SUCCESS = '#22c55e'
 const WARN = '#eab308'
-const ACCENT = '#06b6d4'
 // Cache provenance hues (owner): local light blue, remote dark blue —
 // yellow is skipped's color on both meters.
 const LOCAL = '#38bdf8' // sky-400

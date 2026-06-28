@@ -36,7 +36,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { relPosix, UserError, xxh3 } from '../util/index.js'
 import { FsCASBackend } from './cas-backend.js'
-import { extractOutputs, parseTarHeaders, readTarText, type TarHeader } from './tar.js'
+import { extractOutputs, parseTarHeaders, readTarText } from './tar.js'
 
 // v17: artifact carries only logs + outputs (stdout + outputs/<rel>).
 // Local and remote layers transport the SAME tar.zst bytes — no
