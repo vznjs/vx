@@ -1,6 +1,5 @@
-// The first-party `cloud()` VxPlugin. Contributes the three run-level
-// capabilities against core's plugin interface (Phase 3 of
-// docs/design/core-cloud-split-2026-06.md):
+// The first-party `cloud()` VxPlugin. Contributes the run-level capabilities
+// against core's plugin interface:
 //
 //   backend   — route the run to a local-or-hosted `vx-cloud serve`
 //               (owns the serve discovery moved out of core), else dev-mirror
@@ -8,21 +7,27 @@
 //   cache     — wrap the local Cache in a Turbo-wire `LayeredCache` pointed at
 //               the cloud artifact store. Declines (undefined) when unconfigured
 //               so core's env fallback still applies.
-//   eventSink — buffer the run's WireEvents and upload them to an insights
-//               endpoint on `run:end`. Declines when unconfigured.
+//   telemetry — push the canonical RunSummaryRecord to the cloud's /v1/ingest
+//               endpoint at run end. Observe-only (it cannot change a run) and
+//               never-fail. Declines when unconfigured. This is the data path:
+//               the cloud service ingests these summaries into its OWN store
+//               and serves the dashboard from there — it no longer reads a
+//               developer's private cache.db. See
+//               docs/design/observability-architecture-2026-06.md.
 //
 // Every option falls back to an env var, so `cloud()` with no args is the
 // zero-config form (it behaves like pre-split core: delegate-or-dev-mirror,
-// env-configured cache, no insights upload).
+// env-configured cache, no telemetry push).
 
 import {
   LayeredCache,
   RemoteCache,
   UserError,
   type CacheLayer,
-  type EventSink,
+  type RunSummaryRecord,
+  type TelemetryContext,
+  type TelemetrySink,
   type VxPlugin,
-  type WireEvent,
 } from '@vzn/vx'
 import { resolveBackend } from './cli/backend.js'
 
@@ -47,18 +52,19 @@ export interface CloudPluginOptions {
   /** HMAC artifact-signing key. Falls back to `VX_REMOTE_CACHE_SIGNATURE_KEY`. */
   cacheSignatureKey?: string
   /**
-   * Endpoint the run's WireEvent log is POSTed to for insights. Falls back to
-   * `VX_CLOUD_INSIGHTS_URL`. With no URL the eventSink capability declines.
+   * The cloud ingest endpoint a RunSummaryRecord is POSTed to at run end.
+   * Falls back to `VX_CLOUD_INGEST_URL`, then the legacy `VX_CLOUD_INSIGHTS_URL`.
+   * With no URL the telemetry capability declines.
    */
-  insightsUrl?: string
-  /** Bearer token for the insights endpoint. Falls back to `VX_CLOUD_INSIGHTS_TOKEN`. */
-  insightsToken?: string
+  ingestUrl?: string
+  /** Bearer token for ingest. Falls back to `VX_CLOUD_INGEST_TOKEN`, then `VX_CLOUD_INSIGHTS_TOKEN`. */
+  ingestToken?: string
 }
 
 /**
  * The first-party `@vzn/vx-cloud` plugin. Declared in `vx.workspace.ts` via
  * `defineWorkspace({ plugins: [cloud()] })`. Contributes backend / cache /
- * eventSink; each capability is independent and zero-config via env vars.
+ * telemetry; each capability is independent and zero-config via env vars.
  */
 export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
   return {
@@ -68,7 +74,7 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
       const serviceUrl = opts.serviceUrl ?? process.env['VX_SERVICE_URL']
       assertWellFormedUrl(serviceUrl, 'serviceUrl')
       assertWellFormedUrl(cacheUrlOf(opts), 'cacheUrl')
-      assertWellFormedUrl(insightsUrlOf(opts), 'insightsUrl')
+      assertWellFormedUrl(ingestUrlOf(opts), 'ingestUrl')
     },
 
     backend(ctx) {
@@ -101,11 +107,11 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
       })
     },
 
-    eventSink(): EventSink | undefined {
-      const url = insightsUrlOf(opts)
+    telemetry(ctx: TelemetryContext): TelemetrySink | undefined {
+      const url = ingestUrlOf(opts)
       if (!url) return undefined
-      const token = opts.insightsToken ?? process.env['VX_CLOUD_INSIGHTS_TOKEN']
-      return new InsightsSink(url, token)
+      const token = opts.ingestToken ?? ingestTokenFromEnv()
+      return new CloudIngestSink(url, token, (m) => ctx.warn(m))
     },
   }
 }
@@ -114,8 +120,14 @@ function cacheUrlOf(opts: CloudPluginOptions): string | undefined {
   return opts.cacheUrl ?? process.env['VX_REMOTE_CACHE_URL']
 }
 
-function insightsUrlOf(opts: CloudPluginOptions): string | undefined {
-  return opts.insightsUrl ?? process.env['VX_CLOUD_INSIGHTS_URL']
+function ingestUrlOf(opts: CloudPluginOptions): string | undefined {
+  return (
+    opts.ingestUrl ?? process.env['VX_CLOUD_INGEST_URL'] ?? process.env['VX_CLOUD_INSIGHTS_URL']
+  )
+}
+
+function ingestTokenFromEnv(): string | undefined {
+  return process.env['VX_CLOUD_INGEST_TOKEN'] ?? process.env['VX_CLOUD_INSIGHTS_TOKEN']
 }
 
 function assertWellFormedUrl(value: string | undefined, field: string): void {
@@ -128,45 +140,44 @@ function assertWellFormedUrl(value: string | undefined, field: string): void {
 }
 
 /**
- * Buffers the run's WireEvents and uploads them as one NDJSON body to the
- * insights endpoint. Core never invokes `teardown`/`flush` (the run() finally
- * block only disposes bus subscriptions — see plugin-host.ts), so the upload
- * is triggered by the terminal `run:end` WireEvent inside `onEvent`. `flush`
- * stays as a best-effort fallback for any future host that does await it.
+ * Pushes the canonical RunSummaryRecord to the cloud ingest endpoint. Summary
+ * mode: one JSON POST per run, at run end (the smallest contract; the cloud
+ * persists it into its own analytics store). Observe-only + never-fail: the
+ * POST is time-bounded, errors are swallowed, and the upload is idempotent —
+ * a down endpoint can never slow or fail a run.
  */
-class InsightsSink implements EventSink {
-  private readonly events: WireEvent[] = []
+class CloudIngestSink implements TelemetrySink {
+  readonly name = 'vzn/cloud'
+  // Summary-only: no streaming records needed.
+  readonly wants: ReadonlyArray<never> = []
+  private summary: RunSummaryRecord | undefined
   private uploaded = false
 
   constructor(
     private readonly url: string,
     private readonly token: string | undefined,
+    private readonly warn: (message: string) => void,
   ) {}
 
-  onEvent(event: WireEvent): void {
-    this.events.push(event)
-    if (event.kind === 'run:end') void this.upload()
+  onRunSummary(summary: RunSummaryRecord): void {
+    this.summary = summary
   }
 
   async flush(): Promise<void> {
-    await this.upload()
-  }
-
-  private async upload(): Promise<void> {
-    if (this.uploaded) return
+    if (this.uploaded || this.summary === undefined) return
     this.uploaded = true
-    const body = this.events.map((e) => JSON.stringify(e)).join('\n')
-    const headers: Record<string, string> = { 'content-type': 'application/x-ndjson' }
+    const headers: Record<string, string> = { 'content-type': 'application/json' }
     if (this.token) headers['authorization'] = `Bearer ${this.token}`
     try {
       await fetch(this.url, {
         method: 'POST',
         headers,
-        body,
+        body: JSON.stringify(this.summary),
         signal: AbortSignal.timeout(5000),
       })
-    } catch {
-      // insights upload is fully optional — a down endpoint never affects a run
+    } catch (err) {
+      // telemetry push is fully optional — a down endpoint never affects a run
+      this.warn(`[vx] cloud ingest: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 }

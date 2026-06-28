@@ -60,7 +60,7 @@ export {
   digestEqual,
   digestString,
 } from './cache/index.js'
-export type { CacheLayer, RunRecord, CASBackend, Digest } from './cache/index.js'
+export type { CacheLayer, RunRecord, InvocationRecord, CASBackend, Digest } from './cache/index.js'
 
 // Workspace discovery — cloud's CLI + coordinator need these.
 export { findWorkspaceRoot, loadWorkspaceConfig, resolveCacheDir } from './workspace/index.js'

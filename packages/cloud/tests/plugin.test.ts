@@ -9,9 +9,10 @@ import {
   LayeredCache,
   type BackendContext,
   type CacheContext,
-  type EventSinkContext,
   type RunRequest,
-  type WireEvent,
+  type RunSummaryRecord,
+  type TelemetryContext,
+  type TelemetrySink,
 } from '@vzn/vx'
 import { cloud } from '../src/plugin.js'
 import { startServe } from '../src/cli/serve.js'
@@ -57,30 +58,30 @@ function cacheCtx(localCache: Cache, root: string): CacheContext {
   }
 }
 
-function eventSinkCtx(root: string): EventSinkContext {
+function telemetryCtx(root: string): TelemetryContext {
   return { workspaceRoot: root, cacheDir: path.join(root, '.vx', 'cache'), warn: () => {} }
 }
 
 describe('cloud() plugin shape', () => {
-  it('returns a VxPlugin contributing all three capabilities', () => {
+  it('returns a VxPlugin contributing backend / cache / telemetry', () => {
     const plugin = cloud()
     expect(plugin.name).toBe('vzn/cloud')
     expect(typeof plugin.backend).toBe('function')
     expect(typeof plugin.cache).toBe('function')
-    expect(typeof plugin.eventSink).toBe('function')
+    expect(typeof plugin.telemetry).toBe('function')
   })
 
   it('setup rejects a malformed serviceUrl', () => {
-    expect(() => cloud({ serviceUrl: 'not a url' }).setup?.(eventSinkCtx('/x'))).toThrow(
+    expect(() => cloud({ serviceUrl: 'not a url' }).setup?.(telemetryCtx('/x'))).toThrow(
       /not a valid URL/,
     )
   })
 
-  it('setup rejects a malformed cacheUrl / insightsUrl', () => {
-    expect(() => cloud({ cacheUrl: ':::bad' }).setup?.(eventSinkCtx('/x'))).toThrow(
+  it('setup rejects a malformed cacheUrl / ingestUrl', () => {
+    expect(() => cloud({ cacheUrl: ':::bad' }).setup?.(telemetryCtx('/x'))).toThrow(
       /not a valid URL/,
     )
-    expect(() => cloud({ insightsUrl: 'http://' }).setup?.(eventSinkCtx('/x'))).toThrow(
+    expect(() => cloud({ ingestUrl: 'http://' }).setup?.(telemetryCtx('/x'))).toThrow(
       /not a valid URL/,
     )
   })
@@ -171,14 +172,54 @@ describe('cloud() cache capability', () => {
   })
 })
 
-describe('cloud() eventSink capability', () => {
-  it('buffers WireEvents and uploads them on run:end with the token', async () => {
+function fakeSummary(): RunSummaryRecord {
+  return {
+    v: 1,
+    run: {
+      runId: 'run-xyz',
+      vxVersion: '0.0.0',
+      command: 'vx run hello',
+      requestedTasks: ['hello'],
+      cachePolicy: 'lR,lW,rR,rW',
+      concurrency: 1,
+      flow: 'focused',
+      commitSha: null,
+      branch: null,
+      dirty: null,
+      ci: false,
+      ciProvider: null,
+      host: null,
+      os: 'linux',
+      arch: 'x64',
+      tags: {},
+    },
+    startedAt: 0,
+    endedAt: 10,
+    totalDurationMs: 10,
+    taskCount: 1,
+    failedCount: 0,
+    hitCount: 0,
+    hitLocalCount: 0,
+    hitRemoteCount: 0,
+    exitOk: true,
+    tasks: [
+      {
+        taskId: 'demo#hello',
+        project: 'demo',
+        task: 'hello',
+        status: 'success',
+        cacheSource: 'miss',
+        exitCode: 0,
+        durationMs: 5,
+      },
+    ],
+  }
+}
+
+describe('cloud() telemetry capability', () => {
+  it('POSTs the RunSummaryRecord to the ingest endpoint with the token at flush', async () => {
     const received: { body: string; auth: string | null; contentType: string | null }[] = []
-    let resolveUpload: () => void
-    const uploaded = new Promise<void>((r) => {
-      resolveUpload = r
-    })
-    const insights = Bun.serve({
+    const server = Bun.serve({
       port: 0,
       async fetch(req) {
         received.push({
@@ -186,57 +227,50 @@ describe('cloud() eventSink capability', () => {
           auth: req.headers.get('authorization'),
           contentType: req.headers.get('content-type'),
         })
-        resolveUpload()
         return new Response('ok')
       },
     })
     try {
       const sink = (await cloud({
-        insightsUrl: `http://localhost:${insights.port}/ingest`,
-        insightsToken: 'ins-tok',
-      }).eventSink!(eventSinkCtx('/x')))!
+        ingestUrl: `http://localhost:${server.port}/v1/ingest`,
+        ingestToken: 'ing-tok',
+      }).telemetry!(telemetryCtx('/x'))) as TelemetrySink
       expect(sink).toBeDefined()
 
-      const events: WireEvent[] = [
-        { kind: 'run:start', info: { tasks: ['hello'], concurrency: 1 } as never },
-        { kind: 'run:status', line: 'a status line' },
-        { kind: 'run:end' },
-      ]
-      for (const e of events) sink.onEvent(e)
+      sink.onRunSummary!(fakeSummary())
+      await sink.flush!()
 
-      await uploaded
       expect(received.length).toBe(1)
-      expect(received[0]!.auth).toBe('Bearer ins-tok')
-      expect(received[0]!.contentType).toContain('ndjson')
-      const lines = received[0]!.body.split('\n')
-      expect(lines.length).toBe(3)
-      expect(JSON.parse(lines[2]!)).toEqual({ kind: 'run:end' })
+      expect(received[0]!.auth).toBe('Bearer ing-tok')
+      expect(received[0]!.contentType).toContain('json')
+      const parsed = JSON.parse(received[0]!.body) as RunSummaryRecord
+      expect(parsed.run.runId).toBe('run-xyz')
+      expect(parsed.tasks[0]!.task).toBe('hello')
     } finally {
-      void insights.stop(true)
+      void server.stop(true)
     }
   })
 
-  it('onEvent never throws even if the insights endpoint is down', async () => {
+  it('flush never throws even if the ingest endpoint is down', async () => {
     const sink = (await cloud({
-      insightsUrl: 'http://localhost:1/ingest',
-      insightsToken: 'x',
-    }).eventSink!(eventSinkCtx('/x')))!
-    expect(() => {
-      sink.onEvent({ kind: 'run:status', line: 'x' })
-      sink.onEvent({ kind: 'run:end' })
-    }).not.toThrow()
-    // Give the fire-and-forget fetch a tick to reject and be swallowed.
-    await Bun.sleep(20)
+      ingestUrl: 'http://localhost:1/v1/ingest',
+      ingestToken: 'x',
+    }).telemetry!(telemetryCtx('/x'))) as TelemetrySink
+    sink.onRunSummary!(fakeSummary())
+    await expect(sink.flush!()).resolves.toBeUndefined()
   })
 
-  it('declines (undefined) when no insights URL is configured', async () => {
-    const prev = process.env['VX_CLOUD_INSIGHTS_URL']
+  it('declines (undefined) when no ingest URL is configured', async () => {
+    const prevIngest = process.env['VX_CLOUD_INGEST_URL']
+    const prevInsights = process.env['VX_CLOUD_INSIGHTS_URL']
+    delete process.env['VX_CLOUD_INGEST_URL']
     delete process.env['VX_CLOUD_INSIGHTS_URL']
     try {
-      const sink = await cloud().eventSink!(eventSinkCtx('/x'))
+      const sink = await cloud().telemetry!(telemetryCtx('/x'))
       expect(sink).toBeUndefined()
     } finally {
-      if (prev !== undefined) process.env['VX_CLOUD_INSIGHTS_URL'] = prev
+      if (prevIngest !== undefined) process.env['VX_CLOUD_INGEST_URL'] = prevIngest
+      if (prevInsights !== undefined) process.env['VX_CLOUD_INSIGHTS_URL'] = prevInsights
     }
   })
 })

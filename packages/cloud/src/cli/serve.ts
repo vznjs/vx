@@ -55,8 +55,10 @@ import {
   type Envelope,
   type Logger,
   type RunRequest,
+  type RunSummaryRecord,
   type ServerMessage,
 } from '@vzn/vx'
+import { IngestStore } from '../ingest-store.js'
 
 /** Where `vx-cloud serve` advertises itself and `vx run` looks for it. */
 export function serveInfoPath(workspaceRoot: string): string {
@@ -145,6 +147,19 @@ export async function startServe(opts: {
    * file with a hash router, so all routes return the same bytes.
    */
   uiHtmlPath?: string
+  /**
+   * Where the dashboard's read queries source their data:
+   *   'cache'  (default) — the workspace's local cache.db, opened directly.
+   *                        Zero-config local serve; full fidelity incl. cache
+   *                        inventory (the documented L2 fallback).
+   *   'ingest' (hosted)  — the cloud-owned ingest store, populated by pushed
+   *                        RunSummaryRecords via POST /v1/ingest. Run/task
+   *                        analytics only; cache inventory is a local concern.
+   * See docs/design/observability-architecture-2026-06.md §6–7.
+   */
+  source?: 'cache' | 'ingest'
+  /** Directory for the cloud-owned ingest store. Defaults under the cache dir. */
+  ingestDir?: string
   onRun?: (request: RunRequest, ok: boolean) => void
 }): Promise<ServeServer> {
   // One registry for the service's whole lifetime — concurrent runs share
@@ -157,6 +172,13 @@ export async function startServe(opts: {
   const workspaceConfig = await loadWorkspaceConfig(opts.root)
   const cacheDir = resolveCacheDir(opts.root, workspaceConfig)
   const cache = new Cache(cacheDir)
+
+  // The cloud-owned ingest store. Always open (it backs POST /v1/ingest);
+  // the read queries use it only when `source: 'ingest'` (hosted). Local
+  // serve keeps reading cache.db directly (source defaults to 'cache').
+  const ingest = new IngestStore(opts.ingestDir ?? path.join(cacheDir, 'cloud-ingest'))
+  const readDb = (): ReturnType<typeof cache.dbHandle> =>
+    opts.source === 'ingest' ? ingest.db() : cache.dbHandle()
 
   // Read-only event subscribers (SSE / NDJSON). Each callback gets every
   // event from every concurrent run as a notification envelope so a `curl`
@@ -205,10 +227,30 @@ export async function startServe(opts: {
             workspace: opts.root,
           })
         }
+        // Ingest — the push endpoint. A cloud telemetry sink POSTs a
+        // canonical RunSummaryRecord; we persist it into the cloud-owned
+        // store the hosted dashboard reads from. Idempotent on runId.
+        if (url.pathname === '/v1/ingest' && req.method === 'POST') {
+          return (async () => {
+            try {
+              const summary = (await req.json()) as RunSummaryRecord
+              if (summary?.run?.runId === undefined) {
+                return jsonResponse({ ok: false, error: 'not a RunSummaryRecord' }, { status: 400 })
+              }
+              const stored = ingest.ingest(summary)
+              return jsonResponse({ ok: true, stored })
+            } catch (err) {
+              return jsonResponse(
+                { ok: false, error: err instanceof Error ? err.message : String(err) },
+                { status: 400 },
+              )
+            }
+          })()
+        }
         // -----------------------------------------------------------------
-        // Metrics HTTP surface — JSON read APIs over cache.db. The dashboard
-        // SPA in apps/ui calls these directly; same shape will be mirrored by
-        // a future hosted multi-tenant deployment.
+        // Metrics HTTP surface — JSON read APIs over the selected store
+        // (local cache.db by default, the ingest store when hosted). The
+        // dashboard SPA in apps/ui calls these directly.
         // -----------------------------------------------------------------
         if (url.pathname === '/v1/runs') {
           const params = url.searchParams
@@ -221,7 +263,7 @@ export async function startServe(opts: {
           if (task !== null) args.task = task
           const runId = params.get('runId')
           if (runId !== null) args.runId = runId
-          return jsonResponse({ runs: listRuns(cache.dbHandle(), args) })
+          return jsonResponse({ runs: listRuns(readDb(), args) })
         }
         if (url.pathname === '/v1/invocations') {
           const params = url.searchParams
@@ -242,12 +284,12 @@ export async function startServe(opts: {
           if (tagKey !== null) args.tagKey = tagKey
           const tagValue = params.get('tagValue')
           if (tagValue !== null) args.tagValue = tagValue
-          return jsonResponse({ invocations: listInvocations(cache.dbHandle(), args) })
+          return jsonResponse({ invocations: listInvocations(readDb(), args) })
         }
         {
           const m = /^\/v1\/invocations\/([^/]+)$/.exec(url.pathname)
           if (m) {
-            const detail = getInvocation(cache.dbHandle(), decodeURIComponent(m[1]!))
+            const detail = getInvocation(readDb(), decodeURIComponent(m[1]!))
             if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
             return jsonResponse(detail)
           }
@@ -286,7 +328,7 @@ export async function startServe(opts: {
         {
           const m = /^\/v1\/runs\/([^/]+)$/.exec(url.pathname)
           if (m) {
-            const detail = getRun(cache.dbHandle(), decodeURIComponent(m[1]!))
+            const detail = getRun(readDb(), decodeURIComponent(m[1]!))
             if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
             return jsonResponse(detail)
           }
@@ -297,21 +339,21 @@ export async function startServe(opts: {
         {
           const m = /^\/v1\/compare\/([^/]+)$/.exec(url.pathname)
           if (m) {
-            return jsonResponse(compareRuns(cache.dbHandle(), decodeURIComponent(m[1]!)))
+            return jsonResponse(compareRuns(readDb(), decodeURIComponent(m[1]!)))
           }
         }
         if (url.pathname === '/v1/cache/stats') {
-          return jsonResponse(getCacheStatsSql(cache.dbHandle()))
+          return jsonResponse(getCacheStatsSql(readDb()))
         }
         if (url.pathname === '/v1/cache/hit-split') {
-          return jsonResponse(getHitRateSplit(cache.dbHandle()))
+          return jsonResponse(getHitRateSplit(readDb()))
         }
         if (url.pathname === '/v1/cache/breakdown') {
           const limit = Number(url.searchParams.get('limit') ?? '20')
-          return jsonResponse({ projects: getCacheBreakdown(cache.dbHandle(), limit) })
+          return jsonResponse({ projects: getCacheBreakdown(readDb(), limit) })
         }
         if (url.pathname === '/v1/cache/savings') {
-          return jsonResponse(getCacheSavings(cache.dbHandle()))
+          return jsonResponse(getCacheSavings(readDb()))
         }
         if (url.pathname === '/v1/cache/entries') {
           const params = url.searchParams
@@ -329,19 +371,19 @@ export async function startServe(opts: {
           }
           const project = params.get('project')
           if (project !== null) args.project = project
-          return jsonResponse({ entries: listCacheEntries(cache.dbHandle(), args) })
+          return jsonResponse({ entries: listCacheEntries(readDb(), args) })
         }
         if (url.pathname === '/v1/top-tasks') {
           const limit = Number(url.searchParams.get('limit') ?? '10')
-          return jsonResponse({ tasks: getTopTimeBurners(cache.dbHandle(), limit) })
+          return jsonResponse({ tasks: getTopTimeBurners(readDb(), limit) })
         }
         if (url.pathname === '/v1/failures') {
           const limit = Number(url.searchParams.get('limit') ?? '25')
-          return jsonResponse({ failures: getRecentFailures(cache.dbHandle(), limit) })
+          return jsonResponse({ failures: getRecentFailures(readDb(), limit) })
         }
         if (url.pathname === '/v1/projects') {
           const limit = Number(url.searchParams.get('limit') ?? '100')
-          return jsonResponse({ projects: listProjects(cache.dbHandle(), limit) })
+          return jsonResponse({ projects: listProjects(readDb(), limit) })
         }
         if (url.pathname === '/v1/trends/runs') {
           const params = url.searchParams
@@ -352,30 +394,30 @@ export async function startServe(opts: {
           if (fromRaw !== null) args.from = Number(fromRaw)
           const toRaw = params.get('to')
           if (toRaw !== null) args.to = Number(toRaw)
-          return jsonResponse({ bucket, points: getRunTrends(cache.dbHandle(), args) })
+          return jsonResponse({ bucket, points: getRunTrends(readDb(), args) })
         }
         if (url.pathname === '/v1/trends/heatmap') {
           const days = Number(url.searchParams.get('days') ?? '30')
-          return jsonResponse({ days, cells: getRunHeatmap(cache.dbHandle(), days) })
+          return jsonResponse({ days, cells: getRunHeatmap(readDb(), days) })
         }
         if (url.pathname === '/v1/trends/storage') {
           const days = Number(url.searchParams.get('days') ?? '30')
-          return jsonResponse({ days, points: getStorageGrowth(cache.dbHandle(), days) })
+          return jsonResponse({ days, points: getStorageGrowth(readDb(), days) })
         }
         if (url.pathname === '/v1/trends/parallelism') {
           const limit = Number(url.searchParams.get('limit') ?? '50')
-          return jsonResponse({ points: getParallelismHistory(cache.dbHandle(), limit) })
+          return jsonResponse({ points: getParallelismHistory(readDb(), limit) })
         }
         if (url.pathname === '/v1/flakiness') {
           const limit = Number(url.searchParams.get('limit') ?? '25')
-          return jsonResponse({ tasks: getFlakiestTasks(cache.dbHandle(), limit) })
+          return jsonResponse({ tasks: getFlakiestTasks(readDb(), limit) })
         }
         if (url.pathname === '/v1/bottlenecks') {
           const lookbackDays = Number(url.searchParams.get('days') ?? '14')
           const limit = Number(url.searchParams.get('limit') ?? '15')
           return jsonResponse({
             lookbackDays,
-            bottlenecks: getBottlenecks(cache.dbHandle(), lookbackDays, limit),
+            bottlenecks: getBottlenecks(readDb(), lookbackDays, limit),
           })
         }
         if (url.pathname === '/v1/cache/prunable') {
@@ -383,7 +425,7 @@ export async function startServe(opts: {
           const limit = Number(url.searchParams.get('limit') ?? '50')
           return jsonResponse({
             minAgeDays,
-            entries: getPrunableEntries(cache.dbHandle(), minAgeDays, limit),
+            entries: getPrunableEntries(readDb(), minAgeDays, limit),
           })
         }
         if (url.pathname === '/v1/history') {
@@ -395,12 +437,12 @@ export async function startServe(opts: {
           if (project !== null) args.project = project
           const task = params.get('task')
           if (task !== null) args.task = task
-          return jsonResponse({ history: getHistory(cache.dbHandle(), args) })
+          return jsonResponse({ history: getHistory(readDb(), args) })
         }
         {
           const m = /^\/v1\/tasks\/(.+)$/.exec(url.pathname)
           if (m) {
-            const detail = getTaskDetail(cache.dbHandle(), decodeURIComponent(m[1]!))
+            const detail = getTaskDetail(readDb(), decodeURIComponent(m[1]!))
             if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
             return jsonResponse(detail)
           }
@@ -408,18 +450,14 @@ export async function startServe(opts: {
         {
           const m = /^\/v1\/explain\/(.+)$/.exec(url.pathname)
           if (m) {
-            return jsonResponse(explainCacheKeyQuery(cache.dbHandle(), decodeURIComponent(m[1]!)))
+            return jsonResponse(explainCacheKeyQuery(readDb(), decodeURIComponent(m[1]!)))
           }
         }
         {
           const m = /^\/v1\/why\/([^/]+)\/(.+)$/.exec(url.pathname)
           if (m) {
             return jsonResponse(
-              whyDidThisRerunQuery(
-                cache.dbHandle(),
-                decodeURIComponent(m[1]!),
-                decodeURIComponent(m[2]!),
-              ),
+              whyDidThisRerunQuery(readDb(), decodeURIComponent(m[1]!), decodeURIComponent(m[2]!)),
             )
           }
         }
@@ -431,7 +469,7 @@ export async function startServe(opts: {
           const m = /^\/v1\/diff\/([^/]+)\/(.+)$/.exec(url.pathname)
           if (m) {
             return jsonResponse(
-              cacheKeyDiff(cache.dbHandle(), decodeURIComponent(m[1]!), decodeURIComponent(m[2]!)),
+              cacheKeyDiff(readDb(), decodeURIComponent(m[1]!), decodeURIComponent(m[2]!)),
             )
           }
         }
@@ -561,6 +599,11 @@ export async function startServe(opts: {
         // already closed
       }
       try {
+        ingest.close()
+      } catch {
+        // already closed
+      }
+      try {
         await unlink(infoPath)
       } catch {
         // already gone
@@ -573,6 +616,7 @@ interface ServeArgs {
   port?: number
   ui?: boolean
   open?: boolean
+  source?: 'cache' | 'ingest'
   error?: string
 }
 
@@ -586,6 +630,12 @@ export function parseServeArgs(args: readonly string[]): ServeArgs {
     }
     if (a === '--open') {
       out.open = true
+      continue
+    }
+    const sv = a === '--source' ? args[++i] : a?.startsWith('--source=') ? a.slice(9) : undefined
+    if (sv !== undefined) {
+      if (sv !== 'cache' && sv !== 'ingest') return { ...out, error: `invalid --source: ${sv}` }
+      out.source = sv
       continue
     }
     const v = a === '--port' ? args[++i] : a?.startsWith('--port=') ? a.slice(7) : undefined
@@ -656,6 +706,7 @@ export async function serveCmd(args: readonly string[]): Promise<number> {
     root,
     ...(parsed.port !== undefined ? { port: parsed.port } : {}),
     ...(uiHtmlPath !== undefined ? { uiHtmlPath } : {}),
+    ...(parsed.source !== undefined ? { source: parsed.source } : {}),
     onRun: (request, ok) => {
       process.stdout.write(`  ${ok ? '✓' : '✗'} ${request.tasks.join(', ')}\n`)
     },

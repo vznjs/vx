@@ -1,13 +1,16 @@
 // Public API for @vzn/vx-cloud — the orchestrator service + the first-party
 // cloud plugin.
 //
-// `cloud()` is the VxPlugin contributing the backend / cache / eventSink
-// capabilities against core's plugin interface (Phase 3 of
-// docs/design/core-cloud-split-2026-06.md §11). The rest re-exports the
+// `cloud()` is the VxPlugin contributing the backend / cache / telemetry
+// capabilities against core's plugin interface. The telemetry sink pushes the
+// canonical RunSummaryRecord to the cloud ingest endpoint; IngestStore is the
+// cloud-owned analytics store the hosted dashboard reads from. See
+// docs/design/observability-architecture-2026-06.md. The rest re-exports the
 // service starters (the building blocks the service CLI uses).
 
 export { cloud } from './plugin.js'
 export type { CloudPluginOptions } from './plugin.js'
+export { IngestStore } from './ingest-store.js'
 export { startServe, parseServeArgs, serveInfoPath, DEFAULT_SERVE_PORT } from './cli/serve.js'
 export type { ServeServer } from './cli/serve.js'
 export { startCoordinator, parseCoordinatorArgs } from './cli/coordinator.js'
