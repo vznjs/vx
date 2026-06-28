@@ -9,6 +9,7 @@ import path from 'node:path'
 import { mkdir, unlink, writeFile } from 'node:fs/promises'
 import {
   Cache,
+  cacheKeyDiff,
   compareRuns,
   run as runOrchestrator,
   planRun,
@@ -26,6 +27,8 @@ import {
   getCacheStatsSql,
   getFlakiestTasks,
   getHistory,
+  getHitRateSplit,
+  getInvocation,
   getParallelismHistory,
   getPrunableEntries,
   getRecentFailures,
@@ -194,7 +197,10 @@ export async function startServe(opts: {
               'getRunHistory',
               'explainCacheKey',
               'whyDidThisRerun',
+              'cacheKeyDiff',
               'compareRuns',
+              'getInvocation',
+              'getHitRateSplit',
             ],
             workspace: opts.root,
           })
@@ -218,8 +224,33 @@ export async function startServe(opts: {
           return jsonResponse({ runs: listRuns(cache.dbHandle(), args) })
         }
         if (url.pathname === '/v1/invocations') {
-          const limit = Number(url.searchParams.get('limit') ?? '50')
-          return jsonResponse({ invocations: listInvocations(cache.dbHandle(), limit) })
+          const params = url.searchParams
+          const args: {
+            limit?: number
+            branch?: string
+            ci?: boolean
+            tagKey?: string
+            tagValue?: string
+          } = {}
+          const limitRaw = params.get('limit')
+          if (limitRaw !== null) args.limit = Number(limitRaw)
+          const branch = params.get('branch')
+          if (branch !== null) args.branch = branch
+          const ci = params.get('ci')
+          if (ci !== null) args.ci = ci === '1' || ci === 'true'
+          const tagKey = params.get('tagKey')
+          if (tagKey !== null) args.tagKey = tagKey
+          const tagValue = params.get('tagValue')
+          if (tagValue !== null) args.tagValue = tagValue
+          return jsonResponse({ invocations: listInvocations(cache.dbHandle(), args) })
+        }
+        {
+          const m = /^\/v1\/invocations\/([^/]+)$/.exec(url.pathname)
+          if (m) {
+            const detail = getInvocation(cache.dbHandle(), decodeURIComponent(m[1]!))
+            if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
+            return jsonResponse(detail)
+          }
         }
         // The task DAG for a set of requested tasks: nodes + dependency edges +
         // predicted cache status, via a no-exec planRun. The run cockpit lays
@@ -271,6 +302,9 @@ export async function startServe(opts: {
         }
         if (url.pathname === '/v1/cache/stats') {
           return jsonResponse(getCacheStatsSql(cache.dbHandle()))
+        }
+        if (url.pathname === '/v1/cache/hit-split') {
+          return jsonResponse(getHitRateSplit(cache.dbHandle()))
         }
         if (url.pathname === '/v1/cache/breakdown') {
           const limit = Number(url.searchParams.get('limit') ?? '20')
@@ -386,6 +420,18 @@ export async function startServe(opts: {
                 decodeURIComponent(m[1]!),
                 decodeURIComponent(m[2]!),
               ),
+            )
+          }
+        }
+        // The input-fingerprint moat: name the exact cache-key components that
+        // differ between this run of a task and its previous run. taskId is
+        // `project#task`, URI-encoded. Always 200 (a missing pair / no-previous
+        // run is a clear shape in the body, not an HTTP error).
+        {
+          const m = /^\/v1\/diff\/([^/]+)\/(.+)$/.exec(url.pathname)
+          if (m) {
+            return jsonResponse(
+              cacheKeyDiff(cache.dbHandle(), decodeURIComponent(m[1]!), decodeURIComponent(m[2]!)),
             )
           }
         }

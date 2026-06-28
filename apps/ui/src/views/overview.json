@@ -80,26 +80,12 @@
               "sub": {
                 "$computed": "text",
                 "args": {
-                  "tpl": "{a} / {b} runs",
-                  "a": {
-                    "$computed": "agg",
-                    "args": {
-                      "arr": {
-                        "$state": "/projects"
-                      },
-                      "field": "hits",
-                      "op": "sum"
-                    }
+                  "tpl": "{l} local · {r} remote (24h)",
+                  "l": {
+                    "$state": "/stats/hitLocalCountLast24h"
                   },
-                  "b": {
-                    "$computed": "agg",
-                    "args": {
-                      "arr": {
-                        "$state": "/projects"
-                      },
-                      "field": "runs",
-                      "op": "sum"
-                    }
+                  "r": {
+                    "$state": "/stats/hitRemoteCountLast24h"
                   }
                 }
               }

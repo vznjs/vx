@@ -170,6 +170,39 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-28**: **Dashboard Tier 3 — Phase B: the input-fingerprint
+  diff, invocation context, tags/report, hit split** (read-side over the
+  Phase-A schema; parallel agents on disjoint files). Queries
+  (`metrics.ts`): `cacheKeyDiff(runId, taskId)` — the Develocity moat,
+  resolving a run to its entry hash and anti-joining `entry_inputs`
+  against the previous run's to name the exact added/removed/changed
+  components (file OID / env / runtime / upstream / package / config /
+  forward) with before→after; `getInvocation`; `listInvocations`
+  reworked to read the `invocations` header table with branch/ci/tag
+  filters (back-compat number arg kept); `getHitRateSplit` + local/
+  remote series on stats + trends. CLI: `--tag k=v` (persisted on the
+  invocation row) and `--report[=markdown]` (a moon-style per-task table
+  to stdout, zero cost when absent). Endpoints (`serve.ts`): a diff
+  route, an invocation-detail route, filtered invocations, and a
+  cache hit-split route. UI: run-detail "Why did this re-run?" upgraded
+  from "hash changed" to the real per-component diff table; Runs page
+  gained branch/commit/CI/tags columns; cache + overview show the
+  local-vs-remote split. Two integration fixes I made: threaded `tags`/
+  `command` through `RunRequest` + the two protocol mappers (so `--tag`
+  actually reaches the invocation row — it was being dropped), and fixed
+  a PRE-EXISTING `getRun` truncation (it capped at the 500-row
+  `listRuns` ceiling, dropping tasks on runs over 500 — so run-detail
+  and the diff panel were incomplete on real monorepos; now returns the
+  full run, with a 700-task regression test). Verified e2e over the
+  Chrome DevTools Protocol against an 800-package workspace with a
+  deliberately changed input: the why-card renders the changed file with
+  before/after OIDs, the Runs page shows branch/commit/ci/tags, cache
+  shows 799 local / 0 remote. No CACHE_VERSION/SCHEMA change beyond
+  Phase A. Full suite 1000 core / 1055 root, 0 fail; lint+oxfmt clean;
+  dist rebuilt. (The `vx watch` e2e flakes only under heavy machine load
+  from leftover test serves and pass clean in isolation on every tree;
+  pre-existing, unrelated.) That completes Tier 3.
+
 - **2026-06-28**: **Dashboard Tier 3 — Phase A: schema + recording
   foundation (SCHEMA v22, NO `CACHE_VERSION` bump).** Implements the
   Phase-A slice of `docs/design/dashboard-tier3-2026-06.md` — the durable

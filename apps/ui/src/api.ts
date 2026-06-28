@@ -84,6 +84,39 @@ export interface InvocationRow {
   totalDurationMs: number
 }
 
+/**
+ * Rich per-invocation header (mirrors src/orchestrator/metrics.ts
+ * `InvocationDetail`). Superset of `InvocationRow` — git/CI/host context, the
+ * full command, tags, and the local/remote hit split.
+ */
+export interface InvocationDetail {
+  runId: string
+  command: string
+  requestedTasks: string[]
+  cachePolicy: string
+  concurrency: number
+  flow: 'focused' | 'broad' | null
+  startedAt: number
+  endedAt: number
+  totalDurationMs: number
+  taskCount: number
+  failedCount: number
+  hitCount: number
+  hitLocalCount: number
+  hitRemoteCount: number
+  exitOk: boolean
+  commitSha: string | null
+  branch: string | null
+  dirty: boolean | null
+  ci: boolean
+  ciProvider: string | null
+  host: string | null
+  os: string | null
+  arch: string | null
+  vxVersion: string
+  tags: Record<string, string>
+}
+
 export interface RunDetail {
   runId: string
   startedAt: number
@@ -97,6 +130,47 @@ export interface CacheStats {
   runCountLast24h: number
   hitCountLast24h: number
   hitRate24h: number
+  /** `status = 'cache-hit'` over the last 24h. */
+  hitLocalCountLast24h: number
+  /** `status = 'cache-hit-remote'` over the last 24h. */
+  hitRemoteCountLast24h: number
+}
+
+/** Local-vs-remote cache hit split (mirrors metrics.ts `HitRateSplit`). */
+export interface HitRateSplit {
+  total: number
+  hits: number
+  hitLocal: number
+  hitRemote: number
+  hitRate: number
+  localShare: number
+  remoteShare: number
+}
+
+/** One changed/added/removed cache-key component (metrics.ts `InputDiffEntry`). */
+export interface InputDiffEntry {
+  kind: string
+  name: string
+  change: 'added' | 'removed' | 'changed'
+  /** The component's hash in the previous run (null when `added`). */
+  before: string | null
+  /** The component's hash in this run (null when `removed`). */
+  after: string | null
+}
+
+/**
+ * The input-fingerprint diff for one task between this run and its previous run
+ * (mirrors metrics.ts `CacheKeyDiff`). `entries` holds only the components that
+ * changed; unchanged ones are counted.
+ */
+export interface CacheKeyDiff {
+  runId: string
+  taskId: string
+  found: boolean
+  previousRunId: string | null
+  entries: InputDiffEntry[]
+  unchangedCount: number
+  note: string
 }
 
 export interface TaskHistoryRow {
@@ -255,9 +329,44 @@ export async function getVersion(): Promise<ServerVersion> {
   return await getJson<ServerVersion>('/version')
 }
 
-export async function listInvocations(limit = 50): Promise<InvocationRow[]> {
-  const r = await getJson<{ invocations: InvocationRow[] }>(`/v1/invocations?limit=${limit}`)
+export interface ListInvocationsArgs {
+  limit?: number
+  branch?: string
+  ci?: boolean
+  tagKey?: string
+  tagValue?: string
+}
+
+/**
+ * List `vx run` invocations newest-first with optional branch / ci / tag
+ * filters. Accepts a bare `number` for back-compat with the old
+ * `listInvocations(50)` signature. Returns the rich `InvocationDetail` (a
+ * superset of the old `InvocationRow` shape, so existing callers keep working).
+ */
+export async function listInvocations(
+  args: ListInvocationsArgs | number = {},
+): Promise<InvocationDetail[]> {
+  const opts: ListInvocationsArgs = typeof args === 'number' ? { limit: args } : args
+  const params = new URLSearchParams()
+  if (opts.limit !== undefined) params.set('limit', String(opts.limit))
+  if (opts.branch !== undefined) params.set('branch', opts.branch)
+  if (opts.ci !== undefined) params.set('ci', opts.ci ? '1' : '0')
+  if (opts.tagKey !== undefined) params.set('tagKey', opts.tagKey)
+  if (opts.tagValue !== undefined) params.set('tagValue', opts.tagValue)
+  const r = await getJson<{ invocations: InvocationDetail[] }>(
+    `/v1/invocations?${params.toString()}`,
+  )
   return r.invocations
+}
+
+/** Fetch one invocation header (git/CI/host context, tags, hit split). */
+export async function getInvocation(runId: string): Promise<InvocationDetail | null> {
+  try {
+    return await getJson<InvocationDetail>(`/v1/invocations/${encodeURIComponent(runId)}`)
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('404')) return null
+    throw err
+  }
 }
 
 export async function listRuns(
@@ -283,6 +392,11 @@ export async function getCacheStats(): Promise<CacheStats> {
   return await getJson<CacheStats>('/v1/cache/stats')
 }
 
+/** Local-vs-remote cache hit split over the last 24h. */
+export async function getCacheHitSplit(): Promise<HitRateSplit> {
+  return await getJson<HitRateSplit>('/v1/cache/hit-split')
+}
+
 export async function getHistory(args: { limit?: number } = {}): Promise<TaskHistoryRow[]> {
   const params = new URLSearchParams()
   if (args.limit !== undefined) params.set('limit', String(args.limit))
@@ -301,6 +415,18 @@ export async function explainCacheKey(taskId: string): Promise<CacheKeyExplanati
 export async function whyDidThisRerun(runId: string, taskId: string): Promise<WhyDidThisRerun> {
   return await getJson<WhyDidThisRerun>(
     `/v1/why/${encodeURIComponent(runId)}/${encodeURIComponent(taskId)}`,
+  )
+}
+
+/**
+ * The input-fingerprint moat: name the exact cache-key components (files / env /
+ * runtime / upstream …) that differ between this run of a task and its
+ * immediately-previous run. Always resolves (a missing run/task is a
+ * `found: false` body, not an HTTP error).
+ */
+export async function cacheKeyDiff(runId: string, taskId: string): Promise<CacheKeyDiff> {
+  return await getJson<CacheKeyDiff>(
+    `/v1/diff/${encodeURIComponent(runId)}/${encodeURIComponent(taskId)}`,
   )
 }
 

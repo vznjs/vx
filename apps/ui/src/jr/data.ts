@@ -4,6 +4,7 @@
 // route params. This is infra, written once — never per page.
 
 import {
+  cacheKeyDiff,
   compareRuns,
   explainCacheKey,
   getBottlenecks,
@@ -14,6 +15,7 @@ import {
   getFlakiest,
   getHeatmap,
   getHistory,
+  getInvocation,
   getParallelismHistory,
   getPrunable,
   getRun,
@@ -24,65 +26,63 @@ import {
   listCacheEntries,
   listInvocations,
   listProjects,
-  whyDidThisRerun,
 } from '../api.ts'
 
 type P = Record<string, string>
 
-/** Display-ready row for the run-detail "Why did this re-run?" table. */
+/**
+ * Display-ready row for the run-detail "Why did this re-run?" table. One row per
+ * changed cache-key component across all of the run's tasks — the input-
+ * fingerprint moat. B5's runDetail view binds to these exact fields.
+ */
 interface WhyRow {
   taskId: string
   project: string
   task: string
-  hashChanged: boolean | null
-  previousHash: string | null
-  currentHash: string | null
-  reason: string
-}
-
-/** Human reason from the hash-changed signal (no full input-file diff yet). */
-function whyReason(hashChanged: boolean | null, hadPrevious: boolean): string {
-  if (!hadPrevious) return 'first run'
-  if (hashChanged) return 'inputs changed'
-  return 'same key (forced / unrelated)'
+  /** Component kind: file | env | runtime | ws-runtime | upstream | package | config | forward | workspace. */
+  kind: string
+  /** Component name (file path, env var, command string, upstream task id, …). */
+  name: string
+  change: 'added' | 'removed' | 'changed'
+  /** The component's hash in the previous run (null when `added`). */
+  before: string | null
+  /** The component's hash in this run (null when `removed`). */
+  after: string | null
 }
 
 /**
- * For each task in a run, fetch /v1/why and flatten to a display row. Fetches
- * are batched concurrently; a failed per-task probe degrades to an unknown row
- * rather than failing the whole section.
+ * For each task in a run, fetch /v1/diff and flatten its changed components into
+ * display rows — one row per changed/added/removed cache-key component across
+ * all the run's tasks. Tasks whose diff has no entries are skipped. Fetches are
+ * batched concurrently; a failed per-task probe degrades to no rows rather than
+ * failing the whole section.
  */
 async function runWhy(runId: string): Promise<WhyRow[]> {
   const run = await getRun(runId)
   if (!run) return []
-  return await Promise.all(
-    run.tasks.map(async (t): Promise<WhyRow> => {
+  const perTask = await Promise.all(
+    run.tasks.map(async (t): Promise<WhyRow[]> => {
       const taskId = `${t.project}#${t.task}`
       try {
-        const w = await whyDidThisRerun(runId, taskId)
-        const hadPrevious = w.previousRun != null
-        return {
-          taskId,
-          project: t.project,
-          task: t.task,
-          hashChanged: w.hashChanged ?? null,
-          previousHash: w.previousRun?.hash ?? null,
-          currentHash: w.thisRun?.hash ?? t.hash ?? null,
-          reason: whyReason(w.hashChanged ?? null, hadPrevious),
-        }
+        const diff = await cacheKeyDiff(runId, taskId)
+        return diff.entries.map(
+          (e): WhyRow => ({
+            taskId,
+            project: t.project,
+            task: t.task,
+            kind: e.kind,
+            name: e.name,
+            change: e.change,
+            before: e.before,
+            after: e.after,
+          }),
+        )
       } catch {
-        return {
-          taskId,
-          project: t.project,
-          task: t.task,
-          hashChanged: null,
-          previousHash: null,
-          currentHash: t.hash ?? null,
-          reason: 'unavailable',
-        }
+        return []
       }
     }),
   )
+  return perTask.flat()
 }
 
 /** Display row for the run-comparison table — flattened, signed deltas. */
@@ -168,6 +168,7 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   cacheKey: (p) => explainCacheKey(p.id ?? ''),
   run: (p) => getRun(p.id ?? ''),
   runWhy: (p) => runWhy(p.id ?? ''),
+  invocationDetail: (p) => getInvocation(p.id ?? ''),
   compare: (p) => compareRuns(p.id ?? ''),
   compareRows: (p) => compareRows(p.id ?? ''),
   projectTasks: (p) => getHistory({ limit: 500 }).then((h) => h.filter((t) => t.project === p.name)),

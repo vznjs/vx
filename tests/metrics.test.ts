@@ -424,6 +424,28 @@ describe('getRun', () => {
       expect(detail.tasks.length).toBe(2)
     })
   })
+
+  it('returns ALL tasks of a large run (not truncated at the list cap)', () => {
+    withCache((cache) => {
+      // A run bigger than the old 500-row listRuns cap. getRun must return
+      // every task — else run-detail (and the cacheKeyDiff "why" panel) drops
+      // tasks on real monorepos. Regression guard for the 500-truncation bug.
+      const runs = Array.from({ length: 700 }, (_, i) =>
+        mkRun({
+          hash: `h${i}`,
+          project: `pkg-${String(i).padStart(3, '0')}`,
+          task: 'build',
+          runId: 'big',
+          startedAt: 1000 + i,
+          endedAt: 1001 + i,
+        }),
+      )
+      cache.recordRuns(runs)
+      const detail = getRun(cache.dbHandle(), 'big')!
+      expect(detail.tasks.length).toBe(700)
+      expect(detail.tasks.some((t) => t.project === 'pkg-000')).toBe(true)
+    })
+  })
 })
 
 describe('getCacheStatsSql', () => {

@@ -15,7 +15,7 @@
       {
         "type": "Grid",
         "props": {
-          "variant": "metrics-4"
+          "variant": "metrics-6"
         },
         "visible": {
           "$state": "/statsStatus",
@@ -76,6 +76,38 @@
           {
             "type": "Metric",
             "props": {
+              "label": "Local hits (24h)",
+              "value": {
+                "$computed": "fmtNumber",
+                "args": {
+                  "n": {
+                    "$state": "/stats/hitLocalCountLast24h"
+                  }
+                }
+              },
+              "sub": "restored from disk",
+              "tone": "good"
+            }
+          },
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Remote hits (24h)",
+              "value": {
+                "$computed": "fmtNumber",
+                "args": {
+                  "n": {
+                    "$state": "/stats/hitRemoteCountLast24h"
+                  }
+                }
+              },
+              "sub": "pulled from remote",
+              "tone": "accent"
+            }
+          },
+          {
+            "type": "Metric",
+            "props": {
               "label": "Time saved (all-time)",
               "value": {
                 "$computed": "fmtDuration",
@@ -86,6 +118,37 @@
                 }
               },
               "tone": "good"
+            }
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Hit source (last 24h)",
+          "actionText": "local vs remote"
+        },
+        "visible": {
+          "$state": "/statsStatus",
+          "eq": "ok"
+        },
+        "children": [
+          {
+            "type": "DataTable",
+            "props": {
+              "rows": {
+                "$computed": "hitSplitRows",
+                "args": {
+                  "local": { "$state": "/stats/hitLocalCountLast24h" },
+                  "remote": { "$state": "/stats/hitRemoteCountLast24h" }
+                }
+              },
+              "emptyTitle": "No cache hits in the last 24h",
+              "columns": [
+                { "key": "source", "label": "Source" },
+                { "key": "count", "label": "Hits", "align": "right", "kind": "number" },
+                { "key": "_frac", "label": "Share", "align": "right", "kind": "bar", "format": "percent", "colorFrom": "source" }
+              ]
             }
           }
         ]

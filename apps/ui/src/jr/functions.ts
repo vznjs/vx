@@ -118,4 +118,56 @@ export const FUNCTIONS: Record<string, (args: Args) => unknown> = {
     const v = a.stat === 'max' ? Math.max(...vals) : vals.reduce((s, x) => s + x, 0) / vals.length
     return `${Math.round(v)}%`
   },
+
+  // Annotate the FLAT runWhy diff rows (one per changed cache-key component:
+  // { taskId, project, task, kind, name, change, before, after }) with the
+  // display fields the DataTable reads as raw row keys:
+  //   _changeToken — a failureMode token so the dots map colors the change
+  //                  (added → green/stable, changed → amber, removed → red)
+  //   _diff        — a readable "before → after" string. File/upstream hashes
+  //                  are shortened to 12 chars; env/runtime values shown raw.
+  whyRows: (a) => arr(a.arr).map((r) => ({ ...r, _changeToken: changeToken(String(r.change)), _diff: diffText(r) })),
+
+  // Annotate invocation rows with display fields the runs DataTable reads:
+  //   _ciToken — failureMode token for the CI dot (ci → green, local → faint red)
+  //   _tags    — the tags object formatted as "k=v, …" (empty string when none)
+  invocationRows: (a) => arr(a.arr).map((r) => ({ ...r, _ciToken: r.ci ? 'stable' : 'cold', _ci: r.ci ? 'CI' : 'local', _tags: tagsText(r.tags) })),
+
+  // Two rows (Local / Remote) for the cache hit-source split table — each with
+  // its raw count and a 0..1 share fraction for the bar column. Built here so
+  // the view passes only plain $state counts (directives don't deep-resolve
+  // inside literal array props).
+  hitSplitRows: (a) => {
+    const local = n(a.local)
+    const remote = n(a.remote)
+    const total = local + remote
+    return [
+      { source: 'Local', count: local, _frac: total > 0 ? local / total : 0 },
+      { source: 'Remote', count: remote, _frac: total > 0 ? remote / total : 0 },
+    ]
+  },
+}
+
+// added/changed/removed → a failureMode token (green / amber / red via colorOf).
+function changeToken(change: string): 'stable' | 'flaky-recoverable' | 'cold' {
+  if (change === 'added') return 'stable'
+  if (change === 'changed') return 'flaky-recoverable'
+  return 'cold' // removed
+}
+
+// "before → after" for one diff row. Hash-shaped components (file/upstream/
+// package/config/workspace/ws-runtime) shorten to 12 chars; value components
+// (env/runtime/forward) show verbatim. A null side renders as "∅".
+const HASH_KINDS = new Set(['file', 'upstream', 'package', 'config', 'workspace'])
+function diffText(r: Row): string {
+  const short = (v: unknown) => (v == null ? '∅' : HASH_KINDS.has(String(r.kind)) ? `${String(v).slice(0, 12)}…` : String(v))
+  return `${short(r.before)} → ${short(r.after)}`
+}
+
+// Tags object { k: v } → "k=v, …" (empty string when no tags).
+function tagsText(tags: unknown): string {
+  if (!tags || typeof tags !== 'object') return ''
+  return Object.entries(tags as Record<string, unknown>)
+    .map(([k, v]) => `${k}=${String(v)}`)
+    .join(', ')
 }

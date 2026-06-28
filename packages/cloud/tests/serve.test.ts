@@ -46,6 +46,38 @@ async function makeWorkspace(): Promise<string> {
   return root
 }
 
+// A single-project workspace whose `build` task is CACHEABLE (declares
+// cache.inputs.files), so a second identical run is a local cache hit — needed
+// to exercise the hit-rate split.
+async function makeCacheableWorkspace(): Promise<string> {
+  const root = await mkdtemp(path.join(tmpdir(), 'vx-serve-cache-'))
+  spawnSync('git', ['init', '-q'], { cwd: root })
+  spawnSync('git', ['config', 'user.email', 'a@b.c'], { cwd: root })
+  spawnSync('git', ['config', 'user.name', 't'], { cwd: root })
+  await writeFile(
+    path.join(root, 'package.json'),
+    JSON.stringify({ name: 'demo', version: '1.0.0' }),
+  )
+  await writeFile(path.join(root, 'src.txt'), 'hello\n')
+  await writeFile(
+    path.join(root, 'vx.config.mjs'),
+    [
+      'export default {',
+      '  tasks: {',
+      '    build: {',
+      '      exec: { command: "echo built > out.txt" },',
+      '      cache: { inputs: { files: ["src.txt"] }, outputs: { files: ["out.txt"] } },',
+      '    },',
+      '  },',
+      '}',
+      '',
+    ].join('\n'),
+  )
+  spawnSync('git', ['add', '-A'], { cwd: root })
+  spawnSync('git', ['commit', '-qm', 'init'], { cwd: root })
+  return root
+}
+
 describe('vx serve delegation', () => {
   it('executes a delegated run and streams events + a result', async () => {
     const root = await makeWorkspace()
@@ -236,6 +268,142 @@ describe('vx serve /v1/* metrics API', () => {
     }
   })
 
+  it('returns a cache-key diff shape via /v1/diff/:runId/:taskId', async () => {
+    const root = await makeWorkspace()
+    const server = await startServe({ root })
+    try {
+      const backend = serviceBackend(server.origin, captureLogger([]))
+      await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
+
+      const inv = (await (await fetch(`${server.origin}/v1/invocations`)).json()) as {
+        invocations: { runId: string }[]
+      }
+      const runId = inv.invocations[0]!.runId
+
+      const res = await fetch(
+        `${server.origin}/v1/diff/${encodeURIComponent(runId)}/${encodeURIComponent('demo#hello')}`,
+      )
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as {
+        runId: string
+        taskId: string
+        found: boolean
+        entries: unknown[]
+      }
+      expect(body.runId).toBe(runId)
+      expect(body.taskId).toBe('demo#hello')
+      expect(body.found).toBe(true)
+      expect(Array.isArray(body.entries)).toBe(true)
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('returns a found:false diff (200) for an unknown run + task pair', async () => {
+    const root = await makeWorkspace()
+    const server = await startServe({ root })
+    try {
+      const res = await fetch(
+        `${server.origin}/v1/diff/does-not-exist/${encodeURIComponent('demo#hello')}`,
+      )
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { found: boolean; entries: unknown[] }
+      expect(body.found).toBe(false)
+      expect(body.entries).toEqual([])
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('returns one invocation via /v1/invocations/:runId (200) and 404 for a bogus id', async () => {
+    const root = await makeWorkspace()
+    const server = await startServe({ root })
+    try {
+      const backend = serviceBackend(server.origin, captureLogger([]))
+      await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
+
+      const list = (await (await fetch(`${server.origin}/v1/invocations`)).json()) as {
+        invocations: { runId: string }[]
+      }
+      const runId = list.invocations[0]!.runId
+
+      const ok = await fetch(`${server.origin}/v1/invocations/${encodeURIComponent(runId)}`)
+      expect(ok.status).toBe(200)
+      const detail = (await ok.json()) as { runId: string; taskCount: number }
+      expect(detail.runId).toBe(runId)
+      expect(detail.taskCount).toBeGreaterThanOrEqual(1)
+
+      const bogus = await fetch(`${server.origin}/v1/invocations/does-not-exist`)
+      expect(bogus.status).toBe(404)
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('filters invocations by branch via /v1/invocations?branch=', async () => {
+    const root = await makeWorkspace()
+    const server = await startServe({ root })
+    try {
+      const backend = serviceBackend(server.origin, captureLogger([]))
+      await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
+
+      // The recorded invocation's branch (the fixture is a fresh git repo).
+      const all = (await (await fetch(`${server.origin}/v1/invocations`)).json()) as {
+        invocations: { runId: string; branch: string | null }[]
+      }
+      expect(all.invocations.length).toBeGreaterThanOrEqual(1)
+      const branch = all.invocations[0]!.branch
+
+      if (branch !== null) {
+        const matched = (await (
+          await fetch(`${server.origin}/v1/invocations?branch=${encodeURIComponent(branch)}`)
+        ).json()) as { invocations: { branch: string | null }[] }
+        expect(matched.invocations.length).toBeGreaterThanOrEqual(1)
+        for (const i of matched.invocations) expect(i.branch).toBe(branch)
+      }
+
+      // A branch nobody is on filters everything out.
+      const none = (await (
+        await fetch(`${server.origin}/v1/invocations?branch=no-such-branch-xyz`)
+      ).json()) as { invocations: unknown[] }
+      expect(none.invocations).toEqual([])
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('returns the local-vs-remote hit split via /v1/cache/hit-split', async () => {
+    const root = await makeCacheableWorkspace()
+    const server = await startServe({ root })
+    try {
+      const backend = serviceBackend(server.origin, captureLogger([]))
+      // Two runs of a CACHEABLE task: the second is a local cache hit.
+      await backend.run({ tasks: ['build'], cwd: root, flow: 'focused' })
+      await backend.run({ tasks: ['build'], cwd: root, flow: 'focused' })
+
+      const res = await fetch(`${server.origin}/v1/cache/hit-split`)
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as {
+        total: number
+        hits: number
+        hitLocal: number
+        hitRemote: number
+      }
+      expect(body.total).toBeGreaterThanOrEqual(2)
+      expect(body.hitLocal).toBeGreaterThanOrEqual(1)
+      // No remote cache is configured in this fixture.
+      expect(body.hitRemote).toBe(0)
+      expect(body.hits).toBe(body.hitLocal + body.hitRemote)
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('answers CORS preflight + emits permissive headers on JSON responses', async () => {
     const root = await makeWorkspace()
     const server = await startServe({ root })
@@ -267,6 +435,9 @@ describe('vx serve /v1/* metrics API', () => {
       expect(typeof v.vx).toBe('string')
       expect(v.workspace).toBe(root)
       expect(v.rpc).toContain('getCacheStats')
+      expect(v.rpc).toContain('cacheKeyDiff')
+      expect(v.rpc).toContain('getInvocation')
+      expect(v.rpc).toContain('getHitRateSplit')
     } finally {
       await server.stop()
       await rm(root, { recursive: true, force: true })

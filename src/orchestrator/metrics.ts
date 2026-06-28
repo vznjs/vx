@@ -41,7 +41,9 @@ export interface ListRunsArgs {
 }
 
 export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[] {
-  const limit = clampInt(args.limit ?? 100, 1, 500)
+  // Ceiling is high enough that a single run's full task set (getRun passes the
+  // run_id) is never truncated; list views pass their own small limit.
+  const limit = clampInt(args.limit ?? 100, 1, 100_000)
   const where: string[] = []
   const params: (string | number)[] = []
   if (args.project) {
@@ -270,7 +272,7 @@ export interface RunDetail {
 }
 
 export function getRun(db: Database, runId: string): RunDetail | null {
-  const tasks = listRuns(db, { runId, limit: 500 })
+  const tasks = listRuns(db, { runId, limit: 100_000 })
   if (tasks.length === 0) return null
   const startedAt = Math.min(...tasks.map((t) => t.startedAt))
   const endedAt = Math.max(...tasks.map((t) => t.endedAt))

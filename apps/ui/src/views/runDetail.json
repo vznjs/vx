@@ -345,7 +345,7 @@
         "type": "Card",
         "props": {
           "title": "Why did this re-run?",
-          "actionText": "hash changed since previous run",
+          "actionText": "exact inputs that changed since the previous run",
           "noPad": true
         },
         "visible": {
@@ -357,13 +357,17 @@
             "type": "DataTable",
             "props": {
               "rows": {
-                "$state": "/runWhy"
+                "$computed": "whyRows",
+                "args": {
+                  "arr": {
+                    "$state": "/runWhy"
+                  }
+                }
               },
-              "rowTaskRef": {},
-              "emptyTitle": "No tasks to compare",
+              "emptyTitle": "No inputs changed since the previous run (or first run)",
               "filter": true,
-              "filterFrom": ["taskId", "reason"],
-              "filterPlaceholder": "filter tasks…",
+              "filterFrom": ["taskId", "kind", "name", "change"],
+              "filterPlaceholder": "filter by task, kind, or input name…",
               "columns": [
                 {
                   "key": "task",
@@ -371,29 +375,30 @@
                   "kind": "projtask"
                 },
                 {
-                  "key": "reason",
-                  "label": "Reason",
+                  "key": "kind",
+                  "label": "Kind",
+                  "baseTone": "faint"
+                },
+                {
+                  "key": "name",
+                  "label": "Name"
+                },
+                {
+                  "key": "change",
+                  "label": "Change",
                   "kind": "dots",
                   "dots": [
                     {
-                      "field": "reason",
-                      "map": "palette"
+                      "field": "_changeToken",
+                      "map": "failureMode"
                     }
                   ]
                 },
                 {
-                  "key": "previousHash",
-                  "label": "Previous key",
+                  "key": "_diff",
+                  "label": "Before → After",
                   "align": "right",
-                  "kind": "shorthash",
-                  "len": 12
-                },
-                {
-                  "key": "currentHash",
-                  "label": "Current key",
-                  "align": "right",
-                  "kind": "shorthash",
-                  "len": 12
+                  "baseTone": "faint"
                 }
               ]
             }
