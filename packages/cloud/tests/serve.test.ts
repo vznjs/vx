@@ -3,9 +3,80 @@ import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import type { Logger, RunRequest } from '@vzn/vx'
+import type { Logger, RunRequest, RunSummaryRecord } from '@vzn/vx'
 import { startServe, serveInfoPath } from '../src/cli/serve.js'
 import { serviceBackend, resolveBackend } from '../src/cli/backend.js'
+
+// vx-cloud reads ONLY its own ingest store; runs reach it via POST /v1/ingest
+// (the cloud() plugin's push), never from a workspace cache.db. These helpers
+// build + push a canonical RunSummaryRecord so the /v1/* read tests have data.
+function mkSummary(
+  runId: string,
+  over: {
+    branch?: string | null
+    project?: string
+    task?: string
+    hitLocal?: number
+    at?: number
+  } = {},
+): RunSummaryRecord {
+  const project = over.project ?? 'demo'
+  const task = over.task ?? 'hello'
+  const hitLocal = over.hitLocal ?? 0
+  // Recent by default so 24h-windowed queries (cache stats, hit split) see it.
+  const at = over.at ?? Date.now()
+  return {
+    v: 1,
+    run: {
+      runId,
+      vxVersion: '0.0.0',
+      command: `vx run ${task}`,
+      requestedTasks: [task],
+      cachePolicy: 'lR,lW,rR,rW',
+      concurrency: 1,
+      flow: 'focused',
+      commitSha: 'c0ffee',
+      branch: over.branch === undefined ? 'main' : over.branch,
+      dirty: false,
+      ci: false,
+      ciProvider: null,
+      host: 'box',
+      os: 'linux',
+      arch: 'x64',
+      tags: {},
+    },
+    startedAt: at,
+    endedAt: at + 200,
+    totalDurationMs: 200,
+    taskCount: 1,
+    failedCount: 0,
+    hitCount: hitLocal,
+    hitLocalCount: hitLocal,
+    hitRemoteCount: 0,
+    exitOk: true,
+    tasks: [
+      {
+        taskId: `${project}#${task}`,
+        project,
+        task,
+        status: hitLocal > 0 ? 'cache-hit' : 'success',
+        cacheSource: hitLocal > 0 ? 'local' : 'miss',
+        exitCode: 0,
+        durationMs: 120,
+        hash: `h-${runId}`,
+      },
+    ],
+  }
+}
+
+async function push(origin: string, summary: RunSummaryRecord): Promise<void> {
+  const res = await fetch(`${origin}/v1/ingest`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(summary),
+  })
+  if (!res.ok) throw new Error(`ingest failed: ${res.status}`)
+}
 
 /** A non-rendering Logger that records the event kinds it sees. */
 function captureLogger(seen: string[]): Logger {
@@ -36,38 +107,6 @@ async function makeWorkspace(): Promise<string> {
       'export default {',
       '  tasks: {',
       '    hello: { exec: { command: "echo hi-from-task" } },',
-      '  },',
-      '}',
-      '',
-    ].join('\n'),
-  )
-  spawnSync('git', ['add', '-A'], { cwd: root })
-  spawnSync('git', ['commit', '-qm', 'init'], { cwd: root })
-  return root
-}
-
-// A single-project workspace whose `build` task is CACHEABLE (declares
-// cache.inputs.files), so a second identical run is a local cache hit — needed
-// to exercise the hit-rate split.
-async function makeCacheableWorkspace(): Promise<string> {
-  const root = await mkdtemp(path.join(tmpdir(), 'vx-serve-cache-'))
-  spawnSync('git', ['init', '-q'], { cwd: root })
-  spawnSync('git', ['config', 'user.email', 'a@b.c'], { cwd: root })
-  spawnSync('git', ['config', 'user.name', 't'], { cwd: root })
-  await writeFile(
-    path.join(root, 'package.json'),
-    JSON.stringify({ name: 'demo', version: '1.0.0' }),
-  )
-  await writeFile(path.join(root, 'src.txt'), 'hello\n')
-  await writeFile(
-    path.join(root, 'vx.config.mjs'),
-    [
-      'export default {',
-      '  tasks: {',
-      '    build: {',
-      '      exec: { command: "echo built > out.txt" },',
-      '      cache: { inputs: { files: ["src.txt"] }, outputs: { files: ["out.txt"] } },',
-      '    },',
       '  },',
       '}',
       '',
@@ -152,9 +191,8 @@ describe('vx serve /v1/* metrics API', () => {
     const root = await makeWorkspace()
     const server = await startServe({ root })
     try {
-      // Execute one delegated run to populate cache.db
-      const backend = serviceBackend(server.origin, captureLogger([]))
-      await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
+      // A pushed run summary is the ONLY way data reaches vx-cloud.
+      await push(server.origin, mkSummary('run-1'))
 
       // /v1/runs
       const runs = (await (await fetch(`${server.origin}/v1/runs`)).json()) as {
@@ -211,10 +249,9 @@ describe('vx serve /v1/* metrics API', () => {
     const root = await makeWorkspace()
     const server = await startServe({ root })
     try {
-      const backend = serviceBackend(server.origin, captureLogger([]))
-      // Two invocations so the second has a previous one to diff against.
-      await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
-      await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
+      // Two invocations so the latest has a previous one to diff against.
+      await push(server.origin, mkSummary('run-older', { at: Date.now() - 5000 }))
+      await push(server.origin, mkSummary('run-newer', { at: Date.now() - 1000 }))
 
       const inv = (await (await fetch(`${server.origin}/v1/invocations`)).json()) as {
         invocations: { runId: string }[]
@@ -272,8 +309,7 @@ describe('vx serve /v1/* metrics API', () => {
     const root = await makeWorkspace()
     const server = await startServe({ root })
     try {
-      const backend = serviceBackend(server.origin, captureLogger([]))
-      await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
+      await push(server.origin, mkSummary('run-1'))
 
       const inv = (await (await fetch(`${server.origin}/v1/invocations`)).json()) as {
         invocations: { runId: string }[]
@@ -321,8 +357,7 @@ describe('vx serve /v1/* metrics API', () => {
     const root = await makeWorkspace()
     const server = await startServe({ root })
     try {
-      const backend = serviceBackend(server.origin, captureLogger([]))
-      await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
+      await push(server.origin, mkSummary('run-1'))
 
       const list = (await (await fetch(`${server.origin}/v1/invocations`)).json()) as {
         invocations: { runId: string }[]
@@ -347,8 +382,7 @@ describe('vx serve /v1/* metrics API', () => {
     const root = await makeWorkspace()
     const server = await startServe({ root })
     try {
-      const backend = serviceBackend(server.origin, captureLogger([]))
-      await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
+      await push(server.origin, mkSummary('run-1'))
 
       // The recorded invocation's branch (the fixture is a fresh git repo).
       const all = (await (await fetch(`${server.origin}/v1/invocations`)).json()) as {
@@ -377,13 +411,15 @@ describe('vx serve /v1/* metrics API', () => {
   })
 
   it('returns the local-vs-remote hit split via /v1/cache/hit-split', async () => {
-    const root = await makeCacheableWorkspace()
+    const root = await makeWorkspace()
     const server = await startServe({ root })
     try {
-      const backend = serviceBackend(server.origin, captureLogger([]))
-      // Two runs of a CACHEABLE task: the second is a local cache hit.
-      await backend.run({ tasks: ['build'], cwd: root, flow: 'focused' })
-      await backend.run({ tasks: ['build'], cwd: root, flow: 'focused' })
+      // A miss then a local hit of the same task.
+      await push(server.origin, mkSummary('build-miss', { task: 'build', at: Date.now() - 2000 }))
+      await push(
+        server.origin,
+        mkSummary('build-hit', { task: 'build', hitLocal: 1, at: Date.now() - 1000 }),
+      )
 
       const res = await fetch(`${server.origin}/v1/cache/hit-split`)
       expect(res.status).toBe(200)
@@ -499,6 +535,12 @@ describe('parseServeArgs', () => {
     expect(parseServeArgs(['--ui', '--open', '--port', '4321']).port).toBe(4321)
     expect(parseServeArgs(['--nope']).error).toMatch(/unknown flag/)
     expect(parseServeArgs(['--port', 'oops']).error).toMatch(/invalid --port/)
+  })
+
+  it('parses --ingest-dir', async () => {
+    const { parseServeArgs } = await import('../src/cli/serve.js')
+    expect(parseServeArgs(['--ingest-dir', '/data']).ingestDir).toBe('/data')
+    expect(parseServeArgs(['--ingest-dir=/d']).ingestDir).toBe('/d')
   })
 })
 

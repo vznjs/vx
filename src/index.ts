@@ -80,7 +80,7 @@ export type {
 } from './orchestrator/index.js'
 
 // Telemetry — THE canonical, versioned data-export contract every exporter
-// (vx-otel, vx-http, vx-cloud) reads. A sink implements TelemetrySink and is
+// (vx-otel, vx-cloud, or a third-party sink) reads. A sink implements TelemetrySink and is
 // returned from VxPlugin.telemetry(); it receives immutable records and holds
 // no run handle (observe-only by construction).
 export { TELEMETRY_SCHEMA_VERSION, deriveCacheSource } from './orchestrator/index.js'

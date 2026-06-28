@@ -170,6 +170,52 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-06-28**: **vx-cloud is a STANDALONE, independent service — fed only
+  by the plugin push, never reads vx's cache.db; vx-http dropped; plugins
+  declared in `vx.workspace.ts`** (owner: "remove vx-http for now, just cloud
+  and otel. cloud should be self contained. add them to vx workspace as
+  plugins. vx cloud should never use local vx db — vx is independent, vx cloud
+  can be deployed elsewhere with no access to it; it should use a plugin to
+  intercept things from vx"). REVERSES the L2 decision from the entry below
+  (local serve reading `cache.db`). **(1) `@vzn/vx-http` deleted** — only
+  `@vzn/vx-otel` + `@vzn/vx-cloud` remain. The canonical
+  `TelemetryRecord`/`RunSummaryRecord` contract (Unit A) is unchanged; cloud
+  speaks it directly (self-contained, no vx-http dep). **(2) vx-cloud never
+  opens a workspace `cache.db`.** `serve` reads `/v1/*` ONLY from its own
+  SQLite `IngestStore`, populated by the `cloud()` plugin's push to
+  `POST /v1/ingest`. Removed the `source` switch / `--source` flag /
+  `new Cache` / `loadWorkspaceConfig` from `startServe`; it is ingest-only and
+  needs no workspace, so vx-cloud runs anywhere (a remote box with no access
+  to the machine that produced the runs). The live-cockpit `/v1/graph` (a
+  colocated `planRun`) degrades to a clean error with no workspace; the WS
+  run-delegation is unchanged (executes on the client's cwd). **(3) `otel()` +
+  `cloud()` declared in a new root `vx.workspace.ts`** —
+  `defineWorkspace({ plugins: [otel(), cloud()] })`. Both DECLINE with no
+  config (otel without `OTEL_EXPORTER_OTLP_ENDPOINT`; cloud's telemetry
+  without `VX_CLOUD_INGEST_URL`, backend without `VX_SERVICE_URL`, cache
+  without `VX_REMOTE_CACHE_URL`), so declaring them is **zero-overhead by
+  default** — measured `vx run` startup unchanged (~116ms with vs without).
+  Two moves keep it free: `cloud()`'s `backend` DECLINES when no service is
+  configured (no serve-discovery probe), and the heavy service machinery
+  (backend → serve/dev) loads LAZILY (dynamic `import('./cli/backend.js')`
+  inside `backend()`), so the plugin module is light; `vx.workspace.ts`
+  imports `cloud` from a new `@vzn/vx-cloud/plugin` subpath (NOT the `.`
+  index, which re-exports the whole service layer). **(4)
+  `scripts/link-self.ts`** now also symlinks every `packages/*` member into
+  `node_modules/@vzn/<name>` (Bun only auto-links members some package.json
+  depends on; these integration packages are depended on by nobody), so the
+  bare `@vzn/vx-otel` / `@vzn/vx-cloud/plugin` imports resolve under a frozen
+  install. **(5) Docker** default CMD is now `serve --ingest-dir /data` (a
+  `/data` VOLUME) — the image is one Bun + SQLite-ingest + UI process fed by
+  pushes. Accepted consequence (= design's option c): cache-ENTRY inventory +
+  the full input-fingerprint diff are NOT in vx-cloud (they live in the local
+  `cache.db`'s `entries`/`entry_inputs`, which cloud never reads);
+  `/v1/explain` + `/v1/diff` return graceful empties. Tests: serve metrics
+  suite reworked from "delegate a run to populate cache.db" to "POST a
+  RunSummaryRecord to /v1/ingest"; ingest standalone-no-workspace test; cloud
+  backend-declines-without-config test. Full root suite 1088 pass / 0 fail;
+  dogfood `vx run ci` green with the plugins active.
+
 - **2026-06-28**: **Observability + integration architecture — telemetry
   capability + canonical export contract; OTel/HTTP/cloud as plugins**
   (owner: "design some better architecture, extensible and isolated. vx is

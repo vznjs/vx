@@ -1,6 +1,7 @@
 // The cloud ingest path: IngestStore round-trips a pushed RunSummaryRecord
-// into a cloud-owned store that core's metrics queries read unchanged, and the
-// serve POST /v1/ingest + source:'ingest' switch serve that store over /v1/*.
+// into a cloud-owned store that core's metrics queries read unchanged, and
+// serve persists POST /v1/ingest there + serves it over /v1/* (the ONLY data
+// source — vx-cloud never reads a workspace cache.db).
 
 import { describe, it, expect } from 'bun:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -131,11 +132,11 @@ async function makeWorkspace(): Promise<string> {
   return root
 }
 
-describe('serve POST /v1/ingest + source:ingest', () => {
+describe('serve POST /v1/ingest + ingest-store reads', () => {
   it('ingests a pushed summary and serves it from the ingest store over /v1/*', async () => {
     const root = await makeWorkspace()
     const ingestDir = await mkdtemp(path.join(tmpdir(), 'vx-ingest-store-'))
-    const server = await startServe({ root, source: 'ingest', ingestDir })
+    const server = await startServe({ root, ingestDir })
     try {
       // Push a run summary to the ingest endpoint.
       const res = await fetch(`${server.origin}/v1/ingest`, {
@@ -167,6 +168,32 @@ describe('serve POST /v1/ingest + source:ingest', () => {
       await server.stop()
       await rm(root, { recursive: true, force: true })
       await rm(ingestDir, { recursive: true, force: true })
+    }
+  })
+
+  it('runs STANDALONE in hosted mode — no workspace, ingest + serve from SQLite', async () => {
+    // A bare directory: no package.json, no vx.config — NOT a workspace.
+    const dataDir = await mkdtemp(path.join(tmpdir(), 'vx-hosted-'))
+    const server = await startServe({ root: dataDir, ingestDir: dataDir })
+    try {
+      const res = await fetch(`${server.origin}/v1/ingest`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(summary('hosted-1')),
+      })
+      expect(res.status).toBe(200)
+
+      const runs = (await (await fetch(`${server.origin}/v1/runs`)).json()) as {
+        runs: { runId: string }[]
+      }
+      expect(runs.runs.some((r) => r.runId === 'hosted-1')).toBe(true)
+
+      // The graph route needs a colocated workspace — unavailable standalone.
+      const graph = await fetch(`${server.origin}/v1/graph?tasks=build`)
+      expect(graph.ok).toBe(false)
+    } finally {
+      await server.stop()
+      await rm(dataDir, { recursive: true, force: true })
     }
   })
 

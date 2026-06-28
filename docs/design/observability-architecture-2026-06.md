@@ -1,6 +1,15 @@
 # Observability + integration architecture — design
 
-> **Status:** proposal (2026-06-28)
+> **Status:** implemented (2026-06-28), with two owner amendments after the
+> first cut (see the CLAUDE.md decision log for the authoritative record):
+>
+> 1. **`@vzn/vx-http` was dropped** — only `@vzn/vx-otel` + `@vzn/vx-cloud`
+>    ship. The canonical contract (§2) is unchanged; cloud speaks it directly.
+> 2. **The local-zero-config "L2" recommendation (§7) was REVERSED.** vx-cloud
+>    is now fully independent: it NEVER reads a workspace `cache.db`. `serve`
+>    reads `/v1/*` only from its own push-fed SQLite ingest store (§6), so it
+>    can be deployed anywhere. `otel()` + `cloud()` are declared in the repo's
+>    `vx.workspace.ts`; both decline (zero cost) until configured.
 >
 > **Updates / reconciles (does not contradict without saying so):**
 >

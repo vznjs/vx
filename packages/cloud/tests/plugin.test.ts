@@ -103,6 +103,17 @@ describe('cloud() backend capability', () => {
     }
   })
 
+  it('declines (undefined) when no service is configured — no probe, core stays local', async () => {
+    const prev = process.env['VX_SERVICE_URL']
+    delete process.env['VX_SERVICE_URL']
+    try {
+      const backend = await cloud().backend!(backendCtx('/x'))
+      expect(backend).toBeUndefined()
+    } finally {
+      if (prev !== undefined) process.env['VX_SERVICE_URL'] = prev
+    }
+  })
+
   it('falls back to a local backend when nothing is reachable', async () => {
     const root = await makeWorkspace()
     try {

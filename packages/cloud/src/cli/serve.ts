@@ -8,7 +8,6 @@
 import path from 'node:path'
 import { mkdir, unlink, writeFile } from 'node:fs/promises'
 import {
-  Cache,
   cacheKeyDiff,
   compareRuns,
   run as runOrchestrator,
@@ -49,8 +48,6 @@ import {
   WIRE_PROTOCOL_VERSION,
   VERSION,
   findWorkspaceRoot,
-  loadWorkspaceConfig,
-  resolveCacheDir,
   type ClientMessage,
   type Envelope,
   type Logger,
@@ -148,17 +145,10 @@ export async function startServe(opts: {
    */
   uiHtmlPath?: string
   /**
-   * Where the dashboard's read queries source their data:
-   *   'cache'  (default) — the workspace's local cache.db, opened directly.
-   *                        Zero-config local serve; full fidelity incl. cache
-   *                        inventory (the documented L2 fallback).
-   *   'ingest' (hosted)  — the cloud-owned ingest store, populated by pushed
-   *                        RunSummaryRecords via POST /v1/ingest. Run/task
-   *                        analytics only; cache inventory is a local concern.
-   * See docs/design/observability-architecture-2026-06.md §6–7.
+   * Directory for the cloud-owned SQLite ingest store (the dashboard's sole
+   * data source). Defaults to `<root>/.vx/cloud-ingest`; point it at a
+   * persistent volume for a hosted deployment.
    */
-  source?: 'cache' | 'ingest'
-  /** Directory for the cloud-owned ingest store. Defaults under the cache dir. */
   ingestDir?: string
   onRun?: (request: RunRequest, ok: boolean) => void
 }): Promise<ServeServer> {
@@ -166,19 +156,14 @@ export async function startServe(opts: {
   // it to dedup in-flight task execution.
   const inflight = new Map<string, Promise<void>>()
 
-  // Read-only handle to the workspace's cache.db, opened once and reused
-  // for every /v1/* query. The query module is pure — opens nothing —
-  // so the lifetime lives here.
-  const workspaceConfig = await loadWorkspaceConfig(opts.root)
-  const cacheDir = resolveCacheDir(opts.root, workspaceConfig)
-  const cache = new Cache(cacheDir)
-
-  // The cloud-owned ingest store. Always open (it backs POST /v1/ingest);
-  // the read queries use it only when `source: 'ingest'` (hosted). Local
-  // serve keeps reading cache.db directly (source defaults to 'cache').
-  const ingest = new IngestStore(opts.ingestDir ?? path.join(cacheDir, 'cloud-ingest'))
-  const readDb = (): ReturnType<typeof cache.dbHandle> =>
-    opts.source === 'ingest' ? ingest.db() : cache.dbHandle()
+  // vx-cloud is INDEPENDENT of vx core: it NEVER opens a workspace cache.db.
+  // The dashboard's /v1/* analytics read ONLY this service's own SQLite store,
+  // fed by the cloud() plugin's telemetry push (POST /v1/ingest). So vx-cloud
+  // can be deployed anywhere — it has no access to, and no need for, the
+  // machine(s) that produced the runs. One Bun process: SQLite store + the
+  // ingest endpoint + the /v1/* API + the embedded UI.
+  const ingest = new IngestStore(opts.ingestDir ?? path.join(opts.root, '.vx', 'cloud-ingest'))
+  const readDb = (): ReturnType<IngestStore['db']> => ingest.db()
 
   // Read-only event subscribers (SSE / NDJSON). Each callback gets every
   // event from every concurrent run as a notification envelope so a `curl`
@@ -298,6 +283,9 @@ export async function startServe(opts: {
         // predicted cache status, via a no-exec planRun. The run cockpit lays
         // this out and overlays live status from the WS run stream.
         if (url.pathname === '/v1/graph') {
+          // The DAG is computed from a colocated workspace (a no-exec planRun)
+          // — the live-cockpit feature. A remote dashboard has no workspace, so
+          // planRun throws and the catch below returns a clean error.
           const tasks = (url.searchParams.get('tasks') ?? '')
             .split(',')
             .map((s) => s.trim())
@@ -585,19 +573,21 @@ export async function startServe(opts: {
   }
 
   const origin = `http://localhost:${server.port}`
+  // Advertise the local serve so `vx run` in this workspace delegates here.
+  // Best-effort: a hosted/read-only root has nothing to advertise to and must
+  // not fail startup over it.
   const infoPath = serveInfoPath(opts.root)
-  await mkdir(path.dirname(infoPath), { recursive: true })
-  await writeFile(infoPath, JSON.stringify({ origin, pid: process.pid }))
+  try {
+    await mkdir(path.dirname(infoPath), { recursive: true })
+    await writeFile(infoPath, JSON.stringify({ origin, pid: process.pid }))
+  } catch {
+    // read-only root (hosted) — skip the advertisement
+  }
 
   return {
     origin,
     stop: async () => {
       await server.stop(true)
-      try {
-        cache.close()
-      } catch {
-        // already closed
-      }
       try {
         ingest.close()
       } catch {
@@ -616,7 +606,7 @@ interface ServeArgs {
   port?: number
   ui?: boolean
   open?: boolean
-  source?: 'cache' | 'ingest'
+  ingestDir?: string
   error?: string
 }
 
@@ -632,10 +622,11 @@ export function parseServeArgs(args: readonly string[]): ServeArgs {
       out.open = true
       continue
     }
-    const sv = a === '--source' ? args[++i] : a?.startsWith('--source=') ? a.slice(9) : undefined
-    if (sv !== undefined) {
-      if (sv !== 'cache' && sv !== 'ingest') return { ...out, error: `invalid --source: ${sv}` }
-      out.source = sv
+    const idv =
+      a === '--ingest-dir' ? args[++i] : a?.startsWith('--ingest-dir=') ? a.slice(13) : undefined
+    if (idv !== undefined) {
+      if (idv === '') return { ...out, error: 'invalid --ingest-dir: empty' }
+      out.ingestDir = idv
       continue
     }
     const v = a === '--port' ? args[++i] : a?.startsWith('--port=') ? a.slice(7) : undefined
@@ -686,27 +677,30 @@ export async function serveCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`vx serve: ${parsed.error}\n`)
     return 1
   }
-  const root = await findWorkspaceRoot(process.cwd())
+  // vx-cloud is workspace-independent (it reads only its own ingest store).
+  // Discover a workspace best-effort: when colocated, opts.root enables the
+  // live-cockpit /v1/graph; when deployed remotely there is none, so fall
+  // back to cwd (the ingest store lives under it, or --ingest-dir).
+  const root = await findWorkspaceRoot(process.cwd()).catch(() => process.cwd())
 
-  let uiHtmlPath: string | undefined
-  if (parsed.ui) {
-    const p = await loadUiHtmlPath()
-    if (p === null) {
-      // Only reachable in a source checkout that hasn't built the dashboard;
-      // a compiled binary embeds it, so this never fires for end users.
-      process.stderr.write(
-        `vx serve: dashboard not built — run \`bun run --filter @vzn/vx-ui build\` (only needed when running from source)\n`,
-      )
-      return 1
-    }
-    uiHtmlPath = p
+  // Serve the embedded dashboard whenever it's available — a compiled binary
+  // always has it, so `vx-cloud serve` is one Bun + SQLite + UI process. `--ui`
+  // turns a missing build into a hard error (explicit intent) + enables --open.
+  const uiHtmlPath = (await loadUiHtmlPath()) ?? undefined
+  if (parsed.ui && uiHtmlPath === undefined) {
+    // Only reachable in a source checkout that hasn't built the dashboard;
+    // a compiled binary embeds it, so this never fires for end users.
+    process.stderr.write(
+      `vx serve: dashboard not built — run \`bun run --filter @vzn/vx-ui build\` (only needed when running from source)\n`,
+    )
+    return 1
   }
 
   const server = await startServe({
     root,
     ...(parsed.port !== undefined ? { port: parsed.port } : {}),
     ...(uiHtmlPath !== undefined ? { uiHtmlPath } : {}),
-    ...(parsed.source !== undefined ? { source: parsed.source } : {}),
+    ...(parsed.ingestDir !== undefined ? { ingestDir: parsed.ingestDir } : {}),
     onRun: (request, ok) => {
       process.stdout.write(`  ${ok ? '✓' : '✗'} ${request.tasks.join(', ')}\n`)
     },
@@ -716,7 +710,7 @@ export async function serveCmd(args: readonly string[]): Promise<number> {
   process.stdout.write(
     `vx serve: API  ${server.origin}\n` +
       uiLine +
-      `vx serve: ready — \`vx run\` in this workspace will delegate here\n` +
+      `vx serve: serving pushed runs from the ingest store (POST /v1/ingest)\n` +
       `(press Ctrl-C to stop)\n\n`,
   )
 

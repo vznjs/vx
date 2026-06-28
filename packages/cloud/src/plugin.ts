@@ -29,7 +29,11 @@ import {
   type TelemetrySink,
   type VxPlugin,
 } from '@vzn/vx'
-import { resolveBackend } from './cli/backend.js'
+
+// NB: the heavy service machinery (backend resolution → serve / dev hub) is
+// loaded LAZILY inside `backend()` via a dynamic import, so merely DECLARING
+// `cloud()` in a workspace config (the common case) keeps the run's config-eval
+// light — it imports this module + core only, not the whole service layer.
 
 export interface CloudPluginOptions {
   /**
@@ -77,8 +81,15 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
       assertWellFormedUrl(ingestUrlOf(opts), 'ingestUrl')
     },
 
-    backend(ctx) {
+    async backend(ctx) {
+      // Only take over execution when a service is EXPLICITLY configured.
+      // Unconfigured → decline (return undefined) so core uses its own local
+      // backend with NO serve-discovery probe — declaring cloud() in a
+      // workspace then costs nothing on the run hot path. The backend
+      // machinery is imported lazily here, never at config-eval time.
       const serviceUrl = opts.serviceUrl ?? process.env['VX_SERVICE_URL']
+      if (!serviceUrl) return undefined
+      const { resolveBackend } = await import('./cli/backend.js')
       return resolveBackend(ctx.request.cwd, undefined, serviceUrl)
     },
 

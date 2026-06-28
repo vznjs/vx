@@ -5,8 +5,12 @@
 #
 #   docker build -f packages/cloud/Dockerfile -t vx-cloud .
 #
-# Same artifact, three roles — the ENTRYPOINT is `vx-cloud`, the CMD picks the
-# role (serve = collapsed-local, coordinator, worker). See deploy/README.md.
+# Same artifact, multiple roles — the ENTRYPOINT is `vx-cloud`, the CMD picks
+# the role. The DEFAULT CMD is the dashboard: one Bun process serving the UI +
+# the /v1/* API over a SQLite ingest store fed by POST /v1/ingest (the cloud()
+# plugin pushes to it). vx-cloud reads only its own store — never a workspace
+# cache.db — so it can run anywhere. Other roles: coordinator, worker. See
+# deploy/README.md.
 
 # ---------------------------------------------------------------------------
 # Build stage — install the workspace, compile bin.ts to a standalone binary.
@@ -41,11 +45,16 @@ FROM oven/bun:1.3-slim AS runtime
 
 COPY --from=build /out/vx-cloud /usr/local/bin/vx-cloud
 
+# Persistent home for the SQLite ingest store. Created + owned before dropping
+# privileges; mount a volume here in production so pushed runs survive restarts.
+RUN mkdir -p /data && chown bun:bun /data
+VOLUME ["/data"]
+
 # Run as the unprivileged `bun` user the base image already provides.
 USER bun
 WORKDIR /home/bun
 
-# serve (collapsed-local) + coordinator both bind here by default:
+# serve (hosted dashboard / collapsed-local) + coordinator bind here by default:
 #   serve       DEFAULT_SERVE_PORT = 4321
 #   coordinator default --port     = 5180
 EXPOSE 4321 5180
@@ -56,5 +65,8 @@ EXPOSE 4321 5180
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD bun -e "fetch('http://127.0.0.1:4321/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
+# Default role: the dashboard — Bun + SQLite ingest store (at the /data volume)
+# + the embedded UI, all in one process, fed by the cloud() plugin's pushes to
+# POST /v1/ingest. Override CMD for coordinator or worker.
 ENTRYPOINT ["vx-cloud"]
-CMD ["serve"]
+CMD ["serve", "--ingest-dir", "/data"]
