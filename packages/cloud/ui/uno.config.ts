@@ -11,7 +11,8 @@ export default defineConfig({
   transformers: [transformerVariantGroup()],
   // The page views are pure .json (src/views) — UnoCSS only scans code files by
   // default, so include the JSON so chart stroke-/fill- tokens declared there
-  // (e.g. "strokeClass": "stroke-accent") are generated.
+  // (e.g. "strokeClass": "stroke-accent") are generated. (The shared status→class
+  // map is status.TSX precisely because UnoCSS scans .tsx but not plain .ts.)
   content: { filesystem: ['src/views/**/*.json'] },
   // Chart palette classes are computed from project names at runtime via
   // `paletteFor()` — UnoCSS's static analyzer can't see them, so we list

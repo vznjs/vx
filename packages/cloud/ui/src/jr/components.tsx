@@ -15,8 +15,9 @@ import { A, useNavigate } from '@solidjs/router'
 import { type RunSummaryRow, getGraph, subscribeEvents } from '../api.ts'
 import { HBar, Heatmap as HeatmapPrimitive, LineChart as LineChartPrimitive, Treemap as TreemapPrimitive } from '../components/charts.tsx'
 import { Card as UiCard, EmptyState, MetricCard, StatusBadge } from '../components/ui.tsx'
-import { Flamegraph as FlamegraphPrimitive } from '../components/Flamegraph.tsx'
-import { RunGraph as RunGraphPrimitive, type RunGraphNode, type RunGraphState } from '../components/RunGraph.tsx'
+import { Flamegraph as FlamegraphPrimitive, type FlameEdge } from '../components/Flamegraph.tsx'
+import { RunGraph as RunGraphPrimitive, type RunGraphNode } from '../components/RunGraph.tsx'
+import { toVizState, type VizState } from '../components/status.tsx'
 import { formatHour, paletteFor } from '../format.ts'
 import { type FormatHint, type Tone, axisFormatter, formatValue, toneText } from './hints.ts'
 
@@ -197,15 +198,6 @@ export function Heatmap(c: C<{ rows: Row[]; dayKey?: string; hourKey?: string; v
   )
 }
 
-// Map a recorded outcome status to a graph display state.
-function recordedState(status: string, cacheHit: boolean): RunGraphState {
-  if (status === 'failed') return 'failed'
-  if (status === 'cache-hit' || status === 'cache-hit-remote' || cacheHit) return 'cache-hit'
-  if (status === 'skipped') return 'skipped'
-  if (status === 'aborted') return 'aborted'
-  return 'success'
-}
-
 // Two views of a RECORDED run, switchable: GRAPH (dependency structure — the
 // DAG rebuilt from the workspace via /v1/graph, with recorded status/CPU/RAM
 // overlaid) and FLAME (by ACTUAL time — bars positioned by each task's real
@@ -235,9 +227,15 @@ export function RunViz(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string
   const nodes = createMemo<RunGraphNode[]>(() =>
     (graph() ?? []).map((g) => ({ id: g.id, project: g.project, task: g.task, isGroup: g.isGroup, deps: g.deps })),
   )
-  const stateOf = (id: string): RunGraphState => {
+  // Dependency edges for the flame (dep → dependent), from the fetched graph.
+  const flameEdges = createMemo<FlameEdge[]>(() => {
+    const out: FlameEdge[] = []
+    for (const n of nodes()) for (const d of n.deps) out.push({ from: d, to: n.id })
+    return out
+  })
+  const stateOf = (id: string): VizState => {
     const r = rowById().get(id)
-    return r ? recordedState(r.status, r.cacheHit === true) : 'queued'
+    return r ? toVizState(r.status, r.cacheHit === true) : 'queued'
   }
   const selectedId = () => {
     const s = selected()
@@ -265,9 +263,9 @@ export function RunViz(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string
       </div>
       <div class="h-[460px] w-full">
         <Show when={view() === 'flame'}>
-          <div class="h-full overflow-auto p-1">
+          <div class="h-full p-1">
             <Show when={rows().length > 0} fallback={<EmptyState title="No tasks" />}>
-              <FlamegraphPrimitive tasks={rows()} selectedId={selectedId()} onSelect={(t) => setSelected(t)} />
+              <FlamegraphPrimitive tasks={rows()} selectedId={selectedId()} edges={flameEdges()} onSelect={(t) => setSelected(t)} />
             </Show>
           </div>
         </Show>

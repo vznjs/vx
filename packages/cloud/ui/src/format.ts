@@ -58,6 +58,11 @@ export function formatHour(t: number): string {
   return new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+/** Time-of-day with seconds — for per-task started/ended timestamps. */
+export function formatTime(t: number): string {
+  return new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
 export function formatDate(t: number): string {
   return new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' })
 }

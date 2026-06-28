@@ -15,6 +15,7 @@
 import { For, Show, createMemo, createSignal } from 'solid-js'
 import { formatBytes, formatDuration } from '../format.ts'
 import { layoutLevels } from './run-graph-layout.ts'
+import { STATUS, type VizState } from './status.tsx'
 
 export interface RunGraphNode {
   id: string
@@ -31,15 +32,9 @@ export interface RunGraphStats {
   peakRssBytes?: number
 }
 
-export type RunGraphState =
-  | 'queued'
-  | 'running'
-  | 'success'
-  | 'cache-hit'
-  | 'failed'
-  | 'skipped'
-  | 'aborted'
-  | 'group'
+// The graph speaks the shared VizState vocabulary (status.ts) so its colors /
+// icons match the flame + cockpit exactly. Kept as a named re-export for callers.
+export type RunGraphState = VizState
 
 const CARD_W = 212
 const CARD_H = 92
@@ -48,25 +43,6 @@ const ROW_GAP = 18
 const HEADER_H = 34
 const COL_STRIDE = CARD_W + COL_GAP
 const ROW_STRIDE = CARD_H + ROW_GAP
-
-interface StateStyle {
-  border: string // default card border (non-selected, non-critical)
-  rail: string // left status rail bg
-  dot: string // icon/dot text color
-  icon: string
-}
-
-// Literal classes only (see header note).
-const STATE: Record<RunGraphState, StateStyle> = {
-  queued: { border: 'border-border', rail: 'bg-border-strong', dot: 'text-fg-3', icon: 'i-tabler-circle-dashed' },
-  running: { border: 'border-accent/40', rail: 'bg-accent', dot: 'text-accent', icon: 'i-tabler-loader-2' },
-  success: { border: 'border-success/40', rail: 'bg-success', dot: 'text-success', icon: 'i-tabler-circle-check' },
-  'cache-hit': { border: 'border-cache-local/40', rail: 'bg-cache-local', dot: 'text-cache-local', icon: 'i-tabler-bolt' },
-  failed: { border: 'border-danger/50', rail: 'bg-danger', dot: 'text-danger', icon: 'i-tabler-circle-x' },
-  skipped: { border: 'border-warn/40', rail: 'bg-warn', dot: 'text-warn', icon: 'i-tabler-circle-minus' },
-  aborted: { border: 'border-border', rail: 'bg-fg-3', dot: 'text-fg-3', icon: 'i-tabler-ban' },
-  group: { border: 'border-border border-dashed', rail: 'bg-border-strong', dot: 'text-fg-3', icon: 'i-tabler-folder' },
-}
 
 const cpuPct = (s: RunGraphStats): number | undefined =>
   s.cpuMs !== undefined && s.durationMs !== undefined && s.durationMs > 0
@@ -175,7 +151,7 @@ export function RunGraph(props: {
           <For each={props.nodes}>
             {(n) => {
               const pos = () => layout().pos.get(n.id)
-              const sty = () => STATE[effState(n)]
+              const sty = () => STATUS[effState(n)]
               const stats = () => statsFor(n.id)
               const cpu = () => cpuPct(stats())
               const crit = () => props.highlightIds?.has(n.id) === true

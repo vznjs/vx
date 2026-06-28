@@ -10,43 +10,30 @@
 
 import { For, Show, batch, createMemo, createResource, createSignal, onCleanup, onMount } from 'solid-js'
 import { type GraphNode, type RunSummaryRow, type WireEvent, getGraph, getOrigin, getHistory, getVersion, runTasks } from '../api.ts'
-import { formatBytes } from '../format.ts'
+import { formatBytes, formatDuration, formatTime } from '../format.ts'
 import { criticalPath, parallelism } from './critical-path.ts'
-import { Flamegraph as FlameView } from './Flamegraph.tsx'
-import { RunGraph, type RunGraphState } from './RunGraph.tsx'
+import { Flamegraph as FlameView, type FlameEdge } from './Flamegraph.tsx'
+import { RunGraph } from './RunGraph.tsx'
+import { STATUS, toVizState, type VizState } from './status.tsx'
 import { EmptyState } from './ui.tsx'
 
-type NodeState = 'queued' | 'running' | 'success' | 'cache-hit' | 'failed' | 'skipped' | 'aborted'
-
-// Status → icon + color (matches the graph card vocabulary).
-const STATUS_META: Record<NodeState, { icon: string; color: string; label: string }> = {
-  queued: { icon: 'i-tabler-circle-dashed', color: 'text-fg-3', label: 'queued' },
-  running: { icon: 'i-tabler-loader-2', color: 'text-accent', label: 'running' },
-  success: { icon: 'i-tabler-circle-check', color: 'text-success', label: 'success' },
-  'cache-hit': { icon: 'i-tabler-bolt', color: 'text-cache-local', label: 'cache hit' },
-  failed: { icon: 'i-tabler-circle-x', color: 'text-danger', label: 'failed' },
-  skipped: { icon: 'i-tabler-circle-minus', color: 'text-warn', label: 'skipped' },
-  aborted: { icon: 'i-tabler-ban', color: 'text-fg-3', label: 'aborted' },
-}
-const fmtClock = (ms?: number): string => (ms === undefined ? '—' : new Date(ms).toLocaleTimeString())
+const fmtClock = (ms?: number): string => (ms === undefined ? '—' : formatTime(ms))
 interface NodeStatus {
-  state: NodeState
+  state: VizState
   durationMs?: number
   exitCode?: number
   cpuMs?: number
   peakRssBytes?: number
 }
 
-function mapStatus(status: string): NodeState {
-  if (status === 'failed') return 'failed'
-  if (status === 'cache-hit' || status === 'cache-hit-remote') return 'cache-hit'
-  if (status === 'skipped') return 'skipped'
-  if (status === 'aborted') return 'aborted'
-  return 'success'
-}
+// Shared status vocabulary (status.ts) — colors / icons / labels identical to
+// the graph + flame. Preserves the local vs remote cache-hit distinction.
+const mapStatus = (status: string): VizState => toVizState(status)
 
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
-const fmtDur = (ms?: number) => (ms === undefined ? '' : ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(2)}s`)
+// One duration formatter everywhere (format.ts) — shows ms / s / m / h so the
+// cockpit never disagrees with the charts/tables on a long task.
+const fmtDur = (ms?: number) => (ms === undefined ? '—' : formatDuration(ms))
 
 export function RunConsole() {
   const [version] = createResource(getOrigin, () => getVersion().catch(() => null))
@@ -103,7 +90,7 @@ export function RunConsole() {
     const id = selected()
     return id ? statuses()[id] : undefined
   }
-  const selectedState = (): NodeState => selectedStatus()?.state ?? 'queued'
+  const selectedState = (): VizState => selectedStatus()?.state ?? 'queued'
   const selectedCpuPct = (): number | undefined => {
     const st = selectedStatus()
     const id = selected()
@@ -151,6 +138,13 @@ export function RunConsole() {
           wallclockEndNs: null,
         }
       })
+  })
+
+  // Dependency edges for the flame (dep → dependent = "what this unlocked").
+  const flameEdges = createMemo<FlameEdge[]>(() => {
+    const out: FlameEdge[] = []
+    for (const n of nodes()) for (const d of n.deps) out.push({ from: d, to: n.id })
+    return out
   })
 
   function handleEvent(ev: WireEvent) {
@@ -339,12 +333,13 @@ export function RunConsole() {
           {/* DAG / flamegraph */}
           <div class="rounded-xl border border-border bg-surface/40 overflow-hidden min-h-0 relative">
             <Show when={view() === 'flame'}>
-              <div class="overflow-auto p-5 h-full">
+              <div class="h-full p-2">
                 <Show when={flameRows().length > 0} fallback={<div class="text-fg-3 text-sm p-4">Waiting for tasks…</div>}>
                   <FlameView
                     tasks={flameRows()}
                     selectedId={selected() ?? undefined}
                     highlightIds={criticalSet()}
+                    edges={flameEdges()}
                     onSelect={(t) => setSelected(`${t.project}#${t.task}`)}
                   />
                 </Show>
@@ -354,7 +349,7 @@ export function RunConsole() {
               <Show when={nodes().length > 0} fallback={<div class="text-fg-3 text-sm p-4">Resolving graph…</div>}>
                 <RunGraph
                   nodes={nodes()}
-                  stateOf={(id) => (statuses()[id]?.state ?? 'queued') as RunGraphState}
+                  stateOf={(id) => statuses()[id]?.state ?? 'queued'}
                   statsOf={(id) => ({
                     durationMs: durationOf(id),
                     cpuMs: statuses()[id]?.cpuMs,
@@ -428,7 +423,7 @@ export function RunConsole() {
             <div class="rounded-xl border border-border bg-surface/40 flex flex-col flex-1 min-h-0 overflow-hidden">
               <div class="px-4 py-2.5 border-b border-border/70 flex items-center gap-2">
                 <Show when={selected()} fallback={<span class="i-tabler-info-circle text-fg-3" />}>
-                  <span class={`${STATUS_META[selectedState()].icon} ${STATUS_META[selectedState()].color} shrink-0`} classList={{ 'animate-spin': selectedState() === 'running' }} />
+                  <span class={`${STATUS[selectedState()].icon} ${STATUS[selectedState()].dot} shrink-0`} classList={{ 'animate-spin': selectedState() === 'running' }} />
                 </Show>
                 <span class="text-[11px] font-semibold uppercase tracking-wider text-fg-2 truncate">
                   {selected() ?? 'Task details'}
@@ -441,9 +436,9 @@ export function RunConsole() {
                 {/* Facts grid */}
                 <div class="px-4 py-3 border-b border-border/70 grid grid-cols-2 gap-x-5 gap-y-2 text-[11px] shrink-0">
                   <Fact label="Status">
-                    <span class={`inline-flex items-center gap-1 ${STATUS_META[selectedState()].color}`}>
-                      <span class={`${STATUS_META[selectedState()].icon}`} classList={{ 'animate-spin': selectedState() === 'running' }} />
-                      {STATUS_META[selectedState()].label}
+                    <span class={`inline-flex items-center gap-1 ${STATUS[selectedState()].dot}`}>
+                      <span class={`${STATUS[selectedState()].icon}`} classList={{ 'animate-spin': selectedState() === 'running' }} />
+                      {STATUS[selectedState()].label}
                     </span>
                   </Fact>
                   <Fact label="Duration">{fmtDur(durationOf(selected()!))}</Fact>
