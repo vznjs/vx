@@ -2,10 +2,11 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { Cache } from '../src/cache/index.js'
+import { Cache, FULL_CACHE_POLICY, LayeredCache, RemoteCache } from '../src/cache/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { prepareRun, run } from '../src/orchestrator/index.js'
 import { startLocalShortCircuit } from '../src/orchestrator/local-shortcircuit.js'
+import { shouldShortCircuit } from '../src/orchestrator/run.js'
 
 interface Fixture {
   root: string
@@ -456,4 +457,28 @@ describe('local cache short-circuit', () => {
     },
     TIMEOUT,
   )
+
+  it('gate: LayeredCache runs never classify — remote-prefetch owns those', async () => {
+    // Under a LayeredCache, cache.get is a remote READ-THROUGH and the
+    // up-front classify is awaited before scheduling — N remote GETs
+    // would land on the critical path. The gate must decline so remote
+    // runs stay on the fire-and-forget prefetch path (decision log
+    // 2026-06-28). Only `deps.length` is read off the nodes here.
+    const nodes = new Map([
+      ['a#build', { id: 'a#build', deps: [] }],
+      ['a#test', { id: 'a#test', deps: ['a#build'] }],
+    ]) as never
+    const local = new Cache(path.join(fixture.root, '.vx', 'cache'))
+    try {
+      const layered = new LayeredCache(
+        local,
+        new RemoteCache({ baseUrl: 'http://127.0.0.1:9', token: 't' }),
+      )
+      expect(shouldShortCircuit(nodes, FULL_CACHE_POLICY, layered)).toBe(false)
+      // Identical graph + policy with a plain local Cache → gate opens.
+      expect(shouldShortCircuit(nodes, FULL_CACHE_POLICY, local)).toBe(true)
+    } finally {
+      local.close()
+    }
+  })
 })

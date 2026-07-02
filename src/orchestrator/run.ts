@@ -3,6 +3,7 @@
 // so the layers can be swapped without touching the others.
 
 import {
+  type CacheLayer,
   type CachePolicy,
   FULL_CACHE_POLICY,
   type InvocationRecord,
@@ -59,17 +60,26 @@ function compactCachePolicy(p: CachePolicy): string {
 /**
  * The perf firewall for the local short-circuit. Always-on; the only
  * gates are correctness/no-op gates:
+ *   - LOCAL-ONLY cache. Under a LayeredCache, `cache.get` is a remote
+ *     READ-THROUGH — the up-front classify is awaited before scheduling,
+ *     so N remote GETs would land on the critical path before any task
+ *     starts. Remote runs are owned by `startRemotePrefetch`, which
+ *     overlaps the GETs with execution instead (fire-and-forget) and
+ *     ingests hits into local for execute-task's lazy probe.
  *   - the policy reads locally (a `--no-cache`/`--force`/`--cache=local:`
  *     run reads nothing locally → nothing to restore → skip);
  *   - the graph has at least one dependency edge (a flat graph has no
  *     ordering to bypass — restoring is what execute() already does, so
  *     there's no upside and we avoid the upfront probe pass).
- * Deliberately NOT gated on LayeredCache: this is a LOCAL optimization
- * that applies to the common local-only `vx run`. The per-task
- * correctness gates (stable key, no workspace-outputs in graph) live in
- * `startLocalShortCircuit`.
+ * The per-task correctness gates (stable key, no workspace-outputs in
+ * graph) live in `startLocalShortCircuit`.
  */
-function shouldShortCircuit(nodes: Map<string, TaskNode>, policy: CachePolicy): boolean {
+export function shouldShortCircuit(
+  nodes: Map<string, TaskNode>,
+  policy: CachePolicy,
+  cache: CacheLayer,
+): boolean {
+  if (cache instanceof LayeredCache) return false
   if (!policy.localRead) return false
   for (const node of nodes.values()) if (node.deps.length > 0) return true
   return false
@@ -330,7 +340,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // shouldShortCircuit (localRead + has-deps); when off, both maps are
     // empty and the run is byte-identical.
     let shortCircuit: ShortCircuit = EMPTY_SHORT_CIRCUIT
-    if (shouldShortCircuit(nodes, policy)) {
+    if (shouldShortCircuit(nodes, policy, cache)) {
       shortCircuit = await startLocalShortCircuit({
         nodes,
         cache,
