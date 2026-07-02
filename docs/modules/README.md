@@ -36,6 +36,12 @@ For the high-level data flow, read
 | [`cli-help.md`](./cli-help.md)       | `src/cli/help.ts` — static help text.                                    |
 | [`cli-format.md`](./cli-format.md)   | `src/cli/format.ts` — `formatBytes` and other shared formatters.         |
 | [`plan-format.md`](./plan-format.md) | `src/cli/plan-format.ts` — plan → text / JSON / DOT.                     |
+| [`mcp.md`](./mcp.md)                 | `src/cli/mcp.ts` — `vx mcp` MCP server for AI agents (stdio).            |
+| [`upgrade.md`](./upgrade.md)         | `src/cli/upgrade.ts` — `vx upgrade` binary self-update.                  |
+
+The remaining subcommand parsers (`lock.ts`, `migrate*.ts`, `show.ts`,
+`info.ts`, `cache.ts`) are user-facing commands documented in
+[`docs/cli.md`](../cli.md) rather than as module pages.
 
 ## Orchestrator
 
@@ -56,6 +62,23 @@ For the high-level data flow, read
 | [`run-artifacts.md`](./run-artifacts.md)           | `src/orchestrator/run-artifacts.ts` — `--summarize` JSON + `--profile` trace writers.  |
 | [`prepare.md`](./prepare.md)                       | `src/orchestrator/prepare.ts` — shared run / planRun setup (workspace, graph, cache).  |
 | [`tally.md`](./tally.md)                           | `src/orchestrator/tally.ts` — shared outcome tally for summary + summarize JSON.       |
+| [`events.md`](./events.md)                         | `src/orchestrator/events.ts` — run event bus + serializable `WireEvent` contract.      |
+| [`plugin.md`](./plugin.md)                         | `src/orchestrator/plugin.ts` — `VxPlugin` capabilities + installer.                    |
+| [`plugin-host.md`](./plugin-host.md)               | `src/orchestrator/plugin-host.ts` — eventSink wiring + end-of-run teardown/flush.      |
+| [`telemetry.md`](./telemetry.md)                   | `src/orchestrator/telemetry.ts` — versioned telemetry export contract.                 |
+| [`telemetry-host.md`](./telemetry-host.md)         | `src/orchestrator/telemetry-host.ts` — sink consultation (zero-sink = zero cost).      |
+| [`run-context.md`](./run-context.md)               | `src/orchestrator/run-context.ts` — git / CI / host capture (≤1 spawn).                |
+| [`stable-keys.md`](./stable-keys.md)               | `src/orchestrator/stable-keys.ts` — shared stable-key derivation + stability gate.     |
+| [`local-shortcircuit.md`](./local-shortcircuit.md) | `src/orchestrator/local-shortcircuit.ts` — restore-ahead classify (two-tier schedule). |
+| [`remote-prefetch.md`](./remote-prefetch.md)       | `src/orchestrator/remote-prefetch.ts` — background remote GETs (LayeredCache only).    |
+| [`metrics.md`](./metrics.md)                       | `src/orchestrator/metrics.ts` — analytics SQL layer behind `/v1/*` + `vx mcp`.         |
+| [`history-predict.md`](./history-predict.md)       | `src/orchestrator/{history,predict}.ts` — opt-in predictive scheduling (experimental). |
+| [`protocol.md`](./protocol.md)                     | `src/orchestrator/{protocol,wire}.ts` — delegation wire contract + mappers.            |
+| [`wire-render.md`](./wire-render.md)               | `src/orchestrator/wire-render.ts` — WireEvent → Logger (delegated-run rendering).      |
+| [`worker-exec.md`](./worker-exec.md)               | `src/orchestrator/worker-exec.ts` — agent-side execution primitive.                    |
+| [`run-state.md`](./run-state.md)                   | `src/orchestrator/run-state.ts` — reduced run aggregate for live surfaces.             |
+| [`run-report.md`](./run-report.md)                 | `src/orchestrator/run-report.ts` — `--report=markdown` table.                          |
+| [`devframe-surface.md`](./devframe-surface.md)     | `src/orchestrator/devframe-surface.ts` — devframe channel/state definition.            |
 
 ## Workspace + discovery
 
@@ -68,6 +91,7 @@ For the high-level data flow, read
 | [`affected.md`](./affected.md)             | `src/workspace/affected.ts` — git-relative project selection.                       |
 | [`nested-dirs.md`](./nested-dirs.md)       | `src/workspace/nested-dirs.ts` — boundary set (other projects rooted under each).   |
 | [`fingerprint.md`](./fingerprint.md)       | `src/workspace/fingerprint.ts` — workspace fingerprint (lockfile + workspace yaml). |
+| [`lockfile.md`](./lockfile.md)             | `src/workspace/lockfile.ts` — `vx-lock.json` freeze / trust / audit.                |
 
 ## Graph + scheduler
 
@@ -79,12 +103,13 @@ For the high-level data flow, read
 
 ## Cache cluster
 
-| File                                     | Topic                                                                          |
-| ---------------------------------------- | ------------------------------------------------------------------------------ |
-| [`cache.md`](./cache.md)                 | `src/cache/cache.ts` — local cache: `bun:sqlite` index + tar.zst artifacts.    |
-| [`layered-cache.md`](./layered-cache.md) | `src/cache/layered-cache.ts` — local + remote composition behind `CacheLayer`. |
-| [`remote-cache.md`](./remote-cache.md)   | `src/cache/remote-cache.ts` — Turborepo `/v8/artifacts/` HTTP client.          |
-| [`inputs.md`](./inputs.md)               | `src/cache/inputs.ts` — glob resolution, boundary enforcement, `cleanOutputs`. |
+| File                                               | Topic                                                                          |
+| -------------------------------------------------- | ------------------------------------------------------------------------------ |
+| [`cache.md`](./cache.md)                           | `src/cache/cache.ts` — local cache: `bun:sqlite` index + tar.zst artifacts.    |
+| [`layered-cache.md`](./layered-cache.md)           | `src/cache/layered-cache.ts` — local + remote composition behind `CacheLayer`. |
+| [`remote-cache.md`](./remote-cache.md)             | `src/cache/remote-cache.ts` — Turborepo `/v8/artifacts/` HTTP client.          |
+| [`inputs.md`](./inputs.md)                         | `src/cache/inputs.ts` — glob resolution, boundary enforcement, `cleanOutputs`. |
+| [`cas-backend-digest.md`](./cas-backend-digest.md) | `src/cache/{cas-backend,digest}.ts` — pluggable CAS seam (internal, roadmap).  |
 
 ## Exec (process primitives)
 
