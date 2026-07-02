@@ -50,9 +50,11 @@ export function localDevBackend(): RunBackend {
  * Delegate to a `vx-cloud serve` over WebSocket. The streamed events are
  * rendered through a normal `defaultLogger`, so a delegated run looks like a
  * local one. `origin` is an http(s) origin; the ws URL is derived from it. The
- * same backend serves a local service or a hosted `wss://` one.
+ * same backend serves a local service or a hosted `wss://` one. A `token`
+ * rides the upgrade request as `Authorization: Bearer` (Bun's client
+ * WebSocket accepts a headers option) for a token-gated serve.
  */
-export function serviceBackend(origin: string, sink?: Logger): RunBackend {
+export function serviceBackend(origin: string, sink?: Logger, token?: string): RunBackend {
   return {
     run(request) {
       const renderer =
@@ -68,7 +70,10 @@ export function serviceBackend(origin: string, sink?: Logger): RunBackend {
       const wsUrl = origin.replace(/^http/, 'ws')
 
       return new Promise<RunResult>((resolve, reject) => {
-        const ws = new WebSocket(wsUrl)
+        const ws =
+          token !== undefined
+            ? new WebSocket(wsUrl, { headers: { authorization: `Bearer ${token}` } })
+            : new WebSocket(wsUrl)
         let result: RunResult | null = null
         let failure: Error | null = null
         ws.onopen = () => ws.send(JSON.stringify({ t: 'run', request } satisfies ClientMessage))
@@ -102,8 +107,9 @@ export function serviceBackend(origin: string, sink?: Logger): RunBackend {
 
 /**
  * Pick a backend. Order: an explicit `serviceUrl` (the `cloud({ serviceUrl })`
- * option), then `VX_SERVICE_URL` (the hosted hook), then a local `vx-cloud
- * serve` advertised for this workspace, else the in-process dev backend.
+ * option or a delegate-enabled environment; `token` rides its WS upgrade),
+ * then `VX_SERVICE_URL` (the hosted hook), then a local `vx-cloud serve`
+ * advertised for this workspace, else the in-process dev backend.
  * Fail-safe: any uncertainty — unreachable service, stale info file, parse
  * error — falls through to local. A service must never be able to break a run
  * by merely being misconfigured or down.
@@ -112,9 +118,10 @@ export async function resolveBackend(
   cwd: string,
   sink?: Logger,
   serviceUrl?: string,
+  token?: string,
 ): Promise<RunBackend> {
   if (serviceUrl !== undefined && serviceUrl !== '' && (await reachable(serviceUrl))) {
-    return serviceBackend(serviceUrl, sink)
+    return serviceBackend(serviceUrl, sink, token)
   }
   const envUrl = process.env['VX_SERVICE_URL']
   if (envUrl !== undefined && envUrl !== '' && (await reachable(envUrl))) {

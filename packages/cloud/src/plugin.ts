@@ -29,6 +29,7 @@ import {
   type TelemetrySink,
   type VxPlugin,
 } from '@vzn/vx'
+import { activeEnvironment } from './environments.js'
 import { pidAlive, readServeInfo } from './serve-info.js'
 
 // NB: the heavy service machinery (backend resolution → serve / dev hub) is
@@ -83,15 +84,26 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
     },
 
     async backend(ctx) {
-      // Only take over execution when a service is EXPLICITLY configured.
+      // Only take over execution when a service is EXPLICITLY configured —
+      // option > env var > a connected environment that OPTED IN with
+      // `delegate: true` (delegation executes against request.cwd on the
+      // server, only correct when it shares/mirrors the filesystem, so
+      // connecting for the dashboard never silently moves execution).
       // Unconfigured → decline (return undefined) so core uses its own local
       // backend with NO serve-discovery probe — declaring cloud() in a
       // workspace then costs nothing on the run hot path. The backend
       // machinery is imported lazily here, never at config-eval time.
       const serviceUrl = opts.serviceUrl ?? process.env['VX_SERVICE_URL']
-      if (!serviceUrl) return undefined
-      const { resolveBackend } = await import('./cli/backend.js')
-      return resolveBackend(ctx.request.cwd, undefined, serviceUrl)
+      if (serviceUrl) {
+        const { resolveBackend } = await import('./cli/backend.js')
+        return resolveBackend(ctx.request.cwd, undefined, serviceUrl)
+      }
+      const env = activeEnvironment()
+      if (env?.delegate === true) {
+        const { resolveBackend } = await import('./cli/backend.js')
+        return resolveBackend(ctx.request.cwd, undefined, env.url, env.token)
+      }
+      return undefined
     },
 
     cache(ctx): CacheLayer | undefined {
@@ -120,15 +132,26 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
     },
 
     telemetry(ctx: TelemetryContext): TelemetrySink | undefined {
-      // Explicit config wins; otherwise AUTO-DETECT a local `vx-cloud serve` via
-      // its per-user advertisement (carrying the real origin + port), so a local
-      // dashboard is zero-config from ANY workspace: start `vx-cloud serve`, and
-      // every `vx run` pushes to it. No serve running (and no env) → decline, so
-      // a plain run is unaffected.
-      const url = ingestUrlOf(opts) ?? detectLocalIngestUrl()
-      if (!url) return undefined
+      // The push ladder, first match wins: plugin options > env vars (CI —
+      // they beat the active environment, matching DOCKER_HOST > active
+      // context) > the connected environment (memoized one-fs-read consult) >
+      // AUTO-DETECT a local `vx-cloud serve` via its per-user advertisement
+      // (zero-config local dashboard from ANY workspace) > decline, so a
+      // plain run is unaffected. Each rung pairs the URL with ITS OWN token.
+      const explicitUrl = ingestUrlOf(opts)
+      if (explicitUrl) {
+        const token = opts.ingestToken ?? ingestTokenFromEnv()
+        return new CloudIngestSink(explicitUrl, token, (m) => ctx.warn(m))
+      }
+      const env = activeEnvironment()
+      if (env !== undefined) {
+        const url = `${env.url.replace(/\/+$/, '')}/v1/ingest`
+        return new CloudIngestSink(url, env.token, (m) => ctx.warn(m))
+      }
+      const localUrl = detectLocalIngestUrl()
+      if (!localUrl) return undefined
       const token = opts.ingestToken ?? ingestTokenFromEnv()
-      return new CloudIngestSink(url, token, (m) => ctx.warn(m))
+      return new CloudIngestSink(localUrl, token, (m) => ctx.warn(m))
     },
   }
 }

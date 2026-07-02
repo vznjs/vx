@@ -1,6 +1,16 @@
 import { createResource, createSignal, Show, type ParentComponent } from 'solid-js'
 import { A, useLocation, useNavigate } from '@solidjs/router'
-import { getOrigin, getOriginSignal, getVersion, setOriginAndPersist } from '../api.ts'
+import {
+  getMeta,
+  getOrigin,
+  getOriginSignal,
+  getToken,
+  getTokenSignal,
+  getUnauthorizedSignal,
+  getVersion,
+  setOriginAndPersist,
+  setTokenAndPersist,
+} from '../api.ts'
 import { CommandPalette } from './CommandPalette.tsx'
 import { StatusDot } from './ui.tsx'
 
@@ -23,17 +33,31 @@ const NAV: NavItem[] = [
 
 export const Shell: ParentComponent = (props) => {
   const origin = getOriginSignal()
+  const token = getTokenSignal()
+  const unauthorized = getUnauthorizedSignal()
   const navigate = useNavigate()
   const location = useLocation()
-  const [version] = createResource(origin, async () => {
+  // Keyed on origin + token so entering a token refetches immediately.
+  const connection = () => `${origin()}|${token()}`
+  const [version] = createResource(connection, async () => {
     try {
       return await getVersion()
     } catch {
       return null
     }
   })
+  // Server identity for the environment badge — /v1/meta is auth-exempt, so
+  // the badge names the server even before a token is entered.
+  const [meta] = createResource(connection, async () => {
+    try {
+      return await getMeta()
+    } catch {
+      return null
+    }
+  })
   const [editing, setEditing] = createSignal(false)
   const [draft, setDraft] = createSignal(getOrigin())
+  const [draftToken, setDraftToken] = createSignal(getToken())
   const [paletteOpen, setPaletteOpen] = createSignal(false)
 
   // Global Cmd/Ctrl-K for palette.
@@ -49,7 +73,14 @@ export const Shell: ParentComponent = (props) => {
 
   function commit() {
     setOriginAndPersist(draft())
+    setTokenAndPersist(draftToken())
     setEditing(false)
+  }
+
+  function openEditor() {
+    setDraft(getOrigin())
+    setDraftToken(getToken())
+    setEditing(true)
   }
 
   return (
@@ -93,18 +124,28 @@ export const Shell: ParentComponent = (props) => {
         <header class="h-14 px-5 border-b border-border/70 bg-bg/60 backdrop-blur-xl flex items-center gap-3 sticky top-0 z-10">
           <Breadcrumb pathname={location.pathname} />
           <div class="flex-1" />
+          <Show when={unauthorized() && !editing()}>
+            <button
+              onClick={openEditor}
+              class="flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1 rounded border border-danger/50 text-danger hover:bg-danger/10 transition-colors"
+              title="This server requires a token"
+            >
+              <span class="i-tabler-lock text-[13px]" aria-hidden="true" />
+              <span>401 — token required</span>
+            </button>
+          </Show>
           <Show
             when={editing()}
             fallback={
               <button
-                onClick={() => {
-                  setDraft(getOrigin())
-                  setEditing(true)
-                }}
+                onClick={openEditor}
                 class="flex items-center gap-2 text-[11px] font-mono px-2.5 py-1 rounded border border-border hover:border-border-strong hover:bg-surface-hover"
                 title="Change connection (Cmd/Ctrl-click to edit)"
               >
                 <StatusDot ok={version() !== null && version() !== undefined} />
+                <Show when={meta()}>
+                  {(m) => <span class="text-fg-1 font-medium">{m().name}</span>}
+                </Show>
                 <span class="text-fg-2">{origin().replace(/^https?:\/\//, '')}</span>
               </button>
             }
@@ -123,6 +164,14 @@ export const Shell: ParentComponent = (props) => {
                 placeholder="http://localhost:4321"
                 class="text-[12px] font-mono w-60"
                 autofocus
+              />
+              <input
+                type="password"
+                value={draftToken()}
+                onInput={(e) => setDraftToken(e.currentTarget.value)}
+                placeholder="token (optional)"
+                class="text-[12px] font-mono w-40"
+                autocomplete="off"
               />
               <button type="submit" class="text-[11px] px-2 py-1 rounded border border-accent text-accent hover:bg-accent hover:text-bg transition-colors">
                 connect

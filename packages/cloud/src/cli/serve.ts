@@ -5,7 +5,9 @@
 // so the exact same protocol serves a local socket today or a hosted
 // `wss://` link later. Foreground only: Ctrl-C stops it.
 
+import os from 'node:os'
 import path from 'node:path'
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { mkdir, unlink, writeFile } from 'node:fs/promises'
 import {
   cacheKeyDiff,
@@ -134,6 +136,8 @@ async function executeRequest(
 
 export interface ServeServer {
   origin: string
+  /** The server's runtime identity (the `/v1/meta` name). */
+  name: string
   stop: () => Promise<void>
 }
 
@@ -144,7 +148,8 @@ export interface ServeServer {
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  // Authorization so the SPA on a foreign origin can send the bearer token.
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Access-Control-Max-Age': '86400',
 }
 
@@ -172,11 +177,64 @@ export async function startServe(opts: {
    * persistent volume for a hosted deployment.
    */
   ingestDir?: string
+  /**
+   * Shared bearer token. When set, every request except `/health` and
+   * `/v1/meta` requires `Authorization: Bearer <token>` (401 otherwise); the
+   * WS upgrade and the stream endpoints also accept `?token=` since browser
+   * transports can't set headers. No token → fully open (localhost default).
+   */
+  token?: string
+  /** Server identity reported by `/v1/meta`. Defaults to the hostname. */
+  name?: string
   onRun?: (request: RunRequest, ok: boolean) => void
 }): Promise<ServeServer> {
   // One registry for the service's whole lifetime — concurrent runs share
   // it to dedup in-flight task execution.
   const inflight = new Map<string, Promise<void>>()
+
+  const startedAt = Date.now()
+  const serveName = opts.name ?? os.hostname()
+  // Constant-time compare: hash both sides to a fixed length, then
+  // timingSafeEqual — no length leak, no early exit.
+  const sha256 = (s: string): Buffer => createHash('sha256').update(s).digest()
+  const expectedDigest = opts.token !== undefined ? sha256(opts.token) : undefined
+  const tokenMatches = (candidate: string): boolean =>
+    expectedDigest !== undefined && timingSafeEqual(sha256(candidate), expectedDigest)
+
+  // The single auth gate. Exempt: /health (probes/k8s) and /v1/meta (the
+  // identity handshake `connect` needs BEFORE the user has proven a token —
+  // it carries no secrets and no workspace path). The UI catch-all also stays
+  // open: the SPA is static code and must load to show its token prompt; every
+  // data surface it calls is gated below.
+  function authorized(req: Request, url: URL): boolean {
+    if (expectedDigest === undefined) return true
+    if (url.pathname === '/health' || url.pathname === '/v1/meta') return true
+    const isUpgrade = req.headers.get('upgrade')?.toLowerCase() === 'websocket'
+    const gated =
+      isUpgrade ||
+      url.pathname === '/version' ||
+      url.pathname === '/events' ||
+      url.pathname === '/stream' ||
+      url.pathname.startsWith('/v1/')
+    if (!gated) return true
+    const header = req.headers.get('authorization')
+    if (header !== null && header.startsWith('Bearer ') && tokenMatches(header.slice(7))) {
+      return true
+    }
+    // Browser EventSource/WebSocket can't set headers, so ?token= is an
+    // equivalent for the stream endpoints + the WS upgrade ONLY (the header
+    // form stays canonical everywhere else).
+    if (
+      isUpgrade ||
+      url.pathname === '/events' ||
+      url.pathname === '/v1/events' ||
+      url.pathname === '/stream'
+    ) {
+      const qt = url.searchParams.get('token')
+      if (qt !== null && tokenMatches(qt)) return true
+    }
+    return false
+  }
 
   // vx-cloud is INDEPENDENT of vx core: it NEVER opens a workspace cache.db.
   // The dashboard's /v1/* analytics read ONLY this service's own SQLite store,
@@ -215,6 +273,24 @@ export async function startServe(opts: {
         }
         // Liveness probe — `vx run` health-checks this before delegating.
         if (url.pathname === '/health') return withCors(new Response('ok'))
+        // Server identity — pre-auth by design (the `connect` handshake reads
+        // it before the user has proven a token). No secrets, no workspace
+        // path (/version keeps that, behind the token).
+        if (url.pathname === '/v1/meta') {
+          return jsonResponse({
+            v: 1,
+            name: serveName,
+            vx: VERSION,
+            auth: expectedDigest !== undefined ? 'token' : 'open',
+            startedAt,
+          })
+        }
+        if (!authorized(req, url)) {
+          return jsonResponse(
+            { error: 'unauthorized' },
+            { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } },
+          )
+        }
         // Capability handshake — what protocol version + channels + RPCs.
         if (url.pathname === '/version') {
           return jsonResponse({
@@ -602,6 +678,7 @@ export async function startServe(opts: {
 
   return {
     origin,
+    name: serveName,
     stop: async () => {
       await server.stop(true)
       try {
@@ -623,6 +700,8 @@ interface ServeArgs {
   ui?: boolean
   open?: boolean
   ingestDir?: string
+  token?: string
+  name?: string
   error?: string
 }
 
@@ -643,6 +722,18 @@ export function parseServeArgs(args: readonly string[]): ServeArgs {
     if (idv !== undefined) {
       if (idv === '') return { ...out, error: 'invalid --ingest-dir: empty' }
       out.ingestDir = idv
+      continue
+    }
+    const tv = a === '--token' ? args[++i] : a?.startsWith('--token=') ? a.slice(8) : undefined
+    if (tv !== undefined) {
+      if (tv === '') return { ...out, error: 'invalid --token: empty' }
+      out.token = tv
+      continue
+    }
+    const nv = a === '--name' ? args[++i] : a?.startsWith('--name=') ? a.slice(7) : undefined
+    if (nv !== undefined) {
+      if (nv === '') return { ...out, error: 'invalid --name: empty' }
+      out.name = nv
       continue
     }
     const v = a === '--port' ? args[++i] : a?.startsWith('--port=') ? a.slice(7) : undefined
@@ -721,6 +812,12 @@ export async function serveCmd(args: readonly string[]): Promise<number> {
     return 1
   }
 
+  // Auth + identity: flag > env. No token → fully open (localhost default).
+  const envToken = process.env['VX_CLOUD_TOKEN']
+  const token = parsed.token ?? (envToken !== undefined && envToken !== '' ? envToken : undefined)
+  const envName = process.env['VX_CLOUD_NAME']
+  const name = parsed.name ?? (envName !== undefined && envName !== '' ? envName : undefined)
+
   let server
   try {
     server = await startServe({
@@ -728,6 +825,8 @@ export async function serveCmd(args: readonly string[]): Promise<number> {
       port: portResult.port,
       ...(uiHtmlPath !== undefined ? { uiHtmlPath } : {}),
       ...(parsed.ingestDir !== undefined ? { ingestDir: parsed.ingestDir } : {}),
+      ...(token !== undefined ? { token } : {}),
+      ...(name !== undefined ? { name } : {}),
       onRun: (request, ok) => {
         process.stdout.write(`  ${ok ? '✓' : '✗'} ${request.tasks.join(', ')}\n`)
       },
@@ -742,9 +841,11 @@ export async function serveCmd(args: readonly string[]): Promise<number> {
   }
 
   const uiLine = uiHtmlPath !== undefined ? `vx serve: UI   ${server.origin}/\n` : ''
+  const authLine = token !== undefined ? `vx serve: auth token required (--token)\n` : ''
   process.stdout.write(
-    `vx serve: API  ${server.origin}\n` +
+    `vx serve: API  ${server.origin}  (${server.name})\n` +
       uiLine +
+      authLine +
       `vx serve: serving pushed runs from the ingest store (POST /v1/ingest)\n` +
       `(press Ctrl-C to stop)\n\n`,
   )

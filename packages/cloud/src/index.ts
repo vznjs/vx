@@ -15,6 +15,16 @@ export { startServe, parseServeArgs, DEFAULT_SERVE_PORT, resolveServePort } from
 export type { ServeServer } from './cli/serve.js'
 export { serveInfoPath, readServeInfo, pidAlive } from './serve-info.js'
 export type { ServeInfo } from './serve-info.js'
+export {
+  ENVIRONMENTS_VERSION,
+  activeEnvironment,
+  environmentsPath,
+  isValidEnvironmentName,
+  readEnvironmentsFile,
+  writeEnvironmentsFile,
+} from './environments.js'
+export type { CloudEnvironment, EnvironmentEntry, EnvironmentsFile } from './environments.js'
+export { connectCmd, envCmd, disconnectCmd, parseConnectArgs } from './cli/env.js'
 export { startCoordinator, parseCoordinatorArgs } from './cli/coordinator.js'
 export type { CoordinatorArgs, CoordinatorServer } from './cli/coordinator.js'
 export { runWorker, parseWorkerArgs } from './cli/worker.js'

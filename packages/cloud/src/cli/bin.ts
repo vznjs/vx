@@ -8,6 +8,7 @@ import { serveCmd } from './serve.js'
 import { coordinatorCmd } from './coordinator.js'
 import { workerCmd } from './worker.js'
 import { devCmd } from './dev.js'
+import { connectCmd, disconnectCmd, envCmd } from './env.js'
 
 function printHelp(): void {
   process.stdout.write(
@@ -15,7 +16,10 @@ function printHelp(): void {
       'vx-cloud — the vx orchestrator service',
       '',
       'Usage:',
-      '  vx-cloud serve [--port <n>] [--ingest-dir <d>] [--ui] [--open]',
+      '  vx-cloud serve [--port <n>] [--ingest-dir <d>] [--token <t>] [--name <n>] [--ui] [--open]',
+      '  vx-cloud connect <url> [--name <n>] [--token <t>] [--delegate] [--no-use] [--force]',
+      '  vx-cloud env ls | use <name> | rm <name>',
+      '  vx-cloud disconnect',
       '  vx-cloud coordinator <tasks...> [--port <n>] [--host <h>] [--workers <n>]',
       '  vx-cloud worker --coordinator <coord-url> [--capacity <n>] [--label <l>]',
       '  vx-cloud dev [--port <n>]',
@@ -32,8 +36,21 @@ function printHelp(): void {
       '              STABLE port, so the URL is the same across restarts (a busy',
       '              port errors rather than silently moving to a random one).',
       '   --ingest-dir <d>  Directory for the SQLite ingest store (persistence).',
+      '   --token <t>  Require `Authorization: Bearer <t>` on every request except',
+      '              /health and /v1/meta (env: VX_CLOUD_TOKEN). No token → open.',
+      '   --name <n>  Server identity reported by /v1/meta + shown in the dashboard',
+      '              badge (env: VX_CLOUD_NAME; defaults to the hostname).',
       '   --ui       Require the bundled SPA (error if not built) + enable --open.',
       '              The UI is served automatically whenever it is embedded.',
+      'connect       Validate a server (health + identity + token) and persist it as',
+      '              a named environment in the per-user environments file; every',
+      '              `vx run` then pushes its summary there. --delegate opts the',
+      '              environment into run delegation; --no-use skips activation.',
+      'env           Manage environments: `ls` (named servers + the auto-detected',
+      '              `(local)` serve, with live reachability), `use <name>`,',
+      '              `rm <name>`. Tokens are stored 0600 and never printed.',
+      'disconnect    Clear the active environment (entries + tokens survive; the',
+      '              local serve auto-detect becomes the effective fallback again).',
       'coordinator   Per-run coordinator — holds graph + ready queue + fans tasks',
       '              to attached workers over WebSocket.',
       'worker        Stateless worker that pulls tasks from a coordinator.',
@@ -58,6 +75,12 @@ export async function run(argv: readonly string[]): Promise<number> {
       return 0
     case 'serve':
       return await serveCmd(rest)
+    case 'connect':
+      return await connectCmd(rest)
+    case 'env':
+      return await envCmd(rest)
+    case 'disconnect':
+      return disconnectCmd(rest)
     case 'coordinator':
       return await coordinatorCmd(rest)
     case 'worker':

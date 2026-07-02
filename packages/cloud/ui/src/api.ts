@@ -10,6 +10,7 @@
 import { createSignal } from 'solid-js'
 
 const STORAGE_KEY = 'vx-ui:origin'
+const TOKEN_KEY = 'vx-ui:token'
 
 function defaultOrigin(): string {
   // The dev server injects this; the hosted build falls back to the page's
@@ -43,10 +44,55 @@ export function setOriginAndPersist(next: string): void {
   if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, trimmed)
 }
 
+// Bearer token for a token-gated vx serve. Persisted beside the origin;
+// empty string = no token (the open localhost default).
+function readStoredToken(): string {
+  if (typeof localStorage === 'undefined') return ''
+  return localStorage.getItem(TOKEN_KEY) ?? ''
+}
+
+const [token, setToken] = createSignal(readStoredToken())
+
+// Flipped by any 401 so the shell can surface its token prompt.
+const [unauthorized, setUnauthorized] = createSignal(false)
+
+export function getToken(): string {
+  return token()
+}
+
+export function getTokenSignal(): () => string {
+  return token
+}
+
+export function setTokenAndPersist(next: string): void {
+  const trimmed = next.trim()
+  setToken(trimmed)
+  if (typeof localStorage !== 'undefined') {
+    if (trimmed === '') localStorage.removeItem(TOKEN_KEY)
+    else localStorage.setItem(TOKEN_KEY, trimmed)
+  }
+  setUnauthorized(false)
+}
+
+export function getUnauthorizedSignal(): () => boolean {
+  return unauthorized
+}
+
+/** `?token=` suffix for EventSource/WebSocket URLs (headers unsupported there). */
+function tokenQuery(prefix: '?' | '&' = '?'): string {
+  const t = token()
+  return t === '' ? '' : `${prefix}token=${encodeURIComponent(t)}`
+}
+
 async function getJson<T>(pathname: string): Promise<T> {
-  const res = await fetch(`${origin()}${pathname}`, {
-    headers: { Accept: 'application/json' },
-  })
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  const t = token()
+  if (t !== '') headers['Authorization'] = `Bearer ${t}`
+  const res = await fetch(`${origin()}${pathname}`, { headers })
+  if (res.status === 401) {
+    setUnauthorized(true)
+    throw new Error(`${pathname}: 401 Unauthorized — this server requires a token`)
+  }
   if (!res.ok) {
     throw new Error(`${pathname}: ${res.status} ${res.statusText}`)
   }
@@ -321,12 +367,25 @@ export interface ServerVersion {
   rpc: readonly string[]
 }
 
+/** Server identity from the auth-exempt /v1/meta (no workspace path, no secrets). */
+export interface ServerMeta {
+  v: number
+  name: string
+  vx: string
+  auth: 'token' | 'open'
+  startedAt: number
+}
+
 // ---------------------------------------------------------------------------
 // Calls
 // ---------------------------------------------------------------------------
 
 export async function getVersion(): Promise<ServerVersion> {
   return await getJson<ServerVersion>('/version')
+}
+
+export async function getMeta(): Promise<ServerMeta> {
+  return await getJson<ServerMeta>('/v1/meta')
 }
 
 export interface ListInvocationsArgs {
@@ -622,7 +681,8 @@ export async function getPrunable(
  */
 export function subscribeEvents(onMessage: (event: unknown) => void): () => void {
   const origin = getOrigin()
-  const source = new EventSource(`${origin}/v1/events`)
+  // EventSource can't set headers — the token rides the query string.
+  const source = new EventSource(`${origin}/v1/events${tokenQuery()}`)
   source.onmessage = (e) => {
     try {
       onMessage(JSON.parse(e.data))
@@ -681,7 +741,8 @@ export function runTasks(tasks: readonly string[], cwd: string, h: RunHandlers):
   const wsOrigin = getOrigin().replace(/^http/, 'ws')
   let ws: WebSocket
   try {
-    ws = new WebSocket(wsOrigin)
+    // Browser WebSocket can't set headers — the token rides the query string.
+    ws = new WebSocket(`${wsOrigin}/${tokenQuery()}`)
   } catch (err) {
     h.onError(err instanceof Error ? err.message : String(err))
     return () => {}
