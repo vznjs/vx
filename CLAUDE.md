@@ -30,28 +30,39 @@ Configs:
 
 ## Repository layout
 
-Single-package project. `src/` is eight modules — each directory's
+Bun workspaces monorepo: the root `"."` member is core `@vzn/vx`
+(load-bearing — without it the root vx.config.ts stops being a
+project); `packages/*` are the integration packages; `apps/docs` is
+the docs site; `packages/cloud/ui` is a nested member (explicit root
+`workspaces` entry). Core `src/` is eight modules — each directory's
 `index.ts` is its contract; cross-module imports go through it only
-(enforced by `tests/module-boundaries.test.ts`) — plus three root
-files. Full dependency matrix in `docs/architecture.md`.
+(enforced by `tests/module-boundaries.test.ts`) — plus four root
+files. Core never imports a sibling `@vzn/vx-*`; packages import core
+only via the bare `@vzn/vx` specifier (`tests/package-boundaries.test.ts`,
+symlinked by `scripts/link-self.ts` postinstall). Full dependency
+matrix in `docs/architecture.md`.
 
 ```
 src/
   bin.ts                # shebang; wires process.argv -> cli run
-  index.ts              # public package façade (re-exports only)
+  index.ts              # public package façade (~80 exports, snapshot-pinned)
   version.ts            # VERSION constant (cycle-free leaf)
-  config.ts             # public schema (ProjectConfig, TaskConfig, …)
+  config.ts             # public schema (ProjectConfig, TaskConfig, WorkspaceConfig, Plugin)
   cli/                  # subcommand parsers + presentation
     index.ts            # contract: dispatcher + test-facing re-exports
     run.ts              # `vx run` parser, scope resolver, picker
     watch.ts            # `vx watch` re-run loop
     cache.ts            # `vx cache prune` + duration/size parsers
     lock.ts             # `vx lock` / `--check` (freeze + audit vx-lock.json)
-    migrate.ts          # `vx migrate` — detection, TS emission, overwrite guard, report
+    migrate.ts          # `vx migrate` — detection, TS emission, overwrite guard
     migrate-turbo.ts    # turbo.json → vx.config.ts mapping (+ vx-preset.ts globals)
     migrate-nx.ts       # nx project-graph.json → vx.config.ts mapping
     show.ts             # `vx show` — live resolved-config introspection
     info.ts             # `vx info` doctor printout (`vx stats` = alias)
+    upgrade.ts          # `vx upgrade` — binary self-update (bunfs detection)
+    mcp.ts              # `vx mcp` — MCP server for AI agents (stdio)
+    mcp-rpc.ts          # internal JSON-RPC methods behind the MCP tools
+    backend.ts          # RunBackend resolution (core = localBackend only)
     help.ts             # help text
     format.ts           # shared formatters (formatBytes, …)
     plan-format.ts      # --dry / --graph plan → text / JSON / DOT
@@ -59,62 +70,68 @@ src/
     index.ts            # contract: run, planRun, options/plan types, Logger
     run.ts              # run() + planRun(): discover → load → graph → schedule
     options.ts          # RunOptions / RunSummary declarations
-    prepare.ts          # shared run/planRun setup
-    plan.ts             # --dry / --graph prediction (no exec)
-    execute-task.ts     # per-task execution (cache lookup → spawn → save)
+    prepare.ts          # shared run/planRun setup (+ scoped config loading)
+    plan.ts             # --dry / --graph prediction (existence probe, no exec)
+    execute-task.ts     # per-task execution (probe/preProbed → spawn → save)
     task-hash.ts        # cache-key derivation (computeTaskHash & co.)
     upstream.ts         # filter upstream hashes for cache key
+    stable-keys.ts      # shared stable-key derivation (prefetch + shortcircuit)
+    local-shortcircuit.ts # restore-ahead classify (two-tier scheduler feed)
+    remote-prefetch.ts  # background remote GETs (LayeredCache runs only)
     remote-cache-setup.ts # VX_REMOTE_CACHE_* env → LayeredCache
-    logger.ts           # default logger + framed-output/colors/summary/tally helpers alongside
+    events.ts           # run event bus + serializable WireEvent contract
+    plugin.ts           # VxPlugin interface + installPlugins
+    plugin-host.ts      # eventSink wiring + end-of-run teardown/flush
+    telemetry.ts        # canonical telemetry contract (SCHEMA_VERSION, records)
+    telemetry-host.ts   # sink consultation (zero sinks = zero cost)
+    protocol.ts / wire.ts # delegation wire contract + JSON-RPC envelope
+    wire-render.ts      # WireEvent → Logger (delegated-run rendering)
+    worker-exec.ts      # agent-side execution primitive
+    metrics.ts          # analytics SQL layer (/v1/* + vx mcp read through it)
+    history.ts / predict.ts # opt-in predictive scheduling (experimental)
+    run-context.ts      # git/CI/host capture (≤1 spawn per run)
+    run-state.ts        # reduced run aggregate for live surfaces
+    run-report.ts       # --report=markdown table
+    run-artifacts.ts    # --summarize JSON + --profile trace writers
+    devframe-surface.ts # devframe channel/state definition (type-only dep)
+    logger.ts           # default logger + framed-output/colors/summary/tally
+    status-line.ts / framed-output.ts / summary.ts / tally.ts / colors.ts
   workspace/            # discovery + selection
-    index.ts            # contract
-    workspace.ts        # discovery: pnpm-workspace.yaml / pkg.json workspaces / bare pkg.json (+ ProjectEntry)
-    project-loader.ts   # Bun-native vx.config.* loader (content-hash bust)
-    package-graph.ts    # workspace dep graph
-    filter.ts           # pnpm-style filter DSL (-F)
-    affected.ts         # git-relative selection (--affected)
-    nested-dirs.ts      # project-boundary computation
-    fingerprint.ts      # workspace lockfile / yaml hash
+    index.ts workspace.ts project-loader.ts package-graph.ts
+    filter.ts affected.ts nested-dirs.ts fingerprint.ts
+    lockfile.ts         # vx-lock.json freeze/trust/audit
   graph/                # task graph + scheduling
-    index.ts            # contract (TaskNode/TaskOutcome/TaskStatus live here)
-    task-graph.ts       # builds TaskNode DAG from declared dependsOn
-    scheduler.ts        # parallel topo executor
-    dependency-spec.ts  # dependsOn / inputs.tasks micro-syntax parser
+    index.ts task-graph.ts dependency-spec.ts
+    scheduler.ts        # two-tier parallel topo executor (exec + restore queues)
   cache/                # local + remote cache cluster
-    index.ts            # contract (tar.ts stays internal)
-    cache.ts            # content-addressed cache (key + save/restore/ingest)
-    layered-cache.ts    # local + remote composition (byte-passthrough)
-    remote-cache.ts     # HTTP client (Turbo wire-compatible PUT/GET)
-    inputs.ts           # glob resolution + project-boundary enforcement
+    index.ts cache.ts layered-cache.ts remote-cache.ts inputs.ts tar.ts
+    cas-backend.ts / digest.ts # pluggable CAS seam (internal, artifact-store roadmap)
   exec/                 # per-task execution primitives
-    index.ts            # contract
-    runner.ts           # Bun.spawn wrapper + shellQuote + runPersistent
-    env.ts              # env composition
-    sandbox-runtime.ts  # opt-in SRT sandbox (runSandboxed)
+    index.ts runner.ts env.ts sandbox-runtime.ts
   util/                 # tiny shared helpers
-    index.ts            # contract
-    paths.ts            # tiny POSIX-path helper
-    hash.ts             # xxHash3 helpers (cache-key hashing)
-    ulid.ts             # run-id generator (Bun.randomUUIDv7 wrapper)
-    errors.ts           # UserError class — clean error output without a stack
-bench/                # synthetic-workspace generator + benchmark runner
-docs/
-  README.md         # index
-  architecture.md   # module map, dependency matrix, data flow, design principles
-  schema.md         # every config field
-  caching.md        # cache key derivation, invalidation table
-  execution.md      # what happens during a `vx run`
-  cli.md            # CLI reference (flags, filter DSL, forwarding)
-  flows.md          # per-scenario Mermaid diagrams
-  optimizations.md  # shipped-optimization catalog + invariants
-  modules/<name>.md # per-module reference
-  design/           # forward-looking proposals
-.claude/agents/     # subagent definitions
-tsconfig.json
-package.json
-bun.lock
-.oxlintrc.json      # lint config
-.oxfmtrc.json       # format config
+    index.ts paths.ts hash.ts ulid.ts errors.ts
+packages/
+  cloud/                # @vzn/vx-cloud — the client/server service (self-contained)
+    src/
+      plugin.ts         # cloud() plugin: telemetry/backend/cache capabilities
+      environments.ts   # per-user environments.json (connect targets)
+      serve-info.ts     # per-user local serve advertisement
+      ingest-store.ts   # server-side run history (pushed summaries)
+      protocol-dist.ts  # worker:*/coord:* distribution messages
+      coordinator-prepare.ts
+      cli/              # vx-cloud dispatcher: serve, connect/env/disconnect,
+                        # coordinator, worker, dev, backend, ui-asset/server
+    ui/                 # the dashboard SPA (Solid + UnoCSS + json-render views)
+    deploy/             # Dockerfile context + Helm chart skeleton
+  vx-otel/              # @vzn/vx-otel — otel() telemetry plugin (OTLP JSON, no SDK)
+apps/docs/              # Astro Starlight docs site (imports docs/)
+bench/                  # synthetic-workspace generator + benchmark runner
+docs/                   # source of truth: architecture, caching, cli, execution,
+                        # schema, flows, optimizations, comparison, modules/<name>.md,
+                        # design/ (proposals + the 2026-07 consulting review)
+.claude/agents/         # subagent definitions
+vx.workspace.ts         # declares otel() + cloud() plugins (both decline unconfigured)
+tsconfig.json / package.json / bun.lock / .oxlintrc.json / .oxfmtrc.json
 ```
 
 ## Workflow
@@ -169,6 +186,93 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
    another project's dir.
 
 ## Decision log
+
+- **2026-07-02**: **Full consulting engagement — audit, docs unification,
+  client/server architecture, core fixes, UI stabilization** (owner: "review
+  all the code from 1st June. Unify whole documentation, document issues,
+  arch drifts, propose better changes… vx cloud needs to work like Arcane
+  (docker): a client that connects to a server, local or deployed…
+  flexible remote and local… redo UI… performance is still the king…
+  extensible with plugins like vite", then "many workspaces… CI like nx
+  agents… figure out whole dev flows", then "projects run tasks or
+  schedule tasks… vx-cloud agent registers with workspace and context id…
+  like DTE in NX… Unix socket like docker… AI agents should easily
+  connect"). A 7-area parallel audit (git history, top-level docs, module
+  docs, core arch, cloud arch, UI/UX, tests; ~100 file:line-evidenced
+  findings) drove five shipped waves + three design docs:
+  **(1) Consulting report** `docs/design/consulting-review-2026-07.md` —
+  issues register (~45 items, ~half fixed in-engagement), drift log, flow
+  maps, process findings (the #1 cost driver is same-day build-then-delete
+  churn: vx-http 54min, Cytoscape 2h, CF stack 6h, dashboard rewritten 4×
+  in one day; `predictive` shipped silently), P0-P3 roadmap.
+  **(2) Client/server design** `cloud-client-server-2026-07.md` +
+  **environments layer SHIPPED**: docker-context-style per-user
+  `environments.json` (NOT Arcane's server-side agent registry — vx's data
+  flow is client-push), `vx-cloud connect <url>` / `env ls|use|rm` /
+  `disconnect`, resolution ladders (opts > env vars > active environment >
+  local serve-info > decline; backend delegates only with explicit
+  `delegate: true`), serve `--token` auth (SHA-256 + timingSafeEqual,
+  `?token=` for EventSource/WS, `/version` moved behind the token),
+  pre-auth `GET /v1/meta` identity, WS bearer, UI token + server badge.
+  Zero core changes; zero-overhead decline pinned by tests.
+  **(3) Core fixes** (all audit-driven): inflight-join no longer reuses a
+  stale preProbed miss (joiner now cache-hits the sibling's artifact);
+  plugin `teardown()` + `EventSink.flush()` actually invoked at end-of-run
+  (crash-isolated, 3s-bounded) — they were documented API core never
+  called; LayeredCache remote PUTs made genuinely fire-and-forget
+  (bounded background set + `drainUploads()` before close — save() no
+  longer holds a worker slot for the upload RTT); `--dry`/`--graph` on a
+  remote cache uses a new `CacheLayer.has` existence probe (local SQL +
+  remote HEAD) instead of downloading+ingesting every artifact; prune
+  IN-lists chunked at 900; stats counts remote hits; persistent-child
+  output buffering stops at ready (heap leak); mcp reports real VERSION;
+  `telemetry` added to config's structural Plugin type; false cache.ts
+  comments deleted; dead surfaces removed (PreparedRun.history,
+  RunOptions.report, CAS exports off the façade — modules stay as the
+  artifact-store seam); metrics drift-guard test (every query runs against
+  a fresh schema in the gate); IngestStore warns loudly on schema-gate
+  history wipe (was silent data loss). Also `shouldShortCircuit` now
+  gates off LayeredCache (the documented rule the code missed — the
+  awaited classify would put N remote GETs on the critical path). Warm
+  perf at parity (paired A/B vs pre-wave baseline: median delta +4ms,
+  4/4 split). No CACHE_VERSION/SCHEMA bump anywhere.
+  **(4) Docs unified**: every top-level doc reconciled against code
+  (caching.md had the wrong hash algo + version; comparison/schema
+  advertised owner-REJECTED features; architecture.md predated the
+  monorepo split), 20 new `docs/modules/` pages (telemetry, plugin,
+  events, stable-keys, local-shortcircuit, metrics, lockfile, mcp, …),
+  module index regenerated, this file's repo layout rewritten (was
+  missing ~25 shipped files).
+  **(5) UI stabilized, NOT rewritten** (5th-rewrite temptation explicitly
+  rejected): capabilities signal gates hosted-mode surfaces behind honest
+  hints (was fake "no data"); run detail gained the INVOCATION header
+  (branch/commit/dirty/CI/tags/policy/workers/command); error+loading
+  states everywhere; compare renders negative deltas; cockpit shows
+  predicted hit/miss chips on queued cards + solid-store log accumulation
+  (no per-chunk record clone); IA: cockpit is home with a colocated
+  workspace, hosted lands on Runs, nav Run-first; ~200 LOC dead code
+  removed. Verified over Playwright: every route + live run + ingested
+  run detail/compare, 0 console errors.
+  **(6) Dev-flows + CI design** `dev-flows-ci-agents-2026-07.md`:
+  workspace identity as TELEMETRY_SCHEMA_VERSION 2 (stable id from git
+  remote; server stores + UI switcher keyed by it — the "many workspaces
+  on one serve" keystone), CI tiers (A: env-var ingest works TODAY; B:
+  one-URL connect after the serve-hosted artifact store; C: **vx agents**
+  = Nx-DTE-style session-keyed distribution on the existing
+  coordinator/worker skeleton — same-checkout contract like real Nx
+  Agents, NO input shipping, outputs propagate between agents via the
+  shared cache, registration keyed {workspaceId, session, commitSha},
+  the submitting runner self-registers as an agent so local+remote mix),
+  full dev-flow catalog, unified phasing. Addendum (owner refinement):
+  run-vs-schedule lands on the existing RunBackend seam (no per-task
+  `schedule:` field); unix-socket transport as the hardened local option
+  (browser UI keeps TCP); **MCP on the serve** as the AI-agent control
+  plane (thin adapter over /v1, Phase 2, independent). KNOWN-OPEN handed
+  to the roadmap: workspace identity (next increment), delegation
+  self-ingest (needs the one core `RunOptions.telemetrySinks` decision),
+  serve-hosted artifact store (Phase 3 — the highest-value remote piece),
+  isOutputsCurrent content hash, output-test repin churn, test
+  serve-advertisement clobbering (unpinned VX_CLOUD_SERVE_INFO).
 
 - **2026-06-28**: **Stable local cache hits restore AHEAD of their deps —
   two-tier scheduler** (owner saw `@vzn/vx-docs#build` waiting on
