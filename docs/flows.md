@@ -31,10 +31,12 @@ sequenceDiagram
     Note over I: declared outputs wiped so the tree ends<br/>bit-identical to what gets cached
     X->>R: runCommand(command, env, projectDir)
     R-->>X: exitCode, cpuMs, peakRss (streams live via logger)
-    alt exitCode == 0 and cache enabled
-        X->>C: save({hash, outputs, stdout})
-        Note over C: pack tar.zst (stdout + outputs/*) →<br/>tmp file → atomic rename → SQLite row<br/>(+ fire remote PUT when layered)
-        X->>X: drop project's gitFilesCache entry<br/>(outputs changed the tree)
+    alt exitCode == 0 and writes enabled
+        X->>X: re-fold key with captureInto<br/>(per-component input fingerprint, miss-only)
+        X->>C: save({hash, outputs, stdout, inputComponents})
+        Note over C: pack tar.zst (stdout + outputs/*) →<br/>tmp file → atomic rename → one SQLite txn<br/>(entries + output_files + entry_inputs)<br/>(+ background remote PUT when layered)
+        X->>I: markOutputsChanged(written rel paths)
+        Note over I: the project's git snapshot notes the changed<br/>paths — a downstream task re-spawns git only<br/>when its input globs can actually match them
     else exitCode != 0
         Note over X: nothing cached; failure streams live,<br/>dependents get skipped by the scheduler
     end
@@ -97,9 +99,48 @@ layered cache reports through `onRemoteError` and the task degrades
 to a miss — remote problems never fail a run.
 
 The write side is the mirror image: `LayeredCache.save` writes the
-local artifact first, then uploads the same bytes verbatim
-(`PUT /v8/artifacts/:hash`), awaited before `save()` resolves, errors
-routed to `onRemoteError`.
+local artifact synchronously, then uploads the same bytes verbatim
+(`PUT /v8/artifacts/:hash`) as a **fire-and-forget background task**
+— the task's outcome never waits on upload latency; `run()` drains
+all in-flight uploads before closing the cache. Errors route to
+`onRemoteError`.
+
+In practice most remote hits never reach the lazy path above: the
+**prefetch** pass (flow 3b) has already ingested them by the time
+`execute-task` probes.
+
+## 3b. Run pipeline — classify, prefetch, two-tier schedule
+
+Owners: `orchestrator/run.ts` (wiring),
+`orchestrator/stable-keys.ts` (the shared stability gate),
+`orchestrator/remote-prefetch.ts`,
+`orchestrator/local-shortcircuit.ts`, `graph/scheduler.ts`.
+
+```mermaid
+flowchart TD
+    A[prepareRun done<br/>graph + cache ready] --> B{cache layered<br/>remote configured?}
+    B -->|yes| P[startRemotePrefetch<br/>derive STABLE keys upfront]
+    P --> P2[background pool: remote GETs<br/>overlap execution, ≤1 per key,<br/>hits ingest into local]
+    B -->|no, local reads on,<br/>≥1 dep edge| L[startLocalShortCircuit<br/>derive STABLE keys upfront]
+    L --> L2[probe local cache.get ONCE per task<br/>→ preProbed map hits + misses]
+    L2 --> L3[confirmed hits → restoreTier set]
+    P2 --> S
+    L3 --> S[runGraph — two ready queues]
+    B -->|neither| S
+    S --> Q1[execReady: dep-gated,<br/>misses + unstable tasks,<br/>NORMAL priority]
+    S --> Q2[restoreReady: ready IMMEDIATELY,<br/>LOW priority backfill only]
+    Q1 --> W[worker slots<br/>drain execReady FIRST]
+    Q2 --> W
+    W --> X[executeTask reuses preProbed —<br/>no second cache.get]
+```
+
+The stability gate is shared: a task whose input globs could match a
+same-project upstream's declared outputs (or whose workspace-file
+inputs overlap an upstream's workspace outputs) has a preliminary key
+and is never probed early — it stays dep-gated with the always-correct
+lazy read-through. Restore-tier tasks also bypass the failed-dep→skip
+check (their key is dep-success-independent). Any error in
+classification degrades to the plain schedule.
 
 ## 4. Failure propagation through the graph
 
@@ -221,7 +262,7 @@ bump inherent to probing.
 ```mermaid
 flowchart LR
     A[prepareRun<br/>discover → load → graph] --> B[per node:<br/>same key derivation<br/>as a real run]
-    B --> C[cache.get probe]
+    B --> C[local probe: cache.get<br/>remote probe: HEAD existence check<br/>no download, no ingest]
     C --> D{format}
     D -->|--dry| E[human table:<br/>task, hash, predicted hit/miss]
     D -->|--dry=json| F[machine JSON]
@@ -230,4 +271,6 @@ flowchart LR
 
 Because the plan path and `execute-task` share the same key
 derivation helpers, a predicted hit is exactly what the real run
-would see (same process, same env, same tree).
+would see (same process, same env, same tree). Against a remote
+layer, planning uses a lightweight existence probe — a predicted
+`hit-remote` moves no artifact bytes.

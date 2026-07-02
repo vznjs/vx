@@ -53,11 +53,14 @@ config hash and per-task forwarded-args fold — are documented in
 
 ### Input enumeration
 
-| Pattern                                                         | Source     | vx source                                      |
-| --------------------------------------------------------------- | ---------- | ---------------------------------------------- |
-| Defer to `git ls-files` for tracked + untracked-but-not-ignored | Turbo + Nx | `src/cache/inputs.ts:214` ("Turbo / Nx model") |
-| Project-boundary enforcement (no cross-project globs)           | Turbo + Nx | `src/workspace/nested-dirs.ts`                 |
-| Fallback walker when git not present                            | Turbo      | `src/cache/inputs.ts`                          |
+| Pattern                                                         | Source     | vx source                                    |
+| --------------------------------------------------------------- | ---------- | -------------------------------------------- |
+| Defer to `git ls-files` for tracked + untracked-but-not-ignored | Turbo + Nx | `src/cache/inputs.ts` ("Turbo / Nx model")   |
+| Git blob OIDs as per-file content hashes (index-harvested)      | Turbo      | `src/cache/inputs.ts` + `src/cache/cache.ts` |
+| Project-boundary enforcement (no cross-project globs)           | Turbo + Nx | `src/workspace/nested-dirs.ts`               |
+
+(vx hard-requires git — there is no fallback walker; a non-repo
+workspace gets a clean `UserError` telling the user to `git init`.)
 
 ### `dependsOn` micro-syntax
 
@@ -97,28 +100,27 @@ Turbo/Nx vocabulary: `src/workspace/project-loader.ts:142`.
 
 ### Cache topology
 
-| Layer                                    | Turbo                              | Nx                 | vx                                         | vx source                                              |
-| ---------------------------------------- | ---------------------------------- | ------------------ | ------------------------------------------ | ------------------------------------------------------ |
-| Local: per-hash directory                | tarball-per-hash in `.turbo/cache` | `.nx/cache` SQLite | SQLite + on-disk under `.vx/cache/<hash>/` | `src/cache/cache.ts`                                   |
-| Local: hardlink-based restore            | yes                                | yes                | yes                                        | `src/cache/cache.ts:813` ("Same shape Turbo / Nx use") |
-| Read-through then write-through layering | yes                                | yes                | yes                                        | `src/cache/layered-cache.ts`                           |
-| Run-history table for analytics          | (no — `--summarize` JSON)          | (Nx Cloud)         | `runs` table in `cache.db`                 | `src/cache/cache.ts`                                   |
+| Layer                                    | Turbo                              | Nx                 | vx                                               | vx source                    |
+| ---------------------------------------- | ---------------------------------- | ------------------ | ------------------------------------------------ | ---------------------------- |
+| Local: content-addressed artifacts       | tarball-per-hash in `.turbo/cache` | `.nx/cache` SQLite | SQLite index + `<hash>.tar.zst` in `.vx/cache/`  | `src/cache/cache.ts`         |
+| Local: skip-restore when tree is current | yes (fingerprint check)            | yes                | yes — `isOutputsCurrent` stat check → up-to-date | `src/cache/cache.ts`         |
+| Read-through then write-through layering | yes                                | yes                | yes                                              | `src/cache/layered-cache.ts` |
+| Run-history table for analytics          | (no — `--summarize` JSON)          | (Nx Cloud)         | `runs` + `invocations` tables in `cache.db`      | `src/cache/cache.ts`         |
 
 ### Remote cache wire
 
 We speak Turbo's wire **verbatim**, so any compatible cache server (the
 ones below) works without a shim.
 
-| Endpoint / header                                 | Turbo spec         | vx source                              |
-| ------------------------------------------------- | ------------------ | -------------------------------------- |
-| `HEAD/GET/PUT /v8/artifacts/<hash>?teamId=&slug=` | `vercel/turborepo` | `src/cache/remote-cache.ts:8-10`       |
-| `POST /v8/artifacts` batch existence              | `vercel/turborepo` | `src/cache/remote-cache.ts:11`         |
-| `x-artifact-duration` request header              | `vercel/turborepo` | `src/cache/remote-cache.ts:30, 78`     |
-| `x-artifact-tag` HMAC header (request + response) | `vercel/turborepo` | `src/cache/remote-cache.ts:32, 80`     |
-| `x-artifact-client-ci`, `…interactive`            | `vercel/turborepo` | `src/cache/remote-cache.ts:34, 36, 81` |
-| Tenant params `teamId=` / `slug=`                 | `vercel/turborepo` | `src/cache/remote-cache.ts:22`         |
+| Endpoint / header                                 | Turbo spec         | vx source                                                            |
+| ------------------------------------------------- | ------------------ | -------------------------------------------------------------------- |
+| `GET/PUT /v8/artifacts/<hash>?teamId=&slug=`      | `vercel/turborepo` | `src/cache/remote-cache.ts`                                          |
+| `HEAD /v8/artifacts/<hash>` existence probe       | `vercel/turborepo` | `src/cache/remote-cache.ts` (used by `--dry` / `--graph` prediction) |
+| `x-artifact-duration` header                      | `vercel/turborepo` | `src/cache/remote-cache.ts`                                          |
+| `x-artifact-tag` HMAC header (request + response) | `vercel/turborepo` | `src/cache/remote-cache.ts`                                          |
+| Tenant params `teamId=` / `slug=`                 | `vercel/turborepo` | `src/cache/remote-cache.ts`                                          |
 
-Compatibility matrix (verified working as of v15):
+Compatibility matrix:
 `ducktors/turborepo-remote-cache`, `Fox32/openturbo-remote-cache`,
 Vercel hosted Turborepo cache.
 
@@ -129,12 +131,12 @@ Inside the tar we depart from Turbo (we don't mimic Turbo's
 SQLite). But the **on-the-wire framing** stays POSIX-tar so any
 Turbo-aware cache server can transit our blobs unchanged.
 
-| Pattern                                       | Source                                        | vx source                                       |
-| --------------------------------------------- | --------------------------------------------- | ----------------------------------------------- |
-| POSIX ustar headers (no PAX)                  | Turbo (Rust `tar` crate, `Header::new_gnu()`) | `src/cache/cache.ts:831` (`tar --format=ustar`) |
-| No AppleDouble `._*` companions               | Turbo (in-process writer, no recurse)         | `src/cache/cache.ts:831` (`COPYFILE_DISABLE=1`) |
-| Extract-side filter strips legacy PAX + `._*` | (vx-only defense-in-depth)                    | `src/cache/tar.ts:129-153`                      |
-| zstd compression on the wire                  | Turbo                                         | `src/cache/cache.ts` (tar.zst artifacts)        |
+| Pattern                                       | Source                                        | vx source                               |
+| --------------------------------------------- | --------------------------------------------- | --------------------------------------- |
+| POSIX ustar headers (no PAX), in-process pack | Turbo (Rust `tar` crate, `Header::new_gnu()`) | `src/cache/tar.ts` (hand-rolled writer) |
+| No AppleDouble `._*` companions               | Turbo (in-process writer, no recurse)         | `src/cache/tar.ts`                      |
+| Extract-side filter strips legacy PAX + `._*` | (vx-only defense-in-depth)                    | `src/cache/tar.ts`                      |
+| zstd compression on the wire                  | Turbo                                         | `Bun.zstdCompress` (tar.zst artifacts)  |
 
 ### Scheduler + execution
 
@@ -152,34 +154,35 @@ Turbo-aware cache server can transit our blobs unchanged.
 | Pattern                                                            | Source     | vx source                              |
 | ------------------------------------------------------------------ | ---------- | -------------------------------------- |
 | Glob-based `outputs` declaration                                   | Turbo + Nx | `src/config.ts`, `src/cache/inputs.ts` |
-| Restore by file (not symlink), preserve mtime                      | Turbo + Nx | `src/cache/cache.ts`                   |
-| Hardlinks point into cache; tree is read-only by convention        | Turbo      | `src/cache/cache.ts:813-831`           |
+| Restore by file (tar extract, not symlink/hardlink)                | Turbo + Nx | `src/cache/tar.ts` (`extractOutputs`)  |
 | Log replay on cache hit                                            | Turbo + Nx | `src/orchestrator/execute-task.ts`     |
 | **Wipe outputs before exec AND before restore** (strict ownership) | (vx-only)  | `src/cache/inputs.ts` (`cleanOutputs`) |
 
 ### CLI conventions
 
-| Flag / behavior                       | Source       | vx source                           |
-| ------------------------------------- | ------------ | ----------------------------------- |
-| `--` separator forwards args to task  | Turbo        | `src/cli/run.ts`                    |
-| `--filter` DSL (pnpm shape)           | Turbo + pnpm | `src/workspace/filter.ts`           |
-| `--concurrency <n>`                   | Turbo        | `src/cli/run.ts`                    |
-| `--no-cache` + `--force` synonyms     | Turbo        | `src/cli/run.ts`                    |
-| `--dry` / `--dry=json` (plan output)  | Turbo        | `src/orchestrator/plan.ts`          |
-| `--graph[=<path>]` (DOT)              | Turbo + Nx   | `src/cli/plan-format.ts`            |
-| `--summarize[=<path>]` (per-run JSON) | Turbo        | `src/orchestrator/run-artifacts.ts` |
-| `--profile[=<path>]` (Chrome-trace)   | Turbo        | `src/orchestrator/run-artifacts.ts` |
-| `--affected[=<base>]`                 | Turbo + Nx   | `src/workspace/affected.ts`         |
-| `watch <task>` subcommand             | Turbo + Nx   | `src/cli/watch.ts`                  |
+| Flag / behavior                                                                    | Source         | vx source                           |
+| ---------------------------------------------------------------------------------- | -------------- | ----------------------------------- |
+| `--` separator forwards args to task                                               | Turbo          | `src/cli/run.ts`                    |
+| `--filter` DSL (pnpm shape)                                                        | Turbo + pnpm   | `src/workspace/filter.ts`           |
+| `--concurrency <n>`                                                                | Turbo          | `src/cli/run.ts`                    |
+| `--no-cache` (all off) / `--force` (reads off, writes on) — distinct, not synonyms | Turbo-adjacent | `src/cli/run.ts`                    |
+| `--dry` / `--dry=json` (plan output)                                               | Turbo          | `src/orchestrator/plan.ts`          |
+| `--graph[=<path>]` (DOT)                                                           | Turbo + Nx     | `src/cli/plan-format.ts`            |
+| `--summarize[=<path>]` (per-run JSON)                                              | Turbo          | `src/orchestrator/run-artifacts.ts` |
+| `--profile[=<path>]` (Chrome-trace)                                                | Turbo          | `src/orchestrator/run-artifacts.ts` |
+| `--affected[=<base>]`                                                              | Turbo + Nx     | `src/workspace/affected.ts`         |
+| `watch <task>` subcommand                                                          | Turbo + Nx     | `src/cli/watch.ts`                  |
 
 ### Output presentation
 
-| Pattern                                      | Source | vx source                                                                           |
-| -------------------------------------------- | ------ | ----------------------------------------------------------------------------------- |
-| Framed per-task blocks (`┌─ task ─┐`)        | Turbo  | `src/orchestrator/framed-output.ts:1, 18` ("Turbo-style header", "matches Turbo's") |
-| End-of-run summary (Tasks / Cached / Time)   | Turbo  | `src/orchestrator/summary.ts:1` ("Turbo-style end-of-run summary")                  |
-| `>>> FULL TURBO`-style 100%-cached banner    | Turbo  | `src/orchestrator/summary.ts:36` (`Mirrors Turbo's >>> FULL TURBO`)                 |
-| Per-task output buffered until task finishes | Turbo  | `src/orchestrator/logger.ts:37` ("same as Turbo")                                   |
+| Pattern                                              | Source                                           | vx source                                      |
+| ---------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------- |
+| Framed per-task blocks (`┌─ … └─`)                   | Turbo                                            | `src/orchestrator/framed-output.ts`            |
+| End-of-run summary footer (task/cache meters + time) | Turbo-adjacent (vx renders meters, not a banner) | `src/orchestrator/summary.ts`                  |
+| Per-task output buffered until task finishes         | Turbo                                            | `src/orchestrator/logger.ts` ("same as Turbo") |
+
+(There is no `>>> FULL TURBO`-style all-cached banner — a fully-green
+cache meter carries the message.)
 
 ## Performance
 
@@ -200,8 +203,9 @@ For features Turbo or Nx have that vx **lacks**, see
 [`comparison.md` § Gaps](./comparison.md#gaps-for-vznvx).
 
 For places vx made a deliberately different call (TypeScript config,
-resolved-config hash, strict output ownership, no plugins, no daemon,
-no TUI), see [`comparison.md` § Where vx is ahead](./comparison.md#where-vx-is-ahead)
+resolved-config hash, strict output ownership, no executor plugins,
+no daemon, no TUI), see
+[`comparison.md` § Where vx is ahead](./comparison.md#where-vx-is-ahead)
 and [`README.md`](./README.md#what-vzn-vx-is).
 
 ## Quick citation index

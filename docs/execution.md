@@ -8,38 +8,60 @@ terminal and a task succeeding or failing. Read it alongside
 ## End-to-end timeline
 
 ```
- ┌─ CLI dispatch (src/bin.ts → src/cli.ts → src/cli/run.ts)
+ ┌─ CLI dispatch (src/bin.ts → src/cli/index.ts → src/cli/run.ts)
  │    1. bin.ts spawns; forwards process.argv to cli.run().
- │    2. cli.ts dispatches by subcommand (run / cache / help / version).
- │    3. cli/run.ts:parseRunArgs(argv) → RunArgs (validated).
+ │    2. cli/index.ts dispatches by subcommand (run / watch / cache /
+ │       lock / migrate / upgrade / show / info / mcp / help / version;
+ │       serve / dev / coordinator / worker redirect to vx-cloud).
+ │    3. cli/run.ts:parseRunArgs(argv) → RunArgs (validated; resolves
+ │       the 4-axis cache policy from --cache / --no-cache / --force).
  │    4. cli/run.ts:runCmd resolves the project scope:
  │         - bare positionals respect --all / --filter / --affected / cwd
  │         - anchored positionals (pkg#task) target directly
  │         - no positionals + TTY → interactive picker → pkg#task
- │    5. Programmatic options are assembled and orchestrator.run() is
- │       called.
+ │    5. The options map to a RunRequest; the run BACKEND is resolved —
+ │       a plugin's `backend` capability wins (e.g. @vzn/vx-cloud
+ │       delegation), else core's in-process localBackend. --dry /
+ │       --graph short-circuit into planRun instead.
  │
- ├─ Workspace setup (src/orchestrator.ts:run)
+ ├─ Prepare (src/orchestrator/prepare.ts:prepareRun — shared with planRun)
  │    1. findWorkspaceRoot(cwd) — walks up; first match wins across
  │       pnpm-workspace.yaml, package.json with a `workspaces` field
  │       (npm/yarn/bun), or a bare package.json (single-project mode).
  │    2. loadWorkspace — parses the appropriate manifest. Bun.YAML
  │       for pnpm; Bun.file().json() for the package.json forms.
  │    3. loadWorkspaceConfig — optional vx.workspace.{ts,mts,js,mjs}
- │       at the root. Validates shape; returns null if absent.
+ │       at the root (concurrency / cacheDir / plugins / predictive).
  │    4. listProjects — globs every workspace member's package.json,
  │       finds sibling vx.config.* files, detects duplicate package
  │       names (hard error with both paths).
- │    5. loadProjectConfig — per project. Native Bun await import()
- │       with a content-hash query-string bust so config edits across
- │       same-process calls are picked up. Loader validates each
- │       TaskConfig shape (UserError on malformed).
+ │    5. SCOPED config loading — only in-scope projects plus their
+ │       transitive dependency closure evaluate ('^task' frontier
+ │       expansion never escapes the closure). Under --frozen, configs
+ │       load from vx-lock.json after a content-hash tripwire — no
+ │       evaluation, frozen-env semantics; a missing lock or entry is
+ │       a hard UserError. Otherwise loadProjectConfig per project:
+ │       native Bun await import() with a content-hash query-string
+ │       bust; the loader validates each TaskConfig shape.
  │    6. buildPackageGraph — workspace dep edges from package.json.
  │    7. computeNestedProjectDirs — set of projects rooted inside each
- │       project. Passed to every glob pass for boundary enforcement.
- │    8. computeWorkspaceFingerprint — sha256 over every supported
+ │       project, computed over EVERY config-bearing project (loaded
+ │       or not) for boundary enforcement.
+ │    8. computeWorkspaceFingerprint — xxh3 over every supported
  │       lockfile + pnpm-workspace.yaml found at the root. Computed
  │       once; reused for every task's cache key.
+ │    9. expandRequested → buildTaskGraph (see below).
+ │   10. Cache open: new Cache(cacheDir, { read, write }) with the
+ │       policy's local slice. A plugin's `cache` capability may wrap
+ │       or replace it; else wrapWithRemoteCache layers the env-var
+ │       Turbo-wire remote when VX_REMOTE_CACHE_URL + _TOKEN are set.
+ │   11. Bulk git populate — ONE `git ls-files -s --others` (plus one
+ │       `git status --porcelain`) at the root fills the per-project
+ │       GitFilesCache with file lists + index OIDs.
+ │   12. Predictive priorities (opt-in via defineWorkspace(
+ │       { predictive: true })): history p50s from cache.db →
+ │       expected-critical-path weights for the scheduler. Fails open
+ │       to the baseline.
  │
  ├─ Task selection (graph/task-graph.ts:expandRequested)
  │    Bare task names fan out across the resolved candidate projects
@@ -58,14 +80,23 @@ terminal and a task succeeding or failing. Read it alongside
  │    Excluded edges (per --excludeDependencies) are dropped.
  │    Detect cycles — throws with the path.
  │    Each node carries: id (`${project}#${task}`), projectName,
- │    projectDir, taskName, config, sorted deps, `requested: boolean`
- │    (was this an explicit user request vs a dep-pulled expansion).
+ │    projectDir, taskName, config, sorted deps, `requested: boolean`.
+ │    markSurfacedDeps then flags the display-only `surfaced` tasks a
+ │    requested GROUP stands for (transparent folders).
  │
- ├─ Cache construction
- │    1. new Cache(cacheDir) — local SQLite + on-disk v13 store.
- │    2. wrapWithRemoteCache(local, log) — when VX_REMOTE_CACHE_URL +
- │       _TOKEN are set, wraps in LayeredCache(local, remote).
- │    3. Either way, executeTask consumes the `CacheLayer` interface.
+ ├─ Plugins + telemetry (src/orchestrator/run.ts)
+ │    When vx.workspace.ts declares plugins:
+ │      1. installPlugins — each plugin's optional setup() hook runs;
+ │         a throw aborts the run with a clean UserError naming it.
+ │      2. subscribeEventSinks — each `eventSink` capability attaches
+ │         to the bus via wireForwarder (isolated; deprecated path).
+ │      3. Run context capture — ONE git spawn (commit + branch; dirty
+ │         reuses the GitFilesCache's status), CI-env detection,
+ │         host/os/arch. Never fails a run.
+ │      4. subscribeTelemetry — collects every plugin's TelemetrySink;
+ │         with ZERO sinks it returns undefined and NOTHING subscribes
+ │         (the no-telemetry hot path is byte-identical).
+ │    With no plugins declared, all four steps are skipped entirely.
  │
  ├─ Run-level state
  │    • runId   — ULID stamped once per `vx run` invocation; every
@@ -73,7 +104,7 @@ terminal and a task succeeding or failing. Read it alongside
  │    • runStartHrTimeNs — hrtime.bigint() anchor; per-task wallclock
  │                spans are stored relative to it.
  │    • persistentRegistry — Map<taskId, Subprocess> of long-running
- │                children. SIGTERMed at end-of-run.
+ │                children.
  │    • liveChildren — Set<Subprocess> of in-flight children; the
  │                runner adds/removes each around its spawn.
  │    • SIGINT/SIGTERM handlers (removed in a finally): on signal,
@@ -81,13 +112,36 @@ terminal and a task succeeding or failing. Read it alongside
  │                persistentRegistry, close the cache, exit 128+signo
  │                (SIGINT → 130, SIGTERM → 143).
  │
- ├─ Scheduling (src/graph/scheduler.ts:runGraph)
- │    Up to N tasks concurrently, ordered topologically.
- │    For each ready node: execute(node, upstream) → TaskOutcome.
- │    On failure: dependents are marked `skipped` (exit code 1,
- │      durationMs 0, no spawn); independent siblings keep running.
+ ├─ Cache acceleration (before scheduling)
+ │    • REMOTE PREFETCH (LayeredCache runs only) — derive every
+ │      stable-key cacheable task's key up front (reusing the run's
+ │      hashCache memo) and fire the remote GETs in the background
+ │      under a bounded pool. Not awaited before scheduling (the
+ │      overlap is the point); drained before cache.close(). At most
+ │      one remote GET per key (shared in-flight map with the lazy
+ │      read-through).
+ │    • LOCAL SHORT-CIRCUIT (local-only runs with local reads on and
+ │      ≥1 dep edge) — derive the same stable keys and probe local
+ │      cache.get ONCE per task → a `preProbed` map (hits AND stable
+ │      misses; execute reuses these probes) + a `restoreTier` set
+ │      (confirmed hits). Awaited before scheduling; never throws
+ │      (degrades to the normal schedule).
+ │
+ ├─ Scheduling (src/graph/scheduler.ts:runGraph — two-tier)
+ │    Up to N tasks concurrently over two ready queues:
+ │      - EXEC tier — dep-gated; ready when every dep completed.
+ │        Priority: transitive-reverse-dependent count (bitset
+ │        closure), optionally overridden by predictive weights.
+ │      - RESTORE tier — confirmed stable local hits; ready
+ │        IMMEDIATELY (no dep gate, no failed-dep→skip check — their
+ │        key is dep-independent) at LOW priority. The drain rule:
+ │        exec-tier first, so misses own the worker pool and restores
+ │        backfill idle capacity.
+ │    On failure: exec-tier dependents are marked `skipped` (exit 1,
+ │    durationMs 0, no spawn); independent siblings keep running.
  │    The scheduler doesn't know about caching; the execute callback
- │    is the seam.
+ │    is the seam. (A service run with a shared `inflight` map dedupes
+ │    identical-hash tasks across concurrent runs here too.)
  │
  ├─ Per-task execution (src/orchestrator/execute-task.ts:executeTask)
  │    Each task takes one of three paths:
@@ -105,59 +159,91 @@ terminal and a task succeeding or failing. Read it alongside
  │            - no readyWhen → immediately on spawn
  │            - readyWhen matches the output (complete lines OR the
  │              trailing partial line) → on that match
- │            - child exits before either → reject with the captured stderr
+ │            - child exits before either → reject with the captured
+ │              stderr
+ │            - exec.timeout elapses first → SIGTERM + fail
  │       4. On ready: stash child in persistentRegistry; return
  │          success. Downstream tasks unblock.
- │       5. End-of-run: orchestrator SIGTERMs every registry entry
- │          and waits for exit.
  │       Note: cache + persistent is a config error (rejected by the
  │       project loader). Persistent tasks never write to cache.
  │
  │    C. NORMAL — `exec.command` only.
- │       1. resolveInputs(files, env)
- │            - glob inputs.files (gitignore-aware, declared-outputs-
+ │       1. resolveInputs(files, env, runtime)
+ │            - glob inputs.files (git-backed, declared-outputs-
  │              excluded, nested-projects-excluded)
  │            - glob inputs.workspaceFiles from the WORKSPACE ROOT
  │              (git-aware, NO boundary rule — the documented escape
  │              hatch); resolved paths join the same input list
  │            - read host process.env values for inputs.env names
- │       2. hashTaskConfig (resolved config JSON)
- │       3. hashProjectPackageJson (project package.json bytes)
- │       4. filterUpstreamHashes (apply cache.inputs.tasks filter)
- │       5. cache.key({ taskId, workspaceFingerprint,
+ │            - resolve inputs.runtime / workspaceRuntime command
+ │              output (deduped per run; non-zero exit fails the run)
+ │       2. hashTaskConfig + project package.json hash (both memoized
+ │          per run via HashCache)
+ │       3. filterUpstreamHashes (apply cache.inputs.tasks filter)
+ │       4. cache.key({ taskId, workspaceFingerprint,
  │                      projectPackageJsonHash, taskConfigHash,
- │                      envValues, inputFiles, upstreamHashes,
- │                      forwardArgs }) → 16-hex xxh3
- │       6. If cache is on AND `cache` block exists:
+ │                      forwardArgs, envValues, runtimeValues,
+ │                      workspaceRuntimeValues, upstreamHashes,
+ │                      inputFiles }) → 16-hex xxh3
+ │          (Skipped when the local short-circuit pre-derived it.)
+ │       5. If willRead (cache block + a read axis on):
+ │            consume the up-front probe when present, else
  │            cache.get(hash)
- │              · hit → cleanOutputs → restoreOutputs → replay logs →
- │                       return cache-hit (durationMs = restore op time)
- │              · miss → fall through; cleanOutputs first so a stale
- │                       prior build can't survive the fresh exec
- │       7. Build isolated env.
- │       8. runCommand → Bun.spawn shell with `command` + forwardArgs
- │          (shell-quoted). Buffer chunks via onStdout/onStderr (the
- │          logger flushes them as one framed block on completion).
- │       9. On exit 0 + cache enabled:
- │            resolveOutputs(outputs) + resolveWorkspaceOutputs(
- │              outputs.workspaceFiles, root-anchored) → file lists
+ │              · hit → up-to-date short-circuit when the on-disk tree
+ │                       already matches; else cleanOutputs →
+ │                       restoreOutputs → replay stored stdout →
+ │                       return cache-hit / cache-hit-remote
+ │              · miss → fall through; cleanOutputs first (when
+ │                       willWrite) so a stale prior build can't
+ │                       survive the fresh exec
+ │       6. Build isolated env.
+ │       7. runCommand (or runSandboxed when `sandbox` is declared) →
+ │          Bun.spawn shell with `command` + forwardArgs
+ │          (shell-quoted). Buffer chunks via onStdout/onStderr.
+ │          exec.timeout SIGTERMs an overrun → real `failed`, never
+ │          cached. A child killed by a SHUTDOWN signal (Ctrl-C
+ │          teardown) classifies as `aborted` instead — not counted,
+ │          not recorded.
+ │       8. On exit 0 + willWrite:
+ │            resolveOutputs(outputs) + resolveWorkspaceOutputs →
+ │              file lists
+ │            a second computeTaskHash with captureInto records the
+ │              per-component input fingerprint (miss-only; pure
+ │              re-fold, no extra I/O)
  │            cache.save(...) — pack <hash>.tar.zst with stdout +
- │              outputs/<rel> (+ workspace-outputs/<rel-to-root> when
- │              declared), upsert SQLite rows.
- │      10. Return TaskOutcome { node, status, exitCode, durationMs,
- │            hash, stdout, stderr, cpuMs?, peakRssBytes?,
+ │              outputs/<rel> (+ workspace-outputs/<rel-to-root>),
+ │              upsert entries + output_files + entry_inputs rows in
+ │              one transaction. Under a LayeredCache with remote
+ │              writes on, the remote upload fires in the BACKGROUND
+ │              (drained at end of run).
+ │            markOutputsChanged — the project's git snapshot notes
+ │              the written output paths so a same-project downstream
+ │              task doesn't re-spawn git unless its globs overlap.
+ │       9. Return TaskOutcome { node, status, exitCode, durationMs,
+ │            hash, cpuMs?, peakRssBytes?, restored?,
  │            wallclockStartNs, wallclockEndNs }.
  │
  └─ End-of-run
-    1. SIGTERM every persistent child; Promise.allSettled their exits.
-    2. Run summary (Tasks / Cached / Time) — counts only real tasks
-       (with `exec`); group tasks don't pollute the totals.
-    3. Optional --summarize JSON (default <cacheDir>/runs/<run_id>.json).
-    4. Optional --profile Chrome-trace JSON (default profile.json).
-    5. recordRun() once per executed task. Group tasks skipped.
-    6. cache.close().
+    1. SIGTERM dependency-only persistent children; persistent tasks
+       the user REQUESTED are kept alive (see below).
+    2. Run summary footer (projects / tasks / cache meters + info +
+       time) — counts only real tasks (with `exec`); group tasks
+       don't pollute the totals; failure frames replay just above it.
+    3. Optional --summarize JSON (default <cacheDir>/runs/<run_id>.json)
+       and --profile Chrome-trace JSON (default profile.json).
+    4. recordRunBundle — one transaction writing a `runs` row per real
+       task plus the `invocations` header row (command, git/CI/host
+       context, tags, counts). Group + aborted tasks skipped.
+    5. Telemetry: emit the RunSummaryRecord to every active sink +
+       await their flush (crash-isolated; skipped when no sink).
+    6. Drain background remote prefetches/uploads; cache.close();
+       sandbox teardown when any task was sandboxed.
     7. Return { ok, outcomes }; ok = every real task ended success
        or cache-hit (any failed/skipped → ok = false → exit 1).
+    8. FOREGROUND ONLY: if the user requested a persistent task (a dev
+       server), the process now blocks on its exit — the summary is
+       already printed, `▸ <id> running` rows list what's alive, and
+       Ctrl-C reaps the process group.
 ```
 
 ## One command per task
@@ -214,18 +300,22 @@ broader access has cache-stability implications).
 
 ## Failure handling
 
-| Failure                                                  | Behavior                                                            |
-| -------------------------------------------------------- | ------------------------------------------------------------------- |
-| Exec exits non-zero                                      | Task is `failed`; cache NOT written; live stream + outcome.stderr   |
-| `execute()` throws (internal error)                      | Task marked `failed`; stderr written `[vx] internal error in <id>`  |
-| Persistent task exits before ready                       | Task marked `failed`; outcome.stderr carries the captured output    |
-| Upstream task fails                                      | Dependents marked `skipped` (exit 1, durationMs 0); no command runs |
-| Workspace yaml missing                                   | `findWorkspaceRoot` throws (UserError); `vx run` exits 1            |
-| Same-project task referenced in `dependsOn` not declared | `buildTaskGraph` throws with the offending edge                     |
-| Duplicate workspace package name                         | `listProjects` throws with both paths                               |
-| Cycle in task graph                                      | `detectCycle` throws with the cycle path                            |
-| Malformed config                                         | `loadProjectConfig` throws (UserError) with file + field            |
-| `--no-cache` AND outputs cleaned by user                 | Build is re-run from scratch; nothing read from cache               |
+| Failure                                                  | Behavior                                                                                                                                                                |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Exec exits non-zero                                      | Task is `failed`; cache NOT written; output streamed live + the failure frame replays at run end                                                                        |
+| `exec.timeout` overrun                                   | SIGTERM; task is `failed` (timed out), exit 143, never cached                                                                                                           |
+| Child killed by Ctrl-C teardown (SIGINT/SIGTERM)         | Task is `aborted` — not counted, not shown, not recorded                                                                                                                |
+| `execute()` throws (internal error)                      | Task marked `failed`; stderr written `[vx] internal error in <id>` (a `UserError` reports plainly)                                                                      |
+| Persistent task exits before ready                       | Task marked `failed`; the captured output is surfaced                                                                                                                   |
+| Upstream task fails                                      | Dependents marked `skipped` (exit 1, durationMs 0); no command runs — EXCEPT a restore-tier task, whose confirmed cache hit still restores (its key is dep-independent) |
+| Sandbox violation (macOS monitor / Linux structural)     | Task is `failed`; violations render in the frame; nothing cached                                                                                                        |
+| Remote-cache error (500, timeout, corrupt artifact)      | Degrades to a cache miss; never fails the run                                                                                                                           |
+| Workspace yaml missing                                   | `findWorkspaceRoot` throws (UserError); `vx run` exits 1                                                                                                                |
+| Same-project task referenced in `dependsOn` not declared | `buildTaskGraph` throws with the offending edge                                                                                                                         |
+| Duplicate workspace package name                         | `listProjects` throws with both paths                                                                                                                                   |
+| Cycle in task graph                                      | `detectCycle` throws with the cycle path                                                                                                                                |
+| Malformed config                                         | `loadProjectConfig` throws (UserError) with file + field                                                                                                                |
+| `cache.inputs.runtime` command exits non-zero            | Hard UserError naming the command + exit code                                                                                                                           |
 
 Failures don't kill the scheduler — independent tasks already in
 flight finish, and unrelated tasks not yet started still run. The
@@ -234,20 +324,30 @@ status.
 
 ## Output capture and rendering
 
+The orchestrator emits `RunEvent`s through an in-process bus; the
+terminal renderer is the always-on subscriber (plugins, telemetry, and
+wire forwarders attach beside it). What renders:
+
 - **Flow-aware policy.** What gets rendered depends on the run's
   intent: FOCUSED (no selection flag) streams the requested task's
   output raw and live and silences successful dependencies; BROAD
-  (`--all` / `--filter` / `--affected`) prints news only — one
-  `executed` line per executed task, full frames for failures,
+  (`--all` / `--filter` / `--affected`) prints news only — one grid
+  one-liner per executed task, failure frames replayed at run end,
   silence for cache hits; truthy `CI` env (and the programmatic
   default) keeps full grouped output. `--output-logs` overrides
   everything. Full table in [`cli.md`](./cli.md#output).
+- **The glyph grid.** Reported task lines share one column grid —
+  `<glyph> <time> <status> <cache> <name>`. Glyph SHAPE = cache axis
+  (`⏺` miss / `►` fresh / `⇢` local / `⇣` remote / `◼` failed / `⊘`
+  skipped / `▸` persistent); glyph COLOR + the status word = task axis
+  (success / failed / skipped / running); the cache word (miss /
+  fresh / local / remote) spells it out.
 - **Buffered, framed (non-focused paths).** `runCommand` listens to
   the child's stdout/stderr and calls `onStdout` / `onStderr` per
   chunk. Outside focused streaming, the default logger buffers the
-  chunks per-task and dumps the full body as a Turbo-style framed
-  block on task completion. No per-line prefix, no interleaving
-  between concurrent tasks.
+  chunks per-task and dumps the full body as a framed block on task
+  completion. No per-line prefix, no interleaving between concurrent
+  tasks.
 - **Cache write.** Full stdout text is stored in the entry; replay is
   stdout-only (v17).
 - **Cache hit replay.** The stored stdout is fed through the same
@@ -255,12 +355,16 @@ status.
   focused requested task, framed in full mode, silent in broad).
 - **Live stream for failures.** Even though cached output is not
   written for failures, the live stream means the user sees the
-  failure as it happens.
-- **Status line.** On TTY stdout outside CI, a single bottom line
-  shows running/done/total/elapsed (+failed), rewritten in place via
-  one clear-line escape and removed before the summary. All
-  default-logger writes are serialized through one writer so content
-  and the status line never interleave.
+  failure as it happens; the full frames replay together at run end,
+  right above the summary.
+- **Status region.** On TTY stdout outside CI, a multi-row region
+  tracks the run live: a blank separator, pinned `▸` persistent rows,
+  one row per worker slot (the ticking elapsed time IS the motion —
+  no spinner), and the live summary section (the same meters as the
+  final footer). Redrawn in place; forced redraws coalesce under a
+  30 ms floor; erased before the summary prints. All default-logger
+  writes serialize through one writer so content and the region never
+  interleave.
 - **GitHub Actions.** With `GITHUB_ACTIONS` truthy in full mode, task
   blocks collapse under `::group::` commands; failures stay open and
   emit `::error` annotations.
@@ -269,23 +373,25 @@ There is no special handling for binary output, very large output, or
 interactive prompts. Stdin is `'ignore'` (child sees a closed stdin)
 — tasks that need TTY input won't work and shouldn't be cached anyway.
 
-Every surface uses one outcome vocabulary: `executed`,
-`restored-local`, `restored-remote`, `up-to-date`, `failed`,
-`skipped`.
+Every surface uses one outcome vocabulary: task axis `success` /
+`failed` / `skipped` / `aborted` (+ `running` live), cache axis
+`miss` / `up-to-date` (fresh) / `local` / `remote`. The `--verbosity 1`
+table and `--report` spell the combinations out as `executed` /
+`restored-local` / `restored-remote` / `up-to-date`.
 
 The colors / framing modules:
 
 - `orchestrator/colors.ts` — ANSI truecolor (`ansi-16m`), gated by
   `NO_COLOR` / `FORCE_COLOR` / `isTTY`. Programmatic-logger callers
   always see plain text.
-- `orchestrator/framed-output.ts` — the `┌─ task ─┐` borders +
-  one-liners.
-- `orchestrator/status-line.ts` — the serialized writer + the bottom
-  status line.
+- `orchestrator/framed-output.ts` — the `┌─` frames, the glyph grid
+  (`formatTaskRow`), one-liners, persistent markers.
+- `orchestrator/status-line.ts` — the serialized writer + the worker
+  region.
 - `orchestrator/logger.ts` — composes them; resolves the output view
   and applies the per-flow visibility policy.
-- `orchestrator/summary.ts` — the closing `Tasks / Cached / Time`
-  block.
+- `orchestrator/summary.ts` — the closing footer (wordmark rule,
+  projects/tasks/cache meters, info + time rows).
 
 ## Concurrency
 
@@ -295,44 +401,40 @@ The colors / framing modules:
   config.
 - **`concurrency: 1`** serializes execution while still respecting
   topo order.
-- The scheduler never exceeds the cap; tasks queue.
+- The scheduler never exceeds the cap; tasks queue. Restore-tier
+  tasks only take a slot no exec-tier task wants.
 - Failure of a task doesn't pause the scheduler — independent
   siblings continue running and starting.
 
-## `--no-cache`
+## Cache control flags
 
-Bypasses cache reads **and** writes. Every task runs, and nothing is
-persisted to the cache directory.
+`--no-cache` turns all four cache axes off: every task runs, nothing
+is read or written, and `cleanOutputs` is skipped — the user is
+debugging and managing the tree themselves; silently wiping `dist/`
+mid-debug would be hostile.
 
-Useful when:
-
-- You suspect cache corruption.
-- You want to validate that a cache-hit task can re-run cleanly.
-- You're benchmarking and need fresh timings.
-- You're forwarding args via `--` and want a one-off run that doesn't
-  populate the cache — though note that forwarded args are already in
-  the key, so a separate entry would form anyway.
-
-When `--no-cache` is set, **`cleanOutputs` is also skipped** — the
-user is debugging and managing the tree themselves, and silently
-wiping `dist/` mid-debug would be hostile.
-
-`--cache` is accepted as a no-op for parity with vite-task.
+`--force` turns only the READ axes off: every task re-executes, but
+fresh artifacts are still written (outputs ARE cleaned so the saved
+snapshot is clean). `--cache=<spec>` gives per-layer control. Full
+semantics: [`cli.md` § Cache control](./cli.md#cache-control---cache---no-cache---force)
+and [`caching.md` § Cache policy](./caching.md#cache-policy-readwrite-axes).
 
 ## Planning paths (`--dry`, `--graph`)
 
 Both short-circuit execution. The planner (`orchestrator/plan.ts`)
 runs the same setup steps — workspace discovery, config load, package
 graph, task graph — and the same per-task hash derivation, then
-probes the cache (read-only — `cache.get` bumps `accessed_at` as a
-side effect, which is fine).
+probes the cache. The probe is read-only; against a remote layer it
+is an existence check only (no artifact download, no ingest). The one
+deliberate side effect: `cache.inputs.runtime` / `workspaceRuntime`
+probe commands DO run, because predicting a key requires resolving
+them — keep runtime inputs side-effect-free.
 
 The two flags differ only in output format:
 
 - `--dry[=text|json]` → text (default) or JSON list of predicted
-  outcomes per task: `would-cache-hit-local`,
-  `would-cache-hit-remote`, `would-exec`, `no-cache`, `group`.
-  Formatter: `cli/plan-format.ts:formatPlanText` /
+  outcomes per task: `hit-local`, `hit-remote`, `miss`, `no-cache`,
+  `group`. Formatter: `cli/plan-format.ts:formatPlanText` /
   `formatPlanJson`.
 - `--graph[=<path>]` → Graphviz DOT, colored by predicted status.
   Pipe to `dot` for SVG/PNG render. Formatter:
@@ -353,10 +455,13 @@ Combining either with `--summarize` or `--profile` is a parse error
   wallclock span. Default path: `profile.json` (cwd-relative). One
   `tid` per project so concurrent tasks render on distinct lanes.
   Open with `chrome://tracing` or https://ui.perfetto.dev.
+- **`--report[=markdown]`** — a moon-style markdown table to stdout
+  after the run (CI step summaries).
 
 Writers live in `orchestrator/run-artifacts.ts:writeRunSummary` /
-`writeRunProfile`. Errors are surfaced to the user via `log.status`
-but don't change the run's exit code — the run already happened.
+`writeRunProfile` and `orchestrator/run-report.ts`. Errors are
+surfaced to the user via `log.status` but don't change the run's exit
+code — the run already happened.
 
 ## Why each rule
 
@@ -372,9 +477,16 @@ but don't change the run's exit code — the run already happened.
 - **The scheduler doesn't bail on first failure.** A flaky test
   failing shouldn't stop an unrelated build. Independent siblings
   continue; only dependents are skipped.
+- **Misses own the worker pool.** A restore is cheap and can wait; a
+  miss is the critical path. The restore tier exists so warm work
+  never queues behind ordering it doesn't need — but it never steals
+  a slot from real work.
 - **Forwarded args don't reach upstream tasks.** Otherwise
   `vx run build -- --watch` would set `--watch` on every upstream's
   build, and upstream cache keys would partition by CLI args that
   don't change their behavior.
-- **`recordRun` skips group tasks.** They aren't real runs;
+- **`recordRunBundle` skips group tasks.** They aren't real runs;
   analytics queries that sum duration would double-count without it.
+- **A requested persistent task keeps the run alive.** The dev server
+  IS the point of the run; tearing it down the instant it became
+  ready would make `vx run dev` useless.

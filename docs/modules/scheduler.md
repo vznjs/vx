@@ -1,30 +1,37 @@
-# `src/graph/scheduler.ts` — parallel topological executor
+# `src/graph/scheduler.ts` — two-tier parallel topological executor
 
 ## Purpose
 
 Walk the task graph honoring dependencies, running up to `N` tasks
 concurrently, propagating failure as `skipped` to dependents while
-keeping unrelated tasks moving.
+keeping unrelated tasks moving — with a second, low-priority ready
+queue for confirmed local cache hits (the restore tier) that may run
+ahead of their dependencies.
 
 ## Public surface
 
 ```ts
-export type TaskStatus = 'success' | 'cache-hit' | 'cache-hit-remote' | 'failed' | 'skipped'
+export type TaskStatus =
+  | 'success'
+  | 'cache-hit'
+  | 'cache-hit-remote'
+  | 'failed'
+  | 'skipped'
+  | 'aborted' // child killed by a shutdown signal (Ctrl-C teardown)
 
 export interface TaskOutcome {
   node: TaskNode
   status: TaskStatus
   exitCode: number
   durationMs: number
-  hash?: string // cache key, when computed
-  // v11 analytics:
+  hash?: string // cache key (pure-input transitive; folded into dependents)
   cpuMs?: number
   peakRssBytes?: number
   wallclockStartNs?: bigint // hrtime span relative to run t=0
   wallclockEndNs?: bigint
-  // Captured output (empty for cache-hits + group tasks):
-  stdout?: string
-  stderr?: string
+  restored?: boolean // cache hits: false = tree already current (up-to-date)
+  sandboxViolations?: number
+  sandboxViolationLines?: string[]
 }
 
 export interface ScheduleOptions {
@@ -33,92 +40,74 @@ export interface ScheduleOptions {
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
   onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void
+  /** Optional per-node weight override (predictive scheduling). */
+  priorities?: ReadonlyMap<string, number>
+  /** Confirmed stable-key local hits — ready immediately, backfill-only. */
+  restoreTier?: ReadonlySet<string>
 }
 
+export function computeReverseDepCount(nodes: Map<string, TaskNode>): Map<string, number>
 export async function runGraph(options: ScheduleOptions): Promise<Map<string, TaskOutcome>>
 ```
 
 ## Algorithm
 
-A small `tick()` loop:
+Per-node **dep counters + two sorted ready queues** — O(N + E) over a
+whole run (the old scan-everything-per-completion tick was O(N²)):
 
-1. For each node still in `remaining`, check if it's ready (all
-   `deps` have outcomes and none failed/skipped).
-2. **Failed upstream** → mark as `skipped` immediately (synchronous,
-   no `execute` call), call `onFinish`, remove from `remaining`,
-   continue.
-3. **Ready and no in-flight cap reached** → call `execute(node,
-upstream)`. Add to `inFlight`. Increment `active`.
-4. When a task's `execute` promise resolves/rejects, record the
-   outcome, decrement `active`, recurse into `tick()`.
-5. When `remaining.size === 0 && active === 0`, resolve the overall
-   promise.
+1. Build reverse adjacency + `pending` counts once. A node enqueues
+   when `pending` hits 0 — onto **execReady** (normal priority).
+2. **Restore-tier nodes bypass the dep gate**: they enqueue onto
+   **restoreReady** at startup (a stable hit's restore needs none of
+   its deps' output). Their pending decrements still happen but never
+   re-enqueue them.
+3. `tick()` fills free worker slots by draining **execReady FIRST** —
+   cache misses own the pool; restores only backfill idle capacity
+   (or run when they're the only ready work, unblocking a dependent).
+4. **Failed upstream** → an exec-tier node is marked `skipped`
+   synchronously (no `execute` call). Restore-tier nodes **bypass**
+   this check — their key is dep-success-independent (pure-input
+   transitive hashing), so a valid cached output reports `cache-hit`
+   even when a dep failed.
+5. When every node has an outcome and nothing is active, resolve.
 
-The synchronous "skip" path is important — it can mark every remaining
-task as skipped in one `tick()` invocation, without needing async
-callbacks. The completion check at the end of `tick()` catches this
-case and resolves the overall promise immediately.
+Priority within a queue: highest transitive-reverse-dependent count
+first (`computeReverseDepCount` — an exact bitset closure swept in
+reverse-topo order, O(E·N/32); Set-based closures cost 8.5 s at 3,270
+tasks). Ties break in graph-insertion order via binary-search insert.
+When `priorities` is passed (predictive scheduling,
+`defineWorkspace({ predictive: true })`), those weights override the
+baseline for covered nodes, scaled to always sort above it.
 
 ## Failure isolation
 
-A failed task does not stop the scheduler:
-
-- Its direct dependents (and their dependents, recursively) get
-  status `skipped`.
-- Tasks not in that lineage continue to start and finish normally.
-- The overall promise resolves only after every task has _some_
-  outcome (success / cache-hit / failed / skipped).
-
-This is exactly what a `--continue` flag does in other tools. We treat
-it as the default because it gives users maximum information per run.
-
-## Concurrency cap
-
-- The scheduler never starts more than `concurrency` tasks. It will
-  start fewer if the graph doesn't have that many ready tasks.
-- `concurrency: 1` serializes the whole run (still respecting topo
-  order).
-- No work-stealing; nodes are picked in `remaining` iteration order
-  (which is insertion order of the underlying `Map`).
+A failed task does not stop the scheduler: its transitive exec-tier
+dependents get `skipped`; unrelated tasks continue; the promise
+resolves only after every task has _some_ outcome. This is Turbo's
+middle `--continue` setting as the default. A rejected `execute`
+promise becomes a `failed` outcome; a `UserError` reports plainly,
+anything else as `[vx] internal error in <id>`.
 
 ## What this does NOT do
 
 - Doesn't compute the graph (that's `task-graph.ts`).
-- Doesn't execute tasks itself (that's `execute` callback — the
-  orchestrator provides one that does cache lookup + run).
-- Doesn't catch internal errors in `execute` other than treating a
-  rejected promise as a failed outcome. The default behaviour writes
-  the error message to stderr prefixed with `[vx] internal error in
-<id>`.
-- Doesn't enforce timeouts.
-- Doesn't reorder for fairness or priority.
+- Doesn't know about caching — `execute` is the seam; the
+  restore-tier set is opaque input classified by the orchestrator
+  (`local-shortcircuit.ts`).
+- Doesn't enforce timeouts (that's `exec.timeout` in the runner).
 
 ## Tests
 
-`scheduler.test.ts` covers:
-
-- Empty graph resolves immediately.
-- Topological order respected (dependency completes before dependent
-  starts).
-- Concurrency cap honored (peak active ≤ N).
-- Concurrency = 1 serializes.
-- Dependents of a failed task are skipped.
-- Independent siblings continue after a failure.
-- Skip cascades through a chain (a → b → c, a fails → b and c skipped).
-- `execute` throwing marks node failed; graph still resolves.
-- Upstream outcomes passed to dependent's `execute`.
+`tests/scheduler.test.ts`: topo order, concurrency cap, skip
+propagation, independent siblings, throw handling, priority contract,
+a perf guard on `computeReverseDepCount` (dense 100×30 graph must
+stay under 1.5 s; old code took 7.2 s), and the two-tier contract
+(restore-tier ready immediately / low priority / failed-dep bypass).
 
 ## Replacing this module
 
 The contract is small: take a graph + an `execute`, return outcomes.
-Alternatives:
-
-- **Priority queues / heuristics** — start the longest-tail task first
-  (would need duration estimates).
-- **Work stealing across machines** — distribute `execute` to remote
-  workers. Outcomes flow back through the same promise mechanism.
-- **Adaptive concurrency** — adjust based on system load. Reasonable
-  if you can measure load cheaply.
-
 Keep `ScheduleOptions` and `TaskOutcome` shapes stable to avoid
-churning consumers.
+churning consumers. Distribution (fanning `execute` to remote
+workers) already exists as `@vzn/vx-cloud`'s coordinator, which
+reuses these types over the wire.

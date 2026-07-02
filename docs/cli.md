@@ -2,7 +2,7 @@
 
 The `vx` binary is the user-facing entry point. The implementation is
 intentionally simple: a hand-rolled argv parser (no commander / yargs)
-in `src/cli.ts` dispatches to per-subcommand handlers under
+in `src/cli/index.ts` dispatches to per-subcommand handlers under
 `src/cli/<name>.ts`. The flag surface is aligned with
 [Turborepo's `turbo run`](https://turborepo.com/docs/reference/run)
 so existing Turbo users can swap in with minimal muscle-memory churn.
@@ -23,20 +23,21 @@ vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] TASK [-- forwarded-args...]
 vx cache prune [--older-than <duration>] [--max-size <bytes>]
 vx lock [--check]
-vx migrate [--dry] [--force]
+vx migrate [--from turbo|nx] [--dry] [--force]
 vx show [PROJECT[#TASK]] [--format pretty|json]
 vx info
 vx stats              # deprecated alias of vx info
-
-# Platform — the 2026-06 arc
-vx mcp [--stdio]                                       # MCP server for AI agents
-vx upgrade                                             # self-update a curl-installed binary
+vx upgrade [tag]      # self-update a compiled binary
+vx mcp [--stdio]      # MCP server for AI agents
 
 # Cloud — the @vzn/vx-cloud package (separately installed; the `vx-cloud` binary)
-vx-cloud serve [--port N] [--ui] [--open]              # unified backend (HTTP /v1/* + WS + SSE + bundled SPA)
+vx-cloud serve [--port N] [--ingest-dir D] [--token T] [--name N] [--ui] [--open]
+vx-cloud connect <url> [--name N] [--token T] [--delegate] [--no-use] [--force]
+vx-cloud env ls | use <name> | rm <name>
+vx-cloud disconnect
 vx-cloud coordinator <tasks…> [--port N] [--host H] [--workers N]
 vx-cloud worker --coordinator <coord-url> [--capacity N] [--label L]
-vx-cloud dev                                           # local devtools hub
+vx-cloud dev
 
 # Meta
 vx help
@@ -44,6 +45,10 @@ vx --help, -h
 vx version
 vx --version
 ```
+
+Typing `vx serve` / `dev` / `coordinator` / `worker` prints a
+redirect: those commands moved to `@vzn/vx-cloud` in the core/cloud
+split — core has no service CLI.
 
 Multiple positional tasks run in one orchestrator invocation with a
 shared task graph: `vx run build lint test` fans out all three across
@@ -131,11 +136,13 @@ Run the task only in projects whose files changed since `<base>`.
 
 It's a pure sugar for `--filter '[<base>]'`; both are resolved by
 `src/workspace/affected.ts` shelling out to `git diff --name-only`.
+`vx-lock.json` is filtered out of the changed set — a `vx lock`
+re-write never marks every project affected.
 
 ### Argument forwarding (`--`)
 
-Anything after `--` is forwarded (shell-quoted via `JSON.stringify`)
-to the task's `exec.command`:
+Anything after `--` is forwarded (shell-quoted) to the task's
+`exec.command`:
 
 ```sh
 vx run test -- --watch              # underlying test runner sees "--watch"
@@ -159,6 +166,8 @@ stays clean).
 | `--no-cache`                      | boolean        | off                             | Disable caching entirely (no reads, no writes); output globs are NOT cleaned.                                                                     |
 | `--force`                         | boolean        | off                             | Re-execute everything (skip cache reads) but still REFRESH the cache (writes stay on). Output globs are cleaned (so the saved snapshot is clean). |
 | `--cache <spec>`                  | value          | all axes on                     | Per-layer read/write control. See below.                                                                                                          |
+| `--frozen`                        | boolean        | off                             | Load configs from `vx-lock.json` instead of evaluating (CI). See § `--frozen`.                                                                    |
+| `--output-logs <mode>`            | value          | flow-derived                    | `full` \| `errors-only` \| `none` — explicit output override. See § `--output-logs`.                                                              |
 | `--verbosity <n>`                 | int (0+)       | `0`                             | `1` prints a per-task summary table after the framed blocks; `2+` reserved.                                                                       |
 | `--dry[=text\|json]`              | optional value | off                             | Print the task graph + predicted cache hit/miss; skip execution.                                                                                  |
 | `--graph[=<path>]`                | optional value | off                             | Emit Graphviz DOT (stdout if no path); skip execution.                                                                                            |
@@ -231,15 +240,36 @@ unless explicitly overridden:
 - **CI** — the `CI` env var is truthy (`CI=0` / `CI=false` don't
   count). Wins over the flow.
 
+Reported task lines share one column grid —
+`<glyph> <time> <status> <cache> <name>` — with two orthogonal axes:
+the glyph SHAPE encodes the cache axis, the glyph COLOR (and the
+status word) the task axis.
+
+| Glyph | Cache axis                | Status word    |
+| ----- | ------------------------- | -------------- |
+| `⏺`   | miss — the task ran       | success/failed |
+| `►`   | fresh (up-to-date)        | success        |
+| `⇢`   | restored from local cache | success        |
+| `⇣`   | restored from remote      | success        |
+| `◼`   | failed                    | failed         |
+| `⊘`   | skipped (upstream failed) | skipped        |
+| `⦿`   | running (worker row)      | running        |
+| `▸`   | persistent (dev server)   | running        |
+
 Per-task visibility by outcome:
 
-| Outcome                | focused (requested task)    | focused (dependency) | broad                  | CI / `full`                  |
-| ---------------------- | --------------------------- | -------------------- | ---------------------- | ---------------------------- |
-| executed               | raw output, streamed live   | silent               | `● id ── executed • t` | frame                        |
-| restored-local/-remote | replayed stdout, streamed   | silent               | silent                 | frame, or one-liner if quiet |
-| up-to-date             | one-liner (nothing to show) | silent               | silent                 | one-liner                    |
-| failed                 | raw output, streamed live   | full frame           | full frame             | frame                        |
-| skipped                | frame                       | silent               | silent                 | frame                        |
+| Outcome                | focused (requested task)    | focused (dependency)      | broad                     | CI / `full`                  |
+| ---------------------- | --------------------------- | ------------------------- | ------------------------- | ---------------------------- |
+| executed               | raw output, streamed live   | silent                    | grid one-liner            | frame                        |
+| restored-local/-remote | replayed stdout, streamed   | silent                    | silent                    | frame, or one-liner if quiet |
+| up-to-date             | one-liner (nothing to show) | silent                    | silent                    | one-liner                    |
+| failed                 | raw output, streamed live   | one-liner + frame replays | one-liner + frame replays | frame                        |
+| skipped                | frame                       | silent                    | silent                    | frame                        |
+
+When a dependency fails mid-run, the stream gets ONE permanent
+`◼ … failed miss <id>` line and the run continues; **all full failure
+frames replay together at run end**, right above the summary, so
+failures read last and are never capped.
 
 The end-of-run summary always prints; cache-hit counts that broad
 mode silences per-task surface there. A focused `vx run test` is meant
@@ -272,29 +302,22 @@ keeps the live-stream experience unchanged.
 On an interactive terminal (TTY stdout, not CI) a status region
 tracks the run live. Top to bottom:
 
-1. **Pinned failures** — `✗ <id> ── failed (exit N)`, one per failed
-   task, accumulating as failures happen and staying until run end so
-   they can never scroll out of sight. Capped at 5 lines plus a dim
-   `… +K more failed`.
-2. **Pinned persistent tasks** — `▸ <id> ── running` for every
-   persistent task that became ready. The pin lives until run end
-   (vx SIGTERMs persistent children when the graph finishes), so it
-   is the visible evidence the dev server is still alive.
-3. **Worker rows** — one per worker (sized from concurrency, capped
-   at 10 — the header states the pool as `(N tasks, C workers)`),
-   each showing a spinner, the running task's identity-colored id,
-   and its elapsed time. A task stays in its row for its whole life
-   and idle rows hold their place dimmed, so nothing ever jumps.
-4. **Stats line** — every bucket in fixed order:
+1. **A blank separator line** — keeps the live region visually apart
+   from the completed-task scrollback above it.
+2. **Pinned persistent tasks** — `▸ <id> running` for every persistent
+   task that became ready. The pin lives until run end, so it is the
+   visible evidence the dev server is still alive.
+3. **Worker rows** — one per worker slot (sized
+   `min(concurrency, 10)`), no glyph and no spinner: the live ticking
+   elapsed time leads (`     568ms running  <id>`). A task stays in
+   its row for its whole life; idle rows hold their place dimmed, so
+   nothing ever jumps; overflow shows as `+k more`.
+4. **The live summary section** — the SAME meters the final footer
+   prints (`tasks` + `cache` bars with legends, `time`), filling in as
+   the run progresses, under a bare `vx` wordmark rule.
 
-```
-▶ 1 failed · 78 success · 759 left · 1090 total │ 79 miss · 252 up-to-date · 0 local · 0 remote │ 00:16
-```
-
-(red failed/miss, green success/up-to-date, yellow left/local, cyan
-total/remote; `+k more` appears when more tasks run than rows). The
-region is redrawn in place (cursor-up + clear; not a TUI — no
-alternate screen) and erased before the summary prints. In the
+The region is redrawn in place (cursor-up + clear; not a TUI — no
+alternate screen) and erased before the final summary prints. In the
 focused flow it only lives while dependencies run; it disappears for
 good the moment the requested task starts streaming.
 
@@ -320,13 +343,14 @@ annotation instead.
 Explicit override; always beats the flow and CI defaults. `full`
 (frames for executed work, one-liners for quiet cache hits),
 `errors-only` (only failed tasks print; the CI noise budget), `none`
-(no per-task output). The header and end-of-run summary always print.
+(no per-task output). The end-of-run summary always prints.
 
 ## Planning mode (`--dry`, `--graph`)
 
 Both flags short-circuit execution. They build the full task graph,
 compute every task's cache key, and probe the cache to predict the
-hit/miss outcome.
+hit/miss outcome. Against a remote cache the probe is a lightweight
+existence check — planning never downloads or ingests artifacts.
 
 ```
 $ vx run ci --dry
@@ -556,7 +580,10 @@ run...` precedes it.
 2. **Watch loop.** After the initial run finishes, every project's
    directory in scope is watched recursively. The workspace root is
    watched (non-recursively) for lockfile / `pnpm-workspace.yaml`
-   changes.
+   changes. When any project's config declares
+   `cache.inputs.workspaceFiles`, the per-project watchers are swapped
+   for ONE recursive root watcher (boundaries are off for those globs,
+   so any workspace file can be an input).
 3. **On change.** The triggering path is logged
    (`vx watch: <project> <relpath>; re-running...`) and the
    orchestrator is invoked again with the same options. Events arriving
@@ -612,8 +639,7 @@ watch`.
 ## `vx cache prune`
 
 Evict old or oversized cache entries. Operates on
-`<cacheDir>/cache.db` plus the on-disk `<hash>/` directories (each one
-carrying its own `outputs/`, `stdout`, and `stderr`).
+`<cacheDir>/cache.db` plus the on-disk `<hash>.tar.zst` artifacts.
 
 ```
 vx cache prune --older-than <duration>     # Drop entries last accessed before now - duration.
@@ -642,11 +668,9 @@ Exit codes:
 - `0` — pruning completed (zero or more entries evicted).
 - `1` — parse error, missing policy, or workspace-discovery error.
 
-`vx cache prune` resolves the cache directory via
-`src/workspace/workspace.ts:findWorkspaceRoot` from cwd. Note: the
-prune command currently always uses the default `.vx/cache/`; a
-workspace-config `cacheDir` override is not yet honored by this path
-(tracked).
+`vx cache prune` resolves the workspace root from cwd and honors a
+`defineWorkspace({ cacheDir })` override — it prunes the same
+directory a run would use.
 
 ## `--frozen` (run flag)
 
@@ -742,9 +766,9 @@ Mapping highlights:
   `globalEnv` / `globalPassThroughEnv` / `globalDependencies` become
   exported arrays in a generated root `vx-preset.ts` that each config
   imports and spreads — TypeScript composition replaces turbo's
-  global fields (`globalInputs` spreads into
-  `cache.inputs.workspaceFiles`: globalDependencies are
-  root-relative by definition). `$TURBO_ROOT$/<path>` inputs map to
+  global fields (`globalDependencies` spread into
+  `cache.inputs.workspaceFiles`: they are root-relative by
+  definition). `$TURBO_ROOT$/<path>` inputs map to
   `cache.inputs.workspaceFiles` (negation keeps `!`), outputs to
   `cache.outputs.workspaceFiles`; `$TURBO_ROOT$` in `dependsOn` (and
   non-prefix forms) stays a TODO — vx has no workspace-root tasks.
@@ -892,22 +916,117 @@ surface lands.
 
 # Cloud commands — the `@vzn/vx-cloud` package
 
-The service layer (`serve` / `coordinator` / `worker` / `dev`, the
-`/v1/*` metrics API, the bundled dashboard) lives in a **separate
-package, `@vzn/vx-cloud`**, which ships its own `vx-cloud` binary. Core
-`vx` stays limited to discovery / graph / cache / exec / the in-process
-run. Install it alongside core to get the commands below:
+The service layer (`serve` / `connect` / `env` / `coordinator` /
+`worker` / `dev`, the `/v1/*` metrics API, the bundled dashboard)
+lives in a **separate package, `@vzn/vx-cloud`**, which ships its own
+`vx-cloud` binary. Core `vx` stays limited to discovery / graph /
+cache / exec / the in-process run. Install it alongside core to get
+the commands below:
 
 ```
 bun add -D @vzn/vx-cloud        # or run it from the package's vx-cloud bin
 ```
 
 Core integrates with cloud through the first-party `cloud()` plugin —
-declare it in `vx.workspace.ts` and a plain `vx run` routes to a
-local-or-hosted `vx-cloud serve`, hits the cloud cache, and uploads
-insights (`defineWorkspace({ plugins: [cloud()] })`). Anyone can write a
-different plugin against the same `VxPlugin` interface. See
-`docs/design/core-cloud-split-2026-06.md`.
+declare it in `vx.workspace.ts`
+(`defineWorkspace({ plugins: [cloud()] })`) and every `vx run` pushes
+its run summary to the chosen server, can delegate execution to a
+service, and can layer the cloud cache. Anyone can write a different
+plugin against the same `VxPlugin` interface. This section is a
+summary; the cloud package's own README (`packages/cloud/`) is the
+depth reference.
+
+## `vx-cloud serve` — standalone dashboard + ingest service
+
+One foreground process: SQLite ingest store + `/v1/*` metrics JSON
+API + SSE/NDJSON event streams + WS run delegation + the embedded
+dashboard SPA. Runs locally or in Docker (see
+`packages/cloud/deploy/`).
+
+```
+vx-cloud serve
+    --port <n>                   # default: VX_CLOUD_PORT, else 4321
+    --ingest-dir <d>             # directory for the SQLite ingest store
+    --token <t>                  # require a bearer token (env: VX_CLOUD_TOKEN)
+    --name <n>                   # server identity for /v1/meta (env: VX_CLOUD_NAME)
+    --ui                         # require the bundled SPA (error if not built)
+    --open                       # open the dashboard in the browser (implies --ui)
+```
+
+- **Deterministic port.** `--port` > `VX_CLOUD_PORT` > `4321`. The
+  port is bound exactly; a busy port is a clean error ("free it, or
+  pick another with --port / VX_CLOUD_PORT") — the URL never silently
+  moves between restarts.
+- **Ingest-only data model.** The dashboard and `/v1/*` read ONLY the
+  serve's own SQLite store, populated by the `cloud()` plugin's
+  `POST /v1/ingest` push. The serve never reads a workspace
+  `cache.db`, so it can be deployed anywhere (cache-entry inventory
+  and the full input-fingerprint diff stay local — those live in the
+  local `cache.db`).
+- **Auth.** With `--token` set, every request except `/health` and
+  `/v1/meta` requires `Authorization: Bearer <t>` (browser transports
+  may use `?token=` on `/events`, `/stream`, and the WS upgrade). No
+  token → fully open (the localhost default).
+- **Advertisement.** The serve writes a per-user advertisement at
+  `$XDG_RUNTIME_DIR/vx-cloud/serve.json` (fallback: a per-uid temp
+  dir; `VX_CLOUD_SERVE_INFO` pins an exact path), so a `vx run` in ANY
+  workspace on the machine auto-detects it — zero-config local
+  dashboard.
+
+HTTP routes (all return JSON unless noted):
+
+| Route             | Purpose                                                                                    |
+| ----------------- | ------------------------------------------------------------------------------------------ |
+| `GET /health`     | Liveness probe (`200 ok`) — always open                                                    |
+| `GET /v1/meta`    | Server identity (`name`, vx version, auth mode) — always open; the `connect` handshake     |
+| `GET /version`    | Protocol version + channels + RPC capability list                                          |
+| `POST /v1/ingest` | Push endpoint — accepts a `RunSummaryRecord` from the `cloud()` plugin                     |
+| `GET /v1/*`       | Metrics/analytics API (runs, tasks, projects, cache, trends, compare, why, …)              |
+| `GET /events`     | Server-Sent Events stream of every envelope from every concurrent run                      |
+| `GET /stream`     | NDJSON stream (jq-friendly) of the same                                                    |
+| `WS /` (upgrade)  | Bidirectional; accepts both legacy `{ t: 'run', ... }` and JSON-RPC `submit.run` envelopes |
+
+Every wire frame is a JSON-RPC 2.0 envelope per
+`docs/design/wire-protocol-2026-06.md`.
+
+## `vx-cloud connect` / `env` / `disconnect` — environments
+
+Docker-context-style **named server environments**, stored per-user in
+`$XDG_CONFIG_HOME/vx-cloud/environments.json` (override:
+`$VX_CLOUD_CONFIG`; mode `0600` — it holds tokens). Connect once;
+every `vx run` on the machine then pushes its summary to the active
+server.
+
+```
+vx-cloud connect https://vx.corp.example --token vxc_…    # validate + persist + activate
+vx-cloud connect <url> --name team --delegate --no-use    # named; opt into run delegation; don't activate
+vx-cloud env ls                                           # named servers + the auto-detected (local) row, with reachability
+vx-cloud env use team                                     # switch the active environment
+vx-cloud env rm staging                                   # delete an entry
+vx-cloud disconnect                                       # clear the active pointer (entries + tokens survive)
+```
+
+`connect` is a handshake: it probes `/health`, reads the server's
+identity from `/v1/meta` (the default `--name`), errors if the server
+requires a token and none was given, verifies a given token with one
+authenticated request — and only then persists. `VX_CLOUD_ENV=<name>`
+overrides the active pointer per-shell without touching the file.
+
+**Resolution precedence** (what the `cloud()` plugin consults, first
+match wins):
+
+| #   | Telemetry push                                           | Run delegation (backend)                        |
+| --- | -------------------------------------------------------- | ----------------------------------------------- |
+| 1   | `cloud({ ingestUrl, ingestToken })` options              | `cloud({ serviceUrl })` option                  |
+| 2   | `VX_CLOUD_INGEST_URL` / `_TOKEN` env                     | `VX_SERVICE_URL` env                            |
+| 3   | active named environment → `<url>/v1/ingest` + its token | active environment **only if `delegate: true`** |
+| 4   | local serve auto-detect (per-user serve.json + live pid) | decline (local runs execute in-process)         |
+| 5   | decline — a plain run stays zero-overhead                |                                                 |
+
+`delegate` is opt-in per environment because delegation executes the
+run **on the server** against the request's cwd — only correct when
+the server shares the filesystem or holds an identical checkout.
+Connecting for the dashboard never silently moves execution.
 
 ## `vx-cloud coordinator` — distributed-CI coordinator
 
@@ -928,7 +1047,7 @@ Behavior:
 - Boots `Bun.serve` WS at `http://<host>:<port>`.
 - Runs `prepareRun` against the workspace to build the same graph
   the local CLI would.
-- Computes the v22 cache hash per node — the assignment key.
+- Computes each node's cache hash — the assignment key.
 - Workers register via `worker:hello`, pull via `worker:pull`,
   report outcomes via `worker:done`.
 - A worker that disconnects mid-task strands its in-flight; those
@@ -937,26 +1056,6 @@ Behavior:
   `outcome.status === 'success'`, 1 otherwise.
 - Writes `<workspaceRoot>/.vx/coordinator.json` advertising the
   origin + pid (cleaned up on stop).
-
-GHA-style usage:
-
-```yaml
-jobs:
-  coord:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: vx-cloud coordinator lint test build --port 5180 --workers 4 &
-        # expose 5180 to peers via tailscale / cloudflared / direct GHA runner IPs
-  worker:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        worker: [1, 2, 3, 4]
-    steps:
-      - uses: actions/checkout@v4
-      - run: vx-cloud worker --coordinator ws://coord:5180 --capacity 2
-```
 
 Phase A-B only today: real coordinator + worker, content-addressed
 dispatch, disconnect recovery. Capability labels, cache-affinity
@@ -979,10 +1078,9 @@ Behavior:
 - Connects to the coordinator's WS endpoint.
 - Sends `worker:hello { workerId, capacity, labels }`.
 - Pulls work via `worker:pull { available }`.
-- On `task:assign`, spawns the command via `runCommand`
-  (orchestrator-level helper), streams stdout/stderr back over
-  `worker:stdout` / `worker:stderr`, reports `worker:done` with the
-  outcome.
+- On `task:assign`, spawns the command via `workerExecute`, streams
+  stdout/stderr back over `worker:stdout` / `worker:stderr`, reports
+  `worker:done` with the outcome.
 - On `coord:drain`, waits for in-flight to finish, sends
   `worker:bye`, exits.
 - Exits 0 if every assigned task succeeded, 1 otherwise.
@@ -990,57 +1088,21 @@ Behavior:
 Workers do NOT yet probe the remote cache before executing — every
 assigned task spawns fresh. Cache integration is the next iteration.
 
-## `vx-cloud serve` — unified backend (execution + metrics + UI)
-
-The same backend powers `vx run` delegation, the metrics JSON API,
-the event stream, and (when `--ui` is set) the embedded dashboard SPA.
-One process, one stack, runs locally or in Docker (see
-`packages/cloud/deploy/`).
-
-```
-vx-cloud serve                   # bind port 4321 (falls back to a free port if taken)
-    --port <n>                   # explicit (a busy pinned port is a hard error)
-    --ui                         # also serve the embedded dashboard at /
-    --open                       # open the dashboard in the default browser (implies --ui)
-```
-
-The dashboard is embedded in the binary (a single self-contained
-`packages/cloud/ui/dist/index.html` compiled in via `with { type: 'file' }`), so
-`--ui` works from a bare `vx-cloud` with nothing else on disk.
-
-HTTP routes (all return JSON unless noted):
-
-| Route            | Purpose                                                                                    |
-| ---------------- | ------------------------------------------------------------------------------------------ |
-| `GET /health`    | Liveness probe (`200 ok`)                                                                  |
-| `GET /version`   | Protocol version + channels + RPC capability list                                          |
-| `GET /events`    | Server-Sent Events stream of every envelope from every concurrent run                      |
-| `GET /stream`    | NDJSON stream (jq-friendly) of the same                                                    |
-| `WS /` (upgrade) | Bidirectional; accepts both legacy `{ t: 'run', ... }` and JSON-RPC `submit.run` envelopes |
-
-Every wire frame is a JSON-RPC 2.0 envelope per
-`docs/design/wire-protocol-2026-06.md`. Service-emitted events use
-the `events.append` notification method; client-submitted runs use
-the `submit.run` request method. With the `cloud()` plugin declared, a
-`vx run` against a workspace where `vx-cloud serve` is already up
-auto-delegates via `.vx/serve.json` discovery + a 300 ms `/health`
-probe.
-
-`curl -N http://localhost:<port>/events` prints every envelope as
-SSE; `curl -N http://localhost:<port>/stream | jq` for one envelope
-per line.
-
 ## `vx-cloud dev` — devtools hub
 
 Foreground devtools hub that ingests forwarded NDJSON events from a
 local `vx run` and renders them through a connected web client.
+Needs the optional `devframe` package.
 
 ```
 vx-cloud dev                     # bind a kernel-assigned local socket
 ```
 
-Optional and dev-time only. Production observability is the OTel
-bridge (set `OTEL_EXPORTER_OTLP_ENDPOINT`).
+Optional and dev-time only. Production observability is the
+telemetry-plugin path: declare `otel()` from `@vzn/vx-otel` in
+`vx.workspace.ts` and set `OTEL_EXPORTER_OTLP_ENDPOINT` (the endpoint
+alone no longer auto-exports), or push run summaries to a `vx-cloud
+serve` via the `cloud()` plugin.
 
 ## Output format
 
@@ -1068,36 +1130,31 @@ its identity coloring. Content lines are **raw** — no left border, no
 indent — so long lines wrap without colliding with frame glyphs and
 copy/paste yields the verbatim output. Every block (and every live
 frame close in focused flow) is followed by a blank line so frames
-never collide with the next one-liner.
+never collide with the next one-liner. A persistent task's frame is
+marked with a cyan `▸` after `┌─`/`└─`, and its close reads `running`
+(the child is still alive).
+
+There is **no top-of-run banner** — the run context lives in the
+footer. A broad run looks like:
 
 ```
-• vx 0.0.0
+ ⇢     4ms success  local  @vzn/vx#format-check
+ ⏺  5.20s success  miss   @vzn/vx#test
 
-   • Running ci in 1 package (3 tasks)
-   • Remote caching disabled
+──────────────────────────────────────────────── vx 0.0.0
+  projects  ▰▰▰▰▰… (affected vs workspace bar)
+            1 affected · 3 total
+  tasks     ▰▰▰▰▰… (failed/success/skipped meter)
+            2 success · 2 total
+  cache     ▰▰▰▰▰… (miss/up-to-date/local/remote meter)
+            1 miss · 1 local
 
-◌ @vzn/vx#format-check ── restored-local • 02bfe8a9
-
-┌─ @vzn/vx#lint > restored-local • d66cfed2
-├─ stdout
-Found 0 warnings and 0 errors.
-└─ @vzn/vx#lint ── (4ms) restored-local
-
-┌─ @vzn/vx#test > success
-├─ command
-bun test
-├─ stdout
-... test output ...
-└─ @vzn/vx#test ── (5.20s) success
-
-  tasks   <stacked 50-cell meter>
-          3 success
-  cache   <stacked 50-cell meter>
-          1 miss · 2 local
-  time    5.34s
+  info      8 workers · local cache
+  time      5.34s (max 5.20s · avg 2.6s · min 4ms)
 ```
 
-Group tasks emit no framed block by design (they aren't real tasks).
+Group tasks emit no framed block by design (they aren't real tasks);
+running a group focused surfaces its real member tasks instead.
 
 ### Colors
 
@@ -1115,12 +1172,15 @@ see plain text.
 ## Remote cache (env-driven)
 
 If `VX_REMOTE_CACHE_URL` and `VX_REMOTE_CACHE_TOKEN` are set in the
-environment, `vx run` layers a remote cache on top of the local one.
+environment, `vx run` layers a remote cache on top of the local one
+(a plugin's `cache` capability, when declared, wins over the env
+vars).
 
-Reads try local first, then remote (hydrating local on remote hit).
-Writes go to local immediately, then upload to remote in the
-background — failures are logged via `onRemoteError` but do not
-fail the user's build.
+Reads try local first, then remote (hydrating local on remote hit),
+with a background prefetch pass overlapping remote GETs with
+execution. Writes go to local immediately; the remote upload is a
+fire-and-forget background task drained at end of run — failures are
+logged via `onRemoteError` but never fail the build.
 
 | Env var                         | Required? | Notes                                                                                                                                                                      |
 | ------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1141,10 +1201,10 @@ protocol.
 
 `vx info` surfaces the aggregate cache stats (entry count, total
 size, runs + hits in the last 24 h). For anything deeper, vx records
-every task to a `runs` table in `cache.db` — ULID
-`run_id`, hrtime wallclock spans, cpu_ms, peak RSS, status, cache_hit
-flag, bytes_uploaded / \_downloaded for the remote layer. The
-SQLite file IS the API:
+every task to a `runs` table in `cache.db` (ULID `run_id`, hrtime
+wallclock spans, cpu_ms, peak RSS, status, cache_hit flag) plus one
+`invocations` header row per run (command, git/CI context, tags,
+counts). The SQLite file IS the API:
 
 ```sh
 sqlite3 .vx/cache/cache.db "
@@ -1156,7 +1216,8 @@ sqlite3 .vx/cache/cache.db "
 ```
 
 The schema is documented in
-[`caching.md` § SQLite tables](./caching.md#sqlite-tables).
+[`caching.md` § SQLite tables](./caching.md#sqlite-tables). For a
+browsable view, run `vx-cloud serve` and open the dashboard.
 
 ## What's still missing vs Turbo
 
@@ -1164,8 +1225,8 @@ Tracked in detail in [`comparison.md`](./comparison.md). Recap of the
 gaps visible from the CLI:
 
 - `--continue=<mode>` (current behavior: independent siblings continue;
-  dependents are skipped).
-- `--output-logs full|errors-only|hash-only|none`.
+  dependents are skipped — Turbo's middle setting, without the flag).
+- `--output-logs hash-only` (the other three modes shipped).
 - `--cache-dir <path>` CLI flag (workspace-config field works; CLI flag
   doesn't).
 - `--remote-cache-timeout`, `--token`, `--team` on the CLI (env vars
@@ -1198,15 +1259,19 @@ Surface:
 - `run(options)` — execute. Returns `Promise<RunSummary>`.
 - `planRun(options)` — predict, no execute. Returns
   `Promise<RunPlan>`. Used by `--dry` / `--graph`.
+- `prepareRun(options, log)` — the shared setup (discovery → configs →
+  graph → cache). What a coordinator embeds.
 - `defineProject` / `defineWorkspace` — identity helpers for type
   inference in user configs.
-- `RunOptions` / `RunSummary` / `RunPlan` / `TaskOutcome` types are
-  re-exported from `@vzn/vx`.
+- `RunOptions` / `RunSummary` / `TaskOutcome` types are re-exported
+  from `@vzn/vx`, alongside the plugin (`VxPlugin`), telemetry
+  (`TelemetrySink`, `RunSummaryRecord`), wire (`RunRequest`,
+  `RunBackend`), and metrics-query surfaces — see `src/index.ts`.
 
 A `log: Logger` option lets embedders swap the default framed-block
 logger for a custom one (e.g. JSON-line emission). Custom loggers
 always see plain text (colors are off when a non-default logger is
 provided).
 
-The CLI dispatcher (`run(argv)` in `src/cli.ts`) is not part of the
-public package exports yet; `bin.ts` calls it directly.
+The CLI dispatcher (`run(argv)` in `src/cli/index.ts`) is not part of
+the public package exports; `bin.ts` calls it directly.

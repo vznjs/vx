@@ -288,7 +288,11 @@ dependsOn: ['lib#build', 'shared#test'] // cross-project edges
 Semantics:
 
 - **Same-project (`'name'`)** — name must exist in this project's
-  `tasks` map; missing is a hard error at graph-build time.
+  `tasks` map; missing is a hard error at graph-build time. When the
+  config is authored through `defineProject`, a bare entry is also
+  **type-checked against this config's task keys** — a typo is a
+  compile error (`'^name'` / `'pkg#name'` reference other projects
+  and stay free strings).
 - **`'^name'`** — nearest-holder frontier. Walk the package dep graph
   from this project's direct deps; each path stops at the first dep
   that declares the task and an edge is added to it (Turbo/Nx
@@ -584,8 +588,10 @@ run is a no-op too.
   is the cached snapshot, byte-for-byte.
 
 Skipped when `cache.outputs.files` is empty (nothing declared as
-output) AND when `--no-cache` is set (the user is debugging and
-managing the tree themselves).
+output) and when no cache-write axis is enabled (e.g. `--no-cache`,
+or a read-only `--cache=local:r`) — the user is debugging and
+managing the tree themselves. `--force` keeps writes on, so it does
+clean.
 
 ##### `outputs.workspaceFiles` (optional, default `[]`)
 
@@ -705,10 +711,13 @@ default.
 
 ```ts
 import { defineWorkspace } from '@vzn/vx'
+import { otel } from '@vzn/vx-otel'
+import { cloud } from '@vzn/vx-cloud/plugin'
 
 export default defineWorkspace({
   concurrency: 8,
   cacheDir: 'build/.vx-cache',
+  plugins: [otel(), cloud()],
 })
 ```
 
@@ -718,6 +727,10 @@ interface WorkspaceConfig {
   concurrency?: number
   /** Cache directory, relative to workspace root. Defaults to `.vx/cache`. */
   cacheDir?: string
+  /** Run-level plugins (backend / cache / telemetry capabilities). */
+  plugins?: readonly Plugin[]
+  /** Opt in to history-based predictive scheduler priorities. */
+  predictive?: boolean
 }
 ```
 
@@ -727,25 +740,35 @@ interface WorkspaceConfig {
   root; absolute paths are used as-is. `vx run`, `vx cache prune`,
   and any other reader use the same resolution
   (`src/workspace/workspace.ts:resolveCacheDir`).
+- **`plugins`** — the run-level extension points. Each entry is a
+  `VxPlugin` object contributing any subset of `backend` (where the
+  run executes), `cache` (which cache layer is used), `telemetry`
+  (observe-only data export — the canonical path for OTel, vx-cloud,
+  or custom sinks), the deprecated `eventSink`, plus optional
+  `setup`/`teardown`. First-party plugins: `otel()` from
+  `@vzn/vx-otel`, `cloud()` from `@vzn/vx-cloud/plugin`. A plugin
+  that declines every capability (e.g. `otel()` with no OTLP
+  endpoint configured) costs nothing — a run with no active plugin
+  is byte-identical to one with none declared. Plugins observe and
+  route; they never change how a task executes.
+- **`predictive`** — **experimental, unbenchmarked.** When `true` and
+  `cache.db` has prior runs, the scheduler picks the next ready task
+  by expected remaining critical-path duration (history p50s)
+  instead of the static reverse-deps count. Fails open: any error in
+  history loading degrades to the baseline heuristic.
 
 The loader validates the shape (positive integer for `concurrency`,
-string for `cacheDir`) and throws a `UserError` on malformed input.
+string for `cacheDir`, plugin objects with a name and at least one
+capability, boolean `predictive`) and throws a `UserError` on
+malformed input.
 
-### Reserved for future workspace-level features
-
-These fields are anticipated but not implemented:
-
-- **`globalInputs`** — a workspace-wide file set folded into every
-  task's cache key (useful for shared root configs like
-  `tsconfig.base.json`). Currently absent; the workspace fingerprint
-  covers lockfile + workspace yaml but not arbitrary root files.
-- **`globalEnv`** — workspace-wide cache-tracked env names.
-- **`globalPassThrough`** — workspace-wide forwarded env names.
-- **`namedInputs`** — Nx-style reusable input sets, referenced from
-  task `cache.inputs.files`. Reduces glob duplication.
-- **`targetDefaults`** — Nx-style task-defaults inheritance.
-
-These are listed in [`comparison.md`](./comparison.md) as gaps.
+There are no workspace-level `globalInputs` / task-default fields:
+root-anchored file inputs are declared per task via
+`cache.inputs.workspaceFiles`, root-anchored probes via
+`cache.inputs.workspaceRuntime`, and shared task shapes compose
+through plain TypeScript (import a preset and spread it) — the
+language replaces Nx-style `namedInputs` / `targetDefaults` schema
+machinery by design.
 
 ## Helpers
 
@@ -848,9 +871,11 @@ export default defineProject({
 
 ## Common patterns
 
-### Sharing inputs across tasks (today)
+### Sharing inputs across tasks
 
-Until named inputs ship, copy the glob list. Plain TS arrays:
+TypeScript composition is the mechanism (named-input schema machinery
+was deliberately rejected — the language already does this). Plain TS
+arrays:
 
 ```ts
 const srcInputs = ['src/**', 'tsconfig.json']
@@ -974,7 +999,11 @@ and surfaces `UserError` (clean output, no stack):
 
 Workspace-config errors:
 
-| Symptom                                  | Cause                                     |
-| ---------------------------------------- | ----------------------------------------- |
-| `concurrency must be a positive integer` | `concurrency` is negative, zero, NaN, ... |
-| `cacheDir must be a string`              | Wrong shape.                              |
+| Symptom                                                                              | Cause                                     |
+| ------------------------------------------------------------------------------------ | ----------------------------------------- |
+| `concurrency must be a positive integer`                                             | `concurrency` is negative, zero, NaN, ... |
+| `cacheDir must be a string`                                                          | Wrong shape.                              |
+| `plugins must be an array of plugin objects`                                         | Wrong shape.                              |
+| `plugins[i].name must be a non-empty string`                                         | Missing / empty plugin name.              |
+| `plugins[i] must contribute at least one of setup/backend/cache/telemetry/eventSink` | A plugin object with no capability.       |
+| `predictive must be a boolean`                                                       | Wrong shape.                              |

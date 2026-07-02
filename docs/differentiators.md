@@ -37,17 +37,40 @@ history in CLAUDE.md's decision log; raw numbers in
    (`x-artifact-tag`), but a configured key REJECTS unsigned
    responses — header-stripping can't bypass it. Tampered artifacts
    degrade to re-execution, never fail the run.
-6. **A committed graph lockfile.** `vx lock` freezes the
-   fully-resolved task graph (env values included) into
-   `vx-lock.json`; CI audits it with a full re-evaluation
-   (`vx lock --check`) and executes exactly it (`--frozen`) with
-   zero config evaluation. Local runs always evaluate live. Turbo
-   and Nx have no equivalent — their static-JSON configs dodge the
-   problem by being less expressive; vx keeps code-as-config AND
-   reproducibility.
+6. **A committed config lockfile.** `vx lock` freezes every project's
+   **resolved config** (post-evaluation objects — computed values and
+   config-time env reads included) into `vx-lock.json`; CI audits it
+   with a full re-evaluation (`vx lock --check`) and loads exactly it
+   (`--frozen`) with zero config evaluation. The graph is still built
+   per run, and live-resolved inputs (`inputs.env` values, `runtime`
+   command output) stay live under `--frozen`. Local runs always
+   evaluate live. Turbo and Nx have no equivalent — their static-JSON
+   configs dodge the problem by being less expressive; vx keeps
+   code-as-config AND reproducibility.
 7. **Daemonless by design.** No background process, no staleness window,
    no socket state — and the fastest warm/cached runs in the committed
    head-to-head benchmark (`bench/compare.ts`).
+8. **Runtime inputs.** `cache.inputs.runtime` / `workspaceRuntime`
+   fold a probe command's live output into the key (tool versions, OS
+   info) — deduped per run, correct under `--frozen`. Nx has a
+   `runtime` input; Turbo has none (vercel/turborepo#4124).
+9. **Restore-ahead two-tier scheduling.** A stable-key warm hit is
+   knowable up front, so it restores immediately — before its deps
+   finish running — as low-priority worker backfill (misses own the
+   pool). Measured −6.6% on mixed workloads, parity on all-warm.
+   Remote runs get the same idea as **async prefetch**: stable-key
+   remote GETs fire in the background and overlap execution, at most
+   one per key; uploads are backgrounded too and drained at run end.
+10. **A versioned telemetry contract + run-level plugins.**
+    `TelemetryRecord` / `RunSummaryRecord` is one neutral, versioned
+    export shape every sink reads (OTel via `@vzn/vx-otel`, the
+    vx-cloud dashboard, custom sinks) — observe-only by construction,
+    crash-isolated, and provably zero-overhead when no sink is active.
+11. **Client/server environments.** `vx-cloud connect <url>` +
+    `vx-cloud env ls|use|rm` give docker-context-style named servers
+    with bearer auth; every developer's and CI's runs aggregate in one
+    dashboard, while the zero-config local serve keeps working with
+    no setup at all.
 
 > **Note:** an earlier design folded the upstream's _output content
 > identity_ into downstream keys ("early cutoff", v21). It was
@@ -80,7 +103,14 @@ history in CLAUDE.md's decision log; raw numbers in
 - **In-process tar** (15-400× faster than Bun.Archive at our sizes),
   atomic tmp+rename publish, single-transaction batch SQL.
 - **O(N+E) scheduler tick** with an exact most-blocked-first
-  priority queue.
+  priority queue — now two-tier (exec queue + restore-backfill queue).
+- **Pure-SQL cache hits**: metadata + stdout live in the `entries`
+  row, so a hit never decompresses the artifact (118 ms → 5 ms on
+  large-binary entries); `accessed_at` bumps batch into one UPDATE.
+- **Remote latency off the critical path**: prefetch overlaps GETs
+  with execution; uploads are fire-and-forget background tasks drained
+  at run end; `--dry` / `--graph` probe remote existence without
+  downloading.
 
 ## Deliberately rejected (with receipts)
 

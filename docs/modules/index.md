@@ -4,50 +4,38 @@
 
 The single entry point for `import x from '@vzn/vx'`. Everything in
 this file is the public API; everything else under `src/` is
-internal.
+internal. Since the core/cloud split this is the **cross-package
+contract**: `@vzn/vx-cloud`, `@vzn/vx-otel`, and any third-party
+plugin import everything they need from here via the bare `'@vzn/vx'`
+specifier — never a deep `src/...` path. The exact symbol set (~80
+exports) is pinned by `tests/package-boundaries.test.ts`; widening it
+is a deliberate snapshot update.
 
-## Public surface
+## Public surface (by group)
 
-```ts
-export const VERSION: string // current package version
-
-// Schema types — used by user vx.config.* and preset packages.
-export type {
-  WorkspaceConfig,
-  ProjectConfig,
-  TaskConfig,
-  ExecConfig,
-  ExecEnv,
-  PersistentConfig,
-  CacheConfig,
-  CacheInputs,
-  CacheOutputs,
-} from './config.js'
-
-// Schema helpers — identity functions for type inference.
-export { defineProject, defineWorkspace } from './config.js'
-
-// Programmatic engine entry points.
-export { run } from './orchestrator.js'
-export type { Logger, RunOptions, RunSummary } from './orchestrator.js'
-export type { TaskOutcome, TaskStatus } from './graph/scheduler.js'
-export type { TaskNode } from './graph/task-graph.js'
-```
+| Group             | Key exports                                                                                                                                                                                                                                                                      |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Version + errors  | `VERSION`, `UserError`                                                                                                                                                                                                                                                           |
+| Schema            | `defineProject`, `defineWorkspace`; types `WorkspaceConfig`, `ProjectConfig`, `TaskConfig`, `ExecConfig`, `ExecEnv`, `CacheConfig`, `CacheInputs`, `CacheOutputs`, `SandboxConfig`, `SandboxNetworkConfig`                                                                       |
+| Engine            | `run`, `planRun`, `prepareRun`; `computeTaskHash`, `createHashCache`; `FULL_CACHE_POLICY`, `parseCachePolicy`; types `RunOptions`, `RunSummary`, `CachePolicy`, `PreparedRun`, `HashCache`, `Logger`, `OutputView`; `defaultLogger`, `resolveOutputView`                         |
+| Graph             | `buildTaskGraph`, `expandRequested`, `isGroupTask`, `markSurfacedDeps`; types `TaskNode`, `TaskOutcome`, `TaskStatus`                                                                                                                                                            |
+| Cache             | `Cache`, `LayeredCache`, `RemoteCache`, `GitFilesCache`, `resolveInputs`, `resolveOutputs`; CAS seam `FsCASBackend`, `MemoryCASBackend`, `makeDigest`, `parseDigest`, `digestEqual`, `digestString`; types `CacheLayer`, `RunRecord`, `InvocationRecord`, `CASBackend`, `Digest` |
+| Workspace         | `findWorkspaceRoot`, `loadWorkspaceConfig`, `resolveCacheDir`                                                                                                                                                                                                                    |
+| Plugin API        | types `VxPlugin`, `EventSink`, `BackendContext`, `CacheContext`, `EventSinkContext`, `PluginSetupContext`                                                                                                                                                                        |
+| Telemetry         | `TELEMETRY_SCHEMA_VERSION`, `deriveCacheSource`; types `TelemetrySink`, `TelemetryContext`, `TelemetryRecord`, `RunSummaryRecord`, `RunContextRecord`, `TaskTelemetry`, `CacheSource`                                                                                            |
+| Wire / backend    | `optionsToRequest`, `requestToOptions`, `projectNode`, `projectOutcome`, `createWireRenderer`, `workerExecute`; types `RunBackend`, `RunRequest`, `RunResult`, `ClientMessage`, `ServerMessage`                                                                                  |
+| Event bus         | `createEventBus`, `wireForwarder`, `toWireEvent`, `createVxSurface`; types `EventBus`, `RunEvent`, `RunEventSubscriber`, `WireEvent`, `TaskView`, `OutcomeView`                                                                                                                  |
+| JSON-RPC envelope | `makeRequest` / `makeResponse` / `makeError` / `makeNotification`, `encodeForWS/SSE/NDJSON`, `decodeEnvelope`, `isEnvelope` + the `Envelope` types, `WIRE_CHANNELS`, `WIRE_PROTOCOL_VERSION`                                                                                     |
+| Metrics queries   | `listRuns`, `getRun`, `getRunTrends`, `getBottlenecks`, `cacheKeyDiff`, `compareRuns`, `whyDidThisRerunQuery`, `explainCacheKeyQuery`, `listInvocations`, `getHitRateSplit`, … (the full `/v1/*` query layer)                                                                    |
 
 ## Conventions
 
 - **Types are exported with `export type`** so a downstream
-  TypeScript project can import them without paying any runtime
-  cost.
-- **Runtime exports are minimized** — `defineProject` /
-  `defineWorkspace` (identity helpers), `run` (the orchestrator
-  entry), `VERSION` (string). Everything else is a type.
-- **`planRun` is intentionally not re-exported here yet.** It's an
-  internal CLI helper for `--dry` / `--graph`; we'll promote it when
-  there's a real embedding use case.
-- **`UserError` is not re-exported.** Programmatic consumers can
-  import it from `@vzn/vx/util/errors` if they need it, but it isn't
-  part of the public package surface.
+  TypeScript project can import them without paying any runtime cost.
+- **Everything routes through module contracts** — `index.ts` imports
+  only from each module's `index.ts` (boundary-test rule 2).
+- **Widening is deliberate.** Adding an export means updating the
+  package-boundaries snapshot; that friction is the point.
 
 ## Versioning
 
@@ -58,6 +46,6 @@ target binaries and attaches them).
 
 ## Tests
 
-`tests/config.test.ts` imports the helpers; `tests/orchestrator.test.ts`
-imports `run`. No dedicated test for `index.ts` itself — it's
-re-exports.
+`tests/package-boundaries.test.ts` pins the export snapshot and the
+cross-package import law. `tests/config.test.ts` imports the schema
+helpers; `tests/orchestrator.test.ts` imports `run`.

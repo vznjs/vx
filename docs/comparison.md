@@ -28,34 +28,36 @@ upstream repo so future revisions can be diffed against reality.
 - **`@vzn/vx`** — TypeScript-native config, opt-in caching, Turbo-shape
   cache key with two extensions (project package.json folded in;
   resolved-config hash captures TS imports). Bun-only. Smallest CLI
-  surface; deliberately no daemon, no plugins, no JS-function tasks.
-  Strict output ownership.
+  surface; deliberately no daemon, no executor plugins, no
+  JS-function tasks (run-level plugins — backend / cache / telemetry —
+  exist, but never change how a task executes). Strict output
+  ownership.
 
 ## Quick CLI flag map
 
 `turbo run` / `nx run-many` / `vp run` / `vx run`:
 
-| Capability                 | Turbo                     | Nx                         | vite-task                           | vx                                                         |
-| -------------------------- | ------------------------- | -------------------------- | ----------------------------------- | ---------------------------------------------------------- |
-| pnpm-style filter DSL      | `--filter`                | `--projects`, `--exclude`  | `--filter`                          | `--filter`                                                 |
-| recursive (every project)  | implicit                  | `--all`                    | `-r`                                | `--all`                                                    |
-| transitive deps            | `pkg...`                  | `--with-deps` (legacy)     | `-t`                                | `pkg...` (via DSL)                                         |
-| `pkg#task` addressing      | yes                       | `nx run pkg:target`        | yes                                 | yes                                                        |
-| concurrency cap            | `--concurrency`           | `--parallel`               | `--concurrency-limit`               | `--concurrency`                                            |
-| serialize / drop dep order | `--parallel`              | (always topo)              | `--parallel`                        | `--concurrency 1` to serialize; no `--parallel` (see note) |
-| skip dependsOn             | `--only`                  | `--skipNxDependsOn`        | `--ignore-depends-on`               | `--excludeDependencies[=<names>]`                          |
-| forward args               | `--`                      | `--args="..."`             | trailing args                       | `--`                                                       |
-| skip cache reads+writes    | `--no-cache`, `--force`   | `--skipNxCache`            | `--no-cache`                        | `--no-cache`, `--force`                                    |
-| dry-run (print plan)       | `--dry`, `--dry=json`     | `--graph` renders          | —                                   | `--dry`, `--dry=json`                                      |
-| affected (git-relative)    | `--affected`              | full `affected` subcommand | —                                   | `--affected[=<base>]` + `[<since>]` filter form            |
-| graph render               | `--graph file.{dot,html}` | `--graph`                  | —                                   | `--graph[=<path>]` (DOT)                                   |
-| continue past failure      | `--continue=…`            | `--nx-bail` (default)      | —                                   | (always; independent siblings continue)                    |
-| per-run JSON summary       | `--summarize`, `--json`   | `--outputStyle`            | `--last-details` replay             | `--summarize[=<path>]`                                     |
-| output log mode            | `--output-logs=…`         | `--outputStyle=…`          | `--log=interleaved/labeled/grouped` | (always grouped/framed)                                    |
-| profile / Chrome trace     | `--profile`               | (via Nx Cloud)             | —                                   | `--profile[=<path>]`                                       |
-| daemon on/off              | `--daemon`/`--no-daemon`  | (Nx daemon, always on)     | —                                   | (no daemon)                                                |
-| watch mode                 | `turbo watch`             | `nx watch`                 | —                                   | `vx watch <task>`                                          |
-| version / help             | `--version` / `--help`    | `--version` / `--help`     | `--version` / `--help`              | `--version`, `--help` / `-h`                               |
+| Capability                 | Turbo                     | Nx                         | vite-task                           | vx                                                                                     |
+| -------------------------- | ------------------------- | -------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------- |
+| pnpm-style filter DSL      | `--filter`                | `--projects`, `--exclude`  | `--filter`                          | `--filter`                                                                             |
+| recursive (every project)  | implicit                  | `--all`                    | `-r`                                | `--all`                                                                                |
+| transitive deps            | `pkg...`                  | `--with-deps` (legacy)     | `-t`                                | `pkg...` (via DSL)                                                                     |
+| `pkg#task` addressing      | yes                       | `nx run pkg:target`        | yes                                 | yes                                                                                    |
+| concurrency cap            | `--concurrency`           | `--parallel`               | `--concurrency-limit`               | `--concurrency`                                                                        |
+| serialize / drop dep order | `--parallel`              | (always topo)              | `--parallel`                        | `--concurrency 1` to serialize; no `--parallel` (see note)                             |
+| skip dependsOn             | `--only`                  | `--skipNxDependsOn`        | `--ignore-depends-on`               | `--excludeDependencies[=<names>]`                                                      |
+| forward args               | `--`                      | `--args="..."`             | trailing args                       | `--`                                                                                   |
+| skip cache reads+writes    | `--no-cache`, `--force`   | `--skipNxCache`            | `--no-cache`                        | `--no-cache` (all off) / `--force` (reads off, writes on) / `--cache=<spec>` per-layer |
+| dry-run (print plan)       | `--dry`, `--dry=json`     | `--graph` renders          | —                                   | `--dry`, `--dry=json`                                                                  |
+| affected (git-relative)    | `--affected`              | full `affected` subcommand | —                                   | `--affected[=<base>]` + `[<since>]` filter form                                        |
+| graph render               | `--graph file.{dot,html}` | `--graph`                  | —                                   | `--graph[=<path>]` (DOT)                                                               |
+| continue past failure      | `--continue=…`            | `--nx-bail` (default)      | —                                   | (always; independent siblings continue)                                                |
+| per-run JSON summary       | `--summarize`, `--json`   | `--outputStyle`            | `--last-details` replay             | `--summarize[=<path>]`                                                                 |
+| output log mode            | `--output-logs=…`         | `--outputStyle=…`          | `--log=interleaved/labeled/grouped` | `--output-logs full\|errors-only\|none` (+ flow-derived default)                       |
+| profile / Chrome trace     | `--profile`               | (via Nx Cloud)             | —                                   | `--profile[=<path>]`                                                                   |
+| daemon on/off              | `--daemon`/`--no-daemon`  | (Nx daemon, always on)     | —                                   | (no daemon)                                                                            |
+| watch mode                 | `turbo watch`             | `nx watch`                 | —                                   | `vx watch <task>`                                                                      |
+| version / help             | `--version` / `--help`    | `--version` / `--help`     | `--version` / `--help`              | `--version`, `--help` / `-h`                                                           |
 
 _Sources_: Turbo `/apps/docs/content/docs/reference/run.mdx`; Nx
 `/packages/nx/src/command-line/yargs-utils/shared-options.ts`;
@@ -72,49 +74,55 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 
 ## Config schema comparison
 
-| Schema feature                                       | Turbo                                                | Nx                                         | vite-task                          | vx                                              |
-| ---------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------ | ---------------------------------- | ----------------------------------------------- |
-| Config language                                      | JSON (`turbo.json`)                                  | JSON (`project.json`, `nx.json`)           | Vite config (`run` key)            | TypeScript (`vx.config.ts`)                     |
-| Per-package config                                   | yes                                                  | yes                                        | yes                                | yes                                             |
-| Workspace-level config                               | `turbo.json` at root + `extends`                     | `nx.json`                                  | root `vite.config.*`               | `vx.workspace.ts` (concurrency + cacheDir only) |
-| Per-task `dependsOn`: same project                   | bare name `lint`                                     | bare name                                  | bare name                          | `'lint'`                                        |
-| Per-task `dependsOn`: workspace deps                 | `^lint`                                              | `^lint` or `{projects:"dependencies"}`     | `pkg#task`                         | `'^lint'`                                       |
-| Per-task `dependsOn`: arbitrary other package's task | `pkg#task`                                           | `{projects:["pkg"],target:"task"}`         | `pkg#task`                         | `'pkg#task'`                                    |
-| Wildcards in `dependsOn`                             | —                                                    | v19.5+: `build-*`, `^build-*`              | —                                  | — **gap**                                       |
-| Group / umbrella tasks                               | tasks with `dependsOn` only                          | (achieved via target groups)               | (none)                             | yes — tasks with no `exec`                      |
-| Input declarations                                   | `inputs: [...]` + `$TURBO_DEFAULT$` etc.             | `inputs: [...]` w/ rich types              | `input: glob` or `{auto:true}`     | `cache.inputs.files: string[]`                  |
-| Auto-input inference                                 | —                                                    | —                                          | **yes** (`fspy`, see §3)           | — out of scope (see §3)                         |
-| Named / reusable input sets                          | (none)                                               | `namedInputs` at workspace + project level | (none)                             | — **gap**                                       |
-| Per-task env inputs                                  | `env: ["NODE_ENV"]`                                  | `inputs: [{env: "NODE_ENV"}]`              | `env: [...]` + `untrackedEnv`      | `cache.inputs.env: string[]`                    |
-| Pass-through env                                     | `passThroughEnv`                                     | (always pass through)                      | `untrackedEnv` (passed, no hash)   | `exec.env.passThrough`                          |
-| Define / literal env                                 | (no; rely on globalEnv)                              | (via executor options)                     | (no; in script)                    | `exec.env.define`                               |
-| Workspace-level env inputs                           | `globalEnv`, `globalPassThroughEnv`                  | workspace `namedInputs` + `inputs`         | (no)                               | — **gap**                                       |
-| Output declarations                                  | `outputs: [...]`                                     | `outputs: [...]`                           | `output: glob` or `{pattern,base}` | `cache.outputs.files: string[]`                 |
-| Output cleaning before exec / restore                | (no — additive)                                      | (no — additive)                            | (via materialized artifacts)       | **yes** — strict                                |
-| Implicit-dependency hash (project `package.json`)    | (via lockfile)                                       | `externalDependencies`                     | (via lockfile)                     | **yes** — folded directly (v12)                 |
-| Resolved-config hash (captures TS imports)           | —                                                    | —                                          | —                                  | **yes** — `node.config` JSON hashed             |
-| Persistent / long-running tasks (dev servers)        | `persistent`, `interruptible`, `interactive`, `with` | `continuous`                               | (handled outside graph)            | `exec.persistent.readyWhen`                     |
-| Configurations (named option sets)                   | —                                                    | `configurations` + `-c`                    | —                                  | — **gap**                                       |
-| Per-target metadata (`description`)                  | `description`                                        | `metadata.description`                     | —                                  | `description: string`                           |
-| Target defaults / inheritance                        | `extends`, task `extends`                            | `targetDefaults` (priority-resolved)       | (no)                               | — **gap**                                       |
-| Pre/post script lifecycle                            | (no)                                                 | (executor-defined)                         | `enablePrePostScripts: true`       | — **gap**                                       |
-| Boundaries / package-tag visibility                  | `boundaries.tags`                                    | `@nx/enforce-module-boundaries`            | (no)                               | — **gap**                                       |
+| Schema feature                                       | Turbo                                                | Nx                                         | vite-task                          | vx                                                             |
+| ---------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------ | ---------------------------------- | -------------------------------------------------------------- |
+| Config language                                      | JSON (`turbo.json`)                                  | JSON (`project.json`, `nx.json`)           | Vite config (`run` key)            | TypeScript (`vx.config.ts`)                                    |
+| Per-package config                                   | yes                                                  | yes                                        | yes                                | yes                                                            |
+| Workspace-level config                               | `turbo.json` at root + `extends`                     | `nx.json`                                  | root `vite.config.*`               | `vx.workspace.ts` (concurrency, cacheDir, plugins, predictive) |
+| Per-task `dependsOn`: same project                   | bare name `lint`                                     | bare name                                  | bare name                          | `'lint'`                                                       |
+| Per-task `dependsOn`: workspace deps                 | `^lint`                                              | `^lint` or `{projects:"dependencies"}`     | `pkg#task`                         | `'^lint'`                                                      |
+| Per-task `dependsOn`: arbitrary other package's task | `pkg#task`                                           | `{projects:["pkg"],target:"task"}`         | `pkg#task`                         | `'pkg#task'`                                                   |
+| Wildcards in `dependsOn`                             | —                                                    | v19.5+: `build-*`, `^build-*`              | —                                  | — **gap**                                                      |
+| Group / umbrella tasks                               | tasks with `dependsOn` only                          | (achieved via target groups)               | (none)                             | yes — tasks with no `exec`                                     |
+| Input declarations                                   | `inputs: [...]` + `$TURBO_DEFAULT$` etc.             | `inputs: [...]` w/ rich types              | `input: glob` or `{auto:true}`     | `cache.inputs.files: string[]`                                 |
+| Auto-input inference                                 | —                                                    | —                                          | **yes** (`fspy`, see §3)           | — out of scope (see §3)                                        |
+| Root-anchored inputs/outputs                         | `$TURBO_ROOT$/…`                                     | `{workspaceRoot}/…`                        | (none)                             | `cache.inputs/outputs.workspaceFiles`                          |
+| Runtime-command inputs (tool versions, probes)       | — (vercel/turborepo#4124)                            | `runtime` input                            | (none)                             | `cache.inputs.runtime` / `workspaceRuntime`                    |
+| Frozen / locked resolved configs                     | —                                                    | —                                          | —                                  | `vx lock` + `vx run --frozen`                                  |
+| Migration generator from other runners               | —                                                    | —                                          | —                                  | `vx migrate` (turbo.json / Nx graph → vx.config.ts)            |
+| Named / reusable input sets                          | (none)                                               | `namedInputs` at workspace + project level | (none)                             | rejected by design — TS arrays/imports compose                 |
+| Per-task env inputs                                  | `env: ["NODE_ENV"]`                                  | `inputs: [{env: "NODE_ENV"}]`              | `env: [...]` + `untrackedEnv`      | `cache.inputs.env: string[]`                                   |
+| Pass-through env                                     | `passThroughEnv`                                     | (always pass through)                      | `untrackedEnv` (passed, no hash)   | `exec.env.passThrough`                                         |
+| Define / literal env                                 | (no; rely on globalEnv)                              | (via executor options)                     | (no; in script)                    | `exec.env.define`                                              |
+| Workspace-level env inputs                           | `globalEnv`, `globalPassThroughEnv`                  | workspace `namedInputs` + `inputs`         | (no)                               | — **gap**                                                      |
+| Output declarations                                  | `outputs: [...]`                                     | `outputs: [...]`                           | `output: glob` or `{pattern,base}` | `cache.outputs.files: string[]`                                |
+| Output cleaning before exec / restore                | (no — additive)                                      | (no — additive)                            | (via materialized artifacts)       | **yes** — strict                                               |
+| Implicit-dependency hash (project `package.json`)    | (via lockfile)                                       | `externalDependencies`                     | (via lockfile)                     | **yes** — folded directly (v12)                                |
+| Resolved-config hash (captures TS imports)           | —                                                    | —                                          | —                                  | **yes** — `node.config` JSON hashed                            |
+| Persistent / long-running tasks (dev servers)        | `persistent`, `interruptible`, `interactive`, `with` | `continuous`                               | (handled outside graph)            | `exec.persistent.readyWhen`                                    |
+| Configurations (named option sets)                   | —                                                    | `configurations` + `-c`                    | —                                  | — **gap**                                                      |
+| Per-target metadata (`description`)                  | `description`                                        | `metadata.description`                     | —                                  | `description: string`                                          |
+| Target defaults / inheritance                        | `extends`, task `extends`                            | `targetDefaults` (priority-resolved)       | (no)                               | rejected by design — presets are TS imports                    |
+| Pre/post script lifecycle                            | (no)                                                 | (executor-defined)                         | `enablePrePostScripts: true`       | — **gap**                                                      |
+| Boundaries / package-tag visibility                  | `boundaries.tags`                                    | `@nx/enforce-module-boundaries`            | (no)                               | — **gap**                                                      |
 
 ## Cache feature comparison
 
-| Cache feature             | Turbo                                      | Nx                     | vite-task                    | vx                                                                                       |
-| ------------------------- | ------------------------------------------ | ---------------------- | ---------------------------- | ---------------------------------------------------------------------------------------- |
-| Local cache               | tarball-per-hash in `.turbo/cache`         | `.nx/cache` SQLite-ish | materialized-artifact crates | SQLite + on-disk in `.vx/cache` (one dir per entry, v13)                                 |
-| Remote cache wire         | Vercel `/v8/artifacts/` (HMAC, pre-signed) | Nx Cloud or plugin     | —                            | Turbo `/v8/artifacts/` (HTTP, bearer; HMAC + pre-signed: open)                           |
-| Log replay on hit         | yes                                        | yes                    | yes                          | yes                                                                                      |
-| Output restore on hit     | yes                                        | yes                    | yes                          | yes                                                                                      |
-| Output cleaning           | (no — additive)                            | (no)                   | (materialized)               | **yes** — wipe before exec AND before restore                                            |
-| Cache pruning (CLI)       | `cacheMaxAge`, `cacheMaxSize` in config    | `maxCacheSize`         | `vp run cache clean`         | `vx cache prune --older-than / --max-size`                                               |
-| Stats / run history       | `--summarize` JSON files                   | Nx Cloud dashboard     | `--last-details`             | `runs` table in `cache.db` (ULID + hrtime spans + cpu_ms + peak_rss); direct SQL queries |
-| Per-run JSON summary      | `--summarize`                              | `--outputStyle`        | `--last-details`             | `--summarize[=<path>]`                                                                   |
-| Chrome-trace profile      | `--profile`                                | (Nx Cloud)             | —                            | `--profile[=<path>]`                                                                     |
-| HMAC signing of artifacts | yes                                        | (transport-level)      | —                            | — **gap** (open workstream)                                                              |
-| Pre-signed URL auth       | yes                                        | yes                    | —                            | — **gap** (open workstream)                                                              |
+| Cache feature             | Turbo                                      | Nx                     | vite-task                    | vx                                                                                      |
+| ------------------------- | ------------------------------------------ | ---------------------- | ---------------------------- | --------------------------------------------------------------------------------------- |
+| Local cache               | tarball-per-hash in `.turbo/cache`         | `.nx/cache` SQLite-ish | materialized-artifact crates | SQLite index + one `<hash>.tar.zst` per entry in `.vx/cache`                            |
+| Remote cache wire         | Vercel `/v8/artifacts/` (HMAC, pre-signed) | Nx Cloud or plugin     | —                            | Turbo `/v8/artifacts/` (HTTP, bearer, HMAC signing; pre-signed URLs: open)              |
+| Log replay on hit         | yes                                        | yes                    | yes                          | yes                                                                                     |
+| Output restore on hit     | yes                                        | yes                    | yes                          | yes                                                                                     |
+| Output cleaning           | (no — additive)                            | (no)                   | (materialized)               | **yes** — wipe before exec AND before restore                                           |
+| Cache pruning (CLI)       | `cacheMaxAge`, `cacheMaxSize` in config    | `maxCacheSize`         | `vp run cache clean`         | `vx cache prune --older-than / --max-size`                                              |
+| Stats / run history       | `--summarize` JSON files                   | Nx Cloud dashboard     | `--last-details`             | `runs` + `invocations` tables in `cache.db` (direct SQL); `vx info`; vx-cloud dashboard |
+| Per-run JSON summary      | `--summarize`                              | `--outputStyle`        | `--last-details`             | `--summarize[=<path>]`                                                                  |
+| Chrome-trace profile      | `--profile`                                | (Nx Cloud)             | —                            | `--profile[=<path>]`                                                                    |
+| Async remote prefetch     | —                                          | —                      | —                            | **yes** — stable-key GETs overlap execution                                             |
+| Restore-ahead scheduling  | —                                          | —                      | —                            | **yes** — two-tier scheduler restores warm hits ahead of their deps                     |
+| HMAC signing of artifacts | yes                                        | (transport-level)      | —                            | **yes** — `VX_REMOTE_CACHE_SIGNATURE_KEY` (Turbo-compatible `x-artifact-tag`)           |
+| Pre-signed URL auth       | yes                                        | yes                    | —                            | — **gap** (open workstream)                                                             |
 
 ## Workspace integration
 
@@ -135,18 +143,30 @@ upstream repos.
 
 ### Likely-worth-adding
 
-1. **Named / reusable input sets.** Repeating `['src/**', 'tsconfig.json',
-'package.json']` across every cached task is noise. Workspace-level
-   schema addition.
-   - Nx: `namedInputs`
-     (`astro-docs/src/content/docs/reference/inputs.mdoc`).
+1. **Pre-signed URLs** on the remote cache. Open workstream; design at
+   [`design/remote-cache.md`](./design/remote-cache.md).
+   - Turbo `remoteCache.signature: true` equivalent **shipped 2026-06**
+     (`VX_REMOTE_CACHE_SIGNATURE_KEY`, Turbo-compatible
+     `x-artifact-tag`); pre-signed upload URLs remain.
 
-2. **Target defaults / inheritance.** Same motivation as #1 but for
-   `cache.outputs`, `dependsOn`, etc.
-   - Turbo: `extends` + task `extends`.
-   - Nx: `targetDefaults` (priority-resolved).
+2. **`--continue=<mode>`.** Today vx aborts a failed task's transitive
+   dependents but continues independent siblings — Turbo's middle
+   setting maps to vx's behavior already; the gap is the explicit flag
+   plus the more lenient `--continue=always`.
 
-3. **Auto-input inference via filesystem tracing.** Re-classified
+3. **Wildcards in `dependsOn`.** `build-*`, `^build-*`.
+   - Nx 19.5+.
+
+4. **Workspace-level `globalInputs` / `globalEnv` / `globalPassThrough`.**
+   Today every task lists root files via `workspaceFiles` and env
+   names per task; a workspace-level declaration would fold once for
+   everyone.
+   - Turbo `globalEnv`, `globalPassThroughEnv`.
+
+5. **`--cache-dir <path>` CLI flag.** The workspace-config field works
+   (`vx.workspace.ts`); the CLI flag doesn't. Easy add.
+
+6. **Auto-input inference via filesystem tracing.** Re-classified
    **out of scope** for vx (2026-06) after studying vite-task's
    implementation. Doing this soundly is a multi-platform native
    systems project — vite-task ships ~9 Rust crates for it:
@@ -161,70 +181,60 @@ upstream repos.
    no-build-step distribution; explicit inputs stay the contract.
    - vite-task: `{auto: true}` is the default; backed by `crates/fspy*`.
 
-4. **Output log modes.** A `--output-logs=full|hash-only|errors-only|none`
-   flag. Common in CI.
-   - Turbo: `--output-logs`, schema `outputLogs`.
-   - vite-task: `--log interleaved|labeled|grouped`.
-
-5. **Wildcards in `dependsOn`.** `build-*`, `^build-*`.
-   - Nx 19.5+.
-
-6. **Pre-signed URLs** on the remote cache. Open workstream; design at
-   [`design/remote-cache.md`](./design/remote-cache.md).
-   - Turbo `remoteCache.signature: true` equivalent **shipped 2026-06**
-     (`VX_REMOTE_CACHE_SIGNATURE_KEY`, Turbo-compatible
-     `x-artifact-tag`); pre-signed upload URLs remain.
-
-7. **`--continue=<mode>`.** Today vx aborts a failed task's transitive
-   dependents but continues independent siblings — Turbo's middle
-   setting maps to vx's behavior already; the gap is the explicit flag
-   plus the more lenient `--continue=always`.
-
-8. **`--cache-dir <path>` CLI flag.** The workspace-config field works
-   (`vx.workspace.ts`); the CLI flag doesn't. Easy add.
-
 ### Maybe-worth-adding (heavier lift, narrower payoff)
 
-9. ~~**`vx watch` subcommand**~~ — **shipped.** `vx watch <task>` runs
-   the task once, then re-runs on every filesystem change in scope.
-   Same flag surface as `vx run` minus `--dry` / `--graph` /
-   `--summarize` / `--profile` (which don't make sense for a loop).
-   Cycles are debounced ~150ms; failed cycles don't break the loop.
-   See [`cli.md` § vx watch](./cli.md#vx-watch).
+7. **`--output-logs hash-only`.** The other three modes
+   (`full` / `errors-only` / `none`) shipped; `hash-only` (print just
+   the task id + hash for hits) remains.
+   - Turbo: `--output-logs`, schema `outputLogs`.
 
-10. **Workspace-level `globalInputs` / `globalEnv` / `globalPassThrough`.**
-    Today every task lists `tsconfig.base.json` etc. independently if
-    needed; workspace-level would be a workspace fingerprint extension.
-    - Turbo `globalEnv`, `globalPassThroughEnv`.
+8. **Configurations (named option sets per target).** `build:prod` vs
+   `build:dev` as one task with two configurations rather than two
+   tasks.
+   - Nx: `configurations` + `-c`.
 
-11. **Configurations (named option sets per target).** `build:prod` vs
-    `build:dev` as one task with two configurations rather than two
-    tasks.
-    - Nx: `configurations` + `-c`.
+9. **Pre/post script lifecycle.** Auto-run `prebuild`/`postbuild` from
+   `package.json` scripts.
+   - vite-task: `enablePrePostScripts` (default true).
 
-12. **Pre/post script lifecycle.** Auto-run `prebuild`/`postbuild` from
-    `package.json` scripts.
-    - vite-task: `enablePrePostScripts` (default true).
-
-13. **`vx prune` (workspace subset for Docker builds).** Useful but
+10. **`vx prune` (workspace subset for Docker builds).** Useful but
     contained.
     - Turbo: `turbo prune`
       (`apps/docs/content/docs/reference/prune.mdx`).
 
-14. **Cache TTL / size caps in config.** vx has them as CLI flags on
+11. **Cache TTL / size caps in config.** vx has them as CLI flags on
     `vx cache prune` but doesn't auto-evict during runs.
     - Turbo: `cacheMaxAge`, `cacheMaxSize`.
     - Nx: `maxCacheSize`.
 
-15. **`vx stats` subcommand.** The `runs` table has the data. Today
-    consumers query `cache.db` directly.
+12. **Last-run replay** (`vp run --last-details`). Print the last
+    run's summary without re-executing. (The vx-cloud dashboard's
+    run-detail page covers the browsable version.)
 
-16. **Last-run replay** (`vp run --last-details`). Print the last
-    run's summary without re-executing.
+### Shipped since this list was first drawn
 
-17. **OTel run telemetry.** Push every run's spans to an OTLP
-    endpoint.
-    - Turbo: `experimentalObservability.otel.*`.
+- `vx watch <task>` — debounced re-run loop.
+- `--output-logs full|errors-only|none`.
+- `vx info` (absorbed `vx stats`; the alias remains).
+- HMAC artifact signing (`VX_REMOTE_CACHE_SIGNATURE_KEY`).
+- OTel run telemetry — the `otel()` plugin in `@vzn/vx-otel` (declare
+  it in `vx.workspace.ts` + set `OTEL_EXPORTER_OTLP_ENDPOINT`).
+- Per-task OS sandboxing (`sandbox: {…}`, SRT-backed,
+  fail-on-violation).
+- Root-anchored inputs/outputs (`workspaceFiles`) and runtime-command
+  inputs (`runtime` / `workspaceRuntime`).
+- `vx lock` / `vx run --frozen`, `vx migrate`, `vx show`, `vx mcp`.
+- Run dashboard + analytics service (`vx-cloud serve` + environments).
+
+### Explicitly rejected (owner decisions — do not re-propose)
+
+- **Named / reusable input sets (`namedInputs`) and target defaults /
+  inheritance.** TypeScript configs compose — shared presets via
+  import ARE vx's named inputs and defaults; schema machinery would
+  duplicate the language.
+- **Transparent config-eval caching.** Purity heuristics are
+  correctness-critical machinery for a modest win; `vx lock` is the
+  explicit-user-action answer.
 
 ### Explicitly out of scope (today)
 
@@ -232,22 +242,22 @@ These don't appear on the roadmap and won't be added without a
 deliberate design pass.
 
 - **Daemon / persistent project-graph process.** Re-discovery is fast
-  enough on Bun; the operational cost of a daemon doesn't pay for
-  itself.
-- **Executor / plugin protocol.** "Shell is the API" is a deliberate
-  constraint. No JS-function tasks; no executor packages.
+  enough on Bun (and config loading is scoped); the operational cost
+  of a daemon doesn't pay for itself.
+- **Executor plugin protocol.** "Shell is the API" is a deliberate
+  constraint. No JS-function tasks; no executor packages. (The
+  shipped `VxPlugin` system is run-level infrastructure — backend /
+  cache / telemetry — and cannot change task execution.)
 - **Generators / scaffolding.** Not a task-runner concern.
-- **TUI / interactive panes.** Streamed framed blocks are the final
-  output format; no Nx-style Terminal UI.
+- **TUI / interactive panes.** Streamed framed blocks + the worker
+  status region are the terminal format; no Nx-style Terminal UI (an
+  attempt was built and dropped). The browsable surface is the
+  vx-cloud dashboard.
 - **Boundaries / package-tag visibility.** Module-level constraint
   rules belong in lint (`oxlint`, `eslint-plugin-import`), not the
   task runner.
 - **Non-JS executor plugins.** Rust / .NET / Gradle projects use their
   own runners. vx is a JS-monorepo runner.
-- **Sandboxing.** A bwrap-based attempt was reverted (Ubuntu 24
-  AppArmor default blocks unprivileged user namespaces, breaking it in
-  CI). Under-declared inputs producing stale hits is the accepted
-  task-runner tradeoff; Turbo and Nx do the same.
 - **Windows.** vx spawns POSIX shell. Cross-target binaries are built
   for linux/darwin × x64/arm64; Windows is not on the matrix.
 
@@ -274,10 +284,34 @@ Things `@vzn/vx` does that the others don't:
 - **Group tasks as first-class.** A task with no `exec` (just
   `dependsOn`) is a pure aggregator; doesn't appear in the run output,
   isn't counted in the summary, isn't recorded in analytics.
+- **Runtime-command inputs.** `cache.inputs.runtime` /
+  `workspaceRuntime` fold a probe command's live output into the key
+  (tool versions, OS info) — Nx has `runtime`; Turbo has no
+  equivalent (vercel/turborepo#4124).
+- **Restore-ahead two-tier scheduling.** A stable-key warm hit
+  restores immediately, before its deps finish running, as worker
+  backfill — misses still own the pool. Remote runs get the same idea
+  as async prefetch (remote GETs overlap execution, at most one per
+  key).
+- **`vx lock` / `--frozen`.** Configs are programs; the lock freezes
+  the resolved objects for CI reproducibility, with a full
+  re-evaluation audit (`vx lock --check`). No analog in Turbo/Nx.
+- **`vx migrate`.** One command generates per-package `vx.config.ts`
+  from `turbo.json` or an Nx project graph, with TODO comments for
+  everything unmappable.
+- **A versioned telemetry contract + plugin seam.** `TelemetryRecord`
+  / `RunSummaryRecord` (TELEMETRY_SCHEMA_VERSION) is one neutral
+  export shape every sink reads — OTel, the vx-cloud dashboard, or a
+  custom sink — observe-only by construction, zero cost when unused.
+- **Client/server environments.** `vx-cloud connect <url>` +
+  `vx-cloud env` give docker-context-style named servers; every run's
+  summary lands in one authenticated team dashboard with no per-shell
+  env vars.
 - **Bun-native everything.** `Bun.spawn` for child rusage capture,
-  `bun:sqlite`, `Bun.YAML`, `Bun.Glob`, `Bun.CryptoHasher`, native
-  `await import()` with a content-hash query string for config
-  cache-busting. No native-binary build step on install.
+  `bun:sqlite`, `Bun.YAML`, `Bun.Glob`, `Bun.hash.xxHash3`,
+  `Bun.zstdCompress`, native `await import()` with a content-hash
+  query string for config cache-busting. No native-binary build step
+  on install.
 - **One-binary distribution.** `bun build --compile` produces a
   single self-contained executable per platform target. The install
   script downloads one binary from a GitHub release — no Node, no
@@ -304,18 +338,21 @@ in [`design/turbo-nx-test-gaps.md`](./design/turbo-nx-test-gaps.md).
 
 ### Hashing pipeline
 
-- **No `.gitattributes` CRLF normalization.** Turbo replicates git's
-  blob-hashing pipeline (CRLF conversion + `text=auto` + `autocrlf`)
-  so the manual-hash fallback matches `git hash-object` byte-for-byte.
-  vx hashes raw file bytes with xxh3. Tradeoff: a CRLF-converted file
-  on Windows produces a different vx cache key than the same logical
-  content on Linux. Document this if/when we ship Windows support.
-- **No `.gitattributes` binary detection.** Same root: vx hashes raw
-  bytes; we don't need to distinguish text from binary at hash time.
-- **xxHash3 vs git's SHA1 blob hash.** Turbo uses git-object SHA1
-  when files are tracked, falls back to manual hashing otherwise. vx
-  always uses xxh3 of raw bytes. Wins ~5× speed; loses interop with
-  `git hash-object` for tooling that wants to share the digest.
+- **Git blob OIDs for input files, like Turbo (v20).** Tracked clean
+  files contribute their index OID (harvested from the same bulk
+  `git ls-files -s` spawn that enumerates files — zero reads on a
+  clean tree); dirty/untracked files fall back to an in-process
+  blob-OID computation that is byte-identical for identical content.
+  The KEY composition on top of those per-file OIDs is xxHash3
+  (16-hex), not SHA — Turbo composes with xxh64; the widths match.
+- **No `.gitattributes` CRLF normalization in the fallback.** Turbo's
+  manual-hash fallback replicates git's CRLF conversion so it matches
+  `git hash-object` under `text=auto` / `autocrlf`. vx's in-process
+  fallback hashes raw bytes (`blob <len>\0` + content) — identical to
+  the index OID on Linux/macOS; a CRLF-converting Windows checkout
+  could diverge. Document this if/when Windows ships.
+- **No `.gitattributes` binary detection.** Same root: raw bytes; no
+  text-vs-binary distinction needed at hash time.
 
 ### Task graph
 
@@ -358,15 +395,17 @@ in [`design/turbo-nx-test-gaps.md`](./design/turbo-nx-test-gaps.md).
 
 ### Cache storage
 
-- **stdout / stderr stored in SQLite, not in the tar artifact.**
-  Turbo embeds the run's logs as files inside the cache archive.
-  vx separates them: the tar holds outputs only; logs live in the
-  SQLite `runs` table. Decouples log retention from cache eviction;
-  `vx stats` can query log history without unpacking artifacts.
-- **No per-cache-entry SCM metadata.** Turbo writes the git sha +
-  dirty-hash into each cache entry's metadata. vx writes run-level
-  analytics only. Reconsider if we want post-hoc "what git state
-  produced this artifact" queries.
+- **stderr is not cached; stdout is stored twice on purpose.** Turbo
+  embeds the run's full logs inside the cache archive. vx's artifact
+  is exactly `stdout` + `outputs/` (only successful runs are cached
+  and their stderr is near-always empty); stdout ALSO lives in the
+  SQLite `entries` row so a local hit replays it with pure SQL —
+  never decompressing the artifact.
+- **Per-run SCM metadata, not per-entry.** Turbo writes the git sha +
+  dirty-hash into each cache entry's metadata. vx records git
+  commit/branch/dirty on the per-run `invocations` row instead, and
+  the per-component `entry_inputs` rows answer "what inputs produced
+  this artifact" at finer granularity.
 
 ### Remote cache
 

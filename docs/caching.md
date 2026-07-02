@@ -31,17 +31,18 @@ opt _out_ via `cache: false`. We chose the strictest of the three.
 
 ## Cache key derivation
 
-The cache key for one task is a SHA-256 hex digest over (in order):
+The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
+over (in order):
 
-1. **`CACHE_VERSION`** — the schema-version sentinel
-   (currently `'vx-cache-v20'`, in `src/cache/cache.ts`). Bumped only
+1. **`CACHE_VERSION`** — the key-derivation sentinel
+   (currently `'vx-cache-v24'`, in `src/cache/cache.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
    identical everything else still produce distinct keys — protects
    against e.g. `pkg-a#build` accidentally cache-hitting on a
    `pkg-b#build` entry.
-3. **Workspace fingerprint** — sha256 of every supported workspace
+3. **Workspace fingerprint** — xxh3 of every supported workspace
    marker found at the root (see
    [`modules/fingerprint.md`](./modules/fingerprint.md)):
    `pnpm-lock.yaml`, `package-lock.json`, `npm-shrinkwrap.json`,
@@ -49,18 +50,19 @@ The cache key for one task is a SHA-256 hex digest over (in order):
    install-resolved change (a `bun install` that bumps `bun.lock`) or
    any workspace-shape change invalidates _every_ cache entry. This is
    the single global "the world changed" lever.
-4. **Project `package.json` hash** — sha256 of the project's
+4. **Project `package.json` hash** — xxh3 of the project's
    `package.json` bytes. Folded in implicitly (Turbo / Nx parity).
    Covers the case where `cache.inputs.files: ['src/**']` is narrow
    and a `package.json` dep change would otherwise leak undetected.
    (Added at v12; rationale in [§ History](#history).)
-5. **Task config hash** — `sha256(JSON.stringify(node.config))` of the
+5. **Task config hash** — `xxh3(JSON.stringify(node.config))` of the
    _evaluated_ task config. Captures:
-   - `exec` block (command, env declarations).
+   - `exec` block (command, env declarations, timeout, persistent).
    - `dependsOn` and `cache.inputs.tasks` declarations.
-   - `cache.outputs.files`, `cache.inputs.files`, `cache.inputs.env`
-     declarations (the strings themselves; their resolved file content
-     / env values contribute separately).
+   - `cache.outputs.files`, `cache.inputs.files`, `cache.inputs.env`,
+     `cache.inputs.runtime` / `workspaceRuntime` declarations (the
+     strings themselves; their resolved file content / env values /
+     command output contribute separately).
    - `description` (because it's part of the resolved object — even
      though it has no behavioural effect; a description change isn't a
      correctness change but the cost of a re-run is low).
@@ -68,24 +70,24 @@ The cache key for one task is a SHA-256 hex digest over (in order):
      `process.env`-read at config-load time injected. Bun's native
      `await import()` evaluates the module and bakes those values into
      the object before we serialize.
-6. **`cache.inputs.env` resolved values** — `[name, value]` pairs
-   read from host `process.env` at hash time. Listed names get their
-   current values; unset names contribute the empty string (and the
-   count of names + the names themselves are also folded in).
-7. **`cache.inputs.runtime` resolved output** — `[command, output]`
-   pairs, where `output` is the combined, trimmed stdout + stderr of
-   each command run via `sh -c` in the **project dir** at hash time.
-   The runtime-output analog of step 6: the command _strings_ are in
-   the resolved config (step 5), their _output_ is resolved live every
-   run. Folded with the command count + each `command\0output` pair.
-8. **`cache.inputs.workspaceRuntime` resolved output** — same as step
-   7 but commands run at the **workspace root**, and the pairs fold
-   into a **distinct namespace** (`ws-runtime-values:`) so an identical
-   `(command, output)` never aliases the project-cwd `runtime` values.
-9. **`forwardArgs`** — CLI args passed after `--`. Folded into the
+6. **`forwardArgs`** — CLI args passed after `--`. Folded into the
    key so `vx run test -- --watch` doesn't cache-hit a previous
    `vx run test`. Scoped to the user-requested tasks only — dependsOn-
    pulled deps don't see them (their cache identity stays clean).
+7. **`cache.inputs.env` resolved values** — `[name, value]` pairs
+   read from host `process.env` at hash time (delimited `name\0value`
+   so boundaries are unambiguous). Listed names get their current
+   values; unset names contribute the empty string.
+8. **`cache.inputs.runtime` resolved output** — `[command, output]`
+   pairs, where `output` is the combined, trimmed stdout + stderr of
+   each command run via `sh -c` in the **project dir** at hash time.
+   The runtime-output analog of step 7: the command _strings_ are in
+   the resolved config (step 5), their _output_ is resolved live every
+   run. Folded with the command count + each `command\0output` pair.
+9. **`cache.inputs.workspaceRuntime` resolved output** — same as step
+   8 but commands run at the **workspace root**, and the pairs fold
+   into a **distinct namespace** (`ws-runtime-values:`) so an identical
+   `(command, output)` never aliases the project-cwd `runtime` values.
 10. **Filtered upstream task cache hashes** — every upstream task's
     own cache key, filtered by `cache.inputs.tasks` (default: all of
     them). Sorted by hash before folding so the ordering of `dependsOn`
@@ -96,43 +98,89 @@ The cache key for one task is a SHA-256 hex digest over (in order):
     declared-outputs-excluded, nested-projects-excluded), each file
     contributing its **git blob OID** (v20). On a clean tree the OID
     comes straight from the index — the same bulk
-    `git ls-files -s --others` spawn that enumerates files also yields
-    every tracked file's OID, and one `git status --porcelain` prunes
-    paths whose working tree diverges, so deriving these hashes costs
-    zero file reads, zero per-file stats, zero SQLite lookups. Dirty /
-    untracked files (and symlinks) fall back to an in-process
+    `git ls-files -s --others --exclude-standard` spawn that enumerates
+    files also yields every tracked file's OID, and one
+    `git status --porcelain` prunes paths whose working tree diverges,
+    so deriving these hashes costs zero file reads, zero per-file
+    stats, zero SQLite lookups. Dirty / untracked files (and symlinks)
+    fall back to an in-process
     `HASH("blob " + len + "\0" + content)` computation (sha1, or
     sha256 in `--object-format=sha256` repos) with the
     `file_hashes` mtime+size memo as the fast path — byte-identical
     to the index OID for identical content, so a file's contribution
     never flips across dirty↔clean transitions. Folded as
-    `(relPath, oid)` pairs, sorted by relPath for stability across
-    OSes and walk orders.
+    `(relPath, oid)` pairs, sorted for stability across OSes and walk
+    orders.
 
-The composition is hash-then-concat-then-hash: each step appends
-length-prefixed bytes to the running hasher, so two different field
-layouts can't collide.
+The composition is seed-chained (`xxh3(part, prevDigest)`) with a
+label prefix per field, so two different field layouts can't collide.
+xxHash3 is non-cryptographic by design — cache keys need uniqueness
+across honest inputs, not adversarial collision resistance.
 
 ## Cache lookup → restore
 
 On a hit:
 
-1. The matching entry's directory at `<cacheDir>/<hash>/` is found.
-2. The task's declared outputs are wiped from the project dir
-   (`cleanOutputs`) — see [§ Strict output ownership](#strict-output-ownership).
-3. Files at `<cacheDir>/<hash>/outputs/<rel>` are copied into the
-   project dir, recreating parent directories as needed. Pre-existing
-   local files at output paths are overwritten.
-4. Captured stdout / stderr from `<cacheDir>/<hash>/{stdout,stderr}`
-   are replayed to the live terminal via the logger — the framed block
-   looks exactly the same as a fresh run.
+1. `cache.get(hash)` is **pure SQL**: the `entries` row carries the
+   metadata and the captured stdout; the `output_files` rows carry the
+   output fingerprints. The tar artifact is not touched by the probe
+   (its existence is verified with one stat), so hit cost doesn't
+   scale with artifact size.
+2. If the on-disk output tree already matches the cached snapshot
+   (size + mode + mtime check against `output_files`), extraction is
+   skipped entirely — the outcome reports **up-to-date**
+   (`restored: false`).
+3. Otherwise the task's declared outputs are wiped from the project
+   dir (`cleanOutputs`) — see
+   [§ Strict output ownership](#strict-output-ownership) — and the
+   `outputs/<rel>` (+ `workspace-outputs/<rel>`) entries are extracted
+   from `<cacheDir>/<hash>.tar.zst` into place.
+4. Captured stdout is replayed to the live terminal via the logger —
+   the framed block looks like a fresh run. (stderr is not cached —
+   only successful runs are cached and their stderr is near-always
+   empty; live runs still stream stderr normally.)
 5. The task is marked `cache-hit` (or `cache-hit-remote` when the
-   `LayeredCache` hydrated from the remote layer this lookup);
+   `LayeredCache` hydrated from the remote layer this run);
    `durationMs` is the wallclock for the restore op, not the original
    exec time.
 
 The cached `exitCode` is preserved. A cached non-zero exit is
 impossible by construction — see [§ Cache write](#cache-write).
+
+### Local restore tier (two-tier scheduler)
+
+`dependsOn` is an ordering gate, so a dependent normally can't even
+probe the cache until its upstream finishes running. But a
+**stable-key** task's key is provably independent of any upstream's
+_outputs_ — its hit/miss status is knowable up front, and restoring
+it needs none of its deps' output. So on local-only runs, `run()`
+performs an up-front CLASSIFY (`orchestrator/local-shortcircuit.ts`):
+
+1. Derive every stable, cacheable, local-read task's key (reusing the
+   run's `hashCache` memo) and probe local `cache.get` **once**,
+   building a `preProbed` map covering stable hits AND stable misses.
+2. Confirmed hits become the **restore tier**: the scheduler makes
+   them ready immediately (no dep gate, and no failed-dep→skip check —
+   their key is dep-success-independent) but at LOW priority, so cache
+   **misses own the worker pool and restores only backfill idle
+   capacity**.
+3. `execute-task` consumes `preProbed`, so the up-front probes ARE the
+   probes it would have done, hoisted — no double work, and every task
+   still flows through `execute()` so output is unchanged.
+
+Stability gate (shared with remote prefetch via
+`stable-keys.ts:deriveStableKeys`): a task whose input globs could
+match a same-project upstream's declared `outputs.files` (or whose
+`inputs.workspaceFiles` overlap an upstream's
+`outputs.workspaceFiles`) has a _preliminary_ key and stays exec-tier
+/ dep-gated. A graph declaring any `outputs.workspaceFiles` disables
+the restore tier graph-wide (probe reuse still applies). The
+short-circuit never runs under a `LayeredCache` (remote prefetch owns
+those runs — an up-front `get` there would put remote GETs on the
+critical path), never fires with local reads off, and never throws —
+any error degrades to the normal lazy schedule. Measured: −6.6% on a
+mixed slow-upstream/warm-downstream workload; parity on all-hit warm
+runs.
 
 ### Remote prefetch (async, remote-only)
 
@@ -179,6 +227,28 @@ Hard invariants:
   `source: 'remote'`, so the outcome is `cache-hit-remote`.
 - **A remote-read-off policy** (`--no-cache`, `--force`, or
   `--cache=remote:`) fires no prefetch.
+- **Never fail.** Every remote path (get / put / ingest / prefetch)
+  catches all errors and degrades to a cache miss. A remote 500, a
+  network drop, a corrupt artifact, or a bad signature can never fail
+  a run.
+
+### Remote uploads (background, drained at run end)
+
+Writes go to the local cache synchronously; the **remote PUT is a
+fire-and-forget background upload**. The task's outcome (and its
+dependents) never wait on upload latency — the uploads race alongside
+the rest of the run and are drained before `cache.close()`, so a
+short run still ships every artifact before the process exits. Upload
+failures log via `onRemoteError` and are otherwise ignored (the task
+already succeeded; the only loss is the remote entry).
+
+### Planning probes (`--dry` / `--graph`)
+
+The planning paths (`vx run --dry`, `--graph`) predict hits without
+side effects: against a remote cache they use a **lightweight
+existence probe** — no artifact download, no local ingest. A predicted
+`hit-remote` means the artifact exists remotely; the bytes move only
+when a real run needs them.
 
 ## Cache policy (read/write axes)
 
@@ -216,15 +286,20 @@ A miss runs the task. If the final exit code is `0` and the task's
 `willWrite` is true (it has a `cache` block AND at least one write axis
 is on):
 
-1. `cache.outputs.files` is resolved against the project dir.
-2. Matching files are copied into `<cacheDir>/<hash>.tmp-<pid>-<ms>/outputs/<rel>`.
-3. Captured stdout / stderr text is written to the same temp dir's
-   `stdout` and `stderr` files.
-4. The temp dir is atomically renamed to its final `<cacheDir>/<hash>/`.
-   Concurrent readers see either no entry or a complete entry — never
-   a partial one.
-5. An `entries` row is upserted in SQLite (taskId, command, exit code,
-   duration, total byte count, created_at, accessed_at).
+1. `cache.outputs.files` (and `outputs.workspaceFiles`) are resolved
+   against the project dir / workspace root.
+2. A second `computeTaskHash` runs with the `captureInto` side-channel
+   to record the per-component input fingerprint (miss-only; the
+   HashCache memos make it a re-fold, no extra I/O).
+3. The artifact — one `stdout` entry plus `outputs/<rel>` (+
+   `workspace-outputs/<rel>`) entries — is packed in-process into a
+   single `<hash>.tar.zst`, written to a temp name, validated, and
+   atomically renamed into place. Concurrent readers see either no
+   entry or a complete entry — never a partial one.
+4. One SQLite transaction upserts the `entries` row (taskId, command,
+   exit code, duration, size, stdout, timestamps), the `output_files`
+   fingerprint rows, and the `entry_inputs` component rows
+   (`INSERT OR IGNORE`).
 
 If the task exits non-zero, **nothing is cached.** This is deliberate:
 
@@ -234,8 +309,8 @@ If the task exits non-zero, **nothing is cached.** This is deliberate:
 - Failures should be transient by default — flaky tests, network
   blips, transient resource exhaustion shouldn't bake into the cache.
 
-Failed-task stdout / stderr are still surfaced to the user via the
-live stream and on the `TaskOutcome.stderr` field. The `runs` table
+Failed-task stdout / stderr still reach the user via the live stream
+and the framed failure block replayed at run end. The `runs` table
 records the failure (status + exit code) for analytics.
 
 ## Strict output ownership
@@ -283,18 +358,19 @@ A task's cache becomes invalid when any of these change:
 | Edit the project's `package.json` (dep / version / scripts change)                                                                       | step 4 (project package.json hash)                                                                                        |
 | Edit the task's `vx.config.ts`                                                                                                           | step 5 (task config hash)                                                                                                 |
 | Edit a config file that the task config imports                                                                                          | step 5 (configHash sees the resolved object after Bun evaluates imports)                                                  |
-| Change a `cache.inputs.env` host value                                                                                                   | step 6                                                                                                                    |
-| Change the combined stdout+stderr of a `cache.inputs.runtime` command (resolved at hash time)                                            | step 7                                                                                                                    |
-| Change the combined stdout+stderr of a `cache.inputs.workspaceRuntime` command (resolved at hash time)                                   | step 8                                                                                                                    |
-| Change CLI `forwardArgs` (after `--`)                                                                                                    | step 9                                                                                                                    |
+| Change CLI `forwardArgs` (after `--`)                                                                                                    | step 6                                                                                                                    |
+| Change a `cache.inputs.env` host value                                                                                                   | step 7                                                                                                                    |
+| Change the combined stdout+stderr of a `cache.inputs.runtime` command (resolved at hash time)                                            | step 8                                                                                                                    |
+| Change the combined stdout+stderr of a `cache.inputs.workspaceRuntime` command (resolved at hash time)                                   | step 9                                                                                                                    |
 | Upstream task's cache key changes (because its inputs changed)                                                                           | step 10                                                                                                                   |
 | Bump `CACHE_VERSION`                                                                                                                     | step 1 — orphans every entry                                                                                              |
 | Change `exec.env.passThrough` _values_ alone                                                                                             | **NOT a trigger** by design — passThrough values are host-specific                                                        |
 | Change a file not in `inputs.files` / `inputs.workspaceFiles`                                                                            | **NOT a trigger** by design — declare it explicitly                                                                       |
+| Edit `vx-lock.json`                                                                                                                      | **NOT a trigger** — globally excluded from inputs (v24); it's vx's own metadata, never a task input                       |
 | Change a file in a nested project's dir                                                                                                  | **NOT a trigger** for the parent's `files` globs — project boundaries are hard (workspaceFiles is the explicit exception) |
 
-The cascade in row 11 is what makes monorepo caching work: edit a file
-in `lib/`, and every package that depends on `lib`'s `build` task
+The cascade in step 10 is what makes monorepo caching work: edit a
+file in `lib/`, and every package that depends on `lib`'s `build` task
 re-runs automatically.
 
 ## Cross-project boundaries
@@ -364,9 +440,12 @@ field needed no `CACHE_VERSION` bump). `output_files` rows mirror the
 two namespaces — project rows store the bare rel, workspace rows store
 the full `workspace-outputs/<rel>` name as the discriminator.
 
-**Key property:** one entry is one file. Eviction is a single unlink.
-There is no separate `logs/` tree or per-entry manifest to worry
-about.
+**Key properties:** one entry is one file — eviction is a single
+unlink; no per-entry manifest, no separate `logs/` tree; and local +
+remote layers transport the exact same tar.zst bytes end-to-end.
+Captured stdout is stored twice on purpose: in the artifact (so it
+survives the remote round-trip) and in the `entries` row (so a local
+hit replays it with pure SQL, never decompressing the artifact).
 
 ### SQLite tables
 
@@ -379,15 +458,16 @@ CREATE TABLE schema_meta (
 );
 
 CREATE TABLE entries (
-  hash         TEXT PRIMARY KEY,  -- the sha256 cache key
+  hash         TEXT PRIMARY KEY,  -- the 16-hex xxh3 cache key
   project      TEXT NOT NULL,
   task         TEXT NOT NULL,
   command      TEXT NOT NULL,
   exit_code    INTEGER NOT NULL,
   duration_ms  INTEGER NOT NULL,
-  size_bytes   INTEGER NOT NULL,  -- total bytes under <hash>/
+  size_bytes   INTEGER NOT NULL,  -- artifact size
+  stdout       TEXT NOT NULL DEFAULT '',  -- captured stdout (pure-SQL hit replay)
   created_at   INTEGER NOT NULL,  -- ms-epoch
-  accessed_at  INTEGER NOT NULL   -- ms-epoch; bumped on every hit (LRU)
+  accessed_at  INTEGER NOT NULL   -- ms-epoch; bumps batch at flush (LRU)
 );
 
 CREATE TABLE runs (
@@ -406,9 +486,7 @@ CREATE TABLE runs (
   peak_rss_bytes      INTEGER,
   wallclock_start_ns  INTEGER,          -- bigint; serialized as SQLite INTEGER (signed 64-bit)
   wallclock_end_ns    INTEGER,
-  cache_hit           INTEGER,          -- 0/1; convenience for flamegraph color
-  bytes_uploaded      INTEGER,          -- remote-cache push size; null when no remote
-  bytes_downloaded    INTEGER           -- remote-cache pull size on hit
+  cache_hit           INTEGER           -- 0/1; convenience for flamegraph color
 );
 
 CREATE INDEX runs_hash       ON runs(hash);
@@ -489,29 +567,32 @@ captures nothing), and the rows are persisted with the entry — so a
 warm all-cache-hit run does no extra hashing, I/O, or DB writes for the
 moat.
 
-### Why SQLite + on-disk outputs
+### Why SQLite + a single artifact per entry
 
 - **Index queries are fast.** Stats (`SELECT COUNT(*) FROM entries`),
   TTL pruning (`WHERE accessed_at < ?`), per-task lookup
   (`WHERE hash = ?`) all hit a B-tree.
-- **Output files stay as files.** Cache-hit restore is a file copy;
-  putting outputs in BLOBs would just be a detour.
-- **Stream identity preserved.** Stdout + stderr live as separate
-  text files so cache-hit replay round-trips them faithfully.
+- **A hit costs SQL, not decompression.** Metadata + stdout live in
+  the row; the artifact is only opened when outputs actually restore.
+- **One artifact = one wire payload.** The same tar.zst bytes serve
+  local storage and the remote round-trip — no repacking.
 - **One handle, one schema-meta sentinel.** Schema mismatch wipes
   the tables (pre-alpha) — there's no migration code to maintain.
 
 ## Performance characteristics
 
-- **Hashing cost** scales linearly with total input file bytes per
-  task. For large repos with `files: ['**/*']` this can dominate. Cut
-  it by declaring narrow `inputs.files`. Bun's `Bun.file(...).stream()`
-  is async-iterable so files never fully load into memory.
-- **Cache read** is one indexed `SELECT` + an `existsSync` of the
-  on-disk artifact + a recursive file copy of `outputs/`. SQLite's
-  WAL keeps reads non-blocking during concurrent writes.
-- **Cache write** is one upsert + atomic dir rename. Hashing
-  dominates the run; storage itself is cheap.
+- **Hashing cost** on a clean tree is near-zero per file: git index
+  OIDs come from the bulk enumeration spawn, so key derivation does no
+  file reads. Dirty/untracked files hash in-process (whole-file read,
+  behind an mtime+size memo). Narrow `inputs.files` still helps on
+  heavily dirty trees.
+- **Cache read** is one indexed `SELECT` (+ a stat of the artifact).
+  Restore is a tar.zst extract, skipped entirely when the on-disk
+  tree already matches. `accessed_at` bumps are batched into one
+  UPDATE at flush time.
+- **Cache write** is one in-process tar.zst pack + atomic rename +
+  one SQLite transaction. Hashing dominates the run; storage itself
+  is cheap. The remote upload (if any) is backgrounded.
 - **Workspace fingerprint** is computed once per `vx run` invocation
   and reused for every task in that run.
 
@@ -521,14 +602,19 @@ moat.
   machines with different CI flags, regions, or shell prompts. The
   _names_ are in the config hash (step 5) so adding/removing a
   passthrough still bumps the key for affected tasks.
-- **Files outside the project directory that aren't in `inputs.files`.**
+- **Files outside the project directory that aren't declared.**
   Workspace-root configs (`tsconfig.base.json`, etc.) are not
-  auto-included — see the deferred `WorkspaceConfig.globalInputs` in
-  [`schema.md`](./schema.md). If you need them, list them explicitly
-  in each task's `inputs.files` until that field ships.
-- **Node / Bun / OS / build-tool versions.** If you need these, set
-  them via `define` (`define: { TSC_VERSION: execSync('tsc --version').toString() }`)
-  → the value lands in the config hash.
+  auto-included — declare them via `cache.inputs.workspaceFiles`
+  (root-anchored globs).
+- **Node / Bun / OS / build-tool versions — unless you declare them.**
+  The canonical mechanism is `cache.inputs.runtime` /
+  `workspaceRuntime` (e.g. `workspaceRuntime: ['node -v']`): the
+  command output is resolved live at hash time, so it stays correct
+  under `--frozen`. Avoid baking versions via
+  `define: { X: execSync(...) }` — that value freezes into the config
+  object at lock time and goes stale.
+- **`vx-lock.json`** — globally excluded (v24); also filtered out of
+  `--affected` change sets.
 
 ## Bumping `CACHE_VERSION`
 
@@ -536,8 +622,8 @@ Required when:
 
 - A new field is added to the cache key derivation (step list above).
 - The order or framing of existing key fields changes.
-- The on-disk layout changes (file placement, log path conventions).
-- The `CacheEntry` JSON shape changes in a way that affects restore.
+- The on-disk layout changes (artifact format, entry naming).
+- The `CacheEntry` shape changes in a way that affects restore.
 - The SQLite schema changes in a way that affects existing rows
   (`SCHEMA_VERSION` also bumps in that case).
 
@@ -546,6 +632,8 @@ Not required when:
 - Behavioural changes that adjust _which_ values flow into existing
   key components — those naturally produce different keys for
   affected tasks.
+- Changes to WHEN reads/writes fire (policy, prefetch, restore tier,
+  background uploads) — key derivation and artifact bytes untouched.
 - Doc-only updates.
 - Refactors that don't change the bytes fed into the hash.
 
@@ -590,7 +678,7 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
   unchanged. Tasks declaring neither field fold a `:0` count for both
   and derive byte-identical keys to before the bump.
 
-- **v22 → pure-input transitive** (+ SCHEMA v21): reverted the v21
+- **v21 → v22: pure-input transitive** (+ SCHEMA v21): reverted the v21
   output-fold. Downstream keys fold the upstream's **input key** (its
   own task hash) — a pure function of the filesystem, like Turbo/Nx.
   No output content participates in any cache key. **Early cutoff is
@@ -604,7 +692,7 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
   every dependent key. SCHEMA v21 drops the now-unused `outputs_hash`
   column; `CacheLayer.save` returns `void`.
 
-- **v21 → early cutoff** (+ SCHEMA v19, **reverted in v22**):
+- **v20 → v21: early cutoff** (+ SCHEMA v19, **reverted in v22**):
   downstream keys folded the upstream's output content identity
   (`outputsHash`) instead of its task hash. Removed — see v22.
 
@@ -619,10 +707,9 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
   Removes the per-entry manifest.
 - **v10 → v11** (PR #19): analytics columns added to the `runs`
   table: `run_id` (ULID), `cpu_ms`, `peak_rss_bytes`,
-  `wallclock_start_ns` / `wallclock_end_ns`, `cache_hit`,
-  `bytes_uploaded`, `bytes_downloaded`. All nullable; surfaced via
-  `vx stats` and directly queryable via `sqlite3 cache.db`. The
-  on-disk `<hash>/` layout itself was unchanged.
+  `wallclock_start_ns` / `wallclock_end_ns`, `cache_hit`. All
+  nullable; directly queryable via `sqlite3 cache.db`. The on-disk
+  `<hash>/` layout itself was unchanged.
 - **v11 → v12** (PR #42): project's `package.json` bytes folded into
   every task's cache key implicitly. Matches Turbo / Nx "implicit
   dependencies" behavior — a `package.json` dep change invalidates
@@ -640,20 +727,16 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
   redundancy.
 - **v13 → v14**: file enumeration switched from a `Bun.Glob` walker
   with our own `ignore`-library filter to `git ls-files --cached
---others --exclude-standard` when the project is inside a git repo.
-  Matches what Turborepo and Nx both do at the bottom of their hash
-  pipelines. Side-effects user-visible: (a) nested `.gitignore`
-  patterns are anchored to the gitignore's own directory, fixing the
-  v13 footgun where `pkg/.gitignore: src/skip.ts` was misinterpreted
-  as `<workspaceRoot>/src/skip.ts`; (b) `.git/info/exclude` and
-  global excludes participate; (c) untracked-but-not-ignored files
-  enter inputs immediately (no `git add` required). When git isn't
-  available (no `.git`, git binary missing), we fall back to the
-  pre-v14 `ignore`-library walker — same behavior as before. Bumped
-  because the file-set definition for the same `inputs.files` globs
-  could differ (e.g. a previously-mis-handled nested gitignore now
-  filters correctly). Pre-alpha tolerates the one-time cache
-  invalidation freely.
+--others --exclude-standard`. Matches what Turborepo and Nx both do
+  at the bottom of their hash pipelines. Side-effects user-visible:
+  (a) nested `.gitignore` patterns are anchored to the gitignore's own
+  directory, fixing the v13 footgun where `pkg/.gitignore: src/skip.ts`
+  was misinterpreted as `<workspaceRoot>/src/skip.ts`; (b)
+  `.git/info/exclude` and global excludes participate; (c)
+  untracked-but-not-ignored files enter inputs immediately (no
+  `git add` required). (The non-git fallback walker was later removed
+  entirely — vx hard-requires git; a non-repo workspace gets a clean
+  `UserError` telling the user to `git init`.)
 - **v14 → v15**: cache-key hash swapped from SHA-256 (via
   `Bun.CryptoHasher`) to xxHash3 (via `Bun.hash.xxHash3`). Key strings
   shrink from 64 hex chars to 16, matching Turbo's xxh64 output width;
