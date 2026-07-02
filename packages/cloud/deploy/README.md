@@ -45,6 +45,15 @@ docker run --rm -p 4321:4321 vx-cloud serve --ui
 # API + dashboard at http://localhost:4321
 ```
 
+> **Snapshot the ingest volume before upgrading.** The `/data` ingest store
+> currently rides core vx's cache schema, which is dropped + recreated on a
+> schema-version bump (pre-alpha, no migrations) — an upgrade across a bump
+> **resets the server's run history** (the serve logs
+> `ingest store schema upgraded — run history was reset` when it happens).
+> Back up `/data` (or the `--ingest-dir` path) before pulling a new image if
+> the history matters to you. An ingest-owned schema with additive migrations
+> is on the roadmap.
+
 ## Hosted — coordinator + worker fleet
 
 ```

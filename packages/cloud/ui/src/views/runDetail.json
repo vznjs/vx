@@ -1,12 +1,13 @@
 {
   "data": {
     "run": "run",
-    "runWhy": "runWhy"
+    "runWhy": "runWhy",
+    "invocation": "invocationDetail"
   },
   "spec": {
     "type": "Page",
     "props": {
-      "backHref": "/",
+      "backHref": "/runs",
       "backLabel": "runs",
       "title": {
         "$computed": "text",
@@ -40,6 +41,42 @@
           "$state": "/runStatus",
           "eq": "missing"
         }
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Invocation"
+        },
+        "visible": {
+          "$state": "/invocationStatus",
+          "eq": "ok"
+        },
+        "children": [
+          {
+            "type": "Facts",
+            "props": {
+              "entry": {
+                "$computed": "invocationFacts",
+                "args": {
+                  "inv": {
+                    "$state": "/invocation"
+                  }
+                }
+              },
+              "commandKey": "command",
+              "fields": [
+                { "label": "branch", "key": "branch", "mono": true },
+                { "label": "commit", "key": "commit", "kind": "text", "mono": true },
+                { "label": "worktree", "key": "worktree" },
+                { "label": "ci", "key": "ci" },
+                { "label": "tags", "key": "tags", "mono": true },
+                { "label": "cache", "key": "cachePolicy", "mono": true },
+                { "label": "workers", "key": "concurrency" },
+                { "label": "vx", "key": "vx", "mono": true }
+              ]
+            }
+          }
+        ]
       },
       {
         "type": "Grid",
@@ -354,7 +391,23 @@
         },
         "children": [
           {
+            "type": "Text",
+            "props": {
+              "text": "The input-fingerprint diff lives in the workspace's local cache.db — start vx-cloud serve inside the repo to see exactly which files/env/deps changed. This serve shows pushed run analytics only.",
+              "tone": "faint",
+              "class": "px-4 py-3"
+            },
+            "visible": {
+              "$state": "/capsCacheMissing",
+              "eq": true
+            }
+          },
+          {
             "type": "DataTable",
+            "visible": {
+              "$state": "/capsCacheMissing",
+              "not": true
+            },
             "props": {
               "rows": {
                 "$computed": "whyRows",

@@ -242,7 +242,10 @@ export async function startServe(opts: {
   // can be deployed anywhere — it has no access to, and no need for, the
   // machine(s) that produced the runs. One Bun process: SQLite store + the
   // ingest endpoint + the /v1/* API + the embedded UI.
-  const ingest = new IngestStore(opts.ingestDir ?? path.join(opts.root, '.vx', 'cloud-ingest'))
+  const ingest = new IngestStore(
+    opts.ingestDir ?? path.join(opts.root, '.vx', 'cloud-ingest'),
+    (m) => process.stderr.write(`[vx-cloud] ${m}\n`),
+  )
   const readDb = (): ReturnType<IngestStore['db']> => ingest.db()
 
   // Read-only event subscribers (SSE / NDJSON). Each callback gets every

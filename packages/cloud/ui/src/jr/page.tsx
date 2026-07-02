@@ -9,8 +9,11 @@ import { type JSX, ErrorBoundary, createMemo, createResource } from 'solid-js'
 import { useParams } from '@solidjs/router'
 import { nestedToFlat } from '@json-render/core'
 import type { Spec } from '@json-render/solid'
+import { getCapabilitiesSignal } from '../api.ts'
 import { Dash } from './renderer.tsx'
 import { SOURCES } from './data.ts'
+
+const capabilities = getCapabilitiesSignal()
 
 export interface JsonView {
   /** stateKey → data-source name (see data.ts). */
@@ -52,6 +55,14 @@ export function jsonPage(view: JsonView): () => JSX.Element {
     })
     const state = createMemo<Record<string, unknown>>(() => {
       const s: Record<string, unknown> = { params: decoded(), ...(view.state ?? {}) }
+      // Serve capabilities (api.ts probe) as simple booleans every view can
+      // gate on. `capsCacheMissing` is true only once the probe RESOLVED and
+      // found no cache-entry data — so entry-backed sections degrade to an
+      // honest "not available on this serve" hint instead of fake emptiness.
+      const caps = capabilities()
+      s.capsKnown = caps.known
+      s.hasWorkspace = caps.hasWorkspace
+      s.capsCacheMissing = caps.known && !caps.hasCacheDb
       for (const { key, res } of resources) {
         // Read `res.error` BEFORE the value: calling an errored resource's
         // accessor re-throws, which (with no per-source boundary) would blank

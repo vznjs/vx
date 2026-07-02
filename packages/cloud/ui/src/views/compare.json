@@ -69,7 +69,7 @@
             "props": {
               "label": "Delta",
               "value": {
-                "$computed": "fmtDuration",
+                "$computed": "fmtSignedDuration",
                 "args": { "ms": { "$state": "/compare/summary/totalDeltaMs" } }
               },
               "tone": {
@@ -77,11 +77,11 @@
                 "args": {
                   "v": { "$state": "/compare/summary/totalDeltaMs" },
                   "n": 0,
-                  "then": "warn",
+                  "then": "bad",
                   "else": "good"
                 }
               },
-              "sub": "this − previous"
+              "sub": "this − previous · negative = faster"
             }
           },
           {
@@ -156,13 +156,13 @@
                   "key": "deltaLabel",
                   "label": "Δ duration",
                   "kind": "dots",
-                  "dots": [{ "field": "deltaKind", "map": "palette" }]
+                  "dots": [{ "field": "deltaKind", "map": "delta" }]
                 },
                 {
                   "key": "keyChanged",
                   "label": "Key",
                   "kind": "dots",
-                  "dots": [{ "field": "keyChanged", "map": "palette" }]
+                  "dots": [{ "field": "keyChanged", "map": "keyChanged" }]
                 }
               ]
             }

@@ -2,20 +2,27 @@
 //
 // On Run we fetch the task graph (nodes + edges, predicted cache status) and
 // open a WebSocket to vx serve; the streamed events drive each node's live
-// status, an overall progress bar, and per-task log capture. Running while a
-// run is in progress is forbidden (the Run button is disabled until it
-// finishes) — one run at a time avoids the output-cleaning race between
-// overlapping different-hash runs (docs/design/execution-service-2026-06.md).
-// Stop abandons watching the current run so the UI can recover.
+// status, an overall progress bar, and per-task log capture. The predicted
+// cacheStatus badges queued cards ("what will this run actually do") and
+// clears per node as live events land. Running while a run is in progress is
+// forbidden (the Run button is disabled until it finishes) — one run at a
+// time avoids the output-cleaning race between overlapping different-hash
+// runs (docs/design/execution-service-2026-06.md). Stop abandons watching the
+// current run so the UI can recover.
+//
+// Live state lives in solid STORES keyed by task id — a chatty task streaming
+// thousands of stdout chunks updates only its own key, instead of cloning the
+// whole record per chunk and re-rendering every subscriber.
 
 import { For, Show, batch, createMemo, createResource, createSignal, onCleanup, onMount } from 'solid-js'
-import { type GraphNode, type RunSummaryRow, type WireEvent, getGraph, getOrigin, getHistory, getVersion, runTasks } from '../api.ts'
-import { formatBytes, formatDuration, formatTime } from '../format.ts'
+import { createStore, reconcile } from 'solid-js/store'
+import { type GraphNode, type RunSummaryRow, type WireEvent, getCapabilitiesSignal, getGraph, getOrigin, getHistory, getVersion, runTasks } from '../api.ts'
+import { cpuPct, formatBytes, formatDuration, formatTime } from '../format.ts'
 import { criticalPath, parallelism } from './critical-path.ts'
-import { Flamegraph as FlameView, type FlameEdge } from './Flamegraph.tsx'
+import { Flamegraph as FlameView, flameEdgesOf } from './Flamegraph.tsx'
 import { RunGraph } from './RunGraph.tsx'
 import { STATUS, toVizState, type VizState } from './status.tsx'
-import { EmptyState } from './ui.tsx'
+import { EmptyState, SegmentedToggle } from './ui.tsx'
 
 const fmtClock = (ms?: number): string => (ms === undefined ? '—' : formatTime(ms))
 interface NodeStatus {
@@ -36,18 +43,19 @@ const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
 const fmtDur = (ms?: number) => (ms === undefined ? '—' : formatDuration(ms))
 
 export function RunConsole() {
+  const capabilities = getCapabilitiesSignal()
   const [version] = createResource(getOrigin, () => getVersion().catch(() => null))
   const [history] = createResource(getOrigin, () => getHistory({ limit: 300 }).catch(() => []))
   const taskNames = createMemo(() => Array.from(new Set((history() ?? []).map((h) => h.task))).sort())
 
   const [taskInput, setTaskInput] = createSignal('')
   const [nodes, setNodes] = createSignal<GraphNode[]>([])
-  const [statuses, setStatuses] = createSignal<Record<string, NodeStatus>>({})
+  const [statuses, setStatuses] = createStore<Record<string, NodeStatus>>({})
   // Per-task wall-clock window, observed from when each event arrives (the
   // outcome carries durationMs but cache hits have no wallclock ns) — enough to
   // draw a live flamegraph of the current run.
-  const [timing, setTiming] = createSignal<Record<string, { startedAt: number; endedAt?: number }>>({})
-  const [logs, setLogs] = createSignal<Record<string, string>>({})
+  const [timing, setTiming] = createStore<Record<string, { startedAt: number; endedAt?: number }>>({})
+  const [logs, setLogs] = createStore<Record<string, string>>({})
   const [selected, setSelected] = createSignal<string | null>(null)
   const [running, setRunning] = createSignal(false)
   const [started, setStarted] = createSignal(false)
@@ -71,9 +79,9 @@ export function RunConsole() {
   // elapsed time for a running task, else 0 (queued). Recomputes as `now` ticks
   // so the critical path grows during the run and settles on completion.
   const durationOf = (id: string): number => {
-    const st = statuses()[id]
+    const st = statuses[id]
     if (st?.durationMs !== undefined) return st.durationMs
-    const t = timing()[id]
+    const t = timing[id]
     if (t && st?.state === 'running') return Math.max(0, (t.endedAt ?? now()) - t.startedAt)
     return 0
   }
@@ -82,7 +90,7 @@ export function RunConsole() {
   // tier), so it doesn't wait for them — exclude it from the dependency-timing
   // chain or the floor counts upstream runtime the hit never waited for.
   const restoresAhead = (id: string): boolean => {
-    const s = statuses()[id]?.state
+    const s = statuses[id]?.state
     return s === 'cache-hit' || s === 'cache-hit-remote'
   }
 
@@ -93,39 +101,43 @@ export function RunConsole() {
   })
   const criticalSet = createMemo(() => new Set(critical().chain))
 
+  // Predicted-from-cache summary (real tasks only; groups do no work). Shown
+  // while queued nodes still exist — "N of M will restore" before work lands.
+  const predicted = createMemo(() => {
+    const real = nodes().filter((n) => !n.isGroup)
+    const hits = real.filter((n) => n.cacheStatus === 'hit-local' || n.cacheStatus === 'hit-remote')
+    const queued = real.filter((n) => (statuses[n.id]?.state ?? 'queued') === 'queued')
+    return { total: real.length, hits: hits.length, anyQueued: queued.length > 0 }
+  })
+
   // Selected-task accessors for the detail panel.
   const selectedStatus = (): NodeStatus | undefined => {
     const id = selected()
-    return id ? statuses()[id] : undefined
+    return id ? statuses[id] : undefined
   }
   const selectedState = (): VizState => selectedStatus()?.state ?? 'queued'
   const selectedCpuPct = (): number | undefined => {
-    const st = selectedStatus()
     const id = selected()
-    const dur = id ? durationOf(id) : 0
-    return st?.cpuMs !== undefined && dur > 0 ? Math.round((st.cpuMs / dur) * 100) : undefined
+    return cpuPct(selectedStatus()?.cpuMs, id ? durationOf(id) : 0)
   }
 
   // Observed concurrency from the live per-task windows.
   const parallel = createMemo(() => {
-    const tm = timing()
     const clock = now()
-    const intervals = Object.values(tm).map((t) => ({ startedAt: t.startedAt, endedAt: t.endedAt ?? Math.max(clock, t.startedAt) }))
+    const intervals = Object.values(timing).map((t) => ({ startedAt: t.startedAt, endedAt: t.endedAt ?? Math.max(clock, t.startedAt) }))
     return parallelism(intervals)
   })
 
   // Build flamegraph rows (RunSummaryRow shape) from live timing + status.
   const flameRows = createMemo<RunSummaryRow[]>(() => {
-    const tm = timing()
-    const st = statuses()
     const clock = now()
     return nodes()
       // Groups (umbrella tasks) emit task events but do no work — exclude them
       // from the timeline entirely; the flame is about real execution windows.
-      .filter((n) => tm[n.id] && !n.isGroup)
+      .filter((n) => timing[n.id] && !n.isGroup)
       .map((n) => {
-        const t = tm[n.id]!
-        const state = st[n.id]?.state ?? 'running'
+        const t = timing[n.id]!
+        const state = statuses[n.id]?.state ?? 'running'
         const status = state === 'queued' ? 'running' : state
         const startedAt = t.startedAt
         const endedAt = t.endedAt ?? Math.max(clock, startedAt)
@@ -134,8 +146,8 @@ export function RunConsole() {
           project: n.project,
           task: n.task,
           status,
-          exitCode: st[n.id]?.exitCode ?? 0,
-          durationMs: st[n.id]?.durationMs ?? endedAt - startedAt,
+          exitCode: statuses[n.id]?.exitCode ?? 0,
+          durationMs: statuses[n.id]?.durationMs ?? endedAt - startedAt,
           startedAt,
           endedAt,
           cacheHit: state === 'cache-hit',
@@ -149,41 +161,33 @@ export function RunConsole() {
   })
 
   // Dependency edges for the flame (dep → dependent = "what this unlocked").
-  const flameEdges = createMemo<FlameEdge[]>(() => {
-    const out: FlameEdge[] = []
-    for (const n of nodes()) for (const d of n.deps) out.push({ from: d, to: n.id })
-    return out
-  })
+  const flameEdges = createMemo(() => flameEdgesOf(nodes()))
 
   function handleEvent(ev: WireEvent) {
     if (ev.kind === 'run:start') {
       setProgress({ done: 0, total: ev.info.total })
       setConcurrency(ev.info.concurrency)
-    }
-    else if (ev.kind === 'task:start') {
-      setStatuses((p) => ({ ...p, [ev.task.id]: { state: 'running' } }))
-      setTiming((p) => ({ ...p, [ev.task.id]: { startedAt: Date.now() } }))
-    } else if (ev.kind === 'task:stdout' || ev.kind === 'task:stderr')
-      setLogs((p) => ({ ...p, [ev.taskId]: (p[ev.taskId] ?? '') + ev.chunk }))
-    else if (ev.kind === 'task:complete') {
+    } else if (ev.kind === 'task:start') {
+      setStatuses(ev.task.id, { state: 'running' })
+      setTiming(ev.task.id, { startedAt: Date.now() })
+    } else if (ev.kind === 'task:stdout' || ev.kind === 'task:stderr') {
+      // Append in place — only this task's key updates (no whole-record clone).
+      setLogs(ev.taskId, (p) => (p ?? '') + ev.chunk)
+    } else if (ev.kind === 'task:complete') {
       const end = Date.now()
-      setStatuses((p) => ({
-        ...p,
-        [ev.outcome.taskId]: {
-          state: mapStatus(ev.outcome.status),
-          durationMs: ev.outcome.durationMs,
-          exitCode: ev.outcome.exitCode,
-          cpuMs: ev.outcome.cpuMs,
-          peakRssBytes: ev.outcome.peakRssBytes,
-        },
-      }))
-      setTiming((p) => {
-        const prev = p[ev.outcome.taskId]
+      setStatuses(ev.outcome.taskId, {
+        state: mapStatus(ev.outcome.status),
+        durationMs: ev.outcome.durationMs,
+        exitCode: ev.outcome.exitCode,
+        cpuMs: ev.outcome.cpuMs,
+        peakRssBytes: ev.outcome.peakRssBytes,
+      })
+      setTiming(ev.outcome.taskId, (prev) => ({
         // Cache hits/instant tasks may complete without a start event — seed a
         // window from the reported duration so the bar still has width.
-        const startedAt = prev?.startedAt ?? end - ev.outcome.durationMs
-        return { ...p, [ev.outcome.taskId]: { startedAt, endedAt: end } }
-      })
+        startedAt: prev?.startedAt ?? end - ev.outcome.durationMs,
+        endedAt: end,
+      }))
       setProgress((p) => ({ ...p, done: p.done + 1 }))
     }
   }
@@ -194,9 +198,9 @@ export function RunConsole() {
     const root = version()?.workspace
     if (tasks.length === 0 || !root) return
     batch(() => {
-      setStatuses({})
-      setTiming({})
-      setLogs({})
+      setStatuses(reconcile({}))
+      setTiming(reconcile({}))
+      setLogs(reconcile({}))
       setSelected(null)
       setProgress({ done: 0, total: 0 })
       setRunError(null)
@@ -207,14 +211,13 @@ export function RunConsole() {
       setStarted(true)
       setNodes([])
     })
-    // Graph for layout/edges; merge so live events already received aren't clobbered.
+    // Graph for layout/edges + predicted cache status; merge so live events
+    // already received aren't clobbered.
     getGraph(tasks)
       .then((g) => {
-        setNodes(g)
-        setStatuses((prev) => {
-          const next = { ...prev }
-          for (const n of g) if (!next[n.id]) next[n.id] = { state: 'queued' }
-          return next
+        batch(() => {
+          setNodes(g)
+          for (const n of g) if (!statuses[n.id]) setStatuses(n.id, { state: 'queued' })
         })
       })
       .catch(() => {})
@@ -233,7 +236,12 @@ export function RunConsole() {
     })
   }
 
-  const canRun = () => !running() && taskInput().trim().length > 0 && version()?.workspace !== undefined
+  // Honest workspace gate: the probe (api.ts capabilities) tells us whether
+  // this serve can actually plan + delegate runs — `version().workspace` is
+  // always set (it falls back to the serve's cwd), so it can't be the signal.
+  const workspaceMissing = () => capabilities().known && !capabilities().hasWorkspace
+  const canRun = () =>
+    !running() && taskInput().trim().length > 0 && version()?.workspace !== undefined && !workspaceMissing()
   const pct = () => {
     const p = progress()
     return p.total > 0 ? Math.round((p.done / p.total) * 100) : 0
@@ -261,6 +269,7 @@ export function RunConsole() {
             value={taskInput()}
             onInput={(e) => setTaskInput(e.currentTarget.value)}
             class="w-64 font-mono text-[13px]"
+            disabled={workspaceMissing()}
           />
           <datalist id="vx-task-names">
             <For each={taskNames()}>{(t) => <option value={t} />}</For>
@@ -269,6 +278,7 @@ export function RunConsole() {
             type="submit"
             disabled={!canRun()}
             class="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-accent text-bg font-medium text-[13px] hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            title={workspaceMissing() ? 'This serve has no colocated workspace — runs are unavailable here.' : undefined}
           >
             <span class={running() ? 'i-tabler-refresh animate-spin' : 'i-tabler-player-play-filled'} />
             {started() ? 'Rerun' : 'Run'}
@@ -303,24 +313,18 @@ export function RunConsole() {
               style={{ width: `${pct()}%` }}
             />
           </div>
+          <Show when={predicted().total > 0 && predicted().anyQueued}>
+            <span class="text-[11px] font-mono text-cache-local tabular-nums shrink-0 inline-flex items-center gap-1" title="predicted from cache keys — before execution">
+              <span class="i-tabler-bolt" aria-hidden="true" />
+              {predicted().hits}/{predicted().total} predicted cached
+            </span>
+          </Show>
           <div class="text-[12px] font-mono text-fg-2 tabular-nums shrink-0">
             {progress().done}/{progress().total || '—'}
             <Show when={running()}> · running</Show>
             <Show when={!running() && ok() !== null}> · {ok() ? 'passed' : 'failed'}</Show>
           </div>
-          <div class="flex items-center gap-0.5 shrink-0 rounded-lg border border-border bg-surface-2/50 p-0.5 text-[12px]">
-            <For each={['graph', 'flame'] as const}>
-              {(v) => (
-                <button
-                  onClick={() => setView(v)}
-                  class="px-3 py-1 rounded-md transition capitalize"
-                  classList={{ 'bg-surface-hover text-fg': view() === v, 'text-fg-3 hover:text-fg-2': view() !== v }}
-                >
-                  {v}
-                </button>
-              )}
-            </For>
-          </div>
+          <SegmentedToggle options={['graph', 'flame'] as const} value={view()} onChange={setView} />
         </div>
       </Show>
 
@@ -333,7 +337,18 @@ export function RunConsole() {
         when={started()}
         fallback={
           <div class="flex-1 rounded-xl border border-border bg-surface/40">
-            <EmptyState title="No run yet" hint="Enter a task above and press Run to see its graph execute." cmd="vx run <task>" />
+            <Show
+              when={!workspaceMissing()}
+              fallback={
+                <EmptyState
+                  title="This serve has no workspace"
+                  hint="Runs execute against a colocated workspace. Start the serve inside your repo to unlock the cockpit — this instance shows pushed run analytics only."
+                  cmd="cd <your-repo> && vx-cloud serve --ui"
+                />
+              }
+            >
+              <EmptyState title="No run yet" hint="Enter a task above and press Run to see its graph execute." cmd="vx run <task>" />
+            </Show>
           </div>
         }
       >
@@ -357,12 +372,13 @@ export function RunConsole() {
               <Show when={nodes().length > 0} fallback={<div class="text-fg-3 text-sm p-4">Resolving graph…</div>}>
                 <RunGraph
                   nodes={nodes()}
-                  stateOf={(id) => statuses()[id]?.state ?? 'queued'}
+                  stateOf={(id) => statuses[id]?.state ?? 'queued'}
                   statsOf={(id) => ({
                     durationMs: durationOf(id),
-                    cpuMs: statuses()[id]?.cpuMs,
-                    peakRssBytes: statuses()[id]?.peakRssBytes,
+                    cpuMs: statuses[id]?.cpuMs,
+                    peakRssBytes: statuses[id]?.peakRssBytes,
                   })}
+                  predictedOf={(id) => nodes().find((n) => n.id === id)?.cacheStatus}
                   selectedId={selected()}
                   highlightIds={criticalSet()}
                   onSelect={setSelected}
@@ -452,8 +468,8 @@ export function RunConsole() {
                   <Fact label="Duration">{fmtDur(durationOf(selected()!))}</Fact>
                   <Fact label="CPU">{selectedCpuPct() === undefined ? '—' : `${selectedCpuPct()}%`}</Fact>
                   <Fact label="Peak RAM">{selectedStatus()?.peakRssBytes !== undefined ? formatBytes(selectedStatus()!.peakRssBytes!) : '—'}</Fact>
-                  <Fact label="Started">{fmtClock(timing()[selected()!]?.startedAt)}</Fact>
-                  <Fact label="Ended">{fmtClock(timing()[selected()!]?.endedAt)}</Fact>
+                  <Fact label="Started">{fmtClock(timing[selected()!]?.startedAt)}</Fact>
+                  <Fact label="Ended">{fmtClock(timing[selected()!]?.endedAt)}</Fact>
                   <Fact label="Exit code">{selectedStatus()?.exitCode ?? '—'}</Fact>
                   <Fact label="Project">{nodes().find((n) => n.id === selected())?.project ?? '—'}</Fact>
                 </div>
@@ -463,7 +479,7 @@ export function RunConsole() {
                   output
                 </div>
                 <pre class="flex-1 overflow-auto m-0 px-4 pb-4 text-[11px] leading-relaxed font-mono text-fg-1 whitespace-pre-wrap break-words">
-                  {stripAnsi(logs()[selected()!] ?? '') || '— no output —'}
+                  {stripAnsi(logs[selected()!] ?? '') || '— no output —'}
                 </pre>
               </Show>
             </div>

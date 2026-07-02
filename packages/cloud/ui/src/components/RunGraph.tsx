@@ -13,9 +13,9 @@
 // from the build).
 
 import { For, Show, createMemo, createSignal } from 'solid-js'
-import { formatBytes, formatDuration } from '../format.ts'
+import { cpuPct as cpuPctOf, formatBytes, formatDuration } from '../format.ts'
 import { layoutLevels } from './run-graph-layout.ts'
-import { STATUS, type VizState } from './status.tsx'
+import { PREDICTED, STATUS, type PredictedStatus, type VizState } from './status.tsx'
 
 export interface RunGraphNode {
   id: string
@@ -44,11 +44,6 @@ const HEADER_H = 34
 const COL_STRIDE = CARD_W + COL_GAP
 const ROW_STRIDE = CARD_H + ROW_GAP
 
-const cpuPct = (s: RunGraphStats): number | undefined =>
-  s.cpuMs !== undefined && s.durationMs !== undefined && s.durationMs > 0
-    ? Math.round((s.cpuMs / s.durationMs) * 100)
-    : undefined
-
 export function RunGraph(props: {
   nodes: readonly RunGraphNode[]
   stateOf: (id: string) => RunGraphState
@@ -56,6 +51,11 @@ export function RunGraph(props: {
   selectedId?: string | null
   /** Bottleneck — the critical (longest-duration) path: cards + edges glow. */
   highlightIds?: ReadonlySet<string>
+  /**
+   * Predicted cache status (from /v1/graph) — rendered as a chip on QUEUED
+   * cards only, so predictions clear naturally as live events arrive.
+   */
+  predictedOf?: (id: string) => PredictedStatus | undefined
   onSelect?: (id: string) => void
 }) {
   const effState = (n: RunGraphNode): RunGraphState => (n.isGroup ? 'group' : props.stateOf(n.id))
@@ -153,9 +153,11 @@ export function RunGraph(props: {
               const pos = () => layout().pos.get(n.id)
               const sty = () => STATUS[effState(n)]
               const stats = () => statsFor(n.id)
-              const cpu = () => cpuPct(stats())
+              const cpu = () => cpuPctOf(stats().cpuMs, stats().durationMs)
               const crit = () => props.highlightIds?.has(n.id) === true
               const selected = () => props.selectedId === n.id
+              const predicted = () =>
+                effState(n) === 'queued' ? PREDICTED[props.predictedOf?.(n.id) ?? 'group'] : null
               return (
                 <Show when={pos()}>
                   <button
@@ -194,6 +196,14 @@ export function RunGraph(props: {
                           </Show>
                           <Show when={(stats().peakRssBytes ?? 0) > 0}>
                             <Chip icon="i-tabler-database" value={formatBytes(stats().peakRssBytes!)} />
+                          </Show>
+                          <Show when={predicted()}>
+                            {(p) => (
+                              <span class={`inline-flex items-center gap-0.5 rounded px-1 py-px ${p().cls}`} title="predicted from cache key">
+                                <span class={`${p().icon} text-[10px]`} aria-hidden="true" />
+                                {p().label}
+                              </span>
+                            )}
                           </Show>
                         </div>
                       </Show>

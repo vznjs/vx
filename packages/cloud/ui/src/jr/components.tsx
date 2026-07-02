@@ -9,21 +9,25 @@
 // CPU%, chart field extraction, truncation) lives HERE, so the pages stay pure
 // JSON.
 
-import { For, Show, type JSX, createMemo, createResource, createSignal, onCleanup, onMount } from 'solid-js'
+import { For, Show, type JSX, createEffect, createMemo, createResource, createSignal, onCleanup, onMount } from 'solid-js'
 import { type BaseComponentProps, useStateBinding } from '@json-render/solid'
 import { A, useNavigate } from '@solidjs/router'
 import { type RunSummaryRow, getGraph, subscribeEvents } from '../api.ts'
 import { HBar, Heatmap as HeatmapPrimitive, LineChart as LineChartPrimitive, Treemap as TreemapPrimitive } from '../components/charts.tsx'
-import { Card as UiCard, EmptyState, MetricCard, StatusBadge } from '../components/ui.tsx'
-import { Flamegraph as FlamegraphPrimitive, type FlameEdge } from '../components/Flamegraph.tsx'
+import { Card as UiCard, EmptyState, LoadError, MetricCard, SegmentedToggle, SkeletonRows, StatusBadge } from '../components/ui.tsx'
+import { Flamegraph as FlamegraphPrimitive, flameEdgesOf } from '../components/Flamegraph.tsx'
+import { criticalPath } from '../components/critical-path.ts'
 import { RunGraph as RunGraphPrimitive, type RunGraphNode } from '../components/RunGraph.tsx'
-import { toVizState, type VizState } from '../components/status.tsx'
-import { formatHour, paletteFor } from '../format.ts'
+import { STATUS, toVizState, type VizState } from '../components/status.tsx'
+import { cpuPct, formatDuration, formatHour, paletteFor } from '../format.ts'
 import { type FormatHint, type Tone, axisFormatter, formatValue, toneText } from './hints.ts'
 
 type Row = Record<string, unknown>
 type C<P> = BaseComponentProps<P>
 const enc = encodeURIComponent
+
+/** Loader-computed availability of one data source (`/<key>Status` in state). */
+type DataStatus = 'loading' | 'error' | 'missing' | 'ok'
 
 /** Replace `{field}` in a template with the URL-encoded row value (for hrefs). */
 function interpolate(tpl: string, row: Row): string {
@@ -33,13 +37,54 @@ function interpolate(tpl: string, row: Row): string {
 function interpolateRaw(tpl: string, row: Row): string {
   return tpl.replace(/\{(\w+)\}/g, (_m, f) => String(row[f] ?? ''))
 }
-function colorOf(map: 'palette' | 'failureMode', v: unknown): string {
+
+type DotMap = 'palette' | 'failureMode' | 'delta' | 'keyChanged'
+function colorOf(map: DotMap, v: unknown): string {
   if (map === 'failureMode') return v === 'stable' ? 'success' : v === 'flaky-recoverable' ? 'warn' : 'danger'
+  // Semantic delta colors — faster is GOOD (green), slower BAD (red); a
+  // hash-palette here made slower/faster arbitrary, unstable colors.
+  if (map === 'delta') return v === 'faster' ? 'success' : v === 'slower' ? 'danger' : v === 'new' ? 'accent' : v === 'gone' ? 'warn' : 'faint'
+  if (map === 'keyChanged') return v === 'changed' ? 'warn' : 'faint'
   return paletteFor(String(v))
 }
 
+// Token → LITERAL class maps. UnoCSS's static extractor only sees literal
+// strings in scanned files — `bg-${x}` interpolations silently drop from the
+// build the moment a token leaves the safelist (the house gotcha).
+const DOT_BG: Record<string, string> = {
+  'chart-1': 'bg-chart-1', 'chart-2': 'bg-chart-2', 'chart-3': 'bg-chart-3', 'chart-4': 'bg-chart-4',
+  'chart-5': 'bg-chart-5', 'chart-6': 'bg-chart-6', 'chart-7': 'bg-chart-7', 'chart-8': 'bg-chart-8',
+  success: 'bg-success', warn: 'bg-warn', danger: 'bg-danger', accent: 'bg-accent',
+  'accent-2': 'bg-accent-2', 'cache-local': 'bg-cache-local', 'cache-remote': 'bg-cache-remote',
+  info: 'bg-info', faint: 'bg-fg-3',
+}
+const FILL_CLASS: Record<string, string> = {
+  'chart-1': 'fill-chart-1', 'chart-2': 'fill-chart-2', 'chart-3': 'fill-chart-3', 'chart-4': 'fill-chart-4',
+  'chart-5': 'fill-chart-5', 'chart-6': 'fill-chart-6', 'chart-7': 'fill-chart-7', 'chart-8': 'fill-chart-8',
+}
+const barBg = (token: string): string => DOT_BG[token] ?? 'bg-accent'
+
 function Dot(props: { color: string }) {
-  return <span class={`inline-block w-1.5 h-1.5 rounded-full bg-${props.color} shrink-0`} />
+  return <span class={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${DOT_BG[props.color] ?? 'bg-fg-3'}`} />
+}
+
+/**
+ * Shared loading / error affordance for data-bound components. Views thread
+ * `"status": { "$state": "/<key>Status" }`; loading renders pulse placeholders,
+ * a failed fetch renders an inline banner instead of a misleading empty state.
+ */
+function DataGate(props: { status?: DataStatus; skeleton: JSX.Element; children: JSX.Element }) {
+  return (
+    <Show when={props.status !== 'loading'} fallback={props.skeleton}>
+      <Show when={props.status !== 'error'} fallback={<LoadError />}>
+        {props.children}
+      </Show>
+    </Show>
+  )
+}
+
+function ChartSkeleton(props: { height?: number }) {
+  return <div class="bg-surface-2 rounded-lg animate-pulse w-full" style={{ height: `${props.height ?? 200}px` }} aria-busy="true" />
 }
 
 // --- Layout -----------------------------------------------------------------
@@ -53,7 +98,7 @@ export function Page(c: C<{ title?: string; subtitle?: string; backHref?: string
             ← {c.props.backLabel ?? 'back'}
           </A>
           <Show when={c.props.dotColor}>
-            <span class={`inline-block w-2 h-2 rounded-full bg-${c.props.dotColor}`} />
+            <span class={`inline-block w-2 h-2 rounded-full ${DOT_BG[c.props.dotColor!] ?? 'bg-accent'}`} />
           </Show>
           <h1 class={`text-base font-semibold m-0 ${c.props.mono ? 'font-mono' : ''}`}>{c.props.title}</h1>
         </div>
@@ -109,8 +154,8 @@ export function Card(c: C<{ title?: string; actionText?: string; actionHref?: st
   )
 }
 
-export function Metric(c: C<{ label: string; value: string; sub?: string; tone?: 'default' | 'good' | 'warn' | 'bad'; delta?: number }>) {
-  return <MetricCard label={c.props.label} value={c.props.value} sub={c.props.sub} tone={c.props.tone} delta={c.props.delta} />
+export function Metric(c: C<{ label: string; value: string; sub?: string; tone?: 'default' | 'good' | 'warn' | 'bad' }>) {
+  return <MetricCard label={c.props.label} value={c.props.value} sub={c.props.sub} tone={c.props.tone} />
 }
 
 export function Text(c: C<{ text: string; tone?: Tone; mono?: boolean; class?: string }>) {
@@ -162,7 +207,7 @@ interface ChartSeries {
   strokeClass: string
   areaClass?: string
 }
-export function LineChart(c: C<{ rows: Row[]; xKey?: string; reverse?: boolean; series: ChartSeries[]; xFormat?: FormatHint; yFormat?: FormatHint; height?: number; yMin?: number }>) {
+export function LineChart(c: C<{ rows: Row[]; xKey?: string; reverse?: boolean; series: ChartSeries[]; xFormat?: FormatHint; yFormat?: FormatHint; height?: number; yMin?: number; status?: DataStatus }>) {
   const rows = () => {
     const rs = c.props.rows ?? []
     return c.props.reverse ? [...rs].reverse() : rs
@@ -170,31 +215,37 @@ export function LineChart(c: C<{ rows: Row[]; xKey?: string; reverse?: boolean; 
   const xs = () => (c.props.xKey ? rows().map((r) => Number(r[c.props.xKey!])) : rows().map((_, i) => i))
   const series = () => (c.props.series ?? []).map((s) => ({ name: s.name, strokeClass: s.strokeClass, areaClass: s.areaClass, data: rows().map((r) => Number(r[s.yKey])) }))
   return (
-    <Show when={rows().length > 0} fallback={<EmptyState title="No data yet" />}>
-      <LineChartPrimitive xs={xs()} series={series()} formatX={axisFormatter(c.props.xFormat)} formatY={axisFormatter(c.props.yFormat)} height={c.props.height} yMin={c.props.yMin} />
-    </Show>
+    <DataGate status={c.props.status} skeleton={<ChartSkeleton height={c.props.height} />}>
+      <Show when={rows().length > 0} fallback={<EmptyState title="No data yet" />}>
+        <LineChartPrimitive xs={xs()} series={series()} formatX={axisFormatter(c.props.xFormat)} formatY={axisFormatter(c.props.yFormat)} height={c.props.height} yMin={c.props.yMin} />
+      </Show>
+    </DataGate>
   )
 }
 
-export function Treemap(c: C<{ rows: Row[]; labelKey: string; valueKey: string; colorFrom?: string; valueFormat?: FormatHint; height?: number }>) {
+export function Treemap(c: C<{ rows: Row[]; labelKey: string; valueKey: string; colorFrom?: string; valueFormat?: FormatHint; height?: number; status?: DataStatus }>) {
   const data = () =>
     (c.props.rows ?? [])
       .filter((r) => Number(r[c.props.valueKey]) > 0)
-      .map((r) => ({ label: String(r[c.props.labelKey]), value: Number(r[c.props.valueKey]), colorClass: `fill-${paletteFor(String(r[c.props.colorFrom ?? c.props.labelKey]))}` }))
+      .map((r) => ({ label: String(r[c.props.labelKey]), value: Number(r[c.props.valueKey]), colorClass: FILL_CLASS[paletteFor(String(r[c.props.colorFrom ?? c.props.labelKey]))] ?? 'fill-chart-1' }))
   return (
-    <Show when={data().length > 0} fallback={<EmptyState title="No cached output yet" />}>
-      <TreemapPrimitive data={data()} height={c.props.height} format={(v) => formatValue(c.props.valueFormat, v)} />
-    </Show>
+    <DataGate status={c.props.status} skeleton={<ChartSkeleton height={c.props.height} />}>
+      <Show when={data().length > 0} fallback={<EmptyState title="No cached output yet" />}>
+        <TreemapPrimitive data={data()} height={c.props.height} format={(v) => formatValue(c.props.valueFormat, v)} />
+      </Show>
+    </DataGate>
   )
 }
 
-export function Heatmap(c: C<{ rows: Row[]; dayKey?: string; hourKey?: string; valueKey: string; cellSize?: number; valueFormat?: FormatHint }>) {
+export function Heatmap(c: C<{ rows: Row[]; dayKey?: string; hourKey?: string; valueKey: string; cellSize?: number; valueFormat?: FormatHint; status?: DataStatus }>) {
   const data = () =>
     (c.props.rows ?? []).map((r) => ({ dayOfWeek: Number(r[c.props.dayKey ?? 'dayOfWeek']), hourOfDay: Number(r[c.props.hourKey ?? 'hourOfDay']), value: Number(r[c.props.valueKey]) }))
   return (
-    <Show when={data().some((cell) => cell.value > 0)} fallback={<EmptyState title="No runs in the window" />}>
-      <HeatmapPrimitive data={data()} cellSize={c.props.cellSize} format={(v) => (c.props.valueFormat ? formatValue(c.props.valueFormat, v) : `${v} runs`)} />
-    </Show>
+    <DataGate status={c.props.status} skeleton={<ChartSkeleton height={180} />}>
+      <Show when={data().some((cell) => cell.value > 0)} fallback={<EmptyState title="No runs in the window" />}>
+        <HeatmapPrimitive data={data()} cellSize={c.props.cellSize} format={(v) => (c.props.valueFormat ? formatValue(c.props.valueFormat, v) : `${v} runs`)} />
+      </Show>
+    </DataGate>
   )
 }
 
@@ -207,6 +258,9 @@ export function Heatmap(c: C<{ rows: Row[]; dayKey?: string; hourKey?: string; v
 // view works from recorded timings alone, so it's always available.
 export function RunViz(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string }>) {
   const [view, setView] = createSignal<'graph' | 'flame'>('graph')
+  // Track an explicit user choice so the hosted auto-fallback (below) never
+  // fights the toggle.
+  let userChose = false
   const [selected, setSelected] = useStateBinding<RunSummaryRow>(c.props.selectKey ?? '/selectedTask')
   const rows = (): readonly RunSummaryRow[] => c.props.rows ?? []
   const rowById = createMemo(() => {
@@ -227,12 +281,27 @@ export function RunViz(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string
   const nodes = createMemo<RunGraphNode[]>(() =>
     (graph() ?? []).map((g) => ({ id: g.id, project: g.project, task: g.task, isGroup: g.isGroup, deps: g.deps })),
   )
-  // Dependency edges for the flame (dep → dependent), from the fetched graph.
-  const flameEdges = createMemo<FlameEdge[]>(() => {
-    const out: FlameEdge[] = []
-    for (const n of nodes()) for (const d of n.deps) out.push({ from: d, to: n.id })
-    return out
+  // The graph view needs a colocated workspace; on a hosted serve the fetch
+  // resolves empty — default to the flame (always available from recorded
+  // timings) instead of opening on "Graph unavailable".
+  createEffect(() => {
+    if (!graph.loading && nodes().length === 0 && !userChose && specs().length > 0) setView('flame')
   })
+  const flameEdges = createMemo(() => flameEdgesOf(nodes()))
+  // Critical path over RECORDED durations — same wall-time-floor story the
+  // live cockpit shows. Cache hits restore ahead of their deps (two-tier
+  // scheduler), so they're dependency-independent for the chain. Without dep
+  // edges (hosted) this degrades to the longest single task.
+  const critical = createMemo(() => {
+    const ns = nodes().length > 0 ? nodes() : specs().map((id) => ({ id, deps: [] as string[] }))
+    const durationOf = (id: string) => rowById().get(id)?.durationMs ?? 0
+    const restoresAhead = (id: string) => {
+      const r = rowById().get(id)
+      return r !== undefined && (r.cacheHit === true || r.status === 'cache-hit' || r.status === 'cache-hit-remote')
+    }
+    return criticalPath(ns, durationOf, restoresAhead)
+  })
+  const criticalSet = createMemo(() => new Set(critical().chain))
   const stateOf = (id: string): VizState => {
     const r = rowById().get(id)
     return r ? toVizState(r.status, r.cacheHit === true) : 'queued'
@@ -244,28 +313,29 @@ export function RunViz(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string
   return (
     <div class="flex flex-col gap-3">
       <div class="flex items-center gap-2.5">
-        <div class="flex items-center gap-0.5 rounded-lg border border-border bg-surface-2/50 p-0.5 text-[12px]">
-          <For each={['graph', 'flame'] as const}>
-            {(v) => (
-              <button
-                onClick={() => setView(v)}
-                class="px-3 py-1 rounded-md transition"
-                classList={{ 'bg-surface-hover text-fg': view() === v, 'text-fg-3 hover:text-fg-2': view() !== v }}
-              >
-                {v === 'graph' ? 'Graph' : 'Flame'}
-              </button>
-            )}
-          </For>
-        </div>
+        <SegmentedToggle
+          options={['graph', 'flame'] as const}
+          value={view()}
+          onChange={(v) => {
+            userChose = true
+            setView(v)
+          }}
+        />
         <span class="text-[11px] text-fg-3">
           {view() === 'graph' ? 'dependency structure' : 'by actual time — overlap is real concurrency'}
         </span>
+        <Show when={critical().chain.length > 1}>
+          <span class="ml-auto inline-flex items-center gap-1 text-[11px] font-mono text-warn tabular-nums" title="critical path — the wall-time floor">
+            <span class="i-tabler-flame" aria-hidden="true" />
+            {critical().chain.length} tasks · {formatDuration(critical().totalMs)} floor
+          </span>
+        </Show>
       </div>
       <div class="h-[460px] w-full">
         <Show when={view() === 'flame'}>
           <div class="h-full p-1">
             <Show when={rows().length > 0} fallback={<EmptyState title="No tasks" />}>
-              <FlamegraphPrimitive tasks={rows()} selectedId={selectedId()} edges={flameEdges()} onSelect={(t) => setSelected(t)} />
+              <FlamegraphPrimitive tasks={rows()} selectedId={selectedId()} highlightIds={criticalSet()} edges={flameEdges()} onSelect={(t) => setSelected(t)} />
             </Show>
           </div>
         </Show>
@@ -275,8 +345,8 @@ export function RunViz(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string
               when={nodes().length > 0}
               fallback={
                 <EmptyState
-                  title="Graph unavailable"
-                  hint="The dependency graph is rebuilt from the workspace — run vx-cloud serve in the project, or use the Flame view (always available)."
+                  title="Graph unavailable on this serve"
+                  hint="The dependency graph is rebuilt from a colocated workspace — start vx-cloud serve in the project. The Flame view works from recorded timings."
                 />
               }
             >
@@ -292,6 +362,7 @@ export function RunViz(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string
                   }
                 }}
                 selectedId={selectedId()}
+                highlightIds={criticalSet()}
                 onSelect={(id) => {
                   const r = rowById().get(id)
                   if (r) setSelected(r)
@@ -307,7 +378,7 @@ export function RunViz(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string
 
 // --- DataTable --------------------------------------------------------------
 
-type CellKind = 'text' | 'mono' | 'muted' | 'faint' | FormatHint | 'cpuPct' | 'status' | 'cache' | 'projtask' | 'bar' | 'dots' | 'shorthash'
+type CellKind = 'text' | 'mono' | 'muted' | 'faint' | FormatHint | 'cpuPct' | 'status' | 'cache' | 'projtask' | 'bar' | 'dots' | 'shorthash' | 'link'
 interface ToneRule {
   gt?: number
   lt?: number
@@ -327,7 +398,7 @@ export interface Column {
   tone?: ToneRule
   color?: string // static bar color token
   colorFrom?: string // bar color via paletteFor(row[colorFrom])
-  dots?: Array<{ field: string; map: 'palette' | 'failureMode' }>
+  dots?: Array<{ field: string; map: DotMap }>
   projectKey?: string
   taskKey?: string
   nKey?: string
@@ -337,8 +408,17 @@ export interface Column {
   durKey?: string
   hitKey?: string
   len?: number // shorthash length
+  href?: string // kind:'link' — href template, e.g. /compare/{runId}
+  linkLabel?: string // kind:'link' — cell text
 }
 const TEXTISH = new Set(['text', 'mono', 'muted', 'faint'])
+
+// Cache-provenance cell — same vocabulary as status.tsx (local ≠ remote).
+// Literal classes for UnoCSS.
+const CACHE_CELL: Record<string, { label: string; cls: string }> = {
+  'cache-hit': { label: 'local', cls: 'text-cache-local' },
+  'cache-hit-remote': { label: 'remote', cls: 'text-cache-remote' },
+}
 
 function fieldTone(rule: ToneRule, v: number): Tone {
   const hit = (rule.gt !== undefined && v > rule.gt) || (rule.lt !== undefined && v < rule.lt) || (rule.ge !== undefined && v >= rule.ge) || (rule.le !== undefined && v <= rule.le)
@@ -347,10 +427,26 @@ function fieldTone(rule: ToneRule, v: number): Tone {
 
 function renderField(col: Column, row: Row, max: number) {
   switch (col.kind) {
-    case 'status':
-      return <StatusBadge status={String(row[col.statusKey ?? 'status'] ?? '')} cacheHit={row[col.cacheHitKey ?? 'cacheHit'] as boolean | null} />
-    case 'cache':
-      return <span class={toneText('cache')}>{row[col.cacheHitKey ?? 'cacheHit'] === true ? 'hit' : 'miss'}</span>
+    case 'status': {
+      const status = row[col.statusKey ?? 'status']
+      if (status === null || status === undefined || status === '') return <span class="text-fg-3">—</span>
+      return <StatusBadge status={String(status)} cacheHit={row[col.cacheHitKey ?? 'cacheHit'] as boolean | null} />
+    }
+    case 'cache': {
+      const status = String(row[col.statusKey ?? 'status'] ?? '')
+      const hit = row[col.cacheHitKey ?? 'cacheHit'] === true
+      const cell = CACHE_CELL[status] ?? (hit ? CACHE_CELL['cache-hit'] : undefined)
+      return cell ? <span class={cell.cls}>{cell.label}</span> : <span class="text-fg-3">miss</span>
+    }
+    case 'link': {
+      const href = col.href ? interpolate(col.href, row) : undefined
+      if (!href) return <span class="text-fg-3">—</span>
+      return (
+        <A href={href} class="text-accent hover:underline text-[11px]" onClick={(e) => e.stopPropagation()}>
+          {col.linkLabel ?? 'view'}
+        </A>
+      )
+    }
     case 'projtask':
       return (
         <span>
@@ -375,18 +471,19 @@ function renderField(col: Column, row: Row, max: number) {
         <div class="flex items-center gap-2 justify-end">
           <span class="w-16 text-right">{formatValue(col.format, v)}</span>
           <div class="w-20">
-            <HBar fraction={max > 0 ? v / max : 0} colorClass={`bg-${color}`} />
+            <HBar fraction={max > 0 ? v / max : 0} colorClass={barBg(color)} />
           </div>
         </div>
       )
     }
     case 'cpuPct': {
-      const cpuMs = row[col.cpuKey ?? 'cpuMs']
-      const durationMs = Number(row[col.durKey ?? 'durationMs'])
-      const hit = row[col.hitKey ?? 'cacheHit']
-      const pct = cpuMs !== null && cpuMs !== undefined && durationMs > 0 && hit !== true ? (Number(cpuMs) / durationMs) * 100 : undefined
+      const pct = cpuPct(
+        row[col.cpuKey ?? 'cpuMs'] as number | null | undefined,
+        Number(row[col.durKey ?? 'durationMs']),
+        row[col.hitKey ?? 'cacheHit'] as boolean | null,
+      )
       const tone: Tone = pct !== undefined && pct > 100 ? 'success' : 'faint'
-      return <span class={toneText(tone)}>{pct !== undefined ? `${Math.round(pct)}%` : '—'}</span>
+      return <span class={toneText(tone)}>{pct !== undefined ? `${pct}%` : '—'}</span>
     }
     case 'shorthash':
       return <span class="text-fg-3 text-[10px]">{row[col.key] !== undefined ? `${String(row[col.key]).slice(0, col.len ?? 10)}…` : '—'}</span>
@@ -412,6 +509,7 @@ export function DataTable(
     emptyTitle?: string
     emptyHint?: string
     emptyCmd?: string
+    status?: DataStatus // loading → skeleton rows, error → inline banner
   }>,
 ) {
   const navigate = useNavigate()
@@ -454,6 +552,7 @@ export function DataTable(
           <input type="text" placeholder={c.props.filterPlaceholder ?? 'filter…'} value={filterText()} onInput={(e) => setFilterText(e.currentTarget.value)} class="text-[12px] font-mono w-72" />
         </div>
       </Show>
+      <DataGate status={c.props.status} skeleton={<SkeletonRows rows={5} />}>
       <Show when={rows().length > 0} fallback={<EmptyState title={c.props.emptyTitle ?? 'No data'} hint={c.props.emptyHint} cmd={c.props.emptyCmd} />}>
         <table class="w-full text-[12px]">
           <thead class="bg-surface-2/40">
@@ -488,6 +587,7 @@ export function DataTable(
           </tbody>
         </table>
       </Show>
+      </DataGate>
     </div>
   )
 }
@@ -506,7 +606,7 @@ export function RankList(
     metaPrefix?: string
     metaSuffix?: string
     metaFormat?: FormatHint
-    dots?: Array<{ field: string; map: 'palette' | 'failureMode' }>
+    dots?: Array<{ field: string; map: DotMap }>
     barFrom?: string // value field → fraction (max computed internally)
     colorFrom?: string // bar color via paletteFor(item[colorFrom])
     rowHref?: string
@@ -515,6 +615,7 @@ export function RankList(
     limit?: number
     emptyTitle?: string
     emptyCmd?: string
+    status?: DataStatus // loading → skeleton rows, error → inline banner
   }>,
 ) {
   const navigate = useNavigate()
@@ -532,6 +633,7 @@ export function RankList(
     return undefined
   }
   return (
+    <DataGate status={c.props.status} skeleton={<SkeletonRows rows={4} />}>
     <Show when={items().length > 0} fallback={<EmptyState title={c.props.emptyTitle ?? 'Nothing yet'} cmd={c.props.emptyCmd} />}>
       <div class="flex flex-col">
         <For each={items()}>
@@ -548,7 +650,7 @@ export function RankList(
                   <span class="font-mono shrink-0">{formatValue(c.props.valueFormat, Number(it[c.props.valueKey]))}</span>
                 </div>
                 <Show when={c.props.barFrom}>
-                  <HBar fraction={Number(it[c.props.barFrom!]) / max()} colorClass={`bg-${c.props.colorFrom ? paletteFor(String(it[c.props.colorFrom])) : 'accent'}`} />
+                  <HBar fraction={Number(it[c.props.barFrom!]) / max()} colorClass={barBg(c.props.colorFrom ? paletteFor(String(it[c.props.colorFrom])) : 'accent')} />
                 </Show>
               </button>
             )
@@ -556,6 +658,7 @@ export function RankList(
         </For>
       </div>
     </Show>
+    </DataGate>
   )
 }
 
@@ -586,7 +689,8 @@ export function LiveActivity(c: C<{ max?: number }>) {
           {(e) => (
             <div class="flex items-center gap-2 text-[11px] font-mono">
               <span class="text-fg-3 w-12 shrink-0">{formatHour(e.t)}</span>
-              <span class={e.kind === 'task:complete' && e.label.startsWith('✗') ? 'text-danger truncate' : e.kind === 'task:complete' ? 'text-success truncate' : e.kind.startsWith('run:') ? 'text-fg-3 truncate' : 'text-fg-1 truncate'}>{e.label}</span>
+              {/* Same dot colors as the shared STATUS vocabulary (status.tsx). */}
+              <span class={`truncate ${e.kind === 'task:complete' && e.label.startsWith('✗') ? STATUS.failed.dot : e.kind === 'task:complete' ? STATUS.success.dot : e.kind.startsWith('run:') ? 'text-fg-3' : 'text-fg-1'}`}>{e.label}</span>
             </div>
           )}
         </For>

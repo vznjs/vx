@@ -4,7 +4,7 @@
 // $computed nests. This keeps state RAW and all formatting / aggregation
 // declarative — referenced by name from the JSON, no per-page code.
 
-import { formatBytes, formatCount, formatDate, formatDuration, formatPercent, formatRelativeTime, paletteFor } from '../format.ts'
+import { formatBytes, formatCount, formatDate, formatDuration, formatPercent, formatRelativeTime, formatSignedDuration, paletteFor } from '../format.ts'
 import { type FormatHint, formatValue } from './hints.ts'
 
 type Args = Record<string, unknown>
@@ -47,6 +47,8 @@ function aggregate(a: Args): number {
 export const FUNCTIONS: Record<string, (args: Args) => unknown> = {
   // formatters (single value)
   fmtDuration: (a) => formatDuration(n(a.ms)),
+  // Signed delta — a negative delta (FASTER) renders '−1.2s', not '—'.
+  fmtSignedDuration: (a) => formatSignedDuration(n(a.ms)),
   fmtBytes: (a) => formatBytes(n(a.b)),
   fmtCount: (a) => formatCount(n(a.n)),
   fmtPercent: (a) => formatPercent(n(a.n), 1),
@@ -133,6 +135,25 @@ export const FUNCTIONS: Record<string, (args: Args) => unknown> = {
   //   _tags    — the tags object formatted as "k=v, …" (empty string when none)
   invocationRows: (a) => arr(a.arr).map((r) => ({ ...r, _ciToken: r.ci ? 'stable' : 'cold', _ci: r.ci ? 'CI' : 'local', _tags: tagsText(r.tags) })),
 
+  // One InvocationDetail → a display-ready entry for the run-detail header
+  // Facts strip (command / branch / commit / dirty / CI / tags / cache policy /
+  // concurrency / vx version). Null-safe: absent fields render '—'.
+  invocationFacts: (a) => {
+    const inv = a.inv as Row | null | undefined
+    if (!inv || typeof inv !== 'object') return null
+    return {
+      command: inv.command ?? null,
+      branch: inv.branch ?? null,
+      commit: inv.commitSha ? `${String(inv.commitSha).slice(0, 10)}` : null,
+      worktree: inv.dirty === true ? 'dirty' : inv.dirty === false ? 'clean' : null,
+      ci: inv.ci ? String(inv.ciProvider ?? 'CI') : 'local',
+      tags: tagsText(inv.tags) || null,
+      cachePolicy: inv.cachePolicy ?? null,
+      concurrency: inv.concurrency ?? null,
+      vx: inv.vxVersion ?? null,
+    }
+  },
+
   // Two rows (Local / Remote) for the cache hit-source split table — each with
   // its raw count and a 0..1 share fraction for the bar column. Built here so
   // the view passes only plain $state counts (directives don't deep-resolve
@@ -158,7 +179,7 @@ function changeToken(change: string): 'stable' | 'flaky-recoverable' | 'cold' {
 // "before → after" for one diff row. Hash-shaped components (file/upstream/
 // package/config/workspace/ws-runtime) shorten to 12 chars; value components
 // (env/runtime/forward) show verbatim. A null side renders as "∅".
-const HASH_KINDS = new Set(['file', 'upstream', 'package', 'config', 'workspace'])
+const HASH_KINDS = new Set(['file', 'upstream', 'package', 'config', 'workspace', 'ws-runtime'])
 function diffText(r: Row): string {
   // Reason-only rows (first run / not cacheable) carry no component — render
   // an empty cell, not "∅ → ∅".

@@ -9,11 +9,11 @@ const rgb = (v: string) => `rgb(var(${v}) / <alpha-value>)`
 export default defineConfig({
   presets: [presetUno(), presetIcons({ scale: 1.0 })],
   transformers: [transformerVariantGroup()],
-  // The page views are pure .json (src/views) — UnoCSS only scans code files by
-  // default, so include the JSON so chart stroke-/fill- tokens declared there
-  // (e.g. "strokeClass": "stroke-accent") are generated. (The shared status→class
-  // map is status.TSX precisely because UnoCSS scans .tsx but not plain .ts.)
-  content: { filesystem: ['src/views/**/*.json'] },
+  // UnoCSS's default pipeline scans .tsx (and .html etc.) but NOT plain .ts or
+  // .json. Everything that carries literal class strings outside .tsx must be
+  // listed here: the pure-JSON views (chart stroke-/fill- tokens) and
+  // src/jr/hints.ts (the tone-token → class map).
+  content: { filesystem: ['src/views/**/*.json', 'src/jr/hints.ts'] },
   // Chart palette classes are computed from project names at runtime via
   // `paletteFor()` — UnoCSS's static analyzer can't see them, so we list
   // them explicitly.

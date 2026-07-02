@@ -17,6 +17,13 @@ export interface FlameEdge {
   to: string
 }
 
+/** Flatten graph nodes (id + deps) into dep → dependent flame edges. */
+export function flameEdgesOf(nodes: readonly { id: string; deps: readonly string[] }[]): FlameEdge[] {
+  const out: FlameEdge[] = []
+  for (const n of nodes) for (const d of n.deps) out.push({ from: d, to: n.id })
+  return out
+}
+
 export function Flamegraph(props: {
   tasks: readonly RunSummaryRow[]
   selectedId?: string

@@ -1,4 +1,4 @@
-import { createResource, createSignal, Show, type ParentComponent } from 'solid-js'
+import { createEffect, createResource, createSignal, onCleanup, onMount, Show, type ParentComponent } from 'solid-js'
 import { A, useLocation, useNavigate } from '@solidjs/router'
 import {
   getMeta,
@@ -8,6 +8,7 @@ import {
   getTokenSignal,
   getUnauthorizedSignal,
   getVersion,
+  refreshCapabilities,
   setOriginAndPersist,
   setTokenAndPersist,
 } from '../api.ts'
@@ -20,12 +21,13 @@ interface NavItem {
   icon: string
 }
 
+// Daily-flow order: run things first, inspect runs, then analytics.
 const NAV: NavItem[] = [
   { href: '/run', label: 'Run', icon: 'i-tabler-player-play' },
-  { href: '/', label: 'Overview', icon: 'i-tabler-layout-dashboard' },
+  { href: '/runs', label: 'Runs', icon: 'i-tabler-history' },
+  { href: '/overview', label: 'Overview', icon: 'i-tabler-layout-dashboard' },
   { href: '/projects', label: 'Projects', icon: 'i-tabler-stack-2' },
   { href: '/tasks', label: 'Tasks', icon: 'i-tabler-list-details' },
-  { href: '/runs', label: 'Runs', icon: 'i-tabler-history' },
   { href: '/bottlenecks', label: 'Bottlenecks', icon: 'i-tabler-flame' },
   { href: '/trends', label: 'Trends', icon: 'i-tabler-chart-line' },
   { href: '/cache', label: 'Cache', icon: 'i-tabler-database' },
@@ -60,16 +62,25 @@ export const Shell: ParentComponent = (props) => {
   const [draftToken, setDraftToken] = createSignal(getToken())
   const [paletteOpen, setPaletteOpen] = createSignal(false)
 
+  // (Re-)probe serve capabilities whenever the connection changes — the Shell
+  // is always mounted, so the capability signal stays fresh for every view.
+  createEffect(() => {
+    void connection()
+    refreshCapabilities()
+  })
+
   // Global Cmd/Ctrl-K for palette.
-  if (typeof window !== 'undefined') {
-    window.addEventListener('keydown', (e) => {
+  onMount(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setPaletteOpen(true)
       }
       if (e.key === 'Escape') setPaletteOpen(false)
-    })
-  }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    onCleanup(() => window.removeEventListener('keydown', onKeyDown))
+  })
 
   function commit() {
     setOriginAndPersist(draft())
@@ -97,7 +108,6 @@ export const Shell: ParentComponent = (props) => {
           {NAV.map((item) => (
             <A
               href={item.href}
-              end={item.href === '/'}
               class="group flex items-center gap-2.5 px-3 py-2 rounded-lg text-fg-2 hover:text-fg hover:bg-surface-hover/70 transition-all text-[13px] no-underline"
               activeClass="!text-accent !bg-accent/10 font-medium ring-1 ring-inset ring-accent/20"
             >
@@ -140,13 +150,20 @@ export const Shell: ParentComponent = (props) => {
               <button
                 onClick={openEditor}
                 class="flex items-center gap-2 text-[11px] font-mono px-2.5 py-1 rounded border border-border hover:border-border-strong hover:bg-surface-hover"
-                title="Change connection (Cmd/Ctrl-click to edit)"
+                title={
+                  meta()
+                    ? `${meta()!.name} · ${origin()} · auth: ${meta()!.auth === 'token' ? 'token required' : 'open'} — click to change connection`
+                    : 'Change connection'
+                }
               >
                 <StatusDot ok={version() !== null && version() !== undefined} />
                 <Show when={meta()}>
                   {(m) => <span class="text-fg-1 font-medium">{m().name}</span>}
                 </Show>
                 <span class="text-fg-2">{origin().replace(/^https?:\/\//, '')}</span>
+                <Show when={meta()?.auth === 'token'}>
+                  <span class="i-tabler-lock text-fg-3 text-[12px]" aria-hidden="true" />
+                </Show>
               </button>
             }
           >
@@ -207,7 +224,7 @@ export const Shell: ParentComponent = (props) => {
 function Breadcrumb(props: { pathname: string }) {
   const seg = () => {
     const parts = props.pathname.split('/').filter(Boolean)
-    if (parts.length === 0) return ['Overview']
+    if (parts.length === 0) return ['vx']
     return parts
   }
   return (
@@ -215,8 +232,10 @@ function Breadcrumb(props: { pathname: string }) {
       {seg().map((s, i) => (
         <>
           <Show when={i > 0}><span class="text-fg-3">/</span></Show>
-          <span class={i === seg().length - 1 ? 'text-fg' : 'text-fg-2'}>
-            {decodeURIComponent(s).replace(/^./, (c) => c.toUpperCase())}
+          <span class={`${i === seg().length - 1 ? 'text-fg' : 'text-fg-2'} ${i > 0 ? 'font-mono text-[12px]' : ''}`}>
+            {/* Only the first segment is a static route name — later segments
+                are ids/UUIDs and must not be title-cased. */}
+            {i === 0 ? decodeURIComponent(s).replace(/^./, (c) => c.toUpperCase()) : decodeURIComponent(s)}
           </span>
         </>
       ))}

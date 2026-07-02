@@ -13,6 +13,35 @@ export function formatDuration(ms: number): string {
   return `${h}h ${m}m`
 }
 
+/**
+ * Signed delta form — `formatDuration` rejects negatives (a duration can't be
+ * negative), so deltas go through here: `−1.2s` for faster, `+300ms` for
+ * slower, `±0` for no change.
+ */
+export function formatSignedDuration(ms: number): string {
+  if (!Number.isFinite(ms)) return '—'
+  if (ms === 0) return '±0'
+  const sign = ms > 0 ? '+' : '−'
+  return `${sign}${formatDuration(Math.abs(ms))}`
+}
+
+/**
+ * CPU utilization % for one task run. Cache hits (and zero/unknown durations)
+ * have no meaningful utilization — returns undefined. The ONE derivation every
+ * surface (graph cards, cockpit, tables, task metrics) shares.
+ */
+export function cpuPct(
+  cpuMs: number | null | undefined,
+  durationMs: number | null | undefined,
+  cacheHit?: boolean | null,
+): number | undefined {
+  if (cacheHit === true) return undefined
+  if (cpuMs === null || cpuMs === undefined) return undefined
+  const dur = Number(durationMs)
+  if (!Number.isFinite(dur) || dur <= 0) return undefined
+  return Math.round((Number(cpuMs) / dur) * 100)
+}
+
 /** Tight form for chart axes and table cells (e.g. `1.2k`, `3.4M`). */
 export function formatCount(n: number): string {
   if (!Number.isFinite(n)) return '—'

@@ -70,8 +70,10 @@ export function axisFormatter(hint: FormatHint | undefined): (v: number) => stri
   return (v: number) => formatValue(hint, v)
 }
 
-// Tone tokens → literal classes. Kept literal here (a file UnoCSS scans) so the
-// classes are always generated even though specs reference them by token name.
+// Tone tokens → literal classes. NB: plain .ts files are NOT scanned by
+// UnoCSS's default pipeline (only .tsx etc.) — this file is explicitly listed
+// in uno.config.ts `content.filesystem` so these literals are extracted. Don't
+// add class-carrying .ts files without registering them there.
 export type Tone = 'default' | 'muted' | 'faint' | 'danger' | 'success' | 'warn' | 'cache' | 'accent'
 
 const TONE_TEXT: Record<Tone, string> = {

@@ -78,6 +78,58 @@ export function getUnauthorizedSignal(): () => boolean {
   return unauthorized
 }
 
+// ---------------------------------------------------------------------------
+// Capabilities — what THIS serve can actually answer.
+//
+// vx-cloud serve is ingest-only: its /v1/* analytics read the push-fed store,
+// so cache-ENTRY surfaces (entries, heat, input diffs) are empty unless the
+// serve has real entry data, and /v1/graph + WS run delegation need a
+// colocated workspace. Probed ONCE per connection so views can degrade
+// honestly ("not available here") instead of faking "no data".
+// ---------------------------------------------------------------------------
+
+export interface Capabilities {
+  /** false until the probe resolves for the current connection. */
+  known: boolean
+  /** /v1/graph + run delegation work — the serve has a colocated workspace. */
+  hasWorkspace: boolean
+  /** Cache-entry-backed endpoints (entries / heat / input diff) have data. */
+  hasCacheDb: boolean
+}
+
+const UNKNOWN_CAPS: Capabilities = { known: false, hasWorkspace: false, hasCacheDb: false }
+const [capabilities, setCapabilities] = createSignal<Capabilities>(UNKNOWN_CAPS)
+let capsKey: string | null = null
+
+export function getCapabilitiesSignal(): () => Capabilities {
+  return capabilities
+}
+
+/**
+ * (Re-)probe capabilities when the connection changed; no-op otherwise.
+ * The workspace probe is one /v1/graph call with a task nobody declares —
+ * a colocated workspace answers `{ nodes: [] }` (200), a workspace-less
+ * serve 400s from planRun.
+ */
+export function refreshCapabilities(): void {
+  const key = `${origin()}|${token()}`
+  if (key === capsKey) return
+  capsKey = key
+  setCapabilities(UNKNOWN_CAPS)
+  void Promise.all([
+    getGraph(['__vx_capability_probe__']).then(
+      () => true,
+      () => false,
+    ),
+    getCacheStats().then(
+      (s) => s.entryCount > 0,
+      () => false,
+    ),
+  ]).then(([hasWorkspace, hasCacheDb]) => {
+    if (capsKey === key) setCapabilities({ known: true, hasWorkspace, hasCacheDb })
+  })
+}
+
 /** `?token=` suffix for EventSource/WebSocket URLs (headers unsupported there). */
 function tokenQuery(prefix: '?' | '&' = '?'): string {
   const t = token()
@@ -182,17 +234,6 @@ export interface CacheStats {
   hitRemoteCountLast24h: number
 }
 
-/** Local-vs-remote cache hit split (mirrors metrics.ts `HitRateSplit`). */
-export interface HitRateSplit {
-  total: number
-  hits: number
-  hitLocal: number
-  hitRemote: number
-  hitRate: number
-  localShare: number
-  remoteShare: number
-}
-
 /** One changed/added/removed cache-key component (metrics.ts `InputDiffEntry`). */
 export interface InputDiffEntry {
   kind: string
@@ -288,38 +329,6 @@ export interface TaskDetail {
   aggregate: TaskHistoryRow | null
   recent: RunSummaryRow[]
   latestEntry: CacheEntryRow | null
-}
-
-export interface CacheKeyExplanation {
-  taskId: string
-  project: string
-  task: string
-  latestEntry: {
-    hash: string
-    command: string
-    exitCode: number
-    durationMs: number
-    sizeBytes: number
-    createdAt: number
-  } | null
-  note: string
-}
-
-export interface WhyRunSide {
-  hash: string
-  status: string
-  cacheHit: boolean | null
-  startedAt: number
-}
-
-export interface WhyDidThisRerun {
-  runId: string
-  taskId: string
-  found: boolean
-  thisRun?: WhyRunSide
-  previousRun?: WhyRunSide | null
-  hashChanged?: boolean | null
-  note: string
 }
 
 export interface CompareTaskSide {
@@ -428,16 +437,6 @@ export async function getInvocation(runId: string): Promise<InvocationDetail | n
   }
 }
 
-export async function listRuns(
-  args: { runId?: string; limit?: number } = {},
-): Promise<RunSummaryRow[]> {
-  const params = new URLSearchParams()
-  if (args.runId !== undefined) params.set('runId', args.runId)
-  if (args.limit !== undefined) params.set('limit', String(args.limit))
-  const r = await getJson<{ runs: RunSummaryRow[] }>(`/v1/runs?${params.toString()}`)
-  return r.runs
-}
-
 export async function getRun(runId: string): Promise<RunDetail | null> {
   try {
     return await getJson<RunDetail>(`/v1/runs/${encodeURIComponent(runId)}`)
@@ -451,30 +450,11 @@ export async function getCacheStats(): Promise<CacheStats> {
   return await getJson<CacheStats>('/v1/cache/stats')
 }
 
-/** Local-vs-remote cache hit split over the last 24h. */
-export async function getCacheHitSplit(): Promise<HitRateSplit> {
-  return await getJson<HitRateSplit>('/v1/cache/hit-split')
-}
-
 export async function getHistory(args: { limit?: number } = {}): Promise<TaskHistoryRow[]> {
   const params = new URLSearchParams()
   if (args.limit !== undefined) params.set('limit', String(args.limit))
   const r = await getJson<{ history: TaskHistoryRow[] }>(`/v1/history?${params.toString()}`)
   return r.history
-}
-
-export async function explainCacheKey(taskId: string): Promise<CacheKeyExplanation> {
-  return await getJson<CacheKeyExplanation>(`/v1/explain/${encodeURIComponent(taskId)}`)
-}
-
-/**
- * Compare a run's task hash to the previous run's: `hashChanged` flags whether
- * the cache key shifted (inputs differ) since the prior run of that task.
- */
-export async function whyDidThisRerun(runId: string, taskId: string): Promise<WhyDidThisRerun> {
-  return await getJson<WhyDidThisRerun>(
-    `/v1/why/${encodeURIComponent(runId)}/${encodeURIComponent(taskId)}`,
-  )
 }
 
 /**
