@@ -327,7 +327,6 @@ export async function resolveRunOptions(
   if (parsed.summarize !== undefined) opts.summarize = parsed.summarize
   if (parsed.profile !== undefined) opts.profile = parsed.profile
   if (Object.keys(parsed.tags).length > 0) opts.tags = parsed.tags
-  if (parsed.report !== undefined) opts.report = parsed.report
 
   return opts
 }

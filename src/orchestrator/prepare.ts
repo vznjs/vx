@@ -38,12 +38,7 @@ import type { VxPlugin } from './plugin.js'
 import { createHashCache, type HashCache } from './task-hash.js'
 import type { Logger } from './logger.js'
 import type { RunOptions } from './options.js'
-import {
-  EmptyHistoryProvider,
-  type HistoryProvider,
-  type HistoryTable,
-  LocalHistoryProvider,
-} from './history.js'
+import { type HistoryTable, LocalHistoryProvider } from './history.js'
 import { computePredictedPriorities } from './predict.js'
 
 export interface PreparedRun {
@@ -57,8 +52,6 @@ export interface PreparedRun {
    * LocalHistoryProvider) read directly from here.
    */
   localCache: Cache
-  /** History lookup provider — local cache.db today; remote-RPC later. */
-  history: HistoryProvider
   /**
    * Predicted priorities (history-aware critical-path). Populated only
    * when the workspace opts in via `defineWorkspace({ predictive: true })`.
@@ -241,7 +234,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       cacheDir,
       cache,
       localCache,
-      history: new EmptyHistoryProvider(),
       priorities: new Map(),
       nodes: new Map(),
       workspaceFingerprint,
@@ -268,10 +260,9 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // The scheduler applies them on top of the static baseline. Failing
   // open: any error in history loading degrades to baseline-only,
   // never to a broken run.
-  let history: HistoryProvider = new EmptyHistoryProvider()
   let priorities: ReadonlyMap<string, number> = new Map()
   if (workspaceConfig?.predictive === true) {
-    history = new LocalHistoryProvider(localCache.dbHandle())
+    const history = new LocalHistoryProvider(localCache.dbHandle())
     try {
       const ids = [...nodes.keys()]
       const table: HistoryTable = await history.loadFor(ids)
@@ -289,7 +280,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     cacheDir,
     cache,
     localCache,
-    history,
     priorities,
     nodes,
     workspaceFingerprint,

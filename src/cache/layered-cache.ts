@@ -34,6 +34,12 @@ import type {
 import { FULL_CACHE_POLICY } from './cache.js'
 import type { RemoteCache } from './remote-cache.js'
 
+/**
+ * Cap on concurrent background PUTs. Keeps a burst of cache misses from
+ * opening one socket per task; excess uploads queue and drain FIFO.
+ */
+const UPLOAD_CONCURRENCY = 4
+
 export interface LayeredCacheOptions {
   /** Called for remote-related errors that the layer suppresses. */
   onRemoteError?: (err: Error) => void
@@ -68,6 +74,17 @@ export class LayeredCache implements CacheLayer {
    * followed by a `get` would mislabel a genuine remote hit as local.
    */
   private readonly remoteSourced = new Set<string>()
+
+  /**
+   * Background write-through uploads. `save()` returns after the local
+   * write + byte capture; the PUT runs here so a cache-miss task never
+   * holds its scheduler worker slot for the upload round-trip. Bounded
+   * at UPLOAD_CONCURRENCY; `run()` awaits `drainUploads()` before
+   * `cache.close()`.
+   */
+  private readonly uploadQueue: Array<() => Promise<void>> = []
+  private activeUploads = 0
+  private drainWaiters: Array<() => void> = []
 
   private readonly policy: CachePolicy
 
@@ -115,6 +132,20 @@ export class LayeredCache implements CacheLayer {
     // via the remote cache" from "saved work via a prior local run".
     const materialized = await this.local.get(hash, ctx)
     return materialized ? { ...materialized, source: 'remote' } : null
+  }
+
+  // Existence probe: local first, then a remote HEAD — no body
+  // transfer, no ingest, so the plan path stays read-only even against
+  // a remote cache. Remote errors degrade to a miss (never throw).
+  async has(hash: string): Promise<'local' | 'remote' | null> {
+    if ((await this.local.has(hash)) === 'local') return 'local'
+    if (!this.policy.remoteRead) return null
+    try {
+      return (await this.remote.has(hash)) ? 'remote' : null
+    } catch (err) {
+      this.reportRemoteError(err)
+      return null
+    }
   }
 
   /**
@@ -186,19 +217,63 @@ export class LayeredCache implements CacheLayer {
     // local writes are disabled).
     await this.local.save(args)
     if (!this.policy.remoteWrite) return
-    // Upload to remote. Normally we read the bytes the local layer just
-    // wrote (same format on both sides, no repacking). But when local
-    // writes are disabled (`--cache=local:,remote:rw`) there's no on-disk
-    // artifact — pack the bytes in memory instead. Errors are logged, not
-    // propagated: the task already succeeded; we don't fail it on cache-
-    // server issues.
+    // Write-through upload, OFF the task's critical path. The bytes are
+    // captured NOW — read from the artifact the local layer just wrote
+    // (same format on both sides, no repacking), or, when local writes
+    // are disabled (`--cache=local:,remote:rw`), packed in memory while
+    // the output files are guaranteed still on disk. The PUT itself then
+    // runs in the bounded background pool so the task's worker slot is
+    // released immediately; `run()` awaits `drainUploads()` before
+    // closing the cache. Errors are logged, not propagated: the task
+    // already succeeded; we don't fail it on cache-server issues.
+    let bytes: Uint8Array
     try {
-      const bytes = this.local.localWritesEnabled
+      bytes = this.local.localWritesEnabled
         ? await Bun.file(this.local.outputsPath(args.hash)).bytes()
         : await this.local.packArtifactBytes(args)
-      await this.remote.put(args.hash, bytes, { durationMs: args.entry.durationMs })
     } catch (err) {
       this.reportRemoteError(err)
+      return
+    }
+    const durationMs = args.entry.durationMs
+    this.enqueueUpload(async () => {
+      try {
+        await this.remote.put(args.hash, bytes, { durationMs })
+      } catch (err) {
+        this.reportRemoteError(err)
+      }
+    })
+  }
+
+  /**
+   * Resolves once every queued + in-flight background upload settles.
+   * `run()` calls this next to the prefetch drain, before
+   * `cache.close()` — an upload reading state after close would race.
+   */
+  async drainUploads(): Promise<void> {
+    if (this.activeUploads === 0 && this.uploadQueue.length === 0) return
+    await new Promise<void>((resolve) => this.drainWaiters.push(resolve))
+  }
+
+  private enqueueUpload(job: () => Promise<void>): void {
+    this.uploadQueue.push(job)
+    this.pumpUploads()
+  }
+
+  private pumpUploads(): void {
+    while (this.activeUploads < UPLOAD_CONCURRENCY && this.uploadQueue.length > 0) {
+      const job = this.uploadQueue.shift()!
+      this.activeUploads++
+      // Jobs never reject (each wraps its PUT in the never-fail guard).
+      void job().finally(() => {
+        this.activeUploads--
+        this.pumpUploads()
+      })
+    }
+    if (this.activeUploads === 0 && this.uploadQueue.length === 0 && this.drainWaiters.length > 0) {
+      const waiters = this.drainWaiters
+      this.drainWaiters = []
+      for (const w of waiters) w()
     }
   }
 

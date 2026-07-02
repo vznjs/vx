@@ -983,3 +983,66 @@ describe('getPrunableEntries', () => {
     })
   })
 })
+
+// ---------------------------------------------------------------------------
+// Schema drift guard — every exported metrics query must run against the
+// CURRENT cache.db schema. The schema is owned by src/cache/cache.ts and its
+// DROP-gate makes bumps routine; metrics.ts hardcodes SQL over those tables
+// with no compiler signal, so this is the gate that catches a bump breaking
+// a query before it surfaces in the cloud dashboard.
+// ---------------------------------------------------------------------------
+
+import * as metrics from '../src/orchestrator/metrics.js'
+
+describe('metrics schema drift guard', () => {
+  it('every exported query executes against a freshly-created cache.db', () => {
+    withCache((cache) => {
+      const db = cache.dbHandle()
+      const calls: Record<string, () => unknown> = {
+        listRuns: () => metrics.listRuns(db),
+        getInvocation: () => metrics.getInvocation(db, 'r-none'),
+        listInvocations: () => metrics.listInvocations(db),
+        getRun: () => metrics.getRun(db, 'r-none'),
+        getCacheStatsSql: () => metrics.getCacheStatsSql(db),
+        getHitRateSplit: () => metrics.getHitRateSplit(db),
+        getHistory: () => metrics.getHistory(db),
+        getTopTimeBurners: () => metrics.getTopTimeBurners(db),
+        getRecentFailures: () => metrics.getRecentFailures(db),
+        listCacheEntries: () => metrics.listCacheEntries(db),
+        getCacheBreakdown: () => metrics.getCacheBreakdown(db),
+        getTaskDetail: () => metrics.getTaskDetail(db, 'pkg#build'),
+        getCacheSavings: () => metrics.getCacheSavings(db),
+        explainCacheKey: () => metrics.explainCacheKey(db, 'pkg#build'),
+        whyDidThisRerun: () => metrics.whyDidThisRerun(db, 'r-none', 'pkg#build'),
+        cacheKeyDiff: () => metrics.cacheKeyDiff(db, 'r-none', 'pkg#build'),
+        compareRuns: () => metrics.compareRuns(db, 'r-none'),
+        listProjects: () => metrics.listProjects(db),
+        getRunTrends: () => metrics.getRunTrends(db),
+        getRunHeatmap: () => metrics.getRunHeatmap(db),
+        getFlakiestTasks: () => metrics.getFlakiestTasks(db),
+        getBottlenecks: () => metrics.getBottlenecks(db),
+        getParallelismHistory: () => metrics.getParallelismHistory(db),
+        getStorageGrowth: () => metrics.getStorageGrowth(db),
+        getPrunableEntries: () => metrics.getPrunableEntries(db),
+      }
+
+      // Coverage pin: a NEW exported query must be added to `calls` above
+      // (and thereby to the drift guard) before it ships.
+      const exported = Object.entries(metrics)
+        .filter(([, v]) => typeof v === 'function')
+        .map(([k]) => k)
+        .sort()
+      expect(Object.keys(calls).sort()).toEqual(exported)
+
+      for (const [name, call] of Object.entries(calls)) {
+        try {
+          call()
+        } catch (err) {
+          throw new Error(
+            `metrics.${name} is broken against the current cache.db schema: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
+      }
+    })
+  })
+})

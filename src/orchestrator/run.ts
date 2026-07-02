@@ -25,7 +25,8 @@ import { computeTaskHash } from './task-hash.js'
 import { busLogger, createEventBus, terminalSubscriber } from './events.js'
 import { installPlugins } from './plugin.js'
 import type { VxPlugin } from './plugin.js'
-import { subscribeEventSinks } from './plugin-host.js'
+import { subscribeEventSinks, teardownPlugins } from './plugin-host.js'
+import type { SubscribedEventSinks } from './plugin-host.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { deriveCacheSource, TELEMETRY_SCHEMA_VERSION } from './telemetry.js'
 import type { RunContextRecord, RunSummaryRecord, TaskTelemetry } from './telemetry.js'
@@ -129,7 +130,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // plugin; eventSink init failures are isolated (observability never
   // breaks a run). With no plugin, both are no-ops.
   let disposePlugins: (() => void) | undefined
-  let disposeSinks: (() => void) | undefined
+  let eventSinks: SubscribedEventSinks | undefined
   let telemetry: TelemetryHandle | undefined
   if (prepared.workspaceConfig?.plugins && prepared.workspaceConfig.plugins.length > 0) {
     const plugins = prepared.workspaceConfig.plugins as readonly VxPlugin[]
@@ -146,7 +147,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         cacheDir: prepared.cacheDir,
         warn: (m) => log.status(m),
       })
-      disposeSinks = await subscribeEventSinks(plugins, bus, pluginCtx)
+      eventSinks = await subscribeEventSinks(plugins, bus, pluginCtx)
     } catch (err) {
       disposePlugins?.()
       prepared.cache.close()
@@ -354,8 +355,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       })
     }
 
-    const buildExecuteArgs = (node: TaskNode, upstream: TaskOutcome[]) => {
-      const probe = shortCircuit.preProbed.get(node.id)
+    const buildExecuteArgs = (node: TaskNode, upstream: TaskOutcome[], reuseProbe = true) => {
+      const probe = reuseProbe ? shortCircuit.preProbed.get(node.id) : undefined
       return {
         node,
         upstream,
@@ -418,9 +419,13 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       const existing = inflight.get(hash)
       if (existing !== undefined) {
         // Join a sibling already computing this exact task: wait, then
-        // executeTask cache-hits on the artifact it just saved.
+        // executeTask cache-hits on the artifact it just saved. The
+        // up-front probe (preProbed) predates the sibling's save — its
+        // "confirmed stable miss" would skip the lazy cache.get and
+        // re-execute, defeating the dedup — so the join path drops it
+        // and lets executeTask probe fresh.
         await existing.catch(() => {})
-        return executeTask(buildExecuteArgs(node, upstream))
+        return executeTask(buildExecuteArgs(node, upstream, false))
       }
       // Become the executor: register a barrier siblings await. get→set has
       // no await between, so registration is atomic — at most one executor
@@ -670,13 +675,28 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       telemetry.emitSummary(summary)
       await telemetry.flush()
     }
+    // End-of-run plugin lifecycle: each event sink's flush() (its last
+    // chance to ship buffered records) and each plugin's teardown().
+    // Crash-isolated + time-bounded inside teardownPlugins, so a faulty
+    // plugin can neither fail nor hang the run. Normal completion path
+    // only — the finally below just unsubscribes.
+    if (prepared.workspaceConfig?.plugins && prepared.workspaceConfig.plugins.length > 0) {
+      await teardownPlugins(
+        prepared.workspaceConfig.plugins as readonly VxPlugin[],
+        eventSinks?.sinks ?? [],
+        (m) => log.status(m),
+      )
+    }
     // Drain any still-in-flight background prefetches before closing the
     // cache handle — a prefetch ingesting into a closed SQLite DB would
     // throw. Tasks that resolved as local hits never awaited their
     // prefetch, so some may still be running here. (The local
     // short-circuit's probes are awaited inside startLocalShortCircuit
-    // before scheduling, so nothing of its is in flight here.)
+    // before scheduling, so nothing of its is in flight here.) The
+    // background write-through uploads queued by LayeredCache.save
+    // settle here for the same reason.
     await prefetchDone
+    if (cache instanceof LayeredCache) await cache.drainUploads()
     cache.close()
 
     // Tear down SRT's network bridge + (on macOS) log monitor. No-op if
@@ -713,7 +733,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // Plugins installed at the top of run() get their bus subscriptions
     // released here. Idempotent; safe even if installPlugins threw.
     disposePlugins?.()
-    disposeSinks?.()
+    eventSinks?.dispose()
     telemetry?.dispose()
   }
 }
@@ -724,10 +744,10 @@ export async function run(options: RunOptions): Promise<RunSummary> {
  * Returns a `RunPlan` predicting the cache hit/miss outcome of every
  * task. Used by `--dry-run` and `--graph`.
  *
- * Side-effects are limited to:
- *   - SQLite `accessed_at` bumps on cache.get() probes (read-only
- *     from the user's perspective).
- *   - Opening + closing the local Cache handle.
+ * Side-effects are limited to opening + closing the local Cache handle
+ * (and running `cache.inputs.runtime` probe commands, which key
+ * derivation requires). Cache probing is the byte-free `cache.has()`
+ * existence check — no artifact download, no ingest, no accessed_at bump.
  */
 export async function planRun(options: RunOptions): Promise<RunPlan> {
   const log = options.log ?? defaultLogger()

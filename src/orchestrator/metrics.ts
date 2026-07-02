@@ -1,8 +1,12 @@
 // Metrics query module — pure functions over a `bun:sqlite` Database.
 //
-// `vx serve` exposes these as /v1/* HTTP routes; the dashboard SPA
-// (packages/cloud/ui) and `vx mcp` both read through them. One canonical home
-// for every aggregate over the runs / entries tables.
+// `vx-cloud serve` (in @vzn/vx-cloud) exposes these as /v1/* HTTP routes;
+// the dashboard SPA (packages/cloud/ui) and `vx mcp` both read through
+// them. One canonical home for every aggregate over the runs / entries
+// tables. The schema itself is owned by src/cache/cache.ts — the
+// drift guard in tests/metrics.test.ts runs every exported query against
+// a freshly-created cache.db so a schema bump that breaks one fails the
+// gate here, not in the dashboard.
 //
 // Pure SQL + JSON-safe return shapes. No Cache lifecycle here; the
 // caller opens and closes. bigints are serialized as decimal strings

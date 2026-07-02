@@ -11,13 +11,59 @@
 // inventory is a local concern (the hosted dashboard shows run/task analytics
 // only; see docs/design/observability-architecture-2026-06.md §6 option c).
 
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+import { Database } from 'bun:sqlite'
 import { Cache, type InvocationRecord, type RunRecord, type RunSummaryRecord } from '@vzn/vx'
+
+/**
+ * Rows in `invocations` BEFORE core's Cache schema gate runs. Core drops
+ * every table on a SCHEMA_VERSION mismatch — fine for a workspace cache,
+ * but this store is the server's durable run HISTORY, so a wipe must at
+ * least be loud. Read via a separate readonly handle so the count
+ * predates the gate.
+ */
+function preGateInvocationCount(dir: string): number {
+  const dbPath = path.join(dir, 'cache.db')
+  if (!existsSync(dbPath)) return 0
+  try {
+    const db = new Database(dbPath, { readonly: true })
+    try {
+      const row = db.prepare('SELECT COUNT(*) AS n FROM invocations').get() as { n: number }
+      return row.n
+    } finally {
+      db.close()
+    }
+  } catch {
+    // No invocations table (pre-v22 file, or not a vx DB) — nothing to lose.
+    return 0
+  }
+}
 
 export class IngestStore {
   private readonly cache: Cache
 
-  constructor(dir: string) {
+  constructor(dir: string, warn?: (message: string) => void) {
+    // Core's Cache drops + recreates all tables when its SCHEMA_VERSION
+    // moves (pre-alpha, no migrations). For this store that is DATA
+    // LOSS, not cache invalidation — detect it and warn loudly so a
+    // hosted operator learns why the dashboard is empty. Full schema
+    // decoupling (an ingest-owned schema with additive migrations) is a
+    // roadmap item; until then, snapshot the data volume before
+    // upgrading vx-cloud.
+    const before = warn !== undefined ? preGateInvocationCount(dir) : 0
     this.cache = new Cache(dir)
+    if (before > 0) {
+      const after = this.db().prepare('SELECT COUNT(*) AS n FROM invocations').get() as {
+        n: number
+      }
+      if (after.n === 0) {
+        warn!(
+          `ingest store schema upgraded — run history was reset (${before} invocation${before === 1 ? '' : 's'} dropped). ` +
+            `Snapshot the ingest volume before upgrading vx-cloud to keep history across schema bumps.`,
+        )
+      }
+    }
   }
 
   /** The DB handle the metrics queries read from. */

@@ -279,6 +279,11 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         // valid cached output is reported `cache-hit` even if a dep
         // failed — and they're dep-independent, so they typically
         // restore before a dep could fail anyway.
+        //
+        // For a restore-tier task running BEFORE its deps finish, the
+        // `upstream` entries below can be undefined (the cast lies) —
+        // the preProbed hit path in execute-task never reads them, and
+        // nothing on the restore path may.
         const upstream = node.deps.map((d) => outcomes.get(d) as TaskOutcome)
         if (!isRestore) {
           const failedDep = upstream.find((u) => u.status === 'failed' || u.status === 'skipped')

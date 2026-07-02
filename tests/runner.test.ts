@@ -165,6 +165,33 @@ describe('runPersistent', () => {
     }
   }, 8_000)
 
+  it('stops buffering once ready has resolved (buffers capture up to ready only)', async () => {
+    // A kept-alive dev server streams for hours; the buffers' contract is
+    // "captured up to the moment ready resolved" — later output must keep
+    // flowing to the live callbacks WITHOUT accreting into vx's heap.
+    const live: string[] = []
+    const spawn = runPersistent({
+      command: `printf 'server ready\\n'; sleep 0.2; printf 'later chatter\\n'; sleep 30`,
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      readyWhen: 'server ready',
+      onStdout: (c) => live.push(c),
+    })
+    try {
+      await spawn.ready
+      const deadline = Date.now() + 3_000
+      while (!live.join('').includes('later chatter') && Date.now() < deadline) {
+        await Bun.sleep(25)
+      }
+      expect(live.join('')).toContain('later chatter')
+      expect(spawn.bufferedStdout()).toContain('server ready')
+      expect(spawn.bufferedStdout()).not.toContain('later chatter')
+    } finally {
+      spawn.child.kill('SIGKILL')
+      await spawn.child.exited
+    }
+  }, 8_000)
+
   it('matches a marker split across chunks within one line', async () => {
     const spawn = runPersistent({
       command: `printf 'Listen'; sleep 0.15; printf 'ing on :3000'; sleep 30`,

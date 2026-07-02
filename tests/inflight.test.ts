@@ -15,8 +15,10 @@ const silent: Logger = {
 // A workspace with one cacheable task that takes ~0.5s and appends a byte
 // to counter.txt every time it actually executes (a side effect outside
 // the cache). After two concurrent runs, counter.txt's length = number of
-// real executions.
-async function makeWorkspace(): Promise<string> {
+// real executions. `withDep` adds an uncached upstream so the graph has a
+// dependency edge — that makes shouldShortCircuit fire, so `slow` gets an
+// up-front classify probe (preProbed) in each run.
+async function makeWorkspace(opts?: { withDep?: boolean }): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), 'vx-inflight-'))
   spawnSync('git', ['init', '-q'], { cwd: root })
   spawnSync('git', ['config', 'user.email', 'a@b.c'], { cwd: root })
@@ -31,8 +33,10 @@ async function makeWorkspace(): Promise<string> {
     [
       'export default {',
       '  tasks: {',
+      ...(opts?.withDep ? ["    pre: { exec: { command: 'echo pre' } },"] : []),
       '    slow: {',
       "      exec: { command: 'sleep 0.5 && printf x >> counter.txt && printf done > out.txt' },",
+      ...(opts?.withDep ? ["      dependsOn: ['pre'],"] : []),
       "      cache: { inputs: { files: ['input.txt'] }, outputs: { files: ['out.txt'] } },",
       '    },',
       '  },',
@@ -64,6 +68,33 @@ describe('in-flight dedup', () => {
       expect(b.ok).toBe(true)
       // One real execution; the second run joined the first and restored.
       expect(await counter(root)).toBe('x')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('a joiner with a stale up-front probe (dep edge → preProbed miss) still cache-hits', async () => {
+    // Regression: with a dependency edge in the graph, the local
+    // short-circuit classifies `slow` up front and records a CONFIRMED
+    // MISS (preProbed hit:null) in BOTH concurrent runs. The joiner that
+    // awaited the sibling's barrier must NOT reuse that stale probe — it
+    // would skip the lazy cache.get and re-execute the task the sibling
+    // just saved. The join path drops preProbed so the probe runs fresh.
+    const root = await makeWorkspace({ withDep: true })
+    try {
+      const inflight = new Map<string, Promise<void>>()
+      const opts: RunOptions = { cwd: root, tasks: ['slow'], log: silent, inflight }
+      const [a, b] = await Promise.all([run(opts), run(opts)])
+      expect(a.ok).toBe(true)
+      expect(b.ok).toBe(true)
+      // Exactly one real execution…
+      expect(await counter(root)).toBe('x')
+      // …and the joiner reported a cache hit on the sibling's artifact.
+      const statuses = [...a.outcomes, ...b.outcomes]
+        .filter((o) => o.node.taskName === 'slow')
+        .map((o) => o.status)
+        .sort()
+      expect(statuses).toEqual(['cache-hit', 'success'])
     } finally {
       await rm(root, { recursive: true, force: true })
     }

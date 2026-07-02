@@ -45,7 +45,9 @@ export { buildTaskGraph, expandRequested, isGroupTask, markSurfacedDeps } from '
 export type { TaskNode, TaskOutcome, TaskStatus } from './graph/index.js'
 
 // Cache classes + the layer interface (the `cache` capability's currency)
-// and the blob-CAS / input-output resolution substrate.
+// and input-output resolution. The blob-CAS/digest substrate
+// (cas-backend.ts / digest.ts) stays module-internal until it has a
+// consumer — no speculative public API.
 export {
   Cache,
   LayeredCache,
@@ -53,14 +55,8 @@ export {
   GitFilesCache,
   resolveInputs,
   resolveOutputs,
-  FsCASBackend,
-  MemoryCASBackend,
-  makeDigest,
-  parseDigest,
-  digestEqual,
-  digestString,
 } from './cache/index.js'
-export type { CacheLayer, RunRecord, InvocationRecord, CASBackend, Digest } from './cache/index.js'
+export type { CacheLayer, RunRecord, InvocationRecord } from './cache/index.js'
 
 // Workspace discovery — cloud's CLI + coordinator need these.
 export { findWorkspaceRoot, loadWorkspaceConfig, resolveCacheDir } from './workspace/index.js'

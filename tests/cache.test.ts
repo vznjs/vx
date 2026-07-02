@@ -687,6 +687,42 @@ describe('Cache storage (v10)', () => {
     await expect(cache.prune({})).rejects.toThrow(/at least one of/)
   })
 
+  it('prune() handles more than 900 victims (chunked DELETE, no bound-parameter blowup)', async () => {
+    // Insert 1000 stale rows straight into the index — artifacts absent
+    // on disk is fine (prune rm's with force:true). Exercises the
+    // multi-chunk DELETE path plus the JS-side victims filter.
+    // @ts-expect-error: private member access for testing
+    const db = cache.db as import('bun:sqlite').Database
+    const insert = db.prepare(
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
+       VALUES (?, 'pkg', 'build', 'noop', 0, 0, 10, '', 1, 1)`,
+    )
+    db.transaction(() => {
+      for (let i = 0; i < 1000; i++) insert.run(`h-bulk-${i}`)
+    })()
+
+    const result = await cache.prune({ olderThanMs: 2 })
+    expect(result.evicted).toBe(1000)
+    expect(await cache.get('h-bulk-0')).toBeNull()
+    expect(await cache.get('h-bulk-999')).toBeNull()
+  })
+
+  it('stats() counts remote cache hits in hitCountLast24h', () => {
+    const now = Date.now()
+    cache.recordRun({
+      hash: 'h-remote-hit',
+      project: 'pkg',
+      task: 'build',
+      status: 'cache-hit-remote',
+      exitCode: 0,
+      durationMs: 0,
+      startedAt: now,
+      endedAt: now,
+    })
+    const stats = cache.stats()
+    expect(stats.hitCountLast24h).toBe(1)
+  })
+
   it('recordRun() persists the v11 analytics columns when provided', async () => {
     const started = Date.now() - 50
     const ended = Date.now()

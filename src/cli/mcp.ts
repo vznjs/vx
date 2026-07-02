@@ -20,6 +20,7 @@
 // inspector can reuse them without duplicating logic.
 
 import { UserError } from '../util/index.js'
+import { VERSION } from '../version.js'
 import { handleMcpRequest, listMcpTools, type McpToolDef } from './mcp-rpc.js'
 
 export interface McpArgs {
@@ -56,7 +57,7 @@ export async function mcpCmd(args: readonly string[]): Promise<number> {
   }
 
   const server = new McpServer(
-    { name: 'vx', version: '0.0.0' },
+    { name: 'vx', version: VERSION },
     { capabilities: { tools: {}, resources: {} } },
   )
 

@@ -167,11 +167,13 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     const plugins: VxPlugin[] = [
       { name: 'org/sink', eventSink: () => ({ onEvent: (e) => events.push(e.kind) }) },
     ]
-    const dispose = await subscribeEventSinks(plugins, bus, baseCtx)
+    const subscribed = await subscribeEventSinks(plugins, bus, baseCtx)
     const log = busLogger(bus)
     log.runStart?.({ total: 1 })
     log.runEnd?.()
-    dispose()
+    subscribed.dispose()
+    expect(subscribed.sinks).toHaveLength(1)
+    expect(subscribed.sinks[0]!.pluginName).toBe('org/sink')
     expect(events).toContain('run:start')
     expect(events).toContain('run:end')
   })
@@ -190,10 +192,10 @@ describe('plugin-host — capability consultation + fallbacks', () => {
       },
       { name: 'org/good-sink', eventSink: () => ({ onEvent: (e) => good.push(e.kind) }) },
     ]
-    const dispose = await subscribeEventSinks(plugins, bus, baseCtx)
+    const subscribed = await subscribeEventSinks(plugins, bus, baseCtx)
     const log = busLogger(bus)
     expect(() => log.runStart?.({ total: 1 })).not.toThrow()
-    dispose()
+    subscribed.dispose()
     expect(good).toContain('run:start')
   })
 
@@ -208,16 +210,17 @@ describe('plugin-host — capability consultation + fallbacks', () => {
         },
       },
     ]
-    let dispose: (() => void) | undefined
+    let subscribed: Awaited<ReturnType<typeof subscribeEventSinks>> | undefined
     await expect(
       (async () => {
-        dispose = await subscribeEventSinks(plugins, bus, {
+        subscribed = await subscribeEventSinks(plugins, bus, {
           ...baseCtx,
           warn: (m) => warnings.push(m),
         })
       })(),
     ).resolves.toBeUndefined()
-    dispose?.()
+    subscribed?.dispose()
+    expect(subscribed?.sinks).toHaveLength(0)
     expect(warnings.some((w) => w.includes('org/bad-factory'))).toBe(true)
   })
 })

@@ -99,6 +99,9 @@ describe('LayeredCache', () => {
         stdout: 'compiling…',
       },
     })
+    // save() queues the remote PUT in the background (run() drains at
+    // end-of-run); tests asserting on the remote side drain here.
+    if (cache instanceof LayeredCache) await cache.drainUploads()
   }
 
   it('save() writes local AND uploads to remote', async () => {
@@ -397,6 +400,85 @@ describe('LayeredCache', () => {
     expect(a).toBe(true)
     expect(b).toBe(true)
     expect(getCount).toBe(1)
+  })
+
+  it('save() resolves before a slow remote PUT completes; drainUploads() completes it', async () => {
+    // Gate the PUT: the server holds every PUT open until we release it.
+    let releasePut!: () => void
+    const putGate = new Promise<void>((resolve) => {
+      releasePut = resolve
+    })
+    let putStarted = false
+    let putFinished = false
+    await server.stop(true)
+    server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        if (req.method === 'PUT') {
+          putStarted = true
+          await putGate
+          putFinished = true
+          return new Response(null, { status: 201 })
+        }
+        return new Response(null, { status: 404 })
+      },
+    })
+    const remote = new RemoteCache({ baseUrl: `http://localhost:${server.port}`, token: 'tok' })
+    const layered = new LayeredCache(local, remote, { onRemoteError: () => {} })
+
+    const outFile = path.join(projectDir, 'dist', 'out.txt')
+    await mkdir(path.dirname(outFile), { recursive: true })
+    await writeFile(outFile, 'slow-put')
+    // save() must return while the PUT is still gated open — the upload
+    // is off the task's critical path.
+    await layered.save({
+      hash: 'h-slow-put',
+      projectDir,
+      outputFiles: [outFile],
+      entry: { taskId: 'pkg#build', command: 'c', exitCode: 0, durationMs: 1, stdout: '' },
+    })
+    // Give the background job a beat to fire the request.
+    await Bun.sleep(20)
+    expect(putStarted).toBe(true)
+    expect(putFinished).toBe(false)
+    // Local landed synchronously regardless of the in-flight upload.
+    expect(await local.get('h-slow-put')).not.toBeNull()
+
+    const drain = layered.drainUploads()
+    releasePut()
+    await drain
+    expect(putFinished).toBe(true)
+  })
+
+  it('has() reports local / remote / null without moving bytes', async () => {
+    const layered = makeLayered()
+    await saveSample(local, 'h-has-local')
+    expect(await layered.has('h-has-local')).toBe('local')
+
+    // Remote-only: seed via a layered save, then wipe local.
+    await saveSample(layered, 'h-has-remote')
+    local.close()
+    await rm(cacheDir, { recursive: true, force: true })
+    local = new Cache(cacheDir)
+    const fresh = new LayeredCache(
+      local,
+      new RemoteCache({ baseUrl: `http://localhost:${server.port}`, token: 'tok' }),
+      { onRemoteError: () => {} },
+    )
+    serverRequests.length = 0
+    expect(await fresh.has('h-has-remote')).toBe('remote')
+    // The probe was a HEAD — no GET, and nothing was ingested locally.
+    expect(serverRequests.map((r) => r.method)).toEqual(['HEAD'])
+    expect(await local.get('h-has-remote')).toBeNull()
+
+    expect(await fresh.has('h-has-nowhere')).toBe(null)
+  })
+
+  it('has() degrades a remote failure to null (never throws)', async () => {
+    await server.stop(true)
+    server = Bun.serve({ port: 0, fetch: () => new Response(null, { status: 500 }) })
+    const layered = makeLayered()
+    expect(await layered.has('h-has-err')).toBe(null)
   })
 
   it('stats() / recordRun() / prune() delegate to local', async () => {

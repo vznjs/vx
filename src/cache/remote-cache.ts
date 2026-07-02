@@ -2,7 +2,8 @@
 //
 // Wire-level only. Knows nothing about local storage, tar formats, or
 // how the orchestrator uses the cache; those concerns live in the
-// LayeredCache. Two operations only — GET (read) and PUT (write).
+// LayeredCache. Three operations — GET (read), PUT (write), and HEAD
+// (existence probe for the plan path).
 //
 // Reference servers we want to interop with at the HTTP layer:
 //   ducktors/turborepo-remote-cache, Fox32/openturbo-remote-cache,
@@ -80,6 +81,20 @@ export class RemoteCache {
       body,
       durationMs: parseIntHeader(res.headers.get('x-artifact-duration')),
     }
+  }
+
+  /**
+   * Existence probe — Turbo wire `HEAD /v8/artifacts/:hash` (200 =
+   * exists, 404 = not). No body transfer; the plan path (`--dry` /
+   * `--graph`) predicts remote hits with this so it never downloads
+   * artifacts. Other failures throw a `RemoteCacheError` like `get`;
+   * the LayeredCache degrades them to a miss.
+   */
+  async has(hash: string): Promise<boolean> {
+    const res = await this.fetch('HEAD', this.artifactUrl(hash))
+    if (res.status === 404) return false
+    if (!res.ok) throw new RemoteCacheError(`HEAD ${hash} → ${res.status}`, res.status)
+    return true
   }
 
   async put(hash: string, body: ArrayBuffer | Uint8Array, meta: RemotePutMetadata): Promise<void> {

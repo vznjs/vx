@@ -4,7 +4,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { LayeredCache } from '../src/cache/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
-import { run } from '../src/orchestrator/index.js'
+import { planRun, run } from '../src/orchestrator/index.js'
 
 interface Fixture {
   root: string
@@ -92,6 +92,8 @@ interface ArtifactServer {
   tags: Map<string, string>
   /** Per-hash GET counts — pins at-most-once probing across prefetch + get. */
   getCounts: Map<string, number>
+  /** Per-hash HEAD counts — the plan path's existence probes. */
+  headCounts: Map<string, number>
   /** Hashes a GET was issued for, in arrival order. */
   getsInFlight: () => number
 }
@@ -102,6 +104,7 @@ function startArtifactServer(opts?: { getLatencyMs?: number; failAll?: boolean }
   const store = new Map<string, Uint8Array>()
   const tags = new Map<string, string>()
   const getCounts = new Map<string, number>()
+  const headCounts = new Map<string, number>()
   let inFlight = 0
   let maxInFlight = 0
   const server = Bun.serve({
@@ -120,6 +123,10 @@ function startArtifactServer(opts?: { getLatencyMs?: number; failAll?: boolean }
         const tag = req.headers.get('x-artifact-tag')
         if (tag) tags.set(hash, tag)
         return new Response(JSON.stringify({ urls: [] }), { status: 200 })
+      }
+      if (req.method === 'HEAD') {
+        headCounts.set(hash, (headCounts.get(hash) ?? 0) + 1)
+        return new Response(null, { status: store.has(hash) ? 200 : 404 })
       }
       if (req.method === 'GET') {
         getCounts.set(hash, (getCounts.get(hash) ?? 0) + 1)
@@ -146,6 +153,7 @@ function startArtifactServer(opts?: { getLatencyMs?: number; failAll?: boolean }
     store,
     tags,
     getCounts,
+    headCounts,
     getsInFlight: () => maxInFlight,
   }
 }
@@ -216,6 +224,47 @@ describe('orchestrator e2e: remote cache', () => {
       })
       expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
       expect(second.ok).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'planRun (--dry) predicts hit-remote via HEAD — no artifact download, no local ingest',
+    async () => {
+      await addProject(fixture.root, 'app', {
+        files: { 'src/in.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: 'echo built > out.txt' },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+
+      // Populate the remote, then wipe local so remote is the only source.
+      const first = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+      expect(first.ok).toBe(true)
+      expect(remote.store.size).toBe(1)
+      await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+      remote.getCounts.clear()
+      remote.headCounts.clear()
+
+      const plan = await planRun({ cwd: fixture.root, tasks: ['build'] })
+      expect(plan.tasks).toHaveLength(1)
+      expect(plan.tasks[0]!.cacheStatus).toBe('hit-remote')
+
+      // The probe was an existence HEAD — no GET fired, and nothing was
+      // ingested into the (freshly recreated) local cache.
+      expect([...remote.getCounts.values()]).toEqual([])
+      expect([...remote.headCounts.values()]).toEqual([1])
+      const cacheDir = path.join(fixture.root, '.vx', 'cache')
+      const glob = new Bun.Glob('*.tar.zst')
+      const artifacts = [...glob.scanSync({ cwd: cacheDir })]
+      expect(artifacts).toEqual([])
     },
     TIMEOUT,
   )

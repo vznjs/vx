@@ -184,11 +184,14 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     let fragment = ''
     const handleChunk = (chunk: string): void => {
       if (chunk.length === 0) return
+      // Buffers capture "up to the moment ready resolved" (their
+      // documented contract) — a dev server kept alive for hours must
+      // not accrete its whole log history into vx's heap.
       if (isStderr) {
-        bufferedStderr += chunk
+        if (readyAt === undefined) bufferedStderr += chunk
         opts.onStderr?.(chunk)
       } else {
-        bufferedStdout += chunk
+        if (readyAt === undefined) bufferedStdout += chunk
         opts.onStdout?.(chunk)
       }
       if (readyRe && readyAt === undefined) {

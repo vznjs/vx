@@ -8,6 +8,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { Database } from 'bun:sqlite'
 import { getRun, listInvocations, listRuns, type RunSummaryRecord } from '@vzn/vx'
 import { IngestStore } from '../src/ingest-store.js'
 import { startServe } from '../src/cli/serve.js'
@@ -112,6 +113,53 @@ describe('IngestStore', () => {
       expect(listInvocations(store.db(), {}).length).toBe(1)
     } finally {
       store.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('warns loudly when core Cache schema gate wipes the stored history (upgrade across a bump)', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-ingest-wipe-'))
+    try {
+      // Seed history, then simulate a vx upgrade across a SCHEMA_VERSION
+      // bump by rewriting the version core's drop-gate checks.
+      const seeded = new IngestStore(dir)
+      seeded.ingest(summary('run-wipe-1'))
+      seeded.close()
+      const db = new Database(path.join(dir, 'cache.db'))
+      db.prepare("UPDATE schema_meta SET value = 'v0-outdated' WHERE key = 'version'").run()
+      db.close()
+
+      const warnings: string[] = []
+      const reopened = new IngestStore(dir, (m) => warnings.push(m))
+      try {
+        // The gate dropped + recreated the tables — history is gone, and
+        // the store said so instead of silently serving an empty dashboard.
+        expect(listInvocations(reopened.db(), {}).length).toBe(0)
+        expect(warnings.some((w) => w.includes('run history was reset'))).toBe(true)
+      } finally {
+        reopened.close()
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not warn on a normal reopen (same schema version)', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-ingest-reopen-'))
+    try {
+      const seeded = new IngestStore(dir)
+      seeded.ingest(summary('run-keep-1'))
+      seeded.close()
+
+      const warnings: string[] = []
+      const reopened = new IngestStore(dir, (m) => warnings.push(m))
+      try {
+        expect(listInvocations(reopened.db(), {}).length).toBe(1)
+        expect(warnings).toEqual([])
+      } finally {
+        reopened.close()
+      }
+    } finally {
       await rm(dir, { recursive: true, force: true })
     }
   })

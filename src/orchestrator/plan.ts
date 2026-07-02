@@ -3,10 +3,13 @@
 // ran. Used by `--dry-run` (preview output) and `--graph` (DOT export).
 //
 // No TASK execution happens: no task spawn, no cleanOutputs, no
-// restoreOutputs. The plan is read-only — with one deliberate
-// exception: `cache.inputs.runtime` / `workspaceRuntime` probe commands
-// DO run, because predicting a task's key requires resolving them (same
-// as a real run). Keep runtime inputs side-effect-free pure probes.
+// restoreOutputs. Cache probing uses the byte-free `cache.has()`
+// existence probe (a remote layer answers with an HTTP HEAD — no
+// artifact download, no local ingest), so the plan is read-only — with
+// one deliberate exception: `cache.inputs.runtime` / `workspaceRuntime`
+// probe commands DO run, because predicting a task's key requires
+// resolving them (same as a real run). Keep runtime inputs
+// side-effect-free pure probes.
 
 import type { CacheLayer, CachePolicy, GitFilesCache } from '../cache/index.js'
 import { FULL_CACHE_POLICY } from '../cache/index.js'
@@ -52,9 +55,9 @@ export interface PlanArgs {
  * sequential is easier to reason about.
  *
  * For each node we compute the cache key (same key the real run
- * would) and probe `cache.get(hash)` to decide hit vs miss. The probe
- * is read-only — it bumps the `accessed_at` column on the SQLite row
- * because that's `cache.get`'s contract, but otherwise side-effect free.
+ * would) and probe `cache.has(hash)` to decide hit vs miss. The probe
+ * is a pure existence check — no artifact bytes move, no accessed_at
+ * bump, no remote download/ingest.
  */
 export async function plan(args: PlanArgs): Promise<RunPlan> {
   const cacheStatusById = new Map<string, CacheStatus>()
@@ -92,13 +95,8 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
       if (!cacheEnabled) {
         status = 'no-cache'
       } else {
-        const hit = await args.cache.get(hash, {
-          taskId: node.id,
-          command: node.config.exec?.command ?? '',
-        })
-        status = hit ? (hit.source === 'remote' ? 'hit-remote' : 'hit-local') : 'miss'
-        cacheStatusById.set(node.id, status)
-        return planOutcome(node, hash)
+        const where = await args.cache.has(hash)
+        status = where === null ? 'miss' : where === 'remote' ? 'hit-remote' : 'hit-local'
       }
       cacheStatusById.set(node.id, status)
       return planOutcome(node, hash)

@@ -10,7 +10,13 @@ import { UserError } from '../util/index.js'
 import type { EventBus } from './events.js'
 import { wireForwarder } from './events.js'
 import type { Logger } from './logger.js'
-import type { BackendContext, CacheContext, EventSinkContext, VxPlugin } from './plugin.js'
+import type {
+  BackendContext,
+  CacheContext,
+  EventSink,
+  EventSinkContext,
+  VxPlugin,
+} from './plugin.js'
 import type { RunBackend } from './protocol.js'
 
 /**
@@ -74,18 +80,27 @@ export async function resolveCache(
   return fallback()
 }
 
+export interface SubscribedEventSinks {
+  /** Removes every bus subscription. Called in run()'s finally. */
+  dispose(): void
+  /** The installed sinks (with the owning plugin's name for warnings),
+   *  so run() can await each sink's `flush()` at end-of-run. */
+  sinks: ReadonlyArray<{ pluginName: string; sink: EventSink }>
+}
+
 /**
  * Subscribe every plugin's `eventSink` to the bus via `wireForwarder`,
  * each isolated so a throwing sink can never break the run. Additive: with
  * no eventSink plugin nothing subscribes and behavior is unchanged.
- * Returns a disposer that removes every subscription.
+ * Returns the disposer plus the installed sinks (for the end-of-run flush).
  */
 export async function subscribeEventSinks(
   plugins: readonly VxPlugin[],
   bus: EventBus,
   ctx: EventSinkContext,
-): Promise<() => void> {
+): Promise<SubscribedEventSinks> {
   const disposers: Array<() => void> = []
+  const sinks: Array<{ pluginName: string; sink: EventSink }> = []
   for (const plugin of plugins) {
     if (plugin.eventSink === undefined) continue
     let sink
@@ -98,6 +113,7 @@ export async function subscribeEventSinks(
       continue
     }
     if (sink === undefined) continue
+    sinks.push({ pluginName: plugin.name, sink })
     disposers.push(
       bus.subscribe(
         wireForwarder((event) => {
@@ -110,7 +126,65 @@ export async function subscribeEventSinks(
       ),
     )
   }
-  return () => {
-    for (const dispose of disposers) dispose()
+  return {
+    dispose: () => {
+      for (const dispose of disposers) dispose()
+    },
+    sinks,
+  }
+}
+
+/** Upper bound on each teardown()/flush() await — a wedged plugin must
+ *  not hold the run's exit hostage. */
+const TEARDOWN_TIMEOUT_MS = 3000
+
+async function settleWithin(p: Promise<unknown>, ms: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, ms)
+  })
+  try {
+    await Promise.race([p, deadline])
+  } finally {
+    clearTimeout(timer)
+    // A rejection landing after the deadline won already resolved the
+    // race must not surface as an unhandled-rejection crash.
+    void p.catch(() => {})
+  }
+}
+
+/**
+ * End-of-run plugin lifecycle: await each event sink's optional
+ * `flush()` (its last chance to ship buffered records), then each
+ * plugin's optional `teardown()`. Crash-isolated — a throwing
+ * flush/teardown is logged and skipped, never propagated — and each
+ * call is time-bounded at {@link TEARDOWN_TIMEOUT_MS}. Runs on the
+ * normal completion path only; the finally-path disposers just
+ * unsubscribe.
+ */
+export async function teardownPlugins(
+  plugins: readonly VxPlugin[],
+  sinks: ReadonlyArray<{ pluginName: string; sink: EventSink }>,
+  warn: (message: string) => void,
+): Promise<void> {
+  for (const { pluginName, sink } of sinks) {
+    if (sink.flush === undefined) continue
+    try {
+      await settleWithin(Promise.resolve(sink.flush()), TEARDOWN_TIMEOUT_MS)
+    } catch (err) {
+      warn(
+        `[vx] plugin '${pluginName}' event sink flush failed: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+  }
+  for (const plugin of plugins) {
+    if (plugin.teardown === undefined) continue
+    try {
+      await settleWithin(Promise.resolve(plugin.teardown()), TEARDOWN_TIMEOUT_MS)
+    } catch (err) {
+      warn(
+        `[vx] plugin '${plugin.name}' teardown failed: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
   }
 }

@@ -69,6 +69,81 @@ describe('Plugin API — end-to-end via run()', () => {
     }
   })
 
+  it('invokes each plugin teardown() and each event sink flush() exactly once at end-of-run', async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        `globalThis.__vxLifecycle = { teardown: 0, flush: 0 }
+         export default {
+           plugins: [{
+             name: 'org/lifecycle',
+             eventSink() {
+               return {
+                 onEvent() {},
+                 async flush() { globalThis.__vxLifecycle.flush++ },
+               }
+             },
+             async teardown() { globalThis.__vxLifecycle.teardown++ },
+           }],
+         }`,
+      )
+      await gitInit(workspaceRoot)
+      const summary = await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['hello'],
+        log: makeSilentLogger(),
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      const counts = (
+        globalThis as unknown as { __vxLifecycle: { teardown: number; flush: number } }
+      ).__vxLifecycle
+      expect(counts.teardown).toBe(1)
+      expect(counts.flush).toBe(1)
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('a throwing teardown() is logged, never fails the run', async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        `globalThis.__vxTeardownCalls = 0
+         export default {
+           plugins: [{
+             name: 'org/bad-teardown',
+             setup() {},
+             teardown() {
+               globalThis.__vxTeardownCalls++
+               throw new Error('teardown boom')
+             },
+           }],
+         }`,
+      )
+      await gitInit(workspaceRoot)
+      const statusLines: string[] = []
+      const log = { ...makeSilentLogger(), status: (m: string) => statusLines.push(m) }
+      const summary = await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['hello'],
+        log,
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      expect((globalThis as unknown as { __vxTeardownCalls: number }).__vxTeardownCalls).toBe(1)
+      expect(
+        statusLines.some((l) => l.includes('org/bad-teardown') && l.includes('teardown')),
+      ).toBe(true)
+    } finally {
+      cleanup()
+    }
+  })
+
   it('a plugin setup() throw aborts the run with a clean UserError', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {

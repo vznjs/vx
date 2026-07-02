@@ -458,6 +458,16 @@ export interface CacheLayer {
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   /**
+   * Lightweight existence probe. `'local'` / `'remote'` names the layer
+   * that holds the artifact; `null` is a miss. NEVER moves bytes: no
+   * artifact read, no remote download, no local ingest, no accessed_at
+   * bump (the LayeredCache's remote side is an HTTP HEAD). Planning
+   * (`--dry` / `--graph`) predicts hits with this instead of `get` so a
+   * dry run can't pull N artifacts over the network. Remote errors
+   * degrade to `null` — an existence probe never fails anything.
+   */
+  has(hash: string): Promise<'local' | 'remote' | null>
+  /**
    * Best-effort warm of `hash` from a slower layer (the remote cache)
    * into this one, so a later `get(hash)` resolves locally without a
    * round-trip on the task's critical path. Returns `true` if the
@@ -557,7 +567,7 @@ export interface CacheLayer {
   hashFile(filePath: string): Promise<string>
   /**
    * Absolute path to the on-disk outputs artifact for a hash —
-   * `<cacheDir>/<hash>.tar` since v15. Returns the path whether or
+   * `<cacheDir>/<hash>.tar.zst`. Returns the path whether or
    * not the artifact exists. Exposed for telemetry / dashboards;
    * `restoreOutputs` is the canonical way to materialize the bytes.
    */
@@ -602,14 +612,6 @@ export class Cache implements CacheLayer {
   private readonly upsertFileHash: ReturnType<Database['prepare']>
   private readonly insertOutputFile: ReturnType<Database['prepare']>
   private readonly deleteOutputFiles: ReturnType<Database['prepare']>
-  /**
-   * Single-slot stash of the most recently decompressed tar. Populated
-   * by `get()`, consumed by the next matching `restoreOutputs()`. The
-   * orchestrator's cache-hit path always calls these back-to-back for
-   * the same hash, so a one-entry slot is enough to avoid a second
-   * round of zstd decompression on every hit. Evicted on hash change,
-   * cleared on close().
-   */
   /** Memoized repo object format for blob-OID hashing (lazy-detected). */
   private objectFormat: 'sha1' | 'sha256' | null = null
 
@@ -1063,6 +1065,15 @@ export class Cache implements CacheLayer {
     }
   }
 
+  // Existence probe: SQL row + artifact-on-disk check, no byte reads
+  // and no accessed_at bump (the plan path must stay read-only).
+  async has(hash: string): Promise<'local' | 'remote' | null> {
+    if (!this.read) return null
+    const row = this.selectEntry.get(hash) as EntryRow | undefined
+    if (!row) return null
+    return (await Bun.file(this.tarPath(hash)).exists()) ? 'local' : null
+  }
+
   // Local cache has no slower layer to warm from — prefetch is a no-op.
   // The contract still resolves false so callers can treat every layer
   // uniformly (LayeredCache overrides with the real remote pull).
@@ -1128,12 +1139,8 @@ export class Cache implements CacheLayer {
   }
 
   async restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void> {
-    // In-process tar extraction with optional per-file skip + slot reuse.
-    //
-    // Three compounding wins vs the prior subprocess `tar -xf` approach:
-    //   - Reuses bytes stashed by the matching `get()` call (single
-    //     decompress across the get→restore pair).
-    //   - No fork+exec on the hot path (~5-10ms reclaimed per hit).
+    // In-process tar extraction — no fork+exec on the hot path
+    // (~5-10ms reclaimed per hit vs the prior subprocess `tar -xf`).
     //
     // The "tree is already current" skip-everything check happens at
     // the orchestrator level (using the batched `output_files` map),
@@ -1491,7 +1498,7 @@ export class Cache implements CacheLayer {
     const since = Date.now() - 24 * 60 * 60 * 1000
     const runs = this.db
       .prepare(
-        "SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN status = 'cache-hit' THEN 1 ELSE 0 END), 0) AS hits FROM runs WHERE started_at >= ?",
+        "SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN status IN ('cache-hit', 'cache-hit-remote') THEN 1 ELSE 0 END), 0) AS hits FROM runs WHERE started_at >= ?",
       )
       .get(since) as { total: number; hits: number }
     return {
@@ -1528,17 +1535,14 @@ export class Cache implements CacheLayer {
         .get() as { bytes: number }
       let remaining = totalRow.bytes - bytesFreed
       if (remaining > maxBytes) {
+        // Exclude already-picked victims in JS, not via a SQL NOT-IN —
+        // an IN-list over tens of thousands of TTL victims would blow
+        // SQLite's bound-parameter ceiling (see flushAccessed's 900 cap).
         const candidates = (
-          victims.size === 0
-            ? (this.db
-                .prepare('SELECT hash, size_bytes FROM entries ORDER BY accessed_at ASC')
-                .all() as Array<{ hash: string; size_bytes: number }>)
-            : (this.db
-                .prepare(
-                  `SELECT hash, size_bytes FROM entries WHERE hash NOT IN (${[...victims].map(() => '?').join(',')}) ORDER BY accessed_at ASC`,
-                )
-                .all(...[...victims]) as Array<{ hash: string; size_bytes: number }>)
-        ) satisfies Array<{ hash: string; size_bytes: number }>
+          this.db
+            .prepare('SELECT hash, size_bytes FROM entries ORDER BY accessed_at ASC')
+            .all() as Array<{ hash: string; size_bytes: number }>
+        ).filter((row) => !victims.has(row.hash))
         for (const row of candidates) {
           if (remaining <= maxBytes) break
           victims.add(row.hash)
@@ -1551,13 +1555,18 @@ export class Cache implements CacheLayer {
     // Delete DB rows in a single transaction (one fsync; ON DELETE
     // CASCADE clears `output_files`) and unlink artifacts in parallel.
     // Replaces N round-trips + serialized rm with one transaction + a
-    // Promise.all over the unlinks.
+    // Promise.all over the unlinks. The IN-list is chunked at 900 like
+    // flushAccessed so a huge eviction stays under any build's
+    // bound-parameter ceiling.
     if (victims.size > 0) {
       const hashes = [...victims]
-      const placeholders = hashes.map(() => '?').join(',')
-      const stmt = this.db.prepare(`DELETE FROM entries WHERE hash IN (${placeholders})`)
       this.db.transaction(() => {
-        stmt.run(...(hashes as readonly SQLQueryBindings[]))
+        for (let i = 0; i < hashes.length; i += 900) {
+          const chunk = hashes.slice(i, i + 900)
+          this.db
+            .prepare(`DELETE FROM entries WHERE hash IN (${chunk.map(() => '?').join(',')})`)
+            .run(...(chunk as readonly SQLQueryBindings[]))
+        }
       })()
       await Promise.all(hashes.map((h) => rm(this.tarPath(h), { force: true })))
     }
