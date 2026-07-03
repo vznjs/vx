@@ -6,35 +6,35 @@
   "concurrency": 10,
   "reps": 1,
   "buildSleep": "1",
-  "date": "2026-06-13T20:15:56.492Z",
+  "date": "2026-07-03T17:45:15.227Z",
   "rows": [
     {
       "runner": "vx",
       "version": "vx 0.0.0",
-      "fresh": 10472.621993,
-      "warmNoRestore": 127.348157,
-      "warmRestore": 150.505175
+      "fresh": 10422.425015,
+      "warmNoRestore": 120.580905,
+      "warmRestore": 146.652153
     },
     {
       "runner": "vx (frozen)",
       "version": "vx 0.0.0",
-      "fresh": 10496.036714,
-      "warmNoRestore": 117.008483,
-      "warmRestore": 148.281775
+      "fresh": 10401.865392,
+      "warmNoRestore": 135.495093,
+      "warmRestore": 134.066671
     },
     {
       "runner": "turbo",
-      "version": "2.9.18",
-      "fresh": 10658.648992,
-      "warmNoRestore": 244.717051,
-      "warmRestore": 282.779775
+      "version": "2.10.3",
+      "fresh": 10572.970633,
+      "warmNoRestore": 209.328259,
+      "warmRestore": 224.64509
     },
     {
       "runner": "nx",
-      "version": "22.7.5",
-      "fresh": 29280.459861,
-      "warmNoRestore": 879.126253,
-      "warmRestore": 872.083235
+      "version": "23.0.1",
+      "fresh": 28850.803058,
+      "warmNoRestore": 735.671002,
+      "warmRestore": 734.296774
     }
   ]
 }

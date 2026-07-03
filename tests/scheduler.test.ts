@@ -382,3 +382,61 @@ describe('runGraph restore-tier (local short-circuit)', () => {
     expect(out.get('down#build')?.status).toBe('skipped')
   })
 })
+
+describe('runGraph — continueMode', () => {
+  it('deps-ok (default): a failure skips dependents, siblings run — unchanged pin', async () => {
+    const a = node('p#a')
+    const b = node('p#b', ['p#a'])
+    const c = node('p#c')
+    const out = await runGraph({
+      nodes: nodes(a, b, c),
+      concurrency: 1,
+      execute: async (n) => (n.id === 'p#a' ? failed(n) : success(n)),
+    })
+    expect(out.get('p#a')!.status).toBe('failed')
+    expect(out.get('p#b')!.status).toBe('skipped')
+    expect(out.get('p#c')!.status).toBe('success')
+  })
+
+  it('never: the first failure stops dispatch — queued tasks skip, in-flight finishes', async () => {
+    // concurrency 1 forces strict ordering: a (fails) → everything else
+    // dequeues after the trip and must skip, including the dep-free c.
+    const a = node('p#a')
+    const b = node('p#b', ['p#a'])
+    const c = node('p#c')
+    const started: string[] = []
+    const out = await runGraph({
+      nodes: nodes(a, b, c),
+      concurrency: 1,
+      continueMode: 'never',
+      onStart: (n) => started.push(n.id),
+      execute: async (n) => (n.id === 'p#a' ? failed(n) : success(n)),
+    })
+    expect(out.get('p#a')!.status).toBe('failed')
+    expect(out.get('p#b')!.status).toBe('skipped')
+    expect(out.get('p#c')!.status).toBe('skipped')
+    expect(started).toEqual(['p#a'])
+  })
+
+  it('always: dependents run even when an upstream failed', async () => {
+    const a = node('p#a')
+    const b = node('p#b', ['p#a'])
+    const seenUpstream: TaskOutcome[][] = []
+    const out = await runGraph({
+      nodes: nodes(a, b),
+      concurrency: 2,
+      continueMode: 'always',
+      execute: async (n, upstream) => {
+        if (n.id === 'p#b') seenUpstream.push(upstream)
+        return n.id === 'p#a' ? failed(n) : success(n)
+      },
+    })
+    expect(out.get('p#a')!.status).toBe('failed')
+    // b executed (not skipped) and saw the failed upstream outcome —
+    // its key folds the upstream's INPUT hash, which failed outcomes
+    // carry (computed before exec), so caching stays sound.
+    expect(out.get('p#b')!.status).toBe('success')
+    expect(seenUpstream[0]![0]!.status).toBe('failed')
+    expect(seenUpstream[0]![0]!.hash).toBe('h-p#a')
+  })
+})

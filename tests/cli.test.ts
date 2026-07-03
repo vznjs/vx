@@ -1256,3 +1256,13 @@ describe('formatRunReportMarkdown', () => {
     expect(md).not.toContain('web#dev')
   })
 })
+
+describe('--continue parsing', () => {
+  it('bare --continue means always; explicit values parse; junk rejects', () => {
+    expect(parseRunArgs(['build', '--continue']).continueMode).toBe('always')
+    expect(parseRunArgs(['build', '--continue=never']).continueMode).toBe('never')
+    expect(parseRunArgs(['build', '--continue=deps-ok']).continueMode).toBe('deps-ok')
+    expect(parseRunArgs(['build', '--continue=sometimes']).error).toContain('--continue must be')
+    expect(parseRunArgs(['build']).continueMode).toBeUndefined()
+  })
+})

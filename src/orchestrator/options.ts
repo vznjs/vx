@@ -3,6 +3,7 @@
 // import of index.ts — the module entry must stay cycle-free.
 
 import type { CachePolicy } from '../cache/index.js'
+import type { ContinueMode } from '../graph/index.js'
 import type { TaskOutcome } from '../graph/index.js'
 import type { EventBus } from './events.js'
 import type { TelemetrySink } from './telemetry.js'
@@ -52,6 +53,15 @@ export interface RunOptions {
    * (programmatic callers) behaves like today's 'full'.
    */
   flow?: 'focused' | 'broad'
+  /**
+   * Failure propagation: 'never' stops dispatch on the first failure
+   * (in-flight tasks finish; everything queued skips), 'deps-ok'
+   * (default) skips only a failure's dependents, 'always' runs
+   * dependents even when an upstream failed — sound under pure-input
+   * hashing (failed outcomes carry the upstream's input key). CLI:
+   * `--continue[=never|deps-ok|always]`; bare `--continue` = 'always'.
+   */
+  continueMode?: ContinueMode
   /**
    * Filter `dependsOn` expansion. `'all'` drops every edge (just the
    * requested task runs). A string array drops only those task names

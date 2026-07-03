@@ -24,11 +24,14 @@ import {
   type RunResult,
   type VxPlugin,
 } from '../orchestrator/index.js'
+import type { ContinueMode } from '../graph/index.js'
 import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 import { localBackend } from './backend.js'
 
 export interface RunArgs {
+  /** Failure propagation (`--continue[=never|deps-ok|always]`). */
+  continueMode?: ContinueMode
   /**
    * Positional task names. Each entry is either a bare task (`'build'`)
    * — applied across the resolved project scope — or anchored as
@@ -153,6 +156,15 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       noCacheFlag = true
     } else if (a === '--force') {
       forceFlag = true
+    } else if (a === '--continue') {
+      // Bare --continue = 'always' (the Turbo convention).
+      out.continueMode = 'always'
+    } else if (a?.startsWith('--continue=')) {
+      const v = a.slice('--continue='.length)
+      if (v !== 'never' && v !== 'deps-ok' && v !== 'always') {
+        return { ...out, error: `--continue must be never, deps-ok, or always` }
+      }
+      out.continueMode = v
     } else if (a === '--verbosity') {
       const v = before[++i]
       if (v === undefined) return { ...out, error: `${a} requires a value` }
@@ -315,6 +327,7 @@ export async function resolveRunOptions(
     flow: detectFlow(parsed),
     ...(parsed.frozen ? { frozen: true } : {}),
     ...(parsed.outputLogs !== undefined ? { outputLogs: parsed.outputLogs } : {}),
+    ...(parsed.continueMode !== undefined ? { continueMode: parsed.continueMode } : {}),
     forwardArgs: parsed.forwardArgs,
   }
   if (parsed.excludeDependencies === 'all') {

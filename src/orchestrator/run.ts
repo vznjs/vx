@@ -461,6 +461,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     const outcomes = await runGraph({
       nodes,
       concurrency,
+      ...(options.continueMode !== undefined ? { continueMode: options.continueMode } : {}),
       onStart: (node) => {
         log.taskStart?.(node)
       },

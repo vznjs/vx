@@ -5,6 +5,7 @@
 // the RunOptions⇄RunRequest mapping; no transport, no execution here.
 
 import type { CachePolicy } from '../cache/index.js'
+import type { ContinueMode } from '../graph/index.js'
 import type { OutcomeView, WireEvent } from './events.js'
 import type { RunOptions } from './options.js'
 
@@ -19,6 +20,7 @@ export interface RunRequest {
   projects?: readonly string[]
   concurrency?: number
   cache?: CachePolicy
+  continueMode?: ContinueMode
   frozen?: boolean
   flow?: 'focused' | 'broad'
   outputLogs?: 'full' | 'errors-only' | 'none'
@@ -73,6 +75,7 @@ export function optionsToRequest(options: RunOptions): RunRequest {
   if (options.projects !== undefined) req.projects = options.projects
   if (options.concurrency !== undefined) req.concurrency = options.concurrency
   if (options.cache !== undefined) req.cache = options.cache
+  if (options.continueMode !== undefined) req.continueMode = options.continueMode
   if (options.frozen !== undefined) req.frozen = options.frozen
   if (options.flow !== undefined) req.flow = options.flow
   if (options.outputLogs !== undefined) req.outputLogs = options.outputLogs
@@ -96,6 +99,7 @@ export function requestToOptions(request: RunRequest): RunOptions {
   if (request.projects !== undefined) options.projects = [...request.projects]
   if (request.concurrency !== undefined) options.concurrency = request.concurrency
   if (request.cache !== undefined) options.cache = request.cache
+  if (request.continueMode !== undefined) options.continueMode = request.continueMode
   if (request.frozen !== undefined) options.frozen = request.frozen
   if (request.flow !== undefined) options.flow = request.flow
   if (request.outputLogs !== undefined) options.outputLogs = request.outputLogs

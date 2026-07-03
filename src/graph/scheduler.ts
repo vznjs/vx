@@ -54,9 +54,28 @@ export interface TaskOutcome {
   sandboxViolationLines?: string[]
 }
 
+export type ContinueMode = 'never' | 'deps-ok' | 'always'
+
 export interface ScheduleOptions {
   nodes: Map<string, TaskNode>
   concurrency: number
+  /**
+   * Failure propagation (default 'deps-ok' — the historical behavior):
+   *   - 'deps-ok': a failed/skipped upstream skips its dependents;
+   *     independent siblings keep running.
+   *   - 'never': the first failure stops dispatch — in-flight tasks
+   *     finish naturally, everything not yet started completes as
+   *     skipped (restore-tier included: a fail-fast run stops
+   *     restoring too).
+   *   - 'always': dependents run even when an upstream failed. Sound
+   *     under pure-input transitive hashing: failed outcomes carry the
+   *     upstream's INPUT key (computed before exec), so dependents'
+   *     keys fold exactly what a healthy run folds. An upstream that
+   *     died before hashing folds nothing — that key is derivable by
+   *     no healthy run, so the worst case is an unreachable cache
+   *     entry, never a stale hit.
+   */
+  continueMode?: ContinueMode
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
   onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void
@@ -180,6 +199,11 @@ export function computeReverseDepCount(nodes: Map<string, TaskNode>): Map<string
  */
 export async function runGraph(options: ScheduleOptions): Promise<Map<string, TaskOutcome>> {
   const { nodes, concurrency, execute, onStart, onFinish } = options
+  const continueMode = options.continueMode ?? 'deps-ok'
+  // 'never': set on the first failed outcome; from then on every
+  // dequeued task is skipped instead of dispatched (in-flight tasks
+  // finish naturally and their dependents drain through the same path).
+  let failFastTripped = false
   const outcomes = new Map<string, TaskOutcome>()
 
   // Reverse adjacency + pending dep counts. Built once. A task becomes
@@ -243,6 +267,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
 
   return new Promise<Map<string, TaskOutcome>>((resolve) => {
     const finishOne = (id: string, outcome: TaskOutcome): void => {
+      if (continueMode === 'never' && outcome.status === 'failed') failFastTripped = true
       outcomes.set(id, outcome)
       onFinish?.(outcome)
       const ds = dependents.get(id)
@@ -285,7 +310,11 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         // the preProbed hit path in execute-task never reads them, and
         // nothing on the restore path may.
         const upstream = node.deps.map((d) => outcomes.get(d) as TaskOutcome)
-        if (!isRestore) {
+        if (failFastTripped) {
+          finishOne(id, { node, status: 'skipped', exitCode: 1, durationMs: 0 })
+          continue
+        }
+        if (!isRestore && continueMode !== 'always') {
           const failedDep = upstream.find((u) => u.status === 'failed' || u.status === 'skipped')
           if (failedDep) {
             finishOne(id, { node, status: 'skipped', exitCode: 1, durationMs: 0 })

@@ -7,14 +7,14 @@
 - **Concurrency:** 10 (pinned identically for every runner).
 - **Measured:** whole-repo `build`+`test`, median of 1, one runner at a time, wall-clock of the CLI invocation.
 - **Host:** Linux 6.18.5 · 4 cores · linux/x64
-- **Date:** 2026-06-13
+- **Date:** 2026-07-03
 
 | Runner      | Version  | Fresh (cold)      | Warm (no restore) | Warm (restore)   |
 | ----------- | -------- | ----------------- | ----------------- | ---------------- |
-| vx          | vx 0.0.0 | 10.47 s           | 127 ms            | 151 ms           |
-| vx (frozen) | vx 0.0.0 | 10.50 s (1.0× vx) | 117 ms (0.9× vx)  | 148 ms (1.0× vx) |
-| turbo       | 2.9.18   | 10.66 s (1.0× vx) | 245 ms (1.9× vx)  | 283 ms (1.9× vx) |
-| nx          | 22.7.5   | 29.28 s (2.8× vx) | 879 ms (6.9× vx)  | 872 ms (5.8× vx) |
+| vx          | vx 0.0.0 | 10.42 s           | 121 ms            | 147 ms           |
+| vx (frozen) | vx 0.0.0 | 10.40 s (1.0× vx) | 135 ms (1.1× vx)  | 134 ms (0.9× vx) |
+| turbo       | 2.10.3   | 10.57 s (1.0× vx) | 209 ms (1.7× vx)  | 225 ms (1.5× vx) |
+| nx          | 23.0.1   | 28.85 s (2.8× vx) | 736 ms (6.1× vx)  | 734 ms (5.0× vx) |
 
 **Cache states.** _Fresh_ clears the runner's cache and runs cold (key
 derivation + execution + save). _Warm, no restore_ re-runs with the cache

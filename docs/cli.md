@@ -1296,3 +1296,20 @@ provided).
 
 The CLI dispatcher (`run(argv)` in `src/cli/index.ts`) is not part of
 the public package exports; `bin.ts` calls it directly.
+
+### Failure propagation — `--continue`
+
+`--continue[=never|deps-ok|always]` controls what a failed task takes
+down with it:
+
+- **`deps-ok`** (default): the failure's transitive dependents are
+  skipped; independent siblings keep running.
+- **`never`**: fail fast — the first failure stops dispatch. In-flight
+  tasks finish naturally; everything not yet started (cache restores
+  included) completes as skipped.
+- **`always`** (bare `--continue`): dependents run even when an
+  upstream failed. Sound under pure-input hashing — a failed upstream
+  still carries its input key, so dependents derive exactly the keys a
+  healthy run derives.
+
+The mode rides the wire, so delegated and distributed runs honor it.
