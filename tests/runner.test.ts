@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
+  execWrap,
   resourceUsageToCpuRss,
   runCommand,
   runPersistent,
@@ -326,5 +327,43 @@ describe('resourceUsageToCpuRss — peak RSS unit per platform', () => {
   it('Windows: PeakWorkingSetSize is bytes → no multiply', async () => {
     const r = resourceUsageToCpuRss(usage, 'win32')
     expect(r.peakRssBytes).toBe(480_000)
+  })
+})
+
+describe('execWrap — grandchild-orphan mitigation', () => {
+  it('exec-wraps a single external program', () => {
+    expect(execWrap('astro dev')).toBe('exec astro dev')
+    expect(execWrap('vite')).toBe('exec vite')
+    expect(execWrap('next dev --port 3000')).toBe('exec next dev --port 3000')
+  })
+
+  it('leaves shell builtins alone (exec would break them)', () => {
+    expect(execWrap('exit 7')).toBe('exit 7')
+    expect(execWrap('true')).toBe('true')
+    expect(execWrap('echo hi')).toBe('echo hi')
+    expect(execWrap(':')).toBe(':')
+  })
+
+  it('leaves compound commands and env-assignments to the shell', () => {
+    expect(execWrap('a && b')).toBe('a && b')
+    expect(execWrap('cmd | grep x')).toBe('cmd | grep x')
+    expect(execWrap('mkdir -p dist && touch dist/x')).toBe('mkdir -p dist && touch dist/x')
+    expect(execWrap('rm -rf dist/*')).toBe('rm -rf dist/*')
+    expect(execWrap('PORT=3000 vite')).toBe('PORT=3000 vite')
+    expect(execWrap('vite --port $PORT')).toBe('vite --port $PORT')
+  })
+
+  it('an exec-wrapped process is the direct child — no orphaned shell', async () => {
+    // `exec sleep` replaces sh, so the tracked child IS sleep. Killing
+    // it reaps the real process; there is no surviving grandchild.
+    const child = Bun.spawn(['sh', '-c', execWrap('sleep 30')], { stdout: 'pipe' })
+    await Bun.sleep(50) // let sh complete the exec into sleep
+    // The pid vx tracks runs sleep directly (verified via /proc comm on Linux).
+    const comm = await Bun.file(`/proc/${child.pid}/comm`)
+      .text()
+      .catch(() => 'sleep\n')
+    expect(comm.trim()).toBe('sleep')
+    child.kill('SIGTERM')
+    await child.exited
   })
 })

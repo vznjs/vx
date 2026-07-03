@@ -195,6 +195,14 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const liveChildren = new Set<ReturnType<typeof Bun.spawn>>()
   const persistentRegistry = new Map<string, ReturnType<typeof Bun.spawn>>()
   const onSignal = (signal: 'SIGINT' | 'SIGTERM'): void => {
+    // Clear the live worker/status region BEFORE exiting so a TTY isn't
+    // left with a frozen region frozen in the scrollback (the documented
+    // KNOWN-OPEN). runEnd is idempotent and a no-op for non-TTY loggers.
+    try {
+      log.runEnd?.()
+    } catch {
+      // teardown must not throw on the way out
+    }
     for (const child of liveChildren) child.kill('SIGTERM')
     for (const child of persistentRegistry.values()) child.kill('SIGTERM')
     try {

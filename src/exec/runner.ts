@@ -54,6 +54,77 @@ export function shellQuote(arg: string): string {
   return `'${arg.replace(/'/g, `'\\''`)}'`
 }
 
+// Any shell control/expansion character means the wrapping `sh` has real
+// work to do (chaining, pipes, redirects, globbing, variables, subshells,
+// backgrounding) and must stay resident.
+const SHELL_CONTROL = /[&|;<>(){}$`\n\\!*?~]/
+
+// Shell builtins run INSIDE sh — `exec <builtin>` fails (there's no
+// external `exit`/`true`/`echo`). They also spawn no grandchild, so
+// there's nothing to gain by exec-wrapping them.
+const SHELL_BUILTINS = new Set([
+  'exit',
+  'true',
+  'false',
+  ':',
+  'echo',
+  'cd',
+  'export',
+  'set',
+  'unset',
+  'read',
+  'test',
+  '[',
+  'printf',
+  'pwd',
+  'umask',
+  'wait',
+  'trap',
+  'eval',
+  'exec',
+  'source',
+  '.',
+  'alias',
+  'unalias',
+  'type',
+  'hash',
+  'jobs',
+  'kill',
+  'shift',
+  'return',
+  'break',
+  'continue',
+  'local',
+  'readonly',
+  'times',
+  'ulimit',
+  'command',
+  'builtin',
+  'let',
+  'declare',
+  'typeset',
+])
+
+/**
+ * Prepend `exec ` to a command that is a single EXTERNAL program (no
+ * shell control characters, not a builtin, no leading env-assignment).
+ * `exec` REPLACES the wrapping `sh` with the program, so on a teardown
+ * SIGTERM there is no intermediate shell whose death would orphan the
+ * real process — the documented grandchild-orphan limitation, resolved
+ * for the common single-command case (dev servers: `astro dev`, `vite`,
+ * `next dev`; one-shot compilers). It also makes `resourceUsage` measure
+ * the program itself rather than the shell. Compound commands, builtins,
+ * and `FOO=bar cmd` forms keep the shell (compound-command grandchildren
+ * still orphan on a hard programmatic kill — the residual limit every
+ * non-cgroup runner shares).
+ */
+export function execWrap(command: string): string {
+  if (SHELL_CONTROL.test(command)) return command
+  const first = command.trimStart().split(/\s+/)[0] ?? ''
+  if (first === '' || first.includes('=') || SHELL_BUILTINS.has(first)) return command
+  return `exec ${command}`
+}
+
 /**
  * POSIX shells report signal death as 128 + signal number (SIGTERM →
  * 143, SIGKILL → 137). Bun gives us the signal NAME; `os.constants`
@@ -137,7 +208,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
 
   let child: ReturnType<typeof Bun.spawn>
   try {
-    child = Bun.spawn(['sh', '-c', opts.command], {
+    child = Bun.spawn(['sh', '-c', execWrap(opts.command)], {
       cwd: opts.cwd,
       env: opts.env as Record<string, string>,
       stdin: 'ignore',
@@ -284,7 +355,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
 
   let proc: ReturnType<typeof Bun.spawn>
   try {
-    proc = Bun.spawn(['sh', '-c', fullCommand], {
+    proc = Bun.spawn(['sh', '-c', execWrap(fullCommand)], {
       cwd: opts.cwd,
       env: opts.env as Record<string, string>,
       stdin: 'ignore',
