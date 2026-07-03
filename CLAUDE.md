@@ -239,8 +239,7 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
   (Nx/Turbo "PR is read-only" default). Mirrored in `cloud()`'s cache rung
   (`cachePrToken`, optional `prToken` per environment). **NO CACHE_VERSION
   bump** — the key never changes, solo-dev local cache byte-identical, only the
-  server path + which token writes where moves. Core façade
-  +`detectForkPr`/+`resolveCacheTrust`. **Refuted** (not actioned, refute pass
+  server path + which token writes where moves. Core façade +`detectForkPr`/+`resolveCacheTrust`. **Refuted** (not actioned, refute pass
   found the framing wrong): "content-addressed store never verifies content"
   (hash is a cache key, not a content digest); "self-asserted commitSha"
   (accepted Nx-Agents same-checkout model — per-agent creds tracked as future

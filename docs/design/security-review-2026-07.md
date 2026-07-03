@@ -70,7 +70,7 @@ untrusted writer unable to reach the trusted scope.
 
 One flat store behind one bearer: any token holder could PUT any hash any
 reader would GET, across workspaces and across the fork-PR trust boundary. The
-HMAC tag proves byte-integrity *within* a shared key, not producer trust — it
+HMAC tag proves byte-integrity _within_ a shared key, not producer trust — it
 does not close this. **Verified REAL.**
 
 **Fixed** (`24af48f`): server-path trust scopes
