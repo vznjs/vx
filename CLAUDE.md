@@ -187,6 +187,53 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-03**: **The connected-server phases shipped — telemetry v2
+  workspace identity, multi-workspace serve, delegation self-ingest, MCP
+  endpoint, unix socket, artifact store** (owner: "continue until whole my
+  vision is finished"; executes dev-flows-ci-agents-2026-07.md §3 + §10 and
+  cloud-client-server Phase 2-3). **(1) Telemetry v2** (`9529c78`):
+  `TELEMETRY_SCHEMA_VERSION` 1→2; `RunContextRecord` gains
+  `workspaceId`/`workspaceName` — id = xxh3 of the NORMALIZED git remote
+  from `git config --get remote.origin.url` (NOT `remote get-url`, which
+  applies insteadOf rewrites and would split mirrored checkouts; ssh/https
+  forms of one repo converge); no remote → salt persisted at
+  `.vx/workspace-id`. Captured only when a telemetry consumer exists.
+  New `RunOptions.telemetrySinks` (additive observe-only embedder seam;
+  undefined = zero cost). **(2) Multi-workspace serve** (`60a501a`):
+  IngestStore = one core Cache per workspace at `<dir>/<workspaceId>/` +
+  versioned workspaces.json manifest (path-token-validated ids; legacy
+  single-store dir migrated on boot WITH the WAL/SHM sidecars — they're
+  load-bearing); `?ws=` on every /v1 analytics route (unknown → 404),
+  token-gated `/v1/workspaces`, `/v1/meta` count-only field; un-scoped
+  default = sole workspace, else genuine 'default', else most-recently-seen
+  (a fresh dashboard never opens onto an empty synthetic store). Delegated
+  runs SELF-INGEST via an option sink — the audit's "dashboard misses the
+  runs the server executed" gap closed. UI workspace switcher (hidden at
+  ≤1 workspaces); page loader keyed on origin|token|workspace fixed the
+  latent no-refetch-on-origin-switch bug. Cloud tests pin
+  VX*CLOUD_SERVE_INFO (test serves no longer clobber the real
+  advertisement). **(3) Serve platform** (`bf0a5cc`): `POST /mcp` —
+  dependency-free MCP (JSON-RPC 2.0, protocol 2025-03-26) behind the
+  bearer, 7 tools as thin adapters over the existing metrics queries (AI
+  agents connect to any serve, local or remote); `serve --socket` /
+  VX_CLOUD_SOCKET — second unix-socket listener (0600 = the auth; socket
+  requests bypass the token; plugin push prefers the advertised socket,
+  TCP fallback); `/v8/artifacts/:hash` — the Turbo wire RemoteCache
+  already speaks, flat-dir atomic storage + x-artifact-tag sidecar
+  (signing verifies end-to-end client-side; serve never holds the key),
+  `/v1/meta` advertises `artifacts:true`, and cloud()'s cache capability
+  gains the environment rung (lazy one-shot /v1/meta probe, memoized;
+  explicit VX_REMOTE_CACHE*\* always wins) — **`vx-cloud connect` is now
+  one-URL analytics + remote cache**, the Tier-B CI story. All verified
+  live (MCP handshake/tools/401, socket-vs-TCP auth split, artifact
+  round-trip, real run e2e miss→upload→wipe→remote-restore). Repo suite
+  1192 pass / 0 fail. Zero core changes beyond (1); no
+  CACHE_VERSION/SCHEMA bump. KNOWN-OPEN → roadmap: serviceBackend still
+  dials TCP only (socket rung for delegation is a natural next
+  increment); artifact GETs carry no x-artifact-duration (a .duration
+  sidecar is a cheap follow-up); persistent coordinator + vx agents
+  (Phase 4-5) remain fenced behind their own design reviews.
+
 - **2026-07-02**: **Full consulting engagement — audit, docs unification,
   client/server architecture, core fixes, UI stabilization** (owner: "review
   all the code from 1st June. Unify whole documentation, document issues,
