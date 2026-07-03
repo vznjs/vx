@@ -187,6 +187,66 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-03**: **Security hardening wave + known-limitations resolved**
+  (owner: "Do a full security audit... implement all no questions asked. Make
+  sure our cache is segregated to avoid CVE pollutions" + "resolve all known
+  limitations"). A 15-agent adversarial audit across five surfaces with an
+  independent refute pass drove `docs/design/security-review-2026-07.md`
+  (durable record: verified findings, refuted findings, accepted residuals).
+  Four gate-green commits, all shipped:
+  **(1) Known-limitations** (`aacf6c3`): grandchild orphaning — `execWrap()`
+  in `exec/runner.ts` exec-prefixes a single external command so `sh -c` is
+  REPLACED by the program (a teardown SIGTERM hits the program, not an
+  intermediate shell whose death orphaned its child; also makes resourceUsage
+  measure the program). Guards: shell control chars, builtins, and `FOO=bar`
+  env-assignment forms keep the shell (compound grandchildren still orphan on
+  a hard kill — the residual every non-cgroup runner shares). Frozen TTY
+  region — `run.ts` `onSignal` calls `log.runEnd?.()` before killing children.
+  **(2) Core security** (`431cf89`): (a) `entry_inputs` stored raw secret env
+  values / runtime output / argv in its `hash` column (plaintext secrets at
+  rest in cache.db) → capture `xxh3hex(v)` digests instead; the diff only
+  needs change-detection, cache KEY folds plaintext separately, NO
+  CACHE_VERSION bump. (b) zstd-bomb OOM DoS on a remote hit → cap the
+  compressed download (bounded streaming read, aborts past 512 MB in
+  `remote-cache.ts`) + the decompressed output (parse the zstd frame's
+  declared content size, refuse a bomb before allocating; refuse a sizeless
+  frame over the untrusted ingest boundary; 2 GiB ceiling in `cache.ts`;
+  degrades to a miss). (c) `extractOutputs` followed a symlinked PARENT dir
+  (lexical containment) → realpath the parent, require it inside the realpath'd
+  base (`tar.ts`).
+  **(3) Serve auth** (`5a30d15`): the two CRITICALS. Serve bound 0.0.0.0 with
+  no token by default → unauthenticated LAN RCE via the `run` WS. Bind
+  127.0.0.1 by default (`--host`/`VX_CLOUD_HOST`); refuse a non-loopback bind
+  without a token. Cross-origin WS handshakes weren't Origin-checked → drive-by
+  CSWSH→RCE from any page the dev visits. Gate the run/agent WS upgrades + SSE
+  streams on the Origin (no-Origin CLI + same-origin pass; other cross-origin
+  browser handshakes 403; `--allow-origin`/`VX_CLOUD_ALLOW_ORIGIN` allow-lists
+  a hosted dashboard).
+  **(4) Cache trust scopes + immutability** (`24af48f`; design
+  `cache-trust-scopes-2026-07.md` Phase 1 — the owner's "segregate the cache"
+  ask): the artifact store is partitioned by `<bucket>/<tier>`, both
+  SERVER-DERIVED from the token (never a client claim). A trusted token
+  reads/writes only `trusted/`; an untrusted (`--pr-token`/VX_CLOUD_PR_TOKEN)
+  token reads `untrusted ∪ trusted` but writes only `untrusted/` — so a fork-PR
+  poison NEVER feeds a trusted build and untrusted can NEVER write trusted,
+  regardless of the key it computes (the GitHub-Actions/Nx/Turbo model,
+  server-enforced). `authorized()` returns the `Principal`; the run/agent WS,
+  `/v8` handler, and dist-prune all route by it. Artifacts are IMMUTABLE (re-PUT
+  of an existing hash → 409). Legacy flat store migrates to `default/trusted/`
+  on boot. Client `detectForkPr` (GitHub/GitLab, never throws) +
+  `resolveCacheTrust` (`VX_CACHE_TRUST` override → fork detect → trusted) pick
+  the token + a `remoteWrite=false` floor for a fork PR without a PR token
+  (Nx/Turbo "PR is read-only" default). Mirrored in `cloud()`'s cache rung
+  (`cachePrToken`, optional `prToken` per environment). **NO CACHE_VERSION
+  bump** — the key never changes, solo-dev local cache byte-identical, only the
+  server path + which token writes where moves. Core façade
+  +`detectForkPr`/+`resolveCacheTrust`. **Refuted** (not actioned, refute pass
+  found the framing wrong): "content-addressed store never verifies content"
+  (hash is a cache key, not a content digest); "self-asserted commitSha"
+  (accepted Nx-Agents same-checkout model — per-agent creds tracked as future
+  multi-tenant hardening). Full core suite green (bar the known-flaky watch
+  e2e — cwd race, passes in isolation), cloud 168 pass / 0 fail.
+
 - **2026-07-03**: **vx agents SHIPPED — session-keyed distributed task
   execution (Nx-DTE equivalent) on the connected serve** (`743aa47`;
   design `docs/design/distributed-execution-2026-07.md`, the review Phase

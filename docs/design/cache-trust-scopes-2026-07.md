@@ -1,6 +1,8 @@
 # Cache trust scopes — design
 
-> **Status:** proposal (2026-07-03)
+> **Status:** Phase 1 SHIPPED (2026-07-03) — see the decision log entry + the
+> security review (`docs/design/security-review-2026-07.md`). Phases 2-3
+> (cross-workspace buckets, signed CI claims) remain proposals.
 >
 > **Owner directive:** "Make sure our cache is segregated as well to avoid CVE
 > pollutions."
