@@ -10,6 +10,7 @@
     "node_modules",
     "apps",
     "dist",
+    "!packages/cloud/src/dist",
     "coverage",
     "*.tsbuildinfo",
     "pnpm-lock.yaml",

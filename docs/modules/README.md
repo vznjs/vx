@@ -75,7 +75,6 @@ The remaining subcommand parsers (`lock.ts`, `migrate*.ts`, `show.ts`,
 | [`history-predict.md`](./history-predict.md)       | `src/orchestrator/{history,predict}.ts` — opt-in predictive scheduling (experimental). |
 | [`protocol.md`](./protocol.md)                     | `src/orchestrator/{protocol,wire}.ts` — delegation wire contract + mappers.            |
 | [`wire-render.md`](./wire-render.md)               | `src/orchestrator/wire-render.ts` — WireEvent → Logger (delegated-run rendering).      |
-| [`worker-exec.md`](./worker-exec.md)               | `src/orchestrator/worker-exec.ts` — agent-side execution primitive.                    |
 | [`run-state.md`](./run-state.md)                   | `src/orchestrator/run-state.ts` — reduced run aggregate for live surfaces.             |
 | [`run-report.md`](./run-report.md)                 | `src/orchestrator/run-report.ts` — `--report=markdown` table.                          |
 | [`devframe-surface.md`](./devframe-surface.md)     | `src/orchestrator/devframe-surface.ts` — devframe channel/state definition.            |

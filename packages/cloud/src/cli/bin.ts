@@ -1,12 +1,11 @@
 #!/usr/bin/env bun
 // `vx-cloud` — the orchestrator service CLI. Dispatches the service
-// subcommands (serve / coordinator / worker / dev) that left core in the
-// core/cloud split. Core's own `vx` CLI no longer carries these.
+// subcommands (serve / agent / dev) that left core in the core/cloud
+// split. Core's own `vx` CLI no longer carries these.
 
 import { UserError, VERSION } from '@vzn/vx'
 import { serveCmd } from './serve.js'
-import { coordinatorCmd } from './coordinator.js'
-import { workerCmd } from './worker.js'
+import { agentCmd } from './agent.js'
 import { devCmd } from './dev.js'
 import { connectCmd, disconnectCmd, envCmd } from './env.js'
 
@@ -20,8 +19,7 @@ function printHelp(): void {
       '  vx-cloud connect <url> [--name <n>] [--token <t>] [--delegate] [--no-use] [--force]',
       '  vx-cloud env ls | use <name> | rm <name>',
       '  vx-cloud disconnect',
-      '  vx-cloud coordinator <tasks...> [--port <n>] [--host <h>] [--workers <n>]',
-      '  vx-cloud worker --coordinator <coord-url> [--capacity <n>] [--label <l>]',
+      '  vx-cloud agent --url <serve> [--token <t>] [--capacity <n>] [--session <s>] [--idle-timeout <ms>] [--label <l>]',
       '  vx-cloud dev [--port <n>]',
       '  vx-cloud help',
       '  vx-cloud version',
@@ -57,9 +55,12 @@ function printHelp(): void {
       '              `rm <name>`. Tokens are stored 0600 and never printed.',
       'disconnect    Clear the active environment (entries + tokens survive; the',
       '              local serve auto-detect becomes the effective fallback again).',
-      'coordinator   Per-run coordinator — holds graph + ready queue + fans tasks',
-      '              to attached workers over WebSocket.',
-      'worker        Stateless worker that pulls tasks from a coordinator.',
+      'agent         Attach this machine (same repo, same commit, CLEAN tree) to a',
+      '              serve session and execute assigned tasks via scoped cached runs.',
+      '              Enable distribution on the submitting run with',
+      '              VX_CLOUD_DISTRIBUTE=<n>. Exits 0 on clean drain / idle timeout',
+      '              (task verdicts belong to the main job); 1 on refusal or a',
+      '              dirty tree.',
       'dev           Foreground devtools hub (needs the optional `devframe` package).',
       '',
     ].join('\n'),
@@ -87,10 +88,20 @@ export async function run(argv: readonly string[]): Promise<number> {
       return await envCmd(rest)
     case 'disconnect':
       return disconnectCmd(rest)
+    case 'agent':
+      return await agentCmd(rest)
     case 'coordinator':
-      return await coordinatorCmd(rest)
+      process.stderr.write(
+        'vx-cloud: `coordinator` was absorbed into `vx-cloud serve` — start a serve and\n' +
+          'enable distribution on the submitting run with VX_CLOUD_DISTRIBUTE=<n>.\n',
+      )
+      return 1
     case 'worker':
-      return await workerCmd(rest)
+      process.stderr.write(
+        'vx-cloud: `worker` is now `vx-cloud agent` — run\n' +
+          '  vx-cloud agent --url <serve-origin> [--token <t>] [--capacity <n>]\n',
+      )
+      return 1
     case 'dev':
       return await devCmd(rest)
     default:

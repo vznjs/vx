@@ -27,10 +27,17 @@ export {
 } from './environments.js'
 export type { CloudEnvironment, EnvironmentEntry, EnvironmentsFile } from './environments.js'
 export { connectCmd, envCmd, disconnectCmd, parseConnectArgs } from './cli/env.js'
-export { startCoordinator, parseCoordinatorArgs } from './cli/coordinator.js'
-export type { CoordinatorArgs, CoordinatorServer } from './cli/coordinator.js'
-export { runWorker, parseWorkerArgs } from './cli/worker.js'
-export type { WorkerArgs } from './cli/worker.js'
+export { AgentRegistry, SESSION_GC_MS, SESSION_GC_INTERVAL_MS } from './dist/registry.js'
+export type { ActiveSubmission, RegisteredAgent, SubmissionBinding } from './dist/registry.js'
+export { DistScheduler, DEFAULT_AGENT_TIMEOUT_MS, SUBMITTER_LABEL } from './dist/scheduler.js'
+export type { ArtifactProbe, DistSchedulerArgs } from './dist/scheduler.js'
+export { runAgentLoop } from './dist/agent-loop.js'
+export type { AgentLoopHandle, AgentLoopOptions, AgentLoopResult } from './dist/agent-loop.js'
+export { distributedBackend } from './dist/submit.js'
+export type { DistributedBackendOptions } from './dist/submit.js'
+export { deriveSession } from './dist/session.js'
+export { agentCmd, parseAgentArgs, DEFAULT_AGENT_IDLE_TIMEOUT_MS } from './cli/agent.js'
+export type { AgentArgs } from './cli/agent.js'
 export { startDevHub, devSocketPath, devCmd } from './cli/dev.js'
 export type { DevHub } from './cli/dev.js'
 export { connectDevForwarder } from './cli/dev-client.js'
@@ -38,16 +45,19 @@ export type { DevForwarder } from './cli/dev-client.js'
 export { startUiServer, bootDevframeServer } from './cli/ui-server.js'
 export type { UiServer, DevframeServer } from './cli/ui-server.js'
 export { serviceBackend, resolveBackend, localDevBackend } from './cli/backend.js'
-export { prepareForCoordinator, computeTaskHashForCoord } from './coordinator-prepare.js'
 export type {
+  AgentHello,
   DistClientMessage,
+  DistGraphNode,
   DistServerMessage,
-  WireTaskNode,
-  WireOutcome,
+  DistSubmitMessage,
 } from './protocol-dist.js'
 export {
+  DIST_PROTOCOL_VERSION,
   distClientMessageToEnvelope,
   distServerMessageToEnvelope,
+  distSubmitToEnvelope,
   envelopeToDistClientMessage,
   envelopeToDistServerMessage,
+  envelopeToDistSubmit,
 } from './protocol-dist.js'

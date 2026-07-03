@@ -52,7 +52,7 @@ export interface RunBackend {
 /**
  * service → client. The submitter contract: an event stream, a final
  * result, or an error. The distributed-execution variants
- * (`task:assign`/`cache:exists`/`coord:drain`) live in `@vzn/vx-cloud`'s
+ * (`task:assign`/`agent:refused`/`coord:drain`) live in `@vzn/vx-cloud`'s
  * `protocol-dist.ts` — cloud's WS handler unions this with those.
  */
 export type ServerMessage =
@@ -62,7 +62,7 @@ export type ServerMessage =
 
 /**
  * client → service. The submitter contract: a run submission. The
- * worker-side `worker:*` family lives in `@vzn/vx-cloud`'s
+ * agent-side `agent:*` family lives in `@vzn/vx-cloud`'s
  * `protocol-dist.ts`.
  */
 export type ClientMessage = { t: 'run'; request: RunRequest }

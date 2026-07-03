@@ -54,26 +54,35 @@ docker run --rm -p 4321:4321 vx-cloud serve --ui
 > the history matters to you. An ingest-owned schema with additive migrations
 > is on the roadmap.
 
-## Hosted — coordinator + worker fleet
+## Hosted — serve + agent fleet
+
+> **STALE SKELETON — verbs retired.** The `coordinator` / `worker` verbs this
+> chart's coordinator/worker templates invoke were RETIRED by
+> `docs/design/distributed-execution-2026-07.md`: the scheduler now lives
+> INSIDE `vx-cloud serve` (session registry + `/v1/agents`), and the executor
+> is `vx-cloud agent` — a git checkout of the workspace at the submitted
+> commit, which a bare container image does not have. The hosted topology
+> below is the pre-retirement sketch; a rewritten chart (serve Deployment +
+> agent pods with checkout provisioning) is a roadmap item. The
+> collapsed-local `serve` mode above remains fully accurate.
 
 ```
 ┌──────────── namespace: vx-cloud ─────────────────────────────────────┐
-│  Service: coordinator   (vx-cloud coordinator)                        │
-│   • holds the ready-queue + run state + WS fan-out                    │
-│   • /v1/* (metrics), run-submit WS, /health, /version                 │
-│  Deployment: workers    (vx-cloud worker --coordinator <svc-dns>)     │
-│   • HPA-scaled (CPU [+ optional queue_depth]); stateless, fungible    │
-│  Shared CAS             (fs PVC | S3 | R2 — the CASBackend interface) │
+│  Service: serve         (vx-cloud serve — registry + scheduler)       │
+│   • /v1/agents WS, /v8/artifacts store, /v1/* metrics, /health        │
+│  Deployment: agents     (vx-cloud agent --url <svc-dns>)              │
+│   • same-commit checkouts; stateless, fungible                        │
 │  Insights store         (SQLite PVC | external Postgres)              │
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
-Workers connect to the coordinator's in-cluster Service DNS
-(`http://<release>-coordinator:<port>`), send `worker:hello`, pull ready tasks,
-run the shell command, upload the artifact, report `worker:done`. On scale-down
-the coordinator broadcasts `coord:drain`; a worker finishes its in-flight task,
-replies `worker:bye`, and exits — so `worker.terminationGracePeriodSeconds` must
-exceed the longest task a draining worker might be mid-flight on (default 120s).
+Agents connect to the serve's in-cluster Service DNS, send `agent:hello`
+(`{workspaceId, session, commitSha, capacity}`), execute assignments as scoped
+cached runs (artifacts move through the serve's `/v8/artifacts` store), and
+report `agent:done`. On scale-down an agent that receives `coord:drain`
+finishes its in-flight task, replies `agent:bye`, and exits — so the agents'
+`terminationGracePeriodSeconds` must exceed the longest task a draining agent
+might be mid-flight on (default 120s).
 
 ### Install
 

@@ -60,8 +60,26 @@ import {
 } from '@vzn/vx'
 import { ArtifactStore, MAX_ARTIFACT_BYTES } from '../artifact-store.js'
 import { IngestStore } from '../ingest-store.js'
+import { AgentRegistry, SESSION_GC_INTERVAL_MS, type RegisteredAgent } from '../dist/registry.js'
+import { DistScheduler } from '../dist/scheduler.js'
+import {
+  DIST_PROTOCOL_VERSION,
+  type DistClientMessage,
+  type DistServerMessage,
+  type DistSubmitMessage,
+} from '../protocol-dist.js'
 import { defaultServeSocketPath, serveInfoPath } from '../serve-info.js'
 import { handleMcpHttp } from './mcp-serve.js'
+
+/**
+ * Per-socket role, set at upgrade time. `run` sockets speak the core
+ * submission protocol (+ `dist:submit`); `agent` sockets speak the
+ * `agent:*` family from protocol-dist.ts and are registered after their
+ * `agent:hello`.
+ */
+type ServeWsData =
+  | { role: 'run'; scheduler?: DistScheduler }
+  | { role: 'agent'; agent?: RegisteredAgent }
 
 /**
  * Default port for `vx-cloud serve`, used when neither `--port` nor the
@@ -273,6 +291,13 @@ export async function startServe(opts: {
   // and the remote cache works with no separate cache server.
   const artifacts = new ArtifactStore(path.join(ingestDir, 'artifacts'))
 
+  // The distribution session registry ({workspaceId, session} → agents) +
+  // its 60s idle-session sweep. In-memory by design: a serve restart
+  // mid-pipeline fails that pipeline loudly and the next one is fine.
+  const registry = new AgentRegistry()
+  const registryGcTimer = setInterval(() => registry.gc(), SESSION_GC_INTERVAL_MS)
+  registryGcTimer.unref?.()
+
   // Delegated runs land in the serve's OWN history — before this sink they
   // never did (the plugin's pid-guard rightly declines the HTTP self-push,
   // and nothing replaced it). An observe-only option sink records the
@@ -308,7 +333,7 @@ export async function startServe(opts: {
     (viaSocket: boolean) =>
     (
       req: Request,
-      srv: { upgrade(req: Request): boolean },
+      srv: { upgrade(req: Request, opts?: { data: ServeWsData }): boolean },
     ): Response | Promise<Response> | undefined => {
       const url = new URL(req.url)
       // Browser preflight — answer everything with CORS-permissive headers.
@@ -339,6 +364,13 @@ export async function startServe(opts: {
           { error: 'unauthorized' },
           { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } },
         )
+      }
+      // Distribution agents rendezvous here (bearer-gated above like every
+      // WS upgrade). The socket's role rides `ws.data`; the first message
+      // must be `agent:hello`.
+      if (url.pathname === '/v1/agents') {
+        if (srv.upgrade(req, { data: { role: 'agent' } })) return undefined
+        return jsonResponse({ error: '/v1/agents requires a WebSocket upgrade' }, { status: 426 })
       }
       // MCP — the AI-agent control plane (dev-flows design §10.3): JSON-RPC
       // 2.0 over streamable HTTP, tools adapting the same metrics queries
@@ -691,7 +723,7 @@ export async function startServe(opts: {
           }),
         )
       }
-      if (srv.upgrade(req)) return undefined
+      if (srv.upgrade(req, { data: { role: 'run' } })) return undefined
       // When --ui is set, serve the single-file dashboard for every non-API
       // GET. It's one self-contained HTML with a hash router, so every route
       // (/, /tasks, /cache, …) returns the same bytes.
@@ -705,14 +737,96 @@ export async function startServe(opts: {
       return withCors(new Response('vx serve'))
     }
 
-  const websocket: Bun.WebSocketHandler<undefined> = {
+  // Agent-socket protocol: first message must be `agent:hello` (anything
+  // else → close); after registration every message routes through the
+  // registry to the session's live submission.
+  const handleAgentSocket = (ws: Bun.ServerWebSocket<ServeWsData>, text: string): void => {
+    const data = ws.data as { role: 'agent'; agent?: RegisteredAgent }
+    let msg: DistClientMessage
+    try {
+      msg = JSON.parse(text) as DistClientMessage
+    } catch {
+      return
+    }
+    if (data.agent === undefined) {
+      if (msg.t !== 'agent:hello') {
+        try {
+          ws.close()
+        } catch {
+          // already closed
+        }
+        return
+      }
+      const agent = registry.hello(msg, {
+        send: (m: DistServerMessage) => {
+          try {
+            ws.send(JSON.stringify(m))
+          } catch {
+            // agent vanished; cleanup happens on close
+          }
+        },
+        close: () => {
+          try {
+            ws.close()
+          } catch {
+            // already closed
+          }
+        },
+      })
+      if (agent !== null) data.agent = agent
+      return
+    }
+    if (msg.t === 'agent:bye') return // the close handler unregisters
+    registry.dispatch(data.agent, msg)
+  }
+
+  const websocket: Bun.WebSocketHandler<ServeWsData> = {
     async message(ws, raw) {
       const text = String(raw)
+      if (ws.data?.role === 'agent') {
+        handleAgentSocket(ws, text)
+        return
+      }
       // Parse once; classify into legacy ClientMessage or new envelope.
       let parsed: unknown
       try {
         parsed = JSON.parse(text)
       } catch {
+        return
+      }
+      const send = (m: ServerMessage): void => {
+        broadcast(m)
+        try {
+          ws.send(JSON.stringify(m))
+        } catch {
+          // client vanished mid-run; the run still completes server-side
+        }
+      }
+      // A distributed submission: pair with the session registry, prune
+      // against the artifact store, dispatch to agents. Answered by the
+      // same ServerMessage stream a delegated run uses.
+      if (
+        parsed !== null &&
+        typeof parsed === 'object' &&
+        (parsed as { t?: unknown }).t === 'dist:submit'
+      ) {
+        const submit = parsed as DistSubmitMessage
+        if (submit.protocol !== DIST_PROTOCOL_VERSION) {
+          send({
+            t: 'error',
+            message: `dist protocol mismatch: submitter speaks v${submit.protocol}, serve speaks v${DIST_PROTOCOL_VERSION}`,
+          })
+          return
+        }
+        const scheduler = new DistScheduler({ submit, store: artifacts, send })
+        const bound = registry.beginSubmission(submit.workspaceId, submit.session, scheduler)
+        if ('error' in bound) {
+          send({ t: 'error', message: bound.error })
+          return
+        }
+        scheduler.attach(bound)
+        if (ws.data?.role === 'run') ws.data.scheduler = scheduler
+        await scheduler.start()
         return
       }
       let message: ClientMessage | null = null
@@ -722,16 +836,17 @@ export async function startServe(opts: {
         message = parsed as ClientMessage
       }
       if (!message || message.t !== 'run') return
-      const send = (m: ServerMessage): void => {
-        broadcast(m)
-        try {
-          ws.send(JSON.stringify(m))
-        } catch {
-          // client vanished mid-run; the run still completes server-side
-        }
-      }
       const ok = await executeRequest(send, message.request, inflight, [selfIngestSink])
       opts.onRun?.(message.request, ok)
+    },
+    close(ws) {
+      if (ws.data?.role === 'agent') {
+        if (ws.data.agent !== undefined) registry.drop(ws.data.agent)
+        return
+      }
+      // A submitter that dies mid-run: the scheduler finishes the graph
+      // with the remaining agents, then drains them.
+      ws.data?.scheduler?.onSubmitterGone()
     },
   }
 
@@ -800,6 +915,7 @@ export async function startServe(opts: {
     name: serveName,
     ...(opts.socketPath !== undefined ? { socketPath: opts.socketPath } : {}),
     stop: async () => {
+      clearInterval(registryGcTimer)
       await server.stop(true)
       await socketServer?.stop(true)
       try {

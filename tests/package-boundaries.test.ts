@@ -94,6 +94,9 @@ describe('package boundaries', () => {
       'WIRE_PROTOCOL_VERSION',
       'buildTaskGraph',
       'cacheKeyDiff',
+      'captureGitContext',
+      'captureWorkspaceIdentity',
+      'cleanOutputs',
       'clientMessageToEnvelope',
       'compareRuns',
       'computeTaskHash',
@@ -106,6 +109,7 @@ describe('package boundaries', () => {
       'defineProject',
       'defineWorkspace',
       'deriveCacheSource',
+      'deriveStableKeys',
       'encodeForNDJSON',
       'encodeForSSE',
       'encodeForWS',
@@ -161,7 +165,6 @@ describe('package boundaries', () => {
       'toWireEvent',
       'whyDidThisRerunQuery',
       'wireForwarder',
-      'workerExecute',
     ]
     expect(actual).toEqual(expected)
   })

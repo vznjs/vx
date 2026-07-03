@@ -27,11 +27,17 @@ export type {
 export { defineProject, defineWorkspace } from './config.js'
 
 // Programmatic engine API (run / plan / prepare) + the graph primitives a
-// coordinator/worker reason over + the cache-key hashing seam.
+// distribution submitter/agent reasons over + the cache-key hashing seam.
+// `deriveStableKeys` is THE shared stable-key derivation (remote-prefetch,
+// the local short-circuit, and the distributed submitter must never drift
+// on the stability gate); `captureGitContext`/`captureWorkspaceIdentity`
+// give agents + the submitter identity before/without a telemetry run.
 export { run, planRun, prepareRun } from './orchestrator/index.js'
 export type { PreparedRun } from './orchestrator/index.js'
-export { computeTaskHash, createHashCache } from './orchestrator/index.js'
-export type { HashCache } from './orchestrator/index.js'
+export { computeTaskHash, createHashCache, deriveStableKeys } from './orchestrator/index.js'
+export type { DeriveStableKeysArgs, HashCache, StableKey } from './orchestrator/index.js'
+export { captureGitContext, captureWorkspaceIdentity } from './orchestrator/index.js'
+export type { GitContext, WorkspaceIdentity } from './orchestrator/index.js'
 export { FULL_CACHE_POLICY, parseCachePolicy } from './orchestrator/index.js'
 export type {
   CachePolicy,
@@ -47,12 +53,15 @@ export type { TaskNode, TaskOutcome, TaskStatus } from './graph/index.js'
 // Cache classes + the layer interface (the `cache` capability's currency)
 // and input-output resolution. The blob-CAS/digest substrate
 // (cas-backend.ts / digest.ts) stays module-internal until it has a
-// consumer — no speculative public API.
+// consumer — no speculative public API. `cleanOutputs` is public for the
+// distributed submitter's targeted output materialization (wipe declared
+// outputs, then `restoreOutputs` the artifact — never a naive re-run).
 export {
   Cache,
   LayeredCache,
   RemoteCache,
   GitFilesCache,
+  cleanOutputs,
   resolveInputs,
   resolveOutputs,
 } from './cache/index.js'
@@ -98,7 +107,6 @@ export {
   projectNode,
   projectOutcome,
   createWireRenderer,
-  workerExecute,
 } from './orchestrator/index.js'
 export type {
   RunBackend,

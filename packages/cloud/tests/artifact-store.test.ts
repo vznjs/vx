@@ -149,6 +149,22 @@ describe('vx serve /v8/artifacts — the Turbo wire', () => {
     expect(evil.status).toBe(400)
   })
 
+  it('has() is a local stat: present after PUT, false for unknown/hostile hashes', async () => {
+    const { ArtifactStore } = await import('../src/artifact-store.js')
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    const hash = 'beefbeefbeefbeef'
+    expect(await store.has(hash)).toBe(false)
+    await fetch(`${server.origin}/v8/artifacts/${hash}`, {
+      method: 'PUT',
+      headers: { ...auth, 'x-artifact-duration': '7' },
+      body: 'probe-me',
+    })
+    expect(await store.has(hash)).toBe(true)
+    expect(await store.storedDurationMs(hash)).toBe(7)
+    expect(await store.storedDurationMs('0000000000000000')).toBeUndefined()
+    expect(await store.has('../escape')).toBe(false)
+  })
+
   it('404s a GET for an unknown hash and 405s other methods', async () => {
     const get = await fetch(`${server.origin}/v8/artifacts/0000000000000000`, { headers: auth })
     expect(get.status).toBe(404)

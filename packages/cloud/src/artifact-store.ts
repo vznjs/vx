@@ -37,6 +37,28 @@ export class ArtifactStore {
   }
 
   /**
+   * Existence probe — one stat on local disk. The distribution scheduler's
+   * cache prune: a submitted stable hash that's already in the store never
+   * dispatches to any agent.
+   */
+  async has(hash: string): Promise<boolean> {
+    if (!HASH_RE.test(hash)) return false
+    return await Bun.file(this.artifactPath(hash)).exists()
+  }
+
+  /**
+   * Original task duration from the `<hash>.duration` sidecar, so a
+   * probe-pruned task's synthesized outcome reports honest timing.
+   */
+  async storedDurationMs(hash: string): Promise<number | undefined> {
+    if (!HASH_RE.test(hash)) return undefined
+    const file = Bun.file(this.durationPath(hash))
+    if (!(await file.exists())) return undefined
+    const n = Number((await file.text()).trim())
+    return Number.isFinite(n) && n >= 0 ? n : undefined
+  }
+
+  /**
    * Handle one `/v8/artifacts/:hash` request (HEAD / GET / PUT). The
    * optional `?teamId=` / `?slug=` tenancy params Turbo clients send are
    * accepted by ignoring them — this store is single-tenant, one bearer per

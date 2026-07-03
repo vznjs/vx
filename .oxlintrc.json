@@ -11,5 +11,11 @@
     "typescript/await-thenable": "off",
     "import/no-cycle": "error"
   },
-  "ignorePatterns": ["node_modules", "apps", "dist", "packages/cloud/ui"]
+  "ignorePatterns": [
+    "node_modules",
+    "apps",
+    "dist",
+    "!packages/cloud/src/dist",
+    "packages/cloud/ui"
+  ]
 }

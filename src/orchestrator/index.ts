@@ -95,8 +95,10 @@ export type {
   TelemetrySink,
   TelemetrySource,
 } from './telemetry.js'
-export { workerExecute } from './worker-exec.js'
-export type { WorkerExecArgs, WorkerExecResult } from './worker-exec.js'
+export { deriveStableKeys } from './stable-keys.js'
+export type { DeriveStableKeysArgs, StableKey } from './stable-keys.js'
+export { captureGitContext, captureWorkspaceIdentity } from './run-context.js'
+export type { GitContext, WorkspaceIdentity } from './run-context.js'
 export {
   cacheKeyDiff,
   compareRuns,

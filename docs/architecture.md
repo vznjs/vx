@@ -58,7 +58,7 @@ layers:
 | Run composition        | `run.ts`, `prepare.ts`, `options.ts`, `plan.ts`, `execute-task.ts`, `task-hash.ts`, `upstream.ts`, `run-context.ts`, `run-artifacts.ts`, `run-report.ts` |
 | Cache acceleration     | `remote-cache-setup.ts`, `remote-prefetch.ts`, `stable-keys.ts`, `local-shortcircuit.ts`                                                                 |
 | Plugin + telemetry     | `plugin.ts`, `plugin-host.ts`, `telemetry.ts`, `telemetry-host.ts`                                                                                       |
-| Events + wire          | `events.ts`, `wire.ts`, `wire-render.ts`, `protocol.ts`, `run-state.ts`, `devframe-surface.ts`, `worker-exec.ts`                                         |
+| Events + wire          | `events.ts`, `wire.ts`, `wire-render.ts`, `protocol.ts`, `run-state.ts`, `devframe-surface.ts`                                                           |
 | Presentation + queries | `logger.ts`, `framed-output.ts`, `status-line.ts`, `summary.ts`, `tally.ts`, `colors.ts`, `metrics.ts`, `history.ts`, `predict.ts`                       |
 
 ```mermaid

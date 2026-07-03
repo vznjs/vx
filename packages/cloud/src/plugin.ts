@@ -69,6 +69,14 @@ export interface CloudPluginOptions {
   ingestUrl?: string
   /** Bearer token for ingest. Falls back to `VX_CLOUD_INGEST_TOKEN`, then `VX_CLOUD_INSIGHTS_TOKEN`. */
   ingestToken?: string
+  /**
+   * Distribute runs across `vx-cloud agent` machines (advisory expected
+   * agent count). Falls back to `VX_CLOUD_DISTRIBUTE`. When set, the
+   * backend capability returns the distributed submitter; a serve must be
+   * configured or advertised (hard error otherwise — distribution is an
+   * explicit opt-in, unlike ambient delegation). Unset → zero cost.
+   */
+  distribute?: number
 }
 
 /**
@@ -88,6 +96,26 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
     },
 
     async backend(ctx) {
+      // Distribution rung (VX_CLOUD_DISTRIBUTE / cloud({ distribute })):
+      // above delegation, explicit opt-in. Unset → this rung is ONE env
+      // read (the zero-overhead decline invariant, pinned by tests).
+      const distribute = distributeOf(opts)
+      if (distribute !== undefined) {
+        const target = resolveDistributeTarget(opts)
+        if (target === undefined) {
+          throw new UserError(
+            'VX_CLOUD_DISTRIBUTE is set but no vx-cloud serve is configured or advertised — ' +
+              'start one (`vx-cloud serve`) or set VX_SERVICE_URL / connect an environment',
+          )
+        }
+        const { distributedBackend } = await import('./dist/submit.js')
+        return distributedBackend({
+          origin: target.origin,
+          ...(target.token !== undefined ? { token: target.token } : {}),
+          expectedAgents: distribute,
+          warn: (line) => ctx.warn(line),
+        })
+      }
       // Only take over execution when a service is EXPLICITLY configured —
       // option > env var > a connected environment that OPTED IN with
       // `delegate: true` (delegation executes against request.cwd on the
@@ -134,6 +162,10 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
     },
 
     telemetry(ctx: TelemetryContext): TelemetrySink | undefined {
+      // Agent sentinel: a distribution agent's per-assignment scoped runs
+      // must not spam the ingest store with 1-task invocations. Other
+      // telemetry plugins (e.g. otel()) are unaffected by design.
+      if (process.env['VX_CLOUD_AGENT'] === '1') return undefined
       // The push ladder, first match wins: plugin options > env vars (CI —
       // they beat the active environment, matching DOCKER_HOST > active
       // context) > the connected environment (memoized one-fs-read consult) >
@@ -160,6 +192,42 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
 
 function cacheUrlOf(opts: CloudPluginOptions): string | undefined {
   return opts.cacheUrl ?? process.env['VX_REMOTE_CACHE_URL']
+}
+
+function distributeOf(opts: CloudPluginOptions): number | undefined {
+  if (opts.distribute !== undefined) {
+    return Number.isInteger(opts.distribute) && opts.distribute > 0 ? opts.distribute : undefined
+  }
+  const raw = process.env['VX_CLOUD_DISTRIBUTE']
+  if (raw === undefined || raw === '') return undefined
+  const n = Number(raw)
+  if (!Number.isInteger(n) || n < 1) {
+    throw new UserError(`invalid VX_CLOUD_DISTRIBUTE: ${raw} (expected a positive agent count)`)
+  }
+  return n
+}
+
+/**
+ * Where the distributed submission goes — the same resolution ladder the
+ * other capabilities use: explicit option/env > the active environment >
+ * the advertised local serve. Reachability is verified by the backend
+ * itself (unreachable → hard error, §5.1).
+ */
+function resolveDistributeTarget(
+  opts: CloudPluginOptions,
+): { origin: string; token?: string } | undefined {
+  const explicit = opts.serviceUrl ?? process.env['VX_SERVICE_URL'] ?? process.env['VX_CLOUD_URL']
+  if (explicit !== undefined && explicit !== '') {
+    const token = process.env['VX_CLOUD_TOKEN']
+    return { origin: explicit, ...(token !== undefined && token !== '' ? { token } : {}) }
+  }
+  const env = activeEnvironment()
+  if (env !== undefined) {
+    return { origin: env.url, ...(env.token !== undefined ? { token: env.token } : {}) }
+  }
+  const info = readServeInfo()
+  if (info !== undefined && pidAlive(info.pid)) return { origin: info.origin }
+  return undefined
 }
 
 function ingestUrlOf(opts: CloudPluginOptions): string | undefined {

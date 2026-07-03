@@ -35,8 +35,7 @@ vx-cloud serve [--port N] [--ingest-dir D] [--token T] [--name N] [--ui] [--open
 vx-cloud connect <url> [--name N] [--token T] [--delegate] [--no-use] [--force]
 vx-cloud env ls | use <name> | rm <name>
 vx-cloud disconnect
-vx-cloud coordinator <tasks…> [--port N] [--host H] [--workers N]
-vx-cloud worker --coordinator <coord-url> [--capacity N] [--label L]
+vx-cloud agent --url <serve> [--token T] [--capacity N] [--session S] [--idle-timeout MS] [--label L]
 vx-cloud dev
 
 # Meta
@@ -48,7 +47,11 @@ vx --version
 
 Typing `vx serve` / `dev` / `coordinator` / `worker` prints a
 redirect: those commands moved to `@vzn/vx-cloud` in the core/cloud
-split — core has no service CLI.
+split — core has no service CLI. Within `vx-cloud`, the `coordinator`
+and `worker` verbs are RETIRED (distributed-execution-2026-07):
+`coordinator` was absorbed into `vx-cloud serve` (enable with
+`VX_CLOUD_DISTRIBUTE=<n>` on the submitting run), and `worker` is now
+`vx-cloud agent`; both print redirects.
 
 Multiple positional tasks run in one orchestrator invocation with a
 shared task graph: `vx run build lint test` fans out all three across
@@ -1058,65 +1061,53 @@ decline. Explicit config is never second-guessed — the probe only
 fires when nothing else configured the cache and an environment is
 actually connected, so a plain run stays zero-network.
 
-## `vx-cloud coordinator` — distributed-CI coordinator
+## `vx-cloud agent` — distributed-execution agent
 
-Start a per-build coordinator that holds the task graph + ready queue
-and dispatches assignments to attached workers over WebSocket.
-Content-addressed: any worker producing artifact `<hash>` satisfies
-every consumer of `<hash>`, so workers are fungible.
-
-```
-vx-cloud coordinator <tasks…>    # positional tasks (e.g. lint test build)
-    --port <n>                   # default 5180
-    --host <h>                   # default 127.0.0.1
-    --workers <n>                # expected workers (display only)
-```
-
-Behavior:
-
-- Boots `Bun.serve` WS at `http://<host>:<port>`.
-- Runs `prepareRun` against the workspace to build the same graph
-  the local CLI would.
-- Computes each node's cache hash — the assignment key.
-- Workers register via `worker:hello`, pull via `worker:pull`,
-  report outcomes via `worker:done`.
-- A worker that disconnects mid-task strands its in-flight; those
-  hashes go back on the ready queue for the next attached worker.
-- Exits 0 when every task ends in a terminal state with
-  `outcome.status === 'success'`, 1 otherwise.
-- Writes `<workspaceRoot>/.vx/coordinator.json` advertising the
-  origin + pid (cleaned up on stop).
-
-Phase A-B only today: real coordinator + worker, content-addressed
-dispatch, disconnect recovery. Capability labels, cache-affinity
-hints, and Buck2-style hybrid execution land later
-(`docs/design/distributed-ci-2026-06.md`).
-
-## `vx-cloud worker` — distributed-CI worker
-
-Attach to a coordinator and execute its assignments. Stateless and
-fungible.
+Attach this machine's checkout to a serve's session registry and
+execute assigned tasks via scoped, fully CACHED core runs
+(`docs/design/distributed-execution-2026-07.md`). Replaces the retired
+`worker` verb; the retired `coordinator` verb's scheduling now lives
+inside `vx-cloud serve`.
 
 ```
-vx-cloud worker --coordinator ws://coord:5180  # connect, register, pull, execute
-    --capacity <n>               # max concurrent in-flight (default 1)
-    --label <l>                  # capability label (repeatable; default linux-x64)
+vx-cloud agent --url <serve-origin>   # (or --coordinator; falls back to
+                                      #  VX_SERVICE_URL / the local serve ad)
+    --token <t>                       # serve bearer (env: VX_CLOUD_TOKEN)
+    --capacity <n>                    # max concurrent assignments (default 1)
+    --session <s>                     # session key (default: VX_AGENT_SESSION >
+                                      #  CI-derived > 'local')
+    --idle-timeout <ms>               # self-terminate when idle (default 10 min;
+                                      #  0 = never)
+    --label <l>                       # capability label (repeatable)
 ```
 
 Behavior:
 
-- Connects to the coordinator's WS endpoint.
-- Sends `worker:hello { workerId, capacity, labels }`.
-- Pulls work via `worker:pull { available }`.
-- On `task:assign`, spawns the command via `workerExecute`, streams
-  stdout/stderr back over `worker:stdout` / `worker:stderr`, reports
-  `worker:done` with the outcome.
-- On `coord:drain`, waits for in-flight to finish, sends
-  `worker:bye`, exits.
-- Exits 0 if every assigned task succeeded, 1 otherwise.
+- Startup checks: git present, CLEAN worktree (a dirty agent exits 1
+  before poisoning keys), commit + workspace-id capture.
+- Points `VX_REMOTE_CACHE_URL`/`_TOKEN` at the serve (when unset), so
+  every scoped run reads/writes the serve's `/v8/artifacts` store —
+  the cache IS the artifact transport between agents. Sets
+  `VX_CLOUD_AGENT=1` so `cloud()`'s telemetry rung declines.
+- Registers over `/v1/agents` with
+  `agent:hello { protocol, workspaceId, session, commitSha, capacity }`.
+  Protocol or commit mismatch → `agent:refused` naming both, exit 1.
+- Per `task:assign { taskId }`: a scoped in-process `run()` of the
+  exact task id WITH its dep closure — deps restore as warm hits from
+  the shared store, the task executes, its artifact uploads before
+  `agent:done` reports core's `OutcomeView`. Only the assigned task's
+  events forward; dep restores stay silent.
+- Exits 0 on clean drain or idle timeout EVEN WHEN TASKS FAILED (the
+  submitting run owns the aggregate verdict); 1 on refusal, dirty
+  tree, or unexpected disconnect.
 
-Workers do NOT yet probe the remote cache before executing — every
-assigned task spawns fresh. Cache integration is the next iteration.
+Enable distribution on the submitting run with
+`VX_CLOUD_DISTRIBUTE=<n>` (or `cloud({ distribute: n })`) — the
+`cloud()` backend then prepares the graph, submits it to the serve
+(`dist:submit`), self-registers as an agent, renders the relayed
+stream, and materializes outputs locally. Refusal gates (dirty tree,
+non-remote cache policy, `-- forwardArgs`, persistent tasks) fall back
+LOUDLY to a normal local run; an unreachable serve is a hard error.
 
 ## `vx-cloud dev` — devtools hub
 
