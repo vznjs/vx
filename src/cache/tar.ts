@@ -36,7 +36,7 @@
 // We DO NOT support sparse files, character/block devices, or
 // hardlinks — they don't appear in build outputs.
 
-import { lstat, mkdir, chmod, unlink, utimes } from 'node:fs/promises'
+import { lstat, mkdir, chmod, realpath, unlink, utimes } from 'node:fs/promises'
 import path from 'node:path'
 
 export interface TarHeader {
@@ -266,6 +266,26 @@ export async function extractOutputs(
       (e): e is { h: TarHeader; dest: { base: string; rel: string } } =>
         e.dest !== null && !e.h.isDir && e.dest.rel.length > 0,
     )
+
+  // The REAL path of each base dir (symlinks resolved), memoized. Used to
+  // catch a symlinked ANCESTOR under the output tree: the lexical check
+  // below stops a `..` name, but if `<dest>/dist` is already an on-disk
+  // symlink pointing outside (planted in the repo or by a dependency
+  // postinstall), a lexically-contained entry `dist/x` would follow it and
+  // escape. Both sides are realpath'd, so a legitimate symlinked ANCESTOR of
+  // the base dir itself (e.g. macOS /tmp → /private/tmp) resolves
+  // consistently and is not flagged.
+  const realBaseCache = new Map<string, string>()
+  const realBaseOf = async (base: string): Promise<string> => {
+    const key = path.resolve(base)
+    let r = realBaseCache.get(key)
+    if (r === undefined) {
+      r = await realpath(key).catch(() => key)
+      realBaseCache.set(key, r)
+    }
+    return r
+  }
+
   await Promise.all(
     fileEntries.map(async ({ h, dest }) => {
       const destResolved = path.resolve(dest.base)
@@ -282,6 +302,16 @@ export async function extractOutputs(
       // Ensure the parent dir exists. Cheap because mkdir(recursive)
       // is a no-op when the dir is already there.
       await mkdir(path.dirname(target), { recursive: true })
+
+      // Symlinked-parent escape check: the parent dir now exists — resolve
+      // its real path and require it to still sit inside the real base dir.
+      // A poisoned artifact whose entry lands under a pre-existing symlinked
+      // directory is refused before any bytes are written outside the tree.
+      const realBase = await realBaseOf(dest.base)
+      const realParent = await realpath(path.dirname(target)).catch(() => path.dirname(target))
+      if (realParent !== realBase && !realParent.startsWith(realBase + path.sep)) {
+        throw new TarSecurityError(`tar entry escapes destDir via a symlinked parent: ${h.name}`)
+      }
 
       // Symlink TOCTOU defense: if the target IS a symlink, unlink
       // it first so the upcoming write doesn't follow the link and

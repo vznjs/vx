@@ -220,6 +220,23 @@ describe('tar extractOutputs — symlink defense', () => {
     expect(await readFile(sensitive, 'utf8')).toBe('do-not-touch')
     await rm(sensitiveDir, { recursive: true, force: true })
   })
+
+  it('pre-existing symlinked PARENT directory is refused, not followed', async () => {
+    // Attacker planted `<dest>/dist -> <sensitiveDir>` (a symlinked ancestor,
+    // e.g. committed in the repo or created by a dependency postinstall). A
+    // poisoned artifact entry `outputs/dist/evil.txt` is lexically contained
+    // under dest, but writing it would follow the symlink and escape. The
+    // realpath-parent check must refuse it and leave the sensitive dir intact.
+    const sensitiveDir = await mkdtemp(path.join(os.tmpdir(), 'vx-tar-sym-pdir-'))
+    await symlink(sensitiveDir, path.join(dest, 'dist'))
+
+    const body = new TextEncoder().encode('attacker-controlled')
+    const tar = tarWithEntry('outputs/dist/evil.txt', body)
+    await expect(extractOutputs(tar, dest)).rejects.toThrow(/escape|symlink|unsafe/i)
+    // Nothing was written into the symlink target.
+    expect(existsSync(path.join(sensitiveDir, 'evil.txt'))).toBe(false)
+    await rm(sensitiveDir, { recursive: true, force: true })
+  })
 })
 
 describe('parseTarHeaders — security-relevant parse rejections', () => {

@@ -11,7 +11,7 @@ import {
   type InvocationRecord,
   parseCachePolicy,
 } from '../src/cache/cache.js'
-import { UserError } from '../src/util/index.js'
+import { UserError, xxh3hex } from '../src/util/index.js'
 
 describe('parseCachePolicy', () => {
   it('defaults every axis on with an empty spec', () => {
@@ -394,19 +394,49 @@ describe('Cache.key', () => {
     expect(byKind('workspace')).toEqual([{ name: 'fingerprint', hash: 'ws-x' }])
     expect(byKind('package')).toEqual([{ name: 'package.json', hash: 'pkg-x' }])
     expect(byKind('config')).toEqual([{ name: 'config', hash: 'cfg-x' }])
-    expect(byKind('forward')).toEqual([{ name: 'argv', hash: JSON.stringify(['--flag']) }])
+    // Value-bearing kinds capture a DIGEST, never the plaintext — secrets in
+    // env / runtime output / argv must not land in cache.db.
+    expect(byKind('forward')).toEqual([{ name: 'argv', hash: xxh3hex(JSON.stringify(['--flag'])) }])
     expect(byKind('env')).toEqual([
-      { name: 'MODE', hash: 'a' },
-      { name: 'DEBUG', hash: '1' },
+      { name: 'MODE', hash: xxh3hex('a') },
+      { name: 'DEBUG', hash: xxh3hex('1') },
     ])
-    expect(byKind('runtime')).toEqual([{ name: 'node -v', hash: 'v20' }])
-    expect(byKind('ws-runtime')).toEqual([{ name: 'uname', hash: 'Linux' }])
+    expect(byKind('runtime')).toEqual([{ name: 'node -v', hash: xxh3hex('v20') }])
+    expect(byKind('ws-runtime')).toEqual([{ name: 'uname', hash: xxh3hex('Linux') }])
     expect(byKind('upstream')).toEqual([{ name: 'dep#build', hash: 'up-1' }])
     // File rows: workspace-relative name, content OID as hash, one per file.
     const files = byKind('file')
     expect(files.map((r) => r.name).sort()).toEqual(['one.txt', 'two.txt'])
     // Total rows = sum of every component above.
     expect(sink.length).toBe(1 + 1 + 1 + 1 + 2 + 1 + 1 + 1 + 2)
+  })
+
+  it('captureInto never stores a plaintext secret value (only digests)', async () => {
+    const secret = 'AKIA-super-secret-value'
+    const sink: Array<{ kind: string; name: string; hash: string }> = []
+    await cache.key({
+      ...baseInput(),
+      envValues: [['AWS_SECRET_ACCESS_KEY', secret]],
+      runtimeValues: [['echo tok', secret]],
+      workspaceRuntimeValues: [['echo wtok', secret]],
+      forwardArgs: [secret],
+      captureInto: sink,
+    })
+    // No captured row's stored value equals (or contains) the plaintext.
+    for (const row of sink) {
+      expect(row.hash).not.toContain(secret)
+    }
+    // But the digest still changes when the secret changes (lossless for the
+    // diff's change-detection).
+    const other: Array<{ kind: string; name: string; hash: string }> = []
+    await cache.key({
+      ...baseInput(),
+      envValues: [['AWS_SECRET_ACCESS_KEY', 'different-value']],
+      captureInto: other,
+    })
+    const a = sink.find((r) => r.kind === 'env')!.hash
+    const b = other.find((r) => r.kind === 'env')!.hash
+    expect(a).not.toBe(b)
   })
 
   it('captureInto omits the forward row when forwardArgs is empty', async () => {
@@ -559,6 +589,32 @@ describe('Cache storage (v10)', () => {
     ).rejects.toThrow(CorruptArtifactError)
     expect(existsSync(path.join(cacheDir, 'h-not-tar.tar.zst'))).toBe(false)
     expect(await cache.get('h-not-tar')).toBeNull()
+  })
+
+  it('ingest() rejects a zstd frame declaring an oversize decompressed length (bomb)', async () => {
+    // A minimal zstd frame header: magic + descriptor (8-byte FCS, not
+    // single-segment) + window byte + an 8-byte Frame_Content_Size of 3 GiB.
+    // The declared-size guard fires BEFORE decompression, so the (absent)
+    // body never matters.
+    const threeGiB = 3n * 1024n * 1024n * 1024n
+    const fcs = new Uint8Array(8)
+    for (let i = 0; i < 8; i++) fcs[i] = Number((threeGiB >> BigInt(8 * i)) & 0xffn)
+    const frame = new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 0xc0, 0x00, ...fcs, 0, 0, 0, 0])
+    await expect(
+      cache.ingest('h-bomb', frame, { taskId: 'pkg#build', command: 'tsc', durationMs: 1 }),
+    ).rejects.toThrow(CorruptArtifactError)
+    expect(existsSync(path.join(cacheDir, 'h-bomb.tar.zst'))).toBe(false)
+    expect(await cache.get('h-bomb')).toBeNull()
+  })
+
+  it('ingest() rejects a remote zstd frame with no declared content size', async () => {
+    // Streaming-mode frame (FCS flag 0, not single-segment) → no declared
+    // size. Our producer always writes one, so a sizeless frame over the
+    // untrusted (ingest) boundary is refused rather than blindly expanded.
+    const frame = new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 0x00, 0x00, 0x01, 0x00, 0x00])
+    await expect(
+      cache.ingest('h-sizeless', frame, { taskId: 'pkg#build', command: 'tsc', durationMs: 1 }),
+    ).rejects.toThrow(CorruptArtifactError)
   })
 
   it('recordRun() + stats() captures run history', async () => {

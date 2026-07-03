@@ -34,7 +34,7 @@ import { mkdirSync, statSync } from 'node:fs'
 import { mkdir, mkdtemp, rename, rm, stat, utimes } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { relPosix, UserError, xxh3 } from '../util/index.js'
+import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
 import { FsCASBackend } from './cas-backend.js'
 import { extractOutputs, parseTarHeaders, readTarText } from './tar.js'
 
@@ -452,6 +452,77 @@ export class CorruptArtifactError extends Error {
     super(`cache: corrupt artifact for ${hash}: ${reason}`)
     this.name = 'CorruptArtifactError'
   }
+}
+
+/**
+ * A decompressed artifact above this is refused as a zstd bomb rather than
+ * expanded into memory. 2 GiB comfortably exceeds any real build output while
+ * bounding a malicious/compromised remote's ability to OOM a victim who takes
+ * a cache hit.
+ */
+export const MAX_DECOMPRESSED_ARTIFACT_BYTES = 2 * 1024 * 1024 * 1024
+
+/**
+ * Read a zstd frame's declared Frame_Content_Size (RFC 8878 §3.1.1) WITHOUT
+ * decompressing. Returns null when the frame omits it (streaming frames) or
+ * the header is too short to parse. vx's own producer (single-shot
+ * `Bun.zstdCompress` of a known buffer) always writes it, so an artifact that
+ * declares an enormous size can be rejected before a byte is allocated.
+ */
+function zstdContentSize(b: Uint8Array): bigint | null {
+  if (b.length < 5) return null
+  // Magic_Number 0xFD2FB528, little-endian.
+  if (b[0] !== 0x28 || b[1] !== 0xb5 || b[2] !== 0x2f || b[3] !== 0xfd) return null
+  const desc = b[4]!
+  const fcsFlag = desc >> 6
+  const singleSegment = (desc >> 5) & 1
+  const dictIdFlag = desc & 3
+  let off = 5
+  if (singleSegment === 0) off += 1 // Window_Descriptor byte
+  off += dictIdFlag === 3 ? 4 : dictIdFlag // Dictionary_ID: 0,1,2,4 bytes
+  let fcsSize: number
+  if (fcsFlag === 0) fcsSize = singleSegment === 1 ? 1 : 0
+  else if (fcsFlag === 1) fcsSize = 2
+  else if (fcsFlag === 2) fcsSize = 4
+  else fcsSize = 8
+  if (fcsSize === 0 || b.length < off + fcsSize) return null
+  let v = 0n
+  for (let i = 0; i < fcsSize; i++) v |= BigInt(b[off + i]!) << BigInt(8 * i)
+  if (fcsSize === 2) v += 256n // per spec, the 2-byte field stores value − 256
+  return v
+}
+
+/**
+ * Decompress a zstd artifact with a hard output ceiling. `trusted` marks a
+ * locally-produced artifact (always carries a declared content size); an
+ * UNTRUSTED (remote-sourced) frame that declares no content size is refused,
+ * since our producer and the Turbo servers we interop with always write one —
+ * a sizeless frame from the network is the shape a bomb takes to dodge the
+ * pre-decompress check.
+ */
+async function zstdDecompressBounded(
+  compressed: Uint8Array,
+  hash: string,
+  trusted: boolean,
+): Promise<Uint8Array> {
+  const declared = zstdContentSize(compressed)
+  if (declared !== null && declared > BigInt(MAX_DECOMPRESSED_ARTIFACT_BYTES)) {
+    throw new CorruptArtifactError(
+      hash,
+      `declares ${declared} decompressed bytes (> ${MAX_DECOMPRESSED_ARTIFACT_BYTES} cap)`,
+    )
+  }
+  if (declared === null && !trusted) {
+    throw new CorruptArtifactError(hash, 'remote zstd frame carries no declared content size')
+  }
+  const out = await Bun.zstdDecompress(compressed)
+  if (out.length > MAX_DECOMPRESSED_ARTIFACT_BYTES) {
+    throw new CorruptArtifactError(
+      hash,
+      `decompressed to ${out.length} bytes (> ${MAX_DECOMPRESSED_ARTIFACT_BYTES} cap)`,
+    )
+  }
+  return out
 }
 
 export interface CacheLayer {
@@ -969,29 +1040,41 @@ export class Cache implements CacheLayer {
       cap.push({ kind: 'config', name: 'config', hash: input.taskConfigHash })
     }
 
+    // NOTE on `cap` (entry_inputs capture): the `hash` field stores a
+    // DIGEST of each component, never the raw value. For value-bearing kinds
+    // (env, runtime, ws-runtime, forward) the payload is a secret or
+    // sensitive string (API keys via cache.inputs.env, runtime-command
+    // output, args after `--`), so we push `xxh3hex(v)` — the diff consumer
+    // only needs to know whether a component CHANGED, which a digest
+    // preserves losslessly. cache.db must never hold plaintext secrets at
+    // rest. The cache KEY (`h`) folds the plaintext separately below and is
+    // unaffected.
     const forwarded = input.forwardArgs ?? []
     h = xxh3(`forward-args:${forwarded.length}`, h)
     for (const a of forwarded) h = xxh3(a, h)
     if (cap && forwarded.length > 0) {
-      cap.push({ kind: 'forward', name: 'argv', hash: JSON.stringify(forwarded) })
+      cap.push({ kind: 'forward', name: 'argv', hash: xxh3hex(JSON.stringify(forwarded)) })
     }
 
     h = xxh3(`env-values:${input.envValues.length}`, h)
     // \0 delimiter, not `=`: names and values may themselves contain
     // `=`, and `A` + `B=C` must never fold the same bytes as `A=B` + `C`.
     for (const [n, v] of input.envValues) h = xxh3(`${n}\0${v}`, h)
-    if (cap) for (const [n, v] of input.envValues) cap.push({ kind: 'env', name: n, hash: v })
+    if (cap)
+      for (const [n, v] of input.envValues) cap.push({ kind: 'env', name: n, hash: xxh3hex(v) })
 
     const runtimeValues = input.runtimeValues ?? []
     h = xxh3(`runtime-values:${runtimeValues.length}`, h)
     for (const [c, o] of runtimeValues) h = xxh3(`${c}\0${o}`, h)
-    if (cap) for (const [c, o] of runtimeValues) cap.push({ kind: 'runtime', name: c, hash: o })
+    if (cap)
+      for (const [c, o] of runtimeValues) cap.push({ kind: 'runtime', name: c, hash: xxh3hex(o) })
 
     const wsRuntimeValues = input.workspaceRuntimeValues ?? []
     h = xxh3(`ws-runtime-values:${wsRuntimeValues.length}`, h)
     for (const [c, o] of wsRuntimeValues) h = xxh3(`${c}\0${o}`, h)
     if (cap)
-      for (const [c, o] of wsRuntimeValues) cap.push({ kind: 'ws-runtime', name: c, hash: o })
+      for (const [c, o] of wsRuntimeValues)
+        cap.push({ kind: 'ws-runtime', name: c, hash: xxh3hex(o) })
 
     const upstream = [...input.upstreamHashes].sort()
     h = xxh3(`upstream:${upstream.length}`, h)
@@ -1159,7 +1242,9 @@ export class Cache implements CacheLayer {
     const src = this.tarPath(hash)
     if (!(await Bun.file(src).exists())) return
     const compressed = await Bun.file(src).bytes()
-    const tarBytes = await Bun.zstdDecompress(compressed)
+    // Local artifact (already validated at ingest): trusted, so a missing
+    // declared size is allowed; the oversize ceiling still applies.
+    const tarBytes = await zstdDecompressBounded(compressed, hash, true)
 
     const headers = parseTarHeaders(tarBytes)
     if (
@@ -1365,8 +1450,12 @@ export class Cache implements CacheLayer {
     // what isOutputsCurrent will compare against post-restore.
     let tarBytes: Uint8Array
     try {
-      tarBytes = await Bun.zstdDecompress(compressed)
+      // ingest() is the UNTRUSTED boundary — `compressed` is bytes just
+      // pulled from a remote. Refuse a bomb (declared or sizeless) before it
+      // can expand into memory.
+      tarBytes = await zstdDecompressBounded(compressed, hash, false)
     } catch (err) {
+      if (err instanceof CorruptArtifactError) throw err
       throw new CorruptArtifactError(hash, 'zstd decompression failed', err)
     }
     const headers = parseTarHeaders(tarBytes)

@@ -40,6 +40,45 @@ export interface RemoteGetResult {
   durationMs: number | undefined
 }
 
+/**
+ * Hard cap on a downloaded artifact body (compressed bytes). A malicious or
+ * compromised remote (or a MITM answering a GET) must not be able to stream an
+ * unbounded body into `res.arrayBuffer()` and exhaust the victim's memory —
+ * the download aborts past this and degrades to a cache miss. Mirrors the
+ * server-side PUT cap.
+ */
+export const MAX_REMOTE_ARTIFACT_BYTES = 512 * 1024 * 1024
+
+/**
+ * Read a response body, aborting once cumulative bytes exceed `max`. Streams
+ * via the body reader so a lying (or absent) content-length can't defeat the
+ * cap. Falls back to `arrayBuffer()` only when the body isn't a stream.
+ */
+async function readBodyBounded(res: Response, max: number): Promise<ArrayBuffer> {
+  const reader = res.body?.getReader()
+  if (reader === undefined) return await res.arrayBuffer()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    if (value === undefined) continue
+    total += value.byteLength
+    if (total > max) {
+      await reader.cancel().catch(() => {})
+      throw new Error(`artifact exceeds ${max}-byte download cap`)
+    }
+    chunks.push(value)
+  }
+  const out = new Uint8Array(total)
+  let off = 0
+  for (const c of chunks) {
+    out.set(c, off)
+    off += c.byteLength
+  }
+  return out.buffer
+}
+
 export class RemoteCache {
   constructor(private readonly config: RemoteCacheConfig) {}
 
@@ -47,15 +86,22 @@ export class RemoteCache {
     const res = await this.fetch('GET', this.artifactUrl(hash))
     if (res.status === 404) return null
     if (!res.ok) throw new RemoteCacheError(`GET ${hash} → ${res.status}`, res.status)
+    // Refuse an honestly-declared oversize body before reading a byte.
+    const declaredLen = Number(res.headers.get('content-length') ?? '')
+    if (Number.isFinite(declaredLen) && declaredLen > MAX_REMOTE_ARTIFACT_BYTES) {
+      throw new RemoteCacheError(
+        `GET ${hash} → artifact too large (${declaredLen} bytes > ${MAX_REMOTE_ARTIFACT_BYTES} cap)`,
+        res.status,
+      )
+    }
     // A body that ends before the declared content-length (server died
-    // mid-transfer) throws from arrayBuffer(), not from fetch() — wrap
-    // it here so callers see a typed RemoteCacheError and the layered
-    // cache can degrade it to a miss. (fetch already enforces the
-    // content-length contract: short bodies throw, long bodies are
-    // truncated to the declared length, so no manual byte check.)
+    // mid-transfer) throws from the reader, not from fetch() — wrap it here
+    // so callers see a typed RemoteCacheError and the layered cache can
+    // degrade it to a miss. The bounded read also aborts a body that lies
+    // about (or omits) its length once it crosses the cap.
     let body: ArrayBuffer
     try {
-      body = await res.arrayBuffer()
+      body = await readBodyBounded(res, MAX_REMOTE_ARTIFACT_BYTES)
     } catch (err) {
       throw new RemoteCacheError(
         `GET ${hash} → body read failed: ${(err as Error).message}`,
