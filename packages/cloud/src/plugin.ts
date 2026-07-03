@@ -23,8 +23,10 @@ import { existsSync } from 'node:fs'
 import {
   LayeredCache,
   RemoteCache,
+  resolveCacheTrust,
   UserError,
   type CacheContext,
+  type CachePolicy,
   type CacheLayer,
   type RunSummaryRecord,
   type TelemetryContext,
@@ -55,6 +57,13 @@ export interface CloudPluginOptions {
   cacheUrl?: string
   /** Bearer token for the artifact store. Falls back to `VX_REMOTE_CACHE_TOKEN`. */
   cacheToken?: string
+  /**
+   * The UNTRUSTED (fork-PR) cache token. Falls back to
+   * `VX_REMOTE_CACHE_PR_TOKEN`. On a detected fork-PR run this is presented
+   * instead of `cacheToken` (read trusted, write untrusted); with no PR token
+   * a fork PR falls back to read-only against the shared cache.
+   */
+  cachePrToken?: string
   /** Optional Turbo tenant id, sent as `?teamId=`. Falls back to `VX_REMOTE_CACHE_TEAM_ID`. */
   cacheTeamId?: string
   /** Optional Turbo tenant slug, sent as `?slug=`. Falls back to `VX_REMOTE_CACHE_SLUG`. */
@@ -145,9 +154,11 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
       // config (URL, no token) declines like before.
       const url = cacheUrlOf(opts)
       if (url) {
-        const token = opts.cacheToken ?? process.env['VX_REMOTE_CACHE_TOKEN']
-        if (!token) return undefined
-        return buildCloudCache(ctx, opts, url, token)
+        const trusted = opts.cacheToken ?? process.env['VX_REMOTE_CACHE_TOKEN']
+        const pr = opts.cachePrToken ?? process.env['VX_REMOTE_CACHE_PR_TOKEN']
+        const auth = resolveCacheAuth(ctx, trusted, pr)
+        if (auth === undefined) return undefined
+        return buildCloudCache(ctx, opts, url, auth.token, auth.policy)
       }
       // Environment rung: the ACTIVE connected environment, when its serve
       // advertises the artifact store (`/v1/meta` `artifacts: true` — probed
@@ -155,9 +166,11 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
       // network, so a plain run stays byte-identical.
       const env = activeEnvironment()
       if (env === undefined) return undefined
+      const auth = resolveCacheAuth(ctx, env.token, env.prToken)
+      if (auth === undefined) return undefined
       return (async () => {
         if (!(await serveAdvertisesArtifacts(env.url))) return undefined
-        return buildCloudCache(ctx, opts, env.url, env.token ?? '')
+        return buildCloudCache(ctx, opts, env.url, auth.token, auth.policy)
       })()
     },
 
@@ -245,11 +258,34 @@ function ingestTokenFromEnv(): string | undefined {
  * `remote-cache-setup.ts` semantics (tenancy / signing / timeout knobs) —
  * shared by the explicit-config rung and the environment rung.
  */
+/**
+ * Pick the effective cache token + policy for this run's trust tier, mirroring
+ * core's `wrapWithRemoteCache` (docs/design/cache-trust-scopes-2026-07): a
+ * trusted run presents the trusted token; an untrusted (fork-PR) run presents
+ * the PR token (server routes its writes to the untrusted scope), or falls
+ * back to the trusted token with `remoteWrite` forced off (read-only). Returns
+ * undefined when no usable token exists (decline).
+ */
+function resolveCacheAuth(
+  ctx: CacheContext,
+  trustedToken: string | undefined,
+  prToken: string | undefined,
+): { token: string; policy: CachePolicy } | undefined {
+  const trust = resolveCacheTrust(process.env)
+  if (trust === 'untrusted') {
+    if (prToken) return { token: prToken, policy: ctx.policy }
+    if (trustedToken) return { token: trustedToken, policy: { ...ctx.policy, remoteWrite: false } }
+    return undefined
+  }
+  return trustedToken ? { token: trustedToken, policy: ctx.policy } : undefined
+}
+
 function buildCloudCache(
   ctx: CacheContext,
   opts: CloudPluginOptions,
   baseUrl: string,
   token: string,
+  policy: CachePolicy,
 ): CacheLayer {
   const config: ConstructorParameters<typeof RemoteCache>[0] = { baseUrl, token }
   const teamId = opts.cacheTeamId ?? process.env['VX_REMOTE_CACHE_TEAM_ID']
@@ -267,7 +303,7 @@ function buildCloudCache(
   ctx.warn(`cloud cache: ${baseUrl}`)
   return new LayeredCache(ctx.localCache, new RemoteCache(config), {
     onRemoteError: (err) => ctx.warn(`[vx] cloud cache: ${err.message}`),
-    policy: ctx.policy,
+    policy,
   })
 }
 

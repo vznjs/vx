@@ -11,7 +11,13 @@
 export { cloud } from './plugin.js'
 export type { CloudPluginOptions } from './plugin.js'
 export { IngestStore } from './ingest-store.js'
-export { ArtifactStore, MAX_ARTIFACT_BYTES } from './artifact-store.js'
+export {
+  ArtifactStore,
+  DEFAULT_PRINCIPAL,
+  MAX_ARTIFACT_BYTES,
+  type Principal,
+  type Tier,
+} from './artifact-store.js'
 export { startServe, parseServeArgs, DEFAULT_SERVE_PORT, resolveServePort } from './cli/serve.js'
 export type { ServeServer } from './cli/serve.js'
 export { handleMcpHttp, MCP_PROTOCOL_VERSION, MCP_TOOLS } from './cli/mcp-serve.js'

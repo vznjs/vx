@@ -18,6 +18,7 @@ import {
   type Logger,
 } from '@vzn/vx'
 import { startServe } from '../src/cli/serve.js'
+import { ArtifactStore, type Principal } from '../src/artifact-store.js'
 import { serveInfoPath } from '../src/serve-info.js'
 import { ENVIRONMENTS_VERSION, writeEnvironmentsFile } from '../src/environments.js'
 import { cloud } from '../src/plugin.js'
@@ -97,8 +98,9 @@ describe('vx serve /v8/artifacts — the Turbo wire', () => {
     expect(Number(get.headers.get('content-length'))).toBe(body.byteLength)
     expect(new Uint8Array(await get.arrayBuffer())).toEqual(body)
 
-    // The backing files are the flat `<hash>.tar.zst` + sidecar layout.
-    const files = await readdir(path.join(dir, 'artifacts'))
+    // The backing files land in the token's scope (a single --token maps to
+    // default/trusted): `<hash>.tar.zst` + sidecars.
+    const files = await readdir(path.join(dir, 'artifacts', 'default', 'trusted'))
     expect(files.sort()).toEqual([`${hash}.duration`, `${hash}.tag`, `${hash}.tar.zst`])
   })
 
@@ -249,9 +251,11 @@ describe('e2e: vx run against the serve-hosted artifact store', () => {
         expect(first.ok).toBe(true)
         expect(first.outcomes[0]!.status).toBe('success')
 
-        // The write-through upload landed as flat files under the ingest
-        // root — artifact + the signing-tag + duration sidecars.
-        const files = (await readdir(path.join(ingestDir, 'artifacts'))).sort()
+        // The write-through upload landed in the token's scope
+        // (default/trusted) — artifact + the signing-tag + duration sidecars.
+        const files = (
+          await readdir(path.join(ingestDir, 'artifacts', 'default', 'trusted'))
+        ).sort()
         expect(files.length).toBe(3)
         expect(files[0]!.endsWith('.duration')).toBe(true)
         expect(files[1]!.endsWith('.tag')).toBe(true)
@@ -419,5 +423,78 @@ describe('cloud() cache capability — environment rung', () => {
     connectTo('http://localhost:1')
     const layer = await cloud().cache!(cacheCtx(localCache, root))
     expect(layer).toBeUndefined()
+  })
+})
+
+describe('ArtifactStore — trust scopes (poisoning guard)', () => {
+  let dir: string
+  const trusted = { tier: 'trusted', bucket: 'default' } as const
+  const untrusted = { tier: 'untrusted', bucket: 'default' } as const
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'vx-scope-'))
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  const put = (store: ArtifactStore, hash: string, body: string, p: Principal) =>
+    store.handle(new Request(`http://x/v8/artifacts/${hash}`, { method: 'PUT', body }), hash, p)
+  const get = (store: ArtifactStore, hash: string, p: Principal) =>
+    store.handle(new Request(`http://x/v8/artifacts/${hash}`), hash, p)
+
+  it('an untrusted write NEVER feeds a trusted read (quarantine)', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    const hash = 'a1b2c3d4e5f60718'
+    // A fork PR poisons the key.
+    expect((await put(store, hash, 'evil', untrusted)).status).toBe(200)
+    // A trusted (main) build for the SAME key must NOT see it — 404.
+    expect((await get(store, hash, trusted)).status).toBe(404)
+    // It lives only under untrusted/.
+    const under = await readdir(path.join(dir, 'artifacts', 'default', 'untrusted'))
+    expect(under).toContain(`${hash}.tar.zst`)
+  })
+
+  it('an untrusted read falls through to the trusted baseline (warm PR)', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    const hash = 'cafebabecafebabe'
+    expect((await put(store, hash, 'legit', trusted)).status).toBe(200)
+    // The PR warms off main's cache.
+    const got = await get(store, hash, untrusted)
+    expect(got.status).toBe(200)
+    expect(await got.text()).toBe('legit')
+  })
+
+  it('an untrusted write cannot overwrite a trusted artifact', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    const hash = 'feedfacefeedface'
+    expect((await put(store, hash, 'legit', trusted)).status).toBe(200)
+    // The untrusted PUT lands in untrusted/, leaving trusted/ untouched.
+    expect((await put(store, hash, 'evil', untrusted)).status).toBe(200)
+    const trustedGet = await get(store, hash, trusted)
+    expect(await trustedGet.text()).toBe('legit')
+  })
+
+  it('artifacts are immutable — a re-PUT of an existing hash is refused (409)', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    const hash = '0011223344556677'
+    expect((await put(store, hash, 'first', trusted)).status).toBe(200)
+    expect((await put(store, hash, 'overwrite', trusted)).status).toBe(409)
+    const got = await get(store, hash, trusted)
+    expect(await got.text()).toBe('first')
+  })
+
+  it('migrates a legacy flat store into default/trusted/', async () => {
+    const artDir = path.join(dir, 'artifacts')
+    await mkdir(artDir, { recursive: true })
+    await writeFile(path.join(artDir, 'deadbeefdeadbeef.tar.zst'), 'legacy')
+    await writeFile(path.join(artDir, 'deadbeefdeadbeef.tag'), 'sig')
+    const store = new ArtifactStore(artDir)
+    await store.migrateLegacyFlatStore()
+    const got = await get(store, 'deadbeefdeadbeef', trusted)
+    expect(got.status).toBe(200)
+    expect(await got.text()).toBe('legacy')
+    const moved = await readdir(path.join(artDir, 'default', 'trusted'))
+    expect(moved.sort()).toEqual(['deadbeefdeadbeef.tag', 'deadbeefdeadbeef.tar.zst'])
   })
 })

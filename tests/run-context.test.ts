@@ -7,8 +7,10 @@ import {
   captureHostContext,
   captureWorkspaceIdentity,
   detectCi,
+  detectForkPr,
   normalizeRemoteUrl,
 } from '../src/orchestrator/run-context.js'
+import { resolveCacheTrust } from '../src/orchestrator/remote-cache-setup.js'
 
 function git(cwd: string, args: string[]): void {
   const proc = Bun.spawnSync({ cmd: ['git', ...args], cwd, stdout: 'pipe', stderr: 'pipe' })
@@ -157,5 +159,87 @@ describe('captureWorkspaceIdentity', () => {
     const identity = captureWorkspaceIdentity(dir)
     expect(identity.id).toMatch(/^[0-9a-f]{16}$/)
     expect(identity.name).toBe(path.basename(dir))
+  })
+})
+
+describe('detectForkPr + resolveCacheTrust', () => {
+  let dir: string
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-forkpr-'))
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('GitHub fork PR (head.repo.fork) → fork', async () => {
+    const eventPath = path.join(dir, 'event.json')
+    await writeFile(eventPath, JSON.stringify({ pull_request: { head: { repo: { fork: true } } } }))
+    const env = {
+      GITHUB_EVENT_NAME: 'pull_request',
+      GITHUB_EVENT_PATH: eventPath,
+      GITHUB_REPOSITORY: 'owner/repo',
+    }
+    expect(detectForkPr(env)).toBe(true)
+    expect(resolveCacheTrust(env)).toBe('untrusted')
+  })
+
+  it('GitHub internal same-repo PR → NOT a fork (trusted)', async () => {
+    const eventPath = path.join(dir, 'event.json')
+    await writeFile(
+      eventPath,
+      JSON.stringify({
+        pull_request: { head: { repo: { fork: false, full_name: 'owner/repo' } } },
+      }),
+    )
+    const env = {
+      GITHUB_EVENT_NAME: 'pull_request',
+      GITHUB_EVENT_PATH: eventPath,
+      GITHUB_REPOSITORY: 'owner/repo',
+    }
+    expect(detectForkPr(env)).toBe(false)
+    expect(resolveCacheTrust(env)).toBe('trusted')
+  })
+
+  it('GitHub full_name mismatch → fork even if fork flag absent', async () => {
+    const eventPath = path.join(dir, 'event.json')
+    await writeFile(
+      eventPath,
+      JSON.stringify({ pull_request: { head: { repo: { full_name: 'attacker/repo' } } } }),
+    )
+    const env = {
+      GITHUB_EVENT_NAME: 'pull_request',
+      GITHUB_EVENT_PATH: eventPath,
+      GITHUB_REPOSITORY: 'owner/repo',
+    }
+    expect(detectForkPr(env)).toBe(true)
+  })
+
+  it('GitLab fork MR (source ≠ target project) → fork', () => {
+    expect(
+      detectForkPr({
+        CI_MERGE_REQUEST_SOURCE_PROJECT_ID: '2',
+        CI_MERGE_REQUEST_PROJECT_ID: '1',
+      }),
+    ).toBe(true)
+  })
+
+  it('a plain push / non-CI run → trusted', () => {
+    expect(detectForkPr({})).toBe(false)
+    expect(resolveCacheTrust({})).toBe('trusted')
+    expect(resolveCacheTrust({ GITHUB_EVENT_NAME: 'push' })).toBe('trusted')
+  })
+
+  it('VX_CACHE_TRUST override wins over detection', async () => {
+    const eventPath = path.join(dir, 'event.json')
+    await writeFile(eventPath, JSON.stringify({ pull_request: { head: { repo: { fork: true } } } }))
+    expect(
+      resolveCacheTrust({
+        VX_CACHE_TRUST: 'trusted',
+        GITHUB_EVENT_NAME: 'pull_request',
+        GITHUB_EVENT_PATH: eventPath,
+        GITHUB_REPOSITORY: 'owner/repo',
+      }),
+    ).toBe('trusted')
+    expect(resolveCacheTrust({ VX_CACHE_TRUST: 'untrusted' })).toBe('untrusted')
   })
 })

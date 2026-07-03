@@ -22,6 +22,12 @@ export interface EnvironmentEntry {
   /** Bearer token sent on ingest POSTs and the WS delegation upgrade. */
   token?: string
   /**
+   * The UNTRUSTED (fork-PR) cache token for this environment. Presented in
+   * place of `token` on a detected fork-PR run — reads the trusted scope,
+   * writes only untrusted. Safe to commit.
+   */
+  prToken?: string
+  /**
    * Whether the backend capability may route EXECUTION here (default false).
    * Opt-in because delegation runs against `request.cwd` on the server — only
    * correct when the server shares (or mirrors) the filesystem.
@@ -104,12 +110,20 @@ function validateFile(parsed: unknown, p: string): EnvironmentsFile {
     if (typeof value !== 'object' || value === null) {
       throw new Error(`environment "${name}" is not an object in ${p}`)
     }
-    const raw = value as { url?: unknown; token?: unknown; delegate?: unknown }
+    const raw = value as {
+      url?: unknown
+      token?: unknown
+      prToken?: unknown
+      delegate?: unknown
+    }
     if (typeof raw.url !== 'string' || raw.url === '') {
       throw new Error(`environment "${name}" has no url in ${p}`)
     }
     if (raw.token !== undefined && typeof raw.token !== 'string') {
       throw new Error(`environment "${name}" has a non-string token in ${p}`)
+    }
+    if (raw.prToken !== undefined && typeof raw.prToken !== 'string') {
+      throw new Error(`environment "${name}" has a non-string prToken in ${p}`)
     }
     if (raw.delegate !== undefined && typeof raw.delegate !== 'boolean') {
       throw new Error(`environment "${name}" has a non-boolean delegate in ${p}`)
@@ -117,6 +131,7 @@ function validateFile(parsed: unknown, p: string): EnvironmentsFile {
     environments[name] = {
       url: raw.url,
       ...(raw.token !== undefined ? { token: raw.token } : {}),
+      ...(raw.prToken !== undefined ? { prToken: raw.prToken } : {}),
       ...(raw.delegate !== undefined ? { delegate: raw.delegate } : {}),
     }
   }

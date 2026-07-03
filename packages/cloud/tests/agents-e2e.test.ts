@@ -254,8 +254,9 @@ describe('distributed execution — the real thing', () => {
           expect(sink.completed.get(`${name}#build`)).toBe('success')
         }
 
-        // Artifacts: one upload per cacheable task in the serve store.
-        const stored = await readdir(path.join(ingestDir, 'artifacts'))
+        // Artifacts: one upload per cacheable task in the serve store. The
+        // token maps to the default/trusted scope.
+        const stored = await readdir(path.join(ingestDir, 'artifacts', 'default', 'trusted'))
         expect(stored.filter((f) => f.endsWith('.tar.zst'))).toHaveLength(5)
 
         // Materialization: the submitter's checkout has every declared

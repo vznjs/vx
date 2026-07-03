@@ -58,7 +58,12 @@ import {
   type ServerMessage,
   type TelemetrySink,
 } from '@vzn/vx'
-import { ArtifactStore, MAX_ARTIFACT_BYTES } from '../artifact-store.js'
+import {
+  ArtifactStore,
+  DEFAULT_PRINCIPAL,
+  MAX_ARTIFACT_BYTES,
+  type Principal,
+} from '../artifact-store.js'
 import { IngestStore } from '../ingest-store.js'
 import { AgentRegistry, SESSION_GC_INTERVAL_MS, type RegisteredAgent } from '../dist/registry.js'
 import { DistScheduler } from '../dist/scheduler.js'
@@ -78,8 +83,8 @@ import { handleMcpHttp } from './mcp-serve.js'
  * `agent:hello`.
  */
 type ServeWsData =
-  | { role: 'run'; scheduler?: DistScheduler }
-  | { role: 'agent'; agent?: RegisteredAgent }
+  | { role: 'run'; principal: Principal; scheduler?: DistScheduler }
+  | { role: 'agent'; principal: Principal; agent?: RegisteredAgent }
 
 /**
  * Default port for `vx-cloud serve`, used when neither `--port` nor the
@@ -216,6 +221,13 @@ export async function startServe(opts: {
    * transports can't set headers. No token → fully open (localhost default).
    */
   token?: string
+  /**
+   * The UNTRUSTED (fork-PR) bearer. A holder reads the trusted + untrusted
+   * scopes but writes ONLY the untrusted scope, so a fork-PR CI job can warm
+   * off `main`'s cache without being able to poison it. Safe to expose (env:
+   * VX_CLOUD_PR_TOKEN).
+   */
+  prToken?: string
   /** Server identity reported by `/v1/meta`. Defaults to the hostname. */
   name?: string
   /**
@@ -253,15 +265,28 @@ export async function startServe(opts: {
   // Constant-time compare: hash both sides to a fixed length, then
   // timingSafeEqual — no length leak, no early exit.
   const sha256 = (s: string): Buffer => createHash('sha256').update(s).digest()
-  const expectedDigest = opts.token !== undefined ? sha256(opts.token) : undefined
-  const tokenMatches = (candidate: string): boolean =>
-    expectedDigest !== undefined && timingSafeEqual(sha256(candidate), expectedDigest)
+  // Two tokens, two tiers (docs/design/cache-trust-scopes-2026-07.md): the
+  // main token is TRUSTED (read/write the trusted scope); the PR token is
+  // UNTRUSTED (read trusted+untrusted, write only untrusted). Both compare in
+  // constant time. No tokens → open serve, everyone is the default trusted
+  // principal (byte-identical to the pre-trust-scopes single scope).
+  const trustedDigest = opts.token !== undefined ? sha256(opts.token) : undefined
+  const prDigest = opts.prToken !== undefined ? sha256(opts.prToken) : undefined
+  const hasAuth = trustedDigest !== undefined || prDigest !== undefined
+  const digestEq = (candidate: string, expected: Buffer | undefined): boolean =>
+    expected !== undefined && timingSafeEqual(sha256(candidate), expected)
+  /** Map a presented token to its principal, or null when it matches none. */
+  const principalForToken = (candidate: string): Principal | null => {
+    if (digestEq(candidate, trustedDigest)) return { tier: 'trusted', bucket: 'default' }
+    if (digestEq(candidate, prDigest)) return { tier: 'untrusted', bucket: 'default' }
+    return null
+  }
 
   // Loopback by default: an open (tokenless) serve is only reachable from the
   // local machine, so a LAN attacker can't drive the run/agent channels. A
   // non-loopback bind is a deliberate hosted deployment and MUST carry a token.
   const host = opts.host ?? '127.0.0.1'
-  if (!isLoopbackHost(host) && expectedDigest === undefined) {
+  if (!isLoopbackHost(host) && !hasAuth) {
     throw new Error(
       `refusing to bind a non-loopback host (${host}) without a token: an unauthenticated serve on a reachable interface exposes arbitrary task execution — set --token / VX_CLOUD_TOKEN`,
     )
@@ -293,10 +318,14 @@ export async function startServe(opts: {
   // data surface it calls is gated below. Requests arriving over the unix
   // socket bypass the token entirely: the socket is chmod 0600, so the OS
   // file permissions ARE the auth (only this user can even open it).
-  function authorized(req: Request, url: URL, viaSocket: boolean): boolean {
-    if (viaSocket) return true
-    if (expectedDigest === undefined) return true
-    if (url.pathname === '/health' || url.pathname === '/v1/meta') return true
+  // Returns the request's authenticated Principal, or null (→ 401). A socket
+  // request or an open (no-token) serve is the default trusted principal;
+  // exempt/ungated paths (static UI, /health, /v1/meta) don't consume the
+  // principal so they also resolve to the default.
+  function authorized(req: Request, url: URL, viaSocket: boolean): Principal | null {
+    if (viaSocket) return DEFAULT_PRINCIPAL
+    if (!hasAuth) return DEFAULT_PRINCIPAL
+    if (url.pathname === '/health' || url.pathname === '/v1/meta') return DEFAULT_PRINCIPAL
     const isUpgrade = req.headers.get('upgrade')?.toLowerCase() === 'websocket'
     const gated =
       isUpgrade ||
@@ -306,10 +335,11 @@ export async function startServe(opts: {
       url.pathname === '/mcp' ||
       url.pathname.startsWith('/v1/') ||
       url.pathname.startsWith('/v8/')
-    if (!gated) return true
+    if (!gated) return DEFAULT_PRINCIPAL
     const header = req.headers.get('authorization')
-    if (header !== null && header.startsWith('Bearer ') && tokenMatches(header.slice(7))) {
-      return true
+    if (header !== null && header.startsWith('Bearer ')) {
+      const p = principalForToken(header.slice(7))
+      if (p !== null) return p
     }
     // Browser EventSource/WebSocket can't set headers, so ?token= is an
     // equivalent for the stream endpoints + the WS upgrade ONLY (the header
@@ -321,9 +351,12 @@ export async function startServe(opts: {
       url.pathname === '/stream'
     ) {
       const qt = url.searchParams.get('token')
-      if (qt !== null && tokenMatches(qt)) return true
+      if (qt !== null) {
+        const p = principalForToken(qt)
+        if (p !== null) return p
+      }
     }
-    return false
+    return null
   }
 
   // vx-cloud is INDEPENDENT of vx core: it NEVER opens a workspace cache.db.
@@ -339,6 +372,9 @@ export async function startServe(opts: {
   // core's VX_REMOTE_CACHE_URL (or a connected environment) at this serve
   // and the remote cache works with no separate cache server.
   const artifacts = new ArtifactStore(path.join(ingestDir, 'artifacts'))
+  // One-time: fold a pre-trust-scopes flat store into default/trusted/ so an
+  // existing single-tenant deployment keeps its warm cache after upgrade.
+  await artifacts.migrateLegacyFlatStore((m) => process.stderr.write(`[vx-cloud] ${m}\n`))
 
   // The distribution session registry ({workspaceId, session} → agents) +
   // its 60s idle-session sweep. In-memory by design: a serve restart
@@ -399,16 +435,19 @@ export async function startServe(opts: {
           v: 1,
           name: serveName,
           vx: VERSION,
-          auth: expectedDigest !== undefined ? 'token' : 'open',
+          auth: hasAuth ? 'token' : 'open',
           startedAt,
           // Count only — a pre-auth endpoint must not leak workspace names.
           workspaces: ingest.workspaceCount(),
           // Capability advertisement: this serve hosts /v8/artifacts, so a
           // connected environment can auto-wire the remote-cache rung.
           artifacts: true,
+          // Trust tiers are honored — a client can present a PR token.
+          trustTiers: true,
         })
       }
-      if (!authorized(req, url, viaSocket)) {
+      const principal = authorized(req, url, viaSocket)
+      if (principal === null) {
         return jsonResponse(
           { error: 'unauthorized' },
           { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } },
@@ -430,7 +469,7 @@ export async function startServe(opts: {
       // WS upgrade). The socket's role rides `ws.data`; the first message
       // must be `agent:hello`.
       if (url.pathname === '/v1/agents') {
-        if (srv.upgrade(req, { data: { role: 'agent' } })) return undefined
+        if (srv.upgrade(req, { data: { role: 'agent', principal } })) return undefined
         return jsonResponse({ error: '/v1/agents requires a WebSocket upgrade' }, { status: 426 })
       }
       // MCP — the AI-agent control plane (dev-flows design §10.3): JSON-RPC
@@ -442,7 +481,7 @@ export async function startServe(opts: {
       // The artifact store (Turbo wire; ?teamId/slug accepted by ignoring).
       {
         const m = /^\/v8\/artifacts\/([^/]+)$/.exec(url.pathname)
-        if (m) return artifacts.handle(req, decodeURIComponent(m[1]!)).then(withCors)
+        if (m) return artifacts.handle(req, decodeURIComponent(m[1]!), principal).then(withCors)
       }
       // Workspace scoping for the analytics routes (`?ws=<id>`, dev-flows
       // design §3.5) — resolved ONCE here. No param → the sole known
@@ -784,7 +823,7 @@ export async function startServe(opts: {
           }),
         )
       }
-      if (srv.upgrade(req, { data: { role: 'run' } })) return undefined
+      if (srv.upgrade(req, { data: { role: 'run', principal } })) return undefined
       // When --ui is set, serve the single-file dashboard for every non-API
       // GET. It's one self-contained HTML with a hash router, so every route
       // (/, /tasks, /cache, …) returns the same bytes.
@@ -879,7 +918,16 @@ export async function startServe(opts: {
           })
           return
         }
-        const scheduler = new DistScheduler({ submit, store: artifacts, send })
+        // Scope the store probe to the submitter's principal: a trusted
+        // submission prunes on trusted/<hash>; an untrusted one on
+        // untrusted ∪ trusted. The prune must never treat a hash warm in a
+        // scope this submission can't read as already-done.
+        const principal = ws.data?.role === 'run' ? ws.data.principal : DEFAULT_PRINCIPAL
+        const scopedStore = {
+          has: (h: string) => artifacts.has(h, principal),
+          storedDurationMs: (h: string) => artifacts.storedDurationMs(h, principal),
+        }
+        const scheduler = new DistScheduler({ submit, store: scopedStore, send })
         const bound = registry.beginSubmission(submit.workspaceId, submit.session, scheduler)
         if ('error' in bound) {
           send({ t: 'error', message: bound.error })
@@ -1007,6 +1055,7 @@ interface ServeArgs {
   open?: boolean
   ingestDir?: string
   token?: string
+  prToken?: string
   name?: string
   host?: string
   allowOrigins?: string[]
@@ -1038,6 +1087,13 @@ export function parseServeArgs(args: readonly string[]): ServeArgs {
     if (tv !== undefined) {
       if (tv === '') return { ...out, error: 'invalid --token: empty' }
       out.token = tv
+      continue
+    }
+    const ptv =
+      a === '--pr-token' ? args[++i] : a?.startsWith('--pr-token=') ? a.slice(11) : undefined
+    if (ptv !== undefined) {
+      if (ptv === '') return { ...out, error: 'invalid --pr-token: empty' }
+      out.prToken = ptv
       continue
     }
     const nv = a === '--name' ? args[++i] : a?.startsWith('--name=') ? a.slice(7) : undefined
@@ -1160,6 +1216,9 @@ export async function serveCmd(args: readonly string[]): Promise<number> {
   // Auth + identity: flag > env. No token → fully open (localhost default).
   const envToken = process.env['VX_CLOUD_TOKEN']
   const token = parsed.token ?? (envToken !== undefined && envToken !== '' ? envToken : undefined)
+  const envPrToken = process.env['VX_CLOUD_PR_TOKEN']
+  const prToken =
+    parsed.prToken ?? (envPrToken !== undefined && envPrToken !== '' ? envPrToken : undefined)
   const envName = process.env['VX_CLOUD_NAME']
   const name = parsed.name ?? (envName !== undefined && envName !== '' ? envName : undefined)
 
@@ -1198,6 +1257,7 @@ export async function serveCmd(args: readonly string[]): Promise<number> {
       ...(uiHtmlPath !== undefined ? { uiHtmlPath } : {}),
       ...(parsed.ingestDir !== undefined ? { ingestDir: parsed.ingestDir } : {}),
       ...(token !== undefined ? { token } : {}),
+      ...(prToken !== undefined ? { prToken } : {}),
       ...(name !== undefined ? { name } : {}),
       ...(host !== undefined ? { host } : {}),
       ...(allowedOrigins.length > 0 ? { allowedOrigins } : {}),
