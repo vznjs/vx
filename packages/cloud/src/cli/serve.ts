@@ -190,6 +190,10 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return withCors(Response.json(body, init))
 }
 
+function isLoopbackHost(h: string): boolean {
+  return h === '127.0.0.1' || h === 'localhost' || h === '::1' || h === '[::1]'
+}
+
 export async function startServe(opts: {
   root: string
   port?: number
@@ -222,6 +226,22 @@ export async function startServe(opts: {
    * socket left by a crashed serve is unlinked before binding.
    */
   socketPath?: string
+  /**
+   * TCP bind address. Defaults to `127.0.0.1` (loopback) — an
+   * unauthenticated serve must never be reachable from the network, since the
+   * `run`/`agent` WS channels execute arbitrary workspace tasks. Binding a
+   * non-loopback host (e.g. `0.0.0.0` for a hosted deployment) REQUIRES a
+   * token; startServe throws otherwise.
+   */
+  host?: string
+  /**
+   * Extra browser origins permitted to open the run/agent WS channels and the
+   * SSE streams (a hosted dashboard on a different origin than the serve).
+   * Same-origin and non-browser (no `Origin` header) clients are always
+   * allowed; every other cross-origin browser handshake is refused (CSWSH
+   * defense).
+   */
+  allowedOrigins?: readonly string[]
   onRun?: (request: RunRequest, ok: boolean) => void
 }): Promise<ServeServer> {
   // One registry for the service's whole lifetime — concurrent runs share
@@ -236,6 +256,35 @@ export async function startServe(opts: {
   const expectedDigest = opts.token !== undefined ? sha256(opts.token) : undefined
   const tokenMatches = (candidate: string): boolean =>
     expectedDigest !== undefined && timingSafeEqual(sha256(candidate), expectedDigest)
+
+  // Loopback by default: an open (tokenless) serve is only reachable from the
+  // local machine, so a LAN attacker can't drive the run/agent channels. A
+  // non-loopback bind is a deliberate hosted deployment and MUST carry a token.
+  const host = opts.host ?? '127.0.0.1'
+  if (!isLoopbackHost(host) && expectedDigest === undefined) {
+    throw new Error(
+      `refusing to bind a non-loopback host (${host}) without a token: an unauthenticated serve on a reachable interface exposes arbitrary task execution — set --token / VX_CLOUD_TOKEN`,
+    )
+  }
+
+  // Cross-origin WebSocket handshakes are NOT gated by the same-origin policy
+  // (CSWSH), so a malicious page a user visits could open ws://localhost:PORT
+  // and drive the run/agent channels = drive-by RCE. Browsers ALWAYS send an
+  // `Origin` on a WS/EventSource handshake; a CLI client (vx run delegation,
+  // an agent) sends none. Allow: no Origin (CLI), same-origin, or an
+  // explicitly configured origin. Reject every other cross-origin browser
+  // handshake.
+  const allowedOrigins = new Set<string>(opts.allowedOrigins ?? [])
+  const originAllowed = (req: Request, url: URL): boolean => {
+    const origin = req.headers.get('origin')
+    if (origin === null) return true
+    if (allowedOrigins.has(origin)) return true
+    try {
+      return new URL(origin).host === url.host
+    } catch {
+      return false
+    }
+  }
 
   // The single auth gate. Exempt: /health (probes/k8s) and /v1/meta (the
   // identity handshake `connect` needs BEFORE the user has proven a token —
@@ -364,6 +413,18 @@ export async function startServe(opts: {
           { error: 'unauthorized' },
           { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } },
         )
+      }
+      // CSWSH / drive-by defense: gate the state-changing WS channels and the
+      // live SSE streams on the Origin (a token, when set, is a second gate;
+      // this stands even for the tokenless local default a browser can reach).
+      // A socket request has no browser origin to check.
+      if (!viaSocket) {
+        const isUpgrade = req.headers.get('upgrade')?.toLowerCase() === 'websocket'
+        const isStream =
+          url.pathname === '/events' || url.pathname === '/v1/events' || url.pathname === '/stream'
+        if ((isUpgrade || isStream) && !originAllowed(req, url)) {
+          return jsonResponse({ error: 'origin not allowed' }, { status: 403 })
+        }
       }
       // Distribution agents rendezvous here (bearer-gated above like every
       // WS upgrade). The socket's role rides `ws.data`; the first message
@@ -860,6 +921,7 @@ export async function startServe(opts: {
   const maxRequestBodySize = MAX_ARTIFACT_BYTES + 1024 * 1024
   const server = Bun.serve({
     port: opts.port ?? 0,
+    hostname: host,
     fetch: makeFetch(false),
     websocket,
     maxRequestBodySize,
@@ -946,6 +1008,8 @@ interface ServeArgs {
   ingestDir?: string
   token?: string
   name?: string
+  host?: string
+  allowOrigins?: string[]
   /** `true` = enabled at the default/env path; a string = explicit path. */
   socket?: string | true
   error?: string
@@ -980,6 +1044,23 @@ export function parseServeArgs(args: readonly string[]): ServeArgs {
     if (nv !== undefined) {
       if (nv === '') return { ...out, error: 'invalid --name: empty' }
       out.name = nv
+      continue
+    }
+    const hv = a === '--host' ? args[++i] : a?.startsWith('--host=') ? a.slice(7) : undefined
+    if (hv !== undefined) {
+      if (hv === '') return { ...out, error: 'invalid --host: empty' }
+      out.host = hv
+      continue
+    }
+    const aov =
+      a === '--allow-origin'
+        ? args[++i]
+        : a?.startsWith('--allow-origin=')
+          ? a.slice(15)
+          : undefined
+    if (aov !== undefined) {
+      if (aov === '') return { ...out, error: 'invalid --allow-origin: empty' }
+      ;(out.allowOrigins ??= []).push(aov)
       continue
     }
     if (a === '--socket' || a?.startsWith('--socket=')) {
@@ -1082,6 +1163,19 @@ export async function serveCmd(args: readonly string[]): Promise<number> {
   const envName = process.env['VX_CLOUD_NAME']
   const name = parsed.name ?? (envName !== undefined && envName !== '' ? envName : undefined)
 
+  // Bind host: --host > VX_CLOUD_HOST > 127.0.0.1 (loopback). A non-loopback
+  // bind without a token is refused inside startServe.
+  const envHost = process.env['VX_CLOUD_HOST']
+  const host = parsed.host ?? (envHost !== undefined && envHost !== '' ? envHost : undefined)
+  // Extra allowed browser origins for the WS/SSE channels (a hosted dashboard
+  // on a different origin): --allow-origin (repeatable) + VX_CLOUD_ALLOW_ORIGIN
+  // (comma-separated).
+  const envOrigins = (process.env['VX_CLOUD_ALLOW_ORIGIN'] ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s !== '')
+  const allowedOrigins = [...(parsed.allowOrigins ?? []), ...envOrigins]
+
   // Unix-socket listener: `--socket [path]` > VX_CLOUD_SOCKET > off. A bare
   // `--socket` uses the env path when set, else the per-user default.
   const envSocket = process.env[SERVE_SOCKET_ENV]
@@ -1105,6 +1199,8 @@ export async function serveCmd(args: readonly string[]): Promise<number> {
       ...(parsed.ingestDir !== undefined ? { ingestDir: parsed.ingestDir } : {}),
       ...(token !== undefined ? { token } : {}),
       ...(name !== undefined ? { name } : {}),
+      ...(host !== undefined ? { host } : {}),
+      ...(allowedOrigins.length > 0 ? { allowedOrigins } : {}),
       ...(socketPath !== undefined ? { socketPath } : {}),
       onRun: (request, ok) => {
         process.stdout.write(`  ${ok ? '✓' : '✗'} ${request.tasks.join(', ')}\n`)
@@ -1112,6 +1208,12 @@ export async function serveCmd(args: readonly string[]): Promise<number> {
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
+    // A configuration refusal (e.g. non-loopback host without a token) carries
+    // its own actionable message; don't dress it up as a port-bind failure.
+    if (msg.startsWith('refusing to bind')) {
+      process.stderr.write(`vx serve: ${msg}\n`)
+      return 1
+    }
     process.stderr.write(
       `vx serve: could not bind port ${portResult.port}: ${msg}\n` +
         `  free the port, or pick another with --port <n> or ${SERVE_PORT_ENV}=<n>\n`,

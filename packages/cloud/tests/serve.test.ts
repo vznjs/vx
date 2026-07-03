@@ -237,6 +237,82 @@ describe('vx serve delegation', () => {
   })
 })
 
+describe('vx serve — network/auth hardening', () => {
+  it('refuses a non-loopback bind without a token', async () => {
+    const root = await makeWorkspace()
+    await expect(startServe({ root, host: '0.0.0.0' })).rejects.toThrow(/refusing to bind/i)
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('allows a non-loopback bind when a token is set', async () => {
+    const root = await makeWorkspace()
+    const server = await startServe({ root, host: '0.0.0.0', token: 'sekret', port: 0 })
+    try {
+      expect(server.origin).toContain('http://')
+      const res = await fetch(`${server.origin}/health`)
+      expect(res.ok).toBe(true)
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects a cross-origin WS upgrade (CSWSH) but allows same-origin / no-origin', async () => {
+    const root = await makeWorkspace()
+    const server = await startServe({ root })
+    try {
+      const wsUrl = server.origin.replace('http://', 'ws://')
+      // Cross-origin browser handshake → 403.
+      const evil = await fetch(server.origin, {
+        headers: {
+          Upgrade: 'websocket',
+          Connection: 'Upgrade',
+          Origin: 'http://evil.example',
+          'Sec-WebSocket-Key': 'x',
+          'Sec-WebSocket-Version': '13',
+        },
+      })
+      expect(evil.status).toBe(403)
+      // Same-origin browser handshake is NOT rejected on the origin gate (it
+      // proceeds to the upgrade). A real WS client connects fine.
+      const ok = await new Promise<boolean>((resolve) => {
+        const sock = new WebSocket(wsUrl)
+        sock.addEventListener('open', () => {
+          sock.close()
+          resolve(true)
+        })
+        sock.addEventListener('error', () => resolve(false))
+      })
+      expect(ok).toBe(true)
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('allows a configured cross-origin via allowedOrigins', async () => {
+    const root = await makeWorkspace()
+    const server = await startServe({ root, allowedOrigins: ['http://dash.example'] })
+    try {
+      const res = await fetch(server.origin, {
+        headers: {
+          Upgrade: 'websocket',
+          Connection: 'Upgrade',
+          Origin: 'http://dash.example',
+          'Sec-WebSocket-Key': 'x',
+          'Sec-WebSocket-Version': '13',
+        },
+      })
+      // Not a 403 origin refusal (the upgrade is attempted; without a real WS
+      // client Bun answers 426/501, never 403).
+      expect(res.status).not.toBe(403)
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('vx serve /v1/* metrics API', () => {
   it('serves runs / invocations / cache stats / history after a delegated run', async () => {
     const root = await makeWorkspace()
@@ -592,6 +668,16 @@ describe('parseServeArgs', () => {
     const { parseServeArgs } = await import('../src/cli/serve.js')
     expect(parseServeArgs(['--ingest-dir', '/data']).ingestDir).toBe('/data')
     expect(parseServeArgs(['--ingest-dir=/d']).ingestDir).toBe('/d')
+  })
+
+  it('parses --host and repeatable --allow-origin', async () => {
+    const { parseServeArgs } = await import('../src/cli/serve.js')
+    expect(parseServeArgs(['--host', '0.0.0.0']).host).toBe('0.0.0.0')
+    expect(parseServeArgs(['--host=::']).host).toBe('::')
+    expect(parseServeArgs(['--host', '']).error).toMatch(/invalid --host/)
+    expect(
+      parseServeArgs(['--allow-origin', 'http://a', '--allow-origin=http://b']).allowOrigins,
+    ).toEqual(['http://a', 'http://b'])
   })
 })
 
