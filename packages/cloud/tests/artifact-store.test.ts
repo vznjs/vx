@@ -91,12 +91,15 @@ describe('vx serve /v8/artifacts — the Turbo wire', () => {
     const get = await fetch(`${server.origin}/v8/artifacts/${hash}`, { headers: auth })
     expect(get.status).toBe(200)
     expect(get.headers.get('x-artifact-tag')).toBe('dGVzdC10YWc=')
+    // The original task duration rides back too, so a remote hit records
+    // honest analytics instead of durationMs 0.
+    expect(get.headers.get('x-artifact-duration')).toBe('42')
     expect(Number(get.headers.get('content-length'))).toBe(body.byteLength)
     expect(new Uint8Array(await get.arrayBuffer())).toEqual(body)
 
-    // The backing file is the flat `<hash>.tar.zst` + `<hash>.tag` layout.
+    // The backing files are the flat `<hash>.tar.zst` + sidecar layout.
     const files = await readdir(path.join(dir, 'artifacts'))
-    expect(files.sort()).toEqual([`${hash}.tag`, `${hash}.tar.zst`])
+    expect(files.sort()).toEqual([`${hash}.duration`, `${hash}.tag`, `${hash}.tar.zst`])
   })
 
   it('omits x-artifact-tag on GET when the PUT carried none', async () => {
@@ -231,11 +234,12 @@ describe('e2e: vx run against the serve-hosted artifact store', () => {
         expect(first.outcomes[0]!.status).toBe('success')
 
         // The write-through upload landed as flat files under the ingest
-        // root — artifact + the signing-tag sidecar.
+        // root — artifact + the signing-tag + duration sidecars.
         const files = (await readdir(path.join(ingestDir, 'artifacts'))).sort()
-        expect(files.length).toBe(2)
-        expect(files[0]!.endsWith('.tag')).toBe(true)
-        expect(files[1]!.endsWith('.tar.zst')).toBe(true)
+        expect(files.length).toBe(3)
+        expect(files[0]!.endsWith('.duration')).toBe(true)
+        expect(files[1]!.endsWith('.tag')).toBe(true)
+        expect(files[2]!.endsWith('.tar.zst')).toBe(true)
 
         // Wipe the local cache: the serve is now the only source of truth.
         await rm(path.join(root, '.vx'), { recursive: true, force: true })

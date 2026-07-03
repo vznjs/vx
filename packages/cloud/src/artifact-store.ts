@@ -32,6 +32,10 @@ export class ArtifactStore {
     return path.join(this.dir, `${hash}.tag`)
   }
 
+  private durationPath(hash: string): string {
+    return path.join(this.dir, `${hash}.duration`)
+  }
+
   /**
    * Handle one `/v8/artifacts/:hash` request (HEAD / GET / PUT). The
    * optional `?teamId=` / `?slug=` tenancy params Turbo clients send are
@@ -55,6 +59,12 @@ export class ArtifactStore {
       const headers: Record<string, string> = { 'Content-Type': 'application/octet-stream' }
       const tagFile = Bun.file(this.tagPath(hash))
       if (await tagFile.exists()) headers['x-artifact-tag'] = (await tagFile.text()).trim()
+      // Original task duration, so a remote hit records honest analytics on
+      // the restoring machine instead of durationMs 0.
+      const durationFile = Bun.file(this.durationPath(hash))
+      if (await durationFile.exists()) {
+        headers['x-artifact-duration'] = (await durationFile.text()).trim()
+      }
       // Bun.file responses stream with the Content-Length set from the file
       // size — exactly the contract RemoteCache's body read relies on.
       return new Response(file, { headers })
@@ -82,6 +92,10 @@ export class ArtifactStore {
       }
       const tag = req.headers.get('x-artifact-tag')
       if (tag !== null) await Bun.write(this.tagPath(hash), tag)
+      const duration = req.headers.get('x-artifact-duration')
+      if (duration !== null && /^\d+$/.test(duration)) {
+        await Bun.write(this.durationPath(hash), duration)
+      }
       return Response.json({ urls: [] })
     }
 
