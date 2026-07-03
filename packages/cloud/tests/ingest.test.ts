@@ -19,6 +19,8 @@ function summary(runId: string, over: Partial<RunSummaryRecord['run']> = {}): Ru
     run: {
       runId,
       vxVersion: '0.0.0',
+      workspaceId: 'ws-test',
+      workspaceName: 'fixture-ws',
       command: 'vx run build',
       requestedTasks: ['build'],
       cachePolicy: 'lR,lW,rR,rW',

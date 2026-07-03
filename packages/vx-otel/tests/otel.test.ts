@@ -24,6 +24,8 @@ import { OtelSink } from '../src/sink.js'
 const RUN: RunContextRecord = {
   runId: 'run-1',
   vxVersion: '1.2.3',
+  workspaceId: 'ws-test',
+  workspaceName: 'fixture-ws',
   command: 'vx run build',
   requestedTasks: ['build'],
   cachePolicy: 'lR,lW,rR,rW',

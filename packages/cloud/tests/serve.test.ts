@@ -43,6 +43,8 @@ function mkSummary(
     run: {
       runId,
       vxVersion: '0.0.0',
+      workspaceId: 'ws-test',
+      workspaceName: 'fixture-ws',
       command: `vx run ${task}`,
       requestedTasks: [task],
       cachePolicy: 'lR,lW,rR,rW',

@@ -42,6 +42,8 @@ function mkOutcome(node: TaskNode, over: Partial<TaskOutcome> = {}): TaskOutcome
 const RUN: RunContextRecord = {
   runId: 'run-1',
   vxVersion: '0.0.0',
+  workspaceId: 'ws-test',
+  workspaceName: 'fixture-ws',
   command: 'vx run build',
   requestedTasks: ['build'],
   cachePolicy: 'lR,lW,rR,rW',
@@ -416,6 +418,46 @@ describe('telemetry — end-to-end through run()', () => {
       expect(tel.summary!.exitOk).toBe(true)
       expect(tel.summary!.tasks[0]!.task).toBe('hello')
       expect(tel.summary!.run.commitSha).not.toBeNull()
+    } finally {
+      rmSync(workspaceRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('RunOptions.telemetrySinks attaches a sink without any plugin — the embedder seam', async () => {
+    const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'vx-telemetry-opt-'))
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'package.json'),
+        JSON.stringify({ name: 'root', workspaces: ['pkg-a'] }),
+      )
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/package.json'),
+        JSON.stringify({ name: 'pkg-a' }),
+      )
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: { hello: { exec: { command: 'echo hi' } } } }`,
+      )
+      // Deliberately NO vx.workspace.* — zero plugins; the option is the
+      // only telemetry source (how the serve records delegated runs).
+      await gitInit(workspaceRoot)
+      let got: RunSummaryRecord | null = null
+      const summary = await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['hello'],
+        log: makeSilentLogger(),
+        handleSignals: false,
+        telemetrySinks: [{ onRunSummary: (s) => (got = s) }],
+      })
+      expect(summary.ok).toBe(true)
+      expect(got).not.toBeNull()
+      const rec = got as unknown as RunSummaryRecord
+      expect(rec.v).toBe(TELEMETRY_SCHEMA_VERSION)
+      // v2: workspace identity present (this fixture has no remote, so it
+      // comes from the persisted .vx/workspace-id salt).
+      expect(rec.run.workspaceId).toMatch(/^[0-9a-f]{16}$/)
+      expect(rec.run.workspaceName.length).toBeGreaterThan(0)
     } finally {
       rmSync(workspaceRoot, { recursive: true, force: true })
     }

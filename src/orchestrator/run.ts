@@ -35,7 +35,12 @@ import { detectColors } from './colors.js'
 import { formatPersistentList } from './framed-output.js'
 import { plan, type RunPlan } from './plan.js'
 import { prepareRun } from './prepare.js'
-import { captureGitContext, captureHostContext, detectCi } from './run-context.js'
+import {
+  captureGitContext,
+  captureHostContext,
+  captureWorkspaceIdentity,
+  detectCi,
+} from './run-context.js'
 import { startRemotePrefetch } from './remote-prefetch.js'
 import { startLocalShortCircuit, type ShortCircuit } from './local-shortcircuit.js'
 
@@ -232,7 +237,12 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // so a plain run does ZERO extra work: no record allocation, no bus
     // subscriber, no summary building. The hot path stays off-limits.
     let runContextRecord: RunContextRecord | undefined
-    if (prepared.workspaceConfig?.plugins && prepared.workspaceConfig.plugins.length > 0) {
+    const hasPlugins =
+      prepared.workspaceConfig?.plugins !== undefined && prepared.workspaceConfig.plugins.length > 0
+    if (hasPlugins || options.telemetrySinks !== undefined) {
+      // Workspace identity (telemetry v2): one git spawn, paid only when a
+      // telemetry consumer can exist — a plain run never reaches here.
+      const wsIdentity = captureWorkspaceIdentity(workspaceRoot)
       runContextRecord = {
         runId,
         vxVersion: VERSION,
@@ -249,13 +259,16 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         host: hostContext.host,
         os: hostContext.os,
         arch: hostContext.arch,
+        workspaceId: wsIdentity.id,
+        workspaceName: wsIdentity.name,
         tags: options.tags ?? {},
       }
       telemetry = await subscribeTelemetry(
-        prepared.workspaceConfig.plugins as readonly VxPlugin[],
+        (prepared.workspaceConfig?.plugins ?? []) as readonly VxPlugin[],
         bus,
         { workspaceRoot, cacheDir, warn: (m: string) => log.status(m) },
         runContextRecord,
+        options.telemetrySinks,
       )
     }
 

@@ -2,7 +2,13 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { captureGitContext, captureHostContext, detectCi } from '../src/orchestrator/run-context.js'
+import {
+  captureGitContext,
+  captureHostContext,
+  captureWorkspaceIdentity,
+  detectCi,
+  normalizeRemoteUrl,
+} from '../src/orchestrator/run-context.js'
 
 function git(cwd: string, args: string[]): void {
   const proc = Bun.spawnSync({ cmd: ['git', ...args], cwd, stdout: 'pipe', stderr: 'pipe' })
@@ -96,5 +102,60 @@ describe('captureHostContext', () => {
     // host may be null on a locked-down box, but on a normal runner it's
     // a non-empty string.
     if (ctx.host !== null) expect(ctx.host.length).toBeGreaterThan(0)
+  })
+})
+
+describe('normalizeRemoteUrl', () => {
+  it('reduces every common form of the same repo to one string', () => {
+    const want = 'github.com/vznjs/vx'
+    expect(normalizeRemoteUrl('git@github.com:vznjs/vx.git')).toBe(want)
+    expect(normalizeRemoteUrl('https://github.com/vznjs/vx.git')).toBe(want)
+    expect(normalizeRemoteUrl('https://github.com/vznjs/vx')).toBe(want)
+    expect(normalizeRemoteUrl('ssh://git@github.com/vznjs/vx.git')).toBe(want)
+    expect(normalizeRemoteUrl('HTTPS://user:pass@GitHub.com/vznjs/vx/')).toBe(want)
+  })
+})
+
+describe('captureWorkspaceIdentity', () => {
+  let dir: string
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-wsid-'))
+  })
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  const git = (...args: string[]): void => {
+    const p = Bun.spawnSync({ cmd: ['git', '-C', dir, ...args], stdout: 'pipe', stderr: 'pipe' })
+    if (p.exitCode !== 0) throw new Error(new TextDecoder().decode(p.stderr))
+  }
+
+  it('derives the SAME id from ssh and https remotes of one repo', () => {
+    git('init', '-q')
+    git('remote', 'add', 'origin', 'git@github.com:vznjs/vx.git')
+    const a = captureWorkspaceIdentity(dir)
+    git('remote', 'set-url', 'origin', 'https://github.com/vznjs/vx.git')
+    const b = captureWorkspaceIdentity(dir)
+    expect(a.id).toBe(b.id)
+    expect(a.name).toBe('vx')
+    expect(a.id).toMatch(/^[0-9a-f]{16}$/)
+  })
+
+  it('no remote → persists a salt in .vx/workspace-id and stays stable', async () => {
+    git('init', '-q')
+    const a = captureWorkspaceIdentity(dir)
+    const b = captureWorkspaceIdentity(dir)
+    expect(a.id).toBe(b.id)
+    expect(a.name).toBe(path.basename(dir))
+    const salt = await Bun.file(path.join(dir, '.vx', 'workspace-id')).text()
+    expect(salt.trim().length).toBeGreaterThan(0)
+  })
+
+  it('never throws outside a git repo', () => {
+    const identity = captureWorkspaceIdentity(dir)
+    expect(identity.id).toMatch(/^[0-9a-f]{16}$/)
+    expect(identity.name).toBe(path.basename(dir))
   })
 })

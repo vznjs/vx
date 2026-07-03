@@ -4,7 +4,10 @@
 // unset env degrades each field to null and NEVER throws. Telemetry must
 // not be able to fail a build.
 
+import fs from 'node:fs'
 import os from 'node:os'
+import path from 'node:path'
+import { ulid, xxh3hex } from '../util/index.js'
 
 export interface GitContext {
   /** `git rev-parse HEAD`, or null outside a repo / on failure. */
@@ -98,4 +101,79 @@ export function captureHostContext(): HostContext {
     host = null
   }
   return { host, os: process.platform, arch: process.arch }
+}
+
+export interface WorkspaceIdentity {
+  /** Stable 16-hex id — same for every checkout of the same repo. */
+  id: string
+  /** Human name for switchers/badges: the repo (or root dir) basename. */
+  name: string
+}
+
+/**
+ * Normalize a git remote URL so every checkout of the same repository
+ * derives the SAME workspace id: `git@github.com:o/r.git`,
+ * `ssh://git@github.com/o/r`, and `https://github.com/o/r.git` all
+ * reduce to `github.com/o/r`.
+ */
+export function normalizeRemoteUrl(raw: string): string {
+  let s = raw.trim().toLowerCase()
+  s = s.replace(/^[a-z+]+:\/\//, '') // protocol
+  s = s.replace(/^[^@/]+@/, '') // user[:pass]@
+  s = s.replace(/:(\d+\/)/, '/$1') // :port/ → /
+  s = s.replace(/:/, '/') // scp-style host:path
+  s = s.replace(/\.git$/, '').replace(/\/+$/, '')
+  return s
+}
+
+/**
+ * Stable workspace identity for the multi-workspace server story
+ * (telemetry schema v2). Derivation ladder:
+ *   1. git remote origin URL, normalized → xxh3 (same id from any
+ *      machine's checkout of the same repo);
+ *   2. no remote → a salt persisted at `<root>/.vx/workspace-id` (the
+ *      checkout keeps a stable identity across runs; `.vx/` is already
+ *      gitignored infrastructure);
+ *   3. unwritable `.vx/` → the root path itself (stable per machine).
+ * One `git` spawn behind try/catch; call sites gate on telemetry being
+ * active so a plain run never pays it. Never throws.
+ */
+export function captureWorkspaceIdentity(workspaceRoot: string): WorkspaceIdentity {
+  const base = workspaceRoot.replace(/\/+$/, '').split('/').pop() || 'workspace'
+  try {
+    const proc = Bun.spawnSync({
+      // `config --get`, NOT `remote get-url`: get-url applies insteadOf
+      // rewrites, so two developers mirroring the same repo through
+      // different proxies would derive different workspace ids. The raw
+      // configured URL is the identity.
+      cmd: ['git', '-C', workspaceRoot, 'config', '--get', 'remote.origin.url'],
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+    if (proc.exitCode === 0) {
+      const url = new TextDecoder().decode(proc.stdout).trim()
+      if (url.length > 0) {
+        const normalized = normalizeRemoteUrl(url)
+        const name = normalized.split('/').pop() || base
+        return { id: xxh3hex(normalized), name }
+      }
+    }
+  } catch {
+    // git unavailable — fall through to the salt.
+  }
+  try {
+    const saltPath = path.join(workspaceRoot, '.vx', 'workspace-id')
+    let salt: string
+    try {
+      salt = fs.readFileSync(saltPath, 'utf8').trim()
+      if (salt.length === 0) throw new Error('empty')
+    } catch {
+      salt = ulid()
+      fs.mkdirSync(path.dirname(saltPath), { recursive: true })
+      fs.writeFileSync(saltPath, salt + '\n')
+    }
+    return { id: xxh3hex(salt), name: base }
+  } catch {
+    return { id: xxh3hex(workspaceRoot), name: base }
+  }
 }

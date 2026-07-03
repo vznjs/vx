@@ -20,7 +20,7 @@ import type { TaskStatus } from '../graph/index.js'
 import type { RunEvent, RunEventSubscriber } from './events.js'
 
 /** Bumped when the record shape changes. Readers MUST check `v`. */
-export const TELEMETRY_SCHEMA_VERSION = 1
+export const TELEMETRY_SCHEMA_VERSION = 2
 
 /** Where a task's result came from, derived ONCE in core from the status. */
 export type CacheSource = 'miss' | 'local' | 'remote' | 'none'
@@ -60,6 +60,14 @@ export interface RunContextRecord {
   cachePolicy: string
   concurrency: number
   flow: 'focused' | 'broad' | null
+  /**
+   * Stable workspace identity (v2) — the multi-workspace server key.
+   * Derived from the normalized git remote (any checkout of the same
+   * repo → same id); see run-context.ts captureWorkspaceIdentity. A v1
+   * consumer synthesizes 'default' for pushes that predate it.
+   */
+  workspaceId: string
+  workspaceName: string
   // git / CI / host — straight from run-context.ts.
   commitSha: string | null
   branch: string | null

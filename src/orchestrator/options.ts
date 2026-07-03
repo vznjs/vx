@@ -5,6 +5,7 @@
 import type { CachePolicy } from '../cache/index.js'
 import type { TaskOutcome } from '../graph/index.js'
 import type { EventBus } from './events.js'
+import type { TelemetrySink } from './telemetry.js'
 import type { Logger } from './logger.js'
 
 export interface RunOptions {
@@ -102,6 +103,16 @@ export interface RunOptions {
    * label. CLI parsing is the CLI's job; the orchestrator just records.
    */
   tags?: Record<string, string>
+  /**
+   * Additional observe-only telemetry sinks, merged with whatever the
+   * workspace plugins contribute. The embedder seam: a host executing
+   * runs on behalf of others (vx-cloud serve recording delegated runs
+   * into its ingest store) attaches a sink without needing a workspace
+   * plugin. Undefined → zero cost, identical to before; the telemetry
+   * host's zero-sink invariant still applies when both sources are
+   * empty.
+   */
+  telemetrySinks?: readonly TelemetrySink[]
   /**
    * The raw command string for the `invocations` row (e.g.
    * `'vx run build test --all'`). When absent, run() falls back to

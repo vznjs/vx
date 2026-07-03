@@ -205,6 +205,8 @@ function fakeSummary(): RunSummaryRecord {
     run: {
       runId: 'run-xyz',
       vxVersion: '0.0.0',
+      workspaceId: 'ws-test',
+      workspaceName: 'fixture-ws',
       command: 'vx run hello',
       requestedTasks: ['hello'],
       cachePolicy: 'lR,lW,rR,rW',

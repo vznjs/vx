@@ -44,8 +44,9 @@ export async function subscribeTelemetry(
   bus: EventBus,
   ctx: TelemetryContext,
   run: RunContextRecord,
+  extraSinks?: readonly TelemetrySink[],
 ): Promise<TelemetryHandle | undefined> {
-  const sinks: TelemetrySink[] = []
+  const sinks: TelemetrySink[] = extraSinks === undefined ? [] : [...extraSinks]
   for (const plugin of plugins) {
     if (plugin.telemetry === undefined) continue
     let result
