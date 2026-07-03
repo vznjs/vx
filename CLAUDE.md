@@ -187,6 +187,46 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-03**: **vx agents SHIPPED — session-keyed distributed task
+  execution (Nx-DTE equivalent) on the connected serve** (`743aa47`;
+  design `docs/design/distributed-execution-2026-07.md`, the review Phase
+  4-5 was fenced behind; owner: "continue"). **The correctness law
+  (§6):** an agent executes each assignment as a scoped core `run()` of
+  the exact task WITH its dep closure — deps restore as warm
+  `cache-hit-remote` from the serve's artifact store, so the agent's
+  saved key equals the full-run key BY INDUCTION. The
+  `excludeDependencies:'all'` alternative is provably wrong (dropping
+  dep edges empties the upstream-hash fold → artifacts upload under keys
+  no full run derives) — pinned by the §6.3 guard test in BOTH
+  directions. **Shape:** serve hosts an in-memory session registry
+  (`/v1/agents` WS behind the bearer; sessions keyed
+  {workspaceId, session}; commitSha enforced at pairing — mismatches
+  refused naming both SHAs; 15-min GC); scheduler store-PRUNES stable
+  hashes already in the serve's own artifact store (one local stat —
+  warm tasks execute NOWHERE) and reassigns on agent death;
+  `vx-cloud agent --url <serve>` = same-checkout contract (dirty tree
+  refused; session from VX_AGENT_SESSION > CI env > 'local');
+  submission = VX_CLOUD_DISTRIBUTE via the cloud() backend rung, and
+  the submitter SELF-REGISTERS as a session agent so zero remote agents
+  degrades to a loud local run, never a deadlock; hard gates
+  (forwardArgs, dirty tree, non-remote cache policy, persistent) fall
+  back local with a reason; outputs materialize on the submitter via
+  targeted get+cleanOutputs+restoreOutputs. The ephemeral
+  `vx-cloud coordinator`/`worker` verbs + core `workerExecute` are
+  RETIRED; protocol-dist v1 (assignment = bare taskId, outcomes =
+  OutcomeView). Core façade +deriveStableKeys/+captureGitContext/
+  +captureWorkspaceIdentity/+cleanOutputs. **Gotcha for the record:**
+  the repo's bare `dist` gitignore/lint-ignore silently swallowed the
+  new `packages/cloud/src/dist/` module — `!packages/cloud/src/dist`
+  negations added to .gitignore/.oxfmtrc/.oxlintrc. Verified by two
+  REAL e2e (serve + two agent subprocesses on same-commit clones:
+  placement across both, streamed logs, warm re-submission assigns
+  nothing, kill-mid-task reassigns). Repo suite 1206 pass / 0 fail. No
+  CACHE_VERSION/SCHEMA bump. KNOWN-OPEN (§13): remote agents run
+  live-eval + full cache policy (per-request policy = small protocol
+  addition); Helm chart still names the retired verbs; cross-run
+  queueing/fairness + autoscaling remain non-goals.
+
 - **2026-07-03**: **The connected-server phases shipped — telemetry v2
   workspace identity, multi-workspace serve, delegation self-ingest, MCP
   endpoint, unix socket, artifact store** (owner: "continue until whole my
