@@ -9,7 +9,7 @@ import { type JSX, ErrorBoundary, createMemo, createResource } from 'solid-js'
 import { useParams } from '@solidjs/router'
 import { nestedToFlat } from '@json-render/core'
 import type { Spec } from '@json-render/solid'
-import { getCapabilitiesSignal } from '../api.ts'
+import { getCapabilitiesSignal, getConnectionKey } from '../api.ts'
 import { Dash } from './renderer.tsx'
 import { SOURCES } from './data.ts'
 
@@ -48,9 +48,13 @@ export function jsonPage(view: JsonView): () => JSX.Element {
       for (const [k, v] of Object.entries(params)) o[k] = decodeURIComponent(String(v))
       return o
     })
+    // Keyed on route params AND the connection key (origin|token|workspace) so
+    // switching server or workspace re-fetches every source in place — the
+    // fetchers read the current connection from api.ts at call time.
+    const source = createMemo(() => ({ params: decoded(), conn: getConnectionKey() }))
     const resources = sources.map(([key, src]) => {
       const fn = SOURCES[src]
-      const [res] = createResource(decoded, (p) => (fn ? fn(p) : Promise.resolve(undefined)))
+      const [res] = createResource(source, (s) => (fn ? fn(s.params) : Promise.resolve(undefined)))
       return { key, res }
     })
     const state = createMemo<Record<string, unknown>>(() => {

@@ -39,7 +39,7 @@ function mkSummary(
   // Recent by default so 24h-windowed queries (cache stats, hit split) see it.
   const at = over.at ?? Date.now()
   return {
-    v: 1,
+    v: 2,
     run: {
       runId,
       vxVersion: '0.0.0',
@@ -154,6 +154,42 @@ describe('vx serve delegation', () => {
     } finally {
       await server.stop()
       await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('self-ingests a delegated run into the serve history (workspace-routed)', async () => {
+    const root = await makeWorkspace()
+    const ingestDir = await mkdtemp(path.join(tmpdir(), 'vx-selfingest-'))
+    const server = await startServe({ root, ingestDir })
+    try {
+      const backend = serviceBackend(server.origin, captureLogger([]))
+      const result = await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
+      expect(result.ok).toBe(true)
+
+      // The run landed in the serve's OWN store, under the executed run's
+      // captured workspace identity (salt-derived — the fixture repo has no
+      // remote), not via any HTTP push.
+      const wss = (await (await fetch(`${server.origin}/v1/workspaces`)).json()) as {
+        workspaces: { id: string; name: string; runCount: number }[]
+      }
+      expect(wss.workspaces.length).toBe(1)
+      const ws = wss.workspaces[0]!
+      expect(ws.id).toMatch(/^[0-9a-f]{16}$/)
+      expect(ws.runCount).toBe(1)
+
+      // Sole workspace → the un-scoped read finds it; ?ws= scopes explicitly.
+      const runs = (await (await fetch(`${server.origin}/v1/runs`)).json()) as {
+        runs: { runId: string; task: string }[]
+      }
+      expect(runs.runs.some((r) => r.task === 'hello')).toBe(true)
+      const scoped = (await (await fetch(`${server.origin}/v1/runs?ws=${ws.id}`)).json()) as {
+        runs: { runId: string }[]
+      }
+      expect(scoped.runs.map((r) => r.runId)).toEqual(runs.runs.map((r) => r.runId))
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+      await rm(ingestDir, { recursive: true, force: true })
     }
   })
 

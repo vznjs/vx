@@ -56,6 +56,7 @@ import {
   type RunRequest,
   type RunSummaryRecord,
   type ServerMessage,
+  type TelemetrySink,
 } from '@vzn/vx'
 import { IngestStore } from '../ingest-store.js'
 import { serveInfoPath } from '../serve-info.js'
@@ -108,6 +109,7 @@ async function executeRequest(
   send: (message: ServerMessage) => void,
   request: RunRequest,
   inflight: Map<string, Promise<void>>,
+  telemetrySinks: readonly TelemetrySink[],
 ): Promise<boolean> {
   const bus = createEventBus()
   bus.subscribe(wireForwarder((event) => send({ t: 'event', event })))
@@ -122,6 +124,7 @@ async function executeRequest(
       // The service owns signal disposition for its whole lifetime; a
       // delegated run must never exit the process out from under it.
       handleSignals: false,
+      telemetrySinks,
     })
     send({
       t: 'result',
@@ -246,7 +249,17 @@ export async function startServe(opts: {
     opts.ingestDir ?? path.join(opts.root, '.vx', 'cloud-ingest'),
     (m) => process.stderr.write(`[vx-cloud] ${m}\n`),
   )
-  const readDb = (): ReturnType<IngestStore['db']> => ingest.db()
+
+  // Delegated runs land in the serve's OWN history — before this sink they
+  // never did (the plugin's pid-guard rightly declines the HTTP self-push,
+  // and nothing replaced it). An observe-only option sink records the
+  // summary the executed run itself captured; workspace routing rides the
+  // summary's own identity. emitSummary is crash-isolated in core, so an
+  // ingest failure can never fail a delegated run.
+  const selfIngestSink: TelemetrySink = {
+    name: 'vx-cloud/self-ingest',
+    onRunSummary: (summary) => void ingest.ingest(summary),
+  }
 
   // Read-only event subscribers (SSE / NDJSON). Each callback gets every
   // event from every concurrent run as a notification envelope so a `curl`
@@ -286,6 +299,8 @@ export async function startServe(opts: {
             vx: VERSION,
             auth: expectedDigest !== undefined ? 'token' : 'open',
             startedAt,
+            // Count only — a pre-auth endpoint must not leak workspace names.
+            workspaces: ingest.workspaceCount(),
           })
         }
         if (!authorized(req, url)) {
@@ -294,6 +309,13 @@ export async function startServe(opts: {
             { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } },
           )
         }
+        // Workspace scoping for the analytics routes (`?ws=<id>`, dev-flows
+        // design §3.5) — resolved ONCE here. No param → the sole known
+        // workspace when exactly one exists, else `default`, so a
+        // single-workspace serve behaves exactly like the pre-multi-workspace
+        // one and every existing client/bookmark keeps working.
+        const wsParam = url.searchParams.get('ws')
+        const readDb = () => ingest.db(wsParam ?? ingest.defaultWorkspaceId())!
         // Capability handshake — what protocol version + channels + RPCs.
         if (url.pathname === '/version') {
           return jsonResponse({
@@ -333,10 +355,24 @@ export async function startServe(opts: {
             }
           })()
         }
+        // The workspace list (id, name, lastSeenAt, runCount) — feeds the UI
+        // switcher. Behind the token gate like every /v1 read.
+        if (url.pathname === '/v1/workspaces') {
+          return jsonResponse({ workspaces: ingest.workspaces() })
+        }
+        // An explicitly-requested unknown workspace 404s before any route
+        // logic runs; a known one is lazily opened by the same probe.
+        if (
+          wsParam !== null &&
+          url.pathname.startsWith('/v1/') &&
+          ingest.db(wsParam) === undefined
+        ) {
+          return jsonResponse({ error: `unknown workspace: ${wsParam}` }, { status: 404 })
+        }
         // -----------------------------------------------------------------
-        // Metrics HTTP surface — JSON read APIs over the selected store
-        // (local cache.db by default, the ingest store when hosted). The
-        // dashboard SPA (packages/cloud/ui) calls these directly.
+        // Metrics HTTP surface — JSON read APIs over the workspace-resolved
+        // ingest store. The dashboard SPA (packages/cloud/ui) calls these
+        // directly.
         // -----------------------------------------------------------------
         if (url.pathname === '/v1/runs') {
           const params = url.searchParams
@@ -655,7 +691,7 @@ export async function startServe(opts: {
               // client vanished mid-run; the run still completes server-side
             }
           }
-          const ok = await executeRequest(send, message.request, inflight)
+          const ok = await executeRequest(send, message.request, inflight, [selfIngestSink])
           opts.onRun?.(message.request, ok)
         },
       },

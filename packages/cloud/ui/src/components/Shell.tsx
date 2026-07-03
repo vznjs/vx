@@ -1,4 +1,4 @@
-import { createEffect, createResource, createSignal, onCleanup, onMount, Show, type ParentComponent } from 'solid-js'
+import { createEffect, createMemo, createResource, createSignal, For, onCleanup, onMount, Show, type ParentComponent } from 'solid-js'
 import { A, useLocation, useNavigate } from '@solidjs/router'
 import {
   getMeta,
@@ -8,10 +8,15 @@ import {
   getTokenSignal,
   getUnauthorizedSignal,
   getVersion,
+  getWorkspaceSignal,
+  getWorkspacesSignal,
   refreshCapabilities,
+  refreshWorkspaces,
   setOriginAndPersist,
   setTokenAndPersist,
+  setWorkspaceAndPersist,
 } from '../api.ts'
+import { formatCount, formatRelativeTime } from '../format.ts'
 import { CommandPalette } from './CommandPalette.tsx'
 import { StatusDot } from './ui.tsx'
 
@@ -62,11 +67,15 @@ export const Shell: ParentComponent = (props) => {
   const [draftToken, setDraftToken] = createSignal(getToken())
   const [paletteOpen, setPaletteOpen] = createSignal(false)
 
-  // (Re-)probe serve capabilities whenever the connection changes — the Shell
-  // is always mounted, so the capability signal stays fresh for every view.
+  // (Re-)probe serve capabilities + workspace list whenever the connection
+  // changes — the Shell is always mounted, so both signals stay fresh for
+  // every view. Both refreshers read the origin/token/workspace signals, so
+  // the effect tracks them (capabilities also re-probe on workspace switch:
+  // the cache-entry probe reads workspace-scoped data).
   createEffect(() => {
     void connection()
     refreshCapabilities()
+    refreshWorkspaces()
   })
 
   // Global Cmd/Ctrl-K for palette.
@@ -134,6 +143,7 @@ export const Shell: ParentComponent = (props) => {
         <header class="h-14 px-5 border-b border-border/70 bg-bg/60 backdrop-blur-xl flex items-center gap-3 sticky top-0 z-10">
           <Breadcrumb pathname={location.pathname} />
           <div class="flex-1" />
+          <WorkspaceSwitcher />
           <Show when={unauthorized() && !editing()}>
             <button
               onClick={openEditor}
@@ -218,6 +228,94 @@ export const Shell: ParentComponent = (props) => {
 
       <CommandPalette open={paletteOpen()} onClose={() => setPaletteOpen(false)} onSelect={(href) => { setPaletteOpen(false); navigate(href) }} />
     </div>
+  )
+}
+
+/**
+ * Docker-Desktop-style workspace context dropdown. Fed by /v1/workspaces;
+ * selection persists via api.ts (`vx-ui:workspace`) and rides every /v1
+ * analytics read as `?ws=` — the jr loader re-fetches on the switch. Hidden
+ * on a 0/1-workspace serve so the solo-dev shell looks exactly like today.
+ */
+function WorkspaceSwitcher() {
+  const list = getWorkspacesSignal()
+  const selected = getWorkspaceSignal()
+  const [open, setOpen] = createSignal(false)
+
+  // Most-recently-active first — long-lived serves accumulate dead workspaces.
+  const sorted = createMemo(() => [...list()].sort((a, b) => b.lastSeenAt - a.lastSeenAt))
+  // No explicit selection → mirror the serve's un-scoped rule: a genuine
+  // 'default' workspace when one exists, else the most-recently-seen.
+  const currentId = () => {
+    const sel = selected()
+    if (sel !== '') return sel
+    if (list().some((w) => w.id === 'default')) return 'default'
+    return sorted()[0]?.id ?? 'default'
+  }
+  const currentName = () => list().find((w) => w.id === currentId())?.name ?? currentId()
+
+  onMount(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    onCleanup(() => window.removeEventListener('keydown', onKeyDown))
+  })
+
+  function pick(id: string) {
+    setWorkspaceAndPersist(id)
+    setOpen(false)
+  }
+
+  return (
+    <Show when={list().length > 1}>
+      <div class="relative">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          class="flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1 rounded border border-border hover:border-border-strong hover:bg-surface-hover"
+          title={`Workspace: ${currentName()} — click to switch`}
+        >
+          <span class="i-tabler-folders text-fg-3 text-[13px]" aria-hidden="true" />
+          <span class="text-fg-1 font-medium max-w-40 truncate">{currentName()}</span>
+          <span class="i-tabler-chevron-down text-fg-3 text-[12px]" aria-hidden="true" />
+        </button>
+        <Show when={open()}>
+          {/* invisible backdrop: click-outside closes without swallowing the next click's target styling */}
+          <div class="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div class="absolute right-0 top-full mt-1.5 z-50 w-72 bg-surface border border-border-strong rounded-lg shadow-2xl overflow-hidden">
+            <div class="px-3 py-1.5 border-b border-border text-[10px] uppercase tracking-wider text-fg-3 font-semibold">
+              Workspaces
+            </div>
+            <div class="max-h-80 overflow-y-auto py-1">
+              <For each={sorted()}>
+                {(w) => (
+                  <button
+                    onClick={() => pick(w.id)}
+                    class="w-full text-left flex items-center gap-2 px-3 py-2 hover:bg-surface-hover transition-colors"
+                  >
+                    <span
+                      class={`i-tabler-check text-[13px] shrink-0 ${w.id === currentId() ? 'text-accent' : 'opacity-0'}`}
+                      aria-hidden="true"
+                    />
+                    <span class="min-w-0 flex-1">
+                      <span
+                        class={`block text-[12px] font-mono truncate ${w.id === currentId() ? 'text-fg' : 'text-fg-1'}`}
+                      >
+                        {w.name}
+                      </span>
+                      <span class="block text-[10px] text-fg-3">
+                        {formatRelativeTime(w.lastSeenAt)}
+                        {w.runCount !== undefined ? ` · ${formatCount(w.runCount)} runs` : ''}
+                      </span>
+                    </span>
+                  </button>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
+      </div>
+    </Show>
   )
 }
 

@@ -3,7 +3,7 @@
 // the WS endpoint accepting BOTH legacy t-discriminated and new
 // envelope frames.
 
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, beforeAll, afterAll } from 'bun:test'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -15,6 +15,22 @@ import {
   WIRE_PROTOCOL_VERSION,
 } from '@vzn/vx'
 import { startServe } from '../src/cli/serve.js'
+import { serveInfoPath } from '../src/serve-info.js'
+
+// Isolate the per-user serve advertisement at a temp path so test serves
+// never clobber (or get discovered through) the real machine-level file.
+const prevServeInfo = process.env['VX_CLOUD_SERVE_INFO']
+beforeAll(() => {
+  process.env['VX_CLOUD_SERVE_INFO'] = path.join(
+    tmpdir(),
+    `vx-serveinfo-transports-${process.pid}.json`,
+  )
+})
+afterAll(async () => {
+  await rm(serveInfoPath(), { force: true })
+  if (prevServeInfo === undefined) delete process.env['VX_CLOUD_SERVE_INFO']
+  else process.env['VX_CLOUD_SERVE_INFO'] = prevServeInfo
+})
 
 async function setupWorkspace(): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), 'vx-serve-transport-'))

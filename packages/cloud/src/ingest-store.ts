@@ -3,18 +3,49 @@
 // (pushed by the cloud telemetry sink) into its OWN store and serves the
 // dashboard from there.
 //
-// The store IS a core Cache pointed at a cloud-owned directory: core's Cache
-// already builds the exact runs + invocations schema and `recordRunBundle`
-// writes both atomically, so every analytics query in metrics.ts runs
-// UNCHANGED against this store (only the DB handle differs from the local
-// cache.db). The artifact/entries tables exist but stay empty — cache-entry
-// inventory is a local concern (the hosted dashboard shows run/task analytics
-// only; see docs/design/observability-architecture-2026-06.md §6 option c).
+// MULTI-WORKSPACE (dev-flows design §3.4): one store PER WORKSPACE —
+// `<dir>/<workspaceId>/cache.db` — not workspace columns in one DB. Each
+// store IS a core Cache at a cloud-owned path: core's Cache already builds
+// the exact runs + invocations schema and `recordRunBundle` writes both
+// atomically, so every analytics query in metrics.ts runs UNCHANGED against
+// whichever workspace's store the serve resolves for a request. The
+// artifact/entries tables exist but stay empty — cache-entry inventory is a
+// local concern (the hosted dashboard shows run/task analytics only; see
+// docs/design/observability-architecture-2026-06.md §6 option c).
+//
+// A `workspaces.json` manifest at the root carries display metadata
+// (id → name, lastSeenAt), updated on every ingest. The per-workspace
+// stores are the durable data; the manifest is rebuildable metadata.
 
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
 import { Cache, type InvocationRecord, type RunRecord, type RunSummaryRecord } from '@vzn/vx'
+
+/** Where a v1 push (predating workspace identity) lands. */
+export const DEFAULT_WORKSPACE_ID = 'default'
+
+// Workspace ids become directory names under the ingest root. Core derives
+// 16-hex ids, but a pushed body is a network boundary — accept only a safe
+// path token so a hostile id can't traverse out of the root.
+const WORKSPACE_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
+
+export interface WorkspaceEntry {
+  id: string
+  name: string
+  lastSeenAt: number
+  runCount?: number
+}
+
+interface ManifestEntry {
+  name: string
+  lastSeenAt: number
+}
+
+interface Manifest {
+  version: 1
+  workspaces: Record<string, ManifestEntry>
+}
 
 /**
  * Rows in `invocations` BEFORE core's Cache schema gate runs. Core drops
@@ -40,10 +71,74 @@ function preGateInvocationCount(dir: string): number {
   }
 }
 
-export class IngestStore {
-  private readonly cache: Cache
+function readManifest(file: string): Manifest {
+  try {
+    const parsed = JSON.parse(readFileSync(file, 'utf8')) as Manifest
+    if (
+      parsed.version === 1 &&
+      typeof parsed.workspaces === 'object' &&
+      parsed.workspaces !== null
+    ) {
+      return parsed
+    }
+  } catch {
+    // absent / unreadable — start empty (display metadata only)
+  }
+  return { version: 1, workspaces: {} }
+}
 
-  constructor(dir: string, warn?: (message: string) => void) {
+export class IngestStore {
+  private readonly stores = new Map<string, Cache>()
+  private readonly manifest: Manifest
+  private readonly manifestPath: string
+
+  constructor(
+    private readonly dir: string,
+    private readonly warn?: (message: string) => void,
+  ) {
+    mkdirSync(dir, { recursive: true })
+    this.manifestPath = path.join(dir, 'workspaces.json')
+    this.manifest = readManifest(this.manifestPath)
+    this.migrateLegacyStore()
+  }
+
+  /**
+   * A pre-multi-workspace ingest dir holds `cache.db` directly at the root.
+   * Move it (plus WAL sidecars) into `<dir>/default/` on boot — one rename,
+   * loud log — so the layout stays uniform and v1 pushes keep appending to
+   * the same history.
+   */
+  private migrateLegacyStore(): void {
+    const legacy = path.join(this.dir, 'cache.db')
+    if (!existsSync(legacy)) return
+    const destDir = path.join(this.dir, DEFAULT_WORKSPACE_ID)
+    mkdirSync(destDir, { recursive: true })
+    for (const suffix of ['', '-wal', '-shm']) {
+      const from = legacy + suffix
+      if (existsSync(from)) renameSync(from, path.join(destDir, `cache.db${suffix}`))
+    }
+    if (this.manifest.workspaces[DEFAULT_WORKSPACE_ID] === undefined) {
+      this.manifest.workspaces[DEFAULT_WORKSPACE_ID] = {
+        name: DEFAULT_WORKSPACE_ID,
+        lastSeenAt: Date.now(),
+      }
+      this.writeManifest()
+    }
+    this.warn?.(
+      `migrated legacy single-workspace ingest store to ${destDir} (workspace "${DEFAULT_WORKSPACE_ID}")`,
+    )
+  }
+
+  private writeManifest(): void {
+    const tmp = `${this.manifestPath}.tmp`
+    writeFileSync(tmp, `${JSON.stringify(this.manifest, null, 2)}\n`)
+    renameSync(tmp, this.manifestPath)
+  }
+
+  private openStore(id: string): Cache {
+    const existing = this.stores.get(id)
+    if (existing !== undefined) return existing
+    const storeDir = path.join(this.dir, id)
     // Core's Cache drops + recreates all tables when its SCHEMA_VERSION
     // moves (pre-alpha, no migrations). For this store that is DATA
     // LOSS, not cache invalidation — detect it and warn loudly so a
@@ -51,34 +146,104 @@ export class IngestStore {
     // decoupling (an ingest-owned schema with additive migrations) is a
     // roadmap item; until then, snapshot the data volume before
     // upgrading vx-cloud.
-    const before = warn !== undefined ? preGateInvocationCount(dir) : 0
-    this.cache = new Cache(dir)
+    const before = this.warn !== undefined ? preGateInvocationCount(storeDir) : 0
+    const cache = new Cache(storeDir)
     if (before > 0) {
-      const after = this.db().prepare('SELECT COUNT(*) AS n FROM invocations').get() as {
+      const after = cache.dbHandle().prepare('SELECT COUNT(*) AS n FROM invocations').get() as {
         n: number
       }
       if (after.n === 0) {
-        warn!(
-          `ingest store schema upgraded — run history was reset (${before} invocation${before === 1 ? '' : 's'} dropped). ` +
+        this.warn!(
+          `ingest store schema upgraded — run history for workspace "${id}" was reset (${before} invocation${before === 1 ? '' : 's'} dropped). ` +
             `Snapshot the ingest volume before upgrading vx-cloud to keep history across schema bumps.`,
         )
       }
     }
-  }
-
-  /** The DB handle the metrics queries read from. */
-  db(): ReturnType<Cache['dbHandle']> {
-    return this.cache.dbHandle()
+    this.stores.set(id, cache)
+    return cache
   }
 
   /**
-   * Persist one pushed run. Idempotent: a re-delivered summary (same runId)
+   * The DB handle the metrics queries read for one workspace, or undefined
+   * for an id this store has never seen. `default` always resolves (lazily
+   * created) so a fresh serve's reads work before the first push.
+   */
+  db(workspaceId: string): Database | undefined {
+    if (!WORKSPACE_ID_RE.test(workspaceId)) return undefined
+    const open = this.stores.get(workspaceId)
+    if (open !== undefined) return open.dbHandle()
+    const known =
+      workspaceId === DEFAULT_WORKSPACE_ID ||
+      this.manifest.workspaces[workspaceId] !== undefined ||
+      existsSync(path.join(this.dir, workspaceId, 'cache.db'))
+    if (!known) return undefined
+    return this.openStore(workspaceId).dbHandle()
+  }
+
+  /**
+   * The workspace an un-scoped request reads: the sole known workspace when
+   * exactly one exists (a single-repo serve behaves exactly like the
+   * pre-multi-workspace one); with several, `default` when it genuinely
+   * exists (v1 pushes land there), else the most-recently-seen — a fresh
+   * dashboard must never open onto an empty synthetic workspace when real
+   * ones exist.
+   */
+  defaultWorkspaceId(): string {
+    const entries = Object.entries(this.manifest.workspaces)
+    if (entries.length === 1) return entries[0]![0]
+    if (this.manifest.workspaces[DEFAULT_WORKSPACE_ID] !== undefined) return DEFAULT_WORKSPACE_ID
+    let best = DEFAULT_WORKSPACE_ID
+    let bestSeen = -1
+    for (const [id, meta] of entries) {
+      if (meta.lastSeenAt > bestSeen) {
+        best = id
+        bestSeen = meta.lastSeenAt
+      }
+    }
+    return best
+  }
+
+  /** Manifest size — the pre-auth `/v1/meta` count (names never leak there). */
+  workspaceCount(): number {
+    return Object.keys(this.manifest.workspaces).length
+  }
+
+  /** Every known workspace: display metadata + its invocation count. */
+  workspaces(): WorkspaceEntry[] {
+    return Object.entries(this.manifest.workspaces)
+      .map(([id, meta]): WorkspaceEntry => {
+        const row = this.openStore(id)
+          .dbHandle()
+          .prepare('SELECT COUNT(*) AS n FROM invocations')
+          .get() as { n: number }
+        return { id, name: meta.name, lastSeenAt: meta.lastSeenAt, runCount: row.n }
+      })
+      .sort((a, b) => b.lastSeenAt - a.lastSeenAt)
+  }
+
+  /**
+   * Persist one pushed run into its workspace's store, routed by the
+   * summary's OWN identity — a v1 body (predates workspace identity)
+   * synthesizes `default`. Idempotent: a re-delivered summary (same runId)
    * is ignored — returns false. The per-task `runs` rows have no unique key,
    * so we gate on the invocation header existing rather than relying on the
    * insert. Returns true when the run was newly stored.
    */
   ingest(summary: RunSummaryRecord): boolean {
-    const exists = this.db()
+    // Boundary: the body arrives off the network and the id becomes a
+    // directory name — validate before touching the filesystem.
+    const rawId = (summary.run as { workspaceId?: unknown }).workspaceId
+    const wsId = typeof rawId === 'string' && rawId !== '' ? rawId : DEFAULT_WORKSPACE_ID
+    if (!WORKSPACE_ID_RE.test(wsId)) throw new Error(`invalid workspace id: ${wsId}`)
+    const rawName = (summary.run as { workspaceName?: unknown }).workspaceName
+    const wsName = typeof rawName === 'string' && rawName !== '' ? rawName : wsId
+
+    const cache = this.openStore(wsId)
+    this.manifest.workspaces[wsId] = { name: wsName, lastSeenAt: Date.now() }
+    this.writeManifest()
+
+    const exists = cache
+      .dbHandle()
       .prepare('SELECT 1 FROM invocations WHERE run_id = ?')
       .get(summary.run.runId)
     if (exists) return false
@@ -142,11 +307,12 @@ export class IngestStore {
       vxVersion: r.vxVersion,
       tags: JSON.stringify(r.tags),
     }
-    this.cache.recordRunBundle({ runs, invocation })
+    cache.recordRunBundle({ runs, invocation })
     return true
   }
 
   close(): void {
-    this.cache.close()
+    for (const cache of this.stores.values()) cache.close()
+    this.stores.clear()
   }
 }

@@ -1,10 +1,12 @@
-// The cloud ingest path: IngestStore round-trips a pushed RunSummaryRecord
-// into a cloud-owned store that core's metrics queries read unchanged, and
-// serve persists POST /v1/ingest there + serves it over /v1/* (the ONLY data
+// The cloud ingest path: IngestStore routes pushed RunSummaryRecords into
+// per-workspace stores (one core Cache per workspace under the ingest root)
+// that core's metrics queries read unchanged, and serve persists POST
+// /v1/ingest there + serves it over /v1/* with `?ws=` scoping (the ONLY data
 // source — vx-cloud never reads a workspace cache.db).
 
-import { describe, it, expect } from 'bun:test'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
+import { existsSync } from 'node:fs'
+import { mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -12,10 +14,26 @@ import { Database } from 'bun:sqlite'
 import { getRun, listInvocations, listRuns, type RunSummaryRecord } from '@vzn/vx'
 import { IngestStore } from '../src/ingest-store.js'
 import { startServe } from '../src/cli/serve.js'
+import { serveInfoPath } from '../src/serve-info.js'
+
+// Isolate the per-user serve advertisement at a temp path so test serves
+// never clobber (or get discovered through) the real machine-level file.
+const prevServeInfo = process.env['VX_CLOUD_SERVE_INFO']
+beforeAll(() => {
+  process.env['VX_CLOUD_SERVE_INFO'] = path.join(
+    tmpdir(),
+    `vx-serveinfo-ingest-${process.pid}.json`,
+  )
+})
+afterAll(async () => {
+  await rm(serveInfoPath(), { force: true })
+  if (prevServeInfo === undefined) delete process.env['VX_CLOUD_SERVE_INFO']
+  else process.env['VX_CLOUD_SERVE_INFO'] = prevServeInfo
+})
 
 function summary(runId: string, over: Partial<RunSummaryRecord['run']> = {}): RunSummaryRecord {
   return {
-    v: 1,
+    v: 2,
     run: {
       runId,
       vxVersion: '0.0.0',
@@ -73,6 +91,15 @@ function summary(runId: string, over: Partial<RunSummaryRecord['run']> = {}): Ru
   }
 }
 
+/** A pre-workspace-identity (v1) push: no workspaceId/workspaceName. */
+function v1Summary(runId: string): RunSummaryRecord {
+  const s = summary(runId) as unknown as { v: number; run: Record<string, unknown> }
+  s.v = 1
+  delete s.run['workspaceId']
+  delete s.run['workspaceName']
+  return s as never
+}
+
 describe('IngestStore', () => {
   it('round-trips a RunSummaryRecord into runs + invocations the metrics queries read', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'vx-ingest-'))
@@ -81,18 +108,19 @@ describe('IngestStore', () => {
       const stored = store.ingest(summary('run-1'))
       expect(stored).toBe(true)
 
+      const db = store.db('ws-test')!
       // listRuns is per-task: 2 tasks → 2 rows, both under run-1.
-      const runs = listRuns(store.db(), { limit: 100 })
+      const runs = listRuns(db, { limit: 100 })
       expect(runs.length).toBe(2)
       expect(runs.every((r) => r.runId === 'run-1')).toBe(true)
 
-      const invs = listInvocations(store.db(), {})
+      const invs = listInvocations(db, {})
       expect(invs.length).toBe(1)
       expect(invs[0]!.runId).toBe('run-1')
       expect(invs[0]!.branch).toBe('main')
       expect(invs[0]!.taskCount).toBe(2)
 
-      const detail = getRun(store.db(), 'run-1')
+      const detail = getRun(db, 'run-1')
       expect(detail).not.toBeNull()
       expect(detail!.tasks.length).toBe(2)
       const a = detail!.tasks.find((t) => t.task === 'build' && t.project === 'a')!
@@ -111,11 +139,121 @@ describe('IngestStore', () => {
     try {
       expect(store.ingest(summary('run-1'))).toBe(true)
       expect(store.ingest(summary('run-1'))).toBe(false)
-      expect(listRuns(store.db(), { limit: 100 }).length).toBe(2) // 2 tasks, not 4
-      expect(listInvocations(store.db(), {}).length).toBe(1)
+      const db = store.db('ws-test')!
+      expect(listRuns(db, { limit: 100 }).length).toBe(2) // 2 tasks, not 4
+      expect(listInvocations(db, {}).length).toBe(1)
     } finally {
       store.close()
       await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('routes summaries into one store per workspace and lists both in the manifest', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-ingest-multi-'))
+    const store = new IngestStore(dir)
+    try {
+      store.ingest(summary('run-a', { workspaceId: 'ws-a', workspaceName: 'acme/a' }))
+      store.ingest(summary('run-b', { workspaceId: 'ws-b', workspaceName: 'acme/b' }))
+
+      // Two isolated stores on disk, each holding only its own run.
+      expect(existsSync(path.join(dir, 'ws-a', 'cache.db'))).toBe(true)
+      expect(existsSync(path.join(dir, 'ws-b', 'cache.db'))).toBe(true)
+      const runsA = listRuns(store.db('ws-a')!, { limit: 100 })
+      expect(runsA.length).toBe(2)
+      expect(runsA.every((r) => r.runId === 'run-a')).toBe(true)
+      const runsB = listRuns(store.db('ws-b')!, { limit: 100 })
+      expect(runsB.every((r) => r.runId === 'run-b')).toBe(true)
+
+      // The manifest lists both with display metadata + run counts.
+      const wss = store.workspaces()
+      expect(wss.map((w) => w.id).sort()).toEqual(['ws-a', 'ws-b'])
+      expect(wss.find((w) => w.id === 'ws-a')!.name).toBe('acme/a')
+      expect(wss.every((w) => w.runCount === 1)).toBe(true)
+      expect(wss.every((w) => w.lastSeenAt > 0)).toBe(true)
+
+      // Unknown ids resolve to nothing (and never touch the filesystem).
+      expect(store.db('nope')).toBeUndefined()
+      expect(store.db('../escape')).toBeUndefined()
+    } finally {
+      store.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('a v1 push (no workspace fields) lands in the default workspace', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-ingest-v1-'))
+    const store = new IngestStore(dir)
+    try {
+      expect(store.ingest(v1Summary('run-v1'))).toBe(true)
+      const db = store.db('default')!
+      expect(listInvocations(db, {}).some((i) => i.runId === 'run-v1')).toBe(true)
+      const wss = store.workspaces()
+      expect(wss.map((w) => w.id)).toEqual(['default'])
+      expect(wss[0]!.name).toBe('default')
+    } finally {
+      store.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('survives a store reopen — manifest + per-workspace data persist', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-ingest-persist-'))
+    try {
+      const first = new IngestStore(dir)
+      first.ingest(summary('run-a', { workspaceId: 'ws-a', workspaceName: 'acme/a' }))
+      first.close()
+
+      const second = new IngestStore(dir)
+      try {
+        expect(second.workspaces().map((w) => w.id)).toEqual(['ws-a'])
+        expect(listInvocations(second.db('ws-a')!, {}).length).toBe(1)
+        // Sole workspace → it is the un-scoped default.
+        expect(second.defaultWorkspaceId()).toBe('ws-a')
+      } finally {
+        second.close()
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('treats a legacy single-store dir (root-level cache.db) as workspace default', async () => {
+    // Seed a store the new way, then reshape it into the legacy layout:
+    // cache.db directly at the ingest root — the pre-multi-workspace disk.
+    const seedDir = await mkdtemp(path.join(tmpdir(), 'vx-ingest-seed-'))
+    const legacyDir = await mkdtemp(path.join(tmpdir(), 'vx-ingest-legacy-'))
+    try {
+      const seeded = new IngestStore(seedDir)
+      seeded.ingest(v1Summary('run-legacy'))
+      seeded.close()
+      // WAL sidecars persist across close and carry recent writes — a real
+      // legacy dir holds all three, and the migration must move all three.
+      for (const suffix of ['', '-wal', '-shm']) {
+        if (existsSync(path.join(seedDir, 'default', `cache.db${suffix}`))) {
+          await rename(
+            path.join(seedDir, 'default', `cache.db${suffix}`),
+            path.join(legacyDir, `cache.db${suffix}`),
+          )
+        }
+      }
+
+      const warnings: string[] = []
+      const store = new IngestStore(legacyDir, (m) => warnings.push(m))
+      try {
+        // Moved on boot (loudly), history intact under `default`.
+        expect(warnings.some((w) => w.includes('migrated legacy'))).toBe(true)
+        expect(existsSync(path.join(legacyDir, 'default', 'cache.db'))).toBe(true)
+        expect(existsSync(path.join(legacyDir, 'cache.db'))).toBe(false)
+        expect(
+          listInvocations(store.db('default')!, {}).some((i) => i.runId === 'run-legacy'),
+        ).toBe(true)
+        expect(store.workspaces().map((w) => w.id)).toEqual(['default'])
+      } finally {
+        store.close()
+      }
+    } finally {
+      await rm(seedDir, { recursive: true, force: true })
+      await rm(legacyDir, { recursive: true, force: true })
     }
   })
 
@@ -127,7 +265,7 @@ describe('IngestStore', () => {
       const seeded = new IngestStore(dir)
       seeded.ingest(summary('run-wipe-1'))
       seeded.close()
-      const db = new Database(path.join(dir, 'cache.db'))
+      const db = new Database(path.join(dir, 'ws-test', 'cache.db'))
       db.prepare("UPDATE schema_meta SET value = 'v0-outdated' WHERE key = 'version'").run()
       db.close()
 
@@ -136,8 +274,10 @@ describe('IngestStore', () => {
       try {
         // The gate dropped + recreated the tables — history is gone, and
         // the store said so instead of silently serving an empty dashboard.
-        expect(listInvocations(reopened.db(), {}).length).toBe(0)
-        expect(warnings.some((w) => w.includes('run history was reset'))).toBe(true)
+        expect(listInvocations(reopened.db('ws-test')!, {}).length).toBe(0)
+        expect(
+          warnings.some((w) => w.includes('run history for workspace "ws-test" was reset')),
+        ).toBe(true)
       } finally {
         reopened.close()
       }
@@ -156,7 +296,7 @@ describe('IngestStore', () => {
       const warnings: string[] = []
       const reopened = new IngestStore(dir, (m) => warnings.push(m))
       try {
-        expect(listInvocations(reopened.db(), {}).length).toBe(1)
+        expect(listInvocations(reopened.db('ws-test')!, {}).length).toBe(1)
         expect(warnings).toEqual([])
       } finally {
         reopened.close()
@@ -198,7 +338,8 @@ describe('serve POST /v1/ingest + ingest-store reads', () => {
       const body = (await res.json()) as { ok: boolean; stored: boolean }
       expect(body).toEqual({ ok: true, stored: true })
 
-      // The read APIs (source:ingest) now serve it.
+      // The sole ingested workspace is the un-scoped default, so the read
+      // APIs behave exactly like a single-workspace serve.
       const runsRes = await fetch(`${server.origin}/v1/runs`)
       const runs = (await runsRes.json()) as { runs: { runId: string }[] }
       expect(runs.runs.some((r) => r.runId === 'run-ingest-1')).toBe(true)
@@ -218,6 +359,75 @@ describe('serve POST /v1/ingest + ingest-store reads', () => {
       await server.stop()
       await rm(root, { recursive: true, force: true })
       await rm(ingestDir, { recursive: true, force: true })
+    }
+  })
+
+  it('scopes /v1/* by ?ws= and lists workspaces via /v1/workspaces', async () => {
+    const dataDir = await mkdtemp(path.join(tmpdir(), 'vx-multi-ws-'))
+    const server = await startServe({ root: dataDir, ingestDir: dataDir })
+    try {
+      await fetch(`${server.origin}/v1/ingest`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(summary('run-a', { workspaceId: 'ws-a', workspaceName: 'acme/a' })),
+      })
+      await fetch(`${server.origin}/v1/ingest`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(summary('run-b', { workspaceId: 'ws-b', workspaceName: 'acme/b' })),
+      })
+
+      // /v1/workspaces lists both with metadata.
+      const wss = (await (await fetch(`${server.origin}/v1/workspaces`)).json()) as {
+        workspaces: { id: string; name: string; runCount: number }[]
+      }
+      expect(wss.workspaces.map((w) => w.id).sort()).toEqual(['ws-a', 'ws-b'])
+      expect(wss.workspaces.find((w) => w.id === 'ws-b')!.name).toBe('acme/b')
+
+      // ?ws= scopes every analytics read to one workspace's store.
+      const runsA = (await (await fetch(`${server.origin}/v1/runs?ws=ws-a`)).json()) as {
+        runs: { runId: string }[]
+      }
+      expect(runsA.runs.length).toBeGreaterThan(0)
+      expect(runsA.runs.every((r) => r.runId === 'run-a')).toBe(true)
+      const invsB = (await (await fetch(`${server.origin}/v1/invocations?ws=ws-b`)).json()) as {
+        invocations: { runId: string }[]
+      }
+      expect(invsB.invocations.map((i) => i.runId)).toEqual(['run-b'])
+
+      // An unknown workspace 404s; with several workspaces and no genuine
+      // `default` store, the un-scoped read falls back to the
+      // most-recently-seen workspace (ws-b here — ingested last), so a
+      // fresh dashboard never opens onto an empty synthetic workspace.
+      expect((await fetch(`${server.origin}/v1/runs?ws=nope`)).status).toBe(404)
+      const unscoped = (await (await fetch(`${server.origin}/v1/runs`)).json()) as {
+        runs: { runId: string }[]
+      }
+      expect(unscoped.runs.every((r) => r.runId === 'run-b')).toBe(true)
+
+      // /v1/meta reports the count only (pre-auth surface — no names).
+      const meta = (await (await fetch(`${server.origin}/v1/meta`)).json()) as {
+        workspaces: number
+      }
+      expect(meta.workspaces).toBe(2)
+    } finally {
+      await server.stop()
+      await rm(dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('gates /v1/workspaces behind the bearer token', async () => {
+    const dataDir = await mkdtemp(path.join(tmpdir(), 'vx-ws-auth-'))
+    const server = await startServe({ root: dataDir, ingestDir: dataDir, token: 'sekret' })
+    try {
+      expect((await fetch(`${server.origin}/v1/workspaces`)).status).toBe(401)
+      const ok = await fetch(`${server.origin}/v1/workspaces`, {
+        headers: { authorization: 'Bearer sekret' },
+      })
+      expect(ok.status).toBe(200)
+    } finally {
+      await server.stop()
+      await rm(dataDir, { recursive: true, force: true })
     }
   })
 

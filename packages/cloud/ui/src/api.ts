@@ -11,6 +11,7 @@ import { createSignal } from 'solid-js'
 
 const STORAGE_KEY = 'vx-ui:origin'
 const TOKEN_KEY = 'vx-ui:token'
+const WORKSPACE_KEY = 'vx-ui:workspace'
 
 function defaultOrigin(): string {
   // The dev server injects this; the hosted build falls back to the page's
@@ -79,6 +80,97 @@ export function getUnauthorizedSignal(): () => boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Workspace — the Docker-context equivalent. A multi-workspace serve scopes
+// every /v1/* analytics read by `?ws=<id>`; the selection persists beside the
+// origin/token. Empty string = unset (the serve picks its sole workspace /
+// 'default'), so the zero-config solo case never sends the param.
+// ---------------------------------------------------------------------------
+
+function readStoredWorkspace(): string {
+  if (typeof localStorage === 'undefined') return ''
+  return localStorage.getItem(WORKSPACE_KEY) ?? ''
+}
+
+const [workspace, setWorkspace] = createSignal(readStoredWorkspace())
+
+export function getWorkspace(): string {
+  return workspace()
+}
+
+export function getWorkspaceSignal(): () => string {
+  return workspace
+}
+
+export function setWorkspaceAndPersist(next: string): void {
+  const trimmed = next.trim()
+  setWorkspace(trimmed)
+  if (typeof localStorage !== 'undefined') {
+    if (trimmed === '') localStorage.removeItem(WORKSPACE_KEY)
+    else localStorage.setItem(WORKSPACE_KEY, trimmed)
+  }
+}
+
+/**
+ * Reactive `origin|token|workspace` key — everything a remote read depends
+ * on. The jr page loader keys its data resources on this so views re-fetch
+ * the moment the user switches connection or workspace.
+ */
+export function getConnectionKey(): string {
+  return `${origin()}|${token()}|${workspace()}`
+}
+
+/** Workspace-list endpoints answer FOR all workspaces — never scoped by one. */
+const WS_EXEMPT = new Set(['/v1/meta', '/v1/workspaces'])
+
+/** Append `ws=<id>` to a /v1 pathname when a workspace is selected. */
+function withWorkspace(pathname: string): string {
+  const ws = workspace()
+  if (ws === '' || !pathname.startsWith('/v1/')) return pathname
+  const bare = pathname.split('?', 1)[0]!
+  if (WS_EXEMPT.has(bare)) return pathname
+  return `${pathname}${pathname.includes('?') ? '&' : '?'}ws=${encodeURIComponent(ws)}`
+}
+
+export interface WorkspaceInfo {
+  id: string
+  name: string
+  lastSeenAt: number
+  runCount?: number
+}
+
+const [workspaces, setWorkspaces] = createSignal<WorkspaceInfo[]>([])
+let workspacesKey: string | null = null
+
+/** Workspaces known to the connected serve; `[]` until the list resolves. */
+export function getWorkspacesSignal(): () => WorkspaceInfo[] {
+  return workspaces
+}
+
+/**
+ * (Re-)fetch the workspace list when the connection changed; no-op otherwise.
+ * A single-workspace serve (or one predating /v1/workspaces) yields a list the
+ * switcher hides. A persisted selection unknown to THIS serve is reset so
+ * every query doesn't scope to a workspace that doesn't exist here.
+ */
+export function refreshWorkspaces(): void {
+  const key = `${origin()}|${token()}`
+  if (key === workspacesKey) return
+  workspacesKey = key
+  setWorkspaces([])
+  void getWorkspaces().then(
+    (list) => {
+      if (workspacesKey !== key) return
+      setWorkspaces(list)
+      const current = workspace()
+      if (current !== '' && !list.some((w) => w.id === current)) setWorkspaceAndPersist('')
+    },
+    () => {
+      if (workspacesKey === key) setWorkspaces([])
+    },
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Capabilities — what THIS serve can actually answer.
 //
 // vx-cloud serve is ingest-only: its /v1/* analytics read the push-fed store,
@@ -112,7 +204,8 @@ export function getCapabilitiesSignal(): () => Capabilities {
  * serve 400s from planRun.
  */
 export function refreshCapabilities(): void {
-  const key = `${origin()}|${token()}`
+  // Workspace participates: the cache-entry probe reads workspace-scoped data.
+  const key = getConnectionKey()
   if (key === capsKey) return
   capsKey = key
   setCapabilities(UNKNOWN_CAPS)
@@ -140,7 +233,7 @@ async function getJson<T>(pathname: string): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
   const t = token()
   if (t !== '') headers['Authorization'] = `Bearer ${t}`
-  const res = await fetch(`${origin()}${pathname}`, { headers })
+  const res = await fetch(`${origin()}${withWorkspace(pathname)}`, { headers })
   if (res.status === 401) {
     setUnauthorized(true)
     throw new Error(`${pathname}: 401 Unauthorized — this server requires a token`)
@@ -383,6 +476,8 @@ export interface ServerMeta {
   vx: string
   auth: 'token' | 'open'
   startedAt: number
+  /** Workspace count on this serve (absent on serves predating workspaces). */
+  workspaces?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -395,6 +490,12 @@ export async function getVersion(): Promise<ServerVersion> {
 
 export async function getMeta(): Promise<ServerMeta> {
   return await getJson<ServerMeta>('/v1/meta')
+}
+
+/** List the workspaces the connected serve holds (multi-repo serves). */
+export async function getWorkspaces(): Promise<WorkspaceInfo[]> {
+  const r = await getJson<{ workspaces: WorkspaceInfo[] }>('/v1/workspaces')
+  return r.workspaces
 }
 
 export interface ListInvocationsArgs {
@@ -662,7 +763,8 @@ export async function getPrunable(
 export function subscribeEvents(onMessage: (event: unknown) => void): () => void {
   const origin = getOrigin()
   // EventSource can't set headers — the token rides the query string.
-  const source = new EventSource(`${origin}/v1/events${tokenQuery()}`)
+  const path = withWorkspace('/v1/events')
+  const source = new EventSource(`${origin}${path}${tokenQuery(path.includes('?') ? '&' : '?')}`)
   source.onmessage = (e) => {
     try {
       onMessage(JSON.parse(e.data))
