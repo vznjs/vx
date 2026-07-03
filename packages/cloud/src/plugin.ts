@@ -19,10 +19,12 @@
 // zero-config form (it behaves like pre-split core: delegate-or-dev-mirror,
 // env-configured cache, no telemetry push).
 
+import { existsSync } from 'node:fs'
 import {
   LayeredCache,
   RemoteCache,
   UserError,
+  type CacheContext,
   type CacheLayer,
   type RunSummaryRecord,
   type TelemetryContext,
@@ -46,7 +48,9 @@ export interface CloudPluginOptions {
   serviceUrl?: string
   /**
    * Base URL of the cloud artifact store (Turbo `/v8/artifacts` wire). Falls
-   * back to `VX_REMOTE_CACHE_URL`. With no URL the cache capability declines.
+   * back to `VX_REMOTE_CACHE_URL`, then — with neither set — to the ACTIVE
+   * connected environment when its serve advertises the artifact store
+   * (`/v1/meta` `artifacts: true`). With none the cache capability declines.
    */
   cacheUrl?: string
   /** Bearer token for the artifact store. Falls back to `VX_REMOTE_CACHE_TOKEN`. */
@@ -106,29 +110,27 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
       return undefined
     },
 
-    cache(ctx): CacheLayer | undefined {
+    cache(ctx): CacheLayer | undefined | Promise<CacheLayer | undefined> {
+      // Explicit config wins and is never second-guessed: with a cacheUrl
+      // (option or VX_REMOTE_CACHE_URL) the environment rung is not
+      // consulted and no /v1/meta probe ever fires. A half-set explicit
+      // config (URL, no token) declines like before.
       const url = cacheUrlOf(opts)
-      const token = opts.cacheToken ?? process.env['VX_REMOTE_CACHE_TOKEN']
-      if (!url || !token) return undefined
-
-      const config: ConstructorParameters<typeof RemoteCache>[0] = { baseUrl: url, token }
-      const teamId = opts.cacheTeamId ?? process.env['VX_REMOTE_CACHE_TEAM_ID']
-      if (teamId) config.teamId = teamId
-      const slug = opts.cacheSlug ?? process.env['VX_REMOTE_CACHE_SLUG']
-      if (slug) config.slug = slug
-      const signatureKey = opts.cacheSignatureKey ?? process.env['VX_REMOTE_CACHE_SIGNATURE_KEY']
-      if (signatureKey) config.signatureKey = signatureKey
-      const timeoutMs = process.env['VX_REMOTE_CACHE_TIMEOUT_MS']
-      if (timeoutMs) {
-        const n = Number(timeoutMs)
-        if (Number.isFinite(n) && n > 0) config.timeoutMs = n
+      if (url) {
+        const token = opts.cacheToken ?? process.env['VX_REMOTE_CACHE_TOKEN']
+        if (!token) return undefined
+        return buildCloudCache(ctx, opts, url, token)
       }
-
-      ctx.warn(`cloud cache: ${url}`)
-      return new LayeredCache(ctx.localCache, new RemoteCache(config), {
-        onRemoteError: (err) => ctx.warn(`[vx] cloud cache: ${err.message}`),
-        policy: ctx.policy,
-      })
+      // Environment rung: the ACTIVE connected environment, when its serve
+      // advertises the artifact store (`/v1/meta` `artifacts: true` — probed
+      // lazily ONCE per process). No environment → decline with zero
+      // network, so a plain run stays byte-identical.
+      const env = activeEnvironment()
+      if (env === undefined) return undefined
+      return (async () => {
+        if (!(await serveAdvertisesArtifacts(env.url))) return undefined
+        return buildCloudCache(ctx, opts, env.url, env.token ?? '')
+      })()
     },
 
     telemetry(ctx: TelemetryContext): TelemetrySink | undefined {
@@ -148,10 +150,10 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
         const url = `${env.url.replace(/\/+$/, '')}/v1/ingest`
         return new CloudIngestSink(url, env.token, (m) => ctx.warn(m))
       }
-      const localUrl = detectLocalIngestUrl()
-      if (!localUrl) return undefined
+      const local = detectLocalIngest()
+      if (!local) return undefined
       const token = opts.ingestToken ?? ingestTokenFromEnv()
-      return new CloudIngestSink(localUrl, token, (m) => ctx.warn(m))
+      return new CloudIngestSink(local.url, token, (m) => ctx.warn(m), local.socket)
     },
   }
 }
@@ -171,13 +173,76 @@ function ingestTokenFromEnv(): string | undefined {
 }
 
 /**
- * Auto-detect a local `vx-cloud serve` via its per-user advertisement (origin +
- * pid, written at a MACHINE-LEVEL path so it's found from any workspace). When
- * present + alive, push telemetry to `<origin>/v1/ingest`. Returns undefined
- * when no serve is running (a plain `vx run` then declines). One fs read — no
- * network, no heavy import.
+ * The Turbo-wire LayeredCache construction, faithfully mirroring core's
+ * `remote-cache-setup.ts` semantics (tenancy / signing / timeout knobs) —
+ * shared by the explicit-config rung and the environment rung.
  */
-function detectLocalIngestUrl(): string | undefined {
+function buildCloudCache(
+  ctx: CacheContext,
+  opts: CloudPluginOptions,
+  baseUrl: string,
+  token: string,
+): CacheLayer {
+  const config: ConstructorParameters<typeof RemoteCache>[0] = { baseUrl, token }
+  const teamId = opts.cacheTeamId ?? process.env['VX_REMOTE_CACHE_TEAM_ID']
+  if (teamId) config.teamId = teamId
+  const slug = opts.cacheSlug ?? process.env['VX_REMOTE_CACHE_SLUG']
+  if (slug) config.slug = slug
+  const signatureKey = opts.cacheSignatureKey ?? process.env['VX_REMOTE_CACHE_SIGNATURE_KEY']
+  if (signatureKey) config.signatureKey = signatureKey
+  const timeoutMs = process.env['VX_REMOTE_CACHE_TIMEOUT_MS']
+  if (timeoutMs) {
+    const n = Number(timeoutMs)
+    if (Number.isFinite(n) && n > 0) config.timeoutMs = n
+  }
+
+  ctx.warn(`cloud cache: ${baseUrl}`)
+  return new LayeredCache(ctx.localCache, new RemoteCache(config), {
+    onRemoteError: (err) => ctx.warn(`[vx] cloud cache: ${err.message}`),
+    policy: ctx.policy,
+  })
+}
+
+// The /v1/meta capability probe, memoized per origin for the process — the
+// cache capability is consulted once per run, so one short-bounded GET is
+// the whole cost, and only when a connected environment exists at all.
+const metaProbeMemo = new Map<string, Promise<boolean>>()
+
+function serveAdvertisesArtifacts(url: string): Promise<boolean> {
+  const origin = url.replace(/\/+$/, '')
+  const existing = metaProbeMemo.get(origin)
+  if (existing) return existing
+  const probe = (async () => {
+    // Clearable timer, not AbortSignal.timeout (same not-unref'd-timer
+    // reason as the ingest sink).
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 2000)
+    try {
+      const res = await fetch(`${origin}/v1/meta`, { signal: controller.signal })
+      if (!res.ok) return false
+      const meta = (await res.json()) as { artifacts?: unknown }
+      return meta.artifacts === true
+    } catch {
+      // unreachable serve → the cache rung declines; never fails a run
+      return false
+    } finally {
+      clearTimeout(timer)
+    }
+  })()
+  metaProbeMemo.set(origin, probe)
+  return probe
+}
+
+/**
+ * Auto-detect a local `vx-cloud serve` via its per-user advertisement (origin +
+ * pid + optional unix socket, written at a MACHINE-LEVEL path so it's found
+ * from any workspace). When present + alive, push telemetry to
+ * `<origin>/v1/ingest` — over the advertised unix socket when it exists (the
+ * hardened local transport; TCP stays the fallback). Returns undefined when no
+ * serve is running (a plain `vx run` then declines). One fs read — no network,
+ * no heavy import.
+ */
+function detectLocalIngest(): { url: string; socket?: string } | undefined {
   const info = readServeInfo()
   if (info === undefined) return undefined
   // Never push to a serve running in THIS process — that's the serve executing
@@ -188,7 +253,10 @@ function detectLocalIngestUrl(): string | undefined {
   // Ignore a stale advertisement left by a serve that died without cleanup —
   // otherwise every run wastes a (swallowed) POST to a dead origin.
   if (!pidAlive(info.pid)) return undefined
-  return `${info.origin.replace(/\/+$/, '')}/v1/ingest`
+  return {
+    url: `${info.origin.replace(/\/+$/, '')}/v1/ingest`,
+    ...(info.socket !== undefined && existsSync(info.socket) ? { socket: info.socket } : {}),
+  }
 }
 
 function assertWellFormedUrl(value: string | undefined, field: string): void {
@@ -218,6 +286,13 @@ class CloudIngestSink implements TelemetrySink {
     private readonly url: string,
     private readonly token: string | undefined,
     private readonly warn: (message: string) => void,
+    /**
+     * A local serve's advertised unix socket. When set, the push dials it
+     * (Bun fetch `unix` option) instead of TCP — the 0600 socket's file
+     * permissions are the auth, so no token is needed on that path. A failed
+     * socket dial falls back to the TCP origin (never-fail either way).
+     */
+    private readonly socketPath?: string,
   ) {}
 
   onRunSummary(summary: RunSummaryRecord): void {
@@ -227,6 +302,24 @@ class CloudIngestSink implements TelemetrySink {
   async flush(): Promise<void> {
     if (this.uploaded || this.summary === undefined) return
     this.uploaded = true
+    const body = JSON.stringify(this.summary)
+    if (this.socketPath !== undefined) {
+      try {
+        await this.post('http://localhost/v1/ingest', body, { unix: this.socketPath })
+        return
+      } catch {
+        // socket dial failed (removed/refused) — fall back to the TCP origin
+      }
+    }
+    try {
+      await this.post(this.url, body)
+    } catch (err) {
+      // telemetry push is fully optional — a down endpoint never affects a run
+      this.warn(`[vx] cloud ingest: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  private async post(url: string, body: string, extra?: { unix: string }): Promise<void> {
     const headers: Record<string, string> = { 'content-type': 'application/json' }
     if (this.token) headers['authorization'] = `Bearer ${this.token}`
     // A clearable timer (NOT AbortSignal.timeout, whose internal timer is not
@@ -235,15 +328,13 @@ class CloudIngestSink implements TelemetrySink {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 5000)
     try {
-      await fetch(this.url, {
+      await fetch(url, {
         method: 'POST',
         headers,
-        body: JSON.stringify(this.summary),
+        body,
         signal: controller.signal,
+        ...(extra !== undefined ? { unix: extra.unix } : {}),
       })
-    } catch (err) {
-      // telemetry push is fully optional — a down endpoint never affects a run
-      this.warn(`[vx] cloud ingest: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       clearTimeout(timer)
     }

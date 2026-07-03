@@ -20,24 +20,40 @@ import path from 'node:path'
 export interface ServeInfo {
   origin: string
   pid: number
+  /**
+   * Absolute unix-socket path when the serve also listens on one
+   * (`serve --socket`). Local clients prefer it over the TCP origin: the
+   * 0600 socket's OS file permissions are the auth, so no token plumbing.
+   */
+  socket?: string
+}
+
+/**
+ * The per-user runtime dir the serve's advertisement + unix socket live in —
+ * `$XDG_RUNTIME_DIR/vx-cloud/` when set (auto-cleared on logout, so no stale
+ * files survive a session), else a per-uid temp subdir so a multi-user
+ * machine never collides on one shared path.
+ */
+function runtimeBaseDir(): string {
+  const xdg = process.env['XDG_RUNTIME_DIR']
+  return xdg !== undefined && xdg !== ''
+    ? path.join(xdg, 'vx-cloud')
+    : path.join(os.tmpdir(), `vx-cloud-${userTag()}`)
 }
 
 /**
  * Path to the serve advertisement file. `VX_CLOUD_SERVE_INFO` pins an exact
- * path (escape hatch + used by tests). Otherwise it lives in the per-user
- * runtime dir — `$XDG_RUNTIME_DIR/vx-cloud/` when set (auto-cleared on logout,
- * so no stale files survive a session), else a per-uid temp subdir so a
- * multi-user machine never collides on one shared file.
+ * path (escape hatch + used by tests).
  */
 export function serveInfoPath(): string {
   const override = process.env['VX_CLOUD_SERVE_INFO']
   if (override !== undefined && override !== '') return override
-  const xdg = process.env['XDG_RUNTIME_DIR']
-  const base =
-    xdg !== undefined && xdg !== ''
-      ? path.join(xdg, 'vx-cloud')
-      : path.join(os.tmpdir(), `vx-cloud-${userTag()}`)
-  return path.join(base, 'serve.json')
+  return path.join(runtimeBaseDir(), 'serve.json')
+}
+
+/** Default unix-socket path for `serve --socket` (overridable per invocation). */
+export function defaultServeSocketPath(): string {
+  return path.join(runtimeBaseDir(), 'serve.sock')
 }
 
 function userTag(): string {
@@ -54,9 +70,16 @@ export function readServeInfo(): ServeInfo | undefined {
     const info = JSON.parse(readFileSync(serveInfoPath(), 'utf8')) as {
       origin?: unknown
       pid?: unknown
+      socket?: unknown
     }
     if (typeof info.origin === 'string' && info.origin.length > 0 && typeof info.pid === 'number') {
-      return { origin: info.origin, pid: info.pid }
+      return {
+        origin: info.origin,
+        pid: info.pid,
+        ...(typeof info.socket === 'string' && info.socket.length > 0
+          ? { socket: info.socket }
+          : {}),
+      }
     }
   } catch {
     // no file / unparseable → not advertised

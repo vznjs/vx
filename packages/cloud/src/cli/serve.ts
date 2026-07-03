@@ -8,7 +8,7 @@
 import os from 'node:os'
 import path from 'node:path'
 import { createHash, timingSafeEqual } from 'node:crypto'
-import { mkdir, unlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, unlink, writeFile } from 'node:fs/promises'
 import {
   cacheKeyDiff,
   compareRuns,
@@ -58,8 +58,10 @@ import {
   type ServerMessage,
   type TelemetrySink,
 } from '@vzn/vx'
+import { ArtifactStore, MAX_ARTIFACT_BYTES } from '../artifact-store.js'
 import { IngestStore } from '../ingest-store.js'
-import { serveInfoPath } from '../serve-info.js'
+import { defaultServeSocketPath, serveInfoPath } from '../serve-info.js'
+import { handleMcpHttp } from './mcp-serve.js'
 
 /**
  * Default port for `vx-cloud serve`, used when neither `--port` nor the
@@ -73,6 +75,9 @@ export const DEFAULT_SERVE_PORT = 4321
 
 /** Env var overriding the serve port (below an explicit `--port`). */
 export const SERVE_PORT_ENV = 'VX_CLOUD_PORT'
+
+/** Env var enabling (and naming) the unix-socket listener (below `--socket`). */
+export const SERVE_SOCKET_ENV = 'VX_CLOUD_SOCKET'
 
 /**
  * Resolve the serve port for the CLI: an explicit `--port` wins, then
@@ -141,6 +146,8 @@ export interface ServeServer {
   origin: string
   /** The server's runtime identity (the `/v1/meta` name). */
   name: string
+  /** The unix-socket path when the serve also listens on one. */
+  socketPath?: string
   stop: () => Promise<void>
 }
 
@@ -189,6 +196,14 @@ export async function startServe(opts: {
   token?: string
   /** Server identity reported by `/v1/meta`. Defaults to the hostname. */
   name?: string
+  /**
+   * Also listen on this unix socket (docker-parity local transport,
+   * dev-flows design §10.2). The SAME fetch handler serves both listeners,
+   * but socket-served requests bypass the token gate: the socket is chmod
+   * 0600 after bind, so the OS file permissions ARE the auth. A stale
+   * socket left by a crashed serve is unlinked before binding.
+   */
+  socketPath?: string
   onRun?: (request: RunRequest, ok: boolean) => void
 }): Promise<ServeServer> {
   // One registry for the service's whole lifetime — concurrent runs share
@@ -208,8 +223,11 @@ export async function startServe(opts: {
   // identity handshake `connect` needs BEFORE the user has proven a token —
   // it carries no secrets and no workspace path). The UI catch-all also stays
   // open: the SPA is static code and must load to show its token prompt; every
-  // data surface it calls is gated below.
-  function authorized(req: Request, url: URL): boolean {
+  // data surface it calls is gated below. Requests arriving over the unix
+  // socket bypass the token entirely: the socket is chmod 0600, so the OS
+  // file permissions ARE the auth (only this user can even open it).
+  function authorized(req: Request, url: URL, viaSocket: boolean): boolean {
+    if (viaSocket) return true
     if (expectedDigest === undefined) return true
     if (url.pathname === '/health' || url.pathname === '/v1/meta') return true
     const isUpgrade = req.headers.get('upgrade')?.toLowerCase() === 'websocket'
@@ -218,7 +236,9 @@ export async function startServe(opts: {
       url.pathname === '/version' ||
       url.pathname === '/events' ||
       url.pathname === '/stream' ||
-      url.pathname.startsWith('/v1/')
+      url.pathname === '/mcp' ||
+      url.pathname.startsWith('/v1/') ||
+      url.pathname.startsWith('/v8/')
     if (!gated) return true
     const header = req.headers.get('authorization')
     if (header !== null && header.startsWith('Bearer ') && tokenMatches(header.slice(7))) {
@@ -245,10 +265,13 @@ export async function startServe(opts: {
   // can be deployed anywhere — it has no access to, and no need for, the
   // machine(s) that produced the runs. One Bun process: SQLite store + the
   // ingest endpoint + the /v1/* API + the embedded UI.
-  const ingest = new IngestStore(
-    opts.ingestDir ?? path.join(opts.root, '.vx', 'cloud-ingest'),
-    (m) => process.stderr.write(`[vx-cloud] ${m}\n`),
-  )
+  const ingestDir = opts.ingestDir ?? path.join(opts.root, '.vx', 'cloud-ingest')
+  const ingest = new IngestStore(ingestDir, (m) => process.stderr.write(`[vx-cloud] ${m}\n`))
+
+  // The serve-hosted artifact store (Turbo /v8/artifacts wire) — point
+  // core's VX_REMOTE_CACHE_URL (or a connected environment) at this serve
+  // and the remote cache works with no separate cache server.
+  const artifacts = new ArtifactStore(path.join(ingestDir, 'artifacts'))
 
   // Delegated runs land in the serve's OWN history — before this sink they
   // never did (the plugin's pid-guard rightly declines the HTTP self-push,
@@ -278,430 +301,480 @@ export async function startServe(opts: {
     }
   }
 
-  const listen = (port: number) =>
-    Bun.serve({
-      port,
-      fetch(req, srv) {
-        const url = new URL(req.url)
-        // Browser preflight — answer everything with CORS-permissive headers.
-        if (req.method === 'OPTIONS') {
-          return withCors(new Response(null, { status: 204 }))
-        }
-        // Liveness probe — `vx run` health-checks this before delegating.
-        if (url.pathname === '/health') return withCors(new Response('ok'))
-        // Server identity — pre-auth by design (the `connect` handshake reads
-        // it before the user has proven a token). No secrets, no workspace
-        // path (/version keeps that, behind the token).
-        if (url.pathname === '/v1/meta') {
-          return jsonResponse({
-            v: 1,
-            name: serveName,
-            vx: VERSION,
-            auth: expectedDigest !== undefined ? 'token' : 'open',
-            startedAt,
-            // Count only — a pre-auth endpoint must not leak workspace names.
-            workspaces: ingest.workspaceCount(),
-          })
-        }
-        if (!authorized(req, url)) {
-          return jsonResponse(
-            { error: 'unauthorized' },
-            { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } },
-          )
-        }
-        // Workspace scoping for the analytics routes (`?ws=<id>`, dev-flows
-        // design §3.5) — resolved ONCE here. No param → the sole known
-        // workspace when exactly one exists, else `default`, so a
-        // single-workspace serve behaves exactly like the pre-multi-workspace
-        // one and every existing client/bookmark keeps working.
-        const wsParam = url.searchParams.get('ws')
-        const readDb = () => ingest.db(wsParam ?? ingest.defaultWorkspaceId())!
-        // Capability handshake — what protocol version + channels + RPCs.
-        if (url.pathname === '/version') {
-          return jsonResponse({
-            protocol: WIRE_PROTOCOL_VERSION,
-            vx: VERSION,
-            channels: WIRE_CHANNELS,
-            rpc: [
-              'getCacheStats',
-              'getRunHistory',
-              'explainCacheKey',
-              'whyDidThisRerun',
-              'cacheKeyDiff',
-              'compareRuns',
-              'getInvocation',
-              'getHitRateSplit',
-            ],
-            workspace: opts.root,
-          })
-        }
-        // Ingest — the push endpoint. A cloud telemetry sink POSTs a
-        // canonical RunSummaryRecord; we persist it into the cloud-owned
-        // store the hosted dashboard reads from. Idempotent on runId.
-        if (url.pathname === '/v1/ingest' && req.method === 'POST') {
-          return (async () => {
-            try {
-              const summary = (await req.json()) as RunSummaryRecord
-              if (summary?.run?.runId === undefined) {
-                return jsonResponse({ ok: false, error: 'not a RunSummaryRecord' }, { status: 400 })
-              }
-              const stored = ingest.ingest(summary)
-              return jsonResponse({ ok: true, stored })
-            } catch (err) {
-              return jsonResponse(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                { status: 400 },
-              )
-            }
-          })()
-        }
-        // The workspace list (id, name, lastSeenAt, runCount) — feeds the UI
-        // switcher. Behind the token gate like every /v1 read.
-        if (url.pathname === '/v1/workspaces') {
-          return jsonResponse({ workspaces: ingest.workspaces() })
-        }
-        // An explicitly-requested unknown workspace 404s before any route
-        // logic runs; a known one is lazily opened by the same probe.
-        if (
-          wsParam !== null &&
-          url.pathname.startsWith('/v1/') &&
-          ingest.db(wsParam) === undefined
-        ) {
-          return jsonResponse({ error: `unknown workspace: ${wsParam}` }, { status: 404 })
-        }
-        // -----------------------------------------------------------------
-        // Metrics HTTP surface — JSON read APIs over the workspace-resolved
-        // ingest store. The dashboard SPA (packages/cloud/ui) calls these
-        // directly.
-        // -----------------------------------------------------------------
-        if (url.pathname === '/v1/runs') {
-          const params = url.searchParams
-          const args: Parameters<typeof listRuns>[1] = {}
-          const limitRaw = params.get('limit')
-          if (limitRaw !== null) args.limit = Number(limitRaw)
-          const project = params.get('project')
-          if (project !== null) args.project = project
-          const task = params.get('task')
-          if (task !== null) args.task = task
-          const runId = params.get('runId')
-          if (runId !== null) args.runId = runId
-          return jsonResponse({ runs: listRuns(readDb(), args) })
-        }
-        if (url.pathname === '/v1/invocations') {
-          const params = url.searchParams
-          const args: {
-            limit?: number
-            branch?: string
-            ci?: boolean
-            tagKey?: string
-            tagValue?: string
-          } = {}
-          const limitRaw = params.get('limit')
-          if (limitRaw !== null) args.limit = Number(limitRaw)
-          const branch = params.get('branch')
-          if (branch !== null) args.branch = branch
-          const ci = params.get('ci')
-          if (ci !== null) args.ci = ci === '1' || ci === 'true'
-          const tagKey = params.get('tagKey')
-          if (tagKey !== null) args.tagKey = tagKey
-          const tagValue = params.get('tagValue')
-          if (tagValue !== null) args.tagValue = tagValue
-          return jsonResponse({ invocations: listInvocations(readDb(), args) })
-        }
-        {
-          const m = /^\/v1\/invocations\/([^/]+)$/.exec(url.pathname)
-          if (m) {
-            const detail = getInvocation(readDb(), decodeURIComponent(m[1]!))
-            if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
-            return jsonResponse(detail)
-          }
-        }
-        // The task DAG for a set of requested tasks: nodes + dependency edges +
-        // predicted cache status, via a no-exec planRun. The run cockpit lays
-        // this out and overlays live status from the WS run stream.
-        if (url.pathname === '/v1/graph') {
-          // The DAG is computed from a colocated workspace (a no-exec planRun)
-          // — the live-cockpit feature. A remote dashboard has no workspace, so
-          // planRun throws and the catch below returns a clean error.
-          const tasks = (url.searchParams.get('tasks') ?? '')
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
-          if (tasks.length === 0)
-            return jsonResponse({ error: 'tasks query param required' }, { status: 400 })
-          return (async () => {
-            try {
-              const plan = await planRun({ cwd: opts.root, tasks, log: silentLogger })
-              return jsonResponse({
-                nodes: plan.tasks.map((t) => ({
-                  id: t.node.id,
-                  project: t.node.projectName,
-                  task: t.node.taskName,
-                  isGroup: t.node.config.exec === undefined,
-                  deps: t.deps,
-                  cacheStatus: t.cacheStatus,
-                })),
-              })
-            } catch (err) {
-              return jsonResponse(
-                { error: err instanceof Error ? err.message : String(err) },
-                { status: 400 },
-              )
-            }
-          })()
-        }
-        {
-          const m = /^\/v1\/runs\/([^/]+)$/.exec(url.pathname)
-          if (m) {
-            const detail = getRun(readDb(), decodeURIComponent(m[1]!))
-            if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
-            return jsonResponse(detail)
-          }
-        }
-        // Diff a run against the immediately-previous invocation — the "why is
-        // this run different" surface. Always 200 (a missing/no-previous run is
-        // a clear shape in the body, not an HTTP error).
-        {
-          const m = /^\/v1\/compare\/([^/]+)$/.exec(url.pathname)
-          if (m) {
-            return jsonResponse(compareRuns(readDb(), decodeURIComponent(m[1]!)))
-          }
-        }
-        if (url.pathname === '/v1/cache/stats') {
-          return jsonResponse(getCacheStatsSql(readDb()))
-        }
-        if (url.pathname === '/v1/cache/hit-split') {
-          return jsonResponse(getHitRateSplit(readDb()))
-        }
-        if (url.pathname === '/v1/cache/breakdown') {
-          const limit = Number(url.searchParams.get('limit') ?? '20')
-          return jsonResponse({ projects: getCacheBreakdown(readDb(), limit) })
-        }
-        if (url.pathname === '/v1/cache/savings') {
-          return jsonResponse(getCacheSavings(readDb()))
-        }
-        if (url.pathname === '/v1/cache/entries') {
-          const params = url.searchParams
-          const args: Parameters<typeof listCacheEntries>[1] = {}
-          const limitRaw = params.get('limit')
-          if (limitRaw !== null) args.limit = Number(limitRaw)
-          const orderBy = params.get('orderBy')
-          if (
-            orderBy === 'created_at' ||
-            orderBy === 'accessed_at' ||
-            orderBy === 'size_bytes' ||
-            orderBy === 'duration_ms'
-          ) {
-            args.orderBy = orderBy
-          }
-          const project = params.get('project')
-          if (project !== null) args.project = project
-          return jsonResponse({ entries: listCacheEntries(readDb(), args) })
-        }
-        if (url.pathname === '/v1/top-tasks') {
-          const limit = Number(url.searchParams.get('limit') ?? '10')
-          return jsonResponse({ tasks: getTopTimeBurners(readDb(), limit) })
-        }
-        if (url.pathname === '/v1/failures') {
-          const limit = Number(url.searchParams.get('limit') ?? '25')
-          return jsonResponse({ failures: getRecentFailures(readDb(), limit) })
-        }
-        if (url.pathname === '/v1/projects') {
-          const limit = Number(url.searchParams.get('limit') ?? '100')
-          return jsonResponse({ projects: listProjects(readDb(), limit) })
-        }
-        if (url.pathname === '/v1/trends/runs') {
-          const params = url.searchParams
-          const bucketRaw = params.get('bucket')
-          const bucket = bucketRaw === 'day' || bucketRaw === 'hour' ? bucketRaw : 'hour'
-          const args: Parameters<typeof getRunTrends>[1] = { bucket }
-          const fromRaw = params.get('from')
-          if (fromRaw !== null) args.from = Number(fromRaw)
-          const toRaw = params.get('to')
-          if (toRaw !== null) args.to = Number(toRaw)
-          return jsonResponse({ bucket, points: getRunTrends(readDb(), args) })
-        }
-        if (url.pathname === '/v1/trends/heatmap') {
-          const days = Number(url.searchParams.get('days') ?? '30')
-          return jsonResponse({ days, cells: getRunHeatmap(readDb(), days) })
-        }
-        if (url.pathname === '/v1/trends/storage') {
-          const days = Number(url.searchParams.get('days') ?? '30')
-          return jsonResponse({ days, points: getStorageGrowth(readDb(), days) })
-        }
-        if (url.pathname === '/v1/trends/parallelism') {
-          const limit = Number(url.searchParams.get('limit') ?? '50')
-          return jsonResponse({ points: getParallelismHistory(readDb(), limit) })
-        }
-        if (url.pathname === '/v1/flakiness') {
-          const limit = Number(url.searchParams.get('limit') ?? '25')
-          return jsonResponse({ tasks: getFlakiestTasks(readDb(), limit) })
-        }
-        if (url.pathname === '/v1/bottlenecks') {
-          const lookbackDays = Number(url.searchParams.get('days') ?? '14')
-          const limit = Number(url.searchParams.get('limit') ?? '15')
-          return jsonResponse({
-            lookbackDays,
-            bottlenecks: getBottlenecks(readDb(), lookbackDays, limit),
-          })
-        }
-        if (url.pathname === '/v1/cache/prunable') {
-          const minAgeDays = Number(url.searchParams.get('minAgeDays') ?? '7')
-          const limit = Number(url.searchParams.get('limit') ?? '50')
-          return jsonResponse({
-            minAgeDays,
-            entries: getPrunableEntries(readDb(), minAgeDays, limit),
-          })
-        }
-        if (url.pathname === '/v1/history') {
-          const params = url.searchParams
-          const args: Parameters<typeof getHistory>[1] = {}
-          const limitRaw = params.get('limit')
-          if (limitRaw !== null) args.limit = Number(limitRaw)
-          const project = params.get('project')
-          if (project !== null) args.project = project
-          const task = params.get('task')
-          if (task !== null) args.task = task
-          return jsonResponse({ history: getHistory(readDb(), args) })
-        }
-        {
-          const m = /^\/v1\/tasks\/(.+)$/.exec(url.pathname)
-          if (m) {
-            const detail = getTaskDetail(readDb(), decodeURIComponent(m[1]!))
-            if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
-            return jsonResponse(detail)
-          }
-        }
-        {
-          const m = /^\/v1\/explain\/(.+)$/.exec(url.pathname)
-          if (m) {
-            return jsonResponse(explainCacheKeyQuery(readDb(), decodeURIComponent(m[1]!)))
-          }
-        }
-        {
-          const m = /^\/v1\/why\/([^/]+)\/(.+)$/.exec(url.pathname)
-          if (m) {
-            return jsonResponse(
-              whyDidThisRerunQuery(readDb(), decodeURIComponent(m[1]!), decodeURIComponent(m[2]!)),
-            )
-          }
-        }
-        // The input-fingerprint moat: name the exact cache-key components that
-        // differ between this run of a task and its previous run. taskId is
-        // `project#task`, URI-encoded. Always 200 (a missing pair / no-previous
-        // run is a clear shape in the body, not an HTTP error).
-        {
-          const m = /^\/v1\/diff\/([^/]+)\/(.+)$/.exec(url.pathname)
-          if (m) {
-            return jsonResponse(
-              cacheKeyDiff(readDb(), decodeURIComponent(m[1]!), decodeURIComponent(m[2]!)),
-            )
-          }
-        }
-        // Server-Sent Events — broadcasts the same event envelopes the WS
-        // sees, but on a one-way stream. `curl -N http://.../events` works.
-        if (url.pathname === '/events' || url.pathname === '/v1/events') {
-          const stream = new ReadableStream<Uint8Array>({
-            start(controller) {
-              const enc = new TextEncoder()
-              const sub: ReadSubscriber = (env) => controller.enqueue(enc.encode(encodeForSSE(env)))
-              readSubscribers.add(sub)
-              req.signal.addEventListener('abort', () => {
-                readSubscribers.delete(sub)
-                try {
-                  controller.close()
-                } catch {
-                  // already closed
-                }
-              })
-            },
-          })
-          return withCors(
-            new Response(stream, {
-              headers: {
-                'Content-Type': 'text/event-stream',
-                'Cache-Control': 'no-store',
-                Connection: 'keep-alive',
-              },
-            }),
-          )
-        }
-        // NDJSON — one envelope per line, no SSE framing. `jq`-friendly.
-        if (url.pathname === '/stream') {
-          const stream = new ReadableStream<Uint8Array>({
-            start(controller) {
-              const enc = new TextEncoder()
-              const sub: ReadSubscriber = (env) =>
-                controller.enqueue(enc.encode(encodeForNDJSON(env)))
-              readSubscribers.add(sub)
-              req.signal.addEventListener('abort', () => {
-                readSubscribers.delete(sub)
-                try {
-                  controller.close()
-                } catch {
-                  // already closed
-                }
-              })
-            },
-          })
-          return withCors(
-            new Response(stream, {
-              headers: {
-                'Content-Type': 'application/x-ndjson',
-                'Cache-Control': 'no-store',
-              },
-            }),
-          )
-        }
-        if (srv.upgrade(req)) return undefined
-        // When --ui is set, serve the single-file dashboard for every non-API
-        // GET. It's one self-contained HTML with a hash router, so every route
-        // (/, /tasks, /cache, …) returns the same bytes.
-        if (opts.uiHtmlPath !== undefined) {
-          return withCors(
-            new Response(Bun.file(opts.uiHtmlPath), {
-              headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
-            }),
-          )
-        }
-        return withCors(new Response('vx serve'))
-      },
-      websocket: {
-        async message(ws, raw) {
-          const text = String(raw)
-          // Parse once; classify into legacy ClientMessage or new envelope.
-          let parsed: unknown
+  // ONE fetch handler shared by both listeners (TCP + optional unix socket);
+  // the closure flag marks socket-served requests so `authorized` can skip
+  // the token gate for them.
+  const makeFetch =
+    (viaSocket: boolean) =>
+    (
+      req: Request,
+      srv: { upgrade(req: Request): boolean },
+    ): Response | Promise<Response> | undefined => {
+      const url = new URL(req.url)
+      // Browser preflight — answer everything with CORS-permissive headers.
+      if (req.method === 'OPTIONS') {
+        return withCors(new Response(null, { status: 204 }))
+      }
+      // Liveness probe — `vx run` health-checks this before delegating.
+      if (url.pathname === '/health') return withCors(new Response('ok'))
+      // Server identity — pre-auth by design (the `connect` handshake reads
+      // it before the user has proven a token). No secrets, no workspace
+      // path (/version keeps that, behind the token).
+      if (url.pathname === '/v1/meta') {
+        return jsonResponse({
+          v: 1,
+          name: serveName,
+          vx: VERSION,
+          auth: expectedDigest !== undefined ? 'token' : 'open',
+          startedAt,
+          // Count only — a pre-auth endpoint must not leak workspace names.
+          workspaces: ingest.workspaceCount(),
+          // Capability advertisement: this serve hosts /v8/artifacts, so a
+          // connected environment can auto-wire the remote-cache rung.
+          artifacts: true,
+        })
+      }
+      if (!authorized(req, url, viaSocket)) {
+        return jsonResponse(
+          { error: 'unauthorized' },
+          { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } },
+        )
+      }
+      // MCP — the AI-agent control plane (dev-flows design §10.3): JSON-RPC
+      // 2.0 over streamable HTTP, tools adapting the same metrics queries
+      // the /v1/* routes serve. Bearer-gated above like every /v1 read.
+      if (url.pathname === '/mcp') {
+        return handleMcpHttp(req, ingest).then(withCors)
+      }
+      // The artifact store (Turbo wire; ?teamId/slug accepted by ignoring).
+      {
+        const m = /^\/v8\/artifacts\/([^/]+)$/.exec(url.pathname)
+        if (m) return artifacts.handle(req, decodeURIComponent(m[1]!)).then(withCors)
+      }
+      // Workspace scoping for the analytics routes (`?ws=<id>`, dev-flows
+      // design §3.5) — resolved ONCE here. No param → the sole known
+      // workspace when exactly one exists, else `default`, so a
+      // single-workspace serve behaves exactly like the pre-multi-workspace
+      // one and every existing client/bookmark keeps working.
+      const wsParam = url.searchParams.get('ws')
+      const readDb = () => ingest.db(wsParam ?? ingest.defaultWorkspaceId())!
+      // Capability handshake — what protocol version + channels + RPCs.
+      if (url.pathname === '/version') {
+        return jsonResponse({
+          protocol: WIRE_PROTOCOL_VERSION,
+          vx: VERSION,
+          channels: WIRE_CHANNELS,
+          rpc: [
+            'getCacheStats',
+            'getRunHistory',
+            'explainCacheKey',
+            'whyDidThisRerun',
+            'cacheKeyDiff',
+            'compareRuns',
+            'getInvocation',
+            'getHitRateSplit',
+          ],
+          workspace: opts.root,
+        })
+      }
+      // Ingest — the push endpoint. A cloud telemetry sink POSTs a
+      // canonical RunSummaryRecord; we persist it into the cloud-owned
+      // store the hosted dashboard reads from. Idempotent on runId.
+      if (url.pathname === '/v1/ingest' && req.method === 'POST') {
+        return (async () => {
           try {
-            parsed = JSON.parse(text)
-          } catch {
-            return
-          }
-          let message: ClientMessage | null = null
-          if (isEnvelope(parsed)) {
-            message = envelopeToClientMessage(parsed)
-          } else if (parsed && typeof parsed === 'object' && 't' in (parsed as object)) {
-            message = parsed as ClientMessage
-          }
-          if (!message || message.t !== 'run') return
-          const send = (m: ServerMessage): void => {
-            broadcast(m)
-            try {
-              ws.send(JSON.stringify(m))
-            } catch {
-              // client vanished mid-run; the run still completes server-side
+            const summary = (await req.json()) as RunSummaryRecord
+            if (summary?.run?.runId === undefined) {
+              return jsonResponse({ ok: false, error: 'not a RunSummaryRecord' }, { status: 400 })
             }
+            const stored = ingest.ingest(summary)
+            return jsonResponse({ ok: true, stored })
+          } catch (err) {
+            return jsonResponse(
+              { ok: false, error: err instanceof Error ? err.message : String(err) },
+              { status: 400 },
+            )
           }
-          const ok = await executeRequest(send, message.request, inflight, [selfIngestSink])
-          opts.onRun?.(message.request, ok)
-        },
-      },
-    })
+        })()
+      }
+      // The workspace list (id, name, lastSeenAt, runCount) — feeds the UI
+      // switcher. Behind the token gate like every /v1 read.
+      if (url.pathname === '/v1/workspaces') {
+        return jsonResponse({ workspaces: ingest.workspaces() })
+      }
+      // An explicitly-requested unknown workspace 404s before any route
+      // logic runs; a known one is lazily opened by the same probe.
+      if (wsParam !== null && url.pathname.startsWith('/v1/') && ingest.db(wsParam) === undefined) {
+        return jsonResponse({ error: `unknown workspace: ${wsParam}` }, { status: 404 })
+      }
+      // -----------------------------------------------------------------
+      // Metrics HTTP surface — JSON read APIs over the workspace-resolved
+      // ingest store. The dashboard SPA (packages/cloud/ui) calls these
+      // directly.
+      // -----------------------------------------------------------------
+      if (url.pathname === '/v1/runs') {
+        const params = url.searchParams
+        const args: Parameters<typeof listRuns>[1] = {}
+        const limitRaw = params.get('limit')
+        if (limitRaw !== null) args.limit = Number(limitRaw)
+        const project = params.get('project')
+        if (project !== null) args.project = project
+        const task = params.get('task')
+        if (task !== null) args.task = task
+        const runId = params.get('runId')
+        if (runId !== null) args.runId = runId
+        return jsonResponse({ runs: listRuns(readDb(), args) })
+      }
+      if (url.pathname === '/v1/invocations') {
+        const params = url.searchParams
+        const args: {
+          limit?: number
+          branch?: string
+          ci?: boolean
+          tagKey?: string
+          tagValue?: string
+        } = {}
+        const limitRaw = params.get('limit')
+        if (limitRaw !== null) args.limit = Number(limitRaw)
+        const branch = params.get('branch')
+        if (branch !== null) args.branch = branch
+        const ci = params.get('ci')
+        if (ci !== null) args.ci = ci === '1' || ci === 'true'
+        const tagKey = params.get('tagKey')
+        if (tagKey !== null) args.tagKey = tagKey
+        const tagValue = params.get('tagValue')
+        if (tagValue !== null) args.tagValue = tagValue
+        return jsonResponse({ invocations: listInvocations(readDb(), args) })
+      }
+      {
+        const m = /^\/v1\/invocations\/([^/]+)$/.exec(url.pathname)
+        if (m) {
+          const detail = getInvocation(readDb(), decodeURIComponent(m[1]!))
+          if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
+          return jsonResponse(detail)
+        }
+      }
+      // The task DAG for a set of requested tasks: nodes + dependency edges +
+      // predicted cache status, via a no-exec planRun. The run cockpit lays
+      // this out and overlays live status from the WS run stream.
+      if (url.pathname === '/v1/graph') {
+        // The DAG is computed from a colocated workspace (a no-exec planRun)
+        // — the live-cockpit feature. A remote dashboard has no workspace, so
+        // planRun throws and the catch below returns a clean error.
+        const tasks = (url.searchParams.get('tasks') ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+        if (tasks.length === 0)
+          return jsonResponse({ error: 'tasks query param required' }, { status: 400 })
+        return (async () => {
+          try {
+            const plan = await planRun({ cwd: opts.root, tasks, log: silentLogger })
+            return jsonResponse({
+              nodes: plan.tasks.map((t) => ({
+                id: t.node.id,
+                project: t.node.projectName,
+                task: t.node.taskName,
+                isGroup: t.node.config.exec === undefined,
+                deps: t.deps,
+                cacheStatus: t.cacheStatus,
+              })),
+            })
+          } catch (err) {
+            return jsonResponse(
+              { error: err instanceof Error ? err.message : String(err) },
+              { status: 400 },
+            )
+          }
+        })()
+      }
+      {
+        const m = /^\/v1\/runs\/([^/]+)$/.exec(url.pathname)
+        if (m) {
+          const detail = getRun(readDb(), decodeURIComponent(m[1]!))
+          if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
+          return jsonResponse(detail)
+        }
+      }
+      // Diff a run against the immediately-previous invocation — the "why is
+      // this run different" surface. Always 200 (a missing/no-previous run is
+      // a clear shape in the body, not an HTTP error).
+      {
+        const m = /^\/v1\/compare\/([^/]+)$/.exec(url.pathname)
+        if (m) {
+          return jsonResponse(compareRuns(readDb(), decodeURIComponent(m[1]!)))
+        }
+      }
+      if (url.pathname === '/v1/cache/stats') {
+        return jsonResponse(getCacheStatsSql(readDb()))
+      }
+      if (url.pathname === '/v1/cache/hit-split') {
+        return jsonResponse(getHitRateSplit(readDb()))
+      }
+      if (url.pathname === '/v1/cache/breakdown') {
+        const limit = Number(url.searchParams.get('limit') ?? '20')
+        return jsonResponse({ projects: getCacheBreakdown(readDb(), limit) })
+      }
+      if (url.pathname === '/v1/cache/savings') {
+        return jsonResponse(getCacheSavings(readDb()))
+      }
+      if (url.pathname === '/v1/cache/entries') {
+        const params = url.searchParams
+        const args: Parameters<typeof listCacheEntries>[1] = {}
+        const limitRaw = params.get('limit')
+        if (limitRaw !== null) args.limit = Number(limitRaw)
+        const orderBy = params.get('orderBy')
+        if (
+          orderBy === 'created_at' ||
+          orderBy === 'accessed_at' ||
+          orderBy === 'size_bytes' ||
+          orderBy === 'duration_ms'
+        ) {
+          args.orderBy = orderBy
+        }
+        const project = params.get('project')
+        if (project !== null) args.project = project
+        return jsonResponse({ entries: listCacheEntries(readDb(), args) })
+      }
+      if (url.pathname === '/v1/top-tasks') {
+        const limit = Number(url.searchParams.get('limit') ?? '10')
+        return jsonResponse({ tasks: getTopTimeBurners(readDb(), limit) })
+      }
+      if (url.pathname === '/v1/failures') {
+        const limit = Number(url.searchParams.get('limit') ?? '25')
+        return jsonResponse({ failures: getRecentFailures(readDb(), limit) })
+      }
+      if (url.pathname === '/v1/projects') {
+        const limit = Number(url.searchParams.get('limit') ?? '100')
+        return jsonResponse({ projects: listProjects(readDb(), limit) })
+      }
+      if (url.pathname === '/v1/trends/runs') {
+        const params = url.searchParams
+        const bucketRaw = params.get('bucket')
+        const bucket = bucketRaw === 'day' || bucketRaw === 'hour' ? bucketRaw : 'hour'
+        const args: Parameters<typeof getRunTrends>[1] = { bucket }
+        const fromRaw = params.get('from')
+        if (fromRaw !== null) args.from = Number(fromRaw)
+        const toRaw = params.get('to')
+        if (toRaw !== null) args.to = Number(toRaw)
+        return jsonResponse({ bucket, points: getRunTrends(readDb(), args) })
+      }
+      if (url.pathname === '/v1/trends/heatmap') {
+        const days = Number(url.searchParams.get('days') ?? '30')
+        return jsonResponse({ days, cells: getRunHeatmap(readDb(), days) })
+      }
+      if (url.pathname === '/v1/trends/storage') {
+        const days = Number(url.searchParams.get('days') ?? '30')
+        return jsonResponse({ days, points: getStorageGrowth(readDb(), days) })
+      }
+      if (url.pathname === '/v1/trends/parallelism') {
+        const limit = Number(url.searchParams.get('limit') ?? '50')
+        return jsonResponse({ points: getParallelismHistory(readDb(), limit) })
+      }
+      if (url.pathname === '/v1/flakiness') {
+        const limit = Number(url.searchParams.get('limit') ?? '25')
+        return jsonResponse({ tasks: getFlakiestTasks(readDb(), limit) })
+      }
+      if (url.pathname === '/v1/bottlenecks') {
+        const lookbackDays = Number(url.searchParams.get('days') ?? '14')
+        const limit = Number(url.searchParams.get('limit') ?? '15')
+        return jsonResponse({
+          lookbackDays,
+          bottlenecks: getBottlenecks(readDb(), lookbackDays, limit),
+        })
+      }
+      if (url.pathname === '/v1/cache/prunable') {
+        const minAgeDays = Number(url.searchParams.get('minAgeDays') ?? '7')
+        const limit = Number(url.searchParams.get('limit') ?? '50')
+        return jsonResponse({
+          minAgeDays,
+          entries: getPrunableEntries(readDb(), minAgeDays, limit),
+        })
+      }
+      if (url.pathname === '/v1/history') {
+        const params = url.searchParams
+        const args: Parameters<typeof getHistory>[1] = {}
+        const limitRaw = params.get('limit')
+        if (limitRaw !== null) args.limit = Number(limitRaw)
+        const project = params.get('project')
+        if (project !== null) args.project = project
+        const task = params.get('task')
+        if (task !== null) args.task = task
+        return jsonResponse({ history: getHistory(readDb(), args) })
+      }
+      {
+        const m = /^\/v1\/tasks\/(.+)$/.exec(url.pathname)
+        if (m) {
+          const detail = getTaskDetail(readDb(), decodeURIComponent(m[1]!))
+          if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
+          return jsonResponse(detail)
+        }
+      }
+      {
+        const m = /^\/v1\/explain\/(.+)$/.exec(url.pathname)
+        if (m) {
+          return jsonResponse(explainCacheKeyQuery(readDb(), decodeURIComponent(m[1]!)))
+        }
+      }
+      {
+        const m = /^\/v1\/why\/([^/]+)\/(.+)$/.exec(url.pathname)
+        if (m) {
+          return jsonResponse(
+            whyDidThisRerunQuery(readDb(), decodeURIComponent(m[1]!), decodeURIComponent(m[2]!)),
+          )
+        }
+      }
+      // The input-fingerprint moat: name the exact cache-key components that
+      // differ between this run of a task and its previous run. taskId is
+      // `project#task`, URI-encoded. Always 200 (a missing pair / no-previous
+      // run is a clear shape in the body, not an HTTP error).
+      {
+        const m = /^\/v1\/diff\/([^/]+)\/(.+)$/.exec(url.pathname)
+        if (m) {
+          return jsonResponse(
+            cacheKeyDiff(readDb(), decodeURIComponent(m[1]!), decodeURIComponent(m[2]!)),
+          )
+        }
+      }
+      // Server-Sent Events — broadcasts the same event envelopes the WS
+      // sees, but on a one-way stream. `curl -N http://.../events` works.
+      if (url.pathname === '/events' || url.pathname === '/v1/events') {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            const enc = new TextEncoder()
+            const sub: ReadSubscriber = (env) => controller.enqueue(enc.encode(encodeForSSE(env)))
+            readSubscribers.add(sub)
+            req.signal.addEventListener('abort', () => {
+              readSubscribers.delete(sub)
+              try {
+                controller.close()
+              } catch {
+                // already closed
+              }
+            })
+          },
+        })
+        return withCors(
+          new Response(stream, {
+            headers: {
+              'Content-Type': 'text/event-stream',
+              'Cache-Control': 'no-store',
+              Connection: 'keep-alive',
+            },
+          }),
+        )
+      }
+      // NDJSON — one envelope per line, no SSE framing. `jq`-friendly.
+      if (url.pathname === '/stream') {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            const enc = new TextEncoder()
+            const sub: ReadSubscriber = (env) =>
+              controller.enqueue(enc.encode(encodeForNDJSON(env)))
+            readSubscribers.add(sub)
+            req.signal.addEventListener('abort', () => {
+              readSubscribers.delete(sub)
+              try {
+                controller.close()
+              } catch {
+                // already closed
+              }
+            })
+          },
+        })
+        return withCors(
+          new Response(stream, {
+            headers: {
+              'Content-Type': 'application/x-ndjson',
+              'Cache-Control': 'no-store',
+            },
+          }),
+        )
+      }
+      if (srv.upgrade(req)) return undefined
+      // When --ui is set, serve the single-file dashboard for every non-API
+      // GET. It's one self-contained HTML with a hash router, so every route
+      // (/, /tasks, /cache, …) returns the same bytes.
+      if (opts.uiHtmlPath !== undefined) {
+        return withCors(
+          new Response(Bun.file(opts.uiHtmlPath), {
+            headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+          }),
+        )
+      }
+      return withCors(new Response('vx serve'))
+    }
+
+  const websocket: Bun.WebSocketHandler<undefined> = {
+    async message(ws, raw) {
+      const text = String(raw)
+      // Parse once; classify into legacy ClientMessage or new envelope.
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(text)
+      } catch {
+        return
+      }
+      let message: ClientMessage | null = null
+      if (isEnvelope(parsed)) {
+        message = envelopeToClientMessage(parsed)
+      } else if (parsed && typeof parsed === 'object' && 't' in (parsed as object)) {
+        message = parsed as ClientMessage
+      }
+      if (!message || message.t !== 'run') return
+      const send = (m: ServerMessage): void => {
+        broadcast(m)
+        try {
+          ws.send(JSON.stringify(m))
+        } catch {
+          // client vanished mid-run; the run still completes server-side
+        }
+      }
+      const ok = await executeRequest(send, message.request, inflight, [selfIngestSink])
+      opts.onRun?.(message.request, ok)
+    },
+  }
 
   // Bind exactly the requested port — a busy port throws (the CLI catches it
   // and prints a clean message). When no port is given (tests / embedders),
   // bind an ephemeral one. The STABLE-default policy lives in the CLI
   // (`serveCmd`), so a `vx-cloud serve` always lands on the same URL.
-  const server = listen(opts.port ?? 0)
+  // Bun's default request-body cap (128 MB) is below the artifact-store
+  // limit; raise it just past MAX_ARTIFACT_BYTES so the store's own 413
+  // logic (content-length checked before the body is read) governs.
+  const maxRequestBodySize = MAX_ARTIFACT_BYTES + 1024 * 1024
+  const server = Bun.serve({
+    port: opts.port ?? 0,
+    fetch: makeFetch(false),
+    websocket,
+    maxRequestBodySize,
+  })
+
+  // The optional unix-socket listener — same fetch handler, socket flag on.
+  // A stale socket file (crashed previous serve) blocks the bind, so unlink
+  // it first; chmod 0600 after bind makes the file permissions the auth.
+  let socketServer: { stop(closeActiveConnections?: boolean): Promise<void> } | undefined
+  if (opts.socketPath !== undefined) {
+    await mkdir(path.dirname(opts.socketPath), { recursive: true })
+    try {
+      await unlink(opts.socketPath)
+    } catch {
+      // not present — fine
+    }
+    try {
+      socketServer = Bun.serve({
+        unix: opts.socketPath,
+        fetch: makeFetch(true),
+        websocket,
+        maxRequestBodySize,
+      })
+      await chmod(opts.socketPath, 0o600)
+    } catch (err) {
+      await server.stop(true)
+      ingest.close()
+      throw err
+    }
+  }
 
   const origin = `http://localhost:${server.port}`
   // Advertise the local serve at a per-user, MACHINE-LEVEL path so a `vx run`
@@ -710,7 +783,14 @@ export async function startServe(opts: {
   const infoPath = serveInfoPath()
   try {
     await mkdir(path.dirname(infoPath), { recursive: true })
-    await writeFile(infoPath, JSON.stringify({ origin, pid: process.pid }))
+    await writeFile(
+      infoPath,
+      JSON.stringify({
+        origin,
+        pid: process.pid,
+        ...(opts.socketPath !== undefined ? { socket: opts.socketPath } : {}),
+      }),
+    )
   } catch {
     // can't advertise (read-only runtime dir) — explicit config still works
   }
@@ -718,8 +798,10 @@ export async function startServe(opts: {
   return {
     origin,
     name: serveName,
+    ...(opts.socketPath !== undefined ? { socketPath: opts.socketPath } : {}),
     stop: async () => {
       await server.stop(true)
+      await socketServer?.stop(true)
       try {
         ingest.close()
       } catch {
@@ -729,6 +811,13 @@ export async function startServe(opts: {
         await unlink(infoPath)
       } catch {
         // already gone
+      }
+      if (opts.socketPath !== undefined) {
+        try {
+          await unlink(opts.socketPath)
+        } catch {
+          // already gone
+        }
       }
     },
   }
@@ -741,6 +830,8 @@ interface ServeArgs {
   ingestDir?: string
   token?: string
   name?: string
+  /** `true` = enabled at the default/env path; a string = explicit path. */
+  socket?: string | true
   error?: string
 }
 
@@ -773,6 +864,24 @@ export function parseServeArgs(args: readonly string[]): ServeArgs {
     if (nv !== undefined) {
       if (nv === '') return { ...out, error: 'invalid --name: empty' }
       out.name = nv
+      continue
+    }
+    if (a === '--socket' || a?.startsWith('--socket=')) {
+      if (a.startsWith('--socket=')) {
+        const sv = a.slice(9)
+        if (sv === '') return { ...out, error: 'invalid --socket: empty' }
+        out.socket = sv
+        continue
+      }
+      // Bare `--socket` takes an OPTIONAL path: consume the next arg only
+      // when it isn't another flag.
+      const next = args[i + 1]
+      if (next !== undefined && !next.startsWith('--')) {
+        out.socket = next
+        i++
+      } else {
+        out.socket = true
+      }
       continue
     }
     const v = a === '--port' ? args[++i] : a?.startsWith('--port=') ? a.slice(7) : undefined
@@ -857,6 +966,20 @@ export async function serveCmd(args: readonly string[]): Promise<number> {
   const envName = process.env['VX_CLOUD_NAME']
   const name = parsed.name ?? (envName !== undefined && envName !== '' ? envName : undefined)
 
+  // Unix-socket listener: `--socket [path]` > VX_CLOUD_SOCKET > off. A bare
+  // `--socket` uses the env path when set, else the per-user default.
+  const envSocket = process.env[SERVE_SOCKET_ENV]
+  const socketPath =
+    typeof parsed.socket === 'string'
+      ? parsed.socket
+      : parsed.socket === true
+        ? envSocket !== undefined && envSocket !== ''
+          ? envSocket
+          : defaultServeSocketPath()
+        : envSocket !== undefined && envSocket !== ''
+          ? envSocket
+          : undefined
+
   let server
   try {
     server = await startServe({
@@ -866,6 +989,7 @@ export async function serveCmd(args: readonly string[]): Promise<number> {
       ...(parsed.ingestDir !== undefined ? { ingestDir: parsed.ingestDir } : {}),
       ...(token !== undefined ? { token } : {}),
       ...(name !== undefined ? { name } : {}),
+      ...(socketPath !== undefined ? { socketPath } : {}),
       onRun: (request, ok) => {
         process.stdout.write(`  ${ok ? '✓' : '✗'} ${request.tasks.join(', ')}\n`)
       },
@@ -881,10 +1005,13 @@ export async function serveCmd(args: readonly string[]): Promise<number> {
 
   const uiLine = uiHtmlPath !== undefined ? `vx serve: UI   ${server.origin}/\n` : ''
   const authLine = token !== undefined ? `vx serve: auth token required (--token)\n` : ''
+  const socketLine =
+    server.socketPath !== undefined ? `vx serve: sock ${server.socketPath}  (mode 0600)\n` : ''
   process.stdout.write(
     `vx serve: API  ${server.origin}  (${server.name})\n` +
       uiLine +
       authLine +
+      socketLine +
       `vx serve: serving pushed runs from the ingest store (POST /v1/ingest)\n` +
       `(press Ctrl-C to stop)\n\n`,
   )

@@ -183,9 +183,12 @@ describe('cloud() cache capability', () => {
   it('declines (undefined) when no cloud cache is configured', async () => {
     const prevUrl = process.env['VX_REMOTE_CACHE_URL']
     const prevTok = process.env['VX_REMOTE_CACHE_TOKEN']
+    const prevCfg = process.env['VX_CLOUD_CONFIG']
     delete process.env['VX_REMOTE_CACHE_URL']
     delete process.env['VX_REMOTE_CACHE_TOKEN']
     const root = await mkdtemp(path.join(tmpdir(), 'vx-cloud-nocache-'))
+    // No environments file either — the env rung must decline without a probe.
+    process.env['VX_CLOUD_CONFIG'] = path.join(root, 'no-environments.json')
     const localCache = new Cache(path.join(root, '.vx', 'cache'))
     try {
       const layer = await cloud().cache!(cacheCtx(localCache, root))
@@ -195,6 +198,8 @@ describe('cloud() cache capability', () => {
       await rm(root, { recursive: true, force: true })
       if (prevUrl !== undefined) process.env['VX_REMOTE_CACHE_URL'] = prevUrl
       if (prevTok !== undefined) process.env['VX_REMOTE_CACHE_TOKEN'] = prevTok
+      if (prevCfg === undefined) delete process.env['VX_CLOUD_CONFIG']
+      else process.env['VX_CLOUD_CONFIG'] = prevCfg
     }
   })
 })

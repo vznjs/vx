@@ -949,6 +949,8 @@ vx-cloud serve
     --ingest-dir <d>             # directory for the SQLite ingest store
     --token <t>                  # require a bearer token (env: VX_CLOUD_TOKEN)
     --name <n>                   # server identity for /v1/meta (env: VX_CLOUD_NAME)
+    --socket [path]              # also listen on a unix socket (env: VX_CLOUD_SOCKET;
+                                 #   default $XDG_RUNTIME_DIR/vx-cloud/serve.sock)
     --ui                         # require the bundled SPA (error if not built)
     --open                       # open the dashboard in the browser (implies --ui)
 ```
@@ -967,6 +969,24 @@ vx-cloud serve
   `/v1/meta` requires `Authorization: Bearer <t>` (browser transports
   may use `?token=` on `/events`, `/stream`, and the WS upgrade). No
   token → fully open (the localhost default).
+- **Unix socket.** With `--socket` the same API also listens on a
+  0600 unix socket; socket requests bypass the token gate — the OS
+  file permissions ARE the auth. The advertisement carries the socket
+  path and the `cloud()` plugin's local auto-detect prefers it (TCP
+  stays the fallback, and the browser dashboard stays on TCP).
+- **Artifact store.** `/v8/artifacts/:hash` speaks the Turbo wire
+  core's remote cache already talks — point `VX_REMOTE_CACHE_URL` at
+  the serve origin (token = the serve token) and the remote cache
+  works with no separate cache server. Artifacts live as flat
+  `<ingest-dir>/artifacts/<hash>.tar.zst` files; client-side signing
+  tags (`x-artifact-tag`) are stored in a `<hash>.tag` sidecar and
+  returned on GET. `/v1/meta` advertises `artifacts: true`.
+- **MCP.** `POST /mcp` is a dependency-free MCP server (JSON-RPC 2.0
+  over streamable HTTP, plain-JSON responses) exposing the dashboard's
+  read surface as tools — `list_workspaces`, `list_runs`, `get_run`,
+  `run_trends`, `cache_stats`, `why_did_rerun`, `compare_runs` — so an
+  AI agent pointed at the serve (with the bearer token as an
+  `Authorization` header) can inspect and debug runs.
 - **Advertisement.** The serve writes a per-user advertisement at
   `$XDG_RUNTIME_DIR/vx-cloud/serve.json` (fallback: a per-uid temp
   dir; `VX_CLOUD_SERVE_INFO` pins an exact path), so a `vx run` in ANY
@@ -975,16 +995,18 @@ vx-cloud serve
 
 HTTP routes (all return JSON unless noted):
 
-| Route             | Purpose                                                                                    |
-| ----------------- | ------------------------------------------------------------------------------------------ |
-| `GET /health`     | Liveness probe (`200 ok`) — always open                                                    |
-| `GET /v1/meta`    | Server identity (`name`, vx version, auth mode) — always open; the `connect` handshake     |
-| `GET /version`    | Protocol version + channels + RPC capability list                                          |
-| `POST /v1/ingest` | Push endpoint — accepts a `RunSummaryRecord` from the `cloud()` plugin                     |
-| `GET /v1/*`       | Metrics/analytics API (runs, tasks, projects, cache, trends, compare, why, …)              |
-| `GET /events`     | Server-Sent Events stream of every envelope from every concurrent run                      |
-| `GET /stream`     | NDJSON stream (jq-friendly) of the same                                                    |
-| `WS /` (upgrade)  | Bidirectional; accepts both legacy `{ t: 'run', ... }` and JSON-RPC `submit.run` envelopes |
+| Route                          | Purpose                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------ |
+| `GET /health`                  | Liveness probe (`200 ok`) — always open                                                    |
+| `GET /v1/meta`                 | Server identity (`name`, vx version, auth mode, `artifacts`) — always open                 |
+| `GET /version`                 | Protocol version + channels + RPC capability list                                          |
+| `POST /v1/ingest`              | Push endpoint — accepts a `RunSummaryRecord` from the `cloud()` plugin                     |
+| `GET /v1/*`                    | Metrics/analytics API (runs, tasks, projects, cache, trends, compare, why, …)              |
+| `HEAD/GET/PUT /v8/artifacts/…` | Turbo-wire artifact store (`VX_REMOTE_CACHE_URL` target)                                   |
+| `POST /mcp`                    | MCP server for AI agents (JSON-RPC 2.0, plain-JSON responses)                              |
+| `GET /events`                  | Server-Sent Events stream of every envelope from every concurrent run                      |
+| `GET /stream`                  | NDJSON stream (jq-friendly) of the same                                                    |
+| `WS /` (upgrade)               | Bidirectional; accepts both legacy `{ t: 'run', ... }` and JSON-RPC `submit.run` envelopes |
 
 Every wire frame is a JSON-RPC 2.0 envelope per
 `docs/design/wire-protocol-2026-06.md`.
@@ -1027,6 +1049,14 @@ match wins):
 run **on the server** against the request's cwd — only correct when
 the server shares the filesystem or holds an identical checkout.
 Connecting for the dashboard never silently moves execution.
+
+The **remote cache** has its own rung ladder: `cloud({ cacheUrl,
+cacheToken })` options > `VX_REMOTE_CACHE_*` env > the active
+environment **when its serve advertises the artifact store**
+(`/v1/meta` `artifacts: true`, probed lazily once per process) >
+decline. Explicit config is never second-guessed — the probe only
+fires when nothing else configured the cache and an environment is
+actually connected, so a plain run stays zero-network.
 
 ## `vx-cloud coordinator` — distributed-CI coordinator
 
