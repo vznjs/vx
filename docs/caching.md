@@ -127,9 +127,14 @@ On a hit:
    (its existence is verified with one stat), so hit cost doesn't
    scale with artifact size.
 2. If the on-disk output tree already matches the cached snapshot
-   (size + mode + mtime check against `output_files`), extraction is
-   skipped entirely — the outcome reports **up-to-date**
-   (`restored: false`).
+   (size + mode + **millisecond**-mtime check against `output_files`),
+   extraction is skipped entirely — the outcome reports **up-to-date**
+   (`restored: false`). Save-path rows record stat-ms mtimes (tar
+   headers only carry seconds) and `restoreOutputs` re-syncs restored
+   files' mtimes to the rows, so the comparison is exact in steady
+   state. Residual blind spot, accepted like every mtime-based check:
+   a same-size edit landing in the same millisecond as the recorded
+   write, or a deliberately forged mtime (`touch -r`).
 3. Otherwise the task's declared outputs are wiped from the project
    dir (`cleanOutputs`) — see
    [§ Strict output ownership](#strict-output-ownership) — and the

@@ -1368,3 +1368,83 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
     }
   })
 })
+
+describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)', () => {
+  let workspaceRoot: string
+  let projectDir: string
+  let cache: Cache
+
+  beforeEach(async () => {
+    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vx-cache-ms-'))
+    projectDir = path.join(workspaceRoot, 'project')
+    cache = new Cache(path.join(workspaceRoot, '.vx', 'cache'))
+    const { mkdir } = await import('node:fs/promises')
+    await mkdir(path.join(projectDir, 'dist'), { recursive: true })
+  })
+
+  afterEach(async () => {
+    cache.close()
+    await rm(workspaceRoot, { recursive: true, force: true })
+  })
+
+  const saveOne = async (hash: string, content: string): Promise<string> => {
+    const outFile = path.join(projectDir, 'dist', 'o.txt')
+    await writeFile(outFile, content)
+    await cache.save({
+      hash,
+      projectDir,
+      outputFiles: [outFile],
+      entry: { taskId: 'pkg#build', command: 'b', exitCode: 0, durationMs: 1, stdout: '' },
+    })
+    return outFile
+  }
+
+  const rowsOf = (hash: string) => cache.loadOutputFilesBatch([hash]).get(hash)!
+
+  it('a same-size different-content rewrite is detected (was invisible within one second)', async () => {
+    const outFile = await saveOne('ms1', 'AAAA')
+    // Unchanged: current.
+    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms1'))).toBe(true)
+    // Same-size rewrite moments later — well inside the same wall-clock
+    // second, which the old seconds-granularity compare could not see.
+    await Bun.sleep(3)
+    await writeFile(outFile, 'BBBB')
+    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms1'))).toBe(false)
+  })
+
+  it('restoreOutputs re-syncs mtimes to the rows, so the next probe skips', async () => {
+    const outFile = await saveOne('ms2', 'CCCC')
+    await rm(outFile)
+    await cache.restoreOutputs('ms2', projectDir)
+    expect(await readFile(outFile, 'utf8')).toBe('CCCC')
+    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms2'))).toBe(true)
+  })
+
+  it('legacy second-precision rows converge on their first restore', async () => {
+    const outFile = await saveOne('ms3', 'DDDD')
+    // Simulate a pre-fix row: truncate the stored mtime to seconds*1000
+    // (what tar-header-sourced rows held).
+    const coarse = Math.floor(rowsOf('ms3')[0]!.mtimeMs / 1000) * 1000
+    cache
+      .dbHandle()
+      .prepare('UPDATE output_files SET mtime_ms = ? WHERE entry_hash = ?')
+      .run(coarse, 'ms3')
+    await rm(outFile)
+    await cache.restoreOutputs('ms3', projectDir)
+    // The restore utimes'd the file to the (coarse) row value — exact
+    // match at ms precision, so the probe is stable again.
+    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms3'))).toBe(true)
+  })
+
+  it('a forged mtime remains the documented blind spot', async () => {
+    const outFile = await saveOne('ms4', 'EEEE')
+    const recorded = rowsOf('ms4')[0]!.mtimeMs
+    await Bun.sleep(3)
+    await writeFile(outFile, 'FFFF')
+    // Deliberately forge the mtime back to the recorded value (touch -r
+    // equivalent): the probe cannot see this — accepted trade, pinned so
+    // a future content-hash upgrade flips this expectation knowingly.
+    await utimes(outFile, recorded / 1000, recorded / 1000)
+    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms4'))).toBe(true)
+  })
+})

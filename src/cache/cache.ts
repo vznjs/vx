@@ -31,7 +31,7 @@
 
 import { Database, type SQLQueryBindings } from 'bun:sqlite'
 import { mkdirSync, statSync } from 'node:fs'
-import { mkdir, mkdtemp, rename, rm, stat } from 'node:fs/promises'
+import { mkdir, mkdtemp, rename, rm, stat, utimes } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { relPosix, UserError, xxh3 } from '../util/index.js'
@@ -1121,10 +1121,16 @@ export class Cache implements CacheLayer {
           return (
             s.size === e.size &&
             (s.mode & 0o777) === (e.mode & 0o777) &&
-            // mtime is restored at seconds-granularity via utimes in
-            // `extractOutputs`, and that's the precision the manifest
-            // stores too — compare at the same precision.
-            Math.floor(s.mtimeMs / 1000) === Math.floor(e.mtimeMs / 1000)
+            // MILLISECOND comparison (sub-ms tolerance for the float
+            // round-trip through utimes). Save rows carry stat-ms and
+            // restoreOutputs re-syncs restored files to the row value,
+            // so equality holds exactly in steady state; legacy
+            // second-precision rows converge on their first restore.
+            // Residual blind spot: a same-size edit landing in the SAME
+            // millisecond as the recorded write, or a deliberately
+            // forged mtime (touch -r) — the trade every mtime-based
+            // skip check accepts.
+            Math.abs(s.mtimeMs - e.mtimeMs) < 1
           )
         } catch {
           return false
@@ -1165,6 +1171,29 @@ export class Cache implements CacheLayer {
     }
 
     await extractOutputs(tarBytes, projectDir, workspaceRoot)
+
+    // Re-sync restored files' mtimes to the manifest rows (extract set
+    // them from the tar's SECOND-precision headers). After this, disk
+    // matches the rows at millisecond precision, so isOutputsCurrent
+    // compares exactly — and any later edit moves the mtime off the
+    // recorded historical value and is detected.
+    const rows = this.loadOutputFilesBatch([hash]).get(hash)
+    if (rows !== undefined) {
+      await Promise.all(
+        rows.map(async (r) => {
+          try {
+            const abs = r.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
+              ? path.join(workspaceRoot ?? projectDir, r.path.slice(WORKSPACE_OUTPUT_PREFIX.length))
+              : path.join(projectDir, r.path)
+            const t = r.mtimeMs / 1000
+            await utimes(abs, t, t)
+          } catch {
+            // File absent from this extract (or unwritable) — the next
+            // probe simply restores again; never fail a hit over mtimes.
+          }
+        }),
+      )
+    }
   }
 
   async save(args: {
@@ -1195,12 +1224,22 @@ export class Cache implements CacheLayer {
     // the bytes, since there's no local artifact to read off disk.
     if (!this.write) return
     const compressed = await this.packArtifact(args)
-    await this.writeArtifactAndIndex(args.hash, compressed, {
-      taskId: args.entry.taskId,
-      command: args.entry.command,
-      durationMs: args.entry.durationMs,
-      ...(args.inputComponents !== undefined ? { inputComponents: args.inputComponents } : {}),
-    })
+    await this.writeArtifactAndIndex(
+      args.hash,
+      compressed,
+      {
+        taskId: args.entry.taskId,
+        command: args.entry.command,
+        durationMs: args.entry.durationMs,
+        ...(args.inputComponents !== undefined ? { inputComponents: args.inputComponents } : {}),
+      },
+      // Save-path rows get millisecond mtimes from a fresh stat (tar
+      // headers carry only seconds) — see the row loop for the guard.
+      {
+        projectDir: args.projectDir,
+        ...(args.workspaceRoot !== undefined ? { workspaceRoot: args.workspaceRoot } : {}),
+      },
+    )
   }
 
   /**
@@ -1314,6 +1353,7 @@ export class Cache implements CacheLayer {
     hash: string,
     compressed: Uint8Array,
     meta: IngestMeta,
+    statBase?: { projectDir: string; workspaceRoot?: string },
   ): Promise<void> {
     // Validate BEFORE anything touches the final path. `ingest()` feeds
     // us network bytes; a truncated/garbage body that went live first
@@ -1368,7 +1408,30 @@ export class Cache implements CacheLayer {
         if (h.name.length > WORKSPACE_OUTPUT_PREFIX.length) rowPath = h.name
       }
       if (rowPath === null) continue
-      outputFileRows.push([rowPath, h.size, h.mode & 0o777, Math.floor(h.mtimeMs)])
+      let mtimeMs = Math.floor(h.mtimeMs)
+      // Save path only (ingest has no filesystem to consult): tar
+      // headers truncate mtimes to SECONDS, which is what made the
+      // skip-restore check blind to same-second same-size edits. A
+      // fresh stat refines the row to millisecond precision — but only
+      // when the size still matches the packed header, so the row
+      // always describes the ARTIFACT's bytes; a file mutated between
+      // pack and stat keeps the coarse header time (degraded, not
+      // wrong). restoreOutputs re-syncs disk mtimes to these rows.
+      if (statBase !== undefined) {
+        try {
+          const abs = rowPath.startsWith(WORKSPACE_OUTPUT_PREFIX)
+            ? path.join(
+                statBase.workspaceRoot ?? statBase.projectDir,
+                rowPath.slice(WORKSPACE_OUTPUT_PREFIX.length),
+              )
+            : path.join(statBase.projectDir, rowPath)
+          const st = await stat(abs)
+          if (st.size === h.size) mtimeMs = Math.floor(st.mtimeMs)
+        } catch {
+          // stat failed — keep the header-seconds fallback.
+        }
+      }
+      outputFileRows.push([rowPath, h.size, h.mode & 0o777, mtimeMs])
     }
     const stdoutText = readTarText(tarBytes, headers, 'stdout')
 
