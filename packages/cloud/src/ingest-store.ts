@@ -21,6 +21,8 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
 import { Cache, type InvocationRecord, type RunRecord, type RunSummaryRecord } from '@vzn/vx'
+import { LogStore, type StoredTaskLog } from './log-store.js'
+import type { TaskLogBundle } from './task-log-capture.js'
 
 /** Where a v1 push (predating workspace identity) lands. */
 export const DEFAULT_WORKSPACE_ID = 'default'
@@ -89,6 +91,7 @@ function readManifest(file: string): Manifest {
 
 export class IngestStore {
   private readonly stores = new Map<string, Cache>()
+  private readonly logStores = new Map<string, LogStore>()
   private readonly manifest: Manifest
   private readonly manifestPath: string
 
@@ -311,8 +314,44 @@ export class IngestStore {
     return true
   }
 
+  /**
+   * Persist a run's captured task-log tails into its workspace's `logs.db`
+   * sidecar (routed by the bundle's OWN workspaceId — same network-boundary
+   * validation as `ingest`). Returns the number of task rows newly stored.
+   */
+  ingestLogs(bundle: TaskLogBundle): number {
+    if (!WORKSPACE_ID_RE.test(bundle.workspaceId)) {
+      throw new Error(`invalid workspace id: ${bundle.workspaceId}`)
+    }
+    return this.openLogStore(bundle.workspaceId).ingestLogs(bundle)
+  }
+
+  /** The stored tail for one (run, task) in a workspace, or undefined. */
+  logFor(workspaceId: string, runId: string, taskId: string): StoredTaskLog | undefined {
+    if (!WORKSPACE_ID_RE.test(workspaceId)) return undefined
+    return this.openLogStore(workspaceId).logFor(runId, taskId)
+  }
+
+  /** The most-recent stored log for a cache key — the hit→executed-run resolution. */
+  logByHash(workspaceId: string, hash: string): StoredTaskLog | undefined {
+    if (!WORKSPACE_ID_RE.test(workspaceId)) return undefined
+    return this.openLogStore(workspaceId).latestByHash(hash)
+  }
+
+  private openLogStore(id: string): LogStore {
+    const existing = this.logStores.get(id)
+    if (existing !== undefined) return existing
+    const storeDir = path.join(this.dir, id)
+    mkdirSync(storeDir, { recursive: true })
+    const store = new LogStore(storeDir, undefined, this.warn)
+    this.logStores.set(id, store)
+    return store
+  }
+
   close(): void {
     for (const cache of this.stores.values()) cache.close()
     this.stores.clear()
+    for (const logs of this.logStores.values()) logs.close()
+    this.logStores.clear()
   }
 }
