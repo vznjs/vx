@@ -61,8 +61,8 @@ const features = [
   {
     icon: 'lock',
     tone: 'var(--plasma)',
-    title: 'Signed, verified artifacts',
-    body: 'HMAC-signed remote cache: with a key set, unsigned or tampered artifacts are rejected and the task just re-runs. A poisoned cache can’t reach your machines. Turbo signs softly; Nx not at all.',
+    title: 'A cache that can’t be poisoned',
+    body: 'Trust-scoped remote cache: a fork PR reads main’s cache to stay fast but can only write its own quarantined scope — a poisoned artifact never reaches a trusted build. Artifacts are immutable, and HMAC signing verifies bytes on top. The GitHub-Actions model, server-enforced.',
   },
   {
     icon: 'graph',
@@ -79,13 +79,13 @@ const platform = [
     icon: 'spark',
     tone: 'var(--phosphor)',
     title: 'MCP for AI agents',
-    body: 'vx mcp boots a Model Context Protocol server over stdio. Claude Code, Cursor, Continue.dev query cache stats, run history, and rebuild causes through the standard agent-tool protocol. No other runner ships an MCP surface.',
+    body: 'vx mcp boots a Model Context Protocol server over stdio, or vx-cloud serve exposes one at POST /mcp. Claude Code, Cursor, Continue.dev query cache stats, run history, and rebuild causes through the standard agent-tool protocol. No other runner ships an MCP surface.',
   },
   {
     icon: 'mesh',
     tone: 'var(--plasma)',
     title: 'Distributed CI, OSS',
-    body: 'vx coordinator + vx run --worker dispatch your task graph across machines. Content-addressed: any worker producing artifact <hash> satisfies every consumer. Nx Cloud DTE without the paywall.',
+    body: 'vx-cloud agents attach to a serve session and run your task graph across machines — the Nx-Cloud-DTE model without the paywall. Content-addressed; outputs move through the shared cache, and the submitting run self-registers so local and remote agents mix.',
   },
   {
     icon: 'plug',
@@ -97,13 +97,13 @@ const platform = [
     icon: 'wire',
     tone: 'var(--phosphor)',
     title: 'Open wire protocol',
-    body: 'vx serve speaks JSON-RPC 2.0 over WS, SSE and NDJSON. Any JSON-RPC client works — curl streams events, jq filters them, MCP and A2A interop free. No proprietary protocol.',
+    body: 'vx-cloud serve speaks JSON-RPC 2.0 over WS, SSE and NDJSON. Any JSON-RPC client works — curl streams events, jq filters them, MCP and A2A interop free. No proprietary protocol.',
   },
   {
     icon: 'cloud',
     tone: 'var(--plasma)',
     title: 'Self-hostable, Docker-ready',
-    body: 'vx serve runs locally or in Docker — same backend everywhere. The dashboard is embedded in the binary and points at any reachable origin via a connection picker. No separate cloud stack, no CF lock-in.',
+    body: 'vx-cloud serve is one token-authed container — dashboard, analytics, remote cache and MCP in a single process. The dashboard is embedded in the binary (nothing to build) and points at any reachable origin. docker compose up, no separate cloud stack.',
   },
   {
     icon: 'brain',
