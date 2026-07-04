@@ -187,6 +187,30 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-04**: **`@vzn/vx-cloud` publishes to npm — the turnkey CI recipe's
+  source-clone collapses to `npm i -g @vzn/vx-cloud`** (continuing the non-stop
+  loop; the follow-up #6 surfaced). Unlike `@vzn/vx` (a no-Bun standalone binary
+  via per-platform optionalDeps), `@vzn/vx-cloud` publishes as a **Bun-source
+  package**: its bin is the Bun-shebang `src/cli/bin.ts`, and `ui-asset.ts`
+  embeds the dashboard via a relative `../../ui/dist/index.html` import, so `src`
+  - `ui/dist` ship together. It **requires Bun** on the host (CI already provides
+    it via setup-bun; the no-Bun serve path stays the ghcr Docker image) and
+    depends on `@vzn/vx` at the SAME version so the plugin + CLI's bare `import
+'@vzn/vx'` resolves without the dev workspace symlink. Its only external src
+    import is `devframe`, which is **type-only** (erased) → no runtime dep beyond
+    core. `scripts/build-npm.ts` gained `buildCloudPackage()` (copies src +
+    ui/dist + LICENSE + a generated README, writes the package.json with
+    `exports {., ./plugin}`, `bin`, `engines.bun`, `dependencies {@vzn/vx}`);
+    `npm.yml` publishes it LAST (after `@vzn/vx`, which it depends on).
+    **Verified locally:** generated the tree, simulated the installed
+    node_modules, ran `bun …/vx-cloud/src/cli/bin.ts --help` (resolves `@vzn/vx`,
+    prints help) and `import { cloud } from '@vzn/vx-cloud/plugin'` → `cloud()`
+    returns the `vzn/cloud` plugin. **Owner TODO:** the trusted-publisher /
+    scope-token now covers SIX names (`@vzn/vx` + 4 platform + `@vzn/vx-cloud`).
+    The turnkey recipes keep the source-clone as the pre-first-publish default;
+    once a release publishes `@vzn/vx-cloud`, the recipe step becomes
+    `npm i -g @vzn/vx-cloud`. No core/cloud runtime change — packaging only.
+
 - **2026-07-04**: **Universal agents Phase 2 — heartbeat liveness, ready-queue
   autoscaling signal, turnkey CI recipes, + a dedup simplification** (owner:
   "Work on all. Non stop. … review code and docs find simplification

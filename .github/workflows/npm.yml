@@ -1,15 +1,19 @@
 name: npm publish
 
-# Publish the `vx` CLI to npm as a dual-purpose @vzn/vx package: the library
-# source PLUS a Node launcher that execs a prebuilt standalone binary shipped
-# per-platform (@vzn/vx-<os>-<cpu>) as an optionalDependency. End users get
-# `vx` with no Bun and no install-time download (the esbuild/turborepo model).
+# Publishes two families:
+#   - `@vzn/vx` — the CLI, a dual-purpose package: the library source PLUS a
+#     Node launcher that execs a prebuilt standalone binary shipped per-platform
+#     (@vzn/vx-<os>-<cpu>) as an optionalDependency. No Bun, no download.
+#   - `@vzn/vx-cloud` — the orchestrator service + `cloud()` plugin, a
+#     Bun-source package (its bin is a Bun-shebang `.ts`; requires Bun on the
+#     host) depending on `@vzn/vx` at the same version.
 #
-# Auth is npm **Trusted Publishing (OIDC)** — no NPM_TOKEN secret. The job
-# requests an OIDC token (`id-token: write`) and npm (>= 11.5.1) exchanges it
-# for a short-lived, package-scoped credential, and attaches build provenance
-# automatically. Configure the trusted publisher for each package on npmjs.com
-# (link this repo + `.github/workflows/npm.yml`).
+# Auth is npm **Trusted Publishing (OIDC)** — no NPM_TOKEN secret (a scope-wide
+# NPM_TOKEN, if set, is used instead — see the Publish step). The job requests
+# an OIDC token (`id-token: write`) and npm (>= 11.5.1) exchanges it for a
+# short-lived, package-scoped credential + provenance. Configure a Trusted
+# Publisher on npmjs.com for EACH of the six package names (@vzn/vx, the four
+# @vzn/vx-<target>, and @vzn/vx-cloud), linking this repo + this workflow.
 #
 # - release published   → publish the release version
 # - workflow_dispatch   → publish, or dry-run, a chosen version manually
@@ -100,12 +104,16 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -e
+          # Order matters: platform binaries first (so @vzn/vx's
+          # optionalDependencies resolve), then @vzn/vx, then @vzn/vx-cloud
+          # (which depends on @vzn/vx at this version).
           for pkg in \
             dist/npm/@vzn/vx-linux-x64 \
             dist/npm/@vzn/vx-linux-arm64 \
             dist/npm/@vzn/vx-darwin-x64 \
             dist/npm/@vzn/vx-darwin-arm64 \
-            dist/npm/vx; do
+            dist/npm/vx \
+            dist/npm/vx-cloud; do
             echo "::group::npm publish $pkg"
             npm publish "$pkg" --access public
             echo "::endgroup::"
