@@ -11,31 +11,45 @@ custom output.
 
 ## The contract
 
-```ts
-type Plugin = {
-  readonly name: string                          // 'org/plugin-name'
-  setup(ctx: PluginContext): void | Promise<void>
-}
+A `VxPlugin` is a plain object with a `name` and any of four optional
+**capabilities** — declared in `vx.workspace.ts` via `defineWorkspace({
+plugins: [...] })`. Each capability is independent and opt-in; declaring a
+plugin that contributes none is zero-overhead.
 
-type PluginContext = {
-  readonly workspaceRoot: string
-  readonly cacheDir: string
-  readonly bus: EventBus                          // raw event stream
-  on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]): void
+```ts
+import type { VxPlugin } from '@vzn/vx'
+
+interface VxPlugin {
+  readonly name: string // 'org/plugin-name'
+
+  // BEHAVIOR capabilities — change WHAT/HOW work runs (opt-in, one wins):
+  backend?(ctx): RunBackend | undefined // route execution (local / remote / distributed)
+  cache?(ctx): CacheLayer | undefined // provide the remote cache layer
+
+  // OBSERVE-ONLY capability — cannot change behavior, by construction:
+  telemetry?(ctx): TelemetrySink | TelemetrySink[] | undefined // export run data
+
+  setup?(ctx): void | Promise<void> // one-time validation before any capability
+  teardown?(): void | Promise<void> // end-of-run flush/close
 }
 ```
 
-Available hooks (call from inside `setup`):
+- **`backend`** returns a `RunBackend` (`run(request) → result`) or `undefined`
+  to decline. First non-undefined wins; else core runs in-process.
+- **`cache`** returns a `CacheLayer` wrapping (or replacing) the local cache,
+  or `undefined`. First non-undefined wins; else core's `VX_REMOTE_CACHE_*`
+  Turbo-wire layer; else the bare local cache. **This is the seam
+  `@vzn/vx-cloud` plugs into — and so can you** (see "Bring your own cache").
+- **`telemetry`** returns one or more `TelemetrySink`s that receive versioned
+  `RunSummaryRecord` / `TelemetryRecord` values. A sink holds NO run handle, so
+  it provably can't change a run; ALL plugins' sinks run (additive), each
+  crash-isolated. This is the export contract OpenTelemetry, a custom HTTP
+  exporter, and vx-cloud all speak.
 
-| Hook | Fires when | Args |
-| --- | --- | --- |
-| `onRunStart` | The run begins | `(info: { total, concurrency, requestedCount })` |
-| `onTaskStart` | A task starts executing | `(node: TaskNode)` |
-| `onTaskStdout` | A task emits a stdout chunk | `(node, chunk)` |
-| `onTaskStderr` | A task emits a stderr chunk | `(node, chunk)` |
-| `onTaskComplete` | A task ends in any terminal state | `(node, outcome: TaskOutcome)` |
-| `onRunStatus` | A run-level status line is printed | `(line: string)` |
-| `onRunEnd` | The run finishes | `()` |
+`@vzn/vx-cloud` is just the first-party plugin that implements all three
+against a `vx-cloud serve`. It's fully optional and replaceable — nothing in
+core depends on it, and you can implement your own backend/cache/telemetry the
+same way.
 
 ## Hello, plugin
 
@@ -156,6 +170,43 @@ export function timeseriesPlugin(opts: { url: string }): Plugin {
   }
 }
 ```
+
+## Bring your own cache (no vx-cloud)
+
+The remote cache is a plugin capability, so you can back it with **anything** —
+your own server, S3/R2, Redis — with no vx-cloud involved. Return a
+`CacheLayer` from the `cache` capability. The easiest path wraps the local
+cache in core's `LayeredCache` pointed at any Turbo-`/v8/artifacts`-compatible
+endpoint:
+
+```ts
+// vx.workspace.ts
+import { defineWorkspace, LayeredCache, RemoteCache, type VxPlugin } from '@vzn/vx'
+
+function myCache(): VxPlugin {
+  return {
+    name: 'acme/cache',
+    cache(ctx) {
+      const url = process.env.ACME_CACHE_URL
+      if (!url) return undefined // decline → core falls back to the local cache
+      // ctx.localCache is the on-disk cache; ctx.policy carries the run's
+      // read/write axes. LayeredCache reads local → remote → hydrates local.
+      return new LayeredCache(ctx.localCache, new RemoteCache({ baseUrl: url, token: '…' }), {
+        policy: ctx.policy,
+        onRemoteError: (e) => ctx.warn(`acme cache: ${e.message}`),
+      })
+    },
+  }
+}
+
+export default defineWorkspace({ plugins: [myCache()] })
+```
+
+For a fully custom backend (not the Turbo wire), implement the `CacheLayer`
+interface directly — `key`, `get`, `save`, `has`, `prefetch`, … — and return
+your own object instead of `LayeredCache`. `CacheLayer`, `LayeredCache`,
+`RemoteCache`, and `Cache` are all exported from `@vzn/vx`. vx-cloud's `cloud()`
+plugin is exactly this pattern; yours sits alongside it as an equal.
 
 ## Crash isolation
 

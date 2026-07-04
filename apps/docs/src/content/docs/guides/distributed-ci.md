@@ -26,7 +26,7 @@ registry, schedules each submission, and hosts the shared
 ## How it works
 
 ```
-main job: vx run ci   (VX_CLOUD_DISTRIBUTE=6, VX_SERVICE_URL=…)
+main job: vx run ci   (VX_CLOUD_DISTRIBUTE=6, connected to a vx-cloud)
   cloud() backend → distributed submitter
    ├ prepareRun (has the checkout) → task graph + stable hashes
    ├ dist:submit { session, commitSha, graph } ───────────────┐
@@ -90,6 +90,19 @@ degrades to a cache miss and re-execution — never a stale hit.
 
 ## Enabling distribution
 
+Setup is three steps, all driven by the **one connection** (the same
+`VX_CLOUD_URL` + `VX_CLOUD_TOKEN` that powers the remote cache and the
+dashboard — see [Remote caching](../remote-caching/)):
+
+1. **Connect** a vx-cloud — `vx-cloud connect <url> --token <t>`, or set
+   `VX_CLOUD_URL` + `VX_CLOUD_TOKEN`.
+2. **Set `VX_CLOUD_DISTRIBUTE=<n>`** on the submitting run.
+3. **Run agents** — `vx-cloud agent` on each machine.
+
+No separate cache config on the agents: the connection hosts
+`/v8/artifacts`, so the agents' scoped runs restore and upload through it
+automatically.
+
 Distribution is a rung of the `cloud()` backend plugin, so declare the
 plugin in `vx.workspace.ts` (it's zero-cost until enabled):
 
@@ -104,13 +117,13 @@ A plain `vx run` becomes distributed when **both** hold:
 
 1. `VX_CLOUD_DISTRIBUTE=<n>` is set — `<n>` is an advisory expected
    agent count (also `cloud({ distribute: n })`).
-2. A `vx-cloud serve` is reachable. The submitter resolves it through
-   the usual ladder: `VX_SERVICE_URL` / `VX_CLOUD_URL` env → the active
-   `vx-cloud connect` environment → a locally advertised serve.
+2. A vx-cloud connection is reachable. The submitter resolves it through
+   the usual ladder: `VX_CLOUD_URL` env → the active `vx-cloud connect`
+   environment → a locally advertised serve.
 
-`VX_CLOUD_DISTRIBUTE` set with **no reachable serve is a hard error** —
-distribution was explicitly requested, so silently running locally
-would hide a broken matrix forever. (This differs from ambient
+`VX_CLOUD_DISTRIBUTE` set with **no reachable connection is a hard
+error** — distribution was explicitly requested, so silently running
+locally would hide a broken matrix forever. (This differs from ambient
 delegation, which fails safe to local.)
 
 ## Attaching agents
@@ -148,9 +161,10 @@ disconnect), not a failing test.
 
 ## GitHub Actions
 
-The realistic pattern points every job at **one serve reachable by all
+The realistic pattern points every job at **one vx-cloud reachable by all
 of them** — a deployed `vx-cloud serve` behind a URL (see
-[Self-host vx serve](../self-hosting/)). A matrix of agent jobs
+[Self-host vx-cloud](../self-hosting/)). Two secrets carry the whole
+connection: `VX_CLOUD_URL` and `VX_CLOUD_TOKEN`. A matrix of agent jobs
 attaches to it, and a separate run job submits.
 
 ```yaml
@@ -158,10 +172,10 @@ attaches to it, and a separate run job submits.
 name: CI (distributed)
 on: [push, pull_request]
 
-# One session for the whole workflow run — the submitter and every
-# agent derive the same key from it.
+# The one connection + a shared session for the whole workflow run — the
+# submitter and every agent derive the same session key from it.
 env:
-  VX_SERVICE_URL: ${{ secrets.VX_SERVICE_URL }}   # a reachable vx-cloud serve
+  VX_CLOUD_URL: ${{ secrets.VX_CLOUD_URL }}
   VX_CLOUD_TOKEN: ${{ secrets.VX_CLOUD_TOKEN }}
   VX_AGENT_SESSION: ${{ github.run_id }}-${{ github.run_attempt }}
 
@@ -178,9 +192,10 @@ jobs:
       - run: bun install --frozen-lockfile
       # Same repo, same commit, clean tree. Blocks until the submission
       # drains it (a generous idle timeout covers the run job's startup).
+      # The connection also provides the /v8 cache — no extra cache config.
       - run: |
           vx-cloud agent \
-            --url "$VX_SERVICE_URL" \
+            --url "$VX_CLOUD_URL" \
             --token "$VX_CLOUD_TOKEN" \
             --session "$VX_AGENT_SESSION" \
             --capacity 4 \
@@ -197,9 +212,9 @@ jobs:
       - run: curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      # A NORMAL vx run. The cloud() plugin routes it to the serve
-      # because VX_CLOUD_DISTRIBUTE + VX_SERVICE_URL are set. Zero remote
-      # agents degrades to a loud local run — never a deadlock.
+      # A NORMAL vx run. The cloud() plugin routes it to the serve because
+      # VX_CLOUD_DISTRIBUTE + the connection (VX_CLOUD_URL) are set. Zero
+      # remote agents degrades to a loud local run — never a deadlock.
       - run: vx run ci --all --frozen
 ```
 
@@ -212,12 +227,14 @@ as they join.
 If your runners share a network (self-hosted runners, or a tunnel like
 Tailscale), one job can host the serve with `vx-cloud serve` instead of
 using a deployed one — but every agent and the run job still need to
-reach it at `VX_SERVICE_URL`.
+reach it at the same `VX_CLOUD_URL`.
 
-## Fork PRs: read-trusted, write-untrusted
+## Fork PRs: present the PR token
 
 The artifact store is **trust-scoped** so a fork PR can warm off `main`
-without poisoning it. Start the serve with two tokens:
+without poisoning it, and the tier follows **which token you present** —
+there is no trust flag and no autodetection. Start the serve with two
+tokens:
 
 ```sh
 vx-cloud serve --token "$TRUSTED_TOKEN" --pr-token "$UNTRUSTED_TOKEN"
@@ -225,25 +242,24 @@ vx-cloud serve --token "$TRUSTED_TOKEN" --pr-token "$UNTRUSTED_TOKEN"
 
 A trusted token reads and writes the trusted scope. The PR token reads
 `untrusted ∪ trusted` but **writes only the untrusted scope** — the
-serve derives the scope from the token, never from a client claim. On a
-fork-PR job, present the PR token so the run reads the trusted cache but
-writes only untrusted:
+serve derives the scope from the bearer, never from a client claim. So a
+fork-PR job simply presents `VX_CLOUD_PR_TOKEN` **instead of**
+`VX_CLOUD_TOKEN` (a fork can't see your repo secrets, so the PR token is
+the only one it has — which token you hold *is* the tier):
 
 ```yaml
   run:
     env:
       VX_CLOUD_DISTRIBUTE: "6"
-      VX_REMOTE_CACHE_PR_TOKEN: ${{ secrets.VX_CLOUD_PR_TOKEN }}
-      # VX_CACHE_TRUST: untrusted   # force it; otherwise fork PRs auto-detect
+      VX_CLOUD_PR_TOKEN: ${{ secrets.VX_CLOUD_PR_TOKEN }}
 ```
 
-vx auto-detects a fork PR (GitHub/GitLab) and switches to the untrusted
-path on its own; `VX_CACHE_TRUST=untrusted` forces it. With **no** PR
-token, a detected fork PR degrades to **read-only** against the shared
-cache (remote writes off) — it still warms off `main`, it just can't
-write anywhere. Set `VX_REMOTE_CACHE_PR_TOKEN` on the agent jobs too so
-their scoped runs write to the untrusted scope as well. The full model
-is in `docs/design/cache-trust-scopes-2026-07.md`.
+The run then reads the trusted cache (staying fast) but writes only the
+untrusted scope — it can't poison a trusted build, so the PR token is
+safe to expose. Present the same PR token on the agent jobs
+(`--token "$VX_CLOUD_PR_TOKEN"`) so their scoped runs write to the
+untrusted scope too. The full model is in
+`docs/design/cache-trust-scopes-2026-07.md`.
 
 ## When a run stays local
 
@@ -304,10 +320,10 @@ Honest gaps in the current design (see
 - [Continuous integration](../ci/) — the single-machine CI setup,
   `--affected`, and the lockfile workflow.
 - [Remote caching](../remote-caching/) — the `/v8/artifacts` store that
-  agents share.
-- [Self-host vx serve](../self-hosting/) — deploy the serve every job
-  attaches to.
-- [vx serve wire protocol](../wire-protocol/) — the JSON-RPC envelope
-  the relayed run stream rides.
+  the connection provides and agents share.
+- [Self-host vx-cloud](../self-hosting/) — deploy the serve every job
+  attaches to, in one `docker compose up`.
+- [vx-cloud serve wire protocol](../wire-protocol/) — the JSON-RPC
+  envelope the relayed run stream rides.
 - `docs/design/distributed-execution-2026-07.md` — the full design and
   the correctness proof.

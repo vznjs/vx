@@ -1,6 +1,6 @@
 ---
 title: Continuous integration
-description: Run vx in CI — install the binary, build only what changed with --affected, share a remote cache, and (optionally) pin a reproducible run with vx lock + --frozen.
+description: Run vx in CI — install the binary, build only what changed with --affected, share a cache by connecting a vx-cloud, and (optionally) pin a reproducible run with vx lock + --frozen.
 ---
 
 vx is built for CI: a content-addressed cache plus `--affected` selection
@@ -11,8 +11,11 @@ setup you can copy, plus the lockfile workflow and when to reach for it.
 ## The shape of a fast CI run
 
 1. **Install vx** (a single binary) and your workspace dependencies.
-2. Point vx at a **remote cache** so this run sees what previous runs and
-   teammates already built.
+2. **Connect a vx-cloud** so this run shares a cache with previous runs and
+   teammates. One connection (`VX_CLOUD_URL` + `VX_CLOUD_TOKEN`) provides
+   the remote cache — no separate cache config. (No server? The local cache
+   still makes warm runs instant; a shared cache is only needed to reuse
+   work *across* machines.)
 3. Run with **`--affected`** so only changed packages execute.
 
 ## GitHub Actions
@@ -29,8 +32,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      VX_REMOTE_CACHE_URL: ${{ secrets.VX_REMOTE_CACHE_URL }}
-      VX_REMOTE_CACHE_TOKEN: ${{ secrets.VX_REMOTE_CACHE_TOKEN }}
+      # The one connection: cache + dashboard from a single vx-cloud.
+      VX_CLOUD_URL: ${{ secrets.VX_CLOUD_URL }}
+      VX_CLOUD_TOKEN: ${{ secrets.VX_CLOUD_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,9 +68,14 @@ Notes:
   through your package manager.)
 - **Pin the version** with `VX_VERSION=<tag>` before the install line for
   byte-stable CI.
-- **Remote cache secrets** as `env` — see
-  [Remote caching](../remote-caching/). With them set, this run reuses
-  artifacts built on other branches and machines.
+- **Connection secrets** as `env` — `VX_CLOUD_URL` + `VX_CLOUD_TOKEN` point
+  this run at a shared cache (and the dashboard). With them set, the run
+  reuses artifacts built on other branches and machines. See
+  [Remote caching](../remote-caching/). On a fork PR, present
+  `VX_CLOUD_PR_TOKEN` instead of `VX_CLOUD_TOKEN`: it warms off the trusted
+  cache but can only write the untrusted scope, so it can't poison a trusted
+  build. (Prefer a third-party Turbo-compatible cache server? Use
+  `VX_REMOTE_CACHE_URL` + `VX_REMOTE_CACHE_TOKEN` instead — same guide.)
 
 ## Without `--affected`
 
