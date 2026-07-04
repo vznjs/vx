@@ -4,8 +4,11 @@ description: Deploy the vx-cloud service in Docker. Token-authenticated, standal
 ---
 
 The team-shared backend is a **separate package and binary**: `vx-cloud`
-(`@vzn/vx-cloud`), distinct from core `vx` (`@vzn/vx`). Install
-`@vzn/vx-cloud` to run the service; the command is `vx-cloud serve`.
+(`@vzn/vx-cloud`), distinct from core `vx` (`@vzn/vx`). The easiest way to
+run it is the prebuilt Docker image ([below](#run-it-in-docker)) —
+`@vzn/vx-cloud` is not yet published to npm, so outside Docker you run it
+from a source checkout with Bun (`bun packages/cloud/src/cli/bin.ts serve`).
+Either way the command is `vx-cloud serve`.
 
 `vx-cloud serve` is one Bun process that carries a SQLite ingest store,
 the `/v1/*` analytics API, the embedded dashboard, a Turborepo-wire
