@@ -3,7 +3,7 @@
 // reuse, agent-death notification, and the 15-min GC sweep.
 
 import { describe, expect, it } from 'bun:test'
-import { AgentRegistry, SESSION_GC_MS } from '../src/dist/registry.js'
+import { AgentRegistry, SESSION_GC_MS, SUBMITTER_LABEL } from '../src/dist/registry.js'
 import type { ActiveSubmission, RegisteredAgent } from '../src/dist/registry.js'
 import {
   DIST_PROTOCOL_VERSION,
@@ -204,5 +204,39 @@ describe('AgentRegistry — GC', () => {
     now += SESSION_GC_MS + 1
     reg.gc()
     expect(reg.sessionCount()).toBe(0)
+  })
+})
+
+describe('AgentRegistry — availableCapacity (the ambient capacity gate)', () => {
+  it('counts total vs REMOTE agents/capacity, excluding the submitter self-agent', () => {
+    const reg = new AgentRegistry()
+    // The submitter's own self-agent carries SUBMITTER_LABEL and must NOT count
+    // as remote capacity (else a solo run would think it has helpers).
+    reg.hello(hello({ agentId: 'self', capacity: 8, labels: [SUBMITTER_LABEL] }), io())
+    reg.hello(hello({ agentId: 'helper-1', capacity: 4 }), io())
+    reg.hello(hello({ agentId: 'helper-2', capacity: 2 }), io())
+
+    expect(reg.availableCapacity('ws1', 'local')).toEqual({
+      agents: 3,
+      remoteAgents: 2,
+      capacity: 14,
+      remoteCapacity: 6,
+    })
+  })
+
+  it('reports zero remote agents when only the submitter is present (stays a local run)', () => {
+    const reg = new AgentRegistry()
+    reg.hello(hello({ agentId: 'self', capacity: 8, labels: [SUBMITTER_LABEL] }), io())
+    expect(reg.availableCapacity('ws1', 'local').remoteAgents).toBe(0)
+  })
+
+  it('returns all zeros for an unknown {workspaceId, session}', () => {
+    const reg = new AgentRegistry()
+    expect(reg.availableCapacity('nope', 'nope')).toEqual({
+      agents: 0,
+      remoteAgents: 0,
+      capacity: 0,
+      remoteCapacity: 0,
+    })
   })
 })

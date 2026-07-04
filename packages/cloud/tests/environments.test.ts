@@ -91,6 +91,34 @@ describe('write + read round-trip', () => {
     expect(readEnvironmentsFile()).toBeUndefined()
     expect(activeEnvironment()).toBeUndefined()
   })
+
+  it('round-trips the ambient `distribute` policy (both true and a count)', () => {
+    const file: EnvironmentsFile = {
+      version: ENVIRONMENTS_VERSION,
+      active: 'pool',
+      environments: {
+        pool: { url: 'https://vx.example', distribute: true },
+        big: { url: 'https://big.example', distribute: 8 },
+        plain: { url: 'https://plain.example' },
+      },
+    }
+    writeEnvironmentsFile(file)
+    const read = readEnvironmentsFile()
+    expect(read).toEqual(file)
+    // An entry without the field never gains it (additive-optional).
+    expect(read!.environments['plain']).not.toHaveProperty('distribute')
+  })
+
+  it('rejects a non-boolean/number distribute', async () => {
+    await writeFile(
+      cfgPath,
+      JSON.stringify({
+        version: ENVIRONMENTS_VERSION,
+        environments: { bad: { url: 'https://x', distribute: 'lots' } },
+      }),
+    )
+    expect(() => readEnvironmentsFile()).toThrow(/distribute/)
+  })
 })
 
 describe('malformed / unknown-version files', () => {

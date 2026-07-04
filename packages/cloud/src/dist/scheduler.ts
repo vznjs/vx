@@ -21,13 +21,16 @@ import type {
   DistSubmitMessage,
   DistServerMessage,
 } from '../protocol-dist.js'
-import type { ActiveSubmission, RegisteredAgent, SubmissionBinding } from './registry.js'
+import {
+  SUBMITTER_LABEL,
+  type ActiveSubmission,
+  type RegisteredAgent,
+  type SubmissionBinding,
+} from './registry.js'
 
-/**
- * The label the submitter's self-registered agent carries — the scheduler
- * counts agents WITHOUT it as remote for the zero-remote-agents warning.
- */
-export const SUBMITTER_LABEL = 'submitter'
+// Re-exported from its home in registry.ts (which owns agent labels) so the
+// existing `from './scheduler.js'` importers (submit.ts, index.ts) are unchanged.
+export { SUBMITTER_LABEL }
 
 /** Default wait before warning that zero remote agents joined. */
 export const DEFAULT_AGENT_TIMEOUT_MS = 5 * 60 * 1000

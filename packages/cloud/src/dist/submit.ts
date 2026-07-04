@@ -15,6 +15,7 @@ import {
   createWireRenderer,
   defaultLogger,
   deriveStableKeys,
+  findWorkspaceRoot,
   prepareRun,
   projectNode,
   projectOutcome,
@@ -55,6 +56,15 @@ export interface DistributedBackendOptions {
   /** Advisory expected agent count (`VX_CLOUD_DISTRIBUTE=<n>`). */
   expectedAgents: number
   agentTimeoutMs?: number
+  /**
+   * `'explicit'` (the `VX_CLOUD_DISTRIBUTE` escape hatch, default): distribution
+   * was hard-requested, so an unreachable serve is a hard error and the run
+   * submits regardless of the instantaneous agent count (CI agents may join ms
+   * after submit). `'ambient'` (a connected environment's `distribute`): fails
+   * SAFE — an unreachable pool OR a pool with zero remote helpers degrades to a
+   * normal local run, so leaving it on never blocks a solo run.
+   */
+  mode?: 'explicit' | 'ambient'
   /** Render sink override (tests); defaults to a normal defaultLogger. */
   sink?: Logger
   warn?: (line: string) => void
@@ -69,10 +79,13 @@ export interface DistributedBackendOptions {
  */
 export function distributedBackend(opts: DistributedBackendOptions): RunBackend {
   const warn = opts.warn ?? ((line: string) => process.stderr.write(`${line}\n`))
+  const mode = opts.mode ?? 'explicit'
   return {
     async run(request) {
-      const fallback = async (reason: string): Promise<RunResult> => {
-        warn(`vx: distribution disabled: ${reason} — running locally`)
+      // `silent` skips the "distribution disabled" note — used for the ambient
+      // no-helpers case, which is the fast, expected small path, not a warning.
+      const fallback = async (reason: string, silent = false): Promise<RunResult> => {
+        if (!silent) warn(`vx: distribution disabled: ${reason} — running locally`)
         const options = requestToOptions(request)
         if (opts.sink !== undefined) options.log = opts.sink
         const summary = await run(options)
@@ -87,9 +100,25 @@ export function distributedBackend(opts: DistributedBackendOptions): RunBackend 
         return await fallback('the cache policy disables the remote layer (the artifact transport)')
       }
 
-      // Distribution was explicitly requested — an unreachable serve is
-      // infrastructure misconfiguration, never a silent local run.
-      if (!(await reachable(opts.origin))) {
+      if (mode === 'ambient') {
+        // A connected pool that fails SAFE. Probe the pool's REMOTE capacity
+        // BEFORE the (comparatively costly) graph prepare, so the common
+        // solo/no-helpers case is a plain local run with no wasted work: pool
+        // unreachable → warn + local; zero remote helpers → SILENT local (this
+        // machine's cores already saturate a one-process run — a pool only
+        // helps with more machines).
+        const root = await findWorkspaceRoot(request.cwd)
+        const workspaceId = captureWorkspaceIdentity(root).id
+        const capacity = await probeCapacity(opts.origin, opts.token, workspaceId, deriveSession())
+        if (capacity === undefined) {
+          return await fallback(`pool at ${opts.origin} is unreachable`)
+        }
+        if (capacity.remoteAgents === 0) {
+          return await fallback('the pool has no other agents', true)
+        }
+      } else if (!(await reachable(opts.origin))) {
+        // Explicit distribution — an unreachable serve is infrastructure
+        // misconfiguration, never a silent local run.
         throw new UserError(
           `VX_CLOUD_DISTRIBUTE is set but the serve at ${opts.origin} is unreachable`,
         )
@@ -383,5 +412,32 @@ async function reachable(origin: string): Promise<boolean> {
     return res.ok
   } catch {
     return false
+  }
+}
+
+/**
+ * Read a pool's REMOTE (helper) agent count for the ambient capacity gate.
+ * Network error / non-OK → `undefined` (treated as "unreachable"); otherwise
+ * the counts the serve's `/v1/agents` GET reports for this {ws, session}.
+ */
+async function probeCapacity(
+  origin: string,
+  token: string | undefined,
+  workspaceId: string,
+  session: string,
+): Promise<{ remoteAgents: number } | undefined> {
+  try {
+    const url =
+      `${origin.replace(/\/$/, '')}/v1/agents` +
+      `?ws=${encodeURIComponent(workspaceId)}&session=${encodeURIComponent(session)}`
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(1000),
+      ...(token !== undefined ? { headers: { authorization: `Bearer ${token}` } } : {}),
+    })
+    if (!res.ok) return undefined
+    const body = (await res.json()) as { remoteAgents?: unknown }
+    return { remoteAgents: typeof body.remoteAgents === 'number' ? body.remoteAgents : 0 }
+  } catch {
+    return undefined
   }
 }

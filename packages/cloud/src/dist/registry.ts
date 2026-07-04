@@ -15,6 +15,14 @@
 
 import { DIST_PROTOCOL_VERSION, type AgentHello, type DistServerMessage } from '../protocol-dist.js'
 
+/**
+ * Label the submitter's in-process self-agent carries so the serve can tell
+ * "this machine, submitting" apart from genuine remote helper agents. Lives
+ * here (the base module that owns agent labels) so both the scheduler and the
+ * capacity read can reference it without an import cycle.
+ */
+export const SUBMITTER_LABEL = 'submitter'
+
 /** Sessions idle longer than this (no agents, no submission) are swept. */
 export const SESSION_GC_MS = 15 * 60 * 1000
 
@@ -184,6 +192,35 @@ export class AgentRegistry {
   /** Session count — GC observability for tests. */
   sessionCount(): number {
     return this.sessions.size
+  }
+
+  /**
+   * A session's live pool size — total vs REMOTE (helper) agents/capacity.
+   * "Remote" excludes the submitter's self-agent (it carries `SUBMITTER_LABEL`),
+   * so `remoteAgents > 0` means "there is genuine external capacity here." An
+   * ambient `vx run` uses this to decide whether distributing is worth it, or
+   * whether to stay a fast local run; an autoscaler reads the same counts.
+   * Unknown session → all zeros. Pure read over the in-memory map.
+   */
+  availableCapacity(
+    workspaceId: string,
+    session: string,
+  ): { agents: number; remoteAgents: number; capacity: number; remoteCapacity: number } {
+    const state = this.sessions.get(sessionKey(workspaceId, session))
+    if (state === undefined) return { agents: 0, remoteAgents: 0, capacity: 0, remoteCapacity: 0 }
+    let agents = 0
+    let remoteAgents = 0
+    let capacity = 0
+    let remoteCapacity = 0
+    for (const agent of state.agents.values()) {
+      agents++
+      capacity += agent.capacity
+      if (!agent.labels.includes(SUBMITTER_LABEL)) {
+        remoteAgents++
+        remoteCapacity += agent.capacity
+      }
+    }
+    return { agents, remoteAgents, capacity, remoteCapacity }
   }
 
   private sessionFor(workspaceId: string, session: string): SessionState {

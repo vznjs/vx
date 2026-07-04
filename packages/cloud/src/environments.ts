@@ -33,6 +33,15 @@ export interface EnvironmentEntry {
    * correct when the server shares (or mirrors) the filesystem.
    */
   delegate?: boolean
+  /**
+   * Ambient distribution to a POOL of agents rendezvoused by this serve.
+   * `true` (from `--distribute`) enables it; a number is an advisory expected
+   * agent count (drives the zero-agent timeout warning). Unlike `delegate`,
+   * distribution FAILS SAFE: a `vx run` degrades to a normal local run when the
+   * serve is unreachable or the pool has no remote agents, so leaving it on
+   * never blocks a solo run. See docs/design/universal-agents-2026-07.md.
+   */
+  distribute?: number | boolean
 }
 
 export interface EnvironmentsFile {
@@ -115,6 +124,7 @@ function validateFile(parsed: unknown, p: string): EnvironmentsFile {
       token?: unknown
       prToken?: unknown
       delegate?: unknown
+      distribute?: unknown
     }
     if (typeof raw.url !== 'string' || raw.url === '') {
       throw new Error(`environment "${name}" has no url in ${p}`)
@@ -128,11 +138,22 @@ function validateFile(parsed: unknown, p: string): EnvironmentsFile {
     if (raw.delegate !== undefined && typeof raw.delegate !== 'boolean') {
       throw new Error(`environment "${name}" has a non-boolean delegate in ${p}`)
     }
+    // `distribute` is additive-optional: an older binary reading a newer file
+    // ignores an unknown field, and a newer binary treats absence as off — so
+    // it never forces an ENVIRONMENTS_VERSION bump.
+    if (
+      raw.distribute !== undefined &&
+      typeof raw.distribute !== 'boolean' &&
+      typeof raw.distribute !== 'number'
+    ) {
+      throw new Error(`environment "${name}" has a non-boolean/number distribute in ${p}`)
+    }
     environments[name] = {
       url: raw.url,
       ...(raw.token !== undefined ? { token: raw.token } : {}),
       ...(raw.prToken !== undefined ? { prToken: raw.prToken } : {}),
       ...(raw.delegate !== undefined ? { delegate: raw.delegate } : {}),
+      ...(raw.distribute !== undefined ? { distribute: raw.distribute } : {}),
     }
   }
   return {

@@ -187,6 +187,49 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-04**: **Universal agents/pools — Phase 1: ambient distribution
+  makes a connected pool a one-time `connect --distribute`, fails SAFE to
+  local** (owner: "Make sure arch is flexible. Devs could spin up agents on
+  live environments, and use them for local maybe? … flexible universal
+  scalable. Easy to start for small and scale for big. Complete CI solution to
+  monorepo"). Architect design in `docs/design/universal-agents-2026-07.md`
+  (the universal pool model — serve/agent/submitter roles collapsing by scale;
+  the easy-start→scale ladder Tier 0 solo → Tier 4 cloud burst; the streamlining
+  - complete-CI gap analysis). **Key finding:** the universal primitive already
+    exists — `runAgentLoop` is one loop hosted by both the `agent` verb and the
+    submitter's self-registration; local/CI/cloud agents are the SAME binary,
+    differing only in where they run + who owns lifecycle. What was missing:
+    ambient enablement + fail-safe + a capacity gate. **Phase 1 (shipped, all in
+    `@vzn/vx-cloud`, zero core change, no CACHE_VERSION/SCHEMA bump, correctness
+    law untouched):** (1) `EnvironmentEntry.distribute?: number | boolean` mirrors
+    `delegate` (additive-optional → no ENVIRONMENTS_VERSION bump); `--distribute` /
+    `--distribute=<n>` on `vx-cloud connect`, shown in `env ls`. (2)
+    `AgentRegistry.availableCapacity(ws, session)` counts total vs REMOTE (non-
+    `SUBMITTER_LABEL`) agents/capacity; `SUBMITTER_LABEL` moved to registry.ts
+    (re-exported from scheduler.ts) to avoid a cycle. (3) serve `GET /v1/agents?
+ws=&session=` returns those counts (behind the bearer; the WS-upgrade path is
+    unchanged) — the ambient capacity gate + a future autoscaler read the same
+    data. (4) `distributedBackend` gains `mode: 'explicit' | 'ambient'`: explicit
+    (`VX_CLOUD_DISTRIBUTE`, unchanged) hard-errors on an unreachable serve;
+    ambient probes capacity BEFORE the graph prepare and degrades to a normal
+    LOCAL run when the pool is unreachable (warns) OR has zero remote helpers
+    (SILENT — the fast solo case). (5) `cloud().backend()` ambient rung: an
+    environment connected with `distribute` returns the ambient backend; the env
+    read is the SAME `activeEnvironment()` the delegate rung already does (and
+    only when `cloud()` is declared), so **no environment connected → decline →
+    core's `localBackend`, byte-identical fast path**. Net UX: `vx-cloud connect
+<url> --distribute` ONCE, then `vx run` fans out across helper agents when
+    present and stays a fast local run when not — `VX_CLOUD_DISTRIBUTE` demoted
+    from required-per-run to an explicit escape hatch. **KNOWN-OPEN (design §D,
+    NEXT):** agent heartbeat/liveness (half-open TCP agents stall until the OS
+    timeout), the standing shared-pool multi-run fair scheduler (the
+    one-active-submission-per-session rule is the Tier-3 ceiling; two different
+    devs ambient-distributing the same repo share `{repoId, local}` and interfere
+    — harmless to correctness), ready-queue-depth for autoscaling, turnkey CI
+    composite action. **NON-GOALS:** intra-task sharding (task is the unit),
+    mDNS discovery, managed fleet controller, input-shipping a dirty tree. Cloud
+    suite 181 pass (+11), core gate green, lint+oxfmt clean.
+
 - **2026-07-04**: **npm distribution — `@vzn/vx` publishes the standalone
   binary via per-platform optionalDependencies (esbuild model)** (owner:
   "prepare publishing of vx binaries through npm wrapper using some 3rd party

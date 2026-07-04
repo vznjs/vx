@@ -79,6 +79,45 @@ describe('vx-cloud connect', () => {
     }
   })
 
+  it('--distribute persists the ambient-pool policy on the environment', async () => {
+    const server = await startServe({ root: dir })
+    try {
+      const res = await cli(['connect', server.origin, '--name', 'pool', '--distribute'])
+      expect(res.code).toBe(0)
+      expect((await readCfg()).environments['pool']).toEqual({
+        url: server.origin,
+        distribute: true,
+      })
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('--distribute=<n> persists the advisory agent count', async () => {
+    const server = await startServe({ root: dir })
+    try {
+      const res = await cli(['connect', server.origin, '--name', 'pool', '--distribute=4'])
+      expect(res.code).toBe(0)
+      expect((await readCfg()).environments['pool']).toEqual({
+        url: server.origin,
+        distribute: 4,
+      })
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('rejects a non-positive --distribute value', async () => {
+    const server = await startServe({ root: dir })
+    try {
+      const res = await cli(['connect', server.origin, '--distribute=nope'])
+      expect(res.code).toBe(1)
+      expect(res.stderr).toContain('invalid --distribute')
+    } finally {
+      await server.stop()
+    }
+  })
+
   it('--no-use persists without activating', async () => {
     const server = await startServe({ root: dir })
     try {

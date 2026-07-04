@@ -192,6 +192,34 @@ describe('cloud() backend capability', () => {
       else process.env['VX_CLOUD_CONFIG'] = savedCfg
     }
   })
+
+  it('an ambient `distribute` environment returns a backend that FAILS SAFE to a local run', async () => {
+    // The local-pool keystone: connecting with `--distribute` engages the
+    // ambient rung, but an unreachable pool must run locally, never throw or
+    // block — so a dev who leaves it on is never worse off than a plain run.
+    const root = await makeWorkspace()
+    const savedCfg = process.env['VX_CLOUD_CONFIG']
+    const savedUrl = process.env['VX_CLOUD_URL']
+    delete process.env['VX_CLOUD_URL']
+    try {
+      process.env['VX_CLOUD_CONFIG'] = path.join(root, 'environments.json')
+      writeEnvironmentsFile({
+        version: ENVIRONMENTS_VERSION,
+        active: 'pool',
+        environments: { pool: { url: 'http://localhost:1', distribute: true } },
+      })
+      const backend = await cloud().backend!(backendCtx(root))
+      expect(backend).toBeDefined() // the ambient rung engaged (not a decline)
+      const result = await backend!.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
+      expect(result.ok).toBe(true)
+      expect(result.outcomes[0]!.taskId).toBe('demo#hello')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+      if (savedCfg === undefined) delete process.env['VX_CLOUD_CONFIG']
+      else process.env['VX_CLOUD_CONFIG'] = savedCfg
+      if (savedUrl !== undefined) process.env['VX_CLOUD_URL'] = savedUrl
+    }
+  })
 })
 
 describe('cloud() cache capability', () => {

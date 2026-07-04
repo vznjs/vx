@@ -261,3 +261,83 @@ describe('distributedBackend — §5.3 refusal gates fall back loudly to a local
     }
   })
 })
+
+/** A serve stand-in answering /health + /v1/agents with the given pool counts. */
+function capacityServe(remoteAgents: number): {
+  origin: string
+  stop(): void
+  submits: () => number
+} {
+  let submits = 0
+  const server = Bun.serve({
+    port: 0,
+    fetch(req, srv): Response | undefined {
+      const url = new URL(req.url)
+      if (url.pathname === '/health') return new Response('ok')
+      if (url.pathname === '/v1/agents') {
+        return Response.json({
+          agents: remoteAgents,
+          remoteAgents,
+          capacity: remoteAgents,
+          remoteCapacity: remoteAgents,
+        })
+      }
+      if (srv.upgrade(req)) return undefined
+      return new Response('x', { status: 404 })
+    },
+    websocket: {
+      message() {
+        submits++
+      },
+    },
+  })
+  return {
+    origin: `http://localhost:${server.port}`,
+    stop: () => void server.stop(true),
+    submits: () => submits,
+  }
+}
+
+describe('distributedBackend — ambient mode fails SAFE (the local-pool keystone)', () => {
+  it('an unreachable pool degrades to a local run (does NOT throw like explicit mode)', async () => {
+    const root = await makeWorkspace()
+    const warned: string[] = []
+    try {
+      const backend = distributedBackend({
+        origin: 'http://localhost:1', // nothing listening
+        expectedAgents: 0,
+        mode: 'ambient',
+        sink: silentLogger,
+        warn: (l) => warned.push(l),
+      })
+      const result = await backend.run({ tasks: ['build'], cwd: root, outputLogs: 'none' })
+      expect(result.ok).toBe(true)
+      expect(warned.join('\n')).toContain('unreachable')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('a reachable pool with zero remote agents runs locally SILENTLY (fast small case)', async () => {
+    const root = await makeWorkspace()
+    const serve = capacityServe(0)
+    const warned: string[] = []
+    try {
+      const backend = distributedBackend({
+        origin: serve.origin,
+        expectedAgents: 0,
+        mode: 'ambient',
+        sink: silentLogger,
+        warn: (l) => warned.push(l),
+      })
+      const result = await backend.run({ tasks: ['build'], cwd: root, outputLogs: 'none' })
+      expect(result.ok).toBe(true)
+      // No "distribution disabled" note — a solo run must not be noisy.
+      expect(warned.join('\n')).not.toContain('distribution disabled')
+      expect(serve.submits()).toBe(0)
+    } finally {
+      serve.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})

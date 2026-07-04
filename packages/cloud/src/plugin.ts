@@ -205,13 +205,42 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
           warn: (line) => ctx.warn(line),
         })
       }
-      // Ambient DELEGATION (run on the server instead of locally) stays a
-      // deliberate opt-in: it executes against request.cwd on the server, only
-      // correct when the server shares/mirrors the filesystem. So a plain
-      // `VX_CLOUD_URL` connection NEVER silently moves execution — only an
-      // environment connected with `--delegate` does. Everything else declines
-      // (core uses its own local backend, no serve-discovery probe).
+      // One env-file read, shared by the ambient-distribute + delegate rungs
+      // (memoized; only happens when cloud() is declared). No environment
+      // connected → both rungs skip → decline → core's localBackend, so a plain
+      // `vx run` keeps its zero-overhead fast path.
       const env = activeEnvironment()
+
+      // Ambient DISTRIBUTION: an environment connected with `--distribute`
+      // fans a run out to that serve's POOL of agents — but FAILS SAFE. Unlike
+      // delegation it doesn't move a whole run to one server; it submits the
+      // graph to a pool and `distributedBackend({ mode: 'ambient' })` probes
+      // capacity first, degrading to a normal LOCAL run when the pool is
+      // unreachable or holds no other agents. That safety is what makes it OK
+      // to leave on: a solo `vx run` stays fast; add helper agents and the same
+      // command fans out. See docs/design/universal-agents-2026-07.md.
+      if (env?.distribute !== undefined && env.distribute !== false) {
+        const conn = resolveConnection(opts)
+        if (conn !== undefined) {
+          const token = conn.token ?? conn.prToken
+          const { distributedBackend } = await import('./dist/submit.js')
+          return distributedBackend({
+            origin: conn.url,
+            ...(token !== undefined ? { token } : {}),
+            mode: 'ambient',
+            expectedAgents: typeof env.distribute === 'number' ? env.distribute : 0,
+            warn: (line) => ctx.warn(line),
+          })
+        }
+        // No resolvable connection → just run locally (never an error): an
+        // ambient pool is a convenience, not a requirement.
+      }
+
+      // Ambient DELEGATION (run the whole run on the server instead of locally)
+      // stays a deliberate opt-in: it executes against request.cwd on the
+      // server, only correct when the server shares/mirrors the filesystem. So
+      // a plain `VX_CLOUD_URL` connection NEVER silently moves execution — only
+      // an environment connected with `--delegate` does.
       if (env?.delegate === true) {
         const { resolveBackend } = await import('./cli/backend.js')
         return resolveBackend(ctx.request.cwd, undefined, env.url, env.token)

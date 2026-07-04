@@ -470,7 +470,17 @@ export async function startServe(opts: {
       // must be `agent:hello`.
       if (url.pathname === '/v1/agents') {
         if (srv.upgrade(req, { data: { role: 'agent', principal } })) return undefined
-        return jsonResponse({ error: '/v1/agents requires a WebSocket upgrade' }, { status: 426 })
+        // Not a WS upgrade → a capacity read: how big is this
+        // {workspaceId, session} pool right now, and how many REMOTE helpers
+        // does it hold. An ambient `vx run` reads this to decide whether
+        // distributing is worth it (vs. staying a fast local run); an
+        // autoscaler reads the same counts. Bearer-gated above.
+        return jsonResponse(
+          registry.availableCapacity(
+            url.searchParams.get('ws') ?? '',
+            url.searchParams.get('session') ?? '',
+          ),
+        )
       }
       // MCP — the AI-agent control plane (dev-flows design §10.3): JSON-RPC
       // 2.0 over streamable HTTP, tools adapting the same metrics queries

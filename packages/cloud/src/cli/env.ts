@@ -70,6 +70,7 @@ interface ConnectArgs {
   name?: string
   token?: string
   delegate?: boolean
+  distribute?: number | boolean
   use: boolean
   force?: boolean
   error?: string
@@ -81,6 +82,19 @@ export function parseConnectArgs(args: readonly string[]): ConnectArgs {
     const a = args[i]!
     if (a === '--delegate') {
       out.delegate = true
+      continue
+    }
+    if (a === '--distribute') {
+      out.distribute = true
+      continue
+    }
+    if (a.startsWith('--distribute=')) {
+      const v = a.slice('--distribute='.length)
+      const n = Number(v)
+      if (!Number.isInteger(n) || n < 1) {
+        return { ...out, error: `invalid --distribute: ${v} (expected a positive integer)` }
+      }
+      out.distribute = n
       continue
     }
     if (a === '--no-use') {
@@ -171,6 +185,7 @@ export async function connectCmd(args: readonly string[]): Promise<number> {
     url: base,
     ...(parsed.token !== undefined ? { token: parsed.token } : {}),
     ...(parsed.delegate === true ? { delegate: true } : {}),
+    ...(parsed.distribute !== undefined ? { distribute: parsed.distribute } : {}),
   }
   file.environments[name] = entry
   if (parsed.use) file.active = name
@@ -203,7 +218,14 @@ interface LsRow {
   name: string
   url: string
   delegate: boolean
+  distribute: string
   probe: Promise<{ up: boolean; name?: string }>
+}
+
+/** Render an environment's `distribute` policy for the `env ls` column. */
+function fmtDistribute(d: number | boolean | undefined): string {
+  if (d === undefined || d === false) return ''
+  return d === true ? 'yes' : String(d)
 }
 
 async function probeServer(base: string): Promise<{ up: boolean; name?: string }> {
@@ -231,6 +253,7 @@ async function envLs(): Promise<number> {
       name: '(local)',
       url: info.origin,
       delegate: false,
+      distribute: '',
       probe: probeServer(info.origin),
     })
   }
@@ -242,6 +265,7 @@ async function envLs(): Promise<number> {
       name,
       url: entry.url,
       delegate: entry.delegate === true,
+      distribute: fmtDistribute(entry.distribute),
       probe: probeServer(entry.url),
     })
   }
@@ -257,7 +281,7 @@ async function envLs(): Promise<number> {
   const probes = await Promise.all(rows.map((r) => r.probe))
   const nameW = Math.max(4, ...rows.map((r) => r.name.length))
   const urlW = Math.max(3, ...rows.map((r) => r.url.length))
-  const lines = [`  ${'NAME'.padEnd(nameW)}  ${'URL'.padEnd(urlW)}  DELEGATE  STATUS`]
+  const lines = [`  ${'NAME'.padEnd(nameW)}  ${'URL'.padEnd(urlW)}  DELEGATE  DISTRIBUTE  STATUS`]
   rows.forEach((row, i) => {
     const probe = probes[i]!
     const status = probe.up
@@ -265,7 +289,7 @@ async function envLs(): Promise<number> {
       : 'unreachable'
     lines.push(
       `${row.active ? '*' : ' '} ${row.name.padEnd(nameW)}  ${row.url.padEnd(urlW)}  ` +
-        `${(row.delegate ? 'yes' : '').padEnd(8)}  ${status}`,
+        `${(row.delegate ? 'yes' : '').padEnd(8)}  ${row.distribute.padEnd(10)}  ${status}`,
     )
   })
   process.stdout.write(`${lines.join('\n')}\n`)
