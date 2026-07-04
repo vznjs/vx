@@ -28,6 +28,13 @@ export interface RemoteCacheConfig {
    * mismatched tag is a `RemoteCacheError`, never a silent accept.
    */
   signatureKey?: string
+  /**
+   * Untrusted per-PR partition id, sent as `x-vx-cache-scope`. On a vx-cloud
+   * serve this sub-partitions the untrusted tier so one fork PR can't read or
+   * poison another's cache. Ignored by trusted writes and by third-party
+   * Turbo servers.
+   */
+  cacheScope?: string
 }
 
 export interface RemotePutMetadata {
@@ -204,6 +211,12 @@ export class RemoteCache {
         signal: AbortSignal.timeout(timeoutMs),
         headers: {
           Authorization: `Bearer ${this.config.token}`,
+          // The untrusted per-PR partition (a vx-cloud serve extension; a
+          // third-party Turbo server ignores it). Isolates one fork PR's
+          // writes/reads from another's within the untrusted tier.
+          ...(this.config.cacheScope !== undefined
+            ? { 'x-vx-cache-scope': this.config.cacheScope }
+            : {}),
           ...init?.headers,
         },
         ...(init?.body !== undefined ? { body: init.body } : {}),

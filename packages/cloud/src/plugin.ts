@@ -23,6 +23,7 @@ import { existsSync } from 'node:fs'
 import {
   LayeredCache,
   RemoteCache,
+  resolveCacheScope,
   UserError,
   type CacheContext,
   type CachePolicy,
@@ -303,6 +304,10 @@ function buildCloudCache(
     const n = Number(timeoutMs)
     if (Number.isFinite(n) && n > 0) config.timeoutMs = n
   }
+  // Untrusted per-PR isolation: one fork PR's untrusted writes/reads are
+  // partitioned from another's on the serve.
+  const cacheScope = resolveCacheScope(process.env)
+  if (cacheScope !== undefined) config.cacheScope = cacheScope
 
   ctx.warn(`cloud cache: ${baseUrl}`)
   return new LayeredCache(ctx.localCache, new RemoteCache(config), {

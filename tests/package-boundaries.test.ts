@@ -157,6 +157,7 @@ describe('package boundaries', () => {
       'projectOutcome',
       'requestToOptions',
       'resolveCacheDir',
+      'resolveCacheScope',
       'resolveInputs',
       'resolveOutputView',
       'resolveOutputs',

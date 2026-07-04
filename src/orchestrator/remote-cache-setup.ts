@@ -7,6 +7,7 @@ import {
   RemoteCache,
 } from '../cache/index.js'
 import type { Logger } from './logger.js'
+import { resolveCacheScope } from './run-context.js'
 
 /**
  * Wrap the local cache in a `LayeredCache` when a remote cache is configured
@@ -48,6 +49,9 @@ export function wrapWithRemoteCache(
   }
   const signatureKey = process.env.VX_REMOTE_CACHE_SIGNATURE_KEY
   if (signatureKey) config.signatureKey = signatureKey
+  // Untrusted per-PR isolation: a fork PR's writes land in its own sub-scope.
+  const cacheScope = resolveCacheScope(process.env)
+  if (cacheScope) config.cacheScope = cacheScope
 
   log.status(`remote cache: ${url}`)
   return new LayeredCache(local, new RemoteCache(config), {

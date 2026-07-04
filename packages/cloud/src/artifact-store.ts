@@ -56,15 +56,28 @@ const SEGMENT_RE = /^[a-zA-Z0-9_.-]{1,128}$/
  * warm off `main`); a trusted context reads only trusted — it NEVER consumes
  * an untrusted (poisonable) artifact.
  */
-function readScopes(p: Principal): string[] {
+function readScopes(p: Principal, sub: string): string[] {
+  // Untrusted reads ITS OWN sub-scope (a per-PR partition) + the trusted
+  // baseline — NEVER another PR's untrusted scope. So one fork PR can neither
+  // read nor poison another's cache; the blast radius of an untrusted write is
+  // exactly one PR, and trusted is never consumed.
   return p.tier === 'untrusted'
-    ? [`${p.bucket}/untrusted`, `${p.bucket}/trusted`]
+    ? [`${p.bucket}/untrusted/${sub}`, `${p.bucket}/trusted`]
     : [`${p.bucket}/trusted`]
 }
 
-/** The single scope a principal WRITES: its own bucket + tier. */
-function writeScope(p: Principal): string {
-  return `${p.bucket}/${p.tier}`
+/** The single scope a principal WRITES: trusted is flat; untrusted is
+ *  per-PR-partitioned so PRs never write into each other's scope. */
+function writeScope(p: Principal, sub: string): string {
+  return p.tier === 'untrusted' ? `${p.bucket}/untrusted/${sub}` : `${p.bucket}/trusted`
+}
+
+// The untrusted sub-scope (a PR identity) is a CLIENT-supplied namespace, so
+// sanitize it to one safe path segment; anything missing/invalid collapses to
+// `shared` (still isolated from trusted, just not per-PR).
+const SUBSCOPE_RE = /^[a-zA-Z0-9_.-]{1,128}$/
+function subScopeOf(raw: string | null): string {
+  return raw !== null && SUBSCOPE_RE.test(raw) ? raw : 'shared'
 }
 
 export class ArtifactStore {
@@ -107,8 +120,13 @@ export class ArtifactStore {
     if (moved > 0) log?.(`migrated ${moved} flat artifact file(s) → default/trusted/`)
   }
 
-  private async findRead(hash: string, p: Principal, ext: string): Promise<string | null> {
-    for (const scope of readScopes(p)) {
+  private async findRead(
+    hash: string,
+    p: Principal,
+    sub: string,
+    ext: string,
+  ): Promise<string | null> {
+    for (const scope of readScopes(p, sub)) {
       const file = this.scopedPath(scope, hash, ext)
       if (await Bun.file(file).exists()) return file
     }
@@ -118,11 +136,16 @@ export class ArtifactStore {
   /**
    * Existence probe across the principal's read scopes — one stat per scope.
    * The distribution scheduler's cache prune: a submitted stable hash already
-   * in a readable scope never dispatches to any agent.
+   * in a readable scope never dispatches to any agent. `sub` is the untrusted
+   * per-PR partition (ignored for a trusted principal).
    */
-  async has(hash: string, principal: Principal = DEFAULT_PRINCIPAL): Promise<boolean> {
+  async has(
+    hash: string,
+    principal: Principal = DEFAULT_PRINCIPAL,
+    sub = 'shared',
+  ): Promise<boolean> {
     if (!HASH_RE.test(hash)) return false
-    return (await this.findRead(hash, principal, '.tar.zst')) !== null
+    return (await this.findRead(hash, principal, sub, '.tar.zst')) !== null
   }
 
   /**
@@ -133,9 +156,10 @@ export class ArtifactStore {
   async storedDurationMs(
     hash: string,
     principal: Principal = DEFAULT_PRINCIPAL,
+    sub = 'shared',
   ): Promise<number | undefined> {
     if (!HASH_RE.test(hash)) return undefined
-    const file = await this.findRead(hash, principal, '.duration')
+    const file = await this.findRead(hash, principal, sub, '.duration')
     if (file === null) return undefined
     const n = Number((await Bun.file(file).text()).trim())
     return Number.isFinite(n) && n >= 0 ? n : undefined
@@ -155,18 +179,22 @@ export class ArtifactStore {
     if (!HASH_RE.test(hash)) {
       return Response.json({ error: 'invalid artifact hash' }, { status: 400 })
     }
-    const wScope = writeScope(principal)
-    if (!this.validScope(wScope) || !readScopes(principal).every((s) => this.validScope(s))) {
+    // The untrusted per-PR partition — a client-supplied `x-vx-cache-scope`
+    // header (a PR identity). Sanitized to one safe segment; ignored for a
+    // trusted principal (trusted is flat).
+    const sub = subScopeOf(req.headers.get('x-vx-cache-scope'))
+    const wScope = writeScope(principal, sub)
+    if (!this.validScope(wScope) || !readScopes(principal, sub).every((s) => this.validScope(s))) {
       return Response.json({ error: 'invalid scope' }, { status: 400 })
     }
 
     if (req.method === 'HEAD') {
-      const found = await this.findRead(hash, principal, '.tar.zst')
+      const found = await this.findRead(hash, principal, sub, '.tar.zst')
       return new Response(null, { status: found !== null ? 200 : 404 })
     }
 
     if (req.method === 'GET') {
-      const found = await this.findRead(hash, principal, '.tar.zst')
+      const found = await this.findRead(hash, principal, sub, '.tar.zst')
       if (found === null) {
         return Response.json({ error: 'not found' }, { status: 404 })
       }

@@ -438,10 +438,16 @@ describe('ArtifactStore — trust scopes (poisoning guard)', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
-  const put = (store: ArtifactStore, hash: string, body: string, p: Principal) =>
-    store.handle(new Request(`http://x/v8/artifacts/${hash}`, { method: 'PUT', body }), hash, p)
-  const get = (store: ArtifactStore, hash: string, p: Principal) =>
-    store.handle(new Request(`http://x/v8/artifacts/${hash}`), hash, p)
+  const hdrs = (scope?: string) =>
+    scope !== undefined ? { headers: { 'x-vx-cache-scope': scope } } : {}
+  const put = (store: ArtifactStore, hash: string, body: string, p: Principal, scope?: string) =>
+    store.handle(
+      new Request(`http://x/v8/artifacts/${hash}`, { method: 'PUT', body, ...hdrs(scope) }),
+      hash,
+      p,
+    )
+  const get = (store: ArtifactStore, hash: string, p: Principal, scope?: string) =>
+    store.handle(new Request(`http://x/v8/artifacts/${hash}`, hdrs(scope)), hash, p)
 
   it('an untrusted write NEVER feeds a trusted read (quarantine)', async () => {
     const store = new ArtifactStore(path.join(dir, 'artifacts'))
@@ -450,9 +456,26 @@ describe('ArtifactStore — trust scopes (poisoning guard)', () => {
     expect((await put(store, hash, 'evil', untrusted)).status).toBe(200)
     // A trusted (main) build for the SAME key must NOT see it — 404.
     expect((await get(store, hash, trusted)).status).toBe(404)
-    // It lives only under untrusted/.
-    const under = await readdir(path.join(dir, 'artifacts', 'default', 'untrusted'))
+    // It lives only under untrusted/<sub> (default sub-scope: `shared`).
+    const under = await readdir(path.join(dir, 'artifacts', 'default', 'untrusted', 'shared'))
     expect(under).toContain(`${hash}.tar.zst`)
+  })
+
+  it('one PR NEVER reads or poisons another PR (per-PR isolated untrusted scope)', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    const hash = 'aabbccddeeff0011'
+    // PR-A writes under its own sub-scope.
+    expect((await put(store, hash, 'from-pr-A', untrusted, 'pr-1')).status).toBe(200)
+    // PR-B (a DIFFERENT sub-scope) must NOT see PR-A's artifact — 404, no leak.
+    expect((await get(store, hash, untrusted, 'pr-2')).status).toBe(404)
+    // PR-B can write the SAME key in its OWN scope (not blocked by PR-A, no
+    // cross-poison): immutability is per-scope.
+    expect((await put(store, hash, 'from-pr-B', untrusted, 'pr-2')).status).toBe(200)
+    // Each PR reads back its OWN bytes.
+    expect(await (await get(store, hash, untrusted, 'pr-1')).text()).toBe('from-pr-A')
+    expect(await (await get(store, hash, untrusted, 'pr-2')).text()).toBe('from-pr-B')
+    // A trusted build still sees NEITHER.
+    expect((await get(store, hash, trusted)).status).toBe(404)
   })
 
   it('an untrusted read falls through to the trusted baseline (warm PR)', async () => {

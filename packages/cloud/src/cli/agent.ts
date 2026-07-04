@@ -82,9 +82,13 @@ function worktreeStatus(root: string): string[] {
 export async function agentCmd(args: readonly string[]): Promise<number> {
   const parsed = parseAgentArgs(args)
 
-  const origin = parsed.url ?? process.env['VX_SERVICE_URL'] ?? readServeInfo()?.origin
+  const origin =
+    parsed.url ??
+    process.env['VX_CLOUD_URL'] ??
+    process.env['VX_SERVICE_URL'] ??
+    readServeInfo()?.origin
   if (origin === undefined || origin === '') {
-    throw new UserError('vx-cloud agent: no serve URL — pass --url <origin> (or VX_SERVICE_URL)')
+    throw new UserError('vx-cloud agent: no serve URL — pass --url <origin> (or VX_CLOUD_URL)')
   }
   const token =
     parsed.token ??

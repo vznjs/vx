@@ -97,7 +97,7 @@ export type {
 } from './telemetry.js'
 export { deriveStableKeys } from './stable-keys.js'
 export type { DeriveStableKeysArgs, StableKey } from './stable-keys.js'
-export { captureGitContext, captureWorkspaceIdentity } from './run-context.js'
+export { captureGitContext, captureWorkspaceIdentity, resolveCacheScope } from './run-context.js'
 export type { GitContext, WorkspaceIdentity } from './run-context.js'
 export {
   cacheKeyDiff,
