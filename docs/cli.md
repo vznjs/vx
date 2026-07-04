@@ -1055,29 +1055,38 @@ requires a token and none was given, verifies a given token with one
 authenticated request — and only then persists. `VX_CLOUD_ENV=<name>`
 overrides the active pointer per-shell without touching the file.
 
-**Resolution precedence** (what the `cloud()` plugin consults, first
-match wins):
+**One connection drives everything.** `cloud()` resolves a SINGLE
+connection and feeds all three capabilities from it — analytics ingest,
+the remote cache (`/v8/artifacts`), and distributed execution. There is
+no separate cache/ingest/service URL. Resolution (first match wins):
 
-| #   | Telemetry push                                           | Run delegation (backend)                        |
-| --- | -------------------------------------------------------- | ----------------------------------------------- |
-| 1   | `cloud({ ingestUrl, ingestToken })` options              | `cloud({ serviceUrl })` option                  |
-| 2   | `VX_CLOUD_INGEST_URL` / `_TOKEN` env                     | `VX_SERVICE_URL` env                            |
-| 3   | active named environment → `<url>/v1/ingest` + its token | active environment **only if `delegate: true`** |
-| 4   | local serve auto-detect (per-user serve.json + live pid) | decline (local runs execute in-process)         |
-| 5   | decline — a plain run stays zero-overhead                |                                                 |
+| #   | The connection                                                                                       |
+| --- | ---------------------------------------------------------------------------------------------------- |
+| 1   | `cloud({ url, token, prToken })` options / `VX_CLOUD_URL` + `VX_CLOUD_TOKEN` (+ `VX_CLOUD_PR_TOKEN`) |
+| 2   | the active named environment (`vx-cloud connect`)                                                    |
+| 3   | an auto-detected local `vx-cloud serve` (per-user serve.json + live pid)                             |
+| 4   | decline — a plain run stays zero-overhead                                                            |
 
-`delegate` is opt-in per environment because delegation executes the
-run **on the server** against the request's cwd — only correct when
-the server shares the filesystem or holds an identical checkout.
-Connecting for the dashboard never silently moves execution.
+(The pre-consolidation env vars `VX_SERVICE_URL`, `VX_REMOTE_CACHE_URL/TOKEN`,
+`VX_CLOUD_INGEST_URL/TOKEN`, `VX_CLOUD_INSIGHTS_URL/TOKEN` are still accepted
+as aliases for the URL/token, so existing setups keep working.)
 
-The **remote cache** has its own rung ladder: `cloud({ cacheUrl,
-cacheToken })` options > `VX_REMOTE_CACHE_*` env > the active
-environment **when its serve advertises the artifact store**
-(`/v1/meta` `artifacts: true`, probed lazily once per process) >
-decline. Explicit config is never second-guessed — the probe only
-fires when nothing else configured the cache and an environment is
-actually connected, so a plain run stays zero-network.
+- **Cache is internal to the connection.** A remote connection with a
+  token wraps the local cache in a `LayeredCache` at `<url>/v8/artifacts`
+  automatically. `VX_REMOTE_CACHE_*` is now only the escape hatch for a
+  THIRD-PARTY, Turbo-compatible cache server that isn't a vx-cloud.
+- **Trust follows the token.** Present `VX_CLOUD_TOKEN` (trusted) or
+  `VX_CLOUD_PR_TOKEN` (untrusted / fork-PR — reads trusted, writes only
+  untrusted). The serve derives the tier from the bearer; there is no
+  `VX_CACHE_TRUST` flag and no fork-PR autodetection.
+- **Delegation stays opt-in.** A plain connection NEVER moves execution
+  to the server; only an environment connected with `--delegate` does
+  (delegation runs against the request's cwd on the server — correct only
+  when it shares the filesystem). Distribution is opt-in via
+  `VX_CLOUD_DISTRIBUTE`.
+- A DISCOVERED serve (active environment) is capability-probed
+  (`/v1/meta` `artifacts: true`, once per process) before the cache
+  routes to it; an explicit `VX_CLOUD_URL` is trusted as configured.
 
 ## `vx-cloud agent` — distributed-execution agent
 
@@ -1210,10 +1219,17 @@ see plain text.
 
 ## Remote cache (env-driven)
 
-If `VX_REMOTE_CACHE_URL` and `VX_REMOTE_CACHE_TOKEN` are set in the
-environment, `vx run` layers a remote cache on top of the local one
-(a plugin's `cache` capability, when declared, wins over the env
-vars).
+> **Using a vx-cloud?** Prefer the one connection —
+> `VX_CLOUD_URL` + `VX_CLOUD_TOKEN` (or `vx-cloud connect`) — which gives
+> you the remote cache automatically (it's internal to the connection).
+> The `VX_REMOTE_CACHE_*` vars below are the escape hatch for a
+> **third-party**, Turbo-compatible cache server that isn't a vx-cloud.
+
+If `VX_REMOTE_CACHE_URL` and a token (`VX_REMOTE_CACHE_TOKEN`, or
+`VX_REMOTE_CACHE_PR_TOKEN` for a fork PR) are set, `vx run` layers a
+remote cache on top of the local one (a plugin's `cache` capability,
+when declared, wins over the env vars). The trust tier follows whichever
+token you present — the server derives it.
 
 Reads try local first, then remote (hydrating local on remote hit),
 with a background prefetch pass overlapping remote GETs with

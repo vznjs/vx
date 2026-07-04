@@ -187,6 +187,36 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-04**: **Cloud simplified to ONE connection; trust follows the
+  token** (owner: "Distributed ci setup and work is too complex. Hosting cloud
+  should not be required. And if so it should be easier. We have too many env
+  vars. Cache should be internal to cloud. Trusted untrusted should be managed
+  by which token we use."). Collapsed the three overlapping connection concepts
+  (ingest / remote-cache / service — ~15 client env vars) into a single
+  `resolveConnection()` in `packages/cloud/src/plugin.ts`: **`VX_CLOUD_URL` +
+  `VX_CLOUD_TOKEN` (+ `VX_CLOUD_PR_TOKEN`)** drives ALL THREE rungs (analytics
+  ingest, the remote cache `/v8/artifacts`, distributed execution). **Cache is
+  internal to the connection** — connect a cloud and the remote cache is
+  automatic; `VX_REMOTE_CACHE_*` survives only as the third-party
+  (Turbo-server) escape hatch. The pre-consolidation vars (`VX_SERVICE_URL`,
+  `VX_REMOTE_CACHE_URL/TOKEN`, `VX_CLOUD_INGEST_*`, `VX_CLOUD_INSIGHTS_*`) stay
+  as resolution ALIASES so nothing breaks, but the documented model is one URL
+  - one token. **Trust = which token you present**: the server derives the tier
+    from the bearer, so the client just carries whichever token it has. REMOVED
+    the client-side `VX_CACHE_TRUST` override, the fork-PR autodetect
+    (`detectForkPr`), and `resolveCacheTrust` + the `remoteWrite=false` floor — a
+    fork PR simply holds only the PR token (repo secrets aren't exposed to
+    forks), so "which token" IS the tier, no flag. Dropped `detectForkPr` /
+    `resolveCacheTrust` / `CacheTrust` from the core façade (boundary snapshot
+    updated). A plain `VX_CLOUD_URL` connection NEVER moves execution: ambient
+    delegation stays opt-in via `vx-cloud connect --delegate`, distribution via
+    `VX_CLOUD_DISTRIBUTE`. `cloud()` options collapsed to `url`/`token`/`prToken`
+    (+ the Turbo tenancy/signing knobs); `serviceUrl`/`cacheUrl`/`cacheToken`/
+    `cachePrToken`/`ingestUrl`/`ingestToken` removed as options (env aliases
+    remain). Core `wrapWithRemoteCache` simplified the same way
+    (`token = VX_REMOTE_CACHE_TOKEN ?? VX_REMOTE_CACHE_PR_TOKEN`). Full gate
+    green: core 1047 pass, cloud 169 pass, lint clean.
+
 - **2026-07-04**: **Docs + website refresh for adopters; deploy simplified to
   docker-compose (Helm removed)** (owner: "Update docs and refresh website...
   Devs should not care about building spa... They won't clone the project.
