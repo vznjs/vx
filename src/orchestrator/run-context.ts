@@ -91,46 +91,6 @@ export function detectCi(env: NodeJS.ProcessEnv | Record<string, string | undefi
   return { ci: false, provider: null }
 }
 
-/**
- * Best-effort: is this run a FORK pull-request CI job (an untrusted external
- * contributor)? Used to pick the untrusted cache tier so a fork PR can't
- * poison the trusted cache. Never throws; an internal same-repo PR is NOT a
- * fork (trusted collaborator, keep the full cache).
- *
- * - GitHub: event is `pull_request` / `pull_request_target` AND the head repo
- *   differs from the base repo. `pull_request.head.repo.fork` in the event
- *   JSON is authoritative; a full_name mismatch is the fallback.
- * - GitLab: the MR source project differs from the target project.
- */
-export function detectForkPr(env: NodeJS.ProcessEnv | Record<string, string | undefined>): boolean {
-  // GitLab: source ≠ target project ⇒ fork MR.
-  const glSrc = env['CI_MERGE_REQUEST_SOURCE_PROJECT_ID']
-  const glTgt = env['CI_MERGE_REQUEST_PROJECT_ID']
-  if (isTruthy(glSrc) && isTruthy(glTgt) && glSrc !== glTgt) return true
-
-  // GitHub: only a pull_request event can be a fork PR.
-  const ghEvent = env['GITHUB_EVENT_NAME']
-  if (ghEvent === 'pull_request' || ghEvent === 'pull_request_target') {
-    const eventPath = env['GITHUB_EVENT_PATH']
-    if (isTruthy(eventPath)) {
-      try {
-        const payload = JSON.parse(fs.readFileSync(eventPath as string, 'utf8')) as {
-          pull_request?: { head?: { repo?: { fork?: boolean; full_name?: string } } }
-        }
-        const head = payload.pull_request?.head?.repo
-        if (head?.fork === true) return true
-        const repo = env['GITHUB_REPOSITORY']
-        if (typeof head?.full_name === 'string' && isTruthy(repo) && head.full_name !== repo) {
-          return true
-        }
-      } catch {
-        // unreadable/malformed payload — fall through to not-a-fork
-      }
-    }
-  }
-  return false
-}
-
 /** Host name (null on failure) + platform + arch. */
 export function captureHostContext(): HostContext {
   let host: string | null = null

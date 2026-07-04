@@ -17,6 +17,7 @@ import {
 import { cloud } from '../src/plugin.js'
 import { startServe } from '../src/cli/serve.js'
 import { serveInfoPath } from '../src/serve-info.js'
+import { ENVIRONMENTS_VERSION, writeEnvironmentsFile } from '../src/environments.js'
 
 // Isolate the per-user serve advertisement at a temp path so these tests never
 // touch a real local serve's file on the machine.
@@ -87,28 +88,66 @@ describe('cloud() plugin shape', () => {
     expect(typeof plugin.telemetry).toBe('function')
   })
 
-  it('setup rejects a malformed serviceUrl', () => {
-    expect(() => cloud({ serviceUrl: 'not a url' }).setup?.(telemetryCtx('/x'))).toThrow(
-      /not a valid URL/,
-    )
-  })
-
-  it('setup rejects a malformed cacheUrl / ingestUrl', () => {
-    expect(() => cloud({ cacheUrl: ':::bad' }).setup?.(telemetryCtx('/x'))).toThrow(
-      /not a valid URL/,
-    )
-    expect(() => cloud({ ingestUrl: 'http://' }).setup?.(telemetryCtx('/x'))).toThrow(
-      /not a valid URL/,
-    )
+  it('setup rejects a malformed connection url', () => {
+    expect(() => cloud({ url: 'not a url' }).setup?.(telemetryCtx('/x'))).toThrow(/not a valid URL/)
+    expect(() => cloud({ url: ':::bad' }).setup?.(telemetryCtx('/x'))).toThrow(/not a valid URL/)
   })
 })
 
+// Clear every connection env var so a test's outcome depends only on what it
+// sets — the plugin resolves ONE connection from a superset of aliases.
+const CONN_KEYS = [
+  'VX_CLOUD_URL',
+  'VX_CLOUD_TOKEN',
+  'VX_CLOUD_PR_TOKEN',
+  'VX_SERVICE_URL',
+  'VX_REMOTE_CACHE_URL',
+  'VX_REMOTE_CACHE_TOKEN',
+  'VX_REMOTE_CACHE_PR_TOKEN',
+  'VX_CLOUD_INGEST_URL',
+  'VX_CLOUD_INGEST_TOKEN',
+  'VX_CLOUD_INSIGHTS_URL',
+  'VX_CLOUD_CONFIG',
+  'VX_CLOUD_ENV',
+]
+async function withCleanConnEnv<T>(
+  overrides: Record<string, string>,
+  fn: () => T | Promise<T>,
+): Promise<T> {
+  const saved: Record<string, string | undefined> = {}
+  for (const k of CONN_KEYS) {
+    saved[k] = process.env[k]
+    delete process.env[k]
+  }
+  for (const [k, v] of Object.entries(overrides)) process.env[k] = v
+  try {
+    return await fn()
+  } finally {
+    for (const k of Object.keys(overrides)) delete process.env[k]
+    for (const k of CONN_KEYS) if (saved[k] !== undefined) process.env[k] = saved[k]
+  }
+}
+
+// Point the active environment at a serve, optionally opting into delegation.
+function connectEnv(configDir: string, url: string, delegate: boolean): void {
+  process.env['VX_CLOUD_CONFIG'] = path.join(configDir, 'environments.json')
+  writeEnvironmentsFile({
+    version: ENVIRONMENTS_VERSION,
+    active: 'team',
+    environments: { team: { url, ...(delegate ? { delegate: true } : {}) } },
+  })
+}
+
 describe('cloud() backend capability', () => {
-  it('delegates to a reachable serve via the serviceUrl option', async () => {
+  it('delegates to a reachable serve ONLY when the environment opted in with delegate', async () => {
     const root = await makeWorkspace()
     const server = await startServe({ root })
+    const savedCfg = process.env['VX_CLOUD_CONFIG']
+    const savedUrl = process.env['VX_CLOUD_URL']
+    delete process.env['VX_CLOUD_URL']
     try {
-      const backend = (await cloud({ serviceUrl: server.origin }).backend!(backendCtx(root)))!
+      connectEnv(root, server.origin, true)
+      const backend = (await cloud().backend!(backendCtx(root)))!
       expect(typeof backend.run).toBe('function')
       const result = await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
       expect(result.ok).toBe(true)
@@ -116,32 +155,41 @@ describe('cloud() backend capability', () => {
     } finally {
       await server.stop()
       await rm(root, { recursive: true, force: true })
+      if (savedCfg === undefined) delete process.env['VX_CLOUD_CONFIG']
+      else process.env['VX_CLOUD_CONFIG'] = savedCfg
+      if (savedUrl !== undefined) process.env['VX_CLOUD_URL'] = savedUrl
     }
   })
 
-  it('declines (undefined) when no service is configured — no probe, core stays local', async () => {
-    const prev = process.env['VX_SERVICE_URL']
-    delete process.env['VX_SERVICE_URL']
-    try {
+  it('declines (undefined) with no connection — a bare cloud() never delegates', async () => {
+    await withCleanConnEnv({ VX_CLOUD_CONFIG: '/nonexistent/environments.json' }, async () => {
       const backend = await cloud().backend!(backendCtx('/x'))
       expect(backend).toBeUndefined()
-    } finally {
-      if (prev !== undefined) process.env['VX_SERVICE_URL'] = prev
-    }
+    })
   })
 
-  it('falls back to a local backend when nothing is reachable', async () => {
+  it('a plain connection (url, no delegate) does NOT move execution', async () => {
+    // VX_CLOUD_URL wires cache/ingest/distribution but must never silently
+    // delegate a run to the server — so the backend rung declines.
+    await withCleanConnEnv({ VX_CLOUD_URL: 'http://localhost:59998' }, async () => {
+      const backend = await cloud().backend!(backendCtx('/x'))
+      expect(backend).toBeUndefined()
+    })
+  })
+
+  it('falls back to a local backend when a delegate environment is unreachable', async () => {
     const root = await makeWorkspace()
+    const savedCfg = process.env['VX_CLOUD_CONFIG']
     try {
-      const backend = (await cloud({ serviceUrl: 'http://localhost:1' }).backend!(
-        backendCtx(root),
-      ))!
-      // Unreachable serve → local in-process backend; a real run still works.
+      connectEnv(root, 'http://localhost:1', true)
+      const backend = (await cloud().backend!(backendCtx(root)))!
       const result = await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
       expect(result.ok).toBe(true)
       expect(result.outcomes[0]!.taskId).toBe('demo#hello')
     } finally {
       await rm(root, { recursive: true, force: true })
+      if (savedCfg === undefined) delete process.env['VX_CLOUD_CONFIG']
+      else process.env['VX_CLOUD_CONFIG'] = savedCfg
     }
   })
 })
@@ -162,8 +210,8 @@ describe('cloud() cache capability', () => {
     })
     try {
       const layer = (await cloud({
-        cacheUrl: `http://localhost:${remote.port}`,
-        cacheToken: 'tok-123',
+        url: `http://localhost:${remote.port}`,
+        token: 'tok-123',
       }).cache!(cacheCtx(localCache, root))) as LayeredCache
       expect(layer).toBeInstanceOf(LayeredCache)
 
@@ -180,26 +228,35 @@ describe('cloud() cache capability', () => {
     }
   })
 
-  it('declines (undefined) when no cloud cache is configured', async () => {
-    const prevUrl = process.env['VX_REMOTE_CACHE_URL']
-    const prevTok = process.env['VX_REMOTE_CACHE_TOKEN']
-    const prevCfg = process.env['VX_CLOUD_CONFIG']
-    delete process.env['VX_REMOTE_CACHE_URL']
-    delete process.env['VX_REMOTE_CACHE_TOKEN']
+  it('declines (undefined) when no connection is configured', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'vx-cloud-nocache-'))
-    // No environments file either — the env rung must decline without a probe.
-    process.env['VX_CLOUD_CONFIG'] = path.join(root, 'no-environments.json')
     const localCache = new Cache(path.join(root, '.vx', 'cache'))
     try {
-      const layer = await cloud().cache!(cacheCtx(localCache, root))
-      expect(layer).toBeUndefined()
+      // No connection env, no environments file → decline without a probe.
+      await withCleanConnEnv(
+        { VX_CLOUD_CONFIG: path.join(root, 'no-environments.json') },
+        async () => {
+          const layer = await cloud().cache!(cacheCtx(localCache, root))
+          expect(layer).toBeUndefined()
+        },
+      )
     } finally {
       localCache.close()
       await rm(root, { recursive: true, force: true })
-      if (prevUrl !== undefined) process.env['VX_REMOTE_CACHE_URL'] = prevUrl
-      if (prevTok !== undefined) process.env['VX_REMOTE_CACHE_TOKEN'] = prevTok
-      if (prevCfg === undefined) delete process.env['VX_CLOUD_CONFIG']
-      else process.env['VX_CLOUD_CONFIG'] = prevCfg
+    }
+  })
+
+  it('declines when a connection has a URL but no token (an open local serve)', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-cloud-notoken-'))
+    const localCache = new Cache(path.join(root, '.vx', 'cache'))
+    try {
+      await withCleanConnEnv({ VX_CLOUD_URL: 'http://localhost:59997' }, async () => {
+        const layer = await cloud().cache!(cacheCtx(localCache, root))
+        expect(layer).toBeUndefined()
+      })
+    } finally {
+      localCache.close()
+      await rm(root, { recursive: true, force: true })
     }
   })
 })
@@ -266,8 +323,8 @@ describe('cloud() telemetry capability', () => {
     })
     try {
       const sink = (await cloud({
-        ingestUrl: `http://localhost:${server.port}/v1/ingest`,
-        ingestToken: 'ing-tok',
+        url: `http://localhost:${server.port}`,
+        token: 'ing-tok',
       }).telemetry!(telemetryCtx('/x'))) as TelemetrySink
       expect(sink).toBeDefined()
 
@@ -287,32 +344,27 @@ describe('cloud() telemetry capability', () => {
 
   it('flush never throws even if the ingest endpoint is down', async () => {
     const sink = (await cloud({
-      ingestUrl: 'http://localhost:1/v1/ingest',
-      ingestToken: 'x',
+      url: 'http://localhost:1',
+      token: 'x',
     }).telemetry!(telemetryCtx('/x'))) as TelemetrySink
     sink.onRunSummary!(fakeSummary())
     await expect(sink.flush!()).resolves.toBeUndefined()
   })
 
-  it('declines (undefined) when no ingest URL is configured', async () => {
-    const prevIngest = process.env['VX_CLOUD_INGEST_URL']
-    const prevInsights = process.env['VX_CLOUD_INSIGHTS_URL']
-    delete process.env['VX_CLOUD_INGEST_URL']
-    delete process.env['VX_CLOUD_INSIGHTS_URL']
-    try {
+  it('declines (undefined) when no connection is configured', async () => {
+    await withCleanConnEnv({ VX_CLOUD_CONFIG: '/nonexistent/environments.json' }, async () => {
       const sink = await cloud().telemetry!(telemetryCtx('/x'))
       expect(sink).toBeUndefined()
-    } finally {
-      if (prevIngest !== undefined) process.env['VX_CLOUD_INGEST_URL'] = prevIngest
-      if (prevInsights !== undefined) process.env['VX_CLOUD_INSIGHTS_URL'] = prevInsights
-    }
+    })
   })
 
   it('AUTO-DETECTS a local vx-cloud serve via its advertisement and pushes there', async () => {
     const prevIngest = process.env['VX_CLOUD_INGEST_URL']
     const prevInsights = process.env['VX_CLOUD_INSIGHTS_URL']
+    const prevUrl = process.env['VX_CLOUD_URL']
     delete process.env['VX_CLOUD_INGEST_URL']
     delete process.env['VX_CLOUD_INSIGHTS_URL']
+    delete process.env['VX_CLOUD_URL']
     const root = await mkdtemp(path.join(tmpdir(), 'vx-autodetect-'))
     const received: string[] = []
     const server = Bun.serve({
@@ -344,12 +396,11 @@ describe('cloud() telemetry capability', () => {
       await rm(root, { recursive: true, force: true })
       if (prevIngest !== undefined) process.env['VX_CLOUD_INGEST_URL'] = prevIngest
       if (prevInsights !== undefined) process.env['VX_CLOUD_INSIGHTS_URL'] = prevInsights
+      if (prevUrl !== undefined) process.env['VX_CLOUD_URL'] = prevUrl
     }
   })
 
   it('declines a STALE advertisement (serve died — pid not alive)', async () => {
-    const prevIngest = process.env['VX_CLOUD_INGEST_URL']
-    delete process.env['VX_CLOUD_INGEST_URL']
     const root = await mkdtemp(path.join(tmpdir(), 'vx-stale-'))
     try {
       await mkdir(path.dirname(serveInfoPath()), { recursive: true })
@@ -358,49 +409,44 @@ describe('cloud() telemetry capability', () => {
         serveInfoPath(),
         JSON.stringify({ origin: 'http://localhost:59999', pid: 2_147_483_646 }),
       )
-      const sink = await cloud().telemetry!(telemetryCtx(root))
-      expect(sink).toBeUndefined()
+      await withCleanConnEnv({ VX_CLOUD_CONFIG: '/nonexistent/environments.json' }, async () => {
+        const sink = await cloud().telemetry!(telemetryCtx(root))
+        expect(sink).toBeUndefined()
+      })
     } finally {
       await rm(serveInfoPath(), { force: true })
       await rm(root, { recursive: true, force: true })
-      if (prevIngest !== undefined) process.env['VX_CLOUD_INGEST_URL'] = prevIngest
     }
   })
 })
 
 describe('cloud() end-to-end through defineWorkspace', () => {
-  it('is accepted by the loader and routes a CLI run through the plugin backend', async () => {
+  it('is accepted by the loader and a CLI run completes with the plugin declared', async () => {
     const root = await makeWorkspace()
-    const server = await startServe({ root })
     try {
+      // Bare cloud() — no connection configured, so every capability declines
+      // (zero-overhead). The point is that DECLARING the plugin loads cleanly
+      // and a plain `vx run` executes locally, unaffected.
       await writeFile(
         path.join(root, 'vx.workspace.mjs'),
         [
           `import { cloud } from '${path.join(import.meta.dir, '..', 'src', 'plugin.ts')}'`,
           'export default {',
-          `  plugins: [cloud({ serviceUrl: ${JSON.stringify(server.origin)} })],`,
+          '  plugins: [cloud()],',
           '}',
           '',
         ].join('\n'),
       )
-      // The in-process serve advertises itself (machine-level path). Remove it
-      // before spawning so the subprocess's telemetry auto-detect declines —
-      // this test exercises the EXPLICIT-serviceUrl backend path, not the push.
-      // (Why it must go: `spawnSync` blocks THIS process's event loop while the
-      // CLI runs, so the in-process serve can't answer an auto-detected POST
-      // back to it, and `flush()` would wait the full timeout — a test-only
-      // artifact. The dedicated auto-detect test covers the push with a
-      // separate, responsive process. See cloud()'s detectLocalIngestUrl.)
+      // Remove any local serve advertisement so the subprocess's telemetry
+      // auto-detect declines (a `spawnSync`-blocked serve can't answer a POST,
+      // and flush() would wait the full timeout — a test-only artifact).
       await rm(serveInfoPath(), { force: true })
-      // Drive the real CLI: it loads the workspace config, sees the plugin,
-      // and routes the run through cloud()'s backend (the reachable serve).
       const binPath = path.join(import.meta.dir, '..', '..', '..', 'src', 'bin.ts')
       const proc = Bun.spawnSync(['bun', binPath, 'run', 'hello'], { cwd: root })
       const out = proc.stdout.toString() + proc.stderr.toString()
       expect(proc.exitCode).toBe(0)
       expect(out).toContain('hi-from-task')
     } finally {
-      await server.stop()
       await rm(root, { recursive: true, force: true })
     }
   })

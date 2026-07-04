@@ -23,7 +23,6 @@ import { existsSync } from 'node:fs'
 import {
   LayeredCache,
   RemoteCache,
-  resolveCacheTrust,
   UserError,
   type CacheContext,
   type CachePolicy,
@@ -43,41 +42,34 @@ import { pidAlive, readServeInfo } from './serve-info.js'
 
 export interface CloudPluginOptions {
   /**
-   * Origin of a `vx-cloud serve` to delegate runs to (e.g. `https://…` or a
-   * `wss://` host). Falls back to `VX_SERVICE_URL`. When unreachable the
-   * backend degrades to local — a misconfigured service never breaks a run.
+   * The ONE connection: the origin of a `vx-cloud serve`. This single URL
+   * drives ALL THREE capabilities — analytics ingest (`/v1/ingest`), the
+   * remote cache (`/v8/artifacts`), and distributed execution — so a
+   * connected cloud needs no separate cache/ingest/service config. Falls back
+   * to `VX_CLOUD_URL`; with none set, the ACTIVE connected environment
+   * (`vx-cloud connect`) or an auto-detected local `vx-cloud serve` is used.
    */
-  serviceUrl?: string
+  url?: string
   /**
-   * Base URL of the cloud artifact store (Turbo `/v8/artifacts` wire). Falls
-   * back to `VX_REMOTE_CACHE_URL`, then — with neither set — to the ACTIVE
-   * connected environment when its serve advertises the artifact store
-   * (`/v1/meta` `artifacts: true`). With none the cache capability declines.
+   * The bearer token for the connection. **Trust tier follows the token**:
+   * this is the TRUSTED token (reads/writes the trusted cache scope). Falls
+   * back to `VX_CLOUD_TOKEN`.
    */
-  cacheUrl?: string
-  /** Bearer token for the artifact store. Falls back to `VX_REMOTE_CACHE_TOKEN`. */
-  cacheToken?: string
+  token?: string
   /**
-   * The UNTRUSTED (fork-PR) cache token. Falls back to
-   * `VX_REMOTE_CACHE_PR_TOKEN`. On a detected fork-PR run this is presented
-   * instead of `cacheToken` (read trusted, write untrusted); with no PR token
-   * a fork PR falls back to read-only against the shared cache.
+   * The UNTRUSTED (fork-PR) token. Falls back to `VX_CLOUD_PR_TOKEN`. Present
+   * this (instead of `token`) from a fork-PR CI job: it reads the trusted
+   * cache to stay fast but writes only the untrusted scope, so it can't poison
+   * a trusted build. Which token you present IS the tier — the server derives
+   * it; there is no separate trust flag. Safe to expose.
    */
-  cachePrToken?: string
+  prToken?: string
   /** Optional Turbo tenant id, sent as `?teamId=`. Falls back to `VX_REMOTE_CACHE_TEAM_ID`. */
   cacheTeamId?: string
   /** Optional Turbo tenant slug, sent as `?slug=`. Falls back to `VX_REMOTE_CACHE_SLUG`. */
   cacheSlug?: string
   /** HMAC artifact-signing key. Falls back to `VX_REMOTE_CACHE_SIGNATURE_KEY`. */
   cacheSignatureKey?: string
-  /**
-   * The cloud ingest endpoint a RunSummaryRecord is POSTed to at run end.
-   * Falls back to `VX_CLOUD_INGEST_URL`, then the legacy `VX_CLOUD_INSIGHTS_URL`.
-   * With no URL the telemetry capability declines.
-   */
-  ingestUrl?: string
-  /** Bearer token for ingest. Falls back to `VX_CLOUD_INGEST_TOKEN`, then `VX_CLOUD_INSIGHTS_TOKEN`. */
-  ingestToken?: string
   /**
    * Distribute runs across `vx-cloud agent` machines (advisory expected
    * agent count). Falls back to `VX_CLOUD_DISTRIBUTE`. When set, the
@@ -88,57 +80,136 @@ export interface CloudPluginOptions {
   distribute?: number
 }
 
+/** One resolved connection to a `vx-cloud serve` — drives all three rungs. */
+interface CloudConnection {
+  /** Base origin (trailing slash trimmed). */
+  url: string
+  /** Trusted bearer (reads/writes the trusted cache scope). */
+  token?: string
+  /** Untrusted (fork-PR) bearer (reads trusted, writes untrusted). */
+  prToken?: string
+  /** Where it came from: an explicit URL is trusted as-is; a discovered one
+   *  (env/local) is capability-probed before the cache uses it. */
+  source: 'explicit' | 'environment' | 'local'
+  /** The local serve's unix socket, when advertised (ingest prefers it). */
+  socket?: string
+}
+
+const firstEnv = (...keys: string[]): string | undefined => {
+  for (const k of keys) {
+    const v = process.env[k]
+    if (v !== undefined && v !== '') return v
+  }
+  return undefined
+}
+const trimUrl = (u: string): string => u.replace(/\/+$/, '')
+
+/**
+ * Resolve the ONE cloud connection every capability shares. Ladder:
+ *   1. an explicit URL — `opts.url` / `VX_CLOUD_URL` (+ the pre-consolidation
+ *      `VX_SERVICE_URL` / `VX_REMOTE_CACHE_URL` / `VX_CLOUD_INGEST_URL`
+ *      aliases), paired with `VX_CLOUD_TOKEN` / `VX_CLOUD_PR_TOKEN`;
+ *   2. the ACTIVE connected environment (`vx-cloud connect`);
+ *   3. an auto-detected local `vx-cloud serve` (its per-user advertisement).
+ * Trust is NOT resolved here — the client just carries whichever token(s) it
+ * has; the serve derives the tier from the presented bearer.
+ */
+function resolveConnection(opts: CloudPluginOptions): CloudConnection | undefined {
+  const explicitUrl =
+    opts.url ??
+    firstEnv(
+      'VX_CLOUD_URL',
+      'VX_SERVICE_URL',
+      'VX_REMOTE_CACHE_URL',
+      'VX_CLOUD_INGEST_URL',
+      'VX_CLOUD_INSIGHTS_URL',
+    )
+  if (explicitUrl !== undefined) {
+    const token =
+      opts.token ?? firstEnv('VX_CLOUD_TOKEN', 'VX_REMOTE_CACHE_TOKEN', 'VX_CLOUD_INGEST_TOKEN')
+    const prToken = opts.prToken ?? firstEnv('VX_CLOUD_PR_TOKEN', 'VX_REMOTE_CACHE_PR_TOKEN')
+    return {
+      url: trimUrl(explicitUrl),
+      source: 'explicit',
+      ...(token !== undefined ? { token } : {}),
+      ...(prToken !== undefined ? { prToken } : {}),
+    }
+  }
+  const env = activeEnvironment()
+  if (env !== undefined) {
+    return {
+      url: trimUrl(env.url),
+      source: 'environment',
+      ...(env.token !== undefined ? { token: env.token } : {}),
+      ...(env.prToken !== undefined ? { prToken: env.prToken } : {}),
+    }
+  }
+  // Auto-detected local serve. Never push to a serve in THIS process (that's
+  // the serve running a delegated run — POSTing to itself would deadlock), and
+  // skip a stale advertisement left by a dead serve.
+  const info = readServeInfo()
+  if (info !== undefined && info.pid !== process.pid && pidAlive(info.pid)) {
+    return {
+      url: trimUrl(info.origin),
+      source: 'local',
+      ...(info.socket !== undefined && existsSync(info.socket) ? { socket: info.socket } : {}),
+    }
+  }
+  return undefined
+}
+
 /**
  * The first-party `@vzn/vx-cloud` plugin. Declared in `vx.workspace.ts` via
  * `defineWorkspace({ plugins: [cloud()] })`. Contributes backend / cache /
- * telemetry; each capability is independent and zero-config via env vars.
+ * telemetry — all fed by ONE connection (`resolveConnection`); each capability
+ * is independent and zero-config via env vars.
  */
 export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
   return {
     name: 'vzn/cloud',
 
     setup() {
-      const serviceUrl = opts.serviceUrl ?? process.env['VX_SERVICE_URL']
-      assertWellFormedUrl(serviceUrl, 'serviceUrl')
-      assertWellFormedUrl(cacheUrlOf(opts), 'cacheUrl')
-      assertWellFormedUrl(ingestUrlOf(opts), 'ingestUrl')
+      assertWellFormedUrl(
+        opts.url ??
+          firstEnv(
+            'VX_CLOUD_URL',
+            'VX_SERVICE_URL',
+            'VX_REMOTE_CACHE_URL',
+            'VX_CLOUD_INGEST_URL',
+            'VX_CLOUD_INSIGHTS_URL',
+          ),
+        'url',
+      )
     },
 
     async backend(ctx) {
       // Distribution rung (VX_CLOUD_DISTRIBUTE / cloud({ distribute })):
-      // above delegation, explicit opt-in. Unset → this rung is ONE env
-      // read (the zero-overhead decline invariant, pinned by tests).
+      // explicit opt-in. Unset → this rung is ONE env read (the zero-overhead
+      // decline invariant, pinned by tests).
       const distribute = distributeOf(opts)
       if (distribute !== undefined) {
-        const target = resolveDistributeTarget(opts)
-        if (target === undefined) {
+        const conn = resolveConnection(opts)
+        if (conn === undefined) {
           throw new UserError(
             'VX_CLOUD_DISTRIBUTE is set but no vx-cloud serve is configured or advertised — ' +
-              'start one (`vx-cloud serve`) or set VX_SERVICE_URL / connect an environment',
+              'start one (`vx-cloud serve`), set VX_CLOUD_URL, or `vx-cloud connect` an environment',
           )
         }
+        const token = conn.token ?? conn.prToken
         const { distributedBackend } = await import('./dist/submit.js')
         return distributedBackend({
-          origin: target.origin,
-          ...(target.token !== undefined ? { token: target.token } : {}),
+          origin: conn.url,
+          ...(token !== undefined ? { token } : {}),
           expectedAgents: distribute,
           warn: (line) => ctx.warn(line),
         })
       }
-      // Only take over execution when a service is EXPLICITLY configured —
-      // option > env var > a connected environment that OPTED IN with
-      // `delegate: true` (delegation executes against request.cwd on the
-      // server, only correct when it shares/mirrors the filesystem, so
-      // connecting for the dashboard never silently moves execution).
-      // Unconfigured → decline (return undefined) so core uses its own local
-      // backend with NO serve-discovery probe — declaring cloud() in a
-      // workspace then costs nothing on the run hot path. The backend
-      // machinery is imported lazily here, never at config-eval time.
-      const serviceUrl = opts.serviceUrl ?? process.env['VX_SERVICE_URL']
-      if (serviceUrl) {
-        const { resolveBackend } = await import('./cli/backend.js')
-        return resolveBackend(ctx.request.cwd, undefined, serviceUrl)
-      }
+      // Ambient DELEGATION (run on the server instead of locally) stays a
+      // deliberate opt-in: it executes against request.cwd on the server, only
+      // correct when the server shares/mirrors the filesystem. So a plain
+      // `VX_CLOUD_URL` connection NEVER silently moves execution — only an
+      // environment connected with `--delegate` does. Everything else declines
+      // (core uses its own local backend, no serve-discovery probe).
       const env = activeEnvironment()
       if (env?.delegate === true) {
         const { resolveBackend } = await import('./cli/backend.js')
@@ -148,29 +219,25 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
     },
 
     cache(ctx): CacheLayer | undefined | Promise<CacheLayer | undefined> {
-      // Explicit config wins and is never second-guessed: with a cacheUrl
-      // (option or VX_REMOTE_CACHE_URL) the environment rung is not
-      // consulted and no /v1/meta probe ever fires. A half-set explicit
-      // config (URL, no token) declines like before.
-      const url = cacheUrlOf(opts)
-      if (url) {
-        const trusted = opts.cacheToken ?? process.env['VX_REMOTE_CACHE_TOKEN']
-        const pr = opts.cachePrToken ?? process.env['VX_REMOTE_CACHE_PR_TOKEN']
-        const auth = resolveCacheAuth(ctx, trusted, pr)
-        if (auth === undefined) return undefined
-        return buildCloudCache(ctx, opts, url, auth.token, auth.policy)
+      // The remote cache is INTERNAL to the connection: the same `vx-cloud`
+      // you connect to hosts `/v8/artifacts`, so no separate cache URL/token.
+      // Which token you present decides the trust tier (server-enforced) — the
+      // trusted token, else the fork-PR token. A connection with no token
+      // (a local open serve) declines: the local cache already has the bytes.
+      const conn = resolveConnection(opts)
+      if (conn === undefined) return undefined
+      const token = conn.token ?? conn.prToken
+      if (token === undefined) return undefined
+      // An explicitly-configured URL is trusted as-is; a DISCOVERED serve
+      // (active environment) is capability-probed (`/v1/meta artifacts:true`,
+      // memoized) so connecting for the dashboard alone doesn't wrongly route
+      // the cache at a serve that doesn't host it.
+      if (conn.source === 'explicit') {
+        return buildCloudCache(ctx, opts, conn.url, token, ctx.policy)
       }
-      // Environment rung: the ACTIVE connected environment, when its serve
-      // advertises the artifact store (`/v1/meta` `artifacts: true` — probed
-      // lazily ONCE per process). No environment → decline with zero
-      // network, so a plain run stays byte-identical.
-      const env = activeEnvironment()
-      if (env === undefined) return undefined
-      const auth = resolveCacheAuth(ctx, env.token, env.prToken)
-      if (auth === undefined) return undefined
       return (async () => {
-        if (!(await serveAdvertisesArtifacts(env.url))) return undefined
-        return buildCloudCache(ctx, opts, env.url, auth.token, auth.policy)
+        if (!(await serveAdvertisesArtifacts(conn.url))) return undefined
+        return buildCloudCache(ctx, opts, conn.url, token, ctx.policy)
       })()
     },
 
@@ -179,26 +246,18 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
       // must not spam the ingest store with 1-task invocations. Other
       // telemetry plugins (e.g. otel()) are unaffected by design.
       if (process.env['VX_CLOUD_AGENT'] === '1') return undefined
-      // The push ladder, first match wins: plugin options > env vars (CI —
-      // they beat the active environment, matching DOCKER_HOST > active
-      // context) > the connected environment (memoized one-fs-read consult) >
-      // AUTO-DETECT a local `vx-cloud serve` via its per-user advertisement
-      // (zero-config local dashboard from ANY workspace) > decline, so a
-      // plain run is unaffected. Each rung pairs the URL with ITS OWN token.
-      const explicitUrl = ingestUrlOf(opts)
-      if (explicitUrl) {
-        const token = opts.ingestToken ?? ingestTokenFromEnv()
-        return new CloudIngestSink(explicitUrl, token, (m) => ctx.warn(m))
-      }
-      const env = activeEnvironment()
-      if (env !== undefined) {
-        const url = `${env.url.replace(/\/+$/, '')}/v1/ingest`
-        return new CloudIngestSink(url, env.token, (m) => ctx.warn(m))
-      }
-      const local = detectLocalIngest()
-      if (!local) return undefined
-      const token = opts.ingestToken ?? ingestTokenFromEnv()
-      return new CloudIngestSink(local.url, token, (m) => ctx.warn(m), local.socket)
+      // Push the run summary to the connection's `/v1/ingest` — the SAME
+      // connection the cache and distribution use. Over the advertised unix
+      // socket for a local serve; TCP otherwise. No connection → decline, so a
+      // plain `vx run` is unaffected.
+      const conn = resolveConnection(opts)
+      if (conn === undefined) return undefined
+      return new CloudIngestSink(
+        `${conn.url}/v1/ingest`,
+        conn.token,
+        (m) => ctx.warn(m),
+        conn.socket,
+      )
     },
   }
 }
@@ -221,65 +280,10 @@ function distributeOf(opts: CloudPluginOptions): number | undefined {
 }
 
 /**
- * Where the distributed submission goes — the same resolution ladder the
- * other capabilities use: explicit option/env > the active environment >
- * the advertised local serve. Reachability is verified by the backend
- * itself (unreachable → hard error, §5.1).
+ * The Turbo-wire LayeredCache construction, mirroring core's
+ * `remote-cache-setup.ts` (tenancy / signing / timeout knobs). The trust tier
+ * is carried by the `token` (server-enforced) — the client just presents it.
  */
-function resolveDistributeTarget(
-  opts: CloudPluginOptions,
-): { origin: string; token?: string } | undefined {
-  const explicit = opts.serviceUrl ?? process.env['VX_SERVICE_URL'] ?? process.env['VX_CLOUD_URL']
-  if (explicit !== undefined && explicit !== '') {
-    const token = process.env['VX_CLOUD_TOKEN']
-    return { origin: explicit, ...(token !== undefined && token !== '' ? { token } : {}) }
-  }
-  const env = activeEnvironment()
-  if (env !== undefined) {
-    return { origin: env.url, ...(env.token !== undefined ? { token: env.token } : {}) }
-  }
-  const info = readServeInfo()
-  if (info !== undefined && pidAlive(info.pid)) return { origin: info.origin }
-  return undefined
-}
-
-function ingestUrlOf(opts: CloudPluginOptions): string | undefined {
-  return (
-    opts.ingestUrl ?? process.env['VX_CLOUD_INGEST_URL'] ?? process.env['VX_CLOUD_INSIGHTS_URL']
-  )
-}
-
-function ingestTokenFromEnv(): string | undefined {
-  return process.env['VX_CLOUD_INGEST_TOKEN'] ?? process.env['VX_CLOUD_INSIGHTS_TOKEN']
-}
-
-/**
- * The Turbo-wire LayeredCache construction, faithfully mirroring core's
- * `remote-cache-setup.ts` semantics (tenancy / signing / timeout knobs) —
- * shared by the explicit-config rung and the environment rung.
- */
-/**
- * Pick the effective cache token + policy for this run's trust tier, mirroring
- * core's `wrapWithRemoteCache` (docs/design/cache-trust-scopes-2026-07): a
- * trusted run presents the trusted token; an untrusted (fork-PR) run presents
- * the PR token (server routes its writes to the untrusted scope), or falls
- * back to the trusted token with `remoteWrite` forced off (read-only). Returns
- * undefined when no usable token exists (decline).
- */
-function resolveCacheAuth(
-  ctx: CacheContext,
-  trustedToken: string | undefined,
-  prToken: string | undefined,
-): { token: string; policy: CachePolicy } | undefined {
-  const trust = resolveCacheTrust(process.env)
-  if (trust === 'untrusted') {
-    if (prToken) return { token: prToken, policy: ctx.policy }
-    if (trustedToken) return { token: trustedToken, policy: { ...ctx.policy, remoteWrite: false } }
-    return undefined
-  }
-  return trustedToken ? { token: trustedToken, policy: ctx.policy } : undefined
-}
-
 function buildCloudCache(
   ctx: CacheContext,
   opts: CloudPluginOptions,
@@ -335,32 +339,6 @@ function serveAdvertisesArtifacts(url: string): Promise<boolean> {
   })()
   metaProbeMemo.set(origin, probe)
   return probe
-}
-
-/**
- * Auto-detect a local `vx-cloud serve` via its per-user advertisement (origin +
- * pid + optional unix socket, written at a MACHINE-LEVEL path so it's found
- * from any workspace). When present + alive, push telemetry to
- * `<origin>/v1/ingest` — over the advertised unix socket when it exists (the
- * hardened local transport; TCP stays the fallback). Returns undefined when no
- * serve is running (a plain `vx run` then declines). One fs read — no network,
- * no heavy import.
- */
-function detectLocalIngest(): { url: string; socket?: string } | undefined {
-  const info = readServeInfo()
-  if (info === undefined) return undefined
-  // Never push to a serve running in THIS process — that's the serve executing
-  // a delegated run, and POSTing to itself mid-request would deadlock (the WS
-  // handler would await an ingest request it must answer). The serve records
-  // its own pid, so a same-pid match means "self".
-  if (info.pid === process.pid) return undefined
-  // Ignore a stale advertisement left by a serve that died without cleanup —
-  // otherwise every run wastes a (swallowed) POST to a dead origin.
-  if (!pidAlive(info.pid)) return undefined
-  return {
-    url: `${info.origin.replace(/\/+$/, '')}/v1/ingest`,
-    ...(info.socket !== undefined && existsSync(info.socket) ? { socket: info.socket } : {}),
-  }
 }
 
 function assertWellFormedUrl(value: string | undefined, field: string): void {
