@@ -93,6 +93,7 @@ interface ExecConfig {
   command: string // shell command, run from the project's dir
   env?: ExecEnv // optional per-task env layering
   timeout?: number // ms before vx SIGTERMs the child (see below)
+  retries?: number // max additional attempts after a failure (see below)
   persistent?: PersistentConfig // long-running task (dev server, watcher)
 }
 ```
@@ -147,6 +148,39 @@ right granularity for invalidation. If you'd benefit from caching each
 step independently (e.g. `codegen` then `build`), split into two
 tasks linked by `dependsOn`. If you don't need that, `&&` in shell is
 the right tool.
+
+#### `retries` (optional)
+
+Maximum ADDITIONAL attempts after a failed attempt. `retries: 2` means
+up to 3 executions total. `0` / omitted → no retries (fail on the first
+non-zero exit).
+
+```ts
+test: { exec: { command: 'bun test', retries: 1 } }
+```
+
+- A retry fires after ANY failure, `timeout` kills included. A Ctrl-C
+  teardown (`aborted`) is never retried — the run is tearing down.
+- Declared outputs are re-cleaned before each retry, exactly like the
+  first attempt — a failed attempt's partial outputs can't leak into
+  the next.
+- Every attempt streams its output live. Between attempts vx emits one
+  stderr line into the task's stream:
+  `vx: retrying <id> (attempt <k>/<total>) after exit <code>`.
+- The final outcome is the LAST attempt's: the first success wins (and
+  is what gets cached — its stdout only, not a concatenation of failed
+  attempts); if every attempt fails, the task is `failed` with the last
+  exit code and nothing is cached, as today.
+- `retries` is part of the resolved config, so declaring it derives a
+  distinct cache key (like every config field); tasks without it keep
+  byte-identical keys.
+- Not allowed with `persistent` — a persistent task has no exit to
+  retry (config error, like `cache` + `persistent`).
+
+The run-level default is `vx run --retry <n>` — it applies to tasks
+that don't declare their own `retries`; explicit config always wins,
+including an explicit `retries: 0`. The CLI flag never affects cache
+keys.
 
 #### `persistent` (optional)
 

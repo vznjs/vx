@@ -18,6 +18,7 @@ export interface ExecuteArgs {
   cache: CacheLayer
   cachePolicy?: CachePolicy // 4-axis read/write control; undefined → everything on
   forwardArgs?: readonly string[]
+  retries?: number // run-level retry default (--retry); exec.retries wins
   log: Logger
   nestedProjectDirs: string[]
   runStartHrTimeNs: bigint
@@ -88,6 +89,12 @@ caches.
      prepend).
    - `wallclockStartNs = process.hrtime.bigint() - runStartHrTimeNs`.
    - `runCommand({...})` — Bun.spawn shell. Forward args quoted.
+   - Up to `1 + (exec.retries ?? args.retries ?? 0)` attempts: a failed
+     attempt (timeouts included, `aborted` NOT — a teardown breaks out
+     immediately) re-cleans declared outputs and re-executes, with one
+     `vx: retrying <id> (attempt <k>/<total>) after exit <code>` stderr
+     line between attempts. The final outcome (and the cached stdout)
+     is the last attempt's; `TaskOutcome.attempts` is set when > 1.
    - `wallclockEndNs = process.hrtime.bigint() - runStartHrTimeNs`.
 5. **If exit 0 + caching enabled**: `resolveOutputs(...)` →
    `cache.save({ hash, projectDir, outputFiles, entry })`.

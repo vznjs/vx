@@ -54,6 +54,11 @@ export interface RunArgs {
    */
   cache: CachePolicy
   frozen: boolean
+  /**
+   * `--retry <n>` / `--retry=<n>`: run-level retry default for tasks
+   * without their own `exec.retries`. Undefined when not passed.
+   */
+  retries: number | undefined
   outputLogs?: 'full' | 'errors-only' | 'none'
   forwardArgs: string[]
   verbosity: number
@@ -83,6 +88,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     concurrency: undefined,
     cache: { ...FULL_CACHE_POLICY },
     frozen: false,
+    retries: undefined,
     forwardArgs: [],
     verbosity: 0,
     dry: undefined,
@@ -131,6 +137,14 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
         .filter((s) => s.length > 0)
     } else if (a === '--frozen') {
       out.frozen = true
+    } else if (a === '--retry' || a?.startsWith('--retry=')) {
+      const v = a === '--retry' ? before[++i] : a.slice('--retry='.length)
+      if (v === undefined) return { ...out, error: `--retry requires a value` }
+      const n = Number(v)
+      if (v === '' || !Number.isInteger(n) || n < 0) {
+        return { ...out, error: `--retry must be a non-negative integer, got: ${v}` }
+      }
+      out.retries = n
     } else if (a === '--output-logs') {
       const v = before[++i]
       if (v !== 'full' && v !== 'errors-only' && v !== 'none') {
@@ -336,6 +350,7 @@ export async function resolveRunOptions(
     opts.excludeDependencies = parsed.excludeDependencies
   }
   if (projects !== undefined) opts.projects = projects
+  if (parsed.retries !== undefined) opts.retries = parsed.retries
   if (parsed.concurrency !== undefined) opts.concurrency = parsed.concurrency
   if (parsed.summarize !== undefined) opts.summarize = parsed.summarize
   if (parsed.profile !== undefined) opts.profile = parsed.profile

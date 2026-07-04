@@ -219,6 +219,19 @@ export interface ExecConfig {
    */
   timeout?: number
   /**
+   * Max ADDITIONAL attempts after a failed attempt. `retries: 2` means
+   * up to 3 executions total. 0 / omitted → no retries (today's
+   * behavior: fail on the first non-zero exit). A retry fires after ANY
+   * failure, timeout kills included; a Ctrl-C teardown (`aborted`) is
+   * never retried. Declared outputs are re-cleaned before each retry so
+   * a failed attempt's partial outputs can't leak into the next. The
+   * final outcome (and the cached artifact) is the last attempt's.
+   * Not allowed with `persistent` — a persistent task has no exit to
+   * retry. Explicit config wins over the run-level `--retry <n>`
+   * default, including `retries: 0`.
+   */
+  retries?: number
+  /**
    * Long-running / continuous task (dev server, watcher, daemon).
    * When present, the task is spawned but the runner does NOT wait
    * for it to exit. Instead it considers the task "ready" — either

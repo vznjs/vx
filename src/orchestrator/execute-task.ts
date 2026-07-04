@@ -57,6 +57,13 @@ export interface ExecuteArgs {
    * SIGTERMs whatever is in here.
    */
   liveChildren?: Set<ReturnType<typeof Bun.spawn>>
+  /**
+   * Run-level retry default (`--retry <n>` / `RunOptions.retries`).
+   * Explicit `exec.retries` wins, including an explicit 0. Threaded as
+   * an option only — never folded into any hash, so cache keys are
+   * byte-identical with and without it.
+   */
+  retries?: number
   /** Per-run memo for `git ls-files` (one entry per project dir). */
   gitFilesCache?: GitFilesCache
   /** Per-run memo for derived hashes (package.json bytes + task config). */
@@ -277,19 +284,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
-  // Cache miss path (or caching disabled). Clean declared outputs
-  // before exec so a stale prior-build artifact can't survive into a
-  // fresh run. Gated on WRITES: a no-write policy (`--no-cache`) leaves
-  // the user's tree alone (they're debugging); a write-but-no-read
-  // policy (`--force`) wipes so the saved snapshot is clean.
-  if (willWrite && outputs.length > 0) await cleanOutputs(cleanArgs)
-  if (willWrite && wsOutputs.length > 0) {
-    // Root-anchored deletions can land in other projects' dirs; mark
-    // them so stale per-project git snapshots can't survive the wipe.
-    const cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
-    args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, cleanedWsRels)
-  }
-
   const env = taskEnv(node, step)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
@@ -298,7 +292,80 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // task config is the single source of truth.
   const useSandbox = cfg.sandbox !== undefined
   let violations: SandboxViolation[] = []
-  const result = useSandbox ? await runSandboxedTask() : await runUnsandboxedTask()
+
+  // Cache miss path (or caching disabled), up to `1 + retries` attempts.
+  // Explicit config wins over the run-level `--retry` default, including
+  // an explicit `retries: 0`.
+  const maxAttempts = 1 + (step.retries ?? args.retries ?? 0)
+  let attempt = 0
+  let result: Awaited<ReturnType<typeof runCommand>>
+  let effectiveExitCode: number
+
+  for (;;) {
+    attempt++
+
+    // Clean declared outputs before EVERY attempt — before the first so
+    // a stale prior-build artifact can't survive into a fresh run, and
+    // before each retry so a failed attempt's partial outputs can't leak
+    // into the next. Gated on WRITES: a no-write policy (`--no-cache`)
+    // leaves the user's tree alone (they're debugging); a
+    // write-but-no-read policy (`--force`) wipes so the saved snapshot
+    // is clean.
+    if (willWrite && outputs.length > 0) await cleanOutputs(cleanArgs)
+    if (willWrite && wsOutputs.length > 0) {
+      // Root-anchored deletions can land in other projects' dirs; mark
+      // them so stale per-project git snapshots can't survive the wipe.
+      const cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
+      args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, cleanedWsRels)
+    }
+
+    violations = []
+    result = useSandbox ? await runSandboxedTask() : await runUnsandboxedTask()
+
+    // Fail-on-violation. macOS's structured violation store lets us turn
+    // a passing exit code into a failure when the task tripped the
+    // boundary; Linux relies on the child failing naturally on ENOENT,
+    // so violations.length is always 0 there but the task will already
+    // be exit != 0 if it needed the missing file.
+    //
+    // Violations are surfaced via `TaskOutcome.sandboxViolationLines` so
+    // the framed-output renderer can show them inline in the task's
+    // block, not as loose status output above it.
+    effectiveExitCode = result.exitCode
+    if (violations.length > 0 && effectiveExitCode === 0) effectiveExitCode = 1
+
+    // A child we SIGTERMed for exceeding `exec.timeout` is a genuine
+    // failure (timed out) — stream a clear line into the framed block so
+    // the 143 exit reads as a timeout, and fall through to the normal
+    // exit-code path (failed — retryable — never cached).
+    if (result.timedOut) {
+      log.taskStderr(node, `\n[vx] timed out after ${step.timeout}ms — killed (SIGTERM)\n`)
+    }
+
+    // A child killed by a shutdown signal (Ctrl-C / SIGTERM teardown)
+    // never finished on its own terms — revert it to aborted so it's
+    // neither cached, counted, shown, nor RETRIED (the run is tearing
+    // down). SIGKILL (OOM, forced) stays a real failure. A timeout also
+    // SIGTERMs, but `timedOut` marks it as our own deadline, not a
+    // shutdown — so it stays a real (retryable) failure.
+    if ((result.signal === 'SIGINT' || result.signal === 'SIGTERM') && !result.timedOut) {
+      return {
+        node,
+        status: 'aborted',
+        exitCode: effectiveExitCode,
+        durationMs: result.durationMs,
+        hash,
+        wallclockStartNs,
+        wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+      }
+    }
+
+    if (effectiveExitCode === 0 || attempt >= maxAttempts) break
+    log.taskStderr(
+      node,
+      `vx: retrying ${node.id} (attempt ${attempt + 1}/${maxAttempts}) after exit ${effectiveExitCode}\n`,
+    )
+  }
 
   async function runUnsandboxedTask(): ReturnType<typeof runCommand> {
     return runCommand({
@@ -373,50 +440,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
-
-  // Fail-on-violation. macOS's structured violation store lets us turn
-  // a passing exit code into a failure when the task tripped the
-  // boundary; Linux relies on the child failing naturally on ENOENT,
-  // so violations.length is always 0 there but the task will already
-  // be exit != 0 if it needed the missing file.
-  //
-  // Violations are surfaced via `TaskOutcome.sandboxViolationLines` so
-  // the framed-output renderer can show them inline in the task's
-  // block, not as loose status output above it.
-  let effectiveExitCode = result.exitCode
-  let effectiveStderr = result.stderr
-  if (violations.length > 0) {
-    if (effectiveExitCode === 0) effectiveExitCode = 1
-    // Mirror into stderr for cache-persist + structured consumers; the
-    // framed-output block reads from sandboxViolationLines directly.
-    effectiveStderr += '\n[vx] sandbox violations:\n'
-    for (const v of violations) effectiveStderr += `  ${v.line}\n`
-  }
-
-  // A child we SIGTERMed for exceeding `exec.timeout` is a genuine
-  // failure (timed out) — stream a clear line into the framed block so
-  // the 143 exit reads as a timeout, and fall through to the normal
-  // exit-code path (failed, never cached).
-  if (result.timedOut) {
-    log.taskStderr(node, `\n[vx] timed out after ${step.timeout}ms — killed (SIGTERM)\n`)
-  }
-
-  // A child killed by a shutdown signal (Ctrl-C / SIGTERM teardown)
-  // never finished on its own terms — revert it to aborted so it's
-  // neither cached, counted, nor shown. SIGKILL (OOM, forced) stays a
-  // real failure. A timeout also SIGTERMs, but `timedOut` marks it as
-  // our own deadline, not a shutdown — so it stays a real failure.
-  if ((result.signal === 'SIGINT' || result.signal === 'SIGTERM') && !result.timedOut) {
-    return {
-      node,
-      status: 'aborted',
-      exitCode: effectiveExitCode,
-      durationMs: result.durationMs,
-      hash,
-      wallclockStartNs,
-      wallclockEndNs,
-    }
-  }
 
   if (effectiveExitCode === 0 && willWrite) {
     const outputFiles = await resolveOutputs({
@@ -503,6 +526,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     exitCode: effectiveExitCode,
     durationMs: result.durationMs,
     hash,
+    ...(attempt > 1 ? { attempts: attempt } : {}),
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
     wallclockStartNs,

@@ -30,9 +30,9 @@ export function shouldShortCircuit(nodes, policy, cache): boolean
 
 // RunOptions highlights (full list in options.md):
 //   cwd, tasks, projects?, concurrency?, cache?: CachePolicy, frozen?,
-//   excludeDependencies?, forwardArgs?, outputLogs?, flow?, summarize?,
-//   profile?, tags?, command?, report?, log?, bus?, inflight?,
-//   handleSignals?
+//   retries?, excludeDependencies?, forwardArgs?, outputLogs?, flow?,
+//   summarize?, profile?, tags?, command?, report?, log?, bus?,
+//   inflight?, handleSignals?
 
 export interface RunSummary {
   ok: boolean

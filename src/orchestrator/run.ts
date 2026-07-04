@@ -386,6 +386,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         cache,
         cachePolicy: policy,
         forwardArgs: options.forwardArgs,
+        ...(options.retries !== undefined ? { retries: options.retries } : {}),
         log,
         nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
         runStartHrTimeNs,

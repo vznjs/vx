@@ -54,6 +54,14 @@ export interface RunOptions {
    */
   flow?: 'focused' | 'broad'
   /**
+   * Run-level retry default (`--retry <n>`): max additional attempts
+   * after a failed attempt, for tasks that don't declare their own
+   * `exec.retries` (explicit config wins, including `retries: 0`).
+   * Threaded as an option only — never folded into any cache key, so
+   * the same run with and without `--retry` derives identical keys.
+   */
+  retries?: number
+  /**
    * Failure propagation: 'never' stops dispatch on the first failure
    * (in-flight tasks finish; everything queued skips), 'deps-ok'
    * (default) skips only a failure's dependents, 'always' runs

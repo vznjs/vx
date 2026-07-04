@@ -22,6 +22,8 @@ export interface RunRequest {
   cache?: CachePolicy
   continueMode?: ContinueMode
   frozen?: boolean
+  /** Run-level retry default (`--retry <n>`); explicit `exec.retries` wins. */
+  retries?: number
   flow?: 'focused' | 'broad'
   outputLogs?: 'full' | 'errors-only' | 'none'
   excludeDependencies?: 'all' | readonly string[]
@@ -77,6 +79,7 @@ export function optionsToRequest(options: RunOptions): RunRequest {
   if (options.cache !== undefined) req.cache = options.cache
   if (options.continueMode !== undefined) req.continueMode = options.continueMode
   if (options.frozen !== undefined) req.frozen = options.frozen
+  if (options.retries !== undefined) req.retries = options.retries
   if (options.flow !== undefined) req.flow = options.flow
   if (options.outputLogs !== undefined) req.outputLogs = options.outputLogs
   if (options.excludeDependencies !== undefined)
@@ -101,6 +104,7 @@ export function requestToOptions(request: RunRequest): RunOptions {
   if (request.cache !== undefined) options.cache = request.cache
   if (request.continueMode !== undefined) options.continueMode = request.continueMode
   if (request.frozen !== undefined) options.frozen = request.frozen
+  if (request.retries !== undefined) options.retries = request.retries
   if (request.flow !== undefined) options.flow = request.flow
   if (request.outputLogs !== undefined) options.outputLogs = request.outputLogs
   if (request.excludeDependencies !== undefined) {

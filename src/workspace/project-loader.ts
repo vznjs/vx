@@ -172,6 +172,12 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
           throw new UserError(`${where}.exec.timeout must be a positive integer (milliseconds)`)
         }
       }
+      const retries = (exec as { retries?: unknown }).retries
+      if (retries !== undefined) {
+        if (typeof retries !== 'number' || !Number.isInteger(retries) || retries < 0) {
+          throw new UserError(`${where}.exec.retries must be a non-negative integer`)
+        }
+      }
       const persistent = (exec as { persistent?: unknown }).persistent
       if (persistent !== undefined) {
         if (typeof persistent !== 'object' || persistent === null) {
@@ -185,6 +191,12 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
           throw new UserError(
             `${where}: \`cache\` is not allowed on a persistent task — persistent tasks ` +
               `don't terminate, so there's no exit to cache`,
+          )
+        }
+        if (retries !== undefined) {
+          throw new UserError(
+            `${where}: \`retries\` is not allowed on a persistent task — persistent tasks ` +
+              `don't terminate, so there's no failed exit to retry`,
           )
         }
       }

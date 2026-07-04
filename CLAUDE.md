@@ -187,6 +187,36 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-04**: **Task-level retries — `exec.retries` + `--retry <n>`**
+  (road-to-best-CI #4; the primitive flaky-detection→auto-retry will ride).
+  `ExecConfig.retries?: number` = max ADDITIONAL attempts after a failed
+  attempt; follows the `exec.timeout` precedent exactly (config-declared →
+  participates in resolved-config hashing naturally, distinct key by design;
+  absent → byte-identical keys; NO CACHE_VERSION bump, no special hashing
+  code). Loader rejects negative/non-integer and `retries`+`persistent`.
+  **Semantics** (`execute-task.ts`, the miss path is now a retry loop):
+  cleanOutputs re-runs before EVERY attempt (a failed attempt's partial
+  outputs can't leak into the next); sandbox violations reset + re-fold per
+  attempt; a TIMEOUT kill is a retryable failure but an ABORT
+  (SIGINT/SIGTERM teardown, `!timedOut`) returns immediately — a tearing-down
+  run never retries; between attempts one
+  `vx: retrying <id> (attempt k/n) after exit <code>` line streams via
+  taskStderr; the final outcome is the last attempt's, and `cache.save`
+  captures the WINNING attempt's stdout + inputComponents only (pinned: a
+  post-retry cache hit replays only the winning stdout).
+  `TaskOutcome.attempts` set only when >1 (not persisted, not on the wire —
+  telemetry-side flaky detection is the future consumer). **Run-level
+  default:** `RunOptions.retries` + `--retry <n>` (also `vx watch` via the
+  shared resolver); explicit config wins INCLUDING `retries: 0`; threaded as
+  an option only, never folded into any hash — pinned by a key-stability test
+  (a `--retry` run cache-hits a plain run's entry). Wire: `RunRequest.retries`
+  in both protocol mappers. 12 new tests in `tests/retries.test.ts`; core
+  1060 pass. Bundled cleanup: the long-dead `effectiveStderr` accumulation in
+  execute-task (stderr hasn't been cached since v17) deleted. Docs: schema.md
+  `retries` section, cli.md `--retry`. NEXT on this thread: wire
+  `getFlakiestTasks` + `attempts` into flaky detection → auto-retry
+  suggestions (dashboard), then duration-aware dispatch.
+
 - **2026-07-04**: **Adversarial re-review of the day's shipped waves — the
   turnkey CI recipe's ambient-mode race fixed (+2 smaller fixes)** (owner:
   "review past commits… treat as hostile"). Full-pass review of every commit
