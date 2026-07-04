@@ -900,6 +900,10 @@ export async function startServe(opts: {
       return
     }
     if (msg.t === 'agent:bye') return // the close handler unregisters
+    if (msg.t === 'agent:heartbeat') {
+      registry.heartbeat(data.agent)
+      return
+    }
     registry.dispatch(data.agent, msg)
   }
 

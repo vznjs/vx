@@ -224,9 +224,10 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
   never reaped) and a 15s serve sweep reaps agents silent past 30s
   (`AGENT_STALE_MS`) via the existing idempotent `drop()` → `onAgentLeave`
   reassignment. `agent:heartbeat` is additive (no DIST_PROTOCOL_VERSION bump).
-  **Version-skew caveat:** an OLD agent that never heartbeats gets reaped only
-  when IDLE (a busy old agent's task events keep it alive) — same-version
-  deploys unaffected. **(#5 ready-queue depth)** the scheduler already tracks a
+  **Version-skew:** RESOLVED same-day — the sweep only reaps agents with
+  `sawHeartbeat === true`, so an OLD agent (predating heartbeats) is never
+  falsely reaped for being idle; it's still cleaned up on WS close. A
+  partitioned NEW agent heartbeated before it vanished, so it IS reaped. **(#5 ready-queue depth)** the scheduler already tracks a
   ready-but-unassigned queue; exposed `readyDepth()` through `ActiveSubmission`
   so `availableCapacity`/`GET /v1/agents` now report `ready` (non-zero only when
   agent capacity is saturated) — the signal an autoscaler scales UP on.

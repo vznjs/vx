@@ -53,6 +53,14 @@ export interface RegisteredAgent {
   /** Epoch ms of the last message from this agent (hello / heartbeat / task
    *  event). The stale-agent sweep reaps agents whose value falls behind. */
   lastSeenAt: number
+  /**
+   * Whether this agent has ever sent an `agent:heartbeat`. The staleness sweep
+   * applies ONLY to agents that heartbeat — so an OLD agent (a version that
+   * predates heartbeats) is never wrongly reaped for being idle; it's still
+   * cleaned up on WS close like before. A partitioned NEW agent heartbeated
+   * before it vanished, so it IS reaped.
+   */
+  sawHeartbeat: boolean
   send(msg: DistServerMessage): void
   close(): void
 }
@@ -136,6 +144,7 @@ export class AgentRegistry {
       labels: msg.labels ?? [],
       inFlight: new Set(),
       lastSeenAt: this.now(),
+      sawHeartbeat: false,
       send: io.send,
       close: io.close,
     }
@@ -155,9 +164,9 @@ export class AgentRegistry {
   }
 
   /**
-   * Route a post-hello agent message to the session's live submission. ANY
-   * message (a task event or a bare `agent:heartbeat`) counts as liveness, so
-   * the stale sweep never reaps a busy-but-quiet agent.
+   * Route a post-hello TASK message to the session's live submission. A task
+   * event also counts as liveness (a busy-but-quiet agent is never reaped).
+   * Heartbeats go through `heartbeat()` instead, not here.
    */
   dispatch(agent: RegisteredAgent, msg: unknown): void {
     const state = this.sessions.get(sessionKey(agent.workspaceId, agent.session))
@@ -166,6 +175,17 @@ export class AgentRegistry {
     agent.lastSeenAt = now
     state.lastActivityAt = now
     state.active?.onAgentMessage(agent, msg)
+  }
+
+  /** Record an `agent:heartbeat` — updates liveness and marks the agent as one
+   *  the staleness sweep may reap (see `RegisteredAgent.sawHeartbeat`). */
+  heartbeat(agent: RegisteredAgent): void {
+    const state = this.sessions.get(sessionKey(agent.workspaceId, agent.session))
+    if (state === undefined) return
+    const now = this.now()
+    agent.lastSeenAt = now
+    agent.sawHeartbeat = true
+    state.lastActivityAt = now
   }
 
   /**
@@ -217,7 +237,9 @@ export class AgentRegistry {
     let reaped = 0
     for (const state of this.sessions.values()) {
       for (const agent of [...state.agents.values()]) {
-        if (agent.lastSeenAt < cutoff) {
+        // Only reap agents that heartbeat — an old, heartbeat-less agent is
+        // left to the WS-close path (no version-skew false reaps).
+        if (agent.sawHeartbeat && agent.lastSeenAt < cutoff) {
           this.drop(agent)
           agent.close()
           reaped++
