@@ -1,0 +1,138 @@
+name: vx distributed CI (reusable)
+
+# A REFERENCE reusable workflow: fan a `vx run <task>` across a matrix of
+# ephemeral vx-cloud agents. This is a TEMPLATE consumers `uses:` (or copy) —
+# it does NOT run in this repo's own CI. Call it from your workflow:
+#
+#   # .github/workflows/ci.yml
+#   name: CI
+#   on: [push, pull_request]
+#   jobs:
+#     distributed:
+#       uses: vznjs/vx/.github/workflows/vx-distributed-ci.yml@main
+#       with:
+#         task: ci        # the vx task/group to run (append flags: "ci --all")
+#         agents: 6       # number of ephemeral agent jobs
+#       secrets:
+#         VX_CLOUD_URL: ${{ secrets.VX_CLOUD_URL }}
+#         VX_CLOUD_TOKEN: ${{ secrets.VX_CLOUD_TOKEN }}
+#
+# Requires: a reachable `vx-cloud serve` (see the Self-host guide) and the
+# cloud() plugin declared in your vx.workspace.ts — without it `--distribute`
+# is recorded but a run stays local:
+#
+#   import { defineWorkspace } from '@vzn/vx'
+#   import { cloud } from '@vzn/vx-cloud/plugin'
+#   export default defineWorkspace({ plugins: [cloud()] })
+#
+# Pin `@main` (here and the action ref below) to a release tag for
+# reproducible CI.
+
+on:
+  workflow_call:
+    inputs:
+      task:
+        description: The vx task or group to run distributed (append flags, e.g. "ci --all").
+        type: string
+        default: ci
+      agents:
+        description: How many ephemeral agent jobs to launch.
+        type: number
+        default: 3
+      capacity:
+        description: Parallel assignments per agent.
+        type: number
+        default: 4
+    secrets:
+      VX_CLOUD_URL:
+        description: The vx-cloud serve every job connects to.
+        required: true
+      VX_CLOUD_TOKEN:
+        description: Bearer token for the serve (omit for a token-less serve).
+        required: false
+
+jobs:
+  # A matrix can't take a bare count, so turn `agents: N` into the list [1..N].
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.gen.outputs.matrix }}
+    steps:
+      - id: gen
+        env:
+          AGENTS: ${{ inputs.agents }}
+        run: echo "matrix=$(seq 1 "$AGENTS" | jq -R . | jq -cs .)" >> "$GITHUB_OUTPUT"
+
+  # The agent matrix. Each job checks out the same commit, installs the
+  # workspace toolchain (swap in your package manager), then runs one agent
+  # via the composite action. fail-fast off: one flaky agent must not cancel
+  # the pool — the run job owns the verdict.
+  agents:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        agent: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - uses: vznjs/vx/.github/actions/vx-agent@main
+        with:
+          url: ${{ secrets.VX_CLOUD_URL }}
+          token: ${{ secrets.VX_CLOUD_TOKEN }}
+          capacity: ${{ inputs.capacity }}
+          session: ${{ github.run_id }}-${{ github.run_attempt }}
+
+  # The main job. Runs in parallel with the agents: it connects with
+  # --distribute and submits a normal `vx run`. The submitter self-registers
+  # as an agent, so the run makes progress even before the matrix connects and
+  # degrades to a loud local run if no agent joins — never a deadlock.
+  run:
+    runs-on: ubuntu-latest
+    env:
+      VX_CLOUD_URL: ${{ secrets.VX_CLOUD_URL }}
+      VX_CLOUD_TOKEN: ${{ secrets.VX_CLOUD_TOKEN }}
+      # Submitter + every agent derive the SAME session from this.
+      VX_AGENT_SESSION: ${{ github.run_id }}-${{ github.run_attempt }}
+      TASK: ${{ inputs.task }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # --affected needs history
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+
+      # Core `vx` IS on npm — the Node launcher execs the matching prebuilt
+      # binary (no Bun needed for `vx` itself).
+      - run: npm i -g @vzn/vx
+
+      # `vx-cloud` is not on npm yet — install the CLI from source (same as the
+      # vx-agent action). Replace with `npm i -g @vzn/vx-cloud` once published.
+      - name: Install vx-cloud (from source)
+        shell: bash
+        run: |
+          set -eu
+          SRC="$RUNNER_TEMP/vx-cloud-src"
+          git clone --depth 1 --branch main https://github.com/vznjs/vx "$SRC"
+          ( cd "$SRC" && bun install --frozen-lockfile )
+          BIN="$RUNNER_TEMP/vx-cloud-bin"
+          mkdir -p "$BIN"
+          printf '#!/usr/bin/env sh\nexec bun "%s/packages/cloud/src/cli/bin.ts" "$@"\n' "$SRC" > "$BIN/vx-cloud"
+          chmod +x "$BIN/vx-cloud"
+          echo "$BIN" >> "$GITHUB_PATH"
+
+      # Connect once with --distribute (ambient enablement — no per-run env
+      # var), then a NORMAL vx run. The cloud() plugin routes it to the pool.
+      - name: Connect and run distributed
+        shell: bash
+        run: |
+          set -eu
+          set -- "$VX_CLOUD_URL"
+          if [ -n "${VX_CLOUD_TOKEN:-}" ]; then set -- "$@" --token "$VX_CLOUD_TOKEN"; fi
+          set -- "$@" --distribute
+          vx-cloud connect "$@"
+          # Intentional word-splitting so `task: "ci --all"` passes extra flags.
+          # shellcheck disable=SC2086
+          vx run $TASK

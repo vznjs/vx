@@ -1,0 +1,94 @@
+name: vx agent
+description: >-
+  Run a vx-cloud distribution agent for the current CI job. Joins a serve's
+  session pool, executes assigned tasks as scoped runs, then drains and exits 0
+  when the submission finishes. The main job (`vx-cloud connect --distribute` +
+  `vx run`) is the sole authority on the run's verdict — a red agent row means
+  infrastructure trouble, not a failing test.
+
+# CONTRACT — the caller must do this BEFORE the action, because the agent
+# shares the submitter's checkout by same-repo / same-commit / clean-tree:
+#
+#   1. actions/checkout@v4 — the exact commit the run job builds. Every job of
+#      one GitHub Actions workflow run checks out the same commit automatically.
+#   2. Install your workspace dependencies (e.g. `bun install --frozen-lockfile`)
+#      — the agent executes real tasks and needs your toolchain on disk.
+#
+# A dirty worktree makes the agent refuse to start (exit 1), so keep generated
+# files gitignored.
+
+inputs:
+  url:
+    description: The vx-cloud serve to attach to (its origin URL).
+    required: true
+  token:
+    description: Bearer token for the serve. Omit for a token-less serve.
+    required: false
+    default: ''
+  capacity:
+    description: How many assignments to execute in parallel.
+    required: false
+    default: '1'
+  session:
+    description: >-
+      Session key to join — must match the submitter. Defaults to the agent's
+      own CI-derived key (GITHUB_RUN_ID-GITHUB_RUN_ATTEMPT), which also matches
+      a submitter that sets VX_AGENT_SESSION to the same value.
+    required: false
+    default: ''
+  idle-timeout:
+    description: Self-terminate after this many ms with no assignment (0 = never).
+    required: false
+    default: '900000'
+  ref:
+    description: >-
+      vx source ref (branch or tag) to install the vx-cloud CLI from. @vzn/vx-cloud
+      is not yet published to npm, so this action installs it from source at this
+      ref. Pin it to a release tag for reproducible CI.
+    required: false
+    default: main
+
+runs:
+  using: composite
+  steps:
+    - uses: oven-sh/setup-bun@v2
+
+    # @vzn/vx-cloud is NOT on npm (the only prebuilt artifact is the
+    # ghcr.io/vznjs/vx-cloud SERVE image, which carries no git and can't run an
+    # agent). Install the `vx-cloud` CLI from source: clone vx at the pinned
+    # ref, resolve its workspace (the postinstall relinks @vzn/vx), and drop a
+    # bun shim on PATH. When @vzn/vx-cloud publishes, replace this whole step
+    # with:  run: npm i -g @vzn/vx-cloud
+    - name: Install vx-cloud (from source)
+      shell: bash
+      env:
+        REF: ${{ inputs.ref }}
+      run: |
+        set -eu
+        SRC="$RUNNER_TEMP/vx-cloud-src"
+        git clone --depth 1 --branch "$REF" https://github.com/vznjs/vx "$SRC"
+        ( cd "$SRC" && bun install --frozen-lockfile )
+        BIN="$RUNNER_TEMP/vx-cloud-bin"
+        mkdir -p "$BIN"
+        printf '#!/usr/bin/env sh\nexec bun "%s/packages/cloud/src/cli/bin.ts" "$@"\n' "$SRC" > "$BIN/vx-cloud"
+        chmod +x "$BIN/vx-cloud"
+        echo "$BIN" >> "$GITHUB_PATH"
+
+    # Blocks until the submission drains the agent (or the idle timeout).
+    # --token / --session / --idle-timeout are only passed when non-empty
+    # (the flags reject an empty value).
+    - name: Run vx agent
+      shell: bash
+      env:
+        URL: ${{ inputs.url }}
+        TOKEN: ${{ inputs.token }}
+        CAPACITY: ${{ inputs.capacity }}
+        SESSION: ${{ inputs.session }}
+        IDLE: ${{ inputs.idle-timeout }}
+      run: |
+        set -eu
+        set -- --url "$URL" --capacity "$CAPACITY"
+        if [ -n "$TOKEN" ]; then set -- "$@" --token "$TOKEN"; fi
+        if [ -n "$SESSION" ]; then set -- "$@" --session "$SESSION"; fi
+        if [ -n "$IDLE" ]; then set -- "$@" --idle-timeout "$IDLE"; fi
+        exec vx-cloud agent "$@"

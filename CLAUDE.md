@@ -187,6 +187,44 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-04**: **Universal agents Phase 2 — heartbeat liveness, ready-queue
+  autoscaling signal, turnkey CI recipes, + a dedup simplification** (owner:
+  "Work on all. Non stop. … review code and docs find simplification
+  improvements and execute. Then repeat"). Four increments from
+  `universal-agents-2026-07.md` §D, all in `@vzn/vx-cloud` (no core change):
+  **(#4 heartbeat/liveness)** the registry detected agent death only on WS
+  `close`, so a half-open TCP socket (crashed box / partition) stalled its
+  in-flight tasks until the OS keep-alive timeout. Now each agent sends
+  `agent:heartbeat` every 10s (`AGENT_HEARTBEAT_MS`); the registry tracks
+  per-agent `lastSeenAt` (ANY message = liveness, so a busy-but-quiet agent is
+  never reaped) and a 15s serve sweep reaps agents silent past 30s
+  (`AGENT_STALE_MS`) via the existing idempotent `drop()` → `onAgentLeave`
+  reassignment. `agent:heartbeat` is additive (no DIST_PROTOCOL_VERSION bump).
+  **Version-skew caveat:** an OLD agent that never heartbeats gets reaped only
+  when IDLE (a busy old agent's task events keep it alive) — same-version
+  deploys unaffected. **(#5 ready-queue depth)** the scheduler already tracks a
+  ready-but-unassigned queue; exposed `readyDepth()` through `ActiveSubmission`
+  so `availableCapacity`/`GET /v1/agents` now report `ready` (non-zero only when
+  agent capacity is saturated) — the signal an autoscaler scales UP on.
+  **(simplification)** the identical cache-env wiring copy-pasted in
+  `cli/agent.ts` + `dist/submit.ts` → one shared `wireAgentCacheEnv` in
+  `dist/session.ts` (the design's §C.3 dedup made literal). **(#6 turnkey CI
+  recipes)** a `.github/actions/vx-agent` composite action + a
+  `vx-distributed-ci.yml` reusable workflow (`uses: vznjs/vx/.github/workflows/
+vx-distributed-ci.yml@main`, inputs task/agents/capacity, secrets
+  VX_CLOUD_URL/\_TOKEN; a plan→agents-matrix→run fan-out) + a "Turnkey setup"
+  section in `guides/distributed-ci.md` (GitHub + GitLab). **Honest gap surfaced:
+  `@vzn/vx-cloud` is NOT on npm** (npm.yml ships only `@vzn/vx` + its 4 platform
+  binaries; the ghcr image is the SERVE only, no git, can't run an agent), so
+  the recipes install the `vx-cloud` CLI from source (git clone at a pinned ref
+  - bun + a PATH shim) and note it collapses to `npm i -g @vzn/vx-cloud` once
+    published. **NEXT (high-value):** publish `@vzn/vx-cloud` to npm — extend
+    build-npm.ts/npm.yml to cross-compile + ship `vx-cloud` standalone binaries
+    the same optionalDeps way `vx` uses — which makes the turnkey recipe a genuine
+    one-liner. **STILL-OPEN big item:** #7 standing shared-pool multi-run fair
+    scheduler (the one-active-submission-per-session Tier-3 ceiling). Cloud suite
+    184 pass (+3); docs build 145 pages, 0 broken links.
+
 - **2026-07-04**: **Universal agents/pools — Phase 1: ambient distribution
   makes a connected pool a one-time `connect --distribute`, fails SAFE to
   local** (owner: "Make sure arch is flexible. Devs could spin up agents on
