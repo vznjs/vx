@@ -104,17 +104,26 @@ export function distributedBackend(opts: DistributedBackendOptions): RunBackend 
         // A connected pool that fails SAFE. Probe the pool's REMOTE capacity
         // BEFORE the (comparatively costly) graph prepare, so the common
         // solo/no-helpers case is a plain local run with no wasted work: pool
-        // unreachable → warn + local; zero remote helpers → SILENT local (this
-        // machine's cores already saturate a one-process run — a pool only
-        // helps with more machines).
+        // unreachable → warn + local; zero COMMIT-MATCHING remote helpers →
+        // SILENT local (this machine's cores already saturate a one-process
+        // run — a pool only helps with more same-commit machines).
         const root = await findWorkspaceRoot(request.cwd)
         const workspaceId = captureWorkspaceIdentity(root).id
-        const capacity = await probeCapacity(opts.origin, opts.token, workspaceId, deriveSession())
+        // Commit-scope the probe: a feature-branch dev whose pool holds only
+        // main-pinned agents reads 0 helpers and stays a fast local run.
+        const commit = captureGitContext(root).commitSha ?? undefined
+        const capacity = await probeCapacity(
+          opts.origin,
+          opts.token,
+          workspaceId,
+          deriveSession(),
+          commit,
+        )
         if (capacity === undefined) {
           return await fallback(`pool at ${opts.origin} is unreachable`)
         }
         if (capacity.remoteAgents === 0) {
-          return await fallback('the pool has no other agents', true)
+          return await fallback('the pool has no other agents at this commit', true)
         }
       } else if (!(await reachable(opts.origin))) {
         // Explicit distribution — an unreachable serve is infrastructure
@@ -168,11 +177,15 @@ export function distributedBackend(opts: DistributedBackendOptions): RunBackend 
 
         const identity = captureWorkspaceIdentity(prepared.workspaceRoot)
         const session = deriveSession()
+        // A session multiplexes concurrent submissions on this id; the self-
+        // agent presents it as `ownerSubmissionId` so only THIS run may use it.
+        const submissionId = Bun.randomUUIDv7()
         const submit: DistSubmitMessage = {
           t: 'dist:submit',
           protocol: DIST_PROTOCOL_VERSION,
           session,
           workspaceId: identity.id,
+          submissionId,
           commitSha: git.commitSha,
           expectedAgents: opts.expectedAgents,
           agentTimeoutMs:
@@ -277,6 +290,9 @@ function submitAndRender(args: {
         capacity: args.selfAgent.capacity,
         checkoutRoot: args.selfAgent.checkoutRoot,
         labels: [SUBMITTER_LABEL],
+        // Own this submission: the self-agent is eligible only for its own run,
+        // so a same-commit peer submission can't conscript this machine.
+        ownerSubmissionId: args.submit.submissionId,
         ...(args.selfAgent.frozen !== undefined ? { frozen: args.selfAgent.frozen } : {}),
         ...(args.selfAgent.cache !== undefined ? { cache: args.selfAgent.cache } : {}),
         onAssigned: args.selfAgent.onAssigned,
@@ -421,11 +437,13 @@ async function probeCapacity(
   token: string | undefined,
   workspaceId: string,
   session: string,
+  commit?: string,
 ): Promise<{ remoteAgents: number } | undefined> {
   try {
     const url =
       `${origin.replace(/\/$/, '')}/v1/agents` +
-      `?ws=${encodeURIComponent(workspaceId)}&session=${encodeURIComponent(session)}`
+      `?ws=${encodeURIComponent(workspaceId)}&session=${encodeURIComponent(session)}` +
+      (commit !== undefined ? `&commit=${encodeURIComponent(commit)}` : '')
     const res = await fetch(url, {
       signal: AbortSignal.timeout(1000),
       ...(token !== undefined ? { headers: { authorization: `Bearer ${token}` } } : {}),

@@ -187,6 +187,78 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-04**: **Standing shared-pool multi-run scheduler — a session
+  multiplexes CONCURRENT submissions across shared agents (DIST_PROTOCOL v1→v2)**
+  (owner: "Make vx the best CI env ever that can run both locally and remote.
+  Compete with GitHub Actions and Nx Cloud"). Architect design in
+  `docs/design/ci-platform-2026-07.md` — two deliverables: **(1) competitive
+  positioning** (the wedge = "vx is the portable execution+cache+pool LAYER you
+  run _inside_ any CI provider, byte-identically on your laptop — NOT a CI
+  platform"; vx should be invoked BY GHA/GitLab, never replace their
+  triggers/hosted-runners/secrets/marketplace/DSL — permanent non-goals; a
+  ranked road-to-best-CI table with the multi-run scheduler as #1 ship-now, then
+  per-task logs, PR checks, retries, flaky→retry, duration-aware dispatch) and
+  **(2) the #7 multi-run scheduler design**. **Shipped Phase 1, all in
+  `@vzn/vx-cloud` (zero core change, correctness law §6.3 untouched, trust scopes
+  untouched, no CACHE_VERSION/SCHEMA bump).** Removes the last §D#7 fence: the
+  registry allowed ONE active submission per `{workspaceId, session}`
+  (`SessionState.active: ActiveSubmission | null`, a concurrent second submit
+  errored); now `active: Map<submissionId, ActiveSubmission>` + a `rotation`
+  cursor. **Commit-routing model:** commit is a dispatch-ELIGIBILITY filter,
+  never a refusal — the `hello()` commit-mismatch refusal + the `beginSubmission`
+  mismatched-agent drop are GONE; a mismatched agent stays registered and simply
+  ineligible (a submission whose commit no remote agent holds runs on its own
+  self-agent = submitter-local, degrading toward local execution, never a wrong
+  hit). **Self-agent ownership:** a `SUBMITTER_LABEL` self-agent is eligible only
+  for the submission that owns it (new optional `AgentHello.ownerSubmissionId`),
+  so a same-commit peer can't conscript your laptop. **Data model:**
+  `RegisteredAgent.inFlight: Set<taskId>` → `Map<submissionId, Set<taskId>>`
+  (capacity = `inFlightTotal < capacity`, so one agent holds slots for several
+  submissions and death hands each submission back ONLY its own tasks);
+  `ActiveSubmission` gains `submissionId`/`nextReady()`/`affinityAgents()`/
+  `assign()`. **Fair dispatcher** `dispatchSession(state)`: hand each active
+  submission at most one assignment per pass, rotate the start, loop until no
+  progress = max-min fair share (a small run is never starved by a huge
+  concurrent one; work-conserving). Dispatch is triggered by the scheduler's
+  bookkeeping callbacks calling `binding.requestDispatch()` (`= dispatchSession`)
+  — the registry no longer dispatches inline. **Drain safety (adversarial
+  re-review fix):** `binding.drainIfLast()` drains ONLY this submission's
+  ELIGIBLE agents and ONLY when it is the last active submission — one run's
+  abort/orphan never kills another's shared agents, AND a self-agent-only run
+  (a commit no helper holds) never drains a different-commit standing pool.
+  The first cut drained ALL session agents, which would have let one stray
+  orphaned feature-branch run kill a main-pinned standing pool; pinned by a
+  drainIfLast unit test. The same re-review gated `hello()`'s onAgentJoin on
+  the shared `eligible()` predicate (a self-agent join no longer notifies
+  non-owner submissions) and replaced the agents-e2e blind 800ms
+  hello-settling sleep with a deterministic poll of `/v1/agents` until the
+  expected remote agents have registered.
+  **DIST_PROTOCOL_VERSION 1→2** (`submissionId` added to `task:assign` +
+  `agent:start/stdout/stderr/done` + `dist:submit`; optional `ownerSubmissionId`
+  on `agent:hello`; envelope adapters + agent-loop threading updated); an old
+  agent hitting a new serve is a clean `agent:refused` naming both versions.
+  **`/v1/agents?commit=<sha>`** commit-scopes the ambient remote-capacity probe
+  so a feature-branch dev against a `main`-pinned pool reads 0 helpers and stays
+  a fast local run. **Single-submission stays byte-identical** — the fair loop
+  degenerates to the old greedy dispatch (the one behavior change is
+  intentional: a commit-mismatched agent is now ineligible rather than
+  refused-and-dropped at pairing). **Files:** `protocol-dist.ts`,
+  `dist/{registry,scheduler,submit,agent-loop}.ts`, `cli/serve.ts`. **Tests:**
+  `dist-registry.test.ts` (eligibility-not-refusal, concurrent submissions,
+  duplicate-submissionId guard, per-submission reassignment, commit-filtered
+  capacity), `dist-scheduler.test.ts` (single-submission dispatch/prune/reassign
+  kept byte-for-byte via a stub binding whose `requestDispatch` runs the exported
+  `dispatchGreedy`), `wire-dist.test.ts` (v2 + `submissionId`/`ownerSubmissionId`
+  round-trips), new `dist-multirun.test.ts` (3 adversarial cases through the REAL
+  registry + REAL scheduler: same-commit fair sharing, no-remote-eligible → self-
+  agent only + warning, shared-agent death re-queues only its owner-submission's
+  tasks), `agents-e2e.test.ts` (a real serve + 2 agents + two concurrent
+  submitter clones on one session both succeed, no "already active" error). Cloud
+  suite 194 pass (+9), core 1048 pass, lint+oxfmt clean. **NEXT (road to
+  best-CI):** per-task logs/artifacts in the dashboard (Nx-Cloud parity), PR
+  summary + checks (cloud-side glue over `run-report.ts`), task-level retries,
+  flaky detection→auto-retry.
+
 - **2026-07-04**: **`@vzn/vx-cloud` publishes to npm — the turnkey CI recipe's
   source-clone collapses to `npm i -g @vzn/vx-cloud`** (continuing the non-stop
   loop; the follow-up #6 surfaced). Unlike `@vzn/vx` (a no-Bun standalone binary

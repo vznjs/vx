@@ -492,6 +492,7 @@ export async function startServe(opts: {
           registry.availableCapacity(
             url.searchParams.get('ws') ?? '',
             url.searchParams.get('session') ?? '',
+            url.searchParams.get('commit') ?? undefined,
           ),
         )
       }

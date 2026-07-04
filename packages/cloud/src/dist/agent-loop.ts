@@ -51,6 +51,9 @@ export interface AgentLoopOptions {
   /** The agent's own checkout root — every assignment resolves against it. */
   checkoutRoot: string
   labels?: readonly string[]
+  /** For a submitter self-agent: the id of the submission it exclusively
+   *  serves (so a same-commit peer can't conscript this machine). */
+  ownerSubmissionId?: string
   /** Self-terminate after this long with no assignments. Unset = never
    *  (the submitter's in-process loop lives for the submission). */
   idleTimeoutMs?: number
@@ -141,6 +144,9 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
       commitSha: opts.commitSha,
       capacity: opts.capacity,
       ...(opts.labels !== undefined && opts.labels.length > 0 ? { labels: opts.labels } : {}),
+      ...(opts.ownerSubmissionId !== undefined
+        ? { ownerSubmissionId: opts.ownerSubmissionId }
+        : {}),
     })
     armIdle()
     // Liveness: a steady heartbeat lets the serve reap this agent within
@@ -161,7 +167,7 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
       clearTimeout(idleTimer)
       inFlight++
       opts.onAssigned?.(msg.taskId)
-      void executeAssigned(msg.taskId)
+      void executeAssigned(msg.submissionId, msg.taskId)
     } else if (msg.t === 'agent:refused') {
       refusedReason = msg.reason
       status(`refused: ${msg.reason}`)
@@ -186,15 +192,15 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
     // onclose always follows; classification happens there
   }
 
-  async function executeAssigned(taskId: string): Promise<void> {
+  async function executeAssigned(submissionId: string, taskId: string): Promise<void> {
     status(`▶ ${taskId}`)
-    send({ t: 'agent:start', taskId })
+    send({ t: 'agent:start', taskId, submissionId })
     const bus = createEventBus()
     bus.subscribe((event: RunEvent) => {
       if (event.kind === 'task:stdout' && event.node.id === taskId) {
-        send({ t: 'agent:stdout', taskId, chunk: event.chunk })
+        send({ t: 'agent:stdout', taskId, submissionId, chunk: event.chunk })
       } else if (event.kind === 'task:stderr' && event.node.id === taskId) {
-        send({ t: 'agent:stderr', taskId, chunk: event.chunk })
+        send({ t: 'agent:stderr', taskId, submissionId, chunk: event.chunk })
       }
     })
     let outcome: OutcomeView
@@ -224,12 +230,12 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
             }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      send({ t: 'agent:stderr', taskId, chunk: `${message}\n` })
+      send({ t: 'agent:stderr', taskId, submissionId, chunk: `${message}\n` })
       outcome = { taskId, status: 'failed', exitCode: 1, durationMs: 0 }
     }
     // run() already drained its background uploads, so by the time this
     // `done` leaves the socket the artifact is in the store.
-    send({ t: 'agent:done', taskId, outcome })
+    send({ t: 'agent:done', taskId, submissionId, outcome })
     status(`${OK.has(outcome.status) ? '✓' : '✗'} ${taskId} (${outcome.status})`)
     inFlight--
     if (drained && inFlight === 0) sayBye('shutdown')

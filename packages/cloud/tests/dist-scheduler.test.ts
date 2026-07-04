@@ -6,7 +6,12 @@
 import { describe, expect, it } from 'bun:test'
 import type { OutcomeView, ServerMessage, TaskView } from '@vzn/vx'
 import { DistScheduler, SUBMITTER_LABEL, type ArtifactProbe } from '../src/dist/scheduler.js'
-import type { RegisteredAgent, SubmissionBinding } from '../src/dist/registry.js'
+import {
+  dispatchGreedy,
+  type ActiveSubmission,
+  type RegisteredAgent,
+  type SubmissionBinding,
+} from '../src/dist/registry.js'
 import {
   DIST_PROTOCOL_VERSION,
   type DistGraphNode,
@@ -43,6 +48,7 @@ function submitMsg(nodes: DistGraphNode[], agentTimeoutMs = 60_000): DistSubmitM
     protocol: DIST_PROTOCOL_VERSION,
     session: 'local',
     workspaceId: 'ws1',
+    submissionId: 'sub-a',
     commitSha: 'commit-a',
     expectedAgents: 2,
     agentTimeoutMs,
@@ -72,7 +78,9 @@ function fakeAgent(agentId: string, capacity = 1, labels: string[] = []): FakeAg
     commitSha: 'commit-a',
     capacity,
     labels,
-    inFlight: new Set<string>(),
+    inFlight: new Map<string, Set<string>>(),
+    lastSeenAt: 0,
+    sawHeartbeat: false,
     sent,
     send: (m) => sent.push(m),
     close: () => {},
@@ -81,9 +89,24 @@ function fakeAgent(agentId: string, capacity = 1, labels: string[] = []): FakeAg
   }
 }
 
-function binding(agents: FakeAgent[]): SubmissionBinding & { ended: boolean[] } {
+/**
+ * A stub registry binding for a lone submission: `requestDispatch` runs the
+ * registry's real greedy loop over this submission — the same primitive the
+ * fair `dispatchSession` uses per submission — so single-submission dispatch
+ * is exercised byte-for-byte without spinning up the whole `AgentRegistry`.
+ */
+function binding(
+  agents: FakeAgent[],
+  sub: () => ActiveSubmission,
+): SubmissionBinding & { ended: boolean[] } {
   const ended: boolean[] = []
-  return { ended, agents: () => [...agents], end: () => ended.push(true) }
+  return {
+    ended,
+    agents: () => [...agents],
+    requestDispatch: () => dispatchGreedy(sub(), agents),
+    drainIfLast: () => [...agents],
+    end: () => ended.push(true),
+  }
 }
 
 function collector(): { messages: ServerMessage[]; send(m: ServerMessage): void } {
@@ -118,7 +141,7 @@ describe('DistScheduler — the store prune', () => {
       store: store({ warmhash000000aa: 42 }),
       send: out.send,
     })
-    sched.attach(binding([agent]))
+    sched.attach(binding([agent], () => sched))
     await sched.start()
 
     expect(agent.assigned()).toEqual(['pkg#test'])
@@ -154,7 +177,7 @@ describe('DistScheduler — the store prune', () => {
       store: store({ hash00000000000a: 1, hash00000000000b: 2 }),
       send: out.send,
     })
-    sched.attach(binding([agent]))
+    sched.attach(binding([agent], () => sched))
     await sched.start()
     expect(agent.assigned()).toEqual([])
     expect(doneOf(out.messages)?.ok).toBe(true)
@@ -171,7 +194,7 @@ describe('DistScheduler — dispatch', () => {
       store: store(),
       send: out.send,
     })
-    sched.attach(binding([agent]))
+    sched.attach(binding([agent], () => sched))
     await sched.start()
     expect(agent.assigned()).toEqual(['pkg#a'])
 
@@ -188,14 +211,14 @@ describe('DistScheduler — dispatch', () => {
       store: store(),
       send: out.send,
     })
-    sched.attach(binding([a1, a2]))
+    sched.attach(binding([a1, a2], () => sched))
     await sched.start()
     // Tie at first dispatch → first free.
     expect(a1.assigned()).toEqual(['pkg#a'])
 
     // Simulate a2 having executed the dep after a reassignment story: mark
     // done from a2 → the dependent lands on a2 despite a1 being first.
-    a1.inFlight.delete('pkg#a')
+    a1.inFlight.clear()
     sched.onAgentMessage(a2, { t: 'agent:done', taskId: 'pkg#a', outcome: outcome('pkg#a') })
     expect(a2.assigned()).toEqual(['pkg#b'])
     expect(a1.assigned()).toEqual(['pkg#a'])
@@ -214,6 +237,8 @@ describe('DistScheduler — dispatch', () => {
     const bound = {
       ended: [] as boolean[],
       agents: () => [...agents],
+      requestDispatch: () => dispatchGreedy(sched, agents),
+      drainIfLast: () => [...agents],
       end: () => {},
     }
     sched.attach(bound)
@@ -245,7 +270,7 @@ describe('DistScheduler — graph semantics', () => {
       store: store(),
       send: out.send,
     })
-    sched.attach(binding([agent]))
+    sched.attach(binding([agent], () => sched))
     await sched.start()
     expect(agent.assigned()).toEqual(['pkg#a'])
 
@@ -272,7 +297,7 @@ describe('DistScheduler — graph semantics', () => {
       store: store(),
       send: out.send,
     })
-    sched.attach(binding([agent]))
+    sched.attach(binding([agent], () => sched))
     await sched.start()
     sched.onSubmitterGone()
     sched.onAgentMessage(agent, { t: 'agent:done', taskId: 'pkg#a', outcome: outcome('pkg#a') })
@@ -287,7 +312,7 @@ describe('DistScheduler — graph semantics', () => {
       store: store(),
       send: out.send,
     })
-    sched.attach(binding([]))
+    sched.attach(binding([], () => sched))
     await sched.start()
     sched.onSubmitterGone()
     expect(await sched.done).toEqual({ ok: false })
@@ -302,7 +327,7 @@ describe('DistScheduler — graph semantics', () => {
       store: store(),
       send: out.send,
     })
-    sched.attach(binding([self]))
+    sched.attach(binding([self], () => sched))
     await sched.start()
     await Bun.sleep(40)
     const warning = out.messages.find(

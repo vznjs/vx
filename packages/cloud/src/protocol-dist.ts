@@ -27,8 +27,15 @@ import {
   makeNotification,
 } from '@vzn/vx'
 
-/** Version sentinel for the distributed wire; bump on any shape change. */
-export const DIST_PROTOCOL_VERSION = 1
+/**
+ * Version sentinel for the distributed wire; bump on any shape change. v2
+ * added `submissionId` to every assignment/outcome message + `dist:submit`
+ * and an optional `ownerSubmissionId` to `agent:hello` — the standing-pool
+ * multi-run scheduler (ci-platform-2026-07) needs a session to multiplex
+ * several concurrent submissions across shared agents, so every task-scoped
+ * message names its submission.
+ */
+export const DIST_PROTOCOL_VERSION = 2
 
 /**
  * How often an agent sends `agent:heartbeat`. The serve reaps an agent that
@@ -65,21 +72,33 @@ export interface AgentHello {
   commitSha: string
   capacity: number
   labels?: readonly string[]
+  /**
+   * A submitter's in-process self-agent (`SUBMITTER_LABEL`) names the one
+   * submission it belongs to here, so a same-commit peer submission sharing
+   * the session can never conscript this machine for its own work (a self-
+   * agent is eligible only for the submission that owns it). Unset on a
+   * genuine standing helper agent, which serves any same-commit submission.
+   */
+  ownerSubmissionId?: string
 }
 
-/** serve → agent. */
+/** serve → agent. `submissionId` names which multiplexed submission owns the task. */
 export type DistServerMessage =
-  | { t: 'task:assign'; taskId: string }
+  | { t: 'task:assign'; taskId: string; submissionId: string }
   | { t: 'agent:refused'; reason: string }
   | { t: 'coord:drain' }
 
-/** agent → serve. Agent identity is implicit from the WS connection. */
+/**
+ * agent → serve. Agent identity is implicit from the WS connection;
+ * `submissionId` routes the task-scoped message back to the owning submission
+ * (one agent may serve several concurrent submissions of the same commit).
+ */
 export type DistClientMessage =
   | AgentHello
-  | { t: 'agent:start'; taskId: string }
-  | { t: 'agent:stdout'; taskId: string; chunk: string }
-  | { t: 'agent:stderr'; taskId: string; chunk: string }
-  | { t: 'agent:done'; taskId: string; outcome: OutcomeView }
+  | { t: 'agent:start'; taskId: string; submissionId: string }
+  | { t: 'agent:stdout'; taskId: string; submissionId: string; chunk: string }
+  | { t: 'agent:stderr'; taskId: string; submissionId: string; chunk: string }
+  | { t: 'agent:done'; taskId: string; submissionId: string; outcome: OutcomeView }
   | { t: 'agent:heartbeat' }
   | { t: 'agent:bye'; reason: 'idle-timeout' | 'shutdown' }
 
@@ -94,6 +113,8 @@ export interface DistSubmitMessage {
   protocol: number
   session: string
   workspaceId: string
+  /** Client-minted id (ULID) — the key a session multiplexes submissions on. */
+  submissionId: string
   commitSha: string
   /** Advisory expected agent count (`VX_CLOUD_DISTRIBUTE=<n>`). */
   expectedAgents: number
@@ -112,7 +133,10 @@ export interface DistSubmitMessage {
 export function distServerMessageToEnvelope(msg: DistServerMessage): Envelope {
   switch (msg.t) {
     case 'task:assign':
-      return makeNotification('coord.assign', { taskId: msg.taskId })
+      return makeNotification('coord.assign', {
+        taskId: msg.taskId,
+        submissionId: msg.submissionId,
+      })
     case 'agent:refused':
       return makeNotification('agent.refused', { reason: msg.reason })
     case 'coord:drain':
@@ -124,8 +148,8 @@ export function distServerMessageToEnvelope(msg: DistServerMessage): Envelope {
 export function envelopeToDistServerMessage(env: Envelope): DistServerMessage | null {
   if (!isNotification(env)) return null
   if (env.method === 'coord.assign') {
-    const p = env.params as { taskId: string }
-    return { t: 'task:assign', taskId: p.taskId }
+    const p = env.params as { taskId: string; submissionId: string }
+    return { t: 'task:assign', taskId: p.taskId, submissionId: p.submissionId }
   }
   if (env.method === 'agent.refused') {
     const p = env.params as { reason: string }
@@ -149,15 +173,30 @@ export function distClientMessageToEnvelope(msg: DistClientMessage): Notificatio
         commitSha: msg.commitSha,
         capacity: msg.capacity,
         labels: msg.labels ?? [],
+        ...(msg.ownerSubmissionId !== undefined
+          ? { ownerSubmissionId: msg.ownerSubmissionId }
+          : {}),
       })
     case 'agent:start':
-      return makeNotification('agent.start', { taskId: msg.taskId })
+      return makeNotification('agent.start', { taskId: msg.taskId, submissionId: msg.submissionId })
     case 'agent:stdout':
-      return makeNotification('agent.stdout', { taskId: msg.taskId, chunk: msg.chunk })
+      return makeNotification('agent.stdout', {
+        taskId: msg.taskId,
+        submissionId: msg.submissionId,
+        chunk: msg.chunk,
+      })
     case 'agent:stderr':
-      return makeNotification('agent.stderr', { taskId: msg.taskId, chunk: msg.chunk })
+      return makeNotification('agent.stderr', {
+        taskId: msg.taskId,
+        submissionId: msg.submissionId,
+        chunk: msg.chunk,
+      })
     case 'agent:done':
-      return makeNotification('agent.done', { taskId: msg.taskId, outcome: msg.outcome })
+      return makeNotification('agent.done', {
+        taskId: msg.taskId,
+        submissionId: msg.submissionId,
+        outcome: msg.outcome,
+      })
     case 'agent:heartbeat':
       return makeNotification('agent.heartbeat', {})
     case 'agent:bye':
@@ -181,15 +220,32 @@ export function envelopeToDistClientMessage(env: Envelope): DistClientMessage | 
       capacity: p.capacity as number,
     }
     if (Array.isArray(p.labels) && p.labels.length > 0) out.labels = p.labels as string[]
+    if (typeof p.ownerSubmissionId === 'string') out.ownerSubmissionId = p.ownerSubmissionId
     return out
   }
-  if (m === 'agent.start') return { t: 'agent:start', taskId: p.taskId as string }
+  if (m === 'agent.start')
+    return { t: 'agent:start', taskId: p.taskId as string, submissionId: p.submissionId as string }
   if (m === 'agent.stdout')
-    return { t: 'agent:stdout', taskId: p.taskId as string, chunk: p.chunk as string }
+    return {
+      t: 'agent:stdout',
+      taskId: p.taskId as string,
+      submissionId: p.submissionId as string,
+      chunk: p.chunk as string,
+    }
   if (m === 'agent.stderr')
-    return { t: 'agent:stderr', taskId: p.taskId as string, chunk: p.chunk as string }
+    return {
+      t: 'agent:stderr',
+      taskId: p.taskId as string,
+      submissionId: p.submissionId as string,
+      chunk: p.chunk as string,
+    }
   if (m === 'agent.done') {
-    return { t: 'agent:done', taskId: p.taskId as string, outcome: p.outcome as OutcomeView }
+    return {
+      t: 'agent:done',
+      taskId: p.taskId as string,
+      submissionId: p.submissionId as string,
+      outcome: p.outcome as OutcomeView,
+    }
   }
   if (m === 'agent.heartbeat') return { t: 'agent:heartbeat' }
   if (m === 'agent.bye') {
@@ -204,6 +260,7 @@ export function distSubmitToEnvelope(msg: DistSubmitMessage): Notification {
     protocol: msg.protocol,
     session: msg.session,
     workspaceId: msg.workspaceId,
+    submissionId: msg.submissionId,
     commitSha: msg.commitSha,
     expectedAgents: msg.expectedAgents,
     agentTimeoutMs: msg.agentTimeoutMs,

@@ -51,6 +51,7 @@ export interface DistSchedulerArgs {
 const OK_STATUSES = new Set(['success', 'cache-hit', 'cache-hit-remote'])
 
 export class DistScheduler implements ActiveSubmission {
+  readonly submissionId: string
   readonly commitSha: string
   readonly done: Promise<{ ok: boolean }>
 
@@ -75,6 +76,7 @@ export class DistScheduler implements ActiveSubmission {
   private resolveDone!: (r: { ok: boolean }) => void
 
   constructor(private readonly args: DistSchedulerArgs) {
+    this.submissionId = args.submit.submissionId
     this.commitSha = args.submit.commitSha
     this.done = new Promise((r) => {
       this.resolveDone = r
@@ -150,14 +152,14 @@ export class DistScheduler implements ActiveSubmission {
       if (this.outcomes.has(node.id)) continue
       if ((this.remaining.get(node.id) ?? 0) === 0) this.onReady(node.id)
     }
-    this.dispatch()
+    this.binding?.requestDispatch()
   }
 
-  // --- ActiveSubmission ----------------------------------------------------
+  // --- ActiveSubmission: bookkeeping ---------------------------------------
 
   onAgentJoin(agent: RegisteredAgent): void {
     if (!agent.labels.includes(SUBMITTER_LABEL)) this.remoteJoined = true
-    this.dispatch()
+    this.binding?.requestDispatch()
   }
 
   onAgentLeave(agent: RegisteredAgent, inFlight: readonly string[]): void {
@@ -173,7 +175,7 @@ export class DistScheduler implements ActiveSubmission {
       this.abort('all agents disconnected after the submitter died')
       return
     }
-    this.dispatch()
+    this.binding?.requestDispatch()
   }
 
   onAgentMessage(agent: RegisteredAgent, raw: unknown): void {
@@ -194,18 +196,51 @@ export class DistScheduler implements ActiveSubmission {
       return
     }
     if (msg.t === 'agent:done') {
-      agent.inFlight.delete(msg.taskId)
+      agent.inFlight.get(this.submissionId)?.delete(msg.taskId)
       this.executedBy.set(msg.taskId, agent.agentId)
       // A task reassigned after this agent's death may already be
       // terminal via the replacement — ignore the stale duplicate.
       if (this.outcomes.has(msg.taskId) || this.nodes.get(msg.taskId) === undefined) {
-        this.dispatch()
+        this.binding?.requestDispatch()
         return
       }
       this.event({ kind: 'task:complete', outcome: msg.outcome })
       this.complete(msg.taskId, msg.outcome, false)
-      this.dispatch()
+      this.binding?.requestDispatch()
     }
+  }
+
+  // --- ActiveSubmission: dispatch surface (driven by the registry's fair loop) ---
+
+  /** The next ready-but-unassigned task (queue head), or undefined. */
+  nextReady(): string | undefined {
+    if (this.finished) return undefined
+    return this.ready[0]
+  }
+
+  /** Agent ids that already executed a dep of `taskId` — dep-affinity locality. */
+  affinityAgents(taskId: string): ReadonlySet<string> {
+    const out = new Set<string>()
+    const node = this.nodes.get(taskId)
+    if (node === undefined) return out
+    for (const dep of node.deps) {
+      const a = this.executedBy.get(dep)
+      if (a !== undefined) out.add(a)
+    }
+    return out
+  }
+
+  /** Splice `taskId` from ready, record it under this submission on `agent`, assign. */
+  assign(taskId: string, agent: RegisteredAgent): void {
+    const idx = this.ready.indexOf(taskId)
+    if (idx >= 0) this.ready.splice(idx, 1)
+    let set = agent.inFlight.get(this.submissionId)
+    if (set === undefined) {
+      set = new Set()
+      agent.inFlight.set(this.submissionId, set)
+    }
+    set.add(taskId)
+    agent.send({ t: 'task:assign', taskId, submissionId: this.submissionId })
   }
 
   /**
@@ -287,25 +322,6 @@ export class DistScheduler implements ActiveSubmission {
     this.ready.push(taskId)
   }
 
-  private dispatch(): void {
-    if (this.finished) return
-    while (this.ready.length > 0) {
-      const taskId = this.ready[0]!
-      const free = this.agents().filter((a) => a.inFlight.size < a.capacity)
-      if (free.length === 0) return
-      // Dep-affinity preference: an agent that already executed one of
-      // this task's deps has the dep's outputs warm in its local cache.
-      const node = this.nodes.get(taskId)!
-      const preferred = free.find((a) =>
-        node.deps.some((d) => this.executedBy.get(d) === a.agentId),
-      )
-      const agent = preferred ?? free[0]!
-      this.ready.shift()
-      agent.inFlight.add(taskId)
-      agent.send({ t: 'task:assign', taskId })
-    }
-  }
-
   private checkFinish(): void {
     if (this.finished || this.outcomes.size < this.nodes.size) return
     this.finished = true
@@ -362,6 +378,8 @@ export class DistScheduler implements ActiveSubmission {
 
   private drainAgents(): void {
     const drain: DistServerMessage = { t: 'coord:drain' }
-    for (const agent of this.agents()) agent.send(drain)
+    // Only drains the pool when this is the last active submission — a shared
+    // agent must survive one submission's abort/orphan while another runs.
+    for (const agent of this.binding?.drainIfLast() ?? []) agent.send(drain)
   }
 }

@@ -449,8 +449,12 @@ Honest gaps in the current design (see
   closure on every agent that needs them — there's nothing to restore.
   Make intermediates cacheable (declare their `cache.outputs`). Dep
   affinity and each agent's warm local cache bound the waste.
-- **No cross-run queueing, fairness, or priorities.** A session holds
-  one active submission; the registry is a rendezvous, not a job queue.
+- **Fairness is equal-share only; no priorities, no persistence.** A
+  session multiplexes any number of concurrent submissions across its
+  agents (round-robin max-min fair share; only commit-matching agents
+  are eligible, and a submitter's own machine serves only its own run),
+  but there are no weighted priorities and the registry is in-memory —
+  a serve restart fails in-flight submissions loudly.
 - **No agent autoscaling or managed fleets.** Your CI matrix (or k8s)
   owns machine lifecycle; vx owns task placement only.
 - **No run-history row for a distributed run.** No single `run()`
