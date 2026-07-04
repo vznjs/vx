@@ -1,17 +1,24 @@
-// The session registry on the serve — the whole "persistent coordinator"
-// increment (distributed-execution-2026-07 §4.1). In-memory, tens of
-// entries, touched on hello/close/submit; a serve restart mid-pipeline
-// fails that pipeline loudly and the next one is fine (no persistence by
-// design).
+// The session registry on the serve — the persistent coordinator
+// (distributed-execution-2026-07 §4.1) grown into the standing shared pool
+// (ci-platform-2026-07). In-memory, tens of entries, touched on
+// hello/close/submit; a serve restart mid-pipeline fails that pipeline
+// loudly and the next one is fine (no persistence by design).
 //
 // Registry key: `{workspaceId, session}`. A session holds its connected
-// agents and at most ONE active submission; SEQUENTIAL submissions reuse
-// the registered agents (a main job runs `vx run lint` then `vx run test`
-// against the same matrix) — that is why the registry outlives a run.
+// agents and any number of CONCURRENT submissions, fairly multiplexed
+// across the shared agents by the registry's `dispatchSession` loop. The
+// registry outlives a run so sequential submissions reuse the pool AND so
+// concurrent submissions (parallel CI jobs at one commit, two teammates)
+// can share it.
 //
-// commitSha is enforced at PAIRING time, not hello time: agents usually
-// register before the main job submits, so a mismatch only becomes
-// meaningful once a submission names its commit.
+// commitSha is a dispatch-ELIGIBILITY filter, never a refusal: an agent is
+// at exactly one commit for its lifetime, so a submission dispatches only to
+// same-commit agents (the correctness law §6.3 holds per task); a submission
+// no remote agent's commit matches runs entirely on its own self-agent
+// (= submitter-local), degrading toward local execution, never a wrong hit.
+// A `SUBMITTER_LABEL` self-agent is additionally eligible ONLY for the
+// submission that owns it (`ownerSubmissionId`), so a same-commit peer can
+// never conscript your laptop for its run.
 
 import { DIST_PROTOCOL_VERSION, type AgentHello, type DistServerMessage } from '../protocol-dist.js'
 
@@ -48,8 +55,19 @@ export interface RegisteredAgent {
   readonly commitSha: string
   readonly capacity: number
   readonly labels: readonly string[]
-  /** Task ids currently assigned to this agent. */
-  readonly inFlight: Set<string>
+  /**
+   * Task ids currently assigned to this agent, keyed by the submission that
+   * owns them: `submissionId → Set<taskId>`. Capacity is a physical property
+   * of the machine, so the free-slot check is `inFlightTotal < capacity` — one
+   * agent can hold slots for several concurrent submissions at once, and
+   * agent death hands each submission back only its own tasks.
+   */
+  readonly inFlight: Map<string, Set<string>>
+  /**
+   * For a `SUBMITTER_LABEL` self-agent: the id of the one submission it may
+   * serve. Unset on a standing helper agent (serves any same-commit submission).
+   */
+  ownerSubmissionId?: string
   /** Epoch ms of the last message from this agent (hello / heartbeat / task
    *  event). The stale-agent sweep reaps agents whose value falls behind. */
   lastSeenAt: number
@@ -67,14 +85,23 @@ export interface RegisteredAgent {
 
 /**
  * What the registry needs from a live submission (the scheduler
- * implements it). Join/leave keep dispatch working across agent churn;
- * message routing carries the agent's task events.
+ * implements it). Join/leave/message keep bookkeeping across agent churn;
+ * the "dispatchable" trio (`nextReady`/`affinityAgents`/`assign`) lets the
+ * registry's fair loop hand this submission's ready tasks to eligible free
+ * agents.
  */
 export interface ActiveSubmission {
+  readonly submissionId: string
   readonly commitSha: string
   onAgentJoin(agent: RegisteredAgent): void
   onAgentLeave(agent: RegisteredAgent, inFlight: readonly string[]): void
   onAgentMessage(agent: RegisteredAgent, msg: unknown): void
+  /** The next ready-but-unassigned task, or undefined when none/finished. */
+  nextReady(): string | undefined
+  /** Agent ids that already executed a dep of `taskId` (dep-affinity locality). */
+  affinityAgents(taskId: string): ReadonlySet<string>
+  /** Splice `taskId` out of ready, record it on `agent`, send `task:assign`. */
+  assign(taskId: string, agent: RegisteredAgent): void
   /** Tasks ready to run but waiting for a free agent slot — the autoscaling
    *  pressure signal surfaced on `/v1/agents`. Optional (defaults to 0). */
   readyDepth?(): number
@@ -85,19 +112,92 @@ interface SessionState {
   workspaceId: string
   session: string
   agents: Map<string, RegisteredAgent>
-  active: ActiveSubmission | null
+  /** submissionId → its live submission. Concurrent submissions multiplex. */
+  active: Map<string, ActiveSubmission>
+  /** Round-robin cursor so no submission is perpetually served first. */
+  rotation: number
   lastActivityAt: number
 }
 
 export interface SubmissionBinding {
-  /** Live view of the session's connected agents. */
+  /** Live view of the session's agents ELIGIBLE for this submission. */
   agents(): RegisteredAgent[]
-  /** Clears the active slot so a sequential submission can start. */
+  /** Run the session's fair dispatch loop (a submission triggers it on any
+   *  state change — start, agent join/leave, task done). */
+  requestDispatch(): void
+  /** The agents to drain — this submission's ELIGIBLE agents, and ONLY when it
+   *  is the last active submission (so aborting one shared run never kills
+   *  another's agents, and never drains different-commit standing helpers it
+   *  couldn't use). Empty otherwise. */
+  drainIfLast(): RegisteredAgent[]
+  /** Remove this submission from the session + release its slots on every agent. */
   end(): void
 }
 
 function sessionKey(workspaceId: string, session: string): string {
   return `${workspaceId}/${session}`
+}
+
+/** Total tasks this agent holds across all submissions (the capacity check). */
+export function inFlightTotal(agent: RegisteredAgent): number {
+  let total = 0
+  for (const set of agent.inFlight.values()) total += set.size
+  return total
+}
+
+/**
+ * Can `agent` execute a task for `sub`? Same commit (its checkout can't mix
+ * commits, so a different-commit agent would derive a wrong key), and — if it
+ * is a submitter self-agent — only for the submission that owns it.
+ */
+export function eligible(agent: RegisteredAgent, sub: ActiveSubmission): boolean {
+  if (agent.commitSha !== sub.commitSha) return false
+  if (agent.labels.includes(SUBMITTER_LABEL) && agent.ownerSubmissionId !== sub.submissionId) {
+    return false
+  }
+  return true
+}
+
+/** Pick an eligible free agent for `taskId`, preferring one with a dep warm. */
+function pickAgent(
+  agents: readonly RegisteredAgent[],
+  sub: ActiveSubmission,
+  taskId: string,
+): RegisteredAgent | undefined {
+  const affinity = sub.affinityAgents(taskId)
+  let first: RegisteredAgent | undefined
+  for (const a of agents) {
+    if (!eligible(a, sub)) continue
+    if (inFlightTotal(a) >= a.capacity) continue
+    // First free eligible agent that ran a dep (warm local cache) wins;
+    // else the first free eligible agent — byte-identical to the old greedy.
+    if (affinity.has(a.agentId)) return a
+    first ??= a
+  }
+  return first
+}
+
+/** Assign ONE ready task of `sub` to an eligible free agent, if possible. */
+function assignOne(sub: ActiveSubmission, agents: readonly RegisteredAgent[]): boolean {
+  const taskId = sub.nextReady()
+  if (taskId === undefined) return false
+  const agent = pickAgent(agents, sub, taskId)
+  if (agent === undefined) return false
+  sub.assign(taskId, agent)
+  return true
+}
+
+/**
+ * Drain one submission greedily against `agents` (assign until no ready task
+ * or no free eligible agent). This is what the registry's fair loop does per
+ * submission, and — for a lone submission — degenerates to the old greedy
+ * dispatch, byte-for-byte. Exported so the scheduler unit tests can drive a
+ * stub binding without the whole registry.
+ */
+export function dispatchGreedy(sub: ActiveSubmission, agents: readonly RegisteredAgent[]): void {
+  while (assignOne(sub, agents)) {
+    // keep assigning
+  }
 }
 
 export class AgentRegistry {
@@ -106,10 +206,10 @@ export class AgentRegistry {
   constructor(private readonly now: () => number = Date.now) {}
 
   /**
-   * Register an agent from its `agent:hello`. Refusals (protocol
-   * mismatch; commit mismatch against an ACTIVE submission) are sent to
-   * the agent and the socket closed — the caller only needs the handle
-   * on success.
+   * Register an agent from its `agent:hello`. The only refusal is a protocol
+   * mismatch (sent + socket closed); a commit mismatch is NOT a refusal — the
+   * agent registers and is simply ineligible for a different-commit
+   * submission (it can still serve a matching one that arrives later).
    */
   hello(
     msg: AgentHello,
@@ -124,17 +224,6 @@ export class AgentRegistry {
       return null
     }
     const state = this.sessionFor(msg.workspaceId, msg.session)
-    // A late hello mismatching an ACTIVE submission is refused (a red
-    // matrix row = infra misconfig); with no submission the agent is
-    // held as-is — pairing enforces the commit later.
-    if (state.active !== null && state.active.commitSha !== msg.commitSha) {
-      io.send({
-        t: 'agent:refused',
-        reason: `commit mismatch: session ${state.key} is running ${state.active.commitSha}, agent is at ${msg.commitSha}`,
-      })
-      io.close()
-      return null
-    }
     const agent: RegisteredAgent = {
       agentId: msg.agentId,
       workspaceId: msg.workspaceId,
@@ -142,7 +231,8 @@ export class AgentRegistry {
       commitSha: msg.commitSha,
       capacity: msg.capacity,
       labels: msg.labels ?? [],
-      inFlight: new Set(),
+      inFlight: new Map(),
+      ...(msg.ownerSubmissionId !== undefined ? { ownerSubmissionId: msg.ownerSubmissionId } : {}),
       lastSeenAt: this.now(),
       sawHeartbeat: false,
       send: io.send,
@@ -150,23 +240,34 @@ export class AgentRegistry {
     }
     state.agents.set(agent.agentId, agent)
     state.lastActivityAt = this.now()
-    state.active?.onAgentJoin(agent)
+    // Bookkeeping for every submission this agent may serve (same commit +
+    // self-agent ownership); each `onAgentJoin` triggers the fair dispatch
+    // loop so a mid-run join gets work at once. A self-agent must NOT notify
+    // non-owner submissions — it isn't capacity for them.
+    for (const sub of state.active.values()) {
+      if (eligible(agent, sub)) sub.onAgentJoin(agent)
+    }
     return agent
   }
 
-  /** WS close for a registered agent: unregister + let the scheduler reassign. */
+  /** WS close for a registered agent: unregister + hand each submission its own tasks back. */
   drop(agent: RegisteredAgent): void {
     const state = this.sessions.get(sessionKey(agent.workspaceId, agent.session))
     if (state === undefined || state.agents.get(agent.agentId) !== agent) return
     state.agents.delete(agent.agentId)
     state.lastActivityAt = this.now()
-    state.active?.onAgentLeave(agent, [...agent.inFlight])
+    // Reassign ONLY that submission's tasks to that submission — a shared
+    // agent's death leaves other submissions' work on other agents untouched.
+    for (const [subId, tasks] of agent.inFlight) {
+      state.active.get(subId)?.onAgentLeave(agent, [...tasks])
+    }
   }
 
   /**
-   * Route a post-hello TASK message to the session's live submission. A task
-   * event also counts as liveness (a busy-but-quiet agent is never reaped).
-   * Heartbeats go through `heartbeat()` instead, not here.
+   * Route a post-hello TASK message to the submission it names. A task event
+   * also counts as liveness (a busy-but-quiet agent is never reaped).
+   * Heartbeats go through `heartbeat()` instead, not here. The submission's
+   * own `onAgentMessage` re-triggers the fair dispatch loop when a slot frees.
    */
   dispatch(agent: RegisteredAgent, msg: unknown): void {
     const state = this.sessions.get(sessionKey(agent.workspaceId, agent.session))
@@ -174,7 +275,8 @@ export class AgentRegistry {
     const now = this.now()
     agent.lastSeenAt = now
     state.lastActivityAt = now
-    state.active?.onAgentMessage(agent, msg)
+    const subId = (msg as { submissionId?: string }).submissionId
+    if (subId !== undefined) state.active.get(subId)?.onAgentMessage(agent, msg)
   }
 
   /** Record an `agent:heartbeat` — updates liveness and marks the agent as one
@@ -189,9 +291,12 @@ export class AgentRegistry {
   }
 
   /**
-   * Pair a submission with its session. Enforces ONE active submission
-   * per session, and drops every already-registered agent whose commit
-   * differs (each gets `agent:refused` naming both SHAs).
+   * Pair a submission with its session. Concurrent submissions coexist — the
+   * only guard is a duplicate `submissionId` (a client bug; ULID ids make it
+   * practically impossible). Commit-mismatched agents are neither dropped nor
+   * refused; they stay registered and are simply ineligible for this
+   * submission (a misconfigured matrix surfaces as "0 commit-matching remote
+   * agents", not a dropped socket).
    */
   beginSubmission(
     workspaceId: string,
@@ -199,28 +304,55 @@ export class AgentRegistry {
     submission: ActiveSubmission,
   ): SubmissionBinding | { error: string } {
     const state = this.sessionFor(workspaceId, session)
-    if (state.active !== null) {
-      return { error: `session ${state.key} already has an active submission` }
+    if (state.active.has(submission.submissionId)) {
+      return { error: `submission ${submission.submissionId} is already active in ${state.key}` }
     }
-    for (const agent of [...state.agents.values()]) {
-      if (agent.commitSha === submission.commitSha) continue
-      agent.send({
-        t: 'agent:refused',
-        reason: `commit mismatch: submission is at ${submission.commitSha}, agent is at ${agent.commitSha}`,
-      })
-      agent.close()
-      state.agents.delete(agent.agentId)
-    }
-    state.active = submission
+    state.active.set(submission.submissionId, submission)
     state.lastActivityAt = this.now()
     return {
-      agents: () => [...state.agents.values()],
+      agents: () => [...state.agents.values()].filter((a) => eligible(a, submission)),
+      requestDispatch: () => this.dispatchSession(state),
+      // Only the last active submission drains — and only the agents that
+      // were ELIGIBLE for it (checked BEFORE end() removes this one from the
+      // map, so size 1 ⇒ this is last). Both guards protect standing pools:
+      // one run's abort/orphan must never kill another submission's agents,
+      // and a self-agent-only run (no commit match) must never drain the
+      // different-commit standing helpers it couldn't even use.
+      drainIfLast: () =>
+        state.active.size <= 1
+          ? [...state.agents.values()].filter((a) => eligible(a, submission))
+          : [],
       end: () => {
-        if (state.active === submission) {
-          state.active = null
+        if (state.active.get(submission.submissionId) === submission) {
+          state.active.delete(submission.submissionId)
+          // Release any leaked slots (an aborted submission) so a later agent
+          // isn't counted busy for a submission that no longer exists.
+          for (const agent of state.agents.values()) {
+            agent.inFlight.delete(submission.submissionId)
+          }
           state.lastActivityAt = this.now()
         }
       },
+    }
+  }
+
+  /**
+   * The fair-share dispatcher: hand each active submission at most ONE
+   * assignment per pass, rotating which submission goes first, and loop until
+   * a pass makes no progress. Max-min fair — a small run is never starved by a
+   * huge concurrent one, and idle slots flow to whoever still has ready work.
+   * For a lone submission this degenerates to greedy dispatch, byte-for-byte.
+   */
+  private dispatchSession(state: SessionState): void {
+    const subs = [...state.active.values()]
+    if (subs.length === 0) return
+    const agents = [...state.agents.values()]
+    const start = state.rotation++ % subs.length
+    const order = [...subs.slice(start), ...subs.slice(0, start)]
+    for (;;) {
+      let progressed = false
+      for (const sub of order) if (assignOne(sub, agents)) progressed = true
+      if (!progressed) break
     }
   }
 
@@ -249,11 +381,11 @@ export class AgentRegistry {
     return reaped
   }
 
-  /** Remove sessions with no agents, no submission, and 15 min of silence. */
+  /** Remove sessions with no agents, no submissions, and 15 min of silence. */
   gc(): void {
     const cutoff = this.now() - SESSION_GC_MS
     for (const [key, state] of this.sessions) {
-      if (state.agents.size === 0 && state.active === null && state.lastActivityAt < cutoff) {
+      if (state.agents.size === 0 && state.active.size === 0 && state.lastActivityAt < cutoff) {
         this.sessions.delete(key)
       }
     }
@@ -275,6 +407,7 @@ export class AgentRegistry {
   availableCapacity(
     workspaceId: string,
     session: string,
+    commit?: string,
   ): {
     agents: number
     remoteAgents: number
@@ -293,14 +426,19 @@ export class AgentRegistry {
     for (const agent of state.agents.values()) {
       agents++
       capacity += agent.capacity
-      if (!agent.labels.includes(SUBMITTER_LABEL)) {
+      // "Remote" excludes the submitter self-agent; when a commit is given
+      // an agent counts only if its checkout matches (a feature-branch dev
+      // reads 0 helpers against a main-pinned pool → stays a local run).
+      const commitOk = commit === undefined || agent.commitSha === commit
+      if (!agent.labels.includes(SUBMITTER_LABEL) && commitOk) {
         remoteAgents++
         remoteCapacity += agent.capacity
       }
     }
-    // Ready-but-unassigned tasks: non-zero only when agent capacity is
-    // saturated — the signal an autoscaler scales the pool UP on.
-    const ready = state.active?.readyDepth?.() ?? 0
+    // Ready-but-unassigned tasks across all active submissions: non-zero only
+    // when agent capacity is saturated — the signal an autoscaler scales UP on.
+    let ready = 0
+    for (const sub of state.active.values()) ready += sub.readyDepth?.() ?? 0
     return { agents, remoteAgents, capacity, remoteCapacity, ready }
   }
 
@@ -313,7 +451,8 @@ export class AgentRegistry {
         workspaceId,
         session,
         agents: new Map(),
-        active: null,
+        active: new Map(),
+        rotation: 0,
         lastActivityAt: this.now(),
       }
       this.sessions.set(key, state)

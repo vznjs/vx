@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import type { Logger, TaskNode, TaskOutcome } from '@vzn/vx'
+import { captureWorkspaceIdentity, type Logger, type TaskNode, type TaskOutcome } from '@vzn/vx'
 import { startServe } from '../src/cli/serve.js'
 import { distributedBackend } from '../src/dist/submit.js'
 import { serveInfoPath } from '../src/serve-info.js'
@@ -187,6 +187,35 @@ async function until(cond: () => boolean, ms: number, what: string): Promise<voi
   }
 }
 
+/**
+ * Poll the serve's `/v1/agents` capacity read until N remote agents have
+ * REGISTERED — the agent banner prints before its WS hello lands, so a fixed
+ * sleep is a race under load; the registry itself is the ground truth.
+ */
+async function untilRemoteAgents(
+  serveOrigin: string,
+  workspaceRoot: string,
+  session: string,
+  n: number,
+): Promise<void> {
+  const ws = captureWorkspaceIdentity(workspaceRoot).id
+  const url =
+    `${serveOrigin}/v1/agents?ws=${encodeURIComponent(ws)}` +
+    `&session=${encodeURIComponent(session)}`
+  const deadline = Date.now() + 15_000
+  for (;;) {
+    const res = await fetch(url, { headers: { authorization: `Bearer ${TOKEN}` } }).catch(
+      () => null,
+    )
+    if (res?.ok) {
+      const body = (await res.json()) as { remoteAgents?: number }
+      if ((body.remoteAgents ?? 0) >= n) return
+    }
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${n} registered agents`)
+    await Bun.sleep(100)
+  }
+}
+
 /** A capturing render sink (the submitter's terminal stand-in). */
 function captureSink(): Logger & { text: () => string; completed: Map<string, string> } {
   let buf = ''
@@ -225,8 +254,7 @@ describe('distributed execution — the real thing', () => {
       try {
         await until(() => a1.stdout().includes('vx agent: serve'), 15_000, 'agent 1 banner')
         await until(() => a2.stdout().includes('vx agent: serve'), 15_000, 'agent 2 banner')
-        // The banner prints before the WS registers; give the hellos a beat.
-        await Bun.sleep(800)
+        await untilRemoteAgents(server.origin, fixture.origin, session, 2)
 
         const sink = captureSink()
         const backend = distributedBackend({
@@ -303,6 +331,71 @@ describe('distributed execution — the real thing', () => {
   )
 
   it(
+    'two CONCURRENT submissions share one session pool; neither is refused',
+    async () => {
+      const session = `e2e-${process.pid}-multi`
+      process.env['VX_AGENT_SESSION'] = session
+      const ingestDir = await mkdtemp(path.join(tmpdir(), 'vx-agents-multi-'))
+      const server = await startServe({ root: ingestDir, ingestDir, token: TOKEN })
+      const fixture = await makeFixture(true) // slow tasks so the two runs overlap
+      const a1Root = await cloneFixture(fixture.origin, 'ma1')
+      const a2Root = await cloneFixture(fixture.origin, 'ma2')
+      // Two DISTINCT submitter checkouts (like two teammates) — same commit +
+      // remote ⇒ same workspaceId + session, so they land in ONE session.
+      const subARoot = await cloneFixture(fixture.origin, 'msubA')
+      const subBRoot = await cloneFixture(fixture.origin, 'msubB')
+      const a1 = spawnAgent(a1Root, server.origin, session, 2)
+      const a2 = spawnAgent(a2Root, server.origin, session, 2)
+      try {
+        await until(() => a1.stdout().includes('vx agent: serve'), 15_000, 'agent 1 banner')
+        await until(() => a2.stdout().includes('vx agent: serve'), 15_000, 'agent 2 banner')
+        await untilRemoteAgents(server.origin, fixture.origin, session, 2)
+
+        // Two disjoint-scope submissions at the same commit + session, run
+        // concurrently. Before the multi-run scheduler the second would get
+        // "session … already has an active submission".
+        const sinkA = captureSink()
+        const sinkB = captureSink()
+        const mk = (sink: ReturnType<typeof captureSink>) =>
+          distributedBackend({
+            origin: server.origin,
+            token: TOKEN,
+            expectedAgents: 2,
+            sink,
+            warn: (l) => sink.status(l),
+          })
+        const [ra, rb] = await Promise.all([
+          mk(sinkA).run({ tasks: ['p1#build', 'p2#build'], cwd: subARoot, concurrency: 1 }),
+          mk(sinkB).run({ tasks: ['p3#build', 'p4#build'], cwd: subBRoot, concurrency: 1 }),
+        ])
+
+        expect(ra.ok).toBe(true)
+        expect(rb.ok).toBe(true)
+        for (const o of [...ra.outcomes, ...rb.outcomes]) expect(o.status).toBe('success')
+        // The concurrency rejection must never surface on either submitter —
+        // this is the multi-run capability under test (output materialization
+        // itself is covered by the single-submission case above).
+        expect(sinkA.text()).not.toContain('already has an active submission')
+        expect(sinkB.text()).not.toContain('already has an active submission')
+        // The shared pool actually did work for the two concurrent runs.
+        expect(a1.assignments() + a2.assignments()).toBeGreaterThanOrEqual(1)
+      } finally {
+        a1.kill()
+        a2.kill()
+        await server.stop()
+        await rm(fixture.origin, { recursive: true, force: true })
+        await rm(path.dirname(a1Root), { recursive: true, force: true })
+        await rm(path.dirname(a2Root), { recursive: true, force: true })
+        await rm(path.dirname(subARoot), { recursive: true, force: true })
+        await rm(path.dirname(subBRoot), { recursive: true, force: true })
+        await rm(ingestDir, { recursive: true, force: true })
+        delete process.env['VX_AGENT_SESSION']
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'killing an agent mid-task reassigns its work and the run completes',
     async () => {
       const session = `e2e-${process.pid}-2`
@@ -314,7 +407,7 @@ describe('distributed execution — the real thing', () => {
       const victim = spawnAgent(agentRoot, server.origin, session, 4)
       try {
         await until(() => victim.stdout().includes('vx agent: serve'), 15_000, 'victim banner')
-        await Bun.sleep(800)
+        await untilRemoteAgents(server.origin, fixture.origin, session, 1)
 
         const sink = captureSink()
         const backend = distributedBackend({

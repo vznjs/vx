@@ -1,6 +1,7 @@
-// The in-memory session registry: pairing, commit enforcement (at pairing
-// AND at late hello), one-active-submission-per-session with sequential
-// reuse, agent-death notification, and the 15-min GC sweep.
+// The in-memory session registry: pairing, commit as an ELIGIBILITY filter
+// (not a refusal), CONCURRENT submissions per session sharing the pool,
+// per-submission agent-death reassignment, the commit-filtered capacity read,
+// the stale-agent heartbeat sweep, and the 15-min GC sweep.
 
 import { describe, expect, it } from 'bun:test'
 import {
@@ -45,22 +46,50 @@ function io(): {
   }
 }
 
-function submission(commitSha = 'commit-a'): ActiveSubmission & {
+let subSeq = 0
+
+type StubSubmission = ActiveSubmission & {
   joined: string[]
   left: Array<{ id: string; inFlight: readonly string[] }>
   messages: unknown[]
-} {
+  ready: string[]
+  assignments: Array<{ taskId: string; agentId: string }>
+}
+
+function submission(
+  opts: { commitSha?: string; submissionId?: string; ready?: string[] } = {},
+): StubSubmission {
+  const submissionId = opts.submissionId ?? `sub-${++subSeq}`
+  const commitSha = opts.commitSha ?? 'commit-a'
+  const ready = opts.ready ?? []
   const joined: string[] = []
   const left: Array<{ id: string; inFlight: readonly string[] }> = []
   const messages: unknown[] = []
+  const assignments: Array<{ taskId: string; agentId: string }> = []
   return {
+    submissionId,
     commitSha,
     joined,
     left,
     messages,
+    ready,
+    assignments,
     onAgentJoin: (a) => joined.push(a.agentId),
     onAgentLeave: (a, inFlight) => left.push({ id: a.agentId, inFlight }),
     onAgentMessage: (_a, m) => messages.push(m),
+    nextReady: () => ready[0],
+    affinityAgents: () => new Set<string>(),
+    assign: (taskId, agent) => {
+      const i = ready.indexOf(taskId)
+      if (i >= 0) ready.splice(i, 1)
+      let s = agent.inFlight.get(submissionId)
+      if (s === undefined) {
+        s = new Set()
+        agent.inFlight.set(submissionId, s)
+      }
+      s.add(taskId)
+      assignments.push({ taskId, agentId: agent.agentId })
+    },
   }
 }
 
@@ -97,33 +126,36 @@ describe('AgentRegistry — hello + pairing', () => {
     expect(socket.closed).toHaveLength(1)
   })
 
-  it('enforces commitSha at PAIRING: mismatching agents are refused naming both SHAs and dropped', () => {
+  it('does NOT refuse a commit-mismatched agent — it stays registered but ineligible', () => {
     const reg = new AgentRegistry()
     const good = io()
     const stale = io()
     reg.hello(hello({ agentId: 'good', commitSha: 'commit-a' }), good)
     reg.hello(hello({ agentId: 'stale', commitSha: 'commit-b' }), stale)
 
-    const bound = reg.beginSubmission('ws1', 'local', submission('commit-a'))
+    const bound = reg.beginSubmission('ws1', 'local', submission({ commitSha: 'commit-a' }))
     if ('error' in bound) throw new Error(bound.error)
+    // Only the same-commit agent is eligible for this submission…
     expect(bound.agents().map((x) => x.agentId)).toEqual(['good'])
-    const refusal = stale.sent[0] as { t: string; reason: string }
-    expect(refusal.t).toBe('agent:refused')
-    expect(refusal.reason).toContain('commit-a')
-    expect(refusal.reason).toContain('commit-b')
-    expect(stale.closed).toHaveLength(1)
+    // …but the mismatched one is neither refused nor dropped (no message, no close)
+    // and stays registered so it can serve a matching submission later.
+    expect(stale.sent).toHaveLength(0)
+    expect(stale.closed).toHaveLength(0)
     expect(good.sent).toHaveLength(0)
+    expect(reg.availableCapacity('ws1', 'local').agents).toBe(2)
   })
 
-  it('refuses a LATE hello mismatching the active submission; a matching one joins it', () => {
+  it('a LATE mismatched hello registers (ineligible, not refused); a matching one joins', () => {
     const reg = new AgentRegistry()
-    const sub = submission('commit-a')
+    const sub = submission({ commitSha: 'commit-a' })
     const bound = reg.beginSubmission('ws1', 'local', sub)
     if ('error' in bound) throw new Error(bound.error)
 
     const stale = io()
-    expect(reg.hello(hello({ agentId: 'stale', commitSha: 'commit-b' }), stale)).toBeNull()
-    expect((stale.sent[0] as { reason: string }).reason).toContain('commit mismatch')
+    const staleAgent = reg.hello(hello({ agentId: 'stale', commitSha: 'commit-b' }), stale)
+    expect(staleAgent).not.toBeNull() // registered, not refused
+    expect(stale.sent).toHaveLength(0)
+    expect(sub.joined).toEqual([]) // ineligible → never joined the submission
 
     const fresh = io()
     const agent = reg.hello(hello({ agentId: 'fresh', commitSha: 'commit-a' }), fresh)
@@ -133,14 +165,16 @@ describe('AgentRegistry — hello + pairing', () => {
 })
 
 describe('AgentRegistry — submissions', () => {
-  it('refuses a concurrent second submission; a SEQUENTIAL one reuses the agents', () => {
+  it('accepts CONCURRENT submissions in one session; both share the agents', () => {
     const reg = new AgentRegistry()
     reg.hello(hello({ agentId: 'a1' }), io())
     const first = reg.beginSubmission('ws1', 'local', submission())
     if ('error' in first) throw new Error(first.error)
 
+    // A second concurrent submission is accepted (no "already active" error).
     const second = reg.beginSubmission('ws1', 'local', submission())
-    expect('error' in second && second.error).toContain('already has an active submission')
+    if ('error' in second) throw new Error(second.error)
+    expect(second.agents().map((x) => x.agentId)).toEqual(['a1'])
 
     first.end()
     const third = reg.beginSubmission('ws1', 'local', submission())
@@ -148,14 +182,22 @@ describe('AgentRegistry — submissions', () => {
     expect(third.agents().map((x) => x.agentId)).toEqual(['a1'])
   })
 
-  it('agent death notifies the active submission with its in-flight ids', () => {
+  it('rejects a DUPLICATE submissionId (client-bug guard)', () => {
+    const reg = new AgentRegistry()
+    const first = reg.beginSubmission('ws1', 'local', submission({ submissionId: 'dup' }))
+    if ('error' in first) throw new Error(first.error)
+    const dup = reg.beginSubmission('ws1', 'local', submission({ submissionId: 'dup' }))
+    expect('error' in dup && dup.error).toContain('already active')
+  })
+
+  it('agent death hands each submission back ONLY its own in-flight ids', () => {
     const reg = new AgentRegistry()
     const agent = reg.hello(hello({ agentId: 'a1' }), io()) as RegisteredAgent
-    const sub = submission()
+    const sub = submission({ submissionId: 'sub-x' })
     const bound = reg.beginSubmission('ws1', 'local', sub)
     if ('error' in bound) throw new Error(bound.error)
 
-    agent.inFlight.add('pkg#build')
+    agent.inFlight.set('sub-x', new Set(['pkg#build']))
     reg.drop(agent)
     expect(sub.left).toEqual([{ id: 'a1', inFlight: ['pkg#build'] }])
     expect(bound.agents()).toHaveLength(0)
@@ -164,13 +206,64 @@ describe('AgentRegistry — submissions', () => {
     expect(sub.left).toHaveLength(1)
   })
 
-  it('routes post-hello agent messages to the active submission', () => {
+  it('routes post-hello agent messages to the submission they NAME', () => {
     const reg = new AgentRegistry()
     const agent = reg.hello(hello({ agentId: 'a1' }), io()) as RegisteredAgent
-    const sub = submission()
+    const sub = submission({ submissionId: 'sub-x' })
     reg.beginSubmission('ws1', 'local', sub)
-    reg.dispatch(agent, { t: 'agent:start', taskId: 'pkg#build' })
-    expect(sub.messages).toEqual([{ t: 'agent:start', taskId: 'pkg#build' }])
+    const msg = { t: 'agent:start', taskId: 'pkg#build', submissionId: 'sub-x' }
+    reg.dispatch(agent, msg)
+    expect(sub.messages).toEqual([msg])
+  })
+
+  it('a message naming an unknown submission is a no-op (does not throw)', () => {
+    const reg = new AgentRegistry()
+    const agent = reg.hello(hello({ agentId: 'a1' }), io()) as RegisteredAgent
+    const sub = submission({ submissionId: 'sub-x' })
+    reg.beginSubmission('ws1', 'local', sub)
+    reg.dispatch(agent, { t: 'agent:done', taskId: 'pkg#x', submissionId: 'gone' })
+    expect(sub.messages).toEqual([])
+  })
+
+  it("a self-agent's hello joins ONLY the submission that owns it", () => {
+    const reg = new AgentRegistry()
+    const mine = submission({ submissionId: 'sub-mine' })
+    const peer = submission({ submissionId: 'sub-peer' }) // same commit
+    reg.beginSubmission('ws1', 'local', mine)
+    reg.beginSubmission('ws1', 'local', peer)
+
+    reg.hello(
+      hello({ agentId: 'self', labels: [SUBMITTER_LABEL], ownerSubmissionId: 'sub-mine' }),
+      io(),
+    )
+    expect(mine.joined).toEqual(['self'])
+    expect(peer.joined).toEqual([]) // a peer can't conscript this machine
+  })
+
+  it('drainIfLast drains only when last active, and only ELIGIBLE agents', () => {
+    const reg = new AgentRegistry()
+    reg.hello(hello({ agentId: 'match', commitSha: 'commit-a' }), io())
+    reg.hello(hello({ agentId: 'standing', commitSha: 'commit-main' }), io())
+    reg.hello(
+      hello({
+        agentId: 'foreign-self',
+        commitSha: 'commit-a',
+        labels: [SUBMITTER_LABEL],
+        ownerSubmissionId: 'sub-other',
+      }),
+      io(),
+    )
+
+    const a = reg.beginSubmission('ws1', 'local', submission({ commitSha: 'commit-a' }))
+    const b = reg.beginSubmission('ws1', 'local', submission({ commitSha: 'commit-a' }))
+    if ('error' in a || 'error' in b) throw new Error('begin failed')
+
+    // Two active submissions → neither may drain the shared pool.
+    expect(a.drainIfLast()).toEqual([])
+    b.end()
+    // Last active → drains its eligible agents ONLY: the different-commit
+    // standing helper and the other run's self-agent are never told to drain.
+    expect(a.drainIfLast().map((x) => x.agentId)).toEqual(['match'])
   })
 })
 
@@ -247,12 +340,27 @@ describe('AgentRegistry — availableCapacity (the ambient capacity gate)', () =
     })
   })
 
-  it('surfaces the active submission ready-queue depth (the autoscaling signal)', () => {
+  it('surfaces the SUM of active submissions ready-queue depth (the autoscaling signal)', () => {
     const reg = new AgentRegistry()
     reg.hello(hello({ agentId: 'a1' }), io())
-    // A stub submission reporting 5 ready-but-unassigned tasks.
+    // Two concurrent stub submissions reporting 5 and 3 ready-but-unassigned tasks.
     reg.beginSubmission('ws1', 'local', { ...submission(), readyDepth: () => 5 })
-    expect(reg.availableCapacity('ws1', 'local').ready).toBe(5)
+    reg.beginSubmission('ws1', 'local', { ...submission(), readyDepth: () => 3 })
+    expect(reg.availableCapacity('ws1', 'local').ready).toBe(8)
+  })
+
+  it('commit-filters the REMOTE counts when a commit is given', () => {
+    const reg = new AgentRegistry()
+    reg.hello(hello({ agentId: 'a', commitSha: 'commit-a', capacity: 4 }), io())
+    reg.hello(hello({ agentId: 'b', commitSha: 'commit-b', capacity: 2 }), io())
+    // No commit → both remote; with a commit → only the matching agent.
+    expect(reg.availableCapacity('ws1', 'local').remoteAgents).toBe(2)
+    const scoped = reg.availableCapacity('ws1', 'local', 'commit-a')
+    expect(scoped.remoteAgents).toBe(1)
+    expect(scoped.remoteCapacity).toBe(4)
+    // Totals stay whole-session regardless of the commit filter.
+    expect(scoped.agents).toBe(2)
+    expect(scoped.capacity).toBe(6)
   })
 })
 
@@ -264,7 +372,7 @@ describe('AgentRegistry — stale-agent sweep (heartbeat liveness)', () => {
     reg.beginSubmission('ws1', 'local', sub)
     const socket = io()
     const agent = reg.hello(hello({ agentId: 'dead' }), socket) as RegisteredAgent
-    agent.inFlight.add('pkg#build')
+    agent.inFlight.set(sub.submissionId, new Set(['pkg#build']))
     reg.heartbeat(agent) // it heartbeated at least once → sweep-eligible
 
     // Just under the threshold — kept.

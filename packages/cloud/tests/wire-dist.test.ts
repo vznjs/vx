@@ -1,6 +1,8 @@
 // Distributed-message envelope adapters live in @vzn/vx-cloud's
 // protocol-dist.ts (the base envelope stays in core's wire.ts). These pin
-// the v1 agent.*/coord.*/dist.submit round-trips + the version sentinel.
+// the v2 agent.*/coord.*/dist.submit round-trips + the version sentinel —
+// v2 added `submissionId` to every task-scoped message + `dist:submit`, and
+// an optional `ownerSubmissionId` to `agent:hello`.
 
 import { describe, expect, it } from 'bun:test'
 import { isNotification } from '@vzn/vx'
@@ -17,21 +19,21 @@ import {
   type DistSubmitMessage,
 } from '../src/protocol-dist.js'
 
-describe('protocol v1 shape', () => {
+describe('protocol v2 shape', () => {
   it('exposes the version sentinel', () => {
-    expect(DIST_PROTOCOL_VERSION).toBe(1)
+    expect(DIST_PROTOCOL_VERSION).toBe(2)
   })
 
-  it('assignment is a BARE task id — no command, no projectDir, no hash', () => {
-    const assign: DistServerMessage = { t: 'task:assign', taskId: 'pkg#build' }
-    expect(Object.keys(assign).sort()).toEqual(['t', 'taskId'])
+  it('assignment is a BARE task id + submissionId — no command, no projectDir, no hash', () => {
+    const assign: DistServerMessage = { t: 'task:assign', taskId: 'pkg#build', submissionId: 's1' }
+    expect(Object.keys(assign).sort()).toEqual(['submissionId', 't', 'taskId'])
   })
 })
 
 describe('round-trip — DistServerMessage ⇄ Envelope', () => {
   it('task:assign / agent:refused / coord:drain round-trip', () => {
     const msgs: DistServerMessage[] = [
-      { t: 'task:assign', taskId: 'pkg#build' },
+      { t: 'task:assign', taskId: 'pkg#build', submissionId: 's1' },
       { t: 'agent:refused', reason: 'commit mismatch: a vs b' },
       { t: 'coord:drain' },
     ]
@@ -57,12 +59,25 @@ describe('round-trip — DistClientMessage ⇄ Envelope', () => {
         capacity: 4,
         labels: ['linux-x64'],
       },
-      { t: 'agent:start', taskId: 'pkg#build' },
-      { t: 'agent:stdout', taskId: 'pkg#build', chunk: 'line\n' },
-      { t: 'agent:stderr', taskId: 'pkg#build', chunk: 'err\n' },
+      // A self-agent naming its owner submission (the standing-pool eligibility key).
+      {
+        t: 'agent:hello',
+        protocol: DIST_PROTOCOL_VERSION,
+        agentId: 'self',
+        workspaceId: 'ws1',
+        session: 'gh-42-1',
+        commitSha: 'cafebabe',
+        capacity: 4,
+        labels: ['submitter'],
+        ownerSubmissionId: 's1',
+      },
+      { t: 'agent:start', taskId: 'pkg#build', submissionId: 's1' },
+      { t: 'agent:stdout', taskId: 'pkg#build', submissionId: 's1', chunk: 'line\n' },
+      { t: 'agent:stderr', taskId: 'pkg#build', submissionId: 's1', chunk: 'err\n' },
       {
         t: 'agent:done',
         taskId: 'pkg#build',
+        submissionId: 's1',
         outcome: {
           taskId: 'pkg#build',
           status: 'success',
@@ -71,6 +86,7 @@ describe('round-trip — DistClientMessage ⇄ Envelope', () => {
           hash: 'deadbeefdeadbeef',
         },
       },
+      { t: 'agent:heartbeat' },
       { t: 'agent:bye', reason: 'idle-timeout' },
     ]
     for (const c of cases) {
@@ -89,6 +105,7 @@ describe('round-trip — dist:submit ⇄ Envelope', () => {
       protocol: DIST_PROTOCOL_VERSION,
       session: 'local',
       workspaceId: 'ws1',
+      submissionId: 'sub-1',
       commitSha: 'cafebabe',
       expectedAgents: 2,
       agentTimeoutMs: 300_000,
