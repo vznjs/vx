@@ -116,6 +116,10 @@ html:has(.vx-landing),
 body:has(.vx-landing) {
   margin: 0;
   background: var(--bg-page);
+  /* Nothing on the page should ever cause horizontal scroll on a phone.
+     `clip` (not `hidden`) doesn't create a scroll container, so the sticky
+     nav keeps working. */
+  overflow-x: clip;
 }
 .vx-landing {
   background: var(--bg-page);
@@ -1059,16 +1063,34 @@ a.platform-card:hover .learn {
    Responsive
    ============================================================ */
 @media (max-width: 900px) {
+  /* `minmax(0, 1fr)`, not `1fr`: a bare `1fr` track has an implicit
+     `min-width: auto` = the min-content width of its widest child, so the
+     terminal's `white-space: pre` rows would stretch the whole grid past the
+     viewport (and then `overflow-x: clip` on <body> clips the hero text). The
+     `minmax(0, …)` floor lets the track shrink and the terminal scroll inside
+     its own card instead. */
   .hero-grid,
   .foot-grid,
-  .config-grid {
-    grid-template-columns: 1fr;
-  }
+  .config-grid,
   .feat-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .nav-links {
     display: none;
+  }
+  /* Belt-and-suspenders: every hero column may shrink below its content. */
+  .hero-grid > * {
+    min-width: 0;
+  }
+  /* The terminal mockup becomes full-width once the hero stacks. Its rows
+     are `white-space: pre`, so let them scroll INSIDE the card rather than
+     stretching the page. */
+  .term {
+    max-width: 100%;
+    min-width: 0;
+  }
+  .term-body {
+    overflow-x: auto;
   }
 }
 @media (max-width: 620px) {
@@ -1078,5 +1100,19 @@ a.platform-card:hover .learn {
   .foot-bottom {
     flex-direction: column;
     gap: 8px;
+  }
+  /* The hero headline's clamp floor (44px) still overflows a ~390px phone on
+     the longest word ("orchestrator"). Drop it for small screens and let
+     long words break rather than clip. */
+  .hero h1 {
+    font-size: clamp(29px, 8.5vw, 42px);
+    overflow-wrap: break-word;
+  }
+  .hero .stats {
+    gap: 28px 32px;
+  }
+  .term-body {
+    font-size: 12px;
+    padding: 14px 16px;
   }
 }
