@@ -1,0 +1,42 @@
+# vx-cloud — the whole service in one container.
+#
+#   docker build -f packages/cloud/Dockerfile -t vx-cloud .   # from the repo root
+#   VX_CLOUD_TOKEN=$(openssl rand -hex 32) docker compose -f packages/cloud/deploy/docker-compose.yml up
+#
+# One process serves the dashboard, the /v1/* analytics API, the /v8/artifacts
+# remote cache, and the /mcp endpoint. It reads only its own SQLite ingest
+# store (the `vxdata` volume), fed by the cloud() plugin's POST /v1/ingest — it
+# never touches a workspace cache.db, so it can run anywhere.
+#
+# There is no coordinator/worker fleet: distributed-execution `agent`s are
+# per-CI-job processes (see the "Distributed CI execution" guide), not
+# long-lived containers.
+
+services:
+  vx-cloud:
+    image: vx-cloud:latest
+    # Or build in place: `docker compose build` picks this up.
+    build:
+      context: ../../..
+      dockerfile: packages/cloud/Dockerfile
+    ports:
+      - '4321:4321'
+    environment:
+      # A reachable (non-loopback) bind REQUIRES a token — an unauthenticated
+      # serve on the network would expose task execution. Set both.
+      VX_CLOUD_HOST: '0.0.0.0'
+      VX_CLOUD_TOKEN: '${VX_CLOUD_TOKEN:?set VX_CLOUD_TOKEN to a secret}'
+      # Optional: the fork-PR (untrusted) cache token. Its holder reads the
+      # trusted cache but writes only the untrusted scope, so a fork PR warms
+      # off main without being able to poison it. Safe to expose.
+      # VX_CLOUD_PR_TOKEN: '${VX_CLOUD_PR_TOKEN:-}'
+      # Optional: a browser origin allowed to open the WS/SSE channels when the
+      # dashboard is hosted on a different origin than this serve.
+      # VX_CLOUD_ALLOW_ORIGIN: 'https://dash.example.com'
+    volumes:
+      # Persist the ingest store + the /v8 artifact store across restarts.
+      - vxdata:/data
+    restart: unless-stopped
+
+volumes:
+  vxdata:

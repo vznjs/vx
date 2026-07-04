@@ -187,6 +187,44 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-04**: **Docs + website refresh for adopters; deploy simplified to
+  docker-compose (Helm removed)** (owner: "Update docs and refresh website...
+  Devs should not care about building spa... They won't clone the project.
+  Command to run and everything. Also many things are not in docs like agents"
+  - "Do we need helm? Why not just docker compose?"). The website's platform
+    guides had drifted to a RETIRED architecture. Fixed:
+    **(1) Deploy simplification.** Removed the entire stale Helm chart
+    (`packages/cloud/deploy/helm/` — its coordinator/worker/HPA templates
+    invoked verbs RETIRED by distributed-execution-2026-07; the real server is
+    ONE `vx-cloud serve` process and agents are per-CI-job, not pods). Replaced
+    with `packages/cloud/deploy/docker-compose.yml` + a rewritten
+    `deploy/README.md` (docker run / compose, "same image as a one-container
+    Deployment" k8s note, no chart). Dockerfile: dropped the coordinator
+    `EXPOSE 5180` + retired-role comments; documented the load-bearing Docker
+    interaction — a container must bind `0.0.0.0` to be reachable, which (per the
+    security wave) REQUIRES a token, so a real deploy sets BOTH `VX_CLOUD_HOST=0.0.0.0`
+    and `VX_CLOUD_TOKEN`.
+    **(2) Adopter guides rewritten** (3 parallel developer agents, verified
+    against source, disjoint files): `guides/distributed-ci.md` (was
+    `vx coordinator`/`vx run --worker`/"v22 hash" — now `vx-cloud agent` DTE:
+    session-keyed `{workspaceId, session, commitSha}`, `VX_CLOUD_DISTRIBUTE`,
+    same-checkout scoped-`run()` law, outputs via the serve's `/v8` store,
+    submitter self-registers, fork-PR `--pr-token` variant); `guides/self-hosting.md`
+    (was `vx serve` reading `cache.db` + "no auth" + "build the SPA" — now
+    `vx-cloud serve` ingest-store-only + token/loopback/Origin auth + embedded
+    dashboard + trust scopes + the Docker host+token requirement);
+    `guides/dashboard.md` (embedded in the `vx-cloud` binary, fed by the plugin
+    push not `cache.db`, real auth + multi-workspace, corrected diagram).
+    **(3) Missing/stale coverage.** `guides/mcp.md` gained the serve `POST /mcp`
+    HTTP path (dependency-free, behind the bearer) alongside the core `vx mcp`
+    stdio; `introduction.md` de-staled (agents = `vx-cloud agent`, serve =
+    `vx-cloud serve`, dashboard "nothing to build"); the sidebar labels + the
+    source-of-truth `docs/cli.md` serve section got the new `--host` /
+    `--pr-token` / `--allow-origin` flags + the loopback/Origin/trust-scope
+    semantics. The core quickstart was already install-and-run (untouched). The
+    frozen `docs/design/*-2026-06.md` notes are historical records — left as-is.
+    Astro site builds clean (143 pages, 0 broken links). No core/runtime change.
+
 - **2026-07-03**: **Security hardening wave + known-limitations resolved**
   (owner: "Do a full security audit... implement all no questions asked. Make
   sure our cache is segregated to avoid CVE pollutions" + "resolve all known

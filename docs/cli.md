@@ -949,8 +949,14 @@ dashboard SPA. Runs locally or in Docker (see
 ```
 vx-cloud serve
     --port <n>                   # default: VX_CLOUD_PORT, else 4321
+    --host <h>                   # bind address (env: VX_CLOUD_HOST); default 127.0.0.1.
+                                 #   a non-loopback bind REQUIRES a token
     --ingest-dir <d>             # directory for the SQLite ingest store
-    --token <t>                  # require a bearer token (env: VX_CLOUD_TOKEN)
+    --token <t>                  # the TRUSTED bearer token (env: VX_CLOUD_TOKEN)
+    --pr-token <t>               # the UNTRUSTED (fork-PR) token (env: VX_CLOUD_PR_TOKEN):
+                                 #   reads trusted+untrusted, writes only untrusted
+    --allow-origin <o>           # extra browser origin allowed on the WS/SSE channels
+                                 #   (repeatable; env: VX_CLOUD_ALLOW_ORIGIN, comma-sep)
     --name <n>                   # server identity for /v1/meta (env: VX_CLOUD_NAME)
     --socket [path]              # also listen on a unix socket (env: VX_CLOUD_SOCKET;
                                  #   default $XDG_RUNTIME_DIR/vx-cloud/serve.sock)
@@ -968,10 +974,15 @@ vx-cloud serve
   `cache.db`, so it can be deployed anywhere (cache-entry inventory
   and the full input-fingerprint diff stay local — those live in the
   local `cache.db`).
-- **Auth.** With `--token` set, every request except `/health` and
+- **Auth.** Binds `127.0.0.1` by default; a non-loopback bind
+  (`--host 0.0.0.0` / `VX_CLOUD_HOST`) is refused without a token — an
+  unauthenticated serve on a reachable interface would expose task
+  execution. With `--token` set, every request except `/health` and
   `/v1/meta` requires `Authorization: Bearer <t>` (browser transports
-  may use `?token=` on `/events`, `/stream`, and the WS upgrade). No
-  token → fully open (the localhost default).
+  may use `?token=` on `/events`, `/stream`, and the WS upgrade).
+  Cross-origin browser WS/SSE handshakes are refused unless the origin
+  is same-origin or allow-listed (`--allow-origin`) — a CSWSH / drive-by
+  defense. No token → open, but loopback-only.
 - **Unix socket.** With `--socket` the same API also listens on a
   0600 unix socket; socket requests bypass the token gate — the OS
   file permissions ARE the auth. The advertisement carries the socket
@@ -980,10 +991,16 @@ vx-cloud serve
 - **Artifact store.** `/v8/artifacts/:hash` speaks the Turbo wire
   core's remote cache already talks — point `VX_REMOTE_CACHE_URL` at
   the serve origin (token = the serve token) and the remote cache
-  works with no separate cache server. Artifacts live as flat
-  `<ingest-dir>/artifacts/<hash>.tar.zst` files; client-side signing
-  tags (`x-artifact-tag`) are stored in a `<hash>.tag` sidecar and
-  returned on GET. `/v1/meta` advertises `artifacts: true`.
+  works with no separate cache server. The store is **trust-scoped**:
+  artifacts live under `<ingest-dir>/artifacts/<bucket>/<tier>/`, with
+  `<bucket>/<tier>` SERVER-DERIVED from the presented token. A trusted
+  token reads/writes `trusted/`; a `--pr-token` (untrusted) reads
+  trusted+untrusted but writes only `untrusted/` — so a fork PR can warm
+  off `main`'s cache without being able to poison it. Artifacts are
+  immutable (a re-PUT of an existing hash is 409). Client-side signing
+  tags (`x-artifact-tag`) ride a `<hash>.tag` sidecar. `/v1/meta`
+  advertises `artifacts: true` and `trustTiers: true`. See
+  `docs/design/cache-trust-scopes-2026-07.md`.
 - **MCP.** `POST /mcp` is a dependency-free MCP server (JSON-RPC 2.0
   over streamable HTTP, plain-JSON responses) exposing the dashboard's
   read surface as tools — `list_workspaces`, `list_runs`, `get_run`,
@@ -1010,6 +1027,7 @@ HTTP routes (all return JSON unless noted):
 | `GET /events`                  | Server-Sent Events stream of every envelope from every concurrent run                      |
 | `GET /stream`                  | NDJSON stream (jq-friendly) of the same                                                    |
 | `WS /` (upgrade)               | Bidirectional; accepts both legacy `{ t: 'run', ... }` and JSON-RPC `submit.run` envelopes |
+| `WS /v1/agents` (upgrade)      | Distributed-execution agents rendezvous ({workspaceId, session} sessions)                  |
 
 Every wire frame is a JSON-RPC 2.0 envelope per
 `docs/design/wire-protocol-2026-06.md`.

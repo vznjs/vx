@@ -71,9 +71,9 @@ export default defineConfig({
             { label: 'Writing a vx plugin', link: '/guides/plugins/' },
             { label: 'Predictive scheduling', link: '/guides/predictive-scheduling/' },
             { label: 'Dashboard', link: '/guides/dashboard/' },
-            { label: 'Self-host vx serve', link: '/guides/self-hosting/' },
+            { label: 'Self-host vx-cloud', link: '/guides/self-hosting/' },
             { label: 'OpenTelemetry CI/CD spans', link: '/guides/otel-bridge/' },
-            { label: 'vx serve wire protocol', link: '/guides/wire-protocol/' },
+            { label: 'vx-cloud serve wire protocol', link: '/guides/wire-protocol/' },
           ],
         },
         {

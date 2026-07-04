@@ -1,147 +1,313 @@
 ---
 title: Distributed CI execution
-description: Run your task graph across multiple machines. vx coordinator dispatches assignments to vx workers over WebSocket. Content-addressed; workers are fungible. OSS, self-hostable, no daemon.
+description: Fan a vx run across many machines with vx agents — session-keyed distributed task execution, the Nx-Cloud-DTE equivalent. Agents share one checkout and commit; cache hits execute nowhere; outputs move only through the serve's artifact store.
 ---
 
-vx ships an OSS distributed task execution layer: one coordinator
-holds the graph, many workers pull and execute. Tasks are
-content-addressed by their v22 cache hash, so any worker producing
-artifact `<hash>` satisfies every consumer of `<hash>` — workers
-are fungible.
+**vx agents** distribute a single `vx run` across many machines. A
+normal run on the main job fans its task graph out to a pool of agent
+machines that share the same checkout and commit; cache hits execute
+nowhere, outputs move between machines only through the serve's
+artifact store, and the main job renders one ordinary run and owns the
+exit code. This is the Nx-Cloud-DTE contract, built on parts vx
+already ships.
 
-This is the Nx-Cloud-DTE equivalent, OSS and self-hostable.
-Phase A-B today; capability labels, cache-affinity, and a hosted
-deployment are deferred — see
-`docs/design/distributed-ci-2026-06.md` for the full roadmap.
+There are two binaries:
 
-## The two roles
+- **`vx`** (`@vzn/vx`) — the core task runner. A plain `vx run`.
+- **`vx-cloud`** (`@vzn/vx-cloud`) — the service: `vx-cloud serve`,
+  `vx-cloud agent`, `vx-cloud connect`. **Distribution is a `vx-cloud`
+  feature**, enabled from a normal `vx run` through the `cloud()`
+  plugin.
 
-- **Coordinator** (`vx coordinator <tasks…>`) — one per CI build.
-  Holds the global ready queue, dispatches to workers, exits when
-  every task ends.
-- **Worker** (`vx run --worker <coord-url>`) — N per build.
-  Stateless and fungible. Pulls assignments, executes via
-  `runCommand`, reports outcomes, repeats.
+The `vx-cloud serve` you run is the rendezvous: it holds the session
+registry, schedules each submission, and hosts the shared
+`/v8/artifacts` store. Agents attach to it; the main job submits to it.
 
-## Quick start (two terminals)
+## How it works
 
-```sh
-# Terminal 1: start the coordinator
-vx coordinator lint test build --port 5180 --workers 2
-
-# Terminal 2: attach a worker
-vx run --worker ws://127.0.0.1:5180 --capacity 4
+```
+main job: vx run ci   (VX_CLOUD_DISTRIBUTE=6, VX_SERVICE_URL=…)
+  cloud() backend → distributed submitter
+   ├ prepareRun (has the checkout) → task graph + stable hashes
+   ├ dist:submit { session, commitSha, graph } ───────────────┐
+   ├ self-registers as an agent (so it never deadlocks)        │
+   ├ renders the relayed event stream (one normal run)         │
+   └ materializes outputs back onto disk                       │
+                                                               ▼
+                       ┌─────────────── vx-cloud serve ───────────────┐
+                       │  session registry {workspaceId, session}      │
+                       │    → agents (commitSha checked at pairing)     │
+                       │  per-submission scheduler:                     │
+                       │    • prune: stat /v8 store by stable hash      │
+                       │      → a warm task executes NOWHERE            │
+                       │    • assign bare task ids to free agents       │
+                       │    • re-queue + reassign on agent death        │
+                       │  /v8/artifacts — the shared artifact store     │
+                       └──────┬─────────────────────────────┬──────────┘
+                    task:assign {taskId}          task:assign {taskId}
+                              ▼                             ▼
+                     vx-cloud agent                vx-cloud agent
+                      same commit, own checkout      same commit, own checkout
+                      scoped run(): deps restore      scoped run(): …
+                      warm from /v8, task runs,       agent:done {taskId, outcome}
+                      saves + uploads to /v8
 ```
 
-The coordinator dispatches every ready task to the worker; the
-worker executes them in parallel up to `--capacity`. When every
-task terminates, the coordinator sends `coord:drain`, the worker
-exits, and the coordinator exits with 0 (or 1 if any task failed).
+The main job builds the graph (it has the checkout), submits it, and
+renders the relayed events like any delegated run. The serve schedules
+bare task ids onto agents. Each agent runs the assigned task as a
+**scoped core `run()` of that exact task with its dependency closure** —
+the closure's deps restore as warm `cache-hit-remote` from `/v8`, the
+task executes, and its artifact uploads back to `/v8` before the agent
+reports `done`. There is **no input shipping**: agents already have the
+source at the shared commit, and every output travels only as a
+content-addressed artifact through the store.
+
+## The contract: same repo, same commit, clean tree
+
+Because a task's cache key folds its inputs' git OIDs (relative paths,
+never absolute checkout locations) and its upstream deps' keys, an
+agent's scoped run derives keys **byte-identical** to the full run's —
+but only when every machine sees the same source. So the contract is:
+
+- **Same repository, same commit.** Registration is keyed by
+  `{workspaceId, session, commitSha}`, and the serve enforces the
+  commit at pairing time — an agent on a different SHA is refused,
+  naming both SHAs. In GitHub Actions every job of one workflow run
+  checks out the same commit automatically.
+- **Clean working tree.** A `vx-cloud agent` on a dirty tree refuses to
+  start (exit 1, listing the offending paths) — uncommitted changes
+  can't exist on the other agents, and divergent inputs would split the
+  cache. The submitting run with a dirty tree falls back to a normal
+  local run.
+- **A reachable remote cache.** `/v8/artifacts` on the serve is the
+  transport for every output; distribution needs both remote read and
+  remote write on.
+
+Pin one CI image and prefer `--frozen` on the main job so configs
+resolve identically everywhere. Divergence (env / toolchain drift)
+degrades to a cache miss and re-execution — never a stale hit.
+
+## Enabling distribution
+
+Distribution is a rung of the `cloud()` backend plugin, so declare the
+plugin in `vx.workspace.ts` (it's zero-cost until enabled):
+
+```ts
+import { defineWorkspace } from '@vzn/vx'
+import { cloud } from '@vzn/vx-cloud/plugin'
+
+export default defineWorkspace({ plugins: [cloud()] })
+```
+
+A plain `vx run` becomes distributed when **both** hold:
+
+1. `VX_CLOUD_DISTRIBUTE=<n>` is set — `<n>` is an advisory expected
+   agent count (also `cloud({ distribute: n })`).
+2. A `vx-cloud serve` is reachable. The submitter resolves it through
+   the usual ladder: `VX_SERVICE_URL` / `VX_CLOUD_URL` env → the active
+   `vx-cloud connect` environment → a locally advertised serve.
+
+`VX_CLOUD_DISTRIBUTE` set with **no reachable serve is a hard error** —
+distribution was explicitly requested, so silently running locally
+would hide a broken matrix forever. (This differs from ambient
+delegation, which fails safe to local.)
+
+## Attaching agents
+
+Each agent machine checks out the workspace at the same commit and
+runs:
+
+```sh
+vx-cloud agent --url https://vx-serve.example.com --token "$VX_CLOUD_TOKEN"
+```
+
+Flags:
+
+| Flag | Meaning |
+| --- | --- |
+| `--url <origin>` | The serve to attach to. Falls back to `VX_SERVICE_URL`, then a locally advertised serve. |
+| `--token <t>` | Bearer token for the serve. Falls back to `VX_CLOUD_TOKEN`. |
+| `--capacity <n>` | How many assignments to execute in parallel (default `1`). |
+| `--session <s>` | The session key to join (default: derived, see below). |
+| `--idle-timeout <ms>` | Self-terminate after this long with no assignment (default `600000` = 10 min; `0` = never). |
+| `--label <l>` | Tag the agent (repeatable). Informational in v1. |
+
+The **session** groups the agents and the submitter that belong to one
+pipeline. It resolves from `--session` → `VX_AGENT_SESSION` → a CI
+variable (`GITHUB_RUN_ID`+`GITHUB_RUN_ATTEMPT`, GitLab
+`CI_PIPELINE_ID`, Buildkite `BUILDKITE_BUILD_ID`) → `'local'`. The
+submitter and every agent **must land on the same session key** — the
+simplest way in CI is to set `VX_AGENT_SESSION` on every job.
+
+An agent drains and exits cleanly when the submission finishes (or on
+its idle timeout). It **exits 0 even when tasks failed** — the main job
+is the sole authority on the run's verdict, so a red agent row means
+infrastructure trouble (a refusal, a dirty tree, an unexpected
+disconnect), not a failing test.
 
 ## GitHub Actions
 
-The canonical pattern: one matrix index hosts the coordinator,
-the rest attach as workers.
+The realistic pattern points every job at **one serve reachable by all
+of them** — a deployed `vx-cloud serve` behind a URL (see
+[Self-host vx serve](../self-hosting/)). A matrix of agent jobs
+attaches to it, and a separate run job submits.
 
 ```yaml
+# .github/workflows/distributed.yml
+name: CI (distributed)
+on: [push, pull_request]
+
+# One session for the whole workflow run — the submitter and every
+# agent derive the same key from it.
+env:
+  VX_SERVICE_URL: ${{ secrets.VX_SERVICE_URL }}   # a reachable vx-cloud serve
+  VX_CLOUD_TOKEN: ${{ secrets.VX_CLOUD_TOKEN }}
+  VX_AGENT_SESSION: ${{ github.run_id }}-${{ github.run_attempt }}
+
 jobs:
-  build:
+  agents:
     strategy:
       matrix:
-        worker: [0, 1, 2, 3]   # 4-way parallelism
+        agent: [1, 2, 3, 4, 5, 6]     # six agent machines
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      # Same repo, same commit, clean tree. Blocks until the submission
+      # drains it (a generous idle timeout covers the run job's startup).
+      - run: |
+          vx-cloud agent \
+            --url "$VX_SERVICE_URL" \
+            --token "$VX_CLOUD_TOKEN" \
+            --session "$VX_AGENT_SESSION" \
+            --capacity 4 \
+            --idle-timeout 900000
 
-      # Worker 0 hosts the coordinator; others wait for it and attach.
-      - if: matrix.worker == 0
-        run: vx coordinator lint test build --port 5180 --workers 4
-
-      - if: matrix.worker != 0
-        run: |
-          until nc -z runner-0 5180; do sleep 1; done
-          vx run --worker ws://runner-0:5180 --capacity 2
+  run:
+    runs-on: ubuntu-latest
+    env:
+      VX_CLOUD_DISTRIBUTE: "6"          # advisory: expect ~6 agents
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0                # --affected needs history
+      - run: curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      # A NORMAL vx run. The cloud() plugin routes it to the serve
+      # because VX_CLOUD_DISTRIBUTE + VX_SERVICE_URL are set. Zero remote
+      # agents degrades to a loud local run — never a deadlock.
+      - run: vx run ci --all --frozen
 ```
 
-The cross-runner networking (`runner-0` resolves to the matrix
-index 0 runner) needs either a tunnel (Tailscale free tier
-works), self-hosted runners on the same LAN, or one of the
-GHA-specific runner-link patterns. A composite action
-(`vx/distributed-action@v1`) packaging this is on the roadmap.
+The `agents` and `run` jobs start in parallel. Agents register with the
+serve and wait; the run job submits the graph and dispatch begins. The
+submitter self-registers as an agent, so even if no matrix agent has
+connected yet the run makes progress locally and mixes in remote agents
+as they join.
 
-## How dispatch works
+If your runners share a network (self-hosted runners, or a tunnel like
+Tailscale), one job can host the serve with `vx-cloud serve` instead of
+using a deployed one — but every agent and the run job still need to
+reach it at `VX_SERVICE_URL`.
 
-```
-        ┌────────────────────────────────────────┐
-        │ vx coordinator                          │
-        │  • prepareRun → workspace + task graph  │
-        │  • per-node v22 hash (assignment key)   │
-        │  • ready queue, in-flight per worker    │
-        │  • WS server                            │
-        └─────┬──────────────────────────┬───────┘
-              │                          │
-              ▼ task:assign              ▼ task:assign
-        ┌────────────┐             ┌────────────┐
-        │  worker N  │             │  worker M  │
-        │  pulls     │             │  pulls     │
-        │  spawns    │             │  spawns    │
-        │  reports   │             │  reports   │
-        └────────────┘             └────────────┘
+## Fork PRs: read-trusted, write-untrusted
+
+The artifact store is **trust-scoped** so a fork PR can warm off `main`
+without poisoning it. Start the serve with two tokens:
+
+```sh
+vx-cloud serve --token "$TRUSTED_TOKEN" --pr-token "$UNTRUSTED_TOKEN"
 ```
 
-1. Coordinator runs the same `prepareRun` pipeline `vx run` uses
-   locally — it builds the same graph, with the same v22 cache
-   hashes per node.
-2. Workers register via `worker:hello { workerId, capacity, labels }`.
-3. Coordinator dispatches via `task:assign { hash, node }` up to
-   each worker's capacity.
-4. Workers spawn `runCommand`, stream stdout/stderr back over
-   `worker:stdout` / `worker:stderr` messages.
-5. Workers report `worker:done { taskHash, outcome }` on completion.
-6. Downstream tasks become ready as their upstream finishes.
+A trusted token reads and writes the trusted scope. The PR token reads
+`untrusted ∪ trusted` but **writes only the untrusted scope** — the
+serve derives the scope from the token, never from a client claim. On a
+fork-PR job, present the PR token so the run reads the trusted cache but
+writes only untrusted:
 
-The wire format is JSON-RPC 2.0 — same envelope `vx serve` speaks.
-Full spec: `docs/design/wire-protocol-2026-06.md`.
+```yaml
+  run:
+    env:
+      VX_CLOUD_DISTRIBUTE: "6"
+      VX_REMOTE_CACHE_PR_TOKEN: ${{ secrets.VX_CLOUD_PR_TOKEN }}
+      # VX_CACHE_TRUST: untrusted   # force it; otherwise fork PRs auto-detect
+```
 
-## Disconnect recovery
+vx auto-detects a fork PR (GitHub/GitLab) and switches to the untrusted
+path on its own; `VX_CACHE_TRUST=untrusted` forces it. With **no** PR
+token, a detected fork PR degrades to **read-only** against the shared
+cache (remote writes off) — it still warms off `main`, it just can't
+write anywhere. Set `VX_REMOTE_CACHE_PR_TOKEN` on the agent jobs too so
+their scoped runs write to the untrusted scope as well. The full model
+is in `docs/design/cache-trust-scopes-2026-07.md`.
 
-If a worker disconnects mid-task, the coordinator detects the WS
-close, pulls every in-flight assignment off that worker, and
-puts the hashes back on the ready queue. The next attached worker
-picks them up.
+## When a run stays local
 
-## Performance characteristics
+Some runs can't be distributed. The submitter checks these up front and
+**falls back to a normal local run**, printing the reason
+(`vx: distribution disabled: <reason> — running locally`):
 
-| Workload | Local single-host | Distributed (4 workers) | Notes |
-| --- | --- | --- | --- |
-| Cold run, deep graph | 1× | 0.25–0.4× wall time | Bounded by graph's critical path |
-| Warm full-cache | ≤ 200 ms | similar | Cache-hit shortcircuits — coordinator dispatch overhead dominates |
-| Mixed cache state | 1× | 0.4–0.7× | Worker mix-and-match wins on long tasks |
+- **Forwarded args** (`vx run test -- --grep x`) — the requested-arg
+  fold can't be reproduced across agents in v1.
+- **A dirty worktree** — uncommitted changes can't exist on agents.
+- **A cache policy without the remote layer** (`--no-cache`, `--force`,
+  or any `--cache=…` that drops remote read or write) — the store is
+  the transport.
+- **A persistent task** anywhere in the graph — a dev server on a
+  remote agent is meaningless.
 
-These numbers will improve once workers probe the remote cache
-before executing (next iteration).
+Only an **unreachable serve** is a hard error; every other gate is a
+graceful, loud fallback.
 
-## Known limits today (Phase A-B)
+## Zero remote agents
 
-- **Workers don't probe the remote cache yet.** Every assigned task
-  spawns fresh. Set up `VX_REMOTE_CACHE_URL` for fastest results
-  via the local prefetch path.
-- **No capability labels filter.** Workers report labels; the
-  coordinator doesn't filter `task:assign` by them.
-- **No critical-path priority on the coordinator.** The ready
-  queue is FIFO. The local scheduler has predictive priorities
-  (`predictive: true`); the coordinator doesn't read them.
-- **Submitter logs aren't aggregated.** Worker stdout reaches the
-  coordinator but no submitter-side `vx run --coordinator` is wired
-  yet to fan it back to a user.
-- **No TLS.** Hardcoded `ws://`. For cross-host, terminate TLS at a
-  reverse proxy or use Tailscale/cloudflared.
+Because the submitter self-registers, the zero-agent deadlock can't
+occur — there's always at least one agent (the main job itself). If no
+**remote** agent joins the session within `agentTimeoutMs` (default
+5 min, `VX_CLOUD_AGENT_TIMEOUT_MS`), the scheduler prints a loud warning
+and the run completes on the submitter alone. A green build is never
+failed over missing accelerators.
 
-The protocol extension (`worker:*` + `task:assign` + `coord:drain`)
-lives in `src/orchestrator/protocol.ts`; the JSON-RPC 2.0 envelope
-adapters live in `src/orchestrator/wire.ts`. Both are stable; the
-gaps above are wiring follow-ups.
+## Known limits
 
-See also: `docs/design/distributed-ci-2026-06.md` (full design),
-`docs/progress/implementation-log-2026-06.md` (Step 4 narrative).
+Honest gaps in the current design (see
+`docs/design/distributed-execution-2026-07.md` for the full record):
+
+- **Standalone agents run live config eval and the full cache policy.**
+  The submitter's `--frozen` / `--cache` flags apply to its own
+  in-process work but are **not** propagated to remote agents (a
+  per-assignment policy is a small protocol addition, not yet built).
+  Keep configs env-pure and pin one image so live eval matches.
+- **Uncacheable intermediate tasks re-execute** inside each dependent's
+  closure on every agent that needs them — there's nothing to restore.
+  Make intermediates cacheable (declare their `cache.outputs`). Dep
+  affinity and each agent's warm local cache bound the waste.
+- **No cross-run queueing, fairness, or priorities.** A session holds
+  one active submission; the registry is a rendezvous, not a job queue.
+- **No agent autoscaling or managed fleets.** Your CI matrix (or k8s)
+  owns machine lifecycle; vx owns task placement only.
+- **No run-history row for a distributed run.** No single `run()`
+  executes the whole graph, so the dashboard records no invocation and
+  ingests no summary for a distributed run.
+- **Input shipping is a permanent non-goal.** Same-checkout is the
+  contract; dirty trees run locally.
+- **An agent that loses its WS exits** — it does not reconnect. The
+  matrix restarts it or it doesn't; the scheduler reassigns its
+  in-flight tasks to surviving agents.
+
+## See also
+
+- [Continuous integration](../ci/) — the single-machine CI setup,
+  `--affected`, and the lockfile workflow.
+- [Remote caching](../remote-caching/) — the `/v8/artifacts` store that
+  agents share.
+- [Self-host vx serve](../self-hosting/) — deploy the serve every job
+  attaches to.
+- [vx serve wire protocol](../wire-protocol/) — the JSON-RPC envelope
+  the relayed run stream rides.
+- `docs/design/distributed-execution-2026-07.md` — the full design and
+  the correctness proof.
