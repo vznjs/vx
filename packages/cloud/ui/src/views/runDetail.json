@@ -294,6 +294,18 @@
                 { "label": "Hash", "key": "hash", "kind": "shorthash16" }
               ]
             }
+          },
+          {
+            "type": "Text",
+            "props": { "text": "Logs", "size": "xs", "tone": "muted" }
+          },
+          {
+            "type": "TaskLogs",
+            "props": {
+              "runId": { "$state": "/params/id" },
+              "project": { "$state": "/selectedTask/project" },
+              "task": { "$state": "/selectedTask/task" }
+            }
           }
         ]
       },

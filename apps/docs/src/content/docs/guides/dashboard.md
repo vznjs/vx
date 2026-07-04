@@ -112,7 +112,13 @@ workspace opens on the **Cockpit**; an analytics-only serve opens on
 - **Run detail** (`/runs/:id`) — the staged DAG and a flamegraph
   timeline, a per-task table (CPU + peak RSS + hash), and a **"why did
   this re-run?"** card that names the exact cache-key components that
-  changed since the previous run.
+  changed since the previous run. Select a task (click a flamegraph
+  bar) to open its panel — including the task's **captured log tail**
+  (the last 128 KiB of merged stdout+stderr), so you can read a failed
+  task's output without leaving the browser. A task that was a cache
+  hit shows the output from the run that actually produced it (resolved
+  by hash); when the serve holds the task's artifact, a download link
+  appears too.
 - **Compare** (`/compare/:id`) — diff a run against its immediately
   previous invocation (per-task duration deltas, status/hash changes).
 - **Tasks** (`/tasks`, `/tasks/:id`) — per `(project, task)`
@@ -214,12 +220,34 @@ works. (Contributors can rebuild the embedded bundle from
 `packages/cloud/ui` — that's a source-checkout concern, not a usage
 step.)
 
+## Task logs: capture, storage, and privacy
+
+Per-task log tails are captured by the `cloud()` plugin (default on
+when connected) and shipped to the serve after each run's summary; a
+serve executing a **delegated** run captures them itself. Storage is
+bounded at every layer: the last 128 KiB per task, 4 MiB shipped per
+run (a failed task's tail is never evicted to keep a successful one),
+a 16 MiB request cap, and a per-workspace ceiling
+(`VX_CLOUD_LOG_MAX_BYTES`, default 512 MiB) plus age retention
+(`VX_CLOUD_LOG_RETENTION_DAYS`, default 30). Cache-hit tasks store
+nothing — they resolve by hash to the run that produced the bytes.
+
+**Privacy.** Log tails are program output and may echo secrets. This
+is the same trust boundary the remote cache already crosses (a
+cacheable success ships its full stdout to the same serve, under the
+same bearer + trust scoping). Turn capture off with
+`cloud({ logs: false })` or `VX_CLOUD_LOGS=0`.
+
 ## Known limits
 
 - **Analytics-only stores.** The serve reads run/task history from its
   ingest store, not a workspace `cache.db`, so the cache-entry
   inventory (heat, reclaimable bytes) is only populated where entry
   data is available.
+- **Distributed runs have no persisted history yet.** A distributed
+  (`VX_CLOUD_DISTRIBUTE`) run relays its output live but does not yet
+  ingest a run summary, so it does not appear under Runs and its logs
+  are not persisted (Phase 2 of the task-logs design).
 - **History resets on a schema bump.** The ingest store shares core's
   pre-alpha "drop and recreate on `SCHEMA_VERSION` change" policy;
   snapshot the ingest volume before upgrading `vx-cloud` to keep

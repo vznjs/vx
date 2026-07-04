@@ -547,6 +547,32 @@ export async function getRun(runId: string): Promise<RunDetail | null> {
   }
 }
 
+/** A task's persisted log tail. `source: 'cache'` resolves a hit to the run
+ *  that produced the bytes (`refRunId`); `artifactHash` present when the
+ *  serve holds a downloadable /v8 artifact for the requester's principal. */
+export interface TaskLogResponse {
+  runId: string
+  taskId: string
+  source: 'executed' | 'cache'
+  refRunId?: string
+  status: 'success' | 'failed'
+  content: string
+  charsFull: number
+  truncatedHeadChars: number
+  artifactHash?: string
+}
+
+export async function getTaskLog(runId: string, taskId: string): Promise<TaskLogResponse | null> {
+  try {
+    return await getJson<TaskLogResponse>(
+      `/v1/runs/${encodeURIComponent(runId)}/logs/${encodeURIComponent(taskId)}`,
+    )
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('404')) return null
+    throw err
+  }
+}
+
 export async function getCacheStats(): Promise<CacheStats> {
   return await getJson<CacheStats>('/v1/cache/stats')
 }

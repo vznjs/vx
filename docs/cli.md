@@ -975,6 +975,13 @@ vx-cloud serve
   `cache.db`, so it can be deployed anywhere (cache-entry inventory
   and the full input-fingerprint diff stay local — those live in the
   local `cache.db`).
+- **Task logs.** The `cloud()` plugin also ships per-task log tails
+  (`POST /v1/ingest/logs`) so the dashboard can show a task's output;
+  they land in a `logs.db` sidecar per workspace, bounded by
+  `VX_CLOUD_LOG_MAX_BYTES` (default 512 MiB) and
+  `VX_CLOUD_LOG_RETENTION_DAYS` (default 30). Read one back at
+  `GET /v1/runs/:runId/logs/:taskId`. Turn capture off client-side with
+  `cloud({ logs: false })` or `VX_CLOUD_LOGS=0`.
 - **Auth.** Binds `127.0.0.1` by default; a non-loopback bind
   (`--host 0.0.0.0` / `VX_CLOUD_HOST`) is refused without a token — an
   unauthenticated serve on a reachable interface would expose task

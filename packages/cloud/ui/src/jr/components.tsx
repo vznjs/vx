@@ -12,7 +12,15 @@
 import { For, Show, type JSX, createEffect, createMemo, createResource, createSignal, onCleanup, onMount } from 'solid-js'
 import { type BaseComponentProps, useStateBinding } from '@json-render/solid'
 import { A, useNavigate } from '@solidjs/router'
-import { type RunSummaryRow, getGraph, subscribeEvents } from '../api.ts'
+import {
+  type RunSummaryRow,
+  type TaskLogResponse,
+  getGraph,
+  getOrigin,
+  getTaskLog,
+  getToken,
+  subscribeEvents,
+} from '../api.ts'
 import { HBar, Heatmap as HeatmapPrimitive, LineChart as LineChartPrimitive, Treemap as TreemapPrimitive } from '../components/charts.tsx'
 import { Card as UiCard, EmptyState, LoadError, MetricCard, SegmentedToggle, SkeletonRows, StatusBadge } from '../components/ui.tsx'
 import { Flamegraph as FlamegraphPrimitive, flameEdgesOf } from '../components/Flamegraph.tsx'
@@ -695,6 +703,89 @@ export function LiveActivity(c: C<{ max?: number }>) {
           )}
         </For>
       </div>
+    </Show>
+  )
+}
+
+const ANSI = /\x1b\[[0-9;]*[A-Za-z]/g
+
+/**
+ * The persisted terminal output for the selected task. Self-contained (its own
+ * createResource keyed on runId + project#task) because a json-render data
+ * source loads once per page and can't refetch when `/selectedTask` changes.
+ * 404 → an honest "no logs captured" (a pre-feature run, a cache-hit whose
+ * producing run aged out, or a skipped task).
+ */
+export function TaskLogs(c: C<{ runId?: string; project?: string; task?: string }>) {
+  const taskId = () =>
+    c.props.project && c.props.task ? `${c.props.project}#${c.props.task}` : undefined
+  const [log] = createResource(
+    () => {
+      const id = taskId()
+      return c.props.runId && id ? ([c.props.runId, id] as const) : undefined
+    },
+    ([runId, id]) => getTaskLog(runId, id),
+  )
+
+  const downloadArtifact = async (hash: string): Promise<void> => {
+    const headers: Record<string, string> = {}
+    const t = getToken()
+    if (t !== '') headers['Authorization'] = `Bearer ${t}`
+    const res = await fetch(`${getOrigin()}/v8/artifacts/${encodeURIComponent(hash)}`, { headers })
+    if (!res.ok) return
+    const url = URL.createObjectURL(await res.blob())
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${hash}.tar.zst`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  return (
+    <Show
+      when={!log.loading}
+      fallback={<div class="text-fg-3 text-xs py-4">Loading logs…</div>}
+    >
+      <Show
+        when={log() as TaskLogResponse | null}
+        fallback={<div class="text-fg-3 text-xs py-4">No logs captured for this task.</div>}
+      >
+        {(data) => (
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center gap-2 text-[10px] text-fg-3 font-mono">
+              <span class={data().status === 'failed' ? STATUS.failed.dot : STATUS.success.dot}>
+                {data().status}
+              </span>
+              <Show when={data().source === 'cache'}>
+                <span>
+                  · output captured on run{' '}
+                  <A href={`/runs/${data().refRunId}`} class="text-accent no-underline hover:underline">
+                    {(data().refRunId ?? '').slice(0, 8)}
+                  </A>{' '}
+                  (this task was a cache hit)
+                </span>
+              </Show>
+              <Show when={data().artifactHash}>
+                <button
+                  type="button"
+                  class="ml-auto text-accent hover:underline bg-transparent border-0 cursor-pointer p-0 font-mono text-[10px]"
+                  onClick={() => void downloadArtifact(data().artifactHash!)}
+                >
+                  ↓ download artifact
+                </button>
+              </Show>
+            </div>
+            <Show when={data().truncatedHeadChars > 0}>
+              <div class="text-[10px] text-warn font-mono">
+                … earlier output truncated ({Math.round(data().truncatedHeadChars / 1024)} KiB dropped)
+              </div>
+            </Show>
+            <pre class="bg-bg-1 border border-border-1 rounded-md p-3 text-[11px] font-mono overflow-auto max-h-[420px] whitespace-pre-wrap m-0">
+              {data().content.replace(ANSI, '') || '— no output —'}
+            </pre>
+          </div>
+        )}
+      </Show>
     </Show>
   )
 }
