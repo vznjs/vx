@@ -92,6 +92,12 @@ jobs:
       # Publishing (OIDC) supplies auth + provenance — no token needed.
       - name: Publish
         if: ${{ github.event.inputs.dry_run != 'true' }}
+        # Dual auth: if an NPM_TOKEN secret exists it's used (one token covers
+        # the whole @vzn scope); otherwise it's empty and npm falls back to the
+        # OIDC Trusted Publishing exchange. Either "npm connected to gh" setup
+        # works — no config change needed here.
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -e
           for pkg in \
