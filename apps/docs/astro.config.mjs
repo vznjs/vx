@@ -66,6 +66,7 @@ export default defineConfig({
         {
           label: 'Platform & extensions',
           items: [
+            { label: 'Core is provider-neutral', link: '/guides/extensibility/' },
             { label: 'vx mcp — AI agents', link: '/guides/mcp/' },
             { label: 'Distributed CI execution', link: '/guides/distributed-ci/' },
             { label: 'Writing a vx plugin', link: '/guides/plugins/' },

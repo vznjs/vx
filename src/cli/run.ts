@@ -401,7 +401,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   }
 
   // Resolve where this run executes. A plugin's `backend` capability wins
-  // first (e.g. @vzn/vx-cloud routes to a local-or-hosted service);
+  // first (e.g. a backend plugin routes to a local-or-hosted service);
   // otherwise core's default is pure in-process. Core names no service —
   // delegation is entirely a plugin concern.
   const request = optionsToRequest(opts)

@@ -3,7 +3,7 @@
 // backend and calls `run(request)`; it neither knows nor cares whether the
 // work happened in-process or was delegated to a service. The DEFAULT is
 // pure in-process; routing to a service (local or hosted) is a `backend`
-// plugin capability contributed by `@vzn/vx-cloud`, never core.
+// plugin capability, never core.
 
 import {
   run as runOrchestrator,

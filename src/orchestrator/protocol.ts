@@ -54,8 +54,8 @@ export interface RunBackend {
 /**
  * service → client. The submitter contract: an event stream, a final
  * result, or an error. The distributed-execution variants
- * (`task:assign`/`agent:refused`/`coord:drain`) live in `@vzn/vx-cloud`'s
- * `protocol-dist.ts` — cloud's WS handler unions this with those.
+ * (`task:assign`/`agent:refused`/`coord:drain`) live in a distribution
+ * plugin's protocol module — its WS handler unions this with those.
  */
 export type ServerMessage =
   | { t: 'event'; event: WireEvent }
@@ -64,8 +64,8 @@ export type ServerMessage =
 
 /**
  * client → service. The submitter contract: a run submission. The
- * agent-side `agent:*` family lives in `@vzn/vx-cloud`'s
- * `protocol-dist.ts`.
+ * agent-side `agent:*` family lives in a distribution plugin's protocol
+ * module.
  */
 export type ClientMessage = { t: 'run'; request: RunRequest }
 

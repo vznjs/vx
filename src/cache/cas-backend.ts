@@ -2,8 +2,8 @@
 //
 // Today's Cache + LayeredCache + RemoteCache all bundle "where do the
 // bytes live" with "how do we look up entries metadata + key derivation."
-// CASBackend separates the former so a future R2 backend (vx Cloud),
-// S3 backend, or REAPI CAS bridge can drop in without touching the
+// CASBackend separates the former so a future R2/S3 backend
+// or REAPI CAS bridge can drop in without touching the
 // orchestrator or the SQL entries index.
 //
 // Two reference implementations in this file:

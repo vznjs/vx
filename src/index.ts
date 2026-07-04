@@ -1,7 +1,7 @@
 // Public API for @vzn/vx.
 //
-// This is the stable cross-package contract — `@vzn/vx-cloud` (and any
-// third-party plugin) imports everything it needs from here via the bare
+// This is the stable cross-package contract — any plugin or integration
+// package imports everything it needs from here via the bare
 // `'@vzn/vx'` specifier (never a deep `src/...` path). The surface is pinned
 // by tests/package-boundaries.test.ts; a widening updates that snapshot
 // deliberately. See docs/design/core-cloud-split-2026-06.md §3.5.
@@ -71,7 +71,7 @@ export {
 } from './cache/index.js'
 export type { CacheLayer, RunRecord, InvocationRecord } from './cache/index.js'
 
-// Workspace discovery — cloud's CLI + coordinator need these.
+// Workspace discovery — an out-of-process service/CLI needs these.
 export { findWorkspaceRoot, loadWorkspaceConfig, resolveCacheDir } from './workspace/index.js'
 
 // Plugin API — the run-level extension points. Behavior capabilities
@@ -89,7 +89,7 @@ export type {
 } from './orchestrator/index.js'
 
 // Telemetry — THE canonical, versioned data-export contract every exporter
-// (vx-otel, vx-cloud, or a third-party sink) reads. A sink implements TelemetrySink and is
+// (an OTel exporter, an HTTP sink, or any third-party consumer) reads. A sink implements TelemetrySink and is
 // returned from VxPlugin.telemetry(); it receives immutable records and holds
 // no run handle (observe-only by construction).
 export { TELEMETRY_SCHEMA_VERSION, deriveCacheSource } from './orchestrator/index.js'
@@ -136,7 +136,7 @@ export type {
   OutcomeView,
 } from './orchestrator/index.js'
 
-// The JSON-RPC 2.0 wire envelope — cloud's serve speaks this framing.
+// The JSON-RPC 2.0 wire envelope — an out-of-process serve/agent speaks this framing.
 export {
   clientMessageToEnvelope,
   decodeEnvelope,
@@ -166,8 +166,8 @@ export type {
   WireChannel,
 } from './orchestrator/index.js'
 
-// Metrics / analytics query layer over cache.db — cloud's /v1/* surface
-// reads from these (the queries stay in core; cloud serves them over HTTP).
+// Metrics / analytics query layer over cache.db — a service plugin's HTTP
+// surface reads from these (the queries stay in core; a serve exposes them over HTTP).
 export {
   cacheKeyDiff,
   compareRuns,

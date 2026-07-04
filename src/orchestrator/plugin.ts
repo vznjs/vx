@@ -68,7 +68,7 @@ export interface VxPlugin {
    * cannot change what or how tasks run. ALL plugins' sinks are active at
    * once (additive); a throwing/slow sink is isolated and can never fail or
    * stall a run. This is THE export contract OTel, the manual HTTP API, and
-   * vx-cloud all speak. See docs/design/observability-architecture-2026-06.md.
+   * any third-party exporter all speak. See docs/design/observability-architecture-2026-06.md.
    */
   telemetry?(
     ctx: TelemetryContext,

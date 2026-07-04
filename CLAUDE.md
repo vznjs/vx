@@ -187,6 +187,39 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-04**: **Core is provider-neutral — every vx-cloud NAME scrubbed
+  from core `src/`; docs get a "Core is provider-neutral" section** (owner:
+  "Vx cloud should not be bound in anyway to vx… vx core should not have any vs
+  cloud refs. Or needs. It should work fully through a plugin and anyone could
+  create a new. Make it also as another section in docs"). Core already had NO
+  functional vx-cloud dependency (it never imports `@vzn/vx-cloud`, never reads
+  a `VX_CLOUD_*` var — only the provider-neutral Turbo-wire `VX_REMOTE_CACHE_*`
+  escape hatch; pinned by `tests/package-boundaries.test.ts`). What remained
+  was NAMING. Removed it wholesale: **(1) functional CLI** — the `vx serve`/`dev`
+  redirect no longer names `@vzn/vx-cloud` or lists the RETIRED
+  `coordinator`/`worker` verbs; it prints a neutral "these come from a PLUGIN,
+  not core" hint pointing at the plugin guide (core names NO specific package).
+  `help.ts`'s "Execution service + dashboard" section became "Extensions
+  (plugins)". `tests/cli.test.ts` inverted: asserts the hint mentions "plugin"
+  and does NOT contain "vx-cloud". **(2) comments** — a 13-file comment-only
+  scrub neutralized every `@vzn/vx-cloud`/`vx-cloud`/`vx Cloud`/"cloud's X"
+  mention in `src/` prose (→ "a plugin", "an out-of-process service", "a
+  third-party sink", "a distribution plugin"), keeping generic concept words
+  (serve/coordinator/agent/dashboard/remote cache) and the design-doc filename
+  citations. Zero code/logic/signature changes; oxfmt clean. **(3) gate fix**
+  found along the way — `packages/cloud/src/plugin.ts` had a DEAD `cacheUrlOf`
+  referencing the removed `opts.cacheUrl` (leftover from the one-connection
+  collapse), a type error keeping `lint`/`ci` RED; deleted (no callers).
+  **(4) docs** — new hand-authored `apps/docs/src/content/docs/guides/
+extensibility.md` ("Core is provider-neutral") LEADS the "Platform &
+  extensions" sidebar section: core is only a task runner (offline, no
+  service), the three plugin seams (backend/cache/telemetry) with a mermaid
+  diagram, `@vzn/vx-cloud` framed as "just a plugin" + a runnable `acmeCache()`
+  bring-your-own example, and "the boundary is enforced" (core depends on
+  nobody; the arrow only points plugin→core). Full gate green (core 1048
+  pass, cloud 170 pass, lint+oxfmt clean); docs site builds 144 pages, 0
+  broken links. No CACHE_VERSION/SCHEMA/behavior change — naming + docs only.
+
 - **2026-07-04**: **Cloud simplified to ONE connection; trust follows the
   token** (owner: "Distributed ci setup and work is too complex. Hosting cloud
   should not be required. And if so it should be easier. We have too many env

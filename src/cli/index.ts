@@ -49,13 +49,16 @@ export async function run(argv: readonly string[]): Promise<number> {
       return await mcpCmd(rest)
     case 'serve':
     case 'dev':
-    case 'coordinator':
-    case 'worker':
+      // vx core is only a task runner — it has no service layer of its own.
+      // A dashboard, remote cache, distributed execution, etc. are provided
+      // by PLUGINS (declared in vx.workspace.ts), never by core. We keep this
+      // neutral hint for the common muscle-memory verbs, but core names no
+      // specific plugin package: any package can provide these.
       process.stderr.write(
-        `vx: '${command}' moved to the @vzn/vx-cloud package — core vx has no service CLI.\n` +
-          `  run:      vx-cloud ${command}${command === 'serve' ? ' --ui' : ''}\n` +
-          `  install:  bun add -D @vzn/vx-cloud   (then 'vx-cloud' is on PATH)\n` +
-          `  in-repo:  bun packages/cloud/src/cli/bin.ts ${command}\n`,
+        `vx: '${command}' is not a vx core command.\n` +
+          `  vx core runs tasks in-process. A dashboard, remote cache, and\n` +
+          `  distributed execution come from plugins — not core. See the plugin\n` +
+          `  guide: https://vznjs.github.io/vx/guides/plugins/\n`,
       )
       return 1
     default:

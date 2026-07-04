@@ -4,7 +4,7 @@
 // (docs/design/observability-architecture-2026-06.md) is built around.
 // Core projects its live `RunEvent` stream into these records ONCE, in
 // one place (`createTelemetrySource`), and hands them to every registered
-// `TelemetrySink`. Exporters (OTel, a manual HTTP POST, vx-cloud) all read
+// `TelemetrySink`. Exporters (OTel, a manual HTTP POST, any third-party sink) all read
 // the SAME records — with the analytics fields + git/CI context already
 // folded in — instead of each re-deriving an ad-hoc shape from the raw,
 // rendering-oriented `WireEvent` stream.
@@ -133,7 +133,7 @@ export type TelemetryRecord =
  * A per-run SUMMARY record — the denormalized invocation header plus the
  * per-task outcome list, emitted once at run:end. An ingesting store can
  * persist a whole run in one write without replaying the stream. The
- * manual-API exporter + cloud ingest primarily speak this shape.
+ * manual-API exporter + a service's ingest endpoint primarily speak this shape.
  */
 export interface RunSummaryRecord {
   v: number

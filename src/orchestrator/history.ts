@@ -8,8 +8,8 @@
 //
 // Two providers:
 //   LocalHistoryProvider  — reads cache.db directly (zero-config).
-//   CloudHistoryProvider  — would call a vx-cloud RPC; deferred to
-//                            when the cloud RPC actually exists.
+//   RemoteHistoryProvider — would call a service RPC; deferred to
+//                            when such an RPC actually exists.
 
 import type { Database } from 'bun:sqlite'
 

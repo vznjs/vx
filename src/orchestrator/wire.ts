@@ -133,7 +133,7 @@ export function isNotification(env: Envelope): env is Notification {
  * Project a ServerMessage to an envelope. Events become `events.append`
  * notifications; results become `submit.run` responses; errors become
  * error responses. The distributed coordinator messages map to the
- * `coord.*` namespace in `@vzn/vx-cloud`'s own adapters.
+ * `coord.*` namespace in a distribution plugin's own adapters.
  */
 export function serverMessageToEnvelope(msg: ServerMessage, id?: number | string): Envelope {
   switch (msg.t) {

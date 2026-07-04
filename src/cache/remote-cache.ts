@@ -29,10 +29,10 @@ export interface RemoteCacheConfig {
    */
   signatureKey?: string
   /**
-   * Untrusted per-PR partition id, sent as `x-vx-cache-scope`. On a vx-cloud
-   * serve this sub-partitions the untrusted tier so one fork PR can't read or
-   * poison another's cache. Ignored by trusted writes and by third-party
-   * Turbo servers.
+   * Untrusted per-PR partition id, sent as `x-vx-cache-scope`. A compatible
+   * remote-cache server MAY partition untrusted writes by this id so one fork
+   * PR can't read or poison another's cache. Ignored by trusted writes and by
+   * third-party Turbo servers.
    */
   cacheScope?: string
 }
@@ -211,8 +211,8 @@ export class RemoteCache {
         signal: AbortSignal.timeout(timeoutMs),
         headers: {
           Authorization: `Bearer ${this.config.token}`,
-          // The untrusted per-PR partition (a vx-cloud serve extension; a
-          // third-party Turbo server ignores it). Isolates one fork PR's
+          // The untrusted per-PR partition (an optional server-side extension;
+          // a third-party Turbo server ignores it). Isolates one fork PR's
           // writes/reads from another's within the untrusted tier.
           ...(this.config.cacheScope !== undefined
             ? { 'x-vx-cache-scope': this.config.cacheScope }

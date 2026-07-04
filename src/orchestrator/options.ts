@@ -116,7 +116,7 @@ export interface RunOptions {
   /**
    * Additional observe-only telemetry sinks, merged with whatever the
    * workspace plugins contribute. The embedder seam: a host executing
-   * runs on behalf of others (vx-cloud serve recording delegated runs
+   * runs on behalf of others (a serve recording delegated runs
    * into its ingest store) attaches a sink without needing a workspace
    * plugin. Undefined → zero cost, identical to before; the telemetry
    * host's zero-sink invariant still applies when both sources are

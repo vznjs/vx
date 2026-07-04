@@ -263,10 +263,6 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
   }
 }
 
-function cacheUrlOf(opts: CloudPluginOptions): string | undefined {
-  return opts.cacheUrl ?? process.env['VX_REMOTE_CACHE_URL']
-}
-
 function distributeOf(opts: CloudPluginOptions): number | undefined {
   if (opts.distribute !== undefined) {
     return Number.isInteger(opts.distribute) && opts.distribute > 0 ? opts.distribute : undefined

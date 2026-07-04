@@ -12,9 +12,8 @@ import { resolveCacheScope } from './run-context.js'
 /**
  * Wrap the local cache in a `LayeredCache` when a remote cache is configured
  * via `VX_REMOTE_CACHE_URL` + a token. This is the escape hatch for a
- * THIRD-PARTY, Turbo-compatible cache server. When you connect a vx-cloud
- * (`vx-cloud connect` / `VX_CLOUD_URL`), the `cloud()` plugin provides the
- * remote cache INTERNALLY from that one connection, and this env path isn't
+ * THIRD-PARTY, Turbo-compatible cache server. A `cache` plugin can provide a
+ * remote cache INTERNALLY instead, in which case this env path isn't
  * needed.
  *
  * **Trust tier follows the token you present** — the server derives
