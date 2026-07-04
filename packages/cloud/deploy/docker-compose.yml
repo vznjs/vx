@@ -1,7 +1,9 @@
 # vx-cloud — the whole service in one container.
 #
-#   docker build -f packages/cloud/Dockerfile -t vx-cloud .   # from the repo root
+#   # Uses the prebuilt image ghcr.io/vznjs/vx-cloud:latest (published by CI):
 #   VX_CLOUD_TOKEN=$(openssl rand -hex 32) docker compose -f packages/cloud/deploy/docker-compose.yml up
+#
+#   # Or build from source: `docker compose build` picks up the build: block below.
 #
 # One process serves the dashboard, the /v1/* analytics API, the /v8/artifacts
 # remote cache, and the /mcp endpoint. It reads only its own SQLite ingest
@@ -14,7 +16,7 @@
 
 services:
   vx-cloud:
-    image: vx-cloud:latest
+    image: ghcr.io/vznjs/vx-cloud:latest
     # Or build in place: `docker compose build` picks this up.
     build:
       context: ../../..

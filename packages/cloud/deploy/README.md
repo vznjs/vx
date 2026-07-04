@@ -16,9 +16,18 @@ one-container `Deployment` + `Service` + a `PersistentVolumeClaim` on `/data`
 
 ## The image
 
-Build context is the **repo root** — core (`src/`) and `packages/cloud` (which
-carries its own embedded dashboard at `packages/cloud/ui`) share one workspace
-and one lockfile:
+CI publishes a prebuilt image to the GitHub Container Registry on every push
+to `main` and every release — the fastest path is to pull it, no clone or
+build required:
+
+```sh
+docker pull ghcr.io/vznjs/vx-cloud:latest
+```
+
+Tags: `latest` (tip of `main`), `X.Y.Z` / `X.Y` (releases), `sha-<short>` (an
+exact commit). To build it yourself, the build context is the **repo root** —
+core (`src/`) and `packages/cloud` (which carries its own embedded dashboard at
+`packages/cloud/ui`) share one workspace and one lockfile:
 
 ```sh
 docker build -f packages/cloud/Dockerfile -t vx-cloud .

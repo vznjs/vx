@@ -187,6 +187,28 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-04**: **CI publishes the `vx-cloud` Docker image to GHCR** (owner:
+  "Build docker image into GitHub registry on ci"). New
+  `.github/workflows/docker.yml` builds `packages/cloud/Dockerfile` (build
+  context = repo root) and pushes to `ghcr.io/<owner>/vx-cloud` via
+  `docker/build-push-action` + `metadata-action`. Triggers: push to `main`
+  (paths-filtered to `src/**`/`packages/cloud/**`/`scripts/**`/manifests) →
+  `latest` + `main` + `sha-<short>`; `release: published` → `X.Y.Z` + `X.Y`;
+  `pull_request` → BUILD-ONLY (validates the Dockerfile, no push — a fork lacks
+  `packages: write` anyway, and the login/push steps are gated on
+  `event_name != 'pull_request'`); `workflow_dispatch`. `permissions:
+{contents: read, packages: write}`; login uses the built-in `GITHUB_TOKEN`.
+  `linux/amd64` single-arch (fast + reliable; the `bun build --compile` step
+  is native-arch — multi-arch would need QEMU/OOM risk); GHA layer cache
+  (`type=gha,mode=max`); `concurrency` cancels superseded same-ref runs.
+  **Deploy docs updated to lead with the pull**: `self-hosting.md`,
+  `deploy/README.md`, and `deploy/docker-compose.yml` now reference
+  `ghcr.io/vznjs/vx-cloud:latest` (build-from-source kept as the secondary
+  option), matching the owner's "devs won't clone — give them a command to
+  run" directive. Also dropped a stale "+ Helm topologies" mention (Helm was
+  removed for docker-compose earlier). Docker build NOT exercised here (no
+  daemon in this env); the first CI run validates the image end-to-end.
+
 - **2026-07-04**: **Core is provider-neutral — every vx-cloud NAME scrubbed
   from core `src/`; docs get a "Core is provider-neutral" section** (owner:
   "Vx cloud should not be bound in anyway to vx… vx core should not have any vs

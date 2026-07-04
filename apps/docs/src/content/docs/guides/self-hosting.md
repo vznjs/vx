@@ -93,8 +93,17 @@ review](/vx/design/security-review-2026-07/).
 
 ## Run it in Docker
 
-Build the real image with the repo root as the build context (core and
-cloud share one workspace and one lockfile):
+Every push to `main` and every release publishes a prebuilt image to the
+GitHub Container Registry — you don't need to clone or build anything:
+
+```sh
+docker pull ghcr.io/vznjs/vx-cloud:latest
+```
+
+Tags: `latest` (tip of `main`), `X.Y.Z` / `X.Y` (releases), and
+`sha-<short>` (an exact commit). To build it yourself instead, use the
+repo root as the build context (core and cloud share one workspace and one
+lockfile):
 
 ```sh
 docker build -f packages/cloud/Dockerfile -t vx-cloud .
@@ -115,7 +124,7 @@ docker run --rm \
   -v vxdata:/data \
   -e VX_CLOUD_HOST=0.0.0.0 \
   -e VX_CLOUD_TOKEN=your-secret-token \
-  vx-cloud
+  ghcr.io/vznjs/vx-cloud:latest
 # API + dashboard at http://localhost:4321
 ```
 
@@ -134,13 +143,13 @@ loopback.)
 ### docker-compose
 
 See [`packages/cloud/deploy/README.md`](https://github.com/vznjs/vx/blob/main/packages/cloud/deploy/README.md)
-for the full deploy guide (compose + Helm topologies). A minimal compose
-service mirrors the `docker run` above:
+for the full deploy guide. A minimal compose service mirrors the
+`docker run` above:
 
 ```yaml
 services:
   vx-cloud:
-    image: vx-cloud:latest
+    image: ghcr.io/vznjs/vx-cloud:latest
     ports:
       - "4321:4321"
     environment:
