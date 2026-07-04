@@ -14,7 +14,8 @@ when the run ends.
 dev: {
   exec: {
     command: 'vite',
-    persistent: { readyWhen: 'Local:', readyTimeoutMs: 30_000 },
+    persistent: { readyWhen: 'Local:' },
+    timeout: 30_000,
   },
 }
 ```
@@ -29,9 +30,11 @@ vx run dev
   output matches that regex (here, Vite's `Local:` banner). The match
   also sees trailing partial lines, so a no-newline prompt like
   `Listening on :3000` works.
-- **`readyTimeoutMs`** bounds the wait. If readiness never matches in
-  time, vx kills the process and fails the task instead of hanging
-  forever. (It requires `readyWhen`.)
+- **`exec.timeout`** (a sibling of `persistent`, in milliseconds) bounds
+  the readiness wait. If `readyWhen` never matches in time, vx kills the
+  process and fails the task instead of hanging forever. A task that's
+  ready on spawn (no `readyWhen`) becomes ready before the timer fires,
+  so `timeout` is a harmless no-op there.
 - With **no `readyWhen`** (`persistent: {}`), the task is ready as soon
   as it spawns — fine for daemons with no observable ready signal that
   nothing needs to gate on.
@@ -44,7 +47,7 @@ is actually up. Classic case: end-to-end tests against a dev server.
 ```ts
 tasks: {
   dev: {
-    exec: { command: 'vite', persistent: { readyWhen: 'Local:', readyTimeoutMs: 30_000 } },
+    exec: { command: 'vite', persistent: { readyWhen: 'Local:' }, timeout: 30_000 },
   },
   e2e: {
     dependsOn: ['dev'],
