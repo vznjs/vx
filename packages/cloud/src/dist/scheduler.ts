@@ -90,6 +90,11 @@ export class DistScheduler implements ActiveSubmission {
     }
   }
 
+  /** Tasks ready but waiting for a free agent slot (the autoscaling signal). */
+  readyDepth(): number {
+    return this.ready.length
+  }
+
   /** Wire the registry binding (must happen before start()). */
   attach(binding: SubmissionBinding): void {
     this.binding = binding

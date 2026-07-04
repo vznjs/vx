@@ -3,7 +3,12 @@
 // reuse, agent-death notification, and the 15-min GC sweep.
 
 import { describe, expect, it } from 'bun:test'
-import { AgentRegistry, SESSION_GC_MS, SUBMITTER_LABEL } from '../src/dist/registry.js'
+import {
+  AGENT_STALE_MS,
+  AgentRegistry,
+  SESSION_GC_MS,
+  SUBMITTER_LABEL,
+} from '../src/dist/registry.js'
 import type { ActiveSubmission, RegisteredAgent } from '../src/dist/registry.js'
 import {
   DIST_PROTOCOL_VERSION,
@@ -221,6 +226,7 @@ describe('AgentRegistry — availableCapacity (the ambient capacity gate)', () =
       remoteAgents: 2,
       capacity: 14,
       remoteCapacity: 6,
+      ready: 0,
     })
   })
 
@@ -237,6 +243,52 @@ describe('AgentRegistry — availableCapacity (the ambient capacity gate)', () =
       remoteAgents: 0,
       capacity: 0,
       remoteCapacity: 0,
+      ready: 0,
     })
+  })
+
+  it('surfaces the active submission ready-queue depth (the autoscaling signal)', () => {
+    const reg = new AgentRegistry()
+    reg.hello(hello({ agentId: 'a1' }), io())
+    // A stub submission reporting 5 ready-but-unassigned tasks.
+    reg.beginSubmission('ws1', 'local', { ...submission(), readyDepth: () => 5 })
+    expect(reg.availableCapacity('ws1', 'local').ready).toBe(5)
+  })
+})
+
+describe('AgentRegistry — stale-agent sweep (heartbeat liveness)', () => {
+  it('reaps an agent silent past the threshold, closing it + reassigning its in-flight', () => {
+    let now = 1_000_000
+    const reg = new AgentRegistry(() => now)
+    const sub = submission()
+    reg.beginSubmission('ws1', 'local', sub)
+    const socket = io()
+    const agent = reg.hello(hello({ agentId: 'dead' }), socket) as RegisteredAgent
+    agent.inFlight.add('pkg#build')
+
+    // Just under the threshold — kept.
+    now += AGENT_STALE_MS - 1
+    expect(reg.sweepStale(AGENT_STALE_MS)).toBe(0)
+    expect(reg.availableCapacity('ws1', 'local').agents).toBe(1)
+
+    // Past the threshold — reaped: dropped, socket closed, in-flight handed back.
+    now += 2
+    expect(reg.sweepStale(AGENT_STALE_MS)).toBe(1)
+    expect(reg.availableCapacity('ws1', 'local').agents).toBe(0)
+    expect(socket.closed.length).toBe(1)
+    expect(sub.left).toEqual([{ id: 'dead', inFlight: ['pkg#build'] }])
+  })
+
+  it('a heartbeat (any message) keeps an agent alive across the threshold', () => {
+    let now = 1_000_000
+    const reg = new AgentRegistry(() => now)
+    reg.beginSubmission('ws1', 'local', submission())
+    const agent = reg.hello(hello({ agentId: 'live' }), io()) as RegisteredAgent
+
+    now += AGENT_STALE_MS - 1
+    reg.dispatch(agent, { t: 'agent:heartbeat' }) // touches lastSeenAt = now
+    now += AGENT_STALE_MS - 1 // still within one interval of the heartbeat
+    expect(reg.sweepStale(AGENT_STALE_MS)).toBe(0)
+    expect(reg.availableCapacity('ws1', 'local').agents).toBe(1)
   })
 })

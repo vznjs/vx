@@ -65,7 +65,13 @@ import {
   type Principal,
 } from '../artifact-store.js'
 import { IngestStore } from '../ingest-store.js'
-import { AgentRegistry, SESSION_GC_INTERVAL_MS, type RegisteredAgent } from '../dist/registry.js'
+import {
+  AgentRegistry,
+  AGENT_STALE_MS,
+  AGENT_SWEEP_INTERVAL_MS,
+  SESSION_GC_INTERVAL_MS,
+  type RegisteredAgent,
+} from '../dist/registry.js'
 import { DistScheduler } from '../dist/scheduler.js'
 import {
   DIST_PROTOCOL_VERSION,
@@ -382,6 +388,13 @@ export async function startServe(opts: {
   const registry = new AgentRegistry()
   const registryGcTimer = setInterval(() => registry.gc(), SESSION_GC_INTERVAL_MS)
   registryGcTimer.unref?.()
+  // Liveness sweep: reap agents that stopped heartbeating (a crashed box / a
+  // half-open socket), reassigning their in-flight tasks within seconds.
+  const agentSweepTimer = setInterval(
+    () => registry.sweepStale(AGENT_STALE_MS),
+    AGENT_SWEEP_INTERVAL_MS,
+  )
+  agentSweepTimer.unref?.()
 
   // Delegated runs land in the serve's OWN history — before this sink they
   // never did (the plugin's pid-guard rightly declines the HTTP self-push,
@@ -1036,6 +1049,7 @@ export async function startServe(opts: {
     ...(opts.socketPath !== undefined ? { socketPath: opts.socketPath } : {}),
     stop: async () => {
       clearInterval(registryGcTimer)
+      clearInterval(agentSweepTimer)
       await server.stop(true)
       await socketServer?.stop(true)
       try {

@@ -29,6 +29,18 @@ export const SESSION_GC_MS = 15 * 60 * 1000
 /** How often the serve runs the GC sweep. */
 export const SESSION_GC_INTERVAL_MS = 60 * 1000
 
+/**
+ * An agent that hasn't been heard from in this long (≈3 missed heartbeats at
+ * AGENT_HEARTBEAT_MS = 10 s) is presumed dead and reaped, reassigning its
+ * in-flight tasks. This is what turns a half-open TCP socket (crashed box,
+ * network partition — which never fires WS `close`) into a seconds-scale
+ * detection instead of an OS-keep-alive-timeout stall.
+ */
+export const AGENT_STALE_MS = 30 * 1000
+
+/** How often the serve sweeps for stale agents. */
+export const AGENT_SWEEP_INTERVAL_MS = 15 * 1000
+
 export interface RegisteredAgent {
   readonly agentId: string
   readonly workspaceId: string
@@ -38,6 +50,9 @@ export interface RegisteredAgent {
   readonly labels: readonly string[]
   /** Task ids currently assigned to this agent. */
   readonly inFlight: Set<string>
+  /** Epoch ms of the last message from this agent (hello / heartbeat / task
+   *  event). The stale-agent sweep reaps agents whose value falls behind. */
+  lastSeenAt: number
   send(msg: DistServerMessage): void
   close(): void
 }
@@ -52,6 +67,9 @@ export interface ActiveSubmission {
   onAgentJoin(agent: RegisteredAgent): void
   onAgentLeave(agent: RegisteredAgent, inFlight: readonly string[]): void
   onAgentMessage(agent: RegisteredAgent, msg: unknown): void
+  /** Tasks ready to run but waiting for a free agent slot — the autoscaling
+   *  pressure signal surfaced on `/v1/agents`. Optional (defaults to 0). */
+  readyDepth?(): number
 }
 
 interface SessionState {
@@ -117,6 +135,7 @@ export class AgentRegistry {
       capacity: msg.capacity,
       labels: msg.labels ?? [],
       inFlight: new Set(),
+      lastSeenAt: this.now(),
       send: io.send,
       close: io.close,
     }
@@ -135,11 +154,17 @@ export class AgentRegistry {
     state.active?.onAgentLeave(agent, [...agent.inFlight])
   }
 
-  /** Route a post-hello agent message to the session's live submission. */
+  /**
+   * Route a post-hello agent message to the session's live submission. ANY
+   * message (a task event or a bare `agent:heartbeat`) counts as liveness, so
+   * the stale sweep never reaps a busy-but-quiet agent.
+   */
   dispatch(agent: RegisteredAgent, msg: unknown): void {
     const state = this.sessions.get(sessionKey(agent.workspaceId, agent.session))
     if (state === undefined) return
-    state.lastActivityAt = this.now()
+    const now = this.now()
+    agent.lastSeenAt = now
+    state.lastActivityAt = now
     state.active?.onAgentMessage(agent, msg)
   }
 
@@ -179,6 +204,29 @@ export class AgentRegistry {
     }
   }
 
+  /**
+   * Reap agents that have gone silent past `maxIdleMs` (a crashed box / a
+   * half-open TCP socket that never fired `close`). Each is dropped exactly
+   * like a clean disconnect — removed from its session and its in-flight tasks
+   * handed back to the active submission for reassignment — then its socket is
+   * closed best-effort. `drop()` is idempotent, so a later real `close` for the
+   * same agent is a no-op. Returns the number reaped.
+   */
+  sweepStale(maxIdleMs: number): number {
+    const cutoff = this.now() - maxIdleMs
+    let reaped = 0
+    for (const state of this.sessions.values()) {
+      for (const agent of [...state.agents.values()]) {
+        if (agent.lastSeenAt < cutoff) {
+          this.drop(agent)
+          agent.close()
+          reaped++
+        }
+      }
+    }
+    return reaped
+  }
+
   /** Remove sessions with no agents, no submission, and 15 min of silence. */
   gc(): void {
     const cutoff = this.now() - SESSION_GC_MS
@@ -205,9 +253,17 @@ export class AgentRegistry {
   availableCapacity(
     workspaceId: string,
     session: string,
-  ): { agents: number; remoteAgents: number; capacity: number; remoteCapacity: number } {
+  ): {
+    agents: number
+    remoteAgents: number
+    capacity: number
+    remoteCapacity: number
+    ready: number
+  } {
     const state = this.sessions.get(sessionKey(workspaceId, session))
-    if (state === undefined) return { agents: 0, remoteAgents: 0, capacity: 0, remoteCapacity: 0 }
+    if (state === undefined) {
+      return { agents: 0, remoteAgents: 0, capacity: 0, remoteCapacity: 0, ready: 0 }
+    }
     let agents = 0
     let remoteAgents = 0
     let capacity = 0
@@ -220,7 +276,10 @@ export class AgentRegistry {
         remoteCapacity += agent.capacity
       }
     }
-    return { agents, remoteAgents, capacity, remoteCapacity }
+    // Ready-but-unassigned tasks: non-zero only when agent capacity is
+    // saturated — the signal an autoscaler scales the pool UP on.
+    const ready = state.active?.readyDepth?.() ?? 0
+    return { agents, remoteAgents, capacity, remoteCapacity, ready }
   }
 
   private sessionFor(workspaceId: string, session: string): SessionState {

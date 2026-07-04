@@ -30,6 +30,14 @@ import {
 /** Version sentinel for the distributed wire; bump on any shape change. */
 export const DIST_PROTOCOL_VERSION = 1
 
+/**
+ * How often an agent sends `agent:heartbeat`. The serve reaps an agent that
+ * misses several (see AGENT_STALE_MS in registry.ts) so a half-open TCP
+ * connection (crashed box, network partition) is detected in seconds instead
+ * of the OS keep-alive timeout, and its in-flight tasks reassign promptly.
+ */
+export const AGENT_HEARTBEAT_MS = 10_000
+
 /** One task node of a submitted graph (`dist:submit.nodes`). */
 export interface DistGraphNode {
   id: string
@@ -72,6 +80,7 @@ export type DistClientMessage =
   | { t: 'agent:stdout'; taskId: string; chunk: string }
   | { t: 'agent:stderr'; taskId: string; chunk: string }
   | { t: 'agent:done'; taskId: string; outcome: OutcomeView }
+  | { t: 'agent:heartbeat' }
   | { t: 'agent:bye'; reason: 'idle-timeout' | 'shutdown' }
 
 /**
@@ -149,6 +158,8 @@ export function distClientMessageToEnvelope(msg: DistClientMessage): Notificatio
       return makeNotification('agent.stderr', { taskId: msg.taskId, chunk: msg.chunk })
     case 'agent:done':
       return makeNotification('agent.done', { taskId: msg.taskId, outcome: msg.outcome })
+    case 'agent:heartbeat':
+      return makeNotification('agent.heartbeat', {})
     case 'agent:bye':
       return makeNotification('agent.bye', { reason: msg.reason })
   }
@@ -180,6 +191,7 @@ export function envelopeToDistClientMessage(env: Envelope): DistClientMessage | 
   if (m === 'agent.done') {
     return { t: 'agent:done', taskId: p.taskId as string, outcome: p.outcome as OutcomeView }
   }
+  if (m === 'agent.heartbeat') return { t: 'agent:heartbeat' }
   if (m === 'agent.bye') {
     return { t: 'agent:bye', reason: p.reason as 'idle-timeout' | 'shutdown' }
   }

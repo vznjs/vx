@@ -26,6 +26,7 @@ import {
   createEventBus,
 } from '@vzn/vx'
 import {
+  AGENT_HEARTBEAT_MS,
   DIST_PROTOCOL_VERSION,
   type DistClientMessage,
   type DistServerMessage,
@@ -90,6 +91,7 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
   let refusedReason: string | undefined
   let idleFired = false
   let idleTimer: ReturnType<typeof setTimeout> | undefined
+  let heartbeatTimer: ReturnType<typeof setInterval> | undefined
   let resolveDone!: (r: AgentLoopResult) => void
   const done = new Promise<AgentLoopResult>((r) => {
     resolveDone = r
@@ -141,6 +143,11 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
       ...(opts.labels !== undefined && opts.labels.length > 0 ? { labels: opts.labels } : {}),
     })
     armIdle()
+    // Liveness: a steady heartbeat lets the serve reap this agent within
+    // seconds of a crash/partition (a half-open TCP socket never fires
+    // `close`), so its in-flight tasks reassign instead of stalling.
+    heartbeatTimer = setInterval(() => send({ t: 'agent:heartbeat' }), AGENT_HEARTBEAT_MS)
+    heartbeatTimer.unref?.()
   }
 
   ws.onmessage = (ev) => {
@@ -166,6 +173,7 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
 
   ws.onclose = () => {
     clearTimeout(idleTimer)
+    clearInterval(heartbeatTimer)
     if (refusedReason !== undefined) resolveDone({ ok: false, reason: 'refused' })
     else if (stopped) resolveDone({ ok: true, reason: 'stopped' })
     else if (idleFired) resolveDone({ ok: true, reason: 'idle-timeout' })
@@ -233,6 +241,7 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
     stop: () => {
       stopped = true
       clearTimeout(idleTimer)
+      clearInterval(heartbeatTimer)
       try {
         ws.close()
       } catch {
