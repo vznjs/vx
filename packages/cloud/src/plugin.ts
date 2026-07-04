@@ -30,11 +30,13 @@ import {
   type CacheLayer,
   type RunSummaryRecord,
   type TelemetryContext,
+  type TelemetryRecord,
   type TelemetrySink,
   type VxPlugin,
 } from '@vzn/vx'
 import { activeEnvironment } from './environments.js'
 import { pidAlive, readServeInfo } from './serve-info.js'
+import { TaskLogBuffer } from './task-log-capture.js'
 
 // NB: the heavy service machinery (backend resolution → serve / dev hub) is
 // loaded LAZILY inside `backend()` via a dynamic import, so merely DECLARING
@@ -79,6 +81,14 @@ export interface CloudPluginOptions {
    * explicit opt-in, unlike ambient delegation). Unset → zero cost.
    */
   distribute?: number
+  /**
+   * Capture per-task log tails and ship them to the connection so the
+   * dashboard can show a task's output (default true when a cloud is
+   * connected). Falls back to `VX_CLOUD_LOGS` (`0`/`false` disables). Off →
+   * the sink's `wants` stays empty, so `task:stdout` events are never even
+   * projected — a plain run pays nothing.
+   */
+  logs?: boolean
 }
 
 /** One resolved connection to a `vx-cloud serve` — drives all three rungs. */
@@ -283,13 +293,22 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
       const conn = resolveConnection(opts)
       if (conn === undefined) return undefined
       return new CloudIngestSink(
-        `${conn.url}/v1/ingest`,
+        conn.url,
         conn.token,
         (m) => ctx.warn(m),
         conn.socket,
+        logsEnabled(opts),
       )
     },
   }
+}
+
+/** Per-task log capture is on by default when connected; `cloud({ logs: false })`
+ *  or `VX_CLOUD_LOGS=0`/`false` turns it off. */
+function logsEnabled(opts: CloudPluginOptions): boolean {
+  if (opts.logs !== undefined) return opts.logs
+  const raw = process.env['VX_CLOUD_LOGS']
+  return raw !== '0' && raw !== 'false'
 }
 
 function distributeOf(opts: CloudPluginOptions): number | undefined {
@@ -389,13 +408,18 @@ function assertWellFormedUrl(value: string | undefined, field: string): void {
  */
 class CloudIngestSink implements TelemetrySink {
   readonly name = 'vzn/cloud'
-  // Summary-only: no streaming records needed.
-  readonly wants: ReadonlyArray<never> = []
+  /**
+   * Summary always; `task.log` + `task.end` ONLY when log capture is enabled.
+   * The source checks this before projecting a `task:stdout` event, so an
+   * empty `wants` means a plain run pays nothing on the chunk path.
+   */
+  readonly wants: ReadonlyArray<TelemetryRecord['kind']>
   private summary: RunSummaryRecord | undefined
   private uploaded = false
+  private readonly logs?: TaskLogBuffer
 
   constructor(
-    private readonly url: string,
+    private readonly baseUrl: string,
     private readonly token: string | undefined,
     private readonly warn: (message: string) => void,
     /**
@@ -405,7 +429,23 @@ class CloudIngestSink implements TelemetrySink {
      * socket dial falls back to the TCP origin (never-fail either way).
      */
     private readonly socketPath?: string,
-  ) {}
+    logsEnabled = false,
+  ) {
+    if (logsEnabled) {
+      this.logs = new TaskLogBuffer()
+      this.wants = ['task.log', 'task.end']
+    } else {
+      this.wants = []
+    }
+  }
+
+  onRecord(record: TelemetryRecord): void {
+    if (this.logs === undefined) return
+    if (record.kind === 'task.log') this.logs.append(record.taskId, record.chunk)
+    else if (record.kind === 'task.end') {
+      this.logs.finish(record.taskId, record.status, record.cacheSource, record.hash)
+    }
+  }
 
   onRunSummary(summary: RunSummaryRecord): void {
     this.summary = summary
@@ -414,20 +454,33 @@ class CloudIngestSink implements TelemetrySink {
   async flush(): Promise<void> {
     if (this.uploaded || this.summary === undefined) return
     this.uploaded = true
-    const body = JSON.stringify(this.summary)
+    // Summary first (so the run row normally exists when logs land — the store
+    // tolerates either order), then the drained log bundle if non-empty.
+    await this.send('/v1/ingest', JSON.stringify(this.summary), 'cloud ingest')
+    if (this.logs === undefined) return
+    const runId = this.summary.run.runId
+    const workspaceId = (this.summary.run as { workspaceId?: string }).workspaceId
+    if (workspaceId === undefined) return
+    const bundle = this.logs.drain(runId, workspaceId)
+    if (bundle.tasks.length === 0) return
+    await this.send('/v1/ingest/logs', JSON.stringify(bundle), 'cloud logs')
+  }
+
+  /** POST a body to a serve path — unix socket first (if advertised), TCP
+   *  fallback; every error swallowed + warned (telemetry never fails a run). */
+  private async send(pathname: string, body: string, label: string): Promise<void> {
     if (this.socketPath !== undefined) {
       try {
-        await this.post('http://localhost/v1/ingest', body, { unix: this.socketPath })
+        await this.post(`http://localhost${pathname}`, body, { unix: this.socketPath })
         return
       } catch {
         // socket dial failed (removed/refused) — fall back to the TCP origin
       }
     }
     try {
-      await this.post(this.url, body)
+      await this.post(`${this.baseUrl}${pathname}`, body)
     } catch (err) {
-      // telemetry push is fully optional — a down endpoint never affects a run
-      this.warn(`[vx] cloud ingest: ${err instanceof Error ? err.message : String(err)}`)
+      this.warn(`[vx] ${label}: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 

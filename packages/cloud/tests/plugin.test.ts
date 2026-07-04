@@ -379,6 +379,130 @@ describe('cloud() telemetry capability', () => {
     await expect(sink.flush!()).resolves.toBeUndefined()
   })
 
+  it('captures task logs and POSTs a bundle to /v1/ingest/logs after the summary', async () => {
+    const paths: string[] = []
+    const bodies: string[] = []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        paths.push(new URL(req.url).pathname)
+        bodies.push(await req.text())
+        return new Response('ok')
+      },
+    })
+    try {
+      const sink = (await cloud({
+        url: `http://localhost:${server.port}`,
+        token: 't',
+        logs: true,
+      }).telemetry!(telemetryCtx('/x'))) as TelemetrySink
+      // Opt-in: the source only projects task.log when the sink wants it.
+      expect(sink.wants).toContain('task.log')
+      expect(sink.wants).toContain('task.end')
+
+      sink.onRecord!({
+        v: 2,
+        kind: 'task.log',
+        runId: 'run-xyz',
+        taskId: 'p#build',
+        stream: 'stderr',
+        chunk: 'boom\n',
+        ts: 1,
+      })
+      sink.onRecord!({
+        v: 2,
+        kind: 'task.end',
+        runId: 'run-xyz',
+        ts: 2,
+        taskId: 'p#build',
+        project: 'p',
+        task: 'build',
+        status: 'failed',
+        cacheSource: 'miss',
+        exitCode: 1,
+        durationMs: 1,
+      })
+      sink.onRunSummary!(fakeSummary())
+      await sink.flush!()
+
+      // Summary first, then the log bundle.
+      expect(paths).toEqual(['/v1/ingest', '/v1/ingest/logs'])
+      const logBody = JSON.parse(bodies[1]!) as {
+        workspaceId: string
+        tasks: { taskId: string; content: string }[]
+      }
+      expect(logBody.workspaceId).toBe('ws-test')
+      expect(logBody.tasks[0]!.taskId).toBe('p#build')
+      expect(logBody.tasks[0]!.content).toBe('boom\n')
+    } finally {
+      void server.stop(true)
+    }
+  })
+
+  it('the zero-projection guarantee: VX_CLOUD_LOGS=0 leaves wants empty (no task.log subscription)', async () => {
+    const prev = process.env['VX_CLOUD_LOGS']
+    process.env['VX_CLOUD_LOGS'] = '0'
+    try {
+      const sink = (await cloud({
+        url: 'http://localhost:1',
+        token: 't',
+      }).telemetry!(telemetryCtx('/x'))) as TelemetrySink
+      expect(sink.wants).toEqual([])
+    } finally {
+      if (prev === undefined) delete process.env['VX_CLOUD_LOGS']
+      else process.env['VX_CLOUD_LOGS'] = prev
+    }
+  })
+
+  it('an all-hit run ships NO log bundle (only the summary)', async () => {
+    const paths: string[] = []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        paths.push(new URL(req.url).pathname)
+        await req.text()
+        return new Response('ok')
+      },
+    })
+    try {
+      const sink = (await cloud({
+        url: `http://localhost:${server.port}`,
+        token: 't',
+        logs: true,
+      }).telemetry!(telemetryCtx('/x'))) as TelemetrySink
+      // A cache hit: the buffer drops it (bytes resolve by hash to the run
+      // that produced them).
+      sink.onRecord!({
+        v: 2,
+        kind: 'task.log',
+        runId: 'run-xyz',
+        taskId: 'p#b',
+        stream: 'stdout',
+        chunk: 'replay\n',
+        ts: 1,
+      })
+      sink.onRecord!({
+        v: 2,
+        kind: 'task.end',
+        runId: 'run-xyz',
+        ts: 2,
+        taskId: 'p#b',
+        project: 'p',
+        task: 'b',
+        status: 'cache-hit',
+        cacheSource: 'local',
+        exitCode: 0,
+        durationMs: 1,
+        hash: 'h',
+      })
+      sink.onRunSummary!(fakeSummary())
+      await sink.flush!()
+      expect(paths).toEqual(['/v1/ingest']) // no /v1/ingest/logs
+    } finally {
+      void server.stop(true)
+    }
+  })
+
   it('declines (undefined) when no connection is configured', async () => {
     await withCleanConnEnv({ VX_CLOUD_CONFIG: '/nonexistent/environments.json' }, async () => {
       const sink = await cloud().telemetry!(telemetryCtx('/x'))

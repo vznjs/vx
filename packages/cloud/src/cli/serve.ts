@@ -65,6 +65,8 @@ import {
   type Principal,
 } from '../artifact-store.js'
 import { IngestStore } from '../ingest-store.js'
+import { LOG_WIRE_VERSION, TaskLogBuffer, type TaskLogBundle } from '../task-log-capture.js'
+import type { StoredTaskLog } from '../log-store.js'
 import {
   AgentRegistry,
   AGENT_STALE_MS,
@@ -199,6 +201,81 @@ function withCors(res: Response): Response {
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return withCors(Response.json(body, init))
+}
+
+/** Cap for a `POST /v1/ingest/logs` body — bounded before reading (413). */
+const LOG_BODY_MAX_BYTES = 16 * 1024 * 1024
+
+/** Shape a stored tail into the `TaskLogResponse` (the route strips `hash`
+ *  after the trust-scoped artifact check, and adds `refRunId` for hits). */
+function logResponse(
+  log: StoredTaskLog,
+  runId: string,
+  taskId: string,
+  source: 'executed' | 'cache',
+): Record<string, unknown> {
+  return {
+    runId,
+    taskId,
+    source,
+    status: log.status,
+    content: log.content,
+    charsFull: log.charsFull,
+    truncatedHeadChars: log.truncatedHeadChars,
+    ...(log.hash !== undefined ? { hash: log.hash } : {}),
+  }
+}
+
+/** How long an un-summarized delegated-run log buffer is held before sweep. */
+const LOG_BUFFER_TTL_MS = 15 * 60 * 1000
+
+/**
+ * A serve-owned telemetry sink capturing DELEGATED runs' task logs server-side
+ * (no client push, no double-shipping). One instance for the serve's lifetime;
+ * records carry runId, so concurrent delegated runs multiplex into per-run
+ * buffers, drained into the store on each run's summary. A run that crashes
+ * before its summary leaves an orphan buffer, swept after `LOG_BUFFER_TTL_MS`.
+ */
+function makeServeLogSink(ingest: IngestStore, now: () => number = Date.now): TelemetrySink {
+  const buffers = new Map<string, { buffer: TaskLogBuffer; createdAt: number }>()
+  const bufFor = (runId: string): TaskLogBuffer => {
+    let b = buffers.get(runId)
+    if (b === undefined) {
+      b = { buffer: new TaskLogBuffer(), createdAt: now() }
+      buffers.set(runId, b)
+    }
+    return b.buffer
+  }
+  const sweep = (): void => {
+    const cutoff = now() - LOG_BUFFER_TTL_MS
+    for (const [runId, b] of buffers) if (b.createdAt < cutoff) buffers.delete(runId)
+  }
+  return {
+    name: 'vx-cloud/serve-logs',
+    wants: ['task.log', 'task.end'],
+    onRecord(record) {
+      if (record.kind === 'task.log') bufFor(record.runId).append(record.taskId, record.chunk)
+      else if (record.kind === 'task.end') {
+        bufFor(record.runId).finish(record.taskId, record.status, record.cacheSource, record.hash)
+      }
+    },
+    onRunSummary(summary) {
+      const runId = summary.run.runId
+      const workspaceId = (summary.run as { workspaceId?: string }).workspaceId
+      const entry = buffers.get(runId)
+      buffers.delete(runId)
+      sweep()
+      if (entry === undefined || workspaceId === undefined) return
+      const bundle = entry.buffer.drain(runId, workspaceId)
+      if (bundle.tasks.length > 0) {
+        try {
+          ingest.ingestLogs(bundle)
+        } catch {
+          // log capture is best-effort — never fail a delegated run over it
+        }
+      }
+    },
+  }
 }
 
 function isLoopbackHost(h: string): boolean {
@@ -406,6 +483,10 @@ export async function startServe(opts: {
     name: 'vx-cloud/self-ingest',
     onRunSummary: (summary) => void ingest.ingest(summary),
   }
+  // Server-side per-task log capture for delegated runs (task-logs-2026-07 §3):
+  // the serve hosts the telemetry source for them, so the bytes are born here
+  // — no client push, no double-shipping.
+  const serveLogSink = makeServeLogSink(ingest)
 
   // Read-only event subscribers (SSE / NDJSON). Each callback gets every
   // event from every concurrent run as a notification envelope so a `curl`
@@ -553,6 +634,41 @@ export async function startServe(opts: {
           }
         })()
       }
+      // Per-task log tails (task-logs-2026-07). Bearer-gated like /v1/ingest;
+      // workspace routed by the body's own id. Bounded: a 16 MiB body cap
+      // (413 before reading), an unknown wire version 400s naming both, and
+      // the store re-truncates every tail regardless of what the body claims.
+      if (url.pathname === '/v1/ingest/logs' && req.method === 'POST') {
+        const len = Number(req.headers.get('content-length') ?? '0')
+        if (Number.isFinite(len) && len > LOG_BODY_MAX_BYTES) {
+          return jsonResponse({ ok: false, error: 'log bundle too large' }, { status: 413 })
+        }
+        return (async () => {
+          try {
+            const bundle = (await req.json()) as TaskLogBundle
+            if (bundle?.v !== LOG_WIRE_VERSION) {
+              const got = String((bundle as { v?: unknown } | null)?.v)
+              return jsonResponse(
+                {
+                  ok: false,
+                  error: `log wire version mismatch: body v${got}, serve v${String(LOG_WIRE_VERSION)}`,
+                },
+                { status: 400 },
+              )
+            }
+            if (typeof bundle.workspaceId !== 'string' || !Array.isArray(bundle.tasks)) {
+              return jsonResponse({ ok: false, error: 'not a TaskLogBundle' }, { status: 400 })
+            }
+            const stored = ingest.ingestLogs(bundle)
+            return jsonResponse({ ok: true, stored })
+          } catch (err) {
+            return jsonResponse(
+              { ok: false, error: err instanceof Error ? err.message : String(err) },
+              { status: 400 },
+            )
+          }
+        })()
+      }
       // The workspace list (id, name, lastSeenAt, runCount) — feeds the UI
       // switcher. Behind the token gate like every /v1 read.
       if (url.pathname === '/v1/workspaces') {
@@ -650,6 +766,51 @@ export async function startServe(opts: {
           const detail = getRun(readDb(), decodeURIComponent(m[1]!))
           if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
           return jsonResponse(detail)
+        }
+      }
+      // A task's persisted log tail (task-logs-2026-07 §6). Resolution: (1) a
+      // direct row for this (run, task); (2) else, if the task was a cache hit
+      // with a hash, the log of the run that produced those bytes
+      // (`source: 'cache'`); (3) else 404. `artifactHash` is advertised only
+      // when the requester's principal can actually fetch it from /v8.
+      {
+        const m = /^\/v1\/runs\/([^/]+)\/logs\/(.+)$/.exec(url.pathname)
+        if (m) {
+          const ws = wsParam ?? ingest.defaultWorkspaceId()
+          const runId = decodeURIComponent(m[1]!)
+          const taskId = decodeURIComponent(m[2]!)
+          const direct = ingest.logFor(ws, runId, taskId)
+          let body: Record<string, unknown> | undefined
+          if (direct !== undefined) {
+            body = { ...logResponse(direct, runId, taskId, 'executed') }
+          } else {
+            // Resolve the task's row in this run to find its hash + hit status.
+            const run = getRun(readDb(), runId)
+            const row = run?.tasks.find((t) => `${t.project}#${t.task}` === taskId)
+            if (row?.hash && (row.cacheHit === true || row.status.startsWith('cache-hit'))) {
+              const producer = ingest.logByHash(ws, row.hash)
+              if (producer !== undefined) {
+                body = {
+                  ...logResponse(producer, runId, taskId, 'cache'),
+                  refRunId: producer.runId,
+                }
+              }
+            }
+          }
+          if (body === undefined) {
+            return jsonResponse({ error: 'no logs captured for this task' }, { status: 404 })
+          }
+          const resolved = body
+          const hash = resolved['hash'] as string | undefined
+          return (async () => {
+            // artifactHash advertised only when the requester's principal can
+            // actually fetch it from /v8 (trust-scoped).
+            if (hash !== undefined && (await artifacts.has(hash, principal))) {
+              resolved['artifactHash'] = hash
+            }
+            delete resolved['hash']
+            return jsonResponse(resolved)
+          })()
         }
       }
       // Diff a run against the immediately-previous invocation — the "why is
@@ -973,7 +1134,10 @@ export async function startServe(opts: {
         message = parsed as ClientMessage
       }
       if (!message || message.t !== 'run') return
-      const ok = await executeRequest(send, message.request, inflight, [selfIngestSink])
+      const ok = await executeRequest(send, message.request, inflight, [
+        selfIngestSink,
+        serveLogSink,
+      ])
       opts.onRun?.(message.request, ok)
     },
     close(ws) {
