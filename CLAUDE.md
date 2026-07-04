@@ -187,6 +187,42 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-04**: **Adversarial re-review of the day's shipped waves — the
+  turnkey CI recipe's ambient-mode race fixed (+2 smaller fixes)** (owner:
+  "review past commits… treat as hostile"). Full-pass review of every commit
+  shipped earlier today. **(1) REAL BUG — `vx-distributed-ci.yml` used ambient
+  distribution in a fan-out CI:** the run job did `vx-cloud connect
+--distribute` + `vx run`, but ambient mode falls back to a SILENT LOCAL run
+  when zero remote agents are registered at the instant of submit — and the
+  agent matrix starts in PARALLEL with the run job, so whenever the submitter
+  wins the setup race the "distributed" run executes locally while N paid
+  agent jobs idle to their 15-min timeout. Fixed to EXPLICIT
+  `VX_CLOUD_DISTRIBUTE=<agents>` (submits regardless; agents join mid-run;
+  unreachable serve = hard error; no-agents = loud warning), which also
+  DELETED the run job's entire vx-cloud source-install + connect dance —
+  `VX_CLOUD_URL`/`TOKEN` env drive `resolveConnection` directly, so only agent
+  jobs need the vx-cloud binary. Guide recipes (GitHub + GitLab) synced, with
+  the ambient-vs-explicit rule documented: ambient = a developer's machine
+  (never blocks solo), explicit = CI (the workflow provisioned the agents).
+  Also corrected the recipe's "vx IS on npm" comment (first publish still
+  pending the owner's trusted-publisher setup). **(2)** `dist/submit.ts`'s
+  reachability + ambient-capacity probes used `AbortSignal.timeout` — the
+  exact not-unref'd-timer pattern the repo banned (plugin.ts documents why);
+  a warm ambient no-helpers run would hang up to ~1s at exit. Switched to the
+  clearable-timer pattern. **(3)** `environments.json` accepted ANY number for
+  `distribute` — a hand-edited `0`/`-1`/`NaN` passed validation and then
+  ENABLED ambient (the rung checks `!== undefined && !== false`, not
+  truthiness). Tightened to boolean | positive integer at the file boundary,
+  pinned by test. **Reviewed and confirmed SOUND:** heartbeat/sweep lifecycle
+  (armed on open, cleared on close/stop; serve timers unref'd + cleared on
+  stop), the composite action (explicit shells, GITHUB_PATH semantics,
+  `--idle-timeout 0` = never), npm.yml (publish order platform→vx→vx-cloud,
+  stamp-before-build, dry-run guard on both triggers, paths match build-npm's
+  `dirFor`), release.yml tag handling, and the trust scopes (tier is
+  server-derived from the token; the client-supplied PR sub-scope only
+  partitions WITHIN untrusted — a scope-claiming PR can touch same-tier peers
+  only, never trusted; documented residual). Cloud suite 197 pass.
+
 - **2026-07-04**: **Standing shared-pool multi-run scheduler — a session
   multiplexes CONCURRENT submissions across shared agents (DIST_PROTOCOL v1→v2)**
   (owner: "Make vx the best CI env ever that can run both locally and remote.
@@ -3771,21 +3807,32 @@ LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
 
 ## Active workstreams (prioritized)
 
-Roadmap is derived from [`docs/comparison.md`](docs/comparison.md) —
-the gap analysis against Turbo / Nx / vite-task with sourced cites.
+Near-term roadmap = the "road to best-CI" ranked table in
+`docs/design/ci-platform-2026-07.md` (owner: "Make vx the best CI env
+ever… compete with GitHub Actions and Nx Cloud"; the wedge is the
+portable execution+cache+pool LAYER inside any CI provider — triggers/
+hosted-runners/secrets/DSL/marketplace are permanent non-goals). The
+longer-horizon core gaps stay sourced from `docs/comparison.md`.
 
-1. **Pre-signed URL auth** for the remote cache. v2 per
-   `docs/design/remote-cache.md`. (The HMAC-signing half shipped
-   2026-06 via `VX_REMOTE_CACHE_SIGNATURE_KEY`.)
-2. 4. **`--continue=<mode>`.** Today vx aborts a failed task's
-      transitive dependents but continues independent siblings — Turbo's
-      middle setting. Add the explicit flag plus a `--continue=always`
-      for more lenient runs.
-3. **Wildcards in `dependsOn`** (`build-*`, `^build-*` — Nx 19.5+).
-4. **Workspace-level `globalInputs` / `globalEnv` / `globalPassThrough`.**
-5. **Auto-input inference** (vite-task's `{auto:true}` via filesystem
-   tracing). Biggest UX win, biggest engineering lift; needs an
-   `fspy`-equivalent per OS.
+1. **Per-task logs + artifacts in the dashboard** (Nx-Cloud parity —
+   click a failed task, read its output). The cache artifact already
+   stores stdout; `IngestStore` holds only run summaries, no log
+   surface. Needs a bounded-storage design (failed tasks are never
+   cached, so capture must ride telemetry/relay, not the cache).
+2. **PR/commit summary + checks** — cloud-side glue over
+   `run-report.ts` (`$GITHUB_STEP_SUMMARY`, a PR check). Never core.
+3. **Task-level retries** (`retries` config), then **flaky
+   detection → auto-retry** (`getFlakiestTasks` exists; no retry
+   primitive does — `scheduler.ts`/`execute-task.ts` run a task once).
+4. **Duration-aware dispatch ordering** (longest-historical-first from
+   `metrics.ts` p50s; `DistScheduler.ready` is FIFO today).
+5. **Per-request cache policy to remote agents** (the §13 known-open:
+   agents run live-eval + full policy; `--frozen`/`--cache` don't
+   propagate).
+6. Core backlog (from `docs/comparison.md`): pre-signed URL auth for
+   the remote cache, `--continue=<mode>`, `dependsOn` wildcards,
+   workspace-level `globalInputs`/`globalEnv`, auto-input inference
+   (fspy-equivalent tracing — biggest lift).
 
 ## Recently shipped
 

@@ -140,13 +140,22 @@ function validateFile(parsed: unknown, p: string): EnvironmentsFile {
     }
     // `distribute` is additive-optional: an older binary reading a newer file
     // ignores an unknown field, and a newer binary treats absence as off — so
-    // it never forces an ENVIRONMENTS_VERSION bump.
+    // it never forces an ENVIRONMENTS_VERSION bump. A number must be a
+    // POSITIVE integer: this file is user-editable, and a hand-written 0/NaN
+    // would otherwise read as "ambient ON with a nonsense expectation" (the
+    // ambient rung checks `!== undefined && !== false`, not truthiness).
     if (
       raw.distribute !== undefined &&
       typeof raw.distribute !== 'boolean' &&
-      typeof raw.distribute !== 'number'
+      !(
+        typeof raw.distribute === 'number' &&
+        Number.isInteger(raw.distribute) &&
+        raw.distribute >= 1
+      )
     ) {
-      throw new Error(`environment "${name}" has a non-boolean/number distribute in ${p}`)
+      throw new Error(
+        `environment "${name}" has an invalid distribute in ${p} (expected true/false or a positive integer)`,
+      )
     }
     environments[name] = {
       url: raw.url,

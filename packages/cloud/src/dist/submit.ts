@@ -417,13 +417,20 @@ function parsePositiveInt(raw: string | undefined): number | undefined {
 }
 
 async function reachable(origin: string): Promise<boolean> {
+  // Clearable timer, not AbortSignal.timeout — its internal timer is not
+  // unref'd and would hold the CLI open for the full second after a fast
+  // probe resolved (the same phantom-exit-hang the telemetry flush fixed).
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 1000)
   try {
     const res = await fetch(`${origin.replace(/\/$/, '')}/health`, {
-      signal: AbortSignal.timeout(1000),
+      signal: controller.signal,
     })
     return res.ok
   } catch {
     return false
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -439,13 +446,18 @@ async function probeCapacity(
   session: string,
   commit?: string,
 ): Promise<{ remoteAgents: number } | undefined> {
+  // Clearable timer (not AbortSignal.timeout) — the ambient no-helpers path
+  // must exit as fast as the local run it degrades to, not linger on an
+  // un-unref'd timeout timer.
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 1000)
   try {
     const url =
       `${origin.replace(/\/$/, '')}/v1/agents` +
       `?ws=${encodeURIComponent(workspaceId)}&session=${encodeURIComponent(session)}` +
       (commit !== undefined ? `&commit=${encodeURIComponent(commit)}` : '')
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(1000),
+      signal: controller.signal,
       ...(token !== undefined ? { headers: { authorization: `Bearer ${token}` } } : {}),
     })
     if (!res.ok) return undefined
@@ -453,5 +465,7 @@ async function probeCapacity(
     return { remoteAgents: typeof body.remoteAgents === 'number' ? body.remoteAgents : 0 }
   } catch {
     return undefined
+  } finally {
+    clearTimeout(timer)
   }
 }

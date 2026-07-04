@@ -52,7 +52,8 @@ Store the connection as two repository secrets — `VX_CLOUD_URL` and
 ### One `uses:` — the reusable workflow
 
 Call the reusable workflow from your own. It launches an agent matrix
-plus a main job that connects with `--distribute` and runs your task:
+plus a main job that submits with explicit distribution
+(`VX_CLOUD_DISTRIBUTE`) and runs your task:
 
 ```yaml
 # .github/workflows/ci.yml
@@ -71,8 +72,19 @@ jobs:
 ```
 
 Pin `@main` to a release tag for reproducible CI. That's the whole
-setup — the reusable workflow handles the matrix, the vx-cloud install,
-`vx-cloud connect --distribute`, and `vx run`.
+setup — the reusable workflow handles the matrix, the agents'
+vx-cloud install, and the `VX_CLOUD_DISTRIBUTE`-driven `vx run`.
+
+Why explicit and not ambient (`connect --distribute`) in CI: the agent
+matrix and the main job start **in parallel**, and ambient mode falls
+back to a silent local run when zero remote agents have registered at
+the instant of submit — a race you'd lose whenever the main job's
+setup finishes first, leaving the whole matrix idle. Explicit mode
+submits regardless (agents join mid-run), hard-errors on an
+unreachable serve, and warns loudly if no agent ever joins. Ambient is
+the right mode for a developer's *machine* (leave it on, never blocks
+a solo run); explicit is the right mode for CI, where the agents are
+provisioned by the same workflow.
 
 ### The agent action — for a hand-rolled workflow
 
@@ -105,23 +117,19 @@ jobs:
       VX_CLOUD_URL: ${{ secrets.VX_CLOUD_URL }}
       VX_CLOUD_TOKEN: ${{ secrets.VX_CLOUD_TOKEN }}
       VX_AGENT_SESSION: ${{ github.run_id }}-${{ github.run_attempt }}
+      # EXPLICIT distribution: submit to the pool even if the agent matrix
+      # hasn't registered yet (ambient would silently run local on that race).
+      VX_CLOUD_DISTRIBUTE: '6'
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - run: npm i -g @vzn/vx
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      # Install the vx-cloud CLI from source for the `connect` step (see the
-      # install note above), then connect once and submit a normal run.
-      - run: |
-          SRC="$RUNNER_TEMP/vx-cloud-src"
-          git clone --depth 1 https://github.com/vznjs/vx "$SRC"
-          (cd "$SRC" && bun install --frozen-lockfile)
-          printf '#!/usr/bin/env sh\nexec bun "%s/packages/cloud/src/cli/bin.ts" "$@"\n' "$SRC" > /usr/local/bin/vx-cloud
-          chmod +x /usr/local/bin/vx-cloud
-      - run: |
-          vx-cloud connect "$VX_CLOUD_URL" --token "$VX_CLOUD_TOKEN" --distribute
-          vx run ci --all
+      # No vx-cloud CLI needed here — VX_CLOUD_URL/TOKEN drive the connection
+      # and VX_CLOUD_DISTRIBUTE routes the run to the pool. Only the agent
+      # jobs run the vx-cloud binary.
+      - run: vx run ci --all
 ```
 
 The `agents` and `run` jobs start in parallel; the matrix uses the same
@@ -158,8 +166,12 @@ agents:
     - vx-cloud agent --url "$VX_CLOUD_URL" --token "$VX_CLOUD_TOKEN" --capacity 4
 
 run:
+  variables:
+    # EXPLICIT distribution — submits to the pool even if the parallel agent
+    # jobs haven't registered yet (ambient `connect --distribute` would
+    # silently run local on that race).
+    VX_CLOUD_DISTRIBUTE: '6'
   script:
-    - vx-cloud connect "$VX_CLOUD_URL" --token "$VX_CLOUD_TOKEN" --distribute
     - vx run ci --all
 ```
 
