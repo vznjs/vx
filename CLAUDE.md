@@ -187,6 +187,48 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-04**: **Per-task logs + artifacts in the dashboard — road-to-best-CI
+  #2 (Nx-Cloud parity: click a failed task, read its output)**. Design in
+  `docs/design/task-logs-2026-07.md`; shipped in three committable slices, ALL
+  in `@vzn/vx-cloud` — ZERO core change (the boundary check: `git status src/`
+  stayed empty across all three). The 2026-06 opt-in `task.log` telemetry
+  surface (built, never consumed until now) got its first consumer, so no
+  TELEMETRY_SCHEMA/CACHE_VERSION bump. **(1/3) foundation:**
+  `task-log-capture.ts` `TaskLogBuffer` (the shared bounded-tail primitive:
+  per-task 128 KiB whole-chunk head eviction with no concatenation until drain,
+  per-run 4 MiB budget where failed tails are NEVER evicted by successes,
+  cache-hit/skipped/aborted dropped, drain orders failures first) +
+  `log-store.ts` `LogStore` (a per-workspace `logs.db` sidecar with its OWN v1
+  gate — never core's Cache schema; idempotent INSERT-OR-IGNORE, server-side
+  re-truncation since the wire is never trusted for caps, zstd over 4 KiB, hash
+  resolution for hits, age + byte-ceiling prune throttled 5 min). **(2/3)
+  capture + API:** `CloudIngestSink` gains `wants ['task.log','task.end']` ONLY
+  when logs enabled (`cloud({ logs })` / `VX_CLOUD_LOGS`; default on when
+  connected) — off → `wants` stays `[]` so the source never projects
+  task:stdout (the plain-run zero-projection guarantee, pinned); flush ships one
+  `POST /v1/ingest/logs` after the summary (empty on an all-hit run). Serve:
+  `POST /v1/ingest/logs` (bearer, 16 MiB cap → 413, wire-version gate → 400) +
+  `GET /v1/runs/:id/logs/:taskId` (direct row → else cache-hit-by-hash with
+  `source:'cache'`+`refRunId` → else 404; `artifactHash` advertised only when
+  the requester's principal can fetch it from /v8). Delegated runs captured
+  server-side by a per-run sink (no client push, swept after 15 min if a run
+  crashes before its summary). **(3/3) UI:** a self-contained `TaskLogs`
+  json-render component (own createResource keyed on runId+task, ANSI-stripped
+  scrollback, truncation banner, cache-provenance link, bearer-fetched artifact
+  download) in the run-detail selected-task card; rebuilt dist. Browser-verified
+  end-to-end (SPA reaches the new endpoint 200, workspace-scoped, failed task's
+  content present, no console errors beyond the pre-existing `/v1/graph`
+  degradation). 36 new tests; cloud suite 221 pass. **Verified GAP surfaced &
+  documented:** a distributed (`VX_CLOUD_DISTRIBUTE`) run ingests NO run summary
+  anywhere today, so it's absent from run history entirely — that's the
+  documented Phase-2 prerequisite for distributed-run log capture (the relay
+  point already sees every chunk). Docs: dashboard.md (panel + bounded-storage/
+  privacy section + the distributed limit), cli.md serve knobs. NEXT on the
+  road-to-best-CI: PR/commit summary + checks (cloud glue over run-report.ts),
+  then flaky detection → auto-retry (wire `getFlakiestTasks` + the new
+  `TaskOutcome.attempts` onto the retries primitive), then duration-aware
+  dispatch ordering.
+
 - **2026-07-04**: **Task-level retries — `exec.retries` + `--retry <n>`**
   (road-to-best-CI #4; the primitive flaky-detection→auto-retry will ride).
   `ExecConfig.retries?: number` = max ADDITIONAL attempts after a failed
