@@ -139,7 +139,7 @@ Flags:
 
 | Flag | Meaning |
 | --- | --- |
-| `--url <origin>` | The serve to attach to. Falls back to `VX_SERVICE_URL`, then a locally advertised serve. |
+| `--url <origin>` | The serve to attach to. Falls back to `VX_CLOUD_URL` (then the legacy `VX_SERVICE_URL`), then a locally advertised serve. |
 | `--token <t>` | Bearer token for the serve. Falls back to `VX_CLOUD_TOKEN`. |
 | `--capacity <n>` | How many assignments to execute in parallel (default `1`). |
 | `--session <s>` | The session key to join (default: derived, see below). |

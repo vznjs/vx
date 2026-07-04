@@ -72,7 +72,7 @@ export default defineConfig({
             { label: 'Predictive scheduling', link: '/guides/predictive-scheduling/' },
             { label: 'Dashboard', link: '/guides/dashboard/' },
             { label: 'Self-host vx-cloud', link: '/guides/self-hosting/' },
-            { label: 'OpenTelemetry CI/CD spans', link: '/guides/otel-bridge/' },
+            { label: 'OpenTelemetry traces & metrics', link: '/guides/otel-bridge/' },
             { label: 'vx-cloud serve wire protocol', link: '/guides/wire-protocol/' },
           ],
         },

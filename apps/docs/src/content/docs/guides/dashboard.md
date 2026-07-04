@@ -226,6 +226,6 @@ step.)
   history across schema bumps (the serve warns loudly when this
   happens).
 
-See also: [`Self-host vx serve`](/vx/guides/self-hosting/),
-[`vx serve wire protocol`](/vx/guides/wire-protocol/),
+See also: [`Self-host vx-cloud`](/vx/guides/self-hosting/),
+[`vx-cloud serve wire protocol`](/vx/guides/wire-protocol/),
 [`Distributed CI execution`](/vx/guides/distributed-ci/).

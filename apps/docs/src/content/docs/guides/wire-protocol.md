@@ -1,9 +1,9 @@
 ---
-title: vx serve wire protocol — JSON-RPC 2.0
-description: One envelope, three transports. Connect your own tooling to vx serve via WebSocket, Server-Sent Events, or NDJSON. JSON-RPC 2.0 compatible — every existing JSON-RPC client works.
+title: vx-cloud serve wire protocol — JSON-RPC 2.0
+description: One envelope, three transports. Connect your own tooling to vx-cloud serve via WebSocket, Server-Sent Events, or NDJSON. JSON-RPC 2.0 compatible — every existing JSON-RPC client works.
 ---
 
-`vx serve` exposes the run event stream + the submit-a-run API
+`vx-cloud serve` exposes the run event stream + the submit-a-run API
 over a single JSON-RPC 2.0 wire. Three transports off the same bus:
 
 - **WebSocket** at `/` — bidirectional; submit runs, receive events.
@@ -21,7 +21,7 @@ practical.
 ## Discover the server
 
 ```sh
-vx serve --port 5176             # in one terminal
+vx-cloud serve --port 5176       # in one terminal
 curl http://localhost:5176/version
 ```
 
@@ -208,4 +208,4 @@ client. The wire is the SDK.
 - `docs/design/extension-protocol-2026-06.md` — subscribers,
   inspectors, drivers, plugins
 - [`vx mcp` guide](/vx/guides/mcp/) — agent-side
-- [`vx serve` CLI](/vx/cli/#vx-serve--execution--event-stream-service)
+- [`vx-cloud serve` CLI](/vx/cli/)

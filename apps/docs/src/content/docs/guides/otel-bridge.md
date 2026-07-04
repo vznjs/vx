@@ -1,75 +1,93 @@
 ---
-title: OpenTelemetry CI/CD spans (native)
-description: Pipe every vx run's events into any OTLP-compatible backend. No bridge package — core speaks OTel natively when the env var is set and the peer deps are installed.
+title: OpenTelemetry traces & metrics
+description: Export every vx run as OTLP traces + metrics with the @vzn/vx-otel plugin. Declare otel() in vx.workspace.ts; it speaks OTLP/HTTP JSON directly with no OpenTelemetry SDK dependency.
 ---
 
-vx core speaks OpenTelemetry CI/CD-conventions natively when the
-optional `@opentelemetry/*` peer deps are installed and
-`OTEL_EXPORTER_OTLP_ENDPOINT` points somewhere. No bridge package,
-no custom wire format — just the OTLP/HTTP exporter you already use.
+`@vzn/vx-otel` turns every `vx run` into **OTLP traces + metrics** —
+one trace per run, one span per task, plus run/task counters. It speaks
+the OTLP/HTTP JSON wire protocol **directly**, so there's no
+OpenTelemetry SDK dependency and nothing to keep version-matched.
 
-## Why OTel
-
-The OpenTelemetry CI/CD semantic conventions
-(<https://opentelemetry.io/docs/specs/semconv/cicd/cicd-spans/>)
-define canonical attribute names for every CI concept:
-`cicd.pipeline.run.id`, `cicd.pipeline.task.name`,
-`cicd.pipeline.task.run.result`, `cicd.worker.id`. Emitting in
-this shape means vx events arrive at Grafana / Tempo / Honeycomb /
-Datadog / Jaeger / your-self-hosted-collector with zero
-integration code.
+It's a plugin, built on vx's observe-only [`telemetry`
+capability](/vx/guides/plugins/): it can never change, slow, or fail a
+run.
 
 ## Quick start
 
 ```sh
-# 1. Set the OTLP endpoint (single env var)
+# 1. Add the plugin
+bun add @vzn/vx-otel
+
+# 2. Point at your collector (standard OTel env vars)
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 export OTEL_SERVICE_NAME=vx
+```
 
-# 2. Install the three OTel optional peer deps in your workspace
-bun add @opentelemetry/api-logs \
-        @opentelemetry/sdk-logs \
-        @opentelemetry/exporter-logs-otlp-http
+```ts
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+import { otel } from '@vzn/vx-otel'
 
+export default defineWorkspace({
+  plugins: [otel()],
+})
+```
+
+```sh
 # 3. Run anything
 vx run lint
 ```
 
-vx checks the env var, dynamically imports the peers, attaches a
-log-record processor to the in-process event bus, and pushes every
-event through the OTLP/HTTP exporter. Missing env var = silent
-skip. Missing peer deps = silent skip. Neither path blocks a run.
+`otel()` is **zero-config**: with no `OTEL_EXPORTER_OTLP_ENDPOINT` set it
+**declines** and exports nothing, so it's safe to leave declared in every
+environment (local, CI, prod). No peer deps to install — the OTLP payload
+is built and POSTed by the plugin itself.
+
+## Configuration
+
+Every knob has a standard-OTel env-var fallback; explicit options win.
+
+| Option           | Env var                               | Default                    |
+| ---------------- | ------------------------------------- | -------------------------- |
+| `endpoint`       | `OTEL_EXPORTER_OTLP_ENDPOINT`         | — (declines if unset)      |
+| `tracesEndpoint` | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`  | `<endpoint>/v1/traces`     |
+| `metricsEndpoint`| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | `<endpoint>/v1/metrics`    |
+| `serviceName`    | `OTEL_SERVICE_NAME`                   | `vx`                       |
+| `headers`        | `OTEL_EXPORTER_OTLP_HEADERS` (`k=v,…`)| `{}`                       |
+| `metrics`        | —                                     | `true`                     |
+| `timeoutMs`      | —                                     | `15000`                    |
+
+```ts
+otel({
+  endpoint: 'https://collector.example.com',
+  serviceName: 'my-monorepo',
+  headers: { authorization: 'Bearer …' },
+  metrics: true,
+})
+```
 
 ## What lands in your backend
 
-Each task's lifecycle becomes an OTel log record:
+**A trace per run**, using the OTel CI/CD + VCS semantic conventions so
+it maps cleanly onto Grafana / Tempo / Honeycomb / Datadog / Jaeger:
 
-```jsonc
-{
-  "timestamp": 1719009123000,
-  "severityNumber": 9,                              // INFO; ERROR for failed
-  "severityText": "info",
-  "body": "task complete: pkg-a#build (success)",
-  "attributes": {
-    "vx.kind": "task:complete",
-    "cicd.pipeline.run.id": "run-1-1719009123000",
-    "cicd.pipeline.task.name": "pkg-a#build",
-    "cicd.pipeline.task.run.result": "success",
-    "vx.task.id": "pkg-a#build",
-    "vx.outcome.status": "success",
-    "vx.outcome.exit_code": 0,
-    "vx.outcome.duration_ms": 123,
-    "vx.outcome.hash": "abc123…"
-  }
-}
-```
+- a root **`vx.run`** span — `cicd.pipeline.run.id`,
+  `vcs.ref.head.revision`, `vcs.ref.head.name`, the CI provider,
+  host/os/arch, vx version, and each `--tag k=v` as `vx.tag.<k>`;
+- a child **`vx.task`** span per task — `cicd.pipeline.task.name`,
+  `cicd.pipeline.task.run.result`, `vx.cache.source`
+  (`miss`/`local`/`remote`), `vx.task.hash`, duration, CPU ms, peak RSS.
+  A failed task sets the span status to `ERROR`.
 
-Plus `run:start`, `task:start`, `task:stdout` / `task:stderr` (the
-chunks become log bodies), `run:status`, and `run:end`.
+**Metrics per run** (when `metrics` is on): `vx.tasks.total`,
+`vx.tasks.failed`, `vx.tasks.cache_hits{source=local|remote}`, and the
+`vx.run.duration_ms` gauge.
 
 ## Backend pointers
 
-The exporter speaks OTLP/HTTP — every major backend accepts it.
+The exporter speaks OTLP/HTTP — every major backend accepts it. Point
+`OTEL_EXPORTER_OTLP_ENDPOINT` at the collector and pass auth via
+`OTEL_EXPORTER_OTLP_HEADERS`:
 
 ```sh
 # Grafana Cloud / Tempo
@@ -80,51 +98,32 @@ export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic <base64-creds>"
 export OTEL_EXPORTER_OTLP_ENDPOINT=https://api.honeycomb.io
 export OTEL_EXPORTER_OTLP_HEADERS="x-honeycomb-team=<api-key>"
 
-# Datadog (via OTel collector)
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
-
-# Jaeger (running locally)
+# Local collector (Datadog Agent, Jaeger all-in-one, otelcol, …)
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 ```
 
-Any header your backend requires can be set via
-`OTEL_EXPORTER_OTLP_HEADERS=key1=val1,key2=val2` — the standard
-OTLP discovery rules apply (`@opentelemetry/exporter-logs-otlp-http`
-handles it).
+`OTEL_EXPORTER_OTLP_HEADERS` takes a comma-separated `key=val,key2=val2`
+list; anything you pass in the `headers` option is merged over it.
 
 ## What this gives you
 
-- **Per-task percentiles.** Backends can aggregate
-  `vx.outcome.duration_ms` by `cicd.pipeline.task.name` for p50/p99.
-- **Regression alerts.** Alert on "p99 of `lint` exceeds baseline
-  by 3×" and your CI dashboard pings before the team notices.
-- **Cross-build dashboards.** Filter by `cicd.pipeline.run.id` or
-  by repo/branch/commit (when the cloud uploader carries them).
+- **Per-task percentiles.** Aggregate `vx.task` span durations by
+  `cicd.pipeline.task.name` for p50/p99 across every run.
+- **Regression alerts.** Alert on "p99 of `lint` exceeds baseline by 3×"
+  and get pinged before the team notices.
+- **Cache-effectiveness dashboards.** Split on `vx.cache.source` to see
+  local vs remote hit rates, or filter by branch/commit/CI provider from
+  the root-span attributes.
 
-## How it works
+## Behavior note
 
-`vx run` checks `OTEL_EXPORTER_OTLP_ENDPOINT` at startup. If set
-and `options.log` is undefined (the real CLI path, not an
-embedder), `src/orchestrator/otel-emit.ts` dynamically imports the
-three OTel peers via string-variable specifiers (so TS doesn't try
-to resolve them at type-check time and core's dep tree stays at
-the same baseline). It subscribes a log-record emitter to the
-event bus that translates each WireEvent to an OTel `LogRecord`
-with the right semantic-conventions attributes.
+This replaces core's old hardcoded OTel emit, which fired automatically
+whenever `OTEL_EXPORTER_OTLP_ENDPOINT` was set. OTel is now a **plugin**:
+the env var alone no longer auto-exports — you declare `otel()` in
+`vx.workspace.ts`. Telemetry is observe-only and can never change, slow,
+or fail a run (every export is buffered, time-bounded, and swallows
+errors).
 
-On `run:end` the processor flushes pending records and is
-detached.
-
-## Limits today
-
-- **Spans, not traces.** Each event is a log record correlated
-  with `cicd.pipeline.run.id` — tools that prefer real spans
-  (start/end pairs) see flat log streams. Real spans are coming.
-- **No metric export.** Only logs/events. Aggregations happen on
-  the backend.
-- **Local-only attribution.** `cicd.pipeline.run.id` is generated
-  per `vx run`; mapping to your CI job (e.g. GHA's
-  `${{ github.run_id }}`) takes a tiny shell wrapper or a future
-  env-var fold.
-
-See also: [`Wire protocol`](/vx/guides/wire-protocol/).
+For the mechanics of the telemetry capability behind this plugin — and
+how to write your own exporter — see [Writing a vx
+plugin](/vx/guides/plugins/).
