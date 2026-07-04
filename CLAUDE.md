@@ -209,9 +209,15 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
   (release `published` + `workflow_dispatch`; **stamps the version into
   package.json BEFORE `vx run build`** because `src/version.ts` reads
   `../package.json` which `bun build --compile` inlines — else the binary
-  reports 0.0.0; publishes platform pkgs first then main; gracefully SKIPS
-  publish with a warning when `NPM_TOKEN` is unset, so it's inert until the
-  owner adds the secret). **Verified end-to-end locally** (linux-x64): built
+  reports 0.0.0; publishes platform pkgs first then main). **Auth = npm
+  Trusted Publishing (OIDC), token-less** (owner: "I have npm connected to
+  gh"): job has `id-token: write`, upgrades to npm ≥ 11.5.1 (node 22 ships
+  10.x), and `npm publish` exchanges the OIDC token for a short-lived
+  package-scoped credential + auto-provenance — NO `NPM_TOKEN` secret. **Owner
+  must configure a Trusted Publisher on npmjs.com for ALL FIVE package names**
+  (`@vzn/vx` + the 4 `@vzn/vx-<target>`), each pointing at this repo +
+  `.github/workflows/npm.yml`, else the un-configured ones 403.
+  **Verified end-to-end locally** (linux-x64): built
   the binary, generated the tree, simulated the installed node_modules layout,
   ran `node launcher.mjs --version` → execs the binary (`vx 0.0.0`); removed the
   platform pkg → launcher fell back to `bun src/bin.ts` (`vx 0.0.0-test`).

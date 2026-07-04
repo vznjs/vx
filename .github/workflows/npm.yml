@@ -5,12 +5,14 @@ name: npm publish
 # per-platform (@vzn/vx-<os>-<cpu>) as an optionalDependency. End users get
 # `vx` with no Bun and no install-time download (the esbuild/turborepo model).
 #
-# - release published   → publish the release version
-# - workflow_dispatch   → publish/dry-run a chosen version manually
+# Auth is npm **Trusted Publishing (OIDC)** — no NPM_TOKEN secret. The job
+# requests an OIDC token (`id-token: write`) and npm (>= 11.5.1) exchanges it
+# for a short-lived, package-scoped credential, and attaches build provenance
+# automatically. Configure the trusted publisher for each package on npmjs.com
+# (link this repo + `.github/workflows/npm.yml`).
 #
-# Setup required once by a maintainer: add an `NPM_TOKEN` repo secret (an npm
-# automation token with publish rights to the @vzn scope). Until it's set, this
-# workflow still builds + validates the npm tree but skips the publish.
+# - release published   → publish the release version
+# - workflow_dispatch   → publish, or dry-run, a chosen version manually
 
 on:
   release:
@@ -36,6 +38,7 @@ jobs:
     timeout-minutes: 25
     permissions:
       contents: read
+      id-token: write # OIDC token for npm Trusted Publishing + provenance
 
     steps:
       - uses: actions/checkout@v4
@@ -44,11 +47,18 @@ jobs:
         with:
           bun-version: latest
 
-      # Node is used only for `npm publish` (its auth + registry client).
+      # Node runs `npm publish`; registry-url points it at npm. No token — auth
+      # comes from the OIDC exchange below.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: 'https://registry.npmjs.org'
+
+      # Trusted Publishing needs npm >= 11.5.1 (node 22 ships npm 10.x).
+      - name: Upgrade npm for trusted publishing
+        run: |
+          npm install -g npm@latest
+          npm --version
 
       - name: Resolve version
         id: version
@@ -77,27 +87,11 @@ jobs:
       - name: Assemble npm tree
         run: bun scripts/build-npm.ts "${{ steps.version.outputs.version }}"
 
-      - name: Check npm auth
-        id: auth
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::dry_run requested — skipping publish."
-          elif [ -n "$NPM_TOKEN" ]; then
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::NPM_TOKEN secret not set — built the npm tree but skipping publish. Add NPM_TOKEN to enable publishing."
-          fi
-
       # Platform packages FIRST so the main package's optionalDependencies
-      # resolve on the registry, then the primary @vzn/vx package.
+      # resolve on the registry, then the primary @vzn/vx package. Trusted
+      # Publishing (OIDC) supplies auth + provenance — no token needed.
       - name: Publish
-        if: steps.auth.outputs.publish == 'true'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        if: ${{ github.event.inputs.dry_run != 'true' }}
         run: |
           set -e
           for pkg in \
