@@ -10,7 +10,7 @@
 
 import { captureGitContext, captureWorkspaceIdentity, findWorkspaceRoot, UserError } from '@vzn/vx'
 import { runAgentLoop } from '../dist/agent-loop.js'
-import { deriveSession } from '../dist/session.js'
+import { deriveSession, wireAgentCacheEnv } from '../dist/session.js'
 import { readServeInfo } from '../serve-info.js'
 
 export interface AgentArgs {
@@ -117,15 +117,9 @@ export async function agentCmd(args: readonly string[]): Promise<number> {
   const identity = captureWorkspaceIdentity(root)
   const session = parsed.session ?? deriveSession()
 
-  // The scoped runs' remote layer is wired through the environment: point
-  // core's env fallback at the serve's own /v8 artifact store (§6.2). An
-  // explicit VX_REMOTE_CACHE_* always wins. The '-' token is a dummy
-  // bearer for an open (token-less) serve — core requires both vars set.
-  process.env['VX_REMOTE_CACHE_URL'] ??= origin
-  process.env['VX_REMOTE_CACHE_TOKEN'] ??= token ?? '-'
-  // Sentinel: cloud()'s telemetry rung declines so per-assignment scoped
-  // runs don't spam the ingest store with 1-task invocations.
-  process.env['VX_CLOUD_AGENT'] = '1'
+  // Point the scoped runs' remote layer at the serve's own /v8 store + flag
+  // this process as an agent (shared verbatim with the submitter self-agent).
+  wireAgentCacheEnv(origin, token)
 
   process.stdout.write(
     `vx agent: serve   ${origin}\n` +

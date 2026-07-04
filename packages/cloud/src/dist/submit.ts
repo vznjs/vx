@@ -38,7 +38,7 @@ import {
 } from '../protocol-dist.js'
 import { runAgentLoop, type AgentLoopHandle } from './agent-loop.js'
 import { DEFAULT_AGENT_TIMEOUT_MS, SUBMITTER_LABEL } from './scheduler.js'
-import { deriveSession } from './session.js'
+import { deriveSession, wireAgentCacheEnv } from './session.js'
 
 const silentLogger: Logger = {
   status() {},
@@ -183,13 +183,9 @@ export function distributedBackend(opts: DistributedBackendOptions): RunBackend 
           nodes,
         }
 
-        // Wire the self-agent's scoped runs (and any child tooling) at the
-        // serve's own artifact store; explicit VX_REMOTE_CACHE_* wins. The
-        // sentinel makes cloud()'s telemetry rung decline so per-assignment
-        // scoped runs don't spam the ingest store with 1-task invocations.
-        process.env['VX_REMOTE_CACHE_URL'] ??= opts.origin
-        process.env['VX_REMOTE_CACHE_TOKEN'] ??= opts.token ?? '-'
-        process.env['VX_CLOUD_AGENT'] = '1'
+        // Wire the self-agent's scoped runs at the serve's own artifact store +
+        // flag the process as an agent (shared verbatim with the `agent` verb).
+        wireAgentCacheEnv(opts.origin, opts.token)
 
         const selfExecuted = new Set<string>()
         const result = await submitAndRender({
