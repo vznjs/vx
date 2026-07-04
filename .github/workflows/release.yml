@@ -25,6 +25,16 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
 
+      # Stamp the release version into package.json BEFORE compiling — the
+      # binary reads its version from package.json (inlined by
+      # `bun build --compile`), so without this the attached binaries would
+      # report `vx 0.0.0`. Ephemeral (CI only, never committed).
+      - name: Stamp version
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          bun -e 'const p = await Bun.file("package.json").json(); p.version = process.argv[1]; await Bun.write("package.json", JSON.stringify(p, null, 2) + "\n")' "$VERSION"
+
       # Dogfood: `build` is a vx group task fanning out to `build.bun`,
       # which fans out to `build.bun.<target>` for each platform. Each
       # sub-task is individually cached, so re-running this workflow on
