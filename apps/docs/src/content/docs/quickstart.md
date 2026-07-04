@@ -15,8 +15,10 @@ guides ([Turborepo](../migrate/from-turborepo/),
 ## 1. Install
 
 ```bash
-bun add -d @vzn/vx
-# …or grab the standalone binary (no Node or Bun required):
+# Any package manager — ships the prebuilt standalone binary (no Bun to run):
+npm install -D @vzn/vx    # or: pnpm add -D @vzn/vx · yarn add -D @vzn/vx · bun add -d @vzn/vx
+
+# …or grab the standalone binary globally with no Node or npm:
 curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
 ```
 

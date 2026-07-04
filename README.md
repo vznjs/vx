@@ -13,6 +13,10 @@ One binary. No daemon. No Node. Nothing to babysit.
 architecture, caching, and the full CLI / config reference.
 
 ```sh
+# From npm — ships the prebuilt standalone binary (no Bun required):
+npm install -g @vzn/vx      # or: pnpm add -g @vzn/vx · bun add -g @vzn/vx
+
+# Or the zero-dependency install script (no Node/npm needed):
 curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
 ```
 

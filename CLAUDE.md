@@ -187,6 +187,42 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-04**: **npm distribution — `@vzn/vx` publishes the standalone
+  binary via per-platform optionalDependencies (esbuild model)** (owner:
+  "prepare publishing of vx binaries through npm wrapper using some 3rd party
+  tools for that maybe" → chose **`@vzn/vx` dual-purpose** over a separate
+  `@vzn/vx-cli`; `vx` unscoped is TAKEN on npm). Rather than a 3rd-party
+  postinstall downloader (`go-npm`/`binary-install` — network-at-install,
+  breaks `--ignore-scripts`), used the optionalDependencies pattern
+  esbuild/turborepo/biome ship: `@vzn/vx` carries the library source
+  (`exports: ./src/index.ts`) PLUS a Node launcher (`bin: launcher.mjs`) that
+  execs a prebuilt standalone binary shipped as a per-platform
+  optionalDependency (`@vzn/vx-{linux,darwin}-{x64,arm64}`). npm installs only
+  the matching-os/cpu package; the launcher `require.resolve`s its binary and
+  execs it — so `npm i -g @vzn/vx` gives the `vx` command with **no Bun and no
+  install-time download**. Launcher fallback: no platform binary + Bun present
+  → `bun src/bin.ts` (source checkout, or an unsupported platform with Bun).
+  **Files:** `scripts/npm-launcher.mjs` (published-layout launcher template),
+  `scripts/build-npm.ts` (`bun scripts/build-npm.ts <version> [--only=<t>]` →
+  assembles `dist/npm/{@vzn/vx-<t>,vx}`; reads sandbox-runtime dep + description
+  from root package.json so versions never drift), `.github/workflows/npm.yml`
+  (release `published` + `workflow_dispatch`; **stamps the version into
+  package.json BEFORE `vx run build`** because `src/version.ts` reads
+  `../package.json` which `bun build --compile` inlines — else the binary
+  reports 0.0.0; publishes platform pkgs first then main; gracefully SKIPS
+  publish with a warning when `NPM_TOKEN` is unset, so it's inert until the
+  owner adds the secret). **Verified end-to-end locally** (linux-x64): built
+  the binary, generated the tree, simulated the installed node_modules layout,
+  ran `node launcher.mjs --version` → execs the binary (`vx 0.0.0`); removed the
+  platform pkg → launcher fell back to `bun src/bin.ts` (`vx 0.0.0-test`).
+  `dist/` is gitignored (108MB binary + tree never committed). Docs:
+  README + docs quickstart lead the install with `npm install -D @vzn/vx`
+  (binary, no Bun) beside the curl script. **Owner TODO before first publish:**
+  add the `NPM_TOKEN` repo secret (npm automation token with publish rights to
+  the `@vzn` scope). The GH-release binaries in `release.yml` have the SAME
+  latent version-stamp gap (they'd embed 0.0.0 unless root package.json is
+  bumped) — left as a follow-up; npm.yml handles it for the npm path.
+
 - **2026-07-04**: **CI publishes the `vx-cloud` Docker image to GHCR** (owner:
   "Build docker image into GitHub registry on ci"). New
   `.github/workflows/docker.yml` builds `packages/cloud/Dockerfile` (build

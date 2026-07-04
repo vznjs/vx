@@ -1,0 +1,112 @@
+name: npm publish
+
+# Publish the `vx` CLI to npm as a dual-purpose @vzn/vx package: the library
+# source PLUS a Node launcher that execs a prebuilt standalone binary shipped
+# per-platform (@vzn/vx-<os>-<cpu>) as an optionalDependency. End users get
+# `vx` with no Bun and no install-time download (the esbuild/turborepo model).
+#
+# - release published   → publish the release version
+# - workflow_dispatch   → publish/dry-run a chosen version manually
+#
+# Setup required once by a maintainer: add an `NPM_TOKEN` repo secret (an npm
+# automation token with publish rights to the @vzn scope). Until it's set, this
+# workflow still builds + validates the npm tree but skips the publish.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build/publish (e.g. 1.2.3). Defaults to the release tag.'
+        required: false
+      dry_run:
+        description: 'Build the tree but do not publish.'
+        type: boolean
+        default: false
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: build & publish @vzn/vx
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Node is used only for `npm publish` (its auth + registry client).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Resolve version
+        id: version
+        run: |
+          RAW="${{ github.event.inputs.version || github.event.release.tag_name }}"
+          if [ -z "$RAW" ]; then echo "no version (not a release and no input)"; exit 1; fi
+          VERSION="${RAW#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing version $VERSION"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Stamp the version into package.json BEFORE compiling — `vx --version`
+      # reads it from package.json (inlined by `bun build --compile`), so the
+      # binary must be built with the release version in place. Ephemeral (CI
+      # only, never committed).
+      - name: Stamp version
+        run: |
+          bun -e 'const p = await Bun.file("package.json").json(); p.version = process.argv[1]; await Bun.write("package.json", JSON.stringify(p, null, 2) + "\n")' "${{ steps.version.outputs.version }}"
+
+      # Cross-compile all four standalone binaries (fanned out + cached by vx).
+      - name: Build binaries
+        run: bun src/bin.ts run build
+
+      - name: Assemble npm tree
+        run: bun scripts/build-npm.ts "${{ steps.version.outputs.version }}"
+
+      - name: Check npm auth
+        id: auth
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::dry_run requested — skipping publish."
+          elif [ -n "$NPM_TOKEN" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::NPM_TOKEN secret not set — built the npm tree but skipping publish. Add NPM_TOKEN to enable publishing."
+          fi
+
+      # Platform packages FIRST so the main package's optionalDependencies
+      # resolve on the registry, then the primary @vzn/vx package.
+      - name: Publish
+        if: steps.auth.outputs.publish == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -e
+          for pkg in \
+            dist/npm/@vzn/vx-linux-x64 \
+            dist/npm/@vzn/vx-linux-arm64 \
+            dist/npm/@vzn/vx-darwin-x64 \
+            dist/npm/@vzn/vx-darwin-arm64 \
+            dist/npm/vx; do
+            echo "::group::npm publish $pkg"
+            npm publish "$pkg" --access public
+            echo "::endgroup::"
+          done
