@@ -171,6 +171,31 @@ is formatted from the run locally, from the `$GITHUB_STEP_SUMMARY` file
 Actions provides) and needs no extra workflow step. A plain local run —
 not in Actions — writes nothing.
 
+## Proving cache correctness: `vx run --verify`
+
+Every cache assumes a task run twice on the same inputs produces the same
+bytes. A task that bakes in a timestamp, an unsorted map, or a random seed
+breaks that assumption silently — its cache entry replays arbitrary past
+output forever. `--verify` proves it instead of hoping: after each executed
+cacheable task saves, vx re-runs it and content-compares the outputs. A
+non-deterministic task fails the run, naming the diverging paths.
+
+```yaml
+- name: Verify cache correctness (nightly / merge queue)
+  run: vx run build --all --force --verify
+```
+
+`--force` re-executes a warm graph so every task is verified (a plain
+`--verify` run cache-hits and reports `not-verified` — there's nothing to
+re-run). It costs roughly 2× execution for verified tasks, so run it on a
+schedule or the merge queue, not every push. When the `cloud()` plugin is
+active, the job-summary page gains a **Hermeticity** line
+(`🔒 Hermeticity: N proven · M non-deterministic`) and each non-hermetic
+task is flagged inline with its diverging outputs.
+`--verify-allow=<pkg#task,…>` exempts tasks you can't fix yet so the gate
+stays green on the rest. See the
+[CLI reference](../../cli/#provable-cache-correctness-verify).
+
 ## Next steps
 
 - **[Remote caching](../remote-caching/)** — set up the shared cache.

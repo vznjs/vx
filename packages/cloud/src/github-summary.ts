@@ -22,6 +22,32 @@ function fmtDuration(ms: number): string {
   return `${m}m ${s}s`
 }
 
+/** The `--verify` verdict marker appended to a task's status cell. A
+ *  non-deterministic task is unsafe to cache — flag it right on the job page,
+ *  naming the diverging outputs. Silent for hits / no-outputs / non-verify runs. */
+function verifyMarker(t: TaskTelemetry): string {
+  const v = t.verify
+  if (v === undefined) return ''
+  switch (v.kind) {
+    case 'proven-deterministic':
+      return ' 🔒 verified'
+    case 'nondeterministic':
+      return ` ⚠️ non-deterministic (${changedPreview(v.changed)})`
+    case 'allowed-nondeterministic':
+      return ' ⚠️ non-deterministic (allowed)'
+    case 'rerun-failed':
+      return ` ⚠️ verify re-run failed (exit ${v.exitCode})`
+    default:
+      return '' // no-outputs / not-verified — nothing actionable per-row
+  }
+}
+
+/** First few diverging output paths, truncated so the cell stays compact. */
+function changedPreview(changed: readonly string[]): string {
+  const head = changed.slice(0, 3).join(', ')
+  return changed.length > 3 ? `${head}, +${changed.length - 3} more` : head
+}
+
 function statusCell(t: TaskTelemetry): string {
   // A task that only passed after a retry is flaky by definition — flag it
   // right where it happened, the most actionable place.
@@ -29,12 +55,13 @@ function statusCell(t: TaskTelemetry): string {
     t.attempts !== undefined && t.attempts > 1 && t.status === 'success'
       ? ` ⚠️ flaky (${t.attempts} attempts)`
       : ''
+  const verify = verifyMarker(t)
   switch (t.status) {
     case 'success':
-      return `✅ success${flaky}`
+      return `✅ success${flaky}${verify}`
     case 'cache-hit':
     case 'cache-hit-remote':
-      return '🟦 cache hit'
+      return `🟦 cache hit${verify}`
     case 'skipped':
       return '⚪ skipped'
     case 'aborted':
@@ -57,6 +84,32 @@ function cacheCell(t: TaskTelemetry): string {
   }
 }
 
+/** A one-line hermeticity headline for a `--verify` run (empty otherwise):
+ *  how many tasks proved deterministic vs how many are unsafe to cache. */
+function hermeticityLine(tasks: readonly TaskTelemetry[]): string {
+  let proven = 0
+  let bad = 0
+  let allowed = 0
+  for (const t of tasks) {
+    switch (t.verify?.kind) {
+      case 'proven-deterministic':
+        proven++
+        break
+      case 'nondeterministic':
+      case 'rerun-failed':
+        bad++
+        break
+      case 'allowed-nondeterministic':
+        allowed++
+        break
+    }
+  }
+  if (proven + bad + allowed === 0) return '' // not a --verify run
+  const icon = bad > 0 ? '⚠️' : '🔒'
+  const allowedPart = allowed > 0 ? ` · **${allowed}** allowed` : ''
+  return `\n${icon} Hermeticity: **${proven}** proven · **${bad}** non-deterministic${allowedPart}\n`
+}
+
 /** Render the run's result as a GitHub-flavored-markdown job summary. */
 export function formatGithubSummary(summary: RunSummaryRecord): string {
   const verdict = summary.exitOk ? '✅ passed' : '❌ failed'
@@ -66,7 +119,8 @@ export function formatGithubSummary(summary: RunSummaryRecord): string {
     `### vx run — \`${summary.run.command}\`\n\n` +
     `${verdict} · **${summary.taskCount}** tasks · **${summary.failedCount}** failed · ` +
     `**${hits}** cache hits · **${executed}** executed · ` +
-    `${fmtDuration(summary.totalDurationMs)}\n`
+    `${fmtDuration(summary.totalDurationMs)}\n` +
+    hermeticityLine(summary.tasks)
 
   // Failures first (the thing you opened the summary to find), then the rest in
   // their given order; aborted tasks are teardown noise — drop them.

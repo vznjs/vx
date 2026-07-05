@@ -22,6 +22,7 @@ function summary(
       exitCode: t.exitCode ?? 0,
       durationMs: t.durationMs ?? 1000,
       ...(t.attempts !== undefined ? { attempts: t.attempts } : {}),
+      ...(t.verify !== undefined ? { verify: t.verify } : {}),
     }),
   )
   return {
@@ -88,6 +89,46 @@ describe('formatGithubSummary', () => {
     // A single-attempt success is NOT flagged.
     const clean = formatGithubSummary(summary([{ taskId: 'ui#test', status: 'success' }]))
     expect(clean).not.toContain('flaky')
+  })
+
+  it('surfaces the --verify hermeticity verdict + names diverging outputs', () => {
+    const md = formatGithubSummary(
+      summary([
+        {
+          taskId: 'web#bundle',
+          status: 'success',
+          verify: { kind: 'nondeterministic', changed: ['dist/app.js', 'dist/app.js.map'] },
+        },
+        { taskId: 'lib#build', status: 'success', verify: { kind: 'proven-deterministic' } },
+      ]),
+    )
+    // Headline hermeticity line (warns because one task is non-deterministic).
+    expect(md).toContain('⚠️ Hermeticity: **1** proven · **1** non-deterministic')
+    // Per-row marker names the diverging outputs.
+    expect(md).toContain('⚠️ non-deterministic (dist/app.js, dist/app.js.map)')
+    expect(md).toContain('🔒 verified')
+  })
+
+  it('does not print a hermeticity line for a run without --verify', () => {
+    const md = formatGithubSummary(summary([{ taskId: 'a#build', status: 'success' }]))
+    expect(md).not.toContain('Hermeticity')
+    expect(md).not.toContain('verified')
+  })
+
+  it('truncates a long diverging-output list in the status cell', () => {
+    const md = formatGithubSummary(
+      summary([
+        {
+          taskId: 'web#bundle',
+          status: 'success',
+          verify: {
+            kind: 'nondeterministic',
+            changed: ['a.js', 'b.js', 'c.js', 'd.js', 'e.js'],
+          },
+        },
+      ]),
+    )
+    expect(md).toContain('non-deterministic (a.js, b.js, c.js, +2 more)')
   })
 
   it('drops aborted tasks and renders cache provenance', () => {
