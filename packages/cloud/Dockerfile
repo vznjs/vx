@@ -19,9 +19,9 @@
 FROM oven/bun:1.3 AS build
 WORKDIR /app
 
-# Whole workspace: core `src/`, `packages/cloud` (incl. its embedded dashboard
-# `packages/cloud/ui`, whose committed `dist/index.html` ui-asset.ts embeds via
-# `with { type: 'file' }`), the root package.json + bun.lock + link-self.ts.
+# Whole workspace: core `src/`, `packages/cloud` (incl. its dashboard source
+# `packages/cloud/ui`), the root package.json + bun.lock + link-self.ts. The
+# SPA dist is a build artifact (not in the repo) — it's built below.
 COPY . .
 
 # Reproduces the workspace resolution; the root postinstall (scripts/link-self.ts)
@@ -29,14 +29,13 @@ COPY . .
 # bare `import … from '@vzn/vx'` resolves to core's src/index.ts.
 RUN bun install --frozen-lockfile
 
-# The dashboard is NOT rebuilt here. packages/cloud/ui/dist/index.html is
-# committed and authoritative (whitelisted in .gitignore + .dockerignore);
-# ui-asset.ts embeds it at compile time. Skipping `vite build` keeps the image
-# lean and the build read-only w.r.t. the repo. (To rebuild the SPA instead,
-# run `bun run --filter '@vzn/vx-ui' build` before the compile step.)
+# Build the dashboard SPA to packages/cloud/ui/dist/index.html — ui-asset.ts
+# embeds it into the binary at compile time via `with { type: 'file' }`, so it
+# MUST exist before the compile resolves that import.
+RUN cd packages/cloud/ui && bun run build
 
 # bun build --compile bundles @vzn/vx-cloud + its @vzn/vx workspace dep + the
-# embedded SPA into one self-contained binary. This is the load-bearing step.
+# just-built SPA into one self-contained binary. This is the load-bearing step.
 RUN bun build --compile packages/cloud/src/cli/bin.ts --outfile /out/vx-cloud
 
 # ---------------------------------------------------------------------------

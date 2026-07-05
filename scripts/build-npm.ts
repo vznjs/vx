@@ -180,6 +180,16 @@ async function buildCloudPackage(version: string, outDir: string): Promise<void>
   const CLOUD = join(ROOT, 'packages', 'cloud')
   const dir = join(outDir, 'vx-cloud')
   await mkdir(dir, { recursive: true })
+  // The dashboard SPA dist is a build artifact (not committed) — build it so
+  // `ui/dist/index.html` exists to copy into the package (ui-asset.ts embeds it
+  // via a relative import at the consumer's `bun run`).
+  const spa = Bun.spawnSync({
+    cmd: ['bun', 'run', 'build'],
+    cwd: join(CLOUD, 'ui'),
+    stdout: 'inherit',
+    stderr: 'inherit',
+  })
+  if (spa.exitCode !== 0) throw new Error('vx-cloud dashboard SPA build failed')
   await cp(join(CLOUD, 'src'), join(dir, 'src'), { recursive: true })
   await cp(join(CLOUD, 'ui', 'dist'), join(dir, 'ui', 'dist'), { recursive: true })
   await cp(join(ROOT, 'LICENSE'), join(dir, 'LICENSE'))

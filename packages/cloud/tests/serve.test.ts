@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -213,6 +214,15 @@ describe('vx serve delegation', () => {
   it('serves the embedded dashboard SPA at / and falls back for app routes', async () => {
     const root = await makeWorkspace()
     const uiHtmlPath = path.resolve(import.meta.dir, '..', 'ui/dist/index.html')
+    // The SPA dist is a build artifact, not committed — build it on demand so
+    // this "does the dashboard actually load" coverage holds from a fresh tree.
+    if (!existsSync(uiHtmlPath)) {
+      const build = spawnSync('bun', ['run', 'build'], {
+        cwd: path.resolve(import.meta.dir, '..', 'ui'),
+        stdio: 'inherit',
+      })
+      if (build.status !== 0) throw new Error('dashboard SPA build failed')
+    }
     const server = await startServe({ root, uiHtmlPath })
     try {
       const index = await fetch(`${server.origin}/`)
@@ -234,7 +244,8 @@ describe('vx serve delegation', () => {
       await server.stop()
       await rm(root, { recursive: true, force: true })
     }
-  })
+    // Generous budget: may build the SPA on demand from a fresh tree.
+  }, 60_000)
 })
 
 describe('vx serve — network/auth hardening', () => {
