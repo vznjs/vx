@@ -187,6 +187,43 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-05**: **Retried-then-passed tasks flagged flaky in the GHA job
+  summary + the day's red lint gate greened** (road-to-best-CI #4/#5
+  completion; continuing the non-stop loop). **(1) `attempts` telemetry
+  field.** A task that only goes green after a retry is flaky BY
+  DEFINITION, and `TaskOutcome.attempts` already carried the count (set
+  only when >1, from the 2026-07-04 retries work) but it dead-ended at the
+  outcome — never reached telemetry. Added `attempts?: number` to the
+  `TaskTelemetry` contract (`src/orchestrator/telemetry.ts`) and projected
+  it from the outcome in BOTH the streaming `task.end` record and the
+  per-run `RunSummaryRecord.tasks[]` (`run.ts` summary construction).
+  **ADDITIVE — no `TELEMETRY_SCHEMA_VERSION` bump** (stays 2): the field is
+  absent for a once-run task, so a v2 consumer that ignores it is
+  byte-unaffected (the same additive-optional rule the retries work used
+  for `ExecConfig.retries`). Small, justified deviation from the
+  zero-core-change streak — pure observe-only telemetry data, no scheduling/
+  cache path touched; pinned by a core test driving a real retried run
+  through a `telemetrySinks` hook and asserting `attempts: 2` lands in the
+  summary. **(2) GHA flaky flag.** `packages/cloud/src/github-summary.ts`
+  `statusCell` now renders a retried-then-succeeded task as `✅ success ⚠️
+  flaky (N attempts)` — the most actionable place, right on the failed
+  build's job page. A single-attempt success is never flagged. **(3) Greened
+  the lint gate** — the day's github-summary + task-logs commits had left
+  tsgolint (real type checking) RED with 10 errors that `bun test` (transpile-
+  only, no checking) never surfaced: `CloudIngestSink`'s options assigned
+  `string | undefined` into `exactOptionalPropertyTypes` exact-optional
+  fields (build the optional props via conditional spread + guard the
+  constructor assignments), and two serve/summary test fixtures carried an
+  invalid `RunContextRecord` (`flow: 'full'` isn't a flow; `os`/`arch` are
+  non-null `string`) plus an `unknown`-typed `res.json()` access. **Lesson
+  logged:** `bun test` passing is NOT the gate — `bun src/bin.ts run
+lint.oxlint` (oxlint + tsgolint) type-checks `packages/cloud` too and MUST
+  be run before push; the earlier commits skipped it. Core 1061 pass, cloud
+  232 pass, lint+oxfmt clean. NEXT on the road-to-best-CI: flaky
+  detection → auto-retry SUGGESTIONS surfaced in the dashboard (the
+  `getFlakiest`/`failureMode` surface + this new `attempts` signal are both
+  live now), then per-request cache policy to remote agents (§13 known-open).
+
 - **2026-07-04**: **Duration-aware dispatch — start the longest task first
   (LPT)** (road-to-best-CI #5). The `DistScheduler` ready queue was FIFO; now
   `nextReady()` returns the historically LONGEST ready task (longest-
