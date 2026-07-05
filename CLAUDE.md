@@ -187,6 +187,46 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-05**: **Provable cache correctness Phase 2 — `--verify=inputs` /
+  `=all` (input-completeness via the sandbox)** (the flagship's second proof;
+  the OS sandbox — bwrap+strace — is installed in CI and now this env, so it's
+  e2e-verifiable). Determinism (Phase 1) proves outputs are reproducible; this
+  proves the OTHER half of cache safety: the declared `cache.inputs` are the
+  WHOLE workspace read set. `--verify=inputs` forces every executed cacheable
+  task through vx's existing declared-input baseline sandbox (`baseAllowRead` =
+  resolved inputs, `baseDenyRead = [workspaceRoot]`) regardless of whether the
+  task declared `sandbox: {}`; a read of any undeclared WORKSPACE file is flagged
+  `undeclared-inputs` (naming the path, workspace-relative, via the existing
+  strace `openat` oracle) and the run FAILS. `--verify=all` runs both proofs,
+  input-completeness FIRST (short-circuits the determinism re-run when inputs
+  are already wrong). Reads OUTSIDE the workspace (CA certs, `~/.config`) aren't
+  flagged — only undeclared reads inside it (the ones that can change a cached
+  output). **Key mechanism decision** (`execute-task.ts`): a sandbox forced on
+  ONLY by `--verify=inputs` surfaces its violations as the VERDICT (reds the run
+  via the `ok` clause, like `nondeterministic`) — it does NOT flip the task's
+  own exit code the way a USER-declared `sandbox: {}` violation does
+  (`if (userSandbox && violations.length > 0 && code === 0) code = 1`), so the
+  task isn't mislabeled failed and the retry loop doesn't pointlessly re-run.
+  New verdicts on `VerifyVerdict`: `proven-complete` (inputs OK on an
+  inputs-only run), `undeclared-inputs{paths}`. `run.ts` forces sandbox init
+  when `verify.inputs` and errors CLEARLY when the sandbox is unavailable (never
+  silently "passes" — the design's platform-honesty rule). Pure side-channel —
+  NO cache-key/SCHEMA/CACHE_VERSION change (verify is `RunOptions` only). CLI:
+  `--verify=inputs`/`=all` (previously rejected as "Phase 2"). **Tests:** parser
+  coverage for ALL FOUR `--verify` forms + `--verify-allow` (a gap even for
+  Phase 1 — there was zero parser test); pure `undeclaredInputPaths` unit tests
+  (bracket extraction, dedup/sort, raw-line fallback); 4 sandbox-gated e2e
+  (`describe.skipIf(!probeSandbox().available)` — proven-complete, undeclared-
+  inputs names the path + fails run, hit→not-verified, `=all` short-circuit).
+  Core 1113 pass, cloud 235 pass, lint clean. Verified with the real CLI
+  (clean→proven-complete exit 0; leaky→undeclared-inputs names
+  `packages/leaky/secret.txt` exit 1). Docs: cli.md (`--verify=inputs` section +
+  flag row), CI guide, comparison.md (both proofs). **STILL-OPEN (Phase 4):**
+  cross-machine fingerprint diff (ship Phase-1 `fp1` over telemetry, serve diffs
+  by cache key across arches). Deferred Phase-2 extras: per-task `cache.verify?:
+boolean` opt-out (+ hash-stripping) and `cache.verify.ignore` globs — the
+  run-level `--verify-allow` covers the escape-hatch need today.
+
 - **2026-07-05**: **Provable cache correctness Phase 3 (observability half) —
   the `--verify` verdict rides telemetry, OTel spans, + the GHA job summary**
   (continuing the flagship; the terminal-only verdict now reaches every
