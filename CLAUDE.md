@@ -187,6 +187,48 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-05**: **Quality sweep — perf O(n)→O(log n), +45 tests, doc-accuracy
+  fixes** (owner: "identify places where we miss tests… ensure all cases 100%.
+  Identify performance improvements, all O(n)… see if we can do O(1). Review
+  docs… no limitations, no todo, all done"). Drove three parallel read-only
+  audit agents (perf hot-paths, test-coverage gaps, doc staleness), then acted
+  on the ranked findings in three focused commits. **(1) Perf** (`68f9bc6`, no
+  behavior change, pinned by existing tests): scheduler ready-queue was two
+  sorted arrays (binary-search `splice` insert + `shift` take, both O(R)) →
+  O(R²) on a wide ready frontier (the 1000-pkg startup enqueue / a fan-out
+  completion); replaced with a **binary max-heap** keyed by (priority DESC,
+  enqueue-seq ASC) preserving the EXACT highest-first + FIFO-among-equals
+  contract, O(log R) push/pop. `stable-keys.ts topoOrder` used `queue.shift()`
+  (O(N²)) → head-pointer walk (O(N+E)), the last shift-based topo in core.
+  `cache.ts loadOutputFilesBatch` (≤3×/warm-hit) re-compiled its SQL each call
+  via `db.prepare` → `db.query` (caches by SQL text). `affected.ts
+projectsContaining` scanned all projects per changed file (O(F·P)) → dir→name
+  Map + bottom-up ancestor walk (deepest wins, same semantics, O(F·depth),
+  independent of project count). Deliberately SKIPPED the task-hash
+  workspaceFiles map-merge (#3) — cache-key-adjacent, memo staleness risk not
+  worth a conditional path — and the cold cloud-dist/metrics/predict/filter
+  items. **(2) Tests** (`7163db3`, +45, 1113→1158; tests-only + 2 pure helpers
+  exported): closed 16 audited gaps in correctness/security-critical code that
+  had NO direct test — `filterUpstreamHashes` (new upstream.test.ts: negation/
+  ordering/dedup), `parseDependencySpec` throw branches, `computeGroupHash`,
+  scheduler `priorities` override, `formatVerifySection` + the `rerun-failed`
+  verdict, the remote-cache download-cap defenses (content-length + mid-stream
+  `readBodyBounded` abort), `RemoteCache.has()` 503, `zstdContentSize` every
+  FCS layout (the bomb oracle), `parseCachePolicy` empty-seg, `isOutputsCurrent`
+  mode-mismatch, `parseRunArgs --retry/--timeout` errors + planning mutual-
+  exclusion, `defaultAffectedBase` success branch, `transitiveDependents`
+  cycle, persistent `forwardArgs`. Exported `readBodyBounded` + `zstdContentSize`
+  (pure, security-critical parsers) so a unit test pins them with a tiny cap /
+  crafted frames instead of a 512 MiB body — the only src change. **(3) Docs**
+  (`ea7619f`): 7 stale "unimplemented/deferred" claims corrected to match
+  shipped code — `vx stats` (ships as `vx info` alias), MCP-on-serve (`POST
+/mcp` ships), watch config-reload ("(Future)" → shipped), HMAC signing (was
+  listed open — shipped), and `globalInputs` reframed in 4 places from
+  "deferred/stub" to the owner-REJECTED non-goal it is (TS presets +
+  `cache.inputs.workspaceFiles` are the mechanism). The doc audit CONFIRMED the
+  CAS-not-rewired + predictive-experimental + vx-cloud-not-on-npm notes are
+  accurate (kept). Core 1158 pass, cloud 235 pass, lint clean.
+
 - **2026-07-05**: **Provable cache correctness Phase 2 — `--verify=inputs` /
   `=all` (input-completeness via the sandbox)** (the flagship's second proof;
   the OS sandbox — bwrap+strace — is installed in CI and now this env, so it's
