@@ -187,6 +187,24 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-05**: **`--cache-dir <path>` CLI flag + `--continue` doc
+  correction** (backlog closeout from `docs/comparison.md`). Two small
+  comparison.md gaps closed. **(1) `--cache-dir`:** the workspace
+  `defineWorkspace({ cacheDir })` field already redirected the cache; added
+  the matching per-run CLI flag. `RunOptions.cacheDir` → `prepare.ts`
+  resolves it (`path.resolve(cwd, cacheDir)`) OVER `resolveCacheDir`, so it
+  beats the workspace field + the `.vx/cache` default. Per-run knob, NEVER
+  folded into a cache key (like `--timeout`/`--retry`); `RunRequest.cacheDir`
+  on both wire mappers; parser guards no `--cache=<spec>` collision (char 7
+  differs). Tests: parser (space/= forms, no collision, missing-value) + e2e
+  (cache lands in the override dir not `.vx/cache`, hits from there, a
+  no-override run misses). **(2) `--continue=<mode>` was mislisted as an open
+  gap** — it's been fully wired for a while (CLI parse → scheduler
+  never/deps-ok/always enforcement → wire → tests → cli.md). Marked shipped
+  in comparison.md (gaps list + the CLI-flag-map row now spells the three
+  modes) and dropped from the CLAUDE.md backlog. Core 1097 pass, cloud 232
+  pass, lint clean.
+
 - **2026-07-05**: **Docs Mermaid diagrams fixed — three independent root
   causes** (owner: "Diagrams in docs are broken"). Every diagram page
   rendered Mermaid's "Syntax error" bomb. Diagnosed by driving the built site
