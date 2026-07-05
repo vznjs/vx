@@ -202,6 +202,41 @@ describe('DistScheduler — dispatch', () => {
     expect(agent.assigned()).toEqual(['pkg#a', 'pkg#b'])
   })
 
+  it('dispatches the LONGEST task first when duration hints are present (LPT)', async () => {
+    const agent = fakeAgent('a1', 1)
+    const out = collector()
+    // pkg#a queues before pkg#b, but pkg#b is historically longer → it goes first.
+    const sched = new DistScheduler({
+      submit: submitMsg([node('pkg#a'), node('pkg#b')]),
+      store: store(),
+      send: out.send,
+      durationHints: new Map([
+        ['pkg#a', 1000],
+        ['pkg#b', 9000],
+      ]),
+    })
+    sched.attach(binding([agent], () => sched))
+    await sched.start()
+    expect(agent.assigned()).toEqual(['pkg#b'])
+    sched.onAgentMessage(agent, { t: 'agent:done', taskId: 'pkg#b', outcome: outcome('pkg#b') })
+    expect(agent.assigned()).toEqual(['pkg#b', 'pkg#a'])
+  })
+
+  it('with NO hints (or all-equal) dispatch stays FIFO — byte-identical', async () => {
+    const agent = fakeAgent('a1', 1)
+    const out = collector()
+    // An empty hint map (a no-history workspace) must not reorder anything.
+    const sched = new DistScheduler({
+      submit: submitMsg([node('pkg#a'), node('pkg#b')]),
+      store: store(),
+      send: out.send,
+      durationHints: new Map(),
+    })
+    sched.attach(binding([agent], () => sched))
+    await sched.start()
+    expect(agent.assigned()).toEqual(['pkg#a'])
+  })
+
   it('prefers the agent that executed a dep (dep-affinity), tie → first free', async () => {
     const a1 = fakeAgent('a1', 2)
     const a2 = fakeAgent('a2', 2)

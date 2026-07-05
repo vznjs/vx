@@ -46,6 +46,13 @@ export interface DistSchedulerArgs {
   store: ArtifactProbe
   /** Sends a ServerMessage to the submitter; must swallow its own failures. */
   send(msg: ServerMessage): void
+  /**
+   * taskId → historical mean execution ms, from the serve's ingest store.
+   * When present the ready queue dispatches LONGEST-first (the LPT makespan
+   * heuristic — a long pole should start as early as possible). Absent /
+   * unknown tasks sort as 0, so a no-history workspace is byte-identical FIFO.
+   */
+  durationHints?: ReadonlyMap<string, number>
 }
 
 const OK_STATUSES = new Set(['success', 'cache-hit', 'cache-hit-remote'])
@@ -212,10 +219,27 @@ export class DistScheduler implements ActiveSubmission {
 
   // --- ActiveSubmission: dispatch surface (driven by the registry's fair loop) ---
 
-  /** The next ready-but-unassigned task (queue head), or undefined. */
+  /**
+   * The next ready-but-unassigned task. With no duration hints this is the
+   * queue head (FIFO — byte-identical to before); with hints it is the
+   * LONGEST task (LPT), a strict `>` so ties keep queue order (a no-history
+   * workspace, where every hint is 0, stays exactly FIFO).
+   */
   nextReady(): string | undefined {
-    if (this.finished) return undefined
-    return this.ready[0]
+    if (this.finished || this.ready.length === 0) return undefined
+    const hints = this.args.durationHints
+    if (hints === undefined) return this.ready[0]
+    let best = this.ready[0]!
+    let bestMs = hints.get(best) ?? 0
+    for (let i = 1; i < this.ready.length; i++) {
+      const id = this.ready[i]!
+      const ms = hints.get(id) ?? 0
+      if (ms > bestMs) {
+        best = id
+        bestMs = ms
+      }
+    }
+    return best
   }
 
   /** Agent ids that already executed a dep of `taskId` — dep-affinity locality. */

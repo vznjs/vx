@@ -7,6 +7,7 @@
 
 import os from 'node:os'
 import path from 'node:path'
+import type { Database } from 'bun:sqlite'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { chmod, mkdir, unlink, writeFile } from 'node:fs/promises'
 import {
@@ -224,6 +225,29 @@ function logResponse(
     truncatedHeadChars: log.truncatedHeadChars,
     ...(log.hash !== undefined ? { hash: log.hash } : {}),
   }
+}
+
+/**
+ * Mean execution ms per `project#task` from a workspace's recent EXECUTED
+ * (non-cache-hit, successful) runs — the duration-aware dispatch signal. One
+ * grouped scan; an unknown workspace (no store yet) → empty map (FIFO).
+ */
+function taskDurationHints(db: Database | undefined): Map<string, number> {
+  const hints = new Map<string, number>()
+  if (db === undefined) return hints
+  try {
+    const rows = db
+      .query(
+        `SELECT project, task, AVG(duration_ms) AS avg FROM runs
+         WHERE status = 'success' AND (cache_hit IS NULL OR cache_hit = 0)
+         GROUP BY project, task`,
+      )
+      .all() as { project: string; task: string; avg: number }[]
+    for (const r of rows) hints.set(`${r.project}#${r.task}`, r.avg)
+  } catch {
+    // no runs table / fresh store — no hints, plain FIFO
+  }
+  return hints
 }
 
 /** How long an un-summarized delegated-run log buffer is held before sweep. */
@@ -1116,7 +1140,13 @@ export async function startServe(opts: {
           has: (h: string) => artifacts.has(h, principal),
           storedDurationMs: (h: string) => artifacts.storedDurationMs(h, principal),
         }
-        const scheduler = new DistScheduler({ submit, store: scopedStore, send })
+        // Duration-aware dispatch: the ready queue starts the longest task
+        // first (LPT makespan heuristic). The hints come from THIS serve's
+        // ingest history for the workspace — the right source in CI, where the
+        // submitter's own checkout is an ephemeral empty runner. Absent
+        // history → an empty map → byte-identical FIFO dispatch.
+        const durationHints = taskDurationHints(ingest.db(submit.workspaceId))
+        const scheduler = new DistScheduler({ submit, store: scopedStore, send, durationHints })
         const bound = registry.beginSubmission(submit.workspaceId, submit.session, scheduler)
         if ('error' in bound) {
           send({ t: 'error', message: bound.error })
