@@ -187,6 +187,32 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-05**: **Docs Mermaid diagrams fixed — three independent root
+  causes** (owner: "Diagrams in docs are broken"). Every diagram page
+  rendered Mermaid's "Syntax error" bomb. Diagnosed by driving the built site
+  in a headless browser (Chromium at `/opt/pw-browsers`, playwright at
+  `/opt/node22/...`) + parsing each source with Mermaid's own UMD build to get
+  the exact grammar error. **(1) `Head.astro` re-render corruption:**
+  `renderMermaid` reset each block with `el.innerHTML = source`, which
+  re-parsed a `<br/>` in a label into a real `<br>` DOM element — mangling the
+  definition Mermaid reads. Switched to `el.textContent = source` so `<br/>`
+  stays literal (Mermaid renders it as a line break). This alone fixed the
+  flowcharts + state diagrams. **(2) reserved-word node id:**
+  `architecture.md` used `graph` as a flowchart NODE ID (`index --> graph`) —
+  `graph` is a reserved keyword, Mermaid 11 errors "got 'GRAPH'". Renamed to
+  `graphmod["graph"]` (safe id, same label). **(3) semicolon in sequence
+  text:** `flows.md` sequence diagrams put `;` in `Note`/message text —
+  Mermaid treats `;` as a STATEMENT SEPARATOR, so the note split and the
+  parser errored at the next token. Isolated by a parametric parse (`;` fails;
+  `<br/>`, `,`, messages all fine). Replaced the three `;` with an em dash /
+  removed it. **Gotchas for future diagrams:** never use `graph`/`end`/
+  `subgraph`/`class`/`state` as a flowchart node id; never put `;` in
+  sequenceDiagram note/message text; `<br/>` in labels is fine as long as the
+  render path feeds Mermaid textContent, not innerHTML. Browser-verified: all
+  4 diagram pages render 15/15 diagrams, 0 errors. Source-only fix
+  (`apps/docs/src/components/Head.astro`, `docs/{architecture,flows}.md`); the
+  Pages deploy rebuilds (dist + generated content are gitignored).
+
 - **2026-07-05**: **Dashboard SPA dist is a BUILD ARTIFACT, not committed;
   no doc asks an external user to clone the internal repo** (owner: "make the
   spa not committable … dist should be built during vx cloud build and
