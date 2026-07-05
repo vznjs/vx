@@ -306,13 +306,18 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
       const ghaSummary = firstEnv('GITHUB_STEP_SUMMARY')
       if (conn === undefined && ghaSummary === undefined) return undefined
       return new CloudIngestSink({
-        connection:
-          conn !== undefined
-            ? { baseUrl: conn.url, token: conn.token, socketPath: conn.socket }
-            : undefined,
+        ...(conn !== undefined
+          ? {
+              connection: {
+                baseUrl: conn.url,
+                ...(conn.token !== undefined ? { token: conn.token } : {}),
+                ...(conn.socket !== undefined ? { socketPath: conn.socket } : {}),
+              },
+            }
+          : {}),
         warn: (m) => ctx.warn(m),
         logsEnabled: logsEnabled(opts),
-        githubSummaryPath: ghaSummary,
+        ...(ghaSummary !== undefined ? { githubSummaryPath: ghaSummary } : {}),
       })
     },
   }
@@ -444,9 +449,9 @@ class CloudIngestSink implements TelemetrySink {
     /** `$GITHUB_STEP_SUMMARY` — append the run's result table when in CI. */
     githubSummaryPath?: string
   }) {
-    this.connection = opts.connection
+    if (opts.connection !== undefined) this.connection = opts.connection
     this.warn = opts.warn
-    this.githubSummaryPath = opts.githubSummaryPath
+    if (opts.githubSummaryPath !== undefined) this.githubSummaryPath = opts.githubSummaryPath
     // Log capture only makes sense when there's a serve to ship tails to.
     if (opts.logsEnabled === true && opts.connection !== undefined) {
       this.logs = new TaskLogBuffer()

@@ -38,15 +38,15 @@ function summary(runId: string, tasks: Partial<TaskTelemetry>[]): RunSummaryReco
       requestedTasks: ['build'],
       cachePolicy: 'lR,lW,rR,rW',
       concurrency: 4,
-      flow: 'full',
+      flow: null,
       commitSha: null,
       branch: null,
       dirty: null,
       ci: false,
       ciProvider: null,
       host: null,
-      os: null,
-      arch: null,
+      os: 'linux',
+      arch: 'x64',
       tags: {},
     },
     startedAt: Date.now(),
@@ -192,7 +192,7 @@ describe('serve — task-log routes', () => {
         tasks: [],
       })
       expect(res.status).toBe(400)
-      expect(String((await res.json()).error)).toContain('v99')
+      expect(String(((await res.json()) as { error?: string }).error)).toContain('v99')
     } finally {
       await server.stop()
       await rm(root, { recursive: true, force: true })
