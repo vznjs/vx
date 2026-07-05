@@ -62,6 +62,15 @@ export interface RunOptions {
    */
   retries?: number
   /**
+   * Run-level default task timeout (ms), for tasks that declare no
+   * `exec.timeout`. Highest of the run-level defaults: `--timeout` /
+   * this option → `VX_TASK_TIMEOUT` env → workspace `timeout`. Per-task
+   * `exec.timeout` always wins. Threaded as an option only — never
+   * folded into any cache key (a timed-out task fails and is never
+   * cached), so a `--timeout` run cache-hits a plain run's entry.
+   */
+  timeout?: number
+  /**
    * Failure propagation: 'never' stops dispatch on the first failure
    * (in-flight tasks finish; everything queued skips), 'deps-ok'
    * (default) skips only a failure's dependents, 'always' runs

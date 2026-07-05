@@ -64,6 +64,12 @@ export interface ExecuteArgs {
    * byte-identical with and without it.
    */
   retries?: number
+  /**
+   * Run-level default task timeout (ms) — the already-resolved
+   * `VX_TASK_TIMEOUT`/workspace/`--timeout` fallback. Per-task
+   * `exec.timeout` wins. Threaded as an option only — never hashed.
+   */
+  timeout?: number
   /** Per-run memo for `git ls-files` (one entry per project dir). */
   gitFilesCache?: GitFilesCache
   /** Per-run memo for derived hashes (package.json bytes + task config). */
@@ -154,9 +160,11 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   if (step.persistent.readyWhen !== undefined) {
     persistentOpts.readyWhen = step.persistent.readyWhen
   }
-  // For a persistent task `exec.timeout` bounds the readiness wait.
-  if (step.timeout !== undefined) {
-    persistentOpts.timeoutMs = step.timeout
+  // For a persistent task the timeout bounds the readiness wait. Per-task
+  // `exec.timeout` wins; else the run-level default (env/workspace/--timeout).
+  const effectiveTimeout = step.timeout ?? args.timeout
+  if (effectiveTimeout !== undefined) {
+    persistentOpts.timeoutMs = effectiveTimeout
   }
 
   const spawn = runPersistent(persistentOpts)
@@ -212,6 +220,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const outputs = cacheCfg?.outputs.files ?? []
   const wsOutputs = cacheCfg?.outputs.workspaceFiles ?? []
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
+  // Timeout precedence: per-task `exec.timeout` → run-level default
+  // (`--timeout`/`RunOptions.timeout` → `VX_TASK_TIMEOUT` → workspace
+  // `timeout`, already collapsed into `args.timeout` by run.ts).
+  const effectiveTimeout = step.timeout ?? args.timeout
 
   // When the task started, as a ns offset from run start — captured for
   // EVERY outcome (hits included) so the run-detail timeline reflects when
@@ -339,7 +351,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // the 143 exit reads as a timeout, and fall through to the normal
     // exit-code path (failed — retryable — never cached).
     if (result.timedOut) {
-      log.taskStderr(node, `\n[vx] timed out after ${step.timeout}ms — killed (SIGTERM)\n`)
+      log.taskStderr(node, `\n[vx] timed out after ${effectiveTimeout}ms — killed (SIGTERM)\n`)
     }
 
     // A child killed by a shutdown signal (Ctrl-C / SIGTERM teardown)
@@ -376,7 +388,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       onStdout: (chunk) => log.taskStdout(node, chunk),
       onStderr: (chunk) => log.taskStderr(node, chunk),
       ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
-      ...(step.timeout !== undefined ? { timeoutMs: step.timeout } : {}),
+      ...(effectiveTimeout !== undefined ? { timeoutMs: effectiveTimeout } : {}),
     })
   }
 
@@ -428,7 +440,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       onStdout: (chunk) => log.taskStdout(node, chunk),
       onStderr: (chunk) => log.taskStderr(node, chunk),
       ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
-      ...(step.timeout !== undefined ? { timeoutMs: step.timeout } : {}),
+      ...(effectiveTimeout !== undefined ? { timeoutMs: effectiveTimeout } : {}),
       baseAllowRead: [...resolved.files, ...baseAllowWrite],
       baseAllowWrite,
       baseDenyRead: [args.workspaceRoot],

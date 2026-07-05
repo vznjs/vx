@@ -50,6 +50,19 @@ import { formatRunSummary } from './summary.js'
 import type { RunOptions, RunSummary } from './options.js'
 
 /**
+ * Parse the `VX_TASK_TIMEOUT` env var (ms) — the "global" run-level task
+ * timeout default. A missing/empty/non-positive-integer value yields
+ * `undefined` (ignored), so a typo never silently disables a task's own
+ * `exec.timeout`.
+ */
+function readTaskTimeoutEnv(): number | undefined {
+  const raw = process.env['VX_TASK_TIMEOUT']
+  if (raw === undefined || raw === '') return undefined
+  const n = Number(raw)
+  return Number.isInteger(n) && n > 0 ? n : undefined
+}
+
+/**
  * Compact the 4-axis cache policy into the `invocations.cache_policy`
  * column string. Each enabled axis contributes its flag; a fully-on
  * policy reads `'lR,lW,rR,rW'`. Pure presentation — never affects the key.
@@ -175,6 +188,13 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     options.concurrency ??
     workspaceConfig?.concurrency ??
     Math.max(1, navigator.hardwareConcurrency)
+
+  // Run-level default task timeout (ms), applied to any task WITHOUT its own
+  // `exec.timeout`. Precedence, highest first: `--timeout`/RunOptions.timeout
+  // → `VX_TASK_TIMEOUT` env → workspace `timeout`. A malformed env value is
+  // ignored (a bad timeout must not silently disable a task's own limit).
+  const taskTimeoutDefault =
+    options.timeout ?? readTaskTimeoutEnv() ?? workspaceConfig?.timeout ?? undefined
 
   // Run-scoped registries of live subprocesses:
   //   - `liveChildren`: in-flight children. The runner adds/removes
@@ -387,6 +407,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         cachePolicy: policy,
         forwardArgs: options.forwardArgs,
         ...(options.retries !== undefined ? { retries: options.retries } : {}),
+        ...(taskTimeoutDefault !== undefined ? { timeout: taskTimeoutDefault } : {}),
         log,
         nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
         runStartHrTimeNs,

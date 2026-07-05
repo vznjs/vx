@@ -59,6 +59,12 @@ export interface RunArgs {
    * without their own `exec.retries`. Undefined when not passed.
    */
   retries: number | undefined
+  /**
+   * `--timeout <ms>` / `--timeout=<ms>`: run-level default task timeout for
+   * tasks without their own `exec.timeout`. Sits above the `VX_TASK_TIMEOUT`
+   * env and workspace `timeout` defaults. Undefined when not passed.
+   */
+  timeout: number | undefined
   outputLogs?: 'full' | 'errors-only' | 'none'
   forwardArgs: string[]
   verbosity: number
@@ -89,6 +95,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     cache: { ...FULL_CACHE_POLICY },
     frozen: false,
     retries: undefined,
+    timeout: undefined,
     forwardArgs: [],
     verbosity: 0,
     dry: undefined,
@@ -145,6 +152,14 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
         return { ...out, error: `--retry must be a non-negative integer, got: ${v}` }
       }
       out.retries = n
+    } else if (a === '--timeout' || a?.startsWith('--timeout=')) {
+      const v = a === '--timeout' ? before[++i] : a.slice('--timeout='.length)
+      if (v === undefined) return { ...out, error: `--timeout requires a value` }
+      const n = Number(v)
+      if (v === '' || !Number.isInteger(n) || n <= 0) {
+        return { ...out, error: `--timeout must be a positive integer (ms), got: ${v}` }
+      }
+      out.timeout = n
     } else if (a === '--output-logs') {
       const v = before[++i]
       if (v !== 'full' && v !== 'errors-only' && v !== 'none') {
@@ -351,6 +366,7 @@ export async function resolveRunOptions(
   }
   if (projects !== undefined) opts.projects = projects
   if (parsed.retries !== undefined) opts.retries = parsed.retries
+  if (parsed.timeout !== undefined) opts.timeout = parsed.timeout
   if (parsed.concurrency !== undefined) opts.concurrency = parsed.concurrency
   if (parsed.summarize !== undefined) opts.summarize = parsed.summarize
   if (parsed.profile !== undefined) opts.profile = parsed.profile

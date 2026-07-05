@@ -6,6 +6,14 @@ export interface WorkspaceConfig {
   /** Cache directory, relative to the workspace root. Defaults to `.vx/cache`. */
   cacheDir?: string
   /**
+   * Default per-task timeout (ms) — the lowest-precedence fallback for a
+   * task that declares no `exec.timeout`. Precedence, highest first:
+   * per-task `exec.timeout` → `VX_TASK_TIMEOUT` env → this workspace
+   * default. Purely a runaway-process guard; never folded into a cache
+   * key (a timed-out task fails and is never cached). Omitted → no default.
+   */
+  timeout?: number
+  /**
    * Plugins registered for this workspace. Each plugin is an
    * in-process subscriber on the run event bus, installed once per
    * `vx run`. See `docs/design/extension-protocol-2026-06.md` §5.

@@ -143,6 +143,14 @@ build: { exec: { command: 'tsc -b', timeout: 120_000 } }
   task that's ready on spawn (no `readyWhen`) becomes ready before the
   timer can fire, so the timeout is a no-op for it.
 
+A task with **no** `exec.timeout` falls back to a run-level default, if
+one is set. Precedence, highest first: **per-task `exec.timeout` →
+`--timeout <ms>` / `RunOptions.timeout` → `VX_TASK_TIMEOUT` env →
+workspace `timeout`** (see workspace config below). Per-task always
+wins. The run-level defaults are threaded as run options, so — like
+`--retry` — they never touch a cache key: a `--timeout` run cache-hits a
+plain run's entry.
+
 **Why no multi-step `commands: string[]`?** Per-task caching is the
 right granularity for invalidation. If you'd benefit from caching each
 step independently (e.g. `codegen` then `build`), split into two
@@ -751,6 +759,7 @@ import { cloud } from '@vzn/vx-cloud/plugin'
 export default defineWorkspace({
   concurrency: 8,
   cacheDir: 'build/.vx-cache',
+  timeout: 600_000,
   plugins: [otel(), cloud()],
 })
 ```
@@ -761,6 +770,8 @@ interface WorkspaceConfig {
   concurrency?: number
   /** Cache directory, relative to workspace root. Defaults to `.vx/cache`. */
   cacheDir?: string
+  /** Default per-task timeout (ms) for tasks without their own exec.timeout. */
+  timeout?: number
   /** Run-level plugins (backend / cache / telemetry capabilities). */
   plugins?: readonly Plugin[]
   /** Opt in to history-based predictive scheduler priorities. */
@@ -770,6 +781,12 @@ interface WorkspaceConfig {
 
 - **`concurrency`** — used as the default cap on parallel tasks; the
   CLI `--concurrency <n>` still wins when passed.
+- **`timeout`** — the lowest-precedence default per-task timeout (ms),
+  applied to any task that declares no `exec.timeout`. Precedence,
+  highest first: per-task `exec.timeout` → `--timeout` /
+  `RunOptions.timeout` → `VX_TASK_TIMEOUT` env → this. A runaway task is
+  SIGTERMed and reported `failed`. Purely a safety net — never folded
+  into a cache key (a timed-out task fails and is never cached).
 - **`cacheDir`** — relative paths are resolved against the workspace
   root; absolute paths are used as-is. `vx run`, `vx cache prune`,
   and any other reader use the same resolution
@@ -1033,11 +1050,12 @@ and surfaces `UserError` (clean output, no stack):
 
 Workspace-config errors:
 
-| Symptom                                                                              | Cause                                     |
-| ------------------------------------------------------------------------------------ | ----------------------------------------- |
-| `concurrency must be a positive integer`                                             | `concurrency` is negative, zero, NaN, ... |
-| `cacheDir must be a string`                                                          | Wrong shape.                              |
-| `plugins must be an array of plugin objects`                                         | Wrong shape.                              |
-| `plugins[i].name must be a non-empty string`                                         | Missing / empty plugin name.              |
-| `plugins[i] must contribute at least one of setup/backend/cache/telemetry/eventSink` | A plugin object with no capability.       |
-| `predictive must be a boolean`                                                       | Wrong shape.                              |
+| Symptom                                                                              | Cause                                           |
+| ------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| `concurrency must be a positive integer`                                             | `concurrency` is negative, zero, NaN, ...       |
+| `timeout must be a positive integer (milliseconds)`                                  | Workspace `timeout` is ≤ 0, NaN, or not an int. |
+| `cacheDir must be a string`                                                          | Wrong shape.                                    |
+| `plugins must be an array of plugin objects`                                         | Wrong shape.                                    |
+| `plugins[i].name must be a non-empty string`                                         | Missing / empty plugin name.                    |
+| `plugins[i] must contribute at least one of setup/backend/cache/telemetry/eventSink` | A plugin object with no capability.             |
+| `predictive must be a boolean`                                                       | Wrong shape.                                    |

@@ -83,6 +83,15 @@ function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
   if (config.cacheDir !== undefined && typeof config.cacheDir !== 'string') {
     throw new UserError(`${configPath}: \`cacheDir\` must be a string`)
   }
+  if (config.timeout !== undefined) {
+    if (
+      typeof config.timeout !== 'number' ||
+      !Number.isInteger(config.timeout) ||
+      config.timeout <= 0
+    ) {
+      throw new UserError(`${configPath}: \`timeout\` must be a positive integer (milliseconds)`)
+    }
+  }
   if (config.plugins !== undefined) {
     if (!Array.isArray(config.plugins)) {
       throw new UserError(`${configPath}: \`plugins\` must be an array of plugin objects`)
