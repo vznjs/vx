@@ -187,6 +187,34 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-05**: **Dashboard SPA dist is a BUILD ARTIFACT, not committed;
+  no doc asks an external user to clone the internal repo** (owner: "make the
+  spa not committable … dist should be built during vx cloud build and
+  bundled into its package/bin not committed to repo. … do not ask user to
+  clone the repo in the docs. Repo is internal"). REVERSES the 2026-06-28
+  "commit `packages/cloud/ui/dist/index.html`" decision (which existed so a
+  fresh checkout could compile the binary without a SPA build). **(1) dist
+  un-committed**: gitignored plus `git rm --cached`; every consumer now builds
+  it first — the npm package (`build-npm.ts buildCloudPackage` runs the vite
+  build before copying `ui/dist`), the Docker image (a vite-build step before
+  the `bun build --compile` that embeds it), and locally `vx run build.ui` (the
+  `build.bun.*` tasks already depend on it). The runtime already degraded
+  gracefully: `loadUiHtmlPath` try/catches the dynamic `ui-asset` import and
+  returns null (API-only serve) when the dist is absent, so from-source dev is
+  unaffected. The serve `GET /` test builds the SPA on-demand (60s budget) when
+  the dist is missing, keeping its "does the dashboard load" coverage from a
+  fresh tree. **Verified end-to-end**: fresh tree (no dist) then build SPA then
+  `bun build --compile` of the cloud bin then the compiled binary serves the
+  embedded dashboard plus `/health`. Cloud 232 pass, lint clean.
+  `.dockerignore` no longer whitelists `ui/dist` (built in-image, not copied
+  from context). **(2) no clone in docs**: both CLIs publish to npm now, so the
+  distributed-CI recipes and the `vx-agent` composite action install via
+  `npm i -g @vzn/vx` and `npm i -g @vzn/vx-cloud` (Bun-source, needs setup-bun)
+  instead of cloning the repo at a pinned ref plus a bun PATH shim; the
+  action's `ref` input (git ref) became `version` (npm dist-tag). The README
+  `## Development` clone stays (a contributor path for people with repo access,
+  not a user install step).
+
 - **2026-07-05**: **Task timeout defaults — per-task > env > workspace
   precedence** (owner: "per task timeout and workspace timeout and global
   timeout … Per task always precedence then env var then workspace var").
