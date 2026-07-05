@@ -1296,6 +1296,17 @@ export interface FlakyTask {
   runs: number
   failures: number
   failureRate: number
+  /**
+   * Runs where the task needed MORE than one attempt (`exec.retries` /
+   * `--retry` re-ran it and it eventually passed). This is the DIRECT
+   * flaky signal — a task that failed then passed under identical inputs
+   * is nondeterministic by definition, no cross-run inference needed.
+   */
+  withinRunRetries: number
+  /** The worst attempt count seen in any single run (undefined if never retried). */
+  maxAttempts: number | undefined
+  /** True when `withinRunRetries > 0` — flakiness is CONFIRMED, not inferred. */
+  flakyConfirmed: boolean
   /** p99 / p50 ratio for successful non-hit runs; >3 flags wide tail. */
   durationTailRatio: number | undefined
   p50DurationMs: number | undefined
@@ -1303,13 +1314,26 @@ export interface FlakyTask {
 }
 
 export function getFlakiestTasks(db: Database, limit = 25): FlakyTask[] {
+  // A within-run retry is a confirmed flake even with few runs, so surface
+  // such a task regardless of run count; cross-run failure variance still
+  // needs 3+ runs to be meaningful (else a single red build reads as flaky).
   const pairs = db
     .query(
       `SELECT project, task, COUNT(*) AS runs,
-              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures
-       FROM runs GROUP BY project, task HAVING runs >= 3`,
+              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
+              SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END) AS within_run_retries,
+              MAX(attempts) AS max_attempts
+       FROM runs GROUP BY project, task
+       HAVING runs >= 3 OR within_run_retries > 0`,
     )
-    .all() as { project: string; task: string; runs: number; failures: number }[]
+    .all() as {
+    project: string
+    task: string
+    runs: number
+    failures: number
+    within_run_retries: number
+    max_attempts: number | null
+  }[]
   return pairs
     .map((p) => {
       const durs = db
@@ -1331,19 +1355,27 @@ export function getFlakiestTasks(db: Database, limit = 25): FlakyTask[] {
         runs: p.runs,
         failures: p.failures,
         failureRate: p.runs > 0 ? p.failures / p.runs : 0,
+        withinRunRetries: p.within_run_retries,
+        maxAttempts: p.max_attempts ?? undefined,
+        flakyConfirmed: p.within_run_retries > 0,
         durationTailRatio: ratio,
         p50DurationMs: p50,
         p99DurationMs: p99,
       } satisfies FlakyTask
     })
     .filter(
-      (r) => r.failureRate > 0 || (r.durationTailRatio !== undefined && r.durationTailRatio > 2),
+      (r) =>
+        r.flakyConfirmed ||
+        r.failureRate > 0 ||
+        (r.durationTailRatio !== undefined && r.durationTailRatio > 2),
     )
     .sort((a, b) => {
-      // Rank by a composite score: failure rate dominates, tail ratio breaks ties.
-      const sa = a.failureRate * 10 + (a.durationTailRatio ?? 1)
-      const sb = b.failureRate * 10 + (b.durationTailRatio ?? 1)
-      return sb - sa
+      // Confirmed-flaky tasks (a real within-run retry) outrank every merely
+      // inferred one; within each tier, failure rate dominates and the
+      // duration tail breaks ties.
+      const score = (r: FlakyTask) =>
+        (r.flakyConfirmed ? 100 : 0) + r.failureRate * 10 + (r.durationTailRatio ?? 1)
+      return score(b) - score(a)
     })
     .slice(0, clampInt(limit, 1, 200))
 }

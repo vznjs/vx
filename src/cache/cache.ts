@@ -89,7 +89,12 @@ const CACHE_VERSION = 'vx-cache-v24'
 //        run via `recordRunBundle`. The cache KEY is unchanged
 //        (CACHE_VERSION not bumped) — these tables persist analytics
 //        derived from the same `CacheKeyInput` the key already consumes.
-const SCHEMA_VERSION = 'v22'
+//   v23: runs.attempts — the number of attempts a retried task took (>1),
+//        the DIRECT within-run flaky signal (a task that failed then
+//        passed under identical inputs is nondeterministic by definition;
+//        no cross-run inference needed). Nullable; NULL for a once-run
+//        task. Analytics-only — the cache KEY is unchanged.
+const SCHEMA_VERSION = 'v23'
 
 /**
  * Artifact + `output_files` namespace prefix for workspace-root-
@@ -306,6 +311,7 @@ export interface RunRecord {
   wallclockStartNs?: bigint // hrtime span relative to run t=0
   wallclockEndNs?: bigint
   cacheHit?: boolean // convenience for flamegraph color; derivable from status
+  attempts?: number // >1 when the task retried; the direct within-run flaky signal
 }
 
 /**
@@ -779,7 +785,10 @@ export class Cache implements CacheLayer {
         peak_rss_bytes      INTEGER,
         wallclock_start_ns  INTEGER,
         wallclock_end_ns    INTEGER,
-        cache_hit           INTEGER
+        cache_hit           INTEGER,
+        -- v23: attempts a retried task took (>1); NULL for a once-run task.
+        -- The direct within-run flaky signal.
+        attempts            INTEGER
       );
       CREATE INDEX IF NOT EXISTS runs_hash       ON runs(hash);
       CREATE INDEX IF NOT EXISTS runs_started_at ON runs(started_at);
@@ -891,9 +900,9 @@ export class Cache implements CacheLayer {
         hash, project, task, status, exit_code, duration_ms, forward_args,
         started_at, ended_at,
         run_id, cpu_ms, peak_rss_bytes, wallclock_start_ns, wallclock_end_ns,
-        cache_hit
+        cache_hit, attempts
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,  ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,  ?, ?)
     `)
     this.insertInvocation = this.db.prepare(`
       INSERT INTO invocations(
@@ -1770,6 +1779,7 @@ function bindRun(run: RunRecord): SQLQueryBindings[] {
     run.wallclockStartNs !== undefined ? run.wallclockStartNs : null,
     run.wallclockEndNs !== undefined ? run.wallclockEndNs : null,
     run.cacheHit === undefined ? null : run.cacheHit ? 1 : 0,
+    run.attempts ?? null,
   ]
 }
 

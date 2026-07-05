@@ -643,6 +643,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         ...(o.wallclockStartNs !== undefined ? { wallclockStartNs: o.wallclockStartNs } : {}),
         ...(o.wallclockEndNs !== undefined ? { wallclockEndNs: o.wallclockEndNs } : {}),
         cacheHit: o.status === 'cache-hit' || o.status === 'cache-hit-remote',
+        ...(o.attempts !== undefined ? { attempts: o.attempts } : {}),
       })
       if (o.status === 'failed') failedCount++
       if (o.status === 'cache-hit') hitLocalCount++

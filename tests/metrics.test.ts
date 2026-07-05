@@ -50,6 +50,7 @@ function mkRun(
     wallclockStartNs: 0n,
     wallclockEndNs: 0n,
     cacheHit: args.cacheHit ?? false,
+    ...(args.attempts !== undefined ? { attempts: args.attempts } : {}),
   }
 }
 
@@ -911,6 +912,48 @@ describe('getFlakiestTasks', () => {
       expect(flaky.length).toBeGreaterThan(0)
       expect(flaky[0]!.id).toBe('a#t')
       expect(flaky[0]!.failures).toBe(1)
+    })
+  })
+
+  it('CONFIRMS flakiness from a within-run retry, ranked above inferred ones', () => {
+    withCache((cache) => {
+      const now = Date.now()
+      cache.recordRuns([
+        // `inferred#t`: fails in one of four runs — flaky by cross-run inference.
+        mkRun({ hash: 'i1', project: 'inferred', task: 't', startedAt: now - 5000 }),
+        mkRun({
+          hash: 'i2',
+          project: 'inferred',
+          task: 't',
+          status: 'failed',
+          exitCode: 1,
+          startedAt: now - 4000,
+        }),
+        mkRun({ hash: 'i3', project: 'inferred', task: 't', startedAt: now - 3000 }),
+        mkRun({ hash: 'i4', project: 'inferred', task: 't', startedAt: now - 2000 }),
+        // `confirmed#t`: passed on the FIRST try twice, then needed a retry once —
+        // a direct nondeterminism signal, even though it never shows a `failed` row.
+        mkRun({ hash: 'c1', project: 'confirmed', task: 't', startedAt: now - 1500 }),
+        mkRun({ hash: 'c2', project: 'confirmed', task: 't', startedAt: now - 1000 }),
+        mkRun({ hash: 'c3', project: 'confirmed', task: 't', attempts: 3, startedAt: now - 500 }),
+      ])
+      const flaky = getFlakiestTasks(cache.dbHandle())
+      const confirmed = flaky.find((f) => f.id === 'confirmed#t')
+      expect(confirmed).toBeDefined()
+      expect(confirmed!.flakyConfirmed).toBe(true)
+      expect(confirmed!.withinRunRetries).toBe(1)
+      expect(confirmed!.maxAttempts).toBe(3)
+      expect(confirmed!.failures).toBe(0)
+      // A confirmed within-run flake outranks a merely-inferred one.
+      expect(flaky[0]!.id).toBe('confirmed#t')
+    })
+  })
+
+  it('surfaces a confirmed within-run flake even with fewer than 3 runs', () => {
+    withCache((cache) => {
+      cache.recordRun(mkRun({ hash: 'x1', project: 'rare', task: 't', attempts: 2 }))
+      const flaky = getFlakiestTasks(cache.dbHandle())
+      expect(flaky.find((f) => f.id === 'rare#t')?.flakyConfirmed).toBe(true)
     })
   })
 })
