@@ -159,16 +159,18 @@ export function topoOrder(nodes: Map<string, TaskNode>): string[] {
       else dependents.set(dep, [node.id])
     }
   }
-  const queue: string[] = []
-  for (const [id, deg] of indegree) if (deg === 0) queue.push(id)
+  // Kahn's algorithm with a head pointer instead of `queue.shift()` — a shift
+  // reindexes the whole array (O(N) each), making the walk O(N²) on a big
+  // graph. `out` doubles as the queue (every dequeued id is already in topo
+  // order); we only ever append and advance `head`. Same pattern as
+  // computeReverseDepCount / package-graph.
   const out: string[] = []
-  while (queue.length > 0) {
-    const id = queue.shift()!
-    out.push(id)
-    for (const d of dependents.get(id) ?? []) {
+  for (const [id, deg] of indegree) if (deg === 0) out.push(id)
+  for (let head = 0; head < out.length; head++) {
+    for (const d of dependents.get(out[head]!) ?? []) {
       const rem = (indegree.get(d) ?? 0) - 1
       indegree.set(d, rem)
-      if (rem === 0) queue.push(d)
+      if (rem === 0) out.push(d)
     }
   }
   return out

@@ -239,6 +239,72 @@ export function computeReverseDepCount(nodes: Map<string, TaskNode>): Map<string
  * order produced by `buildTaskGraph`). Minimizes worker idle at the
  * end of the run.
  */
+/**
+ * A binary max-heap of ready task ids, ordered by (priority DESC, enqueue-seq
+ * ASC) so `pop()` returns the highest-priority task and equal-priority ties
+ * break in enqueue order — the exact contract the prior sorted-array kept, but
+ * O(log R) push/pop instead of O(R) splice/shift. On a wide ready frontier (the
+ * 1000-package startup enqueue, or a fan-out completion), that turns the
+ * queue's O(R²) maintenance into O(R log R).
+ */
+class ReadyHeap {
+  private readonly ids: string[] = []
+  private readonly seq: number[] = []
+  private next = 0
+  constructor(private readonly priority: ReadonlyMap<string, number>) {}
+  get size(): number {
+    return this.ids.length
+  }
+  /** True if slot i outranks slot j (higher priority, or equal priority + earlier seq). */
+  private higher(i: number, j: number): boolean {
+    const pi = this.priority.get(this.ids[i]!) ?? 0
+    const pj = this.priority.get(this.ids[j]!) ?? 0
+    return pi !== pj ? pi > pj : this.seq[i]! < this.seq[j]!
+  }
+  private swap(i: number, j: number): void {
+    const ti = this.ids[i]!
+    this.ids[i] = this.ids[j]!
+    this.ids[j] = ti
+    const si = this.seq[i]!
+    this.seq[i] = this.seq[j]!
+    this.seq[j] = si
+  }
+  push(id: string): void {
+    this.ids.push(id)
+    this.seq.push(this.next++)
+    let i = this.ids.length - 1
+    while (i > 0) {
+      const parent = (i - 1) >> 1
+      if (!this.higher(i, parent)) break
+      this.swap(i, parent)
+      i = parent
+    }
+  }
+  pop(): string | undefined {
+    const n = this.ids.length
+    if (n === 0) return undefined
+    const top = this.ids[0]!
+    const lastId = this.ids.pop()!
+    const lastSeq = this.seq.pop()!
+    if (n > 1) {
+      this.ids[0] = lastId
+      this.seq[0] = lastSeq
+      let i = 0
+      for (;;) {
+        const l = 2 * i + 1
+        const r = 2 * i + 2
+        let best = i
+        if (l < this.ids.length && this.higher(l, best)) best = l
+        if (r < this.ids.length && this.higher(r, best)) best = r
+        if (best === i) break
+        this.swap(i, best)
+        i = best
+      }
+    }
+    return top
+  }
+}
+
 export async function runGraph(options: ScheduleOptions): Promise<Map<string, TaskOutcome>> {
   const { nodes, concurrency, execute, onStart, onFinish } = options
   const continueMode = options.continueMode ?? 'deps-ok'
@@ -273,35 +339,24 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     : baseline
 
   // Two ready queues — exec-tier (cache misses + unstable tasks) and
-  // restore-tier (confirmed stable local hits). Both are kept sorted on
-  // insert (descending by priority); equal-priority items insert AFTER
-  // existing entries so ties break in graph-insertion order — same
-  // contract the prior `scheduleOrder` sort provided via stable sort.
-  // The tick loop drains execReady FIRST, so misses own the worker pool
-  // and restores only backfill idle capacity (or run when an exec is
-  // blocked on a restorable dep and nothing else is runnable).
+  // restore-tier (confirmed stable local hits). Each is a max-heap keyed by
+  // (priority DESC, enqueue-seq ASC), so the highest-priority task pops first
+  // and equal-priority ties break in graph-insertion order — same contract the
+  // prior `scheduleOrder` sort provided via stable sort. The tick loop drains
+  // execReady FIRST, so misses own the worker pool and restores only backfill
+  // idle capacity (or run when an exec is blocked on a restorable dep and
+  // nothing else is runnable).
   const restoreTier = options.restoreTier
-  const execReady: string[] = []
-  const restoreReady: string[] = []
-  const insertSorted = (queue: string[], id: string): void => {
-    const p = priority.get(id) ?? 0
-    let lo = 0
-    let hi = queue.length
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1
-      if ((priority.get(queue[mid]!) ?? 0) >= p) lo = mid + 1
-      else hi = mid
-    }
-    queue.splice(lo, 0, id)
-  }
+  const execReady = new ReadyHeap(priority)
+  const restoreReady = new ReadyHeap(priority)
   // A restore-tier task is dep-independent (a stable hit's restore needs
   // none of its deps' output), so it's ready immediately; its `pending`
   // decrements still happen (in finishOne) but never re-enqueue it.
   // Everything else enqueues on the exec-tier the moment its deps
   // complete.
   for (const node of nodes.values()) {
-    if (restoreTier?.has(node.id)) insertSorted(restoreReady, node.id)
-    else if (node.deps.length === 0) insertSorted(execReady, node.id)
+    if (restoreTier?.has(node.id)) restoreReady.push(node.id)
+    else if (node.deps.length === 0) execReady.push(node.id)
   }
 
   let active = 0
@@ -319,19 +374,19 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         pending.set(d, rem)
         // Restore-tier dependents were already enqueued at startup (they
         // don't wait on deps); only re-enqueue an exec-tier dependent.
-        if (rem === 0 && !restoreTier?.has(d)) insertSorted(execReady, d)
+        if (rem === 0 && !restoreTier?.has(d)) execReady.push(d)
       }
     }
 
     // Drain a worker slot: prefer an exec-tier task (misses own the
     // pool); only when none is ready does a restore-tier task backfill.
     const takeReady = (): string | undefined =>
-      execReady.length > 0 ? execReady.shift() : restoreReady.shift()
+      execReady.size > 0 ? execReady.pop() : restoreReady.pop()
 
     const tick = (): void => {
       if (resolved) return
 
-      while (active < concurrency && (execReady.length > 0 || restoreReady.length > 0)) {
+      while (active < concurrency && (execReady.size > 0 || restoreReady.size > 0)) {
         const id = takeReady() as string
         const node = nodes.get(id) as TaskNode
         const isRestore = restoreTier?.has(id) === true

@@ -1178,9 +1178,12 @@ export class Cache implements CacheLayer {
     if (hashes.length === 0) return out
     // Inline placeholders for an IN-list — bun:sqlite doesn't ship
     // rarray, but `IN (?, ?, …)` with N≤~999 is fast and avoids per-
-    // hash select.get() overhead.
+    // hash select.get() overhead. `db.query` (not `db.prepare`) caches the
+    // compiled statement keyed by the SQL text — so the dominant single-hash
+    // warm-hit path (called up to 3× per hit) reuses one statement instead of
+    // recompiling on every call.
     const placeholders = hashes.map(() => '?').join(',')
-    const stmt = this.db.prepare(
+    const stmt = this.db.query(
       `SELECT entry_hash, path, size_bytes, mode, mtime_ms FROM output_files WHERE entry_hash IN (${placeholders})`,
     )
     const rows = stmt.all(...(hashes as readonly SQLQueryBindings[])) as Array<{
