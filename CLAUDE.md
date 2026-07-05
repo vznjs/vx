@@ -201,9 +201,10 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
   `build.bun.*` tasks already depend on it). The runtime already degraded
   gracefully: `loadUiHtmlPath` try/catches the dynamic `ui-asset` import and
   returns null (API-only serve) when the dist is absent, so from-source dev is
-  unaffected. The serve `GET /` test builds the SPA on-demand (60s budget) when
-  the dist is missing, keeping its "does the dashboard load" coverage from a
-  fresh tree. **Verified end-to-end**: fresh tree (no dist) then build SPA then
+  unaffected. NO runtime UI build anywhere — the serve `GET /` test verifies
+  the SPA-routing contract against a tiny fixture HTML (not the real dist), so
+  it stays hermetic without building. **Verified end-to-end**: fresh tree (no
+  dist) then build SPA then
   `bun build --compile` of the cloud bin then the compiled binary serves the
   embedded dashboard plus `/health`. Cloud 232 pass, lint clean.
   `.dockerignore` no longer whitelists `ui/dist` (built in-image, not copied

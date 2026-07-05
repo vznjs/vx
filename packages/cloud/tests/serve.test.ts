@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -207,22 +206,17 @@ describe('vx serve delegation', () => {
     }
   })
 
-  // The dashboard SPA is the whole point of `--ui`. With uiHtmlPath set, `/`
-  // and every non-API app route must serve the embedded index.html so the
-  // client-side hash router can take over — this is the "does the dashboard
-  // actually load" coverage that query-module unit tests can't give.
-  it('serves the embedded dashboard SPA at / and falls back for app routes', async () => {
+  // The SPA-serving CONTRACT: with a uiHtmlPath set, `/` and every non-API
+  // app route serve that single file so the client-side hash router can take
+  // over, while /v1/* + /health stay JSON. This is serve's ROUTING behavior —
+  // exercised against a fixture file, NOT the real dashboard dist (which is a
+  // build artifact the build pipeline compiles into the binary, not something
+  // a unit test should build). A tiny stand-in HTML keeps the test hermetic
+  // and fast regardless of whether the SPA has been built.
+  it('serves the SPA shell at / and falls back for app routes', async () => {
     const root = await makeWorkspace()
-    const uiHtmlPath = path.resolve(import.meta.dir, '..', 'ui/dist/index.html')
-    // The SPA dist is a build artifact, not committed — build it on demand so
-    // this "does the dashboard actually load" coverage holds from a fresh tree.
-    if (!existsSync(uiHtmlPath)) {
-      const build = spawnSync('bun', ['run', 'build'], {
-        cwd: path.resolve(import.meta.dir, '..', 'ui'),
-        stdio: 'inherit',
-      })
-      if (build.status !== 0) throw new Error('dashboard SPA build failed')
-    }
+    const uiHtmlPath = path.join(root, 'ui-shell.html')
+    await writeFile(uiHtmlPath, '<!doctype html>\n<title>vx dashboard</title>\n')
     const server = await startServe({ root, uiHtmlPath })
     try {
       const index = await fetch(`${server.origin}/`)
@@ -244,8 +238,7 @@ describe('vx serve delegation', () => {
       await server.stop()
       await rm(root, { recursive: true, force: true })
     }
-    // Generous budget: may build the SPA on demand from a fresh tree.
-  }, 60_000)
+  })
 })
 
 describe('vx serve — network/auth hardening', () => {
