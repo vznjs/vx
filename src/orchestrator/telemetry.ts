@@ -94,6 +94,10 @@ export interface TaskTelemetry {
   hash?: string
   cpuMs?: number
   peakRssBytes?: number
+  /** Total attempts when the task RETRIED (>1) — set only when `exec.retries`
+   *  / `--retry` produced more than one attempt. A retried-then-passed task is
+   *  flaky by definition; this is the telemetry-side flaky signal. */
+  attempts?: number
   /** bigint hrtime ns relative to run t=0, encoded as a decimal string. */
   wallclockStartNs?: string
   wallclockEndNs?: string
@@ -293,6 +297,7 @@ export function createTelemetrySource(args: {
         if (outcome.hash !== undefined) rec.hash = outcome.hash
         if (outcome.cpuMs !== undefined) rec.cpuMs = outcome.cpuMs
         if (outcome.peakRssBytes !== undefined) rec.peakRssBytes = outcome.peakRssBytes
+        if (outcome.attempts !== undefined) rec.attempts = outcome.attempts
         if (outcome.wallclockStartNs !== undefined)
           rec.wallclockStartNs = outcome.wallclockStartNs.toString()
         if (outcome.wallclockEndNs !== undefined)

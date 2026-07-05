@@ -21,6 +21,7 @@ function summary(
       cacheSource: t.cacheSource ?? 'miss',
       exitCode: t.exitCode ?? 0,
       durationMs: t.durationMs ?? 1000,
+      ...(t.attempts !== undefined ? { attempts: t.attempts } : {}),
     }),
   )
   return {
@@ -34,15 +35,15 @@ function summary(
       requestedTasks: ['ci'],
       cachePolicy: 'lR,lW,rR,rW',
       concurrency: 4,
-      flow: 'full',
+      flow: null,
       commitSha: null,
       branch: null,
       dirty: null,
       ci: true,
       ciProvider: 'github',
       host: null,
-      os: null,
-      arch: null,
+      os: 'linux',
+      arch: 'x64',
       tags: {},
     },
     startedAt: 0,
@@ -79,6 +80,14 @@ describe('formatGithubSummary', () => {
     expect(md).toContain('❌ failed (exit 2)')
     // The failed row appears before the successful one.
     expect(md.indexOf('bad#test')).toBeLessThan(md.indexOf('ok#build'))
+  })
+
+  it('flags a task that only passed after a retry as flaky', () => {
+    const md = formatGithubSummary(summary([{ taskId: 'ui#test', status: 'success', attempts: 3 }]))
+    expect(md).toContain('⚠️ flaky (3 attempts)')
+    // A single-attempt success is NOT flagged.
+    const clean = formatGithubSummary(summary([{ taskId: 'ui#test', status: 'success' }]))
+    expect(clean).not.toContain('flaky')
   })
 
   it('drops aborted tasks and renders cache provenance', () => {

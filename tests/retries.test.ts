@@ -8,7 +8,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import type { Logger } from '../src/orchestrator/index.js'
+import type { Logger, RunSummaryRecord, TelemetrySink } from '../src/orchestrator/index.js'
 import { run, optionsToRequest, requestToOptions } from '../src/orchestrator/index.js'
 import { parseRunArgs } from '../src/cli/index.js'
 import { loadProjectConfig } from '../src/workspace/project-loader.js'
@@ -195,6 +195,46 @@ describe('exec.retries — e2e', () => {
       })
       expect(r.ok).toBe(true)
       expect(r.outcomes[0]!.attempts).toBeUndefined()
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the retried attempt count reaches the telemetry summary (flaky signal)',
+    async () => {
+      await addProject(
+        fixture.root,
+        'flaky',
+        `export default {
+          tasks: {
+            build: {
+              exec: {
+                command: 'if test -f flag.txt; then echo win; else touch flag.txt; exit 1; fi',
+                retries: 1,
+              },
+              cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+            },
+          },
+        }
+        `,
+      )
+      let captured: RunSummaryRecord | undefined
+      const sink: TelemetrySink = {
+        onRunSummary(summary) {
+          captured = summary
+        },
+      }
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        projects: ['flaky'],
+        log: capturingLogger(fixture),
+        telemetrySinks: [sink],
+      })
+      expect(r.ok).toBe(true)
+      const task = captured?.tasks.find((t) => t.taskId === 'flaky#build')
+      expect(task?.status).toBe('success')
+      expect(task?.attempts).toBe(2)
     },
     TIMEOUT,
   )

@@ -23,9 +23,15 @@ function fmtDuration(ms: number): string {
 }
 
 function statusCell(t: TaskTelemetry): string {
+  // A task that only passed after a retry is flaky by definition — flag it
+  // right where it happened, the most actionable place.
+  const flaky =
+    t.attempts !== undefined && t.attempts > 1 && t.status === 'success'
+      ? ` ⚠️ flaky (${t.attempts} attempts)`
+      : ''
   switch (t.status) {
     case 'success':
-      return '✅ success'
+      return `✅ success${flaky}`
     case 'cache-hit':
     case 'cache-hit-remote':
       return '🟦 cache hit'
