@@ -35,8 +35,16 @@ import {
   type VxPlugin,
 } from '@vzn/vx'
 import { activeEnvironment } from './environments.js'
+import { appendGithubSummary } from './github-summary.js'
 import { pidAlive, readServeInfo } from './serve-info.js'
 import { TaskLogBuffer } from './task-log-capture.js'
+
+/** A resolved serve target for the ingest sink's POSTs. */
+interface SinkConnection {
+  baseUrl: string
+  token?: string
+  socketPath?: string
+}
 
 // NB: the heavy service machinery (backend resolution → serve / dev hub) is
 // loaded LAZILY inside `backend()` via a dynamic import, so merely DECLARING
@@ -291,14 +299,21 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
       // socket for a local serve; TCP otherwise. No connection → decline, so a
       // plain `vx run` is unaffected.
       const conn = resolveConnection(opts)
-      if (conn === undefined) return undefined
-      return new CloudIngestSink(
-        conn.url,
-        conn.token,
-        (m) => ctx.warn(m),
-        conn.socket,
-        logsEnabled(opts),
-      )
+      // Also activate (with no connection) to write the GitHub Actions job
+      // summary — a CI run that declares cloud() gets a per-task result table
+      // on the job page whether or not a serve is attached. Nothing → decline,
+      // so a plain local `vx run` is still untouched.
+      const ghaSummary = firstEnv('GITHUB_STEP_SUMMARY')
+      if (conn === undefined && ghaSummary === undefined) return undefined
+      return new CloudIngestSink({
+        connection:
+          conn !== undefined
+            ? { baseUrl: conn.url, token: conn.token, socketPath: conn.socket }
+            : undefined,
+        warn: (m) => ctx.warn(m),
+        logsEnabled: logsEnabled(opts),
+        githubSummaryPath: ghaSummary,
+      })
     },
   }
 }
@@ -417,21 +432,23 @@ class CloudIngestSink implements TelemetrySink {
   private summary: RunSummaryRecord | undefined
   private uploaded = false
   private readonly logs?: TaskLogBuffer
+  private readonly connection?: SinkConnection
+  private readonly warn: (message: string) => void
+  private readonly githubSummaryPath?: string
 
-  constructor(
-    private readonly baseUrl: string,
-    private readonly token: string | undefined,
-    private readonly warn: (message: string) => void,
-    /**
-     * A local serve's advertised unix socket. When set, the push dials it
-     * (Bun fetch `unix` option) instead of TCP — the 0600 socket's file
-     * permissions are the auth, so no token is needed on that path. A failed
-     * socket dial falls back to the TCP origin (never-fail either way).
-     */
-    private readonly socketPath?: string,
-    logsEnabled = false,
-  ) {
-    if (logsEnabled) {
+  constructor(opts: {
+    /** A serve to POST to. Absent → the sink only writes the GitHub summary. */
+    connection?: SinkConnection
+    warn: (message: string) => void
+    logsEnabled?: boolean
+    /** `$GITHUB_STEP_SUMMARY` — append the run's result table when in CI. */
+    githubSummaryPath?: string
+  }) {
+    this.connection = opts.connection
+    this.warn = opts.warn
+    this.githubSummaryPath = opts.githubSummaryPath
+    // Log capture only makes sense when there's a serve to ship tails to.
+    if (opts.logsEnabled === true && opts.connection !== undefined) {
       this.logs = new TaskLogBuffer()
       this.wants = ['task.log', 'task.end']
     } else {
@@ -454,31 +471,40 @@ class CloudIngestSink implements TelemetrySink {
   async flush(): Promise<void> {
     if (this.uploaded || this.summary === undefined) return
     this.uploaded = true
-    // Summary first (so the run row normally exists when logs land — the store
-    // tolerates either order), then the drained log bundle if non-empty.
-    await this.send('/v1/ingest', JSON.stringify(this.summary), 'cloud ingest')
-    if (this.logs === undefined) return
-    const runId = this.summary.run.runId
-    const workspaceId = (this.summary.run as { workspaceId?: string }).workspaceId
-    if (workspaceId === undefined) return
-    const bundle = this.logs.drain(runId, workspaceId)
-    if (bundle.tasks.length === 0) return
-    await this.send('/v1/ingest/logs', JSON.stringify(bundle), 'cloud logs')
+    if (this.connection !== undefined) {
+      // Summary first (so the run row normally exists when logs land — the
+      // store tolerates either order), then the drained log bundle if any.
+      await this.send('/v1/ingest', JSON.stringify(this.summary), 'cloud ingest')
+      if (this.logs !== undefined) {
+        const runId = this.summary.run.runId
+        const workspaceId = (this.summary.run as { workspaceId?: string }).workspaceId
+        if (workspaceId !== undefined) {
+          const bundle = this.logs.drain(runId, workspaceId)
+          if (bundle.tasks.length > 0) {
+            await this.send('/v1/ingest/logs', JSON.stringify(bundle), 'cloud logs')
+          }
+        }
+      }
+    }
+    if (this.githubSummaryPath !== undefined) {
+      await appendGithubSummary(this.githubSummaryPath, this.summary, this.warn)
+    }
   }
 
   /** POST a body to a serve path — unix socket first (if advertised), TCP
    *  fallback; every error swallowed + warned (telemetry never fails a run). */
   private async send(pathname: string, body: string, label: string): Promise<void> {
-    if (this.socketPath !== undefined) {
+    const conn = this.connection!
+    if (conn.socketPath !== undefined) {
       try {
-        await this.post(`http://localhost${pathname}`, body, { unix: this.socketPath })
+        await this.post(`http://localhost${pathname}`, body, { unix: conn.socketPath })
         return
       } catch {
         // socket dial failed (removed/refused) — fall back to the TCP origin
       }
     }
     try {
-      await this.post(`${this.baseUrl}${pathname}`, body)
+      await this.post(`${conn.baseUrl}${pathname}`, body)
     } catch (err) {
       this.warn(`[vx] ${label}: ${err instanceof Error ? err.message : String(err)}`)
     }
@@ -486,7 +512,8 @@ class CloudIngestSink implements TelemetrySink {
 
   private async post(url: string, body: string, extra?: { unix: string }): Promise<void> {
     const headers: Record<string, string> = { 'content-type': 'application/json' }
-    if (this.token) headers['authorization'] = `Bearer ${this.token}`
+    const token = this.connection?.token
+    if (token) headers['authorization'] = `Bearer ${token}`
     // A clearable timer (NOT AbortSignal.timeout, whose internal timer is not
     // unref'd and would keep the CLI process alive for the full timeout after
     // the POST already resolved — a 5s "hang" at the end of every run).

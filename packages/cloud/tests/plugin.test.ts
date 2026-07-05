@@ -439,6 +439,42 @@ describe('cloud() telemetry capability', () => {
     }
   })
 
+  it('writes a GitHub job summary in CI even with NO cloud connected', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-gha-plugin-'))
+    const file = path.join(dir, 'summary.md')
+    await withCleanConnEnv({ VX_CLOUD_CONFIG: '/nonexistent/environments.json' }, async () => {
+      const prev = process.env['GITHUB_STEP_SUMMARY']
+      process.env['GITHUB_STEP_SUMMARY'] = file
+      try {
+        // No URL/token anywhere → no connection, but GITHUB_STEP_SUMMARY is set.
+        const sink = (await cloud().telemetry!(telemetryCtx('/x'))) as TelemetrySink
+        expect(sink).toBeDefined()
+        expect(sink.wants).toEqual([]) // no connection → no log capture
+        sink.onRunSummary!(fakeSummary())
+        await sink.flush!()
+        const written = await Bun.file(file).text()
+        expect(written).toContain('vx run')
+        expect(written).toContain('| Task | Status | Duration | Cache |')
+      } finally {
+        if (prev === undefined) delete process.env['GITHUB_STEP_SUMMARY']
+        else process.env['GITHUB_STEP_SUMMARY'] = prev
+        await rm(dir, { recursive: true, force: true })
+      }
+    })
+  })
+
+  it('still declines with no connection AND no GitHub summary (plain local run untouched)', async () => {
+    await withCleanConnEnv({ VX_CLOUD_CONFIG: '/nonexistent/environments.json' }, async () => {
+      const prev = process.env['GITHUB_STEP_SUMMARY']
+      delete process.env['GITHUB_STEP_SUMMARY']
+      try {
+        expect(await cloud().telemetry!(telemetryCtx('/x'))).toBeUndefined()
+      } finally {
+        if (prev !== undefined) process.env['GITHUB_STEP_SUMMARY'] = prev
+      }
+    })
+  })
+
   it('the zero-projection guarantee: VX_CLOUD_LOGS=0 leaves wants empty (no task.log subscription)', async () => {
     const prev = process.env['VX_CLOUD_LOGS']
     process.env['VX_CLOUD_LOGS'] = '0'
