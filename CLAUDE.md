@@ -187,6 +187,43 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-05**: **Provable cache correctness Phase 3 (observability half) —
+  the `--verify` verdict rides telemetry, OTel spans, + the GHA job summary**
+  (continuing the flagship; the terminal-only verdict now reaches every
+  observability surface). Three additive slices, NO schema/CACHE_VERSION bump.
+  **(1) Core telemetry contract:** `TaskTelemetry` gains an additive-optional
+  `verify?: VerifyVerdict`, projected from the outcome in BOTH the streaming
+  `task.end` record (`telemetry.ts`) and the per-run summary's `tasks[]`
+  (`run.ts`) — modeled EXACTLY on the `attempts` flaky field: absent for a
+  non-verify run, so a v2 consumer is byte-unaffected and
+  `TELEMETRY_SCHEMA_VERSION` stays 2. `VerifyVerdict` re-exported from the
+  façade (`src/index.ts`) since it's now part of the public `RunSummaryRecord`
+  shape. **(2) `@vzn/vx-otel` (first consumer):** a `vx.task.verify` span
+  attribute carries the verdict kind; a `nondeterministic`/`allowed` verdict
+  lists the diverging paths in `vx.task.verify.changed`; a
+  `nondeterministic`/`rerun-failed` verdict maps the span to status ERROR
+  (`taskStatusCode` now takes the whole `TaskTelemetry`, not just status) — so
+  a task that exited 0 but poisons the cache surfaces as a FAILED span in
+  Grafana/Honeycomb/Datadog. Bundled the pre-existing gap: `vx.task.attempts`
+  (the retry count never reached the exporter). **(3) GitHub Actions job
+  summary** (`packages/cloud/src/github-summary.ts`, pure glue over the
+  RunSummaryRecord — no persistence, no serve needed, mirrors the flaky
+  treatment): the head gains a `🔒 Hermeticity: N proven · M non-deterministic`
+  line (⚠️ icon when M>0), and each non-hermetic task is flagged inline in its
+  status cell with the diverging outputs (truncated `+N more`). Silent for
+  hits / no-outputs / non-verify runs. **Tests:** telemetry projection pin
+  (verify on task.end, absent without --verify), vx-otel (verdict attrs +
+  changed + span-ERROR + attempts, +2), github-summary (hermeticity line +
+  inline marker + truncation + no-verify-no-line, +3). Core 1088 pass, otel
+  24 pass, cloud 235 pass, lint clean. Docs: cli.md anchor referenced from a
+  new guides/ci.md "Proving cache correctness" section (the `--force --verify`
+  nightly/merge-queue recipe). **STILL-OPEN (design Phase 2 + 4):** input-
+  completeness via the sandbox (`--verify=inputs`/`=all`) — blocked from e2e
+  here (bwrap/socat not installed in this env); cross-machine fingerprint
+  diff. Persisting the verdict in the cloud runs table for a historical
+  dashboard "Hermeticity" card is a deferred SCHEMA-bump follow-up (the
+  streaming surfaces above cover the actionable CI/observability paths today).
+
 - **2026-07-05**: **Provable cache correctness — `vx run --verify`
   (Phase 1: determinism)** (owner: "I don't wanna copy competitors… what's
   missing but is unlocked by vx architecture? build things on top add even
