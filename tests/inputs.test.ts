@@ -560,6 +560,28 @@ describe('resolveInputs — git ls-files path (v14)', () => {
     expect(rels).toContain(path.join('src', 'index.ts'))
     expect(rels).not.toContain(path.join('node_modules', 'dep', 'index.js'))
   })
+
+  it('a bun --compile temp file (.<hash>.bun-build) is always excluded', async () => {
+    // `bun build --compile` writes a transient `.<hash>-<n>.bun-build` in cwd.
+    // A broad `**/*` compile task must never try to hash it — a CONCURRENT
+    // compile is mid-write, so reading it races to EACCES/ENOENT. Force git to
+    // track one (leading dot included) and assert ALWAYS_IGNORE still drops it.
+    await write(path.join(projectDir, '.18bf7d9ff3ffeffe-00000001.bun-build'))
+    await write(path.join(projectDir, 'src', 'index.ts'))
+    await git(root, 'add', '-f', 'pkg/.18bf7d9ff3ffeffe-00000001.bun-build')
+
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['**/*'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    const rels = got.files.map((p) => path.relative(projectDir, p))
+    expect(rels).toContain(path.join('src', 'index.ts'))
+    expect(rels).not.toContain('.18bf7d9ff3ffeffe-00000001.bun-build')
+  })
 })
 
 describe('resolveInputs — gitFilesCache memoization', () => {

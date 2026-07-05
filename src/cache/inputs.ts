@@ -34,6 +34,12 @@ const ALWAYS_IGNORE = [
   '**/.vx/**',
   '**/*.tsbuildinfo',
   '**/vx-lock.json',
+  // `bun build --compile` writes a transient `.<hash>-<n>.bun-build` intermediate
+  // in the cwd. It never rests on disk, so it can't be a real input — but a
+  // broad `inputs.files: ['**/*']` on a compile task would try to hash the temp
+  // file that a CONCURRENT compile is mid-write, racing to EACCES/ENOENT. Always
+  // exclude it (vx is Bun-native; compiling standalone binaries is a common task).
+  '**/*.bun-build',
 ]
 
 const DEFAULT_FILE_GLOBS: readonly string[] = ['**/*']

@@ -23,3 +23,5 @@ coverage
 .turbo
 *.cpuprofile
 *.heapsnapshot
+# bun build --compile intermediate (transient, written in cwd)
+*.bun-build
