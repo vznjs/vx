@@ -148,6 +148,28 @@ describe('createTelemetrySource — projection', () => {
     }
   })
 
+  it('projects the --verify verdict onto task.end (absent without --verify)', () => {
+    const { sink, records } = recorder()
+    const src = createTelemetrySource({ sinks: [sink], run: RUN })
+    const node = mkNode('a#build', 'tsc')
+    // A run WITHOUT --verify: no verdict on the outcome → no verify field.
+    src.subscriber({ kind: 'task:complete', node, outcome: mkOutcome(node) })
+    // A --verify run that caught a non-hermetic task.
+    src.subscriber({
+      kind: 'task:complete',
+      node,
+      outcome: mkOutcome(node, {
+        verify: { kind: 'nondeterministic', changed: ['dist/a.js'] },
+      } as Partial<TaskOutcome>),
+    })
+    const plain = records[0]!
+    const verified = records[1]!
+    if (plain.kind === 'task.end') expect(plain.verify).toBeUndefined()
+    if (verified.kind === 'task.end') {
+      expect(verified.verify).toEqual({ kind: 'nondeterministic', changed: ['dist/a.js'] })
+    }
+  })
+
   it('skips group tasks (no exec) for task.start and task.end', () => {
     const { sink, records } = recorder()
     const src = createTelemetrySource({ sinks: [sink], run: RUN })

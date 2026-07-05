@@ -52,7 +52,7 @@ export type {
 } from './orchestrator/index.js'
 export { defaultLogger, resolveOutputView } from './orchestrator/index.js'
 export { buildTaskGraph, expandRequested, isGroupTask, markSurfacedDeps } from './graph/index.js'
-export type { TaskNode, TaskOutcome, TaskStatus } from './graph/index.js'
+export type { TaskNode, TaskOutcome, TaskStatus, VerifyVerdict } from './graph/index.js'
 
 // Cache classes + the layer interface (the `cache` capability's currency)
 // and input-output resolution. The blob-CAS/digest substrate

@@ -138,9 +138,53 @@ describe('OTLP builders', () => {
     expect(m['vx.cache.source']).toBe('miss')
     expect(m['vx.task.hash']).toBe('deadbeef')
     expect(m['vx.peak_rss_bytes']).toBe('2048')
-    expect(taskStatusCode('failed')).toBe(2)
-    expect(taskStatusCode('success')).toBe(0)
-    expect(taskStatusCode('cache-hit')).toBe(0)
+    expect(taskStatusCode(t)).toBe(2)
+    expect(taskStatusCode({ ...t, status: 'success' })).toBe(0)
+    expect(taskStatusCode({ ...t, status: 'cache-hit' })).toBe(0)
+  })
+
+  it('surfaces the --verify verdict as span attributes + status', () => {
+    const base: TaskTelemetry = {
+      taskId: 'a#build',
+      project: 'a',
+      task: 'build',
+      status: 'success',
+      cacheSource: 'miss',
+      exitCode: 0,
+      durationMs: 50,
+    }
+    // A non-hermetic task: verdict attribute + changed paths + span ERROR
+    // (even though it exited 0 — its cache entry is unsound).
+    const bad: TaskTelemetry = {
+      ...base,
+      verify: { kind: 'nondeterministic', changed: ['dist/a.js', 'dist/a.js.map'] },
+    }
+    const mb = attrMap(taskSpanAttributes(bad))
+    expect(mb['vx.task.verify']).toBe('nondeterministic')
+    expect(mb['vx.task.verify.changed']).toBe('dist/a.js,dist/a.js.map')
+    expect(taskStatusCode(bad)).toBe(2)
+    // A proven task: verdict attribute, no changed paths, span UNSET.
+    const good: TaskTelemetry = { ...base, verify: { kind: 'proven-deterministic' } }
+    const mg = attrMap(taskSpanAttributes(good))
+    expect(mg['vx.task.verify']).toBe('proven-deterministic')
+    expect(mg['vx.task.verify.changed']).toBeUndefined()
+    expect(taskStatusCode(good)).toBe(0)
+    // No --verify → no verdict attribute at all.
+    expect(attrMap(taskSpanAttributes(base))['vx.task.verify']).toBeUndefined()
+  })
+
+  it('surfaces retry attempts on the task span', () => {
+    const t: TaskTelemetry = {
+      taskId: 'a#flaky',
+      project: 'a',
+      task: 'flaky',
+      status: 'success',
+      cacheSource: 'miss',
+      exitCode: 0,
+      durationMs: 50,
+      attempts: 3,
+    }
+    expect(attrMap(taskSpanAttributes(t))['vx.task.attempts']).toBe('3')
   })
 
   it('buildTraceRequest nests resource → scope → spans', () => {

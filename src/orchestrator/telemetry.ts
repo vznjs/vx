@@ -16,7 +16,7 @@
 // what or how tasks run. Contrast `backend`/`cache`, which return objects
 // core calls INTO; those are the behavior capabilities, kept separate.
 
-import type { TaskStatus } from '../graph/index.js'
+import type { TaskStatus, VerifyVerdict } from '../graph/index.js'
 import type { RunEvent, RunEventSubscriber } from './events.js'
 
 /** Bumped when the record shape changes. Readers MUST check `v`. */
@@ -98,6 +98,11 @@ export interface TaskTelemetry {
    *  / `--retry` produced more than one attempt. A retried-then-passed task is
    *  flaky by definition; this is the telemetry-side flaky signal. */
   attempts?: number
+  /** Cache-correctness verdict — set ONLY on a `--verify` run (absent
+   *  otherwise). A `nondeterministic` verdict means the task's cache entry is
+   *  unsound (its outputs aren't a pure function of its declared inputs); this
+   *  is the telemetry-side hermeticity signal a dashboard surfaces. */
+  verify?: VerifyVerdict
   /** bigint hrtime ns relative to run t=0, encoded as a decimal string. */
   wallclockStartNs?: string
   wallclockEndNs?: string
@@ -298,6 +303,7 @@ export function createTelemetrySource(args: {
         if (outcome.cpuMs !== undefined) rec.cpuMs = outcome.cpuMs
         if (outcome.peakRssBytes !== undefined) rec.peakRssBytes = outcome.peakRssBytes
         if (outcome.attempts !== undefined) rec.attempts = outcome.attempts
+        if (outcome.verify !== undefined) rec.verify = outcome.verify
         if (outcome.wallclockStartNs !== undefined)
           rec.wallclockStartNs = outcome.wallclockStartNs.toString()
         if (outcome.wallclockEndNs !== undefined)
