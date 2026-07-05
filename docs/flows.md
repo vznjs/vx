@@ -38,7 +38,7 @@ sequenceDiagram
         X->>I: markOutputsChanged(written rel paths)
         Note over I: the project's git snapshot notes the changed<br/>paths — a downstream task re-spawns git only<br/>when its input globs can actually match them
     else exitCode != 0
-        Note over X: nothing cached; failure streams live,<br/>dependents get skipped by the scheduler
+        Note over X: nothing cached — failure streams live,<br/>dependents get skipped by the scheduler
     end
     X-->>S: TaskOutcome
 ```
@@ -64,7 +64,7 @@ sequenceDiagram
     else any output stale/missing
         C->>C: wipe declared outputs (cleanOutputs)
         C->>T: extractOutputs(tar bytes → outputs/*)
-        Note over T: path-traversal + symlink-clobber guards;<br/>utimes restores header mtimes so the next<br/>run's stat-check passes
+        Note over T: path-traversal + symlink-clobber guards<br/>utimes restores header mtimes so the next<br/>run's stat-check passes
     end
     X->>X: replay cached stdout through logger
     X-->>X: status 'cache-hit', exit 0
@@ -91,7 +91,7 @@ sequenceDiagram
     L->>LC: ingest(hash, bytes, {taskId, command, durationMs})
     Note over LC: same writeArtifactAndIndex path save() uses —<br/>bytes validated, then atomic rename + SQLite row.<br/>The local and remote layers carry identical bytes.
     L-->>X: CacheEntry {source: 'remote'}
-    X->>X: restore as in flow 2; status 'cache-hit-remote'
+    X->>X: restore as in flow 2 — status 'cache-hit-remote'
 ```
 
 On any remote error (timeout, non-404 failure, corrupt body) the

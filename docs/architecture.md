@@ -65,25 +65,25 @@ layers:
 graph TD
   bin["bin.ts"] --> cli
   index["index.ts (public façade)"] --> orchestrator
-  index --> graph
+  index --> graphmod["graph"]
   index --> cache
   index --> workspace
   index --> config
   cli --> orchestrator
   cli --> workspace
   cli --> cache
-  cli --> graph
+  cli --> graphmod
   orchestrator --> workspace
-  orchestrator --> graph
+  orchestrator --> graphmod
   orchestrator --> cache
   orchestrator --> exec
-  graph --> workspace
+  graphmod --> workspace
   workspace --> config
-  graph --> config
+  graphmod --> config
   cache --> config
   exec --> config
   workspace --> util
-  graph --> util
+  graphmod --> util
   cache --> util
   exec --> util
   orchestrator --> util
