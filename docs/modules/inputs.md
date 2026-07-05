@@ -116,9 +116,10 @@ Returns sorted absolute paths.
 - Doesn't apply `inputs.tasks` filtering (that's
   `orchestrator.filterUpstreamHashes`).
 - Doesn't support workspace-relative globs in `inputs.files` —
-  intentionally scoped per-project. For workspace-shared files, see
-  the deferred `WorkspaceConfig.globalInputs` in
-  [`../schema.md`](../schema.md).
+  intentionally scoped per-project. For workspace-root-anchored files use
+  `cache.inputs.workspaceFiles` (root-relative globs); see
+  [`../schema.md`](../schema.md). A workspace-level `globalInputs` field is
+  an owner-rejected non-goal.
 - Doesn't follow symlinks specially.
 
 ## Tests

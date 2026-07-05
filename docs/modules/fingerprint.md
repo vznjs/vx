@@ -59,8 +59,10 @@ to have the same byte content but different roles.
 - **Doesn't read inside `node_modules/`.** The lockfile contains the
   resolved version set; that's the source of truth for "did the
   dep tree change?"
-- **Doesn't hash arbitrary root-level files.** Workspace-level
-  `globalInputs` is a deferred feature.
+- **Doesn't hash arbitrary root-level files.** Root-anchored inputs are
+  declared per task via `cache.inputs.workspaceFiles` /
+  `cache.inputs.workspaceRuntime`; a workspace-level `globalInputs` field is
+  an owner-rejected non-goal (shared TypeScript presets compose instead).
 
 ## Tests
 

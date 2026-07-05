@@ -267,14 +267,19 @@ These are deliberate non-features. Don't add them without a design pass:
 - **Executor / plugin protocol**, JS-function tasks.
 - **TUI / interactive panes** beyond the framed-block stream output.
 - **`.env` file loading.**
-- **Workspace-level `globalInputs` / `globalEnv`** (a stub exists in
-  the `WorkspaceConfig` future-fields list in
-  [`schema.md`](./schema.md); not implemented).
+- **Workspace-level `globalInputs` / `globalEnv` / `globalPassThrough`.**
+  Owner-rejected non-goal — TypeScript configs compose, so a shared preset
+  imported and spread into each config is the mechanism (see
+  [`schema.md`](./schema.md) and [`comparison.md`](./comparison.md)).
+  Root-anchored file inputs are declared per task via
+  `cache.inputs.workspaceFiles`.
 - **Symlink-aware input traversal.** `Bun.Glob` walks the real tree.
 - **Cross-platform shell quirks** beyond what `Bun.spawn` with
   `shell: true` gives you for free (Windows is unsupported).
-- **HMAC artifact signing + pre-signed URLs** on the remote cache —
-  workstream open, see [`design/remote-cache.md`](./design/remote-cache.md).
+- **Pre-signed URL auth** on the remote cache — workstream open, see
+  [`design/remote-cache.md`](./design/remote-cache.md). (HMAC artifact
+  signing shipped — `VX_REMOTE_CACHE_SIGNATURE_KEY`, Turbo-compatible
+  `x-artifact-tag`.)
 
 The complete list of features Turbo / Nx / vite-task have that vx
 doesn't (deliberately or otherwise) is in

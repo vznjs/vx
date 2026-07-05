@@ -26,8 +26,8 @@ and one decimal of precision below 10 of any unit. Powers of 1024.
 ## Use sites
 
 - `vx cache prune` output (`Pruned N entries (1.3 GB freed)`).
-- The future `vx stats` command (not yet implemented; the runs table
-  is queryable directly via `sqlite3` today).
+- The `vx info` doctor printout (`vx stats` is a deprecated alias): the
+  cache-size line (`cache entries    N (1.3 GB)`).
 
 ## Tests
 

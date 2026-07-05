@@ -9,6 +9,7 @@ envelope the wire protocol commits to).
 
 ## Invariants
 
-- stdio transport in v1; streamable HTTP is the serve-side counterpart
-  (roadmap: MCP on `vx-cloud serve` — dev-flows design §10.3).
+- stdio transport for `vx mcp`; the serve-side counterpart ships too —
+  `vx-cloud serve` exposes MCP over `POST /mcp` (JSON-RPC 2.0, behind the
+  bearer token).
 - Reports the real `VERSION`; read-only against cache.db.
