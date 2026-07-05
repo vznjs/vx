@@ -301,16 +301,24 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       )
     }
 
-    // Lazy SRT init: only fire it up if at least one task in the graph
-    // opts into sandboxing via its `sandbox: {...}` block. Tasks that
-    // need sandboxing on an unsupported platform get a hard error so
-    // they don't silently run unsandboxed.
-    const anySandboxed = [...nodes.values()].some((n) => n.config.sandbox !== undefined)
+    // Lazy SRT init: fire it up if at least one task opts into sandboxing
+    // via its `sandbox: {...}` block, OR `--verify=inputs`/`=all` is on (it
+    // forces the declared-input baseline sandbox onto every cacheable task to
+    // prove input-completeness). Tasks that need sandboxing on an unsupported
+    // platform get a hard error so they don't silently run unsandboxed —
+    // `--verify=inputs` in particular must fail loud, never falsely "pass".
+    const verifyInputs = options.verify?.inputs === true
+    const anySandboxed =
+      verifyInputs || [...nodes.values()].some((n) => n.config.sandbox !== undefined)
     if (anySandboxed) {
       const avail = await probeSandbox()
       if (!avail.available) {
         prepared.cache.close()
-        throw new UserError(`sandbox not available: ${avail.reason}`)
+        throw new UserError(
+          verifyInputs
+            ? `--verify=inputs needs the sandbox, which is not available: ${avail.reason}`
+            : `sandbox not available: ${avail.reason}`,
+        )
       }
       await initSandbox()
     }
@@ -555,9 +563,15 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         (o) =>
           o.status === 'success' || o.status === 'cache-hit' || o.status === 'cache-hit-remote',
       ) &&
-      // `--verify`: a provably-unsafe cache entry (non-deterministic outputs,
-      // or a re-run that failed) turns the run red so CI catches it.
-      !list.some((o) => o.verify?.kind === 'nondeterministic' || o.verify?.kind === 'rerun-failed')
+      // `--verify`: a provably-unsafe cache entry (non-deterministic outputs, a
+      // re-run that failed, or a read of undeclared inputs) turns the run red so
+      // CI catches it.
+      !list.some(
+        (o) =>
+          o.verify?.kind === 'nondeterministic' ||
+          o.verify?.kind === 'rerun-failed' ||
+          o.verify?.kind === 'undeclared-inputs',
+      )
 
     // The summary + artifact writers + recordRun pass all exclude group
     // tasks via the shared tallyOutcomes helper. We pass the full

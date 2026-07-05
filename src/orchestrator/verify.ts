@@ -67,6 +67,26 @@ export function classifyDeterminism(changed: readonly string[], allowed: boolean
     : { kind: 'nondeterministic', changed }
 }
 
+/** Extract the workspace-relative paths a task read outside its declared inputs
+ *  (Phase 2, `--verify=inputs`). A strace-derived violation line carries the
+ *  offending absolute path in trailing brackets (`… [/abs/path]`); pull it out,
+ *  make it workspace-relative, dedup, and sort. Lines without a bracketed path
+ *  (e.g. macOS syscall lines) fall back to the raw line so nothing is lost. */
+export function undeclaredInputPaths(
+  violations: readonly { line: string }[],
+  workspaceRoot: string,
+): string[] {
+  const rels = new Set<string>()
+  for (const v of violations) {
+    const m = /\[([^\]]+)\]\s*$/.exec(v.line)
+    const raw = m ? m[1]! : v.line
+    rels.add(
+      path.isAbsolute(raw) ? path.relative(workspaceRoot, raw).split(path.sep).join('/') : raw,
+    )
+  }
+  return [...rels].sort()
+}
+
 /** The end-of-run `--verify` summary section: a counts line plus a
  *  failures block naming each non-hermetic task and its diverging outputs.
  *  Empty when no task carried a verdict. */
@@ -80,10 +100,12 @@ export function formatVerifySection(outcomes: readonly TaskOutcome[]): string[] 
   for (const o of verdicts) {
     switch (o.verify!.kind) {
       case 'proven-deterministic':
+      case 'proven-complete':
         proven++
         break
       case 'nondeterministic':
       case 'rerun-failed':
+      case 'undeclared-inputs':
         bad++
         break
       case 'allowed-nondeterministic':
@@ -97,7 +119,7 @@ export function formatVerifySection(outcomes: readonly TaskOutcome[]): string[] 
   }
   const lines = [
     '',
-    `  Verify:   ${proven} proven · ${bad} nondeterministic · ${na} n/a · ${notVerified} not-verified`,
+    `  Verify:   ${proven} proven · ${bad} unsafe · ${na} n/a · ${notVerified} not-verified`,
   ]
   for (const o of outcomes) {
     const v = o.verify
@@ -105,6 +127,10 @@ export function formatVerifySection(outcomes: readonly TaskOutcome[]): string[] 
     if (v.kind === 'nondeterministic') {
       lines.push(`    ✗ ${o.node.id} — nondeterministic`)
       lines.push(`        changed: ${v.changed.join(', ')}`)
+    } else if (v.kind === 'undeclared-inputs') {
+      lines.push(`    ✗ ${o.node.id} — read undeclared inputs`)
+      if (v.paths.length > 0) lines.push(`        ${v.paths.join(', ')}`)
+      lines.push('        add them to cache.inputs.files / workspaceFiles')
     } else if (v.kind === 'rerun-failed') {
       lines.push(`    ✗ ${o.node.id} — verify re-run failed (exit ${v.exitCode})`)
     } else if (v.kind === 'allowed-nondeterministic') {

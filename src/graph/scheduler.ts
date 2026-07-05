@@ -14,15 +14,24 @@ export type TaskStatus =
 
 /**
  * Cache-correctness verdict for a task under `vx run --verify` (Phase 1:
- * determinism). Declared here (structurally) because `graph` can't import
- * `orchestrator` where the verifier lives — same pattern as
- * `inputComponents`. A pure side-channel: never hashed, never persisted in
- * Phase 1.
+ * determinism; Phase 2: input-completeness). Declared here (structurally)
+ * because `graph` can't import `orchestrator` where the verifier lives —
+ * same pattern as `inputComponents`. A pure side-channel: never hashed,
+ * never persisted in Phase 1/2.
  */
 export type VerifyVerdict =
   | { kind: 'proven-deterministic' }
+  /** Phase 2: input-completeness proved — the task read nothing outside its
+   *  declared inputs (from `--verify=inputs` when determinism wasn't also
+   *  requested; an `--verify=all` pass reports the stronger deterministic). */
+  | { kind: 'proven-complete' }
   /** Re-ran; outputs differ from the cached ones. `changed` names the rels. */
   | { kind: 'nondeterministic'; changed: readonly string[] }
+  /** Phase 2: read a workspace path outside the declared inputs — the declared
+   *  `cache.inputs` are incomplete, so a hit could serve stale bytes. `paths`
+   *  names the undeclared reads (workspace-relative; empty when the sandbox
+   *  denied structurally but strace wasn't available to name them). */
+  | { kind: 'undeclared-inputs'; paths: readonly string[] }
   /** Diverged but the task is on `--verify-allow` — reported, not failed. */
   | { kind: 'allowed-nondeterministic'; changed: readonly string[] }
   /** The verify re-run exited non-zero / timed out (nondeterministic by

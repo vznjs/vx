@@ -8,8 +8,10 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { probeSandbox } from '../src/exec/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
+import { undeclaredInputPaths } from '../src/orchestrator/verify.js'
 
 const TIMEOUT = 20_000
 
@@ -238,6 +240,170 @@ describe('vx run --verify (determinism)', () => {
         log: capturingLogger(fixture),
       })
       expect(r.outcomes[0]!.verify).toBeUndefined()
+    },
+    TIMEOUT,
+  )
+})
+
+describe('undeclaredInputPaths (pure)', () => {
+  it('extracts the bracketed abs path and makes it workspace-relative', () => {
+    const ws = '/work/space'
+    const v = [
+      { line: `openat(secret.txt) = -1 ENOENT  [${ws}/pkg/a/secret.txt]` },
+      { line: `openat(other) = -1 ENOENT  [${ws}/pkg/b/other.env]` },
+    ]
+    expect(undeclaredInputPaths(v, ws)).toEqual(['pkg/a/secret.txt', 'pkg/b/other.env'])
+  })
+
+  it('dedups + sorts and falls back to the raw line when no bracket is present', () => {
+    const ws = '/w'
+    const v = [
+      { line: `openat(x) = -1 ENOENT  [${ws}/z.txt]` },
+      { line: `openat(x) = -1 ENOENT  [${ws}/z.txt]` }, // dup
+      { line: `openat(x) = -1 ENOENT  [${ws}/a.txt]` },
+      { line: 'sandbox: some macos syscall line with no bracket' }, // fallback
+    ]
+    expect(undeclaredInputPaths(v, ws)).toEqual([
+      'a.txt',
+      'sandbox: some macos syscall line with no bracket',
+      'z.txt',
+    ])
+  })
+})
+
+// Phase 2 (input-completeness) needs the OS sandbox. It's installed in CI's
+// "Install sandbox runtime deps" step, so these run there; a dev host without
+// bwrap/strace skips cleanly (mirrors tests/sandbox-runtime.test.ts).
+const sandbox = await probeSandbox()
+if (!sandbox.available) {
+  // eslint-disable-next-line no-console
+  console.warn(`[verify inputs tests] skipping — sandbox unavailable: ${sandbox.reason}`)
+}
+
+/** A cacheable task that reads `readCmd` (a node -e body) and writes out.txt. */
+const inputProject = (readExpr: string, inputs = "['src/**','package.json']") =>
+  `export default {
+    tasks: {
+      run: {
+        exec: { command: ${JSON.stringify(`node -e '${readExpr}'`)} },
+        cache: { inputs: { files: ${inputs} }, outputs: { files: ['out.txt'] } },
+      },
+    },
+  }`
+
+const INPUTS = { determinism: false, inputs: true, allow: new Set<string>() }
+
+describe.skipIf(!sandbox.available)('vx run --verify=inputs (input-completeness)', () => {
+  beforeEach(async () => {
+    fixture = await makeWorkspace()
+  })
+  afterEach(async () => {
+    await rm(fixture.root, { recursive: true, force: true })
+  })
+
+  it(
+    'proves a task whose declared inputs are complete',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'a',
+        inputProject('require("fs").writeFileSync("out.txt","ok")'),
+      )
+      await mkdir(path.join(dir, 'src'), { recursive: true })
+      await writeFile(path.join(dir, 'src', 'in.txt'), 'x')
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        verify: INPUTS,
+        log: capturingLogger(fixture),
+      })
+      expect(r.ok).toBe(true)
+      expect(r.outcomes[0]!.verify).toEqual({ kind: 'proven-complete' })
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'catches a read outside the declared inputs, names the path, fails the run',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'a',
+        // Reads secret.txt (NOT under src/** or package.json). The read is
+        // denied under the sandbox; the attempt is still flagged.
+        inputProject(
+          'const fs=require("fs");let s="d";try{s=fs.readFileSync("secret.txt","utf8")}catch(e){}fs.writeFileSync("out.txt",s)',
+        ),
+      )
+      await mkdir(path.join(dir, 'src'), { recursive: true })
+      await writeFile(path.join(dir, 'src', 'in.txt'), 'x')
+      await writeFile(path.join(dir, 'secret.txt'), 'SECRET')
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        verify: INPUTS,
+        log: capturingLogger(fixture),
+      })
+      expect(r.ok).toBe(false)
+      const v = r.outcomes[0]!.verify
+      expect(v?.kind).toBe('undeclared-inputs')
+      if (v?.kind === 'undeclared-inputs') {
+        expect(v.paths.some((p) => p.endsWith('secret.txt'))).toBe(true)
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a cache hit is not-verified under --verify=inputs (never re-runs)',
+    async () => {
+      const cfg = inputProject('require("fs").writeFileSync("out.txt","ok")')
+      const dir = await addProject(fixture.root, 'a', cfg)
+      await mkdir(path.join(dir, 'src'), { recursive: true })
+      await writeFile(path.join(dir, 'src', 'in.txt'), 'x')
+      await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        log: capturingLogger(fixture),
+      })
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        verify: INPUTS,
+        log: capturingLogger({ root: fixture.root, out: [], err: [] }),
+      })
+      expect(r.outcomes[0]!.status).toBe('cache-hit')
+      expect(r.outcomes[0]!.verify).toEqual({ kind: 'not-verified' })
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '--verify=all reports undeclared-inputs (short-circuits determinism) for a leaky task',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'a',
+        inputProject(
+          'const fs=require("fs");try{fs.readFileSync("secret.txt")}catch(e){}fs.writeFileSync("out.txt","ok")',
+        ),
+      )
+      await mkdir(path.join(dir, 'src'), { recursive: true })
+      await writeFile(path.join(dir, 'src', 'in.txt'), 'x')
+      await writeFile(path.join(dir, 'secret.txt'), 'SECRET')
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        verify: { determinism: true, inputs: true, allow: new Set<string>() },
+        log: capturingLogger(fixture),
+      })
+      expect(r.ok).toBe(false)
+      expect(r.outcomes[0]!.verify?.kind).toBe('undeclared-inputs')
     },
     TIMEOUT,
   )

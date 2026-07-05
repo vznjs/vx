@@ -23,7 +23,13 @@ import {
   type SandboxViolation,
 } from '../exec/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome, type VerifyVerdict } from '../graph/index.js'
-import { classifyDeterminism, diffOutputTrees, hashOutputTree, outputRefs } from './verify.js'
+import {
+  classifyDeterminism,
+  diffOutputTrees,
+  hashOutputTree,
+  outputRefs,
+  undeclaredInputPaths,
+} from './verify.js'
 import type { Logger } from './logger.js'
 import {
   computeGroupHash,
@@ -75,9 +81,11 @@ export interface ExecuteArgs {
    * Cache-correctness verification (`vx run --verify`). When
    * `determinism` is set, an executed + cacheable task is re-run after its
    * save and its outputs are content-compared; a divergence flags the task
-   * non-hermetic. `allow` exempts known-nondeterministic task ids from
-   * failing the run. Pure side-channel — the re-run never saves, nothing
-   * is hashed. Undefined = off.
+   * non-hermetic. When `inputs` is set, an executed + cacheable task is
+   * forced through the declared-input baseline sandbox and any read outside
+   * those inputs flags the declared `cache.inputs` as incomplete. `allow`
+   * exempts known-nondeterministic task ids from failing the run. Pure
+   * side-channel — the re-run never saves, nothing is hashed. Undefined = off.
    */
   verify?: {
     determinism: boolean
@@ -315,8 +323,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   // Sandbox is opt-in per task via `sandbox: {}` (or `sandbox: {...}`)
   // in the task config. No CLI flag, no workspace inheritance — the
-  // task config is the single source of truth.
-  const useSandbox = cfg.sandbox !== undefined
+  // task config is the single source of truth. EXCEPTION: `--verify=inputs`
+  // forces the declared-input baseline sandbox onto every executed, cacheable
+  // task to prove input-completeness (a read outside the declared inputs is a
+  // proof failure, not a task failure — so it flags the RUN via the verdict,
+  // it does not flip the task's own exit code the way a user-declared sandbox
+  // violation does).
+  const userSandbox = cfg.sandbox !== undefined
+  const verifyInputs = args.verify?.inputs === true && willWrite
+  const useSandbox = userSandbox || verifyInputs
   let violations: SandboxViolation[] = []
 
   // Cache miss path (or caching disabled), up to `1 + retries` attempts.
@@ -353,7 +368,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // always 0 there, but the task is already exit != 0 if it needed the
     // missing file). Violations surface via `TaskOutcome.sandboxViolationLines`.
     let code = res.exitCode
-    if (violations.length > 0 && code === 0) code = 1
+    // A USER-declared sandbox fails the task on any violation (that's its
+    // fail-on-violation contract). A sandbox forced on ONLY by `--verify=inputs`
+    // does NOT — the task ran fine; the incompleteness is surfaced as the
+    // `undeclared-inputs` verdict (which reds the run) so the retry loop
+    // doesn't pointlessly re-run and the task isn't mislabeled failed.
+    if (userSandbox && violations.length > 0 && code === 0) code = 1
     // A child we SIGTERMed for exceeding the timeout is a genuine failure —
     // stream a clear line so the 143 exit reads as a timeout.
     if (res.timedOut) {
@@ -564,13 +584,40 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // must report attempt 1's, not the re-run's.
   const finalViolations = violations
 
-  // Determinism verification (`vx run --verify`). The task executed and saved;
-  // re-run it fresh and content-compare its outputs against attempt 1. A
+  let verify: VerifyVerdict | undefined
+
+  // Input-completeness verification (`vx run --verify=inputs` / `=all`, Phase 2).
+  // The task ran under the forced declared-input baseline sandbox. A read of a
+  // workspace path outside the declared inputs proves `cache.inputs` is
+  // incomplete — a future hit could serve stale bytes when that undeclared file
+  // changes. This reds the run via the verdict (see run.ts `ok`), not the task's
+  // own exit code. Checked FIRST: if the inputs are wrong, there's no point
+  // re-running for determinism — fix the inputs (which changes the key) first.
+  if (verifyInputs) {
+    if (finalViolations.length > 0) {
+      verify = {
+        kind: 'undeclared-inputs',
+        paths: undeclaredInputPaths(finalViolations, args.workspaceRoot),
+      }
+    } else if (effectiveExitCode === 0 && !args.verify?.determinism) {
+      // Inputs-only run, inputs complete. (`=all` falls through to the stronger
+      // determinism verdict below.)
+      verify = { kind: 'proven-complete' }
+    }
+  }
+
+  // Determinism verification (`vx run --verify` / `=all`). The task executed and
+  // saved; re-run it fresh and content-compare its outputs against attempt 1. A
   // divergence proves the task is non-hermetic — its cache entry would replay
   // arbitrary past bytes. The re-run NEVER saves; the canonical (attempt-1)
   // bytes are restored afterward so disk == the cache regardless of verdict.
-  let verify: VerifyVerdict | undefined
-  if (args.verify?.determinism && effectiveExitCode === 0 && willWrite && !result.timedOut) {
+  if (
+    verify === undefined &&
+    args.verify?.determinism &&
+    effectiveExitCode === 0 &&
+    willWrite &&
+    !result.timedOut
+  ) {
     if (verifyFp1 === undefined) {
       verify = { kind: 'no-outputs' } // cacheable but nothing to replay (e.g. lint)
     } else {
@@ -763,7 +810,9 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
     restored,
     // Under `--verify`, a cache hit didn't execute this run — so it wasn't
     // proven. Flag it `not-verified` (use `--force` to re-execute + verify).
-    ...(args.verify?.determinism ? { verify: { kind: 'not-verified' as const } } : {}),
+    ...(args.verify?.determinism || args.verify?.inputs
+      ? { verify: { kind: 'not-verified' as const } }
+      : {}),
     wallclockStartNs: taskStartNs,
     wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
   }

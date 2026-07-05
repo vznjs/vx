@@ -188,8 +188,17 @@ non-deterministic task fails the run, naming the diverging paths.
 `--force` re-executes a warm graph so every task is verified (a plain
 `--verify` run cache-hits and reports `not-verified` — there's nothing to
 re-run). It costs roughly 2× execution for verified tasks, so run it on a
-schedule or the merge queue, not every push. When the `cloud()` plugin is
-active, the job-summary page gains a **Hermeticity** line
+schedule or the merge queue, not every push.
+
+`--verify=inputs` proves the *other* half of cache safety — that the
+inputs you declared are the whole read set. It runs each task once through
+vx's OS sandbox with the declared inputs as the only readable workspace
+paths and fails the run naming any undeclared read. `--verify=all` runs
+both proofs. (`inputs`/`all` need the OS sandbox on the runner; GitHub's
+`ubuntu-latest` provides bwrap + strace.)
+
+When the `cloud()` plugin is active, the job-summary page gains a
+**Hermeticity** line
 (`🔒 Hermeticity: N proven · M non-deterministic`) and each non-hermetic
 task is flagged inline with its diverging outputs.
 `--verify-allow=<pkg#task,…>` exempts tasks you can't fix yet so the gate

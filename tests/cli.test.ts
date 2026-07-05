@@ -804,6 +804,39 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--cache-dir']).error).toMatch(/--cache-dir requires a value/)
   })
 
+  it('parses --verify in all four forms + rejects unknown modes', () => {
+    // bare / =determinism → determinism only
+    expect(parseRunArgs(['build', '--verify']).verify).toEqual({ determinism: true, inputs: false })
+    expect(parseRunArgs(['build', '--verify=determinism']).verify).toEqual({
+      determinism: true,
+      inputs: false,
+    })
+    // =inputs → input-completeness only
+    expect(parseRunArgs(['build', '--verify=inputs']).verify).toEqual({
+      determinism: false,
+      inputs: true,
+    })
+    // =all → both proofs
+    expect(parseRunArgs(['build', '--verify=all']).verify).toEqual({
+      determinism: true,
+      inputs: true,
+    })
+    // absent → undefined (zero-cost default)
+    expect(parseRunArgs(['build']).verify).toBeUndefined()
+    // unknown mode → loud error naming the valid set
+    expect(parseRunArgs(['build', '--verify=bogus']).error).toMatch(
+      /--verify must be determinism \| inputs \| all/,
+    )
+  })
+
+  it('parses --verify-allow as a comma list of task ids', () => {
+    expect(parseRunArgs(['build', '--verify-allow=a#build,b#test']).verifyAllow).toEqual([
+      'a#build',
+      'b#test',
+    ])
+    expect(parseRunArgs(['build']).verifyAllow).toEqual([])
+  })
+
   it('parses --all (replaces -r / --recursive)', () => {
     expect(parseRunArgs(['build', '--all']).all).toBe(true)
     expect(parseRunArgs(['build', '-r']).error).toMatch(/unknown flag: -r/)

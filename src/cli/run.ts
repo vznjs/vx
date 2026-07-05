@@ -68,9 +68,11 @@ export interface RunArgs {
    */
   timeout: number | undefined
   /**
-   * `--verify[=determinism]`: cache-correctness verification. Undefined when
-   * not passed. `allow` (from `--verify-allow=<pkg#task>,…`) exempts tasks
-   * from failing the run on a divergence.
+   * `--verify[=determinism|inputs|all]`: cache-correctness verification.
+   * Undefined when not passed. `determinism` re-runs and content-compares
+   * outputs; `inputs` sandboxes with the declared-input baseline and flags
+   * undeclared reads. `allow` (from `--verify-allow=<pkg#task>,…`) exempts
+   * tasks from failing the run on a divergence.
    */
   verify: { determinism: boolean; inputs: boolean } | undefined
   verifyAllow: string[]
@@ -176,14 +178,15 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       const what = a === '--verify' ? 'determinism' : a.slice('--verify='.length)
       if (what === 'determinism') {
         out.verify = { determinism: true, inputs: false }
-      } else if (what === 'inputs' || what === 'all') {
-        // Phase 2 (sandbox-backed). Reject loudly rather than silently no-op.
+      } else if (what === 'inputs') {
+        out.verify = { determinism: false, inputs: true }
+      } else if (what === 'all') {
+        out.verify = { determinism: true, inputs: true }
+      } else {
         return {
           ...out,
-          error: `--verify=${what} (input-completeness) is not available yet; use --verify (determinism)`,
+          error: `--verify must be determinism | inputs | all (or bare --verify), got: ${what}`,
         }
-      } else {
-        return { ...out, error: `--verify must be determinism (or bare --verify), got: ${what}` }
       }
     } else if (a?.startsWith('--verify-allow=')) {
       out.verifyAllow = a

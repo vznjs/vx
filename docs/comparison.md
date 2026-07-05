@@ -274,19 +274,22 @@ deliberate design pass.
 Things `@vzn/vx` does that the others don't:
 
 - **Provable cache correctness (`vx run --verify`).** Every content-
-  addressed cache rests on one unstated assumption — that a task run
-  twice on the same inputs produces the same bytes. Turbo and Nx assume
-  it and hope; a non-deterministic task silently poisons their cache
-  (a "hit" replays whichever bytes won the race the day it was saved).
-  vx is the only runner that _proves_ it: `--verify` re-runs each
-  executed cacheable task and content-compares the outputs (git-blob
-  OID per file). Deterministic ⇒ the entry is provably safe; divergent
-  ⇒ the task is non-hermetic and the run **fails** naming the changed
-  paths. Pure run-level side-channel (never touches a cache key, so a
-  `--verify` run still hits a plain entry), roughly 2× exec — a CI /
-  pre-merge gate. It's the correctness-first inverse of input
-  auto-inference: vx never guesses your inputs, it proves the declared
-  ones are complete enough to cache safely.
+  addressed cache rests on two unstated assumptions — that a task run
+  twice on the same inputs produces the same bytes, and that the inputs
+  you declared are its whole read set. Turbo and Nx assume both and hope;
+  either a non-deterministic task or an undeclared input silently poisons
+  their cache. vx is the only runner that _proves_ both. `--verify`
+  (`=determinism`) re-runs each executed cacheable task and
+  content-compares the outputs (git-blob OID per file): divergent ⇒
+  non-hermetic ⇒ run **fails** naming the changed paths. `--verify=inputs`
+  runs the task once through vx's OS sandbox with the declared inputs as
+  the only readable workspace paths: a read of any undeclared workspace
+  file ⇒ incomplete inputs ⇒ run **fails** naming it. `--verify=all` does
+  both. A pure run-level side-channel (never touches a cache key, so a
+  `--verify` run still hits a plain entry), ~2× exec — a CI / pre-merge
+  gate. It's the correctness-first inverse of input auto-inference: vx
+  never guesses your inputs, it proves the declared ones are complete and
+  reproducible enough to cache safely.
 - **TypeScript config with full type inference** — no string typos,
   IDE autocomplete, presets as plain imports. The closest thing in
   Turbo/Nx is `extends`; in vite-task it's tied to Vite's config
