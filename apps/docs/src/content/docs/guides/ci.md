@@ -160,6 +160,17 @@ vx run build --all --summarize=summary.json   # per-task JSON
 vx run build --all --profile=trace.json       # Chrome-trace timeline
 ```
 
+## GitHub Actions job summary
+
+Declare the [`cloud()` plugin](../extensibility/) in your
+`vx.workspace.ts` and every `vx run` inside GitHub Actions appends a
+per-task result table (failures first, with exit codes) to the job's
+summary page — so a red build tells you *which* task failed without
+opening the raw log. It works with **no serve connected** (the summary
+is formatted from the run locally, from the `$GITHUB_STEP_SUMMARY` file
+Actions provides) and needs no extra workflow step. A plain local run —
+not in Actions — writes nothing.
+
 ## Next steps
 
 - **[Remote caching](../remote-caching/)** — set up the shared cache.

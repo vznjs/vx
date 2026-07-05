@@ -187,6 +187,29 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-04**: **GitHub Actions job summary — a per-task result table on the
+  job page** (road-to-best-CI #3, first half). A `vx run` inside GitHub Actions
+  appends a markdown result table (failures first, with exit codes; cache
+  provenance; verdict + stats line) to `$GITHUB_STEP_SUMMARY`, so a red build
+  says WHICH task failed on the job page — no log spelunking. **Pure cloud
+  glue, zero core change:** `github-summary.ts` `formatGithubSummary(summary)`
+  is a self-contained formatter over the `RunSummaryRecord` the telemetry sink
+  already holds (NOT core's `formatRunReportMarkdown`, which takes a different
+  `RunResult` shape and isn't on the façade — a small cloud-side formatter is
+  cleaner than converting). **Works with no serve connected:** the `cloud()`
+  telemetry capability now activates when EITHER a connection resolves OR
+  `GITHUB_STEP_SUMMARY` is set; the `CloudIngestSink` took an
+  options-object constructor with an OPTIONAL `connection` (undefined →
+  GHA-summary-only, skips the POSTs; log capture stays off without a serve to
+  ship to). A plain local run with neither still declines (zero-cost contract
+  held, pinned). Never-fail (write error swallowed + warned), bounded (table
+  caps 100 rows + a truncation note). 10 new tests; cloud suite 229 pass.
+  Docs: guides/ci.md "GitHub Actions job summary". **Second half still open:**
+  a real PR _check_ via the GitHub Checks API (needs a token + checks:write —
+  genuine service territory, deferred). NEXT: flaky detection→auto-retry (wire
+  `getFlakiestTasks` + the shipped `TaskOutcome.attempts`), duration-aware
+  dispatch ordering.
+
 - **2026-07-04**: **Per-task logs + artifacts in the dashboard — road-to-best-CI
   #2 (Nx-Cloud parity: click a failed task, read its output)**. Design in
   `docs/design/task-logs-2026-07.md`; shipped in three committable slices, ALL
@@ -3886,22 +3909,25 @@ portable execution+cache+pool LAYER inside any CI provider — triggers/
 hosted-runners/secrets/DSL/marketplace are permanent non-goals). The
 longer-horizon core gaps stay sourced from `docs/comparison.md`.
 
-1. **Per-task logs + artifacts in the dashboard** (Nx-Cloud parity —
-   click a failed task, read its output). The cache artifact already
-   stores stdout; `IngestStore` holds only run summaries, no log
-   surface. Needs a bounded-storage design (failed tasks are never
-   cached, so capture must ride telemetry/relay, not the cache).
-2. **PR/commit summary + checks** — cloud-side glue over
-   `run-report.ts` (`$GITHUB_STEP_SUMMARY`, a PR check). Never core.
-3. **Task-level retries** (`retries` config), then **flaky
-   detection → auto-retry** (`getFlakiestTasks` exists; no retry
-   primitive does — `scheduler.ts`/`execute-task.ts` run a task once).
-4. **Duration-aware dispatch ordering** (longest-historical-first from
-   `metrics.ts` p50s; `DistScheduler.ready` is FIFO today).
-5. **Per-request cache policy to remote agents** (the §13 known-open:
+1. ~~Per-task logs + artifacts in the dashboard~~ — **SHIPPED**
+   2026-07-04 (task-logs-2026-07; the dashboard TaskLogs panel).
+2. **PR/commit summary + checks.** Half SHIPPED (the GitHub Actions
+   `$GITHUB_STEP_SUMMARY` table, 2026-07-04). Remaining: a real PR
+   _check_ via the GitHub Checks API (token + checks:write — service
+   territory).
+3. ~~Task-level retries~~ — **SHIPPED** 2026-07-04 (`exec.retries` +
+   `--retry`; `TaskOutcome.attempts` is the flaky-detection feed).
+4. **Flaky detection → surface + optional auto-retry.**
+   `getFlakiestTasks` (a query) + the new `attempts` primitive exist;
+   wire them: surface flaky tasks in the dashboard, suggest/auto-apply
+   `retries` on flagged tasks.
+5. **Duration-aware dispatch ordering** (longest-historical-first;
+   `DistScheduler` `nextReady()` is FIFO — a `durationHintMs` on the
+   submitted node + a longest-first pick is the change).
+6. **Per-request cache policy to remote agents** (the §13 known-open:
    agents run live-eval + full policy; `--frozen`/`--cache` don't
    propagate).
-6. Core backlog (from `docs/comparison.md`): pre-signed URL auth for
+7. Core backlog (from `docs/comparison.md`): pre-signed URL auth for
    the remote cache, `--continue=<mode>`, `dependsOn` wildcards,
    workspace-level `globalInputs`/`globalEnv`, auto-input inference
    (fspy-equivalent tracing — biggest lift).
