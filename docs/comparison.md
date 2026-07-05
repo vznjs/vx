@@ -159,10 +159,13 @@ upstream repos.
 3. **Wildcards in `dependsOn`.** `build-*`, `^build-*`.
    - Nx 19.5+.
 
-4. **Workspace-level `globalInputs` / `globalEnv` / `globalPassThrough`.**
-   Today every task lists root files via `workspaceFiles` and env
-   names per task; a workspace-level declaration would fold once for
-   everyone.
+4. **Workspace-level `globalInputs` / `globalEnv` / `globalPassThrough`
+   — owner-REJECTED (2026-07-05, "no global").** TypeScript configs
+   compose: a shared preset imported and spread into each config IS the
+   global-inputs/global-env mechanism (same rationale as the rejected
+   named-inputs machinery — a schema field would duplicate the language).
+   The `vx migrate` Turbo path already emits a generated `vx-preset.ts`
+   for exactly this. Not a gap; will not be added.
    - Turbo `globalEnv`, `globalPassThroughEnv`.
 
 5. **`--cache-dir <path>` CLI flag — shipped.** Overrides the
@@ -170,7 +173,8 @@ upstream repos.
    resolved relative to cwd. Threaded over the wire; never folded into a
    cache key.
 
-6. **Auto-input inference via filesystem tracing.** Re-classified
+6. **Auto-input inference via filesystem tracing — owner-REJECTED
+   (reconfirmed 2026-07-05, "no auto input").** Re-classified
    **out of scope** for vx (2026-06) after studying vite-task's
    implementation. Doing this soundly is a multi-platform native
    systems project — vite-task ships ~9 Rust crates for it:

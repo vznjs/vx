@@ -4104,11 +4104,23 @@ longer-horizon core gaps stay sourced from `docs/comparison.md`.
    agents run live-eval + full policy; `--frozen`/`--cache` don't
    propagate).
 7. Core backlog (from `docs/comparison.md`): pre-signed URL auth for
-   the remote cache, `dependsOn` wildcards, workspace-level
-   `globalInputs`/`globalEnv`, `--cache-dir` CLI flag, auto-input
-   inference (fspy-equivalent tracing — biggest lift). (`--continue=<mode>`
-   is SHIPPED — was mislisted here; the scheduler enforces
-   never/deps-ok/always.)
+   the remote cache, `dependsOn` wildcards. (`--continue=<mode>` and
+   `--cache-dir` are SHIPPED.)
+
+**Owner-REJECTED non-goals (do NOT re-propose):**
+
+- **Workspace-level `globalInputs` / `globalEnv` / `globalPassThrough`**
+  (owner 2026-07-05: "no global"). TS configs compose — a shared preset
+  imported + spread into each config IS the global-inputs mechanism (same
+  rationale as the earlier-rejected named-inputs machinery); a schema
+  field would duplicate the language. The Turbo-migrate path already emits
+  a generated `vx-preset.ts` for this.
+- **Auto-input inference (fspy/strace filesystem tracing)** (owner
+  2026-07-05: "no auto input"). vx's explicit-inputs contract is a
+  correctness principle (Architecture principle #1: "Explicit over
+  magical"), not a gap; traced inputs aren't derivable before execution
+  (why vite-task has no remote cache). Declared `cache.inputs.files` +
+  `runtime`/`workspaceFiles` stay the only input surface.
 
 ## Recently shipped
 
