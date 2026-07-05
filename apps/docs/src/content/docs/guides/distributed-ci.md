@@ -40,14 +40,14 @@ export default defineWorkspace({ plugins: [cloud()] })
 Store the connection as two repository secrets — `VX_CLOUD_URL` and
 `VX_CLOUD_TOKEN`.
 
-> **Installing `vx-cloud` in CI.** `@vzn/vx-cloud` is **not yet
-> published to npm** — the only prebuilt artifact is the
-> `ghcr.io/vznjs/vx-cloud` *serve* image, which carries no git and can't
-> run an agent. So the recipes below install the `vx-cloud` CLI **from
-> source** (git clone the vx repo at a pinned ref, `bun install`, drop a
-> `bun` shim on `PATH`). Core `vx` **is** on npm, so it installs with
-> `npm i -g @vzn/vx`. When `@vzn/vx-cloud` publishes, the source step
-> collapses to `npm i -g @vzn/vx-cloud`.
+> **Installing the CLIs in CI.** Both ship on npm: core `vx` is a
+> standalone binary (`npm i -g @vzn/vx`, no Bun needed), and the
+> `vx-cloud` CLI is a Bun-source package (`npm i -g @vzn/vx-cloud`,
+> requires Bun on the host — CI provides it via `setup-bun`). The agent
+> jobs need `vx-cloud`; the run job needs only `vx` plus
+> `VX_CLOUD_URL`/`VX_CLOUD_TOKEN`. (For a serve deployment, the
+> `ghcr.io/vznjs/vx-cloud` image is the prebuilt server — see
+> self-hosting.)
 
 ### One `uses:` — the reusable workflow
 
@@ -135,8 +135,8 @@ jobs:
 The `agents` and `run` jobs start in parallel; the matrix uses the same
 `session` the run job sets in `VX_AGENT_SESSION` so they rendezvous.
 `vx-agent` inputs: `url` (required), `token`, `capacity` (default `1`),
-`session`, `idle-timeout` (default `900000`), and `ref` (the vx source
-ref it installs vx-cloud from, default `main`).
+`session`, `idle-timeout` (default `900000`), and `version` (the
+`@vzn/vx-cloud` npm version/dist-tag it installs, default `latest`).
 
 ### GitLab CI
 
@@ -145,19 +145,14 @@ jobs plus a run job, both in one stage so they run concurrently and
 share the pipeline session (`CI_PIPELINE_ID`):
 
 ```yaml
-# .gitlab-ci.yml  (needs git in the image — preinstalled on oven/bun:1.3)
+# .gitlab-ci.yml  (the oven/bun:1.3 image ships Bun + npm)
 default:
   image: oven/bun:1.3
   variables:
     VX_AGENT_SESSION: $CI_PIPELINE_ID # agents + run share one session
   before_script:
-    # Neither @vzn/vx-cloud nor a bun-image npm is assumed — shim both CLIs
-    # from source (git clone + bun install), then install your workspace deps.
-    - git clone --depth 1 https://github.com/vznjs/vx /tmp/vx
-    - (cd /tmp/vx && bun install --frozen-lockfile)
-    - printf '#!/bin/sh\nexec bun /tmp/vx/src/bin.ts "$@"\n' > /usr/local/bin/vx
-    - printf '#!/bin/sh\nexec bun /tmp/vx/packages/cloud/src/cli/bin.ts "$@"\n' > /usr/local/bin/vx-cloud
-    - chmod +x /usr/local/bin/vx /usr/local/bin/vx-cloud
+    # Install both CLIs from npm, then your workspace deps.
+    - npm i -g @vzn/vx @vzn/vx-cloud
     - bun install --frozen-lockfile
 
 agents:
