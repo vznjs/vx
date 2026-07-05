@@ -187,6 +187,24 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-04**: **Duration-aware dispatch — start the longest task first
+  (LPT)** (road-to-best-CI #5). The `DistScheduler` ready queue was FIFO; now
+  `nextReady()` returns the historically LONGEST ready task (longest-
+  processing-time makespan heuristic, the same Nx Agents uses) so a long pole
+  starts as early as possible. **Hint source = THIS serve's ingest history**
+  (mean executed-run ms per `project#task`, one grouped `AVG(duration_ms)` scan
+  in `taskDurationHints`), NOT the submitter — correct for CI, where the
+  submitter is an ephemeral empty runner with no local history.
+  `DistSchedulerArgs` gains an optional `durationHints: ReadonlyMap<string,
+number>`; serve.ts builds it at `dist:submit`. **No wire change**
+  (serve-computed), no core change, no protocol bump. **Byte-identical
+  fallback:** no hints (fresh workspace) or all-equal → `nextReady` returns the
+  queue head exactly as before (strict `>` keeps queue order on ties); the
+  existing single-submission dispatch tests stay green unchanged. Pinned by two
+  new tests (LPT reorders longest-first; an empty map stays FIFO). Cloud suite
+  231 pass. NEXT: flaky detection surface + optional auto-retry; the
+  PR-check-via-API half of #3.
+
 - **2026-07-04**: **GitHub Actions job summary — a per-task result table on the
   job page** (road-to-best-CI #3, first half). A `vx run` inside GitHub Actions
   appends a markdown result table (failures first, with exit codes; cache
@@ -3921,9 +3939,8 @@ longer-horizon core gaps stay sourced from `docs/comparison.md`.
    `getFlakiestTasks` (a query) + the new `attempts` primitive exist;
    wire them: surface flaky tasks in the dashboard, suggest/auto-apply
    `retries` on flagged tasks.
-5. **Duration-aware dispatch ordering** (longest-historical-first;
-   `DistScheduler` `nextReady()` is FIFO — a `durationHintMs` on the
-   submitted node + a longest-first pick is the change).
+5. ~~Duration-aware dispatch ordering~~ — **SHIPPED** 2026-07-04
+   (LPT; serve-computed `durationHints` from ingest history).
 6. **Per-request cache policy to remote agents** (the §13 known-open:
    agents run live-eval + full policy; `--frozen`/`--cache` don't
    propagate).
