@@ -383,6 +383,37 @@ describe('runGraph restore-tier (local short-circuit)', () => {
   })
 })
 
+describe('runGraph — priorities override', () => {
+  it('a priorities map overrides the default order; unscored nodes fall back to baseline', async () => {
+    // Four independent nodes: the default schedule is pure insertion
+    // order a, b, c, d (all baseline reverse-dep counts are 0). A
+    // priorities map lifts c above a; b and d are unscored and fall back
+    // to baseline (0), keeping their insertion order behind the scored pair.
+    const m = new Map<string, TaskNode>([
+      ['p#a', node('p#a')],
+      ['p#b', node('p#b')],
+      ['p#c', node('p#c')],
+      ['p#d', node('p#d')],
+    ])
+    const started: string[] = []
+    await runGraph({
+      nodes: m,
+      concurrency: 1,
+      priorities: new Map([
+        ['p#c', 5],
+        ['p#a', 1],
+      ]),
+      execute: async (n) => {
+        started.push(n.id)
+        return success(n)
+      },
+    })
+    // Scored highest-first: c (5) then a (1); then the two unscored nodes
+    // by baseline + insertion order: b then d. Inverts the default a,b,c,d.
+    expect(started).toEqual(['p#c', 'p#a', 'p#b', 'p#d'])
+  })
+})
+
 describe('runGraph — continueMode', () => {
   it('deps-ok (default): a failure skips dependents, siblings run — unchanged pin', async () => {
     const a = node('p#a')

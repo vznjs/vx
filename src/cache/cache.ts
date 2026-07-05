@@ -474,8 +474,12 @@ export const MAX_DECOMPRESSED_ARTIFACT_BYTES = 2 * 1024 * 1024 * 1024
  * the header is too short to parse. vx's own producer (single-shot
  * `Bun.zstdCompress` of a known buffer) always writes it, so an artifact that
  * declares an enormous size can be rejected before a byte is allocated.
+ *
+ * Exported for tests: pins the per-`fcsFlag` byte layouts (incl. the 2-byte
+ * `+256` adjustment and the `dictIdFlag` offset) that a bomb-refusal e2e can't
+ * discriminate (their max declarable sizes sit below the ceiling).
  */
-function zstdContentSize(b: Uint8Array): bigint | null {
+export function zstdContentSize(b: Uint8Array): bigint | null {
   if (b.length < 5) return null
   // Magic_Number 0xFD2FB528, little-endian.
   if (b[0] !== 0x28 || b[1] !== 0xb5 || b[2] !== 0x2f || b[3] !== 0xfd) return null

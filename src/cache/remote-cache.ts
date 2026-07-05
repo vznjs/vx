@@ -60,8 +60,11 @@ export const MAX_REMOTE_ARTIFACT_BYTES = 512 * 1024 * 1024
  * Read a response body, aborting once cumulative bytes exceed `max`. Streams
  * via the body reader so a lying (or absent) content-length can't defeat the
  * cap. Falls back to `arrayBuffer()` only when the body isn't a stream.
+ *
+ * Exported for tests: the `max` param lets a unit test exercise the
+ * mid-stream abort with a tiny cap instead of a 512 MiB body.
  */
-async function readBodyBounded(res: Response, max: number): Promise<ArrayBuffer> {
+export async function readBodyBounded(res: Response, max: number): Promise<ArrayBuffer> {
   const reader = res.body?.getReader()
   if (reader === undefined) return await res.arrayBuffer()
   const chunks: Uint8Array[] = []

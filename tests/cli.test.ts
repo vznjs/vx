@@ -993,6 +993,33 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--graph', '--profile']).error).toMatch(/need a real run/)
   })
 
+  it('rejects --graph with --summarize and --dry with --profile (planning skips execution)', () => {
+    expect(parseRunArgs(['build', '--graph', '--summarize']).error).toMatch(/need a real run/)
+    expect(parseRunArgs(['build', '--dry', '--profile']).error).toMatch(/need a real run/)
+  })
+
+  it('parses --retry <n> / --retry=<n> and validates it', () => {
+    expect(parseRunArgs(['build', '--retry', '3']).retries).toBe(3)
+    expect(parseRunArgs(['build', '--retry=0']).retries).toBe(0)
+    expect(parseRunArgs(['build']).retries).toBeUndefined()
+    // Negative / non-integer → non-negative-integer error.
+    expect(parseRunArgs(['build', '--retry', '-1']).error).toMatch(/non-negative/)
+    expect(parseRunArgs(['build', '--retry=1.5']).error).toMatch(/non-negative/)
+    // Missing value.
+    expect(parseRunArgs(['build', '--retry']).error).toMatch(/--retry requires a value/)
+  })
+
+  it('parses --timeout <ms> / --timeout=<ms> and validates it', () => {
+    expect(parseRunArgs(['build', '--timeout', '5000']).timeout).toBe(5000)
+    expect(parseRunArgs(['build', '--timeout=1000']).timeout).toBe(1000)
+    expect(parseRunArgs(['build']).timeout).toBeUndefined()
+    // 0 / negative → positive-integer error.
+    expect(parseRunArgs(['build', '--timeout', '0']).error).toMatch(/positive integer/)
+    expect(parseRunArgs(['build', '--timeout=-5']).error).toMatch(/positive integer/)
+    // Missing value.
+    expect(parseRunArgs(['build', '--timeout']).error).toMatch(/--timeout requires a value/)
+  })
+
   it('captures trailing args after `--` as forwardArgs', () => {
     const r = parseRunArgs(['build', '--', '--watch', '--bail'])
     expect(r.tasks).toEqual(['build'])

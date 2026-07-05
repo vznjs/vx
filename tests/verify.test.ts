@@ -11,7 +11,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { probeSandbox } from '../src/exec/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
-import { undeclaredInputPaths } from '../src/orchestrator/verify.js'
+import type { TaskOutcome } from '../src/graph/index.js'
+import { formatVerifySection, undeclaredInputPaths } from '../src/orchestrator/verify.js'
 
 const TIMEOUT = 20_000
 
@@ -226,6 +227,38 @@ describe('vx run --verify (determinism)', () => {
   )
 
   it(
+    'a re-run that fails under identical inputs is rerun-failed (nondeterministic by definition), fails the run',
+    async () => {
+      // Attempt 1: no marker → write out.txt + a marker OUTSIDE the
+      // declared outputs, exit 0 (success, saves). The verify re-run
+      // cleans out.txt but the marker survives → the command sees it and
+      // exits 1 → a re-run that fails on identical inputs.
+      await addProject(
+        fixture.root,
+        'a',
+        project(
+          'const fs=require("fs");if(fs.existsSync("marker")){process.exit(1)}fs.writeFileSync("out.txt","ok");fs.writeFileSync("marker","1")',
+        ),
+      )
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        verify: DETERMINISM,
+        log: capturingLogger(fixture),
+      })
+      expect(r.ok).toBe(false)
+      // Attempt 1 succeeded, so the task's own status stays success…
+      expect(r.outcomes[0]!.status).toBe('success')
+      // …but the verify re-run failed, which the verdict records + fails the run.
+      const v = r.outcomes[0]!.verify
+      expect(v?.kind).toBe('rerun-failed')
+      if (v?.kind === 'rerun-failed') expect(v.exitCode).toBe(1)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a plain run (no --verify) attaches no verdict',
     async () => {
       await addProject(
@@ -268,6 +301,67 @@ describe('undeclaredInputPaths (pure)', () => {
       'sandbox: some macos syscall line with no bracket',
       'z.txt',
     ])
+  })
+})
+
+describe('formatVerifySection (pure)', () => {
+  type V = NonNullable<TaskOutcome['verify']>
+  const mk = (id: string, verify: V | undefined): TaskOutcome =>
+    ({
+      node: { id },
+      status: 'success',
+      exitCode: 0,
+      durationMs: 0,
+      ...(verify ? { verify } : {}),
+    }) as unknown as TaskOutcome
+
+  it('returns nothing when no outcome carries a verdict', () => {
+    expect(formatVerifySection([])).toEqual([])
+    expect(formatVerifySection([mk('p#plain', undefined)])).toEqual([])
+  })
+
+  it('tallies each verdict class and renders one block per failure', () => {
+    const outcomes = [
+      mk('p#det', { kind: 'proven-deterministic' }),
+      mk('p#complete', { kind: 'proven-complete' }),
+      mk('p#nondet', { kind: 'nondeterministic', changed: ['a.txt', 'b.txt'] }),
+      mk('p#leaky', { kind: 'undeclared-inputs', paths: ['secret.txt'] }),
+      mk('p#reran', { kind: 'rerun-failed', exitCode: 3 }),
+      mk('p#allowed', { kind: 'allowed-nondeterministic', changed: ['c.txt'] }),
+      mk('p#noout', { kind: 'no-outputs' }),
+      mk('p#hit', { kind: 'not-verified' }),
+    ]
+    const text = formatVerifySection(outcomes).join('\n')
+
+    // Counts line: 2 proven (deterministic + complete), 3 unsafe
+    // (nondeterministic + undeclared-inputs + rerun-failed), 2 n/a
+    // (allowed + no-outputs), 1 not-verified.
+    expect(text).toContain('Verify:   2 proven · 3 unsafe · 2 n/a · 1 not-verified')
+
+    // Failure blocks, one per unsafe/allowed verdict.
+    expect(text).toContain('✗ p#nondet — nondeterministic')
+    expect(text).toContain('changed: a.txt, b.txt')
+    expect(text).toContain('✗ p#leaky — read undeclared inputs')
+    expect(text).toContain('secret.txt')
+    expect(text).toContain('add them to cache.inputs.files / workspaceFiles')
+    expect(text).toContain('✗ p#reran — verify re-run failed (exit 3)')
+    expect(text).toContain('⚠ p#allowed — nondeterministic (allowed)')
+
+    // Proven / no-outputs / not-verified never get a block.
+    expect(text).not.toContain('p#det —')
+    expect(text).not.toContain('p#complete')
+    expect(text).not.toContain('p#noout')
+    expect(text).not.toContain('p#hit')
+  })
+
+  it('omits the path line for an undeclared-inputs verdict with no named paths', () => {
+    const text = formatVerifySection([mk('p#x', { kind: 'undeclared-inputs', paths: [] })]).join(
+      '\n',
+    )
+    expect(text).toContain('✗ p#x — read undeclared inputs')
+    expect(text).toContain('add them to cache.inputs.files / workspaceFiles')
+    // The "        <paths>" line is skipped when paths is empty.
+    expect(text).not.toMatch(/read undeclared inputs\n {8}\n/)
   })
 })
 
