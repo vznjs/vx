@@ -187,6 +187,55 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-05**: **Task timeout defaults — per-task > env > workspace
+  precedence** (owner: "per task timeout and workspace timeout and global
+  timeout … Per task always precedence then env var then workspace var").
+  `exec.timeout` already bounded a single task; added the two run-level
+  FALLBACKS for tasks that declare none. Resolution, highest first:
+  per-task `exec.timeout` → `--timeout <ms>` / `RunOptions.timeout` →
+  `VX_TASK_TIMEOUT` env → workspace `timeout` (`defineWorkspace`). Modeled
+  EXACTLY on the `--retry`/`RunOptions.retries` run-level-default precedent:
+  `execute-task` resolves `step.timeout ?? args.timeout`; `run.ts` collapses
+  env+workspace+option into the single run-level default it threads
+  (`taskTimeoutDefault = options.timeout ?? readTaskTimeoutEnv() ??
+  workspaceConfig?.timeout`); a malformed `VX_TASK_TIMEOUT` is IGNORED
+  (parsed to undefined) so a typo never silently disables a task's own
+  limit. **Threaded as an option only — NEVER folded into a cache key** (a
+  timed-out task fails and is never cached), so a `--timeout` run cache-hits
+  a plain run's entry (pinned by a key-stability test, same as `--retry`).
+  Wire: `RunRequest.timeout` in both protocol mappers, so a delegated run
+  carries the default (the serve re-resolves its own env+workspace).
+  `--timeout` works for `vx watch` too via the shared resolver (a runaway
+  task in a watch loop should be bounded). Loader validates `WorkspaceConfig.
+timeout` (positive integer ms, mirrors `concurrency`). NO CACHE_VERSION/
+  SCHEMA bump. Files: `config.ts` (WorkspaceConfig.timeout), `project-loader.ts`
+  (validation), `orchestrator/{options,execute-task,run,protocol}.ts`,
+  `cli/{run,help}.ts`. 15 tests in `tests/task-timeout.test.ts` (precedence
+  across all four levels, per-task-always-wins BOTH directions, malformed-env
+  fallthrough, key stability, `--timeout` parsing + validation, wire
+  round-trip, loader validation). Core 1078 pass, cloud 232 pass, lint clean.
+  Docs: schema.md (exec.timeout precedence note + WorkspaceConfig.timeout +
+  error row), cli.md (`--timeout` flag row).
+
+- **2026-07-05**: **Flaky detection CONFIRMED from within-run retries, not
+  just cross-run inference** (road-to-best-CI #5; continuing the retries →
+  flaky thread). `getFlakiestTasks` inferred flakiness from cross-run failure
+  VARIANCE — it couldn't tell a nondeterministic task from one a later real
+  fix greened. A task that FAILED then PASSED within a SINGLE run (identical
+  inputs, same commit) is nondeterministic BY DEFINITION — the gold-standard
+  signal, and vx gets it FREE from the retry it already ran (Nx Cloud needs
+  paid re-runs to observe it). Persisted `attempts` into the `runs` table
+  (**SCHEMA v23**, nullable, analytics-only — the cache KEY is unchanged, NO
+  CACHE_VERSION bump; threaded through `RunRecord`/`bindRun`/the insert + the
+  cloud IngestStore's RunRecord mapping from the pushed summary). `getFlakiest
+Tasks` now CONFIRMS directly: a within-run retry surfaces the task even with
+  fewer than 3 runs and OUTRANKS every merely-inferred one (`flakyConfirmed`
+  / `withinRunRetries` / `maxAttempts` on `FlakyTask`; the rank score puts a
+  confirmed flake above any inferred one, then breaks ties by failure rate
+  then duration tail). Dashboard: a 'Retried' column (danger tone on a
+  non-zero count) on the Flaky tasks card, rebuilt dist. Prereq shipped same
+  day: the `attempts` telemetry field (below). Core 190 pass, cloud 232 pass.
+
 - **2026-07-05**: **Retried-then-passed tasks flagged flaky in the GHA job
   summary + the day's red lint gate greened** (road-to-best-CI #4/#5
   completion; continuing the non-stop loop). **(1) `attempts` telemetry
