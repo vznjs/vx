@@ -67,6 +67,13 @@ export interface RunArgs {
    * env and workspace `timeout` defaults. Undefined when not passed.
    */
   timeout: number | undefined
+  /**
+   * `--verify[=determinism]`: cache-correctness verification. Undefined when
+   * not passed. `allow` (from `--verify-allow=<pkg#task>,…`) exempts tasks
+   * from failing the run on a divergence.
+   */
+  verify: { determinism: boolean; inputs: boolean } | undefined
+  verifyAllow: string[]
   outputLogs?: 'full' | 'errors-only' | 'none'
   forwardArgs: string[]
   verbosity: number
@@ -99,6 +106,8 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     frozen: false,
     retries: undefined,
     timeout: undefined,
+    verify: undefined,
+    verifyAllow: [],
     forwardArgs: [],
     verbosity: 0,
     dry: undefined,
@@ -163,6 +172,25 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
         return { ...out, error: `--timeout must be a positive integer (ms), got: ${v}` }
       }
       out.timeout = n
+    } else if (a === '--verify' || a?.startsWith('--verify=')) {
+      const what = a === '--verify' ? 'determinism' : a.slice('--verify='.length)
+      if (what === 'determinism') {
+        out.verify = { determinism: true, inputs: false }
+      } else if (what === 'inputs' || what === 'all') {
+        // Phase 2 (sandbox-backed). Reject loudly rather than silently no-op.
+        return {
+          ...out,
+          error: `--verify=${what} (input-completeness) is not available yet; use --verify (determinism)`,
+        }
+      } else {
+        return { ...out, error: `--verify must be determinism (or bare --verify), got: ${what}` }
+      }
+    } else if (a?.startsWith('--verify-allow=')) {
+      out.verifyAllow = a
+        .slice('--verify-allow='.length)
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
     } else if (a === '--output-logs') {
       const v = before[++i]
       if (v !== 'full' && v !== 'errors-only' && v !== 'none') {
@@ -375,6 +403,13 @@ export async function resolveRunOptions(
   if (parsed.retries !== undefined) opts.retries = parsed.retries
   if (parsed.timeout !== undefined) opts.timeout = parsed.timeout
   if (parsed.cacheDir !== undefined) opts.cacheDir = parsed.cacheDir
+  if (parsed.verify !== undefined) {
+    opts.verify = {
+      determinism: parsed.verify.determinism,
+      inputs: parsed.verify.inputs,
+      allow: new Set(parsed.verifyAllow),
+    }
+  }
   if (parsed.concurrency !== undefined) opts.concurrency = parsed.concurrency
   if (parsed.summarize !== undefined) opts.summarize = parsed.summarize
   if (parsed.profile !== undefined) opts.profile = parsed.profile

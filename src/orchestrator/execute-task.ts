@@ -22,7 +22,8 @@ import {
   resolveSandboxConfig,
   type SandboxViolation,
 } from '../exec/index.js'
-import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import { isGroupTask, type TaskNode, type TaskOutcome, type VerifyVerdict } from '../graph/index.js'
+import { classifyDeterminism, diffOutputTrees, hashOutputTree, outputRefs } from './verify.js'
 import type { Logger } from './logger.js'
 import {
   computeGroupHash,
@@ -70,6 +71,19 @@ export interface ExecuteArgs {
    * `exec.timeout` wins. Threaded as an option only — never hashed.
    */
   timeout?: number
+  /**
+   * Cache-correctness verification (`vx run --verify`). When
+   * `determinism` is set, an executed + cacheable task is re-run after its
+   * save and its outputs are content-compared; a divergence flags the task
+   * non-hermetic. `allow` exempts known-nondeterministic task ids from
+   * failing the run. Pure side-channel — the re-run never saves, nothing
+   * is hashed. Undefined = off.
+   */
+  verify?: {
+    determinism: boolean
+    inputs: boolean
+    allow: ReadonlySet<string>
+  }
   /** Per-run memo for `git ls-files` (one entry per project dir). */
   gitFilesCache?: GitFilesCache
   /** Per-run memo for derived hashes (package.json bytes + task config). */
@@ -313,16 +327,17 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   let result: Awaited<ReturnType<typeof runCommand>>
   let effectiveExitCode: number
 
-  for (;;) {
-    attempt++
-
-    // Clean declared outputs before EVERY attempt — before the first so
-    // a stale prior-build artifact can't survive into a fresh run, and
-    // before each retry so a failed attempt's partial outputs can't leak
-    // into the next. Gated on WRITES: a no-write policy (`--no-cache`)
-    // leaves the user's tree alone (they're debugging); a
-    // write-but-no-read policy (`--force`) wipes so the saved snapshot
-    // is clean.
+  // One task attempt: clean the declared outputs (before EVERY attempt — so a
+  // stale prior-build artifact can't survive into a fresh run, and a failed
+  // attempt's partial outputs can't leak into the next; gated on WRITES so a
+  // `--no-cache` run leaves the user's tree alone), spawn, and classify the
+  // exit (a sandbox violation on a 0 exit → fail; a timeout SIGTERM → the
+  // streamed notice). Shared by the retry loop AND the `--verify` re-run so
+  // the two can never drift on the spawn/clean/classify path.
+  async function runAttempt(): Promise<{
+    result: Awaited<ReturnType<typeof runCommand>>
+    exitCode: number
+  }> {
     if (willWrite && outputs.length > 0) await cleanOutputs(cleanArgs)
     if (willWrite && wsOutputs.length > 0) {
       // Root-anchored deletions can land in other projects' dirs; mark
@@ -330,29 +345,28 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       const cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
       args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, cleanedWsRels)
     }
-
     violations = []
-    result = useSandbox ? await runSandboxedTask() : await runUnsandboxedTask()
-
-    // Fail-on-violation. macOS's structured violation store lets us turn
-    // a passing exit code into a failure when the task tripped the
-    // boundary; Linux relies on the child failing naturally on ENOENT,
-    // so violations.length is always 0 there but the task will already
-    // be exit != 0 if it needed the missing file.
-    //
-    // Violations are surfaced via `TaskOutcome.sandboxViolationLines` so
-    // the framed-output renderer can show them inline in the task's
-    // block, not as loose status output above it.
-    effectiveExitCode = result.exitCode
-    if (violations.length > 0 && effectiveExitCode === 0) effectiveExitCode = 1
-
-    // A child we SIGTERMed for exceeding `exec.timeout` is a genuine
-    // failure (timed out) — stream a clear line into the framed block so
-    // the 143 exit reads as a timeout, and fall through to the normal
-    // exit-code path (failed — retryable — never cached).
-    if (result.timedOut) {
+    const res = useSandbox ? await runSandboxedTask() : await runUnsandboxedTask()
+    // Fail-on-violation. macOS's structured violation store lets us turn a
+    // passing exit code into a failure when the task tripped the boundary;
+    // Linux relies on the child failing naturally on ENOENT (violations is
+    // always 0 there, but the task is already exit != 0 if it needed the
+    // missing file). Violations surface via `TaskOutcome.sandboxViolationLines`.
+    let code = res.exitCode
+    if (violations.length > 0 && code === 0) code = 1
+    // A child we SIGTERMed for exceeding the timeout is a genuine failure —
+    // stream a clear line so the 143 exit reads as a timeout.
+    if (res.timedOut) {
       log.taskStderr(node, `\n[vx] timed out after ${effectiveTimeout}ms — killed (SIGTERM)\n`)
     }
+    return { result: res, exitCode: code }
+  }
+
+  for (;;) {
+    attempt++
+    const a = await runAttempt()
+    result = a.result
+    effectiveExitCode = a.exitCode
 
     // A child killed by a shutdown signal (Ctrl-C / SIGTERM teardown)
     // never finished on its own terms — revert it to aborted so it's
@@ -453,6 +467,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
+  // Attempt-1 output fingerprint for `--verify` (content OIDs by output key),
+  // captured inside the save block while the tree is attempt-1's.
+  let verifyFp1: Map<string, string> | undefined
+
   if (effectiveExitCode === 0 && willWrite) {
     const outputFiles = await resolveOutputs({
       projectDir: node.projectDir,
@@ -499,6 +517,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         stdout: result.stdout,
       },
     })
+    // --verify: fingerprint attempt 1's outputs by CONTENT (mtime-independent,
+    // reusing the input-hashing OID primitive) so the determinism re-run below
+    // can prove the cached bytes are a pure function of the declared inputs.
+    if (args.verify?.determinism && outputFiles.length + wsOutputFiles.length > 0) {
+      verifyFp1 = await hashOutputTree(
+        cache,
+        outputRefs(node.projectDir, outputFiles, args.workspaceRoot, wsOutputFiles),
+      )
+    }
     // This task just wrote outputs to the project's tree. Record the
     // exact declared-output paths as changed (same as the cache-hit
     // restore path) instead of dropping the whole snapshot: a downstream
@@ -532,6 +559,54 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
+  // Snapshot the WINNING attempt's sandbox violations before the verify re-run
+  // (which reuses `runAttempt` and would clobber `violations`); the outcome
+  // must report attempt 1's, not the re-run's.
+  const finalViolations = violations
+
+  // Determinism verification (`vx run --verify`). The task executed and saved;
+  // re-run it fresh and content-compare its outputs against attempt 1. A
+  // divergence proves the task is non-hermetic — its cache entry would replay
+  // arbitrary past bytes. The re-run NEVER saves; the canonical (attempt-1)
+  // bytes are restored afterward so disk == the cache regardless of verdict.
+  let verify: VerifyVerdict | undefined
+  if (args.verify?.determinism && effectiveExitCode === 0 && willWrite && !result.timedOut) {
+    if (verifyFp1 === undefined) {
+      verify = { kind: 'no-outputs' } // cacheable but nothing to replay (e.g. lint)
+    } else {
+      const rerun = await runAttempt()
+      if (rerun.exitCode !== 0 || rerun.result.timedOut) {
+        verify = { kind: 'rerun-failed', exitCode: rerun.exitCode }
+      } else {
+        const fp2 = await hashOutputTree(
+          cache,
+          outputRefs(
+            node.projectDir,
+            await resolveOutputs({
+              projectDir: node.projectDir,
+              outputs,
+              nestedProjectDirs: args.nestedProjectDirs,
+            }),
+            args.workspaceRoot,
+            await resolveWorkspaceOutputs({
+              workspaceRoot: args.workspaceRoot,
+              outputs: wsOutputs,
+            }),
+          ),
+        )
+        verify = classifyDeterminism(
+          diffOutputTrees(verifyFp1, fp2),
+          args.verify.allow.has(node.id),
+        )
+      }
+      await cache.restoreOutputs(
+        hash,
+        node.projectDir,
+        wsOutputs.length > 0 ? args.workspaceRoot : undefined,
+      )
+    }
+  }
+
   return {
     node,
     status: effectiveExitCode === 0 ? 'success' : 'failed',
@@ -543,10 +618,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
     wallclockStartNs,
     wallclockEndNs,
-    ...(violations.length > 0
+    ...(verify !== undefined ? { verify } : {}),
+    ...(finalViolations.length > 0
       ? {
-          sandboxViolations: violations.length,
-          sandboxViolationLines: violations.map((v) => v.line),
+          sandboxViolations: finalViolations.length,
+          sandboxViolationLines: finalViolations.map((v) => v.line),
         }
       : {}),
   }
@@ -685,6 +761,9 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
     durationMs: Math.round(performance.now() - cacheOpStart),
     hash,
     restored,
+    // Under `--verify`, a cache hit didn't execute this run — so it wasn't
+    // proven. Flag it `not-verified` (use `--force` to re-execute + verify).
+    ...(args.verify?.determinism ? { verify: { kind: 'not-verified' as const } } : {}),
     wallclockStartNs: taskStartNs,
     wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
   }

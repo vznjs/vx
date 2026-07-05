@@ -172,6 +172,8 @@ stays clean).
 | `--cache-dir <path>`              | value          | workspace `cacheDir` / `.vx/cache` | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats the `defineWorkspace({ cacheDir })` field and the `.vx/cache` default. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too.             |
 | `--retry <n>`                     | value          | `0`                                | Re-run a failed task up to `n` more times. Run-level default only: a task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retry=<n>` form too.                                                                           |
 | `--timeout <ms>`                  | positive int   | none                               | Default per-task timeout for tasks without their own `exec.timeout`. Sits above `VX_TASK_TIMEOUT` + workspace `timeout`; per-task `exec.timeout` always wins. A runaway task is killed + `failed`. Never affects cache keys. `--timeout=<ms>` form too. |
+| `--verify`                        | boolean        | off                                | Prove cache correctness. Re-run each executed cacheable task and content-compare its outputs; a non-deterministic task (whose cache entry would replay arbitrary past bytes) fails the run. See § `--verify`. Never affects cache keys.                 |
+| `--verify-allow <pkg#task,…>`     | value          | (none)                             | Comma-list of task ids exempt from failing `--verify` (known-nondeterministic; reported `allowed-nondeterministic`). `--verify-allow=<csv>` form too.                                                                                                   |
 | `--frozen`                        | boolean        | off                                | Load configs from `vx-lock.json` instead of evaluating (CI). See § `--frozen`.                                                                                                                                                                          |
 | `--output-logs <mode>`            | value          | flow-derived                       | `full` \| `errors-only` \| `none` — explicit output override. See § `--output-logs`.                                                                                                                                                                    |
 | `--verbosity <n>`                 | int (0+)       | `0`                                | `1` prints a per-task summary table after the framed blocks; `2+` reserved.                                                                                                                                                                             |
@@ -231,6 +233,56 @@ Combine with `--force` for "re-execute and refresh only the remote":
 
 Invalid layers/flags are a parse error
 (`invalid --cache layer 'disk'`, `invalid --cache flag 'x'`, …).
+
+#### Provable cache correctness: `--verify`
+
+Every cache built on declared inputs shares one unstated assumption: a
+task run twice on the same inputs produces the same outputs. When it
+doesn't — a timestamp baked into a bundle, an unsorted `Object.keys`
+iteration, a `Math.random()` seed, an absolute path in a sourcemap —
+the cache entry is a lie: a later "hit" replays whichever bytes
+happened to win the race the day it was saved. Turbo and Nx cannot tell
+you which of your tasks are like this; they just cache and hope.
+
+`vx run --verify` proves it. After an executed cacheable task saves its
+artifact, vx **re-runs the same task** and content-compares (git-blob
+OID per output file) the second run's outputs against the first. Same
+bytes ⇒ the task is deterministic on these inputs ⇒ its cache entry is
+provably safe (`proven-deterministic`). Different bytes ⇒ the task is
+non-hermetic ⇒ caching it is unsound, and the run **fails** naming the
+diverging output paths (`nondeterministic`). It is the correctness-first
+inverse of input auto-inference: vx never guesses your inputs, but it
+will prove the ones you declared are complete enough to cache.
+
+```
+$ vx run build --verify
+ …
+ Verify:  7 proven · 1 nondeterministic · 2 n/a
+ ✗ @acme/web#bundle — nondeterministic
+     changed: dist/app.js, dist/app.js.map
+```
+
+Cost: roughly **2× execution** for the verified tasks (each runs
+twice), so it's a CI / pre-merge gate, not an every-run default. Notes:
+
+- **Never changes a cache key.** `--verify` is a pure run-level
+  side-channel; a `--verify` run cache-hits a plain run's entry (and a
+  hit is reported `not-verified` — there's nothing to re-run). Pair it
+  with `--force` to re-execute and verify a warm graph:
+  `vx run build --force --verify`.
+- **Only executed, cacheable, output-declaring tasks are verified.** A
+  cache hit is `not-verified`; a cacheable task with no declared
+  outputs is `no-outputs` (nothing to replay); an uncacheable task is
+  skipped. If the re-run itself fails (flaky failure), the verdict is
+  `rerun-failed` and the run fails.
+- **`--verify-allow <pkg#task,…>`** exempts tasks you know are
+  non-deterministic and can't fix yet — they're reported
+  `allowed-nondeterministic` and don't fail the run, so the gate stays
+  green on the rest while you track the exceptions.
+
+The run still ends bit-identical to a normal run: after the verify
+re-run, vx restores the first attempt's saved bytes into the project,
+so the on-disk tree matches the artifact that was cached.
 
 ### Output
 

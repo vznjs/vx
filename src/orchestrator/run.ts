@@ -43,6 +43,7 @@ import {
 } from './run-context.js'
 import { startRemotePrefetch } from './remote-prefetch.js'
 import { startLocalShortCircuit, type ShortCircuit } from './local-shortcircuit.js'
+import { formatVerifySection } from './verify.js'
 
 const EMPTY_SHORT_CIRCUIT: ShortCircuit = { preProbed: new Map(), restoreTier: new Set() }
 import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
@@ -408,6 +409,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         forwardArgs: options.forwardArgs,
         ...(options.retries !== undefined ? { retries: options.retries } : {}),
         ...(taskTimeoutDefault !== undefined ? { timeout: taskTimeoutDefault } : {}),
+        ...(options.verify !== undefined ? { verify: options.verify } : {}),
         log,
         nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
         runStartHrTimeNs,
@@ -548,9 +550,14 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     log.runEnd?.()
 
     const list = [...outcomes.values()]
-    const ok = list.every(
-      (o) => o.status === 'success' || o.status === 'cache-hit' || o.status === 'cache-hit-remote',
-    )
+    const ok =
+      list.every(
+        (o) =>
+          o.status === 'success' || o.status === 'cache-hit' || o.status === 'cache-hit-remote',
+      ) &&
+      // `--verify`: a provably-unsafe cache entry (non-deterministic outputs,
+      // or a re-run that failed) turns the run red so CI catches it.
+      !list.some((o) => o.verify?.kind === 'nondeterministic' || o.verify?.kind === 'rerun-failed')
 
     // The summary + artifact writers + recordRun pass all exclude group
     // tasks via the shared tallyOutcomes helper. We pass the full
@@ -563,6 +570,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       for (const line of formatPersistentList(keepAliveNodes, colors)) log.status(line)
     }
     for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
+    if (options.verify !== undefined) {
+      for (const line of formatVerifySection(list)) log.status(line)
+    }
 
     // Optional artifacts. Errors are surfaced to the user but don't
     // change the run's exit code — the run already happened.

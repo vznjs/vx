@@ -68,6 +68,21 @@ export interface RunOptions {
    */
   retries?: number
   /**
+   * Cache-correctness verification (`vx run --verify`). When set, an
+   * executed + cacheable task is re-run after its save and its outputs are
+   * content-compared: a divergence means the task is non-hermetic and its
+   * cache entry is provably unsafe (see docs/design/cache-correctness).
+   * `allow` (from `--verify-allow=<pkg#task>,…`) exempts known-nondeterministic
+   * tasks from failing the run. A pure side-channel — never folded into a
+   * cache key; the re-run never saves. Undefined = off (a plain run is
+   * byte-identical).
+   */
+  verify?: {
+    determinism: boolean
+    inputs: boolean
+    allow: ReadonlySet<string>
+  }
+  /**
    * Run-level default task timeout (ms), for tasks that declare no
    * `exec.timeout`. Highest of the run-level defaults: `--timeout` /
    * this option → `VX_TASK_TIMEOUT` env → workspace `timeout`. Per-task

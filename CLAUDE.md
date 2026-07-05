@@ -187,6 +187,57 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-05**: **Provable cache correctness — `vx run --verify`
+  (Phase 1: determinism)** (owner: "I don't wanna copy competitors… what's
+  missing but is unlocked by vx architecture? build things on top add even
+  more to be ahead"). The flagship differentiator: vx is the only runner
+  that PROVES a cache entry safe instead of hoping. Design in
+  `docs/design/cache-correctness-2026-07.md` (two proofs: determinism +
+  input-completeness — the principled, EXPLICIT inverse of the
+  owner-rejected auto-input inference; vx never guesses inputs, it proves
+  the declared ones are complete/reproducible and fails loud with the exact
+  paths). **Phase 1 shipped:** after an executed cacheable task saves
+  attempt 1, `--verify` re-runs it and content-compares outputs (git-blob
+  OID per file via the existing `Cache.hashFile` — mtime-independent; NOT
+  the artifact bytes, which embed tar mtimes, and NOT `output_files` rows,
+  which store only size+mode+mtime). Same bytes ⇒ `proven-deterministic`;
+  divergent ⇒ `nondeterministic` naming the changed rels + the run FAILS.
+  **Verdicts** (`VerifyVerdict` union, structurally on `TaskOutcome.verify`
+  in `graph/scheduler.ts` since graph can't import orchestrator):
+  proven-deterministic / nondeterministic(changed) /
+  allowed-nondeterministic(changed) / rerun-failed(exitCode) / no-outputs /
+  not-verified (cache hit). **Zero-cost & key-stable:** a pure `RunOptions`
+  side-channel, NEVER folded into a cache key — a `--verify` run cache-HITS
+  a plain run's entry (pinned), so no CACHE_VERSION/SCHEMA bump; a plain run
+  attaches no verdict (byte-identical hot path). Only executed + cacheable +
+  output-declaring tasks verify (`no-outputs` when none declared, hit ⇒
+  `not-verified`). Pair with `--force` to re-execute + verify a warm graph.
+  **Mechanism** (`orchestrator/execute-task.ts`): extracted `runAttempt()`
+  (function decl) shared by the retry loop AND the verify re-run so they
+  can't drift; snapshot `violations` into `finalViolations` BEFORE the
+  re-run clobbers it; after the compare, `cache.restoreOutputs` puts attempt
+  1's saved bytes back so the on-disk tree ends bit-identical to the cached
+  artifact. New `orchestrator/verify.ts` (pure: `outputRefs` keys project
+  outputs by rel-to-projectDir + ws outputs by `workspace-outputs/<rel>`;
+  `hashOutputTree`; `diffOutputTrees`; `classifyDeterminism`;
+  `formatVerifySection`). CLI: `--verify` / `--verify=determinism`
+  (`inputs`/`all` rejected as "not available yet — Phase 2"), `--verify-allow
+=<pkg#task,…>` (exempts known-nondeterministic → `allowed-nondeterministic`,
+  stays green). Wire: `RunRequest.verify` (Set↔array in both mappers). `run.ts`:
+  extends the `ok` predicate (nondeterministic/rerun-failed ⇒ not ok), prints
+  the Verify summary section via `log.status`. Cost ≈ 2× exec for verified
+  tasks — a CI/pre-merge gate, not an every-run default. 7 tests in
+  `tests/verify.test.ts` (proven, nondeterministic-names-path-fails-run,
+  no-outputs, --verify-allow greens, hit→not-verified + key-stability pin,
+  --force verifies warm, plain-run→undefined). Core 1087 pass, cloud 232
+  pass, lint clean. Docs: cli.md (`--verify` flag rows + § "Provable cache
+  correctness"), comparison.md (LEADS "Where vx is ahead"). **NEXT
+  (design Phases 2-4):** input-completeness via the sandbox
+  (`--verify=inputs`/`=all` — the `runSandboxed` allowRead=declared-inputs +
+  strace/violation-store undeclared-read oracle already exists), a
+  dashboard "Hermeticity" card + telemetry field, cross-machine fingerprint
+  diff.
+
 - **2026-07-05**: **`--cache-dir <path>` CLI flag + `--continue` doc
   correction** (backlog closeout from `docs/comparison.md`). Two small
   comparison.md gaps closed. **(1) `--cache-dir`:** the workspace

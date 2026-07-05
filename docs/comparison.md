@@ -273,6 +273,20 @@ deliberate design pass.
 
 Things `@vzn/vx` does that the others don't:
 
+- **Provable cache correctness (`vx run --verify`).** Every content-
+  addressed cache rests on one unstated assumption — that a task run
+  twice on the same inputs produces the same bytes. Turbo and Nx assume
+  it and hope; a non-deterministic task silently poisons their cache
+  (a "hit" replays whichever bytes won the race the day it was saved).
+  vx is the only runner that _proves_ it: `--verify` re-runs each
+  executed cacheable task and content-compares the outputs (git-blob
+  OID per file). Deterministic ⇒ the entry is provably safe; divergent
+  ⇒ the task is non-hermetic and the run **fails** naming the changed
+  paths. Pure run-level side-channel (never touches a cache key, so a
+  `--verify` run still hits a plain entry), roughly 2× exec — a CI /
+  pre-merge gate. It's the correctness-first inverse of input
+  auto-inference: vx never guesses your inputs, it proves the declared
+  ones are complete enough to cache safely.
 - **TypeScript config with full type inference** — no string typos,
   IDE autocomplete, presets as plain imports. The closest thing in
   Turbo/Nx is `extends`; in vite-task it's tied to Vite's config

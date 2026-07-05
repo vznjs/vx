@@ -12,6 +12,27 @@ export type TaskStatus =
   // aborted — not counted, not shown (the run is tearing down).
   | 'aborted'
 
+/**
+ * Cache-correctness verdict for a task under `vx run --verify` (Phase 1:
+ * determinism). Declared here (structurally) because `graph` can't import
+ * `orchestrator` where the verifier lives — same pattern as
+ * `inputComponents`. A pure side-channel: never hashed, never persisted in
+ * Phase 1.
+ */
+export type VerifyVerdict =
+  | { kind: 'proven-deterministic' }
+  /** Re-ran; outputs differ from the cached ones. `changed` names the rels. */
+  | { kind: 'nondeterministic'; changed: readonly string[] }
+  /** Diverged but the task is on `--verify-allow` — reported, not failed. */
+  | { kind: 'allowed-nondeterministic'; changed: readonly string[] }
+  /** The verify re-run exited non-zero / timed out (nondeterministic by
+   *  definition — identical inputs, different outcome). */
+  | { kind: 'rerun-failed'; exitCode: number }
+  /** Cacheable + executed but declares no outputs — nothing to replay. */
+  | { kind: 'no-outputs' }
+  /** Didn't execute (cache hit) / not cacheable / group / persistent. */
+  | { kind: 'not-verified' }
+
 export interface TaskOutcome {
   node: TaskNode
   status: TaskStatus
@@ -59,6 +80,11 @@ export interface TaskOutcome {
    * inline in the task's block instead of as loose status output.
    */
   sandboxViolationLines?: string[]
+  /**
+   * Cache-correctness verdict under `vx run --verify`. Set only in verify
+   * mode; a plain run leaves it undefined. Pure side-channel (never hashed).
+   */
+  verify?: VerifyVerdict
 }
 
 export type ContinueMode = 'never' | 'deps-ok' | 'always'
