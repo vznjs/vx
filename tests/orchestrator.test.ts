@@ -160,6 +160,58 @@ describe('orchestrator e2e', () => {
   )
 
   it(
+    'RunOptions.cacheDir redirects the cache away from .vx/cache; hits from there',
+    async () => {
+      const dir = await addProject(fixture.root, 'cd', {
+        config: `
+          export default {
+            tasks: {
+              run: {
+                exec: { command: ${JSON.stringify(STAMP_CMD)} },
+                cache: { inputs: { files: ['package.json'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+      const first = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['cd'],
+        cacheDir: 'custom-cache',
+        log: silentLogger(fixture),
+      })
+      expect(first.outcomes[0]?.status).toBe('success')
+      // The cache landed in the override dir, NOT the default .vx/cache.
+      expect(existsSync(path.join(fixture.root, 'custom-cache', 'cache.db'))).toBe(true)
+      expect(existsSync(path.join(fixture.root, '.vx', 'cache', 'cache.db'))).toBe(false)
+
+      const stamp = await readFile(path.join(dir, 'out.txt'), 'utf8')
+      // A second run against the same override dir hits.
+      const second = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['cd'],
+        cacheDir: 'custom-cache',
+        log: silentLogger(fixture),
+      })
+      expect(second.outcomes[0]?.status).toBe('cache-hit')
+      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe(stamp)
+
+      // A run WITHOUT the override uses the default dir — a cold miss, so it
+      // re-executes (proves the override truly pointed elsewhere).
+      const third = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['cd'],
+        log: silentLogger(fixture),
+      })
+      expect(third.outcomes[0]?.status).toBe('success')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'busts cache on any project file change (default inputs)',
     async () => {
       const dir = await addProject(fixture.root, 'app-b', {

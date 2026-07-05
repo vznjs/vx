@@ -53,6 +53,8 @@ export interface RunArgs {
    * / `--force` in precedence order. Defaults to all-on.
    */
   cache: CachePolicy
+  /** `--cache-dir <path>`: override the cache directory (cwd-relative). */
+  cacheDir: string | undefined
   frozen: boolean
   /**
    * `--retry <n>` / `--retry=<n>`: run-level retry default for tasks
@@ -93,6 +95,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     excludeDependencies: [],
     concurrency: undefined,
     cache: { ...FULL_CACHE_POLICY },
+    cacheDir: undefined,
     frozen: false,
     retries: undefined,
     timeout: undefined,
@@ -166,6 +169,10 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
         return { ...out, error: `--output-logs must be full, errors-only, or none` }
       }
       out.outputLogs = v
+    } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
+      const v = a === '--cache-dir' ? before[++i] : a.slice('--cache-dir='.length)
+      if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a value` }
+      out.cacheDir = v
     } else if (a === '--cache') {
       const v = before[++i]
       if (v === undefined) return { ...out, error: `${a} requires a value` }
@@ -367,6 +374,7 @@ export async function resolveRunOptions(
   if (projects !== undefined) opts.projects = projects
   if (parsed.retries !== undefined) opts.retries = parsed.retries
   if (parsed.timeout !== undefined) opts.timeout = parsed.timeout
+  if (parsed.cacheDir !== undefined) opts.cacheDir = parsed.cacheDir
   if (parsed.concurrency !== undefined) opts.concurrency = parsed.concurrency
   if (parsed.summarize !== undefined) opts.summarize = parsed.summarize
   if (parsed.profile !== undefined) opts.profile = parsed.profile

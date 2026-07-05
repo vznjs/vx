@@ -20,6 +20,8 @@ export interface RunRequest {
   projects?: readonly string[]
   concurrency?: number
   cache?: CachePolicy
+  /** `--cache-dir <path>` override (cwd-relative). */
+  cacheDir?: string
   continueMode?: ContinueMode
   frozen?: boolean
   /** Run-level retry default (`--retry <n>`); explicit `exec.retries` wins. */
@@ -79,6 +81,7 @@ export function optionsToRequest(options: RunOptions): RunRequest {
   if (options.projects !== undefined) req.projects = options.projects
   if (options.concurrency !== undefined) req.concurrency = options.concurrency
   if (options.cache !== undefined) req.cache = options.cache
+  if (options.cacheDir !== undefined) req.cacheDir = options.cacheDir
   if (options.continueMode !== undefined) req.continueMode = options.continueMode
   if (options.frozen !== undefined) req.frozen = options.frozen
   if (options.retries !== undefined) req.retries = options.retries
@@ -105,6 +108,7 @@ export function requestToOptions(request: RunRequest): RunOptions {
   if (request.projects !== undefined) options.projects = [...request.projects]
   if (request.concurrency !== undefined) options.concurrency = request.concurrency
   if (request.cache !== undefined) options.cache = request.cache
+  if (request.cacheDir !== undefined) options.cacheDir = request.cacheDir
   if (request.continueMode !== undefined) options.continueMode = request.continueMode
   if (request.frozen !== undefined) options.frozen = request.frozen
   if (request.retries !== undefined) options.retries = request.retries

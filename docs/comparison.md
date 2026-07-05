@@ -165,8 +165,10 @@ upstream repos.
    everyone.
    - Turbo `globalEnv`, `globalPassThroughEnv`.
 
-5. **`--cache-dir <path>` CLI flag.** The workspace-config field works
-   (`vx.workspace.ts`); the CLI flag doesn't. Easy add.
+5. **`--cache-dir <path>` CLI flag — shipped.** Overrides the
+   `defineWorkspace({ cacheDir })` field + the `.vx/cache` default,
+   resolved relative to cwd. Threaded over the wire; never folded into a
+   cache key.
 
 6. **Auto-input inference via filesystem tracing.** Re-classified
    **out of scope** for vx (2026-06) after studying vite-task's

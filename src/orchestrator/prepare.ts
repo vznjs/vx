@@ -7,6 +7,7 @@
 // closes at the bottom of execution, `planRun()` does so via
 // try/finally around its plan() call.
 
+import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { UserError } from '../util/index.js'
 import {
@@ -190,7 +191,11 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const requested = expandRequested(options.tasks, candidateProjects, projects)
 
   const policy: CachePolicy = options.cache ?? FULL_CACHE_POLICY
-  const cacheDir = resolveCacheDir(workspaceRoot, workspaceConfig)
+  // `--cache-dir <path>` (RunOptions.cacheDir) overrides the workspace
+  // `cacheDir` field + the `.vx/cache` default; resolved relative to cwd.
+  const cacheDir = options.cacheDir
+    ? path.resolve(options.cwd, options.cacheDir)
+    : resolveCacheDir(workspaceRoot, workspaceConfig)
   const localCache = new Cache(cacheDir, { read: policy.localRead, write: policy.localWrite })
   // Cache seam: a plugin's `cache` capability takes precedence; otherwise
   // the env-var Turbo-wire fallback (today's unconditional behavior). With

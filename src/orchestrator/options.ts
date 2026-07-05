@@ -21,6 +21,12 @@ export interface RunOptions {
   projects?: string[]
   concurrency?: number
   /**
+   * Cache directory override (`--cache-dir <path>`). Absolute, or relative
+   * to `cwd`. Takes precedence over the workspace `cacheDir` field and the
+   * `.vx/cache` default. A per-run knob — never folded into a cache key.
+   */
+  cacheDir?: string
+  /**
    * Granular cache read/write control across the local + remote layers.
    * Each of the four axes (localRead / localWrite / remoteRead /
    * remoteWrite) is independent. Undefined → {@link FULL_CACHE_POLICY}

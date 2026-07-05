@@ -795,6 +795,15 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '-c', '4']).error).toMatch(/unknown flag: -c/)
   })
 
+  it('parses --cache-dir (space + = forms) without colliding with --cache', () => {
+    expect(parseRunArgs(['build', '--cache-dir', '/tmp/x']).cacheDir).toBe('/tmp/x')
+    expect(parseRunArgs(['build', '--cache-dir=./out/cache']).cacheDir).toBe('./out/cache')
+    // --cache still parses its own policy spec, undisturbed.
+    expect(parseRunArgs(['build', '--cache=local:r']).cacheDir).toBeUndefined()
+    expect(parseRunArgs(['build']).cacheDir).toBeUndefined()
+    expect(parseRunArgs(['build', '--cache-dir']).error).toMatch(/--cache-dir requires a value/)
+  })
+
   it('parses --all (replaces -r / --recursive)', () => {
     expect(parseRunArgs(['build', '--all']).all).toBe(true)
     expect(parseRunArgs(['build', '-r']).error).toMatch(/unknown flag: -r/)

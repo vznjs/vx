@@ -36,6 +36,8 @@ export function printHelp(): void {
       '                                  to its flags; unnamed layers keep their value. Examples:',
       '                                  local:rw,remote:r (remote read-only), remote: (remote off),',
       '                                  local:r (local read-only).',
+      '      --cache-dir <path>          Cache directory override (cwd-relative). Beats the workspace',
+      '                                  cacheDir field + the .vx/cache default.',
       '      --retry <n>                 Re-run a failed task up to <n> more times (default for tasks',
       "                                  without their own exec.retries; explicit config wins). Doesn't",
       '                                  affect cache keys.',
