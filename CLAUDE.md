@@ -4100,9 +4100,20 @@ longer-horizon core gaps stay sourced from `docs/comparison.md`.
    `retries` on flagged tasks.
 5. ~~Duration-aware dispatch ordering~~ — **SHIPPED** 2026-07-04
    (LPT; serve-computed `durationHints` from ingest history).
-6. **Per-request cache policy to remote agents** (the §13 known-open:
-   agents run live-eval + full policy; `--frozen`/`--cache` don't
-   propagate).
+6. **Run-level policy to REMOTE agents** (narrow; deferred). Corrected
+   framing after investigation: the CACHE policy is already handled — the
+   §5.3 refusal gate falls a run back to LOCAL when it lacks
+   `remoteRead && remoteWrite` (`--no-cache`/`--force`/`--cache=remote:`),
+   so any run that distributes already has full remote axes, and remote
+   agents running "full cache" is correct BY DESIGN (the cache IS the
+   artifact transport). The real residual is that a REMOTE `vx-cloud agent`
+   live-evals (ignores `--frozen`) and doesn't inherit `--timeout`/`--retry`
+   — narrow value under the standard pinned-image + `--frozen` recipe
+   (env-pure configs make live-eval == frozen), and it needs a
+   DIST_PROTOCOL bump to carry per-submission policy in `task:assign`
+   (per-assignment, since one agent multiplexes submissions with different
+   policies). Deferred: not worth a wire-protocol bump for the narrow gain
+   until a real need surfaces.
 7. Core backlog (from `docs/comparison.md`): pre-signed URL auth for
    the remote cache, `dependsOn` wildcards. (`--continue=<mode>` and
    `--cache-dir` are SHIPPED.)
