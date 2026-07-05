@@ -75,7 +75,7 @@
             "type": "Card",
             "props": {
               "title": "Flaky tasks",
-              "actionText": "failure rate + tail ratio",
+              "actionText": "within-run retries confirm · rate + tail infer",
               "noPad": true
             },
             "children": [
@@ -92,6 +92,15 @@
                       "key": "task",
                       "label": "Task",
                       "kind": "projtask"
+                    },
+                    {
+                      "key": "withinRunRetries",
+                      "label": "Retried",
+                      "align": "right",
+                      "tone": {
+                        "gt": 0,
+                        "tone": "danger"
+                      }
                     },
                     {
                       "key": "failureRate",

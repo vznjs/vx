@@ -279,6 +279,7 @@ export class IngestStore {
             : {}),
           ...(t.wallclockEndNs !== undefined ? { wallclockEndNs: BigInt(t.wallclockEndNs) } : {}),
           cacheHit: t.cacheSource === 'local' || t.cacheSource === 'remote',
+          ...(t.attempts !== undefined ? { attempts: t.attempts } : {}),
         }
       })
 
