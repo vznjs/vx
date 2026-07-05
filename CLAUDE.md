@@ -4086,9 +4086,11 @@ longer-horizon core gaps stay sourced from `docs/comparison.md`.
    agents run live-eval + full policy; `--frozen`/`--cache` don't
    propagate).
 7. Core backlog (from `docs/comparison.md`): pre-signed URL auth for
-   the remote cache, `--continue=<mode>`, `dependsOn` wildcards,
-   workspace-level `globalInputs`/`globalEnv`, auto-input inference
-   (fspy-equivalent tracing — biggest lift).
+   the remote cache, `dependsOn` wildcards, workspace-level
+   `globalInputs`/`globalEnv`, `--cache-dir` CLI flag, auto-input
+   inference (fspy-equivalent tracing — biggest lift). (`--continue=<mode>`
+   is SHIPPED — was mislisted here; the scheduler enforces
+   never/deps-ok/always.)
 
 ## Recently shipped
 

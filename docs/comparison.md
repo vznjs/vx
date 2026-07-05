@@ -51,7 +51,7 @@ upstream repo so future revisions can be diffed against reality.
 | dry-run (print plan)       | `--dry`, `--dry=json`     | `--graph` renders          | —                                   | `--dry`, `--dry=json`                                                                  |
 | affected (git-relative)    | `--affected`              | full `affected` subcommand | —                                   | `--affected[=<base>]` + `[<since>]` filter form                                        |
 | graph render               | `--graph file.{dot,html}` | `--graph`                  | —                                   | `--graph[=<path>]` (DOT)                                                               |
-| continue past failure      | `--continue=…`            | `--nx-bail` (default)      | —                                   | (always; independent siblings continue)                                                |
+| continue past failure      | `--continue=…`            | `--nx-bail` (default)      | —                                   | `--continue[=never\|deps-ok\|always]` (deps-ok default)                                |
 | per-run JSON summary       | `--summarize`, `--json`   | `--outputStyle`            | `--last-details` replay             | `--summarize[=<path>]`                                                                 |
 | output log mode            | `--output-logs=…`         | `--outputStyle=…`          | `--log=interleaved/labeled/grouped` | `--output-logs full\|errors-only\|none` (+ flow-derived default)                       |
 | profile / Chrome trace     | `--profile`               | (via Nx Cloud)             | —                                   | `--profile[=<path>]`                                                                   |
@@ -149,10 +149,12 @@ upstream repos.
      (`VX_REMOTE_CACHE_SIGNATURE_KEY`, Turbo-compatible
      `x-artifact-tag`); pre-signed upload URLs remain.
 
-2. **`--continue=<mode>`.** Today vx aborts a failed task's transitive
-   dependents but continues independent siblings — Turbo's middle
-   setting maps to vx's behavior already; the gap is the explicit flag
-   plus the more lenient `--continue=always`.
+2. **`--continue=<mode>` — shipped.** `--continue[=never|deps-ok|always]`
+   controls failure propagation: `never` fail-fast (stop dispatch on the
+   first failure), `deps-ok` (default) skip only a failure's dependents
+   while independent siblings continue, `always` run everything. Bare
+   `--continue` = `always`. Enforced in the scheduler, threaded over the
+   wire; see [`cli.md`](./cli.md) § Failure propagation.
 
 3. **Wildcards in `dependsOn`.** `build-*`, `^build-*`.
    - Nx 19.5+.
