@@ -187,6 +187,45 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-07**: **Adversarial review of the session's nine commits — three
+  `--verify` soundness holes fixed, Phase-2→Phase-3 consumer gap closed, debt
+  swept** (owner: "review last opus commits make sure we are on track no tech
+  debt"). A hostile-review agent verified every finding by repro; the perf work
+  was CONFIRMED SOUND (ReadyHeap pinned byte-identical to the old sorted array
+  by a 2000-trial randomized differential; topoOrder/affected/db.query
+  equivalences checked). **The bugs (all verify-family edges, `a51a3c5`):**
+  (1) FALSE `proven-deterministic` at equal size+mtime — `hashOutputTree` used
+  `Cache.hashFile`, whose mtime+size memo returned attempt 1's digest for a
+  re-run output with equal size/mtime (exactly what mtime-normalizing
+  reproducible builds produce); fp1 primed the memo, fp2 read it back. Fix:
+  fingerprint raw BYTES via plain xxh3 (fp1/fp2 only compare to each other —
+  a proof must not trust a cache). (2) Verify re-run STRAYS survived — the
+  post-verify restore never cleaned the declared globs, so a diverging output
+  FILENAME left both attempts' files on disk (breaking "disk == cached artifact
+  regardless of verdict") and unmarked in the gitFilesCache; now mirrors the
+  restoreHit clean→restore→mark sequence exactly. (3) `--verify` + a no-write
+  policy (`--no-cache`) silently verified NOTHING and exited green; run() now
+  rejects the combination loudly (platform-honesty rule; `--force --verify`
+  stays the re-verify-warm recipe). **Consumer gap (`6a942a6`):** Phase 3
+  shipped before Phase 2, so `undeclared-inputs`/`proven-complete` never
+  reached the consumers — an undeclared-inputs task that REDS the run exported
+  an UNSET OTel span and a "✅ success" GHA row with NO Hermeticity line. Both
+  consumers now handle them (span ERROR + `vx.task.verify.undeclared` paths
+  attr; GHA inline flag + counted "unsafe"). Also: `--verify` now REFUSES
+  distribution (falls back local — agents don't run the verify machinery),
+  npm.yml header corrected (TEN trusted publishers, vx-cloud no longer
+  described as Bun-source), both release workflows get `--concurrency 2` (8
+  compiles OOM a 7 GB runner) + release timeout 25 min, the dead gitignored
+  `ui/dist` input glob dropped from `build.cloud.*` (the UI cascade rides the
+  `build.ui` dependsOn fold — input globs resolve against the GIT file set, so
+  a gitignored path is always a dead glob), and the npm launcher's signal exit
+  actually implements the 128+signo its comment promised. **NIT accepted, not
+  actioned:** `.bun-build` in ALWAYS_IGNORE (04f9abc) took no CACHE_VERSION
+  bump despite the v24 precedent — deliberate: the temp files are transient
+  (never rest on disk), so no real key changes; worst case is an orphaned
+  entry, not a wrong hit. Core 1162 pass, cloud 237 pass, otel 25 pass, lint
+  clean.
+
 - **2026-07-07**: **`@vzn/vx-cloud` publishes as a no-Bun standalone binary,
   like `@vzn/vx`** (owner: "Cloud should be published compiled like vx"). REVERSES
   the 2026-07-04 "vx-cloud is a Bun-source package requiring Bun" decision — the
