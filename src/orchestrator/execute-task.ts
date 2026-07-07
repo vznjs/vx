@@ -537,12 +537,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         stdout: result.stdout,
       },
     })
-    // --verify: fingerprint attempt 1's outputs by CONTENT (mtime-independent,
-    // reusing the input-hashing OID primitive) so the determinism re-run below
-    // can prove the cached bytes are a pure function of the declared inputs.
+    // --verify: fingerprint attempt 1's outputs by CONTENT (raw bytes, never
+    // the mtime+size memo) so the determinism re-run below can prove the
+    // cached bytes are a pure function of the declared inputs.
     if (args.verify?.determinism && outputFiles.length + wsOutputFiles.length > 0) {
       verifyFp1 = await hashOutputTree(
-        cache,
         outputRefs(node.projectDir, outputFiles, args.workspaceRoot, wsOutputFiles),
       )
     }
@@ -626,7 +625,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         verify = { kind: 'rerun-failed', exitCode: rerun.exitCode }
       } else {
         const fp2 = await hashOutputTree(
-          cache,
           outputRefs(
             node.projectDir,
             await resolveOutputs({
@@ -646,11 +644,38 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           args.verify.allow.has(node.id),
         )
       }
+      // Put attempt 1's saved bytes back so disk == the cached artifact
+      // REGARDLESS of the verdict. Mirror the restoreHit sequence exactly:
+      // clean the declared globs FIRST (a nondeterministic re-run may have
+      // written a stray filename the restore would never overwrite), then
+      // restore, then record the exact changed paths so a downstream
+      // same-project task's git snapshot can't go stale. fp1's keys ARE
+      // attempt 1's saved rels (bare project rels + workspace-outputs/-
+      // prefixed ws rels — the artifact namespace).
+      let cleanedRels: string[] = []
+      let cleanedWsRels: string[] = []
+      if (outputs.length > 0) cleanedRels = await cleanOutputs(cleanArgs)
+      if (wsOutputs.length > 0) cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
       await cache.restoreOutputs(
         hash,
         node.projectDir,
         wsOutputs.length > 0 ? args.workspaceRoot : undefined,
       )
+      const savedKeys = [...verifyFp1.keys()]
+      if (outputs.length > 0) {
+        args.gitFilesCache?.markOutputsChanged(node.projectDir, [
+          ...cleanedRels,
+          ...savedKeys.filter((k) => !k.startsWith(WORKSPACE_OUTPUT_PREFIX)),
+        ])
+      }
+      if (wsOutputs.length > 0) {
+        args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, [
+          ...cleanedWsRels,
+          ...savedKeys
+            .filter((k) => k.startsWith(WORKSPACE_OUTPUT_PREFIX))
+            .map((k) => k.slice(WORKSPACE_OUTPUT_PREFIX.length)),
+        ])
+      }
     }
   }
 

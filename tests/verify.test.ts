@@ -259,6 +259,87 @@ describe('vx run --verify (determinism)', () => {
   )
 
   it(
+    'catches divergent bytes even at EQUAL size + mtime (the memo must not vouch)',
+    async () => {
+      // Reproducible-build practice normalizes output mtimes; a divergence
+      // with equal size + equal mtime is exactly what Cache.hashFile's
+      // mtime+size memo would blindly vouch for. The fingerprint must hash
+      // BYTES. First attempt writes AAAA, the re-run BBBB (marker-toggled),
+      // both 4 bytes with mtime pinned to the same second.
+      await addProject(
+        fixture.root,
+        'a',
+        project(
+          'const fs=require("fs");const b=fs.existsSync("m")?"BBBB":"AAAA";fs.writeFileSync("m","");fs.writeFileSync("out.txt",b);fs.utimesSync("out.txt",1000,1000)',
+        ),
+      )
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        verify: DETERMINISM,
+        log: capturingLogger(fixture),
+      })
+      expect(r.ok).toBe(false)
+      const v = r.outcomes[0]!.verify
+      expect(v?.kind).toBe('nondeterministic')
+      if (v?.kind === 'nondeterministic') expect(v.changed).toContain('out.txt')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "the verify re-run's stray outputs never survive — disk == the cached artifact",
+    async () => {
+      // A task whose output FILENAME diverges: attempt 1 writes out-a.txt,
+      // the re-run out-b.txt. The post-verify restore must clean the declared
+      // globs first (restoreOutputs alone never deletes strays), so exactly
+      // attempt 1's file remains regardless of the (allowed) verdict.
+      await addProject(
+        fixture.root,
+        'a',
+        project(
+          'const fs=require("fs");const n=fs.existsSync("m")?"out-b.txt":"out-a.txt";fs.writeFileSync("m","");fs.writeFileSync(n,"x")',
+          "['out-*.txt']",
+        ),
+      )
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        verify: { determinism: true, inputs: false, allow: new Set(['a#run']) },
+        log: capturingLogger(fixture),
+      })
+      expect(r.ok).toBe(true)
+      expect(r.outcomes[0]!.verify?.kind).toBe('allowed-nondeterministic')
+      const { readdirSync } = await import('node:fs')
+      const outs = readdirSync(path.join(fixture.root, 'packages', 'a'))
+        .filter((f) => /^out-.*\.txt$/.test(f))
+        .sort()
+      expect(outs).toEqual(['out-a.txt'])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'rejects --verify with a no-write cache policy (nothing would be verified)',
+    async () => {
+      await addProject(fixture.root, 'a', project('require("fs").writeFileSync("out.txt","x")'))
+      await expect(
+        run({
+          cwd: fixture.root,
+          tasks: ['run'],
+          projects: ['a'],
+          cache: { localRead: false, localWrite: false, remoteRead: false, remoteWrite: false },
+          verify: DETERMINISM,
+          log: capturingLogger(fixture),
+        }),
+      ).rejects.toThrow(/--verify needs cache writes/)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a plain run (no --verify) attaches no verdict',
     async () => {
       await addProject(

@@ -248,6 +248,20 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     const remoteCacheEnabled = cache instanceof LayeredCache
     const policy: CachePolicy = options.cache ?? FULL_CACHE_POLICY
 
+    // `--verify` observes the miss-then-save path, so a policy with NO write
+    // axis (`--no-cache`, `--cache=local:,remote:`) verifies nothing — every
+    // task would come back green with zero verdicts. The user asked for a
+    // proof; silently skipping it is the one failure mode verification must
+    // never have (same platform-honesty rule as the sandbox-unavailable
+    // error). `--force --verify` is the supported re-verify-warm recipe.
+    if (options.verify !== undefined && !policy.localWrite && !policy.remoteWrite) {
+      prepared.cache.close()
+      throw new UserError(
+        '--verify needs cache writes to prove anything (it verifies the save path); ' +
+          'drop --no-cache, or use --force --verify to re-execute and verify a warm graph',
+      )
+    }
+
     // Per-run context for the Tier-3 `invocations` header row. Captured
     // ONCE (git is ONE spawn for commit+branch, behind try/catch; never
     // fails a run). `dirty` reuses the `git status --porcelain` the

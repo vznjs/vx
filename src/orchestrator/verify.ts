@@ -6,8 +6,8 @@
 // See docs/design/cache-correctness-2026-07.md.
 
 import path from 'node:path'
-import type { CacheLayer } from '../cache/index.js'
 import type { TaskOutcome, VerifyVerdict } from '../graph/index.js'
+import { xxh3hex } from '../util/index.js'
 
 /** An output file to fingerprint: absolute path + a stable, run-independent
  *  key (project-relative, or `workspace-outputs/<rel-to-root>` for workspace
@@ -35,16 +35,18 @@ export function outputRefs(
   ]
 }
 
-/** Content-fingerprint an output tree: key → git-blob OID. Reuses the same
- *  `Cache.hashFile` primitive the input hashing folds, so it's byte-true and
- *  mtime-independent — two byte-identical trees produce equal fingerprints
- *  even though their tar.zst artifacts (which embed mtimes) would differ. */
-export async function hashOutputTree(
-  cache: CacheLayer,
-  refs: readonly OutputRef[],
-): Promise<Map<string, string>> {
+/** Content-fingerprint an output tree: key → xxh3 of the file's BYTES, read
+ *  unconditionally from disk. Deliberately NOT `Cache.hashFile`: its
+ *  mtime+size memo would return attempt 1's digest for a re-run output with
+ *  equal size and mtime (e.g. a build that normalizes mtimes — standard
+ *  reproducible-build practice), silently proving a divergent task
+ *  deterministic. fp1/fp2 are only ever compared to each other, so any
+ *  content hash works — and the proof must not trust a cache. */
+export async function hashOutputTree(refs: readonly OutputRef[]): Promise<Map<string, string>> {
   const out = new Map<string, string>()
-  for (const r of refs) out.set(r.key, await cache.hashFile(r.abs))
+  for (const r of refs) {
+    out.set(r.key, xxh3hex(new Uint8Array(await Bun.file(r.abs).arrayBuffer())))
+  }
   return out
 }
 
