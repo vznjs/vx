@@ -30,9 +30,12 @@ function verifyMarker(t: TaskTelemetry): string {
   if (v === undefined) return ''
   switch (v.kind) {
     case 'proven-deterministic':
+    case 'proven-complete':
       return ' 🔒 verified'
     case 'nondeterministic':
       return ` ⚠️ non-deterministic (${changedPreview(v.changed)})`
+    case 'undeclared-inputs':
+      return ` ⚠️ undeclared inputs (${changedPreview(v.paths)})`
     case 'allowed-nondeterministic':
       return ' ⚠️ non-deterministic (allowed)'
     case 'rerun-failed':
@@ -93,10 +96,12 @@ function hermeticityLine(tasks: readonly TaskTelemetry[]): string {
   for (const t of tasks) {
     switch (t.verify?.kind) {
       case 'proven-deterministic':
+      case 'proven-complete':
         proven++
         break
       case 'nondeterministic':
       case 'rerun-failed':
+      case 'undeclared-inputs':
         bad++
         break
       case 'allowed-nondeterministic':
@@ -107,7 +112,7 @@ function hermeticityLine(tasks: readonly TaskTelemetry[]): string {
   if (proven + bad + allowed === 0) return '' // not a --verify run
   const icon = bad > 0 ? '⚠️' : '🔒'
   const allowedPart = allowed > 0 ? ` · **${allowed}** allowed` : ''
-  return `\n${icon} Hermeticity: **${proven}** proven · **${bad}** non-deterministic${allowedPart}\n`
+  return `\n${icon} Hermeticity: **${proven}** proven · **${bad}** unsafe${allowedPart}\n`
 }
 
 /** Render the run's result as a GitHub-flavored-markdown job summary. */

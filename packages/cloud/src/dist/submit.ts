@@ -95,6 +95,12 @@ export function distributedBackend(opts: DistributedBackendOptions): RunBackend 
       if (request.forwardArgs !== undefined && request.forwardArgs.length > 0) {
         return await fallback('forwarded args (`-- …`) cannot be distributed')
       }
+      // Agents don't run the verify machinery — distributing would leave
+      // agent-executed tasks silently unverified, the one failure mode a
+      // requested proof must never have. Verify locally instead.
+      if (request.verify !== undefined) {
+        return await fallback('--verify runs locally (agents do not verify)')
+      }
       const policy = request.cache ?? FULL_CACHE_POLICY
       if (!policy.remoteRead || !policy.remoteWrite) {
         return await fallback('the cache policy disables the remote layer (the artifact transport)')

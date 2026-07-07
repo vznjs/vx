@@ -124,16 +124,25 @@ export function taskSpanAttributes(t: TaskTelemetry): KeyValue[] {
     if (t.verify.kind === 'nondeterministic' || t.verify.kind === 'allowed-nondeterministic') {
       attrs.push(strAttr('vx.task.verify.changed', t.verify.changed.join(',')))
     }
+    // Phase 2 (--verify=inputs): the undeclared workspace reads, same shape
+    // as .changed — the actionable list a trace viewer needs.
+    if (t.verify.kind === 'undeclared-inputs') {
+      attrs.push(strAttr('vx.task.verify.undeclared', t.verify.paths.join(',')))
+    }
   }
   return attrs
 }
 
 /** A failed task maps to span status ERROR; so does a task whose `--verify`
- *  verdict proved it non-hermetic (nondeterministic / rerun-failed) — even
- *  though it exited 0, its cache entry is unsound. Everything else stays UNSET. */
+ *  verdict proved its cache entry unsound (nondeterministic / rerun-failed /
+ *  undeclared-inputs) — even though it exited 0. Everything else stays UNSET. */
 export function taskStatusCode(t: TaskTelemetry): number {
   if (t.status === 'failed') return STATUS_ERROR
-  if (t.verify?.kind === 'nondeterministic' || t.verify?.kind === 'rerun-failed') {
+  if (
+    t.verify?.kind === 'nondeterministic' ||
+    t.verify?.kind === 'rerun-failed' ||
+    t.verify?.kind === 'undeclared-inputs'
+  ) {
     return STATUS_ERROR
   }
   return STATUS_UNSET

@@ -178,6 +178,29 @@ describe('distributedBackend — §5.3 refusal gates fall back loudly to a local
     }
   })
 
+  it('--verify refuses distribution (agents do not run the verify machinery)', async () => {
+    const root = await makeWorkspace()
+    const warned: string[] = []
+    try {
+      const backend = distributedBackend({
+        origin: 'http://localhost:1', // unreachable — must never be probed
+        expectedAgents: 2,
+        sink: silentLogger,
+        warn: (l) => warned.push(l),
+      })
+      const result = await backend.run({
+        tasks: ['build'],
+        cwd: root,
+        verify: { determinism: true, inputs: false, allow: [] },
+        outputLogs: 'none',
+      })
+      expect(result.ok).toBe(true)
+      expect(warned.join('\n')).toContain('--verify runs locally')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('a cache policy without both remote axes refuses distribution (the cache IS the transport)', async () => {
     const root = await makeWorkspace()
     const warned: string[] = []

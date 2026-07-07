@@ -156,8 +156,12 @@ export default defineProject({
     // The vx-cloud CLI compiled the SAME no-Bun way as vx — one standalone
     // binary per target, with core (`@vzn/vx`) and the dashboard embedded. The
     // binary bundles packages/cloud/src + core src + the SPA, so its inputs are
-    // the root project's `**/*` (core src) PLUS the cloud package via
+    // the root project's `**/*` (core src) PLUS the cloud package src via
     // workspaceFiles (a separate project, outside the root `**/*` boundary).
+    // The embedded SPA (ui/dist, gitignored — input globs resolve against the
+    // git file set, so listing it would be a dead glob) cascades via the
+    // `build.ui` dependsOn edge instead: its task hash covers the UI sources
+    // and folds into each binary's key.
     'build.cloud': {
       description: 'compile standalone vx-cloud binaries for every target',
       dependsOn: [
@@ -177,7 +181,7 @@ export default defineProject({
       cache: {
         inputs: {
           files: ['**/*'],
-          workspaceFiles: ['packages/cloud/src/**', 'packages/cloud/ui/dist/index.html'],
+          workspaceFiles: ['packages/cloud/src/**'],
         },
         outputs: { files: ['dist/vx-cloud-linux-x64'] },
       },
@@ -192,7 +196,7 @@ export default defineProject({
       cache: {
         inputs: {
           files: ['**/*'],
-          workspaceFiles: ['packages/cloud/src/**', 'packages/cloud/ui/dist/index.html'],
+          workspaceFiles: ['packages/cloud/src/**'],
         },
         outputs: { files: ['dist/vx-cloud-linux-arm64'] },
       },
@@ -207,7 +211,7 @@ export default defineProject({
       cache: {
         inputs: {
           files: ['**/*'],
-          workspaceFiles: ['packages/cloud/src/**', 'packages/cloud/ui/dist/index.html'],
+          workspaceFiles: ['packages/cloud/src/**'],
         },
         outputs: { files: ['dist/vx-cloud-darwin-x64'] },
       },
@@ -222,7 +226,7 @@ export default defineProject({
       cache: {
         inputs: {
           files: ['**/*'],
-          workspaceFiles: ['packages/cloud/src/**', 'packages/cloud/ui/dist/index.html'],
+          workspaceFiles: ['packages/cloud/src/**'],
         },
         outputs: { files: ['dist/vx-cloud-darwin-arm64'] },
       },

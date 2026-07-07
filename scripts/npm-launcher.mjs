@@ -18,6 +18,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { constants as osConstants } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -64,7 +65,7 @@ function run(cmd, cmdArgs) {
     process.exit(1)
   }
   // Mirror the child's exit; a signal death maps to the POSIX 128+signo code.
-  if (res.signal) process.exit(1)
+  if (res.signal) process.exit(128 + (osConstants.signals[res.signal] ?? 1))
   process.exit(res.status ?? 0)
 }
 

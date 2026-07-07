@@ -2,9 +2,10 @@ name: Release assets
 
 # Triggered when a maintainer publishes a release in the GitHub UI
 # (or via `gh release create`). Runs `vx run build` (which fans out
-# to one task per target with per-binary caching), then attaches
-# the four binaries to the release. The maintainer writes the body
-# manually.
+# to one task per target with per-binary caching), then attaches all
+# EIGHT binaries (vx-<target> for the curl installer + `vx upgrade`,
+# vx-cloud-<target> for a no-npm serve/agent download) to the release.
+# The maintainer writes the body manually.
 
 on:
   release:
@@ -16,7 +17,7 @@ permissions:
 jobs:
   assets:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,11 +36,12 @@ jobs:
           VERSION="${VERSION#v}"
           bun -e 'const p = await Bun.file("package.json").json(); p.version = process.argv[1]; await Bun.write("package.json", JSON.stringify(p, null, 2) + "\n")' "$VERSION"
 
-      # Dogfood: `build` is a vx group task fanning out to `build.bun`,
-      # which fans out to `build.bun.<target>` for each platform. Each
-      # sub-task is individually cached, so re-running this workflow on
-      # the same commit is essentially free.
-      - run: bun src/bin.ts run build
+      # Dogfood: `build` fans out to `build.bun.<target>` + `build.cloud.<target>`
+      # (8 compiles). Each sub-task is individually cached, so re-running this
+      # workflow on the same commit is essentially free. --concurrency 2: eight
+      # concurrent `--compile --minify --bytecode` builds OOM a 7 GB runner
+      # (this workflow OOM'd before with only four).
+      - run: bun src/bin.ts run build --concurrency 2
 
       - uses: softprops/action-gh-release@v2
         with:

@@ -173,6 +173,34 @@ describe('OTLP builders', () => {
     expect(attrMap(taskSpanAttributes(base))['vx.task.verify']).toBeUndefined()
   })
 
+  it('surfaces the Phase-2 (inputs) verdicts: undeclared-inputs is ERROR with paths', () => {
+    const base: TaskTelemetry = {
+      taskId: 'a#build',
+      project: 'a',
+      task: 'build',
+      status: 'success',
+      cacheSource: 'miss',
+      exitCode: 0,
+      durationMs: 50,
+    }
+    // Incomplete declared inputs: verdict attr + the undeclared paths +
+    // span ERROR (the task exited 0 but its cache entry is unsound).
+    const leaky: TaskTelemetry = {
+      ...base,
+      verify: { kind: 'undeclared-inputs', paths: ['pkg/a/secret.txt', 'pkg/b/x.env'] },
+    }
+    const ml = attrMap(taskSpanAttributes(leaky))
+    expect(ml['vx.task.verify']).toBe('undeclared-inputs')
+    expect(ml['vx.task.verify.undeclared']).toBe('pkg/a/secret.txt,pkg/b/x.env')
+    expect(taskStatusCode(leaky)).toBe(2)
+    // proven-complete: verdict attr, no path attrs, span UNSET.
+    const complete: TaskTelemetry = { ...base, verify: { kind: 'proven-complete' } }
+    const mc = attrMap(taskSpanAttributes(complete))
+    expect(mc['vx.task.verify']).toBe('proven-complete')
+    expect(mc['vx.task.verify.undeclared']).toBeUndefined()
+    expect(taskStatusCode(complete)).toBe(0)
+  })
+
   it('surfaces retry attempts on the task span', () => {
     const t: TaskTelemetry = {
       taskId: 'a#flaky',

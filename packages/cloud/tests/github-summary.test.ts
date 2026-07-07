@@ -103,9 +103,27 @@ describe('formatGithubSummary', () => {
       ]),
     )
     // Headline hermeticity line (warns because one task is non-deterministic).
-    expect(md).toContain('⚠️ Hermeticity: **1** proven · **1** non-deterministic')
+    expect(md).toContain('⚠️ Hermeticity: **1** proven · **1** unsafe')
     // Per-row marker names the diverging outputs.
     expect(md).toContain('⚠️ non-deterministic (dist/app.js, dist/app.js.map)')
+    expect(md).toContain('🔒 verified')
+  })
+
+  it('surfaces the Phase-2 (inputs) verdicts: undeclared-inputs flagged + counted unsafe', () => {
+    const md = formatGithubSummary(
+      summary([
+        {
+          taskId: 'api#build',
+          status: 'success',
+          verify: { kind: 'undeclared-inputs', paths: ['src/generated/schema.ts'] },
+        },
+        { taskId: 'lib#build', status: 'success', verify: { kind: 'proven-complete' } },
+      ]),
+    )
+    // The run failed BECAUSE of hermeticity — the summary must say so.
+    expect(md).toContain('⚠️ Hermeticity: **1** proven · **1** unsafe')
+    expect(md).toContain('⚠️ undeclared inputs (src/generated/schema.ts)')
+    // proven-complete renders the same verified marker as proven-deterministic.
     expect(md).toContain('🔒 verified')
   })
 
