@@ -20,6 +20,39 @@ export interface DepthLayout {
   levelSizes: number[]
 }
 
+/**
+ * Drop GROUP tasks (pure aggregators, no exec) from a graph view, contracting
+ * edges through them so the DAG stays connected: every node that depended on a
+ * group inherits the group's own (recursively resolved) non-group deps. Groups
+ * are organizational folders — `ci`, `build.bun` — not work; a run view should
+ * show the tasks that actually execute. Nested groups collapse transitively
+ * (`build → build.bun → build.bun.linux-x64` ⇒ an edge straight to the leaf).
+ */
+export function contractGroups<N extends { id: string; isGroup: boolean; deps: readonly string[] }>(
+  nodes: readonly N[],
+): Array<N & { deps: string[] }> {
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  // id → the non-group task ids reachable by walking down through group deps.
+  const memo = new Map<string, string[]>()
+  const visiting = new Set<string>()
+  const resolve = (id: string): string[] => {
+    const cached = memo.get(id)
+    if (cached !== undefined) return cached
+    const n = byId.get(id)
+    if (n === undefined) return []
+    if (!n.isGroup) return [id]
+    if (visiting.has(id)) return [] // cycle guard — the graph is a DAG, but be safe
+    visiting.add(id)
+    const out = [...new Set(n.deps.flatMap(resolve))]
+    visiting.delete(id)
+    memo.set(id, out)
+    return out
+  }
+  return nodes
+    .filter((n) => !n.isGroup)
+    .map((n) => ({ ...n, deps: [...new Set(n.deps.flatMap(resolve))].filter((d) => d !== n.id) }))
+}
+
 export function layoutLevels(
   nodes: ReadonlyArray<{ id: string; deps: readonly string[] }>,
 ): DepthLayout {

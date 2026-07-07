@@ -14,7 +14,7 @@
 
 import { For, Show, createMemo, createSignal } from 'solid-js'
 import { cpuPct as cpuPctOf, formatBytes, formatDuration } from '../format.ts'
-import { layoutLevels } from './run-graph-layout.ts'
+import { contractGroups, layoutLevels } from './run-graph-layout.ts'
 import { PREDICTED, STATUS, type PredictedStatus, type VizState } from './status.tsx'
 
 export interface RunGraphNode {
@@ -58,10 +58,13 @@ export function RunGraph(props: {
   predictedOf?: (id: string) => PredictedStatus | undefined
   onSelect?: (id: string) => void
 }) {
-  const effState = (n: RunGraphNode): RunGraphState => (n.isGroup ? 'group' : props.stateOf(n.id))
+  const effState = (n: RunGraphNode): RunGraphState => props.stateOf(n.id)
   const statsFor = (id: string): RunGraphStats => props.statsOf?.(id) ?? {}
 
-  const layout = createMemo(() => layoutLevels(props.nodes))
+  // Groups are organizational folders (no exec) — hidden from the graph, with
+  // edges contracted through them so the DAG stays connected.
+  const visible = createMemo(() => contractGroups(props.nodes))
+  const layout = createMemo(() => layoutLevels(visible()))
   const width = () => Math.max(1, layout().levelCount) * COL_STRIDE - COL_GAP + 24
   const height = () => HEADER_H + Math.max(1, layout().maxRows) * ROW_STRIDE + 8
 
@@ -74,7 +77,7 @@ export function RunGraph(props: {
   const edges = createMemo(() => {
     const l = layout()
     const out: Array<{ d: string; crit: boolean }> = []
-    for (const n of props.nodes) {
+    for (const n of visible()) {
       const to = l.pos.get(n.id)
       if (!to) continue
       for (const dep of n.deps) {
@@ -148,7 +151,7 @@ export function RunGraph(props: {
           </svg>
 
           {/* cards */}
-          <For each={props.nodes}>
+          <For each={visible()}>
             {(n) => {
               const pos = () => layout().pos.get(n.id)
               const sty = () => STATUS[effState(n)]
@@ -176,7 +179,7 @@ export function RunGraph(props: {
                     }}
                     title={n.id}
                   >
-                    <span class={`absolute left-0 top-0 bottom-0 w-1 ${sty().rail}`} classList={{ 'opacity-40': n.isGroup }} />
+                    <span class={`absolute left-0 top-0 bottom-0 w-1 ${sty().rail}`} />
                     <div class="pl-3 pr-2.5 py-2 flex flex-col h-full gap-1">
                       <div class="flex items-center gap-1.5 min-w-0">
                         <span class={`${sty().icon} ${sty().dot} text-[13px] shrink-0`} classList={{ 'animate-spin': effState(n) === 'running' }} />
@@ -186,27 +189,25 @@ export function RunGraph(props: {
                         </Show>
                       </div>
                       <div class="text-[10px] text-fg-3 font-mono truncate">{n.project}</div>
-                      <Show when={!n.isGroup} fallback={<div class="text-[10px] text-fg-3/70 font-mono">stage group</div>}>
-                        <div class="flex items-center gap-1 text-[10px] font-mono tabular-nums">
-                          <Show when={(stats().durationMs ?? 0) > 0}>
-                            <span class="text-fg-2">{formatDuration(stats().durationMs!)}</span>
-                          </Show>
-                          <Show when={cpu() !== undefined}>
-                            <Chip icon="i-tabler-cpu" value={`${cpu()}%`} />
-                          </Show>
-                          <Show when={(stats().peakRssBytes ?? 0) > 0}>
-                            <Chip icon="i-tabler-database" value={formatBytes(stats().peakRssBytes!)} />
-                          </Show>
-                          <Show when={predicted()}>
-                            {(p) => (
-                              <span class={`inline-flex items-center gap-0.5 rounded px-1 py-px ${p().cls}`} title="predicted from cache key">
-                                <span class={`${p().icon} text-[10px]`} aria-hidden="true" />
-                                {p().label}
-                              </span>
-                            )}
-                          </Show>
-                        </div>
-                      </Show>
+                      <div class="flex items-center gap-1 text-[10px] font-mono tabular-nums">
+                        <Show when={(stats().durationMs ?? 0) > 0}>
+                          <span class="text-fg-2">{formatDuration(stats().durationMs!)}</span>
+                        </Show>
+                        <Show when={cpu() !== undefined}>
+                          <Chip icon="i-tabler-cpu" value={`${cpu()}%`} />
+                        </Show>
+                        <Show when={(stats().peakRssBytes ?? 0) > 0}>
+                          <Chip icon="i-tabler-database" value={formatBytes(stats().peakRssBytes!)} />
+                        </Show>
+                        <Show when={predicted()}>
+                          {(p) => (
+                            <span class={`inline-flex items-center gap-0.5 rounded px-1 py-px ${p().cls}`} title="predicted from cache key">
+                              <span class={`${p().icon} text-[10px]`} aria-hidden="true" />
+                              {p().label}
+                            </span>
+                          )}
+                        </Show>
+                      </div>
                     </div>
                   </button>
                 </Show>
