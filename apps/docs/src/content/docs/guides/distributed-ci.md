@@ -40,11 +40,11 @@ export default defineWorkspace({ plugins: [cloud()] })
 Store the connection as two repository secrets — `VX_CLOUD_URL` and
 `VX_CLOUD_TOKEN`.
 
-> **Installing the CLIs in CI.** Both ship on npm: core `vx` is a
-> standalone binary (`npm i -g @vzn/vx`, no Bun needed), and the
-> `vx-cloud` CLI is a Bun-source package (`npm i -g @vzn/vx-cloud`,
-> requires Bun on the host — CI provides it via `setup-bun`). The agent
-> jobs need `vx-cloud`; the run job needs only `vx` plus
+> **Installing the CLIs in CI.** Both ship on npm as standalone binaries,
+> no Bun needed: core `vx` (`npm i -g @vzn/vx`) and the `vx-cloud` CLI
+> (`npm i -g @vzn/vx-cloud`) — each a prebuilt per-platform binary (the
+> `vx-cloud` binary has the dashboard embedded). The agent jobs need
+> `vx-cloud`; the run job needs only `vx` plus
 > `VX_CLOUD_URL`/`VX_CLOUD_TOKEN`. (For a serve deployment, the
 > `ghcr.io/vznjs/vx-cloud` image is the prebuilt server — see
 > self-hosting.)

@@ -187,6 +187,43 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-07**: **`@vzn/vx-cloud` publishes as a no-Bun standalone binary,
+  like `@vzn/vx`** (owner: "Cloud should be published compiled like vx"). REVERSES
+  the 2026-07-04 "vx-cloud is a Bun-source package requiring Bun" decision — the
+  documented "NEXT high-value" item. The `vx-cloud` CLI now cross-compiles to one
+  standalone binary per target (`bun build --compile packages/cloud/src/cli/bin.ts`)
+  with **core (`@vzn/vx`) AND the dashboard embedded** (`with { type: 'file' }` +
+  the bare `@vzn/vx` import bundles core via the link-self symlink) — verified: the
+  compiled binary boots `serve --ui` and serves the SPA (`GET / → 200`) with no Bun.
+  Same dual-purpose model as vx: the CLI is a Node **launcher** execing the
+  matching `@vzn/vx-cloud-<target>` platform binary (optionalDeps, os/cpu-gated),
+  while the **`cloud()` plugin stays importable source** (`@vzn/vx-cloud/plugin`,
+  evaluated inside the vx runtime — the package still ships `src` + `ui/dist` +
+  keeps `@vzn/vx` as a dep for the plugin path + the Bun source fallback). **ONE
+  generalized launcher** (`scripts/npm-launcher.mjs`) now serves BOTH packages —
+  it derives the platform-package prefix + binary name from its own `pkg.name`
+  (`@vzn/vx` → `vx`, `@vzn/vx-cloud` → `vx-cloud`) and the source-fallback entry
+  from a `vxSourceEntry` package.json field (`src/bin.ts` vs `src/cli/bin.ts`).
+  `build-npm.ts`: extracted `emitPlatformPackages()` shared by both families;
+  `buildCloudPackage` now emits the 4 `@vzn/vx-cloud-<target>` binary packages +
+  the launcher-based main package (dropped `engines.bun`, added the launcher +
+  optionalDeps + vxSourceEntry). `vx.config.ts`: added a `build.cloud` group + 4
+  `build.cloud.<target>` cross-compiles (inputs = root `**/*` for core src PLUS
+  `workspaceFiles: [packages/cloud/src/**, packages/cloud/ui/dist/index.html]`
+  since the cloud package is a separate project outside the root boundary); `build`
+  now fans out to BOTH `build.bun` + `build.cloud` (8 binaries/release). `npm.yml`:
+  publishes the 4 new cloud platform packages before `@vzn/vx-cloud` (10 packages
+  total). **Verified end-to-end** (linux-x64): built both binaries via the new
+  config, assembled the tree, simulated the installed node_modules, ran
+  `node launcher.mjs serve --ui` → execs the binary → serves the dashboard, no
+  Bun. Docs: self-hosting.md + distributed-ci.md drop the "requires Bun" caveat
+  (both CLIs are no-Bun binaries now). **Owner TODO:** trusted publishing now
+  covers TEN names (was six) — the 4 `@vzn/vx-cloud-<target>` platform packages
+  need seeding + trusted-publisher config too. **CI note:** 8 concurrent
+  `--compile --minify --bytecode` may pressure a 7 GB runner; drop to
+  `vx run build --concurrency 2` if it OOMs. No core/cloud src change — packaging
+  - build config only.
+
 - **2026-07-05**: **Quality sweep — perf O(n)→O(log n), +45 tests, doc-accuracy
   fixes** (owner: "identify places where we miss tests… ensure all cases 100%.
   Identify performance improvements, all O(n)… see if we can do O(1). Review

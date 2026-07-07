@@ -16,7 +16,7 @@ export default defineProject({
     },
 
     build: {
-      dependsOn: ['build.bun'],
+      dependsOn: ['build.bun', 'build.cloud'],
     },
 
     lint: {
@@ -150,6 +150,81 @@ export default defineProject({
       cache: {
         inputs: { files: ['**/*'] },
         outputs: { files: ['dist/vx-darwin-arm64'] },
+      },
+    },
+
+    // The vx-cloud CLI compiled the SAME no-Bun way as vx — one standalone
+    // binary per target, with core (`@vzn/vx`) and the dashboard embedded. The
+    // binary bundles packages/cloud/src + core src + the SPA, so its inputs are
+    // the root project's `**/*` (core src) PLUS the cloud package via
+    // workspaceFiles (a separate project, outside the root `**/*` boundary).
+    'build.cloud': {
+      description: 'compile standalone vx-cloud binaries for every target',
+      dependsOn: [
+        'build.cloud.linux-x64',
+        'build.cloud.linux-arm64',
+        'build.cloud.darwin-x64',
+        'build.cloud.darwin-arm64',
+      ],
+    },
+    'build.cloud.linux-x64': {
+      description: 'compile standalone vx-cloud binary (linux x64)',
+      dependsOn: ['install', 'build.ui'],
+      exec: {
+        command:
+          'bun build --compile --minify --bytecode --target=bun-linux-x64 packages/cloud/src/cli/bin.ts --outfile dist/vx-cloud-linux-x64',
+      },
+      cache: {
+        inputs: {
+          files: ['**/*'],
+          workspaceFiles: ['packages/cloud/src/**', 'packages/cloud/ui/dist/index.html'],
+        },
+        outputs: { files: ['dist/vx-cloud-linux-x64'] },
+      },
+    },
+    'build.cloud.linux-arm64': {
+      description: 'compile standalone vx-cloud binary (linux arm64)',
+      dependsOn: ['install', 'build.ui'],
+      exec: {
+        command:
+          'bun build --compile --minify --bytecode --target=bun-linux-arm64 packages/cloud/src/cli/bin.ts --outfile dist/vx-cloud-linux-arm64',
+      },
+      cache: {
+        inputs: {
+          files: ['**/*'],
+          workspaceFiles: ['packages/cloud/src/**', 'packages/cloud/ui/dist/index.html'],
+        },
+        outputs: { files: ['dist/vx-cloud-linux-arm64'] },
+      },
+    },
+    'build.cloud.darwin-x64': {
+      description: 'compile standalone vx-cloud binary (darwin x64)',
+      dependsOn: ['install', 'build.ui'],
+      exec: {
+        command:
+          'bun build --compile --minify --bytecode --target=bun-darwin-x64 packages/cloud/src/cli/bin.ts --outfile dist/vx-cloud-darwin-x64',
+      },
+      cache: {
+        inputs: {
+          files: ['**/*'],
+          workspaceFiles: ['packages/cloud/src/**', 'packages/cloud/ui/dist/index.html'],
+        },
+        outputs: { files: ['dist/vx-cloud-darwin-x64'] },
+      },
+    },
+    'build.cloud.darwin-arm64': {
+      description: 'compile standalone vx-cloud binary (darwin arm64)',
+      dependsOn: ['install', 'build.ui'],
+      exec: {
+        command:
+          'bun build --compile --minify --bytecode --target=bun-darwin-arm64 packages/cloud/src/cli/bin.ts --outfile dist/vx-cloud-darwin-arm64',
+      },
+      cache: {
+        inputs: {
+          files: ['**/*'],
+          workspaceFiles: ['packages/cloud/src/**', 'packages/cloud/ui/dist/index.html'],
+        },
+        outputs: { files: ['dist/vx-cloud-darwin-arm64'] },
       },
     },
   },

@@ -104,15 +104,19 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -e
-          # Order matters: platform binaries first (so @vzn/vx's
-          # optionalDependencies resolve), then @vzn/vx, then @vzn/vx-cloud
-          # (which depends on @vzn/vx at this version).
+          # Order matters: each family's platform binaries first (so the main
+          # package's optionalDependencies resolve on the registry), then the
+          # main package. @vzn/vx-cloud last — it depends on @vzn/vx.
           for pkg in \
             dist/npm/@vzn/vx-linux-x64 \
             dist/npm/@vzn/vx-linux-arm64 \
             dist/npm/@vzn/vx-darwin-x64 \
             dist/npm/@vzn/vx-darwin-arm64 \
             dist/npm/vx \
+            dist/npm/@vzn/vx-cloud-linux-x64 \
+            dist/npm/@vzn/vx-cloud-linux-arm64 \
+            dist/npm/@vzn/vx-cloud-darwin-x64 \
+            dist/npm/@vzn/vx-cloud-darwin-arm64 \
             dist/npm/vx-cloud; do
             echo "::group::npm publish $pkg"
             npm publish "$pkg" --access public
