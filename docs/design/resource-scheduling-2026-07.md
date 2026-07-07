@@ -1,8 +1,8 @@
 # Resource-aware scheduling — design
 
-> **Status:** accepted (revised)
+> **Status:** accepted (revised; owner picked the grouped object)
 >
-> Owner-requested. The model (`exec.cpus` / `exec.memory`, flat, default 0,
+> Owner-requested. The model (`exec.resources: { cpus, memory }`, default 0,
 > percent-or-number, admission-not-enforcement) is **LOCKED**. This doc makes
 > it precise and implementation-ready against the current two-tier
 > `ReadyHeap` scheduler.
@@ -38,13 +38,21 @@ Hot-path constraints:
 
 ## The model (locked, restated precisely)
 
-Two new flat optional fields on `ExecConfig` (`src/config.ts`), beside
-`timeout` and `retries`:
+One new optional object on `ExecConfig` (`src/config.ts`), beside
+`timeout` and `retries` — grouped so a future axis (gpu, custom) slots in
+without new top-level fields:
 
-| Field         | Type                           | Default | Meaning                                 |
-| ------------- | ------------------------------ | ------- | --------------------------------------- |
-| `exec.cpus`   | `number \| "<n>%"`             | `0`     | CPU units, or percent of the CPU budget |
-| `exec.memory` | `number \| "<size>" \| "<n>%"` | `0`     | bytes, a size string, or percent of RAM |
+```ts
+exec: {
+  command: 'vitest run integration',
+  resources: { cpus: 4, memory: '2GB' },   // or: { cpus: '50%', memory: '25%' }
+}
+```
+
+| Field                   | Type                           | Default | Meaning                                 |
+| ----------------------- | ------------------------------ | ------- | --------------------------------------- |
+| `exec.resources.cpus`   | `number \| "<n>%"`             | `0`     | CPU units, or percent of the CPU budget |
+| `exec.resources.memory` | `number \| "<size>" \| "<n>%"` | `0`     | bytes, a size string, or percent of RAM |
 
 - `cpus`: a `number` is CPU units (fractional allowed, `0.5`); `"<n>%"`
   is percent of the CPU budget — `cpus: "50%"` on an 8-unit budget → 4.
@@ -104,11 +112,12 @@ scheduler: resolved once in `run.ts` into an `id → {cpu, mem}` map that
 is **omitted entirely when no task opts in** (the single gate that keeps
 every current run byte-identical); backfill via park-within-tick (keeps
 the heap O(R log R) and the exact priority + FIFO-among-equals
-contract); restores reserve 0; fields stripped from the key. Rejected
-alternatives: a grouped `exec.resources: {}` (locked flat; the grouped
-form stays the future hatch if a third axis ever lands), enforcement via
-cgroups/rlimits (a hint, not a cap), and CPU-only slot weighting
-(memory is the axis that actually OOMs CI).
+contract); restores reserve 0; the `resources` object stripped from the
+key (a one-key drop — grouping makes the strip trivial). Rejected
+alternatives: flat `exec.cpus`/`exec.memory` (owner picked the grouped
+object — extensible to a third axis without new top-level fields),
+enforcement via cgroups/rlimits (a hint, not a cap), and CPU-only slot
+weighting (memory is the axis that actually OOMs CI).
 
 ---
 
@@ -116,28 +125,31 @@ cgroups/rlimits (a hint, not a cap), and CPU-only slot weighting
 
 ### 1. Schema (`src/config.ts`)
 
-Add to `ExecConfig` after `retries`:
+Add to `ExecConfig` after `retries`, plus an exported `ResourcesConfig`:
 
 ```ts
 /**
- * CPU reservation for admission control (NOT enforcement — vx does not
- * cgroup-limit the task). A number is CPU units; a "<n>%" string is a
- * percent of the CPU budget (the run's concurrency). Default 0 = reserve
- * nothing: the task runs subject only to the concurrency-count limit.
- * A pure scheduling hint — stripped from the cache key.
+ * Resource RESERVATIONS for admission control (NOT enforcement — vx does
+ * not cgroup-limit the task; it only decides what to co-schedule). Each
+ * axis defaults to 0 = reserve nothing: the task runs subject only to the
+ * concurrency-count limit. A pure scheduling hint — the whole object is
+ * stripped from the cache key, so tuning it never invalidates a result.
  */
-cpus?: number | string
-/**
- * Memory reservation for admission control (NOT enforcement). A number
- * is bytes; a size string ("2GB", "512MB") uses powers of 1024; a "<n>%"
- * string is a percent of the memory budget (os.totalmem() or --memory).
- * Default 0 = reserve nothing. Stripped from the cache key.
- */
-memory?: number | string
+export interface ResourcesConfig {
+  /** CPU units (fractional ok), or a "<n>%" string of the CPU budget
+   *  (the run's concurrency). */
+  cpus?: number | string
+  /** Bytes, a size string ("2GB", "512MB" — powers of 1024), or a "<n>%"
+   *  string of the memory budget (os.totalmem() or --memory). */
+  memory?: number | string
+}
+
+// on ExecConfig:
+resources?: ResourcesConfig
 ```
 
-Type them `number | string` (not a template-literal type) so the loader
-owns validation with a clear message instead of a cryptic TS error.
+Type the axes `number | string` (not a template-literal type) so the
+loader owns validation with a clear message instead of a cryptic TS error.
 
 ### 2. The resolver (new `src/orchestrator/resources.ts`, pure)
 
@@ -165,7 +177,8 @@ export function resolveResourceCosts(
 Rules: `undefined` → 0; `cpus` number → itself; `"<n>%"` →
 `(pct / 100) * budget`, kept fractional (rounding is display-only);
 `memory` number → bytes; size string → `parseSize`; percent → as cpus.
-`resolveResourceCosts` inserts an entry only when `cpu > 0 || mem > 0`.
+`resolveResourceCosts` reads each node's `config.exec?.resources` and
+inserts an entry only when `cpu > 0 || mem > 0`.
 
 **Boundary fix — move `parseSize` to `util`.** It lives in
 `src/cli/cache.ts`, and `orchestrator` cannot import `cli`
@@ -177,7 +190,9 @@ and tests are unchanged. Note `parseSize` accepts integer sizes only —
 ### 3. Loader validation (`src/workspace/project-loader.ts`)
 
 In `validateProjectConfig`, right after the `retries` check. Form only —
-no budget needed:
+no budget needed. `exec.resources` must be a plain object with ONLY the
+known keys (`cpus`, `memory`) — reject unknown keys, mirroring how the
+`sandbox` block is validated against a field allowlist. Then per axis:
 
 - `cpus`: number → finite and `>= 0`; string → must match
   `/^\d+(\.\d+)?%$/` (reject `"%"`, sizes like `"2GB"`, garbage);
@@ -187,8 +202,9 @@ no budget needed:
   else → error.
 
 Messages mirror the existing style:
-`${where}.exec.cpus must be a non-negative number or a "<n>%" string`,
-`${where}.exec.memory must be a non-negative integer (bytes), a size string like "512MB", or a "<n>%" string`.
+`${where}.exec.resources.cpus must be a non-negative number or a "<n>%" string`,
+`${where}.exec.resources.memory must be a non-negative integer (bytes), a size string like "512MB", or a "<n>%" string`,
+`${where}.exec.resources has unknown field "gpu"`.
 
 `persistent` + reservation is allowed and HONORED for the task's whole
 lifetime — a dev server genuinely holds its RAM. (Trivially switchable in
@@ -202,13 +218,15 @@ Project the config before hashing:
 ```ts
 function hashableConfig(cfg: TaskConfig): unknown {
   // Fast path: nothing to strip → cfg unchanged → byte-identical bytes.
-  if (cfg.exec?.cpus === undefined && cfg.exec?.memory === undefined) return cfg
-  const { cpus, memory, ...execRest } = cfg.exec
+  if (cfg.exec?.resources === undefined) return cfg
+  const { resources, ...execRest } = cfg.exec
   return { ...cfg, exec: execRest }
 }
 ```
 
-**Why no `CACHE_VERSION` bump:** a task declaring neither field takes
+(The grouped object pays off here: the strip is a single-key drop.)
+
+**Why no `CACHE_VERSION` bump:** a task declaring no `resources` takes
 the fast path and stringifies exactly as today. A task that declares one
 is by definition new (the field didn't exist), so there's no prior key
 to preserve. Aside: `timeout`/`retries` are NOT stripped today (their
@@ -451,8 +469,8 @@ the correct machine's RAM — and an explicit `--memory` wins end-to-end.
   through `parseSize` (now in `util`); `null` → `--memory must be a size
 like 8GB or 512MB`; missing value → error. `RunArgs.memory` →
   `resolveRunOptions` sets `opts.memory`.
-- Help: the flag, the container caveat, and a note that `cpus`/`memory`
-  are per-task config fields, not CLI flags.
+- Help: the flag, the container caveat, and a note that reservations are
+  declared per task in config (`exec.resources`), not via CLI flags.
 
 ## Test list (the implementation contract)
 
@@ -515,8 +533,10 @@ re-export) · `src/orchestrator/run.ts` · `src/orchestrator/options.ts` ·
 ## Non-goals
 
 - Hard enforcement (cgroups / rlimits / `nice`) — hints only.
-- GPU / custom resources — flat `cpus`/`memory` only; a grouped
-  `exec.resources: {}` is the future hatch, not shipped.
+- GPU / custom resources — only `cpus` and `memory` ship. The grouped
+  `exec.resources` object is exactly where a third axis would land later
+  (a new key + a third admission axis), but none ships now — the loader
+  rejects unknown keys.
 - Core affinity / pinning / NUMA; load-aware probing beyond the
   concurrency default.
 - Retro-stripping `timeout`/`retries` from the key (needs a
