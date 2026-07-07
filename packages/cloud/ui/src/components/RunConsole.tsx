@@ -94,11 +94,14 @@ export function RunConsole() {
     return s === 'cache-hit' || s === 'cache-hit-remote'
   }
 
-  // Longest-duration dependency chain (the wall-time floor) over the live graph.
-  const critical = createMemo(() => {
-    now() // track the tick so in-progress chains grow
-    return criticalPath(nodes(), durationOf, restoresAhead)
-  })
+  // Longest-duration dependency chain (the wall-time floor) over COMPLETED
+  // durations only. Deliberately NOT the live elapsed times: growing
+  // in-progress durations made the longest chain flip between candidates
+  // every 250ms tick, flashing the yellow highlight across different nodes
+  // mid-run. Completed-only recomputes once per task completion — stable,
+  // still live, and it settles on the true critical path at run end.
+  const completedDurationOf = (id: string): number => statuses[id]?.durationMs ?? 0
+  const critical = createMemo(() => criticalPath(nodes(), completedDurationOf, restoresAhead))
   const criticalSet = createMemo(() => new Set(critical().chain))
 
   // Predicted-from-cache summary (real tasks only; groups do no work). Shown

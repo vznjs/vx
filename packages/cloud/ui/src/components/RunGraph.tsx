@@ -165,7 +165,7 @@ export function RunGraph(props: {
                 <Show when={pos()}>
                   <button
                     onClick={() => props.onSelect?.(n.id)}
-                    class="absolute text-left rounded-xl border bg-gradient-to-b from-surface to-surface-2/60 shadow-card overflow-hidden transition-all duration-150 hover:-translate-y-px hover:shadow-elevated"
+                    class="absolute text-left rounded-xl border bg-gradient-to-b from-surface to-surface-2/60 shadow-card overflow-hidden transition-transform duration-150 hover:-translate-y-px hover:shadow-elevated"
                     classList={{
                       [sty().border]: !selected() && !crit(),
                       'border-accent ring-2 ring-accent/40': selected(),
@@ -176,6 +176,12 @@ export function RunGraph(props: {
                       top: `${yOf(pos()!.row)}px`,
                       width: `${CARD_W}px`,
                       height: `${CARD_H}px`,
+                      // Big-graph perf: off-viewport cards skip layout + paint
+                      // entirely (the fixed grid supplies the intrinsic size, so
+                      // scroll geometry is exact). On a 1000-task graph this cuts
+                      // the painted card count to the visible window.
+                      'content-visibility': 'auto',
+                      'contain-intrinsic-size': `${CARD_W}px ${CARD_H}px`,
                     }}
                     title={n.id}
                   >
