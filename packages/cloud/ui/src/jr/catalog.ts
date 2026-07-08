@@ -29,6 +29,9 @@ export const catalog = defineCatalog(schema, {
     RankList: anyProps(),
     LiveActivity: anyProps(),
     TaskLogs: anyProps(),
+    Json: anyProps(),
+    TaskConfigList: anyProps(),
+    ArtifactDownload: anyProps(),
   },
   actions: {},
 })

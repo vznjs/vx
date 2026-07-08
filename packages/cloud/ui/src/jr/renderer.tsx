@@ -35,6 +35,9 @@ const { registry } = defineRegistry(catalog, {
     RankList: C.RankList,
     LiveActivity: C.LiveActivity,
     TaskLogs: C.TaskLogs,
+    Json: C.Json,
+    TaskConfigList: C.TaskConfigList,
+    ArtifactDownload: C.ArtifactDownload,
   },
 })
 

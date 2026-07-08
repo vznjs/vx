@@ -15,10 +15,9 @@ import { A, useNavigate } from '@solidjs/router'
 import {
   type RunSummaryRow,
   type TaskLogResponse,
+  downloadArtifact,
   getGraph,
-  getOrigin,
   getTaskLog,
-  getToken,
   subscribeEvents,
 } from '../api.ts'
 import { HBar, Heatmap as HeatmapPrimitive, LineChart as LineChartPrimitive, Treemap as TreemapPrimitive } from '../components/charts.tsx'
@@ -40,6 +39,18 @@ type DataStatus = 'loading' | 'error' | 'missing' | 'ok'
 /** Replace `{field}` in a template with the URL-encoded row value (for hrefs). */
 function interpolate(tpl: string, row: Row): string {
   return tpl.replace(/\{(\w+)\}/g, (_m, f) => enc(String(row[f] ?? '')))
+}
+/** Like `interpolate`, but undefined when any field is empty — a link column
+ *  over best-effort data (artifact provenance) degrades to '—', never a
+ *  half-built href. */
+function interpolateHref(tpl: string, row: Row): string | undefined {
+  let missing = false
+  const href = tpl.replace(/\{(\w+)\}/g, (_m, f) => {
+    const v = row[f]
+    if (v === undefined || v === null || v === '') missing = true
+    return enc(String(v ?? ''))
+  })
+  return missing ? undefined : href
 }
 /** Replace `{field}` with the raw row value (for display labels). */
 function interpolateRaw(tpl: string, row: Row): string {
@@ -386,7 +397,7 @@ export function RunViz(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string
 
 // --- DataTable --------------------------------------------------------------
 
-type CellKind = 'text' | 'mono' | 'muted' | 'faint' | FormatHint | 'cpuPct' | 'status' | 'cache' | 'projtask' | 'bar' | 'dots' | 'shorthash' | 'link'
+type CellKind = 'text' | 'mono' | 'muted' | 'faint' | FormatHint | 'cpuPct' | 'status' | 'cache' | 'projtask' | 'bar' | 'dots' | 'shorthash' | 'link' | 'download'
 interface ToneRule {
   gt?: number
   lt?: number
@@ -417,7 +428,7 @@ export interface Column {
   hitKey?: string
   len?: number // shorthash length
   href?: string // kind:'link' — href template, e.g. /compare/{runId}
-  linkLabel?: string // kind:'link' — cell text
+  linkLabel?: string // kind:'link' — cell text; {field} templates allowed
 }
 const TEXTISH = new Set(['text', 'mono', 'muted', 'faint'])
 
@@ -447,12 +458,30 @@ function renderField(col: Column, row: Row, max: number) {
       return cell ? <span class={cell.cls}>{cell.label}</span> : <span class="text-fg-3">miss</span>
     }
     case 'link': {
-      const href = col.href ? interpolate(col.href, row) : undefined
+      const href = col.href ? interpolateHref(col.href, row) : undefined
       if (!href) return <span class="text-fg-3">—</span>
+      const label = col.linkLabel ? interpolateRaw(col.linkLabel, row) : 'view'
       return (
         <A href={href} class="text-accent hover:underline text-[11px]" onClick={(e) => e.stopPropagation()}>
-          {col.linkLabel ?? 'view'}
+          {label}
         </A>
+      )
+    }
+    case 'download': {
+      const hash = row[col.key]
+      if (hash === undefined || hash === null || hash === '') return <span class="text-fg-3">—</span>
+      return (
+        <button
+          type="button"
+          class="text-accent hover:underline text-[11px] font-mono bg-transparent border-0 cursor-pointer p-0"
+          title="Download the artifact (tar.zst)"
+          onClick={(e) => {
+            e.stopPropagation()
+            void downloadArtifact(String(hash))
+          }}
+        >
+          ↓ download
+        </button>
       )
     }
     case 'projtask':
@@ -727,20 +756,6 @@ export function TaskLogs(c: C<{ runId?: string; project?: string; task?: string 
     ([runId, id]) => getTaskLog(runId, id),
   )
 
-  const downloadArtifact = async (hash: string): Promise<void> => {
-    const headers: Record<string, string> = {}
-    const t = getToken()
-    if (t !== '') headers['Authorization'] = `Bearer ${t}`
-    const res = await fetch(`${getOrigin()}/v8/artifacts/${encodeURIComponent(hash)}`, { headers })
-    if (!res.ok) return
-    const url = URL.createObjectURL(await res.blob())
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${hash}.tar.zst`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
   return (
     <Show
       when={!log.loading}
@@ -786,6 +801,93 @@ export function TaskLogs(c: C<{ runId?: string; project?: string; task?: string 
           </div>
         )}
       </Show>
+    </Show>
+  )
+}
+
+/** Pretty-printed JSON block — the resolved-config payloads on entity pages. */
+export function Json(c: C<{ value?: unknown; maxHeight?: number }>) {
+  const text = () => {
+    try {
+      return JSON.stringify(c.props.value, null, 2) ?? '—'
+    } catch {
+      return String(c.props.value)
+    }
+  }
+  return (
+    <pre
+      class="m-0 p-3 rounded-md border border-border bg-surface-2/50 text-[11px] font-mono overflow-auto whitespace-pre-wrap text-fg-1"
+      style={{ 'max-height': `${c.props.maxHeight ?? 360}px` }}
+    >
+      {text()}
+    </pre>
+  )
+}
+
+/**
+ * The resolved per-task config blocks on a project's entity page: one block
+ * per task in the catalog's `config.tasks`, its name linking to the task's
+ * entity page. Fed by the `catalogProject` source (the `vx show` payload).
+ */
+export function TaskConfigList(c: C<{ config?: unknown; project?: string }>) {
+  const entries = createMemo<Array<[string, unknown]>>(() => {
+    const cfg = c.props.config
+    const tasks = cfg && typeof cfg === 'object' ? (cfg as Row).tasks : undefined
+    return tasks && typeof tasks === 'object' ? Object.entries(tasks as Record<string, unknown>) : []
+  })
+  return (
+    <Show when={entries().length > 0} fallback={<EmptyState title="No tasks in this config" />}>
+      <div class="flex flex-col gap-3">
+        <For each={entries()}>
+          {([name, cfg]) => (
+            <div class="rounded-lg border border-border overflow-hidden">
+              <div class="px-3 py-2 bg-surface-2/40 border-b border-border">
+                <A
+                  href={`/tasks/${enc(`${c.props.project ?? ''}#${name}`)}`}
+                  class="font-mono text-[12px] text-accent no-underline hover:underline"
+                >
+                  {name}
+                </A>
+              </div>
+              <pre class="m-0 p-3 text-[11px] font-mono overflow-auto max-h-[280px] whitespace-pre-wrap text-fg-1">
+                {JSON.stringify(cfg, null, 2)}
+              </pre>
+            </div>
+          )}
+        </For>
+      </div>
+    </Show>
+  )
+}
+
+/**
+ * A download action for one /v8 artifact, shown only when the store actually
+ * holds the hash (probed via the /v1/artifacts list the page already fetched
+ * — no extra endpoint). `fallbackText` renders an honest absence note where
+ * a silent nothing would read as broken (the cache-entry page).
+ */
+export function ArtifactDownload(c: C<{ hash?: string; artifacts?: Row[]; fallbackText?: string }>) {
+  const available = () => {
+    const h = c.props.hash
+    return typeof h === 'string' && h !== '' && (c.props.artifacts ?? []).some((a) => a.hash === h)
+  }
+  return (
+    <Show
+      when={available()}
+      fallback={
+        <Show when={c.props.fallbackText}>
+          <div class="text-fg-3 text-[11px]">{c.props.fallbackText}</div>
+        </Show>
+      }
+    >
+      <button
+        type="button"
+        class="inline-flex items-center gap-1.5 text-[11px] font-mono text-accent border border-accent/40 rounded px-2.5 py-1 hover:bg-accent/10 transition-colors bg-transparent cursor-pointer"
+        onClick={() => void downloadArtifact(c.props.hash!)}
+      >
+        <span class="i-tabler-download text-[13px]" aria-hidden="true" />
+        download artifact
+      </button>
     </Show>
   )
 }
