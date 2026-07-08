@@ -6,7 +6,7 @@
 // per-page machinery — the pages themselves are pure data.
 
 import { type JSX, ErrorBoundary, createMemo, createResource } from 'solid-js'
-import { useParams } from '@solidjs/router'
+import { useParams, useSearchParams } from '@solidjs/router'
 import { nestedToFlat } from '@json-render/core'
 import type { Spec } from '@json-render/solid'
 import { getCapabilitiesSignal, getConnectionKey } from '../api.ts'
@@ -43,8 +43,16 @@ export function jsonPage(view: JsonView): () => JSX.Element {
   const sources = Object.entries(view.data ?? {})
   return () => {
     const params = useParams()
+    const [searchParams] = useSearchParams()
+    // Route params + query params, both decoded, in ONE map — sources and
+    // views read them uniformly (`/params/task` carries a `?task=` deep
+    // link). Route params win on a name collision.
     const decoded = createMemo<Record<string, string>>(() => {
       const o: Record<string, string> = {}
+      // Search params arrive already decoded from the router.
+      for (const [k, v] of Object.entries(searchParams)) {
+        if (v !== undefined) o[k] = String(v)
+      }
       for (const [k, v] of Object.entries(params)) o[k] = decodeURIComponent(String(v))
       return o
     })
@@ -67,6 +75,7 @@ export function jsonPage(view: JsonView): () => JSX.Element {
       s.capsKnown = caps.known
       s.hasWorkspace = caps.hasWorkspace
       s.capsCacheMissing = caps.known && !caps.hasCacheDb
+      s.capsCatalog = caps.known && caps.catalog
       for (const { key, res } of resources) {
         // Read `res.error` BEFORE the value: calling an errored resource's
         // accessor re-throws, which (with no per-source boundary) would blank

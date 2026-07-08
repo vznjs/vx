@@ -553,6 +553,19 @@ export async function getInvocation(runId: string): Promise<InvocationDetail | n
   }
 }
 
+/** Per-task run rows, filterable by project / task / runId (`/v1/runs`). */
+export async function listRuns(
+  args: { limit?: number; project?: string; task?: string; runId?: string } = {},
+): Promise<RunSummaryRow[]> {
+  const params = new URLSearchParams()
+  if (args.limit !== undefined) params.set('limit', String(args.limit))
+  if (args.project !== undefined) params.set('project', args.project)
+  if (args.task !== undefined) params.set('task', args.task)
+  if (args.runId !== undefined) params.set('runId', args.runId)
+  const r = await getJson<{ runs: RunSummaryRow[] }>(`/v1/runs?${params.toString()}`)
+  return r.runs
+}
+
 export async function getRun(runId: string): Promise<RunDetail | null> {
   try {
     return await getJson<RunDetail>(`/v1/runs/${encodeURIComponent(runId)}`)
@@ -654,6 +667,26 @@ export async function listCacheEntries(
   return r.entries
 }
 
+/** The latest cache-key entry for a task (metrics.ts `CacheKeyExplanation`). */
+export interface CacheKeyExplanation {
+  taskId: string
+  project: string
+  task: string
+  latestEntry: {
+    hash: string
+    command: string
+    exitCode: number
+    durationMs: number
+    sizeBytes: number
+    createdAt: number
+  } | null
+  note: string
+}
+
+export async function explainCacheKey(taskId: string): Promise<CacheKeyExplanation> {
+  return await getJson<CacheKeyExplanation>(`/v1/explain/${encodeURIComponent(taskId)}`)
+}
+
 export async function getTaskDetail(taskId: string): Promise<TaskDetail | null> {
   try {
     return await getJson<TaskDetail>(`/v1/tasks/${encodeURIComponent(taskId)}`)
@@ -702,6 +735,11 @@ export interface FlakyTask {
   runs: number
   failures: number
   failureRate: number
+  /** Runs that needed more than one attempt — the CONFIRMED flaky signal. */
+  withinRunRetries: number
+  maxAttempts: number | undefined
+  /** True when `withinRunRetries > 0` — flakiness confirmed, not inferred. */
+  flakyConfirmed: boolean
   durationTailRatio: number | undefined
   p50DurationMs: number | undefined
   p99DurationMs: number | undefined
@@ -963,6 +1001,56 @@ export async function fetchCatalogProject(name: string): Promise<CatalogProjectD
 
 export async function fetchCatalogTasks(): Promise<CatalogTasksResponse> {
   return await getJson<CatalogTasksResponse>('/v1/workspace/tasks')
+}
+
+// ---------------------------------------------------------------------------
+// Artifacts — the /v8 store made visible (GET /v1/artifacts). NOT
+// workspace-gated: artifacts exist on remote serves too. Shapes mirror
+// packages/cloud/src/artifact-store.ts `ArtifactListEntry` + the serve's
+// best-effort provenance join.
+// ---------------------------------------------------------------------------
+
+export interface ArtifactRow {
+  hash: string
+  sizeBytes: number
+  /** When the artifact landed in the store (ms epoch). */
+  storedAt: number
+  /** Original task duration from the `.duration` sidecar, when present. */
+  durationMs?: number
+  tier: 'trusted' | 'untrusted'
+  /** Most-recent producing task/run from the ingest db; absent when unknown. */
+  task?: { project: string; task: string; runId?: string }
+}
+
+/** List readable artifacts, newest first. `null` = older serve (no route). */
+export async function fetchArtifacts(limit = 200): Promise<ArtifactRow[] | null> {
+  try {
+    const r = await getJson<{ artifacts: ArtifactRow[] }>(`/v1/artifacts?limit=${limit}`)
+    return r.artifacts
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('404')) return null
+    throw err
+  }
+}
+
+/**
+ * Bearer-fetch a /v8 artifact and hand it to the browser as a download —
+ * the ONE download path shared by TaskLogs, the artifacts table, and the
+ * entity-page download actions (an <a href> can't carry the bearer header).
+ */
+export async function downloadArtifact(hash: string): Promise<boolean> {
+  const headers: Record<string, string> = {}
+  const t = token()
+  if (t !== '') headers['Authorization'] = `Bearer ${t}`
+  const res = await fetch(`${origin()}/v8/artifacts/${encodeURIComponent(hash)}`, { headers })
+  if (!res.ok) return false
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${hash}.tar.zst`
+  a.click()
+  URL.revokeObjectURL(url)
+  return true
 }
 
 // ---------------------------------------------------------------------------

@@ -162,6 +162,91 @@ export const FUNCTIONS: Record<string, (args: Args) => unknown> = {
       { source: 'Remote', count: remote, _frac: total > 0 ? remote / total : 0 },
     ]
   },
+
+  // Catalog ∪ analytics joins (cloud-data-model-2026-07 §4.1): the entity
+  // pages list the CATALOG (every project/task, incl. never-run) joined with
+  // history rollups by name/id. No catalog (remote/older serve) → the rollups
+  // pass through untouched — today's behavior, the capabilities pattern.
+  joinProjects: (a) => joinProjects(arr(a.rollups), a.catalog),
+  joinTasks: (a) => joinTasks(arr(a.history), a.catalog),
+
+  // Annotate rows carrying {project, task} with `_taskRef` = "project#task"
+  // (raw — href templates URL-encode it), for /runs/{runId}?task={_taskRef}
+  // deep links from failure/history rows.
+  withTaskRef: (a) => arr(a.arr).map((r) => ({ ...r, _taskRef: `${String(r.project)}#${String(r.task)}` })),
+
+  // Entity hrefs that need URL-encoding (text() can't encode).
+  taskHref: (a) => `/tasks/${encodeURIComponent(`${String(a.project)}#${String(a.task)}`)}`,
+  projectHref: (a) => `/projects/${encodeURIComponent(String(a.project))}`,
+
+  // One-line flaky badge for task detail (fed by the taskFlaky source).
+  flakyText: (a) => {
+    const f = a.flaky as Row | null | undefined
+    if (!f || typeof f !== 'object') return ''
+    if (f.flakyConfirmed === true) {
+      const worst = f.maxAttempts !== undefined ? ` (worst: ${String(f.maxAttempts)} attempts)` : ''
+      return `Flaky — CONFIRMED by within-run retries in ${String(f.withinRunRetries)} run(s)${worst}. Consider exec.retries.`
+    }
+    return `Flaky — inferred from a ${formatPercent(n(f.failureRate), 0)} failure rate over ${String(f.runs)} runs.`
+  },
+}
+
+/** All catalog projects joined with their analytics rollups, keyed by name. */
+function joinProjects(rollups: Row[], catalog: unknown): Row[] {
+  const cat = catalog as { projects?: unknown; staleProjects?: unknown } | null | undefined
+  if (!cat || !Array.isArray(cat.projects)) return rollups
+  const byName = new Map(rollups.map((r) => [String(r.project), r]))
+  const stale = new Set(Array.isArray(cat.staleProjects) ? (cat.staleProjects as string[]) : [])
+  const zero = {
+    runs: 0,
+    failures: 0,
+    hits: 0,
+    hitRate: 0,
+    totalDurationMs: 0,
+    avgDurationMs: 0,
+    cacheBytes: 0,
+    cacheEntries: 0,
+    estimatedTimeSavedMs: 0,
+  }
+  const rows: Row[] = (cat.projects as Row[]).map((cp) => ({
+    ...zero,
+    ...(byName.get(String(cp.name)) ?? {}),
+    // Catalog fields win where both exist: it knows the TRUE task count
+    // (rollups only count tasks that ever ran) and the project dir.
+    project: cp.name,
+    taskCount: cp.taskCount,
+    dir: cp.dir,
+    _stale: stale.has(String(cp.name)),
+  }))
+  // History for projects the catalog no longer knows (renamed/removed).
+  const known = new Set((cat.projects as Row[]).map((cp) => String(cp.name)))
+  for (const r of rollups) if (!known.has(String(r.project))) rows.push(r)
+  return rows
+}
+
+/** All catalog tasks joined with their history aggregates, keyed by id. */
+function joinTasks(history: Row[], catalog: unknown): Row[] {
+  const cat = catalog as { tasks?: unknown } | null | undefined
+  if (!cat || !Array.isArray(cat.tasks)) return history
+  const byId = new Map(history.map((h) => [String(h.id), h]))
+  const rows: Row[] = (cat.tasks as Row[]).map((ct) => {
+    const kind = ct.group === true ? 'group' : ct.persistent === true ? 'persistent' : ct.cacheable === true ? 'cacheable' : ''
+    return {
+      // Zero-run defaults: a never-run task renders 0 runs and '—' stats
+      // (renderField treats undefined as '—'); no failures yet = stable.
+      runs: 0,
+      totalDurationMs: 0,
+      failureMode: 'stable',
+      ...(byId.get(String(ct.id)) ?? {}),
+      id: ct.id,
+      project: ct.project,
+      task: ct.task,
+      _kind: kind,
+    }
+  })
+  const known = new Set((cat.tasks as Row[]).map((ct) => String(ct.id)))
+  for (const h of history) if (!known.has(String(h.id))) rows.push(h)
+  return rows
 }
 
 // added/changed/removed → a failureMode token (green / amber / red via colorOf).
