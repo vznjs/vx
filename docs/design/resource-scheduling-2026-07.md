@@ -1,6 +1,8 @@
 # Resource-aware scheduling — design
 
-> **Status:** accepted (revised; owner picked the grouped object)
+> **Status:** SHIPPED (2026-07-08, all three phases — feature, footer
+> budget line, `RunRequest.memory` wire). The spec below is the
+> implemented contract.
 >
 > Owner-requested. The model (`exec.resources: { cpus, memory }`, default 0,
 > percent-or-number, admission-not-enforcement) is **LOCKED**. This doc makes

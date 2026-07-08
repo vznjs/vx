@@ -1,6 +1,6 @@
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { UserError, xxh3hex } from '../util/index.js'
+import { parseSize, UserError, xxh3hex } from '../util/index.js'
 
 const WORKSPACE_CONFIG_FILENAMES = [
   'vx.workspace.ts',
@@ -186,6 +186,10 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         if (typeof retries !== 'number' || !Number.isInteger(retries) || retries < 0) {
           throw new UserError(`${where}.exec.retries must be a non-negative integer`)
         }
+      }
+      const resources = (exec as { resources?: unknown }).resources
+      if (resources !== undefined) {
+        validateResources(resources, `${where}.exec.resources`)
       }
       const persistent = (exec as { persistent?: unknown }).persistent
       if (persistent !== undefined) {
@@ -450,6 +454,44 @@ function validateSandbox(sandbox: unknown, where: string, hasExec: boolean): voi
     }
     for (const [k, v] of Object.entries(ignoreViolations)) {
       assertStringArray(v, `${where}.sandbox.ignoreViolations[${JSON.stringify(k)}]`)
+    }
+  }
+}
+
+const RESOURCES_FIELDS = new Set(['cpus', 'memory'])
+const PERCENT_RE = /^\d+(\.\d+)?%$/
+
+function validateResources(resources: unknown, where: string): void {
+  if (typeof resources !== 'object' || resources === null || Array.isArray(resources)) {
+    throw new UserError(`${where} must be an object (e.g. \`{ cpus: 2, memory: '2GB' }\`)`)
+  }
+  for (const key of Object.keys(resources as object)) {
+    if (!RESOURCES_FIELDS.has(key)) {
+      throw new UserError(
+        `${where} has unknown field "${key}". Allowed: ${[...RESOURCES_FIELDS].sort().join(', ')}`,
+      )
+    }
+  }
+  const { cpus, memory } = resources as { cpus?: unknown; memory?: unknown }
+  if (cpus !== undefined) {
+    const ok =
+      typeof cpus === 'number'
+        ? Number.isFinite(cpus) && cpus >= 0
+        : typeof cpus === 'string' && PERCENT_RE.test(cpus)
+    if (!ok) {
+      throw new UserError(`${where}.cpus must be a non-negative number or a "<n>%" string`)
+    }
+  }
+  if (memory !== undefined) {
+    const ok =
+      typeof memory === 'number'
+        ? Number.isInteger(memory) && memory >= 0
+        : typeof memory === 'string' && (PERCENT_RE.test(memory) || parseSize(memory) !== null)
+    if (!ok) {
+      throw new UserError(
+        `${where}.memory must be a non-negative integer (bytes), ` +
+          `a size string like "512MB", or a "<n>%" string`,
+      )
     }
   }
 }

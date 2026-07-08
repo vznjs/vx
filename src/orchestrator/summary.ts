@@ -125,6 +125,14 @@ export interface RunContext {
   remoteCacheEnabled: boolean
   /** Total projects discovery found — the bar's denominator. */
   workspaceProjectCount?: number
+  /**
+   * Resource-admission budgets (`exec.resources`), set ONLY when at
+   * least one task declared a reservation — a plain run's footer is
+   * byte-identical. Shown on the `info` row so a packed run says what
+   * it packed against. memBudget in bytes.
+   */
+  cpuBudget?: number
+  memBudget?: number
 }
 
 export function formatSummarySection(
@@ -240,11 +248,27 @@ export function formatSummarySection(
     if (context.concurrency !== undefined)
       info.push(`${context.concurrency} worker${context.concurrency === 1 ? '' : 's'}`)
     info.push(context.remoteCacheEnabled ? 'local + remote cache' : 'local cache')
+    if (context.cpuBudget !== undefined) info.push(`cpu budget ${context.cpuBudget}`)
+    if (context.memBudget !== undefined && Number.isFinite(context.memBudget))
+      info.push(`mem budget ${formatBudgetBytes(context.memBudget)}`)
     lines.push('', row('info', join(info)), row('time', `${formatDuration(totalMs)}${spread}`))
   } else {
     lines.push('', row('time', `${formatDuration(totalMs)}${spread}`))
   }
   return lines
+}
+
+// Local byte formatter — the orchestrator can't import cli/format.ts
+// (module boundary), and the footer only needs one compact form.
+function formatBudgetBytes(bytes: number): string {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let v = bytes
+  let u = 0
+  while (v >= 1024 && u < units.length - 1) {
+    v /= 1024
+    u++
+  }
+  return `${u === 0 ? v : v.toFixed(1)} ${units[u]}`
 }
 
 export function formatRunSummary(

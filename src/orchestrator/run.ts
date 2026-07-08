@@ -2,6 +2,7 @@
 // run with caching. Each step delegates to a single-purpose sibling file
 // so the layers can be swapped without touching the others.
 
+import os from 'node:os'
 import {
   type CacheLayer,
   type CachePolicy,
@@ -21,6 +22,7 @@ import {
 } from '../graph/index.js'
 import { ulid, UserError } from '../util/index.js'
 import { executeTask } from './execute-task.js'
+import { resolveResourceCosts } from './resources.js'
 import { computeTaskHash } from './task-hash.js'
 import { busLogger, createEventBus, terminalSubscriber } from './events.js'
 import { installPlugins } from './plugin.js'
@@ -359,6 +361,17 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         if (node.requested || node.surfaced === true) requestedCount++
       }
     }
+    // Resource-aware admission: resolve every task's `exec.resources`
+    // into absolute costs ONCE, up front (percent forms against the
+    // budgets), so the scheduler's inner loop is a plain Map.get. The
+    // CPU budget is the run's concurrency; the memory budget is
+    // os.totalmem() unless `--memory` overrides it (pass `--memory` in
+    // cgroup-limited containers — totalmem() reports the HOST's RAM).
+    // Nothing declared → empty map → fields omitted from the scheduler
+    // AND the footer → byte-identical legacy path.
+    const memBudget = options.memory ?? os.totalmem()
+    const resourceCosts = resolveResourceCosts(nodes, concurrency, memBudget)
+
     // Run context for the footer. The top-of-run header is gone — the
     // banner now lives in the summary, where the eye lands at the end.
     const runContext = {
@@ -367,6 +380,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       remoteCacheEnabled,
       concurrency,
       workspaceProjectCount,
+      ...(resourceCosts.size > 0 ? { cpuBudget: concurrency, memBudget } : {}),
     }
 
     // Lifecycle hooks drive the default logger's dynamic status line
@@ -515,6 +529,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     const outcomes = await runGraph({
       nodes,
       concurrency,
+      ...(resourceCosts.size > 0 ? { resourceCosts, cpuBudget: concurrency, memBudget } : {}),
       ...(options.continueMode !== undefined ? { continueMode: options.continueMode } : {}),
       onStart: (node) => {
         log.taskStart?.(node)

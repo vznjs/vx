@@ -4,10 +4,12 @@
 export { DependencySpecError, parseDependencySpec, type DependencySpec } from './dependency-spec.js'
 export {
   type ContinueMode,
+  type ResourceCost,
   runGraph,
   type TaskOutcome,
   type TaskStatus,
   type VerifyVerdict,
+  ZERO_COST,
 } from './scheduler.js'
 export {
   buildTaskGraph,

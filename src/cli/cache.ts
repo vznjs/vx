@@ -1,6 +1,11 @@
 import { Cache } from '../cache/index.js'
+import { parseSize } from '../util/index.js'
 import { findWorkspaceRoot, loadWorkspaceConfig, resolveCacheDir } from '../workspace/index.js'
 import { formatBytes } from './format.js'
+
+// parseSize moved to `util` (the orchestrator's resource resolver needs it
+// and can't import cli); re-exported here so existing callers are unchanged.
+export { parseSize } from '../util/index.js'
 
 export async function cacheCmd(args: readonly string[]): Promise<number> {
   const [sub, ...rest] = args
@@ -87,15 +92,5 @@ export function parseDuration(input: string): number | null {
   const n = Number(m[1])
   const unit = m[2]
   const mult = unit === 's' ? 1000 : unit === 'm' ? 60_000 : unit === 'h' ? 3_600_000 : 86_400_000
-  return n * mult
-}
-
-export function parseSize(input: string): number | null {
-  const m = input.match(/^(\d+)([KMGT])?B?$/i)
-  if (!m) return null
-  const n = Number(m[1])
-  const u = (m[2] ?? '').toUpperCase()
-  const mult =
-    u === '' ? 1 : u === 'K' ? 1024 : u === 'M' ? 1024 * 1024 : u === 'G' ? 1024 ** 3 : 1024 ** 4
   return n * mult
 }

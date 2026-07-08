@@ -28,6 +28,9 @@ export interface RunRequest {
   retries?: number
   /** Run-level task-timeout default (ms); per-task `exec.timeout` wins. */
   timeout?: number
+  /** Explicit `--memory` budget (bytes) for `exec.resources` packing; the
+   *  default (executing side's os.totalmem()) resolves where tasks run. */
+  memory?: number
   /** Cache-correctness verification (`--verify`); `allow` as an array (Sets
    *  don't serialize). */
   verify?: { determinism: boolean; inputs: boolean; allow: readonly string[] }
@@ -89,6 +92,7 @@ export function optionsToRequest(options: RunOptions): RunRequest {
   if (options.frozen !== undefined) req.frozen = options.frozen
   if (options.retries !== undefined) req.retries = options.retries
   if (options.timeout !== undefined) req.timeout = options.timeout
+  if (options.memory !== undefined) req.memory = options.memory
   if (options.verify !== undefined)
     req.verify = {
       determinism: options.verify.determinism,
@@ -122,6 +126,7 @@ export function requestToOptions(request: RunRequest): RunOptions {
   if (request.frozen !== undefined) options.frozen = request.frozen
   if (request.retries !== undefined) options.retries = request.retries
   if (request.timeout !== undefined) options.timeout = request.timeout
+  if (request.memory !== undefined) options.memory = request.memory
   if (request.verify !== undefined)
     options.verify = {
       determinism: request.verify.determinism,

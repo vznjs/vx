@@ -240,6 +240,16 @@ export interface ExecConfig {
    */
   retries?: number
   /**
+   * Resource RESERVATIONS for admission control — NOT enforcement: vx
+   * does not cgroup-limit, nice, or kill the task; it only decides what
+   * to co-schedule so concurrent reservations never exceed the CPU /
+   * memory budget. Each axis defaults to 0 = reserve nothing: the task
+   * runs subject only to the concurrency-count limit. A pure scheduling
+   * hint — the whole object is stripped from the cache key, so tuning a
+   * reservation never invalidates a cached result.
+   */
+  resources?: ResourcesConfig
+  /**
    * Long-running / continuous task (dev server, watcher, daemon).
    * When present, the task is spawned but the runner does NOT wait
    * for it to exit. Instead it considers the task "ready" — either
@@ -253,6 +263,27 @@ export interface ExecConfig {
    * of "done".
    */
   persistent?: PersistentConfig
+}
+
+/**
+ * Per-task resource reservation (see `ExecConfig.resources`). Grouped so
+ * a future axis slots in without new top-level `exec` fields; the loader
+ * rejects unknown keys.
+ */
+export interface ResourcesConfig {
+  /**
+   * CPU units (fractional ok, e.g. `0.5`), or a `"<n>%"` string of the
+   * CPU budget (the run's `concurrency`). `cpus: "50%"` on a budget of 8
+   * reserves 4 units.
+   */
+  cpus?: number | string
+  /**
+   * Bytes, a size string (`"2GB"`, `"512MB"` — K/M/G/T, powers of 1024),
+   * or a `"<n>%"` string of the memory budget (`os.totalmem()` unless
+   * overridden with `--memory` — pass `--memory` in cgroup-limited
+   * containers, where `os.totalmem()` reports the HOST's RAM).
+   */
+  memory?: number | string
 }
 
 export interface PersistentConfig {

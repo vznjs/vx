@@ -75,6 +75,7 @@ src/
     execute-task.ts     # per-task execution (probe/preProbed → spawn → save)
     task-hash.ts        # cache-key derivation (computeTaskHash & co.)
     upstream.ts         # filter upstream hashes for cache key
+    resources.ts        # exec.resources → absolute per-task admission costs
     stable-keys.ts      # shared stable-key derivation (prefetch + shortcircuit)
     local-shortcircuit.ts # restore-ahead classify (two-tier scheduler feed)
     remote-prefetch.ts  # background remote GETs (LayeredCache runs only)
@@ -102,7 +103,8 @@ src/
     lockfile.ts         # vx-lock.json freeze/trust/audit
   graph/                # task graph + scheduling
     index.ts task-graph.ts dependency-spec.ts
-    scheduler.ts        # two-tier parallel topo executor (exec + restore queues)
+    scheduler.ts        # two-tier parallel topo executor (exec + restore queues,
+                        # 2-D resource admission over exec.resources)
   cache/                # local + remote cache cluster
     index.ts cache.ts layered-cache.ts remote-cache.ts inputs.ts tar.ts
     cas-backend.ts / digest.ts # pluggable CAS seam (internal, artifact-store roadmap)
@@ -186,6 +188,67 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
    another project's dir.
 
 ## Decision log
+
+- **2026-07-08**: **Resource-aware scheduling SHIPPED — `exec.resources:
+{ cpus, memory }` 2-D admission on the two-tier scheduler** (owner: "tasks
+  could reserve how many cpu units… Maybe in exec?" → "CPUs should be number
+  or percentage same with memory" → "This should work as reserved. If 0 means
+  run. By default" → "Resources object is good"; spec
+  `docs/design/resource-scheduling-2026-07.md`, all three phases in one
+  commit). A task declares CPU units (fractional, or `"<n>%"` of the CPU
+  budget = the run's `concurrency`) and/or memory (bytes, `"512MB"`/`"2GB"`
+  size strings, or `"<n>%"` of the memory budget = `os.totalmem()` unless
+  `--memory <size>` overrides — the documented container caveat: cgroup
+  limits don't show in totalmem()); the scheduler packs ready tasks so
+  concurrent reservations never exceed either budget, layered ON the count
+  limit. **Admission, not enforcement** — nothing is cgrouped/niced/killed.
+  **Encoded rules:** zero-never-blocks (0/omitted = exempt from that axis —
+  every current config schedules byte-identically, gated on ONE check: an
+  empty cost map omits the scheduler fields entirely); backfill via
+  park-within-tick (within one synchronous tick `reserved` only increases, so
+  a non-fitting head parks for the tick's remainder and repushes with its
+  ORIGINAL heap seq — FIFO-among-equals survives exactly, O(R log R));
+  solo-clamp (an over-budget reservation admits alone when its axis is idle —
+  no deadlock, an idle pool always admits); skip-safety (ONE shared `willSkip`
+  predicate in both the parker and the dispatch loop — a doomed task skips
+  free, never parks; the spec's named hang risk); restore-tier tasks cost
+  ZERO by construction (a restore is a tar extract, and it must never park —
+  no parkedRestore list exists). **Key strip:** the whole `resources` object
+  is dropped from `hashTaskConfig` before stringify (`hashableConfig`, the
+  grouped object makes it a one-key drop) — tuning a reservation NEVER busts
+  a cache; a no-declaration config takes the fast path and stringifies
+  byte-identically, so **no CACHE_VERSION bump** (a declaring config is by
+  definition new). `timeout`/`retries` stay folded (distinct-by-design;
+  retro-stripping = CACHE_VERSION bump, deliberately out of scope).
+  **Boundary move:** `parseSize` relocated `cli/cache.ts` → `util/size.ts`
+  (orchestrator can't import cli; cache.ts re-exports so callers unchanged).
+  `ResourceCost`/`ZERO_COST` declared structurally in `graph/scheduler.ts`
+  (graph can't import orchestrator — the VerifyVerdict pattern); the pure
+  resolver (`orchestrator/resources.ts`: resolveCpu/resolveMem/
+  resolveResourceCosts, empty-map-when-nothing-declares) runs ONCE in run.ts
+  so the scheduler's inner loop is a plain Map.get. Loader validates form
+  (unknown-key reject like sandbox; `"1.5GB"` rejected — parseSize is
+  integer-only; percent regex; `persistent`+reservation allowed and honored
+  for the task's lifetime). **Display (Phase 2):** `cpu budget N · mem budget
+  X GB` on the footer `info` row, ONLY when a task opted in (RunContext
+  gains optional cpuBudget/memBudget; Infinity mem = axis off = not shown).
+  **Wire (Phase 3):** `RunRequest.memory` + both mappers — per-task
+  reservations need no wire field (a delegated run re-resolves configs
+  server-side, on the correct machine's RAM; explicit `--memory` wins
+  end-to-end). ReadyHeap gained `push(id, seq?)` + `peekSeq()` (repush keeps
+  the original seq). Tests +41 (core 1162→1198 + 5 in-suite): scheduler
+  admission suite (concurrent-within-budget, serialize-over-budget, memory
+  axis, combined-axes, backfill-around-parked-head, solo-clamp,
+  zero-runs-beside-clamped-giant, skip-safety-while-budget-held,
+  restore-reserves-0, FIFO-after-repush, empty-map-legacy-pin), resolver
+  units, loader accept/reject matrix, --memory parse + wire round-trip,
+  footer budget-line pins, e2e key-stability (add→tune→still cache-hit) +
+  e2e serialization through a real run. Verified with the real CLI: two
+  `cpus:'100%'` 300ms tasks ran serialized (617ms total) with the budget
+  line rendered; the repo's own runs (nothing declared) show no budget text.
+  Turbo/Nx have nothing comparable (flat count concurrency); Bazel local
+  resources is the precedent. Docs: schema.md `resources` section, cli.md
+  `--memory` row, help text. Core 1198 pass, cloud 250 pass, lint clean.
 
 - **2026-07-08**: **`vx-cloud connect` is the ONLY client↔serve wiring — the
   local-serve auto-detect machinery DELETED** (owner-approved). REVERSES two

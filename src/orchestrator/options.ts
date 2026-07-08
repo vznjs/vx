@@ -92,6 +92,14 @@ export interface RunOptions {
    */
   timeout?: number
   /**
+   * Memory budget (bytes) that per-task `exec.resources.memory`
+   * reservations pack against (`--memory <size>`). Defaults to
+   * `os.totalmem()` — override it in cgroup-limited containers, where
+   * totalmem() reports the HOST's RAM, not the limit. A per-run
+   * scheduling knob only — never folded into any cache key.
+   */
+  memory?: number
+  /**
    * Failure propagation: 'never' stops dispatch on the first failure
    * (in-flight tasks finish; everything queued skips), 'deps-ok'
    * (default) skips only a failure's dependents, 'always' runs

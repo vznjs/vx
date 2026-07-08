@@ -26,6 +26,7 @@ import {
 } from '../orchestrator/index.js'
 import type { ContinueMode } from '../graph/index.js'
 import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
+import { parseSize } from '../util/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 import { localBackend } from './backend.js'
 
@@ -68,6 +69,12 @@ export interface RunArgs {
    */
   timeout: number | undefined
   /**
+   * `--memory <size>` / `--memory=<size>`: memory budget (resolved to
+   * bytes) for `exec.resources.memory` reservations. Defaults to
+   * os.totalmem() when not passed — pass it in cgroup-limited containers.
+   */
+  memory: number | undefined
+  /**
    * `--verify[=determinism|inputs|all]`: cache-correctness verification.
    * Undefined when not passed. `determinism` re-runs and content-compares
    * outputs; `inputs` sandboxes with the declared-input baseline and flags
@@ -108,6 +115,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     frozen: false,
     retries: undefined,
     timeout: undefined,
+    memory: undefined,
     verify: undefined,
     verifyAllow: [],
     forwardArgs: [],
@@ -174,6 +182,14 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
         return { ...out, error: `--timeout must be a positive integer (ms), got: ${v}` }
       }
       out.timeout = n
+    } else if (a === '--memory' || a?.startsWith('--memory=')) {
+      const v = a === '--memory' ? before[++i] : a.slice('--memory='.length)
+      if (v === undefined || v === '') return { ...out, error: `--memory requires a value` }
+      const bytes = parseSize(v)
+      if (bytes === null || bytes <= 0) {
+        return { ...out, error: `--memory must be a size like 8GB or 512MB, got: ${v}` }
+      }
+      out.memory = bytes
     } else if (a === '--verify' || a?.startsWith('--verify=')) {
       const what = a === '--verify' ? 'determinism' : a.slice('--verify='.length)
       if (what === 'determinism') {
@@ -405,6 +421,7 @@ export async function resolveRunOptions(
   if (projects !== undefined) opts.projects = projects
   if (parsed.retries !== undefined) opts.retries = parsed.retries
   if (parsed.timeout !== undefined) opts.timeout = parsed.timeout
+  if (parsed.memory !== undefined) opts.memory = parsed.memory
   if (parsed.cacheDir !== undefined) opts.cacheDir = parsed.cacheDir
   if (parsed.verify !== undefined) {
     opts.verify = {

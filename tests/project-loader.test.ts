@@ -262,6 +262,66 @@ describe('loadProjectConfig', () => {
       )
     })
   })
+
+  describe('exec.resources validation', () => {
+    const withResources = (literal: string) =>
+      `export default { tasks: { build: { exec: { command: 'tsc', resources: ${literal} } } } }`
+
+    it('accepts numbers, percents, fractional cpus, and size strings', async () => {
+      for (const literal of [
+        `{ cpus: 2 }`,
+        `{ cpus: '50%' }`,
+        `{ cpus: 0.5 }`,
+        `{ memory: 1024 }`,
+        `{ memory: '512MB' }`,
+        `{ memory: '25%' }`,
+        `{ cpus: '12.5%', memory: '2GB' }`,
+        `{}`,
+      ]) {
+        const file = path.join(dir, 'vx.config.mjs')
+        await writeFile(file, withResources(literal))
+        const cfg = await loadProjectConfig(file)
+        expect(cfg.tasks?.build?.exec?.resources).toBeDefined()
+      }
+    })
+
+    it('rejects invalid cpus forms', async () => {
+      for (const literal of [`{ cpus: -1 }`, `{ cpus: NaN }`, `{ cpus: '%' }`, `{ cpus: '2GB' }`]) {
+        const file = path.join(dir, 'vx.config.mjs')
+        await writeFile(file, withResources(literal))
+        await expect(loadProjectConfig(file)).rejects.toThrow(
+          /resources\.cpus must be a non-negative number or a "<n>%" string/,
+        )
+      }
+    })
+
+    it('rejects invalid memory forms (incl. fractional sizes)', async () => {
+      for (const literal of [
+        `{ memory: -1 }`,
+        `{ memory: '5X' }`,
+        `{ memory: '1.5GB' }`,
+        `{ memory: '%' }`,
+      ]) {
+        const file = path.join(dir, 'vx.config.mjs')
+        await writeFile(file, withResources(literal))
+        await expect(loadProjectConfig(file)).rejects.toThrow(
+          /resources\.memory must be a non-negative integer/,
+        )
+      }
+    })
+
+    it('rejects unknown fields (future axes must be added deliberately)', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(file, withResources(`{ gpu: 1 }`))
+      await expect(loadProjectConfig(file)).rejects.toThrow(/unknown field "gpu"/)
+    })
+
+    it('rejects a non-object resources', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(file, withResources(`4`))
+      await expect(loadProjectConfig(file)).rejects.toThrow(/resources must be an object/)
+    })
+  })
 })
 
 describe('loadWorkspaceConfig', () => {

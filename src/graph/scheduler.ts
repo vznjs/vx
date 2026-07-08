@@ -98,6 +98,20 @@ export interface TaskOutcome {
 
 export type ContinueMode = 'never' | 'deps-ok' | 'always'
 
+/**
+ * Resolved per-task resource reservation, in absolute units (cpu may be
+ * fractional; mem is bytes). Declared here (structurally) because `graph`
+ * can't import `orchestrator`, where the resolver lives — same pattern as
+ * `VerifyVerdict`. A `0` axis means "reserve nothing, run freely": the
+ * task is exempt from that axis entirely (needs no headroom, holds none).
+ */
+export interface ResourceCost {
+  cpu: number
+  mem: number
+}
+
+export const ZERO_COST: ResourceCost = { cpu: 0, mem: 0 }
+
 export interface ScheduleOptions {
   nodes: Map<string, TaskNode>
   concurrency: number
@@ -147,6 +161,18 @@ export interface ScheduleOptions {
    * second cache.get. When undefined/empty, behavior is byte-identical.
    */
   restoreTier?: ReadonlySet<string>
+  /**
+   * Resolved per-task resource reservations (`exec.resources`, resolved
+   * by the orchestrator against the run's budgets). An absent id means
+   * zero cost; undefined/empty means no task opted in — the scheduler
+   * takes the legacy path byte-identically. Admission control only —
+   * nothing is enforced on the child process.
+   */
+  resourceCosts?: ReadonlyMap<string, ResourceCost>
+  /** CPU budget reservations pack against. Defaults to `concurrency`. */
+  cpuBudget?: number
+  /** Memory budget (bytes). Defaults to Infinity (axis off). */
+  memBudget?: number
 }
 
 /**
@@ -269,9 +295,14 @@ class ReadyHeap {
     this.seq[i] = this.seq[j]!
     this.seq[j] = si
   }
-  push(id: string): void {
+  /**
+   * `seq` defaults to a fresh monotonic counter. A parked-then-repushed
+   * task passes its ORIGINAL seq back in so FIFO-among-equals survives
+   * the round trip (a fresh seq would demote it behind later arrivals).
+   */
+  push(id: string, seq: number = this.next++): void {
     this.ids.push(id)
-    this.seq.push(this.next++)
+    this.seq.push(seq)
     let i = this.ids.length - 1
     while (i > 0) {
       const parent = (i - 1) >> 1
@@ -279,6 +310,10 @@ class ReadyHeap {
       this.swap(i, parent)
       i = parent
     }
+  }
+  /** The head's enqueue seq (capture before `pop` for a possible repush). */
+  peekSeq(): number {
+    return this.seq[0] ?? -1
   }
   pop(): string | undefined {
     const n = this.ids.length
@@ -362,6 +397,35 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   let active = 0
   let resolved = false
 
+  // Resource admission (2-D bin packing over the count limit). Inactive
+  // (no task opted in) → the tick loop short-circuits before any of this
+  // and behaves byte-identically to the count-only scheduler.
+  const costs = options.resourceCosts
+  const resourcesActive = costs !== undefined && costs.size > 0
+  const cpuBudget = options.cpuBudget ?? concurrency
+  const memBudget = options.memBudget ?? Infinity
+  let reservedCpu = 0
+  let reservedMem = 0
+
+  // A restore-tier task is a confirmed local cache hit: its "execution"
+  // is a cheap tar extract, not the task's real work — it reserves ZERO
+  // regardless of what the config declares, so it never holds budget
+  // against a real executor (and never parks).
+  const costOf = (id: string): ResourceCost =>
+    options.restoreTier?.has(id) ? ZERO_COST : (costs?.get(id) ?? ZERO_COST)
+
+  // Zero never blocks; a within-budget cost needs headroom; an
+  // over-budget cost can never have headroom, so it solo-clamps: admitted
+  // only when nothing else holds the axis (an idle pool always admits at
+  // least one ready task — no deadlock).
+  const fitsAxis = (cost: number, reserved: number, budget: number): boolean =>
+    cost === 0 ? true : cost <= budget ? reserved + cost <= budget : reserved === 0
+
+  const fits = (id: string): boolean => {
+    const c = costOf(id)
+    return fitsAxis(c.cpu, reservedCpu, cpuBudget) && fitsAxis(c.mem, reservedMem, memBudget)
+  }
+
   return new Promise<Map<string, TaskOutcome>>((resolve) => {
     const finishOne = (id: string, outcome: TaskOutcome): void => {
       if (continueMode === 'never' && outcome.status === 'failed') failFastTripped = true
@@ -378,53 +442,87 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       }
     }
 
-    // Drain a worker slot: prefer an exec-tier task (misses own the
-    // pool); only when none is ready does a restore-tier task backfill.
-    const takeReady = (): string | undefined =>
-      execReady.size > 0 ? execReady.pop() : restoreReady.pop()
+    // True when the task would be finished as `skipped` without running
+    // (fail-fast tripped, or a failed/skipped upstream under
+    // continueMode !== 'always'). ONE predicate shared by the admission
+    // parker and the dispatch loop's skip branch — a would-skip task
+    // executes nothing, so it must never park on a resource fit (a
+    // too-big doomed task parking forever would hang the run).
+    //
+    // Restore-tier tasks BYPASS the dep check: their key is independent
+    // of any dep's success (pure-input transitive hashing), so a valid
+    // cached output is reported `cache-hit` even if a dep failed — and
+    // they're dep-independent, so they typically restore before a dep
+    // could fail anyway.
+    const willSkip = (id: string): boolean => {
+      if (failFastTripped) return true
+      if (restoreTier?.has(id)) return false
+      if (continueMode === 'always') return false
+      const node = nodes.get(id) as TaskNode
+      return node.deps.some((d) => {
+        const u = outcomes.get(d)
+        return u?.status === 'failed' || u?.status === 'skipped'
+      })
+    }
 
     const tick = (): void => {
       if (resolved) return
+      // Exec-tier tasks parked THIS tick on a failed resource fit.
+      // Within one synchronous tick `reserved` only increases (release
+      // happens in the async completion callbacks, which run a fresh
+      // tick), so a task that doesn't fit now cannot fit later in the
+      // same tick — parking it for the tick's remainder is exact, and
+      // each id pops at most once per tick (O(R log R)).
+      const parked: Array<[string, number]> = []
 
-      while (active < concurrency && (execReady.size > 0 || restoreReady.size > 0)) {
-        const id = takeReady() as string
+      // Highest-priority admissible task: exec tier first (misses own
+      // the pool), then restore tier. With no reservations declared this
+      // short-circuits to exactly the legacy takeReady. A would-skip
+      // task returns without a fit check (finishing it is free); restore
+      // tasks cost zero by construction, so they never park.
+      const takeFitting = (): string | undefined => {
+        while (execReady.size > 0) {
+          const seq = execReady.peekSeq()
+          const id = execReady.pop() as string
+          if (!resourcesActive || willSkip(id) || fits(id)) return id
+          parked.push([id, seq])
+        }
+        return restoreReady.pop()
+      }
+
+      while (active < concurrency) {
+        const id = takeFitting()
+        if (id === undefined) break // nothing ready is admissible right now
         const node = nodes.get(id) as TaskNode
-        const isRestore = restoreTier?.has(id) === true
 
-        // If any upstream failed/skipped, propagate skip synchronously
-        // without running. Skipped tasks still flow through this queue
-        // because dependents are pushed when `pending` hits 0 regardless
-        // of outcome — keeps the propagation logic in one place.
-        //
-        // Restore-tier tasks BYPASS this check: their key is independent
-        // of any dep's success (pure-input transitive hashing), so a
-        // valid cached output is reported `cache-hit` even if a dep
-        // failed — and they're dep-independent, so they typically
-        // restore before a dep could fail anyway.
-        //
         // For a restore-tier task running BEFORE its deps finish, the
         // `upstream` entries below can be undefined (the cast lies) —
         // the preProbed hit path in execute-task never reads them, and
         // nothing on the restore path may.
         const upstream = node.deps.map((d) => outcomes.get(d) as TaskOutcome)
-        if (failFastTripped) {
+
+        // If any upstream failed/skipped, propagate skip synchronously
+        // without running. Skipped tasks still flow through this queue
+        // because dependents are pushed when `pending` hits 0 regardless
+        // of outcome — keeps the propagation logic in one place.
+        if (willSkip(id)) {
           finishOne(id, { node, status: 'skipped', exitCode: 1, durationMs: 0 })
           continue
         }
-        if (!isRestore && continueMode !== 'always') {
-          const failedDep = upstream.find((u) => u.status === 'failed' || u.status === 'skipped')
-          if (failedDep) {
-            finishOne(id, { node, status: 'skipped', exitCode: 1, durationMs: 0 })
-            continue
-          }
-        }
 
         active++
+        // Reserve on dispatch; capture the cost so the release in the
+        // completion callbacks is symmetric even if the maps change.
+        const cost = costOf(id)
+        reservedCpu += cost.cpu
+        reservedMem += cost.mem
         onStart?.(node)
 
         execute(node, upstream)
           .then((outcome) => {
             active--
+            reservedCpu -= cost.cpu
+            reservedMem -= cost.mem
             finishOne(id, outcome)
             tick()
           })
@@ -437,6 +535,8 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               durationMs: 0,
             }
             active--
+            reservedCpu -= cost.cpu
+            reservedMem -= cost.mem
             finishOne(id, outcome)
             // Surface the error live; the outcome itself doesn't
             // carry captured stderr (that's the logger's job). A
@@ -452,6 +552,10 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             tick()
           })
       }
+
+      // Repush parked ids with their ORIGINAL seqs — FIFO-among-equals
+      // is exactly preserved for the next tick's admission pass.
+      for (const [id, seq] of parked) execReady.push(id, seq)
 
       if (outcomes.size === nodes.size && active === 0) {
         resolved = true

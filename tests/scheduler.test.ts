@@ -471,3 +471,283 @@ describe('runGraph — continueMode', () => {
     expect(seenUpstream[0]![0]!.hash).toBe('h-p#a')
   })
 })
+
+describe('runGraph — resource admission (exec.resources)', () => {
+  // Manual completion gates: execute() records the start and blocks on
+  // the task's gate, so tests control exactly when budget releases.
+  function gates(ids: string[]) {
+    const release = new Map<string, () => void>()
+    const held = new Map<string, Promise<void>>()
+    for (const id of ids) {
+      held.set(
+        id,
+        new Promise<void>((r) => {
+          release.set(id, r)
+        }),
+      )
+    }
+    return { held, release }
+  }
+  const cost = (entries: Record<string, { cpu?: number; mem?: number }>) =>
+    new Map(Object.entries(entries).map(([id, c]) => [id, { cpu: c.cpu ?? 0, mem: c.mem ?? 0 }]))
+
+  it('two cpus:4 on a budget of 8 run concurrently', async () => {
+    let active = 0
+    let peak = 0
+    const out = await runGraph({
+      nodes: nodes(node('a#run'), node('b#run')),
+      concurrency: 8,
+      resourceCosts: cost({ 'a#run': { cpu: 4 }, 'b#run': { cpu: 4 } }),
+      execute: async (n) => {
+        active++
+        peak = Math.max(peak, active)
+        await new Promise((r) => setTimeout(r, 20))
+        active--
+        return success(n)
+      },
+    })
+    expect(out.size).toBe(2)
+    expect(peak).toBe(2)
+  })
+
+  it('two cpus:5 on a budget of 8 serialize', async () => {
+    let active = 0
+    let peak = 0
+    await runGraph({
+      nodes: nodes(node('a#run'), node('b#run')),
+      concurrency: 8,
+      resourceCosts: cost({ 'a#run': { cpu: 5 }, 'b#run': { cpu: 5 } }),
+      execute: async (n) => {
+        active++
+        peak = Math.max(peak, active)
+        await new Promise((r) => setTimeout(r, 20))
+        active--
+        return success(n)
+      },
+    })
+    expect(peak).toBe(1)
+  })
+
+  it('memory axis: two 600-byte tasks on a 1000-byte budget serialize', async () => {
+    let active = 0
+    let peak = 0
+    await runGraph({
+      nodes: nodes(node('a#run'), node('b#run')),
+      concurrency: 8,
+      memBudget: 1000,
+      resourceCosts: cost({ 'a#run': { mem: 600 }, 'b#run': { mem: 600 } }),
+      execute: async (n) => {
+        active++
+        peak = Math.max(peak, active)
+        await new Promise((r) => setTimeout(r, 20))
+        active--
+        return success(n)
+      },
+    })
+    expect(peak).toBe(1)
+  })
+
+  it('combined: a task that fits CPU but not memory waits for memory', async () => {
+    let active = 0
+    let peak = 0
+    await runGraph({
+      nodes: nodes(node('a#run'), node('b#run')),
+      concurrency: 8,
+      memBudget: 1000,
+      resourceCosts: cost({
+        'a#run': { cpu: 1, mem: 800 },
+        'b#run': { cpu: 1, mem: 400 },
+      }),
+      execute: async (n) => {
+        active++
+        peak = Math.max(peak, active)
+        await new Promise((r) => setTimeout(r, 20))
+        active--
+        return success(n)
+      },
+    })
+    expect(peak).toBe(1)
+  })
+
+  it('backfill: a parked too-big head lets a smaller lower-priority task through', async () => {
+    const { held, release } = gates(['p#a', 'p#b', 'p#c'])
+    const started: string[] = []
+    const done = runGraph({
+      nodes: nodes(node('p#a'), node('p#b'), node('p#c')),
+      concurrency: 8,
+      // Priority a > b > c; a (cpus:6) dispatches first, head b (cpus:4)
+      // doesn't fit and parks, c (cpus:2) backfills alongside a.
+      priorities: new Map([
+        ['p#a', 100],
+        ['p#b', 50],
+        ['p#c', 10],
+      ]),
+      resourceCosts: cost({ 'p#a': { cpu: 6 }, 'p#b': { cpu: 4 }, 'p#c': { cpu: 2 } }),
+      onStart: (n) => started.push(n.id),
+      execute: async (n) => {
+        await held.get(n.id)
+        return success(n)
+      },
+    })
+    await Bun.sleep(0)
+    expect(started).toEqual(['p#a', 'p#c'])
+    release.get('p#a')!()
+    await Bun.sleep(0)
+    expect(started).toEqual(['p#a', 'p#c', 'p#b'])
+    release.get('p#b')!()
+    release.get('p#c')!()
+    await done
+  })
+
+  it('solo-clamp: an over-budget task runs alone from idle; an all-over-budget graph serializes', async () => {
+    let active = 0
+    let peak = 0
+    const out = await runGraph({
+      nodes: nodes(node('a#run'), node('b#run'), node('c#run')),
+      concurrency: 8,
+      resourceCosts: cost({
+        'a#run': { cpu: 16 },
+        'b#run': { cpu: 16 },
+        'c#run': { cpu: 16 },
+      }),
+      execute: async (n) => {
+        active++
+        peak = Math.max(peak, active)
+        await new Promise((r) => setTimeout(r, 10))
+        active--
+        return success(n)
+      },
+    })
+    expect(out.size).toBe(3)
+    expect(peak).toBe(1)
+  })
+
+  it('zero never blocks: a cpus:0 task runs beside a solo-clamped giant while cpus:1 waits', async () => {
+    const { held, release } = gates(['p#big', 'p#small', 'p#free'])
+    const started: string[] = []
+    const done = runGraph({
+      nodes: nodes(node('p#big'), node('p#small'), node('p#free')),
+      concurrency: 8,
+      priorities: new Map([
+        ['p#big', 100],
+        ['p#small', 50],
+        ['p#free', 10],
+      ]),
+      // free has NO entry — zero cost by absence, exempt from the axis.
+      resourceCosts: cost({ 'p#big': { cpu: 16 }, 'p#small': { cpu: 1 } }),
+      onStart: (n) => started.push(n.id),
+      execute: async (n) => {
+        await held.get(n.id)
+        return success(n)
+      },
+    })
+    await Bun.sleep(0)
+    expect(started).toEqual(['p#big', 'p#free'])
+    release.get('p#big')!()
+    await Bun.sleep(0)
+    expect(started).toEqual(['p#big', 'p#free', 'p#small'])
+    release.get('p#small')!()
+    release.get('p#free')!()
+    await done
+  })
+
+  it('skip-safety: a too-big task with a failed dep skips instead of parking', async () => {
+    const { held, release } = gates(['p#long'])
+    const finished: string[] = []
+    let bigSkippedWhileLongActive = false
+    const done = runGraph({
+      nodes: nodes(node('p#dep'), node('p#long'), node('p#big', ['p#dep'])),
+      concurrency: 8,
+      resourceCosts: cost({ 'p#long': { cpu: 4 }, 'p#big': { cpu: 16 } }),
+      onFinish: (o) => {
+        finished.push(`${o.node.id}:${o.status}`)
+        // The doomed giant must resolve as skipped WHILE long still holds
+        // budget — if the parker fit-checked would-skip tasks, it would
+        // park here (16 > 8, reserved 4 ≠ 0) instead of finishing.
+        if (o.node.id === 'p#big' && o.status === 'skipped') bigSkippedWhileLongActive = true
+      },
+      execute: async (n) => {
+        if (n.id === 'p#dep') return failed(n)
+        await held.get(n.id)
+        return success(n)
+      },
+    })
+    await Bun.sleep(0)
+    expect(bigSkippedWhileLongActive).toBe(true)
+    release.get('p#long')!()
+    const out = await done
+    expect(out.get('p#big')!.status).toBe('skipped')
+    expect(out.get('p#long')!.status).toBe('success')
+  })
+
+  it('restore tier reserves 0: a restore declaring cpus:8 runs beside a cpus:8 executor', async () => {
+    let active = 0
+    let peak = 0
+    await runGraph({
+      nodes: nodes(node('a#run'), node('b#run')),
+      concurrency: 8,
+      restoreTier: new Set(['b#run']),
+      resourceCosts: cost({ 'a#run': { cpu: 8 }, 'b#run': { cpu: 8 } }),
+      execute: async (n) => {
+        active++
+        peak = Math.max(peak, active)
+        await new Promise((r) => setTimeout(r, 20))
+        active--
+        return success(n)
+      },
+    })
+    expect(peak).toBe(2)
+  })
+
+  it('FIFO-among-equals survives park + repush (original seq preserved)', async () => {
+    const { held, release } = gates(['p#a', 'p#b', 'p#c', 'p#d'])
+    const started: string[] = []
+    // All equal priority (independent roots, default baseline 0), so the
+    // contract is enqueue order: a, b, c, d. b/c/d park behind a's 6;
+    // after a completes, b and c admit IN ORDER and d parks again.
+    const done = runGraph({
+      nodes: nodes(node('p#a'), node('p#b'), node('p#c'), node('p#d')),
+      concurrency: 8,
+      resourceCosts: cost({
+        'p#a': { cpu: 6 },
+        'p#b': { cpu: 4 },
+        'p#c': { cpu: 4 },
+        'p#d': { cpu: 4 },
+      }),
+      onStart: (n) => started.push(n.id),
+      execute: async (n) => {
+        await held.get(n.id)
+        return success(n)
+      },
+    })
+    await Bun.sleep(0)
+    expect(started).toEqual(['p#a'])
+    release.get('p#a')!()
+    await Bun.sleep(0)
+    expect(started).toEqual(['p#a', 'p#b', 'p#c'])
+    release.get('p#b')!()
+    await Bun.sleep(0)
+    expect(started).toEqual(['p#a', 'p#b', 'p#c', 'p#d'])
+    release.get('p#c')!()
+    release.get('p#d')!()
+    await done
+  })
+
+  it('empty resourceCosts map takes the legacy path (no admission, count limit only)', async () => {
+    let active = 0
+    let peak = 0
+    await runGraph({
+      nodes: nodes(node('a#run'), node('b#run'), node('c#run')),
+      concurrency: 2,
+      resourceCosts: new Map(),
+      execute: async (n) => {
+        active++
+        peak = Math.max(peak, active)
+        await new Promise((r) => setTimeout(r, 10))
+        active--
+        return success(n)
+      },
+    })
+    expect(peak).toBe(2)
+  })
+})

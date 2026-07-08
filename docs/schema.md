@@ -94,6 +94,7 @@ interface ExecConfig {
   env?: ExecEnv // optional per-task env layering
   timeout?: number // ms before vx SIGTERMs the child (see below)
   retries?: number // max additional attempts after a failure (see below)
+  resources?: ResourcesConfig // CPU/memory reservations for admission (see below)
   persistent?: PersistentConfig // long-running task (dev server, watcher)
 }
 ```
@@ -189,6 +190,53 @@ The run-level default is `vx run --retry <n>` — it applies to tasks
 that don't declare their own `retries`; explicit config always wins,
 including an explicit `retries: 0`. The CLI flag never affects cache
 keys.
+
+#### `resources` (optional)
+
+```ts
+interface ResourcesConfig {
+  cpus?: number | string // CPU units (fractional ok) or "<n>%" of the CPU budget
+  memory?: number | string // bytes, "512MB"/"2GB" (powers of 1024), or "<n>%" of RAM
+}
+```
+
+Resource **reservations** for scheduling admission. A task declares how
+much CPU / memory it needs, and the scheduler packs ready tasks so
+concurrent reservations never exceed a budget on either axis — a 12 GB
+linker and a 6-core type-check no longer count the same as a near-free
+`lint`. Turbo and Nx have nothing comparable (flat task-count
+concurrency only); Bazel's local resources are the precedent.
+
+```ts
+test: {
+  exec: {
+    command: 'vitest run integration',
+    resources: { cpus: 4, memory: '2GB' }, // or { cpus: '50%', memory: '25%' }
+  },
+}
+```
+
+- **Admission control, NOT enforcement.** vx uses the numbers only to
+  decide what to co-schedule — it does not cgroup-limit, `nice`, or
+  kill a task that exceeds its declaration (that stays the job of
+  `exec.timeout` and the OS).
+- **Default `0` = reserve nothing, run freely.** A task that omits the
+  field (or declares `0`) is gated only by the concurrency-count limit.
+  Reservations coordinate among tasks that opt in; every existing
+  config schedules byte-identically.
+- **Budgets:** `cpus` percent resolves against the run's `concurrency`;
+  `memory` percent against total system RAM, overridable with
+  `vx run --memory <size>`. **Container caveat:** in a cgroup-limited
+  container `os.totalmem()` reports the HOST's RAM — pass `--memory`
+  with the real limit in CI containers.
+- **Never blocks the run:** a reservation larger than the whole budget
+  is admitted alone (when nothing else holds that axis), so an
+  over-declared task still runs — one at a time — instead of
+  deadlocking. Confirmed cache restores reserve nothing (a restore is a
+  tar extract, not the task's real work).
+- **Never busts a cache:** the whole `resources` object is stripped
+  from the cache key — it's a scheduling hint with zero effect on
+  outputs, so tuning a reservation re-uses every existing entry.
 
 #### `persistent` (optional)
 

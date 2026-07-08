@@ -21,6 +21,7 @@ export type {
   CacheConfig,
   CacheInputs,
   CacheOutputs,
+  ResourcesConfig,
   SandboxConfig,
   SandboxNetworkConfig,
 } from './config.js'
