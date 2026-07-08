@@ -71,8 +71,22 @@ export {
 } from './cache/index.js'
 export type { CacheLayer, RunRecord, InvocationRecord } from './cache/index.js'
 
-// Workspace discovery — an out-of-process service/CLI needs these.
+// Workspace discovery + the project/config catalog surface — an
+// out-of-process service/CLI needs these. `readLockfile` is THE one reader
+// of vx-lock.json (the format carries its own version sentinel; a second
+// parser in a sibling package would drift), and the loader chain
+// (`loadWorkspace` → `listProjectMetas` → `loadProjectConfig`) is the same
+// one `vx show` uses. Workspace's `listProjects` re-exports as
+// `listProjectMetas` — the bare name belongs to the metrics query below.
 export { findWorkspaceRoot, loadWorkspaceConfig, resolveCacheDir } from './workspace/index.js'
+export { readLockfile, LOCKFILE_NAME } from './workspace/index.js'
+export type { Lockfile, LockfileEntry } from './workspace/index.js'
+export {
+  loadWorkspace,
+  loadProjectConfig,
+  listProjects as listProjectMetas,
+} from './workspace/index.js'
+export type { ProjectMeta } from './workspace/index.js'
 
 // Plugin API — the run-level extension points. Behavior capabilities
 // (backend / cache) change WHAT/HOW work runs; the observe-only `telemetry`
