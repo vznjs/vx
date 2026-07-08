@@ -26,10 +26,10 @@ interface NavItem {
   icon: string
 }
 
-// Daily-flow order: run things first, inspect runs, then analytics.
+// Daily-flow order: the unified Runs view (spawn + live + history) first,
+// then analytics.
 const NAV: NavItem[] = [
-  { href: '/run', label: 'Run', icon: 'i-tabler-player-play' },
-  { href: '/runs', label: 'Runs', icon: 'i-tabler-history' },
+  { href: '/runs', label: 'Runs', icon: 'i-tabler-player-play' },
   { href: '/overview', label: 'Overview', icon: 'i-tabler-layout-dashboard' },
   { href: '/projects', label: 'Projects', icon: 'i-tabler-stack-2' },
   { href: '/tasks', label: 'Tasks', icon: 'i-tabler-list-details' },

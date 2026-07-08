@@ -130,11 +130,6 @@ export const FUNCTIONS: Record<string, (args: Args) => unknown> = {
   //                  are shortened to 12 chars; env/runtime values shown raw.
   whyRows: (a) => arr(a.arr).map((r) => ({ ...r, _changeToken: changeToken(String(r.change)), _diff: diffText(r) })),
 
-  // Annotate invocation rows with display fields the runs DataTable reads:
-  //   _ciToken — failureMode token for the CI dot (ci → green, local → faint red)
-  //   _tags    — the tags object formatted as "k=v, …" (empty string when none)
-  invocationRows: (a) => arr(a.arr).map((r) => ({ ...r, _ciToken: r.ci ? 'stable' : 'cold', _ci: r.ci ? 'CI' : 'local', _tags: tagsText(r.tags) })),
-
   // One InvocationDetail → a display-ready entry for the run-detail header
   // Facts strip (command / branch / commit / dirty / CI / tags / cache policy /
   // concurrency / vx version). Null-safe: absent fields render '—'.

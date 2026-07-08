@@ -169,7 +169,6 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   projects: () => listProjects(50),
   projectsAll: () => listProjects(500),
   invocations: () => listInvocations(12),
-  invocationsAll: () => listInvocations(200),
   trends: () => getRunTrends({ bucket: 'day' }).then((r) => r.points),
   history: () => getHistory({ limit: 500 }),
   cacheBreakdown: () => getCacheBreakdown(100),

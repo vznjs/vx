@@ -3,8 +3,8 @@
 // lives in protocol-dist.ts: core's `protocol.ts` stays untouched. The
 // submitting socket IS the stream — after `queue:start` the standard core
 // `{ t:'event' }` / `{ t:'result' }` messages follow, so the entire existing
-// event-consumption path (createWireRenderer, RunConsole) works unchanged
-// per socket.
+// event-consumption path (createWireRenderer, the dashboard's RunSession)
+// works unchanged per socket.
 
 import type { RunRequest } from '@vzn/vx'
 

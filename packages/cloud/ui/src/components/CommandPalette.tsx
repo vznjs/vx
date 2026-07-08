@@ -7,7 +7,6 @@ type Item =
   | { kind: 'task'; id: string; href: string; group: string; label: string }
 
 const STATIC_NAV: Item[] = [
-  { kind: 'nav', href: '/run', label: 'Run', group: 'Navigation' },
   { kind: 'nav', href: '/runs', label: 'Runs', group: 'Navigation' },
   { kind: 'nav', href: '/overview', label: 'Overview', group: 'Navigation' },
   { kind: 'nav', href: '/projects', label: 'Projects', group: 'Navigation' },
