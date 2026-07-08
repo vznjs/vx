@@ -83,6 +83,7 @@ import {
   type DistSubmitMessage,
 } from '../protocol-dist.js'
 import { defaultServeSocketPath, serveInfoPath } from '../serve-info.js'
+import { WorkspaceCatalog } from '../workspace-catalog.js'
 import { handleMcpHttp } from './mcp-serve.js'
 
 /**
@@ -475,6 +476,12 @@ export async function startServe(opts: {
   const ingestDir = opts.ingestDir ?? path.join(opts.root, '.vx', 'cloud-ingest')
   const ingest = new IngestStore(ingestDir, (m) => process.stderr.write(`[vx-cloud] ${m}\n`))
 
+  // The workspace catalog — a colocated-workspace live feature like
+  // /v1/graph (cloud-data-model-2026-07 §6): lock-first, live fallback,
+  // mtime-keyed memo. Reads only the committed config surface; a remote
+  // ingest-only serve has no workspace and 404s the /v1/workspace routes.
+  const catalog = new WorkspaceCatalog(opts.root)
+
   // The serve-hosted artifact store (Turbo /v8/artifacts wire) — point
   // core's VX_REMOTE_CACHE_URL (or a connected environment) at this serve
   // and the remote cache works with no separate cache server.
@@ -549,20 +556,23 @@ export async function startServe(opts: {
       // it before the user has proven a token). No secrets, no workspace
       // path (/version keeps that, behind the token).
       if (url.pathname === '/v1/meta') {
-        return jsonResponse({
-          v: 1,
-          name: serveName,
-          vx: VERSION,
-          auth: hasAuth ? 'token' : 'open',
-          startedAt,
-          // Count only — a pre-auth endpoint must not leak workspace names.
-          workspaces: ingest.workspaceCount(),
-          // Capability advertisement: this serve hosts /v8/artifacts, so a
-          // connected environment can auto-wire the remote-cache rung.
-          artifacts: true,
-          // Trust tiers are honored — a client can present a PR token.
-          trustTiers: true,
-        })
+        return (async () =>
+          jsonResponse({
+            v: 1,
+            name: serveName,
+            vx: VERSION,
+            auth: hasAuth ? 'token' : 'open',
+            startedAt,
+            // Count only — a pre-auth endpoint must not leak workspace names.
+            workspaces: ingest.workspaceCount(),
+            // Capability advertisement: this serve hosts /v8/artifacts, so a
+            // connected environment can auto-wire the remote-cache rung.
+            artifacts: true,
+            // Trust tiers are honored — a client can present a PR token.
+            trustTiers: true,
+            // A colocated workspace makes the /v1/workspace/* catalog live.
+            catalog: await catalog.available(),
+          }))()
       }
       const principal = authorized(req, url, viaSocket)
       if (principal === null) {
@@ -697,6 +707,41 @@ export async function startServe(opts: {
       // switcher. Behind the token gate like every /v1 read.
       if (url.pathname === '/v1/workspaces') {
         return jsonResponse({ workspaces: ingest.workspaces() })
+      }
+      // The workspace catalog (cloud-data-model-2026-07 §6.3) — the lock/live
+      // project + task index of the COLOCATED workspace. `?ws=` is ignored:
+      // the catalog is inherently single-workspace (§13.3), so these routes
+      // sit above the unknown-workspace guard. Bearer-gated like every /v1.
+      if (url.pathname.startsWith('/v1/workspace/')) {
+        return (async () => {
+          try {
+            const resolved = await catalog.resolve()
+            if (resolved === null) {
+              return jsonResponse({ error: 'no colocated workspace' }, { status: 404 })
+            }
+            if (url.pathname === '/v1/workspace/projects') {
+              return jsonResponse(catalog.projectsResponse(resolved))
+            }
+            if (url.pathname === '/v1/workspace/tasks') {
+              return jsonResponse(catalog.tasksResponse(resolved))
+            }
+            const m = /^\/v1\/workspace\/projects\/(.+)$/.exec(url.pathname)
+            if (m) {
+              const name = decodeURIComponent(m[1]!)
+              const detail = catalog.projectResponse(resolved, name)
+              if (detail === null) {
+                return jsonResponse({ error: `unknown project: ${name}` }, { status: 404 })
+              }
+              return jsonResponse(detail)
+            }
+            return jsonResponse({ error: 'not found' }, { status: 404 })
+          } catch (err) {
+            return jsonResponse(
+              { error: err instanceof Error ? err.message : String(err) },
+              { status: 400 },
+            )
+          }
+        })()
       }
       // An explicitly-requested unknown workspace 404s before any route
       // logic runs; a known one is lazily opened by the same probe.

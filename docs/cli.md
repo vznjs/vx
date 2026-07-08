@@ -1104,22 +1104,32 @@ vx-cloud serve
   dir; `VX_CLOUD_SERVE_INFO` pins an exact path), so a `vx run` in ANY
   workspace on the machine auto-detects it — zero-config local
   dashboard.
+- **Workspace catalog.** When the serve is colocated with a workspace
+  (like `/v1/graph`), `/v1/workspace/*` serves the project/task catalog:
+  lock-first (`vx-lock.json`, instant, zero eval — projects whose config
+  bytes drifted since `vx lock` are flagged in `staleProjects`), live
+  loader-chain fallback when no lock exists, memoized per config-file
+  mtime. A remote ingest-only serve 404s these routes, and `/v1/meta`
+  advertises `catalog: true|false` so clients can degrade.
 
 HTTP routes (all return JSON unless noted):
 
-| Route                          | Purpose                                                                                    |
-| ------------------------------ | ------------------------------------------------------------------------------------------ |
-| `GET /health`                  | Liveness probe (`200 ok`) — always open                                                    |
-| `GET /v1/meta`                 | Server identity (`name`, vx version, auth mode, `artifacts`) — always open                 |
-| `GET /version`                 | Protocol version + channels + RPC capability list                                          |
-| `POST /v1/ingest`              | Push endpoint — accepts a `RunSummaryRecord` from the `cloud()` plugin                     |
-| `GET /v1/*`                    | Metrics/analytics API (runs, tasks, projects, cache, trends, compare, why, …)              |
-| `HEAD/GET/PUT /v8/artifacts/…` | Turbo-wire artifact store (`VX_REMOTE_CACHE_URL` target)                                   |
-| `POST /mcp`                    | MCP server for AI agents (JSON-RPC 2.0, plain-JSON responses)                              |
-| `GET /events`                  | Server-Sent Events stream of every envelope from every concurrent run                      |
-| `GET /stream`                  | NDJSON stream (jq-friendly) of the same                                                    |
-| `WS /` (upgrade)               | Bidirectional; accepts both legacy `{ t: 'run', ... }` and JSON-RPC `submit.run` envelopes |
-| `WS /v1/agents` (upgrade)      | Distributed-execution agents rendezvous ({workspaceId, session} sessions)                  |
+| Route                              | Purpose                                                                                    |
+| ---------------------------------- | ------------------------------------------------------------------------------------------ |
+| `GET /health`                      | Liveness probe (`200 ok`) — always open                                                    |
+| `GET /v1/meta`                     | Server identity (`name`, vx version, auth mode, `artifacts`) — always open                 |
+| `GET /version`                     | Protocol version + channels + RPC capability list                                          |
+| `POST /v1/ingest`                  | Push endpoint — accepts a `RunSummaryRecord` from the `cloud()` plugin                     |
+| `GET /v1/workspace/projects`       | Workspace catalog: project list (lock-first / live fallback; colocated serve only)         |
+| `GET /v1/workspace/projects/:name` | One project's resolved config (the `vx show` payload; `stale` flag in lock mode)           |
+| `GET /v1/workspace/tasks`          | Flat task index with derived `group`/`cacheable`/`persistent` booleans                     |
+| `GET /v1/*`                        | Metrics/analytics API (runs, tasks, projects, cache, trends, compare, why, …)              |
+| `HEAD/GET/PUT /v8/artifacts/…`     | Turbo-wire artifact store (`VX_REMOTE_CACHE_URL` target)                                   |
+| `POST /mcp`                        | MCP server for AI agents (JSON-RPC 2.0, plain-JSON responses)                              |
+| `GET /events`                      | Server-Sent Events stream of every envelope from every concurrent run                      |
+| `GET /stream`                      | NDJSON stream (jq-friendly) of the same                                                    |
+| `WS /` (upgrade)                   | Bidirectional; accepts both legacy `{ t: 'run', ... }` and JSON-RPC `submit.run` envelopes |
+| `WS /v1/agents` (upgrade)          | Distributed-execution agents rendezvous ({workspaceId, session} sessions)                  |
 
 Every wire frame is a JSON-RPC 2.0 envelope per
 `docs/design/wire-protocol-2026-06.md`.

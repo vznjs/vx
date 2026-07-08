@@ -20,6 +20,15 @@ export {
 } from './artifact-store.js'
 export { startServe, parseServeArgs, DEFAULT_SERVE_PORT, resolveServePort } from './cli/serve.js'
 export type { ServeServer } from './cli/serve.js'
+export { WorkspaceCatalog } from './workspace-catalog.js'
+export type {
+  CatalogProjectDetail,
+  CatalogProjectSummary,
+  CatalogProjectsResponse,
+  CatalogTaskRow,
+  CatalogTasksResponse,
+  ResolvedCatalog,
+} from './workspace-catalog.js'
 export { handleMcpHttp, MCP_PROTOCOL_VERSION, MCP_TOOLS } from './cli/mcp-serve.js'
 export { serveInfoPath, defaultServeSocketPath, readServeInfo, pidAlive } from './serve-info.js'
 export type { ServeInfo } from './serve-info.js'
