@@ -796,6 +796,73 @@ export async function startServe(opts: {
       if (url.pathname === '/v1/workspaces') {
         return jsonResponse({ workspaces: ingest.workspaces() })
       }
+      // The artifact-store list (cloud-data-model-2026-07 §8) — the /v8
+      // store made visible. NOT workspace-gated (artifacts exist on remote
+      // serves too), so it sits above the unknown-workspace guard. The
+      // listing walks ONLY the principal's read scopes — it can never show
+      // an entry a GET couldn't fetch. Provenance (which task/run produced
+      // a hash) is a best-effort join against the workspace-resolved
+      // ingest db; absent for workspaces this serve never ingested.
+      if (url.pathname === '/v1/artifacts') {
+        return (async () => {
+          const limitRaw = url.searchParams.get('limit')
+          const limitNum = limitRaw !== null ? Number(limitRaw) : NaN
+          const limit = Number.isInteger(limitNum) && limitNum > 0 ? Math.min(limitNum, 1000) : 200
+          const entries = await artifacts.list(
+            principal,
+            req.headers.get('x-vx-cache-scope'),
+            limit,
+          )
+          const provenance = new Map<
+            string,
+            { project: string; task: string; runId: string | null }
+          >()
+          try {
+            const db = ingest.db(wsParam ?? ingest.defaultWorkspaceId())
+            if (db !== undefined && entries.length > 0) {
+              const hashes = entries.map((e) => e.hash)
+              // IN-lists chunked at 900 (SQLite's parameter ceiling — the
+              // prune precedent); ORDER BY started_at DESC + first-wins
+              // resolves each hash to its most recent producing row.
+              for (let i = 0; i < hashes.length; i += 900) {
+                const chunk = hashes.slice(i, i + 900)
+                const rows = db
+                  .query<
+                    { hash: string; project: string; task: string; run_id: string | null },
+                    string[]
+                  >(
+                    `SELECT hash, project, task, run_id FROM runs
+                     WHERE hash IN (${chunk.map(() => '?').join(',')})
+                     ORDER BY started_at DESC`,
+                  )
+                  .all(...chunk)
+                for (const r of rows) {
+                  if (!provenance.has(r.hash)) {
+                    provenance.set(r.hash, { project: r.project, task: r.task, runId: r.run_id })
+                  }
+                }
+              }
+            }
+          } catch {
+            // no ingest db yet / schema drift — provenance stays absent
+          }
+          return jsonResponse({
+            artifacts: entries.map((e) => {
+              const p = provenance.get(e.hash)
+              return p !== undefined
+                ? {
+                    ...e,
+                    task: {
+                      project: p.project,
+                      task: p.task,
+                      ...(p.runId !== null ? { runId: p.runId } : {}),
+                    },
+                  }
+                : e
+            }),
+          })
+        })()
+      }
       // The workspace catalog (cloud-data-model-2026-07 §6.3) — the lock/live
       // project + task index of the COLOCATED workspace. `?ws=` is ignored:
       // the catalog is inherently single-workspace (§13.3), so these routes

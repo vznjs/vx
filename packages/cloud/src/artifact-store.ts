@@ -22,7 +22,7 @@
 // (the legacy flat store migrates there on boot), byte-identical to before.
 
 import path from 'node:path'
-import { mkdir, readdir, rename, unlink } from 'node:fs/promises'
+import { mkdir, readdir, rename, stat, unlink } from 'node:fs/promises'
 
 /** PUT bodies above this are refused with 413. */
 export const MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
@@ -78,6 +78,17 @@ function writeScope(p: Principal, sub: string): string {
 const SUBSCOPE_RE = /^[a-zA-Z0-9_.-]{1,128}$/
 function subScopeOf(raw: string | null): string {
   return raw !== null && SUBSCOPE_RE.test(raw) ? raw : 'shared'
+}
+
+/** One row of `ArtifactStore.list()` — the `/v1/artifacts` surface. */
+export interface ArtifactListEntry {
+  hash: string
+  sizeBytes: number
+  /** File mtime (ms epoch) — when the artifact landed in the store. */
+  storedAt: number
+  /** Original task duration from the `.duration` sidecar, when present. */
+  durationMs?: number
+  tier: Tier
 }
 
 export class ArtifactStore {
@@ -163,6 +174,66 @@ export class ArtifactStore {
     if (file === null) return undefined
     const n = Number((await Bun.file(file).text()).trim())
     return Number.isFinite(n) && n >= 0 ? n : undefined
+  }
+
+  /**
+   * List the artifacts the principal may READ (`/v1/artifacts`), newest
+   * first. Walks exactly `readScopes()` — the same scope set `has()`/GET
+   * resolve against — so the list can never leak wider than a fetch could
+   * reach: a trusted principal never sees untrusted entries, an untrusted
+   * one sees its own sub-scope ∪ trusted. `subHeader` is the raw
+   * `x-vx-cache-scope` header (the untrusted per-PR partition), sanitized
+   * the same way `handle()` does.
+   */
+  async list(
+    principal: Principal = DEFAULT_PRINCIPAL,
+    subHeader: string | null = null,
+    limit = 200,
+  ): Promise<ArtifactListEntry[]> {
+    const sub = subScopeOf(subHeader)
+    const out: ArtifactListEntry[] = []
+    // Same hash in two readable scopes (an untrusted principal's own copy
+    // shadowing trusted's): keep the FIRST scope's row — readScopes is in
+    // GET-resolution priority order, so the list mirrors what a fetch
+    // would actually return.
+    const seen = new Set<string>()
+    for (const scope of readScopes(principal, sub)) {
+      if (!this.validScope(scope)) continue
+      const scopeDir = path.join(this.dir, scope)
+      let names: string[]
+      try {
+        names = await readdir(scopeDir)
+      } catch {
+        continue // scope dir doesn't exist yet — nothing stored there
+      }
+      const tier: Tier = scope.split('/')[1] === 'untrusted' ? 'untrusted' : 'trusted'
+      for (const n of names) {
+        if (!n.endsWith('.tar.zst')) continue
+        const hash = n.slice(0, -'.tar.zst'.length)
+        if (!HASH_RE.test(hash) || seen.has(hash)) continue
+        seen.add(hash)
+        let st: Awaited<ReturnType<typeof stat>>
+        try {
+          st = await stat(path.join(scopeDir, n))
+        } catch {
+          continue // raced with a prune — skip
+        }
+        const entry: ArtifactListEntry = {
+          hash,
+          sizeBytes: st.size,
+          storedAt: Math.round(st.mtimeMs),
+          tier,
+        }
+        const durationFile = Bun.file(path.join(scopeDir, `${hash}.duration`))
+        if (await durationFile.exists()) {
+          const d = Number((await durationFile.text()).trim())
+          if (Number.isFinite(d) && d >= 0) entry.durationMs = d
+        }
+        out.push(entry)
+      }
+    }
+    out.sort((a, b) => b.storedAt - a.storedAt)
+    return out.slice(0, Math.max(0, limit))
   }
 
   /**

@@ -505,3 +505,208 @@ describe('ArtifactStore — trust scopes (poisoning guard)', () => {
     expect(moved.sort()).toEqual(['deadbeefdeadbeef.tag', 'deadbeefdeadbeef.tar.zst'])
   })
 })
+
+describe('ArtifactStore.list — trust-scoped listing (/v1/artifacts source)', () => {
+  let dir: string
+  const trusted = { tier: 'trusted', bucket: 'default' } as const
+  const untrusted = { tier: 'untrusted', bucket: 'default' } as const
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'vx-artlist-'))
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  const put = (
+    store: ArtifactStore,
+    hash: string,
+    body: string,
+    p: Principal,
+    scope?: string,
+    duration?: string,
+  ) =>
+    store.handle(
+      new Request(`http://x/v8/artifacts/${hash}`, {
+        method: 'PUT',
+        body,
+        headers: {
+          ...(scope !== undefined ? { 'x-vx-cache-scope': scope } : {}),
+          ...(duration !== undefined ? { 'x-artifact-duration': duration } : {}),
+        },
+      }),
+      hash,
+      p,
+    )
+
+  it('an empty store lists []', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    expect(await store.list(trusted)).toEqual([])
+  })
+
+  it('a trusted principal NEVER lists untrusted entries', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    await put(store, 'aaaaaaaaaaaaaaaa', 'evil', untrusted)
+    await put(store, 'bbbbbbbbbbbbbbbb', 'legit', trusted)
+    const rows = await store.list(trusted)
+    expect(rows.map((r) => r.hash)).toEqual(['bbbbbbbbbbbbbbbb'])
+    expect(rows[0]!.tier).toBe('trusted')
+    expect(rows[0]!.sizeBytes).toBe('legit'.length)
+  })
+
+  it('an untrusted principal lists its own sub-scope ∪ trusted — never another PR', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    await put(store, 'aaaaaaaaaaaaaaaa', 'from-pr-1', untrusted, 'pr-1')
+    await put(store, 'bbbbbbbbbbbbbbbb', 'baseline', trusted)
+    const pr1 = await store.list(untrusted, 'pr-1')
+    expect(pr1.map((r) => `${r.hash}:${r.tier}`).sort()).toEqual([
+      'aaaaaaaaaaaaaaaa:untrusted',
+      'bbbbbbbbbbbbbbbb:trusted',
+    ])
+    // A DIFFERENT PR sees only the trusted baseline.
+    const pr2 = await store.list(untrusted, 'pr-2')
+    expect(pr2.map((r) => r.hash)).toEqual(['bbbbbbbbbbbbbbbb'])
+  })
+
+  it('the duration sidecar rides as durationMs', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    await put(store, 'cccccccccccccccc', 'x', trusted, undefined, '1234')
+    const rows = await store.list(trusted)
+    expect(rows[0]!.durationMs).toBe(1234)
+  })
+
+  it('a hash in both readable scopes lists ONCE, own scope first (GET-resolution parity)', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    await put(store, 'dddddddddddddddd', 'own-copy', untrusted, 'pr-1')
+    await put(store, 'dddddddddddddddd', 'baseline', trusted)
+    const rows = await store.list(untrusted, 'pr-1')
+    expect(rows).toHaveLength(1)
+    // GET would resolve the sub-scope copy first; the list says the same.
+    expect(rows[0]!.tier).toBe('untrusted')
+    expect(rows[0]!.sizeBytes).toBe('own-copy'.length)
+  })
+
+  it('respects limit, newest first', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    await put(store, 'eeeeeeeeeeeeeee1', 'one', trusted)
+    await Bun.sleep(5)
+    await put(store, 'eeeeeeeeeeeeeee2', 'two', trusted)
+    const rows = await store.list(trusted, null, 1)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.hash).toBe('eeeeeeeeeeeeeee2')
+  })
+})
+
+describe('GET /v1/artifacts — the store list + provenance join', () => {
+  let dir: string
+  let server: Awaited<ReturnType<typeof startServe>>
+  const auth = { authorization: 'Bearer list-tok' }
+
+  beforeAll(async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'vx-artlist-serve-'))
+    server = await startServe({ root: dir, ingestDir: dir, token: 'list-tok' })
+  })
+  afterAll(async () => {
+    await server.stop()
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('requires the bearer', async () => {
+    expect((await fetch(`${server.origin}/v1/artifacts`)).status).toBe(401)
+  })
+
+  it('lists stored artifacts with best-effort task/run provenance', async () => {
+    const hash = 'f00dfacef00dface'
+    // Store an artifact via the /v8 wire.
+    const putRes = await fetch(`${server.origin}/v8/artifacts/${hash}`, {
+      method: 'PUT',
+      headers: { ...auth, 'x-artifact-duration': '77' },
+      body: 'bytes',
+    })
+    expect(putRes.status).toBe(200)
+    // Ingest a run summary whose task produced that hash.
+    const runId = 'run-artifact-join'
+    const at = Date.now()
+    const ingestRes = await fetch(`${server.origin}/v1/ingest`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        v: 2,
+        run: {
+          runId,
+          vxVersion: '0.0.0',
+          workspaceId: 'ws-art',
+          workspaceName: 'art-ws',
+          command: 'vx run build',
+          requestedTasks: ['build'],
+          cachePolicy: 'lR,lW,rR,rW',
+          concurrency: 1,
+          flow: 'focused',
+          commitSha: 'c0ffee',
+          branch: 'main',
+          dirty: false,
+          ci: false,
+          ciProvider: null,
+          host: 'box',
+          os: 'linux',
+          arch: 'x64',
+          tags: {},
+        },
+        startedAt: at,
+        endedAt: at + 100,
+        totalDurationMs: 100,
+        taskCount: 1,
+        failedCount: 0,
+        hitCount: 0,
+        hitLocalCount: 0,
+        hitRemoteCount: 0,
+        exitOk: true,
+        tasks: [
+          {
+            taskId: 'demo#build',
+            project: 'demo',
+            task: 'build',
+            status: 'success',
+            cacheSource: 'miss',
+            exitCode: 0,
+            durationMs: 77,
+            hash,
+          },
+        ],
+      }),
+    })
+    expect(ingestRes.ok).toBe(true)
+
+    const res = await fetch(`${server.origin}/v1/artifacts`, { headers: auth })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      artifacts: Array<{
+        hash: string
+        sizeBytes: number
+        durationMs?: number
+        tier: string
+        task?: { project: string; task: string; runId?: string }
+      }>
+    }
+    const row = body.artifacts.find((a) => a.hash === hash)
+    expect(row).toBeDefined()
+    expect(row!.sizeBytes).toBe('bytes'.length)
+    expect(row!.durationMs).toBe(77)
+    expect(row!.tier).toBe('trusted')
+    expect(row!.task).toEqual({ project: 'demo', task: 'build', runId })
+  })
+
+  it('an artifact no ingested run produced has no task field', async () => {
+    const hash = 'beefbeefbeefbeef'
+    await fetch(`${server.origin}/v8/artifacts/${hash}`, {
+      method: 'PUT',
+      headers: auth,
+      body: 'orphan',
+    })
+    const res = await fetch(`${server.origin}/v1/artifacts`, { headers: auth })
+    const body = (await res.json()) as { artifacts: Array<{ hash: string; task?: unknown }> }
+    const row = body.artifacts.find((a) => a.hash === hash)
+    expect(row).toBeDefined()
+    expect(row!.task).toBeUndefined()
+  })
+})
