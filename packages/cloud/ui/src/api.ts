@@ -187,9 +187,16 @@ export interface Capabilities {
   hasWorkspace: boolean
   /** Cache-entry-backed endpoints (entries / heat / input diff) have data. */
   hasCacheDb: boolean
+  /** The /v1/workspace/* catalog routes answer (advertised by /v1/meta). */
+  catalog: boolean
 }
 
-const UNKNOWN_CAPS: Capabilities = { known: false, hasWorkspace: false, hasCacheDb: false }
+const UNKNOWN_CAPS: Capabilities = {
+  known: false,
+  hasWorkspace: false,
+  hasCacheDb: false,
+  catalog: false,
+}
 const [capabilities, setCapabilities] = createSignal<Capabilities>(UNKNOWN_CAPS)
 let capsKey: string | null = null
 
@@ -218,8 +225,12 @@ export function refreshCapabilities(): void {
       (s) => s.entryCount > 0,
       () => false,
     ),
-  ]).then(([hasWorkspace, hasCacheDb]) => {
-    if (capsKey === key) setCapabilities({ known: true, hasWorkspace, hasCacheDb })
+    getMeta().then(
+      (m) => m.catalog === true,
+      () => false,
+    ),
+  ]).then(([hasWorkspace, hasCacheDb, catalog]) => {
+    if (capsKey === key) setCapabilities({ known: true, hasWorkspace, hasCacheDb, catalog })
   })
 }
 
@@ -478,6 +489,10 @@ export interface ServerMeta {
   startedAt: number
   /** Workspace count on this serve (absent on serves predating workspaces). */
   workspaces?: number
+  /** This serve hosts the /v8 artifact store. */
+  artifacts?: boolean
+  /** A colocated workspace makes the /v1/workspace/* catalog live. */
+  catalog?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -879,5 +894,210 @@ export function runTasks(tasks: readonly string[], cwd: string, h: RunHandlers):
     } catch {
       // already closed
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Workspace catalog — the /v1/workspace/* routes (colocated serves only).
+// Shapes mirror packages/cloud/src/workspace-catalog.ts.
+// ---------------------------------------------------------------------------
+
+export interface CatalogProjectSummary {
+  name: string
+  /** Workspace-root-relative POSIX dir; `.` for the root project. */
+  dir: string
+  configPath: string
+  taskCount: number
+  tasks: string[]
+}
+
+export interface CatalogProjectsResponse {
+  source: 'lock' | 'live'
+  root: string
+  workspaceId: string
+  /** Lock file mtime (lock mode only). */
+  lockedAt?: number
+  /** Lock mode: projects whose config bytes drifted since `vx lock`. */
+  staleProjects?: string[]
+  projects: CatalogProjectSummary[]
+}
+
+export interface CatalogProjectDetail {
+  source: 'lock' | 'live'
+  name: string
+  dir: string
+  configPath: string
+  stale?: boolean
+  /** Resolved, JSON-normalized config — the `vx show` payload. */
+  config: unknown
+}
+
+export interface CatalogTaskRow {
+  id: string
+  project: string
+  task: string
+  description?: string
+  group: boolean
+  cacheable: boolean
+  persistent: boolean
+  dependsOn: readonly string[]
+}
+
+export interface CatalogTasksResponse {
+  source: 'lock' | 'live'
+  tasks: CatalogTaskRow[]
+}
+
+export async function fetchCatalogProjects(): Promise<CatalogProjectsResponse> {
+  return await getJson<CatalogProjectsResponse>('/v1/workspace/projects')
+}
+
+export async function fetchCatalogProject(name: string): Promise<CatalogProjectDetail | null> {
+  try {
+    return await getJson<CatalogProjectDetail>(`/v1/workspace/projects/${encodeURIComponent(name)}`)
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('404')) return null
+    throw err
+  }
+}
+
+export async function fetchCatalogTasks(): Promise<CatalogTasksResponse> {
+  return await getJson<CatalogTasksResponse>('/v1/workspace/tasks')
+}
+
+// ---------------------------------------------------------------------------
+// Run queue — the serve-side FIFO every serve-executed run rides
+// (protocol-queue.ts). One WS per submitted job: the submitting socket IS the
+// stream, so after queue:start the standard event/result wire flows on it.
+// ---------------------------------------------------------------------------
+
+/** Mirror of the serve's JobView (`GET /v1/runs/queue`). */
+export interface QueueJobRow {
+  jobId: string
+  tasks: readonly string[]
+  state: 'queued' | 'running'
+  /** 0 = running; queued jobs count the jobs ahead of them. */
+  position: number
+  submittedAt: number
+  startedAt?: number
+}
+
+/** Live queue state (queued + running jobs; done jobs drop out). */
+export async function fetchQueue(): Promise<QueueJobRow[]> {
+  const r = await getJson<{ jobs: QueueJobRow[] }>('/v1/runs/queue')
+  return r.jobs
+}
+
+export interface QueueRunHandlers {
+  onAccepted: (jobId: string, position: number) => void
+  /** Earlier jobs finished — this job's queue position dropped. */
+  onPosition: (position: number) => void
+  onStart: () => void
+  onEvent: (ev: WireEvent) => void
+  /** The run's own result frame (the summary footer follows on events). */
+  onResult: (ok: boolean) => void
+  /** Terminal: the job left the queue. runId links to /runs/:id. */
+  onDone: (ok: boolean, runId?: string) => void
+  onRefused: (message: string) => void
+  onError: (message: string) => void
+}
+
+const QUEUE_PROTOCOL_VERSION = 1
+
+/**
+ * Submit one job to the serve's run queue and stream its lifecycle + events
+ * back over a dedicated WebSocket. `cancel()` withdraws a QUEUED job
+ * (queue:cancel + close); for a RUNNING job it stops watching — the run
+ * completes server-side (the established stop semantics).
+ */
+export function queueRun(
+  tasks: readonly string[],
+  cwd: string,
+  h: QueueRunHandlers,
+): { cancel: () => void } {
+  const wsOrigin = getOrigin().replace(/^http/, 'ws')
+  let ws: WebSocket
+  try {
+    // Browser WebSocket can't set headers — the token rides the query string.
+    ws = new WebSocket(`${wsOrigin}/${tokenQuery()}`)
+  } catch (err) {
+    h.onError(err instanceof Error ? err.message : String(err))
+    return { cancel: () => {} }
+  }
+  let jobId: string | null = null
+  let settled = false
+  ws.onopen = () =>
+    ws.send(
+      JSON.stringify({
+        t: 'queue:submit',
+        v: QUEUE_PROTOCOL_VERSION,
+        request: { tasks: [...tasks], cwd },
+      }),
+    )
+  ws.onmessage = (e) => {
+    let m: {
+      t?: string
+      jobId?: string
+      position?: number
+      runId?: string
+      ok?: boolean
+      message?: string
+      event?: WireEvent
+      result?: { ok: boolean }
+    }
+    try {
+      m = JSON.parse(String(e.data))
+    } catch {
+      return
+    }
+    switch (m.t) {
+      case 'queue:accepted':
+        jobId = m.jobId ?? null
+        h.onAccepted(m.jobId ?? '', m.position ?? 0)
+        break
+      case 'queue:update':
+        h.onPosition(m.position ?? 0)
+        break
+      case 'queue:start':
+        h.onStart()
+        break
+      case 'queue:done':
+        settled = true
+        h.onDone(m.ok === true, m.runId)
+        ws.close()
+        break
+      case 'queue:refused':
+        settled = true
+        h.onRefused(m.message ?? 'refused')
+        ws.close()
+        break
+      case 'event':
+        if (m.event) h.onEvent(m.event)
+        break
+      case 'result':
+        // Not terminal — queue:done follows with the runId.
+        if (m.result) h.onResult(m.result.ok)
+        break
+      case 'error':
+        settled = true
+        h.onError(m.message ?? 'run error')
+        ws.close()
+        break
+    }
+  }
+  ws.onerror = () => {
+    if (!settled) h.onError('connection error')
+  }
+  return {
+    cancel: () => {
+      try {
+        if (!settled && jobId !== null) {
+          ws.send(JSON.stringify({ t: 'queue:cancel', v: QUEUE_PROTOCOL_VERSION, jobId }))
+        }
+        ws.close()
+      } catch {
+        // already closed
+      }
+    },
   }
 }
