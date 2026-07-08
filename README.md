@@ -61,45 +61,48 @@ below is built into the binary; no external services required.
 vx mcp                                    # Model Context Protocol server (stdio)
                                           # — Claude Code / Cursor / Continue.dev talk to vx as a typed tool
 
-vx coordinator build test --workers 4     # start a distributed-CI coordinator
-vx run --worker ws://coord:5180           # pull tasks from a coordinator and execute them
-
-vx serve --ui --open                      # unified backend + embedded dashboard + open browser
-                                          # /v1/* JSON, SSE events, WS run protocol, CORS *
+npm i -g @vzn/vx-cloud                    # the service CLI — also a standalone binary, no Bun
+vx-cloud serve --ui --open                # team backend + embedded dashboard (token-authenticated)
+vx-cloud agent --url https://ci.acme.dev  # join a distributed-execution pool (Nx-Agents-style DTE)
+vx-cloud connect https://ci.acme.dev      # one-URL analytics + remote cache for every `vx run`
 ```
 
 ### Open platform highlights
 
-- **Wire protocol = JSON-RPC 2.0 + OTel LogRecord payload.** Any
-  JSON-RPC client works against `vx serve`. Three transports — WS,
-  SSE, NDJSON — off the same bus.
-- **MCP server with live tools** (`getCacheStats`, `getRunHistory`,
-  `explainCacheKey`, `whyDidThisRerun`) that read your real
-  `cache.db`. Drop into any agent's stdio MCP slot.
-- **Plugin API.** Declare `plugins: [...]` in `vx.workspace.ts`;
-  each plugin subscribes to bus lifecycle events with crash
-  isolation per hook.
-- **Predictive scheduling.** Opt in with `predictive: true` in
-  `vx.workspace.ts` — the scheduler reads run history and picks
-  the task on the longest expected remaining critical path.
-- **Distributed CI.** `vx coordinator` + `vx run --worker` over the
-  same protocol. Content-addressed: any worker producing
-  `<hash>` satisfies every consumer of `<hash>`.
-- **OTel CI/CD spans (native).** Set `OTEL_EXPORTER_OTLP_ENDPOINT`,
-  install the three `@opentelemetry/*` peer deps — core speaks OTel
-  natively; every event flows to Grafana / Honeycomb / Datadog /
-  Tempo with zero bridge package.
-- **Self-host vx serve.** Same backend everywhere — laptop, Docker,
-  any container runtime. JSON `/v1/*` metrics API + WebSocket run
-  protocol + SSE event stream + permissive CORS. One stack.
-- **Dashboard embedded in the binary.** `vx serve --ui` serves a Solid
-  SPA at `/` — task averages, p50/p99, cache savings, recent runs,
-  flamegraphs — compiled into `vx` itself, nothing to install.
-  Connection picker switches between local and hosted backends.
+- **Provider-neutral core.** `vx` runs tasks and nothing else — the
+  dashboard, remote cache, distribution, and telemetry all arrive via
+  PLUGINS declared in `vx.workspace.ts`. `@vzn/vx-cloud` is the
+  first-party one; anyone can write another against the same seams
+  (backend / cache / telemetry).
+- **MCP for AI agents, twice.** `vx mcp` (stdio, reads your real
+  `cache.db`: `getCacheStats`, `getRunHistory`, `explainCacheKey`,
+  `whyDidThisRerun`) and `POST /mcp` on any `vx-cloud serve` — local
+  or hosted, behind the bearer token.
+- **Provable cache correctness.** `vx run --verify` re-runs each
+  cacheable task and byte-compares outputs; `--verify=inputs` runs it
+  sandboxed against the declared inputs and names any undeclared read.
+  The only runner that PROVES a cache entry safe instead of hoping.
+- **Distributed CI (DTE).** `vx-cloud agent` joins a session-keyed
+  pool; a `vx run` fans tasks out across same-commit agents, outputs
+  propagate through the shared artifact store, and a standing pool
+  multiplexes concurrent runs with fair scheduling.
+- **Remote cache, one URL.** `vx-cloud connect <url>` wires analytics
+  ingest AND a Turborepo-wire-compatible artifact store (HMAC signing,
+  trusted/untrusted tiers derived from the token). Third-party Turbo
+  cache servers work via two env vars.
+- **OTel CI/CD spans.** Declare `otel()` from `@vzn/vx-otel` in
+  `vx.workspace.ts` — OTLP/HTTP traces + metrics with ZERO
+  OpenTelemetry SDK dependency; runs flow to Grafana / Honeycomb /
+  Datadog, including `--verify` hermeticity verdicts as span status.
+- **Dashboard embedded in the `vx-cloud` binary.** Runs, flamegraphs,
+  live run cockpit with the task DAG, per-task logs + artifacts,
+  cache-key diffs ("why did this re-run?"), flaky-task detection.
+  Nothing to build or install; Docker image on ghcr for hosting.
+- **Predictive scheduling.** Opt in with `predictive: true` — the
+  scheduler reads run history and starts the longest expected critical
+  path first.
 
-Each lives behind a one-paragraph design doc under
-`docs/design/*-2026-06.md`. Phase-by-phase implementation log:
-`docs/progress/implementation-log-2026-06.md`.
+Each surface lives behind a design doc under `docs/design/`.
 
 ## A cache that actually understands your build
 
@@ -130,15 +133,25 @@ with the invariant that keeps it valid —
 
 ## Built for trust
 
+- **Provable cache correctness.** `vx run --verify` re-runs each
+  cacheable task and byte-compares outputs (determinism);
+  `--verify=inputs` sandboxes it against the declared inputs and fails
+  loud naming any undeclared read (completeness). No other runner can
+  prove a cache entry safe.
 - **Signed artifacts.** HMAC signing on the remote-cache wire; with a
   key configured, unsigned or tampered artifacts are rejected and the
   task simply re-runs. A poisoned cache can't reach your machines.
+- **Cache trust tiers.** The server derives trusted/untrusted from the
+  bearer token — a fork-PR artifact can never feed a trusted build.
 - **Corruption can't go live.** Artifacts are validated before they
-  enter the store; bad bytes degrade to a cache miss, never a crash.
+  enter the store (zstd-bomb and oversize downloads refused); bad
+  bytes degrade to a cache miss, never a crash.
 - **Clean exits.** SIGINT/SIGTERM reap every child process — no
   orphaned dev servers in CI.
 - **Readiness you can bound.** Persistent tasks gate downstream work
-  on a `readyWhen` signal with a `readyTimeoutMs` ceiling.
+  on a `readyWhen` signal; `exec.timeout` bounds any task (with
+  `--timeout` / workspace defaults), `exec.retries` + `--retry` absorb
+  flakes — and retried-then-passed tasks are flagged flaky.
 - **Kernel-level sandboxing**, opt-in per task, that fails the build
   on violation instead of hiding it.
 
@@ -170,29 +183,33 @@ TypeScript config with real imports · task graph with `^task`
 resolution that bridges packages without the task · multi-task runs
 with one shared graph · pnpm-style filters and `--affected` ·
 watch mode · `--dry` / `--graph` plans · persistent dev servers ·
-remote caching via two env vars, wire-compatible with existing
-artifact servers · `vx stats`, `--summarize`, `--profile` Chrome
-traces · `vx cache prune` with TTL and size caps.
+remote caching via one URL (or two env vars, wire-compatible with
+existing Turbo artifact servers) · retries, timeouts, `--continue`
+modes · per-layer cache control (`--cache=local:r,remote:`) ·
+`vx info`, `--summarize`, `--profile` Chrome traces, `--report` ·
+`vx cache prune` with TTL and size caps · `vx migrate` from
+turbo.json or an Nx graph.
 
 ## How it compares
 
-|                           | vx                                                                   | Turborepo                      | Nx                  |
-| ------------------------- | -------------------------------------------------------------------- | ------------------------------ | ------------------- |
-| Fully cached, 100 pkgs¹   | **144 ms**                                                           | 279 ms                         | 583+ ms             |
-| Config                    | TypeScript, evaluated into the cache key                             | JSON (static)                  | JSON (static)       |
-| Output ownership          | **Strict** — wiped before exec AND restore                           | Additive (stale files survive) | Additive            |
-| Clean-tree hashing        | **Zero reads** (git index OIDs)                                      | git OIDs                       | re-hash / daemon    |
-| Daemon required for speed | **No**                                                               | Optional                       | Yes                 |
-| Artifact signing          | **Hard-fail** on unsigned                                            | Soft                           | No                  |
-| Per-task sandbox          | **Yes** — kernel-level, opt-in                                       | No                             | No                  |
-| MCP server for AI agents  | **Yes** (`vx mcp`, stdio)                                            | No                             | No                  |
-| Distributed CI execution  | **Yes** — OSS, self-hostable (`vx coordinator` + `vx run --worker`)  | No                             | Paid (Nx Cloud DTE) |
-| Dashboard SPA             | **Yes** — bundled into `vx serve --ui`, Solid + p50/p99 + sparklines | No                             | Paid                |
-| Self-hosted cloud         | **Yes** — same `vx serve` in Docker; one stack                       | Vercel-only                    | No (proprietary)    |
-| Plugin API                | **Yes** — Vite-style lifecycle hooks                                 | No                             | Yes (TS-tied)       |
-| Predictive scheduling     | **Yes** (opt-in: `predictive: true`)                                 | No                             | No                  |
-| OTel CI/CD spans          | **Yes** (`OTEL_EXPORTER_OTLP_ENDPOINT`)                              | No                             | Paid                |
-| Install                   | **Single binary** — 1 curl line                                      | npm + Node                     | npm + Node          |
+|                           | vx                                                                    | Turborepo                      | Nx                  |
+| ------------------------- | --------------------------------------------------------------------- | ------------------------------ | ------------------- |
+| Fully cached, 100 pkgs¹   | **144 ms**                                                            | 279 ms                         | 583+ ms             |
+| Config                    | TypeScript, evaluated into the cache key                              | JSON (static)                  | JSON (static)       |
+| Output ownership          | **Strict** — wiped before exec AND restore                            | Additive (stale files survive) | Additive            |
+| Clean-tree hashing        | **Zero reads** (git index OIDs)                                       | git OIDs                       | re-hash / daemon    |
+| Daemon required for speed | **No**                                                                | Optional                       | Yes                 |
+| Artifact signing          | **Hard-fail** on unsigned                                             | Soft                           | No                  |
+| Per-task sandbox          | **Yes** — kernel-level, opt-in                                        | No                             | No                  |
+| Provable cache safety     | **Yes** — `--verify` (determinism) + `--verify=inputs` (completeness) | No                             | No                  |
+| MCP server for AI agents  | **Yes** (`vx mcp` stdio + `POST /mcp` on the serve)                   | No                             | No                  |
+| Distributed CI execution  | **Yes** — OSS, self-hostable (`vx-cloud agent`, Nx-DTE-style)         | No                             | Paid (Nx Cloud DTE) |
+| Dashboard SPA             | **Yes** — embedded in `vx-cloud serve --ui`: runs, logs, DAG, flaky   | No                             | Paid                |
+| Self-hosted cloud         | **Yes** — `vx-cloud` binary or the ghcr Docker image; one stack       | Vercel-only                    | No (proprietary)    |
+| Plugin API                | **Yes** — backend / cache / telemetry seams                           | No                             | Yes (TS-tied)       |
+| Predictive scheduling     | **Yes** (opt-in: `predictive: true`)                                  | No                             | No                  |
+| OTel CI/CD spans          | **Yes** — `otel()` plugin, zero OTel-SDK deps                         | No                             | Paid                |
+| Install                   | **Single binary** — npm or 1 curl line, no Node/Bun needed            | npm + Node                     | npm + Node          |
 
 ¹ Wall-clock, direct binaries, same machine and workspace — full
 methodology and more scenarios in
@@ -251,22 +268,20 @@ Side-by-side feature matrix + every known gap: [`docs/comparison.md`](./docs/com
 `bin.ts → cli/index.ts` dispatches subcommands.
 `orchestrator/run.ts:run()` calls `prepareRun()` which discovers the
 workspace, loads configs, builds the package + task graph, opens the
-cache (local SQLite + optional remote layer), loads
-`HistoryProvider` (if `predictive: true`), and installs plugins from
-`vx.workspace.ts`. The scheduler runs the graph in topological order
-with bounded concurrency; each task hits the cache (hash → get →
+cache (local SQLite + optional remote layer), and installs plugins
+from `vx.workspace.ts`. The two-tier scheduler runs the graph in
+topological order with bounded concurrency (confirmed cache hits
+restore ahead of their deps); each task hits the cache (hash → get →
 restore on hit; spawn → save on miss) or short-circuits as a group /
-persistent. Every observation flows through one event bus —
-terminal renderer, MCP server, OTel bridge, user plugins, and cloud
-uploader all subscribe to it. The on-wire form (JSON-RPC 2.0 +
-OTel-LogRecord-shaped payload) is the same across WS / SSE / NDJSON
-on `vx serve` and across the distributed-CI coordinator. Every
-module has a docs page; every interface is a swappable seam.
+persistent. Every observation flows through one event bus — the
+terminal renderer subscribes directly, and PLUGINS receive the
+versioned telemetry contract (`TelemetryRecord` / `RunSummaryRecord`)
+— that's how `otel()` and `cloud()` export without core knowing them.
+Core never imports a plugin; the arrow only points plugin → core.
+Every module has a docs page; every interface is a swappable seam.
 
 Read [`docs/architecture.md`](./docs/architecture.md) for the module
-map. The 2026-06 platform arc is documented under
-[`docs/design/`](./docs/design/) and
-[`docs/progress/implementation-log-2026-06.md`](./docs/progress/implementation-log-2026-06.md).
+map; the design record lives under [`docs/design/`](./docs/design/).
 
 ## Documentation
 
@@ -287,8 +302,8 @@ Full technical docs live under [`docs/`](./docs/):
 - [`architecture-north-star-2026-06.md`](./docs/design/architecture-north-star-2026-06.md) — the unified vision
 - [`architecture-review-2026-06.md`](./docs/design/architecture-review-2026-06.md) — review + applied checklist
 - [`wire-protocol-2026-06.md`](./docs/design/wire-protocol-2026-06.md) — JSON-RPC 2.0 + OTel envelope (shipped)
-- [`distributed-ci-2026-06.md`](./docs/design/distributed-ci-2026-06.md) — coordinator + worker (Phase A-B shipped)
-- [`vx-cloud-2026-06.md`](./docs/design/vx-cloud-2026-06.md) — original CF cloud (superseded; vx serve now runs in Docker)
+- [`distributed-ci-2026-06.md`](./docs/design/distributed-ci-2026-06.md) — original coordinator/worker (superseded by `vx-cloud agent` DTE — `distributed-execution-2026-07.md`)
+- [`vx-cloud-2026-06.md`](./docs/design/vx-cloud-2026-06.md) — original CF cloud (superseded by the standalone `vx-cloud` service)
 - [`extension-protocol-2026-06.md`](./docs/design/extension-protocol-2026-06.md) — subscriber/inspector/driver/plugin (Phase 1 shipped)
 - [`predictive-execution-2026-06.md`](./docs/design/predictive-execution-2026-06.md) — history-aware scheduling (Phase A-B shipped)
 - [`docs/progress/implementation-log-2026-06.md`](./docs/progress/implementation-log-2026-06.md) — phase-by-phase narrative
@@ -296,25 +311,27 @@ Full technical docs live under [`docs/`](./docs/):
 ## Status
 
 **Pre-alpha.** The schema is settling; we bump `CACHE_VERSION` rather
-than maintain back-compat. **958+ tests across 70 files; CI green on
-every commit**; the project dogfoods itself (`bun run ci` → `vx run ci`).
+than maintain back-compat. **1,400+ tests (core + packages); CI green
+on every commit**; the project dogfoods itself (`vx run ci`).
+Published on npm: [`@vzn/vx`](https://www.npmjs.com/package/@vzn/vx)
+and `@vzn/vx-cloud`, both as prebuilt standalone binaries.
 
 Production readiness for the **core task runner**: the semantics are
-solid. The rough edges are operational (Windows unsupported, no
-published versions on npm).
+solid. The main operational rough edge is Windows (unsupported).
 
-Production readiness for the **2026-06 platform layer**:
+Production readiness for the **platform layer**:
 
-| Surface                                       | Maturity                         | Notes                                                                    |
-| --------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------ |
-| Core task runner + caching                    | **production-ready**             | dogfooded continuously; 836 tests pre-existing, all green                |
-| `vx mcp`                                      | **shippable**                    | live cache.db tools, stdio; agents work today                            |
-| `vx serve` (WS + SSE + NDJSON, JSON-RPC 2.0)  | **shippable**                    | accepts both legacy + new envelope; `curl` works                         |
-| `vx coordinator` + `vx run --worker`          | **shippable for self-hosted CI** | content-addressed assignment, disconnect recovery                        |
-| Plugin API                                    | **shippable**                    | crash-isolated, lifecycle hooks fire end-to-end                          |
-| Predictive scheduling                         | **shippable as opt-in**          | gated on `predictive: true` + observed data                              |
-| Dashboard SPA (`packages/cloud/ui`, embedded) | **scaffold**                     | served by `vx-cloud`; HTTP /v1/\* reads; pages need real-world iteration |
-| OTel export (`@vzn/vx-otel` telemetry plugin) | **shippable**                    | declare `otel()` in `vx.workspace.ts`; OTLP traces + metrics             |
+| Surface                                        | Maturity                         | Notes                                                            |
+| ---------------------------------------------- | -------------------------------- | ---------------------------------------------------------------- |
+| Core task runner + caching                     | **production-ready**             | dogfooded continuously; 1,150+ core tests, all green             |
+| `vx run --verify` (provable cache correctness) | **shippable**                    | determinism + input-completeness proofs; CI-gate recipe in docs  |
+| `vx mcp` + serve `POST /mcp`                   | **shippable**                    | live cache.db tools (stdio); serve-hosted MCP behind the bearer  |
+| `vx-cloud serve` (ingest + dashboard + /v8)    | **shippable**                    | token-auth, multi-workspace, artifact store, ghcr image          |
+| `vx-cloud agent` distributed execution         | **shippable for self-hosted CI** | session-keyed DTE, shared pools, fair multi-run scheduling       |
+| Plugin API (backend / cache / telemetry)       | **shippable**                    | crash-isolated; `cloud()` + `otel()` are ordinary plugins        |
+| Predictive scheduling                          | **shippable as opt-in**          | gated on `predictive: true` + observed data                      |
+| Dashboard SPA (embedded in `vx-cloud`)         | **iterating**                    | runs/logs/DAG/flaky live; data-first entity redesign in progress |
+| OTel export (`@vzn/vx-otel`)                   | **shippable**                    | declare `otel()` in `vx.workspace.ts`; OTLP traces + metrics     |
 
 ## Development
 
