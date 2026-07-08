@@ -187,6 +187,79 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-08**: **Cloud data-model Phase 1 — workspace catalog + serve-side
+  run queue + ONE unified Runs view** (owner: "Redesign vx cloud around
+  workspaces, projects, tasks, runs, cache but from DATA perspective… In runs
+  I can navigate dig connect, even when I schedule from UI. And I want to
+  trigger MULTIPLE. We should have ONE view for runs. Where I can spawn
+  more."; design `docs/design/cloud-data-model-2026-07.md` §6-7, §11).
+  **Server half:** core façade widened EXPORT-ONLY (`readLockfile` /
+  `LOCKFILE_NAME` / `loadWorkspace` / `loadProjectConfig` /
+  `listProjectMetas` — metrics' `listProjects` keeps the bare name — +
+  types; boundary snapshot updated; zero behavior, zero hot-path cost).
+  `packages/cloud/src/workspace-catalog.ts`: the "access the LOCK" ladder —
+  lock-first (zero eval, the frozen configs a `--frozen` run sees) → live
+  loader-chain fallback → 404; per-(mtime,size) memo so warm requests are
+  stat-only; lock-staleness via the same xxh3 configHash `vx lock` wrote
+  (`staleProjects`, never a silent lock/live mix). Three
+  `GET /v1/workspace/{projects,projects/:name,tasks}` routes (bearer-gated,
+  single-workspace by nature — `?ws=` ignored; derived `group`/`cacheable`/
+  `persistent` computed serve-side) + `catalog: true` advertised on
+  `/v1/meta`. `run-queue.ts` `RunQueue`: in-memory FIFO, ONE run executing
+  at a time — "trigger MULTIPLE" = queue multiple; the solo submit starts
+  synchronously (byte-equivalent to the old immediate path). Cloud-owned
+  `queue:*` wire (`protocol-queue.ts`, `QUEUE_PROTOCOL_VERSION 1`, the
+  `dist:*` precedent — core `protocol.ts` untouched) on the existing run WS:
+  submit/cancel in, accepted/update/start/done/refused out; the submitting
+  socket IS the stream, so the standard event/result wire follows per
+  socket. `GET /v1/runs/queue` for the live section. **BEHAVIOR CHANGE,
+  named:** plain `{t:'run'}` CLI delegation rides the SAME queue — two
+  concurrent delegations used to execute CONCURRENTLY (racing on output
+  cleaning, the pre-existing exposure the 2026-06-27 cockpit forbid never
+  closed); they now serialize, and a non-immediate start streams one
+  `run:status` "queued behind N run(s)" line the wire renderer already
+  prints. Closing a QUEUED job's socket cancels it; a RUNNING job completes
+  server-side (stop-watching semantics). `dist:submit` does NOT ride the
+  queue (agents execute in their own checkouts — no serve-local output tree
+  to race on). Killing a RUNNING run from the UI stays out (core has no
+  abort handle). **UI half:** the `/run` cockpit DIES as a route (redirects
+  to `/runs`; Home lands on `/runs` unconditionally; old bookmarks keep
+  working). `RunConsole.tsx` deleted — its machinery extracted into
+  `RunSession.tsx`: `createRunSession(tasks)` is the per-run state factory
+  (statuses/timing/logs stores + the WireEvent reducer + the 250ms ticker)
+  living OUTSIDE the component tree so events keep landing while a row is
+  collapsed, and the `RunSession` component is the live layout (progress,
+  graph/flame toggle, critical path + parallelism, per-task facts + logs)
+  consuming RunGraph/Flamegraph strictly via existing props (both files
+  untouched — they were being modified in parallel). `RunsView.tsx` is THE
+  one Runs surface: spawn bar (datalist from `/v1/workspace/tasks` via the
+  new `Capabilities.catalog` probe, history-derived fallback; disabled with
+  an honest hint when the serve has no colocated workspace — history still
+  renders), queued/live section (one WS per submitted job via api.ts
+  `queueRun`; live positions, cancel-queued, the running job auto-expands
+  inline into its RunSession; FOREIGN jobs — CLI delegations — polled from
+  `/v1/runs/queue` at 2s as state-only `cli` rows), history table below
+  (the jr `DataTable` consumed DIRECTLY in JSX through a tiny `jrCtx` props
+  wrapper — the two-way-catalog path working as designed; the old separate
+  "Compare to previous" table merged into a per-row `⇄ compare` link).
+  Active jobs + sessions live at MODULE scope so route changes don't drop
+  sockets (closing a queued job's socket cancels it server-side).
+  `views/runs.json` deleted (+ its now-dead `invocationRows` helper and
+  `invocationsAll` source); nav is Runs-first with the Run entry gone.
+  api.ts: `fetchCatalogProjects`/`fetchCatalogProject`/`fetchCatalogTasks`,
+  `Capabilities.catalog` (probed from `/v1/meta`), `fetchQueue` + `queueRun`.
+  **Verified in a real browser** (Playwright/chromium against
+  `vx-cloud serve --ui` on a temp fixture): spawn from the UI, a second
+  submit holds at `queued · position 1` behind the running job, the running
+  job expands inline (DAG + critical path), both complete and flow into the
+  refetched history with compare links, `/` + `/run` redirect, a raw
+  CLI-delegated WS run renders as a state-only `cli` row, the queue drains,
+  ZERO console errors. Cloud 253 pass (queue unit + serve e2e + catalog
+  suites landed with the server half), core 1162 pass, lint clean; dist
+  rebuilt (build artifact, not committed). **Phase 2 (open):** entity-page
+  IA migration (catalog-backed Projects/Tasks, Workspace page, Insights),
+  `/v1/artifacts` + the Artifacts UI, `/cache/:hash`, `?task=` deep links.
+
 - **2026-07-07**: **Adversarial review of the session's nine commits — three
   `--verify` soundness holes fixed, Phase-2→Phase-3 consumer gap closed, debt
   swept** (owner: "review last opus commits make sure we are on track no tech

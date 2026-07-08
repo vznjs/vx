@@ -1,6 +1,6 @@
 ---
 title: Dashboard
-description: A Solid SPA embedded in the vx-cloud binary, fed by the cloud() plugin's telemetry push. Run history, live cockpit, cache-key diffs — token-authed, nothing to build.
+description: A Solid SPA embedded in the vx-cloud binary, fed by the cloud() plugin's telemetry push. Spawn + queue runs, watch them live, run history, cache-key diffs — token-authed, nothing to build.
 ---
 
 The dashboard is the UI of **`@vzn/vx-cloud`**, the standalone
@@ -98,17 +98,24 @@ single-repo serve behaves exactly like a single-workspace one.
 
 ## What you see
 
-The landing page is capability-aware: a serve colocated with a
-workspace opens on the **Cockpit**; an analytics-only serve opens on
-**Runs**.
+The landing page is **Runs** — the one surface for spawning, watching,
+and digging into runs.
 
-- **Cockpit** (`/run`) — the daily-dev entry point. Submit and watch a
-  run live over the WebSocket: a staged DAG of the task graph with the
-  critical path highlighted, per-node status + duration + CPU/RAM, and
-  streamed logs. (Needs a colocated workspace — the graph comes from a
-  no-exec `planRun`.)
-- **Runs** (`/runs`) — every invocation, with branch / commit / CI /
-  tags columns; rows link to run detail.
+- **Runs** (`/runs`) — the daily-dev entry point, three sections in one
+  view. A **spawn bar** submits runs against the serve's colocated
+  workspace (task names autocomplete from the workspace catalog); each
+  press queues another job, so you can trigger several back-to-back —
+  the serve's FIFO queue executes them one at a time. The
+  **queued/live section** shows every job (yours and CLI-delegated
+  ones) with its queue position; queued jobs can be canceled, and the
+  running job expands inline into the live session: a staged DAG of the
+  task graph with the critical path highlighted, per-node status +
+  duration + CPU/RAM, a flamegraph toggle, and streamed logs. When a
+  job finishes it flows into the **history table** below — every
+  invocation with branch / commit / CI / tags columns, per-row links to
+  run detail and compare. (Spawning needs a colocated workspace — the
+  graph comes from a no-exec `planRun`; an analytics-only serve shows
+  history only. The old `/run` cockpit route redirects here.)
 - **Run detail** (`/runs/:id`) — the staged DAG and a flamegraph
   timeline, a per-task table (CPU + peak RSS + hash), and a **"why did
   this re-run?"** card that names the exact cache-key components that

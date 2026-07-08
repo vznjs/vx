@@ -590,8 +590,8 @@ https://ui.perfetto.dev). See
 CI scripts that want live numbers can `sqlite3 cache.db` directly, or
 use the query layer (`orchestrator/metrics.ts`, exported from
 `@vzn/vx`). In **core** there is no HTTP layer and no UI — the cache
-file is the API. The dashboard, `/v1/*` HTTP surface, and live run
-cockpit live in `@vzn/vx-cloud`, fed by the `cloud()` plugin's
+file is the API. The dashboard, `/v1/*` HTTP surface, and live-run
+view live in `@vzn/vx-cloud`, fed by the `cloud()` plugin's
 telemetry push (the serve never reads a workspace `cache.db`).
 
 ## Design principles
