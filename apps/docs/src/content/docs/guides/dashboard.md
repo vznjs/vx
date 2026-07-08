@@ -134,16 +134,37 @@ and digging into runs.
   appears too.
 - **Compare** (`/compare/:id`) — diff a run against its immediately
   previous invocation (per-task duration deltas, status/hash changes).
-- **Tasks** (`/tasks`, `/tasks/:id`) — per `(project, task)`
-  aggregates: runs, success rate, hit rate, avg/p50/p99, a duration
-  sparkline, and the latest cache-key entry.
-- **Cache** (`/cache`) — hit-rate split (local vs remote), estimated
-  time saved, per-project bytes, and an entries inventory with
-  cold/stale heat and reclaimable bytes.
-- **Trends** (`/trends`), **Projects** (`/projects`),
-  **Bottlenecks** (`/bottlenecks`), **Overview** (`/overview`) — run
-  and storage trends, a run heatmap, project rollups, and the top
-  time-burners.
+- **Workspace** (`/overview`) — the workspace entity page: the
+  project/task **catalog** (read lock-first from `vx-lock.json`, live
+  eval fallback, with a staleness hint when configs drifted since
+  `vx lock`), server identity, and links into the other areas. Needs a
+  colocated workspace for the catalog; degrades to identity-only on a
+  remote serve.
+- **Projects** (`/projects`, `/projects/:name`) — the catalog joined
+  with run analytics, so **never-run projects have pages too**; a
+  project's detail shows its resolved per-task config blocks.
+- **Tasks** (`/tasks`, `/tasks/:id`) — catalog ∪ history: every
+  declared task (group/persistent/cacheable kind) with per
+  `(project, task)` aggregates — runs, success rate, hit rate,
+  avg/p50/p99, a duration sparkline, the latest cache-key entry, the
+  resolved **Config** card, and a flaky badge when `/v1/flakiness`
+  flags it.
+- **Cache** (`/cache`, `/cache/:hash`) — hit-rate split (local vs
+  remote), estimated time saved, per-project bytes, an entries
+  inventory with cold/stale heat and reclaimable bytes, and a
+  per-entry page (facts, the runs that produced/restored it, artifact
+  download).
+- **Artifacts** (`/artifacts`) — the `/v8` artifact store made
+  visible: every artifact your token may read (trust-scoped), with
+  size/age/tier, best-effort task/run provenance links, and
+  bearer-authenticated downloads. Works on remote serves too.
+- **Insights** (`/insights`) — the one analytics area: run/storage
+  trends, the build heatmap, bottlenecks with weekly-savings
+  estimates, flaky tasks (with the within-run-retry **Retried**
+  column), cache savings + hit-source split, parallelism, top
+  time-burners, and recent failures. Every row links into its entity —
+  a failure opens its run with the task pre-selected. The old
+  `/trends` and `/bottlenecks` routes redirect here.
 
 ## How it works
 
@@ -198,6 +219,7 @@ it at a persistent volume for a hosted deployment with
 | `GET /events`, `GET /v1/events` | SSE stream of run events |
 | `GET /stream` | NDJSON stream of run events |
 | `POST /mcp` | MCP endpoint (JSON-RPC 2.0) for AI agents |
+| `GET /v1/artifacts` | list the `/v8` store (trust-scoped, task/run provenance) |
 | `GET/PUT /v8/artifacts/:hash` | Turbo-wire remote cache artifact store |
 | `WS /` | delegated run submission |
 | `WS /v1/agents` | distributed-execution agent rendezvous |

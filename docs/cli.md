@@ -1134,6 +1134,7 @@ HTTP routes (all return JSON unless noted):
 | `GET /v1/workspace/projects/:name` | One project's resolved config (the `vx show` payload; `stale` flag in lock mode)           |
 | `GET /v1/workspace/tasks`          | Flat task index with derived `group`/`cacheable`/`persistent` booleans                     |
 | `GET /v1/runs/queue`               | Live run-queue state (queued + running jobs, positions, timestamps)                        |
+| `GET /v1/artifacts`                | List the `/v8` store (trust-scoped to the caller's READ scopes; task/run provenance join)  |
 | `GET /v1/*`                        | Metrics/analytics API (runs, tasks, projects, cache, trends, compare, why, …)              |
 | `HEAD/GET/PUT /v8/artifacts/…`     | Turbo-wire artifact store (`VX_REMOTE_CACHE_URL` target)                                   |
 | `POST /mcp`                        | MCP server for AI agents (JSON-RPC 2.0, plain-JSON responses)                              |
