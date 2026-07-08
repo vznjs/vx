@@ -1,0 +1,124 @@
+{
+  "data": {
+    "artifacts": "artifacts"
+  },
+  "spec": {
+    "type": "Page",
+    "props": {
+      "title": "Artifacts",
+      "subtitle": "The /v8 artifact store — every cached output this serve holds for your token, newest first."
+    },
+    "children": [
+      {
+        "type": "Empty",
+        "props": {
+          "title": "Artifact listing not available on this serve",
+          "hint": "This vx-cloud predates GET /v1/artifacts — upgrade the serve to browse its artifact store."
+        },
+        "visible": {
+          "$state": "/artifactsStatus",
+          "eq": "missing"
+        }
+      },
+      {
+        "type": "Card",
+        "props": {
+          "noPad": true
+        },
+        "visible": {
+          "$state": "/artifactsStatus",
+          "neq": "missing"
+        },
+        "children": [
+          {
+            "type": "DataTable",
+            "props": {
+              "rows": {
+                "$state": "/artifacts"
+              },
+              "status": {
+                "$state": "/artifactsStatus"
+              },
+              "filter": true,
+              "filterFrom": [
+                "hash",
+                "_taskId",
+                "tier"
+              ],
+              "filterPlaceholder": "filter by hash, task, or tier…",
+              "initialSort": {
+                "key": "storedAt",
+                "desc": true
+              },
+              "emptyTitle": "No artifacts stored yet",
+              "emptyHint": "Artifacts land here when runs upload through the remote cache (/v8).",
+              "columns": [
+                {
+                  "key": "hash",
+                  "label": "Hash",
+                  "kind": "shorthash",
+                  "len": 16
+                },
+                {
+                  "key": "_taskId",
+                  "label": "Task",
+                  "kind": "link",
+                  "href": "/tasks/{_taskId}",
+                  "linkLabel": "{_taskId}"
+                },
+                {
+                  "key": "_runId",
+                  "label": "Run",
+                  "kind": "link",
+                  "href": "/runs/{_runId}",
+                  "linkLabel": "{_runShort}…"
+                },
+                {
+                  "key": "sizeBytes",
+                  "label": "Size",
+                  "align": "right",
+                  "kind": "bytes",
+                  "sortable": true
+                },
+                {
+                  "key": "durationMs",
+                  "label": "Task duration",
+                  "align": "right",
+                  "kind": "duration",
+                  "baseTone": "faint"
+                },
+                {
+                  "key": "tier",
+                  "label": "Tier",
+                  "baseTone": "faint"
+                },
+                {
+                  "key": "storedAt",
+                  "label": "Stored",
+                  "align": "right",
+                  "kind": "relativeTime",
+                  "baseTone": "faint",
+                  "sortable": true
+                },
+                {
+                  "key": "hash",
+                  "label": "",
+                  "align": "right",
+                  "kind": "download"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "Text",
+        "props": {
+          "text": "Provenance (task / run) is a best-effort join against this serve's run history — artifacts pushed by workspaces this serve never ingested list without it. Downloads carry your bearer token.",
+          "tone": "faint",
+          "class": "px-1"
+        }
+      }
+    ]
+  }
+}

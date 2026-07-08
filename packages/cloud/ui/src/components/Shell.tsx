@@ -26,16 +26,16 @@ interface NavItem {
   icon: string
 }
 
-// Daily-flow order: the unified Runs view (spawn + live + history) first,
-// then analytics.
+// Entity order (cloud-data-model-2026-07 §4.2): the unified Runs view first,
+// then the entities, then the cross-entity Insights analytics area.
 const NAV: NavItem[] = [
   { href: '/runs', label: 'Runs', icon: 'i-tabler-player-play' },
-  { href: '/overview', label: 'Overview', icon: 'i-tabler-layout-dashboard' },
+  { href: '/overview', label: 'Workspace', icon: 'i-tabler-layout-dashboard' },
   { href: '/projects', label: 'Projects', icon: 'i-tabler-stack-2' },
   { href: '/tasks', label: 'Tasks', icon: 'i-tabler-list-details' },
-  { href: '/bottlenecks', label: 'Bottlenecks', icon: 'i-tabler-flame' },
-  { href: '/trends', label: 'Trends', icon: 'i-tabler-chart-line' },
   { href: '/cache', label: 'Cache', icon: 'i-tabler-database' },
+  { href: '/artifacts', label: 'Artifacts', icon: 'i-tabler-package' },
+  { href: '/insights', label: 'Insights', icon: 'i-tabler-chart-line' },
 ]
 
 export const Shell: ParentComponent = (props) => {
@@ -332,8 +332,13 @@ function Breadcrumb(props: { pathname: string }) {
           <Show when={i > 0}><span class="text-fg-3">/</span></Show>
           <span class={`${i === seg().length - 1 ? 'text-fg' : 'text-fg-2'} ${i > 0 ? 'font-mono text-[12px]' : ''}`}>
             {/* Only the first segment is a static route name — later segments
-                are ids/UUIDs and must not be title-cased. */}
-            {i === 0 ? decodeURIComponent(s).replace(/^./, (c) => c.toUpperCase()) : decodeURIComponent(s)}
+                are ids/UUIDs and must not be title-cased. The /overview route
+                keeps its URL but reads as the Workspace entity page. */}
+            {i === 0
+              ? s === 'overview'
+                ? 'Workspace'
+                : decodeURIComponent(s).replace(/^./, (c) => c.toUpperCase())
+              : decodeURIComponent(s)}
           </span>
         </>
       ))}

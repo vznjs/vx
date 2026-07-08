@@ -2,7 +2,9 @@
   "data": {
     "run": "run",
     "runWhy": "runWhy",
-    "invocation": "invocationDetail"
+    "invocation": "invocationDetail",
+    "artifacts": "artifacts",
+    "selectedTask": "runSelectedTask"
   },
   "spec": {
     "type": "Page",
@@ -296,6 +298,13 @@
             }
           },
           {
+            "type": "ArtifactDownload",
+            "props": {
+              "hash": { "$state": "/selectedTask/hash" },
+              "artifacts": { "$state": "/artifacts" }
+            }
+          },
+          {
             "type": "Text",
             "props": { "text": "Logs", "size": "xs", "tone": "muted" }
           },
@@ -347,6 +356,13 @@
                   "key": "task",
                   "label": "Task",
                   "kind": "projtask"
+                },
+                {
+                  "key": "project",
+                  "label": "Project",
+                  "kind": "link",
+                  "href": "/projects/{project}",
+                  "linkLabel": "{project}"
                 },
                 {
                   "key": "status",

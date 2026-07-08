@@ -357,7 +357,7 @@
                 "key": "sizeBytes",
                 "desc": true
               },
-              "rowTaskRef": {},
+              "rowHref": "/cache/{hash}",
               "emptyTitle": "No matching entries",
               "columns": [
                 {
@@ -375,6 +375,13 @@
                   "key": "task",
                   "label": "Task",
                   "kind": "projtask"
+                },
+                {
+                  "key": "_taskId",
+                  "label": "",
+                  "kind": "link",
+                  "href": "/tasks/{_taskId}",
+                  "linkLabel": "task →"
                 },
                 {
                   "key": "hash",

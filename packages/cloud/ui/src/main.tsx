@@ -11,8 +11,9 @@ import PROJECT_DETAIL from './views/projectDetail.json'
 import TASKS from './views/tasks.json'
 import TASK_DETAIL from './views/taskDetail.json'
 import CACHE from './views/cache.json'
-import BOTTLENECKS from './views/bottlenecks.json'
-import TRENDS from './views/trends.json'
+import CACHE_ENTRY from './views/cacheEntry.json'
+import ARTIFACTS from './views/artifacts.json'
+import INSIGHTS from './views/insights.json'
 import RUN_DETAIL from './views/runDetail.json'
 import COMPARE from './views/compare.json'
 
@@ -27,15 +28,19 @@ render(
           RunSession embedded in /runs. */}
       <Route path="/" component={() => <Navigate href="/runs" />} />
       <Route path="/run" component={() => <Navigate href="/runs" />} />
+      {/* Trends + Bottlenecks merged into Insights (§4.2); old routes redirect. */}
+      <Route path="/trends" component={() => <Navigate href="/insights" />} />
+      <Route path="/bottlenecks" component={() => <Navigate href="/insights" />} />
       <Route path="/runs" component={RunsView} />
       <Route path="/overview" component={jsonPage(OVERVIEW)} />
       <Route path="/projects" component={jsonPage(PROJECTS)} />
       <Route path="/projects/:name" component={jsonPage(PROJECT_DETAIL)} />
       <Route path="/tasks" component={jsonPage(TASKS)} />
       <Route path="/tasks/:id" component={jsonPage(TASK_DETAIL)} />
-      <Route path="/bottlenecks" component={jsonPage(BOTTLENECKS)} />
-      <Route path="/trends" component={jsonPage(TRENDS)} />
+      <Route path="/insights" component={jsonPage(INSIGHTS)} />
       <Route path="/cache" component={jsonPage(CACHE)} />
+      <Route path="/cache/:hash" component={jsonPage(CACHE_ENTRY)} />
+      <Route path="/artifacts" component={jsonPage(ARTIFACTS)} />
       <Route path="/runs/:id" component={jsonPage(RUN_DETAIL)} />
       <Route path="/compare/:id" component={jsonPage(COMPARE)} />
     </HashRouter>

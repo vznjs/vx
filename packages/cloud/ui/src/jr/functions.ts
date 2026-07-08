@@ -81,12 +81,13 @@ export const FUNCTIONS: Record<string, (args: Args) => unknown> = {
   countWhere: (a) => arr(a.arr).filter((r) => r[String(a.field)] === a.eq).length,
 
   // Annotate cache entries with heat: adds `_heat` ('cold'|'stale'|'warm') and
-  // `_heatToken` (a failureMode token the dots map colors). Pure, raw fields.
+  // `_heatToken` (a failureMode token the dots map colors), plus `_taskId` for
+  // the task-entity link column. Pure, raw fields.
   coldEntries: (a) => {
     const now = Date.now()
     return arr(a.arr).map((r) => {
       const heat = entryHeat(r, now)
-      return { ...r, _heat: heat, _heatToken: HEAT_TOKEN[heat] }
+      return { ...r, _heat: heat, _heatToken: HEAT_TOKEN[heat], _taskId: `${String(r.project)}#${String(r.task)}` }
     })
   },
 

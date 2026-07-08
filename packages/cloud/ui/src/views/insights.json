@@ -1,0 +1,622 @@
+{
+  "data": {
+    "trends": "trends",
+    "storage": "storage",
+    "heatmap": "heatmap",
+    "parallelism": "parallelism",
+    "bottlenecks": "bottlenecks",
+    "flaky": "flaky",
+    "prunable": "prunable",
+    "stats": "cacheStats",
+    "savings": "cacheSavings",
+    "topTasks": "topTasks",
+    "failures": "failures"
+  },
+  "spec": {
+    "type": "Page",
+    "props": {
+      "title": "Insights",
+      "subtitle": "One analytics area — every row links into its entity (task, project, run)."
+    },
+    "children": [
+      {
+        "type": "Grid",
+        "props": {
+          "variant": "metrics-4"
+        },
+        "children": [
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Time saved (all-time)",
+              "value": {
+                "$computed": "fmtDuration",
+                "args": {
+                  "ms": {
+                    "$state": "/savings/estimatedTimeSavedTotalMs"
+                  }
+                }
+              },
+              "sub": "cache hits vs re-execution",
+              "tone": {
+                "$computed": "gt",
+                "args": {
+                  "v": {
+                    "$state": "/savings/estimatedTimeSavedTotalMs"
+                  },
+                  "n": 0,
+                  "then": "good",
+                  "else": "default"
+                }
+              }
+            }
+          },
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Hit rate (24h)",
+              "value": {
+                "$computed": "fmtPercent0",
+                "args": {
+                  "n": {
+                    "$state": "/stats/hitRate24h"
+                  }
+                }
+              },
+              "sub": {
+                "$computed": "text",
+                "args": {
+                  "tpl": "{l} local · {r} remote",
+                  "l": {
+                    "$state": "/stats/hitLocalCountLast24h"
+                  },
+                  "r": {
+                    "$state": "/stats/hitRemoteCountLast24h"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Avg parallelism",
+              "value": {
+                "$computed": "aggFmt",
+                "args": {
+                  "arr": {
+                    "$state": "/parallelism"
+                  },
+                  "field": "factor",
+                  "op": "avg",
+                  "fmt": "multiplier"
+                }
+              },
+              "sub": {
+                "$computed": "text",
+                "args": {
+                  "tpl": "best {b}",
+                  "b": {
+                    "$computed": "aggFmt",
+                    "args": {
+                      "arr": {
+                        "$state": "/parallelism"
+                      },
+                      "field": "factor",
+                      "op": "max",
+                      "fmt": "multiplier"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Flaky tasks",
+              "value": {
+                "$computed": "aggFmt",
+                "args": {
+                  "arr": {
+                    "$state": "/flaky"
+                  },
+                  "op": "count",
+                  "fmt": "number"
+                }
+              },
+              "sub": "confirmed + inferred",
+              "tone": {
+                "$computed": "aggTone",
+                "args": {
+                  "arr": {
+                    "$state": "/flaky"
+                  },
+                  "op": "count",
+                  "gt": 0,
+                  "then": "warn",
+                  "else": "good"
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Runs per day (last 30d)",
+          "actionText": "runs · hits · failures"
+        },
+        "children": [
+          {
+            "type": "LineChart",
+            "props": {
+              "rows": {
+                "$state": "/trends"
+              },
+              "status": {
+                "$state": "/trendsStatus"
+              },
+              "xKey": "t",
+              "xFormat": "date",
+              "yFormat": "count",
+              "height": 300,
+              "series": [
+                {
+                  "name": "runs",
+                  "yKey": "runs",
+                  "strokeClass": "stroke-accent",
+                  "areaClass": "fill-accent/10"
+                },
+                {
+                  "name": "hits",
+                  "yKey": "hits",
+                  "strokeClass": "stroke-cache-local"
+                },
+                {
+                  "name": "failures",
+                  "yKey": "failures",
+                  "strokeClass": "stroke-danger"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "Grid",
+        "props": {
+          "variant": "main-320"
+        },
+        "children": [
+          {
+            "type": "Card",
+            "props": {
+              "title": "Total duration per day (last 30d)"
+            },
+            "children": [
+              {
+                "type": "LineChart",
+                "props": {
+                  "rows": {
+                    "$state": "/trends"
+                  },
+                  "status": {
+                    "$state": "/trendsStatus"
+                  },
+                  "xKey": "t",
+                  "xFormat": "date",
+                  "yFormat": "duration",
+                  "height": 280,
+                  "series": [
+                    {
+                      "name": "duration",
+                      "yKey": "totalDurationMs",
+                      "strokeClass": "stroke-info",
+                      "areaClass": "fill-info/10"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "type": "Card",
+            "props": {
+              "title": "When you build",
+              "actionText": "last 30d"
+            },
+            "children": [
+              {
+                "type": "Heatmap",
+                "props": {
+                  "rows": {
+                    "$state": "/heatmap"
+                  },
+                  "status": {
+                    "$state": "/heatmapStatus"
+                  },
+                  "valueKey": "runs",
+                  "cellSize": 14
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Where to invest",
+          "actionText": "14-day lookback · savings = 25% cut, weekly",
+          "noPad": true
+        },
+        "children": [
+          {
+            "type": "DataTable",
+            "props": {
+              "rows": {
+                "$state": "/bottlenecks"
+              },
+              "status": {
+                "$state": "/bottlenecksStatus"
+              },
+              "rowHref": "/tasks/{id}",
+              "emptyTitle": "Not enough runs to rank bottlenecks",
+              "emptyHint": "Run a few tasks and come back.",
+              "columns": [
+                {
+                  "key": "task",
+                  "label": "Task",
+                  "kind": "projtask"
+                },
+                {
+                  "key": "runsPerDay",
+                  "label": "Runs / day",
+                  "align": "right",
+                  "kind": "fixed1"
+                },
+                {
+                  "key": "avgDurationMs",
+                  "label": "Avg",
+                  "align": "right",
+                  "kind": "duration"
+                },
+                {
+                  "key": "totalDurationMs",
+                  "label": "Total burn",
+                  "align": "right",
+                  "kind": "duration"
+                },
+                {
+                  "key": "weeklySavingsAt25PctCutMs",
+                  "label": "Weekly savings",
+                  "align": "right",
+                  "kind": "bar",
+                  "format": "duration",
+                  "color": "success"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "Grid",
+        "props": {
+          "variant": "cols-2"
+        },
+        "children": [
+          {
+            "type": "Card",
+            "props": {
+              "title": "Flaky tasks",
+              "actionText": "within-run retries confirm · rate + tail infer",
+              "noPad": true
+            },
+            "children": [
+              {
+                "type": "DataTable",
+                "props": {
+                  "rows": {
+                    "$state": "/flaky"
+                  },
+                  "status": {
+                    "$state": "/flakyStatus"
+                  },
+                  "rowHref": "/tasks/{id}",
+                  "emptyTitle": "No flaky tasks 🎉",
+                  "columns": [
+                    {
+                      "key": "task",
+                      "label": "Task",
+                      "kind": "projtask"
+                    },
+                    {
+                      "key": "withinRunRetries",
+                      "label": "Retried",
+                      "align": "right",
+                      "tone": {
+                        "gt": 0,
+                        "tone": "danger"
+                      }
+                    },
+                    {
+                      "key": "failureRate",
+                      "label": "Fail %",
+                      "align": "right",
+                      "kind": "percent0",
+                      "tone": {
+                        "gt": 0.1,
+                        "tone": "danger"
+                      }
+                    },
+                    {
+                      "key": "durationTailRatio",
+                      "label": "p99/p50",
+                      "align": "right",
+                      "kind": "multiplier",
+                      "tone": {
+                        "gt": 3,
+                        "tone": "warn"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "type": "Card",
+            "props": {
+              "title": "Hit source (last 24h)",
+              "actionHref": "/cache",
+              "actionLabel": "cache",
+              "noPad": true
+            },
+            "children": [
+              {
+                "type": "DataTable",
+                "props": {
+                  "rows": {
+                    "$computed": "hitSplitRows",
+                    "args": {
+                      "local": {
+                        "$state": "/stats/hitLocalCountLast24h"
+                      },
+                      "remote": {
+                        "$state": "/stats/hitRemoteCountLast24h"
+                      }
+                    }
+                  },
+                  "emptyTitle": "No cache hits in the last 24h",
+                  "columns": [
+                    {
+                      "key": "source",
+                      "label": "Source"
+                    },
+                    {
+                      "key": "count",
+                      "label": "Hits",
+                      "align": "right",
+                      "kind": "number"
+                    },
+                    {
+                      "key": "_frac",
+                      "label": "Share",
+                      "align": "right",
+                      "kind": "bar",
+                      "format": "percent",
+                      "colorFrom": "source"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "Grid",
+        "props": {
+          "variant": "cols-2"
+        },
+        "children": [
+          {
+            "type": "Card",
+            "props": {
+              "title": "Top time-burners",
+              "actionHref": "/tasks",
+              "actionLabel": "all tasks",
+              "noPad": true
+            },
+            "children": [
+              {
+                "type": "RankList",
+                "props": {
+                  "items": {
+                    "$state": "/topTasks"
+                  },
+                  "status": {
+                    "$state": "/topTasksStatus"
+                  },
+                  "labelKey": "id",
+                  "valueKey": "totalDurationMs",
+                  "valueFormat": "duration",
+                  "indexed": true,
+                  "metaKey": "runs",
+                  "metaSuffix": "×",
+                  "rowHref": "/tasks/{id}",
+                  "emptyTitle": "Nothing executed yet",
+                  "emptyCmd": "vx run <task>"
+                }
+              }
+            ]
+          },
+          {
+            "type": "Card",
+            "props": {
+              "title": "Recent failures",
+              "actionText": "opens the run with the task selected",
+              "noPad": true
+            },
+            "children": [
+              {
+                "type": "RankList",
+                "props": {
+                  "items": {
+                    "$computed": "withTaskRef",
+                    "args": {
+                      "arr": {
+                        "$state": "/failures"
+                      }
+                    }
+                  },
+                  "status": {
+                    "$state": "/failuresStatus"
+                  },
+                  "labelTemplate": "{project}#{task}",
+                  "valueKey": "startedAt",
+                  "valueFormat": "relativeTime",
+                  "metaKey": "exitCode",
+                  "metaPrefix": "exit ",
+                  "rowHref": "/runs/{runId}?task={_taskRef}",
+                  "emptyTitle": "No failures 🎉"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Parallelism factor per invocation",
+          "actionText": "cpu sum / wall time — 1.0 = serial"
+        },
+        "children": [
+          {
+            "type": "LineChart",
+            "props": {
+              "rows": {
+                "$state": "/parallelism"
+              },
+              "status": {
+                "$state": "/parallelismStatus"
+              },
+              "reverse": true,
+              "xKey": "startedAt",
+              "xFormat": "date",
+              "yFormat": "multiplier",
+              "height": 240,
+              "series": [
+                {
+                  "name": "parallelism",
+                  "yKey": "factor",
+                  "strokeClass": "stroke-chart-3",
+                  "areaClass": "fill-chart-3/10"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "Grid",
+        "props": {
+          "variant": "cols-2"
+        },
+        "visible": {
+          "$state": "/capsCacheMissing",
+          "not": true
+        },
+        "children": [
+          {
+            "type": "Card",
+            "props": {
+              "title": "Cache storage growth (last 30d)"
+            },
+            "children": [
+              {
+                "type": "LineChart",
+                "props": {
+                  "rows": {
+                    "$state": "/storage"
+                  },
+                  "status": {
+                    "$state": "/storageStatus"
+                  },
+                  "xKey": "t",
+                  "xFormat": "date",
+                  "yFormat": "bytes",
+                  "height": 240,
+                  "series": [
+                    {
+                      "name": "bytes",
+                      "yKey": "bytesAdded",
+                      "strokeClass": "stroke-accent-2",
+                      "areaClass": "fill-accent-2/10"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "type": "Card",
+            "props": {
+              "title": "Prunable cache entries",
+              "actionHref": "/cache",
+              "actionLabel": "cache",
+              "noPad": true
+            },
+            "children": [
+              {
+                "type": "DataTable",
+                "props": {
+                  "rows": {
+                    "$state": "/prunable"
+                  },
+                  "status": {
+                    "$state": "/prunableStatus"
+                  },
+                  "emptyTitle": "Everything's been accessed recently",
+                  "columns": [
+                    {
+                      "key": "task",
+                      "label": "Task",
+                      "kind": "projtask"
+                    },
+                    {
+                      "key": "sizeBytes",
+                      "label": "Size",
+                      "align": "right",
+                      "kind": "bytes"
+                    },
+                    {
+                      "key": "accessedAt",
+                      "label": "Last hit",
+                      "align": "right",
+                      "kind": "relativeTime",
+                      "baseTone": "faint"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "Text",
+                "props": {
+                  "text": "Tip: vx cache prune --older-than 7d",
+                  "tone": "faint",
+                  "mono": true,
+                  "class": "px-4 py-2 border-t border-border"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

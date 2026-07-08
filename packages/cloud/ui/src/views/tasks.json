@@ -1,11 +1,13 @@
 {
   "data": {
-    "history": "history"
+    "history": "history",
+    "catalog": "catalogTasks"
   },
   "spec": {
     "type": "Page",
     "props": {
-      "title": "Tasks"
+      "title": "Tasks",
+      "subtitle": "The workspace's task catalog joined with run history — never-run tasks included when the serve is colocated."
     },
     "children": [
       {
@@ -18,11 +20,23 @@
             "type": "DataTable",
             "props": {
               "rows": {
-                "$state": "/history"
+                "$computed": "joinTasks",
+                "args": {
+                  "history": {
+                    "$state": "/history"
+                  },
+                  "catalog": {
+                    "$state": "/catalog"
+                  }
+                }
+              },
+              "status": {
+                "$state": "/historyStatus"
               },
               "filter": true,
               "filterFrom": [
-                "id"
+                "id",
+                "_kind"
               ],
               "filterPlaceholder": "filter by project#task…",
               "initialSort": {
@@ -48,6 +62,11 @@
                       "map": "palette"
                     }
                   ]
+                },
+                {
+                  "key": "_kind",
+                  "label": "Kind",
+                  "baseTone": "faint"
                 },
                 {
                   "key": "runs",

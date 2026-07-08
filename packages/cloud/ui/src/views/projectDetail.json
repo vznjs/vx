@@ -1,7 +1,8 @@
 {
   "data": {
     "summary": "projectSummary",
-    "tasks": "projectTasks"
+    "tasks": "projectTasks",
+    "catalog": "catalogProject"
   },
   "spec": {
     "type": "Page",
@@ -162,10 +163,63 @@
         "props": {
           "title": "No data for this project"
         },
+        "visible": [
+          {
+            "$state": "/summaryStatus",
+            "eq": "missing"
+          },
+          {
+            "$state": "/catalogStatus",
+            "eq": "missing"
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Resolved config",
+          "actionText": {
+            "$computed": "text",
+            "args": {
+              "tpl": "source: {s} · {p}",
+              "s": {
+                "$state": "/catalog/source"
+              },
+              "p": {
+                "$state": "/catalog/configPath"
+              }
+            }
+          }
+        },
         "visible": {
-          "$state": "/summaryStatus",
-          "eq": "missing"
-        }
+          "$state": "/catalogStatus",
+          "eq": "ok"
+        },
+        "children": [
+          {
+            "type": "Text",
+            "props": {
+              "text": "This project's config file changed since vx lock — the blocks below show the FROZEN configs. Run vx lock to refreeze.",
+              "tone": "warn",
+              "class": "mb-3"
+            },
+            "visible": {
+              "$state": "/catalog/stale",
+              "eq": true
+            }
+          },
+          {
+            "type": "TaskConfigList",
+            "props": {
+              "config": {
+                "$state": "/catalog/config"
+              },
+              "project": {
+                "$state": "/params/name"
+              }
+            }
+          }
+        ]
       },
       {
         "type": "Card",
@@ -173,7 +227,7 @@
           "title": {
             "$computed": "text",
             "args": {
-              "tpl": "Tasks ({n})",
+              "tpl": "Task history ({n})",
               "n": {
                 "$computed": "agg",
                 "args": {

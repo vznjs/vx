@@ -1,13 +1,35 @@
 {
   "data": {
-    "projects": "projectsAll"
+    "projects": "projectsAll",
+    "catalog": "catalog"
   },
   "spec": {
     "type": "Page",
     "props": {
-      "title": "Projects"
+      "title": "Projects",
+      "subtitle": "The workspace catalog joined with run analytics — never-run projects included when the serve is colocated."
     },
     "children": [
+      {
+        "type": "Text",
+        "props": {
+          "text": {
+            "$computed": "text",
+            "args": {
+              "tpl": "The lock is stale for {n} project(s) — run vx lock to refreeze the catalog.",
+              "n": {
+                "$state": "/catalog/_staleCount"
+              }
+            }
+          },
+          "tone": "warn",
+          "class": "rounded-lg border border-warn/40 bg-warn/5 px-4 py-2.5"
+        },
+        "visible": {
+          "$state": "/catalog/_staleCount",
+          "gt": 0
+        }
+      },
       {
         "type": "Card",
         "props": {
@@ -18,11 +40,23 @@
             "type": "DataTable",
             "props": {
               "rows": {
-                "$state": "/projects"
+                "$computed": "joinProjects",
+                "args": {
+                  "rollups": {
+                    "$state": "/projects"
+                  },
+                  "catalog": {
+                    "$state": "/catalog"
+                  }
+                }
+              },
+              "status": {
+                "$state": "/projectsStatus"
               },
               "filter": true,
               "filterFrom": [
-                "project"
+                "project",
+                "dir"
               ],
               "filterPlaceholder": "filter…",
               "initialSort": {
@@ -44,6 +78,13 @@
                       "map": "palette"
                     }
                   ]
+                },
+                {
+                  "key": "taskCount",
+                  "label": "Tasks",
+                  "align": "right",
+                  "sortable": true,
+                  "baseTone": "faint"
                 },
                 {
                   "key": "runs",

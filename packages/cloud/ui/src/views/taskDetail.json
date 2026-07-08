@@ -1,7 +1,9 @@
 {
   "data": {
     "detail": "taskDetail",
-    "cacheKey": "cacheKey"
+    "cacheKey": "cacheKey",
+    "config": "catalogTask",
+    "flaky": "taskFlaky"
   },
   "spec": {
     "type": "Page",
@@ -23,6 +25,25 @@
         "visible": {
           "$state": "/detailStatus",
           "eq": "loading"
+        }
+      },
+      {
+        "type": "Text",
+        "props": {
+          "text": {
+            "$computed": "flakyText",
+            "args": {
+              "flaky": {
+                "$state": "/flaky"
+              }
+            }
+          },
+          "tone": "warn",
+          "class": "rounded-lg border border-warn/40 bg-warn/5 px-4 py-2.5"
+        },
+        "visible": {
+          "$state": "/flakyStatus",
+          "eq": "ok"
         }
       },
       {
@@ -274,7 +295,58 @@
       {
         "type": "Card",
         "props": {
-          "title": "Latest cache entry"
+          "title": "Config",
+          "actionText": {
+            "$computed": "text",
+            "args": {
+              "tpl": "resolved · source: {s}",
+              "s": {
+                "$state": "/config/source"
+              }
+            }
+          }
+        },
+        "visible": {
+          "$state": "/configStatus",
+          "eq": "ok"
+        },
+        "children": [
+          {
+            "type": "Text",
+            "props": {
+              "text": "The project's config file changed since vx lock — this is the FROZEN config. Run vx lock to refreeze.",
+              "tone": "warn",
+              "class": "mb-3"
+            },
+            "visible": {
+              "$state": "/config/stale",
+              "eq": true
+            }
+          },
+          {
+            "type": "Json",
+            "props": {
+              "value": {
+                "$state": "/config/config"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Latest cache entry",
+          "actionHref": {
+            "$computed": "text",
+            "args": {
+              "tpl": "/cache/{h}",
+              "h": {
+                "$state": "/detail/latestEntry/hash"
+              }
+            }
+          },
+          "actionLabel": "entry page →"
         },
         "visible": {
           "$state": "/detail/latestEntry",
@@ -420,8 +492,14 @@
             "type": "DataTable",
             "props": {
               "rows": {
-                "$state": "/detail/recent"
+                "$computed": "withTaskRef",
+                "args": {
+                  "arr": {
+                    "$state": "/detail/recent"
+                  }
+                }
               },
+              "rowHref": "/runs/{runId}?task={_taskRef}",
               "emptyTitle": "No runs yet",
               "columns": [
                 {

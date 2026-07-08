@@ -6,14 +6,19 @@ type Item =
   | { kind: 'project'; project: string; href: string; group: string; label: string }
   | { kind: 'task'; id: string; href: string; group: string; label: string }
 
+// Every destination stays searchable — including the old Trends/Bottlenecks/
+// Overview names, whose routes now land on their Insights/Workspace successors.
 const STATIC_NAV: Item[] = [
   { kind: 'nav', href: '/runs', label: 'Runs', group: 'Navigation' },
-  { kind: 'nav', href: '/overview', label: 'Overview', group: 'Navigation' },
+  { kind: 'nav', href: '/overview', label: 'Workspace', group: 'Navigation' },
   { kind: 'nav', href: '/projects', label: 'Projects', group: 'Navigation' },
   { kind: 'nav', href: '/tasks', label: 'Tasks', group: 'Navigation' },
-  { kind: 'nav', href: '/bottlenecks', label: 'Bottlenecks', group: 'Navigation' },
-  { kind: 'nav', href: '/trends', label: 'Trends', group: 'Navigation' },
   { kind: 'nav', href: '/cache', label: 'Cache', group: 'Navigation' },
+  { kind: 'nav', href: '/artifacts', label: 'Artifacts', group: 'Navigation' },
+  { kind: 'nav', href: '/insights', label: 'Insights', group: 'Navigation' },
+  { kind: 'nav', href: '/overview', label: 'Overview', group: 'Navigation' },
+  { kind: 'nav', href: '/insights', label: 'Trends', group: 'Navigation' },
+  { kind: 'nav', href: '/insights', label: 'Bottlenecks', group: 'Navigation' },
 ]
 
 export function CommandPalette(props: {
