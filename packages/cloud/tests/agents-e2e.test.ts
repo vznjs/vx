@@ -13,14 +13,12 @@ import path from 'node:path'
 import { captureWorkspaceIdentity, type Logger, type TaskNode, type TaskOutcome } from '@vzn/vx'
 import { startServe } from '../src/cli/serve.js'
 import { distributedBackend } from '../src/dist/submit.js'
-import { serveInfoPath } from '../src/serve-info.js'
 
 const TIMEOUT = 120_000
 const TOKEN = 'agents-e2e-tok'
 const BIN = path.join(import.meta.dir, '..', 'src', 'cli', 'bin.ts')
 
 const ENV_KEYS = [
-  'VX_CLOUD_SERVE_INFO',
   'VX_REMOTE_CACHE_URL',
   'VX_REMOTE_CACHE_TOKEN',
   'VX_CLOUD_AGENT',
@@ -34,14 +32,9 @@ beforeAll(() => {
     savedEnv[k] = process.env[k]
     delete process.env[k]
   }
-  process.env['VX_CLOUD_SERVE_INFO'] = path.join(
-    tmpdir(),
-    `vx-serveinfo-agents-${process.pid}.json`,
-  )
 })
 
-afterAll(async () => {
-  await rm(serveInfoPath(), { force: true })
+afterAll(() => {
   for (const [k, v] of Object.entries(savedEnv)) {
     if (v === undefined) delete process.env[k]
     else process.env[k] = v

@@ -1,8 +1,10 @@
 // `vx-cloud connect` / `env ls|use|rm` / `disconnect` — the client-side
 // connection verbs over the per-user environments file (docker-context-style).
 // `connect` is the handshake: validate reachability + identity + token BEFORE
-// persisting anything; `env ls` is the one-command picture (named servers +
-// the synthetic auto-detected `(local)` row, with live reachability probes).
+// persisting anything; `env ls` is the one-command picture (named servers
+// with live reachability probes). Connecting is the ONLY client↔serve wiring
+// — a local serve is connected the same way (`vx-cloud connect
+// http://localhost:4321`), never auto-detected.
 
 import { UserError } from '@vzn/vx'
 import {
@@ -14,7 +16,6 @@ import {
   type EnvironmentEntry,
   type EnvironmentsFile,
 } from '../environments.js'
-import { pidAlive, readServeInfo } from '../serve-info.js'
 
 const CONNECT_TIMEOUT_MS = 2000
 const LS_PROBE_TIMEOUT_MS = 1000
@@ -244,19 +245,6 @@ async function envLs(): Promise<number> {
     override !== undefined && override !== '' ? override : (file.active ?? undefined)
 
   const rows: LsRow[] = []
-  // The auto-detected local serve is part of the picture: a synthetic first
-  // row, shown only when its advertisement is alive.
-  const info = readServeInfo()
-  if (info !== undefined && pidAlive(info.pid)) {
-    rows.push({
-      active: false,
-      name: '(local)',
-      url: info.origin,
-      delegate: false,
-      distribute: '',
-      probe: probeServer(info.origin),
-    })
-  }
   for (const [name, entry] of Object.entries(file.environments).sort(([a], [b]) =>
     a.localeCompare(b),
   )) {

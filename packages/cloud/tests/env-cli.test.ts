@@ -1,9 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { startServe } from '../src/cli/serve.js'
-import { serveInfoPath } from '../src/serve-info.js'
 import type { EnvironmentsFile } from '../src/environments.js'
 
 // The connect/env/disconnect verbs are exercised through the REAL vx-cloud
@@ -13,28 +12,12 @@ import type { EnvironmentsFile } from '../src/environments.js'
 
 const BIN = path.join(import.meta.dir, '..', 'src', 'cli', 'bin.ts')
 
-// Isolate the per-user serve advertisement (written by startServe, read by
-// `env ls`) at a temp path so these tests never collide with a real serve.
-const prevServeInfo = process.env['VX_CLOUD_SERVE_INFO']
-beforeAll(() => {
-  process.env['VX_CLOUD_SERVE_INFO'] = path.join(
-    tmpdir(),
-    `vx-serveinfo-envcli-${process.pid}.json`,
-  )
-})
-afterAll(async () => {
-  await rm(serveInfoPath(), { force: true })
-  if (prevServeInfo === undefined) delete process.env['VX_CLOUD_SERVE_INFO']
-  else process.env['VX_CLOUD_SERVE_INFO'] = prevServeInfo
-})
-
 let dir: string
 let cfgPath: string
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), 'vx-envcli-'))
   cfgPath = path.join(dir, 'environments.json')
-  await rm(serveInfoPath(), { force: true })
 })
 
 afterEach(async () => {
@@ -242,7 +225,7 @@ describe('vx-cloud env use / rm / disconnect', () => {
 })
 
 describe('vx-cloud env ls', () => {
-  it('renders named envs + the synthetic (local) row, active marker, reachability — never tokens', async () => {
+  it('renders named envs, active marker, reachability — never tokens', async () => {
     const server = await startServe({ root: dir, name: 'ls-serve' })
     try {
       await seedCfg({
@@ -255,8 +238,8 @@ describe('vx-cloud env ls', () => {
       })
       const res = await cli(['env', 'ls'])
       expect(res.code).toBe(0)
-      // The live advertisement produces the synthetic first row.
-      expect(res.stdout).toContain('(local)')
+      // A running local serve is NOT listed — only connected environments are.
+      expect(res.stdout).not.toContain('(local)')
       expect(res.stdout).toContain('* team')
       expect(res.stdout).toContain('ok (ls-serve)')
       expect(res.stdout).toContain('unreachable')

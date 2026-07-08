@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import type { Database } from 'bun:sqlite'
 import { createHash, timingSafeEqual } from 'node:crypto'
-import { chmod, mkdir, unlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, unlink } from 'node:fs/promises'
 import {
   cacheKeyDiff,
   compareRuns,
@@ -89,7 +89,6 @@ import {
   type QueueSubmitMessage,
 } from '../protocol-queue.js'
 import { RunQueue } from '../run-queue.js'
-import { defaultServeSocketPath, serveInfoPath } from '../serve-info.js'
 import { WorkspaceCatalog } from '../workspace-catalog.js'
 import { handleMcpHttp } from './mcp-serve.js'
 
@@ -118,6 +117,29 @@ export const SERVE_PORT_ENV = 'VX_CLOUD_PORT'
 
 /** Env var enabling (and naming) the unix-socket listener (below `--socket`). */
 export const SERVE_SOCKET_ENV = 'VX_CLOUD_SOCKET'
+
+/**
+ * Default unix-socket path for `serve --socket` (overridable per invocation):
+ * `$XDG_RUNTIME_DIR/vx-cloud/serve.sock` when set (auto-cleared on logout),
+ * else a per-uid temp subdir so a multi-user machine never collides on one
+ * shared path.
+ */
+export function defaultServeSocketPath(): string {
+  const xdg = process.env['XDG_RUNTIME_DIR']
+  const base =
+    xdg !== undefined && xdg !== ''
+      ? path.join(xdg, 'vx-cloud')
+      : path.join(os.tmpdir(), `vx-cloud-${userTag()}`)
+  return path.join(base, 'serve.sock')
+}
+
+function userTag(): string {
+  try {
+    return String(process.getuid?.() ?? 'user')
+  } catch {
+    return 'user'
+  }
+}
 
 /**
  * Resolve the serve port for the CLI: an explicit `--port` wins, then
@@ -1404,23 +1426,6 @@ export async function startServe(opts: {
   }
 
   const origin = `http://localhost:${server.port}`
-  // Advertise the local serve at a per-user, MACHINE-LEVEL path so a `vx run`
-  // in ANY workspace discovers it (not just one started in this serve's root).
-  // Best-effort: a read-only runtime dir must not fail startup over it.
-  const infoPath = serveInfoPath()
-  try {
-    await mkdir(path.dirname(infoPath), { recursive: true })
-    await writeFile(
-      infoPath,
-      JSON.stringify({
-        origin,
-        pid: process.pid,
-        ...(opts.socketPath !== undefined ? { socket: opts.socketPath } : {}),
-      }),
-    )
-  } catch {
-    // can't advertise (read-only runtime dir) — explicit config still works
-  }
 
   return {
     origin,
@@ -1435,11 +1440,6 @@ export async function startServe(opts: {
         ingest.close()
       } catch {
         // already closed
-      }
-      try {
-        await unlink(infoPath)
-      } catch {
-        // already gone
       }
       if (opts.socketPath !== undefined) {
         try {

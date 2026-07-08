@@ -3,7 +3,7 @@
 // queue:* wire, the plain-delegation queue line rendering through
 // createWireRenderer, and cancel-on-socket-close.
 
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
+import { describe, it, expect } from 'bun:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -11,17 +11,6 @@ import { spawnSync } from 'node:child_process'
 import { createWireRenderer, type RunRequest, type WireEvent } from '@vzn/vx'
 import { RunQueue } from '../src/run-queue.js'
 import { startServe } from '../src/cli/serve.js'
-import { serveInfoPath } from '../src/serve-info.js'
-
-const prevServeInfo = process.env['VX_CLOUD_SERVE_INFO']
-beforeAll(() => {
-  process.env['VX_CLOUD_SERVE_INFO'] = path.join(tmpdir(), `vx-serveinfo-queue-${process.pid}.json`)
-})
-afterAll(async () => {
-  await rm(serveInfoPath(), { force: true })
-  if (prevServeInfo === undefined) delete process.env['VX_CLOUD_SERVE_INFO']
-  else process.env['VX_CLOUD_SERVE_INFO'] = prevServeInfo
-})
 
 function req(task: string): RunRequest {
   return { tasks: [task], cwd: '/tmp' }

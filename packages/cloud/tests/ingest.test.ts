@@ -4,7 +4,7 @@
 // /v1/ingest there + serves it over /v1/* with `?ws=` scoping (the ONLY data
 // source — vx-cloud never reads a workspace cache.db).
 
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
+import { describe, it, expect } from 'bun:test'
 import { existsSync } from 'node:fs'
 import { mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -14,22 +14,6 @@ import { Database } from 'bun:sqlite'
 import { getRun, listInvocations, listRuns, type RunSummaryRecord } from '@vzn/vx'
 import { IngestStore } from '../src/ingest-store.js'
 import { startServe } from '../src/cli/serve.js'
-import { serveInfoPath } from '../src/serve-info.js'
-
-// Isolate the per-user serve advertisement at a temp path so test serves
-// never clobber (or get discovered through) the real machine-level file.
-const prevServeInfo = process.env['VX_CLOUD_SERVE_INFO']
-beforeAll(() => {
-  process.env['VX_CLOUD_SERVE_INFO'] = path.join(
-    tmpdir(),
-    `vx-serveinfo-ingest-${process.pid}.json`,
-  )
-})
-afterAll(async () => {
-  await rm(serveInfoPath(), { force: true })
-  if (prevServeInfo === undefined) delete process.env['VX_CLOUD_SERVE_INFO']
-  else process.env['VX_CLOUD_SERVE_INFO'] = prevServeInfo
-})
 
 function summary(runId: string, over: Partial<RunSummaryRecord['run']> = {}): RunSummaryRecord {
   return {

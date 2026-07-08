@@ -18,7 +18,13 @@ export {
   type Principal,
   type Tier,
 } from './artifact-store.js'
-export { startServe, parseServeArgs, DEFAULT_SERVE_PORT, resolveServePort } from './cli/serve.js'
+export {
+  startServe,
+  parseServeArgs,
+  DEFAULT_SERVE_PORT,
+  defaultServeSocketPath,
+  resolveServePort,
+} from './cli/serve.js'
 export type { ServeServer } from './cli/serve.js'
 export { RunQueue, DEFAULT_MAX_QUEUED } from './run-queue.js'
 export type { JobView, QueuedJob, RunQueueOptions } from './run-queue.js'
@@ -39,8 +45,6 @@ export type {
   ResolvedCatalog,
 } from './workspace-catalog.js'
 export { handleMcpHttp, MCP_PROTOCOL_VERSION, MCP_TOOLS } from './cli/mcp-serve.js'
-export { serveInfoPath, defaultServeSocketPath, readServeInfo, pidAlive } from './serve-info.js'
-export type { ServeInfo } from './serve-info.js'
 export {
   ENVIRONMENTS_VERSION,
   activeEnvironment,

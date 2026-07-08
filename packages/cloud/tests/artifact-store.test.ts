@@ -19,26 +19,10 @@ import {
 } from '@vzn/vx'
 import { startServe } from '../src/cli/serve.js'
 import { ArtifactStore, type Principal } from '../src/artifact-store.js'
-import { serveInfoPath } from '../src/serve-info.js'
 import { ENVIRONMENTS_VERSION, writeEnvironmentsFile } from '../src/environments.js'
 import { cloud } from '../src/plugin.js'
 
 const TIMEOUT = 30_000
-
-// Isolate the per-user serve advertisement at a temp path so test serves
-// never clobber (or get discovered through) the real machine-level file.
-const prevServeInfo = process.env['VX_CLOUD_SERVE_INFO']
-beforeAll(() => {
-  process.env['VX_CLOUD_SERVE_INFO'] = path.join(
-    tmpdir(),
-    `vx-serveinfo-artifacts-${process.pid}.json`,
-  )
-})
-afterAll(async () => {
-  await rm(serveInfoPath(), { force: true })
-  if (prevServeInfo === undefined) delete process.env['VX_CLOUD_SERVE_INFO']
-  else process.env['VX_CLOUD_SERVE_INFO'] = prevServeInfo
-})
 
 describe('vx serve /v8/artifacts — the Turbo wire', () => {
   let dir: string

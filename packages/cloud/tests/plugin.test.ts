@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { describe, it, expect } from 'bun:test'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -16,23 +16,7 @@ import {
 } from '@vzn/vx'
 import { cloud } from '../src/plugin.js'
 import { startServe } from '../src/cli/serve.js'
-import { serveInfoPath } from '../src/serve-info.js'
 import { ENVIRONMENTS_VERSION, writeEnvironmentsFile } from '../src/environments.js'
-
-// Isolate the per-user serve advertisement at a temp path so these tests never
-// touch a real local serve's file on the machine.
-const prevServeInfo = process.env['VX_CLOUD_SERVE_INFO']
-beforeAll(() => {
-  process.env['VX_CLOUD_SERVE_INFO'] = path.join(
-    tmpdir(),
-    `vx-serveinfo-plugin-${process.pid}.json`,
-  )
-})
-afterAll(async () => {
-  await rm(serveInfoPath(), { force: true })
-  if (prevServeInfo === undefined) delete process.env['VX_CLOUD_SERVE_INFO']
-  else process.env['VX_CLOUD_SERVE_INFO'] = prevServeInfo
-})
 
 // A minimal single-project workspace so a delegated `run()` has real work.
 async function makeWorkspace(): Promise<string> {
@@ -546,63 +530,20 @@ describe('cloud() telemetry capability', () => {
     })
   })
 
-  it('AUTO-DETECTS a local vx-cloud serve via its advertisement and pushes there', async () => {
-    const prevIngest = process.env['VX_CLOUD_INGEST_URL']
-    const prevInsights = process.env['VX_CLOUD_INSIGHTS_URL']
-    const prevUrl = process.env['VX_CLOUD_URL']
-    delete process.env['VX_CLOUD_INGEST_URL']
-    delete process.env['VX_CLOUD_INSIGHTS_URL']
-    delete process.env['VX_CLOUD_URL']
-    const root = await mkdtemp(path.join(tmpdir(), 'vx-autodetect-'))
-    const received: string[] = []
-    const server = Bun.serve({
-      port: 0,
-      async fetch(req) {
-        received.push(new URL(req.url).pathname)
-        await req.text()
-        return new Response('ok')
-      },
-    })
+  it('does NOT auto-detect a RUNNING local serve — unconnected means decline', async () => {
+    // The one wiring story: `vx-cloud connect` (or explicit env vars). A serve
+    // merely running on the machine must never capture runs by existence.
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-noautodetect-'))
+    const server = await startServe({ root, ingestDir: root })
     try {
-      // Simulate a serve running in ANOTHER process advertising itself at the
-      // per-user (machine-level) path — discovered regardless of workspace. Use
-      // process.ppid: a DIFFERENT (so not "self") yet ALIVE pid, so the
-      // liveness check passes (the same-pid case is self; a dead pid is stale).
-      await mkdir(path.dirname(serveInfoPath()), { recursive: true })
-      await writeFile(
-        serveInfoPath(),
-        JSON.stringify({ origin: `http://localhost:${server.port}`, pid: process.ppid }),
-      )
-      const sink = (await cloud().telemetry!(telemetryCtx(root))) as TelemetrySink
-      expect(sink).toBeDefined()
-      sink.onRunSummary!(fakeSummary())
-      await sink.flush!()
-      expect(received).toContain('/v1/ingest')
-    } finally {
-      void server.stop(true)
-      await rm(serveInfoPath(), { force: true })
-      await rm(root, { recursive: true, force: true })
-      if (prevIngest !== undefined) process.env['VX_CLOUD_INGEST_URL'] = prevIngest
-      if (prevInsights !== undefined) process.env['VX_CLOUD_INSIGHTS_URL'] = prevInsights
-      if (prevUrl !== undefined) process.env['VX_CLOUD_URL'] = prevUrl
-    }
-  })
-
-  it('declines a STALE advertisement (serve died — pid not alive)', async () => {
-    const root = await mkdtemp(path.join(tmpdir(), 'vx-stale-'))
-    try {
-      await mkdir(path.dirname(serveInfoPath()), { recursive: true })
-      // pid 2147483646 ≈ no such process → liveness check fails → decline.
-      await writeFile(
-        serveInfoPath(),
-        JSON.stringify({ origin: 'http://localhost:59999', pid: 2_147_483_646 }),
-      )
       await withCleanConnEnv({ VX_CLOUD_CONFIG: '/nonexistent/environments.json' }, async () => {
         const sink = await cloud().telemetry!(telemetryCtx(root))
         expect(sink).toBeUndefined()
+        const backend = await cloud().backend!(backendCtx(root))
+        expect(backend).toBeUndefined()
       })
     } finally {
-      await rm(serveInfoPath(), { force: true })
+      await server.stop()
       await rm(root, { recursive: true, force: true })
     }
   })
@@ -625,12 +566,13 @@ describe('cloud() end-to-end through defineWorkspace', () => {
           '',
         ].join('\n'),
       )
-      // Remove any local serve advertisement so the subprocess's telemetry
-      // auto-detect declines (a `spawnSync`-blocked serve can't answer a POST,
-      // and flush() would wait the full timeout — a test-only artifact).
-      await rm(serveInfoPath(), { force: true })
       const binPath = path.join(import.meta.dir, '..', '..', '..', 'src', 'bin.ts')
-      const proc = Bun.spawnSync(['bun', binPath, 'run', 'hello'], { cwd: root })
+      // Pin the environments file at a nonexistent path so a real per-user
+      // connection on this machine can't leak into the subprocess.
+      const proc = Bun.spawnSync(['bun', binPath, 'run', 'hello'], {
+        cwd: root,
+        env: { ...process.env, VX_CLOUD_CONFIG: '/nonexistent/environments.json' },
+      })
       const out = proc.stdout.toString() + proc.stderr.toString()
       expect(proc.exitCode).toBe(0)
       expect(out).toContain('hi-from-task')

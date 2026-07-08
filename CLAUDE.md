@@ -187,6 +187,41 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-08**: **`vx-cloud connect` is the ONLY client↔serve wiring — the
+  local-serve auto-detect machinery DELETED** (owner-approved). REVERSES two
+  2026-06-28 decisions: "cloud() auto-detects a local vx-cloud serve" and
+  "per-user serve advertisement at `$XDG_RUNTIME_DIR/vx-cloud/serve.json`".
+  `packages/cloud/src/serve-info.ts` (write/read + `pidAlive`) is GONE and so
+  is every consumer path: serve.ts no longer writes/cleans serve.json; the
+  `cloud()` connection ladder is now exactly **explicit URL/token (opts + env
+  aliases) → active `vx-cloud connect` environment → decline** (the local
+  rung, its self-pid guard, and the sink's advertised-socket dial all deleted
+  — environments carry no socket, so the ingest POST is TCP-only; the `serve
+--socket` LISTENER itself stays, `defaultServeSocketPath` moved into
+  cli/serve.ts); `resolveBackend` dropped serve.json delegation discovery
+  (and its now-unused `cwd` param — delegation = `connect --delegate` env or
+  `VX_SERVICE_URL`); `env ls` lost the synthetic `(local)` row; `vx-cloud
+agent`'s URL fallback swapped the advertisement for the connected
+  environment (whose token rides only when the environment supplied the
+  URL). WHY: one wiring story (local = `vx-cloud serve --ui` then ONE-TIME
+  `vx-cloud connect http://localhost:4321` — the deterministic port is what
+  makes that stable), and it kills three whole complexity classes:
+  advertisement staleness (pid-guard/`pidAlive`/logout-cleared runtime dirs),
+  the POST-to-self deadlock guard, and the `VX_CLOUD_SERVE_INFO` pinning
+  ceremony EVERY serve-spawning test suite carried (13 files) so test serves
+  wouldn't clobber the real per-user file. A serve merely RUNNING can no
+  longer capture runs by existence — connecting is consent. Tests: −4
+  advertisement pins (plugin auto-detect/stale, socket-dial push, dist
+  stale-ad), +1 negative pin (a RUNNING unconnected local serve → telemetry
+  AND backend decline); resolveBackend suite rewritten to explicit-URL
+  delegation + fail-safe unreachable→local. `vx dev` untouched (its
+  per-workspace hub socket is not the serve advertisement). Docs: dashboard
+  guide quick start is the two-liner + connect; cli.md serve section swaps
+  "Advertisement" for "Connecting" + the 3-rung ladder; distributed-ci drops
+  the advertised-serve fallbacks. Design docs stay frozen historical records.
+  Cloud 250 pass, core suite + lint green. No CACHE_VERSION/SCHEMA/wire bump
+  — client-side wiring only.
+
 - **2026-07-08**: **Cloud data-model Phase 1 — workspace catalog + serve-side
   run queue + ONE unified Runs view** (owner: "Redesign vx cloud around
   workspaces, projects, tasks, runs, cache but from DATA perspective… In runs

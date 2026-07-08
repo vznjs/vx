@@ -1,11 +1,8 @@
 // Durable per-user client config: the named-server environments list
 // (docker-context-style). Written by the `vx-cloud connect` / `env` verbs,
 // consulted lazily by the cloud() plugin's telemetry + backend ladders.
-//
-// Deliberately split from serve-info.json: that file is runtime STATE (lives
-// in $XDG_RUNTIME_DIR, auto-cleared on logout, written by the SERVER); this
-// one is durable user CONFIG (lives in $XDG_CONFIG_HOME, written by the CLI).
-// Different lifecycles, different dirs.
+// This file is the ONE client↔serve wiring — there is no serve
+// advertisement / auto-detect layer beside it.
 //
 // Light by design (only node:fs/os/path) so `plugin.ts` — imported via the
 // lean `@vzn/vx-cloud/plugin` subpath — can read it without pulling the

@@ -273,7 +273,7 @@ A plain `vx run` becomes distributed when **both** hold:
    agent count (also `cloud({ distribute: n })`).
 2. A vx-cloud connection is reachable. The submitter resolves it through
    the usual ladder: `VX_CLOUD_URL` env → the active `vx-cloud connect`
-   environment → a locally advertised serve.
+   environment.
 
 `VX_CLOUD_DISTRIBUTE` set with **no reachable connection is a hard
 error** — distribution was explicitly requested, so silently running
@@ -293,7 +293,7 @@ Flags:
 
 | Flag | Meaning |
 | --- | --- |
-| `--url <origin>` | The serve to attach to. Falls back to `VX_CLOUD_URL` (then the legacy `VX_SERVICE_URL`), then a locally advertised serve. |
+| `--url <origin>` | The serve to attach to. Falls back to `VX_CLOUD_URL` (then the legacy `VX_SERVICE_URL`), then the active `vx-cloud connect` environment. |
 | `--token <t>` | Bearer token for the serve. Falls back to `VX_CLOUD_TOKEN`. |
 | `--capacity <n>` | How many assignments to execute in parallel (default `1`). |
 | `--session <s>` | The session key to join (default: derived, see below). |

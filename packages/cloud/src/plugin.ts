@@ -19,7 +19,6 @@
 // zero-config form (it behaves like pre-split core: delegate-or-dev-mirror,
 // env-configured cache, no telemetry push).
 
-import { existsSync } from 'node:fs'
 import {
   LayeredCache,
   RemoteCache,
@@ -36,14 +35,12 @@ import {
 } from '@vzn/vx'
 import { activeEnvironment } from './environments.js'
 import { appendGithubSummary } from './github-summary.js'
-import { pidAlive, readServeInfo } from './serve-info.js'
 import { TaskLogBuffer } from './task-log-capture.js'
 
 /** A resolved serve target for the ingest sink's POSTs. */
 interface SinkConnection {
   baseUrl: string
   token?: string
-  socketPath?: string
 }
 
 // NB: the heavy service machinery (backend resolution → serve / dev hub) is
@@ -58,7 +55,7 @@ export interface CloudPluginOptions {
    * remote cache (`/v8/artifacts`), and distributed execution — so a
    * connected cloud needs no separate cache/ingest/service config. Falls back
    * to `VX_CLOUD_URL`; with none set, the ACTIVE connected environment
-   * (`vx-cloud connect`) or an auto-detected local `vx-cloud serve` is used.
+   * (`vx-cloud connect`) is used. No environment → decline.
    */
   url?: string
   /**
@@ -85,7 +82,7 @@ export interface CloudPluginOptions {
    * Distribute runs across `vx-cloud agent` machines (advisory expected
    * agent count). Falls back to `VX_CLOUD_DISTRIBUTE`. When set, the
    * backend capability returns the distributed submitter; a serve must be
-   * configured or advertised (hard error otherwise — distribution is an
+   * configured or connected (hard error otherwise — distribution is an
    * explicit opt-in, unlike ambient delegation). Unset → zero cost.
    */
   distribute?: number
@@ -108,10 +105,8 @@ interface CloudConnection {
   /** Untrusted (fork-PR) bearer (reads trusted, writes untrusted). */
   prToken?: string
   /** Where it came from: an explicit URL is trusted as-is; a discovered one
-   *  (env/local) is capability-probed before the cache uses it. */
-  source: 'explicit' | 'environment' | 'local'
-  /** The local serve's unix socket, when advertised (ingest prefers it). */
-  socket?: string
+   *  (the connected environment) is capability-probed before the cache uses it. */
+  source: 'explicit' | 'environment'
 }
 
 const firstEnv = (...keys: string[]): string | undefined => {
@@ -129,7 +124,9 @@ const trimUrl = (u: string): string => u.replace(/\/+$/, '')
  *      `VX_SERVICE_URL` / `VX_REMOTE_CACHE_URL` / `VX_CLOUD_INGEST_URL`
  *      aliases), paired with `VX_CLOUD_TOKEN` / `VX_CLOUD_PR_TOKEN`;
  *   2. the ACTIVE connected environment (`vx-cloud connect`);
- *   3. an auto-detected local `vx-cloud serve` (its per-user advertisement).
+ *   3. decline.
+ * There is deliberately NO local-serve auto-detect: `vx-cloud connect` is the
+ * one wiring story (a running serve never captures runs by mere existence).
  * Trust is NOT resolved here — the client just carries whichever token(s) it
  * has; the serve derives the tier from the presented bearer.
  */
@@ -161,17 +158,6 @@ function resolveConnection(opts: CloudPluginOptions): CloudConnection | undefine
       source: 'environment',
       ...(env.token !== undefined ? { token: env.token } : {}),
       ...(env.prToken !== undefined ? { prToken: env.prToken } : {}),
-    }
-  }
-  // Auto-detected local serve. Never push to a serve in THIS process (that's
-  // the serve running a delegated run — POSTing to itself would deadlock), and
-  // skip a stale advertisement left by a dead serve.
-  const info = readServeInfo()
-  if (info !== undefined && info.pid !== process.pid && pidAlive(info.pid)) {
-    return {
-      url: trimUrl(info.origin),
-      source: 'local',
-      ...(info.socket !== undefined && existsSync(info.socket) ? { socket: info.socket } : {}),
     }
   }
   return undefined
@@ -210,8 +196,8 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
         const conn = resolveConnection(opts)
         if (conn === undefined) {
           throw new UserError(
-            'VX_CLOUD_DISTRIBUTE is set but no vx-cloud serve is configured or advertised — ' +
-              'start one (`vx-cloud serve`), set VX_CLOUD_URL, or `vx-cloud connect` an environment',
+            'VX_CLOUD_DISTRIBUTE is set but no vx-cloud serve is configured — ' +
+              'set VX_CLOUD_URL or `vx-cloud connect` an environment',
           )
         }
         const token = conn.token ?? conn.prToken
@@ -261,7 +247,7 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
       // an environment connected with `--delegate` does.
       if (env?.delegate === true) {
         const { resolveBackend } = await import('./cli/backend.js')
-        return resolveBackend(ctx.request.cwd, undefined, env.url, env.token)
+        return resolveBackend(undefined, env.url, env.token)
       }
       return undefined
     },
@@ -295,9 +281,8 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
       // telemetry plugins (e.g. otel()) are unaffected by design.
       if (process.env['VX_CLOUD_AGENT'] === '1') return undefined
       // Push the run summary to the connection's `/v1/ingest` — the SAME
-      // connection the cache and distribution use. Over the advertised unix
-      // socket for a local serve; TCP otherwise. No connection → decline, so a
-      // plain `vx run` is unaffected.
+      // connection the cache and distribution use. No connection → decline,
+      // so a plain `vx run` is unaffected.
       const conn = resolveConnection(opts)
       // Also activate (with no connection) to write the GitHub Actions job
       // summary — a CI run that declares cloud() gets a per-task result table
@@ -311,7 +296,6 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
               connection: {
                 baseUrl: conn.url,
                 ...(conn.token !== undefined ? { token: conn.token } : {}),
-                ...(conn.socket !== undefined ? { socketPath: conn.socket } : {}),
               },
             }
           : {}),
@@ -496,26 +480,17 @@ class CloudIngestSink implements TelemetrySink {
     }
   }
 
-  /** POST a body to a serve path — unix socket first (if advertised), TCP
-   *  fallback; every error swallowed + warned (telemetry never fails a run). */
+  /** POST a body to a serve path; every error swallowed + warned (telemetry
+   *  never fails a run). */
   private async send(pathname: string, body: string, label: string): Promise<void> {
-    const conn = this.connection!
-    if (conn.socketPath !== undefined) {
-      try {
-        await this.post(`http://localhost${pathname}`, body, { unix: conn.socketPath })
-        return
-      } catch {
-        // socket dial failed (removed/refused) — fall back to the TCP origin
-      }
-    }
     try {
-      await this.post(`${conn.baseUrl}${pathname}`, body)
+      await this.post(`${this.connection!.baseUrl}${pathname}`, body)
     } catch (err) {
       this.warn(`[vx] ${label}: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
-  private async post(url: string, body: string, extra?: { unix: string }): Promise<void> {
+  private async post(url: string, body: string): Promise<void> {
     const headers: Record<string, string> = { 'content-type': 'application/json' }
     const token = this.connection?.token
     if (token) headers['authorization'] = `Bearer ${token}`
@@ -530,7 +505,6 @@ class CloudIngestSink implements TelemetrySink {
         headers,
         body,
         signal: controller.signal,
-        ...(extra !== undefined ? { unix: extra.unix } : {}),
       })
     } finally {
       clearTimeout(timer)

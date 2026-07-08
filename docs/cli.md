@@ -1077,9 +1077,7 @@ vx-cloud serve
   defense. No token → open, but loopback-only.
 - **Unix socket.** With `--socket` the same API also listens on a
   0600 unix socket; socket requests bypass the token gate — the OS
-  file permissions ARE the auth. The advertisement carries the socket
-  path and the `cloud()` plugin's local auto-detect prefers it (TCP
-  stays the fallback, and the browser dashboard stays on TCP).
+  file permissions ARE the auth (the browser dashboard stays on TCP).
 - **Artifact store.** `/v8/artifacts/:hash` speaks the Turbo wire
   core's remote cache already talks — point `VX_REMOTE_CACHE_URL` at
   the serve origin (token = the serve token) and the remote cache
@@ -1099,11 +1097,11 @@ vx-cloud serve
   `run_trends`, `cache_stats`, `why_did_rerun`, `compare_runs` — so an
   AI agent pointed at the serve (with the bearer token as an
   `Authorization` header) can inspect and debug runs.
-- **Advertisement.** The serve writes a per-user advertisement at
-  `$XDG_RUNTIME_DIR/vx-cloud/serve.json` (fallback: a per-uid temp
-  dir; `VX_CLOUD_SERVE_INFO` pins an exact path), so a `vx run` in ANY
-  workspace on the machine auto-detects it — zero-config local
-  dashboard.
+- **Connecting.** A serve is never auto-detected — `vx-cloud connect`
+  is the one client↔serve wiring. Local flow: `vx-cloud serve --ui`,
+  then ONE-TIME `vx-cloud connect http://localhost:4321` (the
+  deterministic port makes the URL stable); every `vx run` on the
+  machine then pushes to it.
 - **Workspace catalog.** When the serve is colocated with a workspace
   (like `/v1/graph`), `/v1/workspace/*` serves the project/task catalog:
   lock-first (`vx-lock.json`, instant, zero eval — projects whose config
@@ -1157,7 +1155,7 @@ server.
 ```
 vx-cloud connect https://vx.corp.example --token vxc_…    # validate + persist + activate
 vx-cloud connect <url> --name team --delegate --no-use    # named; opt into run delegation; don't activate
-vx-cloud env ls                                           # named servers + the auto-detected (local) row, with reachability
+vx-cloud env ls                                           # named servers, with live reachability
 vx-cloud env use team                                     # switch the active environment
 vx-cloud env rm staging                                   # delete an entry
 vx-cloud disconnect                                       # clear the active pointer (entries + tokens survive)
@@ -1178,8 +1176,11 @@ no separate cache/ingest/service URL. Resolution (first match wins):
 | --- | ---------------------------------------------------------------------------------------------------- |
 | 1   | `cloud({ url, token, prToken })` options / `VX_CLOUD_URL` + `VX_CLOUD_TOKEN` (+ `VX_CLOUD_PR_TOKEN`) |
 | 2   | the active named environment (`vx-cloud connect`)                                                    |
-| 3   | an auto-detected local `vx-cloud serve` (per-user serve.json + live pid)                             |
-| 4   | decline — a plain run stays zero-overhead                                                            |
+| 3   | decline — a plain run stays zero-overhead                                                            |
+
+There is no local-serve auto-detect: a serve merely running on the
+machine never captures runs by existence — connect to it like any
+other server (`vx-cloud connect http://localhost:4321`).
 
 (The pre-consolidation env vars `VX_SERVICE_URL`, `VX_REMOTE_CACHE_URL/TOKEN`,
 `VX_CLOUD_INGEST_URL/TOKEN`, `VX_CLOUD_INSIGHTS_URL/TOKEN` are still accepted
@@ -1212,7 +1213,8 @@ inside `vx-cloud serve`.
 
 ```
 vx-cloud agent --url <serve-origin>   # (or --coordinator; falls back to
-                                      #  VX_SERVICE_URL / the local serve ad)
+                                      #  VX_CLOUD_URL / VX_SERVICE_URL / the
+                                      #  connected environment)
     --token <t>                       # serve bearer (env: VX_CLOUD_TOKEN)
     --capacity <n>                    # max concurrent assignments (default 1)
     --session <s>                     # session key (default: VX_AGENT_SESSION >

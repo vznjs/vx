@@ -1,5 +1,5 @@
 // The cloud-side run backends: delegate to a `vx-cloud serve` over a
-// WebSocket (`serviceBackend`), discover one for the current workspace
+// WebSocket (`serviceBackend`), resolve one from explicit config
 // (`resolveBackend`), and a local in-process backend that additionally
 // mirrors events to a running `vx dev` hub (`localDevBackend`). Core's
 // `localBackend` is the plain in-process default; these are the building
@@ -23,7 +23,6 @@ import {
   type ServerMessage,
 } from '@vzn/vx'
 import { connectDevForwarder } from './dev-client.js'
-import { readServeInfo } from '../serve-info.js'
 
 /**
  * Run in-process via `run()`, mirroring the run's events to a live `vx dev`
@@ -106,16 +105,15 @@ export function serviceBackend(origin: string, sink?: Logger, token?: string): R
 }
 
 /**
- * Pick a backend. Order: an explicit `serviceUrl` (the `cloud({ serviceUrl })`
- * option or a delegate-enabled environment; `token` rides its WS upgrade),
- * then `VX_SERVICE_URL` (the hosted hook), then a local `vx-cloud serve`
- * advertised for this workspace, else the in-process dev backend.
- * Fail-safe: any uncertainty — unreachable service, stale info file, parse
- * error — falls through to local. A service must never be able to break a run
- * by merely being misconfigured or down.
+ * Pick a backend. Order: an explicit `serviceUrl` (a delegate-enabled
+ * environment from `vx-cloud connect --delegate`; `token` rides its WS
+ * upgrade), then `VX_SERVICE_URL` (the hosted hook), else the in-process dev
+ * backend. Delegation is ALWAYS explicit wiring — there is no local-serve
+ * auto-detect. Fail-safe: any uncertainty (unreachable service) falls through
+ * to local; a service must never be able to break a run by merely being
+ * misconfigured or down.
  */
 export async function resolveBackend(
-  cwd: string,
   sink?: Logger,
   serviceUrl?: string,
   token?: string,
@@ -126,17 +124,6 @@ export async function resolveBackend(
   const envUrl = process.env['VX_SERVICE_URL']
   if (envUrl !== undefined && envUrl !== '' && (await reachable(envUrl))) {
     return serviceBackend(envUrl, sink)
-  }
-  // Auto-detect a local serve via its per-user advertisement (machine-level, so
-  // it's found from any workspace). `reachable` confirms it's actually up, so a
-  // stale file just falls through to local.
-  try {
-    const info = readServeInfo()
-    if (info !== undefined && (await reachable(info.origin))) {
-      return serviceBackend(info.origin, sink)
-    }
-  } catch {
-    // any failure → local
   }
   return localDevBackend()
 }

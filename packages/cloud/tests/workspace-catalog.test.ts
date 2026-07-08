@@ -2,7 +2,7 @@
 // fallback resolution, staleness flagging, mtime-keyed memoization, and the
 // serve's /v1/workspace/* routes (colocated-only, bearer-gated).
 
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
+import { describe, it, expect } from 'bun:test'
 import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -10,23 +10,8 @@ import { spawnSync } from 'node:child_process'
 import { loadProjectConfig } from '@vzn/vx'
 import { WorkspaceCatalog } from '../src/workspace-catalog.js'
 import { startServe } from '../src/cli/serve.js'
-import { serveInfoPath } from '../src/serve-info.js'
 
 const CORE_BIN = path.join(import.meta.dir, '..', '..', '..', 'src', 'bin.ts')
-
-// Isolate the per-user serve advertisement (same guard as serve.test.ts).
-const prevServeInfo = process.env['VX_CLOUD_SERVE_INFO']
-beforeAll(() => {
-  process.env['VX_CLOUD_SERVE_INFO'] = path.join(
-    tmpdir(),
-    `vx-serveinfo-catalog-${process.pid}.json`,
-  )
-})
-afterAll(async () => {
-  await rm(serveInfoPath(), { force: true })
-  if (prevServeInfo === undefined) delete process.env['VX_CLOUD_SERVE_INFO']
-  else process.env['VX_CLOUD_SERVE_INFO'] = prevServeInfo
-})
 
 /** Two configured packages; no git needed — the catalog reads configs only. */
 async function makeCatalogWorkspace(): Promise<string> {

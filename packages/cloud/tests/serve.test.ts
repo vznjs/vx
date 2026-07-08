@@ -1,24 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
-import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises'
+import { describe, it, expect } from 'bun:test'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import type { Logger, RunRequest, RunSummaryRecord } from '@vzn/vx'
 import { startServe } from '../src/cli/serve.js'
-import { serveInfoPath } from '../src/serve-info.js'
 import { serviceBackend, resolveBackend } from '../src/cli/backend.js'
-
-// Isolate the per-user serve advertisement at a temp path so these tests never
-// touch (or collide with) a real local serve's file on the machine.
-const prevServeInfo = process.env['VX_CLOUD_SERVE_INFO']
-beforeAll(() => {
-  process.env['VX_CLOUD_SERVE_INFO'] = path.join(tmpdir(), `vx-serveinfo-serve-${process.pid}.json`)
-})
-afterAll(async () => {
-  await rm(serveInfoPath(), { force: true })
-  if (prevServeInfo === undefined) delete process.env['VX_CLOUD_SERVE_INFO']
-  else process.env['VX_CLOUD_SERVE_INFO'] = prevServeInfo
-})
 
 // vx-cloud reads ONLY its own ingest store; runs reach it via POST /v1/ingest
 // (the cloud() plugin's push), never from a workspace cache.db. These helpers
@@ -193,13 +180,12 @@ describe('vx serve delegation', () => {
     }
   })
 
-  it('reports a health endpoint and writes/removes its info file', async () => {
+  it('reports a health endpoint', async () => {
     const root = await makeWorkspace()
     const server = await startServe({ root })
     try {
       const res = await fetch(`${server.origin}/health`)
       expect(res.ok).toBe(true)
-      expect((await Bun.file(serveInfoPath()).json()).origin).toBe(server.origin)
     } finally {
       await server.stop()
       await rm(root, { recursive: true, force: true })
@@ -716,24 +702,20 @@ describe('resolveServePort', () => {
 })
 
 describe('resolveBackend', () => {
-  it('falls back to local when no service is reachable', async () => {
-    const root = await mkdtemp(path.join(tmpdir(), 'vx-nosvc-'))
-    const backend = await resolveBackend(root)
-    // localBackend and the resolved one are structurally the same shape;
-    // the meaningful assertion is that it did NOT pick a service (no throw,
-    // returns a usable backend). We can't compare identities, so assert it
-    // behaves like local by checking it's not the service path: a run would
-    // execute in-process. Here we just assert a backend object came back.
+  it('falls back to local when no service is configured', async () => {
+    // No serviceUrl, no VX_SERVICE_URL → local. A serve RUNNING on the machine
+    // changes nothing: delegation requires explicit wiring (`connect
+    // --delegate` / env vars), never auto-detection.
+    const backend = await resolveBackend()
     expect(typeof backend.run).toBe('function')
-    await rm(root, { recursive: true, force: true })
   })
 
-  it('selects a service when its info file points at a reachable server', async () => {
+  it('delegates to an explicitly configured service URL', async () => {
     const root = await makeWorkspace()
     const server = await startServe({ root })
     try {
       const seen: string[] = []
-      const backend = await resolveBackend(root, captureLogger(seen))
+      const backend = await resolveBackend(captureLogger(seen), server.origin)
       const result = await backend.run({ tasks: ['hello'], cwd: root })
       expect(result.ok).toBe(true)
       expect(result.outcomes[0]!.taskId).toBe('demo#hello')
@@ -774,14 +756,9 @@ describe('resolveBackend', () => {
     }
   })
 
-  it('ignores a stale info file (unreachable origin) and falls back', async () => {
-    const root = await mkdtemp(path.join(tmpdir(), 'vx-stale-'))
-    await mkdir(path.dirname(serveInfoPath()), { recursive: true })
+  it('an unreachable explicit service URL falls back to local (fail-safe)', async () => {
     // A port nothing listens on → health check fails → local fallback.
-    await writeFile(serveInfoPath(), JSON.stringify({ origin: 'http://localhost:1', pid: 1 }))
-    const backend = await resolveBackend(root)
+    const backend = await resolveBackend(undefined, 'http://localhost:1')
     expect(typeof backend.run).toBe('function')
-    await rm(serveInfoPath(), { force: true })
-    await rm(root, { recursive: true, force: true })
   })
 })

@@ -28,7 +28,7 @@ Because the serve reads only its own store, `vx-cloud` can run anywhere
 — on your laptop next to the workspace, or on a remote box that has no
 access at all to the machines that produced the runs.
 
-## Quick start (zero-config local loop)
+## Quick start (local loop)
 
 Declare the plugin once in your workspace's `vx.workspace.ts`:
 
@@ -39,26 +39,32 @@ import { cloud } from '@vzn/vx-cloud/plugin'
 export default defineWorkspace({ plugins: [cloud()] })
 ```
 
-Then start the serve in (or anywhere reachable from) your workspace:
+Then start the serve and connect to it ONCE:
 
 ```sh
 vx-cloud serve --ui --open
+vx-cloud connect http://localhost:4321
 ```
 
 That:
 
 1. boots the service on `http://127.0.0.1:4321` (a stable default
-   port — the URL is the same across restarts),
-2. serves the embedded dashboard at `/`,
-3. opens your browser at the same origin.
+   port — the URL is the same across restarts, which is what makes the
+   one-time connect stick),
+2. serves the embedded dashboard at `/`, opening your browser at the
+   same origin,
+3. persists the connection per-user — **every subsequent `vx run` on
+   the machine pushes its summary there** and shows up on the
+   dashboard.
 
-The `cloud()` plugin auto-detects the local serve through its per-user
-advertisement, so **every subsequent `vx run` pushes its summary with
-no further config** and shows up on the dashboard. `Ctrl-C` stops the
-serve. Drop `--open` to skip the browser launch; drop `--ui` to run the
-API + streams headless.
+`vx-cloud connect` is the ONLY client↔serve wiring — a serve is never
+auto-detected, so a running serve can't capture runs unless you
+connected to it (`vx-cloud disconnect` stops the pushes). `Ctrl-C`
+stops the serve. Drop `--open` to skip the browser launch; drop `--ui`
+to run the API + streams headless.
 
-Pin a different port with `--port 5000` or `VX_CLOUD_PORT=5000`.
+Pin a different port with `--port 5000` or `VX_CLOUD_PORT=5000` (and
+connect to that URL instead).
 
 ## Authentication
 

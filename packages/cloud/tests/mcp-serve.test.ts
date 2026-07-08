@@ -8,19 +8,6 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { RunSummaryRecord } from '@vzn/vx'
 import { startServe, type ServeServer } from '../src/cli/serve.js'
-import { serveInfoPath } from '../src/serve-info.js'
-
-// Isolate the per-user serve advertisement at a temp path so test serves
-// never clobber (or get discovered through) the real machine-level file.
-const prevServeInfo = process.env['VX_CLOUD_SERVE_INFO']
-beforeAll(() => {
-  process.env['VX_CLOUD_SERVE_INFO'] = path.join(tmpdir(), `vx-serveinfo-mcp-${process.pid}.json`)
-})
-afterAll(async () => {
-  await rm(serveInfoPath(), { force: true })
-  if (prevServeInfo === undefined) delete process.env['VX_CLOUD_SERVE_INFO']
-  else process.env['VX_CLOUD_SERVE_INFO'] = prevServeInfo
-})
 
 function mkSummary(runId: string, over: { task?: string; at?: number } = {}): RunSummaryRecord {
   const task = over.task ?? 'hello'

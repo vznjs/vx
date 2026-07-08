@@ -2,27 +2,13 @@
 // workspace routing) and GET /v1/runs/:id/logs/:taskId (direct row, the
 // cache-hit → hash resolution, the 404, and the version gate).
 
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { RunSummaryRecord, TaskTelemetry } from '@vzn/vx'
 import { startServe } from '../src/cli/serve.js'
-import { serveInfoPath } from '../src/serve-info.js'
 import { LOG_WIRE_VERSION, type TaskLogBundle } from '../src/task-log-capture.js'
-
-const prev = process.env['VX_CLOUD_SERVE_INFO']
-beforeAll(() => {
-  process.env['VX_CLOUD_SERVE_INFO'] = path.join(
-    tmpdir(),
-    `vx-serveinfo-tasklogs-${process.pid}.json`,
-  )
-})
-afterAll(async () => {
-  await rm(serveInfoPath(), { force: true })
-  if (prev === undefined) delete process.env['VX_CLOUD_SERVE_INFO']
-  else process.env['VX_CLOUD_SERVE_INFO'] = prev
-})
 
 const WS = 'ws-logs'
 
