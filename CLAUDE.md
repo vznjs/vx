@@ -189,6 +189,65 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-08**: **Cloud data-model Phase 2 SHIPPED — entity-page IA +
+  `/v1/artifacts` + Artifacts UI + Insights + `/cache/:hash` + `?task=`
+  deep links** (completes `docs/design/cloud-data-model-2026-07.md` §4.2 +
+  §8-10; six commits `7d23eca`..`db8ed10`). **Server half:**
+  `GET /v1/artifacts?limit=` — the `/v8` store made visible.
+  `ArtifactStore.list()` walks EXACTLY `readScopes()` (the same scope set
+  `has()`/GET resolve against), so the list can never leak wider than a
+  fetch could reach: trusted never lists untrusted, an untrusted principal
+  lists its own per-PR sub-scope ∪ trusted, and a hash present in both
+  scopes lists ONCE with GET-resolution priority (first-scope-wins dedupe).
+  Rows carry size/mtime/tier + the `.duration` sidecar; provenance
+  (`task: {project, task, runId}`) is a best-effort batched join
+  (900-chunked IN-lists, `ORDER BY started_at DESC` + first-wins = most
+  recent producer) against the workspace-resolved ingest db — absent for
+  workspaces this serve never ingested. NOT workspace-gated (artifacts
+  exist on remote serves; sits above the unknown-`?ws=` guard). **UI half
+  (all in `packages/cloud/ui`, zero core change):** nav is the
+  entity-ordered seven — **Runs · Workspace · Projects · Tasks · Cache ·
+  Artifacts · Insights**; `/trends` + `/bottlenecks` DIE as routes
+  (redirect to the NEW `/insights`, their views deleted and absorbed:
+  trends charts, heatmap, flaky-with-Retried, hit-split, savings,
+  time-burners, recent failures — every row links INTO its entity, failures
+  deep-link `/runs/:id?task=…`; the prunable-entries table moved here
+  rather than being orphaned); `/overview` became the **Workspace** page
+  (catalog summary card with `lock`/`live` source badge + stale count,
+  identity; analytics moved to Insights; the agent-pool card deliberately
+  SKIPPED — §12 open question, needs a sessions-list registry read);
+  Projects/Tasks are **catalog∪rollup joined** (never-run projects/tasks
+  navigable; no catalog → rollups pass through by reference — the
+  capabilities pattern); project detail gains resolved per-task config
+  blocks, task detail gains the Config card (the `vx show` payload), a
+  flaky badge ("CONFIRMED by within-run retries"), and `/cache/:hash` +
+  run deep links; NEW `/artifacts` (hash/size/age/duration/tier/provenance
+  links/download) + `/cache/:hash` entity page (producing/restoring runs +
+  artifact download; entry FACTS honestly absent on ingest-only serves —
+  the standing never-reads-cache.db decision); run detail gains project
+  links, a selected-task artifact download, and `?task=` seeding
+  (`jr/page.tsx` exposes decoded query params; the card already binds
+  `/selectedTask`). ONE shared bearer-fetched `downloadArtifact()` helper
+  serves TaskLogs + both new download sites; `fetchArtifacts()` treats an
+  older serve's 404 as `null` → honest empty state. **Bonus fix:**
+  `taskDetail.json` had always declared a `cacheKey` source that never
+  existed in `SOURCES` (the "Cache key" card could never render) — wired to
+  the existing `/v1/explain/:taskId`. Tests: +8 server (trust-scoped list
+  matrix, dedupe, provenance join present/absent, bearer gate) + 9 join
+  units + serve suites; cloud 268 pass, core 1198 pass, lint clean.
+  **Browser-verified 47/47** (Playwright against a real 3-project fixture
+  with a retry-confirmed flaky task + a `/v8`-stored artifact): nav, all
+  three redirects, never-run catalog entries navigable, the flaky
+  drill-down, `?task=` pre-opening with the failed log tail, artifact
+  downloads from BOTH sites with bytes asserted, palette "Trends" landing
+  on `/insights`, zero real console errors. Known accepted noise: 404
+  probes for never-run tasks / silent-task logs (API design; SPA renders
+  the empty states). Docs: dashboard guide nav synced; `GET /v1/artifacts`
+  added to cli.md (it had shipped undocumented). **Phase 3 (optional,
+  unbuilt):** disjoint-node-set concurrent runs; **Phase 4 = OWNER
+  DECISION** (triggers/webhooks — reverses a standing non-goal; do not
+  build unprompted).
+
 - **2026-07-08**: **Resource-aware scheduling SHIPPED — `exec.resources:
 { cpus, memory }` 2-D admission on the two-tier scheduler** (owner: "tasks
   could reserve how many cpu units… Maybe in exec?" → "CPUs should be number
@@ -354,9 +413,8 @@ agent`'s URL fallback swapped the advertisement for the connected
   CLI-delegated WS run renders as a state-only `cli` row, the queue drains,
   ZERO console errors. Cloud 253 pass (queue unit + serve e2e + catalog
   suites landed with the server half), core 1162 pass, lint clean; dist
-  rebuilt (build artifact, not committed). **Phase 2 (open):** entity-page
-  IA migration (catalog-backed Projects/Tasks, Workspace page, Insights),
-  `/v1/artifacts` + the Artifacts UI, `/cache/:hash`, `?task=` deep links.
+  rebuilt (build artifact, not committed). **Phase 2 SHIPPED same day** —
+  see the entity-model entry above.
 
 - **2026-07-07**: **Adversarial review of the session's nine commits — three
   `--verify` soundness holes fixed, Phase-2→Phase-3 consumer gap closed, debt

@@ -609,7 +609,11 @@ Tests (Phase 1):
     reflects queued + running states.
 13. boundary: package-boundaries snapshot pins the new façade exports.
 
-### Phase 2 — entity-page IA migration + Artifacts + Insights
+### Phase 2 — entity-page IA migration + Artifacts + Insights — SHIPPED 2026-07-08
+
+Landed as specced (the Workspace agent-pool card stayed out per §12; the
+prunable-entries table moved to Insights rather than being orphaned by
+`bottlenecks.json`'s deletion). Checklist as implemented:
 
 - `data.ts` sources: `catalogProjects`, `catalogProject`, `catalogTasks`,
   `artifacts`, `cacheEntry`; join helpers in `functions.ts` (catalog ∪
