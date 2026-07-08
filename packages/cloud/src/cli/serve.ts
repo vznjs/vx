@@ -82,6 +82,13 @@ import {
   type DistServerMessage,
   type DistSubmitMessage,
 } from '../protocol-dist.js'
+import {
+  QUEUE_PROTOCOL_VERSION,
+  type QueueCancelMessage,
+  type QueueServerMessage,
+  type QueueSubmitMessage,
+} from '../protocol-queue.js'
+import { RunQueue } from '../run-queue.js'
 import { defaultServeSocketPath, serveInfoPath } from '../serve-info.js'
 import { WorkspaceCatalog } from '../workspace-catalog.js'
 import { handleMcpHttp } from './mcp-serve.js'
@@ -93,7 +100,7 @@ import { handleMcpHttp } from './mcp-serve.js'
  * `agent:hello`.
  */
 type ServeWsData =
-  | { role: 'run'; principal: Principal; scheduler?: DistScheduler }
+  | { role: 'run'; principal: Principal; scheduler?: DistScheduler; jobIds?: Set<string> }
   | { role: 'agent'; principal: Principal; agent?: RegisteredAgent }
 
 /**
@@ -519,6 +526,65 @@ export async function startServe(opts: {
   // — no client push, no double-shipping.
   const serveLogSink = makeServeLogSink(ingest)
 
+  // The FIFO run queue (cloud-data-model-2026-07 §7) — EVERY serve-executed
+  // run rides it, plain CLI delegation included, closing the pre-existing
+  // race where two concurrent delegations could fight over output cleaning.
+  // Each job's stream/lifecycle routes to its submitting socket via a
+  // binding; `queueWire` marks a `queue:submit` job (speaks queue:* frames)
+  // vs a plain delegated `run` (core wire only — it gets one run:status
+  // "queued behind N" line instead). `dist:submit` does NOT ride the queue:
+  // agents execute in their own checkouts, there is no serve-local output
+  // tree to race on.
+  interface JobBinding {
+    send: (m: ServerMessage) => void
+    sendQueue: (m: QueueServerMessage) => void
+    queueWire: boolean
+  }
+  const jobBindings = new Map<string, JobBinding>()
+  const queue = new RunQueue({
+    execute: async (job) => {
+      const binding = jobBindings.get(job.jobId)
+      // A canceled-socket binding may be gone; the run still executes and
+      // its events drop (today's stop-watching semantics).
+      const send = binding?.send ?? ((): void => {})
+      if (binding?.queueWire) binding.sendQueue({ t: 'queue:start', jobId: job.jobId })
+      // Per-job runId sink: the queue learns the executed run's id from the
+      // summary the run itself captured — zero core change.
+      const jobSink: TelemetrySink = {
+        name: 'vx-cloud/queue-job',
+        onRunSummary: (summary) => {
+          job.runId = summary.run.runId
+        },
+      }
+      const ok = await executeRequest(send, job.request, inflight, [
+        selfIngestSink,
+        serveLogSink,
+        jobSink,
+      ])
+      if (binding?.queueWire) {
+        binding.sendQueue({
+          t: 'queue:done',
+          jobId: job.jobId,
+          ...(job.runId !== undefined ? { runId: job.runId } : {}),
+          ok,
+        })
+      }
+      jobBindings.delete(job.jobId)
+      opts.onRun?.(job.request, ok)
+      return ok
+    },
+    onUpdate: (jobs) => {
+      for (const j of jobs) {
+        if (j.state !== 'queued') continue
+        jobBindings.get(j.jobId)?.sendQueue({
+          t: 'queue:update',
+          jobId: j.jobId,
+          position: j.position,
+        })
+      }
+    },
+  })
+
   // Read-only event subscribers (SSE / NDJSON). Each callback gets every
   // event from every concurrent run as a notification envelope so a `curl`
   // user sees activity across the service.
@@ -753,6 +819,12 @@ export async function startServe(opts: {
       // ingest store. The dashboard SPA (packages/cloud/ui) calls these
       // directly.
       // -----------------------------------------------------------------
+      // The run queue's live state (queued + running jobs, positions,
+      // timestamps) — the unified Runs view polls this while non-empty.
+      // Matched before the /v1/runs/:id regex below.
+      if (url.pathname === '/v1/runs/queue') {
+        return jsonResponse({ jobs: queue.jobs() })
+      }
       if (url.pathname === '/v1/runs') {
         const params = url.searchParams
         const args: Parameters<typeof listRuns>[1] = {}
@@ -1202,6 +1274,46 @@ export async function startServe(opts: {
         await scheduler.start()
         return
       }
+      // The queue family (cloud-owned, like dist:* — core's ClientMessage is
+      // untouched): explicit multi-trigger submissions from the dashboard.
+      if (parsed !== null && typeof parsed === 'object') {
+        const t = (parsed as { t?: unknown }).t
+        const sendQueue = (m: QueueServerMessage): void => {
+          try {
+            ws.send(JSON.stringify(m))
+          } catch {
+            // client vanished; queued jobs cancel on close
+          }
+        }
+        if (t === 'queue:submit') {
+          const msg = parsed as QueueSubmitMessage
+          if (msg.v !== QUEUE_PROTOCOL_VERSION) {
+            sendQueue({
+              t: 'queue:refused',
+              message: `queue protocol mismatch: client speaks v${String(msg.v)}, serve speaks v${QUEUE_PROTOCOL_VERSION}`,
+            })
+            return
+          }
+          if (typeof msg.request !== 'object' || !Array.isArray(msg.request?.tasks)) {
+            sendQueue({ t: 'queue:refused', message: 'not a RunRequest' })
+            return
+          }
+          const res = queue.submit(msg.request)
+          if ('error' in res) {
+            sendQueue({ t: 'queue:refused', message: res.error })
+            return
+          }
+          jobBindings.set(res.jobId, { send, sendQueue, queueWire: true })
+          if (ws.data?.role === 'run') (ws.data.jobIds ??= new Set()).add(res.jobId)
+          sendQueue({ t: 'queue:accepted', jobId: res.jobId, position: res.position })
+          return
+        }
+        if (t === 'queue:cancel') {
+          const msg = parsed as QueueCancelMessage
+          if (queue.cancel(msg.jobId)) jobBindings.delete(msg.jobId)
+          return
+        }
+      }
       let message: ClientMessage | null = null
       if (isEnvelope(parsed)) {
         message = envelopeToClientMessage(parsed)
@@ -1209,11 +1321,26 @@ export async function startServe(opts: {
         message = parsed as ClientMessage
       }
       if (!message || message.t !== 'run') return
-      const ok = await executeRequest(send, message.request, inflight, [
-        selfIngestSink,
-        serveLogSink,
-      ])
-      opts.onRun?.(message.request, ok)
+      // Plain CLI delegation rides the SAME queue (serialized execution —
+      // the concurrent-delegation output race is closed). The client speaks
+      // only the core wire, so a non-immediate start surfaces as one
+      // run:status line the wire renderer already prints, ahead of run:start.
+      const res = queue.submit(message.request)
+      if ('error' in res) {
+        send({ t: 'error', message: res.error })
+        return
+      }
+      jobBindings.set(res.jobId, { send, sendQueue: () => {}, queueWire: false })
+      if (ws.data?.role === 'run') (ws.data.jobIds ??= new Set()).add(res.jobId)
+      if (res.position > 0) {
+        send({
+          t: 'event',
+          event: {
+            kind: 'run:status',
+            line: `vx: queued behind ${res.position} run(s) on this serve`,
+          },
+        })
+      }
     },
     close(ws) {
       if (ws.data?.role === 'agent') {
@@ -1223,6 +1350,14 @@ export async function startServe(opts: {
       // A submitter that dies mid-run: the scheduler finishes the graph
       // with the remaining agents, then drains them.
       ws.data?.scheduler?.onSubmitterGone()
+      // Closing the socket of a QUEUED job cancels it; a RUNNING job
+      // completes server-side (stop-watching semantics, unchanged) and its
+      // binding is dropped when it finishes.
+      if (ws.data?.jobIds !== undefined) {
+        for (const jobId of ws.data.jobIds) {
+          if (queue.cancel(jobId)) jobBindings.delete(jobId)
+        }
+      }
     },
   }
 

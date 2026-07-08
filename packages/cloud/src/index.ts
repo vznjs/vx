@@ -20,6 +20,15 @@ export {
 } from './artifact-store.js'
 export { startServe, parseServeArgs, DEFAULT_SERVE_PORT, resolveServePort } from './cli/serve.js'
 export type { ServeServer } from './cli/serve.js'
+export { RunQueue, DEFAULT_MAX_QUEUED } from './run-queue.js'
+export type { JobView, QueuedJob, RunQueueOptions } from './run-queue.js'
+export { QUEUE_PROTOCOL_VERSION } from './protocol-queue.js'
+export type {
+  QueueCancelMessage,
+  QueueClientMessage,
+  QueueServerMessage,
+  QueueSubmitMessage,
+} from './protocol-queue.js'
 export { WorkspaceCatalog } from './workspace-catalog.js'
 export type {
   CatalogProjectDetail,
