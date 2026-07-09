@@ -762,3 +762,154 @@ describe('resolveBackend', () => {
     expect(typeof backend.run).toBe('function')
   })
 })
+
+// Cross-machine hermeticity (verify-cross-machine §4): two platforms' pushed
+// summaries carrying the SAME cache key but different fingerprint trees are
+// diffed at read time by GET /v1/hermeticity.
+function mkFpSummary(
+  runId: string,
+  os: string,
+  arch: string,
+  files: Array<[string, string]> | undefined,
+  tree: string,
+): RunSummaryRecord {
+  const base = mkSummary(runId)
+  return {
+    ...base,
+    run: { ...base.run, os, arch, host: `host-${os}` },
+    tasks: [
+      {
+        ...base.tasks[0]!,
+        hash: 'shared-fp-key',
+        outputFp: {
+          tree,
+          fileCount: files?.length ?? 1,
+          ...(files !== undefined ? { files } : { truncated: true }),
+        },
+      },
+    ],
+  }
+}
+
+describe('vx serve /v1/hermeticity', () => {
+  it('diffs two platforms for one key, naming the diverging rels', async () => {
+    const root = await makeWorkspace()
+    const server = await startServe({ root })
+    try {
+      await push(
+        server.origin,
+        mkFpSummary(
+          'fp-run-1',
+          'linux',
+          'x64',
+          [
+            ['dist/app.js', 'aa'],
+            ['dist/meta.json', '11'],
+          ],
+          't-linux',
+        ),
+      )
+      await push(
+        server.origin,
+        mkFpSummary(
+          'fp-run-2',
+          'darwin',
+          'arm64',
+          [
+            ['dist/app.js', 'bb'],
+            ['dist/meta.json', '11'],
+          ],
+          't-darwin',
+        ),
+      )
+      const res = (await (await fetch(`${server.origin}/v1/hermeticity`)).json()) as {
+        divergent: Array<{
+          hash: string
+          taskId: string
+          crossPlatform: boolean
+          changed: string[]
+          changedComplete: boolean
+          reports: Array<{ os: string; arch: string; tree: string; runId: string }>
+        }>
+        keysTracked: number
+        reportCount: number
+      }
+      expect(res.keysTracked).toBe(1)
+      expect(res.reportCount).toBe(2)
+      expect(res.divergent.length).toBe(1)
+      const d = res.divergent[0]!
+      expect(d.hash).toBe('shared-fp-key')
+      expect(d.taskId).toBe('demo#hello')
+      expect(d.crossPlatform).toBe(true)
+      expect(d.changed).toEqual(['dist/app.js'])
+      expect(d.changedComplete).toBe(true)
+      expect(d.reports.map((r) => `${r.os}-${r.arch}`).sort()).toEqual([
+        'darwin-arm64',
+        'linux-x64',
+      ])
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('single-platform / fp-free data → empty divergence; unknown ?ws= → 404', async () => {
+    const root = await makeWorkspace()
+    const server = await startServe({ root })
+    try {
+      // An fp-free (older-core) summary ingests fine…
+      await push(server.origin, mkSummary('plain-run'))
+      // …and one single-platform fp report is not divergence.
+      await push(server.origin, mkFpSummary('fp-run-1', 'linux', 'x64', [['out.txt', 'aa']], 't1'))
+      const res = (await (await fetch(`${server.origin}/v1/hermeticity`)).json()) as {
+        divergent: unknown[]
+        keysTracked: number
+        reportCount: number
+      }
+      expect(res.divergent).toEqual([])
+      expect(res.keysTracked).toBe(1)
+      expect(res.reportCount).toBe(1)
+
+      const unknown = await fetch(`${server.origin}/v1/hermeticity?ws=nope`)
+      expect(unknown.status).toBe(404)
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('is bearer-gated like every /v1 read', async () => {
+    const root = await makeWorkspace()
+    const server = await startServe({ root, token: 'sekret' })
+    try {
+      const noToken = await fetch(`${server.origin}/v1/hermeticity`)
+      expect(noToken.status).toBe(401)
+      const ok = await fetch(`${server.origin}/v1/hermeticity`, {
+        headers: { authorization: 'Bearer sekret' },
+      })
+      expect(ok.status).toBe(200)
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects an oversized POST /v1/ingest with 413 (declared content-length)', async () => {
+    const root = await makeWorkspace()
+    const server = await startServe({ root })
+    try {
+      // 33 MiB body — over the 32 MiB ingest cap; fetch sets content-length,
+      // and the route rejects before parsing.
+      const big = `{"pad":"${'x'.repeat(33 * 1024 * 1024)}"}`
+      const res = await fetch(`${server.origin}/v1/ingest`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: big,
+      })
+      expect(res.status).toBe(413)
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})

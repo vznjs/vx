@@ -403,6 +403,34 @@ function assertWellFormedUrl(value: string | undefined, field: string): void {
   }
 }
 
+/** Per-run budget for serialized fingerprint file maps in one summary POST
+ *  (verify-cross-machine §2). Enforced cloud-side so core stays stateless. */
+const FP_RUN_BUDGET_BYTES = 4 * 1024 * 1024
+
+/**
+ * Bound the fingerprint payload of a summary: walk tasks in order, spending
+ * the budget on each task's serialized `files`; past it, later tasks ship
+ * tree-only (`truncated: true` — divergence DETECTION never needs the map).
+ * An under-budget summary is returned as the SAME object, byte-identical on
+ * the wire.
+ */
+export function capFingerprintPayload(summary: RunSummaryRecord): RunSummaryRecord {
+  let budget = FP_RUN_BUDGET_BYTES
+  let trimmed = false
+  const tasks = summary.tasks.map((t) => {
+    const fp = t.outputFp
+    if (fp?.files === undefined) return t
+    const size = JSON.stringify(fp.files).length
+    if (size <= budget) {
+      budget -= size
+      return t
+    }
+    trimmed = true
+    return { ...t, outputFp: { tree: fp.tree, fileCount: fp.fileCount, truncated: true } }
+  })
+  return trimmed ? { ...summary, tasks } : summary
+}
+
 /**
  * Pushes the canonical RunSummaryRecord to the cloud ingest endpoint. Summary
  * mode: one JSON POST per run, at run end (the smallest contract; the cloud
@@ -463,7 +491,11 @@ class CloudIngestSink implements TelemetrySink {
     if (this.connection !== undefined) {
       // Summary first (so the run row normally exists when logs land — the
       // store tolerates either order), then the drained log bundle if any.
-      await this.send('/v1/ingest', JSON.stringify(this.summary), 'cloud ingest')
+      await this.send(
+        '/v1/ingest',
+        JSON.stringify(capFingerprintPayload(this.summary)),
+        'cloud ingest',
+      )
       if (this.logs !== undefined) {
         const runId = this.summary.run.runId
         const workspaceId = (this.summary.run as { workspaceId?: string }).workspaceId

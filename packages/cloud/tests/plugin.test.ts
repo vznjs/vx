@@ -14,7 +14,7 @@ import {
   type TelemetryContext,
   type TelemetrySink,
 } from '@vzn/vx'
-import { cloud } from '../src/plugin.js'
+import { capFingerprintPayload, cloud } from '../src/plugin.js'
 import { startServe } from '../src/cli/serve.js'
 import { ENVIRONMENTS_VERSION, writeEnvironmentsFile } from '../src/environments.js'
 
@@ -349,6 +349,68 @@ describe('cloud() telemetry capability', () => {
       const parsed = JSON.parse(received[0]!.body) as RunSummaryRecord
       expect(parsed.run.runId).toBe('run-xyz')
       expect(parsed.tasks[0]!.task).toBe('hello')
+    } finally {
+      void server.stop(true)
+    }
+  })
+
+  it('caps the per-run fingerprint payload at 4 MiB (later tasks tree-only); small runs untouched', async () => {
+    // Pure-cap semantics: an under-budget summary is the SAME object…
+    const small = fakeSummary()
+    small.tasks = [
+      {
+        ...small.tasks[0]!,
+        hash: 'h1',
+        outputFp: { tree: 't1', fileCount: 1, files: [['out.txt', 'aa']] },
+      },
+    ]
+    expect(capFingerprintPayload(small)).toBe(small)
+
+    // …while a run whose serialized maps blow the budget ships the later
+    // tasks tree-only (truncated: true), earlier tasks intact.
+    // ~3 MiB serialized per task: the first fits the 4 MiB budget, the second
+    // (cumulative ~6 MiB) does not.
+    const bigFiles: Array<[string, string]> = []
+    for (let i = 0; i < 500; i++) {
+      bigFiles.push([`dist/${'p'.repeat(6000)}/f${i}.js`, `${i}`.padStart(16, '0')])
+    }
+    const big = fakeSummary()
+    big.tasks = [
+      {
+        ...big.tasks[0]!,
+        taskId: 'a#build',
+        hash: 'h1',
+        outputFp: { tree: 't1', fileCount: 500, files: bigFiles },
+      },
+      {
+        ...big.tasks[0]!,
+        taskId: 'b#build',
+        hash: 'h2',
+        outputFp: { tree: 't2', fileCount: 500, files: bigFiles },
+      },
+    ]
+    const capped = capFingerprintPayload(big)
+    expect(capped).not.toBe(big)
+    expect(capped.tasks[0]!.outputFp!.files).toBeDefined()
+    expect(capped.tasks[1]!.outputFp).toEqual({ tree: 't2', fileCount: 500, truncated: true })
+
+    // And the sink POSTs a small run's body byte-for-byte.
+    const bodies: string[] = []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        bodies.push(await req.text())
+        return new Response('ok')
+      },
+    })
+    try {
+      const sink = (await cloud({
+        url: `http://localhost:${server.port}`,
+        token: 't',
+      }).telemetry!(telemetryCtx('/x'))) as TelemetrySink
+      sink.onRunSummary!(small)
+      await sink.flush!()
+      expect(bodies[0]).toBe(JSON.stringify(small))
     } finally {
       void server.stop(true)
     }

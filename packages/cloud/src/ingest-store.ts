@@ -21,6 +21,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
 import { Cache, type InvocationRecord, type RunRecord, type RunSummaryRecord } from '@vzn/vx'
+import { FpStore, type FpReport, type HermeticityResult } from './fp-store.js'
 import { LogStore, type StoredTaskLog } from './log-store.js'
 import type { TaskLogBundle } from './task-log-capture.js'
 
@@ -92,6 +93,7 @@ function readManifest(file: string): Manifest {
 export class IngestStore {
   private readonly stores = new Map<string, Cache>()
   private readonly logStores = new Map<string, LogStore>()
+  private readonly fpStores = new Map<string, FpStore>()
   private readonly manifest: Manifest
   private readonly manifestPath: string
 
@@ -312,6 +314,26 @@ export class IngestStore {
       tags: JSON.stringify(r.tags),
     }
     cache.recordRunBundle({ runs, invocation })
+
+    // Output fingerprints (verify-cross-machine §3): a `--verify*` run's tasks
+    // carry `outputFp`; persist them keyed by (cache key, platform) in the
+    // per-workspace sidecar so `/v1/hermeticity` can diff across machines.
+    // After the idempotency gate by construction — and the store's PK makes
+    // even a bypassed gate harmless.
+    const fpReports: FpReport[] = []
+    for (const t of summary.tasks) {
+      if (t.hash === undefined || t.outputFp === undefined) continue
+      fpReports.push({
+        hash: t.hash,
+        os: r.os,
+        arch: r.arch,
+        host: r.host,
+        taskId: t.taskId,
+        runId: r.runId,
+        fp: t.outputFp,
+      })
+    }
+    if (fpReports.length > 0) this.openFpStore(wsId).ingest(fpReports)
     return true
   }
 
@@ -339,6 +361,12 @@ export class IngestStore {
     return this.openLogStore(workspaceId).latestByHash(hash)
   }
 
+  /** The workspace's fingerprint divergence read (`GET /v1/hermeticity`). */
+  hermeticity(workspaceId: string, limit: number): HermeticityResult | undefined {
+    if (!WORKSPACE_ID_RE.test(workspaceId)) return undefined
+    return this.openFpStore(workspaceId).hermeticity(limit)
+  }
+
   private openLogStore(id: string): LogStore {
     const existing = this.logStores.get(id)
     if (existing !== undefined) return existing
@@ -349,10 +377,22 @@ export class IngestStore {
     return store
   }
 
+  private openFpStore(id: string): FpStore {
+    const existing = this.fpStores.get(id)
+    if (existing !== undefined) return existing
+    const storeDir = path.join(this.dir, id)
+    mkdirSync(storeDir, { recursive: true })
+    const store = new FpStore(storeDir, undefined, this.warn)
+    this.fpStores.set(id, store)
+    return store
+  }
+
   close(): void {
     for (const cache of this.stores.values()) cache.close()
     this.stores.clear()
     for (const logs of this.logStores.values()) logs.close()
     this.logStores.clear()
+    for (const fps of this.fpStores.values()) fps.close()
+    this.fpStores.clear()
   }
 }

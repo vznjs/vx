@@ -237,6 +237,10 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
 /** Cap for a `POST /v1/ingest/logs` body — bounded before reading (413). */
 const LOG_BODY_MAX_BYTES = 16 * 1024 * 1024
 
+/** Cap for a `POST /v1/ingest` body — a summary now carries fingerprint file
+ *  maps, so bound it before reading like the log bundle (413). */
+const INGEST_BODY_MAX_BYTES = 32 * 1024 * 1024
+
 /** Shape a stored tail into the `TaskLogResponse` (the route strips `hash`
  *  after the trust-scoped artifact check, and adds `refRunId` for hits). */
 function logResponse(
@@ -740,6 +744,10 @@ export async function startServe(opts: {
       // canonical RunSummaryRecord; we persist it into the cloud-owned
       // store the hosted dashboard reads from. Idempotent on runId.
       if (url.pathname === '/v1/ingest' && req.method === 'POST') {
+        const len = Number(req.headers.get('content-length') ?? '0')
+        if (Number.isFinite(len) && len > INGEST_BODY_MAX_BYTES) {
+          return jsonResponse({ ok: false, error: 'summary too large' }, { status: 413 })
+        }
         return (async () => {
           try {
             const summary = (await req.json()) as RunSummaryRecord
@@ -908,6 +916,16 @@ export async function startServe(opts: {
       // ingest store. The dashboard SPA (packages/cloud/ui) calls these
       // directly.
       // -----------------------------------------------------------------
+      // Cross-machine hermeticity (verify-cross-machine §4): cache keys whose
+      // fingerprinted output trees DIVERGE across reports, diffed at read
+      // time from the workspace's fingerprint sidecar. Fed by `--verify*`
+      // runs' summaries; the Insights Hermeticity card reads this.
+      if (url.pathname === '/v1/hermeticity') {
+        const limitRaw = url.searchParams.get('limit')
+        const limitNum = limitRaw !== null ? Number(limitRaw) : NaN
+        const limit = Number.isInteger(limitNum) && limitNum > 0 ? Math.min(limitNum, 500) : 50
+        return jsonResponse(ingest.hermeticity(wsParam ?? ingest.defaultWorkspaceId(), limit))
+      }
       // The run queue's live state (queued + running jobs, positions,
       // timestamps) — the unified Runs view polls this while non-empty.
       // Matched before the /v1/runs/:id regex below.
