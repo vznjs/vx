@@ -804,28 +804,41 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--cache-dir']).error).toMatch(/--cache-dir requires a value/)
   })
 
-  it('parses --verify in all four forms + rejects unknown modes', () => {
-    // bare / =determinism → determinism only
-    expect(parseRunArgs(['build', '--verify']).verify).toEqual({ determinism: true, inputs: false })
+  it('parses --verify in all five forms + rejects unknown modes', () => {
+    // bare / =determinism → determinism (+ fingerprint for free — fp1 exists anyway)
+    expect(parseRunArgs(['build', '--verify']).verify).toEqual({
+      determinism: true,
+      inputs: false,
+      fingerprint: true,
+    })
     expect(parseRunArgs(['build', '--verify=determinism']).verify).toEqual({
       determinism: true,
       inputs: false,
+      fingerprint: true,
     })
-    // =inputs → input-completeness only
+    // =inputs → input-completeness only (fingerprint-free by mode clarity)
     expect(parseRunArgs(['build', '--verify=inputs']).verify).toEqual({
       determinism: false,
       inputs: true,
+      fingerprint: false,
     })
-    // =all → both proofs
+    // =fingerprint → fingerprint only (no re-run, no sandbox)
+    expect(parseRunArgs(['build', '--verify=fingerprint']).verify).toEqual({
+      determinism: false,
+      inputs: false,
+      fingerprint: true,
+    })
+    // =all → everything
     expect(parseRunArgs(['build', '--verify=all']).verify).toEqual({
       determinism: true,
       inputs: true,
+      fingerprint: true,
     })
     // absent → undefined (zero-cost default)
     expect(parseRunArgs(['build']).verify).toBeUndefined()
-    // unknown mode → loud error naming the valid set
+    // unknown mode → loud error naming the valid set (incl. the new mode)
     expect(parseRunArgs(['build', '--verify=bogus']).error).toMatch(
-      /--verify must be determinism \| inputs \| all/,
+      /--verify must be determinism \| inputs \| fingerprint \| all/,
     )
   })
 

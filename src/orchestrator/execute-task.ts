@@ -26,6 +26,7 @@ import { isGroupTask, type TaskNode, type TaskOutcome, type VerifyVerdict } from
 import {
   classifyDeterminism,
   diffOutputTrees,
+  foldFingerprint,
   hashOutputTree,
   outputRefs,
   undeclaredInputPaths,
@@ -83,13 +84,17 @@ export interface ExecuteArgs {
    * save and its outputs are content-compared; a divergence flags the task
    * non-hermetic. When `inputs` is set, an executed + cacheable task is
    * forced through the declared-input baseline sandbox and any read outside
-   * those inputs flags the declared `cache.inputs` as incomplete. `allow`
-   * exempts known-nondeterministic task ids from failing the run. Pure
-   * side-channel — the re-run never saves, nothing is hashed. Undefined = off.
+   * those inputs flags the declared `cache.inputs` as incomplete. When
+   * `fingerprint` is set, the executed task's output tree is fingerprinted
+   * and attached to the outcome (no re-run — the cross-machine diff feed).
+   * `allow` exempts known-nondeterministic task ids from failing the run.
+   * Pure side-channel — the re-run never saves, nothing is hashed.
+   * Undefined = off.
    */
   verify?: {
     determinism: boolean
     inputs: boolean
+    fingerprint: boolean
     allow: ReadonlySet<string>
   }
   /** Per-run memo for `git ls-files` (one entry per project dir). */
@@ -538,9 +543,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       },
     })
     // --verify: fingerprint attempt 1's outputs by CONTENT (raw bytes, never
-    // the mtime+size memo) so the determinism re-run below can prove the
-    // cached bytes are a pure function of the declared inputs.
-    if (args.verify?.determinism && outputFiles.length + wsOutputFiles.length > 0) {
+    // the mtime+size memo). The determinism re-run below compares against it,
+    // and the fingerprinting modes (`--verify`/`=all`/`=fingerprint`) fold it
+    // into the shipped `outputFp` — the cross-machine diff feed.
+    if (
+      (args.verify?.fingerprint || args.verify?.determinism) &&
+      outputFiles.length + wsOutputFiles.length > 0
+    ) {
       verifyFp1 = await hashOutputTree(
         outputRefs(node.projectDir, outputFiles, args.workspaceRoot, wsOutputFiles),
       )
@@ -679,6 +688,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
+  // Cross-machine diff feed: ship attempt 1's fingerprint (the SAVED bytes —
+  // the determinism re-run above never clobbers verifyFp1) so a connected
+  // serve can pair it with other platforms' reports for the same cache key.
+  const outputFp =
+    args.verify?.fingerprint && verifyFp1 !== undefined ? foldFingerprint(verifyFp1) : undefined
+
   return {
     node,
     status: effectiveExitCode === 0 ? 'success' : 'failed',
@@ -691,6 +706,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     wallclockStartNs,
     wallclockEndNs,
     ...(verify !== undefined ? { verify } : {}),
+    ...(outputFp !== undefined ? { outputFp } : {}),
     ...(finalViolations.length > 0
       ? {
           sandboxViolations: finalViolations.length,

@@ -111,6 +111,7 @@ describe('package boundaries', () => {
       'defineWorkspace',
       'deriveCacheSource',
       'deriveStableKeys',
+      'diffOutputTrees',
       'encodeForNDJSON',
       'encodeForSSE',
       'encodeForWS',

@@ -6,7 +6,7 @@
 // See docs/design/cache-correctness-2026-07.md.
 
 import path from 'node:path'
-import type { TaskOutcome, VerifyVerdict } from '../graph/index.js'
+import type { OutputFingerprint, TaskOutcome, VerifyVerdict } from '../graph/index.js'
 import { xxh3hex } from '../util/index.js'
 
 /** An output file to fingerprint: absolute path + a stable, run-independent
@@ -48,6 +48,27 @@ export async function hashOutputTree(refs: readonly OutputRef[]): Promise<Map<st
     out.set(r.key, xxh3hex(new Uint8Array(await Bun.file(r.abs).arrayBuffer())))
   }
   return out
+}
+
+/** Per-file map cap on a shipped fingerprint (~40 KB at the cap). The tree
+ *  digest always folds ALL entries, so detection never depends on the map. */
+export const FP_MAX_FILES = 500
+
+/** Roll an output-tree fingerprint map into the shippable `OutputFingerprint`
+ *  payload (Phase 4, cross-machine diff): a tree digest over ALL sorted
+ *  entries folded `key\0hash\n` (\0 boundaries so parts can't alias), plus
+ *  the first-`cap` pairs — deterministic truncation, so two machines'
+ *  truncated maps cover the same key subset and stay diffable. */
+export function foldFingerprint(fp: Map<string, string>, cap = FP_MAX_FILES): OutputFingerprint {
+  const keys = [...fp.keys()].sort()
+  let folded = ''
+  for (const k of keys) folded += `${k}\0${fp.get(k)!}\n`
+  return {
+    tree: xxh3hex(folded),
+    fileCount: keys.length,
+    files: keys.slice(0, cap).map((k) => [k, fp.get(k)!] as const),
+    ...(keys.length > cap ? { truncated: true } : {}),
+  }
 }
 
 /** The output keys whose content OID differs between two fingerprints

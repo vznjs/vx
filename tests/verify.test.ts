@@ -4,15 +4,21 @@
 // would replay arbitrary past bytes) and fails the run. A pure side-channel:
 // never folded into a cache key. See docs/design/cache-correctness-2026-07.md.
 
+import { readFileSync } from 'node:fs'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { probeSandbox } from '../src/exec/index.js'
-import type { Logger } from '../src/orchestrator/index.js'
-import { run } from '../src/orchestrator/index.js'
+import type { Logger, RunSummaryRecord, TelemetrySink } from '../src/orchestrator/index.js'
+import { optionsToRequest, requestToOptions, run } from '../src/orchestrator/index.js'
 import type { TaskOutcome } from '../src/graph/index.js'
-import { formatVerifySection, undeclaredInputPaths } from '../src/orchestrator/verify.js'
+import {
+  foldFingerprint,
+  formatVerifySection,
+  undeclaredInputPaths,
+} from '../src/orchestrator/verify.js'
+import { xxh3hex } from '../src/util/index.js'
 
 const TIMEOUT = 20_000
 
@@ -63,7 +69,12 @@ async function addProject(root: string, name: string, config: string): Promise<s
   return dir
 }
 
-const DETERMINISM = { determinism: true, inputs: false, allow: new Set<string>() }
+const DETERMINISM = {
+  determinism: true,
+  inputs: false,
+  fingerprint: true,
+  allow: new Set<string>(),
+}
 
 /** A cacheable task whose output is written by `cmd` (a node -e expression body). */
 const project = (cmd: string, outputs = "['out.txt']") =>
@@ -157,7 +168,7 @@ describe('vx run --verify (determinism)', () => {
         cwd: fixture.root,
         tasks: ['run'],
         projects: ['a'],
-        verify: { determinism: true, inputs: false, allow: new Set(['a#run']) },
+        verify: { determinism: true, inputs: false, fingerprint: true, allow: new Set(['a#run']) },
         log: capturingLogger(fixture),
       })
       expect(r.ok).toBe(true)
@@ -307,7 +318,7 @@ describe('vx run --verify (determinism)', () => {
         cwd: fixture.root,
         tasks: ['run'],
         projects: ['a'],
-        verify: { determinism: true, inputs: false, allow: new Set(['a#run']) },
+        verify: { determinism: true, inputs: false, fingerprint: true, allow: new Set(['a#run']) },
         log: capturingLogger(fixture),
       })
       expect(r.ok).toBe(true)
@@ -357,6 +368,293 @@ describe('vx run --verify (determinism)', () => {
     },
     TIMEOUT,
   )
+})
+
+describe('foldFingerprint (pure)', () => {
+  it('tree digest + files are stable across insertion order', () => {
+    const a = new Map([
+      ['x.txt', '01'],
+      ['a.txt', '02'],
+      ['m/n.txt', '03'],
+    ])
+    const b = new Map([
+      ['m/n.txt', '03'],
+      ['x.txt', '01'],
+      ['a.txt', '02'],
+    ])
+    expect(foldFingerprint(a)).toEqual(foldFingerprint(b))
+    expect(foldFingerprint(a).files).toEqual([
+      ['a.txt', '02'],
+      ['m/n.txt', '03'],
+      ['x.txt', '01'],
+    ])
+  })
+
+  it('\\0 fold boundaries: a shifted key/hash split cannot alias', () => {
+    // Same concatenated characters, different (key, hash) split → different trees.
+    expect(foldFingerprint(new Map([['ab', 'c']])).tree).not.toBe(
+      foldFingerprint(new Map([['a', 'bc']])).tree,
+    )
+    // Same for the entry boundary: one entry vs an empty-hash pair.
+    expect(foldFingerprint(new Map([['a', 'b']])).tree).not.toBe(
+      foldFingerprint(new Map([['ab', '']])).tree,
+    )
+  })
+
+  it('cap truncation is deterministic (sorted first-N) and fileCount stays honest', () => {
+    const entries: Array<[string, string]> = []
+    for (let i = 0; i < 7; i++) entries.push([`f${i}.txt`, `h${i}`])
+    const shuffled = [entries[4]!, entries[0]!, entries[6]!, entries[2]!].concat([
+      entries[1]!,
+      entries[5]!,
+      entries[3]!,
+    ])
+    const fp = foldFingerprint(new Map(shuffled), 5)
+    expect(fp.fileCount).toBe(7)
+    expect(fp.truncated).toBe(true)
+    expect(fp.files!.length).toBe(5)
+    expect(fp.files!.map(([k]) => k)).toEqual(['f0.txt', 'f1.txt', 'f2.txt', 'f3.txt', 'f4.txt'])
+    // The tree folds ALL entries — truncation never changes detection.
+    expect(fp.tree).toBe(foldFingerprint(new Map(entries)).tree)
+    // Deterministic: a permuted input truncates to the same subset + tree.
+    expect(foldFingerprint(new Map(entries), 5)).toEqual(fp)
+  })
+
+  it('empty map: empty-fold tree, zero fileCount, empty files, not truncated', () => {
+    const fp = foldFingerprint(new Map())
+    expect(fp).toEqual({ tree: xxh3hex(''), fileCount: 0, files: [] })
+  })
+})
+
+/** `--verify=fingerprint`: fingerprint only — no re-run, no sandbox. */
+const FINGERPRINT = {
+  determinism: false,
+  inputs: false,
+  fingerprint: true,
+  allow: new Set<string>(),
+}
+
+const statusLogger = (f: Fixture, status: string[]): Logger => ({
+  status(line) {
+    status.push(line)
+  },
+  taskStdout(_n, c) {
+    f.out.push(c)
+  },
+  taskStderr(_n, c) {
+    f.err.push(c)
+  },
+  taskComplete() {},
+})
+
+describe('vx run --verify=fingerprint (cross-machine feed)', () => {
+  beforeEach(async () => {
+    fixture = await makeWorkspace()
+  })
+  afterEach(async () => {
+    await rm(fixture.root, { recursive: true, force: true })
+  })
+
+  it(
+    'executes ONCE (no re-run), attaches the fingerprint, no verdict, run green, status line printed',
+    async () => {
+      // count.txt (outside the declared outputs) counts executions: the
+      // determinism re-run would append a second byte.
+      await addProject(
+        fixture.root,
+        'a',
+        project(
+          'const fs=require("fs");fs.appendFileSync("count.txt","x");fs.writeFileSync("out.txt","stable")',
+        ),
+      )
+      const status: string[] = []
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        verify: FINGERPRINT,
+        log: statusLogger(fixture, status),
+      })
+      expect(r.ok).toBe(true)
+      const o = r.outcomes[0]!
+      expect(o.status).toBe('success')
+      // Executed exactly once — fingerprint mode never re-runs.
+      expect(readFileSync(path.join(fixture.root, 'packages', 'a', 'count.txt'), 'utf8')).toBe('x')
+      // Fingerprint attached, NO verdict.
+      expect(o.verify).toBeUndefined()
+      const h = xxh3hex('stable')
+      expect(o.outputFp).toEqual({
+        tree: xxh3hex(`out.txt\0${h}\n`),
+        fileCount: 1,
+        files: [['out.txt', h]],
+      })
+      // The honest fingerprint-only status line.
+      expect(status.some((l) => l.includes('fingerprinted 1 task output trees'))).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '--verify (determinism) ships the fingerprint for free onto telemetry, rels + tree correct',
+    async () => {
+      await addProject(
+        fixture.root,
+        'a',
+        project('require("fs").writeFileSync("out.txt","stable")'),
+      )
+      let captured: RunSummaryRecord | undefined
+      const sink: TelemetrySink = {
+        onRunSummary(summary) {
+          captured = summary
+        },
+      }
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        verify: DETERMINISM,
+        log: capturingLogger(fixture),
+        telemetrySinks: [sink],
+      })
+      expect(r.ok).toBe(true)
+      const t = captured?.tasks.find((x) => x.taskId === 'a#run')
+      expect(t?.verify).toEqual({ kind: 'proven-deterministic' })
+      const h = xxh3hex('stable')
+      expect(t?.outputFp).toEqual({
+        tree: xxh3hex(`out.txt\0${h}\n`),
+        fileCount: 1,
+        files: [['out.txt', h]],
+      })
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a plain run carries no fingerprint anywhere (outcome + telemetry summary)',
+    async () => {
+      await addProject(
+        fixture.root,
+        'a',
+        project('require("fs").writeFileSync("out.txt","stable")'),
+      )
+      let captured: RunSummaryRecord | undefined
+      const sink: TelemetrySink = {
+        onRunSummary(summary) {
+          captured = summary
+        },
+      }
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        log: capturingLogger(fixture),
+        telemetrySinks: [sink],
+      })
+      expect(r.outcomes[0]!.outputFp).toBeUndefined()
+      const t = captured?.tasks.find((x) => x.taskId === 'a#run')
+      expect(t?.outputFp).toBeUndefined()
+      expect(t?.verify).toBeUndefined()
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'never changes the cache key: a --verify=fingerprint run hits a plain entry; the hit carries no fp',
+    async () => {
+      await addProject(
+        fixture.root,
+        'a',
+        project('require("fs").writeFileSync("out.txt","stable")'),
+      )
+      const plain = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        log: capturingLogger(fixture),
+      })
+      expect(plain.outcomes[0]!.status).toBe('success')
+      const warm = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        verify: FINGERPRINT,
+        log: capturingLogger({ root: fixture.root, out: [], err: [] }),
+      })
+      expect(warm.outcomes[0]!.status).toBe('cache-hit')
+      // A hit's on-disk bytes are the PRODUCER's — fingerprinting them would
+      // attribute another machine's output to this platform. No fp, no verdict.
+      expect(warm.outcomes[0]!.outputFp).toBeUndefined()
+      expect(warm.outcomes[0]!.verify).toBeUndefined()
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'truncates the per-file map at 500 deterministically; fileCount stays honest',
+    async () => {
+      await addProject(
+        fixture.root,
+        'a',
+        project(
+          'const fs=require("fs");fs.mkdirSync("dist",{recursive:true});for(let i=0;i<510;i++)fs.writeFileSync("dist/f"+String(i).padStart(3,"0")+".txt","c"+i)',
+          "['dist/**']",
+        ),
+      )
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        verify: FINGERPRINT,
+        log: capturingLogger(fixture),
+      })
+      expect(r.ok).toBe(true)
+      const fp = r.outcomes[0]!.outputFp
+      expect(fp?.truncated).toBe(true)
+      expect(fp?.fileCount).toBe(510)
+      expect(fp?.files?.length).toBe(500)
+      // Deterministic truncation: sorted by key, first 500.
+      expect(fp?.files?.[0]?.[0]).toBe('dist/f000.txt')
+      expect(fp?.files?.[499]?.[0]).toBe('dist/f499.txt')
+    },
+    TIMEOUT,
+  )
+})
+
+describe('verify — wire mapping', () => {
+  it('round-trips fingerprint through RunRequest (both mappers)', () => {
+    const req = optionsToRequest({
+      cwd: '/w',
+      tasks: ['build'],
+      verify: { determinism: false, inputs: false, fingerprint: true, allow: new Set(['x#y']) },
+    })
+    expect(req.verify).toEqual({
+      determinism: false,
+      inputs: false,
+      fingerprint: true,
+      allow: ['x#y'],
+    })
+    const opts = requestToOptions(req)
+    expect(opts.verify).toEqual({
+      determinism: false,
+      inputs: false,
+      fingerprint: true,
+      allow: new Set(['x#y']),
+    })
+  })
+
+  it('an old wire without the fingerprint field defaults it off', () => {
+    const opts = requestToOptions({
+      cwd: '/w',
+      tasks: ['build'],
+      verify: { determinism: true, inputs: false, allow: [] },
+    })
+    expect(opts.verify).toEqual({
+      determinism: true,
+      inputs: false,
+      fingerprint: false,
+      allow: new Set(),
+    })
+  })
 })
 
 describe('undeclaredInputPaths (pure)', () => {
@@ -466,7 +764,7 @@ const inputProject = (readExpr: string, inputs = "['src/**','package.json']") =>
     },
   }`
 
-const INPUTS = { determinism: false, inputs: true, allow: new Set<string>() }
+const INPUTS = { determinism: false, inputs: true, fingerprint: false, allow: new Set<string>() }
 
 describe.skipIf(!sandbox.available)('vx run --verify=inputs (input-completeness)', () => {
   beforeEach(async () => {
@@ -574,7 +872,7 @@ describe.skipIf(!sandbox.available)('vx run --verify=inputs (input-completeness)
         cwd: fixture.root,
         tasks: ['run'],
         projects: ['a'],
-        verify: { determinism: true, inputs: true, allow: new Set<string>() },
+        verify: { determinism: true, inputs: true, fingerprint: true, allow: new Set<string>() },
         log: capturingLogger(fixture),
       })
       expect(r.ok).toBe(false)

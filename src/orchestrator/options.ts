@@ -72,14 +72,17 @@ export interface RunOptions {
    * executed + cacheable task is re-run after its save and its outputs are
    * content-compared: a divergence means the task is non-hermetic and its
    * cache entry is provably unsafe (see docs/design/cache-correctness).
-   * `allow` (from `--verify-allow=<pkg#task>,…`) exempts known-nondeterministic
-   * tasks from failing the run. A pure side-channel — never folded into a
-   * cache key; the re-run never saves. Undefined = off (a plain run is
-   * byte-identical).
+   * `fingerprint` computes + ships an output-tree fingerprint on executed
+   * tasks (no re-run — the cross-machine diff feed; `--verify`/`=all` set
+   * it too, for free). `allow` (from `--verify-allow=<pkg#task>,…`) exempts
+   * known-nondeterministic tasks from failing the run. A pure side-channel —
+   * never folded into a cache key; the re-run never saves. Undefined = off
+   * (a plain run is byte-identical).
    */
   verify?: {
     determinism: boolean
     inputs: boolean
+    fingerprint: boolean
     allow: ReadonlySet<string>
   }
   /**

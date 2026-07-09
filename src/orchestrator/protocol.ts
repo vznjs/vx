@@ -32,8 +32,15 @@ export interface RunRequest {
    *  default (executing side's os.totalmem()) resolves where tasks run. */
   memory?: number
   /** Cache-correctness verification (`--verify`); `allow` as an array (Sets
-   *  don't serialize). */
-  verify?: { determinism: boolean; inputs: boolean; allow: readonly string[] }
+   *  don't serialize). `fingerprint` is additive-optional — an old serve
+   *  ignores it, so a delegated `=fingerprint` run against an old serve
+   *  degrades to a harmless no-op verify. */
+  verify?: {
+    determinism: boolean
+    inputs: boolean
+    fingerprint?: boolean
+    allow: readonly string[]
+  }
   flow?: 'focused' | 'broad'
   outputLogs?: 'full' | 'errors-only' | 'none'
   excludeDependencies?: 'all' | readonly string[]
@@ -97,6 +104,7 @@ export function optionsToRequest(options: RunOptions): RunRequest {
     req.verify = {
       determinism: options.verify.determinism,
       inputs: options.verify.inputs,
+      fingerprint: options.verify.fingerprint,
       allow: [...options.verify.allow],
     }
   if (options.flow !== undefined) req.flow = options.flow
@@ -131,6 +139,7 @@ export function requestToOptions(request: RunRequest): RunOptions {
     options.verify = {
       determinism: request.verify.determinism,
       inputs: request.verify.inputs,
+      fingerprint: request.verify.fingerprint ?? false,
       allow: new Set(request.verify.allow),
     }
   if (request.flow !== undefined) options.flow = request.flow

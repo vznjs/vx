@@ -16,7 +16,7 @@
 // what or how tasks run. Contrast `backend`/`cache`, which return objects
 // core calls INTO; those are the behavior capabilities, kept separate.
 
-import type { TaskStatus, VerifyVerdict } from '../graph/index.js'
+import type { OutputFingerprint, TaskStatus, VerifyVerdict } from '../graph/index.js'
 import type { RunEvent, RunEventSubscriber } from './events.js'
 
 /** Bumped when the record shape changes. Readers MUST check `v`. */
@@ -103,6 +103,13 @@ export interface TaskTelemetry {
    *  unsound (its outputs aren't a pure function of its declared inputs); this
    *  is the telemetry-side hermeticity signal a dashboard surfaces. */
   verify?: VerifyVerdict
+  /** Output-tree fingerprint — set ONLY under a fingerprinting `--verify*`
+   *  mode (`--verify` / `=all` / `=fingerprint`), executed tasks only. A
+   *  connected serve pairs fingerprints for the SAME `hash` across platforms
+   *  and names diverging outputs (the cross-machine diff). Absent on plain
+   *  runs — additive-optional, no schema bump (the `attempts`/`verify`
+   *  precedent). */
+  outputFp?: OutputFingerprint
   /** bigint hrtime ns relative to run t=0, encoded as a decimal string. */
   wallclockStartNs?: string
   wallclockEndNs?: string
@@ -304,6 +311,7 @@ export function createTelemetrySource(args: {
         if (outcome.peakRssBytes !== undefined) rec.peakRssBytes = outcome.peakRssBytes
         if (outcome.attempts !== undefined) rec.attempts = outcome.attempts
         if (outcome.verify !== undefined) rec.verify = outcome.verify
+        if (outcome.outputFp !== undefined) rec.outputFp = outcome.outputFp
         if (outcome.wallclockStartNs !== undefined)
           rec.wallclockStartNs = outcome.wallclockStartNs.toString()
         if (outcome.wallclockEndNs !== undefined)

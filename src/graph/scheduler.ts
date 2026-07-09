@@ -42,6 +42,31 @@ export type VerifyVerdict =
   /** Didn't execute (cache hit) / not cacheable / group / persistent. */
   | { kind: 'not-verified' }
 
+/**
+ * Content fingerprint of a task's output tree, computed under a `--verify*`
+ * mode on the executed (miss) path. Never hashed into any key; pure telemetry
+ * side-channel for the cross-machine diff (a serve pairs fingerprints for the
+ * SAME cache key across platforms and names diverging outputs). Declared here
+ * (structurally) because `graph` can't import `orchestrator` — the
+ * `VerifyVerdict` pattern. See docs/design/verify-cross-machine-2026-07.md.
+ */
+export interface OutputFingerprint {
+  /** Roll-up: xxh3hex over the sorted (key, hash) pairs, folded as
+   *  `key \0 hash \n` (\0 boundaries — the v18 lesson). Always present;
+   *  divergence DETECTION never depends on the per-file map. */
+  tree: string
+  /** Total files in the tree (pre-truncation). */
+  fileCount: number
+  /** Per-file map as sorted [outputKey, xxh3hex] pairs, capped at
+   *  FP_MAX_FILES (500). Deterministic truncation — sorted by key,
+   *  first N — so two machines' truncated maps cover the same subset
+   *  and partial diffs still name real rels. */
+  files?: ReadonlyArray<readonly [string, string]>
+  /** Set when `files` was truncated to the cap (or dropped by the
+   *  sink's run budget). */
+  truncated?: boolean
+}
+
 export interface TaskOutcome {
   node: TaskNode
   status: TaskStatus
@@ -94,6 +119,12 @@ export interface TaskOutcome {
    * mode; a plain run leaves it undefined. Pure side-channel (never hashed).
    */
   verify?: VerifyVerdict
+  /**
+   * Output-tree fingerprint under a fingerprinting `--verify*` mode
+   * (`--verify` / `=all` / `=fingerprint`), executed + cacheable +
+   * output-declaring tasks only. A plain run leaves it undefined.
+   */
+  outputFp?: OutputFingerprint
 }
 
 export type ContinueMode = 'never' | 'deps-ok' | 'always'

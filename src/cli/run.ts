@@ -75,13 +75,15 @@ export interface RunArgs {
    */
   memory: number | undefined
   /**
-   * `--verify[=determinism|inputs|all]`: cache-correctness verification.
-   * Undefined when not passed. `determinism` re-runs and content-compares
-   * outputs; `inputs` sandboxes with the declared-input baseline and flags
-   * undeclared reads. `allow` (from `--verify-allow=<pkg#task>,…`) exempts
-   * tasks from failing the run on a divergence.
+   * `--verify[=determinism|inputs|fingerprint|all]`: cache-correctness
+   * verification. Undefined when not passed. `determinism` re-runs and
+   * content-compares outputs; `inputs` sandboxes with the declared-input
+   * baseline and flags undeclared reads; `fingerprint` ships output-tree
+   * fingerprints for the cross-machine diff (no re-run; the determinism
+   * modes set it too, for free). `allow` (from `--verify-allow=<pkg#task>,…`)
+   * exempts tasks from failing the run on a divergence.
    */
-  verify: { determinism: boolean; inputs: boolean } | undefined
+  verify: { determinism: boolean; inputs: boolean; fingerprint: boolean } | undefined
   verifyAllow: string[]
   outputLogs?: 'full' | 'errors-only' | 'none'
   forwardArgs: string[]
@@ -193,15 +195,17 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     } else if (a === '--verify' || a?.startsWith('--verify=')) {
       const what = a === '--verify' ? 'determinism' : a.slice('--verify='.length)
       if (what === 'determinism') {
-        out.verify = { determinism: true, inputs: false }
+        out.verify = { determinism: true, inputs: false, fingerprint: true }
       } else if (what === 'inputs') {
-        out.verify = { determinism: false, inputs: true }
+        out.verify = { determinism: false, inputs: true, fingerprint: false }
+      } else if (what === 'fingerprint') {
+        out.verify = { determinism: false, inputs: false, fingerprint: true }
       } else if (what === 'all') {
-        out.verify = { determinism: true, inputs: true }
+        out.verify = { determinism: true, inputs: true, fingerprint: true }
       } else {
         return {
           ...out,
-          error: `--verify must be determinism | inputs | all (or bare --verify), got: ${what}`,
+          error: `--verify must be determinism | inputs | fingerprint | all (or bare --verify), got: ${what}`,
         }
       }
     } else if (a?.startsWith('--verify-allow=')) {
@@ -427,6 +431,7 @@ export async function resolveRunOptions(
     opts.verify = {
       determinism: parsed.verify.determinism,
       inputs: parsed.verify.inputs,
+      fingerprint: parsed.verify.fingerprint,
       allow: new Set(parsed.verifyAllow),
     }
   }

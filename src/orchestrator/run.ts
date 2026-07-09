@@ -615,6 +615,15 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
     if (options.verify !== undefined) {
       for (const line of formatVerifySection(list)) log.status(line)
+      // A fingerprint-only run attaches no verdicts, so the verdict-driven
+      // section above prints nothing — report what actually happened.
+      if (options.verify.fingerprint && !options.verify.determinism && !options.verify.inputs) {
+        const n = list.filter((o) => o.outputFp !== undefined).length
+        log.status('')
+        log.status(
+          `  Verify:   fingerprinted ${n} task output trees (cross-machine diff via a connected serve)`,
+        )
+      }
     }
 
     // Optional artifacts. Errors are surfaced to the user but don't
@@ -687,6 +696,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         if (o.peakRssBytes !== undefined) t.peakRssBytes = o.peakRssBytes
         if (o.attempts !== undefined) t.attempts = o.attempts
         if (o.verify !== undefined) t.verify = o.verify
+        if (o.outputFp !== undefined) t.outputFp = o.outputFp
         if (o.wallclockStartNs !== undefined) t.wallclockStartNs = o.wallclockStartNs.toString()
         if (o.wallclockEndNs !== undefined) t.wallclockEndNs = o.wallclockEndNs.toString()
         summaryTasks.push(t)
