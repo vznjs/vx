@@ -189,6 +189,84 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-09**: **Adversarial review of the day's three shipped features —
+  two shipping-blocker bugs + a detection gap fixed, the rest verified sound**
+  (three parallel repro-mandated hostile reviewers over the scheduler
+  admission `aabb0f3`, the serve surfaces `7d23eca`+`e224ccb`, and the
+  fingerprint core `fedfef0`; the 2026-07-07 pattern). Every finding
+  CONFIRMED by an executed reproduction or downgraded. **Fixed (one commit):**
+  (1) **CRITICAL — scheduler float-residue hang.** Reservation counters are
+  FLOAT sums (fractional `cpus`, and percent-of-budget resolves to
+  non-representable values — `resolveCpu('10%',3)===0.30000000000000004`), so
+  add/release cycles leave ~2.8e-17 residue instead of exact 0. The
+  solo-clamp gate was the knife-edge `reserved === 0`, so an over-budget task
+  parked FOREVER (active→0, no future tick) — the run HANGS, or worse, exits 0
+  silently WITHOUT running a requested task and prints no summary (CI reads
+  green). A legal config triggers it; reproduced 3/3. Fix: integer HOLDER
+  COUNTS per axis drive the solo-clamp ("axis idle" = `holders === 0`, exact),
+  `reserved` SNAPS to exact 0 when an axis's holders hit 0 (kills cross-busy-
+  period accumulation), and the within-budget compare gained a relative
+  epsilon against exact-fill mis-rounding. (2) **CRITICAL — serve O(N²) DoS
+  via `/v1/hermeticity`.** `FpStore.divergence()` nested a row-pair loop over
+  ALL reports for a divergent hash (no early exit, no per-hash cap),
+  synchronously — freezing the single-threaded serve (32.9s at 40k rows,
+  clean quadratic), weaponizable from the LOWEST-privilege principal (an
+  untrusted PR token POSTing attacker-chosen hash+trees; the Insights card
+  auto-loads the route so other users trip it). Fix: bound the per-hash load
+  (`FP_MAX_ROWS_PER_HASH = 64`, most-recent-first — totals stay exact via a
+  separate COUNT) + `crossPlatform` early-exit. (3) **Serve ingest body-cap
+  spoof.** `/v1/ingest`+`/v1/ingest/logs` capped on `content-length` ONLY, so
+  a chunked body (no length) read 0 and bypassed the 32/16 MiB cap into a
+  ~513 MiB buffer. Fix: re-check ACTUAL `Buffer.byteLength` after reading
+  (mirrors the artifact PUT). (4) **MEDIUM — fingerprint zero-output blind
+  spot.** A task that DECLARES outputs but produces zero files shipped NO
+  fingerprint (gate keyed on resolved count) — exactly the platform-
+  conditional-glob divergence Phase 4 exists to catch (platform A emits N,
+  platform B's glob matches nothing → one report, no divergence row). Fix:
+  gate the fp on the DECLARATION and ship the empty-tree sentinel; the
+  determinism `no-outputs` verdict stays keyed on the resolved count
+  (`verifyFp1.size === 0`) so `--verify` behavior is byte-identical. Bundled:
+  crash-isolate the scheduler's `onStart`/`onFinish` observer hooks (a
+  throwing logger must not wedge scheduling — the double-release path A#3 +
+  the "observability never breaks a run" rule), the `--verify=fingerprint`
+  status line names the cause on a 0-count (all-hit) run, artifact
+  `subScopeOf` rejects `.`/`..`, and the fp-store prune's per-row byte
+  accounting corrected (`+64`→`+256`, was undercounting the string columns
+  and widening the ceiling). **Refuted by repro (NOT actioned):** the legacy
+  scheduler path is byte-identical (300-trial/4015-assertion randomized
+  differential vs `aabb0f3^`), park/repush FIFO + solo-clamp semantics +
+  key-strip + frozen-lock validation all hold; the artifact trust-scope
+  list⊆GET invariant holds across 29 principal/sub-scope combos incl.
+  traversal, the provenance join is doubly-safe (parameterized + HASH_RE),
+  no cross-workspace capability, zstd-magic can't be confused, server-side
+  re-truncation defeats a hostile 10k-entry array, the sink budget doesn't
+  mutate the shared summary; and the fingerprint core is sound on every
+  Phase-1/2-class surface (raw-bytes truthfulness incl. the persistent
+  cross-run memo trap, dir-order/unicode machine-independence, truncation
+  honesty at entry #501, execute-once, attempt-1 attribution, strace-level
+  zero-cost). **A#2 doc correction:** the design + this log claimed persistent
+  reservations are "held for the task's lifetime" — the code releases them at
+  READY (the SAFER behavior; lifetime-holding would deadlock a persistent-
+  100% + downstream-100% graph). Corrected below + in the design doc. Tests:
+  core 1198→1214 (+16), cloud 285→288 (+3); regressions pin the FP hang, the
+  throwing-observer non-wedge, the DoS bound, the chunked-bypass 413, the
+  zero-output empty-tree, and the `.`/`..` subscope. No bumps anywhere.
+
+- **2026-07-08**: **Resource-aware scheduling: persistent reservations are
+  released at READY, not held for the task's lifetime** (correction to the
+  2026-07-08 entry below, surfaced by the 2026-07-09 adversarial review). The
+  original entry + `docs/design/resource-scheduling-2026-07.md` claimed
+  `persistent` + reservation is "HONORED for the task's whole lifetime." The
+  implementation cannot: `executePersistentTask` resolves its outcome at
+  READY, and the scheduler releases the reservation when that promise settles.
+  This is the SAFER behavior — lifetime-holding would deadlock a persistent
+  `cpus:'100%'` + a downstream `cpus:'100%'` forever (a permanently-held axis
+  never goes idle for the solo-clamp). So a persistent task's reservation
+  coordinates admission only UNTIL it signals ready; after that a heavy
+  downstream task can co-schedule with the still-running server (advisory, not
+  enforcement — consistent with the whole feature). No code change; the docs
+  were wrong.
+
 - **2026-07-09**: **`--verify` Phase 4 SHIPPED — cross-machine output-
   fingerprint diff + the cheap `--verify=fingerprint` mode** (the
   flagship's last open phase; design

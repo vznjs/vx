@@ -435,8 +435,24 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   const resourcesActive = costs !== undefined && costs.size > 0
   const cpuBudget = options.cpuBudget ?? concurrency
   const memBudget = options.memBudget ?? Infinity
+  // Reservations are FLOAT sums (fractional cpus, and percent-of-budget
+  // resolves to non-representable values like `0.30000000000000004`), so
+  // add/release cycles leave ~1e-17 residue instead of an exact 0. Two
+  // guards keep that residue from corrupting admission:
+  //   - the solo-clamp gate ("is the axis idle?") reads INTEGER holder
+  //     counts, never the float sum === 0 — a residue would otherwise
+  //     park an over-budget task forever (active===0, no future tick =
+  //     a silent hang / exit-0-without-running);
+  //   - `reserved` snaps back to EXACT 0 whenever its holder count hits
+  //     0, so residue can't accumulate across busy periods.
+  // The within-budget comparison also carries a tiny relative epsilon so
+  // an exact-fill (`reserved + cost == budget`) can't mis-round into a
+  // spurious block. Admission is a hint, so the epsilon's sub-ulp
+  // over-admission is harmless.
   let reservedCpu = 0
   let reservedMem = 0
+  let holdersCpu = 0
+  let holdersMem = 0
 
   // A restore-tier task is a confirmed local cache hit: its "execution"
   // is a cheap tar extract, not the task's real work — it reserves ZERO
@@ -445,23 +461,56 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   const costOf = (id: string): ResourceCost =>
     options.restoreTier?.has(id) ? ZERO_COST : (costs?.get(id) ?? ZERO_COST)
 
-  // Zero never blocks; a within-budget cost needs headroom; an
-  // over-budget cost can never have headroom, so it solo-clamps: admitted
-  // only when nothing else holds the axis (an idle pool always admits at
-  // least one ready task — no deadlock).
-  const fitsAxis = (cost: number, reserved: number, budget: number): boolean =>
-    cost === 0 ? true : cost <= budget ? reserved + cost <= budget : reserved === 0
+  // Zero never blocks; a within-budget cost needs headroom (with an
+  // exact-fill epsilon); an over-budget cost can never have headroom, so
+  // it solo-clamps: admitted only when the axis is idle (no holders — an
+  // idle pool always admits at least one ready task, no deadlock).
+  const fitsAxis = (cost: number, reserved: number, holders: number, budget: number): boolean =>
+    cost === 0 ? true : cost <= budget ? reserved + cost <= budget + budget * 1e-9 : holders === 0
 
   const fits = (id: string): boolean => {
     const c = costOf(id)
-    return fitsAxis(c.cpu, reservedCpu, cpuBudget) && fitsAxis(c.mem, reservedMem, memBudget)
+    return (
+      fitsAxis(c.cpu, reservedCpu, holdersCpu, cpuBudget) &&
+      fitsAxis(c.mem, reservedMem, holdersMem, memBudget)
+    )
+  }
+
+  // Reserve/release keep the float sum AND the integer holder count in
+  // lockstep; releasing the last holder on an axis snaps its sum to 0.
+  const reserve = (c: ResourceCost): void => {
+    if (c.cpu > 0) {
+      reservedCpu += c.cpu
+      holdersCpu++
+    }
+    if (c.mem > 0) {
+      reservedMem += c.mem
+      holdersMem++
+    }
+  }
+  const release = (c: ResourceCost): void => {
+    if (c.cpu > 0 && --holdersCpu === 0) reservedCpu = 0
+    else reservedCpu -= c.cpu
+    if (c.mem > 0 && --holdersMem === 0) reservedMem = 0
+    else reservedMem -= c.mem
   }
 
   return new Promise<Map<string, TaskOutcome>>((resolve) => {
     const finishOne = (id: string, outcome: TaskOutcome): void => {
       if (continueMode === 'never' && outcome.status === 'failed') failFastTripped = true
       outcomes.set(id, outcome)
-      onFinish?.(outcome)
+      // Observer hook (the logger's taskComplete). Crash-isolated: a
+      // throwing observer must NOT break scheduling — it would otherwise
+      // skip the dependent-enqueue + tick below and hang the run. Same
+      // "observability never breaks a run" rule the telemetry/eventSink
+      // paths hold. Isolated here (not the completion arm) so a throw
+      // can't be mistaken for the task itself failing.
+      try {
+        onFinish?.(outcome)
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err)
+        process.stderr.write(`[vx] onFinish observer threw for ${id}: ${m}\n`)
+      }
       const ds = dependents.get(id)
       if (!ds) return
       for (const d of ds) {
@@ -545,19 +594,30 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         // Reserve on dispatch; capture the cost so the release in the
         // completion callbacks is symmetric even if the maps change.
         const cost = costOf(id)
-        reservedCpu += cost.cpu
-        reservedMem += cost.mem
-        onStart?.(node)
+        reserve(cost)
+        // Crash-isolated observer hook — a throwing onStart must not abort
+        // the dispatch loop (it would strand the tick with reservations held).
+        try {
+          onStart?.(node)
+        } catch (err) {
+          const m = err instanceof Error ? err.message : String(err)
+          process.stderr.write(`[vx] onStart observer threw for ${id}: ${m}\n`)
+        }
 
-        execute(node, upstream)
-          .then((outcome) => {
+        // `.then(onFulfilled, onRejected)` — NOT `.then(f).catch(g)`. The
+        // rejection arm handles ONLY `execute()` rejecting; a throw from
+        // the fulfillment arm (finishOne / onFinish / tick) must NOT also
+        // run the rejection arm, or `active`/`reserved` release twice —
+        // and a double release drives `reserved` negative, permanently
+        // wedging the solo-clamp gate.
+        execute(node, upstream).then(
+          (outcome) => {
             active--
-            reservedCpu -= cost.cpu
-            reservedMem -= cost.mem
+            release(cost)
             finishOne(id, outcome)
             tick()
-          })
-          .catch((err: unknown) => {
+          },
+          (err: unknown) => {
             const message = err instanceof Error ? err.message : String(err)
             const outcome: TaskOutcome = {
               node,
@@ -566,8 +626,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               durationMs: 0,
             }
             active--
-            reservedCpu -= cost.cpu
-            reservedMem -= cost.mem
+            release(cost)
             finishOne(id, outcome)
             // Surface the error live; the outcome itself doesn't
             // carry captured stderr (that's the logger's job). A
@@ -581,7 +640,8 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               process.stderr.write(`[vx] internal error in ${id}: ${named}${message}\n`)
             }
             tick()
-          })
+          },
+        )
       }
 
       // Repush parked ids with their ORIGINAL seqs — FIFO-among-equals

@@ -195,11 +195,12 @@ describe('FpStore', () => {
       s.ingest([report({ hash: 'new-key', runId: 'run-2' })])
       expect(s.hermeticity(50).reportCount).toBe(1)
 
-      // Byte ceiling: with a tiny cap, oldest rows are deleted until under.
-      process.env['VX_CLOUD_FP_MAX_BYTES'] = '150'
+      // Byte ceiling: sized so exactly one row (~blob + 256 overhead) fits
+      // but two don't, so ingesting a third row evicts the oldest.
+      process.env['VX_CLOUD_FP_MAX_BYTES'] = '400'
       now += 6 * 60 * 1000 // past the prune throttle
       s.ingest([report({ hash: 'newer-key', runId: 'run-3' })])
-      // 2 rows × (blob + 64) > 150 → the older row goes.
+      // 2 rows × (blob + overhead) > 400 → the older row goes.
       const res = s.hermeticity(50)
       expect(res.reportCount).toBe(1)
       s.close()
@@ -207,6 +208,35 @@ describe('FpStore', () => {
       if (prevMax === undefined) delete process.env['VX_CLOUD_FP_MAX_BYTES']
       else process.env['VX_CLOUD_FP_MAX_BYTES'] = prevMax
     }
+  })
+
+  it('bounds the per-hash diff load so a flooded key cannot freeze the serve (DoS guard)', () => {
+    const s = new FpStore(dir)
+    // One hash, 3000 attacker-chosen distinct-tree reports (the O(N²) DoS
+    // shape). Without the per-hash LIMIT this diffs ~9M pairs synchronously.
+    const reports: FpReport[] = []
+    for (let i = 0; i < 3000; i++) {
+      reports.push(
+        report({
+          hash: 'flood',
+          os: 'linux',
+          arch: 'x64',
+          runId: `r-${i}`,
+          fp: { tree: `t-${i}`, fileCount: 0 },
+        }),
+      )
+    }
+    s.ingest(reports)
+    const started = Bun.nanoseconds()
+    const res = s.hermeticity(50)
+    const ms = (Bun.nanoseconds() - started) / 1e6
+    // The load is capped (FP_MAX_ROWS_PER_HASH), so the diff is trivial even
+    // though the totals reflect every stored report.
+    expect(res.divergent).toHaveLength(1)
+    expect(res.reportCount).toBe(3000) // totals stay exact
+    expect(res.divergent[0]!.reports.length).toBeLessThanOrEqual(64)
+    expect(ms).toBeLessThan(200) // was multi-second unbounded
+    s.close()
   })
 })
 

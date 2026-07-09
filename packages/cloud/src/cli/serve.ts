@@ -750,7 +750,14 @@ export async function startServe(opts: {
         }
         return (async () => {
           try {
-            const summary = (await req.json()) as RunSummaryRecord
+            // Re-check the ACTUAL body size, not the (spoofable, absent under
+            // chunked transfer) content-length header — mirror the artifact
+            // PUT's byteLength re-check so a chunked body can't bypass the cap.
+            const raw = await req.text()
+            if (Buffer.byteLength(raw, 'utf8') > INGEST_BODY_MAX_BYTES) {
+              return jsonResponse({ ok: false, error: 'summary too large' }, { status: 413 })
+            }
+            const summary = JSON.parse(raw) as RunSummaryRecord
             if (summary?.run?.runId === undefined) {
               return jsonResponse({ ok: false, error: 'not a RunSummaryRecord' }, { status: 400 })
             }
@@ -775,7 +782,12 @@ export async function startServe(opts: {
         }
         return (async () => {
           try {
-            const bundle = (await req.json()) as TaskLogBundle
+            // Actual-byte re-check — see /v1/ingest above (chunked bypass).
+            const raw = await req.text()
+            if (Buffer.byteLength(raw, 'utf8') > LOG_BODY_MAX_BYTES) {
+              return jsonResponse({ ok: false, error: 'log bundle too large' }, { status: 413 })
+            }
+            const bundle = JSON.parse(raw) as TaskLogBundle
             if (bundle?.v !== LOG_WIRE_VERSION) {
               const got = String((bundle as { v?: unknown } | null)?.v)
               return jsonResponse(

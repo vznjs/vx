@@ -623,6 +623,12 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         log.status(
           `  Verify:   fingerprinted ${n} task output trees (cross-machine diff via a connected serve)`,
         )
+        // Only EXECUTED tasks fingerprint — a warm all-hit run reports 0.
+        // A per-platform matrix wired without `--force` produces nothing
+        // forever, so name the cause instead of a bare 0.
+        if (n === 0) {
+          log.status('            (0 executed — cache hits do not fingerprint; pair with --force)')
+        }
       }
     }
 

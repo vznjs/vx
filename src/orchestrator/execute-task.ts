@@ -546,9 +546,17 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // the mtime+size memo). The determinism re-run below compares against it,
     // and the fingerprinting modes (`--verify`/`=all`/`=fingerprint`) fold it
     // into the shipped `outputFp` — the cross-machine diff feed.
+    //
+    // Gate on DECLARED outputs (`outputs`/`wsOutputs` globs), not the
+    // RESOLVED file count: a task that declares `dist/**` but produces zero
+    // files this run must still ship the EMPTY tree, or the cross-machine
+    // diff can't pair it against a platform where the same glob DID match —
+    // a platform-conditional glob producing nothing on one OS is exactly
+    // the divergence Phase 4 exists to catch. The empty fold is well-defined
+    // (a fixed sentinel tree), so two both-empty platforms stay silent.
     if (
       (args.verify?.fingerprint || args.verify?.determinism) &&
-      outputFiles.length + wsOutputFiles.length > 0
+      outputs.length + wsOutputs.length > 0
     ) {
       verifyFp1 = await hashOutputTree(
         outputRefs(node.projectDir, outputFiles, args.workspaceRoot, wsOutputFiles),
@@ -626,7 +634,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     willWrite &&
     !result.timedOut
   ) {
-    if (verifyFp1 === undefined) {
+    // Determinism verdict is keyed on RESOLVED outputs (unchanged): a task
+    // that declares outputs but produced none this run has nothing to
+    // content-compare, so it stays `no-outputs` with no re-run — even though
+    // `verifyFp1` is now the (empty) declared-outputs fingerprint that
+    // `--verify=fingerprint` ships for the cross-machine diff. `verifyFp1`
+    // is keyed by resolved output file, so an empty map means "declared but
+    // produced nothing" — the in-scope stand-in for the resolved-zero count.
+    if (verifyFp1 === undefined || verifyFp1.size === 0) {
       verify = { kind: 'no-outputs' } // cacheable but nothing to replay (e.g. lint)
     } else {
       const rerun = await runAttempt()

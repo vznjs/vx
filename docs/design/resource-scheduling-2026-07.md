@@ -208,9 +208,17 @@ Messages mirror the existing style:
 `${where}.exec.resources.memory must be a non-negative integer (bytes), a size string like "512MB", or a "<n>%" string`,
 `${where}.exec.resources has unknown field "gpu"`.
 
-`persistent` + reservation is allowed and HONORED for the task's whole
-lifetime — a dev server genuinely holds its RAM. (Trivially switchable in
-`costOf` if it ever starves short tasks.)
+`persistent` + reservation is allowed, but the reservation is released
+when the task signals READY, NOT held for the task's whole lifetime.
+(`executePersistentTask` resolves its outcome at ready; the scheduler
+releases the reservation when that promise settles.) This is deliberate:
+lifetime-holding would deadlock a persistent `cpus:'100%'` + a downstream
+`cpus:'100%'` forever — a permanently-held axis never goes idle for the
+solo-clamp. So a persistent task's reservation coordinates admission only
+until it's ready; a heavy downstream task can co-schedule with the
+still-running server afterward (advisory admission, not enforcement — the
+same contract as the rest of the feature). [Corrected 2026-07-09 after the
+adversarial review found the code releases at ready.]
 
 ### 4. Cache-key stripping (`src/orchestrator/task-hash.ts`)
 

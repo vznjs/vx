@@ -491,6 +491,19 @@ describe('ArtifactStore — trust scopes (poisoning guard)', () => {
     expect(await got.text()).toBe('first')
   })
 
+  it('a `..` / `.` sub-scope collapses to `shared` (no bucket-root scatter)', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    const hash = 'ddccbbaa00112233'
+    // An untrusted PUT claiming sub-scope `..` must not land at the bucket
+    // root; it collapses to the `shared` sub-scope like any invalid value.
+    expect((await put(store, hash, 'x', untrusted, '..')).status).toBe(200)
+    const shared = await readdir(path.join(dir, 'artifacts', 'default', 'untrusted', 'shared'))
+    expect(shared).toContain(`${hash}.tar.zst`)
+    // Nothing was written up at the bucket root.
+    const bucketRoot = await readdir(path.join(dir, 'artifacts', 'default'))
+    expect(bucketRoot.every((n) => !n.endsWith('.tar.zst'))).toBe(true)
+  })
+
   it('migrates a legacy flat store into default/trusted/', async () => {
     const artDir = path.join(dir, 'artifacts')
     await mkdir(artDir, { recursive: true })

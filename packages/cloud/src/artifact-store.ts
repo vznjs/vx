@@ -74,10 +74,13 @@ function writeScope(p: Principal, sub: string): string {
 
 // The untrusted sub-scope (a PR identity) is a CLIENT-supplied namespace, so
 // sanitize it to one safe path segment; anything missing/invalid collapses to
-// `shared` (still isolated from trusted, just not per-PR).
+// `shared` (still isolated from trusted, just not per-PR). `.` and `..` are
+// rejected explicitly — the single-segment constraint already blocks a
+// traversal INTO trusted, but `..` would otherwise scatter an untrusted
+// write up at the bucket root (harmless but sloppy), so pin it to `shared`.
 const SUBSCOPE_RE = /^[a-zA-Z0-9_.-]{1,128}$/
 function subScopeOf(raw: string | null): string {
-  return raw !== null && SUBSCOPE_RE.test(raw) ? raw : 'shared'
+  return raw !== null && raw !== '.' && raw !== '..' && SUBSCOPE_RE.test(raw) ? raw : 'shared'
 }
 
 /** One row of `ArtifactStore.list()` — the `/v1/artifacts` surface. */

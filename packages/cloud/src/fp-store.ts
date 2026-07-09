@@ -22,11 +22,32 @@ const FP_SCHEMA_VERSION = 1
 /** Server-side per-file cap, re-applied regardless of what the wire claims. */
 export const FP_MAX_FILES = 500
 
+/**
+ * Max reports LOADED per divergent key when diffing (`hermeticity`). A hash
+ * accumulates one row per (os, arch, tree), and `tree`/`os`/`arch` are
+ * client-controlled — an attacker POSTing thousands of distinct-tree reports
+ * for one key would make the pairwise divergence diff O(N²) and freeze the
+ * single-threaded serve. Bounding the per-hash load (most-recent-first) caps
+ * that at O(cap²) — a handful of real platforms is far under this, so real
+ * divergence is unaffected; only an abusive report count is dropped. The
+ * `keysTracked`/`reportCount` totals stay exact (separate COUNT).
+ */
+export const FP_MAX_ROWS_PER_HASH = 64
+
 /** A files blob at/over this many bytes is stored zstd-compressed. */
 const COMPRESS_THRESHOLD_BYTES = 4 * 1024
 
 /** Prune runs at most this often (ms). */
 const PRUNE_INTERVAL_MS = 5 * 60 * 1000
+
+/**
+ * Fixed per-row byte estimate for prune accounting, ON TOP of the `files`
+ * blob length — covers the string columns (hash / os / arch / tree /
+ * task_id / run_id / host, each ≤128) + integers + SQLite page overhead.
+ * A conservative floor so the byte ceiling can't be evaded by many tiny
+ * tree-only rows (which the old `+64` badly undercounted).
+ */
+const FP_ROW_OVERHEAD_BYTES = 256
 
 // zstd frames always open with this magic; a JSON pairs array opens with `[`.
 const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd]
@@ -251,9 +272,16 @@ export class FpStore {
          ORDER BY MAX(created_at) DESC LIMIT ?`,
       )
       .all(limit) as Array<{ hash: string }>
-    const rows = this.db.prepare('SELECT * FROM output_fp WHERE hash = ? ORDER BY created_at DESC')
+    // Bound the per-hash load (most-recent-first) — a hostile key with
+    // thousands of distinct-tree reports must not make the diff O(N²) and
+    // freeze the serve. The totals above are counted separately and stay exact.
+    const rows = this.db.prepare(
+      'SELECT * FROM output_fp WHERE hash = ? ORDER BY created_at DESC LIMIT ?',
+    )
     return {
-      divergent: hashes.map((h) => this.divergence(rows.all(h.hash) as Row[])),
+      divergent: hashes.map((h) =>
+        this.divergence(rows.all(h.hash, FP_MAX_ROWS_PER_HASH) as Row[]),
+      ),
       keysTracked: totals.keys,
       reportCount: totals.reports,
     }
@@ -266,10 +294,14 @@ export class FpStore {
   private divergence(rows: Row[]): DivergentKey {
     // Cross-platform iff some pair of DIFFERENT trees comes from DIFFERENT
     // platforms; same-platform-only divergence is the run-to-run signal.
+    // Bounded by FP_MAX_ROWS_PER_HASH (see hermeticity); early-exit once found.
     let crossPlatform = false
-    for (const a of rows) {
+    outer: for (const a of rows) {
       for (const b of rows) {
-        if (a.tree !== b.tree && (a.os !== b.os || a.arch !== b.arch)) crossPlatform = true
+        if (a.tree !== b.tree && (a.os !== b.os || a.arch !== b.arch)) {
+          crossPlatform = true
+          break outer
+        }
       }
     }
     // One representative file map per distinct tree; pairwise-diff them. A
@@ -318,14 +350,16 @@ export class FpStore {
 
     const total = (
       this.db
-        .prepare('SELECT COALESCE(SUM(COALESCE(LENGTH(files), 0) + 64), 0) AS n FROM output_fp')
+        .prepare(
+          `SELECT COALESCE(SUM(COALESCE(LENGTH(files), 0) + ${FP_ROW_OVERHEAD_BYTES}), 0) AS n FROM output_fp`,
+        )
         .get() as { n: number }
     ).n
     const ceiling = maxBytes()
     if (total <= ceiling) return
     const rows = this.db
       .prepare(
-        `SELECT hash, os, arch, tree, COALESCE(LENGTH(files), 0) + 64 AS bytes
+        `SELECT hash, os, arch, tree, COALESCE(LENGTH(files), 0) + ${FP_ROW_OVERHEAD_BYTES} AS bytes
          FROM output_fp ORDER BY created_at ASC`,
       )
       .all() as Array<{ hash: string; os: string; arch: string; tree: string; bytes: number }>

@@ -912,4 +912,33 @@ describe('vx serve /v1/hermeticity', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+
+  it('rejects an oversized chunked POST /v1/ingest (no content-length to spoof)', async () => {
+    const root = await makeWorkspace()
+    const server = await startServe({ root })
+    try {
+      // A ReadableStream body sends `Transfer-Encoding: chunked` with NO
+      // content-length, so the header pre-check reads 0 and passes — the
+      // actual-byte re-check after reading must still 413 it.
+      const chunk = 'x'.repeat(1024 * 1024) // 1 MiB
+      const big = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(`{"pad":"`))
+          for (let i = 0; i < 40; i++) controller.enqueue(new TextEncoder().encode(chunk))
+          controller.enqueue(new TextEncoder().encode(`"}`))
+          controller.close()
+        },
+      })
+      const res = await fetch(`${server.origin}/v1/ingest`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: big,
+        duplex: 'half',
+      } as RequestInit & { duplex: 'half' })
+      expect(res.status).toBe(413)
+    } finally {
+      await server.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
 })

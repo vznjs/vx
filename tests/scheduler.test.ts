@@ -750,4 +750,89 @@ describe('runGraph — resource admission (exec.resources)', () => {
     })
     expect(peak).toBe(2)
   })
+
+  it('fractional costs that leave float residue do NOT hang the solo-clamp (regression)', async () => {
+    // 0.1 + 0.2 - 0.1 - 0.2 === 2.78e-17 in IEEE-754, so after the first two
+    // tasks release, a naive `reservedCpu === 0` solo-clamp gate would never
+    // fire and the over-budget `c` (cpu:4 on budget 3) would park forever —
+    // active hits 0, no future tick, the run hangs / exits without running c.
+    // The integer holder-count + snap-to-zero fix must let c run.
+    const ran = new Set<string>()
+    const out = await runGraph({
+      nodes: nodes(node('a#run'), node('b#run'), node('c#run')),
+      concurrency: 3,
+      cpuBudget: 3,
+      resourceCosts: new Map([
+        ['a#run', { cpu: 0.1, mem: 0 }],
+        ['b#run', { cpu: 0.2, mem: 0 }],
+        ['c#run', { cpu: 4, mem: 0 }], // over budget → solo-clamp
+      ]),
+      execute: async (n) => {
+        ran.add(n.id)
+        await new Promise((r) => setTimeout(r, 5))
+        return success(n)
+      },
+    })
+    expect(out.size).toBe(3)
+    expect(ran.has('c#run')).toBe(true)
+    expect(out.get('c#run')!.status).toBe('success')
+  })
+
+  it('percent-derived fractional memory (0.30000000000000004-style) still admits + terminates', async () => {
+    // resolveMem('10%', budget) yields non-representable fractional bytes;
+    // interleaved release must snap the axis back to exact 0 so an over-budget
+    // memory task solo-clamps instead of wedging.
+    const budget = 3
+    const frac = (10 / 100) * budget // 0.30000000000000004
+    const ran = new Set<string>()
+    const out = await runGraph({
+      nodes: nodes(node('a#run'), node('b#run'), node('big#run')),
+      concurrency: 3,
+      memBudget: budget,
+      resourceCosts: new Map([
+        ['a#run', { cpu: 0, mem: frac }],
+        ['b#run', { cpu: 0, mem: frac }],
+        ['big#run', { cpu: 0, mem: budget * 10 }], // over budget → solo-clamp
+      ]),
+      execute: async (n) => {
+        ran.add(n.id)
+        await new Promise((r) => setTimeout(r, 5))
+        return success(n)
+      },
+    })
+    expect(out.size).toBe(3)
+    expect(ran.has('big#run')).toBe(true)
+  })
+
+  it('a throwing onFinish does not double-release into a permanent admission wedge', async () => {
+    // `.then(onFulfilled, onRejected)` — a throw from the fulfillment arm
+    // (onFinish) must NOT also run the rejection arm, or the reservation
+    // releases twice, `reserved` goes negative, and the solo-clamp gate is
+    // never satisfiable again. The first task's onFinish throws; the later
+    // over-budget task must still run.
+    let threw = false
+    const ran = new Set<string>()
+    const out = await runGraph({
+      nodes: nodes(node('a#run'), node('big#run', ['a#run'])),
+      concurrency: 4,
+      cpuBudget: 4,
+      resourceCosts: new Map([
+        ['a#run', { cpu: 1, mem: 0 }],
+        ['big#run', { cpu: 8, mem: 0 }], // over budget → solo-clamp, needs idle axis
+      ]),
+      onFinish: (o) => {
+        if (o.node.id === 'a#run' && !threw) {
+          threw = true
+          throw new Error('boom from onFinish')
+        }
+      },
+      execute: async (n) => {
+        ran.add(n.id)
+        await new Promise((r) => setTimeout(r, 5))
+        return success(n)
+      },
+    })
+    expect(out.size).toBe(2)
+    expect(ran.has('big#run')).toBe(true)
+  })
 })

@@ -495,6 +495,68 @@ describe('vx run --verify=fingerprint (cross-machine feed)', () => {
   )
 
   it(
+    'a task that DECLARES outputs but produces NONE ships the empty tree (the platform-conditional-glob divergence)',
+    async () => {
+      // Declares dist/** but writes nothing this run — on another platform
+      // the same glob might match, so the serve must be able to pair
+      // empty-vs-nonempty. The gate keys on the DECLARATION, not the
+      // resolved file count.
+      await addProject(
+        fixture.root,
+        'a',
+        project('require("fs").writeFileSync("elsewhere.txt","x")', "['dist/**']"),
+      )
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        verify: FINGERPRINT,
+        log: capturingLogger(fixture),
+      })
+      expect(r.ok).toBe(true)
+      const o = r.outcomes[0]!
+      expect(o.status).toBe('success')
+      // The empty-tree fingerprint (fixed sentinel), NOT undefined.
+      expect(o.outputFp).toEqual({ tree: xxh3hex(''), fileCount: 0, files: [] })
+      // No verdict in fingerprint-only mode.
+      expect(o.verify).toBeUndefined()
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'determinism verdict for a declares-but-produces-nothing task stays `no-outputs` (no behavior drift)',
+    async () => {
+      await addProject(
+        fixture.root,
+        'a',
+        project('require("fs").writeFileSync("elsewhere.txt","x")', "['dist/**']"),
+      )
+      let captured: RunSummaryRecord | undefined
+      const sink: TelemetrySink = {
+        onRunSummary(summary) {
+          captured = summary
+        },
+      }
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        verify: DETERMINISM,
+        log: capturingLogger(fixture),
+        telemetrySinks: [sink],
+      })
+      expect(r.ok).toBe(true)
+      const t = captured?.tasks.find((x) => x.taskId === 'a#run')
+      // Determinism stays `no-outputs` (resolved-count-keyed), but the fp
+      // still ships the empty tree (declaration-keyed) — independent fields.
+      expect(t?.verify).toEqual({ kind: 'no-outputs' })
+      expect(t?.outputFp).toEqual({ tree: xxh3hex(''), fileCount: 0, files: [] })
+    },
+    TIMEOUT,
+  )
+
+  it(
     '--verify (determinism) ships the fingerprint for free onto telemetry, rels + tree correct',
     async () => {
       await addProject(
