@@ -43,7 +43,13 @@ export default defineProject({
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: { command: 'oxlint --type-aware --type-check' },
       cache: {
-        inputs: { files: ['src/**', 'tests/**', 'bench/**', '.oxlintrc.json', 'tsconfig.json'] },
+        inputs: {
+          files: ['src/**', 'tests/**', 'bench/**', '.oxlintrc.json', 'tsconfig.json'],
+          // The command scans the whole tree, but project-relative globs
+          // stop at project boundaries — without these, a cloud/otel-only
+          // change rides a stale lint cache hit.
+          workspaceFiles: ['packages/*/src/**', 'packages/*/tests/**', 'scripts/**'],
+        },
         outputs: { files: [] },
       },
     },
@@ -52,7 +58,12 @@ export default defineProject({
       description: 'oxfmt --check (no rewrite; CI-safe)',
       exec: { command: 'oxfmt --check .' },
       cache: {
-        inputs: { files: ['**/*'] },
+        inputs: {
+          files: ['**/*'],
+          // Same boundary gap as lint.oxlint: `oxfmt --check .` scans the
+          // workspace-member packages too (ui/deploy are oxfmt-ignored).
+          workspaceFiles: ['packages/*/src/**', 'packages/*/tests/**', 'scripts/**'],
+        },
         outputs: { files: [] },
       },
     },

@@ -189,6 +189,74 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-09**: **`--verify` Phase 4 SHIPPED — cross-machine output-
+  fingerprint diff + the cheap `--verify=fingerprint` mode** (the
+  flagship's last open phase; design
+  `docs/design/verify-cross-machine-2026-07.md`, architect-reviewed, four
+  commits `fedfef0`..`58cc5ca`). Two machines reporting DIFFERENT output
+  trees for the SAME cache key = a machine-dependent shared remote cache
+  (first-writer-wins poisoning of the other platform) — the one failure
+  class a single-machine re-run structurally cannot observe; a connected
+  serve now names the exact task, key, platforms, and diverging rels.
+  **Core:** `OutputFingerprint { tree, fileCount, files≤500, truncated }`
+  declared structurally in `graph/scheduler.ts` (the VerifyVerdict
+  pattern) on `TaskOutcome.outputFp` + additive-optional on
+  `TaskTelemetry` (schema STAYS 2 — the attempts precedent); pure
+  `foldFingerprint` in verify.ts (tree digest folds `key\0hash\n` over
+  ALL sorted entries — \0 boundaries, the v18 lesson; per-file map is
+  DETERMINISTIC truncation, sorted-first-500, so two machines' truncated
+  maps stay comparable and detection NEVER depends on the map — the tree
+  digest always ships). NEW `--verify=fingerprint`: fp computed in the
+  save block at ~1× exec, NO 2× re-run — the mode that makes a
+  per-platform per-merge matrix affordable (the architect's key insight:
+  with a shared remote cache the second platform HITS — the poisoning
+  scenario itself — so useful pairs require `--force` runs, which 2×
+  determinism priced out). `--verify`/`=all` attach fp for FREE (fp1
+  already exists there); `=inputs` stays fp-free; fingerprint-only hits
+  get NO verdict; the no-write-policy guard + the distribution refusal
+  both inherit. Wire: additive `fingerprint` on `RunRequest.verify`, no
+  bump. The fp primitive is the BUG-1 raw-bytes xxh3 — which incidentally
+  made it machine-independent (the memoized OID path would have been
+  memo-poisonable AND platform-dependent). **Serve:** sidecar
+  `fingerprints.db` per workspace (`fp-store.ts`, own `FP_SCHEMA_VERSION
+1` gate — the LogStore pattern; a core-schema table would wipe every
+  user's cache.db for a cloud-only feature). **PK `(hash, os, arch,
+tree)`**: INSERT OR IGNORE = idempotent re-delivery, one row/platform
+  forever for deterministic tasks, and same-platform two-tree rows
+  accumulate — surfacing run-to-run nondeterminism WITHOUT the 2× re-run
+  as a bonus signal. Platform identity = os+arch (the axis a shared cache
+  spans); host is a debugging column, never identity. Extraction inside
+  `IngestStore.ingest` after the idempotency gate; caps at every layer
+  (500 files/task core, 4 MiB/run in `CloudIngestSink` — cloud-side so
+  core stays stateless, serve re-truncation + 32 MiB ingest 413);
+  90d/128 MiB pruning. `GET /v1/hermeticity?ws=` computes divergence at
+  READ time (`HAVING COUNT(DISTINCT tree) > 1`), names rels via core's
+  `diffOutputTrees` (façade export-only widening), flags `crossPlatform`
+  vs same-platform + `changedComplete` honesty. **UI:** Insights
+  Hermeticity card (zero-state, platform pair, rels in danger tone, task/
+  run drill-downs, remediation hint). **Advisory by design** — the serve
+  observes completed runs; no run-failing path, telemetry stays
+  observe-only; remediation = fix the hermeticity bug OR legitimately
+  split the key per platform via `cache.inputs.runtime: ['uname -sm']`.
+  NO bumps anywhere: CACHE_VERSION, core SCHEMA, TELEMETRY_SCHEMA_VERSION
+  (2), run wire, DIST_PROTOCOL all unchanged; plain-run byte-identity +
+  key-stability pinned by tests. Tests: core 1198→1209, cloud 268→285;
+  browser-verified 12/12 (crafted linux-x64 vs darwin-arm64 divergence
+  renders `dist/app.js` with links; fp-free serve renders the green
+  zero-state); real-CLI verified (`--force --verify=fingerprint` exit 0 +
+  the fingerprinted-N-trees status line; plain run unchanged). Docs:
+  cli.md flag + section with the CI matrix recipe, guides/ci.md,
+  dashboard guide. **Bundled dogfooding fix:** `lint.oxlint`/`lint.oxfmt`
+  cache inputs stopped at the project boundary while the commands scan
+  the whole tree — a cloud-only change rode a stale lint hit; both tasks
+  now declare `workspaceFiles: ['packages/*/src/**', 'packages/*/tests/**',
+'scripts/**']` (the documented escape hatch; keys change → fresh gate
+  run verified green, lock regenerated). With this, all four phases of
+  provable cache correctness are shipped; the verify thread is CLOSED
+  (remaining nice-to-haves live in the design docs' open questions:
+  per-task `cache.verify` opt-out, an MCP hermeticity tool, retention
+  tuning).
+
 - **2026-07-08**: **Cloud data-model Phase 2 SHIPPED — entity-page IA +
   `/v1/artifacts` + Artifacts UI + Insights + `/cache/:hash` + `?task=`
   deep links** (completes `docs/design/cloud-data-model-2026-07.md` §4.2 +
