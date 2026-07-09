@@ -189,6 +189,42 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-09**: **npm release pipeline hardened — the `sigstore`
+  publish crash fixed + the 10-package publish made idempotent** (owner
+  pasted a live release failure: `Cannot find module 'sigstore'` from
+  `libnpmpublish/lib/provenance.js`). **Root cause (non-obvious):** the
+  publish logic was fine — `npm install -g npm@latest` self-upgrading IN
+  PLACE from node 22's OLD bundled npm 10.x leaves npm's own dependency
+  tree incomplete, so when `libnpmpublish` auto-generates provenance
+  (npm does this automatically in an OIDC trusted-publishing CI context,
+  token OR OIDC), it can't `require('sigstore')` and dies on the first
+  package. **Fix:** `node-version: 22 → 24` — Node 24's BUNDLED npm is
+  already ≥ 11.5.1 (trusted-publishing capable), so no fragile in-place
+  self-upgrade is needed; the upgrade step is now GUARDED (a `node -e`
+  semver check) and self-upgrades ONLY on the unexpected chance the
+  bundled npm is < 11.5.1 — avoiding the exact in-place upgrade that
+  corrupted sigstore. **Bundled hardening:** the publish loop is now
+  IDEMPOTENT — a 10-package sequential publish can fail partway (transient
+  registry error, or the sigstore abort), and npm 403s on republishing an
+  existing version, so a re-run used to abort on the first already-
+  published package; each package is now skipped when `npm view
+<name>@<version>` shows it already on the registry (name read from each
+  dir's package.json — `dirFor` maps `@vzn/vx`→`vx`, `@vzn/vx-cloud`→
+  `vx-cloud`, platform pkgs keep their full name), so a re-run COMPLETES
+  the set. The platform-first ordering + idempotency compose (a skipped
+  `@vzn/vx` still satisfies `@vzn/vx-cloud`'s same-version dep). release.yml
+  was already sound (version stamp present, `dist/vx-*` catches both binary
+  families). Verified: YAML valid across all four workflows, the semver
+  guard correct at every boundary (11.5.0 upgrades, 11.5.1 uses-as-is,
+  pre-release suffix handled), the idempotent loop simulated against a fake
+  dist tree (already-published skipped, rest publish). **Needs a real CI
+  re-run to confirm end-to-end** (the Actions runner env isn't reproducible
+  locally); fallback if sigstore somehow persists on Node 24 is
+  `--provenance=false` with the NPM_TOKEN path (loses the attestation).
+  **Standing owner TODO unchanged:** a Trusted Publisher must be configured
+  on npmjs.com for each of the TEN names, OR an `NPM_TOKEN` scope secret set
+  (either auth path now works past the sigstore crash).
+
 - **2026-07-09**: **Adversarial review of the day's three shipped features —
   two shipping-blocker bugs + a detection gap fixed, the rest verified sound**
   (three parallel repro-mandated hostile reviewers over the scheduler

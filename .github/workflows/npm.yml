@@ -120,11 +120,18 @@ jobs:
         # works — no config change needed here.
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -e
           # Order matters: each family's platform binaries first (so the main
           # package's optionalDependencies resolve on the registry), then the
           # main package. @vzn/vx-cloud last — it depends on @vzn/vx.
+          #
+          # Idempotent: a 10-package sequential publish can fail partway (a
+          # transient registry error, or an earlier abort), and npm 403s on
+          # republishing an existing version. So skip any package already on
+          # the registry at this version — a re-run then completes the set
+          # instead of aborting on the first already-published one.
           for pkg in \
             dist/npm/@vzn/vx-linux-x64 \
             dist/npm/@vzn/vx-linux-arm64 \
@@ -136,7 +143,12 @@ jobs:
             dist/npm/@vzn/vx-cloud-darwin-x64 \
             dist/npm/@vzn/vx-cloud-darwin-arm64 \
             dist/npm/vx-cloud; do
-            echo "::group::npm publish $pkg"
-            npm publish "$pkg" --access public
+            name="$(node -p "require('$(pwd)/$pkg/package.json').name")"
+            echo "::group::npm publish $name@$VERSION ($pkg)"
+            if npm view "$name@$VERSION" version >/dev/null 2>&1; then
+              echo "$name@$VERSION already on the registry — skipping"
+            else
+              npm publish "$pkg" --access public
+            fi
             echo "::endgroup::"
           done
