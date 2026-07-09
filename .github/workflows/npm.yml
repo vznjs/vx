@@ -54,17 +54,31 @@ jobs:
           bun-version: latest
 
       # Node runs `npm publish`; registry-url points it at npm. No token — auth
-      # comes from the OIDC exchange below.
+      # comes from the OIDC exchange below. Node 24's BUNDLED npm is already
+      # >= 11.5.1 (trusted-publishing capable), so no in-place self-upgrade is
+      # needed — that upgrade, from node 22's old bundled npm 10.x, corrupted
+      # npm's own dependency tree and left `libnpmpublish` unable to
+      # `require('sigstore')` when it auto-generates provenance under OIDC.
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: 'https://registry.npmjs.org'
 
-      # Trusted Publishing needs npm >= 11.5.1 (node 22 ships npm 10.x).
-      - name: Upgrade npm for trusted publishing
+      # Trusted Publishing needs npm >= 11.5.1. Node 24 bundles a new-enough
+      # npm, so this only self-upgrades on the (unexpected) chance the bundled
+      # one is older — the in-place `npm i -g npm@latest` is exactly what broke
+      # sigstore before, so we avoid it whenever the bundled npm already works.
+      - name: Ensure npm supports trusted publishing (>= 11.5.1)
         run: |
-          npm install -g npm@latest
-          npm --version
+          current="$(npm --version)"
+          echo "bundled npm: $current"
+          if node -e 'const [a,b,c]=process.argv[1].split("-")[0].split(".").map(Number); process.exit(a>11||(a===11&&(b>5||(b===5&&c>=1)))?0:1)' "$current"; then
+            echo "npm $current already supports trusted publishing — using it as-is"
+          else
+            echo "bundled npm $current too old; upgrading"
+            npm install -g npm@latest
+            npm --version
+          fi
 
       - name: Resolve version
         id: version
