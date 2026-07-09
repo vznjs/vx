@@ -68,8 +68,17 @@ jobs:
       # npm, so this only self-upgrades on the (unexpected) chance the bundled
       # one is older — the in-place `npm i -g npm@latest` is exactly what broke
       # sigstore before, so we avoid it whenever the bundled npm already works.
-      - name: Ensure npm supports trusted publishing (>= 11.5.1)
+      #
+      # Then HARD-VERIFY the provenance dependency chain: `libnpmpublish`
+      # `require('sigstore')` to generate provenance (auto-enabled under OIDC),
+      # and a corrupted self-upgrade drops it — the exact failure that aborted
+      # the release mid-publish with a cryptic MODULE_NOT_FOUND. We resolve it
+      # up front: if missing, repair with a forced clean reinstall, then FAIL
+      # THE JOB with a clear message if it still can't load (never let the
+      # publish loop hit it).
+      - name: Ensure npm publishes with provenance (>= 11.5.1, sigstore intact)
         run: |
+          set -e
           current="$(npm --version)"
           echo "bundled npm: $current"
           if node -e 'const [a,b,c]=process.argv[1].split("-")[0].split(".").map(Number); process.exit(a>11||(a===11&&(b>5||(b===5&&c>=1)))?0:1)' "$current"; then
@@ -78,6 +87,20 @@ jobs:
             echo "bundled npm $current too old; upgrading"
             npm install -g npm@latest
             npm --version
+          fi
+          # sigstore lives under the active global npm's own node_modules.
+          resolves() { node -e "require.resolve('sigstore', { paths: [require('node:path').join('$(npm root -g)', 'npm')] })" >/dev/null 2>&1; }
+          if resolves; then
+            echo "provenance dep 'sigstore' resolves OK"
+          else
+            echo "'sigstore' missing from npm — repairing with a forced clean reinstall"
+            npm install -g npm@latest --force
+            npm --version
+            if ! resolves; then
+              echo "::error::npm cannot load 'sigstore' for provenance generation; publish would crash. Aborting before the publish loop." >&2
+              exit 1
+            fi
+            echo "repaired — 'sigstore' now resolves"
           fi
 
       - name: Resolve version

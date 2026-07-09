@@ -203,7 +203,13 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
   self-upgrade is needed; the upgrade step is now GUARDED (a `node -e`
   semver check) and self-upgrades ONLY on the unexpected chance the
   bundled npm is < 11.5.1 — avoiding the exact in-place upgrade that
-  corrupted sigstore. **Bundled hardening:** the publish loop is now
+  corrupted sigstore. **Made bulletproof (not just "should work"):** a HARD
+  `require.resolve('sigstore', { paths: [<npm root>/npm] })` verify runs
+  BEFORE the publish loop — if it can't load, a forced clean reinstall
+  repairs it, and if it STILL can't, the job fails fast with a clear
+  `::error::` instead of the cryptic mid-publish MODULE_NOT_FOUND. So the
+  release either has a working provenance chain or stops loud + early,
+  never crashes on package 1. **Bundled hardening:** the publish loop is now
   IDEMPOTENT — a 10-package sequential publish can fail partway (transient
   registry error, or the sigstore abort), and npm 403s on republishing an
   existing version, so a re-run used to abort on the first already-
