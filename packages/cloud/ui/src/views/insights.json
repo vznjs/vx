@@ -10,7 +10,8 @@
     "stats": "cacheStats",
     "savings": "cacheSavings",
     "topTasks": "topTasks",
-    "failures": "failures"
+    "failures": "failures",
+    "hermeticity": "hermeticity"
   },
   "spec": {
     "type": "Page",
@@ -414,6 +415,119 @@
                 }
               }
             ]
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Hermeticity",
+          "actionText": "cross-machine output fingerprints · vx run --force --verify=fingerprint",
+          "noPad": true
+        },
+        "visible": {
+          "$state": "/hermeticityStatus",
+          "neq": "missing"
+        },
+        "children": [
+          {
+            "type": "Text",
+            "props": {
+              "text": {
+                "$computed": "text",
+                "args": {
+                  "tpl": "{k} keys fingerprinted · {r} reports — no divergence",
+                  "k": {
+                    "$state": "/hermeticity/keysTracked"
+                  },
+                  "r": {
+                    "$state": "/hermeticity/reportCount"
+                  }
+                }
+              },
+              "tone": "success",
+              "class": "px-4 py-3"
+            },
+            "visible": [
+              {
+                "$state": "/hermeticityStatus",
+                "eq": "ok"
+              },
+              {
+                "$state": "/hermeticity/divergentCount",
+                "eq": 0
+              }
+            ]
+          },
+          {
+            "type": "DataTable",
+            "props": {
+              "rows": {
+                "$state": "/hermeticity/rows"
+              },
+              "status": {
+                "$state": "/hermeticityStatus"
+              },
+              "emptyTitle": "No fingerprints yet",
+              "columns": [
+                {
+                  "key": "taskId",
+                  "label": "Task",
+                  "kind": "link",
+                  "href": "/tasks/{taskId}",
+                  "linkLabel": "{taskId}"
+                },
+                {
+                  "key": "platforms",
+                  "label": "Platforms"
+                },
+                {
+                  "key": "changed",
+                  "label": "Diverging outputs",
+                  "kind": "mono",
+                  "baseTone": "danger"
+                },
+                {
+                  "key": "lastSeen",
+                  "label": "Last seen",
+                  "align": "right",
+                  "kind": "relativeTime",
+                  "baseTone": "faint"
+                },
+                {
+                  "key": "_runId",
+                  "label": "Run",
+                  "kind": "link",
+                  "href": "/runs/{_runId}",
+                  "linkLabel": "{_runShort}…"
+                }
+              ]
+            },
+            "visible": {
+              "$or": [
+                {
+                  "$state": "/hermeticityStatus",
+                  "eq": "loading"
+                },
+                {
+                  "$state": "/hermeticity/divergentCount",
+                  "gt": 0
+                }
+              ]
+            }
+          },
+          {
+            "type": "Text",
+            "props": {
+              "text": "A divergent key is either a hermeticity bug (absolute paths, timestamps, hash-order output) or a genuinely platform-dependent task — declare the axis so its key splits: cache.inputs.runtime: ['uname -sm']",
+              "tone": "faint",
+              "mono": true,
+              "class": "px-4 py-2 border-t border-border"
+            },
+            "visible": {
+              "$state": "/hermeticity/divergentCount",
+              "gt": 0
+            }
           }
         ]
       },

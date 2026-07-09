@@ -1033,6 +1033,47 @@ export async function fetchArtifacts(limit = 200): Promise<ArtifactRow[] | null>
   }
 }
 
+// ---------------------------------------------------------------------------
+// Hermeticity — GET /v1/hermeticity (verify-cross-machine §4): cache keys
+// whose fingerprinted output trees diverge across reports, rels named.
+// ---------------------------------------------------------------------------
+
+export interface HermeticityReportRow {
+  os: string
+  arch: string
+  tree: string
+  runId: string
+  host: string | null
+  at: number
+}
+
+export interface DivergentKeyRow {
+  hash: string
+  taskId: string
+  /** false ⇒ same-platform run-to-run divergence. */
+  crossPlatform: boolean
+  changed: string[]
+  /** false when any report was tree-only/truncated — `changed` may be partial. */
+  changedComplete: boolean
+  reports: HermeticityReportRow[]
+}
+
+export interface HermeticityResponse {
+  divergent: DivergentKeyRow[]
+  keysTracked: number
+  reportCount: number
+}
+
+/** Cross-machine fingerprint divergence. `null` = older serve (no route). */
+export async function fetchHermeticity(limit = 50): Promise<HermeticityResponse | null> {
+  try {
+    return await getJson<HermeticityResponse>(`/v1/hermeticity?limit=${limit}`)
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('404')) return null
+    throw err
+  }
+}
+
 /**
  * Bearer-fetch a /v8 artifact and hand it to the browser as a download —
  * the ONE download path shared by TaskLogs, the artifacts table, and the

@@ -9,6 +9,7 @@ import {
   compareRuns,
   explainCacheKey,
   fetchArtifacts,
+  fetchHermeticity,
   fetchCatalogProject,
   fetchCatalogProjects,
   fetchCatalogTasks,
@@ -189,6 +190,41 @@ async function artifactRows(): Promise<Record<string, unknown>[] | null> {
 }
 
 /**
+ * Cross-machine hermeticity (verify-cross-machine §4) for the Insights card:
+ * display-ready divergent rows + the derived counts `visible` conditions need
+ * as plain state paths. `null` = older serve (no /v1/hermeticity route).
+ */
+async function hermeticityData(): Promise<Record<string, unknown> | null> {
+  const res = await fetchHermeticity(50)
+  if (res === null) return null
+  return {
+    keysTracked: res.keysTracked,
+    reportCount: res.reportCount,
+    divergentCount: res.divergent.length,
+    rows: res.divergent.map((d) => {
+      // Reports arrive newest-first from the serve.
+      const latest = d.reports[0]
+      const platforms = [...new Set(d.reports.map((r) => `${r.os}-${r.arch}`))]
+      const shown = d.changed.slice(0, 3).join(', ')
+      const more = d.changed.length > 3 ? ` +${d.changed.length - 3} more` : ''
+      const partial = d.changedComplete ? '' : ' (partial — a report was truncated)'
+      return {
+        taskId: d.taskId,
+        hash: d.hash,
+        platforms: d.crossPlatform
+          ? platforms.join(' ⇄ ')
+          : 'nondeterministic (same platform)',
+        changed:
+          d.changed.length > 0 ? `${shown}${more}${partial}` : 'diverged (file list truncated)',
+        lastSeen: latest?.at ?? 0,
+        _runId: latest?.runId ?? '',
+        _runShort: latest?.runId !== undefined ? latest.runId.slice(0, 8) : '',
+      }
+    }),
+  }
+}
+
+/**
  * The workspace catalog for the Workspace page, with the two derived counts
  * `visible` conditions need as plain state paths (conditions can't compute):
  * `_taskTotal` and `_staleCount`. `null` = remote/older serve (no catalog).
@@ -252,6 +288,7 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   catalog: () => workspaceCatalog(),
   catalogTasks: () => fetchCatalogTasks().catch(() => null),
   artifacts: () => artifactRows(),
+  hermeticity: () => hermeticityData(),
   // param-based (route params + query params, already decoded by the loader)
   taskDetail: (p) => getTaskDetail(p.id ?? ''),
   cacheKey: (p) => explainCacheKey(p.id ?? ''),
