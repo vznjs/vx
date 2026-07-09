@@ -335,7 +335,10 @@ precisely when a cache entry is provably unsafe.
    different machines/arches for the same key and alerts on divergence
    — proving cross-platform determinism (absolute-path leaks,
    arch-specific codegen) that a single-machine re-run can't catch.
-   Reuses the Phase-1 primitive end to end. Sketch only.
+   Reuses the Phase-1 primitive end to end. **SHIPPED** — design +
+   record in `docs/design/verify-cross-machine-2026-07.md`
+   (`--verify=fingerprint`, the serve's `fingerprints.db` sidecar +
+   `GET /v1/hermeticity`, and the Insights Hermeticity card).
 
 ## What's out of scope
 

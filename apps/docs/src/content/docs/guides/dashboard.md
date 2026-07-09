@@ -161,10 +161,13 @@ and digging into runs.
 - **Insights** (`/insights`) — the one analytics area: run/storage
   trends, the build heatmap, bottlenecks with weekly-savings
   estimates, flaky tasks (with the within-run-retry **Retried**
-  column), cache savings + hit-source split, parallelism, top
-  time-burners, and recent failures. Every row links into its entity —
-  a failure opens its run with the task pre-selected. The old
-  `/trends` and `/bottlenecks` routes redirect here.
+  column), the **Hermeticity** card (cross-machine output-fingerprint
+  divergence from `vx run --force --verify=fingerprint` runs — the
+  exact task, platforms, and diverging output files, with a
+  remediation hint), cache savings + hit-source split, parallelism,
+  top time-burners, and recent failures. Every row links into its
+  entity — a failure opens its run with the task pre-selected. The
+  old `/trends` and `/bottlenecks` routes redirect here.
 
 ## How it works
 

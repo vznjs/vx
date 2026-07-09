@@ -205,6 +205,43 @@ task is flagged inline with its diverging outputs.
 stays green on the rest. See the
 [CLI reference](../../cli/#provable-cache-correctness-verify).
 
+### Cross-machine determinism: `--verify=fingerprint`
+
+A single-machine `--verify` can't see a task that is deterministic
+per-machine but **platform-dependent** — one that embeds `process.arch`
+or an absolute build path. With a shared remote cache such a task
+poisons the cache silently: the cache key folds no os/arch, so the first
+platform to write wins and the other restores wrong bytes forever.
+
+`--verify=fingerprint` closes that gap: it fingerprints each executed
+task's output tree (~1× execution plus a hash pass — no re-run) and
+ships the fingerprint with the run's telemetry. A connected serve pairs
+fingerprints for the same cache key across platforms and names exactly
+which output files diverge — on `GET /v1/hermeticity` and the
+dashboard's Insights **Hermeticity** card. Run it on the same
+per-platform matrix that builds your release binaries, against one
+connected serve:
+
+```yaml
+strategy:
+  matrix:
+    os: [ubuntu-latest, macos-latest]
+steps:
+  - run: vx run --all --force --verify=fingerprint
+    env:
+      VX_CLOUD_URL: ${{ vars.VX_CLOUD_URL }}
+      VX_CLOUD_TOKEN: ${{ secrets.VX_CLOUD_TOKEN }}
+```
+
+`--force` matters: with plain reads the second platform would cache-hit
+and never execute — exactly the poisoning scenario — so it would never
+produce a fingerprint. Teams already running the nightly
+`--force --verify` recipe get cross-machine data for free (the
+determinism proof computes the fingerprint anyway). A flagged key means
+either a hermeticity bug to fix, or a genuinely platform-dependent task
+whose key should split per platform — declare
+`cache.inputs.runtime: ['uname -sm']`.
+
 ## Next steps
 
 - **[Remote caching](../remote-caching/)** — set up the shared cache.

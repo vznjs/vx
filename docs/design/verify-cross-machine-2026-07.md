@@ -1,6 +1,6 @@
 # Cross-machine fingerprint diff (`--verify` Phase 4) — design
 
-> **Status:** proposed
+> **Status:** SHIPPED 2026-07-09
 >
 > The last open phase of the provable-cache-correctness flagship
 > (`docs/design/cache-correctness-2026-07.md` § Phasing item 4). A serve
