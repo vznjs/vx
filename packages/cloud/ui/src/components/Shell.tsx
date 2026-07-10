@@ -16,6 +16,7 @@ import {
   setTokenAndPersist,
   setWorkspaceAndPersist,
 } from '../api.ts'
+import { getLiveActiveSignal, getVisibleSignal } from '../live.ts'
 import { formatCount, formatRelativeTime } from '../format.ts'
 import { CommandPalette } from './CommandPalette.tsx'
 import { StatusDot } from './ui.tsx'
@@ -143,6 +144,7 @@ export const Shell: ParentComponent = (props) => {
         <header class="h-14 px-5 border-b border-border/70 bg-bg/60 backdrop-blur-xl flex items-center gap-3 sticky top-0 z-10">
           <Breadcrumb pathname={location.pathname} />
           <div class="flex-1" />
+          <LiveIndicator />
           <WorkspaceSwitcher />
           <Show when={unauthorized() && !editing()}>
             <button
@@ -228,6 +230,32 @@ export const Shell: ParentComponent = (props) => {
 
       <CommandPalette open={paletteOpen()} onClose={() => setPaletteOpen(false)} onSelect={(href) => { setPaletteOpen(false); navigate(href) }} />
     </div>
+  )
+}
+
+/**
+ * Live-refresh status pill. Shown only while a live-refreshing view is mounted
+ * (the ref-count in live.ts): a pulsing green dot + "live" when the tab is
+ * visible and auto-refresh is running, a static grey "paused" when the tab is
+ * hidden (the interval is suspended to save work).
+ */
+function LiveIndicator() {
+  const active = getLiveActiveSignal()
+  const visible = getVisibleSignal()
+  return (
+    <Show when={active()}>
+      <span
+        class="inline-flex items-center gap-1.5 text-[11px] font-mono px-2 py-1 rounded border border-border"
+        classList={{ 'text-success': visible(), 'text-fg-3': !visible() }}
+        title={visible() ? 'Auto-refreshing — new runs and metrics appear live' : 'Paused — this tab is in the background'}
+      >
+        <span
+          class="inline-block w-1.5 h-1.5 rounded-full"
+          classList={{ 'bg-success animate-pulse': visible(), 'bg-fg-3': !visible() }}
+        />
+        {visible() ? 'live' : 'paused'}
+      </span>
+    </Show>
   )
 }
 

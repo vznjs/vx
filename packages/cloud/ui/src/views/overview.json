@@ -1,4 +1,5 @@
 {
+  "refresh": 5000,
   "data": {
     "catalog": "catalog",
     "meta": "serverMeta"

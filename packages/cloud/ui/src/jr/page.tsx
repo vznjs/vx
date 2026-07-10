@@ -10,6 +10,7 @@ import { useParams, useSearchParams } from '@solidjs/router'
 import { nestedToFlat } from '@json-render/core'
 import type { Spec } from '@json-render/solid'
 import { getCapabilitiesSignal, getConnectionKey } from '../api.ts'
+import { useVisibilityRefresh } from '../live.ts'
 import { Dash } from './renderer.tsx'
 import { SOURCES } from './data.ts'
 
@@ -22,6 +23,9 @@ export interface JsonView {
   state?: Record<string, unknown>
   /** nested ({type,props,children}) or flat ({root,elements}) json-render spec. */
   spec: Record<string, unknown>
+  /** Opt-in live auto-refresh interval (ms) — re-fetches this view's sources
+   *  on a visibility-aware tick (paused while the tab is hidden). */
+  refresh?: number
 }
 
 const toFlat = (spec: Record<string, unknown>): Spec => ('elements' in spec ? (spec as unknown as Spec) : nestedToFlat(spec))
@@ -56,10 +60,15 @@ export function jsonPage(view: JsonView): () => JSX.Element {
       for (const [k, v] of Object.entries(params)) o[k] = decodeURIComponent(String(v))
       return o
     })
+    // Opt-in live refresh: a `refresh` interval makes every source re-fetch on
+    // a visibility-aware tick (paused when the tab is hidden). The tick joins
+    // the resource source key below, so the refetch reuses the same machinery
+    // as a connection switch.
+    const tick = view.refresh !== undefined ? useVisibilityRefresh(view.refresh) : undefined
     // Keyed on route params AND the connection key (origin|token|workspace) so
     // switching server or workspace re-fetches every source in place — the
     // fetchers read the current connection from api.ts at call time.
-    const source = createMemo(() => ({ params: decoded(), conn: getConnectionKey() }))
+    const source = createMemo(() => ({ params: decoded(), conn: getConnectionKey(), tick: tick?.() ?? 0 }))
     const resources = sources.map(([key, src]) => {
       const fn = SOURCES[src]
       const [res] = createResource(source, (s) => (fn ? fn(s.params) : Promise.resolve(undefined)))
@@ -81,13 +90,18 @@ export function jsonPage(view: JsonView): () => JSX.Element {
         // accessor re-throws, which (with no per-source boundary) would blank
         // the whole page. Degrade a failed source to an 'error' status so only
         // its own section falls back to an empty state, never the entire view.
+        //
+        // Read `res.latest` (the last resolved value), NOT `res()`: on an
+        // interval refetch `res.loading` flips true but `latest` still holds
+        // the previous value, so the section keeps its data instead of flashing
+        // back to the loading skeleton. Only the FIRST load (latest still
+        // undefined while loading) shows the skeleton.
         let v: unknown
         let status: 'loading' | 'error' | 'missing' | 'ok'
-        if (res.loading) status = 'loading'
-        else if (res.error) status = 'error'
+        if (res.error) status = 'error'
         else {
-          v = res()
-          status = v === null ? 'missing' : v === undefined ? 'loading' : 'ok'
+          v = res.latest
+          status = res.loading && v === undefined ? 'loading' : v === null ? 'missing' : v === undefined ? 'loading' : 'ok'
         }
         s[key] = v
         s[`${key}Status`] = status
