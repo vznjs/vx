@@ -189,6 +189,52 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-10**: **Pre-signed artifact URLs: design + the client half
+  SHIPPED (`5ecbc42`, `8fbd2c5`) — and the patterns feature's adversarial
+  review closed a repro-confirmed stale-hit trap (`3e2a984`)**. **(1)
+  Design** (`docs/design/presigned-artifacts-2026-07.md`, architect):
+  adopt Turbo's `--preflight` mechanism VERBATIM (verified against
+  `turborepo-api-client/src/lib.rs`: `OPTIONS` + Access-Control-Request-_
+  → `Location` + `Access-Control-Allow-Headers` gates whether the bearer
+  rides) — the HMAC interop rationale again; a vx-native wire was
+  rejected. Phasing: (P1) core client preflight; (P2) cloud-only
+  `BlobBackend` (S3/R2, hand-rolled SigV4, NO AWS SDK) with GET offload
+  only — PUT keeps proxying so 409-immutability/caps/tag-sidecar stay
+  server-enforced; (P3, on-demand only) PUT offload with its
+  weakened-immutability residual stated honestly. Trust scopes survive by
+  construction (the pre-signed URL binds ONE server-derived scope key).
+  **(2) P1 shipped:** `RemoteCacheConfig.preflight` /
+  `VX_REMOTE_CACHE_PREFLIGHT` — OPTIONS precedes each GET/PUT/HEAD with
+  the intended method + header NAMES; `Location` (absolute or relative)
+  becomes the target; bearer kept iff Allow-Headers is `_`or names`authorization`(a query-signed URL rejects a request that ALSO carries
+Authorization). Off by default; every existing defense (bounded
+download, content-length refusal, zstd checks, HMAC tag verification)
+applies unchanged to the redirected body — pinned by a two-origin test
+suite (9 tests, incl. unsigned-blob refusal). vx now works against any
+Turbo server that offloads to object storage; the comparison gap is
+client-closed. **(3) Self-review of the day's two features**
+(repro-mandated, same standard as the Opus waves). CONFIRMED + fixed:
+**(a) MEDIUM-HIGH — the patterns stale-hit trap.**`cache.inputs.tasks`matched`'build._'`LITERALLY while dependsOn expanded it → the filter
+selected ZERO upstream hashes → the dependent DECOUPLED and cache-hit
+stale bytes after its upstream changed (executed e2e: served v1 after
+v1→v2). Shipping dependsOn patterns COMPLETED the trap (the pairing
+used to hard-error). Fix: the task half of every filter form (incl.`pkg#`and negation, unlike dependsOn) shares the`_`-glob matcher;
+pinned by 4 units + a real-CLI e2e that fails stale without the fix. NO
+CACHE_VERSION bump — a config using a pattern here before was in the
+silently-decoupled state; its key changing to fold the matched
+upstreams IS the fix. **(b) LOW — duplicate edges** from mixed
+exact+pattern (or literal duplicates, pre-existing): scheduling counts
+balance (executed), but the upstream hash double-folded on the default
+path and DOT printed the edge twice; `node.deps`deduped before the
+sort. **(c)** empty`VX_GITHUB_CHECK_NAME`falls through instead of
+naming a check`''`(a 422). **Refuted by execution:** edge-order
+determinism (sort covers all pattern paths; warm re-run all-hits;`--frozen`green), regex escaping (17 adversarial names) + no-ReDoS,`^pattern` scoped-loading symmetry (prepare loads the full dep closure;
+  both forms degrade identically), group surfacing, checks double-post
+  (uploaded flag), agent sentinel (a distributed run posts zero checks —
+  the documented distributed-ingest gap, not a dupe), endedAt epoch-ms,
+  timer cleanup (blackhole API → exactly 5s, then exit). Core 1250 pass
+  (+15), cloud 331, lint clean; real CI green on every push.
+
 - **2026-07-10**: **`dependsOn` task-name patterns SHIPPED — `'build.*'` /
   `'^build.*'` (`660d299`)**, closing the last dependsOn gap vs Nx (19.5's
   `build-*`) and pairing with the dotted-namespace convention (`lint:
