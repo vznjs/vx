@@ -13,21 +13,37 @@
 
 import { For, Show, createMemo, createResource, createSignal, onCleanup, onMount } from 'solid-js'
 import { createStore } from 'solid-js/store'
-import { A } from '@solidjs/router'
+import { A, useSearchParams } from '@solidjs/router'
 import type { BaseComponentProps } from '@json-render/solid'
 import {
   type QueueJobRow,
   fetchCatalogTasks,
+  fetchHermeticity,
   fetchQueue,
+  getCacheStats,
   getCapabilitiesSignal,
   getConnectionKey,
+  getFlakiest,
   getHistory,
   getVersion,
   listInvocations,
+  listRuns,
   queueRun,
 } from '../api.ts'
+import {
+  type RunResultFilter,
+  type RunTick,
+  countTone,
+  distinctBranches,
+  filterInvocations,
+  passRateWithin,
+  rateTone,
+  runTicks,
+} from '../jr/functions.ts'
+import { formatDuration, formatPercent, formatRelativeTime } from '../format.ts'
+import { useVisibilityRefresh } from '../live.ts'
 import { DataTable, type Column } from '../jr/components.tsx'
-import { Card, EmptyState } from './ui.tsx'
+import { Card, EmptyState, MetricCard } from './ui.tsx'
 import { RunSession, createRunSession, type RunSessionState } from './RunSession.tsx'
 
 type JobState = 'submitting' | 'queued' | 'running' | 'done' | 'refused'
@@ -104,6 +120,11 @@ function tagsText(tags: Record<string, string> | undefined): string {
 
 export function RunsView() {
   const capabilities = getCapabilitiesSignal()
+  // Live auto-refresh: history, invocations and the health tiles re-fetch on a
+  // visibility-aware 5s tick (paused while the tab is hidden). The queue poll
+  // below keeps its own faster cadence; the live-run WebSocket is untouched.
+  const liveTick = useVisibilityRefresh(5000)
+  const [searchParams, setSearchParams] = useSearchParams()
   const [version] = createResource(getConnectionKey, () => getVersion().catch(() => null))
 
   // Datalist names: the workspace catalog when this serve has one (§6.5),
@@ -112,7 +133,10 @@ export function RunsView() {
     () => (capabilities().known && capabilities().catalog ? getConnectionKey() : null),
     () => fetchCatalogTasks().catch(() => null),
   )
-  const [history] = createResource(getConnectionKey, () => getHistory({ limit: 300 }).catch(() => []))
+  const [history] = createResource(
+    () => `${getConnectionKey()}|${liveTick()}`,
+    () => getHistory({ limit: 300 }).catch(() => []),
+  )
   const taskNames = createMemo(() => {
     const catalog = catalogTasks()
     const names = catalog
@@ -121,9 +145,10 @@ export function RunsView() {
     return Array.from(new Set(names)).sort()
   })
 
-  // Historical invocations (refetches when a queued job completes).
+  // Historical invocations (refetches when a queued job completes, on each
+  // live tick, and on connection/workspace switch).
   const [invocations] = createResource(
-    () => `${getConnectionKey()}|${historyVersion()}`,
+    () => `${getConnectionKey()}|${historyVersion()}|${liveTick()}`,
     () => listInvocations(200),
   )
   const historyRows = createMemo<Record<string, unknown>[]>(() =>
@@ -136,6 +161,71 @@ export function RunsView() {
   )
   const historyStatus = () =>
     invocations.error ? ('error' as const) : invocations() === undefined ? ('loading' as const) : ('ok' as const)
+
+  // -- Faceted filters (URL-persisted) --------------------------------------
+  // result / branch / project ride the hash query (#/runs?result=failed&…) so
+  // a filtered view is shareable + restores on load. Setting a facet to its
+  // default removes the param (a clean URL).
+  const resultFilter = (): RunResultFilter => {
+    const v = searchParams.result
+    return v === 'passed' || v === 'failed' ? v : 'all'
+  }
+  const branchFilter = (): string => (typeof searchParams.branch === 'string' ? searchParams.branch : '')
+  const projectFilter = (): string => (typeof searchParams.project === 'string' ? searchParams.project : '')
+  const setResult = (v: RunResultFilter): void => setSearchParams({ result: v === 'all' ? undefined : v })
+  const setBranch = (v: string): void => setSearchParams({ branch: v === '' ? undefined : v })
+  const setProject = (v: string): void => setSearchParams({ project: v === '' ? undefined : v })
+  const clearFilters = (): void => setSearchParams({ result: undefined, branch: undefined, project: undefined })
+  const anyFilter = () => resultFilter() !== 'all' || branchFilter() !== '' || projectFilter() !== ''
+
+  // The active facet value is always included so its <option> exists on a
+  // deep-link load (before invocations/history arrive) — otherwise the select
+  // can't display the restored value even though the filter is applied.
+  const branchNames = createMemo(() => {
+    const set = new Set(distinctBranches(invocations() ?? []))
+    if (branchFilter() !== '') set.add(branchFilter())
+    return Array.from(set).sort()
+  })
+  const projectNames = createMemo(() => {
+    const set = new Set<string>()
+    for (const h of history() ?? []) set.add(h.project)
+    const cat = catalogTasks()
+    if (cat) for (const t of cat.tasks) set.add(t.project)
+    if (projectFilter() !== '') set.add(projectFilter())
+    return Array.from(set).sort()
+  })
+
+  // Project → the set of runIds that touched it (invocation headers carry no
+  // project, so the server /v1/runs?project= filter names the runs, and we
+  // intersect). Only fetched while a project facet is active.
+  const [projectRunIds] = createResource(
+    () => (projectFilter() === '' ? null : `${getConnectionKey()}|${projectFilter()}|${liveTick()}`),
+    async () => {
+      const runs = await listRuns({ project: projectFilter(), limit: 2000 }).catch(() => [])
+      return new Set(runs.map((r) => r.runId).filter((id): id is string => id !== null))
+    },
+  )
+
+  const filteredRows = createMemo<Record<string, unknown>[]>(() => {
+    let rows = filterInvocations(historyRows(), { result: resultFilter(), branch: branchFilter() })
+    if (projectFilter() !== '') {
+      const ids = projectRunIds()
+      if (ids) rows = rows.filter((r) => typeof r.runId === 'string' && ids.has(r.runId))
+    }
+    return rows
+  })
+
+  // -- CI health strip -------------------------------------------------------
+  const [stats] = createResource(() => `${getConnectionKey()}|${liveTick()}`, () => getCacheStats().catch(() => null))
+  const [flaky] = createResource(() => `${getConnectionKey()}|${liveTick()}`, () => getFlakiest(100).catch(() => []))
+  const [hermeticity] = createResource(
+    () => `${getConnectionKey()}|${liveTick()}`,
+    () => fetchHermeticity(50).catch(() => null),
+  )
+  const ticks = createMemo<RunTick[]>(() => runTicks(invocations() ?? [], 24))
+  const passRate24h = createMemo(() => passRateWithin(invocations() ?? [], 24 * 60 * 60 * 1000, Date.now()))
+  const flakyCount = () => (flaky() ?? []).length
+  const nonHermeticCount = () => hermeticity()?.divergent.length
 
   // Serve-side queue state, polled at 2s while the view is mounted (an
   // in-memory read) — surfaces FOREIGN jobs too (CLI delegations, other
@@ -281,6 +371,15 @@ export function RunsView() {
         </div>
       </Show>
 
+      {/* CI health strip — recent run outcomes + at-a-glance health tiles. */}
+      <HealthStrip
+        ticks={ticks()}
+        passRate={passRate24h()}
+        flakyCount={flakyCount()}
+        hitRate24h={stats()?.hitRate24h}
+        nonHermetic={nonHermeticCount()}
+      />
+
       {/* Queued / live jobs */}
       <Show when={anyActive()}>
         <div class="rounded-xl border border-border bg-surface/40 overflow-hidden">
@@ -318,17 +417,52 @@ export function RunsView() {
           when={historyStatus() !== 'ok' || historyRows().length > 0}
           fallback={<EmptyState title="No invocations yet" hint="Spawn a run above, or push one from the CLI." cmd="vx run <task>" />}
         >
+          {/* Faceted filters (URL-persisted) above the existing free-text one. */}
+          <div class="px-4 py-2.5 border-b border-border/70 flex items-center gap-2.5 flex-wrap text-[12px]">
+            <span class="text-[10px] uppercase tracking-wider text-fg-3 font-semibold">Filter</span>
+            <select value={resultFilter()} onChange={(e) => setResult(e.currentTarget.value as RunResultFilter)} class="text-[12px]" aria-label="result">
+              <option value="all">All results</option>
+              <option value="passed">Passed</option>
+              <option value="failed">Failed</option>
+            </select>
+            <select value={branchFilter()} onChange={(e) => setBranch(e.currentTarget.value)} class="text-[12px]" aria-label="branch">
+              <option value="">All branches</option>
+              <For each={branchNames()}>{(b) => <option value={b}>{b}</option>}</For>
+            </select>
+            <select value={projectFilter()} onChange={(e) => setProject(e.currentTarget.value)} class="text-[12px]" aria-label="project">
+              <option value="">All projects</option>
+              <For each={projectNames()}>{(p) => <option value={p}>{p}</option>}</For>
+            </select>
+            <Show when={anyFilter()}>
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <Show when={resultFilter() !== 'all'}>
+                  <Chip label={resultFilter()} onClear={() => setResult('all')} />
+                </Show>
+                <Show when={branchFilter() !== ''}>
+                  <Chip label={`branch: ${branchFilter()}`} onClear={() => setBranch('')} />
+                </Show>
+                <Show when={projectFilter() !== ''}>
+                  <Chip label={`project: ${projectFilter()}`} onClear={() => setProject('')} />
+                </Show>
+                <button type="button" onClick={clearFilters} class="text-[11px] text-fg-3 hover:text-fg underline-offset-2 hover:underline">
+                  clear all
+                </button>
+              </div>
+            </Show>
+            <span data-testid="runs-count" class="ml-auto text-[11px] font-mono text-fg-3 tabular-nums">{filteredRows().length} runs</span>
+          </div>
           {DataTable(
             jrCtx(() => ({
-              rows: historyRows(),
+              rows: filteredRows(),
               columns: HISTORY_COLUMNS,
               rowHref: '/runs/{runId}',
               filter: true,
               filterFrom: ['runId', 'branch', '_ci', '_tags'],
               filterPlaceholder: 'filter by run id, branch, CI, or tag…',
               initialSort: { key: 'startedAt', desc: true },
-              emptyTitle: 'No invocations yet',
-              emptyCmd: 'vx run <task>',
+              emptyTitle: anyFilter() ? 'No runs match these filters' : 'No invocations yet',
+              emptyHint: anyFilter() ? 'Clear a filter to widen the results.' : undefined,
+              emptyCmd: anyFilter() ? undefined : 'vx run <task>',
               status: historyStatus(),
             })),
           )}
@@ -443,5 +577,112 @@ function ActiveRow(props: { job: ActiveJob }) {
         </div>
       </Show>
     </div>
+  )
+}
+
+/** A clearable active-filter chip. */
+function Chip(props: { label: string; onClear: () => void }) {
+  return (
+    <span class="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full border border-border bg-surface-2/60 text-[11px] font-mono text-fg-1">
+      {props.label}
+      <button
+        type="button"
+        class="i-tabler-x text-fg-3 hover:text-fg text-[12px] leading-none"
+        aria-label={`clear ${props.label}`}
+        onClick={props.onClear}
+      />
+    </span>
+  )
+}
+
+/**
+ * The CI-health read atop Runs: a strip of recent-run status ticks (last ~24,
+ * newest on the right, each a link into its run) + four health tiles (pass
+ * rate 24h, flaky tasks, cache hit rate 24h, non-hermetic keys), tinted green/
+ * amber/red by threshold and linking to the entity that explains each.
+ */
+function HealthStrip(props: {
+  ticks: RunTick[]
+  passRate: number | undefined
+  flakyCount: number
+  hitRate24h: number | undefined
+  nonHermetic: number | undefined
+}) {
+  const pad = () => Math.max(0, 24 - props.ticks.length)
+  return (
+    <div data-testid="ci-health" class="rounded-xl border border-border bg-surface/40 p-4 flex flex-col gap-3.5">
+      <div class="flex items-center gap-2">
+        <span class="i-tabler-heartbeat text-accent" aria-hidden="true" />
+        <span class="text-[11px] font-semibold uppercase tracking-wider text-fg-2">CI health</span>
+        <span class="ml-auto text-[10px] font-mono text-fg-3">last {props.ticks.length} runs</span>
+      </div>
+
+      <Show
+        when={props.ticks.length > 0}
+        fallback={<div class="text-fg-3 text-[12px]">No runs yet — spawn one above or push from the CLI.</div>}
+      >
+        <div class="flex items-end gap-1 overflow-x-auto pb-1">
+          <For each={Array.from({ length: pad() })}>
+            {() => <span class="w-2 h-6 rounded-sm shrink-0 bg-fg-3/25" />}
+          </For>
+          <For each={props.ticks}>
+            {(t) => (
+              <A
+                href={`/runs/${encodeURIComponent(t.runId)}`}
+                class={`w-2 h-6 rounded-sm shrink-0 transition hover:opacity-70 ${t.ok ? 'bg-success' : 'bg-danger'}`}
+                aria-label={`${t.ok ? 'passed' : 'failed'} run`}
+                title={`${t.label || 'run'} · ${t.ok ? 'passed' : 'failed'} · ${formatRelativeTime(t.startedAt)} · ${formatDuration(t.durationMs)}`}
+              />
+            )}
+          </For>
+        </div>
+      </Show>
+
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <HealthTile
+          href="/insights"
+          label="Pass rate (24h)"
+          value={props.passRate === undefined ? '—' : formatPercent(props.passRate, 0)}
+          sub="runs that exited clean"
+          tone={props.passRate === undefined ? 'default' : rateTone(props.passRate, 0.9, 0.7)}
+        />
+        <HealthTile
+          href="/insights"
+          label="Flaky tasks"
+          value={String(props.flakyCount)}
+          sub="confirmed + inferred"
+          tone={countTone(props.flakyCount, 3)}
+        />
+        <HealthTile
+          href="/cache"
+          label="Cache hit rate (24h)"
+          value={props.hitRate24h === undefined ? '—' : formatPercent(props.hitRate24h, 0)}
+          sub="restored vs re-run"
+          tone={props.hitRate24h === undefined ? 'default' : rateTone(props.hitRate24h, 0.5, 0.2)}
+        />
+        <HealthTile
+          href="/insights"
+          label="Non-hermetic keys"
+          value={props.nonHermetic === undefined ? '—' : String(props.nonHermetic)}
+          sub="diverging output trees"
+          tone={props.nonHermetic === undefined ? 'default' : countTone(props.nonHermetic, 1)}
+        />
+      </div>
+    </div>
+  )
+}
+
+/** A health tile — a MetricCard wrapped in a link to its explaining entity. */
+function HealthTile(props: {
+  href: string
+  label: string
+  value: string
+  sub?: string
+  tone: 'default' | 'good' | 'warn' | 'bad'
+}) {
+  return (
+    <A href={props.href} class="no-underline block">
+      <MetricCard label={props.label} value={props.value} sub={props.sub} tone={props.tone} />
+    </A>
   )
 }

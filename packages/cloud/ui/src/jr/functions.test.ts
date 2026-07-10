@@ -4,7 +4,18 @@
 // a missing catalog must pass the rollups through byte-untouched.
 
 import { describe, expect, it } from 'bun:test'
-import { FUNCTIONS, computeRecommendations, suggestedRetriesFor } from './functions.ts'
+import {
+  FUNCTIONS,
+  computeRecommendations,
+  countTone,
+  distinctBranches,
+  filterInvocations,
+  invocationPassed,
+  passRateWithin,
+  rateTone,
+  runTicks,
+  suggestedRetriesFor,
+} from './functions.ts'
 
 const joinProjects = FUNCTIONS['joinProjects']!
 const joinTasks = FUNCTIONS['joinTasks']!
@@ -235,5 +246,108 @@ describe('computeRecommendations', () => {
       avgDurationMs: 5000,
     })
     expect(recs.map((r) => r.kind)).toEqual(['flaky-retries', 'non-hermetic', 'uncached'])
+  })
+})
+
+// --- Runs view: faceted filters + CI health ---------------------------------
+
+describe('invocationPassed', () => {
+  it('passes with no failures and a clean exit', () => {
+    expect(invocationPassed({ failedCount: 0, exitOk: true })).toBe(true)
+    // exitOk absent (not === false) still counts as passed
+    expect(invocationPassed({ failedCount: 0 })).toBe(true)
+  })
+  it('fails on any failed task or a non-ok exit', () => {
+    expect(invocationPassed({ failedCount: 1, exitOk: true })).toBe(false)
+    expect(invocationPassed({ failedCount: 0, exitOk: false })).toBe(false)
+  })
+})
+
+describe('filterInvocations', () => {
+  const rows = [
+    { runId: 'r1', branch: 'main', failedCount: 0, exitOk: true },
+    { runId: 'r2', branch: 'main', failedCount: 2, exitOk: false },
+    { runId: 'r3', branch: 'feature', failedCount: 0, exitOk: true },
+  ]
+  it('all + empty branch → passthrough', () => {
+    expect(filterInvocations(rows, { result: 'all', branch: '' })).toHaveLength(3)
+  })
+  it('result=failed keeps only failing runs', () => {
+    expect(filterInvocations(rows, { result: 'failed', branch: '' }).map((r) => r.runId)).toEqual(['r2'])
+  })
+  it('result=passed keeps only clean runs', () => {
+    expect(filterInvocations(rows, { result: 'passed', branch: '' }).map((r) => r.runId)).toEqual(['r1', 'r3'])
+  })
+  it('branch narrows, and facets compose', () => {
+    expect(filterInvocations(rows, { result: 'all', branch: 'feature' }).map((r) => r.runId)).toEqual(['r3'])
+    expect(filterInvocations(rows, { result: 'passed', branch: 'main' }).map((r) => r.runId)).toEqual(['r1'])
+  })
+})
+
+describe('distinctBranches', () => {
+  it('dedupes + sorts, dropping empty/absent', () => {
+    expect(
+      distinctBranches([
+        { branch: 'main' },
+        { branch: 'feature' },
+        { branch: 'main' },
+        { branch: '' },
+        { branch: null },
+        {},
+      ]),
+    ).toEqual(['feature', 'main'])
+  })
+})
+
+describe('runTicks', () => {
+  const rows = [
+    { runId: 'r3', failedCount: 1, exitOk: false, startedAt: 300, totalDurationMs: 30, requestedTasks: ['test'] },
+    { runId: 'r2', failedCount: 0, exitOk: true, startedAt: 200, totalDurationMs: 20, requestedTasks: ['build', 'lint'] },
+    { runId: 'r1', failedCount: 0, exitOk: true, startedAt: 100, totalDurationMs: 10, requestedTasks: ['ci'] },
+  ]
+  it('takes the last N and orders most-recent-LAST', () => {
+    const t = runTicks(rows, 2)
+    // newest two, reversed → r2 then r3 (r3 is newest, ends up on the right)
+    expect(t.map((x) => x.runId)).toEqual(['r2', 'r3'])
+    expect(t[1]!.ok).toBe(false)
+    expect(t[1]!.label).toBe('test')
+    expect(t[0]!.ok).toBe(true)
+    expect(t[0]!.label).toBe('build lint')
+  })
+  it('handles fewer rows than requested', () => {
+    expect(runTicks(rows, 10)).toHaveLength(3)
+  })
+})
+
+describe('passRateWithin', () => {
+  const now = 1_000_000
+  const hour = 60 * 60 * 1000
+  const rows = [
+    { exitOk: true, failedCount: 0, startedAt: now - hour }, // in window, pass
+    { exitOk: false, failedCount: 1, startedAt: now - 2 * hour }, // in window, fail
+    { exitOk: true, failedCount: 0, startedAt: now - 48 * hour }, // out of window
+  ]
+  it('computes pass rate over the window only', () => {
+    expect(passRateWithin(rows, 24 * hour, now)).toBe(0.5)
+  })
+  it('undefined when nothing falls in the window', () => {
+    expect(passRateWithin(rows, hour / 2, now)).toBeUndefined()
+    expect(passRateWithin([], 24 * hour, now)).toBeUndefined()
+  })
+})
+
+describe('rateTone / countTone', () => {
+  it('rateTone buckets a higher-is-better rate', () => {
+    expect(rateTone(0.95, 0.9, 0.7)).toBe('good')
+    expect(rateTone(0.8, 0.9, 0.7)).toBe('warn')
+    expect(rateTone(0.5, 0.9, 0.7)).toBe('bad')
+  })
+  it('countTone: 0 is good, then warn, then bad at the threshold', () => {
+    expect(countTone(0)).toBe('good')
+    expect(countTone(1)).toBe('warn')
+    expect(countTone(3)).toBe('bad')
+    // any divergence is bad when badAt=1
+    expect(countTone(1, 1)).toBe('bad')
+    expect(countTone(0, 1)).toBe('good')
   })
 })

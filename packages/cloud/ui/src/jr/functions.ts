@@ -336,6 +336,111 @@ export function computeRecommendations(input: {
   return recs
 }
 
+// --- Runs view: faceted filters + CI health (pure derivations) --------------
+// Extracted so the Runs surface stays declarative and these decisions are
+// unit-pinned. Structurally-loose inputs so both raw rows and the concrete
+// InvocationDetail api type are assignable.
+
+/** Result facet for the Runs table. */
+export type RunResultFilter = 'all' | 'passed' | 'failed'
+
+interface InvocationLike {
+  runId?: unknown
+  branch?: unknown
+  failedCount?: unknown
+  exitOk?: unknown
+  startedAt?: unknown
+  totalDurationMs?: unknown
+  requestedTasks?: unknown
+}
+
+/** A run passed iff no task failed AND it exited ok. */
+export function invocationPassed(inv: InvocationLike): boolean {
+  return (Number(inv.failedCount) || 0) === 0 && inv.exitOk !== false
+}
+
+/**
+ * Apply the result + branch facets to invocation rows client-side (both fields
+ * live on the row). Project filtering needs a per-project runId set and is
+ * handled by the caller.
+ */
+export function filterInvocations<T extends InvocationLike>(
+  rows: readonly T[],
+  f: { result: RunResultFilter; branch: string },
+): T[] {
+  return rows.filter((r) => {
+    if (f.result === 'passed' && !invocationPassed(r)) return false
+    if (f.result === 'failed' && invocationPassed(r)) return false
+    if (f.branch !== '' && String(r.branch ?? '') !== f.branch) return false
+    return true
+  })
+}
+
+/** Distinct non-empty branch names across invocation rows, sorted. */
+export function distinctBranches(rows: readonly InvocationLike[]): string[] {
+  const set = new Set<string>()
+  for (const r of rows) {
+    if (typeof r.branch === 'string' && r.branch !== '') set.add(r.branch)
+  }
+  return Array.from(set).sort()
+}
+
+/** One tick in the CI-health strip. */
+export interface RunTick {
+  runId: string
+  ok: boolean
+  startedAt: number
+  /** requested tasks, joined — the tooltip's headline. */
+  label: string
+  durationMs: number
+}
+
+/**
+ * The last `count` runs as ticks, ordered most-recent-LAST (invocation rows
+ * arrive newest-first, so take the head then reverse) — the strip reads
+ * left→right chronological with the newest on the right.
+ */
+export function runTicks(rows: readonly InvocationLike[], count: number): RunTick[] {
+  return rows
+    .slice(0, count)
+    .map((r): RunTick => ({
+      runId: String(r.runId ?? ''),
+      ok: invocationPassed(r),
+      startedAt: Number(r.startedAt) || 0,
+      label: Array.isArray(r.requestedTasks) ? r.requestedTasks.join(' ') : '',
+      durationMs: Number(r.totalDurationMs) || 0,
+    }))
+    .reverse()
+}
+
+/**
+ * Pass rate over the invocations whose start falls within `windowMs` of `now`.
+ * `undefined` when none did — the tile then reads '—' instead of a fake 0%.
+ */
+export function passRateWithin(
+  rows: readonly InvocationLike[],
+  windowMs: number,
+  now: number,
+): number | undefined {
+  const inWindow = rows.filter((r) => now - (Number(r.startedAt) || 0) <= windowMs)
+  if (inWindow.length === 0) return undefined
+  return inWindow.filter(invocationPassed).length / inWindow.length
+}
+
+/** Tone for a higher-is-better rate (pass rate, hit rate): green/amber/red. */
+export function rateTone(value: number, good: number, warn: number): 'good' | 'warn' | 'bad' {
+  if (value >= good) return 'good'
+  if (value >= warn) return 'warn'
+  return 'bad'
+}
+
+/** Tone for a lower-is-better problem count — 0 is good, more is worse. */
+export function countTone(n: number, badAt = 3): 'good' | 'warn' | 'bad' {
+  if (n <= 0) return 'good'
+  if (n < badAt) return 'warn'
+  return 'bad'
+}
+
 /** All catalog projects joined with their analytics rollups, keyed by name. */
 function joinProjects(rollups: Row[], catalog: unknown): Row[] {
   const cat = catalog as { projects?: unknown; staleProjects?: unknown } | null | undefined
