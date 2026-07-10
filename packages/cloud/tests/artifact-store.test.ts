@@ -26,6 +26,11 @@ import { cloud } from '../src/plugin.js'
 
 const TIMEOUT = 30_000
 
+// PUT refuses a body that is not a zstd frame (an immutable store must never
+// let junk lock a key), so every stored test body is real zstd. Deterministic
+// per tag, so round-trip assertions compare against zbody(tag) bytes.
+const zbody = (tag: string): Uint8Array => Bun.zstdCompressSync(Buffer.from(tag))
+
 describe('vx serve /v1/cache — the native wire', () => {
   let dir: string
   let server: Awaited<ReturnType<typeof startServe>>
@@ -52,7 +57,7 @@ describe('vx serve /v1/cache — the native wire', () => {
 
   it('PUT → HEAD → GET round-trips bytes + the duration/digest headers', async () => {
     const hash = 'a1b2c3d4e5f60718'
-    const body = new TextEncoder().encode('artifact-bytes-v1')
+    const body = zbody('artifact-bytes-v1')
     const digest = `xxh3:${Bun.hash.xxHash3(body).toString(16).padStart(16, '0')}`
 
     // Miss before the upload.
@@ -97,7 +102,7 @@ describe('vx serve /v1/cache — the native wire', () => {
     await fetch(`${server.origin}/v1/cache/${hash}`, {
       method: 'PUT',
       headers: auth,
-      body: 'bare',
+      body: zbody('bare'),
     })
     const get = await fetch(`${server.origin}/v1/cache/${hash}`, { headers: auth })
     expect(get.status).toBe(200)
@@ -110,7 +115,7 @@ describe('vx serve /v1/cache — the native wire', () => {
     await fetch(`${server.origin}/v1/cache/${hash}`, {
       method: 'PUT',
       headers: { ...auth, 'x-vx-digest': 'sha256:deadbeef' },
-      body: 'x',
+      body: zbody('x'),
     })
     const get = await fetch(`${server.origin}/v1/cache/${hash}`, { headers: auth })
     expect(get.headers.get('x-vx-digest')).toBeNull()
@@ -188,6 +193,46 @@ describe('vx serve /v1/cache — the native wire', () => {
     }
   })
 
+  it('PUT rejects an empty body — the key is NOT locked for the real upload', async () => {
+    // Immutability makes a stored body permanent, so an accidental empty
+    // upload (buggy client, stripped body) must never become an entry: 400,
+    // nothing stored, and the legitimate artifact still lands afterwards.
+    const hash = 'e0e0e0e0e0e0e0e0'
+    const empty = await fetch(`${server.origin}/v1/cache/${hash}`, {
+      method: 'PUT',
+      headers: auth,
+    })
+    expect(empty.status).toBe(400)
+    expect(
+      (await fetch(`${server.origin}/v1/cache/${hash}`, { method: 'HEAD', headers: auth })).status,
+    ).toBe(404)
+    // The key stays writable — the real bytes are not locked out.
+    const real = await fetch(`${server.origin}/v1/cache/${hash}`, {
+      method: 'PUT',
+      headers: auth,
+      body: zbody('the-real-artifact'),
+    })
+    expect(real.status).toBe(200)
+    const got = await fetch(`${server.origin}/v1/cache/${hash}`, { headers: auth })
+    expect(new Uint8Array(await got.arrayBuffer())).toEqual(zbody('the-real-artifact'))
+  })
+
+  it('PUT rejects a non-zstd body (junk cannot become an immutable entry)', async () => {
+    const hash = 'f1f1f1f1f1f1f1f1'
+    const junk = await fetch(`${server.origin}/v1/cache/${hash}`, {
+      method: 'PUT',
+      headers: auth,
+      body: '<html>proxy error page</html>',
+    })
+    expect(junk.status).toBe(400)
+    expect(
+      (await fetch(`${server.origin}/v1/cache/${hash}`, { method: 'HEAD', headers: auth })).status,
+    ).toBe(404)
+    // No temp/partial file survives the rejection.
+    const files = await readdir(path.join(dir, 'artifacts', 'default', 'trusted'))
+    expect(files.every((n) => !n.startsWith(hash))).toBe(true)
+  })
+
   it('has() is a local stat: present after PUT, false for unknown/hostile hashes', async () => {
     const { ArtifactStore } = await import('../src/artifact-store.js')
     const store = new ArtifactStore(path.join(dir, 'artifacts'))
@@ -196,7 +241,7 @@ describe('vx serve /v1/cache — the native wire', () => {
     await fetch(`${server.origin}/v1/cache/${hash}`, {
       method: 'PUT',
       headers: { ...auth, 'x-vx-duration-ms': '7' },
-      body: 'probe-me',
+      body: zbody('probe-me'),
     })
     expect(await store.has(hash)).toBe(true)
     expect(await store.storedDurationMs(hash)).toBe(7)
@@ -481,9 +526,9 @@ describe('ArtifactStore — trust scopes (poisoning guard)', () => {
 
   const hdrs = (scope?: string) =>
     scope !== undefined ? { headers: { 'x-vx-cache-scope': scope } } : {}
-  const put = (store: ArtifactStore, hash: string, body: string, p: Principal, scope?: string) =>
+  const put = (store: ArtifactStore, hash: string, tag: string, p: Principal, scope?: string) =>
     store.handle(
-      new Request(`http://x/v1/cache/${hash}`, { method: 'PUT', body, ...hdrs(scope) }),
+      new Request(`http://x/v1/cache/${hash}`, { method: 'PUT', body: zbody(tag), ...hdrs(scope) }),
       hash,
       p,
     )
@@ -513,8 +558,10 @@ describe('ArtifactStore — trust scopes (poisoning guard)', () => {
     // cross-poison): immutability is per-scope.
     expect((await put(store, hash, 'from-pr-B', untrusted, 'pr-2')).status).toBe(200)
     // Each PR reads back its OWN bytes.
-    expect(await (await get(store, hash, untrusted, 'pr-1')).text()).toBe('from-pr-A')
-    expect(await (await get(store, hash, untrusted, 'pr-2')).text()).toBe('from-pr-B')
+    const a = await (await get(store, hash, untrusted, 'pr-1')).arrayBuffer()
+    expect(new Uint8Array(a)).toEqual(zbody('from-pr-A'))
+    const b = await (await get(store, hash, untrusted, 'pr-2')).arrayBuffer()
+    expect(new Uint8Array(b)).toEqual(zbody('from-pr-B'))
     // A trusted build still sees NEITHER.
     expect((await get(store, hash, trusted)).status).toBe(404)
   })
@@ -526,7 +573,7 @@ describe('ArtifactStore — trust scopes (poisoning guard)', () => {
     // The PR warms off main's cache.
     const got = await get(store, hash, untrusted)
     expect(got.status).toBe(200)
-    expect(await got.text()).toBe('legit')
+    expect(new Uint8Array(await got.arrayBuffer())).toEqual(zbody('legit'))
   })
 
   it('an untrusted write cannot overwrite a trusted artifact', async () => {
@@ -536,7 +583,7 @@ describe('ArtifactStore — trust scopes (poisoning guard)', () => {
     // The untrusted PUT lands in untrusted/, leaving trusted/ untouched.
     expect((await put(store, hash, 'evil', untrusted)).status).toBe(200)
     const trustedGet = await get(store, hash, trusted)
-    expect(await trustedGet.text()).toBe('legit')
+    expect(new Uint8Array(await trustedGet.arrayBuffer())).toEqual(zbody('legit'))
   })
 
   it('artifacts are immutable — a re-PUT of an existing hash is refused (409)', async () => {
@@ -545,7 +592,7 @@ describe('ArtifactStore — trust scopes (poisoning guard)', () => {
     expect((await put(store, hash, 'first', trusted)).status).toBe(200)
     expect((await put(store, hash, 'overwrite', trusted)).status).toBe(409)
     const got = await get(store, hash, trusted)
-    expect(await got.text()).toBe('first')
+    expect(new Uint8Array(await got.arrayBuffer())).toEqual(zbody('first'))
   })
 
   it('a `..` / `.` sub-scope collapses to `shared` (no bucket-root scatter)', async () => {
@@ -591,7 +638,7 @@ describe('ArtifactStore.list — trust-scoped listing (/v1/artifacts source)', (
   const put = (
     store: ArtifactStore,
     hash: string,
-    body: string,
+    tag: string,
     p: Principal,
     scope?: string,
     duration?: string,
@@ -599,7 +646,7 @@ describe('ArtifactStore.list — trust-scoped listing (/v1/artifacts source)', (
     store.handle(
       new Request(`http://x/v1/cache/${hash}`, {
         method: 'PUT',
-        body,
+        body: zbody(tag),
         headers: {
           ...(scope !== undefined ? { 'x-vx-cache-scope': scope } : {}),
           ...(duration !== undefined ? { 'x-vx-duration-ms': duration } : {}),
@@ -621,7 +668,7 @@ describe('ArtifactStore.list — trust-scoped listing (/v1/artifacts source)', (
     const rows = await store.list(trusted)
     expect(rows.map((r) => r.hash)).toEqual(['bbbbbbbbbbbbbbbb'])
     expect(rows[0]!.tier).toBe('trusted')
-    expect(rows[0]!.sizeBytes).toBe('legit'.length)
+    expect(rows[0]!.sizeBytes).toBe(zbody('legit').byteLength)
   })
 
   it('an untrusted principal lists its own sub-scope ∪ trusted — never another PR', async () => {
@@ -653,7 +700,7 @@ describe('ArtifactStore.list — trust-scoped listing (/v1/artifacts source)', (
     expect(rows).toHaveLength(1)
     // GET would resolve the sub-scope copy first; the list says the same.
     expect(rows[0]!.tier).toBe('untrusted')
-    expect(rows[0]!.sizeBytes).toBe('own-copy'.length)
+    expect(rows[0]!.sizeBytes).toBe(zbody('own-copy').byteLength)
   })
 
   it('respects limit, newest first', async () => {
@@ -691,7 +738,7 @@ describe('GET /v1/artifacts — the store list + provenance join', () => {
     const putRes = await fetch(`${server.origin}/v1/cache/${hash}`, {
       method: 'PUT',
       headers: { ...auth, 'x-vx-duration-ms': '77' },
-      body: 'bytes',
+      body: zbody('bytes'),
     })
     expect(putRes.status).toBe(200)
     // Ingest a run summary whose task produced that hash.
@@ -760,7 +807,7 @@ describe('GET /v1/artifacts — the store list + provenance join', () => {
     }
     const row = body.artifacts.find((a) => a.hash === hash)
     expect(row).toBeDefined()
-    expect(row!.sizeBytes).toBe('bytes'.length)
+    expect(row!.sizeBytes).toBe(zbody('bytes').byteLength)
     expect(row!.durationMs).toBe(77)
     expect(row!.tier).toBe('trusted')
     expect(row!.task).toEqual({ project: 'demo', task: 'build', runId })
@@ -771,7 +818,7 @@ describe('GET /v1/artifacts — the store list + provenance join', () => {
     await fetch(`${server.origin}/v1/cache/${hash}`, {
       method: 'PUT',
       headers: auth,
-      body: 'orphan',
+      body: zbody('orphan'),
     })
     const res = await fetch(`${server.origin}/v1/artifacts`, { headers: auth })
     const body = (await res.json()) as { artifacts: Array<{ hash: string; task?: unknown }> }

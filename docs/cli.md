@@ -1140,7 +1140,9 @@ vx-cloud serve
   server. PUTs stream to disk with the byte cap enforced on actual
   bytes; `x-vx-duration-ms` carries the producing task's duration and
   `x-vx-digest` (xxh3 over the artifact bytes) is stored and echoed on
-  GET for client-side integrity verification. The store is
+  GET for client-side integrity verification. A PUT body that is not a
+  zstd frame is refused (400) — the store is immutable, so a junk
+  upload must never permanently lock a key. The store is
   **trust-scoped**: artifacts live under
   `<ingest-dir>/artifacts/<bucket>/<tier>/`, with `<bucket>/<tier>`
   SERVER-DERIVED from the presented token. A trusted token reads/writes

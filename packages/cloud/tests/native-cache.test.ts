@@ -233,12 +233,16 @@ describe('NativeCacheClient', () => {
     expect(stub.requests[1]!.headers.get('authorization')).toBe('Bearer tok')
   })
 
-  it('get() DROPS the bearer on a cross-origin redirect (query-signed blob URL)', async () => {
+  it('get() DROPS the bearer AND the scope header on a cross-origin redirect (query-signed blob URL)', async () => {
     const blob = startStub()
     try {
       const body = new TextEncoder().encode('offloaded-bytes')
       blob.setHandler(() => new Response(body))
-      const client = new NativeCacheClient({ baseUrl: stub.baseUrl, token: 'tok' })
+      const client = new NativeCacheClient({
+        baseUrl: stub.baseUrl,
+        token: 'tok',
+        cacheScope: 'pr-42',
+      })
       stub.setHandler(
         () =>
           new Response(null, {
@@ -248,9 +252,12 @@ describe('NativeCacheClient', () => {
       )
       const hit = await client.get('h2')
       expect(new Uint8Array(hit!.body)).toEqual(body)
-      // The serve saw the bearer; the blob origin must NOT.
+      // The serve saw the credentials; the blob origin must see NEITHER the
+      // bearer nor the serve-facing cache-scope identity.
       expect(stub.requests[0]!.headers.get('authorization')).toBe('Bearer tok')
+      expect(stub.requests[0]!.headers.get('x-vx-cache-scope')).toBe('pr-42')
       expect(blob.requests[0]!.headers.get('authorization')).toBeNull()
+      expect(blob.requests[0]!.headers.get('x-vx-cache-scope')).toBeNull()
       expect(blob.requests[0]!.path).toBe('/signed/h2')
     } finally {
       void blob.server.stop(true)

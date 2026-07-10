@@ -76,6 +76,14 @@ function writeScope(p: Principal, sub: string): string {
   return p.tier === 'untrusted' ? `${p.bucket}/untrusted/${sub}` : `${p.bucket}/trusted`
 }
 
+// A stored artifact is immutable, so a junk PUT body (a buggy client, a
+// proxy error page, an empty upload) would permanently lock its key —
+// re-executions could never re-upload the real bytes. Gate PUT on the zstd
+// frame magic (artifacts are always `.tar.zst`): a 4-byte sanity check, NOT
+// content validation — the client's digest verify + bounded zstd checks own
+// that (see the file-top comment).
+const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd]
+
 // The untrusted sub-scope (a PR identity) is a CLIENT-supplied namespace, so
 // sanitize it to one safe path segment; anything missing/invalid collapses to
 // `shared` (still isolated from trusted, just not per-PR). `.` and `..` are
@@ -318,6 +326,7 @@ export class ArtifactStore {
       // tmp+rename keeps a concurrent GET from ever seeing a torn artifact.
       const tmp = `${artifactPath}.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`
       let overCap = false
+      const head: number[] = []
       try {
         const writer = Bun.file(tmp).writer()
         let total = 0
@@ -328,6 +337,9 @@ export class ArtifactStore {
               const { done, value } = await reader.read()
               if (done) break
               if (value === undefined) continue
+              if (head.length < ZSTD_MAGIC.length) {
+                for (const b of value.subarray(0, ZSTD_MAGIC.length - head.length)) head.push(b)
+              }
               total += value.byteLength
               if (total > this.maxBytes) {
                 await reader.cancel().catch(() => {})
@@ -343,6 +355,15 @@ export class ArtifactStore {
         if (overCap) {
           await unlink(tmp).catch(() => {})
           return Response.json({ error: 'artifact too large' }, { status: 413 })
+        }
+        // Refuse an empty/non-zstd body BEFORE it becomes an immutable entry —
+        // otherwise a junk upload would lock this key forever (see ZSTD_MAGIC).
+        if (head.length < ZSTD_MAGIC.length || !ZSTD_MAGIC.every((b, i) => head[i] === b)) {
+          await unlink(tmp).catch(() => {})
+          return Response.json(
+            { error: 'invalid artifact body (not a zstd frame)' },
+            { status: 400 },
+          )
         }
         await rename(tmp, artifactPath)
       } catch (err) {

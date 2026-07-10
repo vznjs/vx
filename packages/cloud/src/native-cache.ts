@@ -144,8 +144,10 @@ export class NativeCacheClient implements RemoteCacheLayer {
       headers?: Record<string, string>
       /** GET may be answered `307 Location: <pre-signed blob URL>` (the
        *  offload seam) — follow exactly ONE redirect, dropping the bearer
-       *  when the target origin differs (a query-signed URL rejects a
-       *  request that ALSO carries an Authorization header). */
+       *  AND the cache-scope header when the target origin differs (a
+       *  query-signed URL rejects a request that ALSO carries an
+       *  Authorization header; the scope header is serve-facing identity
+       *  a blob origin has no business seeing). */
       followOneRedirect?: boolean
     },
   ): Promise<Response> {
@@ -190,7 +192,9 @@ export class NativeCacheClient implements RemoteCacheLayer {
           ...(init.auth && this.config.token !== undefined
             ? { authorization: `Bearer ${this.config.token}` }
             : {}),
-          ...(this.config.cacheScope !== undefined
+          // Serve-facing identity, gated like the bearer: a cross-origin
+          // redirect target (a pre-signed blob URL) must see neither.
+          ...(init.auth && this.config.cacheScope !== undefined
             ? { 'x-vx-cache-scope': this.config.cacheScope }
             : {}),
           ...init.headers,

@@ -208,6 +208,48 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-10**: **Adversarial review of the native-cache wave — one
+  confirmed store-hygiene defect + two minors fixed; every
+  security-critical invariant verified sound by executed repro**
+  (repro-mandated hostile reviewer over `ca85901`..`5cdbe24`; the
+  session's standard). **Fixed:** **(1) LOW-MEDIUM — junk-PUT permanent
+  key lock.** The store accepted ANY authenticated PUT body (empty,
+  HTML error page) and immutability then 409'd the legitimate artifact
+  forever — a per-key cache-defeat DoS (executed: empty PUT → 200 →
+  0-byte artifact → real PUT → 409; consumer side stayed SAFE — the
+  junk GET degrades to a miss via the client digest/zstd checks, never
+  a wrong hit; blast radius tier-bounded). Fix: PUT gates on the zstd
+  frame magic (4 bytes, captured mid-stream — NOT content validation,
+  which stays client-side) → 400, nothing stored, key stays writable;
+  pinned by empty-body/junk-body/key-not-locked tests, and every store
+  test body became a real zstd frame (`zbody` helper). **(2) LOW —
+  `x-vx-cache-scope` leaked to a cross-origin redirect target** (only
+  the bearer was dropped). The scope header is serve-facing identity;
+  now gated on the same-origin flag exactly like the bearer, pinned by
+  the extended cross-origin test. **(3) LOW — `docs/differentiators.md`
+  still advertised the DELETED Turbo-HMAC signing** as a live
+  differentiator; rewritten to the always-on `x-vx-digest` structural
+  integrity story. The design doc's wire table synced to as-shipped
+  (PUT 400 row; the no-server-side-422 deviation noted inline — the
+  2026-07-08 doc-correction precedent). **Verified sound (executed
+  repros, NOT actioned):** trust scopes under hostile
+  `x-vx-cache-scope` values (`..`, `../trusted`, encoded slashes — all
+  collapse to `shared`, none escape), per-PR isolation + trusted-never-
+  reads-untrusted through a REAL serve with real trusted/PR tokens,
+  streaming-PUT cap (chunked over-cap → 413, no temp/torn file;
+  disconnect mid-stream → temp unlinked), concurrent same-hash PUT
+  race is torn-free, route regex shadows nothing, digest mismatch
+  degrades a REAL run to re-execution, redirect loop stops at one hop,
+  HEAD/PUT never follow redirects, dead-serve run stays ok=true,
+  injection-wins precedence, `--cache=remote:`/`--no-cache` issue zero
+  remote calls, planRun is HEAD-only (1 HEAD, 0 GET), agents always
+  construct the remote layer (§6 output transport preserved), zero
+  dead-surface references in live code. **Accepted (informational):**
+  `/v1/cache/<non-hex>` falls through to the SPA like any unknown path
+  (public HTML, still token-gated as `/v1/*`); an untrusted sub-scope
+  literally named `trusted` nests harmlessly UNDER `untrusted/`. Cloud
+  352 pass (+2), core 1221, lint clean.
+
 - **2026-07-10**: **The plugin-driven remote cache SHIPPED — all three
   phases of `docs/design/native-cache-wire-2026-07.md` (`ca85901`,
   `a50a93e`, `aa1797f`, `5cdbe24`)**, executing the same-day owner

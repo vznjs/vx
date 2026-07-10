@@ -33,10 +33,15 @@ history in CLAUDE.md's decision log; raw numbers in
    restore, downstream tasks re-enumerate via git only when their
    input globs can actually see a changed path (920 ms → 136 ms on
    the repo that reported it; 81 git spawns → 1).
-5. **Hard-fail artifact signing.** Turbo-wire-compatible HMAC
-   (`x-artifact-tag`), but a configured key REJECTS unsigned
-   responses — header-stripping can't bypass it. Tampered artifacts
-   degrade to re-execution, never fail the run.
+5. **Always-on artifact integrity — no key management.** Every
+   artifact on the vx-native cache wire carries an `x-vx-digest`
+   (xxh3 over the bytes) the client verifies against the received
+   body, so a corrupt store or truncating transport degrades to
+   re-execution, never a restored artifact — structural, not opt-in
+   (Turbo's HMAC signing needs a shared key on every machine). The
+   server additionally refuses junk uploads (a non-zstd body 400s)
+   so an accidental bad PUT can never lock a key in the immutable
+   store.
 6. **A committed config lockfile.** `vx lock` freezes every project's
    **resolved config** (post-evaluation objects — computed values and
    config-time env reads included) into `vx-lock.json`; CI audits it

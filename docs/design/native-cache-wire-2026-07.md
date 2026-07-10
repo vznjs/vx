@@ -57,11 +57,18 @@ Small by design — every feature has a consumer today. Namespace
 `/v1/cache/…` on the vx-cloud serve, advertised by `/v1/meta` as
 `cacheWire: 1` (the existing capability-probe pattern).
 
-| Verb | Path              | Semantics                                                                         |
-| ---- | ----------------- | --------------------------------------------------------------------------------- |
-| GET  | `/v1/cache/:hash` | 200 → artifact bytes (tar.zst) · 404 miss                                         |
-| HEAD | `/v1/cache/:hash` | 200 / 404 existence probe                                                         |
-| PUT  | `/v1/cache/:hash` | 200/201 stored · 409 immutable (hash exists) · 413 over cap · 422 digest mismatch |
+| Verb | Path              | Semantics                                                                             |
+| ---- | ----------------- | ------------------------------------------------------------------------------------- |
+| GET  | `/v1/cache/:hash` | 200 → artifact bytes (tar.zst) · 404 miss                                             |
+| HEAD | `/v1/cache/:hash` | 200 / 404 existence probe                                                             |
+| PUT  | `/v1/cache/:hash` | 200 stored · 400 invalid body (not zstd) · 409 immutable (hash exists) · 413 over cap |
+
+> **As-shipped deviation (2026-07-10):** the server does NOT verify the
+> digest (no 422) — the CLIENT verifies on GET, which covers the
+> corruption directions that matter, and the server skips a hash pass
+> per upload. What the server DOES gate is the body's zstd frame magic
+> (400 otherwise): the store is immutable, so an accidental junk upload
+> (empty body, proxy error page) must never permanently lock a key.
 
 Headers (all vx-named, no Turbo shapes):
 
@@ -69,10 +76,11 @@ Headers (all vx-named, no Turbo shapes):
   duration; replaces `x-artifact-duration` + the `.duration` sidecar
   file as the wire form (the sidecar stays a server-internal detail).
 - `x-vx-digest` (PUT request + GET response) — `xxh3:<16-hex>` over the
-  artifact BYTES. **Structural integrity**: the server verifies while
-  streaming the PUT (422 on mismatch, nothing stored); the client
-  verifies on GET (mismatch = corrupt = degrade to miss). Replaces the
-  optional Turbo-HMAC bolt-on (see "defenses" below).
+  artifact BYTES. **Structural integrity**: the server stores the digest
+  as a sidecar and echoes it on GET; the client verifies against the
+  received body (mismatch = corrupt = degrade to miss). Replaces the
+  optional Turbo-HMAC bolt-on (see "defenses" below). As shipped the
+  server does not re-hash uploads — see the deviation note above.
 - `x-vx-cache-scope` (PUT/GET request) — the untrusted per-PR
   sub-partition, unchanged concept, now a spec'd part of the wire. The
   trust TIER never rides the wire: it stays derived server-side from
@@ -91,8 +99,9 @@ streamed (413 mid-stream abort), not just content-length.
 
 **Offload designed-in, not bolted on**: a GET **may** answer
 `307 Location: <pre-signed blob URL>`; the client follows ONE redirect,
-dropping `authorization` when the target origin differs (a query-signed
-URL rejects a doubled credential). That replaces the Turbo
+dropping `authorization` AND `x-vx-cache-scope` when the target origin
+differs (a query-signed URL rejects a doubled credential; the scope
+header is serve-facing identity a blob origin has no business seeing). That replaces the Turbo
 OPTIONS-preflight dance with plain HTTP semantics and slots the
 presigned design's Phase-2 blob backend in with zero client change.
 Not implemented server-side yet; the client implements the follow now
