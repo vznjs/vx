@@ -360,11 +360,13 @@ Turbo/Nx-style micro-syntax — a flat array of strings:
 dependsOn?: readonly string[]
 ```
 
-| Form         | Meaning                                                           |
-| ------------ | ----------------------------------------------------------------- |
-| `'name'`     | Same-project task `name`.                                         |
-| `'^name'`    | The `name` task in the nearest workspace deps that declare it.    |
-| `'pkg#name'` | The `name` task in a specific other package (cross-project edge). |
+| Form         | Meaning                                                            |
+| ------------ | ------------------------------------------------------------------ |
+| `'name'`     | Same-project task `name`.                                          |
+| `'^name'`    | The `name` task in the nearest workspace deps that declare it.     |
+| `'pkg#name'` | The `name` task in a specific other package (cross-project edge).  |
+| `'name.*'`   | Every OTHER same-project task matching the pattern (`*` = any).    |
+| `'^name.*'`  | All matching tasks of the nearest deps that declare any (pattern). |
 
 Examples:
 
@@ -373,6 +375,8 @@ dependsOn: ['build'] // same-project build first
 dependsOn: ['^build'] // build in every workspace dep first
 dependsOn: ['codegen', '^build'] // both
 dependsOn: ['lib#build', 'shared#test'] // cross-project edges
+dependsOn: ['lint.*'] // every lint.<x> task in this project
+dependsOn: ['^build.*'] // all build.<x> tasks of the nearest deps
 ```
 
 Semantics:
@@ -394,10 +398,20 @@ Semantics:
   — not every package has a `lint`).
 - **`'pkg#name'`** — missing pkg or task is a hard error (you named
   them explicitly).
-- **No wildcards or negation here.** `'*'` / `'^*'` / `'!form'` belong
-  in `cache.inputs.tasks` (filtering which upstream hashes participate
-  in this task's cache key), not in `dependsOn` (declaring graph
-  edges). The micro-syntax parser rejects them in this position.
+- **Patterns (`'name.*'` / `'^name.*'`)** — `*` matches any run of
+  characters in a task NAME; everything else is literal (the dotted
+  namespace convention needs no escaping). A same-project pattern
+  expands to every other matching task (the declaring task never
+  matches itself); **zero matches is legal** — a preset-spread pattern
+  needn't match in every project. A `'^pattern'` walks the same
+  nearest-holder frontier as `'^name'`, where a holder is a dep
+  declaring at least one matching task; the holder receives edges to
+  ALL its matches and stops the walk. Patterns are not supported in
+  the `'pkg#task'` form. (Nx 19.5 `build-*` parity.)
+- **No bare wildcards or negation here.** `'*'` / `'^*'` / `'!form'`
+  belong in `cache.inputs.tasks` (filtering which upstream hashes
+  participate in this task's cache key), not in `dependsOn` (declaring
+  graph edges). The micro-syntax parser rejects them in this position.
 - **Cycle detection** runs across the resolved graph at the end of
   `buildTaskGraph`. Cycles throw with a path-formatted message.
 

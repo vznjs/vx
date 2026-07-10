@@ -1,7 +1,13 @@
 import type { TaskConfig } from '../config.js'
 import { UserError } from '../util/index.js'
 import type { PackageGraph, ProjectEntry } from '../workspace/index.js'
-import { DependencySpecError, parseDependencySpec, type DependencySpec } from './dependency-spec.js'
+import {
+  DependencySpecError,
+  compileTaskPattern,
+  isTaskPattern,
+  parseDependencySpec,
+  type DependencySpec,
+} from './dependency-spec.js'
 
 // Re-exported so existing importers keep working while the type's home
 // moves to workspace (it's the joint product of discovery + loading).
@@ -204,28 +210,50 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       }
 
       // dependsOn is about which tasks to ADD to the graph, not which
-      // to filter. Wildcards and negation aren't meaningful here —
-      // they're cache.inputs.tasks operations.
+      // to filter. BARE wildcards ("*"/"^*" = "everything upstream") and
+      // negation aren't meaningful here — they're cache.inputs.tasks
+      // operations. PARTIAL patterns (`build.*`, `^build.*`) are legal:
+      // they name a namespace of tasks to add (Nx 19.5 parity).
       if (spec.kind === 'wildcardSelf' || spec.kind === 'wildcardDeps') {
-        throw new UserError(`Task ${id}: dependsOn does not accept wildcards (got "${raw}")`)
+        throw new UserError(`Task ${id}: dependsOn does not accept bare wildcards (got "${raw}")`)
       }
       if (spec.negated) {
         throw new UserError(`Task ${id}: dependsOn does not accept negation (got "${raw}")`)
       }
+      if (spec.kind === 'cross' && (isTaskPattern(spec.task) || isTaskPattern(spec.project))) {
+        throw new UserError(
+          `Task ${id}: dependsOn patterns are not supported in the "pkg#task" form (got "${raw}")`,
+        )
+      }
       // CLI `--excludeDependencies=name1,name2` drops edges whose target
       // task name matches, regardless of bucket (self / deps / cross).
+      // Pattern specs re-apply the filter per EXPANDED name below.
       if (skipNames?.has(spec.task)) continue
 
       if (spec.kind === 'self') {
-        // Missing target is a hard error — the user typed a name that
-        // doesn't resolve in this project.
-        const child = addNode(projectName, spec.task, false)
-        if (!child) {
-          throw new UserError(
-            `Task ${id} depends on ${taskId(projectName, spec.task)} but no such task is declared`,
-          )
+        if (isTaskPattern(spec.task)) {
+          // `build.*` — every OTHER same-project task matching the
+          // pattern (the declaring task never matches itself — that
+          // would be an instant self-cycle). Zero matches is legal: a
+          // preset-spread pattern needn't match in every project.
+          const re = compileTaskPattern(spec.task)
+          for (const name of Object.keys(project.config.tasks ?? {})) {
+            if (name === taskName || !re.test(name)) continue
+            if (skipNames?.has(name)) continue
+            const child = addNode(projectName, name, false)
+            if (child) node.deps.push(child.id)
+          }
+        } else {
+          // Missing target is a hard error — the user typed a name that
+          // doesn't resolve in this project.
+          const child = addNode(projectName, spec.task, false)
+          if (!child) {
+            throw new UserError(
+              `Task ${id} depends on ${taskId(projectName, spec.task)} but no such task is declared`,
+            )
+          }
+          node.deps.push(child.id)
         }
-        node.deps.push(child.id)
       } else if (spec.kind === 'deps') {
         // Nearest-holder frontier (Turbo/Nx direct-deps parity +
         // sparse bridging): walk the package dep graph from this
@@ -235,15 +263,36 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         // through so a sparse dep doesn't break ordering to deeper
         // holders. The visited set both dedupes shared subtrees and
         // terminates on package-graph cycles (legal in PMs).
+        //
+        // With a pattern (`^build.*`), a holder is a package declaring
+        // AT LEAST ONE matching task and it receives edges to ALL its
+        // matches — holder-ness is about declaration, so a holder still
+        // stops the walk even when every match is --excludeDependencies'd.
+        const re = isTaskPattern(spec.task) ? compileTaskPattern(spec.task) : null
         const visited = new Set<string>()
         const frontier = [...packageGraph.directDeps(projectName)]
         while (frontier.length > 0) {
           const target = frontier.pop()!
           if (visited.has(target)) continue
           visited.add(target)
-          const child = addNode(target, spec.task, false)
-          if (child) node.deps.push(child.id)
-          else frontier.push(...packageGraph.directDeps(target))
+          if (re === null) {
+            const child = addNode(target, spec.task, false)
+            if (child) node.deps.push(child.id)
+            else frontier.push(...packageGraph.directDeps(target))
+          } else {
+            const names = Object.keys(projects.get(target)?.config.tasks ?? {}).filter((n) =>
+              re.test(n),
+            )
+            if (names.length > 0) {
+              for (const name of names) {
+                if (skipNames?.has(name)) continue
+                const child = addNode(target, name, false)
+                if (child) node.deps.push(child.id)
+              }
+            } else {
+              frontier.push(...packageGraph.directDeps(target))
+            }
+          }
         }
       } else {
         // Cross-project edge: pkg#task. Missing target is a hard error

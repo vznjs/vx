@@ -391,6 +391,134 @@ describe('buildTaskGraph', () => {
     })
     expect(nodes.has('app#build')).toBe(true)
   })
+
+  // ─── dependsOn PARTIAL patterns (`build.*`, `^build.*`) — Nx 19.5 parity ──
+  describe('dependsOn task-name patterns', () => {
+    it("expands 'lint.*' to every other same-project match, never itself", () => {
+      const nodes = buildTaskGraph({
+        projects: projects(
+          project('app', {
+            lint: { dependsOn: ['lint.*'] }, // group task
+            'lint.oxlint': cmd('oxlint'),
+            'lint.oxfmt': cmd('oxfmt'),
+            'lint.oxfmt.fix': cmd('oxfmt fix'), // deeper namespace still matches lint.*
+            build: cmd('build'), // non-matching sibling
+          }),
+        ),
+        packageGraph: packageGraph({}),
+        requested: [{ project: 'app', task: 'lint' }],
+      })
+      expect(nodes.get('app#lint')?.deps).toEqual([
+        'app#lint.oxfmt',
+        'app#lint.oxfmt.fix',
+        'app#lint.oxlint',
+      ])
+      expect(nodes.has('app#build')).toBe(false)
+    })
+
+    it("a pattern matching the declaring task skips it (no self-cycle) — 'build.*' on build.all", () => {
+      const nodes = buildTaskGraph({
+        projects: projects(
+          project('app', {
+            'build.all': { dependsOn: ['build.*'] },
+            'build.bin': cmd('bin'),
+            'build.lib': cmd('lib'),
+          }),
+        ),
+        packageGraph: packageGraph({}),
+        requested: [{ project: 'app', task: 'build.all' }],
+      })
+      expect(nodes.get('app#build.all')?.deps).toEqual(['app#build.bin', 'app#build.lib'])
+    })
+
+    it('zero matches is legal — a preset-spread pattern needs no match here', () => {
+      const nodes = buildTaskGraph({
+        projects: projects(project('app', { test: { ...cmd('test'), dependsOn: ['codegen.*'] } })),
+        packageGraph: packageGraph({}),
+        requested: [{ project: 'app', task: 'test' }],
+      })
+      expect(nodes.get('app#test')?.deps).toEqual([])
+    })
+
+    it("'^build.*' edges to ALL matching tasks of the nearest holder and stops there", () => {
+      const nodes = buildTaskGraph({
+        projects: projects(
+          project('app', { test: { ...cmd('test'), dependsOn: ['^build.*'] } }),
+          // lib declares two matches — both get edges; walk stops at lib.
+          project('lib', {
+            'build.js': cmd('js'),
+            'build.dts': cmd('dts'),
+            lint: cmd('lint'),
+          }),
+          // deeper holds a match too, but lib is the nearest holder on this path.
+          project('deeper', { 'build.js': cmd('deep') }),
+        ),
+        packageGraph: packageGraph({ app: ['lib'], lib: ['deeper'] }),
+        requested: [{ project: 'app', task: 'test' }],
+      })
+      expect(nodes.get('app#test')?.deps).toEqual(['lib#build.dts', 'lib#build.js'])
+      expect(nodes.has('deeper#build.js')).toBe(false)
+    })
+
+    it("'^build.*' passes through a dep with no matching task (sparse bridging)", () => {
+      const nodes = buildTaskGraph({
+        projects: projects(
+          project('app', { test: { ...cmd('test'), dependsOn: ['^build.*'] } }),
+          project('bridge', { lint: cmd('lint') }), // no build.* — pass through
+          project('deep', { 'build.wasm': cmd('wasm') }),
+        ),
+        packageGraph: packageGraph({ app: ['bridge'], bridge: ['deep'] }),
+        requested: [{ project: 'app', task: 'test' }],
+      })
+      expect(nodes.get('app#test')?.deps).toEqual(['deep#build.wasm'])
+    })
+
+    it('--excludeDependencies filters expanded matches by their concrete name', () => {
+      const nodes = buildTaskGraph({
+        projects: projects(
+          project('app', {
+            lint: { dependsOn: ['lint.*'] },
+            'lint.oxlint': cmd('oxlint'),
+            'lint.oxfmt': cmd('oxfmt'),
+          }),
+        ),
+        packageGraph: packageGraph({}),
+        requested: [{ project: 'app', task: 'lint' }],
+        excludeDependencies: ['lint.oxfmt'],
+      })
+      expect(nodes.get('app#lint')?.deps).toEqual(['app#lint.oxlint'])
+    })
+
+    it('rejects a pattern in the pkg#task form with a clear error', () => {
+      expect(() =>
+        buildTaskGraph({
+          projects: projects(
+            project('app', { build: { ...cmd('x'), dependsOn: ['lib#build.*'] } }),
+            project('lib', { 'build.js': cmd('js') }),
+          ),
+          packageGraph: packageGraph({ app: ['lib'] }),
+          requested: [{ project: 'app', task: 'build' }],
+        }),
+      ).toThrow(/patterns are not supported in the "pkg#task" form/)
+    })
+
+    it("'*' is literal only as a metacharacter — dots in names never widen the match", () => {
+      const nodes = buildTaskGraph({
+        projects: projects(
+          project('app', {
+            all: { dependsOn: ['build.x*'] },
+            'build.x1': cmd('x1'),
+            // A '.' regex metachar bug would match this via 'build.x*' → /^build.x.*$/
+            // with an UNescaped dot also matching 'buildAx1' — pin the escape.
+            buildAx1: cmd('bad'),
+          }),
+        ),
+        packageGraph: packageGraph({}),
+        requested: [{ project: 'app', task: 'all' }],
+      })
+      expect(nodes.get('app#all')?.deps).toEqual(['app#build.x1'])
+    })
+  })
 })
 
 const group = (deps: string[]): TaskConfig => ({ dependsOn: deps })

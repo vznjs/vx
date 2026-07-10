@@ -425,8 +425,16 @@ export interface CacheInputs {
  *                          here, so any `^`-prefixed string is allowed.
  *   - `` `${string}#${string}` `` — a specific package's task
  *                          (`'pkg#build'`); cross-project, not key-checked.
+ *   - `` `${string}*${string}` `` — a task-name pattern (`'build.*'`);
+ *                          expands at graph build, so it can't be
+ *                          key-checked (a bare `'*'` still fails at
+ *                          runtime — bare wildcards are filter-only).
  */
-type DependsOnEntry<K extends string> = K | `^${string}` | `${string}#${string}`
+type DependsOnEntry<K extends string> =
+  | K
+  | `^${string}`
+  | `${string}#${string}`
+  | `${string}*${string}`
 
 /**
  * Identity function — exists only so TypeScript narrows literal types
