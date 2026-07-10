@@ -147,8 +147,12 @@ and digging into runs.
   declared task (group/persistent/cacheable kind) with per
   `(project, task)` aggregates — runs, success rate, hit rate,
   avg/p50/p99, a duration sparkline, the latest cache-key entry, the
-  resolved **Config** card, and a flaky badge when `/v1/flakiness`
-  flags it.
+  resolved **Config** card, a flaky badge when `/v1/flakiness`
+  flags it, and a **Recommendations** card that turns the task's flaky
+  / hermeticity / caching signals into concrete fixes (each with a
+  copy-pasteable config snippet — `exec.retries`, a per-platform
+  `cache.inputs.runtime` key split, or an `exec`/`cache` block for a
+  slow uncached task).
 - **Cache** (`/cache`, `/cache/:hash`) — hit-rate split (local vs
   remote), estimated time saved, per-project bytes, an entries
   inventory with cold/stale heat and reclaimable bytes, and a
@@ -161,7 +165,9 @@ and digging into runs.
 - **Insights** (`/insights`) — the one analytics area: run/storage
   trends, the build heatmap, bottlenecks with weekly-savings
   estimates, flaky tasks (with the within-run-retry **Retried**
-  column), the **Hermeticity** card (cross-machine output-fingerprint
+  column and a **Suggested fix** column showing the `exec.retries: N`
+  to add for confirmed-flaky tasks), the **Hermeticity** card
+  (cross-machine output-fingerprint
   divergence from `vx run --force --verify=fingerprint` runs — the
   exact task, platforms, and diverging output files, with a
   remediation hint), cache savings + hit-source split, parallelism,
