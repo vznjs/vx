@@ -1,20 +1,74 @@
+// LayeredCache over the RemoteCacheLayer seam — a plain in-memory stub
+// layer (core ships no wire client; the wire is a plugin concern, see
+// native-cache-wire-2026-07). The stub throws like a real client would;
+// LayeredCache owns dedup, provenance, and never-fail degradation.
+
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache } from '../src/cache/cache.js'
-import { LayeredCache } from '../src/cache/layered-cache.js'
-import { RemoteCache } from '../src/cache/remote-cache.js'
+import { LayeredCache, type RemoteCacheLayer } from '../src/cache/layered-cache.js'
+
+interface StubRemote {
+  layer: RemoteCacheLayer
+  store: Map<string, Uint8Array>
+  gets: number
+  puts: number
+  heads: number
+  /** Per-call latency for get() — lets a test hold pulls open. */
+  getLatencyMs: number
+  /** When true every call throws (a fully-broken remote). */
+  failAll: boolean
+  /** Gate for put(): when set, every put awaits it before completing. */
+  putGate?: Promise<void>
+  putStarted: boolean
+  putFinished: boolean
+}
+
+function stubRemote(): StubRemote {
+  const state: StubRemote = {
+    store: new Map<string, Uint8Array>(),
+    gets: 0,
+    puts: 0,
+    heads: 0,
+    getLatencyMs: 0,
+    failAll: false,
+    putStarted: false,
+    putFinished: false,
+    layer: {
+      async has(hash) {
+        state.heads++
+        if (state.failAll) throw new Error('remote down')
+        return state.store.has(hash)
+      },
+      async get(hash) {
+        state.gets++
+        if (state.failAll) throw new Error('remote down')
+        if (state.getLatencyMs > 0) await Bun.sleep(state.getLatencyMs)
+        const body = state.store.get(hash)
+        if (!body) return null
+        return { body: body.slice().buffer as ArrayBuffer, durationMs: 42 }
+      },
+      async put(hash, body) {
+        state.puts++
+        state.putStarted = true
+        if (state.failAll) throw new Error('remote down')
+        if (state.putGate !== undefined) await state.putGate
+        state.store.set(hash, body instanceof Uint8Array ? body.slice() : new Uint8Array(body))
+        state.putFinished = true
+      },
+    },
+  }
+  return state
+}
 
 describe('LayeredCache', () => {
   let workspaceRoot: string
   let projectDir: string
   let cacheDir: string
   let local: Cache
-  let server: ReturnType<typeof Bun.serve>
-  let serverRequests: Array<{ method: string; path: string; body: ArrayBuffer }>
-  let serverStore: Map<string, ArrayBuffer>
-  let serverTags: Map<string, string>
+  let remote: StubRemote
 
   beforeEach(async () => {
     workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vx-layered-'))
@@ -22,65 +76,29 @@ describe('LayeredCache', () => {
     cacheDir = path.join(workspaceRoot, '.vx', 'cache')
     await mkdir(projectDir, { recursive: true })
     local = new Cache(cacheDir)
-
-    serverRequests = []
-    serverStore = new Map()
-    serverTags = new Map()
-    server = Bun.serve({
-      port: 0,
-      async fetch(req) {
-        const url = new URL(req.url)
-        const body = await req.arrayBuffer()
-        const match = url.pathname.match(/^\/v8\/artifacts\/(.+)$/)
-        serverRequests.push({ method: req.method, path: url.pathname, body })
-        if (!match) return new Response(null, { status: 404 })
-        const hash = decodeURIComponent(match[1]!)
-        if (req.method === 'HEAD') {
-          return serverStore.has(hash)
-            ? new Response(null, { status: 200 })
-            : new Response(null, { status: 404 })
-        }
-        if (req.method === 'GET') {
-          const stored = serverStore.get(hash)
-          if (!stored) return new Response(null, { status: 404 })
-          const headers: Record<string, string> = { 'x-artifact-duration': '42' }
-          const tag = serverTags.get(hash)
-          if (tag) headers['x-artifact-tag'] = tag
-          return new Response(stored, { status: 200, headers })
-        }
-        if (req.method === 'PUT') {
-          serverStore.set(hash, body)
-          const tag = req.headers.get('x-artifact-tag')
-          if (tag) serverTags.set(hash, tag)
-          return new Response(null, { status: 201 })
-        }
-        return new Response(null, { status: 405 })
-      },
-    })
+    remote = stubRemote()
   })
 
   afterEach(async () => {
     local.close()
-    await server.stop(true)
     await rm(workspaceRoot, { recursive: true, force: true })
   })
 
-  function makeLayered(opts?: {
-    signatureKey?: string
-    onRemoteError?: (e: Error) => void
-  }): LayeredCache {
-    const remote = new RemoteCache({
-      baseUrl: `http://localhost:${server.port}`,
-      token: 'tok',
-      ...(opts?.signatureKey !== undefined ? { signatureKey: opts.signatureKey } : {}),
-    })
-    return new LayeredCache(local, remote, {
+  function makeLayered(opts?: { onRemoteError?: (e: Error) => void }): LayeredCache {
+    return new LayeredCache(local, remote.layer, {
       onRemoteError:
         opts?.onRemoteError ??
         (() => {
-          /* suppress; tests assert via serverRequests when relevant */
+          /* suppress; tests assert via counters when relevant */
         }),
     })
+  }
+
+  /** Wipe + reopen the local cache so the stub remote is the only source. */
+  async function wipeLocal(): Promise<void> {
+    local.close()
+    await rm(cacheDir, { recursive: true, force: true })
+    local = new Cache(cacheDir)
   }
 
   async function saveSample(cache: Cache | LayeredCache, hash: string): Promise<void> {
@@ -112,15 +130,13 @@ describe('LayeredCache', () => {
     const got = await local.get('h-save')
     expect(got).not.toBeNull()
 
-    // Remote received a PUT for the same hash.
-    const puts = serverRequests.filter((r) => r.method === 'PUT' && r.path.endsWith('h-save'))
-    expect(puts).toHaveLength(1)
-    expect(puts[0]!.body.byteLength).toBeGreaterThan(0)
+    // Remote received the artifact bytes for the same hash.
+    expect(remote.puts).toBe(1)
+    expect(remote.store.get('h-save')!.byteLength).toBeGreaterThan(0)
   })
 
   it('save() does not fail when the remote rejects', async () => {
-    await server.stop(true)
-    server = Bun.serve({ port: 0, fetch: () => new Response(null, { status: 500 }) })
+    remote.failAll = true
     const layered = makeLayered()
     // Should resolve normally — remote error is logged, not thrown.
     await expect(saveSample(layered, 'h-rem-err')).resolves.toBeUndefined()
@@ -129,33 +145,21 @@ describe('LayeredCache', () => {
 
   it('get() returns local entry without touching remote when local has it', async () => {
     await saveSample(local, 'h-local')
-    serverRequests.length = 0
 
     const layered = makeLayered()
     const hit = await layered.get('h-local')
     expect(hit).not.toBeNull()
     expect(hit?.source).toBe('local')
-    expect(serverRequests).toHaveLength(0)
+    expect(remote.gets).toBe(0)
   })
 
   it('get() falls back to remote and materializes into local', async () => {
-    // Seed the remote: do a save through a separate LayeredCache so the
-    // server has a real packed entry for the hash, then wipe local.
-    const seeder = makeLayered()
-    await saveSample(seeder, 'h-remote-only')
-    expect(serverStore.has('h-remote-only')).toBe(true)
-
-    // Now make a fresh local cache and a fresh LayeredCache on top.
-    local.close()
-    await rm(cacheDir, { recursive: true, force: true })
-    local = new Cache(cacheDir)
-    const layered = new LayeredCache(
-      local,
-      new RemoteCache({
-        baseUrl: `http://localhost:${server.port}`,
-        token: 'tok',
-      }),
-    )
+    // Seed the remote: a save through a LayeredCache uploads a real packed
+    // artifact for the hash, then wipe local.
+    await saveSample(makeLayered(), 'h-remote-only')
+    expect(remote.store.has('h-remote-only')).toBe(true)
+    await wipeLocal()
+    const layered = makeLayered()
 
     // Local is empty.
     expect(await local.get('h-remote-only')).toBeNull()
@@ -173,6 +177,8 @@ describe('LayeredCache', () => {
     expect(hit?.exitCode).toBe(0)
     expect(hit?.stdout).toBe('compiling…')
     expect(hit?.outputFiles).toEqual(['dist/out.txt'])
+    // The remote-reported duration rode the ingest.
+    expect(hit?.durationMs).toBe(42)
 
     // Local is now populated for next time, and a follow-up lookup
     // reports source='local' (the remote pull only fires once).
@@ -182,17 +188,13 @@ describe('LayeredCache', () => {
   })
 
   it('get() degrades a corrupt remote artifact to a miss instead of throwing', async () => {
-    // The server "has" the hash, but the body is not a zstd artifact —
+    // The remote "has" the hash, but the body is not a zstd artifact —
     // a truncated/garbage upload from another writer. The layered cache
     // must report it via onRemoteError and return null so the run falls
     // back to executing the task.
-    serverStore.set('h-corrupt', new TextEncoder().encode('definitely not zstd').buffer)
+    remote.store.set('h-corrupt', new TextEncoder().encode('definitely not zstd'))
     const errors: Error[] = []
-    const layered = new LayeredCache(
-      local,
-      new RemoteCache({ baseUrl: `http://localhost:${server.port}`, token: 'tok' }),
-      { onRemoteError: (e) => errors.push(e) },
-    )
+    const layered = makeLayered({ onRemoteError: (e) => errors.push(e) })
 
     const hit = await layered.get('h-corrupt', { taskId: 'pkg#build', command: 'tsc' })
     expect(hit).toBeNull()
@@ -211,8 +213,7 @@ describe('LayeredCache', () => {
   })
 
   it('get() suppresses remote errors and returns null', async () => {
-    await server.stop(true)
-    server = Bun.serve({ port: 0, fetch: () => new Response(null, { status: 500 }) })
+    remote.failAll = true
     const layered = makeLayered()
     expect(await layered.get('h-fail')).toBeNull()
   })
@@ -232,55 +233,9 @@ describe('LayeredCache', () => {
     expect(await layered.key(input)).toBe(await local.key(input))
   })
 
-  it('signing round-trip: save() uploads a tagged artifact a verifying reader accepts', async () => {
-    const key = 'vx-layered-signing-key-0123456789abcdef'
-    const seeder = makeLayered({ signatureKey: key })
-    await saveSample(seeder, 'h-signed')
-    expect(serverTags.get('h-signed')).toBeDefined()
-
-    // Fresh local cache → the only source is the (tagged) remote entry.
-    local.close()
-    await rm(cacheDir, { recursive: true, force: true })
-    local = new Cache(cacheDir)
-
-    const reader = makeLayered({ signatureKey: key })
-    const hit = await reader.get('h-signed', { taskId: 'pkg#build', command: 'echo produced' })
-    expect(hit).not.toBeNull()
-    expect(hit?.source).toBe('remote')
-  })
-
-  it('signing: tampered remote bytes degrade to a miss and fire onRemoteError', async () => {
-    const key = 'vx-layered-signing-key-0123456789abcdef'
-    const seeder = makeLayered({ signatureKey: key })
-    await saveSample(seeder, 'h-tampered')
-
-    // Flip one byte of the stored artifact (the view aliases the map's
-    // ArrayBuffer); the tag still covers the original bytes, so
-    // verification must fail on the next read.
-    const stored = new Uint8Array(serverStore.get('h-tampered')!)
-    stored[stored.length - 1] = stored[stored.length - 1]! ^ 0xff
-
-    local.close()
-    await rm(cacheDir, { recursive: true, force: true })
-    local = new Cache(cacheDir)
-
-    const errors: Error[] = []
-    const reader = makeLayered({ signatureKey: key, onRemoteError: (e) => errors.push(e) })
-    const hit = await reader.get('h-tampered', { taskId: 'pkg#build', command: 'echo produced' })
-    expect(hit).toBeNull()
-    expect(errors).toHaveLength(1)
-    expect(errors[0]!.message).toMatch(/signature mismatch/)
-    // Nothing half-ingested locally — the run re-executes the task.
-    expect(await local.get('h-tampered')).toBeNull()
-  })
-
   it('prefetch() pulls a remote-only artifact into local, and a later get() is a remote-source hit', async () => {
-    const seeder = makeLayered()
-    await saveSample(seeder, 'h-pf')
-
-    local.close()
-    await rm(cacheDir, { recursive: true, force: true })
-    local = new Cache(cacheDir)
+    await saveSample(makeLayered(), 'h-pf')
+    await wipeLocal()
     const layered = makeLayered()
 
     const pulled = await layered.prefetch('h-pf', { taskId: 'pkg#build', command: 'echo produced' })
@@ -290,10 +245,10 @@ describe('LayeredCache', () => {
 
     // get() after a prefetch still reports source='remote' (this lookup
     // was served by the remote layer) and fires NO new remote GET.
-    serverRequests.length = 0
+    const getsBefore = remote.gets
     const hit = await layered.get('h-pf', { taskId: 'pkg#build', command: 'echo produced' })
     expect(hit?.source).toBe('remote')
-    expect(serverRequests.filter((r) => r.method === 'GET')).toHaveLength(0)
+    expect(remote.gets).toBe(getsBefore)
   })
 
   it('prefetch() returns false on a remote miss (degrades, never throws)', async () => {
@@ -302,96 +257,41 @@ describe('LayeredCache', () => {
   })
 
   it('prefetch() + get() issue AT MOST ONE remote GET per hash', async () => {
-    const seeder = makeLayered()
-    await saveSample(seeder, 'h-once')
-
-    local.close()
-    await rm(cacheDir, { recursive: true, force: true })
-    local = new Cache(cacheDir)
+    await saveSample(makeLayered(), 'h-once')
+    await wipeLocal()
 
     // Inject latency so prefetch is still in flight when get() arrives —
     // this is the race the inflight map must collapse to one GET. The
     // guard FAILS at 2 if the de-dup is removed.
-    await server.stop(true)
-    let getCount = 0
-    server = Bun.serve({
-      port: 0,
-      async fetch(req) {
-        const url = new URL(req.url)
-        const hash = decodeURIComponent(url.pathname.split('/').pop()!)
-        if (req.method === 'GET') {
-          getCount++
-          await Bun.sleep(60)
-          const stored = serverStore.get(hash)
-          if (!stored) return new Response(null, { status: 404 })
-          return new Response(stored, { status: 200, headers: { 'x-artifact-duration': '7' } })
-        }
-        return new Response(null, { status: 405 })
-      },
-    })
-    const remote = new RemoteCache({ baseUrl: `http://localhost:${server.port}`, token: 'tok' })
-    const layered = new LayeredCache(local, remote, { onRemoteError: () => {} })
+    remote.getLatencyMs = 60
+    remote.gets = 0
+    const layered = makeLayered()
 
     // Kick off prefetch (in flight), then immediately get() the same hash.
     const pf = layered.prefetch('h-once', { taskId: 'pkg#build', command: 'echo produced' })
     const hit = await layered.get('h-once', { taskId: 'pkg#build', command: 'echo produced' })
     await pf
     expect(hit?.source).toBe('remote')
-    expect(getCount).toBe(1)
+    expect(remote.gets).toBe(1)
   })
 
   it('prefetch-miss does not trigger a SECOND remote GET on the following get()', async () => {
-    local.close()
-    await rm(cacheDir, { recursive: true, force: true })
-    local = new Cache(cacheDir)
-
-    let getCount = 0
-    await server.stop(true)
-    server = Bun.serve({
-      port: 0,
-      fetch(req) {
-        if (req.method === 'GET') getCount++
-        return new Response(null, { status: 404 })
-      },
-    })
-    const remote = new RemoteCache({ baseUrl: `http://localhost:${server.port}`, token: 'tok' })
-    const layered = new LayeredCache(local, remote, { onRemoteError: () => {} })
-
+    const layered = makeLayered()
     expect(await layered.prefetch('h-pm', { taskId: 'pkg#x', command: 'c' })).toBe(false)
     const hit = await layered.get('h-pm', { taskId: 'pkg#x', command: 'c' })
     expect(hit).toBeNull()
     // The prefetch already probed remote and found nothing; get() must
     // reuse that result, not probe again.
-    expect(getCount).toBe(1)
+    expect(remote.gets).toBe(1)
   })
 
   it('prefetch() is idempotent — two concurrent prefetches share one remote GET', async () => {
-    const seeder = makeLayered()
-    await saveSample(seeder, 'h-dup')
+    await saveSample(makeLayered(), 'h-dup')
+    await wipeLocal()
 
-    local.close()
-    await rm(cacheDir, { recursive: true, force: true })
-    local = new Cache(cacheDir)
-
-    await server.stop(true)
-    let getCount = 0
-    server = Bun.serve({
-      port: 0,
-      async fetch(req) {
-        const url = new URL(req.url)
-        const hash = decodeURIComponent(url.pathname.split('/').pop()!)
-        if (req.method === 'GET') {
-          getCount++
-          await Bun.sleep(40)
-          const stored = serverStore.get(hash)
-          if (!stored) return new Response(null, { status: 404 })
-          return new Response(stored, { status: 200, headers: { 'x-artifact-duration': '7' } })
-        }
-        return new Response(null, { status: 405 })
-      },
-    })
-    const remote = new RemoteCache({ baseUrl: `http://localhost:${server.port}`, token: 'tok' })
-    const layered = new LayeredCache(local, remote, { onRemoteError: () => {} })
+    remote.getLatencyMs = 40
+    remote.gets = 0
+    const layered = makeLayered()
 
     const [a, b] = await Promise.all([
       layered.prefetch('h-dup', { taskId: 'pkg#build', command: 'echo produced' }),
@@ -399,32 +299,16 @@ describe('LayeredCache', () => {
     ])
     expect(a).toBe(true)
     expect(b).toBe(true)
-    expect(getCount).toBe(1)
+    expect(remote.gets).toBe(1)
   })
 
   it('save() resolves before a slow remote PUT completes; drainUploads() completes it', async () => {
-    // Gate the PUT: the server holds every PUT open until we release it.
+    // Gate the PUT: the stub holds every PUT open until we release it.
     let releasePut!: () => void
-    const putGate = new Promise<void>((resolve) => {
+    remote.putGate = new Promise<void>((resolve) => {
       releasePut = resolve
     })
-    let putStarted = false
-    let putFinished = false
-    await server.stop(true)
-    server = Bun.serve({
-      port: 0,
-      async fetch(req) {
-        if (req.method === 'PUT') {
-          putStarted = true
-          await putGate
-          putFinished = true
-          return new Response(null, { status: 201 })
-        }
-        return new Response(null, { status: 404 })
-      },
-    })
-    const remote = new RemoteCache({ baseUrl: `http://localhost:${server.port}`, token: 'tok' })
-    const layered = new LayeredCache(local, remote, { onRemoteError: () => {} })
+    const layered = makeLayered()
 
     const outFile = path.join(projectDir, 'dist', 'out.txt')
     await mkdir(path.dirname(outFile), { recursive: true })
@@ -439,15 +323,15 @@ describe('LayeredCache', () => {
     })
     // Give the background job a beat to fire the request.
     await Bun.sleep(20)
-    expect(putStarted).toBe(true)
-    expect(putFinished).toBe(false)
+    expect(remote.putStarted).toBe(true)
+    expect(remote.putFinished).toBe(false)
     // Local landed synchronously regardless of the in-flight upload.
     expect(await local.get('h-slow-put')).not.toBeNull()
 
     const drain = layered.drainUploads()
     releasePut()
     await drain
-    expect(putFinished).toBe(true)
+    expect(remote.putFinished).toBe(true)
   })
 
   it('has() reports local / remote / null without moving bytes', async () => {
@@ -457,26 +341,22 @@ describe('LayeredCache', () => {
 
     // Remote-only: seed via a layered save, then wipe local.
     await saveSample(layered, 'h-has-remote')
-    local.close()
-    await rm(cacheDir, { recursive: true, force: true })
-    local = new Cache(cacheDir)
-    const fresh = new LayeredCache(
-      local,
-      new RemoteCache({ baseUrl: `http://localhost:${server.port}`, token: 'tok' }),
-      { onRemoteError: () => {} },
-    )
-    serverRequests.length = 0
+    await wipeLocal()
+    const fresh = makeLayered()
+    remote.gets = 0
+    remote.heads = 0
     expect(await fresh.has('h-has-remote')).toBe('remote')
-    // The probe was a HEAD — no GET, and nothing was ingested locally.
-    expect(serverRequests.map((r) => r.method)).toEqual(['HEAD'])
+    // The probe was an existence HEAD — no GET, and nothing was ingested
+    // locally.
+    expect(remote.heads).toBe(1)
+    expect(remote.gets).toBe(0)
     expect(await local.get('h-has-remote')).toBeNull()
 
     expect(await fresh.has('h-has-nowhere')).toBe(null)
   })
 
   it('has() degrades a remote failure to null (never throws)', async () => {
-    await server.stop(true)
-    server = Bun.serve({ port: 0, fetch: () => new Response(null, { status: 500 }) })
+    remote.failAll = true
     const layered = makeLayered()
     expect(await layered.has('h-has-err')).toBe(null)
   })

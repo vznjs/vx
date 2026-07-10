@@ -87,7 +87,6 @@ describe('package boundaries', () => {
       'GitFilesCache',
       'LOCKFILE_NAME',
       'LayeredCache',
-      'RemoteCache',
       'TELEMETRY_SCHEMA_VERSION',
       'UserError',
       'VERSION',

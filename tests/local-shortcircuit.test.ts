@@ -2,7 +2,12 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { Cache, FULL_CACHE_POLICY, LayeredCache, RemoteCache } from '../src/cache/index.js'
+import {
+  Cache,
+  FULL_CACHE_POLICY,
+  LayeredCache,
+  type RemoteCacheLayer,
+} from '../src/cache/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { prepareRun, run } from '../src/orchestrator/index.js'
 import { startLocalShortCircuit } from '../src/orchestrator/local-shortcircuit.js'
@@ -469,11 +474,13 @@ describe('local cache short-circuit', () => {
       ['a#test', { id: 'a#test', deps: ['a#build'] }],
     ]) as never
     const local = new Cache(path.join(fixture.root, '.vx', 'cache'))
+    const stubRemote: RemoteCacheLayer = {
+      has: () => Promise.resolve(false),
+      get: () => Promise.resolve(null),
+      put: () => Promise.resolve(),
+    }
     try {
-      const layered = new LayeredCache(
-        local,
-        new RemoteCache({ baseUrl: 'http://127.0.0.1:9', token: 't' }),
-      )
+      const layered = new LayeredCache(local, stubRemote)
       expect(shouldShortCircuit(nodes, FULL_CACHE_POLICY, layered)).toBe(false)
       // Identical graph + policy with a plain local Cache → gate opens.
       expect(shouldShortCircuit(nodes, FULL_CACHE_POLICY, local)).toBe(true)

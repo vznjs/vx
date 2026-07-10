@@ -56,26 +56,21 @@ export async function resolveBackend(
 
 /**
  * Resolve the cache layer. First plugin returning a non-undefined `cache`
- * wins; otherwise the caller's `fallback` (today's env-var Turbo-wire
- * `wrapWithRemoteCache`). When a plugin cache wins AND the env vars are
- * also set, a one-line note records that the plugin overrides them
- * (explicit beats ambient). A broken cache factory aborts.
+ * wins; otherwise the caller's `fallback` (the plain local cache — core
+ * ships no wire client; a remote layer comes from a plugin or from
+ * `RunOptions.remoteCache`). A broken cache factory aborts.
  */
 export async function resolveCache(
   plugins: readonly VxPlugin[],
   _localCache: Cache,
   ctx: CacheContext,
-  log: Logger,
+  _log: Logger,
   fallback: () => CacheLayer,
 ): Promise<CacheLayer> {
   for (const plugin of plugins) {
     if (plugin.cache === undefined) continue
     const cache = await safe(plugin, 'cache', () => plugin.cache!(ctx))
-    if (cache !== undefined) {
-      if (process.env.VX_REMOTE_CACHE_URL)
-        log.status(`[vx] plugin '${plugin.name}' cache overrides VX_REMOTE_CACHE_*`)
-      return cache
-    }
+    if (cache !== undefined) return cache
   }
   return fallback()
 }

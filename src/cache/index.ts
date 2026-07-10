@@ -26,4 +26,3 @@ export {
   resolveWorkspaceOutputs,
 } from './inputs.js'
 export { LayeredCache, type RemoteCacheLayer } from './layered-cache.js'
-export { RemoteCache } from './remote-cache.js'

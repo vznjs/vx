@@ -73,7 +73,6 @@ export { diffOutputTrees } from './orchestrator/index.js'
 export {
   Cache,
   LayeredCache,
-  RemoteCache,
   GitFilesCache,
   cleanOutputs,
   resolveInputs,

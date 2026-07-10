@@ -34,7 +34,6 @@ import {
   type ProjectEntry,
 } from '../workspace/index.js'
 import { buildTaskGraph, expandRequested, type TaskNode } from '../graph/index.js'
-import { wrapWithRemoteCache } from './remote-cache-setup.js'
 import { resolveCache } from './plugin-host.js'
 import type { VxPlugin } from './plugin.js'
 import { createHashCache, type HashCache } from './task-hash.js'
@@ -201,8 +200,10 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // Cache seam precedence: an EXPLICITLY injected remote layer
   // (RunOptions.remoteCache — a distribution agent or serve that already
   // holds a wire client) wins outright; else a plugin's `cache` capability;
-  // else the env-var fallback. Injection winning prevents double-wrapping
-  // when the workspace also declares a cache plugin.
+  // else the local cache alone. Core ships no wire client — the remote
+  // cache is a plugin concern (native-cache-wire-2026-07). Injection
+  // winning prevents double-wrapping when the workspace also declares a
+  // cache plugin.
   const plugins = (workspaceConfig?.plugins ?? []) as readonly VxPlugin[]
   const cache = options.remoteCache
     ? new LayeredCache(localCache, options.remoteCache, {
@@ -214,7 +215,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         localCache,
         { workspaceRoot, cacheDir, warn: (m) => log.status(m), localCache, policy },
         log,
-        () => wrapWithRemoteCache(localCache, log, policy),
+        () => localCache,
       )
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 

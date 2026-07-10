@@ -101,7 +101,7 @@ export function printHelp(): void {
       '      --format <fmt>   pretty (default) | json.',
       '  vx info              Workspace doctor: vx/bun/git versions, project +',
       '                       task counts, cache dir/entries/size, recent runs,',
-      '                       lock + remote-cache status.',
+      '                       lock status.',
       '  vx stats             Deprecated: alias of vx info.',
       '  vx mcp               Model Context Protocol server (stdio) — exposes inspector',
       '                       RPCs as MCP tools for AI agents (Claude Code, Cursor, …).',

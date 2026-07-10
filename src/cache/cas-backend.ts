@@ -1,7 +1,7 @@
 // CASBackend — pluggable content-addressed storage beneath the cache.
 //
-// Today's Cache + LayeredCache + RemoteCache all bundle "where do the
-// bytes live" with "how do we look up entries metadata + key derivation."
+// Today's Cache + LayeredCache both bundle "where do the bytes live"
+// with "how do we look up entries metadata + key derivation."
 // CASBackend separates the former so a future R2/S3 backend
 // or REAPI CAS bridge can drop in without touching the
 // orchestrator or the SQL entries index.

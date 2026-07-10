@@ -203,7 +203,7 @@ describe('vx info (e2e)', () => {
   })
 
   it(
-    'prints versions, workspace shape, cache stats, lock + remote status',
+    'prints versions, workspace shape, cache stats, lock status',
     async () => {
       const r = await vx(root, ['info'])
       expect(r.code).toBe(0)
@@ -219,7 +219,6 @@ describe('vx info (e2e)', () => {
       expect(r.out).toContain('cache entries:  0 (0 B)')
       expect(r.out).toContain('runs (24h):     0')
       expect(r.out).toContain('vx-lock.json:   no')
-      expect(r.out).toContain('remote cache:   no')
     },
     TIMEOUT,
   )
