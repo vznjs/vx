@@ -189,6 +189,40 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-10**: **`dependsOn` task-name patterns SHIPPED — `'build.*'` /
+  `'^build.*'` (`660d299`)**, closing the last dependsOn gap vs Nx (19.5's
+  `build-*`) and pairing with the dotted-namespace convention (`lint:
+{ dependsOn: ['lint.*'] }` replaces hand-listing members). Semantics:
+  a same-project pattern expands to every OTHER matching task (the
+  declaring task never matches itself — instant self-cycle otherwise);
+  ZERO matches is legal (a preset-spread pattern needn't match in every
+  project — deliberate contrast with the exact-name hard error);
+  `'^pattern'` walks the SAME nearest-holder frontier as `'^name'`, where
+  a holder = a dep declaring ≥1 matching task and receives edges to ALL
+  its matches (holder-ness is about declaration, so a holder stops the
+  walk even when every match is `--excludeDependencies`'d; the flag
+  filters expanded matches by concrete name). `*` is the sole
+  metacharacter (regex-escape everything else — pinned by a test where an
+  unescaped `.` would widen the match). Bare `'*'`/`'^*'`/negation stay
+  filter-only rejections (message now says "bare wildcards");
+  `'pkg#pattern'` rejected with a clear error. `defineProject`'s
+  compile-time key check admits `*`-containing strings (they expand at
+  graph build, so they can't be key-checked; a bare `'*'` thus
+  type-checks but fails loud at runtime, accepted). Helpers
+  `isTaskPattern`/`compileTaskPattern` live in `graph/dependency-spec.ts`
+  (the parser itself unchanged — a pattern parses as a normal self/deps
+  spec whose task happens to contain `*`). NO CACHE_VERSION bump (the
+  pattern string rides resolved-config hashing; expansion changes the
+  upstream fold only for new-by-definition configs). Tests: 8 graph units
+  (expansion, self-exclusion, zero-match, holder-stop + multi-edge,
+  sparse bridge, exclude-filter, pkg#pattern reject, dot-escape pin) + 3
+  real-CLI e2e (`tests/wildcard-depends.test.ts`). Docs: schema.md
+  dependsOn forms + semantics, comparison.md matrix + gap #3 closed. Core
+  1235 pass (+11), lint clean. Deliberately NOT dogfooded in the repo's
+  own `lint` group — `lint.*` would also match `lint.oxfmt.fix` (the
+  rewriting task); the convention needs a non-matching name or an
+  exclusion story first.
+
 - **2026-07-10**: **Road-to-best-CI #2 COMPLETED — a real GitHub check run
   on the commit (`2ecfce4`) + the live-refresh wave hardened against failed
   polls (`37bdfbb`)**. **(1) PR checks:** when a `vx run` inside GitHub
@@ -4951,8 +4985,8 @@ longer-horizon core gaps stay sourced from `docs/comparison.md`.
    policies). Deferred: not worth a wire-protocol bump for the narrow gain
    until a real need surfaces.
 7. Core backlog (from `docs/comparison.md`): pre-signed URL auth for
-   the remote cache, `dependsOn` wildcards. (`--continue=<mode>` and
-   `--cache-dir` are SHIPPED.)
+   the remote cache. (`--continue=<mode>`, `--cache-dir`, and
+   `dependsOn` wildcards are SHIPPED.)
 
 **Owner-REJECTED non-goals (do NOT re-propose):**
 
