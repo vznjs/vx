@@ -21,7 +21,7 @@ There are two binaries:
 
 The `vx-cloud serve` you run is the rendezvous: it holds the session
 registry, schedules each submission, and hosts the shared
-`/v8/artifacts` store. Agents attach to it; the main job submits to it.
+`/v1/cache` artifact store. Agents attach to it; the main job submits to it.
 
 ## Turnkey setup
 
@@ -192,11 +192,11 @@ main job: vx run ci   (VX_CLOUD_DISTRIBUTE=6, connected to a vx-cloud)
                        │  session registry {workspaceId, session}      │
                        │    → agents (commitSha checked at pairing)     │
                        │  per-submission scheduler:                     │
-                       │    • prune: stat /v8 store by stable hash      │
+                       │    • prune: stat the store by stable hash      │
                        │      → a warm task executes NOWHERE            │
                        │    • assign bare task ids to free agents       │
                        │    • re-queue + reassign on agent death        │
-                       │  /v8/artifacts — the shared artifact store     │
+                       │  /v1/cache — the shared artifact store         │
                        └──────┬─────────────────────────────┬──────────┘
                     task:assign {taskId}          task:assign {taskId}
                               ▼                             ▼
@@ -234,7 +234,7 @@ but only when every machine sees the same source. So the contract is:
   can't exist on the other agents, and divergent inputs would split the
   cache. The submitting run with a dirty tree falls back to a normal
   local run.
-- **A reachable remote cache.** `/v8/artifacts` on the serve is the
+- **A reachable remote cache.** The serve's `/v1/cache` store is the
   transport for every output; distribution needs both remote read and
   remote write on.
 
@@ -253,9 +253,9 @@ dashboard — see [Remote caching](../remote-caching/)):
 2. **Set `VX_CLOUD_DISTRIBUTE=<n>`** on the submitting run.
 3. **Run agents** — `vx-cloud agent` on each machine.
 
-No separate cache config on the agents: the connection hosts
-`/v8/artifacts`, so the agents' scoped runs restore and upload through it
-automatically.
+No separate cache config on the agents: the connection hosts the
+`/v1/cache` store, so the agents' scoped runs restore and upload
+through it automatically.
 
 Distribution is a rung of the `cloud()` backend plugin, so declare the
 plugin in `vx.workspace.ts` (it's zero-cost until enabled):
@@ -477,7 +477,7 @@ Honest gaps in the current design (see
 
 - [Continuous integration](../ci/) — the single-machine CI setup,
   `--affected`, and the lockfile workflow.
-- [Remote caching](../remote-caching/) — the `/v8/artifacts` store that
+- [Remote caching](../remote-caching/) — the artifact store that
   the connection provides and agents share.
 - [Self-host vx-cloud](../self-hosting/) — deploy the serve every job
   attaches to, in one `docker compose up`.

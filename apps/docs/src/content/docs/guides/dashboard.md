@@ -264,7 +264,7 @@ it at a persistent volume for a hosted deployment with
 | `GET /stream` | NDJSON stream of run events |
 | `POST /mcp` | MCP endpoint (JSON-RPC 2.0) for AI agents |
 | `GET /v1/artifacts` | list the `/v8` store (trust-scoped, task/run provenance) |
-| `GET/PUT /v8/artifacts/:hash` | Turbo-wire remote cache artifact store |
+| `GET/PUT /v1/cache/:hash` | The vx-native remote-cache artifact store |
 | `WS /` | delegated run submission |
 | `WS /v1/agents` | distributed-execution agent rendezvous |
 
@@ -280,11 +280,10 @@ dashboard shows. See [`vx mcp — AI agents`](/vx/guides/mcp/).
 
 ## Remote cache, in the same process
 
-`vx-cloud serve` also hosts a Turbo-wire artifact store at
-`/v8/artifacts/:hash`. Point core's `VX_REMOTE_CACHE_URL` (or a
-connected environment) at the serve and one URL gives you both
-analytics and a remote cache. See
-[`Remote caching`](/vx/guides/remote-caching/).
+`vx-cloud serve` also hosts the vx-native artifact store at
+`/v1/cache/:hash`. Connect the serve (`VX_CLOUD_URL` + token, or
+`vx-cloud connect`) and one URL gives you both analytics and a remote
+cache. See [`Remote caching`](/vx/guides/remote-caching/).
 
 ## Hosting the SPA separately (advanced, optional)
 

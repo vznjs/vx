@@ -72,22 +72,23 @@ sequenceDiagram
 
 ## 3. Remote hit — download → ingest → restore
 
-Owners: `cache/layered-cache.ts`, `cache/remote-cache.ts`. Requires
-`VX_REMOTE_CACHE_URL` + `VX_REMOTE_CACHE_TOKEN`
-(`orchestrator/remote-cache-setup.ts`).
+Owner: `cache/layered-cache.ts`. Requires a remote layer — a plugin's
+`cache` capability (e.g. `cloud()` against a connected vx-cloud) or an
+injected `RunOptions.remoteCache` client implementing
+`RemoteCacheLayer`.
 
 ```mermaid
 sequenceDiagram
     participant X as execute-task
     participant L as LayeredCache
     participant LC as Cache (local)
-    participant RC as RemoteCache (Turbo wire)
+    participant RC as RemoteCacheLayer (plugin wire client)
 
     X->>L: get(hash, {taskId, command})
     L->>LC: get(hash)
     LC-->>L: null (local miss)
-    L->>RC: GET /v8/artifacts/:hash
-    RC-->>L: 200 + tar.zst bytes + x-artifact-duration
+    L->>RC: get(hash) — e.g. GET /v1/cache/:hash
+    RC-->>L: tar.zst bytes + durationMs
     L->>LC: ingest(hash, bytes, {taskId, command, durationMs})
     Note over LC: same writeArtifactAndIndex path save() uses —<br/>bytes validated, then atomic rename + SQLite row.<br/>The local and remote layers carry identical bytes.
     L-->>X: CacheEntry {source: 'remote'}
@@ -100,7 +101,7 @@ to a miss — remote problems never fail a run.
 
 The write side is the mirror image: `LayeredCache.save` writes the
 local artifact synchronously, then uploads the same bytes verbatim
-(`PUT /v8/artifacts/:hash`) as a **fire-and-forget background task**
+(`RemoteCacheLayer.put`) as a **fire-and-forget background task**
 — the task's outcome never waits on upload latency; `run()` drains
 all in-flight uploads before closing the cache. Errors route to
 `onRemoteError`.

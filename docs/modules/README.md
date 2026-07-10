@@ -52,7 +52,6 @@ The remaining subcommand parsers (`lock.ts`, `migrate*.ts`, `show.ts`,
 | [`execute-task.md`](./execute-task.md)             | `src/orchestrator/execute-task.ts` — per-task: hash → cache lookup → spawn → save.     |
 | [`task-hash.md`](./task-hash.md)                   | `src/orchestrator/task-hash.ts` — cache-key derivation (`computeTaskHash` & co.).      |
 | [`upstream.md`](./upstream.md)                     | `src/orchestrator/upstream.ts` — filter upstream cache hashes by `cache.inputs.tasks`. |
-| [`remote-cache-setup.md`](./remote-cache-setup.md) | `src/orchestrator/remote-cache-setup.ts` — env → `LayeredCache` wrap.                  |
 | [`logger.md`](./logger.md)                         | `src/orchestrator/logger.ts` — default logger (flow-aware policy, frames, replay).     |
 | [`status-line.md`](./status-line.md)               | `src/orchestrator/status-line.ts` — serialized writer + dynamic bottom status line.    |
 | [`framed-output.md`](./framed-output.md)           | `src/orchestrator/framed-output.ts` — `┌─ task ─┐` border helpers + one-liners.        |
@@ -102,13 +101,12 @@ The remaining subcommand parsers (`lock.ts`, `migrate*.ts`, `show.ts`,
 
 ## Cache cluster
 
-| File                                               | Topic                                                                          |
-| -------------------------------------------------- | ------------------------------------------------------------------------------ |
-| [`cache.md`](./cache.md)                           | `src/cache/cache.ts` — local cache: `bun:sqlite` index + tar.zst artifacts.    |
-| [`layered-cache.md`](./layered-cache.md)           | `src/cache/layered-cache.ts` — local + remote composition behind `CacheLayer`. |
-| [`remote-cache.md`](./remote-cache.md)             | `src/cache/remote-cache.ts` — Turborepo `/v8/artifacts/` HTTP client.          |
-| [`inputs.md`](./inputs.md)                         | `src/cache/inputs.ts` — glob resolution, boundary enforcement, `cleanOutputs`. |
-| [`cas-backend-digest.md`](./cas-backend-digest.md) | `src/cache/{cas-backend,digest}.ts` — pluggable CAS seam (internal, roadmap).  |
+| File                                               | Topic                                                                                |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| [`cache.md`](./cache.md)                           | `src/cache/cache.ts` — local cache: `bun:sqlite` index + tar.zst artifacts.          |
+| [`layered-cache.md`](./layered-cache.md)           | `src/cache/layered-cache.ts` — local + remote composition + `RemoteCacheLayer` seam. |
+| [`inputs.md`](./inputs.md)                         | `src/cache/inputs.ts` — glob resolution, boundary enforcement, `cleanOutputs`.       |
+| [`cas-backend-digest.md`](./cas-backend-digest.md) | `src/cache/{cas-backend,digest}.ts` — pluggable CAS seam (internal, roadmap).        |
 
 ## Exec (process primitives)
 

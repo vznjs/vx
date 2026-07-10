@@ -1014,14 +1014,11 @@ cache dir:      /work/repo/.vx/cache
 cache entries:  42 (1.3 GB)
 runs (24h):     7 (5 cache hits)
 vx-lock.json:   yes
-remote cache:   no
 ```
 
 - `git` shows `(not found)` when the binary is missing; a broken
   project config contributes zero tasks instead of failing the
   printout.
-- `remote cache` is `yes` when both `VX_REMOTE_CACHE_URL` and
-  `VX_REMOTE_CACHE_TOKEN` are set.
 - `vx stats` is a **deprecated alias** of `vx info` (info absorbed
   it); it prints byte-identical output.
 
@@ -1137,18 +1134,21 @@ vx-cloud serve
 - **Unix socket.** With `--socket` the same API also listens on a
   0600 unix socket; socket requests bypass the token gate — the OS
   file permissions ARE the auth (the browser dashboard stays on TCP).
-- **Artifact store.** `/v8/artifacts/:hash` speaks the Turbo wire
-  core's remote cache already talks — point `VX_REMOTE_CACHE_URL` at
-  the serve origin (token = the serve token) and the remote cache
-  works with no separate cache server. The store is **trust-scoped**:
-  artifacts live under `<ingest-dir>/artifacts/<bucket>/<tier>/`, with
-  `<bucket>/<tier>` SERVER-DERIVED from the presented token. A trusted
-  token reads/writes `trusted/`; a `--pr-token` (untrusted) reads
-  trusted+untrusted but writes only `untrusted/` — so a fork PR can warm
-  off `main`'s cache without being able to poison it. Artifacts are
-  immutable (a re-PUT of an existing hash is 409). Client-side signing
-  tags (`x-artifact-tag`) ride a `<hash>.tag` sidecar. `/v1/meta`
-  advertises `artifacts: true` and `trustTiers: true`. See
+- **Artifact store.** `/v1/cache/:hash` is the vx-native cache wire
+  (`docs/design/native-cache-wire-2026-07.md`) — a connected `cloud()`
+  plugin routes the remote cache here automatically, no separate cache
+  server. PUTs stream to disk with the byte cap enforced on actual
+  bytes; `x-vx-duration-ms` carries the producing task's duration and
+  `x-vx-digest` (xxh3 over the artifact bytes) is stored and echoed on
+  GET for client-side integrity verification. The store is
+  **trust-scoped**: artifacts live under
+  `<ingest-dir>/artifacts/<bucket>/<tier>/`, with `<bucket>/<tier>`
+  SERVER-DERIVED from the presented token. A trusted token reads/writes
+  `trusted/`; a `--pr-token` (untrusted) reads trusted+untrusted but
+  writes only `untrusted/` — so a fork PR can warm off `main`'s cache
+  without being able to poison it. Artifacts are immutable (a re-PUT of
+  an existing hash is 409). `/v1/meta` advertises `artifacts: true`,
+  `cacheWire: 1`, and `trustTiers: true`. See
   `docs/design/cache-trust-scopes-2026-07.md`.
 - **MCP.** `POST /mcp` is a dependency-free MCP server (JSON-RPC 2.0
   over streamable HTTP, plain-JSON responses) exposing the dashboard's
@@ -1192,9 +1192,9 @@ HTTP routes (all return JSON unless noted):
 | `GET /v1/workspace/projects/:name` | One project's resolved config (the `vx show` payload; `stale` flag in lock mode)           |
 | `GET /v1/workspace/tasks`          | Flat task index with derived `group`/`cacheable`/`persistent` booleans                     |
 | `GET /v1/runs/queue`               | Live run-queue state (queued + running jobs, positions, timestamps)                        |
-| `GET /v1/artifacts`                | List the `/v8` store (trust-scoped to the caller's READ scopes; task/run provenance join)  |
+| `GET /v1/artifacts`                | List the artifact store (trust-scoped to the caller's READ scopes; task/run provenance)    |
 | `GET /v1/*`                        | Metrics/analytics API (runs, tasks, projects, cache, trends, compare, why, …)              |
-| `HEAD/GET/PUT /v8/artifacts/…`     | Turbo-wire artifact store (`VX_REMOTE_CACHE_URL` target)                                   |
+| `HEAD/GET/PUT /v1/cache/:hash`     | The vx-native artifact store (hex hash; the `cloud()` cache rung's target)                 |
 | `POST /mcp`                        | MCP server for AI agents (JSON-RPC 2.0, plain-JSON responses)                              |
 | `GET /events`                      | Server-Sent Events stream of every envelope from every concurrent run                      |
 | `GET /stream`                      | NDJSON stream (jq-friendly) of the same                                                    |
@@ -1229,7 +1229,7 @@ overrides the active pointer per-shell without touching the file.
 
 **One connection drives everything.** `cloud()` resolves a SINGLE
 connection and feeds all three capabilities from it — analytics ingest,
-the remote cache (`/v8/artifacts`), and distributed execution. There is
+the remote cache (`/v1/cache`), and distributed execution. There is
 no separate cache/ingest/service URL. Resolution (first match wins):
 
 | #   | The connection                                                                                       |
@@ -1242,14 +1242,17 @@ There is no local-serve auto-detect: a serve merely running on the
 machine never captures runs by existence — connect to it like any
 other server (`vx-cloud connect http://localhost:4321`).
 
-(The pre-consolidation env vars `VX_SERVICE_URL`, `VX_REMOTE_CACHE_URL/TOKEN`,
-`VX_CLOUD_INGEST_URL/TOKEN`, `VX_CLOUD_INSIGHTS_URL/TOKEN` are still accepted
-as aliases for the URL/token, so existing setups keep working.)
+(The pre-consolidation env vars `VX_SERVICE_URL`,
+`VX_CLOUD_INGEST_URL/TOKEN`, `VX_CLOUD_INSIGHTS_URL/TOKEN` are still
+accepted as aliases for the URL/token, so existing setups keep working.
+The retired `VX_REMOTE_CACHE_*` vars are gone — the remote cache is
+plugin-driven.)
 
 - **Cache is internal to the connection.** A remote connection with a
-  token wraps the local cache in a `LayeredCache` at `<url>/v8/artifacts`
-  automatically. `VX_REMOTE_CACHE_*` is now only the escape hatch for a
-  THIRD-PARTY, Turbo-compatible cache server that isn't a vx-cloud.
+  token wraps the local cache in a `LayeredCache` at `<url>/v1/cache`
+  automatically. A third-party (e.g. Turbo-wire) cache server needs a
+  cache plugin against core's `RemoteCacheLayer` seam — see the
+  extensibility guide's recipe.
 - **Trust follows the token.** Present `VX_CLOUD_TOKEN` (trusted) or
   `VX_CLOUD_PR_TOKEN` (untrusted / fork-PR — reads trusted, writes only
   untrusted). The serve derives the tier from the bearer; there is no
@@ -1260,7 +1263,7 @@ as aliases for the URL/token, so existing setups keep working.)
   when it shares the filesystem). Distribution is opt-in via
   `VX_CLOUD_DISTRIBUTE`.
 - A DISCOVERED serve (active environment) is capability-probed
-  (`/v1/meta` `artifacts: true`, once per process) before the cache
+  (`/v1/meta` `cacheWire >= 1`, once per process) before the cache
   routes to it; an explicit `VX_CLOUD_URL` is trusted as configured.
 
 ## `vx-cloud agent` — distributed-execution agent
@@ -1288,8 +1291,8 @@ Behavior:
 
 - Startup checks: git present, CLEAN worktree (a dirty agent exits 1
   before poisoning keys), commit + workspace-id capture.
-- Points `VX_REMOTE_CACHE_URL`/`_TOKEN` at the serve (when unset), so
-  every scoped run reads/writes the serve's `/v8/artifacts` store —
+- Injects a native-wire cache client pointed at the serve's own
+  `/v1/cache` store into every scoped run (`RunOptions.remoteCache`) —
   the cache IS the artifact transport between agents. Sets
   `VX_CLOUD_AGENT=1` so `cloud()`'s telemetry rung declines.
 - Registers over `/v1/agents` with
@@ -1393,19 +1396,15 @@ ANSI truecolor (`ansi-16m`) sequences, gated by env:
 Programmatic callers passing a custom `log` to the run options always
 see plain text.
 
-## Remote cache (env-driven)
+## Remote cache (plugin-driven)
 
-> **Using a vx-cloud?** Prefer the one connection —
-> `VX_CLOUD_URL` + `VX_CLOUD_TOKEN` (or `vx-cloud connect`) — which gives
-> you the remote cache automatically (it's internal to the connection).
-> The `VX_REMOTE_CACHE_*` vars below are the escape hatch for a
-> **third-party**, Turbo-compatible cache server that isn't a vx-cloud.
-
-If `VX_REMOTE_CACHE_URL` and a token (`VX_REMOTE_CACHE_TOKEN`, or
-`VX_REMOTE_CACHE_PR_TOKEN` for a fork PR) are set, `vx run` layers a
-remote cache on top of the local one (a plugin's `cache` capability,
-when declared, wins over the env vars). The trust tier follows whichever
-token you present — the server derives it.
+Core ships **no remote-cache wire client** — the remote cache is a
+plugin concern (`docs/design/native-cache-wire-2026-07.md`). The
+first-party path is the `cloud()` plugin: connect a vx-cloud
+(`VX_CLOUD_URL` + `VX_CLOUD_TOKEN`, or `vx-cloud connect`) and the
+remote cache is automatic — the plugin composes core's `LayeredCache`
+over a native-wire client speaking the serve's `/v1/cache` store. The
+trust tier follows whichever token you present — the server derives it.
 
 Reads try local first, then remote (hydrating local on remote hit),
 with a background prefetch pass overlapping remote GETs with
@@ -1413,21 +1412,12 @@ execution. Writes go to local immediately; the remote upload is a
 fire-and-forget background task drained at end of run — failures are
 logged via `onRemoteError` but never fail the build.
 
-| Env var                         | Required? | Notes                                                                                                                                                                                                                                                                                                                         |
-| ------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VX_REMOTE_CACHE_URL`           | yes       | Base URL, e.g. `https://cache.example.com`.                                                                                                                                                                                                                                                                                   |
-| `VX_REMOTE_CACHE_TOKEN`         | yes       | Bearer token sent on every request.                                                                                                                                                                                                                                                                                           |
-| `VX_REMOTE_CACHE_TEAM_ID`       | no        | Sent as `?teamId=` (Turbo tenancy).                                                                                                                                                                                                                                                                                           |
-| `VX_REMOTE_CACHE_SLUG`          | no        | Sent as `?slug=`.                                                                                                                                                                                                                                                                                                             |
-| `VX_REMOTE_CACHE_TIMEOUT_MS`    | no        | Per-request timeout. Default `60000`.                                                                                                                                                                                                                                                                                         |
-| `VX_REMOTE_CACHE_SIGNATURE_KEY` | no        | HMAC artifact signing (Turbo-compatible `x-artifact-tag`). When set, uploads are signed and downloads are verified — a missing or mismatched tag degrades to a cache miss.                                                                                                                                                    |
-| `VX_REMOTE_CACHE_PREFLIGHT`     | no        | `1`/`true` = Turbo's `--preflight` handshake: an `OPTIONS` request precedes each artifact transfer; the response's `Location` (typically a pre-signed blob URL) becomes the real target, and the bearer rides only when `Access-Control-Allow-Headers` permits it. For servers that offload artifact bytes to object storage. |
-
-Wire spec is Turborepo `/v8/artifacts/`. Compatible servers include
-`ducktors/turborepo-remote-cache`, `Fox32/openturbo-remote-cache`, and
-Vercel's hosted Turbo cache. See
-[`design/remote-cache.md`](./design/remote-cache.md) for the full
-protocol.
+For any OTHER cache server (a Turbo-wire deployment, S3-direct, …),
+implement core's `RemoteCacheLayer` interface in a plugin's `cache`
+capability — the recipe lives in the extensibility guide. Embedders
+holding a wire client can inject it per-run via
+`RunOptions.remoteCache` (explicit injection wins over the plugin
+consult). The retired `VX_REMOTE_CACHE_*` env vars are gone.
 
 ## Run analytics
 

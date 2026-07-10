@@ -1,6 +1,6 @@
 ---
 title: Remote caching
-description: A local cache makes your own runs instant with zero setup. To share results across machines, connect a vx-cloud — the remote cache is part of that one connection. vx also speaks the Turborepo artifact wire, so a third-party cache server works too.
+description: A local cache makes your own runs instant with zero setup. To share results across machines, connect a vx-cloud — the remote cache is part of that one connection. Other backends plug in through the same RemoteCacheLayer seam.
 ---
 
 A local cache makes *your* repeat runs instant, and it needs **no setup** —
@@ -47,8 +47,8 @@ cache). Don't have a server yet? It's one `docker compose up` — see
 | `VX_CLOUD_PR_TOKEN` | Bearer token for a **fork-PR** context (reads trusted, writes only untrusted — see below).  |
 
 That's the whole surface. The cache, the dashboard, and distributed
-execution all ride this one connection — you do **not** set
-`VX_REMOTE_CACHE_URL` for a vx-cloud.
+execution all ride this one connection — there is no separate
+cache-only variable.
 
 ## Trust follows the token
 
@@ -75,52 +75,25 @@ and the run continues. A remote outage slows you down; it never fails you.
 Remote lookups also fire concurrently in the background before scheduling,
 so network latency overlaps execution.
 
-## A third-party cache server (Turbo-compatible)
+## A different cache backend (bring your own wire)
 
-Don't want to run a vx-cloud? vx speaks Turborepo's `/v8/artifacts/` wire
-verbatim, so you can point it at any Turbo-compatible cache server instead.
-This is the **secondary** path — a shared cache with no dashboard and no
-distribution. Configure it with the `VX_REMOTE_CACHE_*` variables:
+Don't want to run a vx-cloud? The remote cache is **plugin-driven**:
+core defines a three-call `RemoteCacheLayer` seam (`has`/`get`/`put`)
+and everything else — policy gating, deduplication, provenance,
+never-fail degradation — is core's `LayeredCache`. Any backend (a
+Turbo-compatible server, S3-direct, your own service) plugs in as a
+small plugin; the recipe is in
+[Core is provider-neutral](../extensibility/#bring-your-own-remote-cache).
+The retired `VX_REMOTE_CACHE_*` environment variables no longer exist.
 
-```bash
-export VX_REMOTE_CACHE_URL=https://your-cache-server.example.com
-export VX_REMOTE_CACHE_TOKEN=your-token
-```
+## Artifact integrity
 
-Compatible servers:
-
-- [`ducktors/turborepo-remote-cache`](https://github.com/ducktors/turborepo-remote-cache)
-- [`Fox32/openturbo-remote-cache`](https://github.com/Fox32/openturbo-remote-cache)
-- Vercel's hosted Turborepo cache
-
-Optional extras on this path:
-
-| Variable                        | Purpose                                       |
-| ------------------------------- | --------------------------------------------- |
-| `VX_REMOTE_CACHE_PR_TOKEN`      | Fork-PR token (reads trusted, writes untrusted). |
-| `VX_REMOTE_CACHE_TEAM_ID`       | Tenant id (`teamId=` query param).            |
-| `VX_REMOTE_CACHE_SLUG`          | Tenant slug (`slug=` query param).            |
-| `VX_REMOTE_CACHE_TIMEOUT_MS`    | Per-request timeout.                          |
-| `VX_REMOTE_CACHE_SIGNATURE_KEY` | Enable HMAC artifact signing (see below).     |
-
-When you connect a vx-cloud, ignore all of these — the connection already
-provides the cache. They're **only** for a non-vx-cloud server.
-
-## Signed artifacts (optional, stricter)
-
-Set a signature key and vx signs every uploaded artifact with HMAC-SHA256
-(the Turborepo-compatible `x-artifact-tag` header) and **verifies** every
-downloaded one:
-
-```bash
-export VX_REMOTE_CACHE_SIGNATURE_KEY=a-shared-secret
-```
-
-This works on either path — a vx-cloud connection or a third-party server.
-With a key configured, vx **rejects an unsigned response** — a server or
-proxy can't strip the tag to slip an unsigned artifact past you. A tampered
-artifact fails verification and degrades to re-execution; it never corrupts
-your build. Set the same key on every machine that shares the cache.
+Every artifact upload to a vx-cloud carries an `x-vx-digest` header —
+a structural hash over the artifact bytes. The server stores it and
+echoes it back on download, and the **client verifies** it against the
+received bytes: a corrupt store, a truncating proxy, or a bad disk
+degrades to re-execution — it never restores corrupt outputs. This is
+always on; there is nothing to configure.
 
 ## In CI
 

@@ -132,7 +132,7 @@ how a task executes (shell is still the API). Four capabilities:
 | Capability  | Kind                      | Contract                                                                                                                                                   |
 | ----------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `backend`   | behavior                  | returns a `RunBackend` (`run(RunRequest) → RunResult`) or declines. Consulted once per run; first non-undefined wins; fallback = in-process `localBackend` |
-| `cache`     | behavior                  | returns a `CacheLayer` wrapping/replacing the local `Cache`, or declines. First wins; fallback = env-var Turbo-wire `LayeredCache`; else bare local        |
+| `cache`     | behavior                  | returns a `CacheLayer` wrapping/replacing the local `Cache`, or declines. First wins; fallback = the bare local cache (core ships no wire client)          |
 | `telemetry` | observe-only              | returns `TelemetrySink`(s) or declines. ALL plugins' sinks are additive; a sink receives immutable records and holds no run handle                         |
 | `eventSink` | observe-only (deprecated) | raw `WireEvent` consumer via `wireForwarder`; kept for back-compat, `telemetry` is canonical                                                               |
 
@@ -209,18 +209,18 @@ The cache is not a single file. It is composed:
   `outputs/<rel>`; metadata lives in the SQLite `entries` row).
   The constructor takes the local slice of the 4-axis `CachePolicy`
   (`{ read, write }`) and gates only the task-artifact `get`/`save`.
-- **`remote-cache.ts`** — Turborepo `/v8/artifacts/<hash>` HTTP client.
-  Bearer-token authed; optional HMAC artifact signing via
-  `VX_REMOTE_CACHE_SIGNATURE_KEY` (byte-compatible with Turbo's
-  scheme). Speaks the public protocol verbatim so it works against
-  any compatible server.
-- **`layered-cache.ts`** — composes local + remote behind the same
-  `CacheLayer` interface. Read-through (local, then remote with
-  hydrate-into-local; `prefetch` + an in-flight map guarantee at most
-  one remote GET per key); write-through (local sync; the remote
-  upload is a fire-and-forget background task drained at end of run,
-  so PUT latency never sits on a task's critical path and a remote
-  outage never fails the build).
+- **`layered-cache.ts`** — composes local + a remote layer behind the
+  same `CacheLayer` interface, and declares **`RemoteCacheLayer`** —
+  the three-call seam (`has`/`get`/`put`) a remote wire client must
+  implement. Core ships NO wire client: `@vzn/vx-cloud` provides the
+  native `/v1/cache` client via the `cache` plugin capability, and any
+  third-party wire (Turbo, S3-direct) plugs in the same way
+  (`design/native-cache-wire-2026-07.md`). Read-through (local, then
+  remote with hydrate-into-local; `prefetch` + an in-flight map
+  guarantee at most one remote GET per key); write-through (local
+  sync; the remote upload is a fire-and-forget background task drained
+  at end of run, so PUT latency never sits on a task's critical path
+  and a remote outage never fails the build).
 - **`inputs.ts`** — git-backed input enumeration (`GitFilesCache`),
   glob resolution with hard project boundaries, runtime-command
   resolution, output cleaning.
@@ -229,12 +229,11 @@ The cache is not a single file. It is composed:
   `Memory`/`Fs` backends ship; `cache.ts` is not yet rewired onto it
   (roadmap: R2/S3/REAPI backends).
 
-`prepareRun` constructs the local cache, then resolves the layer:
-a plugin's `cache` capability wins; otherwise
-`wrapWithRemoteCache(localCache, log, policy)` when
-`VX_REMOTE_CACHE_URL` + `_TOKEN` are set; otherwise the bare local
-cache. `executeTask` consumes the `CacheLayer` surface and never
-branches on layering.
+`prepareRun` constructs the local cache, then resolves the layer: an
+explicitly injected `RunOptions.remoteCache` wins outright (composed
+into a `LayeredCache`); else a plugin's `cache` capability; else the
+bare local cache. `executeTask` consumes the `CacheLayer` surface and
+never branches on layering.
 
 ### Graph + scheduler
 
@@ -484,36 +483,36 @@ file plus its consumers' imports — no behavioural ripple. The
 [`modules/`](./modules/) docs list each module's public types and
 functions; those are the seam. Internal helpers can change.
 
-| Module                        | Replace it to…                                                        |
-| ----------------------------- | --------------------------------------------------------------------- |
-| `workspace/workspace.ts`      | Support different workspace layouts (lerna, rush, custom yaml)        |
-| `workspace/project-loader.ts` | Use a non-Bun TS loader (esbuild, swc, native Node tsx)               |
-| `workspace/filter.ts`         | Replace the filter DSL surface (e.g. with Nx `--projects` semantics)  |
-| `workspace/affected.ts`       | Replace git-relative selection (Mercurial, Jujutsu, build-graph diff) |
-| `graph/task-graph.ts`         | Different graph-build semantics (priority, time-cost weighting)       |
-| `graph/scheduler.ts`          | Work-stealing, priority queues, distributed execution                 |
-| `cache/cache.ts`              | Different local store (per-entry manifests, BLOB-in-SQLite, S3-local) |
-| `cache/remote-cache.ts`       | Different remote backend (raw S3, pre-signed URLs)                    |
-| `cache/layered-cache.ts`      | Different layering (local → regional → global)                        |
-| `cache/cas-backend.ts`        | R2 / S3 / REAPI blob storage beneath the cache                        |
-| `exec/runner.ts`              | Spawn into containers / remote builders                               |
-| `exec/env.ts`                 | Adjust isolation policy (broader allowlist, OS-specific essentials)   |
-| `cache/inputs.ts`             | fspy-style auto-input inference (LD_PRELOAD / Detours / unotify)      |
-| `orchestrator/logger.ts`      | Plain-text logger, JSON-line logger, observability emitter            |
-| `cli/backend.ts`              | Route runs elsewhere (a plugin `backend` does this without a fork)    |
+| Module                        | Replace it to…                                                                     |
+| ----------------------------- | ---------------------------------------------------------------------------------- |
+| `workspace/workspace.ts`      | Support different workspace layouts (lerna, rush, custom yaml)                     |
+| `workspace/project-loader.ts` | Use a non-Bun TS loader (esbuild, swc, native Node tsx)                            |
+| `workspace/filter.ts`         | Replace the filter DSL surface (e.g. with Nx `--projects` semantics)               |
+| `workspace/affected.ts`       | Replace git-relative selection (Mercurial, Jujutsu, build-graph diff)              |
+| `graph/task-graph.ts`         | Different graph-build semantics (priority, time-cost weighting)                    |
+| `graph/scheduler.ts`          | Work-stealing, priority queues, distributed execution                              |
+| `cache/cache.ts`              | Different local store (per-entry manifests, BLOB-in-SQLite, S3-local)              |
+| `cache/layered-cache.ts`      | Different layering (local → regional → global); `RemoteCacheLayer` = the wire seam |
+| `cache/cas-backend.ts`        | R2 / S3 / REAPI blob storage beneath the cache                                     |
+| `exec/runner.ts`              | Spawn into containers / remote builders                                            |
+| `exec/env.ts`                 | Adjust isolation policy (broader allowlist, OS-specific essentials)                |
+| `cache/inputs.ts`             | fspy-style auto-input inference (LD_PRELOAD / Detours / unotify)                   |
+| `orchestrator/logger.ts`      | Plain-text logger, JSON-line logger, observability emitter                         |
+| `cli/backend.ts`              | Route runs elsewhere (a plugin `backend` does this without a fork)                 |
 
 ## Remote-cache subsystem (detail)
 
-`prepareRun` reads `VX_REMOTE_CACHE_URL` + `VX_REMOTE_CACHE_TOKEN`
-(unless a plugin's `cache` capability supplied a layer first). When
-both are present:
+The remote cache is **plugin-driven** — core keeps the seams only
+(`design/native-cache-wire-2026-07.md`):
 
-1. `wrapWithRemoteCache(localCache, log, policy)` constructs a
-   `RemoteCache` with the URL, token, and optional `teamId` / `slug` /
-   `signatureKey` / `timeoutMs` (from `VX_REMOTE_CACHE_TEAM_ID`,
-   `_SLUG`, `_SIGNATURE_KEY`, `_TIMEOUT_MS`).
-2. Wraps it via `new LayeredCache(localCache, remoteCache, { policy })`.
-3. Logs `remote cache: <url>` so the user knows it's active.
+1. A plugin's `cache` capability (e.g. `cloud()` against a connected
+   vx-cloud) returns a `LayeredCache` composing the local cache with a
+   `RemoteCacheLayer` wire client; OR an embedder injects a client via
+   `RunOptions.remoteCache` (which wins over the plugin consult).
+2. `LayeredCache` owns everything wire-independent: policy gating, the
+   in-flight de-dup, remote provenance, and the never-fail contract
+   (implementations THROW; every throw degrades to a cache miss via
+   `onRemoteError`).
 
 Reads try local first, then remote (hydrating local on remote hit);
 `run()` also fires a background **prefetch** pass over every
@@ -523,21 +522,17 @@ fire-and-forget background upload drained before `cache.close()`, so
 upload latency never blocks the next task. Remote errors fire
 `onRemoteError` (logged) but never throw — no remote failure of any
 kind may fail the run. `--dry` / `--graph` use a lightweight remote
-existence probe instead of `get` — planning never downloads or
-ingests artifacts.
+existence probe (`RemoteCacheLayer.has`) instead of `get` — planning
+never downloads or ingests artifacts.
 
-The wire spec is Turborepo `/v8/artifacts/{hash}` verbatim, so the
-client interops with any Turbo-compatible server
-(`ducktors/turborepo-remote-cache`, `Fox32/openturbo-remote-cache`,
-Vercel's hosted cache). HMAC artifact signing
-(`VX_REMOTE_CACHE_SIGNATURE_KEY`, `x-artifact-tag`) is
-byte-compatible with Turbo's scheme. The **tar interior** is ours —
-one `stdout` entry plus `outputs/<rel>` — not Turbo's specific
-layout. Since servers don't inspect the payload, the difference is
-invisible to them. Local and remote layers transport the same tar.zst
-bytes end-to-end. See [`design/remote-cache.md`](./design/remote-cache.md)
-for the wire-level details; pre-signed URL auth is the open
-workstream.
+The first-party wire is `@vzn/vx-cloud`'s `/v1/cache/:hash` (streaming
+PUT, structural `x-vx-digest` integrity verified client-side on GET,
+trust-scoped storage, one-hop 307 blob-offload follow). The **tar
+interior** is the local cache's own format — one `stdout` entry plus
+`outputs/<rel>` — shipped verbatim; local and remote layers transport
+the same tar.zst bytes end-to-end. A Turbo-wire (or any other) cache
+is a third-party plugin against the same seam — the recipe lives in
+the extensibility guide.
 
 ## Run-history analytics
 

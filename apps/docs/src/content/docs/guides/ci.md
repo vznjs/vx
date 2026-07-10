@@ -74,8 +74,8 @@ Notes:
   [Remote caching](../remote-caching/). On a fork PR, present
   `VX_CLOUD_PR_TOKEN` instead of `VX_CLOUD_TOKEN`: it warms off the trusted
   cache but can only write the untrusted scope, so it can't poison a trusted
-  build. (Prefer a third-party Turbo-compatible cache server? Use
-  `VX_REMOTE_CACHE_URL` + `VX_REMOTE_CACHE_TOKEN` instead — same guide.)
+  build. (A different cache backend plugs in through a cache plugin —
+  see [Core is provider-neutral](../extensibility/).)
 
 ## Without `--affected`
 

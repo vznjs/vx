@@ -16,7 +16,7 @@ vx's overall shape is **Turborepo with three swaps and a few subtractions**:
 - per-package config (Turbo's `turbo.json` → vx's `vx.config.ts`),
 - opt-in cache keyed by inputs + env + upstream + lockfile,
 - shell-only task contract,
-- tar artifact + Turbo `/v8/artifacts/` remote wire,
+- tar artifact + a plugin-driven remote-cache layer,
 - topological scheduler with bounded parallelism.
 
 The swaps: TypeScript config instead of JSON, resolved-config hash
@@ -109,20 +109,14 @@ Turbo/Nx vocabulary: `src/workspace/project-loader.ts:142`.
 
 ### Remote cache wire
 
-We speak Turbo's wire **verbatim**, so any compatible cache server (the
-ones below) works without a shim.
-
-| Endpoint / header                                 | Turbo spec         | vx source                                                            |
-| ------------------------------------------------- | ------------------ | -------------------------------------------------------------------- |
-| `GET/PUT /v8/artifacts/<hash>?teamId=&slug=`      | `vercel/turborepo` | `src/cache/remote-cache.ts`                                          |
-| `HEAD /v8/artifacts/<hash>` existence probe       | `vercel/turborepo` | `src/cache/remote-cache.ts` (used by `--dry` / `--graph` prediction) |
-| `x-artifact-duration` header                      | `vercel/turborepo` | `src/cache/remote-cache.ts`                                          |
-| `x-artifact-tag` HMAC header (request + response) | `vercel/turborepo` | `src/cache/remote-cache.ts`                                          |
-| Tenant params `teamId=` / `slug=`                 | `vercel/turborepo` | `src/cache/remote-cache.ts`                                          |
-
-Compatibility matrix:
-`ducktors/turborepo-remote-cache`, `Fox32/openturbo-remote-cache`,
-Vercel hosted Turborepo cache.
+The remote cache is **plugin-driven** (owner directive 2026-07-10;
+`design/native-cache-wire-2026-07.md`): core keeps the seams
+(`LayeredCache` + the `RemoteCacheLayer` interface + the `cache`
+plugin capability), and `@vzn/vx-cloud` ships the vx-native
+`/v1/cache/:hash` wire (streaming PUT, `x-vx-digest` structural
+integrity, trust scopes). Turbo `/v8/artifacts` compatibility was
+dropped from core — a Turbo-wire cache is a third-party plugin story;
+the recipe lives in the extensibility guide.
 
 ### Tar artifact format
 

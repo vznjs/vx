@@ -36,7 +36,7 @@ dashboard reads from that store — never from a developer's private
 | `GET /v1/meta` | Identity + capabilities (`artifacts`, `trustTiers`, workspace count) | pre-auth |
 | `GET /v1/*` | Analytics reads (`/v1/runs`, `/v1/invocations`, `/v1/cache/stats`, `/v1/why/:runId/:taskId`, …) | token |
 | `POST /v1/ingest` | The push endpoint — where run summaries land | token |
-| `GET/HEAD/PUT /v8/artifacts/:hash` | Turborepo remote-cache wire | token |
+| `GET/HEAD/PUT /v1/cache/:hash` | The vx-native remote-cache wire | token |
 | `POST /mcp` | MCP server (JSON-RPC 2.0) for AI agents | token |
 | `GET /events`, `GET /v1/events` | SSE event stream | token |
 | `GET /stream` | NDJSON event stream | token |
@@ -184,24 +184,24 @@ to forward the `Authorization` header or the browser's `?token=`).
 
 ## Serve-hosted remote cache
 
-Because the serve implements the Turborepo `/v8/artifacts/` wire, it
-doubles as a remote cache with no separate cache server. Point core's
-remote-cache variables at it:
+The serve hosts the vx-native artifact store at `/v1/cache/:hash`, so
+it doubles as a remote cache with no separate cache server. The same
+connection drives it:
 
 ```bash
-export VX_REMOTE_CACHE_URL=https://vx.example.com
-export VX_REMOTE_CACHE_TOKEN=your-secret-token
+export VX_CLOUD_URL=https://vx.example.com
+export VX_CLOUD_TOKEN=your-secret-token
 ```
 
-See [Remote caching](/vx/guides/remote-caching/) for the full variable
-set (team id, signing, timeouts).
+See [Remote caching](/vx/guides/remote-caching/) for the trust-scope
+model and integrity details.
 
 ## Connect a workspace
 
 Rather than setting environment variables by hand, `vx-cloud connect`
 persists a named, per-user environment. Every `vx run` then pushes its
-summary there, and when the serve advertises `artifacts:true` (it does),
-the remote cache auto-wires:
+summary there, and when the serve advertises the cache wire on
+`/v1/meta` (it does), the remote cache auto-wires:
 
 ```sh
 vx-cloud connect https://vx.example.com --name team --token your-secret-token

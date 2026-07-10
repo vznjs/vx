@@ -49,7 +49,9 @@ export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRu
 3. **Package + task structure** — `buildPackageGraph`,
    `computeNestedProjectDirs`, `expandRequested`.
 4. **Cache + fingerprint** — `new Cache(resolveCacheDir(root,
-workspaceConfig))`, optionally `wrapWithRemoteCache(local, log)`,
+workspaceConfig))`, then the layer resolution (an injected
+   `RunOptions.remoteCache` composed into a `LayeredCache` wins; else
+   a plugin's `cache` capability; else the bare local cache),
    `computeWorkspaceFingerprint`.
 5. **Build the task graph** — `buildTaskGraph(...)` with optional
    `excludeDependencies` filter.
@@ -62,8 +64,8 @@ cache.close() }` shape.
 
 Before: `run()` and `planRun()` each duplicated ~50 lines of setup,
 slowly diverging (different error messages, different defaults,
-`planRun` opened the cache without a logger context for the remote
-wrap, etc.). After: one function, one path; the two callers handle
+`planRun` opened the cache without a logger context for the cache-layer
+resolution, etc.). After: one function, one path; the two callers handle
 only what's actually different (execution vs prediction).
 
 ## Extension points

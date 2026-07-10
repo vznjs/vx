@@ -52,9 +52,9 @@ terminal and a task succeeding or failing. Read it alongside
  │       once; reused for every task's cache key.
  │    9. expandRequested → buildTaskGraph (see below).
  │   10. Cache open: new Cache(cacheDir, { read, write }) with the
- │       policy's local slice. A plugin's `cache` capability may wrap
- │       or replace it; else wrapWithRemoteCache layers the env-var
- │       Turbo-wire remote when VX_REMOTE_CACHE_URL + _TOKEN are set.
+ │       policy's local slice. An injected RunOptions.remoteCache is
+ │       composed into a LayeredCache (it wins); else a plugin's
+ │       `cache` capability may wrap or replace it; else bare local.
  │   11. Bulk git populate — ONE `git ls-files -s --others` (plus one
  │       `git status --porcelain`) at the root fills the per-project
  │       GitFilesCache with file lists + index OIDs.

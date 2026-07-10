@@ -189,8 +189,9 @@ runs.
 
 ### Remote prefetch (async, remote-only)
 
-When a run is backed by a remote cache (`VX_REMOTE_CACHE_URL` +
-`VX_REMOTE_CACHE_TOKEN`), the network latency of every remote GET
+When a run is backed by a remote cache — a plugin's `cache` capability
+(e.g. `cloud()` against a connected vx-cloud) or an injected
+`RunOptions.remoteCache` layer — the network latency of every remote GET
 would otherwise sit on the critical path of the task that needs it.
 So before execution starts, `run()` kicks off **background prefetches**:
 
@@ -234,8 +235,8 @@ Hard invariants:
   `--cache=remote:`) fires no prefetch.
 - **Never fail.** Every remote path (get / put / ingest / prefetch)
   catches all errors and degrades to a cache miss. A remote 500, a
-  network drop, a corrupt artifact, or a bad signature can never fail
-  a run.
+  network drop, a corrupt artifact, or a failed integrity check can
+  never fail a run.
 
 ### Remote uploads (background, drained at run end)
 

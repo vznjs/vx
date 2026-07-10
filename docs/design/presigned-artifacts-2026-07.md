@@ -1,5 +1,15 @@
 # Pre-signed artifact URLs — design
 
+> **Status (2026-07-10): the WIRE premise of this design is SUPERSEDED**
+> by [`native-cache-wire-2026-07.md`](./native-cache-wire-2026-07.md) —
+> the owner dropped Turbo compatibility, so the Turbo `--preflight`
+> client (Phase 1, shipped then retired) and the "Turbo wire verbatim"
+> rationale no longer apply. The blob-offload phasing SURVIVES, folded
+> into the native wire: a `/v1/cache/:hash` GET may answer
+> `307 Location: <pre-signed blob URL>`, and the native client already
+> follows one redirect (auth-dropping cross-origin). The Phase-2 blob
+> backend (S3/R2, GET offload only) remains the designed, unbuilt half.
+
 > **Status:** proposal
 >
 > Closes `docs/comparison.md` §Gaps #1 (comparison.md:146-150:

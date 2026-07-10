@@ -111,10 +111,12 @@ explains why.
 | `turbo run build --affected`      | `vx run build --affected`       |
 | `turbo run build --dry`           | `vx run build --dry`            |
 | `turbo run build -- --flag`       | `vx run build -- --flag`        |
-| `TURBO_TOKEN` / remote cache      | `VX_REMOTE_CACHE_URL` / `_TOKEN` |
+| `TURBO_TOKEN` / remote cache      | `VX_CLOUD_URL` / `VX_CLOUD_TOKEN` (a vx-cloud connection) |
 
-Your remote cache server works unchanged — vx speaks the same
-`/v8/artifacts/` wire. See [Remote caching](../../guides/remote-caching/).
+The remote cache is plugin-driven: connect a vx-cloud and it's
+automatic, or bring a Turbo-wire server through a small cache plugin
+(see [Core is provider-neutral](../../guides/extensibility/)). See
+[Remote caching](../../guides/remote-caching/).
 
 ## A couple of differences to expect
 

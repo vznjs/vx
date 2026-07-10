@@ -41,9 +41,9 @@ interface VxPlugin {
 - **`backend`** returns a `RunBackend` (`run(request) → result`) or `undefined`
   to decline. First non-undefined wins; else core runs in-process.
 - **`cache`** returns a `CacheLayer` wrapping (or replacing) the local cache,
-  or `undefined`. First non-undefined wins; else core's `VX_REMOTE_CACHE_*`
-  Turbo-wire layer; else the bare local cache. **This is the seam
-  `@vzn/vx-cloud` plugs into — and so can you** (see "Bring your own cache").
+  or `undefined`. First non-undefined wins; else the bare local cache —
+  core ships no wire client of its own. **This is the seam `@vzn/vx-cloud`
+  plugs into — and so can you** (see "Bring your own cache").
 - **`telemetry`** returns one or more `TelemetrySink`s that receive versioned
   `RunSummaryRecord` / `TelemetryRecord` values. A sink holds NO run handle, so
   it provably can't change a run; ALL plugins' sinks run (additive), each
@@ -278,14 +278,31 @@ Prefer `onRunSummary` when you want the whole run in one payload;
 ## Bring your own cache (no vx-cloud)
 
 The remote cache is a plugin capability, so you can back it with **anything** —
-your own server, S3/R2, Redis — with no vx-cloud involved. Return a
-`CacheLayer` from the `cache` capability. The easiest path wraps the local
-cache in core's `LayeredCache` pointed at any Turbo-`/v8/artifacts`-compatible
-endpoint:
+your own server, a Turbo-compatible cache, S3/R2, Redis — with no vx-cloud
+involved. The easiest path implements core's three-call `RemoteCacheLayer`
+seam (`has`/`get`/`put`) and wraps the local cache in `LayeredCache`, which
+then owns policy gating, deduplication, provenance, and the never-fail
+degradation for you:
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace, LayeredCache, RemoteCache, type VxPlugin } from '@vzn/vx'
+import { defineWorkspace, LayeredCache, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
+
+class AcmeRemote implements RemoteCacheLayer {
+  constructor(private url: string) {}
+  async has(hash: string) {
+    return (await fetch(`${this.url}/artifacts/${hash}`, { method: 'HEAD' })).ok
+  }
+  async get(hash: string) {
+    const res = await fetch(`${this.url}/artifacts/${hash}`)
+    if (res.status === 404) return null
+    if (!res.ok) throw new Error(`GET ${hash} → ${res.status}`) // throws degrade to a miss
+    return { body: await res.arrayBuffer(), durationMs: undefined }
+  }
+  async put(hash: string, body: ArrayBuffer | Uint8Array) {
+    await fetch(`${this.url}/artifacts/${hash}`, { method: 'PUT', body })
+  }
+}
 
 function myCache(): VxPlugin {
   return {
@@ -295,7 +312,7 @@ function myCache(): VxPlugin {
       if (!url) return undefined // decline → core falls back to the local cache
       // ctx.localCache is the on-disk cache; ctx.policy carries the run's
       // read/write axes. LayeredCache reads local → remote → hydrates local.
-      return new LayeredCache(ctx.localCache, new RemoteCache({ baseUrl: url, token: '…' }), {
+      return new LayeredCache(ctx.localCache, new AcmeRemote(url), {
         policy: ctx.policy,
         onRemoteError: (e) => ctx.warn(`acme cache: ${e.message}`),
       })
@@ -306,11 +323,14 @@ function myCache(): VxPlugin {
 export default defineWorkspace({ plugins: [myCache()] })
 ```
 
-For a fully custom backend (not the Turbo wire), implement the `CacheLayer`
-interface directly — `key`, `get`, `save`, `has`, `prefetch`, … — and return
-your own object instead of `LayeredCache`. `CacheLayer`, `LayeredCache`,
-`RemoteCache`, and `Cache` are all exported from `@vzn/vx`. vx-cloud's `cloud()`
-plugin is exactly this pattern; yours sits alongside it as an equal.
+A **Turbo-wire plugin** is exactly this shape with `/v8/artifacts/:hash`
+URLs and `x-artifact-*` headers inside the class. For a fully custom
+layering (not just a different wire), implement the `CacheLayer` interface
+directly — `key`, `get`, `save`, `has`, `prefetch`, … — and return your own
+object instead of `LayeredCache`. `CacheLayer`, `RemoteCacheLayer`,
+`LayeredCache`, and `Cache` are all exported from `@vzn/vx`. vx-cloud's
+`cloud()` plugin is exactly this pattern; yours sits alongside it as an
+equal.
 
 ## Crash isolation
 

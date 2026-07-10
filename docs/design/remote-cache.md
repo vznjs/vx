@@ -1,10 +1,10 @@
 # Remote cache — protocol design
 
-> **Status: implemented** (v1). Wire client in `src/remote-cache.ts`,
-> tar.gz pack/unpack in `src/cache-archive.ts`, layered with the local
-> cache in `src/layered-cache.ts`. Orchestrator picks it up automatically
-> when `VX_REMOTE_CACHE_URL` + `VX_REMOTE_CACHE_TOKEN` are set.
-> See "Configuration" at the bottom for env vars.
+> **Status: RETIRED (2026-07-10).** The Turbo-wire client this designed
+> was removed from core — the remote cache is plugin-driven and the
+> first-party wire is vx-native; see
+> [`native-cache-wire-2026-07.md`](./native-cache-wire-2026-07.md).
+> Kept as the historical record of the original Turbo-verbatim design.
 
 ## What we're solving
 
