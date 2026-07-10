@@ -85,9 +85,6 @@ const CONN_KEYS = [
   'VX_CLOUD_TOKEN',
   'VX_CLOUD_PR_TOKEN',
   'VX_SERVICE_URL',
-  'VX_REMOTE_CACHE_URL',
-  'VX_REMOTE_CACHE_TOKEN',
-  'VX_REMOTE_CACHE_PR_TOKEN',
   'VX_CLOUD_INGEST_URL',
   'VX_CLOUD_INGEST_TOKEN',
   'VX_CLOUD_INSIGHTS_URL',
@@ -215,7 +212,7 @@ describe('cloud() cache capability', () => {
       port: 0,
       fetch(req) {
         const url = new URL(req.url)
-        const m = url.pathname.match(/\/v8\/artifacts\/([^/]+)$/)
+        const m = url.pathname.match(/\/v1\/cache\/([^/]+)$/)
         if (m) seen.push({ hash: m[1]!, auth: req.headers.get('authorization') })
         return new Response(null, { status: 404 })
       },

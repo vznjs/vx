@@ -862,7 +862,7 @@ export function TaskConfigList(c: C<{ config?: unknown; project?: string }>) {
 }
 
 /**
- * A download action for one /v8 artifact, shown only when the store actually
+ * A download action for one stored artifact, shown only when the store actually
  * holds the hash (probed via the /v1/artifacts list the page already fetched
  * — no extra endpoint). `fallbackText` renders an honest absence note where
  * a silent nothing would read as broken (the cache-entry page).

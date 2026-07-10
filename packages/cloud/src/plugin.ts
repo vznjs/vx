@@ -4,9 +4,9 @@
 //   backend   — route the run to a local-or-hosted `vx-cloud serve`
 //               (owns the serve discovery moved out of core), else dev-mirror
 //               in-process. Always returns a backend.
-//   cache     — wrap the local Cache in a Turbo-wire `LayeredCache` pointed at
-//               the cloud artifact store. Declines (undefined) when unconfigured
-//               so core's env fallback still applies.
+//   cache     — wrap the local Cache in a `LayeredCache` over the vx-native
+//               `/v1/cache` wire the connected serve hosts. Declines
+//               (undefined) when unconfigured.
 //   telemetry — push the canonical RunSummaryRecord to the cloud's /v1/ingest
 //               endpoint at run end. Observe-only (it cannot change a run) and
 //               never-fail. Declines when unconfigured. This is the data path:
@@ -21,7 +21,6 @@
 
 import {
   LayeredCache,
-  RemoteCache,
   resolveCacheScope,
   UserError,
   type CacheContext,
@@ -34,6 +33,7 @@ import {
   type VxPlugin,
 } from '@vzn/vx'
 import { activeEnvironment } from './environments.js'
+import { NativeCacheClient } from './native-cache.js'
 import { githubCheckCandidate, postGithubCheck, resolveGithubCheckTarget } from './github-check.js'
 import { appendGithubSummary } from './github-summary.js'
 import { TaskLogBuffer } from './task-log-capture.js'
@@ -53,7 +53,7 @@ export interface CloudPluginOptions {
   /**
    * The ONE connection: the origin of a `vx-cloud serve`. This single URL
    * drives ALL THREE capabilities — analytics ingest (`/v1/ingest`), the
-   * remote cache (`/v8/artifacts`), and distributed execution — so a
+   * remote cache (`/v1/cache`), and distributed execution — so a
    * connected cloud needs no separate cache/ingest/service config. Falls back
    * to `VX_CLOUD_URL`; with none set, the ACTIVE connected environment
    * (`vx-cloud connect`) is used. No environment → decline.
@@ -73,12 +73,6 @@ export interface CloudPluginOptions {
    * it; there is no separate trust flag. Safe to expose.
    */
   prToken?: string
-  /** Optional Turbo tenant id, sent as `?teamId=`. Falls back to `VX_REMOTE_CACHE_TEAM_ID`. */
-  cacheTeamId?: string
-  /** Optional Turbo tenant slug, sent as `?slug=`. Falls back to `VX_REMOTE_CACHE_SLUG`. */
-  cacheSlug?: string
-  /** HMAC artifact-signing key. Falls back to `VX_REMOTE_CACHE_SIGNATURE_KEY`. */
-  cacheSignatureKey?: string
   /**
    * Distribute runs across `vx-cloud agent` machines (advisory expected
    * agent count). Falls back to `VX_CLOUD_DISTRIBUTE`. When set, the
@@ -122,8 +116,8 @@ const trimUrl = (u: string): string => u.replace(/\/+$/, '')
 /**
  * Resolve the ONE cloud connection every capability shares. Ladder:
  *   1. an explicit URL — `opts.url` / `VX_CLOUD_URL` (+ the pre-consolidation
- *      `VX_SERVICE_URL` / `VX_REMOTE_CACHE_URL` / `VX_CLOUD_INGEST_URL`
- *      aliases), paired with `VX_CLOUD_TOKEN` / `VX_CLOUD_PR_TOKEN`;
+ *      `VX_SERVICE_URL` / `VX_CLOUD_INGEST_URL` aliases), paired with
+ *      `VX_CLOUD_TOKEN` / `VX_CLOUD_PR_TOKEN`;
  *   2. the ACTIVE connected environment (`vx-cloud connect`);
  *   3. decline.
  * There is deliberately NO local-serve auto-detect: `vx-cloud connect` is the
@@ -134,17 +128,10 @@ const trimUrl = (u: string): string => u.replace(/\/+$/, '')
 function resolveConnection(opts: CloudPluginOptions): CloudConnection | undefined {
   const explicitUrl =
     opts.url ??
-    firstEnv(
-      'VX_CLOUD_URL',
-      'VX_SERVICE_URL',
-      'VX_REMOTE_CACHE_URL',
-      'VX_CLOUD_INGEST_URL',
-      'VX_CLOUD_INSIGHTS_URL',
-    )
+    firstEnv('VX_CLOUD_URL', 'VX_SERVICE_URL', 'VX_CLOUD_INGEST_URL', 'VX_CLOUD_INSIGHTS_URL')
   if (explicitUrl !== undefined) {
-    const token =
-      opts.token ?? firstEnv('VX_CLOUD_TOKEN', 'VX_REMOTE_CACHE_TOKEN', 'VX_CLOUD_INGEST_TOKEN')
-    const prToken = opts.prToken ?? firstEnv('VX_CLOUD_PR_TOKEN', 'VX_REMOTE_CACHE_PR_TOKEN')
+    const token = opts.token ?? firstEnv('VX_CLOUD_TOKEN', 'VX_CLOUD_INGEST_TOKEN')
+    const prToken = opts.prToken ?? firstEnv('VX_CLOUD_PR_TOKEN')
     return {
       url: trimUrl(explicitUrl),
       source: 'explicit',
@@ -180,7 +167,6 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
           firstEnv(
             'VX_CLOUD_URL',
             'VX_SERVICE_URL',
-            'VX_REMOTE_CACHE_URL',
             'VX_CLOUD_INGEST_URL',
             'VX_CLOUD_INSIGHTS_URL',
           ),
@@ -255,7 +241,7 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
 
     cache(ctx): CacheLayer | undefined | Promise<CacheLayer | undefined> {
       // The remote cache is INTERNAL to the connection: the same `vx-cloud`
-      // you connect to hosts `/v8/artifacts`, so no separate cache URL/token.
+      // you connect to hosts `/v1/cache`, so no separate cache URL/token.
       // Which token you present decides the trust tier (server-enforced) — the
       // trusted token, else the fork-PR token. A connection with no token
       // (a local open serve) declines: the local cache already has the bytes.
@@ -264,15 +250,15 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
       const token = conn.token ?? conn.prToken
       if (token === undefined) return undefined
       // An explicitly-configured URL is trusted as-is; a DISCOVERED serve
-      // (active environment) is capability-probed (`/v1/meta artifacts:true`,
+      // (active environment) is capability-probed (`/v1/meta cacheWire >= 1`,
       // memoized) so connecting for the dashboard alone doesn't wrongly route
       // the cache at a serve that doesn't host it.
       if (conn.source === 'explicit') {
-        return buildCloudCache(ctx, opts, conn.url, token, ctx.policy)
+        return buildCloudCache(ctx, conn.url, token, ctx.policy)
       }
       return (async () => {
-        if (!(await serveAdvertisesArtifacts(conn.url))) return undefined
-        return buildCloudCache(ctx, opts, conn.url, token, ctx.policy)
+        if (!(await serveAdvertisesCacheWire(conn.url))) return undefined
+        return buildCloudCache(ctx, conn.url, token, ctx.policy)
       })()
     },
 
@@ -334,36 +320,24 @@ function distributeOf(opts: CloudPluginOptions): number | undefined {
 }
 
 /**
- * The Turbo-wire LayeredCache construction, mirroring core's
- * `remote-cache-setup.ts` (tenancy / signing / timeout knobs). The trust tier
- * is carried by the `token` (server-enforced) — the client just presents it.
+ * The native-wire LayeredCache construction: a `NativeCacheClient` speaking
+ * the serve's `/v1/cache` endpoints. The trust tier is carried by the
+ * `token` (server-enforced) — the client just presents it.
  */
 function buildCloudCache(
   ctx: CacheContext,
-  opts: CloudPluginOptions,
   baseUrl: string,
   token: string,
   policy: CachePolicy,
 ): CacheLayer {
-  const config: ConstructorParameters<typeof RemoteCache>[0] = { baseUrl, token }
-  const teamId = opts.cacheTeamId ?? process.env['VX_REMOTE_CACHE_TEAM_ID']
-  if (teamId) config.teamId = teamId
-  const slug = opts.cacheSlug ?? process.env['VX_REMOTE_CACHE_SLUG']
-  if (slug) config.slug = slug
-  const signatureKey = opts.cacheSignatureKey ?? process.env['VX_REMOTE_CACHE_SIGNATURE_KEY']
-  if (signatureKey) config.signatureKey = signatureKey
-  const timeoutMs = process.env['VX_REMOTE_CACHE_TIMEOUT_MS']
-  if (timeoutMs) {
-    const n = Number(timeoutMs)
-    if (Number.isFinite(n) && n > 0) config.timeoutMs = n
-  }
+  const config: ConstructorParameters<typeof NativeCacheClient>[0] = { baseUrl, token }
   // Untrusted per-PR isolation: one fork PR's untrusted writes/reads are
   // partitioned from another's on the serve.
   const cacheScope = resolveCacheScope(process.env)
   if (cacheScope !== undefined) config.cacheScope = cacheScope
 
   ctx.warn(`cloud cache: ${baseUrl}`)
-  return new LayeredCache(ctx.localCache, new RemoteCache(config), {
+  return new LayeredCache(ctx.localCache, new NativeCacheClient(config), {
     onRemoteError: (err) => ctx.warn(`[vx] cloud cache: ${err.message}`),
     policy,
   })
@@ -374,7 +348,7 @@ function buildCloudCache(
 // the whole cost, and only when a connected environment exists at all.
 const metaProbeMemo = new Map<string, Promise<boolean>>()
 
-function serveAdvertisesArtifacts(url: string): Promise<boolean> {
+function serveAdvertisesCacheWire(url: string): Promise<boolean> {
   const origin = url.replace(/\/+$/, '')
   const existing = metaProbeMemo.get(origin)
   if (existing) return existing
@@ -386,8 +360,8 @@ function serveAdvertisesArtifacts(url: string): Promise<boolean> {
     try {
       const res = await fetch(`${origin}/v1/meta`, { signal: controller.signal })
       if (!res.ok) return false
-      const meta = (await res.json()) as { artifacts?: unknown }
-      return meta.artifacts === true
+      const meta = (await res.json()) as { cacheWire?: unknown }
+      return typeof meta.cacheWire === 'number' && meta.cacheWire >= 1
     } catch {
       // unreachable serve → the cache rung declines; never fails a run
       return false

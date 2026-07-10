@@ -7,7 +7,7 @@
     "type": "Page",
     "props": {
       "title": "Artifacts",
-      "subtitle": "The /v8 artifact store — every cached output this serve holds for your token, newest first."
+      "subtitle": "The artifact store — every cached output this serve holds for your token, newest first."
     },
     "children": [
       {
@@ -52,7 +52,7 @@
                 "desc": true
               },
               "emptyTitle": "No artifacts stored yet",
-              "emptyHint": "Artifacts land here when runs upload through the remote cache (/v8).",
+              "emptyHint": "Artifacts land here when runs upload through the remote cache (/v1/cache).",
               "columns": [
                 {
                   "key": "hash",

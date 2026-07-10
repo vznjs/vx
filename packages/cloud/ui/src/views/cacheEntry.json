@@ -130,7 +130,7 @@
               "artifacts": {
                 "$state": "/artifacts"
               },
-              "fallbackText": "This serve's /v8 store holds no artifact for this hash — the entry may be local-only, pruned remotely, or outside your token's trust tier."
+              "fallbackText": "This serve's artifact store holds no artifact for this hash — the entry may be local-only, pruned remotely, or outside your token's trust tier."
             }
           }
         ]

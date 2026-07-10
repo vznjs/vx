@@ -20,8 +20,6 @@ const DIST_ENV_KEYS = [
   'VX_CLOUD_CONFIG',
   'VX_CLOUD_ENV',
   'VX_CLOUD_AGENT',
-  'VX_REMOTE_CACHE_URL',
-  'VX_REMOTE_CACHE_TOKEN',
 ]
 
 const silentLogger: Logger = {

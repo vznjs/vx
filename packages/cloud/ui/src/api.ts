@@ -489,8 +489,10 @@ export interface ServerMeta {
   startedAt: number
   /** Workspace count on this serve (absent on serves predating workspaces). */
   workspaces?: number
-  /** This serve hosts the /v8 artifact store. */
+  /** This serve hosts the artifact store (`/v1/cache/:hash`). */
   artifacts?: boolean
+  /** Artifact-store wire version (1 = the vx-native /v1/cache wire). */
+  cacheWire?: number
   /** A colocated workspace makes the /v1/workspace/* catalog live. */
   catalog?: boolean
 }
@@ -577,7 +579,7 @@ export async function getRun(runId: string): Promise<RunDetail | null> {
 
 /** A task's persisted log tail. `source: 'cache'` resolves a hit to the run
  *  that produced the bytes (`refRunId`); `artifactHash` present when the
- *  serve holds a downloadable /v8 artifact for the requester's principal. */
+ *  serve holds a downloadable artifact for the requester's principal. */
 export interface TaskLogResponse {
   runId: string
   taskId: string
@@ -1097,7 +1099,7 @@ export async function fetchCatalogTasks(): Promise<CatalogTasksResponse> {
 }
 
 // ---------------------------------------------------------------------------
-// Artifacts — the /v8 store made visible (GET /v1/artifacts). NOT
+// Artifacts — the artifact store made visible (GET /v1/artifacts). NOT
 // workspace-gated: artifacts exist on remote serves too. Shapes mirror
 // packages/cloud/src/artifact-store.ts `ArtifactListEntry` + the serve's
 // best-effort provenance join.
@@ -1168,15 +1170,16 @@ export async function fetchHermeticity(limit = 50): Promise<HermeticityResponse 
 }
 
 /**
- * Bearer-fetch a /v8 artifact and hand it to the browser as a download —
- * the ONE download path shared by TaskLogs, the artifacts table, and the
- * entity-page download actions (an <a href> can't carry the bearer header).
+ * Bearer-fetch an artifact (`GET /v1/cache/:hash`) and hand it to the
+ * browser as a download — the ONE download path shared by TaskLogs, the
+ * artifacts table, and the entity-page download actions (an <a href> can't
+ * carry the bearer header).
  */
 export async function downloadArtifact(hash: string): Promise<boolean> {
   const headers: Record<string, string> = {}
   const t = token()
   if (t !== '') headers['Authorization'] = `Bearer ${t}`
-  const res = await fetch(`${origin()}/v8/artifacts/${encodeURIComponent(hash)}`, { headers })
+  const res = await fetch(`${origin()}/v1/cache/${encodeURIComponent(hash)}`, { headers })
   if (!res.ok) return false
   const url = URL.createObjectURL(await res.blob())
   const a = document.createElement('a')

@@ -7,9 +7,10 @@
 //   - deps restore as warm hits from the shared cache (whichever agent
 //     executed them uploaded before reporting done), so keys are exactly
 //     the full-run keys (§6.3);
-//   - the remote layer comes from the ENVIRONMENT (`VX_REMOTE_CACHE_*`
-//     pointed at the serve), not new plumbing — hashing / probe / save /
-//     upload / drain all ride existing core machinery;
+//   - the remote layer is INJECTED (`opts.remoteCache` →
+//     `RunOptions.remoteCache`, a native-wire client pointed at the
+//     serve's artifact store) — hashing / probe / save / upload / drain
+//     all ride existing core machinery;
 //   - `run()` drains background uploads before resolving, so sending
 //     `agent:done` after it resolves IS the await-PUT-before-done gate.
 //
@@ -22,6 +23,7 @@ import {
   type CachePolicy,
   type Logger,
   type OutcomeView,
+  type RemoteCacheLayer,
   type RunEvent,
   createEventBus,
 } from '@vzn/vx'
@@ -65,6 +67,9 @@ export interface AgentLoopOptions {
    */
   frozen?: boolean
   cache?: CachePolicy
+  /** The remote layer for the scoped runs — the serve's artifact store,
+   *  injected as `RunOptions.remoteCache` (the §6.3 artifact transport). */
+  remoteCache?: RemoteCacheLayer
   onStatus?: (line: string) => void
   /** Fires per assignment — the submitter skips materializing these ids. */
   onAssigned?: (taskId: string) => void
@@ -217,6 +222,7 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
         concurrency: opts.capacity,
         ...(opts.frozen !== undefined ? { frozen: opts.frozen } : {}),
         ...(opts.cache !== undefined ? { cache: opts.cache } : {}),
+        ...(opts.remoteCache !== undefined ? { remoteCache: opts.remoteCache } : {}),
       })
       const own = summary.outcomes.find((o) => o.node.id === taskId)
       outcome =

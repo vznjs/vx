@@ -18,13 +18,7 @@ const TIMEOUT = 120_000
 const TOKEN = 'agents-e2e-tok'
 const BIN = path.join(import.meta.dir, '..', 'src', 'cli', 'bin.ts')
 
-const ENV_KEYS = [
-  'VX_REMOTE_CACHE_URL',
-  'VX_REMOTE_CACHE_TOKEN',
-  'VX_CLOUD_AGENT',
-  'VX_AGENT_SESSION',
-  'VX_CLOUD_DISTRIBUTE',
-]
+const ENV_KEYS = ['VX_CLOUD_AGENT', 'VX_AGENT_SESSION', 'VX_CLOUD_DISTRIBUTE']
 const savedEnv: Record<string, string | undefined> = {}
 
 beforeAll(() => {

@@ -19,6 +19,12 @@ export {
   type Tier,
 } from './artifact-store.js'
 export {
+  MAX_REMOTE_ARTIFACT_BYTES,
+  NativeCacheClient,
+  readBodyBounded,
+  type NativeCacheConfig,
+} from './native-cache.js'
+export {
   startServe,
   parseServeArgs,
   DEFAULT_SERVE_PORT,

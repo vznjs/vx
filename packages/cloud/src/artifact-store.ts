@@ -1,14 +1,18 @@
-// The serve-hosted artifact store — the Turbo `/v8/artifacts/:hash` wire
-// core's RemoteCache already speaks (client and server meet on the same
-// spec, so any Turbo-compatible client works too). Backing is a flat dir of
-// `<hash>.tar.zst` files per scope under the ingest root: the artifact IS the
-// local cache's own on-disk format, shipped verbatim, so the store needs no
-// unpacking, no index, no schema — deliberately trivial dir I/O rather than
-// an import of core's internal CAS seam (core internals stay internal).
+// The serve-hosted artifact store — the vx-native `/v1/cache/:hash` wire
+// (docs/design/native-cache-wire-2026-07.md; the Turbo `/v8/artifacts`
+// surface is gone). Backing is a flat dir of `<hash>.tar.zst` files per
+// scope under the ingest root: the artifact IS the local cache's own
+// on-disk format, shipped verbatim, so the store needs no unpacking, no
+// index, no schema — deliberately trivial dir I/O rather than an import of
+// core's internal CAS seam (core internals stay internal).
 //
-// Signing (`x-artifact-tag`) is CLIENT-side end-to-end: a PUT's tag is kept
-// in a `<hash>.tag` sidecar and returned on GET so verifying clients can
-// check it; the server itself never signs or verifies.
+// Wire metadata rides two sidecars: `<hash>.duration` (the producing
+// task's duration, `x-vx-duration-ms` on the wire) and `<hash>.digest`
+// (`x-vx-digest`, `xxh3:<hex>` over the artifact bytes). The digest is
+// stored and echoed back on GET but NOT verified server-side — the CLIENT
+// verifies it against the received bytes, which covers the corruption
+// directions that matter (a corrupt store or a truncating transport
+// degrade to a cache miss at the consumer, never a restored artifact).
 //
 // TRUST SCOPES (docs/design/cache-trust-scopes-2026-07.md). The store is
 // partitioned by `<bucket>/<tier>`, both SERVER-DERIVED from the presented
@@ -43,8 +47,8 @@ export interface Principal {
 export const DEFAULT_PRINCIPAL: Principal = { tier: 'trusted', bucket: 'default' }
 
 // The hash becomes a filename — accept only a safe path token so a hostile
-// hash can't traverse out of the store dir. (vx hashes are 16-hex; Turbo's
-// are 16-hex too; the wider token keeps other clients working.)
+// hash can't traverse out of the store dir. (vx hashes are 16-hex; the wider
+// token keeps other RemoteCacheLayer implementations working.)
 const HASH_RE = /^[a-zA-Z0-9_-]{1,128}$/
 // Scope segments are server-derived, but validate them anyway (defense in
 // depth) so a future bug that lets a value flow from the wire can't traverse.
@@ -95,7 +99,12 @@ export interface ArtifactListEntry {
 }
 
 export class ArtifactStore {
-  constructor(private readonly dir: string) {}
+  /** `maxBytes` is injectable so a test can exercise the mid-stream cap
+   *  without streaming 512 MiB. */
+  constructor(
+    private readonly dir: string,
+    private readonly maxBytes: number = MAX_ARTIFACT_BYTES,
+  ) {}
 
   private scopedPath(scope: string, hash: string, ext: string): string {
     return path.join(this.dir, scope, `${hash}${ext}`)
@@ -240,10 +249,9 @@ export class ArtifactStore {
   }
 
   /**
-   * Handle one `/v8/artifacts/:hash` request (HEAD / GET / PUT) for a given
-   * authenticated principal. The optional `?teamId=` / `?slug=` tenancy params
-   * Turbo clients send are accepted by ignoring them — routing is by the
-   * principal's server-derived scope, not a client claim.
+   * Handle one `/v1/cache/:hash` request (HEAD / GET / PUT) for a given
+   * authenticated principal. Routing is by the principal's server-derived
+   * scope, never a client claim.
    */
   async handle(
     req: Request,
@@ -275,20 +283,22 @@ export class ArtifactStore {
       // Sidecars live beside the artifact in the SAME scope it was found in.
       const scopeDir = path.dirname(found)
       const headers: Record<string, string> = { 'Content-Type': 'application/octet-stream' }
-      const tagFile = Bun.file(path.join(scopeDir, `${hash}.tag`))
-      if (await tagFile.exists()) headers['x-artifact-tag'] = (await tagFile.text()).trim()
       const durationFile = Bun.file(path.join(scopeDir, `${hash}.duration`))
       if (await durationFile.exists()) {
-        headers['x-artifact-duration'] = (await durationFile.text()).trim()
+        headers['x-vx-duration-ms'] = (await durationFile.text()).trim()
+      }
+      const digestFile = Bun.file(path.join(scopeDir, `${hash}.digest`))
+      if (await digestFile.exists()) {
+        headers['x-vx-digest'] = (await digestFile.text()).trim()
       }
       // Bun.file responses stream with the Content-Length set from the file
-      // size — exactly the contract RemoteCache's body read relies on.
+      // size — exactly the contract the client's bounded body read relies on.
       return new Response(Bun.file(found), { headers })
     }
 
     if (req.method === 'PUT') {
       const declared = Number(req.headers.get('content-length') ?? '0')
-      if (declared > MAX_ARTIFACT_BYTES) {
+      if (declared > this.maxBytes) {
         return Response.json({ error: 'artifact too large' }, { status: 413 })
       }
       const artifactPath = this.scopedPath(wScope, hash, '.tar.zst')
@@ -296,32 +306,60 @@ export class ArtifactStore {
       // key genuinely re-derived produces byte-equal bytes, so a re-PUT is a
       // no-op at best and a poisoning overwrite at worst — refuse it. This
       // stops an authenticated writer from replacing a legitimate entry.
+      // Checked BEFORE reading the body, so a duplicate upload costs nothing.
       if (await Bun.file(artifactPath).exists()) {
         return Response.json({ ok: true, immutable: true }, { status: 409 })
       }
-      const body = new Uint8Array(await req.arrayBuffer())
-      if (body.byteLength > MAX_ARTIFACT_BYTES) {
-        return Response.json({ error: 'artifact too large' }, { status: 413 })
-      }
       const scopeDir = path.join(this.dir, wScope)
       await mkdir(scopeDir, { recursive: true })
-      // Atomic write: a concurrent GET must never see a torn artifact, and a
-      // crashed PUT must leave no half-written `<hash>.tar.zst` behind.
+      // STREAMING write to a temp file — never buffer the body in RAM. The
+      // byte cap is enforced on ACTUAL cumulative bytes mid-stream (a chunked
+      // body with no/false content-length can't defeat it), and the atomic
+      // tmp+rename keeps a concurrent GET from ever seeing a torn artifact.
       const tmp = `${artifactPath}.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`
+      let overCap = false
       try {
-        await Bun.write(tmp, body)
+        const writer = Bun.file(tmp).writer()
+        let total = 0
+        try {
+          const reader = req.body?.getReader()
+          if (reader !== undefined) {
+            for (;;) {
+              const { done, value } = await reader.read()
+              if (done) break
+              if (value === undefined) continue
+              total += value.byteLength
+              if (total > this.maxBytes) {
+                await reader.cancel().catch(() => {})
+                overCap = true
+                break
+              }
+              await writer.write(value)
+            }
+          }
+        } finally {
+          await writer.end()
+        }
+        if (overCap) {
+          await unlink(tmp).catch(() => {})
+          return Response.json({ error: 'artifact too large' }, { status: 413 })
+        }
         await rename(tmp, artifactPath)
       } catch (err) {
         await unlink(tmp).catch(() => {})
         throw err
       }
-      const tag = req.headers.get('x-artifact-tag')
-      if (tag !== null) await Bun.write(path.join(scopeDir, `${hash}.tag`), tag)
-      const duration = req.headers.get('x-artifact-duration')
+      const duration = req.headers.get('x-vx-duration-ms')
       if (duration !== null && /^\d+$/.test(duration)) {
         await Bun.write(path.join(scopeDir, `${hash}.duration`), duration)
       }
-      return Response.json({ urls: [] })
+      // Stored, not verified: the client verifies the digest against the
+      // bytes it receives on GET (see the file-top comment).
+      const digest = req.headers.get('x-vx-digest')
+      if (digest !== null && /^xxh3:[0-9a-f]{1,16}$/.test(digest)) {
+        await Bun.write(path.join(scopeDir, `${hash}.digest`), digest)
+      }
+      return Response.json({ ok: true })
     }
 
     return Response.json(

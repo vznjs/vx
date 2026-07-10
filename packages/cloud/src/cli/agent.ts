@@ -11,7 +11,7 @@
 import { captureGitContext, captureWorkspaceIdentity, findWorkspaceRoot, UserError } from '@vzn/vx'
 import { activeEnvironment } from '../environments.js'
 import { runAgentLoop } from '../dist/agent-loop.js'
-import { deriveSession, wireAgentCacheEnv } from '../dist/session.js'
+import { agentRemoteCache, deriveSession, markAgentProcess } from '../dist/session.js'
 
 export interface AgentArgs {
   url?: string
@@ -121,9 +121,11 @@ export async function agentCmd(args: readonly string[]): Promise<number> {
   const identity = captureWorkspaceIdentity(root)
   const session = parsed.session ?? deriveSession()
 
-  // Point the scoped runs' remote layer at the serve's own /v8 store + flag
-  // this process as an agent (shared verbatim with the submitter self-agent).
-  wireAgentCacheEnv(origin, token)
+  // The scoped runs' remote layer: the serve's own artifact store, injected
+  // explicitly (shared with the submitter self-agent). Flag the process as
+  // an agent so cloud()'s telemetry rung declines.
+  const remoteCache = agentRemoteCache(origin, token)
+  markAgentProcess()
 
   process.stdout.write(
     `vx agent: serve   ${origin}\n` +
@@ -141,6 +143,7 @@ export async function agentCmd(args: readonly string[]): Promise<number> {
     commitSha: git.commitSha,
     capacity: parsed.capacity,
     checkoutRoot: root,
+    remoteCache,
     ...(parsed.labels.length > 0 ? { labels: parsed.labels } : {}),
     ...(parsed.idleTimeoutMs > 0 ? { idleTimeoutMs: parsed.idleTimeoutMs } : {}),
     onStatus: (line) => process.stdout.write(`  ${line}\n`),

@@ -476,8 +476,7 @@ export async function startServe(opts: {
       url.pathname === '/events' ||
       url.pathname === '/stream' ||
       url.pathname === '/mcp' ||
-      url.pathname.startsWith('/v1/') ||
-      url.pathname.startsWith('/v8/')
+      url.pathname.startsWith('/v1/')
     if (!gated) return DEFAULT_PRINCIPAL
     const header = req.headers.get('authorization')
     if (header !== null && header.startsWith('Bearer ')) {
@@ -517,9 +516,9 @@ export async function startServe(opts: {
   // ingest-only serve has no workspace and 404s the /v1/workspace routes.
   const catalog = new WorkspaceCatalog(opts.root)
 
-  // The serve-hosted artifact store (Turbo /v8/artifacts wire) — point
-  // core's VX_REMOTE_CACHE_URL (or a connected environment) at this serve
-  // and the remote cache works with no separate cache server.
+  // The serve-hosted artifact store (the vx-native /v1/cache wire) — a
+  // connected environment (or an explicit VX_CLOUD_URL) routes the remote
+  // cache here, no separate cache server needed.
   const artifacts = new ArtifactStore(path.join(ingestDir, 'artifacts'))
   // One-time: fold a pre-trust-scopes flat store into default/trusted/ so an
   // existing single-tenant deployment keeps its warm cache after upgrade.
@@ -659,9 +658,11 @@ export async function startServe(opts: {
             startedAt,
             // Count only — a pre-auth endpoint must not leak workspace names.
             workspaces: ingest.workspaceCount(),
-            // Capability advertisement: this serve hosts /v8/artifacts, so a
-            // connected environment can auto-wire the remote-cache rung.
+            // Capability advertisement: this serve hosts the artifact store
+            // on the vx-native /v1/cache wire (version 1), so a connected
+            // environment can auto-wire the remote-cache rung.
             artifacts: true,
+            cacheWire: 1,
             // Trust tiers are honored — a client can present a PR token.
             trustTiers: true,
             // A colocated workspace makes the /v1/workspace/* catalog live.
@@ -711,10 +712,13 @@ export async function startServe(opts: {
       if (url.pathname === '/mcp') {
         return handleMcpHttp(req, ingest).then(withCors)
       }
-      // The artifact store (Turbo wire; ?teamId/slug accepted by ignoring).
+      // The artifact store (the vx-native cache wire). Hex-only in the route
+      // so it can never shadow the named /v1/cache/* analytics endpoints
+      // (stats, entries, …) — a real cache key is 16-hex; wider widths are
+      // reserved for future hash algorithms.
       {
-        const m = /^\/v8\/artifacts\/([^/]+)$/.exec(url.pathname)
-        if (m) return artifacts.handle(req, decodeURIComponent(m[1]!), principal).then(withCors)
+        const m = /^\/v1\/cache\/([0-9a-f]{16,64})$/.exec(url.pathname)
+        if (m) return artifacts.handle(req, m[1]!, principal).then(withCors)
       }
       // Workspace scoping for the analytics routes (`?ws=<id>`, dev-flows
       // design §3.5) — resolved ONCE here. No param → the sole known
@@ -818,7 +822,7 @@ export async function startServe(opts: {
       if (url.pathname === '/v1/workspaces') {
         return jsonResponse({ workspaces: ingest.workspaces() })
       }
-      // The artifact-store list (cloud-data-model-2026-07 §8) — the /v8
+      // The artifact-store list (cloud-data-model-2026-07 §8) — the artifact
       // store made visible. NOT workspace-gated (artifacts exist on remote
       // serves too), so it sits above the unknown-workspace guard. The
       // listing walks ONLY the principal's read scopes — it can never show
@@ -1034,7 +1038,7 @@ export async function startServe(opts: {
       // direct row for this (run, task); (2) else, if the task was a cache hit
       // with a hash, the log of the run that produced those bytes
       // (`source: 'cache'`); (3) else 404. `artifactHash` is advertised only
-      // when the requester's principal can actually fetch it from /v8.
+      // when the requester's principal can actually fetch it from /v1/cache.
       {
         const m = /^\/v1\/runs\/([^/]+)\/logs\/(.+)$/.exec(url.pathname)
         if (m) {
@@ -1066,7 +1070,7 @@ export async function startServe(opts: {
           const hash = resolved['hash'] as string | undefined
           return (async () => {
             // artifactHash advertised only when the requester's principal can
-            // actually fetch it from /v8 (trust-scoped).
+            // actually fetch it from /v1/cache (trust-scoped).
             if (hash !== undefined && (await artifacts.has(hash, principal))) {
               resolved['artifactHash'] = hash
             }
