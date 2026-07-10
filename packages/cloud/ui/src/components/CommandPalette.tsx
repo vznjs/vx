@@ -28,13 +28,15 @@ export function CommandPalette(props: {
 }) {
   const [query, setQuery] = createSignal('')
   const [active, setActive] = createSignal(0)
+  // Caught: an unreachable serve must degrade the palette to its static
+  // entries, not throw out of the memo below and break it until reload.
   const [projects] = createResource(
     () => props.open,
-    async (open) => (open ? await listProjects(100) : []),
+    async (open) => (open ? await listProjects(100).catch(() => []) : []),
   )
   const [tasks] = createResource(
     () => props.open,
-    async (open) => (open ? await getHistory({ limit: 500 }) : []),
+    async (open) => (open ? await getHistory({ limit: 500 }).catch(() => []) : []),
   )
 
   const all = createMemo<Item[]>(() => {
