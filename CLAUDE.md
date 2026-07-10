@@ -209,6 +209,61 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-10**: **The plugin-driven remote cache SHIPPED — all three
+  phases of `docs/design/native-cache-wire-2026-07.md` (`ca85901`,
+  `a50a93e`, `aa1797f`, `5cdbe24`)**, executing the same-day owner
+  directive below. **Phase A (core seam):** exported `RemoteCacheLayer`
+  interface (`has`/`get`/`put`; implementations THROW, `LayeredCache`
+  degrades every throw to a miss) + `RunOptions.remoteCache` embedder
+  injection that WINS over the plugin `cache` capability (the
+  telemetrySinks pattern). **Phase B (the vx-native wire):** the serve's
+  ArtifactStore handles `/v1/cache/:hash` (GET/HEAD/PUT) — headers
+  `x-vx-duration-ms` (the `.duration` sidecar's wire form) and
+  `x-vx-digest` (`xxh3:<hex>` over the artifact bytes, stored as a
+  `.digest` sidecar, echoed on GET); PUT STREAMS to the temp file with
+  the 512 MiB cap enforced on ACTUAL cumulative bytes mid-stream (a
+  chunked/lying body can neither buffer RAM nor spoof the cap);
+  immutability 409 checked before the body; trust scopes byte-identical.
+  New `packages/cloud/src/native-cache.ts` `NativeCacheClient`: bounded
+  downloads (content-length REQUIRED + capped + mid-stream cap), digest
+  verification (mismatch throws → miss), ONE-hop 307/302 follow DROPPING
+  the bearer cross-origin (the blob-offload seam, client-ready before any
+  server implements it), clearable timeouts, 409-as-success on PUT.
+  `cloud()` builds it when the connected serve advertises `cacheWire: 1`
+  on `/v1/meta`; distributed agents/submitter switched from env wiring to
+  explicit `RunOptions.remoteCache` injection (both execute in-process
+  scoped `run()`s — no subprocess channel exists; `markAgentProcess`
+  keeps the telemetry sentinel). `/v8/artifacts` is DELETED. **Phase C
+  (core scrub):** `src/cache/remote-cache.ts` (Turbo client + HMAC +
+  preflight) and `orchestrator/remote-cache-setup.ts` (`VX_REMOTE_CACHE_*`
+  env hatch) deleted — core carries ZERO HTTP cache code; the façade
+  drops `RemoteCache` (boundary snapshot updated); `vx info` drops its
+  env-derived remote-cache row; `resolveCacheScope` survives untouched
+  (reads `VX_CACHE_SCOPE` + CI PR context — the per-PR partition concept
+  is part of the native wire). Turbo interop = the ~20-line third-party
+  recipe in the extensibility guide. **Named deviations (deliberate):**
+  no server-side digest verify (no 422 — the CLIENT verifies on GET,
+  which covers the corruption directions that matter; the server skips a
+  hash pass per upload); the serve route is hex-only `[0-9a-f]{16,64}`
+  so it can never shadow the named `/v1/cache/*` analytics endpoints
+  (pinned by a no-shadowing test); ArtifactStore's byte cap is
+  constructor-injectable so the mid-stream 413 is testable without a
+  512 MiB body. **Verified end-to-end** (real serve + the real `cloud()`
+  env ladder): cold miss → upload (`.tar.zst` + `.duration` + `.digest`
+  land in `default/trusted/`), local wipe → `restored-remote` with output
+  - stdout replay, GET carries both native headers, tampered artifact →
+    digest mismatch → degrades to a MISS and re-executes (never restores
+    corrupt bytes), `/v1/meta` advertises `cacheWire: 1`, `/v8` no longer
+    routes. Tests: core 1221 pass (orchestrator-remote re-targeted through
+    injected stub layers — coverage preserved incl. never-fail-on-500,
+    at-most-once GET, planRun HEAD prediction, `local:,remote:rw` in-memory
+    pack), cloud 350 pass (+16-test native-client suite incl. raw-TCP
+    sizeless refusal + cross-origin auth-drop), lint clean. Docs: cli.md /
+    comparison.md / caching / architecture / extensibility (the Turbo
+    recipe) / remote-caching guide all speak the native wire; the two dead
+    module pages deleted. Remaining designed-not-built: the serve-side blob
+    backend (S3/R2) behind the 307 the client already follows.
+
 - **2026-07-10**: **OWNER DIRECTIVE — the remote cache is PLUGIN-DRIVEN;
   Turbo wire compatibility is DROPPED from core** ("I think the remote
   cache should be driven by a plugin. We should drop turbo compatibility,
