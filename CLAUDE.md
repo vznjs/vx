@@ -189,6 +189,55 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-10**: **Road-to-best-CI #2 COMPLETED — a real GitHub check run
+  on the commit (`2ecfce4`) + the live-refresh wave hardened against failed
+  polls (`37bdfbb`)**. **(1) PR checks:** when a `vx run` inside GitHub
+  Actions is handed `GITHUB_TOKEN` (the hand-off IS the opt-in — Actions
+  never exposes the token to a step by itself; `checks: write` required),
+  `CloudIngestSink.flush` now also creates ONE completed check run on the
+  commit via the Checks API: conclusion from `exitOk`, the failures-first
+  job-summary markdown as the check output (`packages/cloud/src/
+github-check.ts`, pure glue over `formatGithubSummary`). For
+  `pull_request` events it attaches to the PR's HEAD sha read from
+  `GITHUB_EVENT_PATH` — GITHUB_SHA is the synthetic merge commit there and
+  a check on it never surfaces on the PR (the dorny/test-reporter
+  convention). Knobs: `VX_GITHUB_CHECK=0` disables, `VX_GITHUB_CHECK_NAME`
+  names (default: the run's command). Never-fail; a 403 names the missing
+  permission. No serve needed — works standalone like the job summary.
+  Docs: guides/ci.md "PR checks" section. 11 unit tests + 2 plugin
+  activation pins (the decline test now also deletes GITHUB_TOKEN so the
+  suite is hermetic inside Actions itself). **(2) Adversarial review of the
+  live-refresh/CI-health wave (`a4b3f08`/`dae2f98`)** — the one shipped
+  wave that had no hostile pass; three CONFIRMED defects fixed, all hot
+  since the 5s tick landed: **(a) CRITICAL wedge** — the Runs `invocations`
+  resource was the only UNCAUGHT fetch in the view; one failed poll (serve
+  restart, laptop wake) threw an uncaught rejection out of the downstream
+  memos and PERMANENTLY froze the history table + CI-health ticks while
+  caught siblings kept animating (a frozen view masquerading as live;
+  executed repro against solid-js). Fix: catch to null + hold last-good
+  rows outside the resource — an outage neither wedges nor blanks.
+  **(b)** jsonPage dropped a populated section's data for a tick on a
+  transient refetch error (`res.latest` is UNREADABLE while errored — Solid
+  re-throws); a per-source last-good map keeps data, only a first-load
+  failure shows 'error'. **(c)** the project facet filtered with a stale or
+  absent runId set while its resource resolved (unfiltered rows under an
+  active chip on deep-link; project A's set applied while switching to B —
+  Solid serves the previous value during a source-change refetch); the
+  resource value now carries WHICH project it belongs to and the table
+  reads as loading until it matches. Plus: a failed `/v1/flakiness` probe
+  renders '—', never a confident green "0 flaky". **Verified through a real
+  outage/recovery cycle** (Playwright: serve killed mid-poll, restarted on
+  the same port): rows kept during the outage, count updates after
+  recovery, zero uncaught errors — pre-fix the view froze forever.
+  **Refuted by the review (sound):** live.ts timer lifecycle (no leak/
+  double-arm/burst; refcounted visibilitychange), Shell LiveIndicator, the
+  2s queue poll teardown, runTicks newest-LAST ordering, every tone
+  threshold, invocationPassed consistency (core maps exitOk via Boolean).
+  **Accepted residuals:** pass-rate "24h" computes over the most recent 200
+  invocations (truncated on >200-run days); post-dispose setQueueJobs is a
+  harmless signal write. Cloud 330 pass (+12), UI 40 pass, core 1224, lint
+  clean.
+
 - **2026-07-10**: **Adversarial review of the analytics wave — two
   repro-confirmed defects fixed, the rest verified sound** (two parallel
   hostile reviewers, repro-mandated, over the day's `getRegressions`/
@@ -4875,10 +4924,10 @@ longer-horizon core gaps stay sourced from `docs/comparison.md`.
 
 1. ~~Per-task logs + artifacts in the dashboard~~ — **SHIPPED**
    2026-07-04 (task-logs-2026-07; the dashboard TaskLogs panel).
-2. **PR/commit summary + checks.** Half SHIPPED (the GitHub Actions
-   `$GITHUB_STEP_SUMMARY` table, 2026-07-04). Remaining: a real PR
-   _check_ via the GitHub Checks API (token + checks:write — service
-   territory).
+2. ~~PR/commit summary + checks~~ — **SHIPPED** (the GHA
+   `$GITHUB_STEP_SUMMARY` table 2026-07-04; the real check run via the
+   Checks API 2026-07-10 — client-side glue, no serve needed: pass
+   `GITHUB_TOKEN` to the step + `checks: write`).
 3. ~~Task-level retries~~ — **SHIPPED** 2026-07-04 (`exec.retries` +
    `--retry`; `TaskOutcome.attempts` is the flaky-detection feed).
 4. **Flaky detection → surface + optional auto-retry.**
