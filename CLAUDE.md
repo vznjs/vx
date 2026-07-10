@@ -209,6 +209,25 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-10**: **OWNER DIRECTIVE — the remote cache is PLUGIN-DRIVEN;
+  Turbo wire compatibility is DROPPED from core** ("I think the remote
+  cache should be driven by a plugin. We should drop turbo compatibility,
+  and use what make sense for vx cloud. Other could create turbo cache
+  plugin"). REVERSES: the 2026-05 "remote cache wire = Turbo
+  `/v8/artifacts/` spec verbatim" decision, the 2026-06 Turbo-compatible
+  HMAC rationale, and the same-day preflight client (`8fbd2c5`) whose
+  premise was Turbo interop. Target state: core keeps ONLY the seams —
+  local `Cache`, `LayeredCache` composition, the `CacheLayer` interface,
+  and the `cache` plugin capability; the Turbo-wire `RemoteCache` client
+  - the `VX_REMOTE_CACHE_*` env wiring LEAVE core. vx-cloud speaks its
+    OWN artifact wire designed for vx's needs (trust scopes, integrity,
+    streaming — not constrained by Turbo's shape); Turbo interop is a
+    THIRD-PARTY plugin story (we document the seam; we don't ship the
+    plugin). The presigned-artifacts design's "Turbo verbatim" premise is
+    superseded — offload gets designed into the vx-native wire instead.
+    Implementation phased behind an architect design
+    (`docs/design/native-cache-wire-2026-07.md`).
+
 - **2026-07-10**: \*\*The dashboard's product lens is THE SINGLE DEV
   (standing owner directive — see "Dashboard product lens" section above)
   - the first lens-driven wave SHIPPED (`df76cef`, `e969b92`)**. Owner:
