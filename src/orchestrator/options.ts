@@ -2,7 +2,7 @@
 // so internals like prepare.ts can import them without an upward
 // import of index.ts — the module entry must stay cycle-free.
 
-import type { CachePolicy } from '../cache/index.js'
+import type { CachePolicy, RemoteCacheLayer } from '../cache/index.js'
 import type { ContinueMode } from '../graph/index.js'
 import type { TaskOutcome } from '../graph/index.js'
 import type { EventBus } from './events.js'
@@ -179,6 +179,16 @@ export interface RunOptions {
    * record something useful.
    */
   command?: string
+  /**
+   * An injected remote cache layer — the embedder seam mirroring
+   * `telemetrySinks`: a host that already holds a wire client (a
+   * distribution agent, a serve executing on behalf of a submitter)
+   * passes it here and run() composes `LayeredCache(local, injected)`.
+   * Explicit injection WINS over the plugin `cache` capability (the
+   * host knows best; prevents double-wrapping when the workspace also
+   * declares a cache plugin). Undefined → identical to before.
+   */
+  remoteCache?: RemoteCacheLayer
 }
 
 export interface RunSummary {

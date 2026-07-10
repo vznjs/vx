@@ -79,7 +79,7 @@ export {
   resolveInputs,
   resolveOutputs,
 } from './cache/index.js'
-export type { CacheLayer, RunRecord, InvocationRecord } from './cache/index.js'
+export type { CacheLayer, RemoteCacheLayer, RunRecord, InvocationRecord } from './cache/index.js'
 
 // Workspace discovery + the project/config catalog surface — an
 // out-of-process service/CLI needs these. `readLockfile` is THE one reader

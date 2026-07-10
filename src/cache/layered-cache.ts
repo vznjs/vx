@@ -32,7 +32,27 @@ import type {
   SaveArgs,
 } from './cache.js'
 import { FULL_CACHE_POLICY } from './cache.js'
-import type { RemoteCache } from './remote-cache.js'
+
+/**
+ * What a remote cache layer must provide — THE plugin seam for remote
+ * caching. Core ships no wire client; a plugin's `cache` capability (or an
+ * embedder via `RunOptions.remoteCache`) supplies an implementation speaking
+ * whatever protocol it wants, and `LayeredCache` owns everything else:
+ * policy gating, in-flight dedup, remote provenance, and the never-fail
+ * contract (implementations THROW on failure; LayeredCache degrades every
+ * throw to a cache miss via `onRemoteError`). The artifact bytes are the
+ * local `<hash>.tar.zst` verbatim. See
+ * docs/design/native-cache-wire-2026-07.md.
+ */
+export interface RemoteCacheLayer {
+  /** Existence probe (drives the plan path's `--dry` remote prediction). */
+  has(hash: string): Promise<boolean>
+  /** Fetch an artifact's bytes; `null` = miss. `durationMs` is the
+   *  producing task's duration when the wire carries it. */
+  get(hash: string): Promise<{ body: ArrayBuffer; durationMs: number | undefined } | null>
+  /** Store an artifact (fire-and-forget from LayeredCache's perspective). */
+  put(hash: string, body: ArrayBuffer | Uint8Array, meta: { durationMs: number }): Promise<void>
+}
 
 /**
  * Cap on concurrent background PUTs. Keeps a burst of cache misses from
@@ -90,7 +110,7 @@ export class LayeredCache implements CacheLayer {
 
   constructor(
     private readonly local: Cache,
-    private readonly remote: RemoteCache,
+    private readonly remote: RemoteCacheLayer,
     private readonly options: LayeredCacheOptions = {},
   ) {
     this.policy = options.policy ?? FULL_CACHE_POLICY

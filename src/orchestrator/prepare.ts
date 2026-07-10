@@ -16,6 +16,7 @@ import {
   type CachePolicy,
   FULL_CACHE_POLICY,
   GitFilesCache,
+  LayeredCache,
   populateGitFilesCache,
 } from '../cache/index.js'
 import {
@@ -197,17 +198,24 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     ? path.resolve(options.cwd, options.cacheDir)
     : resolveCacheDir(workspaceRoot, workspaceConfig)
   const localCache = new Cache(cacheDir, { read: policy.localRead, write: policy.localWrite })
-  // Cache seam: a plugin's `cache` capability takes precedence; otherwise
-  // the env-var Turbo-wire fallback (today's unconditional behavior). With
-  // no cache plugin this is byte-identical to wrapWithRemoteCache.
+  // Cache seam precedence: an EXPLICITLY injected remote layer
+  // (RunOptions.remoteCache — a distribution agent or serve that already
+  // holds a wire client) wins outright; else a plugin's `cache` capability;
+  // else the env-var fallback. Injection winning prevents double-wrapping
+  // when the workspace also declares a cache plugin.
   const plugins = (workspaceConfig?.plugins ?? []) as readonly VxPlugin[]
-  const cache = await resolveCache(
-    plugins,
-    localCache,
-    { workspaceRoot, cacheDir, warn: (m) => log.status(m), localCache, policy },
-    log,
-    () => wrapWithRemoteCache(localCache, log, policy),
-  )
+  const cache = options.remoteCache
+    ? new LayeredCache(localCache, options.remoteCache, {
+        policy,
+        onRemoteError: (err) => log.status(`[vx] remote cache: ${err.message}`),
+      })
+    : await resolveCache(
+        plugins,
+        localCache,
+        { workspaceRoot, cacheDir, warn: (m) => log.status(m), localCache, policy },
+        log,
+        () => wrapWithRemoteCache(localCache, log, policy),
+      )
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
   const gitFilesCache = new GitFilesCache()

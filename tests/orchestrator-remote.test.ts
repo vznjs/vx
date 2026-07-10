@@ -584,3 +584,122 @@ describe('orchestrator: local-only runs never prefetch', () => {
     }
   })
 })
+
+// ─── RunOptions.remoteCache injection — THE plugin seam, wire-free ─────────
+// A remote layer is any object with has/get/put (RemoteCacheLayer); core
+// carries no wire client. An in-memory layer (zero HTTP) must drive the
+// full remote-hit path, and explicit injection must WIN over the env hatch.
+
+describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () => {
+  interface MemLayer {
+    layer: import('../src/cache/index.js').RemoteCacheLayer
+    store: Map<string, Uint8Array>
+    gets: number
+    puts: number
+    heads: number
+  }
+  function memoryLayer(): MemLayer {
+    const store = new Map<string, Uint8Array>()
+    const state: MemLayer = {
+      store,
+      gets: 0,
+      puts: 0,
+      heads: 0,
+      layer: {
+        async has(hash) {
+          state.heads++
+          return store.has(hash)
+        },
+        async get(hash) {
+          state.gets++
+          const body = store.get(hash)
+          if (!body) return null
+          return { body: body.slice().buffer as ArrayBuffer, durationMs: 7 }
+        },
+        async put(hash, body) {
+          state.puts++
+          store.set(hash, body instanceof Uint8Array ? body.slice() : new Uint8Array(body))
+        },
+      },
+    }
+    return state
+  }
+
+  const CONFIG = `
+    export default {
+      tasks: {
+        build: {
+          exec: { command: 'echo built > out.txt' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+        },
+      },
+    }
+  `
+
+  it(
+    'an in-memory layer (no HTTP anywhere) serves the full remote-hit path',
+    async () => {
+      const fixture = await makeWorkspace()
+      const mem = memoryLayer()
+      try {
+        await addProject(fixture.root, 'app', { files: { 'src/in.txt': 'v1' }, config: CONFIG })
+
+        const first = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: mem.layer,
+        })
+        expect(first.ok).toBe(true)
+        expect(mem.puts).toBe(1) // write-through landed in the injected layer
+
+        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        const second = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: mem.layer,
+        })
+        expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
+        expect(second.ok).toBe(true)
+        expect(mem.gets).toBeGreaterThanOrEqual(1)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'explicit injection WINS over the env hatch (the env server sees zero requests)',
+    async () => {
+      const fixture = await makeWorkspace()
+      const mem = memoryLayer()
+      const envServer = startArtifactServer()
+      const savedUrl = process.env.VX_REMOTE_CACHE_URL
+      const savedTok = process.env.VX_REMOTE_CACHE_TOKEN
+      process.env.VX_REMOTE_CACHE_URL = envServer.baseUrl
+      process.env.VX_REMOTE_CACHE_TOKEN = 'tok'
+      try {
+        await addProject(fixture.root, 'app', { files: { 'src/in.txt': 'v1' }, config: CONFIG })
+        const res = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: mem.layer,
+        })
+        expect(res.ok).toBe(true)
+        expect(mem.puts).toBe(1) // the injected layer got the upload…
+        expect(envServer.store.size).toBe(0) // …the env-configured server got nothing
+      } finally {
+        if (savedUrl === undefined) delete process.env.VX_REMOTE_CACHE_URL
+        else process.env.VX_REMOTE_CACHE_URL = savedUrl
+        if (savedTok === undefined) delete process.env.VX_REMOTE_CACHE_TOKEN
+        else process.env.VX_REMOTE_CACHE_TOKEN = savedTok
+        await envServer.server.stop(true)
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
