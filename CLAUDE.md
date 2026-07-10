@@ -189,6 +189,40 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-10**: **Adversarial review of the analytics wave — two
+  repro-confirmed defects fixed, the rest verified sound** (two parallel
+  hostile reviewers, repro-mandated, over the day's `getRegressions`/
+  `getPeriodComparison` + serve routes + UI derivations; the 2026-07-07/09
+  pattern). Both findings CONFIRMED by an executed reproduction. **(1)
+  `periodStats` empty-window `null` (`3cbc2e5`):** the aggregate bare-`SUM()`d
+  `failures`/`cacheHits`/`executed` but only `COALESCE`d `totalDurationMs` —
+  SQLite `SUM()` over ZERO rows returns NULL, and the PREVIOUS window is empty
+  for any workspace younger than the window (fresh serve, quiet prior week),
+  so `/v1/analysis` shipped `previous.stats.failures = null` where
+  `PeriodStats` declares `number` (contract break + a client `.toFixed()`
+  throw). Fix: COALESCE all four; pinned by a current-only-window metrics
+  test. **(2) Dead regression status dot (`3cbc2e5`):** the "Started failing
+  across branches" card's `dots` column bound `_dirReg`, a field
+  `regressionRows()` never produced (I described the derivation in-plan but
+  omitted it from the Edit), so the dot was permanently faint grey — the
+  red-regressed / amber-always-broken urgency cue was lost while the row's
+  TEXT still read fine (why the first render-check missed it: it asserted text
+  - zero errors, not the dot's COLOR). Fix: emit `_dirReg` (`'slower'`→red /
+    `'gone'`→amber via the delta DotMap); browser-verified the two dot colors
+    card-scoped. **Bundled:** the regressions latest-per-branch CTE gained a
+    `run_id DESC` tiebreaker (a time-ordered UUIDv7) so equal-`started_at` ties
+    are deterministic. **Refuted by repro (NOT actioned):** period-window
+    overlap/gap/off-by-one (half-open `[from,to)` is clean), the ROW_NUMBER
+    latest-per-branch dedup + since-recovered-branch + cache-hit-as-pass, every
+    NULL-vs-non-null claim in `getRegressions` (`win.runs` is COUNT, the rest
+    `?? 0`-guarded), mover `<minRuns` leakage + `deltaPct` div-by-zero +
+    percentile index, and every UI tone/sign/pp derivation (failure-up→bad,
+    hit-drop→warn, avg-slower→warn all correct) + `$state` binding + the commit
+    facet's prefix match. **Accepted residual:** malformed numeric query params
+    (`Number('abc')`→NaN) degrade to an empty response — a codebase-wide
+    convention across every metrics route, harmless, unreachable from the
+    dashboard. Core 1224 pass (+1), cloud 318 pass, UI 40 pass, lint clean.
+
 - **2026-07-10**: **vx-cloud analytics wave — live dashboard, run filters +
   CI-health, cross-branch regression detection, and period-over-period
   analysis** (owner, four requests across the day: "Improve ui. More
