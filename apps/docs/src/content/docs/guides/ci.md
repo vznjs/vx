@@ -171,6 +171,34 @@ is formatted from the run locally, from the `$GITHUB_STEP_SUMMARY` file
 Actions provides) and needs no extra workflow step. A plain local run —
 not in Actions — writes nothing.
 
+## PR checks (GitHub Checks API)
+
+The job summary lives on the *job* page; to surface the same result in the
+**PR's checks list** — a named check with a pass/fail conclusion and the
+per-task table as its detail — hand the workflow token to the vx step:
+
+```yaml
+permissions:
+  checks: write
+
+steps:
+  - run: vx run ci
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+```
+
+Passing the token **is** the opt-in (Actions never exposes it to a step by
+itself). After the run, vx creates one completed check run on the commit —
+for `pull_request` events it attaches to the PR's *head* SHA (read from the
+event payload), so the check shows on the PR rather than the synthetic merge
+commit. Conclusion mirrors the run: green when every task passed, red
+otherwise, with the same failures-first table as the job summary.
+
+Knobs: `VX_GITHUB_CHECK=0` disables it; `VX_GITHUB_CHECK_NAME` overrides the
+check's name (default: the run's command). A missing `checks: write`
+permission warns and never fails the run — like every vx telemetry surface,
+it is observe-only.
+
 ## Proving cache correctness: `vx run --verify`
 
 Every cache assumes a task run twice on the same inputs produces the same

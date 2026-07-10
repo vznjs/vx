@@ -273,6 +273,23 @@ describe('cloud() cache capability', () => {
   })
 })
 
+/** A stub GitHub API capturing check-run POSTs (path + head_sha). */
+function stubGithubApi(): {
+  server: ReturnType<typeof Bun.serve>
+  requests: { path: string; headSha: string }[]
+} {
+  const requests: { path: string; headSha: string }[] = []
+  const server = Bun.serve({
+    port: 0,
+    fetch: async (req) => {
+      const body = (await req.json()) as { head_sha: string }
+      requests.push({ path: new URL(req.url).pathname, headSha: body.head_sha })
+      return new Response('{"id":1}', { status: 201 })
+    },
+  })
+  return { server, requests }
+}
+
 function fakeSummary(): RunSummaryRecord {
   return {
     v: 1,
@@ -509,14 +526,53 @@ describe('cloud() telemetry capability', () => {
     })
   })
 
-  it('still declines with no connection AND no GitHub summary (plain local run untouched)', async () => {
+  it('still declines with no connection AND no GitHub surfaces (plain local run untouched)', async () => {
     await withCleanConnEnv({ VX_CLOUD_CONFIG: '/nonexistent/environments.json' }, async () => {
-      const prev = process.env['GITHUB_STEP_SUMMARY']
+      const prevSummary = process.env['GITHUB_STEP_SUMMARY']
+      const prevToken = process.env['GITHUB_TOKEN']
       delete process.env['GITHUB_STEP_SUMMARY']
+      // No token → no check candidate, even when the suite itself runs in
+      // Actions (GITHUB_ACTIONS=true there).
+      delete process.env['GITHUB_TOKEN']
       try {
         expect(await cloud().telemetry!(telemetryCtx('/x'))).toBeUndefined()
       } finally {
-        if (prev !== undefined) process.env['GITHUB_STEP_SUMMARY'] = prev
+        if (prevSummary !== undefined) process.env['GITHUB_STEP_SUMMARY'] = prevSummary
+        if (prevToken !== undefined) process.env['GITHUB_TOKEN'] = prevToken
+      }
+    })
+  })
+
+  it('activates for the GitHub CHECK alone (token passed to the step, no serve)', async () => {
+    const stub = stubGithubApi()
+    await withCleanConnEnv({ VX_CLOUD_CONFIG: '/nonexistent/environments.json' }, async () => {
+      const saved: Record<string, string | undefined> = {}
+      const pin = (k: string, v: string | undefined): void => {
+        saved[k] = process.env[k]
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+      pin('GITHUB_STEP_SUMMARY', undefined)
+      pin('GITHUB_ACTIONS', 'true')
+      pin('GITHUB_TOKEN', 'tok')
+      pin('GITHUB_REPOSITORY', 'acme/mono')
+      pin('GITHUB_SHA', 'sha-1')
+      pin('GITHUB_EVENT_PATH', undefined)
+      pin('GITHUB_API_URL', `http://localhost:${stub.server.port}`)
+      try {
+        const sink = (await cloud().telemetry!(telemetryCtx('/x'))) as TelemetrySink
+        expect(sink).toBeDefined()
+        sink.onRunSummary!(fakeSummary())
+        await sink.flush!()
+        expect(stub.requests).toHaveLength(1)
+        expect(stub.requests[0]!.path).toBe('/repos/acme/mono/check-runs')
+        expect(stub.requests[0]!.headSha).toBe('sha-1')
+      } finally {
+        for (const [k, v] of Object.entries(saved)) {
+          if (v === undefined) delete process.env[k]
+          else process.env[k] = v
+        }
+        await stub.server.stop()
       }
     })
   })

@@ -34,6 +34,7 @@ import {
   type VxPlugin,
 } from '@vzn/vx'
 import { activeEnvironment } from './environments.js'
+import { githubCheckCandidate, postGithubCheck, resolveGithubCheckTarget } from './github-check.js'
 import { appendGithubSummary } from './github-summary.js'
 import { TaskLogBuffer } from './task-log-capture.js'
 
@@ -286,10 +287,13 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
       const conn = resolveConnection(opts)
       // Also activate (with no connection) to write the GitHub Actions job
       // summary — a CI run that declares cloud() gets a per-task result table
-      // on the job page whether or not a serve is attached. Nothing → decline,
-      // so a plain local `vx run` is still untouched.
+      // on the job page whether or not a serve is attached — and/or to post a
+      // real CHECK RUN on the commit when the step was handed a GITHUB_TOKEN
+      // (that hand-off IS the opt-in; the token is never ambient in Actions).
+      // Nothing → decline, so a plain local `vx run` is still untouched.
       const ghaSummary = firstEnv('GITHUB_STEP_SUMMARY')
-      if (conn === undefined && ghaSummary === undefined) return undefined
+      const ghaCheck = githubCheckCandidate(process.env)
+      if (conn === undefined && ghaSummary === undefined && !ghaCheck) return undefined
       return new CloudIngestSink({
         ...(conn !== undefined
           ? {
@@ -302,6 +306,7 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
         warn: (m) => ctx.warn(m),
         logsEnabled: logsEnabled(opts),
         ...(ghaSummary !== undefined ? { githubSummaryPath: ghaSummary } : {}),
+        githubCheck: ghaCheck,
       })
     },
   }
@@ -452,6 +457,7 @@ class CloudIngestSink implements TelemetrySink {
   private readonly connection?: SinkConnection
   private readonly warn: (message: string) => void
   private readonly githubSummaryPath?: string
+  private readonly githubCheck: boolean
 
   constructor(opts: {
     /** A serve to POST to. Absent → the sink only writes the GitHub summary. */
@@ -460,10 +466,13 @@ class CloudIngestSink implements TelemetrySink {
     logsEnabled?: boolean
     /** `$GITHUB_STEP_SUMMARY` — append the run's result table when in CI. */
     githubSummaryPath?: string
+    /** Post a GitHub check run on the commit (GITHUB_TOKEN present in Actions). */
+    githubCheck?: boolean
   }) {
     if (opts.connection !== undefined) this.connection = opts.connection
     this.warn = opts.warn
     if (opts.githubSummaryPath !== undefined) this.githubSummaryPath = opts.githubSummaryPath
+    this.githubCheck = opts.githubCheck === true
     // Log capture only makes sense when there's a serve to ship tails to.
     if (opts.logsEnabled === true && opts.connection !== undefined) {
       this.logs = new TaskLogBuffer()
@@ -509,6 +518,12 @@ class CloudIngestSink implements TelemetrySink {
     }
     if (this.githubSummaryPath !== undefined) {
       await appendGithubSummary(this.githubSummaryPath, this.summary, this.warn)
+    }
+    if (this.githubCheck) {
+      // Resolved at flush (reads the event payload for the PR head SHA);
+      // any missing ingredient resolves to undefined and skips silently.
+      const target = await resolveGithubCheckTarget(process.env, this.summary.run.command)
+      if (target !== undefined) await postGithubCheck(target, this.summary, this.warn)
     }
   }
 
