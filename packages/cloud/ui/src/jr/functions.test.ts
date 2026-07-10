@@ -4,11 +4,12 @@
 // a missing catalog must pass the rollups through byte-untouched.
 
 import { describe, expect, it } from 'bun:test'
-import { FUNCTIONS } from './functions.ts'
+import { FUNCTIONS, computeRecommendations, suggestedRetriesFor } from './functions.ts'
 
 const joinProjects = FUNCTIONS['joinProjects']!
 const joinTasks = FUNCTIONS['joinTasks']!
 const withTaskRef = FUNCTIONS['withTaskRef']!
+const withFlakyFix = FUNCTIONS['withFlakyFix']!
 
 describe('joinProjects', () => {
   const rollups = [
@@ -103,5 +104,136 @@ describe('withTaskRef', () => {
       Record<string, unknown>
     >
     expect(rows[0]!._taskRef).toBe('@a/b#test')
+  })
+})
+
+describe('suggestedRetriesFor', () => {
+  it('confirmed-flaky → max(maxAttempts, 2)', () => {
+    expect(suggestedRetriesFor({ flakyConfirmed: true, maxAttempts: 3 })).toBe(3)
+    // maxAttempts below the floor still yields at least 2
+    expect(suggestedRetriesFor({ flakyConfirmed: true, maxAttempts: 2 })).toBe(2)
+    // missing maxAttempts defaults to the floor
+    expect(suggestedRetriesFor({ flakyConfirmed: true, maxAttempts: undefined })).toBe(2)
+  })
+
+  it('inferred-only or missing → no suggestion', () => {
+    expect(suggestedRetriesFor({ flakyConfirmed: false, maxAttempts: 4 })).toBeUndefined()
+    expect(suggestedRetriesFor(null)).toBeUndefined()
+    expect(suggestedRetriesFor(undefined)).toBeUndefined()
+  })
+})
+
+describe('withFlakyFix', () => {
+  it('confirmed rows get exec.retries: N, inferred rows get an empty cell', () => {
+    const rows = withFlakyFix({
+      arr: [
+        { id: '@a/b#test', flakyConfirmed: true, maxAttempts: 3, withinRunRetries: 2 },
+        { id: '@a/c#test', flakyConfirmed: false, failureRate: 0.2 },
+      ],
+    }) as Array<Record<string, unknown>>
+    expect(rows[0]!.suggestedRetries).toBe(3)
+    expect(rows[0]!.fixText).toBe('exec.retries: 3')
+    // raw fields are preserved
+    expect(rows[0]!.id).toBe('@a/b#test')
+    expect(rows[1]!.suggestedRetries).toBeUndefined()
+    expect(rows[1]!.fixText).toBe('')
+  })
+})
+
+describe('computeRecommendations', () => {
+  const confirmedFlaky = { flakyConfirmed: true, maxAttempts: 2, withinRunRetries: 3, p50DurationMs: 200 }
+  const divergent = {
+    taskId: '@a/b#build',
+    crossPlatform: true,
+    changed: ['dist/app.js', 'dist/app.js.map'],
+    reports: [
+      { os: 'linux', arch: 'x64' },
+      { os: 'darwin', arch: 'arm64' },
+    ],
+  }
+
+  it('confirmed flaky (no catalog) → an add-retries rec with an exec.retries snippet', () => {
+    const recs = computeRecommendations({ flaky: confirmedFlaky, divergent: null, taskConfig: null, avgDurationMs: 200 })
+    expect(recs).toHaveLength(1)
+    expect(recs[0]!.kind).toBe('flaky-retries')
+    expect(recs[0]!.snippet).toBe('exec: { retries: 2 }')
+    expect(recs[0]!.detail).toContain('3 run(s)')
+  })
+
+  it('already declares retries >= N → the "still flaky" rec, no snippet', () => {
+    const recs = computeRecommendations({
+      flaky: confirmedFlaky,
+      divergent: null,
+      taskConfig: { exec: { command: 'x', retries: 3 } },
+      avgDurationMs: 200,
+    })
+    expect(recs).toHaveLength(1)
+    expect(recs[0]!.kind).toBe('flaky-persistent')
+    expect(recs[0]!.snippet).toBeUndefined()
+    expect(recs[0]!.detail).toContain('retries: 3')
+  })
+
+  it('declares FEWER retries than suggested → still recommends adding more', () => {
+    const recs = computeRecommendations({
+      flaky: { flakyConfirmed: true, maxAttempts: 4, withinRunRetries: 1 },
+      divergent: null,
+      taskConfig: { exec: { command: 'x', retries: 2 } },
+      avgDurationMs: 50,
+    })
+    expect(recs[0]!.kind).toBe('flaky-retries')
+    expect(recs[0]!.snippet).toBe('exec: { retries: 4 }')
+  })
+
+  it('non-hermetic task → a split-key rec naming platforms + rels', () => {
+    const recs = computeRecommendations({ flaky: null, divergent, taskConfig: null, avgDurationMs: null })
+    expect(recs).toHaveLength(1)
+    expect(recs[0]!.kind).toBe('non-hermetic')
+    expect(recs[0]!.snippet).toBe("cache.inputs.runtime: ['uname -sm']")
+    expect(recs[0]!.detail).toContain('linux-x64 ⇄ darwin-arm64')
+    expect(recs[0]!.detail).toContain('dist/app.js')
+  })
+
+  it('slow + uncached (catalog present, no cache block) → an add-caching rec', () => {
+    const recs = computeRecommendations({
+      flaky: null,
+      divergent: null,
+      taskConfig: { exec: { command: 'tsc' } },
+      avgDurationMs: 4000,
+    })
+    expect(recs).toHaveLength(1)
+    expect(recs[0]!.kind).toBe('uncached')
+    expect(recs[0]!.snippet).toContain('cache:')
+    expect(recs[0]!.detail).toContain('4.00s')
+  })
+
+  it('already cached, or fast, or no catalog → no uncached rec', () => {
+    // has a cache block
+    expect(
+      computeRecommendations({ flaky: null, divergent: null, taskConfig: { cache: { inputs: {} } }, avgDurationMs: 9000 }),
+    ).toHaveLength(0)
+    // under the slow threshold
+    expect(
+      computeRecommendations({ flaky: null, divergent: null, taskConfig: { exec: {} }, avgDurationMs: 200 }),
+    ).toHaveLength(0)
+    // catalog unavailable → can't reason about caching
+    expect(
+      computeRecommendations({ flaky: null, divergent: null, taskConfig: null, avgDurationMs: 9000 }),
+    ).toHaveLength(0)
+  })
+
+  it('healthy task → no recommendations', () => {
+    expect(
+      computeRecommendations({ flaky: null, divergent: null, taskConfig: { exec: {}, cache: {} }, avgDurationMs: 50 }),
+    ).toHaveLength(0)
+  })
+
+  it('multiple signals stack (flaky + non-hermetic + uncached)', () => {
+    const recs = computeRecommendations({
+      flaky: confirmedFlaky,
+      divergent,
+      taskConfig: { exec: { command: 'build' } },
+      avgDurationMs: 5000,
+    })
+    expect(recs.map((r) => r.kind)).toEqual(['flaky-retries', 'non-hermetic', 'uncached'])
   })
 })

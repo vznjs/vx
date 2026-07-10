@@ -190,6 +190,150 @@ export const FUNCTIONS: Record<string, (args: Args) => unknown> = {
     }
     return `Flaky — inferred from a ${formatPercent(n(f.failureRate), 0)} failure rate over ${String(f.runs)} runs.`
   },
+
+  // Annotate flaky rows for the Insights table with a copy-able suggested fix:
+  // CONFIRMED-flaky rows get `exec.retries: N`; inferred-only rows get '' (the
+  // DataTable renders an empty cell as '—'). Pure — raw fields preserved.
+  withFlakyFix: (a) =>
+    arr(a.arr).map((r) => {
+      const retries = suggestedRetriesFor(r)
+      return { ...r, suggestedRetries: retries, fixText: retries !== undefined ? `exec.retries: ${retries}` : '' }
+    }),
+}
+
+/**
+ * One actionable recommendation for a task — a short rationale + an optional
+ * copy-pasteable config snippet. The task-detail Recommendations card renders
+ * a list of these.
+ */
+export interface Recommendation {
+  /** Drives the card's tone/icon: 'flaky-retries' | 'flaky-persistent' | 'non-hermetic' | 'uncached'. */
+  kind: string
+  title: string
+  detail: string
+  /** A copy-able config snippet, when the fix is a config change. */
+  snippet?: string
+}
+
+// Structurally-loose views of the api rows the recommendation logic reads, so
+// both the raw `Row` (from $computed/$state) AND the concrete api types
+// (FlakyTask / DivergentKeyRow — no index signature) are assignable.
+interface FlakyLike {
+  flakyConfirmed?: unknown
+  maxAttempts?: unknown
+  withinRunRetries?: unknown
+}
+interface DivergentLike {
+  crossPlatform?: unknown
+  changed?: unknown
+  reports?: unknown
+}
+
+/**
+ * Suggested `exec.retries` for a CONFIRMED-flaky task: `max(maxAttempts ?? 2, 2)`
+ * — always at least 2 so the retry survives a second bad draw. `undefined` for
+ * inferred-only (not `flakyConfirmed`) or missing flaky rows — no suggestion.
+ */
+export function suggestedRetriesFor(flaky: FlakyLike | null | undefined): number | undefined {
+  if (!flaky || flaky.flakyConfirmed !== true) return undefined
+  const max = typeof flaky.maxAttempts === 'number' && Number.isFinite(flaky.maxAttempts) ? flaky.maxAttempts : 2
+  return Math.max(max, 2)
+}
+
+// A task's typical duration at/above which "add caching" is worth suggesting.
+const SLOW_MS = 1000
+
+/** The declared `exec.retries` from a resolved task config, or undefined. */
+function declaredRetries(taskConfig: Row): number | undefined {
+  const exec = taskConfig.exec
+  if (exec && typeof exec === 'object') {
+    const r = (exec as Row).retries
+    if (typeof r === 'number' && Number.isFinite(r)) return r
+  }
+  return undefined
+}
+
+/** Whether a resolved task config declares any `cache` block. */
+function hasCacheBlock(taskConfig: Row): boolean {
+  return taskConfig.cache !== undefined && taskConfig.cache !== null
+}
+
+/** Platforms a divergent hermeticity key spans, for the recommendation detail. */
+function divergentPlatforms(d: DivergentLike): string {
+  if (d.crossPlatform !== true) return 'The same platform, run-to-run,'
+  const reports = arr(d.reports)
+  const platforms = [...new Set(reports.map((r) => `${String(r.os)}-${String(r.arch)}`))]
+  return platforms.join(' ⇄ ')
+}
+
+/** The diverging output rels (first 3 + count), for the recommendation detail. */
+function divergentChanged(d: DivergentLike): string {
+  const changed = Array.isArray(d.changed) ? (d.changed as string[]) : []
+  if (changed.length === 0) return 'the output tree — file list truncated'
+  const shown = changed.slice(0, 3).join(', ')
+  return changed.length > 3 ? `${shown} +${changed.length - 3} more` : shown
+}
+
+/**
+ * Aggregate every applicable, actionable recommendation for one task from its
+ * flaky / hermeticity / catalog signals. Pure — the task-detail source fetches
+ * the inputs, this decides what to suggest. `taskConfig === null` means the
+ * catalog is unavailable (remote/ingest-only serve), which disables the
+ * catalog-gated refinements (already-retries, add-caching).
+ */
+export function computeRecommendations(input: {
+  flaky: FlakyLike | null
+  divergent: DivergentLike | null
+  taskConfig: Row | null
+  avgDurationMs: number | null
+}): Recommendation[] {
+  const { flaky, divergent, taskConfig, avgDurationMs } = input
+  const recs: Recommendation[] = []
+
+  // 1. Flaky → retries (or "already retries, still flaky" when the catalog
+  //    shows it already declares enough).
+  if (flaky && flaky.flakyConfirmed === true) {
+    const nRetries = suggestedRetriesFor(flaky) ?? 2
+    const declared = taskConfig ? declaredRetries(taskConfig) : undefined
+    if (taskConfig !== null && declared !== undefined && declared >= nRetries) {
+      recs.push({
+        kind: 'flaky-persistent',
+        title: 'Already retries, still flaky',
+        detail: `Declares retries: ${declared} but still flakes — the failure is nondeterministic, not transient. Investigate the root cause, or run \`vx run --verify\` to check hermeticity.`,
+      })
+    } else {
+      const runs = Number(flaky.withinRunRetries) || 0
+      recs.push({
+        kind: 'flaky-retries',
+        title: 'Flaky — add retries',
+        detail: `Failed then passed under identical inputs in ${runs} run(s) — nondeterministic. Retries make CI resilient.`,
+        snippet: `exec: { retries: ${nRetries} }`,
+      })
+    }
+  }
+
+  // 2. Non-hermetic → split the key per platform, or fix the bug.
+  if (divergent) {
+    recs.push({
+      kind: 'non-hermetic',
+      title: 'Non-hermetic outputs',
+      detail: `${divergentPlatforms(divergent)} produce different outputs for the same cache key (${divergentChanged(divergent)}). Either fix the hermeticity bug (absolute paths, timestamps, hashmap order), or — if the task is legitimately platform-dependent — split the key so each platform caches separately.`,
+      snippet: `cache.inputs.runtime: ['uname -sm']`,
+    })
+  }
+
+  // 3. Slow + uncached → add caching (catalog-gated; skip when unknown or
+  //    already cached).
+  if (taskConfig !== null && !hasCacheBlock(taskConfig) && avgDurationMs !== null && avgDurationMs >= SLOW_MS) {
+    recs.push({
+      kind: 'uncached',
+      title: 'Not cached',
+      detail: `Takes ~${formatDuration(avgDurationMs)} and isn't cached — add a \`cache\` block so re-runs restore instead of re-executing.`,
+      snippet: `cache: {\n  inputs: { files: ['src/**'] },\n  outputs: { files: ['dist/**'] },\n}`,
+    })
+  }
+
+  return recs
 }
 
 /** All catalog projects joined with their analytics rollups, keyed by name. */
