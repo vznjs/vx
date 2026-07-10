@@ -4,6 +4,7 @@
 // route params. This is infra, written once — never per page.
 
 import {
+  type FlakyTask,
   type RunSummaryRow,
   cacheKeyDiff,
   compareRuns,
@@ -36,6 +37,7 @@ import {
   listRuns,
 } from '../api.ts'
 import { formatSignedDuration } from '../format.ts'
+import { type Recommendation, computeRecommendations } from './functions.ts'
 
 type P = Record<string, string>
 
@@ -242,6 +244,31 @@ async function workspaceCatalog(): Promise<Record<string, unknown> | null> {
   }
 }
 
+/**
+ * Actionable recommendations for one task (the task-detail Recommendations
+ * card): aggregate its flaky / hermeticity / catalog signals into a
+ * `{ kind, title, detail, snippet? }` list. Best-effort — each probe degrades
+ * to null so a partial serve still yields whatever recommendations it can; a
+ * remote/ingest-only serve (no catalog) simply omits the catalog-gated ones.
+ */
+async function taskRecommendations(p: P): Promise<Recommendation[]> {
+  const id = p.id ?? ''
+  if (id === '' || !id.includes('#')) return []
+  const [project = '', task = ''] = id.split('#', 2)
+  const [flakyList, herm, catalogDetail, detail] = await Promise.all([
+    getFlakiest(100).catch(() => [] as FlakyTask[]),
+    fetchHermeticity(50).catch(() => null),
+    project !== '' && task !== '' ? fetchCatalogProject(project).catch(() => null) : Promise.resolve(null),
+    getTaskDetail(id).catch(() => null),
+  ])
+  const flaky = flakyList.find((t) => t.id === id) ?? null
+  const divergent = herm?.divergent.find((d) => d.taskId === id) ?? null
+  const cfg = catalogDetail?.config as { tasks?: Record<string, unknown> } | undefined
+  const taskConfig = (cfg?.tasks?.[task] as Record<string, unknown> | undefined) ?? null
+  const avgDurationMs = detail?.aggregate?.avgDurationMs ?? flaky?.p50DurationMs ?? null
+  return computeRecommendations({ flaky, divergent, taskConfig, avgDurationMs })
+}
+
 /** Runs that produced/hit one cache entry — /v1/runs filtered by hash. */
 async function cacheEntryRuns(hash: string): Promise<Record<string, unknown>[]> {
   const runs = await listRuns({ limit: 1000 })
@@ -303,6 +330,7 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
     return { config, source: detail.source, stale: detail.stale === true }
   },
   catalogProject: (p) => fetchCatalogProject(p.name ?? '').catch(() => null),
+  taskRecommendations: (p) => taskRecommendations(p),
   run: (p) => getRun(p.id ?? ''),
   runWhy: (p) => runWhy(p.id ?? ''),
   runSelectedTask: (p) => runSelectedTask(p),

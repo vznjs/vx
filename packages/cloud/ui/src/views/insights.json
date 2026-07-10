@@ -321,7 +321,12 @@
                 "type": "DataTable",
                 "props": {
                   "rows": {
-                    "$state": "/flaky"
+                    "$computed": "withFlakyFix",
+                    "args": {
+                      "arr": {
+                        "$state": "/flaky"
+                      }
+                    }
                   },
                   "status": {
                     "$state": "/flakyStatus"
@@ -362,6 +367,12 @@
                         "gt": 3,
                         "tone": "warn"
                       }
+                    },
+                    {
+                      "key": "fixText",
+                      "label": "Suggested fix",
+                      "kind": "mono",
+                      "baseTone": "accent"
                     }
                   ]
                 }

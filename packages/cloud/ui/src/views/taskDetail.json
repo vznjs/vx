@@ -3,7 +3,8 @@
     "detail": "taskDetail",
     "cacheKey": "cacheKey",
     "config": "catalogTask",
-    "flaky": "taskFlaky"
+    "flaky": "taskFlaky",
+    "recommendations": "taskRecommendations"
   },
   "spec": {
     "type": "Page",
@@ -45,6 +46,32 @@
           "$state": "/flakyStatus",
           "eq": "ok"
         }
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Recommendations",
+          "actionText": "actionable fixes for this task",
+          "noPad": true
+        },
+        "visible": {
+          "$state": "/detailStatus",
+          "eq": "ok"
+        },
+        "children": [
+          {
+            "type": "RecList",
+            "props": {
+              "items": {
+                "$state": "/recommendations"
+              },
+              "status": {
+                "$state": "/recommendationsStatus"
+              },
+              "emptyTitle": "Looks healthy — no recommendations ✓"
+            }
+          }
+        ]
       },
       {
         "type": "Empty",
