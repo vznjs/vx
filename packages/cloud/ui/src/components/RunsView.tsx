@@ -35,6 +35,7 @@ import {
   type RunTick,
   countTone,
   distinctBranches,
+  distinctCommits,
   filterInvocations,
   passRateWithin,
   rateTone,
@@ -172,11 +173,15 @@ export function RunsView() {
   }
   const branchFilter = (): string => (typeof searchParams.branch === 'string' ? searchParams.branch : '')
   const projectFilter = (): string => (typeof searchParams.project === 'string' ? searchParams.project : '')
+  const commitFilter = (): string => (typeof searchParams.commit === 'string' ? searchParams.commit : '')
   const setResult = (v: RunResultFilter): void => setSearchParams({ result: v === 'all' ? undefined : v })
   const setBranch = (v: string): void => setSearchParams({ branch: v === '' ? undefined : v })
   const setProject = (v: string): void => setSearchParams({ project: v === '' ? undefined : v })
-  const clearFilters = (): void => setSearchParams({ result: undefined, branch: undefined, project: undefined })
-  const anyFilter = () => resultFilter() !== 'all' || branchFilter() !== '' || projectFilter() !== ''
+  const setCommit = (v: string): void => setSearchParams({ commit: v === '' ? undefined : v })
+  const clearFilters = (): void =>
+    setSearchParams({ result: undefined, branch: undefined, project: undefined, commit: undefined })
+  const anyFilter = () =>
+    resultFilter() !== 'all' || branchFilter() !== '' || projectFilter() !== '' || commitFilter() !== ''
 
   // The active facet value is always included so its <option> exists on a
   // deep-link load (before invocations/history arrive) — otherwise the select
@@ -194,6 +199,14 @@ export function RunsView() {
     if (projectFilter() !== '') set.add(projectFilter())
     return Array.from(set).sort()
   })
+  // Commit SHAs seen in the loaded invocations (most-recent-first). The active
+  // value is always present so a deep-linked commit restores its <option>.
+  const commitShas = createMemo(() => {
+    const list = distinctCommits(invocations() ?? [])
+    const active = commitFilter()
+    if (active !== '' && !list.includes(active)) list.unshift(active)
+    return list
+  })
 
   // Project → the set of runIds that touched it (invocation headers carry no
   // project, so the server /v1/runs?project= filter names the runs, and we
@@ -207,7 +220,11 @@ export function RunsView() {
   )
 
   const filteredRows = createMemo<Record<string, unknown>[]>(() => {
-    let rows = filterInvocations(historyRows(), { result: resultFilter(), branch: branchFilter() })
+    let rows = filterInvocations(historyRows(), {
+      result: resultFilter(),
+      branch: branchFilter(),
+      commit: commitFilter(),
+    })
     if (projectFilter() !== '') {
       const ids = projectRunIds()
       if (ids) rows = rows.filter((r) => typeof r.runId === 'string' && ids.has(r.runId))
@@ -433,6 +450,10 @@ export function RunsView() {
               <option value="">All projects</option>
               <For each={projectNames()}>{(p) => <option value={p}>{p}</option>}</For>
             </select>
+            <select value={commitFilter()} onChange={(e) => setCommit(e.currentTarget.value)} class="text-[12px] font-mono" aria-label="commit">
+              <option value="">All commits</option>
+              <For each={commitShas()}>{(c) => <option value={c}>{c.slice(0, 8)}</option>}</For>
+            </select>
             <Show when={anyFilter()}>
               <div class="flex items-center gap-1.5 flex-wrap">
                 <Show when={resultFilter() !== 'all'}>
@@ -443,6 +464,9 @@ export function RunsView() {
                 </Show>
                 <Show when={projectFilter() !== ''}>
                   <Chip label={`project: ${projectFilter()}`} onClear={() => setProject('')} />
+                </Show>
+                <Show when={commitFilter() !== ''}>
+                  <Chip label={`commit: ${commitFilter().slice(0, 8)}`} onClear={() => setCommit('')} />
                 </Show>
                 <button type="button" onClick={clearFilters} class="text-[11px] text-fg-3 hover:text-fg underline-offset-2 hover:underline">
                   clear all

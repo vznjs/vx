@@ -9,6 +9,7 @@ import {
   computeRecommendations,
   countTone,
   distinctBranches,
+  distinctCommits,
   filterInvocations,
   invocationPassed,
   passRateWithin,
@@ -265,9 +266,9 @@ describe('invocationPassed', () => {
 
 describe('filterInvocations', () => {
   const rows = [
-    { runId: 'r1', branch: 'main', failedCount: 0, exitOk: true },
-    { runId: 'r2', branch: 'main', failedCount: 2, exitOk: false },
-    { runId: 'r3', branch: 'feature', failedCount: 0, exitOk: true },
+    { runId: 'r1', branch: 'main', commitSha: 'aaaa1111', failedCount: 0, exitOk: true },
+    { runId: 'r2', branch: 'main', commitSha: 'bbbb2222', failedCount: 2, exitOk: false },
+    { runId: 'r3', branch: 'feature', commitSha: 'aaaa1111', failedCount: 0, exitOk: true },
   ]
   it('all + empty branch → passthrough', () => {
     expect(filterInvocations(rows, { result: 'all', branch: '' })).toHaveLength(3)
@@ -281,6 +282,14 @@ describe('filterInvocations', () => {
   it('branch narrows, and facets compose', () => {
     expect(filterInvocations(rows, { result: 'all', branch: 'feature' }).map((r) => r.runId)).toEqual(['r3'])
     expect(filterInvocations(rows, { result: 'passed', branch: 'main' }).map((r) => r.runId)).toEqual(['r1'])
+  })
+  it('commit narrows by prefix, across branches', () => {
+    expect(filterInvocations(rows, { result: 'all', branch: '', commit: 'aaaa1111' }).map((r) => r.runId)).toEqual([
+      'r1',
+      'r3',
+    ])
+    // A shortened SHA still selects (prefix match).
+    expect(filterInvocations(rows, { result: 'all', branch: '', commit: 'bbbb' }).map((r) => r.runId)).toEqual(['r2'])
   })
 })
 
@@ -296,6 +305,21 @@ describe('distinctBranches', () => {
         {},
       ]),
     ).toEqual(['feature', 'main'])
+  })
+})
+
+describe('distinctCommits', () => {
+  it('dedupes preserving first-seen order, dropping empty/absent', () => {
+    expect(
+      distinctCommits([
+        { commitSha: 'c3' },
+        { commitSha: 'c1' },
+        { commitSha: 'c3' },
+        { commitSha: '' },
+        { commitSha: null },
+        {},
+      ]),
+    ).toEqual(['c3', 'c1'])
   })
 })
 

@@ -347,6 +347,7 @@ export type RunResultFilter = 'all' | 'passed' | 'failed'
 interface InvocationLike {
   runId?: unknown
   branch?: unknown
+  commitSha?: unknown
   failedCount?: unknown
   exitOk?: unknown
   startedAt?: unknown
@@ -360,18 +361,21 @@ export function invocationPassed(inv: InvocationLike): boolean {
 }
 
 /**
- * Apply the result + branch facets to invocation rows client-side (both fields
- * live on the row). Project filtering needs a per-project runId set and is
- * handled by the caller.
+ * Apply the result + branch + commit facets to invocation rows client-side (all
+ * three fields live on the row). Project filtering needs a per-project runId set
+ * and is handled by the caller. `commit` matches by prefix so a shortened SHA
+ * from the URL still selects the run.
  */
 export function filterInvocations<T extends InvocationLike>(
   rows: readonly T[],
-  f: { result: RunResultFilter; branch: string },
+  f: { result: RunResultFilter; branch: string; commit?: string },
 ): T[] {
+  const commit = f.commit ?? ''
   return rows.filter((r) => {
     if (f.result === 'passed' && !invocationPassed(r)) return false
     if (f.result === 'failed' && invocationPassed(r)) return false
     if (f.branch !== '' && String(r.branch ?? '') !== f.branch) return false
+    if (commit !== '' && !String(r.commitSha ?? '').startsWith(commit)) return false
     return true
   })
 }
@@ -383,6 +387,19 @@ export function distinctBranches(rows: readonly InvocationLike[]): string[] {
     if (typeof r.branch === 'string' && r.branch !== '') set.add(r.branch)
   }
   return Array.from(set).sort()
+}
+
+/** Distinct non-empty commit SHAs across invocation rows, most-recent-first. */
+export function distinctCommits(rows: readonly InvocationLike[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const r of rows) {
+    if (typeof r.commitSha === 'string' && r.commitSha !== '' && !seen.has(r.commitSha)) {
+      seen.add(r.commitSha)
+      out.push(r.commitSha)
+    }
+  }
+  return out
 }
 
 /** One tick in the CI-health strip. */
