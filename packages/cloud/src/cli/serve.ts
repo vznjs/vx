@@ -32,6 +32,7 @@ import {
   getHitRateSplit,
   getInvocation,
   getParallelismHistory,
+  getPeriodComparison,
   getPrunableEntries,
   getRecentFailures,
   getRegressions,
@@ -1166,6 +1167,20 @@ export async function startServe(opts: {
         const limit = params.get('limit')
         if (limit !== null) args.limit = Number(limit)
         return jsonResponse({ tasks: getRegressions(readDb(), args) })
+      }
+      // Period-over-period analysis — this window vs the previous equal-length
+      // window (default 7d): headline stats deltas + the tasks whose average
+      // duration moved the most. The "how is CI trending?" surface.
+      if (url.pathname === '/v1/analysis') {
+        const params = url.searchParams
+        const args: Parameters<typeof getPeriodComparison>[1] = {}
+        const window = params.get('window')
+        if (window !== null) args.windowDays = Number(window)
+        const minRuns = params.get('minRuns')
+        if (minRuns !== null) args.minRuns = Number(minRuns)
+        const limit = params.get('limit')
+        if (limit !== null) args.limit = Number(limit)
+        return jsonResponse(getPeriodComparison(readDb(), args))
       }
       if (url.pathname === '/v1/bottlenecks') {
         const lookbackDays = Number(url.searchParams.get('days') ?? '14')

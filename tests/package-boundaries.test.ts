@@ -129,6 +129,7 @@ describe('package boundaries', () => {
       'getHitRateSplit',
       'getInvocation',
       'getParallelismHistory',
+      'getPeriodComparison',
       'getPrunableEntries',
       'getRecentFailures',
       'getRegressions',

@@ -1524,6 +1524,179 @@ export function getRegressions(db: Database, args: RegressionArgs = {}): Regress
 }
 
 // ---------------------------------------------------------------------------
+// Period-over-period analysis — "how is CI trending vs the previous window,
+// and which tasks moved the most?" Two adjacent equal-length windows.
+// ---------------------------------------------------------------------------
+
+export interface PeriodStats {
+  /** Distinct runs (invocations) in the window. */
+  runs: number
+  /** Task executions recorded (rows). */
+  taskRuns: number
+  /** Executions that actually ran (not a cache hit). */
+  executed: number
+  /** Failed task executions. */
+  failures: number
+  /** Cache-hit task executions (local or remote). */
+  cacheHits: number
+  /** Sum of executed-task durations (ms). */
+  totalDurationMs: number
+  /** Mean duration of successful executed tasks (ms). */
+  avgDurationMs: number
+  p50DurationMs: number | undefined
+  p95DurationMs: number | undefined
+  /** failures / taskRuns. */
+  failureRate: number
+  /** cacheHits / taskRuns. */
+  cacheHitRate: number
+}
+
+export interface TaskMover {
+  id: string
+  project: string
+  task: string
+  currentAvgMs: number
+  previousAvgMs: number
+  /** current − previous (positive = slower / regressed). */
+  deltaMs: number
+  /** (current − previous) / previous, as a fraction. */
+  deltaPct: number
+  currentRuns: number
+  previousRuns: number
+}
+
+export interface PeriodComparison {
+  windowDays: number
+  current: { from: number; to: number; stats: PeriodStats }
+  previous: { from: number; to: number; stats: PeriodStats }
+  /**
+   * Tasks whose average executed duration moved the most between the two
+   * windows, by absolute impact (biggest ms shift first; positive = slower).
+   * Only tasks with >= minRuns successful executions in BOTH windows qualify,
+   * so a mover reflects a real trend, not one-off noise.
+   */
+  movers: TaskMover[]
+}
+
+export interface PeriodComparisonArgs {
+  /** Length of each window in days. Default 7 (this week vs last week). */
+  windowDays?: number
+  /** End of the CURRENT window (ms). Default now — override for tests. */
+  endMs?: number
+  /** Min successful executions in EACH window for a mover to qualify. Default 3. */
+  minRuns?: number
+  /** Max movers returned. Default 8. */
+  limit?: number
+}
+
+function periodStats(db: Database, from: number, to: number): PeriodStats {
+  const agg = db
+    .query(
+      `SELECT COUNT(*) AS taskRuns,
+              COUNT(DISTINCT run_id) AS runs,
+              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
+              SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END) AS cacheHits,
+              SUM(CASE WHEN cache_hit IS NULL OR cache_hit = 0 THEN 1 ELSE 0 END) AS executed,
+              COALESCE(SUM(CASE WHEN cache_hit IS NULL OR cache_hit = 0 THEN duration_ms ELSE 0 END), 0) AS totalDurationMs
+       FROM runs WHERE started_at >= ? AND started_at < ?`,
+    )
+    .get(from, to) as {
+    taskRuns: number
+    runs: number
+    failures: number
+    cacheHits: number
+    executed: number
+    totalDurationMs: number
+  }
+  const durs = (
+    db
+      .query(
+        `SELECT duration_ms AS d FROM runs
+         WHERE started_at >= ? AND started_at < ?
+           AND (cache_hit IS NULL OR cache_hit = 0) AND status = 'success'
+         ORDER BY duration_ms`,
+      )
+      .all(from, to) as { d: number }[]
+  ).map((r) => r.d)
+  const taskRuns = agg.taskRuns
+  return {
+    runs: agg.runs,
+    taskRuns,
+    executed: agg.executed,
+    failures: agg.failures,
+    cacheHits: agg.cacheHits,
+    totalDurationMs: agg.totalDurationMs,
+    avgDurationMs: durs.length > 0 ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length) : 0,
+    p50DurationMs: pickPercentile(durs, 0.5),
+    p95DurationMs: pickPercentile(durs, 0.95),
+    failureRate: taskRuns > 0 ? agg.failures / taskRuns : 0,
+    cacheHitRate: taskRuns > 0 ? agg.cacheHits / taskRuns : 0,
+  }
+}
+
+function avgByTask(
+  db: Database,
+  from: number,
+  to: number,
+): Map<string, { avg: number; runs: number; project: string; task: string }> {
+  const rows = db
+    .query(
+      `SELECT project, task, AVG(duration_ms) AS avg, COUNT(*) AS runs
+       FROM runs
+       WHERE started_at >= ? AND started_at < ?
+         AND (cache_hit IS NULL OR cache_hit = 0) AND status = 'success'
+       GROUP BY project, task`,
+    )
+    .all(from, to) as { project: string; task: string; avg: number; runs: number }[]
+  return new Map(
+    rows.map((r) => [
+      `${r.project}#${r.task}`,
+      { avg: r.avg, runs: r.runs, project: r.project, task: r.task },
+    ]),
+  )
+}
+
+export function getPeriodComparison(
+  db: Database,
+  args: PeriodComparisonArgs = {},
+): PeriodComparison {
+  const windowDays = Math.max(1, args.windowDays ?? 7)
+  const minRuns = Math.max(1, args.minRuns ?? 3)
+  const limit = clampInt(args.limit ?? 8, 1, 100)
+  const to = args.endMs ?? Date.now()
+  const win = windowDays * 86_400_000
+  const curFrom = to - win
+  const prevTo = curFrom
+  const prevFrom = curFrom - win
+
+  const cur = avgByTask(db, curFrom, to)
+  const prev = avgByTask(db, prevFrom, prevTo)
+  const movers: TaskMover[] = []
+  for (const [id, c] of cur) {
+    const p = prev.get(id)
+    if (p === undefined || c.runs < minRuns || p.runs < minRuns) continue
+    movers.push({
+      id,
+      project: c.project,
+      task: c.task,
+      currentAvgMs: Math.round(c.avg),
+      previousAvgMs: Math.round(p.avg),
+      deltaMs: Math.round(c.avg - p.avg),
+      deltaPct: p.avg > 0 ? (c.avg - p.avg) / p.avg : 0,
+      currentRuns: c.runs,
+      previousRuns: p.runs,
+    })
+  }
+  movers.sort((a, b) => Math.abs(b.deltaMs) - Math.abs(a.deltaMs))
+  return {
+    windowDays,
+    current: { from: curFrom, to, stats: periodStats(db, curFrom, to) },
+    previous: { from: prevFrom, to: prevTo, stats: periodStats(db, prevFrom, prevTo) },
+    movers: movers.slice(0, limit),
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Bottlenecks — "if you sped up X, you'd save Y per week"
 // ---------------------------------------------------------------------------
 

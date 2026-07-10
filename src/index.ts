@@ -205,6 +205,7 @@ export {
   getHitRateSplit,
   getInvocation,
   getParallelismHistory,
+  getPeriodComparison,
   getPrunableEntries,
   getRecentFailures,
   getRegressions,

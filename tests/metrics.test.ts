@@ -16,6 +16,7 @@ import {
   getHitRateSplit,
   getInvocation,
   getParallelismHistory,
+  getPeriodComparison,
   getPrunableEntries,
   getRecentFailures,
   getRegressions,
@@ -1128,6 +1129,87 @@ describe('getRegressions', () => {
   })
 })
 
+describe('getPeriodComparison', () => {
+  const day = 86_400_000
+  // Fixed clock so the two 7-day windows are deterministic. `now` is the end
+  // of the CURRENT window; [now-7d, now) is current, [now-14d, now-7d) previous.
+  const now = 14 * day + 12 * 3_600_000
+  const seed = (
+    cache: Cache,
+    n: number,
+    task: string,
+    status: RunRecord['status'],
+    durationMs: number,
+    startedAt: number,
+  ): void => {
+    cache.recordRunBundle({
+      runs: [
+        mkRun({
+          hash: `h-${n}`,
+          project: 'pkg',
+          task,
+          runId: `r-${n}`,
+          status,
+          durationMs,
+          startedAt,
+        }),
+      ],
+      invocation: mkInvocation({ runId: `r-${n}`, startedAt }),
+    })
+  }
+
+  it('splits runs into two adjacent windows and aggregates each', () => {
+    withCache((cache) => {
+      // Previous window: one success, one failure.
+      seed(cache, 1, 'build', 'success', 200, now - 10 * day)
+      seed(cache, 2, 'build', 'failed', 0, now - 9 * day)
+      // Current window: two successes.
+      seed(cache, 3, 'build', 'success', 300, now - 3 * day)
+      seed(cache, 4, 'build', 'success', 100, now - 2 * day)
+      const cmp = getPeriodComparison(cache.dbHandle(), { endMs: now })
+      expect(cmp.windowDays).toBe(7)
+      expect(cmp.current.stats.taskRuns).toBe(2)
+      expect(cmp.current.stats.failures).toBe(0)
+      expect(cmp.current.stats.avgDurationMs).toBe(200) // (300+100)/2
+      expect(cmp.previous.stats.taskRuns).toBe(2)
+      expect(cmp.previous.stats.failures).toBe(1)
+      expect(cmp.previous.stats.failureRate).toBe(0.5)
+    })
+  })
+
+  it('ranks movers by absolute average-duration delta, both windows >= minRuns', () => {
+    withCache((cache) => {
+      // `slow` got much slower; `fast` sped up a bit; `rare` has too few runs.
+      for (let i = 0; i < 3; i++) {
+        seed(cache, 100 + i, 'slow', 'success', 100, now - 10 * day)
+        seed(cache, 110 + i, 'slow', 'success', 500, now - 3 * day)
+        seed(cache, 120 + i, 'fast', 'success', 200, now - 10 * day)
+        seed(cache, 130 + i, 'fast', 'success', 150, now - 3 * day)
+      }
+      // `rare` runs once per window — below minRuns=3, excluded.
+      seed(cache, 140, 'rare', 'success', 100, now - 10 * day)
+      seed(cache, 141, 'rare', 'success', 9000, now - 3 * day)
+      const cmp = getPeriodComparison(cache.dbHandle(), { endMs: now })
+      expect(cmp.movers.map((m) => m.task)).toEqual(['slow', 'fast'])
+      const slow = cmp.movers[0]!
+      expect(slow.currentAvgMs).toBe(500)
+      expect(slow.previousAvgMs).toBe(100)
+      expect(slow.deltaMs).toBe(400)
+      expect(slow.deltaPct).toBeCloseTo(4, 5)
+      expect(cmp.movers.find((m) => m.task === 'rare')).toBeUndefined()
+    })
+  })
+
+  it('empty db yields zeroed stats and no movers', () => {
+    withCache((cache) => {
+      const cmp = getPeriodComparison(cache.dbHandle(), { endMs: now })
+      expect(cmp.current.stats.taskRuns).toBe(0)
+      expect(cmp.current.stats.avgDurationMs).toBe(0)
+      expect(cmp.movers).toEqual([])
+    })
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Schema drift guard — every exported metrics query must run against the
 // CURRENT cache.db schema. The schema is owned by src/cache/cache.ts and its
@@ -1165,6 +1247,7 @@ describe('metrics schema drift guard', () => {
         getRunHeatmap: () => metrics.getRunHeatmap(db),
         getFlakiestTasks: () => metrics.getFlakiestTasks(db),
         getRegressions: () => metrics.getRegressions(db),
+        getPeriodComparison: () => metrics.getPeriodComparison(db),
         getBottlenecks: () => metrics.getBottlenecks(db),
         getParallelismHistory: () => metrics.getParallelismHistory(db),
         getStorageGrowth: () => metrics.getStorageGrowth(db),
