@@ -189,6 +189,42 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-09**: **vx-cloud made ACTIONABLE — every surfaced problem now
+  carries its concrete fix** (owner: "Work on better vx cloud"; the
+  clearest expression of the standing "one-stop CI shop, butter, compete
+  with GHA/Jenkins/Nx Cloud" vision — a CI PRODUCT tells you how to fix a
+  problem, not just that it exists). Extends the pattern the hermeticity
+  card already established (a rendered remediation hint) to flaky tasks +
+  a per-task Recommendations card. **PURE UI** (`packages/cloud/ui`) — ZERO
+  core (`src/`) and ZERO serve (`packages/cloud/src/`) change; every
+  suggestion derives from data the dashboard already fetches
+  (`/v1/flakiness`, `/v1/hermeticity`, the workspace catalog). **(A)
+  Insights flaky card** gains a "Suggested fix" column: a CONFIRMED-flaky
+  row shows `exec.retries: N` (`N = max(maxAttempts ?? 2, 2)`), inferred-
+  only rows blank. **(B) Task-detail Recommendations card** aggregates
+  every applicable fix for that task, each a rationale + copy-able snippet:
+  flaky→`exec: { retries: N }` (catalog-aware REFINEMENT: if the resolved
+  config already declares `retries >= N`, flip to "still flaky — the
+  failure is nondeterministic, not transient; investigate / `vx run
+--verify`", no snippet); non-hermetic (task in the divergent list)→names
+  the platforms + rels and offers `cache.inputs.runtime: ['uname -sm']` or
+  fix-the-bug; slow+uncached (catalog-gated: no `cache` block declared +
+  p50 > ~1s)→"add a `cache` block so re-runs restore"; a positive "Looks
+  healthy ✓" zero-state when none apply. A small declarative `RecList`
+  catalog component renders each (icon + title + rationale + snippet).
+  Snippets are schema-accurate. Derivations (`suggestedRetriesFor`,
+  `withFlakyFix`, `computeRecommendations`) live in `jr/functions.ts`,
+  pinned by 16 new unit assertions (retries math, already-declares
+  refinement, per-signal + stacked + healthy). Browser-verified 6/6
+  against a seeded fixture (flaky→retries snippet, already-retries
+  refinement, non-hermetic split-key, slow-uncached add-caching, healthy
+  zero-state, Insights column) with ZERO console errors. UI 25 pass, cloud
+  299, core 1214, lint clean; dist rebuilt (not committed). Docs: dashboard
+  guide synced. Commits `f903f8f`..`de04d1c`. **Not built (owner decision,
+  unchanged):** run TRIGGERS (scheduled / on-push / webhook) — the
+  cloud-data-model Phase 4, which reverses a standing non-goal; do not
+  build unprompted.
+
 - **2026-07-09**: **npm release pipeline hardened — the `sigstore`
   publish crash fixed + the 10-package publish made idempotent** (owner
   pasted a live release failure: `Cannot find module 'sigstore'` from
