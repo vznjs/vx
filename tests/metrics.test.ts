@@ -1209,6 +1209,31 @@ describe('getPeriodComparison', () => {
     })
   })
 
+  it('project/task scoping narrows both windows and the movers', () => {
+    withCache((cache) => {
+      // Two tasks move; the scope must isolate ONE task's trend.
+      for (let i = 0; i < 3; i++) {
+        seed(cache, 200 + i, 'build', 'success', 100, now - 10 * day)
+        seed(cache, 210 + i, 'build', 'success', 400, now - 3 * day)
+        seed(cache, 220 + i, 'test', 'success', 900, now - 10 * day)
+        seed(cache, 230 + i, 'test', 'success', 100, now - 3 * day)
+      }
+      const scoped = getPeriodComparison(cache.dbHandle(), {
+        endMs: now,
+        project: 'pkg',
+        task: 'build',
+      })
+      expect(scoped.current.stats.taskRuns).toBe(3) // only build's rows
+      expect(scoped.current.stats.avgDurationMs).toBe(400)
+      expect(scoped.previous.stats.avgDurationMs).toBe(100)
+      expect(scoped.movers.map((m) => m.task)).toEqual(['build'])
+      // A different project scopes to nothing.
+      const other = getPeriodComparison(cache.dbHandle(), { endMs: now, project: 'nope' })
+      expect(other.current.stats.taskRuns).toBe(0)
+      expect(other.movers).toEqual([])
+    })
+  })
+
   it('an empty window returns numeric 0s, never null (SUM-over-no-rows guard)', () => {
     withCache((cache) => {
       // Only the CURRENT window has runs; the previous window is empty — the

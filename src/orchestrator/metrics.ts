@@ -1587,9 +1587,34 @@ export interface PeriodComparisonArgs {
   minRuns?: number
   /** Max movers returned. Default 8. */
   limit?: number
+  /** Scope to one project — the project-detail "did MY project trend?" view. */
+  project?: string
+  /** Scope to one task within `project` — the task-detail trend. */
+  task?: string
 }
 
-function periodStats(db: Database, from: number, to: number): PeriodStats {
+/** Optional per-project/task scoping shared by the two window queries. */
+interface PeriodScope {
+  project?: string
+  task?: string
+}
+
+function scopeSql(scope: PeriodScope): { sql: string; params: string[] } {
+  let sql = ''
+  const params: string[] = []
+  if (scope.project !== undefined) {
+    sql += ' AND project = ?'
+    params.push(scope.project)
+  }
+  if (scope.task !== undefined) {
+    sql += ' AND task = ?'
+    params.push(scope.task)
+  }
+  return { sql, params }
+}
+
+function periodStats(db: Database, from: number, to: number, scope: PeriodScope): PeriodStats {
+  const { sql, params } = scopeSql(scope)
   const agg = db
     .query(
       // COALESCE every SUM: over an empty window SQLite SUM() returns NULL, and
@@ -1602,9 +1627,9 @@ function periodStats(db: Database, from: number, to: number): PeriodStats {
               COALESCE(SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END), 0) AS cacheHits,
               COALESCE(SUM(CASE WHEN cache_hit IS NULL OR cache_hit = 0 THEN 1 ELSE 0 END), 0) AS executed,
               COALESCE(SUM(CASE WHEN cache_hit IS NULL OR cache_hit = 0 THEN duration_ms ELSE 0 END), 0) AS totalDurationMs
-       FROM runs WHERE started_at >= ? AND started_at < ?`,
+       FROM runs WHERE started_at >= ? AND started_at < ?${sql}`,
     )
-    .get(from, to) as {
+    .get(from, to, ...params) as {
     taskRuns: number
     runs: number
     failures: number
@@ -1617,10 +1642,10 @@ function periodStats(db: Database, from: number, to: number): PeriodStats {
       .query(
         `SELECT duration_ms AS d FROM runs
          WHERE started_at >= ? AND started_at < ?
-           AND (cache_hit IS NULL OR cache_hit = 0) AND status = 'success'
+           AND (cache_hit IS NULL OR cache_hit = 0) AND status = 'success'${sql}
          ORDER BY duration_ms`,
       )
-      .all(from, to) as { d: number }[]
+      .all(from, to, ...params) as { d: number }[]
   ).map((r) => r.d)
   const taskRuns = agg.taskRuns
   return {
@@ -1642,16 +1667,18 @@ function avgByTask(
   db: Database,
   from: number,
   to: number,
+  scope: PeriodScope,
 ): Map<string, { avg: number; runs: number; project: string; task: string }> {
+  const { sql, params } = scopeSql(scope)
   const rows = db
     .query(
       `SELECT project, task, AVG(duration_ms) AS avg, COUNT(*) AS runs
        FROM runs
        WHERE started_at >= ? AND started_at < ?
-         AND (cache_hit IS NULL OR cache_hit = 0) AND status = 'success'
+         AND (cache_hit IS NULL OR cache_hit = 0) AND status = 'success'${sql}
        GROUP BY project, task`,
     )
-    .all(from, to) as { project: string; task: string; avg: number; runs: number }[]
+    .all(from, to, ...params) as { project: string; task: string; avg: number; runs: number }[]
   return new Map(
     rows.map((r) => [
       `${r.project}#${r.task}`,
@@ -1667,14 +1694,18 @@ export function getPeriodComparison(
   const windowDays = Math.max(1, args.windowDays ?? 7)
   const minRuns = Math.max(1, args.minRuns ?? 3)
   const limit = clampInt(args.limit ?? 8, 1, 100)
+  const scope: PeriodScope = {
+    ...(args.project !== undefined ? { project: args.project } : {}),
+    ...(args.task !== undefined ? { task: args.task } : {}),
+  }
   const to = args.endMs ?? Date.now()
   const win = windowDays * 86_400_000
   const curFrom = to - win
   const prevTo = curFrom
   const prevFrom = curFrom - win
 
-  const cur = avgByTask(db, curFrom, to)
-  const prev = avgByTask(db, prevFrom, prevTo)
+  const cur = avgByTask(db, curFrom, to, scope)
+  const prev = avgByTask(db, prevFrom, prevTo, scope)
   const movers: TaskMover[] = []
   for (const [id, c] of cur) {
     const p = prev.get(id)
@@ -1694,8 +1725,8 @@ export function getPeriodComparison(
   movers.sort((a, b) => Math.abs(b.deltaMs) - Math.abs(a.deltaMs))
   return {
     windowDays,
-    current: { from: curFrom, to, stats: periodStats(db, curFrom, to) },
-    previous: { from: prevFrom, to: prevTo, stats: periodStats(db, prevFrom, prevTo) },
+    current: { from: curFrom, to, stats: periodStats(db, curFrom, to, scope) },
+    previous: { from: prevFrom, to: prevTo, stats: periodStats(db, prevFrom, prevTo, scope) },
     movers: movers.slice(0, limit),
   }
 }

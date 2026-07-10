@@ -139,4 +139,22 @@ describe('GET /v1/analysis', () => {
     ).json()) as AnalysisBody
     expect(one.movers.map((m) => m.task)).toEqual(['build'])
   })
+
+  it('?project=&task= scope the windows to one entity', async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'vx-an-serve-'))
+    server = await startServe({ root: dir, ingestDir: dir, token: 'an-tok' })
+    const now = Date.now()
+    await push(summary('a1', 'build', 'success', 100, now - 3 * DAY))
+    await push(summary('a2', 'lint', 'success', 50, now - 3 * DAY))
+
+    const scoped = (await (
+      await fetch(`${server.origin}/v1/analysis?project=demo&task=build`, { headers: auth })
+    ).json()) as AnalysisBody
+    expect(scoped.current.stats.taskRuns).toBe(1) // only build's row
+
+    const none = (await (
+      await fetch(`${server.origin}/v1/analysis?project=absent`, { headers: auth })
+    ).json()) as AnalysisBody
+    expect(none.current.stats.taskRuns).toBe(0)
+  })
 })

@@ -1180,6 +1180,12 @@ export async function startServe(opts: {
         if (minRuns !== null) args.minRuns = Number(minRuns)
         const limit = params.get('limit')
         if (limit !== null) args.limit = Number(limit)
+        // Per-project / per-task scoping — the entity pages' "did MY
+        // performance improve or decrease?" trend.
+        const project = params.get('project')
+        if (project !== null) args.project = project
+        const task = params.get('task')
+        if (task !== null) args.task = task
         return jsonResponse(getPeriodComparison(readDb(), args))
       }
       if (url.pathname === '/v1/bottlenecks') {
