@@ -33,6 +33,7 @@ const { registry } = defineRegistry(catalog, {
     RunViz: C.RunViz,
     DataTable: C.DataTable,
     RankList: C.RankList,
+    RecList: C.RecList,
     LiveActivity: C.LiveActivity,
     TaskLogs: C.TaskLogs,
     Json: C.Json,

@@ -28,6 +28,7 @@ import { RunGraph as RunGraphPrimitive, type RunGraphNode } from '../components/
 import { STATUS, toVizState, type VizState } from '../components/status.tsx'
 import { cpuPct, formatDuration, formatHour, paletteFor } from '../format.ts'
 import { type FormatHint, type Tone, axisFormatter, formatValue, toneText } from './hints.ts'
+import type { Recommendation } from './functions.ts'
 
 type Row = Record<string, unknown>
 type C<P> = BaseComponentProps<P>
@@ -889,5 +890,62 @@ export function ArtifactDownload(c: C<{ hash?: string; artifacts?: Row[]; fallba
         download artifact
       </button>
     </Show>
+  )
+}
+
+// --- RecList ----------------------------------------------------------------
+
+// Per-kind tone + icon (literal classes for UnoCSS; the /40 + /5 opacity
+// variants are in the safelist, and these live in a scanned .tsx anyway).
+const REC_TONE: Record<string, { border: string; bg: string; text: string; icon: string }> = {
+  'flaky-retries': { border: 'border-warn/40', bg: 'bg-warn/5', text: 'text-warn', icon: 'i-tabler-refresh' },
+  'flaky-persistent': { border: 'border-danger/40', bg: 'bg-danger/5', text: 'text-danger', icon: 'i-tabler-alert-triangle' },
+  'non-hermetic': { border: 'border-danger/40', bg: 'bg-danger/5', text: 'text-danger', icon: 'i-tabler-versions' },
+  uncached: { border: 'border-accent/40', bg: 'bg-accent/5', text: 'text-accent', icon: 'i-tabler-database' },
+}
+const REC_TONE_DEFAULT = { border: 'border-border', bg: 'bg-surface-2/40', text: 'text-fg-1', icon: 'i-tabler-info-circle' }
+
+/**
+ * The actionable-recommendations list for a task (task-detail): every
+ * applicable fix as a short rationale + a copy-able config snippet. Empty →
+ * a positive "looks healthy" note. Fed by the `taskRecommendations` source
+ * (a `{ kind, title, detail, snippet? }[]`).
+ */
+export function RecList(c: C<{ items?: Recommendation[]; emptyTitle?: string; status?: DataStatus }>) {
+  const items = () => c.props.items ?? []
+  return (
+    <DataGate status={c.props.status} skeleton={<SkeletonRows rows={2} />}>
+      <Show
+        when={items().length > 0}
+        fallback={
+          <div class="flex items-center gap-2 px-4 py-4 text-[12px] text-success">
+            <span class="i-tabler-circle-check text-[14px]" aria-hidden="true" />
+            {c.props.emptyTitle ?? 'Looks healthy — no recommendations ✓'}
+          </div>
+        }
+      >
+        <div class="flex flex-col gap-3 p-4">
+          <For each={items()}>
+            {(r) => {
+              const tone = REC_TONE[r.kind] ?? REC_TONE_DEFAULT
+              return (
+                <div class={`rounded-lg border ${tone.border} ${tone.bg} px-3.5 py-3 flex flex-col gap-2`}>
+                  <div class="flex items-center gap-2">
+                    <span class={`${tone.icon} ${tone.text} text-[14px] shrink-0`} aria-hidden="true" />
+                    <span class={`text-[12px] font-semibold ${tone.text}`}>{r.title}</span>
+                  </div>
+                  <div class="text-[11px] text-fg-2 leading-relaxed">{r.detail}</div>
+                  <Show when={r.snippet}>
+                    <pre class="m-0 px-3 py-2 rounded-md border border-border bg-bg/60 text-[11px] font-mono overflow-auto whitespace-pre-wrap text-fg-1">
+                      {r.snippet}
+                    </pre>
+                  </Show>
+                </div>
+              )
+            }}
+          </For>
+        </div>
+      </Show>
+    </DataGate>
   )
 }
