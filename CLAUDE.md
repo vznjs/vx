@@ -5030,9 +5030,12 @@ longer-horizon core gaps stay sourced from `docs/comparison.md`.
    (per-assignment, since one agent multiplexes submissions with different
    policies). Deferred: not worth a wire-protocol bump for the narrow gain
    until a real need surfaces.
-7. Core backlog (from `docs/comparison.md`): pre-signed URL auth for
-   the remote cache. (`--continue=<mode>`, `--cache-dir`, and
-   `dependsOn` wildcards are SHIPPED.)
+7. Core backlog (from `docs/comparison.md`): CLEARED. Pre-signed URLs:
+   the client preflight is SHIPPED (`VX_REMOTE_CACHE_PREFLIGHT`); the
+   vx-cloud serve-side blob backend (S3/R2 GET offload) is the designed
+   Phase 2 in `docs/design/presigned-artifacts-2026-07.md` — build when
+   a deployment actually needs it. (`--continue=<mode>`, `--cache-dir`,
+   and `dependsOn` wildcards are SHIPPED.)
 
 **Owner-REJECTED non-goals (do NOT re-propose):**
 
