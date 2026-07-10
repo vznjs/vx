@@ -7,6 +7,8 @@
     "parallelism": "parallelism",
     "bottlenecks": "bottlenecks",
     "flaky": "flaky",
+    "analysis": "analysis",
+    "regressions": "regressions",
     "prunable": "prunable",
     "stats": "cacheStats",
     "savings": "cacheSavings",
@@ -140,6 +142,241 @@
                   "else": "good"
                 }
               }
+            }
+          }
+        ]
+      },
+      {
+        "type": "Grid",
+        "props": {
+          "variant": "metrics-4"
+        },
+        "visible": {
+          "$state": "/analysis/hasData",
+          "eq": true
+        },
+        "children": [
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Runs (this 7d)",
+              "value": {
+                "$computed": "fmtNumber",
+                "args": {
+                  "n": {
+                    "$state": "/analysis/current/runs"
+                  }
+                }
+              },
+              "sub": {
+                "$computed": "text",
+                "args": {
+                  "tpl": "{d} vs prior 7d",
+                  "d": {
+                    "$state": "/analysis/_runsDelta"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Failure rate (this 7d)",
+              "value": {
+                "$computed": "fmtPercent0",
+                "args": {
+                  "n": {
+                    "$state": "/analysis/current/failureRate"
+                  }
+                }
+              },
+              "sub": {
+                "$state": "/analysis/_failureLabel"
+              },
+              "tone": {
+                "$state": "/analysis/_failureTone"
+              }
+            }
+          },
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Cache hit rate (this 7d)",
+              "value": {
+                "$computed": "fmtPercent0",
+                "args": {
+                  "n": {
+                    "$state": "/analysis/current/cacheHitRate"
+                  }
+                }
+              },
+              "sub": {
+                "$state": "/analysis/_hitLabel"
+              },
+              "tone": {
+                "$state": "/analysis/_hitTone"
+              }
+            }
+          },
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Avg exec (this 7d)",
+              "value": {
+                "$computed": "fmtDuration",
+                "args": {
+                  "ms": {
+                    "$state": "/analysis/current/avgDurationMs"
+                  }
+                }
+              },
+              "sub": {
+                "$state": "/analysis/_avgLabel"
+              },
+              "tone": {
+                "$state": "/analysis/_avgTone"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Started failing across branches",
+          "actionText": "used to pass · now failing on ≥ 2 branches (14d)",
+          "noPad": true
+        },
+        "visible": {
+          "$state": "/regressionsStatus",
+          "neq": "missing"
+        },
+        "children": [
+          {
+            "type": "DataTable",
+            "props": {
+              "rows": {
+                "$state": "/regressions"
+              },
+              "status": {
+                "$state": "/regressionsStatus"
+              },
+              "rowHref": "/tasks/{id}",
+              "emptyTitle": "No cross-branch regressions 🎉",
+              "emptyHint": "No task that used to pass is now failing on multiple branches.",
+              "columns": [
+                {
+                  "key": "task",
+                  "label": "Task",
+                  "kind": "projtask"
+                },
+                {
+                  "key": "_kind",
+                  "label": "",
+                  "kind": "dots",
+                  "dots": [
+                    {
+                      "field": "_dirReg",
+                      "map": "delta"
+                    }
+                  ]
+                },
+                {
+                  "key": "branchesFailing",
+                  "label": "Branches failing",
+                  "align": "right",
+                  "tone": {
+                    "gt": 0,
+                    "tone": "danger"
+                  }
+                },
+                {
+                  "key": "_branchList",
+                  "label": "On",
+                  "kind": "mono",
+                  "baseTone": "faint"
+                },
+                {
+                  "key": "failures",
+                  "label": "Fails",
+                  "align": "right",
+                  "kind": "number"
+                },
+                {
+                  "key": "lastRunAt",
+                  "label": "Last run",
+                  "align": "right",
+                  "kind": "relativeTime",
+                  "baseTone": "faint"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Biggest movers",
+          "actionText": "avg exec time — this 7d vs the prior 7d",
+          "noPad": true
+        },
+        "visible": {
+          "$state": "/analysis/hasData",
+          "eq": true
+        },
+        "children": [
+          {
+            "type": "DataTable",
+            "props": {
+              "rows": {
+                "$state": "/analysis/movers"
+              },
+              "status": {
+                "$state": "/analysisStatus"
+              },
+              "rowHref": "/tasks/{id}",
+              "emptyTitle": "No tasks with enough runs in both windows",
+              "emptyHint": "A mover needs ≥ 3 executions in each 7-day window.",
+              "columns": [
+                {
+                  "key": "task",
+                  "label": "Task",
+                  "kind": "projtask"
+                },
+                {
+                  "key": "previousAvgMs",
+                  "label": "Prior avg",
+                  "align": "right",
+                  "kind": "duration",
+                  "baseTone": "faint"
+                },
+                {
+                  "key": "currentAvgMs",
+                  "label": "This avg",
+                  "align": "right",
+                  "kind": "duration"
+                },
+                {
+                  "key": "_deltaLabel",
+                  "label": "Δ",
+                  "kind": "dots",
+                  "dots": [
+                    {
+                      "field": "_dir",
+                      "map": "delta"
+                    }
+                  ]
+                },
+                {
+                  "key": "_pctLabel",
+                  "label": "Δ%",
+                  "align": "right",
+                  "kind": "mono",
+                  "baseTone": "faint"
+                }
+              ]
             }
           }
         ]

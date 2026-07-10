@@ -14,12 +14,14 @@ import {
   fetchCatalogProject,
   fetchCatalogProjects,
   fetchCatalogTasks,
+  getAnalysis,
   getBottlenecks,
   getCacheBreakdown,
   getCacheSavings,
   getCacheStats,
   getFailures,
   getFlakiest,
+  getRegressions,
   getHeatmap,
   getHistory,
   getInvocation,
@@ -291,6 +293,66 @@ async function runSelectedTask(p: P): Promise<unknown> {
   return run?.tasks.find((t) => t.project === project && t.task === task) ?? { project, task }
 }
 
+/**
+ * Period-over-period analysis for the Insights "Trending" card: the raw
+ * two-window comparison PLUS the derived per-tile deltas + tones + the mover
+ * labels, so the JSON view binds plain state paths (conditions/formatters
+ * can't compute a signed tone). `null` = older serve without /v1/analysis.
+ */
+async function analysisData(): Promise<Record<string, unknown> | null> {
+  const cmp = await getAnalysis(7, 3, 8)
+  if (cmp === null) return null
+  const c = cmp.current.stats
+  const p = cmp.previous.stats
+  const signed = (n: number): string => (n === 0 ? '±0' : n > 0 ? `+${n}` : `−${Math.abs(n)}`)
+  const signedPP = (n: number): string =>
+    Math.abs(n) < 0.05 ? '±0.0pp' : `${n > 0 ? '+' : '−'}${Math.abs(n).toFixed(1)}pp`
+  const signedPct = (frac: number): string =>
+    Math.abs(frac) < 0.005 ? '±0%' : `${frac > 0 ? '+' : '−'}${Math.round(Math.abs(frac) * 100)}%`
+  const failurePP = (c.failureRate - p.failureRate) * 100
+  const hitPP = (c.cacheHitRate - p.cacheHitRate) * 100
+  const avgDelta = c.avgDurationMs - p.avgDurationMs
+  const band = (v: number, dz: number, up: string, down: string): 'good' | 'warn' | 'bad' | 'default' =>
+    v > dz ? (up as 'bad' | 'warn') : v < -dz ? (down as 'good') : 'default'
+  return {
+    windowDays: cmp.windowDays,
+    current: c,
+    previous: p,
+    hasData: c.taskRuns > 0 || p.taskRuns > 0,
+    // Per-tile deltas vs the previous equal-length window (data-source derived).
+    _runsDelta: signed(c.runs - p.runs),
+    _failureLabel: signedPP(failurePP),
+    _failureTone: band(failurePP, 0.5, 'bad', 'good'),
+    _hitLabel: signedPP(hitPP),
+    // A cache-hit-rate DROP is the concern — flip the band direction.
+    _hitTone: hitPP > 0.5 ? 'good' : hitPP < -0.5 ? 'warn' : 'default',
+    _avgLabel: formatSignedDuration(avgDelta),
+    _avgTone: band(avgDelta, 1, 'warn', 'good'),
+    movers: cmp.movers.map((m) => ({
+      ...m,
+      _deltaLabel: formatSignedDuration(m.deltaMs),
+      _pctLabel: signedPct(m.deltaPct),
+      // 'slower'/'faster' drives the red/green delta dot (DotMap 'delta').
+      _dir: m.deltaMs > 0 ? 'slower' : m.deltaMs < 0 ? 'faster' : 'same',
+    })),
+  }
+}
+
+/**
+ * Regressions for the Insights "Started failing" card: tasks now failing across
+ * branches that used to pass. Adds a joined branch string + a kind label so the
+ * DataTable binds plain fields. `null` = older serve without /v1/regressions.
+ */
+async function regressionRows(): Promise<Record<string, unknown>[] | null> {
+  const rows = await getRegressions(14, 2, 25)
+  if (rows === null) return null
+  return rows.map((r) => ({
+    ...r,
+    _branchList: r.branches.join(', '),
+    _kind: r.regressed ? 'regressed' : 'always-broken',
+  }))
+}
+
 export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   cacheStats: () => getCacheStats(),
   cacheSavings: () => getCacheSavings(),
@@ -308,6 +370,8 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   parallelism: () => getParallelismHistory(50),
   bottlenecks: () => getBottlenecks(14, 25),
   flaky: () => getFlakiest(25),
+  analysis: () => analysisData(),
+  regressions: () => regressionRows(),
   prunable: () => getPrunable(7, 25),
   serverMeta: () => getMeta(),
   // Workspace catalog (colocated serves only) — null on a remote/older serve,

@@ -781,6 +781,53 @@ export interface PrunableEntry {
   ageDays: number
 }
 
+export interface RegressedTask {
+  id: string
+  project: string
+  task: string
+  branchesFailing: number
+  branchesTotal: number
+  branches: string[]
+  regressed: boolean
+  firstFailedAt: number
+  lastRunAt: number
+  failures: number
+  runs: number
+}
+
+export interface PeriodStats {
+  runs: number
+  taskRuns: number
+  executed: number
+  failures: number
+  cacheHits: number
+  totalDurationMs: number
+  avgDurationMs: number
+  p50DurationMs: number | undefined
+  p95DurationMs: number | undefined
+  failureRate: number
+  cacheHitRate: number
+}
+
+export interface TaskMover {
+  id: string
+  project: string
+  task: string
+  currentAvgMs: number
+  previousAvgMs: number
+  deltaMs: number
+  deltaPct: number
+  currentRuns: number
+  previousRuns: number
+}
+
+export interface PeriodComparison {
+  windowDays: number
+  current: { from: number; to: number; stats: PeriodStats }
+  previous: { from: number; to: number; stats: PeriodStats }
+  movers: TaskMover[]
+}
+
 export async function listProjects(limit = 100): Promise<ProjectRollup[]> {
   const r = await getJson<{ projects: ProjectRollup[] }>(`/v1/projects?limit=${limit}`)
   return r.projects
@@ -833,6 +880,44 @@ export async function getPrunable(
     `/v1/cache/prunable?minAgeDays=${minAgeDays}&limit=${limit}`,
   )
   return r.entries
+}
+
+/**
+ * Tasks that started failing across branches (used to pass, now failing on
+ * >= minBranches distinct branches). `null` on an older serve without the
+ * /v1/regressions route so the card degrades to an empty state.
+ */
+export async function getRegressions(
+  sinceDays = 14,
+  minBranches = 2,
+  limit = 25,
+): Promise<RegressedTask[] | null> {
+  try {
+    const r = await getJson<{ tasks: RegressedTask[] }>(
+      `/v1/regressions?sinceDays=${sinceDays}&minBranches=${minBranches}&limit=${limit}`,
+    )
+    return r.tasks
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Period-over-period comparison (this window vs the previous equal-length one).
+ * `null` on an older serve without the /v1/analysis route.
+ */
+export async function getAnalysis(
+  windowDays = 7,
+  minRuns = 3,
+  limit = 8,
+): Promise<PeriodComparison | null> {
+  try {
+    return await getJson<PeriodComparison>(
+      `/v1/analysis?window=${windowDays}&minRuns=${minRuns}&limit=${limit}`,
+    )
+  } catch {
+    return null
+  }
 }
 
 /**
