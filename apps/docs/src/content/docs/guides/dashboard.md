@@ -107,21 +107,38 @@ single-repo serve behaves exactly like a single-workspace one.
 The landing page is **Runs** — the one surface for spawning, watching,
 and digging into runs.
 
-- **Runs** (`/runs`) — the daily-dev entry point, three sections in one
-  view. A **spawn bar** submits runs against the serve's colocated
-  workspace (task names autocomplete from the workspace catalog); each
-  press queues another job, so you can trigger several back-to-back —
-  the serve's FIFO queue executes them one at a time. The
-  **queued/live section** shows every job (yours and CLI-delegated
-  ones) with its queue position; queued jobs can be canceled, and the
-  running job expands inline into the live session: a staged DAG of the
-  task graph with the critical path highlighted, per-node status +
-  duration + CPU/RAM, a flamegraph toggle, and streamed logs. When a
-  job finishes it flows into the **history table** below — every
-  invocation with branch / commit / CI / tags columns, per-row links to
-  run detail and compare. (Spawning needs a colocated workspace — the
-  graph comes from a no-exec `planRun`; an analytics-only serve shows
-  history only. The old `/run` cockpit route redirects here.)
+Key surfaces (Runs, Workspace, Cache, Artifacts, Insights) **auto-refresh
+live** on a ~5s interval, so new runs and metrics appear without a manual
+reload. A **live** pill in the header shows when auto-refresh is running;
+it reads **paused** and the interval suspends while the tab is in the
+background (refetching at once when you return). Previously-loaded data
+stays on screen during a refresh — only the first load shows a skeleton.
+
+- **Runs** (`/runs`) — the daily-dev entry point. A **spawn bar**
+  submits runs against the serve's colocated workspace (task names
+  autocomplete from the workspace catalog); each press queues another
+  job, so you can trigger several back-to-back — the serve's FIFO queue
+  executes them one at a time. A **CI-health strip** sits atop the view:
+  a row of status ticks for the last ~24 runs (green passed / red
+  failed, newest on the right, each a link into its run) plus health
+  tiles — pass rate (24h), flaky-task count, cache hit rate (24h), and
+  non-hermetic-key count — tinted green/amber/red by threshold and
+  linking to the entity that explains each. The **queued/live section**
+  shows every job (yours and CLI-delegated ones) with its queue
+  position; queued jobs can be canceled, and the running job expands
+  inline into the live session: a staged DAG of the task graph with the
+  critical path highlighted, per-node status + duration + CPU/RAM, a
+  flamegraph toggle, and streamed logs. When a job finishes it flows
+  into the **history table** below — every invocation with branch /
+  commit / CI / tags columns, per-row links to run detail and compare.
+  Above the table, **faceted filters** (result · branch · project)
+  narrow the history and persist in the URL hash
+  (`#/runs?result=failed&branch=main`), so a filtered view is
+  shareable and restores on load; active facets show as clearable chips
+  with a *clear all* affordance, alongside the free-text filter.
+  (Spawning needs a colocated workspace — the graph comes from a
+  no-exec `planRun`; an analytics-only serve shows history only. The old
+  `/run` cockpit route redirects here.)
 - **Run detail** (`/runs/:id`) — the staged DAG and a flamegraph
   timeline, a per-task table (CPU + peak RSS + hash), and a **"why did
   this re-run?"** card that names the exact cache-key components that
