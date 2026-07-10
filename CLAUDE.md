@@ -79,7 +79,6 @@ src/
     stable-keys.ts      # shared stable-key derivation (prefetch + shortcircuit)
     local-shortcircuit.ts # restore-ahead classify (two-tier scheduler feed)
     remote-prefetch.ts  # background remote GETs (LayeredCache runs only)
-    remote-cache-setup.ts # VX_REMOTE_CACHE_* env → LayeredCache
     events.ts           # run event bus + serializable WireEvent contract
     plugin.ts           # VxPlugin interface + installPlugins
     plugin-host.ts      # eventSink wiring + end-of-run teardown/flush
@@ -105,8 +104,8 @@ src/
     index.ts task-graph.ts dependency-spec.ts
     scheduler.ts        # two-tier parallel topo executor (exec + restore queues,
                         # 2-D resource admission over exec.resources)
-  cache/                # local + remote cache cluster
-    index.ts cache.ts layered-cache.ts remote-cache.ts inputs.ts tar.ts
+  cache/                # local cache + the RemoteCacheLayer seam
+    index.ts cache.ts layered-cache.ts inputs.ts tar.ts
     cas-backend.ts / digest.ts # pluggable CAS seam (internal, artifact-store roadmap)
   exec/                 # per-task execution primitives
     index.ts runner.ts env.ts sandbox-runtime.ts
@@ -5151,12 +5150,15 @@ longer-horizon core gaps stay sourced from `docs/comparison.md`.
    (per-assignment, since one agent multiplexes submissions with different
    policies). Deferred: not worth a wire-protocol bump for the narrow gain
    until a real need surfaces.
-7. Core backlog (from `docs/comparison.md`): CLEARED. Pre-signed URLs:
-   the client preflight is SHIPPED (`VX_REMOTE_CACHE_PREFLIGHT`); the
-   vx-cloud serve-side blob backend (S3/R2 GET offload) is the designed
-   Phase 2 in `docs/design/presigned-artifacts-2026-07.md` — build when
-   a deployment actually needs it. (`--continue=<mode>`, `--cache-dir`,
-   and `dependsOn` wildcards are SHIPPED.)
+7. Core backlog (from `docs/comparison.md`): CLEARED. Blob offload
+   (pre-signed URLs): the CLIENT half ships in the native wire —
+   `NativeCacheClient` follows one auth-dropping 307/302 on GET; the
+   serve-side blob backend (S3/R2) behind that redirect is designed
+   (`docs/design/native-cache-wire-2026-07.md` §offload) — build when a
+   deployment actually needs it. (The Turbo `--preflight` client from
+   `presigned-artifacts-2026-07.md` was deleted with the Turbo wire.)
+   (`--continue=<mode>`, `--cache-dir`, and `dependsOn` wildcards are
+   SHIPPED.)
 
 **Owner-REJECTED non-goals (do NOT re-propose):**
 
