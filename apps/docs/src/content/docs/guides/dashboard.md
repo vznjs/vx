@@ -160,17 +160,25 @@ stays on screen during a refresh — only the first load shows a skeleton.
   remote serve.
 - **Projects** (`/projects`, `/projects/:name`) — the catalog joined
   with run analytics, so **never-run projects have pages too**; a
-  project's detail shows its resolved per-task config blocks.
+  project's detail shows a **trend tile row** (this 7 days vs the
+  prior 7, scoped to the project: avg exec, failure rate, runs, hit
+  rate, each with a signed delta tinted by direction — "did MY
+  project get faster or slower?") plus its resolved per-task config
+  blocks.
 - **Tasks** (`/tasks`, `/tasks/:id`) — catalog ∪ history: every
   declared task (group/persistent/cacheable kind) with per
   `(project, task)` aggregates — runs, success rate, hit rate,
-  avg/p50/p99, a duration sparkline, the latest cache-key entry, the
-  resolved **Config** card, a flaky badge when `/v1/flakiness`
-  flags it, and a **Recommendations** card that turns the task's flaky
-  / hermeticity / caching signals into concrete fixes (each with a
-  copy-pasteable config snippet — `exec.retries`, a per-platform
-  `cache.inputs.runtime` key split, or an `exec`/`cache` block for a
-  slow uncached task).
+  avg/p50/p99, a duration sparkline, a **per-task trend row** (this
+  7d vs prior 7d with signed deltas — the "did my change slow this
+  task down?" read), a **Debug card** with one-click jumps (the last
+  *failed* run with this task's captured logs pre-opened, the latest
+  run, and the latest artifact's cache-entry page with its download),
+  the latest cache-key entry, the resolved **Config** card, a flaky
+  badge when `/v1/flakiness` flags it, and a **Recommendations** card
+  that turns the task's flaky / hermeticity / caching signals into
+  concrete fixes (each with a copy-pasteable config snippet —
+  `exec.retries`, a per-platform `cache.inputs.runtime` key split, or
+  an `exec`/`cache` block for a slow uncached task).
 - **Cache** (`/cache`, `/cache/:hash`) — hit-rate split (local vs
   remote), estimated time saved, per-project bytes, an entries
   inventory with cold/stale heat and reclaimable bytes, and a

@@ -187,7 +187,54 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 6. **Project boundaries are hard.** A project's globs never reach into
    another project's dir.
 
+## Dashboard product lens (owner directive, 2026-07-10)
+
+**The UI is built from a SINGLE DEV's perspective** — not an
+org/manager analytics console. Every surface answers one of the dev's
+own questions, in their flow order:
+
+1. **See it run** — spawn/watch live runs (the Runs landing).
+2. **Dig into the projects they own** — project drill-ins with their
+   tasks and history.
+3. **Task analysis: did MY performance improve or decrease?** — per
+   task/project over-time trend, not just workspace-wide aggregates.
+4. **Identify flaky tests** — confirmed/inferred flakiness with the
+   concrete fix.
+5. **Easy debug access** — from any failure, ONE click to the run's
+   logs and the task's artifacts.
+
+When adding a dashboard feature, ask "which of these five does it
+serve, and how many clicks from the dev's entry point?" — a feature
+serving none of them is probably org-analytics scope creep.
+
 ## Decision log
+
+- **2026-07-10**: \*\*The dashboard's product lens is THE SINGLE DEV
+  (standing owner directive — see "Dashboard product lens" section above)
+  - the first lens-driven wave SHIPPED (`df76cef`, `e969b92`)**. Owner:
+    "the ui should be from single dev perspective. He wants to see it run,
+    dig into projects he own, tasks analysis, see if his or improved or
+    decreased performance, identify flaky tests give him easy access to
+    debug like artifacts of run etc". Audit against the five questions:
+    see-it-run ✓ (live Runs), flaky ✓ (badges + Recommendations), but
+    "did MY task/project improve or decrease?" existed only
+    workspace-wide, and debug evidence took multiple hops. Closed: **(1)**
+    `getPeriodComparison` gains `project`/`task` scoping (one shared WHERE
+    fragment; `/v1/analysis?project=&task=`), and BOTH entity detail pages
+    render a scoped trend tile row (avg exec / failure rate / runs / hit
+    rate, this 7d vs prior 7d, signed deltas tinted by direction) — the
+    derivation shared with the Insights card via `trendFields()` in
+    `ui/jr/data.ts`. **(2)** Task detail gains a **Debug card\*\*: last
+    FAILED run deep-linked with `?task=` (captured logs open immediately),
+    latest run (deduped when it IS the failed one), latest artifact's
+    `/cache/:hash` page (facts + download) — RankList rows are BUTTONS with
+    programmatic navigation, so link assertions must click, not query
+    `<a>`. Browser-verified (task made 5× slower → `500ms`/`+400ms` amber
+    tiles on both pages; the failed-run row lands on
+    `/runs/<id>?task=app%23build`; zero page errors). Core 1251, cloud
+    331, UI 40, lint clean. When adding dashboard features, check the lens
+    section: a feature serving none of the five dev questions is
+    org-analytics scope creep.
 
 - **2026-07-10**: **Pre-signed artifact URLs: design + the client half
   SHIPPED (`5ecbc42`, `8fbd2c5`) — and the patterns feature's adversarial
