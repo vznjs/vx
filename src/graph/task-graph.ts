@@ -307,8 +307,11 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       }
     }
 
-    // Stable ordering for deterministic scheduling and cache keys.
-    node.deps.sort()
+    // Stable ordering for deterministic scheduling and cache keys — deduped:
+    // a target named twice (an exact entry + a pattern matching it, or a
+    // literal duplicate) must contribute ONE edge, not a double-folded
+    // upstream hash and a doubled DOT edge.
+    node.deps = [...new Set(node.deps)].sort()
     return node
   }
 

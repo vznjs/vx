@@ -129,6 +129,44 @@ describe('dependsOn patterns e2e', () => {
     expect(seen).toContain('DTS')
   })
 
+  it("cache.inputs.tasks: ['build.*'] COUPLES the dependent — upstream change re-runs it", async () => {
+    // The stale-hit trap the adversarial review found: dependsOn expands the
+    // pattern but a literal-matching filter would select ZERO upstream hashes,
+    // so the dependent cache-hit stale bytes after the upstream changed. Both
+    // surfaces must share the matcher.
+    const config = `export default {
+        tasks: {
+          'build.x': {
+            exec: { command: "cp src.txt out.txt" },
+            cache: { inputs: { files: ['src.txt'] }, outputs: { files: ['out.txt'] } },
+          },
+          top: {
+            dependsOn: ['build.*'],
+            exec: { command: "cp out.txt final.txt" },
+            cache: {
+              inputs: { files: ['top-src.txt'], tasks: ['build.*'] },
+              outputs: { files: ['final.txt'] },
+            },
+          },
+        },
+      }
+      `
+    await addProject(root, 'app', config)
+    const dir = path.join(root, 'packages', 'app')
+    await writeFile(path.join(dir, 'src.txt'), 'v1')
+    await writeFile(path.join(dir, 'top-src.txt'), 'const')
+    git(root, 'add', '-A')
+
+    expect((await vx(root, ['run', 'app#top'])).code).toBe(0)
+    expect(await Bun.file(path.join(dir, 'final.txt')).text()).toBe('v1')
+
+    // Change ONLY the upstream's input; the pattern filter must carry the
+    // upstream's new hash into top's key → top re-runs and sees v2.
+    await writeFile(path.join(dir, 'src.txt'), 'v2-CHANGED')
+    expect((await vx(root, ['run', 'app#top'])).code).toBe(0)
+    expect(await Bun.file(path.join(dir, 'final.txt')).text()).toBe('v2-CHANGED')
+  })
+
   it('a bare wildcard in dependsOn still fails loud', async () => {
     await addProject(
       root,

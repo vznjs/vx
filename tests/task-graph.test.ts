@@ -502,6 +502,23 @@ describe('buildTaskGraph', () => {
       ).toThrow(/patterns are not supported in the "pkg#task" form/)
     })
 
+    it('mixed exact + pattern naming the same target contributes ONE edge', () => {
+      const nodes = buildTaskGraph({
+        projects: projects(
+          project('app', {
+            top: { dependsOn: ['build.a', 'build.*'] },
+            'build.a': cmd('a'),
+            'build.b': cmd('b'),
+          }),
+        ),
+        packageGraph: packageGraph({}),
+        requested: [{ project: 'app', task: 'top' }],
+      })
+      // No duplicate: a doubled edge would double-fold build.a's hash into
+      // top's cache key and print the DOT edge twice.
+      expect(nodes.get('app#top')?.deps).toEqual(['app#build.a', 'app#build.b'])
+    })
+
     it("'*' is literal only as a metacharacter — dots in names never widen the match", () => {
       const nodes = buildTaskGraph({
         projects: projects(

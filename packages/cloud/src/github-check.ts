@@ -78,7 +78,8 @@ export async function resolveGithubCheckTarget(
   if (!githubCheckCandidate(env)) return undefined
   const headSha = await resolveHeadSha(env)
   if (headSha === undefined) return undefined
-  const name = env['VX_GITHUB_CHECK_NAME'] ?? commandName ?? 'vx run'
+  // Empty-string overrides fall through — a nameless check run is a 422.
+  const name = env['VX_GITHUB_CHECK_NAME'] || commandName || 'vx run'
   return {
     apiUrl: (env['GITHUB_API_URL'] ?? 'https://api.github.com').replace(/\/+$/, ''),
     repo: env['GITHUB_REPOSITORY']!,

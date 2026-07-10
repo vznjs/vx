@@ -124,6 +124,10 @@ describe('resolveGithubCheckTarget', () => {
       (await resolveGithubCheckTarget({ ...GHA_ENV, VX_GITHUB_CHECK_NAME: 'ci gate' }, 'vx run ci'))
         ?.name,
     ).toBe('ci gate')
+    // Empty override falls through — a nameless check run is a GitHub 422.
+    expect(
+      (await resolveGithubCheckTarget({ ...GHA_ENV, VX_GITHUB_CHECK_NAME: '' }, 'vx run ci'))?.name,
+    ).toBe('vx run ci')
   })
 
   it('defaults the API url and strips a trailing slash from an override', async () => {

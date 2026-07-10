@@ -75,4 +75,40 @@ describe('filterUpstreamHashes', () => {
       /self#build: cache\.inputs\.tasks/,
     )
   })
+
+  // ─── task-name patterns — the same glob dependsOn expands must SELECT here.
+  // A filter matching 'build.*' literally while dependsOn expanded it would
+  // silently pick ZERO upstream hashes → stale cache hits (repro-confirmed).
+  describe('task-name patterns', () => {
+    const up = [
+      outcome('self#build.js', 'h-js'),
+      outcome('self#build.dts', 'h-dts'),
+      outcome('self#lint', 'h-lint'),
+      outcome('dep#build.wasm', 'h-wasm'),
+      outcome('other#codegen.v2', 'h-cg'),
+    ]
+
+    it("'build.*' selects every matching same-project upstream, nothing else", () => {
+      const out = filterUpstreamHashes(up, ['build.*'], 'self', 'self#top')
+      expect(out.map(([id]) => id).sort()).toEqual(['self#build.dts', 'self#build.js'])
+    })
+
+    it("'^build.*' selects matching dep-workspace upstream only", () => {
+      expect(filterUpstreamHashes(up, ['^build.*'], 'self', 'self#top')).toEqual([
+        ['dep#build.wasm', 'h-wasm'],
+      ])
+    })
+
+    it("'pkg#pattern' works as a filter (unlike dependsOn, which rejects it)", () => {
+      expect(filterUpstreamHashes(up, ['other#codegen.*'], 'self', 'self#top')).toEqual([
+        ['other#codegen.v2', 'h-cg'],
+      ])
+    })
+
+    it("negated patterns subtract: ['*', '!build.*'] keeps only non-matching self tasks", () => {
+      expect(filterUpstreamHashes(up, ['*', '!build.*'], 'self', 'self#top')).toEqual([
+        ['self#lint', 'h-lint'],
+      ])
+    })
+  })
 })
