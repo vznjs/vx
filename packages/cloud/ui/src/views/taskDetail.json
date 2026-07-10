@@ -4,7 +4,8 @@
     "cacheKey": "cacheKey",
     "config": "catalogTask",
     "flaky": "taskFlaky",
-    "recommendations": "taskRecommendations"
+    "recommendations": "taskRecommendations",
+    "trend": "taskTrend"
   },
   "spec": {
     "type": "Page",
@@ -20,7 +21,7 @@
       {
         "type": "Text",
         "props": {
-          "text": "Loading…",
+          "text": "Loading\u2026",
           "tone": "faint"
         },
         "visible": {
@@ -48,6 +49,141 @@
         }
       },
       {
+        "type": "Grid",
+        "props": {
+          "variant": "metrics-4"
+        },
+        "visible": {
+          "$state": "/trend/hasData",
+          "eq": true
+        },
+        "children": [
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Avg exec (this 7d)",
+              "value": {
+                "$computed": "fmtDuration",
+                "args": {
+                  "ms": {
+                    "$state": "/trend/current/avgDurationMs"
+                  }
+                }
+              },
+              "sub": {
+                "$state": "/trend/_avgLabel"
+              },
+              "tone": {
+                "$state": "/trend/_avgTone"
+              }
+            }
+          },
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Failure rate (this 7d)",
+              "value": {
+                "$computed": "fmtPercent0",
+                "args": {
+                  "n": {
+                    "$state": "/trend/current/failureRate"
+                  }
+                }
+              },
+              "sub": {
+                "$state": "/trend/_failureLabel"
+              },
+              "tone": {
+                "$state": "/trend/_failureTone"
+              }
+            }
+          },
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Runs (this 7d)",
+              "value": {
+                "$computed": "fmtNumber",
+                "args": {
+                  "n": {
+                    "$state": "/trend/current/runs"
+                  }
+                }
+              },
+              "sub": {
+                "$computed": "text",
+                "args": {
+                  "tpl": "{d} vs prior 7d",
+                  "d": {
+                    "$state": "/trend/_runsDelta"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Cache hit rate (this 7d)",
+              "value": {
+                "$computed": "fmtPercent0",
+                "args": {
+                  "n": {
+                    "$state": "/trend/current/cacheHitRate"
+                  }
+                }
+              },
+              "sub": {
+                "$state": "/trend/_hitLabel"
+              },
+              "tone": {
+                "$state": "/trend/_hitTone"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Debug",
+          "actionText": "one click to the evidence",
+          "noPad": true
+        },
+        "visible": {
+          "$state": "/detailStatus",
+          "eq": "ok"
+        },
+        "children": [
+          {
+            "type": "RankList",
+            "props": {
+              "items": {
+                "$state": "/detail/_debug/runs"
+              },
+              "labelKey": "label",
+              "valueKey": "at",
+              "valueFormat": "relativeTime",
+              "rowHref": "/runs/{_runId}?task={_taskRef}",
+              "emptyTitle": "No recorded runs yet"
+            }
+          },
+          {
+            "type": "RankList",
+            "props": {
+              "items": {
+                "$state": "/detail/_debug/artifact"
+              },
+              "labelKey": "label",
+              "valueKey": "at",
+              "valueFormat": "relativeTime",
+              "rowHref": "/cache/{_hash}",
+              "emptyTitle": "No cached artifact yet"
+            }
+          }
+        ]
+      },
+      {
         "type": "Card",
         "props": {
           "title": "Recommendations",
@@ -68,7 +204,7 @@
               "status": {
                 "$state": "/recommendationsStatus"
               },
-              "emptyTitle": "Looks healthy — no recommendations ✓"
+              "emptyTitle": "Looks healthy \u2014 no recommendations \u2713"
             }
           }
         ]
@@ -117,7 +253,7 @@
               "sub": {
                 "$computed": "text",
                 "args": {
-                  "tpl": "{a} ok · {b} fail",
+                  "tpl": "{a} ok \u00b7 {b} fail",
                   "a": {
                     "$state": "/detail/aggregate/successes"
                   },
@@ -198,7 +334,7 @@
               "sub": {
                 "$computed": "text",
                 "args": {
-                  "tpl": "p50 {a} · p99 {b}",
+                  "tpl": "p50 {a} \u00b7 p99 {b}",
                   "a": {
                     "$computed": "fmtDuration",
                     "args": {
@@ -235,7 +371,7 @@
               "sub": {
                 "$computed": "text",
                 "args": {
-                  "tpl": "avg · max {m}",
+                  "tpl": "avg \u00b7 max {m}",
                   "m": {
                     "$computed": "cpuStat",
                     "args": {
@@ -264,7 +400,7 @@
               "sub": {
                 "$computed": "text",
                 "args": {
-                  "tpl": "min {a} · max {b}",
+                  "tpl": "min {a} \u00b7 max {b}",
                   "a": {
                     "$computed": "fmtDuration",
                     "args": {
@@ -291,7 +427,7 @@
         "type": "Card",
         "props": {
           "title": "Duration over recent runs",
-          "actionText": "oldest → newest"
+          "actionText": "oldest \u2192 newest"
         },
         "visible": {
           "$state": "/detailStatus",
@@ -326,7 +462,7 @@
           "actionText": {
             "$computed": "text",
             "args": {
-              "tpl": "resolved · source: {s}",
+              "tpl": "resolved \u00b7 source: {s}",
               "s": {
                 "$state": "/config/source"
               }
@@ -341,7 +477,7 @@
           {
             "type": "Text",
             "props": {
-              "text": "The project's config file changed since vx lock — this is the FROZEN config. Run vx lock to refreeze.",
+              "text": "The project's config file changed since vx lock \u2014 this is the FROZEN config. Run vx lock to refreeze.",
               "tone": "warn",
               "class": "mb-3"
             },
@@ -373,7 +509,7 @@
               }
             }
           },
-          "actionLabel": "entry page →"
+          "actionLabel": "entry page \u2192"
         },
         "visible": {
           "$state": "/detail/latestEntry",

@@ -2,7 +2,8 @@
   "data": {
     "summary": "projectSummary",
     "tasks": "projectTasks",
-    "catalog": "catalogProject"
+    "catalog": "catalogProject",
+    "trend": "projectTrend"
   },
   "spec": {
     "type": "Page",
@@ -159,6 +160,101 @@
         ]
       },
       {
+        "type": "Grid",
+        "props": {
+          "variant": "metrics-4"
+        },
+        "visible": {
+          "$state": "/trend/hasData",
+          "eq": true
+        },
+        "children": [
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Avg exec (this 7d)",
+              "value": {
+                "$computed": "fmtDuration",
+                "args": {
+                  "ms": {
+                    "$state": "/trend/current/avgDurationMs"
+                  }
+                }
+              },
+              "sub": {
+                "$state": "/trend/_avgLabel"
+              },
+              "tone": {
+                "$state": "/trend/_avgTone"
+              }
+            }
+          },
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Failure rate (this 7d)",
+              "value": {
+                "$computed": "fmtPercent0",
+                "args": {
+                  "n": {
+                    "$state": "/trend/current/failureRate"
+                  }
+                }
+              },
+              "sub": {
+                "$state": "/trend/_failureLabel"
+              },
+              "tone": {
+                "$state": "/trend/_failureTone"
+              }
+            }
+          },
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Runs (this 7d)",
+              "value": {
+                "$computed": "fmtNumber",
+                "args": {
+                  "n": {
+                    "$state": "/trend/current/runs"
+                  }
+                }
+              },
+              "sub": {
+                "$computed": "text",
+                "args": {
+                  "tpl": "{d} vs prior 7d",
+                  "d": {
+                    "$state": "/trend/_runsDelta"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Cache hit rate (this 7d)",
+              "value": {
+                "$computed": "fmtPercent0",
+                "args": {
+                  "n": {
+                    "$state": "/trend/current/cacheHitRate"
+                  }
+                }
+              },
+              "sub": {
+                "$state": "/trend/_hitLabel"
+              },
+              "tone": {
+                "$state": "/trend/_hitTone"
+              }
+            }
+          }
+        ]
+      },
+      {
         "type": "Empty",
         "props": {
           "title": "No data for this project"
@@ -181,7 +277,7 @@
           "actionText": {
             "$computed": "text",
             "args": {
-              "tpl": "source: {s} · {p}",
+              "tpl": "source: {s} \u00b7 {p}",
               "s": {
                 "$state": "/catalog/source"
               },
@@ -199,7 +295,7 @@
           {
             "type": "Text",
             "props": {
-              "text": "This project's config file changed since vx lock — the blocks below show the FROZEN configs. Run vx lock to refreeze.",
+              "text": "This project's config file changed since vx lock \u2014 the blocks below show the FROZEN configs. Run vx lock to refreeze.",
               "tone": "warn",
               "class": "mb-3"
             },

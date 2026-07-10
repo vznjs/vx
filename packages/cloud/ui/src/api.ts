@@ -904,17 +904,25 @@ export async function getRegressions(
 
 /**
  * Period-over-period comparison (this window vs the previous equal-length one).
- * `null` on an older serve without the /v1/analysis route.
+ * Optional `scope` narrows to one project / one task — the entity pages'
+ * "did MY performance improve or decrease?" trend. `null` on an older serve
+ * without the /v1/analysis route.
  */
 export async function getAnalysis(
   windowDays = 7,
   minRuns = 3,
   limit = 8,
+  scope?: { project?: string; task?: string },
 ): Promise<PeriodComparison | null> {
   try {
-    return await getJson<PeriodComparison>(
-      `/v1/analysis?window=${windowDays}&minRuns=${minRuns}&limit=${limit}`,
-    )
+    const params = new URLSearchParams({
+      window: String(windowDays),
+      minRuns: String(minRuns),
+      limit: String(limit),
+    })
+    if (scope?.project !== undefined) params.set('project', scope.project)
+    if (scope?.task !== undefined) params.set('task', scope.task)
+    return await getJson<PeriodComparison>(`/v1/analysis?${params.toString()}`)
   } catch {
     return null
   }

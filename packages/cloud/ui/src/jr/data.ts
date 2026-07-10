@@ -5,7 +5,9 @@
 
 import {
   type FlakyTask,
+  type PeriodComparison,
   type RunSummaryRow,
+  type TaskDetail,
   cacheKeyDiff,
   compareRuns,
   explainCacheKey,
@@ -293,27 +295,27 @@ async function runSelectedTask(p: P): Promise<unknown> {
   return run?.tasks.find((t) => t.project === project && t.task === task) ?? { project, task }
 }
 
+const signed = (n: number): string => (n === 0 ? '±0' : n > 0 ? `+${n}` : `−${Math.abs(n)}`)
+const signedPP = (n: number): string =>
+  Math.abs(n) < 0.05 ? '±0.0pp' : `${n > 0 ? '+' : '−'}${Math.abs(n).toFixed(1)}pp`
+const signedPct = (frac: number): string =>
+  Math.abs(frac) < 0.005 ? '±0%' : `${frac > 0 ? '+' : '−'}${Math.round(Math.abs(frac) * 100)}%`
+const band = (v: number, dz: number, up: string, down: string): 'good' | 'warn' | 'bad' | 'default' =>
+  v > dz ? (up as 'bad' | 'warn') : v < -dz ? (down as 'good') : 'default'
+
 /**
- * Period-over-period analysis for the Insights "Trending" card: the raw
- * two-window comparison PLUS the derived per-tile deltas + tones + the mover
- * labels, so the JSON view binds plain state paths (conditions/formatters
- * can't compute a signed tone). `null` = older serve without /v1/analysis.
+ * The two-window trend, flattened for pure-JSON binding: raw window stats PLUS
+ * signed per-tile deltas + direction tones (conditions/formatters can't
+ * compute a signed tone). Shared by the workspace-wide Insights card and the
+ * per-task / per-project entity trends — the single-dev "did MY performance
+ * improve or decrease?" read.
  */
-async function analysisData(): Promise<Record<string, unknown> | null> {
-  const cmp = await getAnalysis(7, 3, 8)
-  if (cmp === null) return null
+function trendFields(cmp: PeriodComparison): Record<string, unknown> {
   const c = cmp.current.stats
   const p = cmp.previous.stats
-  const signed = (n: number): string => (n === 0 ? '±0' : n > 0 ? `+${n}` : `−${Math.abs(n)}`)
-  const signedPP = (n: number): string =>
-    Math.abs(n) < 0.05 ? '±0.0pp' : `${n > 0 ? '+' : '−'}${Math.abs(n).toFixed(1)}pp`
-  const signedPct = (frac: number): string =>
-    Math.abs(frac) < 0.005 ? '±0%' : `${frac > 0 ? '+' : '−'}${Math.round(Math.abs(frac) * 100)}%`
   const failurePP = (c.failureRate - p.failureRate) * 100
   const hitPP = (c.cacheHitRate - p.cacheHitRate) * 100
   const avgDelta = c.avgDurationMs - p.avgDurationMs
-  const band = (v: number, dz: number, up: string, down: string): 'good' | 'warn' | 'bad' | 'default' =>
-    v > dz ? (up as 'bad' | 'warn') : v < -dz ? (down as 'good') : 'default'
   return {
     windowDays: cmp.windowDays,
     current: c,
@@ -328,6 +330,19 @@ async function analysisData(): Promise<Record<string, unknown> | null> {
     _hitTone: hitPP > 0.5 ? 'good' : hitPP < -0.5 ? 'warn' : 'default',
     _avgLabel: formatSignedDuration(avgDelta),
     _avgTone: band(avgDelta, 1, 'warn', 'good'),
+  }
+}
+
+/**
+ * Period-over-period analysis for the Insights "Trending" card: the shared
+ * trend fields plus the workspace-wide movers table. `null` = older serve
+ * without /v1/analysis.
+ */
+async function analysisData(): Promise<Record<string, unknown> | null> {
+  const cmp = await getAnalysis(7, 3, 8)
+  if (cmp === null) return null
+  return {
+    ...trendFields(cmp),
     movers: cmp.movers.map((m) => ({
       ...m,
       _deltaLabel: formatSignedDuration(m.deltaMs),
@@ -336,6 +351,54 @@ async function analysisData(): Promise<Record<string, unknown> | null> {
       _dir: m.deltaMs > 0 ? 'slower' : m.deltaMs < 0 ? 'faster' : 'same',
     })),
   }
+}
+
+/** The per-entity trend (task or project scope). `null` = older serve. */
+async function scopedTrend(scope: {
+  project?: string
+  task?: string
+}): Promise<Record<string, unknown> | null> {
+  const cmp = await getAnalysis(7, 1, 1, scope)
+  if (cmp === null) return null
+  return trendFields(cmp)
+}
+
+/**
+ * One-click debug jumps for the task-detail Debug card (single-dev lens: from
+ * a broken task straight to its evidence). `runs` rows deep-link the run with
+ * this task pre-selected (logs open); `artifact` rows land on the cache-entry
+ * page (facts + download). Split because the two row kinds link to different
+ * routes and RankList takes one href template.
+ */
+function taskDebugRows(detail: TaskDetail): {
+  runs: Record<string, unknown>[]
+  artifact: Record<string, unknown>[]
+} {
+  const ref = `${detail.project}#${detail.task}`
+  const runs: Record<string, unknown>[] = []
+  const lastFailed = detail.recent.find((r) => r.status === 'failed' && r.runId !== null)
+  if (lastFailed !== undefined) {
+    runs.push({
+      label: 'Last failed run — logs open on this task',
+      at: lastFailed.startedAt,
+      _runId: lastFailed.runId,
+      _taskRef: ref,
+    })
+  }
+  const latest = detail.recent.find((r) => r.runId !== null)
+  // Skip the duplicate row when the latest run IS the last failed one.
+  if (latest !== undefined && latest.runId !== lastFailed?.runId) {
+    runs.push({ label: 'Latest run', at: latest.startedAt, _runId: latest.runId, _taskRef: ref })
+  }
+  const artifact: Record<string, unknown>[] = []
+  if (detail.latestEntry !== null) {
+    artifact.push({
+      label: 'Latest artifact — cache entry + download',
+      at: detail.latestEntry.createdAt,
+      _hash: detail.latestEntry.hash,
+    })
+  }
+  return { runs, artifact }
 }
 
 /**
@@ -384,7 +447,19 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   artifacts: () => artifactRows(),
   hermeticity: () => hermeticityData(),
   // param-based (route params + query params, already decoded by the loader)
-  taskDetail: (p) => getTaskDetail(p.id ?? ''),
+  taskDetail: async (p) => {
+    const detail = await getTaskDetail(p.id ?? '')
+    // `_debug` = the one-click debug jumps (single-dev lens: from a broken
+    // task to its logs/artifact without hunting).
+    return detail === null ? null : { ...detail, _debug: taskDebugRows(detail) }
+  },
+  // Per-entity "did MY performance improve or decrease?" trends.
+  taskTrend: (p) => {
+    const [project = '', task = ''] = (p.id ?? '').split('#', 2)
+    return project !== '' && task !== '' ? scopedTrend({ project, task }) : Promise.resolve(null)
+  },
+  projectTrend: (p) =>
+    (p.name ?? '') !== '' ? scopedTrend({ project: p.name! }) : Promise.resolve(null),
   cacheKey: (p) => explainCacheKey(p.id ?? ''),
   // The flaky badge: non-null only when /v1/flakiness flags this task.
   taskFlaky: (p) => getFlakiest(100).then((ts) => ts.find((t) => t.id === p.id) ?? null),
