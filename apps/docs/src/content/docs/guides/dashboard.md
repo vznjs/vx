@@ -131,11 +131,12 @@ stays on screen during a refresh — only the first load shows a skeleton.
   flamegraph toggle, and streamed logs. When a job finishes it flows
   into the **history table** below — every invocation with branch /
   commit / CI / tags columns, per-row links to run detail and compare.
-  Above the table, **faceted filters** (result · branch · project)
-  narrow the history and persist in the URL hash
-  (`#/runs?result=failed&branch=main`), so a filtered view is
-  shareable and restores on load; active facets show as clearable chips
-  with a *clear all* affordance, alongside the free-text filter.
+  Above the table, **faceted filters** (result · branch · project ·
+  commit) narrow the history and persist in the URL hash
+  (`#/runs?result=failed&branch=main`, `#/runs?commit=<sha>` — a
+  shortened SHA matches by prefix), so a filtered view is shareable and
+  restores on load; active facets show as clearable chips with a
+  *clear all* affordance, alongside the free-text filter.
   (Spawning needs a colocated workspace — the graph comes from a
   no-exec `planRun`; an analytics-only serve shows history only. The old
   `/run` cockpit route redirects here.)
@@ -179,18 +180,27 @@ stays on screen during a refresh — only the first load shows a skeleton.
   visible: every artifact your token may read (trust-scoped), with
   size/age/tier, best-effort task/run provenance links, and
   bearer-authenticated downloads. Works on remote serves too.
-- **Insights** (`/insights`) — the one analytics area: run/storage
-  trends, the build heatmap, bottlenecks with weekly-savings
-  estimates, flaky tasks (with the within-run-retry **Retried**
-  column and a **Suggested fix** column showing the `exec.retries: N`
-  to add for confirmed-flaky tasks), the **Hermeticity** card
-  (cross-machine output-fingerprint
-  divergence from `vx run --force --verify=fingerprint` runs — the
-  exact task, platforms, and diverging output files, with a
-  remediation hint), cache savings + hit-source split, parallelism,
-  top time-burners, and recent failures. Every row links into its
-  entity — a failure opens its run with the task pre-selected. The
-  old `/trends` and `/bottlenecks` routes redirect here.
+- **Insights** (`/insights`) — the one analytics area. **Trending
+  tiles** compare this 7-day window against the prior one (runs,
+  failure rate, cache hit rate, average executed duration — signed
+  deltas tinted by direction), and a **Biggest movers** table ranks
+  the tasks whose average duration shifted most between the two
+  windows (a mover needs ≥3 executions in *both* windows, so it's a
+  trend, not noise). A **Started failing across branches** card names
+  tasks whose most-recent run fails on ≥2 distinct branches — the
+  "what just broke everywhere?" signal, with a red dot for a true
+  regression (it used to pass) and amber for an always-broken task.
+  Plus: run/storage trends, the build heatmap, bottlenecks with
+  weekly-savings estimates, flaky tasks (with the within-run-retry
+  **Retried** column and a **Suggested fix** column showing the
+  `exec.retries: N` to add for confirmed-flaky tasks), the
+  **Hermeticity** card (cross-machine output-fingerprint divergence
+  from `vx run --force --verify=fingerprint` runs — the exact task,
+  platforms, and diverging output files, with a remediation hint),
+  cache savings + hit-source split, parallelism, top time-burners,
+  and recent failures. Every row links into its entity — a failure
+  opens its run with the task pre-selected. The old `/trends` and
+  `/bottlenecks` routes redirect here.
 
 ## How it works
 
