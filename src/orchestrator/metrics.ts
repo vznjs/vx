@@ -1444,7 +1444,7 @@ export function getRegressions(db: Database, args: RegressionArgs = {}): Regress
                 r.status AS status,
                 ROW_NUMBER() OVER (
                   PARTITION BY r.project, r.task, inv.branch
-                  ORDER BY r.started_at DESC
+                  ORDER BY r.started_at DESC, r.run_id DESC
                 ) AS rn
          FROM runs r JOIN invocations inv ON r.run_id = inv.run_id
          WHERE inv.branch IS NOT NULL
@@ -1592,11 +1592,15 @@ export interface PeriodComparisonArgs {
 function periodStats(db: Database, from: number, to: number): PeriodStats {
   const agg = db
     .query(
+      // COALESCE every SUM: over an empty window SQLite SUM() returns NULL, and
+      // the previous window is empty for any workspace younger than the window
+      // (a fresh serve, a quiet prior week) — a bare SUM would ship `null` where
+      // PeriodStats declares `number`, throwing on the client's `.toFixed()`.
       `SELECT COUNT(*) AS taskRuns,
               COUNT(DISTINCT run_id) AS runs,
-              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
-              SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END) AS cacheHits,
-              SUM(CASE WHEN cache_hit IS NULL OR cache_hit = 0 THEN 1 ELSE 0 END) AS executed,
+              COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failures,
+              COALESCE(SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END), 0) AS cacheHits,
+              COALESCE(SUM(CASE WHEN cache_hit IS NULL OR cache_hit = 0 THEN 1 ELSE 0 END), 0) AS executed,
               COALESCE(SUM(CASE WHEN cache_hit IS NULL OR cache_hit = 0 THEN duration_ms ELSE 0 END), 0) AS totalDurationMs
        FROM runs WHERE started_at >= ? AND started_at < ?`,
     )

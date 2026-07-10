@@ -1208,6 +1208,20 @@ describe('getPeriodComparison', () => {
       expect(cmp.movers).toEqual([])
     })
   })
+
+  it('an empty window returns numeric 0s, never null (SUM-over-no-rows guard)', () => {
+    withCache((cache) => {
+      // Only the CURRENT window has runs; the previous window is empty — the
+      // common case for a workspace younger than the window. Every count must
+      // be a number (a bare SUM would return NULL and break the client).
+      seed(cache, 1, 'build', 'success', 100, now - 2 * day)
+      const prev = getPeriodComparison(cache.dbHandle(), { endMs: now }).previous.stats
+      for (const k of ['failures', 'cacheHits', 'executed', 'taskRuns', 'runs'] as const) {
+        expect(prev[k]).toBe(0)
+        expect(typeof prev[k]).toBe('number')
+      }
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------

@@ -350,6 +350,9 @@ async function regressionRows(): Promise<Record<string, unknown>[] | null> {
     ...r,
     _branchList: r.branches.join(', '),
     _kind: r.regressed ? 'regressed' : 'always-broken',
+    // Drives the status dot via the 'delta' DotMap: a regression (used to
+    // pass) is urgent → 'slower' → red; an always-broken task → 'gone' → amber.
+    _dirReg: r.regressed ? 'slower' : 'gone',
   }))
 }
 
