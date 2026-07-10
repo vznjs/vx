@@ -131,6 +131,7 @@ describe('package boundaries', () => {
       'getParallelismHistory',
       'getPrunableEntries',
       'getRecentFailures',
+      'getRegressions',
       'getRun',
       'getRunHeatmap',
       'getRunTrends',

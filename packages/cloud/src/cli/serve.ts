@@ -34,6 +34,7 @@ import {
   getParallelismHistory,
   getPrunableEntries,
   getRecentFailures,
+  getRegressions,
   getRun,
   getRunHeatmap,
   getRunTrends,
@@ -1151,6 +1152,20 @@ export async function startServe(opts: {
       if (url.pathname === '/v1/flakiness') {
         const limit = Number(url.searchParams.get('limit') ?? '25')
         return jsonResponse({ tasks: getFlakiestTasks(readDb(), limit) })
+      }
+      // Regressions — tasks that started failing across branches (used to
+      // pass, now failing on >= minBranches distinct branches). The "what
+      // just broke everywhere?" surface, distinct from flaky/nondeterministic.
+      if (url.pathname === '/v1/regressions') {
+        const params = url.searchParams
+        const args: Parameters<typeof getRegressions>[1] = {}
+        const sinceDays = params.get('sinceDays')
+        if (sinceDays !== null) args.sinceDays = Number(sinceDays)
+        const minBranches = params.get('minBranches')
+        if (minBranches !== null) args.minBranches = Number(minBranches)
+        const limit = params.get('limit')
+        if (limit !== null) args.limit = Number(limit)
+        return jsonResponse({ tasks: getRegressions(readDb(), args) })
       }
       if (url.pathname === '/v1/bottlenecks') {
         const lookbackDays = Number(url.searchParams.get('days') ?? '14')

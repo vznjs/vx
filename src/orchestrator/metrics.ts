@@ -1381,6 +1381,149 @@ export function getFlakiestTasks(db: Database, limit = 25): FlakyTask[] {
 }
 
 // ---------------------------------------------------------------------------
+// Regressions — "which tasks just started failing across branches?"
+// ---------------------------------------------------------------------------
+
+/**
+ * A task that is currently failing on one or more branches and USED to pass —
+ * a regression, distinct from a flaky task (nondeterministic) or a task that
+ * has always been broken. "Across branches" is the key signal: a task failing
+ * on several branches at once points at a real break in that task or in shared
+ * code, not one developer's work-in-progress branch.
+ */
+export interface RegressedTask {
+  id: string
+  project: string
+  task: string
+  /** Distinct branches whose MOST-RECENT run in the window failed. */
+  branchesFailing: number
+  /** Distinct branches the task ran on in the window. */
+  branchesTotal: number
+  /** The currently-failing branch names (capped). */
+  branches: string[]
+  /**
+   * True if the task has any prior successful run — it regressed, rather than
+   * being perpetually broken. A regression is the more urgent signal.
+   */
+  regressed: boolean
+  /** Earliest failed run in the window (ms epoch) — ≈ when it started failing. */
+  firstFailedAt: number
+  /** Most-recent run in the window (ms epoch). */
+  lastRunAt: number
+  /** Failed runs in the window. */
+  failures: number
+  /** Total runs in the window. */
+  runs: number
+}
+
+export interface RegressionArgs {
+  /** Look-back window in days. Default 7. */
+  sinceDays?: number
+  /** Minimum distinct currently-failing branches to surface. Default 2
+   *  ("across branches"); pass 1 to include single-branch regressions. */
+  minBranches?: number
+  limit?: number
+}
+
+const PASS_STATUSES = "('success', 'cache-hit', 'cache-hit-remote')"
+const BRANCH_CAP = 12
+
+export function getRegressions(db: Database, args: RegressionArgs = {}): RegressedTask[] {
+  const sinceDays = args.sinceDays ?? 7
+  const minBranches = Math.max(1, args.minBranches ?? 2)
+  const limit = clampInt(args.limit ?? 25, 1, 200)
+  const since = Date.now() - sinceDays * 86_400_000
+
+  // The most-recent non-skipped run per (task, branch) in the window: its
+  // status is that task's CURRENT state on that branch. Skipped/aborted runs
+  // never finished on their own terms, so they're excluded from the state.
+  const latest = db
+    .query(
+      `WITH windowed AS (
+         SELECT r.project AS project, r.task AS task, inv.branch AS branch,
+                r.status AS status,
+                ROW_NUMBER() OVER (
+                  PARTITION BY r.project, r.task, inv.branch
+                  ORDER BY r.started_at DESC
+                ) AS rn
+         FROM runs r JOIN invocations inv ON r.run_id = inv.run_id
+         WHERE inv.branch IS NOT NULL
+           AND r.started_at >= ?
+           AND r.status IN ('success', 'failed', 'cache-hit', 'cache-hit-remote')
+       )
+       SELECT project, task, branch, status FROM windowed WHERE rn = 1`,
+    )
+    .all(since) as { project: string; task: string; branch: string; status: string }[]
+
+  // Aggregate the latest-per-branch rows into per-task failing/total branch
+  // sets. `failing` = the task's most recent run on that branch failed.
+  const byTask = new Map<
+    string,
+    { project: string; task: string; failing: string[]; total: Set<string> }
+  >()
+  for (const r of latest) {
+    const id = `${r.project}#${r.task}`
+    let agg = byTask.get(id)
+    if (agg === undefined) {
+      agg = { project: r.project, task: r.task, failing: [], total: new Set() }
+      byTask.set(id, agg)
+    }
+    agg.total.add(r.branch)
+    if (r.status === 'failed') agg.failing.push(r.branch)
+  }
+
+  const out: RegressedTask[] = []
+  for (const [id, agg] of byTask) {
+    if (agg.failing.length < minBranches) continue
+    // Per-task follow-ups (the getFlakiestTasks pattern) — the regressed set
+    // is small, so a couple of point queries each is cheap.
+    const win = db
+      .query(
+        `SELECT COUNT(*) AS runs,
+                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
+                MIN(CASE WHEN status = 'failed' THEN started_at END) AS first_failed,
+                MAX(started_at) AS last_run
+         FROM runs WHERE project = ? AND task = ? AND started_at >= ?`,
+      )
+      .get(agg.project, agg.task, since) as {
+      runs: number
+      failures: number | null
+      first_failed: number | null
+      last_run: number | null
+    }
+    const everPassed =
+      db
+        .query(
+          `SELECT 1 FROM runs WHERE project = ? AND task = ? AND status IN ${PASS_STATUSES} LIMIT 1`,
+        )
+        .get(agg.project, agg.task) !== null
+    out.push({
+      id,
+      project: agg.project,
+      task: agg.task,
+      branchesFailing: agg.failing.length,
+      branchesTotal: agg.total.size,
+      branches: agg.failing.sort().slice(0, BRANCH_CAP),
+      regressed: everPassed,
+      firstFailedAt: win.first_failed ?? 0,
+      lastRunAt: win.last_run ?? 0,
+      failures: win.failures ?? 0,
+      runs: win.runs,
+    })
+  }
+  // Regressions (used-to-pass) first, then most branches affected, then the
+  // most recently-started failures — the "act on this now" ordering.
+  return out
+    .sort(
+      (a, b) =>
+        Number(b.regressed) - Number(a.regressed) ||
+        b.branchesFailing - a.branchesFailing ||
+        b.firstFailedAt - a.firstFailedAt,
+    )
+    .slice(0, limit)
+}
+
+// ---------------------------------------------------------------------------
 // Bottlenecks — "if you sped up X, you'd save Y per week"
 // ---------------------------------------------------------------------------
 

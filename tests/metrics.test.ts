@@ -18,6 +18,7 @@ import {
   getParallelismHistory,
   getPrunableEntries,
   getRecentFailures,
+  getRegressions,
   getRun,
   getRunHeatmap,
   getRunTrends,
@@ -1027,6 +1028,106 @@ describe('getPrunableEntries', () => {
   })
 })
 
+describe('getRegressions', () => {
+  // Seed one (project, task) run at a given branch/status/time, each in its
+  // own invocation so the runs→invocations branch join is exercised.
+  const seed = (
+    cache: Cache,
+    n: number,
+    task: string,
+    branch: string,
+    status: RunRecord['status'],
+    startedAt: number,
+  ): void => {
+    cache.recordRunBundle({
+      runs: [mkRun({ hash: `h-${n}`, project: 'pkg', task, runId: `r-${n}`, status, startedAt })],
+      invocation: mkInvocation({ runId: `r-${n}`, branch, startedAt }),
+    })
+  }
+  const now = Date.now()
+  const day = 86_400_000
+
+  it('surfaces a task now failing across >= 2 branches that used to pass', () => {
+    withCache((cache) => {
+      // `build` passed a week+ ago, now fails on BOTH main and dev.
+      seed(cache, 1, 'build', 'main', 'success', now - 8 * day)
+      seed(cache, 2, 'build', 'main', 'failed', now - 2 * day)
+      seed(cache, 3, 'build', 'dev', 'failed', now - 1 * day)
+      // `lint` fails only on one branch — not "across branches".
+      seed(cache, 4, 'lint', 'main', 'failed', now - 1 * day)
+      const regs = getRegressions(cache.dbHandle())
+      expect(regs.map((r) => r.id)).toEqual(['pkg#build'])
+      const b = regs[0]!
+      expect(b.branchesFailing).toBe(2)
+      expect(b.branches.sort()).toEqual(['dev', 'main'])
+      expect(b.regressed).toBe(true) // had a prior success
+      expect(b.failures).toBe(2)
+    })
+  })
+
+  it('uses the LATEST run per branch — a since-recovered branch is not failing', () => {
+    withCache((cache) => {
+      seed(cache, 1, 'build', 'main', 'success', now - 5 * day)
+      seed(cache, 2, 'build', 'main', 'failed', now - 4 * day)
+      seed(cache, 3, 'build', 'main', 'success', now - 1 * day) // recovered on main
+      seed(cache, 4, 'build', 'dev', 'failed', now - 2 * day)
+      seed(cache, 5, 'build', 'feat', 'failed', now - 1 * day)
+      const regs = getRegressions(cache.dbHandle())
+      // main recovered; only dev + feat are currently failing.
+      expect(regs[0]!.branches.sort()).toEqual(['dev', 'feat'])
+      expect(regs[0]!.branchesFailing).toBe(2)
+    })
+  })
+
+  it('a cache-hit counts as a pass (current state), not a failure', () => {
+    withCache((cache) => {
+      seed(cache, 1, 'build', 'main', 'failed', now - 3 * day)
+      seed(cache, 2, 'build', 'main', 'cache-hit', now - 1 * day) // latest = pass
+      seed(cache, 3, 'build', 'dev', 'failed', now - 1 * day)
+      // Only dev fails now → below the default minBranches=2 → nothing.
+      expect(getRegressions(cache.dbHandle())).toEqual([])
+      // minBranches=1 surfaces the single-branch regression.
+      expect(getRegressions(cache.dbHandle(), { minBranches: 1 }).map((r) => r.id)).toEqual([
+        'pkg#build',
+      ])
+    })
+  })
+
+  it('a never-passed task on 2 branches is flagged regressed=false', () => {
+    withCache((cache) => {
+      seed(cache, 1, 'broken', 'main', 'failed', now - 2 * day)
+      seed(cache, 2, 'broken', 'dev', 'failed', now - 1 * day)
+      const regs = getRegressions(cache.dbHandle())
+      expect(regs[0]!.id).toBe('pkg#broken')
+      expect(regs[0]!.regressed).toBe(false)
+    })
+  })
+
+  it('regressions (used-to-pass) sort above always-broken tasks', () => {
+    withCache((cache) => {
+      // A regressed task and an always-broken task, both failing on 2 branches.
+      seed(cache, 1, 'reg', 'main', 'success', now - 6 * day)
+      seed(cache, 2, 'reg', 'main', 'failed', now - 1 * day)
+      seed(cache, 3, 'reg', 'dev', 'failed', now - 1 * day)
+      seed(cache, 4, 'broke', 'main', 'failed', now - 1 * day)
+      seed(cache, 5, 'broke', 'dev', 'failed', now - 1 * day)
+      const regs = getRegressions(cache.dbHandle())
+      expect(regs.map((r) => r.id)).toEqual(['pkg#reg', 'pkg#broke'])
+    })
+  })
+
+  it('respects the window: failures older than sinceDays are ignored', () => {
+    withCache((cache) => {
+      seed(cache, 1, 'build', 'main', 'failed', now - 40 * day)
+      seed(cache, 2, 'build', 'dev', 'failed', now - 40 * day)
+      expect(getRegressions(cache.dbHandle(), { sinceDays: 7 })).toEqual([])
+      expect(getRegressions(cache.dbHandle(), { sinceDays: 60 }).map((r) => r.id)).toEqual([
+        'pkg#build',
+      ])
+    })
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Schema drift guard — every exported metrics query must run against the
 // CURRENT cache.db schema. The schema is owned by src/cache/cache.ts and its
@@ -1063,6 +1164,7 @@ describe('metrics schema drift guard', () => {
         getRunTrends: () => metrics.getRunTrends(db),
         getRunHeatmap: () => metrics.getRunHeatmap(db),
         getFlakiestTasks: () => metrics.getFlakiestTasks(db),
+        getRegressions: () => metrics.getRegressions(db),
         getBottlenecks: () => metrics.getBottlenecks(db),
         getParallelismHistory: () => metrics.getParallelismHistory(db),
         getStorageGrowth: () => metrics.getStorageGrowth(db),

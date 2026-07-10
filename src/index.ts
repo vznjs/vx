@@ -207,6 +207,7 @@ export {
   getParallelismHistory,
   getPrunableEntries,
   getRecentFailures,
+  getRegressions,
   getRun,
   getRunHeatmap,
   getRunTrends,
