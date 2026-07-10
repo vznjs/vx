@@ -16,6 +16,7 @@ import { createStore } from 'solid-js/store'
 import { A, useSearchParams } from '@solidjs/router'
 import type { BaseComponentProps } from '@json-render/solid'
 import {
+  type InvocationDetail,
   type QueueJobRow,
   fetchCatalogTasks,
   fetchHermeticity,
@@ -147,13 +148,24 @@ export function RunsView() {
   })
 
   // Historical invocations (refetches when a queued job completes, on each
-  // live tick, and on connection/workspace switch).
+  // live tick, and on connection/workspace switch). The fetch is CAUGHT (to
+  // null) and the last good rows are held outside the resource: with the 5s
+  // tick this path is hot, and an uncaught rejection from one failed poll
+  // (serve restart, laptop wake) would permanently wedge every downstream
+  // memo while the view still looked live — while blanking to the error
+  // state on a blip would flash a populated table empty for a tick.
   const [invocations] = createResource(
     () => `${getConnectionKey()}|${historyVersion()}|${liveTick()}`,
-    () => listInvocations(200),
+    () => listInvocations(200).catch(() => null),
   )
+  let lastGoodInvocations: InvocationDetail[] | undefined
+  const invocationRows = createMemo<InvocationDetail[] | undefined>(() => {
+    const v = invocations()
+    if (v !== null && v !== undefined) lastGoodInvocations = v
+    return lastGoodInvocations
+  })
   const historyRows = createMemo<Record<string, unknown>[]>(() =>
-    (invocations() ?? []).map((r) => ({
+    (invocationRows() ?? []).map((r) => ({
       ...r,
       _ciToken: r.ci ? 'stable' : 'cold',
       _ci: r.ci ? 'CI' : 'local',
@@ -161,7 +173,11 @@ export function RunsView() {
     })),
   )
   const historyStatus = () =>
-    invocations.error ? ('error' as const) : invocations() === undefined ? ('loading' as const) : ('ok' as const)
+    invocationRows() !== undefined
+      ? ('ok' as const)
+      : invocations() === null
+        ? ('error' as const)
+        : ('loading' as const)
 
   // -- Faceted filters (URL-persisted) --------------------------------------
   // result / branch / project ride the hash query (#/runs?result=failed&…) so
@@ -187,7 +203,7 @@ export function RunsView() {
   // deep-link load (before invocations/history arrive) — otherwise the select
   // can't display the restored value even though the filter is applied.
   const branchNames = createMemo(() => {
-    const set = new Set(distinctBranches(invocations() ?? []))
+    const set = new Set(distinctBranches(invocationRows() ?? []))
     if (branchFilter() !== '') set.add(branchFilter())
     return Array.from(set).sort()
   })
@@ -202,7 +218,7 @@ export function RunsView() {
   // Commit SHAs seen in the loaded invocations (most-recent-first). The active
   // value is always present so a deep-linked commit restores its <option>.
   const commitShas = createMemo(() => {
-    const list = distinctCommits(invocations() ?? [])
+    const list = distinctCommits(invocationRows() ?? [])
     const active = commitFilter()
     if (active !== '' && !list.includes(active)) list.unshift(active)
     return list
@@ -210,38 +226,53 @@ export function RunsView() {
 
   // Project → the set of runIds that touched it (invocation headers carry no
   // project, so the server /v1/runs?project= filter names the runs, and we
-  // intersect). Only fetched while a project facet is active.
+  // intersect). Only fetched while a project facet is active. The value
+  // carries WHICH project it belongs to: on an A→B facet switch Solid keeps
+  // serving A's value while B loads, and filtering by the wrong project's set
+  // (or by nothing at all on first activation) would show wrong rows under an
+  // active chip.
   const [projectRunIds] = createResource(
     () => (projectFilter() === '' ? null : `${getConnectionKey()}|${projectFilter()}|${liveTick()}`),
     async () => {
-      const runs = await listRuns({ project: projectFilter(), limit: 2000 }).catch(() => [])
-      return new Set(runs.map((r) => r.runId).filter((id): id is string => id !== null))
+      const project = projectFilter()
+      const runs = await listRuns({ project, limit: 2000 }).catch(() => [])
+      return {
+        project,
+        ids: new Set(runs.map((r) => r.runId).filter((id): id is string => id !== null)),
+      }
     },
   )
 
-  const filteredRows = createMemo<Record<string, unknown>[]>(() => {
+  // `undefined` = an active project facet is still resolving — the table shows
+  // a loading state instead of unfiltered (or wrongly-filtered) rows.
+  const filteredRows = createMemo<Record<string, unknown>[] | undefined>(() => {
     let rows = filterInvocations(historyRows(), {
       result: resultFilter(),
       branch: branchFilter(),
       commit: commitFilter(),
     })
     if (projectFilter() !== '') {
-      const ids = projectRunIds()
-      if (ids) rows = rows.filter((r) => typeof r.runId === 'string' && ids.has(r.runId))
+      const v = projectRunIds()
+      if (v === undefined || v.project !== projectFilter()) return undefined
+      rows = rows.filter((r) => typeof r.runId === 'string' && v.ids.has(r.runId))
     }
     return rows
   })
 
   // -- CI health strip -------------------------------------------------------
   const [stats] = createResource(() => `${getConnectionKey()}|${liveTick()}`, () => getCacheStats().catch(() => null))
-  const [flaky] = createResource(() => `${getConnectionKey()}|${liveTick()}`, () => getFlakiest(100).catch(() => []))
+  // Caught to null, NOT [] — a failed /v1/flakiness probe must render '—',
+  // never a confident green "0 flaky".
+  const [flaky] = createResource(() => `${getConnectionKey()}|${liveTick()}`, () => getFlakiest(100).catch(() => null))
   const [hermeticity] = createResource(
     () => `${getConnectionKey()}|${liveTick()}`,
     () => fetchHermeticity(50).catch(() => null),
   )
-  const ticks = createMemo<RunTick[]>(() => runTicks(invocations() ?? [], 24))
-  const passRate24h = createMemo(() => passRateWithin(invocations() ?? [], 24 * 60 * 60 * 1000, Date.now()))
-  const flakyCount = () => (flaky() ?? []).length
+  const ticks = createMemo<RunTick[]>(() => runTicks(invocationRows() ?? [], 24))
+  const passRate24h = createMemo(() =>
+    passRateWithin(invocationRows() ?? [], 24 * 60 * 60 * 1000, Date.now()),
+  )
+  const flakyCount = () => flaky()?.length
   const nonHermeticCount = () => hermeticity()?.divergent.length
 
   // Serve-side queue state, polled at 2s while the view is mounted (an
@@ -473,11 +504,13 @@ export function RunsView() {
                 </button>
               </div>
             </Show>
-            <span data-testid="runs-count" class="ml-auto text-[11px] font-mono text-fg-3 tabular-nums">{filteredRows().length} runs</span>
+            <span data-testid="runs-count" class="ml-auto text-[11px] font-mono text-fg-3 tabular-nums">
+              {filteredRows() === undefined ? '…' : `${filteredRows()!.length} runs`}
+            </span>
           </div>
           {DataTable(
             jrCtx(() => ({
-              rows: filteredRows(),
+              rows: filteredRows() ?? [],
               columns: HISTORY_COLUMNS,
               rowHref: '/runs/{runId}',
               filter: true,
@@ -487,7 +520,8 @@ export function RunsView() {
               emptyTitle: anyFilter() ? 'No runs match these filters' : 'No invocations yet',
               emptyHint: anyFilter() ? 'Clear a filter to widen the results.' : undefined,
               emptyCmd: anyFilter() ? undefined : 'vx run <task>',
-              status: historyStatus(),
+              // A resolving project facet reads as loading, never as wrong rows.
+              status: filteredRows() === undefined ? 'loading' : historyStatus(),
             })),
           )}
         </Show>
@@ -628,7 +662,7 @@ function Chip(props: { label: string; onClear: () => void }) {
 function HealthStrip(props: {
   ticks: RunTick[]
   passRate: number | undefined
-  flakyCount: number
+  flakyCount: number | undefined
   hitRate24h: number | undefined
   nonHermetic: number | undefined
 }) {
@@ -673,9 +707,9 @@ function HealthStrip(props: {
         <HealthTile
           href="/insights"
           label="Flaky tasks"
-          value={String(props.flakyCount)}
+          value={props.flakyCount === undefined ? '—' : String(props.flakyCount)}
           sub="confirmed + inferred"
-          tone={countTone(props.flakyCount, 3)}
+          tone={props.flakyCount === undefined ? 'default' : countTone(props.flakyCount, 3)}
         />
         <HealthTile
           href="/cache"

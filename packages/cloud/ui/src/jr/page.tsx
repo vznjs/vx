@@ -74,6 +74,12 @@ export function jsonPage(view: JsonView): () => JSX.Element {
       const [res] = createResource(source, (s) => (fn ? fn(s.params) : Promise.resolve(undefined)))
       return { key, res }
     })
+    // Last GOOD value per source: on a transient refetch error (one blipped
+    // 5s tick) a populated section keeps its data instead of flashing to the
+    // error state. `res.latest` can't cover this — Solid re-throws when the
+    // resource is errored — so the last resolved value is held here. Only a
+    // FIRST-load failure (nothing good to show) surfaces as 'error'.
+    const lastGood = new Map<string, unknown>()
     const state = createMemo<Record<string, unknown>>(() => {
       const s: Record<string, unknown> = { params: decoded(), ...(view.state ?? {}) }
       // Serve capabilities (api.ts probe) as simple booleans every view can
@@ -98,10 +104,18 @@ export function jsonPage(view: JsonView): () => JSX.Element {
         // undefined while loading) shows the skeleton.
         let v: unknown
         let status: 'loading' | 'error' | 'missing' | 'ok'
-        if (res.error) status = 'error'
-        else {
+        if (res.error) {
+          const prev = lastGood.get(key)
+          if (prev !== undefined) {
+            v = prev
+            status = 'ok'
+          } else {
+            status = 'error'
+          }
+        } else {
           v = res.latest
           status = res.loading && v === undefined ? 'loading' : v === null ? 'missing' : v === undefined ? 'loading' : 'ok'
+          if (v !== undefined && v !== null) lastGood.set(key, v)
         }
         s[key] = v
         s[`${key}Status`] = status
