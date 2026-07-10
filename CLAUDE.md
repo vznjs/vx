@@ -189,6 +189,60 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 
 ## Decision log
 
+- **2026-07-10**: **vx-cloud analytics wave — live dashboard, run filters +
+  CI-health, cross-branch regression detection, and period-over-period
+  analysis** (owner, four requests across the day: "Improve ui. More
+  features" → "detect tasks that started failing across branches … see runs
+  per commit branch or all" → "We need advanced analysis and over time
+  comparisons"). A coherent analytics thread, all in `@vzn/vx-cloud`; core
+  gained only two read-side metrics queries (no schema/CACHE/TELEMETRY bump —
+  pure SQL over the existing `runs`/`invocations` tables). **(1) Live +
+  filters + CI-health** (UI-only, `a4b3f08`/`dae2f98`/`0f76e18`): every view
+  opts into a visibility-aware auto-refresh tick (`ui/src/live.ts`
+  `useVisibilityRefresh`, paused while the tab is hidden — re-fetches sources
+  on the SAME machinery as a connection switch, `res.latest` kept so a
+  refetch never flashes the loading skeleton); the Runs view gained
+  URL-persisted result/branch/project facets (`#/runs?result=failed&…`,
+  shareable + restore-on-load, clearable chips) and a CI-health strip (last
+  ~24 runs as status ticks + pass-rate/flaky/hit-rate/non-hermetic tiles).
+  **(2) Cross-branch regressions** (`1329b63` core + this wave's UI):
+  `getRegressions` (a task now failing on ≥ `minBranches` distinct branches
+  that has a prior success — the "what just broke everywhere?" signal,
+  distinct from flaky/nondeterministic; a `ROW_NUMBER() OVER (PARTITION BY
+project,task,branch ORDER BY started_at DESC)` CTE takes the latest run per
+  branch, so a since-recovered branch is not counted failing; a cache-hit
+  counts as a current pass). `GET /v1/regressions?sinceDays=&minBranches=&limit=`;
+  an Insights "Started failing across branches" card (red/amber
+  regressed-vs-always-broken dot). **(3) Period-over-period analysis**
+  (`42c5d8b` core + `94895bc` UI): `getPeriodComparison` splits runs into two
+  adjacent equal-length windows (default 7d: this week vs last), aggregates
+  each into `PeriodStats` (runs/failures/hits, avg/p50/p95 exec duration,
+  failure + hit rates), and ranks `movers` — tasks whose avg executed
+  duration shifted most, requiring ≥ `minRuns` (default 3) executions in BOTH
+  windows so a mover is a trend not noise. `GET /v1/analysis?window=&minRuns=&limit=`;
+  an Insights tile row ("this 7d vs prior 7d" with signed deltas tinted by
+  direction) + a "Biggest movers" table (red/green delta dots). **(4) Runs
+  per commit** (`95bd5f3`): a commit facet joins the Runs URL-persisted set
+  (`#/runs?commit=…`, prefix match so a short SHA selects) — with the branch
+  facet + "all", this covers "runs per commit/branch/all". **Derivation
+  pattern:** the analytics data sources (`ui/jr/data.ts` `analysisData`/
+  `regressionRows`) compute all display fields (signed deltas, per-tile
+  tones, mover direction, branch lists) so the pure-JSON views bind plain
+  state paths — conditions/formatters can't compute a signed tone. Every new
+  metrics query is pinned by a `tests/metrics.test.ts` block AND the
+  drift-guard `calls` map + the façade boundary snapshot; the UI filter/
+  regression/period derivations are unit-pinned in `functions.test.ts`; the
+  serve routes have standalone endpoint tests (`{analysis,regressions}-serve.test.ts`).
+  **Browser-verified** (Playwright/chromium against a seeded serve): the
+  Insights trending tiles + movers + "Started failing" cards render with
+  correct deltas/regressions and ZERO real console errors; the Runs commit
+  facet narrows the count and restores from the URL. Core 1223 pass (+9),
+  cloud 316 pass (+2), UI 40 pass (+3), lint clean. Dist is a build artifact
+  (gitignored, not committed — the 2026-07-05 decision). **UI gotcha logged:**
+  `document.body.innerText` reflects CSS `text-transform: uppercase`, so a
+  card-title assertion must be case-insensitive (the metric/card labels are
+  uppercased in CSS).
+
 - **2026-07-09**: **vx-cloud made ACTIONABLE — every surfaced problem now
   carries its concrete fix** (owner: "Work on better vx cloud"; the
   clearest expression of the standing "one-stop CI shop, butter, compete
