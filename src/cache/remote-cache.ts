@@ -35,6 +35,19 @@ export interface RemoteCacheConfig {
    * third-party Turbo servers.
    */
   cacheScope?: string
+  /**
+   * Turbo's `--preflight` mechanism (pre-signed URL support): when set, every
+   * artifact request is preceded by an `OPTIONS` preflight; the response's
+   * `Location` (absolute or relative) becomes the real request URL — typically
+   * a pre-signed blob-store URL — and `Access-Control-Allow-Headers` decides
+   * whether the bearer rides along (kept iff `*` or it names `authorization`;
+   * a query-signed S3/R2 URL rejects a request that ALSO carries an
+   * Authorization header). A server without the mechanism answers with no
+   * Location and the request proceeds unchanged. Off by default — an extra
+   * round-trip per artifact buys nothing against a direct-serving server.
+   * See docs/design/presigned-artifacts-2026-07.md.
+   */
+  preflight?: boolean
 }
 
 export interface RemotePutMetadata {
@@ -89,11 +102,18 @@ export async function readBodyBounded(res: Response, max: number): Promise<Array
   return out.buffer
 }
 
+/** Where to send the real request, and whether the bearer rides along. */
+interface ResolvedTarget {
+  url: string
+  auth: boolean
+}
+
 export class RemoteCache {
   constructor(private readonly config: RemoteCacheConfig) {}
 
   async get(hash: string): Promise<RemoteGetResult | null> {
-    const res = await this.fetch('GET', this.artifactUrl(hash))
+    const target = await this.resolveTarget('GET', this.artifactUrl(hash), ['authorization'])
+    const res = await this.fetch('GET', target.url, { auth: target.auth })
     if (res.status === 404) return null
     if (!res.ok) throw new RemoteCacheError(`GET ${hash} → ${res.status}`, res.status)
     // Refuse an honestly-declared oversize body before reading a byte.
@@ -147,7 +167,9 @@ export class RemoteCache {
    * the LayeredCache degrades them to a miss.
    */
   async has(hash: string): Promise<boolean> {
-    const res = await this.fetch('HEAD', this.artifactUrl(hash))
+    // Turbo preflights artifact_exists too (a HEAD may redirect to the blob).
+    const target = await this.resolveTarget('HEAD', this.artifactUrl(hash), ['authorization'])
+    const res = await this.fetch('HEAD', target.url, { auth: target.auth })
     if (res.status === 404) return false
     if (!res.ok) throw new RemoteCacheError(`HEAD ${hash} → ${res.status}`, res.status)
     return true
@@ -166,11 +188,47 @@ export class RemoteCache {
       )
     }
 
-    const res = await this.fetch('PUT', this.artifactUrl(hash), { body, headers })
+    const target = await this.resolveTarget('PUT', this.artifactUrl(hash), [
+      'authorization',
+      ...Object.keys(headers).map((h) => h.toLowerCase()),
+    ])
+    const res = await this.fetch('PUT', target.url, { body, headers, auth: target.auth })
     // Any 2xx is success — Turbo-compatible servers answer 200/201/202.
     if (!res.ok) {
       throw new RemoteCacheError(`PUT ${hash} → ${res.status}`, res.status)
     }
+  }
+
+  /**
+   * The Turbo `--preflight` handshake: `OPTIONS <url>` carrying the intended
+   * method + header NAMES (never values) and the bearer; the response's
+   * `Location` (absolute or relative to the request URL) is where the real
+   * request goes, and the bearer rides only when `Access-Control-Allow-Headers`
+   * is `*` or names `authorization`. No Location → the original URL, bearer
+   * kept. Disabled (the default) → identity, zero extra requests.
+   */
+  private async resolveTarget(
+    method: string,
+    url: string,
+    headerNames: string[],
+  ): Promise<ResolvedTarget> {
+    if (this.config.preflight !== true) return { url, auth: true }
+    const res = await this.fetch('OPTIONS', url, {
+      headers: {
+        'Access-Control-Request-Method': method,
+        'Access-Control-Request-Headers': headerNames.join(', '),
+      },
+    })
+    if (!res.ok) {
+      throw new RemoteCacheError(`OPTIONS ${url} → ${res.status} (preflight)`, res.status)
+    }
+    const location = res.headers.get('location')
+    if (location === null || location === '') return { url, auth: true }
+    const resolved = new URL(location, url).toString()
+    const allow = res.headers.get('access-control-allow-headers') ?? ''
+    const names = allow.split(',').map((s) => s.trim().toLowerCase())
+    const auth = names.includes('*') || names.includes('authorization')
+    return { url: resolved, auth }
   }
 
   // Turbo's construction (crates/turborepo-cache/src/signature_authentication.rs):
@@ -205,7 +263,13 @@ export class RemoteCache {
   private async fetch(
     method: string,
     url: string,
-    init?: { body?: ArrayBuffer | Uint8Array | string; headers?: Record<string, string> },
+    init?: {
+      body?: ArrayBuffer | Uint8Array | string
+      headers?: Record<string, string>
+      /** False = a preflight said the redirected (query-signed) URL must not
+       *  carry the bearer. Default true. */
+      auth?: boolean
+    },
   ): Promise<Response> {
     const timeoutMs = this.config.timeoutMs ?? 60_000
     try {
@@ -213,7 +277,7 @@ export class RemoteCache {
         method,
         signal: AbortSignal.timeout(timeoutMs),
         headers: {
-          Authorization: `Bearer ${this.config.token}`,
+          ...(init?.auth !== false ? { Authorization: `Bearer ${this.config.token}` } : {}),
           // The untrusted per-PR partition (an optional server-side extension;
           // a third-party Turbo server ignores it). Isolates one fork PR's
           // writes/reads from another's within the untrusted tier.

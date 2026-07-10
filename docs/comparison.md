@@ -111,7 +111,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Cache feature             | Turbo                                      | Nx                     | vite-task                    | vx                                                                                      |
 | ------------------------- | ------------------------------------------ | ---------------------- | ---------------------------- | --------------------------------------------------------------------------------------- |
 | Local cache               | tarball-per-hash in `.turbo/cache`         | `.nx/cache` SQLite-ish | materialized-artifact crates | SQLite index + one `<hash>.tar.zst` per entry in `.vx/cache`                            |
-| Remote cache wire         | Vercel `/v8/artifacts/` (HMAC, pre-signed) | Nx Cloud or plugin     | —                            | Turbo `/v8/artifacts/` (HTTP, bearer, HMAC signing; pre-signed URLs: open)              |
+| Remote cache wire         | Vercel `/v8/artifacts/` (HMAC, pre-signed) | Nx Cloud or plugin     | —                            | Turbo `/v8/artifacts/` (HTTP, bearer, HMAC signing, preflight/pre-signed client)        |
 | Log replay on hit         | yes                                        | yes                    | yes                          | yes                                                                                     |
 | Output restore on hit     | yes                                        | yes                    | yes                          | yes                                                                                     |
 | Output cleaning           | (no — additive)                            | (no)                   | (materialized)               | **yes** — wipe before exec AND before restore                                           |
@@ -143,11 +143,16 @@ upstream repos.
 
 ### Likely-worth-adding
 
-1. **Pre-signed URLs** on the remote cache. Open workstream; design at
-   [`design/remote-cache.md`](./design/remote-cache.md).
+1. **Pre-signed URLs** on the remote cache — **client shipped**; server
+   offload designed. The client speaks Turbo's `--preflight` mechanism
+   (`VX_REMOTE_CACHE_PREFLIGHT`: `OPTIONS` → `Location` redirect,
+   bearer gated by `Access-Control-Allow-Headers`), so vx works against
+   any Turbo-compatible server that pre-signs blob URLs today. The
+   vx-cloud serve-side blob backend (S3/R2 GET offload) is phased in
+   [`design/presigned-artifacts-2026-07.md`](./design/presigned-artifacts-2026-07.md).
    - Turbo `remoteCache.signature: true` equivalent **shipped 2026-06**
      (`VX_REMOTE_CACHE_SIGNATURE_KEY`, Turbo-compatible
-     `x-artifact-tag`); pre-signed upload URLs remain.
+     `x-artifact-tag`).
 
 2. **`--continue=<mode>` — shipped.** `--continue[=never|deps-ok|always]`
    controls failure propagation: `never` fail-fast (stop dispatch on the

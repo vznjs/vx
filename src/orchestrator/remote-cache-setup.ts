@@ -25,7 +25,9 @@ import { resolveCacheScope } from './run-context.js'
  *
  * Optional env: `VX_REMOTE_CACHE_TEAM_ID`, `VX_REMOTE_CACHE_SLUG`
  * (Turbo tenancy query params), `VX_REMOTE_CACHE_TIMEOUT_MS`,
- * `VX_REMOTE_CACHE_SIGNATURE_KEY` (HMAC artifact signing).
+ * `VX_REMOTE_CACHE_SIGNATURE_KEY` (HMAC artifact signing),
+ * `VX_REMOTE_CACHE_PREFLIGHT` (Turbo `--preflight`: OPTIONS handshake →
+ * pre-signed URL redirect; see docs/design/presigned-artifacts-2026-07.md).
  */
 export function wrapWithRemoteCache(
   local: Cache,
@@ -48,6 +50,8 @@ export function wrapWithRemoteCache(
   }
   const signatureKey = process.env.VX_REMOTE_CACHE_SIGNATURE_KEY
   if (signatureKey) config.signatureKey = signatureKey
+  const preflight = process.env.VX_REMOTE_CACHE_PREFLIGHT
+  if (preflight === '1' || preflight === 'true') config.preflight = true
   // Untrusted per-PR isolation: a fork PR's writes land in its own sub-scope.
   const cacheScope = resolveCacheScope(process.env)
   if (cacheScope) config.cacheScope = cacheScope

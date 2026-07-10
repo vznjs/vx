@@ -368,4 +368,162 @@ describe('RemoteCache', () => {
       expect(new TextDecoder().decode(got!.body)).toBe('artifact-bytes')
     })
   })
+
+  // ─── Turbo `--preflight` (pre-signed URL redirect) ──────────────────────
+  describe('preflight (pre-signed URLs)', () => {
+    /** A second origin standing in for the blob store the Location points at. */
+    let blob: Fixture
+    beforeEach(() => {
+      blob = startServer()
+    })
+    afterEach(async () => {
+      await blob.server.stop(true)
+    })
+
+    it('off by default: no OPTIONS is ever issued', async () => {
+      const cache = new RemoteCache({ baseUrl: fixture.baseUrl, token: 'tok' })
+      fixture.setHandler(() => new Response('bytes', { status: 200 }))
+      await cache.get('h1')
+      expect(fixture.requests.map((r) => r.method)).toEqual(['GET'])
+    })
+
+    it('GET: follows Location to the blob origin, bearer DROPPED without allow-headers', async () => {
+      const cache = new RemoteCache({ baseUrl: fixture.baseUrl, token: 'tok', preflight: true })
+      fixture.setHandler((req) => {
+        if (req.method === 'OPTIONS') {
+          expect(req.headers['access-control-request-method']).toBe('GET')
+          expect(req.headers['access-control-request-headers']).toContain('authorization')
+          expect(req.authorization).toBe('Bearer tok') // preflight itself is authed
+          return new Response(null, {
+            status: 200,
+            headers: { location: `${blob.baseUrl}/signed/h1?sig=abc` },
+          })
+        }
+        throw new Error(`unexpected ${req.method} on the serve origin`)
+      })
+      blob.setHandler(() => new Response(new TextEncoder().encode('blob-bytes'), { status: 200 }))
+
+      const got = await cache.get('h1')
+      expect(new TextDecoder().decode(got!.body)).toBe('blob-bytes')
+      const blobReq = blob.requests[0]!
+      expect(blobReq.path).toBe('/signed/h1')
+      // A query-signed URL must not ALSO carry the bearer.
+      expect(blobReq.authorization).toBeNull()
+    })
+
+    it('bearer KEPT when Access-Control-Allow-Headers is * or names authorization', async () => {
+      for (const allow of ['*', 'Authorization, X-Other']) {
+        const f = startServer()
+        const b = startServer()
+        try {
+          const cache = new RemoteCache({ baseUrl: f.baseUrl, token: 'tok', preflight: true })
+          f.setHandler(
+            () =>
+              new Response(null, {
+                status: 200,
+                headers: {
+                  location: `${b.baseUrl}/x`,
+                  'access-control-allow-headers': allow,
+                },
+              }),
+          )
+          b.setHandler(() => new Response('ok', { status: 200 }))
+          await cache.get('h1')
+          expect(b.requests[0]!.authorization).toBe('Bearer tok')
+        } finally {
+          await f.server.stop(true)
+          await b.server.stop(true)
+        }
+      }
+    })
+
+    it('no Location → the original URL, bearer kept (a server without the mechanism)', async () => {
+      const cache = new RemoteCache({ baseUrl: fixture.baseUrl, token: 'tok', preflight: true })
+      fixture.setHandler((req) =>
+        req.method === 'OPTIONS'
+          ? new Response(null, { status: 204 })
+          : new Response('direct-bytes', { status: 200 }),
+      )
+      const got = await cache.get('h1')
+      expect(new TextDecoder().decode(got!.body)).toBe('direct-bytes')
+      expect(fixture.requests.map((r) => r.method)).toEqual(['OPTIONS', 'GET'])
+      expect(fixture.requests[1]!.authorization).toBe('Bearer tok')
+    })
+
+    it('a RELATIVE Location resolves against the artifact URL', async () => {
+      const cache = new RemoteCache({ baseUrl: fixture.baseUrl, token: 'tok', preflight: true })
+      fixture.setHandler((req) => {
+        if (req.method === 'OPTIONS') {
+          return new Response(null, { status: 200, headers: { location: '/signed/elsewhere' } })
+        }
+        expect(req.path).toBe('/signed/elsewhere')
+        return new Response('rel-bytes', { status: 200 })
+      })
+      const got = await cache.get('h1')
+      expect(new TextDecoder().decode(got!.body)).toBe('rel-bytes')
+    })
+
+    it('PUT: preflights with the intended header names and uploads to the redirect', async () => {
+      const cache = new RemoteCache({
+        baseUrl: fixture.baseUrl,
+        token: 'tok',
+        preflight: true,
+        signatureKey: 'k',
+      })
+      fixture.setHandler((req) => {
+        expect(req.method).toBe('OPTIONS')
+        expect(req.headers['access-control-request-method']).toBe('PUT')
+        const names = req.headers['access-control-request-headers']!
+        expect(names).toContain('authorization')
+        expect(names).toContain('content-type')
+        expect(names).toContain('x-artifact-duration')
+        expect(names).toContain('x-artifact-tag')
+        return new Response(null, { status: 200, headers: { location: `${blob.baseUrl}/up/h2` } })
+      })
+      blob.setHandler(() => new Response(null, { status: 200 }))
+
+      await cache.put('h2', new TextEncoder().encode('payload'), { durationMs: 5 })
+      const up = blob.requests[0]!
+      expect(up.method).toBe('PUT')
+      expect(up.path).toBe('/up/h2')
+      expect(new TextDecoder().decode(up.body)).toBe('payload')
+      expect(up.authorization).toBeNull() // no allow-headers → bearer dropped
+      expect(up.headers['x-artifact-tag']).toBeDefined() // signing still rides
+    })
+
+    it('has(): existence probe preflights too', async () => {
+      const cache = new RemoteCache({ baseUrl: fixture.baseUrl, token: 'tok', preflight: true })
+      fixture.setHandler((req) =>
+        req.method === 'OPTIONS'
+          ? new Response(null, { status: 200, headers: { location: `${blob.baseUrl}/head/h3` } })
+          : new Response(null, { status: 500 }),
+      )
+      blob.setHandler(() => new Response(null, { status: 200 }))
+      expect(await cache.has('h3')).toBe(true)
+      expect(blob.requests[0]!.method).toBe('HEAD')
+    })
+
+    it('a failed preflight throws a typed RemoteCacheError (degrades to a miss upstream)', async () => {
+      const cache = new RemoteCache({ baseUrl: fixture.baseUrl, token: 'tok', preflight: true })
+      fixture.setHandler(() => new Response('nope', { status: 500 }))
+      await expect(cache.get('h4')).rejects.toThrow(RemoteCacheError)
+      await expect(cache.get('h4')).rejects.toThrow(/preflight/)
+    })
+
+    it('the download cap + signature verification apply to the redirected body', async () => {
+      const cache = new RemoteCache({
+        baseUrl: fixture.baseUrl,
+        token: 'tok',
+        preflight: true,
+        signatureKey: 'secret',
+      })
+      fixture.setHandler(
+        () => new Response(null, { status: 200, headers: { location: `${blob.baseUrl}/b/h5` } }),
+      )
+      // The blob answers with bytes but NO x-artifact-tag — a signing
+      // deployment must refuse, exactly like the direct path.
+      blob.setHandler(() => new Response('unsigned-bytes', { status: 200 }))
+      await expect(cache.get('h5')).rejects.toThrow(/x-artifact-tag/)
+    })
+  })
 })
