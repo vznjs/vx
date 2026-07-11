@@ -8,8 +8,8 @@ in `src/cli/index.ts` dispatches to per-subcommand handlers under
 so existing Turbo users can swap in with minimal muscle-memory churn.
 
 ```sh
-# Standalone binary (no Bun required on target):
-curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
+# Standalone binary via npm (no Bun required on target):
+npm install -g @vzn/vx
 
 # From source (Bun ≥ 1.3):
 bun src/bin.ts --version
@@ -868,8 +868,8 @@ Self-update the compiled binary in place: downloads the release asset
 for this platform and atomically replaces the running executable
 (`vx upgrade <tag>` pins a specific release; default latest). Named
 `upgrade` per CLI convention (`bun upgrade`, `deno upgrade`). Refuses
-when running from source — use `git pull`. Re-running `install.sh`
-remains equivalent.
+when running from source — use `git pull`. (An npm-installed vx
+updates with `npm update -g @vzn/vx` instead.)
 
 ## `vx migrate`
 

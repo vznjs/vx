@@ -40,11 +40,9 @@ jobs:
         with:
           fetch-depth: 0 # --affected diffs against a base ref → needs history
 
-      # Install the vx binary onto PATH. Pin VX_VERSION for reproducible CI.
+      # Install the vx binary onto PATH. Pin the version for reproducible CI.
       - name: Install vx
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        run: npm install -g @vzn/vx
 
       # Install workspace dependencies with your package manager.
       - uses: oven-sh/setup-bun@v2

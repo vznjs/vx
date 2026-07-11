@@ -3,7 +3,7 @@
 ## Purpose
 
 `vx upgrade [tag]` downloads the release asset for this os/arch and
-atomically renames it over the current executable. Mirrors install.sh.
+atomically renames it over the current executable.
 
 ## Invariants
 

@@ -18,8 +18,8 @@ guides ([Turborepo](../migrate/from-turborepo/),
 # Any package manager — ships the prebuilt standalone binary (no Bun to run):
 npm install -D @vzn/vx    # or: pnpm add -D @vzn/vx · yarn add -D @vzn/vx · bun add -d @vzn/vx
 
-# …or grab the standalone binary globally with no Node or npm:
-curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
+# …or globally, so `vx` is on your PATH everywhere:
+npm install -g @vzn/vx
 ```
 
 This puts the `vx` binary in your workspace. vx prepends each package's

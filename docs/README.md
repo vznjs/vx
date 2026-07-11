@@ -58,8 +58,8 @@ CI. ~600 tests.
 
 ```bash
 bun add -d @vzn/vx
-# …or grab the standalone binary (no Node or Bun required):
-curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
+# …or globally, as the prebuilt standalone binary:
+npm install -g @vzn/vx
 ```
 
 Drop a `vx.config.ts` next to any workspace package:

@@ -341,7 +341,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
+      - run: npm install -g @vzn/vx
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       # Same repo, same commit, clean tree. Blocks until the submission
@@ -363,7 +363,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0                # --affected needs history
-      - run: curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
+      - run: npm install -g @vzn/vx
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       # A NORMAL vx run. The cloud() plugin routes it to the serve because
