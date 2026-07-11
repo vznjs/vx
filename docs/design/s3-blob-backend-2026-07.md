@@ -77,7 +77,12 @@ bucket's GET response returns those verbatim, so `NativeCacheClient`
 reads them as FALLBACKS for `x-vx-digest` / `x-vx-duration-ms` — digest
 verification survives offload with zero extra serve round-trips (the
 307 itself carries no metadata; adding it would cost the serve an S3
-HEAD per GET).
+HEAD per GET). Precedence is first-wins: a present-but-wrong
+`x-vx-digest` is never rescued by the meta fallback. Known residual
+(the native wire's pre-existing property, unchanged here): a response
+carrying NEITHER digest header is not verified — in practice both
+stores always attach one, so this only matters against a blob origin
+the operator's own bucket credentials already trust.
 
 Immutability on S3 is HEAD-then-PUT. The race (two writers pass the
 HEAD) is benign: a content-addressed key's bytes are equal by
