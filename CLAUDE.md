@@ -208,6 +208,55 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-11**: **Tenant-boundary + query review of platform Phase 2 —
+  crown jewel VERDICT AIRTIGHT; three non-tenant defects fixed
+  (`1aaa694`)** (repro-mandated hostile reviewer over `304ac5c`..
+  `7df5232`; real two-tenant driven server). **Refuted by executed
+  repro (the tenant boundary holds):** every one of the 27 reads is
+  structurally clamped `WHERE workspace_id = <server-uuid>`; two orgs
+  pushing the SAME client workspace string get DISTINCT server
+  workspaces (isolated by `repos UNIQUE(org_id, client_workspace_id)`);
+  org B with `?ws=<A's ws>` → 404, `?org=<A>` token ignores it, session
+  → 404; fetching A's run/invocation/why/diff/compare/logs by id as B →
+  404/found:false (the secret never appears); SQL injection inert
+  (values stored verbatim as data); idempotent re-ingest; bounded
+  500-task run; retention-drop boundary correct; and a SQLite-vs-Postgres
+  DIFFERENTIAL of getFlakiestTasks/getHistory/listRuns (incl. the
+  wallclock-ns string shape)/getRunTrends/getPeriodComparison (empty
+  window → COALESCE 0)/getRegressions/getCacheSavings deep-equal. **Fixed
+  (all NON-tenant):** **(1) HIGH — partition maintenance was BOOT-FATAL.**
+  Postgres refuses to create a range partition when DEFAULT already holds
+  an in-range row (a backfill, a future-dated push past the ahead buffer,
+  a lagging tick — ingest never range-validates `started_at`), and that
+  throw aborted the whole tick (invocations first → cascades to
+  task_runs/task_logs) while boot AWAITED it uncaught — so a poisoned DB
+  made the server UNBOOTABLE platform-wide, triggerable by the
+  lowest-privilege writer. Now each table/partition failure is isolated
+  (logged, skipped), `maintainPartitions` NEVER throws, boot never dies
+  on it, and a DEFAULT collision is RECOVERED (detach DEFAULT → create
+  partition → move the in-range rows in → reattach) so the row lands in
+  its own partition instead of wedging maintenance forever. **(2) MEDIUM
+  — concurrent first-push data loss.** The `workspaces` INSERT wasn't
+  conflict-guarded, so N parallel first-pushes of a new workspace raced
+  on `UNIQUE(org_id, slug)` and N-1 aborted with the raw Postgres error
+  (400, history dropped) before the repo-claim recovery. `routeWorkspace`
+  now retries from the fast-path read on a unique violation — the same
+  client id converges to the winner's workspace, a slug-colliding
+  different client picks the next free slug. **(3) MEDIUM — the tag
+  filter never matched.** jsonb columns were `JSON.stringify(obj)::jsonb`
+  which Bun.sql DOUBLE-encodes into a jsonb STRING scalar, so
+  `tags @> …` degenerated to equality (never matched a multi-tag run);
+  reads were accidentally masked by a JSON.parse. Now tags/requestedTasks/
+  fingerprint-files/config are written as OBJECTS (proper jsonb, verified
+  `jsonb_typeof=object`), the `@>` filter passes an object, and the read
+  layer accepts the object form (still parsing a legacy string
+  defensively). Pinned by 5 regression tests. **Accepted residuals
+  (informational):** past-dated rows in DEFAULT are never pruned by
+  retention (minor accumulation); the double-encoding was systemic but
+  only the tag filter observably broke. Cloud 469→473 (+4), core ci +
+  lint clean. **Verdict: tenant isolation + the SQLite→Postgres port are
+  solid to build Phase 3 on.**
+
 - **2026-07-11**: **Platform Phase 2 SHIPPED — the analytics storage
   swap onto Postgres (`304ac5c`, `22b6125`, `de22e97`, `7df5232`)**,
   executing P2 of `docs/design/cloud-platform-2026-07.md`. The
