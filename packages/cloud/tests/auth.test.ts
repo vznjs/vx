@@ -222,6 +222,139 @@ async function userId(db: DbClient): Promise<string> {
   return rows[0]!.id
 }
 
+describe('security-review regressions', () => {
+  it('invite accept is atomically single-use under a concurrent-accept race', async () => {
+    const db = openDb(await (await ephemeralPg()).createDatabase())
+    const ctx = makeCtx(db)
+    // Owner (instance admin) + a second org the racers are NOT members of.
+    const ownerCookie = cookieOf(
+      await call(ctx, 'POST', '/v1/auth/register', {
+        body: { email: 'race-owner@example.com', password: 'password1' },
+      }),
+    )
+    const org2Id = (
+      (await (
+        await call(ctx, 'POST', '/v1/admin/orgs', {
+          cookie: ownerCookie,
+          csrf: true,
+          body: { slug: 'org-two', name: 'Org Two' },
+        })
+      ).json()) as { orgId: string }
+    ).orgId
+
+    // Five already-registered users (each joined org1 via their own invite),
+    // none a member of org2.
+    const racerCookies: string[] = []
+    for (let i = 0; i < 5; i++) {
+      const org1Id = (
+        (await (await call(ctx, 'GET', '/v1/auth/me', { cookie: ownerCookie })).json()) as {
+          orgs: { orgId: string }[]
+        }
+      ).orgs[0]!.orgId
+      const { invite } = (await (
+        await call(ctx, 'POST', `/v1/admin/orgs/${org1Id}/invites`, {
+          cookie: ownerCookie,
+          csrf: true,
+          body: { role: 'member' },
+        })
+      ).json()) as { invite: string }
+      racerCookies.push(
+        cookieOf(
+          await call(ctx, 'POST', '/v1/auth/register', {
+            body: { email: `racer${i}@example.com`, password: 'password1', invite },
+          }),
+        ),
+      )
+    }
+
+    // ONE org2 invite; all five accept it concurrently.
+    const { invite: org2Invite } = (await (
+      await call(ctx, 'POST', `/v1/admin/orgs/${org2Id}/invites`, {
+        cookie: ownerCookie,
+        csrf: true,
+        body: { role: 'member' },
+      })
+    ).json()) as { invite: string }
+    const results = await Promise.all(
+      racerCookies.map((cookie) =>
+        call(ctx, 'POST', '/v1/auth/invites/accept', {
+          cookie,
+          csrf: true,
+          body: { invite: org2Invite },
+        }).then((r) => r.status),
+      ),
+    )
+    // Exactly ONE racer claimed it; the rest lost the race cleanly (403).
+    expect(results.filter((s) => s === 200)).toHaveLength(1)
+    const members = await db.sql<{ c: number }[]>`
+      SELECT count(*)::int AS c FROM org_memberships WHERE org_id = ${org2Id}`
+    expect(Number(members[0]!.c)).toBe(2) // the owner + exactly one racer
+    await db.close()
+  })
+
+  it('login throttle: rotating the source IP does not defeat the per-email backoff', async () => {
+    const db = openDb(await (await ephemeralPg()).createDatabase())
+    let clock = Date.now()
+    const ctx = makeCtx(db, () => clock)
+    await call(ctx, 'POST', '/v1/auth/register', {
+      body: { email: 'victim@example.com', password: 'password1' },
+    })
+    // Five wrong-password attempts, each from a DIFFERENT client IP.
+    for (let i = 0; i < 5; i++) {
+      await call(ctx, 'POST', '/v1/auth/login', {
+        headers: { 'x-forwarded-for': `10.0.0.${i}` },
+        body: { email: 'victim@example.com', password: 'nope' },
+      })
+    }
+    // A sixth attempt from a BRAND-NEW IP is still throttled — the email key held.
+    const next = await call(ctx, 'POST', '/v1/auth/login', {
+      headers: { 'x-forwarded-for': '203.0.113.99' },
+      body: { email: 'victim@example.com', password: 'password1' },
+    })
+    expect(next.status).toBe(429)
+    clock += 5 * 60 * 1000 + 1000
+    expect(
+      (
+        await call(ctx, 'POST', '/v1/auth/login', {
+          headers: { 'x-forwarded-for': '203.0.113.99' },
+          body: { email: 'victim@example.com', password: 'password1' },
+        })
+      ).status,
+    ).toBe(200)
+    await db.close()
+  })
+
+  it('login throttle map is bounded — distinct-key spray cannot grow it without limit', () => {
+    let clock = 1_000_000
+    const throttle = createLoginThrottle(() => clock, 10)
+    for (let i = 0; i < 1000; i++) throttle.fail(`ip|10.0.0.${i}|e${i}@x`)
+    expect(throttle.size()).toBeLessThanOrEqual(10)
+  })
+
+  it('login timing does not reveal whether an email is registered (dummy argon2)', async () => {
+    const db = openDb(await (await ephemeralPg()).createDatabase())
+    const ctx = makeCtx(db)
+    await call(ctx, 'POST', '/v1/auth/register', {
+      body: { email: 'known@example.com', password: 'password1' },
+    })
+    // Warm the memoized dummy hash so the first unknown attempt isn't skewed.
+    await call(ctx, 'POST', '/v1/auth/login', {
+      body: { email: 'nobody-warmup@example.com', password: 'x' },
+    })
+    const time = async (email: string): Promise<number> => {
+      const t = Bun.nanoseconds()
+      await call(ctx, 'POST', '/v1/auth/login', { body: { email, password: 'wrong-password' } })
+      return Bun.nanoseconds() - t
+    }
+    const known = await time('known@example.com')
+    const unknown = await time('does-not-exist@example.com')
+    // Both run one argon2 verify, so they are the same order of magnitude —
+    // pre-fix the unknown path was ~300× faster (a clean enumeration oracle).
+    expect(unknown).toBeGreaterThan(known * 0.3)
+    await db.close()
+  })
+})
+
 describe('tokens + RBAC matrix', () => {
   let db: DbClient
   let ctx: AuthRoutesContext

@@ -6,7 +6,7 @@
 
 import { createHash, randomBytes } from 'node:crypto'
 import type { SQL } from 'bun'
-import { hashPassword, verifyPassword } from './passwords.js'
+import { dummyPasswordHash, hashPassword, verifyPassword } from './passwords.js'
 import {
   createSession,
   destroySession,
@@ -55,6 +55,18 @@ function json(body: unknown, status = 200, headers?: Record<string, string>): Re
  * Per-IP+email login throttle with exponential backoff (§6.1). In-memory and
  * single-node by design; a reverse proxy adds real rate limiting (§9).
  */
+/** Thrown inside the invite-accept transaction to roll the atomic claim back
+ *  (a non-org invite, or an already-a-member dup) so the invite is not burned;
+ *  translated to an HTTP response by the handler. */
+class InviteRollback extends Error {
+  constructor(
+    readonly status: number,
+    readonly publicMessage: string,
+  ) {
+    super(publicMessage)
+  }
+}
+
 export interface LoginThrottle {
   /** ms until the next attempt is allowed; 0 = allowed now. */
   retryAfterMs(key: string): number
@@ -62,22 +74,48 @@ export interface LoginThrottle {
   succeed(key: string): void
 }
 
-export function createLoginThrottle(now: () => number = Date.now): LoginThrottle {
+/** Backoff caps: doubling from 1s, ceiling 5min. An entry is dead once its
+ *  backoff window has fully elapsed (and then some) — safe to evict. */
+const THROTTLE_MAX_DELAY_MS = 5 * 60 * 1000
+/** Hard cap on tracked keys — the endpoint is pre-auth, so an attacker
+ *  spraying distinct keys must never grow the map without bound. */
+const THROTTLE_MAX_KEYS = 50_000
+
+export function createLoginThrottle(
+  now: () => number = Date.now,
+  maxKeys: number = THROTTLE_MAX_KEYS,
+): LoginThrottle & { size(): number } {
   const fails = new Map<string, { count: number; lastAt: number }>()
+  // An entry is expired once now is past its last attempt + the max backoff:
+  // it can no longer be throttling anything, so it is pure memory.
+  const expired = (f: { lastAt: number }): boolean => now() - f.lastAt > THROTTLE_MAX_DELAY_MS
   return {
     retryAfterMs(key) {
       const f = fails.get(key)
       if (f === undefined) return 0
-      const delay = Math.min(1000 * 2 ** (f.count - 1), 5 * 60 * 1000)
+      const delay = Math.min(1000 * 2 ** (f.count - 1), THROTTLE_MAX_DELAY_MS)
       return Math.max(0, f.lastAt + delay - now())
     },
     fail(key) {
       const f = fails.get(key)
       fails.set(key, { count: (f?.count ?? 0) + 1, lastAt: now() })
+      if (fails.size > maxKeys) {
+        // Sweep expired entries first; if still over cap, drop the oldest
+        // (Map preserves insertion order — the head is the least-recent write).
+        for (const [k, v] of fails) {
+          if (expired(v)) fails.delete(k)
+        }
+        while (fails.size > maxKeys) {
+          const oldest = fails.keys().next().value
+          if (oldest === undefined) break
+          fails.delete(oldest)
+        }
+      }
     },
     succeed(key) {
       fails.delete(key)
     },
+    size: () => fails.size,
   }
 }
 
@@ -251,9 +289,15 @@ async function authRoute(req: Request, url: URL, ctx: AuthRoutesContext): Promis
     if (email === undefined || password === undefined) {
       return json({ error: 'email and password required' }, 400)
     }
+    // TWO throttle keys: per-email (bounds targeted brute force regardless of
+    // source IP — the client cannot avoid the victim's email) and per-IP+email
+    // (bounds spray behind a trusted proxy). The IP is the leftmost XFF hop and
+    // is client-spoofable without a trusted proxy — so it is a best-effort
+    // second axis, NOT the primary defense; the email key is what actually
+    // holds when an attacker rotates IPs (the review's bypass).
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? ''
-    const throttleKey = `${ip}|${email}`
-    const wait = ctx.throttle.retryAfterMs(throttleKey)
+    const throttleKeys = [`email|${email}`, `ip|${ip}|${email}`]
+    const wait = Math.max(...throttleKeys.map((k) => ctx.throttle.retryAfterMs(k)))
     if (wait > 0) {
       return json({ error: 'too many attempts' }, 429, {
         'Retry-After': String(Math.ceil(wait / 1000)),
@@ -262,14 +306,23 @@ async function authRoute(req: Request, url: URL, ctx: AuthRoutesContext): Promis
     const users = await sql<{ id: string; password_hash: string; disabled_at: string | null }[]>`
       SELECT id, password_hash, disabled_at FROM users WHERE email = ${email}`
     const user = users[0]
-    // Hash-verify even for unknown emails would cost a dummy argon2 pass; the
-    // throttle owns enumeration resistance instead (P1 pragmatism).
-    if (user === undefined || !(await verifyPassword(password, user.password_hash))) {
-      ctx.throttle.fail(throttleKey)
+    // Always run one argon2 verify — against the real hash, or a fixed dummy
+    // for an unknown email — so login time does not reveal whether the email is
+    // registered (the throttle can be IP-rotated, so it can't own enumeration
+    // resistance alone). The dummy result is discarded.
+    let ok = false
+    if (user !== undefined) {
+      ok = await verifyPassword(password, user.password_hash)
+    } else {
+      // Unknown email: still pay one argon2 verify (discarded) to equalize time.
+      await verifyPassword(password, await dummyPasswordHash())
+    }
+    if (!ok || user === undefined) {
+      for (const k of throttleKeys) ctx.throttle.fail(k)
       return json({ error: 'invalid credentials' }, 401)
     }
     if (user.disabled_at !== null) return json({ error: 'account disabled' }, 403)
-    ctx.throttle.succeed(throttleKey)
+    for (const k of throttleKeys) ctx.throttle.succeed(k)
     const session = await createSession(sql, ctx.secret, user.id, {}, now)
     return json({ ok: true, userId: user.id }, 200, {
       'Set-Cookie': sessionSetCookie(session.cookieValue, ctx.secureCookies),
@@ -299,21 +352,37 @@ async function authRoute(req: Request, url: URL, ctx: AuthRoutesContext): Promis
     const body = await readBody(req)
     const invite = body !== null ? str(body, 'invite') : undefined
     if (invite === undefined) return json({ error: 'invite required' }, 400)
-    const invites = await sql<{ id: string; org_id: string | null; role: OrgRole | null }[]>`
-      SELECT id, org_id, role FROM invites
-      WHERE token_hash = ${sha256(invite)} AND used_by IS NULL AND expires_at > ${now}`
-    const row = invites[0]
-    if (row === undefined) return json({ error: 'invalid or expired invite' }, 403)
-    if (row.org_id === null) return json({ error: 'not an org invite' }, 400)
+    // Atomic single-use claim: the conditional UPDATE row-locks the invite and
+    // the `used_by IS NULL` guard makes a concurrent second accept a no-op
+    // (RETURNING yields nothing) — closing the TOCTOU where N racers all read
+    // an unused invite and all onboard. The membership INSERT rides the same
+    // transaction, and the not-an-org / already-a-member cases THROW to roll
+    // the claim back so a legitimate retry isn't burned.
+    const userId = principal.userId
+    let outcome: { status: number; body: unknown }
     try {
-      await sql`INSERT INTO org_memberships (org_id, user_id, role, created_at)
-                VALUES (${row.org_id}, ${principal.userId}, ${row.role ?? 'member'}, ${now})`
+      outcome = await sql.begin(async (tx) => {
+        const claimed = await tx<{ org_id: string | null; role: OrgRole | null }[]>`
+          UPDATE invites SET used_by = ${userId}
+          WHERE token_hash = ${sha256(invite)} AND used_by IS NULL AND expires_at > ${now}
+          RETURNING org_id, role`
+        const inv = claimed[0]
+        if (inv === undefined) return { status: 403, body: { error: 'invalid or expired invite' } }
+        if (inv.org_id === null) throw new InviteRollback(400, 'not an org invite')
+        try {
+          await tx`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+                   VALUES (${inv.org_id}, ${userId}, ${inv.role ?? 'member'}, ${now})`
+        } catch (err) {
+          if (isUniqueViolation(err)) throw new InviteRollback(409, 'already a member')
+          throw err
+        }
+        return { status: 200, body: { ok: true, orgId: inv.org_id } }
+      })
     } catch (err) {
-      if (isUniqueViolation(err)) return json({ error: 'already a member' }, 409)
+      if (err instanceof InviteRollback) return json({ error: err.publicMessage }, err.status)
       throw err
     }
-    await sql`UPDATE invites SET used_by = ${principal.userId} WHERE id = ${row.id}`
-    return json({ ok: true, orgId: row.org_id })
+    return json(outcome.body, outcome.status)
   }
 
   return json({ error: 'not found' }, 404)

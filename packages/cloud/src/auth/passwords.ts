@@ -14,3 +14,15 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
     return false
   }
 }
+
+let dummyHashPromise: Promise<string> | undefined
+/**
+ * A real argon2id hash (live params) used to equalize login timing for an
+ * unknown email: verifying a supplied password against it costs a full argon2
+ * pass, so login latency does not reveal whether the email is registered.
+ * Memoized — computed once, then reused.
+ */
+export function dummyPasswordHash(): Promise<string> {
+  dummyHashPromise ??= hashPassword('vx-cloud-timing-equalizer-not-a-secret')
+  return dummyHashPromise
+}
