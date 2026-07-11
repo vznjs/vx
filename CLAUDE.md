@@ -208,6 +208,37 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-11**: **Adversarial review of the S3 blob-backend wave —
+  VERDICT SOUND, zero defects; two accepted residuals noted** (repro-
+  mandated hostile reviewer over `be446b7`+`a13de4a`). **Refuted by
+  executed repro:** SigV4 byte-stability (wire == canonical through
+  `new URL().toString()`, four AWS-docs KATs), trust scopes through the
+  REAL serve+bucket flow (traversal `x-vx-cache-scope` values all
+  collapse to `shared/untrusted`, a trusted GET never presigns an
+  untrusted key, presigned URLs carry neither bearer nor scope),
+  dead-bucket safety (a real run stays ok=true on both PUT and GET
+  paths; wire = loud 502, internal probes degrade; garbage XML → `[]`),
+  spool lifecycle (unlinked on success/throw/disconnect/over-cap; a
+  half-upload never immutability-locks the key), digest-fallback
+  precedence (first-wins — a wrong `x-vx-digest` is never rescued by
+  the meta fallback), `resolveS3Config` (empty env = unset; partial
+  config prevents BOOT, never a silent local fallback), zero core
+  changes, cloud 379 green. **Accepted residuals (noted in the design
+  doc):** a GET response carrying NEITHER digest header is unverified
+  (the native wire's pre-existing advisory-digest property — both
+  stores always attach one in practice); exotic operator env values
+  (lone-surrogate prefix → loud 502 at request time, >7-day presign
+  TTL) are unvalidated — neither reachable from the untrusted wire.
+  **Same day: `install.sh` and the one-time npm seeding script were
+  REMOVED (owner: "no scripts are allowed in repo" — one-time only).**
+  npm is THE install path (`npm install -g @vzn/vx`); every doc install
+  block + CI recipe swapped. Context: the curl installer's missing
+  PATH persistence caused a "command not found" report (fixed, then
+  removed with the installer); the four `@vzn/vx-cloud-<target>` names
+  were successfully seeded on the registry by the owner (the publish
+  404 was missing npm auth), unblocking Trusted Publisher config + the
+  npm workflow re-run that completes the `@vzn/vx-cloud` publish.
+
 - **2026-07-11**: **The S3 blob backend SHIPPED — the serve stores zero
   artifact bytes at rest when a bucket is configured (`be446b7`,
   `a13de4a`)**, executing the same-day directive below, zero deviations
