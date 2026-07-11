@@ -5,8 +5,9 @@
 #   curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
 #
 # Env overrides:
-#   VX_INSTALL_DIR   destination dir (default: $HOME/.local/bin)
-#   VX_VERSION       specific tag to install (default: latest)
+#   VX_INSTALL_DIR      destination dir (default: $HOME/.local/bin)
+#   VX_VERSION          specific tag to install (default: latest)
+#   VX_NO_MODIFY_PATH   set to 1 to skip updating your shell profile
 
 set -eu
 
@@ -58,12 +59,50 @@ chmod +x "$dest.tmp"
 mv "$dest.tmp" "$dest"
 
 # Later upgrades: re-run this script, or just `vx upgrade`.
-# --- post-install hint ------------------------------------------------------
+# --- PATH setup ---------------------------------------------------------------
 
 printf '\nvx: installed %s\n' "$("$dest" --version 2>/dev/null || echo "(version check failed)")"
 
+# A printed hint alone is not enough — piped installers scroll past and the
+# very next `vx` is "command not found". Persist the PATH into the login
+# shell's profile (opt out with VX_NO_MODIFY_PATH=1), like bun/rustup/uv do.
 case ":$PATH:" in
-  *":$install_dir:"*) ;;
+  *":$install_dir:"*) ;; # already reachable — nothing to do
   *)
-    printf '\nAdd %s to your PATH:\n  export PATH="%s:$PATH"\n' "$install_dir" "$install_dir" ;;
+    export_line="export PATH=\"$install_dir:\$PATH\""
+    if [ "${VX_NO_MODIFY_PATH:-0}" = "1" ]; then
+      printf '\nAdd %s to your PATH:\n  %s\n' "$install_dir" "$export_line"
+    else
+      # $SHELL is the user's LOGIN shell even when this script runs under
+      # `curl | sh` — pick its profile, not the profile of /bin/sh.
+      case "$(basename "${SHELL:-sh}")" in
+        zsh)
+          profile="${ZDOTDIR:-$HOME}/.zshrc"
+          line="$export_line"
+          ;;
+        fish)
+          profile="$HOME/.config/fish/conf.d/vx.fish"
+          line="fish_add_path \"$install_dir\""
+          ;;
+        bash)
+          profile="$HOME/.bashrc"
+          line="$export_line"
+          ;;
+        *)
+          profile="$HOME/.profile"
+          line="$export_line"
+          ;;
+      esac
+      if [ -f "$profile" ] && grep -Fqs "$line" "$profile"; then
+        printf '\nvx: %s already configures PATH — restart your shell to use vx.\n' "$profile"
+      elif mkdir -p "$(dirname "$profile")" 2>/dev/null \
+        && printf '\n# vx\n%s\n' "$line" >>"$profile" 2>/dev/null; then
+        printf '\nvx: added %s to PATH in %s\n' "$install_dir" "$profile"
+        printf 'Restart your shell, or run this once in the current one:\n  %s\n' "$export_line"
+      else
+        # Unwritable profile — fall back to the manual hint.
+        printf '\nAdd %s to your PATH:\n  %s\n' "$install_dir" "$export_line"
+      fi
+    fi
+    ;;
 esac
