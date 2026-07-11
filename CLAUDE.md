@@ -208,6 +208,46 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-11**: **Security review of platform Phase 1 — auth
+  foundation VERDICT SOUND; three availability/enumeration defects fixed
+  (`13d8be5`)** (repro-mandated hostile reviewer over the auth layer;
+  real ephemeral pg + driven server). **Every authorization invariant
+  held under executed repro (refuted as attacks):** session forge/tamper
+  (HMAC timingSafeEqual before any DB read; id sha256-at-rest), expiry +
+  sliding renewal, fixation (login rotates id), logout (server-side row
+  DELETE), token immutability (no route mutates trust_tier; admin tokens
+  force-trusted) + revocation, the full RBAC/cross-org matrix (member/
+  viewer can't mint/change-role/self-promote; cross-org is 404 no-leak;
+  admin TOKEN can't manage owners), the last-owner guard (applies to
+  instance admins too), the bootstrap-admin race (8 concurrent first-
+  registers → exactly 1 admin via the xact advisory lock), SQL injection
+  (all values are Bun.sql tagged-template params; no user value in
+  `sql.unsafe`), password handling (argon2id, no manual compare), the
+  config-refusal boot, and the `eeffcb5` env-shield. **Fixed (all
+  availability/enumeration, NOT authorization):** **(1) MEDIUM invite-
+  accept TOCTOU** — the accept path read `used_by IS NULL` then updated
+  in separate statements, so N concurrent accepts of ONE invite all
+  onboarded (an owner-role invite → N owners). Now an atomic conditional
+  `UPDATE … RETURNING` inside a transaction claims it (a second accept
+  row-locks, finds it used, RETURNING empty → 403); not-an-org / already-
+  member throw to roll the claim back so a legit retry isn't burned. The
+  register path was already safe (serialized on the bootstrap lock).
+  **(2) MEDIUM throttle bypass + unbounded map** — keyed only on the
+  client-supplied leftmost XFF (IP rotation defeated it) with no eviction
+  (a pre-auth memory-exhaustion vector). Now ALSO keys per-email (the
+  attacker can't avoid the victim's address, so rotation doesn't help a
+  targeted attack) + self-evicts expired entries + caps at 50k keys.
+  **(3) LOW-MED login timing oracle** — argon2 was skipped for an unknown
+  email (~300× faster = a clean enumeration oracle, and its stated
+  compensating throttle was itself bypassable). Every login now runs one
+  argon2 verify (a memoized dummy hash for unknown emails). Pinned by 4
+  regression tests. **Accepted residuals (informational):** login/
+  register aren't CSRF-gated (the JSON+no-CORS requirement blocks the
+  form attack; impact is only login-CSRF, low for a same-origin SPA); the
+  register email-exists 409 is reachable only with a valid invite; the
+  IP-axis throttle still needs a trusted proxy to be meaningful (the
+  email axis is the real defense). Cloud 419→423 (+4), lint clean.
+
 - **2026-07-11**: **Platform Phase 1 SHIPPED — identity/auth/RBAC on
   Postgres, config-required `vx-cloud server`, the `serve` verb REMOVED
   (`f1b0b46`, `2970fff`, `36e8257`, `eeffcb5`)**, executing P1 of
