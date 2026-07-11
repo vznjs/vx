@@ -296,6 +296,28 @@ describe('platform e2e (real pg + fake S3)', () => {
     expect(viaToken.status).toBe(200)
   })
 
+  it('the Postgres analytics surfaces reflect the ingested run', async () => {
+    // The push auto-provisioned a workspace + project.
+    const ws = await call('GET', '/v1/workspaces', { cookie })
+    const { workspaces } = (await ws.json()) as { workspaces: { name: string; runCount: number }[] }
+    expect(workspaces).toHaveLength(1)
+    expect(workspaces[0]!.name).toBe('fixture-ws')
+    expect(workspaces[0]!.runCount).toBe(1)
+
+    const projects = await call('GET', '/v1/projects', { cookie })
+    const { projects: rows } = (await projects.json()) as { projects: { project: string }[] }
+    expect(rows.some((r) => r.project === 'a')).toBe(true)
+
+    const detail = await call('GET', '/v1/tasks/a%23build', { cookie })
+    expect(detail.status).toBe(200)
+    const td = (await detail.json()) as { aggregate: { runs: number } | null }
+    expect(td.aggregate!.runs).toBe(1)
+
+    // A ?ws= foreign to the org is a 404 (the tenant clamp).
+    const foreign = await call('GET', `/v1/runs?ws=${orgId}`, { cookie })
+    expect(foreign.status).toBe(404)
+  })
+
   it('cache wire: tier rides the token — untrusted writes its own scope, trusted never reads it', async () => {
     const hash = 'ab'.repeat(10)
     const body = Bun.zstdCompressSync(new TextEncoder().encode('artifact-bytes'))

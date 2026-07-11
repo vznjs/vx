@@ -5,24 +5,94 @@
 // and refuses listing every missing/invalid var at once. There is no
 // tokenless mode, no loopback exemption, and no `serve` verb.
 //
-// TRANSITIONAL (§12 P1, named deliberately): the analytics/ingest surfaces
-// are still backed by the SQLite `IngestStore`, mounted under the new
-// account/token auth and namespaced per ORG on the data dir
-// (`<dataDir>/orgs/<orgId>`), until P2 swaps that storage onto the Postgres
-// analytics tables. Identity, RBAC, and the artifact store are on
-// Postgres + S3 from this phase.
+// P2: the analytics/ingest surfaces are served against Postgres
+// (`db/analytics.ts`), org/workspace-clamped by the gate. Everything the gate
+// doesn't recognize as an analytics surface (the native cache wire, agents,
+// dist, streaming, SPA) still falls through to the serve's machine surfaces —
+// cli/serve.ts survives as the transitional HTTP host until P4 absorbs it, and
+// its residual features (dist duration hints, /v1/artifacts provenance, /mcp)
+// read the serve's own store rather than Postgres until P3.
 
 import path from 'node:path'
 import { VERSION } from '@vzn/vx'
 import { openDb, type DbClient } from '../db/client.js'
 import { runMigrations } from '../db/migrate.js'
+import { maintainPartitions } from '../db/partitions.js'
+import { Analytics } from '../db/analytics.js'
+import { handleAnalyticsRequest, type AnalyticsRouteCtx } from '../db/analytics-routes.js'
 import { createLoginThrottle, handleAuthRoutes, type AuthRoutesContext } from '../auth/routes.js'
 import { hasOrgRole, resolvePrincipal } from '../auth/rbac.js'
 import { lookupToken } from '../auth/tokens.js'
 import { DEFAULT_PRINCIPAL, type Principal } from '../artifact-store.js'
 import { S3Backend } from '../blob/s3.js'
-import { IngestStore } from '../ingest-store.js'
 import { loadUiHtmlPath, startServe, type ResolvedS3Config } from './serve.js'
+
+const NIL_UUID = '00000000-0000-0000-0000-000000000000'
+
+/** Daily partition maintenance interval (create ahead, drop past retention). */
+const PARTITION_TICK_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Routes served by the Postgres analytics layer (`db/analytics-routes.ts`).
+ * Everything NOT matched here falls through to the serve's machine surfaces
+ * (native cache wire, agents, dist, streaming, SPA). The colocated `/v1/graph`
+ * + `/v1/workspace/*` and the dist `/v1/runs/queue` + `/v1/artifacts` are NOT
+ * analytics — they stay on the serve side.
+ */
+function isAnalyticsSurface(pathname: string, method: string): boolean {
+  if (pathname === '/v1/ingest' || pathname === '/v1/ingest/logs' || pathname === '/v1/catalog') {
+    return method === 'POST'
+  }
+  if (
+    pathname === '/v1/runs/queue' ||
+    pathname === '/v1/artifacts' ||
+    pathname === '/v1/graph' ||
+    pathname.startsWith('/v1/workspace/') ||
+    /^\/v1\/cache\/[0-9a-f]{16,64}$/.test(pathname)
+  ) {
+    return false
+  }
+  const EXACT = new Set([
+    '/v1/workspaces',
+    '/v1/hermeticity',
+    '/v1/runs',
+    '/v1/invocations',
+    '/v1/cache/stats',
+    '/v1/cache/hit-split',
+    '/v1/cache/breakdown',
+    '/v1/cache/savings',
+    '/v1/cache/entries',
+    '/v1/cache/prunable',
+    '/v1/top-tasks',
+    '/v1/failures',
+    '/v1/projects',
+    '/v1/trends/runs',
+    '/v1/trends/heatmap',
+    '/v1/trends/storage',
+    '/v1/trends/parallelism',
+    '/v1/flakiness',
+    '/v1/regressions',
+    '/v1/analysis',
+    '/v1/bottlenecks',
+    '/v1/history',
+  ])
+  if (EXACT.has(pathname)) return true
+  return (
+    /^\/v1\/runs\/[^/]+$/.test(pathname) ||
+    /^\/v1\/runs\/[^/]+\/logs\/.+$/.test(pathname) ||
+    /^\/v1\/invocations\/[^/]+$/.test(pathname) ||
+    /^\/v1\/compare\/[^/]+$/.test(pathname) ||
+    /^\/v1\/tasks\/.+$/.test(pathname) ||
+    /^\/v1\/explain\/.+$/.test(pathname) ||
+    /^\/v1\/why\/[^/]+\/.+$/.test(pathname) ||
+    /^\/v1\/diff\/[^/]+\/.+$/.test(pathname)
+  )
+}
+
+/** Machine surfaces that require a ci token; a session hitting them → 403. */
+function isMachineTokenOnly(pathname: string, isUpgrade: boolean): boolean {
+  return isUpgrade || pathname === '/v1/agents' || /^\/v1\/cache\/[0-9a-f]{16,64}$/.test(pathname)
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -35,7 +105,7 @@ export interface ServerConfig {
   retentionDays: number
   openSignup: boolean
   openOrgCreate: boolean
-  /** Volume for the transitional per-org SQLite ingest stores (§12 P1). */
+  /** Volume for the serve's residual machine-surface store (dies with P4). */
   dataDir: string
 }
 
@@ -192,6 +262,19 @@ export async function startServer(opts: {
     )
   }
 
+  // Create the current + upcoming analytics partitions and drop those past
+  // retention (boot + a daily tick). A missing future partition would error an
+  // ingest, so this runs before the first request.
+  await maintainPartitions(db, { retentionDays: config.retentionDays })
+  const partitionTick = setInterval(() => {
+    void maintainPartitions(db, { retentionDays: config.retentionDays }).catch((err: unknown) =>
+      log(`partition maintenance failed: ${err instanceof Error ? err.message : String(err)}`),
+    )
+  }, PARTITION_TICK_MS)
+  partitionTick.unref()
+
+  const analytics = new Analytics(db.sql)
+
   const users = await db.sql<{ c: number }[]>`SELECT count(*)::int AS c FROM users`
   if (users[0]!.c === 0) {
     log(`no accounts yet — the first registration at ${config.baseUrl} becomes the instance admin`)
@@ -207,27 +290,55 @@ export async function startServer(opts: {
     throttle: createLoginThrottle(),
   }
 
-  // TRANSITIONAL per-org analytics namespacing (§12 P1): one SQLite
-  // IngestStore per org under the data dir. P2 replaces these with the
-  // partitioned Postgres analytics tables and deletes the store wholesale.
-  const orgStores = new Map<string, IngestStore>()
-  const storeFor = (orgId: string): IngestStore => {
-    let s = orgStores.get(orgId)
-    if (s === undefined) {
-      s = new IngestStore(path.join(config.dataDir, 'orgs', orgId), log)
-      orgStores.set(orgId, s)
-    }
-    return s
-  }
-
   const startedAt = Date.now()
   const serverName = new URL(config.baseUrl).hostname
 
-  // The §6.5 surface → principal map, as the serve's platform gate.
-  const gate = async (
+  /**
+   * Run one analytics/ingest/log/catalog request against Postgres, resolving
+   * the read-workspace clamp. A workspace-scoped token is pinned to its own
+   * workspace; a `?ws=` foreign to the org 404s; a write ignores the read
+   * clamp (routing resolves the workspace, §5.5).
+   */
+  const dispatchAnalytics = async (
     req: Request,
     url: URL,
-  ): Promise<Response | { principal: Principal; ingest?: IngestStore }> => {
+    base: {
+      orgId: string
+      tokenWorkspaceId?: string | undefined
+      tokenId?: string | undefined
+      isToken: boolean
+    },
+  ): Promise<Response> => {
+    let workspaceId: string
+    if (base.tokenWorkspaceId !== undefined) {
+      workspaceId = base.tokenWorkspaceId
+    } else {
+      const wsParam = url.searchParams.get('ws')
+      const resolved = await analytics.resolveReadWorkspace(base.orgId, wsParam)
+      if (resolved === null) {
+        if (wsParam !== null) return refuse('unknown workspace', 404)
+        workspaceId = NIL_UUID
+      } else {
+        workspaceId = resolved
+      }
+    }
+    const ctx: AnalyticsRouteCtx = {
+      analytics,
+      orgId: base.orgId,
+      workspaceId,
+      isToken: base.isToken,
+    }
+    if (base.tokenWorkspaceId !== undefined) ctx.tokenWorkspaceId = base.tokenWorkspaceId
+    if (base.tokenId !== undefined) ctx.tokenId = base.tokenId
+    const res = await handleAnalyticsRequest(ctx, req, url)
+    return res ?? refuse('not found', 404)
+  }
+
+  // The §6.5 surface → principal map, as the serve's platform gate. Analytics
+  // surfaces resolve to a Postgres-served Response here; the machine surfaces
+  // (native cache wire, agents, dist, streaming, SPA) fall through to the serve
+  // with just the resolved principal.
+  const gate = async (req: Request, url: URL): Promise<Response | { principal: Principal }> => {
     const authRes = await handleAuthRoutes(req, url, authCtx)
     if (authRes !== null) return authRes
     if (url.pathname === '/v1/meta') {
@@ -254,15 +365,7 @@ export async function startServer(opts: {
     const p = url.pathname
     const isUpgrade = req.headers.get('upgrade')?.toLowerCase() === 'websocket'
     const isStream = p === '/events' || p === '/v1/events' || p === '/stream'
-    // Machine surfaces: writes routed + clamped to the token's org; the cache
-    // tier comes from the TOKEN (the static VX_CLOUD_PR_TOKEN model is dead).
-    const tokenOnly =
-      isUpgrade ||
-      p === '/v1/agents' ||
-      p === '/v1/ingest' ||
-      p === '/v1/ingest/logs' ||
-      /^\/v1\/cache\/[0-9a-f]{16,64}$/.test(p)
-    const gated = tokenOnly || isStream || p === '/mcp' || p.startsWith('/v1/')
+    const gated = isUpgrade || isStream || p === '/mcp' || p.startsWith('/v1/')
     // Everything else is the SPA catch-all — static code; every data call it
     // makes lands on a gated surface.
     if (!gated) return { principal: DEFAULT_PRINCIPAL }
@@ -276,17 +379,25 @@ export async function startServer(opts: {
     if (principal === null) {
       return refuse('unauthorized', 401, { 'WWW-Authenticate': 'Bearer' })
     }
+
     if (principal.kind === 'token') {
-      // The org id becomes the artifact-store bucket, so cache scopes are
-      // org-partitioned from P1 (`<orgId>/<tier>[/<sub>]/<hash>`).
-      return {
-        principal: { tier: principal.tier, bucket: principal.orgId },
-        ingest: storeFor(principal.orgId),
+      if (isAnalyticsSurface(p, req.method)) {
+        return dispatchAnalytics(req, url, {
+          orgId: principal.orgId,
+          tokenWorkspaceId: principal.workspaceId,
+          tokenId: principal.tokenId,
+          isToken: true,
+        })
       }
+      // The org id becomes the artifact-store bucket, so cache scopes are
+      // org-partitioned (`<orgId>/<tier>[/<sub>]/<hash>`).
+      return { principal: { tier: principal.tier, bucket: principal.orgId } }
     }
-    if (tokenOnly) return refuse('ci token required', 403)
-    // Session analytics read: clamp to ONE org — ?org= when given, else the
-    // sole membership.
+
+    // Session. The token-only machine surfaces (cache wire, agents, WS) are
+    // never a session principal — refuse before resolving an org.
+    if (isMachineTokenOnly(p, isUpgrade)) return refuse('ci token required', 403)
+    // Clamp to ONE org — ?org= when given, else the sole membership.
     const orgParam = url.searchParams.get('org')
     let orgId: string
     if (orgParam !== null) {
@@ -299,13 +410,17 @@ export async function startServer(opts: {
     }
     if (!hasOrgRole(principal, orgId, 'viewer')) return refuse('not found', 404)
     if (!principal.orgs.has(orgId)) {
-      // Instance admin reading an org it isn't a member of: verify existence
-      // so a garbage id can't materialize an empty org store.
+      // Instance admin reading an org it isn't a member of: verify existence.
       const rows = await db.sql<{ id: string }[]>`
         SELECT id FROM organizations WHERE id = ${orgId}`
       if (rows.length === 0) return refuse('not found', 404)
     }
-    return { principal: { tier: 'trusted', bucket: orgId }, ingest: storeFor(orgId) }
+    if (isAnalyticsSurface(p, req.method)) {
+      return dispatchAnalytics(req, url, { orgId, isToken: false })
+    }
+    // A session hitting a non-analytics gated surface (mcp, artifacts,
+    // streaming, run WS): the org id is the artifact-store bucket.
+    return { principal: { tier: 'trusted', bucket: orgId } }
   }
 
   const serve = await startServe({
@@ -322,14 +437,8 @@ export async function startServer(opts: {
   return {
     origin: serve.origin,
     stop: async () => {
+      clearInterval(partitionTick)
       await serve.stop()
-      for (const s of orgStores.values()) {
-        try {
-          s.close()
-        } catch {
-          // already closed
-        }
-      }
       await db.close()
     },
   }
