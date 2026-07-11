@@ -208,6 +208,54 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-11**: **The S3 blob backend SHIPPED — the serve stores zero
+  artifact bytes at rest when a bucket is configured (`be446b7`,
+  `a13de4a`)**, executing the same-day directive below, zero deviations
+  from the design. **The seam:** raw storage moved behind `BlobBackend`
+  (`packages/cloud/src/blob/{backend,local,s3}.ts`) — `ArtifactStore`
+  keeps ALL policy (trust scopes, immutability-409 via `backend.head`
+  BEFORE the body, streaming spool + mid-stream byte cap + zstd-magic
+  gate, metadata validation); `LocalDirBackend` is today's flat dir
+  byte-identical (the zero-config default); `S3Backend` = path-style
+  signed HEAD/PUT/ListObjectsV2 (hand-parsed XML, bounded continuation)
+  - SigV4 query-presigned GET. **Wire:** GET on S3 answers **307** to a
+    presigned URL (TTL 300 s default) — the controller never proxies a
+    download; the client (already shipped) follows one hop dropping
+    bearer + scope; metadata rides `x-amz-meta-vx-digest`/`-duration-ms`
+    and `NativeCacheClient` reads those as fallbacks (same DIGEST_RE), so
+    digest verification survives offload. PUT keeps proxying (spool →
+    S3 PUT with UNSIGNED-PAYLOAD → unlink in `finally`) so every
+    server-enforced gate survives — transit, not storage. A throwing
+    bucket is a LOUD **502** on the wire (never 404-as-miss); the
+    internal `has`/`storedDurationMs`/`list` probes degrade best-effort
+    so a down bucket can't crash a dist submission. **SigV4 hand-rolled**
+    (`blob/sigv4.ts`, node:crypto only, NO AWS SDK): per-segment AWS URI
+    re-canonicalization, header-signed + query-signed forms; pinned by
+    FOUR AWS-docs vectors (docs.aws.amazon.com is proxy-denied here —
+    vectors from memory, all four reproduced exactly on first run) + two
+    self-KATs + encoding edges. **Config:** `resolveS3Config` —
+    `VX_CLOUD_S3_ENDPOINT` enables; missing BUCKET/KEY/SECRET = boot-time
+    hard error naming the vars (never a silent local fallback);
+    credential-free boot line names the mode. **Verified independently
+    with the real CLI** (real serve in S3 env + standalone fake S3): cold
+    run → artifact lands in the bucket under `default/trusted/` while the
+    controller artifact dir holds **0 files** (the directive, asserted),
+    direct GET → 307 with a well-formed presigned URL, local wipe →
+    `restored-remote` through the offload with the fallback digest, and
+    the bucket recorded ZERO credentialed presigned requests (the
+    cross-origin drop through a real flow). Tests: cloud 379 pass (+27:
+    SigV4 KATs, S3-mode store suite incl. trust-scope matrix +
+    junk-PUT + chunked-cap + bucket-down-502 + list pagination, the
+    controller-byte-free e2e with tampered-bucket degradation,
+    client-fallback pins); core ci green; fake-S3 helper records
+    credentialed-presign violations as a standing assertion. Docs: cli.md
+    env table + 307 semantics, self-hosting S3 section (R2/MinIO
+    examples), deploy compose/README, the native-wire design's offload
+    flipped to shipped. Deferred consciously: PUT offload (client→bucket
+    presigned upload — would hand immutability/caps/junk-gate to the
+    client), bucket migration tooling, spool-gone tmpdir assertion
+    (covered by the controller-byte-free e2e + shared finally).
+
 - **2026-07-11**: **OWNER DIRECTIVE — the serve must NOT store artifact
   bytes; connect to an S3-compatible bucket** ("we cannot store cache on
   controller need to connect with s3 compat bucket"). Un-parks the
