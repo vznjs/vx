@@ -356,13 +356,14 @@ describe('ingestCatalog', () => {
       },
     })
     expect(cat.workspaceId).toBe(ing.workspaceId)
-    const rows = await db.sql<{ task: string; cacheable: boolean; config: string }[]>`
+    const rows = await db.sql<{ task: string; cacheable: boolean; config: unknown }[]>`
       SELECT pt.task, pt.cacheable, pt.config FROM project_tasks pt
       JOIN projects p ON p.id = pt.project_id WHERE p.workspace_id = ${ing.workspaceId}`
     expect(rows).toHaveLength(1)
     expect(rows[0]!.cacheable).toBe(true)
-    // jsonb reads back as text through Bun.sql (the read layer JSON.parses it).
-    expect(JSON.parse(rows[0]!.config)).toEqual({ exec: { command: 'tsc' } })
+    // config is stored as proper jsonb (an object), so Bun.sql reads it back
+    // as an object — no double-encoded string to JSON.parse.
+    expect(rows[0]!.config).toEqual({ exec: { command: 'tsc' } })
 
     // A subsequent name-only run must NOT wipe the config the catalog set.
     await analytics.ingest({
@@ -373,10 +374,10 @@ describe('ingestCatalog', () => {
         tasks: [task({ project: 'app', task: 'build' })],
       }),
     })
-    const after = await db.sql<{ config: string }[]>`
+    const after = await db.sql<{ config: unknown }[]>`
       SELECT pt.config FROM project_tasks pt
       JOIN projects p ON p.id = pt.project_id WHERE p.workspace_id = ${ing.workspaceId}`
-    expect(JSON.parse(after[0]!.config)).toEqual({ exec: { command: 'tsc' } })
+    expect(after[0]!.config).toEqual({ exec: { command: 'tsc' } })
   })
 })
 
@@ -412,5 +413,62 @@ describe('workspace selection', () => {
     expect(list).toHaveLength(2)
     expect(list.every((w) => w.runCount === 1)).toBe(true)
     expect(new Set(list.map((w) => w.name))).toEqual(new Set(['A', 'B']))
+  })
+})
+
+describe('security-review regressions', () => {
+  it('jsonb tags/requestedTasks store as objects — the @> tag filter matches a multi-tag run', async () => {
+    const org = await seedOrg(db, 'jsonb-1')
+    const s = summary({ workspaceId: 'jw1', workspaceName: 'jsonb/app', runId: 'jr1' })
+    s.run.tags = { team: 'core', env: 'prod' }
+    s.run.requestedTasks = ['build', 'test']
+    const { workspaceId } = await analytics.ingest({ orgId: org, summary: s })
+
+    // Stored as a jsonb OBJECT, not a double-encoded string scalar.
+    const raw = await db.sql<{ ty: string }[]>`
+      SELECT jsonb_typeof(tags) AS ty FROM invocations WHERE run_id = ${'jr1'}`
+    expect(raw[0]!.ty).toBe('object')
+
+    // The @> containment filter matches a run carrying the tag among others.
+    expect(
+      await analytics.listInvocations(workspaceId, { tagKey: 'team', tagValue: 'core' }),
+    ).toHaveLength(1)
+    expect(
+      await analytics.listInvocations(workspaceId, { tagKey: 'env', tagValue: 'prod' }),
+    ).toHaveLength(1)
+    expect(
+      await analytics.listInvocations(workspaceId, { tagKey: 'team', tagValue: 'nope' }),
+    ).toHaveLength(0)
+
+    // Reads round-trip as objects/arrays.
+    const inv = await analytics.getInvocation(workspaceId, 'jr1')
+    expect(inv!.tags).toEqual({ team: 'core', env: 'prod' })
+    expect(inv!.requestedTasks).toEqual(['build', 'test'])
+  })
+
+  it('concurrent first-push of one new workspace: all land, exactly one workspace', async () => {
+    const org = await seedOrg(db, 'race-1')
+    const results = await Promise.all(
+      Array.from({ length: 6 }, (_, i) =>
+        analytics.ingest({
+          orgId: org,
+          summary: summary({
+            workspaceId: 'shared-ws',
+            workspaceName: 'race/app',
+            runId: `rr${i}`,
+          }),
+        }),
+      ),
+    )
+    // Every push stored (none rejected with a lost run).
+    expect(results.filter((r) => r.stored)).toHaveLength(6)
+    // All converged to ONE workspace.
+    expect(new Set(results.map((r) => r.workspaceId)).size).toBe(1)
+    const ws = await db.sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM workspaces WHERE org_id = ${org}`
+    expect(Number(ws[0]!.n)).toBe(1)
+    const invs = await db.sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM invocations WHERE workspace_id = ${results[0]!.workspaceId}`
+    expect(Number(invs[0]!.n)).toBe(6)
   })
 })

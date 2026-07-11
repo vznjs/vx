@@ -263,13 +263,20 @@ export async function startServer(opts: {
   }
 
   // Create the current + upcoming analytics partitions and drop those past
-  // retention (boot + a daily tick). A missing future partition would error an
-  // ingest, so this runs before the first request.
-  await maintainPartitions(db, { retentionDays: config.retentionDays })
+  // retention (boot + a daily tick). maintainPartitions is best-effort by
+  // construction (never throws; a poisoned partition degrades to rows in
+  // DEFAULT), so boot can never die on it — a wedged partition must not take
+  // the whole platform offline on the next deploy.
+  const bootMaint = await maintainPartitions(db, {
+    retentionDays: config.retentionDays,
+    warn: (m) => log(`partition maintenance: ${m}`),
+  })
+  if (bootMaint.created > 0) log(`partitions: created ${bootMaint.created}`)
   const partitionTick = setInterval(() => {
-    void maintainPartitions(db, { retentionDays: config.retentionDays }).catch((err: unknown) =>
-      log(`partition maintenance failed: ${err instanceof Error ? err.message : String(err)}`),
-    )
+    void maintainPartitions(db, {
+      retentionDays: config.retentionDays,
+      warn: (m) => log(`partition maintenance: ${m}`),
+    })
   }, PARTITION_TICK_MS)
   partitionTick.unref()
 

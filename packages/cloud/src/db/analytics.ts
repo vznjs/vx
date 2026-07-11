@@ -45,6 +45,13 @@ export class WorkspaceForbiddenError extends Error {
   }
 }
 
+/** Postgres unique-violation (SQLSTATE 23505) — used to retry a lost
+ *  auto-provision race rather than surface the raw constraint error. */
+function isUniqueViolation(err: unknown): boolean {
+  const e = err as { code?: string; message?: string } | null
+  return e?.code === '23505' || /duplicate key|unique constraint/i.test(e?.message ?? '')
+}
+
 export interface WorkspaceEntry {
   id: string
   name: string
@@ -596,29 +603,32 @@ function numOrNull(v: string | number | null): number | null {
   return v === null ? null : Number(v)
 }
 
-function parseTags(raw: string | null): Record<string, string> {
-  if (raw === null) return {}
+// jsonb columns are written as objects (not JSON.stringify'd strings — that
+// double-encodes into a jsonb string scalar and breaks `@>`), so Bun.sql reads
+// them back as parsed JS values. These parsers accept the object form and, for
+// robustness, still parse a legacy string form.
+function asJsonValue(raw: unknown): unknown {
+  if (typeof raw !== 'string') return raw
   try {
-    const parsed = JSON.parse(raw) as unknown
-    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return Object.fromEntries(
-        Object.entries(parsed as Record<string, unknown>).map(([k, v]) => [k, String(v)]),
-      )
-    }
+    return JSON.parse(raw)
   } catch {
-    // malformed tags → empty
+    return null
+  }
+}
+
+function parseTags(raw: unknown): Record<string, string> {
+  const parsed = asJsonValue(raw)
+  if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).map(([k, v]) => [k, String(v)]),
+    )
   }
   return {}
 }
 
-function parseRequestedTasks(raw: string): string[] {
-  try {
-    const parsed = JSON.parse(raw) as unknown
-    if (Array.isArray(parsed)) return parsed.map(String)
-  } catch {
-    // malformed → empty
-  }
-  return []
+function parseRequestedTasks(raw: unknown): string[] {
+  const parsed = asJsonValue(raw)
+  return Array.isArray(parsed) ? parsed.map(String) : []
 }
 
 // The pass statuses for regression state — a cache hit counts as a pass.
@@ -739,12 +749,30 @@ export class Analytics {
 
   /**
    * Route a pushed client workspaceId to a server workspace within the token's
-   * org, in its own small transaction (idempotent; the repos UNIQUE(org_id,
-   * client_workspace_id) serializes concurrent first-pushes). Auto-provisions a
-   * workspace + repo on first push (§5.5.2). A workspace-scoped token can never
-   * resolve to another workspace — throws WorkspaceForbiddenError otherwise.
+   * org. Auto-provisions a workspace + repo on first push (§5.5.2). A
+   * workspace-scoped token can never resolve to another workspace — throws
+   * WorkspaceForbiddenError otherwise.
+   *
+   * Concurrent first-pushes race on BOTH the workspace slug (`UNIQUE(org_id,
+   * slug)`) and the repo claim (`UNIQUE(org_id, client_workspace_id)`); the
+   * `workspaces` INSERT can lose that race and abort the transaction. Retry
+   * from the fast-path read: after the winner commits, the SAME client id
+   * resolves to the winner's workspace (convergence), and a slug-colliding
+   * DIFFERENT client picks the next free slug — so a CI matrix's N parallel
+   * first-pushes all land instead of N-1 being rejected with lost history.
    */
   async routeWorkspace(args: RouteArgs): Promise<string> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.routeWorkspaceOnce(args)
+      } catch (err) {
+        if (attempt < 4 && isUniqueViolation(err)) continue
+        throw err
+      }
+    }
+  }
+
+  private async routeWorkspaceOnce(args: RouteArgs): Promise<string> {
     return this.sql.begin(async (tx) => {
       const existing = await tx<{ workspace_id: string }[]>`
         SELECT workspace_id FROM repos
@@ -853,12 +881,12 @@ export class Analytics {
           host, os, arch, vx_version, tags, ingested_by_token)
         VALUES (
           ${r.runId}, ${args.orgId}, ${workspaceId}, ${r.command},
-          ${JSON.stringify(r.requestedTasks)}::jsonb, ${r.cachePolicy}, ${r.concurrency}, ${r.flow},
+          ${r.requestedTasks}::jsonb, ${r.cachePolicy}, ${r.concurrency}, ${r.flow},
           ${summary.startedAt}, ${summary.endedAt}, ${summary.totalDurationMs}, ${summary.taskCount},
           ${summary.failedCount}, ${summary.hitCount}, ${summary.hitLocalCount},
           ${summary.hitRemoteCount}, ${summary.exitOk}, ${r.commitSha}, ${r.branch}, ${r.dirty},
           ${r.ci}, ${r.ciProvider}, ${r.host}, ${r.os}, ${r.arch}, ${r.vxVersion},
-          ${JSON.stringify(r.tags)}::jsonb, ${tokenId})
+          ${r.tags}::jsonb, ${tokenId})
         ON CONFLICT (started_at, run_id) DO NOTHING
         RETURNING run_id`
       if (inserted.length === 0) return false
@@ -915,7 +943,7 @@ export class Analytics {
             task_id, run_id, host, created_at)
           VALUES (
             ${args.orgId}, ${workspaceId}, ${t.hash}, ${r.os}, ${r.arch}, ${fp.tree},
-            ${fp.fileCount}, ${files === null ? null : JSON.stringify(files)}::jsonb,
+            ${fp.fileCount}, ${files}::jsonb,
             ${truncated}, ${t.taskId}, ${r.runId}, ${r.host}, ${now})
           ON CONFLICT (workspace_id, hash, os, arch, tree) DO NOTHING`
       }
@@ -1029,7 +1057,7 @@ export class Analytics {
               (project_id, task, config, cacheable, is_group, persistent, updated_at)
             VALUES (
               ${projectId}, ${t.task},
-              ${t.config !== undefined ? JSON.stringify(t.config) : null}::jsonb,
+              ${t.config ?? null}::jsonb,
               ${t.cacheable ?? null}, ${t.isGroup ?? null}, ${t.persistent ?? null}, ${now})
             ON CONFLICT (project_id, task) DO UPDATE SET
               config = EXCLUDED.config, cacheable = EXCLUDED.cacheable,
@@ -1130,7 +1158,7 @@ export class Analytics {
     // jsonb containment (the Postgres-correct form of core's tags LIKE hack).
     const fTag =
       args.tagKey !== undefined && args.tagValue !== undefined
-        ? sql`AND tags @> ${JSON.stringify({ [args.tagKey]: args.tagValue })}::jsonb`
+        ? sql`AND tags @> ${{ [args.tagKey]: args.tagValue }}::jsonb`
         : sql``
     const rows = await sql<RawInvocationRow[]>`
       SELECT ${sql.unsafe(INVOCATION_COLUMNS)} FROM invocations
@@ -2194,7 +2222,8 @@ interface RawFpRow {
   os: string
   arch: string
   tree: string
-  files: string | null
+  // jsonb — Bun.sql reads it back as the parsed value (array of [path,hash]).
+  files: unknown
   truncated: boolean
   task_id: string
   run_id: string
@@ -2217,7 +2246,10 @@ function divergenceOf(rows: RawFpRow[]): DivergentKey {
   const byTree = new Map<string, Map<string, string>>()
   for (const r of rows) {
     if (r.files === null || byTree.has(r.tree)) continue
-    byTree.set(r.tree, new Map(JSON.parse(r.files) as Array<[string, string]>))
+    // `files` is jsonb — Bun.sql reads it back as the parsed array (a legacy
+    // double-encoded string still parses via asJsonValue).
+    const pairs = asJsonValue(r.files)
+    if (Array.isArray(pairs)) byTree.set(r.tree, new Map(pairs as Array<[string, string]>))
   }
   const changed = new Set<string>()
   const maps = [...byTree.values()]

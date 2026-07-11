@@ -184,3 +184,71 @@ describe('default partition catches out-of-range inserts', () => {
     }
   })
 })
+
+describe('DEFAULT-collision recovery (security-review regression)', () => {
+  it('creates a partition whose range already has rows in DEFAULT — moves them, never throws', async () => {
+    const db = await freshDb()
+    try {
+      const orgId = Bun.randomUUIDv7()
+      const wsId = Bun.randomUUIDv7()
+      // A future-dated task_run beyond the created window lands in DEFAULT.
+      const now = Date.UTC(2026, 5, 15)
+      await ensurePartitions(db, { now, ahead: 0 }) // only the current week
+      const future = now + 10 * WEEK_MS // far beyond ahead → DEFAULT
+      await db.sql`
+        INSERT INTO task_runs
+          (org_id, workspace_id, run_id, hash, project, task, status, exit_code, duration_ms, started_at, ended_at)
+        VALUES (${orgId}, ${wsId}, ${'rf'}, ${'h'}, ${'p'}, ${'build'}, ${'success'}, ${0}, ${10}, ${future}, ${future + 10})`
+      const inDefault = await db.sql<{ part: string }[]>`
+        SELECT tableoid::regclass::text AS part FROM task_runs WHERE run_id = ${'rf'}`
+      expect(inDefault[0]!.part).toBe('task_runs_default')
+
+      // Now advance to that future week and run maintenance — a plain CREATE
+      // would collide with the DEFAULT row; the recovery must move it out.
+      const warnings: string[] = []
+      const res = await maintainPartitions(db, {
+        now: future,
+        ahead: 0,
+        retentionDays: 100_000,
+        warn: (m) => warnings.push(m),
+      })
+      expect(warnings).toEqual([]) // recovered, not just skipped
+      expect(res.created).toBeGreaterThan(0)
+      // The row now lives in its own partition, not DEFAULT.
+      const moved = await db.sql<{ part: string }[]>`
+        SELECT tableoid::regclass::text AS part FROM task_runs WHERE run_id = ${'rf'}`
+      expect(moved[0]!.part).not.toBe('task_runs_default')
+      expect(moved[0]!.part.startsWith('task_runs_p')).toBe(true)
+    } finally {
+      await db.close()
+    }
+  })
+
+  it('maintainPartitions never throws even against a wedged table (boot-safe)', async () => {
+    const db = await freshDb()
+    try {
+      // A DEFAULT row inside the CURRENT window: a plain create collides; the
+      // recovery handles it, but even if recovery were impossible the call must
+      // resolve (never throw) so boot can proceed.
+      const now = Date.UTC(2026, 2, 10)
+      const bounds = now // lands in the current month/week
+      const orgId = Bun.randomUUIDv7()
+      const wsId = Bun.randomUUIDv7()
+      await db.sql`
+        INSERT INTO invocations
+          (org_id, workspace_id, run_id, command, requested_tasks, cache_policy, concurrency, flow,
+           started_at, ended_at, total_duration_ms, task_count, failed_count, hit_count,
+           hit_local_count, hit_remote_count, exit_ok, commit_sha, branch, dirty, ci, ci_provider,
+           host, os, arch, vx_version, tags)
+        VALUES (${orgId}, ${wsId}, ${'ri'}, ${'c'}, ${['b']}::jsonb, ${'p'}, ${1}, ${'broad'},
+           ${bounds}, ${bounds + 1}, ${1}, ${1}, ${0}, ${0}, ${0}, ${0}, ${true}, ${'s'}, ${'main'},
+           ${false}, ${true}, ${'gh'}, ${'h'}, ${'linux'}, ${'x64'}, ${'0'}, ${{}}::jsonb)`
+      // Must resolve, never throw.
+      await expect(
+        maintainPartitions(db, { now, ahead: 2, retentionDays: 180 }),
+      ).resolves.toBeDefined()
+    } finally {
+      await db.close()
+    }
+  })
+})
