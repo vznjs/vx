@@ -28,8 +28,11 @@ const TIMEOUT = 30_000
 
 // PUT refuses a body that is not a zstd frame (an immutable store must never
 // let junk lock a key), so every stored test body is real zstd. Deterministic
-// per tag, so round-trip assertions compare against zbody(tag) bytes.
-const zbody = (tag: string): Uint8Array => Bun.zstdCompressSync(Buffer.from(tag))
+// per tag, so round-trip assertions compare against zbody(tag) bytes. The
+// copy pins the ArrayBuffer generic — toEqual() against a fresh
+// `new Uint8Array(await res.arrayBuffer())` needs both sides typed alike.
+const zbody = (tag: string): Uint8Array<ArrayBuffer> =>
+  new Uint8Array(Bun.zstdCompressSync(Buffer.from(tag)))
 
 describe('vx serve /v1/cache — the native wire', () => {
   let dir: string
