@@ -17,6 +17,7 @@
 // (§5.5) and auto-provisions on first push.
 
 import type { SQL } from 'bun'
+import { diffOutputTrees } from '@vzn/vx'
 import type { OutputFingerprint, RunSummaryRecord } from '@vzn/vx'
 import {
   RUN_LOG_BUDGET_CHARS,
@@ -125,6 +126,608 @@ function validFingerprint(fp: OutputFingerprint | undefined): fp is OutputFinger
     (f.fileCount as number) >= 0 &&
     (f.files === undefined || isPairArray(f.files))
   )
+}
+
+// ---------------------------------------------------------------------------
+// Mirrored response types (kept byte-identical to src/orchestrator/metrics.ts;
+// the façade doesn't export these, so they're duplicated here — see the file
+// header). Grouped by query for lockstep review against core.
+// ---------------------------------------------------------------------------
+
+export interface RunSummaryRow {
+  runId: string | null
+  project: string
+  task: string
+  status: string
+  exitCode: number
+  durationMs: number
+  startedAt: number
+  endedAt: number
+  cacheHit: boolean | null
+  hash: string
+  cpuMs: number | null
+  peakRssBytes: number | null
+  wallclockStartNs: string | null
+  wallclockEndNs: string | null
+}
+
+export interface ListRunsArgs {
+  limit?: number
+  project?: string
+  task?: string
+  runId?: string
+}
+
+export interface InvocationDetail {
+  runId: string
+  command: string
+  requestedTasks: string[]
+  cachePolicy: string
+  concurrency: number
+  flow: 'focused' | 'broad' | null
+  startedAt: number
+  endedAt: number
+  totalDurationMs: number
+  taskCount: number
+  failedCount: number
+  hitCount: number
+  hitLocalCount: number
+  hitRemoteCount: number
+  exitOk: boolean
+  commitSha: string | null
+  branch: string | null
+  dirty: boolean | null
+  ci: boolean
+  ciProvider: string | null
+  host: string | null
+  os: string | null
+  arch: string | null
+  vxVersion: string
+  tags: Record<string, string>
+}
+
+export interface ListInvocationsArgs {
+  limit?: number
+  branch?: string
+  ci?: boolean
+  tagKey?: string
+  tagValue?: string
+}
+
+export interface RunDetail {
+  runId: string
+  startedAt: number
+  endedAt: number
+  tasks: RunSummaryRow[]
+}
+
+export interface CacheStatsResult {
+  entryCount: number
+  totalBytes: number
+  runCountLast24h: number
+  hitCountLast24h: number
+  hitRate24h: number
+  hitLocalCountLast24h: number
+  hitRemoteCountLast24h: number
+}
+
+export interface HitRateSplit {
+  total: number
+  hits: number
+  hitLocal: number
+  hitRemote: number
+  hitRate: number
+  localShare: number
+  remoteShare: number
+}
+
+export interface TaskHistoryRow {
+  id: string
+  project: string
+  task: string
+  runs: number
+  successes: number
+  failures: number
+  hits: number
+  successRate: number
+  hitRate: number
+  failureMode: 'stable' | 'flaky-recoverable' | 'flaky-fatal'
+  p50DurationMs: number | undefined
+  p99DurationMs: number | undefined
+  minDurationMs: number | undefined
+  maxDurationMs: number | undefined
+  avgDurationMs: number | undefined
+  totalDurationMs: number
+  lastSeenAt: number | undefined
+}
+
+export interface GetHistoryArgs {
+  project?: string
+  task?: string
+  limit?: number
+}
+
+export interface TopTaskRow {
+  id: string
+  project: string
+  task: string
+  runs: number
+  totalDurationMs: number
+  avgDurationMs: number
+}
+
+export interface FailureRow {
+  runId: string | null
+  project: string
+  task: string
+  exitCode: number
+  durationMs: number
+  startedAt: number
+  hash: string
+}
+
+export interface CacheEntryRow {
+  hash: string
+  project: string
+  task: string
+  command: string
+  exitCode: number
+  durationMs: number
+  sizeBytes: number
+  createdAt: number
+  accessedAt: number
+}
+
+export interface ListCacheEntriesArgs {
+  limit?: number
+  orderBy?: 'created_at' | 'accessed_at' | 'size_bytes' | 'duration_ms'
+  project?: string
+}
+
+export interface CacheProjectRow {
+  project: string
+  entries: number
+  totalBytes: number
+}
+
+export interface TaskDetail {
+  project: string
+  task: string
+  aggregate: TaskHistoryRow | null
+  recent: RunSummaryRow[]
+  latestEntry: CacheEntryRow | null
+}
+
+export interface CacheSavings {
+  hitsLast24h: number
+  estimatedTimeSavedMs: number
+  estimatedTimeSavedTotalMs: number
+}
+
+export interface CacheKeyExplanation {
+  taskId: string
+  project: string
+  task: string
+  latestEntry: {
+    hash: string
+    command: string
+    exitCode: number
+    durationMs: number
+    sizeBytes: number
+    createdAt: number
+  } | null
+  note: string
+}
+
+export interface WhyDidThisRerun {
+  runId: string
+  taskId: string
+  found: boolean
+  thisRun?: { hash: string; status: string; cacheHit: boolean | null; startedAt: number }
+  previousRun?: { hash: string; status: string; cacheHit: boolean | null; startedAt: number } | null
+  hashChanged?: boolean | null
+  note: string
+}
+
+export interface InputDiffEntry {
+  kind: string
+  name: string
+  change: 'added' | 'removed' | 'changed'
+  before: string | null
+  after: string | null
+}
+
+export interface CacheKeyDiff {
+  runId: string
+  taskId: string
+  found: boolean
+  previousRunId: string | null
+  entries: InputDiffEntry[]
+  unchangedCount: number
+  note: string
+}
+
+export interface CompareTaskSide {
+  status: string
+  durationMs: number
+  hash: string
+  cacheHit: boolean | null
+  exitCode: number
+}
+
+export interface CompareTaskRow {
+  taskId: string
+  project: string
+  task: string
+  a: CompareTaskSide | null
+  b: CompareTaskSide | null
+  hashChanged: boolean
+  durationDeltaMs: number | null
+  statusChanged: boolean
+}
+
+export interface CompareRuns {
+  runId: string
+  previousRunId: string | null
+  startedAt: number | null
+  prevStartedAt: number | null
+  found: boolean
+  summary: {
+    aTotalMs: number
+    bTotalMs: number
+    totalDeltaMs: number
+    tasksChanged: number
+    tasksOnlyInA: number
+    tasksOnlyInB: number
+  }
+  tasks: CompareTaskRow[]
+  note: string
+}
+
+export interface ProjectRollup {
+  project: string
+  taskCount: number
+  runs: number
+  failures: number
+  hits: number
+  hitRate: number
+  totalDurationMs: number
+  avgDurationMs: number
+  cacheBytes: number
+  cacheEntries: number
+  lastRunAt: number | undefined
+  estimatedTimeSavedMs: number
+}
+
+export type TrendBucket = 'hour' | 'day'
+
+export interface TrendPoint {
+  t: number
+  runs: number
+  hits: number
+  hitsLocal: number
+  hitsRemote: number
+  failures: number
+  totalDurationMs: number
+}
+
+export interface HeatmapCell {
+  dayOfWeek: number
+  hourOfDay: number
+  runs: number
+  totalDurationMs: number
+}
+
+export interface FlakyTask {
+  id: string
+  project: string
+  task: string
+  runs: number
+  failures: number
+  failureRate: number
+  withinRunRetries: number
+  maxAttempts: number | undefined
+  flakyConfirmed: boolean
+  durationTailRatio: number | undefined
+  p50DurationMs: number | undefined
+  p99DurationMs: number | undefined
+}
+
+export interface RegressedTask {
+  id: string
+  project: string
+  task: string
+  branchesFailing: number
+  branchesTotal: number
+  branches: string[]
+  regressed: boolean
+  firstFailedAt: number
+  lastRunAt: number
+  failures: number
+  runs: number
+}
+
+export interface RegressionArgs {
+  sinceDays?: number
+  minBranches?: number
+  limit?: number
+}
+
+export interface PeriodStats {
+  runs: number
+  taskRuns: number
+  executed: number
+  failures: number
+  cacheHits: number
+  totalDurationMs: number
+  avgDurationMs: number
+  p50DurationMs: number | undefined
+  p95DurationMs: number | undefined
+  failureRate: number
+  cacheHitRate: number
+}
+
+export interface TaskMover {
+  id: string
+  project: string
+  task: string
+  currentAvgMs: number
+  previousAvgMs: number
+  deltaMs: number
+  deltaPct: number
+  currentRuns: number
+  previousRuns: number
+}
+
+export interface PeriodComparison {
+  windowDays: number
+  current: { from: number; to: number; stats: PeriodStats }
+  previous: { from: number; to: number; stats: PeriodStats }
+  movers: TaskMover[]
+}
+
+export interface PeriodComparisonArgs {
+  windowDays?: number
+  endMs?: number
+  minRuns?: number
+  limit?: number
+  project?: string
+  task?: string
+}
+
+export interface BottleneckRow {
+  id: string
+  project: string
+  task: string
+  runsRecent: number
+  totalDurationMs: number
+  avgDurationMs: number
+  runsPerDay: number
+  weeklySavingsAt25PctCutMs: number
+}
+
+export interface ParallelismPoint {
+  runId: string
+  startedAt: number
+  cpuSumMs: number
+  wallMs: number
+  factor: number
+  taskCount: number
+}
+
+export interface StoragePoint {
+  t: number
+  bytesAdded: number
+  entriesAdded: number
+}
+
+export interface PrunableEntry {
+  hash: string
+  project: string
+  task: string
+  sizeBytes: number
+  createdAt: number
+  accessedAt: number
+  ageDays: number
+}
+
+/** A stored task-log tail (mirrors the deleted log-store's StoredTaskLog). */
+export interface StoredTaskLog {
+  runId: string
+  taskId: string
+  hash?: string
+  status: 'success' | 'failed'
+  content: string
+  charsFull: number
+  truncatedHeadChars: number
+}
+
+export interface HermeticityReport {
+  os: string
+  arch: string
+  tree: string
+  runId: string
+  host: string | null
+  at: number
+}
+
+export interface DivergentKey {
+  hash: string
+  taskId: string
+  crossPlatform: boolean
+  changed: string[]
+  changedComplete: boolean
+  reports: HermeticityReport[]
+}
+
+export interface HermeticityResult {
+  divergent: DivergentKey[]
+  keysTracked: number
+  reportCount: number
+}
+
+/** Provenance for an artifact hash — the most recent producing task/run. */
+export interface HashProvenance {
+  project: string
+  task: string
+  runId: string | null
+}
+
+// ---------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------
+
+function clampInt(n: number, min: number, max: number): number {
+  if (!Number.isFinite(n)) return min
+  return Math.min(max, Math.max(min, Math.floor(n)))
+}
+
+function pickPercentile(sorted: number[], q: number): number | undefined {
+  if (sorted.length === 0) return undefined
+  const idx = Math.min(sorted.length - 1, Math.floor(q * sorted.length))
+  return sorted[idx]
+}
+
+function num(v: string | number): number {
+  return Number(v)
+}
+
+function numOrNull(v: string | number | null): number | null {
+  return v === null ? null : Number(v)
+}
+
+function parseTags(raw: string | null): Record<string, string> {
+  if (raw === null) return {}
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return Object.fromEntries(
+        Object.entries(parsed as Record<string, unknown>).map(([k, v]) => [k, String(v)]),
+      )
+    }
+  } catch {
+    // malformed tags → empty
+  }
+  return {}
+}
+
+function parseRequestedTasks(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (Array.isArray(parsed)) return parsed.map(String)
+  } catch {
+    // malformed → empty
+  }
+  return []
+}
+
+// The pass statuses for regression state — a cache hit counts as a pass.
+const PASS_STATUSES = ['success', 'cache-hit', 'cache-hit-remote'] as const
+const BRANCH_CAP = 12
+
+/** Bounded per-hash fingerprint rows loaded for the O(N²) divergence diff. */
+const FP_MAX_ROWS_PER_HASH = 64
+
+interface RawRunRow {
+  run_id: string
+  project: string
+  task: string
+  status: string
+  exit_code: number
+  duration_ms: number
+  started_at: string
+  ended_at: string
+  cache_hit: boolean | null
+  hash: string
+  cpu_ms: number | null
+  peak_rss_bytes: string | null
+  wallclock_start_ns: string | null
+  wallclock_end_ns: string | null
+}
+
+const RUN_COLUMNS = `run_id, project, task, status, exit_code, duration_ms, started_at, ended_at,
+  cache_hit, hash, cpu_ms, peak_rss_bytes, wallclock_start_ns, wallclock_end_ns`
+
+function mapRunRow(r: RawRunRow): RunSummaryRow {
+  return {
+    runId: r.run_id,
+    project: r.project,
+    task: r.task,
+    status: r.status,
+    exitCode: r.exit_code,
+    durationMs: r.duration_ms,
+    startedAt: num(r.started_at),
+    endedAt: num(r.ended_at),
+    cacheHit: r.cache_hit,
+    hash: r.hash,
+    cpuMs: r.cpu_ms,
+    peakRssBytes: numOrNull(r.peak_rss_bytes),
+    wallclockStartNs: r.wallclock_start_ns,
+    wallclockEndNs: r.wallclock_end_ns,
+  }
+}
+
+interface RawInvocationRow {
+  run_id: string
+  command: string
+  requested_tasks: string
+  cache_policy: string
+  concurrency: number
+  flow: string | null
+  started_at: string
+  ended_at: string
+  total_duration_ms: number
+  task_count: number
+  failed_count: number
+  hit_count: number
+  hit_local_count: number
+  hit_remote_count: number
+  exit_ok: boolean
+  commit_sha: string | null
+  branch: string | null
+  dirty: boolean | null
+  ci: boolean
+  ci_provider: string | null
+  host: string | null
+  os: string | null
+  arch: string | null
+  vx_version: string
+  tags: string
+}
+
+const INVOCATION_COLUMNS = `run_id, command, requested_tasks, cache_policy, concurrency, flow,
+  started_at, ended_at, total_duration_ms, task_count, failed_count, hit_count, hit_local_count,
+  hit_remote_count, exit_ok, commit_sha, branch, dirty, ci, ci_provider, host, os, arch,
+  vx_version, tags`
+
+function mapInvocation(r: RawInvocationRow): InvocationDetail {
+  return {
+    runId: r.run_id,
+    command: r.command,
+    requestedTasks: parseRequestedTasks(r.requested_tasks),
+    cachePolicy: r.cache_policy,
+    concurrency: r.concurrency,
+    flow: r.flow === 'focused' || r.flow === 'broad' ? r.flow : null,
+    startedAt: num(r.started_at),
+    endedAt: num(r.ended_at),
+    totalDurationMs: r.total_duration_ms,
+    taskCount: r.task_count,
+    failedCount: r.failed_count,
+    hitCount: r.hit_count,
+    hitLocalCount: r.hit_local_count,
+    hitRemoteCount: r.hit_remote_count,
+    exitOk: r.exit_ok,
+    commitSha: r.commit_sha,
+    branch: r.branch,
+    dirty: r.dirty,
+    ci: r.ci,
+    ciProvider: r.ci_provider,
+    host: r.host,
+    os: r.os,
+    arch: r.arch,
+    vxVersion: r.vx_version,
+    tags: parseTags(r.tags),
+  }
 }
 
 export class Analytics {
@@ -486,5 +1089,1156 @@ export class Analytics {
     const rows = await this.sql<{ c: number }[]>`
       SELECT count(*)::int AS c FROM workspaces WHERE org_id = ${orgId}`
     return rows[0]!.c
+  }
+
+  // =========================================================================
+  // Reads — the org/workspace-clamped Postgres port of metrics.ts. Every query
+  // filters by workspace_id (the tenant clamp), and the cache-ENTRY inventory
+  // queries return the shaped empties they already returned on the cloud store
+  // (the analytics schema holds run/task history only — cache inventory is a
+  // local concern / the S3 artifact list, §5.1).
+  // =========================================================================
+
+  async listRuns(workspaceId: string, args: ListRunsArgs = {}): Promise<RunSummaryRow[]> {
+    const sql = this.sql
+    const limit = clampInt(args.limit ?? 100, 1, 100_000)
+    const fProject = args.project !== undefined ? sql`AND project = ${args.project}` : sql``
+    const fTask = args.task !== undefined ? sql`AND task = ${args.task}` : sql``
+    const fRun = args.runId !== undefined ? sql`AND run_id = ${args.runId}` : sql``
+    const rows = await sql<RawRunRow[]>`
+      SELECT ${sql.unsafe(RUN_COLUMNS)} FROM task_runs
+      WHERE workspace_id = ${workspaceId} ${fProject} ${fTask} ${fRun}
+      ORDER BY started_at DESC LIMIT ${limit}`
+    return rows.map(mapRunRow)
+  }
+
+  async getInvocation(workspaceId: string, runId: string): Promise<InvocationDetail | null> {
+    const rows = await this.sql<RawInvocationRow[]>`
+      SELECT ${this.sql.unsafe(INVOCATION_COLUMNS)} FROM invocations
+      WHERE workspace_id = ${workspaceId} AND run_id = ${runId}`
+    return rows[0] ? mapInvocation(rows[0]) : null
+  }
+
+  async listInvocations(
+    workspaceId: string,
+    args: ListInvocationsArgs = {},
+  ): Promise<InvocationDetail[]> {
+    const sql = this.sql
+    const limit = clampInt(args.limit ?? 50, 1, 500)
+    const fBranch = args.branch !== undefined ? sql`AND branch = ${args.branch}` : sql``
+    const fCi = args.ci !== undefined ? sql`AND ci = ${args.ci}` : sql``
+    // jsonb containment (the Postgres-correct form of core's tags LIKE hack).
+    const fTag =
+      args.tagKey !== undefined && args.tagValue !== undefined
+        ? sql`AND tags @> ${JSON.stringify({ [args.tagKey]: args.tagValue })}::jsonb`
+        : sql``
+    const rows = await sql<RawInvocationRow[]>`
+      SELECT ${sql.unsafe(INVOCATION_COLUMNS)} FROM invocations
+      WHERE workspace_id = ${workspaceId} ${fBranch} ${fCi} ${fTag}
+      ORDER BY started_at DESC LIMIT ${limit}`
+    return rows.map(mapInvocation)
+  }
+
+  async getRun(workspaceId: string, runId: string): Promise<RunDetail | null> {
+    const tasks = await this.listRuns(workspaceId, { runId, limit: 100_000 })
+    if (tasks.length === 0) return null
+    return {
+      runId,
+      startedAt: Math.min(...tasks.map((t) => t.startedAt)),
+      endedAt: Math.max(...tasks.map((t) => t.endedAt)),
+      tasks,
+    }
+  }
+
+  async getCacheStatsSql(workspaceId: string): Promise<CacheStatsResult> {
+    const since = Date.now() - 24 * 60 * 60 * 1000
+    const runs = (
+      await this.sql<{ total: number; hit_local: number; hit_remote: number }[]>`
+        SELECT count(*)::int AS total,
+               COALESCE(SUM(CASE WHEN status = 'cache-hit' THEN 1 ELSE 0 END), 0)::int AS hit_local,
+               COALESCE(SUM(CASE WHEN status = 'cache-hit-remote' THEN 1 ELSE 0 END), 0)::int AS hit_remote
+        FROM task_runs WHERE workspace_id = ${workspaceId} AND started_at >= ${since}`
+    )[0]!
+    const hits = runs.hit_local + runs.hit_remote
+    // The analytics schema holds no cache-entry inventory (§5.1) — entryCount /
+    // totalBytes are 0; run/hit counts are real.
+    return {
+      entryCount: 0,
+      totalBytes: 0,
+      runCountLast24h: runs.total,
+      hitCountLast24h: hits,
+      hitRate24h: runs.total > 0 ? hits / runs.total : 0,
+      hitLocalCountLast24h: runs.hit_local,
+      hitRemoteCountLast24h: runs.hit_remote,
+    }
+  }
+
+  async getHitRateSplit(workspaceId: string, days = 1): Promise<HitRateSplit> {
+    const since = Date.now() - days * 24 * 60 * 60 * 1000
+    const r = (
+      await this.sql<{ total: number; hit_local: number; hit_remote: number }[]>`
+        SELECT count(*)::int AS total,
+               COALESCE(SUM(CASE WHEN status = 'cache-hit' THEN 1 ELSE 0 END), 0)::int AS hit_local,
+               COALESCE(SUM(CASE WHEN status = 'cache-hit-remote' THEN 1 ELSE 0 END), 0)::int AS hit_remote
+        FROM task_runs WHERE workspace_id = ${workspaceId} AND started_at >= ${since}`
+    )[0]!
+    const hits = r.hit_local + r.hit_remote
+    return {
+      total: r.total,
+      hits,
+      hitLocal: r.hit_local,
+      hitRemote: r.hit_remote,
+      hitRate: r.total > 0 ? hits / r.total : 0,
+      localShare: hits > 0 ? r.hit_local / hits : 0,
+      remoteShare: hits > 0 ? r.hit_remote / hits : 0,
+    }
+  }
+
+  async getHistory(workspaceId: string, args: GetHistoryArgs = {}): Promise<TaskHistoryRow[]> {
+    const sql = this.sql
+    const limit = clampInt(args.limit ?? 50, 1, 500)
+    const fProject = args.project !== undefined ? sql`AND project = ${args.project}` : sql``
+    const fTask = args.task !== undefined ? sql`AND task = ${args.task}` : sql``
+    const pairs = await sql<{ project: string; task: string }[]>`
+      SELECT DISTINCT project, task FROM task_runs
+      WHERE workspace_id = ${workspaceId} ${fProject} ${fTask}`
+    const out: TaskHistoryRow[] = []
+    for (const p of pairs.slice(0, limit)) {
+      out.push(await this.historyFor(workspaceId, p.project, p.task))
+    }
+    return out
+  }
+
+  private async historyFor(
+    workspaceId: string,
+    project: string,
+    task: string,
+  ): Promise<TaskHistoryRow> {
+    const agg = (
+      await this.sql<
+        {
+          total: number
+          successes: number
+          failures: number
+          hits: number
+          total_duration_ms: number | null
+          last_seen_at: string | null
+        }[]
+      >`
+        SELECT count(*)::int AS total,
+               SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END)::int AS successes,
+               SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)::int AS failures,
+               SUM(CASE WHEN cache_hit = true OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END)::int AS hits,
+               SUM(duration_ms)::float8 AS total_duration_ms,
+               MAX(ended_at) AS last_seen_at
+        FROM task_runs WHERE workspace_id = ${workspaceId} AND project = ${project} AND task = ${task}`
+    )[0]!
+    const total = agg.total || 0
+    const failures = agg.failures || 0
+    const failureMode: TaskHistoryRow['failureMode'] =
+      failures === 0 ? 'stable' : failures < total / 5 ? 'flaky-recoverable' : 'flaky-fatal'
+    const sorted = await this.successDurations(workspaceId, project, task)
+    const avg = sorted.length > 0 ? sorted.reduce((a, b) => a + b, 0) / sorted.length : undefined
+    return {
+      id: `${project}#${task}`,
+      project,
+      task,
+      runs: total,
+      successes: agg.successes || 0,
+      failures,
+      hits: agg.hits || 0,
+      successRate: total > 0 ? (agg.successes || 0) / total : 0,
+      hitRate: total > 0 ? (agg.hits || 0) / total : 0,
+      failureMode,
+      p50DurationMs: pickPercentile(sorted, 0.5),
+      p99DurationMs: pickPercentile(sorted, 0.99),
+      minDurationMs: sorted[0],
+      maxDurationMs: sorted[sorted.length - 1],
+      avgDurationMs: avg !== undefined ? Math.round(avg) : undefined,
+      totalDurationMs: agg.total_duration_ms ?? 0,
+      lastSeenAt: numOrNull(agg.last_seen_at) ?? undefined,
+    }
+  }
+
+  /** Last 50 successful non-hit durations, ascending — the percentile base. */
+  private async successDurations(
+    workspaceId: string,
+    project: string,
+    task: string,
+  ): Promise<number[]> {
+    const rows = await this.sql<{ duration_ms: number }[]>`
+      SELECT duration_ms FROM task_runs
+      WHERE workspace_id = ${workspaceId} AND project = ${project} AND task = ${task}
+        AND (cache_hit IS NULL OR cache_hit = false) AND status = 'success'
+      ORDER BY started_at DESC LIMIT 50`
+    return rows.map((r) => r.duration_ms).sort((a, b) => a - b)
+  }
+
+  async getTopTimeBurners(workspaceId: string, limit = 10): Promise<TopTaskRow[]> {
+    const rows = await this.sql<
+      {
+        id: string
+        project: string
+        task: string
+        runs: number
+        total_duration_ms: number
+        avg_duration_ms: number
+      }[]
+    >`
+      SELECT project || '#' || task AS id, project, task, count(*)::int AS runs,
+             SUM(duration_ms)::float8 AS total_duration_ms,
+             trunc(avg(duration_ms))::int AS avg_duration_ms
+      FROM task_runs
+      WHERE workspace_id = ${workspaceId} AND (cache_hit IS NULL OR cache_hit = false)
+        AND status = 'success'
+      GROUP BY project, task
+      ORDER BY SUM(duration_ms) DESC LIMIT ${clampInt(limit, 1, 100)}`
+    return rows.map((r) => ({
+      id: r.id,
+      project: r.project,
+      task: r.task,
+      runs: r.runs,
+      totalDurationMs: r.total_duration_ms,
+      avgDurationMs: r.avg_duration_ms,
+    }))
+  }
+
+  async getRecentFailures(workspaceId: string, limit = 25): Promise<FailureRow[]> {
+    const rows = await this.sql<
+      {
+        run_id: string
+        project: string
+        task: string
+        exit_code: number
+        duration_ms: number
+        started_at: string
+        hash: string
+      }[]
+    >`
+      SELECT run_id, project, task, exit_code, duration_ms, started_at, hash
+      FROM task_runs WHERE workspace_id = ${workspaceId} AND status = 'failed'
+      ORDER BY started_at DESC LIMIT ${clampInt(limit, 1, 200)}`
+    return rows.map((r) => ({
+      runId: r.run_id,
+      project: r.project,
+      task: r.task,
+      exitCode: r.exit_code,
+      durationMs: r.duration_ms,
+      startedAt: num(r.started_at),
+      hash: r.hash,
+    }))
+  }
+
+  // The analytics schema has no cache-entry inventory (§5.1); these return the
+  // shaped empties the cloud store already returned.
+  async listCacheEntries(
+    _workspaceId: string,
+    _args: ListCacheEntriesArgs = {},
+  ): Promise<CacheEntryRow[]> {
+    return []
+  }
+
+  async getCacheBreakdown(_workspaceId: string, _limit = 20): Promise<CacheProjectRow[]> {
+    return []
+  }
+
+  async getPrunableEntries(
+    _workspaceId: string,
+    _minAgeDays = 7,
+    _limit = 50,
+  ): Promise<PrunableEntry[]> {
+    return []
+  }
+
+  /** Daily storage growth — all-zero buckets (no cache-entry inventory, §5.1). */
+  async getStorageGrowth(_workspaceId: string, days = 30): Promise<StoragePoint[]> {
+    const bucketMs = 24 * 60 * 60 * 1000
+    const since = Date.now() - days * bucketMs
+    const start = Math.floor(since / bucketMs) * bucketMs
+    const end = Math.floor(Date.now() / bucketMs) * bucketMs
+    const out: StoragePoint[] = []
+    for (let t = start; t <= end; t += bucketMs) out.push({ t, bytesAdded: 0, entriesAdded: 0 })
+    return out
+  }
+
+  async getTaskDetail(workspaceId: string, taskId: string): Promise<TaskDetail | null> {
+    const [project, task] = taskId.split('#', 2) as [string, string]
+    const exists = await this.sql<{ one: number }[]>`
+      SELECT 1 AS one FROM task_runs
+      WHERE workspace_id = ${workspaceId} AND project = ${project} AND task = ${task} LIMIT 1`
+    if (exists.length === 0) return null
+    const recent = await this.listRuns(workspaceId, { project, task, limit: 100 })
+    const hist = await this.getHistory(workspaceId, { project, task, limit: 1 })
+    return { project, task, aggregate: hist[0] ?? null, recent, latestEntry: null }
+  }
+
+  async getCacheSavings(workspaceId: string): Promise<CacheSavings> {
+    const since = Date.now() - 24 * 60 * 60 * 1000
+    const r24 = (
+      await this.sql<{ saved: number; hits: number }[]>`
+        SELECT COALESCE(SUM(avg_dur), 0)::float8 AS saved, count(*)::int AS hits FROM (
+          SELECT (SELECT trunc(avg(duration_ms))::int FROM task_runs s
+                  WHERE s.workspace_id = ${workspaceId} AND s.project = r.project AND s.task = r.task
+                    AND (s.cache_hit IS NULL OR s.cache_hit = false) AND s.status = 'success') AS avg_dur
+          FROM task_runs r
+          WHERE r.workspace_id = ${workspaceId} AND r.started_at >= ${since}
+            AND (r.cache_hit = true OR r.status LIKE 'cache-hit%')
+        ) sub WHERE avg_dur IS NOT NULL`
+    )[0]!
+    const rAll = (
+      await this.sql<{ saved: number }[]>`
+        SELECT COALESCE(SUM(avg_dur), 0)::float8 AS saved FROM (
+          SELECT (SELECT trunc(avg(duration_ms))::int FROM task_runs s
+                  WHERE s.workspace_id = ${workspaceId} AND s.project = r.project AND s.task = r.task
+                    AND (s.cache_hit IS NULL OR s.cache_hit = false) AND s.status = 'success') AS avg_dur
+          FROM task_runs r
+          WHERE r.workspace_id = ${workspaceId}
+            AND (r.cache_hit = true OR r.status LIKE 'cache-hit%')
+        ) sub WHERE avg_dur IS NOT NULL`
+    )[0]!
+    return {
+      hitsLast24h: r24.hits,
+      estimatedTimeSavedMs: r24.saved,
+      estimatedTimeSavedTotalMs: rAll.saved,
+    }
+  }
+
+  async explainCacheKey(_workspaceId: string, taskId: string): Promise<CacheKeyExplanation> {
+    const [project, task] = taskId.split('#', 2) as [string, string]
+    return {
+      taskId,
+      project,
+      task,
+      latestEntry: null,
+      note: 'cache key components (files / env / runtime / upstream) require live config evaluation; this surface returns persisted entry metadata',
+    }
+  }
+
+  async whyDidThisRerun(
+    workspaceId: string,
+    runId: string,
+    taskId: string,
+  ): Promise<WhyDidThisRerun> {
+    const [project, task] = taskId.split('#', 2) as [string, string]
+    const this_ = (
+      await this.sql<
+        { hash: string; status: string; cache_hit: boolean | null; started_at: string }[]
+      >`
+        SELECT hash, status, cache_hit, started_at FROM task_runs
+        WHERE workspace_id = ${workspaceId} AND run_id = ${runId}
+          AND project = ${project} AND task = ${task}`
+    )[0]
+    if (this_ === undefined) {
+      return { runId, taskId, found: false, note: 'no row matching that runId + taskId' }
+    }
+    const prev = (
+      await this.sql<
+        { hash: string; status: string; cache_hit: boolean | null; started_at: string }[]
+      >`
+        SELECT hash, status, cache_hit, started_at FROM task_runs
+        WHERE workspace_id = ${workspaceId} AND project = ${project} AND task = ${task}
+          AND started_at < ${num(this_.started_at)}
+        ORDER BY started_at DESC LIMIT 1`
+    )[0]
+    return {
+      runId,
+      taskId,
+      found: true,
+      thisRun: {
+        hash: this_.hash,
+        status: this_.status,
+        cacheHit: this_.cache_hit,
+        startedAt: num(this_.started_at),
+      },
+      previousRun:
+        prev !== undefined
+          ? {
+              hash: prev.hash,
+              status: prev.status,
+              cacheHit: prev.cache_hit,
+              startedAt: num(prev.started_at),
+            }
+          : null,
+      hashChanged: prev !== undefined ? prev.hash !== this_.hash : null,
+      note:
+        prev !== undefined && prev.hash !== this_.hash
+          ? 'cache key changed between the previous run and this one (inputs differ)'
+          : prev !== undefined
+            ? 'cache key unchanged — re-run with the same key (likely --no-cache or unrelated)'
+            : 'no prior run for this (project, task)',
+    }
+  }
+
+  /**
+   * Resolve the two runs' task hashes and report whether the key changed. The
+   * analytics schema stores no per-component input fingerprints (there is no
+   * `entry_inputs`), so a changed key degrades to the "unavailable" note — the
+   * exact branch core takes when an entry has been pruned.
+   */
+  async cacheKeyDiff(workspaceId: string, runId: string, taskId: string): Promise<CacheKeyDiff> {
+    const [project, task] = taskId.split('#', 2) as [string, string]
+    const this_ = (
+      await this.sql<{ hash: string; started_at: string }[]>`
+        SELECT hash, started_at FROM task_runs
+        WHERE workspace_id = ${workspaceId} AND run_id = ${runId}
+          AND project = ${project} AND task = ${task}`
+    )[0]
+    if (this_ === undefined) {
+      return {
+        runId,
+        taskId,
+        found: false,
+        previousRunId: null,
+        entries: [],
+        unchangedCount: 0,
+        note: 'no row matching that runId + taskId',
+      }
+    }
+    const prev = (
+      await this.sql<{ run_id: string; hash: string }[]>`
+        SELECT run_id, hash FROM task_runs
+        WHERE workspace_id = ${workspaceId} AND project = ${project} AND task = ${task}
+          AND started_at < ${num(this_.started_at)}
+        ORDER BY started_at DESC LIMIT 1`
+    )[0]
+    if (prev === undefined) {
+      return {
+        runId,
+        taskId,
+        found: true,
+        previousRunId: null,
+        entries: [],
+        unchangedCount: 0,
+        note: 'no prior run for this (project, task) — nothing to diff',
+      }
+    }
+    if (prev.hash === this_.hash) {
+      return {
+        runId,
+        taskId,
+        found: true,
+        previousRunId: prev.run_id,
+        entries: [],
+        unchangedCount: 0,
+        note: 'cache key unchanged between the previous run and this one (same inputs)',
+      }
+    }
+    return {
+      runId,
+      taskId,
+      found: true,
+      previousRunId: prev.run_id,
+      entries: [],
+      unchangedCount: 0,
+      note: 'cache key changed but input fingerprints are unavailable (entry pruned); only the hash change is known',
+    }
+  }
+
+  async compareRuns(workspaceId: string, runId: string): Promise<CompareRuns> {
+    const empty: CompareRuns = {
+      runId,
+      previousRunId: null,
+      startedAt: null,
+      prevStartedAt: null,
+      found: false,
+      summary: {
+        aTotalMs: 0,
+        bTotalMs: 0,
+        totalDeltaMs: 0,
+        tasksChanged: 0,
+        tasksOnlyInA: 0,
+        tasksOnlyInB: 0,
+      },
+      tasks: [],
+      note: 'no run matching that runId',
+    }
+    const aRun = await this.getRun(workspaceId, runId)
+    if (aRun === null) return empty
+    const prev = (
+      await this.sql<{ run_id: string; started_at: string }[]>`
+        SELECT run_id, MIN(started_at) AS started_at FROM task_runs
+        WHERE workspace_id = ${workspaceId} AND run_id IS NOT NULL AND run_id != ${runId}
+          AND started_at < ${aRun.startedAt}
+        GROUP BY run_id ORDER BY MIN(started_at) DESC LIMIT 1`
+    )[0]
+    const bRun = prev !== undefined ? await this.getRun(workspaceId, prev.run_id) : null
+
+    const byKeyA = new Map(aRun.tasks.map((t) => [`${t.project}#${t.task}`, t]))
+    const byKeyB = new Map((bRun?.tasks ?? []).map((t) => [`${t.project}#${t.task}`, t]))
+    const keys = [...new Set([...byKeyA.keys(), ...byKeyB.keys()])].sort()
+
+    let aTotalMs = 0
+    let bTotalMs = 0
+    let tasksChanged = 0
+    let tasksOnlyInA = 0
+    let tasksOnlyInB = 0
+    const sideOf = (row: RunSummaryRow): CompareTaskSide => ({
+      status: row.status,
+      durationMs: row.durationMs,
+      hash: row.hash,
+      cacheHit: row.cacheHit,
+      exitCode: row.exitCode,
+    })
+    const tasks: CompareTaskRow[] = keys.map((key) => {
+      const ra = byKeyA.get(key)
+      const rb = byKeyB.get(key)
+      const a = ra ? sideOf(ra) : null
+      const b = rb ? sideOf(rb) : null
+      if (a) aTotalMs += a.durationMs
+      if (b) bTotalMs += b.durationMs
+      const hashChanged = a !== null && b !== null ? a.hash !== b.hash : true
+      const statusChanged = a !== null && b !== null ? a.status !== b.status : true
+      const durationDeltaMs = a !== null && b !== null ? a.durationMs - b.durationMs : null
+      if (!b) tasksOnlyInA++
+      if (!a) tasksOnlyInB++
+      if (hashChanged || statusChanged) tasksChanged++
+      const [project, task] = key.split('#', 2) as [string, string]
+      return { taskId: key, project, task, a, b, hashChanged, durationDeltaMs, statusChanged }
+    })
+    return {
+      runId,
+      previousRunId: prev?.run_id ?? null,
+      startedAt: aRun.startedAt,
+      prevStartedAt: prev !== undefined ? num(prev.started_at) : null,
+      found: prev !== undefined,
+      summary: {
+        aTotalMs,
+        bTotalMs,
+        totalDeltaMs: aTotalMs - bTotalMs,
+        tasksChanged,
+        tasksOnlyInA,
+        tasksOnlyInB,
+      },
+      tasks,
+      note:
+        prev !== undefined
+          ? 'compared against the immediately-previous invocation'
+          : 'no previous invocation to compare against',
+    }
+  }
+
+  async listProjects(workspaceId: string, limit = 100): Promise<ProjectRollup[]> {
+    const rows = await this.sql<
+      {
+        project: string
+        task_count: number
+        runs: number
+        failures: number
+        hits: number
+        total_duration_ms: number | null
+        avg_duration_ms: number | null
+        last_run_at: string | null
+      }[]
+    >`
+      SELECT project,
+             count(DISTINCT task)::int AS task_count,
+             count(*)::int AS runs,
+             SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)::int AS failures,
+             SUM(CASE WHEN cache_hit = true OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END)::int AS hits,
+             SUM(duration_ms)::float8 AS total_duration_ms,
+             trunc(avg(duration_ms))::int AS avg_duration_ms,
+             MAX(ended_at) AS last_run_at
+      FROM task_runs WHERE workspace_id = ${workspaceId}
+      GROUP BY project ORDER BY SUM(duration_ms) DESC LIMIT ${clampInt(limit, 1, 500)}`
+    const out: ProjectRollup[] = []
+    for (const r of rows) {
+      const saved = (
+        await this.sql<{ saved: number }[]>`
+          SELECT COALESCE(SUM(avg_dur), 0)::float8 AS saved FROM (
+            SELECT (SELECT trunc(avg(duration_ms))::int FROM task_runs s
+                    WHERE s.workspace_id = ${workspaceId} AND s.project = r.project AND s.task = r.task
+                      AND (s.cache_hit IS NULL OR s.cache_hit = false) AND s.status = 'success') AS avg_dur
+            FROM task_runs r
+            WHERE r.workspace_id = ${workspaceId} AND r.project = ${r.project}
+              AND (r.cache_hit = true OR r.status LIKE 'cache-hit%')
+          ) sub WHERE avg_dur IS NOT NULL`
+      )[0]!
+      out.push({
+        project: r.project,
+        taskCount: r.task_count,
+        runs: r.runs,
+        failures: r.failures,
+        hits: r.hits,
+        hitRate: r.runs > 0 ? r.hits / r.runs : 0,
+        totalDurationMs: r.total_duration_ms ?? 0,
+        avgDurationMs: r.avg_duration_ms ?? 0,
+        cacheBytes: 0,
+        cacheEntries: 0,
+        lastRunAt: numOrNull(r.last_run_at) ?? undefined,
+        estimatedTimeSavedMs: saved.saved,
+      })
+    }
+    return out
+  }
+
+  async getRunTrends(
+    workspaceId: string,
+    args: { bucket?: TrendBucket; from?: number; to?: number } = {},
+  ): Promise<TrendPoint[]> {
+    const bucket: TrendBucket = args.bucket ?? 'hour'
+    const to = args.to ?? Date.now()
+    const defaultRangeMs = bucket === 'hour' ? 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000
+    const from = args.from ?? to - defaultRangeMs
+    const bucketMs = bucket === 'hour' ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000
+    const rows = await this.sql<
+      {
+        t: string
+        runs: number
+        hits: number
+        hits_local: number
+        hits_remote: number
+        failures: number
+        total_duration_ms: number
+      }[]
+    >`
+      SELECT (started_at / ${bucketMs}::bigint) * ${bucketMs}::bigint AS t,
+             count(*)::int AS runs,
+             SUM(CASE WHEN cache_hit = true OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END)::int AS hits,
+             SUM(CASE WHEN status = 'cache-hit' THEN 1 ELSE 0 END)::int AS hits_local,
+             SUM(CASE WHEN status = 'cache-hit-remote' THEN 1 ELSE 0 END)::int AS hits_remote,
+             SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)::int AS failures,
+             SUM(duration_ms)::float8 AS total_duration_ms
+      FROM task_runs
+      WHERE workspace_id = ${workspaceId} AND started_at >= ${from} AND started_at <= ${to}
+      GROUP BY t ORDER BY t ASC`
+    const byT = new Map(rows.map((r) => [num(r.t), r]))
+    const start = Math.floor(from / bucketMs) * bucketMs
+    const end = Math.floor(to / bucketMs) * bucketMs
+    const out: TrendPoint[] = []
+    for (let t = start; t <= end; t += bucketMs) {
+      const r = byT.get(t)
+      out.push(
+        r !== undefined
+          ? {
+              t,
+              runs: r.runs,
+              hits: r.hits,
+              hitsLocal: r.hits_local,
+              hitsRemote: r.hits_remote,
+              failures: r.failures,
+              totalDurationMs: r.total_duration_ms,
+            }
+          : { t, runs: 0, hits: 0, hitsLocal: 0, hitsRemote: 0, failures: 0, totalDurationMs: 0 },
+      )
+    }
+    return out
+  }
+
+  async getRunHeatmap(workspaceId: string, days = 30): Promise<HeatmapCell[]> {
+    const since = Date.now() - days * 24 * 60 * 60 * 1000
+    const rows = await this.sql<{ started_at: string; duration_ms: number }[]>`
+      SELECT started_at, duration_ms FROM task_runs
+      WHERE workspace_id = ${workspaceId} AND started_at >= ${since}`
+    const grid: HeatmapCell[] = []
+    for (let d = 0; d < 7; d++)
+      for (let h = 0; h < 24; h++)
+        grid.push({ dayOfWeek: d, hourOfDay: h, runs: 0, totalDurationMs: 0 })
+    for (const r of rows) {
+      const date = new Date(num(r.started_at))
+      const cell = grid[date.getDay() * 24 + date.getHours()]!
+      cell.runs++
+      cell.totalDurationMs += r.duration_ms
+    }
+    return grid
+  }
+
+  async getFlakiestTasks(workspaceId: string, limit = 25): Promise<FlakyTask[]> {
+    const pairs = await this.sql<
+      {
+        project: string
+        task: string
+        runs: number
+        failures: number
+        within_run_retries: number
+        max_attempts: number | null
+      }[]
+    >`
+      SELECT project, task, count(*)::int AS runs,
+             SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)::int AS failures,
+             SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END)::int AS within_run_retries,
+             MAX(attempts)::int AS max_attempts
+      FROM task_runs WHERE workspace_id = ${workspaceId}
+      GROUP BY project, task
+      HAVING count(*) >= 3 OR SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END) > 0`
+    const out: FlakyTask[] = []
+    for (const p of pairs) {
+      const sorted = await this.successDurations(workspaceId, p.project, p.task)
+      const p50 = pickPercentile(sorted, 0.5)
+      const p99 = pickPercentile(sorted, 0.99)
+      const ratio = p50 !== undefined && p50 > 0 && p99 !== undefined ? p99 / p50 : undefined
+      out.push({
+        id: `${p.project}#${p.task}`,
+        project: p.project,
+        task: p.task,
+        runs: p.runs,
+        failures: p.failures,
+        failureRate: p.runs > 0 ? p.failures / p.runs : 0,
+        withinRunRetries: p.within_run_retries,
+        maxAttempts: p.max_attempts ?? undefined,
+        flakyConfirmed: p.within_run_retries > 0,
+        durationTailRatio: ratio,
+        p50DurationMs: p50,
+        p99DurationMs: p99,
+      })
+    }
+    return out
+      .filter(
+        (r) =>
+          r.flakyConfirmed ||
+          r.failureRate > 0 ||
+          (r.durationTailRatio !== undefined && r.durationTailRatio > 2),
+      )
+      .sort((a, b) => {
+        const score = (r: FlakyTask): number =>
+          (r.flakyConfirmed ? 100 : 0) + r.failureRate * 10 + (r.durationTailRatio ?? 1)
+        return score(b) - score(a)
+      })
+      .slice(0, clampInt(limit, 1, 200))
+  }
+
+  async getRegressions(workspaceId: string, args: RegressionArgs = {}): Promise<RegressedTask[]> {
+    const sinceDays = args.sinceDays ?? 7
+    const minBranches = Math.max(1, args.minBranches ?? 2)
+    const limit = clampInt(args.limit ?? 25, 1, 200)
+    const since = Date.now() - sinceDays * 86_400_000
+
+    const latest = await this.sql<
+      { project: string; task: string; branch: string; status: string }[]
+    >`
+      WITH windowed AS (
+        SELECT r.project AS project, r.task AS task, inv.branch AS branch, r.status AS status,
+               ROW_NUMBER() OVER (
+                 PARTITION BY r.project, r.task, inv.branch
+                 ORDER BY r.started_at DESC, r.run_id DESC
+               ) AS rn
+        FROM task_runs r JOIN invocations inv ON r.run_id = inv.run_id
+          AND inv.workspace_id = ${workspaceId}
+        WHERE r.workspace_id = ${workspaceId} AND inv.branch IS NOT NULL
+          AND r.started_at >= ${since}
+          AND r.status IN ('success', 'failed', 'cache-hit', 'cache-hit-remote')
+      )
+      SELECT project, task, branch, status FROM windowed WHERE rn = 1`
+
+    const byTask = new Map<
+      string,
+      { project: string; task: string; failing: string[]; total: Set<string> }
+    >()
+    for (const r of latest) {
+      const id = `${r.project}#${r.task}`
+      let agg = byTask.get(id)
+      if (agg === undefined) {
+        agg = { project: r.project, task: r.task, failing: [], total: new Set() }
+        byTask.set(id, agg)
+      }
+      agg.total.add(r.branch)
+      if (r.status === 'failed') agg.failing.push(r.branch)
+    }
+
+    const out: RegressedTask[] = []
+    for (const [id, agg] of byTask) {
+      if (agg.failing.length < minBranches) continue
+      const win = (
+        await this.sql<
+          {
+            runs: number
+            failures: number | null
+            first_failed: string | null
+            last_run: string | null
+          }[]
+        >`
+          SELECT count(*)::int AS runs,
+                 SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)::int AS failures,
+                 MIN(CASE WHEN status = 'failed' THEN started_at END) AS first_failed,
+                 MAX(started_at) AS last_run
+          FROM task_runs WHERE workspace_id = ${workspaceId}
+            AND project = ${agg.project} AND task = ${agg.task} AND started_at >= ${since}`
+      )[0]!
+      const everPassed =
+        (
+          await this.sql<{ one: number }[]>`
+            SELECT 1 AS one FROM task_runs
+            WHERE workspace_id = ${workspaceId} AND project = ${agg.project} AND task = ${agg.task}
+              AND status IN ${this.sql(PASS_STATUSES as unknown as string[])} LIMIT 1`
+        ).length > 0
+      out.push({
+        id,
+        project: agg.project,
+        task: agg.task,
+        branchesFailing: agg.failing.length,
+        branchesTotal: agg.total.size,
+        branches: agg.failing.sort().slice(0, BRANCH_CAP),
+        regressed: everPassed,
+        firstFailedAt: numOrNull(win.first_failed) ?? 0,
+        lastRunAt: numOrNull(win.last_run) ?? 0,
+        failures: win.failures ?? 0,
+        runs: win.runs,
+      })
+    }
+    return out
+      .sort(
+        (a, b) =>
+          Number(b.regressed) - Number(a.regressed) ||
+          b.branchesFailing - a.branchesFailing ||
+          b.firstFailedAt - a.firstFailedAt,
+      )
+      .slice(0, limit)
+  }
+
+  async getPeriodComparison(
+    workspaceId: string,
+    args: PeriodComparisonArgs = {},
+  ): Promise<PeriodComparison> {
+    const windowDays = Math.max(1, args.windowDays ?? 7)
+    const minRuns = Math.max(1, args.minRuns ?? 3)
+    const limit = clampInt(args.limit ?? 8, 1, 100)
+    const scope: { project?: string; task?: string } = {}
+    if (args.project !== undefined) scope.project = args.project
+    if (args.task !== undefined) scope.task = args.task
+    const to = args.endMs ?? Date.now()
+    const win = windowDays * 86_400_000
+    const curFrom = to - win
+    const prevTo = curFrom
+    const prevFrom = curFrom - win
+
+    const cur = await this.avgByTask(workspaceId, curFrom, to, scope)
+    const prev = await this.avgByTask(workspaceId, prevFrom, prevTo, scope)
+    const movers: TaskMover[] = []
+    for (const [id, c] of cur) {
+      const p = prev.get(id)
+      if (p === undefined || c.runs < minRuns || p.runs < minRuns) continue
+      movers.push({
+        id,
+        project: c.project,
+        task: c.task,
+        currentAvgMs: Math.round(c.avg),
+        previousAvgMs: Math.round(p.avg),
+        deltaMs: Math.round(c.avg - p.avg),
+        deltaPct: p.avg > 0 ? (c.avg - p.avg) / p.avg : 0,
+        currentRuns: c.runs,
+        previousRuns: p.runs,
+      })
+    }
+    movers.sort((a, b) => Math.abs(b.deltaMs) - Math.abs(a.deltaMs))
+    return {
+      windowDays,
+      current: {
+        from: curFrom,
+        to,
+        stats: await this.periodStats(workspaceId, curFrom, to, scope),
+      },
+      previous: {
+        from: prevFrom,
+        to: prevTo,
+        stats: await this.periodStats(workspaceId, prevFrom, prevTo, scope),
+      },
+      movers: movers.slice(0, limit),
+    }
+  }
+
+  private async periodStats(
+    workspaceId: string,
+    from: number,
+    to: number,
+    scope: { project?: string; task?: string },
+  ): Promise<PeriodStats> {
+    const sql = this.sql
+    const fProject = scope.project !== undefined ? sql`AND project = ${scope.project}` : sql``
+    const fTask = scope.task !== undefined ? sql`AND task = ${scope.task}` : sql``
+    // COALESCE every SUM — over an empty window SUM() is NULL, and the previous
+    // window is empty for any workspace younger than it (the periodStats fix).
+    const agg = (
+      await sql<
+        {
+          task_runs: number
+          runs: number
+          failures: number
+          cache_hits: number
+          executed: number
+          total_duration_ms: number
+        }[]
+      >`
+        SELECT count(*)::int AS task_runs,
+               count(DISTINCT run_id)::int AS runs,
+               COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0)::int AS failures,
+               COALESCE(SUM(CASE WHEN cache_hit = true THEN 1 ELSE 0 END), 0)::int AS cache_hits,
+               COALESCE(SUM(CASE WHEN cache_hit IS NULL OR cache_hit = false THEN 1 ELSE 0 END), 0)::int AS executed,
+               COALESCE(SUM(CASE WHEN cache_hit IS NULL OR cache_hit = false THEN duration_ms ELSE 0 END), 0)::float8 AS total_duration_ms
+        FROM task_runs WHERE workspace_id = ${workspaceId}
+          AND started_at >= ${from} AND started_at < ${to} ${fProject} ${fTask}`
+    )[0]!
+    const durs = (
+      await sql<{ d: number }[]>`
+        SELECT duration_ms AS d FROM task_runs WHERE workspace_id = ${workspaceId}
+          AND started_at >= ${from} AND started_at < ${to}
+          AND (cache_hit IS NULL OR cache_hit = false) AND status = 'success' ${fProject} ${fTask}
+        ORDER BY duration_ms`
+    ).map((r) => r.d)
+    const taskRuns = agg.task_runs
+    return {
+      runs: agg.runs,
+      taskRuns,
+      executed: agg.executed,
+      failures: agg.failures,
+      cacheHits: agg.cache_hits,
+      totalDurationMs: agg.total_duration_ms,
+      avgDurationMs:
+        durs.length > 0 ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length) : 0,
+      p50DurationMs: pickPercentile(durs, 0.5),
+      p95DurationMs: pickPercentile(durs, 0.95),
+      failureRate: taskRuns > 0 ? agg.failures / taskRuns : 0,
+      cacheHitRate: taskRuns > 0 ? agg.cache_hits / taskRuns : 0,
+    }
+  }
+
+  private async avgByTask(
+    workspaceId: string,
+    from: number,
+    to: number,
+    scope: { project?: string; task?: string },
+  ): Promise<Map<string, { avg: number; runs: number; project: string; task: string }>> {
+    const sql = this.sql
+    const fProject = scope.project !== undefined ? sql`AND project = ${scope.project}` : sql``
+    const fTask = scope.task !== undefined ? sql`AND task = ${scope.task}` : sql``
+    const rows = await sql<{ project: string; task: string; avg: number; runs: number }[]>`
+      SELECT project, task, avg(duration_ms)::float8 AS avg, count(*)::int AS runs
+      FROM task_runs WHERE workspace_id = ${workspaceId}
+        AND started_at >= ${from} AND started_at < ${to}
+        AND (cache_hit IS NULL OR cache_hit = false) AND status = 'success' ${fProject} ${fTask}
+      GROUP BY project, task`
+    return new Map(
+      rows.map((r) => [
+        `${r.project}#${r.task}`,
+        { avg: r.avg, runs: r.runs, project: r.project, task: r.task },
+      ]),
+    )
+  }
+
+  async getBottlenecks(
+    workspaceId: string,
+    lookbackDays = 14,
+    limit = 15,
+  ): Promise<BottleneckRow[]> {
+    const since = Date.now() - lookbackDays * 24 * 60 * 60 * 1000
+    const rows = await this.sql<
+      {
+        project: string
+        task: string
+        runs_recent: number
+        total_duration_ms: number
+        avg_duration_ms: number
+      }[]
+    >`
+      SELECT project, task, count(*)::int AS runs_recent,
+             SUM(duration_ms)::float8 AS total_duration_ms,
+             trunc(avg(duration_ms))::int AS avg_duration_ms
+      FROM task_runs WHERE workspace_id = ${workspaceId} AND started_at >= ${since}
+        AND (cache_hit IS NULL OR cache_hit = false) AND status = 'success'
+      GROUP BY project, task ORDER BY SUM(duration_ms) DESC LIMIT ${clampInt(limit, 1, 100)}`
+    return rows.map((r) => {
+      const runsPerDay = r.runs_recent / Math.max(1, lookbackDays)
+      return {
+        id: `${r.project}#${r.task}`,
+        project: r.project,
+        task: r.task,
+        runsRecent: r.runs_recent,
+        totalDurationMs: r.total_duration_ms,
+        avgDurationMs: r.avg_duration_ms,
+        runsPerDay,
+        weeklySavingsAt25PctCutMs: Math.round(runsPerDay * 7 * r.avg_duration_ms * 0.25),
+      }
+    })
+  }
+
+  async getParallelismHistory(workspaceId: string, limit = 50): Promise<ParallelismPoint[]> {
+    const rows = await this.sql<
+      {
+        run_id: string
+        started_at: string
+        min_start: string
+        max_end: string
+        cpu_sum_ms: number | null
+        task_count: number
+      }[]
+    >`
+      SELECT run_id, MIN(started_at) AS started_at, MIN(started_at) AS min_start,
+             MAX(ended_at) AS max_end,
+             SUM(COALESCE(cpu_ms, duration_ms))::float8 AS cpu_sum_ms,
+             count(*)::int AS task_count
+      FROM task_runs WHERE workspace_id = ${workspaceId} AND run_id IS NOT NULL
+      GROUP BY run_id
+      HAVING count(*) > 1 AND (MAX(ended_at) - MIN(started_at)) >= 50
+      ORDER BY MAX(started_at) DESC LIMIT ${clampInt(limit, 1, 500)}`
+    return rows.map((r) => {
+      const wallMs = Math.max(1, num(r.max_end) - num(r.min_start))
+      const cpuSumMs = r.cpu_sum_ms ?? 0
+      return {
+        runId: r.run_id,
+        startedAt: num(r.started_at),
+        cpuSumMs,
+        wallMs,
+        factor: cpuSumMs / wallMs,
+        taskCount: r.task_count,
+      }
+    })
+  }
+
+  // -------------------------------------------------------------------------
+  // Task logs
+  // -------------------------------------------------------------------------
+
+  async logFor(
+    workspaceId: string,
+    runId: string,
+    taskId: string,
+  ): Promise<StoredTaskLog | undefined> {
+    const rows = await this.sql<RawLogRow[]>`
+      SELECT run_id, task_id, hash, status, codec, content, chars_full, truncated_head
+      FROM task_logs
+      WHERE workspace_id = ${workspaceId} AND run_id = ${runId} AND task_id = ${taskId}`
+    return rows[0] ? decodeLog(rows[0]) : undefined
+  }
+
+  async logByHash(workspaceId: string, hash: string): Promise<StoredTaskLog | undefined> {
+    const rows = await this.sql<RawLogRow[]>`
+      SELECT run_id, task_id, hash, status, codec, content, chars_full, truncated_head
+      FROM task_logs WHERE workspace_id = ${workspaceId} AND hash = ${hash}
+      ORDER BY created_at DESC LIMIT 1`
+    return rows[0] ? decodeLog(rows[0]) : undefined
+  }
+
+  // -------------------------------------------------------------------------
+  // Hermeticity (cross-machine fingerprint divergence)
+  // -------------------------------------------------------------------------
+
+  async hermeticity(workspaceId: string, limit: number): Promise<HermeticityResult> {
+    const totals = (
+      await this.sql<{ keys: number; reports: number }[]>`
+        SELECT count(DISTINCT hash)::int AS keys, count(*)::int AS reports
+        FROM output_fingerprints WHERE workspace_id = ${workspaceId}`
+    )[0]!
+    const hashes = await this.sql<{ hash: string }[]>`
+      SELECT hash FROM output_fingerprints WHERE workspace_id = ${workspaceId}
+      GROUP BY hash HAVING count(DISTINCT tree) > 1
+      ORDER BY MAX(created_at) DESC LIMIT ${limit}`
+    const divergent: DivergentKey[] = []
+    for (const h of hashes) {
+      const rows = await this.sql<RawFpRow[]>`
+        SELECT hash, os, arch, tree, files, truncated, task_id, run_id, host, created_at
+        FROM output_fingerprints WHERE workspace_id = ${workspaceId} AND hash = ${h.hash}
+        ORDER BY created_at DESC LIMIT ${FP_MAX_ROWS_PER_HASH}`
+      divergent.push(divergenceOf(rows))
+    }
+    return { divergent, keysTracked: totals.keys, reportCount: totals.reports }
+  }
+
+  // -------------------------------------------------------------------------
+  // Wiring helpers (used by the serve routes / dist)
+  // -------------------------------------------------------------------------
+
+  /** Most-recent producing task/run for each artifact hash (the /v1/artifacts join). */
+  async provenanceForHashes(
+    workspaceId: string,
+    hashes: readonly string[],
+  ): Promise<Map<string, HashProvenance>> {
+    const out = new Map<string, HashProvenance>()
+    if (hashes.length === 0) return out
+    const rows = await this.sql<
+      { hash: string; project: string; task: string; run_id: string | null }[]
+    >`
+      SELECT hash, project, task, run_id FROM task_runs
+      WHERE workspace_id = ${workspaceId} AND hash IN ${this.sql(hashes as string[])}
+      ORDER BY started_at DESC`
+    for (const r of rows) {
+      if (!out.has(r.hash)) out.set(r.hash, { project: r.project, task: r.task, runId: r.run_id })
+    }
+    return out
+  }
+
+  /** Mean executed-run duration per `project#task` — the duration-aware dispatch hint. */
+  async taskDurationHints(workspaceId: string): Promise<Map<string, number>> {
+    const rows = await this.sql<{ id: string; avg: number }[]>`
+      SELECT project || '#' || task AS id, avg(duration_ms)::float8 AS avg
+      FROM task_runs WHERE workspace_id = ${workspaceId}
+        AND (cache_hit IS NULL OR cache_hit = false) AND status = 'success'
+      GROUP BY project, task`
+    return new Map(rows.map((r) => [r.id, r.avg]))
+  }
+}
+
+interface RawLogRow {
+  run_id: string
+  task_id: string
+  hash: string | null
+  status: string
+  codec: string
+  content: Uint8Array
+  chars_full: number
+  truncated_head: number
+}
+
+function decodeLog(row: RawLogRow): StoredTaskLog {
+  const bytes = row.codec === 'zstd' ? Bun.zstdDecompressSync(row.content) : row.content
+  return {
+    runId: row.run_id,
+    taskId: row.task_id,
+    ...(row.hash !== null ? { hash: row.hash } : {}),
+    status: row.status === 'failed' ? 'failed' : 'success',
+    content: Buffer.from(bytes).toString('utf8'),
+    charsFull: row.chars_full,
+    truncatedHeadChars: row.truncated_head,
+  }
+}
+
+interface RawFpRow {
+  hash: string
+  os: string
+  arch: string
+  tree: string
+  files: string | null
+  truncated: boolean
+  task_id: string
+  run_id: string
+  host: string | null
+  created_at: string
+}
+
+/** Diff the distinct output trees reported for one cache key (verify §4). */
+function divergenceOf(rows: RawFpRow[]): DivergentKey {
+  let crossPlatform = false
+  outer: for (const a of rows) {
+    for (const b of rows) {
+      if (a.tree !== b.tree && (a.os !== b.os || a.arch !== b.arch)) {
+        crossPlatform = true
+        break outer
+      }
+    }
+  }
+  const changedComplete = rows.every((r) => r.files !== null && !r.truncated)
+  const byTree = new Map<string, Map<string, string>>()
+  for (const r of rows) {
+    if (r.files === null || byTree.has(r.tree)) continue
+    byTree.set(r.tree, new Map(JSON.parse(r.files) as Array<[string, string]>))
+  }
+  const changed = new Set<string>()
+  const maps = [...byTree.values()]
+  for (let i = 0; i < maps.length; i++) {
+    for (let j = i + 1; j < maps.length; j++) {
+      for (const rel of diffOutputTrees(maps[i]!, maps[j]!)) changed.add(rel)
+    }
+  }
+  return {
+    hash: rows[0]!.hash,
+    taskId: rows[0]!.task_id,
+    crossPlatform,
+    changed: [...changed].sort(),
+    changedComplete,
+    reports: rows.map((r) => ({
+      os: r.os,
+      arch: r.arch,
+      tree: r.tree,
+      runId: r.run_id,
+      host: r.host,
+      at: num(r.created_at),
+    })),
   }
 }
