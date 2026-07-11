@@ -23,8 +23,8 @@ const zbody = (tag: string): Uint8Array<ArrayBuffer> =>
 const digestOf = (bytes: Uint8Array): string =>
   `xxh3:${Bun.hash.xxHash3(bytes).toString(16).padStart(16, '0')}`
 
-const trusted: Principal = { tier: 'trusted', bucket: 'default' }
-const untrusted: Principal = { tier: 'untrusted', bucket: 'default' }
+const trusted: Principal = { orgId: 'default', tier: 'trusted', bucket: 'default' }
+const untrusted: Principal = { orgId: 'default', tier: 'untrusted', bucket: 'default' }
 
 describe('ArtifactStore on the S3 backend', () => {
   let fake: FakeS3

@@ -517,8 +517,8 @@ describe('cloud() cache capability — environment rung', () => {
 
 describe('ArtifactStore — trust scopes (poisoning guard)', () => {
   let dir: string
-  const trusted = { tier: 'trusted', bucket: 'default' } as const
-  const untrusted = { tier: 'untrusted', bucket: 'default' } as const
+  const trusted = { orgId: 'default', tier: 'trusted', bucket: 'default' } as const
+  const untrusted = { orgId: 'default', tier: 'untrusted', bucket: 'default' } as const
 
   beforeEach(async () => {
     dir = await mkdtemp(path.join(tmpdir(), 'vx-scope-'))
@@ -626,10 +626,103 @@ describe('ArtifactStore — trust scopes (poisoning guard)', () => {
   })
 })
 
+describe('ArtifactStore — org/workspace tenancy prefix (platform §8.1)', () => {
+  let dir: string
+  // Tenant-derived principals (no `bucket` override): the scope base is
+  // `org/<orgId>/ws/<workspaceId ?? _org>`.
+  const orgAws1: Principal = { orgId: 'org-a', workspaceId: 'ws-1', tier: 'trusted' }
+  const orgAws1Pr: Principal = { orgId: 'org-a', workspaceId: 'ws-1', tier: 'untrusted' }
+  const orgAws2: Principal = { orgId: 'org-a', workspaceId: 'ws-2', tier: 'trusted' }
+  const orgBws1: Principal = { orgId: 'org-b', workspaceId: 'ws-1', tier: 'trusted' }
+  const orgAwide: Principal = { orgId: 'org-a', tier: 'trusted' }
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'vx-tenant-'))
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  const put = (store: ArtifactStore, hash: string, tag: string, p: Principal) =>
+    store.handle(
+      new Request(`http://x/v1/cache/${hash}`, { method: 'PUT', body: zbody(tag) }),
+      hash,
+      p,
+    )
+  const get = (store: ArtifactStore, hash: string, p: Principal) =>
+    store.handle(new Request(`http://x/v1/cache/${hash}`), hash, p)
+
+  it('a write lands under org/<orgId>/ws/<wsId>/<tier>', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    const hash = 'a1a2a3a4a5a6a7a8'
+    expect((await put(store, hash, 'bytes', orgAws1)).status).toBe(200)
+    const under = await readdir(
+      path.join(dir, 'artifacts', 'org', 'org-a', 'ws', 'ws-1', 'trusted'),
+    )
+    expect(under).toContain(`${hash}.tar.zst`)
+    // The writer reads it back; a same-tier peer in the same tenant does too.
+    expect((await get(store, hash, orgAws1)).status).toBe(200)
+  })
+
+  it("a second org NEVER reads org A's cache key", async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    const hash = 'b1b2b3b4b5b6b7b8'
+    expect((await put(store, hash, 'org-a-bytes', orgAws1)).status).toBe(200)
+    // Same key, same workspace slug, DIFFERENT org → 404 (cross-tenant clamp).
+    expect((await get(store, hash, orgBws1)).status).toBe(404)
+  })
+
+  it('two workspaces in one org are isolated', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    const hash = 'c1c2c3c4c5c6c7c8'
+    expect((await put(store, hash, 'ws1-bytes', orgAws1)).status).toBe(200)
+    // A different workspace in the SAME org can't read it.
+    expect((await get(store, hash, orgAws2)).status).toBe(404)
+    // ...and can write the same key in its own scope.
+    expect((await put(store, hash, 'ws2-bytes', orgAws2)).status).toBe(200)
+    const w1 = await (await get(store, hash, orgAws1)).arrayBuffer()
+    expect(new Uint8Array(w1)).toEqual(zbody('ws1-bytes'))
+    const w2 = await (await get(store, hash, orgAws2)).arrayBuffer()
+    expect(new Uint8Array(w2)).toEqual(zbody('ws2-bytes'))
+  })
+
+  it('trust tiers hold within a tenant: untrusted never feeds trusted', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    const hash = 'd1d2d3d4d5d6d7d8'
+    // A fork PR under org-a/ws-1 poisons the key.
+    expect((await put(store, hash, 'evil', orgAws1Pr)).status).toBe(200)
+    const under = await readdir(
+      path.join(dir, 'artifacts', 'org', 'org-a', 'ws', 'ws-1', 'untrusted', 'shared'),
+    )
+    expect(under).toContain(`${hash}.tar.zst`)
+    // The trusted build for the same tenant/key must NOT see it.
+    expect((await get(store, hash, orgAws1)).status).toBe(404)
+    // A DIFFERENT key present only in the tenant's trusted scope warms the PR
+    // (it has no own untrusted copy to shadow the baseline).
+    const warmHash = 'd9dadbdcdddedf00'
+    expect((await put(store, warmHash, 'legit', orgAws1)).status).toBe(200)
+    const warm = await get(store, warmHash, orgAws1Pr)
+    expect(warm.status).toBe(200)
+    expect(new Uint8Array(await warm.arrayBuffer())).toEqual(zbody('legit'))
+  })
+
+  it('an org-wide token (no workspace) uses the shared _org segment', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    const hash = 'e1e2e3e4e5e6e7e8'
+    expect((await put(store, hash, 'shared', orgAwide)).status).toBe(200)
+    const under = await readdir(
+      path.join(dir, 'artifacts', 'org', 'org-a', 'ws', '_org', 'trusted'),
+    )
+    expect(under).toContain(`${hash}.tar.zst`)
+    // A workspace-scoped token in the same org does NOT see the _org cache.
+    expect((await get(store, hash, orgAws1)).status).toBe(404)
+  })
+})
+
 describe('ArtifactStore.list — trust-scoped listing (/v1/artifacts source)', () => {
   let dir: string
-  const trusted = { tier: 'trusted', bucket: 'default' } as const
-  const untrusted = { tier: 'untrusted', bucket: 'default' } as const
+  const trusted = { orgId: 'default', tier: 'trusted', bucket: 'default' } as const
+  const untrusted = { orgId: 'default', tier: 'untrusted', bucket: 'default' } as const
 
   beforeEach(async () => {
     dir = await mkdtemp(path.join(tmpdir(), 'vx-artlist-'))

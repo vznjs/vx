@@ -396,9 +396,16 @@ export async function startServer(opts: {
           isToken: true,
         })
       }
-      // The org id becomes the artifact-store bucket, so cache scopes are
-      // org-partitioned (`<orgId>/<tier>[/<sub>]/<hash>`).
-      return { principal: { tier: principal.tier, bucket: principal.orgId } }
+      // Cache scopes are tenant-partitioned (§8.1): the token's org + its
+      // bound workspace (org-wide → the shared `_org` segment) + its immutable
+      // tier — all server-derived, `org/<orgId>/ws/<wsId>/<tier>[/<sub>]`.
+      return {
+        principal: {
+          orgId: principal.orgId,
+          ...(principal.workspaceId !== undefined ? { workspaceId: principal.workspaceId } : {}),
+          tier: principal.tier,
+        },
+      }
     }
 
     // Session. The token-only machine surfaces (cache wire, agents, WS) are
@@ -426,8 +433,9 @@ export async function startServer(opts: {
       return dispatchAnalytics(req, url, { orgId, isToken: false })
     }
     // A session hitting a non-analytics gated surface (mcp, artifacts,
-    // streaming, run WS): the org id is the artifact-store bucket.
-    return { principal: { tier: 'trusted', bucket: orgId } }
+    // streaming, run WS): an org-wide trusted principal (no workspace binding —
+    // a session reads via `?ws=`, not a token scope).
+    return { principal: { orgId, tier: 'trusted' } }
   }
 
   const serve = await startServe({

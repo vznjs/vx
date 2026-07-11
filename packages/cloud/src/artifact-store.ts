@@ -18,17 +18,23 @@
 // directions that matter (a corrupt store or a truncating transport degrade
 // to a cache miss at the consumer, never a restored artifact).
 //
-// TRUST SCOPES (docs/design/cache-trust-scopes-2026-07.md). The store is
-// partitioned by `<bucket>/<tier>`, both SERVER-DERIVED from the presented
-// token — never client-supplied. The tier boundary is the fork-PR CVE-class
-// fix: an `untrusted` writer (a fork-PR CI job) can write only the
-// `untrusted` scope and read `untrusted` ∪ `trusted`; a `trusted` writer
-// (protected branch) writes and reads only `trusted`. So a poisoned artifact
-// an untrusted context places NEVER feeds a trusted build, and an untrusted
-// context can NEVER write into the trusted scope — no matter what cache key
-// it computes. Solo-dev / single-token deployments are all `default/trusted`
-// (the legacy flat store migrates there on boot), byte-identical to before.
-// Blob keys mirror the scope layout, so the model holds on S3 by
+// TRUST SCOPES (docs/design/cache-trust-scopes-2026-07.md +
+// cloud-platform-2026-07.md §8.1). The store is partitioned by a tenancy
+// prefix + a tier: `org/<orgId>/ws/<workspaceId>/<tier>[/<sub>]`, ALL
+// SERVER-DERIVED from the presented token — never client-supplied. The org is
+// the top tenant boundary (one org's token can never read another's key); the
+// workspace is the token's bound workspace, or a shared `_org` segment for an
+// org-wide token (its cache is shared across the org's workspaces). The tier
+// boundary is the fork-PR CVE-class fix: an `untrusted` writer (a fork-PR CI
+// job) can write only the `untrusted` scope and read `untrusted` ∪ `trusted`;
+// a `trusted` writer (protected branch) writes and reads only `trusted`. So a
+// poisoned artifact an untrusted context places NEVER feeds a trusted build,
+// and an untrusted context can NEVER write into the trusted scope — no matter
+// what cache key it computes. The transitional single-tenant serve (and the
+// store-policy unit tests) set an explicit `bucket` override, which IS the
+// scope base (`<bucket>/<tier>`, e.g. `default/trusted`) — byte-identical to
+// the pre-platform layout, so the legacy flat store still migrates there on
+// boot. Blob keys mirror the scope layout, so the model holds on S3 by
 // construction: a pre-signed URL binds ONE server-derived scope key.
 
 import os from 'node:os'
@@ -43,17 +49,38 @@ export const MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
 export type Tier = 'trusted' | 'untrusted'
 
 /**
- * The authenticated identity of a request, derived server-side from its
- * token. `bucket` is `default` in Phase 1 (a per-workspace bucket is the
- * hosted-multi-tenant Phase 2). Never carries a client-declared value.
+ * Reserved workspace segment for a token NOT bound to a specific workspace
+ * (an org-wide token) — its cache is shared across the org's workspaces. Not a
+ * valid UUID, so it can never collide with a real workspace id.
+ */
+export const ORG_SHARED_WS = '_org'
+
+/**
+ * The authenticated identity of a request, derived server-side from its token.
+ * The scope base is the tenancy prefix `org/<orgId>/ws/<workspaceId ?? _org>`;
+ * `workspaceId` is present only for a workspace-scoped token. `bucket` is a
+ * legacy/test override — when set it IS the scope base (`<bucket>/<tier>`), used
+ * by the transitional single-tenant serve and the store-policy unit tests.
+ * Never carries a client-declared value for the org / workspace / tier.
  */
 export interface Principal {
+  orgId: string
+  workspaceId?: string
   tier: Tier
-  bucket: string
+  bucket?: string
 }
 
-/** The default principal for an open (tokenless) or single-token serve. */
-export const DEFAULT_PRINCIPAL: Principal = { tier: 'trusted', bucket: 'default' }
+/** The default principal for the transitional (single-tenant) serve. */
+export const DEFAULT_PRINCIPAL: Principal = { orgId: 'default', tier: 'trusted', bucket: 'default' }
+
+/**
+ * The scope base a principal reads/writes under: an explicit `bucket` override
+ * (transitional serve / unit tests), else the tenant prefix. Server-derived —
+ * a client value never reaches here.
+ */
+function basePrefix(p: Principal): string {
+  return p.bucket ?? `org/${p.orgId}/ws/${p.workspaceId ?? ORG_SHARED_WS}`
+}
 
 // The hash becomes a filename — accept only a safe path token so a hostile
 // hash can't traverse out of the store dir. (vx hashes are 16-hex; the wider
@@ -64,25 +91,34 @@ const HASH_RE = /^[a-zA-Z0-9_-]{1,128}$/
 const SEGMENT_RE = /^[a-zA-Z0-9_.-]{1,128}$/
 
 /**
- * Scopes a principal may READ, in priority order. An untrusted context reads
- * its own scope first, then falls through to the trusted baseline (so PRs are
- * warm off `main`); a trusted context reads only trusted — it NEVER consumes
- * an untrusted (poisonable) artifact.
+ * Scopes a principal may READ, in priority order, each tagged with its tier.
+ * An untrusted context reads its own sub-scope first, then falls through to the
+ * trusted baseline (so PRs are warm off `main`); a trusted context reads only
+ * trusted — it NEVER consumes an untrusted (poisonable) artifact.
  */
-function readScopes(p: Principal, sub: string): string[] {
+function readScopeSpecs(p: Principal, sub: string): { scope: string; tier: Tier }[] {
+  const base = basePrefix(p)
   // Untrusted reads ITS OWN sub-scope (a per-PR partition) + the trusted
   // baseline — NEVER another PR's untrusted scope. So one fork PR can neither
   // read nor poison another's cache; the blast radius of an untrusted write is
   // exactly one PR, and trusted is never consumed.
   return p.tier === 'untrusted'
-    ? [`${p.bucket}/untrusted/${sub}`, `${p.bucket}/trusted`]
-    : [`${p.bucket}/trusted`]
+    ? [
+        { scope: `${base}/untrusted/${sub}`, tier: 'untrusted' },
+        { scope: `${base}/trusted`, tier: 'trusted' },
+      ]
+    : [{ scope: `${base}/trusted`, tier: 'trusted' }]
+}
+
+function readScopes(p: Principal, sub: string): string[] {
+  return readScopeSpecs(p, sub).map((s) => s.scope)
 }
 
 /** The single scope a principal WRITES: trusted is flat; untrusted is
  *  per-PR-partitioned so PRs never write into each other's scope. */
 function writeScope(p: Principal, sub: string): string {
-  return p.tier === 'untrusted' ? `${p.bucket}/untrusted/${sub}` : `${p.bucket}/trusted`
+  const base = basePrefix(p)
+  return p.tier === 'untrusted' ? `${base}/untrusted/${sub}` : `${base}/trusted`
 }
 
 // A stored artifact is immutable, so a junk PUT body (a buggy client, a
@@ -264,7 +300,7 @@ export class ArtifactStore {
     // GET-resolution priority order, so the list mirrors what a fetch
     // would actually return.
     const seen = new Set<string>()
-    for (const scope of readScopes(principal, sub)) {
+    for (const { scope, tier } of readScopeSpecs(principal, sub)) {
       if (!this.validScope(scope)) continue
       let blobs: BlobListEntry[]
       try {
@@ -272,7 +308,6 @@ export class ArtifactStore {
       } catch {
         continue // a down bucket lists empty — the wire GET/HEAD stay loud
       }
-      const tier: Tier = scope.split('/')[1] === 'untrusted' ? 'untrusted' : 'trusted'
       for (const b of blobs) {
         const name = b.key.slice(scope.length + 1)
         if (!name.endsWith('.tar.zst')) continue

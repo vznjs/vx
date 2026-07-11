@@ -499,8 +499,10 @@ export async function startServe(opts: {
     expected !== undefined && timingSafeEqual(sha256(candidate), expected)
   /** Map a presented token to its principal, or null when it matches none. */
   const principalForToken = (candidate: string): Principal | null => {
-    if (digestEq(candidate, trustedDigest)) return { tier: 'trusted', bucket: 'default' }
-    if (digestEq(candidate, prDigest)) return { tier: 'untrusted', bucket: 'default' }
+    if (digestEq(candidate, trustedDigest))
+      return { orgId: 'default', tier: 'trusted', bucket: 'default' }
+    if (digestEq(candidate, prDigest))
+      return { orgId: 'default', tier: 'untrusted', bucket: 'default' }
     return null
   }
 

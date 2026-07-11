@@ -326,9 +326,12 @@ describe('platform e2e (real pg + fake S3)', () => {
       rawBody: body,
     })
     expect(put.status).toBe(200)
-    // The blob landed org-partitioned under the UNTRUSTED scope.
+    // The blob landed tenant-partitioned (org-wide token → shared _org
+    // segment) under the UNTRUSTED scope: org/<orgId>/ws/_org/untrusted/…
     const keys = [...s3.objects.keys()]
-    expect(keys.some((k) => k.includes(`${orgId}/untrusted/`) && k.includes(hash))).toBe(true)
+    expect(
+      keys.some((k) => k.includes(`org/${orgId}/ws/_org/untrusted/`) && k.includes(hash)),
+    ).toBe(true)
     // The writer reads it back (307 to a presigned URL — offloaded storage).
     const back = await call('GET', `/v1/cache/${hash}`, {
       bearer: untrustedToken,
@@ -344,6 +347,34 @@ describe('platform e2e (real pg + fake S3)', () => {
     // No bearer → 401; a session is not a cache principal → 403.
     expect((await call('GET', `/v1/cache/${hash}`)).status).toBe(401)
     expect((await call('GET', `/v1/cache/${hash}`, { cookie })).status).toBe(403)
+  })
+
+  it('cache wire: a workspace-scoped token stores under its own workspace segment', async () => {
+    // The ingest test auto-provisioned a workspace; mint a token bound to it.
+    const wsRes = await call('GET', '/v1/workspaces', { cookie })
+    const { workspaces } = (await wsRes.json()) as { workspaces: { id: string }[] }
+    const wsId = workspaces[0]!.id
+    const mint = await call('POST', `/v1/admin/orgs/${orgId}/tokens`, {
+      cookie,
+      csrf: true,
+      body: { name: 'ws-scoped', tier: 'trusted', workspaceId: wsId },
+    })
+    expect(mint.status).toBe(201)
+    const wsToken = ((await mint.json()) as { token: string }).token
+    const hash = 'cd'.repeat(10)
+    const body = Bun.zstdCompressSync(new TextEncoder().encode('ws-scoped-bytes'))
+    expect(
+      (await call('PUT', `/v1/cache/${hash}`, { bearer: wsToken, rawBody: body })).status,
+    ).toBe(200)
+    // Landed under the token's own workspace segment, not the shared _org one.
+    const keys = [...s3.objects.keys()]
+    expect(
+      keys.some((k) => k.includes(`org/${orgId}/ws/${wsId}/trusted/`) && k.includes(hash)),
+    ).toBe(true)
+    // The org-wide trusted ci token does NOT see the workspace-scoped cache.
+    expect(
+      (await call('GET', `/v1/cache/${hash}`, { bearer: ciToken, redirect: 'manual' })).status,
+    ).toBe(404)
   })
 
   it('the serve-era /version handshake is gone', async () => {
