@@ -208,6 +208,23 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-11**: **OWNER DIRECTIVE — the serve must NOT store artifact
+  bytes; connect to an S3-compatible bucket** ("we cannot store cache on
+  controller need to connect with s3 compat bucket"). Un-parks the
+  designed-not-built blob backend from `native-cache-wire-2026-07.md`
+  §offload. Design: `docs/design/s3-blob-backend-2026-07.md` —
+  `BlobBackend` seam inside ArtifactStore (policy — scopes/immutability/
+  caps/zstd-magic — stays in the store; raw storage goes behind the
+  seam), GET answers 307 to a SigV4 query-presigned bucket URL (the
+  client already follows one auth-dropping hop), PUT keeps proxying
+  through the serve (temp spool → S3 PUT → unlink; transit, not
+  storage) so every server-enforced gate survives, metadata rides
+  `x-amz-meta-vx-*` with client fallback reads, hand-rolled SigV4
+  (NO AWS SDK, KAT-pinned), env-driven config with partial-config a
+  boot error. Local-dir backend stays the zero-config default. The
+  analytics/log/fp DBs stay on the controller — they are state, not
+  cache.
+
 - **2026-07-10**: **Adversarial review of the native-cache wave — one
   confirmed store-hygiene defect + two minors fixed; every
   security-critical invariant verified sound by executed repro**
