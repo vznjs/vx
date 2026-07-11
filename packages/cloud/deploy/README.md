@@ -1,7 +1,7 @@
 # Deploying `@vzn/vx-cloud`
 
 `vx-cloud serve` is the whole service: **one process, one container.** It
-serves the embedded dashboard, the `/v1/*` analytics API, the `/v8/artifacts`
+serves the embedded dashboard, the `/v1/*` analytics API, the `/v1/cache`
 remote cache, and the `/mcp` endpoint, all over a SQLite ingest store fed by
 `POST /v1/ingest` (the `cloud()` plugin pushes each run's summary to it). It
 reads only its own store — never a workspace `cache.db` — so it can run
@@ -65,8 +65,24 @@ docker run -p 4321:4321 -v vxdata:/data \
 # dashboard + API at http://localhost:4321  (Authorization: Bearer <token>)
 ```
 
-The `/data` volume holds the SQLite ingest store **and** the `/v8` artifact
-store — mount it on a volume so both survive restarts.
+The `/data` volume holds the SQLite ingest store **and** the artifact store —
+mount it on a volume so both survive restarts.
+
+## S3-compatible artifact storage (optional)
+
+If the container must not hold artifact bytes at rest, connect an
+S3-compatible bucket (R2, MinIO, Garage, AWS): set `VX_CLOUD_S3_ENDPOINT`,
+`VX_CLOUD_S3_BUCKET`, `VX_CLOUD_S3_ACCESS_KEY_ID`, and
+`VX_CLOUD_S3_SECRET_ACCESS_KEY` (optional: `VX_CLOUD_S3_REGION`,
+`VX_CLOUD_S3_PREFIX`, `VX_CLOUD_S3_PRESIGN_TTL`). Cache GETs then redirect
+clients to short-lived pre-signed bucket URLs (the bucket endpoint must be
+reachable from the machines running `vx run`), while PUTs still proxy through
+the serve so the byte cap, junk-body gate, immutability, and fork-PR trust
+scopes stay server-enforced. Partial config is a boot-time hard error — never
+a silent fall-back to local storage. [`docker-compose.yml`](./docker-compose.yml)
+documents the lines inline; the
+[Self-host guide](https://vznjs.github.io/vx/guides/self-hosting/) has full
+examples.
 
 ## `docker compose`
 
@@ -90,12 +106,11 @@ its remote cache is used:
 ```sh
 vx-cloud connect https://vx.example.com --name team --token <secret>
 # every `vx run` now pushes its summary there; if the serve advertises the
-# artifact store (/v1/meta artifacts:true), the remote cache auto-wires.
+# cache wire (/v1/meta cacheWire: 1), the remote cache auto-wires.
 ```
 
-Or wire it explicitly with env vars (`VX_CLOUD_INGEST_URL`,
-`VX_REMOTE_CACHE_URL` + `VX_REMOTE_CACHE_TOKEN`) — see the
-[Self-host](https://vznjs.github.io/vx/guides/self-hosting/) and
+Or wire it explicitly with env vars (`VX_CLOUD_URL` + `VX_CLOUD_TOKEN`) —
+see the [Self-host](https://vznjs.github.io/vx/guides/self-hosting/) and
 [Remote caching](https://vznjs.github.io/vx/guides/remote-caching/) guides.
 
 ## TLS
@@ -117,6 +132,7 @@ vx.example.com {
 > upgrade across a bump **resets the server's run history** (the serve logs
 > `ingest store schema upgraded — run history was reset` when it happens). Back
 > up `/data` (or the `--ingest-dir` path) before pulling a new image if the
-> history matters to you. The `/v8` artifacts under `/data/artifacts` are plain
-> files and are unaffected. An ingest-owned schema with additive migrations is
-> on the roadmap.
+> history matters to you. The artifacts under `/data/artifacts` are plain
+> files and are unaffected (and with `VX_CLOUD_S3_*` set they live in the
+> bucket entirely). An ingest-owned schema with additive migrations is on the
+> roadmap.

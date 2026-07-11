@@ -122,7 +122,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Async remote prefetch    | —                                          | —                      | —                            | **yes** — stable-key GETs overlap execution                                                       |
 | Restore-ahead scheduling | —                                          | —                      | —                            | **yes** — two-tier scheduler restores warm hits ahead of their deps                               |
 | Artifact integrity       | HMAC `x-artifact-tag`                      | (transport-level)      | —                            | **yes** — structural `x-vx-digest` (xxh3, always on; client-verified on GET)                      |
-| Pre-signed URL auth      | yes                                        | yes                    | —                            | client 307-follow shipped (auth-dropping); serve blob backend = designed Phase 2                  |
+| Pre-signed URL auth      | yes                                        | yes                    | —                            | **yes** — serve 307s to pre-signed S3/R2 URLs (`VX_CLOUD_S3_*`); client follow drops auth         |
 
 ## Workspace integration
 
@@ -154,9 +154,9 @@ upstream repos.
    Turbo `/v8/artifacts` compatibility was DROPPED from core; a
    Turbo-wire cache is a **third-party plugin story** — the seam recipe
    lives in the extensibility guide. The serve-side blob backend (S3/R2
-   GET offload behind the 307) remains the designed Phase 2 in
-   [`design/presigned-artifacts-2026-07.md`](./design/presigned-artifacts-2026-07.md)
-   (its Turbo-wire premise is superseded; the offload phasing survives).
+   GET offload behind the 307) shipped too: `VX_CLOUD_S3_*` connects an
+   S3-compatible bucket and the serve stores no artifact bytes at rest
+   ([`design/s3-blob-backend-2026-07.md`](./design/s3-blob-backend-2026-07.md)).
 
 2. **`--continue=<mode>` — shipped.** `--continue[=never|deps-ok|always]`
    controls failure propagation: `never` fail-fast (stop dispatch on the

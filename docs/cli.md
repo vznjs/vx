@@ -1152,6 +1152,35 @@ vx-cloud serve
   an existing hash is 409). `/v1/meta` advertises `artifacts: true`,
   `cacheWire: 1`, and `trustTiers: true`. See
   `docs/design/cache-trust-scopes-2026-07.md`.
+- **S3-compatible artifact offload.** With `VX_CLOUD_S3_*` configured,
+  the serve stores ZERO artifact bytes at rest
+  (`docs/design/s3-blob-backend-2026-07.md`): a GET answers
+  `307 Location: <pre-signed bucket URL>` (the client follows one hop,
+  dropping the bearer + `x-vx-cache-scope` cross-origin — the bytes
+  never transit the controller), and the wire metadata rides back as
+  the object's `x-amz-meta-vx-digest` / `x-amz-meta-vx-duration-ms`
+  user metadata. A PUT still proxies THROUGH the serve — transit, not
+  storage: the byte cap, zstd-magic gate, immutability 409, and trust
+  scopes stay server-enforced (object keys mirror the
+  `<bucket>/<tier>[/<sub>]/` scope layout, so a pre-signed URL binds
+  one server-derived scope), and the upload spool is unlinked before
+  the response. Path-style addressing, hand-rolled SigV4 — works
+  against MinIO, R2, Garage, and AWS itself.
+
+  | Env var                         | Meaning                                     |
+  | ------------------------------- | ------------------------------------------- |
+  | `VX_CLOUD_S3_ENDPOINT`          | `https://…` — presence ENABLES the backend  |
+  | `VX_CLOUD_S3_BUCKET`            | bucket name (required with endpoint)        |
+  | `VX_CLOUD_S3_REGION`            | SigV4 region (default `auto`)               |
+  | `VX_CLOUD_S3_ACCESS_KEY_ID`     | credentials (required with endpoint)        |
+  | `VX_CLOUD_S3_SECRET_ACCESS_KEY` | credentials (required with endpoint)        |
+  | `VX_CLOUD_S3_PREFIX`            | optional key prefix (`vx-cache/`)           |
+  | `VX_CLOUD_S3_PRESIGN_TTL`       | presigned-GET TTL in seconds, default `300` |
+
+  Partial config (endpoint without bucket/credentials, or a malformed
+  TTL) is a boot-time hard error naming the missing vars — the serve
+  never silently falls back to local storage.
+
 - **MCP.** `POST /mcp` is a dependency-free MCP server (JSON-RPC 2.0
   over streamable HTTP, plain-JSON responses) exposing the dashboard's
   read surface as tools — `list_workspaces`, `list_runs`, `get_run`,

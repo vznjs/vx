@@ -1,6 +1,6 @@
 ---
 title: Self-host vx-cloud
-description: Deploy the vx-cloud service in Docker. Token-authenticated, standalone SQLite ingest store, embedded dashboard, and a serve-hosted Turborepo-wire remote cache — no access to your workspaces required.
+description: Deploy the vx-cloud service in Docker. Token-authenticated, standalone SQLite ingest store, embedded dashboard, and a serve-hosted remote cache with optional S3-compatible artifact storage — no access to your workspaces required.
 ---
 
 The team-shared backend is a **separate package and binary**: `vx-cloud`
@@ -12,7 +12,7 @@ the dashboard embedded) — `npm i -g @vzn/vx-cloud` gives you `vx-cloud` with
 `vx-cloud serve`.
 
 `vx-cloud serve` is one process that carries a SQLite ingest store,
-the `/v1/*` analytics API, the embedded dashboard, a Turborepo-wire
+the `/v1/*` analytics API, the embedded dashboard, a vx-native-wire
 remote cache, an MCP endpoint for AI agents, and the WebSocket channels
 for delegated + distributed runs. It reads **only its own store** — it
 never opens a workspace `cache.db` — so you can deploy it on a box that
@@ -195,6 +195,76 @@ export VX_CLOUD_TOKEN=your-secret-token
 
 See [Remote caching](/vx/guides/remote-caching/) for the trust-scope
 model and integrity details.
+
+## S3-compatible artifact storage
+
+By default artifacts rest on the serve's own disk (under the ingest
+dir). If the controller must not hold artifact bytes — a small VM, an
+ephemeral container, or simply "cache belongs in object storage" —
+connect an S3-compatible bucket and the serve stores **zero artifact
+bytes at rest**:
+
+| Env var                         | Meaning                                     |
+| ------------------------------- | ------------------------------------------- |
+| `VX_CLOUD_S3_ENDPOINT`          | `https://…` — presence ENABLES the backend  |
+| `VX_CLOUD_S3_BUCKET`            | bucket name (required with endpoint)        |
+| `VX_CLOUD_S3_REGION`            | SigV4 region (default `auto`)               |
+| `VX_CLOUD_S3_ACCESS_KEY_ID`     | credentials (required with endpoint)        |
+| `VX_CLOUD_S3_SECRET_ACCESS_KEY` | credentials (required with endpoint)        |
+| `VX_CLOUD_S3_PREFIX`            | optional key prefix (`vx-cache/`)           |
+| `VX_CLOUD_S3_PRESIGN_TTL`       | presigned-GET TTL in seconds, default `300` |
+
+Partial config (endpoint without bucket/credentials) is a **boot-time
+hard error** naming the missing vars — the serve never silently falls
+back to local storage.
+
+How it behaves once enabled:
+
+- **GET** answers `307 Location: <pre-signed bucket URL>` — the client
+  downloads directly from the bucket (dropping its bearer on the
+  cross-origin hop); artifact bytes never transit the controller on the
+  read path.
+- **PUT still proxies through the serve.** That is transit, not
+  storage: the byte cap, the junk-body (zstd-magic) gate, immutability,
+  and the fork-PR trust scopes are all **server-enforced**, which a
+  direct client→bucket upload would surrender to the client. The body
+  spools to a temp file, uploads to the bucket, and the temp is deleted
+  before the response.
+- Object keys mirror the trust-scope layout
+  (`<bucket>/<tier>[/<sub>]/<hash>.tar.zst`, under the optional
+  prefix), so the fork-PR isolation model holds by construction — a
+  pre-signed URL binds one server-derived scope.
+
+Addressing is path-style with hand-rolled SigV4 (no AWS SDK), so any
+S3-compatible store works. Cloudflare R2:
+
+```sh
+docker run --rm -p 4321:4321 -v vxdata:/data \
+  -e VX_CLOUD_HOST=0.0.0.0 \
+  -e VX_CLOUD_TOKEN=your-secret-token \
+  -e VX_CLOUD_S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com \
+  -e VX_CLOUD_S3_BUCKET=vx-artifacts \
+  -e VX_CLOUD_S3_ACCESS_KEY_ID=… \
+  -e VX_CLOUD_S3_SECRET_ACCESS_KEY=… \
+  ghcr.io/vznjs/vx-cloud:latest
+```
+
+MinIO (self-hosted):
+
+```sh
+export VX_CLOUD_S3_ENDPOINT=https://minio.internal:9000
+export VX_CLOUD_S3_BUCKET=vx-artifacts
+export VX_CLOUD_S3_REGION=us-east-1
+export VX_CLOUD_S3_ACCESS_KEY_ID=…
+export VX_CLOUD_S3_SECRET_ACCESS_KEY=…
+vx-cloud serve --host 0.0.0.0 --token "$TOKEN"
+```
+
+Note: clients fetch artifacts from the pre-signed bucket URLs, so the
+bucket endpoint must be reachable from wherever `vx run` executes (CI
+runners, dev machines) — not just from the serve. The analytics DBs
+(run history, logs, fingerprints) stay on the serve's disk: they are
+small, pruned state, not cache.
 
 ## Connect a workspace
 

@@ -104,8 +104,10 @@ differs (a query-signed URL rejects a doubled credential; the scope
 header is serve-facing identity a blob origin has no business seeing). That replaces the Turbo
 OPTIONS-preflight dance with plain HTTP semantics and slots the
 presigned design's Phase-2 blob backend in with zero client change.
-Not implemented server-side yet; the client implements the follow now
-so old clients never block the offload rollout.
+SHIPPED server-side (2026-07-11): the S3-compatible blob backend
+(`s3-blob-backend-2026-07.md`) answers exactly this 307 when
+`VX_CLOUD_S3_*` is configured; the client's follow shipped first so
+old clients never blocked the rollout.
 
 **Rejected (no consumer today):** batch existence probes (would need a
 `CacheLayer.has` batching seam in core — revisit if `--dry` on

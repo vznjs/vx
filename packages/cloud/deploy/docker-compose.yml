@@ -5,7 +5,7 @@
 #
 #   # Or build from source: `docker compose build` picks up the build: block below.
 #
-# One process serves the dashboard, the /v1/* analytics API, the /v8/artifacts
+# One process serves the dashboard, the /v1/* analytics API, the /v1/cache
 # remote cache, and the /mcp endpoint. It reads only its own SQLite ingest
 # store (the `vxdata` volume), fed by the cloud() plugin's POST /v1/ingest — it
 # never touches a workspace cache.db, so it can run anywhere.
@@ -35,8 +35,22 @@ services:
       # Optional: a browser origin allowed to open the WS/SSE channels when the
       # dashboard is hosted on a different origin than this serve.
       # VX_CLOUD_ALLOW_ORIGIN: 'https://dash.example.com'
+      # Optional: store artifact BYTES in an S3-compatible bucket (R2, MinIO,
+      # AWS) instead of the /data volume — the controller then holds no
+      # artifact bytes at rest (GET redirects clients to pre-signed URLs; the
+      # bucket endpoint must be reachable from the machines running `vx run`).
+      # Setting the endpoint REQUIRES the bucket + credentials — partial
+      # config is a boot error, never a silent local fallback.
+      # VX_CLOUD_S3_ENDPOINT: 'https://<account-id>.r2.cloudflarestorage.com'
+      # VX_CLOUD_S3_BUCKET: 'vx-artifacts'
+      # VX_CLOUD_S3_ACCESS_KEY_ID: '${VX_CLOUD_S3_ACCESS_KEY_ID:-}'
+      # VX_CLOUD_S3_SECRET_ACCESS_KEY: '${VX_CLOUD_S3_SECRET_ACCESS_KEY:-}'
+      # VX_CLOUD_S3_REGION: 'auto'        # SigV4 region (default: auto)
+      # VX_CLOUD_S3_PREFIX: 'vx-cache/'   # optional key prefix
+      # VX_CLOUD_S3_PRESIGN_TTL: '300'    # presigned-GET TTL, seconds
     volumes:
-      # Persist the ingest store + the /v8 artifact store across restarts.
+      # Persist the ingest store + the artifact store across restarts (with
+      # VX_CLOUD_S3_* set, artifacts live in the bucket instead).
       - vxdata:/data
     restart: unless-stopped
 
