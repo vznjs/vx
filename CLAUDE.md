@@ -208,6 +208,66 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-11**: **Platform Phase 2 SHIPPED — the analytics storage
+  swap onto Postgres (`304ac5c`, `22b6125`, `de22e97`, `7df5232`)**,
+  executing P2 of `docs/design/cloud-platform-2026-07.md`. The
+  `vx-cloud server` analytics path is now FULLY on Postgres end-to-end.
+  **Schema (migrations 0004-0006):** `invocations` (monthly RANGE
+  partitions), `task_runs` (weekly — the 50-100M-rows/day table),
+  `task_logs` (monthly), each with a DEFAULT catch-all partition so
+  ingest never drops a row; `output_fingerprints` plain; every hot
+  index leads with `workspace_id` (the tenant axis). `db/partitions.ts`
+  creates current+N-ahead partitions idempotently + drops past
+  `VX_CLOUD_RETENTION_DAYS` (default 180); a boot + daily maintenance
+  tick runs it. **`db/analytics.ts`:** the write half (`ingest`/
+  `ingestLogs`/`ingestCatalog` in one idempotent
+  `ON CONFLICT (started_at, run_id) DO NOTHING` transaction — race-free,
+  unlike core's SELECT-then-insert gate) + `routeWorkspace` (§5.5: the
+  org token's org → resolve-or-create the `workspaces` row by the
+  client's 16-hex `workspaceId` on first push; auto-provision projects/
+  tasks; a workspace-scoped token is refused a foreign ws), and the
+  full port of core's 27 read queries, org/workspace-CLAMPED. Core
+  `metrics.ts` is UNTOUCHED (it serves the LOCAL cache.db for `vx mcp`/
+  `vx info`); the Postgres port is a deliberate dialect fork.
+  `db/analytics-routes.ts` is the request router the server gate calls.
+  **Dialect decisions:** Bun.sql returns bigint/count/sum/numeric as
+  STRINGS (aggregates cast `::int`/`::float8`; bigint cols `Number()`'d;
+  wallclock ns kept as its wire string); jsonb reads back as TEXT
+  (`JSON.parse` the tag/config/files columns — core's TEXT-column
+  pattern); Postgres HAVING can't ref output aliases (repeat the
+  aggregate); `trunc(avg())::int` for SQLite toward-zero parity; the
+  invocation tag filter uses jsonb `@>` containment (the correct form
+  of core's `LIKE` hack). Drift-trap pins carried over (periodStats
+  COALESCE, getRegressions `run_id DESC` tiebreaker, half-open
+  `[from,to)` windows). Cache-ENTRY inventory queries return shaped
+  empties — the analytics schema holds run/task history only; cache
+  inventory IS the S3 artifact list (§5.1). **Verified END-TO-END with
+  the real server** (ephemeral pg + fake S3): register → mint ci token
+  → ingest into TWO workspaces (both auto-provisioned) → read back
+  per-workspace (ws A shows only its runs) → projects auto-provisioned
+  → a second org's token reads empty, a foreign `?ws=` is 404, a
+  cross-org session `?ws=&org=` is 404 (tenant clamp holds on the real
+  wire). Cloud 423→469 (+46: schema/partition, write/routing,
+  read-query pins with a decoy-workspace clamp proof, e2e); core 1221
+  untouched (ZERO src/ change). **DEVIATION (phase-honest, named):**
+  the SQLite stores (`ingest-store`/`log-store`/`fp-store`/
+  `workspace-catalog`/`workspaces.json`) + serve.ts's colocated
+  `/v1/graph`/`/v1/workspace/*` are NOT deleted — the design's §12 puts
+  serve.ts's absorption into server.ts + the ~15 companion-suite
+  retarget in P4, and those stores still back `startServe`
+  (transitional until P4). The P1 per-org SQLite `storeFor` IS removed;
+  serve.ts keeps ONE shared store only for residual machine surfaces
+  (dist duration-hints, `/v1/artifacts` provenance, `/mcp`, delegated
+  self-ingest — all P3/P4). Two smaller residuals: Postgres-served
+  `/v1/runs/:id/logs` drops the `artifactHash` link (P3 re-adds via
+  artifact-store access), `/mcp` still reads the empty shared store
+  (MCP-on-Postgres is a follow-up). Response types are mirrored in
+  `analytics.ts` (not on the façade; the no-core-change constraint) and
+  pinned by the seeded tests. **Deferred:** P3 (cache wire + dist under
+  org tokens + `org/<id>/ws/<id>` scope prefixes + delegation death),
+  P4 (dashboard auth/admin UI + serve.ts absorption + SQLite-store
+  deletion + companion-suite retarget), P5 (compose/image/docs).
+
 - **2026-07-11**: **Security review of platform Phase 1 — auth
   foundation VERDICT SOUND; three availability/enumeration defects fixed
   (`13d8be5`)** (repro-mandated hostile reviewer over the auth layer;
