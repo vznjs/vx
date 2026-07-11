@@ -55,11 +55,37 @@ export function parseSocketDatabaseUrl(databaseUrl: string): SocketConnection | 
  */
 export function openDb(databaseUrl: string): DbClient {
   const socket = parseSocketDatabaseUrl(databaseUrl)
-  const sql = socket !== null ? new SQL(socket) : new SQL(databaseUrl)
+  const sql = socket !== null ? newSocketSql(socket) : new SQL(databaseUrl)
   return {
     sql,
     close: async () => {
       await sql.close()
     },
+  }
+}
+
+/**
+ * Construct a socket-connected SQL client. Bun.sql still consults
+ * `process.env.DATABASE_URL` / `POSTGRES_URL` even when handed an explicit
+ * options object, and the libpq socket form we parse here is exactly what
+ * Bun's own URL parser rejects — so a socket URL sitting in the environment
+ * (a compose/systemd deployment, our own `server` boot) would make the
+ * construction throw "cannot be parsed as a URL". Shield the sync
+ * construction from those two env vars, then restore them — the caller has
+ * already captured the URL, so the environment is only a fallback we don't
+ * want consulted here.
+ */
+function newSocketSql(socket: SocketConnection): SQL {
+  const saved: Record<string, string | undefined> = {}
+  for (const k of ['DATABASE_URL', 'POSTGRES_URL']) {
+    saved[k] = process.env[k]
+    delete process.env[k]
+  }
+  try {
+    return new SQL(socket)
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v !== undefined) process.env[k] = v
+    }
   }
 }

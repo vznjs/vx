@@ -28,6 +28,34 @@ describe('parseSocketDatabaseUrl', () => {
   })
 })
 
+describe('openDb', () => {
+  it('connects on a socket URL even when a socket DATABASE_URL is in the environment', async () => {
+    // Bun.sql consults process.env.DATABASE_URL/POSTGRES_URL even when handed
+    // a socket options object, and the libpq socket form is exactly what Bun's
+    // URL parser rejects — so `vx-cloud server` (which puts DATABASE_URL in the
+    // env) would throw "cannot be parsed as a URL" without the openDb shield.
+    const pg = await ephemeralPg()
+    const url = await pg.createDatabase({ empty: true })
+    const savedDb = process.env['DATABASE_URL']
+    const savedPg = process.env['POSTGRES_URL']
+    process.env['DATABASE_URL'] = url
+    process.env['POSTGRES_URL'] = url
+    const db = openDb(url)
+    try {
+      const rows = await db.sql<{ one: number }[]>`SELECT 1 AS one`
+      expect(Number(rows[0]!.one)).toBe(1)
+      // The env is restored after construction (the caller may still read it).
+      expect(process.env['DATABASE_URL']).toBe(url)
+    } finally {
+      await db.close()
+      if (savedDb === undefined) delete process.env['DATABASE_URL']
+      else process.env['DATABASE_URL'] = savedDb
+      if (savedPg === undefined) delete process.env['POSTGRES_URL']
+      else process.env['POSTGRES_URL'] = savedPg
+    }
+  })
+})
+
 describe('migration runner', () => {
   it('applies all migrations to a fresh database, re-apply is a no-op', async () => {
     const pg = await ephemeralPg()
