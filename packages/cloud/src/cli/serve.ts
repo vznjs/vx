@@ -457,6 +457,25 @@ export async function startServe(opts: {
    * defense).
    */
   allowedOrigins?: readonly string[]
+  /**
+   * S3 artifact-offload config override. Defaults to the env-resolved
+   * `resolveS3Config()`; the platform `server` entrypoint passes its own
+   * validated config so boot never depends on ambient process env.
+   */
+  s3?: ResolvedS3Config
+  /**
+   * Platform-mode auth (docs/design/cloud-platform-2026-07.md §12 P1):
+   * when set, REPLACES the static-token gate wholesale. Consulted for every
+   * request past `/health`; may fully handle it (a Response — the auth/admin
+   * routes, `/v1/meta`, refusals) or grant it a cache-wire principal plus an
+   * org-scoped ingest store the request's analytics reads/writes route to.
+   * With a gate installed there is no tokenless mode and no loopback
+   * exemption — the gate IS the auth.
+   */
+  gate?: (
+    req: Request,
+    url: URL,
+  ) => Promise<Response | { principal: Principal; ingest?: IngestStore }>
   onRun?: (request: RunRequest, ok: boolean) => void
 }): Promise<ServeServer> {
   // One registry for the service's whole lifetime — concurrent runs share
@@ -489,7 +508,7 @@ export async function startServe(opts: {
   // local machine, so a LAN attacker can't drive the run/agent channels. A
   // non-loopback bind is a deliberate hosted deployment and MUST carry a token.
   const host = opts.host ?? '127.0.0.1'
-  if (!isLoopbackHost(host) && !hasAuth) {
+  if (!isLoopbackHost(host) && !hasAuth && opts.gate === undefined) {
     throw new Error(
       `refusing to bind a non-loopback host (${host}) without a token: an unauthenticated serve on a reachable interface exposes arbitrary task execution — set --token / VX_CLOUD_TOKEN`,
     )
@@ -582,7 +601,7 @@ export async function startServe(opts: {
   // the BYTES live in the bucket (GET → 307 to a pre-signed URL; PUT proxies
   // through the store's gates, then uploads) — the controller stores no
   // artifact bytes at rest. Without it, today's local flat dir.
-  const s3 = resolveS3Config()
+  const s3 = opts.s3 ?? resolveS3Config()
   const artifactsDir = path.join(ingestDir, 'artifacts')
   const artifacts = new ArtifactStore(
     s3 !== null ? new S3Backend(s3) : new LocalDirBackend(artifactsDir),
@@ -710,7 +729,7 @@ export async function startServe(opts: {
     (
       req: Request,
       srv: { upgrade(req: Request, opts?: { data: ServeWsData }): boolean },
-    ): Response | Promise<Response> | undefined => {
+    ): Response | Promise<Response | undefined> | undefined => {
       const url = new URL(req.url)
       // Browser preflight — answer everything with CORS-permissive headers.
       if (req.method === 'OPTIONS') {
@@ -718,6 +737,679 @@ export async function startServe(opts: {
       }
       // Liveness probe — `vx run` health-checks this before delegating.
       if (url.pathname === '/health') return withCors(new Response('ok'))
+      // Everything past /health routes through `dispatch` with an
+      // authenticated principal + the request's ingest store: the platform
+      // gate (when installed) resolves both — handling /v1/meta and the
+      // auth/admin routes itself and scoping analytics to the principal's
+      // ORG store — else the legacy static-token path below runs.
+      const dispatch = (
+        principal: Principal,
+        store: IngestStore,
+      ): Response | Promise<Response> | undefined => {
+        // CSWSH / drive-by defense: gate the state-changing WS channels and the
+        // live SSE streams on the Origin (a token, when set, is a second gate;
+        // this stands even for the tokenless local default a browser can reach).
+        // A socket request has no browser origin to check.
+        if (!viaSocket) {
+          const isUpgrade = req.headers.get('upgrade')?.toLowerCase() === 'websocket'
+          const isStream =
+            url.pathname === '/events' ||
+            url.pathname === '/v1/events' ||
+            url.pathname === '/stream'
+          if ((isUpgrade || isStream) && !originAllowed(req, url)) {
+            return jsonResponse({ error: 'origin not allowed' }, { status: 403 })
+          }
+        }
+        // Distribution agents rendezvous here (bearer-gated above like every
+        // WS upgrade). The socket's role rides `ws.data`; the first message
+        // must be `agent:hello`.
+        if (url.pathname === '/v1/agents') {
+          if (srv.upgrade(req, { data: { role: 'agent', principal } })) return undefined
+          // Not a WS upgrade → a capacity read: how big is this
+          // {workspaceId, session} pool right now, and how many REMOTE helpers
+          // does it hold. An ambient `vx run` reads this to decide whether
+          // distributing is worth it (vs. staying a fast local run); an
+          // autoscaler reads the same counts. Bearer-gated above.
+          return jsonResponse(
+            registry.availableCapacity(
+              url.searchParams.get('ws') ?? '',
+              url.searchParams.get('session') ?? '',
+              url.searchParams.get('commit') ?? undefined,
+            ),
+          )
+        }
+        // MCP — the AI-agent control plane (dev-flows design §10.3): JSON-RPC
+        // 2.0 over streamable HTTP, tools adapting the same metrics queries
+        // the /v1/* routes serve. Bearer-gated above like every /v1 read.
+        if (url.pathname === '/mcp') {
+          return handleMcpHttp(req, store).then(withCors)
+        }
+        // The artifact store (the vx-native cache wire). Hex-only in the route
+        // so it can never shadow the named /v1/cache/* analytics endpoints
+        // (stats, entries, …) — a real cache key is 16-hex; wider widths are
+        // reserved for future hash algorithms.
+        {
+          const m = /^\/v1\/cache\/([0-9a-f]{16,64})$/.exec(url.pathname)
+          if (m) return artifacts.handle(req, m[1]!, principal).then(withCors)
+        }
+        // Workspace scoping for the analytics routes (`?ws=<id>`, dev-flows
+        // design §3.5) — resolved ONCE here. No param → the sole known
+        // workspace when exactly one exists, else `default`, so a
+        // single-workspace serve behaves exactly like the pre-multi-workspace
+        // one and every existing client/bookmark keeps working.
+        const wsParam = url.searchParams.get('ws')
+        const readDb = () => store.db(wsParam ?? store.defaultWorkspaceId())!
+        // Capability handshake — what protocol version + channels + RPCs.
+        if (url.pathname === '/version') {
+          return jsonResponse({
+            protocol: WIRE_PROTOCOL_VERSION,
+            vx: VERSION,
+            channels: WIRE_CHANNELS,
+            rpc: [
+              'getCacheStats',
+              'getRunHistory',
+              'explainCacheKey',
+              'whyDidThisRerun',
+              'cacheKeyDiff',
+              'compareRuns',
+              'getInvocation',
+              'getHitRateSplit',
+            ],
+            workspace: opts.root,
+          })
+        }
+        // Ingest — the push endpoint. A cloud telemetry sink POSTs a
+        // canonical RunSummaryRecord; we persist it into the cloud-owned
+        // store the hosted dashboard reads from. Idempotent on runId.
+        if (url.pathname === '/v1/ingest' && req.method === 'POST') {
+          const len = Number(req.headers.get('content-length') ?? '0')
+          if (Number.isFinite(len) && len > INGEST_BODY_MAX_BYTES) {
+            return jsonResponse({ ok: false, error: 'summary too large' }, { status: 413 })
+          }
+          return (async () => {
+            try {
+              // Re-check the ACTUAL body size, not the (spoofable, absent under
+              // chunked transfer) content-length header — mirror the artifact
+              // PUT's byteLength re-check so a chunked body can't bypass the cap.
+              const raw = await req.text()
+              if (Buffer.byteLength(raw, 'utf8') > INGEST_BODY_MAX_BYTES) {
+                return jsonResponse({ ok: false, error: 'summary too large' }, { status: 413 })
+              }
+              const summary = JSON.parse(raw) as RunSummaryRecord
+              if (summary?.run?.runId === undefined) {
+                return jsonResponse({ ok: false, error: 'not a RunSummaryRecord' }, { status: 400 })
+              }
+              const stored = store.ingest(summary)
+              return jsonResponse({ ok: true, stored })
+            } catch (err) {
+              return jsonResponse(
+                { ok: false, error: err instanceof Error ? err.message : String(err) },
+                { status: 400 },
+              )
+            }
+          })()
+        }
+        // Per-task log tails (task-logs-2026-07). Bearer-gated like /v1/ingest;
+        // workspace routed by the body's own id. Bounded: a 16 MiB body cap
+        // (413 before reading), an unknown wire version 400s naming both, and
+        // the store re-truncates every tail regardless of what the body claims.
+        if (url.pathname === '/v1/ingest/logs' && req.method === 'POST') {
+          const len = Number(req.headers.get('content-length') ?? '0')
+          if (Number.isFinite(len) && len > LOG_BODY_MAX_BYTES) {
+            return jsonResponse({ ok: false, error: 'log bundle too large' }, { status: 413 })
+          }
+          return (async () => {
+            try {
+              // Actual-byte re-check — see /v1/ingest above (chunked bypass).
+              const raw = await req.text()
+              if (Buffer.byteLength(raw, 'utf8') > LOG_BODY_MAX_BYTES) {
+                return jsonResponse({ ok: false, error: 'log bundle too large' }, { status: 413 })
+              }
+              const bundle = JSON.parse(raw) as TaskLogBundle
+              if (bundle?.v !== LOG_WIRE_VERSION) {
+                const got = String((bundle as { v?: unknown } | null)?.v)
+                return jsonResponse(
+                  {
+                    ok: false,
+                    error: `log wire version mismatch: body v${got}, serve v${String(LOG_WIRE_VERSION)}`,
+                  },
+                  { status: 400 },
+                )
+              }
+              if (typeof bundle.workspaceId !== 'string' || !Array.isArray(bundle.tasks)) {
+                return jsonResponse({ ok: false, error: 'not a TaskLogBundle' }, { status: 400 })
+              }
+              const stored = store.ingestLogs(bundle)
+              return jsonResponse({ ok: true, stored })
+            } catch (err) {
+              return jsonResponse(
+                { ok: false, error: err instanceof Error ? err.message : String(err) },
+                { status: 400 },
+              )
+            }
+          })()
+        }
+        // The workspace list (id, name, lastSeenAt, runCount) — feeds the UI
+        // switcher. Behind the token gate like every /v1 read.
+        if (url.pathname === '/v1/workspaces') {
+          return jsonResponse({ workspaces: store.workspaces() })
+        }
+        // The artifact-store list (cloud-data-model-2026-07 §8) — the artifact
+        // store made visible. NOT workspace-gated (artifacts exist on remote
+        // serves too), so it sits above the unknown-workspace guard. The
+        // listing walks ONLY the principal's read scopes — it can never show
+        // an entry a GET couldn't fetch. Provenance (which task/run produced
+        // a hash) is a best-effort join against the workspace-resolved
+        // ingest db; absent for workspaces this serve never ingested.
+        if (url.pathname === '/v1/artifacts') {
+          return (async () => {
+            const limitRaw = url.searchParams.get('limit')
+            const limitNum = limitRaw !== null ? Number(limitRaw) : NaN
+            const limit =
+              Number.isInteger(limitNum) && limitNum > 0 ? Math.min(limitNum, 1000) : 200
+            const entries = await artifacts.list(
+              principal,
+              req.headers.get('x-vx-cache-scope'),
+              limit,
+            )
+            const provenance = new Map<
+              string,
+              { project: string; task: string; runId: string | null }
+            >()
+            try {
+              const db = store.db(wsParam ?? store.defaultWorkspaceId())
+              if (db !== undefined && entries.length > 0) {
+                const hashes = entries.map((e) => e.hash)
+                // IN-lists chunked at 900 (SQLite's parameter ceiling — the
+                // prune precedent); ORDER BY started_at DESC + first-wins
+                // resolves each hash to its most recent producing row.
+                for (let i = 0; i < hashes.length; i += 900) {
+                  const chunk = hashes.slice(i, i + 900)
+                  const rows = db
+                    .query<
+                      { hash: string; project: string; task: string; run_id: string | null },
+                      string[]
+                    >(
+                      `SELECT hash, project, task, run_id FROM runs
+                     WHERE hash IN (${chunk.map(() => '?').join(',')})
+                     ORDER BY started_at DESC`,
+                    )
+                    .all(...chunk)
+                  for (const r of rows) {
+                    if (!provenance.has(r.hash)) {
+                      provenance.set(r.hash, { project: r.project, task: r.task, runId: r.run_id })
+                    }
+                  }
+                }
+              }
+            } catch {
+              // no ingest db yet / schema drift — provenance stays absent
+            }
+            return jsonResponse({
+              artifacts: entries.map((e) => {
+                const p = provenance.get(e.hash)
+                return p !== undefined
+                  ? {
+                      ...e,
+                      task: {
+                        project: p.project,
+                        task: p.task,
+                        ...(p.runId !== null ? { runId: p.runId } : {}),
+                      },
+                    }
+                  : e
+              }),
+            })
+          })()
+        }
+        // The workspace catalog (cloud-data-model-2026-07 §6.3) — the lock/live
+        // project + task index of the COLOCATED workspace. `?ws=` is ignored:
+        // the catalog is inherently single-workspace (§13.3), so these routes
+        // sit above the unknown-workspace guard. Bearer-gated like every /v1.
+        if (url.pathname.startsWith('/v1/workspace/')) {
+          return (async () => {
+            try {
+              const resolved = await catalog.resolve()
+              if (resolved === null) {
+                return jsonResponse({ error: 'no colocated workspace' }, { status: 404 })
+              }
+              if (url.pathname === '/v1/workspace/projects') {
+                return jsonResponse(catalog.projectsResponse(resolved))
+              }
+              if (url.pathname === '/v1/workspace/tasks') {
+                return jsonResponse(catalog.tasksResponse(resolved))
+              }
+              const m = /^\/v1\/workspace\/projects\/(.+)$/.exec(url.pathname)
+              if (m) {
+                const name = decodeURIComponent(m[1]!)
+                const detail = catalog.projectResponse(resolved, name)
+                if (detail === null) {
+                  return jsonResponse({ error: `unknown project: ${name}` }, { status: 404 })
+                }
+                return jsonResponse(detail)
+              }
+              return jsonResponse({ error: 'not found' }, { status: 404 })
+            } catch (err) {
+              return jsonResponse(
+                { error: err instanceof Error ? err.message : String(err) },
+                { status: 400 },
+              )
+            }
+          })()
+        }
+        // An explicitly-requested unknown workspace 404s before any route
+        // logic runs; a known one is lazily opened by the same probe.
+        if (
+          wsParam !== null &&
+          url.pathname.startsWith('/v1/') &&
+          store.db(wsParam) === undefined
+        ) {
+          return jsonResponse({ error: `unknown workspace: ${wsParam}` }, { status: 404 })
+        }
+        // -----------------------------------------------------------------
+        // Metrics HTTP surface — JSON read APIs over the workspace-resolved
+        // ingest store. The dashboard SPA (packages/cloud/ui) calls these
+        // directly.
+        // -----------------------------------------------------------------
+        // Cross-machine hermeticity (verify-cross-machine §4): cache keys whose
+        // fingerprinted output trees DIVERGE across reports, diffed at read
+        // time from the workspace's fingerprint sidecar. Fed by `--verify*`
+        // runs' summaries; the Insights Hermeticity card reads this.
+        if (url.pathname === '/v1/hermeticity') {
+          const limitRaw = url.searchParams.get('limit')
+          const limitNum = limitRaw !== null ? Number(limitRaw) : NaN
+          const limit = Number.isInteger(limitNum) && limitNum > 0 ? Math.min(limitNum, 500) : 50
+          return jsonResponse(store.hermeticity(wsParam ?? store.defaultWorkspaceId(), limit))
+        }
+        // The run queue's live state (queued + running jobs, positions,
+        // timestamps) — the unified Runs view polls this while non-empty.
+        // Matched before the /v1/runs/:id regex below.
+        if (url.pathname === '/v1/runs/queue') {
+          return jsonResponse({ jobs: queue.jobs() })
+        }
+        if (url.pathname === '/v1/runs') {
+          const params = url.searchParams
+          const args: Parameters<typeof listRuns>[1] = {}
+          const limitRaw = params.get('limit')
+          if (limitRaw !== null) args.limit = Number(limitRaw)
+          const project = params.get('project')
+          if (project !== null) args.project = project
+          const task = params.get('task')
+          if (task !== null) args.task = task
+          const runId = params.get('runId')
+          if (runId !== null) args.runId = runId
+          return jsonResponse({ runs: listRuns(readDb(), args) })
+        }
+        if (url.pathname === '/v1/invocations') {
+          const params = url.searchParams
+          const args: {
+            limit?: number
+            branch?: string
+            ci?: boolean
+            tagKey?: string
+            tagValue?: string
+          } = {}
+          const limitRaw = params.get('limit')
+          if (limitRaw !== null) args.limit = Number(limitRaw)
+          const branch = params.get('branch')
+          if (branch !== null) args.branch = branch
+          const ci = params.get('ci')
+          if (ci !== null) args.ci = ci === '1' || ci === 'true'
+          const tagKey = params.get('tagKey')
+          if (tagKey !== null) args.tagKey = tagKey
+          const tagValue = params.get('tagValue')
+          if (tagValue !== null) args.tagValue = tagValue
+          return jsonResponse({ invocations: listInvocations(readDb(), args) })
+        }
+        {
+          const m = /^\/v1\/invocations\/([^/]+)$/.exec(url.pathname)
+          if (m) {
+            const detail = getInvocation(readDb(), decodeURIComponent(m[1]!))
+            if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
+            return jsonResponse(detail)
+          }
+        }
+        // The task DAG for a set of requested tasks: nodes + dependency edges +
+        // predicted cache status, via a no-exec planRun. The run cockpit lays
+        // this out and overlays live status from the WS run stream.
+        if (url.pathname === '/v1/graph') {
+          // The DAG is computed from a colocated workspace (a no-exec planRun)
+          // — the live-cockpit feature. A remote dashboard has no workspace, so
+          // planRun throws and the catch below returns a clean error.
+          const tasks = (url.searchParams.get('tasks') ?? '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+          if (tasks.length === 0)
+            return jsonResponse({ error: 'tasks query param required' }, { status: 400 })
+          return (async () => {
+            try {
+              const plan = await planRun({ cwd: opts.root, tasks, log: silentLogger })
+              return jsonResponse({
+                nodes: plan.tasks.map((t) => ({
+                  id: t.node.id,
+                  project: t.node.projectName,
+                  task: t.node.taskName,
+                  isGroup: t.node.config.exec === undefined,
+                  deps: t.deps,
+                  cacheStatus: t.cacheStatus,
+                })),
+              })
+            } catch (err) {
+              return jsonResponse(
+                { error: err instanceof Error ? err.message : String(err) },
+                { status: 400 },
+              )
+            }
+          })()
+        }
+        {
+          const m = /^\/v1\/runs\/([^/]+)$/.exec(url.pathname)
+          if (m) {
+            const detail = getRun(readDb(), decodeURIComponent(m[1]!))
+            if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
+            return jsonResponse(detail)
+          }
+        }
+        // A task's persisted log tail (task-logs-2026-07 §6). Resolution: (1) a
+        // direct row for this (run, task); (2) else, if the task was a cache hit
+        // with a hash, the log of the run that produced those bytes
+        // (`source: 'cache'`); (3) else 404. `artifactHash` is advertised only
+        // when the requester's principal can actually fetch it from /v1/cache.
+        {
+          const m = /^\/v1\/runs\/([^/]+)\/logs\/(.+)$/.exec(url.pathname)
+          if (m) {
+            const ws = wsParam ?? store.defaultWorkspaceId()
+            const runId = decodeURIComponent(m[1]!)
+            const taskId = decodeURIComponent(m[2]!)
+            const direct = store.logFor(ws, runId, taskId)
+            let body: Record<string, unknown> | undefined
+            if (direct !== undefined) {
+              body = { ...logResponse(direct, runId, taskId, 'executed') }
+            } else {
+              // Resolve the task's row in this run to find its hash + hit status.
+              const run = getRun(readDb(), runId)
+              const row = run?.tasks.find((t) => `${t.project}#${t.task}` === taskId)
+              if (row?.hash && (row.cacheHit === true || row.status.startsWith('cache-hit'))) {
+                const producer = store.logByHash(ws, row.hash)
+                if (producer !== undefined) {
+                  body = {
+                    ...logResponse(producer, runId, taskId, 'cache'),
+                    refRunId: producer.runId,
+                  }
+                }
+              }
+            }
+            if (body === undefined) {
+              return jsonResponse({ error: 'no logs captured for this task' }, { status: 404 })
+            }
+            const resolved = body
+            const hash = resolved['hash'] as string | undefined
+            return (async () => {
+              // artifactHash advertised only when the requester's principal can
+              // actually fetch it from /v1/cache (trust-scoped).
+              if (hash !== undefined && (await artifacts.has(hash, principal))) {
+                resolved['artifactHash'] = hash
+              }
+              delete resolved['hash']
+              return jsonResponse(resolved)
+            })()
+          }
+        }
+        // Diff a run against the immediately-previous invocation — the "why is
+        // this run different" surface. Always 200 (a missing/no-previous run is
+        // a clear shape in the body, not an HTTP error).
+        {
+          const m = /^\/v1\/compare\/([^/]+)$/.exec(url.pathname)
+          if (m) {
+            return jsonResponse(compareRuns(readDb(), decodeURIComponent(m[1]!)))
+          }
+        }
+        if (url.pathname === '/v1/cache/stats') {
+          return jsonResponse(getCacheStatsSql(readDb()))
+        }
+        if (url.pathname === '/v1/cache/hit-split') {
+          return jsonResponse(getHitRateSplit(readDb()))
+        }
+        if (url.pathname === '/v1/cache/breakdown') {
+          const limit = Number(url.searchParams.get('limit') ?? '20')
+          return jsonResponse({ projects: getCacheBreakdown(readDb(), limit) })
+        }
+        if (url.pathname === '/v1/cache/savings') {
+          return jsonResponse(getCacheSavings(readDb()))
+        }
+        if (url.pathname === '/v1/cache/entries') {
+          const params = url.searchParams
+          const args: Parameters<typeof listCacheEntries>[1] = {}
+          const limitRaw = params.get('limit')
+          if (limitRaw !== null) args.limit = Number(limitRaw)
+          const orderBy = params.get('orderBy')
+          if (
+            orderBy === 'created_at' ||
+            orderBy === 'accessed_at' ||
+            orderBy === 'size_bytes' ||
+            orderBy === 'duration_ms'
+          ) {
+            args.orderBy = orderBy
+          }
+          const project = params.get('project')
+          if (project !== null) args.project = project
+          return jsonResponse({ entries: listCacheEntries(readDb(), args) })
+        }
+        if (url.pathname === '/v1/top-tasks') {
+          const limit = Number(url.searchParams.get('limit') ?? '10')
+          return jsonResponse({ tasks: getTopTimeBurners(readDb(), limit) })
+        }
+        if (url.pathname === '/v1/failures') {
+          const limit = Number(url.searchParams.get('limit') ?? '25')
+          return jsonResponse({ failures: getRecentFailures(readDb(), limit) })
+        }
+        if (url.pathname === '/v1/projects') {
+          const limit = Number(url.searchParams.get('limit') ?? '100')
+          return jsonResponse({ projects: listProjects(readDb(), limit) })
+        }
+        if (url.pathname === '/v1/trends/runs') {
+          const params = url.searchParams
+          const bucketRaw = params.get('bucket')
+          const bucket = bucketRaw === 'day' || bucketRaw === 'hour' ? bucketRaw : 'hour'
+          const args: Parameters<typeof getRunTrends>[1] = { bucket }
+          const fromRaw = params.get('from')
+          if (fromRaw !== null) args.from = Number(fromRaw)
+          const toRaw = params.get('to')
+          if (toRaw !== null) args.to = Number(toRaw)
+          return jsonResponse({ bucket, points: getRunTrends(readDb(), args) })
+        }
+        if (url.pathname === '/v1/trends/heatmap') {
+          const days = Number(url.searchParams.get('days') ?? '30')
+          return jsonResponse({ days, cells: getRunHeatmap(readDb(), days) })
+        }
+        if (url.pathname === '/v1/trends/storage') {
+          const days = Number(url.searchParams.get('days') ?? '30')
+          return jsonResponse({ days, points: getStorageGrowth(readDb(), days) })
+        }
+        if (url.pathname === '/v1/trends/parallelism') {
+          const limit = Number(url.searchParams.get('limit') ?? '50')
+          return jsonResponse({ points: getParallelismHistory(readDb(), limit) })
+        }
+        if (url.pathname === '/v1/flakiness') {
+          const limit = Number(url.searchParams.get('limit') ?? '25')
+          return jsonResponse({ tasks: getFlakiestTasks(readDb(), limit) })
+        }
+        // Regressions — tasks that started failing across branches (used to
+        // pass, now failing on >= minBranches distinct branches). The "what
+        // just broke everywhere?" surface, distinct from flaky/nondeterministic.
+        if (url.pathname === '/v1/regressions') {
+          const params = url.searchParams
+          const args: Parameters<typeof getRegressions>[1] = {}
+          const sinceDays = params.get('sinceDays')
+          if (sinceDays !== null) args.sinceDays = Number(sinceDays)
+          const minBranches = params.get('minBranches')
+          if (minBranches !== null) args.minBranches = Number(minBranches)
+          const limit = params.get('limit')
+          if (limit !== null) args.limit = Number(limit)
+          return jsonResponse({ tasks: getRegressions(readDb(), args) })
+        }
+        // Period-over-period analysis — this window vs the previous equal-length
+        // window (default 7d): headline stats deltas + the tasks whose average
+        // duration moved the most. The "how is CI trending?" surface.
+        if (url.pathname === '/v1/analysis') {
+          const params = url.searchParams
+          const args: Parameters<typeof getPeriodComparison>[1] = {}
+          const window = params.get('window')
+          if (window !== null) args.windowDays = Number(window)
+          const minRuns = params.get('minRuns')
+          if (minRuns !== null) args.minRuns = Number(minRuns)
+          const limit = params.get('limit')
+          if (limit !== null) args.limit = Number(limit)
+          // Per-project / per-task scoping — the entity pages' "did MY
+          // performance improve or decrease?" trend.
+          const project = params.get('project')
+          if (project !== null) args.project = project
+          const task = params.get('task')
+          if (task !== null) args.task = task
+          return jsonResponse(getPeriodComparison(readDb(), args))
+        }
+        if (url.pathname === '/v1/bottlenecks') {
+          const lookbackDays = Number(url.searchParams.get('days') ?? '14')
+          const limit = Number(url.searchParams.get('limit') ?? '15')
+          return jsonResponse({
+            lookbackDays,
+            bottlenecks: getBottlenecks(readDb(), lookbackDays, limit),
+          })
+        }
+        if (url.pathname === '/v1/cache/prunable') {
+          const minAgeDays = Number(url.searchParams.get('minAgeDays') ?? '7')
+          const limit = Number(url.searchParams.get('limit') ?? '50')
+          return jsonResponse({
+            minAgeDays,
+            entries: getPrunableEntries(readDb(), minAgeDays, limit),
+          })
+        }
+        if (url.pathname === '/v1/history') {
+          const params = url.searchParams
+          const args: Parameters<typeof getHistory>[1] = {}
+          const limitRaw = params.get('limit')
+          if (limitRaw !== null) args.limit = Number(limitRaw)
+          const project = params.get('project')
+          if (project !== null) args.project = project
+          const task = params.get('task')
+          if (task !== null) args.task = task
+          return jsonResponse({ history: getHistory(readDb(), args) })
+        }
+        {
+          const m = /^\/v1\/tasks\/(.+)$/.exec(url.pathname)
+          if (m) {
+            const detail = getTaskDetail(readDb(), decodeURIComponent(m[1]!))
+            if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
+            return jsonResponse(detail)
+          }
+        }
+        {
+          const m = /^\/v1\/explain\/(.+)$/.exec(url.pathname)
+          if (m) {
+            return jsonResponse(explainCacheKeyQuery(readDb(), decodeURIComponent(m[1]!)))
+          }
+        }
+        {
+          const m = /^\/v1\/why\/([^/]+)\/(.+)$/.exec(url.pathname)
+          if (m) {
+            return jsonResponse(
+              whyDidThisRerunQuery(readDb(), decodeURIComponent(m[1]!), decodeURIComponent(m[2]!)),
+            )
+          }
+        }
+        // The input-fingerprint moat: name the exact cache-key components that
+        // differ between this run of a task and its previous run. taskId is
+        // `project#task`, URI-encoded. Always 200 (a missing pair / no-previous
+        // run is a clear shape in the body, not an HTTP error).
+        {
+          const m = /^\/v1\/diff\/([^/]+)\/(.+)$/.exec(url.pathname)
+          if (m) {
+            return jsonResponse(
+              cacheKeyDiff(readDb(), decodeURIComponent(m[1]!), decodeURIComponent(m[2]!)),
+            )
+          }
+        }
+        // Server-Sent Events — broadcasts the same event envelopes the WS
+        // sees, but on a one-way stream. `curl -N http://.../events` works.
+        if (url.pathname === '/events' || url.pathname === '/v1/events') {
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              const enc = new TextEncoder()
+              const sub: ReadSubscriber = (env) => controller.enqueue(enc.encode(encodeForSSE(env)))
+              readSubscribers.add(sub)
+              req.signal.addEventListener('abort', () => {
+                readSubscribers.delete(sub)
+                try {
+                  controller.close()
+                } catch {
+                  // already closed
+                }
+              })
+            },
+          })
+          return withCors(
+            new Response(stream, {
+              headers: {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-store',
+                Connection: 'keep-alive',
+              },
+            }),
+          )
+        }
+        // NDJSON — one envelope per line, no SSE framing. `jq`-friendly.
+        if (url.pathname === '/stream') {
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              const enc = new TextEncoder()
+              const sub: ReadSubscriber = (env) =>
+                controller.enqueue(enc.encode(encodeForNDJSON(env)))
+              readSubscribers.add(sub)
+              req.signal.addEventListener('abort', () => {
+                readSubscribers.delete(sub)
+                try {
+                  controller.close()
+                } catch {
+                  // already closed
+                }
+              })
+            },
+          })
+          return withCors(
+            new Response(stream, {
+              headers: {
+                'Content-Type': 'application/x-ndjson',
+                'Cache-Control': 'no-store',
+              },
+            }),
+          )
+        }
+        if (srv.upgrade(req, { data: { role: 'run', principal } })) return undefined
+        // When --ui is set, serve the single-file dashboard for every non-API
+        // GET. It's one self-contained HTML with a hash router, so every route
+        // (/, /tasks, /cache, …) returns the same bytes.
+        if (opts.uiHtmlPath !== undefined) {
+          return withCors(
+            new Response(Bun.file(opts.uiHtmlPath), {
+              headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+            }),
+          )
+        }
+        return withCors(new Response('vx serve'))
+      }
+
+      // Platform mode: the gate owns authentication + /v1/meta + the
+      // auth/admin routes; a grant carries the principal and the org-scoped
+      // store the request dispatches against.
+      if (opts.gate !== undefined) {
+        return opts
+          .gate(req, url)
+          .then((out) =>
+            out instanceof Response ? out : dispatch(out.principal, out.ingest ?? ingest),
+          )
+      }
+
       // Server identity — pre-auth by design (the `connect` handshake reads
       // it before the user has proven a token). No secrets, no workspace
       // path (/version keeps that, behind the token).
@@ -749,650 +1441,7 @@ export async function startServe(opts: {
           { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } },
         )
       }
-      // CSWSH / drive-by defense: gate the state-changing WS channels and the
-      // live SSE streams on the Origin (a token, when set, is a second gate;
-      // this stands even for the tokenless local default a browser can reach).
-      // A socket request has no browser origin to check.
-      if (!viaSocket) {
-        const isUpgrade = req.headers.get('upgrade')?.toLowerCase() === 'websocket'
-        const isStream =
-          url.pathname === '/events' || url.pathname === '/v1/events' || url.pathname === '/stream'
-        if ((isUpgrade || isStream) && !originAllowed(req, url)) {
-          return jsonResponse({ error: 'origin not allowed' }, { status: 403 })
-        }
-      }
-      // Distribution agents rendezvous here (bearer-gated above like every
-      // WS upgrade). The socket's role rides `ws.data`; the first message
-      // must be `agent:hello`.
-      if (url.pathname === '/v1/agents') {
-        if (srv.upgrade(req, { data: { role: 'agent', principal } })) return undefined
-        // Not a WS upgrade → a capacity read: how big is this
-        // {workspaceId, session} pool right now, and how many REMOTE helpers
-        // does it hold. An ambient `vx run` reads this to decide whether
-        // distributing is worth it (vs. staying a fast local run); an
-        // autoscaler reads the same counts. Bearer-gated above.
-        return jsonResponse(
-          registry.availableCapacity(
-            url.searchParams.get('ws') ?? '',
-            url.searchParams.get('session') ?? '',
-            url.searchParams.get('commit') ?? undefined,
-          ),
-        )
-      }
-      // MCP — the AI-agent control plane (dev-flows design §10.3): JSON-RPC
-      // 2.0 over streamable HTTP, tools adapting the same metrics queries
-      // the /v1/* routes serve. Bearer-gated above like every /v1 read.
-      if (url.pathname === '/mcp') {
-        return handleMcpHttp(req, ingest).then(withCors)
-      }
-      // The artifact store (the vx-native cache wire). Hex-only in the route
-      // so it can never shadow the named /v1/cache/* analytics endpoints
-      // (stats, entries, …) — a real cache key is 16-hex; wider widths are
-      // reserved for future hash algorithms.
-      {
-        const m = /^\/v1\/cache\/([0-9a-f]{16,64})$/.exec(url.pathname)
-        if (m) return artifacts.handle(req, m[1]!, principal).then(withCors)
-      }
-      // Workspace scoping for the analytics routes (`?ws=<id>`, dev-flows
-      // design §3.5) — resolved ONCE here. No param → the sole known
-      // workspace when exactly one exists, else `default`, so a
-      // single-workspace serve behaves exactly like the pre-multi-workspace
-      // one and every existing client/bookmark keeps working.
-      const wsParam = url.searchParams.get('ws')
-      const readDb = () => ingest.db(wsParam ?? ingest.defaultWorkspaceId())!
-      // Capability handshake — what protocol version + channels + RPCs.
-      if (url.pathname === '/version') {
-        return jsonResponse({
-          protocol: WIRE_PROTOCOL_VERSION,
-          vx: VERSION,
-          channels: WIRE_CHANNELS,
-          rpc: [
-            'getCacheStats',
-            'getRunHistory',
-            'explainCacheKey',
-            'whyDidThisRerun',
-            'cacheKeyDiff',
-            'compareRuns',
-            'getInvocation',
-            'getHitRateSplit',
-          ],
-          workspace: opts.root,
-        })
-      }
-      // Ingest — the push endpoint. A cloud telemetry sink POSTs a
-      // canonical RunSummaryRecord; we persist it into the cloud-owned
-      // store the hosted dashboard reads from. Idempotent on runId.
-      if (url.pathname === '/v1/ingest' && req.method === 'POST') {
-        const len = Number(req.headers.get('content-length') ?? '0')
-        if (Number.isFinite(len) && len > INGEST_BODY_MAX_BYTES) {
-          return jsonResponse({ ok: false, error: 'summary too large' }, { status: 413 })
-        }
-        return (async () => {
-          try {
-            // Re-check the ACTUAL body size, not the (spoofable, absent under
-            // chunked transfer) content-length header — mirror the artifact
-            // PUT's byteLength re-check so a chunked body can't bypass the cap.
-            const raw = await req.text()
-            if (Buffer.byteLength(raw, 'utf8') > INGEST_BODY_MAX_BYTES) {
-              return jsonResponse({ ok: false, error: 'summary too large' }, { status: 413 })
-            }
-            const summary = JSON.parse(raw) as RunSummaryRecord
-            if (summary?.run?.runId === undefined) {
-              return jsonResponse({ ok: false, error: 'not a RunSummaryRecord' }, { status: 400 })
-            }
-            const stored = ingest.ingest(summary)
-            return jsonResponse({ ok: true, stored })
-          } catch (err) {
-            return jsonResponse(
-              { ok: false, error: err instanceof Error ? err.message : String(err) },
-              { status: 400 },
-            )
-          }
-        })()
-      }
-      // Per-task log tails (task-logs-2026-07). Bearer-gated like /v1/ingest;
-      // workspace routed by the body's own id. Bounded: a 16 MiB body cap
-      // (413 before reading), an unknown wire version 400s naming both, and
-      // the store re-truncates every tail regardless of what the body claims.
-      if (url.pathname === '/v1/ingest/logs' && req.method === 'POST') {
-        const len = Number(req.headers.get('content-length') ?? '0')
-        if (Number.isFinite(len) && len > LOG_BODY_MAX_BYTES) {
-          return jsonResponse({ ok: false, error: 'log bundle too large' }, { status: 413 })
-        }
-        return (async () => {
-          try {
-            // Actual-byte re-check — see /v1/ingest above (chunked bypass).
-            const raw = await req.text()
-            if (Buffer.byteLength(raw, 'utf8') > LOG_BODY_MAX_BYTES) {
-              return jsonResponse({ ok: false, error: 'log bundle too large' }, { status: 413 })
-            }
-            const bundle = JSON.parse(raw) as TaskLogBundle
-            if (bundle?.v !== LOG_WIRE_VERSION) {
-              const got = String((bundle as { v?: unknown } | null)?.v)
-              return jsonResponse(
-                {
-                  ok: false,
-                  error: `log wire version mismatch: body v${got}, serve v${String(LOG_WIRE_VERSION)}`,
-                },
-                { status: 400 },
-              )
-            }
-            if (typeof bundle.workspaceId !== 'string' || !Array.isArray(bundle.tasks)) {
-              return jsonResponse({ ok: false, error: 'not a TaskLogBundle' }, { status: 400 })
-            }
-            const stored = ingest.ingestLogs(bundle)
-            return jsonResponse({ ok: true, stored })
-          } catch (err) {
-            return jsonResponse(
-              { ok: false, error: err instanceof Error ? err.message : String(err) },
-              { status: 400 },
-            )
-          }
-        })()
-      }
-      // The workspace list (id, name, lastSeenAt, runCount) — feeds the UI
-      // switcher. Behind the token gate like every /v1 read.
-      if (url.pathname === '/v1/workspaces') {
-        return jsonResponse({ workspaces: ingest.workspaces() })
-      }
-      // The artifact-store list (cloud-data-model-2026-07 §8) — the artifact
-      // store made visible. NOT workspace-gated (artifacts exist on remote
-      // serves too), so it sits above the unknown-workspace guard. The
-      // listing walks ONLY the principal's read scopes — it can never show
-      // an entry a GET couldn't fetch. Provenance (which task/run produced
-      // a hash) is a best-effort join against the workspace-resolved
-      // ingest db; absent for workspaces this serve never ingested.
-      if (url.pathname === '/v1/artifacts') {
-        return (async () => {
-          const limitRaw = url.searchParams.get('limit')
-          const limitNum = limitRaw !== null ? Number(limitRaw) : NaN
-          const limit = Number.isInteger(limitNum) && limitNum > 0 ? Math.min(limitNum, 1000) : 200
-          const entries = await artifacts.list(
-            principal,
-            req.headers.get('x-vx-cache-scope'),
-            limit,
-          )
-          const provenance = new Map<
-            string,
-            { project: string; task: string; runId: string | null }
-          >()
-          try {
-            const db = ingest.db(wsParam ?? ingest.defaultWorkspaceId())
-            if (db !== undefined && entries.length > 0) {
-              const hashes = entries.map((e) => e.hash)
-              // IN-lists chunked at 900 (SQLite's parameter ceiling — the
-              // prune precedent); ORDER BY started_at DESC + first-wins
-              // resolves each hash to its most recent producing row.
-              for (let i = 0; i < hashes.length; i += 900) {
-                const chunk = hashes.slice(i, i + 900)
-                const rows = db
-                  .query<
-                    { hash: string; project: string; task: string; run_id: string | null },
-                    string[]
-                  >(
-                    `SELECT hash, project, task, run_id FROM runs
-                     WHERE hash IN (${chunk.map(() => '?').join(',')})
-                     ORDER BY started_at DESC`,
-                  )
-                  .all(...chunk)
-                for (const r of rows) {
-                  if (!provenance.has(r.hash)) {
-                    provenance.set(r.hash, { project: r.project, task: r.task, runId: r.run_id })
-                  }
-                }
-              }
-            }
-          } catch {
-            // no ingest db yet / schema drift — provenance stays absent
-          }
-          return jsonResponse({
-            artifacts: entries.map((e) => {
-              const p = provenance.get(e.hash)
-              return p !== undefined
-                ? {
-                    ...e,
-                    task: {
-                      project: p.project,
-                      task: p.task,
-                      ...(p.runId !== null ? { runId: p.runId } : {}),
-                    },
-                  }
-                : e
-            }),
-          })
-        })()
-      }
-      // The workspace catalog (cloud-data-model-2026-07 §6.3) — the lock/live
-      // project + task index of the COLOCATED workspace. `?ws=` is ignored:
-      // the catalog is inherently single-workspace (§13.3), so these routes
-      // sit above the unknown-workspace guard. Bearer-gated like every /v1.
-      if (url.pathname.startsWith('/v1/workspace/')) {
-        return (async () => {
-          try {
-            const resolved = await catalog.resolve()
-            if (resolved === null) {
-              return jsonResponse({ error: 'no colocated workspace' }, { status: 404 })
-            }
-            if (url.pathname === '/v1/workspace/projects') {
-              return jsonResponse(catalog.projectsResponse(resolved))
-            }
-            if (url.pathname === '/v1/workspace/tasks') {
-              return jsonResponse(catalog.tasksResponse(resolved))
-            }
-            const m = /^\/v1\/workspace\/projects\/(.+)$/.exec(url.pathname)
-            if (m) {
-              const name = decodeURIComponent(m[1]!)
-              const detail = catalog.projectResponse(resolved, name)
-              if (detail === null) {
-                return jsonResponse({ error: `unknown project: ${name}` }, { status: 404 })
-              }
-              return jsonResponse(detail)
-            }
-            return jsonResponse({ error: 'not found' }, { status: 404 })
-          } catch (err) {
-            return jsonResponse(
-              { error: err instanceof Error ? err.message : String(err) },
-              { status: 400 },
-            )
-          }
-        })()
-      }
-      // An explicitly-requested unknown workspace 404s before any route
-      // logic runs; a known one is lazily opened by the same probe.
-      if (wsParam !== null && url.pathname.startsWith('/v1/') && ingest.db(wsParam) === undefined) {
-        return jsonResponse({ error: `unknown workspace: ${wsParam}` }, { status: 404 })
-      }
-      // -----------------------------------------------------------------
-      // Metrics HTTP surface — JSON read APIs over the workspace-resolved
-      // ingest store. The dashboard SPA (packages/cloud/ui) calls these
-      // directly.
-      // -----------------------------------------------------------------
-      // Cross-machine hermeticity (verify-cross-machine §4): cache keys whose
-      // fingerprinted output trees DIVERGE across reports, diffed at read
-      // time from the workspace's fingerprint sidecar. Fed by `--verify*`
-      // runs' summaries; the Insights Hermeticity card reads this.
-      if (url.pathname === '/v1/hermeticity') {
-        const limitRaw = url.searchParams.get('limit')
-        const limitNum = limitRaw !== null ? Number(limitRaw) : NaN
-        const limit = Number.isInteger(limitNum) && limitNum > 0 ? Math.min(limitNum, 500) : 50
-        return jsonResponse(ingest.hermeticity(wsParam ?? ingest.defaultWorkspaceId(), limit))
-      }
-      // The run queue's live state (queued + running jobs, positions,
-      // timestamps) — the unified Runs view polls this while non-empty.
-      // Matched before the /v1/runs/:id regex below.
-      if (url.pathname === '/v1/runs/queue') {
-        return jsonResponse({ jobs: queue.jobs() })
-      }
-      if (url.pathname === '/v1/runs') {
-        const params = url.searchParams
-        const args: Parameters<typeof listRuns>[1] = {}
-        const limitRaw = params.get('limit')
-        if (limitRaw !== null) args.limit = Number(limitRaw)
-        const project = params.get('project')
-        if (project !== null) args.project = project
-        const task = params.get('task')
-        if (task !== null) args.task = task
-        const runId = params.get('runId')
-        if (runId !== null) args.runId = runId
-        return jsonResponse({ runs: listRuns(readDb(), args) })
-      }
-      if (url.pathname === '/v1/invocations') {
-        const params = url.searchParams
-        const args: {
-          limit?: number
-          branch?: string
-          ci?: boolean
-          tagKey?: string
-          tagValue?: string
-        } = {}
-        const limitRaw = params.get('limit')
-        if (limitRaw !== null) args.limit = Number(limitRaw)
-        const branch = params.get('branch')
-        if (branch !== null) args.branch = branch
-        const ci = params.get('ci')
-        if (ci !== null) args.ci = ci === '1' || ci === 'true'
-        const tagKey = params.get('tagKey')
-        if (tagKey !== null) args.tagKey = tagKey
-        const tagValue = params.get('tagValue')
-        if (tagValue !== null) args.tagValue = tagValue
-        return jsonResponse({ invocations: listInvocations(readDb(), args) })
-      }
-      {
-        const m = /^\/v1\/invocations\/([^/]+)$/.exec(url.pathname)
-        if (m) {
-          const detail = getInvocation(readDb(), decodeURIComponent(m[1]!))
-          if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
-          return jsonResponse(detail)
-        }
-      }
-      // The task DAG for a set of requested tasks: nodes + dependency edges +
-      // predicted cache status, via a no-exec planRun. The run cockpit lays
-      // this out and overlays live status from the WS run stream.
-      if (url.pathname === '/v1/graph') {
-        // The DAG is computed from a colocated workspace (a no-exec planRun)
-        // — the live-cockpit feature. A remote dashboard has no workspace, so
-        // planRun throws and the catch below returns a clean error.
-        const tasks = (url.searchParams.get('tasks') ?? '')
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-        if (tasks.length === 0)
-          return jsonResponse({ error: 'tasks query param required' }, { status: 400 })
-        return (async () => {
-          try {
-            const plan = await planRun({ cwd: opts.root, tasks, log: silentLogger })
-            return jsonResponse({
-              nodes: plan.tasks.map((t) => ({
-                id: t.node.id,
-                project: t.node.projectName,
-                task: t.node.taskName,
-                isGroup: t.node.config.exec === undefined,
-                deps: t.deps,
-                cacheStatus: t.cacheStatus,
-              })),
-            })
-          } catch (err) {
-            return jsonResponse(
-              { error: err instanceof Error ? err.message : String(err) },
-              { status: 400 },
-            )
-          }
-        })()
-      }
-      {
-        const m = /^\/v1\/runs\/([^/]+)$/.exec(url.pathname)
-        if (m) {
-          const detail = getRun(readDb(), decodeURIComponent(m[1]!))
-          if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
-          return jsonResponse(detail)
-        }
-      }
-      // A task's persisted log tail (task-logs-2026-07 §6). Resolution: (1) a
-      // direct row for this (run, task); (2) else, if the task was a cache hit
-      // with a hash, the log of the run that produced those bytes
-      // (`source: 'cache'`); (3) else 404. `artifactHash` is advertised only
-      // when the requester's principal can actually fetch it from /v1/cache.
-      {
-        const m = /^\/v1\/runs\/([^/]+)\/logs\/(.+)$/.exec(url.pathname)
-        if (m) {
-          const ws = wsParam ?? ingest.defaultWorkspaceId()
-          const runId = decodeURIComponent(m[1]!)
-          const taskId = decodeURIComponent(m[2]!)
-          const direct = ingest.logFor(ws, runId, taskId)
-          let body: Record<string, unknown> | undefined
-          if (direct !== undefined) {
-            body = { ...logResponse(direct, runId, taskId, 'executed') }
-          } else {
-            // Resolve the task's row in this run to find its hash + hit status.
-            const run = getRun(readDb(), runId)
-            const row = run?.tasks.find((t) => `${t.project}#${t.task}` === taskId)
-            if (row?.hash && (row.cacheHit === true || row.status.startsWith('cache-hit'))) {
-              const producer = ingest.logByHash(ws, row.hash)
-              if (producer !== undefined) {
-                body = {
-                  ...logResponse(producer, runId, taskId, 'cache'),
-                  refRunId: producer.runId,
-                }
-              }
-            }
-          }
-          if (body === undefined) {
-            return jsonResponse({ error: 'no logs captured for this task' }, { status: 404 })
-          }
-          const resolved = body
-          const hash = resolved['hash'] as string | undefined
-          return (async () => {
-            // artifactHash advertised only when the requester's principal can
-            // actually fetch it from /v1/cache (trust-scoped).
-            if (hash !== undefined && (await artifacts.has(hash, principal))) {
-              resolved['artifactHash'] = hash
-            }
-            delete resolved['hash']
-            return jsonResponse(resolved)
-          })()
-        }
-      }
-      // Diff a run against the immediately-previous invocation — the "why is
-      // this run different" surface. Always 200 (a missing/no-previous run is
-      // a clear shape in the body, not an HTTP error).
-      {
-        const m = /^\/v1\/compare\/([^/]+)$/.exec(url.pathname)
-        if (m) {
-          return jsonResponse(compareRuns(readDb(), decodeURIComponent(m[1]!)))
-        }
-      }
-      if (url.pathname === '/v1/cache/stats') {
-        return jsonResponse(getCacheStatsSql(readDb()))
-      }
-      if (url.pathname === '/v1/cache/hit-split') {
-        return jsonResponse(getHitRateSplit(readDb()))
-      }
-      if (url.pathname === '/v1/cache/breakdown') {
-        const limit = Number(url.searchParams.get('limit') ?? '20')
-        return jsonResponse({ projects: getCacheBreakdown(readDb(), limit) })
-      }
-      if (url.pathname === '/v1/cache/savings') {
-        return jsonResponse(getCacheSavings(readDb()))
-      }
-      if (url.pathname === '/v1/cache/entries') {
-        const params = url.searchParams
-        const args: Parameters<typeof listCacheEntries>[1] = {}
-        const limitRaw = params.get('limit')
-        if (limitRaw !== null) args.limit = Number(limitRaw)
-        const orderBy = params.get('orderBy')
-        if (
-          orderBy === 'created_at' ||
-          orderBy === 'accessed_at' ||
-          orderBy === 'size_bytes' ||
-          orderBy === 'duration_ms'
-        ) {
-          args.orderBy = orderBy
-        }
-        const project = params.get('project')
-        if (project !== null) args.project = project
-        return jsonResponse({ entries: listCacheEntries(readDb(), args) })
-      }
-      if (url.pathname === '/v1/top-tasks') {
-        const limit = Number(url.searchParams.get('limit') ?? '10')
-        return jsonResponse({ tasks: getTopTimeBurners(readDb(), limit) })
-      }
-      if (url.pathname === '/v1/failures') {
-        const limit = Number(url.searchParams.get('limit') ?? '25')
-        return jsonResponse({ failures: getRecentFailures(readDb(), limit) })
-      }
-      if (url.pathname === '/v1/projects') {
-        const limit = Number(url.searchParams.get('limit') ?? '100')
-        return jsonResponse({ projects: listProjects(readDb(), limit) })
-      }
-      if (url.pathname === '/v1/trends/runs') {
-        const params = url.searchParams
-        const bucketRaw = params.get('bucket')
-        const bucket = bucketRaw === 'day' || bucketRaw === 'hour' ? bucketRaw : 'hour'
-        const args: Parameters<typeof getRunTrends>[1] = { bucket }
-        const fromRaw = params.get('from')
-        if (fromRaw !== null) args.from = Number(fromRaw)
-        const toRaw = params.get('to')
-        if (toRaw !== null) args.to = Number(toRaw)
-        return jsonResponse({ bucket, points: getRunTrends(readDb(), args) })
-      }
-      if (url.pathname === '/v1/trends/heatmap') {
-        const days = Number(url.searchParams.get('days') ?? '30')
-        return jsonResponse({ days, cells: getRunHeatmap(readDb(), days) })
-      }
-      if (url.pathname === '/v1/trends/storage') {
-        const days = Number(url.searchParams.get('days') ?? '30')
-        return jsonResponse({ days, points: getStorageGrowth(readDb(), days) })
-      }
-      if (url.pathname === '/v1/trends/parallelism') {
-        const limit = Number(url.searchParams.get('limit') ?? '50')
-        return jsonResponse({ points: getParallelismHistory(readDb(), limit) })
-      }
-      if (url.pathname === '/v1/flakiness') {
-        const limit = Number(url.searchParams.get('limit') ?? '25')
-        return jsonResponse({ tasks: getFlakiestTasks(readDb(), limit) })
-      }
-      // Regressions — tasks that started failing across branches (used to
-      // pass, now failing on >= minBranches distinct branches). The "what
-      // just broke everywhere?" surface, distinct from flaky/nondeterministic.
-      if (url.pathname === '/v1/regressions') {
-        const params = url.searchParams
-        const args: Parameters<typeof getRegressions>[1] = {}
-        const sinceDays = params.get('sinceDays')
-        if (sinceDays !== null) args.sinceDays = Number(sinceDays)
-        const minBranches = params.get('minBranches')
-        if (minBranches !== null) args.minBranches = Number(minBranches)
-        const limit = params.get('limit')
-        if (limit !== null) args.limit = Number(limit)
-        return jsonResponse({ tasks: getRegressions(readDb(), args) })
-      }
-      // Period-over-period analysis — this window vs the previous equal-length
-      // window (default 7d): headline stats deltas + the tasks whose average
-      // duration moved the most. The "how is CI trending?" surface.
-      if (url.pathname === '/v1/analysis') {
-        const params = url.searchParams
-        const args: Parameters<typeof getPeriodComparison>[1] = {}
-        const window = params.get('window')
-        if (window !== null) args.windowDays = Number(window)
-        const minRuns = params.get('minRuns')
-        if (minRuns !== null) args.minRuns = Number(minRuns)
-        const limit = params.get('limit')
-        if (limit !== null) args.limit = Number(limit)
-        // Per-project / per-task scoping — the entity pages' "did MY
-        // performance improve or decrease?" trend.
-        const project = params.get('project')
-        if (project !== null) args.project = project
-        const task = params.get('task')
-        if (task !== null) args.task = task
-        return jsonResponse(getPeriodComparison(readDb(), args))
-      }
-      if (url.pathname === '/v1/bottlenecks') {
-        const lookbackDays = Number(url.searchParams.get('days') ?? '14')
-        const limit = Number(url.searchParams.get('limit') ?? '15')
-        return jsonResponse({
-          lookbackDays,
-          bottlenecks: getBottlenecks(readDb(), lookbackDays, limit),
-        })
-      }
-      if (url.pathname === '/v1/cache/prunable') {
-        const minAgeDays = Number(url.searchParams.get('minAgeDays') ?? '7')
-        const limit = Number(url.searchParams.get('limit') ?? '50')
-        return jsonResponse({
-          minAgeDays,
-          entries: getPrunableEntries(readDb(), minAgeDays, limit),
-        })
-      }
-      if (url.pathname === '/v1/history') {
-        const params = url.searchParams
-        const args: Parameters<typeof getHistory>[1] = {}
-        const limitRaw = params.get('limit')
-        if (limitRaw !== null) args.limit = Number(limitRaw)
-        const project = params.get('project')
-        if (project !== null) args.project = project
-        const task = params.get('task')
-        if (task !== null) args.task = task
-        return jsonResponse({ history: getHistory(readDb(), args) })
-      }
-      {
-        const m = /^\/v1\/tasks\/(.+)$/.exec(url.pathname)
-        if (m) {
-          const detail = getTaskDetail(readDb(), decodeURIComponent(m[1]!))
-          if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
-          return jsonResponse(detail)
-        }
-      }
-      {
-        const m = /^\/v1\/explain\/(.+)$/.exec(url.pathname)
-        if (m) {
-          return jsonResponse(explainCacheKeyQuery(readDb(), decodeURIComponent(m[1]!)))
-        }
-      }
-      {
-        const m = /^\/v1\/why\/([^/]+)\/(.+)$/.exec(url.pathname)
-        if (m) {
-          return jsonResponse(
-            whyDidThisRerunQuery(readDb(), decodeURIComponent(m[1]!), decodeURIComponent(m[2]!)),
-          )
-        }
-      }
-      // The input-fingerprint moat: name the exact cache-key components that
-      // differ between this run of a task and its previous run. taskId is
-      // `project#task`, URI-encoded. Always 200 (a missing pair / no-previous
-      // run is a clear shape in the body, not an HTTP error).
-      {
-        const m = /^\/v1\/diff\/([^/]+)\/(.+)$/.exec(url.pathname)
-        if (m) {
-          return jsonResponse(
-            cacheKeyDiff(readDb(), decodeURIComponent(m[1]!), decodeURIComponent(m[2]!)),
-          )
-        }
-      }
-      // Server-Sent Events — broadcasts the same event envelopes the WS
-      // sees, but on a one-way stream. `curl -N http://.../events` works.
-      if (url.pathname === '/events' || url.pathname === '/v1/events') {
-        const stream = new ReadableStream<Uint8Array>({
-          start(controller) {
-            const enc = new TextEncoder()
-            const sub: ReadSubscriber = (env) => controller.enqueue(enc.encode(encodeForSSE(env)))
-            readSubscribers.add(sub)
-            req.signal.addEventListener('abort', () => {
-              readSubscribers.delete(sub)
-              try {
-                controller.close()
-              } catch {
-                // already closed
-              }
-            })
-          },
-        })
-        return withCors(
-          new Response(stream, {
-            headers: {
-              'Content-Type': 'text/event-stream',
-              'Cache-Control': 'no-store',
-              Connection: 'keep-alive',
-            },
-          }),
-        )
-      }
-      // NDJSON — one envelope per line, no SSE framing. `jq`-friendly.
-      if (url.pathname === '/stream') {
-        const stream = new ReadableStream<Uint8Array>({
-          start(controller) {
-            const enc = new TextEncoder()
-            const sub: ReadSubscriber = (env) =>
-              controller.enqueue(enc.encode(encodeForNDJSON(env)))
-            readSubscribers.add(sub)
-            req.signal.addEventListener('abort', () => {
-              readSubscribers.delete(sub)
-              try {
-                controller.close()
-              } catch {
-                // already closed
-              }
-            })
-          },
-        })
-        return withCors(
-          new Response(stream, {
-            headers: {
-              'Content-Type': 'application/x-ndjson',
-              'Cache-Control': 'no-store',
-            },
-          }),
-        )
-      }
-      if (srv.upgrade(req, { data: { role: 'run', principal } })) return undefined
-      // When --ui is set, serve the single-file dashboard for every non-API
-      // GET. It's one self-contained HTML with a hash router, so every route
-      // (/, /tasks, /cache, …) returns the same bytes.
-      if (opts.uiHtmlPath !== undefined) {
-        return withCors(
-          new Response(Bun.file(opts.uiHtmlPath), {
-            headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
-          }),
-        )
-      }
-      return withCors(new Response('vx serve'))
+      return dispatch(principal, ingest)
     }
 
   // Agent-socket protocol: first message must be `agent:hello` (anything
@@ -1765,7 +1814,7 @@ export function parseServeArgs(args: readonly string[]): ServeArgs {
  * dynamic import resolves the real file, which only exists after the SPA is
  * built — so a missing build only affects the UI, never the API/ingest.
  */
-async function loadUiHtmlPath(): Promise<string | null> {
+export async function loadUiHtmlPath(): Promise<string | null> {
   try {
     const mod = await import('./ui-asset.js')
     const p = mod.UI_HTML_PATH

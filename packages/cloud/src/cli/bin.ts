@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
-// `vx-cloud` — the orchestrator service CLI. Dispatches the service
-// subcommands (serve / agent / dev) that left core in the core/cloud
-// split. Core's own `vx` CLI no longer carries these.
+// `vx-cloud` — the platform CLI. Dispatches the service subcommands
+// (server / agent / dev) that left core in the core/cloud split. Core's own
+// `vx` CLI no longer carries these.
 
 import { UserError, VERSION } from '@vzn/vx'
-import { serveCmd } from './serve.js'
+import { serverCmd } from './server.js'
 import { agentCmd } from './agent.js'
 import { devCmd } from './dev.js'
 import { connectCmd, disconnectCmd, envCmd } from './env.js'
@@ -15,7 +15,7 @@ function printHelp(): void {
       'vx-cloud — the vx orchestrator service',
       '',
       'Usage:',
-      '  vx-cloud serve [--port <n>] [--host <h>] [--ingest-dir <d>] [--token <t>] [--name <n>] [--socket [path]] [--allow-origin <o>] [--ui] [--open]',
+      '  vx-cloud server',
       '  vx-cloud connect <url> [--name <n>] [--token <t>] [--delegate] [--no-use] [--force]',
       '  vx-cloud env ls | use <name> | rm <name>',
       '  vx-cloud disconnect',
@@ -24,41 +24,23 @@ function printHelp(): void {
       '  vx-cloud help',
       '  vx-cloud version',
       '',
-      'serve         Foreground Bun + SQLite + UI server — a standalone dashboard.',
-      '              Serves the bundled dashboard at / (when embedded), the metrics',
-      '              JSON API at /v1/*, SSE / NDJSON event streams, the push',
-      '              endpoint POST /v1/ingest, an MCP endpoint for AI agents at',
-      '              POST /mcp, and the vx-native artifact store at /v1/cache',
-      '              (a connected cloud() plugin routes the remote cache here).',
-      '              The dashboard reads',
-      '              ONLY this service’s own SQLite store (fed by the cloud()',
-      '              plugin) — it never reads a workspace cache.db, so it can run',
-      '              anywhere.',
-      '   --port <n>  Port to bind. Defaults to VX_CLOUD_PORT, else 4321 — a',
-      '              STABLE port, so the URL is the same across restarts (a busy',
-      '              port errors rather than silently moving to a random one).',
-      '   --ingest-dir <d>  Directory for the SQLite ingest store (persistence).',
-      '   --host <h>  TCP bind address (env: VX_CLOUD_HOST). Defaults to 127.0.0.1',
-      '              (loopback) — a non-loopback bind (e.g. 0.0.0.0) REQUIRES a',
-      '              token, since the run/agent channels execute arbitrary tasks.',
-      '   --token <t>  Require `Authorization: Bearer <t>` on every request except',
-      '              /health and /v1/meta (env: VX_CLOUD_TOKEN). No token → open',
-      '              (loopback only). Cross-origin browser WS/SSE handshakes are',
-      '              always refused unless allow-listed (CSWSH defense).',
-      '   --pr-token <t>  The UNTRUSTED (fork-PR) bearer (env: VX_CLOUD_PR_TOKEN).',
-      '              Its holder reads the trusted + untrusted cache scopes but',
-      '              writes ONLY untrusted, so a fork PR warms off main’s cache',
-      '              without being able to poison it. Safe to expose.',
-      '   --allow-origin <o>  Extra browser origin permitted to open the WS/SSE',
-      '              channels (repeatable; env: VX_CLOUD_ALLOW_ORIGIN, comma-sep) —',
-      '              for a hosted dashboard served from a different origin.',
-      '   --name <n>  Server identity reported by /v1/meta + shown in the dashboard',
-      '              badge (env: VX_CLOUD_NAME; defaults to the hostname).',
-      '   --socket [path]  Also listen on a unix socket (env: VX_CLOUD_SOCKET;',
-      '              default $XDG_RUNTIME_DIR/vx-cloud/serve.sock). Socket requests',
-      '              bypass the token — the 0600 file permissions are the auth.',
-      '   --ui       Require the bundled SPA (error if not built) + enable --open.',
-      '              The UI is served automatically whenever it is embedded.',
+      'server        The self-hosted CI platform (accounts, orgs, RBAC, workspaces;',
+      '              docs/design/cloud-platform-2026-07.md). One process, one port:',
+      '              the dashboard SPA, the /v1/* JSON API, POST /v1/ingest, MCP at',
+      '              POST /mcp, the vx-native artifact store at /v1/cache, and the',
+      '              agent/dist channels. Identity lives in Postgres; artifact',
+      '              bytes live in an S3-compatible bucket. Configuration is',
+      '              env-driven and REQUIRED at boot (all missing vars are listed',
+      '              at once):',
+      '                DATABASE_URL                   postgres://…',
+      '                VX_CLOUD_SECRET                >= 32 chars (session HMAC)',
+      '                VX_CLOUD_BASE_URL              public origin',
+      '                VX_CLOUD_S3_ENDPOINT/_BUCKET/_ACCESS_KEY_ID/_SECRET_ACCESS_KEY',
+      '              Optional: VX_CLOUD_PORT (4321), VX_CLOUD_RETENTION_DAYS (180),',
+      '              VX_CLOUD_S3_REGION/_PREFIX/_PRESIGN_TTL, VX_CLOUD_OPEN_SIGNUP,',
+      '              VX_CLOUD_OPEN_ORG_CREATE, VX_CLOUD_DATA_DIR.',
+      '              The first registered account becomes the instance admin;',
+      '              after that, joining requires an invite link.',
       'connect       Validate a server (health + identity + token) and persist it as',
       '              a named environment in the per-user environments file; every',
       '              `vx run` then pushes its summary there. --delegate opts the',
@@ -93,8 +75,16 @@ export async function run(argv: readonly string[]): Promise<number> {
     case 'version':
       process.stdout.write(`vx-cloud ${VERSION}\n`)
       return 0
+    case 'server':
+      return await serverCmd(rest)
     case 'serve':
-      return await serveCmd(rest)
+      process.stderr.write(
+        'vx-cloud: `serve` was removed — vx-cloud is a self-hosted platform now. Run\n' +
+          '  vx-cloud server\n' +
+          'with DATABASE_URL, VX_CLOUD_SECRET, VX_CLOUD_BASE_URL and the VX_CLOUD_S3_*\n' +
+          'vars set (docker-compose deployment: packages/cloud/deploy/).\n',
+      )
+      return 1
     case 'connect':
       return await connectCmd(rest)
     case 'env':

@@ -31,7 +31,7 @@ vx upgrade [tag]      # self-update a compiled binary
 vx mcp [--stdio]      # MCP server for AI agents
 
 # Cloud — the @vzn/vx-cloud package (separately installed; the `vx-cloud` binary)
-vx-cloud serve [--port N] [--ingest-dir D] [--token T] [--name N] [--ui] [--open]
+vx-cloud server       # the self-hosted platform (env-configured; replaces `serve`)
 vx-cloud connect <url> [--name N] [--token T] [--delegate] [--no-use] [--force]
 vx-cloud env ls | use <name> | rm <name>
 vx-cloud disconnect
@@ -48,10 +48,10 @@ vx --version
 Typing `vx serve` / `dev` / `coordinator` / `worker` prints a
 redirect: those commands moved to `@vzn/vx-cloud` in the core/cloud
 split — core has no service CLI. Within `vx-cloud`, the `coordinator`
-and `worker` verbs are RETIRED (distributed-execution-2026-07):
-`coordinator` was absorbed into `vx-cloud serve` (enable with
-`VX_CLOUD_DISTRIBUTE=<n>` on the submitting run), and `worker` is now
-`vx-cloud agent`; both print redirects.
+and `worker` verbs are RETIRED (distributed-execution-2026-07), and
+`serve` is REMOVED (cloud-platform-2026-07: vx-cloud is a self-hosted
+platform, not a companion) — all three print redirects; the
+replacement entrypoint is `vx-cloud server`.
 
 Multiple positional tasks run in one orchestrator invocation with a
 shared task graph: `vx run build lint test` fans out all three across
@@ -1080,12 +1080,52 @@ plugin against the same `VxPlugin` interface. This section is a
 summary; the cloud package's own README (`packages/cloud/`) is the
 depth reference.
 
-## `vx-cloud serve` — standalone dashboard + ingest service
+## `vx-cloud server` — the self-hosted platform
 
-One foreground process: SQLite ingest store + `/v1/*` metrics JSON
-API + SSE/NDJSON event streams + WS run delegation + the embedded
-dashboard SPA. Runs locally or in Docker (see
-`packages/cloud/deploy/`).
+The platform entrypoint (docs/design/cloud-platform-2026-07.md).
+One process, one port: accounts + orgs + RBAC on Postgres, S3
+artifact storage, the dashboard SPA, the `/v1/*` API, the native
+cache wire, and the agent/dist channels. Configuration is
+env-driven and REQUIRED — boot validates the full set and refuses
+listing **every** missing/invalid var at once:
+
+```
+vx-cloud server
+  DATABASE_URL                    (required) postgres://…
+  VX_CLOUD_SECRET                 (required) >= 32 chars; session-cookie HMAC
+  VX_CLOUD_BASE_URL               (required) public origin, e.g. https://vx.acme.dev
+  VX_CLOUD_S3_ENDPOINT            (required)
+  VX_CLOUD_S3_BUCKET              (required)
+  VX_CLOUD_S3_ACCESS_KEY_ID       (required)
+  VX_CLOUD_S3_SECRET_ACCESS_KEY   (required)
+  VX_CLOUD_S3_REGION / _PREFIX / _PRESIGN_TTL   (optional)
+  VX_CLOUD_PORT                   (optional, default 4321)
+  VX_CLOUD_RETENTION_DAYS         (optional, default 180)
+  VX_CLOUD_OPEN_SIGNUP / _OPEN_ORG_CREATE       (optional, default off)
+  VX_CLOUD_DATA_DIR               (optional; the transitional analytics volume)
+```
+
+Boot: validate config → connect Postgres → run migrations
+(advisory-locked, so concurrent compose boots serialize) → probe S3
+(fail loud — never a local fallback) → listen on `0.0.0.0`. The
+first registered account (`POST /v1/auth/register`, or the dashboard)
+becomes the instance admin and open signup closes; org admins mint
+invites and `vxc_…` API tokens (the cache trust tier is a TOKEN
+property, immutable after mint — the static
+`VX_CLOUD_TOKEN`/`VX_CLOUD_PR_TOKEN` pair is dead). Auth surfaces:
+`/v1/auth/*` (register/login/logout/me/invites) and `/v1/admin/*`
+(orgs, members, invites, tokens, workspaces).
+
+**`vx-cloud serve` is REMOVED** (the companion model died with the
+platform pivot). Invoking it prints a redirect to `vx-cloud server`.
+Transitional P1 state, named honestly: analytics/ingest below are
+still SQLite-backed (per-org dirs under `VX_CLOUD_DATA_DIR`) until
+the P2 Postgres storage swap; the HTTP surfaces documented in the
+rest of this section survive on the platform behind the new
+account/token auth (sessions or `vxc_` bearers instead of the static
+tokens; the flags shown are the dead serve-era spelling).
+
+### The serve-era HTTP surfaces (transitional reference)
 
 ```
 vx-cloud serve
@@ -1187,10 +1227,9 @@ vx-cloud serve
   `run_trends`, `cache_stats`, `why_did_rerun`, `compare_runs` — so an
   AI agent pointed at the serve (with the bearer token as an
   `Authorization` header) can inspect and debug runs.
-- **Connecting.** A serve is never auto-detected — `vx-cloud connect`
-  is the one client↔serve wiring. Local flow: `vx-cloud serve --ui`,
-  then ONE-TIME `vx-cloud connect http://localhost:4321` (the
-  deterministic port makes the URL stable); every `vx run` on the
+- **Connecting.** A server is never auto-detected — `vx-cloud connect`
+  is the one client↔server wiring: ONE-TIME
+  `vx-cloud connect <url> --token vxc_…`; every `vx run` on the
   machine then pushes to it.
 - **Workspace catalog.** When the serve is colocated with a workspace
   (like `/v1/graph`), `/v1/workspace/*` serves the project/task catalog:
@@ -1303,7 +1342,7 @@ Attach this machine's checkout to a serve's session registry and
 execute assigned tasks via scoped, fully CACHED core runs
 (`docs/design/distributed-execution-2026-07.md`). Replaces the retired
 `worker` verb; the retired `coordinator` verb's scheduling now lives
-inside `vx-cloud serve`.
+inside `vx-cloud server`.
 
 ```
 vx-cloud agent --url <serve-origin>   # (or --coordinator; falls back to
@@ -1470,7 +1509,7 @@ sqlite3 .vx/cache/cache.db "
 
 The schema is documented in
 [`caching.md` § SQLite tables](./caching.md#sqlite-tables). For a
-browsable view, run `vx-cloud serve` and open the dashboard.
+browsable view, connect to a `vx-cloud server` and open the dashboard.
 
 ## What's still missing vs Turbo
 
