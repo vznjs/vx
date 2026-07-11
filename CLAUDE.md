@@ -208,6 +208,32 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-11**: **OWNER DIRECTIVE — vx-cloud is a fully INDEPENDENT
+  self-hosted CI PLATFORM, not a companion** ("It should be a fully
+  completely independent SaaS app! with full account creation,
+  permission roles users, multi workspaces, repos, projects, teams,
+  everything. It should be deployed as docker compose. It should be
+  not possible to call vx-cloud serve. It is not companion. it
+  requires setup of s3 db etc… it is not run next to vx thing. its a
+  self hosted cloud solution that cover orgs of 100000 of devs and
+  with millions of projects. Work on it no questions asked").
+  REVERSES: the companion/zero-config-local-serve model (the 2026-06-28
+  "vx-cloud serve --ui next to the workspace" story, the colocated-
+  workspace catalog premise, SQLite-per-workspace ingest as THE store),
+  and the single-token auth model. Target: accounts (email+password,
+  sessions for the UI, hashed API tokens for CI/agents), RBAC
+  (org → teams → members with roles; workspaces/projects/repos scoped
+  to orgs), Postgres as the system of record (Bun.sql — built-in, zero
+  deps; Postgres 16 available in this env AND CI for real hermetic
+  tests via ephemeral initdb + unix socket), S3 REQUIRED (the
+  2026-07-11 blob backend becomes mandatory), docker-compose deployment
+  (app + postgres + minio-or-external-S3), boot REFUSES without full
+  config (DATABASE_URL + S3 + secret), and the casual `serve` verb
+  DIES. The `cloud()` plugin/connect client story survives — a
+  workspace CONNECTS to a deployed platform (URL + token); nothing
+  auto-starts next to vx. Architecture + phasing:
+  `docs/design/cloud-platform-2026-07.md`.
+
 - **2026-07-11**: **Adversarial review of the S3 blob-backend wave —
   VERDICT SOUND, zero defects; two accepted residuals noted** (repro-
   mandated hostile reviewer over `be446b7`+`a13de4a`). **Refuted by
