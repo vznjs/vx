@@ -208,6 +208,62 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-11**: **Platform Phase 1 SHIPPED — identity/auth/RBAC on
+  Postgres, config-required `vx-cloud server`, the `serve` verb REMOVED
+  (`f1b0b46`, `2970fff`, `36e8257`, `eeffcb5`)**, executing P1 of
+  `docs/design/cloud-platform-2026-07.md`. **DB layer:** `db/client.ts`
+  (a thin `Bun.sql` seam — zero deps), `db/migrate.ts` (numbered
+  embedded-TS migrations applied in ONE transaction under
+  `pg_advisory_xact_lock`, so concurrent compose boots serialize —
+  finally kills the schema-gate-wipes-history landmine), migrations
+  0001-0003 (identity/tenancy/credentials). **Auth:** argon2id
+  (`Bun.password`); opaque 256-bit sessions sha256-at-rest with
+  `<id>.<hmac(secret)>` HttpOnly cookies + 30-day sliding renewal;
+  `vxc_` API tokens sha256-at-rest with an IMMUTABLE trust tier (the
+  fork-PR cache invariant becomes a token property); `/v1/auth/*` (first
+  registration becomes the instance admin, then signup CLOSES —
+  invite-only; per-IP+email login backoff; CSRF header on session
+  mutations) + `/v1/admin/*` (orgs/members/invites/tokens/workspaces;
+  cross-org reads 404; last-owner guard); one `resolvePrincipal`
+  middleware over the §6.5 surface→principal map. **`vx-cloud server`:**
+  `resolveServerConfig` refuses to boot listing EVERY missing var
+  (DATABASE_URL, VX_CLOUD_SECRET ≥32, VX_CLOUD_BASE_URL, the four S3
+  vars) — no tokenless mode, no loopback exemption; boot = reach
+  Postgres → migrate → S3 list-probe (fail loud) → bind `0.0.0.0`. The
+  `serve` verb prints a redirect to `server`. **Transitional (named,
+  §12 P1):** analytics still ride the SQLite `IngestStore`, now
+  per-org under `<dataDir>/orgs/<orgId>`, and the token's org id is the
+  artifact-store bucket — so cache scopes are org-partitioned from P1
+  (verified: an untrusted token's PUT lands under `<orgId>/untrusted/`,
+  a trusted GET never reads it). **Tests: real ephemeral Postgres, no
+  mocks** — `tests/helpers/ephemeral-pg.ts` boots ONE cluster/process
+  (initdb + unix-socket, runs as the `postgres` user since this env is
+  uid 0; CI runners take the direct path), migrates a `template_vx`
+  once, per-suite `CREATE DATABASE … TEMPLATE` clones. Cloud 379→419
+  (+10 db, +17 auth, +12 server, +1 the boot-bug regression); core 1221
+  untouched (zero `src/` change). **Verified END-TO-END with the real
+  CLI** (ephemeral pg + fake S3): boot migrates an empty DB, register →
+  instance admin + owner org, second register 403, mint CI token,
+  ingest 403-as-session/200-as-token, runs read back under the session,
+  untrusted PUT stored org-scoped + trusted GET 404, controller holds 0
+  artifact bytes. **Bug the e2e caught + fixed (`eeffcb5`):** `Bun.sql`
+  consults `process.env.DATABASE_URL`/`POSTGRES_URL` even when handed a
+  socket options object, so a libpq unix-socket URL in the env (which
+  `server` sets) threw `<redacted> cannot be parsed as a URL` at boot —
+  invisible to the test suite, which never put the socket URL in the
+  env. `openDb` now shields the sync socket construction from those two
+  vars; production compose (TCP URL) never hit it. **Deviations
+  (named):** WS-side surfaces (delegated-run self-ingest, dist hints)
+  still use the shared store (proper routing needs P2 repos + P3
+  re-keying); `VX_CLOUD_DATA_DIR` added for the transitional volume
+  (dies with P2); `/v1/artifacts` is session-readable (dev read
+  surface). **Deferred:** P2 (Postgres analytics tables + the ~40-query
+  metrics port + IngestStore deletion), P3 (org/ws scope prefixes,
+  registry re-key, delegation death), P4 (dashboard login/admin UI +
+  `startServe` deletion), P5 (compose/Dockerfile/guides). `startServe`
+  survives as an internal transitional export until P4 so the 34
+  pre-existing serve suites keep passing.
+
 - **2026-07-11**: **OWNER DIRECTIVE — vx-cloud is a fully INDEPENDENT
   self-hosted CI PLATFORM, not a companion** ("It should be a fully
   completely independent SaaS app! with full account creation,
