@@ -248,7 +248,17 @@ serving none of them is probably org-analytics scope creep.
   `/v1/cache/<non-hex>` falls through to the SPA like any unknown path
   (public HTML, still token-gated as `/v1/*`); an untrusted sub-scope
   literally named `trusted` nests harmlessly UNDER `untrusted/`. Cloud
-  352 pass (+2), core 1221, lint clean.
+  352 pass (+2), core 1221, lint clean. **Process lesson (the fix
+  commit `d608f3a` itself went out RED):** the `zbody` helper's
+  `Uint8Array` annotation broke tsgolint (TS2769 — `toEqual` pins the
+  expected type to the actual's `Uint8Array<ArrayBuffer>`), and the
+  local gate DID catch it — but the lint run was piped through
+  `| tail`, which masked the non-zero exit code, so the `&&` chain
+  committed and pushed anyway. Fixed in `9c6f260`. Rule: never pipe a
+  gate command's output through anything; check its exit code
+  explicitly (`cmd > file 2>&1; echo $?`), and confirm the REAL CI run
+  green after pushing — "the summary printed" is not "the gate
+  passed".
 
 - **2026-07-10**: **The plugin-driven remote cache SHIPPED — all three
   phases of `docs/design/native-cache-wire-2026-07.md` (`ca85901`,
