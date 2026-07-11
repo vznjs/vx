@@ -67,6 +67,8 @@ import {
   MAX_ARTIFACT_BYTES,
   type Principal,
 } from '../artifact-store.js'
+import { LocalDirBackend } from '../blob/local.js'
+import { S3Backend } from '../blob/s3.js'
 import { IngestStore } from '../ingest-store.js'
 import { LOG_WIRE_VERSION, TaskLogBuffer, type TaskLogBundle } from '../task-log-capture.js'
 import type { StoredTaskLog } from '../log-store.js'
@@ -342,6 +344,64 @@ function isLoopbackHost(h: string): boolean {
   return h === '127.0.0.1' || h === 'localhost' || h === '::1' || h === '[::1]'
 }
 
+/** The resolved S3 artifact-offload config (docs/design/s3-blob-backend-2026-07.md). */
+export interface ResolvedS3Config {
+  endpoint: string
+  bucket: string
+  region: string
+  accessKeyId: string
+  secretAccessKey: string
+  prefix: string
+  presignTtlSeconds: number
+}
+
+/**
+ * S3-compatible artifact offload: `VX_CLOUD_S3_ENDPOINT` presence ENABLES it
+ * (null without it — local dir storage). Partial config (endpoint without
+ * bucket/credentials) is a boot-time hard error naming the missing vars —
+ * never a silent fall-back to local storage, which would violate the
+ * no-bytes-on-controller directive the moment it went unnoticed.
+ */
+export function resolveS3Config(env: NodeJS.ProcessEnv = process.env): ResolvedS3Config | null {
+  const read = (k: string): string | undefined => {
+    const v = env[k]
+    return v !== undefined && v !== '' ? v : undefined
+  }
+  const endpoint = read('VX_CLOUD_S3_ENDPOINT')
+  if (endpoint === undefined) return null
+  const bucket = read('VX_CLOUD_S3_BUCKET')
+  const accessKeyId = read('VX_CLOUD_S3_ACCESS_KEY_ID')
+  const secretAccessKey = read('VX_CLOUD_S3_SECRET_ACCESS_KEY')
+  const missing: string[] = []
+  if (bucket === undefined) missing.push('VX_CLOUD_S3_BUCKET')
+  if (accessKeyId === undefined) missing.push('VX_CLOUD_S3_ACCESS_KEY_ID')
+  if (secretAccessKey === undefined) missing.push('VX_CLOUD_S3_SECRET_ACCESS_KEY')
+  if (missing.length > 0) {
+    throw new Error(
+      `S3 artifact store: VX_CLOUD_S3_ENDPOINT is set but ${missing.join(', ')} ` +
+        `${missing.length === 1 ? 'is' : 'are'} missing — partial config never falls back to local storage`,
+    )
+  }
+  const ttlRaw = read('VX_CLOUD_S3_PRESIGN_TTL')
+  let presignTtlSeconds = 300
+  if (ttlRaw !== undefined) {
+    const n = Number(ttlRaw)
+    if (!Number.isInteger(n) || n <= 0) {
+      throw new Error(`S3 artifact store: invalid VX_CLOUD_S3_PRESIGN_TTL: ${ttlRaw}`)
+    }
+    presignTtlSeconds = n
+  }
+  return {
+    endpoint,
+    bucket: bucket!,
+    region: read('VX_CLOUD_S3_REGION') ?? 'auto',
+    accessKeyId: accessKeyId!,
+    secretAccessKey: secretAccessKey!,
+    prefix: read('VX_CLOUD_S3_PREFIX') ?? '',
+    presignTtlSeconds,
+  }
+}
+
 export async function startServe(opts: {
   root: string
   port?: number
@@ -518,11 +578,24 @@ export async function startServe(opts: {
 
   // The serve-hosted artifact store (the vx-native /v1/cache wire) — a
   // connected environment (or an explicit VX_CLOUD_URL) routes the remote
-  // cache here, no separate cache server needed.
-  const artifacts = new ArtifactStore(path.join(ingestDir, 'artifacts'))
+  // cache here, no separate cache server needed. With VX_CLOUD_S3_* config
+  // the BYTES live in the bucket (GET → 307 to a pre-signed URL; PUT proxies
+  // through the store's gates, then uploads) — the controller stores no
+  // artifact bytes at rest. Without it, today's local flat dir.
+  const s3 = resolveS3Config()
+  const artifactsDir = path.join(ingestDir, 'artifacts')
+  const artifacts = new ArtifactStore(
+    s3 !== null ? new S3Backend(s3) : new LocalDirBackend(artifactsDir),
+  )
+  process.stderr.write(
+    `[vx-cloud] artifact store: ${s3 !== null ? `s3 ${s3.endpoint}/${s3.bucket}` : `local dir ${artifactsDir}`}\n`,
+  )
   // One-time: fold a pre-trust-scopes flat store into default/trusted/ so an
   // existing single-tenant deployment keeps its warm cache after upgrade.
-  await artifacts.migrateLegacyFlatStore((m) => process.stderr.write(`[vx-cloud] ${m}\n`))
+  // Local backend only — an offloaded store has no flat dir to migrate.
+  if (s3 === null) {
+    await artifacts.migrateLegacyFlatStore((m) => process.stderr.write(`[vx-cloud] ${m}\n`))
+  }
 
   // The distribution session registry ({workspaceId, session} → agents) +
   // its 60s idle-session sweep. In-memory by design: a serve restart
@@ -1808,9 +1881,10 @@ export async function serveCmd(args: readonly string[]): Promise<number> {
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    // A configuration refusal (e.g. non-loopback host without a token) carries
-    // its own actionable message; don't dress it up as a port-bind failure.
-    if (msg.startsWith('refusing to bind')) {
+    // A configuration refusal (non-loopback host without a token, partial S3
+    // config) carries its own actionable message; don't dress it up as a
+    // port-bind failure.
+    if (msg.startsWith('refusing to bind') || msg.startsWith('S3 artifact store')) {
       process.stderr.write(`vx serve: ${msg}\n`)
       return 1
     }

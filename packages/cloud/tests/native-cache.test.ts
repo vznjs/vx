@@ -129,6 +129,32 @@ describe('NativeCacheClient', () => {
     await expect(client.get('h')).rejects.toThrow(/digest mismatch/)
   })
 
+  it('get() falls back to the S3 user-metadata headers on an offloaded response', async () => {
+    // An offloaded GET (a 307 followed to the bucket) carries the metadata as
+    // x-amz-meta-vx-* instead of the vx headers — same validation applies.
+    const client = new NativeCacheClient({ baseUrl: stub.baseUrl, token: 'tok' })
+    const body = new TextEncoder().encode('offloaded-artifact')
+    stub.setHandler(
+      () =>
+        new Response(body, {
+          headers: {
+            'x-amz-meta-vx-digest': digestOf(body),
+            'x-amz-meta-vx-duration-ms': '33',
+          },
+        }),
+    )
+    const hit = await client.get('h')
+    expect(new Uint8Array(hit!.body)).toEqual(body)
+    expect(hit!.durationMs).toBe(33)
+
+    // A tampered body still throws — the fallback digest is verified too.
+    const tampered = new TextEncoder().encode('tampered-artifact!')
+    stub.setHandler(
+      () => new Response(tampered, { headers: { 'x-amz-meta-vx-digest': digestOf(body) } }),
+    )
+    await expect(client.get('h')).rejects.toThrow(/digest mismatch/)
+  })
+
   it('get() refuses a response with no content-length (chunked body)', async () => {
     // Bun.serve always reports a content-length once it has the body, so a
     // genuinely chunked (sizeless) response needs the raw TCP form.

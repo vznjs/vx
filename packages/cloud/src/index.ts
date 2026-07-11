@@ -18,6 +18,12 @@ export {
   type Principal,
   type Tier,
 } from './artifact-store.js'
+export type { BlobBackend, BlobListEntry, BlobStat } from './blob/backend.js'
+export { LocalDirBackend } from './blob/local.js'
+export { S3Backend, S3_META_DIGEST, S3_META_DURATION_MS } from './blob/s3.js'
+export type { S3BackendConfig } from './blob/s3.js'
+export { awsUriEncode, presignUrl, signRequest, UNSIGNED_PAYLOAD } from './blob/sigv4.js'
+export type { PresignUrlArgs, SignRequestArgs } from './blob/sigv4.js'
 export {
   MAX_REMOTE_ARTIFACT_BYTES,
   NativeCacheClient,
@@ -30,8 +36,9 @@ export {
   DEFAULT_SERVE_PORT,
   defaultServeSocketPath,
   resolveServePort,
+  resolveS3Config,
 } from './cli/serve.js'
-export type { ServeServer } from './cli/serve.js'
+export type { ResolvedS3Config, ServeServer } from './cli/serve.js'
 export { RunQueue, DEFAULT_MAX_QUEUED } from './run-queue.js'
 export type { JobView, QueuedJob, RunQueueOptions } from './run-queue.js'
 export { QUEUE_PROTOCOL_VERSION } from './protocol-queue.js'

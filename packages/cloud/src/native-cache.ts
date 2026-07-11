@@ -98,11 +98,19 @@ export class NativeCacheClient implements RemoteCacheLayer {
     } catch (err) {
       throw new Error(`GET ${hash} → body read failed: ${(err as Error).message}`)
     }
-    const digest = res.headers.get('x-vx-digest')
+    // An offloaded response (a 307 followed to the bucket) carries the vx
+    // metadata as S3 user metadata instead of the vx headers — fall back to
+    // it, same validation.
+    const digest = res.headers.get('x-vx-digest') ?? res.headers.get('x-amz-meta-vx-digest')
     if (digest !== null && DIGEST_RE.test(digest) && digest !== xxh3Digest(new Uint8Array(body))) {
       throw new Error(`GET ${hash} → x-vx-digest mismatch (corrupt artifact)`)
     }
-    return { body, durationMs: parseIntHeader(res.headers.get('x-vx-duration-ms')) }
+    return {
+      body,
+      durationMs: parseIntHeader(
+        res.headers.get('x-vx-duration-ms') ?? res.headers.get('x-amz-meta-vx-duration-ms'),
+      ),
+    }
   }
 
   async has(hash: string): Promise<boolean> {

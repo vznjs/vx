@@ -1,18 +1,22 @@
 // The serve-hosted artifact store — the vx-native `/v1/cache/:hash` wire
 // (docs/design/native-cache-wire-2026-07.md; the Turbo `/v8/artifacts`
-// surface is gone). Backing is a flat dir of `<hash>.tar.zst` files per
-// scope under the ingest root: the artifact IS the local cache's own
-// on-disk format, shipped verbatim, so the store needs no unpacking, no
-// index, no schema — deliberately trivial dir I/O rather than an import of
-// core's internal CAS seam (core internals stay internal).
+// surface is gone). Raw storage lives behind the `BlobBackend` seam
+// (docs/design/s3-blob-backend-2026-07.md): the default `LocalDirBackend` is
+// a flat dir of `<hash>.tar.zst` files per scope — the artifact IS the local
+// cache's own on-disk format, shipped verbatim — while an `S3Backend`
+// offloads the bytes to an S3-compatible bucket so the controller stores no
+// artifact bytes at rest (GET answers 307 to a pre-signed URL; PUT still
+// proxies THROUGH the store's gates, then uploads and unlinks the spool).
+// This store keeps ALL policy: trust scopes, immutability, the streaming byte
+// cap, the zstd-magic gate, hash validation, metadata semantics.
 //
-// Wire metadata rides two sidecars: `<hash>.duration` (the producing
-// task's duration, `x-vx-duration-ms` on the wire) and `<hash>.digest`
-// (`x-vx-digest`, `xxh3:<hex>` over the artifact bytes). The digest is
-// stored and echoed back on GET but NOT verified server-side — the CLIENT
-// verifies it against the received bytes, which covers the corruption
-// directions that matter (a corrupt store or a truncating transport
-// degrade to a cache miss at the consumer, never a restored artifact).
+// Wire metadata is `x-vx-duration-ms` (the producing task's duration) and
+// `x-vx-digest` (`xxh3:<hex>` over the artifact bytes) — sidecar files beside
+// a local artifact, S3 user metadata (`x-amz-meta-vx-*`) on an offloaded one.
+// The digest is stored and echoed back but NOT verified server-side — the
+// CLIENT verifies it against the received bytes, which covers the corruption
+// directions that matter (a corrupt store or a truncating transport degrade
+// to a cache miss at the consumer, never a restored artifact).
 //
 // TRUST SCOPES (docs/design/cache-trust-scopes-2026-07.md). The store is
 // partitioned by `<bucket>/<tier>`, both SERVER-DERIVED from the presented
@@ -24,9 +28,14 @@
 // context can NEVER write into the trusted scope — no matter what cache key
 // it computes. Solo-dev / single-token deployments are all `default/trusted`
 // (the legacy flat store migrates there on boot), byte-identical to before.
+// Blob keys mirror the scope layout, so the model holds on S3 by
+// construction: a pre-signed URL binds ONE server-derived scope key.
 
+import os from 'node:os'
 import path from 'node:path'
-import { mkdir, readdir, rename, stat, unlink } from 'node:fs/promises'
+import { mkdir, readdir, rename, unlink } from 'node:fs/promises'
+import { LocalDirBackend } from './blob/local.js'
+import type { BlobBackend, BlobListEntry } from './blob/backend.js'
 
 /** PUT bodies above this are refused with 413. */
 export const MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
@@ -99,50 +108,73 @@ function subScopeOf(raw: string | null): string {
 export interface ArtifactListEntry {
   hash: string
   sizeBytes: number
-  /** File mtime (ms epoch) — when the artifact landed in the store. */
+  /** When the artifact landed in the store (ms epoch). */
   storedAt: number
-  /** Original task duration from the `.duration` sidecar, when present. */
+  /** Original task duration, when the backend has it cheap (local sidecar). */
   durationMs?: number
   tier: Tier
 }
 
 export class ArtifactStore {
-  /** `maxBytes` is injectable so a test can exercise the mid-stream cap
-   *  without streaming 512 MiB. */
-  constructor(
-    private readonly dir: string,
-    private readonly maxBytes: number = MAX_ARTIFACT_BYTES,
-  ) {}
+  private readonly backend: BlobBackend
+  private readonly maxBytes: number
 
-  private scopedPath(scope: string, hash: string, ext: string): string {
-    return path.join(this.dir, scope, `${hash}${ext}`)
+  /**
+   * A string dir builds today's local flat-dir backend (the many existing
+   * call sites); a `BlobBackend` offloads raw storage (S3). `maxBytes` is
+   * injectable so a test can exercise the mid-stream cap without streaming
+   * 512 MiB.
+   */
+  constructor(dirOrBackend: string | BlobBackend, maxBytes: number = MAX_ARTIFACT_BYTES) {
+    this.backend =
+      typeof dirOrBackend === 'string' ? new LocalDirBackend(dirOrBackend) : dirOrBackend
+    this.maxBytes = maxBytes
+  }
+
+  private key(scope: string, hash: string, ext = '.tar.zst'): string {
+    return `${scope}/${hash}${ext}`
   }
 
   private validScope(scope: string): boolean {
     return scope.split('/').every((seg) => SEGMENT_RE.test(seg))
   }
 
+  // A throwing backend (bucket down, credentials broken) is a LOUD 502 —
+  // the client treats a non-404 as an error and degrades to a miss. A silent
+  // 404-as-miss on PUT would instead let every upload "succeed" into nowhere.
+  private backendError(op: string, err: unknown): Response {
+    return Response.json(
+      {
+        error: `artifact backend ${op} failed: ${err instanceof Error ? err.message : String(err)}`,
+      },
+      { status: 502 },
+    )
+  }
+
   /**
    * Move a legacy flat store (`<dir>/<hash>.tar.zst` + sidecars, written
    * before trust scopes) into `default/trusted/`. Idempotent, best-effort,
    * loud — run once on boot so existing single-tenant deployments keep their
-   * warm cache and their single token maps to `trusted`.
+   * warm cache and their single token maps to `trusted`. Local backend only:
+   * an offloaded store has no local flat dir to migrate.
    */
   async migrateLegacyFlatStore(log?: (m: string) => void): Promise<void> {
+    const root = this.backend.localPathFor('')
+    if (root === null) return
     let names: string[]
     try {
-      names = await readdir(this.dir)
+      names = await readdir(root)
     } catch {
       return // no store dir yet — nothing to migrate
     }
     const legacy = names.filter((n) => /\.(tar\.zst|tag|duration)$/.test(n))
     if (legacy.length === 0) return
-    const destDir = path.join(this.dir, 'default', 'trusted')
+    const destDir = path.join(root, 'default', 'trusted')
     await mkdir(destDir, { recursive: true })
     let moved = 0
     for (const n of legacy) {
       try {
-        await rename(path.join(this.dir, n), path.join(destDir, n))
+        await rename(path.join(root, n), path.join(destDir, n))
         moved++
       } catch {
         // a dir entry (e.g. `default`) or a race — skip
@@ -151,24 +183,21 @@ export class ArtifactStore {
     if (moved > 0) log?.(`migrated ${moved} flat artifact file(s) → default/trusted/`)
   }
 
-  private async findRead(
-    hash: string,
-    p: Principal,
-    sub: string,
-    ext: string,
-  ): Promise<string | null> {
+  private async findReadKey(hash: string, p: Principal, sub: string): Promise<string | null> {
     for (const scope of readScopes(p, sub)) {
-      const file = this.scopedPath(scope, hash, ext)
-      if (await Bun.file(file).exists()) return file
+      const key = this.key(scope, hash)
+      if ((await this.backend.head(key)) !== null) return key
     }
     return null
   }
 
   /**
-   * Existence probe across the principal's read scopes — one stat per scope.
-   * The distribution scheduler's cache prune: a submitted stable hash already
-   * in a readable scope never dispatches to any agent. `sub` is the untrusted
-   * per-PR partition (ignored for a trusted principal).
+   * Existence probe across the principal's read scopes — one stat/HEAD per
+   * scope. The distribution scheduler's cache prune: a submitted stable hash
+   * already in a readable scope never dispatches to any agent. `sub` is the
+   * untrusted per-PR partition (ignored for a trusted principal). Best-effort
+   * for internal consumers: a down bucket reads as "not stored", never a
+   * crashed submission (the HTTP wire stays loud — see `handle`).
    */
   async has(
     hash: string,
@@ -176,13 +205,17 @@ export class ArtifactStore {
     sub = 'shared',
   ): Promise<boolean> {
     if (!HASH_RE.test(hash)) return false
-    return (await this.findRead(hash, principal, sub, '.tar.zst')) !== null
+    try {
+      return (await this.findReadKey(hash, principal, sub)) !== null
+    } catch {
+      return false
+    }
   }
 
   /**
-   * Original task duration from the `<hash>.duration` sidecar (searched across
-   * read scopes), so a probe-pruned task's synthesized outcome reports honest
-   * timing.
+   * Original task duration (searched across read scopes), so a probe-pruned
+   * task's synthesized outcome reports honest timing. Local: the `<hash>.duration`
+   * sidecar file; S3: the object's user metadata.
    */
   async storedDurationMs(
     hash: string,
@@ -190,10 +223,24 @@ export class ArtifactStore {
     sub = 'shared',
   ): Promise<number | undefined> {
     if (!HASH_RE.test(hash)) return undefined
-    const file = await this.findRead(hash, principal, sub, '.duration')
-    if (file === null) return undefined
-    const n = Number((await Bun.file(file).text()).trim())
-    return Number.isFinite(n) && n >= 0 ? n : undefined
+    try {
+      for (const scope of readScopes(principal, sub)) {
+        const local = this.backend.localPathFor(this.key(scope, hash, '.duration'))
+        if (local !== null) {
+          const file = Bun.file(local)
+          if (!(await file.exists())) continue
+          const n = Number((await file.text()).trim())
+          return Number.isFinite(n) && n >= 0 ? n : undefined
+        }
+        const st = await this.backend.head(this.key(scope, hash))
+        if (st === null) continue
+        const n = Number(st.meta['durationMs'] ?? NaN)
+        return Number.isFinite(n) && n >= 0 ? n : undefined
+      }
+    } catch {
+      return undefined
+    }
+    return undefined
   }
 
   /**
@@ -219,36 +266,26 @@ export class ArtifactStore {
     const seen = new Set<string>()
     for (const scope of readScopes(principal, sub)) {
       if (!this.validScope(scope)) continue
-      const scopeDir = path.join(this.dir, scope)
-      let names: string[]
+      let blobs: BlobListEntry[]
       try {
-        names = await readdir(scopeDir)
+        blobs = await this.backend.list(scope)
       } catch {
-        continue // scope dir doesn't exist yet — nothing stored there
+        continue // a down bucket lists empty — the wire GET/HEAD stay loud
       }
       const tier: Tier = scope.split('/')[1] === 'untrusted' ? 'untrusted' : 'trusted'
-      for (const n of names) {
-        if (!n.endsWith('.tar.zst')) continue
-        const hash = n.slice(0, -'.tar.zst'.length)
+      for (const b of blobs) {
+        const name = b.key.slice(scope.length + 1)
+        if (!name.endsWith('.tar.zst')) continue
+        const hash = name.slice(0, -'.tar.zst'.length)
         if (!HASH_RE.test(hash) || seen.has(hash)) continue
         seen.add(hash)
-        let st: Awaited<ReturnType<typeof stat>>
-        try {
-          st = await stat(path.join(scopeDir, n))
-        } catch {
-          continue // raced with a prune — skip
-        }
         const entry: ArtifactListEntry = {
           hash,
-          sizeBytes: st.size,
-          storedAt: Math.round(st.mtimeMs),
+          sizeBytes: b.size,
+          storedAt: b.storedAt,
           tier,
         }
-        const durationFile = Bun.file(path.join(scopeDir, `${hash}.duration`))
-        if (await durationFile.exists()) {
-          const d = Number((await durationFile.text()).trim())
-          if (Number.isFinite(d) && d >= 0) entry.durationMs = d
-        }
+        if (b.durationMs !== undefined) entry.durationMs = b.durationMs
         out.push(entry)
       }
     }
@@ -279,29 +316,54 @@ export class ArtifactStore {
     }
 
     if (req.method === 'HEAD') {
-      const found = await this.findRead(hash, principal, sub, '.tar.zst')
-      return new Response(null, { status: found !== null ? 200 : 404 })
+      try {
+        const found = await this.findReadKey(hash, principal, sub)
+        return new Response(null, { status: found !== null ? 200 : 404 })
+      } catch (err) {
+        return this.backendError('HEAD', err)
+      }
     }
 
     if (req.method === 'GET') {
-      const found = await this.findRead(hash, principal, sub, '.tar.zst')
+      let found: string | null
+      try {
+        found = await this.findReadKey(hash, principal, sub)
+      } catch (err) {
+        return this.backendError('GET', err)
+      }
       if (found === null) {
         return Response.json({ error: 'not found' }, { status: 404 })
       }
-      // Sidecars live beside the artifact in the SAME scope it was found in.
-      const scopeDir = path.dirname(found)
-      const headers: Record<string, string> = { 'Content-Type': 'application/octet-stream' }
-      const durationFile = Bun.file(path.join(scopeDir, `${hash}.duration`))
-      if (await durationFile.exists()) {
-        headers['x-vx-duration-ms'] = (await durationFile.text()).trim()
+      const local = this.backend.localPathFor(found)
+      if (local !== null) {
+        // Sidecars live beside the artifact in the SAME scope it was found in.
+        const scopeDir = path.dirname(local)
+        const headers: Record<string, string> = { 'Content-Type': 'application/octet-stream' }
+        const durationFile = Bun.file(path.join(scopeDir, `${hash}.duration`))
+        if (await durationFile.exists()) {
+          headers['x-vx-duration-ms'] = (await durationFile.text()).trim()
+        }
+        const digestFile = Bun.file(path.join(scopeDir, `${hash}.digest`))
+        if (await digestFile.exists()) {
+          headers['x-vx-digest'] = (await digestFile.text()).trim()
+        }
+        // Bun.file responses stream with the Content-Length set from the file
+        // size — exactly the contract the client's bounded body read relies on.
+        return new Response(Bun.file(local), { headers })
       }
-      const digestFile = Bun.file(path.join(scopeDir, `${hash}.digest`))
-      if (await digestFile.exists()) {
-        headers['x-vx-digest'] = (await digestFile.text()).trim()
+      // Offloaded storage: redirect to a short-lived pre-signed bucket URL —
+      // the controller never proxies a download. The client follows exactly
+      // one hop, dropping the bearer + scope header cross-origin; the wire
+      // metadata rides back as the object's `x-amz-meta-vx-*` user metadata.
+      try {
+        const target = await this.backend.presignGet(found)
+        if (target === null) {
+          return Response.json({ error: 'artifact backend cannot serve bytes' }, { status: 502 })
+        }
+        return new Response(null, { status: 307, headers: { Location: target } })
+      } catch (err) {
+        return this.backendError('GET', err)
       }
-      // Bun.file responses stream with the Content-Length set from the file
-      // size — exactly the contract the client's bounded body read relies on.
-      return new Response(Bun.file(found), { headers })
     }
 
     if (req.method === 'PUT') {
@@ -309,27 +371,40 @@ export class ArtifactStore {
       if (declared > this.maxBytes) {
         return Response.json({ error: 'artifact too large' }, { status: 413 })
       }
-      const artifactPath = this.scopedPath(wScope, hash, '.tar.zst')
+      const key = this.key(wScope, hash)
       // Immutability: never overwrite an existing artifact. A content-addressed
       // key genuinely re-derived produces byte-equal bytes, so a re-PUT is a
       // no-op at best and a poisoning overwrite at worst — refuse it. This
       // stops an authenticated writer from replacing a legitimate entry.
       // Checked BEFORE reading the body, so a duplicate upload costs nothing.
-      if (await Bun.file(artifactPath).exists()) {
-        return Response.json({ ok: true, immutable: true }, { status: 409 })
+      // (On S3 the HEAD-then-PUT race is benign: equal bytes, atomic PUT.)
+      try {
+        if ((await this.backend.head(key)) !== null) {
+          return Response.json({ ok: true, immutable: true }, { status: 409 })
+        }
+      } catch (err) {
+        return this.backendError('PUT', err)
       }
-      const scopeDir = path.join(this.dir, wScope)
-      await mkdir(scopeDir, { recursive: true })
-      // STREAMING write to a temp file — never buffer the body in RAM. The
+      // STREAMING write to a spool file — never buffer the body in RAM. The
       // byte cap is enforced on ACTUAL cumulative bytes mid-stream (a chunked
-      // body with no/false content-length can't defeat it), and the atomic
-      // tmp+rename keeps a concurrent GET from ever seeing a torn artifact.
-      const tmp = `${artifactPath}.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`
+      // body with no/false content-length can't defeat it). The spool
+      // colocates with a local destination so the backend's rename is atomic
+      // (a concurrent GET never sees a torn artifact); on an offloaded
+      // backend it's transit-only in the OS tmpdir.
+      const localDest = this.backend.localPathFor(key)
+      const spoolTag = `tmp-${process.pid}-${Math.random().toString(36).slice(2)}`
+      let spool: string
+      if (localDest !== null) {
+        await mkdir(path.dirname(localDest), { recursive: true })
+        spool = `${localDest}.${spoolTag}`
+      } else {
+        spool = path.join(os.tmpdir(), `vx-blob-spool-${spoolTag}`)
+      }
       let overCap = false
+      let total = 0
       const head: number[] = []
       try {
-        const writer = Bun.file(tmp).writer()
-        let total = 0
+        const writer = Bun.file(spool).writer()
         try {
           const reader = req.body?.getReader()
           if (reader !== undefined) {
@@ -353,32 +428,33 @@ export class ArtifactStore {
           await writer.end()
         }
         if (overCap) {
-          await unlink(tmp).catch(() => {})
           return Response.json({ error: 'artifact too large' }, { status: 413 })
         }
         // Refuse an empty/non-zstd body BEFORE it becomes an immutable entry —
         // otherwise a junk upload would lock this key forever (see ZSTD_MAGIC).
         if (head.length < ZSTD_MAGIC.length || !ZSTD_MAGIC.every((b, i) => head[i] === b)) {
-          await unlink(tmp).catch(() => {})
           return Response.json(
             { error: 'invalid artifact body (not a zstd frame)' },
             { status: 400 },
           )
         }
-        await rename(tmp, artifactPath)
+        // Metadata validation is policy, so it stays here: the backend stores
+        // whatever it's handed. The digest is stored, not verified — the
+        // client verifies it against the bytes it receives on GET.
+        const meta: Record<string, string> = {}
+        const duration = req.headers.get('x-vx-duration-ms')
+        if (duration !== null && /^\d+$/.test(duration)) meta['durationMs'] = duration
+        const digest = req.headers.get('x-vx-digest')
+        if (digest !== null && /^xxh3:[0-9a-f]{1,16}$/.test(digest)) meta['digest'] = digest
+        await this.backend.put(key, spool, total, meta)
       } catch (err) {
-        await unlink(tmp).catch(() => {})
-        throw err
-      }
-      const duration = req.headers.get('x-vx-duration-ms')
-      if (duration !== null && /^\d+$/.test(duration)) {
-        await Bun.write(path.join(scopeDir, `${hash}.duration`), duration)
-      }
-      // Stored, not verified: the client verifies the digest against the
-      // bytes it receives on GET (see the file-top comment).
-      const digest = req.headers.get('x-vx-digest')
-      if (digest !== null && /^xxh3:[0-9a-f]{1,16}$/.test(digest)) {
-        await Bun.write(path.join(scopeDir, `${hash}.digest`), digest)
+        await unlink(spool).catch(() => {})
+        return this.backendError('PUT', err)
+      } finally {
+        // The local backend's put RENAMES the spool away; every other path
+        // (S3 upload, over-cap, magic-reject) leaves it — nothing rests on
+        // the controller.
+        await unlink(spool).catch(() => {})
       }
       return Response.json({ ok: true })
     }
