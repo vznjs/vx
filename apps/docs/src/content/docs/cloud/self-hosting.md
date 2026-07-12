@@ -190,20 +190,59 @@ hard error** — the server never silently falls back to local storage.
   pre-signed bucket URL, so read traffic goes client → bucket, never
   through the controller.
 
-- **TLS.** Front the server with a TLS-terminating reverse proxy (nginx,
-  Caddy, Traefik) and set `VX_CLOUD_BASE_URL` to the `https://` origin so
-  session cookies are marked `Secure`. A Caddy example:
-
-  ```
-  vx.example.com {
-    reverse_proxy app:4321
-  }
-  ```
+- **TLS + HTTP/3.** Front the server with a TLS-terminating reverse proxy
+  and set `VX_CLOUD_BASE_URL` to the `https://` origin so session cookies
+  are marked `Secure`. The proxy is also where **HTTP/2 and HTTP/3 (QUIC)**
+  live — see [Transports](#transports-http3--multiplexing) just below.
 
 - **Scale out.** The app is stateless (Postgres + S3 hold all state), so
   run several replicas behind the load balancer; `/health` is the
   pre-auth liveness probe. There is no volume to attach to the app
   container.
+
+## Transports: HTTP/3 & multiplexing
+
+The server is a single `Bun.serve` process, which speaks **HTTP/1.1**. The
+modern transports — **HTTP/2 and HTTP/3 (QUIC)** — are terminated at the
+**edge proxy**, exactly where TLS already sits; this is how essentially
+every production service does H3, and it keeps the app itself simple and
+stateless. The payoff is **one connection, many requests**: with h2/h3 a
+client multiplexes all its concurrent requests over a single connection
+instead of opening a fresh TCP + TLS handshake per request. Priming a large
+graph then costs one handshake, not hundreds — and it compounds with the
+[batch cache-existence probe](/vx/cloud/wire-protocol/#cache-wire)
+(`POST /v1/cache/batch`), which already collapses N per-hash `HEAD`s into a
+single request.
+
+The compose stack ships a ready [Caddy](https://github.com/vznjs/vx/blob/main/packages/cloud/deploy/Caddyfile)
+edge behind an opt-in profile — Caddy serves h1/h2/h3 with one directive
+and auto-provisions TLS:
+
+```sh
+VX_CLOUD_SECRET=$(openssl rand -hex 32) VX_CLOUD_BASE_URL=https://localhost \
+  docker compose -f packages/cloud/deploy/docker-compose.yml --profile edge up
+# open https://localhost — H3 is advertised via Alt-Svc; UDP 443 is published
+```
+
+The `Caddyfile` global block is the whole story:
+
+```
+{
+  servers { protocols h1 h2 h3 }
+}
+
+vx.example.com {
+  reverse_proxy app:4321
+}
+```
+
+For a real domain, set `VX_CLOUD_DOMAIN=vx.example.com`, drop the
+`tls internal` line so Caddy gets a Let's Encrypt cert over ACME, and set
+`VX_CLOUD_BASE_URL` to the matching `https://` origin. Any h3-capable proxy
+works the same way (nginx `http3 on;`, Cloudflare, an L7 QUIC load
+balancer) — the app never changes because it always speaks plain HTTP/1.1
+to the proxy over the internal network. WebSocket (agent/dist) and
+SSE/NDJSON streams bridge transparently through the proxy.
 
 ## HTTP + WS surface
 
@@ -216,6 +255,7 @@ hard error** — the server never silently falls back to local storage.
 | `GET /v1/*` | Analytics reads (`/v1/runs`, `/v1/invocations`, `/v1/cache/stats`, `/v1/why/…`, …) | session or token |
 | `POST /v1/ingest` | Where run summaries land (the `cloud()` plugin's push) | token |
 | `GET/HEAD/PUT /v1/cache/:hash` | The vx-native remote-cache wire | token |
+| `POST /v1/cache/batch` | Batch existence probe — N hashes in one round-trip | token |
 | `POST /mcp` | MCP server (JSON-RPC 2.0) for AI agents | session or token |
 | `WS /v1/agents` | Distribution agents | token |
 | `GET /events`, `/stream` | SSE / NDJSON event streams | session or token |

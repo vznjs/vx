@@ -208,6 +208,54 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-12**: **HTTP/3 + connection multiplexing via an edge proxy — a
+  ready Caddy `edge` compose profile terminating h1/h2/h3 (owner: "Support H3
+  as well. So you can use one connection with multiple requests")**. Verified
+  the transport facts empirically before building: **`Bun.serve` is HTTP/1.1
+  only** (no h2 option on the server object), **Bun has NO QUIC/HTTP-3 server**
+  (`globalThis.WebTransport` undefined, no QUIC API — only a `Bun.udpSocket`
+  primitive), and `node:http2` compat exists but rewiring the single
+  `Bun.serve` (which hosts the cache wire + WS agent/dist channels + SSE/NDJSON
+  streams + MCP + the SPA catch-all, all on Bun's WebSocket-upgrade API) onto
+  `node:http2.createSecureServer` would be a massive, risky rewrite for a
+  self-hosted platform that belongs behind a proxy anyway. **So H2/H3 are
+  terminated at the EDGE** — the universal production pattern (TLS already
+  lives there): the proxy speaks h1/h2/h3 to clients and plain HTTP/1.1 to the
+  app over the internal network. The payoff the owner asked for — one
+  connection multiplexing many concurrent requests, no per-request TCP+TLS
+  handshake — is delivered by h2/h3 at the edge, and **compounds with the
+  batch cache-existence probe shipped the same day** (N per-hash HEADs → 1
+  request): fewer requests, and the remaining concurrent GETs share one
+  connection. **Deliverable (deploy + docs only, ZERO app-code change —
+  correct by construction since the app never changes transport):**
+  `packages/cloud/deploy/Caddyfile` (global `servers { protocols h1 h2 h3 }` +
+  a `reverse_proxy app:4321`; `tls internal` for the localhost demo, drop it +
+  set `VX_CLOUD_DOMAIN` for real-domain ACME auto-HTTPS) + a `caddy` service
+  behind a docker-compose **`edge` PROFILE** (opt-in: `docker compose --profile
+edge up`, publishing `443:443` + `443:443/udp` for QUIC + `80:80`;
+  `caddydata`/`caddyconfig` volumes) so the plain `docker compose up` →
+  `localhost:4321` experience stays untouched. WebSocket + SSE bridge
+  transparently through Caddy (`flush_interval -1`). Docs: `deploy/README.md`
+  "HTTP/3 & connection multiplexing" + a new `cloud/self-hosting.md`
+  "Transports: HTTP/3 & multiplexing" section (Caddy one-directive example,
+  nginx/Cloudflare noted as equivalents, the app-is-H1-to-the-proxy invariant
+  stated), and the `/v1/cache/batch` row added to the HTTP-surface table.
+  **Client note (documented conservatively):** the vx CLI's requests to an
+  h2/h3 proxy use whatever protocol its fetch stack negotiates (H2 when
+  available, else keep-alive connection reuse) — I could NOT empirically
+  confirm Bun's fetch H2-client negotiation here (the sandbox blocks loopback
+  TLS: a `node:http2` secure server + Bun-fetch/curl `--http2` probe both
+  failed to connect, an env limitation not a Bun signal), so the docs don't
+  hinge on it; browser dashboard clients get full H3 regardless, and the batch
+  endpoint carries the CLI round-trip win. Verified: docker-compose.yml parses
+  (5 services incl. `caddy`/edge-profile, 4 volumes), astro build clean (157
+  pages, the transports + `#cache-wire` cross-links resolve, only the 7
+  pre-existing frozen-doc/module-stub broken links, zero new). `deploy/**` +
+  `apps/docs/**` are oxfmt/lint-ignored, so no core-gate impact. **NOT built
+  (deliberate, named):** native h2/h3 in Bun.serve (would need the whole host
+  rewritten onto node:http2 — deferred until Bun ships an h2/h3 server option);
+  an in-app QUIC listener (Bun has no QUIC server).
+
 - **2026-07-12**: **Batch cache existence probe — `POST /v1/cache/batch`
   collapses N per-hash HEADs into ONE round-trip (owner ask: "shouldn't cache
   have an endpoint to check many at the same time? To speed up?")**. The

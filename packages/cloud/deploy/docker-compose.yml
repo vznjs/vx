@@ -16,6 +16,15 @@
 # S3, …); and run behind a TLS-terminating reverse proxy so VX_CLOUD_BASE_URL is
 # https:// (that flips session cookies to Secure).
 
+# To put an HTTP/3 (QUIC) edge in front — one connection multiplexes many
+# concurrent requests, no per-request handshake — add the `edge` profile:
+#
+#   VX_CLOUD_SECRET=$(openssl rand -hex 32) VX_CLOUD_BASE_URL=https://localhost \
+#     docker compose --profile edge up
+#
+# Then open https://localhost (the app's own :4321 port is still published for
+# direct/plain-HTTP access; drop the app `ports:` block to force all traffic
+# through the proxy). See ./Caddyfile.
 services:
   app:
     image: ghcr.io/vznjs/vx-cloud:latest
@@ -97,6 +106,29 @@ services:
       echo 'bucket vx-artifacts ready'
       "
 
+  # --- Optional HTTP/3 (QUIC) + HTTP/2 edge proxy (`--profile edge`) ---
+  # Terminates h1/h2/h3 + TLS and reverse-proxies to the H1-only app. H3 rides
+  # UDP 443; browsers upgrade via the Alt-Svc header, and one connection then
+  # multiplexes every concurrent request. See ./Caddyfile.
+  caddy:
+    image: caddy:2-alpine
+    profiles: ['edge']
+    depends_on:
+      - app
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp' # HTTP/3 / QUIC
+    environment:
+      VX_CLOUD_DOMAIN: '${VX_CLOUD_DOMAIN:-localhost}'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    restart: unless-stopped
+
 volumes:
   pgdata:
   miniodata:
+  caddydata:
+  caddyconfig:

@@ -1,0 +1,43 @@
+# vx-cloud edge proxy — terminates HTTP/1.1, HTTP/2, and HTTP/3 (QUIC) in
+# front of the app, which speaks plain HTTP/1.1 over the internal network.
+#
+# WHY an edge proxy: the vx-cloud server is a single Bun.serve process, and
+# Bun.serve is HTTP/1.1 only — it has no native H2/H3. TLS termination + the
+# modern transports belong at the edge anyway (that's how essentially every
+# production HTTP service does H3). With h2/h3 the client multiplexes many
+# concurrent requests over ONE connection (no per-request TCP+TLS handshake),
+# which — together with the batch cache-existence probe (`POST /v1/cache/batch`,
+# N HEADs → 1 request) — is what makes priming a 1000s-task graph fast.
+#
+# Run it:  docker compose --profile edge up
+# Then open  https://localhost  (accept the self-signed cert), or set
+# VX_CLOUD_DOMAIN=ci.example.com for a real domain (Caddy auto-provisions a
+# Let's Encrypt cert — drop the `tls internal` line below).
+
+{
+	# Advertise + serve all three protocols. H3 rides UDP 443 (published in
+	# docker-compose); Caddy sends the Alt-Svc header so clients upgrade.
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+{$VX_CLOUD_DOMAIN:localhost} {
+	# Self-signed cert from Caddy's internal CA — fine for localhost / a demo.
+	# For a real domain, DELETE this line: Caddy then provisions a public
+	# Let's Encrypt certificate automatically over ACME.
+	tls internal
+
+	# Compress responses the app didn't already compress (the dashboard SPA,
+	# JSON analytics). Artifact bodies are already zstd and stream through
+	# untouched.
+	encode zstd gzip
+
+	# Everything — the dashboard, the /v1 API, the cache wire, the WebSocket
+	# agent/dist channels, and the SSE/NDJSON streams — proxies to the app.
+	# Caddy transparently bridges h2/h3 WebSockets and long-lived SSE to the
+	# app's HTTP/1.1 without buffering.
+	reverse_proxy app:4321 {
+		flush_interval -1
+	}
+}

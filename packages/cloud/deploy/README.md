@@ -85,9 +85,9 @@ Optional: `VX_CLOUD_S3_REGION` (default `auto`), `VX_CLOUD_S3_PREFIX`,
   and point `VX_CLOUD_S3_*` at managed storage (Cloudflare R2, AWS S3, …).
   The bucket must be reachable from wherever `vx run` executes — cache GETs
   redirect the client to a pre-signed bucket URL.
-- **TLS.** Front the app with a TLS-terminating reverse proxy and set
-  `VX_CLOUD_BASE_URL` to the `https://` origin so session cookies are
-  `Secure`.
+- **TLS + HTTP/3.** Front the app with a TLS-terminating reverse proxy and
+  set `VX_CLOUD_BASE_URL` to the `https://` origin so session cookies are
+  `Secure`. See **HTTP/3 & connection multiplexing** below.
 - **Scale out.** The app is stateless (Postgres + S3 hold all state) — run
   several replicas behind the load balancer; `/health` is the pre-auth
   liveness probe. There is no volume to attach to the app container.
@@ -95,6 +95,36 @@ Optional: `VX_CLOUD_S3_REGION` (default `auto`), `VX_CLOUD_S3_PREFIX`,
 For Kubernetes, run the same image as a `Deployment` + `Service` (with
 `Ingress` for TLS) — it needs nothing a plain container doesn't, since it
 keeps no local state.
+
+## HTTP/3 & connection multiplexing
+
+The app is a single `Bun.serve` process, which speaks **HTTP/1.1**. The
+modern transports — **HTTP/2 and HTTP/3 (QUIC)** — are terminated at the
+**edge proxy**, exactly where TLS already lives (this is how essentially
+every production HTTP service does H3). With h2/h3 a client multiplexes many
+**concurrent requests over one connection**, with no per-request TCP + TLS
+handshake — so a fresh CI runner priming a large graph pays one handshake,
+not hundreds. It compounds with the **batch cache-existence probe**
+(`POST /v1/cache/batch`, which already turns N per-hash `HEAD`s into one
+request): fewer requests, and the ones that remain share a connection.
+
+The compose stack ships a ready **[Caddy](./Caddyfile) edge** behind an
+opt-in profile — Caddy does h1/h2/h3 with one directive and auto-provisions
+TLS:
+
+```sh
+VX_CLOUD_SECRET=$(openssl rand -hex 32) VX_CLOUD_BASE_URL=https://localhost \
+  docker compose -f packages/cloud/deploy/docker-compose.yml --profile edge up
+# open https://localhost — H3 is advertised via Alt-Svc; UDP 443 is published
+```
+
+For a real deployment set `VX_CLOUD_DOMAIN=ci.example.com`, drop the
+`tls internal` line from the `Caddyfile` (Caddy then gets a Let's Encrypt
+cert over ACME), and set `VX_CLOUD_BASE_URL=https://ci.example.com`. Any
+h3-capable proxy works the same way — nginx (`http3 on;`), Cloudflare, or an
+L7 load balancer with QUIC; the app needs no change because it always speaks
+plain HTTP/1.1 to the proxy over the internal network. WebSocket (agent/dist)
+and SSE/NDJSON streams bridge transparently through the proxy.
 
 ## Connecting a workspace
 
