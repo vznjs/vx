@@ -4,6 +4,7 @@ import { render } from 'solid-js/web'
 import 'virtual:uno.css'
 import { Shell } from './components/Shell.tsx'
 import { RunsView } from './components/RunsView.tsx'
+import { AdminView } from './components/AdminView.tsx'
 import { LoginGate } from './components/LoginGate.tsx'
 import { bootstrapAuth, getAuthStateSignal } from './api.ts'
 import { jsonPage } from './jr/page.tsx'
@@ -46,6 +47,7 @@ function AppRoutes() {
       <Route path="/artifacts" component={jsonPage(ARTIFACTS)} />
       <Route path="/runs/:id" component={jsonPage(RUN_DETAIL)} />
       <Route path="/compare/:id" component={jsonPage(COMPARE)} />
+      <Route path="/admin" component={AdminView} />
     </HashRouter>
   )
 }

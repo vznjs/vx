@@ -67,6 +67,14 @@ export const Shell: ParentComponent = (props) => {
   })
   const [paletteOpen, setPaletteOpen] = createSignal(false)
 
+  // Admin is visible to instance admins and anyone with admin/owner in some org.
+  const canSeeAdmin = createMemo(() => {
+    const u = user()
+    if (u === null) return false
+    if (u.instanceAdmin) return true
+    return u.orgs.some((o) => o.role === 'admin' || o.role === 'owner')
+  })
+
   // (Re-)probe serve capabilities + refresh the org/workspace lists whenever
   // the connection (origin/user/org) changes — the Shell is always mounted, so
   // these signals stay fresh for every view.
@@ -111,6 +119,16 @@ export const Shell: ParentComponent = (props) => {
               <span>{item.label}</span>
             </A>
           ))}
+          <Show when={canSeeAdmin()}>
+            <A
+              href="/admin"
+              class="group flex items-center gap-2.5 px-3 py-2 rounded-lg text-fg-2 hover:text-fg hover:bg-surface-hover/70 transition-all text-[13px] no-underline mt-1"
+              activeClass="!text-accent !bg-accent/10 font-medium ring-1 ring-inset ring-accent/20"
+            >
+              <span class="i-tabler-shield-lock text-base shrink-0 opacity-80 group-hover:opacity-100" aria-hidden="true" />
+              <span>Admin</span>
+            </A>
+          </Show>
         </nav>
         <div class="p-2.5 border-t border-border/70">
           <button
