@@ -267,6 +267,26 @@ describe('AgentRegistry — submissions', () => {
   })
 })
 
+describe('AgentRegistry — org isolation (platform §8.2)', () => {
+  it('keys sessions by org — a cross-org agent never joins another org pool', () => {
+    const reg = new AgentRegistry()
+    // Same {workspaceId, session}, DIFFERENT orgs (server-derived from token).
+    reg.hello(hello({ agentId: 'a-org1' }), io(), 'org-1')
+    reg.hello(hello({ agentId: 'a-org2' }), io(), 'org-2')
+
+    // A submission under org-1 only sees org-1's agent.
+    const bound1 = reg.beginSubmission('ws1', 'local', submission(), 'org-1')
+    if ('error' in bound1) throw new Error(bound1.error)
+    expect(bound1.agents().map((x) => x.agentId)).toEqual(['a-org1'])
+
+    // Capacity reads are org-scoped too.
+    expect(reg.availableCapacity('ws1', 'local', undefined, 'org-1').agents).toBe(1)
+    expect(reg.availableCapacity('ws1', 'local', undefined, 'org-2').agents).toBe(1)
+    // The default org (transitional single-tenant) sees neither.
+    expect(reg.availableCapacity('ws1', 'local').agents).toBe(0)
+  })
+})
+
 describe('AgentRegistry — GC', () => {
   it('sweeps sessions with no agents, no submission, and 15 min of silence', () => {
     let now = 1_000_000

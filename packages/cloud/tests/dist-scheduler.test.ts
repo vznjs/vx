@@ -73,6 +73,7 @@ function fakeAgent(agentId: string, capacity = 1, labels: string[] = []): FakeAg
   const sent: DistServerMessage[] = []
   return {
     agentId,
+    orgId: 'default',
     workspaceId: 'ws1',
     session: 'local',
     commitSha: 'commit-a',

@@ -128,7 +128,7 @@ describe('serve verb removal', () => {
   })
 })
 
-function summary(runId: string, workspaceId: string): RunSummaryRecord {
+function summary(runId: string, workspaceId: string, taskHash = 'h-a'): RunSummaryRecord {
   return {
     v: 2,
     run: {
@@ -169,7 +169,7 @@ function summary(runId: string, workspaceId: string): RunSummaryRecord {
         cacheSource: 'miss',
         exitCode: 0,
         durationMs: 120,
-        hash: 'h-a',
+        hash: taskHash,
       },
     ],
   } as RunSummaryRecord
@@ -375,6 +375,39 @@ describe('platform e2e (real pg + fake S3)', () => {
     expect(
       (await call('GET', `/v1/cache/${hash}`, { bearer: ciToken, redirect: 'manual' })).status,
     ).toBe(404)
+  })
+
+  it('/v1/artifacts joins producing-task provenance from Postgres task_runs', async () => {
+    const wsRes = await call('GET', '/v1/workspaces', { cookie })
+    const { workspaces } = (await wsRes.json()) as { workspaces: { id: string }[] }
+    const wsId = workspaces[0]!.id
+    // A ws-scoped token so the list scope + the provenance workspace both = wsId.
+    const mint = await call('POST', `/v1/admin/orgs/${orgId}/tokens`, {
+      cookie,
+      csrf: true,
+      body: { name: 'prov', tier: 'trusted', workspaceId: wsId },
+    })
+    const wsToken = ((await mint.json()) as { token: string }).token
+    // Ingest a run whose task produced a hex-named artifact hash, then upload it.
+    const hash = 'feedfeedfeedfeed'
+    const pushed = await call('POST', '/v1/ingest', {
+      bearer: ciToken,
+      body: summary('r-prov', 'ws-e2e', hash),
+    })
+    expect(pushed.status).toBe(200)
+    const artBody = Bun.zstdCompressSync(new TextEncoder().encode('prov-bytes'))
+    expect(
+      (await call('PUT', `/v1/cache/${hash}`, { bearer: wsToken, rawBody: artBody })).status,
+    ).toBe(200)
+    // The list carries the producing task/run joined from task_runs.
+    const listed = await call('GET', '/v1/artifacts', { bearer: wsToken })
+    expect(listed.status).toBe(200)
+    const { artifacts } = (await listed.json()) as {
+      artifacts: Array<{ hash: string; task?: { project: string; task: string; runId?: string } }>
+    }
+    const entry = artifacts.find((a) => a.hash === hash)
+    expect(entry).toBeDefined()
+    expect(entry!.task).toEqual({ project: 'a', task: 'build', runId: 'r-prov' })
   })
 
   it('the serve-era /version handshake is gone', async () => {

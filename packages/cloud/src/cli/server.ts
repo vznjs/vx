@@ -25,7 +25,12 @@ import { hasOrgRole, resolvePrincipal } from '../auth/rbac.js'
 import { lookupToken } from '../auth/tokens.js'
 import { DEFAULT_PRINCIPAL, type Principal } from '../artifact-store.js'
 import { S3Backend } from '../blob/s3.js'
-import { loadUiHtmlPath, startServe, type ResolvedS3Config } from './serve.js'
+import {
+  loadUiHtmlPath,
+  startServe,
+  type ArtifactProvenanceResolver,
+  type ResolvedS3Config,
+} from './serve.js'
 
 const NIL_UUID = '00000000-0000-0000-0000-000000000000'
 
@@ -345,7 +350,18 @@ export async function startServer(opts: {
   // surfaces resolve to a Postgres-served Response here; the machine surfaces
   // (native cache wire, agents, dist, streaming, SPA) fall through to the serve
   // with just the resolved principal.
-  const gate = async (req: Request, url: URL): Promise<Response | { principal: Principal }> => {
+  type Grant = { principal: Principal; provenance?: ArtifactProvenanceResolver }
+
+  // `/v1/artifacts` provenance joins Postgres `task_runs`, workspace-clamped.
+  // The list itself is scoped by the principal's cache prefix (org-partitioned),
+  // so the provenance resolver never leaks across the tenant boundary; a foreign
+  // / absent workspace resolves to null → no provenance (never a cross-org leak).
+  const artifactsGrant = async (principal: Principal, wsId: string | null): Promise<Grant> =>
+    wsId !== null
+      ? { principal, provenance: (hashes) => analytics.provenanceForHashes(wsId, hashes) }
+      : { principal }
+
+  const gate = async (req: Request, url: URL): Promise<Response | Grant> => {
     const authRes = await handleAuthRoutes(req, url, authCtx)
     if (authRes !== null) return authRes
     if (url.pathname === '/v1/meta') {
@@ -399,13 +415,18 @@ export async function startServer(opts: {
       // Cache scopes are tenant-partitioned (§8.1): the token's org + its
       // bound workspace (org-wide → the shared `_org` segment) + its immutable
       // tier — all server-derived, `org/<orgId>/ws/<wsId>/<tier>[/<sub>]`.
-      return {
-        principal: {
-          orgId: principal.orgId,
-          ...(principal.workspaceId !== undefined ? { workspaceId: principal.workspaceId } : {}),
-          tier: principal.tier,
-        },
+      const tokenPrincipal: Principal = {
+        orgId: principal.orgId,
+        ...(principal.workspaceId !== undefined ? { workspaceId: principal.workspaceId } : {}),
+        tier: principal.tier,
       }
+      if (p === '/v1/artifacts') {
+        const wsId =
+          principal.workspaceId ??
+          (await analytics.resolveReadWorkspace(principal.orgId, url.searchParams.get('ws')))
+        return artifactsGrant(tokenPrincipal, wsId)
+      }
+      return { principal: tokenPrincipal }
     }
 
     // Session. The token-only machine surfaces (cache wire, agents, WS) are
@@ -432,9 +453,20 @@ export async function startServer(opts: {
     if (isAnalyticsSurface(p, req.method)) {
       return dispatchAnalytics(req, url, { orgId, isToken: false })
     }
-    // A session hitting a non-analytics gated surface (mcp, artifacts,
-    // streaming, run WS): an org-wide trusted principal (no workspace binding —
-    // a session reads via `?ws=`, not a token scope).
+    // A session reading `/v1/artifacts`: scope the list to the requested (or
+    // most-recent) workspace so the entries + their provenance align.
+    if (p === '/v1/artifacts') {
+      const wsId = await analytics.resolveReadWorkspace(orgId, url.searchParams.get('ws'))
+      const principalForList: Principal = {
+        orgId,
+        ...(wsId !== null ? { workspaceId: wsId } : {}),
+        tier: 'trusted',
+      }
+      return artifactsGrant(principalForList, wsId)
+    }
+    // A session hitting another non-analytics gated surface (mcp, streaming,
+    // run WS): an org-wide trusted principal (no workspace binding — a session
+    // reads via `?ws=`, not a token scope).
     return { principal: { orgId, tier: 'trusted' } }
   }
 

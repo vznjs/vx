@@ -208,6 +208,16 @@ async function executeRequest(
   }
 }
 
+/**
+ * Resolve producing-task provenance for a set of artifact hashes — most-recent
+ * project/task/runId per hash. The platform gate binds this to Postgres
+ * `task_runs` (workspace-clamped); the transitional path leaves it undefined
+ * and `/v1/artifacts` falls back to the SQLite ingest store.
+ */
+export type ArtifactProvenanceResolver = (
+  hashes: readonly string[],
+) => Promise<Map<string, { project: string; task: string; runId: string | null }>>
+
 export interface ServeServer {
   origin: string
   /** The server's runtime identity (the `/v1/meta` name). */
@@ -475,7 +485,10 @@ export async function startServe(opts: {
   gate?: (
     req: Request,
     url: URL,
-  ) => Promise<Response | { principal: Principal; ingest?: IngestStore }>
+  ) => Promise<
+    | Response
+    | { principal: Principal; ingest?: IngestStore; provenance?: ArtifactProvenanceResolver }
+  >
   onRun?: (request: RunRequest, ok: boolean) => void
 }): Promise<ServeServer> {
   // One registry for the service's whole lifetime — concurrent runs share
@@ -747,6 +760,7 @@ export async function startServe(opts: {
       const dispatch = (
         principal: Principal,
         store: IngestStore,
+        provenanceResolver?: ArtifactProvenanceResolver,
       ): Response | Promise<Response> | undefined => {
         // CSWSH / drive-by defense: gate the state-changing WS channels and the
         // live SSE streams on the Origin (a token, when set, is a second gate;
@@ -777,6 +791,7 @@ export async function startServe(opts: {
               url.searchParams.get('ws') ?? '',
               url.searchParams.get('session') ?? '',
               url.searchParams.get('commit') ?? undefined,
+              principal.orgId,
             ),
           )
         }
@@ -914,38 +929,48 @@ export async function startServe(opts: {
               req.headers.get('x-vx-cache-scope'),
               limit,
             )
-            const provenance = new Map<
+            let provenance = new Map<
               string,
               { project: string; task: string; runId: string | null }
             >()
+            const hashes = entries.map((e) => e.hash)
             try {
-              const db = store.db(wsParam ?? store.defaultWorkspaceId())
-              if (db !== undefined && entries.length > 0) {
-                const hashes = entries.map((e) => e.hash)
-                // IN-lists chunked at 900 (SQLite's parameter ceiling — the
-                // prune precedent); ORDER BY started_at DESC + first-wins
-                // resolves each hash to its most recent producing row.
-                for (let i = 0; i < hashes.length; i += 900) {
-                  const chunk = hashes.slice(i, i + 900)
-                  const rows = db
-                    .query<
-                      { hash: string; project: string; task: string; run_id: string | null },
-                      string[]
-                    >(
-                      `SELECT hash, project, task, run_id FROM runs
-                     WHERE hash IN (${chunk.map(() => '?').join(',')})
-                     ORDER BY started_at DESC`,
-                    )
-                    .all(...chunk)
-                  for (const r of rows) {
-                    if (!provenance.has(r.hash)) {
-                      provenance.set(r.hash, { project: r.project, task: r.task, runId: r.run_id })
+              if (provenanceResolver !== undefined) {
+                // Platform mode: the producing task/run joins Postgres
+                // `task_runs` (workspace-clamped), resolved in the gate.
+                if (hashes.length > 0) provenance = await provenanceResolver(hashes)
+              } else {
+                const db = store.db(wsParam ?? store.defaultWorkspaceId())
+                if (db !== undefined && hashes.length > 0) {
+                  // IN-lists chunked at 900 (SQLite's parameter ceiling — the
+                  // prune precedent); ORDER BY started_at DESC + first-wins
+                  // resolves each hash to its most recent producing row.
+                  for (let i = 0; i < hashes.length; i += 900) {
+                    const chunk = hashes.slice(i, i + 900)
+                    const rows = db
+                      .query<
+                        { hash: string; project: string; task: string; run_id: string | null },
+                        string[]
+                      >(
+                        `SELECT hash, project, task, run_id FROM runs
+                       WHERE hash IN (${chunk.map(() => '?').join(',')})
+                       ORDER BY started_at DESC`,
+                      )
+                      .all(...chunk)
+                    for (const r of rows) {
+                      if (!provenance.has(r.hash)) {
+                        provenance.set(r.hash, {
+                          project: r.project,
+                          task: r.task,
+                          runId: r.run_id,
+                        })
+                      }
                     }
                   }
                 }
               }
             } catch {
-              // no ingest db yet / schema drift — provenance stays absent
+              // no ingest db yet / schema drift / down pg — provenance absent
             }
             return jsonResponse({
               artifacts: entries.map((e) => {
@@ -1408,7 +1433,9 @@ export async function startServe(opts: {
         return opts
           .gate(req, url)
           .then((out) =>
-            out instanceof Response ? out : dispatch(out.principal, out.ingest ?? ingest),
+            out instanceof Response
+              ? out
+              : dispatch(out.principal, out.ingest ?? ingest, out.provenance),
           )
       }
 
@@ -1450,7 +1477,7 @@ export async function startServe(opts: {
   // else → close); after registration every message routes through the
   // registry to the session's live submission.
   const handleAgentSocket = (ws: Bun.ServerWebSocket<ServeWsData>, text: string): void => {
-    const data = ws.data as { role: 'agent'; agent?: RegisteredAgent }
+    const data = ws.data as { role: 'agent'; principal: Principal; agent?: RegisteredAgent }
     let msg: DistClientMessage
     try {
       msg = JSON.parse(text) as DistClientMessage
@@ -1466,22 +1493,28 @@ export async function startServe(opts: {
         }
         return
       }
-      const agent = registry.hello(msg, {
-        send: (m: DistServerMessage) => {
-          try {
-            ws.send(JSON.stringify(m))
-          } catch {
-            // agent vanished; cleanup happens on close
-          }
+      // The org is SERVER-derived from the agent's token (never the wire) and
+      // keys the session — a cross-org agent can never join another's pool.
+      const agent = registry.hello(
+        msg,
+        {
+          send: (m: DistServerMessage) => {
+            try {
+              ws.send(JSON.stringify(m))
+            } catch {
+              // agent vanished; cleanup happens on close
+            }
+          },
+          close: () => {
+            try {
+              ws.close()
+            } catch {
+              // already closed
+            }
+          },
         },
-        close: () => {
-          try {
-            ws.close()
-          } catch {
-            // already closed
-          }
-        },
-      })
+        data.principal.orgId,
+      )
       if (agent !== null) data.agent = agent
       return
     }
@@ -1547,7 +1580,14 @@ export async function startServe(opts: {
         // history → an empty map → byte-identical FIFO dispatch.
         const durationHints = taskDurationHints(ingest.db(submit.workspaceId))
         const scheduler = new DistScheduler({ submit, store: scopedStore, send, durationHints })
-        const bound = registry.beginSubmission(submit.workspaceId, submit.session, scheduler)
+        // The submitter's token org keys the session (server-derived), so a
+        // pool is isolated per tenant and a `dist:submit` runs under its ci token.
+        const bound = registry.beginSubmission(
+          submit.workspaceId,
+          submit.session,
+          scheduler,
+          principal.orgId,
+        )
         if ('error' in bound) {
           send({ t: 'error', message: bound.error })
           return
