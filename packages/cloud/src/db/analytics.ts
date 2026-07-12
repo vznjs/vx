@@ -595,6 +595,28 @@ function pickPercentile(sorted: number[], q: number): number | undefined {
   return sorted[idx]
 }
 
+/** Collision-free composite map key for a (project, task) pair — either field
+ *  may contain spaces or `#`. */
+function pairKey(project: string, task: string): string {
+  return JSON.stringify([project, task])
+}
+
+/** Group a flat `{project, task, duration_ms}` result into ascending
+ *  per-pair duration arrays — the batched equivalent of `successDurations`. */
+function durationsByPair(
+  rows: { project: string; task: string; duration_ms: number }[],
+): Map<string, number[]> {
+  const map = new Map<string, number[]>()
+  for (const r of rows) {
+    const key = pairKey(r.project, r.task)
+    const list = map.get(key)
+    if (list) list.push(r.duration_ms)
+    else map.set(key, [r.duration_ms])
+  }
+  for (const list of map.values()) list.sort((a, b) => a - b)
+  return map
+}
+
 /** Build one TaskHistoryRow from a pair's aggregate + its ascending success
  *  durations. Shared by the batched `getHistory` and the single-pair
  *  `historyFor` so their output can never drift. */
@@ -1334,18 +1356,10 @@ export class Analytics {
         WHERE workspace_id = ${workspaceId} ${fProject} ${fTask}
           AND (cache_hit IS NULL OR cache_hit = false) AND status = 'success'
       ) t WHERE rn <= 50`
-    // Collision-free composite key — project / task may contain spaces.
-    const histKey = (project: string, task: string): string => JSON.stringify([project, task])
-    const aggByKey = new Map(aggRows.map((r) => [histKey(r.project, r.task), r]))
-    const dursByKey = new Map<string, number[]>()
-    for (const r of durRows) {
-      const key = histKey(r.project, r.task)
-      const list = dursByKey.get(key)
-      if (list) list.push(r.duration_ms)
-      else dursByKey.set(key, [r.duration_ms])
-    }
+    const aggByKey = new Map(aggRows.map((r) => [pairKey(r.project, r.task), r]))
+    const dursByKey = durationsByPair(durRows)
     return pairs.map((p) => {
-      const key = histKey(p.project, p.task)
+      const key = pairKey(p.project, p.task)
       const agg = aggByKey.get(key) ?? {
         project: p.project,
         task: p.task,
@@ -1356,8 +1370,7 @@ export class Analytics {
         total_duration_ms: null,
         last_seen_at: null,
       }
-      const sorted = (dursByKey.get(key) ?? []).slice().sort((a, b) => a - b)
-      return historyRowFrom(p.project, p.task, agg, sorted)
+      return historyRowFrom(p.project, p.task, agg, dursByKey.get(key) ?? [])
     })
   }
 
@@ -1898,13 +1911,25 @@ export class Analytics {
       FROM task_runs WHERE workspace_id = ${workspaceId}
       GROUP BY project, task
       HAVING count(*) >= 3 OR SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END) > 0`
-    const out: FlakyTask[] = []
-    for (const p of pairs) {
-      const sorted = await this.successDurations(workspaceId, p.project, p.task)
+    if (pairs.length === 0) return []
+    // ONE windowed durations query for ALL candidates (the last-50 successful
+    // non-hit rows per pair — the same set `successDurations` fetched),
+    // replacing the former per-candidate round-trip.
+    const durRows = await this.sql<{ project: string; task: string; duration_ms: number }[]>`
+      SELECT project, task, duration_ms FROM (
+        SELECT project, task, duration_ms,
+               ROW_NUMBER() OVER (PARTITION BY project, task ORDER BY started_at DESC) AS rn
+        FROM task_runs
+        WHERE workspace_id = ${workspaceId}
+          AND (cache_hit IS NULL OR cache_hit = false) AND status = 'success'
+      ) t WHERE rn <= 50`
+    const dursByKey = durationsByPair(durRows)
+    const out: FlakyTask[] = pairs.map((p) => {
+      const sorted = dursByKey.get(pairKey(p.project, p.task)) ?? []
       const p50 = pickPercentile(sorted, 0.5)
       const p99 = pickPercentile(sorted, 0.99)
       const ratio = p50 !== undefined && p50 > 0 && p99 !== undefined ? p99 / p50 : undefined
-      out.push({
+      return {
         id: `${p.project}#${p.task}`,
         project: p.project,
         task: p.task,
@@ -1917,8 +1942,8 @@ export class Analytics {
         durationTailRatio: ratio,
         p50DurationMs: p50,
         p99DurationMs: p99,
-      })
-    }
+      }
+    })
     return out
       .filter(
         (r) =>
