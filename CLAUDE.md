@@ -208,6 +208,66 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-12**: **Cloud debug + performance pass — two parallel hostile
+  audits (bugs + perf) drove five correctness fixes and five hot-path
+  round-trip eliminations (owner: "Also debug for issues and bugs. Make sure
+  performance of cloud is top notch")**. Two read-only reviewers swept
+  `packages/cloud/src/**`. **Bug fixes (`d5a7978`):** (1) MEDIUM-HIGH — the
+  ingest/logs/catalog/MCP body readers checked size only AFTER `req.text()`, so
+  a chunked (no-content-length) body bypassed the pre-check and buffered up to
+  the 513 MiB server-wide `maxRequestBodySize` — the SAME class as the batch
+  endpoint's already-fixed streaming cap; extracted that cap to
+  `src/http-body.ts` (`readTextBounded`) and applied it to every one of those
+  paths + the artifact store. (2) MEDIUM — an empty / cyclic / dangling-dep
+  `dist:submit` graph hung `DistScheduler` forever (`checkFinish` only fires
+  from `complete()`), leaking the session + the submitter socket; validate the
+  submitted graph is a well-formed DAG up front (empty → clean finish via a
+  terminal `checkFinish`; cycle/unknown-dep → `abort`). (3) MEDIUM — SSE/NDJSON
+  subscribers were removed only via `req.signal` abort; added a
+  `ReadableStream.cancel()` fallback so dropped `/stream`/`/events` connections
+  can't accumulate in the broadcast set. (4) LOW-MED — analytics read routes
+  500'd on a malformed percent-encoding (`decodeURIComponent`→URIError); wrapped
+  them to answer 400, and folded `getRun`'s `Math.min(...tasks)` spread (up to
+  100k args) to a reduce. (5) doc — corrected `createPartitionMovingDefault`'s
+  docstring. The bug agent confirmed the timers, spool lifecycle, registry/
+  scheduler races, migrations, and auth handling are otherwise sound. **Perf
+  (`1329b57`, `7201c34`, `94efe4b`):** the audit's highest-value, provably-safe
+  wins. (F1) **Auth token lookups memoized** (5s TTL keyed by token-hash) — the
+  cache wire is the highest-QPS surface and did one Postgres round-trip per
+  request before any S3 work; a distributed build issues thousands. Token
+  principals are immutable except revoke → cleared in-process on `revokeToken`
+  (a revoked bearer stops authenticating at once), bounded by TTL across
+  replicas, and each entry's expiry is capped at the token's OWN `expires_at`
+  so a token expiring within the window is never served stale (the two auth
+  traps — revoke-kills-bearer + expiry-within-TTL — are pinned by existing +
+  new tests). Session principals are NOT memoized (their invalidation surface —
+  role/membership/disable — is deferred; the token surface is the QPS
+  dominator). (F7) **taskDurationHints memoized** per workspace (30s) — a
+  full-history GROUP BY that ran synchronously on EVERY `dist:submit` (the
+  latency-critical submit path); the hints are advisory (LPT ordering), so TTL
+  staleness never affects a run. (F6) **compareRuns** finds the previous run via
+  a single-row index seek on the `invocations` header table instead of a
+  `GROUP BY run_id` over all prior task_runs, comparing in one time frame. (F2)
+  **getHistory** 1+2N per-pair fan-out (up to 101 sequential round-trips for a
+  50-task page) → TWO set-based queries (one GROUP BY + one ROW_NUMBER-windowed
+  durations), the pair set/order + per-row math preserved exactly (shared
+  `historyRowFrom`), **pinned by a differential test asserting the batched
+  all-pairs result deep-equals the per-pair filtered result**. (F4)
+  **getFlakiestTasks** 1+N per-candidate `successDurations` → one windowed
+  durations query (shared `durationsByPair`/`pairKey` helpers), byte-identical.
+  No CACHE/SCHEMA/wire change; every query rewrite is output-preserving. Core CI
+  - cloud (403 pass) green throughout. **DEFERRED (documented, tracked
+    follow-up — need the correlated-subquery→CTE rewrite the audit specified +
+    differential tests, or are lower-frequency):** F3 `listProjects` (the worst
+    unlisted N+1 — loops `getCacheSavings`'s correlated subquery per project → the
+    `avg_dur` CTE join) + the `getCacheSavings`/`getRegressions` CTE rewrites;
+    Finding 5 (lookback bounds + a `status='failed'` partial index so dashboard
+    aggregates prune partitions); Finding 8 (skip the confirming S3 HEAD before a
+    TRUSTED cache GET's 307 — single-scope, the client already treats a post-307
+    404 as a miss); the SESSION auth memo. **Bug residuals left (LOW/cosmetic):**
+    `getRunHeatmap` local-tz bucketing; a malformed `wallclockNs` string aborting
+    a whole run's ingest.
+
 - **2026-07-12**: **HTTP/3 + connection multiplexing via an edge proxy — a
   ready Caddy `edge` compose profile terminating h1/h2/h3 (owner: "Support H3
   as well. So you can use one connection with multiple requests")**. Verified
