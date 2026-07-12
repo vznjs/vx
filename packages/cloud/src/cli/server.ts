@@ -109,6 +109,13 @@ export interface ServerConfig {
    * server never writes here.
    */
   dataDir: string
+  /**
+   * Extra browser origins allowed to open the WS/SSE handshakes (a dashboard
+   * hosted on a different origin than this server). No Origin (CLI/agent) and
+   * same-origin are always allowed; every OTHER cross-origin browser handshake
+   * is refused (CSWSH defense). From `VX_CLOUD_ALLOW_ORIGIN` (comma-separated).
+   */
+  allowedOrigins: readonly string[]
 }
 
 function boolEnv(v: string | undefined): boolean {
@@ -215,6 +222,10 @@ export function resolveServerConfig(
       openSignup: boolEnv(env['VX_CLOUD_OPEN_SIGNUP']),
       openOrgCreate: boolEnv(env['VX_CLOUD_OPEN_ORG_CREATE']),
       dataDir: read('VX_CLOUD_DATA_DIR') ?? path.join(process.cwd(), '.vx-cloud-data'),
+      allowedOrigins: (read('VX_CLOUD_ALLOW_ORIGIN') ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0),
     },
   }
 }
@@ -357,6 +368,22 @@ export async function startServer(opts: {
       ? { principal, provenance: (hashes) => analytics.provenanceForHashes(wsId, hashes) }
       : { principal }
 
+  // CSWSH defense: a cross-origin browser page must not open the WS/SSE
+  // channels. Browsers ALWAYS send `Origin` on a WS/EventSource handshake; a
+  // CLI client (an agent, a `vx run` submitter) sends none. Allow: no Origin
+  // (CLI), same-origin, or an operator-configured origin (a hosted dashboard).
+  const allowedOriginSet = new Set(config.allowedOrigins)
+  const originAllowed = (req: Request, url: URL): boolean => {
+    const origin = req.headers.get('origin')
+    if (origin === null) return true
+    if (allowedOriginSet.has(origin)) return true
+    try {
+      return new URL(origin).host === url.host
+    } catch {
+      return false
+    }
+  }
+
   const gate = async (req: Request, url: URL): Promise<Response | Grant> => {
     const authRes = await handleAuthRoutes(req, url, authCtx)
     if (authRes !== null) return authRes
@@ -384,6 +411,12 @@ export async function startServer(opts: {
     const p = url.pathname
     const isUpgrade = req.headers.get('upgrade')?.toLowerCase() === 'websocket'
     const isStream = p === '/events' || p === '/v1/events' || p === '/stream'
+    // CSWSH: refuse a cross-origin browser WS/SSE handshake before touching
+    // auth (the token, when present, is a second gate; the Origin check blocks
+    // a drive-by page from opening the channels at all).
+    if ((isUpgrade || isStream) && !originAllowed(req, url)) {
+      return refuse('origin not allowed', 403)
+    }
     const gated = isUpgrade || isStream || p === '/mcp' || p.startsWith('/v1/')
     // Everything else is the SPA catch-all — static code; every data call it
     // makes lands on a gated surface.

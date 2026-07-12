@@ -11,6 +11,7 @@ import type { RunSummaryRecord } from '@vzn/vx'
 import { resolveServerConfig, startServer, type PlatformServer } from '../src/cli/server.js'
 import { ephemeralPg } from './helpers/ephemeral-pg.js'
 import { startFakeS3, type FakeS3 } from './helpers/fake-s3.js'
+import { bootPlatform } from './helpers/platform.js'
 
 const BASE_ENV = {
   DATABASE_URL: 'postgres://vx@localhost/vx',
@@ -531,5 +532,94 @@ describe('platform e2e (real pg + fake S3)', () => {
       String,
     )
     expect(files.some((f) => /\.(db|sqlite|sqlite3)$/.test(f))).toBe(false)
+  })
+})
+
+// Regression pins for the P4-server hostile-review findings (2026-07-12):
+// (1) the live SSE/NDJSON broadcast must be org-scoped — a HIGH cross-tenant
+// leak where any authenticated principal on `/stream` saw every tenant's run
+// events; (2) the CSWSH Origin gate the fold dropped must be restored.
+describe('P4-server review: live-stream tenant isolation + CSWSH origin gate', () => {
+  const collect = (
+    origin: string,
+    token: string,
+  ): { stop: () => Promise<void>; text: () => string } => {
+    const ac = new AbortController()
+    let text = ''
+    const done = fetch(`${origin}/stream?token=${token}`, { signal: ac.signal })
+      .then(async (res) => {
+        const reader = res.body!.getReader()
+        const dec = new TextDecoder()
+        for (;;) {
+          const { done: d, value } = await reader.read()
+          if (d) break
+          if (value !== undefined) text += dec.decode(value)
+        }
+      })
+      .catch(() => {})
+    return { stop: () => (ac.abort(), done), text: () => text }
+  }
+
+  it('scopes /stream events to the subscriber org (no cross-tenant leak)', async () => {
+    const p = await bootPlatform()
+    try {
+      // A second, distinct tenant (org B) + its own ci token.
+      const admin = {
+        cookie: `vx_session=${p.cookie}`,
+        'content-type': 'application/json',
+        'x-vx-csrf': '1',
+      }
+      const mkB = await fetch(`${p.origin}/v1/admin/orgs`, {
+        method: 'POST',
+        headers: admin,
+        body: JSON.stringify({ slug: 'orgb', name: 'Org B' }),
+      })
+      const orgB = ((await mkB.json()) as { orgId: string }).orgId
+      const tokB = await fetch(`${p.origin}/v1/admin/orgs/${orgB}/tokens`, {
+        method: 'POST',
+        headers: admin,
+        body: JSON.stringify({ name: 'ci', tier: 'trusted' }),
+      })
+      const tokenB = ((await tokB.json()) as { token: string }).token
+
+      const a = collect(p.origin, p.ciToken) // org A subscriber
+      const b = collect(p.origin, tokenB) // org B subscriber (the attacker tenant)
+      await Bun.sleep(200) // let both streams register on the subscriber set
+
+      // Emit an event on an org-A run WS: a {t:'run'} rejection flows through
+      // send() → broadcast(), exactly the path a real dist run's stdout takes.
+      const ws = new WebSocket(`${p.origin.replace('http', 'ws')}/?token=${p.ciToken}`)
+      await new Promise<void>((resolve, reject) => {
+        ws.addEventListener('open', () => resolve())
+        ws.addEventListener('error', () => reject(new Error('run WS failed to open')))
+      })
+      ws.send(JSON.stringify({ t: 'run' }))
+      await Bun.sleep(400) // propagate
+      ws.close()
+      await a.stop()
+      await b.stop()
+
+      expect(a.text()).toContain('run delegation was removed') // org A got its OWN event
+      expect(b.text()).toBe('') // org B (a different tenant) got NOTHING
+    } finally {
+      await p.stop()
+    }
+  })
+
+  it('refuses a cross-origin SSE/stream handshake (CSWSH)', async () => {
+    const p = await bootPlatform()
+    try {
+      for (const streamPath of ['/v1/events', '/events', '/stream']) {
+        const evil = await fetch(`${p.origin}${streamPath}?token=${p.ciToken}`, {
+          headers: { origin: 'https://evil.example.com' },
+        })
+        expect(evil.status).toBe(403)
+        await evil.body?.cancel().catch(() => {})
+      }
+      // No-Origin streams (a CLI/agent) are allowed and functional — exercised
+      // by the tenant-isolation test above, which opens `/stream` with no Origin.
+    } finally {
+      await p.stop()
+    }
   })
 })

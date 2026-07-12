@@ -140,16 +140,24 @@ export async function startPlatformHttp(opts: PlatformHttpOptions): Promise<Plat
   )
   agentSweepTimer.unref?.()
 
-  // Read-only event subscribers (SSE / NDJSON). Each callback gets every event
-  // from every concurrent dist run as a notification envelope.
-  type ReadSubscriber = (env: Envelope) => void
+  // Read-only event subscribers (SSE / NDJSON). Each subscriber carries the
+  // org it is authenticated to; a run's events are delivered ONLY to
+  // subscribers in the SAME org — a live dist run's stdout/stderr + command
+  // lines are tenant data and must never cross the org boundary (the platform
+  // is multi-tenant, so a global fan-out would leak every tenant's runs to any
+  // authenticated principal that opens `/stream`).
+  interface ReadSubscriber {
+    fn: (env: Envelope) => void
+    orgId: string
+  }
   const readSubscribers = new Set<ReadSubscriber>()
-  const broadcast = (msg: ServerMessage): void => {
+  const broadcast = (msg: ServerMessage, orgId: string): void => {
     if (readSubscribers.size === 0) return
     const env = serverMessageToEnvelope(msg)
-    for (const fn of readSubscribers) {
+    for (const sub of readSubscribers) {
+      if (sub.orgId !== orgId) continue // tenant isolation: same-org only
       try {
-        fn(env)
+        sub.fn(env)
       } catch {
         // a wedged subscriber can't break the run; drop silently
       }
@@ -160,11 +168,15 @@ export async function startPlatformHttp(opts: PlatformHttpOptions): Promise<Plat
     req: Request,
     encode: (env: Envelope) => string,
     contentType: string,
+    orgId: string,
   ): Response => {
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         const enc = new TextEncoder()
-        const sub: ReadSubscriber = (env) => controller.enqueue(enc.encode(encode(env)))
+        const sub: ReadSubscriber = {
+          fn: (env) => controller.enqueue(enc.encode(encode(env))),
+          orgId,
+        }
         readSubscribers.add(sub)
         req.signal.addEventListener('abort', () => {
           readSubscribers.delete(sub)
@@ -255,12 +267,14 @@ export async function startPlatformHttp(opts: PlatformHttpOptions): Promise<Plat
         })
       })()
     }
-    // Live event streams — the same envelopes the WS sees, one-way.
+    // Live event streams — the same envelopes the WS sees, one-way. Scoped to
+    // the subscriber's OWN org (the principal is server-derived): a session is
+    // clamped to one org, a ci token to its token's org.
     if (url.pathname === '/events' || url.pathname === '/v1/events') {
-      return streamResponse(req, encodeForSSE, 'text/event-stream')
+      return streamResponse(req, encodeForSSE, 'text/event-stream', principal.orgId)
     }
     if (url.pathname === '/stream') {
-      return streamResponse(req, encodeForNDJSON, 'application/x-ndjson')
+      return streamResponse(req, encodeForNDJSON, 'application/x-ndjson', principal.orgId)
     }
     // A run submitter's WS (dist:submit). Anything else is the SPA catch-all.
     if (srv.upgrade(req, { data: { role: 'run', principal } })) return undefined
@@ -357,8 +371,12 @@ export async function startPlatformHttp(opts: PlatformHttpOptions): Promise<Plat
       } catch {
         return
       }
+      // The emitting run's org (server-derived at upgrade) scopes the
+      // broadcast, so a live run's events reach only same-org stream
+      // subscribers — never another tenant's.
+      const emitterOrgId = ws.data?.role === 'run' ? ws.data.principal.orgId : undefined
       const send = (m: ServerMessage): void => {
-        broadcast(m)
+        if (emitterOrgId !== undefined) broadcast(m, emitterOrgId)
         try {
           ws.send(JSON.stringify(m))
         } catch {
