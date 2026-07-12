@@ -128,7 +128,7 @@ through a small cache plugin (see
   broken artifact. `vx migrate` fills these in from your `turbo.json`.
 - **One command per task.** No `commands` array — chain with `&&` or split
   into `dependsOn`-linked tasks (which also lets each step cache).
-- **Bun is required** (≥ 1.3.14); there's no Node runtime for vx itself.
+- **Bun is required** (≥ 1.3); there's no Node runtime for vx itself.
 
 ## Next steps
 

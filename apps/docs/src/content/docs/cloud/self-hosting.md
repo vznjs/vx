@@ -167,8 +167,7 @@ refuses to start, **listing every missing or invalid var at once**.
 | `VX_CLOUD_RETENTION_DAYS` | | Analytics retention window (default `180`) |
 | `VX_CLOUD_OPEN_SIGNUP` | | `1`/`true` keeps public signup open (default: closed after the first admin) |
 | `VX_CLOUD_OPEN_ORG_CREATE` | | `1`/`true` lets any member create orgs |
-| `VX_CLOUD_TLS_CERT` / `VX_CLOUD_TLS_KEY` | | PEM paths, both or neither — in-process TLS (stable HTTPS/1.1); see [Transports](#transports-http2-http3--multiplexing) |
-| `VX_CLOUD_HTTP3` | | `1`/`true` — **experimental** native HTTP/3 on the TLS port (requires the TLS pair + Bun ≥ 1.3.14) |
+| `VX_CLOUD_TLS_CERT` / `VX_CLOUD_TLS_KEY` | | PEM paths, both or neither — in-process TLS (HTTPS/1.1); see [Transports](#transports-http2--multiplexing) |
 | `VX_CLOUD_ALLOW_ORIGIN` | | Extra browser origins allowed on WS/SSE handshakes (comma-separated; CSWSH defense) |
 
 Partial S3 config (endpoint without bucket/credentials) is a **boot-time
@@ -197,7 +196,7 @@ hard error** — the server never silently falls back to local storage.
   proxy for stable HTTP/2, or give it a cert directly (`VX_CLOUD_TLS_CERT` +
   `VX_CLOUD_TLS_KEY`) for in-process HTTPS/1.1. Either way, set
   `VX_CLOUD_BASE_URL` to the `https://` origin so session cookies are marked
-  `Secure`. See [Transports](#transports-http2-http3--multiplexing) just
+  `Secure`. See [Transports](#transports-http2--multiplexing) just
   below.
 
 - **Scale out.** The app is stateless (Postgres + S3 hold all state), so
@@ -205,39 +204,39 @@ hard error** — the server never silently falls back to local storage.
   pre-auth liveness probe. There is no volume to attach to the app
   container.
 
-## Transports: HTTP/2, HTTP/3 & multiplexing
+## Transports: HTTP/2 & multiplexing
 
-The payoff is **one connection, many requests**: with HTTP/2 or HTTP/3 a
-client multiplexes all its concurrent requests over a single connection
-instead of opening a fresh TCP + TLS handshake per request. Priming a large
-graph then costs one handshake, not hundreds — and it compounds with the
+The payoff is **one connection, many requests**: with HTTP/2 a client
+multiplexes all its concurrent requests over a single connection instead of
+opening a fresh TCP + TLS handshake per request. Priming a large graph then
+costs one handshake, not hundreds — and it compounds with the
 [batch cache-existence probe](/vx/cloud/wire-protocol/#cache-wire)
 (`POST /v1/cache/batch`), which already collapses N per-hash `HEAD`s into a
 single request.
 
-`Bun.serve` speaks HTTP/1.1 (and, experimentally, HTTP/3) — it has **no
-HTTP/2 server**. So the stable, recommended way to multiplex is **HTTP/2 at
-an edge proxy**.
+Bun has **no single-port h1+h2 server** today (`Bun.serve` is HTTP/1.1;
+Bun's `node:http2` server is h2-only, with no HTTP/1.1 fallback for the
+CLI/WebSocket clients). So HTTP/2 multiplexing lives at an **edge proxy**.
 
-### HTTP/2 at an edge proxy (recommended, stable)
+### HTTP/2 at an edge proxy (recommended)
 
-Terminate the modern transports at an **edge proxy** and let the app speak
-plain HTTP/1.1 to it over the internal network — the universal production
-pattern, and where TLS usually already lives. The compose stack ships a
-ready [Caddy](https://github.com/vznjs/vx/blob/main/packages/cloud/deploy/Caddyfile)
-edge (h1/h2/h3) behind an opt-in profile:
+Terminate TLS + HTTP/2 at the proxy and let the app speak plain HTTP/1.1 to
+it over the internal network — the universal production pattern, and where
+TLS usually already lives. The compose stack ships a ready
+[Caddy](https://github.com/vznjs/vx/blob/main/packages/cloud/deploy/Caddyfile)
+edge (h1/h2) behind an opt-in profile:
 
 ```sh
 VX_CLOUD_SECRET=$(openssl rand -hex 32) VX_CLOUD_BASE_URL=https://localhost \
   docker compose -f packages/cloud/deploy/docker-compose.yml --profile edge up
-# open https://localhost — HTTP/2 is negotiated over ALPN; H3 via Alt-Svc on UDP 443
+# open https://localhost — HTTP/2 is negotiated over ALPN
 ```
 
 The `Caddyfile` global block is the whole story:
 
 ```
 {
-  servers { protocols h1 h2 h3 }
+  servers { protocols h1 h2 }
 }
 
 vx.example.com {
@@ -247,12 +246,12 @@ vx.example.com {
 
 For a real domain, set `VX_CLOUD_DOMAIN=vx.example.com`, drop the
 `tls internal` line so Caddy gets a Let's Encrypt cert over ACME, and set
-`VX_CLOUD_BASE_URL` to the matching `https://` origin. Any h2/h3-capable
-proxy works the same way (nginx, Cloudflare, an L7 load balancer). WebSocket
-and SSE/NDJSON streams bridge transparently through the proxy. (Do not run
+`VX_CLOUD_BASE_URL` to the matching `https://` origin. Any h2-capable proxy
+works the same way (nginx, Cloudflare, an L7 load balancer). WebSocket and
+SSE/NDJSON streams bridge transparently through the proxy. (Do not run
 in-process TLS and an edge proxy at once — pick one TLS terminator.)
 
-### In-process TLS (optional) + experimental HTTP/3
+### In-process TLS (optional)
 
 You can give the server a cert directly so it terminates TLS itself — a
 single-container deploy with no proxy:
@@ -265,24 +264,15 @@ VX_CLOUD_BASE_URL=https://vx.example.com
 
 Both paths are required together (setting one is a boot error) and must be
 readable at boot (a missing cert fails loud, never a silent no-TLS start).
-This serves **stable HTTPS/1.1** — `Bun.serve` has no HTTP/2 server, so it
-adds no multiplexing on its own; for that, put an HTTP/2 proxy in front.
-
-Bun also ships an **experimental** native HTTP/3 (QUIC). Opt in with
-`VX_CLOUD_HTTP3=1` on top of in-process TLS (requires **Bun ≥ 1.3.14**; on
-older Bun the boot refuses rather than silently serving without H3).
-HTTP/1.1 responses then carry an
-`Alt-Svc: h3=…` header so clients auto-upgrade to QUIC on the same port, and
-`/v1/meta` reports `h3: true`; WebSocket and SSE streams keep working over
-the TCP HTTP/1.1 listener. Because it is experimental, prefer HTTP/2 at an
-edge proxy for production multiplexing.
+This serves **HTTPS/1.1** — clients still reuse connections via keep-alive,
+but without h2 multiplexing; for that, put an HTTP/2 proxy in front.
 
 ## HTTP + WS surface
 
 | Path | Purpose | Auth |
 | --- | --- | --- |
 | `GET /health` | Liveness probe | pre-auth |
-| `GET /v1/meta` | Identity + capability flags (`auth: account`, `cacheWire`, `trustTiers`, `artifacts`, `h3`) | pre-auth |
+| `GET /v1/meta` | Identity + capability flags (`auth: account`, `cacheWire`, `trustTiers`, `artifacts`) | pre-auth |
 | `POST /v1/auth/*` | Register / login / logout / invites | session |
 | `/v1/admin/*` | Orgs, members, invites, tokens, workspaces | session (RBAC) |
 | `GET /v1/*` | Analytics reads (`/v1/runs`, `/v1/invocations`, `/v1/cache/stats`, `/v1/why/…`, …) | session or token |

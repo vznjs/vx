@@ -86,10 +86,10 @@ Optional: `VX_CLOUD_S3_REGION` (default `auto`), `VX_CLOUD_S3_PREFIX`,
   The bucket must be reachable from wherever `vx run` executes — cache GETs
   redirect the client to a pre-signed bucket URL.
 - **TLS + multiplexing.** Front the app with a TLS-terminating proxy for
-  stable HTTP/2, or give it a cert directly (`VX_CLOUD_TLS_CERT` +
+  HTTP/2, or give it a cert directly (`VX_CLOUD_TLS_CERT` +
   `VX_CLOUD_TLS_KEY`) for in-process HTTPS/1.1. Set `VX_CLOUD_BASE_URL` to the
-  `https://` origin so session cookies are `Secure`. See **HTTP/2 & HTTP/3
-  multiplexing** below.
+  `https://` origin so session cookies are `Secure`. See **HTTP/2 &
+  connection multiplexing** below.
 - **Scale out.** The app is stateless (Postgres + S3 hold all state) — run
   several replicas behind the load balancer; `/health` is the pre-auth
   liveness probe. There is no volume to attach to the app container.
@@ -98,49 +98,45 @@ For Kubernetes, run the same image as a `Deployment` + `Service` (with
 `Ingress` for TLS) — it needs nothing a plain container doesn't, since it
 keeps no local state.
 
-## HTTP/2 & HTTP/3 multiplexing
+## HTTP/2 & connection multiplexing
 
-With HTTP/2 or HTTP/3 a client multiplexes many **concurrent requests over
-one connection**, with no per-request TCP + TLS handshake — so a fresh CI
-runner priming a large graph pays one handshake, not hundreds. It compounds
-with the **batch cache-existence probe** (`POST /v1/cache/batch`, which
-already turns N per-hash `HEAD`s into one request): fewer requests, and the
-ones that remain share a connection.
+With HTTP/2 a client multiplexes many **concurrent requests over one
+connection**, with no per-request TCP + TLS handshake — so a fresh CI runner
+priming a large graph pays one handshake, not hundreds. It compounds with
+the **batch cache-existence probe** (`POST /v1/cache/batch`, which already
+turns N per-hash `HEAD`s into one request): fewer requests, and the ones
+that remain share a connection.
 
-`Bun.serve` has **no HTTP/2 server** (HTTP/1.1 + experimental HTTP/3 only),
-so the stable, recommended way to multiplex is **HTTP/2 at an edge proxy**.
-To keep certs out of the app (a shared LB, a CDN, or older clients),
-terminate the modern transports at the proxy and let the app speak plain
-HTTP/1.1 to it — the universal production pattern. The compose stack ships a
+Bun has **no single-port h1+h2 server** (`Bun.serve` is HTTP/1.1; Bun's
+`node:http2` server is h2-only with no HTTP/1.1 fallback), so the way to
+multiplex is **HTTP/2 at an edge proxy**: terminate TLS + h2 at the proxy
+and let the app speak plain HTTP/1.1 to it — the universal production
+pattern, which also keeps certs out of the app. The compose stack ships a
 ready **[Caddy](./Caddyfile) edge** behind an opt-in profile — Caddy does
-h1/h2/h3 with one directive and auto-provisions TLS:
+h1/h2 with one directive and auto-provisions TLS:
 
 ```sh
 VX_CLOUD_SECRET=$(openssl rand -hex 32) VX_CLOUD_BASE_URL=https://localhost \
   docker compose -f packages/cloud/deploy/docker-compose.yml --profile edge up
-# open https://localhost — H3 is advertised via Alt-Svc; UDP 443 is published
+# open https://localhost — HTTP/2 is negotiated over ALPN
 ```
 
 For a real deployment set `VX_CLOUD_DOMAIN=ci.example.com`, drop the
 `tls internal` line from the `Caddyfile` (Caddy then gets a Let's Encrypt
 cert over ACME), and set `VX_CLOUD_BASE_URL=https://ci.example.com`. Any
-h2/h3-capable proxy works the same way — nginx, Cloudflare, or an L7 load
+h2-capable proxy works the same way — nginx, Cloudflare, or an L7 load
 balancer; the app needs no change because it speaks plain HTTP/1.1 to the
 proxy over the internal network. WebSocket (agent/dist) and SSE/NDJSON
 streams bridge transparently through the proxy. (Don't run in-process TLS
 and an edge proxy at once — pick one TLS terminator.)
 
-**Experimental native HTTP/3.** Instead of a proxy, the app can terminate
-TLS itself (`VX_CLOUD_TLS_CERT` + `VX_CLOUD_TLS_KEY`, both-or-neither) for
-in-process HTTPS/1.1, and — on **Bun ≥ 1.3.14** — opt into experimental
-native HTTP/3 with `VX_CLOUD_HTTP3=1`. HTTP/1.1 responses then carry
-`Alt-Svc: h3=…` for QUIC auto-upgrade on the same port. Note this compose
-file does NOT wire in-process TLS (its `environment:` block doesn't pass the
-TLS vars, no cert volume is mounted, and the app port isn't published as
-UDP) — the edge profile is the compose-native path. In-process TLS/H3 fits
-bare metal or a plain `docker run` with the PEMs volume-mounted and, for H3,
-the port published as UDP too. Because HTTP/3 in Bun is experimental, prefer
-HTTP/2 at an edge proxy for production.
+**In-process TLS (no proxy).** The app can also terminate TLS itself
+(`VX_CLOUD_TLS_CERT` + `VX_CLOUD_TLS_KEY`, both-or-neither) and serve
+HTTPS/1.1 — clients still reuse connections via keep-alive, just without h2
+multiplexing. Note this compose file does NOT wire it (its `environment:`
+block doesn't pass the TLS vars and no cert volume is mounted) — the edge
+profile is the compose-native path; in-process TLS fits bare metal or a
+plain `docker run` with the PEMs volume-mounted.
 
 ## Connecting a workspace
 

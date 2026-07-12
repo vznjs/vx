@@ -1,13 +1,13 @@
-# vx-cloud edge proxy — terminates HTTP/1.1, HTTP/2, and HTTP/3 (QUIC) in
-# front of the app, which speaks plain HTTP/1.1 over the internal network.
+# vx-cloud edge proxy — terminates TLS + HTTP/1.1 and HTTP/2 in front of the
+# app, which speaks plain HTTP/1.1 over the internal network.
 #
-# WHY an edge proxy: the vx-cloud server is a single Bun.serve process, and
-# Bun.serve has NO HTTP/2 server (HTTP/1.1 + an experimental native HTTP/3
-# opt-in only) — so stable h2 multiplexing lives at the edge, where TLS + the
-# modern transports belong anyway. With h2/h3 the client multiplexes many
-# concurrent requests over ONE connection (no per-request TCP+TLS handshake),
-# which — together with the batch cache-existence probe (`POST /v1/cache/batch`,
-# N HEADs → 1 request) — is what makes priming a 1000s-task graph fast.
+# WHY an edge proxy: the vx-cloud server is a single Bun.serve process, and Bun
+# has no single-port h1+h2 server — so HTTP/2 multiplexing lives at the edge,
+# where TLS + the modern transports belong anyway. With h2 the client
+# multiplexes many concurrent requests over ONE connection (no per-request
+# TCP+TLS handshake), which — together with the batch cache-existence probe
+# (`POST /v1/cache/batch`, N HEADs → 1 request) — is what makes priming a
+# 1000s-task graph fast.
 #
 # Run it:  docker compose --profile edge up
 # Then open  https://localhost  (accept the self-signed cert), or set
@@ -15,10 +15,9 @@
 # Let's Encrypt cert — drop the `tls internal` line below).
 
 {
-	# Advertise + serve all three protocols. H3 rides UDP 443 (published in
-	# docker-compose); Caddy sends the Alt-Svc header so clients upgrade.
+	# HTTP/1.1 for plain clients, HTTP/2 for multiplexing (negotiated via ALPN).
 	servers {
-		protocols h1 h2 h3
+		protocols h1 h2
 	}
 }
 
@@ -35,7 +34,7 @@
 
 	# Everything — the dashboard, the /v1 API, the cache wire, the WebSocket
 	# agent/dist channels, and the SSE/NDJSON streams — proxies to the app.
-	# Caddy transparently bridges h2/h3 WebSockets and long-lived SSE to the
+	# Caddy transparently bridges h2 WebSockets and long-lived SSE to the
 	# app's HTTP/1.1 without buffering.
 	reverse_proxy app:4321 {
 		flush_interval -1

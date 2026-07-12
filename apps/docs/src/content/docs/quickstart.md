@@ -4,7 +4,7 @@ description: Install vx, write your first vx.config.ts, and run a cached, parall
 ---
 
 This guide takes you from nothing to a cached, parallel task graph. It
-assumes **Bun ≥ 1.3.14** and a workspace under **git** (vx hashes inputs via
+assumes **Bun ≥ 1.3** and a workspace under **git** (vx hashes inputs via
 git's index, so a repo is required).
 
 Already have a monorepo with Turborepo or Nx? Jump to

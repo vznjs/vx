@@ -75,9 +75,8 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
 #   VX_CLOUD_S3_BUCKET        the artifact bucket (must already exist)
 #   VX_CLOUD_S3_ACCESS_KEY_ID / VX_CLOUD_S3_SECRET_ACCESS_KEY
 # Optional in-process TLS: mount PEM files into the container (readable by the
-# `bun` user) and set VX_CLOUD_TLS_CERT + VX_CLOUD_TLS_KEY (stable HTTPS/1.1);
-# VX_CLOUD_HTTP3=1 additionally enables experimental HTTP/3 — publish the port
-# as UDP too. Prefer HTTP/2 at an edge proxy for stable multiplexing.
+# `bun` user) and set VX_CLOUD_TLS_CERT + VX_CLOUD_TLS_KEY (stable HTTPS/1.1).
+# For HTTP/2 multiplexing, front the app with an edge proxy instead.
 # See deploy/docker-compose.yml for a full stack (app + postgres + minio).
 ENTRYPOINT ["vx-cloud"]
 CMD ["server"]

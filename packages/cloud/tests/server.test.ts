@@ -87,7 +87,7 @@ describe('resolveServerConfig', () => {
     expect(config.tls).toBeUndefined()
   })
 
-  it('TLS: both cert+key resolve to a tls config; h3 stays off by default', () => {
+  it('TLS: both cert+key resolve to a tls config', () => {
     const res = resolveServerConfig({
       ...BASE_ENV,
       VX_CLOUD_TLS_CERT: '/etc/vx/cert.pem',
@@ -96,8 +96,6 @@ describe('resolveServerConfig', () => {
     expect(res.ok).toBe(true)
     const config = (res as Extract<ReturnType<typeof resolveServerConfig>, { ok: true }>).config
     expect(config.tls).toEqual({ certPath: '/etc/vx/cert.pem', keyPath: '/etc/vx/key.pem' })
-    // HTTP/3 is experimental and opt-in — TLS alone is stable HTTPS/1.1.
-    expect(config.http3).toBe(false)
   })
 
   it('TLS: a partial config (one of cert/key) is a boot error', () => {
@@ -107,24 +105,6 @@ describe('resolveServerConfig', () => {
     const keyOnly = resolveServerConfig({ ...BASE_ENV, VX_CLOUD_TLS_KEY: '/etc/vx/key.pem' })
     expect(keyOnly.ok).toBe(false)
     expect((keyOnly as { errors: string[] }).errors[0]).toContain('VX_CLOUD_TLS_CERT')
-  })
-
-  it('HTTP/3: opt-in on top of TLS resolves http3=true', () => {
-    const res = resolveServerConfig({
-      ...BASE_ENV,
-      VX_CLOUD_TLS_CERT: '/etc/vx/cert.pem',
-      VX_CLOUD_TLS_KEY: '/etc/vx/key.pem',
-      VX_CLOUD_HTTP3: '1',
-    })
-    expect(res.ok).toBe(true)
-    const config = (res as Extract<ReturnType<typeof resolveServerConfig>, { ok: true }>).config
-    expect(config.http3).toBe(true)
-  })
-
-  it('HTTP/3: opt-in without in-process TLS is a boot error', () => {
-    const res = resolveServerConfig({ ...BASE_ENV, VX_CLOUD_HTTP3: '1' })
-    expect(res.ok).toBe(false)
-    expect((res as { errors: string[] }).errors[0]).toContain('VX_CLOUD_HTTP3')
   })
 })
 
@@ -743,7 +723,7 @@ describe('P4-server review: live-stream tenant isolation + CSWSH origin gate', (
 })
 
 // A long-lived (100-year) self-signed cert for localhost, so the test never
-// expires. In-process TLS enables native HTTP/3 on Bun >= 1.3.14.
+// expires. Test-only fixture for the in-process TLS (HTTPS/1.1) path.
 const TEST_TLS_KEY = `-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDI88/+bPfnZ6rz
 teUfSQgliMfADbMJ/fcrbChiMme6f6yvfD92L4sIBHcDksvv8ObmotNkbEdCR6rS
@@ -795,13 +775,7 @@ bf8By88uFDueTR0Dp5aR
 -----END CERTIFICATE-----
 `
 
-// Experimental native HTTP/3 requires Bun >= 1.3.14 (the Bun.serve http3
-// option; the server refuses VX_CLOUD_HTTP3 on older Bun). Only the opt-in
-// test is version-gated — plain in-process TLS works on any supported Bun.
-// CI runs `bun-version: latest`, so it always exercises the H3 path.
-const supportsH3 = Bun.semver.satisfies(Bun.version, '>=1.3.14')
-
-describe('in-process TLS + experimental HTTP/3 opt-in', () => {
+describe('in-process TLS (stable HTTPS/1.1)', () => {
   let s3: FakeS3
   let dataDir: string
 
@@ -826,7 +800,7 @@ describe('in-process TLS + experimental HTTP/3 opt-in', () => {
 
   beforeAll(async () => {
     s3 = startFakeS3({ bucket: 'vx-artifacts' })
-    dataDir = await mkdtemp(path.join(tmpdir(), 'vx-h3-test-'))
+    dataDir = await mkdtemp(path.join(tmpdir(), 'vx-tls-test-'))
     await Bun.write(path.join(dataDir, 'cert.pem'), TEST_TLS_CERT)
     await Bun.write(path.join(dataDir, 'key.pem'), TEST_TLS_KEY)
   })
@@ -836,39 +810,20 @@ describe('in-process TLS + experimental HTTP/3 opt-in', () => {
     await rm(dataDir, { recursive: true, force: true })
   })
 
-  it('TLS alone serves stable HTTPS/1.1 — no Alt-Svc, /v1/meta h3=false', async () => {
+  it('serves stable HTTPS/1.1 with no transport-upgrade advertisement', async () => {
     const server = await bootTls({})
     try {
       expect(server.origin.startsWith('https://')).toBe(true)
       const meta = await fetch(`${server.origin}/v1/meta`, { tls: { rejectUnauthorized: false } })
       expect(meta.status).toBe(200)
-      // No opt-in → no experimental HTTP/3, so no auto-upgrade advertisement.
       expect(meta.headers.get('alt-svc')).toBeNull()
       const body = (await meta.json()) as Record<string, unknown>
-      expect(body['h3']).toBe(false)
       expect(body['cacheWire']).toBe(2)
+      expect('h3' in body).toBe(false)
     } finally {
       await server.stop()
     }
   })
-
-  it.skipIf(!supportsH3)(
-    'VX_CLOUD_HTTP3 opt-in advertises HTTP/3 via Alt-Svc + /v1/meta',
-    async () => {
-      const server = await bootTls({ VX_CLOUD_HTTP3: '1' })
-      try {
-        const meta = await fetch(`${server.origin}/v1/meta`, { tls: { rejectUnauthorized: false } })
-        expect(meta.status).toBe(200)
-        // Bun sets Alt-Svc on HTTP/1.1 responses when http3 is enabled, so clients
-        // auto-upgrade to QUIC on the same port.
-        expect(meta.headers.get('alt-svc')).toMatch(/h3=/)
-        const body = (await meta.json()) as Record<string, unknown>
-        expect(body['h3']).toBe(true)
-      } finally {
-        await server.stop()
-      }
-    },
-  )
 
   it('a boot with an unreadable cert path fails loud (no silent no-TLS start)', async () => {
     const pg = await ephemeralPg()

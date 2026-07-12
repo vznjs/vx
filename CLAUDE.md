@@ -1,6 +1,6 @@
 # `@vzn/vx` — project memory for Claude
 
-A monorepo task runner for pnpm workspaces. Bun-only (≥ 1.3.14). Pre-alpha.
+A monorepo task runner for pnpm workspaces. Bun-only (≥ 1.3). Pre-alpha.
 **You are the project owner.** Maintain it, push it forward, ship.
 
 ## Project identity in one paragraph
@@ -15,7 +15,7 @@ order with parallelism. Cache hits replay stored outputs. Pre-alpha.
 
 | Concern         | Tool                                                                       |
 | --------------- | -------------------------------------------------------------------------- |
-| Runtime         | Bun ≥ 1.3.14 (no Node fallback; 1.3.14 = native HTTP/3 in `Bun.serve`)     |
+| Runtime         | Bun ≥ 1.3 (no Node fallback)                                               |
 | Package manager | Bun (`bun install`, `bun.lock`)                                            |
 | Test runner     | `bun test` (tests import `describe`, `it`, `expect`, `vi` from `bun:test`) |
 | Linter          | `oxlint --type-aware --type-check` (real TS diagnostics via `tsgolint`)    |
@@ -207,6 +207,39 @@ serve, and how many clicks from the dev's entry point?" — a feature
 serving none of them is probably org-analytics scope creep.
 
 ## Decision log
+
+- **2026-07-12**: **OWNER DIRECTIVE — HTTP/3 REMOVED wholesale ("use http2 as 3
+  is experimental" + "remove all mention on http3, http2 is supported through
+  node" citing `import { createSecureServer } from 'node:http2'`).** REVERSES
+  the two native-HTTP/3 entries below: the `Bun.serve({ http3 })` opt-in,
+  `VX_CLOUD_HTTP3`, the `/v1/meta` `h3` flag, the Alt-Svc tests, every h3/QUIC
+  doc mention, and the Caddy edge's `h3` protocol + UDP 443 publish are all
+  GONE (decision-log + frozen design docs stay as history). In-process TLS
+  (`VX_CLOUD_TLS_CERT`/`_KEY`) survives as stable HTTPS/1.1; the Bun floor
+  reverted to ≥ 1.3 (1.3.14 was h3-motivated only). **The owner's node:http2
+  line was empirically probed before deciding** (real 1.3.14 + 1.3.11 binaries,
+  loopback): `node:http2.createSecureServer` DOES work under Bun — a real h2
+  round-trip serves 200 (`httpVersion=2.0`) — **but it is h2-ONLY:
+  `allowHTTP1: true` is unimplemented** (an ALPN `http/1.1` client's bytes are
+  blackholed; a no-ALPN client gets a bogus `HTTP/1.0 403 Forbidden`), and
+  **`server.emit('connection', socket)` injection into node:http/http2 servers
+  is also unimplemented** (hangs; verified NOT a sandbox artifact — the same
+  raw clients round-trip fine against `Bun.serve({tls})` and `node:https`,
+  and `node:tls.createServer` ALPN works). So the ALPN-demux single-port
+  design (tls front routing h2→http2 server / h1→http server) is impossible
+  under Bun today, and an h2-ONLY listener is useless for vx's own machine
+  wire: **Bun's `fetch` is an HTTP/1.1 client** (it cannot connect to an
+  h2-only server — pinned empirically), and the WS agent channels need the
+  h1.1 Upgrade. Conclusion shipped in docs: **HTTP/2 multiplexing = the edge
+  proxy** (Caddy `edge` profile, now `protocols h1 h2`); in-process TLS =
+  HTTPS/1.1 with keep-alive reuse; the CLI's real round-trip win is the batch
+  probe + keep-alive either way. **Revisit in-process h2 (small change: swap
+  `Bun.serve` for `createSecureServer` behind the same `tls` option) when Bun
+  implements `allowHTTP1`.** Tests: TLS e2e reworked to pin HTTPS/1.1 + NO
+  Alt-Svc + NO `h3` meta key; the http3 config tests deleted; the version gate
+  deleted (all TLS tests run on any Bun ≥ 1.3). Docker HEALTHCHECK stays
+  scheme-aware (that fix is TLS-motivated, not h3). NO CACHE/SCHEMA/wire
+  change (`h3` was advisory and unconsumed by any client).
 
 - **2026-07-12**: **Strict review of the day's transport + cloud-perf commits —
   two shipped defects fixed, docs synced to the shipped behavior (owner:

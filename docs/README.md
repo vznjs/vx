@@ -286,7 +286,7 @@ doesn't (deliberately or otherwise) is in
 
 ## A note on Bun
 
-vx assumes Bun ≥ 1.3.14. We rely directly on:
+vx assumes Bun ≥ 1.3. We rely directly on:
 
 - `bun:sqlite` (cache metadata + run history)
 - `Bun.spawn` (`resourceUsage()` for cpu_ms + peak RSS)
