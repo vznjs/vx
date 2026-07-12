@@ -1,20 +1,31 @@
-import { createEffect, createMemo, createResource, createSignal, For, onCleanup, onMount, Show, type ParentComponent } from 'solid-js'
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  onCleanup,
+  onMount,
+  Show,
+  type ParentComponent,
+} from 'solid-js'
 import { A, useLocation, useNavigate } from '@solidjs/router'
 import {
+  acceptInvite,
+  getCurrentUserSignal,
   getMeta,
-  getOrigin,
+  getOrgSignal,
+  getOrgsSignal,
   getOriginSignal,
-  getToken,
-  getTokenSignal,
-  getUnauthorizedSignal,
-  getVersion,
   getWorkspaceSignal,
   getWorkspacesSignal,
+  logout,
   refreshCapabilities,
+  refreshOrgs,
   refreshWorkspaces,
-  setOriginAndPersist,
-  setTokenAndPersist,
+  setOrgAndPersist,
   setWorkspaceAndPersist,
+  type OrgSummary,
 } from '../api.ts'
 import { getLiveActiveSignal, getVisibleSignal } from '../live.ts'
 import { formatCount, formatRelativeTime } from '../format.ts'
@@ -41,21 +52,12 @@ const NAV: NavItem[] = [
 
 export const Shell: ParentComponent = (props) => {
   const origin = getOriginSignal()
-  const token = getTokenSignal()
-  const unauthorized = getUnauthorizedSignal()
+  const user = getCurrentUserSignal()
+  const org = getOrgSignal()
   const navigate = useNavigate()
   const location = useLocation()
-  // Keyed on origin + token so entering a token refetches immediately.
-  const connection = () => `${origin()}|${token()}`
-  const [version] = createResource(connection, async () => {
-    try {
-      return await getVersion()
-    } catch {
-      return null
-    }
-  })
-  // Server identity for the environment badge — /v1/meta is auth-exempt, so
-  // the badge names the server even before a token is entered.
+  // Keyed on origin + user + org so switching account/org refetches metadata.
+  const connection = () => `${origin()}|${user()?.userId ?? ''}|${org()}`
   const [meta] = createResource(connection, async () => {
     try {
       return await getMeta()
@@ -63,19 +65,15 @@ export const Shell: ParentComponent = (props) => {
       return null
     }
   })
-  const [editing, setEditing] = createSignal(false)
-  const [draft, setDraft] = createSignal(getOrigin())
-  const [draftToken, setDraftToken] = createSignal(getToken())
   const [paletteOpen, setPaletteOpen] = createSignal(false)
 
-  // (Re-)probe serve capabilities + workspace list whenever the connection
-  // changes — the Shell is always mounted, so both signals stay fresh for
-  // every view. Both refreshers read the origin/token/workspace signals, so
-  // the effect tracks them (capabilities also re-probe on workspace switch:
-  // the cache-entry probe reads workspace-scoped data).
+  // (Re-)probe serve capabilities + refresh the org/workspace lists whenever
+  // the connection (origin/user/org) changes — the Shell is always mounted, so
+  // these signals stay fresh for every view.
   createEffect(() => {
     void connection()
     refreshCapabilities()
+    refreshOrgs()
     refreshWorkspaces()
   })
 
@@ -92,18 +90,6 @@ export const Shell: ParentComponent = (props) => {
     onCleanup(() => window.removeEventListener('keydown', onKeyDown))
   })
 
-  function commit() {
-    setOriginAndPersist(draft())
-    setTokenAndPersist(draftToken())
-    setEditing(false)
-  }
-
-  function openEditor() {
-    setDraft(getOrigin())
-    setDraftToken(getToken())
-    setEditing(true)
-  }
-
   return (
     <div class="min-h-full flex bg-bg">
       {/* Sidebar — detached floating card */}
@@ -112,7 +98,7 @@ export const Shell: ParentComponent = (props) => {
           <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-accent to-accent-2 flex items-center justify-center text-bg font-bold text-[13px] shadow-glow">
             vx
           </div>
-          <span class="font-mono text-sm text-fg-1 font-semibold tracking-tight">vx insights</span>
+          <span class="font-mono text-sm text-fg-1 font-semibold tracking-tight">vx cloud</span>
         </div>
         <nav class="flex-1 p-2.5 flex flex-col gap-0.5">
           {NAV.map((item) => (
@@ -145,83 +131,19 @@ export const Shell: ParentComponent = (props) => {
           <Breadcrumb pathname={location.pathname} />
           <div class="flex-1" />
           <LiveIndicator />
+          <OrgSwitcher />
           <WorkspaceSwitcher />
-          <Show when={unauthorized() && !editing()}>
-            <button
-              onClick={openEditor}
-              class="flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1 rounded border border-danger/50 text-danger hover:bg-danger/10 transition-colors"
-              title="This server requires a token"
-            >
-              <span class="i-tabler-lock text-[13px]" aria-hidden="true" />
-              <span>401 — token required</span>
-            </button>
-          </Show>
-          <Show
-            when={editing()}
-            fallback={
-              <button
-                onClick={openEditor}
-                class="flex items-center gap-2 text-[11px] font-mono px-2.5 py-1 rounded border border-border hover:border-border-strong hover:bg-surface-hover"
-                title={
-                  meta()
-                    ? `${meta()!.name} · ${origin()} · auth: ${meta()!.auth === 'token' ? 'token required' : 'open'} — click to change connection`
-                    : 'Change connection'
-                }
-              >
-                <StatusDot ok={version() !== null && version() !== undefined} />
-                <Show when={meta()}>
-                  {(m) => <span class="text-fg-1 font-medium">{m().name}</span>}
-                </Show>
-                <span class="text-fg-2">{origin().replace(/^https?:\/\//, '')}</span>
-                <Show when={meta()?.auth === 'token'}>
-                  <span class="i-tabler-lock text-fg-3 text-[12px]" aria-hidden="true" />
-                </Show>
-              </button>
-            }
-          >
-            <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                commit()
-              }}
-              class="flex items-center gap-1"
-            >
-              <input
-                type="url"
-                value={draft()}
-                onInput={(e) => setDraft(e.currentTarget.value)}
-                placeholder="http://localhost:4321"
-                class="text-[12px] font-mono w-60"
-                autofocus
-              />
-              <input
-                type="password"
-                value={draftToken()}
-                onInput={(e) => setDraftToken(e.currentTarget.value)}
-                placeholder="token (optional)"
-                class="text-[12px] font-mono w-40"
-                autocomplete="off"
-              />
-              <button type="submit" class="text-[11px] px-2 py-1 rounded border border-accent text-accent hover:bg-accent hover:text-bg transition-colors">
-                connect
-              </button>
-              <button type="button" onClick={() => setEditing(false)} class="text-[11px] px-2 py-1 rounded text-fg-3 hover:text-fg">
-                cancel
-              </button>
-            </form>
-          </Show>
+          <ServerBadge name={meta()?.name} />
+          <AccountMenu />
         </header>
 
         <main class="flex-1 p-6 max-w-[1440px] w-full mx-auto">{props.children}</main>
 
         <footer class="px-4 py-2 border-t border-border text-[11px] text-fg-3 text-center">
-          <Show
-            when={version()}
-            fallback={<>Not connected. Start <code>vx serve</code> in your workspace.</>}
-          >
-            {(v) => (
+          <Show when={meta()} fallback={<>Connecting…</>}>
+            {(m) => (
               <>
-                vx {v().vx} · workspace <code class="font-mono">{v().workspace}</code>
+                vx {m().vx} · <code class="font-mono">{m().name}</code> · self-hosted platform
               </>
             )}
           </Show>
@@ -236,8 +158,7 @@ export const Shell: ParentComponent = (props) => {
 /**
  * Live-refresh status pill. Shown only while a live-refreshing view is mounted
  * (the ref-count in live.ts): a pulsing green dot + "live" when the tab is
- * visible and auto-refresh is running, a static grey "paused" when the tab is
- * hidden (the interval is suspended to save work).
+ * visible and auto-refresh is running, a static grey "paused" when hidden.
  */
 function LiveIndicator() {
   const active = getLiveActiveSignal()
@@ -259,26 +180,166 @@ function LiveIndicator() {
   )
 }
 
+/** Server identity badge — the connected platform's name + a health dot. */
+function ServerBadge(props: { name: string | undefined }) {
+  const origin = getOriginSignal()
+  return (
+    <span
+      class="hidden sm:flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1 rounded border border-border"
+      title={`${props.name ?? 'platform'} · ${origin()}`}
+    >
+      <StatusDot ok={props.name !== undefined} />
+      <span class="text-fg-1 font-medium max-w-32 truncate">{props.name ?? origin().replace(/^https?:\/\//, '')}</span>
+    </span>
+  )
+}
+
 /**
- * Docker-Desktop-style workspace context dropdown. Fed by /v1/workspaces;
- * selection persists via api.ts (`vx-ui:workspace`) and rides every /v1
- * analytics read as `?ws=` — the jr loader re-fetches on the switch. Hidden
- * on a 0/1-workspace serve so the solo-dev shell looks exactly like today.
+ * Org context dropdown, fed by GET /v1/admin/orgs. Selection persists via
+ * api.ts (`vx-ui:org`) and rides every analytics read as `?org=` (the tenant
+ * clamp). Also offers joining another org with an invite token.
+ */
+function OrgSwitcher() {
+  const list = getOrgsSignal()
+  const selected = getOrgSignal()
+  const [open, setOpen] = createSignal(false)
+
+  const current = (): OrgSummary | undefined => list().find((o) => o.id === selected()) ?? list()[0]
+  const currentName = () => current()?.name ?? '—'
+
+  onMount(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    onCleanup(() => window.removeEventListener('keydown', onKeyDown))
+  })
+
+  function pick(id: string) {
+    setOrgAndPersist(id)
+    setOpen(false)
+  }
+
+  async function join() {
+    setOpen(false)
+    const token = window.prompt('Paste an invite token (vxi_…) to join an organization:')
+    if (token === null || token.trim() === '') return
+    const r = await acceptInvite(token.trim())
+    if (!r.ok) window.alert(r.error ?? 'Could not join with that invite.')
+  }
+
+  return (
+    <Show when={list().length > 0}>
+      <div class="relative">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          class="flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1 rounded border border-border hover:border-border-strong hover:bg-surface-hover"
+          title={`Organization: ${currentName()} — click to switch`}
+        >
+          <span class="i-tabler-building text-fg-3 text-[13px]" aria-hidden="true" />
+          <span class="text-fg-1 font-medium max-w-40 truncate">{currentName()}</span>
+          <span class="i-tabler-chevron-down text-fg-3 text-[12px]" aria-hidden="true" />
+        </button>
+        <Show when={open()}>
+          <div class="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div class="absolute right-0 top-full mt-1.5 z-50 w-64 bg-surface border border-border-strong rounded-lg shadow-2xl overflow-hidden">
+            <div class="px-3 py-1.5 border-b border-border text-[10px] uppercase tracking-wider text-fg-3 font-semibold">
+              Organizations
+            </div>
+            <div class="max-h-72 overflow-y-auto py-1">
+              <For each={list()}>
+                {(o) => (
+                  <button
+                    onClick={() => pick(o.id)}
+                    class="w-full text-left flex items-center gap-2 px-3 py-2 hover:bg-surface-hover transition-colors"
+                  >
+                    <span class={`i-tabler-check text-[13px] shrink-0 ${o.id === (current()?.id ?? '') ? 'text-accent' : 'opacity-0'}`} aria-hidden="true" />
+                    <span class="min-w-0 flex-1">
+                      <span class="block text-[12px] font-mono truncate text-fg-1">{o.name}</span>
+                      <span class="block text-[10px] text-fg-3">{o.slug} · {o.role}</span>
+                    </span>
+                  </button>
+                )}
+              </For>
+            </div>
+            <button
+              onClick={() => void join()}
+              class="w-full text-left flex items-center gap-2 px-3 py-2 border-t border-border text-[12px] text-fg-2 hover:bg-surface-hover hover:text-fg transition-colors"
+            >
+              <span class="i-tabler-plus text-[13px]" aria-hidden="true" />
+              Join with an invite…
+            </button>
+          </div>
+        </Show>
+      </div>
+    </Show>
+  )
+}
+
+/** Account menu — the signed-in identity + sign-out. */
+function AccountMenu() {
+  const user = getCurrentUserSignal()
+  const [open, setOpen] = createSignal(false)
+
+  onMount(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    onCleanup(() => window.removeEventListener('keydown', onKeyDown))
+  })
+
+  return (
+    <div class="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        class="flex items-center gap-1.5 text-[11px] px-2 py-1 rounded border border-border hover:border-border-strong hover:bg-surface-hover"
+        title="Account"
+      >
+        <span class="i-tabler-user-circle text-fg-2 text-base" aria-hidden="true" />
+        <Show when={user()?.instanceAdmin}>
+          <span class="i-tabler-star-filled text-warn text-[11px]" aria-hidden="true" title="instance admin" />
+        </Show>
+      </button>
+      <Show when={open()}>
+        <div class="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+        <div class="absolute right-0 top-full mt-1.5 z-50 w-56 bg-surface border border-border-strong rounded-lg shadow-2xl overflow-hidden">
+          <div class="px-3 py-2 border-b border-border">
+            <div class="text-[12px] text-fg-1 font-medium">Signed in</div>
+            <Show when={user()?.instanceAdmin}>
+              <div class="text-[10px] text-warn font-mono mt-0.5">instance admin</div>
+            </Show>
+            <div class="text-[10px] text-fg-3 font-mono truncate mt-0.5">{user()?.userId}</div>
+          </div>
+          <button
+            onClick={() => void logout()}
+            class="w-full text-left flex items-center gap-2 px-3 py-2 text-[12px] text-danger hover:bg-danger/10 transition-colors"
+          >
+            <span class="i-tabler-logout text-[13px]" aria-hidden="true" />
+            Sign out
+          </button>
+        </div>
+      </Show>
+    </div>
+  )
+}
+
+/**
+ * Workspace context dropdown. Fed by /v1/workspaces (org-scoped); selection
+ * persists via api.ts (`vx-ui:workspace`) and rides every /v1 analytics read
+ * as `?ws=`. Hidden on a 0/1-workspace org so the solo case looks clean.
  */
 function WorkspaceSwitcher() {
   const list = getWorkspacesSignal()
   const selected = getWorkspaceSignal()
   const [open, setOpen] = createSignal(false)
 
-  // Most-recently-active first — long-lived serves accumulate dead workspaces.
+  // Most-recently-active first — long-lived orgs accumulate dead workspaces.
   const sorted = createMemo(() => [...list()].sort((a, b) => b.lastSeenAt - a.lastSeenAt))
-  // No explicit selection → mirror the serve's un-scoped rule: a genuine
-  // 'default' workspace when one exists, else the most-recently-seen.
   const currentId = () => {
     const sel = selected()
     if (sel !== '') return sel
-    if (list().some((w) => w.id === 'default')) return 'default'
-    return sorted()[0]?.id ?? 'default'
+    return sorted()[0]?.id ?? ''
   }
   const currentName = () => list().find((w) => w.id === currentId())?.name ?? currentId()
 
@@ -308,7 +369,6 @@ function WorkspaceSwitcher() {
           <span class="i-tabler-chevron-down text-fg-3 text-[12px]" aria-hidden="true" />
         </button>
         <Show when={open()}>
-          {/* invisible backdrop: click-outside closes without swallowing the next click's target styling */}
           <div class="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div class="absolute right-0 top-full mt-1.5 z-50 w-72 bg-surface border border-border-strong rounded-lg shadow-2xl overflow-hidden">
             <div class="px-3 py-1.5 border-b border-border text-[10px] uppercase tracking-wider text-fg-3 font-semibold">
@@ -326,9 +386,7 @@ function WorkspaceSwitcher() {
                       aria-hidden="true"
                     />
                     <span class="min-w-0 flex-1">
-                      <span
-                        class={`block text-[12px] font-mono truncate ${w.id === currentId() ? 'text-fg' : 'text-fg-1'}`}
-                      >
+                      <span class={`block text-[12px] font-mono truncate ${w.id === currentId() ? 'text-fg' : 'text-fg-1'}`}>
                         {w.name}
                       </span>
                       <span class="block text-[10px] text-fg-3">
@@ -359,9 +417,6 @@ function Breadcrumb(props: { pathname: string }) {
         <>
           <Show when={i > 0}><span class="text-fg-3">/</span></Show>
           <span class={`${i === seg().length - 1 ? 'text-fg' : 'text-fg-2'} ${i > 0 ? 'font-mono text-[12px]' : ''}`}>
-            {/* Only the first segment is a static route name — later segments
-                are ids/UUIDs and must not be title-cased. The /overview route
-                keeps its URL but reads as the Workspace entity page. */}
             {i === 0
               ? s === 'overview'
                 ? 'Workspace'

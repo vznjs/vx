@@ -10,8 +10,10 @@
 import { createSignal } from 'solid-js'
 
 const STORAGE_KEY = 'vx-ui:origin'
-const TOKEN_KEY = 'vx-ui:token'
+const ORG_KEY = 'vx-ui:org'
 const WORKSPACE_KEY = 'vx-ui:workspace'
+
+export type OrgRole = 'owner' | 'admin' | 'member' | 'viewer'
 
 function defaultOrigin(): string {
   // The dev server injects this; the hosted build falls back to the page's
@@ -45,38 +47,90 @@ export function setOriginAndPersist(next: string): void {
   if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, trimmed)
 }
 
-// Bearer token for a token-gated vx serve. Persisted beside the origin;
-// empty string = no token (the open localhost default).
-function readStoredToken(): string {
+// --- Session / account auth (cloud-platform-2026-07 §6) ---------------------
+// The platform authenticates the dashboard with an HttpOnly SESSION COOKIE, not
+// a bearer token: every request rides `credentials: 'include'` so the browser
+// returns the cookie, and every state-changing request carries `x-vx-csrf: 1`
+// (a custom header a cross-site form can't forge). A 401 on any gated read
+// flips authState to 'anon' → the full-screen login gate.
+
+export type AuthState = 'loading' | 'anon' | 'authed'
+
+export interface CurrentUser {
+  userId: string
+  instanceAdmin: boolean
+  orgs: { orgId: string; role: OrgRole }[]
+}
+
+const [authState, setAuthState] = createSignal<AuthState>('loading')
+const [currentUser, setCurrentUser] = createSignal<CurrentUser | null>(null)
+
+export function getAuthStateSignal(): () => AuthState {
+  return authState
+}
+
+export function getCurrentUserSignal(): () => CurrentUser | null {
+  return currentUser
+}
+
+// --- Org clamp --------------------------------------------------------------
+// A session spanning >1 org must name which org each analytics read targets
+// (`?org=`); a single-org session may omit it, but the client always sends the
+// selected org for determinism. Persisted beside the origin (`vx-ui:org`).
+
+function readStoredOrg(): string {
   if (typeof localStorage === 'undefined') return ''
-  return localStorage.getItem(TOKEN_KEY) ?? ''
+  return localStorage.getItem(ORG_KEY) ?? ''
 }
 
-const [token, setToken] = createSignal(readStoredToken())
+const [org, setOrg] = createSignal(readStoredOrg())
 
-// Flipped by any 401 so the shell can surface its token prompt.
-const [unauthorized, setUnauthorized] = createSignal(false)
-
-export function getToken(): string {
-  return token()
+export function getOrg(): string {
+  return org()
 }
 
-export function getTokenSignal(): () => string {
-  return token
+export function getOrgSignal(): () => string {
+  return org
 }
 
-export function setTokenAndPersist(next: string): void {
+export function setOrgAndPersist(next: string): void {
   const trimmed = next.trim()
-  setToken(trimmed)
+  if (trimmed === org()) return
+  setOrg(trimmed)
   if (typeof localStorage !== 'undefined') {
-    if (trimmed === '') localStorage.removeItem(TOKEN_KEY)
-    else localStorage.setItem(TOKEN_KEY, trimmed)
+    if (trimmed === '') localStorage.removeItem(ORG_KEY)
+    else localStorage.setItem(ORG_KEY, trimmed)
   }
-  setUnauthorized(false)
+  // Workspaces are org-scoped — a stale selection must not ride the new org.
+  setWorkspaceAndPersist('')
 }
 
-export function getUnauthorizedSignal(): () => boolean {
-  return unauthorized
+export interface OrgSummary {
+  id: string
+  slug: string
+  name: string
+  role: OrgRole
+}
+
+const [orgs, setOrgs] = createSignal<OrgSummary[]>([])
+
+export function getOrgsSignal(): () => OrgSummary[] {
+  return orgs
+}
+
+/**
+ * Choose the org to target for the next reads: keep the stored one when the
+ * principal is still a member, else the first available (server-sorted). Pure
+ * — exported for tests; the caller persists the result.
+ */
+export function nextOrgSelection(list: readonly { id: string }[], current: string): string {
+  if (list.length === 0) return ''
+  if (current !== '' && list.some((o) => o.id === current)) return current
+  return list[0]!.id
+}
+
+function reconcileOrgSelection(list: readonly { id: string }[]): void {
+  setOrgAndPersist(nextOrgSelection(list, org()))
 }
 
 // ---------------------------------------------------------------------------
@@ -111,24 +165,40 @@ export function setWorkspaceAndPersist(next: string): void {
 }
 
 /**
- * Reactive `origin|token|workspace` key — everything a remote read depends
- * on. The jr page loader keys its data resources on this so views re-fetch
- * the moment the user switches connection or workspace.
+ * Reactive key for everything a remote read depends on — the connected origin,
+ * the signed-in user (so login/logout re-fetches), the selected org, and the
+ * selected workspace. The jr page loader keys its resources on this so views
+ * re-fetch the moment any of them changes.
  */
 export function getConnectionKey(): string {
-  return `${origin()}|${token()}|${workspace()}`
+  return `${origin()}|${currentUser()?.userId ?? ''}|${org()}|${workspace()}`
 }
 
-/** Workspace-list endpoints answer FOR all workspaces — never scoped by one. */
+/** Reads that answer for the whole org — never scoped by one workspace. */
 const WS_EXEMPT = new Set(['/v1/meta', '/v1/workspaces'])
+/** Auth-exempt surfaces that must not carry `?org=`. */
+const ORG_EXEMPT = new Set(['/v1/meta'])
 
-/** Append `ws=<id>` to a /v1 pathname when a workspace is selected. */
-function withWorkspace(pathname: string): string {
-  const ws = workspace()
-  if (ws === '' || !pathname.startsWith('/v1/')) return pathname
+/**
+ * Append the org + workspace clamp to a `/v1/*` analytics pathname. Pure —
+ * exported for tests. `/v1/auth/*` and `/v1/admin/*` carry their scope in the
+ * body / path, so they're left untouched.
+ */
+export function scopedPathFor(pathname: string, orgId: string, ws: string): string {
+  if (!pathname.startsWith('/v1/')) return pathname
   const bare = pathname.split('?', 1)[0]!
-  if (WS_EXEMPT.has(bare)) return pathname
-  return `${pathname}${pathname.includes('?') ? '&' : '?'}ws=${encodeURIComponent(ws)}`
+  if (bare.startsWith('/v1/auth/') || bare.startsWith('/v1/admin/')) return pathname
+  let p = pathname
+  const add = (kv: string): void => {
+    p = `${p}${p.includes('?') ? '&' : '?'}${kv}`
+  }
+  if (orgId !== '' && !ORG_EXEMPT.has(bare)) add(`org=${encodeURIComponent(orgId)}`)
+  if (ws !== '' && !WS_EXEMPT.has(bare)) add(`ws=${encodeURIComponent(ws)}`)
+  return p
+}
+
+function scopedPath(pathname: string): string {
+  return scopedPathFor(pathname, org(), workspace())
 }
 
 export interface WorkspaceInfo {
@@ -153,10 +223,11 @@ export function getWorkspacesSignal(): () => WorkspaceInfo[] {
  * every query doesn't scope to a workspace that doesn't exist here.
  */
 export function refreshWorkspaces(): void {
-  const key = `${origin()}|${token()}`
+  const key = `${origin()}|${org()}|${currentUser()?.userId ?? ''}`
   if (key === workspacesKey) return
   workspacesKey = key
   setWorkspaces([])
+  if (authState() !== 'authed') return
   void getWorkspaces().then(
     (list) => {
       if (workspacesKey !== key) return
@@ -234,25 +305,48 @@ export function refreshCapabilities(): void {
   })
 }
 
-/** `?token=` suffix for EventSource/WebSocket URLs (headers unsupported there). */
-function tokenQuery(prefix: '?' | '&' = '?'): string {
-  const t = token()
-  return t === '' ? '' : `${prefix}token=${encodeURIComponent(t)}`
+async function getJson<T>(pathname: string): Promise<T> {
+  const res = await fetch(`${origin()}${scopedPath(pathname)}`, {
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  })
+  if (res.status === 401) {
+    setAuthState('anon')
+    throw new Error(`${pathname}: 401 Unauthorized`)
+  }
+  if (!res.ok) throw new Error(`${pathname}: ${res.status} ${res.statusText}`)
+  return (await res.json()) as T
 }
 
-async function getJson<T>(pathname: string): Promise<T> {
-  const headers: Record<string, string> = { Accept: 'application/json' }
-  const t = token()
-  if (t !== '') headers['Authorization'] = `Bearer ${t}`
-  const res = await fetch(`${origin()}${withWorkspace(pathname)}`, { headers })
-  if (res.status === 401) {
-    setUnauthorized(true)
-    throw new Error(`${pathname}: 401 Unauthorized — this server requires a token`)
+/** Result of a state-changing request (CSRF header + cookie credentials). */
+export interface MutateResult<T> {
+  ok: boolean
+  status: number
+  data?: T
+  error?: string
+}
+
+async function mutate<T = unknown>(
+  method: string,
+  pathname: string,
+  body?: unknown,
+): Promise<MutateResult<T>> {
+  try {
+    const headers: Record<string, string> = { 'x-vx-csrf': '1', Accept: 'application/json' }
+    if (body !== undefined) headers['content-type'] = 'application/json'
+    const res = await fetch(`${origin()}${scopedPath(pathname)}`, {
+      method,
+      credentials: 'include',
+      headers,
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    })
+    if (res.status === 401) setAuthState('anon')
+    const data = (await res.json().catch(() => undefined)) as (T & { error?: string }) | undefined
+    if (!res.ok) return { ok: false, status: res.status, error: data?.error ?? res.statusText }
+    return { ok: true, status: res.status, ...(data !== undefined ? { data } : {}) }
+  } catch (err) {
+    return { ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }
   }
-  if (!res.ok) {
-    throw new Error(`${pathname}: ${res.status} ${res.statusText}`)
-  }
-  return (await res.json()) as T
 }
 
 // ---------------------------------------------------------------------------
@@ -480,12 +574,13 @@ export interface ServerVersion {
   rpc: readonly string[]
 }
 
-/** Server identity from the auth-exempt /v1/meta (no workspace path, no secrets). */
+/** Server identity from the auth-exempt /v1/meta (no tenant data, no secrets). */
 export interface ServerMeta {
   v: number
   name: string
   vx: string
-  auth: 'token' | 'open'
+  /** 'account' = the platform (sessions + RBAC); legacy serves report token/open. */
+  auth: 'account' | 'token' | 'open'
   startedAt: number
   /** Workspace count on this serve (absent on serves predating workspaces). */
   workspaces?: number
@@ -495,6 +590,8 @@ export interface ServerMeta {
   cacheWire?: number
   /** A colocated workspace makes the /v1/workspace/* catalog live. */
   catalog?: boolean
+  /** The platform partitions the cache by trust tier. */
+  trustTiers?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -936,9 +1033,9 @@ export async function getAnalysis(
  */
 export function subscribeEvents(onMessage: (event: unknown) => void): () => void {
   const origin = getOrigin()
-  // EventSource can't set headers — the token rides the query string.
-  const path = withWorkspace('/v1/events')
-  const source = new EventSource(`${origin}${path}${tokenQuery(path.includes('?') ? '&' : '?')}`)
+  // Same-origin EventSource returns the session cookie automatically; the dev
+  // proxy needs withCredentials to forward it.
+  const source = new EventSource(`${origin}${scopedPath('/v1/events')}`, { withCredentials: true })
   source.onmessage = (e) => {
     try {
       onMessage(JSON.parse(e.data))
@@ -997,8 +1094,8 @@ export function runTasks(tasks: readonly string[], cwd: string, h: RunHandlers):
   const wsOrigin = getOrigin().replace(/^http/, 'ws')
   let ws: WebSocket
   try {
-    // Browser WebSocket can't set headers — the token rides the query string.
-    ws = new WebSocket(`${wsOrigin}/${tokenQuery()}`)
+    // Same-origin WebSocket carries the session cookie on the handshake.
+    ws = new WebSocket(`${wsOrigin}/`)
   } catch (err) {
     h.onError(err instanceof Error ? err.message : String(err))
     return () => {}
@@ -1176,10 +1273,9 @@ export async function fetchHermeticity(limit = 50): Promise<HermeticityResponse 
  * carry the bearer header).
  */
 export async function downloadArtifact(hash: string): Promise<boolean> {
-  const headers: Record<string, string> = {}
-  const t = token()
-  if (t !== '') headers['Authorization'] = `Bearer ${t}`
-  const res = await fetch(`${origin()}/v1/cache/${encodeURIComponent(hash)}`, { headers })
+  const res = await fetch(`${origin()}/v1/cache/${encodeURIComponent(hash)}`, {
+    credentials: 'include',
+  })
   if (!res.ok) return false
   const url = URL.createObjectURL(await res.blob())
   const a = document.createElement('a')
@@ -1243,8 +1339,8 @@ export function queueRun(
   const wsOrigin = getOrigin().replace(/^http/, 'ws')
   let ws: WebSocket
   try {
-    // Browser WebSocket can't set headers — the token rides the query string.
-    ws = new WebSocket(`${wsOrigin}/${tokenQuery()}`)
+    // Same-origin WebSocket carries the session cookie on the handshake.
+    ws = new WebSocket(`${wsOrigin}/`)
   } catch (err) {
     h.onError(err instanceof Error ? err.message : String(err))
     return { cancel: () => {} }
@@ -1325,4 +1421,227 @@ export function queueRun(
       }
     },
   }
+}
+
+// ---------------------------------------------------------------------------
+// Auth — session lifecycle (cloud-platform-2026-07 §6). The dashboard boots
+// by resolving the current principal; login/register/logout re-resolve it.
+// ---------------------------------------------------------------------------
+
+/** Resolve the current session principal; throws when unauthenticated. */
+async function fetchMe(): Promise<CurrentUser> {
+  const res = await fetch(`${origin()}/v1/auth/me`, {
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  })
+  if (!res.ok) throw new Error(`me: ${res.status}`)
+  const body = (await res.json()) as {
+    kind: string
+    userId: string
+    instanceAdmin: boolean
+    orgs: { orgId: string; role: OrgRole }[]
+  }
+  if (body.kind !== 'session') throw new Error('not a session principal')
+  return { userId: body.userId, instanceAdmin: body.instanceAdmin, orgs: body.orgs }
+}
+
+/**
+ * (Re-)resolve the signed-in user and reconcile the org selection. Sets
+ * authState to 'authed' with the principal, or 'anon' when unauthenticated.
+ * The org list (with names) is refreshed in the background for the switcher.
+ */
+export async function bootstrapAuth(): Promise<void> {
+  try {
+    const me = await fetchMe()
+    setCurrentUser(me)
+    reconcileOrgSelection(me.orgs.map((o) => ({ id: o.orgId })))
+    setAuthState('authed')
+    void refreshOrgs()
+  } catch {
+    setCurrentUser(null)
+    setOrgs([])
+    setAuthState('anon')
+  }
+}
+
+export interface AuthResult {
+  ok: boolean
+  error?: string
+}
+
+async function authPost(pathname: string, body: Record<string, unknown>): Promise<AuthResult> {
+  try {
+    const res = await fetch(`${origin()}${pathname}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-vx-csrf': '1', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) return { ok: true }
+    const j = (await res.json().catch(() => null)) as { error?: string } | null
+    return { ok: false, error: j?.error ?? `request failed (${res.status})` }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+export async function login(email: string, password: string): Promise<AuthResult> {
+  const r = await authPost('/v1/auth/login', { email, password })
+  if (r.ok) await bootstrapAuth()
+  return r
+}
+
+export async function register(args: {
+  email: string
+  password: string
+  displayName?: string
+  invite?: string
+}): Promise<AuthResult> {
+  const body: Record<string, unknown> = { email: args.email, password: args.password }
+  if (args.displayName !== undefined && args.displayName !== '') body['displayName'] = args.displayName
+  if (args.invite !== undefined && args.invite !== '') body['invite'] = args.invite
+  const r = await authPost('/v1/auth/register', body)
+  if (r.ok) await bootstrapAuth()
+  return r
+}
+
+/** Join another org with an invite token (an already-signed-in user). */
+export async function acceptInvite(invite: string): Promise<AuthResult> {
+  const r = await authPost('/v1/auth/invites/accept', { invite })
+  if (r.ok) await bootstrapAuth()
+  return r
+}
+
+export async function logout(): Promise<void> {
+  try {
+    await fetch(`${origin()}/v1/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'x-vx-csrf': '1' },
+    })
+  } catch {
+    // best-effort — the local state is cleared regardless.
+  }
+  setCurrentUser(null)
+  setOrgs([])
+  setAuthState('anon')
+}
+
+// ---------------------------------------------------------------------------
+// Admin — orgs / members / invites / tokens / workspaces (cloud-platform §6.4).
+// GET reads flow through getJson (session cookie); mutations through mutate
+// (CSRF header). Org id rides the PATH, so these are never `?org=`-scoped.
+// ---------------------------------------------------------------------------
+
+export interface OrgMember {
+  userId: string
+  email: string
+  displayName: string
+  role: OrgRole
+}
+
+export interface AdminToken {
+  id: string
+  name: string
+  kind: 'ci' | 'admin'
+  tier: 'trusted' | 'untrusted'
+  workspaceId: string | null
+  createdAt: number
+  lastUsedAt: number | null
+  expiresAt: number | null
+  revokedAt: number | null
+}
+
+export interface AdminWorkspace {
+  id: string
+  slug: string
+  name: string
+  createdAt: number
+}
+
+export interface CreatedInvite {
+  invite: string
+  url: string
+  expiresAt: number
+}
+
+export interface CreatedToken {
+  id: string
+  token: string
+}
+
+export async function adminListOrgs(): Promise<OrgSummary[]> {
+  const r = await getJson<{ orgs: OrgSummary[] }>('/v1/admin/orgs')
+  return r.orgs
+}
+
+/** Refresh the org list (names) for the switcher + reconcile the selection. */
+export async function refreshOrgs(): Promise<void> {
+  try {
+    const list = await adminListOrgs()
+    setOrgs(list)
+    reconcileOrgSelection(list)
+  } catch {
+    setOrgs([])
+  }
+}
+
+export function adminCreateOrg(slug: string, name?: string): Promise<MutateResult<{ orgId: string }>> {
+  return mutate('POST', '/v1/admin/orgs', { slug, ...(name !== undefined && name !== '' ? { name } : {}) })
+}
+
+export function adminUpdateOrg(
+  orgId: string,
+  patch: { name?: string; slug?: string },
+): Promise<MutateResult<{ ok: boolean }>> {
+  return mutate('PATCH', `/v1/admin/orgs/${orgId}`, patch)
+}
+
+export async function adminListMembers(orgId: string): Promise<OrgMember[]> {
+  const r = await getJson<{ members: OrgMember[] }>(`/v1/admin/orgs/${orgId}/members`)
+  return r.members
+}
+
+export function adminUpdateMemberRole(
+  orgId: string,
+  userId: string,
+  role: OrgRole,
+): Promise<MutateResult<{ ok: boolean }>> {
+  return mutate('PATCH', `/v1/admin/orgs/${orgId}/members/${userId}`, { role })
+}
+
+export function adminRemoveMember(orgId: string, userId: string): Promise<MutateResult<{ ok: boolean }>> {
+  return mutate('DELETE', `/v1/admin/orgs/${orgId}/members/${userId}`)
+}
+
+export function adminCreateInvite(orgId: string, role: OrgRole): Promise<MutateResult<CreatedInvite>> {
+  return mutate('POST', `/v1/admin/orgs/${orgId}/invites`, { role })
+}
+
+export async function adminListTokens(orgId: string): Promise<AdminToken[]> {
+  const r = await getJson<{ tokens: AdminToken[] }>(`/v1/admin/orgs/${orgId}/tokens`)
+  return r.tokens
+}
+
+export function adminCreateToken(
+  orgId: string,
+  body: { name: string; tier: 'trusted' | 'untrusted'; kind?: 'ci' | 'admin'; workspaceId?: string },
+): Promise<MutateResult<CreatedToken>> {
+  return mutate('POST', `/v1/admin/orgs/${orgId}/tokens`, body)
+}
+
+export function adminRevokeToken(orgId: string, tokenId: string): Promise<MutateResult<{ ok: boolean }>> {
+  return mutate('DELETE', `/v1/admin/orgs/${orgId}/tokens/${tokenId}`)
+}
+
+export async function adminListWorkspaces(orgId: string): Promise<AdminWorkspace[]> {
+  const r = await getJson<{ workspaces: AdminWorkspace[] }>(`/v1/admin/orgs/${orgId}/workspaces`)
+  return r.workspaces
+}
+
+export function adminCreateWorkspace(
+  orgId: string,
+  body: { slug: string; name?: string },
+): Promise<MutateResult<{ workspaceId: string }>> {
+  return mutate('POST', `/v1/admin/orgs/${orgId}/workspaces`, body)
 }

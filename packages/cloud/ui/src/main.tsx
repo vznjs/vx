@@ -1,8 +1,11 @@
 import { HashRouter, Navigate, Route } from '@solidjs/router'
+import { Show, onMount } from 'solid-js'
 import { render } from 'solid-js/web'
 import 'virtual:uno.css'
 import { Shell } from './components/Shell.tsx'
 import { RunsView } from './components/RunsView.tsx'
+import { LoginGate } from './components/LoginGate.tsx'
+import { bootstrapAuth, getAuthStateSignal } from './api.ts'
 import { jsonPage } from './jr/page.tsx'
 // Every page/view is a pure JSON file in `views/`, rendered through the catalog.
 import OVERVIEW from './views/overview.json'
@@ -20,8 +23,8 @@ import COMPARE from './views/compare.json'
 const root = document.getElementById('root')
 if (!root) throw new Error('#root missing')
 
-render(
-  () => (
+function AppRoutes() {
+  return (
     <HashRouter root={Shell}>
       {/* The unified Runs view is home (cloud-data-model-2026-07 §7.4); the
           old /run cockpit route redirects — its machinery lives on as the
@@ -44,6 +47,30 @@ render(
       <Route path="/runs/:id" component={jsonPage(RUN_DETAIL)} />
       <Route path="/compare/:id" component={jsonPage(COMPARE)} />
     </HashRouter>
-  ),
-  root,
-)
+  )
+}
+
+/** Boot: resolve the session principal, then render the login gate or the app. */
+function App() {
+  const authState = getAuthStateSignal()
+  onMount(() => {
+    void bootstrapAuth()
+  })
+  return (
+    <Show when={authState() !== 'loading'} fallback={<BootScreen />}>
+      <Show when={authState() === 'authed'} fallback={<LoginGate />}>
+        <AppRoutes />
+      </Show>
+    </Show>
+  )
+}
+
+function BootScreen() {
+  return (
+    <div class="min-h-screen flex items-center justify-center bg-bg">
+      <span class="i-tabler-loader-2 animate-spin text-2xl text-fg-3" aria-hidden="true" />
+    </div>
+  )
+}
+
+render(() => <App />, root)
