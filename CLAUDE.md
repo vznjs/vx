@@ -208,6 +208,64 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-12**: **Platform Phase 3 SHIPPED — cache + dist re-keyed to the
+  org/workspace tenancy prefix; run delegation DELETED (`51facf1`,
+  `e690a82`, `df44193`)**, executing P3 of
+  `docs/design/cloud-platform-2026-07.md`. **(1) Cache scope is now
+  tenant-partitioned (§8.1).** The artifact-store scope grew from
+  `<bucket>/<tier>` to `org/<orgId>/ws/<workspaceId>/<tier>[/<sub>]`, ALL
+  server-derived from the token — `Principal` became
+  `{ orgId, workspaceId?, tier, bucket? }`, `basePrefix(p)` =
+  `p.bucket ?? org/${orgId}/ws/${workspaceId ?? _org}`. The org is the top
+  tenant boundary (one org's token can NEVER read another's key); the
+  workspace is the token's bound workspace, or a reserved shared `_org`
+  segment for an org-wide token (its cache is shared across the org's
+  workspaces — `_org` isn't a valid UUID so it can't collide). The tier
+  boundary (fork-PR CVE fix) survives unchanged: untrusted writes only
+  `untrusted/<sub>`, reads `untrusted ∪ trusted`; trusted never reads
+  untrusted; per-PR sub-scopes; immutability 409; byte cap; zstd-magic
+  gate. The server gate derives the workspace from the token (ws-scoped →
+  its ws; org-wide → `_org`); a session gets an org-wide trusted principal.
+  The transitional single-tenant serve + the store-policy unit tests set an
+  explicit `bucket` override, which IS the scope base (`default/trusted`),
+  byte-identical to the pre-platform layout (legacy flat store still
+  migrates there). **(2) Dist sessions re-keyed by org (§8.2).** The agent
+  registry key grew `{workspaceId, session}` → `{orgId, workspaceId,
+  session}`; `orgId` is a trailing `'default'`-defaulted param on
+  hello/beginSubmission/availableCapacity, SERVER-derived from the agent's/
+  submitter's token (never on the wire — NO DIST_PROTOCOL bump). Two
+  tenants' pools can never collide or pair; `dist:submit` runs under its ci
+  token's org. `/v1/artifacts` producing-task provenance moved off the
+  residual SQLite store onto Postgres `task_runs` (workspace-clamped via
+  Analytics `provenanceForHashes`), scoped by the principal's cache prefix
+  so provenance never crosses the tenant boundary. **(3) Run delegation
+  DELETED.** The platform has no checkout to execute against, so the
+  server-side `RunQueue` (`run-queue.ts`, `protocol-queue.ts`), the
+  `{t:'run'}` WS handler (now a clear rejection error), `cli/backend.ts`,
+  and `connect --delegate` (rejected at the environments-file boundary with
+  a migration hint to `--distribute`) are GONE. Distribution
+  (`VX_CLOUD_DISTRIBUTE` → agent pool, or local) is the ONLY remote
+  execution. −1308 lines net in df44193 (run-queue + serve delegation +
+  plugin backend rung + their suites). **Verified END-TO-END with the real
+  server** (ephemeral pg + fake S3 + live `vx-cloud server`): register
+  instance admin → create orgB → mint org-wide + ws-scoped trusted tokens →
+  PUT cache artifacts → the S3 bucket keys carry the full
+  `org/<orgA>/ws/{_org|<wsId>}/trusted/<hash>.tar.zst` tenant prefix; orgA
+  GETs its own key (307), orgB GET of orgA's key → 404 (cross-org), a
+  ws-scoped token can't read the `_org` key and the org-wide token can't
+  read the ws key (both 404, ws-segment isolation), orgB (wrote nothing)
+  has ZERO keys. Cloud 473→464 (−9: delegation suites deleted; +store
+  tenancy matrix, +dist org-key pins, +server principal-derivation);
+  core 1221 untouched (ZERO src/ change), core ci + cloud lint/fmt clean.
+  **DEVIATIONS (phase-honest, all P4-scoped, accepted):** the residual
+  `startServe` (serve.ts) keeps its colocated `/v1/graph` live-cockpit +
+  SQLite-backed dist duration hints (FIFO fallback when absent) + the
+  WorkspaceCatalog/MCP/IngestStore machinery — P4 absorbs serve.ts into
+  server.ts and deletes the SQLite stores; the registry orgId param is
+  trailing-optional (`'default'`) for that transitional path. **Deferred:**
+  P4 (dashboard login/admin UI + serve.ts absorption + SQLite-store
+  deletion + companion-suite retarget), P5 (compose/image/docs).
+
 - **2026-07-11**: **Tenant-boundary + query review of platform Phase 2 —
   crown jewel VERDICT AIRTIGHT; three non-tenant defects fixed
   (`1aaa694`)** (repro-mandated hostile reviewer over `304ac5c`..
