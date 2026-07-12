@@ -5,13 +5,12 @@
 // and refuses listing every missing/invalid var at once. There is no
 // tokenless mode, no loopback exemption, and no `serve` verb.
 //
-// P2: the analytics/ingest surfaces are served against Postgres
-// (`db/analytics.ts`), org/workspace-clamped by the gate. Everything the gate
-// doesn't recognize as an analytics surface (the native cache wire, agents,
-// dist, streaming, SPA) still falls through to the serve's machine surfaces —
-// cli/serve.ts survives as the transitional HTTP host until P4 absorbs it, and
-// its residual features (dist duration hints, /v1/artifacts provenance, /mcp)
-// read the serve's own store rather than Postgres until P3.
+// The analytics/ingest surfaces are served against Postgres (`db/analytics.ts`),
+// org/workspace-clamped by the gate. Everything the gate doesn't recognize as an
+// analytics surface (the native cache wire, agents, dist, streaming, SPA) is
+// served by the platform HTTP host (`cli/dispatch.ts`) — no SQLite anywhere: the
+// artifact store is S3, dist duration hints + `/v1/artifacts` provenance + the
+// `/mcp` tools all read Postgres. (P4 absorbed the transitional `cli/serve.ts`.)
 
 import path from 'node:path'
 import { VERSION } from '@vzn/vx'
@@ -25,12 +24,7 @@ import { hasOrgRole, resolvePrincipal } from '../auth/rbac.js'
 import { lookupToken } from '../auth/tokens.js'
 import { DEFAULT_PRINCIPAL, type Principal } from '../artifact-store.js'
 import { S3Backend } from '../blob/s3.js'
-import {
-  loadUiHtmlPath,
-  startServe,
-  type ArtifactProvenanceResolver,
-  type ResolvedS3Config,
-} from './serve.js'
+import { loadUiHtmlPath, startPlatformHttp, type Grant, type ResolvedS3Config } from './dispatch.js'
 
 const NIL_UUID = '00000000-0000-0000-0000-000000000000'
 
@@ -109,7 +103,11 @@ export interface ServerConfig {
   retentionDays: number
   openSignup: boolean
   openOrgCreate: boolean
-  /** Volume for the serve's residual machine-surface store (dies with P4). */
+  /**
+   * Vestigial: the platform stores no bytes on the controller (Postgres +
+   * S3). Kept only so an existing `VX_CLOUD_DATA_DIR` env doesn't error; the
+   * server never writes here.
+   */
   dataDir: string
 }
 
@@ -345,11 +343,10 @@ export async function startServer(opts: {
     return res ?? refuse('not found', 404)
   }
 
-  // The §6.5 surface → principal map, as the serve's platform gate. Analytics
-  // surfaces resolve to a Postgres-served Response here; the machine surfaces
-  // (native cache wire, agents, dist, streaming, SPA) fall through to the serve
-  // with just the resolved principal.
-  type Grant = { principal: Principal; provenance?: ArtifactProvenanceResolver }
+  // The §6.5 surface → principal map, as the platform gate. Analytics surfaces
+  // resolve to a Postgres-served Response here; the machine surfaces (native
+  // cache wire, agents, dist, streaming, SPA) fall through to the platform HTTP
+  // host with just the resolved principal.
 
   // `/v1/artifacts` provenance joins Postgres `task_runs`, workspace-clamped.
   // The list itself is scoped by the principal's cache prefix (org-partitioned),
@@ -469,14 +466,14 @@ export async function startServer(opts: {
     return { principal: { orgId, tier: 'trusted' } }
   }
 
-  const serve = await startServe({
-    root: config.dataDir,
-    ingestDir: path.join(config.dataDir, 'ingest'),
+  const serve = await startPlatformHttp({
     port: config.port,
     host: '0.0.0.0',
     name: serverName,
     s3: config.s3,
+    analytics,
     gate,
+    log,
     ...(opts.uiHtmlPath !== undefined ? { uiHtmlPath: opts.uiHtmlPath } : {}),
   })
 

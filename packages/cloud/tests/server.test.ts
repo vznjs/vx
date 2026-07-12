@@ -410,6 +410,99 @@ describe('platform e2e (real pg + fake S3)', () => {
     expect(entry!.task).toEqual({ project: 'a', task: 'build', runId: 'r-prov' })
   })
 
+  it('/mcp answers JSON-RPC over Postgres, behind the gate', async () => {
+    const rpc = async (body: unknown, bearer?: string): Promise<Response> =>
+      call('POST', '/mcp', bearer !== undefined ? { body, bearer } : { body })
+    // No bearer → 401 (gated like every machine surface).
+    expect((await rpc({ jsonrpc: '2.0', id: 1, method: 'initialize' })).status).toBe(401)
+    // A GET is 405.
+    expect((await call('GET', '/mcp', { bearer: ciToken })).status).toBe(405)
+    // initialize handshake.
+    const init = (await (
+      await rpc({ jsonrpc: '2.0', id: 1, method: 'initialize' }, ciToken)
+    ).json()) as { result: { serverInfo: { name: string }; protocolVersion: string } }
+    expect(init.result.serverInfo.name).toBe('vx-cloud')
+    expect(init.result.protocolVersion).toBe('2025-03-26')
+    // tools/list — the seven Postgres-backed tools.
+    const list = (await (
+      await rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, ciToken)
+    ).json()) as { result: { tools: { name: string }[] } }
+    expect(list.result.tools.map((t) => t.name).sort()).toEqual([
+      'cache_stats',
+      'compare_runs',
+      'get_run',
+      'list_runs',
+      'list_workspaces',
+      'run_trends',
+      'why_did_rerun',
+    ])
+    // tools/call list_runs → the ingested invocation, over Postgres.
+    const callToolRpc = async (name: string, args: Record<string, unknown> = {}) => {
+      const res = (await (
+        await rpc(
+          { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name, arguments: args } },
+          ciToken,
+        )
+      ).json()) as { result: { content: { text: string }[]; isError?: boolean } }
+      return res.result
+    }
+    const runs = callToolRpc('list_runs', { limit: 10 })
+    const runsOut = JSON.parse((await runs).content[0]!.text) as {
+      runs: { runId: string }[]
+    }
+    expect(runsOut.runs.some((r) => r.runId === 'r-1')).toBe(true)
+    // list_workspaces names the org's auto-provisioned workspace.
+    const wss = JSON.parse((await callToolRpc('list_workspaces')).content[0]!.text) as {
+      workspaces: { name: string }[]
+    }
+    expect(wss.workspaces.some((w) => w.name === 'fixture-ws')).toBe(true)
+    // A tool error (unknown workspace) is an isError RESULT, not a crash.
+    const bad = await callToolRpc('list_runs', { workspace: 'no-such-ws' })
+    expect(bad.isError).toBe(true)
+    expect(bad.content[0]!.text).toContain('unknown workspace')
+    // Unknown method / unknown tool.
+    const um = (await (
+      await rpc({ jsonrpc: '2.0', id: 9, method: 'resources/list' }, ciToken)
+    ).json()) as { error: { code: number } }
+    expect(um.error.code).toBe(-32601)
+  })
+
+  it('analytics route wiring: /v1/analysis, /v1/regressions, /v1/hermeticity are served', async () => {
+    const analysis = await call('GET', '/v1/analysis', { cookie })
+    expect(analysis.status).toBe(200)
+    expect('current' in ((await analysis.json()) as Record<string, unknown>)).toBe(true)
+    const regressions = await call('GET', '/v1/regressions', { cookie })
+    expect(regressions.status).toBe(200)
+    expect(Array.isArray(((await regressions.json()) as { tasks: unknown[] }).tasks)).toBe(true)
+    const herm = await call('GET', '/v1/hermeticity', { cookie })
+    expect(herm.status).toBe(200)
+  })
+
+  it('task-log ingest (ci token) + read back over the analytics route', async () => {
+    const bundle = {
+      v: 1,
+      runId: 'r-1',
+      workspaceId: 'ws-e2e',
+      tasks: [
+        {
+          taskId: 'a#build',
+          status: 'success',
+          content: 'build output tail',
+          charsFull: 17,
+          truncatedHeadChars: 0,
+        },
+      ],
+    }
+    const ingest = await call('POST', '/v1/ingest/logs', { bearer: ciToken, body: bundle })
+    expect(ingest.status).toBe(200)
+    expect(((await ingest.json()) as { stored: number }).stored).toBe(1)
+    const read = await call('GET', '/v1/runs/r-1/logs/a%23build', { cookie })
+    expect(read.status).toBe(200)
+    const body = (await read.json()) as { content: string; source: string }
+    expect(body.content).toBe('build output tail')
+    expect(body.source).toBe('executed')
+  })
+
   it('the serve-era /version handshake is gone', async () => {
     expect((await call('GET', '/version', { cookie })).status).toBe(404)
     expect((await call('GET', '/version', { bearer: ciToken })).status).toBe(404)

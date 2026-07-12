@@ -1093,6 +1093,20 @@ export class Analytics {
     return rows[0]?.id ?? null
   }
 
+  /**
+   * Read-only map a pushed client workspaceId (the core 16-hex fingerprint) to
+   * its server workspace UUID within an org — the dist duration-hint lookup.
+   * Never provisions (unlike `routeWorkspace`); an un-ingested workspace → null
+   * (the caller degrades to FIFO dispatch). Scoped by orgId so it never crosses
+   * the tenant boundary.
+   */
+  async resolveClientWorkspace(orgId: string, clientWorkspaceId: string): Promise<string | null> {
+    const rows = await this.sql<{ workspace_id: string }[]>`
+      SELECT workspace_id FROM repos
+      WHERE org_id = ${orgId} AND client_workspace_id = ${clientWorkspaceId} LIMIT 1`
+    return rows[0]?.workspace_id ?? null
+  }
+
   /** Every workspace in an org (id, name, slug, lastSeen, runCount) — the switcher. */
   async workspacesForOrg(orgId: string): Promise<WorkspaceEntry[]> {
     const rows = await this.sql<
