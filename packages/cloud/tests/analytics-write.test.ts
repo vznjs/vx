@@ -88,7 +88,6 @@ function summary(over: {
 
 let db: DbClient
 let analytics: Analytics
-let orgId: string
 
 beforeAll(async () => {
   db = await freshDb()

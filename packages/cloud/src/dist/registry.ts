@@ -6,9 +6,10 @@
 //
 // Registry key: `{orgId, workspaceId, session}` (cloud-platform-2026-07 §8.2).
 // The org is SERVER-DERIVED from the agent's / submitter's token (never a wire
-// claim), so two tenants' pools can never collide or pair; the transitional
-// single-tenant serve keys everything under the `'default'` org (byte-identical
-// to the pre-platform `{workspaceId, session}` behaviour). A session holds its
+// claim), so two tenants' pools can never collide or pair; a caller that passes
+// no org (the `DEFAULT_ORG` fallback — the registry's own unit tests) keys
+// everything under `'default'`, byte-identical to the pre-tenancy
+// `{workspaceId, session}` key. A session holds its
 // connected agents and any number of CONCURRENT submissions, fairly
 // multiplexed across the shared agents by the registry's `dispatchSession`
 // loop. The registry outlives a run so sequential submissions reuse the pool
@@ -52,7 +53,9 @@ export const AGENT_STALE_MS = 30 * 1000
 /** How often the serve sweeps for stale agents. */
 export const AGENT_SWEEP_INTERVAL_MS = 15 * 1000
 
-/** Default org for the transitional single-tenant serve (no platform gate). */
+/** Fallback org when a caller passes none (the registry unit tests). The
+ *  platform dispatch always passes the token-derived org, so a real request is
+ *  never keyed under this. */
 export const DEFAULT_ORG = 'default'
 
 export interface RegisteredAgent {

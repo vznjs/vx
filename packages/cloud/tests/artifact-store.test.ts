@@ -7,7 +7,7 @@
 // environment rung (lazy /v1/meta capability probe against a mock serve).
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test'
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Cache, FULL_CACHE_POLICY, LayeredCache, type CacheContext } from '@vzn/vx'
@@ -357,20 +357,6 @@ describe('ArtifactStore — trust scopes (poisoning guard)', () => {
     // Nothing was written up at the bucket root.
     const bucketRoot = await readdir(path.join(dir, 'artifacts', 'default'))
     expect(bucketRoot.every((n) => !n.endsWith('.tar.zst'))).toBe(true)
-  })
-
-  it('migrates a legacy flat store into default/trusted/', async () => {
-    const artDir = path.join(dir, 'artifacts')
-    await mkdir(artDir, { recursive: true })
-    await writeFile(path.join(artDir, 'deadbeefdeadbeef.tar.zst'), 'legacy')
-    await writeFile(path.join(artDir, 'deadbeefdeadbeef.duration'), '12')
-    const store = new ArtifactStore(artDir)
-    await store.migrateLegacyFlatStore()
-    const got = await get(store, 'deadbeefdeadbeef', trusted)
-    expect(got.status).toBe(200)
-    expect(await got.text()).toBe('legacy')
-    const moved = await readdir(path.join(artDir, 'default', 'trusted'))
-    expect(moved.sort()).toEqual(['deadbeefdeadbeef.duration', 'deadbeefdeadbeef.tar.zst'])
   })
 })
 

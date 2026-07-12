@@ -30,16 +30,17 @@
 // a `trusted` writer (protected branch) writes and reads only `trusted`. So a
 // poisoned artifact an untrusted context places NEVER feeds a trusted build,
 // and an untrusted context can NEVER write into the trusted scope — no matter
-// what cache key it computes. The transitional single-tenant serve (and the
-// store-policy unit tests) set an explicit `bucket` override, which IS the
-// scope base (`<bucket>/<tier>`, e.g. `default/trusted`) — byte-identical to
-// the pre-platform layout, so the legacy flat store still migrates there on
-// boot. Blob keys mirror the scope layout, so the model holds on S3 by
+// what cache key it computes. A `bucket` override on the principal replaces
+// the tenant prefix with a flat `<bucket>/<tier>` scope base (e.g.
+// `default/trusted`); it is a test-only seam — the store-policy unit tests use
+// it to exercise the tier/scope logic without provisioning orgs. The platform
+// gate never sets it, so a real request is always org/workspace-partitioned.
+// Blob keys mirror the scope layout, so the model holds on S3 by
 // construction: a pre-signed URL binds ONE server-derived scope key.
 
 import os from 'node:os'
 import path from 'node:path'
-import { mkdir, readdir, rename, unlink } from 'node:fs/promises'
+import { mkdir, unlink } from 'node:fs/promises'
 import { LocalDirBackend } from './blob/local.js'
 import type { BlobBackend, BlobListEntry } from './blob/backend.js'
 
@@ -70,7 +71,9 @@ export interface Principal {
   bucket?: string
 }
 
-/** The default principal for the transitional (single-tenant) serve. */
+/** Default principal for the SPA catch-all (no cache op) and direct
+ *  store-policy tests — the flat `default/trusted` layout via the `bucket`
+ *  seam. The platform gate always builds a real token-derived principal. */
 export const DEFAULT_PRINCIPAL: Principal = { orgId: 'default', tier: 'trusted', bucket: 'default' }
 
 /**
@@ -185,38 +188,6 @@ export class ArtifactStore {
       },
       { status: 502 },
     )
-  }
-
-  /**
-   * Move a legacy flat store (`<dir>/<hash>.tar.zst` + sidecars, written
-   * before trust scopes) into `default/trusted/`. Idempotent, best-effort,
-   * loud — run once on boot so existing single-tenant deployments keep their
-   * warm cache and their single token maps to `trusted`. Local backend only:
-   * an offloaded store has no local flat dir to migrate.
-   */
-  async migrateLegacyFlatStore(log?: (m: string) => void): Promise<void> {
-    const root = this.backend.localPathFor('')
-    if (root === null) return
-    let names: string[]
-    try {
-      names = await readdir(root)
-    } catch {
-      return // no store dir yet — nothing to migrate
-    }
-    const legacy = names.filter((n) => /\.(tar\.zst|tag|duration)$/.test(n))
-    if (legacy.length === 0) return
-    const destDir = path.join(root, 'default', 'trusted')
-    await mkdir(destDir, { recursive: true })
-    let moved = 0
-    for (const n of legacy) {
-      try {
-        await rename(path.join(root, n), path.join(destDir, n))
-        moved++
-      } catch {
-        // a dir entry (e.g. `default`) or a race — skip
-      }
-    }
-    if (moved > 0) log?.(`migrated ${moved} flat artifact file(s) → default/trusted/`)
   }
 
   private async findReadKey(hash: string, p: Principal, sub: string): Promise<string | null> {
