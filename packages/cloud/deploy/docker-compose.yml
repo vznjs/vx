@@ -77,22 +77,22 @@ services:
       - '9001:9001' # MinIO console (optional)
     volumes:
       - miniodata:/data
-    healthcheck:
-      test: ['CMD', 'mc', 'ready', 'local']
-      interval: 5s
-      timeout: 3s
-      retries: 20
     restart: unless-stopped
 
   # One-shot: create the bucket the server's boot S3-probe expects to exist.
+  # Retries `mc alias set` until MinIO answers rather than gating on a MinIO
+  # healthcheck — the server image has no preconfigured alias, so a
+  # healthcheck-based gate can wedge the whole `up`.
   createbucket:
     image: minio/mc:latest
     depends_on:
       minio:
-        condition: service_healthy
+        condition: service_started
     entrypoint: >
       /bin/sh -c "
-      mc alias set vx http://minio:9000 vxminio vxminiosecret &&
+      until mc alias set vx http://minio:9000 vxminio vxminiosecret; do
+        echo 'waiting for minio...'; sleep 1;
+      done &&
       mc mb --ignore-existing vx/vx-artifacts &&
       echo 'bucket vx-artifacts ready'
       "
