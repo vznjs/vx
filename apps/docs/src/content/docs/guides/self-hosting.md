@@ -1,306 +1,293 @@
 ---
 title: Self-host vx-cloud
-description: Deploy the vx-cloud service in Docker. Token-authenticated, standalone SQLite ingest store, embedded dashboard, and a serve-hosted remote cache with optional S3-compatible artifact storage — no access to your workspaces required.
+description: Deploy vx-cloud — the self-hosted CI platform — as a docker-compose stack. Accounts, orgs, RBAC, and API tokens; Postgres as the system of record; an S3-compatible bucket for artifacts; the dashboard, analytics API, remote cache, and MCP in one stateless process.
 ---
 
-The team-shared backend is a **separate package and binary**: `vx-cloud`
-(`@vzn/vx-cloud`), distinct from core `vx` (`@vzn/vx`). Like `vx`, the
-`vx-cloud` CLI ships as a **prebuilt standalone binary per platform** (with
-the dashboard embedded) — `npm i -g @vzn/vx-cloud` gives you `vx-cloud` with
-**no Bun required**. For a containerized deployment the prebuilt Docker image
-([below](#run-it-in-docker)) is the turnkey option. Either way the command is
-`vx-cloud serve`.
+`vx-cloud` (`@vzn/vx-cloud`) is a **self-hosted CI platform**, distinct
+from core `vx` (`@vzn/vx`). It is **not** a companion process that runs
+next to a workspace — it is a standalone service with accounts,
+organizations, role-based access, and API tokens. You deploy it once,
+register the first account (which becomes the instance admin), and your
+workspaces **connect** to it for a shared remote cache, distributed
+execution, analytics, and MCP.
 
-`vx-cloud serve` is one process that carries a SQLite ingest store,
-the `/v1/*` analytics API, the embedded dashboard, a vx-native-wire
-remote cache, an MCP endpoint for AI agents, and the WebSocket channels
-for delegated + distributed runs. It reads **only its own store** — it
-never opens a workspace `cache.db` — so you can deploy it on a box that
-has no access to the machines that produce your runs.
+The single verb is **`vx-cloud server`**. It runs one stateless process
+that serves:
 
-## How it gets its data
+- the embedded **dashboard** SPA and the account/RBAC + Admin API
+  (`/v1/auth/*`, `/v1/admin/*`),
+- the **analytics** API (`/v1/*`, Postgres-backed),
+- the vx-native **remote cache** (`/v1/cache/:hash`, S3-backed),
+- the **distribution** WebSocket channels (`/v1/agents`), and
+- **MCP** for AI agents (`/mcp`).
 
-`vx-cloud` is independent of core `vx`. It does not crawl your cache; it
-is **pushed** to. Every `vx run` that has the `cloud()` plugin configured
-(or a connected environment) posts a run summary to `POST /v1/ingest`,
-and the serve persists it into its own per-workspace SQLite store
-(default `<root>/.vx/cloud-ingest`, override with `--ingest-dir`). The
-dashboard reads from that store — never from a developer's private
-`cache.db`.
+All state lives outside the process — **run history in Postgres, artifact
+bytes in an S3-compatible bucket** — so the container writes nothing to
+local disk and you can scale it out behind a load balancer.
+
+## Requirements
+
+The platform **refuses to boot** without full configuration — there is no
+tokenless mode and no local-storage fallback. You need:
+
+- **Postgres** (the identity + analytics system of record),
+- an **S3-compatible bucket** (R2, AWS S3, MinIO, Garage, …) for
+  artifacts, and
+- a **secret** (≥ 32 chars) for session/token HMAC.
+
+## Quick start: `docker compose up`
+
+The fastest path is the prebuilt image plus a Postgres and an S3 bucket.
+CI publishes the image to the GitHub Container Registry on every push to
+`main` and every release:
+
+```sh
+docker pull ghcr.io/vznjs/vx-cloud:latest
+```
+
+A self-contained stack — app + Postgres + a MinIO bucket for local
+evaluation:
+
+```yaml
+# docker-compose.yml
+services:
+  app:
+    image: ghcr.io/vznjs/vx-cloud:latest
+    ports:
+      - '4321:4321'
+    environment:
+      DATABASE_URL: 'postgres://vx:vx@postgres:5432/vx'
+      # >= 32 chars — try: openssl rand -hex 32
+      VX_CLOUD_SECRET: '${VX_CLOUD_SECRET:?set VX_CLOUD_SECRET}'
+      # The public origin users reach the dashboard at. Use your real
+      # https:// URL in production (it flips session cookies to Secure).
+      VX_CLOUD_BASE_URL: '${VX_CLOUD_BASE_URL:-http://localhost:4321}'
+      # Artifact bucket — the MinIO below for eval; swap for R2/S3 in prod.
+      VX_CLOUD_S3_ENDPOINT: 'http://minio:9000'
+      VX_CLOUD_S3_BUCKET: 'vx-artifacts'
+      VX_CLOUD_S3_ACCESS_KEY_ID: 'vxminio'
+      VX_CLOUD_S3_SECRET_ACCESS_KEY: 'vxminiosecret'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      createbucket:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vx
+      POSTGRES_PASSWORD: vx
+      POSTGRES_DB: vx
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U vx -d vx']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Demo object storage — replace with managed R2/S3 in production
+  # (set VX_CLOUD_S3_* on `app` and delete these two services).
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: vxminio
+      MINIO_ROOT_PASSWORD: vxminiosecret
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  createbucket:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set vx http://minio:9000 vxminio vxminiosecret &&
+      mc mb --ignore-existing vx/vx-artifacts
+      "
+
+volumes:
+  pgdata:
+  miniodata:
+```
+
+Bring it up:
+
+```sh
+VX_CLOUD_SECRET=$(openssl rand -hex 32) docker compose up
+```
+
+On boot the server reaches Postgres, applies migrations, probes the S3
+bucket, then binds `0.0.0.0:4321`. The repo also ships this stack at
+[`packages/cloud/deploy/docker-compose.yml`](https://github.com/vznjs/vx/blob/main/packages/cloud/deploy/README.md)
+(with a build stage for contributors).
+
+## First run: register → Admin
+
+1. Open **`VX_CLOUD_BASE_URL`** (`http://localhost:4321` above) and
+   **register**. The **first account becomes the instance admin**, and
+   signup then **closes** — everyone else joins by invite. (Set
+   `VX_CLOUD_OPEN_SIGNUP=1` to keep public signup open.)
+2. In the **Admin** area, create an **organization** and a **workspace**,
+   and **invite members** — roles are `owner`, `admin`, `member`, and
+   `viewer`.
+3. Mint an **API token** under Admin → Tokens. Tokens are prefixed `vxc_`,
+   carry an **immutable trust tier** (`trusted` or `untrusted`), and can
+   optionally be **scoped to a single workspace**. This is the token your
+   CI and `vx run` present — the tier follows the token (see [trust
+   scopes](#fork-pr-trust-scopes)).
+
+## Configuration
+
+Every setting is an environment variable. Boot validates the full set and
+refuses to start, **listing every missing or invalid var at once**.
+
+| Variable | Required | Meaning |
+| --- | --- | --- |
+| `DATABASE_URL` | ✓ | `postgres://user:pass@host:5432/db` — the system of record |
+| `VX_CLOUD_SECRET` | ✓ | Session + API-token HMAC secret (**≥ 32 chars**) |
+| `VX_CLOUD_BASE_URL` | ✓ | The public origin (`https://vx.acme.dev`); `https://` flips cookies to Secure |
+| `VX_CLOUD_S3_ENDPOINT` | ✓ | S3-compatible endpoint (R2 / AWS S3 / MinIO) |
+| `VX_CLOUD_S3_BUCKET` | ✓ | Artifact bucket (must already exist) |
+| `VX_CLOUD_S3_ACCESS_KEY_ID` | ✓ | S3 credentials |
+| `VX_CLOUD_S3_SECRET_ACCESS_KEY` | ✓ | S3 credentials |
+| `VX_CLOUD_S3_REGION` | | SigV4 region (default `auto`) |
+| `VX_CLOUD_S3_PREFIX` | | Optional key prefix |
+| `VX_CLOUD_S3_PRESIGN_TTL` | | Presigned-GET TTL in seconds (default `300`) |
+| `VX_CLOUD_PORT` | | Listen port (default `4321`) |
+| `VX_CLOUD_RETENTION_DAYS` | | Analytics retention window (default `180`) |
+| `VX_CLOUD_OPEN_SIGNUP` | | `1`/`true` keeps public signup open (default: closed after the first admin) |
+| `VX_CLOUD_OPEN_ORG_CREATE` | | `1`/`true` lets any member create orgs |
+
+Partial S3 config (endpoint without bucket/credentials) is a **boot-time
+hard error** — the server never silently falls back to local storage.
+
+## Production notes
+
+- **External object storage.** Drop the `minio` / `createbucket` services
+  and point `VX_CLOUD_S3_*` at managed storage. Addressing is path-style
+  with hand-rolled SigV4 (no AWS SDK), so any S3-compatible store works.
+  Cloudflare R2:
+
+  ```yaml
+  VX_CLOUD_S3_ENDPOINT: https://<account-id>.r2.cloudflarestorage.com
+  VX_CLOUD_S3_BUCKET: vx-artifacts
+  VX_CLOUD_S3_ACCESS_KEY_ID: ...
+  VX_CLOUD_S3_SECRET_ACCESS_KEY: ...
+  ```
+
+  The bucket must be reachable from **wherever `vx run` executes** (CI
+  runners, dev machines): cache GETs redirect the client to a short-lived
+  pre-signed bucket URL, so read traffic goes client → bucket, never
+  through the controller.
+
+- **TLS.** Front the server with a TLS-terminating reverse proxy (nginx,
+  Caddy, Traefik) and set `VX_CLOUD_BASE_URL` to the `https://` origin so
+  session cookies are marked `Secure`. A Caddy example:
+
+  ```
+  vx.example.com {
+    reverse_proxy app:4321
+  }
+  ```
+
+- **Scale out.** The app is stateless (Postgres + S3 hold all state), so
+  run several replicas behind the load balancer; `/health` is the
+  pre-auth liveness probe. There is no volume to attach to the app
+  container.
 
 ## HTTP + WS surface
 
 | Path | Purpose | Auth |
 | --- | --- | --- |
 | `GET /health` | Liveness probe | pre-auth |
-| `GET /v1/meta` | Identity + capabilities (`artifacts`, `trustTiers`, workspace count) | pre-auth |
-| `GET /v1/*` | Analytics reads (`/v1/runs`, `/v1/invocations`, `/v1/cache/stats`, `/v1/why/:runId/:taskId`, …) | token |
-| `POST /v1/ingest` | The push endpoint — where run summaries land | token |
+| `GET /v1/meta` | Identity + capability flags (`auth: account`, `cacheWire`, `trustTiers`, `artifacts`) | pre-auth |
+| `POST /v1/auth/*` | Register / login / logout / invites | session |
+| `/v1/admin/*` | Orgs, members, invites, tokens, workspaces | session (RBAC) |
+| `GET /v1/*` | Analytics reads (`/v1/runs`, `/v1/invocations`, `/v1/cache/stats`, `/v1/why/…`, …) | session or token |
+| `POST /v1/ingest` | Where run summaries land (the `cloud()` plugin's push) | token |
 | `GET/HEAD/PUT /v1/cache/:hash` | The vx-native remote-cache wire | token |
-| `POST /mcp` | MCP server (JSON-RPC 2.0) for AI agents | token |
-| `GET /events`, `GET /v1/events` | SSE event stream | token |
-| `GET /stream` | NDJSON event stream | token |
-| `WS /` | Delegated run submission | token |
+| `POST /mcp` | MCP server (JSON-RPC 2.0) for AI agents | session or token |
 | `WS /v1/agents` | Distribution agents | token |
+| `GET /events`, `/stream` | SSE / NDJSON event streams | session or token |
 
-`/v1/meta` is pre-auth by design: it carries no secrets and no workspace
-path, so a client can read the server's identity and capabilities before
-proving a token. A serve that hosts multiple workspaces scopes the
-analytics routes with `?ws=<id>`; the token-gated `GET /v1/workspaces`
-lists them.
+`/v1/meta` is pre-auth by design — it carries identity and capability
+flags only, never tenant data. Every read is **tenant-clamped**: a
+session is clamped to one org, a token to its org and (if workspace-scoped)
+its workspace. There is **no** shared-secret / loopback auth model — the
+token or session **is** the identity, and the server derives the tenant
+from it.
 
-## Auth and binding
+## Fork-PR trust scopes
 
-The security posture is loopback-first:
-
-- **Loopback by default.** `vx-cloud serve` binds `127.0.0.1`. Override
-  with `--host <h>` or `VX_CLOUD_HOST`.
-- **A non-loopback bind requires a token.** Binding `0.0.0.0` (or any
-  reachable interface) **without** a token is refused at startup — an
-  open serve on the network would expose arbitrary task execution over
-  the run/agent WebSocket channels.
-- **`--token <t>` / `VX_CLOUD_TOKEN`** sets the shared bearer. Every
-  request except `/health` and `/v1/meta` then needs
-  `Authorization: Bearer <t>` (constant-time compared). Browser
-  transports that can't set headers (`EventSource`, the WS upgrade) may
-  pass `?token=<t>` in the query instead.
-- **Cross-origin browser handshakes are refused** unless you allow-list
-  them with `--allow-origin <o>` (repeatable) or `VX_CLOUD_ALLOW_ORIGIN`
-  (comma-separated). CLI clients (no `Origin` header) and same-origin
-  requests always pass; this is the CSWSH / drive-by-RCE defense.
-- **A unix socket** (`--socket [path]` / `VX_CLOUD_SOCKET`) is a second
-  listener. Its `0600` file permissions **are** the auth — socket
-  requests bypass the token gate, since only your user can open the
-  socket.
-
-```sh
-# hosted: reachable interface, so a token is mandatory
-vx-cloud serve --host 0.0.0.0 --token "$(openssl rand -hex 32)"
-
-# a hosted dashboard on a different origin needs to be allow-listed
-vx-cloud serve --host 0.0.0.0 --token "$TOKEN" \
-  --allow-origin https://dash.example.com
-```
-
-### Fork-PR trust scopes
-
-The serve-hosted artifact store is partitioned `<bucket>/<tier>`, and the
+The artifact store is partitioned `org/<orgId>/ws/<wsId>/<tier>`, and the
 tier is **derived from the token on the server** — never claimed by the
-client. A holder of the main `--token` is *trusted*: it reads and writes
-the `trusted/` scope. A holder of `--pr-token` / `VX_CLOUD_PR_TOKEN` is
-*untrusted*: it reads trusted + untrusted but writes **only** untrusted,
-so a fork-PR CI job can warm off `main`'s cache without being able to
-poison it. Artifacts are immutable (re-PUT of an existing hash is
-rejected). See the [cache-trust-scopes design
-note](/vx/design/cache-trust-scopes-2026-07/) and the [security
-review](/vx/design/security-review-2026-07/).
-
-## Run it in Docker
-
-Every push to `main` and every release publishes a prebuilt image to the
-GitHub Container Registry — you don't need to clone or build anything:
-
-```sh
-docker pull ghcr.io/vznjs/vx-cloud:latest
-```
-
-Tags: `latest` (tip of `main`), `X.Y.Z` / `X.Y` (releases), and
-`sha-<short>` (an exact commit). To build it yourself instead, use the
-repo root as the build context (core and cloud share one workspace and one
-lockfile):
-
-```sh
-docker build -f packages/cloud/Dockerfile -t vx-cloud .
-```
-
-The image `ENTRYPOINT` is `vx-cloud`; the default `CMD` is
-`serve --ingest-dir /data`, it `EXPOSE`s `4321`, runs as a non-root user,
-and carries the dashboard embedded in the compiled binary.
-
-Inside a container the serve must bind `0.0.0.0` to be reachable through
-Docker's port mapping — and a non-loopback bind requires a token. So a
-Docker deploy **must** set both `VX_CLOUD_HOST=0.0.0.0` and
-`VX_CLOUD_TOKEN`:
-
-```sh
-docker run --rm \
-  -p 4321:4321 \
-  -v vxdata:/data \
-  -e VX_CLOUD_HOST=0.0.0.0 \
-  -e VX_CLOUD_TOKEN=your-secret-token \
-  ghcr.io/vznjs/vx-cloud:latest
-# API + dashboard at http://localhost:4321
-```
-
-Persist `/data` on a volume — it holds the SQLite ingest store **and** the
-artifact store, so mounting it keeps pushed run history and cached
-artifacts across container restarts. (The `HEALTHCHECK` probes
-`127.0.0.1:4321/health`, which still passes: binding `0.0.0.0` includes
-loopback.)
-
-> **Snapshot `/data` before upgrading.** The ingest store currently rides
-> core vx's cache schema, which is dropped and recreated on a
-> schema-version bump (pre-alpha, no migrations) — an upgrade across a
-> bump resets the server's run history. Back up the volume if the history
-> matters to you.
-
-### docker-compose
-
-See [`packages/cloud/deploy/README.md`](https://github.com/vznjs/vx/blob/main/packages/cloud/deploy/README.md)
-for the full deploy guide. A minimal compose service mirrors the
-`docker run` above:
-
-```yaml
-services:
-  vx-cloud:
-    image: ghcr.io/vznjs/vx-cloud:latest
-    ports:
-      - "4321:4321"
-    environment:
-      VX_CLOUD_HOST: 0.0.0.0
-      VX_CLOUD_TOKEN: ${VX_CLOUD_TOKEN}
-    volumes:
-      - vxdata:/data
-
-volumes:
-  vxdata:
-```
-
-## TLS / reverse proxy
-
-Front the serve with nginx, Caddy, or Traefik for TLS termination. The
-serve now has native token auth, so proxy-level basicauth is optional:
-
-```caddy
-vx.example.com {
-  reverse_proxy localhost:4321
-}
-```
-
-When you terminate TLS at the proxy, keep the serve bound to loopback on
-the host and let the proxy be the only thing that reaches it — or, if the
-serve runs in its own container, keep its token set (the proxy still needs
-to forward the `Authorization` header or the browser's `?token=`).
-
-## Serve-hosted remote cache
-
-The serve hosts the vx-native artifact store at `/v1/cache/:hash`, so
-it doubles as a remote cache with no separate cache server. The same
-connection drives it:
-
-```bash
-export VX_CLOUD_URL=https://vx.example.com
-export VX_CLOUD_TOKEN=your-secret-token
-```
-
-See [Remote caching](/vx/guides/remote-caching/) for the trust-scope
-model and integrity details.
-
-## S3-compatible artifact storage
-
-By default artifacts rest on the serve's own disk (under the ingest
-dir). If the controller must not hold artifact bytes — a small VM, an
-ephemeral container, or simply "cache belongs in object storage" —
-connect an S3-compatible bucket and the serve stores **zero artifact
-bytes at rest**:
-
-| Env var                         | Meaning                                     |
-| ------------------------------- | ------------------------------------------- |
-| `VX_CLOUD_S3_ENDPOINT`          | `https://…` — presence ENABLES the backend  |
-| `VX_CLOUD_S3_BUCKET`            | bucket name (required with endpoint)        |
-| `VX_CLOUD_S3_REGION`            | SigV4 region (default `auto`)               |
-| `VX_CLOUD_S3_ACCESS_KEY_ID`     | credentials (required with endpoint)        |
-| `VX_CLOUD_S3_SECRET_ACCESS_KEY` | credentials (required with endpoint)        |
-| `VX_CLOUD_S3_PREFIX`            | optional key prefix (`vx-cache/`)           |
-| `VX_CLOUD_S3_PRESIGN_TTL`       | presigned-GET TTL in seconds, default `300` |
-
-Partial config (endpoint without bucket/credentials) is a **boot-time
-hard error** naming the missing vars — the serve never silently falls
-back to local storage.
-
-How it behaves once enabled:
-
-- **GET** answers `307 Location: <pre-signed bucket URL>` — the client
-  downloads directly from the bucket (dropping its bearer on the
-  cross-origin hop); artifact bytes never transit the controller on the
-  read path.
-- **PUT still proxies through the serve.** That is transit, not
-  storage: the byte cap, the junk-body (zstd-magic) gate, immutability,
-  and the fork-PR trust scopes are all **server-enforced**, which a
-  direct client→bucket upload would surrender to the client. The body
-  spools to a temp file, uploads to the bucket, and the temp is deleted
-  before the response.
-- Object keys mirror the trust-scope layout
-  (`<bucket>/<tier>[/<sub>]/<hash>.tar.zst`, under the optional
-  prefix), so the fork-PR isolation model holds by construction — a
-  pre-signed URL binds one server-derived scope.
-
-Addressing is path-style with hand-rolled SigV4 (no AWS SDK), so any
-S3-compatible store works. Cloudflare R2:
-
-```sh
-docker run --rm -p 4321:4321 -v vxdata:/data \
-  -e VX_CLOUD_HOST=0.0.0.0 \
-  -e VX_CLOUD_TOKEN=your-secret-token \
-  -e VX_CLOUD_S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com \
-  -e VX_CLOUD_S3_BUCKET=vx-artifacts \
-  -e VX_CLOUD_S3_ACCESS_KEY_ID=… \
-  -e VX_CLOUD_S3_SECRET_ACCESS_KEY=… \
-  ghcr.io/vznjs/vx-cloud:latest
-```
-
-MinIO (self-hosted):
-
-```sh
-export VX_CLOUD_S3_ENDPOINT=https://minio.internal:9000
-export VX_CLOUD_S3_BUCKET=vx-artifacts
-export VX_CLOUD_S3_REGION=us-east-1
-export VX_CLOUD_S3_ACCESS_KEY_ID=…
-export VX_CLOUD_S3_SECRET_ACCESS_KEY=…
-vx-cloud serve --host 0.0.0.0 --token "$TOKEN"
-```
-
-Note: clients fetch artifacts from the pre-signed bucket URLs, so the
-bucket endpoint must be reachable from wherever `vx run` executes (CI
-runners, dev machines) — not just from the serve. The analytics DBs
-(run history, logs, fingerprints) stay on the serve's disk: they are
-small, pruned state, not cache.
+client. A **trusted** token reads and writes the `trusted` scope. An
+**untrusted** token (mint one for fork PRs) reads `trusted ∪ untrusted`
+but writes **only** `untrusted`, so a fork-PR job can warm off `main`'s
+cache without being able to poison it. Artifacts are immutable (re-PUT of
+an existing hash is rejected). Mint both tiers under Admin → Tokens; the
+job presents whichever it holds. See [Remote caching](/vx/guides/remote-caching/)
+and the [cache-trust-scopes design note](/vx/design/cache-trust-scopes-2026-07/).
 
 ## Connect a workspace
 
-Rather than setting environment variables by hand, `vx-cloud connect`
-persists a named, per-user environment. Every `vx run` then pushes its
-summary there, and when the serve advertises the cache wire on
-`/v1/meta` (it does), the remote cache auto-wires:
+From any workspace, connect to the deployed platform so its runs share the
+remote cache and feed the dashboard. Persist a named, per-user
+environment:
 
 ```sh
-vx-cloud connect https://vx.example.com --name team --token your-secret-token
+vx-cloud connect https://vx.example.com --name team --token vxc_...
 ```
 
-Flags: `--delegate` opts the environment into run delegation; `--no-use`
-records it without activating it. Manage environments with
-`vx-cloud env ls | use <name> | rm <name>`, and clear the active one with
-`vx-cloud disconnect`. Tokens are stored `0600` and never printed.
+`connect` validates reachability + identity + the token before persisting
+anything (tokens are stored `0600` and never printed). Manage environments
+with `vx-cloud env ls | use <name> | rm <name>`, and clear the active one
+with `vx-cloud disconnect`. `--distribute` opts the environment into
+ambient distribution across an agent pool (see
+[Distributed CI](/vx/guides/distributed-ci/)); `--no-use` records it
+without activating it.
 
-## Dashboard
-
-The dashboard is **embedded in the compiled `vx-cloud` binary and the
-Docker image** — a released artifact already carries it. Nothing to build,
-nothing to deploy separately. `vx-cloud serve --ui` serves it at `/`:
+Or wire it with environment variables (handy in CI):
 
 ```sh
-docker run --rm -p 4321:4321 \
-  -v vxdata:/data \
-  -e VX_CLOUD_HOST=0.0.0.0 \
-  -e VX_CLOUD_TOKEN=your-secret-token \
-  vx-cloud serve --ui --ingest-dir /data
+export VX_CLOUD_URL=https://vx.example.com
+export VX_CLOUD_TOKEN=vxc_...          # the trusted token you minted
 ```
 
-(Only a contributor hacking on the dashboard SPA itself ever runs its
-build; deploying the service never does.)
+Declare the plugin once so a connected workspace lights up the cache,
+analytics ingest, and distribution:
+
+```ts
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+import { cloud } from '@vzn/vx-cloud/plugin'
+
+export default defineWorkspace({ plugins: [cloud()] })
+```
+
+With no connection configured, `cloud()` declines every capability at zero
+cost, so it's safe to leave declared everywhere.
+
+## Installing the CLI
+
+The `vx-cloud` CLI ships as a **prebuilt standalone binary per platform**
+(with the dashboard embedded) — `npm i -g @vzn/vx-cloud` gives you
+`vx-cloud` with **no Bun required**. You need the CLI on the machines that
+`connect`, run `vx-cloud agent` (distributed CI), or administer from the
+terminal. For the server itself, the Docker image above is the turnkey
+deployment.
 
 See also: [`Dashboard`](/vx/guides/dashboard/),
 [`Remote caching`](/vx/guides/remote-caching/),
 [`Distributed CI execution`](/vx/guides/distributed-ci/),
-[`vx mcp — AI agents`](/vx/guides/mcp/),
-[`Wire protocol`](/vx/guides/wire-protocol/).
+[`vx mcp — AI agents`](/vx/guides/mcp/).

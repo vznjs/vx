@@ -1,138 +1,110 @@
 # Deploying `@vzn/vx-cloud`
 
-`vx-cloud serve` is the whole service: **one process, one container.** It
-serves the embedded dashboard, the `/v1/*` analytics API, the `/v1/cache`
-remote cache, and the `/mcp` endpoint, all over a SQLite ingest store fed by
-`POST /v1/ingest` (the `cloud()` plugin pushes each run's summary to it). It
-reads only its own store — never a workspace `cache.db` — so it can run
-anywhere, with no access to the machines that produced the runs.
+`vx-cloud` is a **self-hosted CI platform** — accounts, organizations,
+RBAC, and API tokens, with **Postgres** as the system of record and an
+**S3-compatible bucket** for artifacts. The single verb is
+**`vx-cloud server`**: one stateless process that serves the embedded
+dashboard, the account/RBAC + Admin API (`/v1/auth/*`, `/v1/admin/*`), the
+analytics API (`/v1/*`), the vx-native remote cache (`/v1/cache/:hash`),
+the distribution WebSocket channels (`/v1/agents`), and MCP (`/mcp`).
 
-There is **no coordinator/worker fleet and no Helm chart**: the server is a
-single process, and distributed-execution `agent`s are per-CI-job processes
-(see the [Distributed CI execution](https://vznjs.github.io/vx/guides/distributed-ci/)
-guide), not long-lived pods. For Kubernetes, run the same image as a
-one-container `Deployment` + `Service` + a `PersistentVolumeClaim` on `/data`
-— it needs nothing a plain container doesn't.
+It is **not** a companion process — a workspace *connects* to a deployed
+platform; nothing auto-starts next to `vx`. There is no `serve` verb, no
+tokenless mode, and no local-disk state: the app writes nothing to disk, so
+you can scale it out behind a load balancer.
 
 ## The image
 
-CI publishes a prebuilt image to the GitHub Container Registry on every push
-to `main` and every release — the fastest path is to pull it, no clone or
-build required:
+CI publishes a prebuilt image to the GitHub Container Registry on every
+push to `main` and every release:
 
 ```sh
 docker pull ghcr.io/vznjs/vx-cloud:latest
 ```
 
-Tags: `latest` (tip of `main`), `X.Y.Z` / `X.Y` (releases), `sha-<short>` (an
-exact commit). To build it yourself, the build context is the **repo root** —
-core (`src/`) and `packages/cloud` (which carries its own embedded dashboard at
+Tags: `latest` (tip of `main`), `X.Y.Z` / `X.Y` (releases), `sha-<short>`
+(an exact commit). To build it yourself, the build context is the **repo
+root** — core (`src/`) and `packages/cloud` (with its embedded dashboard at
 `packages/cloud/ui`) share one workspace and one lockfile:
 
 ```sh
 docker build -f packages/cloud/Dockerfile -t vx-cloud .
 ```
 
-Multi-stage: a `oven/bun:1.3` build stage runs `bun install --frozen-lockfile`
-(its postinstall re-links `node_modules/@vzn/vx -> <root>` so the cloud
-package's bare `import … from '@vzn/vx'` resolves) and
-`bun build --compile packages/cloud/src/cli/bin.ts` into one self-contained
-binary; the `oven/bun:1.3-slim` runtime stage carries only that binary, runs as
-the non-root `bun` user, and `HEALTHCHECK`s `/health`.
+The image `ENTRYPOINT` is `vx-cloud`, the default `CMD` is `server`, it
+`EXPOSE`s `4321`, runs as a non-root user, and `HEALTHCHECK`s `/health`.
 
-The bundled dashboard SPA is **not** rebuilt in the image — the committed
-`packages/cloud/ui/dist/index.html` is authoritative and `ui-asset.ts` embeds
-it at compile time. **You never build the SPA to deploy** — a released binary
-or image already carries it. (Only a contributor hacking on the dashboard runs
-`bun run --filter '@vzn/vx-ui' build`.)
+## `docker compose up`
 
-## Auth: a reachable serve requires a token
-
-The serve binds `127.0.0.1` by default, so a tokenless container is only
-reachable from inside itself. To accept connections from outside the container
-it must bind a non-loopback host (`VX_CLOUD_HOST=0.0.0.0`), and a non-loopback
-bind **requires a token** — an unauthenticated serve on a reachable interface
-would expose task execution. So a real deployment sets **both**
-`VX_CLOUD_HOST=0.0.0.0` and `VX_CLOUD_TOKEN=<secret>`.
-
-## `docker run`
+[`docker-compose.yml`](./docker-compose.yml) is the full stack: the app,
+Postgres (system of record), and MinIO (an S3-compatible bucket for local
+evaluation), plus a one-shot job that creates the bucket the server's boot
+probe expects.
 
 ```sh
-docker run -p 4321:4321 -v vxdata:/data \
-  -e VX_CLOUD_HOST=0.0.0.0 \
-  -e VX_CLOUD_TOKEN="$(openssl rand -hex 32)" \
-  vx-cloud
-# dashboard + API at http://localhost:4321  (Authorization: Bearer <token>)
-```
-
-The `/data` volume holds the SQLite ingest store **and** the artifact store —
-mount it on a volume so both survive restarts.
-
-## S3-compatible artifact storage (optional)
-
-If the container must not hold artifact bytes at rest, connect an
-S3-compatible bucket (R2, MinIO, Garage, AWS): set `VX_CLOUD_S3_ENDPOINT`,
-`VX_CLOUD_S3_BUCKET`, `VX_CLOUD_S3_ACCESS_KEY_ID`, and
-`VX_CLOUD_S3_SECRET_ACCESS_KEY` (optional: `VX_CLOUD_S3_REGION`,
-`VX_CLOUD_S3_PREFIX`, `VX_CLOUD_S3_PRESIGN_TTL`). Cache GETs then redirect
-clients to short-lived pre-signed bucket URLs (the bucket endpoint must be
-reachable from the machines running `vx run`), while PUTs still proxy through
-the serve so the byte cap, junk-body gate, immutability, and fork-PR trust
-scopes stay server-enforced. Partial config is a boot-time hard error — never
-a silent fall-back to local storage. [`docker-compose.yml`](./docker-compose.yml)
-documents the lines inline; the
-[Self-host guide](https://vznjs.github.io/vx/guides/self-hosting/) has full
-examples.
-
-## `docker compose`
-
-[`docker-compose.yml`](./docker-compose.yml) is the same thing, declarative:
-
-```sh
-VX_CLOUD_TOKEN=$(openssl rand -hex 32) \
+VX_CLOUD_SECRET=$(openssl rand -hex 32) \
   docker compose -f packages/cloud/deploy/docker-compose.yml up
 ```
 
-It also builds from source if you haven't pushed an image (`docker compose
-build`). Optional env it documents inline: `VX_CLOUD_PR_TOKEN` (the fork-PR
-read-only cache token) and `VX_CLOUD_ALLOW_ORIGIN` (a hosted dashboard on a
-different origin than the serve).
+On boot the server reaches Postgres, applies migrations (advisory-locked,
+so concurrent boots serialize), probes the S3 bucket (fail loud — never a
+silent local fallback), then binds `0.0.0.0:4321`. The compose file also
+builds from source if you haven't pulled an image (`docker compose build`).
+
+Then open `http://localhost:4321` and **register** — the **first account
+becomes the instance admin**, after which signup closes (invite-only). From
+the **Admin** area, create an organization and a workspace, invite members
+(roles `owner`/`admin`/`member`/`viewer`), and mint API tokens (`vxc_`,
+`trusted`/`untrusted` tier, optionally workspace-scoped). Point your CI at a
+minted token — see the
+[Distributed CI](https://vznjs.github.io/vx/guides/distributed-ci/) and
+[Self-hosting](https://vznjs.github.io/vx/guides/self-hosting/) guides.
+
+## Required configuration
+
+The platform **refuses to boot** without full config, listing every
+missing/invalid var at once:
+
+| Variable | Meaning |
+| --- | --- |
+| `DATABASE_URL` | `postgres://user:pass@host:5432/db` |
+| `VX_CLOUD_SECRET` | Session + API-token HMAC secret (**≥ 32 chars**) |
+| `VX_CLOUD_BASE_URL` | The public origin; `https://` flips cookies to Secure |
+| `VX_CLOUD_S3_ENDPOINT` | S3-compatible endpoint (R2 / AWS S3 / MinIO) |
+| `VX_CLOUD_S3_BUCKET` | Artifact bucket (must already exist) |
+| `VX_CLOUD_S3_ACCESS_KEY_ID` / `VX_CLOUD_S3_SECRET_ACCESS_KEY` | S3 credentials |
+
+Optional: `VX_CLOUD_S3_REGION` (default `auto`), `VX_CLOUD_S3_PREFIX`,
+`VX_CLOUD_S3_PRESIGN_TTL` (default `300`), `VX_CLOUD_PORT` (default `4321`),
+`VX_CLOUD_RETENTION_DAYS` (default `180`), `VX_CLOUD_OPEN_SIGNUP`,
+`VX_CLOUD_OPEN_ORG_CREATE`.
+
+## Production
+
+- **External object storage.** Delete the `minio` / `createbucket` services
+  and point `VX_CLOUD_S3_*` at managed storage (Cloudflare R2, AWS S3, …).
+  The bucket must be reachable from wherever `vx run` executes — cache GETs
+  redirect the client to a pre-signed bucket URL.
+- **TLS.** Front the app with a TLS-terminating reverse proxy and set
+  `VX_CLOUD_BASE_URL` to the `https://` origin so session cookies are
+  `Secure`.
+- **Scale out.** The app is stateless (Postgres + S3 hold all state) — run
+  several replicas behind the load balancer; `/health` is the pre-auth
+  liveness probe. There is no volume to attach to the app container.
+
+For Kubernetes, run the same image as a `Deployment` + `Service` (with
+`Ingress` for TLS) — it needs nothing a plain container doesn't, since it
+keeps no local state.
 
 ## Connecting a workspace
 
-From any workspace, point runs at the deployed serve so its dashboard fills and
-its remote cache is used:
+From any workspace, connect to the deployed platform:
 
 ```sh
-vx-cloud connect https://vx.example.com --name team --token <secret>
-# every `vx run` now pushes its summary there; if the serve advertises the
-# cache wire (/v1/meta cacheWire: 1), the remote cache auto-wires.
+vx-cloud connect https://vx.example.com --name team --token vxc_...
+# every `vx run` now shares the remote cache and feeds the dashboard
 ```
 
-Or wire it explicitly with env vars (`VX_CLOUD_URL` + `VX_CLOUD_TOKEN`) —
-see the [Self-host](https://vznjs.github.io/vx/guides/self-hosting/) and
+Or wire it with env vars (`VX_CLOUD_URL` + `VX_CLOUD_TOKEN`). See the
+[Self-hosting](https://vznjs.github.io/vx/guides/self-hosting/) and
 [Remote caching](https://vznjs.github.io/vx/guides/remote-caching/) guides.
-
-## TLS
-
-The serve terminates plain HTTP/WS. Front it with a reverse proxy (nginx,
-Caddy, Traefik) for TLS. It has native token auth, so proxy-level basic-auth is
-optional. A Caddy example:
-
-```
-vx.example.com {
-  reverse_proxy localhost:4321
-}
-```
-
-## Upgrading — snapshot `/data` first
-
-> The `/data` ingest store currently rides core vx's cache schema, which is
-> dropped + recreated on a schema-version bump (pre-alpha, no migrations) — an
-> upgrade across a bump **resets the server's run history** (the serve logs
-> `ingest store schema upgraded — run history was reset` when it happens). Back
-> up `/data` (or the `--ingest-dir` path) before pulling a new image if the
-> history matters to you. The artifacts under `/data/artifacts` are plain
-> files and are unaffected (and with `VX_CLOUD_S3_*` set they live in the
-> bucket entirely). An ingest-owned schema with additive migrations is on the
-> roadmap.
