@@ -208,6 +208,93 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-12**: **Scale/perf e2e guards for 1000s-task workspaces —
+  "graph, lags" (owner ask) — SHIPPED (`02eff47`, `04344b5`, `614b528`)**,
+  plus a real deep-graph stack-overflow FIX the guard surfaced. Three
+  surfaces, anti-flake by the repo's proven method (min-of-3, bounds ~10-30×
+  measured healthy so they guard ALGORITHMIC complexity, not machine speed):
+  **(1) Core pipeline** — a REAL git-backed 2000-project / 6000-task
+  workspace; `planRun` (the `--dry` path: hashes every task + probes cache,
+  no exec) runs ~510 ms (bound 6000 ms), with functional pins on node count /
+  task kinds / edges. **(2) Dashboard run-graph** — `contractGroups`+
+  `layoutLevels` on a 3000-node/~12k-edge DAG ~11 ms (bound 500 ms, validated
+  vs an independent longest-depth oracle), `criticalPath` ~2 ms, `parallelism`
+  sweep (5000 intervals) ~2 ms, and a DEEP-CHAIN (8000) stack-safety pin.
+  **(3) Postgres analytics** — ~480 invocations → ~12k `task_runs` (+ a decoy
+  org) seeded via the real `Analytics.ingest`; every hot dashboard query
+  bounded (listRuns ~9 ms, getHistory ~29 ms, getRun(700-task) ~2 ms,
+  getFlakiestTasks ~46 ms, getRegressions ~150 ms, getPeriodComparison ~18 ms,
+  taskDurationHints ~9 ms, getCacheSavings ~430 ms), workspace-CLAMP verified
+  (the decoy org's rows never appear; foreign run-id → null). **REAL FIX
+  (`04344b5`):** the deep-chain pin caught `contractGroups.resolve()`
+  stack-OVERFLOWING at ~8000 depth (its `deps.flatMap(resolve)` recursion) —
+  a browser hard-crash on a pathologically deep dependency chain. Converted to
+  an explicit post-order stack, **byte-identical to the recursion**
+  (differential-verified over 8000 random DAGs + cyclic graphs), now safe past
+  500k. `layoutLevels`/`criticalPath` were KEPT recursive (they survive ~50k
+  depth in V8 — beyond any realistic task-graph depth; the guard test pins
+  them; converting them is a deferred nicety, not a bug). **Accepted residuals
+  (informational):** `getCacheSavings` (~430 ms, a correlated subquery per
+  cache-hit row) and `getRegressions` (~150 ms, an N+1 per-failing-task
+  subquery) are architecturally N+1 — bounded higher, NOT regressions; a
+  single set-based rewrite is the lever only if dashboard latency ever matters
+  at extreme scale. Core 1223, cloud 380 (+19 analytics-scale), UI 52
+  (+run-graph-scale) — all green together on the merged tree; the perf work
+  merged cleanly (disjoint files) on top of P4-server.
+
+- **2026-07-12**: **Platform Phase 4 (server half) SHIPPED — `serve.ts`
+  absorbed into the platform, all four residual SQLite stores DELETED
+  (`d39d98a`, `e885a53`)**, completing P4 (§12). The transitional companion
+  machinery is GONE; the platform is Postgres + S3 with ZERO bytes at rest on
+  the controller. **(1) The fold (`d39d98a`, additive):** new
+  `packages/cloud/src/cli/dispatch.ts` (`startPlatformHttp`) owns the single
+  `Bun.serve` for every machine surface the auth/admin/analytics `gate` does
+  NOT resolve to a Postgres Response — the vx-native cache wire
+  (`/v1/cache/:hash`), `/v1/artifacts`, `/mcp`, the agent/dist WS channels,
+  SSE/NDJSON streams, the SPA catch-all — and `server.ts` calls it instead of
+  `startServe`. `/mcp` re-backed by Postgres (`cli/mcp.ts`, the 7 tools over
+  `Analytics`, org/workspace-CLAMPED exactly like the analytics gate:
+  `list_workspaces`→`workspacesForOrg`, `list_runs`→`listInvocations`,
+  `get_run`→`getInvocation`+`getRun`, `run_trends`→`getRunTrends`,
+  `cache_stats`→`getCacheStatsSql`+`getHitRateSplit`,
+  `why_did_rerun`→`whyDidThisRerun`+`cacheKeyDiff`, `compare_runs`→
+  `compareRuns`). Dist LPT duration hints now come from `task_runs`
+  (`Analytics.resolveClientWorkspace`; FIFO when un-ingested). NO SQLite in the
+  platform path. **(2) The demolition (`e885a53`):** DELETED `cli/serve.ts`,
+  `cli/mcp-serve.ts`, `ingest-store.ts`, `log-store.ts`, `fp-store.ts`,
+  `workspace-catalog.ts`; the façade dropped `IngestStore`/`WorkspaceCatalog`/
+  `startServe`/`parseServeArgs`/`resolveS3Config`/`resolveServePort`/
+  `defaultServeSocketPath`/`DEFAULT_SERVE_PORT`/`handleMcpHttp` and added
+  `startServer`/`resolveServerConfig`/`PlatformServer`/`ServerConfig`; the
+  colocated cockpit (`/v1/graph` + `/v1/workspace/*` + `WorkspaceCatalog`) is
+  gone (an unknown path falls through to the SPA — the UI already treats them
+  as honest-disabled). **Unix-socket listener DELETED** (`serve --socket` was
+  a companion-only local transport; the platform binds `0.0.0.0` behind the
+  account/token gate, so a 0600-socket-as-auth has no role). `ServerConfig.
+dataDir` is now VESTIGIAL — kept + defaulted so an existing
+  `VX_CLOUD_DATA_DIR` doesn't error, but the server writes nothing to it.
+  **Cloud tests 479→361:** 11 companion suites deleted (serve, serve-socket,
+  serve-transports, ingest, fp-store, log-store, workspace-catalog, {analysis,
+  regressions,task-logs,mcp}-serve) with their still-valid HTTP route-wiring
+  assertions (MCP-over-PG, /v1/analysis, /v1/regressions, /v1/hermeticity,
+  task-log ingest+read, /v1/cache/stats no-shadow) MOVED onto `server.test.ts`
+  and the query-level coverage already in `analytics-read.test.ts`;
+  `agents-e2e` + `blob-store-s3` retargeted onto the platform via a new
+  `tests/helpers/platform.ts` (ephemeral pg + fake S3 + admin session + ci/
+  untrusted tokens). **Accepted coverage trims:** the LocalDirBackend GET-
+  streams-bytes path (dead in prod — the platform is S3-only) and the
+  `/v1/artifacts` orphan-hash "no task field" case. **Verified INDEPENDENTLY
+  with the real CLI** (`bun cli/bin.ts server` on ephemeral pg + fake S3): 11/11
+  — `/v1/meta` auth=account + cacheWire, register→instance admin, mint ci token,
+  cache PUT→200 / GET→307 presigned, `/mcp tools/list`→7 tools OVER POSTGRES, a
+  SESSION on the cache wire→403 (machine-token gate intact), removed `/v1/graph`
+  falls through (200 SPA, not 500), and the data dir holds ZERO `.db`/`.sqlite`
+  files. Core ci exit 0 (ZERO core `src/` change), cloud lint/fmt clean, cloud
+  361 pass, real-server e2e in `server.test.ts` green. **REMAINING: P5**
+  (docker-compose + image + self-hosting/dashboard/distributed-ci docs rewrite
+  for the platform + a cloud CI job — the 464→380 cloud tests still don't run in
+  CI, though Postgres IS available there).
+
 - **2026-07-12**: **Platform Phase 4 (dashboard UI half) SHIPPED — the
   dashboard is now a session/account client + a full Admin area (`656d386`,
   `575ca88`)**, executing the UI portion of P4 (§12). The SPA converted from
