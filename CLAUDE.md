@@ -208,6 +208,58 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-12**: **Docs + website reorg — core is provider-neutral (zero
+  `vx-cloud` references), all vx-cloud content consolidated into a dedicated
+  "vx Cloud" section (`d959c20`, `8961335`, `2e0149f`, `0dcadc8`)** (owner:
+  "Update all docs and website. Do not refer to vx cloud in docs. Move all vs
+  cloud to own section" + "Update readme as well"). After the platform pivot
+  the vx-cloud material was scattered across the core reference pages + core
+  guides, blurring the "core is only a task runner, the platform is an
+  optional plugin you connect to" boundary. Split cleanly: **(1) New "vx Cloud"
+  sidebar group** — 8 hand-authored pages under
+  `apps/docs/src/content/docs/cloud/` (overview, self-hosting, dashboard,
+  distributed-ci, remote-caching, mcp, cli, wire-protocol); the four platform
+  guides that used to live under `guides/` (self-hosting, dashboard,
+  distributed-ci, wire-protocol) MOVED here, and the vx-cloud CLI reference
+  (270 lines) was EXTRACTED out of `docs/cli.md` into `cloud/cli.md`. The
+  "Platform & extensions" group was renamed **"Extending vx"** and is now
+  core-only (extensibility / plugins / mcp / otel / predictive). **(2) Core
+  pages scrubbed provider-neutral** — every `docs/*.md` reference SOURCE
+  (cli, architecture, caching, comparison, differentiators, execution, flows,
+  schema, patterns, modules/\*) + the core guides (ci, extensibility, mcp,
+  plugins, remote-caching) + `introduction.md` + `migrate/from-turborepo.md`
+  - the landing (`index.astro`) now carry ZERO `vx-cloud`/`VX_CLOUD_`/
+    `@vzn/vx-cloud` documentation. Core describes only its SEAMS (the
+    `RemoteCacheLayer` seam + `LayeredCache` behavior, the `cache`/`backend`/
+    `telemetry` plugin capabilities, the vx-native `/v1/cache` wire as core's
+    own concept) and points at the Cloud section for the first-party
+    implementation. **Deliberate residual cross-references (kept, agent
+    judgment):** a page may NAME "vx Cloud" as the answer to "where do I get a
+    shared cache / dashboard / distributed execution" and link into the section
+    (`guides/remote-caching.md` description + body; `comparison.md` /
+    `differentiators.md` "the first-party cloud plugin ships X, see the Cloud
+    section"; the landing's single "Cloud, self-hosted" callout) — that's the
+    necessary bridge, the same way Turbo/Nx docs cross-reference their own
+    cloud products; removing it would make the comparison table and "how do I
+    share a cache" unanswerable in core. `Nx Cloud` mentions are a competitor,
+    untouched. **(3) README** rewritten the same way (`1871940`): core sections
+    provider-neutral, ONE "## vx Cloud" section (Postgres+S3, docker-compose,
+    `vx-cloud connect`), de-staled (`vx-cloud serve --ui` / `/v8` / Turbo-wire
+    remote cache / HMAC all removed). **CI-content judgment:** the GHA
+    job-summary + PR-checks material stayed in the core CI guide, reframed as
+    a first-party CI TELEMETRY plugin (works standalone with only `GITHUB_TOKEN`
+    — no serve), which is accurate; `docs/design/**` + `docs/progress/**` left
+    frozen (a pre-existing broken source-path link in a frozen design doc, and
+    the pre-existing `cli-*.md` module-reference stubs, are NOT reorg
+    regressions). **Verified:** independent `astro build` clean (157 pages), a
+    custom broken-link crawler over `dist/` found 7 broken links, ALL
+    pre-existing (byte-identical source at origin/main — the frozen design doc
+  - non-generated module stubs), ZERO introduced by the reorg; core-docs grep
+    for `vx-cloud|VX_CLOUD_|@vzn/vx-cloud` clean (only the deliberate
+    section-bridge "vx Cloud" cross-refs remain, all linking into
+    `/cloud/...`); oxfmt clean on the 8 edited reference `.md` pages + README +
+    this file. No core/runtime change — docs + site only.
+
 - **2026-07-12**: **Post-pivot future-proofing review — one dead-code removal +
   stale-comment fixes; the pivot code is otherwise clean (`af…` follow-up)**.
   A pass over the P1→P5 code for SIMPLE, durability wins (not a re-audit — the
