@@ -517,6 +517,15 @@ describe('platform e2e (real pg + fake S3)', () => {
     expect('entryCount' in ((await stats.json()) as Record<string, unknown>)).toBe(true)
   })
 
+  it('a malformed percent-encoding in a read path is a 400, not a 500', async () => {
+    // `decodeURIComponent('%')` throws URIError — the guard maps it to a clean
+    // 400 instead of letting it fall through to a bare 500.
+    const bad = await call('GET', '/v1/tasks/%', { cookie })
+    expect(bad.status).toBe(400)
+    const badRun = await call('GET', '/v1/runs/%c3', { cookie })
+    expect(badRun.status).toBe(400)
+  })
+
   it('task-log ingest (ci token) + read back over the analytics route', async () => {
     const bundle = {
       v: 1,

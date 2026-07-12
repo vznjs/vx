@@ -112,8 +112,47 @@ export class DistScheduler implements ActiveSubmission {
     }
   }
 
+  /**
+   * A submitted graph that can never complete would hang the submission
+   * forever — `checkFinish` only fires from `complete()`, so a node that never
+   * becomes ready (a dependency cycle, or a dep on a task not in the
+   * submission) leaves `outcomes.size < nodes.size` permanently, leaking the
+   * session + the submitter socket. `dist:submit` is a raw wire message, so
+   * validate the graph is a well-formed DAG up front. Returns an error string,
+   * or null when schedulable. (An EMPTY graph is well-formed — it finishes
+   * immediately via the terminal `checkFinish` in `start()`.)
+   */
+  private validateGraph(): string | null {
+    for (const node of this.nodes.values()) {
+      for (const dep of node.deps) {
+        if (!this.nodes.has(dep)) return `task ${node.id} depends on unknown task ${dep}`
+      }
+    }
+    // Kahn's algorithm over a copy of the dep counts: if fewer than all nodes
+    // drain, the remainder form a cycle.
+    const rem = new Map<string, number>()
+    for (const [id, n] of this.nodes) rem.set(id, n.deps.length)
+    const queue: string[] = []
+    for (const [id, c] of rem) if (c === 0) queue.push(id)
+    let processed = 0
+    for (let head = 0; head < queue.length; head++) {
+      processed++
+      for (const d of this.dependents.get(queue[head]!) ?? []) {
+        const c = (rem.get(d) ?? 0) - 1
+        rem.set(d, c)
+        if (c === 0) queue.push(d)
+      }
+    }
+    return processed < this.nodes.size ? 'submitted task graph has a dependency cycle' : null
+  }
+
   /** run:start → prune against the artifact store → initial dispatch. */
   async start(): Promise<void> {
+    const invalid = this.validateGraph()
+    if (invalid !== null) {
+      this.abort(invalid)
+      return
+    }
     const execTotal = [...this.nodes.values()].filter((n) => !n.view.isGroup).length
     this.event({ kind: 'run:start', info: { total: execTotal } })
 
@@ -160,6 +199,10 @@ export class DistScheduler implements ActiveSubmission {
       if ((this.remaining.get(node.id) ?? 0) === 0) this.onReady(node.id)
     }
     this.binding?.requestDispatch()
+    // Terminal check for a graph that completed entirely up front — an EMPTY
+    // submission (nothing to do), or one every node of which was pruned as a
+    // store hit. `checkFinish` no-ops while any node is still outstanding.
+    this.checkFinish()
   }
 
   // --- ActiveSubmission: bookkeeping ---------------------------------------

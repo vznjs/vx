@@ -203,6 +203,44 @@ describe('DistScheduler — dispatch', () => {
     expect(agent.assigned()).toEqual(['pkg#a', 'pkg#b'])
   })
 
+  it('an EMPTY submitted graph finishes immediately instead of hanging', async () => {
+    const out = collector()
+    const sched = new DistScheduler({ submit: submitMsg([]), store: store(), send: out.send })
+    await sched.start()
+    // done resolves (no hang) with a clean empty result.
+    expect(await sched.done).toEqual({ ok: true })
+    const result = out.messages.find((m) => m.t === 'result') as
+      | { t: 'result'; result: { ok: boolean; outcomes: unknown[] } }
+      | undefined
+    expect(result?.result).toEqual({ ok: true, outcomes: [] })
+  })
+
+  it('a CYCLIC submitted graph aborts instead of hanging forever', async () => {
+    const out = collector()
+    const sched = new DistScheduler({
+      submit: submitMsg([node('pkg#a', ['pkg#b']), node('pkg#b', ['pkg#a'])]),
+      store: store(),
+      send: out.send,
+    })
+    await sched.start()
+    expect(await sched.done).toEqual({ ok: false })
+    const err = out.messages.find((m) => m.t === 'error') as { message: string } | undefined
+    expect(err?.message).toMatch(/dependency cycle/)
+  })
+
+  it('a graph depending on an UNKNOWN task aborts instead of hanging', async () => {
+    const out = collector()
+    const sched = new DistScheduler({
+      submit: submitMsg([node('pkg#a', ['pkg#ghost'])]),
+      store: store(),
+      send: out.send,
+    })
+    await sched.start()
+    expect(await sched.done).toEqual({ ok: false })
+    const err = out.messages.find((m) => m.t === 'error') as { message: string } | undefined
+    expect(err?.message).toMatch(/unknown task pkg#ghost/)
+  })
+
   it('dispatches the LONGEST task first when duration hints are present (LPT)', async () => {
     const agent = fakeAgent('a1', 1)
     const out = collector()

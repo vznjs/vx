@@ -122,8 +122,10 @@ async function createPartition(
  * the new partition, relocate the in-range rows out of the (now standalone)
  * default table into the parent (which routes them to the new partition), and
  * reattach DEFAULT. Brief ACCESS EXCLUSIVE on the parent — a rare maintenance
- * path, acceptable. If this ALSO fails, the rows stay in DEFAULT (still
- * queryable) and we return false rather than propagate.
+ * path, acceptable. If the transaction fails it rolls back atomically (the rows
+ * stay in DEFAULT, still queryable) and the rejection propagates to
+ * `ensurePartitions`, which catches + logs it per-table so maintenance never
+ * throws overall. Returns true on success.
  */
 async function createPartitionMovingDefault(
   db: DbClient,

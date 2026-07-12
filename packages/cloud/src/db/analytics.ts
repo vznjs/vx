@@ -1184,12 +1184,15 @@ export class Analytics {
   async getRun(workspaceId: string, runId: string): Promise<RunDetail | null> {
     const tasks = await this.listRuns(workspaceId, { runId, limit: 100_000 })
     if (tasks.length === 0) return null
-    return {
-      runId,
-      startedAt: Math.min(...tasks.map((t) => t.startedAt)),
-      endedAt: Math.max(...tasks.map((t) => t.endedAt)),
-      tasks,
+    // Reduce, not spread — a run with tens of thousands of task rows would
+    // overflow the argument-list limit of `Math.min(...)`.
+    let startedAt = Infinity
+    let endedAt = -Infinity
+    for (const t of tasks) {
+      if (t.startedAt < startedAt) startedAt = t.startedAt
+      if (t.endedAt > endedAt) endedAt = t.endedAt
     }
+    return { runId, startedAt, endedAt, tasks }
   }
 
   async getCacheStatsSql(workspaceId: string): Promise<CacheStatsResult> {

@@ -12,8 +12,13 @@
 
 import { VERSION } from '@vzn/vx'
 import type { Analytics } from '../db/analytics.js'
+import { readTextBounded } from '../http-body.js'
 
 export const MCP_PROTOCOL_VERSION = '2025-03-26'
+
+/** JSON-RPC bodies are tiny (a method + a few string params) — cap well under
+ *  the server-wide 512 MiB artifact limit so a chunked body can't exhaust RAM. */
+const MCP_BODY_MAX_BYTES = 4 * 1024 * 1024
 
 /** The tenant clamp the gate resolved for an MCP request. */
 export interface McpContext {
@@ -296,9 +301,16 @@ export async function handleMcpHttp(req: Request, ctx: McpContext): Promise<Resp
       { status: 405, headers: { Allow: 'POST' } },
     )
   }
+  // Bound the body BEFORE parsing — the server-wide maxRequestBodySize is
+  // sized for 512 MiB artifact PUTs, so a chunked JSON-RPC body would
+  // otherwise buffer far past anything a tool call needs.
+  const raw = await readTextBounded(req, MCP_BODY_MAX_BYTES)
+  if (raw === null) {
+    return Response.json(errorResponse(null, -32600, 'request too large'), { status: 413 })
+  }
   let parsed: unknown
   try {
-    parsed = await req.json()
+    parsed = JSON.parse(raw)
   } catch {
     return Response.json(errorResponse(null, -32700, 'parse error: body is not JSON'))
   }

@@ -43,6 +43,7 @@ import path from 'node:path'
 import { mkdir, unlink } from 'node:fs/promises'
 import { LocalDirBackend } from './blob/local.js'
 import type { BlobBackend, BlobListEntry } from './blob/backend.js'
+import { readTextBounded } from './http-body.js'
 
 /** PUT bodies above this are refused with 413. */
 export const MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
@@ -150,33 +151,6 @@ const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd]
 const SUBSCOPE_RE = /^[a-zA-Z0-9_.-]{1,128}$/
 function subScopeOf(raw: string | null): string {
   return raw !== null && raw !== '.' && raw !== '..' && SUBSCOPE_RE.test(raw) ? raw : 'shared'
-}
-
-/**
- * Read a request body as text, aborting once cumulative bytes exceed `max`
- * (returns null). Streams via the body reader so a lying/absent content-length
- * can't defeat the cap. Falls back to `text()` when the body isn't a stream.
- */
-async function readTextBounded(req: Request, max: number): Promise<string | null> {
-  const reader = req.body?.getReader()
-  if (reader === undefined) {
-    const t = await req.text()
-    return t.length > max ? null : t
-  }
-  const chunks: Uint8Array[] = []
-  let total = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    if (value === undefined) continue
-    total += value.byteLength
-    if (total > max) {
-      await reader.cancel().catch(() => {})
-      return null
-    }
-    chunks.push(value)
-  }
-  return new TextDecoder().decode(Buffer.concat(chunks))
 }
 
 /** One row of `ArtifactStore.list()` — the `/v1/artifacts` surface. */

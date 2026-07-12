@@ -170,22 +170,32 @@ export async function startPlatformHttp(opts: PlatformHttpOptions): Promise<Plat
     contentType: string,
     orgId: string,
   ): Response => {
+    let sub: ReadSubscriber | undefined
+    const drop = (): void => {
+      if (sub !== undefined) readSubscribers.delete(sub)
+    }
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         const enc = new TextEncoder()
-        const sub: ReadSubscriber = {
+        sub = {
           fn: (env) => controller.enqueue(enc.encode(encode(env))),
           orgId,
         }
         readSubscribers.add(sub)
         req.signal.addEventListener('abort', () => {
-          readSubscribers.delete(sub)
+          drop()
           try {
             controller.close()
           } catch {
             // already closed
           }
         })
+      },
+      // A client disconnect on a streaming body surfaces as `cancel()` (whether
+      // `req.signal` also fires isn't guaranteed) — remove the subscriber here
+      // too so dropped `/stream` / `/events` connections can't accumulate.
+      cancel() {
+        drop()
       },
     })
     return withCors(

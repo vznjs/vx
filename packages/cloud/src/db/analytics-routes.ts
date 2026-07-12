@@ -7,6 +7,7 @@
 // remaining machine surfaces.
 
 import type { RunSummaryRecord } from '@vzn/vx'
+import { readTextBounded } from '../http-body.js'
 import { LOG_WIRE_VERSION, type TaskLogBundle } from '../task-log-capture.js'
 import {
   WorkspaceForbiddenError,
@@ -31,13 +32,11 @@ function errResponse(err: unknown): Response {
   return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 400)
 }
 
-/** Read the body with a content-length AND actual-byte cap (chunked-safe). */
+/** Read the body with a HARD streaming cap — a chunked (no content-length)
+ *  body aborts mid-stream instead of buffering up to the 513 MiB server-wide
+ *  limit. `readCapped` is a thin alias so callers read `null → 413`. */
 async function readCapped(req: Request, max: number): Promise<string | null> {
-  const len = Number(req.headers.get('content-length') ?? '0')
-  if (Number.isFinite(len) && len > max) return null
-  const raw = await req.text()
-  if (Buffer.byteLength(raw, 'utf8') > max) return null
-  return raw
+  return await readTextBounded(req, max)
 }
 
 function numParam(v: string | null): number | undefined {
@@ -83,6 +82,24 @@ export interface AnalyticsRouteCtx {
  * matched route or null to fall through to the serve's machine surfaces.
  */
 export async function handleAnalyticsRequest(
+  ctx: AnalyticsRouteCtx,
+  req: Request,
+  url: URL,
+): Promise<Response | null> {
+  try {
+    return await handleAnalyticsRequestInner(ctx, req, url)
+  } catch (err) {
+    // A malformed percent-encoding in a path segment (`/v1/tasks/%`) throws
+    // URIError from decodeURIComponent — a client fault (400), not a 500.
+    if (err instanceof URIError) return json({ ok: false, error: 'malformed request path' }, 400)
+    if (err instanceof WorkspaceForbiddenError) return json({ ok: false, error: err.message }, 403)
+    // Anything else uncaught on a read route is a genuine server fault; answer
+    // a clean 500 (Bun would otherwise return a bare 500 with no body).
+    return json({ ok: false, error: 'internal error' }, 500)
+  }
+}
+
+async function handleAnalyticsRequestInner(
   ctx: AnalyticsRouteCtx,
   req: Request,
   url: URL,
