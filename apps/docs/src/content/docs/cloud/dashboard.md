@@ -4,7 +4,7 @@ description: The vx-cloud dashboard — a Solid SPA embedded in the vx-cloud ser
 ---
 
 The dashboard is the UI of **`@vzn/vx-cloud`**, the [self-hosted CI
-platform](/vx/guides/self-hosting/). It ships **inside the compiled
+platform](/vx/cloud/self-hosting/). It ships **inside the compiled
 `vx-cloud` binary and the Docker image** — the same `vx-cloud server`
 process that serves the analytics API serves the dashboard at `/`. There
 is nothing to build and no asset directory on disk: the SPA is embedded in
@@ -19,7 +19,7 @@ commands.
 The platform is account-based. You **register or log in**; the first
 account ever registered becomes the **instance admin**, after which
 signup closes and everyone else joins by invite (see
-[Self-host](/vx/guides/self-hosting/#first-run-register--admin)).
+[Self-host](/vx/cloud/self-hosting/#first-run-register--admin)).
 
 - **Login** establishes a session (an HttpOnly cookie; `Secure` when
   `VX_CLOUD_BASE_URL` is `https://`).
@@ -112,7 +112,7 @@ during a refresh — only the first load shows a skeleton.
 The server exposes `POST /mcp` — a dependency-free MCP endpoint (JSON-RPC
 2.0) behind the same auth, tenant-clamped by org/workspace. AI agents
 connect to your deployment and read the same metrics the dashboard shows.
-See [`vx mcp — AI agents`](/vx/guides/mcp/).
+See [`vx mcp — AI agents`](/vx/cloud/mcp/).
 
 ## Task logs: capture, storage, and privacy
 
@@ -139,6 +139,6 @@ trust scoping). Turn capture off with `cloud({ logs: false })` or
   the runs the `cloud()` plugin has pushed; a workspace nobody pushed from
   is empty.
 
-See also: [`Self-host vx-cloud`](/vx/guides/self-hosting/),
-[`Distributed CI execution`](/vx/guides/distributed-ci/),
-[`Remote caching`](/vx/guides/remote-caching/).
+See also: [`Self-host vx-cloud`](/vx/cloud/self-hosting/),
+[`Distributed CI execution`](/vx/cloud/distributed-ci/),
+[`Remote caching`](/vx/cloud/remote-caching/).

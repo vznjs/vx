@@ -236,7 +236,7 @@ client. A **trusted** token reads and writes the `trusted` scope. An
 but writes **only** `untrusted`, so a fork-PR job can warm off `main`'s
 cache without being able to poison it. Artifacts are immutable (re-PUT of
 an existing hash is rejected). Mint both tiers under Admin → Tokens; the
-job presents whichever it holds. See [Remote caching](/vx/guides/remote-caching/)
+job presents whichever it holds. See [Remote caching](/vx/cloud/remote-caching/)
 and the [cache-trust-scopes design note](/vx/design/cache-trust-scopes-2026-07/).
 
 ## Connect a workspace
@@ -254,7 +254,7 @@ anything (tokens are stored `0600` and never printed). Manage environments
 with `vx-cloud env ls | use <name> | rm <name>`, and clear the active one
 with `vx-cloud disconnect`. `--distribute` opts the environment into
 ambient distribution across an agent pool (see
-[Distributed CI](/vx/guides/distributed-ci/)); `--no-use` records it
+[Distributed CI](/vx/cloud/distributed-ci/)); `--no-use` records it
 without activating it.
 
 Or wire it with environment variables (handy in CI):
@@ -287,7 +287,7 @@ The `vx-cloud` CLI ships as a **prebuilt standalone binary per platform**
 terminal. For the server itself, the Docker image above is the turnkey
 deployment.
 
-See also: [`Dashboard`](/vx/guides/dashboard/),
-[`Remote caching`](/vx/guides/remote-caching/),
-[`Distributed CI execution`](/vx/guides/distributed-ci/),
-[`vx mcp — AI agents`](/vx/guides/mcp/).
+See also: [`Dashboard`](/vx/cloud/dashboard/),
+[`Remote caching`](/vx/cloud/remote-caching/),
+[`Distributed CI execution`](/vx/cloud/distributed-ci/),
+[`vx mcp — AI agents`](/vx/cloud/mcp/).

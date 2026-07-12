@@ -3,7 +3,7 @@ title: vx-cloud wire protocol — JSON-RPC 2.0
 description: One envelope, two read transports. Tail the vx-cloud platform's run event stream over Server-Sent Events or NDJSON. JSON-RPC 2.0 compatible — every existing JSON-RPC client works.
 ---
 
-The [`vx-cloud` platform](/vx/guides/self-hosting/) broadcasts a live run
+The [`vx-cloud` platform](/vx/cloud/self-hosting/) broadcasts a live run
 event stream over JSON-RPC 2.0. Two read transports off the same bus:
 
 - **Server-Sent Events** at `/events` (also `/v1/events`) — `curl -N` works.
@@ -113,7 +113,7 @@ its own range:
 There is no "submit a run over the wire" API: run delegation was removed
 when vx-cloud became a self-hosted platform — the platform has no workspace
 checkout to execute against. To move work across machines, use
-[distributed execution](/vx/guides/distributed-ci/) (`VX_CLOUD_DISTRIBUTE`
+[distributed execution](/vx/cloud/distributed-ci/) (`VX_CLOUD_DISTRIBUTE`
 + `vx-cloud agent`), whose events show up on the streams above.
 
 ## Example — phone notification when CI passes
@@ -149,5 +149,5 @@ The wire is the SDK.
 ## See also
 
 - `docs/design/wire-protocol-2026-06.md` — full spec
-- [`vx mcp` guide](/vx/guides/mcp/) — the agent-side control plane
-- [Self-host vx-cloud](/vx/guides/self-hosting/) — deploy the platform
+- [`vx mcp` guide](/vx/cloud/mcp/) — the agent-side control plane
+- [Self-host vx-cloud](/vx/cloud/self-hosting/) — deploy the platform

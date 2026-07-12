@@ -473,7 +473,7 @@ Honest gaps in the current design (see
 
 ## See also
 
-- [Continuous integration](../ci/) — the single-machine CI setup,
+- [Continuous integration](/vx/guides/ci/) — the single-machine CI setup,
   `--affected`, and the lockfile workflow.
 - [Remote caching](../remote-caching/) — the artifact store that
   the connection provides and agents share.
