@@ -264,9 +264,31 @@ serving none of them is probably org-analytics scope creep.
     Finding 5 (lookback bounds + a `status='failed'` partial index so dashboard
     aggregates prune partitions); Finding 8 (skip the confirming S3 HEAD before a
     TRUSTED cache GET's 307 — single-scope, the client already treats a post-307
-    404 as a miss); the SESSION auth memo. **Bug residuals left (LOW/cosmetic):**
-    `getRunHeatmap` local-tz bucketing; a malformed `wallclockNs` string aborting
-    a whole run's ingest.
+    404 as a miss); the SESSION auth memo.
+
+- **2026-07-12**: **Every audited cloud bug confirmed with a test; the two LOW
+  residuals FIXED (`47e1d84`) (owner: "All bugs should be confirmed with tests
+  and fixed")**. Residual fixes: (a) `getRunHeatmap` bucketed by the server's
+  LOCAL tz (`getDay`/`getHours`) while the platform is UTC/epoch-ms →
+  `getUTCDay`/`getUTCHours`, pinned by a test under `TZ=America/New_York` (a
+  03:00-UTC run lands in the UTC cell, not the 22:00 local one — discriminating
+  because Bun honors a runtime `TZ` change); (b) a malformed wallclock-ns string
+  (`"1.5"`) made `BigInt()` throw out of the ingest transaction and discard the
+  ENTIRE run — now parsed integer-string-only (`intNsOrNull`), so one bad field
+  is dropped, not the run (pinned: a good+malformed run stores both, bad field
+  NULL). Confirming tests added for the earlier fixes: the chunked-body cap (a
+
+  > 4 MiB MCP body → 413, streaming before parse, + the `readTextBounded` unit
+  > suite), and the SSE subscriber cleanup (a new `subscriberCount()` hook — also
+  > useful for ops — proves a disconnected `/stream` client leaves the broadcast
+  > set); the read-route 400 + dist-scheduler DAG guards already had tests. Cloud
+  > 407 pass, core lint clean. **Bun HTTP/3 — re-verified empirically (owner: "Bun
+  > support http3")**: Bun 1.3.11 has NO native HTTP/3/QUIC server — probed the
+  > binary (no `http3`/`quic` symbols; the `alt-svc` strings are `node:http2`'s
+  > HTTP/2 support) and the API surface (`Bun.quic` undefined,
+  > `globalThis.WebTransport` undefined, `node:quic` not a built-in, `Bun.serve`
+  > exposes no h3/protocols option). So the edge-proxy H3 (Caddy `edge` profile)
+  > stands; native h3 in `Bun.serve` stays blocked until Bun ships a QUIC server.
 
 - **2026-07-12**: **HTTP/3 + connection multiplexing via an edge proxy — a
   ready Caddy `edge` compose profile terminating h1/h2/h3 (owner: "Support H3
