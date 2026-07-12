@@ -40,18 +40,17 @@ const PARTITION_TICK_MS = 24 * 60 * 60 * 1000
 /**
  * Routes served by the Postgres analytics layer (`db/analytics-routes.ts`).
  * Everything NOT matched here falls through to the serve's machine surfaces
- * (native cache wire, agents, dist, streaming, SPA). The colocated `/v1/graph`
- * + `/v1/workspace/*` and the dist `/v1/runs/queue` + `/v1/artifacts` are NOT
- * analytics — they stay on the serve side.
+ * (native cache wire, agents, dist, streaming, SPA). The `/v1/workspace/*`
+ * catalog + `/v1/artifacts` (provenance resolved in the gate) are NOT analytics
+ * — they stay on the serve side. (Run delegation, its `/v1/runs/queue`, and the
+ * colocated `/v1/graph` were removed with delegation, platform §12 P3.)
  */
 function isAnalyticsSurface(pathname: string, method: string): boolean {
   if (pathname === '/v1/ingest' || pathname === '/v1/ingest/logs' || pathname === '/v1/catalog') {
     return method === 'POST'
   }
   if (
-    pathname === '/v1/runs/queue' ||
     pathname === '/v1/artifacts' ||
-    pathname === '/v1/graph' ||
     pathname.startsWith('/v1/workspace/') ||
     /^\/v1\/cache\/[0-9a-f]{16,64}$/.test(pathname)
   ) {

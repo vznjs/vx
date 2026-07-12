@@ -38,16 +38,7 @@ export {
   resolveServePort,
   resolveS3Config,
 } from './cli/serve.js'
-export type { ResolvedS3Config, ServeServer } from './cli/serve.js'
-export { RunQueue, DEFAULT_MAX_QUEUED } from './run-queue.js'
-export type { JobView, QueuedJob, RunQueueOptions } from './run-queue.js'
-export { QUEUE_PROTOCOL_VERSION } from './protocol-queue.js'
-export type {
-  QueueCancelMessage,
-  QueueClientMessage,
-  QueueServerMessage,
-  QueueSubmitMessage,
-} from './protocol-queue.js'
+export type { ArtifactProvenanceResolver, ResolvedS3Config, ServeServer } from './cli/serve.js'
 export { WorkspaceCatalog } from './workspace-catalog.js'
 export type {
   CatalogProjectDetail,
@@ -85,7 +76,6 @@ export { connectDevForwarder } from './cli/dev-client.js'
 export type { DevForwarder } from './cli/dev-client.js'
 export { startUiServer, bootDevframeServer } from './cli/ui-server.js'
 export type { UiServer, DevframeServer } from './cli/ui-server.js'
-export { serviceBackend, resolveBackend, localDevBackend } from './cli/backend.js'
 export type {
   AgentHello,
   DistClientMessage,

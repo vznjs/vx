@@ -25,12 +25,6 @@ export interface EnvironmentEntry {
    */
   prToken?: string
   /**
-   * Whether the backend capability may route EXECUTION here (default false).
-   * Opt-in because delegation runs against `request.cwd` on the server — only
-   * correct when the server shares (or mirrors) the filesystem.
-   */
-  delegate?: boolean
-  /**
    * Ambient distribution to a POOL of agents rendezvoused by this serve.
    * `true` (from `--distribute`) enables it; a number is an advisory expected
    * agent count (drives the zero-agent timeout warning). Unlike `delegate`,
@@ -132,8 +126,14 @@ function validateFile(parsed: unknown, p: string): EnvironmentsFile {
     if (raw.prToken !== undefined && typeof raw.prToken !== 'string') {
       throw new Error(`environment "${name}" has a non-string prToken in ${p}`)
     }
-    if (raw.delegate !== undefined && typeof raw.delegate !== 'boolean') {
-      throw new Error(`environment "${name}" has a non-boolean delegate in ${p}`)
+    // Run delegation was REMOVED (platform §12 P3): the platform has no
+    // checkout to execute against. A persisted `delegate` flag is rejected with
+    // a hint pointing at distribution (the replacement).
+    if (raw.delegate !== undefined) {
+      throw new Error(
+        `environment "${name}" has a "delegate" field in ${p} — run delegation was removed; ` +
+          'reconnect with `vx-cloud connect <url> --distribute` and delete the delegate line',
+      )
     }
     // `distribute` is additive-optional: an older binary reading a newer file
     // ignores an unknown field, and a newer binary treats absence as off — so
@@ -158,7 +158,6 @@ function validateFile(parsed: unknown, p: string): EnvironmentsFile {
       url: raw.url,
       ...(raw.token !== undefined ? { token: raw.token } : {}),
       ...(raw.prToken !== undefined ? { prToken: raw.prToken } : {}),
-      ...(raw.delegate !== undefined ? { delegate: raw.delegate } : {}),
       ...(raw.distribute !== undefined ? { distribute: raw.distribute } : {}),
     }
   }

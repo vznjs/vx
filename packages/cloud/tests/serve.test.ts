@@ -3,9 +3,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import type { Logger, RunRequest, RunSummaryRecord } from '@vzn/vx'
+import type { RunSummaryRecord } from '@vzn/vx'
 import { startServe } from '../src/cli/serve.js'
-import { serviceBackend, resolveBackend } from '../src/cli/backend.js'
 
 // vx-cloud reads ONLY its own ingest store; runs reach it via POST /v1/ingest
 // (the cloud() plugin's push), never from a workspace cache.db. These helpers
@@ -80,20 +79,7 @@ async function push(origin: string, summary: RunSummaryRecord): Promise<void> {
   if (!res.ok) throw new Error(`ingest failed: ${res.status}`)
 }
 
-/** A non-rendering Logger that records the event kinds it sees. */
-function captureLogger(seen: string[]): Logger {
-  return {
-    status: () => {},
-    taskStdout: () => {},
-    taskStderr: () => {},
-    taskComplete: (n) => seen.push(`complete:${n.id}`),
-    runStart: () => seen.push('runStart'),
-    taskStart: (n) => seen.push(`start:${n.id}`),
-    runEnd: () => seen.push('runEnd'),
-  }
-}
-
-// A minimal single-project workspace so a delegated `run()` has real work.
+// A minimal single-project workspace fixture for the serve surfaces.
 async function makeWorkspace(): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), 'vx-serve-'))
   spawnSync('git', ['init', '-q'], { cwd: root })
@@ -119,67 +105,9 @@ async function makeWorkspace(): Promise<string> {
   return root
 }
 
-describe('vx serve delegation', () => {
-  it('executes a delegated run and streams events + a result', async () => {
-    const root = await makeWorkspace()
-    const seen: string[] = []
-    const server = await startServe({ root })
-    try {
-      const backend = serviceBackend(server.origin, captureLogger(seen))
-      const request: RunRequest = { tasks: ['hello'], cwd: root, flow: 'focused' }
-      const result = await backend.run(request)
-      // The result is correct...
-      expect(result.ok).toBe(true)
-      expect(result.outcomes.length).toBe(1)
-      expect(result.outcomes[0]!.taskId).toBe('demo#hello')
-      expect(['success', 'cache-hit', 'cache-hit-remote']).toContain(result.outcomes[0]!.status)
-      // ...and the streamed events were rendered through the client sink.
-      expect(seen).toContain('runStart')
-      expect(seen).toContain('start:demo#hello')
-      expect(seen).toContain('complete:demo#hello')
-      expect(seen).toContain('runEnd')
-    } finally {
-      await server.stop()
-      await rm(root, { recursive: true, force: true })
-    }
-  })
-
-  it('self-ingests a delegated run into the serve history (workspace-routed)', async () => {
-    const root = await makeWorkspace()
-    const ingestDir = await mkdtemp(path.join(tmpdir(), 'vx-selfingest-'))
-    const server = await startServe({ root, ingestDir })
-    try {
-      const backend = serviceBackend(server.origin, captureLogger([]))
-      const result = await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
-      expect(result.ok).toBe(true)
-
-      // The run landed in the serve's OWN store, under the executed run's
-      // captured workspace identity (salt-derived — the fixture repo has no
-      // remote), not via any HTTP push.
-      const wss = (await (await fetch(`${server.origin}/v1/workspaces`)).json()) as {
-        workspaces: { id: string; name: string; runCount: number }[]
-      }
-      expect(wss.workspaces.length).toBe(1)
-      const ws = wss.workspaces[0]!
-      expect(ws.id).toMatch(/^[0-9a-f]{16}$/)
-      expect(ws.runCount).toBe(1)
-
-      // Sole workspace → the un-scoped read finds it; ?ws= scopes explicitly.
-      const runs = (await (await fetch(`${server.origin}/v1/runs`)).json()) as {
-        runs: { runId: string; task: string }[]
-      }
-      expect(runs.runs.some((r) => r.task === 'hello')).toBe(true)
-      const scoped = (await (await fetch(`${server.origin}/v1/runs?ws=${ws.id}`)).json()) as {
-        runs: { runId: string }[]
-      }
-      expect(scoped.runs.map((r) => r.runId)).toEqual(runs.runs.map((r) => r.runId))
-    } finally {
-      await server.stop()
-      await rm(root, { recursive: true, force: true })
-      await rm(ingestDir, { recursive: true, force: true })
-    }
-  })
-
+// Run delegation was removed (platform §12 P3) — the transitional serve no
+// longer executes `{t:'run'}`; only the ingest/read/artifact surfaces remain.
+describe('vx serve — basic surfaces', () => {
   it('reports a health endpoint', async () => {
     const root = await makeWorkspace()
     const server = await startServe({ root })
@@ -304,7 +232,7 @@ describe('vx serve — network/auth hardening', () => {
 })
 
 describe('vx serve /v1/* metrics API', () => {
-  it('serves runs / invocations / cache stats / history after a delegated run', async () => {
+  it('serves runs / invocations / cache stats / history after a pushed run', async () => {
     const root = await makeWorkspace()
     const server = await startServe({ root })
     try {
@@ -698,68 +626,6 @@ describe('resolveServePort', () => {
       error: 'invalid VX_CLOUD_PORT: nope',
     })
     expect('error' in resolveServePort(undefined, { VX_CLOUD_PORT: '99999' })).toBe(true)
-  })
-})
-
-describe('resolveBackend', () => {
-  it('falls back to local when no service is configured', async () => {
-    // No serviceUrl, no VX_SERVICE_URL → local. A serve RUNNING on the machine
-    // changes nothing: delegation requires explicit wiring (`connect
-    // --delegate` / env vars), never auto-detection.
-    const backend = await resolveBackend()
-    expect(typeof backend.run).toBe('function')
-  })
-
-  it('delegates to an explicitly configured service URL', async () => {
-    const root = await makeWorkspace()
-    const server = await startServe({ root })
-    try {
-      const seen: string[] = []
-      const backend = await resolveBackend(captureLogger(seen), server.origin)
-      const result = await backend.run({ tasks: ['hello'], cwd: root })
-      expect(result.ok).toBe(true)
-      expect(result.outcomes[0]!.taskId).toBe('demo#hello')
-      expect(seen).toContain('runEnd') // delegated, not local (local renders via run())
-    } finally {
-      await server.stop()
-      await rm(root, { recursive: true, force: true })
-    }
-  })
-
-  it('serves the task DAG (nodes + deps) for /v1/graph', async () => {
-    const root = await makeWorkspace()
-    const server = await startServe({ root })
-    try {
-      const res = await fetch(`${server.origin}/v1/graph?tasks=hello`)
-      expect(res.status).toBe(200)
-      const body = (await res.json()) as {
-        nodes: Array<{
-          id: string
-          project: string
-          task: string
-          isGroup: boolean
-          deps: string[]
-        }>
-      }
-      expect(body.nodes.length).toBe(1)
-      expect(body.nodes[0]!.id).toBe('demo#hello')
-      expect(body.nodes[0]!.project).toBe('demo')
-      expect(body.nodes[0]!.task).toBe('hello')
-      expect(body.nodes[0]!.isGroup).toBe(false)
-      expect(body.nodes[0]!.deps).toEqual([])
-      // Missing tasks param → 400.
-      const bad = await fetch(`${server.origin}/v1/graph`)
-      expect(bad.status).toBe(400)
-    } finally {
-      await server.stop()
-      await rm(root, { recursive: true, force: true })
-    }
-  })
-
-  it('an unreachable explicit service URL falls back to local (fail-safe)', async () => {
-    // A port nothing listens on → health check fails → local fallback.
-    const backend = await resolveBackend(undefined, 'http://localhost:1')
-    expect(typeof backend.run).toBe('function')
   })
 })
 

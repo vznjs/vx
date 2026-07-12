@@ -50,13 +50,13 @@ describe('vx-cloud connect', () => {
   it('validates against a live serve, persists the entry, and activates it', async () => {
     const server = await startServe({ root: dir })
     try {
-      const res = await cli(['connect', server.origin, '--name', 'team', '--delegate'])
+      const res = await cli(['connect', server.origin, '--name', 'team'])
       expect(res.code).toBe(0)
       expect(res.stdout).toContain('connected team')
       const file = await readCfg()
       expect(file.version).toBe(1)
       expect(file.active).toBe('team')
-      expect(file.environments['team']).toEqual({ url: server.origin, delegate: true })
+      expect(file.environments['team']).toEqual({ url: server.origin })
     } finally {
       await server.stop()
     }
@@ -232,7 +232,7 @@ describe('vx-cloud env ls', () => {
         version: 1,
         active: 'team',
         environments: {
-          team: { url: server.origin, token: 'supersecret-token', delegate: true },
+          team: { url: server.origin, token: 'supersecret-token', distribute: true },
           dead: { url: 'http://localhost:1' },
         },
       })
@@ -243,6 +243,7 @@ describe('vx-cloud env ls', () => {
       expect(res.stdout).toContain('* team')
       expect(res.stdout).toContain('ok (ls-serve)')
       expect(res.stdout).toContain('unreachable')
+      // The DISTRIBUTE column renders 'yes' for the ambient-pool policy.
       expect(res.stdout).toContain('yes')
       expect(res.stdout).not.toContain('supersecret-token')
     } finally {

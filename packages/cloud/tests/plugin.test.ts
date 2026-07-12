@@ -109,39 +109,10 @@ async function withCleanConnEnv<T>(
   }
 }
 
-// Point the active environment at a serve, optionally opting into delegation.
-function connectEnv(configDir: string, url: string, delegate: boolean): void {
-  process.env['VX_CLOUD_CONFIG'] = path.join(configDir, 'environments.json')
-  writeEnvironmentsFile({
-    version: ENVIRONMENTS_VERSION,
-    active: 'team',
-    environments: { team: { url, ...(delegate ? { delegate: true } : {}) } },
-  })
-}
-
+// Run delegation was removed (platform §12 P3): the backend capability now
+// only ever returns a DISTRIBUTION backend; a plain connection never moves
+// execution. These pin that a bare / plain / distribute connection behaves.
 describe('cloud() backend capability', () => {
-  it('delegates to a reachable serve ONLY when the environment opted in with delegate', async () => {
-    const root = await makeWorkspace()
-    const server = await startServe({ root })
-    const savedCfg = process.env['VX_CLOUD_CONFIG']
-    const savedUrl = process.env['VX_CLOUD_URL']
-    delete process.env['VX_CLOUD_URL']
-    try {
-      connectEnv(root, server.origin, true)
-      const backend = (await cloud().backend!(backendCtx(root)))!
-      expect(typeof backend.run).toBe('function')
-      const result = await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
-      expect(result.ok).toBe(true)
-      expect(result.outcomes[0]!.taskId).toBe('demo#hello')
-    } finally {
-      await server.stop()
-      await rm(root, { recursive: true, force: true })
-      if (savedCfg === undefined) delete process.env['VX_CLOUD_CONFIG']
-      else process.env['VX_CLOUD_CONFIG'] = savedCfg
-      if (savedUrl !== undefined) process.env['VX_CLOUD_URL'] = savedUrl
-    }
-  })
-
   it('declines (undefined) with no connection — a bare cloud() never delegates', async () => {
     await withCleanConnEnv({ VX_CLOUD_CONFIG: '/nonexistent/environments.json' }, async () => {
       const backend = await cloud().backend!(backendCtx('/x'))
@@ -149,29 +120,13 @@ describe('cloud() backend capability', () => {
     })
   })
 
-  it('a plain connection (url, no delegate) does NOT move execution', async () => {
-    // VX_CLOUD_URL wires cache/ingest/distribution but must never silently
-    // delegate a run to the server — so the backend rung declines.
+  it('a plain connection (url only) does NOT move execution', async () => {
+    // VX_CLOUD_URL wires cache/ingest/distribution but never delegates a run —
+    // delegation is gone, so the backend rung declines without VX_CLOUD_DISTRIBUTE.
     await withCleanConnEnv({ VX_CLOUD_URL: 'http://localhost:59998' }, async () => {
       const backend = await cloud().backend!(backendCtx('/x'))
       expect(backend).toBeUndefined()
     })
-  })
-
-  it('falls back to a local backend when a delegate environment is unreachable', async () => {
-    const root = await makeWorkspace()
-    const savedCfg = process.env['VX_CLOUD_CONFIG']
-    try {
-      connectEnv(root, 'http://localhost:1', true)
-      const backend = (await cloud().backend!(backendCtx(root)))!
-      const result = await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
-      expect(result.ok).toBe(true)
-      expect(result.outcomes[0]!.taskId).toBe('demo#hello')
-    } finally {
-      await rm(root, { recursive: true, force: true })
-      if (savedCfg === undefined) delete process.env['VX_CLOUD_CONFIG']
-      else process.env['VX_CLOUD_CONFIG'] = savedCfg
-    }
   })
 
   it('an ambient `distribute` environment returns a backend that FAILS SAFE to a local run', async () => {

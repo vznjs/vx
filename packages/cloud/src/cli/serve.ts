@@ -13,12 +13,6 @@ import { chmod, mkdir, unlink } from 'node:fs/promises'
 import {
   cacheKeyDiff,
   compareRuns,
-  run as runOrchestrator,
-  planRun,
-  createEventBus,
-  wireForwarder,
-  requestToOptions,
-  projectOutcome,
   encodeForNDJSON,
   encodeForSSE,
   envelopeToClientMessage,
@@ -55,11 +49,9 @@ import {
   findWorkspaceRoot,
   type ClientMessage,
   type Envelope,
-  type Logger,
   type RunRequest,
   type RunSummaryRecord,
   type ServerMessage,
-  type TelemetrySink,
 } from '@vzn/vx'
 import {
   ArtifactStore,
@@ -70,7 +62,7 @@ import {
 import { LocalDirBackend } from '../blob/local.js'
 import { S3Backend } from '../blob/s3.js'
 import { IngestStore } from '../ingest-store.js'
-import { LOG_WIRE_VERSION, TaskLogBuffer, type TaskLogBundle } from '../task-log-capture.js'
+import { LOG_WIRE_VERSION, type TaskLogBundle } from '../task-log-capture.js'
 import type { StoredTaskLog } from '../log-store.js'
 import {
   AgentRegistry,
@@ -86,13 +78,6 @@ import {
   type DistServerMessage,
   type DistSubmitMessage,
 } from '../protocol-dist.js'
-import {
-  QUEUE_PROTOCOL_VERSION,
-  type QueueCancelMessage,
-  type QueueServerMessage,
-  type QueueSubmitMessage,
-} from '../protocol-queue.js'
-import { RunQueue } from '../run-queue.js'
 import { WorkspaceCatalog } from '../workspace-catalog.js'
 import { handleMcpHttp } from './mcp-serve.js'
 
@@ -103,7 +88,7 @@ import { handleMcpHttp } from './mcp-serve.js'
  * `agent:hello`.
  */
 type ServeWsData =
-  | { role: 'run'; principal: Principal; scheduler?: DistScheduler; jobIds?: Set<string> }
+  | { role: 'run'; principal: Principal; scheduler?: DistScheduler }
   | { role: 'agent'; principal: Principal; agent?: RegisteredAgent }
 
 /**
@@ -164,48 +149,6 @@ export function resolveServePort(
     return { port: n }
   }
   return { port: DEFAULT_SERVE_PORT }
-}
-
-// The service renders nothing to its own terminal for delegated runs — the
-// CLIENT renders the streamed events. A no-op Logger keeps `run()` quiet.
-const silentLogger: Logger = {
-  status() {},
-  taskStdout() {},
-  taskStderr() {},
-  taskComplete() {},
-}
-
-/** Execute one delegated request, streaming events + a final result. */
-async function executeRequest(
-  send: (message: ServerMessage) => void,
-  request: RunRequest,
-  inflight: Map<string, Promise<void>>,
-  telemetrySinks: readonly TelemetrySink[],
-): Promise<boolean> {
-  const bus = createEventBus()
-  bus.subscribe(wireForwarder((event) => send({ t: 'event', event })))
-  try {
-    const summary = await runOrchestrator({
-      ...requestToOptions(request),
-      bus,
-      log: silentLogger,
-      // The shared registry that lets concurrent delegated runs dedup
-      // in-flight work — the service's reason to exist.
-      inflight,
-      // The service owns signal disposition for its whole lifetime; a
-      // delegated run must never exit the process out from under it.
-      handleSignals: false,
-      telemetrySinks,
-    })
-    send({
-      t: 'result',
-      result: { ok: summary.ok, outcomes: summary.outcomes.map(projectOutcome) },
-    })
-    return summary.ok
-  } catch (err) {
-    send({ t: 'error', message: err instanceof Error ? err.message : String(err) })
-    return false
-  }
 }
 
 /**
@@ -296,58 +239,6 @@ function taskDurationHints(db: Database | undefined): Map<string, number> {
     // no runs table / fresh store — no hints, plain FIFO
   }
   return hints
-}
-
-/** How long an un-summarized delegated-run log buffer is held before sweep. */
-const LOG_BUFFER_TTL_MS = 15 * 60 * 1000
-
-/**
- * A serve-owned telemetry sink capturing DELEGATED runs' task logs server-side
- * (no client push, no double-shipping). One instance for the serve's lifetime;
- * records carry runId, so concurrent delegated runs multiplex into per-run
- * buffers, drained into the store on each run's summary. A run that crashes
- * before its summary leaves an orphan buffer, swept after `LOG_BUFFER_TTL_MS`.
- */
-function makeServeLogSink(ingest: IngestStore, now: () => number = Date.now): TelemetrySink {
-  const buffers = new Map<string, { buffer: TaskLogBuffer; createdAt: number }>()
-  const bufFor = (runId: string): TaskLogBuffer => {
-    let b = buffers.get(runId)
-    if (b === undefined) {
-      b = { buffer: new TaskLogBuffer(), createdAt: now() }
-      buffers.set(runId, b)
-    }
-    return b.buffer
-  }
-  const sweep = (): void => {
-    const cutoff = now() - LOG_BUFFER_TTL_MS
-    for (const [runId, b] of buffers) if (b.createdAt < cutoff) buffers.delete(runId)
-  }
-  return {
-    name: 'vx-cloud/serve-logs',
-    wants: ['task.log', 'task.end'],
-    onRecord(record) {
-      if (record.kind === 'task.log') bufFor(record.runId).append(record.taskId, record.chunk)
-      else if (record.kind === 'task.end') {
-        bufFor(record.runId).finish(record.taskId, record.status, record.cacheSource, record.hash)
-      }
-    },
-    onRunSummary(summary) {
-      const runId = summary.run.runId
-      const workspaceId = (summary.run as { workspaceId?: string }).workspaceId
-      const entry = buffers.get(runId)
-      buffers.delete(runId)
-      sweep()
-      if (entry === undefined || workspaceId === undefined) return
-      const bundle = entry.buffer.drain(runId, workspaceId)
-      if (bundle.tasks.length > 0) {
-        try {
-          ingest.ingestLogs(bundle)
-        } catch {
-          // log capture is best-effort — never fail a delegated run over it
-        }
-      }
-    },
-  }
 }
 
 function isLoopbackHost(h: string): boolean {
@@ -491,10 +382,6 @@ export async function startServe(opts: {
   >
   onRun?: (request: RunRequest, ok: boolean) => void
 }): Promise<ServeServer> {
-  // One registry for the service's whole lifetime — concurrent runs share
-  // it to dedup in-flight task execution.
-  const inflight = new Map<string, Promise<void>>()
-
   const startedAt = Date.now()
   const serveName = opts.name ?? os.hostname()
   // Constant-time compare: hash both sides to a fixed length, then
@@ -644,80 +531,6 @@ export async function startServe(opts: {
     AGENT_SWEEP_INTERVAL_MS,
   )
   agentSweepTimer.unref?.()
-
-  // Delegated runs land in the serve's OWN history — before this sink they
-  // never did (the plugin's pid-guard rightly declines the HTTP self-push,
-  // and nothing replaced it). An observe-only option sink records the
-  // summary the executed run itself captured; workspace routing rides the
-  // summary's own identity. emitSummary is crash-isolated in core, so an
-  // ingest failure can never fail a delegated run.
-  const selfIngestSink: TelemetrySink = {
-    name: 'vx-cloud/self-ingest',
-    onRunSummary: (summary) => void ingest.ingest(summary),
-  }
-  // Server-side per-task log capture for delegated runs (task-logs-2026-07 §3):
-  // the serve hosts the telemetry source for them, so the bytes are born here
-  // — no client push, no double-shipping.
-  const serveLogSink = makeServeLogSink(ingest)
-
-  // The FIFO run queue (cloud-data-model-2026-07 §7) — EVERY serve-executed
-  // run rides it, plain CLI delegation included, closing the pre-existing
-  // race where two concurrent delegations could fight over output cleaning.
-  // Each job's stream/lifecycle routes to its submitting socket via a
-  // binding; `queueWire` marks a `queue:submit` job (speaks queue:* frames)
-  // vs a plain delegated `run` (core wire only — it gets one run:status
-  // "queued behind N" line instead). `dist:submit` does NOT ride the queue:
-  // agents execute in their own checkouts, there is no serve-local output
-  // tree to race on.
-  interface JobBinding {
-    send: (m: ServerMessage) => void
-    sendQueue: (m: QueueServerMessage) => void
-    queueWire: boolean
-  }
-  const jobBindings = new Map<string, JobBinding>()
-  const queue = new RunQueue({
-    execute: async (job) => {
-      const binding = jobBindings.get(job.jobId)
-      // A canceled-socket binding may be gone; the run still executes and
-      // its events drop (today's stop-watching semantics).
-      const send = binding?.send ?? ((): void => {})
-      if (binding?.queueWire) binding.sendQueue({ t: 'queue:start', jobId: job.jobId })
-      // Per-job runId sink: the queue learns the executed run's id from the
-      // summary the run itself captured — zero core change.
-      const jobSink: TelemetrySink = {
-        name: 'vx-cloud/queue-job',
-        onRunSummary: (summary) => {
-          job.runId = summary.run.runId
-        },
-      }
-      const ok = await executeRequest(send, job.request, inflight, [
-        selfIngestSink,
-        serveLogSink,
-        jobSink,
-      ])
-      if (binding?.queueWire) {
-        binding.sendQueue({
-          t: 'queue:done',
-          jobId: job.jobId,
-          ...(job.runId !== undefined ? { runId: job.runId } : {}),
-          ok,
-        })
-      }
-      jobBindings.delete(job.jobId)
-      opts.onRun?.(job.request, ok)
-      return ok
-    },
-    onUpdate: (jobs) => {
-      for (const j of jobs) {
-        if (j.state !== 'queued') continue
-        jobBindings.get(j.jobId)?.sendQueue({
-          t: 'queue:update',
-          jobId: j.jobId,
-          position: j.position,
-        })
-      }
-    },
-  })
 
   // Read-only event subscribers (SSE / NDJSON). Each callback gets every
   // event from every concurrent run as a notification envelope so a `curl`
@@ -1048,12 +861,6 @@ export async function startServe(opts: {
           const limit = Number.isInteger(limitNum) && limitNum > 0 ? Math.min(limitNum, 500) : 50
           return jsonResponse(store.hermeticity(wsParam ?? store.defaultWorkspaceId(), limit))
         }
-        // The run queue's live state (queued + running jobs, positions,
-        // timestamps) — the unified Runs view polls this while non-empty.
-        // Matched before the /v1/runs/:id regex below.
-        if (url.pathname === '/v1/runs/queue') {
-          return jsonResponse({ jobs: queue.jobs() })
-        }
         if (url.pathname === '/v1/runs') {
           const params = url.searchParams
           const args: Parameters<typeof listRuns>[1] = {}
@@ -1095,40 +902,6 @@ export async function startServe(opts: {
             if (!detail) return jsonResponse({ error: 'not found' }, { status: 404 })
             return jsonResponse(detail)
           }
-        }
-        // The task DAG for a set of requested tasks: nodes + dependency edges +
-        // predicted cache status, via a no-exec planRun. The run cockpit lays
-        // this out and overlays live status from the WS run stream.
-        if (url.pathname === '/v1/graph') {
-          // The DAG is computed from a colocated workspace (a no-exec planRun)
-          // — the live-cockpit feature. A remote dashboard has no workspace, so
-          // planRun throws and the catch below returns a clean error.
-          const tasks = (url.searchParams.get('tasks') ?? '')
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
-          if (tasks.length === 0)
-            return jsonResponse({ error: 'tasks query param required' }, { status: 400 })
-          return (async () => {
-            try {
-              const plan = await planRun({ cwd: opts.root, tasks, log: silentLogger })
-              return jsonResponse({
-                nodes: plan.tasks.map((t) => ({
-                  id: t.node.id,
-                  project: t.node.projectName,
-                  task: t.node.taskName,
-                  isGroup: t.node.config.exec === undefined,
-                  deps: t.deps,
-                  cacheStatus: t.cacheStatus,
-                })),
-              })
-            } catch (err) {
-              return jsonResponse(
-                { error: err instanceof Error ? err.message : String(err) },
-                { status: 400 },
-              )
-            }
-          })()
         }
         {
           const m = /^\/v1\/runs\/([^/]+)$/.exec(url.pathname)
@@ -1549,8 +1322,8 @@ export async function startServe(opts: {
         }
       }
       // A distributed submission: pair with the session registry, prune
-      // against the artifact store, dispatch to agents. Answered by the
-      // same ServerMessage stream a delegated run uses.
+      // against the artifact store, dispatch to agents. Answered by the core
+      // ServerMessage stream (event / result / error) the wire renderer reads.
       if (
         parsed !== null &&
         typeof parsed === 'object' &&
@@ -1597,71 +1370,22 @@ export async function startServe(opts: {
         await scheduler.start()
         return
       }
-      // The queue family (cloud-owned, like dist:* — core's ClientMessage is
-      // untouched): explicit multi-trigger submissions from the dashboard.
-      if (parsed !== null && typeof parsed === 'object') {
-        const t = (parsed as { t?: unknown }).t
-        const sendQueue = (m: QueueServerMessage): void => {
-          try {
-            ws.send(JSON.stringify(m))
-          } catch {
-            // client vanished; queued jobs cancel on close
-          }
-        }
-        if (t === 'queue:submit') {
-          const msg = parsed as QueueSubmitMessage
-          if (msg.v !== QUEUE_PROTOCOL_VERSION) {
-            sendQueue({
-              t: 'queue:refused',
-              message: `queue protocol mismatch: client speaks v${String(msg.v)}, serve speaks v${QUEUE_PROTOCOL_VERSION}`,
-            })
-            return
-          }
-          if (typeof msg.request !== 'object' || !Array.isArray(msg.request?.tasks)) {
-            sendQueue({ t: 'queue:refused', message: 'not a RunRequest' })
-            return
-          }
-          const res = queue.submit(msg.request)
-          if ('error' in res) {
-            sendQueue({ t: 'queue:refused', message: res.error })
-            return
-          }
-          jobBindings.set(res.jobId, { send, sendQueue, queueWire: true })
-          if (ws.data?.role === 'run') (ws.data.jobIds ??= new Set()).add(res.jobId)
-          sendQueue({ t: 'queue:accepted', jobId: res.jobId, position: res.position })
-          return
-        }
-        if (t === 'queue:cancel') {
-          const msg = parsed as QueueCancelMessage
-          if (queue.cancel(msg.jobId)) jobBindings.delete(msg.jobId)
-          return
-        }
-      }
+      // Run delegation ({t:'run'} / the server-side RunQueue) was REMOVED
+      // (platform §12 P3): the platform has no checkout to execute against.
+      // Distribution (`dist:submit`, above) is the replacement — a run fans out
+      // to a connected agent POOL, or runs locally. A stray delegation attempt
+      // gets a clear error the wire renderer surfaces.
       let message: ClientMessage | null = null
       if (isEnvelope(parsed)) {
         message = envelopeToClientMessage(parsed)
       } else if (parsed && typeof parsed === 'object' && 't' in (parsed as object)) {
         message = parsed as ClientMessage
       }
-      if (!message || message.t !== 'run') return
-      // Plain CLI delegation rides the SAME queue (serialized execution —
-      // the concurrent-delegation output race is closed). The client speaks
-      // only the core wire, so a non-immediate start surfaces as one
-      // run:status line the wire renderer already prints, ahead of run:start.
-      const res = queue.submit(message.request)
-      if ('error' in res) {
-        send({ t: 'error', message: res.error })
-        return
-      }
-      jobBindings.set(res.jobId, { send, sendQueue: () => {}, queueWire: false })
-      if (ws.data?.role === 'run') (ws.data.jobIds ??= new Set()).add(res.jobId)
-      if (res.position > 0) {
+      if (message?.t === 'run') {
         send({
-          t: 'event',
-          event: {
-            kind: 'run:status',
-            line: `vx: queued behind ${res.position} run(s) on this serve`,
-          },
+          t: 'error',
+          message:
+            'run delegation was removed — distribute across agents (VX_CLOUD_DISTRIBUTE) or run locally',
         })
       }
     },
@@ -1673,14 +1397,6 @@ export async function startServe(opts: {
       // A submitter that dies mid-run: the scheduler finishes the graph
       // with the remaining agents, then drains them.
       ws.data?.scheduler?.onSubmitterGone()
-      // Closing the socket of a QUEUED job cancels it; a RUNNING job
-      // completes server-side (stop-watching semantics, unchanged) and its
-      // binding is dropped when it finishes.
-      if (ws.data?.jobIds !== undefined) {
-        for (const jobId of ws.data.jobIds) {
-          if (queue.cancel(jobId)) jobBindings.delete(jobId)
-        }
-      }
     },
   }
 

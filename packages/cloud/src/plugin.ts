@@ -1,9 +1,11 @@
 // The first-party `cloud()` VxPlugin. Contributes the run-level capabilities
 // against core's plugin interface:
 //
-//   backend   — route the run to a local-or-hosted `vx-cloud serve`
-//               (owns the serve discovery moved out of core), else dev-mirror
-//               in-process. Always returns a backend.
+//   backend   — distribute the run across a connected agent pool
+//               (VX_CLOUD_DISTRIBUTE / an ambient `--distribute` environment).
+//               Run delegation was removed (platform §12 P3), so a plain
+//               connection never moves execution — this declines and core's
+//               localBackend runs the graph in-process.
 //   cache     — wrap the local Cache in a `LayeredCache` over the vx-native
 //               `/v1/cache` wire the connected serve hosts. Declines
 //               (undefined) when unconfigured.
@@ -16,8 +18,8 @@
 //               docs/design/observability-architecture-2026-06.md.
 //
 // Every option falls back to an env var, so `cloud()` with no args is the
-// zero-config form (it behaves like pre-split core: delegate-or-dev-mirror,
-// env-configured cache, no telemetry push).
+// zero-config form (declines the backend + cache + telemetry rungs until a
+// connection / VX_CLOUD_DISTRIBUTE is configured — a plain `vx run` pays nothing).
 
 import {
   LayeredCache,
@@ -196,10 +198,9 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
           warn: (line) => ctx.warn(line),
         })
       }
-      // One env-file read, shared by the ambient-distribute + delegate rungs
-      // (memoized; only happens when cloud() is declared). No environment
-      // connected → both rungs skip → decline → core's localBackend, so a plain
-      // `vx run` keeps its zero-overhead fast path.
+      // One env-file read for the ambient-distribute rung (memoized; only
+      // happens when cloud() is declared). No environment connected → decline →
+      // core's localBackend, so a plain `vx run` keeps its zero-overhead fast path.
       const env = activeEnvironment()
 
       // Ambient DISTRIBUTION: an environment connected with `--distribute`
@@ -227,15 +228,10 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
         // ambient pool is a convenience, not a requirement.
       }
 
-      // Ambient DELEGATION (run the whole run on the server instead of locally)
-      // stays a deliberate opt-in: it executes against request.cwd on the
-      // server, only correct when the server shares/mirrors the filesystem. So
-      // a plain `VX_CLOUD_URL` connection NEVER silently moves execution — only
-      // an environment connected with `--delegate` does.
-      if (env?.delegate === true) {
-        const { resolveBackend } = await import('./cli/backend.js')
-        return resolveBackend(undefined, env.url, env.token)
-      }
+      // Run delegation was REMOVED (platform §12 P3) — the platform has no
+      // checkout. A plain connection never moves execution; distribution
+      // (above) is the only way a run leaves this machine. Decline → core's
+      // localBackend.
       return undefined
     },
 

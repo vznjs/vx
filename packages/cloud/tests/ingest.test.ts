@@ -431,10 +431,6 @@ describe('serve POST /v1/ingest + ingest-store reads', () => {
         runs: { runId: string }[]
       }
       expect(runs.runs.some((r) => r.runId === 'hosted-1')).toBe(true)
-
-      // The graph route needs a colocated workspace — unavailable standalone.
-      const graph = await fetch(`${server.origin}/v1/graph?tasks=build`)
-      expect(graph.ok).toBe(false)
     } finally {
       await server.stop()
       await rm(dataDir, { recursive: true, force: true })
