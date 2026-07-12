@@ -11,13 +11,13 @@ packages integrate with core exclusively through its public API
 (`src/index.ts`, imported as the bare `@vzn/vx` specifier — enforced
 by `tests/package-boundaries.test.ts`):
 
-| Package             | What                                                                                                                                                            |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.` (root)          | `@vzn/vx` — the core runner. Everything below in this doc.                                                                                                      |
+| Package             | What                                                                                                                                                                                                   |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `.` (root)          | `@vzn/vx` — the core runner. Everything below in this doc.                                                                                                                                             |
 | `packages/cloud`    | `@vzn/vx-cloud` — self-hosted platform: `vx-cloud server` (accounts/orgs/RBAC on Postgres, S3 artifacts, dashboard + `/v1/*` API + cache wire), `connect`/`env`/`agent` client verbs, `cloud()` plugin |
-| `packages/vx-otel`  | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces + metrics, zero SDK deps                                                                      |
-| `packages/cloud/ui` | `@vzn/vx-ui` — the dashboard SPA embedded into `vx-cloud` (Vite + Solid + UnoCSS)                                                                               |
-| `apps/docs`         | Astro Starlight docs site; imports `docs/**` at build time                                                                                                      |
+| `packages/vx-otel`  | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces + metrics, zero SDK deps                                                                                                             |
+| `packages/cloud/ui` | `@vzn/vx-ui` — the dashboard SPA embedded into `vx-cloud` (Vite + Solid + UnoCSS)                                                                                                                      |
+| `apps/docs`         | Astro Starlight docs site; imports `docs/**` at build time                                                                                                                                             |
 
 Core never imports a sibling package. The integrations reach core
 through two seams: the ~80-symbol public API and the plugin

@@ -1193,18 +1193,18 @@ and the WS upgrade). Every read is tenant-clamped to the principal's org
 
 HTTP routes (all return JSON unless noted):
 
-| Route                              | Purpose                                                                                    |
-| ---------------------------------- | ------------------------------------------------------------------------------------------ |
-| `GET /health`                      | Liveness probe (`200 ok`) — pre-auth                                                        |
-| `GET /v1/meta`                     | Identity + capability flags (`auth`, `artifacts`, `cacheWire`, `trustTiers`) — pre-auth    |
-| `POST /v1/auth/*`, `/v1/admin/*`   | Accounts / sessions / invites (auth) and org/member/token/workspace admin (RBAC)           |
-| `POST /v1/ingest`                  | Push endpoint — accepts a `RunSummaryRecord` from the `cloud()` plugin                     |
-| `GET /v1/artifacts`                | List the artifact store (trust-scoped to the caller's READ scopes; task/run provenance)    |
-| `GET /v1/*`                        | Metrics/analytics API (runs, tasks, projects, cache, trends, compare, why, …), Postgres-backed |
-| `HEAD/GET/PUT /v1/cache/:hash`     | The vx-native artifact store (hex hash; the `cloud()` cache rung's target)                 |
-| `POST /mcp`                        | MCP server for AI agents (JSON-RPC 2.0, plain-JSON responses)                              |
-| `GET /events`, `GET /stream`       | SSE / NDJSON stream of every envelope from every concurrent distributed run                |
-| `WS /v1/agents` (upgrade)          | Distributed-execution agents rendezvous ({orgId, workspaceId, session} sessions)           |
+| Route                            | Purpose                                                                                                 |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `GET /health`                    | Liveness probe (`200 ok`) — pre-auth                                                                    |
+| `GET /v1/meta`                   | Identity + capability flags (`auth`, `artifacts`, `cacheWire`, `trustTiers`) — pre-auth                 |
+| `POST /v1/auth/*`, `/v1/admin/*` | Accounts / sessions / invites (auth) and org/member/token/workspace admin (RBAC)                        |
+| `POST /v1/ingest`                | Push endpoint — accepts a `RunSummaryRecord` from the `cloud()` plugin                                  |
+| `GET /v1/artifacts`              | List the artifact store (trust-scoped to the caller's READ scopes; task/run provenance)                 |
+| `GET /v1/*`                      | Metrics/analytics API (runs, tasks, projects, cache, trends, compare, why, …), Postgres-backed          |
+| `HEAD/GET/PUT /v1/cache/:hash`   | The vx-native artifact store (hex hash; the `cloud()` cache rung's target)                              |
+| `POST /mcp`                      | MCP server for AI agents (JSON-RPC 2.0, plain-JSON responses)                                           |
+| `GET /events`, `GET /stream`     | SSE / NDJSON stream of the caller's-org distributed-run envelopes (tenant-scoped; cross-origin refused) |
+| `WS /v1/agents` (upgrade)        | Distributed-execution agents rendezvous ({orgId, workspaceId, session} sessions)                        |
 
 Every wire frame is a JSON-RPC 2.0 envelope per
 `docs/design/wire-protocol-2026-06.md`.
