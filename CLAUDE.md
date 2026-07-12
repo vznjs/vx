@@ -208,6 +208,46 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-12**: **Hostile tenant-boundary review of platform Phase 3 —
+  VERDICT AIRTIGHT, zero confirmed defects** (repro-mandated adversarial
+  reviewer over `51facf1`..`df44193`; real two-org `startServer` on ephemeral
+  pg + fake S3). **59 attack assertions across all 7 invariants; 58 rejected
+  exactly, the 1 non-pass was the reviewer's own wrong expectation** (`/v1/graph`
+  returns 200 SPA-catchall, NOT a JSON 404 — the colocated `planRun` route is
+  genuinely DEAD post-`df44193`, so a GET falls through to the static SPA like
+  any unknown path; that CONFIRMS delegation removal rather than refuting it).
+  **Refuted by executed repro (the boundary holds):** cross-org cache read
+  (orgB GET of orgA's key → 404, incl. 10 hostile `x-vx-cache-scope` values —
+  `..`/`../..`/encoded slashes/orgA's UUID/`_org`/`trusted`/absolute — all 404;
+  trusted tier ignores the header, `subScopeOf` collapses `.`/`..`/non-matching
+  to `shared`, `validScope` re-checks every segment); cross-workspace within an
+  org (bidirectional `_org`↔ws segment isolation, all 404); scope injection
+  (every one of 7 S3 keys matched `^org/<uuid>/ws/(_org|<uuid>)/(trusted|
+  untrusted/<seg>)/<hash>.tar.zst$` — none escaped to `..`/bucket-root/
+  `etc/passwd`; untrusted `scope=trusted` nested harmlessly at
+  `…/untrusted/trusted/…` and a trusted GET of it → 404 = poison isolation;
+  per-PR `pr-42` write / `pr-99` read → 404); dist pool cross-org (two orgs'
+  agents with IDENTICAL ws+session+commit over the real `/v1/agents` WS —
+  neither saw the other, `remoteAgents=1` each; `orgId` reaching `hello`/
+  `availableCapacity` is `data.principal.orgId`, never on the wire); provenance
+  leak (orgB PUT of the same hash → own copy with `task: undefined`, no orgA
+  `secretproj` provenance; `?ws=<orgA ws>` clamped to the token's own org);
+  delegation dead (`{t:'run'}` → rejection error, `/v1/runs/queue` → 404, no
+  handler/import survives); token forgery/privilege (session on `/v1/cache/:hash`
+  → 403 machine-token-only; ci minting an admin token → 403; spoofed `x-vx-org`
+  header ignored — org is DB-derived from the token hash; `?org=`/`?ws=` foreign
+  → scoped-to-own-org / 404). S3 `violations` stayed empty (no credentialed /
+  scope header leaked onto a presigned path). **Accepted by-design
+  (informational):** an instance-admin session reads any org (operator
+  superuser, not a customer boundary); an org-wide token lists the shared `_org`
+  scope while binding provenance to a `?ws=`-chosen workspace WITHIN its own org
+  (intra-org, no cross-tenant exposure). Root cause of the isolation: ONE
+  chokepoint `basePrefix(p) = p.bucket ?? org/${orgId}/ws/${workspaceId ?? _org}`
+  fed only by a server-built `Principal` (the `api_tokens` row keyed by
+  `sha256(token)`) + the registry `sessionKey(orgId, ws, session)` + analytics'
+  `WHERE workspace_id/org_id` clamps — no reachable path threads a wire value
+  into any of them. No code change (clean verdict).
+
 - **2026-07-12**: **Platform Phase 3 SHIPPED — cache + dist re-keyed to the
   org/workspace tenancy prefix; run delegation DELETED (`51facf1`,
   `e690a82`, `df44193`)**, executing P3 of
