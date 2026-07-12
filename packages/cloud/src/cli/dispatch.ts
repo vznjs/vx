@@ -227,6 +227,12 @@ export async function startPlatformHttp(opts: PlatformHttpOptions): Promise<Plat
         ...(principal.workspaceId !== undefined ? { tokenWorkspaceId: principal.workspaceId } : {}),
       }).then(withCors)
     }
+    // Batch existence probe — collapse N per-hash HEADs into one round-trip.
+    // Trust-scoped identically to a GET (the store reuses `findReadKey`), and
+    // machine-token-only like the rest of the cache wire.
+    if (url.pathname === '/v1/cache/batch' && req.method === 'POST') {
+      return artifacts.handleBatch(req, principal).then(withCors)
+    }
     // The vx-native cache wire. Hex-only so it can never shadow the named
     // `/v1/cache/*` analytics endpoints (a real cache key is 16-hex; wider
     // widths are reserved for future hash algorithms).

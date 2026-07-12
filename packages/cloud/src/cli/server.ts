@@ -45,6 +45,7 @@ function isAnalyticsSurface(pathname: string, method: string): boolean {
   }
   if (
     pathname === '/v1/artifacts' ||
+    pathname === '/v1/cache/batch' ||
     pathname.startsWith('/v1/workspace/') ||
     /^\/v1\/cache\/[0-9a-f]{16,64}$/.test(pathname)
   ) {
@@ -89,7 +90,12 @@ function isAnalyticsSurface(pathname: string, method: string): boolean {
 
 /** Machine surfaces that require a ci token; a session hitting them → 403. */
 function isMachineTokenOnly(pathname: string, isUpgrade: boolean): boolean {
-  return isUpgrade || pathname === '/v1/agents' || /^\/v1\/cache\/[0-9a-f]{16,64}$/.test(pathname)
+  return (
+    isUpgrade ||
+    pathname === '/v1/agents' ||
+    pathname === '/v1/cache/batch' ||
+    /^\/v1\/cache\/[0-9a-f]{16,64}$/.test(pathname)
+  )
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -398,7 +404,8 @@ export async function startServer(opts: {
           auth: 'account',
           startedAt,
           artifacts: true,
-          cacheWire: 1,
+          // 2 → the batch existence probe (`POST /v1/cache/batch`) is hosted.
+          cacheWire: 2,
           trustTiers: true,
         },
         { headers: CORS },

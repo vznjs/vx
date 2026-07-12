@@ -247,7 +247,7 @@ describe('platform e2e (real pg + fake S3)', () => {
     expect(meta.status).toBe(200)
     const body = (await meta.json()) as Record<string, unknown>
     expect(body['auth']).toBe('account')
-    expect(body['cacheWire']).toBe(1)
+    expect(body['cacheWire']).toBe(2)
     expect('workspaces' in body).toBe(false)
   })
 
@@ -376,6 +376,39 @@ describe('platform e2e (real pg + fake S3)', () => {
     expect(
       (await call('GET', `/v1/cache/${hash}`, { bearer: ciToken, redirect: 'manual' })).status,
     ).toBe(404)
+  })
+
+  it('cache wire: batch existence probe is machine-token gated and trust-scoped', async () => {
+    const presentHash = 'ba'.repeat(10)
+    const absentHash = 'ef'.repeat(10)
+    const body = Bun.zstdCompressSync(new TextEncoder().encode('batch-bytes'))
+    expect(
+      (await call('PUT', `/v1/cache/${presentHash}`, { bearer: ciToken, rawBody: body })).status,
+    ).toBe(200)
+
+    // A ci token gets the present subset in ONE round-trip.
+    const res = await call('POST', '/v1/cache/batch', {
+      bearer: ciToken,
+      body: { hashes: [presentHash, absentHash] },
+    })
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { present: string[] }).present).toEqual([presentHash])
+
+    // No bearer → 401; a session is NOT a cache principal → 403 (machine-token-only).
+    expect(
+      (await call('POST', '/v1/cache/batch', { body: { hashes: [presentHash] } })).status,
+    ).toBe(401)
+    expect(
+      (await call('POST', '/v1/cache/batch', { cookie, body: { hashes: [presentHash] } })).status,
+    ).toBe(403)
+
+    // Trust scope rides the token: an untrusted token sees the trusted hash
+    // (untrusted reads untrusted ∪ trusted), same as a GET would.
+    const uRes = await call('POST', '/v1/cache/batch', {
+      bearer: untrustedToken,
+      body: { hashes: [presentHash] },
+    })
+    expect(((await uRes.json()) as { present: string[] }).present).toEqual([presentHash])
   })
 
   it('/v1/artifacts joins producing-task provenance from Postgres task_runs', async () => {

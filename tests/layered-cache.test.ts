@@ -16,6 +16,7 @@ interface StubRemote {
   gets: number
   puts: number
   heads: number
+  hasManyCalls: number
   /** Per-call latency for get() — lets a test hold pulls open. */
   getLatencyMs: number
   /** When true every call throws (a fully-broken remote). */
@@ -32,6 +33,7 @@ function stubRemote(): StubRemote {
     gets: 0,
     puts: 0,
     heads: 0,
+    hasManyCalls: 0,
     getLatencyMs: 0,
     failAll: false,
     putStarted: false,
@@ -41,6 +43,11 @@ function stubRemote(): StubRemote {
         state.heads++
         if (state.failAll) throw new Error('remote down')
         return state.store.has(hash)
+      },
+      async hasMany(hashes) {
+        state.hasManyCalls++
+        if (state.failAll) throw new Error('remote down')
+        return new Set(hashes.filter((h) => state.store.has(h)))
       },
       async get(hash) {
         state.gets++
@@ -216,6 +223,60 @@ describe('LayeredCache', () => {
     remote.failAll = true
     const layered = makeLayered()
     expect(await layered.get('h-fail')).toBeNull()
+  })
+
+  it('remoteHasMany() returns the remotely-present subset in one call', async () => {
+    remote.store.set('h-a', new Uint8Array([1]))
+    remote.store.set('h-c', new Uint8Array([1]))
+    const layered = makeLayered()
+    const present = await layered.remoteHasMany(['h-a', 'h-b', 'h-c'])
+    expect(present).not.toBeNull()
+    expect([...(present ?? [])].sort()).toEqual(['h-a', 'h-c'])
+    expect(remote.hasManyCalls).toBe(1)
+  })
+
+  it('remoteHasMany() returns null when the remote layer cannot batch', async () => {
+    delete (remote.layer as { hasMany?: unknown }).hasMany
+    const layered = makeLayered()
+    expect(await layered.remoteHasMany(['h-a'])).toBeNull()
+  })
+
+  it('remoteHasMany() returns null and reports the error when hasMany throws', async () => {
+    remote.failAll = true
+    const errors: Error[] = []
+    const layered = makeLayered({ onRemoteError: (e) => errors.push(e) })
+    expect(await layered.remoteHasMany(['h-a'])).toBeNull()
+    expect(errors).toHaveLength(1)
+  })
+
+  it('remoteHasMany() returns null when remote reads are disabled by policy', async () => {
+    const layered = new LayeredCache(local, remote.layer, {
+      policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: true },
+      onRemoteError: () => {},
+    })
+    expect(await layered.remoteHasMany(['h-a'])).toBeNull()
+    expect(remote.hasManyCalls).toBe(0)
+  })
+
+  it('markRemoteAbsent() makes a later get() a miss with NO remote GET', async () => {
+    const layered = makeLayered()
+    layered.markRemoteAbsent(['h-gone'])
+    expect(await layered.get('h-gone', { taskId: 'pkg#build', command: 'x' })).toBeNull()
+    // The batch probe already said "absent" — the lazy get must not re-probe.
+    expect(remote.gets).toBe(0)
+  })
+
+  it('markRemoteAbsent() does not clobber an in-flight pull', async () => {
+    // Seed a REAL artifact remotely, then hold the pull open mid-flight.
+    await saveSample(makeLayered(), 'h-race')
+    await wipeLocal()
+    const layered = makeLayered()
+    remote.getLatencyMs = 40
+    const pull = layered.prefetch('h-race', { taskId: 'pkg#build', command: 'echo produced' })
+    // A late batch verdict must NOT overwrite the pending pull with `false`.
+    layered.markRemoteAbsent(['h-race'])
+    expect(await pull).toBe(true)
+    expect(await local.get('h-race')).not.toBeNull()
   })
 
   it('key() is identical to local.key()', async () => {

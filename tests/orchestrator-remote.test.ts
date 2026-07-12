@@ -110,6 +110,8 @@ interface ArtifactServer {
   headCounts: Map<string, number>
   /** Max GETs observed concurrently in flight. */
   getsInFlight: () => number
+  /** Number of `POST /artifacts/batch` existence probes served. */
+  batchCalls: () => number
 }
 
 function startArtifactServer(opts?: { getLatencyMs?: number; failAll?: boolean }): ArtifactServer {
@@ -118,6 +120,7 @@ function startArtifactServer(opts?: { getLatencyMs?: number; failAll?: boolean }
   const headCounts = new Map<string, number>()
   let inFlight = 0
   let maxInFlight = 0
+  let batchCalls = 0
   const server = Bun.serve({
     port: 0,
     async fetch(req) {
@@ -126,6 +129,12 @@ function startArtifactServer(opts?: { getLatencyMs?: number; failAll?: boolean }
       // to a miss.
       if (opts?.failAll) return new Response('boom', { status: 500 })
       const url = new URL(req.url)
+      // Batch existence probe — one round-trip for many hashes.
+      if (url.pathname === '/artifacts/batch' && req.method === 'POST') {
+        batchCalls++
+        const { hashes } = (await req.json()) as { hashes: string[] }
+        return Response.json({ present: hashes.filter((h) => store.has(h)) })
+      }
       const m = url.pathname.match(/^\/artifacts\/([0-9a-f]+)$/)
       if (!m) return new Response('not found', { status: 404 })
       const hash = m[1]!
@@ -161,6 +170,15 @@ function startArtifactServer(opts?: { getLatencyMs?: number; failAll?: boolean }
       if (!res.ok) throw new Error(`HEAD ${hash} → ${res.status}`)
       return true
     },
+    async hasMany(hashes) {
+      const res = await fetch(`${baseUrl}/artifacts/batch`, {
+        method: 'POST',
+        body: JSON.stringify({ hashes }),
+      })
+      if (!res.ok) throw new Error(`batch → ${res.status}`)
+      const { present } = (await res.json()) as { present: string[] }
+      return new Set(present)
+    },
     async get(hash) {
       const res = await fetch(`${baseUrl}/artifacts/${hash}`)
       if (res.status === 404) return null
@@ -176,7 +194,15 @@ function startArtifactServer(opts?: { getLatencyMs?: number; failAll?: boolean }
       if (!res.ok) throw new Error(`PUT ${hash} → ${res.status}`)
     },
   }
-  return { server, layer, store, getCounts, headCounts, getsInFlight: () => maxInFlight }
+  return {
+    server,
+    layer,
+    store,
+    getCounts,
+    headCounts,
+    getsInFlight: () => maxInFlight,
+    batchCalls: () => batchCalls,
+  }
 }
 
 const BUILD_CONFIG = `
@@ -363,6 +389,63 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
           // Overlap: both prefetches were in flight at the same time —
           // their latency overlapped instead of serializing.
           expect(remote.getsInFlight()).toBeGreaterThanOrEqual(2)
+        } finally {
+          await remote.server.stop(true)
+        }
+      } finally {
+        await seed.server.stop(true)
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a batch-capable remote is probed ONCE and fetches only the hits',
+    async () => {
+      const fixture = await makeWorkspace()
+      // Two independent stable-key tasks; seed only ONE remotely so the
+      // other is a genuine remote miss on the warm run.
+      for (const name of ['a', 'b']) {
+        await addProject(fixture.root, name, {
+          files: { 'src/in.txt': `v-${name}` },
+          config: BUILD_CONFIG,
+        })
+      }
+      const seed = startArtifactServer()
+      try {
+        await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: seed.layer,
+        })
+        expect(seed.store.size).toBe(2)
+        const [presentHash, absentHash] = [...seed.store.keys()] as [string, string]
+        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+
+        const remote = startArtifactServer()
+        // Carry over ONLY one artifact — the other stays a remote miss.
+        remote.store.set(presentHash, seed.store.get(presentHash)!)
+        try {
+          const second = await run({
+            cwd: fixture.root,
+            tasks: ['build'],
+            log: silentLogger(fixture),
+            remoteCache: remote.layer,
+          })
+          expect(second.ok).toBe(true)
+          // ONE batch probe covered BOTH stable keys — not two HEADs.
+          expect(remote.batchCalls()).toBe(1)
+          // Exactly one task was served from remote, the other executed.
+          expect(second.outcomes.filter((o) => o.status === 'cache-hit-remote')).toHaveLength(1)
+          // The hit was fetched exactly once. The miss is never fetched more
+          // than once (batch + lazy get share the in-flight map); when the
+          // batch verdict lands before the task's probe it fires ZERO GETs —
+          // that skip is pinned deterministically in the LayeredCache unit
+          // suite (markRemoteAbsent → get → no remote GET).
+          expect(remote.getCounts.get(presentHash)).toBe(1)
+          expect(remote.getCounts.get(absentHash) ?? 0).toBeLessThanOrEqual(1)
         } finally {
           await remote.server.stop(true)
         }

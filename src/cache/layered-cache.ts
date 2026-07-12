@@ -47,6 +47,15 @@ import { FULL_CACHE_POLICY } from './cache.js'
 export interface RemoteCacheLayer {
   /** Existence probe (drives the plan path's `--dry` remote prediction). */
   has(hash: string): Promise<boolean>
+  /**
+   * Optional batch existence probe: given N hashes, return the subset stored
+   * remotely in ONE round-trip. Lets the prefetch pass collapse N per-hash
+   * network probes into one, then fetch only the hits. A remote that can't
+   * batch omits this method (or returns `null`) and the layer falls back to
+   * the per-hash path. Never throws for control flow — `null` means "no batch
+   * info; use per-hash".
+   */
+  hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
   /** Fetch an artifact's bytes; `null` = miss. `durationMs` is the
    *  producing task's duration when the wire carries it. */
   get(hash: string): Promise<{ body: ArrayBuffer; durationMs: number | undefined } | null>
@@ -124,6 +133,38 @@ export class LayeredCache implements CacheLayer {
     // No-op when remote reads are off — there's nothing to warm from.
     if (!this.policy.remoteRead) return false
     return await this.pullFromRemote(hash, ctx)
+  }
+
+  /**
+   * Batch existence probe over the remote layer — the subset of `hashes`
+   * present remotely, in one round-trip, or `null` when the remote can't
+   * batch (no `hasMany`, reads disabled, or an error). The prefetch pass uses
+   * this to fetch only the hits and to pre-mark the misses (`markRemoteAbsent`)
+   * so their lazy `get` skips the network. Never throws — a batch failure
+   * degrades to "no batch info" and the caller falls back to per-hash.
+   */
+  async remoteHasMany(hashes: readonly string[]): Promise<Set<string> | null> {
+    if (!this.policy.remoteRead || this.remote.hasMany === undefined) return null
+    try {
+      return await this.remote.hasMany(hashes)
+    } catch (err) {
+      this.reportRemoteError(err)
+      return null
+    }
+  }
+
+  /**
+   * Record that the remote layer has NO artifact for each of `hashes` (from a
+   * batch probe), so a later `get`/`prefetch` short-circuits to a miss WITHOUT
+   * a network round-trip. Byte-for-byte equivalent to a background prefetch GET
+   * having resolved `false` into `inflight` — same at-most-once semantics, same
+   * point-in-time staleness window — but without spending the GET. Never
+   * overwrites an entry already in flight.
+   */
+  markRemoteAbsent(hashes: Iterable<string>): void {
+    for (const hash of hashes) {
+      if (!this.inflight.has(hash)) this.inflight.set(hash, Promise.resolve(false))
+    }
   }
 
   async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null> {

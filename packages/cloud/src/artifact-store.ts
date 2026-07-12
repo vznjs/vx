@@ -92,6 +92,15 @@ const HASH_RE = /^[a-zA-Z0-9_-]{1,128}$/
 // Scope segments are server-derived, but validate them anyway (defense in
 // depth) so a future bug that lets a value flow from the wire can't traverse.
 const SEGMENT_RE = /^[a-zA-Z0-9_.-]{1,128}$/
+// Per-request fan-out cap for `hasMany` so one batch probe (up to
+// BATCH_HASH_CAP hashes × up to 2 read scopes each) can't flood the backend.
+const HASMANY_CONCURRENCY = 32
+// The most hashes one `POST /v1/cache/batch` may carry — the client chunks at
+// this width; the server rejects a larger list (no silent truncation).
+export const BATCH_HASH_CAP = 1024
+// Body cap for `/v1/cache/batch` — BATCH_HASH_CAP hashes at ≤128 chars each
+// plus JSON overhead fits comfortably; anything larger is refused with 413.
+const MAX_BATCH_BODY_BYTES = 256 * 1024
 
 /**
  * Scopes a principal may READ, in priority order, each tagged with its tier.
@@ -141,6 +150,33 @@ const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd]
 const SUBSCOPE_RE = /^[a-zA-Z0-9_.-]{1,128}$/
 function subScopeOf(raw: string | null): string {
   return raw !== null && raw !== '.' && raw !== '..' && SUBSCOPE_RE.test(raw) ? raw : 'shared'
+}
+
+/**
+ * Read a request body as text, aborting once cumulative bytes exceed `max`
+ * (returns null). Streams via the body reader so a lying/absent content-length
+ * can't defeat the cap. Falls back to `text()` when the body isn't a stream.
+ */
+async function readTextBounded(req: Request, max: number): Promise<string | null> {
+  const reader = req.body?.getReader()
+  if (reader === undefined) {
+    const t = await req.text()
+    return t.length > max ? null : t
+  }
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    if (value === undefined) continue
+    total += value.byteLength
+    if (total > max) {
+      await reader.cancel().catch(() => {})
+      return null
+    }
+    chunks.push(value)
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks))
 }
 
 /** One row of `ArtifactStore.list()` — the `/v1/artifacts` surface. */
@@ -217,6 +253,82 @@ export class ArtifactStore {
     } catch {
       return false
     }
+  }
+
+  /**
+   * Batch existence probe — the `POST /v1/cache/batch` primitive. Collapses N
+   * client→server round-trips into ONE (the server still does per-hash HEADs,
+   * but colocated with S3 and in parallel). Returns the subset of `hashes`
+   * present in the principal's read scopes — resolved through the EXACT same
+   * `findReadKey`/`readScopes` path a GET uses, so a batch probe can never leak
+   * existence wider than a fetch could reach (trusted never sees untrusted,
+   * cross-org never sees another org's key). Best-effort per hash: a down
+   * bucket reads a hash as absent, never throws. Bounded fan-out so one request
+   * can't flood the backend.
+   */
+  async hasMany(
+    hashes: readonly string[],
+    principal: Principal = DEFAULT_PRINCIPAL,
+    sub = 'shared',
+  ): Promise<Set<string>> {
+    const present = new Set<string>()
+    // Dedupe + drop invalid before probing.
+    const unique = [...new Set(hashes)].filter((h) => HASH_RE.test(h))
+    let next = 0
+    const probe = async (): Promise<void> => {
+      while (next < unique.length) {
+        const hash = unique[next++]!
+        try {
+          if ((await this.findReadKey(hash, principal, sub)) !== null) present.add(hash)
+        } catch {
+          // down bucket → this hash reads absent (the caller re-executes)
+        }
+      }
+    }
+    const workers = Math.max(1, Math.min(HASMANY_CONCURRENCY, unique.length))
+    await Promise.all(Array.from({ length: workers }, () => probe()))
+    return present
+  }
+
+  /**
+   * Handle one `POST /v1/cache/batch` request — the HTTP wrapper over
+   * `hasMany`. Body is `{ "hashes": string[] }`; the response is
+   * `{ "present": string[] }` (the subset stored in the principal's read
+   * scopes). Same scope gate as `handle()`: the `x-vx-cache-scope` header
+   * carries the untrusted per-PR partition, the principal is server-derived,
+   * so a batch probe is trust-scoped identically to a GET.
+   */
+  async handleBatch(req: Request, principal: Principal = DEFAULT_PRINCIPAL): Promise<Response> {
+    // Read the body with a HARD streaming cap. The server's maxRequestBodySize
+    // is sized for 512 MiB artifact PUTs, so a chunked (no content-length)
+    // batch body could otherwise buffer far past the tiny hash-list size —
+    // abort mid-stream instead (mirrors the artifact PUT's streaming cap).
+    const text = await readTextBounded(req, MAX_BATCH_BODY_BYTES)
+    if (text === null) {
+      return Response.json({ error: 'request body too large' }, { status: 413 })
+    }
+    let body: unknown
+    try {
+      body = JSON.parse(text)
+    } catch {
+      return Response.json({ error: 'invalid JSON body' }, { status: 400 })
+    }
+    const hashes = (body as { hashes?: unknown }).hashes
+    if (!Array.isArray(hashes) || !hashes.every((h) => typeof h === 'string')) {
+      return Response.json({ error: 'expected { hashes: string[] }' }, { status: 400 })
+    }
+    if (hashes.length > BATCH_HASH_CAP) {
+      return Response.json(
+        { error: `too many hashes (max ${BATCH_HASH_CAP} per request)` },
+        { status: 400 },
+      )
+    }
+    const sub = subScopeOf(req.headers.get('x-vx-cache-scope'))
+    if (!readScopes(principal, sub).every((s) => this.validScope(s))) {
+      return Response.json({ error: 'invalid scope' }, { status: 400 })
+    }
+    const present = await this.hasMany(hashes as string[], principal, sub)
+    return Response.json({ present: [...present] })
   }
 
   /**

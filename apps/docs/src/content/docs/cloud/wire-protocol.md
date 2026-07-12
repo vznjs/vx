@@ -31,13 +31,43 @@ curl https://vx.example.com/v1/meta
   "vx": "0.0.0",
   "auth": "account",
   "artifacts": true,
-  "cacheWire": 1,
+  "cacheWire": 2,
   "trustTiers": true
 }
 ```
 
 It carries capability flags only — never tenant data — so it's safe before
-you authenticate.
+you authenticate. `cacheWire: 2` means the server hosts the batch existence
+probe below; a `1` server has only the per-hash cache wire (clients fall back
+to per-hash `HEAD`s automatically).
+
+## Cache wire
+
+The shared cache is the `/v1/cache/*` surface, behind an API token (machine
+principals only — a session cookie is refused). It is tenant- and
+trust-scoped: which artifacts a request can see is derived from the token,
+never from the request.
+
+| Method + path              | Purpose                                                                     |
+| -------------------------- | --------------------------------------------------------------------------- |
+| `HEAD /v1/cache/:hash`     | Existence probe for one artifact — `200` present, `404` absent.             |
+| `GET /v1/cache/:hash`      | Fetch an artifact — `307` to a pre-signed bucket URL (offloaded storage).   |
+| `PUT /v1/cache/:hash`      | Upload an artifact (`.tar.zst`); re-PUT of an existing hash is `409`.       |
+| `POST /v1/cache/batch`     | **Batch existence probe** — one round-trip for many hashes (`cacheWire ≥ 2`). |
+
+`POST /v1/cache/batch` takes `{ "hashes": string[] }` (up to 1024 per
+request) and returns `{ "present": string[] }` — the subset stored in the
+token's read scopes. It collapses N per-hash `HEAD`s into a single request, so
+a fresh CI runner priming a 1000-task graph asks once instead of a thousand
+times. The vx client uses it automatically to prefetch only the cache hits.
+
+```sh
+curl -X POST https://vx.example.com/v1/cache/batch \
+  -H "authorization: Bearer $VX_CLOUD_TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"hashes":["a1b2c3d4e5f60718","0000000000000000"]}'
+# → {"present":["a1b2c3d4e5f60718"]}
+```
 
 ## Auth
 

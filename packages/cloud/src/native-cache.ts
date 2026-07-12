@@ -73,7 +73,15 @@ function xxh3Digest(bytes: Uint8Array): string {
   return `xxh3:${Bun.hash.xxHash3(bytes).toString(16).padStart(16, '0')}`
 }
 
+// Hashes per `POST /v1/cache/batch` request. MUST stay ≤ the server's
+// BATCH_HASH_CAP (artifact-store.ts) or the server 400s an over-cap chunk.
+const BATCH_CHUNK = 1024
+
 export class NativeCacheClient implements RemoteCacheLayer {
+  // Remembers a serve that has no batch route (cacheWire < 2) so `hasMany`
+  // probes it at most once per client lifetime, then declines.
+  private batchUnsupported = false
+
   constructor(private readonly config: NativeCacheConfig) {}
 
   async get(hash: string): Promise<{ body: ArrayBuffer; durationMs: number | undefined } | null> {
@@ -120,6 +128,43 @@ export class NativeCacheClient implements RemoteCacheLayer {
     return true
   }
 
+  /**
+   * Batch existence probe — one `POST /v1/cache/batch` per chunk of up to
+   * BATCH_CHUNK hashes, collapsing N per-hash HEADs into a single round-trip.
+   * Returns the subset present remotely. Returns `null` when the serve is too
+   * old to host the route (404/405) so the caller falls back to the per-hash
+   * path; the "unsupported" verdict is remembered for the client's lifetime so
+   * a legacy serve costs at most one probe. Throws on any other error (the
+   * layered cache degrades the throw to "no batch info").
+   */
+  async hasMany(hashes: readonly string[]): Promise<Set<string> | null> {
+    if (this.batchUnsupported) return null
+    const unique = [...new Set(hashes)]
+    const present = new Set<string>()
+    for (let i = 0; i < unique.length; i += BATCH_CHUNK) {
+      const chunk = unique.slice(i, i + BATCH_CHUNK)
+      const bytes = new TextEncoder().encode(JSON.stringify({ hashes: chunk }))
+      const res = await this.request('POST', this.batchUrl(), {
+        body: bytes,
+        headers: {
+          'content-type': 'application/json',
+          'content-length': String(bytes.byteLength),
+        },
+      })
+      if (res.status === 404 || res.status === 405) {
+        this.batchUnsupported = true
+        return null
+      }
+      if (!res.ok) throw new Error(`POST /v1/cache/batch → ${res.status}`)
+      const data = (await res.json()) as { present?: unknown }
+      if (!Array.isArray(data.present)) {
+        throw new Error('POST /v1/cache/batch → response missing present[]')
+      }
+      for (const h of data.present) if (typeof h === 'string') present.add(h)
+    }
+    return present
+  }
+
   async put(
     hash: string,
     body: ArrayBuffer | Uint8Array,
@@ -142,6 +187,10 @@ export class NativeCacheClient implements RemoteCacheLayer {
 
   private artifactUrl(hash: string): string {
     return `${this.config.baseUrl.replace(/\/+$/, '')}/v1/cache/${encodeURIComponent(hash)}`
+  }
+
+  private batchUrl(): string {
+    return `${this.config.baseUrl.replace(/\/+$/, '')}/v1/cache/batch`
   }
 
   private async request(

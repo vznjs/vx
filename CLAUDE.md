@@ -208,6 +208,54 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-12**: **Batch cache existence probe — `POST /v1/cache/batch`
+  collapses N per-hash HEADs into ONE round-trip (owner ask: "shouldn't cache
+  have an endpoint to check many at the same time? To speed up?")**. The
+  vx-native cache wire was strictly per-hash (`GET`/`HEAD`/`PUT /v1/cache/:hash`),
+  so a fresh CI runner priming a 1000s-task graph probed the remote once per
+  task; the prefetch pass fired GETs concurrently (bounded pool) but on a
+  high-latency link that's still N/pool round-trip WAVES, and every cold-cache
+  miss cost a GET. **Server (`packages/cloud`):** `ArtifactStore.hasMany` +
+  `handleBatch` (the HTTP wrapper) — body `{ hashes: string[] }` (≤1024, else 400) → `{ present: string[] }`, resolved through the EXACT same
+  `findReadKey`/`readScopes(principal, sub)` path a GET uses, so a batch probe
+  is trust-scoped IDENTICALLY (trusted never sees untrusted, cross-org/cross-ws
+  never leak) and can't reveal existence wider than a fetch could reach.
+  Machine-token-only (`isMachineTokenOnly` + `isAnalyticsSurface` both updated
+  → a session cookie 403s, routes to dispatch not Postgres); bounded server
+  fan-out (`HASMANY_CONCURRENCY = 32`); body read with a STREAMING cap
+  (`readTextBounded`, 256 KiB) so a chunked no-content-length body can't buffer
+  past the cap into the 512 MiB artifact-PUT `maxRequestBodySize` (the P4-server
+  chunked-bypass class). `/v1/meta` now advertises `cacheWire: 2`. **Client
+  (`packages/cloud`):** `NativeCacheClient.hasMany` POSTs the batch (chunked at
+  1024), returns the present set — or `null` on 404/405 (an older `cacheWire: 1`
+  serve), memoized per client so a legacy serve costs at most one probe, then
+  falls back to per-hash. **Core (`src/`):** OPTIONAL `RemoteCacheLayer.hasMany?`
+  (a remote that can't batch omits it); `LayeredCache.remoteHasMany` (never-fail
+  → `null` on error/unsupported/reads-off) + `markRemoteAbsent` (pre-populates
+  the `inflight` map with resolved-`false` for batch-absent hashes, WITHOUT
+  clobbering an in-flight pull — byte-equivalent to a background prefetch-404
+  caching false, same at-most-once + staleness semantics). `startRemotePrefetch`
+  batch-probes all stable hashes ONCE, GETs only the hits, and marks the misses
+  absent so their lazy `get` short-circuits with ZERO network — collapsing N
+  probe waves into 1 + skipping every GET that would 404. Falls back to
+  prefetching every stable key when `remoteHasMany` returns null. **Honest
+  tradeoff (why OPTIONAL + fall-back, not mandatory):** for a warm all-hit run
+  on a FAST link the batch adds one serialization point (all GETs wait for the
+  one batch response) — so it's a clear win for many-task / high-latency /
+  cold-ish caches and neutral-to-marginal elsewhere; degrades gracefully
+  everywhere. NO CACHE_VERSION/SCHEMA/wire-BREAKING change — `cacheWire` is
+  additive (a `1` client/serve interoperates via the per-hash fallback). Tests:
+  core +7 (LayeredCache remoteHasMany null/error/reads-off + markRemoteAbsent
+  no-GET + no-clobber-in-flight; orchestrator-remote e2e: batch probed ONCE,
+  only hits fetched, miss never double-fetched — the deterministic 0-GET-on-
+  absent skip is unit-pinned since the e2e batch/execute race is timing-
+  dependent), cloud +10 (artifact-store trust-scope matrix incl. cross-org
+  clamp + malformed/over-cap 400s + streaming-cap 413 + best-effort-broken-
+  backend; native-cache round-trip/chunking/404-memoize-fallback/malformed;
+  server e2e: machine-token gated (session→403), trust-scoped, round-trips
+  through the REAL server on ephemeral pg + fake S3). Core CI green, cloud
+  392 pass, lint+fmt clean.
+
 - **2026-07-12**: **Docs + website reorg — core is provider-neutral (zero
   `vx-cloud` references), all vx-cloud content consolidated into a dedicated
   "vx Cloud" section (`d959c20`, `8961335`, `2e0149f`, `0dcadc8`)** (owner:

@@ -11,7 +11,12 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Cache, FULL_CACHE_POLICY, LayeredCache, type CacheContext } from '@vzn/vx'
-import { ArtifactStore, MAX_ARTIFACT_BYTES, type Principal } from '../src/artifact-store.js'
+import {
+  ArtifactStore,
+  BATCH_HASH_CAP,
+  MAX_ARTIFACT_BYTES,
+  type Principal,
+} from '../src/artifact-store.js'
 import { ENVIRONMENTS_VERSION, writeEnvironmentsFile } from '../src/environments.js'
 import { cloud } from '../src/plugin.js'
 
@@ -450,6 +455,126 @@ describe('ArtifactStore — org/workspace tenancy prefix (platform §8.1)', () =
     expect(under).toContain(`${hash}.tar.zst`)
     // A workspace-scoped token in the same org does NOT see the _org cache.
     expect((await get(store, hash, orgAws1)).status).toBe(404)
+  })
+})
+
+describe('ArtifactStore — batch existence (POST /v1/cache/batch)', () => {
+  let dir: string
+  const trusted = { orgId: 'default', tier: 'trusted', bucket: 'default' } as const
+  const untrusted = { orgId: 'default', tier: 'untrusted', bucket: 'default' } as const
+  const orgA: Principal = { orgId: 'org-a', workspaceId: 'ws-1', tier: 'trusted' }
+  const orgB: Principal = { orgId: 'org-b', workspaceId: 'ws-1', tier: 'trusted' }
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'vx-batch-'))
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  const put = (store: ArtifactStore, hash: string, p: Principal) =>
+    store.handle(
+      new Request(`http://x/v1/cache/${hash}`, { method: 'PUT', body: zbody(hash) }),
+      hash,
+      p,
+    )
+  const batch = (store: ArtifactStore, hashes: unknown, p: Principal, body?: string) =>
+    store.handleBatch(
+      new Request('http://x/v1/cache/batch', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: body ?? JSON.stringify({ hashes }),
+      }),
+      p,
+    )
+
+  it('returns the present subset (existence, not values)', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    await put(store, 'aaaa1111bbbb2222', trusted)
+    await put(store, 'cccc3333dddd4444', trusted)
+    const res = await batch(
+      store,
+      ['aaaa1111bbbb2222', 'ffff9999ffff9999', 'cccc3333dddd4444'],
+      trusted,
+    )
+    expect(res.status).toBe(200)
+    const { present } = (await res.json()) as { present: string[] }
+    expect([...present].sort()).toEqual(['aaaa1111bbbb2222', 'cccc3333dddd4444'])
+  })
+
+  it('resolves through the SAME trust scopes as a GET', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    // A trusted key + an untrusted-only key in the same tenant.
+    await put(store, 'aaaaaaaaaaaaaaaa', trusted)
+    await put(store, 'bbbbbbbbbbbbbbbb', untrusted)
+    // A trusted probe sees the trusted key but NOT the untrusted-only one.
+    const t = (await (
+      await batch(store, ['aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb'], trusted)
+    ).json()) as {
+      present: string[]
+    }
+    expect(t.present).toEqual(['aaaaaaaaaaaaaaaa'])
+    // An untrusted probe sees BOTH (untrusted reads untrusted ∪ trusted).
+    const u = (await (
+      await batch(store, ['aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb'], untrusted)
+    ).json()) as { present: string[] }
+    expect([...u.present].sort()).toEqual(['aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb'])
+  })
+
+  it("a batch probe NEVER reveals another org's key", async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    await put(store, 'deadbeefdeadbeef', orgA)
+    // Org B probes org A's exact hash → reported absent (cross-tenant clamp).
+    const res = await batch(store, ['deadbeefdeadbeef'], orgB)
+    expect(((await res.json()) as { present: string[] }).present).toEqual([])
+  })
+
+  it('drops invalid/duplicate hashes without failing', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    await put(store, 'abcabcabcabcabc0', trusted)
+    const res = await batch(
+      store,
+      ['abcabcabcabcabc0', 'abcabcabcabcabc0', '../escape', 'not a hash'],
+      trusted,
+    )
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { present: string[] }).present).toEqual(['abcabcabcabcabc0'])
+  })
+
+  it('rejects a malformed body (400), a non-array hashes (400), and an over-cap list (400)', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    expect((await batch(store, undefined, trusted, 'not json')).status).toBe(400)
+    expect((await batch(store, { nope: 1 } as unknown, trusted)).status).toBe(400)
+    const tooMany = Array.from({ length: BATCH_HASH_CAP + 1 }, (_, i) => `h${i}`)
+    expect((await batch(store, tooMany, trusted)).status).toBe(400)
+  })
+
+  it('rejects an oversized body with 413 before parsing (streaming cap)', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    // A ~300 KiB body — over the 256 KiB cap — aborts mid-read.
+    const huge = JSON.stringify({ hashes: ['x'.repeat(300 * 1024)] })
+    expect((await batch(store, undefined, trusted, huge)).status).toBe(413)
+  })
+
+  it('hasMany() is best-effort against a broken backend (absent, never throws)', async () => {
+    // A backend whose head() throws → every hash reads absent.
+    const store = new ArtifactStore({
+      async head() {
+        throw new Error('bucket down')
+      },
+      async put() {},
+      presignGet() {
+        return null
+      },
+      async list() {
+        return []
+      },
+      localPathFor() {
+        return null
+      },
+    })
+    const present = await store.hasMany(['aaaabbbbccccdddd'], trusted)
+    expect(present.size).toBe(0)
   })
 })
 

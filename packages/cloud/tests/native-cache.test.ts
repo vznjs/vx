@@ -228,6 +228,79 @@ describe('NativeCacheClient', () => {
     await expect(client.has('abc123')).rejects.toThrow(/HEAD abc123 → 503/)
   })
 
+  it('hasMany() POSTs /v1/cache/batch and returns the present subset', async () => {
+    // Inline server so the handler can READ the request body (the shared stub
+    // consumes it for recording before the handler runs).
+    const paths: string[] = []
+    const srv = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        paths.push(`${req.method} ${new URL(req.url).pathname}`)
+        const { hashes } = (await req.json()) as { hashes: string[] }
+        return Response.json({ present: hashes.filter((_, i) => i % 2 === 0) })
+      },
+    })
+    try {
+      const client = new NativeCacheClient({
+        baseUrl: `http://localhost:${srv.port}`,
+        token: 'tok',
+      })
+      const present = await client.hasMany(['h0', 'h1', 'h2', 'h3'])
+      expect([...(present ?? [])].sort()).toEqual(['h0', 'h2'])
+      expect(paths).toEqual(['POST /v1/cache/batch'])
+    } finally {
+      await srv.stop(true)
+    }
+  })
+
+  it('hasMany() chunks a list larger than the batch cap into multiple requests', async () => {
+    let posts = 0
+    const srv = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        posts++
+        const { hashes } = (await req.json()) as { hashes: string[] }
+        return Response.json({ present: hashes })
+      },
+    })
+    try {
+      const client = new NativeCacheClient({
+        baseUrl: `http://localhost:${srv.port}`,
+        token: 'tok',
+      })
+      const many = Array.from({ length: 1025 }, (_, i) => `h${i}`)
+      const present = await client.hasMany(many)
+      expect(posts).toBe(2) // 1024 + 1
+      expect(present?.size).toBe(1025)
+    } finally {
+      await srv.stop(true)
+    }
+  })
+
+  it('hasMany() returns null on an older serve (404/405) and remembers it', async () => {
+    const client = new NativeCacheClient({ baseUrl: stub.baseUrl, token: 'tok' })
+    let calls = 0
+    stub.setHandler(() => {
+      calls++
+      return new Response(null, { status: 404 })
+    })
+    expect(await client.hasMany(['a', 'b'])).toBeNull()
+    expect(calls).toBe(1)
+    // The "unsupported" verdict is cached — no second probe.
+    expect(await client.hasMany(['c'])).toBeNull()
+    expect(calls).toBe(1)
+  })
+
+  it('hasMany() throws on other non-2xx and on a malformed response', async () => {
+    const client = new NativeCacheClient({ baseUrl: stub.baseUrl, token: 'tok' })
+    stub.setHandler(() => new Response('boom', { status: 500 }))
+    await expect(client.hasMany(['a'])).rejects.toThrow(/batch → 500/)
+
+    const ok = new NativeCacheClient({ baseUrl: stub.baseUrl, token: 'tok' })
+    stub.setHandler(() => Response.json({ nope: [] }))
+    await expect(ok.hasMany(['a'])).rejects.toThrow(/missing present/)
+  })
+
   it('carries x-vx-cache-scope on every request when configured; omits the bearer with no token', async () => {
     const client = new NativeCacheClient({ baseUrl: stub.baseUrl, cacheScope: 'pr-42' })
     stub.setHandler(() => new Response(null, { status: 404 }))
