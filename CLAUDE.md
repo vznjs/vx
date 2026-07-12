@@ -208,6 +208,33 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-12**: **HTTP/2 (stable, at the edge) is the recommended multiplexing
+  path; native HTTP/3 DECOUPLED from TLS behind an explicit `VX_CLOUD_HTTP3`
+  opt-in (owner: "use http2 as 3 is experimental")**. Refines the native-HTTP/3
+  entry just below: that shipped `http3: true` AUTO-ENABLED whenever in-process
+  TLS was set. Since Bun's HTTP/3 is experimental and the owner wants stable
+  HTTP/2, I re-verified the transport facts against the real 1.3.14 binary:
+  **`Bun.serve` has NO HTTP/2 server** — its 1.3.14 type defs expose only
+  `http1?` + `http3?` (no `http2`), and `http2: true` is silently ignored like a
+  garbage key (only `http3: true` produced the `Alt-Svc` header). So native
+  in-process h2 is impossible; **stable HTTP/2 comes from an edge proxy** (the
+  already-shipped Caddy `edge` profile, where h2 is production-stable), and a
+  `node:http2.createSecureServer` rewrite of the whole WS/SSE/SPA host is a
+  massive, unjustified risk. **Changes:** (1) in-process TLS
+  (`VX_CLOUD_TLS_CERT`+`_KEY`) now serves **stable HTTPS/1.1** and adds NO
+  multiplexing on its own — a single-container-with-TLS convenience, not a
+  transport upgrade; (2) native h3 is a SEPARATE explicit opt-in
+  `VX_CLOUD_HTTP3=1` (requires TLS, else a boot error; requires Bun ≥ 1.3.14),
+  clearly labeled experimental; `/v1/meta` `h3` reflects the actual opt-in state
+  (false for TLS-only). (3) Docs (self-hosting/cli/deploy) now LEAD with "HTTP/2
+  at an edge proxy (recommended, stable)" and demote native h3 to an
+  experimental opt-in, stating the `Bun.serve`-has-no-h2 fact plainly. Pinned:
+  `resolveServerConfig` (TLS → h3 off by default; `VX_CLOUD_HTTP3` without TLS →
+  boot error) + the version-gated e2e (TLS-alone → NO Alt-Svc + `h3:false`;
+  `VX_CLOUD_HTTP3=1` → `Alt-Svc: h3=` + `h3:true`), both verified under the real
+  1.3.14 binary + ephemeral pg + fake S3. NO CACHE/SCHEMA/wire change; TLS-less
+  boot byte-identical to before.
+
 - **2026-07-12**: **Native HTTP/3 in the vx-cloud server — `Bun.serve({ http3:
 true })`, CORRECTING the earlier "Bun has no h3" conclusion (owner:
   "https://bun.com/blog/bun-v1.3.14 Supports http3 !!!" + "or use http 2")**.

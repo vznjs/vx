@@ -58,8 +58,12 @@ vx-cloud server
   VX_CLOUD_RETENTION_DAYS         (optional, default 180)
   VX_CLOUD_OPEN_SIGNUP / _OPEN_ORG_CREATE       (optional, default off)
   VX_CLOUD_TLS_CERT / _TLS_KEY    (optional; PEM paths — both or neither.
-                                   Terminate TLS in-process + serve native
-                                   HTTP/3 on the same port; Bun >= 1.3.14)
+                                   Terminate TLS in-process → stable HTTPS/1.1.
+                                   No HTTP/2 server in Bun; use an edge proxy
+                                   for stable multiplexing)
+  VX_CLOUD_HTTP3                  (optional; experimental. Requires in-process
+                                   TLS + Bun >= 1.3.14. Adds native HTTP/3 on
+                                   the same port)
   VX_CLOUD_DATA_DIR               (optional; the transitional analytics volume)
 ```
 

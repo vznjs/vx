@@ -195,14 +195,14 @@ hard error** — the server never silently falls back to local storage.
   **native HTTP/3 (QUIC)** on the same port, or front it with a
   TLS-terminating reverse proxy. Either way, set `VX_CLOUD_BASE_URL` to the
   `https://` origin so session cookies are marked `Secure`. See
-  [Transports](#transports-http3--multiplexing) just below.
+  [Transports](#transports-http2-http3--multiplexing) just below.
 
 - **Scale out.** The app is stateless (Postgres + S3 hold all state), so
   run several replicas behind the load balancer; `/health` is the
   pre-auth liveness probe. There is no volume to attach to the app
   container.
 
-## Transports: HTTP/3 & multiplexing
+## Transports: HTTP/2, HTTP/3 & multiplexing
 
 The payoff is **one connection, many requests**: with HTTP/2 or HTTP/3 a
 client multiplexes all its concurrent requests over a single connection
@@ -210,40 +210,24 @@ instead of opening a fresh TCP + TLS handshake per request. Priming a large
 graph then costs one handshake, not hundreds — and it compounds with the
 [batch cache-existence probe](/vx/cloud/wire-protocol/#cache-wire)
 (`POST /v1/cache/batch`), which already collapses N per-hash `HEAD`s into a
-single request. There are two ways to get it.
+single request.
 
-### Native HTTP/3 (Bun ≥ 1.3.14)
+`Bun.serve` speaks HTTP/1.1 (and, experimentally, HTTP/3) — it has **no
+HTTP/2 server**. So the stable, recommended way to multiplex is **HTTP/2 at
+an edge proxy**.
 
-Give the server a TLS cert directly and it terminates TLS itself and serves
-**HTTP/3 (QUIC)** on the same port beside HTTP/1.1 — no proxy needed:
+### HTTP/2 at an edge proxy (recommended, stable)
 
-```sh
-VX_CLOUD_TLS_CERT=/etc/vx/cert.pem
-VX_CLOUD_TLS_KEY=/etc/vx/key.pem
-VX_CLOUD_BASE_URL=https://vx.example.com
-```
-
-Both paths are required together (setting one is a boot error), and the
-files must be readable at boot (a missing cert fails loud, never a silent
-no-TLS start). HTTP/1.1 responses then carry an `Alt-Svc: h3=…` header so
-clients auto-upgrade to QUIC on the same port; `/v1/meta` reports `h3: true`.
-WebSocket (agent/dist) and SSE/NDJSON streams keep working unchanged over
-the TCP HTTP/1.1 listener. Requires **Bun ≥ 1.3.14** — on older Bun the
-option is ignored (HTTPS still works, no H3).
-
-### Edge proxy (Caddy — h1/h2/h3, no app-held certs)
-
-When you'd rather keep certs out of the app (a shared load balancer, a CDN,
-or you need HTTP/2 for older clients), terminate the modern transports at an
-**edge proxy** and let the app speak plain HTTP/1.1 to it over the internal
-network — the universal production pattern. The compose stack ships a ready
-[Caddy](https://github.com/vznjs/vx/blob/main/packages/cloud/deploy/Caddyfile)
-edge behind an opt-in profile:
+Terminate the modern transports at an **edge proxy** and let the app speak
+plain HTTP/1.1 to it over the internal network — the universal production
+pattern, and where TLS usually already lives. The compose stack ships a
+ready [Caddy](https://github.com/vznjs/vx/blob/main/packages/cloud/deploy/Caddyfile)
+edge (h1/h2/h3) behind an opt-in profile:
 
 ```sh
 VX_CLOUD_SECRET=$(openssl rand -hex 32) VX_CLOUD_BASE_URL=https://localhost \
   docker compose -f packages/cloud/deploy/docker-compose.yml --profile edge up
-# open https://localhost — H3 is advertised via Alt-Svc; UDP 443 is published
+# open https://localhost — HTTP/2 is negotiated over ALPN; H3 via Alt-Svc on UDP 443
 ```
 
 The `Caddyfile` global block is the whole story:
@@ -260,11 +244,34 @@ vx.example.com {
 
 For a real domain, set `VX_CLOUD_DOMAIN=vx.example.com`, drop the
 `tls internal` line so Caddy gets a Let's Encrypt cert over ACME, and set
-`VX_CLOUD_BASE_URL` to the matching `https://` origin. Any h3-capable proxy
-works the same way (nginx `http3 on;`, Cloudflare, an L7 QUIC load
-balancer). WebSocket and SSE/NDJSON streams bridge transparently through
-the proxy. (Do not run in-process TLS and an edge proxy at once — pick one
-TLS terminator.)
+`VX_CLOUD_BASE_URL` to the matching `https://` origin. Any h2/h3-capable
+proxy works the same way (nginx, Cloudflare, an L7 load balancer). WebSocket
+and SSE/NDJSON streams bridge transparently through the proxy. (Do not run
+in-process TLS and an edge proxy at once — pick one TLS terminator.)
+
+### In-process TLS (optional) + experimental HTTP/3
+
+You can give the server a cert directly so it terminates TLS itself — a
+single-container deploy with no proxy:
+
+```sh
+VX_CLOUD_TLS_CERT=/etc/vx/cert.pem
+VX_CLOUD_TLS_KEY=/etc/vx/key.pem
+VX_CLOUD_BASE_URL=https://vx.example.com
+```
+
+Both paths are required together (setting one is a boot error) and must be
+readable at boot (a missing cert fails loud, never a silent no-TLS start).
+This serves **stable HTTPS/1.1** — `Bun.serve` has no HTTP/2 server, so it
+adds no multiplexing on its own; for that, put an HTTP/2 proxy in front.
+
+Bun also ships an **experimental** native HTTP/3 (QUIC). Opt in with
+`VX_CLOUD_HTTP3=1` on top of in-process TLS (requires **Bun ≥ 1.3.14**; the
+option is ignored on older Bun). HTTP/1.1 responses then carry an
+`Alt-Svc: h3=…` header so clients auto-upgrade to QUIC on the same port, and
+`/v1/meta` reports `h3: true`; WebSocket and SSE streams keep working over
+the TCP HTTP/1.1 listener. Because it is experimental, prefer HTTP/2 at an
+edge proxy for production multiplexing.
 
 ## HTTP + WS surface
 
