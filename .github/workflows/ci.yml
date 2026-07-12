@@ -75,3 +75,34 @@ jobs:
       # resolve from a raw shell.
       - name: vx run ci
         run: bun src/bin.ts run ci
+
+  cloud:
+    name: vx-cloud tests (postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # The @vzn/vx-cloud suite runs against a REAL Postgres: the
+      # ephemeral-pg helper (packages/cloud/tests/helpers/ephemeral-pg.ts)
+      # boots its own cluster per test process via initdb + a unix socket
+      # (no port, trust auth), so it just needs the Postgres server binaries
+      # (initdb / pg_ctl / pg_config) on disk. S3 is faked in-process — no
+      # real bucket. Non-root runners take the helper's direct path.
+      - name: Install Postgres server binaries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql
+          # Confirm the helper can find the server binaries.
+          pg_config --bindir || ls -d /usr/lib/postgresql/*/bin
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: bun test (packages/cloud)
+        run: cd packages/cloud && bun test
