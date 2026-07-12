@@ -84,6 +84,27 @@ describe('resolveServerConfig', () => {
     expect(config.s3.region).toBe('us-east-1')
     expect(config.s3.presignTtlSeconds).toBe(300)
     expect(config.dataDir).toBe('/data')
+    expect(config.tls).toBeUndefined()
+  })
+
+  it('TLS (HTTP/3): both cert+key resolve to a tls config', () => {
+    const res = resolveServerConfig({
+      ...BASE_ENV,
+      VX_CLOUD_TLS_CERT: '/etc/vx/cert.pem',
+      VX_CLOUD_TLS_KEY: '/etc/vx/key.pem',
+    })
+    expect(res.ok).toBe(true)
+    const config = (res as Extract<ReturnType<typeof resolveServerConfig>, { ok: true }>).config
+    expect(config.tls).toEqual({ certPath: '/etc/vx/cert.pem', keyPath: '/etc/vx/key.pem' })
+  })
+
+  it('TLS (HTTP/3): a partial config (one of cert/key) is a boot error', () => {
+    const certOnly = resolveServerConfig({ ...BASE_ENV, VX_CLOUD_TLS_CERT: '/etc/vx/cert.pem' })
+    expect(certOnly.ok).toBe(false)
+    expect((certOnly as { errors: string[] }).errors[0]).toContain('VX_CLOUD_TLS_KEY')
+    const keyOnly = resolveServerConfig({ ...BASE_ENV, VX_CLOUD_TLS_KEY: '/etc/vx/key.pem' })
+    expect(keyOnly.ok).toBe(false)
+    expect((keyOnly as { errors: string[] }).errors[0]).toContain('VX_CLOUD_TLS_CERT')
   })
 })
 
@@ -698,5 +719,133 @@ describe('P4-server review: live-stream tenant isolation + CSWSH origin gate', (
     } finally {
       await p.stop()
     }
+  })
+})
+
+// A long-lived (100-year) self-signed cert for localhost, so the test never
+// expires. In-process TLS enables native HTTP/3 on Bun >= 1.3.14.
+const TEST_TLS_KEY = `-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDI88/+bPfnZ6rz
+teUfSQgliMfADbMJ/fcrbChiMme6f6yvfD92L4sIBHcDksvv8ObmotNkbEdCR6rS
+OhihcfuPIO6akvIeREvT+D7SHRS9p0lIki5S0cmhYgFfDTeT5rkttzx3veEnIBFm
+wGehd6WnZ3aP5oBOINtTEO6f6uL1POP1b+X38jivfOH0pngouDfiZvX1sr+pmVg9
+gp9LiJufvtEJoUmE+zVe6m7QCANpKZWAZBoS5V09F+aCSblXaB3kTsZowdp4yShd
+djwutv9PZcpkIjSNXFmllmZngPUbBa4V06ZEmmEuzpAvR1cMqu3iKGtYPn0R4uIT
+6ZMUbmUFAgMBAAECggEALRXUp9zrZtHxvzGjeRgx2Xf9dver4HVIMAgZbGSqNKPi
+CtI5y8qhaxhTWmwkUM5QA9Vqz7hiaXq6VuXdclVoLwXgurH22/cPOzzSXWJUbbOb
+Y8qWVZMHZaufKqQEwOxuRhU7HhNuMVDGzrKi3Y2CT1ONfH4m8cB57MJbA2qX5pTP
+U+sdGVxAtmHUX9e0IyK+yxOdcOScNpp88H+s6o2npE2kAmhWb6M4vqG6uLWJfTAF
+yUMkKceuop4k/evOepCCa9sMj7jN7WgX9GJwBXbTnN8jpH7d/p+vvQ3RB1X6g/gE
+KrBi1hNhCm/XqRqfY72C9fjJUbRhBQUzFcEaM+otsQKBgQD34FugDEihOo9aFc0S
+vx2BTMWzQa5s3KKNlaqjxowYBqUktzw6IruWgQB9tVxbDD7yUpe+cVGEikcYCUgG
+TCEf6R2Hg8ZmMjuCnL0hpeDuCIXwKTTwVFEW3oImFKOdlh0zntAEcuMJ9r/pk7SV
+mxX3dE+IMvIx41SeIc1qe03TkQKBgQDPicUYF5eANhsIdRDbk4E78YmOSnS7jlkR
+pbRcrwKCMn2krYPx2gNE39jLhTE8iSFgZnUuLZHNXiOYlOSiXxHs0jZ99rZ9D1TD
+7hRQjoX8h1zrtCJmNDfWqst02B/oxHOd2AdwsjHtGcYOUZvByjh4VWp7afhrPr5i
+4pJ7M7wYNQKBgDoF9czAM1wyZg4TXl7OB+0VeI3eiSMIfrCf4ULXHkIdhBjVH68I
+JFs1tVS32HejpTR6KvU0d32MFNpGieqXdYWPvw7SxOV1SsLnR8qRltaBfkDalH7R
+be3phhO97xLbadiEi3MPJaBWd1QI9FO06u5y9o8ORe1xpoQhq4EKfgxRAoGBALbQ
+w19/mKMGBjYi+SCTBOpK0EMZb06wC+Gxt/lU6L7Lv0XK20m2I98N2CkfQMn0egQy
+/NIari7b2DtWHTiyylV0ry+ynfn4AVE+bYKwqXJTwxSV7x9crDta5DIfF6yxMK9A
+Vv182uHjLEX8uVmxyqCljVD9fijqckclEqeYYP5pAoGAJNmiBLsxNhLFP0HnamhS
+1QB+AtEHPBv6Q49Pz6LxJtYeRMzWgjHYZLIF77/QBSeglMJgwu5+dAaskakZOcCn
+4eOCfyTDZz59a4PuMD8pLTRPZ35BWvg+2kFcJlS6d21Uly0B9IgaeUOB7JYslElz
+Bl3Fs40qynp1qdC9ijt5U+Y=
+-----END PRIVATE KEY-----
+`
+
+const TEST_TLS_CERT = `-----BEGIN CERTIFICATE-----
+MIIDCzCCAfOgAwIBAgIUMtzHeRpJwKbuzgoECX2gh7mFB4swDQYJKoZIhvcNAQEL
+BQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MCAXDTI2MDcxMjE4Mjk1M1oYDzIxMjYw
+NjE4MTgyOTUzWjAUMRIwEAYDVQQDDAlsb2NhbGhvc3QwggEiMA0GCSqGSIb3DQEB
+AQUAA4IBDwAwggEKAoIBAQDI88/+bPfnZ6rzteUfSQgliMfADbMJ/fcrbChiMme6
+f6yvfD92L4sIBHcDksvv8ObmotNkbEdCR6rSOhihcfuPIO6akvIeREvT+D7SHRS9
+p0lIki5S0cmhYgFfDTeT5rkttzx3veEnIBFmwGehd6WnZ3aP5oBOINtTEO6f6uL1
+POP1b+X38jivfOH0pngouDfiZvX1sr+pmVg9gp9LiJufvtEJoUmE+zVe6m7QCANp
+KZWAZBoS5V09F+aCSblXaB3kTsZowdp4yShddjwutv9PZcpkIjSNXFmllmZngPUb
+Ba4V06ZEmmEuzpAvR1cMqu3iKGtYPn0R4uIT6ZMUbmUFAgMBAAGjUzBRMB0GA1Ud
+DgQWBBRAPYQiTTBYF3W7tXqN6Aznlp+vgzAfBgNVHSMEGDAWgBRAPYQiTTBYF3W7
+tXqN6Aznlp+vgzAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQA9
+sVKAGFW3IwX7xDyB5rFR45Q6ws4xGogelxff/zOXHpGPHBCjwHP26EQPuZhdtztg
+rCHCoT+aysKYiL7vHzLAnElWsosP3CrTo3n4APlqLEVsjmvOWrZ9P+M42FUm/F48
+DaQFUnRNHd3Vi5oWUXFydnQ84sY9oaVs7oxict7ggO5p4xOiB48I1HfAEmxyBOeL
+/SwcFbNOC83znOGv4NCl3m7wyYFRi8UD9xcO0PuyVVhBDXQpX1Y81UmmjrKHgco3
+kEDkZZ7FvfrI2VL0EG11XUDlhCiyPPX602uXqYq/XxzDWYzLs6SJ1war/fayGwV2
+bf8By88uFDueTR0Dp5aR
+-----END CERTIFICATE-----
+`
+
+// Native HTTP/3 requires Bun >= 1.3.14 (Bun.serve http3 option). On older Bun
+// the option is ignored (HTTPS still works, no H3), so the Alt-Svc assertion is
+// version-gated; CI runs `bun-version: latest` so it always exercises the path.
+const supportsH3 = Bun.semver.satisfies(Bun.version, '>=1.3.14')
+
+describe.skipIf(!supportsH3)('in-process TLS + native HTTP/3', () => {
+  let s3: FakeS3
+  let server: PlatformServer
+  let dataDir: string
+  let origin = ''
+
+  beforeAll(async () => {
+    const pg = await ephemeralPg()
+    s3 = startFakeS3({ bucket: 'vx-artifacts' })
+    dataDir = await mkdtemp(path.join(tmpdir(), 'vx-h3-test-'))
+    await Bun.write(path.join(dataDir, 'cert.pem'), TEST_TLS_CERT)
+    await Bun.write(path.join(dataDir, 'key.pem'), TEST_TLS_KEY)
+    const res = resolveServerConfig({
+      ...BASE_ENV,
+      DATABASE_URL: await pg.createDatabase({ empty: true }),
+      VX_CLOUD_BASE_URL: 'https://vx.example.dev',
+      VX_CLOUD_S3_ENDPOINT: s3.origin,
+      VX_CLOUD_PORT: '0',
+      VX_CLOUD_DATA_DIR: dataDir,
+      VX_CLOUD_TLS_CERT: path.join(dataDir, 'cert.pem'),
+      VX_CLOUD_TLS_KEY: path.join(dataDir, 'key.pem'),
+    })
+    if (!res.ok) {
+      throw new Error(`config: ${(res as unknown as { errors: string[] }).errors.join('; ')}`)
+    }
+    expect(res.config.tls).toEqual({
+      certPath: path.join(dataDir, 'cert.pem'),
+      keyPath: path.join(dataDir, 'key.pem'),
+    })
+    server = await startServer({ config: res.config, log: () => {} })
+    origin = server.origin
+  })
+
+  afterAll(async () => {
+    await server.stop()
+    s3.stop()
+    await rm(dataDir, { recursive: true, force: true })
+  })
+
+  it('serves over HTTPS and advertises HTTP/3 via Alt-Svc + /v1/meta', async () => {
+    // The reported origin reflects the in-process transport.
+    expect(origin.startsWith('https://')).toBe(true)
+    const meta = await fetch(`${origin}/v1/meta`, { tls: { rejectUnauthorized: false } })
+    expect(meta.status).toBe(200)
+    // Bun sets Alt-Svc on HTTP/1.1 responses when http3 is enabled, so clients
+    // auto-upgrade to QUIC on the same port.
+    expect(meta.headers.get('alt-svc')).toMatch(/h3=/)
+    const body = (await meta.json()) as Record<string, unknown>
+    expect(body['h3']).toBe(true)
+    expect(body['cacheWire']).toBe(2)
+  })
+
+  it('a boot with an unreadable cert path fails loud (no silent no-TLS start)', async () => {
+    const pg = await ephemeralPg()
+    const res = resolveServerConfig({
+      ...BASE_ENV,
+      DATABASE_URL: await pg.createDatabase({ empty: true }),
+      VX_CLOUD_S3_ENDPOINT: s3.origin,
+      VX_CLOUD_PORT: '0',
+      VX_CLOUD_DATA_DIR: dataDir,
+      VX_CLOUD_TLS_CERT: path.join(dataDir, 'does-not-exist.pem'),
+      VX_CLOUD_TLS_KEY: path.join(dataDir, 'key.pem'),
+    })
+    if (!res.ok) throw new Error('config unexpectedly invalid')
+    await expect(startServer({ config: res.config, log: () => {} })).rejects.toThrow(
+      /VX_CLOUD_TLS_CERT/,
+    )
   })
 })

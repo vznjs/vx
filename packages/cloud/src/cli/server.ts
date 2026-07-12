@@ -122,6 +122,14 @@ export interface ServerConfig {
    * is refused (CSWSH defense). From `VX_CLOUD_ALLOW_ORIGIN` (comma-separated).
    */
   allowedOrigins: readonly string[]
+  /**
+   * In-process TLS + native HTTP/3 (QUIC). When both `VX_CLOUD_TLS_CERT` and
+   * `VX_CLOUD_TLS_KEY` (PEM file paths) are set, the server terminates TLS
+   * itself and serves HTTP/3 on the same port beside HTTP/1.1 — one connection
+   * multiplexes many requests. When unset, the server is plain HTTP/1.1 and TLS
+   * lives at an edge proxy. Setting exactly one is a boot error.
+   */
+  tls?: { certPath: string; keyPath: string }
 }
 
 function boolEnv(v: string | undefined): boolean {
@@ -207,6 +215,20 @@ export function resolveServerConfig(
     else retentionDays = n
   }
 
+  // In-process TLS + HTTP/3: both PEM paths, or neither. A partial config is a
+  // boot error (never a silent no-TLS fallback that would leave the operator
+  // thinking H3 is on). Existence/readability is checked loudly at boot.
+  const tlsCert = read('VX_CLOUD_TLS_CERT')
+  const tlsKey = read('VX_CLOUD_TLS_KEY')
+  let tls: { certPath: string; keyPath: string } | undefined
+  if ((tlsCert === undefined) !== (tlsKey === undefined)) {
+    errors.push(
+      'VX_CLOUD_TLS_CERT and VX_CLOUD_TLS_KEY must both be set (PEM file paths) to enable in-process TLS + HTTP/3, or both be unset',
+    )
+  } else if (tlsCert !== undefined && tlsKey !== undefined) {
+    tls = { certPath: tlsCert, keyPath: tlsKey }
+  }
+
   if (errors.length > 0) return { ok: false, errors }
   return {
     ok: true,
@@ -232,6 +254,7 @@ export function resolveServerConfig(
         .split(',')
         .map((s) => s.trim())
         .filter((s) => s.length > 0),
+      ...(tls !== undefined ? { tls } : {}),
     },
   }
 }
@@ -282,6 +305,32 @@ export async function startServer(opts: {
       `S3 probe failed (${config.s3.endpoint}/${config.s3.bucket}): ${err instanceof Error ? err.message : String(err)}`,
     )
   }
+
+  // In-process TLS: read the PEM bytes up front so a missing/unreadable cert
+  // fails boot with a clear message (never a silent no-TLS/no-H3 start). Bun
+  // ≥ 1.3.14 then serves HTTP/3 on the same port; older Bun ignores `http3`
+  // (TLS still applies) — an operator on <1.3.14 gets HTTPS without H3.
+  let tls: Bun.TLSOptions | undefined
+  if (config.tls !== undefined) {
+    const readPem = async (label: string, p: string): Promise<string> => {
+      try {
+        return await Bun.file(p).text()
+      } catch (err) {
+        throw new Error(
+          `cannot read ${label} (${p}): ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    }
+    try {
+      const cert = await readPem('VX_CLOUD_TLS_CERT', config.tls.certPath)
+      const key = await readPem('VX_CLOUD_TLS_KEY', config.tls.keyPath)
+      tls = { cert, key }
+    } catch (err) {
+      await db.close().catch(() => undefined)
+      throw err
+    }
+  }
+  const h3Enabled = tls !== undefined
 
   // Create the current + upcoming analytics partitions and drop those past
   // retention (boot + a daily tick). maintainPartitions is best-effort by
@@ -409,6 +458,10 @@ export async function startServer(opts: {
           // 2 → the batch existence probe (`POST /v1/cache/batch`) is hosted.
           cacheWire: 2,
           trustTiers: true,
+          // Native HTTP/3 on this origin when the server terminates TLS itself
+          // (else H3 lives at an edge proxy). Advisory: clients auto-upgrade via
+          // the Alt-Svc header Bun sets on HTTP/1.1 responses.
+          h3: h3Enabled,
         },
         { headers: CORS },
       )
@@ -517,7 +570,9 @@ export async function startServer(opts: {
     gate,
     log,
     ...(opts.uiHtmlPath !== undefined ? { uiHtmlPath: opts.uiHtmlPath } : {}),
+    ...(tls !== undefined ? { tls } : {}),
   })
+  if (h3Enabled) log('transport: in-process TLS + HTTP/3 (QUIC) on the same port')
 
   return {
     origin: serve.origin,

@@ -190,10 +190,12 @@ hard error** — the server never silently falls back to local storage.
   pre-signed bucket URL, so read traffic goes client → bucket, never
   through the controller.
 
-- **TLS + HTTP/3.** Front the server with a TLS-terminating reverse proxy
-  and set `VX_CLOUD_BASE_URL` to the `https://` origin so session cookies
-  are marked `Secure`. The proxy is also where **HTTP/2 and HTTP/3 (QUIC)**
-  live — see [Transports](#transports-http3--multiplexing) just below.
+- **TLS + HTTP/3.** Either give the server a cert directly
+  (`VX_CLOUD_TLS_CERT` + `VX_CLOUD_TLS_KEY`) so it terminates TLS and serves
+  **native HTTP/3 (QUIC)** on the same port, or front it with a
+  TLS-terminating reverse proxy. Either way, set `VX_CLOUD_BASE_URL` to the
+  `https://` origin so session cookies are marked `Secure`. See
+  [Transports](#transports-http3--multiplexing) just below.
 
 - **Scale out.** The app is stateless (Postgres + S3 hold all state), so
   run several replicas behind the load balancer; `/health` is the
@@ -202,21 +204,41 @@ hard error** — the server never silently falls back to local storage.
 
 ## Transports: HTTP/3 & multiplexing
 
-The server is a single `Bun.serve` process, which speaks **HTTP/1.1**. The
-modern transports — **HTTP/2 and HTTP/3 (QUIC)** — are terminated at the
-**edge proxy**, exactly where TLS already sits; this is how essentially
-every production service does H3, and it keeps the app itself simple and
-stateless. The payoff is **one connection, many requests**: with h2/h3 a
+The payoff is **one connection, many requests**: with HTTP/2 or HTTP/3 a
 client multiplexes all its concurrent requests over a single connection
 instead of opening a fresh TCP + TLS handshake per request. Priming a large
 graph then costs one handshake, not hundreds — and it compounds with the
 [batch cache-existence probe](/vx/cloud/wire-protocol/#cache-wire)
 (`POST /v1/cache/batch`), which already collapses N per-hash `HEAD`s into a
-single request.
+single request. There are two ways to get it.
 
-The compose stack ships a ready [Caddy](https://github.com/vznjs/vx/blob/main/packages/cloud/deploy/Caddyfile)
-edge behind an opt-in profile — Caddy serves h1/h2/h3 with one directive
-and auto-provisions TLS:
+### Native HTTP/3 (Bun ≥ 1.3.14)
+
+Give the server a TLS cert directly and it terminates TLS itself and serves
+**HTTP/3 (QUIC)** on the same port beside HTTP/1.1 — no proxy needed:
+
+```sh
+VX_CLOUD_TLS_CERT=/etc/vx/cert.pem
+VX_CLOUD_TLS_KEY=/etc/vx/key.pem
+VX_CLOUD_BASE_URL=https://vx.example.com
+```
+
+Both paths are required together (setting one is a boot error), and the
+files must be readable at boot (a missing cert fails loud, never a silent
+no-TLS start). HTTP/1.1 responses then carry an `Alt-Svc: h3=…` header so
+clients auto-upgrade to QUIC on the same port; `/v1/meta` reports `h3: true`.
+WebSocket (agent/dist) and SSE/NDJSON streams keep working unchanged over
+the TCP HTTP/1.1 listener. Requires **Bun ≥ 1.3.14** — on older Bun the
+option is ignored (HTTPS still works, no H3).
+
+### Edge proxy (Caddy — h1/h2/h3, no app-held certs)
+
+When you'd rather keep certs out of the app (a shared load balancer, a CDN,
+or you need HTTP/2 for older clients), terminate the modern transports at an
+**edge proxy** and let the app speak plain HTTP/1.1 to it over the internal
+network — the universal production pattern. The compose stack ships a ready
+[Caddy](https://github.com/vznjs/vx/blob/main/packages/cloud/deploy/Caddyfile)
+edge behind an opt-in profile:
 
 ```sh
 VX_CLOUD_SECRET=$(openssl rand -hex 32) VX_CLOUD_BASE_URL=https://localhost \
@@ -240,16 +262,16 @@ For a real domain, set `VX_CLOUD_DOMAIN=vx.example.com`, drop the
 `tls internal` line so Caddy gets a Let's Encrypt cert over ACME, and set
 `VX_CLOUD_BASE_URL` to the matching `https://` origin. Any h3-capable proxy
 works the same way (nginx `http3 on;`, Cloudflare, an L7 QUIC load
-balancer) — the app never changes because it always speaks plain HTTP/1.1
-to the proxy over the internal network. WebSocket (agent/dist) and
-SSE/NDJSON streams bridge transparently through the proxy.
+balancer). WebSocket and SSE/NDJSON streams bridge transparently through
+the proxy. (Do not run in-process TLS and an edge proxy at once — pick one
+TLS terminator.)
 
 ## HTTP + WS surface
 
 | Path | Purpose | Auth |
 | --- | --- | --- |
 | `GET /health` | Liveness probe | pre-auth |
-| `GET /v1/meta` | Identity + capability flags (`auth: account`, `cacheWire`, `trustTiers`, `artifacts`) | pre-auth |
+| `GET /v1/meta` | Identity + capability flags (`auth: account`, `cacheWire`, `trustTiers`, `artifacts`, `h3`) | pre-auth |
 | `POST /v1/auth/*` | Register / login / logout / invites | session |
 | `/v1/admin/*` | Orgs, members, invites, tokens, workspaces | session (RBAC) |
 | `GET /v1/*` | Analytics reads (`/v1/runs`, `/v1/invocations`, `/v1/cache/stats`, `/v1/why/…`, …) | session or token |

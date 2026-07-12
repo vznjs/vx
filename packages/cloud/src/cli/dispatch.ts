@@ -82,6 +82,15 @@ export interface PlatformHttpOptions {
   gate: PlatformGate
   /** Path to the embedded single-file dashboard; every non-API GET serves it. */
   uiHtmlPath?: string
+  /**
+   * In-process TLS. When set, the server terminates TLS itself AND listens for
+   * HTTP/3 (QUIC) on the SAME port over UDP (`http3: true`) — one connection
+   * multiplexes many requests, no per-request TCP+TLS handshake. HTTP/1.1
+   * responses carry an `Alt-Svc: h3=…` header so clients auto-upgrade. When
+   * unset, the server is plain HTTP/1.1 and TLS/H3 are expected at an edge
+   * proxy (the Caddy `edge` profile). Requires Bun ≥ 1.3.14 for HTTP/3.
+   */
+  tls?: Bun.TLSOptions
   log?: (message: string) => void
 }
 
@@ -486,17 +495,23 @@ export async function startPlatformHttp(opts: PlatformHttpOptions): Promise<Plat
   // Bun's default request-body cap (128 MB) is below the artifact-store limit;
   // raise it just past MAX_ARTIFACT_BYTES so the store's own 413 logic governs.
   const maxRequestBodySize = MAX_ARTIFACT_BYTES + 1024 * 1024
+  // `http3: true` needs `tls`, so it rides only the in-process-TLS path. On the
+  // same port it adds a UDP/QUIC listener beside the TCP HTTP/1.1 one; the WS
+  // agent/dist channels + SSE/NDJSON streams + cache wire + SPA all keep working
+  // unchanged (HTTP/1.1 responses just gain the auto-upgrade Alt-Svc header).
   const server = Bun.serve({
     port: opts.port,
     hostname: opts.host,
     fetch,
     websocket,
     maxRequestBodySize,
+    ...(opts.tls !== undefined ? { tls: opts.tls, http3: true } : {}),
   })
 
   // Report a loopback origin even when bound on 0.0.0.0 — a client fetches the
-  // machine locally; the public origin is the operator's VX_CLOUD_BASE_URL.
-  const origin = `http://localhost:${server.port}`
+  // machine locally; the public origin is the operator's VX_CLOUD_BASE_URL. The
+  // scheme mirrors the in-process transport (https when we terminate TLS).
+  const origin = `${opts.tls !== undefined ? 'https' : 'http'}://localhost:${server.port}`
   return {
     origin,
     name: opts.name,

@@ -1,6 +1,6 @@
 # `@vzn/vx` — project memory for Claude
 
-A monorepo task runner for pnpm workspaces. Bun-only (≥ 1.3). Pre-alpha.
+A monorepo task runner for pnpm workspaces. Bun-only (≥ 1.3.14). Pre-alpha.
 **You are the project owner.** Maintain it, push it forward, ship.
 
 ## Project identity in one paragraph
@@ -15,7 +15,7 @@ order with parallelism. Cache hits replay stored outputs. Pre-alpha.
 
 | Concern         | Tool                                                                       |
 | --------------- | -------------------------------------------------------------------------- |
-| Runtime         | Bun ≥ 1.3 (no Node fallback)                                               |
+| Runtime         | Bun ≥ 1.3.14 (no Node fallback; 1.3.14 = native HTTP/3 in `Bun.serve`)     |
 | Package manager | Bun (`bun install`, `bun.lock`)                                            |
 | Test runner     | `bun test` (tests import `describe`, `it`, `expect`, `vi` from `bun:test`) |
 | Linter          | `oxlint --type-aware --type-check` (real TS diagnostics via `tsgolint`)    |
@@ -208,6 +208,47 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-12**: **Native HTTP/3 in the vx-cloud server — `Bun.serve({ http3:
+true })`, CORRECTING the earlier "Bun has no h3" conclusion (owner:
+  "https://bun.com/blog/bun-v1.3.14 Supports http3 !!!" + "or use http 2")**.
+  My prior two entries (the edge-proxy build + the "re-verified empirically"
+  note below) concluded Bun had NO native HTTP/3 — that was probed against Bun
+  **1.3.11**, which predates the feature. **Bun 1.3.14 added
+  `Bun.serve({ http3: true })`** (experimental, lsquic + uWebSockets). I fetched
+  the real 1.3.14 linux-x64 binary from npm (`@oven/bun-linux-x64@1.3.14`; bun.com
+  is egress-blocked) and **empirically confirmed** the exact API: `http3: true`
+  is the option (NOT the `h3` in an early X post — `h3`/`http2` are silently
+  ignored like a garbage key); it **requires `tls`** (throws `HTTP/3 requires
+  'tls' to be set` otherwise); it sets `Alt-Svc: h3=":port"; ma=86400` on the
+  HTTP/1.1 responses so clients auto-upgrade to QUIC on the SAME port; and
+  **WebSocket + SSE + the h1.1 fetch all coexist** with h3 enabled (verified a
+  WS echo + Alt-Svc together). So the whole platform architecture (single
+  `Bun.serve` hosting the cache wire + WS agent/dist channels + SSE/NDJSON
+  streams + MCP + SPA) stays UNCHANGED — h3 is purely additive. **Shipped
+  (in-process TLS path, opt-in):** `VX_CLOUD_TLS_CERT` + `VX_CLOUD_TLS_KEY` (PEM
+  paths, both-or-neither → a partial config is a boot error; unreadable at boot
+  → fail loud, never a silent no-TLS start) resolve a `ServerConfig.tls`;
+  `startServer` reads the PEM bytes and passes `tls` to `startPlatformHttp`,
+  which adds `{ tls, http3: true }` to the `Bun.serve` call and flips the origin
+  to `https://`; `/v1/meta` advertises `h3: <bool>`. With no TLS env the server
+  is byte-identical to before (plain h1.1, TLS at an edge proxy). **The Caddy
+  `edge` profile STAYS** as the alternative (h2 for older clients, a CDN, or
+  keeping certs out of the app) — docs now present BOTH (native vs edge; don't
+  run both TLS terminators). **Bun floor bumped ≥ 1.3.14** (`package.json`
+  engines + stack table; the option is silently ignored on older Bun, so it
+  degrades to HTTPS-without-H3 — the Alt-Svc integration test is
+  `Bun.semver`-gated on ≥1.3.14). **Verified end-to-end** by running the h3
+  test suite under the REAL 1.3.14 binary + ephemeral Postgres + fake S3: the
+  actual `server.ts` boot terminates TLS, serves `/v1/meta` over HTTPS with
+  `Alt-Svc: h3=` + `h3: true`, and an unreadable cert fails boot loud; the full
+  cloud suite (411 pass) stays green under 1.3.14. Tests: `resolveServerConfig`
+  TLS resolution (both → tls, partial → error) + the version-gated H3 e2e
+  (Alt-Svc + meta + unreadable-cert boot failure), embedding a 100-year
+  self-signed localhost cert so the fixture never expires. NO CACHE/SCHEMA/wire
+  change. **Lesson:** empirically probing a feature is only as good as the
+  version you probe — the earlier "Bun has NO QUIC/HTTP-3 server" was true for
+  1.3.11 and wrong for 1.3.14; pin the version claim to the version tested.
+
 - **2026-07-12**: **Cloud debug + performance pass — two parallel hostile
   audits (bugs + perf) drove five correctness fixes and five hot-path
   round-trip eliminations (owner: "Also debug for issues and bugs. Make sure
@@ -289,6 +330,9 @@ serving none of them is probably org-analytics scope creep.
   > `globalThis.WebTransport` undefined, `node:quic` not a built-in, `Bun.serve`
   > exposes no h3/protocols option). So the edge-proxy H3 (Caddy `edge` profile)
   > stands; native h3 in `Bun.serve` stays blocked until Bun ships a QUIC server.
+  > \*\*[SUPERSEDED 2026-07-12: this was Bun 1.3.11; Bun 1.3.14 SHIPPED
+  >
+  > > `Bun.serve({ http3: true })` — see the native-HTTP/3 entry at the top.]\*\*
 
 - **2026-07-12**: **HTTP/3 + connection multiplexing via an edge proxy — a
   ready Caddy `edge` compose profile terminating h1/h2/h3 (owner: "Support H3
@@ -296,7 +340,10 @@ serving none of them is probably org-analytics scope creep.
   the transport facts empirically before building: **`Bun.serve` is HTTP/1.1
   only** (no h2 option on the server object), **Bun has NO QUIC/HTTP-3 server**
   (`globalThis.WebTransport` undefined, no QUIC API — only a `Bun.udpSocket`
-  primitive), and `node:http2` compat exists but rewiring the single
+  primitive) **[SUPERSEDED: true on Bun 1.3.11 only — Bun 1.3.14 SHIPPED native
+  `Bun.serve({ http3: true })`; the edge profile below stays as the h2/CDN
+  alternative, see the native-HTTP/3 entry at the top]**, and `node:http2`
+  compat exists but rewiring the single
   `Bun.serve` (which hosts the cache wire + WS agent/dist channels + SSE/NDJSON
   streams + MCP + the SPA catch-all, all on Bun's WebSocket-upgrade API) onto
   `node:http2.createSecureServer` would be a massive, risky rewrite for a

@@ -85,8 +85,10 @@ Optional: `VX_CLOUD_S3_REGION` (default `auto`), `VX_CLOUD_S3_PREFIX`,
   and point `VX_CLOUD_S3_*` at managed storage (Cloudflare R2, AWS S3, …).
   The bucket must be reachable from wherever `vx run` executes — cache GETs
   redirect the client to a pre-signed bucket URL.
-- **TLS + HTTP/3.** Front the app with a TLS-terminating reverse proxy and
-  set `VX_CLOUD_BASE_URL` to the `https://` origin so session cookies are
+- **TLS + HTTP/3.** Either give the app a cert directly (`VX_CLOUD_TLS_CERT`
+  + `VX_CLOUD_TLS_KEY`) so it terminates TLS and serves native HTTP/3 on the
+  same port, or front it with a TLS-terminating reverse proxy. Set
+  `VX_CLOUD_BASE_URL` to the `https://` origin so session cookies are
   `Secure`. See **HTTP/3 & connection multiplexing** below.
 - **Scale out.** The app is stateless (Postgres + S3 hold all state) — run
   several replicas behind the load balancer; `/health` is the pre-auth
@@ -98,19 +100,33 @@ keeps no local state.
 
 ## HTTP/3 & connection multiplexing
 
-The app is a single `Bun.serve` process, which speaks **HTTP/1.1**. The
-modern transports — **HTTP/2 and HTTP/3 (QUIC)** — are terminated at the
-**edge proxy**, exactly where TLS already lives (this is how essentially
-every production HTTP service does H3). With h2/h3 a client multiplexes many
-**concurrent requests over one connection**, with no per-request TCP + TLS
-handshake — so a fresh CI runner priming a large graph pays one handshake,
-not hundreds. It compounds with the **batch cache-existence probe**
-(`POST /v1/cache/batch`, which already turns N per-hash `HEAD`s into one
-request): fewer requests, and the ones that remain share a connection.
+With HTTP/2 or HTTP/3 a client multiplexes many **concurrent requests over
+one connection**, with no per-request TCP + TLS handshake — so a fresh CI
+runner priming a large graph pays one handshake, not hundreds. It compounds
+with the **batch cache-existence probe** (`POST /v1/cache/batch`, which
+already turns N per-hash `HEAD`s into one request): fewer requests, and the
+ones that remain share a connection. Two ways to get it.
 
-The compose stack ships a ready **[Caddy](./Caddyfile) edge** behind an
-opt-in profile — Caddy does h1/h2/h3 with one directive and auto-provisions
-TLS:
+**Native HTTP/3 (Bun ≥ 1.3.14).** Give the app a cert directly and it
+terminates TLS itself and serves HTTP/3 (QUIC) on the same port beside
+HTTP/1.1 — no proxy:
+
+```sh
+VX_CLOUD_TLS_CERT=/etc/vx/cert.pem VX_CLOUD_TLS_KEY=/etc/vx/key.pem \
+VX_CLOUD_BASE_URL=https://ci.example.com  docker compose up
+```
+
+Both paths are required together (one alone is a boot error). HTTP/1.1
+responses then carry `Alt-Svc: h3=…` so clients auto-upgrade to QUIC; the
+WS (agent/dist) and SSE streams keep working over the TCP HTTP/1.1 listener.
+On older Bun the option is ignored (HTTPS still works, no H3).
+
+**Edge proxy.** To keep certs out of the app (a shared LB, a CDN, or you
+need h2 for older clients), terminate the modern transports at an edge proxy
+and let the app speak plain HTTP/1.1 to it — the universal production
+pattern. The compose stack ships a ready **[Caddy](./Caddyfile) edge**
+behind an opt-in profile — Caddy does h1/h2/h3 with one directive and
+auto-provisions TLS:
 
 ```sh
 VX_CLOUD_SECRET=$(openssl rand -hex 32) VX_CLOUD_BASE_URL=https://localhost \
@@ -122,9 +138,10 @@ For a real deployment set `VX_CLOUD_DOMAIN=ci.example.com`, drop the
 `tls internal` line from the `Caddyfile` (Caddy then gets a Let's Encrypt
 cert over ACME), and set `VX_CLOUD_BASE_URL=https://ci.example.com`. Any
 h3-capable proxy works the same way — nginx (`http3 on;`), Cloudflare, or an
-L7 load balancer with QUIC; the app needs no change because it always speaks
-plain HTTP/1.1 to the proxy over the internal network. WebSocket (agent/dist)
-and SSE/NDJSON streams bridge transparently through the proxy.
+L7 load balancer with QUIC; the app needs no change because it speaks plain
+HTTP/1.1 to the proxy over the internal network. WebSocket (agent/dist) and
+SSE/NDJSON streams bridge transparently through the proxy. (Don't run
+in-process TLS and an edge proxy at once — pick one TLS terminator.)
 
 ## Connecting a workspace
 

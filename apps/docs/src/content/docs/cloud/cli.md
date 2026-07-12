@@ -57,6 +57,9 @@ vx-cloud server
   VX_CLOUD_PORT                   (optional, default 4321)
   VX_CLOUD_RETENTION_DAYS         (optional, default 180)
   VX_CLOUD_OPEN_SIGNUP / _OPEN_ORG_CREATE       (optional, default off)
+  VX_CLOUD_TLS_CERT / _TLS_KEY    (optional; PEM paths — both or neither.
+                                   Terminate TLS in-process + serve native
+                                   HTTP/3 on the same port; Bun >= 1.3.14)
   VX_CLOUD_DATA_DIR               (optional; the transitional analytics volume)
 ```
 
