@@ -232,6 +232,19 @@ describe('base fixture reads', () => {
     expect(h.p50DurationMs).toBe(120)
   })
 
+  it('getHistory (batched, all pairs) matches the per-pair filtered result', async () => {
+    // The unfiltered path builds every pair from two set-based queries; each
+    // row must equal what the single-pair filtered query returns.
+    const all = await analytics.getHistory(ws)
+    expect(all.length).toBeGreaterThan(1)
+    for (const id of ['app#build', 'app#test']) {
+      const [project, task] = id.split('#') as [string, string]
+      const batched = all.find((r) => r.id === id)!
+      const [single] = await analytics.getHistory(ws, { project, task })
+      expect(batched).toEqual(single!)
+    }
+  })
+
   it('getTopTimeBurners ranks executed successes by total duration', async () => {
     const top = await analytics.getTopTimeBurners(ws)
     // app#test executed successes: 200 + 210 = 410 (R2 failed excluded).

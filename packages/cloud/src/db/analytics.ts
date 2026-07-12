@@ -595,6 +595,48 @@ function pickPercentile(sorted: number[], q: number): number | undefined {
   return sorted[idx]
 }
 
+/** Build one TaskHistoryRow from a pair's aggregate + its ascending success
+ *  durations. Shared by the batched `getHistory` and the single-pair
+ *  `historyFor` so their output can never drift. */
+function historyRowFrom(
+  project: string,
+  task: string,
+  agg: {
+    total: number
+    successes: number
+    failures: number
+    hits: number
+    total_duration_ms: number | null
+    last_seen_at: string | null
+  },
+  sorted: number[],
+): TaskHistoryRow {
+  const total = agg.total || 0
+  const failures = agg.failures || 0
+  const failureMode: TaskHistoryRow['failureMode'] =
+    failures === 0 ? 'stable' : failures < total / 5 ? 'flaky-recoverable' : 'flaky-fatal'
+  const avg = sorted.length > 0 ? sorted.reduce((a, b) => a + b, 0) / sorted.length : undefined
+  return {
+    id: `${project}#${task}`,
+    project,
+    task,
+    runs: total,
+    successes: agg.successes || 0,
+    failures,
+    hits: agg.hits || 0,
+    successRate: total > 0 ? (agg.successes || 0) / total : 0,
+    hitRate: total > 0 ? (agg.hits || 0) / total : 0,
+    failureMode,
+    p50DurationMs: pickPercentile(sorted, 0.5),
+    p99DurationMs: pickPercentile(sorted, 0.99),
+    minDurationMs: sorted[0],
+    maxDurationMs: sorted[sorted.length - 1],
+    avgDurationMs: avg !== undefined ? Math.round(avg) : undefined,
+    totalDurationMs: agg.total_duration_ms ?? 0,
+    lastSeenAt: numOrNull(agg.last_seen_at) ?? undefined,
+  }
+}
+
 function num(v: string | number): number {
   return Number(v)
 }
@@ -1251,14 +1293,72 @@ export class Analytics {
     const limit = clampInt(args.limit ?? 50, 1, 500)
     const fProject = args.project !== undefined ? sql`AND project = ${args.project}` : sql``
     const fTask = args.task !== undefined ? sql`AND task = ${args.task}` : sql``
-    const pairs = await sql<{ project: string; task: string }[]>`
-      SELECT DISTINCT project, task FROM task_runs
-      WHERE workspace_id = ${workspaceId} ${fProject} ${fTask}`
-    const out: TaskHistoryRow[] = []
-    for (const p of pairs.slice(0, limit)) {
-      out.push(await this.historyFor(workspaceId, p.project, p.task))
+    // The pairs to render (unchanged set + order — the DISTINCT scan).
+    const pairs = (
+      await sql<{ project: string; task: string }[]>`
+        SELECT DISTINCT project, task FROM task_runs
+        WHERE workspace_id = ${workspaceId} ${fProject} ${fTask}`
+    ).slice(0, limit)
+    if (pairs.length === 0) return []
+    // TWO set-based queries replace the former 1 + 2N per-pair fan-out: one
+    // GROUP BY for every pair's aggregate, one windowed query for the last-50
+    // successful non-hit durations per pair (ROW_NUMBER — the same rows the
+    // per-pair `successDurations` fetched). The per-row math below is shared
+    // with `historyFor`, so the result matches the old loop exactly.
+    const aggRows = await sql<
+      {
+        project: string
+        task: string
+        total: number
+        successes: number
+        failures: number
+        hits: number
+        total_duration_ms: number | null
+        last_seen_at: string | null
+      }[]
+    >`
+      SELECT project, task,
+             count(*)::int AS total,
+             SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END)::int AS successes,
+             SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)::int AS failures,
+             SUM(CASE WHEN cache_hit = true OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END)::int AS hits,
+             SUM(duration_ms)::float8 AS total_duration_ms,
+             MAX(ended_at) AS last_seen_at
+      FROM task_runs WHERE workspace_id = ${workspaceId} ${fProject} ${fTask}
+      GROUP BY project, task`
+    const durRows = await sql<{ project: string; task: string; duration_ms: number }[]>`
+      SELECT project, task, duration_ms FROM (
+        SELECT project, task, duration_ms,
+               ROW_NUMBER() OVER (PARTITION BY project, task ORDER BY started_at DESC) AS rn
+        FROM task_runs
+        WHERE workspace_id = ${workspaceId} ${fProject} ${fTask}
+          AND (cache_hit IS NULL OR cache_hit = false) AND status = 'success'
+      ) t WHERE rn <= 50`
+    // Collision-free composite key — project / task may contain spaces.
+    const histKey = (project: string, task: string): string => JSON.stringify([project, task])
+    const aggByKey = new Map(aggRows.map((r) => [histKey(r.project, r.task), r]))
+    const dursByKey = new Map<string, number[]>()
+    for (const r of durRows) {
+      const key = histKey(r.project, r.task)
+      const list = dursByKey.get(key)
+      if (list) list.push(r.duration_ms)
+      else dursByKey.set(key, [r.duration_ms])
     }
-    return out
+    return pairs.map((p) => {
+      const key = histKey(p.project, p.task)
+      const agg = aggByKey.get(key) ?? {
+        project: p.project,
+        task: p.task,
+        total: 0,
+        successes: 0,
+        failures: 0,
+        hits: 0,
+        total_duration_ms: null,
+        last_seen_at: null,
+      }
+      const sorted = (dursByKey.get(key) ?? []).slice().sort((a, b) => a - b)
+      return historyRowFrom(p.project, p.task, agg, sorted)
+    })
   }
 
   private async historyFor(
@@ -1285,31 +1385,8 @@ export class Analytics {
                MAX(ended_at) AS last_seen_at
         FROM task_runs WHERE workspace_id = ${workspaceId} AND project = ${project} AND task = ${task}`
     )[0]!
-    const total = agg.total || 0
-    const failures = agg.failures || 0
-    const failureMode: TaskHistoryRow['failureMode'] =
-      failures === 0 ? 'stable' : failures < total / 5 ? 'flaky-recoverable' : 'flaky-fatal'
     const sorted = await this.successDurations(workspaceId, project, task)
-    const avg = sorted.length > 0 ? sorted.reduce((a, b) => a + b, 0) / sorted.length : undefined
-    return {
-      id: `${project}#${task}`,
-      project,
-      task,
-      runs: total,
-      successes: agg.successes || 0,
-      failures,
-      hits: agg.hits || 0,
-      successRate: total > 0 ? (agg.successes || 0) / total : 0,
-      hitRate: total > 0 ? (agg.hits || 0) / total : 0,
-      failureMode,
-      p50DurationMs: pickPercentile(sorted, 0.5),
-      p99DurationMs: pickPercentile(sorted, 0.99),
-      minDurationMs: sorted[0],
-      maxDurationMs: sorted[sorted.length - 1],
-      avgDurationMs: avg !== undefined ? Math.round(avg) : undefined,
-      totalDurationMs: agg.total_duration_ms ?? 0,
-      lastSeenAt: numOrNull(agg.last_seen_at) ?? undefined,
-    }
+    return historyRowFrom(project, task, agg, sorted)
   }
 
   /** Last 50 successful non-hit durations, ascending — the percentile base. */
