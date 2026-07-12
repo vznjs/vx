@@ -7,15 +7,14 @@
 // dispatches ZERO assignments), and mid-run agent-death reassignment.
 
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { captureWorkspaceIdentity, type Logger, type TaskNode, type TaskOutcome } from '@vzn/vx'
-import { startServe } from '../src/cli/serve.js'
 import { distributedBackend } from '../src/dist/submit.js'
+import { bootPlatform } from './helpers/platform.js'
 
 const TIMEOUT = 120_000
-const TOKEN = 'agents-e2e-tok'
 const BIN = path.join(import.meta.dir, '..', 'src', 'cli', 'bin.ts')
 
 const ENV_KEYS = ['VX_CLOUD_AGENT', 'VX_AGENT_SESSION', 'VX_CLOUD_DISTRIBUTE']
@@ -130,6 +129,7 @@ function spawnAgent(
   serveOrigin: string,
   session: string,
   capacity: number,
+  token: string,
 ): AgentProc {
   const proc = Bun.spawn({
     cmd: [
@@ -139,7 +139,7 @@ function spawnAgent(
       '--url',
       serveOrigin,
       '--token',
-      TOKEN,
+      token,
       '--session',
       session,
       '--capacity',
@@ -184,6 +184,7 @@ async function untilRemoteAgents(
   workspaceRoot: string,
   session: string,
   n: number,
+  token: string,
 ): Promise<void> {
   const ws = captureWorkspaceIdentity(workspaceRoot).id
   const url =
@@ -191,7 +192,7 @@ async function untilRemoteAgents(
     `&session=${encodeURIComponent(session)}`
   const deadline = Date.now() + 15_000
   for (;;) {
-    const res = await fetch(url, { headers: { authorization: `Bearer ${TOKEN}` } }).catch(
+    const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } }).catch(
       () => null,
     )
     if (res?.ok) {
@@ -231,22 +232,21 @@ describe('distributed execution — the real thing', () => {
     async () => {
       const session = `e2e-${process.pid}-1`
       process.env['VX_AGENT_SESSION'] = session
-      const ingestDir = await mkdtemp(path.join(tmpdir(), 'vx-agents-serve-'))
-      const server = await startServe({ root: ingestDir, ingestDir, token: TOKEN })
+      const platform = await bootPlatform()
       const fixture = await makeFixture(false)
       const agent1Root = await cloneFixture(fixture.origin, 'a1')
       const agent2Root = await cloneFixture(fixture.origin, 'a2')
-      const a1 = spawnAgent(agent1Root, server.origin, session, 2)
-      const a2 = spawnAgent(agent2Root, server.origin, session, 2)
+      const a1 = spawnAgent(agent1Root, platform.origin, session, 2, platform.ciToken)
+      const a2 = spawnAgent(agent2Root, platform.origin, session, 2, platform.ciToken)
       try {
         await until(() => a1.stdout().includes('vx agent: serve'), 15_000, 'agent 1 banner')
         await until(() => a2.stdout().includes('vx agent: serve'), 15_000, 'agent 2 banner')
-        await untilRemoteAgents(server.origin, fixture.origin, session, 2)
+        await untilRemoteAgents(platform.origin, fixture.origin, session, 2, platform.ciToken)
 
         const sink = captureSink()
         const backend = distributedBackend({
-          origin: server.origin,
-          token: TOKEN,
+          origin: platform.origin,
+          token: platform.ciToken,
           expectedAgents: 2,
           sink,
           warn: (l) => sink.status(l),
@@ -269,10 +269,13 @@ describe('distributed execution — the real thing', () => {
           expect(sink.completed.get(`${name}#build`)).toBe('success')
         }
 
-        // Artifacts: one upload per cacheable task in the serve store. The
-        // token maps to the default/trusted scope.
-        const stored = await readdir(path.join(ingestDir, 'artifacts', 'default', 'trusted'))
-        expect(stored.filter((f) => f.endsWith('.tar.zst'))).toHaveLength(5)
+        // Artifacts: one upload per cacheable task in the S3 store,
+        // tenant-partitioned (an org-wide trusted ci token → the shared _org
+        // segment under trusted).
+        const stored = [...platform.s3.objects.keys()].filter(
+          (k) => k.includes(`org/${platform.orgId}/ws/_org/trusted/`) && k.endsWith('.tar.zst'),
+        )
+        expect(stored).toHaveLength(5)
 
         // Materialization: the submitter's checkout has every declared
         // output, including tasks it never executed itself.
@@ -287,8 +290,8 @@ describe('distributed execution — the real thing', () => {
         const a2Before = a2.assignments()
         const warmSink = captureSink()
         const warmBackend = distributedBackend({
-          origin: server.origin,
-          token: TOKEN,
+          origin: platform.origin,
+          token: platform.ciToken,
           expectedAgents: 2,
           sink: warmSink,
           warn: (l) => warmSink.status(l),
@@ -306,11 +309,10 @@ describe('distributed execution — the real thing', () => {
       } finally {
         a1.kill()
         a2.kill()
-        await server.stop()
+        await platform.stop()
         await rm(fixture.origin, { recursive: true, force: true })
         await rm(path.dirname(agent1Root), { recursive: true, force: true })
         await rm(path.dirname(agent2Root), { recursive: true, force: true })
-        await rm(ingestDir, { recursive: true, force: true })
         delete process.env['VX_AGENT_SESSION']
       }
     },
@@ -322,8 +324,7 @@ describe('distributed execution — the real thing', () => {
     async () => {
       const session = `e2e-${process.pid}-multi`
       process.env['VX_AGENT_SESSION'] = session
-      const ingestDir = await mkdtemp(path.join(tmpdir(), 'vx-agents-multi-'))
-      const server = await startServe({ root: ingestDir, ingestDir, token: TOKEN })
+      const platform = await bootPlatform()
       const fixture = await makeFixture(true) // slow tasks so the two runs overlap
       const a1Root = await cloneFixture(fixture.origin, 'ma1')
       const a2Root = await cloneFixture(fixture.origin, 'ma2')
@@ -331,12 +332,12 @@ describe('distributed execution — the real thing', () => {
       // remote ⇒ same workspaceId + session, so they land in ONE session.
       const subARoot = await cloneFixture(fixture.origin, 'msubA')
       const subBRoot = await cloneFixture(fixture.origin, 'msubB')
-      const a1 = spawnAgent(a1Root, server.origin, session, 2)
-      const a2 = spawnAgent(a2Root, server.origin, session, 2)
+      const a1 = spawnAgent(a1Root, platform.origin, session, 2, platform.ciToken)
+      const a2 = spawnAgent(a2Root, platform.origin, session, 2, platform.ciToken)
       try {
         await until(() => a1.stdout().includes('vx agent: serve'), 15_000, 'agent 1 banner')
         await until(() => a2.stdout().includes('vx agent: serve'), 15_000, 'agent 2 banner')
-        await untilRemoteAgents(server.origin, fixture.origin, session, 2)
+        await untilRemoteAgents(platform.origin, fixture.origin, session, 2, platform.ciToken)
 
         // Two disjoint-scope submissions at the same commit + session, run
         // concurrently. Before the multi-run scheduler the second would get
@@ -345,8 +346,8 @@ describe('distributed execution — the real thing', () => {
         const sinkB = captureSink()
         const mk = (sink: ReturnType<typeof captureSink>) =>
           distributedBackend({
-            origin: server.origin,
-            token: TOKEN,
+            origin: platform.origin,
+            token: platform.ciToken,
             expectedAgents: 2,
             sink,
             warn: (l) => sink.status(l),
@@ -369,13 +370,12 @@ describe('distributed execution — the real thing', () => {
       } finally {
         a1.kill()
         a2.kill()
-        await server.stop()
+        await platform.stop()
         await rm(fixture.origin, { recursive: true, force: true })
         await rm(path.dirname(a1Root), { recursive: true, force: true })
         await rm(path.dirname(a2Root), { recursive: true, force: true })
         await rm(path.dirname(subARoot), { recursive: true, force: true })
         await rm(path.dirname(subBRoot), { recursive: true, force: true })
-        await rm(ingestDir, { recursive: true, force: true })
         delete process.env['VX_AGENT_SESSION']
       }
     },
@@ -387,19 +387,18 @@ describe('distributed execution — the real thing', () => {
     async () => {
       const session = `e2e-${process.pid}-2`
       process.env['VX_AGENT_SESSION'] = session
-      const ingestDir = await mkdtemp(path.join(tmpdir(), 'vx-agents-serve2-'))
-      const server = await startServe({ root: ingestDir, ingestDir, token: TOKEN })
+      const platform = await bootPlatform()
       const fixture = await makeFixture(true)
       const agentRoot = await cloneFixture(fixture.origin, 'victim')
-      const victim = spawnAgent(agentRoot, server.origin, session, 4)
+      const victim = spawnAgent(agentRoot, platform.origin, session, 4, platform.ciToken)
       try {
         await until(() => victim.stdout().includes('vx agent: serve'), 15_000, 'victim banner')
-        await untilRemoteAgents(server.origin, fixture.origin, session, 1)
+        await untilRemoteAgents(platform.origin, fixture.origin, session, 1, platform.ciToken)
 
         const sink = captureSink()
         const backend = distributedBackend({
-          origin: server.origin,
-          token: TOKEN,
+          origin: platform.origin,
+          token: platform.ciToken,
           expectedAgents: 1,
           sink,
           warn: (l) => sink.status(l),
@@ -425,10 +424,9 @@ describe('distributed execution — the real thing', () => {
         ).toContain('built-p1')
       } finally {
         victim.kill()
-        await server.stop()
+        await platform.stop()
         await rm(fixture.origin, { recursive: true, force: true })
         await rm(path.dirname(agentRoot), { recursive: true, force: true })
-        await rm(ingestDir, { recursive: true, force: true })
         delete process.env['VX_AGENT_SESSION']
       }
     },

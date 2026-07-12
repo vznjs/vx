@@ -1,30 +1,19 @@
-// The serve-hosted artifact store: the vx-native `/v1/cache/:hash` wire
-// (docs/design/native-cache-wire-2026-07.md), backed by a flat dir under the
-// ingest root. Covered at three levels: the raw wire (PUT/HEAD/GET + the
-// duration/digest sidecars + auth + limits incl. the streaming actual-bytes
-// cap), a real end-to-end run with an injected NativeCacheClient pointed at
-// the serve (miss → upload, local wipe → remote-hit restore), and the
-// cloud() plugin's environment rung (lazy /v1/meta capability probe).
+// The ArtifactStore — the vx-native `/v1/cache/:hash` wire policy
+// (docs/design/native-cache-wire-2026-07.md), driven directly against the
+// store (backend-agnostic; the platform's S3 path + the full HTTP round-trip
+// live in blob-store-s3.test.ts + server.test.ts). Covered here: the raw
+// request policy (caps, zstd-magic, hostile hashes, has/storedDurationMs),
+// the trust-scope + tenancy + list matrix, and the cloud() plugin's
+// environment rung (lazy /v1/meta capability probe against a mock serve).
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test'
 import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import {
-  Cache,
-  FULL_CACHE_POLICY,
-  LayeredCache,
-  run,
-  type CacheContext,
-  type Logger,
-} from '@vzn/vx'
-import { startServe } from '../src/cli/serve.js'
-import { ArtifactStore, type Principal } from '../src/artifact-store.js'
-import { NativeCacheClient } from '../src/native-cache.js'
+import { Cache, FULL_CACHE_POLICY, LayeredCache, type CacheContext } from '@vzn/vx'
+import { ArtifactStore, MAX_ARTIFACT_BYTES, type Principal } from '../src/artifact-store.js'
 import { ENVIRONMENTS_VERSION, writeEnvironmentsFile } from '../src/environments.js'
 import { cloud } from '../src/plugin.js'
-
-const TIMEOUT = 30_000
 
 // PUT refuses a body that is not a zstd frame (an immutable store must never
 // let junk lock a key), so every stored test body is real zstd. Deterministic
@@ -34,112 +23,17 @@ const TIMEOUT = 30_000
 const zbody = (tag: string): Uint8Array<ArrayBuffer> =>
   new Uint8Array(Bun.zstdCompressSync(Buffer.from(tag)))
 
-describe('vx serve /v1/cache — the native wire', () => {
+describe('ArtifactStore — native-wire request policy (LocalDirBackend)', () => {
   let dir: string
-  let server: Awaited<ReturnType<typeof startServe>>
-  const auth = { authorization: 'Bearer store-tok' }
 
   beforeAll(async () => {
     dir = await mkdtemp(path.join(tmpdir(), 'vx-artifacts-'))
-    server = await startServe({ root: dir, ingestDir: dir, token: 'store-tok' })
   })
-
   afterAll(async () => {
-    await server.stop()
     await rm(dir, { recursive: true, force: true })
   })
 
-  it('advertises the artifact store + wire version on /v1/meta', async () => {
-    const meta = (await (await fetch(`${server.origin}/v1/meta`)).json()) as {
-      artifacts: boolean
-      cacheWire: number
-    }
-    expect(meta.artifacts).toBe(true)
-    expect(meta.cacheWire).toBe(1)
-  })
-
-  it('PUT → HEAD → GET round-trips bytes + the duration/digest headers', async () => {
-    const hash = 'a1b2c3d4e5f60718'
-    const body = zbody('artifact-bytes-v1')
-    const digest = `xxh3:${Bun.hash.xxHash3(body).toString(16).padStart(16, '0')}`
-
-    // Miss before the upload.
-    expect(
-      (await fetch(`${server.origin}/v1/cache/${hash}`, { method: 'HEAD', headers: auth })).status,
-    ).toBe(404)
-
-    const put = await fetch(`${server.origin}/v1/cache/${hash}`, {
-      method: 'PUT',
-      headers: { ...auth, 'x-vx-digest': digest, 'x-vx-duration-ms': '42' },
-      body,
-    })
-    expect(put.status).toBe(200)
-    expect(((await put.json()) as { ok: boolean }).ok).toBe(true)
-
-    // HEAD sees it now.
-    const head = await fetch(`${server.origin}/v1/cache/${hash}`, {
-      method: 'HEAD',
-      headers: auth,
-    })
-    expect(head.status).toBe(200)
-
-    // GET streams the exact bytes with content-length + the stored digest —
-    // clients verify the digest against the received body.
-    const get = await fetch(`${server.origin}/v1/cache/${hash}`, { headers: auth })
-    expect(get.status).toBe(200)
-    expect(get.headers.get('x-vx-digest')).toBe(digest)
-    // The original task duration rides back too, so a remote hit records
-    // honest analytics instead of durationMs 0.
-    expect(get.headers.get('x-vx-duration-ms')).toBe('42')
-    expect(Number(get.headers.get('content-length'))).toBe(body.byteLength)
-    expect(new Uint8Array(await get.arrayBuffer())).toEqual(body)
-
-    // The backing files land in the token's scope (a single --token maps to
-    // default/trusted): `<hash>.tar.zst` + sidecars.
-    const files = await readdir(path.join(dir, 'artifacts', 'default', 'trusted'))
-    expect(files.sort()).toEqual([`${hash}.digest`, `${hash}.duration`, `${hash}.tar.zst`])
-  })
-
-  it('omits the digest/duration headers on GET when the PUT carried none', async () => {
-    const hash = 'feedfacefeedface'
-    await fetch(`${server.origin}/v1/cache/${hash}`, {
-      method: 'PUT',
-      headers: auth,
-      body: zbody('bare'),
-    })
-    const get = await fetch(`${server.origin}/v1/cache/${hash}`, { headers: auth })
-    expect(get.status).toBe(200)
-    expect(get.headers.get('x-vx-digest')).toBeNull()
-    expect(get.headers.get('x-vx-duration-ms')).toBeNull()
-  })
-
-  it('ignores a malformed x-vx-digest instead of storing it', async () => {
-    const hash = '0123456789abcdef'
-    await fetch(`${server.origin}/v1/cache/${hash}`, {
-      method: 'PUT',
-      headers: { ...auth, 'x-vx-digest': 'sha256:deadbeef' },
-      body: zbody('x'),
-    })
-    const get = await fetch(`${server.origin}/v1/cache/${hash}`, { headers: auth })
-    expect(get.headers.get('x-vx-digest')).toBeNull()
-  })
-
-  it('is behind the bearer gate', async () => {
-    const res = await fetch(`${server.origin}/v1/cache/a1b2c3d4e5f60718`)
-    expect(res.status).toBe(401)
-    const put = await fetch(`${server.origin}/v1/cache/cafebabecafebabe`, {
-      method: 'PUT',
-      headers: { authorization: 'Bearer wrong' },
-      body: 'x',
-    })
-    expect(put.status).toBe(401)
-  })
-
   it('rejects an oversized declared PUT with 413 and a hostile hash with 400', async () => {
-    // fetch() recomputes Content-Length from the real body, so the declared-
-    // length 413 branch is exercised against the handler directly (a
-    // hand-built Request keeps the header).
-    const { ArtifactStore, MAX_ARTIFACT_BYTES } = await import('../src/artifact-store.js')
     const store = new ArtifactStore(path.join(dir, 'artifacts'))
     const big = await store.handle(
       new Request('http://x/v1/cache/deadbeefdeadbeef', {
@@ -151,19 +45,13 @@ describe('vx serve /v1/cache — the native wire', () => {
     )
     expect(big.status).toBe(413)
 
-    // A hostile hash never reaches the store through the serve (the hex-only
-    // route can't match a traversal token); the store's own gate rejects it
-    // for any embedder calling handle() directly.
+    // A hostile hash never becomes an entry — the store's own gate rejects a
+    // traversal token for any embedder calling handle() directly.
     const evilDirect = await store.handle(
       new Request('http://x/v1/cache/whatever', { method: 'PUT', body: 'x' }),
       '../escape',
     )
     expect(evilDirect.status).toBe(400)
-    await fetch(`${server.origin}/v1/cache/${encodeURIComponent('../escape')}`, {
-      method: 'PUT',
-      headers: auth,
-      body: 'x',
-    })
     const stored = await readdir(path.join(dir, 'artifacts')).catch(() => [] as string[])
     expect(stored.every((n) => !n.includes('escape'))).toBe(true)
   })
@@ -187,178 +75,38 @@ describe('vx serve /v1/cache — the native wire', () => {
         'beefbeefbeef0001',
       )
       expect(res.status).toBe(413)
-      // Nothing stored: no artifact, no leftover temp file.
-      const scopeDir = path.join(scratch, 'artifacts', 'default', 'trusted')
-      const names = await readdir(scopeDir).catch(() => [] as string[])
+      const names = await readdir(path.join(scratch, 'artifacts', 'default', 'trusted')).catch(
+        () => [] as string[],
+      )
       expect(names).toEqual([])
     } finally {
       await rm(scratch, { recursive: true, force: true })
     }
   })
 
-  it('PUT rejects an empty body — the key is NOT locked for the real upload', async () => {
-    // Immutability makes a stored body permanent, so an accidental empty
-    // upload (buggy client, stripped body) must never become an entry: 400,
-    // nothing stored, and the legitimate artifact still lands afterwards.
-    const hash = 'e0e0e0e0e0e0e0e0'
-    const empty = await fetch(`${server.origin}/v1/cache/${hash}`, {
-      method: 'PUT',
-      headers: auth,
-    })
-    expect(empty.status).toBe(400)
-    expect(
-      (await fetch(`${server.origin}/v1/cache/${hash}`, { method: 'HEAD', headers: auth })).status,
-    ).toBe(404)
-    // The key stays writable — the real bytes are not locked out.
-    const real = await fetch(`${server.origin}/v1/cache/${hash}`, {
-      method: 'PUT',
-      headers: auth,
-      body: zbody('the-real-artifact'),
-    })
-    expect(real.status).toBe(200)
-    const got = await fetch(`${server.origin}/v1/cache/${hash}`, { headers: auth })
-    expect(new Uint8Array(await got.arrayBuffer())).toEqual(zbody('the-real-artifact'))
-  })
-
-  it('PUT rejects a non-zstd body (junk cannot become an immutable entry)', async () => {
-    const hash = 'f1f1f1f1f1f1f1f1'
-    const junk = await fetch(`${server.origin}/v1/cache/${hash}`, {
-      method: 'PUT',
-      headers: auth,
-      body: '<html>proxy error page</html>',
-    })
-    expect(junk.status).toBe(400)
-    expect(
-      (await fetch(`${server.origin}/v1/cache/${hash}`, { method: 'HEAD', headers: auth })).status,
-    ).toBe(404)
-    // No temp/partial file survives the rejection.
-    const files = await readdir(path.join(dir, 'artifacts', 'default', 'trusted'))
-    expect(files.every((n) => !n.startsWith(hash))).toBe(true)
-  })
-
-  it('has() is a local stat: present after PUT, false for unknown/hostile hashes', async () => {
-    const { ArtifactStore } = await import('../src/artifact-store.js')
+  it('has()/storedDurationMs are a local stat; false for unknown/hostile hashes', async () => {
     const store = new ArtifactStore(path.join(dir, 'artifacts'))
     const hash = 'beefbeefbeefbeef'
     expect(await store.has(hash)).toBe(false)
-    await fetch(`${server.origin}/v1/cache/${hash}`, {
-      method: 'PUT',
-      headers: { ...auth, 'x-vx-duration-ms': '7' },
-      body: zbody('probe-me'),
-    })
+    const put = await store.handle(
+      new Request(`http://x/v1/cache/${hash}`, {
+        method: 'PUT',
+        headers: { 'x-vx-duration-ms': '7' },
+        body: zbody('probe-me'),
+      }),
+      hash,
+    )
+    expect(put.status).toBe(200)
     expect(await store.has(hash)).toBe(true)
     expect(await store.storedDurationMs(hash)).toBe(7)
     expect(await store.storedDurationMs('0000000000000000')).toBeUndefined()
     expect(await store.has('../escape')).toBe(false)
   })
-
-  it('404s a GET for an unknown hash and 405s other methods', async () => {
-    const get = await fetch(`${server.origin}/v1/cache/0000000000000000`, { headers: auth })
-    expect(get.status).toBe(404)
-    const del = await fetch(`${server.origin}/v1/cache/0000000000000000`, {
-      method: 'DELETE',
-      headers: auth,
-    })
-    expect(del.status).toBe(405)
-  })
-
-  it('never shadows the named /v1/cache/* analytics routes', async () => {
-    // `stats` is not a hex hash, so the artifact route must not swallow it —
-    // it reaches the analytics handler (JSON body, not an artifact 404).
-    const res = await fetch(`${server.origin}/v1/cache/stats`, { headers: auth })
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as Record<string, unknown>
-    expect(body).toHaveProperty('entryCount')
-  })
 })
 
-// ---------------------------------------------------------------------------
-// End-to-end: a real run with an injected NativeCacheClient at the serve
-// ---------------------------------------------------------------------------
-
-const silentLogger: Logger = {
-  status() {},
-  taskStdout() {},
-  taskStderr() {},
-  taskComplete() {},
-}
-
-async function makeWorkspace(): Promise<string> {
-  const root = await mkdtemp(path.join(tmpdir(), 'vx-serve-remote-'))
-  await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-  await writeFile(
-    path.join(root, 'package.json'),
-    JSON.stringify({ name: 'fixture-root', private: true }),
-  )
-  const dir = path.join(root, 'packages', 'app')
-  await mkdir(path.join(dir, 'src'), { recursive: true })
-  await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app', version: '0.0.0' }))
-  await writeFile(path.join(dir, 'src', 'in.txt'), 'v1')
-  await writeFile(
-    path.join(dir, 'vx.config.mjs'),
-    `
-      export default {
-        tasks: {
-          build: {
-            exec: { command: 'echo built > out.txt' },
-            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-          },
-        },
-      }
-    `,
-  )
-  const git = (...args: string[]) => Bun.spawnSync({ cmd: ['git', ...args], cwd: root })
-  git('init', '-q')
-  git('config', 'user.email', 't@vx.local')
-  git('config', 'user.name', 'vx test')
-  git('add', '-A')
-  git('commit', '-qm', 'init')
-  return root
-}
-
-describe('e2e: vx run against the serve-hosted artifact store', () => {
-  it(
-    'miss → upload to the serve; local wipe → the remote hit restores (digest-verified)',
-    async () => {
-      const ingestDir = await mkdtemp(path.join(tmpdir(), 'vx-serve-store-'))
-      const server = await startServe({ root: ingestDir, ingestDir, token: 'store-tok' })
-      const root = await makeWorkspace()
-      const remoteCache = new NativeCacheClient({ baseUrl: server.origin, token: 'store-tok' })
-      try {
-        const first = await run({ cwd: root, tasks: ['build'], log: silentLogger, remoteCache })
-        expect(first.ok).toBe(true)
-        expect(first.outcomes[0]!.status).toBe('success')
-
-        // The write-through upload landed in the token's scope
-        // (default/trusted) — artifact + the digest/duration sidecars.
-        const files = (
-          await readdir(path.join(ingestDir, 'artifacts', 'default', 'trusted'))
-        ).sort()
-        expect(files.length).toBe(3)
-        expect(files[0]!.endsWith('.digest')).toBe(true)
-        expect(files[1]!.endsWith('.duration')).toBe(true)
-        expect(files[2]!.endsWith('.tar.zst')).toBe(true)
-
-        // Wipe the local cache: the serve is now the only source of truth.
-        await rm(path.join(root, '.vx'), { recursive: true, force: true })
-
-        const second = await run({ cwd: root, tasks: ['build'], log: silentLogger, remoteCache })
-        expect(second.ok).toBe(true)
-        // A remote hit proves the GET round-trip INCLUDING the returned
-        // x-vx-digest (the client verifies it before restoring).
-        expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
-        expect(await Bun.file(path.join(root, 'packages', 'app', 'out.txt')).text()).toContain(
-          'built',
-        )
-      } finally {
-        await server.stop()
-        await rm(root, { recursive: true, force: true })
-        await rm(ingestDir, { recursive: true, force: true })
-      }
-    },
-    TIMEOUT,
-  )
-})
+// (The full HTTP round-trip — PUT/HEAD/GET, the 307 offload, the bearer gate,
+// tier scopes, provenance, and a real NativeCacheClient run — is driven
+// against the platform server in server.test.ts + blob-store-s3.test.ts.)
 
 // ---------------------------------------------------------------------------
 // cloud() plugin — the environment rung of the cache capability
@@ -810,116 +558,6 @@ describe('ArtifactStore.list — trust-scoped listing (/v1/artifacts source)', (
   })
 })
 
-describe('GET /v1/artifacts — the store list + provenance join', () => {
-  let dir: string
-  let server: Awaited<ReturnType<typeof startServe>>
-  const auth = { authorization: 'Bearer list-tok' }
-
-  beforeAll(async () => {
-    dir = await mkdtemp(path.join(tmpdir(), 'vx-artlist-serve-'))
-    server = await startServe({ root: dir, ingestDir: dir, token: 'list-tok' })
-  })
-  afterAll(async () => {
-    await server.stop()
-    await rm(dir, { recursive: true, force: true })
-  })
-
-  it('requires the bearer', async () => {
-    expect((await fetch(`${server.origin}/v1/artifacts`)).status).toBe(401)
-  })
-
-  it('lists stored artifacts with best-effort task/run provenance', async () => {
-    const hash = 'f00dfacef00dface'
-    // Store an artifact via the native wire.
-    const putRes = await fetch(`${server.origin}/v1/cache/${hash}`, {
-      method: 'PUT',
-      headers: { ...auth, 'x-vx-duration-ms': '77' },
-      body: zbody('bytes'),
-    })
-    expect(putRes.status).toBe(200)
-    // Ingest a run summary whose task produced that hash.
-    const runId = 'run-artifact-join'
-    const at = Date.now()
-    const ingestRes = await fetch(`${server.origin}/v1/ingest`, {
-      method: 'POST',
-      headers: { ...auth, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        v: 2,
-        run: {
-          runId,
-          vxVersion: '0.0.0',
-          workspaceId: 'ws-art',
-          workspaceName: 'art-ws',
-          command: 'vx run build',
-          requestedTasks: ['build'],
-          cachePolicy: 'lR,lW,rR,rW',
-          concurrency: 1,
-          flow: 'focused',
-          commitSha: 'c0ffee',
-          branch: 'main',
-          dirty: false,
-          ci: false,
-          ciProvider: null,
-          host: 'box',
-          os: 'linux',
-          arch: 'x64',
-          tags: {},
-        },
-        startedAt: at,
-        endedAt: at + 100,
-        totalDurationMs: 100,
-        taskCount: 1,
-        failedCount: 0,
-        hitCount: 0,
-        hitLocalCount: 0,
-        hitRemoteCount: 0,
-        exitOk: true,
-        tasks: [
-          {
-            taskId: 'demo#build',
-            project: 'demo',
-            task: 'build',
-            status: 'success',
-            cacheSource: 'miss',
-            exitCode: 0,
-            durationMs: 77,
-            hash,
-          },
-        ],
-      }),
-    })
-    expect(ingestRes.ok).toBe(true)
-
-    const res = await fetch(`${server.origin}/v1/artifacts`, { headers: auth })
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as {
-      artifacts: Array<{
-        hash: string
-        sizeBytes: number
-        durationMs?: number
-        tier: string
-        task?: { project: string; task: string; runId?: string }
-      }>
-    }
-    const row = body.artifacts.find((a) => a.hash === hash)
-    expect(row).toBeDefined()
-    expect(row!.sizeBytes).toBe(zbody('bytes').byteLength)
-    expect(row!.durationMs).toBe(77)
-    expect(row!.tier).toBe('trusted')
-    expect(row!.task).toEqual({ project: 'demo', task: 'build', runId })
-  })
-
-  it('an artifact no ingested run produced has no task field', async () => {
-    const hash = 'beefbeefbeefbeef'
-    await fetch(`${server.origin}/v1/cache/${hash}`, {
-      method: 'PUT',
-      headers: auth,
-      body: zbody('orphan'),
-    })
-    const res = await fetch(`${server.origin}/v1/artifacts`, { headers: auth })
-    const body = (await res.json()) as { artifacts: Array<{ hash: string; task?: unknown }> }
-    const row = body.artifacts.find((a) => a.hash === hash)
-    expect(row).toBeDefined()
-    expect(row!.task).toBeUndefined()
-  })
-})
+// (GET /v1/artifacts with the Postgres task_runs provenance join is driven
+// against the platform server in server.test.ts; ArtifactStore.list scoping is
+// unit-tested directly above.)

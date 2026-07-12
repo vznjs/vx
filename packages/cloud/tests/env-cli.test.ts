@@ -2,15 +2,55 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { startServe } from '../src/cli/serve.js'
 import type { EnvironmentsFile } from '../src/environments.js'
 
 // The connect/env/disconnect verbs are exercised through the REAL vx-cloud
-// bin in a child process (async spawn, so an in-process startServe can answer
-// the handshake), with VX_CLOUD_CONFIG pointed at a per-test temp file —
-// nothing ever touches a real ~/.config.
+// bin in a child process (async spawn, so the in-process stub server below can
+// answer the handshake), with VX_CLOUD_CONFIG pointed at a per-test temp file
+// — nothing ever touches a real ~/.config. The stub emulates exactly the
+// connect-relevant surface (/health + /v1/meta + the token-gated /v1/runs
+// probe) in both the open and token-required modes.
 
 const BIN = path.join(import.meta.dir, '..', 'src', 'cli', 'bin.ts')
+
+interface StubServer {
+  origin: string
+  stop(): Promise<void>
+}
+
+function startStubServe(opts: { name?: string; token?: string } = {}): StubServer {
+  const server = Bun.serve({
+    port: 0,
+    fetch(req) {
+      const url = new URL(req.url)
+      if (url.pathname === '/health') return new Response('ok')
+      if (url.pathname === '/v1/meta') {
+        return Response.json({
+          v: 1,
+          name: opts.name ?? 'localhost',
+          vx: '0.0.0',
+          auth: opts.token !== undefined ? 'token' : 'open',
+        })
+      }
+      if (url.pathname === '/v1/runs') {
+        if (
+          opts.token !== undefined &&
+          req.headers.get('authorization') !== `Bearer ${opts.token}`
+        ) {
+          return Response.json({ error: 'unauthorized' }, { status: 401 })
+        }
+        return Response.json({ runs: [] })
+      }
+      return new Response('not found', { status: 404 })
+    },
+  })
+  return {
+    origin: `http://localhost:${server.port}`,
+    stop: async () => {
+      await server.stop(true)
+    },
+  }
+}
 
 let dir: string
 let cfgPath: string
@@ -48,7 +88,7 @@ async function seedCfg(file: EnvironmentsFile): Promise<void> {
 
 describe('vx-cloud connect', () => {
   it('validates against a live serve, persists the entry, and activates it', async () => {
-    const server = await startServe({ root: dir })
+    const server = startStubServe()
     try {
       const res = await cli(['connect', server.origin, '--name', 'team'])
       expect(res.code).toBe(0)
@@ -63,7 +103,7 @@ describe('vx-cloud connect', () => {
   })
 
   it('--distribute persists the ambient-pool policy on the environment', async () => {
-    const server = await startServe({ root: dir })
+    const server = startStubServe()
     try {
       const res = await cli(['connect', server.origin, '--name', 'pool', '--distribute'])
       expect(res.code).toBe(0)
@@ -77,7 +117,7 @@ describe('vx-cloud connect', () => {
   })
 
   it('--distribute=<n> persists the advisory agent count', async () => {
-    const server = await startServe({ root: dir })
+    const server = startStubServe()
     try {
       const res = await cli(['connect', server.origin, '--name', 'pool', '--distribute=4'])
       expect(res.code).toBe(0)
@@ -91,7 +131,7 @@ describe('vx-cloud connect', () => {
   })
 
   it('rejects a non-positive --distribute value', async () => {
-    const server = await startServe({ root: dir })
+    const server = startStubServe()
     try {
       const res = await cli(['connect', server.origin, '--distribute=nope'])
       expect(res.code).toBe(1)
@@ -102,7 +142,7 @@ describe('vx-cloud connect', () => {
   })
 
   it('--no-use persists without activating', async () => {
-    const server = await startServe({ root: dir })
+    const server = startStubServe()
     try {
       const res = await cli(['connect', server.origin, '--name', 'aside', '--no-use'])
       expect(res.code).toBe(0)
@@ -115,7 +155,7 @@ describe('vx-cloud connect', () => {
   })
 
   it('derives the name from the server identity (sanitized) when --name is absent', async () => {
-    const server = await startServe({ root: dir, name: 'Conn Serve' })
+    const server = startStubServe({ name: 'Conn Serve' })
     try {
       const res = await cli(['connect', server.origin])
       expect(res.code).toBe(0)
@@ -128,7 +168,7 @@ describe('vx-cloud connect', () => {
   })
 
   it('a token-requiring serve without --token errors with the fixit — nothing persisted', async () => {
-    const server = await startServe({ root: dir, token: 'sekret' })
+    const server = startStubServe({ token: 'sekret' })
     try {
       const res = await cli(['connect', server.origin, '--name', 'gated'])
       expect(res.code).toBe(1)
@@ -140,7 +180,7 @@ describe('vx-cloud connect', () => {
   })
 
   it('a wrong token is rejected (401) — nothing persisted', async () => {
-    const server = await startServe({ root: dir, token: 'sekret' })
+    const server = startStubServe({ token: 'sekret' })
     try {
       const res = await cli(['connect', server.origin, '--name', 'gated', '--token', 'wrong'])
       expect(res.code).toBe(1)
@@ -152,7 +192,7 @@ describe('vx-cloud connect', () => {
   })
 
   it('the right token verifies and persists with the entry', async () => {
-    const server = await startServe({ root: dir, token: 'sekret' })
+    const server = startStubServe({ token: 'sekret' })
     try {
       const res = await cli(['connect', server.origin, '--name', 'gated', '--token', 'sekret'])
       expect(res.code).toBe(0)
@@ -171,7 +211,7 @@ describe('vx-cloud connect', () => {
   })
 
   it('repointing an existing name at a different URL requires --force', async () => {
-    const server = await startServe({ root: dir })
+    const server = startStubServe()
     try {
       await seedCfg({
         version: 1,
@@ -226,7 +266,7 @@ describe('vx-cloud env use / rm / disconnect', () => {
 
 describe('vx-cloud env ls', () => {
   it('renders named envs, active marker, reachability — never tokens', async () => {
-    const server = await startServe({ root: dir, name: 'ls-serve' })
+    const server = startStubServe({ name: 'ls-serve' })
     try {
       await seedCfg({
         version: 1,

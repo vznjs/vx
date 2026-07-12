@@ -1,16 +1,14 @@
-// Public API for @vzn/vx-cloud — the orchestrator service + the first-party
+// Public API for @vzn/vx-cloud — the self-hosted platform + the first-party
 // cloud plugin.
 //
 // `cloud()` is the VxPlugin contributing the backend / cache / telemetry
 // capabilities against core's plugin interface. The telemetry sink pushes the
-// canonical RunSummaryRecord to the cloud ingest endpoint; IngestStore is the
-// cloud-owned analytics store the hosted dashboard reads from. See
-// docs/design/observability-architecture-2026-06.md. The rest re-exports the
-// service starters (the building blocks the service CLI uses).
+// canonical RunSummaryRecord to the platform's ingest endpoint, persisted in
+// Postgres (docs/design/cloud-platform-2026-07.md). `startServer` is the
+// platform entrypoint; the rest re-exports the building blocks the CLI uses.
 
 export { cloud } from './plugin.js'
 export type { CloudPluginOptions } from './plugin.js'
-export { IngestStore } from './ingest-store.js'
 export {
   ArtifactStore,
   DEFAULT_PRINCIPAL,
@@ -30,25 +28,8 @@ export {
   readBodyBounded,
   type NativeCacheConfig,
 } from './native-cache.js'
-export {
-  startServe,
-  parseServeArgs,
-  DEFAULT_SERVE_PORT,
-  defaultServeSocketPath,
-  resolveServePort,
-  resolveS3Config,
-} from './cli/serve.js'
-export type { ArtifactProvenanceResolver, ResolvedS3Config, ServeServer } from './cli/serve.js'
-export { WorkspaceCatalog } from './workspace-catalog.js'
-export type {
-  CatalogProjectDetail,
-  CatalogProjectSummary,
-  CatalogProjectsResponse,
-  CatalogTaskRow,
-  CatalogTasksResponse,
-  ResolvedCatalog,
-} from './workspace-catalog.js'
-export { handleMcpHttp, MCP_PROTOCOL_VERSION, MCP_TOOLS } from './cli/mcp-serve.js'
+export { startServer, resolveServerConfig } from './cli/server.js'
+export type { PlatformServer, ServerConfig } from './cli/server.js'
 export {
   ENVIRONMENTS_VERSION,
   activeEnvironment,

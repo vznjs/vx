@@ -5,7 +5,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import path from 'node:path'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import type { RunSummaryRecord } from '@vzn/vx'
 import { resolveServerConfig, startServer, type PlatformServer } from '../src/cli/server.js'
@@ -476,6 +476,11 @@ describe('platform e2e (real pg + fake S3)', () => {
     expect(Array.isArray(((await regressions.json()) as { tasks: unknown[] }).tasks)).toBe(true)
     const herm = await call('GET', '/v1/hermeticity', { cookie })
     expect(herm.status).toBe(200)
+    // The named /v1/cache/* analytics routes are never shadowed by the hex-only
+    // artifact wire — `stats` reaches the analytics handler, not a cache 404.
+    const stats = await call('GET', '/v1/cache/stats', { cookie })
+    expect(stats.status).toBe(200)
+    expect('entryCount' in ((await stats.json()) as Record<string, unknown>)).toBe(true)
   })
 
   it('task-log ingest (ci token) + read back over the analytics route', async () => {
@@ -506,5 +511,25 @@ describe('platform e2e (real pg + fake S3)', () => {
   it('the serve-era /version handshake is gone', async () => {
     expect((await call('GET', '/version', { cookie })).status).toBe(404)
     expect((await call('GET', '/version', { bearer: ciToken })).status).toBe(404)
+  })
+
+  it('a removed colocated route (/v1/graph) falls through to the SPA catch-all, not a crash', async () => {
+    // /v1/graph + /v1/workspace/* died with the SQLite catalog. An authenticated
+    // GET is no analytics/machine surface, so it lands on the SPA catch-all
+    // (200, no build here → the plain sentinel), never a 500.
+    const res = await call('GET', '/v1/graph', { cookie })
+    expect(res.status).toBe(200)
+    expect(await res.text()).toBe('vx-cloud')
+    const ws = await call('GET', '/v1/workspace/projects', { cookie })
+    expect(ws.status).toBe(200)
+  })
+
+  it('the platform writes NO SQLite (or any) database file to the data dir', async () => {
+    // Postgres + S3 only — the controller stores nothing at rest. After a full
+    // run of ingest + cache + logs above, the data dir holds no db/sqlite file.
+    const files = (await readdir(dataDir, { recursive: true }).catch(() => [] as string[])).map(
+      String,
+    )
+    expect(files.some((f) => /\.(db|sqlite|sqlite3)$/.test(f))).toBe(false)
   })
 })

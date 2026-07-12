@@ -2,19 +2,19 @@
 // the controller stores NO artifact bytes at rest — PUT proxies through the
 // store's gates (cap, zstd magic, immutability, trust scopes) then uploads to
 // the bucket; GET answers 307 to a pre-signed bucket URL. Driven against the
-// fake S3 server (tests/helpers/fake-s3.ts), plus resolveS3Config boot units
-// and a real end-to-end run through a serve configured with VX_CLOUD_S3_*.
+// fake S3 server (tests/helpers/fake-s3.ts), plus a real end-to-end run through
+// the platform server (Postgres + S3) with an injected NativeCacheClient.
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { run, type Logger } from '@vzn/vx'
 import { ArtifactStore, type Principal } from '../src/artifact-store.js'
 import { S3Backend } from '../src/blob/s3.js'
 import { NativeCacheClient } from '../src/native-cache.js'
-import { resolveS3Config, startServe } from '../src/cli/serve.js'
 import { startFakeS3, type FakeS3 } from './helpers/fake-s3.js'
+import { bootPlatform } from './helpers/platform.js'
 
 const TIMEOUT = 30_000
 
@@ -275,61 +275,11 @@ describe('ArtifactStore on the S3 backend', () => {
   })
 })
 
-describe('resolveS3Config', () => {
-  const FULL = {
-    VX_CLOUD_S3_ENDPOINT: 'https://s3.example.com',
-    VX_CLOUD_S3_BUCKET: 'artifacts',
-    VX_CLOUD_S3_ACCESS_KEY_ID: 'key',
-    VX_CLOUD_S3_SECRET_ACCESS_KEY: 'secret',
-  }
-
-  it('is disabled without an endpoint (empty counts as unset)', () => {
-    expect(resolveS3Config({})).toBeNull()
-    expect(resolveS3Config({ VX_CLOUD_S3_ENDPOINT: '' })).toBeNull()
-    expect(resolveS3Config({ VX_CLOUD_S3_BUCKET: 'artifacts' })).toBeNull()
-  })
-
-  it('partial config is a hard error naming every missing var — never a local fallback', () => {
-    expect(() => resolveS3Config({ VX_CLOUD_S3_ENDPOINT: 'https://s3.example.com' })).toThrow(
-      /VX_CLOUD_S3_BUCKET, VX_CLOUD_S3_ACCESS_KEY_ID, VX_CLOUD_S3_SECRET_ACCESS_KEY are missing/,
-    )
-    expect(() => resolveS3Config({ ...FULL, VX_CLOUD_S3_SECRET_ACCESS_KEY: '' })).toThrow(
-      /VX_CLOUD_S3_SECRET_ACCESS_KEY is missing/,
-    )
-  })
-
-  it('applies the defaults and parses the overrides', () => {
-    expect(resolveS3Config(FULL)).toEqual({
-      endpoint: 'https://s3.example.com',
-      bucket: 'artifacts',
-      region: 'auto',
-      accessKeyId: 'key',
-      secretAccessKey: 'secret',
-      prefix: '',
-      presignTtlSeconds: 300,
-    })
-    expect(
-      resolveS3Config({
-        ...FULL,
-        VX_CLOUD_S3_REGION: 'us-east-1',
-        VX_CLOUD_S3_PREFIX: 'vx-cache/',
-        VX_CLOUD_S3_PRESIGN_TTL: '600',
-      }),
-    ).toMatchObject({ region: 'us-east-1', prefix: 'vx-cache/', presignTtlSeconds: 600 })
-  })
-
-  it('rejects a malformed TTL', () => {
-    expect(() => resolveS3Config({ ...FULL, VX_CLOUD_S3_PRESIGN_TTL: 'soon' })).toThrow(
-      /VX_CLOUD_S3_PRESIGN_TTL/,
-    )
-    expect(() => resolveS3Config({ ...FULL, VX_CLOUD_S3_PRESIGN_TTL: '0' })).toThrow(
-      /VX_CLOUD_S3_PRESIGN_TTL/,
-    )
-  })
-})
+// (S3 config resolution + partial-config boot refusal are covered by
+// resolveServerConfig / the S3-probe boot test in server.test.ts.)
 
 // ---------------------------------------------------------------------------
-// End-to-end: a real run against a serve whose artifact bytes live in S3
+// End-to-end: a real run against the platform whose artifact bytes live in S3
 // ---------------------------------------------------------------------------
 
 const silentLogger: Logger = {
@@ -372,71 +322,30 @@ async function makeWorkspace(): Promise<string> {
   return root
 }
 
-describe('e2e: vx run against an S3-offloaded serve', () => {
-  const S3_KEYS = [
-    'VX_CLOUD_S3_ENDPOINT',
-    'VX_CLOUD_S3_BUCKET',
-    'VX_CLOUD_S3_REGION',
-    'VX_CLOUD_S3_ACCESS_KEY_ID',
-    'VX_CLOUD_S3_SECRET_ACCESS_KEY',
-    'VX_CLOUD_S3_PREFIX',
-    'VX_CLOUD_S3_PRESIGN_TTL',
-  ]
-  const savedEnv: Record<string, string | undefined> = {}
-
-  beforeEach(() => {
-    for (const k of S3_KEYS) {
-      savedEnv[k] = process.env[k]
-      delete process.env[k]
-    }
-  })
-  afterEach(() => {
-    for (const [k, v] of Object.entries(savedEnv)) {
-      if (v === undefined) delete process.env[k]
-      else process.env[k] = v
-    }
-  })
-
-  it('startServe hard-errors on partial S3 config instead of falling back to local', async () => {
-    process.env['VX_CLOUD_S3_ENDPOINT'] = 'https://s3.example.com'
-    const dir = await mkdtemp(path.join(tmpdir(), 'vx-s3-partial-'))
-    try {
-      await expect(startServe({ root: dir, ingestDir: dir })).rejects.toThrow(/VX_CLOUD_S3_BUCKET/)
-    } finally {
-      await rm(dir, { recursive: true, force: true })
-    }
-  })
-
+describe('e2e: vx run against the S3-offloaded platform', () => {
   it(
     'miss uploads to the bucket (controller byte-free) → 307 remote hit → tamper degrades to a miss',
     async () => {
-      const fake = startFakeS3({ bucket: 'vx-e2e' })
-      const ingestDir = await mkdtemp(path.join(tmpdir(), 'vx-s3-serve-'))
-      process.env['VX_CLOUD_S3_ENDPOINT'] = fake.origin
-      process.env['VX_CLOUD_S3_BUCKET'] = 'vx-e2e'
-      process.env['VX_CLOUD_S3_ACCESS_KEY_ID'] = 'test-key'
-      process.env['VX_CLOUD_S3_SECRET_ACCESS_KEY'] = 'test-secret'
-      const server = await startServe({ root: ingestDir, ingestDir, token: 'store-tok' })
+      const platform = await bootPlatform({ bucket: 'vx-e2e' })
+      const fake = platform.s3
       const root = await makeWorkspace()
-      const remoteCache = new NativeCacheClient({ baseUrl: server.origin, token: 'store-tok' })
+      const remoteCache = new NativeCacheClient({
+        baseUrl: platform.origin,
+        token: platform.ciToken,
+      })
       const outFile = path.join(root, 'packages', 'app', 'out.txt')
       try {
         const first = await run({ cwd: root, tasks: ['build'], log: silentLogger, remoteCache })
         expect(first.ok).toBe(true)
         expect(first.outcomes[0]!.status).toBe('success')
 
-        // THE DIRECTIVE: the controller holds no artifact bytes at rest —
-        // the upload streamed through the serve into the bucket, and the
-        // spool was unlinked.
-        const controllerFiles = (
-          await readdir(path.join(ingestDir, 'artifacts'), { recursive: true }).catch(
-            () => [] as string[],
-          )
-        ).map(String)
-        expect(controllerFiles.filter((f) => f.includes('.tar.zst'))).toEqual([])
+        // THE DIRECTIVE: the controller holds NO artifact bytes at rest — the
+        // platform has only an S3 backend, so the upload streamed through the
+        // server straight into the bucket. The single bucket key is
+        // tenant-partitioned (org-wide trusted token → the shared _org segment).
         const bucketKeys = [...fake.objects.keys()]
         expect(bucketKeys).toHaveLength(1)
-        expect(bucketKeys[0]!.startsWith('default/trusted/')).toBe(true)
+        expect(bucketKeys[0]!.includes(`org/${platform.orgId}/ws/_org/trusted/`)).toBe(true)
         expect(bucketKeys[0]!.endsWith('.tar.zst')).toBe(true)
         // The wire metadata rides as S3 user metadata.
         const stored = fake.objects.get(bucketKeys[0]!)!
@@ -467,10 +376,8 @@ describe('e2e: vx run against an S3-offloaded serve', () => {
         expect(third.outcomes[0]!.status).toBe('success')
         expect(await Bun.file(outFile).text()).toContain('built')
       } finally {
-        await server.stop()
-        fake.stop()
+        await platform.stop()
         await rm(root, { recursive: true, force: true })
-        await rm(ingestDir, { recursive: true, force: true })
       }
     },
     TIMEOUT,

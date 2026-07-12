@@ -15,7 +15,6 @@ import {
   type TelemetrySink,
 } from '@vzn/vx'
 import { capFingerprintPayload, cloud } from '../src/plugin.js'
-import { startServe } from '../src/cli/serve.js'
 import { ENVIRONMENTS_VERSION, writeEnvironmentsFile } from '../src/environments.js'
 
 // A minimal single-project workspace so a delegated `run()` has real work.
@@ -600,11 +599,12 @@ describe('cloud() telemetry capability', () => {
     })
   })
 
-  it('does NOT auto-detect a RUNNING local serve — unconnected means decline', async () => {
-    // The one wiring story: `vx-cloud connect` (or explicit env vars). A serve
-    // merely running on the machine must never capture runs by existence.
+  it('does NOT auto-detect a RUNNING local server — unconnected means decline', async () => {
+    // The one wiring story: `vx-cloud connect` (or explicit env vars). A server
+    // merely running on the machine must never capture runs by existence — the
+    // plugin does no local discovery, so the running stub below is irrelevant.
     const root = await mkdtemp(path.join(tmpdir(), 'vx-noautodetect-'))
-    const server = await startServe({ root, ingestDir: root })
+    const server = Bun.serve({ port: 0, fetch: () => new Response('ok') })
     try {
       await withCleanConnEnv({ VX_CLOUD_CONFIG: '/nonexistent/environments.json' }, async () => {
         const sink = await cloud().telemetry!(telemetryCtx(root))
@@ -613,7 +613,7 @@ describe('cloud() telemetry capability', () => {
         expect(backend).toBeUndefined()
       })
     } finally {
-      await server.stop()
+      void server.stop(true)
       await rm(root, { recursive: true, force: true })
     }
   })
