@@ -16,6 +16,25 @@ export type TokenKind = 'ci' | 'admin'
 /** `last_used_at` is written at most once per minute per token (§5.3). */
 export const TOKEN_LAST_USED_THROTTLE_MS = 60_000
 
+/**
+ * Short-TTL memo of resolved token principals, keyed by the token-hash digest.
+ * The cache wire (`/v1/cache/*`) is the highest-QPS surface, and it does a
+ * token lookup — one Postgres round-trip — before any S3 work on EVERY request;
+ * a distributed build issues thousands. Token principals are IMMUTABLE except
+ * revocation, so the only bounded staleness is on revoke (≤ TTL across
+ * replicas; instantly cleared in-process, see `revokeToken`). Each entry's
+ * expiry is capped at the token's OWN `expires_at`, so a token expiring within
+ * the window is never served past its expiry.
+ */
+const TOKEN_CACHE_TTL_MS = 5_000
+const TOKEN_CACHE_MAX = 10_000
+const tokenCache = new Map<string, { principal: TokenPrincipal | null; expiresAt: number }>()
+
+/** Drop the whole token memo — called on revoke (rare), and by tests. */
+export function resetTokenCache(): void {
+  tokenCache.clear()
+}
+
 export function generateTokenSecret(): string {
   return `${TOKEN_PREFIX}${randomBytes(32).toString('base64url')}`
 }
@@ -68,6 +87,9 @@ export async function lookupToken(
   now: number = Date.now(),
 ): Promise<TokenPrincipal | null> {
   if (!presented.startsWith(TOKEN_PREFIX)) return null
+  const cacheKey = tokenHash(presented).toString('hex')
+  const cached = tokenCache.get(cacheKey)
+  if (cached !== undefined && cached.expiresAt > now) return cached.principal
   const rows = await sql<
     {
       id: string
@@ -82,14 +104,20 @@ export async function lookupToken(
   >`SELECT id, org_id, workspace_id, kind, trust_tier, last_used_at, expires_at, revoked_at
     FROM api_tokens WHERE token_hash = ${tokenHash(presented)}`
   const row = rows[0]
-  if (row === undefined) return null
-  if (row.revoked_at !== null) return null
-  if (row.expires_at !== null && Number(row.expires_at) <= now) return null
+  // A null result (unknown / revoked / already-expired) is cached for the full
+  // TTL — the same secret can never be re-minted, so it stays null.
+  const cacheNull = (): null => {
+    remember(cacheKey, null, now + TOKEN_CACHE_TTL_MS)
+    return null
+  }
+  if (row === undefined) return cacheNull()
+  if (row.revoked_at !== null) return cacheNull()
+  if (row.expires_at !== null && Number(row.expires_at) <= now) return cacheNull()
   const lastUsed = row.last_used_at !== null ? Number(row.last_used_at) : 0
   if (now - lastUsed >= TOKEN_LAST_USED_THROTTLE_MS) {
     await sql`UPDATE api_tokens SET last_used_at = ${now} WHERE id = ${row.id}`
   }
-  return {
+  const principal: TokenPrincipal = {
     kind: 'token',
     tokenId: row.id,
     orgId: row.org_id,
@@ -97,6 +125,16 @@ export async function lookupToken(
     tier: row.trust_tier,
     tokenKind: row.kind,
   }
+  // Cap the memo at the token's OWN expiry so it's never served past it.
+  const cap = row.expires_at !== null ? Number(row.expires_at) : Infinity
+  remember(cacheKey, principal, Math.min(now + TOKEN_CACHE_TTL_MS, cap))
+  return principal
+}
+
+/** Store a token-cache entry, bounding the map so it can't grow unbounded. */
+function remember(key: string, principal: TokenPrincipal | null, expiresAt: number): void {
+  if (tokenCache.size >= TOKEN_CACHE_MAX) tokenCache.clear()
+  tokenCache.set(key, { principal, expiresAt })
 }
 
 export interface TokenRow {
@@ -151,5 +189,9 @@ export async function revokeToken(
     UPDATE api_tokens SET revoked_at = ${now}
     WHERE id = ${tokenId} AND org_id = ${orgId} AND revoked_at IS NULL
     RETURNING id`
+  // The memo is keyed by token-hash, not id, so clear it wholesale — revokes
+  // are admin-rare, and this makes an in-process revoke take effect at once
+  // (a revoked bearer must stop authenticating immediately).
+  resetTokenCache()
   return rows.length > 0
 }

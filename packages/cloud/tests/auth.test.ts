@@ -6,7 +6,7 @@ import {
   type AuthRoutesContext,
 } from '../src/auth/routes.js'
 import { createSession, resolveSession, verifySessionCookieValue } from '../src/auth/sessions.js'
-import { createApiToken, lookupToken } from '../src/auth/tokens.js'
+import { createApiToken, lookupToken, resetTokenCache } from '../src/auth/tokens.js'
 import { ephemeralPg } from './helpers/ephemeral-pg.js'
 
 const SECRET = 's'.repeat(48)
@@ -539,6 +539,20 @@ describe('tokens + RBAC matrix', () => {
     )
     expect(await lookupToken(db.sql, expired.token, now + 999)).not.toBeNull()
     expect(await lookupToken(db.sql, expired.token, now + 1001)).toBeNull()
+  })
+
+  it('lookupToken memoizes the principal (a second lookup skips the DB)', async () => {
+    resetTokenCache()
+    const t = await createApiToken(db.sql, { orgId, name: 'memo', kind: 'ci', tier: 'trusted' })
+    expect(await lookupToken(db.sql, t.token)).not.toBeNull()
+    // Delete the row OUT OF BAND (not via revokeToken, so the memo isn't
+    // cleared): a re-lookup within the TTL still returns the cached principal,
+    // proving the DB was NOT hit again.
+    await db.sql`DELETE FROM api_tokens WHERE id = ${t.id}`
+    expect(await lookupToken(db.sql, t.token)).not.toBeNull()
+    // Clearing the memo forces a re-read → the deleted row is gone → null.
+    resetTokenCache()
+    expect(await lookupToken(db.sql, t.token)).toBeNull()
   })
 
   it('state-changing admin routes without the CSRF header are refused for sessions', async () => {

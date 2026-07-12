@@ -740,8 +740,15 @@ function mapInvocation(r: RawInvocationRow): InvocationDetail {
   }
 }
 
+/** Duration-hint memo TTL — the hints only order dispatch (never affect
+ *  correctness), and they barely move between submissions minutes apart, so a
+ *  short cache keeps a full-history GROUP BY off the submit critical path. */
+const DURATION_HINT_TTL_MS = 30_000
+
 export class Analytics {
   constructor(private readonly sql: SQL) {}
+
+  private readonly hintCache = new Map<string, { hints: Map<string, number>; expiresAt: number }>()
 
   // -------------------------------------------------------------------------
   // Ingest routing + auto-provision (§5.5)
@@ -1599,12 +1606,19 @@ export class Analytics {
     }
     const aRun = await this.getRun(workspaceId, runId)
     if (aRun === null) return empty
+    // The immediately-previous run: a single-row index seek on the
+    // `invocations` header table (one row per run, `(workspace_id, started_at
+    // DESC)` indexed) instead of a full-history `GROUP BY run_id` over every
+    // prior task_run. The reference point is the current run's OWN invocation
+    // start, so both sides compare in the same time frame.
     const prev = (
-      await this.sql<{ run_id: string; started_at: string }[]>`
-        SELECT run_id, MIN(started_at) AS started_at FROM task_runs
-        WHERE workspace_id = ${workspaceId} AND run_id IS NOT NULL AND run_id != ${runId}
-          AND started_at < ${aRun.startedAt}
-        GROUP BY run_id ORDER BY MIN(started_at) DESC LIMIT 1`
+      await this.sql<{ run_id: string }[]>`
+        SELECT run_id FROM invocations
+        WHERE workspace_id = ${workspaceId} AND run_id != ${runId}
+          AND started_at < (
+            SELECT started_at FROM invocations
+            WHERE workspace_id = ${workspaceId} AND run_id = ${runId})
+        ORDER BY started_at DESC LIMIT 1`
     )[0]
     const bRun = prev !== undefined ? await this.getRun(workspaceId, prev.run_id) : null
 
@@ -1644,7 +1658,9 @@ export class Analytics {
       runId,
       previousRunId: prev?.run_id ?? null,
       startedAt: aRun.startedAt,
-      prevStartedAt: prev !== undefined ? num(prev.started_at) : null,
+      // bRun.startedAt is MIN(task started_at) for the previous run — the same
+      // value the old `MIN(started_at)` select returned.
+      prevStartedAt: bRun !== null ? bRun.startedAt : null,
       found: prev !== undefined,
       summary: {
         aTotalMs,
@@ -2199,14 +2215,27 @@ export class Analytics {
     return out
   }
 
-  /** Mean executed-run duration per `project#task` — the duration-aware dispatch hint. */
+  /**
+   * Mean executed-run duration per `project#task` — the duration-aware dispatch
+   * hint. Memoized per workspace for DURATION_HINT_TTL_MS: this is a
+   * full-history GROUP BY that ran synchronously on EVERY `dist:submit`
+   * (the latency-critical submit path); the hints are advisory (LPT ordering
+   * only), so a value up to the TTL stale never affects a run's outcome.
+   */
   async taskDurationHints(workspaceId: string): Promise<Map<string, number>> {
+    const now = Date.now()
+    const cached = this.hintCache.get(workspaceId)
+    if (cached !== undefined && cached.expiresAt > now) return cached.hints
     const rows = await this.sql<{ id: string; avg: number }[]>`
       SELECT project || '#' || task AS id, avg(duration_ms)::float8 AS avg
       FROM task_runs WHERE workspace_id = ${workspaceId}
         AND (cache_hit IS NULL OR cache_hit = false) AND status = 'success'
       GROUP BY project, task`
-    return new Map(rows.map((r) => [r.id, r.avg]))
+    const hints = new Map(rows.map((r) => [r.id, r.avg]))
+    // Bound the memo so a workspace churn can't grow it unbounded.
+    if (this.hintCache.size > 256) this.hintCache.clear()
+    this.hintCache.set(workspaceId, { hints, expiresAt: now + DURATION_HINT_TTL_MS })
+    return hints
   }
 }
 
