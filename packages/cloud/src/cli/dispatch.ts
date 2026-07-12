@@ -94,7 +94,8 @@ export interface PlatformHttpOptions {
    * (`http3: true`). Requires `tls`. Adds a UDP/QUIC listener beside the TCP
    * HTTPS/1.1 one and an `Alt-Svc: h3=…` auto-upgrade header on HTTP/1.1
    * responses; the WS + SSE + cache wire + SPA all keep working unchanged.
-   * Requires Bun ≥ 1.3.14 (older Bun ignores it). Off by default — HTTP/3 in
+   * Requires Bun ≥ 1.3.14 (the server refuses the opt-in on older Bun rather
+   * than let `Bun.serve` silently ignore it). Off by default — HTTP/3 in
    * Bun is experimental; prefer HTTP/2 at an edge proxy for stable multiplexing.
    */
   http3?: boolean

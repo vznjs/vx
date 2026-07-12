@@ -56,9 +56,13 @@ WORKDIR /home/bun
 # server binds 0.0.0.0 on VX_CLOUD_PORT (default 4321).
 EXPOSE 4321
 
-# /health is pre-auth (no account/token needed).
+# /health is pre-auth (no account/token needed). The scheme follows the
+# in-process-TLS config: with VX_CLOUD_TLS_CERT set the port serves HTTPS only,
+# so a plain-http probe would fail the TLS handshake and mark a healthy
+# container unhealthy forever (self-signed/internal certs are fine — the probe
+# checks liveness, not the trust chain).
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
-  CMD bun -e "fetch('http://127.0.0.1:'+(process.env.VX_CLOUD_PORT||'4321')+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD bun -e "const s=process.env.VX_CLOUD_TLS_CERT?'https':'http';fetch(s+'://127.0.0.1:'+(process.env.VX_CLOUD_PORT||'4321')+'/health',{tls:{rejectUnauthorized:false}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 # The platform boots only with full config. It reaches Postgres, applies
 # migrations, probes the S3 bucket, then binds 0.0.0.0. The FIRST account
@@ -70,6 +74,10 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
 #   VX_CLOUD_S3_ENDPOINT      S3-compatible endpoint (R2/MinIO/AWS)
 #   VX_CLOUD_S3_BUCKET        the artifact bucket (must already exist)
 #   VX_CLOUD_S3_ACCESS_KEY_ID / VX_CLOUD_S3_SECRET_ACCESS_KEY
+# Optional in-process TLS: mount PEM files into the container (readable by the
+# `bun` user) and set VX_CLOUD_TLS_CERT + VX_CLOUD_TLS_KEY (stable HTTPS/1.1);
+# VX_CLOUD_HTTP3=1 additionally enables experimental HTTP/3 — publish the port
+# as UDP too. Prefer HTTP/2 at an edge proxy for stable multiplexing.
 # See deploy/docker-compose.yml for a full stack (app + postgres + minio).
 ENTRYPOINT ["vx-cloud"]
 CMD ["server"]

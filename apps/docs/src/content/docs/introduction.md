@@ -98,7 +98,7 @@ is the better fit and that's fine.
 
 ## Requirements
 
-- **Bun ≥ 1.3.** vx is Bun-native — it ships as TypeScript that Bun runs
+- **Bun ≥ 1.3.14.** vx is Bun-native — it ships as TypeScript that Bun runs
   directly, with no build step. There is no Node fallback.
 - **git.** vx uses git's index to enumerate and hash inputs (the same
   technique Turborepo uses), so your workspace must be a git repository.

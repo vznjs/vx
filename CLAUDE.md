@@ -208,6 +208,48 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-12**: **Strict review of the day's transport + cloud-perf commits —
+  two shipped defects fixed, docs synced to the shipped behavior (owner:
+  "Review work of opus. Be very strict" + "make sure all docs are updated")**.
+  Hostile pass over `e4d7385`/`9ea4622` (native h3 + the h2-first refinement)
+  and re-verification of `d5a7978`..`94efe4b`/`47e1d84`. **Fixed:** (1)
+  MEDIUM-HIGH — the Docker `HEALTHCHECK` probed `http://127.0.0.1:<port>/health`
+  unconditionally, but with in-process TLS that port serves HTTPS ONLY, so
+  enabling `VX_CLOUD_TLS_CERT` in a container marked a healthy platform
+  unhealthy forever (orchestrators kill/restart on that signal); the probe now
+  follows the TLS env (`https` + `rejectUnauthorized:false` — liveness, not
+  trust). (2) MEDIUM — `VX_CLOUD_HTTP3=1` on Bun < 1.3.14 silently no-opped
+  (`Bun.serve` ignores the option) while `/v1/meta` advertised `h3: true` and
+  the boot log claimed QUIC — an explicit opt-in the runtime can't honor now
+  REFUSES BOOT naming the running version (the platform-honesty rule: never
+  advertise a capability that doesn't exist). (3) LOW — the whole h3 test
+  describe was version-gated, but only the Alt-Svc opt-in test needs 1.3.14;
+  the TLS-alone-HTTPS + unreadable-cert tests now run on any Bun (32 pass/1
+  skip on 1.3.11, 33/0 on 1.3.14, verified under both binaries). **Docs
+  synced:** self-hosting env table gained `VX_CLOUD_TLS_CERT/_KEY`,
+  `VX_CLOUD_HTTP3`, `VX_CLOUD_ALLOW_ORIGIN` rows; the production bullet no
+  longer claims TLS⇒HTTP/3 (pre-refinement leftover); wire-protocol's
+  `/v1/meta` example gained the `h3` flag; the Caddyfile's "Bun has no native
+  H2/H3" comment corrected to "no HTTP/2 server; h3 is an experimental
+  opt-in"; deploy README now states plainly that the compose file does NOT
+  wire in-process TLS (env not passed, no cert volume, no UDP publish — the
+  edge profile is the compose path; in-process TLS fits bare metal /
+  `docker run` with a PEM volume + UDP port); every "ignored on older Bun"
+  claim replaced by the boot-refusal fact; the Bun floor bumped to 1.3.14 in
+  docs/README, docs/cli, quickstart, introduction, migrate/from-turborepo.
+  **Verified sound (no action):** token memo (bounded 10k + clear, negative
+  caching safe since secrets can't re-mint, revoke clears in-process),
+  `compareRuns` (`prevStartedAt` correctly from the PREVIOUS run's getRun),
+  both set-based rewrites carry the `workspace_id` tenant clamp +
+  differential pins, `readTextBounded` streaming cap, dist `validateGraph`
+  wired in `start()`, SSE `cancel()` cleanup. **Accepted residuals
+  (informational):** random-bearer spam thrashes the token memo via `clear()`
+  (bounded memory, extra Postgres reads only); `getFlakiestTasks`' windowed
+  durations query scans all pairs, not just candidates (bounded by the scale
+  guard); the committed 100-year test TLS key (deliberate, test-only,
+  self-signed); the local dev env runs Bun 1.3.11 — BELOW the new engines
+  floor — so the h3 e2e only exercises via the fetched 1.3.14 binary + CI.
+
 - **2026-07-12**: **HTTP/2 (stable, at the edge) is the recommended multiplexing
   path; native HTTP/3 DECOUPLED from TLS behind an explicit `VX_CLOUD_HTTP3`
   opt-in (owner: "use http2 as 3 is experimental")**. Refines the native-HTTP/3

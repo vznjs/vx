@@ -304,6 +304,16 @@ export async function startServer(opts: {
   const log = opts.log ?? ((m: string): void => void process.stderr.write(`[vx-cloud] ${m}\n`))
   const { config } = opts
 
+  // Older Bun silently IGNORES the `http3` serve option — the server would
+  // boot, advertise `h3: true` on /v1/meta, and have no QUIC listener. An
+  // explicit opt-in the runtime can't honor is a loud boot error, never a
+  // silent downgrade.
+  if (config.http3 && !Bun.semver.satisfies(Bun.version, '>=1.3.14')) {
+    throw new Error(
+      `VX_CLOUD_HTTP3 requires Bun >= 1.3.14 (running ${Bun.version}) — unset it or upgrade Bun`,
+    )
+  }
+
   const db: DbClient = openDb(config.databaseUrl)
   try {
     await db.sql`SELECT 1`
@@ -328,8 +338,7 @@ export async function startServer(opts: {
   // In-process TLS: read the PEM bytes up front so a missing/unreadable cert
   // fails boot with a clear message (never a silent no-TLS start). Serves stable
   // HTTPS/1.1; experimental HTTP/3 (QUIC) rides on top only when explicitly
-  // opted in (VX_CLOUD_HTTP3) — and needs Bun ≥ 1.3.14 (older Bun ignores the
-  // option, so it degrades to HTTPS-without-H3).
+  // opted in (VX_CLOUD_HTTP3; refused on Bun < 1.3.14 above).
   let tls: Bun.TLSOptions | undefined
   if (config.tls !== undefined) {
     const readPem = async (label: string, p: string): Promise<string> => {

@@ -167,6 +167,9 @@ refuses to start, **listing every missing or invalid var at once**.
 | `VX_CLOUD_RETENTION_DAYS` | | Analytics retention window (default `180`) |
 | `VX_CLOUD_OPEN_SIGNUP` | | `1`/`true` keeps public signup open (default: closed after the first admin) |
 | `VX_CLOUD_OPEN_ORG_CREATE` | | `1`/`true` lets any member create orgs |
+| `VX_CLOUD_TLS_CERT` / `VX_CLOUD_TLS_KEY` | | PEM paths, both or neither — in-process TLS (stable HTTPS/1.1); see [Transports](#transports-http2-http3--multiplexing) |
+| `VX_CLOUD_HTTP3` | | `1`/`true` — **experimental** native HTTP/3 on the TLS port (requires the TLS pair + Bun ≥ 1.3.14) |
+| `VX_CLOUD_ALLOW_ORIGIN` | | Extra browser origins allowed on WS/SSE handshakes (comma-separated; CSWSH defense) |
 
 Partial S3 config (endpoint without bucket/credentials) is a **boot-time
 hard error** — the server never silently falls back to local storage.
@@ -190,12 +193,12 @@ hard error** — the server never silently falls back to local storage.
   pre-signed bucket URL, so read traffic goes client → bucket, never
   through the controller.
 
-- **TLS + HTTP/3.** Either give the server a cert directly
-  (`VX_CLOUD_TLS_CERT` + `VX_CLOUD_TLS_KEY`) so it terminates TLS and serves
-  **native HTTP/3 (QUIC)** on the same port, or front it with a
-  TLS-terminating reverse proxy. Either way, set `VX_CLOUD_BASE_URL` to the
-  `https://` origin so session cookies are marked `Secure`. See
-  [Transports](#transports-http2-http3--multiplexing) just below.
+- **TLS + multiplexing.** Front the server with a TLS-terminating reverse
+  proxy for stable HTTP/2, or give it a cert directly (`VX_CLOUD_TLS_CERT` +
+  `VX_CLOUD_TLS_KEY`) for in-process HTTPS/1.1. Either way, set
+  `VX_CLOUD_BASE_URL` to the `https://` origin so session cookies are marked
+  `Secure`. See [Transports](#transports-http2-http3--multiplexing) just
+  below.
 
 - **Scale out.** The app is stateless (Postgres + S3 hold all state), so
   run several replicas behind the load balancer; `/health` is the
@@ -266,8 +269,9 @@ This serves **stable HTTPS/1.1** — `Bun.serve` has no HTTP/2 server, so it
 adds no multiplexing on its own; for that, put an HTTP/2 proxy in front.
 
 Bun also ships an **experimental** native HTTP/3 (QUIC). Opt in with
-`VX_CLOUD_HTTP3=1` on top of in-process TLS (requires **Bun ≥ 1.3.14**; the
-option is ignored on older Bun). HTTP/1.1 responses then carry an
+`VX_CLOUD_HTTP3=1` on top of in-process TLS (requires **Bun ≥ 1.3.14**; on
+older Bun the boot refuses rather than silently serving without H3).
+HTTP/1.1 responses then carry an
 `Alt-Svc: h3=…` header so clients auto-upgrade to QUIC on the same port, and
 `/v1/meta` reports `h3: true`; WebSocket and SSE streams keep working over
 the TCP HTTP/1.1 listener. Because it is experimental, prefer HTTP/2 at an

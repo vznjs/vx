@@ -134,8 +134,13 @@ and an edge proxy at once — pick one TLS terminator.)
 TLS itself (`VX_CLOUD_TLS_CERT` + `VX_CLOUD_TLS_KEY`, both-or-neither) for
 in-process HTTPS/1.1, and — on **Bun ≥ 1.3.14** — opt into experimental
 native HTTP/3 with `VX_CLOUD_HTTP3=1`. HTTP/1.1 responses then carry
-`Alt-Svc: h3=…` for QUIC auto-upgrade on the same port. Because HTTP/3 in Bun
-is experimental, prefer HTTP/2 at an edge proxy for production.
+`Alt-Svc: h3=…` for QUIC auto-upgrade on the same port. Note this compose
+file does NOT wire in-process TLS (its `environment:` block doesn't pass the
+TLS vars, no cert volume is mounted, and the app port isn't published as
+UDP) — the edge profile is the compose-native path. In-process TLS/H3 fits
+bare metal or a plain `docker run` with the PEMs volume-mounted and, for H3,
+the port published as UDP too. Because HTTP/3 in Bun is experimental, prefer
+HTTP/2 at an edge proxy for production.
 
 ## Connecting a workspace
 

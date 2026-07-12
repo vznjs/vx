@@ -32,14 +32,18 @@ curl https://vx.example.com/v1/meta
   "auth": "account",
   "artifacts": true,
   "cacheWire": 2,
-  "trustTiers": true
+  "trustTiers": true,
+  "h3": false
 }
 ```
 
 It carries capability flags only — never tenant data — so it's safe before
 you authenticate. `cacheWire: 2` means the server hosts the batch existence
 probe below; a `1` server has only the per-hash cache wire (clients fall back
-to per-hash `HEAD`s automatically).
+to per-hash `HEAD`s automatically). `h3: true` means the server itself
+terminates TLS and serves experimental native HTTP/3 on this origin
+(advisory — clients auto-upgrade via the `Alt-Svc` header); it stays `false`
+when TLS and the modern transports live at an edge proxy.
 
 ## Cache wire
 

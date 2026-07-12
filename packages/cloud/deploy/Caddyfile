@@ -2,9 +2,9 @@
 # front of the app, which speaks plain HTTP/1.1 over the internal network.
 #
 # WHY an edge proxy: the vx-cloud server is a single Bun.serve process, and
-# Bun.serve is HTTP/1.1 only — it has no native H2/H3. TLS termination + the
-# modern transports belong at the edge anyway (that's how essentially every
-# production HTTP service does H3). With h2/h3 the client multiplexes many
+# Bun.serve has NO HTTP/2 server (HTTP/1.1 + an experimental native HTTP/3
+# opt-in only) — so stable h2 multiplexing lives at the edge, where TLS + the
+# modern transports belong anyway. With h2/h3 the client multiplexes many
 # concurrent requests over ONE connection (no per-request TCP+TLS handshake),
 # which — together with the batch cache-existence probe (`POST /v1/cache/batch`,
 # N HEADs → 1 request) — is what makes priming a 1000s-task graph fast.
