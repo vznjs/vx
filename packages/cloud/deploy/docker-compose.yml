@@ -1,21 +1,23 @@
-# vx-cloud — the whole service in one container.
+# vx-cloud — the self-hosted CI platform, as a docker-compose stack.
 #
-#   # Uses the prebuilt image ghcr.io/vznjs/vx-cloud:latest (published by CI):
-#   VX_CLOUD_TOKEN=$(openssl rand -hex 32) docker compose -f packages/cloud/deploy/docker-compose.yml up
+#   VX_CLOUD_SECRET=$(openssl rand -hex 32) \
+#     docker compose -f packages/cloud/deploy/docker-compose.yml up
 #
-#   # Or build from source: `docker compose build` picks up the build: block below.
+# Then open http://localhost:4321 and REGISTER — the first account becomes the
+# instance admin (signup then closes; invite others from the Admin area). Mint a
+# CI token under Admin → Tokens and point your CI at it (see the "Distributed CI
+# execution" + "Self-hosting" guides).
 #
-# One process serves the dashboard, the /v1/* analytics API, the /v1/cache
-# remote cache, and the /mcp endpoint. It reads only its own SQLite ingest
-# store (the `vxdata` volume), fed by the cloud() plugin's POST /v1/ingest — it
-# never touches a workspace cache.db, so it can run anywhere.
-#
-# There is no coordinator/worker fleet: distributed-execution `agent`s are
-# per-CI-job processes (see the "Distributed CI execution" guide), not
-# long-lived containers.
+# Three services: the vx-cloud `server` (app), Postgres (system of record), and
+# MinIO (S3-compatible artifact bucket). The app is STATELESS — all history is
+# in Postgres, all artifact bytes in the bucket — so you can scale it out behind
+# a load balancer. For a REAL deployment, drop the `minio`/`createbucket`
+# services and point VX_CLOUD_S3_* at managed object storage (Cloudflare R2, AWS
+# S3, …); and run behind a TLS-terminating reverse proxy so VX_CLOUD_BASE_URL is
+# https:// (that flips session cookies to Secure).
 
 services:
-  vx-cloud:
+  app:
     image: ghcr.io/vznjs/vx-cloud:latest
     # Or build in place: `docker compose build` picks this up.
     build:
@@ -24,35 +26,77 @@ services:
     ports:
       - '4321:4321'
     environment:
-      # A reachable (non-loopback) bind REQUIRES a token — an unauthenticated
-      # serve on the network would expose task execution. Set both.
-      VX_CLOUD_HOST: '0.0.0.0'
-      VX_CLOUD_TOKEN: '${VX_CLOUD_TOKEN:?set VX_CLOUD_TOKEN to a secret}'
-      # Optional: the fork-PR (untrusted) cache token. Its holder reads the
-      # trusted cache but writes only the untrusted scope, so a fork PR warms
-      # off main without being able to poison it. Safe to expose.
-      # VX_CLOUD_PR_TOKEN: '${VX_CLOUD_PR_TOKEN:-}'
-      # Optional: a browser origin allowed to open the WS/SSE channels when the
-      # dashboard is hosted on a different origin than this serve.
-      # VX_CLOUD_ALLOW_ORIGIN: 'https://dash.example.com'
-      # Optional: store artifact BYTES in an S3-compatible bucket (R2, MinIO,
-      # AWS) instead of the /data volume — the controller then holds no
-      # artifact bytes at rest (GET redirects clients to pre-signed URLs; the
-      # bucket endpoint must be reachable from the machines running `vx run`).
-      # Setting the endpoint REQUIRES the bucket + credentials — partial
-      # config is a boot error, never a silent local fallback.
-      # VX_CLOUD_S3_ENDPOINT: 'https://<account-id>.r2.cloudflarestorage.com'
-      # VX_CLOUD_S3_BUCKET: 'vx-artifacts'
-      # VX_CLOUD_S3_ACCESS_KEY_ID: '${VX_CLOUD_S3_ACCESS_KEY_ID:-}'
-      # VX_CLOUD_S3_SECRET_ACCESS_KEY: '${VX_CLOUD_S3_SECRET_ACCESS_KEY:-}'
-      # VX_CLOUD_S3_REGION: 'auto'        # SigV4 region (default: auto)
-      # VX_CLOUD_S3_PREFIX: 'vx-cache/'   # optional key prefix
-      # VX_CLOUD_S3_PRESIGN_TTL: '300'    # presigned-GET TTL, seconds
-    volumes:
-      # Persist the ingest store + the artifact store across restarts (with
-      # VX_CLOUD_S3_* set, artifacts live in the bucket instead).
-      - vxdata:/data
+      # System of record — the compose Postgres below.
+      DATABASE_URL: 'postgres://vx:vx@postgres:5432/vx'
+      # Session + API-token HMAC secret (>= 32 chars). REQUIRED — no default.
+      VX_CLOUD_SECRET: '${VX_CLOUD_SECRET:?set VX_CLOUD_SECRET — try: openssl rand -hex 32}'
+      # The public origin users reach the dashboard at. https:// flips session
+      # cookies to Secure — set it to your real proxied URL in production.
+      VX_CLOUD_BASE_URL: '${VX_CLOUD_BASE_URL:-http://localhost:4321}'
+      # Artifact bucket (the compose MinIO below). For production, point these at
+      # R2/S3 and delete the minio/createbucket services. Partial S3 config is a
+      # BOOT ERROR — never a silent local fallback.
+      VX_CLOUD_S3_ENDPOINT: '${VX_CLOUD_S3_ENDPOINT:-http://minio:9000}'
+      VX_CLOUD_S3_BUCKET: '${VX_CLOUD_S3_BUCKET:-vx-artifacts}'
+      VX_CLOUD_S3_ACCESS_KEY_ID: '${VX_CLOUD_S3_ACCESS_KEY_ID:-vxminio}'
+      VX_CLOUD_S3_SECRET_ACCESS_KEY: '${VX_CLOUD_S3_SECRET_ACCESS_KEY:-vxminiosecret}'
+      VX_CLOUD_S3_REGION: '${VX_CLOUD_S3_REGION:-auto}'
+      # Optional: VX_CLOUD_PORT (default 4321), VX_CLOUD_RETENTION_DAYS (180),
+      # VX_CLOUD_S3_PREFIX, VX_CLOUD_S3_PRESIGN_TTL.
+    depends_on:
+      postgres:
+        condition: service_healthy
+      createbucket:
+        condition: service_completed_successfully
     restart: unless-stopped
 
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vx
+      POSTGRES_PASSWORD: vx
+      POSTGRES_DB: vx
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U vx -d vx']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # --- S3-compatible object storage for artifact bytes (demo only) ---
+  # Replace with managed R2/S3 in production (set VX_CLOUD_S3_* + delete these).
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: vxminio
+      MINIO_ROOT_PASSWORD: vxminiosecret
+    ports:
+      - '9001:9001' # MinIO console (optional)
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # One-shot: create the bucket the server's boot S3-probe expects to exist.
+  createbucket:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set vx http://minio:9000 vxminio vxminiosecret &&
+      mc mb --ignore-existing vx/vx-artifacts &&
+      echo 'bucket vx-artifacts ready'
+      "
+
 volumes:
-  vxdata:
+  pgdata:
+  miniodata:

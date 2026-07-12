@@ -1,17 +1,19 @@
-# @vzn/vx-cloud — the orchestrator service image.
+# @vzn/vx-cloud — the self-hosted CI platform image.
 #
 # Build context is the REPO ROOT (core + cloud share one workspace
 # and one lockfile):
 #
 #   docker build -f packages/cloud/Dockerfile -t vx-cloud .
 #
-# ONE role: `vx-cloud serve` — a single Bun process serving the embedded
-# dashboard UI, the /v1/* analytics API, the /v8/artifacts remote cache, and
-# the /mcp endpoint, all over a SQLite ingest store fed by POST /v1/ingest (the
-# cloud() plugin pushes to it). vx-cloud reads only its own store — never a
-# workspace cache.db — so it can run anywhere. Distributed-execution `agent`s
-# are per-CI-job processes, not long-lived containers. See deploy/README.md for
-# docker-compose.
+# ONE role: `vx-cloud server` — a single Bun process serving the embedded
+# dashboard UI, the account/RBAC + admin API (`/v1/auth/*`, `/v1/admin/*`), the
+# analytics API (`/v1/*`, Postgres-backed), the vx-native remote cache
+# (`/v1/cache/:hash`, S3-backed), the distribution WS channels, and `/mcp`. The
+# platform is STATELESS on local disk: all history lives in Postgres and all
+# artifact bytes in an S3-compatible bucket. It REFUSES to boot without full
+# config (DATABASE_URL + VX_CLOUD_SECRET + VX_CLOUD_BASE_URL + the four
+# VX_CLOUD_S3_* vars). There is no `serve` verb and no companion mode — a
+# workspace CONNECTS to a deployed platform. See deploy/docker-compose.yml.
 
 # ---------------------------------------------------------------------------
 # Build stage — install the workspace, compile bin.ts to a standalone binary.
@@ -45,33 +47,29 @@ FROM oven/bun:1.3-slim AS runtime
 
 COPY --from=build /out/vx-cloud /usr/local/bin/vx-cloud
 
-# Persistent home for the SQLite ingest store. Created + owned before dropping
-# privileges; mount a volume here in production so pushed runs survive restarts.
-RUN mkdir -p /data && chown bun:bun /data
-VOLUME ["/data"]
-
-# Run as the unprivileged `bun` user the base image already provides.
+# Run as the unprivileged `bun` user the base image already provides. The
+# platform writes NOTHING to local disk (Postgres + S3 hold all state), so
+# there is no volume — the container is stateless and horizontally scalable.
 USER bun
 WORKDIR /home/bun
 
-# serve binds DEFAULT_SERVE_PORT = 4321.
+# server binds 0.0.0.0 on VX_CLOUD_PORT (default 4321).
 EXPOSE 4321
 
-# /health is pre-auth (no token needed). It works even when the serve binds
-# 0.0.0.0 (which includes loopback), so the 127.0.0.1 probe is always valid.
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD bun -e "fetch('http://127.0.0.1:4321/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+# /health is pre-auth (no account/token needed).
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
+  CMD bun -e "fetch('http://127.0.0.1:'+(process.env.VX_CLOUD_PORT||'4321')+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-# One process: Bun + the SQLite ingest store (at the /data volume) + the
-# embedded UI + the /v8 remote cache + /mcp, fed by the cloud() plugin's pushes
-# to POST /v1/ingest.
-#
-# To be reachable from OUTSIDE the container the serve must bind a non-loopback
-# host, which REQUIRES a token (an unauthenticated serve on a reachable
-# interface would expose task execution). So run it with BOTH set, e.g.:
-#   docker run -p 4321:4321 -v vxdata:/data \
-#     -e VX_CLOUD_HOST=0.0.0.0 -e VX_CLOUD_TOKEN=<secret> vx-cloud
-# (The default 127.0.0.1 bind is intentional — it means a tokenless container
-# is only reachable from inside itself.)
+# The platform boots only with full config. It reaches Postgres, applies
+# migrations, probes the S3 bucket, then binds 0.0.0.0. The FIRST account
+# registered at VX_CLOUD_BASE_URL becomes the instance admin; signup then
+# closes (invite-only). Required env (boot refuses listing every missing one):
+#   DATABASE_URL              postgres://user:pass@host:5432/db
+#   VX_CLOUD_SECRET           >= 32 chars (session/token HMAC) — openssl rand -hex 32
+#   VX_CLOUD_BASE_URL         the public origin, e.g. https://vx.acme.dev
+#   VX_CLOUD_S3_ENDPOINT      S3-compatible endpoint (R2/MinIO/AWS)
+#   VX_CLOUD_S3_BUCKET        the artifact bucket (must already exist)
+#   VX_CLOUD_S3_ACCESS_KEY_ID / VX_CLOUD_S3_SECRET_ACCESS_KEY
+# See deploy/docker-compose.yml for a full stack (app + postgres + minio).
 ENTRYPOINT ["vx-cloud"]
-CMD ["serve", "--ingest-dir", "/data"]
+CMD ["server"]
