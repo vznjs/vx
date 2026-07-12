@@ -154,6 +154,65 @@ describe('ingest', () => {
     expect(trs[0]!.c).toBe(1)
   })
 
+  it('drops a malformed wallclock ns field instead of aborting the whole run', async () => {
+    // Before the fix, BigInt('1.5') threw out of the ingest transaction and
+    // discarded the ENTIRE run's history. Now the bad field is treated as
+    // absent and the run stores.
+    const org = await seedOrg(db, 'ingest-wc')
+    const s = summary({
+      runId: 'run-wc',
+      workspaceId: 'wc',
+      tasks: [
+        task({
+          project: 'a',
+          task: 'good',
+          wallclockStartNs: '1000000',
+          wallclockEndNs: '2000000',
+        }),
+        task({ project: 'a', task: 'bad', wallclockStartNs: '1.5', wallclockEndNs: 'NaN' }),
+      ],
+    })
+    const res = await analytics.ingest({ orgId: org, summary: s })
+    expect(res.stored).toBe(true)
+    const rows = await db.sql<{ task: string; wallclock_start_ns: string | null }[]>`
+      SELECT task, wallclock_start_ns FROM task_runs
+      WHERE run_id = ${'run-wc'} ORDER BY task`
+    expect(rows.map((r) => r.task)).toEqual(['bad', 'good'])
+    // The malformed field is stored NULL; the well-formed sibling survives.
+    expect(rows.find((r) => r.task === 'bad')!.wallclock_start_ns).toBeNull()
+    expect(rows.find((r) => r.task === 'good')!.wallclock_start_ns).not.toBeNull()
+  })
+
+  it('getRunHeatmap buckets by UTC, not the server local timezone', async () => {
+    const origTz = process.env.TZ
+    process.env.TZ = 'America/New_York' // UTC-5: local hour/day differ from UTC
+    try {
+      // A recent instant at 03:00 UTC (inside the 30-day window); under EST
+      // that is 22:00 the PREVIOUS day, so UTC and local day+hour both differ.
+      const inst = new Date()
+      inst.setUTCHours(3, 0, 0, 0)
+      inst.setUTCDate(inst.getUTCDate() - 2)
+      const ts = inst.getTime()
+      const org = await seedOrg(db, 'heatmap-tz')
+      const res = await analytics.ingest({
+        orgId: org,
+        summary: summary({ runId: 'run-hm', workspaceId: 'hm', startedAt: ts }),
+      })
+      const grid = await analytics.getRunHeatmap(res.workspaceId, 30)
+      // The run lands in the UTC (day, hour=3) cell...
+      const utcCell = grid.find((c) => c.dayOfWeek === inst.getUTCDay() && c.hourOfDay === 3)!
+      expect(utcCell.runs).toBeGreaterThan(0)
+      // ...and NOT in the local (22:00) cell — proving UTC bucketing.
+      const localCell = grid.find(
+        (c) => c.dayOfWeek === new Date(ts).getDay() && c.hourOfDay === 22,
+      )!
+      expect(localCell.runs).toBe(0)
+    } finally {
+      if (origTz === undefined) delete process.env.TZ
+      else process.env.TZ = origTz
+    }
+  })
+
   it('reuses the workspace for a second push with the same client workspaceId', async () => {
     const org = await seedOrg(db, 'ingest-reuse')
     const a = await analytics.ingest({

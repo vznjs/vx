@@ -239,6 +239,8 @@ export function resolveServerConfig(
 export interface PlatformServer {
   origin: string
   stop(): Promise<void>
+  /** Live count of open SSE/NDJSON stream subscribers (ops + test hook). */
+  subscriberCount(): number
 }
 
 const CORS = { 'Access-Control-Allow-Origin': '*' }
@@ -519,6 +521,7 @@ export async function startServer(opts: {
 
   return {
     origin: serve.origin,
+    subscriberCount: () => serve.subscriberCount(),
     stop: async () => {
       clearInterval(partitionTick)
       await serve.stop()

@@ -89,6 +89,8 @@ export interface PlatformHttp {
   origin: string
   name: string
   stop(): Promise<void>
+  /** Live count of open SSE/NDJSON stream subscribers (ops + test hook). */
+  subscriberCount(): number
 }
 
 /**
@@ -498,6 +500,7 @@ export async function startPlatformHttp(opts: PlatformHttpOptions): Promise<Plat
   return {
     origin,
     name: opts.name,
+    subscriberCount: () => readSubscribers.size,
     stop: async () => {
       clearInterval(registryGcTimer)
       clearInterval(agentSweepTimer)

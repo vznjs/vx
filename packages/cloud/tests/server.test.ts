@@ -501,6 +501,23 @@ describe('platform e2e (real pg + fake S3)', () => {
     expect(um.error.code).toBe(-32601)
   })
 
+  it('caps an oversized MCP/ingest body with 413 (streaming, before parsing)', async () => {
+    // A body past the cap is aborted by the streaming reader — it never
+    // buffers up to the 512 MiB server-wide artifact limit. MCP's cap is 4 MiB.
+    const huge = `{"jsonrpc":"2.0","id":1,"method":"initialize","x":"${'a'.repeat(4 * 1024 * 1024 + 64)}"}`
+    const res = await call('POST', '/mcp', {
+      bearer: ciToken,
+      rawBody: new TextEncoder().encode(huge),
+    })
+    expect(res.status).toBe(413)
+    // The ingest route shares the same bounded reader; a modest body still works.
+    const ok = await call('POST', '/mcp', {
+      bearer: ciToken,
+      body: { jsonrpc: '2.0', id: 1, method: 'initialize' },
+    })
+    expect(ok.status).toBe(200)
+  })
+
   it('analytics route wiring: /v1/analysis, /v1/regressions, /v1/hermeticity are served', async () => {
     const analysis = await call('GET', '/v1/analysis', { cookie })
     expect(analysis.status).toBe(200)
@@ -643,6 +660,24 @@ describe('P4-server review: live-stream tenant isolation + CSWSH origin gate', (
 
       expect(a.text()).toContain('run delegation was removed') // org A got its OWN event
       expect(b.text()).toBe('') // org B (a different tenant) got NOTHING
+    } finally {
+      await p.stop()
+    }
+  })
+
+  it('removes a stream subscriber when the client disconnects (no leak)', async () => {
+    const p = await bootPlatform()
+    try {
+      const s = collect(p.origin, p.ciToken)
+      // Wait for the subscriber to register on the broadcast set.
+      for (let i = 0; i < 100 && p.server.subscriberCount() === 0; i++) await Bun.sleep(20)
+      expect(p.server.subscriberCount()).toBe(1)
+      // Client disconnect → the ReadableStream cancel() (Bun's primary signal
+      // for a dropped streaming body) removes the subscriber. Without the
+      // cancel() fallback it would leak here.
+      await s.stop()
+      for (let i = 0; i < 100 && p.server.subscriberCount() > 0; i++) await Bun.sleep(20)
+      expect(p.server.subscriberCount()).toBe(0)
     } finally {
       await p.stop()
     }

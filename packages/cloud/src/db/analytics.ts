@@ -595,6 +595,13 @@ function pickPercentile(sorted: number[], q: number): number | undefined {
   return sorted[idx]
 }
 
+/** A wallclock-ns wire value → bigint, or null when absent/malformed. Only an
+ *  integer string is accepted, so a garbage field (`"1.5"`, `"NaN"`) is dropped
+ *  instead of throwing out of the ingest transaction. */
+function intNsOrNull(v: string | undefined): bigint | null {
+  return v !== undefined && /^-?\d+$/.test(v) ? BigInt(v) : null
+}
+
 /** Collision-free composite map key for a (project, task) pair — either field
  *  may contain spaces or `#`. */
 function pairKey(project: string, task: string): string {
@@ -965,14 +972,18 @@ export class Analytics {
       const projectTasks = new Map<string, Set<string>>()
       for (const t of summary.tasks) {
         if (t.status === 'aborted') continue
+        // A malformed wallclock ns string (a buggy/hostile client) must not
+        // abort the whole run's ingest transaction — treat an unparseable
+        // value as absent for BOTH the derived ms offsets and the raw ns
+        // columns.
+        const startNs = intNsOrNull(t.wallclockStartNs)
+        const endNs = intNsOrNull(t.wallclockEndNs)
         const startedAt =
-          t.wallclockStartNs !== undefined
-            ? summary.startedAt + Math.round(Number(t.wallclockStartNs) / 1e6)
+          startNs !== null
+            ? summary.startedAt + Math.round(Number(startNs) / 1e6)
             : summary.startedAt
         const endedAt =
-          t.wallclockEndNs !== undefined
-            ? summary.startedAt + Math.round(Number(t.wallclockEndNs) / 1e6)
-            : summary.endedAt
+          endNs !== null ? summary.startedAt + Math.round(Number(endNs) / 1e6) : summary.endedAt
         const cacheHit = t.cacheSource === 'local' || t.cacheSource === 'remote'
         await tx`INSERT INTO task_runs (
             org_id, workspace_id, run_id, hash, project, task, status, exit_code, duration_ms,
@@ -982,8 +993,8 @@ export class Analytics {
             ${args.orgId}, ${workspaceId}, ${r.runId}, ${t.hash ?? ''}, ${t.project}, ${t.task},
             ${t.status}, ${t.exitCode}, ${t.durationMs}, ${startedAt}, ${endedAt},
             ${t.cpuMs ?? null}, ${t.peakRssBytes ?? null},
-            ${t.wallclockStartNs !== undefined ? BigInt(t.wallclockStartNs) : null},
-            ${t.wallclockEndNs !== undefined ? BigInt(t.wallclockEndNs) : null},
+            ${startNs},
+            ${endNs},
             ${cacheHit}, ${t.attempts ?? null})`
         let names = projectTasks.get(t.project)
         if (names === undefined) {
@@ -1885,8 +1896,11 @@ export class Analytics {
       for (let h = 0; h < 24; h++)
         grid.push({ dayOfWeek: d, hourOfDay: h, runs: 0, totalDurationMs: 0 })
     for (const r of rows) {
+      // Bucket in UTC — every other timestamp path in the platform is UTC/
+      // epoch-ms; `getDay()`/`getHours()` would skew the grid by the server's
+      // local TZ.
       const date = new Date(num(r.started_at))
-      const cell = grid[date.getDay() * 24 + date.getHours()]!
+      const cell = grid[date.getUTCDay() * 24 + date.getUTCHours()]!
       cell.runs++
       cell.totalDurationMs += r.duration_ms
     }
