@@ -4,9 +4,9 @@
 
 The transport-agnostic contract for delegating a run: `RunRequest` /
 `RunResult` plus the `ServerMessage` / `ClientMessage` envelope, and the
-`RunOptions ⇄ RunRequest` mappers. `@vzn/vx-cloud`'s serve/backend speak
-exactly this; the cloud-only distribution messages (`worker:*` /
-`coord:*`) live in the cloud package's `protocol-dist.ts`.
+`RunOptions ⇄ RunRequest` mappers. The service package's server/backend
+speak exactly this; the service-only distribution messages (`worker:*` /
+`coord:*`) live in that package's `protocol-dist.ts`.
 
 ## Invariants
 

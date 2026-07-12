@@ -822,13 +822,12 @@ default.
 ```ts
 import { defineWorkspace } from '@vzn/vx'
 import { otel } from '@vzn/vx-otel'
-import { cloud } from '@vzn/vx-cloud/plugin'
 
 export default defineWorkspace({
   concurrency: 8,
   cacheDir: 'build/.vx-cache',
   timeout: 600_000,
-  plugins: [otel(), cloud()],
+  plugins: [otel()],
 })
 ```
 
@@ -862,10 +861,11 @@ interface WorkspaceConfig {
 - **`plugins`** — the run-level extension points. Each entry is a
   `VxPlugin` object contributing any subset of `backend` (where the
   run executes), `cache` (which cache layer is used), `telemetry`
-  (observe-only data export — the canonical path for OTel, vx-cloud,
-  or custom sinks), the deprecated `eventSink`, plus optional
-  `setup`/`teardown`. First-party plugins: `otel()` from
-  `@vzn/vx-otel`, `cloud()` from `@vzn/vx-cloud/plugin`. A plugin
+  (observe-only data export — the canonical path for OTel, a self-hosted
+  dashboard, or custom sinks), the deprecated `eventSink`, plus optional
+  `setup`/`teardown`. First-party plugins include `otel()` from
+  `@vzn/vx-otel`; the first-party cloud plugin is declared the same way
+  (see the Cloud section of the docs). A plugin
   that declines every capability (e.g. `otel()` with no OTLP
   endpoint configured) costs nothing — a run with no active plugin
   is byte-identical to one with none declared. Plugins observe and

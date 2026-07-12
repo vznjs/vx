@@ -28,21 +28,21 @@ export { formatBytes } from './format.js'
 
 ## Subcommands
 
-| Argv first token                           | Handler                                                                    |
-| ------------------------------------------ | -------------------------------------------------------------------------- |
-| `run`                                      | `cli/run.ts:runCmd(rest)`                                                  |
-| `watch`                                    | `cli/watch.ts:watchCmd(rest)`                                              |
-| `cache`                                    | `cli/cache.ts:cacheCmd(rest)`                                              |
-| `lock`                                     | `cli/lock.ts:lockCmd(rest)`                                                |
-| `migrate`                                  | `cli/migrate.ts:migrateCmd(rest)`                                          |
-| `upgrade`                                  | `cli/upgrade.ts:upgradeCmd(rest)`                                          |
-| `show`                                     | `cli/show.ts:showCmd(rest)`                                                |
-| `info` / `stats` (deprecated alias)        | `cli/info.ts:infoCmd(rest)`                                                |
-| `mcp`                                      | `cli/mcp.ts:mcpCmd(rest)`                                                  |
-| `serve` / `dev` / `coordinator` / `worker` | redirect message: these live in `@vzn/vx-cloud` (`vx-cloud <cmd>`); exit 1 |
-| `help` / `--help` / `-h` / _(empty)_       | `cli/help.ts:printHelp()`                                                  |
-| `version` / `--version`                    | `process.stdout.write('vx <VERSION>\n')`                                   |
-| anything else                              | print `unknown command`, then help, exit 1                                 |
+| Argv first token                           | Handler                                                               |
+| ------------------------------------------ | --------------------------------------------------------------------- |
+| `run`                                      | `cli/run.ts:runCmd(rest)`                                             |
+| `watch`                                    | `cli/watch.ts:watchCmd(rest)`                                         |
+| `cache`                                    | `cli/cache.ts:cacheCmd(rest)`                                         |
+| `lock`                                     | `cli/lock.ts:lockCmd(rest)`                                           |
+| `migrate`                                  | `cli/migrate.ts:migrateCmd(rest)`                                     |
+| `upgrade`                                  | `cli/upgrade.ts:upgradeCmd(rest)`                                     |
+| `show`                                     | `cli/show.ts:showCmd(rest)`                                           |
+| `info` / `stats` (deprecated alias)        | `cli/info.ts:infoCmd(rest)`                                           |
+| `mcp`                                      | `cli/mcp.ts:mcpCmd(rest)`                                             |
+| `serve` / `dev` / `coordinator` / `worker` | redirect message: these live in the service package, not core; exit 1 |
+| `help` / `--help` / `-h` / _(empty)_       | `cli/help.ts:printHelp()`                                             |
+| `version` / `--version`                    | `process.stdout.write('vx <VERSION>\n')`                              |
+| anything else                              | print `unknown command`, then help, exit 1                            |
 
 Per-subcommand parsers / handlers carry their own argv-walk loops.
 See:
@@ -67,14 +67,15 @@ See:
 - No subcommand aliases beyond the help / version sugar and the
   deprecated `stats` → `info`.
 - No service commands — `serve` / `dev` / `coordinator` / `worker`
-  belong to the `vx-cloud` binary (core has no service CLI).
+  belong to the separate service package's binary (core has no service
+  CLI).
 
 ## Tests
 
 `tests/cli.test.ts` covers the dispatcher table — help, version,
-unknown subcommand, and the vx-cloud redirects (each moved command
-must NOT report "unknown command"). Per-subcommand parser tests live
-alongside.
+unknown subcommand, and the service-command redirects (each moved
+command must NOT report "unknown command"). Per-subcommand parser tests
+live alongside.
 
 ## Replacing this module
 

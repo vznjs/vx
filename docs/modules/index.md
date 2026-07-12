@@ -4,8 +4,8 @@
 
 The single entry point for `import x from '@vzn/vx'`. Everything in
 this file is the public API; everything else under `src/` is
-internal. Since the core/cloud split this is the **cross-package
-contract**: `@vzn/vx-cloud`, `@vzn/vx-otel`, and any third-party
+internal. Since the core/service split this is the **cross-package
+contract**: the service package, `@vzn/vx-otel`, and any third-party
 plugin import everything they need from here via the bare `'@vzn/vx'`
 specifier — never a deep `src/...` path. The exact symbol set (~80
 exports) is pinned by `tests/package-boundaries.test.ts`; widening it

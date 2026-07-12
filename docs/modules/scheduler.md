@@ -109,5 +109,5 @@ stay under 1.5 s; old code took 7.2 s), and the two-tier contract
 The contract is small: take a graph + an `execute`, return outcomes.
 Keep `ScheduleOptions` and `TaskOutcome` shapes stable to avoid
 churning consumers. Distribution (fanning `execute` to remote
-workers) already exists as `@vzn/vx-cloud`'s coordinator, which
+workers) already exists in the service package's coordinator, which
 reuses these types over the wire.

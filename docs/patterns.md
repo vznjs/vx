@@ -112,7 +112,7 @@ Turbo/Nx vocabulary: `src/workspace/project-loader.ts:142`.
 The remote cache is **plugin-driven** (owner directive 2026-07-10;
 `design/native-cache-wire-2026-07.md`): core keeps the seams
 (`LayeredCache` + the `RemoteCacheLayer` interface + the `cache`
-plugin capability), and `@vzn/vx-cloud` ships the vx-native
+plugin capability), and the first-party cloud plugin ships the vx-native
 `/v1/cache/:hash` wire (streaming PUT, `x-vx-digest` structural
 integrity, trust scopes). Turbo `/v8/artifacts` compatibility was
 dropped from core — a Turbo-wire cache is a third-party plugin story;

@@ -68,14 +68,13 @@ history in CLAUDE.md's decision log; raw numbers in
    one per key; uploads are backgrounded too and drained at run end.
 10. **A versioned telemetry contract + run-level plugins.**
     `TelemetryRecord` / `RunSummaryRecord` is one neutral, versioned
-    export shape every sink reads (OTel via `@vzn/vx-otel`, the
-    vx-cloud dashboard, custom sinks) — observe-only by construction,
+    export shape every sink reads (OTel via `@vzn/vx-otel`, a self-hosted
+    dashboard, custom sinks) — observe-only by construction,
     crash-isolated, and provably zero-overhead when no sink is active.
-11. **Client/server environments.** `vx-cloud connect <url>` +
-    `vx-cloud env ls|use|rm` give docker-context-style named servers
-    with bearer auth; every developer's and CI's runs aggregate in one
-    dashboard, while the zero-config local serve keeps working with
-    no setup at all.
+11. **Client/server environments.** The first-party cloud plugin's
+    `connect` / `env` verbs give docker-context-style named servers with
+    bearer auth; every developer's and CI's runs aggregate in one
+    dashboard. See the Cloud section of the docs.
 
 > **Note:** an earlier design folded the upstream's _output content
 > identity_ into downstream keys ("early cutoff", v21). It was

@@ -103,10 +103,10 @@ vx run build --dry          # predicted hits/misses, no execution
 vx cache prune --older-than 7d --max-size 5gb
 ```
 
-Remote caching is plugin-driven: connect a vx-cloud
-(`VX_CLOUD_URL` + `VX_CLOUD_TOKEN`, or `vx-cloud connect`) and the
-`cloud()` plugin wires the remote cache automatically; other backends
-implement core's `RemoteCacheLayer` seam in a plugin.
+Remote caching is plugin-driven: a `cache` plugin fills core's
+`RemoteCacheLayer` seam. The first-party option is a self-hosted platform
+(see the Cloud section of the docs); any other backend implements the same
+seam in a plugin.
 
 ## Feature map
 
@@ -247,8 +247,8 @@ docs/
 - **SQLite schema.** `SCHEMA_VERSION` in `src/cache/cache.ts`.
   Mismatch wipes the `entries` and `runs` tables (no migrations in
   pre-alpha).
-- **Remote-cache wire.** Plugin-driven; the first-party wire is
-  `@vzn/vx-cloud`'s `/v1/cache` — see
+- **Remote-cache wire.** Plugin-driven; the first-party wire is the
+  self-hosted platform's `/v1/cache` — see
   [`design/native-cache-wire-2026-07.md`](./design/native-cache-wire-2026-07.md).
 - **Module boundaries.** Each module's `index.ts` is its contract;
   cross-module imports of anything else fail

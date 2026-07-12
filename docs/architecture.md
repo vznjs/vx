@@ -11,13 +11,13 @@ packages integrate with core exclusively through its public API
 (`src/index.ts`, imported as the bare `@vzn/vx` specifier — enforced
 by `tests/package-boundaries.test.ts`):
 
-| Package             | What                                                                                                                                                                                                   |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `.` (root)          | `@vzn/vx` — the core runner. Everything below in this doc.                                                                                                                                             |
-| `packages/cloud`    | `@vzn/vx-cloud` — self-hosted platform: `vx-cloud server` (accounts/orgs/RBAC on Postgres, S3 artifacts, dashboard + `/v1/*` API + cache wire), `connect`/`env`/`agent` client verbs, `cloud()` plugin |
-| `packages/vx-otel`  | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces + metrics, zero SDK deps                                                                                                             |
-| `packages/cloud/ui` | `@vzn/vx-ui` — the dashboard SPA embedded into `vx-cloud` (Vite + Solid + UnoCSS)                                                                                                                      |
-| `apps/docs`         | Astro Starlight docs site; imports `docs/**` at build time                                                                                                                                             |
+| Package             | What                                                                                                                                                                    |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.` (root)          | `@vzn/vx` — the core runner. Everything below in this doc.                                                                                                              |
+| `packages/cloud`    | An out-of-process **service package** — a self-hosted platform (server, client verbs, and the first-party cloud plugin). Details live in the Cloud section of the docs. |
+| `packages/vx-otel`  | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces + metrics, zero SDK deps                                                                              |
+| `packages/cloud/ui` | `@vzn/vx-ui` — the dashboard SPA embedded into the platform binary (Vite + Solid + UnoCSS)                                                                              |
+| `apps/docs`         | Astro Starlight docs site; imports `docs/**` at build time                                                                                                              |
 
 Core never imports a sibling package. The integrations reach core
 through two seams: the ~80-symbol public API and the plugin
@@ -150,8 +150,8 @@ decline without their env/config, so a plain run stays zero-overhead.
 ## The telemetry contract
 
 `orchestrator/telemetry.ts` is THE canonical, versioned export shape
-(`TELEMETRY_SCHEMA_VERSION = 1`) every exporter reads — OTel, vx-cloud
-ingest, or a third-party sink:
+(`TELEMETRY_SCHEMA_VERSION = 1`) every exporter reads — OTel, a
+self-hosted analytics service, or a third-party sink:
 
 - **`TelemetryRecord`** — streaming, one per lifecycle event
   (`run.start` / `task.start` / `task.log` / `task.end` / `run.end`).
@@ -192,13 +192,13 @@ process or socket.
 `optionsToRequest`/`requestToOptions` mappers. `RunBackend` is the
 currency of the `backend` plugin capability. Core ships exactly one
 backend — `cli/backend.ts:localBackend()`, pure in-process. Distributed
-execution across an agent pool on a deployed `vx-cloud server` is
-contributed by `@vzn/vx-cloud`'s `cloud()` plugin, never core (run
-delegation was removed with the platform pivot). A relayed run renders
-identically to a local one because `wire-render.ts` rebuilds
+execution across an agent pool on a deployed platform is contributed by
+the first-party cloud plugin, never core (run delegation was removed with
+the platform pivot; see the Cloud section of the docs). A relayed run
+renders identically to a local one because `wire-render.ts` rebuilds
 node-shaped objects from the `WireEvent` stream and drives a normal
 `Logger`. `wire.ts` adds the JSON-RPC 2.0 envelope (`vx:events` /
-`vx:state` / `vx:rpc` / `vx:submit` channels) the serve speaks over
+`vx:state` / `vx:rpc` / `vx:submit` channels) a service speaks over
 WS/SSE/NDJSON.
 
 ### The cache cluster (`src/cache/`)
@@ -213,11 +213,11 @@ The cache is not a single file. It is composed:
 - **`layered-cache.ts`** — composes local + a remote layer behind the
   same `CacheLayer` interface, and declares **`RemoteCacheLayer`** —
   the three-call seam (`has`/`get`/`put`) a remote wire client must
-  implement. Core ships NO wire client: `@vzn/vx-cloud` provides the
-  native `/v1/cache` client via the `cache` plugin capability, and any
-  third-party wire (Turbo, S3-direct) plugs in the same way
-  (`design/native-cache-wire-2026-07.md`). Read-through (local, then
-  remote with hydrate-into-local; `prefetch` + an in-flight map
+  implement. Core ships NO wire client: the first-party cloud plugin
+  provides the native `/v1/cache` client via the `cache` plugin
+  capability, and any third-party wire (Turbo, S3-direct) plugs in the
+  same way (`design/native-cache-wire-2026-07.md`). Read-through (local,
+  then remote with hydrate-into-local; `prefetch` + an in-flight map
   guarantee at most one remote GET per key); write-through (local
   sync; the remote upload is a fire-and-forget background task drained
   at end of run, so PUT latency never sits on a task's critical path
@@ -293,7 +293,8 @@ bufferedStderr(), readyMs() }`. `ready` resolves when a regex match
 2. **`cli/index.ts`** dispatches by subcommand: `run`, `watch`,
    `cache`, `lock`, `migrate`, `upgrade`, `show`, `info` (+ `stats`
    alias), `mcp`, `help`, `version`. `serve` / `dev` / `coordinator` /
-   `worker` answer with a redirect to the `vx-cloud` binary.
+   `worker` answer with a redirect to the service package's binary (see
+   the Cloud section of the docs).
 3. **`cli/run.ts:parseRunArgs`** parses the argv into a `RunArgs`
    object (including the 4-axis cache policy from `--cache` /
    `--no-cache` / `--force`). Surfaces parse errors as `RunArgs.error`
@@ -506,10 +507,10 @@ functions; those are the seam. Internal helpers can change.
 The remote cache is **plugin-driven** — core keeps the seams only
 (`design/native-cache-wire-2026-07.md`):
 
-1. A plugin's `cache` capability (e.g. `cloud()` against a connected
-   vx-cloud) returns a `LayeredCache` composing the local cache with a
-   `RemoteCacheLayer` wire client; OR an embedder injects a client via
-   `RunOptions.remoteCache` (which wins over the plugin consult).
+1. A plugin's `cache` capability returns a `LayeredCache` composing the
+   local cache with a `RemoteCacheLayer` wire client; OR an embedder
+   injects a client via `RunOptions.remoteCache` (which wins over the
+   plugin consult).
 2. `LayeredCache` owns everything wire-independent: policy gating, the
    in-flight de-dup, remote provenance, and the never-fail contract
    (implementations THROW; every throw degrades to a cache miss via
@@ -526,9 +527,9 @@ kind may fail the run. `--dry` / `--graph` use a lightweight remote
 existence probe (`RemoteCacheLayer.has`) instead of `get` — planning
 never downloads or ingests artifacts.
 
-The first-party wire is `@vzn/vx-cloud`'s `/v1/cache/:hash` (streaming
-PUT, structural `x-vx-digest` integrity verified client-side on GET,
-trust-scoped storage, one-hop 307 blob-offload follow). The **tar
+The first-party wire is the self-hosted platform's `/v1/cache/:hash`
+(streaming PUT, structural `x-vx-digest` integrity verified client-side
+on GET, trust-scoped storage, one-hop 307 blob-offload follow). The **tar
 interior** is the local cache's own format — one `stdout` entry plus
 `outputs/<rel>` — shipped verbatim; local and remote layers transport
 the same tar.zst bytes end-to-end. A Turbo-wire (or any other) cache
@@ -587,8 +588,9 @@ CI scripts that want live numbers can `sqlite3 cache.db` directly, or
 use the query layer (`orchestrator/metrics.ts`, exported from
 `@vzn/vx`). In **core** there is no HTTP layer and no UI — the cache
 file is the API. The dashboard, `/v1/*` HTTP surface, and live-run
-view live in `@vzn/vx-cloud`, fed by the `cloud()` plugin's
-telemetry push (the serve never reads a workspace `cache.db`).
+view live in the out-of-process service package, fed by the first-party
+cloud plugin's telemetry push (the service never reads a workspace
+`cache.db`). See the Cloud section of the docs.
 
 ## Design principles
 

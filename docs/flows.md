@@ -73,9 +73,8 @@ sequenceDiagram
 ## 3. Remote hit — download → ingest → restore
 
 Owner: `cache/layered-cache.ts`. Requires a remote layer — a plugin's
-`cache` capability (e.g. `cloud()` against a connected vx-cloud) or an
-injected `RunOptions.remoteCache` client implementing
-`RemoteCacheLayer`.
+`cache` capability or an injected `RunOptions.remoteCache` client
+implementing `RemoteCacheLayer`.
 
 ```mermaid
 sequenceDiagram
