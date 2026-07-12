@@ -208,6 +208,53 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-12**: **Platform Phase 5 SHIPPED — docker-compose stack, `server`
+  image, docs rewrite, cloud CI job — the platform pivot (P1→P5) is COMPLETE
+  (`af6f451`, `68991eb`, `183900d`..`31d95a2`)**. The independent self-hosted
+  CI platform the owner directed ("fully independent SaaS… accounts, roles,
+  orgs, teams… deployed as docker compose… not possible to call vx-cloud
+  serve") is done end-to-end. **(1) Deploy infra (`af6f451`):** the Dockerfile
+  `CMD` invoked the DELETED `serve` verb (it would crash on boot) → `CMD
+["server"]`, STATELESS (no volume — Postgres + S3 hold all state,
+  horizontally scalable), full required-env doc. New `docker-compose.yml` is
+  the real stack — app + postgres:16 + minio + a one-shot `mc mb` bucket-init —
+  the "`VX_CLOUD_SECRET=$(openssl rand -hex 32) docker compose up` → open the
+  URL → register the first admin" experience; production swaps minio for
+  managed R2/S3 (partial S3 config is a boot error) behind a TLS proxy (https
+  `VX_CLOUD_BASE_URL` → Secure cookies). **(2) Cloud CI job (`68991eb`):**
+  `.github/workflows/ci.yml` gains a `cloud` job beside the unchanged core `ci`
+  — `apt-get install postgresql` (the ephemeral-pg helper boots its own
+  unix-socket cluster via initdb, non-root direct path on runners; S3 faked
+  in-process) → `cd packages/cloud && bun test`. Closes the standing gap where
+  the platform's 382 tests never ran in CI. **(3) Docs rewrite
+  (`183900d`..`006cbb7` + `31d95a2`):** the user-facing guides
+  (self-hosting/dashboard/distributed-ci/mcp/extensibility/plugins/ci/
+  wire-protocol/introduction/remote-caching) + reference pages (cli.md,
+  architecture.md, comparison.md, modules/mcp.md) + `deploy/README.md` rewritten
+  to the platform model (compose deploy, required env, register→Admin→mint
+  `vxc_` tokens, trust scopes, `VX_CLOUD_URL`+`VX_CLOUD_TOKEN` client connect,
+  `VX_CLOUD_DISTRIBUTE`) — every stale `vx-cloud serve` / `--ingest-dir` /
+  `VX_CLOUD_HOST`-token / SQLite-ingest / `environments.json`-auto-detect /
+  delegation reference scrubbed from the user-facing guides (remaining
+  `/v8/...` hits are the deliberate Turbo-wire third-party recipe; `docs/design/**`
+  - `docs/progress/**` left frozen). The biggest correction: `cli.md`'s dead
+    "transitional serve-era" HTTP block → the current platform surface. **Agent
+    judgment calls kept:** `environment-variables.md` left as-is (it's about
+    child-process env isolation, a different accurate topic — the server env
+    lives in self-hosting.md, the client env in remote-caching/distributed-ci);
+    `caching.md`/`patterns.md`/`differentiators.md` untouched (their `cache.db`
+    mentions are the legit LOCAL core cache). Verified: `astro build` clean (153
+    pages, no broken links), `ci.yml` valid YAML (both jobs), oxfmt clean (the
+    reference `.md` pages ARE oxfmt-scanned — fixed the table re-alignment, the
+    same CLAUDE.md class), docs stale-term grep clean. **DEFERRED (post-pivot,
+    not a phase):** multi-app-node HA (sticky agent routing / pg-backed
+    dispatch), team-scoped permissions (teams are metadata in v1), SSO/OIDC, an
+    audit log, per-request cache policy to remote agents (a DIST_PROTOCOL bump) —
+    all named in `cloud-platform-2026-07.md` §12/§13. **First real CI run of the
+    `cloud` job is the last thing to confirm green** (the runner env isn't fully
+    reproducible locally, but the 382 tests pass locally and the ephemeral-pg
+    helper is CI-path-aware).
+
 - **2026-07-12**: **Hostile review of platform Phase 4 (server half) — the
   fold + MCP VERDICT SOUND; two live-stream findings fixed (`6c7a25c`)**
   (repro-mandated reviewer over `d39d98a`..`e885a53`; real two-org
