@@ -32,7 +32,7 @@ vx mcp [--stdio]      # MCP server for AI agents
 
 # Cloud — the @vzn/vx-cloud package (separately installed; the `vx-cloud` binary)
 vx-cloud server       # the self-hosted platform (env-configured; replaces `serve`)
-vx-cloud connect <url> [--name N] [--token T] [--delegate] [--no-use] [--force]
+vx-cloud connect <url> [--name N] [--token T] [--distribute[=N]] [--no-use] [--force]
 vx-cloud env ls | use <name> | rm <name>
 vx-cloud disconnect
 vx-cloud agent --url <serve> [--token T] [--capacity N] [--session S] [--idle-timeout MS] [--label L]
@@ -1074,9 +1074,9 @@ bun add -D @vzn/vx-cloud        # or run it from the package's vx-cloud bin
 Core integrates with cloud through the first-party `cloud()` plugin —
 declare it in `vx.workspace.ts`
 (`defineWorkspace({ plugins: [cloud()] })`) and every `vx run` pushes
-its run summary to the chosen server, can delegate execution to a
-service, and can layer the cloud cache. Anyone can write a different
-plugin against the same `VxPlugin` interface. This section is a
+its run summary to the connected platform, can distribute execution
+across an agent pool, and can layer the cloud cache. Anyone can write a
+different plugin against the same `VxPlugin` interface. This section is a
 summary; the cloud package's own README (`packages/cloud/`) is the
 depth reference.
 
@@ -1116,64 +1116,20 @@ property, immutable after mint — the static
 `/v1/auth/*` (register/login/logout/me/invites) and `/v1/admin/*`
 (orgs, members, invites, tokens, workspaces).
 
-**`vx-cloud serve` is REMOVED** (the companion model died with the
-platform pivot). Invoking it prints a redirect to `vx-cloud server`.
-Transitional P1 state, named honestly: analytics/ingest below are
-still SQLite-backed (per-org dirs under `VX_CLOUD_DATA_DIR`) until
-the P2 Postgres storage swap; the HTTP surfaces documented in the
-rest of this section survive on the platform behind the new
-account/token auth (sessions or `vxc_` bearers instead of the static
-tokens; the flags shown are the dead serve-era spelling).
+### HTTP surfaces
 
-### The serve-era HTTP surfaces (transitional reference)
+The platform serves everything on one port behind the account/token
+gate. Auth is a session (dashboard login) or a `vxc_` API token; a
+programmatic client presents `Authorization: Bearer <token>` (browser
+transports that can't set headers use `?token=` on `/events`, `/stream`,
+and the WS upgrade). Every read is tenant-clamped to the principal's org
+(and, for a workspace-scoped token, its workspace). `/health` and
+`/v1/meta` are the only pre-auth surfaces.
 
-```
-vx-cloud serve
-    --port <n>                   # default: VX_CLOUD_PORT, else 4321
-    --host <h>                   # bind address (env: VX_CLOUD_HOST); default 127.0.0.1.
-                                 #   a non-loopback bind REQUIRES a token
-    --ingest-dir <d>             # directory for the SQLite ingest store
-    --token <t>                  # the TRUSTED bearer token (env: VX_CLOUD_TOKEN)
-    --pr-token <t>               # the UNTRUSTED (fork-PR) token (env: VX_CLOUD_PR_TOKEN):
-                                 #   reads trusted+untrusted, writes only untrusted
-    --allow-origin <o>           # extra browser origin allowed on the WS/SSE channels
-                                 #   (repeatable; env: VX_CLOUD_ALLOW_ORIGIN, comma-sep)
-    --name <n>                   # server identity for /v1/meta (env: VX_CLOUD_NAME)
-    --socket [path]              # also listen on a unix socket (env: VX_CLOUD_SOCKET;
-                                 #   default $XDG_RUNTIME_DIR/vx-cloud/serve.sock)
-    --ui                         # require the bundled SPA (error if not built)
-    --open                       # open the dashboard in the browser (implies --ui)
-```
-
-- **Deterministic port.** `--port` > `VX_CLOUD_PORT` > `4321`. The
-  port is bound exactly; a busy port is a clean error ("free it, or
-  pick another with --port / VX_CLOUD_PORT") — the URL never silently
-  moves between restarts.
-- **Ingest-only data model.** The dashboard and `/v1/*` read ONLY the
-  serve's own SQLite store, populated by the `cloud()` plugin's
-  `POST /v1/ingest` push. The serve never reads a workspace
-  `cache.db`, so it can be deployed anywhere (cache-entry inventory
-  and the full input-fingerprint diff stay local — those live in the
-  local `cache.db`).
-- **Task logs.** The `cloud()` plugin also ships per-task log tails
+- **Task logs.** The `cloud()` plugin ships per-task log tails
   (`POST /v1/ingest/logs`) so the dashboard can show a task's output;
-  they land in a `logs.db` sidecar per workspace, bounded by
-  `VX_CLOUD_LOG_MAX_BYTES` (default 512 MiB) and
-  `VX_CLOUD_LOG_RETENTION_DAYS` (default 30). Read one back at
-  `GET /v1/runs/:runId/logs/:taskId`. Turn capture off client-side with
-  `cloud({ logs: false })` or `VX_CLOUD_LOGS=0`.
-- **Auth.** Binds `127.0.0.1` by default; a non-loopback bind
-  (`--host 0.0.0.0` / `VX_CLOUD_HOST`) is refused without a token — an
-  unauthenticated serve on a reachable interface would expose task
-  execution. With `--token` set, every request except `/health` and
-  `/v1/meta` requires `Authorization: Bearer <t>` (browser transports
-  may use `?token=` on `/events`, `/stream`, and the WS upgrade).
-  Cross-origin browser WS/SSE handshakes are refused unless the origin
-  is same-origin or allow-listed (`--allow-origin`) — a CSWSH / drive-by
-  defense. No token → open, but loopback-only.
-- **Unix socket.** With `--socket` the same API also listens on a
-  0600 unix socket; socket requests bypass the token gate — the OS
-  file permissions ARE the auth (the browser dashboard stays on TCP).
+  read one back at `GET /v1/runs/:runId/logs/:taskId`. Turn capture off
+  client-side with `cloud({ logs: false })` or `VX_CLOUD_LOGS=0`.
 - **Artifact store.** `/v1/cache/:hash` is the vx-native cache wire
   (`docs/design/native-cache-wire-2026-07.md`) — a connected `cloud()`
   plugin routes the remote cache here automatically, no separate cache
@@ -1182,18 +1138,19 @@ vx-cloud serve
   `x-vx-digest` (xxh3 over the artifact bytes) is stored and echoed on
   GET for client-side integrity verification. A PUT body that is not a
   zstd frame is refused (400) — the store is immutable, so a junk
-  upload must never permanently lock a key. The store is
-  **trust-scoped**: artifacts live under
-  `<ingest-dir>/artifacts/<bucket>/<tier>/`, with `<bucket>/<tier>`
-  SERVER-DERIVED from the presented token. A trusted token reads/writes
-  `trusted/`; a `--pr-token` (untrusted) reads trusted+untrusted but
-  writes only `untrusted/` — so a fork PR can warm off `main`'s cache
-  without being able to poison it. Artifacts are immutable (a re-PUT of
-  an existing hash is 409). `/v1/meta` advertises `artifacts: true`,
+  upload must never permanently lock a key. The store is **tenant- and
+  trust-scoped**: artifact keys are
+  `org/<orgId>/ws/<wsId>/<tier>[/<sub>]/`, ALL server-derived from the
+  presented token (the org is the top tenant boundary — one org's token
+  can never read another's key). A trusted token reads/writes `trusted`;
+  an untrusted (fork-PR) token reads `trusted ∪ untrusted` but writes
+  only `untrusted` — so a fork PR can warm off `main`'s cache without
+  being able to poison it. Artifacts are immutable (a re-PUT of an
+  existing hash is 409). `/v1/meta` advertises `artifacts: true`,
   `cacheWire: 1`, and `trustTiers: true`. See
   `docs/design/cache-trust-scopes-2026-07.md`.
-- **S3-compatible artifact offload.** With `VX_CLOUD_S3_*` configured,
-  the serve stores ZERO artifact bytes at rest
+- **S3 artifact storage (mandatory).** The platform stores ZERO
+  artifact bytes on the controller — `VX_CLOUD_S3_*` is REQUIRED at boot
   (`docs/design/s3-blob-backend-2026-07.md`): a GET answers
   `307 Location: <pre-signed bucket URL>` (the client follows one hop,
   dropping the bearer + `x-vx-cache-scope` cross-origin — the bytes
@@ -1202,9 +1159,9 @@ vx-cloud serve
   user metadata. A PUT still proxies THROUGH the serve — transit, not
   storage: the byte cap, zstd-magic gate, immutability 409, and trust
   scopes stay server-enforced (object keys mirror the
-  `<bucket>/<tier>[/<sub>]/` scope layout, so a pre-signed URL binds
-  one server-derived scope), and the upload spool is unlinked before
-  the response. Path-style addressing, hand-rolled SigV4 — works
+  `org/<orgId>/ws/<wsId>/<tier>[/<sub>]/` scope layout, so a pre-signed
+  URL binds one server-derived scope), and the upload spool is unlinked
+  before the response. Path-style addressing, hand-rolled SigV4 — works
   against MinIO, R2, Garage, and AWS itself.
 
   | Env var                         | Meaning                                     |
@@ -1218,58 +1175,36 @@ vx-cloud serve
   | `VX_CLOUD_S3_PRESIGN_TTL`       | presigned-GET TTL in seconds, default `300` |
 
   Partial config (endpoint without bucket/credentials, or a malformed
-  TTL) is a boot-time hard error naming the missing vars — the serve
+  TTL) is a boot-time hard error naming the missing vars — the platform
   never silently falls back to local storage.
 
 - **MCP.** `POST /mcp` is a dependency-free MCP server (JSON-RPC 2.0
   over streamable HTTP, plain-JSON responses) exposing the dashboard's
   read surface as tools — `list_workspaces`, `list_runs`, `get_run`,
   `run_trends`, `cache_stats`, `why_did_rerun`, `compare_runs` — so an
-  AI agent pointed at the serve (with the bearer token as an
-  `Authorization` header) can inspect and debug runs.
-- **Connecting.** A server is never auto-detected — `vx-cloud connect`
-  is the one client↔server wiring: ONE-TIME
+  AI agent pointed at the platform (with a `vxc_` token as an
+  `Authorization` header) can inspect and debug runs, org/workspace-clamped.
+- **Connecting.** The platform is never auto-detected — `vx-cloud connect`
+  is the one client↔platform wiring: ONE-TIME
   `vx-cloud connect <url> --token vxc_…`; every `vx run` on the
-  machine then pushes to it.
-- **Workspace catalog.** When the serve is colocated with a workspace
-  (like `/v1/graph`), `/v1/workspace/*` serves the project/task catalog:
-  lock-first (`vx-lock.json`, instant, zero eval — projects whose config
-  bytes drifted since `vx lock` are flagged in `staleProjects`), live
-  loader-chain fallback when no lock exists, memoized per config-file
-  mtime. A remote ingest-only serve 404s these routes, and `/v1/meta`
-  advertises `catalog: true|false` so clients can degrade.
-- **Run queue.** Every serve-executed run rides a FIFO queue, ONE run
-  executing at a time (concurrent runs race on output cleaning), so
-  triggering MULTIPLE runs means queuing them: a `queue:submit` on the
-  run WS answers `queue:accepted {jobId, position}` and streams
-  `queue:start` → the standard event stream → `queue:done {runId, ok}`
-  on the submitting socket; `queue:cancel` (or closing the socket)
-  cancels a QUEUED job — a running one completes server-side. Plain
-  `{t:'run'}` CLI delegations ride the same queue; when one doesn't
-  start immediately the client sees a `vx: queued behind N run(s)`
-  status line. `dist:submit` does not queue (agents execute in their
-  own checkouts). `GET /v1/runs/queue` lists queued + running jobs.
+  machine then pushes to it. (Run delegation was removed; the platform
+  has no checkout to execute against. Distribution across an agent pool
+  is the only remote execution — see `vx-cloud agent`.)
 
 HTTP routes (all return JSON unless noted):
 
 | Route                              | Purpose                                                                                    |
 | ---------------------------------- | ------------------------------------------------------------------------------------------ |
-| `GET /health`                      | Liveness probe (`200 ok`) — always open                                                    |
-| `GET /v1/meta`                     | Server identity (`name`, vx version, auth mode, `artifacts`) — always open                 |
-| `GET /version`                     | Protocol version + channels + RPC capability list                                          |
+| `GET /health`                      | Liveness probe (`200 ok`) — pre-auth                                                        |
+| `GET /v1/meta`                     | Identity + capability flags (`auth`, `artifacts`, `cacheWire`, `trustTiers`) — pre-auth    |
+| `POST /v1/auth/*`, `/v1/admin/*`   | Accounts / sessions / invites (auth) and org/member/token/workspace admin (RBAC)           |
 | `POST /v1/ingest`                  | Push endpoint — accepts a `RunSummaryRecord` from the `cloud()` plugin                     |
-| `GET /v1/workspace/projects`       | Workspace catalog: project list (lock-first / live fallback; colocated serve only)         |
-| `GET /v1/workspace/projects/:name` | One project's resolved config (the `vx show` payload; `stale` flag in lock mode)           |
-| `GET /v1/workspace/tasks`          | Flat task index with derived `group`/`cacheable`/`persistent` booleans                     |
-| `GET /v1/runs/queue`               | Live run-queue state (queued + running jobs, positions, timestamps)                        |
 | `GET /v1/artifacts`                | List the artifact store (trust-scoped to the caller's READ scopes; task/run provenance)    |
-| `GET /v1/*`                        | Metrics/analytics API (runs, tasks, projects, cache, trends, compare, why, …)              |
+| `GET /v1/*`                        | Metrics/analytics API (runs, tasks, projects, cache, trends, compare, why, …), Postgres-backed |
 | `HEAD/GET/PUT /v1/cache/:hash`     | The vx-native artifact store (hex hash; the `cloud()` cache rung's target)                 |
 | `POST /mcp`                        | MCP server for AI agents (JSON-RPC 2.0, plain-JSON responses)                              |
-| `GET /events`                      | Server-Sent Events stream of every envelope from every concurrent run                      |
-| `GET /stream`                      | NDJSON stream (jq-friendly) of the same                                                    |
-| `WS /` (upgrade)                   | Bidirectional; accepts both legacy `{ t: 'run', ... }` and JSON-RPC `submit.run` envelopes |
-| `WS /v1/agents` (upgrade)          | Distributed-execution agents rendezvous ({workspaceId, session} sessions)                  |
+| `GET /events`, `GET /stream`       | SSE / NDJSON stream of every envelope from every concurrent distributed run                |
+| `WS /v1/agents` (upgrade)          | Distributed-execution agents rendezvous ({orgId, workspaceId, session} sessions)           |
 
 Every wire frame is a JSON-RPC 2.0 envelope per
 `docs/design/wire-protocol-2026-06.md`.
@@ -1284,7 +1219,7 @@ server.
 
 ```
 vx-cloud connect https://vx.corp.example --token vxc_…    # validate + persist + activate
-vx-cloud connect <url> --name team --delegate --no-use    # named; opt into run delegation; don't activate
+vx-cloud connect <url> --name team --distribute --no-use  # named; opt into ambient distribution; don't activate
 vx-cloud env ls                                           # named servers, with live reachability
 vx-cloud env use team                                     # switch the active environment
 vx-cloud env rm staging                                   # delete an entry
@@ -1308,9 +1243,9 @@ no separate cache/ingest/service URL. Resolution (first match wins):
 | 2   | the active named environment (`vx-cloud connect`)                                                    |
 | 3   | decline — a plain run stays zero-overhead                                                            |
 
-There is no local-serve auto-detect: a serve merely running on the
-machine never captures runs by existence — connect to it like any
-other server (`vx-cloud connect http://localhost:4321`).
+There is no local-serve auto-detect: a platform merely reachable on the
+network never captures runs by existence — connect to it explicitly
+(`vx-cloud connect https://vx.corp.example`).
 
 (The pre-consolidation env vars `VX_SERVICE_URL`,
 `VX_CLOUD_INGEST_URL/TOKEN`, `VX_CLOUD_INSIGHTS_URL/TOKEN` are still
@@ -1323,16 +1258,17 @@ plugin-driven.)
   automatically. A third-party (e.g. Turbo-wire) cache server needs a
   cache plugin against core's `RemoteCacheLayer` seam — see the
   extensibility guide's recipe.
-- **Trust follows the token.** Present `VX_CLOUD_TOKEN` (trusted) or
-  `VX_CLOUD_PR_TOKEN` (untrusted / fork-PR — reads trusted, writes only
-  untrusted). The serve derives the tier from the bearer; there is no
-  `VX_CACHE_TRUST` flag and no fork-PR autodetection.
-- **Delegation stays opt-in.** A plain connection NEVER moves execution
-  to the server; only an environment connected with `--delegate` does
-  (delegation runs against the request's cwd on the server — correct only
-  when it shares the filesystem). Distribution is opt-in via
-  `VX_CLOUD_DISTRIBUTE`.
-- A DISCOVERED serve (active environment) is capability-probed
+- **Trust follows the token.** Present `VX_CLOUD_TOKEN` (a trusted
+  token) or `VX_CLOUD_PR_TOKEN` (an untrusted / fork-PR token — reads
+  trusted, writes only untrusted). The platform derives the tier from
+  the bearer; there is no `VX_CACHE_TRUST` flag and no fork-PR
+  autodetection. Both tiers are minted under Admin → Tokens.
+- **Execution never moves by default.** A plain connection NEVER moves
+  execution off this machine (run delegation was removed). Distribution
+  across an agent pool is the only remote execution, opt-in via
+  `VX_CLOUD_DISTRIBUTE=<n>` (explicit) or an environment connected with
+  `--distribute` (ambient, fails safe to a local run).
+- A DISCOVERED platform (active environment) is capability-probed
   (`/v1/meta` `cacheWire >= 1`, once per process) before the cache
   routes to it; an explicit `VX_CLOUD_URL` is trusted as configured.
 
@@ -1583,4 +1519,4 @@ down with it:
   still carries its input key, so dependents derive exactly the keys a
   healthy run derives.
 
-The mode rides the wire, so delegated and distributed runs honor it.
+The mode rides the wire, so distributed runs honor it.

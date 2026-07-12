@@ -14,7 +14,7 @@ by `tests/package-boundaries.test.ts`):
 | Package             | What                                                                                                                                                            |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `.` (root)          | `@vzn/vx` — the core runner. Everything below in this doc.                                                                                                      |
-| `packages/cloud`    | `@vzn/vx-cloud` — standalone service: `vx-cloud serve` (ingest-fed dashboard + `/v1/*` API), `connect`/`env` environments, coordinator/worker, `cloud()` plugin |
+| `packages/cloud`    | `@vzn/vx-cloud` — self-hosted platform: `vx-cloud server` (accounts/orgs/RBAC on Postgres, S3 artifacts, dashboard + `/v1/*` API + cache wire), `connect`/`env`/`agent` client verbs, `cloud()` plugin |
 | `packages/vx-otel`  | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces + metrics, zero SDK deps                                                                      |
 | `packages/cloud/ui` | `@vzn/vx-ui` — the dashboard SPA embedded into `vx-cloud` (Vite + Solid + UnoCSS)                                                                               |
 | `apps/docs`         | Astro Starlight docs site; imports `docs/**` at build time                                                                                                      |
@@ -191,10 +191,11 @@ process or socket.
 `WireEvent` stream + `RunResult` out, with the
 `optionsToRequest`/`requestToOptions` mappers. `RunBackend` is the
 currency of the `backend` plugin capability. Core ships exactly one
-backend — `cli/backend.ts:localBackend()`, pure in-process. Delegation
-to a service (a local or hosted `vx-cloud serve`) is contributed by
-`@vzn/vx-cloud`'s `cloud()` plugin, never core. A delegated run
-renders identically to a local one because `wire-render.ts` rebuilds
+backend — `cli/backend.ts:localBackend()`, pure in-process. Distributed
+execution across an agent pool on a deployed `vx-cloud server` is
+contributed by `@vzn/vx-cloud`'s `cloud()` plugin, never core (run
+delegation was removed with the platform pivot). A relayed run renders
+identically to a local one because `wire-render.ts` rebuilds
 node-shaped objects from the `WireEvent` stream and drives a normal
 `Logger`. `wire.ts` adds the JSON-RPC 2.0 envelope (`vx:events` /
 `vx:state` / `vx:rpc` / `vx:submit` channels) the serve speaks over

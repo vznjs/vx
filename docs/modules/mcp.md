@@ -9,7 +9,7 @@ envelope the wire protocol commits to).
 
 ## Invariants
 
-- stdio transport for `vx mcp`; the serve-side counterpart ships too —
-  `vx-cloud serve` exposes MCP over `POST /mcp` (JSON-RPC 2.0, behind the
-  bearer token).
+- stdio transport for `vx mcp`; the platform-side counterpart ships too —
+  `vx-cloud server` exposes MCP over `POST /mcp` (JSON-RPC 2.0, behind the
+  account/token gate, org/workspace-clamped).
 - Reports the real `VERSION`; read-only against cache.db.

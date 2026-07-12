@@ -248,7 +248,8 @@ upstream repos.
 - Root-anchored inputs/outputs (`workspaceFiles`) and runtime-command
   inputs (`runtime` / `workspaceRuntime`).
 - `vx lock` / `vx run --frozen`, `vx migrate`, `vx show`, `vx mcp`.
-- Run dashboard + analytics service (`vx-cloud serve` + environments).
+- Run dashboard + analytics on the self-hosted `vx-cloud server` platform
+  (accounts/orgs/RBAC; workspaces connect via `vx-cloud connect`).
 
 ### Explicitly rejected (owner decisions — do not re-propose)
 
