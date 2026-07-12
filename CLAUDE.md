@@ -208,6 +208,55 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-12**: **Platform Phase 4 (dashboard UI half) SHIPPED — the
+  dashboard is now a session/account client + a full Admin area (`656d386`,
+  `575ca88`)**, executing the UI portion of P4 (§12). The SPA converted from
+  the retired companion Bearer-token model to the platform's account/session
+  model, ALL in `packages/cloud/ui/**` (ZERO `packages/cloud/src/**` change).
+  **Auth foundation (`656d386`):** `api.ts` dropped the bearer token entirely
+  (no more `vx-ui:token`) — every request rides `credentials: 'include'` so the
+  browser returns the HttpOnly session cookie, and every mutation carries
+  `x-vx-csrf: 1` (the SPA custom-header CSRF gate); added auth state
+  (`loading|anon|authed`) + current principal, the `?org=` clamp (persisted
+  `vx-ui:org`), session lifecycle (`bootstrapAuth`/`login`/`register`/`logout`/
+  `acceptInvite`), the full `/v1/admin/*` client, and pure helpers
+  `scopedPathFor`/`nextOrgSelection` (`getConnectionKey` now keys on
+  `origin|user|org|workspace`; `ServerMeta.auth` accepts `'account'`). A
+  full-screen `LoginGate` (sign-in / create-account, invite-aware) gates the
+  router in `main.tsx`; `Shell` swapped the token editor for an org switcher +
+  account menu + sign-out + conditional Admin nav. **Admin area (`575ca88`):**
+  a new `/admin` route (interactive Solid, not json views) — Members · Invites ·
+  Tokens · Workspaces · Settings, wired to `/v1/admin/*` with create/list/
+  revoke/role-change, RBAC-reflected (the server is the enforcer). Minted CI
+  tokens surface the plaintext `vxc_` secret ONCE with a copy affordance +
+  won't-show-again warning. **Verified in a REAL browser** (Playwright/Chromium
+  against a real `startServer` on ephemeral pg + fake S3 serving the built
+  `ui/dist`): login gate → register first user → dashboard + Admin → analytics
+  render → mint CI token (plaintext shown once) → create workspace → create
+  invite (`vxi_`) → create a second org → switch orgs (Settings re-seeds to the
+  new org) → logout → login gate → log back in — ALL steps, ZERO real console
+  errors. Accepted degradations (filtered): 404s to `/v1/graph`, `/version`,
+  `/v1/runs/queue` (removed on the platform) correctly leave the Runs spawn bar
+  honest-disabled. UI 32→52 tests (+20 pinning the org/ws clamp +
+  org-selection reconciliation); `bun run build` (vite+tsc) clean; core ci
+  green. **Corrections the agent made against the real server (kept):** (1)
+  invite onboarding — a NEW invited user registers via
+  `POST /v1/auth/register {…, invite}` (the LoginGate register form), while
+  `POST /v1/auth/invites/accept` adds a membership to an EXISTING session (an
+  in-app "Join with an invite" action) — the shipped server, not the design's
+  sketch. (2) Found + fixed a real bug: switching orgs while on the Settings
+  tab left the rename form seeded with the PREVIOUS org (a Save would have
+  renamed the wrong org) — fixed with a reactive `createEffect(on(...))`
+  re-seed, pinned by an e2e assertion. (3) No
+  `GET /v1/admin/orgs/:id/invites` on the server, so the Invites section only
+  creates (surfaces the token/URL) — no list. `dist` stays a gitignored build
+  artifact (not committed). **REMAINING P4 (server half, next):** absorb the
+  transitional `startServe` (serve.ts) into server.ts, repoint `/mcp` + dist
+  duration hints to the existing Postgres `Analytics`, DELETE the colocated
+  `/v1/graph`+`/v1/workspace/*` cockpit + the four residual SQLite stores
+  (ingest/log/fp/workspace-catalog) + serve.ts, retarget the companion suites.
+  Then P5 (compose/image/docs).
+
 - **2026-07-12**: **Hostile tenant-boundary review of platform Phase 3 —
   VERDICT AIRTIGHT, zero confirmed defects** (repro-mandated adversarial
   reviewer over `51facf1`..`df44193`; real two-org `startServer` on ephemeral
@@ -223,7 +272,7 @@ serving none of them is probably org-analytics scope creep.
   to `shared`, `validScope` re-checks every segment); cross-workspace within an
   org (bidirectional `_org`↔ws segment isolation, all 404); scope injection
   (every one of 7 S3 keys matched `^org/<uuid>/ws/(_org|<uuid>)/(trusted|
-  untrusted/<seg>)/<hash>.tar.zst$` — none escaped to `..`/bucket-root/
+untrusted/<seg>)/<hash>.tar.zst$` — none escaped to `..`/bucket-root/
   `etc/passwd`; untrusted `scope=trusted` nested harmlessly at
   `…/untrusted/trusted/…` and a trusted GET of it → 404 = poison isolation;
   per-PR `pr-42` write / `pr-99` read → 404); dist pool cross-org (two orgs'
@@ -271,7 +320,7 @@ serving none of them is probably org-analytics scope creep.
   byte-identical to the pre-platform layout (legacy flat store still
   migrates there). **(2) Dist sessions re-keyed by org (§8.2).** The agent
   registry key grew `{workspaceId, session}` → `{orgId, workspaceId,
-  session}`; `orgId` is a trailing `'default'`-defaulted param on
+session}`; `orgId` is a trailing `'default'`-defaulted param on
   hello/beginSubmission/availableCapacity, SERVER-derived from the agent's/
   submitter's token (never on the wire — NO DIST_PROTOCOL bump). Two
   tenants' pools can never collide or pair; `dist:submit` runs under its ci
