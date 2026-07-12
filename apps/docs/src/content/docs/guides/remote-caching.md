@@ -13,14 +13,16 @@ nothing here — the [local cache](../caching/) is automatic.
 
 ## The one connection
 
-Sharing a cache means connecting to a **vx-cloud** — a small server that
-hosts the artifact store (plus the dashboard and, optionally,
-[distributed execution](../distributed-ci/)). **One connection provides all
-of it.** The remote cache is *internal* to that connection: connect a cloud
-and every `vx run` reads and writes its artifact store automatically —
-there is **no** separate cache URL or token to configure.
+Sharing a cache means connecting to a **vx-cloud** — the [self-hosted
+platform](../self-hosting/) that hosts the artifact store (plus the
+dashboard and, optionally, [distributed execution](../distributed-ci/)).
+**One connection provides all of it.** The remote cache is *internal* to
+that connection: connect a platform and every `vx run` reads and writes
+its artifact store automatically — there is **no** separate cache URL or
+token to configure.
 
-Persist the connection once:
+Persist the connection once (`$VX_CLOUD_TOKEN` is an API token you minted
+under **Admin → Tokens** on the platform):
 
 ```bash
 vx-cloud connect https://vx-cloud.example.com --token "$VX_CLOUD_TOKEN"

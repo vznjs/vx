@@ -14,21 +14,21 @@ already ships.
 There are two binaries:
 
 - **`vx`** (`@vzn/vx`) — the core task runner. A plain `vx run`.
-- **`vx-cloud`** (`@vzn/vx-cloud`) — the service: `vx-cloud serve`,
-  `vx-cloud agent`, `vx-cloud connect`. **Distribution is a `vx-cloud`
-  feature**, enabled from a normal `vx run` through the `cloud()`
-  plugin.
+- **`vx-cloud`** (`@vzn/vx-cloud`) — the [self-hosted platform](../self-hosting/)
+  (`vx-cloud server`) plus the client verbs (`vx-cloud agent`,
+  `vx-cloud connect`). **Distribution is a `vx-cloud` feature**, enabled
+  from a normal `vx run` through the `cloud()` plugin.
 
-The `vx-cloud serve` you run is the rendezvous: it holds the session
-registry, schedules each submission, and hosts the shared
-`/v1/cache` artifact store. Agents attach to it; the main job submits to it.
+The deployed `vx-cloud` platform is the rendezvous: it holds the session
+registry, schedules each submission, and hosts the shared `/v1/cache`
+artifact store. Agents attach to it; the main job submits to it.
 
 ## Turnkey setup
 
-Two ready-made recipes ship in the vx repo so you don't hand-wire a
-serve and an agent matrix. Both assume a **reachable `vx-cloud serve`**
-(see [Self-host vx-cloud](../self-hosting/)) and the `cloud()` plugin
-declared in your `vx.workspace.ts`:
+Two ready-made recipes ship in the vx repo so you don't hand-wire the
+connection and an agent matrix. Both assume a **deployed `vx-cloud`
+platform** (see [Self-host vx-cloud](../self-hosting/)) and the `cloud()`
+plugin declared in your `vx.workspace.ts`:
 
 ```ts
 import { defineWorkspace } from '@vzn/vx'
@@ -37,17 +37,17 @@ import { cloud } from '@vzn/vx-cloud/plugin'
 export default defineWorkspace({ plugins: [cloud()] })
 ```
 
-Store the connection as two repository secrets — `VX_CLOUD_URL` and
-`VX_CLOUD_TOKEN`.
+Store the connection as two repository secrets — `VX_CLOUD_URL` (your
+deployment's origin) and `VX_CLOUD_TOKEN` (a `trusted` API token minted
+under **Admin → Tokens** on the platform).
 
 > **Installing the CLIs in CI.** Both ship on npm as standalone binaries,
 > no Bun needed: core `vx` (`npm i -g @vzn/vx`) and the `vx-cloud` CLI
 > (`npm i -g @vzn/vx-cloud`) — each a prebuilt per-platform binary (the
 > `vx-cloud` binary has the dashboard embedded). The agent jobs need
 > `vx-cloud`; the run job needs only `vx` plus
-> `VX_CLOUD_URL`/`VX_CLOUD_TOKEN`. (For a serve deployment, the
-> `ghcr.io/vznjs/vx-cloud` image is the prebuilt server — see
-> self-hosting.)
+> `VX_CLOUD_URL`/`VX_CLOUD_TOKEN`. (The platform itself is the
+> `ghcr.io/vznjs/vx-cloud` image — see [Self-host](../self-hosting/).)
 
 ### One `uses:` — the reusable workflow
 
@@ -188,8 +188,8 @@ main job: vx run ci   (VX_CLOUD_DISTRIBUTE=6, connected to a vx-cloud)
    ├ renders the relayed event stream (one normal run)         │
    └ materializes outputs back onto disk                       │
                                                                ▼
-                       ┌─────────────── vx-cloud serve ───────────────┐
-                       │  session registry {workspaceId, session}      │
+                       ┌────────────── vx-cloud platform ─────────────┐
+                       │  session registry {org, workspaceId, session} │
                        │    → agents (commitSha checked at pairing)     │
                        │  per-submission scheduler:                     │
                        │    • prune: stat the store by stable hash      │
@@ -203,17 +203,17 @@ main job: vx run ci   (VX_CLOUD_DISTRIBUTE=6, connected to a vx-cloud)
                      vx-cloud agent                vx-cloud agent
                       same commit, own checkout      same commit, own checkout
                       scoped run(): deps restore      scoped run(): …
-                      warm from /v8, task runs,       agent:done {taskId, outcome}
-                      saves + uploads to /v8
+                      warm from /v1/cache, runs,      agent:done {taskId, outcome}
+                      saves + uploads to /v1/cache
 ```
 
 The main job builds the graph (it has the checkout), submits it, and
 renders the relayed events like any delegated run. The serve schedules
 bare task ids onto agents. Each agent runs the assigned task as a
 **scoped core `run()` of that exact task with its dependency closure** —
-the closure's deps restore as warm `cache-hit-remote` from `/v8`, the
-task executes, and its artifact uploads back to `/v8` before the agent
-reports `done`. There is **no input shipping**: agents already have the
+the closure's deps restore as warm `cache-hit-remote` from `/v1/cache`,
+the task executes, and its artifact uploads back to `/v1/cache` before the
+agent reports `done`. There is **no input shipping**: agents already have the
 source at the shared commit, and every output travels only as a
 content-addressed artifact through the store.
 
@@ -315,11 +315,12 @@ disconnect), not a failing test.
 
 ## GitHub Actions
 
-The realistic pattern points every job at **one vx-cloud reachable by all
-of them** — a deployed `vx-cloud serve` behind a URL (see
-[Self-host vx-cloud](../self-hosting/)). Two secrets carry the whole
-connection: `VX_CLOUD_URL` and `VX_CLOUD_TOKEN`. A matrix of agent jobs
-attaches to it, and a separate run job submits.
+The realistic pattern points every job at **one vx-cloud platform
+reachable by all of them** — your deployed `vx-cloud server` behind a URL
+(see [Self-host vx-cloud](../self-hosting/)). Two secrets carry the whole
+connection: `VX_CLOUD_URL` and `VX_CLOUD_TOKEN` (a `trusted` token minted
+under Admin → Tokens). A matrix of agent jobs attaches to it, and a
+separate run job submits.
 
 ```yaml
 # .github/workflows/distributed.yml
@@ -346,7 +347,7 @@ jobs:
       - run: bun install --frozen-lockfile
       # Same repo, same commit, clean tree. Blocks until the submission
       # drains it (a generous idle timeout covers the run job's startup).
-      # The connection also provides the /v8 cache — no extra cache config.
+      # The connection also provides the /v1/cache store — no extra config.
       - run: |
           vx-cloud agent \
             --url "$VX_CLOUD_URL" \
@@ -378,28 +379,25 @@ submitter self-registers as an agent, so even if no matrix agent has
 connected yet the run makes progress locally and mixes in remote agents
 as they join.
 
-If your runners share a network (self-hosted runners, or a tunnel like
-Tailscale), one job can host the serve with `vx-cloud serve` instead of
-using a deployed one — but every agent and the run job still need to
-reach it at the same `VX_CLOUD_URL`.
+Every agent and the run job point at the same deployed platform at the
+same `VX_CLOUD_URL`. (The platform is a stateful service — Postgres + an
+S3 bucket — so it's a deployment, not something a CI job spins up
+ad hoc.)
 
 ## Fork PRs: present the PR token
 
 The artifact store is **trust-scoped** so a fork PR can warm off `main`
 without poisoning it, and the tier follows **which token you present** —
-there is no trust flag and no autodetection. Start the serve with two
-tokens:
+there is no trust flag and no autodetection. In the platform's **Admin →
+Tokens**, mint **two** tokens: one `trusted` and one `untrusted`.
 
-```sh
-vx-cloud serve --token "$TRUSTED_TOKEN" --pr-token "$UNTRUSTED_TOKEN"
-```
-
-A trusted token reads and writes the trusted scope. The PR token reads
-`untrusted ∪ trusted` but **writes only the untrusted scope** — the
-serve derives the scope from the bearer, never from a client claim. So a
-fork-PR job simply presents `VX_CLOUD_PR_TOKEN` **instead of**
-`VX_CLOUD_TOKEN` (a fork can't see your repo secrets, so the PR token is
-the only one it has — which token you hold *is* the tier):
+A trusted token reads and writes the trusted scope. The untrusted token
+reads `untrusted ∪ trusted` but **writes only the untrusted scope** — the
+server derives the scope from the bearer, never from a client claim. So a
+fork-PR job simply presents `VX_CLOUD_PR_TOKEN` (the untrusted token)
+**instead of** `VX_CLOUD_TOKEN` (a fork can't see your repo secrets, so
+the untrusted token is the only one it has — which token you hold *is* the
+tier):
 
 ```yaml
   run:
@@ -479,9 +477,9 @@ Honest gaps in the current design (see
   `--affected`, and the lockfile workflow.
 - [Remote caching](../remote-caching/) — the artifact store that
   the connection provides and agents share.
-- [Self-host vx-cloud](../self-hosting/) — deploy the serve every job
+- [Self-host vx-cloud](../self-hosting/) — deploy the platform every job
   attaches to, in one `docker compose up`.
-- [vx-cloud serve wire protocol](../wire-protocol/) — the JSON-RPC
-  envelope the relayed run stream rides.
+- [vx-cloud wire protocol](../wire-protocol/) — the JSON-RPC envelope the
+  relayed run stream rides.
 - `docs/design/distributed-execution-2026-07.md` — the full design and
   the correctness proof.

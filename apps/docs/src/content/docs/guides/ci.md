@@ -66,14 +66,16 @@ Notes:
   through your package manager.)
 - **Pin the version** with `VX_VERSION=<tag>` before the install line for
   byte-stable CI.
-- **Connection secrets** as `env` — `VX_CLOUD_URL` + `VX_CLOUD_TOKEN` point
-  this run at a shared cache (and the dashboard). With them set, the run
-  reuses artifacts built on other branches and machines. See
-  [Remote caching](../remote-caching/). On a fork PR, present
-  `VX_CLOUD_PR_TOKEN` instead of `VX_CLOUD_TOKEN`: it warms off the trusted
-  cache but can only write the untrusted scope, so it can't poison a trusted
-  build. (A different cache backend plugs in through a cache plugin —
-  see [Core is provider-neutral](../extensibility/).)
+- **Connection secrets** as `env` — `VX_CLOUD_URL` (your deployed
+  [vx-cloud platform](../self-hosting/)) + `VX_CLOUD_TOKEN` (a `trusted`
+  API token minted under **Admin → Tokens**) point this run at a shared
+  cache (and the dashboard). With them set, the run reuses artifacts built
+  on other branches and machines. See [Remote caching](../remote-caching/).
+  On a fork PR, present `VX_CLOUD_PR_TOKEN` (an `untrusted` token) instead
+  of `VX_CLOUD_TOKEN`: it warms off the trusted cache but can only write
+  the untrusted scope, so it can't poison a trusted build. (A different
+  cache backend plugs in through a cache plugin — see
+  [Core is provider-neutral](../extensibility/).)
 
 ## Without `--affected`
 
