@@ -78,7 +78,13 @@ describe('cloud() plugin shape', () => {
 })
 
 // Clear every connection env var so a test's outcome depends only on what it
-// sets — the plugin resolves ONE connection from a superset of aliases.
+// sets — the plugin resolves ONE connection from a superset of aliases. The
+// GITHUB_* vars are cleared too so the suite is HERMETIC inside GitHub Actions
+// itself: `GITHUB_STEP_SUMMARY` (always set in Actions) activates the plugin's
+// GHA-summary telemetry path, and GITHUB_TOKEN/ACTIONS drive the check-run rung
+// — leaving them set makes a "declines when unconfigured" assertion fail on a
+// runner though it passes locally. A test that WANTS the GHA-summary path sets
+// GITHUB_STEP_SUMMARY itself inside the clean-env block.
 const CONN_KEYS = [
   'VX_CLOUD_URL',
   'VX_CLOUD_TOKEN',
@@ -89,6 +95,9 @@ const CONN_KEYS = [
   'VX_CLOUD_INSIGHTS_URL',
   'VX_CLOUD_CONFIG',
   'VX_CLOUD_ENV',
+  'GITHUB_STEP_SUMMARY',
+  'GITHUB_TOKEN',
+  'GITHUB_ACTIONS',
 ]
 async function withCleanConnEnv<T>(
   overrides: Record<string, string>,
