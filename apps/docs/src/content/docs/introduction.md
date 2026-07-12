@@ -55,41 +55,37 @@ The full, sourced comparison lives in
 [vx vs Turborepo vs Nx](../comparison/). The performance mechanics are in
 [Why vx is fast](../concepts/why-vx-is-fast/).
 
-## The open platform layer
+## Beyond the task runner
 
-Beyond the core task runner, vx ships an OSS open platform — every
-contract is documented; every wire is JSON-RPC 2.0. None of these
-require additional services:
+The core runner is extended through documented seams — every contract is
+public, every wire is JSON-RPC 2.0. These need **no** additional service:
 
-- **[vx mcp](../guides/mcp/)** — Model Context Protocol server. `vx mcp`
-  over stdio, or `POST /mcp` on the `vx-cloud` platform. Claude Code,
-  Cursor, Continue.dev query cache stats and run history through the
-  standard agent-tool protocol.
-- **[Distributed CI](../guides/distributed-ci/)** — `vx-cloud agent`s
-  attach to a `vx-cloud` platform session and execute your task graph
-  across machines (the Nx-Cloud-DTE equivalent). Content-addressed; the
-  submitting run self-registers, so local + remote agents mix.
+- **[vx mcp](../guides/mcp/)** — Model Context Protocol server over stdio.
+  Claude Code, Cursor, Continue.dev query cache stats and run history
+  through the standard agent-tool protocol.
 - **[Plugin API](../guides/plugins/)** — register lifecycle hooks in
   `vx.workspace.ts`. Forward outcomes to Sentry, post to Slack, ship
   metrics anywhere.
 - **[Predictive scheduling](../guides/predictive-scheduling/)** — opt
   in with `predictive: true`; the scheduler reads run history and
   dispatches by expected remaining critical path.
-- **[Self-host vx-cloud](../guides/self-hosting/)** — the self-hosted CI
-  platform, `docker compose up`: accounts, orgs, RBAC, the dashboard, the
-  `/v1/*` analytics, the `/v1/cache` remote cache, and `/mcp`, in one
-  stateless process backed by Postgres + an S3 bucket.
-- **[Dashboard](../guides/dashboard/)** — Solid SPA embedded in the
-  `vx-cloud` server (nothing to build). Account login, an org switcher,
-  an Admin area, and run history, per-task averages, cache stats, and
-  insights across your workspaces.
+- **[Core is provider-neutral](../guides/extensibility/)** — a dashboard,
+  a remote cache, and distributed execution are all plugins; core depends
+  on none of them.
 - **[OpenTelemetry CI/CD spans](../guides/otel-bridge/)** — set
   `OTEL_EXPORTER_OTLP_ENDPOINT`, install the three OTel peers; every
   event lands in Grafana / Honeycomb / Datadog / Tempo natively, no
   bridge package.
-- **[Wire protocol](../guides/wire-protocol/)** — the `vx-cloud` platform
-  speaks JSON-RPC 2.0 over WS, SSE, and NDJSON. `curl -N
-  https://vx.example.com/events` streams every run envelope.
+
+For the things that need a server — a shared cache, distributed CI, a
+dashboard, and MCP over HTTP — there's an **optional self-hosted platform**
+your workspaces connect to:
+
+- **[The Cloud platform](../cloud/overview/)** — an independent CI platform
+  (accounts, orgs, RBAC) deployed with `docker compose`, backed by
+  Postgres + S3: a dashboard, a trust-scoped shared remote cache,
+  distributed execution across an agent pool, MCP over HTTP, and a
+  JSON-RPC wire protocol.
 
 ## What vx is *not*
 

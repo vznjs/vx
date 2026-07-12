@@ -1,6 +1,6 @@
 ---
 title: Remote caching
-description: A local cache makes your own runs instant with zero setup. To share results across machines, connect a vx-cloud — the remote cache is part of that one connection. Other backends plug in through the same RemoteCacheLayer seam.
+description: A local cache makes your own runs instant with zero setup. To share results across machines, a remote-cache plugin fills core's RemoteCacheLayer seam — the first-party shared cache is vx Cloud, and any other backend plugs in the same way.
 ---
 
 A local cache makes *your* repeat runs instant, and it needs **no setup** —
@@ -11,91 +11,55 @@ clone is fast on its first run.
 Sharing is the only part that needs a server. A solo developer needs
 nothing here — the [local cache](../caching/) is automatic.
 
-## The one connection
+## Sharing is a plugin
 
-Sharing a cache means connecting to a **vx-cloud** — the [self-hosted
-platform](../self-hosting/) that hosts the artifact store (plus the
-dashboard and, optionally, [distributed execution](../distributed-ci/)).
-**One connection provides all of it.** The remote cache is *internal* to
-that connection: connect a platform and every `vx run` reads and writes
-its artifact store automatically — there is **no** separate cache URL or
-token to configure.
+Core ships **no HTTP cache client**. Sharing a cache is a **plugin
+concern**: core defines a three-call `RemoteCacheLayer` seam
+(`has`/`get`/`put`) and a `cache` plugin capability, and everything else —
+read-through with local hydration, at-most-once in-flight deduplication,
+background write-through uploads, and the never-fail contract — is core's
+`LayeredCache`. A plugin provides the wire; `LayeredCache` provides the
+behavior.
 
-Persist the connection once (`$VX_CLOUD_TOKEN` is an API token you minted
-under **Admin → Tokens** on the platform):
+Reads try local first, then remote (hydrating local on a remote hit), with
+a background prefetch pass that overlaps remote GETs with execution. Writes
+go to local immediately; the remote upload is a fire-and-forget background
+task drained at end of run — failures are logged but never fail the build.
 
-```bash
-vx-cloud connect https://vx-cloud.example.com --token "$VX_CLOUD_TOKEN"
-```
+## The first-party shared cache
 
-or set it with two environment variables (handy in CI):
+The first-party remote cache is a self-hosted platform documented in its
+own section. Connect a deployment and every `vx run` layers its shared
+artifact store on top of the local cache automatically — the cache is
+trust-scoped, so a fork PR can warm off `main` without being able to poison
+a trusted build. See [Remote caching](../../cloud/remote-caching/) and the
+[platform overview](../../cloud/overview/).
 
-```bash
-export VX_CLOUD_URL=https://vx-cloud.example.com
-export VX_CLOUD_TOKEN=your-token
-```
+## Bring your own backend
 
-Either way, `vx run` now layers the cloud's cache on top of the local one
-(local first, then remote, then execute; remote hits hydrate the local
-cache). Don't have a server yet? It's one `docker compose up` — see
-[Self-host vx-cloud](../self-hosting/).
-
-### The connection variables
-
-| Variable            | Purpose                                                                                     |
-| ------------------- | ------------------------------------------------------------------------------------------- |
-| `VX_CLOUD_URL`      | The vx-cloud origin. Drives the cache, analytics ingest, and distributed execution.         |
-| `VX_CLOUD_TOKEN`    | Bearer token for a **trusted** context (reads and writes the trusted cache scope).          |
-| `VX_CLOUD_PR_TOKEN` | Bearer token for a **fork-PR** context (reads trusted, writes only untrusted — see below).  |
-
-That's the whole surface. The cache, the dashboard, and distributed
-execution all ride this one connection — there is no separate
-cache-only variable.
-
-## Trust follows the token
-
-The cache is **trust-scoped**, and the tier is decided by **which token you
-present** — the server derives it from the bearer, never from a client
-claim:
-
-- **`VX_CLOUD_TOKEN`** — a trusted context (your `main` builds, protected
-  branches). Reads and writes the trusted scope.
-- **`VX_CLOUD_PR_TOKEN`** — a fork-PR context. Reads the trusted scope (so
-  the PR still warms off `main`) but writes **only** the untrusted scope, so
-  a fork can never poison a trusted build. It's safe to expose.
-
-There's no separate trust flag and no autodetection: a fork PR simply
-doesn't have your repo secrets, so the only token it holds is the PR token —
-which token you have *is* the tier. Present the PR token from fork-PR jobs;
-present the trusted token everywhere else.
+Because the wire is a plugin, you can back the shared cache with
+**anything** — your own server, a Turborepo-compatible cache, S3/R2, Redis
+— with no platform involved. Implement core's `RemoteCacheLayer` seam and
+wrap the local cache in `LayeredCache`; the runnable recipe (including a
+Turbo-wire variant that speaks `/v8/artifacts/:hash`) is in
+[Core is provider-neutral](../extensibility/#bring-your-own-remote-cache).
+Embedders that already hold a client can inject it per-run via
+`RunOptions.remoteCache` (explicit injection wins over the plugin consult).
 
 ## It never breaks your build
 
-The remote cache is **fully optional at runtime**. Any failure — a 500, a
-timeout, an auth error, a corrupt artifact — degrades to a local cache miss
-and the run continues. A remote outage slows you down; it never fails you.
-Remote lookups also fire concurrently in the background before scheduling,
-so network latency overlaps execution.
-
-## A different cache backend (bring your own wire)
-
-Don't want to run a vx-cloud? The remote cache is **plugin-driven**:
-core defines a three-call `RemoteCacheLayer` seam (`has`/`get`/`put`)
-and everything else — policy gating, deduplication, provenance,
-never-fail degradation — is core's `LayeredCache`. Any backend (a
-Turbo-compatible server, S3-direct, your own service) plugs in as a
-small plugin; the recipe is in
-[Core is provider-neutral](../extensibility/#bring-your-own-remote-cache).
-The retired `VX_REMOTE_CACHE_*` environment variables no longer exist.
+Whatever backend fills the seam, the remote cache is **fully optional at
+runtime**. Any failure — a 500, a timeout, an auth error, a corrupt
+artifact — degrades to a local cache miss and the run continues. A remote
+outage slows you down; it never fails you.
 
 ## Artifact integrity
 
-Every artifact upload to a vx-cloud carries an `x-vx-digest` header —
-a structural hash over the artifact bytes. The server stores it and
-echoes it back on download, and the **client verifies** it against the
-received bytes: a corrupt store, a truncating proxy, or a bad disk
-degrades to re-execution — it never restores corrupt outputs. This is
-always on; there is nothing to configure.
+The vx-native `/v1/cache` wire attaches an `x-vx-digest` header — a
+structural hash over the artifact bytes — to every upload; the client
+verifies it against the received bytes on download, so a corrupt store or a
+truncating proxy degrades to re-execution rather than restoring corrupt
+outputs. A bring-your-own backend can adopt the same contract.
 
 ## In CI
 
@@ -108,7 +72,7 @@ build.
 ## Next steps
 
 - **[Continuous integration](../ci/)** — the full CI recipe.
-- **[Self-host vx-cloud](../self-hosting/)** — stand up the server in one
-  `docker compose up`.
+- **[Core is provider-neutral](../extensibility/)** — the seam and a
+  bring-your-own recipe.
 - **[Caching deep dive](../../caching/)** — the artifact format and the
   layered cache.

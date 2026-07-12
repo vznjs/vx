@@ -1,6 +1,6 @@
 ---
 title: Continuous integration
-description: Run vx in CI — install the binary, build only what changed with --affected, share a cache by connecting a vx-cloud, and (optionally) pin a reproducible run with vx lock + --frozen.
+description: Run vx in CI — install the binary, build only what changed with --affected, share a cache by connecting a remote-cache backend, and (optionally) pin a reproducible run with vx lock + --frozen.
 ---
 
 vx is built for CI: a content-addressed cache plus `--affected` selection
@@ -11,11 +11,13 @@ setup you can copy, plus the lockfile workflow and when to reach for it.
 ## The shape of a fast CI run
 
 1. **Install vx** (a single binary) and your workspace dependencies.
-2. **Connect a vx-cloud** so this run shares a cache with previous runs and
-   teammates. One connection (`VX_CLOUD_URL` + `VX_CLOUD_TOKEN`) provides
-   the remote cache — no separate cache config. (No server? The local cache
-   still makes warm runs instant; a shared cache is only needed to reuse
-   work *across* machines.)
+2. **Connect a shared cache** so this run reuses what previous runs and
+   teammates already built. Sharing is a plugin — the first-party option
+   is a self-hosted platform (see the [Cloud section](../../cloud/overview/)),
+   and any other backend plugs in the same way (see
+   [Remote caching](../remote-caching/)). (No server? The local cache still
+   makes warm runs instant; a shared cache is only needed to reuse work
+   *across* machines.)
 3. Run with **`--affected`** so only changed packages execute.
 
 ## GitHub Actions
@@ -31,10 +33,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      # The one connection: cache + dashboard from a single vx-cloud.
-      VX_CLOUD_URL: ${{ secrets.VX_CLOUD_URL }}
-      VX_CLOUD_TOKEN: ${{ secrets.VX_CLOUD_TOKEN }}
+    # Connecting a shared cache is optional — the local cache already makes
+    # warm runs fast. To reuse artifacts across machines, add the shared
+    # cache's connection secrets here (see the Cloud section).
     steps:
       - uses: actions/checkout@v4
         with:
@@ -66,16 +67,13 @@ Notes:
   through your package manager.)
 - **Pin the version** with `VX_VERSION=<tag>` before the install line for
   byte-stable CI.
-- **Connection secrets** as `env` — `VX_CLOUD_URL` (your deployed
-  [vx-cloud platform](../self-hosting/)) + `VX_CLOUD_TOKEN` (a `trusted`
-  API token minted under **Admin → Tokens**) point this run at a shared
-  cache (and the dashboard). With them set, the run reuses artifacts built
-  on other branches and machines. See [Remote caching](../remote-caching/).
-  On a fork PR, present `VX_CLOUD_PR_TOKEN` (an `untrusted` token) instead
-  of `VX_CLOUD_TOKEN`: it warms off the trusted cache but can only write
-  the untrusted scope, so it can't poison a trusted build. (A different
-  cache backend plugs in through a cache plugin — see
-  [Core is provider-neutral](../extensibility/).)
+- **Shared cache** — connect a remote-cache backend to reuse artifacts
+  built on other branches and machines (unchanged packages restore instead
+  of executing). The first-party option is a self-hosted platform with a
+  trust-scoped cache and fork-PR tokens; its CI wiring lives in the
+  [Cloud section](../../cloud/remote-caching/). Any other backend plugs in
+  through a cache plugin — see [Remote caching](../remote-caching/) and
+  [Core is provider-neutral](../extensibility/).
 
 ## Without `--affected`
 
@@ -162,20 +160,24 @@ vx run build --all --profile=trace.json       # Chrome-trace timeline
 
 ## GitHub Actions job summary
 
-Declare the [`cloud()` plugin](../extensibility/) in your
-`vx.workspace.ts` and every `vx run` inside GitHub Actions appends a
-per-task result table (failures first, with exit codes) to the job's
-summary page — so a red build tells you *which* task failed without
-opening the raw log. It works with **no serve connected** (the summary
-is formatted from the run locally, from the `$GITHUB_STEP_SUMMARY` file
-Actions provides) and needs no extra workflow step. A plain local run —
-not in Actions — writes nothing.
+vx can append a per-task result table (failures first, with exit codes) to
+the job's summary page, so a red build tells you *which* task failed
+without opening the raw log. Two ways:
+
+- **Core, one flag.** `vx run ci --report=markdown >> "$GITHUB_STEP_SUMMARY"`
+  writes the table from the run's own outcomes — no plugin, no server.
+- **Automatic.** The first-party CI telemetry plugin appends the summary on
+  every `vx run` inside Actions (and adds PR checks, below) with **no
+  server connected** — the summary is formatted locally from the
+  `$GITHUB_STEP_SUMMARY` file Actions provides, with no extra workflow step.
+  See the [Cloud section](../../cloud/overview/).
 
 ## PR checks (GitHub Checks API)
 
 The job summary lives on the *job* page; to surface the same result in the
 **PR's checks list** — a named check with a pass/fail conclusion and the
-per-task table as its detail — hand the workflow token to the vx step:
+per-task table as its detail — declare the first-party CI plugin and hand
+the workflow token to the vx step:
 
 ```yaml
 permissions:
@@ -225,8 +227,8 @@ paths and fails the run naming any undeclared read. `--verify=all` runs
 both proofs. (`inputs`/`all` need the OS sandbox on the runner; GitHub's
 `ubuntu-latest` provides bwrap + strace.)
 
-When the `cloud()` plugin is active, the job-summary page gains a
-**Hermeticity** line
+When the first-party CI telemetry plugin is active, the job-summary page
+gains a **Hermeticity** line
 (`🔒 Hermeticity: N proven · M non-deterministic`) and each non-hermetic
 task is flagged inline with its diverging outputs.
 `--verify-allow=<pkg#task,…>` exempts tasks you can't fix yet so the gate
@@ -243,22 +245,22 @@ platform to write wins and the other restores wrong bytes forever.
 
 `--verify=fingerprint` closes that gap: it fingerprints each executed
 task's output tree (~1× execution plus a hash pass — no re-run) and
-ships the fingerprint with the run's telemetry. A connected serve pairs
-fingerprints for the same cache key across platforms and names exactly
-which output files diverge — on `GET /v1/hermeticity` and the
-dashboard's Insights **Hermeticity** card. Run it on the same
-per-platform matrix that builds your release binaries, against one
-connected serve:
+ships the fingerprint with the run's telemetry. A connected analytics
+service pairs fingerprints for the same cache key across platforms and
+names exactly which output files diverge — the first-party one surfaces
+this on its dashboard's Insights **Hermeticity** card (see the
+[Cloud section](../../cloud/overview/)). Run it on the same per-platform
+matrix that builds your release binaries, with a shared cache connected so
+each platform reports:
 
 ```yaml
 strategy:
   matrix:
     os: [ubuntu-latest, macos-latest]
 steps:
+  # Connect a shared cache + analytics service here (see the Cloud section)
+  # so the fingerprints from every platform land in one place.
   - run: vx run --all --force --verify=fingerprint
-    env:
-      VX_CLOUD_URL: ${{ vars.VX_CLOUD_URL }}
-      VX_CLOUD_TOKEN: ${{ secrets.VX_CLOUD_TOKEN }}
 ```
 
 `--force` matters: with plain reads the second platform would cache-hit

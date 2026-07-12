@@ -69,34 +69,14 @@ vx's MCP tools share dispatch with the inspector RPC channel
 WebSocket-side inspector ships, every MCP tool will work over WS
 too — one handler, two transports.
 
-## MCP over HTTP — the vx-cloud platform
+## MCP over HTTP — the platform
 
-`vx mcp` (stdio) is per-workspace and process-private. The [self-hosted
-`vx-cloud` platform](../self-hosting/) also exposes MCP over HTTP at
-`POST /mcp` — dependency-free (JSON-RPC 2.0, protocol `2025-03-26`, no
-SDK), behind the platform's account/token auth and **tenant-clamped** by
-org and workspace. An AI agent points at your deployment with a minted
-`vxc_` API token and reads the same metrics the dashboard shows, across
-every workspace in the org (a workspace-scoped token is pinned to its
-workspace):
-
-```jsonc
-// Claude Code, pointing at your deployment
-{
-  "mcpServers": {
-    "vx-team": {
-      "url": "https://vx.example.com/mcp",
-      "headers": { "Authorization": "Bearer vxc_..." }
-    }
-  }
-}
-```
-
-The HTTP tools (`list_workspaces`, `list_runs`, `get_run`, `run_trends`,
-`cache_stats`, `why_did_rerun`, `compare_runs`) read from **Postgres** —
-the platform's system of record — so they work even though the platform
-holds no workspace checkout or local `cache.db`. Mint the token under
-**Admin → Tokens**. See [Self-host vx-cloud](../self-hosting/).
+`vx mcp` (stdio) is per-workspace and process-private. The optional
+self-hosted platform also exposes MCP over HTTP at `POST /mcp` — a
+team-wide, org/workspace-clamped surface backed by Postgres, so an AI agent
+reads the same analytics the dashboard shows across a whole org. That path
+lives in its own section: see
+[MCP over HTTP](../../cloud/mcp/).
 
 ## What's coming
 

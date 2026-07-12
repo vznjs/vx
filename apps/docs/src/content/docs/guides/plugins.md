@@ -42,17 +42,17 @@ interface VxPlugin {
   to decline. First non-undefined wins; else core runs in-process.
 - **`cache`** returns a `CacheLayer` wrapping (or replacing) the local cache,
   or `undefined`. First non-undefined wins; else the bare local cache —
-  core ships no wire client of its own. **This is the seam `@vzn/vx-cloud`
-  plugs into — and so can you** (see "Bring your own cache").
+  core ships no wire client of its own. **This is the seam the first-party
+  cloud plugin plugs into — and so can you** (see "Bring your own cache").
 - **`telemetry`** returns one or more `TelemetrySink`s that receive versioned
   `RunSummaryRecord` / `TelemetryRecord` values. A sink holds NO run handle, so
   it provably can't change a run; ALL plugins' sinks run (additive), each
   crash-isolated. This is the export contract OpenTelemetry, a custom HTTP
-  exporter, and vx-cloud all speak.
+  exporter, and the first-party cloud plugin all speak.
 
-`@vzn/vx-cloud` is just the first-party plugin that implements all three
-against a deployed `vx-cloud` platform. It's fully optional and
-replaceable — nothing in core depends on it, and you can implement your own
+The first-party cloud plugin just implements all three seams against a
+deployed self-hosted platform. It's fully optional and replaceable —
+nothing in core depends on it, and you can implement your own
 backend/cache/telemetry the same way.
 
 ## The telemetry sink
@@ -275,11 +275,11 @@ export function timeseriesPlugin(opts: { url: string }): VxPlugin {
 Prefer `onRunSummary` when you want the whole run in one payload;
 `onRecord` when you want a live stream of per-task events.
 
-## Bring your own cache (no vx-cloud)
+## Bring your own cache
 
 The remote cache is a plugin capability, so you can back it with **anything** —
-your own server, a Turbo-compatible cache, S3/R2, Redis — with no vx-cloud
-involved. The easiest path implements core's three-call `RemoteCacheLayer`
+your own server, a Turbo-compatible cache, S3/R2, Redis — with no cloud
+platform involved. The easiest path implements core's three-call `RemoteCacheLayer`
 seam (`has`/`get`/`put`) and wraps the local cache in `LayeredCache`, which
 then owns policy gating, deduplication, provenance, and the never-fail
 degradation for you:
@@ -328,9 +328,8 @@ URLs and `x-artifact-*` headers inside the class. For a fully custom
 layering (not just a different wire), implement the `CacheLayer` interface
 directly — `key`, `get`, `save`, `has`, `prefetch`, … — and return your own
 object instead of `LayeredCache`. `CacheLayer`, `RemoteCacheLayer`,
-`LayeredCache`, and `Cache` are all exported from `@vzn/vx`. vx-cloud's
-`cloud()` plugin is exactly this pattern; yours sits alongside it as an
-equal.
+`LayeredCache`, and `Cache` are all exported from `@vzn/vx`. The first-party
+cloud plugin is exactly this pattern; yours sits alongside it as an equal.
 
 ## Crash isolation
 

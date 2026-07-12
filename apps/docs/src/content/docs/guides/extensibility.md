@@ -1,6 +1,6 @@
 ---
 title: Core is provider-neutral
-description: vx core is only a task runner. A dashboard, remote cache, distributed execution, and telemetry export are plugins — declared in vx.workspace.ts, first-party or your own. Core depends on none of them, and @vzn/vx-cloud is just one implementation you can replace.
+description: vx core is only a task runner. A dashboard, remote cache, distributed execution, and telemetry export are plugins — declared in vx.workspace.ts, first-party or your own. Core depends on none of them, and the first-party cloud plugin is just one implementation you can replace.
 ---
 
 vx core is **only a task runner**. It discovers projects, builds the task
@@ -10,10 +10,10 @@ calls no service, and needs no account — it works fully offline, forever.
 
 Everything beyond that — a **dashboard**, a **shared/remote cache**,
 **distributed execution**, **telemetry export** — is a **plugin**. Core
-defines the extension seams; plugins fill them. `@vzn/vx-cloud` is the
-*first-party* plugin, but it is **not privileged**: core never imports it,
-never names it, and never needs it. You can delete it, ignore it, or
-replace it with your own — core behaves identically.
+defines the extension seams; plugins fill them. The first-party cloud
+plugin is one implementation, but it is **not privileged**: core never
+imports it, never names it, and never needs it. You can delete it, ignore
+it, or replace it with your own — core behaves identically.
 
 ## The seams
 
@@ -45,30 +45,22 @@ so it can never change, slow, or fail a run.
 See [Writing a vx plugin](/vx/guides/plugins/) for the full contract and
 runnable examples.
 
-## `@vzn/vx-cloud` is just a plugin
+## The first-party cloud plugin is just a plugin
 
 The first-party cloud is one package that implements all three seams
-against a deployed `vx-cloud` platform. Declaring it is one line:
-
-```ts
-// vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
-import { cloud } from '@vzn/vx-cloud/plugin'
-
-export default defineWorkspace({ plugins: [cloud()] })
-```
-
-With no connection configured, `cloud()` **declines every seam** and adds
-zero overhead — so it's safe to leave declared everywhere. Point it at a
-deployed platform (`vx-cloud connect` or `VX_CLOUD_URL` + `VX_CLOUD_TOKEN`)
-and the same one connection lights up the remote cache, analytics ingest,
-and distributed execution. It's a normal plugin — nothing more.
+against a deployed self-hosted platform. Declaring it is one line in
+`vx.workspace.ts`, and with no connection configured it **declines every
+seam** and adds zero overhead — so it's safe to leave declared everywhere.
+Point it at a deployment and the same one connection lights up the remote
+cache, analytics ingest, and distributed execution. It's a normal plugin —
+nothing more. The setup lives in its own section:
+[the Cloud platform overview](../../cloud/overview/).
 
 ## Build your own
 
 Because the seams are the only contract, a third-party package is a
-**first-class equal** to `@vzn/vx-cloud`. To back the cache with your own
-infrastructure, no cloud involved, implement core's three-call
+**first-class equal** to the first-party cloud plugin. To back the cache
+with your own infrastructure, no cloud involved, implement core's three-call
 `RemoteCacheLayer` seam (`has`/`get`/`put` — throw on failure, and
 `LayeredCache` degrades every throw to a cache miss):
 
@@ -118,9 +110,9 @@ single `@vzn/vx` entry point.
 ## Bring your own remote cache
 
 The remote-cache **wire is a plugin concern** — core ships no HTTP cache
-client at all. `@vzn/vx-cloud` speaks its own vx-native `/v1/cache` wire;
-a **Turborepo-compatible** cache server (ducktors, Vercel hosted, …) is
-the same recipe with Turbo's shapes inside the class:
+client at all. The first-party cloud plugin speaks its own vx-native
+`/v1/cache` wire; a **Turborepo-compatible** cache server (ducktors, Vercel
+hosted, …) is the same recipe with Turbo's shapes inside the class:
 
 ```ts
 import { LayeredCache, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
@@ -186,10 +178,11 @@ This isn't a convention you have to trust — it's checked in CI. Core
 `tests/package-boundaries.test.ts` and the public API surface is
 snapshot-pinned. Concretely, vx core:
 
-- has **no** dependency on `@vzn/vx-cloud` (or any `@vzn/vx-*` package);
-- reads **no** `VX_CLOUD_*` variable and no remote-cache env at all —
-  the remote cache reaches core only through the `cache` capability or
-  `RunOptions.remoteCache`;
+- has **no** dependency on any first-party service/cloud package (or any
+  `@vzn/vx-*` package);
+- reads **no** cloud-provider environment variable and no remote-cache env
+  at all — the remote cache reaches core only through the `cache`
+  capability or `RunOptions.remoteCache`;
 - ships **no** server, dashboard, or account logic;
 - runs every task the same whether zero plugins or ten are declared.
 
@@ -200,6 +193,6 @@ optional and makes "bring your own" a real, supported path.
 ## See also
 
 - [Writing a vx plugin](/vx/guides/plugins/) — the capability contract + Sentry/Slack/metrics/cache examples.
-- [Remote caching](/vx/guides/remote-caching/) — the one-connection model and artifact integrity.
-- [Distributed CI execution](/vx/guides/distributed-ci/) — the `backend` seam at scale.
+- [Remote caching](/vx/guides/remote-caching/) — the `RemoteCacheLayer` seam and artifact integrity.
+- [Distributed CI execution](../../cloud/distributed-ci/) — the `backend` seam at scale.
 - [OpenTelemetry traces & metrics](/vx/guides/otel-bridge/) — a `telemetry` plugin in the wild.
