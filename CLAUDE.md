@@ -208,6 +208,48 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-12**: **Hostile review of platform Phase 4 (server half) — the
+  fold + MCP VERDICT SOUND; two live-stream findings fixed (`6c7a25c`)**
+  (repro-mandated reviewer over `d39d98a`..`e885a53`; real two-org
+  `startServer` + a real `vx-cloud agent` subprocess driving a real dist
+  build). **Fixed:** **(1) HIGH — cross-tenant leak on the live SSE/NDJSON
+  broadcast.** `/events` / `/v1/events` / `/stream` fanned every concurrent
+  dist run's events to a SINGLE GLOBAL subscriber set with NO org scoping — so
+  any authenticated principal (any org's ci token OR session) that opened
+  `/stream` received EVERY tenant's run stdout/stderr + the exact command
+  lines. Reproduced end-to-end: org B subscribed with its OWN token and
+  received org A's `SECRET-BUILD-OUTPUT` + `echo … && sleep 2 …` (2342 bytes of
+  another tenant's run). INHERITED from the deleted serve.ts (byte-identical
+  global `broadcast`), but the fold put it on the platform's SOLE multi-tenant
+  host — it directly contradicts the P3 tenant-isolation verdict for this
+  surface, and needs no CSRF/CORS (a scripted `curl /stream?token=<own>`
+  passively harvests all tenants' live runs). Fix (`dispatch.ts`): each
+  subscriber carries its server-derived `orgId`; `broadcast(msg, orgId)`
+  delivers ONLY to same-org subscribers; the emitting run's org
+  (`ws.data.principal.orgId`, set at upgrade) scopes its `send`. **(2) MEDIUM —
+  the CSWSH Origin gate the fold DROPPED** (a genuine regression — the deleted
+  serve.ts refused cross-origin WS/SSE handshakes via `originAllowed` +
+  `VX_CLOUD_ALLOW_ORIGIN`; the folded gate had no Origin check). Not
+  independently exploitable (the WS channels are machine-token-only — a session
+  cookie is 403'd — and cross-origin credentialed SSE is blocked by
+  `Allow-Origin: *` without `Allow-Credentials`), but it's a defense-in-depth
+  control the 2026-07-03 security wave explicitly added, silently removed.
+  Restored in `server.ts` (no-Origin CLI + same-origin pass; other cross-origin
+  browser handshakes → 403; `VX_CLOUD_ALLOW_ORIGIN` allowlists a hosted
+  dashboard). Pinned by two regression tests (`server.test.ts`, real two-org
+  server: org B's `/stream` sees nothing of org A's run; cross-origin SSE across
+  all three stream paths → 403). **Refuted by executed repro (sound):** the MCP
+  tenant clamp (org B / a ws-scoped token / an explicitly-named foreign
+  workspace all get isError-or-empty, never org A's data — MCP reuses
+  `resolveReadWorkspace` faithfully, every tool `WHERE workspace_id=<resolved>`);
+  the gate bypass (unauth cache PUT/GET/artifacts/agents/SSE → 401; session on
+  the machine-token-only surfaces → 403; no handler runs without a resolved
+  principal); every cache-wire contract (307 presign, 409 immutability, 400
+  zstd-magic, untrusted→404-from-trusted, `org/<id>/ws/…` prefix, cross-org
+  GET→404); NO SQLite at rest (0 `.db` files after ingest+logs+dist+mcp; the 4
+  stores gone; `/v1/graph` falls through not 500); dist agent org-keying. Cloud
+  380→382 (+2 regression), lint/fmt clean, core untouched.
+
 - **2026-07-12**: **Scale/perf e2e guards for 1000s-task workspaces —
   "graph, lags" (owner ask) — SHIPPED (`02eff47`, `04344b5`, `614b528`)**,
   plus a real deep-graph stack-overflow FIX the guard surfaced. Three
