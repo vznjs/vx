@@ -48,7 +48,7 @@ runnable examples.
 ## `@vzn/vx-cloud` is just a plugin
 
 The first-party cloud is one package that implements all three seams
-against a `vx-cloud serve` process. Declaring it is one line:
+against a deployed `vx-cloud` platform. Declaring it is one line:
 
 ```ts
 // vx.workspace.ts
@@ -60,9 +60,9 @@ export default defineWorkspace({ plugins: [cloud()] })
 
 With no connection configured, `cloud()` **declines every seam** and adds
 zero overhead — so it's safe to leave declared everywhere. Point it at a
-server (`vx-cloud connect` or `VX_CLOUD_URL` + `VX_CLOUD_TOKEN`) and the
-same one connection lights up the remote cache, analytics ingest, and
-distributed execution. It's a normal plugin — nothing more.
+deployed platform (`vx-cloud connect` or `VX_CLOUD_URL` + `VX_CLOUD_TOKEN`)
+and the same one connection lights up the remote cache, analytics ingest,
+and distributed execution. It's a normal plugin — nothing more.
 
 ## Build your own
 

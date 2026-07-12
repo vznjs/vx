@@ -62,12 +62,12 @@ contract is documented; every wire is JSON-RPC 2.0. None of these
 require additional services:
 
 - **[vx mcp](../guides/mcp/)** — Model Context Protocol server. `vx mcp`
-  over stdio, or `POST /mcp` on a running `vx-cloud serve`. Claude Code,
+  over stdio, or `POST /mcp` on the `vx-cloud` platform. Claude Code,
   Cursor, Continue.dev query cache stats and run history through the
   standard agent-tool protocol.
 - **[Distributed CI](../guides/distributed-ci/)** — `vx-cloud agent`s
-  attach to a `vx-cloud serve` session and execute your task graph across
-  machines (the Nx-Cloud-DTE equivalent). Content-addressed; the
+  attach to a `vx-cloud` platform session and execute your task graph
+  across machines (the Nx-Cloud-DTE equivalent). Content-addressed; the
   submitting run self-registers, so local + remote agents mix.
 - **[Plugin API](../guides/plugins/)** — register lifecycle hooks in
   `vx.workspace.ts`. Forward outcomes to Sentry, post to Slack, ship
@@ -75,21 +75,21 @@ require additional services:
 - **[Predictive scheduling](../guides/predictive-scheduling/)** — opt
   in with `predictive: true`; the scheduler reads run history and
   dispatches by expected remaining critical path.
-- **[Self-host vx-cloud](../guides/self-hosting/)** — drop the
-  `vx-cloud` binary in Docker for a team-shared backend: the dashboard,
-  the `/v1/*` analytics, the `/v8` remote cache, and `/mcp`, in one
-  process. Token auth, no separate cloud project.
+- **[Self-host vx-cloud](../guides/self-hosting/)** — the self-hosted CI
+  platform, `docker compose up`: accounts, orgs, RBAC, the dashboard, the
+  `/v1/*` analytics, the `/v1/cache` remote cache, and `/mcp`, in one
+  stateless process backed by Postgres + an S3 bucket.
 - **[Dashboard](../guides/dashboard/)** — Solid SPA embedded in the
-  `vx-cloud` binary, served by `vx-cloud serve --ui` (nothing to build).
-  Run history, per-task averages, cache stats, a live run graph.
-  Connection picker switches between servers.
+  `vx-cloud` server (nothing to build). Account login, an org switcher,
+  an Admin area, and run history, per-task averages, cache stats, and
+  insights across your workspaces.
 - **[OpenTelemetry CI/CD spans](../guides/otel-bridge/)** — set
   `OTEL_EXPORTER_OTLP_ENDPOINT`, install the three OTel peers; every
   event lands in Grafana / Honeycomb / Datadog / Tempo natively, no
   bridge package.
-- **[Wire protocol](../guides/wire-protocol/)** — `vx-cloud serve` speaks
-  JSON-RPC 2.0 over WS, SSE, and NDJSON. `curl -N
-  http://localhost:4321/events | jq` streams every envelope.
+- **[Wire protocol](../guides/wire-protocol/)** — the `vx-cloud` platform
+  speaks JSON-RPC 2.0 over WS, SSE, and NDJSON. `curl -N
+  https://vx.example.com/events` streams every run envelope.
 
 ## What vx is *not*
 

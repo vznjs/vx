@@ -51,9 +51,9 @@ interface VxPlugin {
   exporter, and vx-cloud all speak.
 
 `@vzn/vx-cloud` is just the first-party plugin that implements all three
-against a `vx-cloud serve`. It's fully optional and replaceable — nothing in
-core depends on it, and you can implement your own backend/cache/telemetry the
-same way.
+against a deployed `vx-cloud` platform. It's fully optional and
+replaceable — nothing in core depends on it, and you can implement your own
+backend/cache/telemetry the same way.
 
 ## The telemetry sink
 
