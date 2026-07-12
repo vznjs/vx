@@ -208,6 +208,28 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-12**: **Post-pivot future-proofing review — one dead-code removal +
+  stale-comment fixes; the pivot code is otherwise clean (`af…` follow-up)**.
+  A pass over the P1→P5 code for SIMPLE, durability wins (not a re-audit — the
+  tenant boundary was already adversarially reviewed). Found + fixed: (1)
+  `ArtifactStore.migrateLegacyFlatStore` was DEAD — a boot-time migration of the
+  pre-platform local flat store, but the platform is S3-only and never calls it
+  (LocalDirBackend is test-only); its "runs once on boot" comment actively
+  misled. Removed the method + its test + the now-unused `readdir`/`rename`
+  imports. (2) Comments in `artifact-store.ts` + `dist/registry.ts` still
+  described the DELETED "transitional single-tenant serve" — reworded: the
+  `bucket` override is a test-only flat-layout seam, `DEFAULT_ORG` is the
+  no-org fallback for the registry unit tests, and the platform gate always
+  builds a token-derived tenant-partitioned principal. (3) Dropped an unused
+  `orgId` in `analytics-write.test.ts` so a real future lint warning isn't lost
+  in noise. **Considered but SKIPPED as not-simple:** making the registry
+  `orgId` param required (churns ~20 test call sites; all 3 prod callers already
+  pass it); removing the vestigial `ServerConfig.dataDir` (a valuable "zero SQLite
+  at rest" e2e uses it as its watched dir); rewriting the N+1 `getCacheSavings`/
+  `getRegressions` queries (correctness-risky set-based rewrite, only matters at
+  extreme scale — deferred, bounded). Behavior unchanged; cloud 381 pass,
+  lint/fmt/core-ci clean.
+
 - **2026-07-12**: **Platform Phase 5 SHIPPED — docker-compose stack, `server`
   image, docs rewrite, cloud CI job — the platform pivot (P1→P5) is COMPLETE
   (`af6f451`, `68991eb`, `183900d`..`31d95a2`)**. The independent self-hosted
