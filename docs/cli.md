@@ -1009,6 +1009,40 @@ vx-lock.json:   yes
 - `vx stats` is a **deprecated alias** of `vx info` (info absorbed
   it); it prints byte-identical output.
 
+## `vx why`
+
+Answer "why did this task re-run?" from the terminal — the same
+persisted data the dashboard's "Why did this re-run?" card and the MCP
+`whyDidThisRerun`/`cacheKeyDiff` tools read. Read-only over the local
+`cache.db`: no config evaluation, no re-hash.
+
+```
+vx why [TASK | PKG#TASK] [--run <runId>] [--format pretty|json]
+```
+
+By default it compares the task's **latest** recorded run against its
+immediately-previous run; `--run <id>` pins a specific run. A bare task
+name resolves when exactly one project ran it (several → an error
+listing the candidates; unknown → include-match suggestions).
+
+```
+$ vx why app#build
+app#build — run 019f5a02-…
+  this run   2026-07-13T05:39:20.590Z · success · executed · key f7ee661520…
+  previous   2026-07-13T05:37:29.550Z · success · key 8b2e9bb2e8…
+  verdict    cache key changed between the previous run and this one (inputs differ)
+
+  what changed (1 component, 41 unchanged):
+    changed file  src/input.txt  3fe2a1b0… → 91c47d22…
+```
+
+The component-level rows come from the `entry_inputs` input
+fingerprints persisted with each cache entry; when either side's entry
+is gone (pruned, or the run failed and never saved one) the verb still
+names the hash change and says the component diff is unavailable.
+`--format json` emits one machine-readable object (`{ taskId, runId,
+why, diff }`).
+
 ## `vx mcp` — Model Context Protocol server
 
 Boot an MCP server so AI coding agents (Claude Code, Cursor,
