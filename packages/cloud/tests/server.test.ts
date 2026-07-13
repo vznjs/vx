@@ -361,6 +361,16 @@ describe('platform e2e (real pg + fake S3)', () => {
     expect(
       (await call('POST', '/v1/ingest/task', { bearer: ciToken, body: taskRecord })).status,
     ).toBe(200)
+    // Wire-version gate (parity with /v1/ingest/logs + /v1/catalog): a skewed
+    // record is rejected loud, not silently mis-parsed.
+    expect(
+      (
+        await call('POST', '/v1/ingest/task', {
+          bearer: ciToken,
+          body: { ...taskRecord, v: 2 },
+        })
+      ).status,
+    ).toBe(400)
     // The run detail already carries the task, with no summary posted yet.
     const liveRun = await call('GET', '/v1/runs/r-live', { cookie })
     expect(liveRun.status).toBe(200)

@@ -26,6 +26,9 @@ const CATALOG_BODY_MAX_BYTES = 8 * 1024 * 1024
 // One task: a small result record + a ≤128 KiB log tail. 2 MiB is generous
 // headroom; a bigger body is a malformed/hostile push.
 const TASK_BODY_MAX_BYTES = 2 * 1024 * 1024
+// Wire version of the incremental per-task record (set by the cloud() sink).
+// Gated like /v1/ingest/logs + /v1/catalog so a client/serve skew fails loud.
+const TASK_WIRE_VERSION = 1
 
 function json(body: unknown, status = 200): Response {
   return Response.json(body, { status, headers: CORS })
@@ -169,8 +172,18 @@ async function handleAnalyticsRequestInner(
     if (raw === null) return json({ ok: false, error: 'task record too large' }, 413)
     try {
       const record = JSON.parse(raw) as TaskIngestRecord
+      if (record?.v !== TASK_WIRE_VERSION) {
+        const got = typeof record?.v === 'number' ? record.v : 'none'
+        return json(
+          {
+            ok: false,
+            error: `task wire version mismatch: body v${String(got)}, serve v${String(TASK_WIRE_VERSION)}`,
+          },
+          400,
+        )
+      }
       if (
-        typeof record?.runId !== 'string' ||
+        typeof record.runId !== 'string' ||
         typeof record.workspaceId !== 'string' ||
         typeof record.runStartedAt !== 'number' ||
         record.task?.taskId === undefined ||
