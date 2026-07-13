@@ -208,6 +208,33 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-13**: **Batched `/v1/why/:runId` — the run-detail "why did this
+  re-run" panel is one request + polls live + actually renders on the platform
+  (`d34d7e1`)** (cycle-4 C4). The panel fired one `/v1/diff/:runId/:taskId` per
+  executed task (bounded 8-concurrent) — a 500-task run = 500 requests — which
+  is exactly why the run-detail live-fill work had to pin `runWhy` as a
+  fetch-once `staticSources` source. Replaced the fan-out with a single
+  `GET /v1/why/:runId`: ONE `LATERAL` query finds each executed task's
+  most-recent prior run and compares cache keys, returning the verdict (first
+  run / inputs changed / ran without a cache hit) for the whole run. With the
+  fan-out gone, `runWhy` joins the live 5s poll and the **`staticSources`
+  loader capability was removed entirely** (it had no other consumer — the
+  reason I added it in `6a79514` is now moot). **Two latent bugs fixed along
+  the way:** (1) the why TABLE was gated `visible: capsCacheMissing not-true`,
+  so since the platform pivot (no local cache.db) it showed ONLY a "run vx why
+  locally" hint and NEVER the verdict — the table now always renders the
+  per-task verdict (derived purely from Postgres `task_runs` hashes), with the
+  per-file/env/dep detail noted as local-only; (2) the old client logic
+  labelled a hash-change as "not cacheable / forced" because it only checked
+  for fingerprint `entries` (never present on the platform) — the batched
+  server compares hashes directly, so a real key change reads "inputs changed".
+  The single-segment route needed adding to `isAnalyticsSurface` (the same
+  allowlist-or-fall-through-to-SPA class as the `/v1/notifications` fix), pinned
+  by a server e2e. Dead code swept: `whyRows`/`changeToken`/`diffText` +
+  the fingerprint-detail columns + the `WhyRow` fan-out shape. Verified in a
+  REAL browser: the panel renders "inputs changed" with exactly ONE `/v1/why`
+  request and ZERO `/v1/diff`. Cloud 435 pass, core ci exit 0.
+
 - **2026-07-13**: **Adversarial review of the incremental-ingest wave — VERDICT
   SOUND, zero production-reachable defects; two consistency follow-ups shipped
   (`1e7f206`)**. A repro-mandated hostile reviewer (real ephemeral pg + the real
