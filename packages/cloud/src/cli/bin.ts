@@ -18,6 +18,7 @@ function printHelp(): void {
       '  vx-cloud server',
       '  vx-cloud connect <url> [--name <n>] [--token <t>] [--distribute[=<n>]] [--no-use] [--force]',
       '  vx-cloud env ls | use <name> | rm <name>',
+      '  vx-cloud status',
       '  vx-cloud disconnect',
       '  vx-cloud agent --url <serve> [--token <t>] [--capacity <n>] [--session <s>] [--idle-timeout <ms>] [--label <l>]',
       '  vx-cloud dev [--port <n>]',
@@ -49,6 +50,11 @@ function printHelp(): void {
       'env           Manage environments: `ls` (named servers, with live',
       '              reachability), `use <name>`, `rm <name>`. Tokens are stored',
       '              0600 and never printed.',
+      'status        Connection doctor: the resolved connection + token presence,',
+      '              server reachability + identity, an authenticated probe (names',
+      '              a rejected/missing token instead of failing silently), whether',
+      "              the cwd workspace declares cloud(), and the distribution mode's",
+      '              agent-pool capacity. Read-only; always exits 0.',
       'disconnect    Clear the active environment (entries + tokens survive;',
       '              runs stop pushing until you connect again).',
       'agent         Attach this machine (same repo, same commit, CLEAN tree) to a',
@@ -92,6 +98,10 @@ export async function run(argv: readonly string[]): Promise<number> {
       return await envCmd(rest)
     case 'disconnect':
       return disconnectCmd(rest)
+    case 'status': {
+      const { statusCmd } = await import('./status.js')
+      return await statusCmd(rest)
+    }
     case 'agent':
       return await agentCmd(rest)
     case 'coordinator':

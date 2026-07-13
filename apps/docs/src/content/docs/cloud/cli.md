@@ -29,8 +29,9 @@ binary prints a redirect: those commands live here, not in core.
 
 ```
 vx-cloud server       # the self-hosted platform (env-configured)
-vx-cloud connect <url> [--name N] [--token T] [--distribute[=N]] [--no-use] [--force]
+vx-cloud connect <url> [--name N] [--token T] [--distribute[=N]] [--no-use] [--force] [--anonymous]
 vx-cloud env ls | use <name> | rm <name>
+vx-cloud status
 vx-cloud disconnect
 vx-cloud agent --url <serve> [--token T] [--capacity N] [--session S] [--idle-timeout MS] [--label L]
 vx-cloud dev
@@ -210,6 +211,36 @@ URL/token, so existing setups keep working.)
   remote execution, opt-in via `VX_CLOUD_DISTRIBUTE=<n>` (explicit) or an
   environment connected with `--distribute` (ambient, fails safe to a local
   run).
+
+## `vx-cloud status` — connection doctor
+
+One read-only screen that surfaces the failure modes the never-fail
+clients hide by design. It prints: the resolved connection (explicit
+`VX_CLOUD_URL` env vs the active environment) and whether a token is
+present; server reachability + identity (`/health` + `/v1/meta`); an
+**authenticated probe** that names a rejected token (`TOKEN REJECTED
+(401)`) or a missing one on an account platform (where every push would
+401 silently) instead of leaving the dashboard mysteriously empty;
+whether the cwd workspace's `vx.workspace.ts` declares `cloud()` (a set
+`VX_CLOUD_DISTRIBUTE` is flagged **IGNORED** when it doesn't — the env
+var is read by the plugin, not by core); and, when distribution is
+enabled, the session's remote-agent count from `/v1/agents`.
+
+```
+$ vx-cloud status
+connection    https://vx.corp.example  (active environment)
+token         present
+server        ok (corp · vx 0.2.1 · auth: account)
+auth probe    ok
+workspace     /work/repo · cloud() declared
+distribution  explicit (VX_CLOUD_DISTRIBUTE=4)
+agent pool    4 remote agents (session 12345-1)
+```
+
+Always exits 0 — it is a printout, not a gate. Note that `vx-cloud
+connect` already refuses the most common trap up front (a tokenless
+connect to an account platform); `status` is for diagnosing an existing
+setup.
 
 ## `vx-cloud agent` — distributed-execution agent
 
