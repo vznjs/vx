@@ -140,6 +140,29 @@ export class TaskLogBuffer {
     this.evictToBudget()
   }
 
+  /**
+   * Take ONE finished task's retained tail as a wire entry, removing it from
+   * the buffer (so a later `drain` won't re-ship it). Used by per-task
+   * incremental delivery: `finish()` retains, then the sink `takeEntry()`s and
+   * ships that one task. Returns undefined for a task that wasn't retained (a
+   * cache hit / skipped / still in-flight / unknown id) — the task result still
+   * ships; there is just no log tail to send.
+   */
+  takeEntry(taskId: string): TaskLogEntry | undefined {
+    const e = this.retained.get(taskId)
+    if (e === undefined) return undefined
+    this.retained.delete(taskId)
+    this.retainedChars -= e.chars
+    return {
+      taskId: e.taskId,
+      ...(e.hash !== undefined ? { hash: e.hash } : {}),
+      status: e.status,
+      content: e.chunks.join(''),
+      charsFull: e.charsFull,
+      truncatedHeadChars: e.truncatedHeadChars,
+    }
+  }
+
   /** Everything retained, failures first, ready to ship/store. */
   drain(runId: string, workspaceId: string): TaskLogBundle {
     const entries = [...this.retained.values()].sort((a, b) => {

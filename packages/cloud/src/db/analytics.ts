@@ -18,7 +18,7 @@
 
 import type { SQL } from 'bun'
 import { diffOutputTrees } from '@vzn/vx'
-import type { OutputFingerprint, RunSummaryRecord } from '@vzn/vx'
+import type { OutputFingerprint, RunSummaryRecord, TaskTelemetry } from '@vzn/vx'
 import {
   RUN_LOG_BUDGET_CHARS,
   TASK_LOG_TAIL_CHARS,
@@ -191,6 +191,25 @@ export interface InvocationDetail {
   arch: string | null
   vxVersion: string
   tags: Record<string, string>
+}
+
+/** The per-task incremental ingest wire (`POST /v1/ingest/task`): one task's
+ *  result + optional log tail, shipped the moment it finishes. `runStartedAt`
+ *  anchors the started_at derivation so it matches the end-of-run batch. */
+export interface TaskIngestRecord {
+  v: number
+  runId: string
+  /** Client workspace id (16-hex) — routed exactly like an ingest push. */
+  workspaceId: string
+  workspaceName?: string
+  /** The run's start (epoch ms) — the started_at base for this task's row. */
+  runStartedAt: number
+  /** The run's end if known (else the server uses `now`; only cache-hit rows
+   *  with null wallclock ns use it, and it's not part of the dedup key). */
+  runEndedAt?: number
+  task: TaskTelemetry
+  /** The task's captured log tail, if any (miss + success/failed). */
+  log?: { content: string; charsFull: number; truncatedHeadChars: number }
 }
 
 /** A notification-bell item: a build that broke. Lean by design — the bell
@@ -984,30 +1003,20 @@ export class Analytics {
       const projectTasks = new Map<string, Set<string>>()
       for (const t of summary.tasks) {
         if (t.status === 'aborted') continue
-        // A malformed wallclock ns string (a buggy/hostile client) must not
-        // abort the whole run's ingest transaction — treat an unparseable
-        // value as absent for BOTH the derived ms offsets and the raw ns
-        // columns.
-        const startNs = intNsOrNull(t.wallclockStartNs)
-        const endNs = intNsOrNull(t.wallclockEndNs)
-        const startedAt =
-          startNs !== null
-            ? summary.startedAt + Math.round(Number(startNs) / 1e6)
-            : summary.startedAt
-        const endedAt =
-          endNs !== null ? summary.startedAt + Math.round(Number(endNs) / 1e6) : summary.endedAt
-        const cacheHit = t.cacheSource === 'local' || t.cacheSource === 'remote'
-        await tx`INSERT INTO task_runs (
-            org_id, workspace_id, run_id, hash, project, task, status, exit_code, duration_ms,
-            started_at, ended_at, cpu_ms, peak_rss_bytes, wallclock_start_ns, wallclock_end_ns,
-            cache_hit, attempts)
-          VALUES (
-            ${args.orgId}, ${workspaceId}, ${r.runId}, ${t.hash ?? ''}, ${t.project}, ${t.task},
-            ${t.status}, ${t.exitCode}, ${t.durationMs}, ${startedAt}, ${endedAt},
-            ${t.cpuMs ?? null}, ${t.peakRssBytes ?? null},
-            ${startNs},
-            ${endNs},
-            ${cacheHit}, ${t.attempts ?? null})`
+        // The end-of-run backstop: re-insert every task_run with ON CONFLICT
+        // DO NOTHING so a task already delivered incrementally (POST
+        // /v1/ingest/task) is skipped, and any incremental push that dropped
+        // is backfilled here. Shared derivation → identical (started_at,
+        // run_id, project, task) key in both paths.
+        await this.insertTaskRun(
+          tx,
+          args.orgId,
+          workspaceId,
+          r.runId,
+          summary.startedAt,
+          summary.endedAt,
+          t,
+        )
         let names = projectTasks.get(t.project)
         if (names === undefined) {
           names = new Set()
@@ -1059,6 +1068,128 @@ export class Analytics {
       ON CONFLICT (workspace_id, name) DO UPDATE SET last_seen_at = ${now}
       RETURNING id`
     return rows[0]!.id
+  }
+
+  /**
+   * Insert ONE task_run row, idempotently. Shared by the end-of-run batch
+   * (`ingest`) and the per-task incremental path (`ingestTask`) so both derive
+   * the SAME (started_at, run_id, project, task) key — `runStartedAt` +
+   * the task's wallclock-ns offset — and the unique index dedups a task that
+   * arrives twice. A malformed wallclock-ns string is treated as absent (never
+   * aborts the transaction). started_at falls back to the run start; ended_at
+   * to `runEndedAt` (the incremental path passes `now`, since the run isn't
+   * over yet — only cache-hit rows with null wallclock ns use it, and their
+   * duration is ~0, so it's immaterial and NOT part of the dedup key).
+   */
+  private async insertTaskRun(
+    tx: SQL,
+    orgId: string,
+    workspaceId: string,
+    runId: string,
+    runStartedAt: number,
+    runEndedAt: number,
+    t: TaskTelemetry,
+  ): Promise<void> {
+    const startNs = intNsOrNull(t.wallclockStartNs)
+    const endNs = intNsOrNull(t.wallclockEndNs)
+    const startedAt =
+      startNs !== null ? runStartedAt + Math.round(Number(startNs) / 1e6) : runStartedAt
+    const endedAt = endNs !== null ? runStartedAt + Math.round(Number(endNs) / 1e6) : runEndedAt
+    const cacheHit = t.cacheSource === 'local' || t.cacheSource === 'remote'
+    await tx`INSERT INTO task_runs (
+        org_id, workspace_id, run_id, hash, project, task, status, exit_code, duration_ms,
+        started_at, ended_at, cpu_ms, peak_rss_bytes, wallclock_start_ns, wallclock_end_ns,
+        cache_hit, attempts)
+      VALUES (
+        ${orgId}, ${workspaceId}, ${runId}, ${t.hash ?? ''}, ${t.project}, ${t.task},
+        ${t.status}, ${t.exitCode}, ${t.durationMs}, ${startedAt}, ${endedAt},
+        ${t.cpuMs ?? null}, ${t.peakRssBytes ?? null}, ${startNs}, ${endNs},
+        ${cacheHit}, ${t.attempts ?? null})
+      ON CONFLICT (started_at, run_id, project, task) DO NOTHING`
+  }
+
+  /**
+   * Per-task incremental ingest: one task's result + (optionally) its log tail,
+   * shipped the moment the task finishes — so the run's detail fills in live
+   * instead of appearing only at end-of-run. Idempotent (the task_run unique
+   * index + the log existence check); the end-of-run summary is the
+   * completeness backstop that backfills anything a per-task push dropped.
+   * Routes the workspace exactly like `ingest` (from the token, or the client
+   * workspace id on first push). Aborted tasks are ignored (no meaningful row).
+   */
+  async ingestTask(args: {
+    orgId: string
+    tokenWorkspaceId?: string | undefined
+    record: TaskIngestRecord
+    now?: number
+  }): Promise<{ stored: boolean; workspaceId: string }> {
+    const now = args.now ?? Date.now()
+    const rec = args.record
+    if (rec.task.status === 'aborted') {
+      // Still route the workspace so a workspace-scoped token's clamp is honored
+      // consistently, but store nothing.
+      const workspaceId = await this.routeWorkspace({
+        orgId: args.orgId,
+        tokenWorkspaceId: args.tokenWorkspaceId,
+        clientWorkspaceId: rec.workspaceId,
+        workspaceName: rec.workspaceName ?? rec.workspaceId,
+        now,
+      })
+      return { stored: false, workspaceId }
+    }
+    const workspaceId = await this.routeWorkspace({
+      orgId: args.orgId,
+      tokenWorkspaceId: args.tokenWorkspaceId,
+      clientWorkspaceId: rec.workspaceId,
+      workspaceName: rec.workspaceName ?? rec.workspaceId,
+      now,
+    })
+    await this.sql.begin(async (tx) => {
+      await this.insertTaskRun(
+        tx,
+        args.orgId,
+        workspaceId,
+        rec.runId,
+        rec.runStartedAt,
+        rec.runEndedAt ?? now,
+        rec.task,
+      )
+      // Provision the project + task name (metadata only; a catalog push enriches).
+      const projectId = await this.upsertProject(tx, args.orgId, workspaceId, rec.task.project, now)
+      await tx`INSERT INTO project_tasks (project_id, task, updated_at)
+               VALUES (${projectId}, ${rec.task.task}, ${now})
+               ON CONFLICT (project_id, task) DO NOTHING`
+      // The task's log tail (idempotent per (workspace, run, task); the same
+      // existence check the batch log path uses, so an end-of-run re-send is a
+      // no-op). Capped to the per-task tail server-side — the wire is untrusted.
+      if (rec.log !== undefined) {
+        const exists = await tx<{ one: number }[]>`
+          SELECT 1 AS one FROM task_logs
+          WHERE workspace_id = ${workspaceId} AND run_id = ${rec.runId}
+            AND task_id = ${rec.task.taskId}
+          LIMIT 1`
+        if (exists.length === 0) {
+          let content = rec.log.content
+          let extraTrunc = 0
+          if (content.length > TASK_LOG_TAIL_CHARS) {
+            const keep = content.slice(content.length - TASK_LOG_TAIL_CHARS)
+            extraTrunc = content.length - keep.length
+            content = keep
+          }
+          const raw = Buffer.from(content, 'utf8')
+          const useZstd = raw.length >= COMPRESS_THRESHOLD_BYTES
+          const blob = useZstd ? Bun.zstdCompressSync(raw) : raw
+          await tx`INSERT INTO task_logs (
+              org_id, workspace_id, run_id, task_id, hash, status, codec, content,
+              chars_full, truncated_head, created_at)
+            VALUES (
+              ${args.orgId}, ${workspaceId}, ${rec.runId}, ${rec.task.taskId}, ${rec.task.hash ?? null},
+              ${rec.task.status}, ${useZstd ? 'zstd' : 'plain'}, ${blob}, ${rec.log.charsFull},
+              ${rec.log.truncatedHeadChars + extraTrunc}, ${now})`
+        }
+      }
+    })
+    return { stored: true, workspaceId }
   }
 
   // -------------------------------------------------------------------------

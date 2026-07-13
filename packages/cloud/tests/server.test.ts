@@ -335,6 +335,42 @@ describe('platform e2e (real pg + fake S3)', () => {
     const td = (await detail.json()) as { aggregate: { runs: number } | null }
     expect(td.aggregate!.runs).toBe(1)
 
+    // Per-task incremental ingest: a session can't push (machine-token-only),
+    // the ci token can, and the task shows up in the run detail BEFORE any
+    // end-of-run summary — the "report each task as it finishes" contract.
+    const taskRecord = {
+      v: 1,
+      runId: 'r-live',
+      workspaceId: 'ws-e2e',
+      runStartedAt: 5000,
+      task: {
+        taskId: 'a#build',
+        project: 'a',
+        task: 'build',
+        status: 'success',
+        cacheSource: 'miss',
+        exitCode: 0,
+        durationMs: 120,
+        hash: 'h-live',
+        wallclockStartNs: '0',
+        wallclockEndNs: '120000000',
+      },
+      log: { content: 'live build output\n', charsFull: 18, truncatedHeadChars: 0 },
+    }
+    expect((await call('POST', '/v1/ingest/task', { cookie, body: taskRecord })).status).toBe(403)
+    expect(
+      (await call('POST', '/v1/ingest/task', { bearer: ciToken, body: taskRecord })).status,
+    ).toBe(200)
+    // The run detail already carries the task, with no summary posted yet.
+    const liveRun = await call('GET', '/v1/runs/r-live', { cookie })
+    expect(liveRun.status).toBe(200)
+    const liveTasks = ((await liveRun.json()) as { tasks: { task: string }[] }).tasks
+    expect(liveTasks.some((t) => t.task === 'build')).toBe(true)
+    // Its log is readable live too.
+    const liveLog = await call('GET', '/v1/runs/r-live/logs/a%23build', { cookie })
+    expect(liveLog.status).toBe(200)
+    expect(((await liveLog.json()) as { content: string }).content).toContain('live build output')
+
     // The notification feed reads as a session surface (allowlisted, not the
     // machine-only ingest path): a green run produces no notification.
     const none = await call('GET', '/v1/notifications', { cookie })

@@ -8,6 +8,7 @@ import { sql as credentials } from './0003_credentials.js'
 import { sql as analytics } from './0004_analytics.js'
 import { sql as analyticsLogs } from './0005_analytics_logs.js'
 import { sql as fingerprints } from './0006_fingerprints.js'
+import { sql as taskRunsUnique } from './0007_task_runs_unique.js'
 
 export interface Migration {
   version: number
@@ -22,4 +23,5 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 4, name: 'analytics', sql: analytics },
   { version: 5, name: 'analytics_logs', sql: analyticsLogs },
   { version: 6, name: 'fingerprints', sql: fingerprints },
+  { version: 7, name: 'task_runs_unique', sql: taskRunsUnique },
 ]

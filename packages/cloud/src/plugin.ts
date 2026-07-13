@@ -29,11 +29,13 @@ import {
   type CachePolicy,
   type CacheLayer,
   type RunSummaryRecord,
+  type TaskTelemetry,
   type TelemetryContext,
   type TelemetryRecord,
   type TelemetrySink,
   type VxPlugin,
 } from '@vzn/vx'
+import type { TaskIngestRecord } from './db/analytics.js'
 import { activeEnvironment } from './environments.js'
 import { NativeCacheClient } from './native-cache.js'
 import { githubCheckCandidate, postGithubCheck, resolveGithubCheckTarget } from './github-check.js'
@@ -428,6 +430,14 @@ class CloudIngestSink implements TelemetrySink {
   private readonly warn: (message: string) => void
   private readonly githubSummaryPath?: string
   private readonly githubCheck: boolean
+  /** Per-task incremental reporting is on whenever there's a connection: each
+   *  EXECUTED task's result (+ its log tail) ships the moment it finishes, so
+   *  the run's detail fills in live. The end-of-run summary is the backstop. */
+  private readonly incremental: boolean
+  /** Captured from `run.start`: the canonical run start (matches the summary's
+   *  `startedAt`, so incremental task rows dedup against the batch) + the
+   *  client workspace id to route to. */
+  private runStart?: { startedAt: number; workspaceId: string; workspaceName?: string }
 
   constructor(opts: {
     /** A serve to POST to. Absent → the sink only writes the GitHub summary. */
@@ -443,21 +453,81 @@ class CloudIngestSink implements TelemetrySink {
     this.warn = opts.warn
     if (opts.githubSummaryPath !== undefined) this.githubSummaryPath = opts.githubSummaryPath
     this.githubCheck = opts.githubCheck === true
-    // Log capture only makes sense when there's a serve to ship tails to.
-    if (opts.logsEnabled === true && opts.connection !== undefined) {
-      this.logs = new TaskLogBuffer()
-      this.wants = ['task.log', 'task.end']
+    this.incremental = opts.connection !== undefined
+    // With a connection, project run.start (the run's canonical start) +
+    // task.end (per-task results). Log capture only makes sense with a serve to
+    // ship tails to; when on, also project task.log chunks. No connection →
+    // empty `wants`, so a plain run pays nothing on the chunk path.
+    if (this.incremental) {
+      const wants: TelemetryRecord['kind'][] = ['run.start', 'task.end']
+      if (opts.logsEnabled === true) {
+        this.logs = new TaskLogBuffer()
+        wants.push('task.log')
+      }
+      this.wants = wants
     } else {
       this.wants = []
     }
   }
 
   onRecord(record: TelemetryRecord): void {
-    if (this.logs === undefined) return
-    if (record.kind === 'task.log') this.logs.append(record.taskId, record.chunk)
-    else if (record.kind === 'task.end') {
-      this.logs.finish(record.taskId, record.status, record.cacheSource, record.hash)
+    if (record.kind === 'run.start') {
+      this.runStart = {
+        startedAt: record.startedAt,
+        workspaceId: record.run.workspaceId,
+        ...(record.run.workspaceName !== undefined
+          ? { workspaceName: record.run.workspaceName }
+          : {}),
+      }
+      return
     }
+    if (record.kind === 'task.log') {
+      this.logs?.append(record.taskId, record.chunk)
+      return
+    }
+    if (record.kind === 'task.end') {
+      // Finalize the task's log tail first (retain/evict), then take it for the
+      // incremental push. A hit/skipped task retains nothing → no tail to send.
+      this.logs?.finish(record.taskId, record.status, record.cacheSource, record.hash)
+      // Report EXECUTED tasks incrementally (misses that ran to a real
+      // verdict). Cache hits + the full picture land in the end-of-run batch —
+      // this keeps the per-task push rate bounded (executed tasks are spread
+      // over wall time) and focused on "watch it run".
+      if (
+        this.incremental &&
+        this.runStart !== undefined &&
+        record.cacheSource === 'miss' &&
+        (record.status === 'success' || record.status === 'failed')
+      ) {
+        this.sendTaskIncremental(record)
+      }
+    }
+  }
+
+  /** Fire-and-forget one task's result + log tail to `/v1/ingest/task`. */
+  private sendTaskIncremental(record: Extract<TelemetryRecord, { kind: 'task.end' }>): void {
+    const rs = this.runStart!
+    const tail = this.logs?.takeEntry(record.taskId)
+    const rec: TaskIngestRecord = {
+      v: 1,
+      runId: record.runId,
+      workspaceId: rs.workspaceId,
+      ...(rs.workspaceName !== undefined ? { workspaceName: rs.workspaceName } : {}),
+      runStartedAt: rs.startedAt,
+      // The task.end record is a superset of TaskTelemetry — pass it as the
+      // task; the server reads only the TaskTelemetry fields.
+      task: record as unknown as TaskTelemetry,
+      ...(tail !== undefined
+        ? {
+            log: {
+              content: tail.content,
+              charsFull: tail.charsFull,
+              truncatedHeadChars: tail.truncatedHeadChars,
+            },
+          }
+        : {}),
+    }
+    void this.send('/v1/ingest/task', JSON.stringify(rec), 'cloud task')
   }
 
   onRunSummary(summary: RunSummaryRecord): void {

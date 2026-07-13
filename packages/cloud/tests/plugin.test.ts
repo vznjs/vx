@@ -462,6 +462,101 @@ describe('cloud() telemetry capability', () => {
     }
   })
 
+  it('reports each EXECUTED task incrementally on task.end (result + log), hits excepted', async () => {
+    const reqs: { path: string; body: string }[] = []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        reqs.push({ path: new URL(req.url).pathname, body: await req.text() })
+        return new Response('ok')
+      },
+    })
+    try {
+      const sink = (await cloud({
+        url: `http://localhost:${server.port}`,
+        token: 't',
+        logs: true,
+      }).telemetry!(telemetryCtx('/x'))) as TelemetrySink
+      // With a connection, run.start + task.end are projected for incremental.
+      expect(sink.wants).toContain('run.start')
+      expect(sink.wants).toContain('task.end')
+
+      // run.start carries the canonical start + the workspace to route to.
+      sink.onRecord!({
+        v: 2,
+        kind: 'run.start',
+        run: fakeSummary().run,
+        total: 2,
+        ts: 0,
+        startedAt: 7000,
+      })
+      // An executed task with output → fires an incremental push.
+      sink.onRecord!({
+        v: 2,
+        kind: 'task.log',
+        runId: 'run-xyz',
+        taskId: 'p#build',
+        stream: 'stdout',
+        chunk: 'ok\n',
+        ts: 1,
+      })
+      sink.onRecord!({
+        v: 2,
+        kind: 'task.end',
+        runId: 'run-xyz',
+        ts: 2,
+        taskId: 'p#build',
+        project: 'p',
+        task: 'build',
+        status: 'success',
+        cacheSource: 'miss',
+        exitCode: 0,
+        durationMs: 5,
+      })
+      // A CACHE HIT does NOT fire — it lands in the end-of-run batch.
+      sink.onRecord!({
+        v: 2,
+        kind: 'task.end',
+        runId: 'run-xyz',
+        ts: 3,
+        taskId: 'p#cached',
+        project: 'p',
+        task: 'cached',
+        status: 'cache-hit',
+        cacheSource: 'local',
+        exitCode: 0,
+        durationMs: 0,
+      })
+      // The incremental POST is fire-and-forget — wait for it to land.
+      for (let i = 0; i < 50 && !reqs.some((r) => r.path === '/v1/ingest/task'); i++) {
+        await Bun.sleep(10)
+      }
+      const taskPosts = reqs.filter((r) => r.path === '/v1/ingest/task')
+      expect(taskPosts).toHaveLength(1) // only the executed task, not the hit
+      const rec = JSON.parse(taskPosts[0]!.body) as {
+        runId: string
+        workspaceId: string
+        runStartedAt: number
+        task: { taskId: string }
+        log?: { content: string }
+      }
+      expect(rec.runId).toBe('run-xyz')
+      expect(rec.workspaceId).toBe('ws-test')
+      expect(rec.runStartedAt).toBe(7000)
+      expect(rec.task.taskId).toBe('p#build')
+      expect(rec.log?.content).toBe('ok\n')
+
+      // At flush, the summary posts; the log bundle is EMPTY (the tail already
+      // went out incrementally), so no /v1/ingest/logs.
+      sink.onRunSummary!(fakeSummary())
+      await sink.flush!()
+      expect(reqs.some((r) => r.path === '/v1/ingest')).toBe(true)
+      expect(reqs.some((r) => r.path === '/v1/ingest/logs')).toBe(false)
+    } finally {
+      void server.stop(true)
+    }
+  })
+
   it('writes a GitHub job summary in CI even with NO cloud connected', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'vx-gha-plugin-'))
     const file = path.join(dir, 'summary.md')
@@ -537,7 +632,7 @@ describe('cloud() telemetry capability', () => {
     })
   })
 
-  it('the zero-projection guarantee: VX_CLOUD_LOGS=0 leaves wants empty (no task.log subscription)', async () => {
+  it('the zero-projection guarantee: VX_CLOUD_LOGS=0 does NOT subscribe to task.log (the chunk path stays free)', async () => {
     const prev = process.env['VX_CLOUD_LOGS']
     process.env['VX_CLOUD_LOGS'] = '0'
     try {
@@ -545,7 +640,11 @@ describe('cloud() telemetry capability', () => {
         url: 'http://localhost:1',
         token: 't',
       }).telemetry!(telemetryCtx('/x'))) as TelemetrySink
-      expect(sink.wants).toEqual([])
+      // Logs off → the high-volume task.log stream is never projected (a plain
+      // run pays nothing per chunk). Per-task RESULT reporting (run.start +
+      // task.end) is a separate feature and stays on when connected.
+      expect(sink.wants).not.toContain('task.log')
+      expect(sink.wants).toContain('task.end')
     } finally {
       if (prev === undefined) delete process.env['VX_CLOUD_LOGS']
       else process.env['VX_CLOUD_LOGS'] = prev

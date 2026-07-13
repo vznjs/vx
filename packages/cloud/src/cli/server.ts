@@ -40,7 +40,12 @@ const PARTITION_TICK_MS = 24 * 60 * 60 * 1000
  * colocated `/v1/graph` were removed with delegation, platform §12 P3.)
  */
 function isAnalyticsSurface(pathname: string, method: string): boolean {
-  if (pathname === '/v1/ingest' || pathname === '/v1/ingest/logs' || pathname === '/v1/catalog') {
+  if (
+    pathname === '/v1/ingest' ||
+    pathname === '/v1/ingest/task' ||
+    pathname === '/v1/ingest/logs' ||
+    pathname === '/v1/catalog'
+  ) {
     return method === 'POST'
   }
   if (

@@ -18,6 +18,11 @@ export interface RunStartInfo {
   requestedCount?: number
   /** Run banner context so a live footer can match the final summary. */
   context?: RunContext
+  /** The run's canonical start (epoch ms) — the SAME value the end-of-run
+   *  summary reports as `startedAt`. A telemetry sink needs it during the run
+   *  (e.g. to derive per-task started_at consistently with the batch summary
+   *  for idempotent incremental ingest). */
+  startedAtMs?: number
 }
 
 /**

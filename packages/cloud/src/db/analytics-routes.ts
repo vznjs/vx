@@ -16,12 +16,16 @@ import {
   type ListInvocationsArgs,
   type ListRunsArgs,
   type StoredTaskLog,
+  type TaskIngestRecord,
 } from './analytics.js'
 
 const CORS = { 'Access-Control-Allow-Origin': '*' } as const
 const INGEST_BODY_MAX_BYTES = 32 * 1024 * 1024
 const LOG_BODY_MAX_BYTES = 16 * 1024 * 1024
 const CATALOG_BODY_MAX_BYTES = 8 * 1024 * 1024
+// One task: a small result record + a ≤128 KiB log tail. 2 MiB is generous
+// headroom; a bigger body is a malformed/hostile push.
+const TASK_BODY_MAX_BYTES = 2 * 1024 * 1024
 
 function json(body: unknown, status = 200): Response {
   return Response.json(body, { status, headers: CORS })
@@ -153,6 +157,32 @@ async function handleAnalyticsRequestInner(
         orgId: ctx.orgId,
         tokenWorkspaceId: ctx.tokenWorkspaceId,
         bundle,
+      })
+      return json({ ok: true, stored: res.stored })
+    } catch (err) {
+      return errResponse(err)
+    }
+  }
+  if (p === '/v1/ingest/task' && req.method === 'POST') {
+    if (!ctx.isToken) return json({ ok: false, error: 'ci token required' }, 403)
+    const raw = await readCapped(req, TASK_BODY_MAX_BYTES)
+    if (raw === null) return json({ ok: false, error: 'task record too large' }, 413)
+    try {
+      const record = JSON.parse(raw) as TaskIngestRecord
+      if (
+        typeof record?.runId !== 'string' ||
+        typeof record.workspaceId !== 'string' ||
+        typeof record.runStartedAt !== 'number' ||
+        record.task?.taskId === undefined ||
+        typeof record.task.project !== 'string' ||
+        typeof record.task.task !== 'string'
+      ) {
+        return json({ ok: false, error: 'not a TaskIngestRecord' }, 400)
+      }
+      const res = await a.ingestTask({
+        orgId: ctx.orgId,
+        tokenWorkspaceId: ctx.tokenWorkspaceId,
+        record,
       })
       return json({ ok: true, stored: res.stored })
     } catch (err) {

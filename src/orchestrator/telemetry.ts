@@ -122,7 +122,16 @@ export interface TaskTelemetry {
  * `task.log` records are large and OPT-IN (see `TelemetrySink.wants`).
  */
 export type TelemetryRecord =
-  | { v: number; kind: 'run.start'; run: RunContextRecord; total: number; ts: number }
+  | {
+      v: number
+      kind: 'run.start'
+      run: RunContextRecord
+      total: number
+      ts: number
+      /** The run's canonical start (epoch ms) — equals the summary's
+       *  `startedAt`; a sink derives per-task timing from it during the run. */
+      startedAt: number
+    }
   | {
       v: number
       kind: 'task.start'
@@ -258,6 +267,7 @@ export function createTelemetrySource(args: {
           run,
           total: event.info.total,
           ts,
+          startedAt: event.info.startedAtMs ?? ts,
         })
         return
       case 'task:start': {

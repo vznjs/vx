@@ -319,6 +319,93 @@ describe('ingest', () => {
   })
 })
 
+describe('ingestTask (per-task incremental)', () => {
+  const rowsFor = (ws: string, runId: string) =>
+    db.sql<{ c: number }[]>`
+      SELECT count(*)::int AS c FROM task_runs WHERE workspace_id = ${ws} AND run_id = ${runId}`
+
+  it('inserts one task_run + its log, idempotently, and dedups against the batch', async () => {
+    const org = await seedOrg(db, 'inc')
+    const startedAt = Date.now()
+    const t = task({
+      project: 'app',
+      task: 'build',
+      status: 'success',
+      wallclockStartNs: '0',
+      wallclockEndNs: '500000000',
+    })
+    const record = {
+      v: 1,
+      runId: 'inc-r1',
+      workspaceId: 'inc-ws',
+      runStartedAt: startedAt,
+      task: t,
+      log: { content: 'building…\ndone\n', charsFull: 15, truncatedHeadChars: 0 },
+    }
+    const first = await analytics.ingestTask({ orgId: org, record })
+    expect(first.stored).toBe(true)
+    const ws = first.workspaceId
+    expect((await rowsFor(ws, 'inc-r1'))[0]!.c).toBe(1)
+    // The log landed and reads back.
+    const log = await analytics.logFor(ws, 'inc-r1', 'app#build')
+    expect(log?.content).toContain('done')
+
+    // Idempotent: a re-delivery adds no row.
+    await analytics.ingestTask({ orgId: org, record })
+    expect((await rowsFor(ws, 'inc-r1'))[0]!.c).toBe(1)
+
+    // The end-of-run batch, with the SAME run start + task, dedups (no dup).
+    await analytics.ingest({
+      orgId: org,
+      summary: summary({ runId: 'inc-r1', workspaceId: 'inc-ws', startedAt, tasks: [t] }),
+    })
+    expect((await rowsFor(ws, 'inc-r1'))[0]!.c).toBe(1)
+  })
+
+  it('the batch backfills a task the incremental push never delivered', async () => {
+    const org = await seedOrg(db, 'inc-backfill')
+    const startedAt = Date.now()
+    const ran = task({ project: 'app', task: 'build', wallclockStartNs: '0', wallclockEndNs: '1' })
+    const missed = task({
+      project: 'app',
+      task: 'test',
+      wallclockStartNs: '0',
+      wallclockEndNs: '2',
+    })
+    // Only 'build' arrives incrementally.
+    const { workspaceId: ws } = await analytics.ingestTask({
+      orgId: org,
+      record: { v: 1, runId: 'bf-r1', workspaceId: 'bf-ws', runStartedAt: startedAt, task: ran },
+    })
+    expect((await rowsFor(ws, 'bf-r1'))[0]!.c).toBe(1)
+    // The summary has BOTH; the batch backfills the dropped 'test'.
+    await analytics.ingest({
+      orgId: org,
+      summary: summary({ runId: 'bf-r1', workspaceId: 'bf-ws', startedAt, tasks: [ran, missed] }),
+    })
+    const tasks = await db.sql<{ task: string }[]>`
+      SELECT task FROM task_runs WHERE workspace_id = ${ws} AND run_id = 'bf-r1' ORDER BY task`
+    expect(tasks.map((t) => t.task)).toEqual(['build', 'test'])
+  })
+
+  it('an aborted task stores nothing but still routes the workspace', async () => {
+    const org = await seedOrg(db, 'inc-abort')
+    const startedAt = Date.now()
+    const res = await analytics.ingestTask({
+      orgId: org,
+      record: {
+        v: 1,
+        runId: 'ab-r1',
+        workspaceId: 'ab-ws',
+        runStartedAt: startedAt,
+        task: task({ project: 'a', task: 'x', status: 'aborted' }),
+      },
+    })
+    expect(res.stored).toBe(false)
+    expect((await rowsFor(res.workspaceId, 'ab-r1'))[0]!.c).toBe(0)
+  })
+})
+
 describe('workspace-scoped token routing', () => {
   it('maps a new client id to the token workspace, refuses a mismatch', async () => {
     const org = await seedOrg(db, 'scoped')

@@ -385,7 +385,13 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 
     // Lifecycle hooks drive the default logger's dynamic status line
     // (TTY-only); custom loggers may ignore them.
-    log.runStart?.({ total: taskCount, concurrency, requestedCount, context: runContext })
+    log.runStart?.({
+      total: taskCount,
+      concurrency,
+      requestedCount,
+      context: runContext,
+      startedAtMs: endedAtMsAtStart,
+    })
 
     // Remote-only: kick off background prefetches so remote-GET latency
     // overlaps execution. Fire-and-forget — execution starts on the next
