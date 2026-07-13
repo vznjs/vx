@@ -235,18 +235,18 @@ serving none of them is probably org-analytics scope creep.
   once sent, so the end-of-run drain never double-ships it; the `task_runs` row
   is the guaranteed record. **Server:** `Analytics.ingestTask` (routes ws →
   inserts one task_run via the shared `insertTaskRun` + provisions project/task
-  + inserts the log tail idempotently; aborted tasks store nothing);
-  `POST /v1/ingest/task` (ci-token-only, 2 MiB body cap) added to
-  `isAnalyticsSurface` (a SESSION 403s — pinned). **Sink** (`plugin.ts`):
-  `incremental = connection !== undefined`; `wants` = `['run.start','task.end']`
-  when connected (+`'task.log'` when logs enabled — the chunk path stays free,
-  result reporting is separate). Verified: server e2e (session→403, token→200,
-  run detail + logs render BEFORE any summary), plugin unit ("reports each
-  executed task incrementally"), the batch-dedup differential (incremental +
-  batch of the same run → one row per task). Cloud 433 pass, core ci exit 0.
-  **Deferred:** a live "running" header row in the runs LIST (Phase 2 — wants a
-  schema for in-flight state) and mid-task CHUNK streaming (Phase 3 — stream
-  `task.log` chunks as they arrive, not just the retained tail at task end).
+  - inserts the log tail idempotently; aborted tasks store nothing);
+    `POST /v1/ingest/task` (ci-token-only, 2 MiB body cap) added to
+    `isAnalyticsSurface` (a SESSION 403s — pinned). **Sink** (`plugin.ts`):
+    `incremental = connection !== undefined`; `wants` = `['run.start','task.end']`
+    when connected (+`'task.log'` when logs enabled — the chunk path stays free,
+    result reporting is separate). Verified: server e2e (session→403, token→200,
+    run detail + logs render BEFORE any summary), plugin unit ("reports each
+    executed task incrementally"), the batch-dedup differential (incremental +
+    batch of the same run → one row per task). Cloud 433 pass, core ci exit 0.
+    **Deferred:** a live "running" header row in the runs LIST (Phase 2 — wants a
+    schema for in-flight state) and mid-task CHUNK streaming (Phase 3 — stream
+    `task.log` chunks as they arrive, not just the retained tail at task end).
 
 - **2026-07-13**: **Dashboard is a real SaaS app — self-service profile,
   change-password, a notification bell, and a Settings hub (`81ac87e`…,
