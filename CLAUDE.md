@@ -232,37 +232,37 @@ serving none of them is probably org-analytics scope creep.
   own duration on real graphs (the old tests passed topo-ordered nodes,
   masking it). Now an explicit Kahn pass over the dependents relation
   (order-independent, O(N+E)); regression tests pin real pre-order insertion
-  + a diamond whose long branch hangs off a short head, both red on the old
-  code. DX-2: GHA job summary + check run carry a dashboard DEEP LINK
-  (`/#/runs/<runId>`; `details_url` on the check) when a connection resolved.
-  DX-5a: the UI vite dev server PROXIES `/v1|/health|/mcp|/events|/stream` to
-  the platform (`VX_CLOUD_DEV_PROXY` override) so UI dev is same-origin and
-  the session cookie works; ui/README rewritten to the compose recipe. Wave 3
-  (`7edfaeb`, `b0e117e`, `2ea9f08`): **`vx why`** (DX-3) — the entry_inputs
-  component-level cache-key diff reaches the terminal (latest-vs-previous or
-  `--run`, bare-name resolution, `--format json`, honest "fingerprints
-  unavailable" degradation; 7 e2e over a real changed-input fixture);
-  **`vx-cloud status`** (DX-4) — the connection doctor naming ALL THREE
-  silent modes (tokenless-on-account, `VX_CLOUD_DISTRIBUTE` in a workspace
-  that never declares cloud() → flagged IGNORED, unreachable/rejected token;
-  7 e2e, one per mode); **the perf guard is a committed suite**
-  (`packages/cloud/tests/ui-perf.test.ts`: real platform + real Chromium +
-  rAF/longtask sampling seeded via the real ingest wire; asserts ≥40fps idle
-  + scroll on /runs and a 400-task run detail, 0 >200ms long tasks, 0 console
-  errors; SKIPS without playwright/the built dist — playwright is
-  deliberately NOT a dependency, resolved via NODE_PATH at runtime and typed
-  STRUCTURALLY since a file-level DOM lib reference collides with Bun's fetch
-  typings program-wide). **DISCOVERY — P4/P5/P7/C3 are MOOT**: the queue
-  protocol has ZERO server-side implementation left (the P4-server fold
-  deleted it; `/v1/meta` never advertises `queue`, `/version` 404s), so the
-  spawn bar, `queueRun`, `RunSession` and the foreign-jobs poll are
-  unreachable dead code — optimizing them would tune code that cannot
-  execute. Decision for the owner (audit doc §1 cycle-3): repurpose the live
-  surface onto the platform's org-scoped `/stream` (restores dashboard lens
-  #1 "see it run" — RECOMMENDED) vs delete the machinery. REMAINING (cycle
-  4, task #84): that decision, C4 (fetch cancellation + a batched
-  `/v1/why/:runId`), P6/P8 (run-detail pointer-move costs), core-audit
-  completion (watch/migrate/lockfile/loader), #79 cloud CTE rewrites.
+  - a diamond whose long branch hangs off a short head, both red on the old
+    code. DX-2: GHA job summary + check run carry a dashboard DEEP LINK
+    (`/#/runs/<runId>`; `details_url` on the check) when a connection resolved.
+    DX-5a: the UI vite dev server PROXIES `/v1|/health|/mcp|/events|/stream` to
+    the platform (`VX_CLOUD_DEV_PROXY` override) so UI dev is same-origin and
+    the session cookie works; ui/README rewritten to the compose recipe. Wave 3
+    (`7edfaeb`, `b0e117e`, `2ea9f08`): **`vx why`** (DX-3) — the entry_inputs
+    component-level cache-key diff reaches the terminal (latest-vs-previous or
+    `--run`, bare-name resolution, `--format json`, honest "fingerprints
+    unavailable" degradation; 7 e2e over a real changed-input fixture);
+    **`vx-cloud status`** (DX-4) — the connection doctor naming ALL THREE
+    silent modes (tokenless-on-account, `VX_CLOUD_DISTRIBUTE` in a workspace
+    that never declares cloud() → flagged IGNORED, unreachable/rejected token;
+    7 e2e, one per mode); **the perf guard is a committed suite**
+    (`packages/cloud/tests/ui-perf.test.ts`: real platform + real Chromium +
+    rAF/longtask sampling seeded via the real ingest wire; asserts ≥40fps idle
+  - scroll on /runs and a 400-task run detail, 0 >200ms long tasks, 0 console
+    errors; SKIPS without playwright/the built dist — playwright is
+    deliberately NOT a dependency, resolved via NODE_PATH at runtime and typed
+    STRUCTURALLY since a file-level DOM lib reference collides with Bun's fetch
+    typings program-wide). **DISCOVERY — P4/P5/P7/C3 are MOOT**: the queue
+    protocol has ZERO server-side implementation left (the P4-server fold
+    deleted it; `/v1/meta` never advertises `queue`, `/version` 404s), so the
+    spawn bar, `queueRun`, `RunSession` and the foreign-jobs poll are
+    unreachable dead code — optimizing them would tune code that cannot
+    execute. Decision for the owner (audit doc §1 cycle-3): repurpose the live
+    surface onto the platform's org-scoped `/stream` (restores dashboard lens
+    #1 "see it run" — RECOMMENDED) vs delete the machinery. REMAINING (cycle
+    4, task #84): that decision, C4 (fetch cancellation + a batched
+    `/v1/why/:runId`), P6/P8 (run-detail pointer-move costs), core-audit
+    completion (watch/migrate/lockfile/loader), #79 cloud CTE rewrites.
 
 - **2026-07-12**: **Audit loop cycles 1-2 — measured 60fps dashboard
   (owner: "full audit, document granularly so opus can pickup… real UI
