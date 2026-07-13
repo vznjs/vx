@@ -208,6 +208,38 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-12**: **Audit loop cycles 1-2 — measured 60fps dashboard
+  (owner: "full audit, document granularly so opus can pickup… real UI
+  perf, tested and MEASURED, no stuttering always 60fps… repeat cycles
+  until I stop")**. Cycle 1 (`b533a5e`): `docs/design/audit-cycle-2026-07.md`
+  — a REAL-browser perf harness (seeded platform: 300 runs × 40 tasks + a
+  700-task run; Playwright + rAF frame sampling + MutationObserver)
+  measured the 60fps bar FAILED everywhere (Runs scroll 20fps, IDLE 30fps,
+  14 console 404s/session); UI mechanism findings P1-P8/C1-C6 verified
+  against the @json-render dist (arrays are reference-compared flatten
+  leaves → every poll rebuilt every table's DOM); 7 DX/UX flows walked
+  with ranked improvements (the `env.ts:156` silent tokenless-connect
+  trap; the UI contributor flow broken by wildcard-CORS-vs-credentials);
+  5 architecture changes + a strict execution plan. Cycle 2 wave 1
+  (`9ae5074`): identity-stable polling (jsonPage equality gate tagging
+  each value with its entity + `identityStable()` for RunsView) → **0 DOM
+  mutations across 12s of idle polling**; stale cross-entity guard (C1);
+  `/v1/runs/queue`+`/version` polling capability-gated (meta `queue`
+  flag) → console errors 14→0; value-stable resource sources (C2 —
+  planRun no longer refired per click); and the A/B-attributed killer:
+  **`backdrop-filter` blur on every Card + sticky chrome WAS the entire
+  scroll stutter** (16fps baseline → 60fps with only blur off; a static
+  300-row control table scrolls 60fps in the same harness) — blur removed
+  from all scroll-path chrome, kept on static overlays. Measured after:
+  Runs scroll 20→60fps (0 frames >17ms), idle 30→60fps, Insights 24→57,
+  Tasks 38→60. REMAINING (cycle 3+): P3 virtualization (700-row
+  initial-render spike + route-mount long tasks), P4-P8, C3-C5, DX-1..5
+  (connect trap first), committed perf guard, core-audit completion
+  (CORE-1: predictive priorities collapse to own-duration — agent
+  confirmed pre-cutoff), #79 cloud queries. Perf-harness scripts:
+  scratchpad `perf/{seed-serve.ts,measure.mjs,attrib.mjs,control.mjs}`
+  (method documented in the audit doc §1).
+
 - **2026-07-12**: **OWNER DIRECTIVE — HTTP/3 REMOVED wholesale ("use http2 as 3
   is experimental" + "remove all mention on http3, http2 is supported through
   node" citing `import { createSecureServer } from 'node:http2'`).** REVERSES
