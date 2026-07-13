@@ -208,6 +208,46 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-13**: **Per-task incremental ingest — each EXECUTED task reports
+  its result + logs as it finishes, not batched at run end (`9a29a51`)**
+  (owner: "We should report each task same as we report result — logs should
+  go together or even be streamed as they go"). Before, the `cloud()` plugin
+  shipped a run's task rows + logs in ONE bundle at run end (`POST /v1/ingest`
+  after the summary), so a long run's dashboard stayed EMPTY until the final
+  task completed — you couldn't watch a run fill in, and the per-task logs a
+  dev wants mid-run were unavailable until every task finished. Now the sink
+  fires `POST /v1/ingest/task` on each `task.end` (result + retained log tail),
+  so the run-detail page fills in live and each task's logs are queryable the
+  moment it completes. **Executed-tasks-only** (`cacheSource === 'miss'` +
+  status success/failed): cache hits complete in BURSTS carrying no captured
+  output, so they're left to the end-of-run batch — the incremental burst
+  tracks wall-clock WORK, not a fan-out of instant restores (bounds the push
+  rate). **Unified by a task_runs idempotency key** (migration 0007:
+  `UNIQUE(started_at, run_id, project, task)`): the end-of-run batch re-inserts
+  every task with `ON CONFLICT DO NOTHING`, so incremental is a pure LATENCY
+  win, the batch stays the completeness BACKSTOP, and a dropped incremental
+  POST is recovered by the batch. **The load-bearing coupling:** both paths
+  must derive the dedup `started_at` from the SAME canonical run start or the
+  key splits into duplicate rows — threaded through a new ADDITIVE `run.start`
+  telemetry field (`startedAt`, = the run's `endedAtMsAtStart`), so the keys
+  match byte-for-byte with **no TELEMETRY_SCHEMA_VERSION bump** (stays 2).
+  **Logs best-effort:** `TaskLogBuffer.takeEntry(taskId)` removes a task's tail
+  once sent, so the end-of-run drain never double-ships it; the `task_runs` row
+  is the guaranteed record. **Server:** `Analytics.ingestTask` (routes ws →
+  inserts one task_run via the shared `insertTaskRun` + provisions project/task
+  + inserts the log tail idempotently; aborted tasks store nothing);
+  `POST /v1/ingest/task` (ci-token-only, 2 MiB body cap) added to
+  `isAnalyticsSurface` (a SESSION 403s — pinned). **Sink** (`plugin.ts`):
+  `incremental = connection !== undefined`; `wants` = `['run.start','task.end']`
+  when connected (+`'task.log'` when logs enabled — the chunk path stays free,
+  result reporting is separate). Verified: server e2e (session→403, token→200,
+  run detail + logs render BEFORE any summary), plugin unit ("reports each
+  executed task incrementally"), the batch-dedup differential (incremental +
+  batch of the same run → one row per task). Cloud 433 pass, core ci exit 0.
+  **Deferred:** a live "running" header row in the runs LIST (Phase 2 — wants a
+  schema for in-flight state) and mid-task CHUNK streaming (Phase 3 — stream
+  `task.log` chunks as they arrive, not just the retained tail at task end).
+
 - **2026-07-13**: **Dashboard is a real SaaS app — self-service profile,
   change-password, a notification bell, and a Settings hub (`81ac87e`…,
   `581fa07`)** (owner: "Redesign ui to be real sass with profiles switching

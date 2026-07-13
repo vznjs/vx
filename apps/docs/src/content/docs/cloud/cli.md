@@ -91,7 +91,8 @@ only pre-auth surfaces.
 | `GET /health` | Liveness probe (`200 ok`) — pre-auth |
 | `GET /v1/meta` | Identity + capability flags (`auth`, `artifacts`, `cacheWire`, `trustTiers`) — pre-auth |
 | `POST /v1/auth/*`, `/v1/admin/*` | Accounts / sessions / invites (auth) and org/member/token/workspace admin (RBAC) |
-| `POST /v1/ingest` | Push endpoint — accepts a `RunSummaryRecord` from the `cloud()` plugin |
+| `POST /v1/ingest/task` | Incremental push — one executed task's result + log tail, sent as the task finishes |
+| `POST /v1/ingest` | End-of-run push — a `RunSummaryRecord` from the `cloud()` plugin (completeness backstop) |
 | `GET /v1/artifacts` | List the artifact store (trust-scoped to the caller's READ scopes; task/run provenance) |
 | `GET /v1/*` | Metrics/analytics API (runs, tasks, projects, cache, trends, compare, why, …), Postgres-backed |
 | `HEAD/GET/PUT /v1/cache/:hash` | The vx-native artifact store (hex hash; the `cloud()` cache rung's target) |
@@ -101,10 +102,14 @@ only pre-auth surfaces.
 
 Notes:
 
-- **Task logs.** The `cloud()` plugin ships per-task log tails
-  (`POST /v1/ingest/logs`) so the dashboard can show a task's output; read
-  one back at `GET /v1/runs/:runId/logs/:taskId`. Turn capture off
-  client-side with `cloud({ logs: false })` or `VX_CLOUD_LOGS=0`.
+- **Task reporting.** Each executed task is pushed as it finishes
+  (`POST /v1/ingest/task`, result + log tail), so the run's detail page fills
+  in live and a task's logs are queryable the moment it completes; the
+  end-of-run summary (`POST /v1/ingest`, plus any remaining log tails via
+  `POST /v1/ingest/logs`) is the completeness backstop, deduplicated against
+  the incremental rows. Read a task's logs back at
+  `GET /v1/runs/:runId/logs/:taskId`. Turn log capture off client-side with
+  `cloud({ logs: false })` or `VX_CLOUD_LOGS=0`.
 - **Artifact store.** `/v1/cache/:hash` is the vx-native cache wire — a
   connected `cloud()` plugin routes the remote cache here automatically, no
   separate cache server. PUTs stream to disk with the byte cap enforced on

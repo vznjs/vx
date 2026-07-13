@@ -50,10 +50,13 @@ on **Insights**, one click away from the panel.
 
 The dashboard reads from **Postgres** (run/task history and analytics) and
 the **S3 artifact store** — never a developer's private `cache.db`. Runs
-land in Postgres one way: the [`cloud()` plugin](/vx/guides/plugins/)
-pushes each `vx run`'s summary to `POST /v1/ingest`. A run appears on the
-dashboard **only after a `cloud()`-enabled `vx run` pushes it**; a fresh
-deployment with no pushes shows empty views — that's expected.
+land in Postgres via the [`cloud()` plugin](/vx/guides/plugins/): each
+executed task is pushed as it finishes (`POST /v1/ingest/task`, result +
+log tail), so a run's detail page **fills in live** while it's still
+running, and the run's summary is pushed at the end (`POST /v1/ingest`)
+as the completeness backstop. A run appears on the dashboard **only after
+a `cloud()`-enabled `vx run` pushes it**; a fresh deployment with no
+pushes shows empty views — that's expected.
 
 Because the platform holds no workspace checkout, the dashboard is an
 **analytics + cache** surface: you dig into runs that already happened,
