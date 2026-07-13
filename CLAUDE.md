@@ -208,6 +208,30 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-13**: **Run detail fills in LIVE + a vacuous perf-guard fixed
+  (`6a79514`, `3fc3843`)** — completing the incremental-ingest payoff. The
+  `runDetail.json` view had NO refresh interval, so a page opened during a run
+  stayed frozen at load-time state; per-task rows landed in Postgres but an
+  open dashboard never showed them without a manual reload. Added
+  `refresh: 5000` (the same visibility-aware tick the overview/cache/insights
+  views use; the equality gate reuses byte-identical values → a finished run
+  polls with ZERO DOM churn). The expensive `runWhy` source (a per-task
+  `/v1/why` fan-out) must NOT repeat every tick, so the loader gained a
+  per-source refresh control: a new `staticSources` list on a JSON view names
+  sources that fetch ONCE (params/connection changes still re-fetch) — `runWhy`
+  is static; `run`/`invocation`/`artifacts`/`selectedTask` poll live. **Verified
+  in a REAL browser** (ephemeral pg + fake S3 + the built SPA): two
+  incrementally-ingested tasks render, then a third seeded mid-view appears
+  after one 5s poll WITHOUT a reload. **Discovery (`3fc3843`):** the committed
+  `ui-perf` guard was VACUOUS — `bootPlatform` never passed `uiHtmlPath`, so the
+  server returned the API-only `'vx-cloud'` fallback at `/` and the guard
+  navigated to a BLANK page; its ≥40fps + zero-long-task assertions passed
+  without ever rendering the dashboard. `bootPlatform` gained an optional
+  `uiHtmlPath` (off by default so API-surface suites don't touch the dist) and
+  the guard now serves the built dist — it renders the real 400-task run detail
+  - 120-run list and STILL measures ≥40fps / 0 long tasks (4/4 green). Cloud
+    433 pass, ui-perf 4/4 (now real), core ci exit 0.
+
 - **2026-07-13**: **Per-task incremental ingest — each EXECUTED task reports
   its result + logs as it finishes, not batched at run end (`9a29a51`)**
   (owner: "We should report each task same as we report result — logs should
