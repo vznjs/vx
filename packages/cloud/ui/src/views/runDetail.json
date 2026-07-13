@@ -1,4 +1,6 @@
 {
+  "refresh": 5000,
+  "staticSources": ["runWhy"],
   "data": {
     "run": "run",
     "runWhy": "runWhy",

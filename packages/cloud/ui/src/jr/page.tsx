@@ -26,6 +26,12 @@ export interface JsonView {
   /** Opt-in live auto-refresh interval (ms) — re-fetches this view's sources
    *  on a visibility-aware tick (paused while the tab is hidden). */
   refresh?: number
+  /** State keys that must NOT join the refresh tick — they fetch once on
+   *  mount and on a params/connection change, never on the interval. For
+   *  expensive fan-out sources (e.g. a per-task `/v1/why` panel) that would
+   *  otherwise repeat their whole fan-out every tick. No-op unless `refresh`
+   *  is set. */
+  staticSources?: string[]
 }
 
 const toFlat = (spec: Record<string, unknown>): Spec => ('elements' in spec ? (spec as unknown as Spec) : nestedToFlat(spec))
@@ -67,10 +73,16 @@ export function jsonPage(view: JsonView): () => JSX.Element {
     const tick = view.refresh !== undefined ? useVisibilityRefresh(view.refresh) : undefined
     // Keyed on route params AND the connection key (origin|token|workspace) so
     // switching server or workspace re-fetches every source in place — the
-    // fetchers read the current connection from api.ts at call time.
-    const source = createMemo(() => ({ params: decoded(), conn: getConnectionKey(), tick: tick?.() ?? 0 }))
+    // fetchers read the current connection from api.ts at call time. Two
+    // memos: `liveSource` joins the refresh tick, `staticSource` doesn't — a
+    // source named in `staticSources` uses the latter so it fetches once and
+    // never re-polls (params/connection changes still re-fetch both).
+    const liveSource = createMemo(() => ({ params: decoded(), conn: getConnectionKey(), tick: tick?.() ?? 0 }))
+    const staticSource = createMemo(() => ({ params: decoded(), conn: getConnectionKey(), tick: 0 }))
+    const staticKeys = new Set(view.staticSources ?? [])
     const resources = sources.map(([key, src]) => {
       const fn = SOURCES[src]
+      const source = staticKeys.has(key) ? staticSource : liveSource
       // Identity stability across polls: a refresh tick that returns
       // byte-identical data reuses the PREVIOUS value reference, so the
       // StateProvider's per-pointer reference diff sees no change and no DOM
