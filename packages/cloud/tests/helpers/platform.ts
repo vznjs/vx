@@ -21,7 +21,9 @@ export interface TestPlatform {
   stop(): Promise<void>
 }
 
-export async function bootPlatform(opts: { bucket?: string } = {}): Promise<TestPlatform> {
+export async function bootPlatform(
+  opts: { bucket?: string; uiHtmlPath?: string } = {},
+): Promise<TestPlatform> {
   const bucket = opts.bucket ?? 'vx-artifacts'
   const pg = await ephemeralPg()
   const s3 = startFakeS3({ bucket })
@@ -38,7 +40,13 @@ export async function bootPlatform(opts: { bucket?: string } = {}): Promise<Test
     VX_CLOUD_DATA_DIR: dataDir,
   })
   if (!res.ok) throw new Error(`config: ${res.errors.join('; ')}`)
-  const server = await startServer({ config: res.config, log: () => {} })
+  const server = await startServer({
+    config: res.config,
+    log: () => {},
+    // Serve the SPA only when a caller asks (browser e2e / the perf guard) —
+    // API-surface suites leave it off so `startServer` doesn't touch the dist.
+    ...(opts.uiHtmlPath !== undefined ? { uiHtmlPath: opts.uiHtmlPath } : {}),
+  })
   const origin = server.origin
 
   const reg = await fetch(`${origin}/v1/auth/register`, {

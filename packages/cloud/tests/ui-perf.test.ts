@@ -192,7 +192,10 @@ describe.skipIf(!available)('dashboard perf guard (real browser, measured)', () 
   const consoleErrors: string[] = []
 
   beforeAll(async () => {
-    platform = await bootPlatform({ bucket: 'perf-guard' })
+    // Serve the REAL built SPA — without uiHtmlPath the server returns the
+    // API-only 'vx-cloud' fallback, so the browser would measure a blank page
+    // and every FPS/long-task assertion would pass vacuously.
+    platform = await bootPlatform({ bucket: 'perf-guard', uiHtmlPath: DIST })
 
     // Seed through the real ingest wire: INVOCATIONS runs plus one big run so
     // /runs and the run-detail page carry realistic row counts.
