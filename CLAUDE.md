@@ -208,6 +208,62 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-13**: **Audit loop cycle 3 — 60fps bar met everywhere +
+  virtualization, DX-1..5 shipped, CORE-1 fixed, the perf guard COMMITTED, and
+  a dead-code discovery that MOOTS four findings (`f33d1a0`..`2ea9f08`)**.
+  Wave 1 (`f33d1a0`): DataTable VIRTUALIZATION (windows rows above 120,
+  overscan 12, spacer rows preserving scroll geometry, row height calibrated
+  from the first rendered row) + C5's type-aware sort comparator — measured
+  after: every §1 scenario ≥55fps with ZERO >34ms frames and ZERO long tasks
+  (run-detail(700) 24fps/652ms-spike → 60fps/0). Wave 2 (`81ac87e`,
+  `0e7cb09`): DX-1 — `vx-cloud connect` REFUSES a tokenless connect to an
+  `auth: account` platform naming the Admin → Tokens fixit (`--anonymous`
+  opts in with a loud warning); the silent-401 trap where "connected" showed
+  an empty dashboard forever is closed at the front door. DX-5b stale-doc
+  sweep (npm replaces every curl-installer/VX_VERSION mention; from-turborepo
+  drops the dead "same remote-cache wire" claim, maps `turbo run build` →
+  `vx run build --all` with a default-scope bullet, un-claims Bun-required;
+  vx-distributed-ci's VX_CLOUD_TOKEN is now `required: true` — the platform's
+  machine surfaces are token-only; upgrade.ts strings stop naming the deleted
+  install.sh). **CORE-1 FIXED**: `computePredictedPriorities`' traversal never
+  actually pushed (all nodes pre-seeded its stack → `stack.includes` always
+  true), so it folded reverse-insertion order — and the graph Map inserts
+  DEPENDENTS FIRST (pre-order), so every upstream's priority collapsed to its
+  own duration on real graphs (the old tests passed topo-ordered nodes,
+  masking it). Now an explicit Kahn pass over the dependents relation
+  (order-independent, O(N+E)); regression tests pin real pre-order insertion
+  + a diamond whose long branch hangs off a short head, both red on the old
+  code. DX-2: GHA job summary + check run carry a dashboard DEEP LINK
+  (`/#/runs/<runId>`; `details_url` on the check) when a connection resolved.
+  DX-5a: the UI vite dev server PROXIES `/v1|/health|/mcp|/events|/stream` to
+  the platform (`VX_CLOUD_DEV_PROXY` override) so UI dev is same-origin and
+  the session cookie works; ui/README rewritten to the compose recipe. Wave 3
+  (`7edfaeb`, `b0e117e`, `2ea9f08`): **`vx why`** (DX-3) — the entry_inputs
+  component-level cache-key diff reaches the terminal (latest-vs-previous or
+  `--run`, bare-name resolution, `--format json`, honest "fingerprints
+  unavailable" degradation; 7 e2e over a real changed-input fixture);
+  **`vx-cloud status`** (DX-4) — the connection doctor naming ALL THREE
+  silent modes (tokenless-on-account, `VX_CLOUD_DISTRIBUTE` in a workspace
+  that never declares cloud() → flagged IGNORED, unreachable/rejected token;
+  7 e2e, one per mode); **the perf guard is a committed suite**
+  (`packages/cloud/tests/ui-perf.test.ts`: real platform + real Chromium +
+  rAF/longtask sampling seeded via the real ingest wire; asserts ≥40fps idle
+  + scroll on /runs and a 400-task run detail, 0 >200ms long tasks, 0 console
+  errors; SKIPS without playwright/the built dist — playwright is
+  deliberately NOT a dependency, resolved via NODE_PATH at runtime and typed
+  STRUCTURALLY since a file-level DOM lib reference collides with Bun's fetch
+  typings program-wide). **DISCOVERY — P4/P5/P7/C3 are MOOT**: the queue
+  protocol has ZERO server-side implementation left (the P4-server fold
+  deleted it; `/v1/meta` never advertises `queue`, `/version` 404s), so the
+  spawn bar, `queueRun`, `RunSession` and the foreign-jobs poll are
+  unreachable dead code — optimizing them would tune code that cannot
+  execute. Decision for the owner (audit doc §1 cycle-3): repurpose the live
+  surface onto the platform's org-scoped `/stream` (restores dashboard lens
+  #1 "see it run" — RECOMMENDED) vs delete the machinery. REMAINING (cycle
+  4, task #84): that decision, C4 (fetch cancellation + a batched
+  `/v1/why/:runId`), P6/P8 (run-detail pointer-move costs), core-audit
+  completion (watch/migrate/lockfile/loader), #79 cloud CTE rewrites.
+
 - **2026-07-12**: **Audit loop cycles 1-2 — measured 60fps dashboard
   (owner: "full audit, document granularly so opus can pickup… real UI
   perf, tested and MEASURED, no stuttering always 60fps… repeat cycles

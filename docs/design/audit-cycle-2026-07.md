@@ -171,10 +171,24 @@ cannot execute.
 3. Keep dormant (status quo) — costs nothing at runtime (never mounts),
    but the audit keeps re-flagging it.
 
+### Cycle-3 wave 3: DX-3, DX-4, the committed perf guard
+
+**Shipped:** DX-3 (`vx why [task|pkg#task] [--run <id>] [--format json]` —
+the entry_inputs component diff reaches the terminal; bare-name resolution
+with candidate listing + suggestions; 7 e2e over a real changed-input
+fixture), DX-4 (`vx-cloud status` — one read-only screen naming all three
+silent modes: tokenless-on-account, VX_CLOUD_DISTRIBUTE-without-cloud()
+flagged IGNORED, unreachable/rejected-token; 7 e2e, one per mode), and
+**arch #5: the perf guard is a committed suite**
+(`packages/cloud/tests/ui-perf.test.ts` — real platform + real Chromium +
+rAF sampling + longtask observer, seeded through the real ingest wire;
+asserts avg ≥40fps idle + scrolling on /runs and a 400-task run detail,
+zero >200ms long tasks, zero console errors; skips without playwright /
+the built dist — verified 4-pass measured in ~16s here, 6-skip plain).
+
 Remaining (cycle 4+): the live-surface decision above, C4 (fetch
 cancellation + a batched `/v1/why/:runId`), P6/P8 (flamegraph/chart
-pointer-move costs — these two ARE live on run-detail), DX-3 (`vx why`),
-DX-4 (`vx-cloud status` doctor), the committed CI perf guard, core-audit
+pointer-move costs — these two ARE live on run-detail), core-audit
 completion (watch/migrate/lockfile/loader), #79 cloud query rewrites.
 
 ## 2. UI mechanism findings (perf + correctness)
