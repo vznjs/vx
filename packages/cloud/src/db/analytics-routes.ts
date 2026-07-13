@@ -254,6 +254,9 @@ async function handleAnalyticsRequestInner(
   if (p === '/v1/failures') {
     return json({ failures: await a.getRecentFailures(ws, numParam(q.get('limit')) ?? 25) })
   }
+  if (p === '/v1/notifications') {
+    return json({ notifications: await a.getNotifications(ws, numParam(q.get('limit')) ?? 20) })
+  }
   if (p === '/v1/projects') {
     return json({ projects: await a.listProjects(ws, numParam(q.get('limit')) ?? 100) })
   }

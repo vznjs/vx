@@ -190,6 +190,8 @@ function principalResponse(p: AuthPrincipal): unknown {
   return {
     kind: 'session',
     userId: p.userId,
+    email: p.email,
+    displayName: p.displayName,
     instanceAdmin: p.instanceAdmin,
     orgs: [...p.orgs.entries()].map(([orgId, role]) => ({ orgId, role })),
   }
@@ -342,6 +344,51 @@ async function authRoute(req: Request, url: URL, ctx: AuthRoutesContext): Promis
     const principal = await resolvePrincipal(sql, ctx.secret, req, now)
     if (principal === null) return json({ error: 'unauthorized' }, 401)
     return json(principalResponse(principal))
+  }
+
+  // Rename yourself — the only self-service profile field (email is the login
+  // identity and immutable in v1). Session + CSRF only; a token has no profile.
+  if (url.pathname === '/v1/auth/me' && req.method === 'PATCH') {
+    const principal = await resolvePrincipal(sql, ctx.secret, req, now)
+    if (principal === null) return json({ error: 'unauthorized' }, 401)
+    if (principal.kind !== 'session') return json({ error: 'session required' }, 403)
+    if (!csrfOk(principal, req)) return json({ error: 'missing x-vx-csrf' }, 403)
+    const body = await readBody(req)
+    const displayName = body !== null ? str(body, 'displayName')?.trim() : undefined
+    if (displayName === undefined || displayName === '') {
+      return json({ error: 'displayName required' }, 400)
+    }
+    if (displayName.length > 200) return json({ error: 'displayName too long (max 200)' }, 400)
+    await sql`UPDATE users SET display_name = ${displayName} WHERE id = ${principal.userId}`
+    return json({ ok: true, displayName })
+  }
+
+  // Change your password: verify the current one, then re-hash. Session + CSRF
+  // only. Runs argon2 twice (verify + hash) — acceptable for a rare action.
+  if (url.pathname === '/v1/auth/password' && req.method === 'POST') {
+    const principal = await resolvePrincipal(sql, ctx.secret, req, now)
+    if (principal === null) return json({ error: 'unauthorized' }, 401)
+    if (principal.kind !== 'session') return json({ error: 'session required' }, 403)
+    if (!csrfOk(principal, req)) return json({ error: 'missing x-vx-csrf' }, 403)
+    const body = await readBody(req)
+    const currentPassword = body !== null ? str(body, 'currentPassword') : undefined
+    const newPassword = body !== null ? str(body, 'newPassword') : undefined
+    if (currentPassword === undefined || newPassword === undefined) {
+      return json({ error: 'currentPassword and newPassword required' }, 400)
+    }
+    if (newPassword.length < 8) {
+      return json({ error: 'new password must be at least 8 characters' }, 400)
+    }
+    const users = await sql<{ password_hash: string }[]>`
+      SELECT password_hash FROM users WHERE id = ${principal.userId}`
+    const user = users[0]
+    if (user === undefined) return json({ error: 'unauthorized' }, 401)
+    if (!(await verifyPassword(currentPassword, user.password_hash))) {
+      return json({ error: 'current password is incorrect' }, 403)
+    }
+    await sql`UPDATE users SET password_hash = ${await hashPassword(newPassword)}
+             WHERE id = ${principal.userId}`
+    return json({ ok: true })
   }
 
   if (url.pathname === '/v1/auth/invites/accept' && req.method === 'POST') {

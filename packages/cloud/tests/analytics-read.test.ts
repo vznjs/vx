@@ -542,3 +542,49 @@ describe('wiring helpers', () => {
     expect(hints.get('app#build')).toBe(200) // mean of 100, 300
   })
 })
+
+describe('getNotifications', () => {
+  it('lists failed invocations newest-first, workspace-clamped', async () => {
+    const { org, ws } = await newOrgWs(db, 'notif')
+    const decoy = await newOrgWs(db, 'notif-decoy')
+    const now = Date.now()
+    // Two failed builds + one green one; only the failures notify.
+    await insertINV(db, ws, org, {
+      runId: 'N1',
+      startedAt: now - 2 * HOUR,
+      branch: 'main',
+      failedCount: 3,
+      taskCount: 10,
+    })
+    await insertINV(db, ws, org, { runId: 'N2', startedAt: now - HOUR, failedCount: 0 }) // green
+    await insertINV(db, ws, org, {
+      runId: 'N3',
+      startedAt: now,
+      branch: 'feat-x',
+      failedCount: 1,
+      taskCount: 4,
+    })
+    // A failure in another workspace must never leak.
+    await insertINV(db, decoy.ws, decoy.org, { runId: 'X1', startedAt: now, failedCount: 9 })
+
+    const notes = await analytics.getNotifications(ws)
+    expect(notes.map((n) => n.runId)).toEqual(['N3', 'N1']) // newest-first, green excluded
+    expect(notes[0]).toMatchObject({
+      kind: 'run-failed',
+      runId: 'N3',
+      branch: 'feat-x',
+      failedCount: 1,
+      taskCount: 4,
+    })
+    expect(notes.some((n) => n.runId === 'X1')).toBe(false) // no cross-workspace leak
+  })
+
+  it('respects the limit', async () => {
+    const { org, ws } = await newOrgWs(db, 'notif-limit')
+    const now = Date.now()
+    for (let i = 0; i < 5; i++) {
+      await insertINV(db, ws, org, { runId: `L${i}`, startedAt: now - i * HOUR, failedCount: 1 })
+    }
+    expect(await analytics.getNotifications(ws, 3)).toHaveLength(3)
+  })
+})

@@ -13,6 +13,8 @@ export type OrgRole = 'owner' | 'admin' | 'member' | 'viewer'
 export interface SessionPrincipal {
   kind: 'session'
   userId: string
+  email: string
+  displayName: string
   instanceAdmin: boolean
   /** org id → role, from org_memberships. */
   orgs: Map<string, OrgRole>
@@ -73,8 +75,10 @@ export async function sessionPrincipalFor(
   sql: SQL,
   userId: string,
 ): Promise<SessionPrincipal | null> {
-  const users = await sql<{ instance_admin: boolean; disabled_at: string | null }[]>`
-    SELECT instance_admin, disabled_at FROM users WHERE id = ${userId}`
+  const users = await sql<
+    { email: string; display_name: string; instance_admin: boolean; disabled_at: string | null }[]
+  >`
+    SELECT email, display_name, instance_admin, disabled_at FROM users WHERE id = ${userId}`
   const user = users[0]
   if (user === undefined || user.disabled_at !== null) return null
   const memberships = await sql<{ org_id: string; role: OrgRole }[]>`
@@ -82,6 +86,8 @@ export async function sessionPrincipalFor(
   return {
     kind: 'session',
     userId,
+    email: user.email,
+    displayName: user.display_name,
     instanceAdmin: user.instance_admin,
     orgs: new Map(memberships.map((m) => [m.org_id, m.role])),
   }

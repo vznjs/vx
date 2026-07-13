@@ -193,6 +193,18 @@ export interface InvocationDetail {
   tags: Record<string, string>
 }
 
+/** A notification-bell item: a build that broke. Lean by design — the bell
+ *  polls frequently, so it reads only what a compact row needs. */
+export interface NotificationItem {
+  kind: 'run-failed'
+  runId: string
+  startedAt: number
+  branch: string | null
+  commitSha: string | null
+  failedCount: number
+  taskCount: number
+}
+
 export interface ListInvocationsArgs {
   limit?: number
   branch?: string
@@ -1261,6 +1273,38 @@ export class Analytics {
       WHERE workspace_id = ${workspaceId} ${fBranch} ${fCi} ${fTag}
       ORDER BY started_at DESC LIMIT ${limit}`
     return rows.map(mapInvocation)
+  }
+
+  /**
+   * The notification feed: recent invocations that broke (`failed_count > 0`),
+   * newest first. Workspace-clamped; one indexed scan over the invocations
+   * header table (never the task_runs partitions), so it is cheap to poll. The
+   * client computes the unread count from a last-seen watermark.
+   */
+  async getNotifications(workspaceId: string, limit = 20): Promise<NotificationItem[]> {
+    const rows = await this.sql<
+      {
+        run_id: string
+        started_at: number
+        branch: string | null
+        commit_sha: string | null
+        failed_count: number
+        task_count: number
+      }[]
+    >`
+      SELECT run_id, started_at, branch, commit_sha, failed_count, task_count
+      FROM invocations
+      WHERE workspace_id = ${workspaceId} AND failed_count > 0
+      ORDER BY started_at DESC LIMIT ${clampInt(limit, 1, 100)}`
+    return rows.map((r) => ({
+      kind: 'run-failed',
+      runId: r.run_id,
+      startedAt: Number(r.started_at),
+      branch: r.branch,
+      commitSha: r.commit_sha,
+      failedCount: r.failed_count,
+      taskCount: r.task_count,
+    }))
   }
 
   async getRun(workspaceId: string, runId: string): Promise<RunDetail | null> {

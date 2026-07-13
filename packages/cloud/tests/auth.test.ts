@@ -155,6 +155,108 @@ describe('register + bootstrap', () => {
   })
 })
 
+describe('profile + password (self-service)', () => {
+  let db: DbClient
+  let ctx: AuthRoutesContext
+  let cookie: string
+  beforeAll(async () => {
+    db = openDb(await (await ephemeralPg()).createDatabase())
+    ctx = makeCtx(db)
+    const reg = await call(ctx, 'POST', '/v1/auth/register', {
+      body: { email: 'me@example.com', password: 'password1', displayName: 'Ada' },
+    })
+    cookie = cookieOf(reg)
+  })
+
+  it('/v1/auth/me carries email + displayName', async () => {
+    const body = (await (await call(ctx, 'GET', '/v1/auth/me', { cookie })).json()) as {
+      email: string
+      displayName: string
+      instanceAdmin: boolean
+    }
+    expect(body.email).toBe('me@example.com')
+    expect(body.displayName).toBe('Ada')
+    expect(body.instanceAdmin).toBe(true)
+  })
+
+  it('PATCH /v1/auth/me renames — CSRF-gated, non-empty, reflected in /me', async () => {
+    // Missing CSRF header → 403 (no rename).
+    const noCsrf = await call(ctx, 'PATCH', '/v1/auth/me', {
+      cookie,
+      body: { displayName: 'Ada Lovelace' },
+    })
+    expect(noCsrf.status).toBe(403)
+    // Empty name → 400.
+    const empty = await call(ctx, 'PATCH', '/v1/auth/me', {
+      cookie,
+      csrf: true,
+      body: { displayName: '   ' },
+    })
+    expect(empty.status).toBe(400)
+    // Valid rename → 200, and /me reflects it.
+    const ok = await call(ctx, 'PATCH', '/v1/auth/me', {
+      cookie,
+      csrf: true,
+      body: { displayName: 'Ada Lovelace' },
+    })
+    expect(ok.status).toBe(200)
+    const me = (await (await call(ctx, 'GET', '/v1/auth/me', { cookie })).json()) as {
+      displayName: string
+    }
+    expect(me.displayName).toBe('Ada Lovelace')
+  })
+
+  it('POST /v1/auth/password verifies the current password before changing it', async () => {
+    // Wrong current → 403.
+    const wrong = await call(ctx, 'POST', '/v1/auth/password', {
+      cookie,
+      csrf: true,
+      body: { currentPassword: 'nope-nope', newPassword: 'newpassword1' },
+    })
+    expect(wrong.status).toBe(403)
+    // Too-short new → 400.
+    const short = await call(ctx, 'POST', '/v1/auth/password', {
+      cookie,
+      csrf: true,
+      body: { currentPassword: 'password1', newPassword: 'short' },
+    })
+    expect(short.status).toBe(400)
+    // Correct current + valid new → 200; the new password logs in, the old fails.
+    const ok = await call(ctx, 'POST', '/v1/auth/password', {
+      cookie,
+      csrf: true,
+      body: { currentPassword: 'password1', newPassword: 'newpassword1' },
+    })
+    expect(ok.status).toBe(200)
+    const withNew = await call(ctx, 'POST', '/v1/auth/login', {
+      body: { email: 'me@example.com', password: 'newpassword1' },
+    })
+    expect(withNew.status).toBe(200)
+    const withOld = await call(ctx, 'POST', '/v1/auth/login', {
+      body: { email: 'me@example.com', password: 'password1' },
+    })
+    expect(withOld.status).toBe(401)
+  })
+
+  it('a bearer token cannot use the profile endpoints (session required)', async () => {
+    const meBody = (await (await call(ctx, 'GET', '/v1/auth/me', { cookie })).json()) as {
+      orgs: { orgId: string }[]
+    }
+    const orgId = meBody.orgs[0]!.orgId
+    const mint = await call(ctx, 'POST', `/v1/admin/orgs/${orgId}/tokens`, {
+      cookie,
+      csrf: true,
+      body: { name: 'ci', tier: 'trusted' },
+    })
+    const token = ((await mint.json()) as { token: string }).token
+    const patch = await call(ctx, 'PATCH', '/v1/auth/me', {
+      bearer: token,
+      body: { displayName: 'nope' },
+    })
+    expect(patch.status).toBe(403)
+  })
+})
+
 describe('login / logout / sessions', () => {
   let db: DbClient
   let ctx: AuthRoutesContext
