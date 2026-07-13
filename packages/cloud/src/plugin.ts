@@ -486,14 +486,23 @@ class CloudIngestSink implements TelemetrySink {
         }
       }
     }
+    // Deep link into the connected dashboard (DX-2): a red check is ONE click
+    // from the run's logs + artifacts. Only when a connection resolved — the
+    // GHA-summary-only mode has no dashboard to point at.
+    const ghOpts =
+      this.connection !== undefined
+        ? {
+            dashboardUrl: `${this.connection.baseUrl}/#/runs/${encodeURIComponent(this.summary.run.runId)}`,
+          }
+        : {}
     if (this.githubSummaryPath !== undefined) {
-      await appendGithubSummary(this.githubSummaryPath, this.summary, this.warn)
+      await appendGithubSummary(this.githubSummaryPath, this.summary, this.warn, ghOpts)
     }
     if (this.githubCheck) {
       // Resolved at flush (reads the event payload for the PR head SHA);
       // any missing ingredient resolves to undefined and skips silently.
       const target = await resolveGithubCheckTarget(process.env, this.summary.run.command)
-      if (target !== undefined) await postGithubCheck(target, this.summary, this.warn)
+      if (target !== undefined) await postGithubCheck(target, this.summary, this.warn, ghOpts)
     }
   }
 

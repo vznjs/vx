@@ -115,16 +115,31 @@ function hermeticityLine(tasks: readonly TaskTelemetry[]): string {
   return `\n${icon} Hermeticity: **${proven}** proven · **${bad}** unsafe${allowedPart}\n`
 }
 
+export interface GithubSummaryOptions {
+  /** Deep link to this run in the connected dashboard (DX-2): rendered as a
+   *  prominent link right under the verdict, so a red check is ONE click from
+   *  the run's logs + artifacts. Absent (no connection) → no link line. */
+  dashboardUrl?: string
+}
+
 /** Render the run's result as a GitHub-flavored-markdown job summary. */
-export function formatGithubSummary(summary: RunSummaryRecord): string {
+export function formatGithubSummary(
+  summary: RunSummaryRecord,
+  opts: GithubSummaryOptions = {},
+): string {
   const verdict = summary.exitOk ? '✅ passed' : '❌ failed'
   const hits = summary.hitCount
   const executed = summary.taskCount - hits
+  const dashboardLine =
+    opts.dashboardUrl !== undefined
+      ? `\n▸ [Open this run in the vx dashboard](${opts.dashboardUrl})\n`
+      : ''
   const head =
     `### vx run — \`${summary.run.command}\`\n\n` +
     `${verdict} · **${summary.taskCount}** tasks · **${summary.failedCount}** failed · ` +
     `**${hits}** cache hits · **${executed}** executed · ` +
     `${fmtDuration(summary.totalDurationMs)}\n` +
+    dashboardLine +
     hermeticityLine(summary.tasks)
 
   // Failures first (the thing you opened the summary to find), then the rest in
@@ -155,9 +170,10 @@ export async function appendGithubSummary(
   filePath: string,
   summary: RunSummaryRecord,
   warn: (message: string) => void,
+  opts: GithubSummaryOptions = {},
 ): Promise<void> {
   try {
-    await appendFile(filePath, `\n${formatGithubSummary(summary)}`)
+    await appendFile(filePath, `\n${formatGithubSummary(summary, opts)}`)
   } catch (err) {
     warn(`[vx] github summary: ${err instanceof Error ? err.message : String(err)}`)
   }

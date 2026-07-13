@@ -36,11 +36,23 @@ function singleFile(): Plugin {
   }
 }
 
+// The platform the dev server proxies API calls to. The SPA's default origin
+// in dev is the page's own origin (the vite server), so proxying keeps every
+// request SAME-ORIGIN — the HttpOnly session cookie and the CSRF header ride
+// exactly like production, where the platform hosts the SPA itself. Without
+// this, a UI contributor's fetches went cross-origin to :4321 and credentialed
+// CORS (wildcard Allow-Origin, no Allow-Credentials) blocked the login flow.
+const DEV_API = process.env['VX_CLOUD_DEV_PROXY'] ?? 'http://localhost:4321'
+const proxied = ['/v1', '/health', '/mcp', '/events', '/stream']
+
 export default defineConfig({
   plugins: [unocss(), solid(), singleFile()],
   server: {
     port: 5290,
     strictPort: false,
+    proxy: Object.fromEntries(
+      proxied.map((path) => [path, { target: DEV_API, changeOrigin: true, ws: true }]),
+    ),
   },
   preview: {
     port: 5290,

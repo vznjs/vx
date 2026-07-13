@@ -47,48 +47,47 @@ export function computePredictedPriorities(
     return h?.p50DurationMs ?? workspaceMedian
   }
 
-  // Memoized topo-DP. visit[id] = the expected critical path FROM this
-  // node down to a leaf. We compute bottom-up using a stack-based
-  // walker — iterative to avoid V8 stack-frame ceilings on deep graphs.
+  // memo[id] = own p50 + max over dependents' memo — a fold over the
+  // DOWNSTREAM chain, so every dependent must be computed before the
+  // node it depends on. The graph Map's insertion order is PRE-order
+  // from the requested roots (a dependent is inserted BEFORE the deps
+  // it pulls in), so no fixed scan direction over `nodes` is safe:
+  // process in reverse-topo order via an explicit Kahn pass over the
+  // dependents relation (iterative — no V8 stack ceiling; the
+  // scheduler's bitset-closure precedent).
   const memo = new Map<string, number>()
   const nodeById = new Map<string, TaskNode>(nodes.map((n) => [n.id, n]))
-
-  const stack: TaskNode[] = nodes.slice()
-  // First pass: ensure deepest-first ordering via post-order traversal.
-  const order: TaskNode[] = []
-  const visited = new Set<string>()
-  while (stack.length > 0) {
-    const top = stack[stack.length - 1]!
-    if (visited.has(top.id)) {
-      stack.pop()
-      continue
-    }
-    const deps = dependentsOf.get(top.id) ?? []
-    let pushed = false
-    for (const d of deps) {
-      const n = nodeById.get(d)
-      if (n && !visited.has(n.id) && !stack.includes(n)) {
-        stack.push(n)
-        pushed = true
-        break
-      }
-    }
-    if (!pushed) {
-      visited.add(top.id)
-      order.push(top)
-      stack.pop()
-    }
+  // pending[id] = dependents not yet folded; 0 → every downstream chain
+  // through this node is known, so its own memo can be computed.
+  const pending = new Map<string, number>()
+  const queue: TaskNode[] = []
+  for (const n of nodes) {
+    const count = dependentsOf.get(n.id)?.length ?? 0
+    pending.set(n.id, count)
+    if (count === 0) queue.push(n)
   }
-
-  for (const n of order) {
-    const own = ownDuration(n)
+  let head = 0
+  while (head < queue.length) {
+    const n = queue[head++]!
     let downstream = 0
     for (const dep of dependentsOf.get(n.id) ?? []) {
       const d = memo.get(dep) ?? 0
       if (d > downstream) downstream = d
     }
-    memo.set(n.id, own + downstream)
+    memo.set(n.id, ownDuration(n) + downstream)
+    for (const up of n.deps) {
+      const left = (pending.get(up) ?? 0) - 1
+      pending.set(up, left)
+      if (left === 0) {
+        const upNode = nodeById.get(up)
+        if (upNode) queue.push(upNode)
+      }
+    }
   }
+  // Cycles are rejected at graph build, so the queue drains fully in
+  // practice; if anything were ever left, degrade to its own duration —
+  // priorities are advisory and must never throw.
+  for (const n of nodes) if (!memo.has(n.id)) memo.set(n.id, ownDuration(n))
 
   return memo
 }

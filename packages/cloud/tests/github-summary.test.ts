@@ -71,6 +71,17 @@ describe('formatGithubSummary', () => {
     expect(md).toContain('`a#build`')
   })
 
+  it('renders the dashboard deep link when a dashboardUrl is passed, else no link', () => {
+    const s = summary([{ taskId: 'a#build' }])
+    const linked = formatGithubSummary(s, {
+      dashboardUrl: 'https://vx.corp.example/#/runs/run-1',
+    })
+    expect(linked).toContain(
+      '[Open this run in the vx dashboard](https://vx.corp.example/#/runs/run-1)',
+    )
+    expect(formatGithubSummary(s)).not.toContain('vx dashboard')
+  })
+
   it('orders failed tasks first and marks the failure with its exit code', () => {
     const md = formatGithubSummary(
       summary([

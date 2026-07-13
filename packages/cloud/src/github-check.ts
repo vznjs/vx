@@ -13,7 +13,7 @@
 
 import { readFile } from 'node:fs/promises'
 import type { RunSummaryRecord } from '@vzn/vx'
-import { formatGithubSummary } from './github-summary.js'
+import { formatGithubSummary, type GithubSummaryOptions } from './github-summary.js'
 
 /** GitHub caps a check run's output.summary at 65535 chars; stay clear of it. */
 const MAX_OUTPUT_CHARS = 60_000
@@ -97,14 +97,18 @@ export async function postGithubCheck(
   target: GithubCheckTarget,
   summary: RunSummaryRecord,
   warn: (message: string) => void,
+  opts: GithubSummaryOptions = {},
 ): Promise<void> {
-  const markdown = formatGithubSummary(summary)
+  const markdown = formatGithubSummary(summary, opts)
   const body = JSON.stringify({
     name: target.name,
     head_sha: target.headSha,
     status: 'completed',
     conclusion: summary.exitOk ? 'success' : 'failure',
     completed_at: new Date(summary.endedAt).toISOString(),
+    // The PR checks list's "Details" link — straight to the run's dashboard
+    // page when a connection resolved (DX-2).
+    ...(opts.dashboardUrl !== undefined ? { details_url: opts.dashboardUrl } : {}),
     output: {
       title: summary.exitOk
         ? `passed — ${summary.taskCount} tasks, ${summary.hitCount} cache hits`

@@ -125,8 +125,57 @@ the last is task #699. Measured (same harness):
 (The scenario-4 "open" wall-time includes a fixed 1.8s settle in the
 harness — the honest open metric is long-tasks-during-mount: 652ms → 0.)
 
-Remaining polish (cycle 4+): P4 live-log cap, P5-P8, C3-C4, the committed
-CI perf guard, DX-1..5, core-audit completion.
+### Cycle-3 wave 2: dead-code discovery + CORE-1 + DX-1/2/5
+
+**Shipped:** DX-1 (tokenless account-platform connect refused, `--anonymous`
+escape, 3 tests), DX-5b (stale-doc sweep: ci.md installer, from-turborepo
+wire/scope/Bun claims, vx-distributed-ci token now `required: true` since
+the platform's machine surfaces are token-only, upgrade.ts strings),
+**CORE-1 FIXED** (the fold is now an explicit Kahn pass over the dependents
+relation — order-independent; two regression tests pin real pre-order
+insertion + the diamond long-branch head; both fail on the old code, which
+processed reverse-insertion order and collapsed every upstream's priority
+to own-duration on real graphs), DX-2 (GHA summary gains
+`▸ Open this run in the vx dashboard → <origin>/#/runs/<runId>` and the
+check run gets `details_url`, both only when a connection resolved), DX-5a
+(vite dev proxy for `/v1|/health|/mcp|/events|/stream` → `:4321`,
+`VX_CLOUD_DEV_PROXY` override; UI README rewritten to the compose-platform
+recipe — the dev flow is same-origin so the session cookie works).
+
+**FINDING — P4, P5, P7 and C3 are MOOT: the live-run machinery is dead
+code on the shipped platform.** The queue protocol has ZERO server-side
+implementation left (`grep queue:submit|RunQueue packages/cloud/src` →
+nothing — the P4-server fold deleted run-queue.ts/protocol-queue.ts with
+serve.ts); the platform's `/v1/meta` never advertises `queue`, so the
+capability gate keeps `fetchQueue` off forever; `/version` 404s, so
+`canRun()` is permanently false and the spawn bar can never submit;
+`queueRun`'s `queue:submit` WS message has no handler. Consequently
+`RunSession`/`createRunSession`, the active-jobs store, and the
+foreign-jobs poll are unreachable. Optimizing them (the P4 log cap, P5
+flame ticker, P7 map lookups, C3 retention) would be tuning code that
+cannot execute.
+
+**Decision needed (owner/cycle 4+), options in preference order:**
+
+1. **Repurpose the live surface onto the platform's org-scoped `/stream`.**
+   The dashboard lens's question #1 ("see it run") currently has NO live
+   answer on the platform, yet the server already broadcasts org-scoped
+   dist-run events (agent:start/stdout/stderr/done) on `/events`/`/stream`.
+   Rebind RunSession's reducer to those events (read-only "watch it run",
+   no spawn) — restores lens #1 without resurrecting run delegation. The
+   P4/P5/P7/C3 fixes then apply as part of that rebuild.
+2. **Delete the dead machinery** (spawn bar, queueRun, RunSession,
+   foreign-jobs poll, `queue` capability plumbing): honest per the
+   "no half-finished implementations" rule, cuts bundle, but burns the
+   scaffolding option 1 would reuse.
+3. Keep dormant (status quo) — costs nothing at runtime (never mounts),
+   but the audit keeps re-flagging it.
+
+Remaining (cycle 4+): the live-surface decision above, C4 (fetch
+cancellation + a batched `/v1/why/:runId`), P6/P8 (flamegraph/chart
+pointer-move costs — these two ARE live on run-detail), DX-3 (`vx why`),
+DX-4 (`vx-cloud status` doctor), the committed CI perf guard, core-audit
+completion (watch/migrate/lockfile/loader), #79 cloud query rewrites.
 
 ## 2. UI mechanism findings (perf + correctness)
 

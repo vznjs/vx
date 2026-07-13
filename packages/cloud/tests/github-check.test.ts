@@ -148,6 +148,7 @@ interface CheckRunBody {
   head_sha: string
   status: string
   conclusion: string
+  details_url?: string
   output: { title: string; summary: string }
 }
 
@@ -212,6 +213,22 @@ describe('postGithubCheck', () => {
       await postGithubCheck(targetFor(server), summary([{ taskId: 'a#build' }]), () => {})
       expect(requests[0]!.body.conclusion).toBe('success')
       expect(requests[0]!.body.output.title).toContain('passed')
+      // No dashboardUrl → no details_url claim on the check.
+      expect(requests[0]!.body.details_url).toBeUndefined()
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('sets details_url + the summary link when a dashboardUrl is passed', async () => {
+    const { server, requests } = stubApi()
+    try {
+      await postGithubCheck(targetFor(server), summary([{ taskId: 'a#build' }]), () => {}, {
+        dashboardUrl: 'https://vx.corp.example/#/runs/run-1',
+      })
+      const r = requests[0]!
+      expect(r.body.details_url).toBe('https://vx.corp.example/#/runs/run-1')
+      expect(r.body.output.summary).toContain('Open this run in the vx dashboard')
     } finally {
       await server.stop()
     }
