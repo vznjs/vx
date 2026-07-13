@@ -208,6 +208,41 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-13**: **Dashboard is a real SaaS app — self-service profile,
+  change-password, a notification bell, and a Settings hub (`81ac87e`…,
+  `581fa07`)** (owner: "Redesign ui to be real sass with profiles switching
+  orgs workspaces notifications etc settings"). Org + workspace switchers
+  already existed (P4); this added the identity/notification/settings
+  surfaces. **Server (wave 1, no schema bump):** `/v1/auth/me` now carries
+  `email` + `displayName` — the session principal only loaded
+  `instance_admin`, so the account menu literally could not show who was
+  signed in; `sessionPrincipalFor` selects them. New `PATCH /v1/auth/me`
+  (rename — the one self-service field; email is the immutable login
+  identity), `POST /v1/auth/password` (verify current via argon2 → ≥8-char
+  new → re-hash; session + CSRF only, a bearer 403s), and
+  `GET /v1/notifications` (the bell feed: recent invocations that broke
+  `failed_count > 0`, newest-first, ONE indexed scan over the invocations
+  header — cheap to poll; the client derives unread from a last-seen
+  watermark). **UI (waves 2-3):** account menu = avatar(initials) + name +
+  email + admin badge + links to Settings/Admin + sign out; a notification
+  bell (visibility-aware 30s poll, unread badge vs a per-origin+ws
+  localStorage watermark, each item deep-links `/runs/:id`, honest "all
+  green" empty state); `/settings` = a personal hub with Profile (rename,
+  shell name updates live) + Security (change password, confirm + inline
+  banners) tabs + an Organization link out to `/admin`. **Verification fix:**
+  `/v1/notifications` fell through to the SPA because the server's
+  `isAnalyticsSurface` allowlist omitted it — added, pinned by a server e2e
+  (session reads the feed; green → empty, broken run → surfaced). Verified
+  end-to-end in a REAL browser (platform + Chromium, seeded via the ingest
+  wire): 9/9 flows (bell badge + panel, account-menu email, /settings rename
+  reflected in the shell, password change round-trips server-side), ZERO
+  console errors; the measured ui-perf guard stays green (4/4) with the
+  bell's poll. NOTE: `dist/` is a gitignored build artifact — never
+  committed. Cloud 429 pass, lint+fmt clean. Deferred (documented,
+  unbuilt): richer notification kinds (regressions/flaky as timestamped
+  events would want a schema), per-user notification prefs, avatar upload,
+  email change (needs a verify flow).
+
 - **2026-07-13**: **Audit loop cycle 3 — 60fps bar met everywhere +
   virtualization, DX-1..5 shipped, CORE-1 fixed, the perf guard COMMITTED, and
   a dead-code discovery that MOOTS four findings (`f33d1a0`..`2ea9f08`)**.

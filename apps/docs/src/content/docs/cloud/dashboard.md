@@ -31,6 +31,20 @@ signup closes and everyone else joins by invite (see
   `member`, `viewer`), **invites**, and **API tokens** (`vxc_`, a
   `trusted`/`untrusted` tier, optionally workspace-scoped). The tokens you
   mint here are what CI and `vx run` present.
+- The **account menu** (avatar, top-right) shows who you're signed in as
+  and links to **Settings** and (for privileged roles) **Admin**.
+- **Settings** (`/settings`) is your personal account area: rename yourself
+  under **Profile**, and change your password under **Security**.
+
+## Notifications
+
+The **bell** in the header surfaces the current workspace's recent broken
+builds — the runs where a task failed — newest first, each linking straight
+to that run. An unread badge counts failures you haven't looked at yet
+(tracked per browser, per workspace); opening the panel clears it. It polls
+lightly and pauses while the tab is in the background. Cross-branch
+regressions and flaky tasks are analytics, not per-event alerts — they live
+on **Insights**, one click away from the panel.
 
 ## Where the data comes from
 
