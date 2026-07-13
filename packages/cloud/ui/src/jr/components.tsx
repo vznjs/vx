@@ -568,6 +568,16 @@ export function DataTable(
     for (const col of c.props.columns ?? []) if (col.kind === 'bar') m[col.key] = Math.max(1, ...(c.props.rows ?? []).map((r) => Number(r[col.key])))
     return m
   })
+  // Type-aware comparator: numbers numerically, strings via localeCompare,
+  // null/undefined always LAST — `(a[k] ?? 0) > b[k]` compared numbers to
+  // strings (false both ways ⇒ arbitrary order) and interleaved nulls.
+  const compareCells = (av: unknown, bv: unknown): number => {
+    const aNil = av === null || av === undefined || av === ''
+    const bNil = bv === null || bv === undefined || bv === ''
+    if (aNil || bNil) return aNil && bNil ? 0 : aNil ? 1 : -1
+    if (typeof av === 'number' && typeof bv === 'number') return av - bv
+    return String(av).localeCompare(String(bv))
+  }
   const rows = createMemo(() => {
     let rs = c.props.rows ?? []
     const f = filterText().toLowerCase().trim()
@@ -576,9 +586,53 @@ export function DataTable(
       rs = rs.filter((r) => String(keys ? keys.map((k) => r[k]).join(' ') : JSON.stringify(r)).toLowerCase().includes(f))
     }
     const k = sortKey()
-    if (k) rs = [...rs].sort((a, b) => { const av = (a[k] ?? 0) as number | string, bv = (b[k] ?? 0) as number | string; const cmp = av === bv ? 0 : av > bv ? 1 : -1; return sortDesc() ? -cmp : cmp })
+    if (k) rs = [...rs].sort((a, b) => { const cmp = compareCells(a[k], b[k]); return sortDesc() ? -cmp : cmp })
     return rs
   })
+
+  // Row windowing for large tables (initial render of a 700-row run-detail
+  // table cost a 600ms+ long task; scroll then hit-tests a huge DOM). Above
+  // the threshold only the viewport slice (+overscan) renders, with spacer
+  // rows preserving scroll geometry. Rows are uniform height; the height is
+  // CALIBRATED from the first rendered row so the scrollbar never drifts.
+  const VIRTUAL_THRESHOLD = 120
+  const OVERSCAN = 12
+  const [rowH, setRowH] = createSignal(33)
+  const [winStart, setWinStart] = createSignal(0)
+  const virtual = () => rows().length > VIRTUAL_THRESHOLD
+  let tbodyEl: HTMLTableSectionElement | undefined
+  const windowCount = () => Math.ceil((typeof window !== 'undefined' ? window.innerHeight : 900) / rowH()) + OVERSCAN * 2
+  const updateWindow = () => {
+    if (!tbodyEl || !virtual()) return
+    const top = tbodyEl.getBoundingClientRect().top
+    setWinStart(Math.max(0, Math.floor(-top / rowH()) - OVERSCAN))
+    const probe = tbodyEl.querySelector('tr[data-row]')
+    if (probe) {
+      const h = probe.getBoundingClientRect().height
+      if (h > 8 && Math.abs(h - rowH()) > 0.5) setRowH(h)
+    }
+  }
+  createEffect(() => {
+    if (!virtual()) return
+    let raf = 0
+    const onScroll = (): void => {
+      if (raf !== 0) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        updateWindow()
+      })
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll, { passive: true })
+    queueMicrotask(updateWindow)
+    onCleanup(() => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+      if (raf !== 0) cancelAnimationFrame(raf)
+    })
+  })
+  const visibleRows = createMemo(() => (virtual() ? rows().slice(winStart(), winStart() + windowCount()) : rows()))
+  const spacerBelow = () => Math.max(0, rows().length - winStart() - windowCount())
   const hrefOf = (row: Row) => {
     const ref = c.props.rowTaskRef
     if (ref) return `/tasks/${enc(`${row[ref.projectKey ?? 'project']}#${row[ref.taskKey ?? 'task']}`)}`
@@ -613,12 +667,15 @@ export function DataTable(
               </For>
             </tr>
           </thead>
-          <tbody>
-            <For each={rows()}>
+          <tbody ref={tbodyEl}>
+            <Show when={virtual() && winStart() > 0}>
+              <tr aria-hidden="true" style={{ height: `${winStart() * rowH()}px` }} />
+            </Show>
+            <For each={visibleRows()}>
               {(row) => {
                 const href = hrefOf(row)
                 return (
-                  <tr class="border-t border-border" classList={{ 'hover:bg-surface-hover cursor-pointer': !!href }} onClick={() => href && navigate(href)}>
+                  <tr data-row class="border-t border-border" classList={{ 'hover:bg-surface-hover cursor-pointer': !!href }} onClick={() => href && navigate(href)}>
                     <For each={c.props.columns}>
                       {(col) => (
                         <td class="px-4 py-2 font-mono" classList={{ 'text-left': col.align !== 'right', 'text-right': col.align === 'right' }}>
@@ -630,6 +687,9 @@ export function DataTable(
                 )
               }}
             </For>
+            <Show when={virtual() && spacerBelow() > 0}>
+              <tr aria-hidden="true" style={{ height: `${spacerBelow() * rowH()}px` }} />
+            </Show>
           </tbody>
         </table>
       </Show>

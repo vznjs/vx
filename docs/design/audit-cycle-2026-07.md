@@ -105,9 +105,28 @@ the dark theme (screenshot-verified).
 | 7   | Nav transitions             | 38fps                        | **50fps** (route-mount long tasks ~260-316ms remain — P3/initial render) |
 | —   | Console errors / session    | 14                           | **0**                                                                    |
 
-Remaining to reach the bar everywhere (cycle 3): P3 virtualization (kills
-the 700-row initial-render spike + route-mount long tasks on heavy pages),
-then P4-P8, C3-C5.
+### Cycle-3 wave 1: P3 virtualization — the bar is MET everywhere
+
+DataTable now windows rows above 120 (viewport slice + overscan 12, spacer
+rows preserving scroll geometry, row height calibrated from the first
+rendered row); C5's type-aware sort comparator landed with it. Geometry
+verified at the extreme: the bottom of the 700-row table mounts 31 rows and
+the last is task #699. Measured (same harness):
+
+| Scenario                 | cycle-1 baseline       | after cycle-3 wave 1                    |
+| ------------------------ | ---------------------- | --------------------------------------- |
+| Runs scroll              | 20fps, worst 250ms     | **55fps, 0 frames >34ms, 0 long tasks** |
+| Runs idle                | 30fps, churn           | **60fps, p95 16.8ms**                   |
+| Insights                 | 24fps                  | **60fps, p95 16.8ms, 0 long tasks**     |
+| Run detail (700): scroll | 24fps, 652ms long task | **60fps, p95 16.8ms, 0 long tasks**     |
+| Tasks page               | 38fps, 305ms long task | **60fps, 0 long tasks**                 |
+| Nav transitions          | 38fps                  | **56fps, 0 long tasks**                 |
+
+(The scenario-4 "open" wall-time includes a fixed 1.8s settle in the
+harness — the honest open metric is long-tasks-during-mount: 652ms → 0.)
+
+Remaining polish (cycle 4+): P4 live-log cap, P5-P8, C3-C4, the committed
+CI perf guard, DX-1..5, core-audit completion.
 
 ## 2. UI mechanism findings (perf + correctness)
 
