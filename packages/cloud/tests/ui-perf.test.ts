@@ -145,6 +145,11 @@ interface FrameSample {
 // the (server-side) package program. A whole-file DOM lib reference would
 // collide with Bun's fetch typings program-wide.
 declare const window: unknown
+declare const document: {
+  querySelector(sel: string): {
+    getBoundingClientRect(): { left: number; top: number; width: number; height: number }
+  } | null
+}
 declare function requestAnimationFrame(cb: (t: number) => void): number
 declare function cancelAnimationFrame(id: number): void
 declare class PerformanceObserver {
@@ -279,6 +284,32 @@ describe.skipIf(!available)('dashboard perf guard (real browser, measured)', () 
     for (let i = 0; i < 15; i++) {
       await page.mouse.wheel(0, 400)
       await page.waitForTimeout(40)
+    }
+    const s = await stopSampling(page)
+    expect(avgFps(s.frames)).toBeGreaterThanOrEqual(40)
+    expect(s.longTasks.filter((d) => d > 200)).toEqual([])
+  }, 60_000)
+
+  it('insights chart hover stays ≥40fps with no long tasks', async () => {
+    await page.goto(`${platform.origin}/#/insights`)
+    await page.waitForLoadState('networkidle').catch(() => {})
+    await page.waitForTimeout(1500)
+    // The first LineChart's SVG box (class "block" — see charts.tsx).
+    const box = await page.evaluate(() => {
+      const svg = document.querySelector('svg.block')
+      if (!svg) return null
+      const r = svg.getBoundingClientRect()
+      return { x: r.left, y: r.top, w: r.width, h: r.height }
+    })
+    if (box === null) throw new Error('no LineChart rendered on /insights')
+    const y = box.y + box.h / 2
+    await page.mouse.move(box.x + 2, y)
+    await startSampling(page)
+    // Sweep across the chart — every step changes the nearest-point index, so
+    // the tooltip re-binds (P8: it must not recreate its subtree per index).
+    for (let i = 0; i <= 40; i++) {
+      await page.mouse.move(box.x + (box.w * i) / 40, y)
+      await page.waitForTimeout(16)
     }
     const s = await stopSampling(page)
     expect(avgFps(s.frames)).toBeGreaterThanOrEqual(40)

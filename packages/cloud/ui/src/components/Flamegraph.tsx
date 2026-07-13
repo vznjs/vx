@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal } from 'solid-js'
+import { For, Show, createMemo, createSignal, onCleanup } from 'solid-js'
 import type { RunSummaryRow } from '../api.ts'
 import { formatDuration } from '../format.ts'
 import { layout, type LayoutInput } from '../flamegraph-layout.ts'
@@ -50,13 +50,19 @@ export function Flamegraph(props: {
 
   const l = createMemo(() => layout(inputs()))
   const barById = createMemo(() => new Map(l().bars.map((b) => [b.taskId, b])))
-  const window = () => {
+  // Memoized: the axis ticks + cursor label read this 6×/render, and it's an
+  // O(N) min/max over every task — recomputing per cursor move was P6.
+  const window = createMemo(() => {
     const ts = props.tasks
     if (ts.length === 0) return { min: 0, total: 1 }
-    const min = Math.min(...ts.map((t) => t.startedAt))
-    const max = Math.max(...ts.map((t) => t.endedAt))
+    let min = Infinity
+    let max = -Infinity
+    for (const t of ts) {
+      if (t.startedAt < min) min = t.startedAt
+      if (t.endedAt > max) max = t.endedAt
+    }
     return { min, total: Math.max(1, max - min) }
-  }
+  })
   const chartHeight = () => Math.max(1, l().lanes.length) * (LANE_HEIGHT + LANE_PAD) + LANE_PAD
 
   // Edge geometry, in the chart's coordinate space (x = 0..100 %, y = px).
@@ -90,14 +96,44 @@ export function Flamegraph(props: {
 
   const [cursor, setCursor] = createSignal<number | null>(null) // fraction 0..1
   let chartRef: HTMLDivElement | undefined
-  const onMove = (e: MouseEvent) => {
-    if (!chartRef) return
-    const rect = chartRef.getBoundingClientRect()
-    setCursor(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)))
+  // P6: don't force a layout (getBoundingClientRect) on every mousemove. Cache
+  // the chart's horizontal geometry when the pointer enters (vertical scroll
+  // doesn't affect the X math; a resize mid-hover is negligible), and coalesce
+  // cursor updates to one per animation frame.
+  let rectLeft = 0
+  let rectWidth = 1
+  let pendingX: number | null = null
+  let rafId = 0
+  const cacheRect = (): void => {
+    const r = chartRef?.getBoundingClientRect()
+    if (r) {
+      rectLeft = r.left
+      rectWidth = Math.max(1, r.width)
+    }
   }
+  const flushCursor = (): void => {
+    rafId = 0
+    if (pendingX === null) return
+    setCursor(Math.max(0, Math.min(1, (pendingX - rectLeft) / rectWidth)))
+  }
+  const onMove = (e: MouseEvent): void => {
+    pendingX = e.clientX
+    if (rafId === 0) rafId = requestAnimationFrame(flushCursor)
+  }
+  const onLeave = (): void => {
+    if (rafId !== 0) {
+      cancelAnimationFrame(rafId)
+      rafId = 0
+    }
+    pendingX = null
+    setCursor(null)
+  }
+  onCleanup(() => {
+    if (rafId !== 0) cancelAnimationFrame(rafId)
+  })
 
   return (
-    <div class="relative h-full overflow-auto rounded bg-surface-2" onMouseMove={onMove} onMouseLeave={() => setCursor(null)}>
+    <div class="relative h-full overflow-auto rounded bg-surface-2" onMouseEnter={cacheRect} onMouseMove={onMove} onMouseLeave={onLeave}>
       {/* Sticky time axis — stays pinned at the top while the lanes scroll. */}
       <div class="sticky top-0 z-30 h-5 bg-surface-2 border-b border-border/60">
         <For each={Array.from({ length: AXIS_TICKS }, (_, i) => i / (AXIS_TICKS - 1))}>

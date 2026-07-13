@@ -107,18 +107,39 @@ export function LineChart(props: LineChartProps) {
     ]
   })
 
-  // Hover state — tracks the nearest point on mouse move.
+  // Hover state — tracks the nearest point on mouse move. P8: cache the SVG's
+  // left edge on pointer-enter (the chart doesn't scroll, so it's stable for
+  // the hover) instead of forcing a layout read per mousemove, and coalesce to
+  // one index update per animation frame.
   const [hoverIdx, setHoverIdx] = createSignal<number | null>(null)
-  const onMove = (e: MouseEvent) => {
-    const target = e.currentTarget as SVGSVGElement
-    const rect = target.getBoundingClientRect()
-    const x = e.clientX - rect.left - MARGIN.left
-    const n = props.xs.length
-    if (n === 0) return
-    const idx = Math.max(0, Math.min(n - 1, Math.round((x / innerW()) * (n - 1))))
-    setHoverIdx(idx)
+  let svgLeft = 0
+  let pendingX: number | null = null
+  let rafId = 0
+  const cacheRect = (e: MouseEvent): void => {
+    svgLeft = (e.currentTarget as SVGSVGElement).getBoundingClientRect().left
   }
-  const onLeave = () => setHoverIdx(null)
+  const flush = (): void => {
+    rafId = 0
+    const n = props.xs.length
+    if (pendingX === null || n === 0) return
+    const x = pendingX - svgLeft - MARGIN.left
+    setHoverIdx(Math.max(0, Math.min(n - 1, Math.round((x / innerW()) * (n - 1)))))
+  }
+  const onMove = (e: MouseEvent): void => {
+    pendingX = e.clientX
+    if (rafId === 0) rafId = requestAnimationFrame(flush)
+  }
+  const onLeave = (): void => {
+    if (rafId !== 0) {
+      cancelAnimationFrame(rafId)
+      rafId = 0
+    }
+    pendingX = null
+    setHoverIdx(null)
+  }
+  onCleanup(() => {
+    if (rafId !== 0) cancelAnimationFrame(rafId)
+  })
 
   return (
     <div ref={containerRef} class="w-full">
@@ -127,6 +148,7 @@ export function LineChart(props: LineChartProps) {
       width="100%"
       height={H()}
       class="block"
+      onMouseEnter={cacheRect}
       onMouseMove={onMove}
       onMouseLeave={onLeave}
     >
@@ -232,31 +254,37 @@ export function LineChart(props: LineChartProps) {
         </For>
       </g>
 
-      {/* Hover tooltip */}
+      {/* Hover tooltip — rendered ONCE with a stable structure (the series list
+          doesn't change), so moving between points binds position + text in
+          place instead of tearing down and recreating the whole subtree (P8). */}
       <Show when={hoverIdx() !== null}>
-        {(() => {
-          const i = hoverIdx()!
-          const x = MARGIN.left + xAt(i, props.xs.length)
-          const xv = props.xs[i]
-          return (
-            <foreignObject x={Math.min(x + 8, W() - 140)} y={MARGIN.top} width="140" height="80">
-              <div class="bg-surface-2 border border-border-strong rounded px-2 py-1 text-[11px] shadow-lg">
-                <div class="text-fg-3 mb-1 font-mono">{props.formatX && xv !== undefined ? props.formatX(xv) : xv}</div>
-                <For each={props.series}>
-                  {(s) => (
-                    <div class="flex items-center gap-1.5">
-                      <span class={`inline-block w-2 h-2 rounded-full ${s.strokeClass.replace('stroke-', 'bg-')}`} />
-                      <span class="text-fg-2">{s.name}</span>
-                      <span class="ml-auto font-mono text-fg">
-                        {props.formatY && s.data[i] !== undefined ? props.formatY(s.data[i]!) : s.data[i]}
-                      </span>
-                    </div>
-                  )}
-                </For>
-              </div>
-            </foreignObject>
-          )
-        })()}
+        <foreignObject
+          x={Math.min(MARGIN.left + xAt(hoverIdx()!, props.xs.length) + 8, W() - 140)}
+          y={MARGIN.top}
+          width="140"
+          height="80"
+        >
+          <div class="bg-surface-2 border border-border-strong rounded px-2 py-1 text-[11px] shadow-lg">
+            <div class="text-fg-3 mb-1 font-mono">
+              {props.formatX && props.xs[hoverIdx()!] !== undefined
+                ? props.formatX(props.xs[hoverIdx()!]!)
+                : props.xs[hoverIdx()!]}
+            </div>
+            <For each={props.series}>
+              {(s) => (
+                <div class="flex items-center gap-1.5">
+                  <span class={`inline-block w-2 h-2 rounded-full ${s.strokeClass.replace('stroke-', 'bg-')}`} />
+                  <span class="text-fg-2">{s.name}</span>
+                  <span class="ml-auto font-mono text-fg">
+                    {props.formatY && s.data[hoverIdx()!] !== undefined
+                      ? props.formatY(s.data[hoverIdx()!]!)
+                      : s.data[hoverIdx()!]}
+                  </span>
+                </div>
+              )}
+            </For>
+          </div>
+        </foreignObject>
       </Show>
     </svg>
     </div>
