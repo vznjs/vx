@@ -89,6 +89,7 @@ function isAnalyticsSurface(pathname: string, method: string): boolean {
     /^\/v1\/compare\/[^/]+$/.test(pathname) ||
     /^\/v1\/tasks\/.+$/.test(pathname) ||
     /^\/v1\/explain\/.+$/.test(pathname) ||
+    /^\/v1\/why\/[^/]+$/.test(pathname) ||
     /^\/v1\/why\/[^/]+\/.+$/.test(pathname) ||
     /^\/v1\/diff\/[^/]+\/.+$/.test(pathname)
   )

@@ -385,6 +385,15 @@ export interface CacheKeyDiff {
   note: string
 }
 
+/** One executed task's re-run verdict — the batched `/v1/why/:runId` row. */
+export interface WhyRunRow {
+  taskId: string
+  project: string
+  task: string
+  previousRunId: string | null
+  reason: string
+}
+
 export interface CompareTaskSide {
   status: string
   durationMs: number
@@ -1740,6 +1749,51 @@ export class Analytics {
       latestEntry: null,
       note: 'cache key components (files / env / runtime / upstream) require live config evaluation; this surface returns persisted entry metadata',
     }
+  }
+
+  /**
+   * Batched "why did this re-run" over EVERY executed task of a run — one
+   * LATERAL query instead of the client's per-task `/v1/diff` fan-out (a
+   * 500-task run was 500 requests). For each success/failed task, find the
+   * most-recent prior run of the same (project, task) and compare cache keys:
+   * no prior → first run; key changed → inputs changed; key same → ran without
+   * a cache hit (not cacheable / forced). Input-component detail lives in the
+   * local cache.db (not the platform), so only the hash-change verdict is known
+   * here — the same limit the per-task path has, now computed in one round-trip.
+   */
+  async whyRunReran(workspaceId: string, runId: string): Promise<WhyRunRow[]> {
+    const rows = await this.sql<
+      {
+        project: string
+        task: string
+        this_hash: string
+        prev_run_id: string | null
+        prev_hash: string | null
+      }[]
+    >`
+      SELECT t.project, t.task, t.hash AS this_hash, p.run_id AS prev_run_id, p.hash AS prev_hash
+      FROM task_runs t
+      LEFT JOIN LATERAL (
+        SELECT run_id, hash FROM task_runs
+        WHERE workspace_id = t.workspace_id AND project = t.project AND task = t.task
+          AND started_at < t.started_at
+        ORDER BY started_at DESC LIMIT 1
+      ) p ON true
+      WHERE t.workspace_id = ${workspaceId} AND t.run_id = ${runId}
+        AND t.status IN ('success', 'failed')
+      ORDER BY t.project, t.task`
+    return rows.map((r) => ({
+      taskId: `${r.project}#${r.task}`,
+      project: r.project,
+      task: r.task,
+      previousRunId: r.prev_run_id,
+      reason:
+        r.prev_run_id === null
+          ? 'first run'
+          : r.prev_hash !== r.this_hash
+            ? 'inputs changed'
+            : 'ran without a cache hit (not cacheable / forced)',
+    }))
   }
 
   async whyDidThisRerun(

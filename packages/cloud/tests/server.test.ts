@@ -381,6 +381,20 @@ describe('platform e2e (real pg + fake S3)', () => {
     expect(liveLog.status).toBe(200)
     expect(((await liveLog.json()) as { content: string }).content).toContain('live build output')
 
+    // Batched re-run verdict (single-segment /v1/why/:runId) is allowlisted —
+    // it must reach the analytics handler, not fall through to the SPA — and
+    // returns one verdict row per executed task of the run.
+    const why = await call('GET', '/v1/why/r-live', { cookie })
+    expect(why.status).toBe(200)
+    const whyRows = ((await why.json()) as { rows: { task: string; reason: string }[] }).rows
+    const buildWhy = whyRows.find((r) => r.task === 'build')
+    expect(buildWhy).toBeDefined()
+    expect([
+      'first run',
+      'inputs changed',
+      'ran without a cache hit (not cacheable / forced)',
+    ]).toContain(buildWhy!.reason)
+
     // The notification feed reads as a session surface (allowlisted, not the
     // machine-only ingest path): a green run produces no notification.
     const none = await call('GET', '/v1/notifications', { cookie })

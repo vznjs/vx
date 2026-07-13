@@ -389,6 +389,12 @@ async function handleAnalyticsRequestInner(
     if (m) return json(await a.explainCacheKey(ws, decodeURIComponent(m[1]!)))
   }
   {
+    // Batched: every executed task's re-run verdict in one round-trip. Must be
+    // tried BEFORE the per-task `/v1/why/:runId/:taskId` (single segment only).
+    const m = /^\/v1\/why\/([^/]+)$/.exec(p)
+    if (m) return json({ rows: await a.whyRunReran(ws, decodeURIComponent(m[1]!)) })
+  }
+  {
     const m = /^\/v1\/why\/([^/]+)\/(.+)$/.exec(p)
     if (m)
       return json(await a.whyDidThisRerun(ws, decodeURIComponent(m[1]!), decodeURIComponent(m[2]!)))

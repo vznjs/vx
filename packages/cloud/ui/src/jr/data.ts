@@ -8,9 +8,9 @@ import {
   type PeriodComparison,
   type RunSummaryRow,
   type TaskDetail,
-  cacheKeyDiff,
   compareRuns,
   explainCacheKey,
+  fetchRunWhy,
   fetchArtifacts,
   fetchHermeticity,
   fetchCatalogProject,
@@ -45,84 +45,6 @@ import { type Recommendation, computeRecommendations } from './functions.ts'
 
 type P = Record<string, string>
 
-/** Run `fn` over `items` with at most `limit` in flight (browser fan-out cap). */
-async function mapPool<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const out = new Array<R>(items.length)
-  let next = 0
-  const worker = async (): Promise<void> => {
-    while (next < items.length) {
-      const i = next++
-      out[i] = await fn(items[i]!)
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
-  return out
-}
-
-/**
- * Display-ready row for the run-detail "Why did this re-run?" table. One row per
- * changed cache-key component across all of the run's tasks — the input-
- * fingerprint moat. B5's runDetail view binds to these exact fields.
- */
-interface WhyRow {
-  taskId: string
-  project: string
-  task: string
-  /** Why this task RE-RAN: 'inputs changed' | 'first run' | 'not cacheable / forced'. */
-  reason: string
-  /** Component kind (only for 'inputs changed' rows): file | env | runtime | … ; '' otherwise. */
-  kind: string
-  /** Component name (file path, env var, …); '' for non-component reason rows. */
-  name: string
-  change: 'added' | 'removed' | 'changed' | ''
-  /** The component's hash in the previous run (null when `added` or not applicable). */
-  before: string | null
-  /** The component's hash in this run (null when `removed` or not applicable). */
-  after: string | null
-}
-
-/**
- * For each task in a run, fetch /v1/diff and flatten its changed components into
- * display rows — one row per changed/added/removed cache-key component across
- * all the run's tasks. Tasks whose diff has no entries are skipped. Fetches are
- * batched concurrently; a failed per-task probe degrades to no rows rather than
- * failing the whole section.
- */
-async function runWhy(runId: string): Promise<WhyRow[]> {
-  const run = await getRun(runId)
-  if (!run) return []
-  // Bounded fan-out: a 500-task re-run must not fire 500 parallel requests.
-  const perTask = await mapPool(run.tasks, 8, async (t): Promise<WhyRow[]> => {
-      // Only tasks that actually RE-RAN belong in a "why did this re-run"
-      // panel. Cache hits (cache-hit / cache-hit-remote) and skips did not
-      // re-run, so they're excluded — listing them was the "everything shows
-      // up" bug.
-      if (t.status !== 'success' && t.status !== 'failed') return []
-      const taskId = `${t.project}#${t.task}`
-      const base = { taskId, project: t.project, task: t.task }
-      let diff
-      try {
-        diff = await cacheKeyDiff(runId, taskId)
-      } catch {
-        return [{ ...base, reason: 'ran', kind: '', name: '', change: '', before: null, after: null }]
-      }
-      if (!diff.found || diff.previousRunId === null) {
-        // No prior run of this task to diff against.
-        return [{ ...base, reason: 'first run', kind: '', name: '', change: '', before: null, after: null }]
-      }
-      if (diff.entries.length > 0) {
-        // The cache key changed — one row per changed input component.
-        return diff.entries.map(
-          (e): WhyRow => ({ ...base, reason: 'inputs changed', kind: e.kind, name: e.name, change: e.change, before: e.before, after: e.after }),
-        )
-      }
-      // Ran with the SAME key as the previous run: the task isn't cached
-      // (no `cache:` config / outputs) or caching was bypassed (--force /
-      // --no-cache). Honest, single reason row.
-      return [{ ...base, reason: 'not cacheable / forced', kind: '', name: '', change: '', before: null, after: null }]
-  })
-  return perTask.flat()
-}
 
 /** Display row for the run-comparison table — flattened, signed deltas. */
 interface CompareRow {
@@ -474,7 +396,8 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   catalogProject: (p) => fetchCatalogProject(p.name ?? '').catch(() => null),
   taskRecommendations: (p) => taskRecommendations(p),
   run: (p) => getRun(p.id ?? ''),
-  runWhy: (p) => runWhy(p.id ?? ''),
+  // Batched re-run verdict for the whole run — one request (see fetchRunWhy).
+  runWhy: (p) => fetchRunWhy(p.id ?? ''),
   runSelectedTask: (p) => runSelectedTask(p),
   invocationDetail: (p) => getInvocation(p.id ?? ''),
   compare: (p) => compareRuns(p.id ?? ''),

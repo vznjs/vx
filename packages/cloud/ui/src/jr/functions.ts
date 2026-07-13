@@ -122,15 +122,6 @@ export const FUNCTIONS: Record<string, (args: Args) => unknown> = {
     return `${Math.round(v)}%`
   },
 
-  // Annotate the FLAT runWhy diff rows (one per changed cache-key component:
-  // { taskId, project, task, kind, name, change, before, after }) with the
-  // display fields the DataTable reads as raw row keys:
-  //   _changeToken — a failureMode token so the dots map colors the change
-  //                  (added → green/stable, changed → amber, removed → red)
-  //   _diff        — a readable "before → after" string. File/upstream hashes
-  //                  are shortened to 12 chars; env/runtime values shown raw.
-  whyRows: (a) => arr(a.arr).map((r) => ({ ...r, _changeToken: changeToken(String(r.change)), _diff: diffText(r) })),
-
   // One InvocationDetail → a display-ready entry for the run-detail header
   // Facts strip (command / branch / commit / dirty / CI / tags / cache policy /
   // concurrency / vx version). Null-safe: absent fields render '—'.
@@ -514,25 +505,6 @@ function joinTasks(history: Row[], catalog: unknown): Row[] {
   const known = new Set((cat.tasks as Row[]).map((ct) => String(ct.id)))
   for (const h of history) if (!known.has(String(h.id))) rows.push(h)
   return rows
-}
-
-// added/changed/removed → a failureMode token (green / amber / red via colorOf).
-function changeToken(change: string): 'stable' | 'flaky-recoverable' | 'cold' {
-  if (change === 'added') return 'stable'
-  if (change === 'changed') return 'flaky-recoverable'
-  return 'cold' // removed
-}
-
-// "before → after" for one diff row. Hash-shaped components (file/upstream/
-// package/config/workspace/ws-runtime) shorten to 12 chars; value components
-// (env/runtime/forward) show verbatim. A null side renders as "∅".
-const HASH_KINDS = new Set(['file', 'upstream', 'package', 'config', 'workspace', 'ws-runtime'])
-function diffText(r: Row): string {
-  // Reason-only rows (first run / not cacheable) carry no component — render
-  // an empty cell, not "∅ → ∅".
-  if (r.before == null && r.after == null) return ''
-  const short = (v: unknown) => (v == null ? '∅' : HASH_KINDS.has(String(r.kind)) ? `${String(v).slice(0, 12)}…` : String(v))
-  return `${short(r.before)} → ${short(r.after)}`
 }
 
 // Tags object { k: v } → "k=v, …" (empty string when no tags).

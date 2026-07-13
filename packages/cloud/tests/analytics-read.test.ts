@@ -315,6 +315,23 @@ describe('base fixture reads', () => {
     expect(same.note).toContain('unchanged')
   })
 
+  it('whyRunReran batches every executed task of a run into one verdict list', async () => {
+    const rows = await analytics.whyRunReran(ws, 'R3')
+    // All three R3 tasks executed (status success) → one row each, sorted.
+    expect(rows.map((r) => r.taskId)).toEqual(['app#build', 'app#test', 'lib#lint'])
+    const byId = new Map(rows.map((r) => [r.taskId, r]))
+    // build: k2 vs the prior run's k1 → the key changed.
+    expect(byId.get('app#build')!.reason).toBe('inputs changed')
+    expect(byId.get('app#build')!.previousRunId).toBe('R2')
+    // test: same hash as its prior run → ran without a cache hit.
+    expect(byId.get('app#test')!.reason).toContain('not cacheable')
+    // lint: first ever run of this (project, task) → no prior to diff.
+    expect(byId.get('lib#lint')!.reason).toBe('first run')
+    expect(byId.get('lib#lint')!.previousRunId).toBeNull()
+    // Workspace-clamped: the decoy run yields nothing here.
+    expect(await analytics.whyRunReran(ws, 'D1')).toEqual([])
+  })
+
   it('compareRuns diffs a run against the previous invocation', async () => {
     const cmp = await analytics.compareRuns(ws, 'R3')
     expect(cmp.found).toBe(true)

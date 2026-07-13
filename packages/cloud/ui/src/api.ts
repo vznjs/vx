@@ -732,6 +732,30 @@ export async function cacheKeyDiff(runId: string, taskId: string): Promise<Cache
   )
 }
 
+/** One executed task's re-run verdict — the batched `/v1/why/:runId` row. */
+export interface WhyRunRow {
+  taskId: string
+  project: string
+  task: string
+  previousRunId: string | null
+  reason: string
+}
+
+/**
+ * Batched "why did this re-run" for a whole run — one request over every
+ * executed task, replacing the per-task `/v1/diff` fan-out. Returns [] on an
+ * older serve that lacks the route (404), so the panel degrades cleanly.
+ */
+export async function fetchRunWhy(runId: string): Promise<WhyRunRow[]> {
+  try {
+    const r = await getJson<{ rows: WhyRunRow[] }>(`/v1/why/${encodeURIComponent(runId)}`)
+    return r.rows
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('404')) return []
+    throw err
+  }
+}
+
 /**
  * Diff a run against the immediately-previous invocation: per-task duration /
  * status / cache-key deltas. Always resolves (a missing/no-previous run is a

@@ -1,6 +1,5 @@
 {
   "refresh": 5000,
-  "staticSources": ["runWhy"],
   "data": {
     "run": "run",
     "runWhy": "runWhy",
@@ -421,36 +420,15 @@
         },
         "children": [
           {
-            "type": "Text",
-            "props": {
-              "text": "The input-fingerprint diff lives in the workspace's local cache.db — start vx-cloud serve inside the repo to see exactly which files/env/deps changed. This serve shows pushed run analytics only.",
-              "tone": "faint",
-              "class": "px-4 py-3"
-            },
-            "visible": {
-              "$state": "/capsCacheMissing",
-              "eq": true
-            }
-          },
-          {
             "type": "DataTable",
-            "visible": {
-              "$state": "/capsCacheMissing",
-              "not": true
-            },
             "props": {
               "rows": {
-                "$computed": "whyRows",
-                "args": {
-                  "arr": {
-                    "$state": "/runWhy"
-                  }
-                }
+                "$state": "/runWhy"
               },
               "emptyTitle": "Nothing re-ran — every task was a cache hit",
               "filter": true,
-              "filterFrom": ["taskId", "reason", "kind", "name", "change"],
-              "filterPlaceholder": "filter by task, reason, or input name…",
+              "filterFrom": ["taskId", "reason"],
+              "filterPlaceholder": "filter by task or reason…",
               "columns": [
                 {
                   "key": "task",
@@ -460,34 +438,16 @@
                 {
                   "key": "reason",
                   "label": "Reason"
-                },
-                {
-                  "key": "kind",
-                  "label": "Kind",
-                  "baseTone": "faint"
-                },
-                {
-                  "key": "name",
-                  "label": "Name"
-                },
-                {
-                  "key": "change",
-                  "label": "Change",
-                  "kind": "dots",
-                  "dots": [
-                    {
-                      "field": "_changeToken",
-                      "map": "failureMode"
-                    }
-                  ]
-                },
-                {
-                  "key": "_diff",
-                  "label": "Before → After",
-                  "align": "right",
-                  "baseTone": "faint"
                 }
               ]
+            }
+          },
+          {
+            "type": "Text",
+            "props": {
+              "text": "Per-file / env / dependency detail (which exact input changed) lives in the workspace's local cache.db — run vx why in the repo to see it. This serve shows the re-run verdict per task.",
+              "tone": "faint",
+              "class": "px-4 py-3"
             }
           }
         ]
