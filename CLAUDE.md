@@ -208,6 +208,24 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-13**: **Pointer-move cost cut on the charts + flamegraph (P6/P8,
+  `69eb856`)** (cycle-4). Both hover handlers forced a `getBoundingClientRect`
+  (a sync layout) on EVERY mousemove. **P8 (live — insights/cache/task-detail
+  LineCharts):** the tooltip was an IIFE that read the hovered index and
+  returned a fresh `<foreignObject>`+`<For>` subtree, so moving between points
+  tore down + rebuilt the whole tooltip DOM per index — now a stable structure
+  with reactive position/text bindings; the rect is cached on pointer-enter (the
+  chart doesn't scroll) and index updates coalesce to one per animation frame.
+  **P6 (Flamegraph — used by the run cockpit):** the O(N) min/max time window
+  recomputed ~6×/render per cursor move → memoized; the rect cached on enter +
+  rAF-throttled. Both cancel any pending frame on unmount (`onCleanup`). A new
+  MEASURED guard sweeps the pointer across an insights LineChart and asserts
+  ≥40fps + zero long tasks (ui-perf now 5/5 in a real browser). P7 (the
+  `RunSession` O(N²) `find`) was NOT actioned — it's the dead spawn cockpit
+  (unreachable per the cycle-3 discovery); no live view instantiates the
+  Flamegraph either, so P6 is a component hardening, not a live-path fix. Cloud
+  435 pass, core ci exit 0.
+
 - **2026-07-13**: **Batched `/v1/why/:runId` — the run-detail "why did this
   re-run" panel is one request + polls live + actually renders on the platform
   (`d34d7e1`)** (cycle-4 C4). The panel fired one `/v1/diff/:runId/:taskId` per

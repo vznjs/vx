@@ -243,13 +243,18 @@ keys **by item reference**.
   ticker 1 Hz for graphs.
 - **P6 MED — flamegraph mousemove does `getBoundingClientRect` per event +
   un-memoized O(N) window recompute** (`Flamegraph.tsx:93-97,53-59`).
-  **Fix:** memo the window; cache the rect on pointerenter; move the cursor
-  with `transform: translateX`; rAF-throttle.
+  **[SHIPPED `69eb856`]** window memoized, rect cached on pointer-enter,
+  cursor rAF-throttled + cleaned up on unmount. (Component hardening — no
+  live view instantiates the Flamegraph today; it's behind the dead
+  `RunSession` cockpit.)
 - **P7 MED — O(N²) per-card `find` lookups in the live graph**
-  (`RunSession.tsx:331,377,424`). **Fix:** one memoized `Map<id, node>`.
+  (`RunSession.tsx:331,377,424`). **[MOOT]** `RunSession` is the dead spawn
+  cockpit (unreachable per the cycle-3 discovery); not actioned.
 - **P8 LOW-MED — LineChart tooltip subtree recreated per hovered index +
-  per-event rect read** (`charts.tsx:114,173-202,236-260`). **Fix:** render
-  once, bind position/text; cache rect.
+  per-event rect read** (`charts.tsx:114,173-202,236-260`). **[SHIPPED
+  `69eb856`]** tooltip renders once with reactive bindings (no per-index
+  subtree recreation), rect cached on enter, index updates rAF-coalesced.
+  Pinned by a measured insights-hover guard (≥40fps, 0 long tasks).
 
 ### CORRECTNESS
 
