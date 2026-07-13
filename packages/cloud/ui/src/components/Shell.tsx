@@ -12,22 +12,27 @@ import {
 import { A, useLocation, useNavigate } from '@solidjs/router'
 import {
   acceptInvite,
+  fetchNotifications,
+  getConnectionKey,
   getCurrentUserSignal,
   getMeta,
+  getNotificationsSeenAt,
   getOrgSignal,
   getOrgsSignal,
   getOriginSignal,
   getWorkspaceSignal,
   getWorkspacesSignal,
   logout,
+  markNotificationsSeen,
   refreshCapabilities,
   refreshOrgs,
   refreshWorkspaces,
   setOrgAndPersist,
   setWorkspaceAndPersist,
+  type NotificationItem,
   type OrgSummary,
 } from '../api.ts'
-import { getLiveActiveSignal, getVisibleSignal } from '../live.ts'
+import { getLiveActiveSignal, getVisibleSignal, useVisibilityRefresh } from '../live.ts'
 import { formatCount, formatRelativeTime } from '../format.ts'
 import { CommandPalette } from './CommandPalette.tsx'
 import { StatusDot } from './ui.tsx'
@@ -152,6 +157,7 @@ export const Shell: ParentComponent = (props) => {
           <OrgSwitcher />
           <WorkspaceSwitcher />
           <ServerBadge name={meta()?.name} />
+          <NotificationBell />
           <AccountMenu />
         </header>
 
@@ -294,10 +300,28 @@ function OrgSwitcher() {
   )
 }
 
-/** Account menu — the signed-in identity + sign-out. */
+/** Two-letter initials from a display name (or email) for the avatar. */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/[\s@._-]+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase()
+  return (parts[0]![0]! + parts[1]![0]!).toUpperCase()
+}
+
+/**
+ * Account menu — the signed-in identity (avatar, name, email), links to
+ * Settings and (when privileged) Admin, and sign-out.
+ */
 function AccountMenu() {
   const user = getCurrentUserSignal()
   const [open, setOpen] = createSignal(false)
+
+  const canSeeAdmin = createMemo(() => {
+    const u = user()
+    if (u === null) return false
+    return u.instanceAdmin || u.orgs.some((o) => o.role === 'admin' || o.role === 'owner')
+  })
+  const label = () => user()?.displayName ?? user()?.email ?? '—'
 
   onMount(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -311,31 +335,172 @@ function AccountMenu() {
     <div class="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        class="flex items-center gap-1.5 text-[11px] px-2 py-1 rounded border border-border hover:border-border-strong hover:bg-surface-hover"
-        title="Account"
+        class="flex items-center gap-1.5 pl-1 pr-1.5 py-1 rounded-full border border-border hover:border-border-strong hover:bg-surface-hover"
+        title={`Account — ${label()}`}
       >
-        <span class="i-tabler-user-circle text-fg-2 text-base" aria-hidden="true" />
-        <Show when={user()?.instanceAdmin}>
-          <span class="i-tabler-star-filled text-warn text-[11px]" aria-hidden="true" title="instance admin" />
-        </Show>
+        <span class="w-6 h-6 rounded-full bg-gradient-to-br from-accent to-accent-2 text-bg font-semibold text-[10px] flex items-center justify-center shadow-glow">
+          {initialsOf(label())}
+        </span>
+        <span class="i-tabler-chevron-down text-fg-3 text-[12px]" aria-hidden="true" />
       </button>
       <Show when={open()}>
         <div class="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-        <div class="absolute right-0 top-full mt-1.5 z-50 w-56 bg-surface border border-border-strong rounded-lg shadow-2xl overflow-hidden">
-          <div class="px-3 py-2 border-b border-border">
-            <div class="text-[12px] text-fg-1 font-medium">Signed in</div>
-            <Show when={user()?.instanceAdmin}>
-              <div class="text-[10px] text-warn font-mono mt-0.5">instance admin</div>
+        <div class="absolute right-0 top-full mt-1.5 z-50 w-64 bg-surface border border-border-strong rounded-lg shadow-2xl overflow-hidden">
+          <div class="px-3 py-3 border-b border-border flex items-center gap-2.5">
+            <span class="w-9 h-9 rounded-full bg-gradient-to-br from-accent to-accent-2 text-bg font-semibold text-[13px] flex items-center justify-center shrink-0 shadow-glow">
+              {initialsOf(label())}
+            </span>
+            <span class="min-w-0 flex-1">
+              <span class="block text-[13px] text-fg-1 font-medium truncate">{label()}</span>
+              <span class="block text-[11px] text-fg-3 truncate">{user()?.email}</span>
+              <Show when={user()?.instanceAdmin}>
+                <span class="inline-flex items-center gap-1 text-[10px] text-warn font-mono mt-0.5">
+                  <span class="i-tabler-star-filled text-[10px]" aria-hidden="true" /> instance admin
+                </span>
+              </Show>
+            </span>
+          </div>
+          <div class="py-1">
+            <A
+              href="/settings"
+              onClick={() => setOpen(false)}
+              class="w-full text-left flex items-center gap-2 px-3 py-2 text-[12px] text-fg-2 hover:bg-surface-hover hover:text-fg transition-colors no-underline"
+            >
+              <span class="i-tabler-settings text-[14px]" aria-hidden="true" />
+              Settings
+            </A>
+            <Show when={canSeeAdmin()}>
+              <A
+                href="/admin"
+                onClick={() => setOpen(false)}
+                class="w-full text-left flex items-center gap-2 px-3 py-2 text-[12px] text-fg-2 hover:bg-surface-hover hover:text-fg transition-colors no-underline"
+              >
+                <span class="i-tabler-shield-lock text-[14px]" aria-hidden="true" />
+                Admin
+              </A>
             </Show>
-            <div class="text-[10px] text-fg-3 font-mono truncate mt-0.5">{user()?.userId}</div>
           </div>
           <button
             onClick={() => void logout()}
-            class="w-full text-left flex items-center gap-2 px-3 py-2 text-[12px] text-danger hover:bg-danger/10 transition-colors"
+            class="w-full text-left flex items-center gap-2 px-3 py-2 border-t border-border text-[12px] text-danger hover:bg-danger/10 transition-colors"
           >
             <span class="i-tabler-logout text-[13px]" aria-hidden="true" />
             Sign out
           </button>
+        </div>
+      </Show>
+    </div>
+  )
+}
+
+/**
+ * Notification bell — the workspace's recent broken builds (`/v1/notifications`,
+ * visibility-aware 30s poll). The unread badge counts failures newer than the
+ * last-seen watermark; opening the panel marks everything seen (the newest
+ * failure's timestamp becomes the watermark, so future breaks still notify).
+ */
+function NotificationBell() {
+  const tick = useVisibilityRefresh(30_000)
+  const [open, setOpen] = createSignal(false)
+  const [items] = createResource(
+    () => `${getConnectionKey()}|${tick()}`,
+    async () => {
+      try {
+        return await fetchNotifications(20)
+      } catch {
+        return [] as NotificationItem[]
+      }
+    },
+  )
+  // A signal bumped when we mark-seen so the unread memo recomputes without a refetch.
+  const [seenBump, setSeenBump] = createSignal(0)
+  const unread = createMemo(() => {
+    void seenBump()
+    const since = getNotificationsSeenAt()
+    return (items() ?? []).filter((n) => n.startedAt > since).length
+  })
+
+  function toggle() {
+    const next = !open()
+    setOpen(next)
+    if (next) {
+      // Mark seen at the newest failure's time (or now) so the badge clears.
+      const list = items() ?? []
+      const newest = list.length > 0 ? Math.max(...list.map((n) => n.startedAt)) : Date.now()
+      markNotificationsSeen(Math.max(newest, getNotificationsSeenAt()))
+      setSeenBump((n) => n + 1)
+    }
+  }
+
+  onMount(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    onCleanup(() => window.removeEventListener('keydown', onKeyDown))
+  })
+
+  return (
+    <div class="relative">
+      <button
+        onClick={toggle}
+        class="relative flex items-center justify-center w-8 h-8 rounded-lg border border-border hover:border-border-strong hover:bg-surface-hover text-fg-2 hover:text-fg"
+        title="Notifications"
+        aria-label={`Notifications${unread() > 0 ? ` (${unread()} unread)` : ''}`}
+      >
+        <span class="i-tabler-bell text-base" aria-hidden="true" />
+        <Show when={unread() > 0}>
+          <span class="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-danger text-[9px] font-bold text-white flex items-center justify-center leading-none tabular-nums">
+            {unread() > 9 ? '9+' : unread()}
+          </span>
+        </Show>
+      </button>
+      <Show when={open()}>
+        <div class="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+        <div class="absolute right-0 top-full mt-1.5 z-50 w-80 bg-surface border border-border-strong rounded-lg shadow-2xl overflow-hidden">
+          <div class="px-3 py-2 border-b border-border flex items-center gap-2">
+            <span class="i-tabler-bell text-[13px] text-fg-3" aria-hidden="true" />
+            <span class="text-[11px] uppercase tracking-wider text-fg-3 font-semibold">Notifications</span>
+            <span class="flex-1" />
+            <A href="/insights" onClick={() => setOpen(false)} class="text-[10px] text-accent hover:underline no-underline">
+              Insights →
+            </A>
+          </div>
+          <div class="max-h-96 overflow-y-auto">
+            <Show
+              when={(items() ?? []).length > 0}
+              fallback={
+                <div class="px-4 py-8 text-center text-[12px] text-fg-3">
+                  <span class="i-tabler-circle-check text-success text-xl block mx-auto mb-1.5" aria-hidden="true" />
+                  No recent failures — all green.
+                </div>
+              }
+            >
+              <For each={items()}>
+                {(n) => (
+                  <A
+                    href={`/runs/${encodeURIComponent(n.runId)}`}
+                    onClick={() => setOpen(false)}
+                    class="flex items-start gap-2.5 px-3 py-2.5 border-b border-border/60 last:border-b-0 hover:bg-surface-hover transition-colors no-underline"
+                  >
+                    <span class="i-tabler-alert-triangle text-danger text-[15px] mt-0.5 shrink-0" aria-hidden="true" />
+                    <span class="min-w-0 flex-1">
+                      <span class="block text-[12px] text-fg-1">
+                        <span class="font-semibold text-danger">{n.failedCount}</span> of {n.taskCount} task{n.taskCount === 1 ? '' : 's'} failed
+                      </span>
+                      <span class="block text-[10px] text-fg-3 font-mono truncate mt-0.5">
+                        {n.branch ?? '—'}
+                        <Show when={n.commitSha}> · {n.commitSha!.slice(0, 8)}</Show>
+                        {' · '}
+                        {formatRelativeTime(n.startedAt)}
+                      </span>
+                    </span>
+                    <span class="i-tabler-chevron-right text-fg-3 text-[13px] mt-0.5 shrink-0" aria-hidden="true" />
+                  </A>
+                )}
+              </For>
+            </Show>
+          </div>
         </div>
       </Show>
     </div>

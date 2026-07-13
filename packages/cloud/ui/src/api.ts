@@ -58,6 +58,8 @@ export type AuthState = 'loading' | 'anon' | 'authed'
 
 export interface CurrentUser {
   userId: string
+  email: string
+  displayName: string
   instanceAdmin: boolean
   orgs: { orgId: string; role: OrgRole }[]
 }
@@ -1445,11 +1447,19 @@ async function fetchMe(): Promise<CurrentUser> {
   const body = (await res.json()) as {
     kind: string
     userId: string
+    email?: string
+    displayName?: string
     instanceAdmin: boolean
     orgs: { orgId: string; role: OrgRole }[]
   }
   if (body.kind !== 'session') throw new Error('not a session principal')
-  return { userId: body.userId, instanceAdmin: body.instanceAdmin, orgs: body.orgs }
+  return {
+    userId: body.userId,
+    email: body.email ?? '',
+    displayName: body.displayName ?? body.email ?? body.userId,
+    instanceAdmin: body.instanceAdmin,
+    orgs: body.orgs,
+  }
 }
 
 /**
@@ -1532,6 +1542,86 @@ export async function logout(): Promise<void> {
   setCurrentUser(null)
   setOrgs([])
   setAuthState('anon')
+}
+
+// ---------------------------------------------------------------------------
+// Self-service profile — rename + change password (the /settings Profile +
+// Security tabs). Both are session + CSRF; the auth routes ignore the org/ws
+// clamp, so they use a direct credentialed fetch (not the analytics-scoped
+// `mutate`). A successful rename re-resolves `me` so the shell updates.
+// ---------------------------------------------------------------------------
+
+async function authFetch(
+  method: string,
+  pathname: string,
+  body: Record<string, unknown>,
+): Promise<AuthResult> {
+  try {
+    const res = await fetch(`${origin()}${pathname}`, {
+      method,
+      credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-vx-csrf': '1', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) return { ok: true }
+    const j = (await res.json().catch(() => null)) as { error?: string } | null
+    return { ok: false, error: j?.error ?? `request failed (${res.status})` }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+export async function updateProfile(displayName: string): Promise<AuthResult> {
+  const r = await authFetch('PATCH', '/v1/auth/me', { displayName })
+  if (r.ok) {
+    // Reflect the new name in the shell without a full reload.
+    const u = currentUser()
+    if (u !== null) setCurrentUser({ ...u, displayName })
+  }
+  return r
+}
+
+export function changePassword(currentPassword: string, newPassword: string): Promise<AuthResult> {
+  return authFetch('POST', '/v1/auth/password', { currentPassword, newPassword })
+}
+
+// ---------------------------------------------------------------------------
+// Notifications — the bell feed: recent runs that broke (`/v1/notifications`,
+// workspace-clamped). The unread badge is derived from a last-seen watermark
+// persisted per origin+workspace; opening the panel marks everything seen.
+// ---------------------------------------------------------------------------
+
+export interface NotificationItem {
+  kind: 'run-failed'
+  runId: string
+  startedAt: number
+  branch: string | null
+  commitSha: string | null
+  failedCount: number
+  taskCount: number
+}
+
+const NOTIF_SEEN_PREFIX = 'vx-ui:notif-seen'
+
+function notifSeenKey(): string {
+  return `${NOTIF_SEEN_PREFIX}:${origin()}|${workspace()}`
+}
+
+/** The watermark: notifications with startedAt after this are unread. */
+export function getNotificationsSeenAt(): number {
+  if (typeof localStorage === 'undefined') return 0
+  const v = localStorage.getItem(notifSeenKey())
+  return v === null ? 0 : Number(v)
+}
+
+export function markNotificationsSeen(at: number = Date.now()): void {
+  if (typeof localStorage !== 'undefined') localStorage.setItem(notifSeenKey(), String(at))
+}
+
+export async function fetchNotifications(limit = 20): Promise<NotificationItem[]> {
+  // getJson applies the org/ws clamp — pass the bare path.
+  const r = await getJson<{ notifications: NotificationItem[] }>(`/v1/notifications?limit=${limit}`)
+  return r.notifications
 }
 
 // ---------------------------------------------------------------------------

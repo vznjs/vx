@@ -5,6 +5,7 @@ import 'virtual:uno.css'
 import { Shell } from './components/Shell.tsx'
 import { RunsView } from './components/RunsView.tsx'
 import { AdminView } from './components/AdminView.tsx'
+import { SettingsView } from './components/SettingsView.tsx'
 import { LoginGate } from './components/LoginGate.tsx'
 import { bootstrapAuth, getAuthStateSignal } from './api.ts'
 import { jsonPage } from './jr/page.tsx'
@@ -48,6 +49,7 @@ function AppRoutes() {
       <Route path="/runs/:id" component={jsonPage(RUN_DETAIL)} />
       <Route path="/compare/:id" component={jsonPage(COMPARE)} />
       <Route path="/admin" component={AdminView} />
+      <Route path="/settings" component={SettingsView} />
     </HashRouter>
   )
 }

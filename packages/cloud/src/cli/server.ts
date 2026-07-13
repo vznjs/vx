@@ -64,6 +64,7 @@ function isAnalyticsSurface(pathname: string, method: string): boolean {
     '/v1/cache/prunable',
     '/v1/top-tasks',
     '/v1/failures',
+    '/v1/notifications',
     '/v1/projects',
     '/v1/trends/runs',
     '/v1/trends/heatmap',

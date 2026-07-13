@@ -335,6 +335,26 @@ describe('platform e2e (real pg + fake S3)', () => {
     const td = (await detail.json()) as { aggregate: { runs: number } | null }
     expect(td.aggregate!.runs).toBe(1)
 
+    // The notification feed reads as a session surface (allowlisted, not the
+    // machine-only ingest path): a green run produces no notification.
+    const none = await call('GET', '/v1/notifications', { cookie })
+    expect(none.status).toBe(200)
+    expect(((await none.json()) as { notifications: unknown[] }).notifications).toHaveLength(0)
+    // Ingest a broken run → it surfaces in the feed.
+    const broke = {
+      ...summary('r-broke', 'ws-e2e'),
+      failedCount: 1,
+      taskCount: 2,
+      exitOk: false,
+    } as RunSummaryRecord
+    expect((await call('POST', '/v1/ingest', { bearer: ciToken, body: broke })).status).toBe(200)
+    const notif = await call('GET', '/v1/notifications', { cookie })
+    expect(notif.status).toBe(200)
+    const { notifications } = (await notif.json()) as {
+      notifications: { runId: string; kind: string; failedCount: number }[]
+    }
+    expect(notifications.some((n) => n.runId === 'r-broke' && n.kind === 'run-failed')).toBe(true)
+
     // A ?ws= foreign to the org is a 404 (the tenant clamp).
     const foreign = await call('GET', `/v1/runs?ws=${orgId}`, { cookie })
     expect(foreign.status).toBe(404)
