@@ -11,7 +11,7 @@
 // back doesn't drop the sockets or the live state — the SPA never reloads,
 // and a queued job's socket must stay open (closing it cancels the job).
 
-import { For, Show, createMemo, createResource, createSignal, onCleanup, onMount } from 'solid-js'
+import { For, Show, createEffect, createMemo, createResource, createSignal, onCleanup } from 'solid-js'
 import { createStore } from 'solid-js/store'
 import { A, useSearchParams } from '@solidjs/router'
 import type { BaseComponentProps } from '@json-render/solid'
@@ -43,7 +43,7 @@ import {
   runTicks,
 } from '../jr/functions.ts'
 import { formatDuration, formatPercent, formatRelativeTime } from '../format.ts'
-import { useVisibilityRefresh } from '../live.ts'
+import { identityStable, useVisibilityRefresh } from '../live.ts'
 import { DataTable, type Column } from '../jr/components.tsx'
 import { Card, EmptyState, MetricCard } from './ui.tsx'
 import { RunSession, createRunSession, type RunSessionState } from './RunSession.tsx'
@@ -127,7 +127,14 @@ export function RunsView() {
   // below keeps its own faster cadence; the live-run WebSocket is untouched.
   const liveTick = useVisibilityRefresh(5000)
   const [searchParams, setSearchParams] = useSearchParams()
-  const [version] = createResource(getConnectionKey, () => getVersion().catch(() => null))
+  // `/version` exists only on serves with a colocated workspace (the platform
+  // removed it) — probing it unconditionally is a guaranteed 404 per mount.
+  // Gate on the catalog capability: no catalog ⇒ no workspace ⇒ spawn stays
+  // honestly disabled without ever firing the request.
+  const [version] = createResource(
+    () => (capabilities().known && capabilities().catalog ? getConnectionKey() : null),
+    () => getVersion().catch(() => null),
+  )
 
   // Datalist names: the workspace catalog when this serve has one (§6.5),
   // else history-derived names (the pre-catalog fallback).
@@ -154,9 +161,13 @@ export function RunsView() {
   // (serve restart, laptop wake) would permanently wedge every downstream
   // memo while the view still looked live — while blanking to the error
   // state on a blip would flash a populated table empty for a tick.
+  // identityStable: a data-identical poll returns the SAME reference, so the
+  // downstream memo chain (invocationRows → historyRows → table rows) stops
+  // propagating and the 200-row table does zero DOM work on an unchanged tick.
+  const stableInvocations = identityStable<InvocationDetail[] | null>()
   const [invocations] = createResource(
     () => `${getConnectionKey()}|${historyVersion()}|${liveTick()}`,
-    () => listInvocations(200).catch(() => null),
+    async () => stableInvocations(await listInvocations(200).catch(() => null)),
   )
   let lastGoodInvocations: InvocationDetail[] | undefined
   const invocationRows = createMemo<InvocationDetail[] | undefined>(() => {
@@ -259,14 +270,23 @@ export function RunsView() {
     return rows
   })
 
-  // -- CI health strip -------------------------------------------------------
-  const [stats] = createResource(() => `${getConnectionKey()}|${liveTick()}`, () => getCacheStats().catch(() => null))
+  // -- CI health strip (identity-stable: unchanged ticks re-render nothing) --
+  const stableStats = identityStable<Awaited<ReturnType<typeof getCacheStats>> | null>()
+  const [stats] = createResource(
+    () => `${getConnectionKey()}|${liveTick()}`,
+    async () => stableStats(await getCacheStats().catch(() => null)),
+  )
   // Caught to null, NOT [] — a failed /v1/flakiness probe must render '—',
   // never a confident green "0 flaky".
-  const [flaky] = createResource(() => `${getConnectionKey()}|${liveTick()}`, () => getFlakiest(100).catch(() => null))
+  const stableFlaky = identityStable<Awaited<ReturnType<typeof getFlakiest>> | null>()
+  const [flaky] = createResource(
+    () => `${getConnectionKey()}|${liveTick()}`,
+    async () => stableFlaky(await getFlakiest(100).catch(() => null)),
+  )
+  const stableHermeticity = identityStable<Awaited<ReturnType<typeof fetchHermeticity>> | null>()
   const [hermeticity] = createResource(
     () => `${getConnectionKey()}|${liveTick()}`,
-    () => fetchHermeticity(50).catch(() => null),
+    async () => stableHermeticity(await fetchHermeticity(50).catch(() => null)),
   )
   const ticks = createMemo<RunTick[]>(() => runTicks(invocationRows() ?? [], 24))
   const passRate24h = createMemo(() =>
@@ -277,16 +297,20 @@ export function RunsView() {
 
   // Serve-side queue state, polled at 2s while the view is mounted (an
   // in-memory read) — surfaces FOREIGN jobs too (CLI delegations, other
-  // dashboards) as state-only rows.
+  // dashboards) as state-only rows. Gated on the /v1/meta `queue` capability:
+  // the platform has no queue, and polling its removed endpoint was a
+  // guaranteed 404 every 2 seconds plus per-tick state churn.
   const [queueJobs, setQueueJobs] = createSignal<QueueJobRow[]>([])
-  onMount(() => {
+  createEffect(() => {
+    if (!(capabilities().known && capabilities().queue)) return
     let stopped = false
     let timer: ReturnType<typeof setTimeout> | undefined
     const tick = async (): Promise<void> => {
       try {
         setQueueJobs(await fetchQueue())
       } catch {
-        setQueueJobs([])
+        // keep the last-good rows — one blipped poll must not blank active
+        // foreign CLI jobs for a tick
       }
       if (stopped) return
       timer = setTimeout(() => void tick(), 2000)

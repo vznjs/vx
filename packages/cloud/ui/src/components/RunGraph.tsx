@@ -229,7 +229,7 @@ export function RunGraph(props: {
       </div>
 
       {/* zoom controls */}
-      <div class="absolute bottom-3 right-3 flex items-center gap-0.5 rounded-lg border border-border bg-surface/90 backdrop-blur p-0.5 shadow-card">
+      <div class="absolute bottom-3 right-3 flex items-center gap-0.5 rounded-lg border border-border bg-surface/95 p-0.5 shadow-card">
         <ZoomBtn icon="i-tabler-minus" onClick={() => nudge(-0.1)} />
         <button onClick={() => setZoom(1)} class="px-2 text-[11px] font-mono text-fg-3 hover:text-fg-1 tabular-nums w-12" title="reset zoom">
           {Math.round(zoom() * 100)}%

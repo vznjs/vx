@@ -16,7 +16,7 @@ export function Card(props: {
 }) {
   return (
     <div
-      class={`bg-surface/80 border border-border rounded-xl overflow-hidden shadow-card backdrop-blur-sm transition-colors hover:border-border-strong ${props.class ?? ''}`}
+      class={`bg-surface/95 border border-border rounded-xl overflow-hidden shadow-card transition-colors hover:border-border-strong ${props.class ?? ''}`}
     >
       <Show when={props.title || props.action}>
         <div class="flex items-center justify-between px-4 py-3 border-b border-border/70">

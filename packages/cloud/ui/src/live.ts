@@ -73,3 +73,21 @@ export function useVisibilityRefresh(intervalMs: number): Accessor<number> {
 
   return tick
 }
+
+/**
+ * Identity stability for polled fetchers: byte-identical payloads reuse the
+ * PREVIOUS reference, so downstream memos (default `===` equality) do not
+ * re-notify and reference-keyed `<For>` rows produce ZERO DOM work on a
+ * data-identical tick. Wrap the resolved value: `stable(await fetchRows())`.
+ */
+export function identityStable<T>(): (v: T) => T {
+  let json: string | undefined
+  let value: T
+  return (v: T) => {
+    const j = JSON.stringify(v)
+    if (j === json) return value
+    json = j
+    value = v
+    return v
+  }
+}

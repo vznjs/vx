@@ -79,6 +79,36 @@ After the §2 fixes land, re-run the same harness. Pass criteria:
   Commit the harness as a version-gated perf test (the `analytics-scale`
   precedent) so regressions are caught in CI — see §6.
 
+### Cycle-2 results (measured after the first fix wave)
+
+Fixes shipped: identity-stable polling (jsonPage equality gate +
+`identityStable` on RunsView's resources), dead-endpoint polling killed
+behind /v1/meta capabilities (`queue`, catalog-gated `/version`), C1 stale
+cross-entity guard, C2 string-keyed resource sources, C6 last-good queue
+rows — and the attribution experiment's find: **`backdrop-filter` blur on
+every Card + the sticky sidebar/header was the entire scroll stutter**
+(A/B-measured: baseline 16fps → `backdrop-filter: none` 60fps, gradient and
+shadows innocent; a plain static 300-row table scrolls 60fps in the same
+harness, disproving the "headless is just slow" hypothesis). Blur removed
+from all scroll-path chrome (kept on static overlays: login gate, command
+palette); replaced with near-opaque backgrounds — visually imperceptible on
+the dark theme (screenshot-verified).
+
+| #   | Scenario                    | before                       | after                                                                    |
+| --- | --------------------------- | ---------------------------- | ------------------------------------------------------------------------ |
+| 1   | Runs: wheel-scroll 300 rows | 20fps, p50 50ms, worst 250ms | **60fps, p50 16.7ms, 0 frames >17ms**                                    |
+| 2   | Runs: idle 12s              | 30fps, continuous DOM churn  | **60fps, 0 DOM mutations, 0 long tasks**                                 |
+| 3   | Insights: nav + scroll      | 24fps                        | **57fps** (p95 16.8ms)                                                   |
+| 4   | Run detail (700): scroll    | 24fps, worst 317ms           | **48fps** (p50 16.7ms; one 633ms initial-render spike remains — P3)      |
+| 5   | Run detail: task select     | 60fps                        | 60fps                                                                    |
+| 6   | Tasks page                  | 38fps                        | **60fps**                                                                |
+| 7   | Nav transitions             | 38fps                        | **50fps** (route-mount long tasks ~260-316ms remain — P3/initial render) |
+| —   | Console errors / session    | 14                           | **0**                                                                    |
+
+Remaining to reach the bar everywhere (cycle 3): P3 virtualization (kills
+the 700-row initial-render spike + route-mount long tasks on heavy pages),
+then P4-P8, C3-C5.
+
 ## 2. UI mechanism findings (perf + correctness)
 
 Static audit verified against the real `@json-render` 0.19.0 dist and

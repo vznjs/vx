@@ -99,7 +99,7 @@ export function Flamegraph(props: {
   return (
     <div class="relative h-full overflow-auto rounded bg-surface-2" onMouseMove={onMove} onMouseLeave={() => setCursor(null)}>
       {/* Sticky time axis — stays pinned at the top while the lanes scroll. */}
-      <div class="sticky top-0 z-30 h-5 bg-surface-2/95 backdrop-blur-sm border-b border-border/60">
+      <div class="sticky top-0 z-30 h-5 bg-surface-2 border-b border-border/60">
         <For each={Array.from({ length: AXIS_TICKS }, (_, i) => i / (AXIS_TICKS - 1))}>
           {(frac) => (
             <span

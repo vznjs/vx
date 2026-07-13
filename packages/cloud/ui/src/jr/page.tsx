@@ -71,15 +71,37 @@ export function jsonPage(view: JsonView): () => JSX.Element {
     const source = createMemo(() => ({ params: decoded(), conn: getConnectionKey(), tick: tick?.() ?? 0 }))
     const resources = sources.map(([key, src]) => {
       const fn = SOURCES[src]
-      const [res] = createResource(source, (s) => (fn ? fn(s.params) : Promise.resolve(undefined)))
+      // Identity stability across polls: a refresh tick that returns
+      // byte-identical data reuses the PREVIOUS value reference, so the
+      // StateProvider's per-pointer reference diff sees no change and no DOM
+      // is rebuilt. Without this, every tick produced all-new row identities
+      // and Solid's reference-keyed <For> tore down and recreated every table
+      // row on every poll (the measured idle-30fps / scroll-jank source).
+      // Each value is tagged with the entity it belongs to (params +
+      // connection, NOT the tick) so a stale `latest` from another entity is
+      // never served under the current URL.
+      const memo = { forKey: '', json: '', value: undefined as unknown }
+      const [res] = createResource(source, async (s) => {
+        const forKey = `${s.conn}|${JSON.stringify(s.params)}`
+        const data = fn ? await fn(s.params) : undefined
+        if (data !== undefined && data !== null) {
+          const j = JSON.stringify(data)
+          if (memo.forKey === forKey && memo.json === j) return { forKey, data: memo.value }
+          memo.forKey = forKey
+          memo.json = j
+          memo.value = data
+        }
+        return { forKey, data }
+      })
       return { key, res }
     })
     // Last GOOD value per source: on a transient refetch error (one blipped
     // 5s tick) a populated section keeps its data instead of flashing to the
     // error state. `res.latest` can't cover this — Solid re-throws when the
-    // resource is errored — so the last resolved value is held here. Only a
-    // FIRST-load failure (nothing good to show) surfaces as 'error'.
-    const lastGood = new Map<string, unknown>()
+    // resource is errored — so the last resolved value is held here, tagged
+    // with its entity key so an error on entity B never serves entity A's
+    // data under B's URL. Only a FIRST-load failure surfaces as 'error'.
+    const lastGood = new Map<string, { forKey: string; value: unknown }>()
     const state = createMemo<Record<string, unknown>>(() => {
       const s: Record<string, unknown> = { params: decoded(), ...(view.state ?? {}) }
       // Serve capabilities (api.ts probe) as simple booleans every view can
@@ -91,6 +113,7 @@ export function jsonPage(view: JsonView): () => JSX.Element {
       s.hasWorkspace = caps.hasWorkspace
       s.capsCacheMissing = caps.known && !caps.hasCacheDb
       s.capsCatalog = caps.known && caps.catalog
+      const forKey = `${getConnectionKey()}|${JSON.stringify(decoded())}`
       for (const { key, res } of resources) {
         // Read `res.error` BEFORE the value: calling an errored resource's
         // accessor re-throws, which (with no per-source boundary) would blank
@@ -99,23 +122,29 @@ export function jsonPage(view: JsonView): () => JSX.Element {
         //
         // Read `res.latest` (the last resolved value), NOT `res()`: on an
         // interval refetch `res.loading` flips true but `latest` still holds
-        // the previous value, so the section keeps its data instead of flashing
-        // back to the loading skeleton. Only the FIRST load (latest still
-        // undefined while loading) shows the skeleton.
+        // the previous value, so the section keeps its data instead of
+        // flashing back to the loading skeleton. A `latest` tagged with a
+        // DIFFERENT entity (route param / connection change mid-flight) reads
+        // as 'loading' — never another entity's data under this URL.
         let v: unknown
         let status: 'loading' | 'error' | 'missing' | 'ok'
+        const wrapped = res.error
+          ? undefined
+          : (res.latest as { forKey: string; data: unknown } | undefined)
         if (res.error) {
           const prev = lastGood.get(key)
-          if (prev !== undefined) {
-            v = prev
+          if (prev !== undefined && prev.forKey === forKey) {
+            v = prev.value
             status = 'ok'
           } else {
             status = 'error'
           }
+        } else if (wrapped === undefined || wrapped.forKey !== forKey) {
+          status = 'loading'
         } else {
-          v = res.latest
-          status = res.loading && v === undefined ? 'loading' : v === null ? 'missing' : v === undefined ? 'loading' : 'ok'
-          if (v !== undefined && v !== null) lastGood.set(key, v)
+          v = wrapped.data
+          status = v === null ? 'missing' : v === undefined ? 'loading' : 'ok'
+          if (v !== undefined && v !== null) lastGood.set(key, { forKey, value: v })
         }
         s[key] = v
         s[`${key}Status`] = status

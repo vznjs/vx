@@ -288,16 +288,24 @@ export function RunViz(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string
     for (const r of rows()) m.set(`${r.project}#${r.task}`, r)
     return m
   })
-  // Refetch the graph whenever the recorded task set changes (by id).
+  // Refetch the graph whenever the recorded task set changes (by id). The
+  // resource source is a value-stable STRING: `specs` emits a fresh array
+  // identity on every store update (rows() re-resolves), and an array-keyed
+  // resource would refire this server-side planRun on every poll tick and
+  // every task-select click even though the task set is unchanged.
   const specs = createMemo(() => Array.from(rowById().keys()))
-  const [graph] = createResource(specs, async (s) => {
-    if (s.length === 0) return []
-    try {
-      return await getGraph(s)
-    } catch {
-      return []
-    }
-  })
+  const [graph] = createResource(
+    () => specs().join(','),
+    async (joined) => {
+      const s = joined === '' ? [] : joined.split(',')
+      if (s.length === 0) return []
+      try {
+        return await getGraph(s)
+      } catch {
+        return []
+      }
+    },
+  )
   const nodes = createMemo<RunGraphNode[]>(() =>
     (graph() ?? []).map((g) => ({ id: g.id, project: g.project, task: g.task, isGroup: g.isGroup, deps: g.deps })),
   )
@@ -749,12 +757,17 @@ const ANSI = /\x1b\[[0-9;]*[A-Za-z]/g
 export function TaskLogs(c: C<{ runId?: string; project?: string; task?: string }>) {
   const taskId = () =>
     c.props.project && c.props.task ? `${c.props.project}#${c.props.task}` : undefined
+  // Value-stable string source — a tuple would be a fresh identity on every
+  // store update, refetching the log on unrelated state writes.
   const [log] = createResource(
     () => {
       const id = taskId()
-      return c.props.runId && id ? ([c.props.runId, id] as const) : undefined
+      return c.props.runId && id ? `${c.props.runId}\n${id}` : undefined
     },
-    ([runId, id]) => getTaskLog(runId, id),
+    (key) => {
+      const [runId, id] = key.split('\n') as [string, string]
+      return getTaskLog(runId, id)
+    },
   )
 
   return (

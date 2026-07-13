@@ -101,7 +101,7 @@ export const Shell: ParentComponent = (props) => {
   return (
     <div class="min-h-full flex bg-bg">
       {/* Sidebar — detached floating card */}
-      <aside class="w-56 shrink-0 m-3 rounded-2xl border border-border/70 bg-surface/60 backdrop-blur-xl shadow-elevated flex flex-col sticky top-3 self-start h-[calc(100vh-1.5rem)] overflow-hidden">
+      <aside class="w-56 shrink-0 m-3 rounded-2xl border border-border/70 bg-surface/95 shadow-elevated flex flex-col sticky top-3 self-start h-[calc(100vh-1.5rem)] overflow-hidden">
         <div class="h-14 px-4 flex items-center gap-2.5 border-b border-border/70">
           <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-accent to-accent-2 flex items-center justify-center text-bg font-bold text-[13px] shadow-glow">
             vx
@@ -145,7 +145,7 @@ export const Shell: ParentComponent = (props) => {
       {/* Main */}
       <div class="flex-1 min-w-0 flex flex-col">
         {/* Topbar */}
-        <header class="h-14 px-5 border-b border-border/70 bg-bg/60 backdrop-blur-xl flex items-center gap-3 sticky top-0 z-10">
+        <header class="h-14 px-5 border-b border-border/70 bg-bg/90 flex items-center gap-3 sticky top-0 z-10">
           <Breadcrumb pathname={location.pathname} />
           <div class="flex-1" />
           <LiveIndicator />

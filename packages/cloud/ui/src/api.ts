@@ -260,6 +260,10 @@ export interface Capabilities {
   hasCacheDb: boolean
   /** The /v1/workspace/* catalog routes answer (advertised by /v1/meta). */
   catalog: boolean
+  /** The serve hosts a run queue (`/v1/runs/queue`, advertised by /v1/meta).
+   *  The platform does NOT — polling a removed endpoint is a guaranteed 404
+   *  every 2s, so the Runs view gates its queue poll on this. */
+  queue: boolean
 }
 
 const UNKNOWN_CAPS: Capabilities = {
@@ -267,6 +271,7 @@ const UNKNOWN_CAPS: Capabilities = {
   hasWorkspace: false,
   hasCacheDb: false,
   catalog: false,
+  queue: false,
 }
 const [capabilities, setCapabilities] = createSignal<Capabilities>(UNKNOWN_CAPS)
 let capsKey: string | null = null
@@ -297,11 +302,11 @@ export function refreshCapabilities(): void {
       () => false,
     ),
     getMeta().then(
-      (m) => m.catalog === true,
-      () => false,
+      (m) => ({ catalog: m.catalog === true, queue: m.queue === true }),
+      () => ({ catalog: false, queue: false }),
     ),
-  ]).then(([hasWorkspace, hasCacheDb, catalog]) => {
-    if (capsKey === key) setCapabilities({ known: true, hasWorkspace, hasCacheDb, catalog })
+  ]).then(([hasWorkspace, hasCacheDb, meta]) => {
+    if (capsKey === key) setCapabilities({ known: true, hasWorkspace, hasCacheDb, ...meta })
   })
 }
 
@@ -590,6 +595,8 @@ export interface ServerMeta {
   cacheWire?: number
   /** A colocated workspace makes the /v1/workspace/* catalog live. */
   catalog?: boolean
+  /** The serve hosts a run queue (`/v1/runs/queue`); absent on the platform. */
+  queue?: boolean
   /** The platform partitions the cache by trust tier. */
   trustTiers?: boolean
 }
