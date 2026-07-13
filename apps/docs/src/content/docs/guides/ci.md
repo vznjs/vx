@@ -62,10 +62,10 @@ Notes:
 - **`--affected=origin/<base>`** — on a PR, diff against the target
   branch; on a push to `main`, fall back to `main`. Changed packages (and
   their dependents) run; the rest restore from cache.
-- **`vx` is the curl-installed binary** on `PATH` — no wrapper needed. (Or
+- **`vx` is the npm-installed binary** on `PATH` — no wrapper needed. (Or
   install it as a dependency with `bun add -d @vzn/vx` and invoke it
   through your package manager.)
-- **Pin the version** with `VX_VERSION=<tag>` before the install line for
+- **Pin the version** with `npm install -g @vzn/vx@<version>` for
   byte-stable CI.
 - **Shared cache** — connect a remote-cache backend to reuse artifacts
   built on other branches and machines (unchanged packages restore instead

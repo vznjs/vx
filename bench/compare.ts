@@ -277,7 +277,7 @@ async function buildRunners(dir: string): Promise<Runner[]> {
   const runners: Runner[] = []
 
   // vx — compile the standalone binary (the artifact real users install via
-  // install.sh / release.yml). Comparing TS-source startup against Turbo's
+  // npm / release.yml). Comparing TS-source startup against Turbo's
   // and Nx's precompiled binaries would handicap vx unfairly.
   const vxBin = path.join(dir, '.vx-runner')
   const target = `bun-${process.platform}-${process.arch === 'x64' ? 'x64' : process.arch}`

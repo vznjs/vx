@@ -5,7 +5,7 @@ description: Move a Turborepo monorepo to vx. What maps 1:1, what's better, and 
 
 vx is shaped like Turborepo on purpose, so this is the easy migration.
 Same per-package model, same `dependsOn` micro-syntax, same `--filter`
-DSL, same `--affected` selection, same remote-cache wire. The main change
+DSL, same `--affected` selection. The main change
 is that config moves from one `turbo.json` to per-package `vx.config.ts`
 files — and `vx migrate` writes them for you.
 
@@ -106,7 +106,7 @@ explains why.
 
 | Turborepo                         | vx                              |
 | --------------------------------- | ------------------------------- |
-| `turbo run build`                 | `vx run build`                  |
+| `turbo run build`                 | `vx run build --all`            |
 | `turbo run build --filter=@app/*` | `vx run build --filter "@app/*"`      |
 | `turbo run build --affected`      | `vx run build --affected`       |
 | `turbo run build --dry`           | `vx run build --dry`            |
@@ -128,7 +128,12 @@ through a small cache plugin (see
   broken artifact. `vx migrate` fills these in from your `turbo.json`.
 - **One command per task.** No `commands` array — chain with `&&` or split
   into `dependsOn`-linked tasks (which also lets each step cache).
-- **Bun is required** (≥ 1.3); there's no Node runtime for vx itself.
+- **Default scope is the current package**, not the whole workspace. A bare
+  `vx run build` inside a package runs that package (like running its
+  script directly); use `--all` for Turborepo's run-everything default, or
+  `--filter` / `--affected` to select.
+- **No Bun needed to run vx** — `npm install -g @vzn/vx` ships a standalone
+  binary. Bun (≥ 1.3) is only required when running vx from source.
 
 ## Next steps
 

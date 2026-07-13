@@ -18,7 +18,7 @@ interface StubServer {
   stop(): Promise<void>
 }
 
-function startStubServe(opts: { name?: string; token?: string } = {}): StubServer {
+function startStubServe(opts: { name?: string; token?: string; auth?: string } = {}): StubServer {
   const server = Bun.serve({
     port: 0,
     fetch(req) {
@@ -29,7 +29,7 @@ function startStubServe(opts: { name?: string; token?: string } = {}): StubServe
           v: 1,
           name: opts.name ?? 'localhost',
           vx: '0.0.0',
-          auth: opts.token !== undefined ? 'token' : 'open',
+          auth: opts.auth ?? (opts.token !== undefined ? 'token' : 'open'),
         })
       }
       if (url.pathname === '/v1/runs') {
@@ -97,6 +97,49 @@ describe('vx-cloud connect', () => {
       expect(file.version).toBe(1)
       expect(file.active).toBe('team')
       expect(file.environments['team']).toEqual({ url: server.origin })
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('refuses a tokenless connect to an account platform (the silent-401 trap)', async () => {
+    const server = startStubServe({ auth: 'account' })
+    try {
+      const res = await cli(['connect', server.origin, '--name', 'team'])
+      expect(res.code).not.toBe(0)
+      expect(res.stderr).toContain('API token')
+      expect(res.stderr).toContain('Admin → Tokens')
+      // nothing persisted — the trap used to leave a broken entry behind
+      await expect(readCfg()).rejects.toThrow()
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('--anonymous connects tokenless to an account platform with a loud warning', async () => {
+    const server = startStubServe({ auth: 'account' })
+    try {
+      const res = await cli(['connect', server.origin, '--name', 'team', '--anonymous'])
+      expect(res.code).toBe(0)
+      expect(res.stderr).toContain('WITHOUT a token')
+      expect((await readCfg()).environments['team']).toEqual({ url: server.origin })
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('a token satisfies an account platform and is probed before persisting', async () => {
+    const server = startStubServe({ auth: 'account', token: 'vxc_good' })
+    try {
+      const bad = await cli(['connect', server.origin, '--name', 'team', '--token', 'vxc_bad'])
+      expect(bad.code).not.toBe(0)
+      expect(bad.stderr).toContain('401')
+      const ok = await cli(['connect', server.origin, '--name', 'team', '--token', 'vxc_good'])
+      expect(ok.code).toBe(0)
+      expect((await readCfg()).environments['team']).toEqual({
+        url: server.origin,
+        token: 'vxc_good',
+      })
     } finally {
       await server.stop()
     }

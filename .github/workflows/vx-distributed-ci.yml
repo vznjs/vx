@@ -48,8 +48,8 @@ on:
         description: The vx-cloud serve every job connects to.
         required: true
       VX_CLOUD_TOKEN:
-        description: Bearer token for the serve (omit for a token-less serve).
-        required: false
+        description: A `vxc_` API token (Admin → Tokens on the platform) — the agent and cache surfaces are machine-token-only.
+        required: true
 
 jobs:
   # A matrix can't take a bare count, so turn `agents: N` into the list [1..N].
