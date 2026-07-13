@@ -208,6 +208,42 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-13**: **Adversarial review of the incremental-ingest wave — VERDICT
+  SOUND, zero production-reachable defects; two consistency follow-ups shipped
+  (`1e7f206`)**. A repro-mandated hostile reviewer (real ephemeral pg + the real
+  wire) swept all seven defect classes; every one REFUTED by an executed repro:
+  (1) dedup-key alignment — both paths route through the SAME `insertTaskRun`
+  and derive `(started_at, run_id, project, task)` from the same
+  `endedAtMsAtStart` + the same `outcome.wallclockStartNs.toString()`
+  (byte-identical); (2) partition + `ON CONFLICT` — the unique index propagates
+  to parent + `task_runs_default` + every weekly partition, and dedup holds on
+  the DEFAULT and real partitions; (3) aborted/cache-hit consistency — both
+  paths skip aborted, cache-hits go batch-only (the sink's `miss` guard), and
+  every retained log tail is `takeEntry`'d so the batch drain never
+  double-ships; (4) log double-ship — unreachable in the single-client flow
+  (takeEntry before drain, no client retry); (5) auth/tenant — session→403,
+  no-auth→401, ci→200, `org_id` always token-derived, body `workspaceId` routed
+  WITHIN the org; (6) body validation — 8 malformed bodies→400, over-cap→413,
+  malformed-ns→200-with-null (`intNsOrNull`); (7) run.start coupling —
+  `TELEMETRY_SCHEMA_VERSION` stays 2, additive, otel ignores it, plain runs
+  byte-unaffected. Plus a NEW surface: concurrent first-pushes of a new
+  workspace (N tasks finishing at once) converge to ONE workspace via
+  `routeWorkspace`'s unique-violation retry. **The one test "fail" (DEFECT-2)
+  was a TEST ARTIFACT** — it did a raw `CREATE TABLE … PARTITION OF` that
+  bypasses the production `maintainPartitions → createPartitionMovingDefault`
+  recovery; I pinned the real path with a regression test (a DEFAULT-resident
+  incremental row + `maintainPartitions` creating its covering partition →
+  the row moves out of DEFAULT with zero warnings and dedups to one row).
+  **Two follow-ups shipped:** `/v1/ingest/task` now gates on the wire version
+  (400 on skew, parity with `/v1/ingest/logs` + `/v1/catalog`); the recovery
+  regression test committed. Accepted residuals (informational, no action): a
+  dropped incremental POST loses that task's LOG tail (the row is still
+  recovered by the batch backstop — the documented best-effort-logs tradeoff);
+  the log insert's SELECT-then-INSERT has no unique guard (a partitioned unique
+  index can't dedup it — `created_at` differs per path — but the normal flow
+  never double-delivers); 400 bodies echo internal exception text (consistent
+  with the route, ci-token-only). Cloud 434 pass, core ci exit 0.
+
 - **2026-07-13**: **Run detail fills in LIVE + a vacuous perf-guard fixed
   (`6a79514`, `3fc3843`)** — completing the incremental-ingest payoff. The
   `runDetail.json` view had NO refresh interval, so a page opened during a run
