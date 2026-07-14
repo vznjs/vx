@@ -8,6 +8,7 @@
 import path from 'node:path'
 import { relPosix, UserError } from '../util/index.js'
 import { findWorkspaceRoot, listProjects, loadWorkspace } from '../workspace/index.js'
+import { quote } from './migrate-emit.js'
 import { migrateNx } from './migrate-nx.js'
 import { migrateTurbo } from './migrate-turbo.js'
 
@@ -183,18 +184,6 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
 // ─── TS emission ──────────────────────────────────────────────────────
 
 const IDENT = /^[A-Za-z_$][\w$]*$/
-
-function quote(s: string): string {
-  // Escape backslash + quote AND raw newlines/CR — a script with an embedded
-  // newline (legal JSON: "echo a\necho b") would otherwise splice a raw newline
-  // into a single-quoted TS literal, producing an unterminated string that
-  // fails to load (the generated config must round-trip through loadProjectConfig).
-  return `'${s
-    .replaceAll('\\', '\\\\')
-    .replaceAll("'", "\\'")
-    .replaceAll('\n', '\\n')
-    .replaceAll('\r', '\\r')}'`
-}
 
 function isRawExpr(v: unknown): v is RawExpr {
   return typeof v === 'object' && v !== null && typeof (v as RawExpr).raw === 'string'

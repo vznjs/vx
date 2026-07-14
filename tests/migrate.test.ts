@@ -585,6 +585,36 @@ describe('vx migrate (turbo) — commands with newlines round-trip', () => {
   })
 })
 
+describe('vx migrate (turbo) — preset globals with quotes/backslashes round-trip', () => {
+  let root: string
+  beforeAll(async () => {
+    root = await makeRoot('vx-migrate-preset-')
+    // A globalDependencies glob containing a single quote + backslash: legal on
+    // Linux, verbatim in JSON. The preset renderer must escape it, else the
+    // emitted `vx-preset.ts` is an unterminated / mis-quoted string literal.
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      JSON.stringify({
+        globalDependencies: ["config's/**", 'a\\b/**'],
+        tasks: { build: {} },
+      }),
+    )
+    await addPackage(root, 'app', { build: 'tsc -b' })
+  })
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('generates a loadable vx-preset.ts preserving the exact glob strings', async () => {
+    const r = await vx(root, ['migrate'])
+    expect(r.code).toBe(0)
+    // Import the emitted preset through Bun's own TS loader — a malformed
+    // literal throws here; the values must survive escaping byte-for-byte.
+    const mod = (await import(path.join(root, 'vx-preset.ts'))) as { globalInputs: string[] }
+    expect(mod.globalInputs).toEqual(["config's/**", 'a\\b/**'])
+  })
+})
+
 describe('vx migrate source detection', () => {
   it(
     'nx.json without the graph file tells the user how to generate it',
