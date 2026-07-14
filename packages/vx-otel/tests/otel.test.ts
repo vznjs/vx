@@ -33,6 +33,7 @@ const RUN: RunContextRecord = {
   flow: 'focused',
   commitSha: 'abc123',
   branch: 'main',
+  defaultBranch: 'main',
   dirty: false,
   ci: true,
   ciProvider: 'github',

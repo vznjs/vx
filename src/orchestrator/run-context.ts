@@ -64,6 +64,61 @@ export function captureGitContext(workspaceRoot: string, dirty: boolean | null =
   return { commitSha, branch, dirty }
 }
 
+/**
+ * The repository's DEFAULT (trunk) branch — the axis that separates a
+ * mainline run from a PR / feature-branch experiment. A run whose `branch`
+ * equals this is a trunk run; everything else is branch work whose timings
+ * must NOT pollute the shared scheduling baseline (owner 2026-07-14: "I can
+ * be experimenting on a branch increasing task time for all later on… don't
+ * count their times into main"). Resolution ladder, most-reliable first:
+ *   1. GitLab: `CI_DEFAULT_BRANCH` (the project's configured default).
+ *   2. GitHub Actions: the event payload's `repository.default_branch`
+ *      (present on push AND pull_request events) — one best-effort JSON read.
+ *   3. Local / other: `git symbolic-ref --short refs/remotes/origin/HEAD`,
+ *      stripping the `origin/` prefix.
+ * Returns null when none resolve (a detached checkout with no remote HEAD, a
+ * non-repo cwd) — the consumer then counts ALL runs, so an undetectable
+ * default never regresses today's behavior. Never throws.
+ */
+export function captureDefaultBranch(
+  env: NodeJS.ProcessEnv | Record<string, string | undefined>,
+  workspaceRoot: string,
+): string | null {
+  const gitlab = env['CI_DEFAULT_BRANCH']
+  if (typeof gitlab === 'string' && gitlab.trim().length > 0) return gitlab.trim()
+
+  const eventPath = env['GITHUB_EVENT_PATH']
+  if (typeof eventPath === 'string' && eventPath.length > 0) {
+    try {
+      const payload = JSON.parse(fs.readFileSync(eventPath, 'utf8')) as {
+        repository?: { default_branch?: unknown }
+      }
+      const dflt = payload.repository?.default_branch
+      if (typeof dflt === 'string' && dflt.trim().length > 0) return dflt.trim()
+    } catch {
+      // unreadable / malformed payload — fall through to git.
+    }
+  }
+
+  try {
+    const proc = Bun.spawnSync({
+      cmd: ['git', '-C', workspaceRoot, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+    if (proc.exitCode === 0) {
+      const ref = new TextDecoder().decode(proc.stdout).trim()
+      // `refs/remotes/origin/HEAD` → `origin/main`; strip the remote prefix.
+      const slash = ref.indexOf('/')
+      const name = slash >= 0 ? ref.slice(slash + 1) : ref
+      if (name.length > 0) return name
+    }
+  } catch {
+    // git unavailable / no remote HEAD ref: null.
+  }
+  return null
+}
+
 // Recognized CI env vars in match-priority order. The first whose value
 // is truthy (present and not '0'/'false') decides the provider; a bare
 // `CI` is the generic fallback.

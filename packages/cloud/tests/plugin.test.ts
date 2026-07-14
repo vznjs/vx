@@ -265,6 +265,7 @@ function fakeSummary(): RunSummaryRecord {
       flow: 'focused',
       commitSha: null,
       branch: null,
+      defaultBranch: null,
       dirty: null,
       ci: false,
       ciProvider: null,

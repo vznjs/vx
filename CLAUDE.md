@@ -208,6 +208,54 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-14**: **Trunk-only scheduling baseline — a PR / feature-branch
+  experiment's timings no longer pollute the shared duration hint main relies
+  on** (owner: "I can be experimenting on a branch increasing task time for all
+  later on as avg will increase… take into account PRs, and don't count their
+  times into main"). Two schedulers were branch-AGNOSTIC: the local predictive
+  p50 (reads the single-user local `runs` table, no branch column — transient,
+  left as-is) and the SHARED cloud LPT hint `taskDurationHints` (`AVG(duration_ms)
+GROUP BY project#task` over ALL of a workspace's `task_runs`), so ONE dev's
+  slow branch experiment permanently skewed the average EVERY distributed run
+  used to order dispatch. Fixed the shared vector (the actual cross-dev
+  pollution). **Signal:** capture the repo's DEFAULT branch — `captureDefaultBranch`
+  in `run-context.ts` (GitLab `CI_DEFAULT_BRANCH` → GitHub event-payload
+  `repository.default_branch` → `git symbolic-ref --short refs/remotes/origin/HEAD`
+  stripped → null; never throws, one best-effort read/spawn, paid only when
+  telemetry is active), threaded ADDITIVELY through `RunContextRecord.defaultBranch`
+  (telemetry v2 unchanged — the `attempts`/`verify`/`outputFp` precedent). A run
+  is TRUNK iff `branch === defaultBranch` (both non-null) — subsumes BOTH PRs
+  (head branch ≠ default) AND feature-branch pushes with one field, no separate
+  isPr boolean. **Storage:** migration `0008` adds nullable `invocations.default_branch`
+  (ADD COLUMN on the partitioned parent cascades); ingest writes it. **Query:**
+  `taskDurationHints` now `COALESCE(avg(duration_ms) FILTER (WHERE trunk),
+avg(duration_ms))` over a LEFT JOIN to invocations — per task it averages
+  TRUNK runs only, FALLING BACK to all runs when a task has no trunk data yet
+  (a new task seen only on a branch, or `default_branch IS NULL` because the
+  client couldn't detect it — so a detection gap never blanks the hint). LEFT
+  JOIN keeps task_runs without an invocation header counting toward the fallback
+  (no coverage regression vs the old all-runs query). Advisory + memoized-30s,
+  so the added per-row invocation lookup (existing `getRegressions` join
+  pattern; `invocations_run_id` index) is off the outcome path. **Analytics
+  dashboard avgs left as-is on purpose** — those surfaces WANT per-branch data
+  (regressions already split by branch; "did MY PR make this slower" needs to
+  see the PR run); only the shared SCHEDULING baseline is trunk-clamped. NO
+  schema/CACHE/wire bump anywhere (telemetry field additive; local `runs` table
+  untouched — no core SCHEMA change). Tests: core `captureDefaultBranch`
+  env/git matrix (GitLab-wins, GitHub payload, git origin/HEAD strip, null,
+  malformed-payload); cloud a 10× branch experiment EXCLUDED from the hint
+  (mean 150, not folding 2000) + a no-trunk-data task FALLING BACK to all runs
+  (incl. a `default_branch NULL` row). Core 1256 pass (1 perf-ratio flake,
+  passes isolated), cloud analytics/migrate/write green (full-suite fails are
+  pg `too many clients` connection-slot exhaustion, non-deterministic 2→1→
+  isolated-0), lint+fmt clean. **Follow-on (deferred):** local predictive p50
+  is still branch-agnostic — would need a branch column on the local `runs`
+  table (a core SCHEMA bump) for a single-user cache whose experiments only
+  skew that dev's own next local run; not worth it vs the shared vector fixed
+  here. Filtering the analytics-baseline avgs (listProjects/getHistory/trends)
+  to trunk is a separate, deliberately-unmade choice (those are per-branch
+  surfaces by design).
+
 - **2026-07-13**: **Core-audit completion — four defects in the previously-
   unreviewed watch/migrate/lockfile/loader modules fixed (`780eac1`)** (cycle-4;
   a repro-mandated hostile reviewer). **HIGH (data loss):** output/workspace

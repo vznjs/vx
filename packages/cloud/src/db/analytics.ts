@@ -995,14 +995,15 @@ export class Analytics {
         INSERT INTO invocations (
           run_id, org_id, workspace_id, command, requested_tasks, cache_policy, concurrency, flow,
           started_at, ended_at, total_duration_ms, task_count, failed_count, hit_count,
-          hit_local_count, hit_remote_count, exit_ok, commit_sha, branch, dirty, ci, ci_provider,
-          host, os, arch, vx_version, tags, ingested_by_token)
+          hit_local_count, hit_remote_count, exit_ok, commit_sha, branch, default_branch, dirty,
+          ci, ci_provider, host, os, arch, vx_version, tags, ingested_by_token)
         VALUES (
           ${r.runId}, ${args.orgId}, ${workspaceId}, ${r.command},
           ${r.requestedTasks}::jsonb, ${r.cachePolicy}, ${r.concurrency}, ${r.flow},
           ${summary.startedAt}, ${summary.endedAt}, ${summary.totalDurationMs}, ${summary.taskCount},
           ${summary.failedCount}, ${summary.hitCount}, ${summary.hitLocalCount},
-          ${summary.hitRemoteCount}, ${summary.exitOk}, ${r.commitSha}, ${r.branch}, ${r.dirty},
+          ${summary.hitRemoteCount}, ${summary.exitOk}, ${r.commitSha}, ${r.branch},
+          ${r.defaultBranch ?? null}, ${r.dirty},
           ${r.ci}, ${r.ciProvider}, ${r.host}, ${r.os}, ${r.arch}, ${r.vxVersion},
           ${r.tags}::jsonb, ${tokenId})
         ON CONFLICT (started_at, run_id) DO NOTHING
@@ -2590,15 +2591,37 @@ export class Analytics {
    * full-history GROUP BY that ran synchronously on EVERY `dist:submit`
    * (the latency-critical submit path); the hints are advisory (LPT ordering
    * only), so a value up to the TTL stale never affects a run's outcome.
+   *
+   * TRUNK-ONLY BASELINE (owner 2026-07-14): a dev experimenting on a branch
+   * legitimately has very different (worse) timings; pooling those into the
+   * shared `project#task` baseline permanently skews what main and every
+   * other dev's distributed run relies on. So the average is computed over
+   * TRUNK runs only — `inv.branch = inv.default_branch`, which excludes both
+   * PRs (head branch ≠ default) and feature-branch pushes. Per task it falls
+   * back to ALL runs when there is no trunk data yet (a new task seen only on
+   * a branch, or a workspace whose client never reported a default branch —
+   * `default_branch IS NULL`), so detection gaps never blank the hint. The
+   * LEFT JOIN keeps task_runs without a matching invocation header counting
+   * as non-trunk (they feed only the fallback), preserving the old all-runs
+   * coverage.
    */
   async taskDurationHints(workspaceId: string): Promise<Map<string, number>> {
     const now = Date.now()
     const cached = this.hintCache.get(workspaceId)
     if (cached !== undefined && cached.expiresAt > now) return cached.hints
     const rows = await this.sql<{ id: string; avg: number }[]>`
-      SELECT project || '#' || task AS id, avg(duration_ms)::float8 AS avg
-      FROM task_runs WHERE workspace_id = ${workspaceId}
-        AND (cache_hit IS NULL OR cache_hit = false) AND status = 'success'
+      WITH d AS (
+        SELECT tr.project AS project, tr.task AS task, tr.duration_ms AS duration_ms,
+          (inv.default_branch IS NOT NULL AND inv.branch = inv.default_branch) AS trunk
+        FROM task_runs tr
+        LEFT JOIN invocations inv
+          ON inv.run_id = tr.run_id AND inv.workspace_id = ${workspaceId}
+        WHERE tr.workspace_id = ${workspaceId}
+          AND (tr.cache_hit IS NULL OR tr.cache_hit = false) AND tr.status = 'success'
+      )
+      SELECT project || '#' || task AS id,
+        COALESCE(avg(duration_ms) FILTER (WHERE trunk), avg(duration_ms))::float8 AS avg
+      FROM d
       GROUP BY project, task`
     const hints = new Map(rows.map((r) => [r.id, r.avg]))
     // Bound the memo so a workspace churn can't grow it unbounded.

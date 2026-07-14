@@ -39,6 +39,7 @@ function summary(
       flow: null,
       commitSha: null,
       branch: null,
+      defaultBranch: null,
       dirty: null,
       ci: true,
       ciProvider: 'github',

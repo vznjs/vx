@@ -71,6 +71,15 @@ export interface RunContextRecord {
   // git / CI / host — straight from run-context.ts.
   commitSha: string | null
   branch: string | null
+  /**
+   * The repository's DEFAULT (trunk) branch, when detectable (v2 additive).
+   * A run is a TRUNK run iff `branch === defaultBranch` (both non-null);
+   * everything else is PR / feature-branch work. Consumers use it to keep
+   * branch-experiment timings out of the shared scheduling baseline; null
+   * (undetectable) means "count all runs" — no regression. Absent on a v1
+   * push; a reader treats absent as null.
+   */
+  defaultBranch: string | null
   dirty: boolean | null
   ci: boolean
   ciProvider: string | null

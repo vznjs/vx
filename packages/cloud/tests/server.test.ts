@@ -165,6 +165,7 @@ function summary(runId: string, workspaceId: string, taskHash = 'h-a'): RunSumma
       flow: 'broad',
       commitSha: 'c0ffee',
       branch: 'main',
+      defaultBranch: 'main',
       dirty: false,
       ci: true,
       ciProvider: 'github',

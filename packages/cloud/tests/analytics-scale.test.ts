@@ -65,6 +65,7 @@ function summary(o: {
       workspaceName: o.workspaceName ?? 'acme/app',
       commitSha: `c${o.runId}`,
       branch: o.branch,
+      defaultBranch: 'main',
       dirty: false,
       ci: true,
       ciProvider: 'github',

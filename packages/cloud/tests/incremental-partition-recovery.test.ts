@@ -41,6 +41,7 @@ function summary(startedAt: number, runId: string, tasks: TaskTelemetry[]): RunS
       workspaceName: 'acme/app',
       commitSha: 'a',
       branch: 'main',
+      defaultBranch: 'main',
       dirty: false,
       ci: true,
       ciProvider: 'gh',

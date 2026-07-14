@@ -114,6 +114,7 @@ function summaryFor(runId: string, startedAt: number, tasks: Record<string, unkn
       workspaceName: 'acme/perf',
       commitSha: `c${runId}`,
       branch: ['main', 'feat-a', 'feat-b'][startedAt % 3],
+      defaultBranch: 'main',
       dirty: false,
       ci: true,
       ciProvider: 'github',

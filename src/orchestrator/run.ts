@@ -38,6 +38,7 @@ import { formatPersistentList } from './framed-output.js'
 import { plan, type RunPlan } from './plan.js'
 import { prepareRun } from './prepare.js'
 import {
+  captureDefaultBranch,
   captureGitContext,
   captureHostContext,
   captureWorkspaceIdentity,
@@ -298,6 +299,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         flow: options.flow ?? null,
         commitSha: gitContext.commitSha,
         branch: gitContext.branch,
+        defaultBranch: captureDefaultBranch(process.env, workspaceRoot),
         dirty: gitContext.dirty,
         ci: ciContext.ci,
         ciProvider: ciContext.provider,

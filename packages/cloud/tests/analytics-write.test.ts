@@ -65,6 +65,7 @@ function summary(over: {
       workspaceName: over.workspaceName ?? 'acme/app',
       commitSha: 'abc123',
       branch: over.branch ?? 'main',
+      defaultBranch: 'main',
       dirty: false,
       ci: true,
       ciProvider: 'github',

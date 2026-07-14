@@ -42,6 +42,7 @@ interface INV {
   startedAt: number
   endedAt?: number
   branch?: string
+  defaultBranch?: string | null
   ci?: boolean
   command?: string
   requestedTasks?: string[]
@@ -55,13 +56,14 @@ async function insertINV(db: DbClient, ws: string, org: string, v: INV): Promise
   await db.sql`INSERT INTO invocations (
       run_id, org_id, workspace_id, command, requested_tasks, cache_policy, concurrency, flow,
       started_at, ended_at, total_duration_ms, task_count, failed_count, hit_count,
-      hit_local_count, hit_remote_count, exit_ok, branch, ci, ci_provider, os, arch,
+      hit_local_count, hit_remote_count, exit_ok, branch, default_branch, ci, ci_provider, os, arch,
       vx_version, tags)
     VALUES (${v.runId}, ${org}, ${ws}, ${v.command ?? 'vx run build'},
             ${JSON.stringify(v.requestedTasks ?? ['build'])}::jsonb, ${'lR,lW,rR,rW'}, ${4},
             ${'broad'}, ${v.startedAt}, ${v.endedAt ?? v.startedAt + 500}, ${500},
             ${v.taskCount ?? 2}, ${v.failedCount ?? 0}, ${v.hitCount ?? 0}, ${0}, ${0},
-            ${(v.failedCount ?? 0) === 0}, ${v.branch ?? 'main'}, ${v.ci ?? true}, ${'github'},
+            ${(v.failedCount ?? 0) === 0}, ${v.branch ?? 'main'}, ${v.defaultBranch ?? null},
+            ${v.ci ?? true}, ${'github'},
             ${'linux'}, ${'x64'}, ${'0.0.0'}, ${JSON.stringify(v.tags ?? {})}::jsonb)`
 }
 
@@ -557,6 +559,104 @@ describe('wiring helpers', () => {
     expect(await analytics.provenanceForHashes(ws, [])).toEqual(new Map())
     const hints = await analytics.taskDurationHints(ws)
     expect(hints.get('app#build')).toBe(200) // mean of 100, 300
+  })
+
+  it('taskDurationHints averages TRUNK runs only, excluding a branch experiment', async () => {
+    const { org, ws } = await newOrgWs(db, 'trunk-hint')
+    const now = Date.now()
+    // Two trunk (main == default) runs of app#build: 100, 200 → trunk mean 150.
+    await insertINV(db, ws, org, {
+      runId: 't1',
+      startedAt: now - 3 * HOUR,
+      branch: 'main',
+      defaultBranch: 'main',
+    })
+    await insertTR(db, ws, org, {
+      runId: 't1',
+      project: 'app',
+      task: 'build',
+      duration: 100,
+      startedAt: now - 3 * HOUR,
+    })
+    await insertINV(db, ws, org, {
+      runId: 't2',
+      startedAt: now - 2 * HOUR,
+      branch: 'main',
+      defaultBranch: 'main',
+    })
+    await insertTR(db, ws, org, {
+      runId: 't2',
+      project: 'app',
+      task: 'build',
+      duration: 200,
+      startedAt: now - 2 * HOUR,
+    })
+    // A branch EXPERIMENT that made the task 10x slower — must NOT pollute the
+    // shared hint (head branch 'exp' != default 'main').
+    await insertINV(db, ws, org, {
+      runId: 't3',
+      startedAt: now - HOUR,
+      branch: 'exp',
+      defaultBranch: 'main',
+    })
+    await insertTR(db, ws, org, {
+      runId: 't3',
+      project: 'app',
+      task: 'build',
+      duration: 2000,
+      startedAt: now - HOUR,
+    })
+    const hints = await analytics.taskDurationHints(ws)
+    expect(hints.get('app#build')).toBe(150) // mean of 100,200 — 2000 excluded
+  })
+
+  it('taskDurationHints falls back to ALL runs for a task with no trunk data', async () => {
+    const { org, ws } = await newOrgWs(db, 'trunk-fallback')
+    const now = Date.now()
+    // 'lint' only ever ran on branches (no trunk row): fall back to all → mean.
+    await insertINV(db, ws, org, {
+      runId: 'f1',
+      startedAt: now - 2 * HOUR,
+      branch: 'exp',
+      defaultBranch: 'main',
+    })
+    await insertTR(db, ws, org, {
+      runId: 'f1',
+      project: 'app',
+      task: 'lint',
+      duration: 300,
+      startedAt: now - 2 * HOUR,
+    })
+    await insertINV(db, ws, org, {
+      runId: 'f2',
+      startedAt: now - HOUR,
+      branch: 'exp2',
+      defaultBranch: 'main',
+    })
+    await insertTR(db, ws, org, {
+      runId: 'f2',
+      project: 'app',
+      task: 'lint',
+      duration: 500,
+      startedAt: now - HOUR,
+    })
+    // A run whose default branch was never detected (default_branch NULL) also
+    // must contribute — the client couldn't tell trunk from branch.
+    await insertINV(db, ws, org, {
+      runId: 'f3',
+      startedAt: now - 30 * 60_000,
+      branch: 'whatever',
+      defaultBranch: null,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'f3',
+      project: 'app',
+      task: 'lint',
+      duration: 400,
+      startedAt: now - 30 * 60_000,
+    })
+    const hints = await analytics.taskDurationHints(ws)
+    expect(hints.get('app#lint')).toBe(400) // mean of 300,500,400 — no trunk data
   })
 })
 
