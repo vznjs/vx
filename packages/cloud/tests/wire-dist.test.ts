@@ -133,4 +133,25 @@ describe('round-trip — dist:submit ⇄ Envelope', () => {
     expect(envelopeToDistSubmit(env)).toEqual(submit)
     expect(envelopeToDistSubmit(distServerMessageToEnvelope({ t: 'coord:drain' }))).toBeNull()
   })
+
+  it('carries the trust-scope branch/defaultBranch when present', () => {
+    const submit: DistSubmitMessage = {
+      t: 'dist:submit',
+      protocol: DIST_PROTOCOL_VERSION,
+      session: 'local',
+      workspaceId: 'ws1',
+      submissionId: 'sub-2',
+      commitSha: 'cafebabe',
+      branch: 'feature-x',
+      defaultBranch: 'main',
+      expectedAgents: 1,
+      agentTimeoutMs: 300_000,
+      request: { tasks: ['build'], cwd: '/w' },
+      nodes: [],
+    }
+    const back = envelopeToDistSubmit(distSubmitToEnvelope(submit))
+    expect(back).toEqual(submit)
+    expect(back?.branch).toBe('feature-x')
+    expect(back?.defaultBranch).toBe('main')
+  })
 })

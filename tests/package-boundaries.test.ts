@@ -94,6 +94,7 @@ describe('package boundaries', () => {
       'WIRE_PROTOCOL_VERSION',
       'buildTaskGraph',
       'cacheKeyDiff',
+      'captureDefaultBranch',
       'captureGitContext',
       'captureWorkspaceIdentity',
       'cleanOutputs',

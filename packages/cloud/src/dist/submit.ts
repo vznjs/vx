@@ -8,6 +8,7 @@ import {
   FULL_CACHE_POLICY,
   LayeredCache,
   UserError,
+  captureDefaultBranch,
   captureGitContext,
   captureWorkspaceIdentity,
   cleanOutputs,
@@ -193,6 +194,8 @@ export function distributedBackend(opts: DistributedBackendOptions): RunBackend 
           workspaceId: identity.id,
           submissionId,
           commitSha: git.commitSha,
+          branch: git.branch,
+          defaultBranch: captureDefaultBranch(process.env, prepared.workspaceRoot),
           expectedAgents: opts.expectedAgents,
           agentTimeoutMs:
             opts.agentTimeoutMs ??

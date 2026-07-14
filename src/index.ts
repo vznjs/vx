@@ -38,6 +38,7 @@ export type { PreparedRun } from './orchestrator/index.js'
 export { computeTaskHash, createHashCache, deriveStableKeys } from './orchestrator/index.js'
 export type { DeriveStableKeysArgs, HashCache, StableKey } from './orchestrator/index.js'
 export {
+  captureDefaultBranch,
   captureGitContext,
   captureWorkspaceIdentity,
   resolveCacheScope,

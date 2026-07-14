@@ -538,6 +538,13 @@ describe('wiring helpers', () => {
   it('provenanceForHashes + taskDurationHints', async () => {
     const { org, ws } = await newOrgWs(db, 'wire')
     const now = Date.now()
+    // Two TRUNK runs (main == default) so the default-scope hint sees them.
+    await insertINV(db, ws, org, {
+      runId: 'w1',
+      startedAt: now - HOUR,
+      branch: 'main',
+      defaultBranch: 'main',
+    })
     await insertTR(db, ws, org, {
       runId: 'w1',
       project: 'app',
@@ -545,6 +552,12 @@ describe('wiring helpers', () => {
       duration: 100,
       startedAt: now - HOUR,
       hash: 'HH',
+    })
+    await insertINV(db, ws, org, {
+      runId: 'w2',
+      startedAt: now,
+      branch: 'main',
+      defaultBranch: 'main',
     })
     await insertTR(db, ws, org, {
       runId: 'w2',
@@ -561,102 +574,59 @@ describe('wiring helpers', () => {
     expect(hints.get('app#build')).toBe(200) // mean of 100, 300
   })
 
-  it('taskDurationHints averages TRUNK runs only, excluding a branch experiment', async () => {
-    const { org, ws } = await newOrgWs(db, 'trunk-hint')
+  // Scoped-hint fixture — mirrors the cache trust model. Tasks:
+  //   build: trunk (100,200 → 150) + a 'exp' branch experiment (2000)
+  //   lint:  trunk only (300)
+  //   probe: 'exp2' branch only (700) — never trunk, never 'exp'
+  async function seedScopedHints(tag: string): Promise<{ org: string; ws: string }> {
+    const { org, ws } = await newOrgWs(db, `scoped-hint-${tag}`)
     const now = Date.now()
-    // Two trunk (main == default) runs of app#build: 100, 200 → trunk mean 150.
-    await insertINV(db, ws, org, {
-      runId: 't1',
-      startedAt: now - 3 * HOUR,
-      branch: 'main',
-      defaultBranch: 'main',
-    })
-    await insertTR(db, ws, org, {
-      runId: 't1',
-      project: 'app',
-      task: 'build',
-      duration: 100,
-      startedAt: now - 3 * HOUR,
-    })
-    await insertINV(db, ws, org, {
-      runId: 't2',
-      startedAt: now - 2 * HOUR,
-      branch: 'main',
-      defaultBranch: 'main',
-    })
-    await insertTR(db, ws, org, {
-      runId: 't2',
-      project: 'app',
-      task: 'build',
-      duration: 200,
-      startedAt: now - 2 * HOUR,
-    })
-    // A branch EXPERIMENT that made the task 10x slower — must NOT pollute the
-    // shared hint (head branch 'exp' != default 'main').
-    await insertINV(db, ws, org, {
-      runId: 't3',
-      startedAt: now - HOUR,
-      branch: 'exp',
-      defaultBranch: 'main',
-    })
-    await insertTR(db, ws, org, {
-      runId: 't3',
-      project: 'app',
-      task: 'build',
-      duration: 2000,
-      startedAt: now - HOUR,
-    })
-    const hints = await analytics.taskDurationHints(ws)
-    expect(hints.get('app#build')).toBe(150) // mean of 100,200 — 2000 excluded
+    const run = async (
+      id: string,
+      branch: string,
+      defaultBranch: string | null,
+      project: string,
+      task: string,
+      duration: number,
+      ago: number,
+    ): Promise<void> => {
+      await insertINV(db, ws, org, { runId: id, startedAt: now - ago, branch, defaultBranch })
+      await insertTR(db, ws, org, { runId: id, project, task, duration, startedAt: now - ago })
+    }
+    await run('s1', 'main', 'main', 'app', 'build', 100, 5 * HOUR)
+    await run('s2', 'main', 'main', 'app', 'build', 200, 4 * HOUR)
+    await run('s3', 'exp', 'main', 'app', 'build', 2000, 3 * HOUR) // branch experiment
+    await run('s4', 'main', 'main', 'app', 'lint', 300, 2 * HOUR) // trunk only
+    await run('s5', 'exp2', 'main', 'app', 'probe', 700, HOUR) // other branch only
+    return { org, ws }
+  }
+
+  it('a TRUNK submission reads only trunk timings — a branch experiment never leaks up', async () => {
+    const { ws } = await seedScopedHints('trunk')
+    // Default scope == trunk.
+    for (const hints of [
+      await analytics.taskDurationHints(ws),
+      await analytics.taskDurationHints(ws, { branch: 'main', defaultBranch: 'main' }),
+    ]) {
+      expect(hints.get('app#build')).toBe(150) // 100,200 — the 2000 exp run excluded
+      expect(hints.get('app#lint')).toBe(300) // trunk
+      expect(hints.has('app#probe')).toBe(false) // ran only on 'exp2' → no trunk hint
+    }
   })
 
-  it('taskDurationHints falls back to ALL runs for a task with no trunk data', async () => {
-    const { org, ws } = await newOrgWs(db, 'trunk-fallback')
-    const now = Date.now()
-    // 'lint' only ever ran on branches (no trunk row): fall back to all → mean.
-    await insertINV(db, ws, org, {
-      runId: 'f1',
-      startedAt: now - 2 * HOUR,
-      branch: 'exp',
-      defaultBranch: 'main',
-    })
-    await insertTR(db, ws, org, {
-      runId: 'f1',
-      project: 'app',
-      task: 'lint',
-      duration: 300,
-      startedAt: now - 2 * HOUR,
-    })
-    await insertINV(db, ws, org, {
-      runId: 'f2',
-      startedAt: now - HOUR,
-      branch: 'exp2',
-      defaultBranch: 'main',
-    })
-    await insertTR(db, ws, org, {
-      runId: 'f2',
-      project: 'app',
-      task: 'lint',
-      duration: 500,
-      startedAt: now - HOUR,
-    })
-    // A run whose default branch was never detected (default_branch NULL) also
-    // must contribute — the client couldn't tell trunk from branch.
-    await insertINV(db, ws, org, {
-      runId: 'f3',
-      startedAt: now - 30 * 60_000,
-      branch: 'whatever',
-      defaultBranch: null,
-    })
-    await insertTR(db, ws, org, {
-      runId: 'f3',
-      project: 'app',
-      task: 'lint',
-      duration: 400,
-      startedAt: now - 30 * 60_000,
-    })
-    const hints = await analytics.taskDurationHints(ws)
-    expect(hints.get('app#lint')).toBe(400) // mean of 300,500,400 — no trunk data
+  it('a BRANCH submission reads its OWN timings first, then trunk, never another branch', async () => {
+    const { ws } = await seedScopedHints('branch')
+    const hints = await analytics.taskDurationHints(ws, { branch: 'exp', defaultBranch: 'main' })
+    expect(hints.get('app#build')).toBe(2000) // its OWN exp run wins over trunk (150)
+    expect(hints.get('app#lint')).toBe(300) // no exp run → falls through to trunk
+    expect(hints.has('app#probe')).toBe(false) // 'exp2' is a DIFFERENT branch — never visible
+  })
+
+  it('an undetectable scope (null default) is treated as trunk (leak-free default)', async () => {
+    const { ws } = await seedScopedHints('nulldflt')
+    const hints = await analytics.taskDurationHints(ws, { branch: 'whatever', defaultBranch: null })
+    expect(hints.get('app#build')).toBe(150) // trunk baseline, not the 2000 branch run
+    expect(hints.has('app#probe')).toBe(false)
   })
 })
 

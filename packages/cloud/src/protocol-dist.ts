@@ -116,6 +116,16 @@ export interface DistSubmitMessage {
   /** Client-minted id (ULID) — the key a session multiplexes submissions on. */
   submissionId: string
   commitSha: string
+  /**
+   * The submitting run's git branch + the repo's default branch, so the serve
+   * can scope the LPT duration hint the way the cache scopes reads: a TRUNK
+   * submission (`branch === defaultBranch`) reads only the trunk timing
+   * baseline; a branch submission reads its OWN branch's timings first, then
+   * trunk. Advisory (hint ordering only) + absence-safe (an omitting/older
+   * submitter → the serve treats it as trunk = the clean baseline), so these
+   * are additive-optional with NO DIST_PROTOCOL bump. */
+  branch?: string | null
+  defaultBranch?: string | null
   /** Advisory expected agent count (`VX_CLOUD_DISTRIBUTE=<n>`). */
   expectedAgents: number
   /** Zero REMOTE agents after this → loud warning, run proceeds. */
@@ -262,6 +272,8 @@ export function distSubmitToEnvelope(msg: DistSubmitMessage): Notification {
     workspaceId: msg.workspaceId,
     submissionId: msg.submissionId,
     commitSha: msg.commitSha,
+    ...(msg.branch !== undefined ? { branch: msg.branch } : {}),
+    ...(msg.defaultBranch !== undefined ? { defaultBranch: msg.defaultBranch } : {}),
     expectedAgents: msg.expectedAgents,
     agentTimeoutMs: msg.agentTimeoutMs,
     request: msg.request,

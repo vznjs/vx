@@ -446,9 +446,17 @@ export async function startPlatformHttp(opts: PlatformHttpOptions): Promise<Plat
         const wsUuid = await analytics
           .resolveClientWorkspace(principal.orgId, submit.workspaceId)
           .catch(() => null)
+        // Scope the hint the way the cache scopes reads: a trunk submission
+        // sees only the trunk baseline; a branch submission sees its own
+        // timings then trunk. Absent branch/default (older submitter) → trunk.
         const durationHints =
           wsUuid !== null
-            ? await analytics.taskDurationHints(wsUuid).catch(() => new Map<string, number>())
+            ? await analytics
+                .taskDurationHints(wsUuid, {
+                  branch: submit.branch ?? null,
+                  defaultBranch: submit.defaultBranch ?? null,
+                })
+                .catch(() => new Map<string, number>())
             : new Map<string, number>()
         const scheduler = new DistScheduler({ submit, store: scopedStore, send, durationHints })
         // The submitter's token org keys the session (server-derived), so a pool

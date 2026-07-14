@@ -856,6 +856,14 @@ function mapInvocation(r: RawInvocationRow): InvocationDetail {
  *  short cache keeps a full-history GROUP BY off the submit critical path. */
 const DURATION_HINT_TTL_MS = 30_000
 
+/** The submitting run's scope for the trust-scoped duration hint. A run is
+ *  TRUNK iff `branch === defaultBranch` (both non-null); an undetectable scope
+ *  ({} / nulls) is treated as trunk — the strict, leak-free default. */
+export interface DurationHintScope {
+  branch?: string | null
+  defaultBranch?: string | null
+}
+
 export class Analytics {
   constructor(private readonly sql: SQL) {}
 
@@ -2587,31 +2595,53 @@ export class Analytics {
 
   /**
    * Mean executed-run duration per `project#task` — the duration-aware dispatch
-   * hint. Memoized per workspace for DURATION_HINT_TTL_MS: this is a
-   * full-history GROUP BY that ran synchronously on EVERY `dist:submit`
-   * (the latency-critical submit path); the hints are advisory (LPT ordering
-   * only), so a value up to the TTL stale never affects a run's outcome.
+   * hint. Memoized per (workspace, scope) for DURATION_HINT_TTL_MS: this is a
+   * history GROUP BY that ran synchronously on EVERY `dist:submit` (the
+   * latency-critical submit path); the hints are advisory (LPT ordering only),
+   * so a value up to the TTL stale never affects a run's outcome.
    *
-   * TRUNK-ONLY BASELINE (owner 2026-07-14): a dev experimenting on a branch
-   * legitimately has very different (worse) timings; pooling those into the
-   * shared `project#task` baseline permanently skews what main and every
-   * other dev's distributed run relies on. So the average is computed over
-   * TRUNK runs only — `inv.branch = inv.default_branch`, which excludes both
-   * PRs (head branch ≠ default) and feature-branch pushes. Per task it falls
-   * back to ALL runs when there is no trunk data yet (a new task seen only on
-   * a branch, or a workspace whose client never reported a default branch —
-   * `default_branch IS NULL`), so detection gaps never blank the hint. The
-   * LEFT JOIN keeps task_runs without a matching invocation header counting
-   * as non-trunk (they feed only the fallback), preserving the old all-runs
-   * coverage.
+   * TRUST-SCOPED like the cache (owner 2026-07-14: "it should work like with
+   * cache — timing from main accessible in branch but nothing from branch leaks
+   * to main; it is untrusted"). Mirrors the artifact store's `readScopeSpecs`:
+   *   - a TRUNK submission (`branch === defaultBranch`, or an undetectable
+   *     scope — the strict default) reads ONLY the trunk baseline. A branch
+   *     experiment's slow timings can NEVER reach it; a task with no trunk
+   *     timing simply has no hint (→ FIFO for it), never a branch value.
+   *   - a BRANCH submission reads its OWN branch's timings FIRST, falling
+   *     through to the trunk baseline for tasks it hasn't run on its branch —
+   *     and NEVER another branch's (one PR can't see another's, exactly like
+   *     the per-PR untrusted sub-scope). So a dev on a branch benefits from its
+   *     own accumulated (changed) durations layered over main.
+   * A task with no timing in ANY readable scope is absent (a cache miss → no
+   * hint). The LEFT JOIN means a task_run without an invocation header is
+   * un-attributable to any branch, so it feeds no scope — correct: only
+   * provably-scoped runs move a baseline.
    */
-  async taskDurationHints(workspaceId: string): Promise<Map<string, number>> {
+  async taskDurationHints(
+    workspaceId: string,
+    scope: DurationHintScope = {},
+  ): Promise<Map<string, number>> {
+    const branch = scope.branch ?? null
+    const defaultBranch = scope.defaultBranch ?? null
+    // Undetectable branch/default → treat as trunk: a run whose scope we can't
+    // determine gets the clean trunk baseline, never branch pollution.
+    const isTrunk = branch === null || defaultBranch === null || branch === defaultBranch
+    const memoKey = `${workspaceId} ${isTrunk ? '#trunk' : branch}`
     const now = Date.now()
-    const cached = this.hintCache.get(workspaceId)
+    const cached = this.hintCache.get(memoKey)
     if (cached !== undefined && cached.expiresAt > now) return cached.hints
-    const rows = await this.sql<{ id: string; avg: number }[]>`
+
+    const sql = this.sql
+    // The readable-scope aggregate: trunk reads only trunk; a branch reads its
+    // own timings then falls through to trunk (COALESCE precedence == the
+    // own-sub-scope-then-trusted order of readScopeSpecs).
+    const readable = isTrunk
+      ? sql`avg(duration_ms) FILTER (WHERE trunk)`
+      : sql`COALESCE(avg(duration_ms) FILTER (WHERE branch = ${branch}), avg(duration_ms) FILTER (WHERE trunk))`
+    const rows = await this.sql<{ id: string; avg: number | null }[]>`
       WITH d AS (
         SELECT tr.project AS project, tr.task AS task, tr.duration_ms AS duration_ms,
+          inv.branch AS branch,
           (inv.default_branch IS NOT NULL AND inv.branch = inv.default_branch) AS trunk
         FROM task_runs tr
         LEFT JOIN invocations inv
@@ -2619,14 +2649,14 @@ export class Analytics {
         WHERE tr.workspace_id = ${workspaceId}
           AND (tr.cache_hit IS NULL OR tr.cache_hit = false) AND tr.status = 'success'
       )
-      SELECT project || '#' || task AS id,
-        COALESCE(avg(duration_ms) FILTER (WHERE trunk), avg(duration_ms))::float8 AS avg
+      SELECT project || '#' || task AS id, ${readable}::float8 AS avg
       FROM d
       GROUP BY project, task`
-    const hints = new Map(rows.map((r) => [r.id, r.avg]))
-    // Bound the memo so a workspace churn can't grow it unbounded.
+    const hints = new Map<string, number>()
+    for (const r of rows) if (r.avg !== null) hints.set(r.id, r.avg)
+    // Bound the memo so per-branch churn can't grow it unbounded.
     if (this.hintCache.size > 256) this.hintCache.clear()
-    this.hintCache.set(workspaceId, { hints, expiresAt: now + DURATION_HINT_TTL_MS })
+    this.hintCache.set(memoKey, { hints, expiresAt: now + DURATION_HINT_TTL_MS })
     return hints
   }
 }
