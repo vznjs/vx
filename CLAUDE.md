@@ -208,6 +208,50 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-14**: **Lookahead scheduler — architect-designed, measured, NOT
+  built; the scheduler-policy benchmark IS the deliverable (`bench/schedule-
+policy.ts`)** (owner: "Critical path should always be prioritized but we
+  should also be smart and predict… to not schedule a task that would block
+  critical. But also not wait for critical and do nothing"). Design
+  `docs/design/lookahead-scheduler-2026-07.md`. **Verdict: don't build
+  reservation/lookahead admission.** The owner's three constraints are
+  self-resolving — (1) "prioritize critical path" is ALREADY the opt-in
+  time-based `remCP` priority (`computePredictedPriorities`, near-optimal LPT-
+  on-a-DAG); (3) "never idle" is ALREADY a hard invariant of the
+  work-conserving `tick()`; and (3) forecloses idle-insertion, the ONLY
+  lookahead with theoretical teeth — leaving only work-conserving REORDER,
+  which `remCP` already does. Worse, the naive "prefer a shorter ready task to
+  free a worker for critical" is an SPT bias, and a clean Graham anomaly
+  (design Example D) shows it REGRESSES makespan (30→32) — it optimizes
+  critical-task START LATENCY at the cost of makespan, a real and often-losing
+  trade. It'd also break the tested determinism invariant (schedule order is a
+  pure function of priorities+graph+completion order; wall-clock lookahead
+  makes it unpinnable). Full mechanism specified (Phase 3, opt-in
+  `lookahead: true`, logical-clock not wall-clock, no-op-without-data) so it's
+  a build-or-not decision if a latency need ever surfaces — prior: skip.
+  **Phase 1 SHIPPED — the benchmark**, the instrument that turns every future
+  scheduling claim into a number. `bench/schedule-policy.ts` (no `src/`
+  change; exported `mergePriorities` from scheduler.ts so the bench uses the
+  REAL merge, no drift) replays 9 graph shapes through a deterministic
+  discrete-event sim of `runGraph`'s greedy exec-tier list policy
+  (self-validated against 3 hand-computed makespans incl. Example D = 30;
+  logical durations, no wall-clock, so it's flake-free and a 2000-node graph
+  measures in ms). Compares `count` (duration-blind default) vs `remCP` (warm
+  predictive) vs `remCP-cold` (empty-history predictive = the cold-cache case).
+  **Measured finding (`bench/schedule-policy.md`):** structured shapes (chain/
+  fan/diamond/anomaly/work-bound/cp-bound) tie EXACTLY (0.0%); warm predictive
+  wins **−2.0% mean makespan + latency** on realistic mixed-duration DAGs;
+  **BUT cold predictive can REGRESS +0.1..+0.9%** (uniform-duration fallback
+  is a worse heuristic than reverse-dep-count on some shapes). **So the
+  benchmark CORRECTED the naive Phase-2 plan:** don't flip `predictive`
+  unconditionally default-on — the win-only form is DEFAULT-ON ONLY WHEN
+  HISTORY IS PRESENT (warm), keeping count on a cold cache (ties exactly).
+  Phase 2 (that gated flip) is its own careful increment — the open cost
+  question is the per-run history-load query on the default path, which needs
+  its own A/B against the "performance is king" bar (the reverted 2026-06
+  upfront-classification is the cautionary precedent). NO CACHE/SCHEMA/wire
+  change (bench-only + one added export). Core ci green.
+
 - **2026-07-14**: **Duration hints are TRUST-SCOPED like the cache — timing
   from main is accessible on a branch, but nothing from a branch leaks to main
   (`873be25` capture + `<this>` scoping)** (owner: "I can be experimenting on a

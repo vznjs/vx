@@ -658,7 +658,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   })
 }
 
-function mergePriorities(
+export function mergePriorities(
   baseline: ReadonlyMap<string, number>,
   overrides: ReadonlyMap<string, number>,
 ): ReadonlyMap<string, number> {
