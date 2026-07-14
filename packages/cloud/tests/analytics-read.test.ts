@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'bun:test'
 import { openDb, type DbClient } from '../src/db/client.js'
-import { Analytics } from '../src/db/analytics.js'
+import { Analytics, type HeatmapCell } from '../src/db/analytics.js'
 import { ephemeralPg } from './helpers/ephemeral-pg.js'
 
 // Seeded, pinned read-query port tests. Rows are inserted directly (not through
@@ -365,6 +365,36 @@ describe('base fixture reads', () => {
     const grid = await analytics.getRunHeatmap(ws)
     expect(grid).toHaveLength(168)
     expect(grid.reduce((n, c) => n + c.runs, 0)).toBe(7)
+  })
+
+  it('buckets each run into the correct UTC day-of-week/hour cell (SQL EXTRACT == getUTCDay)', async () => {
+    const { org, ws: hw } = await newOrgWs(db, 'heat-utc')
+    // A recent, known UTC instant, plus one at HH:59:59.999 (the sub-second edge
+    // the integer `started_at/1000` truncation must never push across an hour).
+    const a = Date.parse('2026-07-10T13:20:00.000Z') // Friday 13:00 UTC cell
+    const b = Date.parse('2026-07-06T08:59:59.999Z') // Monday 08:00 UTC cell
+    await insertTR(db, hw, org, {
+      runId: 'ha',
+      project: 'p',
+      task: 't',
+      duration: 40,
+      startedAt: a,
+    })
+    await insertTR(db, hw, org, {
+      runId: 'hb',
+      project: 'p',
+      task: 't',
+      duration: 60,
+      startedAt: b,
+    })
+    const grid = await analytics.getRunHeatmap(hw, 3650)
+    const cell = (t: number): HeatmapCell =>
+      grid[new Date(t).getUTCDay() * 24 + new Date(t).getUTCHours()]!
+    expect(cell(a).runs).toBe(1)
+    expect(cell(a).totalDurationMs).toBe(40)
+    expect(cell(b).runs).toBe(1)
+    expect(cell(b).hourOfDay).toBe(8) // truncation did NOT cross into hour 9
+    expect(grid.reduce((n, c) => n + c.runs, 0)).toBe(2)
   })
 
   it('cache-entry inventory queries return shaped empties', async () => {

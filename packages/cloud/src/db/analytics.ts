@@ -2167,23 +2167,30 @@ export class Analytics {
 
   async getRunHeatmap(workspaceId: string, days = 30): Promise<HeatmapCell[]> {
     // Clamp the span so a hostile `?days=1e9` can't turn the bounded fetch into
-    // a full scan of every partition (the raw rows are aggregated in JS below).
+    // a full scan of every partition.
     const since = Date.now() - clampInt(days, 1, MAX_WINDOW_DAYS) * 24 * 60 * 60 * 1000
-    const rows = await this.sql<{ started_at: string; duration_ms: number }[]>`
-      SELECT started_at, duration_ms FROM task_runs
-      WHERE workspace_id = ${workspaceId} AND started_at >= ${since}`
+    // Bucket in SQL (≤168 rows out) instead of streaming every row into JS — at
+    // the platform's target scale (50-100M task_runs/day) the raw fetch would be
+    // tens of millions of rows over the wire. Bucketed in UTC: Postgres
+    // EXTRACT(DOW) is Sun=0..Sat=6 (identical to JS getUTCDay), and integer
+    // `started_at / 1000` drops the sub-second remainder, which can never cross
+    // an hour boundary — so the grid is byte-identical to the former JS pass.
+    const rows = await this.sql<{ dow: number; hour: number; runs: number; total: number }[]>`
+      SELECT EXTRACT(DOW  FROM to_timestamp(started_at / 1000) AT TIME ZONE 'UTC')::int AS dow,
+             EXTRACT(HOUR FROM to_timestamp(started_at / 1000) AT TIME ZONE 'UTC')::int AS hour,
+             count(*)::int AS runs,
+             COALESCE(SUM(duration_ms), 0)::float8 AS total
+      FROM task_runs
+      WHERE workspace_id = ${workspaceId} AND started_at >= ${since}
+      GROUP BY dow, hour`
     const grid: HeatmapCell[] = []
     for (let d = 0; d < 7; d++)
       for (let h = 0; h < 24; h++)
         grid.push({ dayOfWeek: d, hourOfDay: h, runs: 0, totalDurationMs: 0 })
     for (const r of rows) {
-      // Bucket in UTC — every other timestamp path in the platform is UTC/
-      // epoch-ms; `getDay()`/`getHours()` would skew the grid by the server's
-      // local TZ.
-      const date = new Date(num(r.started_at))
-      const cell = grid[date.getUTCDay() * 24 + date.getUTCHours()]!
-      cell.runs++
-      cell.totalDurationMs += r.duration_ms
+      const cell = grid[r.dow * 24 + r.hour]!
+      cell.runs = r.runs
+      cell.totalDurationMs = r.total
     }
     return grid
   }
