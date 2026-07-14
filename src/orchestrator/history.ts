@@ -56,6 +56,16 @@ export class LocalHistoryProvider implements HistoryProvider {
     const out = new Map<string, TaskHistory>()
     if (taskIds.length === 0) return out
 
+    // Split `project#task` into (project, task) pairs so the WHERE filters on a
+    // ROW-VALUE `IN (VALUES …)` the `runs(project, task)` index can SEARCH
+    // (seek) — filtering on the concatenated `project || '#' || task`
+    // expression forced a full index SCAN instead. Split on the FIRST `#`:
+    // task names never contain `#`, and a project name (a package name) never
+    // does either.
+    const pairs = (taskIds as string[]).map(splitTaskId)
+    const tupleParams = pairs.flat()
+    const tuplePlaceholders = pairs.map(() => '(?,?)').join(',')
+
     // One CTE per call: rank rows per (project, task) descending by
     // started_at, keep the top `recent`, aggregate. Cache-hit rows
     // (cache_hit = 1) are excluded from the duration percentiles so
@@ -71,7 +81,7 @@ export class LocalHistoryProvider implements HistoryProvider {
           cache_hit,
           ROW_NUMBER() OVER (PARTITION BY project, task ORDER BY started_at DESC) AS rn
         FROM runs
-        WHERE (project || '#' || task) IN (${taskIds.map(() => '?').join(',')})
+        WHERE (project, task) IN (VALUES ${tuplePlaceholders})
       )
       SELECT
         project,
@@ -95,7 +105,7 @@ export class LocalHistoryProvider implements HistoryProvider {
       executed: number
       failures: number
     }
-    const rows = this.db.query(sql).all(...(taskIds as string[])) as Row[]
+    const rows = this.db.query(sql).all(...tupleParams) as Row[]
 
     // Percentiles need a row-wise read (percentile_cont isn't in SQLite), but
     // ONE windowed query pulls the last `recent` EXECUTED+SUCCESS durations for
@@ -129,17 +139,18 @@ export class LocalHistoryProvider implements HistoryProvider {
    * whole task set. A `project#task` with no executed-success rows is absent.
    */
   private durationsFor(taskIds: readonly string[]): Map<string, number[]> {
+    const pairs = (taskIds as string[]).map(splitTaskId)
     const sql = `
       SELECT project, task, duration_ms FROM (
         SELECT project, task, duration_ms,
           ROW_NUMBER() OVER (PARTITION BY project, task ORDER BY started_at DESC) AS rn
         FROM runs
-        WHERE (project || '#' || task) IN (${taskIds.map(() => '?').join(',')})
+        WHERE (project, task) IN (VALUES ${pairs.map(() => '(?,?)').join(',')})
           AND (cache_hit IS NULL OR cache_hit = 0)
           AND status = 'success'
       )
       WHERE rn <= ${this.recent}`
-    const rows = this.db.query(sql).all(...(taskIds as string[])) as {
+    const rows = this.db.query(sql).all(...pairs.flat()) as {
       project: string
       task: string
       duration_ms: number
@@ -154,6 +165,12 @@ export class LocalHistoryProvider implements HistoryProvider {
     for (const list of out.values()) list.sort((a, b) => a - b)
     return out
   }
+}
+
+/** Split a `project#task` id on its FIRST `#` (task names contain no `#`). */
+function splitTaskId(id: string): [string, string] {
+  const i = id.indexOf('#')
+  return i < 0 ? [id, ''] : [id.slice(0, i), id.slice(i + 1)]
 }
 
 function pickPercentile(sorted: number[], q: number): number {
