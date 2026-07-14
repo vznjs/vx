@@ -1,5 +1,5 @@
 {
-  "refresh": 5000,
+  "refresh": 30000,
   "data": {
     "stats": "cacheStats",
     "savings": "cacheSavings",
@@ -169,7 +169,7 @@
               "columns": [
                 { "key": "source", "label": "Source" },
                 { "key": "count", "label": "Hits", "align": "right", "kind": "number" },
-                { "key": "_frac", "label": "Share", "align": "right", "kind": "bar", "format": "percent", "colorFrom": "source" }
+                { "key": "_frac", "label": "Share", "align": "right", "kind": "bar", "format": "percent", "colorKey": "_color" }
               ]
             }
           }

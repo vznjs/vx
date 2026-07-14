@@ -1,5 +1,5 @@
 {
-  "refresh": 5000,
+  "refresh": 30000,
   "data": {
     "artifacts": "artifacts"
   },

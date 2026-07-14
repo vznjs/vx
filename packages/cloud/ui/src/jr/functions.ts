@@ -150,8 +150,8 @@ export const FUNCTIONS: Record<string, (args: Args) => unknown> = {
     const remote = n(a.remote)
     const total = local + remote
     return [
-      { source: 'Local', count: local, _frac: total > 0 ? local / total : 0 },
-      { source: 'Remote', count: remote, _frac: total > 0 ? remote / total : 0 },
+      { source: 'Local', count: local, _frac: total > 0 ? local / total : 0, _color: 'cache-local' },
+      { source: 'Remote', count: remote, _frac: total > 0 ? remote / total : 0, _color: 'cache-remote' },
     ]
   },
 

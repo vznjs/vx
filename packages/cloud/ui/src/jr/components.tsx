@@ -425,7 +425,8 @@ export interface Column {
   baseTone?: Tone
   tone?: ToneRule
   color?: string // static bar color token
-  colorFrom?: string // bar color via paletteFor(row[colorFrom])
+  colorFrom?: string // bar color via paletteFor(row[colorFrom]) (hashed hue)
+  colorKey?: string // bar color = row[colorKey] used LITERALLY (a semantic token)
   dots?: Array<{ field: string; map: DotMap }>
   projectKey?: string
   taskKey?: string
@@ -512,7 +513,11 @@ function renderField(col: Column, row: Row, max: number) {
       )
     case 'bar': {
       const v = Number(row[col.key])
-      const color = col.colorFrom ? paletteFor(String(row[col.colorFrom])) : (col.color ?? 'accent')
+      const color = col.colorKey
+        ? String(row[col.colorKey])
+        : col.colorFrom
+          ? paletteFor(String(row[col.colorFrom]))
+          : (col.color ?? 'accent')
       return (
         <div class="flex items-center gap-2 justify-end">
           <span class="w-16 text-right">{formatValue(col.format, v)}</span>

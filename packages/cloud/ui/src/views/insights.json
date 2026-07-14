@@ -1,5 +1,5 @@
 {
-  "refresh": 5000,
+  "refresh": 30000,
   "data": {
     "trends": "trends",
     "storage": "storage",
@@ -658,7 +658,7 @@
                       "align": "right",
                       "kind": "bar",
                       "format": "percent",
-                      "colorFrom": "source"
+                      "colorKey": "_color"
                     }
                   ]
                 }

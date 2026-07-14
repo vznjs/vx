@@ -690,7 +690,7 @@
                   "baseTone": "faint"
                 },
                 {
-                  "key": "_cpuPct",
+                  "key": "cpuMs",
                   "label": "CPU %",
                   "align": "right",
                   "kind": "cpuPct"
