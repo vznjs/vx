@@ -208,6 +208,49 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-13**: **Core-audit completion — four defects in the previously-
+  unreviewed watch/migrate/lockfile/loader modules fixed (`780eac1`)** (cycle-4;
+  a repro-mandated hostile reviewer). **HIGH (data loss):** output/workspace
+  globs accepted `..` path segments, and `cleanOutputs` rm()s resolved output
+  paths before EVERY run while `Bun.Glob.scan` follows `..` out of cwd — so
+  `cache.outputs.files: ['../victim/**']` (or `outputs.workspaceFiles:
+['../above.txt']`) deleted files OUTSIDE the project / above the repo root, a
+  direct violation of the hard project-boundary invariant (real-CLI repro
+  deleted a committed sibling file). The loader now rejects a `..` path SEGMENT
+  in outputs.files / inputs.files / workspaceFiles (`foo..bar` filenames still
+  fine). **MED:** `vx migrate --from nx` clobbered an existing root
+  `vx.config.ts` without `--force` — the SYNTHESIZED workspace-root project has
+  no discovered meta, so the meta-only conflict check missed it; the check now
+  also stats every actual write target. **MED:** migrate emitted unterminated
+  string literals for commands with embedded newlines (`"echo a\necho b"`) →
+  the generated config failed to load; `quote()` now escapes `\n`/`\r`.
+  **LOW-MED:** `exec.env` was never validated, so a malformed `passThrough`
+  reached `buildIsolatedEnv`'s `for..of` (a number threw mid-run, a string
+  silently char-iterated) — the loader now validates `exec.env`. NO
+  CACHE_VERSION bump (valid configs byte-identical; the `..` rejection only
+  errors on configs that were already a data-loss vector). **REFUTED by the
+  reviewer (sound):** the watch reentrancy guard (no event loss / no overlap),
+  lockfile `--check` + run-side freeze, scoped broken-out-of-scope config.
+  Pinned by regressions in project-loader.test.ts + migrate.test.ts; core ci
+  exit 0.
+
+- **2026-07-13**: **#79 — the N+1 analytics savings/regression queries rewritten
+  as set-based CTEs (`3ad06c8`)** (cycle-4). `listProjects` ran a correlated
+  cache-savings subquery PER project (the worst N+1), `getCacheSavings` ran a
+  per-hit-row subquery twice, and `getRegressions` ran two per-candidate queries
+  (1+2K). Each is now ONE set-based query, output-identical: an `uncached` CTE
+  (avg uncached-success duration per project#task) that cache-hit rows join to
+  — the inner join IS the old `WHERE avg_dur IS NOT NULL`, and
+  `SUM(hit_count × avg)` equals the old per-row sum; getCacheSavings folds the
+  24h + all-time figures into one scan via `FILTER`; getRegressions' per-
+  candidate window-stats become one GROUP BY and ever-passed one DISTINCT set,
+  read from in-memory maps in the loop. Pinned by a differential test
+  (`analytics-cte-diff`) that re-runs the OLD per-item SQL as a reference over a
+  seeded dataset and asserts the new methods deep-equal it, plus hand-computed
+  values; the scale-guard bounds still hold. Cloud 436 pass. (Remaining #79
+  items — partition lookback bounds, the trusted-GET HEAD skip, the session
+  auth memo — are separate, still open.)
+
 - **2026-07-13**: **Pointer-move cost cut on the charts + flamegraph (P6/P8,
   `69eb856`)** (cycle-4). Both hover handlers forced a `getBoundingClientRect`
   (a sync layout) on EVERY mousemove. **P8 (live — insights/cache/task-detail
