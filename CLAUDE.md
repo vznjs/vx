@@ -246,11 +246,20 @@ policy.ts`)** (owner: "Critical path should always be prioritized but we
   benchmark CORRECTED the naive Phase-2 plan:** don't flip `predictive`
   unconditionally default-on — the win-only form is DEFAULT-ON ONLY WHEN
   HISTORY IS PRESENT (warm), keeping count on a cold cache (ties exactly).
-  Phase 2 (that gated flip) is its own careful increment — the open cost
-  question is the per-run history-load query on the default path, which needs
-  its own A/B against the "performance is king" bar (the reverted 2026-06
-  upfront-classification is the cautionary precedent). NO CACHE/SCHEMA/wire
-  change (bench-only + one added export). Core ci green.
+  Phase-2 cost MEASURED (the decisive number): `LocalHistoryProvider.loadFor`
+  = ~280 ms on a synthetic 2000-task / 60k-run warm cache.db (1.6 ms on this
+  repo's 10-task DB) — added to the DEFAULT path it would MORE THAN TRIPLE the
+  ~120 ms warm `vx run` on a large monorepo, on EVERY run including all-cache-
+  hit warm runs where the -2% ordering win doesn't even exist. FINAL
+  CONCLUSION: do NOT make `predictive` the default — keep it OPT-IN (the
+  current design is correct); the whole scheduling thread resolves to "don't
+  build lookahead, don't flip the default." The -2% win only lands on
+  execution-heavy mixed-duration runs, exactly what a user opts into with
+  `predictive: true`. (Root cause of the 280 ms: the query filters on
+  `(project||'#'||task) IN (…)`, a concatenated expression the
+  `runs(project,task)` index can't serve → full scan; rewriting to a
+  tuple-filter is a noted low-priority future optimization, not urgent.) NO
+  CACHE/SCHEMA/wire change (bench-only + one added export). Core ci green.
 
 - **2026-07-14**: **Duration hints are TRUST-SCOPED like the cache — timing
   from main is accessible on a branch, but nothing from a branch leaks to main

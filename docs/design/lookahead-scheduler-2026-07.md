@@ -468,17 +468,31 @@ Findings (makespan Δ vs `count`; negative = faster):
   than reverse-dep-count on some shapes. So predictive is NOT a free no-op
   on a cold cache — it's a small net loss there.
 
-**Phase-2 conclusion (corrected by the measurement): do NOT flip
-`predictive` unconditionally default-on.** The safe, win-only form is
-**default-on only when history is present** (warm) — keep the count-based
-priority on a cold cache (first run / cleared cache), which the benchmark
-shows ties exactly. That captures the −2% warm win with provably zero cold
-regression. Open cost question before shipping the flip: loading history on
-every run adds one batched `runs`-table query at `prepareRun` — must be
-measured against the "performance is king" bar (the reverted 2026-06
-upfront-classification regressed warm runs, so a new per-run read on the
-default path needs its own A/B). Phase 2 is therefore its own careful
-increment, not a drive-by default change.
+**Phase-2 cost (measured 2026-07-14 — the decisive number):**
+`LocalHistoryProvider.loadFor` on a synthetic 2000-task / 60k-run warm
+`cache.db` takes **~280 ms** (1.6 ms on this repo's 10-task / 614-run DB).
+That is a per-run cost that would be added to the DEFAULT path — and a whole
+warm `vx run` on the 1090-pkg repo is ~120 ms, so it would MORE THAN TRIPLE
+warm startup on a large monorepo. Root cause is partly self-inflicted: the
+query filters on `(project || '#' || task) IN (...)`, a CONCATENATED
+expression the `runs(project, task)` index cannot serve, so it full-scans +
+window-sorts.
+
+**Phase-2 conclusion (corrected by the measurement): do NOT make `predictive`
+the default — keep it opt-in (the current design is correct).** Even the
+win-only "default-on when warm" form pays the ~280 ms history query on EVERY
+run — including all-cache-hit warm runs, where nothing executes long enough
+for the −2% ordering win to exist — so it is a net loss for the common case,
+at the exact "performance is king" bar that got the 2026-06 upfront-
+classification reverted. The −2% makespan win is real but only lands on
+execution-heavy mixed-duration runs, which is precisely the case a user can
+OPT INTO with `predictive: true` when they know their graph shape warrants
+it. So: **the entire scheduling thread resolves to "the current opt-in design
+is right" — don't build lookahead, don't flip the default.** (Incidental
+future optimization, low priority: rewrite `LocalHistoryProvider`'s query to
+filter on `(project, task)` tuples or add an expression index, so a user who
+DOES opt into predictive on a huge workspace pays ms, not 280 ms — noted, not
+urgent, gated behind anyone actually hitting it.)
 
 ## Phasing
 
