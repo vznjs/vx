@@ -322,6 +322,16 @@ describe('analytics reads at ~12k task_runs', () => {
     expect(stats.best).toBeLessThan(300)
   }, 120_000)
 
+  it('getRunHeatmap buckets in SQL and stays fast (fixed 168-cell grid, no row streaming)', async () => {
+    // Bucketing moved into a GROUP BY that returns ≤168 rows regardless of the
+    // task_run count, so wall-clock guards the aggregate scan, not a transfer of
+    // every row. Wide window so the whole seeded set is in range.
+    const { best, res } = await bench(() => analytics.getRunHeatmap(wsAcme, 3650))
+    expect(res).toHaveLength(168)
+    expect(res.reduce((n, c) => n + c.runs, 0)).toBeGreaterThan(0)
+    expect(best).toBeLessThan(300)
+  }, 120_000)
+
   it('getCacheSavings (correlated per-hit subqueries) stays fast', async () => {
     // Calibration: ~430 ms (a correlated subquery per cache-hit row). The
     // heaviest by wall-clock; bound ~7x.
