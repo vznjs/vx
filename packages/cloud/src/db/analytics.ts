@@ -2626,7 +2626,11 @@ export class Analytics {
     // Undetectable branch/default → treat as trunk: a run whose scope we can't
     // determine gets the clean trunk baseline, never branch pollution.
     const isTrunk = branch === null || defaultBranch === null || branch === defaultBranch
-    const memoKey = `${workspaceId} ${isTrunk ? '#trunk' : branch}`
+    // `isTrunk` is a DISTINCT key segment, never the raw branch, so no branch
+    // value — not even one literally named the trunk sentinel — can alias the
+    // trunk memo entry and leak its timings into main's hint (git branch names
+    // cannot contain a tab, so a branch value can never forge the `trunk` key).
+    const memoKey = isTrunk ? `${workspaceId}\ttrunk` : `${workspaceId}\tbranch\t${branch}`
     const now = Date.now()
     const cached = this.hintCache.get(memoKey)
     if (cached !== undefined && cached.expiresAt > now) return cached.hints

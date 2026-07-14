@@ -628,6 +628,51 @@ describe('wiring helpers', () => {
     expect(hints.get('app#build')).toBe(150) // trunk baseline, not the 2000 branch run
     expect(hints.has('app#probe')).toBe(false)
   })
+
+  it('a branch literally named after the trunk sentinel cannot poison the trunk memo', async () => {
+    // Regression: the memo key must encode trunk-ness in a segment a branch
+    // value can never forge, else a branch named `#trunk` shares the trunk
+    // entry and — within the 30s TTL — leaks its inflated timing into main.
+    const { org, ws } = await newOrgWs(db, 'memo-collision')
+    const now = Date.now()
+    await insertINV(db, ws, org, {
+      runId: 'm1',
+      startedAt: now - 2 * HOUR,
+      branch: 'main',
+      defaultBranch: 'main',
+    })
+    await insertTR(db, ws, org, {
+      runId: 'm1',
+      project: 'app',
+      task: 'build',
+      duration: 100,
+      startedAt: now - 2 * HOUR,
+    })
+    await insertINV(db, ws, org, {
+      runId: 'm2',
+      startedAt: now - HOUR,
+      branch: '#trunk',
+      defaultBranch: 'main',
+    })
+    await insertTR(db, ws, org, {
+      runId: 'm2',
+      project: 'app',
+      task: 'build',
+      duration: 5000,
+      startedAt: now - HOUR,
+    })
+    // Populate the branch scope FIRST (the order that poisons a colliding memo).
+    const branchHints = await analytics.taskDurationHints(ws, {
+      branch: '#trunk',
+      defaultBranch: 'main',
+    })
+    expect(branchHints.get('app#build')).toBe(5000) // its OWN slow run
+    const trunkHints = await analytics.taskDurationHints(ws, {
+      branch: 'main',
+      defaultBranch: 'main',
+    })
+    expect(trunkHints.get('app#build')).toBe(100) // trunk baseline — NOT the 5000 branch leak
+  })
 })
 
 describe('getNotifications', () => {
