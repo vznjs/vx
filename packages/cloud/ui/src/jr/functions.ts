@@ -149,9 +149,12 @@ export const FUNCTIONS: Record<string, (args: Args) => unknown> = {
     const local = n(a.local)
     const remote = n(a.remote)
     const total = local + remote
+    // Empty when there were no hits at all, so the DataTable renders its honest
+    // "No cache hits in the last 24h" empty state instead of two noisy 0/0 rows.
+    if (total === 0) return []
     return [
-      { source: 'Local', count: local, _frac: total > 0 ? local / total : 0, _color: 'cache-local' },
-      { source: 'Remote', count: remote, _frac: total > 0 ? remote / total : 0, _color: 'cache-remote' },
+      { source: 'Local', count: local, _frac: local / total, _color: 'cache-local' },
+      { source: 'Remote', count: remote, _frac: remote / total, _color: 'cache-remote' },
     ]
   },
 

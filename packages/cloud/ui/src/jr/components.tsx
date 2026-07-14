@@ -9,7 +9,7 @@
 // CPU%, chart field extraction, truncation) lives HERE, so the pages stay pure
 // JSON.
 
-import { For, Show, type JSX, createEffect, createMemo, createResource, createSignal, onCleanup, onMount } from 'solid-js'
+import { For, Show, type JSX, createEffect, createMemo, createResource, createSignal, onCleanup } from 'solid-js'
 import { type BaseComponentProps, useStateBinding } from '@json-render/solid'
 import { A, useNavigate } from '@solidjs/router'
 import {
@@ -18,7 +18,6 @@ import {
   downloadArtifact,
   getGraph,
   getTaskLog,
-  subscribeEvents,
 } from '../api.ts'
 import { HBar, Heatmap as HeatmapPrimitive, LineChart as LineChartPrimitive, Treemap as TreemapPrimitive } from '../components/charts.tsx'
 import { Card as UiCard, EmptyState, LoadError, MetricCard, SegmentedToggle, SkeletonRows, StatusBadge } from '../components/ui.tsx'
@@ -26,7 +25,7 @@ import { Flamegraph as FlamegraphPrimitive, flameEdgesOf } from '../components/F
 import { criticalPath } from '../components/critical-path.ts'
 import { RunGraph as RunGraphPrimitive, type RunGraphNode } from '../components/RunGraph.tsx'
 import { STATUS, toVizState, type VizState } from '../components/status.tsx'
-import { cpuPct, formatDuration, formatHour, paletteFor } from '../format.ts'
+import { cpuPct, formatDuration, paletteFor } from '../format.ts'
 import { type FormatHint, type Tone, axisFormatter, formatValue, toneText } from './hints.ts'
 import type { Recommendation } from './functions.ts'
 
@@ -770,43 +769,6 @@ export function RankList(
       </div>
     </Show>
     </DataGate>
-  )
-}
-
-// --- LiveActivity -----------------------------------------------------------
-
-export function LiveActivity(c: C<{ max?: number }>) {
-  const max = () => c.props.max ?? 12
-  const [live, setLive] = createSignal<Array<{ id: number; kind: string; label: string; t: number }>>([])
-  let seq = 0
-  onMount(() => {
-    const unsub = subscribeEvents((env: unknown) => {
-      const ev = (env as { params?: { kind?: string; node?: { id?: string }; outcome?: { node?: { id?: string }; status?: string } } }).params
-      if (!ev?.kind) return
-      let label = ''
-      if (ev.kind === 'task:start') label = `▶ ${ev.node?.id ?? ''}`
-      else if (ev.kind === 'task:complete') label = `${ev.outcome?.status === 'failed' ? '✗' : '✓'} ${ev.outcome?.node?.id ?? ''}`
-      else if (ev.kind === 'run:start') label = '· run started'
-      else if (ev.kind === 'run:end') label = '· run finished'
-      else return
-      setLive((prev) => [{ id: ++seq, kind: ev.kind!, label, t: Date.now() }, ...prev].slice(0, max()))
-    })
-    onCleanup(unsub)
-  })
-  return (
-    <Show when={live().length > 0} fallback={<div class="text-fg-3 text-xs text-center py-6">Waiting for events…</div>}>
-      <div class="flex flex-col gap-1 max-h-[200px] overflow-y-auto">
-        <For each={live()}>
-          {(e) => (
-            <div class="flex items-center gap-2 text-[11px] font-mono">
-              <span class="text-fg-3 w-12 shrink-0">{formatHour(e.t)}</span>
-              {/* Same dot colors as the shared STATUS vocabulary (status.tsx). */}
-              <span class={`truncate ${e.kind === 'task:complete' && e.label.startsWith('✗') ? STATUS.failed.dot : e.kind === 'task:complete' ? STATUS.success.dot : e.kind.startsWith('run:') ? 'text-fg-3' : 'text-fg-1'}`}>{e.label}</span>
-            </div>
-          )}
-        </For>
-      </div>
-    </Show>
   )
 }
 

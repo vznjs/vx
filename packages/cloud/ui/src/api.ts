@@ -312,8 +312,27 @@ export function refreshCapabilities(): void {
   })
 }
 
+// In-flight GET de-duplication. A view's sources are fetched concurrently, so
+// two that hit the SAME URL fire two identical requests — run-detail's `run` +
+// `runSelectedTask` both GET /v1/runs/:id (the largest query, doubled every 5s
+// poll on the common `?task=` deep-link), and task-detail's detail/flaky/config
+// sources overlap the `recommendations` aggregator's own fetches. Coalescing
+// concurrent identical GETs into one shared promise removes the waste. Cleared
+// on settle, so the next poll fetches fresh — this is request coalescing, not a
+// cache.
+const inflightGets = new Map<string, Promise<unknown>>()
+
 async function getJson<T>(pathname: string): Promise<T> {
-  const res = await fetch(`${origin()}${scopedPath(pathname)}`, {
+  const url = `${origin()}${scopedPath(pathname)}`
+  const existing = inflightGets.get(url)
+  if (existing !== undefined) return existing as Promise<T>
+  const p = doGetJson<T>(pathname, url).finally(() => inflightGets.delete(url))
+  inflightGets.set(url, p)
+  return p
+}
+
+async function doGetJson<T>(pathname: string, url: string): Promise<T> {
+  const res = await fetch(url, {
     credentials: 'include',
     headers: { Accept: 'application/json' },
   })

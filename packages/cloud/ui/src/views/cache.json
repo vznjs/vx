@@ -5,8 +5,7 @@
     "savings": "cacheSavings",
     "breakdown": "cacheBreakdown",
     "storage": "storage",
-    "entries": "cacheEntries",
-    "prunable": "prunable"
+    "entries": "cacheEntries"
   },
   "spec": {
     "type": "Page",

@@ -36,7 +36,6 @@ import {
   getTaskDetail,
   getTopTasks,
   listCacheEntries,
-  listInvocations,
   listProjects,
   listRuns,
 } from '../api.ts'
@@ -346,9 +345,7 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   cacheSavings: () => getCacheSavings(),
   topTasks: () => getTopTasks(8),
   failures: () => getFailures(8),
-  projects: () => listProjects(50),
   projectsAll: () => listProjects(500),
-  invocations: () => listInvocations(12),
   trends: () => getRunTrends({ bucket: 'day' }).then((r) => r.points),
   history: () => getHistory({ limit: 500 }),
   cacheBreakdown: () => getCacheBreakdown(100),
