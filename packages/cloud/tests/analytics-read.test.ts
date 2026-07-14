@@ -409,6 +409,20 @@ describe('getRunTrends', () => {
     expect(points.reduce((n, p) => n + p.hits, 0)).toBe(1)
     expect(points.reduce((n, p) => n + p.hitsLocal, 0)).toBe(1)
   })
+
+  it('clamps a hostile from/to span so the fill loop stays bounded (no DoS)', async () => {
+    const { ws } = await newOrgWs(db, 'trends-dos')
+    // `?from=0&to=1e15` would drive an unclamped hourly fill loop into ~2.7e8
+    // iterations, freezing the single-threaded multi-tenant server. The clamp
+    // caps the point count and returns promptly.
+    const t0 = performance.now()
+    const points = await analytics.getRunTrends(ws, { bucket: 'hour', from: 0, to: 1e15 })
+    expect(points.length).toBeLessThanOrEqual(10_000)
+    expect(performance.now() - t0).toBeLessThan(1000)
+    // Day buckets over the same absurd span are likewise bounded.
+    const daily = await analytics.getStorageGrowth(ws, 1e9)
+    expect(daily.length).toBeLessThanOrEqual(367)
+  })
 })
 
 describe('getPeriodComparison', () => {

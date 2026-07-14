@@ -629,6 +629,25 @@ function clampInt(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.floor(n)))
 }
 
+/**
+ * Hard cap on the number of time buckets a trend fill-loop may emit. The
+ * server is single-threaded and multi-tenant, so a client passing an enormous
+ * `from`/`to`/`days` span (e.g. `?from=0&to=1e15`) must NOT be able to drive a
+ * synchronous fill loop into hundreds of millions of allocations — that would
+ * freeze or OOM the replica for EVERY tenant. 10k covers >400 days of hourly
+ * buckets, far beyond any real dashboard range.
+ */
+const MAX_TREND_BUCKETS = 10_000
+
+/**
+ * Cap on a client-supplied day/window span for the raw-row-fetch analytics
+ * (heatmap, period comparison). A huge span makes `WHERE started_at >= <since>`
+ * degenerate to a full scan of every partition; clamping to ~1 year keeps the
+ * fetch bounded to the intended range (the SQL-side percentile/bucket rewrite
+ * is the deeper scale fix, tracked separately).
+ */
+const MAX_WINDOW_DAYS = 366
+
 function pickPercentile(sorted: number[], q: number): number | undefined {
   if (sorted.length === 0) return undefined
   const idx = Math.min(sorted.length - 1, Math.floor(q * sorted.length))
@@ -1699,7 +1718,9 @@ export class Analytics {
   /** Daily storage growth — all-zero buckets (no cache-entry inventory, §5.1). */
   async getStorageGrowth(_workspaceId: string, days = 30): Promise<StoragePoint[]> {
     const bucketMs = 24 * 60 * 60 * 1000
-    const since = Date.now() - days * bucketMs
+    // Bound the fill loop: a hostile `?days=1e9` would otherwise push ~1e9
+    // zero-points and freeze the server.
+    const since = Date.now() - clampInt(days, 1, MAX_WINDOW_DAYS) * bucketMs
     const start = Math.floor(since / bucketMs) * bucketMs
     const end = Math.floor(Date.now() / bucketMs) * bucketMs
     const out: StoragePoint[] = []
@@ -2088,10 +2109,18 @@ export class Analytics {
     args: { bucket?: TrendBucket; from?: number; to?: number } = {},
   ): Promise<TrendPoint[]> {
     const bucket: TrendBucket = args.bucket ?? 'hour'
-    const to = args.to ?? Date.now()
-    const defaultRangeMs = bucket === 'hour' ? 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000
-    const from = args.from ?? to - defaultRangeMs
     const bucketMs = bucket === 'hour' ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000
+    // Clamp the window before it reaches the fill loop below: `to` no later
+    // than now, and `from` no earlier than MAX_TREND_BUCKETS buckets back —
+    // so a hostile `?from=0&to=1e15` can't drive the synchronous loop into a
+    // hundreds-of-millions-iteration server freeze (bounds the loop, the array
+    // allocation, AND the SQL range). Legitimate ranges (24h hourly / 30d
+    // daily) are far under the cap, so results are unchanged.
+    const now = Date.now()
+    const to = Math.min(args.to ?? now, now)
+    const defaultRangeMs = bucket === 'hour' ? 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000
+    const minFrom = to - (MAX_TREND_BUCKETS - 1) * bucketMs
+    const from = Math.max(args.from ?? to - defaultRangeMs, minFrom)
     const rows = await this.sql<
       {
         t: string
@@ -2137,7 +2166,9 @@ export class Analytics {
   }
 
   async getRunHeatmap(workspaceId: string, days = 30): Promise<HeatmapCell[]> {
-    const since = Date.now() - days * 24 * 60 * 60 * 1000
+    // Clamp the span so a hostile `?days=1e9` can't turn the bounded fetch into
+    // a full scan of every partition (the raw rows are aggregated in JS below).
+    const since = Date.now() - clampInt(days, 1, MAX_WINDOW_DAYS) * 24 * 60 * 60 * 1000
     const rows = await this.sql<{ started_at: string; duration_ms: number }[]>`
       SELECT started_at, duration_ms FROM task_runs
       WHERE workspace_id = ${workspaceId} AND started_at >= ${since}`
@@ -2327,7 +2358,9 @@ export class Analytics {
     workspaceId: string,
     args: PeriodComparisonArgs = {},
   ): Promise<PeriodComparison> {
-    const windowDays = Math.max(1, args.windowDays ?? 7)
+    // Clamp the window so a hostile `?window=1e9` can't push `prevFrom` far
+    // enough negative to make `avgByTask` scan every partition.
+    const windowDays = clampInt(args.windowDays ?? 7, 1, MAX_WINDOW_DAYS)
     const minRuns = Math.max(1, args.minRuns ?? 3)
     const limit = clampInt(args.limit ?? 8, 1, 100)
     const scope: { project?: string; task?: string } = {}
