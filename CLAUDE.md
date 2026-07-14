@@ -208,6 +208,46 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-14**: **Improvement cycle 3-4 — heatmap SQL-bucketing + two
+  end-of-run hang fixes, from a fresh core-exec/cloud-server audit (`0e5ec76`,
+  `dad5d58`, `99adf96`)** (owner: "Never stop. Follow cycles."). **(cycle 3,
+  `0e5ec76`)** `getRunHeatmap` streamed every task_run in the window into JS to
+  bucket a 7×24 grid — at the platform's 50-100M-rows/day target that's tens of
+  millions of rows over the wire per request. Moved into a `GROUP BY` returning
+  ≤168 rows, byte-identical: Postgres `EXTRACT(DOW)` is Sun=0..Sat=6 (== JS
+  `getUTCDay`) and integer `started_at / 1000` drops the sub-second remainder,
+  which can never cross an hour boundary. Pinned by a UTC-cell test (incl. the
+  HH:59:59.999 truncation edge — the former total-only assertion never covered
+  the mapping) + a scale guard (`dad5d58`). The `periodStats` p50/p95 has the
+  same streaming shape but wants a COORDINATED percentile-strategy change across
+  ALL the p50/p95 sites (getHistory/getFlakiest use a JS floor-index) rather than
+  a piecemeal SQL percentile that would diverge cross-surface — deferred.
+  **(cycle 4, `99adf96`, a repro-mandated core-exec + cloud-server audit) — two
+  end-of-run HANG paths, both when the direct child exits but a descendant
+  lingers:** (1) **MED** `runCommand`/`runSandboxed` gate on `proc.exited` then
+  `await streams`, but only abort the readers on the TIMEOUT path — a task that
+  backgrounds a process inheriting fd 1/2 (`server & echo up`; a compound
+  command stays `sh -c`, so `sh` exits while the grandchild holds the pipe)
+  never EOFs, so on a NORMAL exit `await streams` blocks FOREVER (no default
+  timeout) and the scheduler slot never frees → `vx run` hangs. New shared
+  `drainOrAbort` lets a clean exit EOF at once (normal tasks pay nothing;
+  residual is bounded by the pipe buffer since streamToString drains during the
+  run) and aborts a stuck reader after a 250ms grace, returning what it
+  captured. (2) **LOW-MED** the end-of-run shutdown of dependency-only
+  persistent tasks awaited their exit after SIGTERM with no timeout/SIGKILL
+  escalation — a persistent dep that traps/ignores SIGTERM hung a normal
+  completion; now bounded (2s grace → SIGKILL the stragglers). Both timers are
+  cleared + unref'd so a fast shutdown never delays CLI exit. Regressions pin
+  both (`sleep 10 & echo up` returns <3s not ~10s; a SIGTERM-trapping persistent
+  dep completes <8s not ~30s). **The cloud server surface (auth gate,
+  machine-token/session split, CSWSH/Origin, org-scoped broadcast, SigV4,
+  artifact-store immutability/caps/scopes, CSRF) was audited and verified FULLY
+  SOUND — zero reachable defects.** The scheduler's 2-D resource admission
+  (float-residue/holder-count solo-clamp, park/repush FIFO) + the execute-task
+  retry/verify-restore were also confirmed sound. NO CACHE_VERSION/schema/wire
+  bump. Core gate green (1267 pass, 0 fail), cloud analytics-read 35 pass, lint+
+  fmt clean.
+
 - **2026-07-14**: **Improvement cycle 2 — turbo-preset escaping + a cloud
   cross-tenant DoS + UI fetch-dedup/dead-code, from two fresh parallel audits
   (`d7c6269`, `23f35a2`, `eed4b5a`)** (owner: "Never stop. Follow cycles.
