@@ -208,6 +208,56 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-14**: **Improvement cycle 2 — turbo-preset escaping + a cloud
+  cross-tenant DoS + UI fetch-dedup/dead-code, from two fresh parallel audits
+  (`d7c6269`, `23f35a2`, `eed4b5a`)** (owner: "Never stop. Follow cycles.
+  Improve all aspects on vx an vx cloud"). Ran a fresh repro-mandated cloud
+  audit + a UI audit; acted on the verified findings. **(1) migrate-turbo preset
+  escaping (`d7c6269`):** `renderPreset` emitted each global array entry as a
+  naive `'${x}'`, bypassing the config emitter's escaping `quote()` — a
+  `globalDependencies` glob with a `'`/`\`/newline (legal on Linux, verbatim in
+  turbo.json = a system boundary) produced a malformed, unloadable
+  `vx-preset.ts`. `quote()` moved to a leaf `migrate-emit.ts` so both the
+  emitter and the preset renderer import it as a VALUE without closing a runtime
+  cycle (migrate.ts already imports the turbo mapper — a value back-import
+  tripped `import(no-cycle)`); test imports the generated preset through Bun's
+  TS loader. **(2) HIGH cloud cross-tenant DoS (`23f35a2`):** `getRunTrends` /
+  `getStorageGrowth` fill their output arrays with a SYNCHRONOUS
+  `for (t = start; t <= end; t += bucketMs)` loop bounded only by unclamped
+  client params — `GET /v1/trends/runs?from=0&to=1e15` drives ~2.7e8 iterations
+  (and `?days=1e9` the storage loop), allocating hundreds of millions of points
+  → freeze/OOM of the SINGLE-THREADED, MULTI-TENANT server for EVERY tenant,
+  triggerable by any authenticated viewer/ci token in one request. Fixed:
+  clamp the derived span to `MAX_TREND_BUCKETS` (10k, keeping the most-recent
+  buckets; `to` capped at now). The same unbounded span made `getRunHeatmap` /
+  `getPeriodComparison`'s raw-row fetches degenerate to full partition scans via
+  a huge negative `since`/`from` — clamped their day/window to `MAX_WINDOW_DAYS`
+  (~1yr). Legit dashboard ranges (24h/30d/7d) are far under the caps → results
+  unchanged; regression test asserts a hostile span returns a bounded array in
+  <1s. (The SQL-side percentile/bucket rewrite for the raw fetches at
+  50-100M-row scale is the deeper follow-up.) **(3) UI dedup + dead-code
+  (`eed4b5a`):** in-flight GET coalescing at the `getJson` choke point — a
+  view's sources fetch concurrently, so run-detail's `run` + `runSelectedTask`
+  both GET the largest `/v1/runs/:id` (doubled every 5s poll on the common
+  `?task=` deep-link) and task-detail's detail/flaky/config overlap the
+  recommendations aggregator; sharing one promise per URL (cleared on settle —
+  coalescing, not a cache) removes the duplicates with no view restructuring.
+  Dead-code: the Cache view fetched `prunable` (a Postgres scan) every 30s poll
+  but only Insights renders it (dropped); the `projects`/`invocations` sources +
+  the `LiveActivity` SSE component had zero references (deleted); `hitSplitRows`
+  returns `[]` on zero hits so the table shows its honest empty state. **The
+  cloud audit CONFIRMED SOUND:** the branch→trunk duration-hint leak invariant
+  (validates cycle-1's trust-scope work), the CTE rewrites, artifact-store trust
+  scopes, migrations/partitions, the read-side tenant clamp, and ingest
+  idempotency. NO CACHE_VERSION bump (cloud + UI + a migrate-emit refactor).
+  Core 1654 pass (full-suite 19 "fails" were the documented pg-slot + perf-guard
+  flakes under concurrent load — metrics/migrate/run-context all green in
+  isolation), cloud analytics-read 34 pass, UI 60 pass, lint+fmt clean.
+  **DEFERRED (next cycles):** the MED SQL-side percentile/bucket rewrite
+  (periodStats/heatmap at scale); the trusted-GET S3 HEAD-skip (still wants an
+  adversarial pass); `Stack` (a trivial unused layout primitive — kept as a
+  reusable JSON-view building block, unlike the heavy dead `LiveActivity`).
+
 - **2026-07-14**: **Improvement cycle 1 — two parallel read-only audits (core +
   UI) drove five verified fixes across correctness/perf (`5a35824`, `aa6a56f`,
   `9b16390`, `d7fa982`, + normalizeRemoteUrl)** (owner: "Never stop. Follow
