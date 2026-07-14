@@ -1711,32 +1711,32 @@ export class Analytics {
 
   async getCacheSavings(workspaceId: string): Promise<CacheSavings> {
     const since = Date.now() - 24 * 60 * 60 * 1000
-    const r24 = (
-      await this.sql<{ saved: number; hits: number }[]>`
-        SELECT COALESCE(SUM(avg_dur), 0)::float8 AS saved, count(*)::int AS hits FROM (
-          SELECT (SELECT trunc(avg(duration_ms))::int FROM task_runs s
-                  WHERE s.workspace_id = ${workspaceId} AND s.project = r.project AND s.task = r.task
-                    AND (s.cache_hit IS NULL OR s.cache_hit = false) AND s.status = 'success') AS avg_dur
-          FROM task_runs r
-          WHERE r.workspace_id = ${workspaceId} AND r.started_at >= ${since}
-            AND (r.cache_hit = true OR r.status LIKE 'cache-hit%')
-        ) sub WHERE avg_dur IS NOT NULL`
-    )[0]!
-    const rAll = (
-      await this.sql<{ saved: number }[]>`
-        SELECT COALESCE(SUM(avg_dur), 0)::float8 AS saved FROM (
-          SELECT (SELECT trunc(avg(duration_ms))::int FROM task_runs s
-                  WHERE s.workspace_id = ${workspaceId} AND s.project = r.project AND s.task = r.task
-                    AND (s.cache_hit IS NULL OR s.cache_hit = false) AND s.status = 'success') AS avg_dur
-          FROM task_runs r
-          WHERE r.workspace_id = ${workspaceId}
-            AND (r.cache_hit = true OR r.status LIKE 'cache-hit%')
-        ) sub WHERE avg_dur IS NOT NULL`
+    // One set-based query instead of two per-hit-row correlated subqueries.
+    // `uncached` = the avg uncached-success duration per (project, task); each
+    // cache-hit row joins to its task's baseline (the inner join is the old
+    // `WHERE avg_dur IS NOT NULL`), and the 24h figures are a FILTER on the
+    // same scan. Output-identical to the prior two queries.
+    const r = (
+      await this.sql<{ saved24: number; hits24: number; savedAll: number }[]>`
+        WITH uncached AS (
+          SELECT project, task, trunc(avg(duration_ms))::int AS avg_dur
+          FROM task_runs
+          WHERE workspace_id = ${workspaceId}
+            AND (cache_hit IS NULL OR cache_hit = false) AND status = 'success'
+          GROUP BY project, task
+        )
+        SELECT
+          COALESCE(SUM(u.avg_dur) FILTER (WHERE h.started_at >= ${since}), 0)::float8 AS "saved24",
+          count(*) FILTER (WHERE h.started_at >= ${since})::int AS "hits24",
+          COALESCE(SUM(u.avg_dur), 0)::float8 AS "savedAll"
+        FROM task_runs h JOIN uncached u ON u.project = h.project AND u.task = h.task
+        WHERE h.workspace_id = ${workspaceId}
+          AND (h.cache_hit = true OR h.status LIKE 'cache-hit%')`
     )[0]!
     return {
-      hitsLast24h: r24.hits,
-      estimatedTimeSavedMs: r24.saved,
-      estimatedTimeSavedTotalMs: rAll.saved,
+      hitsLast24h: r.hits24,
+      estimatedTimeSavedMs: r.saved24,
+      estimatedTimeSavedTotalMs: r.savedAll,
     }
   }
 
@@ -2031,35 +2031,47 @@ export class Analytics {
              MAX(ended_at) AS last_run_at
       FROM task_runs WHERE workspace_id = ${workspaceId}
       GROUP BY project ORDER BY SUM(duration_ms) DESC LIMIT ${clampInt(limit, 1, 500)}`
-    const out: ProjectRollup[] = []
-    for (const r of rows) {
-      const saved = (
-        await this.sql<{ saved: number }[]>`
-          SELECT COALESCE(SUM(avg_dur), 0)::float8 AS saved FROM (
-            SELECT (SELECT trunc(avg(duration_ms))::int FROM task_runs s
-                    WHERE s.workspace_id = ${workspaceId} AND s.project = r.project AND s.task = r.task
-                      AND (s.cache_hit IS NULL OR s.cache_hit = false) AND s.status = 'success') AS avg_dur
-            FROM task_runs r
-            WHERE r.workspace_id = ${workspaceId} AND r.project = ${r.project}
-              AND (r.cache_hit = true OR r.status LIKE 'cache-hit%')
-          ) sub WHERE avg_dur IS NOT NULL`
-      )[0]!
-      out.push({
-        project: r.project,
-        taskCount: r.task_count,
-        runs: r.runs,
-        failures: r.failures,
-        hits: r.hits,
-        hitRate: r.runs > 0 ? r.hits / r.runs : 0,
-        totalDurationMs: r.total_duration_ms ?? 0,
-        avgDurationMs: r.avg_duration_ms ?? 0,
-        cacheBytes: 0,
-        cacheEntries: 0,
-        lastRunAt: numOrNull(r.last_run_at) ?? undefined,
-        estimatedTimeSavedMs: saved.saved,
-      })
-    }
-    return out
+    // Estimated time saved per project, computed for ALL projects in ONE
+    // set-based query instead of a correlated subquery per project (the old
+    // N+1). Output-identical: for each project it sums, over its cache-hit
+    // rows, the avg uncached-success duration of that (project, task) — which
+    // equals SUM(hit_count × avg_uncached) over tasks that have an uncached
+    // baseline (the inner join drops tasks without one, matching the old
+    // `WHERE avg_dur IS NOT NULL`).
+    const savedByProject = new Map<string, number>()
+    const savedRows = await this.sql<{ project: string; saved: number }[]>`
+      WITH uncached AS (
+        SELECT project, task, trunc(avg(duration_ms))::int AS avg_dur
+        FROM task_runs
+        WHERE workspace_id = ${workspaceId}
+          AND (cache_hit IS NULL OR cache_hit = false) AND status = 'success'
+        GROUP BY project, task
+      ),
+      hits AS (
+        SELECT project, task, count(*)::int AS hit_count
+        FROM task_runs
+        WHERE workspace_id = ${workspaceId}
+          AND (cache_hit = true OR status LIKE 'cache-hit%')
+        GROUP BY project, task
+      )
+      SELECT h.project AS project, COALESCE(SUM(h.hit_count * u.avg_dur), 0)::float8 AS saved
+      FROM hits h JOIN uncached u ON u.project = h.project AND u.task = h.task
+      GROUP BY h.project`
+    for (const s of savedRows) savedByProject.set(s.project, s.saved)
+    return rows.map((r) => ({
+      project: r.project,
+      taskCount: r.task_count,
+      runs: r.runs,
+      failures: r.failures,
+      hits: r.hits,
+      hitRate: r.runs > 0 ? r.hits / r.runs : 0,
+      totalDurationMs: r.total_duration_ms ?? 0,
+      avgDurationMs: r.avg_duration_ms ?? 0,
+      cacheBytes: 0,
+      cacheEntries: 0,
+      lastRunAt: numOrNull(r.last_run_at) ?? undefined,
+      estimatedTimeSavedMs: savedByProject.get(r.project) ?? 0,
+    }))
   }
 
   async getRunTrends(
@@ -2240,32 +2252,44 @@ export class Analytics {
       if (r.status === 'failed') agg.failing.push(r.branch)
     }
 
+    // Batched, replacing the per-candidate `win` + `everPassed` fan-out (the
+    // old 1+2K queries). Windowed stats for EVERY (project, task) in the range
+    // in one GROUP BY; ever-passed as one DISTINCT set over full history. A
+    // candidate always appears in `latest` (started_at >= since), so it always
+    // has a windowed row — the `?? …` default is defensive only.
+    const winRows = await this.sql<
+      {
+        project: string
+        task: string
+        runs: number
+        failures: number | null
+        first_failed: string | null
+        last_run: string | null
+      }[]
+    >`
+      SELECT project, task, count(*)::int AS runs,
+             SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)::int AS failures,
+             MIN(CASE WHEN status = 'failed' THEN started_at END) AS first_failed,
+             MAX(started_at) AS last_run
+      FROM task_runs WHERE workspace_id = ${workspaceId} AND started_at >= ${since}
+      GROUP BY project, task`
+    const winByTask = new Map(winRows.map((w) => [`${w.project}#${w.task}`, w]))
+    const passedRows = await this.sql<{ project: string; task: string }[]>`
+      SELECT DISTINCT project, task FROM task_runs
+      WHERE workspace_id = ${workspaceId}
+        AND status IN ${this.sql(PASS_STATUSES as unknown as string[])}`
+    const passedSet = new Set(passedRows.map((p) => `${p.project}#${p.task}`))
+
     const out: RegressedTask[] = []
     for (const [id, agg] of byTask) {
       if (agg.failing.length < minBranches) continue
-      const win = (
-        await this.sql<
-          {
-            runs: number
-            failures: number | null
-            first_failed: string | null
-            last_run: string | null
-          }[]
-        >`
-          SELECT count(*)::int AS runs,
-                 SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)::int AS failures,
-                 MIN(CASE WHEN status = 'failed' THEN started_at END) AS first_failed,
-                 MAX(started_at) AS last_run
-          FROM task_runs WHERE workspace_id = ${workspaceId}
-            AND project = ${agg.project} AND task = ${agg.task} AND started_at >= ${since}`
-      )[0]!
-      const everPassed =
-        (
-          await this.sql<{ one: number }[]>`
-            SELECT 1 AS one FROM task_runs
-            WHERE workspace_id = ${workspaceId} AND project = ${agg.project} AND task = ${agg.task}
-              AND status IN ${this.sql(PASS_STATUSES as unknown as string[])} LIMIT 1`
-        ).length > 0
+      const win = winByTask.get(id) ?? {
+        runs: 0,
+        failures: 0,
+        first_failed: null as string | null,
+        last_run: null as string | null,
+      }
+      const everPassed = passedSet.has(id)
       out.push({
         id,
         project: agg.project,
