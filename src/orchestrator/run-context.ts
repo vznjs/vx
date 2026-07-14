@@ -199,9 +199,15 @@ export interface WorkspaceIdentity {
  */
 export function normalizeRemoteUrl(raw: string): string {
   let s = raw.trim().toLowerCase()
+  const hadProtocol = /^[a-z+]+:\/\//.test(s)
   s = s.replace(/^[a-z+]+:\/\//, '') // protocol
   s = s.replace(/^[^@/]+@/, '') // user[:pass]@
-  s = s.replace(/:(\d+\/)/, '/$1') // :port/ → /
+  // A `:port` only appears in a protocol-form URL (`ssh://host:2222/path`); the
+  // scp shorthand `host:path` has no port. STRIP it (the old code reinserted it
+  // as a path segment, so `ssh://host:2222/o/r` and `https://host/o/r` — the
+  // SAME repo — derived different workspace ids). Gated on `hadProtocol` so a
+  // scp path whose first segment is numeric isn't mistaken for a port.
+  if (hadProtocol) s = s.replace(/:\d+(\/|$)/, '$1')
   s = s.replace(/:/, '/') // scp-style host:path
   s = s.replace(/\.git$/, '').replace(/\/+$/, '')
   return s

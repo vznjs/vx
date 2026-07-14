@@ -208,6 +208,56 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-14**: **Improvement cycle 1 — two parallel read-only audits (core +
+  UI) drove five verified fixes across correctness/perf (`5a35824`, `aa6a56f`,
+  `9b16390`, `d7fa982`, + normalizeRemoteUrl)** (owner: "Never stop. Follow
+  cycles. Improve all aspects on vx an vx cloud"). Ran a core-audit agent + a
+  UI-audit agent (read-only, ranked findings), then fixed the top verified ones,
+  each repro'd before the fix. **CORE (all confirmed by executed repro):** (1)
+  **HIGH — `computeNestedProjectDirs` interloper bug** (`nested-dirs.ts`): the
+  contiguous-run scan `break`s on the first non-descendant, but a sibling whose
+  name extends the parent by a char sorting BELOW `/` (`-`/`.`/`+`/space) lands
+  between `foo` and `foo/` — so `foo`,`foo-utils`,`foo/nested` returned an EMPTY
+  nested set for `foo`, silently breaking the hard project-boundary invariant
+  (foo's globs then fold foo/nested's files into its key; a broad `outputs.files`
+  could clean/capture another project's files). Fixed to skip interlopers and
+  stop only past the parent's string-prefix block. (2) **HIGH (subdir layout) —
+  stale cache hits + `--affected` under-selection when the workspace root is a
+  git SUBDIR** (`inputs.ts`, `affected.ts`): `git ls-files` prints
+  cwd(workspace)-relative paths but `git status`/`diff` print repo-root-relative
+  ones, so the dirty set never matched the trusted-OID map → a modified tracked
+  file kept its committed OID → STALE HIT (old outputs), and `git diff`'s
+  `code/pkg/x` resolved to `<root>/code/pkg/x` → project not flagged affected.
+  Fixed: normalize `status` by the `--show-prefix` (a trivial concurrent 3rd
+  git spawn, no tree scan — wall-clock unaffected) + `git diff --relative`.
+  No-op when workspace==git root (common case byte-identical). (3) **LOW-MED —
+  `normalizeRemoteUrl` leaked an explicit port** into the workspace id
+  (`:2222/` → `/2222/`), so a ported SSH URL and the HTTPS URL of the SAME repo
+  derived different ids; now stripped (protocol-form only, so a numeric scp path
+  segment isn't mistaken for a port). **UI (from the dashboard audit):** (4)
+  throttled the four analytics views (insights/cache/artifacts/overview) from a
+  5s to 30s auto-refresh — they show 7-30d aggregates (getCacheSavings ~430ms,
+  …) that barely move, so 5s was ~6-12× the necessary Postgres/network load per
+  open tab (runDetail stays 5s for live fill-in); (5) semantic hit-split bar
+  colors (a `colorKey` literal-token column option → cache-local/cache-remote,
+  vs the arbitrary hashed hues) + fixed the taskDetail CPU% column keying a
+  nonexistent `_cpuPct` (→ `cpuMs`). Also a small perf touch: `LocalHistoryProvider`
+  filters on `(project,task)` tuples so the `runs(project,task)` index SEARCHes
+  instead of full-SCANs (the concatenated-expression it used defeated the index;
+  ~5-11%, opt-in predictive path). NO CACHE_VERSION bump — the two key-affecting
+  fixes (nested-dirs, subdir stale-hit) only change keys for the specific buggy
+  layouts and are self-healing (new key → miss → re-run → re-cache, never a wrong
+  hit); every other layout is byte-identical. Pinned by new suites
+  (`nested-dirs.test.ts` interloper matrix, `git-subdir-workspace.test.ts` both
+  subdir fixes on a real repo, normalizeRemoteUrl ports) + the spawn-count guard
+  updated 2→3 (concurrency is the invariant, not the literal count). Core 1264
+  pass, lint+fmt clean. **DEFERRED (verified, next cycles):** the trusted-GET S3
+  HEAD-skip (real hot-path win but changes a security-boundary test's shape —
+  wants an adversarial pass; reverted this cycle); core double-hash-on-miss
+  (#4, perf); restore-hit dead exitCode branch (#6); migrate-turbo preset
+  escaping (#8); UI restore-"see it run"-on-platform (#1, a feature) + dedup
+  task-detail fetches (#3) + delete dead LiveActivity (#4).
+
 - **2026-07-14**: **Lookahead scheduler — architect-designed, measured, NOT
   built; the scheduler-policy benchmark IS the deliverable (`bench/schedule-
 policy.ts`)** (owner: "Critical path should always be prioritized but we

@@ -168,6 +168,10 @@ describe('normalizeRemoteUrl', () => {
     expect(normalizeRemoteUrl('https://github.com/vznjs/vx')).toBe(want)
     expect(normalizeRemoteUrl('ssh://git@github.com/vznjs/vx.git')).toBe(want)
     expect(normalizeRemoteUrl('HTTPS://user:pass@GitHub.com/vznjs/vx/')).toBe(want)
+    // An explicit port must not split the id: a ported SSH/HTTPS URL reduces to
+    // the same string as the unported form (the port is stripped, not kept).
+    expect(normalizeRemoteUrl('ssh://git@github.com:2222/vznjs/vx.git')).toBe(want)
+    expect(normalizeRemoteUrl('https://github.com:8443/vznjs/vx.git')).toBe(want)
   })
 })
 
