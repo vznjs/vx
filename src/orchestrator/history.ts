@@ -97,17 +97,24 @@ export class LocalHistoryProvider implements HistoryProvider {
     }
     const rows = this.db.query(sql).all(...(taskIds as string[])) as Row[]
 
+    // Percentiles need a row-wise read (percentile_cont isn't in SQLite), but
+    // ONE windowed query pulls the last `recent` EXECUTED+SUCCESS durations for
+    // EVERY task at once — the old per-task `percentilesFor` was an N+1 (one
+    // query per task on top of the counts CTE). Same per-task window (last
+    // `recent` executed-success rows by started_at DESC), grouped in JS.
+    const durationsByTask = this.durationsFor(taskIds)
+
     for (const row of rows) {
       const key = `${row.project}#${row.task}`
       const total = row.total || 0
       const failures = row.failures || 0
       const failureMode: TaskHistory['failureMode'] =
         failures === 0 ? 'stable' : failures < total / 5 ? 'flaky-recoverable' : 'flaky-fatal'
-      const { p50, p99 } = this.percentilesFor(row.project, row.task)
+      const durations = durationsByTask.get(key)
       out.set(key, {
         runs: total,
-        p50DurationMs: p50,
-        p99DurationMs: p99,
+        p50DurationMs: durations ? pickPercentile(durations, 0.5) : undefined,
+        p99DurationMs: durations ? pickPercentile(durations, 0.99) : undefined,
         successRate: total > 0 ? (row.successes || 0) / total : 0,
         hitRate: total > 0 ? (row.hits || 0) / total : 0,
         failureMode,
@@ -116,28 +123,36 @@ export class LocalHistoryProvider implements HistoryProvider {
     return out
   }
 
-  // Percentiles need a row-wise read; do it in JS rather than try to
-  // express the percentile_cont equivalent in SQLite. Tiny rows.
-  private percentilesFor(
-    project: string,
-    task: string,
-  ): { p50: number | undefined; p99: number | undefined } {
-    const rows = this.db
-      .query(
-        `SELECT duration_ms FROM runs
-         WHERE project = ? AND task = ?
-           AND (cache_hit IS NULL OR cache_hit = 0)
-           AND status = 'success'
-         ORDER BY started_at DESC
-         LIMIT ?`,
+  /**
+   * The last `recent` executed-success `duration_ms` values per `project#task`,
+   * ASCENDING (ready for percentile picking), in ONE windowed query for the
+   * whole task set. A `project#task` with no executed-success rows is absent.
+   */
+  private durationsFor(taskIds: readonly string[]): Map<string, number[]> {
+    const sql = `
+      SELECT project, task, duration_ms FROM (
+        SELECT project, task, duration_ms,
+          ROW_NUMBER() OVER (PARTITION BY project, task ORDER BY started_at DESC) AS rn
+        FROM runs
+        WHERE (project || '#' || task) IN (${taskIds.map(() => '?').join(',')})
+          AND (cache_hit IS NULL OR cache_hit = 0)
+          AND status = 'success'
       )
-      .all(project, task, this.recent) as { duration_ms: number }[]
-    if (rows.length === 0) return { p50: undefined, p99: undefined }
-    const durations = rows.map((r) => r.duration_ms).sort((a, b) => a - b)
-    return {
-      p50: pickPercentile(durations, 0.5),
-      p99: pickPercentile(durations, 0.99),
+      WHERE rn <= ${this.recent}`
+    const rows = this.db.query(sql).all(...(taskIds as string[])) as {
+      project: string
+      task: string
+      duration_ms: number
+    }[]
+    const out = new Map<string, number[]>()
+    for (const r of rows) {
+      const key = `${r.project}#${r.task}`
+      const list = out.get(key)
+      if (list) list.push(r.duration_ms)
+      else out.set(key, [r.duration_ms])
     }
+    for (const list of out.values()) list.sort((a, b) => a - b)
+    return out
   }
 }
 
