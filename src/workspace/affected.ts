@@ -36,7 +36,15 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
     // surfaces only the destination path. We'd then miss flagging the
     // source project as affected. Treating renames as delete+add gives
     // us both halves so both projects get correctly marked.
-    cmd: ['git', 'diff', '--no-renames', '--name-only', args.since],
+    //
+    // `--relative` prints paths relative to the cwd (the workspace root), NOT
+    // the git repo root. Without it, when the workspace root is a SUBDIR of the
+    // git repo, `git diff` emits repo-root-relative paths (`code/pkg/x`) that
+    // `path.resolve(workspaceRoot, …)` mangles into `<root>/code/…`, matching no
+    // project → the project is silently NOT flagged affected. `--relative` also
+    // (correctly) drops changes ABOVE the workspace, which belong to no project.
+    // No-op when the workspace root IS the git root.
+    cmd: ['git', 'diff', '--no-renames', '--relative', '--name-only', args.since],
     cwd: args.workspaceRoot,
     stdout: 'pipe',
     stderr: 'pipe',

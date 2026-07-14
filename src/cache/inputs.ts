@@ -666,6 +666,19 @@ function parseStatusOutput(out: string): Set<string> {
 }
 
 /**
+ * Strip a repo→workspace `--show-prefix` (e.g. `code/`) from each path, keeping
+ * only paths inside the workspace — so a repo-root-relative set (from `git
+ * status`/`diff`) is re-keyed workspace-relative to match `git ls-files`. Empty
+ * prefix → returns the set unchanged (workspace root IS the git root).
+ */
+function stripPrefixFromSet(paths: Set<string>, prefix: string): Set<string> {
+  if (prefix === '') return paths
+  const out = new Set<string>()
+  for (const p of paths) if (p.startsWith(prefix)) out.add(p.slice(prefix.length))
+  return out
+}
+
+/**
  * Run `git ls-files` ONCE at the workspace root, then partition the
  * result by project. Populates `cache` for every project in
  * `projectDirs` with project-relative path lists matching what a
@@ -734,9 +747,14 @@ export async function populateGitFilesCache(
     rels.length <= 64 &&
     rels.every((r) => r !== '' && r !== '.')
   const pathspecs = scoped ? rels : ['.']
-  const [ls, status] = await Promise.all([
+  const [ls, status, prefixRes] = await Promise.all([
     spawnGit(['ls-files', '-s', '--others', '--exclude-standard', '-z', '--', ...pathspecs]),
     spawnGit(['status', '--porcelain', '-z', '--', ...pathspecs]),
+    // The repo→workspace path prefix (empty when the workspace root IS the git
+    // root). `ls-files` prints cwd(workspace)-relative paths but `status`
+    // prints repo-root-relative ones, so when the workspace root is a SUBDIR of
+    // the git repo the two disagree; this lets us key both the same way below.
+    spawnGit(['rev-parse', '--show-prefix']),
   ])
   if (ls === null) {
     throw new UserError(
@@ -751,7 +769,17 @@ export async function populateGitFilesCache(
     )
   }
   const { files: all, oids } = parseLsFilesOutput(ls.stdout)
-  const dirty = status !== null && status.exitCode === 0 ? parseStatusOutput(status.stdout) : null
+  // Normalize `status`'s repo-root-relative paths to workspace-relative (strip
+  // the `--show-prefix`) so the dirty set is keyed identically to the trusted
+  // OID map. Without this, when the workspace root is a git subdir, a modified
+  // tracked file is never pruned from `trusted` and keeps its committed OID —
+  // a STALE cache hit serving old outputs. Empty prefix (workspace == git root,
+  // the common case) is a zero-cost no-op. Paths above the workspace can't be
+  // inputs, so they drop out of the set.
+  const gitPrefix = prefixRes !== null && prefixRes.exitCode === 0 ? prefixRes.stdout.trim() : ''
+  const dirtyRaw =
+    status !== null && status.exitCode === 0 ? parseStatusOutput(status.stdout) : null
+  const dirty = dirtyRaw === null ? null : stripPrefixFromSet(dirtyRaw, gitPrefix)
   // Aggregate dirtiness for the Tier-3 invocation record — derived from
   // this same status spawn so `run()` needs no second `git status`.
   // null when the status spawn failed (non-repo / git error).
