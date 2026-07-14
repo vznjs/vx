@@ -27,6 +27,7 @@ import { unlink } from 'node:fs/promises'
 import type { SandboxConfig, SandboxNetworkConfig } from '../config.js'
 import {
   armTimeout,
+  drainOrAbort,
   shellQuote,
   signalExitCode,
   streamToString,
@@ -338,11 +339,13 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
     streamToString(proc.stdout, args.onStdout, ac.signal),
     streamToString(proc.stderr, args.onStderr, ac.signal),
   ])
-  // See runCommand: gate on child exit, abort the readers on timeout so
-  // a lingering grandchild pipe can't hang the run.
+  // See runCommand: gate on child exit; a lingering grandchild pipe (timeout
+  // OR a clean exit that backgrounds a process) can't hang the run — timeout
+  // aborts at once, otherwise drainOrAbort bounds the post-exit drain.
   await proc.exited
   timeout.clear()
   if (timeout.timedOut()) ac.abort()
+  else await drainOrAbort(streams, ac)
   const [stdout, stderr] = await streams
   args.liveChildren?.delete(proc)
   const exitCode = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)

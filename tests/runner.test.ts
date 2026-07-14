@@ -57,6 +57,26 @@ describe('runCommand', () => {
     expect(stderrChunks.join('')).toContain('err')
   })
 
+  it('returns promptly when a backgrounded grandchild holds the pipe open (no hang)', async () => {
+    // `sleep 10 & echo up` — sh backgrounds `sleep` (inheriting fd 1/2), prints
+    // `up`, and exits. The orphaned `sleep` keeps the stdout pipe's write-end
+    // open, so EOF never arrives while the child is alive. Without the
+    // post-exit drain bound the reader would block until the sleep ends (~10s,
+    // and forever for a real server); with it, runCommand returns just after
+    // the child exits + the short grace.
+    const t0 = Date.now()
+    const result = await runCommand({
+      command: 'sleep 10 & echo up',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+    })
+    const elapsed = Date.now() - t0
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain('up')
+    // Well under the sleep's 10s → proves we did not wait for the grandchild.
+    expect(elapsed).toBeLessThan(3000)
+  }, 15_000)
+
   it('surfaces command-not-found as a non-zero exit (shell reports 127)', async () => {
     const result = await runCommand({
       command: 'this-binary-does-not-exist-12345',

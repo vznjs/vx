@@ -298,6 +298,47 @@ describe('exec.persistent (e2e)', () => {
   )
 
   it(
+    'a dependency-only persistent task that ignores SIGTERM is force-killed (run does not hang)',
+    async () => {
+      // `dev` traps + ignores SIGTERM, so the end-of-run graceful shutdown can't
+      // reap it — without the bounded SIGKILL escalation, run() would block on
+      // its exit until `sleep 30` ends (~30s), hanging a NORMAL completion.
+      await addProject(fixture.root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              dev: {
+                exec: {
+                  command: "trap '' TERM; echo READY; sleep 30",
+                  persistent: { readyWhen: 'READY' },
+                },
+              },
+              build: {
+                exec: { command: 'echo built' },
+                dependsOn: ['dev'],
+              },
+            },
+          }
+        `,
+      })
+      const t0 = Date.now()
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        projects: ['app'],
+        log: silentLogger(fixture),
+      })
+      expect(r.ok).toBe(true)
+      expect(r.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
+      expect(r.outcomes.find((o) => o.node.id === 'app#dev')?.status).toBe('success')
+      // Well under `sleep 30` → the force-kill fired after the grace, not a wait
+      // for the trapped child's natural exit.
+      expect(Date.now() - t0).toBeLessThan(8_000)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'persistent task streams output captured before ready into the body',
     async () => {
       // With readyWhen present, the ready marker is preceded by the

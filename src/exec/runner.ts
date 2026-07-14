@@ -157,6 +157,38 @@ export function armTimeout(
   return { timedOut: () => fired, clear: () => clearTimeout(timer) }
 }
 
+/**
+ * Grace after the direct child exits before we abort the stdout/stderr readers.
+ * The pipe reaches EOF only when EVERY write-end fd is closed, so a task that
+ * backgrounds a process inheriting fd 1/2 (`server & echo up` — `execWrap`
+ * leaves compound commands as `sh -c`, so `sh` exits while the grandchild holds
+ * the pipe) never EOFs. On a clean exit with no lingering writer the pipe EOFs
+ * at once, so the readers win this race immediately and normal tasks pay
+ * nothing; only a stuck reader waits out the grace. Residual buffered output is
+ * bounded by the OS pipe buffer (streamToString drains continuously DURING the
+ * run), so this is far longer than any real drain needs.
+ */
+const POST_EXIT_DRAIN_MS = 250
+
+/**
+ * After the direct child has exited, wait for the stdout/stderr readers to
+ * reach EOF — but bound it: an orphaned grandchild holding the pipe open would
+ * hang the run forever (there is no default task timeout). If the grace expires
+ * first, abort the reader signal so `streamToString` cancels its read and
+ * returns whatever it captured. The timer is cleared AND unref'd so it can
+ * never keep the CLI alive after the readers settle (the plugin-flush lesson).
+ */
+export async function drainOrAbort(streams: Promise<unknown>, ac: AbortController): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), POST_EXIT_DRAIN_MS)
+    timer.unref?.()
+  })
+  const winner = await Promise.race([streams.then(() => 'drained' as const), deadline])
+  if (timer !== undefined) clearTimeout(timer)
+  if (winner === 'timeout') ac.abort()
+}
+
 export interface PersistentSpawn {
   /** Underlying Bun subprocess so the orchestrator can SIGTERM it later. */
   child: ReturnType<typeof Bun.spawn>
@@ -379,12 +411,16 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     streamToString(proc.stdout, opts.onStdout, ac.signal),
     streamToString(proc.stderr, opts.onStderr, ac.signal),
   ])
-  // Gate on the child's own exit, not on stream EOF: a timeout SIGTERM
-  // kills `sh` but an orphaned grandchild can keep the pipe open, so we
-  // abort the readers once the child is gone rather than wait forever.
+  // Gate on the child's own exit, not on stream EOF: an orphaned grandchild
+  // can keep the pipe open past the child's exit (a timeout SIGTERM leaves the
+  // grandchild alive; a NORMAL exit of `server & echo up` does too), so EOF may
+  // never arrive. A timeout aborts the readers at once; otherwise drainOrAbort
+  // lets a clean exit EOF immediately and only cuts off a stuck reader after a
+  // brief grace — without this the run hangs forever.
   await proc.exited
   timeout.clear()
   if (timeout.timedOut()) ac.abort()
+  else await drainOrAbort(streams, ac)
   const [stdout, stderr] = await streams
   opts.liveChildren?.delete(proc)
   const exitCode = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)

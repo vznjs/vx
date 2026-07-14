@@ -49,6 +49,14 @@ import { startLocalShortCircuit, type ShortCircuit } from './local-shortcircuit.
 import { formatVerifySection } from './verify.js'
 
 const EMPTY_SHORT_CIRCUIT: ShortCircuit = { preProbed: new Map(), restoreTier: new Set() }
+
+/**
+ * Grace after SIGTERMing the dependency-only persistent tasks at end-of-run
+ * before force-killing any that trap or ignore it — so a wedged mock server
+ * can't hang a normal run at completion. Well-behaved servers exit far under
+ * this, so the happy path never waits it out.
+ */
+const PERSISTENT_SHUTDOWN_GRACE_MS = 2000
 import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
 import { formatRunSummary } from './summary.js'
 import type { RunOptions, RunSummary } from './options.js'
@@ -579,17 +587,31 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     }
     const keepAliveSet = new Set(keepAlive)
 
-    // Shut down the dependency-only persistent tasks before reporting the
-    // final summary. SIGTERM gives well-behaved servers (vite, next,
-    // esbuild --watch) a moment to clean up; we don't escalate to SIGKILL
-    // — process-group propagation on Ctrl-C handles the unhappy case.
-    // Bun's Subprocess.kill is idempotent on an already-exited child.
-    for (const child of persistentRegistry.values()) {
-      if (!keepAliveSet.has(child)) child.kill('SIGTERM')
+    // Shut down the dependency-only persistent tasks before reporting the final
+    // summary. SIGTERM gives well-behaved servers (vite, next, esbuild --watch)
+    // a moment to clean up. Bun's Subprocess.kill is idempotent on an
+    // already-exited child. Bound the wait: a persistent dep that traps or
+    // ignores SIGTERM (a wedged mock server) would otherwise hang the run at
+    // NORMAL completion forever — after a grace, SIGKILL the stragglers and move
+    // on. Well-behaved servers exit in well under the grace, so the happy path
+    // pays nothing; the timer is cleared + unref'd so a fast shutdown never
+    // delays CLI exit.
+    const dyingChildren = [...persistentRegistry.values()].filter((c) => !keepAliveSet.has(c))
+    for (const child of dyingChildren) child.kill('SIGTERM')
+    const allExited = Promise.allSettled(dyingChildren.map((c) => c.exited))
+    let graceTimer: ReturnType<typeof setTimeout> | undefined
+    const winner = await Promise.race([
+      allExited.then(() => 'exited' as const),
+      new Promise<'grace'>((resolve) => {
+        graceTimer = setTimeout(() => resolve('grace'), PERSISTENT_SHUTDOWN_GRACE_MS)
+        graceTimer.unref?.()
+      }),
+    ])
+    if (graceTimer !== undefined) clearTimeout(graceTimer)
+    if (winner === 'grace') {
+      for (const child of dyingChildren) child.kill('SIGKILL')
+      await allExited
     }
-    await Promise.allSettled(
-      [...persistentRegistry.values()].filter((c) => !keepAliveSet.has(c)).map((c) => c.exited),
-    )
 
     // Clear the status line for good before the summary prints.
     log.runEnd?.()
