@@ -126,19 +126,25 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   }
 
   if (!parsed.dry && !parsed.force) {
-    const conflicts: string[] = []
+    const conflicts = new Set<string>()
+    // A discovered project with ANY existing vx config (.ts/.mjs/.js) — refuse
+    // so we never shadow a hand-written config with a fresh .ts.
     for (const p of plan.projects) {
       if (p.tasks.length === 0) continue
       const meta = metas.find((m) => m.dir === p.dir)
-      if (meta?.configPath) conflicts.push(relPosix(root, meta.configPath))
+      if (meta?.configPath) conflicts.add(relPosix(root, meta.configPath))
     }
-    for (const f of plan.extraFiles) {
-      if (await Bun.file(path.join(root, f.relPath)).exists()) conflicts.push(f.relPath)
+    // ALSO stat every actual write target. A SYNTHESIZED project (e.g. the Nx
+    // workspace-root node, dir === root) has no discovered meta, so the meta
+    // scan alone would miss an existing vx.config.ts at that path and clobber
+    // it. This also covers the extraFiles (vx-preset.ts).
+    for (const f of files) {
+      if (await Bun.file(f.abs).exists()) conflicts.add(f.relPath)
     }
-    if (conflicts.length > 0) {
+    if (conflicts.size > 0) {
       throw new UserError(
         'refusing to overwrite existing files (pass --force to overwrite):\n' +
-          `  ${conflicts.join('\n  ')}`,
+          `  ${[...conflicts].join('\n  ')}`,
       )
     }
   }
@@ -179,7 +185,15 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
 const IDENT = /^[A-Za-z_$][\w$]*$/
 
 function quote(s: string): string {
-  return `'${s.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`
+  // Escape backslash + quote AND raw newlines/CR — a script with an embedded
+  // newline (legal JSON: "echo a\necho b") would otherwise splice a raw newline
+  // into a single-quoted TS literal, producing an unterminated string that
+  // fails to load (the generated config must round-trip through loadProjectConfig).
+  return `'${s
+    .replaceAll('\\', '\\\\')
+    .replaceAll("'", "\\'")
+    .replaceAll('\n', '\\n')
+    .replaceAll('\r', '\\r')}'`
 }
 
 function isRawExpr(v: unknown): v is RawExpr {

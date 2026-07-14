@@ -191,6 +191,39 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       if (resources !== undefined) {
         validateResources(resources, `${where}.exec.resources`)
       }
+      const env = (exec as { env?: unknown }).env
+      if (env !== undefined) {
+        if (typeof env !== 'object' || env === null) {
+          throw new UserError(`${where}.exec.env must be an object (or omitted)`)
+        }
+        const passThrough = (env as { passThrough?: unknown }).passThrough
+        if (passThrough !== undefined) {
+          // A non-array here reaches `buildIsolatedEnv`'s `for (const name of
+          // passThrough)` — a number throws "not iterable" mid-run, a string
+          // silently char-iterates. Fail loud at load with a config pointer.
+          if (
+            !Array.isArray(passThrough) ||
+            passThrough.some((n) => typeof n !== 'string' || n.length === 0)
+          ) {
+            throw new UserError(
+              `${where}.exec.env.passThrough must be an array of non-empty env var names`,
+            )
+          }
+        }
+        const define = (env as { define?: unknown }).define
+        if (define !== undefined) {
+          if (typeof define !== 'object' || define === null || Array.isArray(define)) {
+            throw new UserError(
+              `${where}.exec.env.define must be an object of name:value string pairs`,
+            )
+          }
+          for (const [k, val] of Object.entries(define as Record<string, unknown>)) {
+            if (typeof val !== 'string') {
+              throw new UserError(`${where}.exec.env.define.${k} must be a string`)
+            }
+          }
+        }
+      }
       const persistent = (exec as { persistent?: unknown }).persistent
       if (persistent !== undefined) {
         if (typeof persistent !== 'object' || persistent === null) {
@@ -299,6 +332,13 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
               `outputs must be project-relative globs`,
           )
         }
+        if (hasParentSegment(g)) {
+          throw new UserError(
+            `${where}.cache.outputs.files: '..' path segments are not allowed (got "${g}") — ` +
+              `outputs must stay within the project (a glob that escapes the project dir would ` +
+              `let cleanOutputs delete files outside it)`,
+          )
+        }
       }
       // Same for inputs.files.
       for (const g of (inputs as { files: unknown[] }).files) {
@@ -309,6 +349,13 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
           throw new UserError(
             `${where}.cache.inputs.files: absolute paths are not allowed (got "${g}") — ` +
               `inputs must be project-relative globs`,
+          )
+        }
+        if (hasParentSegment(g)) {
+          throw new UserError(
+            `${where}.cache.inputs.files: '..' path segments are not allowed (got "${g}") — ` +
+              `inputs must be project-relative (a '..' glob silently matches nothing; ` +
+              `use cache.inputs.workspaceFiles for workspace-root-relative inputs)`,
           )
         }
       }
@@ -338,6 +385,20 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
   }
 }
 
+/**
+ * True when a glob contains a `..` PATH SEGMENT (`../x`, `a/../b`, `x/..`), which
+ * escapes its base dir — `foo..bar` / `a..b` inside a filename are fine. A
+ * leading negation marker is stripped first so `!../x` is caught too. Used to
+ * keep output globs inside the project and workspace globs inside the workspace
+ * root: `cleanOutputs` rm()s resolved output paths before every run, and
+ * `Bun.Glob.scan` follows `..` out of its cwd, so a `..` glob is a data-loss
+ * vector (delete files outside the project / above the repo root).
+ */
+function hasParentSegment(glob: string): boolean {
+  const g = glob.startsWith('!') ? glob.slice(1) : glob
+  return g.split('/').some((seg) => seg === '..')
+}
+
 function validateWorkspaceGlobs(v: unknown, where: string): void {
   if (!Array.isArray(v)) {
     throw new UserError(`${where} must be an array of glob strings`)
@@ -350,6 +411,12 @@ function validateWorkspaceGlobs(v: unknown, where: string): void {
       throw new UserError(
         `${where}: absolute paths are not allowed (got "${g}") — ` +
           `entries are workspace-root-relative globs`,
+      )
+    }
+    if (hasParentSegment(g)) {
+      throw new UserError(
+        `${where}: '..' path segments are not allowed (got "${g}") — ` +
+          `entries are workspace-root-relative and must stay within the workspace root`,
       )
     }
   }
