@@ -208,6 +208,33 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-14**: **Insights timeframe selector — 24h/7d/30d/90d, URL-persisted
+  (`ba3e7b9`)** (owner: "I should be able to select a timeframe for stats").
+  A preset chip row on the Insights analytics hub rescopes every windowed
+  source: the run/hit-rate tiles, the trend chart (24h → hourly buckets over
+  the last day; longer → daily over the span), heatmap, storage growth, the
+  period-over-period movers, cross-branch regressions, bottlenecks. **Mechanism
+  = the already-proven params-refetch path:** the json-render loader
+  (`jsonPage`) keys its resources on the decoded query params, so a new
+  `?window` re-fetches every source in place — identical to the Runs facets.
+  New `TimeframeSelect` catalog component reads/writes `?window` (normalizes an
+  absent value to the 30d default on mount, so the page is consistently
+  windowed + shareable); `data.ts` `windowDaysOf`/`trendArgsOf` translate the
+  token to each source's args, **defaulting to that source's OWN window when
+  absent** so pages without the selector (Cache, Overview, deep-links) stay
+  byte-identical. Only server change: `getCacheStatsSql` gains an optional
+  `windowDays` (default 1 = 24h), clamped to `MAX_WINDOW_DAYS`. Selector-
+  controlled tiles drop their hardcoded `(24h)`/`(this 7d)` labels — the
+  selector states the window once (the Grafana/Datadog pattern). **Scope
+  decision:** Insights-only + presets (the AskUserQuestion permission stream
+  closed, so I took the highest-value default; the mechanism is reusable for a
+  Cache/global extension). Pinned by a `windowDaysOf`/`trendArgsOf` unit suite +
+  a `getCacheStatsSql` window test, and **browser-verified end-to-end** (real
+  platform + Chromium: chips rescope the `/v1/*` requests — `windowDays` 1/30/90
+  - `bucket` hour↔day over the exact span, URL persists, ZERO console errors).
+    NO CACHE/schema/wire bump. Cloud analytics-read 37 pass, UI 64 pass, lint+fmt
+    clean; `dist/` unchanged (gitignored build artifact).
+
 - **2026-07-14**: **Improvement cycle 5 — periodStats percentiles into SQL + two
   fresh-audit fixes (invocations retention, RunsView cross-tenant stale display)
   (`adda10e`, `9899d1e`)** (owner: "Never stop. Follow cycles." + "Why do you
