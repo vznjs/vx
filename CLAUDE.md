@@ -208,6 +208,44 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-15**: **Project analytics phase 2 — per-task duration sparklines
+  (`83f09c0`); + fixed a phase-1 CI-red** (the literal "see all tasks and their
+  history over time, spot outliers/spikes/trends" ask). Phase 1 gave a
+  project-LEVEL trend + a lifetime table; phase 2 gives each task its OWN
+  time-series. **Server:** `getProjectTaskTrends(ws, project, {bucket, from, to,
+limit})` — ONE query, flat long-format (task, bucket) rows; a `top` CTE bounds
+  the task set to the ≤50 heaviest by total duration (so a many-task project
+  can't fan out unbounded), avg + p95 aggregate IN SQL over the non-hit
+  executed-success subset (no raw-row stream), span clamped to
+  `MAX_TREND_BUCKETS`. Route `GET /v1/trends/tasks?project=&bucket=&from=&to=&
+limit=` (project → 400), added to the `isAnalyticsSurface` allowlist (pinned by
+  a server e2e — a two-segment `/v1/trends/*` path still needs the allowlist or
+  it falls through to the SPA). **UI:** a new `SparkList` catalog component — a
+  row per task: label · inline-SVG sparkline of the task's avg-duration series
+  (deterministic viewBox, no layout on poll) · latest value · a trend dot. Trend
+  color comes from a LITERAL `SPARK_STROKE` map (up=slower=danger /
+  down=faster=success) — never a dynamically-built `stroke-${x}` (UnoCSS's static
+  extractor can't see those; the recurring dynamic-class trap). `data.ts`
+  `projectTaskTrendItems` groups the long rows into per-task
+  `{series, _latest, _failures, _trend, _dir}`, windowed off `?window`; a "Task
+  duration trends" card on `projectDetail.json` binds it (pure JSON). Verified
+  end-to-end in a real browser (seeded multi-day durations): the card renders 2
+  task sparklines, `/v1/trends/tasks` fires + rescopes with the window chips,
+  ZERO console errors. Analytics-read 41 + server 32, UI 64 pass; NO CACHE/
+  schema/wire bump. **LESSON (a real miss): phase-1 (`5fb1ffa`/`79e48b8`) went
+  out RED on main.** Its branch-failures test had `branch: undefined` (illegal
+  under `exactOptionalPropertyTypes` → oxlint TS2345), but the LOCAL
+  `bun src/bin.ts run ci` gate passed lint — a stale `lint.oxlint` cache hit
+  masked it — and I pushed without confirming the REAL CI run (the exact
+  2026-07-10 rule I'd already written down). A fresh CI runner has no lint cache,
+  ran `oxlint`, and failed the `vx run ci` step (the cloud-tests job passed).
+  Phase-2 fixes the TS2345 + swept an oxfmt drift in the design doc/decision-log
+  entry, and I CONFIRMED `83f09c04` = CI success before moving on. Reinforced:
+  after every push, verify the actual CI conclusion — "the local gate passed" is
+  not "CI is green," especially for lint (its cache can hit stale). **DEFERRED
+  (phase 3):** regressed-vs-always-broken flag on the branch-failures card; a
+  branch facet on recent executions.
+
 - **2026-07-15**: **Project analytics view — tasks over time, branch-first-
   failure, cross-project rank (`5fb1ffa`)** (owner: "project view where I can see
   all tasks and their history over time; spot outliers/spikes/trends; debug
