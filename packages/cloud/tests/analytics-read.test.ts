@@ -221,6 +221,22 @@ describe('base fixture reads', () => {
     expect(split.localShare).toBe(1)
   })
 
+  it('getCacheStatsSql windows by windowDays (the timeframe selector)', async () => {
+    const { org, ws: tw } = await newOrgWs(db, 'stats-window')
+    const now = Date.now()
+    // One run inside 24h, one at ~3 days old.
+    await insertTR(db, tw, org, { runId: 'r-now', project: 'p', task: 't', startedAt: now - HOUR })
+    await insertTR(db, tw, org, {
+      runId: 'r-old',
+      project: 'p',
+      task: 't',
+      startedAt: now - 3 * DAY,
+    })
+    // Default (24h) sees only the recent run; a 7-day window sees both.
+    expect((await analytics.getCacheStatsSql(tw)).runCountLast24h).toBe(1)
+    expect((await analytics.getCacheStatsSql(tw, 7)).runCountLast24h).toBe(2)
+  })
+
   it('getHistory aggregates per (project, task)', async () => {
     const buildHist = await analytics.getHistory(ws, { project: 'app', task: 'build' })
     expect(buildHist).toHaveLength(1)

@@ -259,8 +259,8 @@ function trendFields(cmp: PeriodComparison): Record<string, unknown> {
  * trend fields plus the workspace-wide movers table. `null` = older serve
  * without /v1/analysis.
  */
-async function analysisData(): Promise<Record<string, unknown> | null> {
-  const cmp = await getAnalysis(7, 3, 8)
+async function analysisData(windowDays = 7): Promise<Record<string, unknown> | null> {
+  const cmp = await getAnalysis(windowDays, 3, 8)
   if (cmp === null) return null
   return {
     ...trendFields(cmp),
@@ -327,8 +327,8 @@ function taskDebugRows(detail: TaskDetail): {
  * branches that used to pass. Adds a joined branch string + a kind label so the
  * DataTable binds plain fields. `null` = older serve without /v1/regressions.
  */
-async function regressionRows(): Promise<Record<string, unknown>[] | null> {
-  const rows = await getRegressions(14, 2, 25)
+async function regressionRows(sinceDays = 14): Promise<Record<string, unknown>[] | null> {
+  const rows = await getRegressions(sinceDays, 2, 25)
   if (rows === null) return null
   return rows.map((r) => ({
     ...r,
@@ -340,23 +340,40 @@ async function regressionRows(): Promise<Record<string, unknown>[] | null> {
   }))
 }
 
+// Insights timeframe selector: the `?window` token → days. When absent, each
+// source uses its OWN fallback, so pages without the selector (Cache, Overview,
+// deep-links) keep their existing windows byte-identically.
+const WINDOW_DAYS: Record<string, number> = { '24h': 1, '7d': 7, '30d': 30, '90d': 90 }
+export function windowDaysOf(p: P, fallback: number): number {
+  const w = p.window
+  return w !== undefined && w in WINDOW_DAYS ? WINDOW_DAYS[w]! : fallback
+}
+/** Trends respect the timeframe: a 24h window is hourly over the last day;
+ *  anything longer is daily over that span. */
+export function trendArgsOf(p: P): { bucket: 'hour' | 'day'; from: number; to: number } {
+  const days = windowDaysOf(p, 30)
+  const to = Date.now()
+  const bucket = days <= 1 ? 'hour' : 'day'
+  return { bucket, from: to - days * 24 * 60 * 60 * 1000, to }
+}
+
 export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
-  cacheStats: () => getCacheStats(),
+  cacheStats: (p) => getCacheStats(windowDaysOf(p, 1)),
   cacheSavings: () => getCacheSavings(),
   topTasks: () => getTopTasks(8),
   failures: () => getFailures(8),
   projectsAll: () => listProjects(500),
-  trends: () => getRunTrends({ bucket: 'day' }).then((r) => r.points),
+  trends: (p) => getRunTrends(trendArgsOf(p)).then((r) => r.points),
   history: () => getHistory({ limit: 500 }),
   cacheBreakdown: () => getCacheBreakdown(100),
-  storage: () => getStorageGrowth(30),
+  storage: (p) => getStorageGrowth(windowDaysOf(p, 30)),
   cacheEntries: () => listCacheEntries({ limit: 200, orderBy: 'size_bytes' }),
-  heatmap: () => getHeatmap(30),
+  heatmap: (p) => getHeatmap(windowDaysOf(p, 30)),
   parallelism: () => getParallelismHistory(50),
-  bottlenecks: () => getBottlenecks(14, 25),
+  bottlenecks: (p) => getBottlenecks(windowDaysOf(p, 14), 25),
   flaky: () => getFlakiest(25),
-  analysis: () => analysisData(),
-  regressions: () => regressionRows(),
+  analysis: (p) => analysisData(windowDaysOf(p, 7)),
+  regressions: (p) => regressionRows(windowDaysOf(p, 14)),
   prunable: () => getPrunable(7, 25),
   serverMeta: () => getMeta(),
   // Workspace catalog (colocated serves only) — null on a remote/older serve,

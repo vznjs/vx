@@ -278,7 +278,8 @@ async function handleAnalyticsRequestInner(
     const m = /^\/v1\/compare\/([^/]+)$/.exec(p)
     if (m) return json(await a.compareRuns(ws, decodeURIComponent(m[1]!)))
   }
-  if (p === '/v1/cache/stats') return json(await a.getCacheStatsSql(ws))
+  if (p === '/v1/cache/stats')
+    return json(await a.getCacheStatsSql(ws, numParam(q.get('windowDays')) ?? 1))
   if (p === '/v1/cache/hit-split') return json(await a.getHitRateSplit(ws))
   if (p === '/v1/cache/breakdown') {
     return json({ projects: await a.getCacheBreakdown(ws, numParam(q.get('limit')) ?? 20) })

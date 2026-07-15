@@ -9,9 +9,19 @@
 // CPU%, chart field extraction, truncation) lives HERE, so the pages stay pure
 // JSON.
 
-import { For, Show, type JSX, createEffect, createMemo, createResource, createSignal, onCleanup } from 'solid-js'
+import {
+  For,
+  Show,
+  type JSX,
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  onCleanup,
+  onMount,
+} from 'solid-js'
 import { type BaseComponentProps, useStateBinding } from '@json-render/solid'
-import { A, useNavigate } from '@solidjs/router'
+import { A, useNavigate, useSearchParams } from '@solidjs/router'
 import {
   type RunSummaryRow,
   type TaskLogResponse,
@@ -180,6 +190,36 @@ export function Metric(c: C<{ label: string; value: string; sub?: string; tone?:
 export function Text(c: C<{ text: string; tone?: Tone; mono?: boolean; class?: string }>) {
   const cls = () => ['text-[12px]', toneText(c.props.tone), c.props.mono ? 'font-mono' : '', c.props.class ?? ''].filter(Boolean).join(' ')
   return <div class={cls()}>{c.props.text}</div>
+}
+
+// A URL-persisted segmented selector for a query param — the Insights timeframe
+// control. Reads `?<param>` (default `dflt`), normalizes the URL on mount so the
+// page is consistently windowed + shareable, and writes the choice back. The
+// loader (jsonPage) keys its resources on the params, so a change re-fetches
+// every windowed source in place.
+export function TimeframeSelect(
+  c: C<{ param?: string; default?: string; options?: string[] }>,
+) {
+  const [params, setParams] = useSearchParams()
+  const key = () => c.props.param ?? 'window'
+  const dflt = () => c.props.default ?? '30d'
+  const opts = () => c.props.options ?? ['24h', '7d', '30d', '90d']
+  const current = () => {
+    const v = params[key()]
+    return typeof v === 'string' && opts().includes(v) ? v : dflt()
+  }
+  // Normalize an absent/invalid value to the default so every windowed source
+  // reads an explicit window (replace, so it doesn't spam browser history).
+  onMount(() => {
+    if (params[key()] !== current()) setParams({ [key()]: current() }, { replace: true })
+  })
+  return (
+    <SegmentedToggle
+      options={opts()}
+      value={current()}
+      onChange={(v) => setParams({ [key()]: v })}
+    />
+  )
 }
 
 export function Empty(c: C<{ title: string; hint?: string; cmd?: string }>) {

@@ -1489,8 +1489,12 @@ export class Analytics {
     return { runId, startedAt, endedAt, tasks }
   }
 
-  async getCacheStatsSql(workspaceId: string): Promise<CacheStatsResult> {
-    const since = Date.now() - 24 * 60 * 60 * 1000
+  async getCacheStatsSql(workspaceId: string, windowDays = 1): Promise<CacheStatsResult> {
+    // `windowDays` scopes the run/hit counts (the Insights timeframe selector);
+    // default 1 = 24h keeps every caller that omits it byte-identical. Field
+    // names keep the `Last24h` suffix as an internal wire label — the value
+    // reflects the requested window and the UI relabels it.
+    const since = Date.now() - clampInt(windowDays, 1, MAX_WINDOW_DAYS) * 24 * 60 * 60 * 1000
     const runs = (
       await this.sql<{ total: number; hit_local: number; hit_remote: number }[]>`
         SELECT count(*)::int AS total,

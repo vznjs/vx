@@ -728,8 +728,9 @@ export async function getTaskLog(runId: string, taskId: string): Promise<TaskLog
   }
 }
 
-export async function getCacheStats(): Promise<CacheStats> {
-  return await getJson<CacheStats>('/v1/cache/stats')
+export async function getCacheStats(windowDays?: number): Promise<CacheStats> {
+  const q = windowDays !== undefined ? `?windowDays=${windowDays}` : ''
+  return await getJson<CacheStats>(`/v1/cache/stats${q}`)
 }
 
 export async function getHistory(args: { limit?: number } = {}): Promise<TaskHistoryRow[]> {

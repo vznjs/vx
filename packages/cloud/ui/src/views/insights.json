@@ -24,6 +24,9 @@
     },
     "children": [
       {
+        "type": "TimeframeSelect"
+      },
+      {
         "type": "Grid",
         "props": {
           "variant": "metrics-4"
@@ -58,7 +61,7 @@
           {
             "type": "Metric",
             "props": {
-              "label": "Hit rate (24h)",
+              "label": "Hit rate",
               "value": {
                 "$computed": "fmtPercent0",
                 "args": {
@@ -159,7 +162,7 @@
           {
             "type": "Metric",
             "props": {
-              "label": "Runs (this 7d)",
+              "label": "Runs",
               "value": {
                 "$computed": "fmtNumber",
                 "args": {
@@ -171,7 +174,7 @@
               "sub": {
                 "$computed": "text",
                 "args": {
-                  "tpl": "{d} vs prior 7d",
+                  "tpl": "{d} vs prior period",
                   "d": {
                     "$state": "/analysis/_runsDelta"
                   }
@@ -182,7 +185,7 @@
           {
             "type": "Metric",
             "props": {
-              "label": "Failure rate (this 7d)",
+              "label": "Failure rate",
               "value": {
                 "$computed": "fmtPercent0",
                 "args": {
@@ -202,7 +205,7 @@
           {
             "type": "Metric",
             "props": {
-              "label": "Cache hit rate (this 7d)",
+              "label": "Cache hit rate",
               "value": {
                 "$computed": "fmtPercent0",
                 "args": {
@@ -222,7 +225,7 @@
           {
             "type": "Metric",
             "props": {
-              "label": "Avg exec (this 7d)",
+              "label": "Avg exec",
               "value": {
                 "$computed": "fmtDuration",
                 "args": {
@@ -245,7 +248,7 @@
         "type": "Card",
         "props": {
           "title": "Started failing across branches",
-          "actionText": "used to pass · now failing on ≥ 2 branches (14d)",
+          "actionText": "used to pass · now failing on ≥ 2 branches",
           "noPad": true
         },
         "visible": {
@@ -319,7 +322,7 @@
         "type": "Card",
         "props": {
           "title": "Biggest movers",
-          "actionText": "avg exec time — this 7d vs the prior 7d",
+          "actionText": "avg exec time — this period vs the prior",
           "noPad": true
         },
         "visible": {
