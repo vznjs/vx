@@ -208,6 +208,48 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-14**: **Improvement cycle 5 — periodStats percentiles into SQL + two
+  fresh-audit fixes (invocations retention, RunsView cross-tenant stale display)
+  (`adda10e`, `9899d1e`)** (owner: "Never stop. Follow cycles." + "Why do you
+  stop"). **(1) periodStats p50/p95 in SQL (`adda10e`):** it fetched EVERY
+  executed-success duration in the window into JS (no LIMIT) to compute
+  avg/p50/p95 — the last raw-row-fetch scale hazard (tens of millions of rows at
+  target scale). Folded into the aggregate via
+  `percentile_cont(…) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE non-hit
+AND success)` over the same subset the old `durs` query used, so durations
+  never leave Postgres. **No cross-surface inconsistency introduced:**
+  getHistory/getFlakiest/getTaskDetail percentiles already run over a DIFFERENT
+  population (the last-50, `rn<=50`) than periodStats' full-window set — never
+  comparable raw values — so the JS floor-index (`pickPercentile`) stays at those
+  bounded sites and only the unbounded one moved to SQL. New test pins avg 300 /
+  p50 300 / p95 480 over a 100..500 spread (a cache-hit + a failed row correctly
+  excluded) + the empty-window→undefined case; the getPeriodComparison scale
+  bench stays green. **(2) Fresh core-cache + UI-tsx audit → two fixes
+  (`9899d1e`):** **LOW** — `Cache.close()` pruned `runs` at 30d but never the
+  sibling `invocations` header table, so on a long-lived checkout it grew
+  unbounded AND the header outlived its `runs` rows (`vx info`/`vx mcp` would
+  list an invocation whose task detail was gone); now pruned on the same window.
+  **MED** — `RunsView` held `lastGoodInvocations` outside the resource (to
+  survive a transient failed poll) but never reset it on a connection change, so
+  switching to org B whose first `/v1/invocations` fetch fails rendered org A's
+  run history + CI-health + facets under org B until a successful B fetch — a
+  stale cross-tenant DISPLAY (server scopes correctly; the client fell back to
+  the prior tenant's cached rows); reset on a `getConnectionKey` change
+  (deferred). **The audit CONFIRMED SOUND:** the cache key derivation, the
+  trust-OID/dirty-prune + tar-traversal defenses, `markRemoteAbsent`/`inflight`
+  dedup, the in-flight GET dedup's URL keying (includes `?org=&ws=` — no
+  wrong-scope coalesce), the Flamegraph input-order safety, and every other
+  timer/WS/rAF teardown + auth/scope reconciliation. **DEFERRED — a partial-index
+  migration is NOT a clean drop-in:** `getNotifications` (`WHERE failed_count>0`)
+  and `getRecentFailures` (`task_runs WHERE status='failed'`) walk past the
+  majority-passing rows and would benefit from partial indexes, BUT the migration
+  framework applies all migrations in ONE transaction under an advisory lock, so
+  a plain `CREATE INDEX` on the 50-100M-row `task_runs` would hold a multi-minute
+  lock on every deploy — it needs `CREATE INDEX CONCURRENTLY` (non-transactional),
+  which the framework can't express; wants a CONCURRENTLY-capable migration path
+  first. NO CACHE_VERSION/schema/wire bump. Core 87 cache tests + 60 UI pass,
+  cloud analytics-read 36 pass, lint+fmt clean.
+
 - **2026-07-14**: **Improvement cycle 3-4 — heatmap SQL-bucketing + two
   end-of-run hang fixes, from a fresh core-exec/cloud-server audit (`0e5ec76`,
   `dad5d58`, `99adf96`)** (owner: "Never stop. Follow cycles."). **(cycle 3,
