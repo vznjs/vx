@@ -1374,6 +1374,47 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
     }
   })
 
+  it('close() prunes invocations older than 30 days (header never outlives its runs)', async () => {
+    const cache = new Cache(cacheDir)
+    const old = 40 * 24 * 60 * 60 * 1000
+    const runRow = (runId: string, endedAt: number) => ({
+      hash: `h-${runId}`,
+      project: 'p',
+      task: 't',
+      status: 'success' as const,
+      exitCode: 0,
+      durationMs: 1,
+      startedAt: endedAt - 1,
+      endedAt,
+      runId,
+    })
+    cache.recordRunBundle({
+      runs: [runRow('old-run', Date.now() - old)],
+      invocation: {
+        ...invocation('old-run'),
+        startedAt: Date.now() - old - 100,
+        endedAt: Date.now() - old,
+      },
+    })
+    cache.recordRunBundle({
+      runs: [runRow('recent-run', Date.now())],
+      invocation: invocation('recent-run'),
+    })
+    // The prune runs on close.
+    cache.close()
+
+    const reopened = new Cache(cacheDir)
+    try {
+      const db = reopened.dbHandle()
+      const ids = (
+        db.prepare('SELECT run_id FROM invocations ORDER BY run_id').all() as { run_id: string }[]
+      ).map((r) => r.run_id)
+      expect(ids).toEqual(['recent-run'])
+    } finally {
+      reopened.close()
+    }
+  })
+
   it('persists entry_inputs inside the entry-save transaction (miss path)', async () => {
     const cache = new Cache(cacheDir)
     try {

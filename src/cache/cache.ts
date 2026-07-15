@@ -1747,11 +1747,15 @@ export class Cache implements CacheLayer {
     // executed task per invocation — a 2000-task repo accretes ~20k
     // rows in days, inflating insert and checkpoint cost forever.
     // 30 days comfortably covers `vx stats` (24 h windows) and any
-    // CI-side analytics consumers.
+    // CI-side analytics consumers. The `invocations` header table (one
+    // row per `vx run`) is pruned on the SAME window — otherwise a
+    // header would outlive its `runs` rows, so `vx info`/`vx mcp` would
+    // list an invocation whose task detail is already gone, and the
+    // table would grow unbounded on a long-lived checkout.
     try {
-      this.db
-        .prepare('DELETE FROM runs WHERE ended_at < ?')
-        .run(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
+      this.db.prepare('DELETE FROM runs WHERE ended_at < ?').run(cutoff)
+      this.db.prepare('DELETE FROM invocations WHERE ended_at < ?').run(cutoff)
     } catch {
       // Retention is best-effort; never block closing the handle.
     }
