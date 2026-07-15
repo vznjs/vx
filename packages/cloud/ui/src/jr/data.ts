@@ -6,8 +6,11 @@
 import {
   type FlakyTask,
   type PeriodComparison,
+  type ProjectRollup,
   type RunSummaryRow,
   type TaskDetail,
+  type TaskHistoryRow,
+  type TaskMover,
   compareRuns,
   explainCacheKey,
   fetchRunWhy,
@@ -23,6 +26,7 @@ import {
   getCacheStats,
   getFailures,
   getFlakiest,
+  getProjectBranchFailures,
   getRegressions,
   getHeatmap,
   getHistory,
@@ -274,14 +278,102 @@ async function analysisData(windowDays = 7): Promise<Record<string, unknown> | n
   }
 }
 
-/** The per-entity trend (task or project scope). `null` = older serve. */
-async function scopedTrend(scope: {
-  project?: string
-  task?: string
-}): Promise<Record<string, unknown> | null> {
-  const cmp = await getAnalysis(7, 1, 1, scope)
+/** The per-entity trend (task or project scope). `windowDays` lets a page with
+ *  the timeframe selector rescope it; defaults to 7 so pages without the
+ *  selector stay byte-identical. `null` = older serve. */
+async function scopedTrend(
+  scope: { project?: string; task?: string },
+  windowDays = 7,
+): Promise<Record<string, unknown> | null> {
+  const cmp = await getAnalysis(windowDays, 1, 1, scope)
   if (cmp === null) return null
   return trendFields(cmp)
+}
+
+/**
+ * Rank every project against the one being viewed on three single-dev axes
+ * (failure rate, avg exec, hit rate) so the project page answers "how do I
+ * compare?". Pure client-side over the one `listProjects` GROUP BY — no new
+ * scan. Marks the current project (`_me`) and its 1-based position per axis so
+ * the RankList can highlight it; each axis is a separately-sorted array.
+ */
+function rankProjects(
+  all: ProjectRollup[],
+  name: string,
+): {
+  byFailRate: Record<string, unknown>[]
+  byAvg: Record<string, unknown>[]
+  byHitRate: Record<string, unknown>[]
+  total: number
+} {
+  const failRate = (p: ProjectRollup): number => (p.runs > 0 ? p.failures / p.runs : 0)
+  // Sort, assign the TRUE 1-based rank + mark the current project, then keep the
+  // top 8 but ALWAYS surface the current project (append it with its real rank
+  // when it falls outside the head — so the dev always sees where they sit).
+  const axis = (value: (p: ProjectRollup) => number): Record<string, unknown>[] => {
+    const ranked = [...all]
+      .sort((a, b) => value(b) - value(a))
+      .map((p, i) => ({
+        project: p.project,
+        _me: p.project === name,
+        _rank: i + 1,
+        _rankLabel: `#${i + 1}`,
+        _value: value(p),
+      }))
+    const head = ranked.slice(0, 8)
+    const me = ranked.find((r) => r._me === true)
+    if (me !== undefined && !head.includes(me)) head.push(me)
+    return head
+  }
+  return {
+    byFailRate: axis(failRate),
+    byAvg: axis((p) => p.avgDurationMs),
+    byHitRate: axis((p) => p.hitRate),
+    total: all.length,
+  }
+}
+
+/**
+ * The project's lifetime per-task aggregates ENRICHED with each task's Δavg vs
+ * the prior window (from the period-comparison movers) — the "did MY tasks get
+ * slower?" column. A task with no mover entry (too few runs in a window) gets a
+ * neutral dot and no Δ label. `movers` may be null on an older serve.
+ */
+function mergeMoverDelta(
+  history: TaskHistoryRow[],
+  movers: TaskMover[] | undefined,
+): Record<string, unknown>[] {
+  const byId = new Map((movers ?? []).map((m) => [m.id, m]))
+  return history.map((t) => {
+    const m = byId.get(t.id)
+    return {
+      ...t,
+      _deltaLabel: m === undefined ? '—' : formatSignedDuration(m.deltaMs),
+      // 'slower'/'faster'/'same' → the red/green/neutral 'delta' DotMap.
+      _deltaDir:
+        m === undefined ? 'same' : m.deltaMs > 0 ? 'slower' : m.deltaMs < 0 ? 'faster' : 'same',
+    }
+  })
+}
+
+/**
+ * Per-task branch-first-failure rows for the project view ("where was the issue
+ * first noticed"). Adds a joined branch string + an urgency dot. `null` = older
+ * serve without /v1/branch-failures.
+ */
+async function branchFailureRows(
+  project: string,
+  sinceDays: number,
+): Promise<Record<string, unknown>[] | null> {
+  const rows = await getProjectBranchFailures(project, sinceDays, 50)
+  if (rows === null) return null
+  return rows.map((r) => ({
+    ...r,
+    _taskRef: `${project}#${r.task}`,
+    _branchList: r.branches.map((b) => b.branch).join(', '),
+    // A first-noticed failure is a live break → red 'delta' dot.
+    _dir: 'slower',
+  }))
 }
 
 /**
@@ -395,7 +487,9 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
     return project !== '' && task !== '' ? scopedTrend({ project, task }) : Promise.resolve(null)
   },
   projectTrend: (p) =>
-    (p.name ?? '') !== '' ? scopedTrend({ project: p.name! }) : Promise.resolve(null),
+    (p.name ?? '') !== ''
+      ? scopedTrend({ project: p.name! }, windowDaysOf(p, 7))
+      : Promise.resolve(null),
   cacheKey: (p) => explainCacheKey(p.id ?? ''),
   // The flaky badge: non-null only when /v1/flakiness flags this task.
   taskFlaky: (p) => getFlakiest(100).then((ts) => ts.find((t) => t.id === p.id) ?? null),
@@ -416,8 +510,41 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   invocationDetail: (p) => getInvocation(p.id ?? ''),
   compare: (p) => compareRuns(p.id ?? ''),
   compareRows: (p) => compareRows(p.id ?? ''),
-  projectTasks: (p) => getHistory({ limit: 500 }).then((h) => h.filter((t) => t.project === p.name)),
+  // Lifetime per-task aggregates for this project, ENRICHED with each task's
+  // Δavg vs the prior window (the "did MY tasks get slower?" column). The
+  // lifetime table stays all-time on purpose; the Δ column reads the window.
+  projectTasks: (p) => {
+    const name = p.name ?? ''
+    if (name === '') return Promise.resolve([])
+    return Promise.all([
+      getHistory({ project: name, limit: 500 }),
+      getAnalysis(windowDaysOf(p, 7), 1, 500, { project: name }),
+    ]).then(([h, cmp]) => mergeMoverDelta(h, cmp?.movers))
+  },
   projectSummary: (p) => listProjects(500).then((ps) => ps.find((x) => x.project === p.name) ?? null),
+  // Recent executions for one-click debug (#2): row → the run with this task
+  // pre-selected (logs open), hash → the cache entry.
+  projectRecent: (p) =>
+    (p.name ?? '') !== ''
+      ? listRuns({ project: p.name!, limit: 100 }).then((rs) =>
+          rs.map((r) => ({ ...r, _taskRef: `${r.project}#${r.task}` })),
+        )
+      : Promise.resolve([]),
+  // Failures & runs over time for this project (#4).
+  projectFailureTrend: (p) =>
+    (p.name ?? '') !== ''
+      ? getRunTrends({ ...trendArgsOf(p), project: p.name! }).then((r) => r.points)
+      : Promise.resolve([]),
+  // How this project ranks vs the others (#3) — three single-dev axes.
+  projectRankings: (p) =>
+    (p.name ?? '') !== ''
+      ? listProjects(500).then((ps) => rankProjects(ps, p.name!))
+      : Promise.resolve(null),
+  // Where each task first started failing, across branches (#5). null = older serve.
+  projectBranchFailures: (p) =>
+    (p.name ?? '') !== ''
+      ? branchFailureRows(p.name!, windowDaysOf(p, 14))
+      : Promise.resolve(null),
   cacheEntry: (p) =>
     listCacheEntries({ limit: 500 }).then((es) => es.find((e) => e.hash === p.hash) ?? null),
   cacheEntryRuns: (p) => cacheEntryRuns(p.hash ?? ''),

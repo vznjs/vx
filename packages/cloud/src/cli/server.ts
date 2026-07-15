@@ -78,6 +78,7 @@ function isAnalyticsSurface(pathname: string, method: string): boolean {
     '/v1/flakiness',
     '/v1/regressions',
     '/v1/analysis',
+    '/v1/branch-failures',
     '/v1/bottlenecks',
     '/v1/history',
   ])

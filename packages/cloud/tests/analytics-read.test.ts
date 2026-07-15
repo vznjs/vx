@@ -43,6 +43,7 @@ interface INV {
   endedAt?: number
   branch?: string
   defaultBranch?: string | null
+  commit?: string | null
   ci?: boolean
   command?: string
   requestedTasks?: string[]
@@ -56,14 +57,14 @@ async function insertINV(db: DbClient, ws: string, org: string, v: INV): Promise
   await db.sql`INSERT INTO invocations (
       run_id, org_id, workspace_id, command, requested_tasks, cache_policy, concurrency, flow,
       started_at, ended_at, total_duration_ms, task_count, failed_count, hit_count,
-      hit_local_count, hit_remote_count, exit_ok, branch, default_branch, ci, ci_provider, os, arch,
-      vx_version, tags)
+      hit_local_count, hit_remote_count, exit_ok, commit_sha, branch, default_branch, ci, ci_provider,
+      os, arch, vx_version, tags)
     VALUES (${v.runId}, ${org}, ${ws}, ${v.command ?? 'vx run build'},
             ${JSON.stringify(v.requestedTasks ?? ['build'])}::jsonb, ${'lR,lW,rR,rW'}, ${4},
             ${'broad'}, ${v.startedAt}, ${v.endedAt ?? v.startedAt + 500}, ${500},
             ${v.taskCount ?? 2}, ${v.failedCount ?? 0}, ${v.hitCount ?? 0}, ${0}, ${0},
-            ${(v.failedCount ?? 0) === 0}, ${v.branch ?? 'main'}, ${v.defaultBranch ?? null},
-            ${v.ci ?? true}, ${'github'},
+            ${(v.failedCount ?? 0) === 0}, ${v.commit ?? null}, ${v.branch ?? 'main'},
+            ${v.defaultBranch ?? null}, ${v.ci ?? true}, ${'github'},
             ${'linux'}, ${'x64'}, ${'0.0.0'}, ${JSON.stringify(v.tags ?? {})}::jsonb)`
 }
 
@@ -592,6 +593,110 @@ describe('getRegressions', () => {
     expect(regs[0]!.regressed).toBe(true)
     // A single-branch failure isn't surfaced at minBranches 2.
     expect(await analytics.getRegressions(ws, { sinceDays: 7, minBranches: 3 })).toHaveLength(0)
+  })
+})
+
+describe('getProjectBranchFailures', () => {
+  it('attributes each task to the branch it FIRST failed on (rank 1)', async () => {
+    const { org, ws } = await newOrgWs(db, 'branchfail')
+    const now = Date.now()
+    // app#e2e first failed on `feat` (earliest), then later on `main`.
+    await insertINV(db, ws, org, {
+      runId: 'e-feat',
+      startedAt: now - 3 * DAY,
+      branch: 'feat',
+      commit: 'sha-feat',
+    })
+    await insertTR(db, ws, org, {
+      runId: 'e-feat',
+      project: 'app',
+      task: 'e2e',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now - 3 * DAY,
+    })
+    await insertINV(db, ws, org, {
+      runId: 'e-main',
+      startedAt: now - 1 * DAY,
+      branch: 'main',
+      commit: 'sha-main',
+    })
+    await insertTR(db, ws, org, {
+      runId: 'e-main',
+      project: 'app',
+      task: 'e2e',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now - 1 * DAY,
+    })
+    // A different task on the SAME project, failing only on main — separate row.
+    await insertINV(db, ws, org, {
+      runId: 'u-main',
+      startedAt: now - 2 * HOUR,
+      branch: 'main',
+      commit: 'sha-unit',
+    })
+    await insertTR(db, ws, org, {
+      runId: 'u-main',
+      project: 'app',
+      task: 'unit',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now - 2 * HOUR,
+    })
+    // A failure in ANOTHER project — must not leak into app's attribution.
+    await insertINV(db, ws, org, { runId: 'w-main', startedAt: now - HOUR, branch: 'main' })
+    await insertTR(db, ws, org, {
+      runId: 'w-main',
+      project: 'web',
+      task: 'e2e',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now - HOUR,
+    })
+
+    const rows = await analytics.getProjectBranchFailures(ws, 'app', { sinceDays: 14 })
+    // Most-recent first-failure on top: unit (2h ago) before e2e (3d ago).
+    expect(rows.map((r) => r.task)).toEqual(['unit', 'e2e'])
+
+    const e2e = rows.find((r) => r.task === 'e2e')!
+    expect(e2e.firstBranch).toBe('feat')
+    expect(e2e.firstCommit).toBe('sha-feat')
+    expect(e2e.branchesFailing).toBe(2)
+    expect(e2e.branches.map((b) => b.branch).sort()).toEqual(['feat', 'main'])
+
+    const unit = rows.find((r) => r.task === 'unit')!
+    expect(unit.firstBranch).toBe('main')
+    expect(unit.branchesFailing).toBe(1)
+
+    // No 'web' rows — project-scoped.
+    expect(rows.every((r) => r.task !== 'web')).toBe(true)
+  })
+
+  it('ignores successful runs and null-branch invocations', async () => {
+    const { org, ws } = await newOrgWs(db, 'branchfail2')
+    const now = Date.now()
+    // A pass — not a failure.
+    await insertINV(db, ws, org, { runId: 'ok', startedAt: now - HOUR, branch: 'main' })
+    await insertTR(db, ws, org, {
+      runId: 'ok',
+      project: 'app',
+      task: 'build',
+      status: 'success',
+      startedAt: now - HOUR,
+    })
+    // A failure with NO branch on its invocation — not attributable.
+    await insertINV(db, ws, org, { runId: 'nb', startedAt: now - HOUR, branch: undefined })
+    await db.sql`UPDATE invocations SET branch = NULL WHERE run_id = ${'nb'} AND workspace_id = ${ws}`
+    await insertTR(db, ws, org, {
+      runId: 'nb',
+      project: 'app',
+      task: 'build',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now - HOUR,
+    })
+    expect(await analytics.getProjectBranchFailures(ws, 'app', { sinceDays: 14 })).toHaveLength(0)
   })
 })
 

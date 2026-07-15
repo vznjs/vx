@@ -421,6 +421,47 @@ describe('platform e2e (real pg + fake S3)', () => {
     expect(foreign.status).toBe(404)
   })
 
+  it('branch-failures: allowlisted single-segment route reaches analytics (not the SPA)', async () => {
+    // Ingest a run whose task genuinely FAILS on a feature branch, so the
+    // project-view "where was it first noticed" query has something to attribute.
+    const failed = {
+      ...summary('r-bf', 'ws-e2e'),
+      startedAt: Date.now() - 1000,
+      endedAt: Date.now(),
+      failedCount: 1,
+      exitOk: false,
+      tasks: [
+        {
+          taskId: 'a#test',
+          project: 'a',
+          task: 'test',
+          status: 'failed',
+          cacheSource: 'miss',
+          exitCode: 1,
+          durationMs: 90,
+          hash: 'h-bf',
+        },
+      ],
+    } as RunSummaryRecord
+    failed.run.branch = 'feature-x'
+    failed.run.commitSha = 'deadbeef'
+    expect((await call('POST', '/v1/ingest', { bearer: ciToken, body: failed })).status).toBe(200)
+
+    // A session must REACH the analytics handler (JSON), not fall through to the
+    // SPA catch-all — the isAnalyticsSurface allowlist gate.
+    const bf = await call('GET', '/v1/branch-failures?project=a&sinceDays=14', { cookie })
+    expect(bf.status).toBe(200)
+    const { tasks } = (await bf.json()) as {
+      tasks: { task: string; firstBranch: string; firstCommit: string | null }[]
+    }
+    const testRow = tasks.find((t) => t.task === 'test')
+    expect(testRow).toBeDefined()
+    expect(testRow!.firstBranch).toBe('feature-x')
+    expect(testRow!.firstCommit).toBe('deadbeef')
+    // project is required.
+    expect((await call('GET', '/v1/branch-failures', { cookie })).status).toBe(400)
+  })
+
   it('cache wire: tier rides the token — untrusted writes its own scope, trusted never reads it', async () => {
     const hash = 'ab'.repeat(10)
     const body = Bun.zstdCompressSync(new TextEncoder().encode('artifact-bytes'))

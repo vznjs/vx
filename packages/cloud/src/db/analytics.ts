@@ -500,6 +500,19 @@ export interface RegressionArgs {
   limit?: number
 }
 
+/** Per-task branch failure attribution for the project view: which branch a
+ *  task FIRST started failing on (rank 1), when, and the per-branch breakdown —
+ *  "where was the issue first noticed". */
+export interface ProjectBranchFailure {
+  task: string
+  firstBranch: string
+  firstFailedAt: number
+  firstCommit: string | null
+  lastFailedAt: number
+  branchesFailing: number
+  branches: { branch: string; firstFailedAt: number; firstCommit: string | null; failures: number }[]
+}
+
 export interface PeriodStats {
   runs: number
   taskRuns: number
@@ -2110,10 +2123,13 @@ export class Analytics {
 
   async getRunTrends(
     workspaceId: string,
-    args: { bucket?: TrendBucket; from?: number; to?: number } = {},
+    args: { bucket?: TrendBucket; from?: number; to?: number; project?: string } = {},
   ): Promise<TrendPoint[]> {
     const bucket: TrendBucket = args.bucket ?? 'hour'
     const bucketMs = bucket === 'hour' ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000
+    // Optional project scope (the project analytics view's failures-over-time
+    // series) — byte-identical when absent.
+    const fProject = args.project !== undefined ? this.sql`AND project = ${args.project}` : this.sql``
     // Clamp the window before it reaches the fill loop below: `to` no later
     // than now, and `from` no earlier than MAX_TREND_BUCKETS buckets back —
     // so a hostile `?from=0&to=1e15` can't drive the synchronous loop into a
@@ -2144,7 +2160,7 @@ export class Analytics {
              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)::int AS failures,
              SUM(duration_ms)::float8 AS total_duration_ms
       FROM task_runs
-      WHERE workspace_id = ${workspaceId} AND started_at >= ${from} AND started_at <= ${to}
+      WHERE workspace_id = ${workspaceId} AND started_at >= ${from} AND started_at <= ${to} ${fProject}
       GROUP BY t ORDER BY t ASC`
     const byT = new Map(rows.map((r) => [num(r.t), r]))
     const start = Math.floor(from / bucketMs) * bucketMs
@@ -2363,6 +2379,86 @@ export class Analytics {
           b.firstFailedAt - a.firstFailedAt,
       )
       .slice(0, limit)
+  }
+
+  /**
+   * "Where was the issue first noticed" for one project: per failing task, the
+   * branch that failed FIRST (rank 1) + the per-branch first-failure breakdown.
+   * ONE set-based query — earliest failing run per (task, branch), then a
+   * `ROW_NUMBER` rank so `branch_rank = 1` is the first branch to fail.
+   * Workspace-clamped, project-scoped, `started_at`-partition-pruned, reads only
+   * `status='failed'` rows; no N+1.
+   */
+  async getProjectBranchFailures(
+    workspaceId: string,
+    project: string,
+    args: { sinceDays?: number; limit?: number } = {},
+  ): Promise<ProjectBranchFailure[]> {
+    const since = Date.now() - clampInt(args.sinceDays ?? 14, 1, MAX_WINDOW_DAYS) * 86_400_000
+    const limit = clampInt(args.limit ?? 25, 1, 200)
+    const rows = await this.sql<
+      {
+        task: string
+        branch: string
+        first_failed_at: string
+        first_commit: string | null
+        last_failed_at: string
+        failures: number
+        branch_rank: string
+      }[]
+    >`
+      WITH failed AS (
+        SELECT r.task AS task, inv.branch AS branch,
+               MIN(r.started_at)::bigint AS first_failed_at,
+               (ARRAY_AGG(inv.commit_sha ORDER BY r.started_at ASC))[1] AS first_commit,
+               MAX(r.started_at)::bigint AS last_failed_at,
+               COUNT(*)::int AS failures
+        FROM task_runs r
+        JOIN invocations inv ON inv.run_id = r.run_id AND inv.workspace_id = ${workspaceId}
+        WHERE r.workspace_id = ${workspaceId} AND r.project = ${project}
+          AND r.started_at >= ${since} AND r.status = 'failed'
+          AND inv.branch IS NOT NULL
+        GROUP BY r.task, inv.branch
+      )
+      SELECT task, branch, first_failed_at, first_commit, last_failed_at, failures,
+             ROW_NUMBER() OVER (PARTITION BY task ORDER BY first_failed_at ASC, branch ASC) AS branch_rank
+      FROM failed
+      ORDER BY task, first_failed_at ASC`
+
+    const byTask = new Map<string, ProjectBranchFailure>()
+    for (const r of rows) {
+      let agg = byTask.get(r.task)
+      if (agg === undefined) {
+        agg = {
+          task: r.task,
+          firstBranch: '',
+          firstFailedAt: 0,
+          firstCommit: null,
+          lastFailedAt: 0,
+          branchesFailing: 0,
+          branches: [],
+        }
+        byTask.set(r.task, agg)
+      }
+      agg.branchesFailing++ // true count, even if `branches` is capped below
+      if (Number(r.branch_rank) === 1) {
+        agg.firstBranch = r.branch
+        agg.firstFailedAt = num(r.first_failed_at)
+        agg.firstCommit = r.first_commit
+      }
+      const lf = num(r.last_failed_at)
+      if (lf > agg.lastFailedAt) agg.lastFailedAt = lf
+      if (agg.branches.length < BRANCH_CAP) {
+        agg.branches.push({
+          branch: r.branch,
+          firstFailedAt: num(r.first_failed_at),
+          firstCommit: r.first_commit,
+          failures: r.failures,
+        })
+      }
+    }
+    // Most-recent first-failures on top (a fresh regression is the news).
+    return [...byTask.values()].sort((a, b) => b.firstFailedAt - a.firstFailedAt).slice(0, limit)
   }
 
   async getPeriodComparison(

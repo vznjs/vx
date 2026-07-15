@@ -762,6 +762,7 @@ export function RankList(
     rowHref?: string
     rowTaskRef?: { projectKey?: string; taskKey?: string }
     subKey?: string
+    highlightKey?: string // when item[highlightKey] is truthy, ring the row
     limit?: number
     emptyTitle?: string
     emptyCmd?: string
@@ -790,7 +791,7 @@ export function RankList(
           {(it, i) => {
             const href = hrefOf(it)
             return (
-              <button onClick={() => href && navigate(href)} class="flex flex-col gap-1 px-4 py-2 text-left border-t border-border first:border-t-0" classList={{ 'hover:bg-surface-hover': !!href, 'cursor-default': !href }}>
+              <button onClick={() => href && navigate(href)} class="flex flex-col gap-1 px-4 py-2 text-left border-t border-border first:border-t-0" classList={{ 'hover:bg-surface-hover': !!href, 'cursor-default': !href, 'bg-accent/10 ring-1 ring-inset ring-accent/40': !!(c.props.highlightKey && it[c.props.highlightKey]) }}>
                 <div class="flex items-center gap-2 text-[12px] min-w-0">
                   <Show when={c.props.indexed}><span class="text-[10px] font-mono text-fg-3 w-4 shrink-0">{i() + 1}.</span></Show>
                   <For each={c.props.dots ?? []}>{(d) => <Dot color={colorOf(d.map, it[d.field])} />}</For>

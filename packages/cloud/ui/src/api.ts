@@ -733,9 +733,13 @@ export async function getCacheStats(windowDays?: number): Promise<CacheStats> {
   return await getJson<CacheStats>(`/v1/cache/stats${q}`)
 }
 
-export async function getHistory(args: { limit?: number } = {}): Promise<TaskHistoryRow[]> {
+export async function getHistory(
+  args: { limit?: number; project?: string; task?: string } = {},
+): Promise<TaskHistoryRow[]> {
   const params = new URLSearchParams()
   if (args.limit !== undefined) params.set('limit', String(args.limit))
+  if (args.project !== undefined) params.set('project', args.project)
+  if (args.task !== undefined) params.set('task', args.task)
   const r = await getJson<{ history: TaskHistoryRow[] }>(`/v1/history?${params.toString()}`)
   return r.history
 }
@@ -947,6 +951,16 @@ export interface RegressedTask {
   runs: number
 }
 
+export interface ProjectBranchFailure {
+  task: string
+  firstBranch: string
+  firstFailedAt: number
+  firstCommit: string | null
+  lastFailedAt: number
+  branchesFailing: number
+  branches: { branch: string; firstFailedAt: number; firstCommit: string | null; failures: number }[]
+}
+
 export interface PeriodStats {
   runs: number
   taskRuns: number
@@ -989,11 +1003,13 @@ export async function getRunTrends(args: {
   bucket?: 'hour' | 'day'
   from?: number
   to?: number
+  project?: string
 } = {}): Promise<{ bucket: string; points: TrendPoint[] }> {
   const params = new URLSearchParams()
   if (args.bucket) params.set('bucket', args.bucket)
   if (args.from !== undefined) params.set('from', String(args.from))
   if (args.to !== undefined) params.set('to', String(args.to))
+  if (args.project !== undefined) params.set('project', args.project)
   return await getJson(`/v1/trends/runs?${params}`)
 }
 
@@ -1075,6 +1091,30 @@ export async function getAnalysis(
     if (scope?.project !== undefined) params.set('project', scope.project)
     if (scope?.task !== undefined) params.set('task', scope.task)
     return await getJson<PeriodComparison>(`/v1/analysis?${params.toString()}`)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Per-task, per-branch failure attribution for the project view — which branch
+ * each task FIRST started failing on ("where was the issue first noticed").
+ * `null` on an older serve without the /v1/branch-failures route so the card
+ * degrades to an empty state.
+ */
+export async function getProjectBranchFailures(
+  project: string,
+  sinceDays = 14,
+  limit = 25,
+): Promise<ProjectBranchFailure[] | null> {
+  try {
+    const params = new URLSearchParams({
+      project,
+      sinceDays: String(sinceDays),
+      limit: String(limit),
+    })
+    const r = await getJson<{ tasks: ProjectBranchFailure[] }>(`/v1/branch-failures?${params}`)
+    return r.tasks
   } catch {
     return null
   }

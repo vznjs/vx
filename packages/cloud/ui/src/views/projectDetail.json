@@ -3,7 +3,11 @@
     "summary": "projectSummary",
     "tasks": "projectTasks",
     "catalog": "catalogProject",
-    "trend": "projectTrend"
+    "trend": "projectTrend",
+    "failTrend": "projectFailureTrend",
+    "rankings": "projectRankings",
+    "branchFails": "projectBranchFailures",
+    "recent": "projectRecent"
   },
   "spec": {
     "type": "Page",
@@ -24,6 +28,9 @@
       "mono": true
     },
     "children": [
+      {
+        "type": "TimeframeSelect"
+      },
       {
         "type": "Grid",
         "props": {
@@ -172,7 +179,7 @@
           {
             "type": "Metric",
             "props": {
-              "label": "Avg exec (this 7d)",
+              "label": "Avg exec",
               "value": {
                 "$computed": "fmtDuration",
                 "args": {
@@ -192,7 +199,7 @@
           {
             "type": "Metric",
             "props": {
-              "label": "Failure rate (this 7d)",
+              "label": "Failure rate",
               "value": {
                 "$computed": "fmtPercent0",
                 "args": {
@@ -212,7 +219,7 @@
           {
             "type": "Metric",
             "props": {
-              "label": "Runs (this 7d)",
+              "label": "Runs",
               "value": {
                 "$computed": "fmtNumber",
                 "args": {
@@ -224,7 +231,7 @@
               "sub": {
                 "$computed": "text",
                 "args": {
-                  "tpl": "{d} vs prior 7d",
+                  "tpl": "{d} vs prior window",
                   "d": {
                     "$state": "/trend/_runsDelta"
                   }
@@ -235,7 +242,7 @@
           {
             "type": "Metric",
             "props": {
-              "label": "Cache hit rate (this 7d)",
+              "label": "Cache hit rate",
               "value": {
                 "$computed": "fmtPercent0",
                 "args": {
@@ -271,48 +278,189 @@
         ]
       },
       {
-        "type": "Card",
+        "type": "Grid",
         "props": {
-          "title": "Resolved config",
-          "actionText": {
-            "$computed": "text",
-            "args": {
-              "tpl": "source: {s} \u00b7 {p}",
-              "s": {
-                "$state": "/catalog/source"
-              },
-              "p": {
-                "$state": "/catalog/configPath"
-              }
-            }
-          }
-        },
-        "visible": {
-          "$state": "/catalogStatus",
-          "eq": "ok"
+          "variant": "main-320"
         },
         "children": [
           {
-            "type": "Text",
+            "type": "Card",
             "props": {
-              "text": "This project's config file changed since vx lock \u2014 the blocks below show the FROZEN configs. Run vx lock to refreeze.",
-              "tone": "warn",
-              "class": "mb-3"
+              "title": "Failures & runs over time",
+              "actionText": "runs · hits · failures per bucket"
             },
-            "visible": {
-              "$state": "/catalog/stale",
-              "eq": true
-            }
+            "children": [
+              {
+                "type": "LineChart",
+                "props": {
+                  "rows": {
+                    "$state": "/failTrend"
+                  },
+                  "status": {
+                    "$state": "/failTrendStatus"
+                  },
+                  "xKey": "t",
+                  "xFormat": "date",
+                  "yFormat": "count",
+                  "height": 300,
+                  "series": [
+                    {
+                      "name": "runs",
+                      "yKey": "runs",
+                      "strokeClass": "stroke-accent",
+                      "areaClass": "fill-accent/10"
+                    },
+                    {
+                      "name": "hits",
+                      "yKey": "hits",
+                      "strokeClass": "stroke-cache-local"
+                    },
+                    {
+                      "name": "failures",
+                      "yKey": "failures",
+                      "strokeClass": "stroke-danger"
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
-            "type": "TaskConfigList",
+            "type": "Card",
             "props": {
-              "config": {
-                "$state": "/catalog/config"
+              "title": "How this project ranks",
+              "actionText": {
+                "$computed": "text",
+                "args": {
+                  "tpl": "vs {n} projects",
+                  "n": {
+                    "$state": "/rankings/total"
+                  }
+                }
               },
-              "project": {
-                "$state": "/params/name"
+              "noPad": true
+            },
+            "visible": {
+              "$state": "/rankingsStatus",
+              "eq": "ok"
+            },
+            "children": [
+              {
+                "type": "Text",
+                "props": {
+                  "text": "By failure rate",
+                  "tone": "faint",
+                  "mono": true,
+                  "class": "px-4 pt-3 pb-1"
+                }
+              },
+              {
+                "type": "RankList",
+                "props": {
+                  "items": {
+                    "$state": "/rankings/byFailRate"
+                  },
+                  "labelKey": "project",
+                  "valueKey": "_value",
+                  "valueFormat": "percent0",
+                  "subKey": "_rankLabel",
+                  "highlightKey": "_me",
+                  "rowHref": "/projects/{project}",
+                  "emptyTitle": "No projects"
+                }
+              },
+              {
+                "type": "Text",
+                "props": {
+                  "text": "By avg exec time",
+                  "tone": "faint",
+                  "mono": true,
+                  "class": "px-4 pt-3 pb-1 border-t border-border"
+                }
+              },
+              {
+                "type": "RankList",
+                "props": {
+                  "items": {
+                    "$state": "/rankings/byAvg"
+                  },
+                  "labelKey": "project",
+                  "valueKey": "_value",
+                  "valueFormat": "duration",
+                  "subKey": "_rankLabel",
+                  "highlightKey": "_me",
+                  "rowHref": "/projects/{project}",
+                  "emptyTitle": "No projects"
+                }
               }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Where failures were first noticed — across branches",
+          "actionText": "the branch each task first started failing on",
+          "noPad": true
+        },
+        "visible": {
+          "$state": "/branchFailsStatus",
+          "neq": "missing"
+        },
+        "children": [
+          {
+            "type": "DataTable",
+            "props": {
+              "rows": {
+                "$state": "/branchFails"
+              },
+              "status": {
+                "$state": "/branchFailsStatus"
+              },
+              "rowHref": "/tasks/{_taskRef}",
+              "emptyTitle": "No failures in this window 🎉",
+              "emptyHint": "No task in this project has failed in the selected timeframe.",
+              "columns": [
+                {
+                  "key": "task",
+                  "label": "Task",
+                  "kind": "mono",
+                  "baseTone": "danger"
+                },
+                {
+                  "key": "firstBranch",
+                  "label": "First branch",
+                  "kind": "mono",
+                  "baseTone": "danger"
+                },
+                {
+                  "key": "firstFailedAt",
+                  "label": "First noticed",
+                  "align": "right",
+                  "kind": "relativeTime"
+                },
+                {
+                  "key": "firstCommit",
+                  "label": "Commit",
+                  "kind": "shorthash"
+                },
+                {
+                  "key": "branchesFailing",
+                  "label": "Branches",
+                  "align": "right",
+                  "tone": {
+                    "gt": 1,
+                    "tone": "danger"
+                  }
+                },
+                {
+                  "key": "_branchList",
+                  "label": "On",
+                  "kind": "mono",
+                  "baseTone": "faint"
+                }
+              ]
             }
           }
         ]
@@ -323,7 +471,7 @@
           "title": {
             "$computed": "text",
             "args": {
-              "tpl": "Task history ({n})",
+              "tpl": "Tasks — lifetime + Δ vs prior window ({n})",
               "n": {
                 "$computed": "agg",
                 "args": {
@@ -343,6 +491,9 @@
             "props": {
               "rows": {
                 "$state": "/tasks"
+              },
+              "status": {
+                "$state": "/tasksStatus"
               },
               "rowHref": "/tasks/{id}",
               "emptyTitle": "No tasks recorded",
@@ -387,12 +538,16 @@
                   "kind": "duration"
                 },
                 {
-                  "key": "totalDurationMs",
-                  "label": "Total",
+                  "key": "_deltaLabel",
+                  "label": "Δavg",
                   "align": "right",
-                  "kind": "bar",
-                  "format": "duration",
-                  "colorFrom": "project"
+                  "kind": "dots",
+                  "dots": [
+                    {
+                      "field": "_deltaDir",
+                      "map": "delta"
+                    }
+                  ]
                 },
                 {
                   "key": "lastSeenAt",
@@ -402,6 +557,106 @@
                   "baseTone": "faint"
                 }
               ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Recent executions",
+          "actionText": "row → the run with logs open · debug each execution",
+          "noPad": true
+        },
+        "children": [
+          {
+            "type": "DataTable",
+            "props": {
+              "rows": {
+                "$state": "/recent"
+              },
+              "status": {
+                "$state": "/recentStatus"
+              },
+              "rowHref": "/runs/{runId}?task={_taskRef}",
+              "emptyTitle": "No executions recorded",
+              "columns": [
+                {
+                  "key": "startedAt",
+                  "label": "When",
+                  "align": "right",
+                  "kind": "relativeTime",
+                  "baseTone": "faint"
+                },
+                {
+                  "key": "task",
+                  "label": "Task",
+                  "kind": "mono"
+                },
+                {
+                  "key": "status",
+                  "label": "Status",
+                  "kind": "status"
+                },
+                {
+                  "key": "durationMs",
+                  "label": "Duration",
+                  "align": "right",
+                  "kind": "duration"
+                },
+                {
+                  "key": "hash",
+                  "label": "Cache key",
+                  "kind": "shorthash"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Resolved config",
+          "actionText": {
+            "$computed": "text",
+            "args": {
+              "tpl": "source: {s} · {p}",
+              "s": {
+                "$state": "/catalog/source"
+              },
+              "p": {
+                "$state": "/catalog/configPath"
+              }
+            }
+          }
+        },
+        "visible": {
+          "$state": "/catalogStatus",
+          "eq": "ok"
+        },
+        "children": [
+          {
+            "type": "Text",
+            "props": {
+              "text": "This project's config file changed since vx lock — the blocks below show the FROZEN configs. Run vx lock to refreeze.",
+              "tone": "warn",
+              "class": "mb-3"
+            },
+            "visible": {
+              "$state": "/catalog/stale",
+              "eq": true
+            }
+          },
+          {
+            "type": "TaskConfigList",
+            "props": {
+              "config": {
+                "$state": "/catalog/config"
+              },
+              "project": {
+                "$state": "/params/name"
+              }
             }
           }
         ]

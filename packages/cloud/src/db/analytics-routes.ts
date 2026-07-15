@@ -307,11 +307,15 @@ async function handleAnalyticsRequestInner(
   if (p === '/v1/trends/runs') {
     const bucketRaw = q.get('bucket')
     const bucket = bucketRaw === 'day' || bucketRaw === 'hour' ? bucketRaw : 'hour'
-    const args: { bucket: 'hour' | 'day'; from?: number; to?: number } = { bucket }
+    const args: { bucket: 'hour' | 'day'; from?: number; to?: number; project?: string } = {
+      bucket,
+    }
     const from = numParam(q.get('from'))
     if (from !== undefined) args.from = from
     const to = numParam(q.get('to'))
     if (to !== undefined) args.to = to
+    const project = q.get('project')
+    if (project !== null) args.project = project
     return json({ bucket, points: await a.getRunTrends(ws, args) })
   }
   if (p === '/v1/trends/heatmap') {
@@ -337,6 +341,16 @@ async function handleAnalyticsRequestInner(
     const limit = numParam(q.get('limit'))
     if (limit !== undefined) args.limit = limit
     return json({ tasks: await a.getRegressions(ws, args) })
+  }
+  if (p === '/v1/branch-failures') {
+    const project = q.get('project')
+    if (project === null) return json({ ok: false, error: 'project required' }, 400)
+    const args: { sinceDays?: number; limit?: number } = {}
+    const sinceDays = numParam(q.get('sinceDays'))
+    if (sinceDays !== undefined) args.sinceDays = sinceDays
+    const limit = numParam(q.get('limit'))
+    if (limit !== undefined) args.limit = limit
+    return json({ tasks: await a.getProjectBranchFailures(ws, project, args) })
   }
   if (p === '/v1/analysis') {
     const args: {
