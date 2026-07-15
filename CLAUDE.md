@@ -208,6 +208,72 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-15**: **Project analytics view — tasks over time, branch-first-
+  failure, cross-project rank (`5fb1ffa`)** (owner: "project view where I can see
+  all tasks and their history over time; spot outliers/spikes/trends; debug
+  logs+artifacts per execution; compare my project against others (failures vs
+  success); compare against branches so I know where the issue was first
+  noticed"). Design `docs/design/project-analytics-2026-07.md` — the project
+  detail page was aggregate-only; this turns it into a single-dev drill-in
+  answering all five asks. **Heavy reuse + ONE net-new query** (the design's
+  chosen option C): four of five asks land by reusing `listRuns`/`listProjects`/
+  `getRunTrends`/`getPeriodComparison`/`getHistory` with a filter or a client
+  rank; only #5 (where-first-noticed) had no existing shape. **Server:**
+  `getProjectBranchFailures(ws, project, {sinceDays, limit})` — ONE set-based
+  CTE computing the earliest failing run per `(task, branch)`
+  (`MIN(started_at)` + `(ARRAY_AGG(commit_sha ORDER BY started_at))[1]` for the
+  first commit), then `ROW_NUMBER() OVER (PARTITION BY task ORDER BY
+first_failed_at ASC, branch ASC)` so `branch_rank = 1` is the branch that
+  failed FIRST; JS folds per task (firstBranch/firstCommit from rank 1,
+  branchesFailing = true count, `branches[]` capped at `BRANCH_CAP`=12, sorted
+  most-recent-first, limit clamp ≤200). Workspace-clamped, project-scoped,
+  `started_at`-partition-pruned, reads only `status='failed'` rows, `inv` join on
+  the indexed `run_id` — **no N+1, no unbounded raw-row fetch** (wants the
+  deferred `status='failed'` partial index at extreme scale; project+window bound
+  it meanwhile — task #79/#95). `getRunTrends` gains an optional `project` filter
+  (one `AND project = $` clause) for a project-scoped failures/runs/hits series,
+  **byte-identical when absent**. Routes: `GET /v1/branch-failures?project=&
+sinceDays=&limit=` (project required → 400) + `project` passthrough on
+  `/v1/trends/runs`; the client `getHistory` now threads `project`/`task` (the
+  route already supported them). **Load-bearing gate fix:** `/v1/branch-failures`
+  is a single-segment route, so it had to be added to the `isAnalyticsSurface`
+  allowlist in `server.ts` — otherwise a session request FALLS THROUGH to the SPA
+  catch-all (returns the `vx-cloud` string, not JSON), the exact class as the
+  earlier `/v1/notifications`/`/v1/why` fixes; caught by the browser verify
+  (branch card empty), pinned by a server e2e (session reaches analytics → JSON
+  with firstBranch, not the SPA). **UI (pure-JSON view + data helpers, one
+  reusable component prop — zero core change):** `projectDetail.json` gains a
+  `TimeframeSelect` header, a failures-&-runs `LineChart` (`projectFailureTrend`),
+  a "how this project ranks" card (three axes — failure rate / avg exec / hit
+  rate — each a `RankList` with the current project highlighted), a "where
+  failures were first noticed across branches" `DataTable`, a **Δavg column** on
+  the task-history table (each task's period-over-period avg delta as a red/green
+  dot), and a **recent-executions** table (row → the run with this task
+  pre-selected so logs open, hash → the cache entry — the one-click debug ask).
+  `data.ts` helpers: `rankProjects` (client-side over the one `listProjects`
+  GROUP BY — top-8 per axis + always the current project with its true rank,
+  `_rankLabel`/`_me`), `mergeMoverDelta` (lifetime `getHistory` ⨝ analysis
+  `movers` for the Δavg column), `branchFailureRows`; every project source
+  windows off `?window` via `windowDaysOf`/`trendArgsOf` (lifetime table stays
+  all-time on purpose — the "over time" story is the trend cards). `scopedTrend`
+  gained a `windowDays` param (default 7 → pages without the selector
+  byte-identical); `RankList` gained a `highlightKey` prop (ring the row when
+  `item[key]` is truthy). **Windowing rides the proven params-refetch path** (the
+  json-render loader keys sources on decoded params+`?window`, so a chip re-fetches
+  every project source in place). **Verified END-TO-END in a real browser**
+  (real platform + fake S3 + Chromium, seeded via the ingest wire across two
+  projects and multiple branches): every card renders, `app#e2e` attributes to
+  `feat` as the first-noticed branch, the three-axis ranking + Δavg column + recent
+  executions all render, the window chips rescope every project-scoped `/v1/*`
+  request (branch-failures `sinceDays` + trends `project=` over the exact span),
+  ZERO console errors. NO CACHE/schema/wire bump (read-side only). Cloud
+  analytics-read 39 (+2: branch-first-failure ordering + ignores-success/null-
+  branch) + server 31 (+1: allowlist-reaches-analytics) pass, UI 64 pass, lint+
+  fmt clean, `dist/` unchanged (gitignored build artifact). **DEFERRED (phase 2/
+3):** true per-task per-bucket sparklines (`getProjectTaskTrends` + a `SparkList`
+  component); regressed-vs-always-broken flag on #5; a branch facet on recent
+  executions.
+
 - **2026-07-14**: **Insights timeframe selector — 24h/7d/30d/90d, URL-persisted
   (`ba3e7b9`)** (owner: "I should be able to select a timeframe for stats").
   A preset chip row on the Insights analytics hub rescopes every windowed
