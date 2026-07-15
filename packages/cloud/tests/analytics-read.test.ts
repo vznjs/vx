@@ -500,6 +500,47 @@ describe('getPeriodComparison', () => {
     expect(cmp.previous.stats.runs).toBe(0)
     expect(cmp.previous.stats.failures).toBe(0)
     expect(cmp.previous.stats.totalDurationMs).toBe(0)
+    // Empty executed-success set → percentile FILTER is NULL → undefined.
+    expect(cmp.previous.stats.p50DurationMs).toBeUndefined()
+  })
+
+  it('computes avg/p50/p95 in SQL over the executed-success subset', async () => {
+    const { org, ws } = await newOrgWs(db, 'period-pct')
+    const end = Date.now()
+    // Five successful execs spread 100..500 in the current window, plus a
+    // cache-hit and a failure that must NOT enter the percentile base.
+    for (const [i, d] of [100, 200, 300, 400, 500].entries()) {
+      await insertTR(db, ws, org, {
+        runId: `s${i}`,
+        project: 'app',
+        task: 'build',
+        duration: d,
+        startedAt: end - (i + 1) * HOUR,
+      })
+    }
+    await insertTR(db, ws, org, {
+      runId: 'hit',
+      project: 'app',
+      task: 'build',
+      status: 'cache-hit',
+      cacheHit: true,
+      duration: 9,
+      startedAt: end - 6 * HOUR,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'fail',
+      project: 'app',
+      task: 'build',
+      status: 'failed',
+      exitCode: 1,
+      duration: 9999,
+      startedAt: end - 6 * HOUR,
+    })
+    const cmp = await analytics.getPeriodComparison(ws, { windowDays: 7, endMs: end, minRuns: 1 })
+    const s = cmp.current.stats
+    expect(s.avgDurationMs).toBe(300) // (100+200+300+400+500)/5
+    expect(s.p50DurationMs).toBe(300) // percentile_cont(0.5) over the 5 = middle
+    expect(s.p95DurationMs).toBe(480) // 0.95*(5-1)=3.8 → 400 + 0.8*(500-400)
   })
 })
 

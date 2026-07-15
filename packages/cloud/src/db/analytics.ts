@@ -2423,8 +2423,15 @@ export class Analytics {
     const sql = this.sql
     const fProject = scope.project !== undefined ? sql`AND project = ${scope.project}` : sql``
     const fTask = scope.task !== undefined ? sql`AND task = ${scope.task}` : sql``
-    // COALESCE every SUM — over an empty window SUM() is NULL, and the previous
-    // window is empty for any workspace younger than it (the periodStats fix).
+    // avg + p50 + p95 are computed IN SQL over the executed-success subset (a
+    // FILTER), so we never stream every duration into JS — at the platform's
+    // target scale the window can hold tens of millions of rows. percentile_cont
+    // is exact over the full window and returns NULL for an empty filtered set
+    // (→ undefined, unchanged). The executed-success FILTER matches the former
+    // `durs` query exactly (non-hit AND status='success'); `total_duration_ms`
+    // stays the executed-incl-failed sum. COALESCE every plain SUM — over an
+    // empty window SUM() is NULL, and the previous window is empty for any
+    // workspace younger than it.
     const agg = (
       await sql<
         {
@@ -2434,6 +2441,9 @@ export class Analytics {
           cache_hits: number
           executed: number
           total_duration_ms: number
+          avg_dur: number
+          p50: number | null
+          p95: number | null
         }[]
       >`
         SELECT count(*)::int AS task_runs,
@@ -2441,17 +2451,16 @@ export class Analytics {
                COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0)::int AS failures,
                COALESCE(SUM(CASE WHEN cache_hit = true THEN 1 ELSE 0 END), 0)::int AS cache_hits,
                COALESCE(SUM(CASE WHEN cache_hit IS NULL OR cache_hit = false THEN 1 ELSE 0 END), 0)::int AS executed,
-               COALESCE(SUM(CASE WHEN cache_hit IS NULL OR cache_hit = false THEN duration_ms ELSE 0 END), 0)::float8 AS total_duration_ms
+               COALESCE(SUM(CASE WHEN cache_hit IS NULL OR cache_hit = false THEN duration_ms ELSE 0 END), 0)::float8 AS total_duration_ms,
+               COALESCE(round(avg(duration_ms) FILTER (
+                 WHERE (cache_hit IS NULL OR cache_hit = false) AND status = 'success')), 0)::int AS avg_dur,
+               round(percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_ms) FILTER (
+                 WHERE (cache_hit IS NULL OR cache_hit = false) AND status = 'success'))::int AS p50,
+               round(percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) FILTER (
+                 WHERE (cache_hit IS NULL OR cache_hit = false) AND status = 'success'))::int AS p95
         FROM task_runs WHERE workspace_id = ${workspaceId}
           AND started_at >= ${from} AND started_at < ${to} ${fProject} ${fTask}`
     )[0]!
-    const durs = (
-      await sql<{ d: number }[]>`
-        SELECT duration_ms AS d FROM task_runs WHERE workspace_id = ${workspaceId}
-          AND started_at >= ${from} AND started_at < ${to}
-          AND (cache_hit IS NULL OR cache_hit = false) AND status = 'success' ${fProject} ${fTask}
-        ORDER BY duration_ms`
-    ).map((r) => r.d)
     const taskRuns = agg.task_runs
     return {
       runs: agg.runs,
@@ -2460,10 +2469,9 @@ export class Analytics {
       failures: agg.failures,
       cacheHits: agg.cache_hits,
       totalDurationMs: agg.total_duration_ms,
-      avgDurationMs:
-        durs.length > 0 ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length) : 0,
-      p50DurationMs: pickPercentile(durs, 0.5),
-      p95DurationMs: pickPercentile(durs, 0.95),
+      avgDurationMs: agg.avg_dur,
+      p50DurationMs: agg.p50 ?? undefined,
+      p95DurationMs: agg.p95 ?? undefined,
       failureRate: taskRuns > 0 ? agg.failures / taskRuns : 0,
       cacheHitRate: taskRuns > 0 ? agg.cache_hits / taskRuns : 0,
     }
