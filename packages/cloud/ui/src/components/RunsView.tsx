@@ -11,7 +11,16 @@
 // back doesn't drop the sockets or the live state — the SPA never reloads,
 // and a queued job's socket must stay open (closing it cancels the job).
 
-import { For, Show, createEffect, createMemo, createResource, createSignal, onCleanup } from 'solid-js'
+import {
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  on,
+  onCleanup,
+} from 'solid-js'
 import { createStore } from 'solid-js/store'
 import { A, useSearchParams } from '@solidjs/router'
 import type { BaseComponentProps } from '@json-render/solid'
@@ -170,6 +179,21 @@ export function RunsView() {
     async () => stableInvocations(await listInvocations(200).catch(() => null)),
   )
   let lastGoodInvocations: InvocationDetail[] | undefined
+  // Scope the last-good cache to the connection. It exists so a transient failed
+  // poll on the SAME connection keeps the table populated — but on an org /
+  // workspace / origin switch it must be dropped, or a FAILED first fetch on the
+  // new connection (403 with no access, a blip) would render the PREVIOUS
+  // tenant's run history + CI-health under the new context. `defer` so it resets
+  // only on a real change, not the initial mount.
+  createEffect(
+    on(
+      getConnectionKey,
+      () => {
+        lastGoodInvocations = undefined
+      },
+      { defer: true },
+    ),
+  )
   const invocationRows = createMemo<InvocationDetail[] | undefined>(() => {
     const v = invocations()
     if (v !== null && v !== undefined) lastGoodInvocations = v
