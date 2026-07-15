@@ -6,6 +6,7 @@
     "trend": "projectTrend",
     "failTrend": "projectFailureTrend",
     "rankings": "projectRankings",
+    "taskTrends": "projectTaskTrends",
     "branchFails": "projectBranchFailures",
     "recent": "projectRecent"
   },
@@ -394,6 +395,44 @@
                 }
               }
             ]
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Task duration trends",
+          "actionText": "avg exec per bucket over the window · spot outliers & spikes",
+          "noPad": true
+        },
+        "visible": {
+          "$state": "/taskTrendsStatus",
+          "neq": "missing"
+        },
+        "children": [
+          {
+            "type": "SparkList",
+            "props": {
+              "items": {
+                "$state": "/taskTrends"
+              },
+              "status": {
+                "$state": "/taskTrendsStatus"
+              },
+              "labelKey": "task",
+              "seriesKey": "series",
+              "valueKey": "_latest",
+              "valueFormat": "duration",
+              "trendKey": "_trend",
+              "dots": [
+                {
+                  "field": "_dir",
+                  "map": "delta"
+                }
+              ],
+              "rowHref": "/tasks/{_taskRef}",
+              "emptyTitle": "No executed task durations in this window"
+            }
           }
         ]
       },

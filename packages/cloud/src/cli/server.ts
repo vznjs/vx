@@ -72,6 +72,7 @@ function isAnalyticsSurface(pathname: string, method: string): boolean {
     '/v1/notifications',
     '/v1/projects',
     '/v1/trends/runs',
+    '/v1/trends/tasks',
     '/v1/trends/heatmap',
     '/v1/trends/storage',
     '/v1/trends/parallelism',

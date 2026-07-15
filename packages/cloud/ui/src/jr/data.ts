@@ -27,6 +27,7 @@ import {
   getFailures,
   getFlakiest,
   getProjectBranchFailures,
+  getProjectTaskTrends,
   getRegressions,
   getHeatmap,
   getHistory,
@@ -357,6 +358,49 @@ function mergeMoverDelta(
 }
 
 /**
+ * Group the flat per-(task, bucket) trend rows into one item per task carrying
+ * its avg-duration `series` (number[], time-ordered), latest value, total
+ * failures, and a trend token (up/down/flat over the window) — the shape the
+ * SparkList binds. "Spot per-task outliers/spikes/trends" at a glance. `null` =
+ * older serve without /v1/trends/tasks.
+ */
+async function projectTaskTrendItems(
+  project: string,
+  args: { bucket: 'hour' | 'day'; from: number; to: number },
+): Promise<Record<string, unknown>[] | null> {
+  const points = await getProjectTaskTrends(project, { ...args, limit: 20 })
+  if (points === null) return null
+  const byTask = new Map<string, { t: number; avg: number; failures: number }[]>()
+  for (const p of points) {
+    const arr = byTask.get(p.task) ?? []
+    arr.push({ t: p.t, avg: p.avgDurationMs, failures: p.failures })
+    byTask.set(p.task, arr)
+  }
+  const items = [...byTask.entries()].map(([task, cells]) => {
+    cells.sort((a, b) => a.t - b.t)
+    const series = cells.map((c) => c.avg)
+    const failures = cells.reduce((s, c) => s + c.failures, 0)
+    const latest = series.length > 0 ? series[series.length - 1]! : 0
+    const first = series.find((v) => v > 0) ?? 0
+    const last = [...series].reverse().find((v) => v > 0) ?? 0
+    // Trend over the window (duration): up = slower (bad), down = faster (good).
+    const trend = first === 0 || last === 0 ? 'flat' : last > first * 1.1 ? 'up' : last < first * 0.9 ? 'down' : 'flat'
+    return {
+      task,
+      _taskRef: `${project}#${task}`,
+      series,
+      _latest: latest,
+      _failures: failures,
+      _trend: trend,
+      // For the delta dot: slower/faster/same mirror up/down/flat.
+      _dir: trend === 'up' ? 'slower' : trend === 'down' ? 'faster' : 'same',
+    }
+  })
+  // Slowest-latest on top — the task most worth a look.
+  return items.sort((a, b) => (b._latest as number) - (a._latest as number))
+}
+
+/**
  * Per-task branch-first-failure rows for the project view ("where was the issue
  * first noticed"). Adds a joined branch string + an urgency dot. `null` = older
  * serve without /v1/branch-failures.
@@ -544,6 +588,12 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   projectBranchFailures: (p) =>
     (p.name ?? '') !== ''
       ? branchFailureRows(p.name!, windowDaysOf(p, 14))
+      : Promise.resolve(null),
+  // Per-task avg-duration sparklines over the window (#1 — spot outliers/spikes/
+  // trends per task). null = older serve without /v1/trends/tasks.
+  projectTaskTrends: (p) =>
+    (p.name ?? '') !== ''
+      ? projectTaskTrendItems(p.name!, trendArgsOf(p))
       : Promise.resolve(null),
   cacheEntry: (p) =>
     listCacheEntries({ limit: 500 }).then((es) => es.find((e) => e.hash === p.hash) ?? null),

@@ -318,6 +318,20 @@ async function handleAnalyticsRequestInner(
     if (project !== null) args.project = project
     return json({ bucket, points: await a.getRunTrends(ws, args) })
   }
+  if (p === '/v1/trends/tasks') {
+    const project = q.get('project')
+    if (project === null) return json({ ok: false, error: 'project required' }, 400)
+    const bucketRaw = q.get('bucket')
+    const bucket = bucketRaw === 'hour' || bucketRaw === 'day' ? bucketRaw : 'day'
+    const args: { bucket: 'hour' | 'day'; from?: number; to?: number; limit?: number } = { bucket }
+    const from = numParam(q.get('from'))
+    if (from !== undefined) args.from = from
+    const to = numParam(q.get('to'))
+    if (to !== undefined) args.to = to
+    const limit = numParam(q.get('limit'))
+    if (limit !== undefined) args.limit = limit
+    return json({ bucket, points: await a.getProjectTaskTrends(ws, project, args) })
+  }
   if (p === '/v1/trends/heatmap') {
     const days = numParam(q.get('days')) ?? 30
     return json({ days, cells: await a.getRunHeatmap(ws, days) })

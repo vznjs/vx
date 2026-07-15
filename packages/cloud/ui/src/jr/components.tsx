@@ -813,6 +813,102 @@ export function RankList(
   )
 }
 
+// --- SparkList --------------------------------------------------------------
+
+/** A tiny inline SVG sparkline over a numeric series. Deterministic (a fixed
+ *  viewBox, no measurement), so it never triggers layout on a poll. */
+function Spark(props: { series: number[]; class?: string }): JSX.Element {
+  const W = 120
+  const H = 22
+  const pts = createMemo(() => {
+    const s = props.series ?? []
+    if (s.length === 0) return ''
+    const min = Math.min(...s)
+    const max = Math.max(...s)
+    const span = max - min
+    const n = s.length
+    return s
+      .map((v, i) => {
+        const x = n === 1 ? W / 2 : (i / (n - 1)) * W
+        const y = span === 0 ? H / 2 : H - ((v - min) / span) * (H - 2) - 1
+        return `${x.toFixed(1)},${y.toFixed(1)}`
+      })
+      .join(' ')
+  })
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} class="block shrink-0" preserveAspectRatio="none">
+      <Show when={(props.series ?? []).length > 1} fallback={<line x1="0" y1={H / 2} x2={W} y2={H / 2} class="stroke-border" stroke-width="1" />}>
+        <polyline points={pts()} fill="none" class={props.class ?? 'stroke-accent'} stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" />
+      </Show>
+    </svg>
+  )
+}
+
+/**
+ * A row per item: label · inline sparkline of `item[seriesKey]` (number[]) ·
+ * latest value · an optional delta/failure dot. The row carries its own series
+ * array (shaped in data.ts), so the view stays pure JSON. For "spot per-task
+ * outliers/spikes/trends" — each task reads its own history at a glance.
+ */
+// Per-row sparkline trend → a LITERAL stroke class (UnoCSS can't see a
+// dynamically-built `stroke-${x}`, so the tokens must appear verbatim here).
+// For a duration series, up = slower = danger, down = faster = success.
+const SPARK_STROKE: Record<string, string> = {
+  up: 'stroke-danger',
+  down: 'stroke-success',
+  flat: 'stroke-accent',
+}
+
+export function SparkList(
+  c: C<{
+    items: Row[]
+    labelKey?: string
+    labelTemplate?: string
+    seriesKey: string
+    valueKey?: string
+    valueFormat?: FormatHint
+    trendKey?: string // row field ∈ {up,down,flat} → SPARK_STROKE, else accent
+    dots?: Array<{ field: string; map: DotMap }>
+    rowHref?: string
+    rowTaskRef?: { projectKey?: string; taskKey?: string }
+    emptyTitle?: string
+    status?: DataStatus
+  }>,
+) {
+  const navigate = useNavigate()
+  const items = () => c.props.items ?? []
+  const hrefOf = (it: Row): string | undefined => {
+    const ref = c.props.rowTaskRef
+    if (ref) return `/tasks/${enc(`${it[ref.projectKey ?? 'project']}#${it[ref.taskKey ?? 'task']}`)}`
+    if (c.props.rowHref) return interpolate(c.props.rowHref, it)
+    return undefined
+  }
+  return (
+    <DataGate status={c.props.status} skeleton={<SkeletonRows rows={4} />}>
+      <Show when={items().length > 0} fallback={<EmptyState title={c.props.emptyTitle ?? 'No task history yet'} />}>
+        <div class="flex flex-col">
+          <For each={items()}>
+            {(it) => {
+              const href = hrefOf(it)
+              const series = Array.isArray(it[c.props.seriesKey]) ? (it[c.props.seriesKey] as number[]) : []
+              return (
+                <button onClick={() => href && navigate(href)} class="flex items-center gap-3 px-4 py-2 text-left border-t border-border first:border-t-0" classList={{ 'hover:bg-surface-hover': !!href, 'cursor-default': !href }}>
+                  <For each={c.props.dots ?? []}>{(d) => <Dot color={colorOf(d.map, it[d.field])} />}</For>
+                  <span class="font-mono text-[12px] truncate flex-1 min-w-0">{c.props.labelTemplate ? interpolateRaw(c.props.labelTemplate, it) : String(it[c.props.labelKey ?? 'task'])}</span>
+                  <Spark series={series} class={(c.props.trendKey && SPARK_STROKE[String(it[c.props.trendKey])]) || 'stroke-accent'} />
+                  <Show when={c.props.valueKey !== undefined && it[c.props.valueKey!] !== undefined}>
+                    <span class="font-mono text-[12px] shrink-0 w-16 text-right">{formatValue(c.props.valueFormat, Number(it[c.props.valueKey!]))}</span>
+                  </Show>
+                </button>
+              )
+            }}
+          </For>
+        </div>
+      </Show>
+    </DataGate>
+  )
+}
+
 const ANSI = /\x1b\[[0-9;]*[A-Za-z]/g
 
 /**

@@ -25,7 +25,7 @@ pure-JSON-view-able.
 
 - One project, opened from `/projects`. Route param `name`, query `?window`.
 - Reads only (no ingest path change). Every read is `WHERE workspace_id=$ws AND
-  project=$project AND started_at>=$since` — partition-pruned by `started_at`,
+project=$project AND started_at>=$since` — partition-pruned by `started_at`,
   clamped to one project, so each read touches a thin slice of `task_runs` even
   at 50-100M rows/day. No unbounded raw-row fetch; every series/percentile
   aggregates in SQL (the `periodStats`/`getRunTrends` pattern).
@@ -53,15 +53,15 @@ its `SparkList` component to phase 2. Window the whole page with the existing
 
 Mapping of asks → data source:
 
-| Ask | Source | New? |
-|---|---|---|
-| #2 recent executions + logs/artifact | `listRuns({project,limit})`, rows deep-link `/runs/{id}?task=…` (logs) + hash→`/cache/{hash}` | reuse |
-| #3 rank vs other projects | `listProjects(500)` + client rank, current project highlighted | reuse (P1); windowed `getProjectRankings` = P2 |
-| #4 failures vs successes over time | `getRunTrends({bucket,from,to,project})` | +`project` filter (1 line) |
-| #1 tasks over time (lifetime + Δ) | `getHistory({project})` ⨝ `getPeriodComparison({project}).movers` for the Δavg column | reuse (P1) |
-| #1 tasks over time (true per-bucket sparkline) | `getProjectTaskTrends` | **new (P2)** |
-| #5 first-noticed across branches | `getProjectBranchFailures` | **new (P1)** |
-| windowed trend tiles | `getPeriodComparison({project, windowDays})` | reuse; make `projectTrend` read `?window` |
+| Ask                                            | Source                                                                                        | New?                                           |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| #2 recent executions + logs/artifact           | `listRuns({project,limit})`, rows deep-link `/runs/{id}?task=…` (logs) + hash→`/cache/{hash}` | reuse                                          |
+| #3 rank vs other projects                      | `listProjects(500)` + client rank, current project highlighted                                | reuse (P1); windowed `getProjectRankings` = P2 |
+| #4 failures vs successes over time             | `getRunTrends({bucket,from,to,project})`                                                      | +`project` filter (1 line)                     |
+| #1 tasks over time (lifetime + Δ)              | `getHistory({project})` ⨝ `getPeriodComparison({project}).movers` for the Δavg column         | reuse (P1)                                     |
+| #1 tasks over time (true per-bucket sparkline) | `getProjectTaskTrends`                                                                        | **new (P2)**                                   |
+| #5 first-noticed across branches               | `getProjectBranchFailures`                                                                    | **new (P1)**                                   |
+| windowed trend tiles                           | `getPeriodComparison({project, windowDays})`                                                  | reuse; make `projectTrend` read `?window`      |
 
 ## Concrete spec
 
@@ -235,11 +235,11 @@ DataTable, RankList, Metric, Card, Grid cover P1.
 
 ## Phasing
 
-| Phase | Ships (asks) | New server | New UI |
-|---|---|---|---|
-| **1** | windowing; #2 recent executions; #3 client rank; #4 failures-over-time; #5 first-noticed; #1 lifetime table + Δ column | `getProjectBranchFailures`; `getRunTrends` +`project` filter | `TimeframeSelect` on the view; `rankProjects`/`mergeMoverDelta` data helpers (reuse LineChart/DataTable/RankList) |
-| **2** | #1 true per-task per-bucket sparklines; regressed/still-failing flag on #5 | `getProjectTaskTrends`; enrich #5 with ever-passed + latest-per-branch status (reuse `getRegressions` CTEs) | `SparkList` component |
-| **3** (later) | branch facet on recent executions; per-branch execution drill | `listRuns` + `invocations` branch join | branch chips (Runs-facet pattern) |
+| Phase         | Ships (asks)                                                                                                           | New server                                                                                                  | New UI                                                                                                            |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **1**         | windowing; #2 recent executions; #3 client rank; #4 failures-over-time; #5 first-noticed; #1 lifetime table + Δ column | `getProjectBranchFailures`; `getRunTrends` +`project` filter                                                | `TimeframeSelect` on the view; `rankProjects`/`mergeMoverDelta` data helpers (reuse LineChart/DataTable/RankList) |
+| **2**         | #1 true per-task per-bucket sparklines; regressed/still-failing flag on #5                                             | `getProjectTaskTrends`; enrich #5 with ever-passed + latest-per-branch status (reuse `getRegressions` CTEs) | `SparkList` component                                                                                             |
+| **3** (later) | branch facet on recent executions; per-branch execution drill                                                          | `listRuns` + `invocations` branch join                                                                      | branch chips (Runs-facet pattern)                                                                                 |
 
 ## Scale hazards
 

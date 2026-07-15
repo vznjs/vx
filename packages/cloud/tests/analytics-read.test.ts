@@ -686,7 +686,7 @@ describe('getProjectBranchFailures', () => {
       startedAt: now - HOUR,
     })
     // A failure with NO branch on its invocation — not attributable.
-    await insertINV(db, ws, org, { runId: 'nb', startedAt: now - HOUR, branch: undefined })
+    await insertINV(db, ws, org, { runId: 'nb', startedAt: now - HOUR })
     await db.sql`UPDATE invocations SET branch = NULL WHERE run_id = ${'nb'} AND workspace_id = ${ws}`
     await insertTR(db, ws, org, {
       runId: 'nb',
@@ -697,6 +697,102 @@ describe('getProjectBranchFailures', () => {
       startedAt: now - HOUR,
     })
     expect(await analytics.getProjectBranchFailures(ws, 'app', { sinceDays: 14 })).toHaveLength(0)
+  })
+})
+
+describe('getProjectTaskTrends', () => {
+  it('buckets each top task by day with runs/failures/avg/p95', async () => {
+    const { org, ws } = await newOrgWs(db, 'tasktrend')
+    const now = Date.now()
+    const dayFloor = Math.floor(now / DAY) * DAY
+    // app#build: two success runs today (100, 300 → avg 200), one yesterday (500).
+    await insertINV(db, ws, org, { runId: 'b1', startedAt: dayFloor + HOUR })
+    await insertTR(db, ws, org, {
+      runId: 'b1',
+      project: 'app',
+      task: 'build',
+      duration: 100,
+      startedAt: dayFloor + HOUR,
+    })
+    await insertINV(db, ws, org, { runId: 'b2', startedAt: dayFloor + 2 * HOUR })
+    await insertTR(db, ws, org, {
+      runId: 'b2',
+      project: 'app',
+      task: 'build',
+      duration: 300,
+      startedAt: dayFloor + 2 * HOUR,
+    })
+    await insertINV(db, ws, org, { runId: 'b0', startedAt: dayFloor - DAY + HOUR })
+    await insertTR(db, ws, org, {
+      runId: 'b0',
+      project: 'app',
+      task: 'build',
+      duration: 500,
+      startedAt: dayFloor - DAY + HOUR,
+    })
+    // app#test: one failure + one success today.
+    await insertINV(db, ws, org, { runId: 't1', startedAt: dayFloor + 3 * HOUR })
+    await insertTR(db, ws, org, {
+      runId: 't1',
+      project: 'app',
+      task: 'test',
+      status: 'failed',
+      exitCode: 1,
+      duration: 90,
+      startedAt: dayFloor + 3 * HOUR,
+    })
+    await insertINV(db, ws, org, { runId: 't2', startedAt: dayFloor + 4 * HOUR })
+    await insertTR(db, ws, org, {
+      runId: 't2',
+      project: 'app',
+      task: 'test',
+      status: 'success',
+      duration: 80,
+      startedAt: dayFloor + 4 * HOUR,
+    })
+    // A decoy project — must not appear.
+    await insertINV(db, ws, org, { runId: 'x1', startedAt: dayFloor + HOUR })
+    await insertTR(db, ws, org, {
+      runId: 'x1',
+      project: 'web',
+      task: 'build',
+      duration: 999,
+      startedAt: dayFloor + HOUR,
+    })
+
+    const pts = await analytics.getProjectTaskTrends(ws, 'app', { bucket: 'day' })
+    // Only app tasks.
+    expect(new Set(pts.map((p) => p.task))).toEqual(new Set(['build', 'test']))
+    // build today: 2 runs, avg 200; build yesterday: 1 run, avg 500.
+    const buildToday = pts.find((p) => p.task === 'build' && p.t === dayFloor)!
+    expect(buildToday.runs).toBe(2)
+    expect(buildToday.avgDurationMs).toBe(200)
+    const buildYest = pts.find((p) => p.task === 'build' && p.t === dayFloor - DAY)!
+    expect(buildYest.runs).toBe(1)
+    expect(buildYest.avgDurationMs).toBe(500)
+    // test today: 2 runs, 1 failure; avg over the SUCCESS only = 80.
+    const testToday = pts.find((p) => p.task === 'test' && p.t === dayFloor)!
+    expect(testToday.runs).toBe(2)
+    expect(testToday.failures).toBe(1)
+    expect(testToday.avgDurationMs).toBe(80)
+  })
+
+  it('bounds the task set to the top-N by total duration', async () => {
+    const { org, ws } = await newOrgWs(db, 'tasktrend2')
+    const now = Date.now() - HOUR
+    for (const [i, task] of ['a', 'b', 'c'].entries()) {
+      await insertINV(db, ws, org, { runId: `r${i}`, startedAt: now })
+      await insertTR(db, ws, org, {
+        runId: `r${i}`,
+        project: 'app',
+        task,
+        duration: (i + 1) * 1000,
+        startedAt: now,
+      })
+    }
+    // Only the single heaviest task survives the LIMIT.
+    const pts = await analytics.getProjectTaskTrends(ws, 'app', { bucket: 'day', limit: 1 })
+    expect(new Set(pts.map((p) => p.task))).toEqual(new Set(['c']))
   })
 })
 

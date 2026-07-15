@@ -270,7 +270,7 @@ sinceDays=&limit=` (project required → 400) + `project` passthrough on
   analytics-read 39 (+2: branch-first-failure ordering + ignores-success/null-
   branch) + server 31 (+1: allowlist-reaches-analytics) pass, UI 64 pass, lint+
   fmt clean, `dist/` unchanged (gitignored build artifact). **DEFERRED (phase 2/
-3):** true per-task per-bucket sparklines (`getProjectTaskTrends` + a `SparkList`
+  3):** true per-task per-bucket sparklines (`getProjectTaskTrends` + a `SparkList`
   component); regressed-vs-always-broken flag on #5; a branch facet on recent
   executions.
 

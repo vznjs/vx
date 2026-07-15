@@ -460,6 +460,15 @@ describe('platform e2e (real pg + fake S3)', () => {
     expect(testRow!.firstCommit).toBe('deadbeef')
     // project is required.
     expect((await call('GET', '/v1/branch-failures', { cookie })).status).toBe(400)
+
+    // /v1/trends/tasks (project view sparklines) is allowlisted too — reaches
+    // analytics (JSON), not the SPA; project required.
+    const tt = await call('GET', '/v1/trends/tasks?project=a&bucket=day', { cookie })
+    expect(tt.status).toBe(200)
+    const ttBody = (await tt.json()) as { bucket: string; points: { task: string }[] }
+    expect(ttBody.bucket).toBe('day')
+    expect(Array.isArray(ttBody.points)).toBe(true)
+    expect((await call('GET', '/v1/trends/tasks', { cookie })).status).toBe(400)
   })
 
   it('cache wire: tier rides the token — untrusted writes its own scope, trusted never reads it', async () => {

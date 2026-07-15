@@ -1013,6 +1013,36 @@ export async function getRunTrends(args: {
   return await getJson(`/v1/trends/runs?${params}`)
 }
 
+export interface ProjectTaskTrendPoint {
+  task: string
+  t: number
+  runs: number
+  failures: number
+  avgDurationMs: number
+  p95DurationMs: number
+}
+
+/**
+ * Per-task, per-bucket time-series for the project view's task sparklines.
+ * `null` on an older serve without /v1/trends/tasks so the card degrades.
+ */
+export async function getProjectTaskTrends(
+  project: string,
+  args: { bucket?: 'hour' | 'day'; from?: number; to?: number; limit?: number } = {},
+): Promise<ProjectTaskTrendPoint[] | null> {
+  try {
+    const params = new URLSearchParams({ project })
+    if (args.bucket) params.set('bucket', args.bucket)
+    if (args.from !== undefined) params.set('from', String(args.from))
+    if (args.to !== undefined) params.set('to', String(args.to))
+    if (args.limit !== undefined) params.set('limit', String(args.limit))
+    const r = await getJson<{ points: ProjectTaskTrendPoint[] }>(`/v1/trends/tasks?${params}`)
+    return r.points
+  } catch {
+    return null
+  }
+}
+
 export async function getHeatmap(days = 30): Promise<HeatmapCellApi[]> {
   const r = await getJson<{ cells: HeatmapCellApi[] }>(`/v1/trends/heatmap?days=${days}`)
   return r.cells

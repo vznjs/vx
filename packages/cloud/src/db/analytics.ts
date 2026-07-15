@@ -510,7 +510,23 @@ export interface ProjectBranchFailure {
   firstCommit: string | null
   lastFailedAt: number
   branchesFailing: number
-  branches: { branch: string; firstFailedAt: number; firstCommit: string | null; failures: number }[]
+  branches: {
+    branch: string
+    firstFailedAt: number
+    firstCommit: string | null
+    failures: number
+  }[]
+}
+
+/** One (task, time-bucket) cell for the project view's per-task sparklines —
+ *  flat long-format; the client groups by task into a bucket-filled series. */
+export interface ProjectTaskTrendPoint {
+  task: string
+  t: number
+  runs: number
+  failures: number
+  avgDurationMs: number
+  p95DurationMs: number
 }
 
 export interface PeriodStats {
@@ -2129,7 +2145,8 @@ export class Analytics {
     const bucketMs = bucket === 'hour' ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000
     // Optional project scope (the project analytics view's failures-over-time
     // series) — byte-identical when absent.
-    const fProject = args.project !== undefined ? this.sql`AND project = ${args.project}` : this.sql``
+    const fProject =
+      args.project !== undefined ? this.sql`AND project = ${args.project}` : this.sql``
     // Clamp the window before it reaches the fill loop below: `to` no later
     // than now, and `from` no earlier than MAX_TREND_BUCKETS buckets back —
     // so a hostile `?from=0&to=1e15` can't drive the synchronous loop into a
@@ -2459,6 +2476,70 @@ export class Analytics {
     }
     // Most-recent first-failures on top (a fresh regression is the news).
     return [...byTask.values()].sort((a, b) => b.firstFailedAt - a.firstFailedAt).slice(0, limit)
+  }
+
+  /**
+   * Per-task, per-bucket time-series for the project view's task sparklines
+   * ("spot per-task outliers/spikes/trends"). Flat long-format rows: one per
+   * (task, bucket). The task set is bounded by a `top` CTE (highest total
+   * duration in the window, ≤50) so a project with many tasks can't fan out
+   * unbounded; the client groups by task into a bucket-filled series.
+   *
+   * Percentiles/averages aggregate IN SQL (`percentile_cont` + filtered `avg`)
+   * over the same non-hit executed-success subset the other duration surfaces
+   * use — no raw-row stream. Workspace-clamped, project-scoped,
+   * `started_at`-partition-pruned; the span is clamped to `MAX_TREND_BUCKETS`
+   * like `getRunTrends`, so a hostile range can't drive an unbounded scan.
+   */
+  async getProjectTaskTrends(
+    workspaceId: string,
+    project: string,
+    args: { bucket?: TrendBucket; from?: number; to?: number; limit?: number } = {},
+  ): Promise<ProjectTaskTrendPoint[]> {
+    const bucket: TrendBucket = args.bucket ?? 'day'
+    const bucketMs = bucket === 'hour' ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000
+    const now = Date.now()
+    const to = Math.min(args.to ?? now, now)
+    const defaultRangeMs = bucket === 'hour' ? 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000
+    const minFrom = to - (MAX_TREND_BUCKETS - 1) * bucketMs
+    const from = Math.max(args.from ?? to - defaultRangeMs, minFrom)
+    const limit = clampInt(args.limit ?? 12, 1, 50)
+    const rows = await this.sql<
+      {
+        task: string
+        t: string
+        runs: number
+        failures: number
+        avg_dur: number
+        p95: number | null
+      }[]
+    >`
+      WITH top AS (
+        SELECT task FROM task_runs
+        WHERE workspace_id = ${workspaceId} AND project = ${project}
+          AND started_at >= ${from} AND started_at <= ${to}
+        GROUP BY task ORDER BY SUM(duration_ms) DESC LIMIT ${limit}
+      )
+      SELECT r.task AS task,
+             (r.started_at / ${bucketMs}::bigint) * ${bucketMs}::bigint AS t,
+             count(*)::int AS runs,
+             SUM(CASE WHEN r.status = 'failed' THEN 1 ELSE 0 END)::int AS failures,
+             COALESCE(round(avg(r.duration_ms) FILTER (
+               WHERE (r.cache_hit IS NULL OR r.cache_hit = false) AND r.status = 'success')), 0)::int AS avg_dur,
+             round(percentile_cont(0.95) WITHIN GROUP (ORDER BY r.duration_ms) FILTER (
+               WHERE (r.cache_hit IS NULL OR r.cache_hit = false) AND r.status = 'success'))::int AS p95
+      FROM task_runs r JOIN top USING (task)
+      WHERE r.workspace_id = ${workspaceId} AND r.project = ${project}
+        AND r.started_at >= ${from} AND r.started_at <= ${to}
+      GROUP BY r.task, t ORDER BY r.task, t`
+    return rows.map((r) => ({
+      task: r.task,
+      t: num(r.t),
+      runs: r.runs,
+      failures: r.failures,
+      avgDurationMs: r.avg_dur,
+      p95DurationMs: r.p95 ?? 0,
+    }))
   }
 
   async getPeriodComparison(
