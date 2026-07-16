@@ -208,6 +208,47 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-16**: **The three ratio perf guards de-flaked — min-of-3
+  interleaved (`c0a4d0c`)**; found by doing what the corrected rule demands
+  (confirming the REAL CI conclusion after pushing). `518d051` and `8fbe0b5`
+  were RED on main — NOT on their content: both failed ONLY
+  `cache baseline: Cache.key scales near-linearly (1000/100 ≤ 30×)`
+  (1267/1268 pass) — a 50% false-red rate over four runs, which makes the CI
+  signal worthless. **Root cause (structural, not a bad bound):** a ratio of
+  two SINGLE-WINDOW medians multiplies both windows' noise — a lucky-fast
+  denominator inflates the ratio exactly like an unlucky-slow numerator — and
+  `VX_PERF_SCALE` (the CI 3× budget multiplier) can't absorb it because a
+  ratio is scale-free by design, so the noise headroom every absolute-budget
+  guard gets never applied to the ratio guards. All three ratio guards
+  (`scales near-linearly ≤30×`, `fast-path ≥5× vs cold`,
+  `batched recordRuns ≥3×` — the last also flaked locally under load) now run
+  through `benchRatioSides`: min-of-3 INTERLEAVED trials per side (noise only
+  ever ADDS time → the min median is the robust per-side estimate;
+  interleaving cancels drift — the repo's documented anti-flake method,
+  applied to the ratio guards that predated it). Bounds unchanged (they guard
+  algorithmic shape: linear ≈10× vs quadratic ≈100×). **Verified beyond a
+  green run:** 3× green isolated, core 1268/0, and 3× green at CI scale
+  (`CI=true` → 3× budgets) under FOUR busy-loop CPU hogs — heavier contention
+  than a shared runner (the same stress at dev-scale 1× correctly fails the
+  absolute budgets — that's the scale knob working, not a flake).
+  **Confirming `c0a4d0c`'s CI then exposed a SECOND, independent infra flake
+  (`a213a4b`):** its core job PASSED (the hardened ratio guards held on a
+  real runner) but the CLOUD job false-redded — 41 pg-backed tests failing
+  instantly in 9.5s. Root cause from the run log: the FIRST pg suite's
+  `beforeAll` (ephemeral-pg boot: initdb + pg_ctl + template migration)
+  exceeded bun's DEFAULT 5s hook timeout on the contended runner; the timeout
+  enforcement killed initdb mid-run ("caught signal") and every pg suite in
+  the process cascaded (the same signature had hit a loaded local run). The
+  boot isn't fixably slower — initdb already runs `--no-sync`, the server
+  `fsync=off` — the CEILING was too low: new `packages/cloud/bunfig.toml`
+  `[test] timeout = 30000` (headroom, not a wait; picked up by CI's
+  `cd packages/cloud && bun test` and the local-ci path). Verified
+  DIFFERENTIALLY that the knob governs hooks: `timeout = 1` → the boot hook
+  times out; `30000` → 54/54 green. Together these two commits close the
+  three distinct false-red sources observed this week (ratio-guard noise,
+  the stale-lint-cache push, the pg-boot hook timeout); CI conclusions for
+  `a213a4b`+log confirmed green after push.
+
 - **2026-07-16**: **Adversarial review of the project-analytics wave — five
   verified defects fixed, the rest of the surface REFUTED (`00868d3`); + docs
   currency (`8fbe0b5`) and the local-ci skill corrected** (cycle 6 of "Never
