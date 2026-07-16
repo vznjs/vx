@@ -15,6 +15,7 @@
 import path from 'node:path'
 import { VERSION } from '@vzn/vx'
 import { openDb, type DbClient } from '../db/client.js'
+import { ensureIndexes } from '../db/indexes.js'
 import { runMigrations } from '../db/migrate.js'
 import { maintainPartitions } from '../db/partitions.js'
 import { Analytics } from '../db/analytics.js'
@@ -349,11 +350,19 @@ export async function startServer(opts: {
     warn: (m) => log(`partition maintenance: ${m}`),
   })
   if (bootMaint.created > 0) log(`partitions: created ${bootMaint.created}`)
+  // Concurrent-index convergence (db/indexes.ts): CREATE INDEX CONCURRENTLY
+  // can't ride the migration transaction, so the desired indexes converge in
+  // the BACKGROUND after the server binds — a multi-minute build on a grown
+  // deployment must never sit on the boot path (the planner just keeps
+  // today's plan until the build lands). Never throws; a crash mid-build
+  // leaves catalog state the next boot/tick recovers.
+  const indexMaintenance = (): Promise<unknown> =>
+    ensureIndexes(db, { log, warn: (m) => log(`index maintenance: ${m}`) })
   const partitionTick = setInterval(() => {
     void maintainPartitions(db, {
       retentionDays: config.retentionDays,
       warn: (m) => log(`partition maintenance: ${m}`),
-    })
+    }).then(indexMaintenance)
   }, PARTITION_TICK_MS)
   partitionTick.unref()
 
@@ -578,6 +587,7 @@ export async function startServer(opts: {
   if (tls !== undefined) {
     log('transport: in-process TLS (HTTPS/1.1); use an edge proxy for HTTP/2')
   }
+  void indexMaintenance()
 
   return {
     origin: serve.origin,

@@ -9,6 +9,8 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import type { RunSummaryRecord } from '@vzn/vx'
 import { resolveServerConfig, startServer, type PlatformServer } from '../src/cli/server.js'
+import { openDb } from '../src/db/client.js'
+import { CONCURRENT_INDEXES } from '../src/db/indexes.js'
 import { ephemeralPg } from './helpers/ephemeral-pg.js'
 import { startFakeS3, type FakeS3 } from './helpers/fake-s3.js'
 import { bootPlatform } from './helpers/platform.js'
@@ -202,6 +204,7 @@ describe('platform e2e (real pg + fake S3)', () => {
   let s3: FakeS3
   let server: PlatformServer
   let dataDir: string
+  let dbUrl = ''
   let origin = ''
   let cookie = ''
   let orgId = ''
@@ -242,9 +245,10 @@ describe('platform e2e (real pg + fake S3)', () => {
     s3 = startFakeS3({ bucket: 'vx-artifacts' })
     dataDir = await mkdtemp(path.join(tmpdir(), 'vx-server-test-'))
     // An EMPTY database: boot itself must run the migrations.
+    dbUrl = await pg.createDatabase({ empty: true })
     const res = resolveServerConfig({
       ...BASE_ENV,
-      DATABASE_URL: await pg.createDatabase({ empty: true }),
+      DATABASE_URL: dbUrl,
       VX_CLOUD_BASE_URL: 'http://vx.example.dev',
       VX_CLOUD_S3_ENDPOINT: s3.origin,
       VX_CLOUD_PORT: '0',
@@ -271,6 +275,32 @@ describe('platform e2e (real pg + fake S3)', () => {
     expect(body['auth']).toBe('account')
     expect(body['cacheWire']).toBe(2)
     expect('workspaces' in body).toBe(false)
+  })
+
+  it('the concurrent-index pass converges in the background after bind (boot never waits on it)', async () => {
+    // startServer returned (the server is serving requests above) without
+    // awaiting ensureIndexes — the pass runs post-bind. Poll the catalog until
+    // both production partial indexes report valid, bounded.
+    const db = openDb(dbUrl)
+    try {
+      const isValid = async (name: string): Promise<boolean> => {
+        const rows = await db.sql<{ valid: boolean }[]>`
+          SELECT x.indisvalid AS valid
+            FROM pg_class c
+            JOIN pg_index x ON x.indexrelid = c.oid
+           WHERE c.relname = ${name}`
+        return rows.length > 0 && rows[0]!.valid
+      }
+      const names = CONCURRENT_INDEXES.map((e) => e.name)
+      let allValid = false
+      for (let i = 0; i < 150 && !allValid; i++) {
+        allValid = (await Promise.all(names.map(isValid))).every(Boolean)
+        if (!allValid) await Bun.sleep(100)
+      }
+      expect(allValid).toBe(true)
+    } finally {
+      await db.close()
+    }
   })
 
   it('register → login → mint tokens over real HTTP', async () => {
