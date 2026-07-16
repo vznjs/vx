@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Manual re-run without a push — for distinguishing runner-infra flakes
+  # from real regressions when a main run goes red.
+  workflow_dispatch:
 
 jobs:
   ci:
