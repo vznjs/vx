@@ -208,6 +208,62 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-16**: **Cycle 7 — the CONCURRENTLY index path SHIPPED
+  (`081efde` design, `420d02b` build); getRegressions got the LATERAL dedupe
+  (`9e71e44`); a CI incident diagnosed from run TIMING; and the bunfig
+  timeout fix CORRECTED (`d4bfa0e`)**. **(1) Concurrent indexes**
+  (docs/design/concurrent-index-migrations-2026-07.md): `runMigrations` stays
+  byte-untouched (its one-transaction guarantee is the foundation);
+  `db/indexes.ts` adds a declarative `ensureIndexes()` convergence pass — the
+  `maintainPartitions` sibling — because outside a transaction "DDL happened ⇔
+  ledger row exists" is unclosable, so the pg CATALOG is the ledger. Per
+  entry: `CREATE INDEX IF NOT EXISTS … ON ONLY` parent shell (instant,
+  INVALID) → per-partition `CREATE INDEX CONCURRENTLY` → `ATTACH PARTITION`
+  (attachment-probed, NOT name-probed — partitions created later by
+  `ensurePartitions` inherit AUTO-NAMED children) → parent flips valid on the
+  last attach. Recovery state machine (INVALID leftover → drop + rebuild;
+  valid-unattached → attach; attached → skip) means a crash mid-build never
+  wedges boot; replicas serialize on a session-level `pg_try_advisory_lock`
+  (key `0x76786302`) held on ONE `sql.reserve()` connection (a pool has no
+  same-connection guarantee); never-throws with per-entry/per-partition
+  isolation; `RETIRED_INDEXES` handles renames. Runs in the BACKGROUND after
+  bind + on the daily tick — a multi-minute build never blocks serving
+  (queries just keep their plan). First consumers:
+  `task_runs_failed_ws_started` + `invocations_failed_ws_started`
+  (`(workspace_id, started_at DESC) WHERE failed`) — the partial indexes
+  getNotifications/getRecentFailures/getRegressions/getProjectBranchFailures
+  wanted (task #79/#95 closed for (a)). Pinned on real pg: fresh convergence,
+  idempotent re-pass, new-partition inheritance, a REAL failed-CONCURRENTLY
+  injection (unique-over-duplicates → genuine `indisvalid=false` → next pass
+  recovers), try-lock skip, retirement, never-throws isolation, + a server
+  e2e (background pass builds both after a real boot). Verified empirically
+  before build: single-statement `sql.unsafe` CIC rides NO implicit
+  transaction on Bun.sql; the auto-named-children fact is why name-probing
+  would be wrong. **(2) getRegressions LATERAL dedupe (`9e71e44`)** — same
+  duplicate-run_id class as the branch-failures fix; a re-pushed summary can
+  no longer fake a ≥2-branch regression (pinned; cte-diff differential
+  byte-identical on well-formed data). **(3) CI incident forensics:** three
+  consecutive main reds (`9e71e44`, `081efde` docs-only, `b6648d4`
+  workflow-only) landed EXACTLY in a ~1h window where GitHub's jobs API 503'd
+  for every run. The discriminator when job logs are unreachable: RUN TIMING
+  from the runs-list payload — `9e71e44`'s run "failed" in 11 SECONDS (cannot
+  have executed a 70s suite → jobs never started → infra, proven). All
+  suites green locally on identical code throughout. `b6648d4` added
+  `workflow_dispatch` to ci.yml — the manual re-run button every flake triage
+  this week wanted. **(4) A false fix corrected honestly (`d4bfa0e`):**
+  `a213a4b`'s bunfig `[test] timeout` is NOT honored for hooks on Bun 1.3.11
+  (direct experiment: a 7s beforeAll still dies at 5s with the bunfig
+  in-tree) — and its "differential verification" was bogus (the grep counted
+  the `0 fail` summary line as a match). `bun test --timeout 30000`
+  verifiably works (same 7s hook survives) → the flag now rides the CI cloud
+  step + the local-ci skill; bunfig deleted. Caught by the implementation
+  agent's independent in-tree experiment — the lesson: a differential is only
+  as good as its failure-side assertion (assert the FAILURE SIGNATURE, never
+  a substring a passing run also prints). **Also pinned for posterity:**
+  Bun.sql's lazy SQLQuery passed to `expect(...).rejects.toThrow()` never
+  executes AND wedges the test process — await/`.then` the query and assert
+  the captured error instead (comment in db-indexes.test.ts).
+
 - **2026-07-16**: **The three ratio perf guards de-flaked — min-of-3
   interleaved (`c0a4d0c`)**; found by doing what the corrected rule demands
   (confirming the REAL CI conclusion after pushing). `518d051` and `8fbe0b5`
