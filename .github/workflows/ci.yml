@@ -108,4 +108,10 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: bun test (packages/cloud)
-        run: cd packages/cloud && bun test
+        # --timeout 30000: the pg-backed suites boot a real Postgres cluster in
+        # their first beforeAll; on a contended runner that boot can exceed
+        # bun's default 5s hook timeout, killing initdb mid-run ("caught
+        # signal") and cascading failures into every pg suite. The CLI flag is
+        # the mechanism that verifiably raises the HOOK timeout (bunfig's
+        # [test] timeout is not honored for hooks on current Bun).
+        run: cd packages/cloud && bun test --timeout 30000

@@ -23,7 +23,7 @@ bun test ./tests/
 
 # job 2: vx-cloud tests (real ephemeral Postgres + fake S3)
 rm -rf /tmp/vx-test-pg-*   # stale ephemeral-pg dirs fill the disk
-(cd packages/cloud && bun test)
+(cd packages/cloud && bun test --timeout 30000)
 ```
 
 ## What each step covers
