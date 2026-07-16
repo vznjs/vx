@@ -265,8 +265,11 @@ serving none of them is probably org-analytics scope creep.
     `getProjectBranchFailures`' plain join then attributed ONE failure to
     multiple branches and could flip `firstBranch` to the re-push → LATERAL
     pick-one (earliest header per run_id, indexed). NOTE: `getRegressions`
-    shares the join shape (pre-existing, same corruption class under a re-push)
-    — deferred to the backlog rather than churned in this fix. (3) **LOW** — the
+    shared the join shape (pre-existing, same corruption class under a re-push)
+    — fixed in the follow-up with the same LATERAL + a duplicate-header pin (a
+    faked two-branch regression from one re-pushed run → not surfaced); the
+    well-formed path is byte-identical (the cte-diff differential stays green).
+    (3) **LOW** — the
     `shorthash` DataTable cell rendered a NULL as the literal `null…`
     (branch-failures `firstCommit` is the first nullable shorthash binding) →
     guard null/''. (4) **LOW** — `getPeriodComparison`'s limit clamp (≤100)

@@ -594,6 +594,34 @@ describe('getRegressions', () => {
     // A single-branch failure isn't surfaced at minBranches 2.
     expect(await analytics.getRegressions(ws, { sinceDays: 7, minBranches: 3 })).toHaveLength(0)
   })
+
+  it('a duplicate run_id header cannot fake a multi-branch regression', async () => {
+    const { org, ws } = await newOrgWs(db, 'regress2')
+    const now = Date.now()
+    // Prior success, so a surfaced row would read "regressed".
+    await insertINV(db, ws, org, { runId: 'ok', startedAt: now - 5 * DAY, branch: 'main' })
+    await insertTR(db, ws, org, {
+      runId: 'ok',
+      project: 'app',
+      task: 'e2e',
+      status: 'success',
+      startedAt: now - 5 * DAY,
+    })
+    // ONE failing run whose summary was re-pushed with a changed startedAt —
+    // two headers (main + feat) for the same run_id. It must count as failing
+    // on ONE branch (the earliest header), not two.
+    await insertINV(db, ws, org, { runId: 'dup', startedAt: now - 2 * HOUR, branch: 'main' })
+    await insertINV(db, ws, org, { runId: 'dup', startedAt: now - HOUR, branch: 'feat' })
+    await insertTR(db, ws, org, {
+      runId: 'dup',
+      project: 'app',
+      task: 'e2e',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now - 2 * HOUR,
+    })
+    expect(await analytics.getRegressions(ws, { sinceDays: 7, minBranches: 2 })).toHaveLength(0)
+  })
 })
 
 describe('getProjectBranchFailures', () => {

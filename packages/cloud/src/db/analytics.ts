@@ -2313,8 +2313,17 @@ export class Analytics {
                  PARTITION BY r.project, r.task, inv.branch
                  ORDER BY r.started_at DESC, r.run_id DESC
                ) AS rn
-        FROM task_runs r JOIN invocations inv ON r.run_id = inv.run_id
-          AND inv.workspace_id = ${workspaceId}
+        -- LATERAL pick-one (the getProjectBranchFailures fix): invocations'
+        -- uniqueness is (started_at, run_id), so a re-pushed summary with a
+        -- changed startedAt yields TWO headers for one run — a plain join
+        -- lands the same task_run in two branch partitions, falsely crossing
+        -- the minBranches bar. Keep the earliest header per run.
+        FROM task_runs r
+        JOIN LATERAL (
+          SELECT i.branch FROM invocations i
+          WHERE i.run_id = r.run_id AND i.workspace_id = ${workspaceId}
+          ORDER BY i.started_at ASC LIMIT 1
+        ) inv ON true
         WHERE r.workspace_id = ${workspaceId} AND inv.branch IS NOT NULL
           AND r.started_at >= ${since}
           AND r.status IN ('success', 'failed', 'cache-hit', 'cache-hit-remote')
