@@ -208,6 +208,54 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-16**: **Adversarial review of the project-analytics wave — five
+  verified defects fixed, the rest of the surface REFUTED (`00868d3`); + docs
+  currency (`8fbe0b5`) and the local-ci skill corrected** (cycle 6 of "Never
+  stop. Follow cycles."). A repro-mandated hostile reviewer (real ephemeral pg
+  - real `startServer` + the real UI helpers) swept `5fb1ffa`+`83f09c0`.
+    **Fixed (each repro'd before the fix):** (1) **MED** — `getProjectTaskTrends`'
+    `top` CTE ranked tasks by `SUM(duration_ms)` over ALL rows while the series
+    displays only executed successes, so a cache-hit-dominated task (60 hits ×
+    50ms beat 2 executions × 1000ms) crowded a genuinely slow executed task out
+    of the top-N and rendered an all-zero sparkline in its place → rank by the
+    DISPLAYED population (`SUM(...) FILTER (non-hit success) DESC NULLS LAST`).
+    (2) **LOW-MED** — `invocations` uniqueness is `(started_at, run_id)`, so a
+    re-pushed summary with a changed `startedAt` yields TWO headers for one run;
+    `getProjectBranchFailures`' plain join then attributed ONE failure to
+    multiple branches and could flip `firstBranch` to the re-push → LATERAL
+    pick-one (earliest header per run_id, indexed). NOTE: `getRegressions`
+    shares the join shape (pre-existing, same corruption class under a re-push)
+    — deferred to the backlog rather than churned in this fix. (3) **LOW** — the
+    `shorthash` DataTable cell rendered a NULL as the literal `null…`
+    (branch-failures `firstCommit` is the first nullable shorthash binding) →
+    guard null/''. (4) **LOW** — `getPeriodComparison`'s limit clamp (≤100)
+    silently zeroed the project view's Δavg column past the top-100 movers in a
+    large project (the table holds 500) → clamp raised to 500 (movers aggregate
+    in SQL; the clamp only bounds the sorted slice). (5) **LOW** — the server's
+    `avg=0` sentinel (an all-hit/all-failed bucket) plotted as a to-zero dip
+    that read "got fast" and reported a 0ms `_latest` → the sparkline now draws
+    the EXECUTED-duration series only (`foldTaskTrendPoints`, exported + unit-
+    pinned; an all-sentinel task honestly shows an empty series). **REFUTED by
+    executed repro (held):** workspace clamps incl. a same-run_id decoy in a
+    foreign ws; BRANCH_CAP keeps rank-1 under 15-branch + 20-way-tie storms; tie
+    determinism (`branch ASC`); hostile `from=0&to=1e15&limit=1e9` clamps;
+    SQL-injection/unicode project names; both new routes' 401/allowlist/400
+    gates; `_taskRef` link encoding; `rankProjects` identity/tie/absent-project
+    edges; `mergeMoverDelta` null paths; Spark viewBox NaN paths. **Accepted
+    residual (measured):** `/v1/trends/tasks` bounds at tasks×buckets (~72k
+    rows/462ms worst-case at 50 hourly tasks over 60d) — inside the established
+    bounded-array bar; a total-row cap is a noted tightening. **Also:** the
+    dashboard guide now documents the project drill-in's five cards + the
+    timeframe selector (`8fbe0b5`), and `.claude/skills/local-ci` was rewritten —
+    it referenced package.json scripts deleted long ago; it now runs the RAW
+    gate commands (cache-proof, the phase-1 stale-lint-cache lesson), covers
+    BOTH CI jobs, lists the known load-flakes, and ends with "confirm the real
+    CI conclusion after pushing". Full gate green: fmt clean (417 files), oxlint
+    clean, core 1268/0, cloud 462 pass (the 2 full-suite fails = the documented
+    db-migrate connection-slot flake, 11/11 isolated), docs build 2/2, browser
+    re-verify PASS (sparklines correctly drop to the executed-only series). NO
+    CACHE/schema/wire bump.
+
 - **2026-07-15**: **Project analytics phase 2 — per-task duration sparklines
   (`83f09c0`); + fixed a phase-1 CI-red** (the literal "see all tasks and their
   history over time, spot outliers/spikes/trends" ask). Phase 1 gave a
