@@ -1,0 +1,9 @@
+# Test-runner config for the cloud package. The pg-backed suites boot a REAL
+# Postgres cluster in their first beforeAll (ephemeral-pg.ts: initdb + pg_ctl
+# + migrate the template) — on a contended shared CI runner that first boot
+# can exceed bun's DEFAULT 5s hook timeout, and the timeout enforcement kills
+# initdb mid-run ("caught signal"), cascading failures into every pg suite in
+# the process (this false-redded main). 30s is headroom for the boot, not a
+# wait: fast machines are unaffected, and a genuinely hung test still fails.
+[test]
+timeout = 30000
