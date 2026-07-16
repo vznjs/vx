@@ -673,6 +673,41 @@ describe('getProjectBranchFailures', () => {
     expect(rows.every((r) => r.task !== 'web')).toBe(true)
   })
 
+  it('a duplicate run_id header (re-pushed summary, new startedAt) attributes once', async () => {
+    const { org, ws } = await newOrgWs(db, 'branchfail3')
+    const now = Date.now()
+    // Two invocation headers for ONE run_id — (started_at, run_id) uniqueness
+    // permits this on a re-push. Earliest header (main) is the original.
+    await insertINV(db, ws, org, {
+      runId: 'dup',
+      startedAt: now - 2 * HOUR,
+      branch: 'main',
+      commit: 'sha-orig',
+    })
+    await insertINV(db, ws, org, {
+      runId: 'dup',
+      startedAt: now - HOUR,
+      branch: 'feat',
+      commit: 'sha-repush',
+    })
+    await insertTR(db, ws, org, {
+      runId: 'dup',
+      project: 'app',
+      task: 'e2e',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now - 2 * HOUR,
+    })
+    const rows = await analytics.getProjectBranchFailures(ws, 'app', { sinceDays: 14 })
+    expect(rows).toHaveLength(1)
+    // ONE failure on ONE branch — the earliest header wins; never doubled.
+    expect(rows[0]!.branchesFailing).toBe(1)
+    expect(rows[0]!.firstBranch).toBe('main')
+    expect(rows[0]!.firstCommit).toBe('sha-orig')
+    expect(rows[0]!.branches).toHaveLength(1)
+    expect(rows[0]!.branches[0]!.failures).toBe(1)
+  })
+
   it('ignores successful runs and null-branch invocations', async () => {
     const { org, ws } = await newOrgWs(db, 'branchfail2')
     const now = Date.now()
@@ -793,6 +828,36 @@ describe('getProjectTaskTrends', () => {
     // Only the single heaviest task survives the LIMIT.
     const pts = await analytics.getProjectTaskTrends(ws, 'app', { bucket: 'day', limit: 1 })
     expect(new Set(pts.map((p) => p.task))).toEqual(new Set(['c']))
+  })
+
+  it('ranks top-N by EXECUTED duration — cache-hit-heavy tasks never crowd out an executed one', async () => {
+    const { org, ws } = await newOrgWs(db, 'tasktrend3')
+    const now = Date.now() - HOUR
+    // hit-happy: huge summed duration, but ALL cache hits (zero executions) —
+    // its "series" would be all zeros, so it must not claim a top slot.
+    for (let i = 0; i < 10; i++) {
+      await insertINV(db, ws, org, { runId: `h${i}`, startedAt: now })
+      await insertTR(db, ws, org, {
+        runId: `h${i}`,
+        project: 'app',
+        task: 'hit-happy',
+        status: 'cache-hit',
+        cacheHit: true,
+        duration: 500,
+        startedAt: now,
+      })
+    }
+    // exec-real: smaller total, but genuinely executed.
+    await insertINV(db, ws, org, { runId: 'e0', startedAt: now })
+    await insertTR(db, ws, org, {
+      runId: 'e0',
+      project: 'app',
+      task: 'exec-real',
+      duration: 1000,
+      startedAt: now,
+    })
+    const pts = await analytics.getProjectTaskTrends(ws, 'app', { bucket: 'day', limit: 1 })
+    expect(new Set(pts.map((p) => p.task))).toEqual(new Set(['exec-real']))
   })
 })
 

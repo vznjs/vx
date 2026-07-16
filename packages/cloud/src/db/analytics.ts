@@ -2431,7 +2431,16 @@ export class Analytics {
                MAX(r.started_at)::bigint AS last_failed_at,
                COUNT(*)::int AS failures
         FROM task_runs r
-        JOIN invocations inv ON inv.run_id = r.run_id AND inv.workspace_id = ${workspaceId}
+        -- LATERAL pick-one: invocations' uniqueness is (started_at, run_id),
+        -- so a re-pushed summary with a changed startedAt yields TWO header
+        -- rows for one run — a plain join would attribute a single failure to
+        -- multiple branches. Keep the earliest header (the original push);
+        -- indexed per failed row via invocations(run_id).
+        JOIN LATERAL (
+          SELECT i.branch, i.commit_sha FROM invocations i
+          WHERE i.run_id = r.run_id AND i.workspace_id = ${workspaceId}
+          ORDER BY i.started_at ASC LIMIT 1
+        ) inv ON true
         WHERE r.workspace_id = ${workspaceId} AND r.project = ${project}
           AND r.started_at >= ${since} AND r.status = 'failed'
           AND inv.branch IS NOT NULL
@@ -2518,7 +2527,14 @@ export class Analytics {
         SELECT task FROM task_runs
         WHERE workspace_id = ${workspaceId} AND project = ${project}
           AND started_at >= ${from} AND started_at <= ${to}
-        GROUP BY task ORDER BY SUM(duration_ms) DESC LIMIT ${limit}
+        GROUP BY task
+        -- Rank by the SAME population the series displays (executed
+        -- successes) — ranking over ALL rows lets a cache-hit-dominated task
+        -- crowd out a genuinely slow executed task with an all-zero series.
+        ORDER BY SUM(duration_ms) FILTER (
+          WHERE (cache_hit IS NULL OR cache_hit = false) AND status = 'success'
+        ) DESC NULLS LAST
+        LIMIT ${limit}
       )
       SELECT r.task AS task,
              (r.started_at / ${bucketMs}::bigint) * ${bucketMs}::bigint AS t,
@@ -2550,7 +2566,11 @@ export class Analytics {
     // enough negative to make `avgByTask` scan every partition.
     const windowDays = clampInt(args.windowDays ?? 7, 1, MAX_WINDOW_DAYS)
     const minRuns = Math.max(1, args.minRuns ?? 3)
-    const limit = clampInt(args.limit ?? 8, 1, 100)
+    // 500 matches the project view's task-table bound — its Δavg column joins
+    // movers by task, so a lower clamp silently zeroes the tail's deltas. The
+    // movers set is already aggregated in SQL; the clamp only bounds the
+    // sorted slice returned.
+    const limit = clampInt(args.limit ?? 8, 1, 500)
     const scope: { project?: string; task?: string } = {}
     if (args.project !== undefined) scope.project = args.project
     if (args.task !== undefined) scope.task = args.task

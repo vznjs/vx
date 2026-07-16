@@ -576,7 +576,9 @@ function renderField(col: Column, row: Row, max: number) {
       return <span class={toneText(tone)}>{pct !== undefined ? `${pct}%` : '—'}</span>
     }
     case 'shorthash':
-      return <span class="text-fg-3 text-[10px]">{row[col.key] !== undefined ? `${String(row[col.key]).slice(0, col.len ?? 10)}…` : '—'}</span>
+      // null/'' guard mirrors the generic cell below — a nullable hash field
+      // (e.g. branch-failures firstCommit) must render '—', not "null…".
+      return <span class="text-fg-3 text-[10px]">{row[col.key] !== undefined && row[col.key] !== null && row[col.key] !== '' ? `${String(row[col.key]).slice(0, col.len ?? 10)}…` : '—'}</span>
   }
   const raw = row[col.key]
   if (raw === null || raw === undefined || raw === '') return <span class="text-fg-3">—</span>

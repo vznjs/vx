@@ -364,12 +364,10 @@ function mergeMoverDelta(
  * SparkList binds. "Spot per-task outliers/spikes/trends" at a glance. `null` =
  * older serve without /v1/trends/tasks.
  */
-async function projectTaskTrendItems(
+export function foldTaskTrendPoints(
   project: string,
-  args: { bucket: 'hour' | 'day'; from: number; to: number },
-): Promise<Record<string, unknown>[] | null> {
-  const points = await getProjectTaskTrends(project, { ...args, limit: 20 })
-  if (points === null) return null
+  points: { task: string; t: number; avgDurationMs: number; failures: number }[],
+): Record<string, unknown>[] {
   const byTask = new Map<string, { t: number; avg: number; failures: number }[]>()
   for (const p of points) {
     const arr = byTask.get(p.task) ?? []
@@ -378,13 +376,18 @@ async function projectTaskTrendItems(
   }
   const items = [...byTask.entries()].map(([task, cells]) => {
     cells.sort((a, b) => a.t - b.t)
-    const series = cells.map((c) => c.avg)
+    // avg 0 is the server's "no executed success in this bucket" sentinel
+    // (all-hit or all-failed) — plotting it would draw a to-zero dip that
+    // reads as "got fast", and a trailing sentinel would report a 0ms latest.
+    // The sparkline is the EXECUTED-duration series; failures surface via the
+    // trend dot, hits aren't durations at all.
+    const series = cells.map((c) => c.avg).filter((v) => v > 0)
     const failures = cells.reduce((s, c) => s + c.failures, 0)
     const latest = series.length > 0 ? series[series.length - 1]! : 0
-    const first = series.find((v) => v > 0) ?? 0
-    const last = [...series].reverse().find((v) => v > 0) ?? 0
+    const first = series[0] ?? 0
+    const last = latest
     // Trend over the window (duration): up = slower (bad), down = faster (good).
-    const trend = first === 0 || last === 0 ? 'flat' : last > first * 1.1 ? 'up' : last < first * 0.9 ? 'down' : 'flat'
+    const trend = first === 0 || last === 0 || series.length < 2 ? 'flat' : last > first * 1.1 ? 'up' : last < first * 0.9 ? 'down' : 'flat'
     return {
       task,
       _taskRef: `${project}#${task}`,
@@ -398,6 +401,15 @@ async function projectTaskTrendItems(
   })
   // Slowest-latest on top — the task most worth a look.
   return items.sort((a, b) => (b._latest as number) - (a._latest as number))
+}
+
+async function projectTaskTrendItems(
+  project: string,
+  args: { bucket: 'hour' | 'day'; from: number; to: number },
+): Promise<Record<string, unknown>[] | null> {
+  const points = await getProjectTaskTrends(project, { ...args, limit: 20 })
+  if (points === null) return null
+  return foldTaskTrendPoints(project, points)
 }
 
 /**

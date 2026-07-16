@@ -4,7 +4,7 @@
 // stay byte-identical), and trends switch to hourly buckets only for 24h.
 
 import { describe, expect, it } from 'bun:test'
-import { trendArgsOf, windowDaysOf } from './data.ts'
+import { foldTaskTrendPoints, trendArgsOf, windowDaysOf } from './data.ts'
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -21,6 +21,57 @@ describe('windowDaysOf', () => {
     expect(windowDaysOf({}, 1)).toBe(1)
     expect(windowDaysOf({ window: 'bogus' }, 14)).toBe(14)
     expect(windowDaysOf({ window: '' }, 7)).toBe(7)
+  })
+})
+
+describe('foldTaskTrendPoints', () => {
+  const pt = (task: string, t: number, avg: number, failures = 0) => ({
+    task,
+    t,
+    avgDurationMs: avg,
+    failures,
+  })
+
+  it('drops 0-avg sentinel buckets (all-hit / all-failed) from the drawn series', () => {
+    // Day 2 had only a failure → server emits avg 0. It must not plot as a
+    // to-zero dip, and the LATEST value must be the last EXECUTED duration.
+    const items = foldTaskTrendPoints('app', [
+      pt('build', 1000, 500),
+      pt('build', 2000, 0, 1),
+      pt('build', 3000, 600),
+      pt('build', 4000, 0, 1),
+    ])
+    expect(items).toHaveLength(1)
+    expect(items[0]!.series).toEqual([500, 600])
+    expect(items[0]!._latest).toBe(600)
+    expect(items[0]!._failures).toBe(2)
+  })
+
+  it('an all-sentinel task keeps an empty series and a 0 latest (honest empty)', () => {
+    const items = foldTaskTrendPoints('app', [pt('hits-only', 1000, 0), pt('hits-only', 2000, 0)])
+    expect(items[0]!.series).toEqual([])
+    expect(items[0]!._latest).toBe(0)
+    expect(items[0]!._trend).toBe('flat')
+  })
+
+  it('trend reads the executed series ends: slower → up, faster → down, one point → flat', () => {
+    const up = foldTaskTrendPoints('app', [pt('a', 1, 100), pt('a', 2, 0, 1), pt('a', 3, 200)])
+    expect(up[0]!._trend).toBe('up')
+    expect(up[0]!._dir).toBe('slower')
+    const down = foldTaskTrendPoints('app', [pt('a', 1, 200), pt('a', 2, 100)])
+    expect(down[0]!._trend).toBe('down')
+    const single = foldTaskTrendPoints('app', [pt('a', 1, 0), pt('a', 2, 500)])
+    expect(single[0]!._trend).toBe('flat')
+  })
+
+  it('sorts slowest-latest on top and time-orders unsorted rows', () => {
+    const items = foldTaskTrendPoints('app', [
+      pt('slow', 2000, 900),
+      pt('fast', 1000, 50),
+      pt('slow', 1000, 100), // arrives out of order — must sort before 2000
+    ])
+    expect(items.map((i) => i.task)).toEqual(['slow', 'fast'])
+    expect(items[0]!.series).toEqual([100, 900])
   })
 })
 
