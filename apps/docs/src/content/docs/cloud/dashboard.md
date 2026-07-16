@@ -98,21 +98,40 @@ during a refresh — only the first load shows a skeleton.
 - **Workspace** — the workspace entity page: identity and links into the
   other areas, plus per-workspace rollups.
 - **Projects** / **Tasks** — per `(project, task)` analytics: runs,
-  success rate, hit rate, avg/p50/p99, a duration sparkline, and a
-  **trend row** (this 7 days vs the prior 7, with signed deltas — "did MY
+  success rate, hit rate, avg/p50/p99, and a **trend row** (this window
+  vs the prior equal-length one, with signed deltas — "did MY
   project/task get faster or slower?"). A task detail adds a **Debug
   card** (one-click jumps to the last *failed* run with logs pre-opened,
   the latest run, and the latest artifact), a flaky badge, and a
   **Recommendations** card that turns flaky / hermeticity / caching
   signals into concrete config fixes (each with a copy-pasteable snippet).
+- **Project detail** — a single-dev drill-in for a project you own, all
+  windowed by the same **timeframe selector** (24h · 7d · 30d · 90d,
+  persisted in the URL). **Task duration trends** draws a per-task
+  sparkline of average executed duration over the window — spot the
+  outlier or the task that spiked, colored by direction (slower = red).
+  **Failures & runs over time** charts the project's runs / hits /
+  failures per bucket. **How this project ranks** compares it against
+  every other project on three axes (failure rate, average exec time,
+  hit rate) with your project highlighted at its true rank. **Where
+  failures were first noticed — across branches** names, for each failing
+  task, the branch it *first* started failing on, when, and the commit —
+  so you know whether `main` broke or a feature branch found it first.
+  The lifetime task table gains a **Δavg** column (each task's
+  period-over-period average delta), and **Recent executions** lists the
+  project's last runs — a row opens the run with that task's logs, the
+  hash opens the cache entry.
 - **Cache** — hit-rate split (local vs remote), estimated time saved, and
   a per-entry page (facts, the runs that produced/restored it, artifact
   download).
 - **Artifacts** — the S3 artifact store made visible: every artifact your
   principal may read (trust-scoped), with size/age/tier, best-effort
   task/run provenance links, and authenticated downloads.
-- **Insights** — the analytics area. **Trending tiles** compare this
-  7-day window against the prior one (runs, failure rate, cache hit rate,
+- **Insights** — the analytics area, windowed by a **timeframe selector**
+  (24h · 7d · 30d · 90d — persisted in the URL, so a windowed view is
+  shareable; 24h switches the trend charts to hourly buckets).
+  **Trending tiles** compare the selected window against the prior
+  equal-length one (runs, failure rate, cache hit rate,
   average executed duration). A **Biggest movers** table ranks tasks
   whose average duration shifted most, and a **Started failing across
   branches** card names tasks whose most-recent run fails on ≥2 distinct
