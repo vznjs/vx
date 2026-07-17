@@ -3,10 +3,38 @@ title: Remote caching
 description: A local cache makes your own runs instant with zero setup. To share results across machines, a remote-cache plugin fills core's RemoteCacheLayer seam — the first-party shared cache is vx Cloud, and any other backend plugs in the same way.
 ---
 
+import Terminal from '../../../components/Terminal.astro'
+
 A local cache makes *your* repeat runs instant, and it needs **no setup** —
 it's on by default for every `vx run`. A **shared** cache extends that
 across machines: CI restores what a teammate already built, and a fresh
 clone is fast on its first run.
+
+**See it.** A CI runner on a fresh clone has an empty *local* cache — but
+your teammate already built these on their machine. With a shared cache
+connected, the runner **downloads** the results (`⇣ remote`) instead of
+rebuilding them: a green CI in 131 ms on a machine that has never run this
+code.
+
+<Terminal
+  title="ci — vx"
+  command="vx run build --all"
+  states={[
+    {
+      tasks: [
+        { glyph: '⇣', time: '41ms', status: 'success', cache: 'remote', cacheTone: 'blue', proj: '@acme/ui', task: 'build' },
+        { glyph: '⇣', time: '38ms', status: 'success', cache: 'remote', cacheTone: 'blue', proj: '@acme/api', task: 'build' },
+        { glyph: '⇣', time: '52ms', status: 'success', cache: 'remote', cacheTone: 'blue', proj: '@acme/web', task: 'build' },
+      ],
+      meters: [
+        { label: 'tasks', on: 46, off: 0, tone: 'green', legend: '3 success', legendRest: ' · 3 total' },
+        { label: 'cache', on: 46, off: 0, tone: 'blue', legend: '3 remote', legendTone: 'blue' },
+      ],
+      info: '8 workers · local + remote cache',
+      time: '131ms',
+    },
+  ]}
+/>
 
 Sharing is the only part that needs a server. A solo developer needs
 nothing here — the [local cache](../caching/) is automatic.

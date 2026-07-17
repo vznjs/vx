@@ -11,6 +11,23 @@ with bounded parallelism.
 The syntax is the Turborepo/Nx micro-syntax — if you're coming from
 either, it's identical.
 
+**See it.** Here's what `build: { dependsOn: ['^build'] }` produces for
+an app that depends on two libraries. The two leaf libraries build in
+parallel; the app's build waits for both; its test waits for its build.
+vx derives this graph automatically — you never list the edges by hand.
+`vx run build --graph` prints the same graph as text or Graphviz DOT.
+
+```mermaid
+graph LR
+  uiBuild["@acme/ui#build"] --> webBuild["@acme/web#build"]
+  apiBuild["@acme/api#build"] --> webBuild
+  webBuild --> webTest["@acme/web#test"]
+  classDef leaf fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
+  classDef app fill:#1e293b,stroke:#a78bfa,color:#e2e8f0
+  class uiBuild,apiBuild leaf
+  class webBuild,webTest app
+```
+
 ## The three forms
 
 ```ts
