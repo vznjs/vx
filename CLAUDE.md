@@ -208,6 +208,53 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-17**: **The trusted-GET S3 HEAD-skip SHIPPED — the deferred
+  backlog item (b), completed from the stashed WIP + adversarially
+  verified sound (zero defects)** (cycle 8). On a presigning (S3)
+  backend, `GET /v1/cache/:hash` by a principal whose read-scope set has
+  exactly ONE scope (trusted tokens) now skips the per-scope existence
+  HEAD and answers 307 to the presigned URL for that sole scope directly
+  — the HEAD decided nothing (the presigned key is server-derived either
+  way), and it was a wasted S3 round-trip per GET on the hottest surface.
+  **Wire change, stated honestly:** a single-scope GET of an ABSENT hash
+  is now 307 (bucket 404s → the client degrades to a miss — pinned as a
+  dedicated native-cache test, which did NOT previously exist) instead of
+  a serve-side 404; the end-to-end outcome is identical, the round-trip
+  moves off the serve. Multi-scope (untrusted: own sub-scope ∪ trusted)
+  GETs keep HEAD-per-scope resolution + the serve-side 404;
+  `HEAD`/`hasMany`/`list` are untouched (planRun predictions + the batch
+  prefetch stay accurate); `LocalDirBackend` (no 307 path) is
+  byte-identical via the `localPathFor` gate. Down bucket: single-scope
+  GET = 307 whose client follow fails → quiet degrade-to-miss (presign is
+  offline SigV4 — the serve can't observe the outage); HEAD/PUT/
+  multi-scope keep the loud 502; the boot-time S3 probe still fails loud.
+  **Adversarial review (repro-mandated, 15 executed attacks): SOUND.**
+  Refuted: scope forgery (13 hostile `x-vx-cache-scope` values + hostile
+  hashes → the Location is ALWAYS the caller's own scope key; `HASH_RE`
+  400s before any presign), untrusted-reaches-fast-path (readScopeSpecs
+  is unconditionally 2 entries for untrusted — repro'd 2 HEADs under 5
+  hostile/missing subs), existence oracle (the 307-for-both shape leaks
+  STRICTLY LESS than the old present/absent split), client degradation
+  (404-follow → null; strict-ACL 403-follow → throw → LayeredCache miss
+  with a REAL run() still succeeding; one-hop; bearer + scope header
+  dropped cross-origin; tampered body → digest mismatch → miss), PUT
+  immutability (409 + HEAD-before-body intact), and the zero-HEAD spy
+  pin's discriminating power (the same spy records 2 heads on the
+  untrusted path). **Accepted residuals:** a persistently mis-ACL'd
+  bucket (403 on absent keys) turns trusted cold misses into QUIET misses
+  (never-fail posture; HEAD/PUT/multi-scope still 502 loud — noted in the
+  fast-path comment); a cold trusted GET relocates the absent-probe
+  round-trip to client→bucket (the batch probe still prunes absent hashes
+  server-side for the prefetch flow). Docs shipped in the same wave
+  (wire-protocol.md single-scope-307 contract; the native-cache-wire
+  design doc's `GET → 404 miss` row gained a dated as-shipped deviation
+  note — the 2026-07-08 doc-correction precedent). Suites: the four
+  touched cloud suites 101 pass / 0 fail (+ the reviewer's 15-repro suite
+  green, then deleted); lint + fmt clean. NO CACHE_VERSION/schema/
+  DIST_PROTOCOL bump (server-side redirect shape only; `cacheWire` stays
+  2 — the client needed no change, its one-hop follow + 404-as-miss
+  predate this).
+
 - **2026-07-17**: **The document-every-cloud-feature directive EXECUTED —
   a full audit→write→verify docs program over the 8 cloud pages + a new
   HTTP API reference (`a4a5051`, `50dbe57`)** (owner: "document each and
@@ -7158,11 +7205,9 @@ reference, every identified gap filled, astro build clean + a
 zero-broken-links crawl over `dist/`. Keep the standard alive: a new
 cloud feature is not DONE until its docs land in the same wave.
 
-Also queued: the trusted-GET S3 HEAD-skip (backlog (b) — needs the
-adversarial pass before ship). A PARTIAL implementation from a killed
-agent run sits in `git stash` ("WIP: trusted-GET HEAD-skip"); the full
-brief is preserved in the session task list — either resume the stash
-or drop it and relaunch clean.
+The trusted-GET S3 HEAD-skip (backlog (b)) SHIPPED same day —
+completed from the stashed WIP, adversarially verified sound (see the
+decision-log entry).
 
 Near-term roadmap = the "road to best-CI" ranked table in
 `docs/design/ci-platform-2026-07.md` (owner: "Make vx the best CI env

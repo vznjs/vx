@@ -63,6 +63,17 @@ never from the request.
 | `PUT /v1/cache/:hash`      | Upload an artifact (`.tar.zst`); re-PUT of an existing hash is `409`.       |
 | `POST /v1/cache/batch`     | **Batch existence probe** — one round-trip for many hashes (`cacheWire ≥ 2`). |
 
+A `GET` by a token with a **single** read scope (a trusted token) answers
+`307` without probing the bucket first — the pre-signed URL binds the
+token's own server-derived scope key either way, so the server skips one
+S3 round-trip per fetch on its hottest surface. That means a single-scope
+`GET` of an **absent** hash is also a `307`: the bucket then answers `404`
+and the vx client treats it as a plain cache miss. A multi-scope token (an
+untrusted PR token, which reads its own sub-scope ∪ trusted) still gets a
+server-side `404` for an absent hash — there the server must probe to
+decide *which* scope's key to sign. `HEAD` and the batch probe always
+answer existence server-side.
+
 `POST /v1/cache/batch` takes `{ "hashes": string[] }` (up to 1024 per
 request) and returns `{ "present": string[] }` — the subset stored in the
 token's read scopes. It collapses N per-hash `HEAD`s into a single request, so

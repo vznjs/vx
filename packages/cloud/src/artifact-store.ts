@@ -403,7 +403,8 @@ export class ArtifactStore {
     // trusted principal (trusted is flat).
     const sub = subScopeOf(req.headers.get('x-vx-cache-scope'))
     const wScope = writeScope(principal, sub)
-    if (!this.validScope(wScope) || !readScopes(principal, sub).every((s) => this.validScope(s))) {
+    const rScopes = readScopes(principal, sub)
+    if (!this.validScope(wScope) || !rScopes.every((s) => this.validScope(s))) {
       return Response.json({ error: 'invalid scope' }, { status: 400 })
     }
 
@@ -417,6 +418,38 @@ export class ArtifactStore {
     }
 
     if (req.method === 'GET') {
+      // Single-read-scope fast path on an offloaded (presigning) backend: the
+      // per-scope existence HEAD exists to pick WHICH readable scope's key to
+      // presign, so with exactly ONE scope it decides nothing — the presigned
+      // URL binds the principal's own server-derived scope key either way.
+      // Skip it: one S3 round-trip saved per GET on the hottest surface (a
+      // distributed build issues thousands). WIRE CONSEQUENCE (deliberate): a
+      // single-scope GET of an ABSENT hash now answers 307 — the bucket then
+      // 404s and the client treats a post-307 404 as a cache miss (pinned in
+      // native-cache.test.ts) — instead of a serve-side 404; the end-to-end
+      // outcome is identical, the round-trip moves off the serve. (A
+      // strict-ACL bucket that answers 403 for an absent key — AWS without
+      // s3:ListBucket — makes the client THROW instead, which LayeredCache
+      // also degrades to a miss; never a wrong hit either way.) Multi-scope
+      // principals (untrusted: own sub-scope ∪ trusted) keep the
+      // HEAD-per-scope resolution below — there the HEAD is what decides
+      // which scope's key wins.
+      if (rScopes.length === 1) {
+        const soleKey = this.key(rScopes[0]!, hash)
+        if (this.backend.localPathFor(soleKey) === null) {
+          try {
+            const target = await this.backend.presignGet(soleKey)
+            if (target !== null) {
+              return new Response(null, { status: 307, headers: { Location: target } })
+            }
+            // A backend with neither a local path nor a presigner: fall
+            // through to the resolving path (absent → 404, present → 502 —
+            // exactly the pre-fast-path behavior).
+          } catch (err) {
+            return this.backendError('GET', err)
+          }
+        }
+      }
       let found: string | null
       try {
         found = await this.findReadKey(hash, principal, sub)

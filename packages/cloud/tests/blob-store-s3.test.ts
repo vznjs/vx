@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { run, type Logger } from '@vzn/vx'
 import { ArtifactStore, type Principal } from '../src/artifact-store.js'
+import type { BlobBackend } from '../src/blob/backend.js'
 import { S3Backend } from '../src/blob/s3.js'
 import { NativeCacheClient } from '../src/native-cache.js'
 import { startFakeS3, type FakeS3 } from './helpers/fake-s3.js'
@@ -25,6 +26,23 @@ const digestOf = (bytes: Uint8Array): string =>
 
 const trusted: Principal = { orgId: 'default', tier: 'trusted', bucket: 'default' }
 const untrusted: Principal = { orgId: 'default', tier: 'untrusted', bucket: 'default' }
+
+/** Wrap a backend recording every head() key — pins the single-scope GET's
+ *  zero-HEAD fast path and the multi-scope resolution order. */
+function withHeadCount(inner: BlobBackend): { backend: BlobBackend; heads: string[] } {
+  const heads: string[] = []
+  const backend: BlobBackend = {
+    head: (key) => {
+      heads.push(key)
+      return inner.head(key)
+    },
+    put: (key, file, size, meta) => inner.put(key, file, size, meta),
+    presignGet: (key) => inner.presignGet(key),
+    list: (prefix) => inner.list(prefix),
+    localPathFor: (key) => inner.localPathFor(key),
+  }
+  return { backend, heads }
+}
 
 describe('ArtifactStore on the S3 backend', () => {
   let fake: FakeS3
@@ -176,9 +194,16 @@ describe('ArtifactStore on the S3 backend', () => {
     )
     expect(prPut.status).toBe(200)
     expect(fake.objects.has(`default/untrusted/pr-1/${hash}.tar.zst`)).toBe(true)
-    // A trusted build for the SAME key never sees it.
-    expect((await get(store, hash, trusted)).status).toBe(404)
-    // Another PR never sees it either.
+    // A trusted build for the SAME key never sees it: its single-scope GET
+    // answers 307 bound to its OWN trusted scope key (the HEAD-skip fast
+    // path) — NEVER the untrusted key where the poison lives — and the
+    // bucket 404s there, so the trusted client reads a MISS, not the poison.
+    const trustedGet = await get(store, hash, trusted)
+    expect(trustedGet.status).toBe(307)
+    const trustedLoc = new URL(trustedGet.headers.get('location')!)
+    expect(trustedLoc.pathname).toBe(`/vx-test/default/trusted/${hash}.tar.zst`)
+    expect((await fetch(trustedLoc)).status).toBe(404)
+    // Another PR (multi-scope → HEAD-resolved) never sees it either.
     expect((await get(store, hash, untrusted, 'pr-2')).status).toBe(404)
     // The owning PR resolves its own copy (307 bound to ITS scope key).
     const own = await get(store, hash, untrusted, 'pr-1')
@@ -192,6 +217,59 @@ describe('ArtifactStore on the S3 backend', () => {
     const res = await get(store, hash, untrusted, 'pr-9')
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain(`/default/trusted/${hash}.tar.zst`)
+  })
+
+  it('a trusted (single-scope) GET issues ZERO backend HEADs — 307 bound to its OWN scope key', async () => {
+    const counted = withHeadCount(backend())
+    const s = new ArtifactStore(counted.backend)
+    // Absent hash: no existence HEAD — straight to the presigned 307; the
+    // bucket 404s there and the client reads a miss.
+    const absent = 'aaaa000011112222'
+    const res = await get(s, absent, trusted)
+    expect(res.status).toBe(307)
+    const loc = new URL(res.headers.get('location')!)
+    expect(loc.pathname).toBe(`/vx-test/default/trusted/${absent}.tar.zst`)
+    expect(counted.heads).toEqual([])
+    expect((await fetch(loc)).status).toBe(404)
+    // Present hash: the PUT's immutability probe HEADs once; the GET itself
+    // adds none and presigns the same (only readable) scope key.
+    const hash = 'bbbb000011112222'
+    const body = zbody('fast-path-bytes')
+    await put(s, hash, 'fast-path-bytes', trusted, { 'x-vx-digest': digestOf(body) })
+    const headsAfterPut = counted.heads.length
+    const hit = await get(s, hash, trusted)
+    expect(hit.status).toBe(307)
+    const hitLoc = new URL(hit.headers.get('location')!)
+    expect(hitLoc.pathname).toBe(`/vx-test/default/trusted/${hash}.tar.zst`)
+    expect(counted.heads.length).toBe(headsAfterPut)
+    const blob = await fetch(hitLoc)
+    expect(blob.status).toBe(200)
+    expect(new Uint8Array(await blob.arrayBuffer())).toEqual(body)
+    expect(fake.violations).toEqual([])
+  })
+
+  it('an untrusted (multi-scope) GET still HEAD-resolves — own sub-scope before trusted', async () => {
+    const counted = withHeadCount(backend())
+    const s = new ArtifactStore(counted.backend)
+    const hash = 'cccc000011112222'
+    // The same hash exists in BOTH readable scopes — the own sub-scope must win.
+    await put(s, hash, 'pr-copy', untrusted, { 'x-vx-cache-scope': 'pr-1' })
+    await put(s, hash, 'trusted-copy', trusted)
+    const before = counted.heads.length
+    const res = await get(s, hash, untrusted, 'pr-1')
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).toContain(`/default/untrusted/pr-1/${hash}.tar.zst`)
+    // Exactly one resolving HEAD: the own sub-scope key, found first.
+    expect(counted.heads.slice(before)).toEqual([`default/untrusted/pr-1/${hash}.tar.zst`])
+    // An ABSENT hash keeps the multi-scope serve-side 404 (both scopes probed
+    // in resolution order — the HEAD decides which scope's key wins).
+    const absent = 'dddd000011112222'
+    const beforeMiss = counted.heads.length
+    expect((await get(s, absent, untrusted, 'pr-1')).status).toBe(404)
+    expect(counted.heads.slice(beforeMiss)).toEqual([
+      `default/untrusted/pr-1/${absent}.tar.zst`,
+      `default/trusted/${absent}.tar.zst`,
+    ])
   })
 
   it('list() walks exactly the read scopes, following continuation pages', async () => {
@@ -252,7 +330,7 @@ describe('ArtifactStore on the S3 backend', () => {
     expect(await store.storedDurationMs('0000000000000000', trusted)).toBeUndefined()
   })
 
-  it('a down bucket is a LOUD 502 on GET/HEAD/PUT — never a silent 404', async () => {
+  it('a down bucket is a LOUD 502 on HEAD/PUT/multi-scope GET — never a silent 404', async () => {
     const dead = new ArtifactStore(
       new S3Backend({
         endpoint: 'http://127.0.0.1:1',
@@ -264,7 +342,13 @@ describe('ArtifactStore on the S3 backend', () => {
       }),
     )
     const hash = 'abcdefabcdef0123'
-    expect((await get(dead, hash, trusted)).status).toBe(502)
+    // A single-scope GET never touches the bucket (presigning is offline
+    // computation), so a dead bucket surfaces at the CLIENT's fetch of the
+    // presigned URL (connection refused → throw → LayeredCache miss), not as
+    // a serve 502.
+    expect((await get(dead, hash, trusted)).status).toBe(307)
+    // Multi-scope GETs still HEAD-resolve → loud 502.
+    expect((await get(dead, hash, untrusted, 'pr-1')).status).toBe(502)
     expect((await head(dead, hash, trusted)).status).toBe(502)
     // PUT fails on the immutability probe BEFORE reading the body.
     expect((await put(dead, hash, 'x', trusted)).status).toBe(502)
@@ -335,6 +419,11 @@ describe('e2e: vx run against the S3-offloaded platform', () => {
       })
       const outFile = path.join(root, 'packages', 'app', 'out.txt')
       try {
+        // The single-scope wire shape end-to-end: a trusted GET of an ABSENT
+        // hash answers 307 with no serve-side existence HEAD; the bucket 404s
+        // and the REAL client degrades to a MISS — no error, no wrong hit.
+        expect(await remoteCache.get('0123456789abcdef')).toBeNull()
+
         const first = await run({ cwd: root, tasks: ['build'], log: silentLogger, remoteCache })
         expect(first.ok).toBe(true)
         expect(first.outcomes[0]!.status).toBe('success')

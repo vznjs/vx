@@ -363,6 +363,27 @@ describe('NativeCacheClient', () => {
     }
   })
 
+  it('get() treats a post-307 404 from the blob origin as a MISS (null)', async () => {
+    // The single-read-scope serve skips its existence HEAD and answers 307
+    // even for an ABSENT hash — the bucket 404s and the client must read
+    // that as a plain cache miss (null), never an error or a wrong hit.
+    const blob = startStub()
+    try {
+      blob.setHandler(() => new Response('NoSuchKey', { status: 404 }))
+      const client = new NativeCacheClient({ baseUrl: stub.baseUrl, token: 'tok' })
+      stub.setHandler(
+        () =>
+          new Response(null, {
+            status: 307,
+            headers: { location: `${blob.baseUrl}/signed/absent?sig=abc` },
+          }),
+      )
+      expect(await client.get('feedfacefeedface')).toBeNull()
+    } finally {
+      void blob.server.stop(true)
+    }
+  })
+
   it('get() follows AT MOST one redirect — a second hop is an error', async () => {
     const client = new NativeCacheClient({ baseUrl: stub.baseUrl, token: 'tok' })
     stub.setHandler(() => new Response(null, { status: 307, headers: { location: '/hop' } }))

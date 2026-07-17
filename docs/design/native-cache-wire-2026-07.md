@@ -70,6 +70,17 @@ Small by design — every feature has a consumer today. Namespace
 > (400 otherwise): the store is immutable, so an accidental junk upload
 > (empty body, proxy error page) must never permanently lock a key.
 
+> **As-shipped deviation (2026-07-17):** on an offloaded (presigning)
+> backend, a GET by a principal whose read-scope set has exactly ONE
+> scope skips the existence probe and answers 307 directly — the
+> pre-signed URL binds the principal's own server-derived scope key
+> either way, so the probe decided nothing. Consequence: a single-scope
+> GET of an ABSENT hash is a 307 (the bucket 404s; the client reads a
+> miss), not a serve-side 404. Multi-scope principals (untrusted: own
+> sub-scope ∪ trusted) keep the probe — it picks WHICH scope's key to
+> sign — and keep the 404-on-absent shape; HEAD and the batch probe
+> always answer existence server-side.
+
 Headers (all vx-named, no Turbo shapes):
 
 - `x-vx-duration-ms` (PUT request + GET response) — the producing task's

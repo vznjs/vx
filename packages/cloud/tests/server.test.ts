@@ -521,12 +521,18 @@ describe('platform e2e (real pg + fake S3)', () => {
       redirect: 'manual',
     })
     expect(back.status).toBe(307)
-    // A trusted principal NEVER consumes an untrusted artifact.
+    // A trusted principal NEVER consumes an untrusted artifact: its
+    // single-scope GET answers 307 bound to its OWN trusted scope key (the
+    // HEAD-skip fast path) — NEVER the untrusted key where the artifact
+    // lives — and the bucket 404s there, so the client reads a MISS.
     const trustedGet = await call('GET', `/v1/cache/${hash}`, {
       bearer: ciToken,
       redirect: 'manual',
     })
-    expect(trustedGet.status).toBe(404)
+    expect(trustedGet.status).toBe(307)
+    const trustedLoc = new URL(trustedGet.headers.get('location')!)
+    expect(trustedLoc.pathname).toBe(`/vx-artifacts/org/${orgId}/ws/_org/trusted/${hash}.tar.zst`)
+    expect((await fetch(trustedLoc)).status).toBe(404)
     // No bearer → 401; a session is not a cache principal → 403.
     expect((await call('GET', `/v1/cache/${hash}`)).status).toBe(401)
     expect((await call('GET', `/v1/cache/${hash}`, { cookie })).status).toBe(403)
@@ -554,10 +560,14 @@ describe('platform e2e (real pg + fake S3)', () => {
     expect(
       keys.some((k) => k.includes(`org/${orgId}/ws/${wsId}/trusted/`) && k.includes(hash)),
     ).toBe(true)
-    // The org-wide trusted ci token does NOT see the workspace-scoped cache.
-    expect(
-      (await call('GET', `/v1/cache/${hash}`, { bearer: ciToken, redirect: 'manual' })).status,
-    ).toBe(404)
+    // The org-wide trusted ci token does NOT see the workspace-scoped cache:
+    // its single-scope GET answers 307 bound to its OWN _org scope key (the
+    // HEAD-skip fast path) — never the ws/<wsId> key — where the bucket 404s.
+    const orgGet = await call('GET', `/v1/cache/${hash}`, { bearer: ciToken, redirect: 'manual' })
+    expect(orgGet.status).toBe(307)
+    const orgLoc = new URL(orgGet.headers.get('location')!)
+    expect(orgLoc.pathname).toBe(`/vx-artifacts/org/${orgId}/ws/_org/trusted/${hash}.tar.zst`)
+    expect((await fetch(orgLoc)).status).toBe(404)
   })
 
   it('cache wire: batch existence probe is machine-token gated and trust-scoped', async () => {
