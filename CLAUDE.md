@@ -208,6 +208,48 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-17**: **Analytics correctness sweep (cycle 11) — a
+  re-pushed-run 500 in `compareRuns` fixed + two unclamped-window scans
+  clamped; the NULL-aggregate and tenant-clamp classes swept CLEAN**. A
+  read-only audit traced every read query in `analytics.ts` against the
+  four documented bug classes. **Finding 1 (MEDIUM, correctness/
+  availability) — `compareRuns` raised a hard 500 on a re-pushed run:**
+  its prev-run lookup used a BARE scalar subquery `started_at < (SELECT
+started_at FROM invocations WHERE run_id = $)` — but invocations'
+  uniqueness is `(started_at, run_id)`, so a re-push (changed startedAt,
+  passes the `ON CONFLICT (started_at, run_id)` guard) yields TWO headers
+  and the subquery matches >1 row → `PostgresError: more than one row
+returned by a subquery used as an expression` (repro'd: the exact
+  error), surfaced as 500 on both `/v1/compare/:runId` AND MCP
+  `compare_runs`. This was the LAST missed instance of the duplicate-
+  header class (getRegressions/getProjectBranchFailures/taskDurationHints
+  already fixed); collapsed with `MIN(started_at)` (earliest-header
+  convention). Pinned by a discriminating repro (throws on the old
+  scalar subquery; returns `previousRunId:'old'` on the fix). **Findings
+  2-3 (LOW/LOW-MED, perf/DoS) — unclamped windows:** `getRegressions.
+sinceDays` and `getBottlenecks.lookbackDays` had no `MAX_WINDOW_DAYS`
+  clamp, so a hostile `1e15` drove a full scan of every `task_runs`
+  partition (the 2026-07-14 degenerate-scan class that already protects
+  getRunHeatmap/getPeriodComparison/getRunTrends); both now `clampInt(…,
+1, MAX_WINDOW_DAYS)`. No discriminating unit test (on any seeded set a
+  hostile window returns the same rows — only timing differs, which is
+  flaky; a non-discriminating pin violates the assert-the-signature rule)
+  — defensive clamps in a proven, already-tested class; the existing
+  getRegressions/getBottlenecks correctness + scale guards confirm the
+  legit path is unbroken (scale 12/0). **Classes swept CLEAN (documented
+  negative result):** NULL-aggregate-into-non-null-number (every
+  single-row SUM/AVG/MAX/percentile is COALESCE'd or `?? 0`-mapped, every
+  ratio div-guarded) and missing-workspace_id tenant clamp (every read's
+  every joined table + CTE + LATERAL side individually verified clamped —
+  NO cross-tenant leak). jsonb double-encoding also re-verified clean
+  (all four `::jsonb` writes pass objects; the `@>` filter passes an
+  object literal). NO schema/wire/CACHE bump (output-preserving). Gate:
+  oxlint + oxfmt 0; analytics-read 46 + analytics-scale 12 pass.
+  **Process note:** the fix comment first shipped a JS parse error — a
+  SQL `-- ... `backtick-quoted` ...` comment INSIDE a Bun.sql template
+  literal closes the string; caught by the local run before commit (never
+  put backticks in a tagged-template SQL comment).
+
 - **2026-07-17**: **`taskDurationHints` de-duplicated — the same
   re-pushed-invocation bug class the getRegressions/getProjectBranch-
   Failures LATERAL fixes closed, found in the LPT dispatch hint (cycle 10)**. A targeted bug hunt grounded in this codebase's known failure

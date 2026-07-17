@@ -2009,7 +2009,12 @@ export class Analytics {
         SELECT run_id FROM invocations
         WHERE workspace_id = ${workspaceId} AND run_id != ${runId}
           AND started_at < (
-            SELECT started_at FROM invocations
+            -- MIN(): invocations' uniqueness is (started_at, run_id), so a
+            -- re-pushed summary yields >1 header for one run. A bare
+            -- single-value scalar subquery then raises a cardinality error
+            -- (500); MIN collapses it to the earliest header (the
+            -- LATERAL-pick-one convention used across this file).
+            SELECT MIN(started_at) FROM invocations
             WHERE workspace_id = ${workspaceId} AND run_id = ${runId})
         ORDER BY started_at DESC LIMIT 1`
     )[0]
@@ -2299,7 +2304,12 @@ export class Analytics {
   }
 
   async getRegressions(workspaceId: string, args: RegressionArgs = {}): Promise<RegressedTask[]> {
-    const sinceDays = args.sinceDays ?? 7
+    // Clamp the window (MAX_WINDOW_DAYS): an unclamped hostile `sinceDays=1e15`
+    // makes `since` hugely negative → the per-row LATERAL invocations join + the
+    // GROUP BY degenerate to a full scan of every task_runs partition on the
+    // single-threaded, multi-tenant server (the 2026-07-14 degenerate-scan
+    // class, applied here + getBottlenecks).
+    const sinceDays = clampInt(args.sinceDays ?? 7, 1, MAX_WINDOW_DAYS)
     const minBranches = Math.max(1, args.minBranches ?? 2)
     const limit = clampInt(args.limit ?? 25, 1, 200)
     const since = Date.now() - sinceDays * 86_400_000
@@ -2715,6 +2725,11 @@ export class Analytics {
     lookbackDays = 14,
     limit = 15,
   ): Promise<BottleneckRow[]> {
+    // Clamp (MAX_WINDOW_DAYS): a hostile `?days=1e15` → hugely negative `since`
+    // → `started_at >= since` matches every row → full scan of every task_runs
+    // partition. Same degenerate-window class as getRegressions. The default
+    // (14) and any legitimate dashboard window are far under the cap.
+    lookbackDays = clampInt(lookbackDays, 1, MAX_WINDOW_DAYS)
     const since = Date.now() - lookbackDays * 24 * 60 * 60 * 1000
     const rows = await this.sql<
       {

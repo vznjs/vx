@@ -363,6 +363,42 @@ describe('base fixture reads', () => {
     expect(cmp.summary.tasksOnlyInA).toBeGreaterThanOrEqual(1)
   })
 
+  it('compareRuns survives a re-pushed run (two invocation headers)', async () => {
+    // invocations' uniqueness is (started_at, run_id): a re-push with a changed
+    // startedAt yields TWO headers for one run. compareRuns' prev-lookup scalar
+    // subquery `started_at < (SELECT started_at FROM invocations WHERE run_id=…)`
+    // would then match >1 row → a hard cardinality error (500), not a diff.
+    const { org, ws: w } = await newOrgWs(db, 'cmp-dupe')
+    const now = Date.now()
+    // A prior run to compare against.
+    await insertINV(db, w, org, { runId: 'old', startedAt: now - 2 * HOUR })
+    await insertTR(db, w, org, {
+      runId: 'old',
+      project: 'app',
+      task: 'build',
+      duration: 100,
+      startedAt: now - 2 * HOUR,
+      hash: 'k1',
+    })
+    // The current run, re-pushed → TWO headers (different startedAt).
+    for (const started of [now - HOUR, now]) {
+      await insertINV(db, w, org, { runId: 'cur', startedAt: started })
+    }
+    await insertTR(db, w, org, {
+      runId: 'cur',
+      project: 'app',
+      task: 'build',
+      duration: 200,
+      startedAt: now - HOUR,
+      hash: 'k2',
+    })
+    // Must not throw; picks the prior run deterministically.
+    const cmp = await analytics.compareRuns(w, 'cur')
+    expect(cmp.found).toBe(true)
+    expect(cmp.previousRunId).toBe('old')
+    expect(cmp.tasks.find((t) => t.taskId === 'app#build')!.hashChanged).toBe(true)
+  })
+
   it('getParallelismHistory computes the cpu/wall factor', async () => {
     const par = await analytics.getParallelismHistory(ws)
     const r3 = par.find((p) => p.runId === 'R3')!
