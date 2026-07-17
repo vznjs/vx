@@ -208,55 +208,44 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
-- **2026-07-17**: **Visual-first docs program — every feature gets a
-  screenshot or interactive demo in the DOCS; landing showcase REVERTED**
-  (owner: "add screenshots / cool graphics visualizing things — docs
-  should be engaging" → "if we can explain a feature visually or
-  interactively we should; devs should understand it BEFORE learning how
-  to use it" → **"Remove changes from website. We need screenshots more
-  in DOCS. Every single feature we have should be visualized or
-  interactive demo"**). **Reverted (`0508a56`):** the two LANDING
-  additions (`index.astro` — the 'Your CI, visualized' gallery + the
-  interactive cache demo) removed; visuals belong in the DOCS content
-  pages, not the marketing homepage. **The kept + new program (a series
-  of docs-only commits):** three reusable Astro components + real captures
-  wired into the guides and cloud pages, each placed BEFORE the reference
-  prose. **Components** (`apps/docs/src/components/`): (1) **`Terminal.astro`** —
-  a faithful, self-contained render of real `vx` output (glyphs/palette/
-  meters/summary + a framed-block mode for focused/failure/sandbox runs),
-  dark chrome that reads in both Starlight themes, with an optional
-  multi-state **interactive toggle**; (2) **`GithubSummary.astro`** — a
-  GitHub-styled job-summary card (the failures-first per-task table);
-  (3) **`SideBySide.astro`** — two dark code panels with a `→` between
-  (before/after). All authored from CAPTURED output (a temp
-  `@acme/*` workspace run through the real CLI), so the numbers/glyphs are
-  real, not invented. **Coverage shipped:** caching (interactive cold→warm
-  toggle, `guides/caching.mdx`); running-tasks (`--all` vs `--affected`
-  toggle + `--verify` frame + `--dry` plan, `.mdx`); sandboxing (the
-  violation frame with the exact `openat…EACCES` line); dev-tasks (the
-  persistent `▸ … running` frame); task-dependencies (a Mermaid DAG of
-  `dependsOn: ['^build']`); remote-caching (the `⇣ remote` restore
-  terminal, guide + the Cache dashboard shot on the cloud page); ci (the
-  GitHub job-summary card); migrate/from-turborepo (the turbo.json →
-  vx.config.ts side-by-side); extensibility already had its plugin
-  flowchart. **Dashboard screenshots** (the generator, kept OUT of the
-  tree — gitignored — grew to capture more views): the existing Runs /
-  flamegraph / Insights / project shots plus NEW **Task detail** (flaky
-  badge + trend tiles + debug + recommendations), **Compare** (run-vs-
-  previous diff), **Command palette** (Cmd-K), **Cache** (hit-rate +
-  local/remote split + time saved), and **Admin** (members/tokens),
-  embedded across `dashboard.md` (fuller visual tour), `remote-caching`
-  (cloud), and `self-hosting`. The empty Artifacts/cache-entries states
-  were dropped (an ingest-only seed uploads no artifacts). Every wave:
-  astro build clean + a zero-broken-links crawl over `dist/` +
-  browser-verified (each Terminal/card render screenshotted + inspected,
-  0 console errors) + CI confirmed green (both the `CI` and `Deploy docs`
-  workflows). Astro optimizes PNGs → WebP + base-prefixes automatically.
-  **STANDING DIRECTIVE going forward:** every feature we ship gets a
-  visualization or interactive demo IN THE DOCS, before its reference
-  prose — a dev should grasp what/why from something they can see or
-  click. Reach for the `Terminal`/`GithubSummary`/`SideBySide` components
-  or a real dashboard screenshot. Docs-only; no core change.
+- **2026-07-17**: **Visual-first docs — corrected to MECHANISM DIAGRAMS +
+  real screenshots; NO terminal/UI emulation** (owner arc: "add
+  screenshots / cool graphics visualizing things — docs should be
+  engaging" → "explain visually/interactively before the how-to" →
+  "Remove changes from website. Screenshots in DOCS. Every feature
+  visualized or interactive demo" → **"Do not emulate terminal! Remove
+  all demos showing off terminal… explain feature not by how they LOOK
+  but how they WORK. Interactive workflows, graphs, screenshots — educate
+  why this is awesome"**). **First cut (reverted): fabricated UI.** I'd
+  built three Astro components — `Terminal.astro` (a faithful `vx`-output
+  renderer w/ an interactive cold→warm toggle), `GithubSummary.astro` (a
+  GitHub job-summary card), `SideBySide.astro` (before/after code panels)
+  — captured from a real temp `@acme/*` CLI run. The owner rejected the
+  approach: docs should teach HOW a feature works, not show a pretty
+  emulation of its output. **All three components DELETED**; every guide
+  reverted from `.mdx` back to `.md`. **The kept + corrected program:**
+  each feature's "See it" now leads with a **Mermaid flowchart of the
+  MECHANISM** (educational — what actually happens), plus the **real
+  dashboard screenshots** (those stay — they're genuine captures, not
+  emulations), plus standard markdown/code. **Mechanism diagrams shipped:**
+  caching (inputs → hash → key → hit-restore / miss-run-save); running-
+  tasks (`--affected`: git diff → changed files → owners → +dependents →
+  scoped set, rest never scheduled; `--verify`: run → re-run → compare →
+  proven/nondeterministic-fails); sandboxing (declared inputs = allow-list
+  → undeclared read denied → fail); dev-tasks (spawn → readyWhen match →
+  dependents start → teardown); remote-caching (need → local? → remote? →
+  download+hydrate / run+upload); task-dependencies (the `^build` DAG) +
+  distributed-ci (agent fan-out) — both already graphs. The GitHub job
+  summary is now a plain **markdown table** (what GitHub actually renders),
+  not a styled card. **Dashboard screenshots (kept, real):** Runs,
+  flamegraph, Insights, project, Task detail, Compare, Command palette,
+  Cache, Admin — embedded across `dashboard.md`, `overview.md`,
+  `remote-caching` (cloud), `self-hosting`. **STANDING DIRECTIVE:** explain
+  features by **how they WORK** — reach for a Mermaid graph of the
+  mechanism or a real screenshot; do NOT emulate terminal output or
+  fabricate UI chrome. Every wave: astro build clean + zero-broken-links
+  crawl + browser-verified the diagrams render (no syntax bombs). Docs
+  only; no core change.
 
 - **2026-07-17**: **Analytics correctness sweep (cycle 11) — a
   re-pushed-run 500 in `compareRuns` fixed + two unclamped-window scans

@@ -3,52 +3,39 @@ title: Caching tasks
 description: Declare inputs and outputs so vx caches correctly — plus what vx folds in automatically, how to track env vars, and how to debug a stale or missed cache.
 ---
 
-import Terminal from '../../../components/Terminal.astro'
-
 vx's cache is **content-addressed**: it hashes everything a task depends
 on into a key, and a cache hit means "we've run this exact task on these
 exact inputs before — here's the stored result." Get the declarations
 right and every run is both correct and fast.
 
-**See it.** Run `vx run build --all` once — three cache misses, real work,
-623 ms. Nothing changed? Run it again — three cache hits, no work, 21 ms.
-Press **Run again** to watch the same command flip from work to instant.
+## How a cache decision is made
 
-<Terminal
-  title="zsh — vx"
-  command="vx run build --all"
-  states={[
-    {
-      label: 'First run (cold)',
-      tasks: [
-        { glyph: '⏺', time: '206ms', status: 'success', cache: 'miss', cacheTone: 'dim', proj: '@acme/ui', task: 'build' },
-        { glyph: '⏺', time: '306ms', status: 'success', cache: 'miss', cacheTone: 'dim', proj: '@acme/api', task: 'build' },
-        { glyph: '⏺', time: '305ms', status: 'success', cache: 'miss', cacheTone: 'dim', proj: '@acme/web', task: 'build' },
-      ],
-      meters: [
-        { label: 'tasks', on: 46, off: 0, tone: 'green', legend: '3 success', legendRest: ' · 3 total' },
-        { label: 'cache', on: 46, off: 0, tone: 'red', legend: '3 miss', legendTone: 'red' },
-      ],
-      info: '4 workers · local cache',
-      time: '623ms',
-      timeRest: ' · max 306ms · avg 272ms · min 206ms',
-    },
-    {
-      label: 'Run again (warm)',
-      tasks: [
-        { glyph: '►', time: '5ms', status: 'success', cache: 'fresh', cacheTone: 'green', proj: '@acme/api', task: 'build' },
-        { glyph: '►', time: '6ms', status: 'success', cache: 'fresh', cacheTone: 'green', proj: '@acme/ui', task: 'build' },
-        { glyph: '►', time: '6ms', status: 'success', cache: 'fresh', cacheTone: 'green', proj: '@acme/web', task: 'build' },
-      ],
-      meters: [
-        { label: 'tasks', on: 46, off: 0, tone: 'green', legend: '3 success', legendRest: ' · 3 total' },
-        { label: 'cache', on: 46, off: 0, tone: 'green', legend: '3 up-to-date', legendTone: 'green' },
-      ],
-      info: '4 workers · local cache',
-      time: '21ms',
-    },
-  ]}
-/>
+Every run, for every task, vx folds the task's real dependencies into one
+key and looks it up. Nothing changed since last time → the key matches →
+vx **restores the stored outputs and replays the logs** instead of running
+the command. Change any input → the key changes → the task re-runs and the
+new result is saved under the new key. That's the whole model, and it's
+why a warm run is near-instant while staying correct:
+
+```mermaid
+flowchart LR
+  inputs["Task inputs<br/>source files · env vars<br/>package.json · deps · resolved config"] --> key["Hash everything<br/>→ one cache key"]
+  key --> lookup{"Key already<br/>in the cache?"}
+  lookup -->|"hit"| restore["Restore outputs +<br/>replay logs — no work"]
+  lookup -->|"miss"| run["Run the command"]
+  run --> save["Save outputs<br/>under the key"]
+  classDef step fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
+  classDef decide fill:#1e293b,stroke:#a78bfa,color:#e2e8f0
+  classDef good fill:#12261b,stroke:#34d399,color:#d1fae5
+  class inputs,key,run,save step
+  class lookup decide
+  class restore good
+```
+
+The payoff is real: on this repo's benchmark, a fully-cached warm run of a
+3-package build drops from ~620 ms of actual work to ~20 ms of restores —
+and because the key covers **every** input, a hit is only ever served when
+the result is genuinely identical.
 
 This is the guide that matters most. The one failure mode worth fearing
 is a **stale hit** (shipping a result built from inputs that actually

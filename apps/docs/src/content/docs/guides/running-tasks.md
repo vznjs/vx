@@ -3,8 +3,6 @@ title: Running & filtering tasks
 description: Run tasks across your monorepo — scope with --filter, select changed packages with --affected, forward args after --, and preview runs with --dry.
 ---
 
-import Terminal from '../../../components/Terminal.astro'
-
 `vx run <task>` is the command you'll type most. By default it runs the
 task in the **current package** plus its dependency graph. Flags let you
 widen, narrow, and target the run.
@@ -68,49 +66,24 @@ task only for those packages (and the ones that depend on them). This is
 the flag that keeps CI fast — pair it with remote caching and most PRs
 touch a handful of packages.
 
-**See it.** You touched one file in `@acme/web`. `--all` still builds all
-three packages; `--affected` builds only the one that changed — watch the
-`projects` meter fall from a full bar to one-of-three. Toggle between them:
+**How `--affected` narrows the run:** it starts from git, not from your
+task graph. A PR that touches one file in `@acme/web` selects only
+`@acme/web` plus anything that depends on it — the rest of the monorepo
+is skipped entirely, never even scheduled. On a big repo that's the
+difference between building 3 packages and building 300:
 
-<Terminal
-  title="zsh — vx"
-  states={[
-    {
-      label: 'vx run build --all',
-      command: 'vx run build --all',
-      tasks: [
-        { glyph: '⏺', time: '206ms', status: 'success', cache: 'miss', cacheTone: 'dim', proj: '@acme/ui', task: 'build' },
-        { glyph: '⏺', time: '306ms', status: 'success', cache: 'miss', cacheTone: 'dim', proj: '@acme/api', task: 'build' },
-        { glyph: '⏺', time: '305ms', status: 'success', cache: 'miss', cacheTone: 'dim', proj: '@acme/web', task: 'build' },
-      ],
-      meters: [
-        { label: 'projects', on: 46, off: 0, tone: 'yellow', legend: '3 affected', legendTone: 'yellow', legendRest: ' · 3 total' },
-        { label: 'tasks', on: 46, off: 0, tone: 'green', legend: '3 success', legendRest: ' · 3 total' },
-      ],
-      info: '4 workers · local cache',
-      time: '623ms',
-    },
-    {
-      label: 'vx run build --affected',
-      command: 'vx run build --affected',
-      frames: [
-        {
-          id: '@acme/web#build',
-          header: '$ tsc -b',
-          duration: '307ms',
-          status: 'success',
-        },
-      ],
-      meters: [
-        { label: 'projects', on: 16, off: 30, tone: 'yellow', legend: '1 affected', legendTone: 'yellow', legendRest: ' · 3 total' },
-        { label: 'tasks', on: 16, off: 30, tone: 'green', legend: '1 success', legendRest: ' · 1 total' },
-        { label: 'cache', on: 16, off: 30, tone: 'red', legend: '1 miss', legendTone: 'red' },
-      ],
-      info: '4 workers · local cache',
-      time: '339ms',
-    },
-  ]}
-/>
+```mermaid
+flowchart LR
+  base["git diff vs base<br/>(origin/main)"] --> changed["Changed files"]
+  changed --> owners["Map each file<br/>to its package"]
+  owners --> dependents["+ packages that<br/>depend on those"]
+  dependents --> scope["Run the task only<br/>in this set"]
+  skipped["Every other package"] -.->|"never scheduled"| scope
+  classDef step fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
+  classDef skip fill:#1f2328,stroke:#6b7280,color:#9ca3af
+  class base,changed,owners,dependents,scope step
+  class skipped skip
+```
 
 ## Forwarding arguments with `--`
 
@@ -149,40 +122,31 @@ would run:
 ## Prove a cache entry is safe: `--verify`
 
 vx is the only runner that can **prove** a cached result is safe to
-reuse instead of hoping. `vx run <task> --verify` runs the task, then
-re-runs it and content-compares the outputs: identical bytes ⇒
-`proven-deterministic`; divergent ⇒ the run **fails** and names the
-files that changed. Pair it with `--force` to re-verify a warm graph.
-It's a CI / merge-queue gate, not an every-run default (it costs ~2×).
+reuse instead of hoping. Every other cache trusts that identical inputs
+produce identical outputs; `--verify` *checks* it. It runs the task,
+saves the outputs, runs it **again**, and content-compares — so a build
+that quietly depends on a timestamp, a random seed, or an unlisted file
+is caught before it ever poisons a shared cache:
 
-<Terminal
-  title="zsh — vx"
-  command="vx run build --force --verify"
-  states={[
-    {
-      frames: [
-        {
-          id: '@acme/web#build',
-          header: '$ tsc -b',
-          duration: '307ms',
-          status: 'success',
-        },
-      ],
-      meters: [
-        { label: 'tasks', on: 46, off: 0, tone: 'green', legend: '1 success', legendRest: ' · 1 total' },
-        { label: 'cache', on: 46, off: 0, tone: 'red', legend: '1 miss', legendTone: 'red' },
-      ],
-      info: '4 workers · local cache',
-      time: '651ms',
-    },
-  ]}
-/>
-
-Below the summary vx prints the verdict:
-
-```text
-  Verify:   1 proven · 0 unsafe · 0 n/a · 0 not-verified
+```mermaid
+flowchart LR
+  run1["Run the task<br/>→ save outputs"] --> run2["Run it again<br/>(same inputs)"]
+  run2 --> cmp{"Outputs<br/>byte-identical?"}
+  cmp -->|"yes"| proven["proven-deterministic ✓<br/>safe to cache & share"]
+  cmp -->|"no"| fail["nondeterministic ✗<br/>run FAILS + names the<br/>files that changed"]
+  classDef step fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
+  classDef decide fill:#1e293b,stroke:#a78bfa,color:#e2e8f0
+  classDef good fill:#12261b,stroke:#34d399,color:#d1fae5
+  classDef bad fill:#2a1416,stroke:#ef4444,color:#fecaca
+  class run1,run2 step
+  class cmp decide
+  class proven good
+  class fail bad
 ```
+
+Pair it with `--force` to re-verify a warm graph. It's a CI / merge-queue
+gate, not an every-run default (it costs ~2× because it runs each task
+twice).
 
 See the [CLI reference](../../cli/#provable-cache-correctness---verify) for
 `--verify=inputs` (proves your declared inputs are complete) and

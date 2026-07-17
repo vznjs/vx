@@ -3,41 +3,35 @@ title: Dev & long-running tasks
 description: Run dev servers, watchers, and daemons with persistent tasks — gate downstream work on readiness with readyWhen, and let vx clean them up automatically.
 ---
 
-import Terminal from '../../../components/Terminal.astro'
-
 Some tasks don't finish — a dev server, a file watcher, a background
 daemon. vx models these as **persistent** tasks: it spawns them, decides
 when they're "ready," lets downstream tasks proceed, and tears them down
 when the run ends.
 
-**See it.** `vx run dev` starts Vite, streams its output, and — because
-the task is `persistent` — keeps it in the foreground with a live `▸ …
-running` marker instead of waiting for it to exit. Downstream tasks that
-`dependsOn: ['dev']` start the moment `readyWhen` matches; Ctrl-C tears
-everything down.
+## How readiness gating works
 
-<Terminal
-  title="zsh — vx"
-  command="vx run dev"
-  states={[
-    {
-      frames: [
-        {
-          id: '▸ @acme/web#dev',
-          tone: 'sky',
-          header: '$ vite',
-          body: [
-            { text: '  VITE v5.4.0  ready in 312 ms', tone: 'plain' },
-            { text: '  ➜  Local:   http://localhost:5173/', tone: 'dim' },
-          ],
-          duration: '',
-          status: 'running',
-        },
-      ],
-      time: '318ms',
-    },
-  ]}
-/>
+The hard part of "start the tests once the server is up" is knowing *when*
+it's up. vx watches a persistent task's output for a `readyWhen` pattern
+(a dev server's `Local:` banner, say) and holds its dependents until that
+line appears — no arbitrary `sleep`, no flaky race. The moment it matches,
+downstream work starts; when the whole run finishes, vx SIGTERMs the
+server so nothing is left running:
+
+```mermaid
+flowchart LR
+  spawn["Spawn the persistent task<br/>(e.g. vite)"] --> watch{"Output matches<br/>readyWhen?"}
+  watch -->|"match"| ready["Marked ready →<br/>dependents (e2e) start"]
+  watch -->|"timeout"| kill["Kill + fail the task"]
+  ready --> done["Run finishes"]
+  done --> teardown["SIGTERM the server —<br/>nothing left running"]
+  classDef step fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
+  classDef decide fill:#1e293b,stroke:#a78bfa,color:#e2e8f0
+  classDef good fill:#12261b,stroke:#34d399,color:#d1fae5
+  classDef bad fill:#2a1416,stroke:#ef4444,color:#fecaca
+  class spawn,ready,done,teardown step
+  class watch decide
+  class kill bad
+```
 
 ## Declaring a persistent task
 

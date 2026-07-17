@@ -3,8 +3,6 @@ title: Sandboxing tasks
 description: Run a task in an OS-level sandbox with an explicit allow-list of files and network — opt-in per task, fail-on-violation, no hidden escapes.
 ---
 
-import Terminal from '../../../components/Terminal.astro'
-
 A task can declare an **OS-level sandbox** that restricts what it may read,
 write, and reach over the network. It's opt-in per task and deliberately
 strict: the task sees exactly what you declare and nothing else, and a run
@@ -14,38 +12,32 @@ Use it to catch under-declared inputs (a build secretly reading a file
 outside its `inputs`), to stop a tool from phoning home, or to enforce
 hermetic builds in CI.
 
-**See it.** A `build` task declares `inputs: ['src/**']` but secretly
-reads `../../config/secret.json`. Unsandboxed it passes — and caches a
-result that silently depends on a file vx never hashed. Add `sandbox: {}`
-and the undeclared read is denied: the run **fails** and names the exact
-path, so you fix the declaration before it becomes a stale cache hit.
+## Why it makes caching trustworthy
 
-<Terminal
-  title="zsh — vx"
-  command="vx run build --force"
-  states={[
-    {
-      frames: [
-        {
-          id: '@acme/api#build',
-          tone: 'red',
-          header: '$ node bundle.js',
-          section: 'SANDBOX VIOLATIONS (1)',
-          sectionTone: 'yellow',
-          sectionLines: ['openat("../../config/secret.json") = -1 EACCES  [/repo/config/secret.json]'],
-          duration: '241ms',
-          status: 'failed (exit 1)',
-        },
-      ],
-      meters: [
-        { label: 'tasks', on: 46, off: 0, tone: 'red', legend: '1 failed', legendTone: 'red', legendRest: ' · 1 total' },
-        { label: 'cache', on: 46, off: 0, tone: 'red', legend: '1 miss', legendTone: 'red' },
-      ],
-      info: '4 workers · local cache',
-      time: '253ms',
-    },
-  ]}
-/>
+A cache is only correct if the declared `inputs` are the *complete* set
+of files the task reads. The sandbox turns that assumption into an
+enforced boundary: the task's allow-list **is** its declared inputs, so a
+build that secretly reads `../../config/secret.json` (a file vx never
+hashed) is denied the read and the run fails — naming the exact path.
+Without the sandbox that build would pass and cache a result that silently
+depends on an unlisted file: the classic **stale-hit** bug. With it, an
+under-declared input can't hide.
+
+```mermaid
+flowchart LR
+  decl["Declared inputs<br/>inputs: ['src/**']"] --> allow["Allow-list =<br/>exactly those files"]
+  allow --> read{"Task reads<br/>a file"}
+  read -->|"inside the list"| ok["Allowed → runs normally"]
+  read -->|"undeclared"| deny["Denied → run FAILS<br/>+ names the path"]
+  classDef step fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
+  classDef decide fill:#1e293b,stroke:#a78bfa,color:#e2e8f0
+  classDef good fill:#12261b,stroke:#34d399,color:#d1fae5
+  classDef bad fill:#2a1416,stroke:#ef4444,color:#fecaca
+  class decl,allow step
+  class read decide
+  class ok good
+  class deny bad
+```
 
 ## Turn it on
 

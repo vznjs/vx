@@ -3,8 +3,6 @@ title: Continuous integration
 description: Run vx in CI — install the binary, build only what changed with --affected, share a cache by connecting a remote-cache backend, and (optionally) pin a reproducible run with vx lock + --frozen.
 ---
 
-import GithubSummary from '../../../components/GithubSummary.astro'
-
 vx is built for CI: a content-addressed cache plus `--affected` selection
 means most pull requests execute only the packages they actually touched
 and restore everything else from a previous build. This guide is a working
@@ -162,24 +160,23 @@ vx run build --all --profile=trace.json       # Chrome-trace timeline
 
 ## GitHub Actions job summary
 
-vx can append a per-task result table (failures first, with exit codes) to
-the job's summary page, so a red build tells you *which* task failed
-without opening the raw log. Here's what a failed run renders on the job
-page — the broken task is at the top, with its exit code:
+vx can append a per-task result table to the job's summary page, so a red
+build tells you *which* task failed without opening the raw log. Failures
+are sorted to the **top**, each with its exit code and cache provenance —
+so the one thing you opened the summary to find is the first thing you
+see. GitHub renders it as markdown right on the job page:
 
-<GithubSummary
-  command="vx run ci --all"
-  passed={false}
-  stats="24 tasks · 1 failed · 8 cache hits · 15 executed · 21.4s"
-  rows={[
-    { task: '@acme/web#build', ok: false, exit: 2, duration: '3.1s', cache: 'miss' },
-    { task: '@acme/web#test', ok: true, duration: '4.2s', cache: 'miss' },
-    { task: '@acme/api#build', ok: true, duration: '<1ms', cache: 'hit (remote)' },
-    { task: '@acme/api#test', ok: true, duration: '1.9s', cache: 'miss' },
-    { task: '@acme/ui#build', ok: true, duration: '<1ms', cache: 'hit (local)' },
-    { task: '@acme/ui#lint', ok: undefined, duration: '—', cache: 'miss' },
-  ]}
-/>
+> ### vx run — `vx run ci --all`
+>
+> ❌ failed · **24** tasks · **1** failed · **8** cache hits · **15** executed · 21.4s
+>
+> | Task | Status | Duration | Cache |
+> | --- | --- | ---: | --- |
+> | `@acme/web#build` | ❌ failed (exit 2) | 3.1s | miss |
+> | `@acme/web#test` | ✅ success | 4.2s | miss |
+> | `@acme/api#build` | ✅ success | <1ms | hit (remote) |
+> | `@acme/ui#build` | ✅ success | <1ms | hit (local) |
+> | `@acme/ui#lint` | ⏭ skipped | — | miss |
 
 Two ways to get it:
 

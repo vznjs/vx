@@ -3,8 +3,6 @@ title: Migrate from Turborepo
 description: Move a Turborepo monorepo to vx. What maps 1:1, what's better, and how vx migrate converts your turbo.json into vx.config.ts files automatically.
 ---
 
-import SideBySide from '../../../components/SideBySide.astro'
-
 vx is shaped like Turborepo on purpose, so this is the easy migration.
 Same per-package model, same `dependsOn` micro-syntax, same `--filter`
 DSL, same `--affected` selection. The main change
@@ -46,14 +44,14 @@ the script of the same name; vx makes the command explicit in `exec`).
 
 ### Before / after
 
-`vx migrate` reads the `turbo.json` on the left and writes the
-`vx.config.ts` on the right — one per package, scripts inlined as
-`exec.command`, everything it can't infer left as a `TODO` comment:
+`vx migrate` reads your `turbo.json` and writes a `vx.config.ts` per
+package — scripts inlined as `exec.command`, everything it can't infer
+left as a `TODO` comment. Here's the same `build`/`test` pipeline before
+and after:
 
-<SideBySide
-  beforeTitle="turbo.json"
-  beforeLang="json"
-  before={`{
+```jsonc
+// turbo.json  (before)
+{
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -63,10 +61,12 @@ the script of the same name; vx makes the command explicit in `exec`).
     },
     "test": { "dependsOn": ["build"], "outputs": [] }
   }
-}`}
-  afterTitle="packages/app/vx.config.ts"
-  afterLang="ts"
-  after={`import { defineProject } from '@vzn/vx'
+}
+```
+
+```ts
+// packages/app/vx.config.ts  (after — generated, then reviewed)
+import { defineProject } from '@vzn/vx'
 
 export default defineProject({
   tasks: {
@@ -84,8 +84,8 @@ export default defineProject({
       cache: { inputs: { files: ['src/**', 'tests/**'] }, outputs: { files: [] } },
     },
   },
-})`}
-/>
+})
+```
 
 Note `env` becomes **two** entries: `inputs.env` (so a change busts the
 cache) and `exec.env.passThrough` (so the command can see it). vx isolates

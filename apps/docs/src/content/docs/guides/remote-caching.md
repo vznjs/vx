@@ -3,38 +3,41 @@ title: Remote caching
 description: A local cache makes your own runs instant with zero setup. To share results across machines, a remote-cache plugin fills core's RemoteCacheLayer seam — the first-party shared cache is vx Cloud, and any other backend plugs in the same way.
 ---
 
-import Terminal from '../../../components/Terminal.astro'
-
 A local cache makes *your* repeat runs instant, and it needs **no setup** —
 it's on by default for every `vx run`. A **shared** cache extends that
 across machines: CI restores what a teammate already built, and a fresh
 clone is fast on its first run.
 
-**See it.** A CI runner on a fresh clone has an empty *local* cache — but
-your teammate already built these on their machine. With a shared cache
-connected, the runner **downloads** the results (`⇣ remote`) instead of
-rebuilding them: a green CI in 131 ms on a machine that has never run this
-code.
+## How a shared cache resolves a result
 
-<Terminal
-  title="ci — vx"
-  command="vx run build --all"
-  states={[
-    {
-      tasks: [
-        { glyph: '⇣', time: '41ms', status: 'success', cache: 'remote', cacheTone: 'blue', proj: '@acme/ui', task: 'build' },
-        { glyph: '⇣', time: '38ms', status: 'success', cache: 'remote', cacheTone: 'blue', proj: '@acme/api', task: 'build' },
-        { glyph: '⇣', time: '52ms', status: 'success', cache: 'remote', cacheTone: 'blue', proj: '@acme/web', task: 'build' },
-      ],
-      meters: [
-        { label: 'tasks', on: 46, off: 0, tone: 'green', legend: '3 success', legendRest: ' · 3 total' },
-        { label: 'cache', on: 46, off: 0, tone: 'blue', legend: '3 remote', legendTone: 'blue' },
-      ],
-      info: '8 workers · local + remote cache',
-      time: '131ms',
-    },
-  ]}
-/>
+The key point is that the same content-addressed key works on *every*
+machine: if your teammate built a task, its result is stored under a key
+that your CI runner computes identically. So a fresh clone with an empty
+local cache doesn't rebuild — it looks the key up **remotely**, downloads
+the artifact once, and hydrates its local cache so the next run is
+instant too. Reads are local-first (never pay the network for something
+you already have); writes upload in the background and never block or
+fail the build:
+
+```mermaid
+flowchart LR
+  need["Task needs a result"] --> local{"In local<br/>cache?"}
+  local -->|"hit"| lrestore["Restore locally — instant"]
+  local -->|"miss"| remote{"In remote<br/>cache?"}
+  remote -->|"hit"| pull["Download once +<br/>hydrate local"]
+  remote -->|"miss"| run["Run it, then upload<br/>in the background"]
+  classDef step fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
+  classDef decide fill:#1e293b,stroke:#a78bfa,color:#e2e8f0
+  classDef good fill:#12261b,stroke:#34d399,color:#d1fae5
+  class need,pull,run step
+  class local,remote decide
+  class lrestore good
+```
+
+The payoff: pair a shared cache with [`--affected`](../running-tasks/#selecting-only-what-changed-affected)
+and a typical PR executes only the few packages it changed and **downloads
+everything else** — CI that would take minutes finishes in seconds, on a
+machine that never ran most of the code.
 
 Sharing is the only part that needs a server. A solo developer needs
 nothing here — the [local cache](../caching/) is automatic.
