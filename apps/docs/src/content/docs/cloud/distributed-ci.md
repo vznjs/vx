@@ -11,6 +11,29 @@ artifact store, and the main job renders one ordinary run and owns the
 exit code. This is the Nx-Cloud-DTE contract, built on parts vx
 already ships.
 
+Here's the shape of it — the main job submits the graph to the server,
+which dispatches ready tasks to whichever agents have capacity; each
+agent restores upstream outputs from the shared artifact store, runs its
+task, and uploads the results for the next agent:
+
+```mermaid
+flowchart LR
+  main["main job<br/>vx run --all"] -->|submit graph| server["vx-cloud server<br/>scheduler + artifact store"]
+  server -->|dispatch task| a1["agent 1"]
+  server -->|dispatch task| a2["agent 2"]
+  server -->|dispatch task| a3["agent 3"]
+  a1 <-->|restore / upload outputs| server
+  a2 <-->|restore / upload outputs| server
+  a3 <-->|restore / upload outputs| server
+  server -->|stream results| main
+  classDef srv fill:#1e293b,stroke:#a78bfa,color:#e2e8f0
+  classDef ag fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
+  classDef mj fill:#1e293b,stroke:#34d399,color:#e2e8f0
+  class server srv
+  class a1,a2,a3 ag
+  class main mj
+```
+
 There are two binaries:
 
 - **`vx`** (`@vzn/vx`) — the core task runner. A plain `vx run`.
