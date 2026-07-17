@@ -36,10 +36,23 @@ export interface TermMeter {
   legendRest?: string // dim tail: " · 4 total"
 }
 
+export interface TermFrame {
+  id: string // "@acme/web#build"
+  tone?: Tone // id + status color (default green; 'red' for a failure)
+  header?: string // right of "id > " on the open line, e.g. "$ vitest run"
+  body?: { text: string; tone?: Tone }[] // stdout/stderr lines
+  section?: string // a titled section inside the frame, e.g. "SANDBOX VIOLATIONS (1)"
+  sectionTone?: Tone // default yellow
+  sectionLines?: string[] // the section's lines
+  duration: string // "309ms"
+  status: string // "success" | "failed (exit 1)"
+}
+
 export interface TermState {
   label?: string // tab label when interactive
   command?: string // overrides the top-level command for this state
-  tasks: TermTask[]
+  frames?: TermFrame[] // framed single-task blocks (focused / failure / sandbox)
+  tasks?: TermTask[]
   meters?: TermMeter[]
   info?: string // "10 workers · local cache"
   time?: string // "623ms" (shown on the time row, highlighted)
@@ -86,7 +99,39 @@ const rule = '─'.repeat(48)
             <span class="vx-cmd">{s.command ?? command}</span>
           </div>
 
-          {s.tasks.map((t) => (
+          {s.frames?.map((f) => (
+            <div class="vx-frame">
+              <div class="vx-fopen">
+                <span class="t-dim">┌─ </span>
+                <span class={`t-${f.tone ?? 'green'}`}>{f.id}</span>
+                {f.header && (
+                  <>
+                    <span class="t-dim"> {'>'} </span>
+                    <span class="vx-fcmd">{f.header}</span>
+                  </>
+                )}
+              </div>
+              {f.body?.map((b) => (
+                <div class={`vx-fbody t-${b.tone ?? 'plain'}`}>{b.text}</div>
+              ))}
+              {f.section && (
+                <>
+                  <div class={`vx-fsection t-${f.sectionTone ?? 'yellow'}`}>├─ {f.section}</div>
+                  {f.sectionLines?.map((l) => (
+                    <div class="vx-fbody t-dim">{l}</div>
+                  ))}
+                </>
+              )}
+              <div class="vx-fclose">
+                <span class="t-dim">└─ </span>
+                <span class={`t-${f.tone ?? 'green'}`}>{f.id}</span>
+                <span class="t-dim"> ── ({f.duration}) </span>
+                <span class={`t-${f.tone ?? 'green'}`}>{f.status}</span>
+              </div>
+            </div>
+          ))}
+
+          {s.tasks?.map((t) => (
             <div class="vx-task">
               <span class={`vx-glyph t-${t.tone ?? 'green'}`}>{t.glyph ?? '⏺'} </span>
               <span class="vx-time">{t.time}</span>
@@ -118,7 +163,7 @@ const rule = '─'.repeat(48)
                 <span class="vx-v">
                   <span class="vx-meter">
                     <span class={`t-${m.tone ?? 'green'}`}>{'▰'.repeat(m.on)}</span>
-                    <span class="vx-off">{'▰'.repeat(m.off ?? 0)}</span>
+                    <span class="vx-off">{'▱'.repeat(m.off ?? 0)}</span>
                   </span>
                 </span>
               </div>
@@ -241,6 +286,22 @@ const rule = '─'.repeat(48)
   .vx-task {
     display: flex;
     white-space: pre;
+  }
+  .vx-frame {
+    margin: 2px 0 10px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .vx-fcmd {
+    color: #e6edf3;
+  }
+  .vx-fbody {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .vx-fsection {
+    margin-top: 4px;
+    font-weight: 600;
   }
   .t-green {
     color: #22c55e;
