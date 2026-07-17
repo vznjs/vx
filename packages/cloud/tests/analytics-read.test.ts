@@ -969,6 +969,99 @@ describe('wiring helpers', () => {
     expect(hints.get('app#build')).toBe(200) // mean of 100, 300
   })
 
+  it('taskDurationHints ignores duplicate invocation headers (re-pushed run)', async () => {
+    // invocations' uniqueness is (started_at, run_id): a re-pushed summary with
+    // a changed startedAt yields TWO headers for one run. A plain join would
+    // DUPLICATE that run's task_run and skew the average toward it.
+    const { org, ws } = await newOrgWs(db, 'dupe-hint')
+    const now = Date.now()
+    // r1: one execution (100ms), a single header.
+    await insertINV(db, ws, org, {
+      runId: 'r1',
+      startedAt: now - 2 * HOUR,
+      branch: 'main',
+      defaultBranch: 'main',
+    })
+    await insertTR(db, ws, org, {
+      runId: 'r1',
+      project: 'app',
+      task: 'build',
+      duration: 100,
+      startedAt: now - 2 * HOUR,
+    })
+    // r2: one execution (200ms), but re-pushed → TWO headers (different startedAt).
+    for (const started of [now - HOUR, now]) {
+      await insertINV(db, ws, org, {
+        runId: 'r2',
+        startedAt: started,
+        branch: 'main',
+        defaultBranch: 'main',
+      })
+    }
+    await insertTR(db, ws, org, {
+      runId: 'r2',
+      project: 'app',
+      task: 'build',
+      duration: 200,
+      startedAt: now - HOUR,
+    })
+    // Sharper (discriminating): a trunk run re-pushed as 'feature' must not
+    // pollute feature's OWN baseline. r3 runs on trunk (400ms) then is
+    // re-pushed with a 'feature' header; r4 is a genuine feature run (1000ms).
+    // (All inserts precede every hint call — taskDurationHints memoizes per
+    // scope for 30s, so re-reading a scope after a new insert would go stale.)
+    await insertINV(db, ws, org, {
+      runId: 'r3',
+      startedAt: now - 30 * 60 * 1000,
+      branch: 'main',
+      defaultBranch: 'main',
+    })
+    await insertINV(db, ws, org, {
+      runId: 'r3',
+      startedAt: now + 60 * 1000, // later re-push, different branch
+      branch: 'feature',
+      defaultBranch: 'main',
+    })
+    await insertTR(db, ws, org, {
+      runId: 'r3',
+      project: 'app',
+      task: 'ship',
+      duration: 400,
+      startedAt: now - 30 * 60 * 1000,
+    })
+    await insertINV(db, ws, org, {
+      runId: 'r4',
+      startedAt: now + 2 * 60 * 1000,
+      branch: 'feature',
+      defaultBranch: 'main',
+    })
+    await insertTR(db, ws, org, {
+      runId: 'r4',
+      project: 'app',
+      task: 'ship',
+      duration: 1000,
+      startedAt: now + 2 * 60 * 1000,
+    })
+
+    const hints = await analytics.taskDurationHints(ws)
+    // TRUE mean of {100, 200} = 150. A duplicating join would count r2 twice →
+    // (100+200+200)/3 = 166.67.
+    expect(hints.get('app#build')).toBe(150)
+    // Earliest header (trunk) owns r3, so feature's OWN timing is r4 alone
+    // (1000). A duplicating join would leak r3-as-feature in → (1000+400)/2=700.
+    const branchHints = await analytics.taskDurationHints(ws, {
+      branch: 'feature',
+      defaultBranch: 'main',
+    })
+    expect(branchHints.get('app#ship')).toBe(1000)
+    // Trunk owns r3 cleanly (400); r4 (feature) never leaks down.
+    const trunkHints = await analytics.taskDurationHints(ws, {
+      branch: 'main',
+      defaultBranch: 'main',
+    })
+    expect(trunkHints.get('app#ship')).toBe(400)
+  })
+
   // Scoped-hint fixture — mirrors the cache trust model. Tasks:
   //   build: trunk (100,200 → 150) + a 'exp' branch experiment (2000)
   //   lint:  trunk only (300)

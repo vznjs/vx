@@ -2906,8 +2906,20 @@ export class Analytics {
           inv.branch AS branch,
           (inv.default_branch IS NOT NULL AND inv.branch = inv.default_branch) AS trunk
         FROM task_runs tr
-        LEFT JOIN invocations inv
-          ON inv.run_id = tr.run_id AND inv.workspace_id = ${workspaceId}
+        -- LATERAL pick-one (the getRegressions / getProjectBranchFailures fix):
+        -- invocations' uniqueness is (started_at, run_id), so a re-pushed
+        -- summary with a changed started_at yields TWO headers for one run. A
+        -- plain join would then DUPLICATE each task_run — inflating avg() toward
+        -- re-pushed runs, and (if the re-push changed branch) letting one run
+        -- feed BOTH the trunk baseline AND a branch scope, defeating the trust
+        -- isolation. Take the earliest header per run_id; byte-identical on
+        -- well-formed (single-header) data.
+        LEFT JOIN LATERAL (
+          SELECT i.branch, i.default_branch FROM invocations i
+          WHERE i.run_id = tr.run_id AND i.workspace_id = ${workspaceId}
+          ORDER BY i.started_at ASC, i.run_id ASC
+          LIMIT 1
+        ) inv ON true
         WHERE tr.workspace_id = ${workspaceId}
           AND (tr.cache_hit IS NULL OR tr.cache_hit = false) AND tr.status = 'success'
       )

@@ -208,6 +208,32 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-17**: **`taskDurationHints` de-duplicated — the same
+  re-pushed-invocation bug class the getRegressions/getProjectBranch-
+  Failures LATERAL fixes closed, found in the LPT dispatch hint (cycle 10)**. A targeted bug hunt grounded in this codebase's known failure
+  mode (`invocations` uniqueness is `(started_at, run_id)`, so a
+  re-pushed summary with a changed `started_at` yields TWO headers for
+  one run) swept every `invocations` join in `analytics.ts`. All the
+  analytics-read paths already had the LATERAL pick-one fix EXCEPT
+  `taskDurationHints` — the trunk-scoped LPT duration hint — which
+  predated that awareness (it shipped in the 2026-07-14 trust-scope wave,
+  before the cycle-7 getRegressions fix taught the pattern). Its plain
+  `LEFT JOIN invocations ON run_id` DUPLICATED each task_run of a
+  re-pushed run, skewing `avg(duration_ms)` toward it (pinned: two build
+  runs 100 + a re-pushed 200 gave 166.67, not the true 150), and — the
+  sharper leak — a re-push that changed branch could feed the SAME run
+  into both the trunk baseline AND a branch scope, defeating the very
+  trust isolation that wave built. Fixed with the established LATERAL
+  pick-one (earliest header per run_id), byte-identical on well-formed
+  single-header data. Advisory-only impact (dispatch ORDERING, never
+  outcomes/keys), so low severity — but a real aggregate-correctness bug
+  closed for consistency. Pinned by a DISCRIMINATING regression (fails
+  `150 vs 166.67` on the old join; the branch-leak half uses a genuine
+  feature run so `feature app#ship` = 1000 not the leaked 700). Gate:
+  oxlint + oxfmt 0; analytics-read + analytics-scale (incl. the hint
+  perf guard) + dist-registry 79 pass. NO schema/wire/CACHE bump
+  (output-preserving query rewrite).
+
 - **2026-07-17**: **CI too-many-clients flake killed structurally —
   ephemeral-pg `max_connections` 100→400 (`d51dafd`)**. The session-memo
   push (`95f17ef`) went RED on the cloud job — but NOT on its content:
