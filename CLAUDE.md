@@ -7103,6 +7103,23 @@ LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
 
 ## Active workstreams (prioritized)
 
+**STANDING OWNER DIRECTIVE (2026-07-16, in progress): document EVERY
+vx Cloud feature in the docs** ("document each and every single one
+feature of vx cloud in docs"). Program: (1) full feature inventory from
+this decision log + the code surfaces (every `/v1/*` route, cache wire +
+batch probe + S3 offload + trust scopes, dist/agents + duration-hint
+trust scoping, auth/RBAC/admin/invites/tokens, ingest paths incl.
+per-task incremental + logs capture/privacy/retention, notifications,
+settings/profile, MCP tools, every dashboard card/view incl. the project
+drill-in + timeframe selector + hermeticity + regressions + movers +
+flaky + recommendations + compare + why, TLS/edge, compose/image,
+partitions + the concurrent index pass, GHA summary/checks); (2) audit
+the 8 `apps/docs/src/content/docs/cloud/` pages against it; (3) fill
+every gap where a user would look for it; (4) astro build + link check.
+
+Also queued: the trusted-GET S3 HEAD-skip (backlog (b) — implementation
+brief in the session task list; needs the adversarial pass before ship).
+
 Near-term roadmap = the "road to best-CI" ranked table in
 `docs/design/ci-platform-2026-07.md` (owner: "Make vx the best CI env
 ever… compete with GitHub Actions and Nx Cloud"; the wedge is the
