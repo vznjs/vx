@@ -35,6 +35,19 @@ const termTasks = [
   { time: '245ms', proj: '@vzn/vx', task: 'build.bun.linux-x64' },
 ]
 
+// Interactive cache demo — the exact rows a real `vx run build --all`
+// prints on a 3-package workspace, cold then warm (623ms → 17ms).
+const coldTasks = [
+  { time: '506ms', proj: '@acme/web', task: 'build' },
+  { time: '509ms', proj: '@acme/api', task: 'build' },
+  { time: '604ms', proj: '@acme/core', task: 'build' },
+]
+const warmTasks = [
+  { glyph: '►', gc: 't-green', time: '0ms', word: 'up-to-date', wc: 't-green', proj: '@acme/web', task: 'build' },
+  { glyph: '►', gc: 't-green', time: '0ms', word: 'up-to-date', wc: 't-green', proj: '@acme/api', task: 'build' },
+  { glyph: '⇢', gc: 't-yellow', time: '9ms', word: 'restored', wc: 't-yellow', proj: '@acme/core', task: 'build' },
+]
+
 // Differentiators only — the things Turbo and Nx can't do. Every claim
 // traces to README.md / docs (no table-stakes like "affected graph",
 // which both competitors already ship).
@@ -262,6 +275,61 @@ const footCols = {
           grid-template-columns: 1fr;
         }
       }
+      /* Interactive cache demo */
+      .cachewrap .section-sub {
+        max-width: 44rem;
+        margin: 0.75rem auto 0;
+        color: var(--vx-fg-muted, #9aa4b2);
+        line-height: 1.6;
+      }
+      .cachedemo {
+        max-width: 58rem;
+        margin: 1.75rem auto 0;
+      }
+      .cache-tabs {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 0.85rem;
+        justify-content: center;
+      }
+      .cache-tab {
+        font-family: inherit;
+        font-size: 0.86rem;
+        cursor: pointer;
+        padding: 0.42rem 1rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--vx-fg-muted, #9aa4b2);
+        transition:
+          background 0.18s ease,
+          color 0.18s ease,
+          border-color 0.18s ease;
+      }
+      .cache-tab:hover {
+        color: #fff;
+        border-color: rgba(255, 255, 255, 0.22);
+      }
+      .cache-tab.is-on {
+        color: #fff;
+        background: rgba(139, 92, 246, 0.22);
+        border-color: rgba(139, 92, 246, 0.55);
+      }
+      .cache-term .cache-cold,
+      .cache-term .cache-warm {
+        transition: opacity 0.2s ease;
+      }
+      /* Align the time column so short warm times (0ms/9ms) don't butt the word. */
+      .cache-term .term-task .time {
+        display: inline-block;
+        min-width: 3.6rem;
+      }
+      .cachedemo[data-state='cold'] .cache-warm {
+        display: none;
+      }
+      .cachedemo[data-state='warm'] .cache-cold {
+        display: none;
+      }
     </style>
   </head>
   <body>
@@ -449,6 +517,92 @@ const footCols = {
                     > · max 245ms · avg 243ms · min 241ms</span
                   ></span
                 >
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== Interactive cache demo ===================== -->
+      <section class="section container cachewrap">
+        <div class="section-head">
+          <p class="vx-kicker">// the whole point</p>
+          <h2>Run it once. The rest are free.</h2>
+          <p class="section-sub">
+            vx hashes every task's inputs. Nothing changed? It replays the stored result
+            instead of running the work. <strong>Press "Run again" ↓</strong> — same command,
+            same output, <span class="t-green">37× faster</span>.
+          </p>
+        </div>
+        <div class="cachedemo" data-state="cold">
+          <div class="cache-tabs" role="tablist">
+            <button class="cache-tab is-on" data-go="cold" type="button">First run</button>
+            <button class="cache-tab" data-go="warm" type="button">Run again ⟳</button>
+          </div>
+          <div class="term cache-term">
+            <div class="term-bar-top">
+              <span class="tdot" style="background:#ff5f57"></span>
+              <span class="tdot" style="background:#febc2e"></span>
+              <span class="tdot" style="background:#28c840"></span>
+              <span class="ttitle">zsh — vx</span>
+            </div>
+            <div class="term-body">
+              <div class="term-prompt">
+                <span class="caret">❯ </span><span class="cmd">vx run build --all</span>
+              </div>
+
+              <!-- COLD: everything runs -->
+              <div class="cache-cold">
+                {
+                  coldTasks.map((t) => (
+                    <div class="term-task">
+                      <span class="glyph t-dim">⏺ </span>
+                      <span class="time">{t.time}</span>
+                      <span class="ok">success</span>
+                      <span class="cache t-dim">miss</span>
+                      <span class="target">
+                        <span class="t-proj">{t.proj}</span><span class="t-dim">#</span><span class="t-pink">{t.task}</span>
+                      </span>
+                    </div>
+                  ))
+                }
+              </div>
+
+              <!-- WARM: everything restores -->
+              <div class="cache-warm">
+                {
+                  warmTasks.map((t) => (
+                    <div class="term-task">
+                      <span class={`glyph ${t.gc}`}>{t.glyph} </span>
+                      <span class="time">{t.time}</span>
+                      <span class={t.wc}>{t.word}</span>
+                      <span class="target">
+                        <span class="t-proj">{t.proj}</span><span class="t-dim">#</span><span class="t-pink">{t.task}</span>
+                      </span>
+                    </div>
+                  ))
+                }
+              </div>
+
+              <div class="term-gap"></div>
+              <div class="term-rule">
+                <span class="t-dim">─ </span><span class="mark">vx 0.0.0</span><span class="t-dim"> </span><span class="fill">{dashes}</span>
+              </div>
+              <div style="height:6px"></div>
+              <div class="term-row">
+                <span class="lbl">cache</span>
+                <span class="v">
+                  <span class="cache-cold"><span class="t-red">3 miss</span></span>
+                  <span class="cache-warm"><span class="t-green">2 up-to-date</span><span class="t-dim"> · </span><span class="t-yellow">1 local</span></span>
+                </span>
+              </div>
+              <div class="term-gap"></div>
+              <div class="term-row">
+                <span class="lbl">time</span>
+                <span class="v">
+                  <span class="cache-cold"><span class="term-time">623ms</span></span>
+                  <span class="cache-warm"><span class="term-time t-green">17ms</span></span>
+                </span>
               </div>
             </div>
           </div>
@@ -705,6 +859,17 @@ const footCols = {
           navigator.clipboard?.writeText(cmd).catch(() => {})
           pill.classList.add('copied')
           setTimeout(() => pill.classList.remove('copied'), 1400)
+        })
+      })
+
+      // Cache demo: flip the terminal between the cold (miss) and warm (hit) run.
+      document.querySelectorAll<HTMLButtonElement>('.cache-tab').forEach((tab) => {
+        tab.addEventListener('click', () => {
+          const demo = tab.closest<HTMLElement>('.cachedemo')
+          if (!demo) return
+          demo.dataset.state = tab.dataset.go ?? 'cold'
+          demo.querySelectorAll('.cache-tab').forEach((t) => t.classList.remove('is-on'))
+          tab.classList.add('is-on')
         })
       })
     </script>

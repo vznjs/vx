@@ -208,6 +208,39 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-17**: **Engaging docs — real dashboard screenshots + an
+  INTERACTIVE cache demo, and a standing directive: explain visually/
+  interactively before the how-to (`d1ce077` + follow-up)** (owner: "add
+  screenshots / cool graphics visualizing things, not diagrams — docs
+  should be engaging" → "if we can explain a feature visually or
+  interactively we should; devs should understand it BEFORE learning how
+  to use it"). Two waves. **(1) Dashboard screenshots (`d1ce077`):** real
+  captures of the ACTUAL SPA — booted on a real platform (ephemeral pg +
+  fake S3 + the built dist), seeded through the `/v1/ingest` wire with a
+  realistic 150-run/8-project/18-day workspace (PR-concentrated
+  regression + duration drift so the regression + movers cards populate)
+  — Runs (CI-health + history), a run's flamegraph, Insights (cross-
+  branch regression + biggest movers), a project drill-in. `dashboard.md`
+  leads with a visual tour; `overview.md` + the landing get a hover-lift
+  gallery ('Your CI, visualized'). Astro optimizes the PNGs → WebP
+  (~90KB) + base-prefixes automatically; source PNGs are committed docs
+  assets. The generator stays OUT of the tree (gitignored — the committed
+  `ui-perf.test.ts` is the reference for the boot+seed+browser technique;
+  it hardcodes `/opt` paths + would add gate surface for a one-off).
+  **(2) Interactive cache demo (landing):** the single most important
+  core concept made playable — a terminal (reusing the landing's faithful
+  `.term-*` classes) that toggles cold→warm on a real 3-package run's
+  actual numbers (623ms/3-miss → 17ms/2-up-to-date·1-local, captured live
+  from `bun src/bin.ts run build --all`). 'Press Run again → 37× faster.'
+  Browser-verified: the toggle flips state, both renders faithful, zero
+  console errors. **STANDING DIRECTIVE going forward:** if a feature can
+  be shown or made playable, do that BEFORE the reference prose — a dev
+  should grasp what/why from something they can see or click. Next
+  candidates for the core (CLI-first, today prose-only): `--affected`
+  (change one file → only the subtree runs), parallel execution (the
+  flamegraph), `--verify` (provable correctness). Docs-only; no core
+  change, build clean, zero broken links.
+
 - **2026-07-17**: **Analytics correctness sweep (cycle 11) — a
   re-pushed-run 500 in `compareRuns` fixed + two unclamped-window scans
   clamped; the NULL-aggregate and tenant-clamp classes swept CLEAN**. A
