@@ -3,10 +3,52 @@ title: Caching tasks
 description: Declare inputs and outputs so vx caches correctly — plus what vx folds in automatically, how to track env vars, and how to debug a stale or missed cache.
 ---
 
+import Terminal from '../../../components/Terminal.astro'
+
 vx's cache is **content-addressed**: it hashes everything a task depends
 on into a key, and a cache hit means "we've run this exact task on these
 exact inputs before — here's the stored result." Get the declarations
 right and every run is both correct and fast.
+
+**See it.** Run `vx run build --all` once — three cache misses, real work,
+623 ms. Nothing changed? Run it again — three cache hits, no work, 21 ms.
+Press **Run again** to watch the same command flip from work to instant.
+
+<Terminal
+  title="zsh — vx"
+  command="vx run build --all"
+  states={[
+    {
+      label: 'First run (cold)',
+      tasks: [
+        { glyph: '⏺', time: '206ms', status: 'success', cache: 'miss', cacheTone: 'dim', proj: '@acme/ui', task: 'build' },
+        { glyph: '⏺', time: '306ms', status: 'success', cache: 'miss', cacheTone: 'dim', proj: '@acme/api', task: 'build' },
+        { glyph: '⏺', time: '305ms', status: 'success', cache: 'miss', cacheTone: 'dim', proj: '@acme/web', task: 'build' },
+      ],
+      meters: [
+        { label: 'tasks', on: 46, off: 0, tone: 'green', legend: '3 success', legendRest: ' · 3 total' },
+        { label: 'cache', on: 46, off: 0, tone: 'red', legend: '3 miss', legendTone: 'red' },
+      ],
+      info: '4 workers · local cache',
+      time: '623ms',
+      timeRest: ' · max 306ms · avg 272ms · min 206ms',
+    },
+    {
+      label: 'Run again (warm)',
+      tasks: [
+        { glyph: '►', time: '5ms', status: 'success', cache: 'fresh', cacheTone: 'green', proj: '@acme/api', task: 'build' },
+        { glyph: '►', time: '6ms', status: 'success', cache: 'fresh', cacheTone: 'green', proj: '@acme/ui', task: 'build' },
+        { glyph: '►', time: '6ms', status: 'success', cache: 'fresh', cacheTone: 'green', proj: '@acme/web', task: 'build' },
+      ],
+      meters: [
+        { label: 'tasks', on: 46, off: 0, tone: 'green', legend: '3 success', legendRest: ' · 3 total' },
+        { label: 'cache', on: 46, off: 0, tone: 'green', legend: '3 up-to-date', legendTone: 'green' },
+      ],
+      info: '4 workers · local cache',
+      time: '21ms',
+    },
+  ]}
+/>
 
 This is the guide that matters most. The one failure mode worth fearing
 is a **stale hit** (shipping a result built from inputs that actually
