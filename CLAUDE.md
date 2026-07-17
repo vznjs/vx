@@ -208,6 +208,47 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-17**: **Session-principal auth memo SHIPPED — the last named
+  residual of the 2026-07-12 perf audit (F1's deferred half)** (cycle 9).
+  Every session-authenticated request (the dashboard polls several `/v1`
+  reads per open tab) resolved the principal from Postgres — HMAC-verify
+  the cookie, SELECT the session row, renew, load user + memberships.
+  Now memoized in `auth/rbac.ts`, byte-for-byte the token-memo pattern:
+  5s TTL, 10k bound with clear-on-overflow, keyed by the sha256 id-hash
+  hex of the HMAC-VERIFIED session id (never the raw cookie; a tampered
+  cookie fails the constant-time HMAC gate before any memo or DB touch
+  and is never cached). Unknown/expired ids null-cache for the TTL (a
+  256-bit server-minted id can never become valid — the session analog
+  of secrets-can't-re-mint). **The invalidation surface that originally
+  deferred this is closed in-process:** logout → per-entry forget (the
+  memo lives in rbac.ts because sessions.ts is a leaf — `destroySession`'s
+  doc requires callers to forget, and its only caller does); member role
+  PATCH / member DELETE / invite accept / org create / profile RENAME
+  (displayName is on the principal) → whole-memo clear (rare admin
+  actions — obviously-correct beats per-user tracking); password change
+  deliberately does NOT clear (rewrites only `password_hash`, not on the
+  principal, no session rotation in the current code). Sliding renewal
+  fires only on a memo miss (verified: the UPDATE lives inside
+  `resolveSession`, which the hit path never reaches) — ≤5s skew against
+  a 30-day window, pinned. Per-entry validity caps at
+  `min(TTL, session.expiresAt)` mirroring the token memo — with a
+  stated-honestly wrinkle: the cap CANNOT bind today (any session within
+  15d of expiry is renewed to 30d during the very resolution that
+  memoizes it), kept as cheap insurance for a future renewal-policy
+  change. Pinned by 6 controlled-clock tests incl. the sharp ones:
+  logout's next request 401s (revocation beats TTL), a role demotion is
+  visible on the demoted user's NEXT request (no stale-escalation
+  window), invite-accept's own request memoizes the PRE-accept principal
+  so the accept-side clear is load-bearing (test fails without it), a
+  31-day-untouched session 401s, renewal bumps `expires_at` exactly.
+  **Accepted residuals:** cross-replica staleness ≤5s for every session
+  mutation (the token memo's accepted property); out-of-band DBA edits
+  (manual `disabled_at`, row deletes — no route performs these) visible
+  after ≤5s. Gates: oxlint (differential-verified with a planted TS2322
+  probe) + oxfmt exit 0; auth 32 + server 32 pass on real pg. NO
+  schema/wire/CACHE bump. Task #79 (the 2026-07-12 perf follow-ups) is
+  now fully CLOSED.
+
 - **2026-07-17**: **The trusted-GET S3 HEAD-skip SHIPPED — the deferred
   backlog item (b), completed from the stashed WIP + adversarially
   verified sound (zero defects)** (cycle 8). On a presigning (S3)

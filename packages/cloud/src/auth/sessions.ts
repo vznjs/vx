@@ -20,6 +20,18 @@ function idHash(id: string): Buffer {
 }
 
 /**
+ * Memo key for a presented cookie: the sha256 id-hash (hex) — the same digest
+ * the DB row is keyed by, never the raw cookie value (the id is a
+ * secret-equivalent credential). null = tampered/malformed cookie, rejected by
+ * the identical HMAC gate `resolveSession` applies.
+ */
+export function sessionCacheKey(secret: string, cookieValue: string): string | null {
+  const id = verifySessionCookieValue(secret, cookieValue)
+  if (id === null) return null
+  return idHash(id).toString('hex')
+}
+
+/**
  * Verify a cookie value's HMAC and return the session id, or null. Constant
  * time on the tag compare; no DB access.
  */
@@ -57,30 +69,40 @@ export async function createSession(
 
 /**
  * Resolve a cookie value to its live session (HMAC gate first, then the DB
- * row). Sliding renewal: a session past half its TTL gets extended.
+ * row). Sliding renewal: a session past half its TTL gets extended. The
+ * returned `expiresAt` is the post-renewal effective expiry — the principal
+ * memo in rbac.ts caps its entries on it. Callers memoize the result, so the
+ * renewal write fires only on a memo miss; skipping it inside a 5s memo
+ * window is harmless against a 30-day sliding window.
  */
 export async function resolveSession(
   sql: SQL,
   secret: string,
   cookieValue: string,
   now: number = Date.now(),
-): Promise<{ userId: string } | null> {
+): Promise<{ userId: string; expiresAt: number } | null> {
   const id = verifySessionCookieValue(secret, cookieValue)
   if (id === null) return null
   const rows = await sql<{ user_id: string; expires_at: string }[]>`
     SELECT user_id, expires_at FROM sessions WHERE id_hash = ${idHash(id)}`
   const row = rows[0]
   if (row === undefined) return null
-  const expiresAt = Number(row.expires_at)
+  let expiresAt = Number(row.expires_at)
   if (expiresAt <= now) return null
   if (expiresAt - now < SESSION_TTL_MS / 2) {
-    await sql`UPDATE sessions SET expires_at = ${now + SESSION_TTL_MS}
+    expiresAt = now + SESSION_TTL_MS
+    await sql`UPDATE sessions SET expires_at = ${expiresAt}
               WHERE id_hash = ${idHash(id)}`
   }
-  return { userId: row.user_id }
+  return { userId: row.user_id, expiresAt }
 }
 
-/** Revoke the cookie's session row (logout). Tampered cookies are a no-op. */
+/**
+ * Revoke the cookie's session row (logout). Tampered cookies are a no-op.
+ * Callers must also drop the memoized principal (`forgetSessionPrincipal` in
+ * rbac.ts — imported there, not here, to keep this module a leaf); the logout
+ * route does.
+ */
 export async function destroySession(sql: SQL, secret: string, cookieValue: string): Promise<void> {
   const id = verifySessionCookieValue(secret, cookieValue)
   if (id === null) return

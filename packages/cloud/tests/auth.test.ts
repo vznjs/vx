@@ -7,6 +7,7 @@ import {
 } from '../src/auth/routes.js'
 import { createSession, resolveSession, verifySessionCookieValue } from '../src/auth/sessions.js'
 import { createApiToken, lookupToken, resetTokenCache } from '../src/auth/tokens.js'
+import { resetSessionPrincipalCache } from '../src/auth/rbac.js'
 import { ephemeralPg } from './helpers/ephemeral-pg.js'
 
 const SECRET = 's'.repeat(48)
@@ -694,3 +695,146 @@ async function memberId(db: DbClient, email: string): Promise<string> {
   const rows = await db.sql<{ id: string }[]>`SELECT id FROM users WHERE email = ${email}`
   return rows[0]!.id
 }
+
+describe('session principal memo', () => {
+  const DAY = 24 * 60 * 60 * 1000
+  let db: DbClient
+  let ctx: AuthRoutesContext
+  let clockNow = 0
+  let ownerCookie = ''
+  let orgId = ''
+
+  async function me(cookie: string): Promise<Response> {
+    return await call(ctx, 'GET', '/v1/auth/me', { cookie })
+  }
+
+  async function join(email: string, role: string): Promise<string> {
+    const inviteRes = await call(ctx, 'POST', `/v1/admin/orgs/${orgId}/invites`, {
+      cookie: ownerCookie,
+      csrf: true,
+      body: { role },
+    })
+    const { invite } = (await inviteRes.json()) as { invite: string }
+    const reg = await call(ctx, 'POST', '/v1/auth/register', {
+      body: { email, password: 'password1', invite },
+    })
+    return cookieOf(reg)
+  }
+
+  beforeAll(async () => {
+    resetSessionPrincipalCache()
+    db = openDb(await (await ephemeralPg()).createDatabase())
+    clockNow = Date.now()
+    ctx = makeCtx(db, () => clockNow)
+    const reg = await call(ctx, 'POST', '/v1/auth/register', {
+      body: { email: 'boss@example.com', password: 'password1' },
+    })
+    ownerCookie = cookieOf(reg)
+    const meBody = (await (await me(ownerCookie)).json()) as { orgs: { orgId: string }[] }
+    orgId = meBody.orgs[0]!.orgId
+  })
+
+  it('logout invalidates the memoized principal immediately (revocation beats the TTL)', async () => {
+    const cookie = await join('bye@example.com', 'member')
+    expect((await me(cookie)).status).toBe(200)
+    expect((await call(ctx, 'POST', '/v1/auth/logout', { cookie, csrf: true })).status).toBe(200)
+    // Same tick — well inside the 5s TTL of the entry memoized above.
+    expect((await me(cookie)).status).toBe(401)
+  })
+
+  it('a memoized session skips Postgres inside the TTL; the TTL bounds the staleness', async () => {
+    const cookie = await join('memo@example.com', 'member')
+    expect((await me(cookie)).status).toBe(200)
+    // Delete the session row OUT OF BAND (not via logout, so the memo is not
+    // cleared): a re-resolve inside the TTL still answers 200 from the memo,
+    // proving Postgres was NOT consulted again — the same behavioral pin the
+    // token-memo test uses.
+    const uid = await memberId(db, 'memo@example.com')
+    await db.sql`DELETE FROM sessions WHERE user_id = ${uid}`
+    expect((await me(cookie)).status).toBe(200)
+    // Past the TTL the entry lapses; the row is gone → refused. This is the
+    // exact staleness bound: out-of-band revocation lands within 5s.
+    clockNow += 6000
+    expect((await me(cookie)).status).toBe(401)
+  })
+
+  it('a role change reaches the changed user on the next request (no stale-escalation window)', async () => {
+    const cookie = await join('demote@example.com', 'admin')
+    // An admin-gated read memoizes the admin-role principal.
+    expect((await call(ctx, 'GET', `/v1/admin/orgs/${orgId}/tokens`, { cookie })).status).toBe(200)
+    const uid = await memberId(db, 'demote@example.com')
+    const patch = await call(ctx, 'PATCH', `/v1/admin/orgs/${orgId}/members/${uid}`, {
+      cookie: ownerCookie,
+      csrf: true,
+      body: { role: 'viewer' },
+    })
+    expect(patch.status).toBe(200)
+    // Immediately after — inside what would be the memoized entry's TTL — the
+    // demotion is already effective.
+    expect((await call(ctx, 'GET', `/v1/admin/orgs/${orgId}/tokens`, { cookie })).status).toBe(403)
+  })
+
+  it('an invite accept makes the new org visible on the next request', async () => {
+    const cookie = await join('joiner@example.com', 'member')
+    const created = await call(ctx, 'POST', '/v1/admin/orgs', {
+      cookie: ownerCookie,
+      csrf: true,
+      body: { slug: 'memo-second', name: 'Second' },
+    })
+    const { orgId: org2Id } = (await created.json()) as { orgId: string }
+    const { invite } = (await (
+      await call(ctx, 'POST', `/v1/admin/orgs/${org2Id}/invites`, {
+        cookie: ownerCookie,
+        csrf: true,
+        body: { role: 'member' },
+      })
+    ).json()) as { invite: string }
+    // The accept request itself memoizes the PRE-accept principal (resolution
+    // precedes the membership insert), so without the accept-side clear the
+    // next read would serve a stale org list.
+    const accept = await call(ctx, 'POST', '/v1/auth/invites/accept', {
+      cookie,
+      csrf: true,
+      body: { invite },
+    })
+    expect(accept.status).toBe(200)
+    const meBody = (await (await me(cookie)).json()) as { orgs: { orgId: string }[] }
+    expect(meBody.orgs.map((o) => o.orgId)).toContain(org2Id)
+  })
+
+  it('sliding renewal still fires on a memo miss (a hit only skips it within the TTL)', async () => {
+    const cookie = await join('renew@example.com', 'member')
+    const uid = await memberId(db, 'renew@example.com')
+    const t0 = clockNow
+    expect((await me(cookie)).status).toBe(200)
+    const readExpiry = async (): Promise<number> => {
+      const rows = await db.sql<{ expires_at: string }[]>`
+        SELECT expires_at FROM sessions WHERE user_id = ${uid}`
+      return Number(rows[0]!.expires_at)
+    }
+    // Full 30 days remaining → the memoizing resolve did not renew.
+    expect(await readExpiry()).toBe(t0 + 30 * DAY)
+    // 20 days later the memo entry is long expired: the miss re-resolves and
+    // the sliding renewal fires (10 days remaining < half the TTL).
+    clockNow += 20 * DAY
+    const renewedAt = clockNow
+    expect((await me(cookie)).status).toBe(200)
+    expect(await readExpiry()).toBe(renewedAt + 30 * DAY)
+    // Past the ORIGINAL expiry the session still authenticates end-to-end.
+    clockNow = t0 + 35 * DAY
+    expect((await me(cookie)).status).toBe(200)
+  })
+
+  it('an expired session is refused even though it was recently memoized', async () => {
+    // Fresh session for an existing user at the current (advanced) clock.
+    const login = await call(ctx, 'POST', '/v1/auth/login', {
+      body: { email: 'memo@example.com', password: 'password1' },
+    })
+    const cookie = cookieOf(login)
+    expect((await me(cookie)).status).toBe(200)
+    // Untouched for 31 days → no renewal ran; both the memo entry (5s) and
+    // the row (30d) are past expiry — refused, never served from the memo.
+    clockNow += 31 * DAY
+    expect((await me(cookie)).status).toBe(401)
+  })
+})

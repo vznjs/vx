@@ -24,8 +24,10 @@ import {
 } from './tokens.js'
 import {
   csrfOk,
+  forgetSessionPrincipal,
   hasOrgRole,
   orgRoleOf,
+  resetSessionPrincipalCache,
   resolvePrincipal,
   type AuthPrincipal,
   type OrgRole,
@@ -336,6 +338,8 @@ async function authRoute(req: Request, url: URL, ctx: AuthRoutesContext): Promis
     if (cookie !== null) {
       if (req.headers.get('x-vx-csrf') === null) return json({ error: 'missing x-vx-csrf' }, 403)
       await destroySession(sql, ctx.secret, cookie)
+      // Revocation must beat the principal memo's TTL in-process.
+      forgetSessionPrincipal(ctx.secret, cookie)
     }
     return json({ ok: true }, 200, { 'Set-Cookie': sessionClearCookie(ctx.secureCookies) })
   }
@@ -360,6 +364,9 @@ async function authRoute(req: Request, url: URL, ctx: AuthRoutesContext): Promis
     }
     if (displayName.length > 200) return json({ error: 'displayName too long (max 200)' }, 400)
     await sql`UPDATE users SET display_name = ${displayName} WHERE id = ${principal.userId}`
+    // displayName rides the memoized principal, and the user may hold other
+    // sessions (tabs/devices) — clear the whole memo (rare action).
+    resetSessionPrincipalCache()
     return json({ ok: true, displayName })
   }
 
@@ -429,6 +436,9 @@ async function authRoute(req: Request, url: URL, ctx: AuthRoutesContext): Promis
       if (err instanceof InviteRollback) return json({ error: err.publicMessage }, err.status)
       throw err
     }
+    // A new membership landed: drop every memoized session principal so the
+    // accepting user's next request sees the org at once.
+    if (outcome.status === 200) resetSessionPrincipalCache()
     return json(outcome.body, outcome.status)
   }
 
@@ -482,6 +492,8 @@ async function adminRoute(req: Request, url: URL, ctx: AuthRoutesContext): Promi
     }
     await sql`INSERT INTO org_memberships (org_id, user_id, role, created_at)
               VALUES (${orgId}, ${principal.userId}, ${'owner'}, ${now})`
+    // The creator gained a membership — drop the memoized principals.
+    resetSessionPrincipalCache()
     return json({ ok: true, orgId }, 201)
   }
 
@@ -567,10 +579,14 @@ async function adminRoute(req: Request, url: URL, ctx: AuthRoutesContext): Promi
       }
       if (req.method === 'DELETE') {
         await sql`DELETE FROM org_memberships WHERE org_id = ${org!.id} AND user_id = ${itemId}`
+        // A role/membership change must reach the target's next request —
+        // no TTL-long stale-role window in-process.
+        resetSessionPrincipalCache()
         return json({ ok: true })
       }
       await sql`UPDATE org_memberships SET role = ${newRole!}
                 WHERE org_id = ${org!.id} AND user_id = ${itemId}`
+      resetSessionPrincipalCache()
       return json({ ok: true })
     }
     return json({ error: 'not found' }, 404)

@@ -5,7 +5,7 @@
 // capabilities.
 
 import type { SQL } from 'bun'
-import { readCookie, resolveSession, SESSION_COOKIE } from './sessions.js'
+import { readCookie, resolveSession, sessionCacheKey, SESSION_COOKIE } from './sessions.js'
 import { lookupToken, type TokenPrincipal } from './tokens.js'
 
 export type OrgRole = 'owner' | 'admin' | 'member' | 'viewer'
@@ -49,6 +49,48 @@ export function hasOrgRole(p: AuthPrincipal, orgId: string, min: OrgRole): boole
 }
 
 /**
+ * Short-TTL memo of resolved session principals — the session analog of the
+ * token memo in tokens.ts (same TTL, bound, and clear-on-revoke pattern).
+ * The dashboard polls several /v1 reads every 5-30s per open tab, and each
+ * session request did four Postgres round-trips (session SELECT, sliding
+ * renewal UPDATE, user SELECT, memberships SELECT). Keyed by the sha256
+ * session id-hash — never the raw cookie value. Unlike a token, a session
+ * principal's CONTENTS can change (role grants, memberships, rename), so
+ * every route that mutates them clears the memo in-process (see routes.ts);
+ * cross-replica staleness is bounded by the TTL, the token memo's accepted
+ * property. A memo hit also skips the sliding-renewal write — harmless:
+ * renewal is a 30-day window and the memo is 5s. Each entry's expiry is
+ * capped at the session row's OWN `expiresAt` (the token memo's expires_at
+ * cap); today the cap can't bind — renewal guarantees ≥15d remaining — but
+ * it keeps the memo correct if the renewal policy ever changes. A null
+ * (unknown/expired session) is cached for the full TTL: ids are 256-bit
+ * server-minted randoms, so a presented unknown id never becomes valid.
+ */
+const SESSION_CACHE_TTL_MS = 5_000
+const SESSION_CACHE_MAX = 10_000
+const sessionCache = new Map<string, { principal: SessionPrincipal | null; expiresAt: number }>()
+
+/** Drop the whole session memo — membership/role/profile mutations (rare
+ *  admin actions; a full clear is obviously correct vs tracking
+ *  user→sessions), and tests. */
+export function resetSessionPrincipalCache(): void {
+  sessionCache.clear()
+}
+
+/** Drop ONE session's memoized principal — logout, where the cookie in hand
+ *  identifies exactly the entry to kill (revocation must beat the TTL). */
+export function forgetSessionPrincipal(secret: string, cookieValue: string): void {
+  const key = sessionCacheKey(secret, cookieValue)
+  if (key !== null) sessionCache.delete(key)
+}
+
+/** Store a session-cache entry, bounding the map so it can't grow unbounded. */
+function rememberSession(key: string, principal: SessionPrincipal | null, expiresAt: number): void {
+  if (sessionCache.size >= SESSION_CACHE_MAX) sessionCache.clear()
+  sessionCache.set(key, { principal, expiresAt })
+}
+
+/**
  * Resolve the request's principal: `Authorization: Bearer vxc_…` (API token)
  * first, else the session cookie. null = unauthenticated. A disabled user's
  * session resolves to null even while the row lives.
@@ -65,9 +107,20 @@ export async function resolvePrincipal(
   }
   const cookie = readCookie(req, SESSION_COOKIE)
   if (cookie === null) return null
+  // Tampered cookies fail the HMAC gate here — never memoized, no DB read
+  // (the same pre-DB rejection resolveSession applies).
+  const key = sessionCacheKey(secret, cookie)
+  if (key === null) return null
+  const cached = sessionCache.get(key)
+  if (cached !== undefined && cached.expiresAt > now) return cached.principal
   const session = await resolveSession(sql, secret, cookie, now)
-  if (session === null) return null
-  return await sessionPrincipalFor(sql, session.userId)
+  if (session === null) {
+    rememberSession(key, null, now + SESSION_CACHE_TTL_MS)
+    return null
+  }
+  const principal = await sessionPrincipalFor(sql, session.userId)
+  rememberSession(key, principal, Math.min(now + SESSION_CACHE_TTL_MS, session.expiresAt))
+  return principal
 }
 
 /** Load a user's principal (memberships + flags); null for disabled/missing. */
