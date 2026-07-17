@@ -88,7 +88,14 @@ async function boot(): Promise<EphemeralPg> {
       dataDir,
       '-w',
       '-o',
-      `-k ${sockDir} -c listen_addresses='' -c fsync=off -c full_page_writes=off`,
+      // max_connections=400 (default 100): the full cloud suite (37+ files in
+      // ONE `bun test` process) shares this cluster, and pools accumulate at
+      // their peak faster than they close — the default cap tips over into
+      // `sorry, too many clients already`, which surfaced as an isolated-passing
+      // flake (the db-indexes replica-race test holds an extra reserved
+      // connection while ensureIndexes reserves its own, so it hit the ceiling
+      // first). Headroom is ~free with fsync off; it removes the class.
+      `-k ${sockDir} -c listen_addresses='' -c fsync=off -c full_page_writes=off -c max_connections=400`,
       '-l',
       path.join(scratch, 'pg.log'),
       'start',
