@@ -14,6 +14,36 @@ Open your deployment's `VX_CLOUD_BASE_URL` in a browser and the dashboard
 loads. It is served by `vx-cloud server` — core `vx` has no server
 commands.
 
+## A quick tour
+
+![The Runs landing — a live CI-health strip over filterable run history](../../../assets/screenshots/runs.png)
+
+*The **Runs** landing is the dev's entry point: a live CI-health strip
+(pass rate, flaky count, cache hit rate) over a filterable history of
+every `vx run`, faceted by result, branch, project, and commit.*
+
+![A run's flamegraph — staggered task bars showing real parallelism](../../../assets/screenshots/run-detail.png)
+
+*Open any run to see its **flamegraph** — each task a bar on the real
+timeline, so overlap is genuine concurrency and the critical path is
+obvious. The invocation header carries the branch, commit, worker count,
+and cache policy; per-task rows add CPU time and peak RSS. One click from
+here reaches a task's logs and artifacts.*
+
+![Insights — cross-branch regression detection and the biggest duration movers](../../../assets/screenshots/insights.png)
+
+*The **Insights** area turns history into answers: it names the task that
+**started failing across branches** (here `@acme/web#build`, broken on two
+open PRs) and ranks the **biggest movers** — tasks whose average duration
+shifted most, with the signed delta and direction.*
+
+![A project drill-in — trend chart, cross-project ranking, per-task sparklines](../../../assets/screenshots/project.png)
+
+*Every project has its own drill-in: a failures-and-runs trend, how it
+**ranks against the other projects** on failure rate and speed, per-task
+duration sparklines, and where each failure was first noticed across
+branches — the answer to "did *my* project get faster or slower?"*
+
 ## Accounts, orgs, and access
 
 The platform is account-based. You **register or log in**; the first

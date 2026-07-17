@@ -16,6 +16,10 @@ through its public plugin seams — so vx Cloud is one implementation you
 could replace with your own. See
 [Core is provider-neutral](/vx/guides/extensibility/).
 
+![The vx Cloud dashboard — Insights: cross-branch regressions and duration movers](../../../assets/screenshots/insights.png)
+
+*Every run streams into the dashboard — see the [Dashboard tour](/vx/cloud/dashboard/) for the full walkthrough.*
+
 ## What it is
 
 vx Cloud is a full platform, not a companion process:

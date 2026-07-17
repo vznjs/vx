@@ -25,3 +25,6 @@ coverage
 *.heapsnapshot
 # bun build --compile intermediate (transient, written in cwd)
 *.bun-build
+
+# local docs screenshot generator (regenerate via the ui-perf boot+seed pattern)
+packages/cloud/scripts/shoot-docs.ts
