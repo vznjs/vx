@@ -208,35 +208,55 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
-- **2026-07-17**: **Engaging docs — real dashboard screenshots in the
-  DOCS; landing-page showcase REVERTED per owner redirect (`d1ce077`,
-  landing reverted)** (owner: "add screenshots / cool graphics
-  visualizing things, not diagrams — docs should be engaging" → "if we
-  can explain a feature visually or interactively we should; devs should
-  understand it BEFORE learning how to use it" → **"Remove changes from
-  website. We need screenshots more in DOCS. Every single feature we have
-  should be visualized or interactive demo"**). **Kept — dashboard
-  screenshots (`d1ce077`):** real captures of the ACTUAL SPA — booted on
-  a real platform (ephemeral pg + fake S3 + the built dist), seeded
-  through the `/v1/ingest` wire with a realistic 150-run/8-project/18-day
-  workspace (PR-concentrated regression + duration drift so the
-  regression + movers cards populate) — Runs (CI-health + history), a
-  run's flamegraph, Insights (cross-branch regression + biggest movers),
-  a project drill-in. `dashboard.md` leads with a visual tour;
-  `overview.md` carries the Insights shot. Astro optimizes the PNGs →
-  WebP (~90KB) + base-prefixes automatically; source PNGs are committed
-  docs assets. The generator stays OUT of the tree (gitignored — the
-  committed `ui-perf.test.ts` is the reference for the boot+seed+browser
-  technique; it hardcodes `/opt` paths + would add gate surface for a
-  one-off). **Reverted — the two LANDING additions (`index.astro`):** the
-  'Your CI, visualized' hover-lift gallery and the interactive cold→warm
-  cache demo were removed from the marketing homepage; the owner wants
-  visuals in the DOCS content pages, not the website. **STANDING
-  DIRECTIVE going forward:** every feature we ship gets a visualization or
-  interactive demo IN THE DOCS (cloud dashboard views → real screenshots;
-  CLI/core features → real terminal captures or interactive terminal
-  demos), placed BEFORE the reference prose — a dev should grasp what/why
-  from something they can see or click. Docs-only; no core change.
+- **2026-07-17**: **Visual-first docs program — every feature gets a
+  screenshot or interactive demo in the DOCS; landing showcase REVERTED**
+  (owner: "add screenshots / cool graphics visualizing things — docs
+  should be engaging" → "if we can explain a feature visually or
+  interactively we should; devs should understand it BEFORE learning how
+  to use it" → **"Remove changes from website. We need screenshots more
+  in DOCS. Every single feature we have should be visualized or
+  interactive demo"**). **Reverted (`0508a56`):** the two LANDING
+  additions (`index.astro` — the 'Your CI, visualized' gallery + the
+  interactive cache demo) removed; visuals belong in the DOCS content
+  pages, not the marketing homepage. **The kept + new program (a series
+  of docs-only commits):** three reusable Astro components + real captures
+  wired into the guides and cloud pages, each placed BEFORE the reference
+  prose. **Components** (`apps/docs/src/components/`): (1) **`Terminal.astro`** —
+  a faithful, self-contained render of real `vx` output (glyphs/palette/
+  meters/summary + a framed-block mode for focused/failure/sandbox runs),
+  dark chrome that reads in both Starlight themes, with an optional
+  multi-state **interactive toggle**; (2) **`GithubSummary.astro`** — a
+  GitHub-styled job-summary card (the failures-first per-task table);
+  (3) **`SideBySide.astro`** — two dark code panels with a `→` between
+  (before/after). All authored from CAPTURED output (a temp
+  `@acme/*` workspace run through the real CLI), so the numbers/glyphs are
+  real, not invented. **Coverage shipped:** caching (interactive cold→warm
+  toggle, `guides/caching.mdx`); running-tasks (`--all` vs `--affected`
+  toggle + `--verify` frame + `--dry` plan, `.mdx`); sandboxing (the
+  violation frame with the exact `openat…EACCES` line); dev-tasks (the
+  persistent `▸ … running` frame); task-dependencies (a Mermaid DAG of
+  `dependsOn: ['^build']`); remote-caching (the `⇣ remote` restore
+  terminal, guide + the Cache dashboard shot on the cloud page); ci (the
+  GitHub job-summary card); migrate/from-turborepo (the turbo.json →
+  vx.config.ts side-by-side); extensibility already had its plugin
+  flowchart. **Dashboard screenshots** (the generator, kept OUT of the
+  tree — gitignored — grew to capture more views): the existing Runs /
+  flamegraph / Insights / project shots plus NEW **Task detail** (flaky
+  badge + trend tiles + debug + recommendations), **Compare** (run-vs-
+  previous diff), **Command palette** (Cmd-K), **Cache** (hit-rate +
+  local/remote split + time saved), and **Admin** (members/tokens),
+  embedded across `dashboard.md` (fuller visual tour), `remote-caching`
+  (cloud), and `self-hosting`. The empty Artifacts/cache-entries states
+  were dropped (an ingest-only seed uploads no artifacts). Every wave:
+  astro build clean + a zero-broken-links crawl over `dist/` +
+  browser-verified (each Terminal/card render screenshotted + inspected,
+  0 console errors) + CI confirmed green (both the `CI` and `Deploy docs`
+  workflows). Astro optimizes PNGs → WebP + base-prefixes automatically.
+  **STANDING DIRECTIVE going forward:** every feature we ship gets a
+  visualization or interactive demo IN THE DOCS, before its reference
+  prose — a dev should grasp what/why from something they can see or
+  click. Reach for the `Terminal`/`GithubSummary`/`SideBySide` components
+  or a real dashboard screenshot. Docs-only; no core change.
 
 - **2026-07-17**: **Analytics correctness sweep (cycle 11) — a
   re-pushed-run 500 in `compareRuns` fixed + two unclamped-window scans
