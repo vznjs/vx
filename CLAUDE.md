@@ -208,6 +208,53 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-17**: **The document-every-cloud-feature directive EXECUTED —
+  a full audit→write→verify docs program over the 8 cloud pages + a new
+  HTTP API reference (`a4a5051`, `50dbe57`)** (owner: "document each and
+  Avery single one feature of vx cloud in docs"). A read-only audit agent
+  built the complete feature inventory from the decision log + every code
+  surface and graded all 8 `apps/docs/src/content/docs/cloud/` pages
+  (DOCUMENTED / THIN / MISSING with a ranked gap list); the writes were
+  then done INLINE in the main loop after the session limit killed all 9
+  writer agents at launch (resets 13:10 UTC — the "never stop" answer was
+  to do the work directly, not idle 4.5h). **Shipped:** (1) NEW
+  `cloud/api.md` — the whole `/v1` surface as a reference (auth classes
+  incl. the `x-vx-csrf` session-mutation header, tenancy resolution
+  `?ws=`/`?org=`, ~35 read routes with params/defaults/clamps verified
+  against `analytics-routes.ts`, the 4 ingest writes with body caps +
+  wire-version 400s + idempotency, cache-wire/streams/MCP pointers, error
+  conventions) + sidebar registration. (2) **Three accuracy fixes** —
+  distributed-ci.md + cli.md claimed a commit-SHA mismatch REFUSES an
+  agent (stale since the multi-run scheduler: commit is a
+  dispatch-ELIGIBILITY filter, only a DIST_PROTOCOL mismatch refuses —
+  `registry.ts` header is the proof); overview.md claimed "teams" (a
+  schema-only table, no shipped surface); `VX_CLOUD_DATA_DIR` reworded
+  vestigial. mcp.md's tool table had DRIFTED from `cli/mcp.ts`
+  (`run_trends` is workspace-wide bucketed activity, NOT per-project;
+  `compare_runs` diffs vs the PREVIOUS invocation, not two arbitrary
+  runs) — rewritten with real args/defaults + the workspace-resolution
+  ladder + batch/notification-202 semantics. (3) **New coverage**:
+  distributed-ci.md gains LPT duration-aware dispatch + trust-scoped
+  hints, heartbeat/liveness (10s/30s), the `/v1/agents` capacity probe +
+  `ready` autoscaling signal, and the GHA job-summary/check-run section
+  (with the honest distributed-run-no-summary caveat);
+  remote-caching.md gains per-PR sub-scope isolation (`VX_CACHE_SCOPE`,
+  `x-vx-cache-scope`, server sanitization, own-then-trusted reads) + the
+  batch probe; self-hosting.md gains a roles table derived from the
+  actual route guards, token `kind`/`expiresAt`/instant-revoke,
+  partition/retention mechanics, the background CONCURRENTLY index pass,
+  and a security-model section; dashboard.md now lists every shipped
+  card (full Insights + Cache sets, the cache-entry provenance page, the
+  Cmd/Ctrl-K palette, the run-detail graph/flame toggle + platform
+  fallback, both invite accept paths). **Verified:** every claim checked
+  against source before writing (each stale-doc fix cites its proof
+  line); astro build exit 0; a dist-wide crawler found ZERO broken
+  internal links. **Standard going forward:** a cloud feature is not
+  done until its docs land in the same wave. **Session note:** the
+  parallel trusted-GET HEAD-skip developer was killed mid-work by the
+  same session limit; its partial diff is preserved in `git stash`
+  ("WIP: trusted-GET HEAD-skip") for resume-or-relaunch.
+
 - **2026-07-16**: **Cycle 7 — the CONCURRENTLY index path SHIPPED
   (`081efde` design, `420d02b` build); getRegressions got the LATERAL dedupe
   (`9e71e44`); a CI incident diagnosed from run TIMING; and the bunfig
@@ -7103,22 +7150,19 @@ LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
 
 ## Active workstreams (prioritized)
 
-**STANDING OWNER DIRECTIVE (2026-07-16, in progress): document EVERY
-vx Cloud feature in the docs** ("document each and every single one
-feature of vx cloud in docs"). Program: (1) full feature inventory from
-this decision log + the code surfaces (every `/v1/*` route, cache wire +
-batch probe + S3 offload + trust scopes, dist/agents + duration-hint
-trust scoping, auth/RBAC/admin/invites/tokens, ingest paths incl.
-per-task incremental + logs capture/privacy/retention, notifications,
-settings/profile, MCP tools, every dashboard card/view incl. the project
-drill-in + timeframe selector + hermeticity + regressions + movers +
-flaky + recommendations + compare + why, TLS/edge, compose/image,
-partitions + the concurrent index pass, GHA summary/checks); (2) audit
-the 8 `apps/docs/src/content/docs/cloud/` pages against it; (3) fill
-every gap where a user would look for it; (4) astro build + link check.
+**OWNER DIRECTIVE 2026-07-16 — document EVERY vx Cloud feature:
+EXECUTED 2026-07-17** (`a4a5051` + `50dbe57`; see the decision-log
+entry). The audit→write→verify program ran to completion: full feature
+inventory, all 8 cloud pages audited, a new `cloud/api.md` HTTP API
+reference, every identified gap filled, astro build clean + a
+zero-broken-links crawl over `dist/`. Keep the standard alive: a new
+cloud feature is not DONE until its docs land in the same wave.
 
-Also queued: the trusted-GET S3 HEAD-skip (backlog (b) — implementation
-brief in the session task list; needs the adversarial pass before ship).
+Also queued: the trusted-GET S3 HEAD-skip (backlog (b) — needs the
+adversarial pass before ship). A PARTIAL implementation from a killed
+agent run sits in `git stash` ("WIP: trusted-GET HEAD-skip"); the full
+brief is preserved in the session task list — either resume the stash
+or drop it and relaunch clean.
 
 Near-term roadmap = the "road to best-CI" ranked table in
 `docs/design/ci-platform-2026-07.md` (owner: "Make vx the best CI env
