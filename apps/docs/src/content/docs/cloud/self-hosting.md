@@ -144,7 +144,31 @@ bucket, then binds `0.0.0.0:4321`. The repo also ships this stack at
    carry an **immutable trust tier** (`trusted` or `untrusted`), and can
    optionally be **scoped to a single workspace**. This is the token your
    CI and `vx run` present — the tier follows the token (see [trust
-   scopes](#fork-pr-trust-scopes)).
+   scopes](#fork-pr-trust-scopes)). Tokens also carry a **kind** —
+   `ci` (the default; machine surfaces + reads) or `admin` (may also
+   call the `/v1/admin/*` API) — and an optional **`expiresAt`**.
+   The plaintext secret is shown exactly once, at mint; **revocation is
+   immediate** (the server's in-process auth memo is cleared, so a
+   revoked bearer stops authenticating at once).
+
+### Roles
+
+Roles gate the admin API and the dashboard's Admin area (analytics
+reads need `viewer` or better; the minimum is per action):
+
+| Action | Minimum role |
+| --- | --- |
+| Read analytics, list members / workspaces, view the org | `viewer` (any membership) |
+| Rename the org, manage members' roles, create invites, mint / revoke tokens, create workspaces | `admin` |
+| Manage **owners** (grant or revoke the owner role), invite an owner | `owner` |
+| Create a new organization | instance admin (unless `VX_CLOUD_OPEN_ORG_CREATE=1`; the creator becomes its owner) |
+
+The **last owner can never be removed or demoted** — the guard applies
+to instance admins too. `member` is the default invite role; today it
+carries the same read rights as `viewer` (the distinction is reserved
+for finer write surfaces). An **admin token** can do everything an org
+admin can *except* manage owners — owner management always requires an
+owner's session.
 
 ## Configuration
 
@@ -203,6 +227,60 @@ hard error** — the server never silently falls back to local storage.
   run several replicas behind the load balancer; `/health` is the
   pre-auth liveness probe. There is no volume to attach to the app
   container.
+
+## Data retention & background maintenance
+
+History is partitioned by time — `invocations` and `task_logs` monthly,
+`task_runs` (the high-volume table) **weekly**, each with a DEFAULT
+catch-all so an out-of-range row is never dropped. A maintenance tick
+at boot and daily creates the current + upcoming partitions and drops
+those older than **`VX_CLOUD_RETENTION_DAYS`** (default **180**). So
+retention is automatic: raise or lower the variable and old history
+ages out on the next tick. Maintenance is never boot-fatal — each
+table's failure is isolated and logged, and a row that landed in the
+DEFAULT partition is recovered into its proper partition rather than
+wedging the tick.
+
+Large indexes are built **outside** the migration transaction by a
+background convergence pass: after boot (and on the same daily tick)
+the server builds any missing registry indexes with
+`CREATE INDEX CONCURRENTLY`, partition by partition, serialized across
+replicas by an advisory lock. A multi-minute index build therefore
+never blocks serving or boot, a crash mid-build self-recovers on the
+next pass (invalid leftovers are dropped and rebuilt), and replicas
+don't duplicate work. Operator signal: `index maintenance:` log lines.
+
+## Security model
+
+What the platform does with your credentials, for operators and anyone
+scripting the API:
+
+- **Passwords** are hashed with **argon2id** (memory-hard) at rest.
+  Login runs one verify per attempt even for unknown emails, so
+  response timing doesn't reveal whether an account exists.
+- **Login throttling** — attempts are rate-limited per **email** (holds
+  even when an attacker rotates IPs) and per IP+email, with backoff.
+- **Sessions** are opaque 256-bit ids stored sha256-hashed, carried in
+  an **HttpOnly** cookie (marked `Secure` when `VX_CLOUD_BASE_URL` is
+  https), renewed on use with a 30-day sliding window; login rotates
+  the session id and logout destroys it server-side.
+- **CSRF** — every session-authenticated **mutation** (auth, admin)
+  requires the custom header `x-vx-csrf: 1`. If you script the admin
+  API with a cookie (curl), send it or you'll get 403s;
+  bearer-token requests don't need it.
+- **Bearer-in-query** (`?token=`) is accepted **only** on the WS/SSE
+  endpoints, where browsers can't set headers. Everywhere else the
+  `Authorization` header is required.
+- **`/version` intentionally answers 404** — `GET /v1/meta` is the
+  deliberate pre-auth identity surface (capability flags only, never
+  tenant data).
+- **Cross-origin** WS/SSE handshakes from browsers are refused unless
+  allow-listed with `VX_CLOUD_ALLOW_ORIGIN` (no-Origin CLI clients and
+  same-origin pass).
+- **Tenancy** — every read is clamped to one `(org, workspace)` derived
+  server-side from the credential; anything outside it answers 404,
+  never confirming existence. See the
+  [HTTP API reference](/vx/cloud/api/) for the per-route auth classes.
 
 ## Transports: HTTP/2 & multiplexing
 

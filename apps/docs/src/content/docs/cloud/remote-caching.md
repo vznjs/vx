@@ -71,13 +71,35 @@ doesn't have your repo secrets, so the only token it holds is the PR token —
 which token you have *is* the tier. Present the PR token from fork-PR jobs;
 present the trusted token everywhere else.
 
+### Per-PR isolation inside the untrusted tier
+
+Untrusted writes are additionally partitioned by a **sub-scope**, so one
+PR's cache can't feed another PR's builds. The client derives a stable
+id for the current pull request — `VX_CACHE_SCOPE` overrides; otherwise
+the CI context supplies it automatically (`pr-<n>` from a GitHub
+`pull_request` ref, the head branch on a branch push, `mr-<iid>` on a
+GitLab MR) — and sends it as the `x-vx-cache-scope` header. Reads
+resolve the PR's **own sub-scope first, then trusted**, so a PR warms
+off `main` plus its own earlier pushes, never a sibling PR's.
+
+The header is **untrusted-tier-only and server-sanitized**: a trusted
+principal ignores it entirely, hostile values (`..`, path separators,
+another scope's name) collapse to a shared segment, and it only ever
+narrows *where inside `untrusted/`* a write lands — no header value can
+widen access or reach the trusted scope. Outside a PR the untrusted
+tier falls back to one shared sub-scope.
+
 ## It never breaks your build
 
 The remote cache is **fully optional at runtime**. Any failure — a 500, a
 timeout, an auth error, a corrupt artifact — degrades to a local cache miss
 and the run continues. A remote outage slows you down; it never fails you.
 Remote lookups also fire concurrently in the background before scheduling,
-so network latency overlaps execution.
+so network latency overlaps execution: vx probes all stable cache keys in
+**one** `POST /v1/cache/batch` request, prefetches only the hits, and
+marks the misses absent so their lazy reads skip the network entirely.
+Against an older server without the batch endpoint it degrades to
+per-hash probes (see [Wire protocol](/vx/cloud/wire-protocol/)).
 
 ## Artifact integrity
 
@@ -104,3 +126,5 @@ previous build.
   agent pool over the same connection.
 - **[Caching deep dive](/vx/caching/)** — the artifact format and the
   layered cache.
+- **[HTTP API reference](/vx/cloud/api/)** — the cache wire routes
+  beside the rest of the `/v1` surface.

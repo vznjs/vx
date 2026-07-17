@@ -31,6 +31,12 @@ signup closes and everyone else joins by invite (see
   `member`, `viewer`), **invites**, and **API tokens** (`vxc_`, a
   `trusted`/`untrusted` tier, optionally workspace-scoped). The tokens you
   mint here are what CI and `vx run` present.
+- **Invites** are single-use and expire after 7 days, and are accepted
+  two ways: a **new** person opens the invite URL and the login gate's
+  create-account form registers them straight into the org; an
+  **existing** signed-in user joins from in-app ("Join with an invite",
+  pasting the `vxi_` token). Of two racing accepts of one invite,
+  exactly one wins.
 - The **account menu** (avatar, top-right) shows who you're signed in as
   and links to **Settings** and (for privileged roles) **Admin**.
 - **Settings** (`/settings`) is your personal account area: rename yourself
@@ -74,7 +80,11 @@ just shows that one.
 
 The surfaces auto-refresh on a short interval so new runs and metrics
 appear without a manual reload. Previously-loaded data stays on screen
-during a refresh — only the first load shows a skeleton.
+during a refresh — only the first load shows a skeleton. A **command
+palette** (`Cmd`/`Ctrl`-`K`) searches every destination — pages plus
+your projects and tasks by name — and keeps the retired route names
+(Trends, Bottlenecks, Overview) searchable, landing them on their
+successors.
 
 - **Runs** — the run **history** landing: every `vx run` invocation with
   branch / commit / CI / tags columns and per-row links to run detail and
@@ -86,7 +96,10 @@ during a refresh — only the first load shows a skeleton.
   (`#/runs?result=failed&branch=main`), so a filtered view is shareable
   and restores on load.
 - **Run detail** — a per-task table (CPU + peak RSS + hash), a
-  **flamegraph** timeline, and a **"why did this re-run?"** card naming
+  **graph / flame toggle** (the dependency graph view needs a colocated
+  workspace to reconstruct edges, so on the platform the card
+  auto-falls back to the **flamegraph** timeline), and a
+  **"why did this re-run?"** card naming
   the exact cache-key components that changed since the previous run.
   Select a task to open its panel — including the task's **captured log
   tail** (the last 128 KiB of merged stdout+stderr), so you can read a
@@ -121,9 +134,13 @@ during a refresh — only the first load shows a skeleton.
   period-over-period average delta), and **Recent executions** lists the
   project's last runs — a row opens the run with that task's logs, the
   hash opens the cache entry.
-- **Cache** — hit-rate split (local vs remote), estimated time saved, and
-  a per-entry page (facts, the runs that produced/restored it, artifact
-  download).
+- **Cache** — hit-rate split (local vs remote), estimated time saved,
+  **storage by project** (which projects' artifacts occupy the store),
+  a **storage-growth chart** (last 30 days), and the **entries table**
+  (hash, task, size, age, last hit). Each entry's hash opens the
+  **cache-entry page**: the entry's facts, its **artifact download**,
+  and every run that **produced or restored** it — the provenance chain
+  for one cached result.
 - **Artifacts** — the S3 artifact store made visible: every artifact your
   principal may read (trust-scoped), with size/age/tier, best-effort
   task/run provenance links, and authenticated downloads.
@@ -139,9 +156,17 @@ during a refresh — only the first load shows a skeleton.
   (with a within-run-retry **Retried** column and a **Suggested fix**
   column), the **Hermeticity** card (cross-machine output-fingerprint
   divergence from `vx run --force --verify=fingerprint` runs — the exact
-  task, platforms, and diverging output files), bottlenecks with
-  weekly-savings estimates, and recent failures. Every row links into its
-  entity — a failure opens its run with the task pre-selected.
+  task, platforms, and diverging output files), bottlenecks
+  (**Where to invest**, with weekly-savings estimates), and recent
+  failures. Activity charts cover **runs per day** and **total duration
+  per day**, a **When you build** heatmap (7×24 build-activity grid), and
+  a **parallelism factor per invocation** chart — how much of the
+  declared concurrency each run actually used. The cache column of the
+  story lives here too: the **hit source** split (last 24h), **cache
+  storage growth**, **top time-burners**, and a **prunable cache
+  entries** table (what a `vx cache prune` would reclaim). Every row
+  links into its entity — a failure opens its run with the task
+  pre-selected.
 
 ## MCP: the same platform, for AI agents
 
