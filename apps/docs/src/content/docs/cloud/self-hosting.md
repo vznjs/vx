@@ -151,6 +151,11 @@ bucket, then binds `0.0.0.0:4321`. The repo also ships this stack at
    immediate** (the server's in-process auth memo is cleared, so a
    revoked bearer stops authenticating at once).
 
+The **Admin** area is where all of this lives — members and their roles,
+invites, API tokens, and workspaces, tabbed across the top:
+
+![The Admin area — members, invites, tokens, and workspaces, with per-member roles](../../../assets/screenshots/admin.png)
+
 ### Roles
 
 Roles gate the admin API and the dashboard's Admin area (analytics

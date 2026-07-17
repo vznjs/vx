@@ -44,6 +44,25 @@ shifted most, with the signed delta and direction.*
 duration sparklines, and where each failure was first noticed across
 branches — the answer to "did *my* project get faster or slower?"*
 
+![A task detail page — flaky badge, trend tiles, a one-click debug card, and recommendations](../../../assets/screenshots/task-detail.png)
+
+*Drill into a single `(project, task)`: a **flaky badge**, this-window-vs-prior
+**trend tiles**, a **Debug card** (one click to the last failed run with its
+logs), a **Recommendations** card that turns flaky/hermeticity/caching signals
+into copy-pasteable config fixes, and a duration-over-recent-runs sparkline.*
+
+![The Compare view — this run vs its previous invocation, per-task duration deltas](../../../assets/screenshots/compare.png)
+
+*Compare any run against its immediately previous invocation: total-time delta,
+tasks-changed count, and a per-task diff — which tasks flipped to a **cache hit**,
+which got slower, which changed status — so a regression is one glance away.*
+
+![The command palette — Cmd/Ctrl-K searches pages, projects, and tasks](../../../assets/screenshots/palette.png)
+
+*`Cmd`/`Ctrl`-`K` opens a command palette that searches every destination —
+pages plus your projects and tasks by name — so you jump straight to the entity
+you care about without hunting through the nav.*
+
 ## Accounts, orgs, and access
 
 The platform is account-based. You **register or log in**; the first

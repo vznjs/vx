@@ -118,6 +118,15 @@ example. Pair the shared cache with `--affected` and most PRs only execute
 the packages they actually changed; everything else restores from a
 previous build.
 
+## See it pay off
+
+The dashboard's **Cache** view turns the shared cache into numbers: the
+hit rate, how many hits came from a **local** vs a **remote** restore, and
+the wall-clock **time saved** — so the value of the connection is visible,
+not assumed.
+
+![The dashboard Cache view — hit rate, local vs remote hits, time saved, and the hit-source split](../../../assets/screenshots/cache.png)
+
 ## Next steps
 
 - **[Self-hosting](/vx/cloud/self-hosting/)** — stand up the server in one
