@@ -1,6 +1,6 @@
 ---
 title: vx Cloud overview
-description: vx Cloud is an independent, self-hosted CI platform — accounts, RBAC, orgs, and teams on Postgres; artifacts in S3; a dashboard, a shared remote cache, distributed execution, and MCP. Deployed with docker compose; your workspaces connect to it.
+description: vx Cloud is an independent, self-hosted CI platform — accounts, RBAC, and orgs on Postgres; artifacts in S3; a dashboard, a shared remote cache, distributed execution, and MCP. Deployed with docker compose; your workspaces connect to it.
 ---
 
 **vx Cloud** (`@vzn/vx-cloud`) is an independent, **self-hosted CI
@@ -20,7 +20,7 @@ could replace with your own. See
 
 vx Cloud is a full platform, not a companion process:
 
-- **Accounts, RBAC, orgs, and teams.** Register an account, create
+- **Accounts, RBAC, and orgs.** Register an account, create
   organizations and workspaces, invite members with roles (`owner`,
   `admin`, `member`, `viewer`), and mint API tokens.
 - **Postgres is the system of record.** Identity, run/task history, and
@@ -35,6 +35,9 @@ vx Cloud is a full platform, not a companion process:
 - **Distributed execution.** Fan a single `vx run` across an agent pool.
 - **MCP over HTTP.** A `POST /mcp` endpoint so AI agents read the same
   analytics the dashboard shows.
+- **CI reporting.** Inside GitHub Actions a run appends a per-task
+  result table to the job summary, and — when handed `GITHUB_TOKEN` —
+  posts a real check run on the commit, both deep-linking the dashboard.
 
 ## How it's deployed
 
@@ -91,3 +94,5 @@ derives it from the bearer, never a client claim).
   `env`, `agent`, `dev`.
 - **[Wire protocol](/vx/cloud/wire-protocol/)** — tail the live run event
   stream over SSE / NDJSON.
+- **[HTTP API reference](/vx/cloud/api/)** — every `/v1` endpoint: auth
+  classes, parameters, tenancy clamps.

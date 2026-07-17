@@ -61,7 +61,10 @@ vx-cloud server
   VX_CLOUD_TLS_CERT / _TLS_KEY    (optional; PEM paths — both or neither.
                                    Terminate TLS in-process → HTTPS/1.1; use
                                    an edge proxy for HTTP/2 multiplexing)
-  VX_CLOUD_DATA_DIR               (optional; the transitional analytics volume)
+  VX_CLOUD_DATA_DIR               (optional; VESTIGIAL — accepted so existing
+                                   deployments don't error, but the server
+                                   writes nothing to it: all state lives in
+                                   Postgres + S3)
 ```
 
 Boot: validate config → connect Postgres → run migrations
@@ -77,6 +80,11 @@ Full deployment reference — the docker-compose stack, every env var, TLS,
 scale-out, and trust scopes — is on [Self-hosting](/vx/cloud/self-hosting/).
 
 ### HTTP surfaces
+
+The table below is the orientation map; every `/v1/*` endpoint — auth,
+admin, analytics reads, ingest writes, with parameters, body caps, and
+tenancy clamps — is enumerated in the
+[HTTP API reference](/vx/cloud/api/).
 
 The platform serves everything on one port behind the account/token gate.
 Auth is a session (dashboard login) or a `vxc_` API token; a programmatic
@@ -203,7 +211,9 @@ URL/token, so existing setups keep working.)
 
 - **Cache is internal to the connection.** A remote connection with a token
   wraps the local cache in a `LayeredCache` at `<url>/v1/cache`
-  automatically. A third-party (e.g. Turbo-wire) cache server needs a cache
+  automatically — the plugin probes the server's `/v1/meta` once
+  (memoized) for the `cacheWire` capability; an older server without it
+  simply yields no remote cache rather than an error. A third-party (e.g. Turbo-wire) cache server needs a cache
   plugin against core's `RemoteCacheLayer` seam — see
   [Core is provider-neutral](/vx/guides/extensibility/).
 - **Trust follows the token.** Present `VX_CLOUD_TOKEN` (a trusted token) or
@@ -275,7 +285,10 @@ Behavior:
   telemetry rung declines.
 - Registers over `/v1/agents` with
   `agent:hello { protocol, workspaceId, session, commitSha, capacity }`.
-  Protocol or commit mismatch → `agent:refused` naming both, exit 1.
+  A distribution-protocol version mismatch → `agent:refused` naming both
+  versions, exit 1. A commit mismatch does NOT refuse: the agent stays
+  registered and is simply ineligible for submissions at other SHAs
+  (commit is a dispatch-eligibility filter).
 - Per `task:assign { taskId }`: a scoped in-process `run()` of the exact
   task id WITH its dep closure — deps restore as warm hits from the shared
   store, the task executes, its artifact uploads before `agent:done`.

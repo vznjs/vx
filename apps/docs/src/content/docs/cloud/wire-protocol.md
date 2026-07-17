@@ -16,6 +16,14 @@ them.
 
 Full spec: `docs/design/wire-protocol-2026-06.md`. This guide is practical.
 
+This page covers the **machine wire** — the stream envelopes and the
+cache artifact wire. The full HTTP surface (auth, admin, analytics
+reads, ingest writes — every route with parameters and clamps) is
+enumerated in the [HTTP API reference](/vx/cloud/api/). The ingest
+writes (`/v1/ingest`, `/v1/ingest/task`, `/v1/ingest/logs`) and the
+catalog push (`/v1/catalog`) are wire-versioned — a version-skewed
+client is answered 400 naming both versions.
+
 ## Discover the server
 
 `/v1/meta` is the pre-auth identity + capability endpoint:

@@ -84,6 +84,7 @@ export default defineConfig({
             { label: 'MCP over HTTP', link: '/cloud/mcp/' },
             { label: 'vx-cloud CLI', link: '/cloud/cli/' },
             { label: 'Wire protocol', link: '/cloud/wire-protocol/' },
+            { label: 'HTTP API reference', link: '/cloud/api/' },
           ],
         },
         {

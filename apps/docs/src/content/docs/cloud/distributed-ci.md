@@ -190,7 +190,7 @@ main job: vx run ci   (VX_CLOUD_DISTRIBUTE=6, connected to a vx-cloud)
                                                                ▼
                        ┌────────────── vx-cloud platform ─────────────┐
                        │  session registry {org, workspaceId, session} │
-                       │    → agents (commitSha checked at pairing)     │
+                       │    → agents (commit = eligibility filter)      │
                        │  per-submission scheduler:                     │
                        │    • prune: stat the store by stable hash      │
                        │      → a warm task executes NOWHERE            │
@@ -225,10 +225,15 @@ agent's scoped run derives keys **byte-identical** to the full run's —
 but only when every machine sees the same source. So the contract is:
 
 - **Same repository, same commit.** Registration is keyed by
-  `{workspaceId, session, commitSha}`, and the serve enforces the
-  commit at pairing time — an agent on a different SHA is refused,
-  naming both SHAs. In GitHub Actions every job of one workflow run
-  checks out the same commit automatically.
+  `{workspaceId, session, commitSha}`, and the commit is a
+  **dispatch-eligibility filter**: a submission dispatches only to
+  agents holding its exact SHA. An agent on a different SHA is not
+  refused — it stays registered and simply idles as ineligible for that
+  submission; a submission whose commit no remote agent holds runs
+  entirely on the submitter's own self-agent (degrading toward a normal
+  local run, never a wrong cache hit). In GitHub Actions every job of
+  one workflow run checks out the same commit automatically. (Only a
+  distribution-protocol version mismatch refuses an agent outright.)
 - **Clean working tree.** A `vx-cloud agent` on a dirty tree refuses to
   start (exit 1, listing the offending paths) — uncommitted changes
   can't exist on the other agents, and divergent inputs would split the
@@ -313,6 +318,54 @@ is the sole authority on the run's verdict, so a red agent row means
 infrastructure trouble (a refusal, a dirty tree, an unexpected
 disconnect), not a failing test.
 
+## Scheduling: longest task first
+
+The per-submission scheduler is not FIFO — among a submission's ready
+tasks it starts the **historically longest first** (the
+longest-processing-time makespan heuristic, the same idea Nx Agents
+uses), so a long pole begins as early as possible instead of landing
+last on a nearly-drained pool. The duration hints come from the
+platform's own run history: the mean executed duration per
+`project#task` over the workspace's ingested `task_runs`, computed
+server-side at submit and memoized (~30 s).
+
+The hints are **trust-scoped exactly like the cache**: a submission
+from the repo's default branch reads only default-branch timings — one
+dev's slow branch experiment can never skew the ordering every trunk
+build uses — while a branch submission reads its own branch's timings
+first and falls through to trunk for tasks it hasn't run yet (never
+another branch's). A task with no history in scope simply has no hint.
+The hints are advisory ordering only: they never affect outcomes, cache
+keys, or which agent may run a task, and a fresh workspace with no
+history degrades to plain queue order.
+
+## Pool health: heartbeats and the capacity probe
+
+Agents send a heartbeat every 10 s, and **any** message counts as
+liveness — a busy-but-quiet agent is never suspected. A serve-side
+sweep reaps agents silent past ~30 s (a crashed box, a half-open TCP
+connection that would otherwise stall until the OS keep-alive timeout)
+and re-queues their in-flight tasks to surviving agents, exactly like a
+clean disconnect.
+
+The same rendezvous path doubles as a **capacity read**: a plain
+bearer-authenticated `GET /v1/agents?ws=<id>&session=<key>&commit=<sha>`
+returns the pool's shape —
+
+```json
+{ "agents": 3, "remoteAgents": 2, "capacity": 12, "remoteCapacity": 8, "ready": 5 }
+```
+
+`remoteAgents`/`remoteCapacity` exclude the submitter's own self-agent,
+so a non-zero value means genuine external help; `commit=` scopes the
+counts to agents holding that SHA (a feature-branch dev probing a
+main-pinned pool correctly reads 0 and stays local). `ready` is the
+number of tasks ready to run but waiting for a free agent slot —
+non-zero only when the pool is saturated, which makes it the signal an
+**autoscaler** scales up on: poll it for your session and add agent
+machines while it stays above zero. (vx owns task placement only —
+machine lifecycle stays with your CI matrix or cluster.)
+
 ## GitHub Actions
 
 The realistic pattern points every job at **one vx-cloud platform
@@ -383,6 +436,33 @@ Every agent and the run job point at the same deployed platform at the
 same `VX_CLOUD_URL`. (The platform is a stateful service — Postgres + an
 S3 bucket — so it's a deployment, not something a CI job spins up
 ad hoc.)
+
+### Job summaries and PR checks
+
+Independent of distribution, a `vx run` inside GitHub Actions with the
+`cloud()` plugin declared reports its result back to the PR:
+
+- **Job summary** — when `GITHUB_STEP_SUMMARY` is set (every Actions
+  job), the run appends a per-task result table to the job page:
+  failures first with exit codes, cache provenance per task, a
+  ⚠️ *flaky* flag on any task that only passed after a retry, and a
+  `🔒 Hermeticity` line on `--verify` runs. No platform connection is
+  required for this — the table works standalone.
+- **A real check run on the commit** — additionally created via the
+  Checks API when the step is handed `GITHUB_TOKEN` (the hand-off is
+  the opt-in; grant `checks: write`). The conclusion mirrors the run,
+  the check body is the same failures-first table, and on
+  `pull_request` events it attaches to the PR's head SHA (not the
+  synthetic merge commit) so it surfaces on the PR. Knobs:
+  `VX_GITHUB_CHECK=0` disables, `VX_GITHUB_CHECK_NAME` names the check
+  (default: the run's command). A missing permission degrades to a
+  warning — reporting never fails a build.
+
+When a platform connection resolved, both the summary and the check
+carry a **dashboard deep link** to the run (`/#/runs/<runId>`), so a red
+check is one click from the failing task's logs. Note the known limit
+below: a *distributed* submission currently ingests no run summary, so
+these surfaces ride your normal (non-distributed) CI runs.
 
 ## Fork PRs: present the PR token
 
