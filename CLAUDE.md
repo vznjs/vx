@@ -208,6 +208,29 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-17**: **CI too-many-clients flake killed structurally —
+  ephemeral-pg `max_connections` 100→400 (`d51dafd`)**. The session-memo
+  push (`95f17ef`) went RED on the cloud job — but NOT on its content:
+  the core job passed, `auth.test.ts` passed, and the sole failure was
+  `db-indexes.test.ts`'s replica-race try-lock test (cycle 7's
+  CONCURRENTLY pass), which passes 9/9 isolated. The CI log's
+  discriminator: `PostgresError: sorry, too many clients already` printed
+  immediately before the failure. Root cause: the full 37-file cloud
+  suite shares ONE ephemeral cluster and pooled connections peak faster
+  than they close; on Postgres's default `max_connections=100` the peak
+  tips over — the recurring "connection-slot flake" the log noted at
+  2026-07-13/14/16 as "isolated-passing." This test hit the ceiling first
+  because it uniquely holds an extra reserved `held` connection while
+  `ensureIndexes` reserves its own, so the failed reserve returned
+  `skipped:false` where the test asserts `skipped:true`. Fixed at the
+  ROOT for the whole class: `-c max_connections=400` on the cluster start
+  (fsync=off → headroom is ~free). Verified: three consecutive full-suite
+  runs 483 pass / 0 fail. Test-infra only, no product change; the
+  local-ci skill's known-flake note updated. **Lesson reinforced:** a red
+  main is not necessarily YOUR change — read the failing TEST NAME + the
+  pg error before assuming a regression; here the failing suite was
+  disjoint from the pushed diff.
+
 - **2026-07-17**: **Session-principal auth memo SHIPPED — the last named
   residual of the 2026-07-12 perf audit (F1's deferred half)** (cycle 9).
   Every session-authenticated request (the dashboard polls several `/v1`

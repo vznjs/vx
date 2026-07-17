@@ -49,8 +49,13 @@ rm -rf /tmp/vx-test-pg-*   # stale ephemeral-pg dirs fill the disk
 - `tests/cache-baseline.test.ts` perf guards and the `vx watch` e2e in
   `tests/cli.test.ts` can fail under concurrent machine load; both
   pass in isolation on a healthy tree.
-- Running the two cloud pg suites concurrently can hit initdb/
-  connection-slot contention — rerun the failing file alone.
+- The pg-boot `beforeAll` (initdb + pg_ctl) can exceed a short hook
+  timeout on a contended runner — `--timeout 30000` is why it's on the
+  cloud command.
+- `too many clients already` under the full 37-file cloud suite was
+  fixed by raising the ephemeral cluster's `max_connections` to 400
+  (2026-07-17); if it recurs as the suite grows, raise it again — the
+  cluster runs `fsync=off`, so headroom is nearly free.
 
 ## If any step fails
 
