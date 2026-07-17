@@ -125,7 +125,7 @@ const rule = '─'.repeat(48)
               <div class="vx-fclose">
                 <span class="t-dim">└─ </span>
                 <span class={`t-${f.tone ?? 'green'}`}>{f.id}</span>
-                <span class="t-dim"> ── ({f.duration}) </span>
+                <span class="t-dim"> ──{f.duration ? ` (${f.duration}) ` : ' '}</span>
                 <span class={`t-${f.tone ?? 'green'}`}>{f.status}</span>
               </div>
             </div>

@@ -3,10 +3,41 @@ title: Dev & long-running tasks
 description: Run dev servers, watchers, and daemons with persistent tasks — gate downstream work on readiness with readyWhen, and let vx clean them up automatically.
 ---
 
+import Terminal from '../../../components/Terminal.astro'
+
 Some tasks don't finish — a dev server, a file watcher, a background
 daemon. vx models these as **persistent** tasks: it spawns them, decides
 when they're "ready," lets downstream tasks proceed, and tears them down
 when the run ends.
+
+**See it.** `vx run dev` starts Vite, streams its output, and — because
+the task is `persistent` — keeps it in the foreground with a live `▸ …
+running` marker instead of waiting for it to exit. Downstream tasks that
+`dependsOn: ['dev']` start the moment `readyWhen` matches; Ctrl-C tears
+everything down.
+
+<Terminal
+  title="zsh — vx"
+  command="vx run dev"
+  states={[
+    {
+      frames: [
+        {
+          id: '▸ @acme/web#dev',
+          tone: 'sky',
+          header: '$ vite',
+          body: [
+            { text: '  VITE v5.4.0  ready in 312 ms', tone: 'plain' },
+            { text: '  ➜  Local:   http://localhost:5173/', tone: 'dim' },
+          ],
+          duration: '',
+          status: 'running',
+        },
+      ],
+      time: '318ms',
+    },
+  ]}
+/>
 
 ## Declaring a persistent task
 

@@ -3,6 +3,8 @@ title: Sandboxing tasks
 description: Run a task in an OS-level sandbox with an explicit allow-list of files and network — opt-in per task, fail-on-violation, no hidden escapes.
 ---
 
+import Terminal from '../../../components/Terminal.astro'
+
 A task can declare an **OS-level sandbox** that restricts what it may read,
 write, and reach over the network. It's opt-in per task and deliberately
 strict: the task sees exactly what you declare and nothing else, and a run
@@ -11,6 +13,39 @@ that touches anything undeclared **fails** rather than silently succeeding.
 Use it to catch under-declared inputs (a build secretly reading a file
 outside its `inputs`), to stop a tool from phoning home, or to enforce
 hermetic builds in CI.
+
+**See it.** A `build` task declares `inputs: ['src/**']` but secretly
+reads `../../config/secret.json`. Unsandboxed it passes — and caches a
+result that silently depends on a file vx never hashed. Add `sandbox: {}`
+and the undeclared read is denied: the run **fails** and names the exact
+path, so you fix the declaration before it becomes a stale cache hit.
+
+<Terminal
+  title="zsh — vx"
+  command="vx run build --force"
+  states={[
+    {
+      frames: [
+        {
+          id: '@acme/api#build',
+          tone: 'red',
+          header: '$ node bundle.js',
+          section: 'SANDBOX VIOLATIONS (1)',
+          sectionTone: 'yellow',
+          sectionLines: ['openat("../../config/secret.json") = -1 EACCES  [/repo/config/secret.json]'],
+          duration: '241ms',
+          status: 'failed (exit 1)',
+        },
+      ],
+      meters: [
+        { label: 'tasks', on: 46, off: 0, tone: 'red', legend: '1 failed', legendTone: 'red', legendRest: ' · 1 total' },
+        { label: 'cache', on: 46, off: 0, tone: 'red', legend: '1 miss', legendTone: 'red' },
+      ],
+      info: '4 workers · local cache',
+      time: '253ms',
+    },
+  ]}
+/>
 
 ## Turn it on
 
