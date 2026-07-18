@@ -321,14 +321,21 @@ export class DistScheduler implements ActiveSubmission {
       this.event({ kind: 'task:start', task: node.view })
       return
     }
-    if (msg.t === 'agent:stdout') {
+    if (msg.t === 'agent:stdout' || msg.t === 'agent:stderr') {
+      // Only the agent CURRENTLY assigned the task may stream it. A reassigned
+      // task's stale stream — from a dropped agent's still-running detached
+      // run(), now arriving on that machine's RECONNECTED socket (a different
+      // agent that never held the task) — must not garble the relay or the
+      // stored log with a second machine's interleaved output. The assign added
+      // the task to the holder's inFlight before the agent could stream, so a
+      // legit chunk always passes.
+      if (!(agent.inFlight.get(this.submissionId)?.has(msg.taskId) ?? false)) return
       if (this.args.recorder !== undefined) this.logs.append(msg.taskId, msg.chunk)
-      this.event({ kind: 'task:stdout', taskId: msg.taskId, chunk: msg.chunk })
-      return
-    }
-    if (msg.t === 'agent:stderr') {
-      if (this.args.recorder !== undefined) this.logs.append(msg.taskId, msg.chunk)
-      this.event({ kind: 'task:stderr', taskId: msg.taskId, chunk: msg.chunk })
+      if (msg.t === 'agent:stdout') {
+        this.event({ kind: 'task:stdout', taskId: msg.taskId, chunk: msg.chunk })
+      } else {
+        this.event({ kind: 'task:stderr', taskId: msg.taskId, chunk: msg.chunk })
+      }
       return
     }
     if (msg.t === 'agent:done') {

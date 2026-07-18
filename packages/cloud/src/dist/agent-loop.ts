@@ -69,6 +69,15 @@ export const DEFAULT_MAX_RECONNECTS = 5
 /** First reconnect backoff; doubles each attempt, capped at RECONNECT_CAP_MS. */
 export const RECONNECT_BASE_MS = 500
 const RECONNECT_CAP_MS = 8_000
+/**
+ * How long a connection must STAY open before its reconnect budget is refreshed.
+ * A bare `onopen` is NOT proof of a stable link — a flapping / crash-looping
+ * serve that accepts the upgrade then immediately drops would reset the budget
+ * on every cycle and reconnect forever (an unbounded hang, never settling
+ * `done`). Only a connection that survives this dwell earns a fresh budget, so
+ * a flap exhausts the budget and gives up.
+ */
+export const RECONNECT_STABLE_MS = 10_000
 
 export interface AgentLoopOptions {
   /** http(s) origin of the serve; the WS URL is derived from it. */
@@ -120,6 +129,8 @@ export interface AgentLoopOptions {
   maxReconnects?: number
   /** First-attempt backoff ms (default RECONNECT_BASE_MS); doubles per attempt. */
   reconnectBaseMs?: number
+  /** Dwell a connection must stay open to refresh the budget (default RECONNECT_STABLE_MS). */
+  reconnectStableMs?: number
 }
 
 export interface AgentLoopResult {
@@ -150,6 +161,7 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
   let firstConnect = true
   let reconnectAttempts = 0
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
+  let stableTimer: ReturnType<typeof setTimeout> | undefined
   let inFlight = 0
   let drained = false
   let stopped = false
@@ -209,9 +221,15 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
     ws = factory(wsUrl, opts.token)
 
     ws.onopen = () => {
-      // A successful connect resets the backoff budget (a stable link earns a
-      // full set of retries against the next blip).
-      reconnectAttempts = 0
+      // Refresh the backoff budget ONLY after the connection has STAYED open for
+      // the dwell — a bare open is not a stable link. A flap (open then immediate
+      // close) clears this timer in `onclose` before it fires, so the budget
+      // isn't reset and the flap eventually exhausts it instead of hanging.
+      clearTimeout(stableTimer)
+      stableTimer = setTimeout(() => {
+        reconnectAttempts = 0
+      }, opts.reconnectStableMs ?? RECONNECT_STABLE_MS)
+      stableTimer.unref?.()
       send({
         t: 'agent:hello',
         protocol: DIST_PROTOCOL_VERSION,
@@ -257,6 +275,8 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
     ws.onclose = () => {
       clearTimeout(idleTimer)
       clearInterval(heartbeatTimer)
+      // The connection didn't survive the dwell — don't refresh the budget.
+      clearTimeout(stableTimer)
       // Terminal closes never reconnect — they are the agent's intended end.
       if (refusedReason !== undefined) return settle({ ok: false, reason: 'refused' })
       if (stopped) return settle({ ok: true, reason: 'stopped' })
@@ -354,6 +374,7 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
       clearTimeout(idleTimer)
       clearInterval(heartbeatTimer)
       clearTimeout(reconnectTimer)
+      clearTimeout(stableTimer)
       try {
         ws.close()
       } catch {

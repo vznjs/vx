@@ -5,7 +5,13 @@
 
 import { describe, expect, it } from 'bun:test'
 import type { OutcomeView, ServerMessage, TaskView } from '@vzn/vx'
-import { DistScheduler, SUBMITTER_LABEL, type ArtifactProbe } from '../src/dist/scheduler.js'
+import {
+  DistScheduler,
+  SUBMITTER_LABEL,
+  type ArtifactProbe,
+  type DistRunRecorder,
+} from '../src/dist/scheduler.js'
+import type { TaskIngestRecord } from '../src/db/analytics.js'
 import {
   dispatchGreedy,
   type ActiveSubmission,
@@ -358,6 +364,51 @@ describe('DistScheduler — per-assignment run policy', () => {
     await sched.start()
     const assign = agent.sent.find((m) => m.t === 'task:assign')!
     expect(Object.keys(assign).sort()).toEqual(['submissionId', 't', 'taskId'])
+  })
+})
+
+describe('DistScheduler — log capture holder gate', () => {
+  it('drops stdout from an agent that does not HOLD the task (no stale-stream garble)', async () => {
+    const captured: TaskIngestRecord[] = []
+    const recorder: DistRunRecorder = { taskDone: (r) => captured.push(r), runFinished: () => {} }
+    const a = fakeAgent('a1', 4)
+    const b = fakeAgent('b1', 4)
+    const out = collector()
+    const sched = new DistScheduler({
+      submit: submitMsg([node('pkg#x')]),
+      store: store(),
+      send: out.send,
+      recorder,
+    })
+    sched.attach(binding([a, b], () => sched))
+    await sched.start()
+    // pkg#x lands on a1 (first free eligible); a1 HOLDS it, b1 does not.
+    expect(a.assigned()).toEqual(['pkg#x'])
+
+    // a1 (holder) streams real output; b1 (a stale reconnected sibling that no
+    // longer holds the task) streams garbage for the SAME task — only a1's must
+    // reach the stored log.
+    sched.onAgentMessage(a, {
+      t: 'agent:stdout',
+      taskId: 'pkg#x',
+      submissionId: 'sub-a',
+      chunk: 'A-real\n',
+    })
+    sched.onAgentMessage(b, {
+      t: 'agent:stdout',
+      taskId: 'pkg#x',
+      submissionId: 'sub-a',
+      chunk: 'B-stale\n',
+    })
+    sched.onAgentMessage(a, {
+      t: 'agent:done',
+      taskId: 'pkg#x',
+      submissionId: 'sub-a',
+      outcome: outcome('pkg#x'),
+    })
+
+    const rec = captured.find((r) => r.task.taskId === 'pkg#x')
+    expect(rec?.log?.content).toBe('A-real\n') // B-stale dropped, no interleave
   })
 })
 

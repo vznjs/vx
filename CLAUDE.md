@@ -208,6 +208,45 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-18**: **Adversarial review of the three distributed waves (per-task
+  logs, run-policy propagation, reconnect) — two LOW/LOW-MEDIUM defects fixed,
+  the rest REFUTED by executed repro** (a repro-mandated hostile reviewer over
+  `dist/agent-loop.ts` + `dist/scheduler.ts` + `protocol-dist.ts` +
+  `task-log-capture.ts`, the repo's standard discipline after touching the
+  load-bearing agent-loop). **Fixed (each with a new pinning test):** (1)
+  **LOW-MEDIUM — flapping-serve infinite reconnect HANG.** `runAgentLoop`'s
+  `onopen` reset `reconnectAttempts = 0` unconditionally, so a serve that
+  ACCEPTS the WS upgrade then immediately drops (a crash-loop / flap) refreshed
+  the budget every cycle and reconnected FOREVER, never settling `done` — so
+  `await loop.done` in the `vx-cloud agent` verb hangs indefinitely instead of
+  giving up after the budget. Fix: a stability DWELL (`RECONNECT_STABLE_MS=10s`,
+  test-overridable) — the budget refreshes only after a connection STAYS open
+  past the dwell; a flap clears the dwell timer in `onclose` before it fires, so
+  the budget is never refreshed and the flap exhausts it. Pinned by a
+  flap-gives-up test (mirrors the reviewer's repro) and a stable-connection-
+  refreshes-budget test. (2) **LOW — stale-stream log garble.** `TaskLogBuffer`
+  keys in-flight accumulation by `taskId` only, so a reconnect/reassignment
+  double-exec (a dropped agent's still-running detached `run()` streaming on its
+  RECONNECTED socket while the reassigned agent also streams) interleaved two
+  machines' output into one `task_logs` row (outcome always correct — first
+  `agent:done` wins). Fix: the controller's `agent:stdout`/`agent:stderr`
+  handler now gates append AND relay on the SENDING agent currently holding the
+  task (`agent.inFlight.get(submissionId).has(taskId)`) — the assign adds the
+  task to the holder's inFlight before it can stream, so a legit chunk always
+  passes and only a stale sibling's chunks drop. Pinned by a two-agent
+  holder-gate test. **Refuted by executed repro (held):** reconnect
+  double-`agent:done` (deduped by `outcomes.has`, first-done-wins); cache-hit
+  replayed stdout NOT stored twice (`finish` drops non-miss); per-assignment
+  policy applied correctly and ONLY per-assignment (a shared agent serving two
+  submissions gets each one's own; `retries:0`/`frozen:false` honored via
+  `!== undefined`); cache never propagated; the fresh-agentId-per-reconnect is
+  load-bearing (reusing the id would orphan the old socket's tasks via `drop`'s
+  id-mismatch no-op); settle/stop races (idempotent `settle`, terminal reasons
+  never reconnect, `stop()` mid-backoff resolves); `task_logs` idempotency plus
+  the no-recorder path writes nothing. Verified: cloud 499 pass (+3), lint
+  (oxlint+tsgolint) + oxfmt 0. NO schema/wire/CACHE/DIST_PROTOCOL bump
+  (agent-side lifecycle + a controller-side stale-chunk guard).
+
 - **2026-07-18**: **A distributed agent RECONNECTS through a transient WS drop —
   the last distributed-CI resilience gap closed** (owner: "We should have no
   limitations"; closes the "an agent that loses its WS exits — it does not
