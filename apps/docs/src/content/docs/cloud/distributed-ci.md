@@ -549,10 +549,9 @@ occur — there's always at least one agent (the main job itself). If no
 and the run completes on the submitter alone. A green build is never
 failed over missing accelerators.
 
-## Known limits
+## Resilience
 
-Honest gaps in the current design (see
-`docs/design/distributed-execution-2026-07.md` for the full record):
+A distributed run is faithful to a local one and tolerant of churn:
 
 - **Remote agents honor the run's `--frozen` / `--timeout` / `--retry`.**
   The submitter's run policy rides every assignment, so a standalone
@@ -561,26 +560,35 @@ Honest gaps in the current design (see
   design: a distributed run always has the remote axes (the artifact
   transport), and each agent's own local cache stays on so warm restores
   work across its assignments.
-- **Uncacheable intermediate tasks re-execute** inside each dependent's
-  closure on every agent that needs them — there's nothing to restore.
-  Make intermediates cacheable (declare their `cache.outputs`). Dep
-  affinity and each agent's warm local cache bound the waste.
-- **Fairness is equal-share only; no priorities, no persistence.** A
-  session multiplexes any number of concurrent submissions across its
-  agents (round-robin max-min fair share; only commit-matching agents
-  are eligible, and a submitter's own machine serves only its own run),
-  but there are no weighted priorities and the registry is in-memory —
-  a serve restart fails in-flight submissions loudly.
-- **No agent autoscaling or managed fleets.** Your CI matrix (or k8s)
-  owns machine lifecycle; vx owns task placement only.
-- **Input shipping is a permanent non-goal.** Same-checkout is the
-  contract; dirty trees run locally.
-- **An agent reconnects through a transient WS drop** — a network /
-  serve blip no longer kills a standing helper agent. It retries with
+- **An agent reconnects through a transient WS drop.** A network /
+  serve blip no longer kills a standing helper agent — it retries with
   bounded exponential backoff (a fresh agent id each attempt, so the
   scheduler's reassignment of its in-flight tasks stays clean), and
   gives up only after the budget is exhausted. The submitter's own
   self-agent is bound to its submission and does not reconnect.
+- **A crashed / partitioned agent is reaped in seconds.** A steady
+  heartbeat lets the serve detect a half-open socket within ~30 s and
+  hand its in-flight tasks to surviving agents.
+
+## Scope boundaries
+
+Deliberate limits of the same-checkout model (see
+`docs/design/distributed-execution-2026-07.md` for the full record):
+
+- **Uncacheable intermediate tasks re-execute** inside each dependent's
+  closure on every agent that needs them — there's nothing to restore.
+  Make intermediates cacheable (declare their `cache.outputs`). Dep
+  affinity and each agent's warm local cache bound the waste.
+- **Fairness is equal-share; no weighted priorities, no persistence.** A
+  session multiplexes any number of concurrent submissions across its
+  agents (round-robin max-min fair share; only commit-matching agents
+  are eligible, and a submitter's own machine serves only its own run).
+  The registry is in-memory: a serve restart fails in-flight submissions
+  loudly and the next one is fine.
+- **No agent autoscaling or managed fleets.** Your CI matrix (or k8s)
+  owns machine lifecycle; vx owns task placement only.
+- **Input shipping is a permanent non-goal.** Same-checkout is the
+  contract; dirty trees run locally.
 
 ## See also
 
