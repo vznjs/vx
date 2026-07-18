@@ -462,6 +462,29 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
   let workspaceRoot: string
   const origCwd = process.cwd()
   const savedEnv: Record<string, string | undefined> = {}
+  // Track the running watch loop so afterEach can tear it down BEFORE rm'ing
+  // the workspace. Under heavy CI load a `waitFor` can time out and throw
+  // before a test reaches its own `process.emit('SIGINT')`, leaving the loop
+  // running; rm'ing its cwd then makes its next git cycle fail with "Unable to
+  // read current working directory" (and cascade into the next test). The
+  // `settled` flag guards against a double SIGINT after the loop already exited
+  // (which would hit Node's default handler and kill the runner).
+  let activeCmd: Promise<number> | undefined
+  let activeSettled = true
+  const startWatch = (args: string[]): Promise<number> => {
+    activeSettled = false
+    const p = run(args) as Promise<number>
+    void p.then(
+      () => {
+        activeSettled = true
+      },
+      () => {
+        activeSettled = true
+      },
+    )
+    activeCmd = p
+    return p
+  }
 
   beforeEach(async () => {
     savedEnv['CI'] = process.env['CI']
@@ -504,6 +527,17 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
   })
 
   afterEach(async () => {
+    // Tear down a still-running loop (a test that threw mid-body) BEFORE rm, so
+    // an orphaned watch cycle never runs against a deleted cwd.
+    if (activeCmd !== undefined && !activeSettled) {
+      process.emit('SIGINT')
+      await Promise.race([
+        activeCmd.catch(() => undefined),
+        new Promise((r) => setTimeout(r, 8000)),
+      ])
+    }
+    activeCmd = undefined
+    activeSettled = true
     for (const [k, v] of Object.entries(savedEnv)) {
       if (v === undefined) delete process.env[k]
       else process.env[k] = v
@@ -534,7 +568,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       // --output-logs full: watch cycles inherit the broad flow from
       // --all, which suppresses task output; the override keeps the
       // content assertions on `cat`'s output meaningful.
-      const cmd = run(['watch', '--all', 'hello', '--output-logs', 'full'])
+      const cmd = startWatch(['watch', '--all', 'hello', '--output-logs', 'full'])
 
       // Wait for the initial run to appear in stdout, then write a change.
       await waitFor(() => stdout.includes('v0'))
@@ -554,7 +588,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       // Silence the stderr-may-have-content lint by referencing it.
       void stderr
     },
-    { timeout: 30_000 },
+    { timeout: 90_000 },
   )
 
   it(
@@ -570,7 +604,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       })
       vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
-      const cmd = run(['watch', '--all', 'hello'])
+      const cmd = startWatch(['watch', '--all', 'hello'])
       await waitFor(() => stdout.includes('watching 1 project'))
 
       // Drop a typical editor swap file. The watch loop should ignore it.
@@ -598,7 +632,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       process.emit('SIGINT')
       await cmd
     },
-    { timeout: 30_000 },
+    { timeout: 90_000 },
   )
 
   it(
@@ -614,7 +648,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       })
       vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
-      const cmd = run(['watch', '--all', 'hello', '--output-logs', 'full'])
+      const cmd = startWatch(['watch', '--all', 'hello', '--output-logs', 'full'])
       await waitFor(() => stdout.includes('watching 1 project'))
 
       // Burst-write 5 versions of the same file within < debounce
@@ -638,7 +672,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       process.emit('SIGINT')
       await cmd
     },
-    { timeout: 30_000 },
+    { timeout: 90_000 },
   )
 
   it(
@@ -654,7 +688,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       })
       vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
-      const cmd = run(['watch', '--all', 'hello'])
+      const cmd = startWatch(['watch', '--all', 'hello'])
       await waitFor(() => stdout.includes('watching 1 project'))
 
       // Touch a lockfile at the root. Should trigger a cycle even
@@ -665,7 +699,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       process.emit('SIGINT')
       await cmd
     },
-    { timeout: 30_000 },
+    { timeout: 90_000 },
   )
 
   it(
@@ -678,14 +712,14 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       })
       vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
-      const cmd = run(['watch', '--all', 'hello'])
+      const cmd = startWatch(['watch', '--all', 'hello'])
       await waitFor(() => stdout.includes('watching 1 project'))
 
       process.emit('SIGTERM')
       const code = await cmd
       expect(code).toBe(0)
     },
-    { timeout: 30_000 },
+    { timeout: 90_000 },
   )
 
   it(
@@ -719,7 +753,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       })
       vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
-      const cmd = run(['watch', '--all', 'hello', '--output-logs', 'full'])
+      const cmd = startWatch(['watch', '--all', 'hello', '--output-logs', 'full'])
       await waitFor(() => stdout.includes('watching the workspace root'))
 
       // A change in a ROOT SUBDIR (not any project dir, not a lockfile)
@@ -733,14 +767,14 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       expect(stdout).toContain('ws0')
       expect(stdout).toContain('ws1')
     },
-    { timeout: 30_000 },
+    { timeout: 90_000 },
   )
 })
 
 async function writeFor(
   _label: string,
   predicate: () => boolean,
-  timeoutMs = 25_000,
+  timeoutMs = 45_000,
 ): Promise<void> {
   await waitFor(predicate, timeoutMs)
 }
@@ -748,7 +782,7 @@ async function writeFor(
 // Default well under the watch tests' 30s wrapper but far above the old
 // 10s — these e2e watch tests drive a debounced fs.watch + a full re-run
 // and flake under concurrent suite load when the inner budget is tight.
-async function waitFor(predicate: () => boolean, timeoutMs = 25_000): Promise<void> {
+async function waitFor(predicate: () => boolean, timeoutMs = 45_000): Promise<void> {
   const start = Date.now()
   while (!predicate()) {
     if (Date.now() - start > timeoutMs) {

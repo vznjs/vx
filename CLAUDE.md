@@ -208,6 +208,36 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-18**: **The recurring `vx watch` e2e flake ROOT-FIXED — a slow re-run
+  under load no longer orphans the loop into a deleted cwd** (the documented
+  "cwd race" that has redded CI intermittently; it redded `de7bad2` even though
+  that commit was cloud-only — the core `test` task's watch e2e in
+  `tests/cli.test.ts` timed out, the `vx-cloud tests` job passed, proving the
+  failure was disjoint from the diff). **Root cause traced:** under heavy
+  full-suite load the watch cycle (spawn plus git enumeration plus the 150 ms
+  debounce) is slow, so `waitFor('v1')` hit its 25 s default and THREW before
+  the test reached its own `process.emit('SIGINT')` — leaving the watch loop
+  RUNNING. `afterEach` then `rm`'d the workspace, and the orphaned loop's next
+  `git ls-files` (given the now-deleted dir as cwd) failed with `fatal: Unable
+to read current working directory`, which cascaded into the next test. **Fix
+  (test-infra only, `tests/cli.test.ts`):** (1) a `startWatch()` helper tracks
+  the running loop with a `settled` flag, and `afterEach` SIGINTs plus awaits it
+  (8 s cap) BEFORE `rm` when a test threw mid-body — so an orphaned loop is
+  always torn down before its cwd vanishes; the `settled` guard prevents a
+  double SIGINT after a clean exit (which would hit Node's default handler and
+  kill the runner). (2) `waitFor`/`writeFor` defaults 25 s→45 s and the six
+  watch tests' per-test timeout 30 s→90 s, so a slow-but-coming re-run has
+  headroom to appear and each test reaches its own clean teardown. Verified: the
+  full core suite 1268 pass under load (the exact contention that flaked CI);
+  cli.test.ts 107 pass in isolation with no double-SIGINT. Not a product change
+  — the git spawns already pass an explicit `cwd`; this is purely test lifecycle
+  robustness. (The deeper cross-file `process.chdir` sharing across
+  concurrently-run test files remains a latent contributor, noted for a future
+  dedicated pass; this fix removes the dominant same-file orphan path.)
+  **Process note:** confirm the failing TEST NAME plus the disjoint-job signal
+  before assuming a red is your diff — here a cloud-only change's red was a
+  pre-existing core flake.
+
 - **2026-07-18**: **Adversarial review of the three distributed waves (per-task
   logs, run-policy propagation, reconnect) — two LOW/LOW-MEDIUM defects fixed,
   the rest REFUTED by executed repro** (a repro-mandated hostile reviewer over
