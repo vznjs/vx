@@ -14,7 +14,19 @@
 //     WireEvents, so the submitter renders through the same
 //     `createWireRenderer` path delegation uses.
 
-import type { OutcomeView, ServerMessage, WireEvent } from '@vzn/vx'
+import {
+  FULL_CACHE_POLICY,
+  assembleRunSummary,
+  deriveCacheSource,
+  type CachePolicy,
+  type OutcomeView,
+  type RunContextRecord,
+  type RunSummaryRecord,
+  type ServerMessage,
+  type TaskTelemetry,
+  type WireEvent,
+} from '@vzn/vx'
+import type { TaskIngestRecord } from '../db/analytics.js'
 import type {
   DistClientMessage,
   DistGraphNode,
@@ -27,6 +39,21 @@ import {
   type RegisteredAgent,
   type SubmissionBinding,
 } from './registry.js'
+
+/**
+ * Where the controller records a distributed run — the seam onto the Postgres
+ * analytics store, so a `VX_CLOUD_DISTRIBUTE` run appears under the dashboard's
+ * Runs and fills in live, exactly like a local `cloud()` run. Optional (like
+ * `store`/`send`/`durationHints`) — a scheduler with no recorder is
+ * byte-identical to before. Both calls are fire-and-forget and MUST never throw
+ * (recording is observe-only; it can never fail a run).
+ */
+export interface DistRunRecorder {
+  /** One task's result the moment it finishes (live fill-in). */
+  taskDone(rec: TaskIngestRecord): void
+  /** The invocation header + end-of-run backstop (idempotent with `taskDone`). */
+  runFinished(summary: RunSummaryRecord): void
+}
 
 // Re-exported from its home in registry.ts (which owns agent labels) so the
 // existing `from './scheduler.js'` importers (submit.ts, index.ts) are unchanged.
@@ -53,9 +80,25 @@ export interface DistSchedulerArgs {
    * unknown tasks sort as 0, so a no-history workspace is byte-identical FIFO.
    */
   durationHints?: ReadonlyMap<string, number>
+  /**
+   * Records the run into the Postgres analytics store (per-task on `complete`,
+   * the header + backstop on `checkFinish`). Absent → no recording, byte-
+   * identical to before.
+   */
+  recorder?: DistRunRecorder
 }
 
 const OK_STATUSES = new Set(['success', 'cache-hit', 'cache-hit-remote'])
+
+/** Compact cache-policy flags for the invocation header (core's format). */
+function compactCachePolicy(p: CachePolicy): string {
+  const parts: string[] = []
+  if (p.localRead) parts.push('lR')
+  if (p.localWrite) parts.push('lW')
+  if (p.remoteRead) parts.push('rR')
+  if (p.remoteWrite) parts.push('rW')
+  return parts.join(',')
+}
 
 export class DistScheduler implements ActiveSubmission {
   readonly submissionId: string
@@ -72,6 +115,14 @@ export class DistScheduler implements ActiveSubmission {
   private readonly executedBy = new Map<string, string>()
   private readonly ready: string[] = []
   private readonly startedAtMs = Date.now()
+  // Controller-clock task timeline — each agent's OutcomeView wallclock ns is
+  // relative to THAT agent's own scoped run(), so cross-agent offsets aren't
+  // comparable. The controller is the only shared clock: it stamps each task's
+  // start (agent:start, or completion for a prune hit / skip) and end
+  // (completion), and encodes them run-relative so `insertTaskRun` yields a
+  // coherent shared epoch-ms timeline (the flamegraph works with no change).
+  private readonly startedAtByTask = new Map<string, number>()
+  private readonly endedAtByTask = new Map<string, number>()
 
   private binding: SubmissionBinding | null = null
   private finished = false
@@ -234,6 +285,7 @@ export class DistScheduler implements ActiveSubmission {
       const node = this.nodes.get(msg.taskId)
       if (node === undefined || this.startedEmitted.has(msg.taskId)) return
       this.startedEmitted.add(msg.taskId)
+      if (!this.startedAtByTask.has(msg.taskId)) this.startedAtByTask.set(msg.taskId, Date.now())
       this.event({ kind: 'task:start', task: node.view })
       return
     }
@@ -340,6 +392,12 @@ export class DistScheduler implements ActiveSubmission {
   private complete(taskId: string, outcome: OutcomeView, emit: boolean): void {
     if (this.outcomes.has(taskId)) return
     this.outcomes.set(taskId, outcome)
+    const at = Date.now()
+    // A synthesized completion (prune hit / failure-cascade skip) never saw an
+    // agent:start — stamp both to `at` so its run-relative duration is ~0.
+    if (!this.startedAtByTask.has(taskId)) this.startedAtByTask.set(taskId, at)
+    this.endedAtByTask.set(taskId, at)
+    this.recordTaskDone(taskId, outcome)
     if (emit) {
       const node = this.nodes.get(taskId)
       // Synthesized completions (prune hits, failure-cascade skips) still
@@ -408,9 +466,16 @@ export class DistScheduler implements ActiveSubmission {
       else if (o.status === 'cache-hit' || o.status === 'cache-hit-remote') agentHits++
     }
     const ok = failed === 0
+    const endedAt = Date.now()
+    // Record the whole run into Postgres analytics — the invocation header plus
+    // the end-of-run backstop that backfills any per-task row a live `taskDone`
+    // dropped. Built through core's SHARED `assembleRunSummary` (the same
+    // builder a local `run()` uses) so a distributed run and a local run
+    // produce byte-identical summaries and land in the same ingest.
+    this.recordRunFinished(endedAt, ok)
     // Plain-text footer tallies (§6.7) — core's meter-bar summary is not
     // public and exporting it for cosmetics isn't worth the surface.
-    const elapsed = ((Date.now() - this.startedAtMs) / 1000).toFixed(1)
+    const elapsed = ((endedAt - this.startedAtMs) / 1000).toFixed(1)
     this.event({
       kind: 'run:status',
       line: ` tasks: ${failed} failed · ${success} success · ${skipped} skipped`,
@@ -431,6 +496,107 @@ export class DistScheduler implements ActiveSubmission {
     if (this.submitterGone) this.drainAgents()
     this.binding?.end()
     this.resolveDone({ ok })
+  }
+
+  // --- analytics recording (observe-only; never affects scheduling) ----------
+
+  /**
+   * Project one completed task into `TaskTelemetry` on the CONTROLLER clock.
+   * The wallclock ns are run-relative (`(stamp - startedAtMs) * 1e6`) so
+   * `insertTaskRun`'s derivation yields a coherent shared epoch-ms timeline;
+   * `deriveCacheSource` is core's single status→source mapping (never re-derived
+   * here). Group + aborted tasks are not recorded (the local path's rule).
+   */
+  private taskTelemetryFor(taskId: string, outcome: OutcomeView): TaskTelemetry | undefined {
+    const node = this.nodes.get(taskId)
+    if (node === undefined || node.view.isGroup || outcome.status === 'aborted') return undefined
+    const startMs = this.startedAtByTask.get(taskId) ?? this.startedAtMs
+    const endMs = this.endedAtByTask.get(taskId) ?? startMs
+    const t: TaskTelemetry = {
+      taskId: node.view.id,
+      project: node.view.project,
+      task: node.view.task,
+      status: outcome.status,
+      cacheSource: deriveCacheSource(outcome.status),
+      exitCode: outcome.exitCode,
+      durationMs: outcome.durationMs,
+      wallclockStartNs: String((startMs - this.startedAtMs) * 1_000_000),
+      wallclockEndNs: String((endMs - this.startedAtMs) * 1_000_000),
+    }
+    if (outcome.hash !== undefined) t.hash = outcome.hash
+    if (outcome.cpuMs !== undefined) t.cpuMs = outcome.cpuMs
+    if (outcome.peakRssBytes !== undefined) t.peakRssBytes = outcome.peakRssBytes
+    return t
+  }
+
+  /** Live per-task fill-in: one `task_runs` row the moment a task completes. */
+  private recordTaskDone(taskId: string, outcome: OutcomeView): void {
+    const recorder = this.args.recorder
+    if (recorder === undefined) return
+    const task = this.taskTelemetryFor(taskId, outcome)
+    if (task === undefined) return
+    const submit = this.args.submit
+    const rec: TaskIngestRecord = {
+      v: 1,
+      runId: this.submissionId,
+      workspaceId: submit.workspaceId,
+      ...(submit.context?.workspaceName != null
+        ? { workspaceName: submit.context.workspaceName }
+        : {}),
+      // The SAME run start both paths derive the started_at from, so the header
+      // backstop's ON CONFLICT dedups this row.
+      runStartedAt: this.startedAtMs,
+      runEndedAt: this.endedAtByTask.get(taskId) ?? this.startedAtMs,
+      task,
+    }
+    recorder.taskDone(rec)
+  }
+
+  /** The invocation header + backstop, via the SHARED core summary builder. */
+  private recordRunFinished(endedAt: number, ok: boolean): void {
+    const recorder = this.args.recorder
+    if (recorder === undefined) return
+    const tasks: TaskTelemetry[] = []
+    for (const [id, outcome] of this.outcomes) {
+      const t = this.taskTelemetryFor(id, outcome)
+      if (t !== undefined) tasks.push(t)
+    }
+    const summary = assembleRunSummary(this.runContextRecord(), tasks, {
+      startedAt: this.startedAtMs,
+      endedAt,
+      totalDurationMs: endedAt - this.startedAtMs,
+      exitOk: ok,
+    })
+    recorder.runFinished(summary)
+  }
+
+  /** The invocation header context from the submit + the submitter's machine
+   *  context (absent on an older submitter → empty header fields). */
+  private runContextRecord(): RunContextRecord {
+    const submit = this.args.submit
+    const req = submit.request
+    const ctx = submit.context
+    return {
+      runId: this.submissionId,
+      vxVersion: ctx?.vxVersion ?? '',
+      command: req.command ?? `vx run ${req.tasks.join(' ')}`,
+      requestedTasks: [...req.tasks],
+      cachePolicy: compactCachePolicy(req.cache ?? FULL_CACHE_POLICY),
+      concurrency: req.concurrency ?? 0,
+      flow: req.flow ?? null,
+      workspaceId: submit.workspaceId,
+      workspaceName: ctx?.workspaceName ?? submit.workspaceId,
+      commitSha: submit.commitSha,
+      branch: submit.branch ?? null,
+      defaultBranch: submit.defaultBranch ?? null,
+      dirty: ctx?.dirty ?? null,
+      ci: ctx?.ci ?? false,
+      ciProvider: ctx?.ciProvider ?? null,
+      host: ctx?.host ?? null,
+      os: ctx?.os ?? '',
+      arch: ctx?.arch ?? '',
+      tags: req.tags ?? {},
+    }
   }
 
   private abort(reason: string): void {

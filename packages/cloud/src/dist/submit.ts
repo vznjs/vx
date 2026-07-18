@@ -8,13 +8,16 @@ import {
   FULL_CACHE_POLICY,
   LayeredCache,
   UserError,
+  VERSION,
   captureDefaultBranch,
   captureGitContext,
+  captureHostContext,
   captureWorkspaceIdentity,
   cleanOutputs,
   createWireRenderer,
   defaultLogger,
   deriveStableKeys,
+  detectCi,
   findWorkspaceRoot,
   prepareRun,
   projectNode,
@@ -35,6 +38,7 @@ import {
 import {
   DIST_PROTOCOL_VERSION,
   type DistGraphNode,
+  type DistSubmitContext,
   type DistSubmitMessage,
 } from '../protocol-dist.js'
 import { runAgentLoop, type AgentLoopHandle } from './agent-loop.js'
@@ -184,6 +188,22 @@ export function distributedBackend(opts: DistributedBackendOptions): RunBackend 
 
         const identity = captureWorkspaceIdentity(prepared.workspaceRoot)
         const session = deriveSession()
+        // The invoking machine's context for the run's invocation header — for a
+        // distributed run that is the SUBMITTER (the CI runner), exactly as a
+        // local run's header uses the invoking machine. Sent additively so the
+        // controller records the run under Runs like a local `cloud()` run.
+        const host = captureHostContext()
+        const ci = detectCi(process.env)
+        const context: DistSubmitContext = {
+          os: host.os,
+          arch: host.arch,
+          host: host.host ?? '',
+          ci: ci.ci,
+          ciProvider: ci.provider,
+          vxVersion: VERSION,
+          dirty: git.dirty ?? false,
+          workspaceName: identity.name,
+        }
         // A session multiplexes concurrent submissions on this id; the self-
         // agent presents it as `ownerSubmissionId` so only THIS run may use it.
         const submissionId = Bun.randomUUIDv7()
@@ -196,6 +216,7 @@ export function distributedBackend(opts: DistributedBackendOptions): RunBackend 
           commitSha: git.commitSha,
           branch: git.branch,
           defaultBranch: captureDefaultBranch(process.env, prepared.workspaceRoot),
+          context,
           expectedAgents: opts.expectedAgents,
           agentTimeoutMs:
             opts.agentTimeoutMs ??

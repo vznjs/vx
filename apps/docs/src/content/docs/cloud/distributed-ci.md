@@ -483,9 +483,13 @@ Independent of distribution, a `vx run` inside GitHub Actions with the
 
 When a platform connection resolved, both the summary and the check
 carry a **dashboard deep link** to the run (`/#/runs/<runId>`), so a red
-check is one click from the failing task's logs. Note the known limit
-below: a *distributed* submission currently ingests no run summary, so
-these surfaces ride your normal (non-distributed) CI runs.
+check is one click from the failing task's logs.
+
+A distributed submission appears under **Runs** and fills in live too: the
+server-side controller that schedules the run records each task the moment it
+finishes and writes the invocation header when the run ends, so a distributed
+run reads exactly like a local `cloud()` run. (Per-task *logs* are the one
+gap — agents don't yet stream their captured tails to the controller.)
 
 ## Fork PRs: present the PR token
 
@@ -565,9 +569,6 @@ Honest gaps in the current design (see
   a serve restart fails in-flight submissions loudly.
 - **No agent autoscaling or managed fleets.** Your CI matrix (or k8s)
   owns machine lifecycle; vx owns task placement only.
-- **No run-history row for a distributed run.** No single `run()`
-  executes the whole graph, so the dashboard records no invocation and
-  ingests no summary for a distributed run.
 - **Input shipping is a permanent non-goal.** Same-checkout is the
   contract; dirty trees run locally.
 - **An agent that loses its WS exits** — it does not reconnect. The

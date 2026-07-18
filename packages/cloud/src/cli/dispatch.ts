@@ -27,6 +27,7 @@ import {
   SESSION_GC_INTERVAL_MS,
   type RegisteredAgent,
 } from '../dist/registry.js'
+import { makeDistRunRecorder } from '../dist/dist-recorder.js'
 import { DistScheduler } from '../dist/scheduler.js'
 import {
   DIST_PROTOCOL_VERSION,
@@ -458,7 +459,21 @@ export async function startPlatformHttp(opts: PlatformHttpOptions): Promise<Plat
                 })
                 .catch(() => new Map<string, number>())
             : new Map<string, number>()
-        const scheduler = new DistScheduler({ submit, store: scopedStore, send, durationHints })
+        // Record the run into Postgres analytics (live per-task + the header
+        // backstop), routed to the submitter's tenant — so a distributed run
+        // appears under Runs and fills in live, like a local `cloud()` run.
+        const recorder = makeDistRunRecorder(
+          analytics,
+          { orgId: principal.orgId, workspaceId: principal.workspaceId },
+          log,
+        )
+        const scheduler = new DistScheduler({
+          submit,
+          store: scopedStore,
+          send,
+          durationHints,
+          recorder,
+        })
         // The submitter's token org keys the session (server-derived), so a pool
         // is isolated per tenant and a `dist:submit` runs under its ci token.
         const bound = registry.beginSubmission(

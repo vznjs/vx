@@ -30,8 +30,8 @@ import type { VxPlugin } from './plugin.js'
 import { subscribeEventSinks, teardownPlugins } from './plugin-host.js'
 import type { SubscribedEventSinks } from './plugin-host.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
-import { deriveCacheSource, TELEMETRY_SCHEMA_VERSION } from './telemetry.js'
-import type { RunContextRecord, RunSummaryRecord, TaskTelemetry } from './telemetry.js'
+import { assembleRunSummary, deriveCacheSource } from './telemetry.js'
+import type { RunContextRecord, TaskTelemetry } from './telemetry.js'
 import { defaultLogger, resolveOutputView } from './logger.js'
 import { detectColors } from './colors.js'
 import { formatPersistentList } from './framed-output.js'
@@ -804,20 +804,12 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // emitSummary/flush are crash-isolated, so a faulty sink can't fail
     // the run; flush is the sink's last chance to ship buffered records.
     if (telemetry !== undefined && runContextRecord !== undefined) {
-      const summary: RunSummaryRecord = {
-        v: TELEMETRY_SCHEMA_VERSION,
-        run: runContextRecord,
+      const summary = assembleRunSummary(runContextRecord, summaryTasks, {
         startedAt: endedAtMsAtStart,
         endedAt: endedAtMs,
         totalDurationMs: Math.round(totalMs),
-        taskCount: toRecord.length,
-        failedCount,
-        hitCount: hitLocalCount + hitRemoteCount,
-        hitLocalCount,
-        hitRemoteCount,
         exitOk: ok,
-        tasks: summaryTasks,
-      }
+      })
       telemetry.emitSummary(summary)
       await telemetry.flush()
     }

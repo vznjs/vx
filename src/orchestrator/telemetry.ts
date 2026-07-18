@@ -184,6 +184,46 @@ export interface RunSummaryRecord {
   tasks: readonly TaskTelemetry[]
 }
 
+/**
+ * Assemble the canonical per-run summary from the per-task telemetry + the
+ * run-level timing/verdict. THE one place the `RunSummaryRecord` tallies are
+ * computed: both a local `run()` and the distributed controller build their
+ * `TaskTelemetry[]` (each via `deriveCacheSource`) and call this, so a
+ * distributed run and a local run produce byte-identical summaries and land in
+ * the same ingest. The per-task tallies (taskCount / failedCount /
+ * hitLocal|Remote|Count) derive from `tasks`; `totalDurationMs` (wall time) and
+ * `exitOk` (the run's overall verdict — which counts skipped/verify beyond the
+ * recorded task list) are run-level facts and are passed in.
+ */
+export function assembleRunSummary(
+  run: RunContextRecord,
+  tasks: readonly TaskTelemetry[],
+  timing: { startedAt: number; endedAt: number; totalDurationMs: number; exitOk: boolean },
+): RunSummaryRecord {
+  let failedCount = 0
+  let hitLocalCount = 0
+  let hitRemoteCount = 0
+  for (const t of tasks) {
+    if (t.status === 'failed') failedCount++
+    if (t.cacheSource === 'local') hitLocalCount++
+    else if (t.cacheSource === 'remote') hitRemoteCount++
+  }
+  return {
+    v: TELEMETRY_SCHEMA_VERSION,
+    run,
+    startedAt: timing.startedAt,
+    endedAt: timing.endedAt,
+    totalDurationMs: timing.totalDurationMs,
+    taskCount: tasks.length,
+    failedCount,
+    hitCount: hitLocalCount + hitRemoteCount,
+    hitLocalCount,
+    hitRemoteCount,
+    exitOk: timing.exitOk,
+    tasks,
+  }
+}
+
 /** A telemetry consumer. Observe-only: receives records, holds no run handle. */
 export interface TelemetrySink {
   readonly name?: string

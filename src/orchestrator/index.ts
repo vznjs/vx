@@ -84,7 +84,12 @@ export {
 } from './plugin.js'
 export { resolveBackend, resolveCache, subscribeEventSinks } from './plugin-host.js'
 export { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
-export { createTelemetrySource, deriveCacheSource, TELEMETRY_SCHEMA_VERSION } from './telemetry.js'
+export {
+  assembleRunSummary,
+  createTelemetrySource,
+  deriveCacheSource,
+  TELEMETRY_SCHEMA_VERSION,
+} from './telemetry.js'
 export type {
   CacheSource,
   RunContextRecord,
@@ -103,10 +108,12 @@ export type { DeriveStableKeysArgs, StableKey } from './stable-keys.js'
 export {
   captureDefaultBranch,
   captureGitContext,
+  captureHostContext,
   captureWorkspaceIdentity,
+  detectCi,
   resolveCacheScope,
 } from './run-context.js'
-export type { GitContext, WorkspaceIdentity } from './run-context.js'
+export type { CiContext, GitContext, HostContext, WorkspaceIdentity } from './run-context.js'
 export {
   cacheKeyDiff,
   compareRuns,

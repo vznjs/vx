@@ -40,10 +40,12 @@ export type { DeriveStableKeysArgs, HashCache, StableKey } from './orchestrator/
 export {
   captureDefaultBranch,
   captureGitContext,
+  captureHostContext,
   captureWorkspaceIdentity,
+  detectCi,
   resolveCacheScope,
 } from './orchestrator/index.js'
-export type { GitContext, WorkspaceIdentity } from './orchestrator/index.js'
+export type { CiContext, GitContext, HostContext, WorkspaceIdentity } from './orchestrator/index.js'
 export { FULL_CACHE_POLICY, parseCachePolicy } from './orchestrator/index.js'
 export type {
   CachePolicy,
@@ -116,7 +118,11 @@ export type {
 // (an OTel exporter, an HTTP sink, or any third-party consumer) reads. A sink implements TelemetrySink and is
 // returned from VxPlugin.telemetry(); it receives immutable records and holds
 // no run handle (observe-only by construction).
-export { TELEMETRY_SCHEMA_VERSION, deriveCacheSource } from './orchestrator/index.js'
+export {
+  assembleRunSummary,
+  TELEMETRY_SCHEMA_VERSION,
+  deriveCacheSource,
+} from './orchestrator/index.js'
 export type {
   CacheSource,
   RunContextRecord,

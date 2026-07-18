@@ -48,7 +48,7 @@ Two hooks, both already single choke points:
 
 ```ts
 interface DistRunRecorder {
-  taskDone(rec: TaskIngestRecord): void   // fire-and-forget, never throws
+  taskDone(rec: TaskIngestRecord): void // fire-and-forget, never throws
   runFinished(summary: RunSummaryRecord): void
 }
 ```
@@ -61,7 +61,7 @@ recording is observe-only and must never fail a run (the local sink's rule).
 
 ### Run context (submitter → controller)
 
-The invocation header needs the *invoking machine's* context (os, arch, host,
+The invocation header needs the _invoking machine's_ context (os, arch, host,
 ci, ciProvider, vxVersion, dirty, workspaceName) — for a distributed run that
 is the **submitter** (the CI runner), exactly as a local run's header uses the
 invoking machine. The submitter captures it with core's existing helpers
@@ -93,6 +93,22 @@ startedAtMs`) yields a coherent shared epoch-ms timeline — the flamegraph
 works with no analytics change. Prune/cache-hit/skip tasks get ~0-duration
 stamps at their completion moment.
 
+### Shared summary builder (unified with the local path)
+
+The `RunSummaryRecord` is assembled through ONE canonical core builder,
+`assembleRunSummary(run, tasks, { startedAt, endedAt, totalDurationMs, exitOk })`
+(exported from `src/orchestrator/telemetry.ts` on the `@vzn/vx` façade). It
+computes the per-task tallies (taskCount / failedCount / hitLocal|Remote|Count /
+hitCount) from `tasks` and takes the run-level facts (`totalDurationMs` wall
+time, `exitOk` the overall verdict) as inputs. Both `run()` (local) and the
+distributed controller build their `TaskTelemetry[]` (each `cacheSource` via the
+single `deriveCacheSource(status)` mapping) and call it — so a distributed run
+and a local run produce byte-identical summaries and land in the same
+`Analytics.ingest`. The ONLY distributed-specific code is the OutcomeView →
+TaskTelemetry projection (a subset — agents don't report verify/outputFp/attempts
+over the dist wire), the controller-clock wallclock timeline, and the submitter
+run-context header; everything from `TaskTelemetry[]` onward is the shared path.
+
 ### Field mapping (OutcomeView + submit → RunSummaryRecord)
 
 - `run.runId` = `submissionId` (client-minted ULID, unique per submission).
@@ -109,7 +125,7 @@ stamps at their completion moment.
   `cacheSource` = `cache-hit`→`local`, `cache-hit-remote`→`remote`, else
   undefined; `wallclock*Ns` = the controller-stamped run-relative ns.
 - summary tallies (`taskCount/failedCount/hitCount/hitLocalCount/
-  hitRemoteCount/exitOk/startedAt/endedAt/totalDurationMs`) computed from the
+hitRemoteCount/exitOk/startedAt/endedAt/totalDurationMs`) computed from the
   outcomes (the same counting `checkFinish` already does).
 
 ### Idempotency & safety

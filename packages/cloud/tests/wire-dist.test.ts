@@ -154,4 +154,33 @@ describe('round-trip — dist:submit ⇄ Envelope', () => {
     expect(back?.branch).toBe('feature-x')
     expect(back?.defaultBranch).toBe('main')
   })
+
+  it('carries the submitter context (invocation header) when present', () => {
+    const submit: DistSubmitMessage = {
+      t: 'dist:submit',
+      protocol: DIST_PROTOCOL_VERSION,
+      session: 'local',
+      workspaceId: 'ws1',
+      submissionId: 'sub-3',
+      commitSha: 'cafebabe',
+      context: {
+        os: 'linux',
+        arch: 'x64',
+        host: 'ci-runner-7',
+        ci: true,
+        ciProvider: 'github',
+        vxVersion: '9.9.9',
+        dirty: false,
+        workspaceName: 'acme-monorepo',
+      },
+      expectedAgents: 1,
+      agentTimeoutMs: 300_000,
+      request: { tasks: ['build'], cwd: '/w' },
+      nodes: [],
+    }
+    const back = envelopeToDistSubmit(distSubmitToEnvelope(submit))
+    expect(back).toEqual(submit)
+    expect(back?.context?.ci).toBe(true)
+    expect(back?.context?.workspaceName).toBe('acme-monorepo')
+  })
 })

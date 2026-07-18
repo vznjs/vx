@@ -208,6 +208,63 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-18**: **Distributed runs now appear in Runs — the controller
+  records them, UNIFIED with the local path through ONE summary builder**
+  (owner: "distributed run still needs a controller" → "all agents report
+  to controller which handles the flow; controller works exactly like a
+  local run" → "make it unified"). Closed the last known-limit: a
+  `VX_CLOUD_DISTRIBUTE` run ingested no summary and never showed under
+  Runs, because run history is a byproduct of a single-process `run()`'s
+  telemetry, and a distributed run has none. **The insight (owner's):** it
+  DOES have a controller — the server-side `DistScheduler` — which already
+  collects every task's `OutcomeView` (it must, to know when the
+  submission finishes) and holds the full submit context. So the
+  controller records the run into Postgres analytics as it goes: a
+  `task_runs` row per `complete()` (live fill-in) + the `invocations`
+  header at `checkFinish()`, through the SAME `Analytics.ingestTask`/
+  `ingest` a local `POST /v1/ingest` uses, scoped to the submitter's
+  org/workspace. **Unified, not parallel (the "make it unified"
+  directive):** the `RunSummaryRecord` was built INLINE in `run.ts`;
+  extracted into ONE canonical `assembleRunSummary(run, tasks, timing)` in
+  core `telemetry.ts` (façade-exported), now the SOLE place the run
+  tallies are computed — called by both `run.ts` (local) AND the dist
+  controller. `deriveCacheSource(status)` is the single status→source
+  mapping both use. So a distributed run and a local run produce
+  byte-identical summaries and land in the identical ingest; the ONLY
+  distributed-specific code is the irreducible bits — projecting the wire
+  `OutcomeView` back to `TaskTelemetry`, the controller-clock timeline,
+  and the submitter run-context. **Two distributed-shape decisions:**
+  (1) run-context (os/arch/host/ci/vxVersion/dirty/workspaceName) comes
+  from the SUBMITTER (the invoking CI runner, like a local run's header)
+  — captured via core's `captureHostContext`/`detectCi`/`captureGitContext`
+  and sent additively on `DistSubmitMessage.context?` (NO
+  DIST_PROTOCOL_VERSION bump — the branch/defaultBranch precedent);
+  (2) each agent's wallclock-ns is relative to its OWN scoped run, not a
+  shared clock, so the controller stamps each task's start/end with its
+  own clock (`agent:start`/`agent:done`), encoded run-relative so
+  `insertTaskRun`'s existing derivation yields a coherent shared
+  epoch-ms timeline (flamegraph works, zero analytics change).
+  **Idempotency:** run_id = submissionId; both the live `taskDone` and the
+  end-of-run `runFinished` anchor `started_at` on the same `startedAtMs`
+  via the same `taskTelemetryFor`, so the header backstop's `ON CONFLICT
+DO NOTHING` dedups the live rows (test proves exactly 2 rows, never 4;
+  re-ingest adds nothing). Recording is fire-and-forget + swallow-and-warn
+  — a recording error can NEVER touch scheduling; a scheduler with no
+  recorder is byte-identical to before. **Core façade widened
+  (export-only):** `assembleRunSummary`, `detectCi`, `captureHostContext`
+  (+ `CiContext`/`HostContext`). **NO bumps** anywhere (CACHE_VERSION /
+  core SCHEMA / TELEMETRY_SCHEMA_VERSION / DIST_PROTOCOL_VERSION) — the
+  controller only WRITES existing columns; the wire field is
+  additive-optional. **Non-goals (documented):** per-task LOG capture on
+  the distributed path (agents don't stream their tails to the controller
+  yet — the run + task rows land; logs are a later increment, the same
+  phasing the local path used) + a pre-start "running" row. Verified
+  independently: lint 0, core 1713 pass, cloud 488 pass (incl. a real
+  `dist-ingest` e2e — real `DistScheduler` + real `Analytics` on ephemeral
+  pg, driven across a fake agent + a store-prune hit, read back through
+  the dashboard's own `listInvocations`/`listRuns`), docs build clean +
+  0 broken links. Design: `docs/design/dist-run-history-2026-07.md`.
+
 - **2026-07-17**: **Visual-first docs — corrected to MECHANISM DIAGRAMS +
   real screenshots; NO terminal/UI emulation** (owner arc: "add
   screenshots / cool graphics visualizing things — docs should be
