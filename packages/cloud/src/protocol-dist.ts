@@ -82,9 +82,26 @@ export interface AgentHello {
   ownerSubmissionId?: string
 }
 
+/**
+ * The submission's run policy, propagated PER-ASSIGNMENT so a standalone agent
+ * (which serves several concurrent submissions of the same commit) honors each
+ * one's `--frozen` / `--timeout` / `--retry` instead of live-evaluating with no
+ * run-level defaults. `cache` is deliberately NOT here: a distributed run always
+ * has the remote axes (the §5.3 refusal gate), and an agent running the FULL
+ * cache policy IS the artifact transport (§6.3). Additive-optional → an older
+ * agent ignores it (live-eval, today's behavior) and a newer agent against an
+ * older serve receives none (its own configured defaults), so no
+ * DIST_PROTOCOL bump — the branch/defaultBranch/context precedent.
+ */
+export interface AssignPolicy {
+  frozen?: boolean
+  timeout?: number
+  retries?: number
+}
+
 /** serve → agent. `submissionId` names which multiplexed submission owns the task. */
 export type DistServerMessage =
-  | { t: 'task:assign'; taskId: string; submissionId: string }
+  | { t: 'task:assign'; taskId: string; submissionId: string; policy?: AssignPolicy }
   | { t: 'agent:refused'; reason: string }
   | { t: 'coord:drain' }
 
@@ -167,6 +184,7 @@ export function distServerMessageToEnvelope(msg: DistServerMessage): Envelope {
       return makeNotification('coord.assign', {
         taskId: msg.taskId,
         submissionId: msg.submissionId,
+        ...(msg.policy !== undefined ? { policy: msg.policy } : {}),
       })
     case 'agent:refused':
       return makeNotification('agent.refused', { reason: msg.reason })
@@ -179,8 +197,13 @@ export function distServerMessageToEnvelope(msg: DistServerMessage): Envelope {
 export function envelopeToDistServerMessage(env: Envelope): DistServerMessage | null {
   if (!isNotification(env)) return null
   if (env.method === 'coord.assign') {
-    const p = env.params as { taskId: string; submissionId: string }
-    return { t: 'task:assign', taskId: p.taskId, submissionId: p.submissionId }
+    const p = env.params as { taskId: string; submissionId: string; policy?: AssignPolicy }
+    return {
+      t: 'task:assign',
+      taskId: p.taskId,
+      submissionId: p.submissionId,
+      ...(p.policy !== undefined ? { policy: p.policy } : {}),
+    }
   }
   if (env.method === 'agent.refused') {
     const p = env.params as { reason: string }

@@ -29,6 +29,7 @@ import {
 import type { TaskIngestRecord } from '../db/analytics.js'
 import { TaskLogBuffer } from '../task-log-capture.js'
 import type {
+  AssignPolicy,
   DistClientMessage,
   DistGraphNode,
   DistSubmitMessage,
@@ -91,6 +92,22 @@ export interface DistSchedulerArgs {
 
 const OK_STATUSES = new Set(['success', 'cache-hit', 'cache-hit-remote'])
 
+/**
+ * The per-assignment run policy from a submission — the submitter's `--frozen` /
+ * `--timeout` / `--retry`, so a standalone agent honors THIS run's flags. Cache
+ * is deliberately excluded (full cache is the artifact transport). Returns
+ * `undefined` when the submitter declared none, so the assignment stays a bare
+ * id (byte-identical to before this field existed).
+ */
+function deriveAssignPolicy(submit: DistSubmitMessage): AssignPolicy | undefined {
+  const req = submit.request
+  const policy: AssignPolicy = {}
+  if (req.frozen !== undefined) policy.frozen = req.frozen
+  if (req.timeout !== undefined) policy.timeout = req.timeout
+  if (req.retries !== undefined) policy.retries = req.retries
+  return Object.keys(policy).length > 0 ? policy : undefined
+}
+
 /** Compact cache-policy flags for the invocation header (core's format). */
 function compactCachePolicy(p: CachePolicy): string {
   const parts: string[] = []
@@ -131,6 +148,12 @@ export class DistScheduler implements ActiveSubmission {
   // dashboard exactly like a local run's. Only populated when a recorder is
   // present (no recorder = byte-identical to before, empty buffer).
   private readonly logs = new TaskLogBuffer()
+  // The submission's run policy, carried on every `task:assign` so a standalone
+  // agent (which multiplexes several submissions) honors THIS run's --frozen /
+  // --timeout / --retry rather than live-evaluating with no defaults. Computed
+  // once from the submitted RunRequest; `undefined` when the submitter declared
+  // none (→ a bare assignment, byte-identical to before).
+  private readonly assignPolicy: AssignPolicy | undefined
 
   private binding: SubmissionBinding | null = null
   private finished = false
@@ -144,6 +167,7 @@ export class DistScheduler implements ActiveSubmission {
   constructor(private readonly args: DistSchedulerArgs) {
     this.submissionId = args.submit.submissionId
     this.commitSha = args.submit.commitSha
+    this.assignPolicy = deriveAssignPolicy(args.submit)
     this.done = new Promise((r) => {
       this.resolveDone = r
     })
@@ -369,7 +393,12 @@ export class DistScheduler implements ActiveSubmission {
       agent.inFlight.set(this.submissionId, set)
     }
     set.add(taskId)
-    agent.send({ t: 'task:assign', taskId, submissionId: this.submissionId })
+    agent.send({
+      t: 'task:assign',
+      taskId,
+      submissionId: this.submissionId,
+      ...(this.assignPolicy !== undefined ? { policy: this.assignPolicy } : {}),
+    })
   }
 
   /**

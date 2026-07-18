@@ -24,7 +24,7 @@ describe('protocol v2 shape', () => {
     expect(DIST_PROTOCOL_VERSION).toBe(2)
   })
 
-  it('assignment is a BARE task id + submissionId — no command, no projectDir, no hash', () => {
+  it('a policy-less assignment is a BARE task id + submissionId — no command, no projectDir, no hash', () => {
     const assign: DistServerMessage = { t: 'task:assign', taskId: 'pkg#build', submissionId: 's1' }
     expect(Object.keys(assign).sort()).toEqual(['submissionId', 't', 'taskId'])
   })
@@ -34,6 +34,13 @@ describe('round-trip — DistServerMessage ⇄ Envelope', () => {
   it('task:assign / agent:refused / coord:drain round-trip', () => {
     const msgs: DistServerMessage[] = [
       { t: 'task:assign', taskId: 'pkg#build', submissionId: 's1' },
+      // A policy-carrying assignment (the submitter's --frozen/--timeout/--retry).
+      {
+        t: 'task:assign',
+        taskId: 'pkg#build',
+        submissionId: 's1',
+        policy: { frozen: true, timeout: 30_000, retries: 2 },
+      },
       { t: 'agent:refused', reason: 'commit mismatch: a vs b' },
       { t: 'coord:drain' },
     ]

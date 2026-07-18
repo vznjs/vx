@@ -208,6 +208,39 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-18**: **Remote agents now honor the submitter's `--frozen` /
+  `--timeout` / `--retry` — per-assignment run policy on `task:assign`** (owner:
+  "We should have no limitations"; closes the distributed-CI "Known limits"
+  bullet + roadmap #6). Before, a standalone `vx-cloud agent` ran every
+  assignment with LIVE config eval and NO run-level defaults — the submitter's
+  `--frozen` (the CI reproducibility gate), `--timeout`, and `--retry` applied
+  only to its own in-process self-agent work, silently ignored on remote
+  agents. **The insight (the policy is already on the controller):** the whole
+  `RunRequest` rides `DistSubmitMessage.request`, so the server-side
+  `DistScheduler` already holds `frozen`/`timeout`/`retries`. The gap was purely
+  that `task:assign` was a bare `{taskId, submissionId}` — a standalone agent
+  multiplexes several submissions and can't infer each one's policy. **The
+  build:** `task:assign` gains an optional `policy?: AssignPolicy`
+  (`{frozen?, timeout?, retries?}`); the controller computes it ONCE from the
+  submitted request (`deriveAssignPolicy`) and includes it on every assignment;
+  the agent applies it per-assignment in its scoped `run()` (`frozen` falls back
+  to the loop's own `opts.frozen` for an older serve; `retries`/`timeout` come
+  purely per-assignment). **Cache is deliberately NOT propagated:** a distributed
+  run always has the remote axes (the §5.3 refusal gate), an agent running the
+  FULL cache policy IS the artifact transport (§6.3), and each agent keeps its
+  own local cache on so warm restores work across its assignments — propagating
+  a restrictive `--cache=remote:` would defeat that. **No `DIST_PROTOCOL` bump:**
+  the field is additive-optional with clean degradation both directions (an old
+  agent ignores it → live-eval = today's behavior; a new agent against an old
+  serve receives none → its own defaults), the branch/defaultBranch/context
+  precedent. **Bonus fix:** the submitter's OWN self-agent now applies
+  `--timeout`/`--retry` too (previously only `--frozen`/`--cache` reached it — a
+  latent faithfulness gap on the submitting machine itself). Verified: cloud
+  491 pass (+2 — wire round-trip of a policy-carrying assign; the controller
+  fills the policy from the request + a policy-less submission stays a BARE
+  assign; agents-e2e green), lint (oxlint+tsgolint) + oxfmt 0, docs build clean.
+  NO schema/CACHE/DIST_PROTOCOL bump.
+
 - **2026-07-18**: **Distributed per-task LOGS captured — the controller tees the
   agent stream it already relays into the SHARED TaskLogBuffer, so a distributed
   run's logs read back exactly like a local run's** (owner: "Let's do that" — the
@@ -7497,20 +7530,16 @@ longer-horizon core gaps stay sourced from `docs/comparison.md`.
    `retries` on flagged tasks.
 5. ~~Duration-aware dispatch ordering~~ — **SHIPPED** 2026-07-04
    (LPT; serve-computed `durationHints` from ingest history).
-6. **Run-level policy to REMOTE agents** (narrow; deferred). Corrected
-   framing after investigation: the CACHE policy is already handled — the
-   §5.3 refusal gate falls a run back to LOCAL when it lacks
-   `remoteRead && remoteWrite` (`--no-cache`/`--force`/`--cache=remote:`),
-   so any run that distributes already has full remote axes, and remote
-   agents running "full cache" is correct BY DESIGN (the cache IS the
-   artifact transport). The real residual is that a REMOTE `vx-cloud agent`
-   live-evals (ignores `--frozen`) and doesn't inherit `--timeout`/`--retry`
-   — narrow value under the standard pinned-image + `--frozen` recipe
-   (env-pure configs make live-eval == frozen), and it needs a
-   DIST_PROTOCOL bump to carry per-submission policy in `task:assign`
-   (per-assignment, since one agent multiplexes submissions with different
-   policies). Deferred: not worth a wire-protocol bump for the narrow gain
-   until a real need surfaces.
+6. ~~Run-level policy to REMOTE agents~~ — **SHIPPED** 2026-07-18. The
+   submitter's `--frozen`/`--timeout`/`--retry` now ride every `task:assign`
+   as an optional `policy` sub-object (filled by the controller from the
+   submission's `RunRequest`, applied per-assignment by the agent), so a
+   standalone agent honors THIS run's flags instead of live-evaluating with
+   no defaults. Cache stays full-by-design (the artifact transport; each
+   agent's own local cache stays on). Additive-optional → clean degradation
+   both directions (old agent ignores it = today's live-eval; new agent +
+   old serve = its own defaults), so NO DIST_PROTOCOL bump (the
+   branch/defaultBranch/context precedent).
 7. Core backlog (from `docs/comparison.md`): CLEARED. Blob offload
    (pre-signed URLs): the CLIENT half ships in the native wire —
    `NativeCacheClient` follows one auth-dropping 307/302 on GET; the

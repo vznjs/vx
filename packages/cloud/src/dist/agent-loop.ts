@@ -30,6 +30,7 @@ import {
 import {
   AGENT_HEARTBEAT_MS,
   DIST_PROTOCOL_VERSION,
+  type AssignPolicy,
   type DistClientMessage,
   type DistServerMessage,
 } from '../protocol-dist.js'
@@ -172,7 +173,7 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
       clearTimeout(idleTimer)
       inFlight++
       opts.onAssigned?.(msg.taskId)
-      void executeAssigned(msg.submissionId, msg.taskId)
+      void executeAssigned(msg.submissionId, msg.taskId, msg.policy)
     } else if (msg.t === 'agent:refused') {
       refusedReason = msg.reason
       status(`refused: ${msg.reason}`)
@@ -197,9 +198,19 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
     // onclose always follows; classification happens there
   }
 
-  async function executeAssigned(submissionId: string, taskId: string): Promise<void> {
+  async function executeAssigned(
+    submissionId: string,
+    taskId: string,
+    policy?: AssignPolicy,
+  ): Promise<void> {
     status(`▶ ${taskId}`)
     send({ t: 'agent:start', taskId, submissionId })
+    // Honor the submission's run policy: --frozen / --timeout / --retry ride
+    // per-assignment so a standalone agent (which serves several submissions)
+    // applies each one's flags. `opts.frozen` is the fallback for an older serve
+    // that sends a bare assignment; cache is NOT propagated (full cache is the
+    // artifact transport — the agent's own local cache stays on).
+    const frozen = policy?.frozen ?? opts.frozen
     const bus = createEventBus()
     bus.subscribe((event: RunEvent) => {
       if (event.kind === 'task:stdout' && event.node.id === taskId) {
@@ -220,8 +231,10 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
         bus,
         inflight: inflightRuns,
         concurrency: opts.capacity,
-        ...(opts.frozen !== undefined ? { frozen: opts.frozen } : {}),
+        ...(frozen !== undefined ? { frozen } : {}),
         ...(opts.cache !== undefined ? { cache: opts.cache } : {}),
+        ...(policy?.retries !== undefined ? { retries: policy.retries } : {}),
+        ...(policy?.timeout !== undefined ? { timeout: policy.timeout } : {}),
         ...(opts.remoteCache !== undefined ? { remoteCache: opts.remoteCache } : {}),
       })
       const own = summary.outcomes.find((o) => o.node.id === taskId)

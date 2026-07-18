@@ -331,6 +331,36 @@ describe('DistScheduler — dispatch', () => {
   })
 })
 
+describe('DistScheduler — per-assignment run policy', () => {
+  it('carries the submission --frozen/--timeout/--retry on every task:assign', async () => {
+    const agent = fakeAgent('a1', 4)
+    const out = collector()
+    const submit = submitMsg([node('pkg#a')])
+    submit.request = { tasks: ['build'], cwd: '/w', frozen: true, timeout: 30_000, retries: 2 }
+    const sched = new DistScheduler({ submit, store: store(), send: out.send })
+    sched.attach(binding([agent], () => sched))
+    await sched.start()
+    const assign = agent.sent.find((m) => m.t === 'task:assign') as
+      | { t: 'task:assign'; policy?: { frozen?: boolean; timeout?: number; retries?: number } }
+      | undefined
+    expect(assign?.policy).toEqual({ frozen: true, timeout: 30_000, retries: 2 })
+  })
+
+  it('a submission with no run flags sends a BARE assignment (byte-identical to before)', async () => {
+    const agent = fakeAgent('a1', 4)
+    const out = collector()
+    const sched = new DistScheduler({
+      submit: submitMsg([node('pkg#a')]),
+      store: store(),
+      send: out.send,
+    })
+    sched.attach(binding([agent], () => sched))
+    await sched.start()
+    const assign = agent.sent.find((m) => m.t === 'task:assign')!
+    expect(Object.keys(assign).sort()).toEqual(['submissionId', 't', 'taskId'])
+  })
+})
+
 describe('DistScheduler — graph semantics', () => {
   it('groups are never assigned and roll up their members; failures cascade skips', async () => {
     const agent = fakeAgent('a1', 4)

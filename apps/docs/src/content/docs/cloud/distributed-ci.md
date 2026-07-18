@@ -554,11 +554,13 @@ failed over missing accelerators.
 Honest gaps in the current design (see
 `docs/design/distributed-execution-2026-07.md` for the full record):
 
-- **Standalone agents run live config eval and the full cache policy.**
-  The submitter's `--frozen` / `--cache` flags apply to its own
-  in-process work but are **not** propagated to remote agents (a
-  per-assignment policy is a small protocol addition, not yet built).
-  Keep configs env-pure and pin one image so live eval matches.
+- **Remote agents honor the run's `--frozen` / `--timeout` / `--retry`.**
+  The submitter's run policy rides every assignment, so a standalone
+  agent applies the same lockfile-freeze, task timeout, and retry
+  defaults it would locally. The **cache policy is not** propagated by
+  design: a distributed run always has the remote axes (the artifact
+  transport), and each agent's own local cache stays on so warm restores
+  work across its assignments.
 - **Uncacheable intermediate tasks re-execute** inside each dependent's
   closure on every agent that needs them — there's nothing to restore.
   Make intermediates cacheable (declare their `cache.outputs`). Dep
