@@ -497,8 +497,20 @@ updated deliberately.
   whole graph anywhere, so v1 records no invocation row and ingests no
   summary for a distributed run (delegated-run self-ingest is unaffected).
   Coordinator-side summary synthesis is a roadmap note, not scope.
+  **[SHIPPED 2026-07-18: the server-side `DistScheduler` (the controller) now
+  records the run into Postgres analytics through core's shared
+  `assembleRunSummary` — a `task_runs` row per completion plus the
+  `invocations` header at finish — so a distributed run appears under Runs and
+  fills in live exactly like a local `cloud()` run. Per-task logs land too: the
+  controller tees the agent stream it already relays into the shared
+  `TaskLogBuffer`, which writes `task_logs`. See `dist-run-history-2026-07.md`.]**
 - **Agent reconnect/retry** — an agent that loses its WS exits; the matrix
-  restarts it or doesn't.
+  restarts it or doesn't. **[SHIPPED 2026-07-18: a standalone agent reconnects
+  with bounded exponential backoff on an unexpected close, using a fresh
+  agentId per attempt so the serve's drop-then-reassign stays clean. Terminal
+  closes never reconnect; the submitter self-agent does not reconnect. Core's
+  shared `inflight` dedup collapses a re-assigned-during-reconnect task to one
+  execution.]**
 - **Per-task placement pinning** (`distribute: false`) — dev-flows §10.1
   already deferred it; nothing here changes that.
 - **forwardArgs distribution, probe-hit stdout replay, meter-bar footer
