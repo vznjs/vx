@@ -53,6 +53,7 @@ async function runControlled(
   orgId: string,
   nodes: DistGraphNode[],
   store: ArtifactProbe,
+  logs: Record<string, string> = {},
 ): Promise<{ submissionId: string; summary: RunSummaryRecord }> {
   const submissionId = Bun.randomUUIDv7()
   const submit: DistSubmitMessage = {
@@ -115,10 +116,22 @@ async function runControlled(
   sched.attach(bound)
   await sched.start()
 
-  // Complete every dispatched assignment as a real agent would (start → done).
+  // Complete every dispatched assignment as a real agent would (start →
+  // stream its task's stdout → done). The agent tees its scoped run's task
+  // stream to the controller as `agent:stdout`, so injecting one here is
+  // exactly what a real executed task produces.
   for (let guard = 0; pending.length > 0 && guard < 100; guard++) {
     const next = pending.shift()!
     reg.dispatch(handle, { t: 'agent:start', taskId: next.taskId, submissionId: next.submissionId })
+    const chunk = logs[next.taskId]
+    if (chunk !== undefined) {
+      reg.dispatch(handle, {
+        t: 'agent:stdout',
+        taskId: next.taskId,
+        submissionId: next.submissionId,
+        chunk,
+      })
+    }
     reg.dispatch(handle, {
       t: 'agent:done',
       taskId: next.taskId,
@@ -225,6 +238,49 @@ describe('distributed controller records the run into Postgres analytics', () =>
     await analytics.ingest({ orgId: org, summary })
     const after = (await analytics.listRuns(ws, { runId: submissionId })).length
     expect(after).toBe(before)
+  })
+
+  it("captures each executed task's log tail into task_logs; a hit stores none", async () => {
+    const org = Bun.randomUUIDv7()
+    await db.sql`INSERT INTO organizations (id, slug, name, created_at)
+                 VALUES (${org}, ${'o-logs-' + org.slice(0, 8)}, ${'logs'}, ${Date.now()})`
+
+    // lib#build is a STORE prune hit (never executes on an agent → no stream);
+    // app#build executes and streams its output.
+    const store: ArtifactProbe = {
+      has: (h) => Promise.resolve(h === 'stable-lib'),
+      storedDurationMs: (h) => Promise.resolve(h === 'stable-lib' ? 250 : undefined),
+    }
+    const nodes = [node('lib#build', [], 'stable-lib'), node('app#build', ['lib#build'])]
+    const appOutput = 'compiling app…\nbundled 42 modules\n✓ done\n'
+
+    const { submissionId } = await runControlled(analytics, org, nodes, store, {
+      'app#build': appOutput,
+    })
+
+    const ws = await until(
+      () => analytics.resolveClientWorkspace(org, CLIENT_WS).then((w) => w ?? undefined),
+      'workspace provisioning',
+    )
+    // Wait for both task_runs to land (the recorder writes are fire-and-forget).
+    await until(async () => {
+      const rows = await analytics.listRuns(ws, { runId: submissionId })
+      return rows.length === 2 ? rows : undefined
+    }, 'both task_runs')
+
+    // The executed task's log tail reads back through the dashboard's query.
+    const appLog = await until(
+      () => analytics.logFor(ws, submissionId, 'app#build').then((l) => l ?? undefined),
+      'app#build log',
+    )
+    expect(appLog.content).toBe(appOutput)
+    expect(appLog.charsFull).toBe(appOutput.length)
+    expect(appLog.truncatedHeadChars).toBe(0)
+    expect(appLog.status).toBe('success')
+
+    // A store prune hit stores no log tail — the executed run that produced it
+    // already holds the bytes (a hit resolves by hash).
+    expect(await analytics.logFor(ws, submissionId, 'lib#build')).toBeUndefined()
   })
 
   it('a scheduler with NO recorder writes nothing (byte-identical to before)', async () => {

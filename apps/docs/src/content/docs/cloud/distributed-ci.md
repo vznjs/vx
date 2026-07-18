@@ -485,11 +485,13 @@ When a platform connection resolved, both the summary and the check
 carry a **dashboard deep link** to the run (`/#/runs/<runId>`), so a red
 check is one click from the failing task's logs.
 
-A distributed submission appears under **Runs** and fills in live too: the
-server-side controller that schedules the run records each task the moment it
-finishes and writes the invocation header when the run ends, so a distributed
-run reads exactly like a local `cloud()` run. (Per-task *logs* are the one
-gap — agents don't yet stream their captured tails to the controller.)
+A distributed submission appears under **Runs** and fills in live too — with
+**per-task logs**: each agent tees its task's stdout/stderr to the controller
+(the same stream that renders live on your terminal), and the controller
+captures the tail and stores it the moment the task finishes. So the
+server-side controller records each task (result + log tail) as it lands and
+writes the invocation header when the run ends — a distributed run reads
+exactly like a local `cloud()` run, click a failed task and read its output.
 
 ## Fork PRs: present the PR token
 

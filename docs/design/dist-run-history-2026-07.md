@@ -140,11 +140,36 @@ hitRemoteCount/exitOk/startedAt/endedAt/totalDurationMs`) computed from the
 - Tenant boundary: routing uses the submitter's principal only — a distributed
   run records under the submitting token's org/workspace, never another's.
 
+## Per-task logs (shipped 2026-07-18)
+
+The controller ALREADY relays every executed task's stdout/stderr: the agent
+tees its scoped run's task stream to the controller as `agent:stdout`/
+`agent:stderr` (regardless of display mode — the agent subscribes to the run's
+event bus, which carries every chunk), and the controller relays them to the
+submitter as `task:stdout`/`task:stderr`. So the tail is on the controller for
+free. The scheduler now `append`s those chunks into the SHARED `TaskLogBuffer`
+(the same bounded-tail primitive the local sink uses — 128 KiB/task,
+4 MiB/run, failed tails protected), and on completion `finish`es + `takeEntry`s
+the tail and attaches it to the `TaskIngestRecord.log` the recorder already
+ships to `Analytics.ingestTask` — which writes it to `task_logs` idempotently
+`(workspace, run, task)`. So a distributed run's per-task logs read back
+through the SAME `GET /v1/runs/:id/logs/:taskId` a local run's do.
+
+The buffer's retention rule (unchanged, so distributed matches local exactly):
+an executed miss (success/failed) retains its tail; a cache hit / prune hit /
+skip / group drops it (`finish` deletes the in-flight accumulation without
+retaining — a hit resolves by hash to the executed run that stored the bytes).
+Capture is gated on the recorder being present, so a no-recorder scheduler
+(unit tests) keeps an empty buffer — byte-identical to before. The end-of-run
+`runFinished` backstop carries no logs (only `taskDone` does), so logs land
+purely on the live path — one write per executed task, existence-gated.
+
 ## Non-goals
 
-- Per-task **log** capture on the distributed path (agents don't stream their
-  captured tails to the controller today; the run + task rows land, logs are a
-  later increment — same phasing the local path used).
+- Mid-task streaming of the tail to the store — the tail is drained once, at
+  task completion (the local path's phasing too). The chunks stream LIVE to the
+  submitter's terminal already; only the stored dashboard tail waits for the
+  task to finish.
 - A live "running" row before completion (Runs shows the run once its first
   task_run lands; a pre-start placeholder is out of scope).
 

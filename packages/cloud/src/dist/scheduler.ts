@@ -27,6 +27,7 @@ import {
   type WireEvent,
 } from '@vzn/vx'
 import type { TaskIngestRecord } from '../db/analytics.js'
+import { TaskLogBuffer } from '../task-log-capture.js'
 import type {
   DistClientMessage,
   DistGraphNode,
@@ -123,6 +124,13 @@ export class DistScheduler implements ActiveSubmission {
   // coherent shared epoch-ms timeline (the flamegraph works with no change).
   private readonly startedAtByTask = new Map<string, number>()
   private readonly endedAtByTask = new Map<string, number>()
+  // Per-task log capture — the controller tees the `agent:stdout`/`agent:stderr`
+  // chunks it already relays (the agent forwards its scoped run's task stream
+  // regardless of display mode) into the SHARED bounded-tail buffer, so a
+  // distributed run's logs land in `task_logs` and read back through the
+  // dashboard exactly like a local run's. Only populated when a recorder is
+  // present (no recorder = byte-identical to before, empty buffer).
+  private readonly logs = new TaskLogBuffer()
 
   private binding: SubmissionBinding | null = null
   private finished = false
@@ -290,10 +298,12 @@ export class DistScheduler implements ActiveSubmission {
       return
     }
     if (msg.t === 'agent:stdout') {
+      if (this.args.recorder !== undefined) this.logs.append(msg.taskId, msg.chunk)
       this.event({ kind: 'task:stdout', taskId: msg.taskId, chunk: msg.chunk })
       return
     }
     if (msg.t === 'agent:stderr') {
+      if (this.args.recorder !== undefined) this.logs.append(msg.taskId, msg.chunk)
       this.event({ kind: 'task:stderr', taskId: msg.taskId, chunk: msg.chunk })
       return
     }
@@ -535,6 +545,11 @@ export class DistScheduler implements ActiveSubmission {
     if (recorder === undefined) return
     const task = this.taskTelemetryFor(taskId, outcome)
     if (task === undefined) return
+    // Finalize the captured tail (retain for an executed miss, drop for a
+    // hit/skip — the buffer's rule, identical to the local sink), then take it
+    // for this task's row. A hit / no-output task takes nothing → no log field.
+    this.logs.finish(taskId, task.status, task.cacheSource, task.hash)
+    const tail = this.logs.takeEntry(taskId)
     const submit = this.args.submit
     const rec: TaskIngestRecord = {
       v: 1,
@@ -548,6 +563,15 @@ export class DistScheduler implements ActiveSubmission {
       runStartedAt: this.startedAtMs,
       runEndedAt: this.endedAtByTask.get(taskId) ?? this.startedAtMs,
       task,
+      ...(tail !== undefined
+        ? {
+            log: {
+              content: tail.content,
+              charsFull: tail.charsFull,
+              truncatedHeadChars: tail.truncatedHeadChars,
+            },
+          }
+        : {}),
     }
     recorder.taskDone(rec)
   }

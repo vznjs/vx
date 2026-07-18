@@ -208,6 +208,45 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-18**: **Distributed per-task LOGS captured — the controller tees the
+  agent stream it already relays into the SHARED TaskLogBuffer, so a distributed
+  run's logs read back exactly like a local run's** (owner: "Let's do that" — the
+  one documented non-goal from the run-history increment below). **The insight
+  (no wire change needed):** each agent ALREADY tees its scoped run's task stream
+  to the controller as `agent:stdout`/`agent:stderr` — it subscribes to the
+  run's event bus, which carries EVERY chunk regardless of display mode (the
+  `outputLogs`/flow gating lives only in the terminal renderer, never on the
+  bus), filters to the assigned task id, and forwards — and the controller
+  relays those to the submitter as `task:stdout`/`task:stderr`. So the tail is
+  already ON the controller for free; no agent change, no `DIST_PROTOCOL` bump.
+  **The build:** `DistScheduler` now `append`s those relayed chunks into the
+  SAME `TaskLogBuffer` the local sink uses (128 KiB/task · 4 MiB/run · failed
+  tails never evicted by successes), and in `recordTaskDone` — the single
+  per-task choke point — `finish()`es + `takeEntry()`s the tail and attaches it
+  to the `TaskIngestRecord.log` the recorder already ships to
+  `Analytics.ingestTask`, which writes `task_logs` idempotently
+  `(workspace, run, task)`. So distributed logs read back through the SAME
+  `GET /v1/runs/:id/logs/:taskId` local runs use — click a failed distributed
+  task, read its output. **Retention = the buffer's rule, so distributed
+  MATCHES local exactly:** an executed miss (success/failed) retains its tail; a
+  cache hit / STORE prune hit / skip / group `finish`es to nothing (a hit
+  resolves by hash to the executed run that stored the bytes — pinned: a prune
+  hit stores NO log). **No-recorder byte-identity kept:** `append` is gated on
+  `recorder !== undefined`, so a recorder-less scheduler (unit tests) holds an
+  empty buffer. **Logs land purely on the live `taskDone` path** — the
+  end-of-run `runFinished` backstop carries no logs (the `RunSummaryRecord` has
+  none), so it's one existence-gated write per executed task. **Non-goal
+  (narrowed):** mid-task streaming of the STORED tail — the tail drains once at
+  completion (the local path's phasing too); the chunks already stream LIVE to
+  the submitter's terminal, only the dashboard-stored tail waits for the task to
+  finish. Verified: cloud 489 pass (+1 — a real DistScheduler + Analytics on
+  ephemeral pg injects an executed task's stdout, asserts the tail reads back
+  via `logFor` with correct content/charsFull/truncatedHead + a prune hit stores
+  none), lint (oxlint+tsgolint) + oxfmt 0, docs build clean (163 pages). NO
+  schema/wire/CACHE/DIST_PROTOCOL bump (`task_logs` write reuses the existing
+  incremental path; the agent stream was already relayed). Design:
+  `docs/design/dist-run-history-2026-07.md` (§Per-task logs).
+
 - **2026-07-18**: **Distributed runs now appear in Runs — the controller
   records them, UNIFIED with the local path through ONE summary builder**
   (owner: "distributed run still needs a controller" → "all agents report

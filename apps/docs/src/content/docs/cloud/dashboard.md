@@ -241,19 +241,17 @@ trust scoping). Turn capture off with `cloud({ logs: false })` or
 `VX_CLOUD_LOGS=0`.
 
 Distributed (`VX_CLOUD_DISTRIBUTE`) runs appear under **Runs** and fill in
-live too: the server-side controller that schedules the run records each task
-the moment it finishes and writes the invocation header when the run ends, so a
-distributed run reads exactly like a local `cloud()` run — no extra setup.
+live too — including **per-task logs**: the server-side controller that
+schedules the run records each task the moment it finishes (with its captured
+stdout/stderr tail) and writes the invocation header when the run ends, so a
+distributed run reads exactly like a local `cloud()` run — click a failed task,
+read its output — no extra setup.
 
 ## Known limits
 
 - **Analytics come from pushed summaries.** A view is only as complete as
   the runs the `cloud()` plugin (or the distributed controller) has recorded; a
   workspace nobody ran from is empty.
-- **Distributed runs record no per-task logs yet.** A distributed run's run +
-  task rows land, but agents don't stream their captured log tails to the
-  controller, so the per-task log panel is empty for a distributed run (a later
-  increment, same phasing the local path used).
 
 See also: [`Self-host vx-cloud`](/vx/cloud/self-hosting/),
 [`Distributed CI execution`](/vx/cloud/distributed-ci/),
