@@ -234,10 +234,10 @@ serving none of them is probably org-analytics scope creep.
   open/drop with a fake socket, no live serve. **Bonus:** every reconnect timer
   is unref'd + cleared by `stop()`, so a pending retry never delays process exit.
   Verified: cloud 496 pass (+5 — reconnect-with-fresh-id + no-reconnect-on-refused
-  + gives-up-after-budget + self-agent-never-reconnects + stop-mid-backoff-still-
-  resolves; agents-e2e green on the rewritten loop with real agent subprocesses),
-  lint (oxlint+tsgolint) + oxfmt 0, docs build clean. NO
-  schema/wire/CACHE/DIST_PROTOCOL bump (agent-side lifecycle only).
+  - gives-up-after-budget + self-agent-never-reconnects + stop-mid-backoff-still-
+    resolves; agents-e2e green on the rewritten loop with real agent subprocesses),
+    lint (oxlint+tsgolint) + oxfmt 0, docs build clean. NO
+    schema/wire/CACHE/DIST_PROTOCOL bump (agent-side lifecycle only).
 
 - **2026-07-18**: **Remote agents now honor the submitter's `--frozen` /
   `--timeout` / `--retry` — per-assignment run policy on `task:assign`** (owner:
