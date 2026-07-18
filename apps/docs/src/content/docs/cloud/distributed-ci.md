@@ -575,9 +575,12 @@ Honest gaps in the current design (see
   owns machine lifecycle; vx owns task placement only.
 - **Input shipping is a permanent non-goal.** Same-checkout is the
   contract; dirty trees run locally.
-- **An agent that loses its WS exits** — it does not reconnect. The
-  matrix restarts it or it doesn't; the scheduler reassigns its
-  in-flight tasks to surviving agents.
+- **An agent reconnects through a transient WS drop** — a network /
+  serve blip no longer kills a standing helper agent. It retries with
+  bounded exponential backoff (a fresh agent id each attempt, so the
+  scheduler's reassignment of its in-flight tasks stays clean), and
+  gives up only after the budget is exhausted. The submitter's own
+  self-agent is bound to its submission and does not reconnect.
 
 ## See also
 

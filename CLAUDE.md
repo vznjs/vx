@@ -208,6 +208,37 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-18**: **A distributed agent RECONNECTS through a transient WS drop —
+  the last distributed-CI resilience gap closed** (owner: "We should have no
+  limitations"; closes the "an agent that loses its WS exits — it does not
+  reconnect" known-limit). Before, `runAgentLoop`'s `ws.onclose` resolved
+  `{ok:false, reason:'closed'}` on ANY unexpected close and the `vx-cloud agent`
+  verb exited — so a network / serve blip killed a standing helper agent even
+  though the serve reassigns its tasks in ≤30 s (heartbeat/reap). The AGENT side
+  never came back. Now a standalone agent reconnects with bounded exponential
+  backoff (`DEFAULT_MAX_RECONNECTS=5`, 500 ms→8 s cap) on an UNEXPECTED close;
+  terminal closes (refused / stopped / idle-timeout / drain) never reconnect —
+  they are the agent's intended end. **The load-bearing correctness detail — a
+  FRESH agentId per reconnect:** the serve reassigns the old socket's in-flight
+  tasks when its close fires (`drop`→`onAgentLeave`), and `drop` no-ops on an id
+  mismatch — so reusing the id could let the fresh hello overwrite the still-
+  pending old entry and ORPHAN its tasks; a new id keeps the two registrations
+  independent (the old one's drop reassigns cleanly, the new one resumes taking
+  work). Only the very first connection may use a caller-pinned `opts.agentId`.
+  **The submitter's self-agent does NOT reconnect** (`ownerSubmissionId` set →
+  `reconnect` defaults off): its lifecycle is bound to the submission, which the
+  submitter ends via `stop()`. **Refactor:** the socket lifecycle moved into a
+  `connect()` the onclose can re-invoke; a `settle()` guard resolves `done` once
+  (so a `stop()` mid-backoff — no live socket to fire onclose — still resolves);
+  a new `wsFactory` seam (default `new WebSocket`) lets a unit test drive
+  open/drop with a fake socket, no live serve. **Bonus:** every reconnect timer
+  is unref'd + cleared by `stop()`, so a pending retry never delays process exit.
+  Verified: cloud 496 pass (+5 — reconnect-with-fresh-id + no-reconnect-on-refused
+  + gives-up-after-budget + self-agent-never-reconnects + stop-mid-backoff-still-
+  resolves; agents-e2e green on the rewritten loop with real agent subprocesses),
+  lint (oxlint+tsgolint) + oxfmt 0, docs build clean. NO
+  schema/wire/CACHE/DIST_PROTOCOL bump (agent-side lifecycle only).
+
 - **2026-07-18**: **Remote agents now honor the submitter's `--frozen` /
   `--timeout` / `--retry` — per-assignment run policy on `task:assign`** (owner:
   "We should have no limitations"; closes the distributed-CI "Known limits"
