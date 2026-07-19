@@ -324,7 +324,10 @@ describe('LayeredCache', () => {
     expect(await local.get('h-warm')).not.toBeNull()
     remote.gets = 0 // reset after the save's upload
 
-    const pulled = await layered.prefetch('h-warm', { taskId: 'pkg#build', command: 'echo produced' })
+    const pulled = await layered.prefetch('h-warm', {
+      taskId: 'pkg#build',
+      command: 'echo produced',
+    })
     expect(pulled).toBe(true) // available in local — but via NO remote GET
     expect(remote.gets).toBe(0) // NO redundant remote download
 
