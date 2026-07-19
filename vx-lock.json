@@ -3,7 +3,7 @@
   "projects": {
     "@vzn/vx": {
       "configPath": "vx.config.ts",
-      "configHash": "d266d42968603894",
+      "configHash": "5529f99bcd12f7d4",
       "config": {
         "tasks": {
           "ci": {
@@ -32,7 +32,7 @@
           "test": {
             "description": "bun test against the tests/ tree",
             "exec": {
-              "command": "bun test ./tests/"
+              "command": "bun test --preload ./tests/setup.ts ./tests/"
             },
             "dependsOn": [
               "install"

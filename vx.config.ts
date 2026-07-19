@@ -31,7 +31,10 @@ export default defineProject({
       // packages/cloud/tests/ too. The leading `./` anchors the scan to the
       // root tests/ dir only (the cloud package's tests run via its own
       // `bun test`). `bun test` from a clean root still runs everything.
-      exec: { command: 'bun test ./tests/' },
+      // --preload wires a global cwd-restore guard (tests/setup.ts) so a
+      // chdir'ing suite can never leak its cwd into the next file — Bun shares
+      // one process across files and does NOT restore cwd at the boundary.
+      exec: { command: 'bun test --preload ./tests/setup.ts ./tests/' },
       dependsOn: ['install'],
       cache: {
         inputs: { files: ['src/**', 'tests/**', 'package.json'] },

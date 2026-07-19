@@ -208,6 +208,35 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-19**: **Harness-level guard closes the cross-file `process.chdir`
+  cwd-leak flake class — a `--preload` global cwd-restore afterEach** (follow-up
+  to the 2026-07-18 watch-flake root-fix; empirically resolves that entry's open
+  question about cross-file cwd sharing). Confirmed in an isolated scratchpad
+  (a shared append-only file log to capture REAL execution order, since Bun's
+  console output is reordered per test): **Bun runs every test file SEQUENTIALLY
+  in ONE process and does NOT restore `process.cwd()` at the file boundary** — a
+  file that `process.chdir`s into a temp dir and doesn't restore leaks that cwd
+  into the NEXT file (file 2 read `sub1`, stable over 3 runs). Two corrections to
+  the prior note: (a) the "concurrently-run" wording was imprecise — it's
+  sequential-shared-process, not concurrent; (b) the ACTUAL watch flake was the
+  ORPHANED LOOP running `git ls-files` against its deleted explicit-cwd
+  workspaceRoot (fixed 2026-07-18), NOT a cwd-leak across files — the leak class
+  is a SEPARATE, latent concern. Every chdir'ing suite (2 describes in
+  `cli.test.ts`, cache-prune, `output-flow.test.ts`) already restores `origCwd`
+  BEFORE its `rm` in a throw-safe afterEach, so the suite was already
+  induction-safe per file. This adds one harness-level layer so the class is
+  STRUCTURALLY impossible for future test authors: new `tests/setup.ts` registers
+  a global `afterEach` that restores cwd to the root, and the `test` task command
+  gains `--preload ./tests/setup.ts` (scoped to the vx-driven path CI runs — NO
+  bunfig, avoiding the documented `[test] timeout` caution and any cloud-package
+  coupling). The restore is a no-op on the normal path (cwd already at root), so
+  it costs nothing when suites behave; it only bites a suite that forgets to
+  restore. Verified: the preload flips the scratchpad leak to no-leak, core suite
+  1270 pass through the preloaded command, lint + oxfmt clean, lock regenerated
+  (only the test command + its configHash changed). `grep` confirms only
+  `cli.test.ts` + `output-flow.test.ts` chdir; `packages/**/tests` never do.
+  Test-infra only, no product change, no CACHE/SCHEMA/wire bump.
+
 - **2026-07-18**: **The recurring `vx watch` e2e flake ROOT-FIXED — a slow re-run
   under load no longer orphans the loop into a deleted cwd** (the documented
   "cwd race" that has redded CI intermittently; it redded `de7bad2` even though
