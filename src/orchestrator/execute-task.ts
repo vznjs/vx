@@ -20,6 +20,7 @@ import {
   runPersistent,
   runSandboxed,
   resolveSandboxConfig,
+  signalExitCode,
   type SandboxViolation,
 } from '../exec/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome, type VerifyVerdict } from '../graph/index.js'
@@ -383,6 +384,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // stream a clear line so the 143 exit reads as a timeout.
     if (res.timedOut) {
       log.taskStderr(node, `\n[vx] timed out after ${effectiveTimeout}ms — killed (SIGTERM)\n`)
+      // Force a non-zero classification even if the child TRAPPED SIGTERM and
+      // still exited 0 (`trap 'exit 0' TERM`, a common graceful-shutdown
+      // pattern). Without this a timed-out task is classified `success` and its
+      // PARTIAL outputs are cached + replayed forever — the run even reports
+      // green. The timeout is a real, retryable failure (matches the
+      // `--verify && !result.timedOut` guard); a genuinely-killed child already
+      // reports 143, so this only rewrites the trap-exit-0 case.
+      if (code === 0) code = signalExitCode('SIGTERM')
     }
     return { result: res, exitCode: code }
   }

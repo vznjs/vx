@@ -208,6 +208,55 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-19**: **Two timeout-path defects fixed — a HIGH silently-green
+  cache-corruption + a MEDIUM hang, both from a graceful/ignoring SIGTERM
+  handler** (a repro-mandated hostile review of the exec/runner + execute-task
+  timeout path — the one weak spot; everything else on the path REFUTED). The
+  timeout mechanism SIGTERMs a child once (`armTimeout`) and awaits
+  `proc.exited`, then execute-task classifies the outcome by the child's exit
+  code. TWO real failures when the child intercepts SIGTERM: **(1) HIGH —
+  silently-green cache corruption.** A task using the common graceful-shutdown
+  pattern `trap 'exit 0' TERM` exits **0** when the timeout SIGTERM fires — so
+  the timed-out task was classified `success`, its PARTIAL outputs were CACHED,
+  and every later run replayed the partial artifact as a green `cache-hit`
+  FOREVER (the run even reported green). Reproduced deterministically:
+  `trap 'exit 0' TERM; echo PARTIAL > out.txt; sleep 30 & wait; echo COMPLETE`
+  with `timeout: 300` → `out.txt` = "PARTIAL" cached, COMPLETE never written,
+  next same-input run cache-hits the partial. **The load-bearing detail** — the
+  child must interrupt cleanly: `sleep 30 & wait` (dash interrupts `wait` on a
+  trapped signal → exits 0 promptly), whereas foreground `sleep 30` DEFERS the
+  trap during the sleep so the child rides the SIGKILL escalation to 137 (which
+  masks the classification bug — the first repro cut was non-discriminating for
+  exactly this reason; verified the fixed test FAILS `Expected false, Received
+  true` without fix #1). Fix (`execute-task.ts runAttempt`): a fired timeout
+  forces a non-zero classification — `if (res.timedOut && code === 0) code =
+  signalExitCode('SIGTERM')` (143). A genuinely-killed child already reports
+  143, so this only rewrites the trap-exit-0 case; it matches the
+  `--verify && !result.timedOut` guard (a timeout is a real, retryable failure,
+  never a determinism verdict) and the existing "timed out ⇒ not cached" gate
+  now actually bites. **(2) MEDIUM — non-binding timeout / hang.** A task using
+  `trap '' TERM` (ignore SIGTERM) swallowed the one-shot timeout SIGTERM, so
+  `await proc.exited` waited out the child's natural exit (`sleep 10`, or
+  FOREVER for a truly-wedged child) — there is no run-level timeout, so a
+  wedged child hangs the whole run. Fix (`runner.ts armTimeout`): escalate to
+  SIGKILL after a `TIMEOUT_SIGKILL_GRACE_MS = 2000` grace (mirrors the
+  end-of-run persistent-shutdown escalation), the kill timer unref'd + cleared
+  in `clear()` so it never delays CLI exit. Pinned: a `trap '' TERM; sleep 10`
+  task with `timeout: 250` now completes `failed` in < 6s (bounded by
+  timeout + grace), not ~10s. Both fixes compose (fix #2 guarantees the child
+  dies; fix #1 handles the trap-exit-0 exit code). NO CACHE_VERSION/SCHEMA/wire
+  bump — key derivation + artifact bytes untouched; only the classification of
+  an already-timed-out task and the kill escalation changed (a buggy config that
+  cached a partial artifact self-heals: the corrupt entry's key is unchanged but
+  the task now fails instead of hitting → re-run → never a wrong hit). Verified:
+  task-timeout 17 pass (both new pins differential-confirmed), core 1278 pass,
+  lint (oxlint+tsgolint) + oxfmt 0. **Process note (the oxfmt-per-file trap):**
+  `oxfmt --check <explicit-file>` does NOT apply the repo `.oxfmtrc` the way the
+  CI command `oxfmt --check .` (dir mode) does, so per-file checks give FALSE
+  passes — a prior fix (`3b5a623`) redded core CI on exactly this. ALWAYS run
+  the real gate `bun src/bin.ts run lint --force` (dir-mode oxfmt) before push,
+  never a per-file oxfmt.
+
 - **2026-07-19**: **Remote prefetch skips the GET when local already has the
   artifact — a MEDIUM redundant-download + racy provenance-mislabel fixed** (the
   one CONFIRMED defect from a repro-mandated hostile review of the REMOTE cache

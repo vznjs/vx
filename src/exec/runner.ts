@@ -144,17 +144,38 @@ export function signalExitCode(signal: string): number {
  * on its own. A no-op (never fires, nothing to clear) when `timeoutMs`
  * is undefined.
  */
+/**
+ * Grace after a timeout SIGTERM before escalating to SIGKILL — a child that
+ * ignores SIGTERM must still be bounded. Matches the persistent-shutdown grace.
+ */
+const TIMEOUT_SIGKILL_GRACE_MS = 2000
+
 export function armTimeout(
   proc: ReturnType<typeof Bun.spawn>,
   timeoutMs: number | undefined,
 ): { timedOut: () => boolean; clear: () => void } {
   if (timeoutMs === undefined) return { timedOut: () => false, clear: () => {} }
   let fired = false
+  let killTimer: ReturnType<typeof setTimeout> | undefined
   const timer = setTimeout(() => {
     fired = true
     proc.kill('SIGTERM')
+    // Escalate to SIGKILL after a grace: a child that TRAPS+IGNORES SIGTERM
+    // (`trap '' TERM`) would otherwise defeat the timeout entirely and hang
+    // `await proc.exited` until its natural exit — there is no run-level
+    // timeout, so a wedged child hangs the whole run forever. Mirrors the
+    // end-of-run persistent-shutdown escalation. Unref'd so it never keeps
+    // the CLI alive.
+    killTimer = setTimeout(() => proc.kill('SIGKILL'), TIMEOUT_SIGKILL_GRACE_MS)
+    killTimer.unref?.()
   }, timeoutMs)
-  return { timedOut: () => fired, clear: () => clearTimeout(timer) }
+  return {
+    timedOut: () => fired,
+    clear: () => {
+      clearTimeout(timer)
+      if (killTimer !== undefined) clearTimeout(killTimer)
+    },
+  }
 }
 
 /**

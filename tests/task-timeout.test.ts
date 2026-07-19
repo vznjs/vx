@@ -328,3 +328,81 @@ describe('workspace timeout — loader validation', () => {
     await expect(loadWorkspaceConfig(root)).rejects.toThrow('timeout')
   })
 })
+
+describe('task timeout — classification + escalation', () => {
+  beforeEach(async () => {
+    fixture = await makeWorkspace()
+  })
+  afterEach(async () => {
+    await rm(fixture.root, { recursive: true, force: true })
+  })
+
+  it(
+    'a timed-out task that TRAPS SIGTERM and exits 0 is failed + NOT cached (no partial-output replay)',
+    async () => {
+      // The graceful-shutdown pattern `trap 'exit 0' TERM`: the child exits 0
+      // when SIGTERMed for the timeout, so its exit code is 0 even though it was
+      // killed mid-work. Before the fix this classified `success` and cached the
+      // PARTIAL output (`out.txt` = "PARTIAL", COMPLETE never written), replayed
+      // as a green cache-hit forever. It must be `failed` and never cached.
+      const dir = await addProject(
+        fixture.root,
+        'a',
+        `export default { tasks: { run: {
+          exec: { command: "trap 'exit 0' TERM; echo PARTIAL > out.txt; sleep 30 & wait; echo COMPLETE >> out.txt", timeout: 300 },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+        } } }`,
+      )
+      await mkdir(path.join(dir, 'src'), { recursive: true })
+      await writeFile(path.join(dir, 'src', 'seed.txt'), 'v1')
+
+      const run1 = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        log: capturingLogger(fixture),
+      })
+      expect(run1.ok).toBe(false)
+      expect(run1.outcomes[0]!.status).toBe('failed')
+
+      // Same inputs → it must RE-EXECUTE (never a cache-hit on the partial).
+      const run2 = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        log: capturingLogger(fixture),
+      })
+      expect(run2.outcomes[0]!.status).toBe('failed')
+      expect(run2.outcomes[0]!.status).not.toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a timed-out task that IGNORES SIGTERM is SIGKILLed after the grace — the run is bounded, not hung',
+    async () => {
+      // `trap '' TERM` ignores SIGTERM, so the one-shot timeout SIGTERM does
+      // nothing; without SIGKILL escalation `await proc.exited` waits out the
+      // full `sleep 10` (or forever for a truly-wedged child). The escalation
+      // bounds the run to timeout + grace (~0.25s + 2s), well under 10s.
+      await addProject(
+        fixture.root,
+        'a',
+        `export default { tasks: { run: { exec: { command: "trap '' TERM; sleep 10", timeout: 250 } } } }`,
+      )
+      const started = Date.now()
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        log: capturingLogger(fixture),
+      })
+      const elapsed = Date.now() - started
+      expect(r.ok).toBe(false)
+      expect(r.outcomes[0]!.status).toBe('failed')
+      // Bounded by the SIGKILL escalation, NOT the 10s sleep.
+      expect(elapsed).toBeLessThan(6000)
+    },
+    TIMEOUT,
+  )
+})
