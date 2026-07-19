@@ -208,6 +208,50 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-19**: **The recurring ~40%-of-runs cloud-CI flake ROOT-FIXED — an
+  advisory-lock KEY COLLISION deadlocked the first `/v1/auth/register` against
+  the boot-time index build** (the "disjoint agents-e2e/server flake" documented
+  three times this week as varying victims — `agents-e2e reassign`, then
+  `tenant-isolation + CSWSH + placement` — always in the real-server e2e class).
+  NOT a timing flake: pulling the actual CI job log showed all victims fail
+  IDENTICALLY at ~1.1-1.3s with `PostgresError: deadlock detected` →
+  `TypeError: null is not an object (evaluating .exec(set-cookie))` — every
+  `bootPlatform` fetches `/v1/auth/register`, which 500'd (no `Set-Cookie`), so
+  the cookie regex threw and the whole test failed. **Reproduced locally** (pg
+  installed) by looping empty-db `startServer` + immediate register under 8 CPU
+  hogs → deadlock within 25 iters, with the decisive `detail`: `Process A waits
+for ExclusiveLock on advisory lock [_,_,1987601154,1]; blocked by B. Process B
+waits for ShareLock on virtual transaction <A's xact>; blocked by A.` —
+  `1987601154 = 0x76786302`. **The bug:** `INDEX_LOCK_KEY` (added in the
+  2026-07-16 CONCURRENTLY-index pass) was `0x76786302`, IDENTICAL to auth's
+  `BOOTSTRAP_LOCK_KEY = 0x76786302` (the migration key is `…01`). So the
+  register xact holds its `pg_advisory_xact_lock(0x76786302)` while
+  `ensureIndexes` (fired `void` right after boot) holds the same key via
+  `pg_try_advisory_lock` and its `CREATE INDEX CONCURRENTLY` phase-2 waits on
+  register's open xact → a true cycle Postgres breaks by killing register. Two
+  SILENT bugs rode the same collision: a concurrent register made `ensureIndexes`
+  falsely log "another replica holds the lock — skipped" (it was the LOCAL
+  register), and the two unrelated subsystems were needlessly mutually excluded.
+  **The fix (one char):** `INDEX_LOCK_KEY = 0x76786303`, distinct from both
+  siblings. Verified: 40/40 registers succeed under the same 8-hog stress that
+  deadlocked before (differential: revert → deadlock at iter 20); the 3
+  previously-failing e2e (server tenant-isolation + CSWSH + agents-e2e placement)
+  pass together; db-indexes 10 pass. **Pinned deterministically** (not the flaky
+  e2e): a new `advisory-lock key namespace` unit test asserts all three keys
+  (`MIGRATION`/`BOOTSTRAP`/`INDEX`) are pairwise distinct, and the pre-existing
+  `INDEX_LOCK_KEY` pin — which only checked distinctness from MIGRATION, the gap
+  that let `…02` through — now checks BOTH siblings; `BOOTSTRAP_LOCK_KEY`
+  exported solely for the pin. NO CACHE/SCHEMA/wire/migration bump (an advisory
+  key is runtime-only, never persisted). **Process lessons:** (1) a red main is
+  not always a "flake" — pull the failing job's ACTUAL error before filing it as
+  known-flaky; three prior entries mislabeled a real deadlock as a
+  contention/pg-slot flake because I only read the summary line, not the stack.
+  (2) The just-pushed `ce937b3`'s core CI will red on lint.oxfmt: I ran the green
+  gate BEFORE adding its CLAUDE.md entry, and dir-mode `oxfmt --check .` scans
+  CLAUDE.md (a wrapped inline-code span needed de-indenting) — this commit
+  repairs it. ALWAYS re-run the full gate AFTER the last edit, including
+  CLAUDE.md.
+
 - **2026-07-19**: **Two timeout-path defects fixed — a HIGH silently-green
   cache-corruption + a MEDIUM hang, both from a graceful/ignoring SIGTERM
   handler** (a repro-mandated hostile review of the exec/runner + execute-task
@@ -228,9 +272,9 @@ serving none of them is probably org-analytics scope creep.
   trap during the sleep so the child rides the SIGKILL escalation to 137 (which
   masks the classification bug — the first repro cut was non-discriminating for
   exactly this reason; verified the fixed test FAILS `Expected false, Received
-  true` without fix #1). Fix (`execute-task.ts runAttempt`): a fired timeout
+true` without fix #1). Fix (`execute-task.ts runAttempt`): a fired timeout
   forces a non-zero classification — `if (res.timedOut && code === 0) code =
-  signalExitCode('SIGTERM')` (143). A genuinely-killed child already reports
+signalExitCode('SIGTERM')` (143). A genuinely-killed child already reports
   143, so this only rewrites the trap-exit-0 case; it matches the
   `--verify && !result.timedOut` guard (a timeout is a real, retryable failure,
   never a determinism verdict) and the existing "timed out ⇒ not cached" gate

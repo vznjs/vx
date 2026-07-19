@@ -56,12 +56,17 @@ export const RETIRED_INDEXES: readonly string[] = []
 
 /**
  * Session-level advisory-lock key serializing convergence passes across
- * replicas ("vxc\x02", sibling of MIGRATION_LOCK_KEY). Session-level, not
- * transaction-level, because there IS no transaction — CIC forbids one. If the
- * holding connection dies mid-build, Postgres releases the lock with the
- * session; the half-done state is recovered by the next holder.
+ * replicas ("vxc\x03"). MUST be distinct from every OTHER advisory key on the
+ * database — MIGRATION_LOCK_KEY (…01) AND auth's BOOTSTRAP_LOCK_KEY (…02): a
+ * shared key silently cross-couples two unrelated subsystems. It previously
+ * collided with BOOTSTRAP (…02), which deadlocked the first `/v1/auth/register`
+ * against the boot-time index build — register held its xact while acquiring
+ * the key, CIC held the key while waiting on register's xact to complete.
+ * Session-level, not transaction-level, because there IS no transaction — CIC
+ * forbids one. If the holding connection dies mid-build, Postgres releases the
+ * lock with the session; the half-done state is recovered by the next holder.
  */
-export const INDEX_LOCK_KEY = 0x76786302
+export const INDEX_LOCK_KEY = 0x76786303
 
 export interface EnsureIndexesResult {
   built: number // child (or plain-table) indexes created

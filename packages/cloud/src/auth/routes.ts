@@ -34,8 +34,11 @@ import {
 } from './rbac.js'
 
 /** Serializes the first-user bootstrap so two concurrent registers on a
- *  fresh instance can't both become instance admin. */
-const BOOTSTRAP_LOCK_KEY = 0x76786302
+ *  fresh instance can't both become instance admin. MUST stay distinct from
+ *  every other advisory key (MIGRATION_LOCK_KEY, INDEX_LOCK_KEY) — a shared key
+ *  cross-couples subsystems and deadlocks (see db/indexes.ts). Exported only so
+ *  a test can pin the distinctness. */
+export const BOOTSTRAP_LOCK_KEY = 0x76786302
 
 const INVITE_PREFIX = 'vxi_'
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000

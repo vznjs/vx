@@ -12,6 +12,8 @@ import {
   INDEX_LOCK_KEY,
   type ConcurrentIndex,
 } from '../src/db/indexes.js'
+import { MIGRATION_LOCK_KEY } from '../src/db/migrate.js'
+import { BOOTSTRAP_LOCK_KEY } from '../src/auth/routes.js'
 import { ensurePartitions } from '../src/db/partitions.js'
 import { ephemeralPg } from './helpers/ephemeral-pg.js'
 
@@ -68,6 +70,19 @@ async function insertTaskRun(db: DbClient, runId: string, wsId: string, at: numb
       (org_id, workspace_id, run_id, hash, project, task, status, exit_code, duration_ms, started_at, ended_at)
     VALUES (${Bun.randomUUIDv7()}, ${wsId}, ${runId}, ${'h'}, ${'p'}, ${'build'}, ${'success'}, ${0}, ${10}, ${at}, ${at + 10})`
 }
+
+describe('advisory-lock key namespace', () => {
+  it('every advisory key is distinct — a collision cross-couples subsystems and deadlocks', () => {
+    // INDEX_LOCK_KEY once equaled BOOTSTRAP_LOCK_KEY (both 0x76786302), which
+    // deadlocked the first `/v1/auth/register` against the boot-time index
+    // build: register held its xact while acquiring the shared key; the index
+    // build's CREATE INDEX CONCURRENTLY held the key while waiting on register's
+    // xact to finish. Any future collision must fail here, not intermittently in
+    // CI.
+    const keys = [MIGRATION_LOCK_KEY, BOOTSTRAP_LOCK_KEY, INDEX_LOCK_KEY]
+    expect(new Set(keys).size).toBe(keys.length)
+  })
+})
 
 describe('ensureIndexes: fresh convergence', () => {
   it('creates parent shells + per-partition children, attaches all, parent flips valid; re-run is a pure probe', async () => {
@@ -284,8 +299,12 @@ describe('ensureIndexes: never-throws / per-entry isolation', () => {
     }
   })
 
-  it('lock key is a stable 32-bit constant, distinct from the migration lock', () => {
-    expect(INDEX_LOCK_KEY).toBe(0x76786302)
+  it('lock key is a stable 32-bit constant, distinct from every sibling advisory key', () => {
+    expect(INDEX_LOCK_KEY).toBe(0x76786303)
     expect(Number.isInteger(INDEX_LOCK_KEY)).toBe(true)
+    // Distinctness from BOTH siblings — the earlier ...02 collided with
+    // BOOTSTRAP; checking only the migration key is what let it through.
+    expect(INDEX_LOCK_KEY).not.toBe(MIGRATION_LOCK_KEY)
+    expect(INDEX_LOCK_KEY).not.toBe(BOOTSTRAP_LOCK_KEY)
   })
 })
