@@ -258,7 +258,17 @@ serving none of them is probably org-analytics scope creep.
   same-project direct codegen. Pinned by a deterministic classification test in
   `tests/local-shortcircuit.test.ts` (buggy: the consumer is preProbed; fixed:
   unstable, with a stable control sibling). Verified: local-shortcircuit 9 pass,
-  core 1269 pass, lint (oxlint+tsgolint) + oxfmt 0.
+  core 1269 pass, lint (oxlint+tsgolint) + oxfmt 0. **Process note:** the fix
+  commit's CI redded on a DISJOINT flake — the core `lint · format · test` job
+  PASSED; only `vx-cloud tests` failed, on `agents-e2e` "killing an agent
+  mid-task reassigns" (a real-subprocess/WS/pg timing e2e) failing FAST (1148ms,
+  not the 120s timeout — a setup/resource hiccup, the documented pg-slot flake
+  class, not a reassignment regression). `packages/cloud` is byte-identical to
+  the prior green commit `53c3a5c`, so the same cloud code passed there and
+  flaked here — proving the red is not this core-only diff. Follow-up commit adds
+  a direct classification-matrix unit suite (`tests/stable-keys.test.ts`) pinning
+  `dependsOnSiblingOutputs` across the transitive + no-over-mark cases the e2e
+  doesn't reach, and re-triggers CI.
 
 - **2026-07-19**: **Harness-level guard closes the cross-file `process.chdir`
   cwd-leak flake class — a `--preload` global cwd-restore afterEach** (follow-up
