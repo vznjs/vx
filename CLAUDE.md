@@ -208,6 +208,58 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-19**: **Stale LOCAL cache-hit fixed — a `workspaceFiles` consumer
+  reaching into a dependency's project output was misclassified "stable" and
+  restore-tiered ahead of its regenerating upstream** (the one CONFIRMED defect
+  from a repro-mandated hostile review of the core execution path — scheduler +
+  execute-task + task-hash + cache + local-shortcircuit; everything else
+  REFUTED). **The bug (`stable-keys.ts dependsOnSiblingOutputs`):** it marked a
+  task's key preliminary only for (a) a same-project dep declaring
+  `outputs.files`, or (b) a `workspaceFiles`-reading task whose dep declared
+  `outputs.workspaceFiles` — it NEVER considered a dep's `outputs.files`. But
+  `inputs.workspaceFiles` globs ignore project boundaries and reach into ANY
+  project's dir, so a consumer reading `packages/pkg-a/gen/**` reads pkg-a's
+  PROJECT output (`outputs.files: ['gen/**']`). That dependency was invisible to
+  the check → the consumer classified STABLE → its key derived up-front (before
+  the upstream ran) → restore-tier eligible, restoring stale bytes keyed off the
+  upstream's not-yet-regenerated output. Reproduced deterministically: pkg-b
+  reading pkg-a's gen via a ws-glob + decoupling the upstream hash fold
+  (`cache.inputs.tasks: []`, a documented content-invalidation pattern) →
+  `cache-hit/v1` after pkg-a's source changed to v2. **The load-bearing detail:**
+  execute-task reuses a `preProbed` hash WITHOUT recomputing (the up-front key is
+  authoritative for a restore-tier task whose live upstream is incomplete), so a
+  preliminary key in `preProbed` is itself a stale-hit vector — the ONLY correct
+  fix is to mark the task UNSTABLE (excluded from `preProbed` → lazy recompute in
+  execute), NOT merely exclude it from the restore tier (the graph-wide
+  `anyWorkspaceOutputs` gate only touches the restore tier, leaving preProbed
+  reuse exposed). **The fix:** `deriveStableKeys` now accumulates, per node in
+  topo order, the TRANSITIVE-upstream output producers — `outputProjects`
+  (projects declaring `outputs.files` upstream) plus a `wsOutputUpstream` boolean
+  (`outputs.workspaceFiles` upstream) — and `dependsOnSiblingOutputs` consumes
+  them: unstable if a same-project producer is upstream (project-relative reach)
+  OR the task reads `workspaceFiles` and ANY output producer is upstream
+  (boundary-free reach). Transitive, so a producer reached through a no-output
+  intermediate is caught too — closing the direct case AND both transitive holes
+  (ws-reads-files, same-project-through-another-project) the earlier
+  direct-dep-only check missed. **Scope:** LOCAL-cache only (gated on
+  `shouldShortCircuit`, false under a LayeredCache — remote runs never form the
+  restore tier); the common-case optimization is preserved (a cross-project
+  `outputs.files` producer whose outputs a project-relative reader can't reach
+  stays STABLE — pinned by the existing restore-tier control). **NO
+  CACHE_VERSION bump:** the fix changes only the CLASSIFICATION (which tasks are
+  restore-tier eligible), never key derivation or artifact bytes; the affected
+  buggy configs change keys only for themselves and are self-healing (new key →
+  miss → re-run → re-cache, never a wrong hit). **Refuted by executed repros
+  (held):** output-cleaning `..` data loss (loader rejects `..` segments),
+  scheduler admission hang / skip-while-exiting-0 / reservation leak
+  (integer-holder-count solo-clamp, snap-to-exact-0, park/repush FIFO, willSkip
+  short-circuit), dangling-dep hang, retry-caches-wrong-attempt, timeout-vs-SIGINT
+  classification, in-flight dedup, restore-tier skip-restore integrity,
+  same-project direct codegen. Pinned by a deterministic classification test in
+  `tests/local-shortcircuit.test.ts` (buggy: the consumer is preProbed; fixed:
+  unstable, with a stable control sibling). Verified: local-shortcircuit 9 pass,
+  core 1269 pass, lint (oxlint+tsgolint) + oxfmt 0.
+
 - **2026-07-19**: **Harness-level guard closes the cross-file `process.chdir`
   cwd-leak flake class — a `--preload` global cwd-restore afterEach** (follow-up
   to the 2026-07-18 watch-flake root-fix; empirically resolves that entry's open

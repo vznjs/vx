@@ -235,6 +235,71 @@ describe('local cache short-circuit', () => {
   )
 
   it(
+    'a workspaceFiles consumer reaching into a dependency output is classified unstable',
+    async () => {
+      // pkga#gen writes gen/lib.txt (a real PROJECT output). pkgb#build reads
+      // it through a boundary-free `inputs.workspaceFiles` glob AND decouples
+      // the upstream hash (`inputs.tasks: []`) — a legitimate content-based
+      // invalidation config. pkgb#build's key therefore depends on pkga's
+      // OUTPUT, so it must be classified UNSTABLE: never restore-tiered, and
+      // (crucially) never preProbed — execute-task reuses a preProbed hash
+      // WITHOUT recomputing, so a preliminary key in preProbed is itself a
+      // stale-hit vector (the misclassified consumer would restore bytes keyed
+      // off pkga's STALE output). This is the cross-project outputs.files reach
+      // the old dependsOnSiblingOutputs missed: it only compared a dep's
+      // outputs.workspaceFiles for a ws-reader, never a dep's outputs.files.
+      await addProject(fixture.root, 'pkga', {
+        files: { 'src/seed.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              gen: {
+                exec: { command: "mkdir -p gen && cp src/seed.txt gen/lib.txt" },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['gen/**'] } },
+              },
+            },
+          }
+        `,
+      })
+      await addProject(fixture.root, 'pkgb', {
+        deps: { pkga: 'workspace:*' },
+        files: { 'src/b.txt': 'b' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                dependsOn: ['pkga#gen'],
+                exec: { command: "cp ../pkga/gen/lib.txt out.txt" },
+                cache: {
+                  inputs: { files: ['src/**'], tasks: [], workspaceFiles: ['packages/pkga/gen/**'] },
+                  outputs: { files: ['out.txt'] },
+                },
+              },
+            },
+          }
+        `,
+      })
+
+      // Populate the cache so an up-front HIT is possible — the classification
+      // (graph-structural, independent of cache/source state) must still
+      // exclude pkgb#build regardless.
+      const cold = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+      expect(cold.ok).toBe(true)
+
+      const c = await classify(fixture, ['build'])
+      // Control: pkga#gen has no output-producing upstream → STABLE (the fix
+      // does not over-mark; the restore-tier optimization is preserved).
+      expect(c.preProbedIds.has('pkga#gen')).toBe(true)
+      // pkgb#build reaches pkga's output via workspaceFiles → UNSTABLE: never
+      // preProbed (so execute recomputes its key lazily after gen runs), never
+      // restore-tiered.
+      expect(c.preProbedIds.has('pkgb#build')).toBe(false)
+      expect(c.restoreTier.has('pkgb#build')).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a graph declaring outputs.workspaceFiles disables the restore tier graph-wide',
     async () => {
       // lib declares a WORKSPACE output (root-anchored, boundary-ignoring).
