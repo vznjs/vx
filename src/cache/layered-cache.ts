@@ -132,6 +132,10 @@ export class LayeredCache implements CacheLayer {
   async prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean> {
     // No-op when remote reads are off — there's nothing to warm from.
     if (!this.policy.remoteRead) return false
+    // The local-first skip lives in doPullFromRemote (the shared choke
+    // point): pullFromRemote registers the `inflight` entry SYNCHRONOUSLY,
+    // so a concurrent markRemoteAbsent can't clobber a pending pull — a
+    // guard done here (behind an async local.has) would reopen that race.
     return await this.pullFromRemote(hash, ctx)
   }
 
@@ -226,6 +230,16 @@ export class LayeredCache implements CacheLayer {
   }
 
   private async doPullFromRemote(hash: string, ctx?: CacheGetContext): Promise<boolean> {
+    // Local-first, mirroring get()/has(): if local ALREADY holds the artifact
+    // there is nothing to pull — skip the remote GET (a warm-local run would
+    // otherwise re-download every artifact it already has) and DON'T mark it
+    // `remoteSourced` (that would mislabel a purely-local warm hit as
+    // cache-hit-remote and inflate the remote hit-rate). Returning `true` is
+    // correct for a get() read-through too: "the artifact is in local" — the
+    // caller re-reads it, keeping whatever provenance it already had (local,
+    // or remote if a concurrent prefetch set it).
+    if ((await this.local.has(hash)) === 'local') return true
+
     let remoteResult
     try {
       remoteResult = await this.remote.get(hash)

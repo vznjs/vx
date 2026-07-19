@@ -208,6 +208,47 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-19**: **Remote prefetch skips the GET when local already has the
+  artifact — a MEDIUM redundant-download + racy provenance-mislabel fixed** (the
+  one CONFIRMED defect from a repro-mandated hostile review of the REMOTE cache
+  path — LayeredCache + remote-prefetch + native-cache client; complementing the
+  same-day LOCAL-path review, everything else REFUTED). **The bug
+  (`layered-cache.ts`):** `get()` and `has()` both check LOCAL first, but
+  `prefetch()` → `pullFromRemote` → `doPullFromRemote` called `remote.get()`
+  UNCONDITIONALLY. So on a warm-LOCAL run against a configured remote, every
+  stable+remote-present task RE-DOWNLOADED its full artifact (a 1000-task warm
+  monorepo = 1000 redundant downloads, defeating the local cache the download
+  exists to avoid) AND `remoteSourced.add` flipped its provenance — a RACY
+  mislabel (whether the prefetch's ingest beats the task's own local `get`) that
+  reports a purely-local hit as `cache-hit-remote`, inflating `hitRemoteCount` +
+  the "did the remote cache save me work?" dashboard signal so identical warm
+  runs report different local/remote splits. Not wrong BYTES (content-addressed →
+  identical), hence MEDIUM. **The fix:** a local-first skip in `doPullFromRemote`
+  (the shared choke point) — `if (await local.has(hash) === 'local') return true`
+  BEFORE the remote GET, mirroring `get()`/`has()`; returns `true` ("the artifact
+  is in local") WITHOUT marking `remoteSourced`, so a warm-local prefetch fires
+  no GET and keeps provenance local, and a get() read-through that finds local
+  already present (a concurrent-ingest race) still returns the hit correctly.
+  **Placement matters:** the first cut put the check in `prefetch()` itself, but
+  the added `await local.has` before `pullFromRemote` delayed the SYNCHRONOUS
+  `inflight` registration and reopened the `markRemoteAbsent`-clobbers-a-pending-
+  pull race (a pinned invariant) — moving it into `doPullFromRemote` (reached via
+  `pullFromRemote`, which registers `inflight` synchronously) keeps the invariant
+  intact. NO CACHE_VERSION/wire bump (only WHEN a remote GET fires; keys +
+  artifacts untouched). **Refuted by the reviewer (executed repros):** the remote
+  path is STRUCTURALLY immune to the stale-hit class the same-day local fix
+  addressed (under a LayeredCache `shouldShortCircuit` is false → no preProbed →
+  execute-task always recomputes the key with the full upstream; the transitive
+  stable-keys change only trims which tasks prefetch) — re-verified with the exact
+  buggy shape on the remote path (no stale hit); every remote error degrades to a
+  miss (never fails a run); at-most-once GET (inflight dedup); no
+  ingest-into-closing-DB; NativeCacheClient drops bearer+scope on a cross-origin
+  redirect (protocol-relative + `file://` probed), digest-verifies, bounds
+  downloads. Pinned by a warm-local prefetch test in `tests/layered-cache.test.ts`
+  (buggy: 1 redundant GET + source=remote; fixed: 0 GET + source=local) with the
+  markRemoteAbsent-no-clobber invariant still green. Verified: layered-cache 24
+  pass, core 1276 pass, lint (oxlint+tsgolint) + oxfmt 0.
+
 - **2026-07-19**: **Stale LOCAL cache-hit fixed — a `workspaceFiles` consumer
   reaching into a dependency's project output was misclassified "stable" and
   restore-tiered ahead of its regenerating upstream** (the one CONFIRMED defect

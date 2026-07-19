@@ -312,6 +312,28 @@ describe('LayeredCache', () => {
     expect(remote.gets).toBe(getsBefore)
   })
 
+  it('prefetch() skips the remote GET when local ALREADY has the artifact (warm-local run)', async () => {
+    // A configured remote + a warm local (a prior run already materialized
+    // the artifact). prefetch() must mirror get()/has()'s local-first check:
+    // there is nothing to warm, so it fires NO remote GET and — crucially —
+    // does NOT flip provenance. Marking a purely-local warm hit as
+    // `cache-hit-remote` would inflate the remote hit-rate signal (and, on a
+    // 1000-task warm run, re-download every artifact the local cache holds).
+    const layered = makeLayered()
+    await saveSample(layered, 'h-warm') // both local + remote hold it
+    expect(await local.get('h-warm')).not.toBeNull()
+    remote.gets = 0 // reset after the save's upload
+
+    const pulled = await layered.prefetch('h-warm', { taskId: 'pkg#build', command: 'echo produced' })
+    expect(pulled).toBe(true) // available in local — but via NO remote GET
+    expect(remote.gets).toBe(0) // NO redundant remote download
+
+    // The subsequent lookup is a LOCAL hit, not a mislabeled remote one.
+    const hit = await layered.get('h-warm', { taskId: 'pkg#build', command: 'echo produced' })
+    expect(hit?.source).toBe('local')
+    expect(remote.gets).toBe(0)
+  })
+
   it('prefetch() returns false on a remote miss (degrades, never throws)', async () => {
     const layered = makeLayered()
     expect(await layered.prefetch('h-absent', { taskId: 'pkg#x', command: 'c' })).toBe(false)
