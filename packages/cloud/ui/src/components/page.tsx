@@ -60,12 +60,24 @@ const KPI_VALUE_COLOR: Record<KpiTone, string | undefined> = {
 export function Kpi(props: { label: string; value: ReactNode; sub?: ReactNode; tone?: KpiTone }): JSX.Element {
   const color = KPI_VALUE_COLOR[props.tone ?? 'default']
   return (
-    <Card padding={4}>
+    <Card
+      padding={4}
+      style={{
+        backgroundImage:
+          'radial-gradient(240px 130px at 100% 0%, var(--color-accent-muted), transparent 65%)',
+      }}
+    >
       <VStack gap={1}>
         <Text type="supporting" color="secondary">
           {props.label}
         </Text>
-        <span style={color !== undefined ? { color } : undefined}>
+        <span
+          style={{
+            fontFamily: 'var(--font-family-heading)',
+            letterSpacing: '-0.02em',
+            ...(color !== undefined ? { color } : {}),
+          }}
+        >
           <Text type="display-3" color="inherit">
             {props.value}
           </Text>

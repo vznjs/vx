@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState, type JSX } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { AppShell } from '@astryxdesign/core/AppShell'
-import { SideNav, SideNavHeading, SideNavItem } from '@astryxdesign/core/SideNav'
+import { SideNav, SideNavItem } from '@astryxdesign/core/SideNav'
 import { TopNav } from '@astryxdesign/core/TopNav'
 import { Banner } from '@astryxdesign/core/Banner'
 import { Button } from '@astryxdesign/core/Button'
@@ -66,6 +66,40 @@ import { Cache } from './pages/Cache.tsx'
 import { Bottlenecks } from './pages/Bottlenecks.tsx'
 import { Trends } from './pages/Trends.tsx'
 import { RunConsole } from './pages/RunConsole.tsx'
+
+/** Brand wordmark: Space Grotesk + the violet→pink gradient, linking home. */
+function Wordmark(): JSX.Element {
+  return (
+    <a href="#/" style={{ textDecoration: 'none', display: 'block', padding: 'var(--spacing-3) var(--spacing-4)' }}>
+      <span
+        style={{
+          fontFamily: "'Space Grotesk', var(--font-family-body)",
+          fontWeight: 700,
+          fontSize: '20px',
+          letterSpacing: '-0.02em',
+          background: 'linear-gradient(120deg, var(--vx-brand-from), var(--vx-brand-to))',
+          WebkitBackgroundClip: 'text',
+          backgroundClip: 'text',
+          color: 'transparent',
+        }}
+      >
+        vx
+      </span>
+      <span
+        style={{
+          marginInlineStart: 'var(--spacing-2)',
+          fontFamily: "'Space Grotesk', var(--font-family-body)",
+          fontWeight: 500,
+          fontSize: '14px',
+          letterSpacing: '0.01em',
+          color: 'var(--color-text-secondary)',
+        }}
+      >
+        insights
+      </span>
+    </a>
+  )
+}
 
 interface NavEntry {
   href: string
@@ -278,7 +312,7 @@ export function App(): JSX.Element {
       }
       sideNav={
         <SideNav
-          header={<SideNavHeading heading="vx insights" headingHref="#/" />}
+          header={<Wordmark />}
           collapsible
         >
           {NAV.map((item) => (
@@ -289,7 +323,8 @@ export function App(): JSX.Element {
               isSelected={
                 item.href === '/runs'
                   ? /^\/runs/.test(location.pathname) || /^\/compare/.test(location.pathname)
-                  : location.pathname.startsWith(item.href)
+                  : location.pathname === item.href ||
+                    location.pathname.startsWith(`${item.href}/`)
               }
               onClick={() => navigate(item.href)}
             />

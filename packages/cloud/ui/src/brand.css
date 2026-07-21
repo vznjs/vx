@@ -1,0 +1,34 @@
+/* vx brand primitives (custom --vx-* namespace). These are the only values
+   the astryx theme's token map can't carry (its TokenName union is closed,
+   and light-dark() is color-only — gradients/shadow colors need real
+   per-mode declarations). astryx's Theme sets data-theme on <html>. */
+
+:root {
+  --vx-aurora:
+    radial-gradient(1100px 700px at 8% -12%, rgba(124, 58, 237, 0.09), transparent 60%),
+    radial-gradient(900px 600px at 102% -4%, rgba(8, 145, 178, 0.07), transparent 55%),
+    radial-gradient(1000px 900px at 55% 120%, rgba(219, 39, 119, 0.05), transparent 60%),
+    #f4f3fa;
+  --vx-glass-chrome: rgba(255, 255, 255, 0.55);
+  --vx-glass-card: rgba(255, 255, 255, 0.78);
+  --vx-glass-border: rgba(124, 58, 237, 0.12);
+  --vx-shadow-drop: rgba(23, 22, 42, 0.08);
+  --vx-edge-highlight: rgba(255, 255, 255, 0.6);
+  --vx-brand-from: #7c3aed;
+  --vx-brand-to: #db2777;
+}
+
+[data-theme='dark'] {
+  --vx-aurora:
+    radial-gradient(1100px 700px at 8% -12%, rgba(124, 58, 237, 0.2), transparent 60%),
+    radial-gradient(900px 600px at 102% -4%, rgba(34, 211, 238, 0.11), transparent 55%),
+    radial-gradient(1000px 900px at 55% 120%, rgba(244, 114, 182, 0.08), transparent 60%),
+    #0d0d15;
+  --vx-glass-chrome: rgba(13, 13, 21, 0.45);
+  --vx-glass-card: rgba(21, 21, 33, 0.62);
+  --vx-glass-border: rgba(167, 139, 250, 0.14);
+  --vx-shadow-drop: rgba(0, 0, 0, 0.55);
+  --vx-edge-highlight: rgba(255, 255, 255, 0.05);
+  --vx-brand-from: #a78bfa;
+  --vx-brand-to: #f472b6;
+}
