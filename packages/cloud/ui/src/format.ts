@@ -105,9 +105,21 @@ export function formatDateTime(t: number): string {
   })
 }
 
-/** Stable hash → chart-palette token for category coloring. */
+/** Categorical data-viz palette (astryx data tokens, hex fallbacks). */
+export const CHART_PALETTE: readonly string[] = [
+  'var(--color-data-categorical-blue, #0171E3)',
+  'var(--color-data-categorical-orange, #EB6E00)',
+  'var(--color-data-categorical-green, #0B991F)',
+  'var(--color-data-categorical-purple, #6B1EFD)',
+  'var(--color-icon-cyan, #26C6DA)',
+  'var(--color-icon-pink, #EC407A)',
+  'var(--color-warning, #F2C00B)',
+  'var(--color-data-neutral, #8494A3)',
+]
+
+/** Stable hash → categorical palette color for category coloring. */
 export function paletteFor(key: string): string {
   let h = 5381
   for (let i = 0; i < key.length; i++) h = ((h * 33) ^ key.charCodeAt(i)) >>> 0
-  return `chart-${(h % 8) + 1}`
+  return CHART_PALETTE[h % CHART_PALETTE.length]!
 }

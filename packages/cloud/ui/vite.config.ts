@@ -1,6 +1,5 @@
 import { defineConfig, type Plugin } from 'vite'
-import solid from 'vite-plugin-solid'
-import unocss from 'unocss/vite'
+import react from '@vitejs/plugin-react'
 
 /**
  * Inline every JS chunk and CSS asset into index.html so the build emits a
@@ -31,13 +30,27 @@ function singleFile(): Plugin {
           delete bundle[name]
         }
       }
+      // Vite replaces __VITE_PRELOAD__ markers in JS chunks in a LATER
+      // generateBundle stage — after this plugin moved the code into the HTML
+      // asset, where that replacer never looks. With one inlined chunk there
+      // are no dep lists to preload, so the correct substitution is `void 0`
+      // (what Vite itself emits under inlineDynamicImports).
+      src = src.replace(/__VITE_PRELOAD__/g, 'void 0')
       html.source = src
     },
   }
 }
 
 export default defineConfig({
-  plugins: [unocss(), solid(), singleFile()],
+  plugins: [react(), singleFile()],
+  build: {
+    rollupOptions: {
+      // One chunk, no code-splitting: a dynamic import would otherwise emit
+      // Vite's __VITE_PRELOAD__ helper referencing chunk files this build
+      // inlines and deletes — throwing at runtime in the embedded SPA.
+      output: { inlineDynamicImports: true },
+    },
+  },
   server: {
     port: 5290,
     strictPort: false,

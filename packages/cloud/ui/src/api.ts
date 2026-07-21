@@ -7,7 +7,7 @@
 // `.vx/serve.json`, but the SPA can't read disk — the user pastes
 // the printed origin in, or accepts the default).
 
-import { createSignal } from 'solid-js'
+import { signal, useSignal } from './store.ts'
 
 const STORAGE_KEY = 'vx-ui:origin'
 const TOKEN_KEY = 'vx-ui:token'
@@ -29,19 +29,19 @@ function readStoredOrigin(): string {
   return stored ?? defaultOrigin()
 }
 
-const [origin, setOrigin] = createSignal(readStoredOrigin())
+const origin = signal(readStoredOrigin())
 
 export function getOrigin(): string {
-  return origin()
+  return origin.get()
 }
 
-export function getOriginSignal(): () => string {
-  return origin
+export function useOrigin(): string {
+  return useSignal(origin)
 }
 
 export function setOriginAndPersist(next: string): void {
   const trimmed = next.replace(/\/+$/, '').trim()
-  setOrigin(trimmed)
+  origin.set(trimmed)
   if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, trimmed)
 }
 
@@ -52,31 +52,31 @@ function readStoredToken(): string {
   return localStorage.getItem(TOKEN_KEY) ?? ''
 }
 
-const [token, setToken] = createSignal(readStoredToken())
+const token = signal(readStoredToken())
 
 // Flipped by any 401 so the shell can surface its token prompt.
-const [unauthorized, setUnauthorized] = createSignal(false)
+const unauthorized = signal(false)
 
 export function getToken(): string {
-  return token()
+  return token.get()
 }
 
-export function getTokenSignal(): () => string {
-  return token
+export function useToken(): string {
+  return useSignal(token)
 }
 
 export function setTokenAndPersist(next: string): void {
   const trimmed = next.trim()
-  setToken(trimmed)
+  token.set(trimmed)
   if (typeof localStorage !== 'undefined') {
     if (trimmed === '') localStorage.removeItem(TOKEN_KEY)
     else localStorage.setItem(TOKEN_KEY, trimmed)
   }
-  setUnauthorized(false)
+  unauthorized.set(false)
 }
 
-export function getUnauthorizedSignal(): () => boolean {
-  return unauthorized
+export function useUnauthorized(): boolean {
+  return useSignal(unauthorized)
 }
 
 // ---------------------------------------------------------------------------
@@ -91,19 +91,19 @@ function readStoredWorkspace(): string {
   return localStorage.getItem(WORKSPACE_KEY) ?? ''
 }
 
-const [workspace, setWorkspace] = createSignal(readStoredWorkspace())
+const workspace = signal(readStoredWorkspace())
 
 export function getWorkspace(): string {
-  return workspace()
+  return workspace.get()
 }
 
-export function getWorkspaceSignal(): () => string {
-  return workspace
+export function useWorkspace(): string {
+  return useSignal(workspace)
 }
 
 export function setWorkspaceAndPersist(next: string): void {
   const trimmed = next.trim()
-  setWorkspace(trimmed)
+  workspace.set(trimmed)
   if (typeof localStorage !== 'undefined') {
     if (trimmed === '') localStorage.removeItem(WORKSPACE_KEY)
     else localStorage.setItem(WORKSPACE_KEY, trimmed)
@@ -111,12 +111,17 @@ export function setWorkspaceAndPersist(next: string): void {
 }
 
 /**
- * Reactive `origin|token|workspace` key — everything a remote read depends
- * on. The jr page loader keys its data resources on this so views re-fetch
- * the moment the user switches connection or workspace.
+ * `origin|token|workspace` key — everything a remote read depends on. Pages
+ * key their data fetches on this (useConnectionKey) so views re-fetch the
+ * moment the user switches connection or workspace.
  */
 export function getConnectionKey(): string {
-  return `${origin()}|${token()}|${workspace()}`
+  return `${origin.get()}|${token.get()}|${workspace.get()}`
+}
+
+/** Reactive form of getConnectionKey for React data hooks. */
+export function useConnectionKey(): string {
+  return `${useSignal(origin)}|${useSignal(token)}|${useSignal(workspace)}`
 }
 
 /** Workspace-list endpoints answer FOR all workspaces — never scoped by one. */
@@ -124,7 +129,7 @@ const WS_EXEMPT = new Set(['/v1/meta', '/v1/workspaces'])
 
 /** Append `ws=<id>` to a /v1 pathname when a workspace is selected. */
 function withWorkspace(pathname: string): string {
-  const ws = workspace()
+  const ws = workspace.get()
   if (ws === '' || !pathname.startsWith('/v1/')) return pathname
   const bare = pathname.split('?', 1)[0]!
   if (WS_EXEMPT.has(bare)) return pathname
@@ -138,12 +143,12 @@ export interface WorkspaceInfo {
   runCount?: number
 }
 
-const [workspaces, setWorkspaces] = createSignal<WorkspaceInfo[]>([])
+const workspaces = signal<WorkspaceInfo[]>([])
 let workspacesKey: string | null = null
 
 /** Workspaces known to the connected serve; `[]` until the list resolves. */
-export function getWorkspacesSignal(): () => WorkspaceInfo[] {
-  return workspaces
+export function useWorkspaces(): WorkspaceInfo[] {
+  return useSignal(workspaces)
 }
 
 /**
@@ -153,19 +158,19 @@ export function getWorkspacesSignal(): () => WorkspaceInfo[] {
  * every query doesn't scope to a workspace that doesn't exist here.
  */
 export function refreshWorkspaces(): void {
-  const key = `${origin()}|${token()}`
+  const key = `${origin.get()}|${token.get()}`
   if (key === workspacesKey) return
   workspacesKey = key
-  setWorkspaces([])
+  workspaces.set([])
   void getWorkspaces().then(
     (list) => {
       if (workspacesKey !== key) return
-      setWorkspaces(list)
-      const current = workspace()
+      workspaces.set(list)
+      const current = workspace.get()
       if (current !== '' && !list.some((w) => w.id === current)) setWorkspaceAndPersist('')
     },
     () => {
-      if (workspacesKey === key) setWorkspaces([])
+      if (workspacesKey === key) workspaces.set([])
     },
   )
 }
@@ -190,11 +195,11 @@ export interface Capabilities {
 }
 
 const UNKNOWN_CAPS: Capabilities = { known: false, hasWorkspace: false, hasCacheDb: false }
-const [capabilities, setCapabilities] = createSignal<Capabilities>(UNKNOWN_CAPS)
+const capabilities = signal<Capabilities>(UNKNOWN_CAPS)
 let capsKey: string | null = null
 
-export function getCapabilitiesSignal(): () => Capabilities {
-  return capabilities
+export function useCapabilities(): Capabilities {
+  return useSignal(capabilities)
 }
 
 /**
@@ -208,7 +213,7 @@ export function refreshCapabilities(): void {
   const key = getConnectionKey()
   if (key === capsKey) return
   capsKey = key
-  setCapabilities(UNKNOWN_CAPS)
+  capabilities.set(UNKNOWN_CAPS)
   void Promise.all([
     getGraph(['__vx_capability_probe__']).then(
       () => true,
@@ -219,23 +224,23 @@ export function refreshCapabilities(): void {
       () => false,
     ),
   ]).then(([hasWorkspace, hasCacheDb]) => {
-    if (capsKey === key) setCapabilities({ known: true, hasWorkspace, hasCacheDb })
+    if (capsKey === key) capabilities.set({ known: true, hasWorkspace, hasCacheDb })
   })
 }
 
 /** `?token=` suffix for EventSource/WebSocket URLs (headers unsupported there). */
 function tokenQuery(prefix: '?' | '&' = '?'): string {
-  const t = token()
+  const t = token.get()
   return t === '' ? '' : `${prefix}token=${encodeURIComponent(t)}`
 }
 
 async function getJson<T>(pathname: string): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
-  const t = token()
+  const t = token.get()
   if (t !== '') headers['Authorization'] = `Bearer ${t}`
-  const res = await fetch(`${origin()}${withWorkspace(pathname)}`, { headers })
+  const res = await fetch(`${origin.get()}${withWorkspace(pathname)}`, { headers })
   if (res.status === 401) {
-    setUnauthorized(true)
+    unauthorized.set(true)
     throw new Error(`${pathname}: 401 Unauthorized — this server requires a token`)
   }
   if (!res.ok) {

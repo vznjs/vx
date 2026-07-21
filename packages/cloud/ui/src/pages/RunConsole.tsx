@@ -1,0 +1,680 @@
+// The run cockpit: trigger a task, watch its DAG execute live, inspect logs.
+//
+// On Run we fetch the task graph (nodes + edges, predicted cache status) and
+// open a WebSocket to vx serve; the streamed events drive each node's live
+// status, an overall progress bar, and per-task log capture. The predicted
+// cacheStatus badges queued cards ("what will this run actually do") and
+// clears per node as live events land. Running while a run is in progress is
+// forbidden (the Run button is disabled until it finishes) — one run at a
+// time avoids the output-cleaning race between overlapping different-hash
+// runs (docs/design/execution-service-2026-06.md). Stop abandons watching the
+// current run so the UI can recover (supersede semantics: the run keeps going
+// server-side).
+//
+// Live log chunks accumulate in a REF (not state) — a chatty task streaming
+// thousands of stdout chunks appends in place and re-renders through one
+// throttled tick, instead of cloning a record per chunk.
+
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type KeyboardEvent,
+} from 'react'
+import { ArrowTrendingUpIcon, FireIcon, PlayIcon, StopIcon } from '@heroicons/react/24/outline'
+import { Banner } from '@astryxdesign/core/Banner'
+import { Button } from '@astryxdesign/core/Button'
+import { CodeBlock } from '@astryxdesign/core/CodeBlock'
+import { Divider } from '@astryxdesign/core/Divider'
+import { EmptyState } from '@astryxdesign/core/EmptyState'
+import { Icon } from '@astryxdesign/core/Icon'
+import {
+  HStack,
+  Layout,
+  LayoutContent,
+  LayoutHeader,
+  LayoutPanel,
+  StackItem,
+  VStack,
+} from '@astryxdesign/core/Layout'
+import { List, ListItem } from '@astryxdesign/core/List'
+import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList'
+import { ProgressBar } from '@astryxdesign/core/ProgressBar'
+import { ResizeHandle, useResizable } from '@astryxdesign/core/Resizable'
+import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl'
+import { Text } from '@astryxdesign/core/Text'
+import { TextInput } from '@astryxdesign/core/TextInput'
+import { Token } from '@astryxdesign/core/Token'
+import { Tooltip } from '@astryxdesign/core/Tooltip'
+import {
+  getGraph,
+  getHistory,
+  getVersion,
+  runTasks,
+  useCapabilities,
+  type GraphNode,
+  type RunSummaryRow,
+  type ServerVersion,
+  type TaskHistoryRow,
+  type WireEvent,
+} from '../api.ts'
+import { cpuPct, formatBytes, formatDuration, formatTime } from '../format.ts'
+import { useQuery } from '../hooks.ts'
+import { criticalPath, parallelism } from '../components/critical-path.ts'
+import { Flamegraph, flameEdgesOf } from '../components/Flamegraph.tsx'
+import { RunGraph } from '../components/RunGraph.tsx'
+import { StatusCell, toVizState, type VizState } from '../components/status.tsx'
+
+interface NodeStatus {
+  state: VizState
+  durationMs?: number
+  exitCode?: number
+  cpuMs?: number
+  peakRssBytes?: number
+}
+
+interface TaskWindow {
+  startedAt: number
+  endedAt?: number
+}
+
+// eslint-disable-next-line no-control-regex
+const ANSI_RE = /\x1b\[[0-9;]*[A-Za-z]/g
+const stripAnsi = (s: string): string => s.replace(ANSI_RE, '')
+
+const fmtDur = (ms?: number): string => (ms === undefined ? '—' : formatDuration(ms))
+const fmtClock = (ms?: number): string => (ms === undefined ? '—' : formatTime(ms))
+
+export function RunConsole(): JSX.Element {
+  const capabilities = useCapabilities()
+  const version = useQuery<ServerVersion | null>(() => getVersion().catch(() => null), [])
+  const history = useQuery<TaskHistoryRow[]>(
+    () => getHistory({ limit: 300 }).catch(() => []),
+    [],
+  )
+  const taskNames = useMemo(
+    () => Array.from(new Set((history.data ?? []).map((h) => h.task))).sort(),
+    [history.data],
+  )
+
+  const [taskInput, setTaskInput] = useState('')
+  const [nodes, setNodes] = useState<GraphNode[]>([])
+  const [statuses, setStatuses] = useState<Map<string, NodeStatus>>(() => new Map())
+  // Per-task wall-clock window, observed from when each event arrives (the
+  // outcome carries durationMs but cache hits have no wallclock ns) — enough
+  // to draw a live flamegraph of the current run.
+  const [timing, setTiming] = useState<Map<string, TaskWindow>>(() => new Map())
+  const [selected, setSelected] = useState<string | null>(null)
+  const [running, setRunning] = useState(false)
+  const [started, setStarted] = useState(false)
+  const [view, setView] = useState<'graph' | 'flame'>('graph')
+  const [now, setNow] = useState(0)
+  const [progress, setProgress] = useState({ done: 0, total: 0 })
+  const [runError, setRunError] = useState<string | null>(null)
+  const [ok, setOk] = useState<boolean | null>(null)
+  // Configured worker count from run:start (undefined if the server didn't send it).
+  const [concurrency, setConcurrency] = useState<number | undefined>(undefined)
+
+  // Log accumulation: ref + throttled tick, so a chatty task can't render-storm.
+  const logsRef = useRef<Map<string, string>>(new Map())
+  const [, setLogTick] = useState(0)
+  const logFlushPending = useRef(false)
+  const scheduleLogFlush = useCallback((): void => {
+    if (logFlushPending.current) return
+    logFlushPending.current = true
+    setTimeout(() => {
+      logFlushPending.current = false
+      setLogTick((t) => t + 1)
+    }, 100)
+  }, [])
+
+  const cancelRef = useRef<(() => void) | null>(null)
+  useEffect(() => () => cancelRef.current?.(), [])
+
+  // Ticks only while a run is live so in-progress bars/chains grow.
+  const runningRef = useRef(false)
+  useEffect(() => {
+    runningRef.current = running
+  }, [running])
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (runningRef.current) setNow(Date.now())
+    }, 250)
+    return () => clearInterval(id)
+  }, [])
+
+  const handleEvent = useCallback(
+    (ev: WireEvent): void => {
+      if (ev.kind === 'run:start') {
+        setProgress({ done: 0, total: ev.info.total })
+        setConcurrency(ev.info.concurrency)
+      } else if (ev.kind === 'task:start') {
+        setStatuses((prev) => new Map(prev).set(ev.task.id, { state: 'running' }))
+        setTiming((prev) => new Map(prev).set(ev.task.id, { startedAt: Date.now() }))
+      } else if (ev.kind === 'task:stdout' || ev.kind === 'task:stderr') {
+        // Append in place — only a throttled tick re-renders, never per chunk.
+        logsRef.current.set(ev.taskId, (logsRef.current.get(ev.taskId) ?? '') + ev.chunk)
+        scheduleLogFlush()
+      } else if (ev.kind === 'task:complete') {
+        const end = Date.now()
+        setStatuses((prev) =>
+          new Map(prev).set(ev.outcome.taskId, {
+            state: toVizState(ev.outcome.status),
+            durationMs: ev.outcome.durationMs,
+            exitCode: ev.outcome.exitCode,
+            cpuMs: ev.outcome.cpuMs,
+            peakRssBytes: ev.outcome.peakRssBytes,
+          }),
+        )
+        setTiming((prev) => {
+          const t = prev.get(ev.outcome.taskId)
+          return new Map(prev).set(ev.outcome.taskId, {
+            // Cache hits/instant tasks may complete without a start event —
+            // seed a window from the reported duration so the bar has width.
+            startedAt: t?.startedAt ?? end - ev.outcome.durationMs,
+            endedAt: end,
+          })
+        })
+        setProgress((p) => ({ ...p, done: p.done + 1 }))
+      }
+    },
+    [scheduleLogFlush],
+  )
+
+  // Per-node duration (ms): the reported duration once complete, else the live
+  // elapsed time for a running task, else 0 (queued). Recomputes as `now`
+  // ticks so the critical path grows during the run and settles on completion.
+  const durationOf = useCallback(
+    (id: string): number => {
+      const st = statuses.get(id)
+      if (st?.durationMs !== undefined) return st.durationMs
+      const t = timing.get(id)
+      if (t && st?.state === 'running') return Math.max(0, (t.endedAt ?? now) - t.startedAt)
+      return 0
+    },
+    [statuses, timing, now],
+  )
+
+  // A cache HIT restores ahead of its deps (the two-tier scheduler's restore
+  // tier) — exclude it from the dependency-timing chain or the floor counts
+  // upstream runtime the hit never waited for.
+  const restoresAhead = useCallback(
+    (id: string): boolean => {
+      const s = statuses.get(id)?.state
+      return s === 'cache-hit' || s === 'cache-hit-remote'
+    },
+    [statuses],
+  )
+
+  // Longest-duration dependency chain (the wall-time floor) over the live graph.
+  const critical = useMemo(
+    () => criticalPath(nodes, durationOf, restoresAhead),
+    [nodes, durationOf, restoresAhead],
+  )
+  const criticalSet = useMemo(() => new Set(critical.chain), [critical])
+
+  // Predicted-from-cache summary (real tasks only; groups do no work). Shown
+  // while queued nodes still exist — "N of M will restore" before work lands.
+  const predicted = useMemo(() => {
+    const real = nodes.filter((n) => !n.isGroup)
+    const hits = real.filter((n) => n.cacheStatus === 'hit-local' || n.cacheStatus === 'hit-remote')
+    const queued = real.filter((n) => (statuses.get(n.id)?.state ?? 'queued') === 'queued')
+    return { total: real.length, hits: hits.length, anyQueued: queued.length > 0 }
+  }, [nodes, statuses])
+
+  // Observed concurrency from the live per-task windows.
+  const parallel = useMemo(() => {
+    const intervals = Array.from(timing.values()).map((t) => ({
+      startedAt: t.startedAt,
+      endedAt: t.endedAt ?? Math.max(now, t.startedAt),
+    }))
+    return parallelism(intervals)
+  }, [timing, now])
+
+  // Maps the RunGraph consumes.
+  const stateMap = useMemo(() => {
+    const m = new Map<string, VizState>()
+    for (const [id, st] of statuses) m.set(id, st.state)
+    return m
+  }, [statuses])
+  const durationMap = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const n of nodes) m.set(n.id, durationOf(n.id))
+    return m
+  }, [nodes, durationOf])
+  const cpuMap = useMemo(() => {
+    const m = new Map<string, { cpuMs?: number; peakRssBytes?: number }>()
+    for (const [id, st] of statuses) m.set(id, { cpuMs: st.cpuMs, peakRssBytes: st.peakRssBytes })
+    return m
+  }, [statuses])
+
+  // Build flamegraph rows (RunSummaryRow shape) from live timing + status.
+  const flameRows = useMemo<RunSummaryRow[]>(() => {
+    return nodes
+      // Groups (umbrella tasks) emit task events but do no work — exclude them
+      // from the timeline; the flame is about real execution windows.
+      .filter((n) => timing.has(n.id) && !n.isGroup)
+      .map((n) => {
+        const t = timing.get(n.id)!
+        const st = statuses.get(n.id)
+        const state = st?.state ?? 'running'
+        const status = state === 'queued' ? 'running' : state
+        const startedAt = t.startedAt
+        const endedAt = t.endedAt ?? Math.max(now, startedAt)
+        return {
+          runId: null,
+          project: n.project,
+          task: n.task,
+          status,
+          exitCode: st?.exitCode ?? 0,
+          durationMs: st?.durationMs ?? endedAt - startedAt,
+          startedAt,
+          endedAt,
+          cacheHit: state === 'cache-hit',
+          hash: '',
+          cpuMs: null,
+          peakRssBytes: null,
+          wallclockStartNs: null,
+          wallclockEndNs: null,
+        }
+      })
+  }, [nodes, timing, statuses, now])
+
+  // Dependency edges for the flame (dep → dependent = "what this unlocked").
+  const flameEdges = useMemo(() => flameEdgesOf(nodes), [nodes])
+
+  const start = (): void => {
+    if (running) return // forbid running while a run is in progress
+    const tasks = taskInput.split(/\s+/).filter(Boolean)
+    const root = version.data?.workspace
+    if (tasks.length === 0 || root === undefined) return
+    logsRef.current = new Map()
+    setStatuses(new Map())
+    setTiming(new Map())
+    setSelected(null)
+    setProgress({ done: 0, total: 0 })
+    setRunError(null)
+    setOk(null)
+    setConcurrency(undefined)
+    setNow(Date.now())
+    setRunning(true)
+    setStarted(true)
+    setNodes([])
+    setLogTick((t) => t + 1)
+    // Graph for layout/edges + predicted cache status; merge so live events
+    // already received aren't clobbered.
+    getGraph(tasks)
+      .then((g) => {
+        setNodes(g)
+        setStatuses((prev) => {
+          const next = new Map(prev)
+          for (const n of g) if (!next.has(n.id)) next.set(n.id, { state: 'queued' })
+          return next
+        })
+      })
+      .catch(() => {})
+    cancelRef.current = runTasks(tasks, root, {
+      onEvent: handleEvent,
+      onResult: (r) => {
+        setRunning(false)
+        setOk(r.ok)
+        cancelRef.current = null
+      },
+      onError: (m) => {
+        setRunError(m)
+        setRunning(false)
+        cancelRef.current = null
+      },
+    })
+  }
+
+  const stop = (): void => {
+    cancelRef.current?.()
+    cancelRef.current = null
+    setRunning(false)
+  }
+
+  // Honest workspace gate: the capability probe tells us whether this serve
+  // can actually plan + delegate runs — `version.workspace` is always set (it
+  // falls back to the serve's cwd), so it can't be the signal.
+  const workspaceMissing = capabilities.known && !capabilities.hasWorkspace
+  const canRun =
+    !running &&
+    taskInput.trim().length > 0 &&
+    version.data?.workspace !== undefined &&
+    !workspaceMissing
+  const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0
+
+  const inspector = useResizable({ defaultSize: 400, minSizePx: 320, maxSizePx: 560 })
+
+  // Selected-task accessors for the detail panel.
+  const selectedStatus = selected !== null ? statuses.get(selected) : undefined
+  const selectedState: VizState = selectedStatus?.state ?? 'queued'
+  const selectedNode = selected !== null ? nodes.find((n) => n.id === selected) : undefined
+  const selectedDuration = selected !== null ? durationOf(selected) : 0
+  const selectedCpu = cpuPct(selectedStatus?.cpuMs, selectedDuration)
+  const selectedWindow = selected !== null ? timing.get(selected) : undefined
+  const selectedLog = selected !== null ? stripAnsi(logsRef.current.get(selected) ?? '') : ''
+
+  const onInputKeyDown = (e: KeyboardEvent<HTMLElement>): void => {
+    if (e.key === 'Enter') start()
+  }
+
+  return (
+    <Layout
+      height="fill"
+      header={
+        <LayoutHeader hasDivider>
+          <HStack gap={3} vAlign="center">
+            <StackItem size="fill">
+              <VStack gap={0.5}>
+                <Text weight="semibold">Run</Text>
+                <Text type="supporting" color="secondary">
+                  Trigger a task and watch its graph execute live.
+                </Text>
+              </VStack>
+            </StackItem>
+            <TextInput
+              label="Task name"
+              isLabelHidden
+              size="sm"
+              width={280}
+              value={taskInput}
+              onChange={setTaskInput}
+              onKeyDown={onInputKeyDown}
+              placeholder="task name, e.g. lint or test"
+              isDisabled={workspaceMissing}
+            />
+            <Button
+              label={started ? 'Rerun' : 'Run'}
+              variant="primary"
+              size="sm"
+              icon={<Icon icon={PlayIcon} size="sm" />}
+              isDisabled={!canRun}
+              isLoading={running}
+              onClick={start}
+              tooltip={
+                workspaceMissing
+                  ? 'This serve has no colocated workspace — runs are unavailable here.'
+                  : undefined
+              }
+            />
+            {running && (
+              <Button
+                label="Stop"
+                variant="secondary"
+                size="sm"
+                icon={<Icon icon={StopIcon} size="sm" />}
+                onClick={stop}
+              />
+            )}
+          </HStack>
+        </LayoutHeader>
+      }
+      content={
+        <LayoutContent padding={0}>
+          <VStack gap={0} style={{ height: '100%', minHeight: 0 }}>
+            {started && (
+              <HStack gap={3} vAlign="center" paddingInline={3} paddingBlock={2}>
+                <StackItem size="fill">
+                  <ProgressBar
+                    label="Run progress"
+                    isLabelHidden
+                    value={pct}
+                    variant={ok === false ? 'error' : ok === true ? 'success' : 'accent'}
+                  />
+                </StackItem>
+                {predicted.total > 0 && predicted.anyQueued && (
+                  <Tooltip content="predicted from cache keys — before execution">
+                    <Token
+                      size="sm"
+                      color="cyan"
+                      label={`${predicted.hits}/${predicted.total} predicted cached`}
+                    />
+                  </Tooltip>
+                )}
+                <Text type="code" size="sm" color="secondary" hasTabularNumbers>
+                  {progress.done}/{progress.total > 0 ? progress.total : '—'}
+                  {running ? ' · running' : ok !== null ? ` · ${ok ? 'passed' : 'failed'}` : ''}
+                </Text>
+                <SegmentedControl label="View" size="sm" value={view} onChange={(v) => setView(v as 'graph' | 'flame')}>
+                  <SegmentedControlItem label="Graph" value="graph" />
+                  <SegmentedControlItem label="Flame" value="flame" />
+                </SegmentedControl>
+              </HStack>
+            )}
+
+            {runError !== null && <Banner status="error" title={runError} container="section" />}
+
+            <StackItem size="fill" style={{ minHeight: 0, overflow: 'hidden' }}>
+              {!started ? (
+                workspaceMissing ? (
+                  <EmptyState
+                    title="This serve has no workspace"
+                    description="Runs execute against a colocated workspace. Start the serve inside your repo to unlock the cockpit — this instance shows pushed run analytics only."
+                    actions={<CodeBlock code="cd <your-repo> && vx-cloud serve --ui" size="sm" />}
+                  />
+                ) : (
+                  <EmptyState
+                    title="No run yet"
+                    description="Enter a task above and press Run to see its graph execute."
+                    actions={
+                      taskNames.length > 0 ? (
+                        <HStack gap={1} wrap="wrap" hAlign="center">
+                          {taskNames.slice(0, 8).map((t) => (
+                            <Token key={t} size="sm" color="default" label={t} onClick={() => setTaskInput(t)} />
+                          ))}
+                        </HStack>
+                      ) : (
+                        <CodeBlock code="vx run <task>" size="sm" />
+                      )
+                    }
+                  />
+                )
+              ) : view === 'flame' ? (
+                flameRows.length > 0 ? (
+                  <VStack gap={0} padding={2} style={{ height: '100%', minHeight: 0 }}>
+                    <StackItem size="fill" style={{ minHeight: 0 }}>
+                      <Flamegraph
+                        tasks={flameRows}
+                        selectedId={selected ?? undefined}
+                        highlightIds={criticalSet}
+                        edges={flameEdges}
+                        onSelect={(t) => setSelected(`${t.project}#${t.task}`)}
+                      />
+                    </StackItem>
+                  </VStack>
+                ) : (
+                  <EmptyState title="Waiting for tasks…" isCompact />
+                )
+              ) : nodes.length > 0 ? (
+                <RunGraph
+                  nodes={nodes}
+                  states={stateMap}
+                  durations={durationMap}
+                  cpu={cpuMap}
+                  criticalPath={criticalSet}
+                  selected={selected}
+                  onSelect={setSelected}
+                />
+              ) : (
+                <EmptyState title="Resolving graph…" isCompact />
+              )}
+            </StackItem>
+          </VStack>
+        </LayoutContent>
+      }
+      end={
+        started ? (
+          <>
+            <ResizeHandle
+              direction="horizontal"
+              hasDivider
+              isAlwaysVisible={false}
+              resizable={inspector.props}
+              label="Resize run inspector"
+            />
+            <LayoutPanel width={inspector.size} padding={0} label="Run inspector">
+              <VStack gap={0} style={{ height: '100%', minHeight: 0 }}>
+                {/* Critical path + parallelism */}
+                <VStack gap={0} style={{ maxHeight: '45%', minHeight: 0, overflow: 'hidden' }}>
+                  <HStack gap={2} vAlign="center" paddingInline={3} paddingBlock={2}>
+                    <Icon icon={ArrowTrendingUpIcon} size="sm" color="warning" />
+                    <Text type="label" color="secondary">
+                      Critical path
+                    </Text>
+                    <StackItem size="fill" />
+                    {critical.chain.length > 0 && (
+                      <Text type="code" size="sm" hasTabularNumbers style={{ color: 'var(--color-warning)' }}>
+                        {fmtDur(critical.totalMs)}
+                      </Text>
+                    )}
+                  </HStack>
+                  <Divider />
+                  <HStack gap={2} vAlign="center" paddingInline={3} paddingBlock={1.5}>
+                    <Icon icon={FireIcon} size="xsm" color="accent" />
+                    <Text type="supporting" size="2xs" color="secondary" hasTabularNumbers>
+                      {parallel.maxConcurrent}
+                      {concurrency !== undefined ? ` / ${concurrency}` : ''} peak parallel
+                    </Text>
+                    <StackItem size="fill" />
+                    {parallel.spanMs > 0 && (
+                      <Text type="supporting" size="2xs" color="secondary" hasTabularNumbers>
+                        {Math.round((parallel.busyMs / parallel.spanMs) * 10) / 10}× avg
+                      </Text>
+                    )}
+                  </HStack>
+                  <Divider />
+                  {critical.chain.length > 0 ? (
+                    <StackItem size="fill" isScrollable style={{ minHeight: 0 }}>
+                      <VStack gap={0}>
+                        <HStack paddingInline={3} paddingBlock={1}>
+                          <Text type="supporting" size="2xs" color="secondary">
+                            {critical.chain.length === 1 ? 'This' : 'These'} {critical.chain.length}{' '}
+                            task{critical.chain.length === 1 ? ' is' : 's are'} your{' '}
+                            {fmtDur(critical.totalMs)} floor.
+                          </Text>
+                        </HStack>
+                        <List density="compact">
+                          {critical.chain.map((id, i) => {
+                            const node = nodes.find((n) => n.id === id)
+                            return (
+                              <ListItem
+                                key={id}
+                                label={
+                                  <Text type="code" size="sm">
+                                    {i + 1}. {node?.task ?? id}
+                                  </Text>
+                                }
+                                description={node?.project}
+                                endContent={
+                                  <Text type="code" size="sm" color="secondary" hasTabularNumbers>
+                                    {fmtDur(durationOf(id))}
+                                  </Text>
+                                }
+                                isSelected={selected === id}
+                                onClick={() => setSelected(id)}
+                              />
+                            )
+                          })}
+                        </List>
+                      </VStack>
+                    </StackItem>
+                  ) : (
+                    <HStack paddingInline={3} paddingBlock={2}>
+                      <Text type="supporting" color="secondary">
+                        {started ? 'Computing…' : 'Run to see the wall-time floor.'}
+                      </Text>
+                    </HStack>
+                  )}
+                </VStack>
+
+                <Divider />
+
+                {/* Task detail: facts + output */}
+                <StackItem size="fill" style={{ minHeight: 0 }}>
+                  {selected === null ? (
+                    <EmptyState
+                      title="No task selected"
+                      description="Click a node to view its details + output."
+                      isCompact
+                    />
+                  ) : (
+                    <VStack gap={0} style={{ height: '100%', minHeight: 0 }}>
+                      <HStack gap={2} vAlign="center" paddingInline={3} paddingBlock={2}>
+                        <StackItem size="fill" style={{ minWidth: 0 }}>
+                          <Text type="code" size="sm" maxLines={1}>
+                            {selected}
+                          </Text>
+                        </StackItem>
+                        <StatusCell state={selectedState} />
+                      </HStack>
+                      <Divider />
+                      <VStack paddingInline={3} paddingBlock={2}>
+                        <MetadataList columns={2} label={{ position: 'top' }}>
+                          <MetadataListItem label="Duration">
+                            <Text type="body" hasTabularNumbers>
+                              {fmtDur(selectedDuration)}
+                            </Text>
+                          </MetadataListItem>
+                          <MetadataListItem label="CPU">
+                            <Text type="body" hasTabularNumbers>
+                              {selectedCpu === undefined ? '—' : `${selectedCpu}%`}
+                            </Text>
+                          </MetadataListItem>
+                          <MetadataListItem label="Peak RAM">
+                            <Text type="body" hasTabularNumbers>
+                              {selectedStatus?.peakRssBytes !== undefined
+                                ? formatBytes(selectedStatus.peakRssBytes)
+                                : '—'}
+                            </Text>
+                          </MetadataListItem>
+                          <MetadataListItem label="Exit code">
+                            <Text type="body" hasTabularNumbers>
+                              {selectedStatus?.exitCode ?? '—'}
+                            </Text>
+                          </MetadataListItem>
+                          <MetadataListItem label="Started">
+                            <Text type="body" hasTabularNumbers>
+                              {fmtClock(selectedWindow?.startedAt)}
+                            </Text>
+                          </MetadataListItem>
+                          <MetadataListItem label="Ended">
+                            <Text type="body" hasTabularNumbers>
+                              {fmtClock(selectedWindow?.endedAt)}
+                            </Text>
+                          </MetadataListItem>
+                          <MetadataListItem label="Project">
+                            <Text type="body">{selectedNode?.project ?? '—'}</Text>
+                          </MetadataListItem>
+                        </MetadataList>
+                      </VStack>
+                      <Divider />
+                      <HStack paddingInline={3} paddingBlock={1}>
+                        <Text type="label" color="secondary">
+                          Output
+                        </Text>
+                      </HStack>
+                      <StackItem size="fill" isScrollable style={{ minHeight: 0 }}>
+                        <CodeBlock
+                          code={selectedLog === '' ? '— no output —' : selectedLog}
+                          size="sm"
+                          width="100%"
+                          container="section"
+                          isWrapped
+                        />
+                      </StackItem>
+                    </VStack>
+                  )}
+                </StackItem>
+              </VStack>
+            </LayoutPanel>
+          </>
+        ) : undefined
+      }
+    />
+  )
+}
