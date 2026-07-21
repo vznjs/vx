@@ -1,8 +1,11 @@
 // The vx brand theme — "aurora": deep-space dark canvas washed with a
-// violet/cyan aurora, glassy elevated surfaces, electric-violet accent, and
-// Space Grotesk display type (embedded via fonts.css). Extends the neutral
-// theme so anything unspecified keeps sane defaults; light mode carries the
-// same identity on a violet-tinted paper canvas.
+// violet/cyan aurora, glassy elevated surfaces, electric-violet accent.
+// Extends the neutral theme and deliberately overrides COLOR + SURFACES
+// ONLY — typography, spacing, radius, and every component's own chrome
+// (tables especially) stay on astryx defaults. The brand carries in hue,
+// not in re-styled primitives; Space Grotesk survives solely in the
+// wordmark (a logo, not a type system). Light mode is the same identity
+// on violet-tinted paper.
 //
 // Everything routes through astryx's theming seam (tokens + component
 // overrides). The custom --vx-* primitives the overrides reference (aurora
@@ -13,21 +16,9 @@
 import { defineTheme } from '@astryxdesign/core/theme'
 import { neutralTheme } from '@astryxdesign/theme-neutral'
 
-const SANS =
-  '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
-
 export const vxTheme = defineTheme({
   name: 'vx',
   extends: neutralTheme,
-  typography: {
-    scale: { base: 14, ratio: 1.22 },
-    heading: { family: 'Space Grotesk', fallbacks: SANS, weights: { 3: 'bold', 4: 'bold' } },
-    code: {
-      family: 'ui-monospace',
-      fallbacks: '"SF Mono", Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-    },
-  },
-  radius: { base: 5, multiplier: 1.4 },
   tokens: {
     // Canvas + surfaces — cool violet-tinted spine instead of pure gray.
     '--color-background-body': ['#f4f3fa', '#0d0d15'],
@@ -103,27 +94,6 @@ export const vxTheme = defineTheme({
     },
     'top-nav': {
       base: { backgroundColor: 'transparent' },
-    },
-    // Tables sit on their own glass slab so dense rows read anchored on
-    // the aurora canvas instead of floating over it.
-    'table-scroll-wrapper': {
-      base: {
-        backgroundColor: 'var(--vx-glass-card)',
-        backdropFilter: 'blur(14px) saturate(1.25)',
-        border: '1px solid var(--vx-glass-border)',
-        borderRadius: 'var(--radius-container)',
-        boxShadow:
-          '0 10px 30px -12px var(--vx-shadow-drop), inset 0 1px 0 var(--vx-edge-highlight)',
-      },
-    },
-    'table-header-cell': {
-      base: {
-        backgroundColor: 'transparent',
-        color: 'var(--color-text-secondary)',
-        textTransform: 'uppercase',
-        fontSize: '11px',
-        letterSpacing: '0.06em',
-      },
     },
     // Cards are glass: translucent fill, hairline violet border, soft depth.
     card: {

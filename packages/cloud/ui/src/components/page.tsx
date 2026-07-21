@@ -71,13 +71,7 @@ export function Kpi(props: { label: string; value: ReactNode; sub?: ReactNode; t
         <Text type="supporting" color="secondary">
           {props.label}
         </Text>
-        <span
-          style={{
-            fontFamily: 'var(--font-family-heading)',
-            letterSpacing: '-0.02em',
-            ...(color !== undefined ? { color } : {}),
-          }}
-        >
+        <span style={color !== undefined ? { color } : undefined}>
           <Text type="display-3" color="inherit">
             {props.value}
           </Text>
