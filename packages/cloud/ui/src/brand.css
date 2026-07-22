@@ -32,3 +32,15 @@
   --vx-brand-from: #a78bfa;
   --vx-brand-to: #f472b6;
 }
+
+/* The main pane: an inset, rounded surface floating on the aurora canvas
+   (Vercel/Linear content-frame look). AppShell gives its content region
+   id="astryx-app-shell-main"; the ID out-specifies StyleX's class rules. */
+#astryx-app-shell-main {
+  margin: 0 var(--spacing-3, 12px) var(--spacing-3, 12px) 0;
+  border-radius: var(--radius-page, 16px);
+  border: 1px solid var(--vx-glass-border);
+  background-color: var(--vx-glass-card);
+  overflow: clip;
+  box-shadow: 0 10px 30px -12px var(--vx-shadow-drop);
+}

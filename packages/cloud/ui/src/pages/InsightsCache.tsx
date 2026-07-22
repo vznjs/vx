@@ -136,7 +136,7 @@ export function InsightsCache(): JSX.Element {
                     </defs>
                     <CartesianGrid horizontal vertical={false} stroke={GRID} />
                     <XAxis dataKey="day" tick={TICK} axisLine={false} tickLine={false} minTickGap={28} />
-                    <YAxis tick={TICK} axisLine={false} tickLine={false} width={38} />
+                    <YAxis tick={TICK} axisLine={false} tickLine={false} width={38} domain={[0, 'dataMax']} />
                     <Tooltip
                       formatter={(v) => formatCount(Number(v))}
                       contentStyle={{

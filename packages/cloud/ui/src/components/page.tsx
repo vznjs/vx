@@ -20,9 +20,9 @@ const pageStyle: CSSProperties = {
 /** Standard content column: padded, centered, vertically stacked sections. */
 export function Page({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <Section padding={4}>
+    <Section padding={6}>
       <div style={pageStyle}>
-        <VStack gap={4}>{children}</VStack>
+        <VStack gap={5}>{children}</VStack>
       </div>
     </Section>
   )

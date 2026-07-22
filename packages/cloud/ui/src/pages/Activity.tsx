@@ -242,7 +242,7 @@ export function Activity(): JSX.Element {
   let body: ReactNode
   if (invocations.data === undefined && invocations.loading) {
     body = (
-      <VStack gap={2} style={{ padding: 'var(--spacing-4)' }}>
+      <VStack gap={2} style={{ padding: 'var(--spacing-5)' }}>
         {Array.from({ length: 8 }, (_, i) => (
           <Skeleton key={i} height={40} />
         ))}
@@ -259,7 +259,7 @@ export function Activity(): JSX.Element {
     body = <EmptyState title="Nothing matches" description="Loosen the filter or status segment." />
   } else {
     body = (
-      <VStack gap={2} style={{ padding: 'var(--spacing-2) var(--spacing-3)' }}>
+      <VStack gap={3} style={{ padding: 'var(--spacing-4) var(--spacing-5)' }}>
         {groups.map(([bucket, list]) => (
           <Collapsible
             key={bucket}
@@ -289,7 +289,7 @@ export function Activity(): JSX.Element {
   return (
     <Layout height="fill">
       <LayoutHeader hasDivider>
-        <HStack gap={3} vAlign="center" style={{ width: '100%', padding: '0 var(--spacing-3)' }}>
+        <HStack gap={3} vAlign="center" style={{ width: '100%', padding: 'var(--spacing-2) var(--spacing-5)' }}>
           <VStack gap={0}>
             <Heading level={2}>Activity</Heading>
             <Text type="supporting" color="secondary">

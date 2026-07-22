@@ -141,6 +141,7 @@ export function InsightsSpeed(): JSX.Element {
                   axisLine={false}
                   tickLine={false}
                   width={52}
+                  domain={[0, 'dataMax']}
                   tickFormatter={(v: number) => formatDuration(v)}
                 />
                 <Tooltip
@@ -177,7 +178,7 @@ export function InsightsSpeed(): JSX.Element {
                 <LineChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid horizontal vertical={false} stroke={GRID} />
                   <XAxis dataKey="runId" hide />
-                  <YAxis tick={TICK} axisLine={false} tickLine={false} width={30} />
+                  <YAxis tick={TICK} axisLine={false} tickLine={false} width={30} domain={[0, 'dataMax']} />
                   <Tooltip
                     formatter={(v) => `×${Number(v).toFixed(2)}`}
                     contentStyle={{

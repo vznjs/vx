@@ -69,7 +69,7 @@ import { RunConsole } from './pages/RunConsole.tsx'
 /** Brand wordmark: Space Grotesk + the violet→pink gradient, linking home. */
 function Wordmark(): JSX.Element {
   return (
-    <a href="#/" style={{ textDecoration: 'none', display: 'block', padding: 'var(--spacing-3) var(--spacing-4)' }}>
+    <a href="#/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'baseline' }}>
       <span
         style={{
           fontFamily: "'Space Grotesk', var(--font-family-body)",
@@ -282,6 +282,7 @@ export function App(): JSX.Element {
       }
       topNav={
         <TopNav
+          heading={<Wordmark />}
           endContent={
             <HStack gap={2} vAlign="center">
               <WorkspaceSwitcher />
@@ -292,7 +293,7 @@ export function App(): JSX.Element {
         />
       }
       sideNav={
-        <SideNav header={<Wordmark />} collapsible>
+        <SideNav collapsible>
           {NAV_TOP.filter((item) => item.href !== '/run' || caps.hasWorkspace || !caps.known).map(
             (item) => (
               <SideNavItem
