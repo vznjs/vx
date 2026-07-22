@@ -1,6 +1,6 @@
 # @vzn/vx-ui
 
-The vx dashboard — a **React SPA on the [Astryx](https://github.com/facebook/astryx)
+**VX Cloud** — the vx dashboard, a **React SPA on the [Astryx](https://github.com/facebook/astryx)
 design system** that reads a `vx serve` over HTTP.
 
 It builds to a **single self-contained `dist/index.html`** (JS + CSS

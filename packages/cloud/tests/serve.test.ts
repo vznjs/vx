@@ -220,7 +220,7 @@ describe('vx serve delegation', () => {
       expect(index.headers.get('content-type')).toContain('text/html')
       const html = await index.text()
       expect(html).toContain('<!doctype html>')
-      expect(html).toContain('vx dashboard')
+      expect(html).toContain('VX Cloud')
 
       // A deep app path (not /v1/*, not a real asset) serves the SPA shell.
       const deep = await fetch(`${server.origin}/run`)
@@ -612,7 +612,7 @@ describe('vx serve --ui (embedded single-file dashboard)', () => {
   it('serves the embedded HTML for every non-API route', async () => {
     const root = await makeWorkspace()
     const uiHtmlPath = path.join(await mkdtemp(path.join(tmpdir(), 'vx-ui-')), 'index.html')
-    await writeFile(uiHtmlPath, '<!doctype html><title>vx dashboard</title>')
+    await writeFile(uiHtmlPath, '<!doctype html><title>VX Cloud</title>')
 
     const server = await startServe({ root, uiHtmlPath })
     try {
@@ -621,13 +621,13 @@ describe('vx serve --ui (embedded single-file dashboard)', () => {
       expect(home.status).toBe(200)
       expect(home.headers.get('content-type')).toContain('text/html')
       expect(home.headers.get('cache-control')).toBe('no-store')
-      expect(await home.text()).toContain('vx dashboard')
+      expect(await home.text()).toContain('VX Cloud')
 
       // SPA hash-router fallback: every unknown route serves the same HTML
       const fallback = await fetch(`${server.origin}/tasks/pkg%23build`)
       expect(fallback.status).toBe(200)
       expect(fallback.headers.get('content-type')).toContain('text/html')
-      expect(await fallback.text()).toContain('vx dashboard')
+      expect(await fallback.text()).toContain('VX Cloud')
 
       // /v1/* still wins over the UI catch-all
       const api = await fetch(`${server.origin}/v1/cache/stats`)

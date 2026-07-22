@@ -82,7 +82,7 @@ function Wordmark(): JSX.Element {
           color: 'transparent',
         }}
       >
-        vx
+        VX
       </span>
       <span
         style={{
@@ -94,7 +94,7 @@ function Wordmark(): JSX.Element {
           color: 'var(--color-text-secondary)',
         }}
       >
-        insights
+        Cloud
       </span>
     </a>
   )
