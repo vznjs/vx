@@ -344,8 +344,10 @@ export function Activity(): JSX.Element {
   }
 
   return (
-    <Layout height="fill">
-      <LayoutHeader hasDivider>
+    <Layout
+      height="fill"
+      header={
+        <LayoutHeader hasDivider>
         <HStack gap={3} vAlign="center" style={{ width: '100%', padding: 'var(--spacing-3) var(--spacing-5)' }}>
           <VStack gap={0}>
             <Heading level={2}>Activity</Heading>
@@ -371,17 +373,18 @@ export function Activity(): JSX.Element {
           </HStack>
         </HStack>
       </LayoutHeader>
-      <LayoutContent padding={0} isScrollable>
-        {body}
-      </LayoutContent>
-      {selectedInv !== null && (
-        <>
-          <ResizeHandle resizable={panel.props} isReversed isAlwaysVisible={false} />
-          <LayoutPanel resizable={panel.props} hasDivider isScrollable label="Run inspector">
-            <Inspector runId={selectedInv.runId} inv={selectedInv} />
-          </LayoutPanel>
-        </>
-      )}
-    </Layout>
+      }
+      content={<LayoutContent padding={0} isScrollable>{body}</LayoutContent>}
+      end={
+        selectedInv !== null ? (
+          <>
+            <ResizeHandle resizable={panel.props} isReversed isAlwaysVisible={false} />
+            <LayoutPanel resizable={panel.props} hasDivider isScrollable label="Run inspector">
+              <Inspector runId={selectedInv.runId} inv={selectedInv} />
+            </LayoutPanel>
+          </>
+        ) : undefined
+      }
+    />
   )
 }
