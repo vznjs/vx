@@ -5,7 +5,8 @@
 import { useEffect, useMemo, useState, type JSX } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { AppShell } from '@astryxdesign/core/AppShell'
-import { SideNav, SideNavItem } from '@astryxdesign/core/SideNav'
+import { SideNav, SideNavItem, SideNavSection } from '@astryxdesign/core/SideNav'
+import { Badge } from '@astryxdesign/core/Badge'
 import { TopNav } from '@astryxdesign/core/TopNav'
 import { Banner } from '@astryxdesign/core/Banner'
 import { Button } from '@astryxdesign/core/Button'
@@ -22,8 +23,8 @@ import { createStaticSource } from '@astryxdesign/core/Typeahead'
 import { Spinner } from '@astryxdesign/core/Spinner'
 import { Center } from '@astryxdesign/core/Center'
 import {
+  BellAlertIcon,
   BoltIcon,
-  ChartBarIcon,
   CircleStackIcon,
   ClockIcon,
   FireIcon,
@@ -31,7 +32,7 @@ import {
   MoonIcon,
   PlayIcon,
   RectangleGroupIcon,
-  Squares2X2Icon,
+  RocketLaunchIcon,
   SunIcon,
 } from '@heroicons/react/24/outline'
 import {
@@ -54,17 +55,17 @@ import {
 } from './api.ts'
 import { useQuery } from './hooks.ts'
 import { useThemeMode } from './theme-mode.ts'
-import { Overview } from './pages/Overview.tsx'
-import { Runs } from './pages/Runs.tsx'
+import { Activity } from './pages/Activity.tsx'
+import { Attention, useAttentionCount } from './pages/Attention.tsx'
 import { RunDetail } from './pages/RunDetail.tsx'
 import { Compare } from './pages/Compare.tsx'
 import { Projects } from './pages/Projects.tsx'
 import { ProjectDetail } from './pages/ProjectDetail.tsx'
 import { Tasks } from './pages/Tasks.tsx'
 import { TaskDetail } from './pages/TaskDetail.tsx'
-import { Cache } from './pages/Cache.tsx'
-import { Bottlenecks } from './pages/Bottlenecks.tsx'
-import { Trends } from './pages/Trends.tsx'
+import { InsightsSpeed } from './pages/InsightsSpeed.tsx'
+import { InsightsCache } from './pages/InsightsCache.tsx'
+import { InsightsFlaky } from './pages/InsightsFlaky.tsx'
 import { RunConsole } from './pages/RunConsole.tsx'
 
 /** Brand wordmark: Space Grotesk + the violet→pink gradient, linking home. */
@@ -107,33 +108,22 @@ interface NavEntry {
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
 }
 
-const NAV: NavEntry[] = [
-  { href: '/run', label: 'Run', icon: PlayIcon },
-  { href: '/runs', label: 'Runs', icon: ClockIcon },
-  { href: '/overview', label: 'Overview', icon: Squares2X2Icon },
+/** Journey-first top entries (Linear pattern), then labeled entity sections. */
+const NAV_TOP: NavEntry[] = [
+  { href: '/', label: 'Activity', icon: ClockIcon },
+  { href: '/attention', label: 'Needs attention', icon: BellAlertIcon },
+  { href: '/run', label: 'Cockpit', icon: PlayIcon },
+]
+const NAV_INSIGHTS: NavEntry[] = [
+  { href: '/insights/speed', label: 'Speed', icon: RocketLaunchIcon },
+  { href: '/insights/cache', label: 'Cache', icon: CircleStackIcon },
+  { href: '/insights/flaky', label: 'Flaky tasks', icon: FireIcon },
+]
+const NAV_WORKSPACE: NavEntry[] = [
   { href: '/projects', label: 'Projects', icon: RectangleGroupIcon },
   { href: '/tasks', label: 'Tasks', icon: ListBulletIcon },
-  { href: '/bottlenecks', label: 'Bottlenecks', icon: FireIcon },
-  { href: '/trends', label: 'Trends', icon: ChartBarIcon },
-  { href: '/cache', label: 'Cache', icon: CircleStackIcon },
 ]
 
-/**
- * Capability-aware landing: a serve with a colocated workspace opens on the
- * Run cockpit (the daily-dev entry point); a hosted analytics-only serve
- * opens on Runs. Redirects once the capability probe resolves.
- */
-function Home(): JSX.Element {
-  const caps = useCapabilities()
-  if (!caps.known) {
-    return (
-      <Center>
-        <Spinner label="Probing server capabilities" />
-      </Center>
-    )
-  }
-  return <Navigate to={caps.hasWorkspace ? '/run' : '/runs'} replace />
-}
 
 /** Origin + token editor. Commits via api.ts persistence, which re-keys every query. */
 function ConnectionDialog(props: { isOpen: boolean; onOpenChange: (open: boolean) => void }): JSX.Element {
@@ -236,18 +226,18 @@ function ModeToggle(): JSX.Element {
 }
 
 const TITLES: ReadonlyArray<[RegExp, string]> = [
-  [/^\/run$/, 'Run'],
+  [/^\/run$/, 'Cockpit'],
   [/^\/runs\/.+/, 'Run detail'],
-  [/^\/runs/, 'Runs'],
   [/^\/compare\/.+/, 'Compare'],
-  [/^\/overview/, 'Overview'],
+  [/^\/attention/, 'Needs attention'],
+  [/^\/insights\/speed/, 'Speed'],
+  [/^\/insights\/cache/, 'Cache'],
+  [/^\/insights\/flaky/, 'Flaky tasks'],
   [/^\/projects\/.+/, 'Project'],
   [/^\/projects/, 'Projects'],
   [/^\/tasks\/.+/, 'Task'],
   [/^\/tasks/, 'Tasks'],
-  [/^\/bottlenecks/, 'Bottlenecks'],
-  [/^\/trends/, 'Trends'],
-  [/^\/cache/, 'Cache'],
+  [/^\/$/, 'Activity'],
 ]
 
 export function App(): JSX.Element {
@@ -255,8 +245,16 @@ export function App(): JSX.Element {
   const navigate = useNavigate()
   const connection = useConnectionKey()
   const unauthorized = useUnauthorized()
+  const caps = useCapabilities()
+  const attentionCount = useAttentionCount()
   const [editing, setEditing] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+
+  /** Selected iff exact match or a sub-path; '/' only when exactly home. */
+  const selected = (href: string): boolean =>
+    href === '/'
+      ? location.pathname === '/'
+      : location.pathname === href || location.pathname.startsWith(`${href}/`)
 
   // Re-probe serve-level context whenever the connection changes.
   useEffect(() => {
@@ -278,7 +276,10 @@ export function App(): JSX.Element {
   const paletteSource = useMemo(
     () =>
       createStaticSource(
-        NAV.map((item) => ({ id: item.href, label: item.label })),
+        [...NAV_TOP, ...NAV_INSIGHTS, ...NAV_WORKSPACE].map((item) => ({
+          id: item.href,
+          label: item.label,
+        })),
       ),
     [],
   )
@@ -311,41 +312,67 @@ export function App(): JSX.Element {
         />
       }
       sideNav={
-        <SideNav
-          header={<Wordmark />}
-          collapsible
-        >
-          {NAV.map((item) => (
-            <SideNavItem
-              key={item.href}
-              label={item.label}
-              icon={item.icon}
-              isSelected={
-                item.href === '/runs'
-                  ? /^\/runs/.test(location.pathname) || /^\/compare/.test(location.pathname)
-                  : location.pathname === item.href ||
-                    location.pathname.startsWith(`${item.href}/`)
-              }
-              onClick={() => navigate(item.href)}
-            />
-          ))}
+        <SideNav header={<Wordmark />} collapsible>
+          {NAV_TOP.filter((item) => item.href !== '/run' || caps.hasWorkspace || !caps.known).map(
+            (item) => (
+              <SideNavItem
+                key={item.href}
+                label={item.label}
+                icon={item.icon}
+                isSelected={selected(item.href)}
+                onClick={() => navigate(item.href)}
+                endContent={
+                  item.href === '/attention' && attentionCount > 0 ? (
+                    <Badge label={String(attentionCount)} variant="error" />
+                  ) : undefined
+                }
+              />
+            ),
+          )}
+          <SideNavSection title="Insights">
+            {NAV_INSIGHTS.map((item) => (
+              <SideNavItem
+                key={item.href}
+                label={item.label}
+                icon={item.icon}
+                isSelected={selected(item.href)}
+                onClick={() => navigate(item.href)}
+              />
+            ))}
+          </SideNavSection>
+          <SideNavSection title="Workspace">
+            {NAV_WORKSPACE.map((item) => (
+              <SideNavItem
+                key={item.href}
+                label={item.label}
+                icon={item.icon}
+                isSelected={selected(item.href)}
+                onClick={() => navigate(item.href)}
+              />
+            ))}
+          </SideNavSection>
         </SideNav>
       }
     >
       <Routes>
-        <Route path="/" element={<Home />} />
+        <Route path="/" element={<Activity />} />
+        <Route path="/attention" element={<Attention />} />
         <Route path="/run" element={<RunConsole />} />
-        <Route path="/overview" element={<Overview />} />
+        <Route path="/runs/:id" element={<RunDetail />} />
+        <Route path="/compare/:id" element={<Compare />} />
+        <Route path="/insights/speed" element={<InsightsSpeed />} />
+        <Route path="/insights/cache" element={<InsightsCache />} />
+        <Route path="/insights/flaky" element={<InsightsFlaky />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/projects/:name" element={<ProjectDetail />} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/tasks/:id" element={<TaskDetail />} />
-        <Route path="/runs" element={<Runs />} />
-        <Route path="/runs/:id" element={<RunDetail />} />
-        <Route path="/compare/:id" element={<Compare />} />
-        <Route path="/bottlenecks" element={<Bottlenecks />} />
-        <Route path="/trends" element={<Trends />} />
-        <Route path="/cache" element={<Cache />} />
+        {/* Legacy routes from the pre-v3 IA. */}
+        <Route path="/runs" element={<Navigate to="/" replace />} />
+        <Route path="/overview" element={<Navigate to="/" replace />} />
+        <Route path="/bottlenecks" element={<Navigate to="/insights/speed" replace />} />
+        <Route path="/trends" element={<Navigate to="/insights/speed" replace />} />
+        <Route path="/cache" element={<Navigate to="/insights/cache" replace />} />
       </Routes>
       <ConnectionDialog isOpen={editing} onOpenChange={setEditing} />
       <CommandPalette
