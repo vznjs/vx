@@ -5,11 +5,13 @@
 // row's chart). Click → resizable inspector panel (Linear peek pattern);
 // full detail is one more click.
 
-import { useMemo, useState, type CSSProperties, type JSX, type ReactNode } from 'react'
+import { Fragment, useMemo, useState, type CSSProperties, type JSX, type ReactNode } from 'react'
 import { Badge } from '@astryxdesign/core/Badge'
 import { Button } from '@astryxdesign/core/Button'
-import { Collapsible } from '@astryxdesign/core/Collapsible'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
+import { Table, TableCell, TableRow } from '@astryxdesign/core/Table'
+import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
+import { Icon } from '@astryxdesign/core/Icon'
 import { Item } from '@astryxdesign/core/Item'
 import {
   HStack,
@@ -88,6 +90,50 @@ function MixBar({ r }: { r: InvocationDetail }): JSX.Element {
   )
 }
 
+/**
+ * Fixed column geometry — every row places every element at the same x
+ * (Vercel deployments-list discipline). One Table spans ALL day groups so
+ * columns align across the whole feed.
+ */
+const COLS = {
+  status: 36,
+  env: 76,
+  mix: 96,
+  duration: 84,
+  time: 110,
+} as const
+
+/** Firm cell geometry: table auto-layout must not squeeze fixed columns. */
+const cell = (w: number, extra: CSSProperties = {}): CSSProperties => ({
+  width: w,
+  minWidth: w,
+  maxWidth: w,
+  whiteSpace: 'nowrap',
+  ...extra,
+})
+
+function GroupRow(props: {
+  bucket: string
+  count: number
+  open: boolean
+  onToggle: () => void
+}): JSX.Element {
+  return (
+    <TableRow onClick={props.onToggle} style={{ cursor: 'pointer' }}>
+      <TableCell
+        colSpan={6}
+        style={{ backgroundColor: 'var(--color-background-muted)', paddingBlock: 'var(--spacing-2)' }}
+      >
+        <HStack gap={2} vAlign="center">
+          <Icon icon={props.open ? ChevronDownIcon : ChevronRightIcon} size="xsm" />
+          <Text type="label">{props.bucket}</Text>
+          <Badge label={String(props.count)} />
+        </HStack>
+      </TableCell>
+    </TableRow>
+  )
+}
+
 function RunRow(props: {
   r: InvocationDetail
   selected: boolean
@@ -96,47 +142,48 @@ function RunRow(props: {
   const r = props.r
   const isFail = failed(r)
   return (
-    <Item
-      density="compact"
+    <TableRow
       onClick={props.onSelect}
-      style={props.selected ? { backgroundColor: 'var(--color-overlay-pressed)' } : undefined}
-      startContent={
-        <HStack gap={2} vAlign="center">
-          <StatusDot variant={isFail ? 'error' : 'success'} label={isFail ? 'failed' : 'passed'} />
-          <Token size="sm" label={r.ci ? (r.ciProvider ?? 'CI') : 'local'} color={r.ci ? 'blue' : 'gray'} />
-        </HStack>
-      }
-      label={
-        <HStack gap={2} vAlign="center">
-          <Text weight="medium">{r.branch ?? 'no branch'}</Text>
+      style={{
+        cursor: 'pointer',
+        backgroundColor: props.selected ? 'var(--color-overlay-pressed)' : undefined,
+      }}
+    >
+      <TableCell style={cell(COLS.status)}>
+        <StatusDot variant={isFail ? 'error' : 'success'} label={isFail ? 'failed' : 'passed'} />
+      </TableCell>
+      <TableCell style={cell(COLS.env)}>
+        <Token size="sm" label={r.ci ? (r.ciProvider ?? 'CI') : 'local'} color={r.ci ? 'blue' : 'gray'} />
+      </TableCell>
+      <TableCell style={{ width: '100%' }}>
+        <HStack gap={3} vAlign="center">
+          <Text weight="medium" maxLines={1}>
+            {r.branch ?? 'no branch'}
+          </Text>
           <Text type="code" color="secondary">
             {(r.commitSha ?? '').slice(0, 8) || '—'}
           </Text>
-          <Text type="supporting" color="secondary">
+          <Text type="supporting" color="secondary" maxLines={1}>
             {r.requestedTasks.join(' ') || r.command}
           </Text>
+          {isFail && <Token size="sm" color="red" label={`${r.failedCount} failed`} />}
+          {isFail && r.dirty === true && <Token size="sm" color="yellow" label="dirty" />}
         </HStack>
-      }
-      description={
-        isFail ? (
-          <HStack gap={2}>
-            <Token size="sm" color="red" label={`${r.failedCount} failed`} />
-            {r.dirty === true && <Token size="sm" color="yellow" label="dirty tree" />}
-          </HStack>
-        ) : undefined
-      }
-      endContent={
-        <HStack gap={3} vAlign="center">
-          <MixBar r={r} />
-          <Text type="supporting" color="secondary" justify="end" style={{ minWidth: 56 }}>
-            {formatDuration(r.totalDurationMs)}
-          </Text>
-          <Text type="supporting" color="secondary" style={{ minWidth: 72, textAlign: 'end' }}>
-            <Timestamp value={new Date(r.startedAt).toISOString()} format="relative" />
-          </Text>
-        </HStack>
-      }
-    />
+      </TableCell>
+      <TableCell style={cell(COLS.mix)}>
+        <MixBar r={r} />
+      </TableCell>
+      <TableCell style={cell(COLS.duration, { textAlign: 'end' })}>
+        <Text type="supporting" color="secondary">
+          {formatDuration(r.totalDurationMs)}
+        </Text>
+      </TableCell>
+      <TableCell style={cell(COLS.time, { textAlign: 'end' })}>
+        <Text type="supporting" color="secondary">
+          <Timestamp value={new Date(r.startedAt).toISOString()} format="relative" />
+        </Text>
+      </TableCell>
+    </TableRow>
   )
 }
 
@@ -204,6 +251,7 @@ export function Activity(): JSX.Element {
   const [status, setStatus] = useState<StatusFilter>('all')
   const [needle, setNeedle] = useState('')
   const [selected, setSelected] = useState<string | null>(null)
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const panel = useResizable({
     defaultSize: 380,
     minSizePx: 320,
@@ -259,29 +307,38 @@ export function Activity(): JSX.Element {
     body = <EmptyState title="Nothing matches" description="Loosen the filter or status segment." />
   } else {
     body = (
-      <VStack gap={3} style={{ padding: 'var(--spacing-4) var(--spacing-5)' }}>
-        {groups.map(([bucket, list]) => (
-          <Collapsible
-            key={bucket}
-            trigger={
-              <HStack gap={2} vAlign="center">
-                <Text type="label">{bucket}</Text>
-                <Badge label={String(list.length)} />
-              </HStack>
-            }
-          >
-            <VStack gap={0}>
-              {list.map((r) => (
-                <RunRow
-                  key={r.runId}
-                  r={r}
-                  selected={selected === r.runId}
-                  onSelect={() => setSelected(selected === r.runId ? null : r.runId)}
+      <VStack gap={0} style={{ padding: 'var(--spacing-4) var(--spacing-5) var(--spacing-6)' }}>
+        <Table density="balanced" hasHover dividers="rows" textOverflow="truncate">
+          {groups.map(([bucket, list]) => {
+            const open = !collapsed.has(bucket)
+            return (
+              <Fragment key={bucket}>
+                <GroupRow
+                  bucket={bucket}
+                  count={list.length}
+                  open={open}
+                  onToggle={() =>
+                    setCollapsed((prev) => {
+                      const next = new Set(prev)
+                      if (next.has(bucket)) next.delete(bucket)
+                      else next.add(bucket)
+                      return next
+                    })
+                  }
                 />
-              ))}
-            </VStack>
-          </Collapsible>
-        ))}
+                {open &&
+                  list.map((r) => (
+                    <RunRow
+                      key={r.runId}
+                      r={r}
+                      selected={selected === r.runId}
+                      onSelect={() => setSelected(selected === r.runId ? null : r.runId)}
+                    />
+                  ))}
+              </Fragment>
+            )
+          })}
+        </Table>
       </VStack>
     )
   }
@@ -289,7 +346,7 @@ export function Activity(): JSX.Element {
   return (
     <Layout height="fill">
       <LayoutHeader hasDivider>
-        <HStack gap={3} vAlign="center" style={{ width: '100%', padding: 'var(--spacing-2) var(--spacing-5)' }}>
+        <HStack gap={3} vAlign="center" style={{ width: '100%', padding: 'var(--spacing-3) var(--spacing-5)' }}>
           <VStack gap={0}>
             <Heading level={2}>Activity</Heading>
             <Text type="supporting" color="secondary">
