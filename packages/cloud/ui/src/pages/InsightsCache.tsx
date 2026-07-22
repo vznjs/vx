@@ -98,7 +98,7 @@ export function InsightsCache(): JSX.Element {
               <Kpi
                 label="Store"
                 value={formatBytes(stats.data.totalBytes)}
-                sub={`${formatCount(stats.data.entryCount)} entries · ${formatPercent(stats.data.hitRate24h * 100, 0)} hit rate (24h)`}
+                sub={`${formatCount(stats.data.entryCount)} entries · ${formatPercent(stats.data.hitRate24h, 0)} hit rate (24h)`}
               />
             )}
           </KpiRow>
@@ -135,7 +135,7 @@ export function InsightsCache(): JSX.Element {
                       </linearGradient>
                     </defs>
                     <CartesianGrid horizontal vertical={false} stroke={GRID} />
-                    <XAxis dataKey="day" tick={TICK} axisLine={false} tickLine={false} />
+                    <XAxis dataKey="day" tick={TICK} axisLine={false} tickLine={false} minTickGap={28} />
                     <YAxis tick={TICK} axisLine={false} tickLine={false} width={38} />
                     <Tooltip
                       formatter={(v) => formatCount(Number(v))}
@@ -191,7 +191,7 @@ export function InsightsCache(): JSX.Element {
                       />
                     </VStack>
                   }
-                  endContent={<Text weight="medium">{formatPercent(t.hitRate * 100, 0)}</Text>}
+                  endContent={<Text weight="medium">{formatPercent(t.hitRate, 0)}</Text>}
                 />
               ))}
             </Card>

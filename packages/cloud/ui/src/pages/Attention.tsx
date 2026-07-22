@@ -135,7 +135,7 @@ export function Attention(): JSX.Element {
                       href={`#/tasks/${encodeURIComponent(t.id)}`}
                       startContent={<Token size="sm" color="orange" label="flaky" />}
                       label={<Text type="code">{t.id}</Text>}
-                      description={`fails ${formatPercent(t.failureRate * 100, 0)} of runs`}
+                      description={`fails ${formatPercent(t.failureRate, 0)} of runs`}
                       endContent={<Token size="sm" color="purple" label="exec.retries: 2" />}
                     />
                   ))}

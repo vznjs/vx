@@ -46,7 +46,7 @@ export function InsightsFlaky(): JSX.Element {
               <Kpi label="Flaky tasks" value={String(active.length)} tone={active.length > 0 ? 'warn' : 'good'} />
               <Kpi
                 label="Share of all tasks"
-                value={totalTasks > 0 ? formatPercent((active.length / totalTasks) * 100, 1) : '—'}
+                value={totalTasks > 0 ? formatPercent(active.length / totalTasks, 1) : '—'}
                 sub={`${formatCount(totalTasks)} tasks tracked`}
               />
               <Kpi label="High risk" value={String(high.length)} sub="fail rate above 20%" tone={high.length > 0 ? 'bad' : 'good'} />
@@ -91,7 +91,7 @@ export function InsightsFlaky(): JSX.Element {
                   density="balanced"
                   href={`#/tasks/${encodeURIComponent(t.id)}`}
                   startContent={
-                    <Token size="sm" color={t.highRisk ? 'red' : 'orange'} label={formatPercent(t.failureRate * 100, 0)} />
+                    <Token size="sm" color={t.highRisk ? 'red' : 'orange'} label={formatPercent(t.failureRate, 0)} />
                   }
                   label={
                     <VStack gap={1} style={{ width: '100%' }}>

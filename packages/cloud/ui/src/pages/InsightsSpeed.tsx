@@ -135,7 +135,7 @@ export function InsightsSpeed(): JSX.Element {
                   </linearGradient>
                 </defs>
                 <CartesianGrid horizontal vertical={false} stroke={GRID} />
-                <XAxis dataKey="day" tick={TICK} axisLine={false} tickLine={false} />
+                <XAxis dataKey="day" tick={TICK} axisLine={false} tickLine={false} minTickGap={28} />
                 <YAxis
                   tick={TICK}
                   axisLine={false}
@@ -169,7 +169,8 @@ export function InsightsSpeed(): JSX.Element {
       <QueryGate query={parallelism} rows={4}>
         {(points) => {
           const data = [...points].reverse()
-          const avg = data.length > 0 ? data.reduce((n, p) => n + p.factor, 0) / data.length : 0
+          if (data.length === 0) return <></>
+          const avg = data.reduce((n, p) => n + p.factor, 0) / data.length
           return (
             <ChartCard title="Parallelism" hint={`avg ×${avg.toFixed(1)} — higher = better use of your workers`}>
               <ResponsiveContainer width="100%" height={180}>

@@ -20,8 +20,6 @@ import { Text } from '@astryxdesign/core/Text'
 import { HStack } from '@astryxdesign/core/Layout'
 import { CommandPalette } from '@astryxdesign/core/CommandPalette'
 import { createStaticSource } from '@astryxdesign/core/Typeahead'
-import { Spinner } from '@astryxdesign/core/Spinner'
-import { Center } from '@astryxdesign/core/Center'
 import {
   BellAlertIcon,
   BoltIcon,
@@ -225,21 +223,6 @@ function ModeToggle(): JSX.Element {
   )
 }
 
-const TITLES: ReadonlyArray<[RegExp, string]> = [
-  [/^\/run$/, 'Cockpit'],
-  [/^\/runs\/.+/, 'Run detail'],
-  [/^\/compare\/.+/, 'Compare'],
-  [/^\/attention/, 'Needs attention'],
-  [/^\/insights\/speed/, 'Speed'],
-  [/^\/insights\/cache/, 'Cache'],
-  [/^\/insights\/flaky/, 'Flaky tasks'],
-  [/^\/projects\/.+/, 'Project'],
-  [/^\/projects/, 'Projects'],
-  [/^\/tasks\/.+/, 'Task'],
-  [/^\/tasks/, 'Tasks'],
-  [/^\/$/, 'Activity'],
-]
-
 export function App(): JSX.Element {
   const location = useLocation()
   const navigate = useNavigate()
@@ -284,8 +267,6 @@ export function App(): JSX.Element {
     [],
   )
 
-  const title = TITLES.find(([re]) => re.test(location.pathname))?.[1] ?? 'vx'
-
   return (
     <AppShell
       height="fill"
@@ -301,7 +282,6 @@ export function App(): JSX.Element {
       }
       topNav={
         <TopNav
-          heading={<Text weight="semibold">{title}</Text>}
           endContent={
             <HStack gap={2} vAlign="center">
               <WorkspaceSwitcher />
