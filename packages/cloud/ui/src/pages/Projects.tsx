@@ -4,6 +4,7 @@
 // runs / failures / hit % / durations / saved / cache footprint / last run.
 
 import { useMemo, useState, type JSX } from 'react'
+import { Card } from '@astryxdesign/core/Card'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
 import { Link } from '@astryxdesign/core/Link'
 import { Table, pixel, proportional, useTableSortable } from '@astryxdesign/core/Table'
@@ -15,7 +16,7 @@ import { Token } from '@astryxdesign/core/Token'
 import { listProjects, type ProjectRollup } from '../api.ts'
 import { formatBytes, formatCount, formatDuration, formatPercent } from '../format.ts'
 import { useQuery } from '../hooks.ts'
-import { Kpi, KpiRow, Page, QueryGate, SectionHeader } from '../components/page.tsx'
+import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
 
 interface ProjectRow extends Record<string, unknown> {
   project: string
@@ -177,6 +178,7 @@ export function Projects(): JSX.Element {
 
   return (
     <Page>
+      <PageHeader title="Projects" subtitle="Per-project health across every recorded run" />
       <QueryGate query={projects} rows={2}>
         {(list) => {
           const rows = list.map(toRow)
@@ -231,7 +233,8 @@ export function Projects(): JSX.Element {
             )
           }
           return (
-            <Table
+            <Card padding={0}>
+              <Table
               data={rows}
               columns={columns}
               idKey="project"
@@ -239,6 +242,7 @@ export function Projects(): JSX.Element {
               hasHover
               plugins={{ sortable }}
             />
+            </Card>
           )
         }}
       </QueryGate>

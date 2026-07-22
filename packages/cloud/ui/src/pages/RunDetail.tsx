@@ -218,33 +218,35 @@ function WhyPanel(props: {
   }))
   return (
     <VStack gap={2}>
-      <Table
-        data={rows}
-        idKey="rowKey"
-        density="compact"
-        columns={[
-          { key: 'kind', header: 'Kind', width: pixel(90) },
-          { key: 'name', header: 'Name', width: proportional(1) },
-          {
-            key: 'change',
-            header: 'Change',
-            width: pixel(90),
-            renderCell: (r) => (
-              <Token
-                size="sm"
-                label={String(r.change)}
-                color={changeColor(r.change as InputDiffEntry['change'])}
-              />
-            ),
-          },
-          {
-            key: 'diff',
-            header: 'Before → After',
-            width: proportional(1),
-            renderCell: (r) => <Text type="code">{String(r.diff)}</Text>,
-          },
-        ]}
-      />
+      <Card padding={0}>
+        <Table
+          data={rows}
+          idKey="rowKey"
+          density="compact"
+          columns={[
+            { key: 'kind', header: 'Kind', width: pixel(90) },
+            { key: 'name', header: 'Name', width: proportional(1) },
+            {
+              key: 'change',
+              header: 'Change',
+              width: pixel(90),
+              renderCell: (r) => (
+                <Token
+                  size="sm"
+                  label={String(r.change)}
+                  color={changeColor(r.change as InputDiffEntry['change'])}
+                />
+              ),
+            },
+            {
+              key: 'diff',
+              header: 'Before → After',
+              width: proportional(1),
+              renderCell: (r) => <Text type="code">{String(r.diff)}</Text>,
+            },
+          ]}
+        />
+      </Card>
       <Text type="supporting" color="secondary">
         {d.unchangedCount} unchanged component{d.unchangedCount === 1 ? '' : 's'}
         {d.note !== '' ? ` · ${d.note}` : ''}
@@ -514,7 +516,9 @@ export function RunDetail(): JSX.Element {
                     {rows.length === 0 ? (
                       <EmptyState title="No tasks" />
                     ) : (
-                      <Table data={rows} columns={columns} idKey="id" density="compact" hasHover />
+                      <Card padding={0}>
+                        <Table data={rows} columns={columns} idKey="id" density="compact" hasHover />
+                      </Card>
                     )}
                   </>
                 )

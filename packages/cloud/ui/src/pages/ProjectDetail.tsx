@@ -6,6 +6,7 @@
 import { useMemo, useState, type JSX } from 'react'
 import { useParams } from 'react-router-dom'
 import { BreadcrumbItem, Breadcrumbs } from '@astryxdesign/core/Breadcrumbs'
+import { Card } from '@astryxdesign/core/Card'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
 import { Link } from '@astryxdesign/core/Link'
 import { Table, pixel, proportional, useTableSortable } from '@astryxdesign/core/Table'
@@ -230,14 +231,16 @@ export function ProjectDetail(): JSX.Element {
               {rows.length === 0 ? (
                 <EmptyState title="No tasks recorded" description={`Run \`vx run <task>\` in ${name}.`} />
               ) : (
-                <Table
-                  data={rows}
-                  columns={columns}
-                  idKey="id"
-                  density="compact"
-                  hasHover
-                  plugins={{ sortable }}
-                />
+                <Card padding={0}>
+                  <Table
+                    data={rows}
+                    columns={columns}
+                    idKey="id"
+                    density="compact"
+                    hasHover
+                    plugins={{ sortable }}
+                  />
+                </Card>
               )}
             </>
           )

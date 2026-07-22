@@ -26,7 +26,7 @@ import {
 } from '../api.ts'
 import { formatDuration } from '../format.ts'
 import { useQuery } from '../hooks.ts'
-import { Kpi, KpiRow, Page, QueryGate, SectionHeader } from '../components/page.tsx'
+import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
 
 const VIOLET = 'var(--color-icon-purple, #a78bfa)'
 const CYAN = 'var(--color-icon-cyan, #22d3ee)'
@@ -58,6 +58,7 @@ export function InsightsSpeed(): JSX.Element {
 
   return (
     <Page>
+      <PageHeader title="Speed" subtitle="Find and fix what burns your CI time" />
       <QueryGate query={bottlenecks} rows={2}>
         {(rows) => {
           const burn = rows.reduce((n, b) => n + b.totalDurationMs, 0)

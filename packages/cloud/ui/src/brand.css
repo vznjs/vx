@@ -38,9 +38,17 @@
    id="astryx-app-shell-main"; the ID out-specifies StyleX's class rules. */
 #astryx-app-shell-main {
   margin: 0 var(--spacing-3, 12px) var(--spacing-3, 12px) 0;
+  min-height: calc(100% - var(--spacing-3, 12px));
   border-radius: var(--radius-page, 16px);
   border: 1px solid var(--vx-glass-border);
   background-color: var(--vx-glass-card);
   overflow: clip;
   box-shadow: 0 10px 30px -12px var(--vx-shadow-drop);
+}
+
+/* Page sections sit ON the glass pane — they must never paint their own
+   surface (a content-height slab reads as a broken half-pane on short
+   pages). */
+#astryx-app-shell-main .astryx-section {
+  background: transparent !important;
 }

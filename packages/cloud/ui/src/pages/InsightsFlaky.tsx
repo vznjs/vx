@@ -14,7 +14,7 @@ import { Token } from '@astryxdesign/core/Token'
 import { getFlakiest, getHistory } from '../api.ts'
 import { formatCount, formatDuration, formatPercent } from '../format.ts'
 import { useQuery } from '../hooks.ts'
-import { Kpi, KpiRow, Page, QueryGate, SectionHeader } from '../components/page.tsx'
+import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
 
 const AMBER = 'var(--color-warning, #fbbf24)'
 const RED = 'var(--color-error, #fb7185)'
@@ -36,6 +36,7 @@ export function InsightsFlaky(): JSX.Element {
 
   return (
     <Page>
+      <PageHeader title="Flaky tasks" subtitle="Same inputs, different outcomes — ranked by what they cost" />
       <QueryGate query={flaky} rows={2}>
         {(rows) => {
           const active = rows.filter((t) => t.failures > 1 && t.failureRate > 0.02)
@@ -131,7 +132,7 @@ export function InsightsFlaky(): JSX.Element {
       <Banner
         status="info"
         title="How to fix flakiness"
-        description="Confirmed-flaky tasks (same inputs, different outcomes) usually want `exec.retries` as a stopgap and a root-cause pass on shared state, ports, or time. Tasks that only fail on one platform want a split cache key instead."
+        description="Confirmed-flaky tasks (same inputs, different outcomes) usually want exec.retries as a stopgap and a root-cause pass on shared state, ports, or time. Tasks that only fail on one platform want a split cache key instead."
       />
     </Page>
   )

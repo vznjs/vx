@@ -20,11 +20,35 @@ const pageStyle: CSSProperties = {
 /** Standard content column: padded, centered, vertically stacked sections. */
 export function Page({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <Section padding={6}>
+    <Section padding={5}>
       <div style={pageStyle}>
         <VStack gap={5}>{children}</VStack>
       </div>
     </Section>
+  )
+}
+
+/**
+ * Page header — identical band on every view (same type scale + rhythm as
+ * the Activity feed header) so pages start at one consistent baseline.
+ */
+export function PageHeader(props: { title: string; subtitle?: string; end?: ReactNode }): JSX.Element {
+  return (
+    <HStack gap={3} vAlign="center">
+      <VStack gap={0}>
+        <Heading level={2}>{props.title}</Heading>
+        {props.subtitle !== undefined && (
+          <Text type="supporting" color="secondary">
+            {props.subtitle}
+          </Text>
+        )}
+      </VStack>
+      {props.end !== undefined && (
+        <HStack gap={2} vAlign="center" style={{ marginInlineStart: 'auto' }}>
+          {props.end}
+        </HStack>
+      )}
+    </HStack>
   )
 }
 

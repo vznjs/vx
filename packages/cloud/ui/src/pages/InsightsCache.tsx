@@ -29,7 +29,7 @@ import {
 } from '../api.ts'
 import { formatBytes, formatCount, formatDuration, formatPercent } from '../format.ts'
 import { useQuery } from '../hooks.ts'
-import { Kpi, KpiRow, Page, QueryGate, SectionHeader } from '../components/page.tsx'
+import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
 
 const CYAN = 'var(--color-icon-cyan, #22d3ee)'
 const BLUE = 'var(--color-icon-blue, #60a5fa)'
@@ -80,6 +80,7 @@ export function InsightsCache(): JSX.Element {
 
   return (
     <Page>
+      <PageHeader title="Cache" subtitle="What the cache pays back, and where it misses" />
       <QueryGate query={savings} rows={2}>
         {(s) => (
           <KpiRow>

@@ -4,6 +4,7 @@
 // rates, avg/p50/p99/total durations, flaky marker, last-seen time.
 
 import { useMemo, useState, type JSX } from 'react'
+import { Card } from '@astryxdesign/core/Card'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
 import { Link } from '@astryxdesign/core/Link'
 import { HStack } from '@astryxdesign/core/Layout'
@@ -16,7 +17,7 @@ import { Token } from '@astryxdesign/core/Token'
 import { getHistory, type TaskHistoryRow } from '../api.ts'
 import { formatCount, formatDuration, formatPercent } from '../format.ts'
 import { useQuery } from '../hooks.ts'
-import { Kpi, KpiRow, Page, QueryGate, SectionHeader } from '../components/page.tsx'
+import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
 
 interface TaskRow extends Record<string, unknown> {
   id: string
@@ -178,6 +179,7 @@ export function Tasks(): JSX.Element {
 
   return (
     <Page>
+      <PageHeader title="Tasks" subtitle="Every (project, task) pair the serve has seen" />
       <QueryGate query={history} rows={2}>
         {(list) => {
           const runs = list.reduce((n, t) => n + t.runs, 0)
@@ -226,7 +228,8 @@ export function Tasks(): JSX.Element {
             )
           }
           return (
-            <Table
+            <Card padding={0}>
+              <Table
               data={rows}
               columns={columns}
               idKey="id"
@@ -234,6 +237,7 @@ export function Tasks(): JSX.Element {
               hasHover
               plugins={{ sortable }}
             />
+            </Card>
           )
         }}
       </QueryGate>

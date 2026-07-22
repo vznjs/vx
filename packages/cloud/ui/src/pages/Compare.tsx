@@ -7,6 +7,7 @@
 import { useMemo, useState, type JSX } from 'react'
 import { useParams } from 'react-router-dom'
 import { BreadcrumbItem, Breadcrumbs } from '@astryxdesign/core/Breadcrumbs'
+import { Card } from '@astryxdesign/core/Card'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
 import { Link } from '@astryxdesign/core/Link'
 import { Table, pixel, proportional } from '@astryxdesign/core/Table'
@@ -223,7 +224,9 @@ export function Compare(): JSX.Element {
             return <EmptyState title="No tasks to compare" />
           }
           return (
-            <Table data={rows} columns={columns} idKey="taskId" density="compact" hasHover />
+            <Card padding={0}>
+              <Table data={rows} columns={columns} idKey="taskId" density="compact" hasHover />
+            </Card>
           )
         }}
       </QueryGate>

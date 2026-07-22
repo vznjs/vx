@@ -8,6 +8,7 @@ import { useMemo, type JSX } from 'react'
 import { useParams } from 'react-router-dom'
 import { BreadcrumbItem, Breadcrumbs } from '@astryxdesign/core/Breadcrumbs'
 import { CodeBlock } from '@astryxdesign/core/CodeBlock'
+import { Card } from '@astryxdesign/core/Card'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
 import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList'
 import { Table, pixel, proportional } from '@astryxdesign/core/Table'
@@ -224,7 +225,9 @@ export function TaskDetail(): JSX.Element {
               {rows.length === 0 ? (
                 <EmptyState title="No runs yet" description={`Run \`vx run ${id}\`.`} />
               ) : (
-                <Table data={rows} columns={columns} idKey="rowKey" density="compact" hasHover />
+                <Card padding={0}>
+                  <Table data={rows} columns={columns} idKey="rowKey" density="compact" hasHover />
+                </Card>
               )}
             </>
           )

@@ -21,7 +21,7 @@ import {
 } from '../api.ts'
 import { formatDuration, formatPercent } from '../format.ts'
 import { useQuery } from '../hooks.ts'
-import { Page, QueryGate, SectionHeader } from '../components/page.tsx'
+import { Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
 
 const isFailed = (r: InvocationDetail): boolean => r.failedCount > 0 || r.exitOk === false
 
@@ -77,6 +77,7 @@ export function Attention(): JSX.Element {
 
   return (
     <Page>
+      <PageHeader title="Needs attention" subtitle="Everything that needs a human, ranked by severity" />
       <QueryGate query={invocations} rows={3}>
         {(rows) => {
           const failing = failingNow(rows)
