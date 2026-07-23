@@ -330,6 +330,9 @@ export interface CacheStats {
   hitLocalCountLast24h: number
   /** `status = 'cache-hit-remote'` over the last 24h. */
   hitRemoteCountLast24h: number
+  /** `/v8` artifact-store footprint (optional: older serves omit these). */
+  artifactCount?: number
+  artifactBytes?: number
 }
 
 /** One changed/added/removed cache-key component (metrics.ts `InputDiffEntry`). */

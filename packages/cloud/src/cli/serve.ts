@@ -662,7 +662,17 @@ export async function startServe(opts: {
         }
       }
       if (url.pathname === '/v1/cache/stats') {
-        return jsonResponse(getCacheStatsSql(readDb()))
+        // The SQL stats describe the ingest DB (analytics); the serve's REAL
+        // byte footprint is the /v8 artifact store, reported alongside so the
+        // dashboard's Store tile shows disk truth, not a structurally-empty
+        // entries table.
+        return artifacts.stats().then((s) =>
+          jsonResponse({
+            ...getCacheStatsSql(readDb()),
+            artifactCount: s.artifactCount,
+            artifactBytes: s.totalBytes,
+          }),
+        )
       }
       if (url.pathname === '/v1/cache/hit-split') {
         return jsonResponse(getHitRateSplit(readDb()))

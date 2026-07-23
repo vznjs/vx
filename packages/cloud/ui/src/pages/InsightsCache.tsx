@@ -93,15 +93,30 @@ export function InsightsCache(): JSX.Element {
             <Kpi
               label="Last 24h"
               value={formatDuration(s.estimatedTimeSavedMs)}
-              sub={`${formatCount(s.hitsLast24h)} hits`}
+              sub={
+                stats.data !== undefined
+                  ? `${formatCount(s.hitsLast24h)} hits · ${formatPercent(stats.data.hitRate24h, 0)} hit rate`
+                  : `${formatCount(s.hitsLast24h)} hits`
+              }
             />
-            {stats.data !== undefined && (
+            {/* The serve's REAL byte footprint is the /v8 artifact store; the
+                ingest DB's entries table is structurally empty on a serve, so
+                a "0 B store" tile would be noise dressed as data. Show the
+                artifact store when it holds anything, a colocated entries
+                store when THAT holds anything, and nothing otherwise. */}
+            {stats.data !== undefined && (stats.data.artifactCount ?? 0) > 0 ? (
+              <Kpi
+                label="Artifact store"
+                value={formatBytes(stats.data.artifactBytes ?? 0)}
+                sub={`${plural(stats.data.artifactCount ?? 0, 'artifact')} shared via remote cache`}
+              />
+            ) : stats.data !== undefined && stats.data.entryCount > 0 ? (
               <Kpi
                 label="Store"
                 value={formatBytes(stats.data.totalBytes)}
-                sub={`${formatCount(stats.data.entryCount)} entries · ${formatPercent(stats.data.hitRate24h, 0)} hit rate (24h)`}
+                sub={`${formatCount(stats.data.entryCount)} entries`}
               />
-            )}
+            ) : null}
           </KpiRow>
         )}
       </QueryGate>

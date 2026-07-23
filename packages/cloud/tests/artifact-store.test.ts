@@ -104,6 +104,18 @@ describe('vx serve /v8/artifacts — the Turbo wire', () => {
     expect(files.sort()).toEqual([`${hash}.duration`, `${hash}.tag`, `${hash}.tar.zst`])
   })
 
+  it('/v1/cache/stats reports the artifact-store footprint', async () => {
+    // The round-trip test above uploaded at least one artifact; the stats
+    // route must reflect the store's real bytes (sidecars included), because
+    // the ingest DB's entries table is structurally empty on a serve and the
+    // dashboard's Store tile keys off these fields.
+    const res = await fetch(`${server.origin}/v1/cache/stats`, { headers: auth })
+    expect(res.status).toBe(200)
+    const stats = (await res.json()) as { artifactCount: number; artifactBytes: number }
+    expect(stats.artifactCount).toBeGreaterThanOrEqual(1)
+    expect(stats.artifactBytes).toBeGreaterThan(0)
+  })
+
   it('omits x-artifact-tag on GET when the PUT carried none', async () => {
     const hash = 'feedfacefeedface'
     await fetch(`${server.origin}/v8/artifacts/${hash}`, {

@@ -22,7 +22,7 @@
 // (the legacy flat store migrates there on boot), byte-identical to before.
 
 import path from 'node:path'
-import { mkdir, readdir, rename, unlink } from 'node:fs/promises'
+import { mkdir, readdir, rename, stat, unlink } from 'node:fs/promises'
 
 /** PUT bodies above this are refused with 413. */
 export const MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
@@ -146,6 +146,32 @@ export class ArtifactStore {
   ): Promise<boolean> {
     if (!HASH_RE.test(hash)) return false
     return (await this.findRead(hash, principal, sub, '.tar.zst')) !== null
+  }
+
+  /**
+   * Whole-store footprint across every scope: artifact count + total on-disk
+   * bytes (sidecars included — this is the disk-usage number an operator
+   * cares about). One recursive walk; cheap at realistic store sizes.
+   */
+  async stats(): Promise<{ artifactCount: number; totalBytes: number }> {
+    let entries: Awaited<ReturnType<typeof readdir>>
+    try {
+      entries = await readdir(this.dir, { recursive: true, withFileTypes: true })
+    } catch {
+      return { artifactCount: 0, totalBytes: 0 } // no store dir yet
+    }
+    let artifactCount = 0
+    let totalBytes = 0
+    for (const e of entries) {
+      if (typeof e === 'string' || !e.isFile()) continue
+      if (e.name.endsWith('.tar.zst')) artifactCount++
+      try {
+        totalBytes += (await stat(path.join(e.parentPath, e.name))).size
+      } catch {
+        // deleted mid-walk — skip
+      }
+    }
+    return { artifactCount, totalBytes }
   }
 
   /**
