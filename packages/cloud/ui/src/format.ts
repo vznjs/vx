@@ -128,3 +128,27 @@ export function paletteFor(key: string): string {
 export function plural(n: number, unit: string): string {
   return `${n} ${unit}${n === 1 ? '' : 's'}`
 }
+
+/**
+ * Humanize the `invocations.cache_policy` compact string (`'lR,lW,rR,rW'`
+ * subsets). 'full' = every axis enabled (the default; whether a remote layer
+ * actually exists is a separate fact), '' / no axes = cache bypassed.
+ */
+export function formatCachePolicy(compact: string): string {
+  const parts = new Set(
+    compact
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  )
+  if (parts.size === 0) return 'cache off'
+  if (parts.size === 4) return 'full'
+  const axis = (r: boolean, w: boolean): string | null =>
+    r && w ? 'read/write' : r ? 'read-only' : w ? 'write-only' : null
+  const bits: string[] = []
+  const local = axis(parts.has('lR'), parts.has('lW'))
+  const remote = axis(parts.has('rR'), parts.has('rW'))
+  if (local !== null) bits.push(`local ${local}`)
+  if (remote !== null) bits.push(`remote ${remote}`)
+  return bits.length > 0 ? bits.join(' · ') : 'cache off'
+}

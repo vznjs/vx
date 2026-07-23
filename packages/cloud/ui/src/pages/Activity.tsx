@@ -37,7 +37,7 @@ import {
   type InvocationDetail,
   type RunDetail as RunDetailPayload,
 } from '../api.ts'
-import { formatDuration } from '../format.ts'
+import { formatCachePolicy, formatDuration } from '../format.ts'
 import { usePolledQuery, useQuery } from '../hooks.ts'
 import { toVizState, StatusToken } from '../components/status.tsx'
 
@@ -214,7 +214,7 @@ function Inspector(props: { runId: string; inv: InvocationDetail }): JSX.Element
         <MetadataListItem label="Commit">{(inv.commitSha ?? '').slice(0, 10) || '—'}</MetadataListItem>
         <MetadataListItem label="Environment">{inv.ci ? (inv.ciProvider ?? 'CI') : 'local'}</MetadataListItem>
         <MetadataListItem label="Workers">{String(inv.concurrency)}</MetadataListItem>
-        <MetadataListItem label="Cache">{inv.cachePolicy}</MetadataListItem>
+        <MetadataListItem label="Cache">{formatCachePolicy(inv.cachePolicy)}</MetadataListItem>
         <MetadataListItem label="Tasks">{`${inv.taskCount} · ${inv.hitCount} cached · ${inv.failedCount} failed`}</MetadataListItem>
         <MetadataListItem label="Duration">{formatDuration(inv.totalDurationMs)}</MetadataListItem>
       </MetadataList>

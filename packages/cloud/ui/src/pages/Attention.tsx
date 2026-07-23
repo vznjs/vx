@@ -172,7 +172,7 @@ export function Attention(): JSX.Element {
           return (
             <Section
               title="Flaky tasks"
-              hint="same key, different outcomes — retries recommended"
+              hint="same key, different outcomes"
               empty="No flaky tasks detected."
             >
               {list.length === 0 ? null : (

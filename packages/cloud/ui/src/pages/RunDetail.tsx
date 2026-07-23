@@ -42,7 +42,7 @@ import {
   type RunDetail as RunDetailData,
   type RunSummaryRow,
 } from '../api.ts'
-import { cpuPct, formatBytes, formatDuration } from '../format.ts'
+import { cpuPct, formatBytes, formatCachePolicy, formatDuration } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, QueryGate, SectionHeader } from '../components/page.tsx'
 import { Flamegraph, flameEdgesOf } from '../components/Flamegraph.tsx'
@@ -134,7 +134,7 @@ function InvocationFacts({ inv }: { inv: InvocationDetail }): JSX.Element {
             <Text type="code">{tags === '' ? '—' : tags}</Text>
           </MetadataListItem>
           <MetadataListItem label="Cache">
-            <Text type="code">{inv.cachePolicy}</Text>
+            <Text type="body">{formatCachePolicy(inv.cachePolicy)}</Text>
           </MetadataListItem>
           <MetadataListItem label="Workers">
             <Text type="body" hasTabularNumbers>
