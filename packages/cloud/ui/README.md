@@ -42,20 +42,25 @@ top-nav connection picker overrides it at runtime. The SPA is
 platform-agnostic — every read is an HTTP call to a configurable
 origin, so the same UI works against a local or hosted serve.
 
-## Pages
+## Pages (journey-first IA)
 
-- **Run** — live cockpit: task DAG with predicted cache status, run
-  over WebSocket, streamed logs, graph/flame toggle, critical path.
-- **Runs** — all invocations (filter/sort), row → detail; compare
-  entry table (run vs the one before it).
-- **Run detail** — invocation facts, per-task table, flamegraph,
-  reconstructed DAG overlay, per-task "why did this re-run" key diff.
-- **Overview / Trends / Bottlenecks** — KPIs, duration & hit-rate
-  trends, activity heatmap, parallelism, flakiest + slowest tasks.
+- **Activity** (`/`) — the home feed: one aligned row per `vx run`
+  invocation, grouped by day, cache-mix micro-bar per row, click →
+  resizable inspector peek, one more click → full detail.
+- **Needs attention** (`/attention`) — the inbox: failing branches
+  (failing task ids named inline), key-scoped flaky tasks, and the
+  top time burners ranked with proportional bars.
+- **Cockpit** (`/run`) — live runs: tokenized task picker (history
+  suggestions + free-form `pkg#task`), WebSocket-streamed DAG/flame,
+  critical path, finished tally, failure auto-focus, report deep-link.
+- **Insights → Speed / Cache / Flaky** — action queues over charts:
+  where the time goes, what the cache pays back (incl. the serve's
+  real /v8 artifact-store footprint), and same-key flaky tasks.
+- **Run detail** — outcome-led header, invocation facts, per-task
+  table, flamegraph + reconstructed DAG, per-task "why did this
+  re-run" key diff (capability-gated on a colocated cache.db).
 - **Projects / Tasks (+ details)** — rollup tables with per-entity
-  drill-downs.
-- **Cache** — stats, savings, per-project breakdown, entries + heat,
-  prunable list.
+  drill-downs; compare view (run vs the one before it).
 
 ## Data source
 
