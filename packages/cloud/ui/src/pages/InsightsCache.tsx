@@ -27,7 +27,7 @@ import {
   getRunTrends,
   useCapabilities,
 } from '../api.ts'
-import { formatBytes, formatCount, formatDuration, formatPercent } from '../format.ts'
+import { formatBytes, formatCount, formatDuration, formatPercent, plural } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
 
@@ -146,7 +146,15 @@ export function InsightsCache(): JSX.Element {
                         borderRadius: 8,
                       }}
                     />
-                    <Area type="monotone" dataKey="hits" name="hits" stroke={CYAN} strokeWidth={2} fill="url(#hitFill)" />
+                    <Area
+                      type="monotone"
+                      dataKey="hits"
+                      name="hits"
+                      stroke={CYAN}
+                      strokeWidth={2}
+                      fill="url(#hitFill)"
+                      isAnimationActive={false}
+                    />
                   </AreaChart>
                 </ResponsiveContainer>
               </VStack>
@@ -177,7 +185,7 @@ export function InsightsCache(): JSX.Element {
                       <HStack gap={2} vAlign="center">
                         <Text type="code">{t.id}</Text>
                         <Text type="supporting" color="secondary">
-                          {t.runs} runs · {formatCount(t.hits)} hits
+                          {plural(t.runs, 'run')} · {formatCount(t.hits)} hits
                         </Text>
                         {t.hitRate < 0.3 && <Token size="sm" color="red" label="cold" />}
                       </HStack>

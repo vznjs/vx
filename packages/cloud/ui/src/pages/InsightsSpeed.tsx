@@ -24,7 +24,7 @@ import {
   getParallelismHistory,
   getRunTrends,
 } from '../api.ts'
-import { formatDuration } from '../format.ts'
+import { formatDuration, plural } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
 
@@ -99,7 +99,7 @@ export function InsightsSpeed(): JSX.Element {
                       <HStack gap={2} vAlign="center">
                         <Text type="code">{b.id}</Text>
                         <Text type="supporting" color="secondary">
-                          {b.runsRecent} runs · avg {formatDuration(b.avgDurationMs)} · {b.runsPerDay.toFixed(1)}/day
+                          {plural(b.runsRecent, 'run')} · avg {formatDuration(b.avgDurationMs)} · {b.runsPerDay.toFixed(1)}/day
                         </Text>
                       </HStack>
                       <span
@@ -160,6 +160,7 @@ export function InsightsSpeed(): JSX.Element {
                   stroke={VIOLET}
                   strokeWidth={2}
                   fill="url(#speedFill)"
+                  isAnimationActive={false}
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -179,7 +180,14 @@ export function InsightsSpeed(): JSX.Element {
                 <LineChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid horizontal vertical={false} stroke={GRID} />
                   <XAxis dataKey="runId" hide />
-                  <YAxis tick={TICK} axisLine={false} tickLine={false} width={30} domain={[0, 'dataMax']} />
+                  <YAxis
+                    tick={TICK}
+                    axisLine={false}
+                    tickLine={false}
+                    width={44}
+                    domain={[0, 'dataMax']}
+                    tickFormatter={(v: number) => `×${v.toFixed(1)}`}
+                  />
                   <Tooltip
                     formatter={(v) => `×${Number(v).toFixed(2)}`}
                     contentStyle={{
@@ -188,7 +196,15 @@ export function InsightsSpeed(): JSX.Element {
                       borderRadius: 8,
                     }}
                   />
-                  <Line type="monotone" dataKey="factor" name="factor" stroke={CYAN} strokeWidth={2} dot={false} />
+                  <Line
+                    type="monotone"
+                    dataKey="factor"
+                    name="factor"
+                    stroke={CYAN}
+                    strokeWidth={2}
+                    dot={data.length <= 3}
+                    isAnimationActive={false}
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </ChartCard>

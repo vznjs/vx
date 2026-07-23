@@ -123,3 +123,8 @@ export function paletteFor(key: string): string {
   for (let i = 0; i < key.length; i++) h = ((h * 33) ^ key.charCodeAt(i)) >>> 0
   return CHART_PALETTE[h % CHART_PALETTE.length]!
 }
+
+/** Count + correctly pluralized unit: `plural(1, 'run')` → "1 run". */
+export function plural(n: number, unit: string): string {
+  return `${n} ${unit}${n === 1 ? '' : 's'}`
+}
