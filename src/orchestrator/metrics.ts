@@ -430,8 +430,16 @@ export function getHistory(db: Database, args: GetHistoryArgs = {}): TaskHistory
     }
     const total = aggregate.total || 0
     const failures = aggregate.failures || 0
+    // Flaky requires a mixed-outcome KEY (same inputs, different outcomes);
+    // failures confined to their own keys are deterministic breakage and the
+    // task classifies stable on the flakiness axis.
+    const flakyKeys = failures > 0 ? mixedOutcomeKeyCount(db, p.project, p.task) : 0
     const failureMode: TaskHistoryRow['failureMode'] =
-      failures === 0 ? 'stable' : failures < total / 5 ? 'flaky-recoverable' : 'flaky-fatal'
+      failures === 0 || flakyKeys === 0
+        ? 'stable'
+        : failures < total / 5
+          ? 'flaky-recoverable'
+          : 'flaky-fatal'
     const durations = db
       .query(
         `SELECT duration_ms FROM runs
@@ -1289,6 +1297,29 @@ export function getRunHeatmap(db: Database, days = 30): HeatmapCell[] {
 // Flakiness — tasks that fail unpredictably or whose p99/p50 gap is wide
 // ---------------------------------------------------------------------------
 
+/**
+ * Count of cache keys for one (project, task) that produced BOTH a failure
+ * and a green outcome (success or cache hit) — the honest flakiness signal.
+ * A failure at a key that only ever failed is a deterministic red (a code or
+ * config change broke the task), not flakiness; key-scoping keeps legitimate
+ * breakage from branding a task flaky.
+ */
+function mixedOutcomeKeyCount(db: Database, project: string, task: string): number {
+  const row = db
+    .query(
+      `SELECT COUNT(*) AS n FROM (
+         SELECT hash FROM runs
+         WHERE project = ? AND task = ? AND hash IS NOT NULL AND hash != ''
+         GROUP BY hash
+         HAVING SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) > 0
+            AND SUM(CASE WHEN status = 'success' OR status LIKE 'cache-hit%' OR cache_hit = 1
+                    THEN 1 ELSE 0 END) > 0
+       )`,
+    )
+    .get(project, task) as { n: number }
+  return row.n
+}
+
 export interface FlakyTask {
   id: string
   project: string
@@ -1310,42 +1341,53 @@ export function getFlakiestTasks(db: Database, limit = 25): FlakyTask[] {
        FROM runs GROUP BY project, task HAVING runs >= 3`,
     )
     .all() as { project: string; task: string; runs: number; failures: number }[]
-  return pairs
-    .map((p) => {
-      const durs = db
-        .query(
-          `SELECT duration_ms FROM runs
+  return (
+    pairs
+      .map((p) => {
+        const durs = db
+          .query(
+            `SELECT duration_ms FROM runs
            WHERE project = ? AND task = ?
              AND (cache_hit IS NULL OR cache_hit = 0) AND status = 'success'
            ORDER BY started_at DESC LIMIT 50`,
-        )
-        .all(p.project, p.task) as { duration_ms: number }[]
-      const sorted = durs.map((r) => r.duration_ms).sort((a, b) => a - b)
-      const p50 = pickPercentile(sorted, 0.5)
-      const p99 = pickPercentile(sorted, 0.99)
-      const ratio = p50 && p50 > 0 && p99 !== undefined ? p99 / p50 : undefined
-      return {
-        id: `${p.project}#${p.task}`,
-        project: p.project,
-        task: p.task,
-        runs: p.runs,
-        failures: p.failures,
-        failureRate: p.runs > 0 ? p.failures / p.runs : 0,
-        durationTailRatio: ratio,
-        p50DurationMs: p50,
-        p99DurationMs: p99,
-      } satisfies FlakyTask
-    })
-    .filter(
-      (r) => r.failureRate > 0 || (r.durationTailRatio !== undefined && r.durationTailRatio > 2),
-    )
-    .sort((a, b) => {
-      // Rank by a composite score: failure rate dominates, tail ratio breaks ties.
-      const sa = a.failureRate * 10 + (a.durationTailRatio ?? 1)
-      const sb = b.failureRate * 10 + (b.durationTailRatio ?? 1)
-      return sb - sa
-    })
-    .slice(0, clampInt(limit, 1, 200))
+          )
+          .all(p.project, p.task) as { duration_ms: number }[]
+        const sorted = durs.map((r) => r.duration_ms).sort((a, b) => a - b)
+        const p50 = pickPercentile(sorted, 0.5)
+        const p99 = pickPercentile(sorted, 0.99)
+        const ratio = p50 && p50 > 0 && p99 !== undefined ? p99 / p50 : undefined
+        const flaky = p.failures > 0 && mixedOutcomeKeyCount(db, p.project, p.task) > 0
+        return {
+          row: {
+            id: `${p.project}#${p.task}`,
+            project: p.project,
+            task: p.task,
+            runs: p.runs,
+            failures: p.failures,
+            failureRate: p.runs > 0 ? p.failures / p.runs : 0,
+            durationTailRatio: ratio,
+            p50DurationMs: p50,
+            p99DurationMs: p99,
+          } satisfies FlakyTask,
+          flaky,
+        }
+      })
+      // Failure-driven inclusion requires a MIXED-outcome key — a task whose
+      // failures all sit at their own (changed) keys is deterministically red,
+      // not flaky. Wide-tail inclusion is orthogonal and stays.
+      .filter(
+        ({ row, flaky }) =>
+          flaky || (row.durationTailRatio !== undefined && row.durationTailRatio > 2),
+      )
+      .map(({ row }) => row)
+      .sort((a, b) => {
+        // Rank by a composite score: failure rate dominates, tail ratio breaks ties.
+        const sa = a.failureRate * 10 + (a.durationTailRatio ?? 1)
+        const sb = b.failureRate * 10 + (b.durationTailRatio ?? 1)
+        return sb - sa
+      })
+      .slice(0, clampInt(limit, 1, 200))
+  )
 }
 
 // ---------------------------------------------------------------------------

@@ -22,6 +22,7 @@
 // (the legacy flat store migrates there on boot), byte-identical to before.
 
 import path from 'node:path'
+import type { Dirent } from 'node:fs'
 import { mkdir, readdir, rename, stat, unlink } from 'node:fs/promises'
 
 /** PUT bodies above this are refused with 413. */
@@ -154,7 +155,7 @@ export class ArtifactStore {
    * cares about). One recursive walk; cheap at realistic store sizes.
    */
   async stats(): Promise<{ artifactCount: number; totalBytes: number }> {
-    let entries: Awaited<ReturnType<typeof readdir>>
+    let entries: Dirent[]
     try {
       entries = await readdir(this.dir, { recursive: true, withFileTypes: true })
     } catch {
@@ -163,7 +164,7 @@ export class ArtifactStore {
     let artifactCount = 0
     let totalBytes = 0
     for (const e of entries) {
-      if (typeof e === 'string' || !e.isFile()) continue
+      if (!e.isFile()) continue
       if (e.name.endsWith('.tar.zst')) artifactCount++
       try {
         totalBytes += (await stat(path.join(e.parentPath, e.name))).size

@@ -119,7 +119,9 @@ export function InsightsFlaky(): JSX.Element {
                   endContent={
                     <VStack gap={0} hAlign="end">
                       <Text weight="medium">{formatDuration(t.wastedMs)}</Text>
-                      <Token size="sm" color="purple" label="exec.retries: 2" />
+                      <Text type="supporting" size="2xs" color="secondary">
+                        wasted
+                      </Text>
                     </VStack>
                   }
                 />
@@ -132,7 +134,7 @@ export function InsightsFlaky(): JSX.Element {
       <Banner
         status="info"
         title="How to fix flakiness"
-        description="Confirmed-flaky tasks (same inputs, different outcomes) usually want exec.retries as a stopgap and a root-cause pass on shared state, ports, or time. Tasks that only fail on one platform want a split cache key instead."
+        description="Confirmed-flaky tasks (same inputs, different outcomes) are almost always shared state, port collisions, or time dependence — fix at the root. A task that only fails on one platform wants the platform folded into its cache inputs (cache.inputs.runtime with a probe command) so each platform keys separately."
       />
     </Page>
   )

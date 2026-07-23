@@ -529,10 +529,12 @@ describe('getHistory', () => {
   it('rolls (project, task) aggregates with failureMode classification', () => {
     withCache((cache) => {
       const now = Date.now()
+      // The failure shares hash h4 with a success — same key, different
+      // outcomes — which is the definition of flaky.
       cache.recordRuns(
         Array.from({ length: 6 }, (_, i) =>
           mkRun({
-            hash: `h${i}`,
+            hash: i === 5 ? 'h4' : `h${i}`,
             project: 'pkg',
             task: 'test',
             status: i === 5 ? 'failed' : 'success',
@@ -548,6 +550,29 @@ describe('getHistory', () => {
       expect(rows[0]!.successRate).toBeCloseTo(5 / 6, 5)
       expect(rows[0]!.failureMode).toBe('flaky-recoverable')
       expect(rows[0]!.p50DurationMs).toBeGreaterThan(0)
+    })
+  })
+
+  it('a failure confined to its own key is deterministic breakage — stable', () => {
+    withCache((cache) => {
+      const now = Date.now()
+      // Five green runs, then a failure at a NEW key (a code change broke the
+      // task). No key ever produced two different outcomes → not flaky.
+      cache.recordRuns(
+        Array.from({ length: 6 }, (_, i) =>
+          mkRun({
+            hash: `h${i}`,
+            project: 'pkg',
+            task: 'det',
+            status: i === 5 ? 'failed' : 'success',
+            startedAt: now - 1000 * (6 - i),
+            durationMs: 100,
+          }),
+        ),
+      )
+      const rows = getHistory(cache.dbHandle(), { project: 'pkg', task: 'det' })
+      expect(rows[0]!.failures).toBe(1)
+      expect(rows[0]!.failureMode).toBe('stable')
     })
   })
 })
@@ -891,7 +916,7 @@ describe('getRunHeatmap', () => {
 })
 
 describe('getFlakiestTasks', () => {
-  it('surfaces tasks with mixed pass/fail or wide p99/p50', () => {
+  it('surfaces a task whose SAME key both failed and passed', () => {
     withCache((cache) => {
       const now = Date.now()
       cache.recordRuns([
@@ -904,13 +929,36 @@ describe('getFlakiestTasks', () => {
           exitCode: 1,
           startedAt: now - 4000,
         }),
-        mkRun({ hash: 'h3', project: 'a', task: 't', status: 'success', startedAt: now - 3000 }),
-        mkRun({ hash: 'h4', project: 'a', task: 't', status: 'success', startedAt: now - 2000 }),
+        // The SAME key later passed — same inputs, different outcomes.
+        mkRun({ hash: 'h2', project: 'a', task: 't', status: 'success', startedAt: now - 3000 }),
+        mkRun({ hash: 'h3', project: 'a', task: 't', status: 'success', startedAt: now - 2000 }),
       ])
       const flaky = getFlakiestTasks(cache.dbHandle())
       expect(flaky.length).toBeGreaterThan(0)
       expect(flaky[0]!.id).toBe('a#t')
       expect(flaky[0]!.failures).toBe(1)
+    })
+  })
+
+  it('does NOT flag a task whose failures sit at their own keys', () => {
+    withCache((cache) => {
+      const now = Date.now()
+      // A code change broke the task (new key fails), then a fix landed
+      // (another new key passes) — deterministic, not flaky.
+      cache.recordRuns([
+        mkRun({ hash: 'k1', project: 'a', task: 'det', status: 'success', startedAt: now - 5000 }),
+        mkRun({
+          hash: 'k2',
+          project: 'a',
+          task: 'det',
+          status: 'failed',
+          exitCode: 1,
+          startedAt: now - 4000,
+        }),
+        mkRun({ hash: 'k3', project: 'a', task: 'det', status: 'success', startedAt: now - 3000 }),
+      ])
+      const flaky = getFlakiestTasks(cache.dbHandle())
+      expect(flaky.find((f) => f.id === 'a#det')).toBeUndefined()
     })
   })
 })
