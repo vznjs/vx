@@ -15,15 +15,7 @@
 // thousands of stdout chunks appends in place and re-renders through one
 // throttled tick, instead of cloning a record per chunk.
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type JSX,
-  type KeyboardEvent,
-} from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react'
 import { ArrowTrendingUpIcon, FireIcon, PlayIcon, StopIcon } from '@heroicons/react/24/outline'
 import { Banner } from '@astryxdesign/core/Banner'
 import { Button } from '@astryxdesign/core/Button'
@@ -45,10 +37,11 @@ import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList'
 import { ProgressBar } from '@astryxdesign/core/ProgressBar'
 import { ResizeHandle, useResizable } from '@astryxdesign/core/Resizable'
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl'
-import { Text } from '@astryxdesign/core/Text'
-import { TextInput } from '@astryxdesign/core/TextInput'
+import { Heading, Text } from '@astryxdesign/core/Text'
 import { Token } from '@astryxdesign/core/Token'
+import { Tokenizer } from '@astryxdesign/core/Tokenizer'
 import { Tooltip } from '@astryxdesign/core/Tooltip'
+import { createStaticSource } from '@astryxdesign/core/Typeahead'
 import {
   getGraph,
   getHistory,
@@ -76,6 +69,12 @@ interface NodeStatus {
   peakRssBytes?: number
 }
 
+/** A task selection chip in the picker (Tokenizer item shape). */
+interface TaskOpt {
+  id: string
+  label: string
+}
+
 interface TaskWindow {
   startedAt: number
   endedAt?: number
@@ -100,7 +99,16 @@ export function RunConsole(): JSX.Element {
     [history.data],
   )
 
-  const [taskInput, setTaskInput] = useState('')
+  // Task picker: multi-select tokens over the workspace's known task names
+  // (from run history), with free-form entry for anchored `pkg#task` forms.
+  const [taskSel, setTaskSel] = useState<TaskOpt[]>([])
+  const taskSource = useMemo(
+    () => createStaticSource(taskNames.map((t) => ({ id: t, label: t }))),
+    [taskNames],
+  )
+  const addTask = useCallback((t: string): void => {
+    setTaskSel((prev) => (prev.some((p) => p.label === t) ? prev : [...prev, { id: t, label: t }]))
+  }, [])
   const [nodes, setNodes] = useState<GraphNode[]>([])
   const [statuses, setStatuses] = useState<Map<string, NodeStatus>>(() => new Map())
   // Per-task wall-clock window, observed from when each event arrives (the
@@ -225,6 +233,23 @@ export function RunConsole(): JSX.Element {
     return { total: real.length, hits: hits.length, anyQueued: queued.length > 0 }
   }, [nodes, statuses])
 
+  // Final tally for the completed-run summary strip.
+  const tally = useMemo(() => {
+    let success = 0
+    let cached = 0
+    let failedN = 0
+    let skipped = 0
+    for (const n of nodes) {
+      if (n.isGroup) continue
+      const s = statuses.get(n.id)?.state
+      if (s === 'success') success++
+      else if (s === 'cache-hit' || s === 'cache-hit-remote') cached++
+      else if (s === 'failed') failedN++
+      else if (s === 'skipped' || s === 'aborted') skipped++
+    }
+    return { success, cached, failed: failedN, skipped }
+  }, [nodes, statuses])
+
   // Observed concurrency from the live per-task windows.
   const parallel = useMemo(() => {
     const intervals = Array.from(timing.values()).map((t) => ({
@@ -288,7 +313,7 @@ export function RunConsole(): JSX.Element {
 
   const start = (): void => {
     if (running) return // forbid running while a run is in progress
-    const tasks = taskInput.split(/\s+/).filter(Boolean)
+    const tasks = Array.from(new Set(taskSel.map((t) => t.label)))
     const root = version.data?.workspace
     if (tasks.length === 0 || root === undefined) return
     logsRef.current = new Map()
@@ -342,10 +367,7 @@ export function RunConsole(): JSX.Element {
   // falls back to the serve's cwd), so it can't be the signal.
   const workspaceMissing = capabilities.known && !capabilities.hasWorkspace
   const canRun =
-    !running &&
-    taskInput.trim().length > 0 &&
-    version.data?.workspace !== undefined &&
-    !workspaceMissing
+    !running && taskSel.length > 0 && version.data?.workspace !== undefined && !workspaceMissing
   const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0
 
   const inspector = useResizable({ defaultSize: 400, minSizePx: 320, maxSizePx: 560 })
@@ -359,58 +381,80 @@ export function RunConsole(): JSX.Element {
   const selectedWindow = selected !== null ? timing.get(selected) : undefined
   const selectedLog = selected !== null ? stripAnsi(logsRef.current.get(selected) ?? '') : ''
 
-  const onInputKeyDown = (e: KeyboardEvent<HTMLElement>): void => {
-    if (e.key === 'Enter') start()
-  }
+  // Log auto-follow: while the selected task streams, keep the tail in view —
+  // but only when the user is already at the bottom (an IntersectionObserver
+  // on a tail sentinel tracks that), so scrolling up to read is never yanked.
+  const logEndRef = useRef<HTMLSpanElement | null>(null)
+  const atBottomRef = useRef(true)
+  useEffect(() => {
+    const el = logEndRef.current
+    if (el === null) return
+    atBottomRef.current = true
+    const io = new IntersectionObserver((entries) => {
+      atBottomRef.current = entries[0]?.isIntersecting ?? true
+    })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [selected, started])
+  useEffect(() => {
+    if (selectedState === 'running' && atBottomRef.current) {
+      logEndRef.current?.scrollIntoView({ block: 'nearest' })
+    }
+  }, [selectedLog, selectedState])
 
   return (
     <Layout
       height="fill"
       header={
         <LayoutHeader hasDivider>
-          <HStack gap={3} vAlign="center">
-            <StackItem size="fill">
-              <VStack gap={0.5}>
-                <Text weight="semibold">Run</Text>
-                <Text type="supporting" color="secondary">
-                  Trigger a task and watch its graph execute live.
-                </Text>
-              </VStack>
-            </StackItem>
-            <TextInput
-              label="Task name"
-              isLabelHidden
-              size="sm"
-              width={280}
-              value={taskInput}
-              onChange={setTaskInput}
-              onKeyDown={onInputKeyDown}
-              placeholder="task name, e.g. lint or test"
-              isDisabled={workspaceMissing}
-            />
-            <Button
-              label={started ? 'Rerun' : 'Run'}
-              variant="primary"
-              size="sm"
-              icon={<Icon icon={PlayIcon} size="sm" />}
-              isDisabled={!canRun}
-              isLoading={running}
-              onClick={start}
-              tooltip={
-                workspaceMissing
-                  ? 'This serve has no colocated workspace — runs are unavailable here.'
-                  : undefined
-              }
-            />
-            {running && (
+          <HStack
+            gap={3}
+            vAlign="center"
+            style={{ width: '100%', padding: 'var(--spacing-3) var(--spacing-5)' }}
+          >
+            <VStack gap={0}>
+              <Heading level={2}>Cockpit</Heading>
+              <Text type="supporting" color="secondary">
+                Trigger tasks and watch their graph execute live
+              </Text>
+            </VStack>
+            <HStack gap={2} vAlign="center" style={{ marginInlineStart: 'auto' }}>
+              <StackItem style={{ width: 400 }}>
+                <Tokenizer
+                  label="Tasks to run"
+                  isLabelHidden
+                  size="sm"
+                  value={taskSel}
+                  onChange={(items) => setTaskSel(items)}
+                  searchSource={taskSource}
+                  placeholder="add tasks — build, test, pkg#task…"
+                  hasCreate
+                  hasEntriesOnFocus
+                  hasClear
+                  debounceMs={0}
+                  isDisabled={workspaceMissing}
+                  disabledMessage="This serve has no colocated workspace — runs are unavailable here."
+                />
+              </StackItem>
               <Button
-                label="Stop"
-                variant="secondary"
+                label={started ? 'Rerun' : 'Run'}
+                variant="primary"
                 size="sm"
-                icon={<Icon icon={StopIcon} size="sm" />}
-                onClick={stop}
+                icon={<Icon icon={PlayIcon} size="sm" />}
+                isDisabled={!canRun}
+                isLoading={running}
+                onClick={start}
               />
-            )}
+              {running && (
+                <Button
+                  label="Stop"
+                  variant="secondary"
+                  size="sm"
+                  icon={<Icon icon={StopIcon} size="sm" />}
+                  onClick={stop}
+                />
+              )}
+            </HStack>
           </HStack>
         </LayoutHeader>
       }
@@ -418,7 +462,7 @@ export function RunConsole(): JSX.Element {
         <LayoutContent padding={0}>
           <VStack gap={0} style={{ height: '100%', minHeight: 0 }}>
             {started && (
-              <HStack gap={3} vAlign="center" paddingInline={3} paddingBlock={2}>
+              <HStack gap={3} vAlign="center" paddingInline={5} paddingBlock={2}>
                 <StackItem size="fill">
                   <ProgressBar
                     label="Run progress"
@@ -436,10 +480,30 @@ export function RunConsole(): JSX.Element {
                     />
                   </Tooltip>
                 )}
-                <Text type="code" size="sm" color="secondary" hasTabularNumbers>
-                  {progress.done}/{progress.total > 0 ? progress.total : '—'}
-                  {running ? ' · running' : ok !== null ? ` · ${ok ? 'passed' : 'failed'}` : ''}
-                </Text>
+                {running || ok === null ? (
+                  <Text type="code" size="sm" color="secondary" hasTabularNumbers>
+                    {progress.done}/{progress.total > 0 ? progress.total : '—'} · running
+                  </Text>
+                ) : (
+                  // Finished: the run's composition at a glance, feed language.
+                  <HStack gap={1} vAlign="center">
+                    {tally.cached > 0 && (
+                      <Token size="sm" color="cyan" label={`${tally.cached} cached`} />
+                    )}
+                    {tally.success > 0 && (
+                      <Token size="sm" color="green" label={`${tally.success} executed`} />
+                    )}
+                    {tally.failed > 0 && (
+                      <Token size="sm" color="red" label={`${tally.failed} failed`} />
+                    )}
+                    {tally.skipped > 0 && (
+                      <Token size="sm" color="yellow" label={`${tally.skipped} skipped`} />
+                    )}
+                    <Text type="code" size="sm" color="secondary" hasTabularNumbers>
+                      {fmtDur(parallel.spanMs)} · {ok ? 'passed' : 'failed'}
+                    </Text>
+                  </HStack>
+                )}
                 <SegmentedControl label="View" size="sm" value={view} onChange={(v) => setView(v as 'graph' | 'flame')}>
                   <SegmentedControlItem label="Graph" value="graph" />
                   <SegmentedControlItem label="Flame" value="flame" />
@@ -460,12 +524,18 @@ export function RunConsole(): JSX.Element {
                 ) : (
                   <EmptyState
                     title="No run yet"
-                    description="Enter a task above and press Run to see its graph execute."
+                    description="Pick tasks above (or tap one below) and press Run to watch the graph execute."
                     actions={
                       taskNames.length > 0 ? (
                         <HStack gap={1} wrap="wrap" hAlign="center">
                           {taskNames.slice(0, 8).map((t) => (
-                            <Token key={t} size="sm" color="default" label={t} onClick={() => setTaskInput(t)} />
+                            <Token
+                              key={t}
+                              size="sm"
+                              color={taskSel.some((p) => p.label === t) ? 'purple' : 'default'}
+                              label={t}
+                              onClick={() => addTask(t)}
+                            />
                           ))}
                         </HStack>
                       ) : (
@@ -666,6 +736,8 @@ export function RunConsole(): JSX.Element {
                           container="section"
                           isWrapped
                         />
+                        {/* auto-follow tail sentinel (IntersectionObserver target) */}
+                        <span ref={logEndRef} aria-hidden="true" />
                       </StackItem>
                     </VStack>
                   )}

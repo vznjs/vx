@@ -62,13 +62,16 @@ const ROW_GAP = 18
 const HEADER_H = 34
 const COL_STRIDE = CARD_W + COL_GAP
 const ROW_STRIDE = CARD_H + ROW_GAP
+// Canvas inset so the level guides (which extend 10px past the cards) never
+// clip against the scroll container's edge.
+const PAD = 16
 
 const COLOR_WARN = 'var(--color-warning, #F2C00B)'
 const COLOR_EDGE = 'var(--color-border-emphasized, #494D53)'
 const COLOR_ACCENT = 'var(--color-accent, #2694FE)'
 
-const xOf = (level: number): number => level * COL_STRIDE
-const yOf = (row: number): number => HEADER_H + row * ROW_STRIDE
+const xOf = (level: number): number => PAD + level * COL_STRIDE
+const yOf = (row: number): number => PAD / 2 + HEADER_H + row * ROW_STRIDE
 
 interface EdgeGeom {
   d: string
@@ -84,8 +87,8 @@ export function RunGraph(props: RunGraphProps): JSX.Element {
   }
 
   const l = useMemo(() => layoutLevels(nodes), [nodes])
-  const width = Math.max(1, l.levelCount) * COL_STRIDE - COL_GAP + 24
-  const height = HEADER_H + Math.max(1, l.maxRows) * ROW_STRIDE + 8
+  const width = Math.max(1, l.levelCount) * COL_STRIDE - COL_GAP + PAD * 2
+  const height = PAD / 2 + HEADER_H + Math.max(1, l.maxRows) * ROW_STRIDE + 8
 
   const edges = useMemo((): EdgeGeom[] => {
     const out: EdgeGeom[] = []
