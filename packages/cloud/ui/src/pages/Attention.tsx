@@ -3,7 +3,7 @@
 // surface. An EMPTY inbox is the success state and says so. The nav badge
 // reads useAttentionCount (failing branches + flaky tasks).
 
-import type { JSX, ReactNode } from 'react'
+import type { CSSProperties, JSX, ReactNode } from 'react'
 import { Card } from '@astryxdesign/core/Card'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
 import { Item } from '@astryxdesign/core/Item'
@@ -15,6 +15,7 @@ import { Token } from '@astryxdesign/core/Token'
 import {
   getBottlenecks,
   getFlakiest,
+  getRun,
   listInvocations,
   type FlakyTask,
   type InvocationDetail,
@@ -47,6 +48,72 @@ export function useAttentionCount(): number {
   const invocations = useQuery(() => listInvocations(30).catch(() => []), [])
   const flaky = useQuery(() => getFlakiest(10).catch(() => []), [])
   return failingNow(invocations.data ?? []).length + flakyOnly(flaky.data ?? []).length
+}
+
+/**
+ * One failing-branch row. Fetches the run's task list to NAME the failing
+ * tasks — the fact you actually act on — falling back to counts while the
+ * fetch is in flight.
+ */
+function FailingRow({ r }: { r: InvocationDetail }): JSX.Element {
+  const run = useQuery(() => getRun(r.runId).catch(() => null), [r.runId])
+  const failedIds = (run.data?.tasks ?? [])
+    .filter((t) => t.status === 'failed')
+    .map((t) => `${t.project}#${t.task}`)
+  const shown = failedIds.slice(0, 3)
+  const more = failedIds.length - shown.length
+  return (
+    <Item
+      density="balanced"
+      href={`#/runs/${encodeURIComponent(r.runId)}`}
+      startContent={<StatusDot variant="error" label="failing" />}
+      label={
+        <HStack gap={2} vAlign="center">
+          <Text weight="medium">{r.branch ?? 'no branch'}</Text>
+          <Text type="code" color="secondary">
+            {(r.commitSha ?? '').slice(0, 8) || '—'}
+          </Text>
+          {shown.map((id) => (
+            <Token key={id} size="sm" color="red" label={id} />
+          ))}
+          {more > 0 && (
+            <Text type="supporting" color="secondary">
+              +{more} more
+            </Text>
+          )}
+        </HStack>
+      }
+      description={`${r.failedCount} of ${r.taskCount} tasks failed — ${r.requestedTasks.join(' ') || r.command}`}
+      endContent={
+        <Text type="supporting" color="secondary">
+          <Timestamp value={new Date(r.startedAt).toISOString()} format="relative" />
+        </Text>
+      }
+    />
+  )
+}
+
+/** Proportional burn bar — this task's total time relative to the top burner. */
+function BurnBar({ frac }: { frac: number }): JSX.Element {
+  const track: CSSProperties = {
+    display: 'inline-flex',
+    width: 96,
+    height: 6,
+    borderRadius: 'var(--radius-inner, 3px)',
+    overflow: 'hidden',
+    backgroundColor: 'var(--color-neutral)',
+  }
+  return (
+    <span style={track}>
+      <span
+        style={{
+          width: `${Math.max(4, Math.round(frac * 100))}%`,
+          backgroundColor: 'var(--color-icon-purple)',
+          height: '100%',
+        }}
+      />
+    </span>
+  )
 }
 
 function Section(props: {
@@ -90,26 +157,7 @@ export function Attention(): JSX.Element {
               {failing.length === 0 ? null : (
                 <Card padding={0}>
                   {failing.map((r) => (
-                    <Item
-                      key={r.runId}
-                      density="balanced"
-                      href={`#/runs/${encodeURIComponent(r.runId)}`}
-                      startContent={<StatusDot variant="error" label="failing" />}
-                      label={
-                        <HStack gap={2} vAlign="center">
-                          <Text weight="medium">{r.branch ?? 'no branch'}</Text>
-                          <Text type="code" color="secondary">
-                            {(r.commitSha ?? '').slice(0, 8) || '—'}
-                          </Text>
-                        </HStack>
-                      }
-                      description={`${r.failedCount} failed of ${r.taskCount} tasks — ${r.requestedTasks.join(' ') || r.command}`}
-                      endContent={
-                        <Text type="supporting" color="secondary">
-                          <Timestamp value={new Date(r.startedAt).toISOString()} format="relative" />
-                        </Text>
-                      }
-                    />
+                    <FailingRow key={r.runId} r={r} />
                   ))}
                 </Card>
               )}
@@ -136,8 +184,8 @@ export function Attention(): JSX.Element {
                       href={`#/tasks/${encodeURIComponent(t.id)}`}
                       startContent={<Token size="sm" color="orange" label="flaky" />}
                       label={<Text type="code">{t.id}</Text>}
-                      description={`fails ${formatPercent(t.failureRate, 0)} of runs`}
-                      endContent={<Token size="sm" color="purple" label="exec.retries: 2" />}
+                      description={`fails ${formatPercent(t.failureRate, 0)} of runs — ${t.failures} of ${t.runs}`}
+                      endContent={<Token size="sm" color="red" label={`${t.failures}×`} />}
                     />
                   ))}
                 </Card>
@@ -156,19 +204,31 @@ export function Attention(): JSX.Element {
           >
             {rows.length === 0 ? null : (
               <Card padding={0}>
-                {rows.map((b) => (
-                  <Item
-                    key={b.id}
-                    density="balanced"
-                    href="#/insights/speed"
-                    startContent={<Token size="sm" color="yellow" label="slow" />}
-                    label={<Text type="code">{b.id}</Text>}
-                    description={`${b.runsRecent} runs · avg ${formatDuration(b.avgDurationMs)}`}
-                    endContent={
-                      <Text weight="medium">{formatDuration(b.totalDurationMs)}</Text>
-                    }
-                  />
-                ))}
+                {(() => {
+                  const max = Math.max(1, ...rows.map((b) => b.totalDurationMs))
+                  return rows.map((b, i) => (
+                    <Item
+                      key={b.id}
+                      density="balanced"
+                      href={`#/tasks/${encodeURIComponent(b.id)}`}
+                      startContent={
+                        <Text type="code" color="secondary" hasTabularNumbers>
+                          {i + 1}.
+                        </Text>
+                      }
+                      label={<Text type="code">{b.id}</Text>}
+                      description={`${b.runsRecent} run${b.runsRecent === 1 ? '' : 's'} · avg ${formatDuration(b.avgDurationMs)}`}
+                      endContent={
+                        <HStack gap={2} vAlign="center">
+                          <BurnBar frac={b.totalDurationMs / max} />
+                          <Text weight="medium" hasTabularNumbers>
+                            {formatDuration(b.totalDurationMs)}
+                          </Text>
+                        </HStack>
+                      }
+                    />
+                  ))
+                })()}
               </Card>
             )}
           </Section>
