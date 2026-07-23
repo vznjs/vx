@@ -16,6 +16,12 @@
   --vx-edge-highlight: rgba(255, 255, 255, 0.6);
   --vx-brand-from: #7c3aed;
   --vx-brand-to: #db2777;
+  /* Chart series hues — validated per mode against the card surfaces
+     (dataviz six-checks: lightness band, chroma, CVD ΔE, contrast). The
+     dark steps are NOT a flip of these; each mode has its own. */
+  --vx-chart-1: #7c3aed;
+  --vx-chart-2: #0891b2;
+  --vx-chart-3: #db2777;
 }
 
 [data-theme='dark'] {
@@ -28,6 +34,9 @@
   --vx-glass-card: rgba(21, 21, 33, 0.62);
   --vx-glass-border: rgba(167, 139, 250, 0.14);
   --vx-shadow-drop: rgba(0, 0, 0, 0.55);
+  --vx-chart-1: #8b5cf6;
+  --vx-chart-2: #0aa2c0;
+  --vx-chart-3: #ec4899;
   --vx-edge-highlight: rgba(255, 255, 255, 0.05);
   --vx-brand-from: #a78bfa;
   --vx-brand-to: #f472b6;
@@ -42,7 +51,11 @@
   border-radius: var(--radius-page, 16px);
   border: 1px solid var(--vx-glass-border);
   background-color: var(--vx-glass-card);
-  overflow: clip;
+  /* auto, NOT clip: the pane is the scroll surface for pages that don't
+     mount their own Layout scroller (insights/lists) — `clip` froze them
+     the moment content outgrew the viewport. auto still clips paint at
+     the radius. */
+  overflow: auto;
   box-shadow: 0 10px 30px -12px var(--vx-shadow-drop);
 }
 

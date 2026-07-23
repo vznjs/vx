@@ -621,6 +621,18 @@ export async function listCacheEntries(
   return r.entries
 }
 
+/** Raw task-execution rows (newest first), optionally scoped to a project/task. */
+export async function listRunRows(
+  args: { project?: string; task?: string; limit?: number } = {},
+): Promise<RunSummaryRow[]> {
+  const params = new URLSearchParams()
+  if (args.limit !== undefined) params.set('limit', String(args.limit))
+  if (args.project !== undefined) params.set('project', args.project)
+  if (args.task !== undefined) params.set('task', args.task)
+  const r = await getJson<{ runs: RunSummaryRow[] }>(`/v1/runs?${params}`)
+  return r.runs
+}
+
 export async function getTaskDetail(taskId: string): Promise<TaskDetail | null> {
   try {
     return await getJson<TaskDetail>(`/v1/tasks/${encodeURIComponent(taskId)}`)

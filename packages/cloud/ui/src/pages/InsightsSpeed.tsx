@@ -21,12 +21,14 @@ import {
 } from 'recharts'
 import {
   getBottlenecks,
+  getHeatmap,
   getParallelismHistory,
   getRunTrends,
 } from '../api.ts'
 import { formatDuration, plural } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
+import { WeekHeatmap, ChartCard as VizChartCard } from '../components/viz.tsx'
 
 const VIOLET = 'var(--color-icon-purple, #a78bfa)'
 const CYAN = 'var(--color-icon-cyan, #22d3ee)'
@@ -55,6 +57,7 @@ export function InsightsSpeed(): JSX.Element {
   const trends = useQuery(() => getRunTrends({ bucket: 'day' }).then((r) => r.points), [])
   const parallelism = useQuery(() => getParallelismHistory(50), [])
   const bottlenecks = useQuery(() => getBottlenecks(14, 15), [])
+  const heatmap = useQuery(() => getHeatmap(30), [])
 
   return (
     <Page>
@@ -210,6 +213,25 @@ export function InsightsSpeed(): JSX.Element {
             </ChartCard>
           )
         }}
+      </QueryGate>
+
+      <QueryGate query={heatmap} rows={3}>
+        {(cells) =>
+          cells.some((c) => c.runs > 0) ? (
+            <VizChartCard title="When CI burns time" hint="last 30 days, day-of-week × hour">
+              <WeekHeatmap
+                cells={cells.map((c) => ({
+                  dow: c.dayOfWeek,
+                  hour: c.hourOfDay,
+                  runs: c.runs,
+                  totalDurationMs: c.totalDurationMs,
+                }))}
+              />
+            </VizChartCard>
+          ) : (
+            <></>
+          )
+        }
       </QueryGate>
 
       <HStack gap={2}>

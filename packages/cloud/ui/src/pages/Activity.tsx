@@ -32,6 +32,7 @@ import { Token } from '@astryxdesign/core/Token'
 import { Skeleton } from '@astryxdesign/core/Skeleton'
 import {
   getRun,
+  getRunTrends,
   listInvocations,
   useCapabilities,
   type InvocationDetail,
@@ -40,6 +41,7 @@ import {
 import { formatCachePolicy, formatDuration } from '../format.ts'
 import { usePolledQuery, useQuery } from '../hooks.ts'
 import { toVizState, StatusToken } from '../components/status.tsx'
+import { PulseStrip } from '../components/viz.tsx'
 
 type StatusFilter = 'all' | 'failed' | 'passed'
 
@@ -248,6 +250,11 @@ function Inspector(props: { runId: string; inv: InvocationDetail }): JSX.Element
 export function Activity(): JSX.Element {
   const caps = useCapabilities()
   const invocations = usePolledQuery(() => listInvocations(200), 30_000, [])
+  // The feed's temporal pulse — last 14 days of runs, passed vs failed.
+  const pulse = useQuery(
+    () => getRunTrends({ bucket: 'day' }).then((r) => r.points.slice(-14)),
+    [],
+  )
   const [status, setStatus] = useState<StatusFilter>('all')
   const [needle, setNeedle] = useState('')
   const [selected, setSelected] = useState<string | null>(null)
@@ -306,8 +313,15 @@ export function Activity(): JSX.Element {
   } else if (filtered.length === 0) {
     body = <EmptyState title="Nothing matches" description="Loosen the filter or status segment." />
   } else {
+    const pulsePoints = pulse.data ?? []
+    const pulseTotal = pulsePoints.reduce((n, p) => n + p.runs, 0)
     body = (
       <VStack gap={0} style={{ padding: 'var(--spacing-4) var(--spacing-5) var(--spacing-6)' }}>
+        {pulseTotal > 0 && (
+          <VStack gap={1} style={{ paddingBlockEnd: 'var(--spacing-4)' }}>
+            <PulseStrip points={pulsePoints} />
+          </VStack>
+        )}
         <Table density="balanced" hasHover dividers="rows" textOverflow="truncate">
           {groups.map(([bucket, list]) => {
             const open = !collapsed.has(bucket)

@@ -17,10 +17,11 @@ import { Text } from '@astryxdesign/core/Text'
 import { Timestamp } from '@astryxdesign/core/Timestamp'
 import { Token } from '@astryxdesign/core/Token'
 import { getTaskDetail, type RunSummaryRow, type TaskDetail as TaskDetailPayload } from '../api.ts'
-import { cpuPct, formatBytes, formatCount, formatDuration, formatPercent } from '../format.ts'
+import { cpuPct, formatBytes, formatCount, formatDuration, formatPercent, plural } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Page, QueryGate, SectionHeader } from '../components/page.tsx'
 import { StatusToken, toVizState } from '../components/status.tsx'
+import { ChartCard, DurationHistory } from '../components/viz.tsx'
 
 interface RecentRow extends Record<string, unknown> {
   rowKey: string
@@ -80,7 +81,7 @@ function AggregateFacts({ detail }: { detail: TaskDetailPayload }): JSX.Element 
       {agg !== null && (
         <>
           <MetadataListItem label="Runs">
-            {`${formatCount(agg.runs)} · ${formatCount(agg.successes)} executed · ${formatCount(agg.hits)} hits · ${formatCount(agg.failures)} fail`}
+            {`${formatCount(agg.runs)} · ${formatCount(agg.successes)} executed · ${plural(agg.hits, 'hit')} · ${plural(agg.failures, 'failure')}`}
           </MetadataListItem>
           {/* A cache hit IS a success (only green runs ever cache), so the
               honest rate is 1 − failures/runs — the server's successRate
@@ -91,7 +92,7 @@ function AggregateFacts({ detail }: { detail: TaskDetailPayload }): JSX.Element 
           </MetadataListItem>
           <MetadataListItem label="Stability">{failureModeToken(agg.failureMode)}</MetadataListItem>
           <MetadataListItem label="Hit rate">
-            {`${formatPercent(agg.hitRate, 0)} · ${formatCount(agg.hits)} hits`}
+            {`${formatPercent(agg.hitRate, 0)} · ${plural(agg.hits, 'hit')}`}
           </MetadataListItem>
           <MetadataListItem label="Avg duration">
             {formatDuration(agg.avgDurationMs ?? -1)}
@@ -199,6 +200,21 @@ export function TaskDetail(): JSX.Element {
           return (
             <>
               <AggregateFacts detail={d} />
+
+              {d.recent.length >= 2 && (
+                <ChartCard
+                  title="Duration history"
+                  hint="every recorded run, oldest → newest — dots colored by outcome"
+                >
+                  <DurationHistory
+                    rows={d.recent.map((r) => ({
+                      startedAt: r.startedAt,
+                      durationMs: r.durationMs,
+                      state: toVizState(r.status, r.cacheHit ?? undefined),
+                    }))}
+                  />
+                </ChartCard>
+              )}
 
               {entry !== null && (
                 <>

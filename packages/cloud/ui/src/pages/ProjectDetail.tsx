@@ -14,10 +14,11 @@ import type { TableColumn, TableSortState } from '@astryxdesign/core/Table'
 import { Text } from '@astryxdesign/core/Text'
 import { Timestamp } from '@astryxdesign/core/Timestamp'
 import { Token } from '@astryxdesign/core/Token'
-import { getHistory, listProjects, type TaskHistoryRow } from '../api.ts'
+import { getHistory, listProjects, listRunRows, type TaskHistoryRow } from '../api.ts'
 import { formatBytes, formatCount, formatDuration, formatPercent } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, QueryGate, SectionHeader } from '../components/page.tsx'
+import { ChartCard, DailyArea } from '../components/viz.tsx'
 
 interface TaskRow extends Record<string, unknown> {
   id: string
@@ -83,6 +84,23 @@ export function ProjectDetail(): JSX.Element {
   )
   const tasks = useQuery(
     () => getHistory({ limit: 500 }).then((h) => h.filter((t) => t.project === name)),
+    [name],
+  )
+  // Daily task-time trend for this project, bucketed client-side from the
+  // raw execution rows (no per-project trends endpoint needed).
+  const trend = useQuery(
+    () =>
+      listRunRows({ project: name, limit: 2000 }).then((rows) => {
+        const byDay = new Map<number, number>()
+        for (const r of rows) {
+          const d = new Date(r.startedAt)
+          const day = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+          byDay.set(day, (byDay.get(day) ?? 0) + r.durationMs)
+        }
+        return Array.from(byDay.entries())
+          .sort((a, b) => a[0] - b[0])
+          .map(([t, value]) => ({ t, value }))
+      }),
     [name],
   )
   const [sort, setSort] = useState<TableSortState<SortKey>>([
@@ -231,6 +249,17 @@ export function ProjectDetail(): JSX.Element {
           const rows = sortRows(list.map(toRow), sort)
           return (
             <>
+              {(trend.data?.length ?? 0) >= 2 && (
+                <ChartCard title="Task time per day" hint="this project only">
+                  <DailyArea
+                    points={trend.data ?? []}
+                    name="task time"
+                    format={(v) => formatDuration(v)}
+                    height={180}
+                  />
+                </ChartCard>
+              )}
+
               <SectionHeader title={`Tasks (${rows.length})`} hint="row → task detail" />
               {rows.length === 0 ? (
                 <EmptyState title="No tasks recorded" description={`Run \`vx run <task>\` in ${name}.`} />

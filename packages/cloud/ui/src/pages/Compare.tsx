@@ -19,6 +19,7 @@ import { compareRuns, type CompareTaskRow } from '../api.ts'
 import { formatCount, formatDuration, formatSignedDuration } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, QueryGate, SectionHeader } from '../components/page.tsx'
+import { ChartCard, DeltaBars } from '../components/viz.tsx'
 import { StatusToken, toVizState } from '../components/status.tsx'
 
 type DeltaKind = 'slower' | 'faster' | 'same' | 'new' | 'gone'
@@ -191,6 +192,26 @@ export function Compare(): JSX.Element {
                 sub={`${formatCount(c.summary.tasksOnlyInA)} only here · ${formatCount(c.summary.tasksOnlyInB)} only prev`}
               />
             </KpiRow>
+          )
+        }}
+      </QueryGate>
+
+      <QueryGate query={cmp} rows={3}>
+        {(c) => {
+          const deltas = c.tasks
+            .filter((t) => t.durationDeltaMs !== null && t.durationDeltaMs !== 0)
+            .map((t) => ({ id: t.taskId, deltaMs: t.durationDeltaMs ?? 0 }))
+            .sort((x, y) => Math.abs(y.deltaMs) - Math.abs(x.deltaMs))
+            .slice(0, 12)
+          return deltas.length > 0 ? (
+            <ChartCard
+              title="Duration deltas"
+              hint="this run vs the previous — largest movers first"
+            >
+              <DeltaBars entries={deltas} />
+            </ChartCard>
+          ) : (
+            <></>
           )
         }}
       </QueryGate>

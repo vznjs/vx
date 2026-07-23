@@ -11,10 +11,11 @@ import { Item } from '@astryxdesign/core/Item'
 import { HStack, VStack } from '@astryxdesign/core/Layout'
 import { Text } from '@astryxdesign/core/Text'
 import { Token } from '@astryxdesign/core/Token'
-import { getFlakiest, getHistory } from '../api.ts'
+import { getFlakiest, getHistory, getRunTrends } from '../api.ts'
 import { formatCount, formatDuration, formatPercent } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
+import { ChartCard, DailyArea } from '../components/viz.tsx'
 
 const AMBER = 'var(--color-warning, #fbbf24)'
 const RED = 'var(--color-error, #fb7185)'
@@ -33,6 +34,7 @@ interface Ranked {
 export function InsightsFlaky(): JSX.Element {
   const flaky = useQuery(() => getFlakiest(25), [])
   const history = useQuery(() => getHistory({ limit: 500 }), [])
+  const trends = useQuery(() => getRunTrends({ bucket: 'day' }).then((r) => r.points), [])
 
   return (
     <Page>
@@ -54,6 +56,23 @@ export function InsightsFlaky(): JSX.Element {
             </KpiRow>
           )
         }}
+      </QueryGate>
+
+      <QueryGate query={trends} rows={3}>
+        {(points) =>
+          points.some((p) => p.failures > 0) ? (
+            <ChartCard title="Failures per day" hint="every failed task, workspace-wide">
+              <DailyArea
+                points={points.map((p) => ({ t: p.t, value: p.failures }))}
+                name="failures"
+                color={RED}
+                height={160}
+              />
+            </ChartCard>
+          ) : (
+            <></>
+          )
+        }
       </QueryGate>
 
       <SectionHeader title="The queue" hint="ranked by estimated time wasted" />

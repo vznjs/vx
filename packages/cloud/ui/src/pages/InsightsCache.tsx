@@ -6,19 +6,11 @@
 import type { CSSProperties, JSX } from 'react'
 import { Card } from '@astryxdesign/core/Card'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
+import { Grid } from '@astryxdesign/core/Grid'
 import { Item } from '@astryxdesign/core/Item'
 import { HStack, VStack } from '@astryxdesign/core/Layout'
 import { Text } from '@astryxdesign/core/Text'
 import { Token } from '@astryxdesign/core/Token'
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
 import {
   getCacheBreakdown,
   getCacheSavings,
@@ -30,6 +22,7 @@ import {
 import { formatBytes, formatCount, formatDuration, formatPercent, plural } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
+import { ChartCard, DailyArea, RateLine, SERIES_2 } from '../components/viz.tsx'
 
 const CYAN = 'var(--color-icon-cyan, #22d3ee)'
 const BLUE = 'var(--color-icon-blue, #60a5fa)'
@@ -133,49 +126,28 @@ export function InsightsCache(): JSX.Element {
       </QueryGate>
 
       <QueryGate query={trends} rows={4}>
-        {(points) => {
-          const data = points.map((p) => ({
-            day: new Date(p.t).toLocaleDateString([], { month: 'short', day: 'numeric' }),
-            hits: p.hits,
-          }))
-          return (
-            <Card padding={4}>
-              <VStack gap={3}>
-                <Text type="label">Cache hits per day</Text>
-                <ResponsiveContainer width="100%" height={200}>
-                  <AreaChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="hitFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.45} />
-                        <stop offset="100%" stopColor="#22d3ee" stopOpacity={0.02} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid horizontal vertical={false} stroke={GRID} />
-                    <XAxis dataKey="day" tick={TICK} axisLine={false} tickLine={false} minTickGap={28} />
-                    <YAxis tick={TICK} axisLine={false} tickLine={false} width={38} domain={[0, 'dataMax']} />
-                    <Tooltip
-                      formatter={(v) => formatCount(Number(v))}
-                      contentStyle={{
-                        background: 'var(--color-background-popover)',
-                        border: '1px solid var(--color-border)',
-                        borderRadius: 8,
-                      }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="hits"
-                      name="hits"
-                      stroke={CYAN}
-                      strokeWidth={2}
-                      fill="url(#hitFill)"
-                      isAnimationActive={false}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </VStack>
-            </Card>
-          )
-        }}
+        {(points) => (
+          <Grid columns={{ minWidth: 380 }} gap={3}>
+            <ChartCard title="Cache hits per day">
+              <DailyArea
+                points={points.map((p) => ({ t: p.t, value: p.hits }))}
+                name="hits"
+                color={SERIES_2}
+                height={180}
+              />
+            </ChartCard>
+            <ChartCard title="Hit rate per day" hint="hits ÷ tasks — gaps are quiet days">
+              <RateLine
+                points={points.map((p) => ({
+                  t: p.t,
+                  value: p.runs > 0 ? p.hits / p.runs : null,
+                }))}
+                name="hit rate"
+                height={180}
+              />
+            </ChartCard>
+          </Grid>
+        )}
       </QueryGate>
 
       <SectionHeader title="Worst hit rates first" hint="the fix order — declare tighter inputs or split keys" />

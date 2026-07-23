@@ -18,6 +18,7 @@ import { getHistory, type TaskHistoryRow } from '../api.ts'
 import { formatCount, formatDuration, formatPercent } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
+import { BarCell } from '../components/viz.tsx'
 
 interface TaskRow extends Record<string, unknown> {
   id: string
@@ -135,24 +136,18 @@ export function Tasks(): JSX.Element {
     {
       key: 'failureRate',
       header: 'Fail %',
-      width: pixel(80),
+      width: pixel(110),
       align: 'end',
       sortable: true,
-      renderCell: (r) => (
-        <Text style={r.failureRate > 0.1 ? { color: 'var(--color-error)' } : undefined}>
-          {formatPercent(r.failureRate, 0)}
-        </Text>
-      ),
+      renderCell: (r) => <BarCell frac={r.failureRate} color="var(--color-error)" />,
     },
     {
       key: 'hitRate',
       header: 'Hit %',
-      width: pixel(80),
+      width: pixel(110),
       align: 'end',
       sortable: true,
-      renderCell: (r) => (
-        <Text style={{ color: 'var(--color-icon-cyan)' }}>{formatPercent(r.hitRate, 0)}</Text>
-      ),
+      renderCell: (r) => <BarCell frac={r.hitRate} />,
     },
     {
       key: 'totalDurationMs',
