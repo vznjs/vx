@@ -53,10 +53,17 @@ export function PageHeader(props: { title: string; subtitle?: string; end?: Reac
 }
 
 /** Section header above a table/chart region. */
-export function SectionHeader(props: { title: string; hint?: string; end?: ReactNode }): JSX.Element {
+export function SectionHeader(props: {
+  title: string
+  hint?: string
+  /** Rendered right after the title — status tokens, counts. */
+  badge?: ReactNode
+  end?: ReactNode
+}): JSX.Element {
   return (
     <HStack gap={2} vAlign="center">
       <Heading level={2}>{props.title}</Heading>
+      {props.badge}
       {props.hint !== undefined && (
         <Text type="supporting" color="secondary">
           {props.hint}

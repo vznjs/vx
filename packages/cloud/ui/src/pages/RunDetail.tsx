@@ -402,7 +402,13 @@ export function RunDetail(): JSX.Element {
           <Page>
             <SectionHeader
               title={`Run ${shortId(id)}`}
-              hint="one vx run invocation"
+              badge={
+                rows.length > 0 ? (
+                  <StatusToken
+                    state={rows.some((r) => r.status === 'failed') ? 'failed' : 'success'}
+                  />
+                ) : undefined
+              }
               end={
                 <Link href="#/runs">
                   <Text type="supporting">← all runs</Text>
@@ -445,17 +451,12 @@ export function RunDetail(): JSX.Element {
                             sub="sum across all tasks"
                           />
                           <Kpi label="CPU time" value={formatDuration(cpuMs)} />
-                          <Kpi
-                            label="Outcome"
-                            value={failCount > 0 ? 'failed' : 'success'}
-                            tone={failCount > 0 ? 'bad' : 'good'}
-                          />
                         </KpiRow>
                       )
                     })()}
 
                     <SectionHeader
-                      title="Run"
+                      title="Execution"
                       hint="Graph = dependency structure · Flame = by actual time · click to inspect"
                       end={
                         showGraph ? (

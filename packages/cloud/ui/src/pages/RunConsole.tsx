@@ -32,6 +32,7 @@ import {
   StackItem,
   VStack,
 } from '@astryxdesign/core/Layout'
+import { Link } from '@astryxdesign/core/Link'
 import { List, ListItem } from '@astryxdesign/core/List'
 import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList'
 import { ProgressBar } from '@astryxdesign/core/ProgressBar'
@@ -46,6 +47,7 @@ import {
   getGraph,
   getHistory,
   getVersion,
+  listInvocations,
   runTasks,
   useCapabilities,
   type GraphNode,
@@ -125,6 +127,10 @@ export function RunConsole(): JSX.Element {
   const [ok, setOk] = useState<boolean | null>(null)
   // Configured worker count from run:start (undefined if the server didn't send it).
   const [concurrency, setConcurrency] = useState<number | undefined>(undefined)
+  // The recorded invocation id for the just-finished run (the delegated run
+  // self-ingests) — lets the cockpit deep-link straight to the run report.
+  const [recordedRunId, setRecordedRunId] = useState<string | null>(null)
+  const prevNewestRef = useRef<string | null>(null)
 
   // Log accumulation: ref + throttled tick, so a chatty task can't render-storm.
   const logsRef = useRef<Map<string, string>>(new Map())
@@ -191,6 +197,18 @@ export function RunConsole(): JSX.Element {
     },
     [scheduleLogFlush],
   )
+
+  // Failure-first diagnosis: when a run finishes red and nothing is selected,
+  // open the first failed task's detail + output automatically.
+  useEffect(() => {
+    if (ok !== false || selected !== null) return
+    for (const [id, st] of statuses) {
+      if (st.state === 'failed') {
+        setSelected(id)
+        return
+      }
+    }
+  }, [ok, selected, statuses])
 
   // Per-node duration (ms): the reported duration once complete, else the live
   // elapsed time for a running task, else 0 (queued). Recomputes as `now`
@@ -324,11 +342,20 @@ export function RunConsole(): JSX.Element {
     setRunError(null)
     setOk(null)
     setConcurrency(undefined)
+    setRecordedRunId(null)
     setNow(Date.now())
     setRunning(true)
     setStarted(true)
     setNodes([])
     setLogTick((t) => t + 1)
+    // Remember the newest recorded invocation BEFORE the run — anything newer
+    // after completion is this run's report.
+    prevNewestRef.current = null
+    listInvocations({ limit: 1 })
+      .then((rows) => {
+        prevNewestRef.current = rows[0]?.runId ?? null
+      })
+      .catch(() => {})
     // Graph for layout/edges + predicted cache status; merge so live events
     // already received aren't clobbered.
     getGraph(tasks)
@@ -347,6 +374,19 @@ export function RunConsole(): JSX.Element {
         setRunning(false)
         setOk(r.ok)
         cancelRef.current = null
+        // The ingest push is fire-and-forget server-side — poll briefly for
+        // the freshly recorded invocation so "Open report" can deep-link.
+        void (async () => {
+          for (let i = 0; i < 5; i++) {
+            await new Promise((res) => setTimeout(res, 600))
+            const rows = await listInvocations({ limit: 1 }).catch(() => [])
+            const newest = rows[0]?.runId ?? null
+            if (newest !== null && newest !== prevNewestRef.current) {
+              setRecordedRunId(newest)
+              return
+            }
+          }
+        })()
       },
       onError: (m) => {
         setRunError(m)
@@ -502,6 +542,13 @@ export function RunConsole(): JSX.Element {
                     <Text type="code" size="sm" color="secondary" hasTabularNumbers>
                       {fmtDur(parallel.spanMs)} · {ok ? 'passed' : 'failed'}
                     </Text>
+                    {recordedRunId !== null && (
+                      <Link href={`#/runs/${encodeURIComponent(recordedRunId)}`}>
+                        <Text type="supporting" color="accent">
+                          Open report →
+                        </Text>
+                      </Link>
+                    )}
                   </HStack>
                 )}
                 <SegmentedControl label="View" size="sm" value={view} onChange={(v) => setView(v as 'graph' | 'flame')}>
