@@ -212,11 +212,15 @@ export function ProjectDetail(): JSX.Element {
                 value={formatPercent(s.hitRate, 0)}
                 tone={s.hitRate > 0.5 ? 'good' : 'default'}
               />
-              <Kpi
-                label="Cache"
-                value={formatBytes(s.cacheBytes)}
-                sub={`${formatCount(s.cacheEntries)} entries`}
-              />
+              {/* Entries live in a colocated cache.db only — a serve's ingest
+                  store has none, so hide the tile rather than show "0 B". */}
+              {s.cacheEntries > 0 && (
+                <Kpi
+                  label="Cache"
+                  value={formatBytes(s.cacheBytes)}
+                  sub={`${formatCount(s.cacheEntries)} entries`}
+                />
+              )}
             </KpiRow>
           )
         }}

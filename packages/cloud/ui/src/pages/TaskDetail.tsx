@@ -80,10 +80,14 @@ function AggregateFacts({ detail }: { detail: TaskDetailPayload }): JSX.Element 
       {agg !== null && (
         <>
           <MetadataListItem label="Runs">
-            {`${formatCount(agg.runs)} · ${formatCount(agg.successes)} ok · ${formatCount(agg.failures)} fail`}
+            {`${formatCount(agg.runs)} · ${formatCount(agg.successes)} executed · ${formatCount(agg.hits)} hits · ${formatCount(agg.failures)} fail`}
           </MetadataListItem>
+          {/* A cache hit IS a success (only green runs ever cache), so the
+              honest rate is 1 − failures/runs — the server's successRate
+              counts executed successes only and reads as mostly-failing for
+              a well-cached task. */}
           <MetadataListItem label="Success rate">
-            {formatPercent(agg.successRate, 0)}
+            {formatPercent(agg.runs > 0 ? (agg.runs - agg.failures) / agg.runs : 1, 0)}
           </MetadataListItem>
           <MetadataListItem label="Stability">{failureModeToken(agg.failureMode)}</MetadataListItem>
           <MetadataListItem label="Hit rate">

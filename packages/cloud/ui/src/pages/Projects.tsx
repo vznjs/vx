@@ -75,6 +75,9 @@ function sortRows(rows: ProjectRow[], sort: TableSortState<SortKey>): ProjectRow
 
 export function Projects(): JSX.Element {
   const projects = useQuery(() => listProjects(500), [])
+  // Entry inventory exists only with a colocated cache.db — on a serve it is
+  // structurally empty, so a Cache column of dashes is dropped wholesale.
+  const hasCache = (projects.data ?? []).some((p) => p.cacheEntries > 0)
   const [filter, setFilter] = useState('')
   const [sort, setSort] = useState<TableSortState<SortKey>>([
     { sortKey: 'totalDurationMs', direction: 'descending' },
@@ -153,14 +156,18 @@ export function Projects(): JSX.Element {
         </Text>
       ),
     },
-    {
-      key: 'cacheBytes',
-      header: 'Cache',
-      width: pixel(90),
-      align: 'end',
-      sortable: true,
-      renderCell: (r) => (r.cacheEntries > 0 ? formatBytes(r.cacheBytes) : '—'),
-    },
+    ...(hasCache
+      ? [
+          {
+            key: 'cacheBytes',
+            header: 'Cache',
+            width: pixel(90),
+            align: 'end',
+            sortable: true,
+            renderCell: (r) => (r.cacheEntries > 0 ? formatBytes(r.cacheBytes) : '—'),
+          } satisfies TableColumn<ProjectRow>,
+        ]
+      : []),
     {
       key: 'lastRunAt',
       header: 'Last run',
@@ -174,7 +181,7 @@ export function Projects(): JSX.Element {
           '—'
         ),
     },
-  ], [])
+  ], [hasCache])
 
   return (
     <Page>
