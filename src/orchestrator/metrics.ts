@@ -390,6 +390,28 @@ export interface GetHistoryArgs {
   limit?: number
 }
 
+/**
+ * Distinct cache keys that produced BOTH a failure and a success — the
+ * definitional flake: identical inputs, different outcomes. A failure whose
+ * key never succeeded is a legitimate break (a changed input that fails),
+ * which belongs to the regressions surface, not flakiness.
+ */
+function mixedOutcomeKeyCount(db: Database, project: string, task: string): number {
+  const row = db
+    .query(
+      `SELECT COUNT(*) AS n FROM (
+         SELECT hash FROM runs
+         WHERE project = ? AND task = ? AND hash IS NOT NULL AND hash != ''
+         GROUP BY hash
+         HAVING SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) > 0
+            AND SUM(CASE WHEN status = 'success' OR status LIKE 'cache-hit%' OR cache_hit = 1
+                    THEN 1 ELSE 0 END) > 0
+       )`,
+    )
+    .get(project, task) as { n: number }
+  return row.n
+}
+
 export function getHistory(db: Database, args: GetHistoryArgs = {}): TaskHistoryRow[] {
   const limit = clampInt(args.limit ?? 50, 1, 500)
   const where: string[] = []
@@ -416,6 +438,7 @@ export function getHistory(db: Database, args: GetHistoryArgs = {}): TaskHistory
            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS successes,
            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
            SUM(CASE WHEN cache_hit = 1 OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END) AS hits,
+           SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END) AS retried,
            SUM(duration_ms) AS totalDurationMs,
            MAX(ended_at) AS lastSeenAt
          FROM runs WHERE project = ? AND task = ?`,
@@ -425,13 +448,23 @@ export function getHistory(db: Database, args: GetHistoryArgs = {}): TaskHistory
       successes: number
       failures: number
       hits: number
+      retried: number
       totalDurationMs: number | null
       lastSeenAt: number | null
     }
     const total = aggregate.total || 0
     const failures = aggregate.failures || 0
-    const failureMode: TaskHistoryRow['failureMode'] =
-      failures === 0 ? 'stable' : failures < total / 5 ? 'flaky-recoverable' : 'flaky-fatal'
+    // Flaky requires a nondeterminism SIGNAL: a within-run retry, or a cache
+    // key that both failed and succeeded. Failures alone (each on its own
+    // key) are legitimate breaks, not flakiness.
+    const flakySignal =
+      (aggregate.retried || 0) > 0 ||
+      (failures > 0 && mixedOutcomeKeyCount(db, p.project, p.task) > 0)
+    const failureMode: TaskHistoryRow['failureMode'] = !flakySignal
+      ? 'stable'
+      : failures < total / 5
+        ? 'flaky-recoverable'
+        : 'flaky-fatal'
     const durations = db
       .query(
         `SELECT duration_ms FROM runs
@@ -1307,6 +1340,13 @@ export interface FlakyTask {
   maxAttempts: number | undefined
   /** True when `withinRunRetries > 0` — flakiness is CONFIRMED, not inferred. */
   flakyConfirmed: boolean
+  /**
+   * Distinct cache keys that produced BOTH a failure and a success across
+   * runs — the cross-run nondeterminism signal (identical inputs, different
+   * outcomes). Failures that each sit on their own key are legitimate breaks
+   * and do NOT flag a task as flaky.
+   */
+  mixedOutcomeKeys: number
   /** p99 / p50 ratio for successful non-hit runs; >3 flags wide tail. */
   durationTailRatio: number | undefined
   p50DurationMs: number | undefined
@@ -1358,6 +1398,7 @@ export function getFlakiestTasks(db: Database, limit = 25): FlakyTask[] {
         withinRunRetries: p.within_run_retries,
         maxAttempts: p.max_attempts ?? undefined,
         flakyConfirmed: p.within_run_retries > 0,
+        mixedOutcomeKeys: p.failures > 0 ? mixedOutcomeKeyCount(db, p.project, p.task) : 0,
         durationTailRatio: ratio,
         p50DurationMs: p50,
         p99DurationMs: p99,
@@ -1366,15 +1407,18 @@ export function getFlakiestTasks(db: Database, limit = 25): FlakyTask[] {
     .filter(
       (r) =>
         r.flakyConfirmed ||
-        r.failureRate > 0 ||
+        r.mixedOutcomeKeys > 0 ||
         (r.durationTailRatio !== undefined && r.durationTailRatio > 2),
     )
     .sort((a, b) => {
-      // Confirmed-flaky tasks (a real within-run retry) outrank every merely
-      // inferred one; within each tier, failure rate dominates and the
-      // duration tail breaks ties.
+      // Confirmed-flaky tasks (a real within-run retry) outrank the same-key
+      // inferred ones, which outrank wide-tail-only rows; within each tier,
+      // failure rate dominates and the duration tail breaks ties.
       const score = (r: FlakyTask) =>
-        (r.flakyConfirmed ? 100 : 0) + r.failureRate * 10 + (r.durationTailRatio ?? 1)
+        (r.flakyConfirmed ? 100 : 0) +
+        (r.mixedOutcomeKeys > 0 ? 50 : 0) +
+        r.failureRate * 10 +
+        (r.durationTailRatio ?? 1)
       return score(b) - score(a)
     })
     .slice(0, clampInt(limit, 1, 200))
