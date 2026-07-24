@@ -21,6 +21,7 @@ import {
   CartesianGrid,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -187,6 +188,51 @@ export function LegendRow(props: {
         </HStack>
       ))}
     </HStack>
+  )
+}
+
+/**
+ * Split a chronological series into the last `take` points and the `take`
+ * before them — the current-vs-prior-period comparison every delta uses.
+ */
+export function periodSplit<T>(points: ReadonlyArray<T>, take: number): { cur: T[]; prev: T[] } {
+  return { cur: points.slice(-take), prev: points.slice(-take * 2, -take) }
+}
+
+/**
+ * Signed period-over-period delta chip. Green when moving in the good
+ * direction (`goodWhenDown` for durations/failures), red otherwise; renders
+ * "≈ flat" under half a percent and NOTHING when the prior period is empty
+ * (no honest baseline → no claim).
+ */
+export function DeltaChip(props: {
+  current: number
+  previous: number
+  goodWhenDown?: boolean
+  label?: string
+}): JSX.Element | null {
+  if (props.previous <= 0 || !Number.isFinite(props.current)) return null
+  const pct = (props.current - props.previous) / props.previous
+  const suffix = props.label !== undefined ? ` ${props.label}` : ''
+  if (Math.abs(pct) < 0.005) {
+    return (
+      <Text type="supporting" size="2xs" color="secondary">
+        ≈ flat{suffix}
+      </Text>
+    )
+  }
+  const up = pct > 0
+  const good = props.goodWhenDown === true ? !up : up
+  return (
+    <Text
+      type="supporting"
+      size="2xs"
+      hasTabularNumbers
+      style={{ color: good ? 'var(--color-success)' : 'var(--color-error)' }}
+    >
+      {up ? '↑' : '↓'} {formatPercent(Math.abs(pct), Math.abs(pct) < 0.1 ? 1 : 0)}
+      {suffix}
+    </Text>
   )
 }
 
@@ -429,6 +475,9 @@ export function WeekHeatmap(props: {
  */
 export function DurationHistory(props: {
   rows: ReadonlyArray<{ startedAt: number; durationMs: number; state: VizState }>
+  /** Typical (p50) executed duration — drawn as a dashed reference line so
+   *  regressions are visible against the baseline at a glance. */
+  p50?: number
   height?: number
 }): JSX.Element {
   const rows = [...props.rows].sort((a, b) => a.startedAt - b.startedAt)
@@ -461,6 +510,19 @@ export function DurationHistory(props: {
             formatter={(v) => formatDuration(Number(v))}
             contentStyle={TOOLTIP_STYLE}
           />
+          {props.p50 !== undefined && props.p50 > 0 && (
+            <ReferenceLine
+              y={props.p50}
+              stroke="var(--color-text-secondary)"
+              strokeDasharray="4 4"
+              label={{
+                value: `p50 ${formatDuration(props.p50)}`,
+                position: 'insideTopRight',
+                fontSize: 10,
+                fill: 'var(--color-text-secondary)',
+              }}
+            />
+          )}
           <Line
             type="monotone"
             dataKey="durationMs"

@@ -215,6 +215,7 @@ export function TaskDetail(): JSX.Element {
                       durationMs: r.durationMs,
                       state: toVizState(r.status, r.cacheHit ?? undefined),
                     }))}
+                    p50={d.aggregate?.p50DurationMs}
                   />
                 </ChartCard>
               )}

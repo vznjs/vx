@@ -22,7 +22,17 @@ import { formatBytes, formatCount, formatDuration, formatPercent, plural } from 
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
 import { ProjectName, TaskRef } from '../components/ident.tsx'
-import { ChartCard, DailyArea, LegendRow, MeterBar, RankedRow, RateLine, SERIES_2 } from '../components/viz.tsx'
+import {
+  ChartCard,
+  DailyArea,
+  DeltaChip,
+  LegendRow,
+  MeterBar,
+  periodSplit,
+  RankedRow,
+  RateLine,
+  SERIES_2,
+} from '../components/viz.tsx'
 import { STATUS } from '../components/status.tsx'
 
 const LOCAL_FILL = STATUS['cache-hit'].fill
@@ -122,7 +132,21 @@ export function InsightsCache(): JSX.Element {
                 height={180}
               />
             </ChartCard>
-            <ChartCard title="Hit rate per day" hint="hits ÷ tasks — gaps are quiet days">
+            <ChartCard
+              title="Hit rate per day"
+              hint="hits ÷ tasks — gaps are quiet days"
+              end={(() => {
+                const { cur, prev } = periodSplit(points, 7)
+                const rate = (xs: typeof points): number => {
+                  const runs = xs.reduce((n, p) => n + p.runs, 0)
+                  return runs > 0 ? xs.reduce((n, p) => n + p.hits, 0) / runs : 0
+                }
+                const prevRuns = prev.reduce((n, p) => n + p.runs, 0)
+                return prevRuns > 0 ? (
+                  <DeltaChip current={rate(cur)} previous={rate(prev)} label="wk/wk" />
+                ) : undefined
+              })()}
+            >
               <RateLine
                 points={points.map((p) => ({
                   t: p.t,

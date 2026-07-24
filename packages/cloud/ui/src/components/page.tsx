@@ -125,8 +125,15 @@ const KPI_VALUE_COLOR: Record<KpiTone, string | undefined> = {
   warn: 'var(--color-warning)',
 }
 
-/** One KPI tile. Compose in a `KpiRow`. */
-export function Kpi(props: { label: string; value: ReactNode; sub?: ReactNode; tone?: KpiTone }): JSX.Element {
+/** One KPI tile. Compose in a `KpiRow`; `delta` takes a viz `DeltaChip`. */
+export function Kpi(props: {
+  label: string
+  value: ReactNode
+  sub?: ReactNode
+  /** Period-over-period chip rendered beside the sub line. */
+  delta?: ReactNode
+  tone?: KpiTone
+}): JSX.Element {
   const color = KPI_VALUE_COLOR[props.tone ?? 'default']
   return (
     <Card
@@ -145,10 +152,15 @@ export function Kpi(props: { label: string; value: ReactNode; sub?: ReactNode; t
             {props.value}
           </Text>
         </span>
-        {props.sub !== undefined && (
-          <Text type="supporting" color="secondary">
-            {props.sub}
-          </Text>
+        {(props.sub !== undefined || props.delta !== undefined) && (
+          <HStack gap={2} vAlign="center">
+            {props.sub !== undefined && (
+              <Text type="supporting" color="secondary">
+                {props.sub}
+              </Text>
+            )}
+            {props.delta}
+          </HStack>
         )}
       </VStack>
     </Card>

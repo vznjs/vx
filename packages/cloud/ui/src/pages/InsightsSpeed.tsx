@@ -18,7 +18,9 @@ import { TaskRef } from '../components/ident.tsx'
 import {
   ChartCard,
   DailyArea,
+  DeltaChip,
   GRID_STROKE,
+  periodSplit,
   RankedRow,
   SERIES_1,
   SERIES_2,
@@ -42,9 +44,19 @@ export function InsightsSpeed(): JSX.Element {
         {(rows) => {
           const burn = rows.reduce((n, b) => n + b.totalDurationMs, 0)
           const savable = rows.reduce((n, b) => n + b.weeklySavingsAt25PctCutMs, 0)
+          const { cur, prev } = periodSplit(trends.data ?? [], 7)
+          const burn7 = cur.reduce((n, t) => n + t.totalDurationMs, 0)
+          const burnPrev7 = prev.reduce((n, t) => n + t.totalDurationMs, 0)
           return (
             <KpiRow>
-              <Kpi label="Task time burned (14d)" value={formatDuration(burn)} sub="across top offenders" />
+              <Kpi
+                label="Task time burned (14d)"
+                value={formatDuration(burn)}
+                sub="across top offenders"
+                delta={
+                  <DeltaChip current={burn7} previous={burnPrev7} goodWhenDown label="vs prior 7d" />
+                }
+              />
               <Kpi
                 label="Weekly savings at −25%"
                 value={formatDuration(savable)}

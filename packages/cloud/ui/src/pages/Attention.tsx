@@ -15,10 +15,14 @@ import { Token } from '@astryxdesign/core/Token'
 import {
   getBottlenecks,
   getFlakiest,
+  getHistory,
   getRun,
   listInvocations,
+  listRunRows,
   type FlakyTask,
   type InvocationDetail,
+  type RunSummaryRow,
+  type TaskHistoryRow,
 } from '../api.ts'
 import { formatDuration, formatPercent } from '../format.ts'
 import { useQuery } from '../hooks.ts'
@@ -44,6 +48,42 @@ function failingNow(rows: InvocationDetail[]): InvocationDetail[] {
 
 const flakyOnly = (rows: FlakyTask[]): FlakyTask[] =>
   rows.filter((t) => t.failures > 1 && t.failureRate > 0.05).slice(0, 10)
+
+interface Slowdown {
+  id: string
+  p50: number
+  last: number
+  ratio: number
+  at: number
+}
+
+/**
+ * Regression detector: tasks whose LATEST executed run is >= 2x their own
+ * typical (p50) executed duration, with an absolute floor so millisecond
+ * noise never flags. Cache hits are excluded on both sides — this compares
+ * real work against real work.
+ */
+function detectSlowdowns(hist: TaskHistoryRow[], rows: RunSummaryRow[]): Slowdown[] {
+  const p50ById = new Map(
+    hist.filter((h) => (h.p50DurationMs ?? 0) > 0).map((h) => [h.id, h.p50DurationMs ?? 0]),
+  )
+  const latest = new Map<string, RunSummaryRow>()
+  for (const r of rows) {
+    if (r.status !== 'success') continue
+    const id = `${r.project}#${r.task}`
+    if (!latest.has(id)) latest.set(id, r) // rows are newest-first
+  }
+  const out: Slowdown[] = []
+  for (const [id, r] of latest) {
+    const p50 = p50ById.get(id)
+    if (p50 === undefined) continue
+    const ratio = r.durationMs / p50
+    if (ratio >= 2 && r.durationMs - p50 >= 100) {
+      out.push({ id, p50, last: r.durationMs, ratio, at: r.startedAt })
+    }
+  }
+  return out.sort((a, b) => b.ratio - a.ratio).slice(0, 8)
+}
 
 /** Nav-badge count: failing branches + flaky tasks. Cheap; never throws. */
 export function useAttentionCount(): number {
@@ -120,6 +160,8 @@ export function Attention(): JSX.Element {
   const invocations = useQuery(() => listInvocations(30), [])
   const flaky = useQuery(() => getFlakiest(10), [])
   const bottlenecks = useQuery(() => getBottlenecks(14, 5), [])
+  const history = useQuery(() => getHistory({ limit: 500 }).catch(() => []), [])
+  const recentRows = useQuery(() => listRunRows({ limit: 300 }).catch(() => []), [])
 
   return (
     <Page>
@@ -165,6 +207,40 @@ export function Attention(): JSX.Element {
                       label={<TaskRef id={t.id} />}
                       description={`fails ${formatPercent(t.failureRate, 0)} of runs — ${t.failures} of ${t.runs}`}
                       endContent={<Token size="sm" color="red" label={`${t.failures}×`} />}
+                    />
+                  ))}
+                </Card>
+              )}
+            </Section>
+          )
+        }}
+      </QueryGate>
+
+      <QueryGate query={recentRows} rows={2}>
+        {(rows) => {
+          const slow = detectSlowdowns(history.data ?? [], rows)
+          return (
+            <Section
+              title="Got slower"
+              hint="latest executed run vs the task's own p50 — cache hits excluded"
+              empty="No task is running meaningfully slower than its history."
+            >
+              {slow.length === 0 ? null : (
+                <Card padding={0}>
+                  {slow.map((t) => (
+                    <RankedRow
+                      key={t.id}
+                      href={`#/tasks/${encodeURIComponent(t.id)}`}
+                      label={<TaskRef id={t.id} />}
+                      sub={`typical ${formatDuration(t.p50)} → last ${formatDuration(t.last)}`}
+                      extra={<Token size="sm" color="orange" label={`${t.ratio.toFixed(1)}× slower`} />}
+                      frac={Math.min(1, t.ratio / 4)}
+                      color="var(--color-warning)"
+                      end={
+                        <Text type="supporting" color="secondary">
+                          <Timestamp value={new Date(t.at).toISOString()} format="relative" />
+                        </Text>
+                      }
                     />
                   ))}
                 </Card>
