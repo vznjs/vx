@@ -208,6 +208,33 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-24**: **Two diverged arcs reconciled — the platform arc WINS the
+  tree; the astryx dashboard rewrite is PARKED as the design-port target**
+  (owner: "Fix it all", landing PR #155). A PR-branch session (fenced to
+  `claude/bold-cannon-hmsma2` by its harness, unlike the usual push-to-main
+  flow) spent July 20-24 rewriting the dashboard as a React 19 +
+  `@astryxdesign/core` app (design library `page/viz/ident.tsx` + `brand.css`
+  identity hues mirroring the CLI; UX per `docs/design/dashboard-ux-2026-07.md`)
+  — while main pivoted vx-cloud into the self-hosted PLATFORM (Postgres,
+  account-session auth + CSRF, org/workspace tenancy, no loopback exemption,
+  `serve` verb removed) and evolved the Solid UI in parallel (41 commits:
+  session auth shell, admin area, task logs, analytics, virtualization). The
+  branch's serve-era work was superseded wholesale: its dist/\* multi-run
+  scheduler had already landed on main (DIST_PROTOCOL v2 + distributed-review
+  hardening), and its astryx SPA has NO login surface — it cannot authenticate
+  against the platform server at all. Resolution: merge main with main winning
+  every conflict; `packages/cloud/ui` (Solid) stays the shipping dashboard;
+  the complete astryx app is parked at **`packages/cloud/ui-astryx/`** (NOT a
+  workspace member, not built, oxlint/oxfmt-ignored, README states exactly
+  what reactivation requires: auth shell, endpoint re-map to platform routes,
+  admin/settings/task-log surfaces). Kept from the branch: the UX design doc,
+  and the key-scoped flakiness signal (same cache key both failed AND
+  succeeded = the definitional flake) re-applied onto main's `metrics.ts`
+  beside its `within_run_retries` confirmed-flaky signal. **Standing intent:**
+  the owner's design directives from the astryx arc (one design library, no
+  per-page drift; identity colors — projects hued, tasks pink; visualize
+  don't display) now apply TO the shipping platform UI as the ongoing port.
+
 - **2026-07-19**: **The recurring ~40%-of-runs cloud-CI flake ROOT-FIXED — an
   advisory-lock KEY COLLISION deadlocked the first `/v1/auth/register` against
   the boot-time index build** (the "disjoint agents-e2e/server flake" documented

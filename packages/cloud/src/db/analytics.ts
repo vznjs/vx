@@ -475,6 +475,13 @@ export interface FlakyTask {
   withinRunRetries: number
   maxAttempts: number | undefined
   flakyConfirmed: boolean
+  /**
+   * Distinct cache keys that produced BOTH a failure and a success across
+   * runs — the cross-run nondeterminism signal (identical inputs, different
+   * outcomes). Failures that each sit on their own key are legitimate breaks
+   * (the regressions surface owns those) and do NOT flag a task as flaky.
+   */
+  mixedOutcomeKeys: number
   durationTailRatio: number | undefined
   p50DurationMs: number | undefined
   p99DurationMs: number | undefined
@@ -723,15 +730,24 @@ function historyRowFrom(
     successes: number
     failures: number
     hits: number
+    retried: number
     total_duration_ms: number | null
     last_seen_at: string | null
   },
   sorted: number[],
+  mixedOutcomeKeys: number,
 ): TaskHistoryRow {
   const total = agg.total || 0
   const failures = agg.failures || 0
-  const failureMode: TaskHistoryRow['failureMode'] =
-    failures === 0 ? 'stable' : failures < total / 5 ? 'flaky-recoverable' : 'flaky-fatal'
+  // Flaky requires a nondeterminism SIGNAL: a within-run retry, or a cache
+  // key that both failed and succeeded. Failures alone (each on its own key)
+  // are legitimate breaks, not flakiness.
+  const flakySignal = (agg.retried || 0) > 0 || mixedOutcomeKeys > 0
+  const failureMode: TaskHistoryRow['failureMode'] = !flakySignal
+    ? 'stable'
+    : failures < total / 5
+      ? 'flaky-recoverable'
+      : 'flaky-fatal'
   const avg = sorted.length > 0 ? sorted.reduce((a, b) => a + b, 0) / sorted.length : undefined
   return {
     id: `${project}#${task}`,
@@ -1591,6 +1607,7 @@ export class Analytics {
         successes: number
         failures: number
         hits: number
+        retried: number
         total_duration_ms: number | null
         last_seen_at: string | null
       }[]
@@ -1600,6 +1617,7 @@ export class Analytics {
              SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END)::int AS successes,
              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)::int AS failures,
              SUM(CASE WHEN cache_hit = true OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END)::int AS hits,
+             SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END)::int AS retried,
              SUM(duration_ms)::float8 AS total_duration_ms,
              MAX(ended_at) AS last_seen_at
       FROM task_runs WHERE workspace_id = ${workspaceId} ${fProject} ${fTask}
@@ -1614,6 +1632,7 @@ export class Analytics {
       ) t WHERE rn <= 50`
     const aggByKey = new Map(aggRows.map((r) => [pairKey(r.project, r.task), r]))
     const dursByKey = durationsByPair(durRows)
+    const mixedByKey = await this.mixedOutcomeKeyCounts(workspaceId, args)
     return pairs.map((p) => {
       const key = pairKey(p.project, p.task)
       const agg = aggByKey.get(key) ?? {
@@ -1623,10 +1642,17 @@ export class Analytics {
         successes: 0,
         failures: 0,
         hits: 0,
+        retried: 0,
         total_duration_ms: null,
         last_seen_at: null,
       }
-      return historyRowFrom(p.project, p.task, agg, dursByKey.get(key) ?? [])
+      return historyRowFrom(
+        p.project,
+        p.task,
+        agg,
+        dursByKey.get(key) ?? [],
+        mixedByKey.get(key) ?? 0,
+      )
     })
   }
 
@@ -1642,6 +1668,7 @@ export class Analytics {
           successes: number
           failures: number
           hits: number
+          retried: number
           total_duration_ms: number | null
           last_seen_at: string | null
         }[]
@@ -1650,12 +1677,14 @@ export class Analytics {
                SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END)::int AS successes,
                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)::int AS failures,
                SUM(CASE WHEN cache_hit = true OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END)::int AS hits,
+               SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END)::int AS retried,
                SUM(duration_ms)::float8 AS total_duration_ms,
                MAX(ended_at) AS last_seen_at
         FROM task_runs WHERE workspace_id = ${workspaceId} AND project = ${project} AND task = ${task}`
     )[0]!
     const sorted = await this.successDurations(workspaceId, project, task)
-    return historyRowFrom(project, task, agg, sorted)
+    const mixedByKey = await this.mixedOutcomeKeyCounts(workspaceId, { project, task })
+    return historyRowFrom(project, task, agg, sorted, mixedByKey.get(pairKey(project, task)) ?? 0)
   }
 
   /** Last 50 successful non-hit durations, ascending — the percentile base. */
@@ -2237,6 +2266,32 @@ export class Analytics {
     return grid
   }
 
+  /**
+   * Per-(project, task) count of cache keys that produced BOTH a failure and
+   * a success — the batched cross-run nondeterminism signal (see
+   * `FlakyTask.mixedOutcomeKeys`). One grouped scan for every pair at once,
+   * keyed by `pairKey`.
+   */
+  private async mixedOutcomeKeyCounts(
+    workspaceId: string,
+    args: { project?: string; task?: string } = {},
+  ): Promise<Map<string, number>> {
+    const sql = this.sql
+    const fProject = args.project !== undefined ? sql`AND project = ${args.project}` : sql``
+    const fTask = args.task !== undefined ? sql`AND task = ${args.task}` : sql``
+    const rows = await sql<{ project: string; task: string; mixed: number }[]>`
+      SELECT project, task, count(*)::int AS mixed FROM (
+        SELECT project, task, hash FROM task_runs
+        WHERE workspace_id = ${workspaceId} ${fProject} ${fTask}
+          AND hash IS NOT NULL AND hash != ''
+        GROUP BY project, task, hash
+        HAVING SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) > 0
+           AND SUM(CASE WHEN status = 'success' OR status LIKE 'cache-hit%' OR cache_hit = true
+                   THEN 1 ELSE 0 END) > 0
+      ) m GROUP BY project, task`
+    return new Map(rows.map((r) => [pairKey(r.project, r.task), r.mixed]))
+  }
+
   async getFlakiestTasks(workspaceId: string, limit = 25): Promise<FlakyTask[]> {
     const pairs = await this.sql<
       {
@@ -2268,6 +2323,7 @@ export class Analytics {
           AND (cache_hit IS NULL OR cache_hit = false) AND status = 'success'
       ) t WHERE rn <= 50`
     const dursByKey = durationsByPair(durRows)
+    const mixedByKey = await this.mixedOutcomeKeyCounts(workspaceId)
     const out: FlakyTask[] = pairs.map((p) => {
       const sorted = dursByKey.get(pairKey(p.project, p.task)) ?? []
       const p50 = pickPercentile(sorted, 0.5)
@@ -2283,6 +2339,7 @@ export class Analytics {
         withinRunRetries: p.within_run_retries,
         maxAttempts: p.max_attempts ?? undefined,
         flakyConfirmed: p.within_run_retries > 0,
+        mixedOutcomeKeys: mixedByKey.get(pairKey(p.project, p.task)) ?? 0,
         durationTailRatio: ratio,
         p50DurationMs: p50,
         p99DurationMs: p99,
@@ -2292,12 +2349,17 @@ export class Analytics {
       .filter(
         (r) =>
           r.flakyConfirmed ||
-          r.failureRate > 0 ||
+          r.mixedOutcomeKeys > 0 ||
           (r.durationTailRatio !== undefined && r.durationTailRatio > 2),
       )
       .sort((a, b) => {
+        // Confirmed (within-run retry) outranks same-key inferred, which
+        // outranks wide-tail-only; failure rate then tail break ties.
         const score = (r: FlakyTask): number =>
-          (r.flakyConfirmed ? 100 : 0) + r.failureRate * 10 + (r.durationTailRatio ?? 1)
+          (r.flakyConfirmed ? 100 : 0) +
+          (r.mixedOutcomeKeys > 0 ? 50 : 0) +
+          r.failureRate * 10 +
+          (r.durationTailRatio ?? 1)
         return score(b) - score(a)
       })
       .slice(0, clampInt(limit, 1, 200))

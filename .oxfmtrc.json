@@ -16,6 +16,7 @@
     "pnpm-lock.yaml",
     "vx-lock.json",
     "packages/cloud/deploy",
-    "packages/cloud/ui"
+    "packages/cloud/ui",
+    "packages/cloud/ui-astryx"
   ]
 }

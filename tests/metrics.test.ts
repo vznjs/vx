@@ -535,7 +535,9 @@ describe('getHistory', () => {
       cache.recordRuns(
         Array.from({ length: 6 }, (_, i) =>
           mkRun({
-            hash: `h${i}`,
+            // The failing run reuses h4's key — a same-key flap, so the task
+            // classifies flaky (a unique-key failure would read 'stable').
+            hash: i === 5 ? 'h4' : `h${i}`,
             project: 'pkg',
             task: 'test',
             status: i === 5 ? 'failed' : 'success',
@@ -551,6 +553,26 @@ describe('getHistory', () => {
       expect(rows[0]!.successRate).toBeCloseTo(5 / 6, 5)
       expect(rows[0]!.failureMode).toBe('flaky-recoverable')
       expect(rows[0]!.p50DurationMs).toBeGreaterThan(0)
+    })
+  })
+
+  it('reads a unique-key failure as stable (a break, not a flake)', () => {
+    withCache((cache) => {
+      const now = Date.now()
+      cache.recordRuns(
+        Array.from({ length: 6 }, (_, i) =>
+          mkRun({
+            hash: `h${i}`,
+            project: 'pkg',
+            task: 'test',
+            status: i === 5 ? 'failed' : 'success',
+            startedAt: now - 1000 * (6 - i),
+            durationMs: 100 + i * 50,
+          }),
+        ),
+      )
+      const rows = getHistory(cache.dbHandle(), { project: 'pkg', task: 'test' })
+      expect(rows[0]!.failureMode).toBe('stable')
     })
   })
 })
@@ -894,13 +916,14 @@ describe('getRunHeatmap', () => {
 })
 
 describe('getFlakiestTasks', () => {
-  it('surfaces tasks with mixed pass/fail or wide p99/p50', () => {
+  it('surfaces a task whose SAME key both failed and passed', () => {
     withCache((cache) => {
       const now = Date.now()
       cache.recordRuns([
         mkRun({ hash: 'h1', project: 'a', task: 't', status: 'success', startedAt: now - 5000 }),
+        // Same key as the success above — identical inputs, different outcome.
         mkRun({
-          hash: 'h2',
+          hash: 'h1',
           project: 'a',
           task: 't',
           status: 'failed',
@@ -914,6 +937,28 @@ describe('getFlakiestTasks', () => {
       expect(flaky.length).toBeGreaterThan(0)
       expect(flaky[0]!.id).toBe('a#t')
       expect(flaky[0]!.failures).toBe(1)
+      expect(flaky[0]!.mixedOutcomeKeys).toBe(1)
+    })
+  })
+
+  it('does NOT flag failures that each sit on their own key (a break, not a flake)', () => {
+    withCache((cache) => {
+      const now = Date.now()
+      cache.recordRuns([
+        mkRun({ hash: 'k1', project: 'b', task: 't', status: 'success', startedAt: now - 5000 }),
+        // A different key failed — the inputs changed and the change broke it.
+        mkRun({
+          hash: 'k2',
+          project: 'b',
+          task: 't',
+          status: 'failed',
+          exitCode: 1,
+          startedAt: now - 4000,
+        }),
+        mkRun({ hash: 'k3', project: 'b', task: 't', status: 'success', startedAt: now - 3000 }),
+      ])
+      const flaky = getFlakiestTasks(cache.dbHandle())
+      expect(flaky.find((f) => f.id === 'b#t')).toBeUndefined()
     })
   })
 
@@ -921,10 +966,11 @@ describe('getFlakiestTasks', () => {
     withCache((cache) => {
       const now = Date.now()
       cache.recordRuns([
-        // `inferred#t`: fails in one of four runs — flaky by cross-run inference.
+        // `inferred#t`: the SAME key passed then failed — flaky by cross-run
+        // (same-key) inference.
         mkRun({ hash: 'i1', project: 'inferred', task: 't', startedAt: now - 5000 }),
         mkRun({
-          hash: 'i2',
+          hash: 'i1',
           project: 'inferred',
           task: 't',
           status: 'failed',

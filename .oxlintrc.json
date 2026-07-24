@@ -16,6 +16,7 @@
     "apps",
     "dist",
     "!packages/cloud/src/dist",
-    "packages/cloud/ui"
+    "packages/cloud/ui",
+    "packages/cloud/ui-astryx"
   ]
 }
