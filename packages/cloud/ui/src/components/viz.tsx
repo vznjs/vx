@@ -10,6 +10,7 @@
 
 import { Fragment, type CSSProperties, type JSX, type ReactNode } from 'react'
 import { Card } from '@astryxdesign/core/Card'
+import { Item } from '@astryxdesign/core/Item'
 import { HStack, VStack } from '@astryxdesign/core/Layout'
 import { Text } from '@astryxdesign/core/Text'
 import {
@@ -37,10 +38,101 @@ const BAD = 'var(--color-error, #F5394F)'
 const GRID = 'var(--color-border, rgba(120,120,140,0.16))'
 
 export const TICK = { fontSize: 11, fill: 'var(--color-text-secondary)' }
+export const GRID_STROKE = GRID
 export const TOOLTIP_STYLE: CSSProperties = {
   background: 'var(--color-background-popover)',
   border: '1px solid var(--color-border)',
   borderRadius: 8,
+}
+
+export interface MeterSegment {
+  /** 0..1 share of the track. */
+  frac: number
+  /** CSS color OR gradient (`background`, not `background-color`). */
+  color: string
+}
+
+/**
+ * THE bar primitive — every meter, mix, and rank bar in the app renders
+ * through this one geometry: 6px tall, 3px radius, neutral track. Segments
+ * stack left-to-right; a single fill is one segment.
+ */
+export function MeterBar(props: {
+  segments: ReadonlyArray<MeterSegment>
+  width?: number | string
+  height?: number
+  title?: string
+}): JSX.Element {
+  return (
+    <span
+      title={props.title}
+      style={{
+        display: 'flex',
+        width: props.width ?? '100%',
+        height: props.height ?? 6,
+        borderRadius: 3,
+        overflow: 'hidden',
+        backgroundColor: 'var(--color-neutral)',
+        flexShrink: 0,
+      }}
+    >
+      {props.segments.map((s, i) => (
+        <span
+          key={i}
+          style={{
+            width: `${Math.max(0, Math.min(1, s.frac)) * 100}%`,
+            background: s.color,
+            height: '100%',
+          }}
+        />
+      ))}
+    </span>
+  )
+}
+
+/**
+ * THE ranked-queue row — the action-queue pattern every insights/inbox list
+ * uses: optional rank, label + supporting line, a full-width MeterBar, and
+ * an end slot. One geometry, so queues never drift between views.
+ */
+export function RankedRow(props: {
+  rank?: number
+  href?: string
+  label: ReactNode
+  sub?: ReactNode
+  extra?: ReactNode
+  frac: number
+  color: string
+  end?: ReactNode
+}): JSX.Element {
+  return (
+    <Item
+      density="balanced"
+      href={props.href}
+      startContent={
+        props.rank !== undefined ? (
+          <Text type="code" color="secondary" hasTabularNumbers style={{ minWidth: 20 }}>
+            {props.rank}.
+          </Text>
+        ) : undefined
+      }
+      label={
+        <VStack gap={1} style={{ width: '100%' }}>
+          <HStack gap={2} vAlign="center">
+            {props.label}
+            {props.sub !== undefined && (
+              <Text type="supporting" color="secondary">
+                {props.sub}
+              </Text>
+            )}
+            {props.extra}
+          </HStack>
+          <MeterBar segments={[{ frac: props.frac, color: props.color }]} />
+        </VStack>
+      }
+      endContent={props.end}
+    />
+  )
 }
 
 /** Chart card frame: label + optional hint, consistent padding. */
@@ -475,25 +567,7 @@ export function BarCell(props: { frac: number; color?: string; digits?: number }
   const frac = Math.max(0, Math.min(1, props.frac))
   return (
     <HStack gap={1.5} vAlign="center" style={{ justifyContent: 'flex-end' }}>
-      <span
-        style={{
-          width: 44,
-          height: 5,
-          borderRadius: 2.5,
-          backgroundColor: 'var(--color-neutral)',
-          overflow: 'hidden',
-          display: 'inline-block',
-        }}
-      >
-        <span
-          style={{
-            display: 'block',
-            height: '100%',
-            width: `${frac * 100}%`,
-            backgroundColor: props.color ?? SERIES_2,
-          }}
-        />
-      </span>
+      <MeterBar segments={[{ frac, color: props.color ?? SERIES_2 }]} width={44} />
       <Text hasTabularNumbers>{formatPercent(frac, props.digits ?? 0)}</Text>
     </HStack>
   )

@@ -1,58 +1,33 @@
 // Insights → Speed: "make CI faster" as an action queue (Nx pattern).
-// Visual-first: duration area chart, parallelism line, and the bottleneck
-// queue as ranked bars — the burn IS the bar, not a number in a grid.
+// Visual-first: duration area chart, parallelism line, the day×hour burn
+// heatmap, and the bottleneck queue as ranked bars — the burn IS the bar.
+// Everything renders through the shared viz/page library (ChartCard,
+// DailyArea, RankedRow, MeterBar geometry) so nothing here drifts.
 
 import type { JSX } from 'react'
 import { Card } from '@astryxdesign/core/Card'
-import { Item } from '@astryxdesign/core/Item'
-import { HStack, VStack } from '@astryxdesign/core/Layout'
+import { HStack } from '@astryxdesign/core/Layout'
 import { Text } from '@astryxdesign/core/Text'
 import { Token } from '@astryxdesign/core/Token'
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
-import {
-  getBottlenecks,
-  getHeatmap,
-  getParallelismHistory,
-  getRunTrends,
-} from '../api.ts'
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { getBottlenecks, getHeatmap, getParallelismHistory, getRunTrends } from '../api.ts'
 import { formatDuration, plural } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
 import { TaskRef } from '../components/ident.tsx'
-import { WeekHeatmap, ChartCard as VizChartCard } from '../components/viz.tsx'
+import {
+  ChartCard,
+  DailyArea,
+  GRID_STROKE,
+  RankedRow,
+  SERIES_1,
+  SERIES_2,
+  TICK,
+  TOOLTIP_STYLE,
+  WeekHeatmap,
+} from '../components/viz.tsx'
 
-const VIOLET = 'var(--color-icon-purple, #a78bfa)'
-const CYAN = 'var(--color-icon-cyan, #22d3ee)'
-const GRID = 'var(--color-border, rgba(167,139,250,0.14))'
-const TICK = { fontSize: 11, fill: 'var(--color-text-secondary)' }
-
-function ChartCard(props: { title: string; hint?: string; children: JSX.Element }): JSX.Element {
-  return (
-    <Card padding={4}>
-      <VStack gap={3}>
-        <HStack gap={2} vAlign="center">
-          <Text type="label">{props.title}</Text>
-          {props.hint !== undefined && (
-            <Text type="supporting" color="secondary">
-              {props.hint}
-            </Text>
-          )}
-        </HStack>
-        {props.children}
-      </VStack>
-    </Card>
-  )
-}
+const BURN_GRADIENT = `linear-gradient(90deg, ${SERIES_1}, ${SERIES_2})`
 
 export function InsightsSpeed(): JSX.Element {
   const trends = useQuery(() => getRunTrends({ bucket: 'day' }).then((r) => r.points), [])
@@ -89,36 +64,15 @@ export function InsightsSpeed(): JSX.Element {
           return (
             <Card padding={0}>
               {rows.map((b, i) => (
-                <Item
+                <RankedRow
                   key={b.id}
-                  density="balanced"
+                  rank={i + 1}
                   href={`#/tasks/${encodeURIComponent(b.id)}`}
-                  startContent={
-                    <Text type="supporting" color="secondary" style={{ minWidth: 20 }}>
-                      {i + 1}
-                    </Text>
-                  }
-                  label={
-                    <VStack gap={1} style={{ width: '100%' }}>
-                      <HStack gap={2} vAlign="center">
-                        <TaskRef id={b.id} />
-                        <Text type="supporting" color="secondary">
-                          {plural(b.runsRecent, 'run')} · avg {formatDuration(b.avgDurationMs)} · {b.runsPerDay.toFixed(1)}/day
-                        </Text>
-                      </HStack>
-                      <span
-                        style={{
-                          display: 'block',
-                          height: 6,
-                          width: `${(b.totalDurationMs / max) * 100}%`,
-                          minWidth: 8,
-                          borderRadius: 3,
-                          background: `linear-gradient(90deg, ${VIOLET}, ${CYAN})`,
-                        }}
-                      />
-                    </VStack>
-                  }
-                  endContent={<Text weight="medium">{formatDuration(b.totalDurationMs)}</Text>}
+                  label={<TaskRef id={b.id} />}
+                  sub={`${plural(b.runsRecent, 'run')} · avg ${formatDuration(b.avgDurationMs)} · ${b.runsPerDay.toFixed(1)}/day`}
+                  frac={b.totalDurationMs / max}
+                  color={BURN_GRADIENT}
+                  end={<Text weight="medium">{formatDuration(b.totalDurationMs)}</Text>}
                 />
               ))}
             </Card>
@@ -127,50 +81,17 @@ export function InsightsSpeed(): JSX.Element {
       </QueryGate>
 
       <QueryGate query={trends} rows={4}>
-        {(raw) => {
-          const points = raw.map((t) => ({ ...t, day: new Date(t.t).toLocaleDateString([], { month: 'short', day: 'numeric' }) }))
-          return (
+        {(points) => (
           <ChartCard title="Run duration" hint="total wall time per day">
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={points} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="speedFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#a78bfa" stopOpacity={0.5} />
-                    <stop offset="100%" stopColor="#a78bfa" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid horizontal vertical={false} stroke={GRID} />
-                <XAxis dataKey="day" tick={TICK} axisLine={false} tickLine={false} minTickGap={28} />
-                <YAxis
-                  tick={TICK}
-                  axisLine={false}
-                  tickLine={false}
-                  width={52}
-                  domain={[0, 'dataMax']}
-                  tickFormatter={(v: number) => formatDuration(v)}
-                />
-                <Tooltip
-                  formatter={(v) => formatDuration(Number(v))}
-                  contentStyle={{
-                    background: 'var(--color-background-popover)',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: 8,
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="totalDurationMs"
-                  name="wall time"
-                  stroke={VIOLET}
-                  strokeWidth={2}
-                  fill="url(#speedFill)"
-                  isAnimationActive={false}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            <DailyArea
+              points={points.map((p) => ({ t: p.t, value: p.totalDurationMs }))}
+              name="wall time"
+              color={SERIES_1}
+              format={(v) => formatDuration(v)}
+              height={220}
+            />
           </ChartCard>
-          )
-        }}
+        )}
       </QueryGate>
 
       <QueryGate query={parallelism} rows={4}>
@@ -182,7 +103,7 @@ export function InsightsSpeed(): JSX.Element {
             <ChartCard title="Parallelism" hint={`avg ×${avg.toFixed(1)} — higher = better use of your workers`}>
               <ResponsiveContainer width="100%" height={180}>
                 <LineChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid horizontal vertical={false} stroke={GRID} />
+                  <CartesianGrid horizontal vertical={false} stroke={GRID_STROKE} />
                   <XAxis dataKey="runId" hide />
                   <YAxis
                     tick={TICK}
@@ -192,19 +113,12 @@ export function InsightsSpeed(): JSX.Element {
                     domain={[0, 'dataMax']}
                     tickFormatter={(v: number) => `×${v.toFixed(1)}`}
                   />
-                  <Tooltip
-                    formatter={(v) => `×${Number(v).toFixed(2)}`}
-                    contentStyle={{
-                      background: 'var(--color-background-popover)',
-                      border: '1px solid var(--color-border)',
-                      borderRadius: 8,
-                    }}
-                  />
+                  <Tooltip formatter={(v) => `×${Number(v).toFixed(2)}`} contentStyle={TOOLTIP_STYLE} />
                   <Line
                     type="monotone"
                     dataKey="factor"
                     name="factor"
-                    stroke={CYAN}
+                    stroke={SERIES_2}
                     strokeWidth={2}
                     dot={data.length <= 3}
                     isAnimationActive={false}
@@ -219,7 +133,7 @@ export function InsightsSpeed(): JSX.Element {
       <QueryGate query={heatmap} rows={3}>
         {(cells) =>
           cells.some((c) => c.runs > 0) ? (
-            <VizChartCard title="When CI burns time" hint="last 30 days, day-of-week × hour">
+            <ChartCard title="When CI burns time" hint="last 30 days, day-of-week × hour">
               <WeekHeatmap
                 cells={cells.map((c) => ({
                   dow: c.dayOfWeek,
@@ -228,7 +142,7 @@ export function InsightsSpeed(): JSX.Element {
                   totalDurationMs: c.totalDurationMs,
                 }))}
               />
-            </VizChartCard>
+            </ChartCard>
           ) : (
             <></>
           )

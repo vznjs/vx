@@ -6,10 +6,13 @@ import type { CSSProperties, JSX, ReactNode } from 'react'
 import { Card } from '@astryxdesign/core/Card'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
 import { Grid } from '@astryxdesign/core/Grid'
-import { HStack, Section, VStack } from '@astryxdesign/core/Layout'
+import { HStack, LayoutHeader, Section, VStack } from '@astryxdesign/core/Layout'
 import { Skeleton } from '@astryxdesign/core/Skeleton'
 import { Heading, Text } from '@astryxdesign/core/Text'
 import type { Query } from '../hooks.ts'
+
+/** The one gutter for full-bleed (Layout-based) page bodies. */
+export const CONTENT_GUTTER = 'var(--spacing-4) var(--spacing-5) var(--spacing-6)'
 
 const pageStyle: CSSProperties = {
   maxWidth: 1440,
@@ -49,6 +52,41 @@ export function PageHeader(props: { title: string; subtitle?: string; end?: Reac
         </HStack>
       )}
     </HStack>
+  )
+}
+
+/**
+ * The standard header band for Layout-based views (feed, cockpit) — the
+ * SAME type scale and gutter as PageHeader, mounted in a LayoutHeader, so
+ * full-bleed pages and Page-based pages start from one baseline.
+ */
+export function HeaderBand(props: {
+  title: string
+  subtitle?: string
+  end?: ReactNode
+}): JSX.Element {
+  return (
+    <LayoutHeader hasDivider>
+      <HStack
+        gap={3}
+        vAlign="center"
+        style={{ width: '100%', padding: 'var(--spacing-3) var(--spacing-5)' }}
+      >
+        <VStack gap={0}>
+          <Heading level={2}>{props.title}</Heading>
+          {props.subtitle !== undefined && (
+            <Text type="supporting" color="secondary">
+              {props.subtitle}
+            </Text>
+          )}
+        </VStack>
+        {props.end !== undefined && (
+          <HStack gap={2} vAlign="center" style={{ marginInlineStart: 'auto' }}>
+            {props.end}
+          </HStack>
+        )}
+      </HStack>
+    </LayoutHeader>
   )
 }
 

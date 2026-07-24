@@ -58,6 +58,7 @@ import {
 } from '../api.ts'
 import { cpuPct, formatBytes, formatDuration, formatTime } from '../format.ts'
 import { useQuery } from '../hooks.ts'
+import { HeaderBand } from '../components/page.tsx'
 import { criticalPath, parallelism } from '../components/critical-path.ts'
 import { Flamegraph, flameEdgesOf } from '../components/Flamegraph.tsx'
 import { RunGraph } from '../components/RunGraph.tsx'
@@ -447,19 +448,11 @@ export function RunConsole(): JSX.Element {
     <Layout
       height="fill"
       header={
-        <LayoutHeader hasDivider>
-          <HStack
-            gap={3}
-            vAlign="center"
-            style={{ width: '100%', padding: 'var(--spacing-3) var(--spacing-5)' }}
-          >
-            <VStack gap={0}>
-              <Heading level={2}>Cockpit</Heading>
-              <Text type="supporting" color="secondary">
-                Trigger tasks and watch their graph execute live
-              </Text>
-            </VStack>
-            <HStack gap={2} vAlign="center" style={{ marginInlineStart: 'auto' }}>
+        <HeaderBand
+          title="Cockpit"
+          subtitle="Trigger tasks and watch their graph execute live"
+          end={
+            <>
               <StackItem style={{ width: 400 }}>
                 <Tokenizer
                   label="Tasks to run"
@@ -495,9 +488,9 @@ export function RunConsole(): JSX.Element {
                   onClick={stop}
                 />
               )}
-            </HStack>
-          </HStack>
-        </LayoutHeader>
+            </>
+          }
+        />
       }
       content={
         <LayoutContent padding={0}>

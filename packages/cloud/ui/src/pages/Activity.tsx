@@ -13,14 +13,7 @@ import { Table, TableCell, TableRow } from '@astryxdesign/core/Table'
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 import { Icon } from '@astryxdesign/core/Icon'
 import { Item } from '@astryxdesign/core/Item'
-import {
-  HStack,
-  Layout,
-  LayoutContent,
-  LayoutHeader,
-  LayoutPanel,
-  VStack,
-} from '@astryxdesign/core/Layout'
+import { HStack, Layout, LayoutContent, LayoutPanel, VStack } from '@astryxdesign/core/Layout'
 import { ResizeHandle, useResizable } from '@astryxdesign/core/Resizable'
 import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList'
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl'
@@ -40,8 +33,9 @@ import {
 } from '../api.ts'
 import { formatCachePolicy, formatDuration } from '../format.ts'
 import { usePolledQuery, useQuery } from '../hooks.ts'
+import { CONTENT_GUTTER, HeaderBand } from '../components/page.tsx'
 import { toVizState, StatusToken } from '../components/status.tsx'
-import { PulseStrip } from '../components/viz.tsx'
+import { MeterBar, PulseStrip } from '../components/viz.tsx'
 
 type StatusFilter = 'all' | 'failed' | 'passed'
 
@@ -68,27 +62,16 @@ const BUCKET_ORDER = ['Today', 'Yesterday', 'This week', 'Earlier']
 function MixBar({ r }: { r: InvocationDetail }): JSX.Element {
   const executed = Math.max(0, r.taskCount - r.hitCount - r.failedCount)
   const total = Math.max(1, r.taskCount)
-  const seg = (n: number, color: string): CSSProperties => ({
-    width: `${(n / total) * 100}%`,
-    backgroundColor: color,
-    height: '100%',
-  })
   return (
-    <span
+    <MeterBar
+      width={64}
       title={`${r.hitCount} cached · ${executed} executed · ${r.failedCount} failed`}
-      style={{
-        display: 'inline-flex',
-        width: 64,
-        height: 6,
-        borderRadius: 'var(--radius-inner, 3px)',
-        overflow: 'hidden',
-        backgroundColor: 'var(--color-neutral)',
-      }}
-    >
-      <span style={seg(r.hitCount, 'var(--color-icon-cyan)')} />
-      <span style={seg(executed, 'var(--color-icon-purple)')} />
-      <span style={seg(r.failedCount, 'var(--color-error)')} />
-    </span>
+      segments={[
+        { frac: r.hitCount / total, color: 'var(--color-icon-cyan)' },
+        { frac: executed / total, color: 'var(--color-icon-purple)' },
+        { frac: r.failedCount / total, color: 'var(--color-error)' },
+      ]}
+    />
   )
 }
 
@@ -316,7 +299,7 @@ export function Activity(): JSX.Element {
     const pulsePoints = pulse.data ?? []
     const pulseTotal = pulsePoints.reduce((n, p) => n + p.runs, 0)
     body = (
-      <VStack gap={0} style={{ padding: 'var(--spacing-4) var(--spacing-5) var(--spacing-6)' }}>
+      <VStack gap={0} style={{ padding: CONTENT_GUTTER }}>
         {pulseTotal > 0 && (
           <VStack gap={1} style={{ paddingBlockEnd: 'var(--spacing-4)' }}>
             <PulseStrip points={pulsePoints} />
@@ -361,32 +344,28 @@ export function Activity(): JSX.Element {
     <Layout
       height="fill"
       header={
-        <LayoutHeader hasDivider>
-        <HStack gap={3} vAlign="center" style={{ width: '100%', padding: 'var(--spacing-3) var(--spacing-5)' }}>
-          <VStack gap={0}>
-            <Heading level={2}>Activity</Heading>
-            <Text type="supporting" color="secondary">
-              Everything that ran, newest first
-            </Text>
-          </VStack>
-          <HStack gap={2} vAlign="center" style={{ marginInlineStart: 'auto' }}>
-            <TextInput
-              label="Filter runs"
-              isLabelHidden
-              size="sm"
-              value={needle}
-              onChange={setNeedle}
-              placeholder="branch, commit, task, run id…"
-            />
-            <SegmentedControl label="Status filter" size="sm" value={status} onChange={(v) => setStatus(v as StatusFilter)}>
-              <SegmentedControlItem value="all" label="All" />
-              <SegmentedControlItem value="failed" label="Failed" />
-              <SegmentedControlItem value="passed" label="Passed" />
-            </SegmentedControl>
-            {caps.hasWorkspace && <Button size="sm" variant="primary" label="Run a task" href="#/run" />}
-          </HStack>
-        </HStack>
-      </LayoutHeader>
+        <HeaderBand
+          title="Activity"
+          subtitle="Everything that ran, newest first"
+          end={
+            <>
+              <TextInput
+                label="Filter runs"
+                isLabelHidden
+                size="sm"
+                value={needle}
+                onChange={setNeedle}
+                placeholder="branch, commit, task, run id…"
+              />
+              <SegmentedControl label="Status filter" size="sm" value={status} onChange={(v) => setStatus(v as StatusFilter)}>
+                <SegmentedControlItem value="all" label="All" />
+                <SegmentedControlItem value="failed" label="Failed" />
+                <SegmentedControlItem value="passed" label="Passed" />
+              </SegmentedControl>
+              {caps.hasWorkspace && <Button size="sm" variant="primary" label="Run a task" href="#/run" />}
+            </>
+          }
+        />
       }
       content={<LayoutContent padding={0} isScrollable>{body}</LayoutContent>}
       end={

@@ -7,7 +7,6 @@ import type { JSX } from 'react'
 import { Banner } from '@astryxdesign/core/Banner'
 import { Card } from '@astryxdesign/core/Card'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
-import { Item } from '@astryxdesign/core/Item'
 import { HStack, VStack } from '@astryxdesign/core/Layout'
 import { Text } from '@astryxdesign/core/Text'
 import { Token } from '@astryxdesign/core/Token'
@@ -16,7 +15,7 @@ import { formatCount, formatDuration, formatPercent } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
 import { TaskRef } from '../components/ident.tsx'
-import { ChartCard, DailyArea } from '../components/viz.tsx'
+import { ChartCard, DailyArea, RankedRow } from '../components/viz.tsx'
 
 const AMBER = 'var(--color-warning, #fbbf24)'
 const RED = 'var(--color-error, #fb7185)'
@@ -107,36 +106,25 @@ export function InsightsFlaky(): JSX.Element {
           return (
             <Card padding={0}>
               {ranked.map((t) => (
-                <Item
+                <RankedRow
                   key={t.id}
-                  density="balanced"
                   href={`#/tasks/${encodeURIComponent(t.id)}`}
-                  startContent={
-                    <Token size="sm" color={t.highRisk ? 'red' : 'orange'} label={formatPercent(t.failureRate, 0)} />
+                  label={<TaskRef id={t.id} />}
+                  sub={`${t.failures}/${t.runs} runs failed${
+                    t.p50 !== undefined && t.p99 !== undefined
+                      ? ` · p50 ${formatDuration(t.p50)} / p99 ${formatDuration(t.p99)}`
+                      : ''
+                  }`}
+                  extra={
+                    <Token
+                      size="sm"
+                      color={t.highRisk ? 'red' : 'orange'}
+                      label={formatPercent(t.failureRate, 0)}
+                    />
                   }
-                  label={
-                    <VStack gap={1} style={{ width: '100%' }}>
-                      <HStack gap={2} vAlign="center">
-                        <TaskRef id={t.id} />
-                        <Text type="supporting" color="secondary">
-                          {t.failures}/{t.runs} runs failed
-                          {t.p50 !== undefined && t.p99 !== undefined
-                            ? ` · p50 ${formatDuration(t.p50)} / p99 ${formatDuration(t.p99)}`
-                            : ''}
-                        </Text>
-                      </HStack>
-                      <span
-                        style={{
-                          display: 'block',
-                          height: 6,
-                          width: `${Math.max(2, (t.wastedMs / max) * 100)}%`,
-                          borderRadius: 3,
-                          backgroundColor: t.highRisk ? RED : AMBER,
-                        }}
-                      />
-                    </VStack>
-                  }
-                  endContent={
+                  frac={t.wastedMs / max}
+                  color={t.highRisk ? RED : AMBER}
+                  end={
                     <VStack gap={0} hAlign="end">
                       <Text weight="medium">{formatDuration(t.wastedMs)}</Text>
                       <Text type="supporting" size="2xs" color="secondary">

@@ -3,7 +3,7 @@
 // surface. An EMPTY inbox is the success state and says so. The nav badge
 // reads useAttentionCount (failing branches + flaky tasks).
 
-import type { CSSProperties, JSX, ReactNode } from 'react'
+import type { JSX, ReactNode } from 'react'
 import { Card } from '@astryxdesign/core/Card'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
 import { Item } from '@astryxdesign/core/Item'
@@ -24,6 +24,7 @@ import { formatDuration, formatPercent } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
 import { TaskRef } from '../components/ident.tsx'
+import { RankedRow } from '../components/viz.tsx'
 
 const isFailed = (r: InvocationDetail): boolean => r.failedCount > 0 || r.exitOk === false
 
@@ -91,29 +92,6 @@ function FailingRow({ r }: { r: InvocationDetail }): JSX.Element {
         </Text>
       }
     />
-  )
-}
-
-/** Proportional burn bar — this task's total time relative to the top burner. */
-function BurnBar({ frac }: { frac: number }): JSX.Element {
-  const track: CSSProperties = {
-    display: 'inline-flex',
-    width: 96,
-    height: 6,
-    borderRadius: 'var(--radius-inner, 3px)',
-    overflow: 'hidden',
-    backgroundColor: 'var(--color-neutral)',
-  }
-  return (
-    <span style={track}>
-      <span
-        style={{
-          width: `${Math.max(4, Math.round(frac * 100))}%`,
-          backgroundColor: 'var(--color-icon-purple)',
-          height: '100%',
-        }}
-      />
-    </span>
   )
 }
 
@@ -208,24 +186,18 @@ export function Attention(): JSX.Element {
                 {(() => {
                   const max = Math.max(1, ...rows.map((b) => b.totalDurationMs))
                   return rows.map((b, i) => (
-                    <Item
+                    <RankedRow
                       key={b.id}
-                      density="balanced"
+                      rank={i + 1}
                       href={`#/tasks/${encodeURIComponent(b.id)}`}
-                      startContent={
-                        <Text type="code" color="secondary" hasTabularNumbers>
-                          {i + 1}.
-                        </Text>
-                      }
                       label={<TaskRef id={b.id} />}
-                      description={`${b.runsRecent} run${b.runsRecent === 1 ? '' : 's'} · avg ${formatDuration(b.avgDurationMs)}`}
-                      endContent={
-                        <HStack gap={2} vAlign="center">
-                          <BurnBar frac={b.totalDurationMs / max} />
-                          <Text weight="medium" hasTabularNumbers>
-                            {formatDuration(b.totalDurationMs)}
-                          </Text>
-                        </HStack>
+                      sub={`${b.runsRecent} run${b.runsRecent === 1 ? '' : 's'} · avg ${formatDuration(b.avgDurationMs)}`}
+                      frac={b.totalDurationMs / max}
+                      color="var(--vx-chart-1, #7c3aed)"
+                      end={
+                        <Text weight="medium" hasTabularNumbers>
+                          {formatDuration(b.totalDurationMs)}
+                        </Text>
                       }
                     />
                   ))

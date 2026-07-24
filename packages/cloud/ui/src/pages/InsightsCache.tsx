@@ -3,11 +3,10 @@
 // local/remote split bar, and the action queue = projects ranked by WORST
 // hit rate (lowest first — that's the fix order).
 
-import type { CSSProperties, JSX } from 'react'
+import type { JSX } from 'react'
 import { Card } from '@astryxdesign/core/Card'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
 import { Grid } from '@astryxdesign/core/Grid'
-import { Item } from '@astryxdesign/core/Item'
 import { HStack, VStack } from '@astryxdesign/core/Layout'
 import { Text } from '@astryxdesign/core/Text'
 import { Token } from '@astryxdesign/core/Token'
@@ -22,44 +21,30 @@ import {
 import { formatBytes, formatCount, formatDuration, formatPercent, plural } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
-import { TaskRef } from '../components/ident.tsx'
-import { ChartCard, DailyArea, RateLine, SERIES_2 } from '../components/viz.tsx'
+import { ProjectName, TaskRef } from '../components/ident.tsx'
+import { ChartCard, DailyArea, LegendRow, MeterBar, RankedRow, RateLine, SERIES_2 } from '../components/viz.tsx'
+import { STATUS } from '../components/status.tsx'
 
-const CYAN = 'var(--color-icon-cyan, #22d3ee)'
-const BLUE = 'var(--color-icon-blue, #60a5fa)'
-const GRID = 'var(--color-border, rgba(167,139,250,0.14))'
-const TICK = { fontSize: 11, fill: 'var(--color-text-secondary)' }
+const LOCAL_FILL = STATUS['cache-hit'].fill
+const REMOTE_FILL = STATUS['cache-hit-remote'].fill
 
-/** Two-segment share bar (local vs remote hits). */
+/** Two-segment share bar (local vs remote hits) on the shared meter. */
 function SplitBar(props: { local: number; remote: number }): JSX.Element {
   const total = Math.max(1, props.local + props.remote)
-  const seg = (n: number, color: string): CSSProperties => ({
-    width: `${(n / total) * 100}%`,
-    backgroundColor: color,
-    height: '100%',
-  })
   return (
     <VStack gap={1} style={{ width: '100%' }}>
-      <span
-        style={{
-          display: 'flex',
-          height: 10,
-          borderRadius: 5,
-          overflow: 'hidden',
-          backgroundColor: 'var(--color-neutral)',
-        }}
-      >
-        <span style={seg(props.local, CYAN)} />
-        <span style={seg(props.remote, BLUE)} />
-      </span>
-      <HStack gap={3}>
-        <Text type="supporting" color="secondary">
-          <span style={{ color: CYAN }}>●</span> local {formatCount(props.local)}
-        </Text>
-        <Text type="supporting" color="secondary">
-          <span style={{ color: BLUE }}>●</span> remote {formatCount(props.remote)}
-        </Text>
-      </HStack>
+      <MeterBar
+        segments={[
+          { frac: props.local / total, color: LOCAL_FILL },
+          { frac: props.remote / total, color: REMOTE_FILL },
+        ]}
+      />
+      <LegendRow
+        items={[
+          { color: LOCAL_FILL, label: `local ${formatCount(props.local)}` },
+          { color: REMOTE_FILL, label: `remote ${formatCount(props.remote)}` },
+        ]}
+      />
     </VStack>
   )
 }
@@ -164,31 +149,15 @@ export function InsightsCache(): JSX.Element {
           return (
             <Card padding={0}>
               {sorted.map((t) => (
-                <Item
+                <RankedRow
                   key={t.id}
-                  density="balanced"
                   href={`#/tasks/${encodeURIComponent(t.id)}`}
-                  label={
-                    <VStack gap={1} style={{ width: '100%' }}>
-                      <HStack gap={2} vAlign="center">
-                        <TaskRef id={t.id} />
-                        <Text type="supporting" color="secondary">
-                          {plural(t.runs, 'run')} · {formatCount(t.hits)} hits
-                        </Text>
-                        {t.hitRate < 0.3 && <Token size="sm" color="red" label="cold" />}
-                      </HStack>
-                      <span
-                        style={{
-                          display: 'block',
-                          height: 6,
-                          width: `${Math.max(2, t.hitRate * 100)}%`,
-                          borderRadius: 3,
-                          backgroundColor: t.hitRate < 0.3 ? 'var(--color-error)' : CYAN,
-                        }}
-                      />
-                    </VStack>
-                  }
-                  endContent={<Text weight="medium">{formatPercent(t.hitRate, 0)}</Text>}
+                  label={<TaskRef id={t.id} />}
+                  sub={`${plural(t.runs, 'run')} · ${formatCount(t.hits)} hits`}
+                  extra={t.hitRate < 0.3 ? <Token size="sm" color="red" label="cold" /> : undefined}
+                  frac={t.hitRate}
+                  color={t.hitRate < 0.3 ? 'var(--color-error)' : LOCAL_FILL}
+                  end={<Text weight="medium">{formatPercent(t.hitRate, 0)}</Text>}
                 />
               ))}
             </Card>
@@ -208,30 +177,14 @@ export function InsightsCache(): JSX.Element {
               ) : (
                 <Card padding={0}>
                   {sorted.map((p) => (
-                    <Item
+                    <RankedRow
                       key={p.project}
-                      density="compact"
                       href={`#/projects/${encodeURIComponent(p.project)}`}
-                      label={
-                        <VStack gap={1} style={{ width: '100%' }}>
-                          <HStack gap={2} vAlign="center">
-                            <Text weight="medium">{p.project}</Text>
-                            <Text type="supporting" color="secondary">
-                              {formatCount(p.entries)} entries
-                            </Text>
-                          </HStack>
-                          <span
-                            style={{
-                              display: 'block',
-                              height: 5,
-                              width: `${Math.max(2, (p.totalBytes / max) * 100)}%`,
-                              borderRadius: 3,
-                              backgroundColor: BLUE,
-                            }}
-                          />
-                        </VStack>
-                      }
-                      endContent={<Text type="supporting">{formatBytes(p.totalBytes)}</Text>}
+                      label={<ProjectName name={p.project} />}
+                      sub={`${formatCount(p.entries)} entries`}
+                      frac={p.totalBytes / max}
+                      color={REMOTE_FILL}
+                      end={<Text type="supporting">{formatBytes(p.totalBytes)}</Text>}
                     />
                   ))}
                 </Card>

@@ -65,7 +65,12 @@
    id="astryx-app-shell-main"; the ID out-specifies StyleX's class rules. */
 #astryx-app-shell-main {
   margin: 0 var(--spacing-3, 12px) var(--spacing-3, 12px) 0;
-  min-height: calc(100% - var(--spacing-3, 12px));
+  /* height, not min-height: the shell hands the pane the full viewport
+     remainder, so min-height let it run to y=viewport-bottom and the
+     bottom margin never materialized — the bottom corners' rounding was
+     clipped by the viewport edge (the reported corner glitch). */
+  height: calc(100% - var(--spacing-3, 12px));
+  min-height: 0;
   border-radius: var(--radius-page, 16px);
   border: 1px solid var(--vx-glass-border);
   background-color: var(--vx-glass-card);
@@ -75,6 +80,31 @@
      the radius. */
   overflow: auto;
   box-shadow: 0 10px 30px -12px var(--vx-shadow-drop);
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-emphasized, #494d53) transparent;
+}
+
+/* Classic scrollbars paint a SQUARE track through the pane's rounded
+   corners (the reported corner glitch). A transparent track + a floating
+   inset thumb keeps the radius clean; same treatment for any scroller
+   inside the pane (Layout-based pages own their own scroll surface). */
+#astryx-app-shell-main::-webkit-scrollbar,
+#astryx-app-shell-main *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+#astryx-app-shell-main::-webkit-scrollbar-track,
+#astryx-app-shell-main *::-webkit-scrollbar-track,
+#astryx-app-shell-main::-webkit-scrollbar-corner,
+#astryx-app-shell-main *::-webkit-scrollbar-corner {
+  background: transparent;
+}
+#astryx-app-shell-main::-webkit-scrollbar-thumb,
+#astryx-app-shell-main *::-webkit-scrollbar-thumb {
+  background-color: var(--color-border-emphasized, #494d53);
+  border-radius: 5px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
 }
 
 /* Page sections sit ON the glass pane — they must never paint their own
