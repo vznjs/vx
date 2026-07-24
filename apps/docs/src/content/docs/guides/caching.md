@@ -8,6 +8,35 @@ on into a key, and a cache hit means "we've run this exact task on these
 exact inputs before — here's the stored result." Get the declarations
 right and every run is both correct and fast.
 
+## How a cache decision is made
+
+Every run, for every task, vx folds the task's real dependencies into one
+key and looks it up. Nothing changed since last time → the key matches →
+vx **restores the stored outputs and replays the logs** instead of running
+the command. Change any input → the key changes → the task re-runs and the
+new result is saved under the new key. That's the whole model, and it's
+why a warm run is near-instant while staying correct:
+
+```mermaid
+flowchart LR
+  inputs["Task inputs<br/>source files · env vars<br/>package.json · deps · resolved config"] --> key["Hash everything<br/>→ one cache key"]
+  key --> lookup{"Key already<br/>in the cache?"}
+  lookup -->|"hit"| restore["Restore outputs +<br/>replay logs — no work"]
+  lookup -->|"miss"| run["Run the command"]
+  run --> save["Save outputs<br/>under the key"]
+  classDef step fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
+  classDef decide fill:#1e293b,stroke:#a78bfa,color:#e2e8f0
+  classDef good fill:#12261b,stroke:#34d399,color:#d1fae5
+  class inputs,key,run,save step
+  class lookup decide
+  class restore good
+```
+
+The payoff is real: on this repo's benchmark, a fully-cached warm run of a
+3-package build drops from ~620 ms of actual work to ~20 ms of restores —
+and because the key covers **every** input, a hit is only ever served when
+the result is genuinely identical.
+
 This is the guide that matters most. The one failure mode worth fearing
 is a **stale hit** (shipping a result built from inputs that actually
 changed), and it comes from under-declared inputs.

@@ -66,6 +66,25 @@ task only for those packages (and the ones that depend on them). This is
 the flag that keeps CI fast — pair it with remote caching and most PRs
 touch a handful of packages.
 
+**How `--affected` narrows the run:** it starts from git, not from your
+task graph. A PR that touches one file in `@acme/web` selects only
+`@acme/web` plus anything that depends on it — the rest of the monorepo
+is skipped entirely, never even scheduled. On a big repo that's the
+difference between building 3 packages and building 300:
+
+```mermaid
+flowchart LR
+  base["git diff vs base<br/>(origin/main)"] --> changed["Changed files"]
+  changed --> owners["Map each file<br/>to its package"]
+  owners --> dependents["+ packages that<br/>depend on those"]
+  dependents --> scope["Run the task only<br/>in this set"]
+  skipped["Every other package"] -.->|"never scheduled"| scope
+  classDef step fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
+  classDef skip fill:#1f2328,stroke:#6b7280,color:#9ca3af
+  class base,changed,owners,dependents,scope step
+  class skipped skip
+```
+
 ## Forwarding arguments with `--`
 
 Everything after `--` is appended to the task's command:
@@ -88,7 +107,51 @@ vx run build --graph=g.dot      # Graphviz DOT
 ```
 
 `--dry` is the fastest way to answer "what will this run do, and what's
-already cached?" before committing to it.
+already cached?" before committing to it. It prints the plan and the
+predicted cache verdict per task, then exits without running anything:
+
+```text
+would run:
+  ◉  @acme/api#build  cache hit (local)         8625b603
+  ◉  @acme/ui#build   cache hit (local)         71e5d9a0
+  ◉  @acme/web#build  cache hit (local)         42e9b39d
+
+3 task(s) planned, 3 cache hits (3 local).
+```
+
+## Prove a cache entry is safe: `--verify`
+
+vx is the only runner that can **prove** a cached result is safe to
+reuse instead of hoping. Every other cache trusts that identical inputs
+produce identical outputs; `--verify` *checks* it. It runs the task,
+saves the outputs, runs it **again**, and content-compares — so a build
+that quietly depends on a timestamp, a random seed, or an unlisted file
+is caught before it ever poisons a shared cache:
+
+```mermaid
+flowchart LR
+  run1["Run the task<br/>→ save outputs"] --> run2["Run it again<br/>(same inputs)"]
+  run2 --> cmp{"Outputs<br/>byte-identical?"}
+  cmp -->|"yes"| proven["proven-deterministic ✓<br/>safe to cache & share"]
+  cmp -->|"no"| fail["nondeterministic ✗<br/>run FAILS + names the<br/>files that changed"]
+  classDef step fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
+  classDef decide fill:#1e293b,stroke:#a78bfa,color:#e2e8f0
+  classDef good fill:#12261b,stroke:#34d399,color:#d1fae5
+  classDef bad fill:#2a1416,stroke:#ef4444,color:#fecaca
+  class run1,run2 step
+  class cmp decide
+  class proven good
+  class fail bad
+```
+
+Pair it with `--force` to re-verify a warm graph. It's a CI / merge-queue
+gate, not an every-run default (it costs ~2× because it runs each task
+twice).
+
+See the [CLI reference](../../cli/#provable-cache-correctness---verify) for
+`--verify=inputs` (proves your declared inputs are complete) and
+`--verify=fingerprint` (catches machine-dependent outputs across a CI
+matrix).
 
 ## Useful run flags
 

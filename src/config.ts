@@ -6,6 +6,14 @@ export interface WorkspaceConfig {
   /** Cache directory, relative to the workspace root. Defaults to `.vx/cache`. */
   cacheDir?: string
   /**
+   * Default per-task timeout (ms) — the lowest-precedence fallback for a
+   * task that declares no `exec.timeout`. Precedence, highest first:
+   * per-task `exec.timeout` → `VX_TASK_TIMEOUT` env → this workspace
+   * default. Purely a runaway-process guard; never folded into a cache
+   * key (a timed-out task fails and is never cached). Omitted → no default.
+   */
+  timeout?: number
+  /**
    * Plugins registered for this workspace. Each plugin is an
    * in-process subscriber on the run event bus, installed once per
    * `vx run`. See `docs/design/extension-protocol-2026-06.md` §5.
@@ -219,6 +227,29 @@ export interface ExecConfig {
    */
   timeout?: number
   /**
+   * Max ADDITIONAL attempts after a failed attempt. `retries: 2` means
+   * up to 3 executions total. 0 / omitted → no retries (today's
+   * behavior: fail on the first non-zero exit). A retry fires after ANY
+   * failure, timeout kills included; a Ctrl-C teardown (`aborted`) is
+   * never retried. Declared outputs are re-cleaned before each retry so
+   * a failed attempt's partial outputs can't leak into the next. The
+   * final outcome (and the cached artifact) is the last attempt's.
+   * Not allowed with `persistent` — a persistent task has no exit to
+   * retry. Explicit config wins over the run-level `--retry <n>`
+   * default, including `retries: 0`.
+   */
+  retries?: number
+  /**
+   * Resource RESERVATIONS for admission control — NOT enforcement: vx
+   * does not cgroup-limit, nice, or kill the task; it only decides what
+   * to co-schedule so concurrent reservations never exceed the CPU /
+   * memory budget. Each axis defaults to 0 = reserve nothing: the task
+   * runs subject only to the concurrency-count limit. A pure scheduling
+   * hint — the whole object is stripped from the cache key, so tuning a
+   * reservation never invalidates a cached result.
+   */
+  resources?: ResourcesConfig
+  /**
    * Long-running / continuous task (dev server, watcher, daemon).
    * When present, the task is spawned but the runner does NOT wait
    * for it to exit. Instead it considers the task "ready" — either
@@ -232,6 +263,27 @@ export interface ExecConfig {
    * of "done".
    */
   persistent?: PersistentConfig
+}
+
+/**
+ * Per-task resource reservation (see `ExecConfig.resources`). Grouped so
+ * a future axis slots in without new top-level `exec` fields; the loader
+ * rejects unknown keys.
+ */
+export interface ResourcesConfig {
+  /**
+   * CPU units (fractional ok, e.g. `0.5`), or a `"<n>%"` string of the
+   * CPU budget (the run's `concurrency`). `cpus: "50%"` on a budget of 8
+   * reserves 4 units.
+   */
+  cpus?: number | string
+  /**
+   * Bytes, a size string (`"2GB"`, `"512MB"` — K/M/G/T, powers of 1024),
+   * or a `"<n>%"` string of the memory budget (`os.totalmem()` unless
+   * overridden with `--memory` — pass `--memory` in cgroup-limited
+   * containers, where `os.totalmem()` reports the HOST's RAM).
+   */
+  memory?: number | string
 }
 
 export interface PersistentConfig {
@@ -373,8 +425,16 @@ export interface CacheInputs {
  *                          here, so any `^`-prefixed string is allowed.
  *   - `` `${string}#${string}` `` — a specific package's task
  *                          (`'pkg#build'`); cross-project, not key-checked.
+ *   - `` `${string}*${string}` `` — a task-name pattern (`'build.*'`);
+ *                          expands at graph build, so it can't be
+ *                          key-checked (a bare `'*'` still fails at
+ *                          runtime — bare wildcards are filter-only).
  */
-type DependsOnEntry<K extends string> = K | `^${string}` | `${string}#${string}`
+type DependsOnEntry<K extends string> =
+  | K
+  | `^${string}`
+  | `${string}#${string}`
+  | `${string}*${string}`
 
 /**
  * Identity function — exists only so TypeScript narrows literal types

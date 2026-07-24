@@ -7,7 +7,7 @@ The orchestrator module's entry. `run.ts` hosts `run()` / `planRun()`;
 `RunOptions` / `RunSummary` ([`options.md`](./options.md)), `Logger` /
 `defaultLogger` ([`logger.md`](./logger.md)), the `RunPlan` types
 ([`plan.md`](./plan.md)), and the plugin / telemetry / wire /
-metrics surfaces the public API and `@vzn/vx-cloud` consume. Invoked
+metrics surfaces the public API and the service package consume. Invoked
 by `cli/run.ts` (via a `RunBackend`). Discovers the workspace, loads
 configs, builds the task graph, opens the cache, installs plugins +
 telemetry, fires cache acceleration (remote prefetch / local
@@ -30,9 +30,9 @@ export function shouldShortCircuit(nodes, policy, cache): boolean
 
 // RunOptions highlights (full list in options.md):
 //   cwd, tasks, projects?, concurrency?, cache?: CachePolicy, frozen?,
-//   excludeDependencies?, forwardArgs?, outputLogs?, flow?, summarize?,
-//   profile?, tags?, command?, report?, log?, bus?, inflight?,
-//   handleSignals?
+//   retries?, excludeDependencies?, forwardArgs?, outputLogs?, flow?,
+//   summarize?, profile?, tags?, command?, report?, log?, bus?,
+//   inflight?, handleSignals?
 
 export interface RunSummary {
   ok: boolean

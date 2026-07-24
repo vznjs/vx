@@ -89,7 +89,12 @@ const CACHE_VERSION = 'vx-cache-v24'
 //        run via `recordRunBundle`. The cache KEY is unchanged
 //        (CACHE_VERSION not bumped) — these tables persist analytics
 //        derived from the same `CacheKeyInput` the key already consumes.
-const SCHEMA_VERSION = 'v22'
+//   v23: runs.attempts — the number of attempts a retried task took (>1),
+//        the DIRECT within-run flaky signal (a task that failed then
+//        passed under identical inputs is nondeterministic by definition;
+//        no cross-run inference needed). Nullable; NULL for a once-run
+//        task. Analytics-only — the cache KEY is unchanged.
+const SCHEMA_VERSION = 'v23'
 
 /**
  * Artifact + `output_files` namespace prefix for workspace-root-
@@ -306,6 +311,7 @@ export interface RunRecord {
   wallclockStartNs?: bigint // hrtime span relative to run t=0
   wallclockEndNs?: bigint
   cacheHit?: boolean // convenience for flamegraph color; derivable from status
+  attempts?: number // >1 when the task retried; the direct within-run flaky signal
 }
 
 /**
@@ -468,8 +474,12 @@ export const MAX_DECOMPRESSED_ARTIFACT_BYTES = 2 * 1024 * 1024 * 1024
  * the header is too short to parse. vx's own producer (single-shot
  * `Bun.zstdCompress` of a known buffer) always writes it, so an artifact that
  * declares an enormous size can be rejected before a byte is allocated.
+ *
+ * Exported for tests: pins the per-`fcsFlag` byte layouts (incl. the 2-byte
+ * `+256` adjustment and the `dictIdFlag` offset) that a bomb-refusal e2e can't
+ * discriminate (their max declarable sizes sit below the ceiling).
  */
-function zstdContentSize(b: Uint8Array): bigint | null {
+export function zstdContentSize(b: Uint8Array): bigint | null {
   if (b.length < 5) return null
   // Magic_Number 0xFD2FB528, little-endian.
   if (b[0] !== 0x28 || b[1] !== 0xb5 || b[2] !== 0x2f || b[3] !== 0xfd) return null
@@ -779,7 +789,10 @@ export class Cache implements CacheLayer {
         peak_rss_bytes      INTEGER,
         wallclock_start_ns  INTEGER,
         wallclock_end_ns    INTEGER,
-        cache_hit           INTEGER
+        cache_hit           INTEGER,
+        -- v23: attempts a retried task took (>1); NULL for a once-run task.
+        -- The direct within-run flaky signal.
+        attempts            INTEGER
       );
       CREATE INDEX IF NOT EXISTS runs_hash       ON runs(hash);
       CREATE INDEX IF NOT EXISTS runs_started_at ON runs(started_at);
@@ -891,9 +904,9 @@ export class Cache implements CacheLayer {
         hash, project, task, status, exit_code, duration_ms, forward_args,
         started_at, ended_at,
         run_id, cpu_ms, peak_rss_bytes, wallclock_start_ns, wallclock_end_ns,
-        cache_hit
+        cache_hit, attempts
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,  ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,  ?, ?)
     `)
     this.insertInvocation = this.db.prepare(`
       INSERT INTO invocations(
@@ -1169,9 +1182,12 @@ export class Cache implements CacheLayer {
     if (hashes.length === 0) return out
     // Inline placeholders for an IN-list — bun:sqlite doesn't ship
     // rarray, but `IN (?, ?, …)` with N≤~999 is fast and avoids per-
-    // hash select.get() overhead.
+    // hash select.get() overhead. `db.query` (not `db.prepare`) caches the
+    // compiled statement keyed by the SQL text — so the dominant single-hash
+    // warm-hit path (called up to 3× per hit) reuses one statement instead of
+    // recompiling on every call.
     const placeholders = hashes.map(() => '?').join(',')
-    const stmt = this.db.prepare(
+    const stmt = this.db.query(
       `SELECT entry_hash, path, size_bytes, mode, mtime_ms FROM output_files WHERE entry_hash IN (${placeholders})`,
     )
     const rows = stmt.all(...(hashes as readonly SQLQueryBindings[])) as Array<{
@@ -1731,11 +1747,15 @@ export class Cache implements CacheLayer {
     // executed task per invocation — a 2000-task repo accretes ~20k
     // rows in days, inflating insert and checkpoint cost forever.
     // 30 days comfortably covers `vx stats` (24 h windows) and any
-    // CI-side analytics consumers.
+    // CI-side analytics consumers. The `invocations` header table (one
+    // row per `vx run`) is pruned on the SAME window — otherwise a
+    // header would outlive its `runs` rows, so `vx info`/`vx mcp` would
+    // list an invocation whose task detail is already gone, and the
+    // table would grow unbounded on a long-lived checkout.
     try {
-      this.db
-        .prepare('DELETE FROM runs WHERE ended_at < ?')
-        .run(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
+      this.db.prepare('DELETE FROM runs WHERE ended_at < ?').run(cutoff)
+      this.db.prepare('DELETE FROM invocations WHERE ended_at < ?').run(cutoff)
     } catch {
       // Retention is best-effort; never block closing the handle.
     }
@@ -1770,6 +1790,7 @@ function bindRun(run: RunRecord): SQLQueryBindings[] {
     run.wallclockStartNs !== undefined ? run.wallclockStartNs : null,
     run.wallclockEndNs !== undefined ? run.wallclockEndNs : null,
     run.cacheHit === undefined ? null : run.cacheHit ? 1 : 0,
+    run.attempts ?? null,
   ]
 }
 

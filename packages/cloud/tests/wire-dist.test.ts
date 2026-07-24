@@ -24,7 +24,7 @@ describe('protocol v2 shape', () => {
     expect(DIST_PROTOCOL_VERSION).toBe(2)
   })
 
-  it('assignment is a BARE task id + submissionId — no command, no projectDir, no hash', () => {
+  it('a policy-less assignment is a BARE task id + submissionId — no command, no projectDir, no hash', () => {
     const assign: DistServerMessage = { t: 'task:assign', taskId: 'pkg#build', submissionId: 's1' }
     expect(Object.keys(assign).sort()).toEqual(['submissionId', 't', 'taskId'])
   })
@@ -34,6 +34,13 @@ describe('round-trip — DistServerMessage ⇄ Envelope', () => {
   it('task:assign / agent:refused / coord:drain round-trip', () => {
     const msgs: DistServerMessage[] = [
       { t: 'task:assign', taskId: 'pkg#build', submissionId: 's1' },
+      // A policy-carrying assignment (the submitter's --frozen/--timeout/--retry).
+      {
+        t: 'task:assign',
+        taskId: 'pkg#build',
+        submissionId: 's1',
+        policy: { frozen: true, timeout: 30_000, retries: 2 },
+      },
       { t: 'agent:refused', reason: 'commit mismatch: a vs b' },
       { t: 'coord:drain' },
     ]
@@ -132,5 +139,55 @@ describe('round-trip — dist:submit ⇄ Envelope', () => {
     expect(isNotification(env)).toBe(true)
     expect(envelopeToDistSubmit(env)).toEqual(submit)
     expect(envelopeToDistSubmit(distServerMessageToEnvelope({ t: 'coord:drain' }))).toBeNull()
+  })
+
+  it('carries the trust-scope branch/defaultBranch when present', () => {
+    const submit: DistSubmitMessage = {
+      t: 'dist:submit',
+      protocol: DIST_PROTOCOL_VERSION,
+      session: 'local',
+      workspaceId: 'ws1',
+      submissionId: 'sub-2',
+      commitSha: 'cafebabe',
+      branch: 'feature-x',
+      defaultBranch: 'main',
+      expectedAgents: 1,
+      agentTimeoutMs: 300_000,
+      request: { tasks: ['build'], cwd: '/w' },
+      nodes: [],
+    }
+    const back = envelopeToDistSubmit(distSubmitToEnvelope(submit))
+    expect(back).toEqual(submit)
+    expect(back?.branch).toBe('feature-x')
+    expect(back?.defaultBranch).toBe('main')
+  })
+
+  it('carries the submitter context (invocation header) when present', () => {
+    const submit: DistSubmitMessage = {
+      t: 'dist:submit',
+      protocol: DIST_PROTOCOL_VERSION,
+      session: 'local',
+      workspaceId: 'ws1',
+      submissionId: 'sub-3',
+      commitSha: 'cafebabe',
+      context: {
+        os: 'linux',
+        arch: 'x64',
+        host: 'ci-runner-7',
+        ci: true,
+        ciProvider: 'github',
+        vxVersion: '9.9.9',
+        dirty: false,
+        workspaceName: 'acme-monorepo',
+      },
+      expectedAgents: 1,
+      agentTimeoutMs: 300_000,
+      request: { tasks: ['build'], cwd: '/w' },
+      nodes: [],
+    }
+    const back = envelopeToDistSubmit(distSubmitToEnvelope(submit))
+    expect(back).toEqual(submit)
+    expect(back?.context?.ci).toBe(true)
+    expect(back?.context?.workspaceName).toBe('acme-monorepo')
   })
 })

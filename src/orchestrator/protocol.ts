@@ -20,8 +20,27 @@ export interface RunRequest {
   projects?: readonly string[]
   concurrency?: number
   cache?: CachePolicy
+  /** `--cache-dir <path>` override (cwd-relative). */
+  cacheDir?: string
   continueMode?: ContinueMode
   frozen?: boolean
+  /** Run-level retry default (`--retry <n>`); explicit `exec.retries` wins. */
+  retries?: number
+  /** Run-level task-timeout default (ms); per-task `exec.timeout` wins. */
+  timeout?: number
+  /** Explicit `--memory` budget (bytes) for `exec.resources` packing; the
+   *  default (executing side's os.totalmem()) resolves where tasks run. */
+  memory?: number
+  /** Cache-correctness verification (`--verify`); `allow` as an array (Sets
+   *  don't serialize). `fingerprint` is additive-optional — an old serve
+   *  ignores it, so a delegated `=fingerprint` run against an old serve
+   *  degrades to a harmless no-op verify. */
+  verify?: {
+    determinism: boolean
+    inputs: boolean
+    fingerprint?: boolean
+    allow: readonly string[]
+  }
   flow?: 'focused' | 'broad'
   outputLogs?: 'full' | 'errors-only' | 'none'
   excludeDependencies?: 'all' | readonly string[]
@@ -75,8 +94,19 @@ export function optionsToRequest(options: RunOptions): RunRequest {
   if (options.projects !== undefined) req.projects = options.projects
   if (options.concurrency !== undefined) req.concurrency = options.concurrency
   if (options.cache !== undefined) req.cache = options.cache
+  if (options.cacheDir !== undefined) req.cacheDir = options.cacheDir
   if (options.continueMode !== undefined) req.continueMode = options.continueMode
   if (options.frozen !== undefined) req.frozen = options.frozen
+  if (options.retries !== undefined) req.retries = options.retries
+  if (options.timeout !== undefined) req.timeout = options.timeout
+  if (options.memory !== undefined) req.memory = options.memory
+  if (options.verify !== undefined)
+    req.verify = {
+      determinism: options.verify.determinism,
+      inputs: options.verify.inputs,
+      fingerprint: options.verify.fingerprint,
+      allow: [...options.verify.allow],
+    }
   if (options.flow !== undefined) req.flow = options.flow
   if (options.outputLogs !== undefined) req.outputLogs = options.outputLogs
   if (options.excludeDependencies !== undefined)
@@ -99,8 +129,19 @@ export function requestToOptions(request: RunRequest): RunOptions {
   if (request.projects !== undefined) options.projects = [...request.projects]
   if (request.concurrency !== undefined) options.concurrency = request.concurrency
   if (request.cache !== undefined) options.cache = request.cache
+  if (request.cacheDir !== undefined) options.cacheDir = request.cacheDir
   if (request.continueMode !== undefined) options.continueMode = request.continueMode
   if (request.frozen !== undefined) options.frozen = request.frozen
+  if (request.retries !== undefined) options.retries = request.retries
+  if (request.timeout !== undefined) options.timeout = request.timeout
+  if (request.memory !== undefined) options.memory = request.memory
+  if (request.verify !== undefined)
+    options.verify = {
+      determinism: request.verify.determinism,
+      inputs: request.verify.inputs,
+      fingerprint: request.verify.fingerprint ?? false,
+      allow: new Set(request.verify.allow),
+    }
   if (request.flow !== undefined) options.flow = request.flow
   if (request.outputLogs !== undefined) options.outputLogs = request.outputLogs
   if (request.excludeDependencies !== undefined) {

@@ -40,39 +40,25 @@ inputs:
     description: Self-terminate after this many ms with no assignment (0 = never).
     required: false
     default: '900000'
-  ref:
+  version:
     description: >-
-      vx source ref (branch or tag) to install the vx-cloud CLI from. @vzn/vx-cloud
-      is not yet published to npm, so this action installs it from source at this
-      ref. Pin it to a release tag for reproducible CI.
+      npm version or dist-tag of @vzn/vx-cloud to install. Pin to a release
+      version for reproducible CI.
     required: false
-    default: main
+    default: latest
 
 runs:
   using: composite
   steps:
+    # vx-cloud is a Bun-source package, so the host needs Bun at runtime.
     - uses: oven-sh/setup-bun@v2
 
-    # @vzn/vx-cloud is NOT on npm (the only prebuilt artifact is the
-    # ghcr.io/vznjs/vx-cloud SERVE image, which carries no git and can't run an
-    # agent). Install the `vx-cloud` CLI from source: clone vx at the pinned
-    # ref, resolve its workspace (the postinstall relinks @vzn/vx), and drop a
-    # bun shim on PATH. When @vzn/vx-cloud publishes, replace this whole step
-    # with:  run: npm i -g @vzn/vx-cloud
-    - name: Install vx-cloud (from source)
+    # Install the vx-cloud CLI from npm.
+    - name: Install vx-cloud
       shell: bash
       env:
-        REF: ${{ inputs.ref }}
-      run: |
-        set -eu
-        SRC="$RUNNER_TEMP/vx-cloud-src"
-        git clone --depth 1 --branch "$REF" https://github.com/vznjs/vx "$SRC"
-        ( cd "$SRC" && bun install --frozen-lockfile )
-        BIN="$RUNNER_TEMP/vx-cloud-bin"
-        mkdir -p "$BIN"
-        printf '#!/usr/bin/env sh\nexec bun "%s/packages/cloud/src/cli/bin.ts" "$@"\n' "$SRC" > "$BIN/vx-cloud"
-        chmod +x "$BIN/vx-cloud"
-        echo "$BIN" >> "$GITHUB_PATH"
+        VERSION: ${{ inputs.version }}
+      run: npm i -g "@vzn/vx-cloud@$VERSION"
 
     # Blocks until the submission drains the agent (or the idle timeout).
     # --token / --session / --idle-timeout are only passed when non-empty

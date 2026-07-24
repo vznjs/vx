@@ -2,58 +2,80 @@
 
 ## Purpose
 
-Wraps the v13 local `Cache` with a `RemoteCache` and exposes the same
-`CacheLayer` interface. The orchestrator doesn't know which layer
-it's talking to.
+Wraps the local `Cache` with a **`RemoteCacheLayer`** — the plugin seam
+for remote caching (`docs/design/native-cache-wire-2026-07.md`) — and
+exposes the same `CacheLayer` interface. The orchestrator doesn't know
+which layer it's talking to, and core ships **no wire client**: the
+remote layer comes from a plugin's `cache` capability (e.g. the
+first-party cloud plugin's native `/v1/cache` client) or from an embedder
+via `RunOptions.remoteCache`.
 
-- **Read-through**: try local; on miss, fetch from remote, materialize
-  into local, return.
+- **Read-through**: try local; on miss, fetch from remote, ingest into
+  local, return with `source: 'remote'`.
 - **Write-through with async upload**: write to local synchronously,
-  then pack + PUT to remote in the background. Remote errors are
-  logged, not thrown — the task already succeeded; failed uploads
-  shouldn't fail the user's run.
+  then PUT to remote in the background (bounded at 4 concurrent;
+  `run()` awaits `drainUploads()` before `cache.close()`). Remote
+  errors are logged, not thrown — the task already succeeded; failed
+  uploads shouldn't fail the user's run.
+- **Prefetch + in-flight dedup**: `prefetch(hash)` warms local from
+  remote in the background; an in-flight map shared with `get`
+  guarantees **at most one remote GET per key**, and a settled miss
+  blocks a second lazy probe.
 
 ## Public surface
 
 ```ts
+export interface RemoteCacheLayer {
+  /** Existence probe (drives the plan path's `--dry` remote prediction). */
+  has(hash: string): Promise<boolean>
+  /** Fetch an artifact's bytes; `null` = miss. Errors THROW. */
+  get(hash: string): Promise<{ body: ArrayBuffer; durationMs: number | undefined } | null>
+  /** Store an artifact (fire-and-forget from LayeredCache's PoV). */
+  put(hash: string, body: ArrayBuffer | Uint8Array, meta: { durationMs: number }): Promise<void>
+}
+
 export class LayeredCache implements CacheLayer {
-  constructor(local: CacheLayer, remote: RemoteCache, options?: LayeredCacheOptions)
+  constructor(local: Cache, remote: RemoteCacheLayer, options?: LayeredCacheOptions)
+  prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
+  drainUploads(): Promise<void>
   // CacheLayer methods — see docs/modules/cache.md.
 }
 
 export interface LayeredCacheOptions {
   onRemoteError?: (err: Error) => void
-  onRemoteHit?: (hash: string, bytes: number) => void
+  /** 4-axis policy; this layer reads remoteRead / remoteWrite. */
+  policy?: CachePolicy
 }
 ```
 
-`LayeredCache` accepts a `CacheLayer` (not a concrete `Cache`) as the
-local layer, so future layerings (local → regional → global) can stack
-without churn.
+## The never-fail contract
+
+`RemoteCacheLayer` implementations THROW on every failure (network,
+non-404 status, integrity mismatch, oversize body). `LayeredCache`
+catches **everything** and degrades to a cache miss via
+`onRemoteError` — no remote failure of any kind may fail a run. A
+corrupt remote body is additionally refused by `Cache.ingest`'s
+validation (zstd checks), which this layer also degrades to a miss.
 
 ## Read path
 
-1. `local.get(hash)` — return immediately on local hit (`source: 'local'`).
-2. `remote.get(hash)` — `null` on miss; suppress errors and return `null`.
-3. On remote hit:
-   - `unpackArchive(body, stage)` into a temp dir.
-   - Read the entry's `stdout` / `stderr` and `outputs/` from the
-     stage; call `local.save()` to materialize it into the local
-     layer.
-   - Return the now-local entry with `source: 'remote'` so the
-     orchestrator marks it `cache-hit-remote`.
+1. `local.get(hash)` — return immediately on local hit. If the hash
+   was materialized FROM remote earlier this run (prefetch or a
+   sibling's read-through), the source flips to `'remote'` so
+   provenance stays honest.
+2. If `policy.remoteRead` is off → miss.
+3. `pullFromRemote(hash)` — shared with `prefetch` through the
+   in-flight map: `remote.get` → `local.ingest(bytes)` → re-read
+   local. `durationMs` from the wire rides the ingested entry.
 
 ## Write path
 
-1. `local.save(args)` — synchronous, succeeds before we touch network.
-2. Stage stdout/stderr + `outputs/<rel paths>` into a temp dir
-   (mirroring the local v13 entry shape).
-3. `packAndDiscard(stage)` → tar.gz bytes.
-4. `remote.put(hash, bytes, { durationMs })`.
-
-Any failure in steps 2-4 is caught and routed through
-`onRemoteError` (defaults to `process.stderr.write`). The task is
-considered fully saved as soon as step 1 returns.
+1. `local.save(args)` — synchronous (honors its own local-write gate).
+2. If `policy.remoteWrite`: capture the artifact bytes NOW (read the
+   just-written local artifact, or pack in memory when local writes
+   are disabled — `--cache=local:,remote:rw`), then queue the PUT in
+   the bounded background pool. The task's worker slot is released
+   immediately; `run()` drains before close.
 
 ## Delegation
 
@@ -64,37 +86,23 @@ local concerns.
 
 ## What this does NOT do
 
-- No HMAC computation/verification of its own — that lives inside
-  `RemoteCache` (opt-in `signatureKey`). A signature mismatch on GET
-  surfaces here as a `RemoteCacheError`, which this layer degrades to
-  `onRemoteError` + a cache miss like any other remote fault.
-- No pre-signed URLs (v2 of the remote-cache design).
-- No write-batching or retry on transient errors. v1 fire-and-forget.
-- No event posting (`POST /v8/artifacts/events`).
+- No wire knowledge — URLs, headers, integrity digests, redirects,
+  timeouts all live inside the `RemoteCacheLayer` implementation
+  (e.g. the first-party cloud plugin's native-cache client).
+- No write-batching or retry on transient errors. Fire-and-forget.
 
 ## Tests
 
-`src/layered-cache.test.ts` spins a real in-process `Bun.serve()`
-server and asserts:
-
-- `save()` writes local + uploads to remote
-- `save()` doesn't fail when the remote rejects
-- `get()` returns local without touching remote when local hits
-- `get()` falls back to remote, materializes into local, then future
-  reads are local hits
-- `get()` returns `null` when both miss
-- `get()` suppresses remote errors
-- `key()` matches `local.key()`
-- `stats / recordRun / prune` delegate to local
+`tests/layered-cache.test.ts` drives an in-memory stub
+`RemoteCacheLayer` (counters for has/get/put) and asserts the
+read-through / write-through / prefetch-dedup / degradation /
+delegation contracts. `tests/orchestrator-remote.test.ts` covers the
+end-to-end run paths (remote hit, plan prediction, never-fail,
+at-most-once, injection precedence).
 
 ## Replacing this module
 
 Most likely replacement: **a layered cache with a different topology**
 (e.g., local → regional → global). Keep the public methods stable and
-the orchestrator doesn't change. Or add metadata-only HEAD-style
-prefetching before bulk GET — would need extending `RemoteCache.has`
-into the read path here.
-
-To remove the remote layer entirely, the orchestrator's
-`wrapWithRemoteCache` returns the local `Cache` unchanged when env
-vars aren't set.
+the orchestrator doesn't change. A different WIRE never touches this
+module — implement `RemoteCacheLayer` in a plugin instead.

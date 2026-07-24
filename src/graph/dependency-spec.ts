@@ -32,6 +32,22 @@ export class DependencySpecError extends Error {
  * builder vs the filter) decide which ones make semantic sense and
  * surface their own validation errors. This keeps the parser pure.
  */
+/** True when a task form is a `*` pattern (`build.*`) rather than an exact name. */
+export function isTaskPattern(task: string): boolean {
+  return task.includes('*')
+}
+
+/**
+ * Compile a `*`-only glob over task names: `build.*` → /^build\..*$/.
+ * `*` is the sole metacharacter — everything else matches literally, so the
+ * dotted-namespace convention (`build.bun.linux-x64`) needs no escaping by
+ * the user.
+ */
+export function compileTaskPattern(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
+  return new RegExp(`^${escaped}$`)
+}
+
 export function parseDependencySpec(raw: string): DependencySpec {
   if (raw.length === 0) throw new DependencySpecError(raw, 'empty spec')
 

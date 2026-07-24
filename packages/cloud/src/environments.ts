@@ -1,11 +1,8 @@
 // Durable per-user client config: the named-server environments list
 // (docker-context-style). Written by the `vx-cloud connect` / `env` verbs,
 // consulted lazily by the cloud() plugin's telemetry + backend ladders.
-//
-// Deliberately split from serve-info.json: that file is runtime STATE (lives
-// in $XDG_RUNTIME_DIR, auto-cleared on logout, written by the SERVER); this
-// one is durable user CONFIG (lives in $XDG_CONFIG_HOME, written by the CLI).
-// Different lifecycles, different dirs.
+// This file is the ONE client↔serve wiring — there is no serve
+// advertisement / auto-detect layer beside it.
 //
 // Light by design (only node:fs/os/path) so `plugin.ts` — imported via the
 // lean `@vzn/vx-cloud/plugin` subpath — can read it without pulling the
@@ -27,12 +24,6 @@ export interface EnvironmentEntry {
    * writes only untrusted. Safe to commit.
    */
   prToken?: string
-  /**
-   * Whether the backend capability may route EXECUTION here (default false).
-   * Opt-in because delegation runs against `request.cwd` on the server — only
-   * correct when the server shares (or mirrors) the filesystem.
-   */
-  delegate?: boolean
   /**
    * Ambient distribution to a POOL of agents rendezvoused by this serve.
    * `true` (from `--distribute`) enables it; a number is an advisory expected
@@ -135,24 +126,38 @@ function validateFile(parsed: unknown, p: string): EnvironmentsFile {
     if (raw.prToken !== undefined && typeof raw.prToken !== 'string') {
       throw new Error(`environment "${name}" has a non-string prToken in ${p}`)
     }
-    if (raw.delegate !== undefined && typeof raw.delegate !== 'boolean') {
-      throw new Error(`environment "${name}" has a non-boolean delegate in ${p}`)
+    // Run delegation was REMOVED (platform §12 P3): the platform has no
+    // checkout to execute against. A persisted `delegate` flag is rejected with
+    // a hint pointing at distribution (the replacement).
+    if (raw.delegate !== undefined) {
+      throw new Error(
+        `environment "${name}" has a "delegate" field in ${p} — run delegation was removed; ` +
+          'reconnect with `vx-cloud connect <url> --distribute` and delete the delegate line',
+      )
     }
     // `distribute` is additive-optional: an older binary reading a newer file
     // ignores an unknown field, and a newer binary treats absence as off — so
-    // it never forces an ENVIRONMENTS_VERSION bump.
+    // it never forces an ENVIRONMENTS_VERSION bump. A number must be a
+    // POSITIVE integer: this file is user-editable, and a hand-written 0/NaN
+    // would otherwise read as "ambient ON with a nonsense expectation" (the
+    // ambient rung checks `!== undefined && !== false`, not truthiness).
     if (
       raw.distribute !== undefined &&
       typeof raw.distribute !== 'boolean' &&
-      typeof raw.distribute !== 'number'
+      !(
+        typeof raw.distribute === 'number' &&
+        Number.isInteger(raw.distribute) &&
+        raw.distribute >= 1
+      )
     ) {
-      throw new Error(`environment "${name}" has a non-boolean/number distribute in ${p}`)
+      throw new Error(
+        `environment "${name}" has an invalid distribute in ${p} (expected true/false or a positive integer)`,
+      )
     }
     environments[name] = {
       url: raw.url,
       ...(raw.token !== undefined ? { token: raw.token } : {}),
       ...(raw.prToken !== undefined ? { prToken: raw.prToken } : {}),
-      ...(raw.delegate !== undefined ? { delegate: raw.delegate } : {}),
       ...(raw.distribute !== undefined ? { distribute: raw.distribute } : {}),
     }
   }

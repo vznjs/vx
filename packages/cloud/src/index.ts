@@ -1,16 +1,14 @@
-// Public API for @vzn/vx-cloud — the orchestrator service + the first-party
+// Public API for @vzn/vx-cloud — the self-hosted platform + the first-party
 // cloud plugin.
 //
 // `cloud()` is the VxPlugin contributing the backend / cache / telemetry
 // capabilities against core's plugin interface. The telemetry sink pushes the
-// canonical RunSummaryRecord to the cloud ingest endpoint; IngestStore is the
-// cloud-owned analytics store the hosted dashboard reads from. See
-// docs/design/observability-architecture-2026-06.md. The rest re-exports the
-// service starters (the building blocks the service CLI uses).
+// canonical RunSummaryRecord to the platform's ingest endpoint, persisted in
+// Postgres (docs/design/cloud-platform-2026-07.md). `startServer` is the
+// platform entrypoint; the rest re-exports the building blocks the CLI uses.
 
 export { cloud } from './plugin.js'
 export type { CloudPluginOptions } from './plugin.js'
-export { IngestStore } from './ingest-store.js'
 export {
   ArtifactStore,
   DEFAULT_PRINCIPAL,
@@ -18,11 +16,20 @@ export {
   type Principal,
   type Tier,
 } from './artifact-store.js'
-export { startServe, parseServeArgs, DEFAULT_SERVE_PORT, resolveServePort } from './cli/serve.js'
-export type { ServeServer } from './cli/serve.js'
-export { handleMcpHttp, MCP_PROTOCOL_VERSION, MCP_TOOLS } from './cli/mcp-serve.js'
-export { serveInfoPath, defaultServeSocketPath, readServeInfo, pidAlive } from './serve-info.js'
-export type { ServeInfo } from './serve-info.js'
+export type { BlobBackend, BlobListEntry, BlobStat } from './blob/backend.js'
+export { LocalDirBackend } from './blob/local.js'
+export { S3Backend, S3_META_DIGEST, S3_META_DURATION_MS } from './blob/s3.js'
+export type { S3BackendConfig } from './blob/s3.js'
+export { awsUriEncode, presignUrl, signRequest, UNSIGNED_PAYLOAD } from './blob/sigv4.js'
+export type { PresignUrlArgs, SignRequestArgs } from './blob/sigv4.js'
+export {
+  MAX_REMOTE_ARTIFACT_BYTES,
+  NativeCacheClient,
+  readBodyBounded,
+  type NativeCacheConfig,
+} from './native-cache.js'
+export { startServer, resolveServerConfig } from './cli/server.js'
+export type { PlatformServer, ServerConfig } from './cli/server.js'
 export {
   ENVIRONMENTS_VERSION,
   activeEnvironment,
@@ -50,7 +57,6 @@ export { connectDevForwarder } from './cli/dev-client.js'
 export type { DevForwarder } from './cli/dev-client.js'
 export { startUiServer, bootDevframeServer } from './cli/ui-server.js'
 export type { UiServer, DevframeServer } from './cli/ui-server.js'
-export { serviceBackend, resolveBackend, localDevBackend } from './cli/backend.js'
 export type {
   AgentHello,
   DistClientMessage,

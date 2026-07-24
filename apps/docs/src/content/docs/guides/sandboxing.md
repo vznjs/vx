@@ -12,6 +12,33 @@ Use it to catch under-declared inputs (a build secretly reading a file
 outside its `inputs`), to stop a tool from phoning home, or to enforce
 hermetic builds in CI.
 
+## Why it makes caching trustworthy
+
+A cache is only correct if the declared `inputs` are the *complete* set
+of files the task reads. The sandbox turns that assumption into an
+enforced boundary: the task's allow-list **is** its declared inputs, so a
+build that secretly reads `../../config/secret.json` (a file vx never
+hashed) is denied the read and the run fails — naming the exact path.
+Without the sandbox that build would pass and cache a result that silently
+depends on an unlisted file: the classic **stale-hit** bug. With it, an
+under-declared input can't hide.
+
+```mermaid
+flowchart LR
+  decl["Declared inputs<br/>inputs: ['src/**']"] --> allow["Allow-list =<br/>exactly those files"]
+  allow --> read{"Task reads<br/>a file"}
+  read -->|"inside the list"| ok["Allowed → runs normally"]
+  read -->|"undeclared"| deny["Denied → run FAILS<br/>+ names the path"]
+  classDef step fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
+  classDef decide fill:#1e293b,stroke:#a78bfa,color:#e2e8f0
+  classDef good fill:#12261b,stroke:#34d399,color:#d1fae5
+  classDef bad fill:#2a1416,stroke:#ef4444,color:#fecaca
+  class decl,allow step
+  class read decide
+  class ok good
+  class deny bad
+```
+
 ## Turn it on
 
 Add a `sandbox` block to any task with an `exec`:

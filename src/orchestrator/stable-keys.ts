@@ -47,16 +47,45 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
   const order = topoOrder(args.nodes)
   const keyById = new Map<string, string>()
   const unstableById = new Set<string>()
+  // Transitive-upstream output producers, accumulated in topo order — the
+  // inputs to the stability gate. A task's key is preliminary if an upstream
+  // writes where its inputs read, and that reach is TRANSITIVE: a producer
+  // reached through a no-output intermediate still poisons the key, so each
+  // dep's accumulated producers fold forward.
+  //   - outputProjects: the project names of every upstream task declaring
+  //     cache.outputs.files (project-relative outputs land in the producer's
+  //     own dir).
+  //   - wsOutputUpstream: any upstream declares cache.outputs.workspaceFiles
+  //     (root-anchored, boundary-ignoring outputs).
+  const outputProjectsById = new Map<string, ReadonlySet<string>>()
+  const wsOutputUpstreamById = new Map<string, boolean>()
   const stableKeys: StableKey[] = []
 
   for (const id of order) {
     const node = args.nodes.get(id)!
     const upstream = synthUpstream(node, args.nodes, keyById)
 
+    // Fold every dep's accumulated producers + the dep's own declared
+    // outputs into this node's transitive-upstream producer sets.
+    const outputProjects = new Set<string>()
+    let wsOutputUpstream = false
+    for (const dep of node.deps) {
+      const depNode = args.nodes.get(dep)
+      if (!depNode) continue
+      for (const p of outputProjectsById.get(dep) ?? []) outputProjects.add(p)
+      if (wsOutputUpstreamById.get(dep) === true) wsOutputUpstream = true
+      const depOut = depNode.config.cache?.outputs
+      if ((depOut?.files?.length ?? 0) > 0) outputProjects.add(depNode.projectName)
+      if ((depOut?.workspaceFiles?.length ?? 0) > 0) wsOutputUpstream = true
+    }
+    outputProjectsById.set(id, outputProjects)
+    wsOutputUpstreamById.set(id, wsOutputUpstream)
+
     if (isGroupTask(node)) {
       // Groups have no exec/cache; they only fold upstream keys so
       // dependents that filter inputs.tasks through the group still
-      // cascade. They inherit instability from any unstable member.
+      // cascade (and forward their producers, above). They inherit
+      // instability from any unstable member.
       keyById.set(id, computeGroupHash(upstream))
       if (node.deps.some((d) => unstableById.has(d))) unstableById.add(id)
       continue
@@ -76,7 +105,8 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
     keyById.set(id, hash)
 
     const unstable =
-      node.deps.some((d) => unstableById.has(d)) || dependsOnSiblingOutputs(node, args.nodes)
+      node.deps.some((d) => unstableById.has(d)) ||
+      dependsOnSiblingOutputs(node, outputProjects, wsOutputUpstream)
     if (unstable) unstableById.add(id)
 
     const cacheEnabled = node.config.cache !== undefined
@@ -111,40 +141,42 @@ export function synthUpstream(
 }
 
 /**
- * Conservative stability check: does any UPSTREAM task whose outputs
- * could land where this task reads its inputs make this task's key
- * preliminary?
+ * Conservative stability check: does any TRANSITIVE-upstream task whose
+ * outputs could land where this task reads its inputs make this task's
+ * key preliminary? The producers are pre-folded by `deriveStableKeys`
+ * (`upstreamOutputProjects` = projects declaring `cache.outputs.files`
+ * upstream; `hasWsOutputUpstream` = any `cache.outputs.workspaceFiles`
+ * upstream), so a producer reached through a no-output intermediate is
+ * caught too.
  *
- *   - Same-project upstream with declared `cache.outputs.files`: its
- *     outputs land inside this project's dir, which this task's input
- *     globs (default `**` / anything project-relative) can match —
- *     the upstream must run before this key is final. Project
- *     boundaries are hard, so only SAME-project outputs can reach a
- *     project-relative input.
- *   - Any upstream with declared `cache.outputs.workspaceFiles` when
- *     this task reads `cache.inputs.workspaceFiles`: root-anchored
- *     outputs ignore boundaries and can land anywhere the root-anchored
- *     inputs read.
+ *   - Project-relative inputs (default `**` / anything project-relative)
+ *     read THIS project's dir, so a same-project upstream's
+ *     `outputs.files` — direct or transitive — makes the key
+ *     preliminary. Project boundaries are hard, so only SAME-project
+ *     outputs can reach a project-relative input.
+ *   - `cache.inputs.workspaceFiles` is boundary-free: it can read ANY
+ *     project's dir (so any upstream `outputs.files`, in any project,
+ *     matters) or a root-anchored location (so any upstream
+ *     `outputs.workspaceFiles` matters). Either → preliminary key. This
+ *     is the reach the earlier per-dep check missed — it only compared a
+ *     dep's `outputs.workspaceFiles`, never a dep's `outputs.files`.
  *
- * Either case → unstable → skip prefetch (lazy read-through in
- * execute-task stays correct). When in doubt, unstable.
+ * Either case → unstable → skip prefetch AND probe reuse (execute-task
+ * recomputes the key lazily once the upstream ran). When in doubt,
+ * unstable.
  */
-export function dependsOnSiblingOutputs(node: TaskNode, nodes: Map<string, TaskNode>): boolean {
-  const inputs = node.config.cache?.inputs
+export function dependsOnSiblingOutputs(
+  node: TaskNode,
+  upstreamOutputProjects: ReadonlySet<string>,
+  hasWsOutputUpstream: boolean,
+): boolean {
+  const cache = node.config.cache
   // A cache-disabled task has no key to prefetch anyway; treat as
   // unstable-irrelevant (caller filters on cacheEnabled).
-  if (node.config.cache === undefined) return false
-  const readsWorkspaceFiles = (inputs?.workspaceFiles?.length ?? 0) > 0
-
-  for (const dep of node.deps) {
-    const depNode = nodes.get(dep)
-    if (!depNode) continue
-    const depOutputs = depNode.config.cache?.outputs
-    if (depOutputs === undefined) continue
-    const sameProject = depNode.projectName === node.projectName
-    if (sameProject && (depOutputs.files?.length ?? 0) > 0) return true
-    if (readsWorkspaceFiles && (depOutputs.workspaceFiles?.length ?? 0) > 0) return true
-  }
+  if (cache === undefined) return false
+  if (upstreamOutputProjects.has(node.projectName)) return true
+  const readsWorkspaceFiles = (cache.inputs?.workspaceFiles?.length ?? 0) > 0
+  if (readsWorkspaceFiles && (upstreamOutputProjects.size > 0 || hasWsOutputUpstream)) return true
   return false
 }
 
@@ -159,16 +191,18 @@ export function topoOrder(nodes: Map<string, TaskNode>): string[] {
       else dependents.set(dep, [node.id])
     }
   }
-  const queue: string[] = []
-  for (const [id, deg] of indegree) if (deg === 0) queue.push(id)
+  // Kahn's algorithm with a head pointer instead of `queue.shift()` — a shift
+  // reindexes the whole array (O(N) each), making the walk O(N²) on a big
+  // graph. `out` doubles as the queue (every dequeued id is already in topo
+  // order); we only ever append and advance `head`. Same pattern as
+  // computeReverseDepCount / package-graph.
   const out: string[] = []
-  while (queue.length > 0) {
-    const id = queue.shift()!
-    out.push(id)
-    for (const d of dependents.get(id) ?? []) {
+  for (const [id, deg] of indegree) if (deg === 0) out.push(id)
+  for (let head = 0; head < out.length; head++) {
+    for (const d of dependents.get(out[head]!) ?? []) {
       const rem = (indegree.get(d) ?? 0) - 1
       indegree.set(d, rem)
-      if (rem === 0) queue.push(d)
+      if (rem === 0) out.push(d)
     }
   }
   return out

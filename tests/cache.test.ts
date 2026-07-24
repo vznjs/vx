@@ -10,8 +10,41 @@ import {
   FULL_CACHE_POLICY,
   type InvocationRecord,
   parseCachePolicy,
+  zstdContentSize,
 } from '../src/cache/cache.js'
 import { UserError, xxh3hex } from '../src/util/index.js'
+
+describe('zstdContentSize (frame-header parse)', () => {
+  const MAGIC = [0x28, 0xb5, 0x2f, 0xfd]
+  // desc byte = (fcsFlag << 6) | (singleSegment << 5) | dictIdFlag
+  it('1-byte FCS (fcsFlag 0, singleSegment) reads the single size byte', () => {
+    // desc 0x20 = fcsFlag 0 + singleSegment 1 + dictId 0 → 1-byte FCS, no window desc.
+    expect(zstdContentSize(new Uint8Array([...MAGIC, 0x20, 100]))).toBe(100n)
+  })
+  it('2-byte FCS (fcsFlag 1) applies the spec +256 adjustment', () => {
+    // desc 0x60 = fcsFlag 1 + singleSegment 1. Stored value = actual − 256, LE.
+    // 744 (0x02E8) stored → 744 + 256 = 1000.
+    expect(zstdContentSize(new Uint8Array([...MAGIC, 0x60, 0xe8, 0x02]))).toBe(1000n)
+  })
+  it('4-byte FCS (fcsFlag 2) reads a little-endian uint32', () => {
+    // desc 0xA0 = fcsFlag 2 + singleSegment 1. 65536 = 0x00010000 LE.
+    expect(zstdContentSize(new Uint8Array([...MAGIC, 0xa0, 0x00, 0x00, 0x01, 0x00]))).toBe(65536n)
+  })
+  it('skips the Dictionary_ID bytes before the FCS field', () => {
+    // desc 0x21 = fcsFlag 0 + singleSegment 1 + dictIdFlag 1 → 1 dict-id byte,
+    // then a 1-byte FCS. The dict byte (0xAB) must be skipped, not read as size.
+    expect(zstdContentSize(new Uint8Array([...MAGIC, 0x21, 0xab, 50]))).toBe(50n)
+  })
+  it('returns null for a streaming frame that omits the content size', () => {
+    // desc 0x00 = fcsFlag 0 + singleSegment 0 → FCS field is 0 bytes (absent);
+    // one window-descriptor byte follows the desc.
+    expect(zstdContentSize(new Uint8Array([...MAGIC, 0x00, 0x40]))).toBeNull()
+  })
+  it('returns null for a too-short buffer or a wrong magic number', () => {
+    expect(zstdContentSize(new Uint8Array([0x28, 0xb5, 0x2f]))).toBeNull()
+    expect(zstdContentSize(new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x20, 1]))).toBeNull()
+  })
+})
 
 describe('parseCachePolicy', () => {
   it('defaults every axis on with an empty spec', () => {
@@ -78,6 +111,13 @@ describe('parseCachePolicy', () => {
 
   it('throws on a repeated layer', () => {
     expect(() => parseCachePolicy('local:r,local:w')).toThrow(/specified twice/)
+  })
+
+  it('skips empty segments (trailing / doubled commas)', () => {
+    // A `,,` or trailing `,` yields empty segments that are ignored, not
+    // treated as a malformed layer.
+    expect(parseCachePolicy('local:r,,remote:')).toEqual(parseCachePolicy('local:r,remote:'))
+    expect(parseCachePolicy('local:r,')).toEqual(parseCachePolicy('local:r'))
   })
 })
 
@@ -615,6 +655,25 @@ describe('Cache storage (v10)', () => {
     await expect(
       cache.ingest('h-sizeless', frame, { taskId: 'pkg#build', command: 'tsc', durationMs: 1 }),
     ).rejects.toThrow(CorruptArtifactError)
+  })
+
+  it('ingest() reads a 4-byte Frame_Content_Size (fcsFlag 2) and rejects an oversize declaration', async () => {
+    // Descriptor 0x80: fcsFlag=2 (4-byte FCS), single_segment=0 (so a
+    // Window_Descriptor byte follows), dictIdFlag=0. Header offset =
+    // magic(4) + desc(1) + window(1) = 6, then a 4-byte little-endian FCS.
+    // 3 GiB (0xC0000000) exceeds the 2 GiB decompression cap, so the
+    // declared-size guard fires before a byte is allocated — exercising
+    // the fcsFlag===2 branch of zstdContentSize (only fcsFlag 3 and the
+    // sizeless flag-0 path were covered before).
+    const threeGiB = 3 * 1024 * 1024 * 1024
+    const fcs = new Uint8Array(4)
+    for (let i = 0; i < 4; i++) fcs[i] = (threeGiB >>> (8 * i)) & 0xff
+    const frame = new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 0x80, 0x00, ...fcs])
+    await expect(
+      cache.ingest('h-bomb4', frame, { taskId: 'pkg#build', command: 'tsc', durationMs: 1 }),
+    ).rejects.toThrow(/declares .* decompressed bytes/)
+    expect(existsSync(path.join(cacheDir, 'h-bomb4.tar.zst'))).toBe(false)
+    expect(await cache.get('h-bomb4')).toBeNull()
   })
 
   it('recordRun() + stats() captures run history', async () => {
@@ -1315,6 +1374,47 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
     }
   })
 
+  it('close() prunes invocations older than 30 days (header never outlives its runs)', async () => {
+    const cache = new Cache(cacheDir)
+    const old = 40 * 24 * 60 * 60 * 1000
+    const runRow = (runId: string, endedAt: number) => ({
+      hash: `h-${runId}`,
+      project: 'p',
+      task: 't',
+      status: 'success' as const,
+      exitCode: 0,
+      durationMs: 1,
+      startedAt: endedAt - 1,
+      endedAt,
+      runId,
+    })
+    cache.recordRunBundle({
+      runs: [runRow('old-run', Date.now() - old)],
+      invocation: {
+        ...invocation('old-run'),
+        startedAt: Date.now() - old - 100,
+        endedAt: Date.now() - old,
+      },
+    })
+    cache.recordRunBundle({
+      runs: [runRow('recent-run', Date.now())],
+      invocation: invocation('recent-run'),
+    })
+    // The prune runs on close.
+    cache.close()
+
+    const reopened = new Cache(cacheDir)
+    try {
+      const db = reopened.dbHandle()
+      const ids = (
+        db.prepare('SELECT run_id FROM invocations ORDER BY run_id').all() as { run_id: string }[]
+      ).map((r) => r.run_id)
+      expect(ids).toEqual(['recent-run'])
+    } finally {
+      reopened.close()
+    }
+  })
+
   it('persists entry_inputs inside the entry-save transaction (miss path)', async () => {
     const cache = new Cache(cacheDir)
     try {
@@ -1502,5 +1602,17 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
     // a future content-hash upgrade flips this expectation knowingly.
     await utimes(outFile, recorded / 1000, recorded / 1000)
     expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms4'))).toBe(true)
+  })
+
+  it('a permission (mode-only) change is detected even with size + mtime unchanged', async () => {
+    const { chmod } = await import('node:fs/promises')
+    const outFile = await saveOne('ms5', 'GGGG')
+    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms5'))).toBe(true)
+    // Toggle the execute bits: chmod changes ctime only, so size + mtime
+    // stay identical to the recorded row — the mode compare is the only
+    // thing that can catch it.
+    const recordedMode = rowsOf('ms5')[0]!.mode & 0o777
+    await chmod(outFile, recordedMode ^ 0o111)
+    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms5'))).toBe(false)
   })
 })

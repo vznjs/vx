@@ -1,6 +1,6 @@
 // The cloud() backend distribution rung + the §5.3 refusal gates:
 //   - no VX_CLOUD_DISTRIBUTE → the rung adds ZERO work (the plain-run pin);
-//   - distribute set + no serve configured/advertised → hard UserError;
+//   - distribute set + no serve configured → hard UserError;
 //   - distribute set + unreachable serve → hard UserError from run();
 //   - each refusal gate falls back LOUDLY to a normal local run.
 
@@ -11,7 +11,6 @@ import path from 'node:path'
 import { UserError, parseCachePolicy, type BackendContext, type Logger } from '@vzn/vx'
 import { cloud } from '../src/plugin.js'
 import { distributedBackend } from '../src/dist/submit.js'
-import { serveInfoPath } from '../src/serve-info.js'
 
 const DIST_ENV_KEYS = [
   'VX_CLOUD_DISTRIBUTE',
@@ -20,10 +19,7 @@ const DIST_ENV_KEYS = [
   'VX_CLOUD_TOKEN',
   'VX_CLOUD_CONFIG',
   'VX_CLOUD_ENV',
-  'VX_CLOUD_SERVE_INFO',
   'VX_CLOUD_AGENT',
-  'VX_REMOTE_CACHE_URL',
-  'VX_REMOTE_CACHE_TOKEN',
 ]
 
 const silentLogger: Logger = {
@@ -43,10 +39,9 @@ beforeEach(async () => {
     delete process.env[k]
   }
   scratch = await mkdtemp(path.join(tmpdir(), 'vx-dist-backend-'))
-  // Pin the environments file + serve advertisement at empty temp paths so
-  // the machine's real config can never leak into these tests.
+  // Pin the environments file at an empty temp path so the machine's real
+  // config can never leak into these tests.
   process.env['VX_CLOUD_CONFIG'] = path.join(scratch, 'environments.json')
-  process.env['VX_CLOUD_SERVE_INFO'] = path.join(scratch, 'serve.json')
 })
 
 afterEach(async () => {
@@ -132,7 +127,7 @@ describe('cloud() backend — the distribution rung', () => {
     await expect(cloud().backend!(ctx('/nowhere'))).rejects.toThrow(/invalid VX_CLOUD_DISTRIBUTE/)
   })
 
-  it('hard-errors when distribute is set but no serve is configured or advertised', async () => {
+  it('hard-errors when distribute is set but no serve is configured', async () => {
     process.env['VX_CLOUD_DISTRIBUTE'] = '2'
     await expect(cloud().backend!(ctx('/nowhere'))).rejects.toThrow(UserError)
     await expect(cloud().backend!(ctx('/nowhere'))).rejects.toThrow(/no vx-cloud serve/)
@@ -144,12 +139,6 @@ describe('cloud() backend — the distribution rung', () => {
     const backend = await cloud().backend!(ctx('/nowhere'))
     expect(backend).toBeDefined()
     await expect(backend!.run({ tasks: ['build'], cwd: '/nowhere' })).rejects.toThrow(/unreachable/)
-  })
-
-  it('ignores a STALE serve advertisement (dead pid) when resolving the target', async () => {
-    process.env['VX_CLOUD_DISTRIBUTE'] = '1'
-    await writeFile(serveInfoPath(), JSON.stringify({ origin: 'http://localhost:1', pid: 999999 }))
-    await expect(cloud().backend!(ctx('/nowhere'))).rejects.toThrow(/no vx-cloud serve/)
   })
 })
 
@@ -173,6 +162,29 @@ describe('distributedBackend — §5.3 refusal gates fall back loudly to a local
       expect(result.ok).toBe(true)
       expect(warned.join('\n')).toContain('distribution disabled')
       expect(warned.join('\n')).toContain('forwarded args')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('--verify refuses distribution (agents do not run the verify machinery)', async () => {
+    const root = await makeWorkspace()
+    const warned: string[] = []
+    try {
+      const backend = distributedBackend({
+        origin: 'http://localhost:1', // unreachable — must never be probed
+        expectedAgents: 2,
+        sink: silentLogger,
+        warn: (l) => warned.push(l),
+      })
+      const result = await backend.run({
+        tasks: ['build'],
+        cwd: root,
+        verify: { determinism: true, inputs: false, allow: [] },
+        outputLogs: 'none',
+      })
+      expect(result.ok).toBe(true)
+      expect(warned.join('\n')).toContain('--verify runs locally')
     } finally {
       await rm(root, { recursive: true, force: true })
     }

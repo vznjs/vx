@@ -41,6 +41,8 @@ export interface Logger {
     requestedCount?: number
     /** Run banner context — so the live region footer matches the final summary. */
     context?: RunContext
+    /** The run's canonical start (epoch ms) — equals the final summary's `startedAt`. */
+    startedAtMs?: number
   }): void
   taskStart?(node: TaskNode): void
   /** Run finished (any outcome). Idempotent. */

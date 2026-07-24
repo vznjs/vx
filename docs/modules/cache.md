@@ -349,7 +349,7 @@ End-to-end cache write/read/restore is also covered by
 ## Replacing this module
 
 Most likely replacement: **remote cache** (see
-`docs/design/remote-cache.md`).
+`docs/design/native-cache-wire-2026-07.md`).
 
 The contract is small: `key()` is pure given inputs; `get()`, `save()`,
 `restoreOutputs()` are the three I/O methods. A remote implementation

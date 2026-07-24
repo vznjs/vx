@@ -298,6 +298,47 @@ describe('exec.persistent (e2e)', () => {
   )
 
   it(
+    'a dependency-only persistent task that ignores SIGTERM is force-killed (run does not hang)',
+    async () => {
+      // `dev` traps + ignores SIGTERM, so the end-of-run graceful shutdown can't
+      // reap it — without the bounded SIGKILL escalation, run() would block on
+      // its exit until `sleep 30` ends (~30s), hanging a NORMAL completion.
+      await addProject(fixture.root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              dev: {
+                exec: {
+                  command: "trap '' TERM; echo READY; sleep 30",
+                  persistent: { readyWhen: 'READY' },
+                },
+              },
+              build: {
+                exec: { command: 'echo built' },
+                dependsOn: ['dev'],
+              },
+            },
+          }
+        `,
+      })
+      const t0 = Date.now()
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        projects: ['app'],
+        log: silentLogger(fixture),
+      })
+      expect(r.ok).toBe(true)
+      expect(r.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('success')
+      expect(r.outcomes.find((o) => o.node.id === 'app#dev')?.status).toBe('success')
+      // Well under `sleep 30` → the force-kill fired after the grace, not a wait
+      // for the trapped child's natural exit.
+      expect(Date.now() - t0).toBeLessThan(8_000)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'persistent task streams output captured before ready into the body',
     async () => {
       // With readyWhen present, the ready marker is preceded by the
@@ -414,6 +455,73 @@ describe('exec.persistent (e2e)', () => {
       const elapsed = Date.now() - t0
       expect(r.ok).toBe(true)
       expect(elapsed).toBeLessThan(5_000)
+    },
+    TIMEOUT,
+  )
+
+  // forwardArgs are appended to a persistent command ONLY when there's no
+  // readyWhen (a ready-on-spawn task); a readyWhen task is left untouched so
+  // the regex matcher sees the unmodified output. We observe the args the
+  // persistent `dev` process actually received by having it write them to a
+  // file (`echo GOTARGS: > got.txt` — the appended words land on echo), then a
+  // downstream `smoke` task reads it back. `smoke` keeps the graph alive so
+  // dev is never SIGTERM'd before writing; its own nested `sh -c '…' sh`
+  // absorbs the (also-appended) args as positional params it ignores. Both
+  // `dev` and `smoke` are requested so forwardArgs reach dev.
+  const SMOKE =
+    "sh -c 'for i in $(seq 1 250); do if [ -f got.txt ]; then cat got.txt; exit 0; fi; sleep 0.02; done' sh"
+
+  const argsConfig = (ready: boolean): string => {
+    const devCommand = ready ? 'echo GOTARGS: > got.txt; echo READY' : 'echo GOTARGS: > got.txt'
+    const persistent = ready ? `{ readyWhen: 'READY' }` : `{}`
+    return `export default {
+      tasks: {
+        dev: {
+          exec: { command: ${JSON.stringify(devCommand)}, persistent: ${persistent} },
+        },
+        smoke: {
+          exec: { command: ${JSON.stringify(SMOKE)} },
+          dependsOn: ['dev'],
+        },
+      },
+    }`
+  }
+
+  it(
+    'appends forwardArgs to a persistent command with NO readyWhen',
+    async () => {
+      await addProject(fixture.root, 'app', { config: argsConfig(false) })
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['dev', 'smoke'],
+        projects: ['app'],
+        forwardArgs: ['--port', '3000'],
+        log: silentLogger(fixture),
+      })
+      expect(r.ok).toBe(true)
+      // dev received the forwarded args (appended to its command) → wrote
+      // them to got.txt → smoke read them back.
+      expect(fixture.log.join('\n')).toContain('GOTARGS: --port 3000')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'leaves a persistent command with a readyWhen untouched (no forwardArgs appended)',
+    async () => {
+      await addProject(fixture.root, 'app', { config: argsConfig(true) })
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['dev', 'smoke'],
+        projects: ['app'],
+        forwardArgs: ['--port', '3000'],
+        log: silentLogger(fixture),
+      })
+      expect(r.ok).toBe(true)
+      const all = fixture.log.join('\n')
+      // dev's command was untouched → it saw no forwarded args.
+      expect(all).toContain('GOTARGS:')
+      expect(all).not.toContain('--port')
     },
     TIMEOUT,
   )

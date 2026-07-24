@@ -41,7 +41,9 @@ This matters when:
 
 - Tests run multiple `vx run` calls in the same process and edit
   configs between them.
-- (Future) a long-running watch mode reloads configs after edits.
+- The shipped `vx watch` loop re-invokes the orchestrator in one process;
+  a config edit changes the file's content hash, so the bust re-evaluates
+  it on the next cycle.
 
 For the normal one-shot `vx run` CLI invocation it doesn't strictly
 matter (each invocation is a fresh Bun process), but supporting it

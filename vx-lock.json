@@ -3,7 +3,7 @@
   "projects": {
     "@vzn/vx": {
       "configPath": "vx.config.ts",
-      "configHash": "9bca48e07cbb2005",
+      "configHash": "5529f99bcd12f7d4",
       "config": {
         "tasks": {
           "ci": {
@@ -19,7 +19,8 @@
           },
           "build": {
             "dependsOn": [
-              "build.bun"
+              "build.bun",
+              "build.cloud"
             ]
           },
           "lint": {
@@ -31,7 +32,7 @@
           "test": {
             "description": "bun test against the tests/ tree",
             "exec": {
-              "command": "bun test"
+              "command": "bun test --preload ./tests/setup.ts ./tests/"
             },
             "dependsOn": [
               "install"
@@ -62,6 +63,11 @@
                   "bench/**",
                   ".oxlintrc.json",
                   "tsconfig.json"
+                ],
+                "workspaceFiles": [
+                  "packages/*/src/**",
+                  "packages/*/tests/**",
+                  "scripts/**"
                 ]
               },
               "outputs": {
@@ -78,6 +84,11 @@
               "inputs": {
                 "files": [
                   "**/*"
+                ],
+                "workspaceFiles": [
+                  "packages/*/src/**",
+                  "packages/*/tests/**",
+                  "scripts/**"
                 ]
               },
               "outputs": {
@@ -100,10 +111,39 @@
               "build.bun.darwin-arm64"
             ]
           },
+          "build.ui": {
+            "description": "build the embedded dashboard SPA (packages/cloud/ui)",
+            "dependsOn": [
+              "install"
+            ],
+            "exec": {
+              "command": "cd packages/cloud/ui && bun run build"
+            },
+            "cache": {
+              "inputs": {
+                "files": [],
+                "workspaceFiles": [
+                  "packages/cloud/ui/src/**",
+                  "packages/cloud/ui/index.html",
+                  "packages/cloud/ui/package.json",
+                  "packages/cloud/ui/vite.config.ts",
+                  "packages/cloud/ui/uno.config.ts",
+                  "packages/cloud/ui/tsconfig.json"
+                ]
+              },
+              "outputs": {
+                "files": [],
+                "workspaceFiles": [
+                  "packages/cloud/ui/dist/index.html"
+                ]
+              }
+            }
+          },
           "build.bun.linux-x64": {
             "description": "compile standalone binary (linux x64)",
             "dependsOn": [
-              "install"
+              "install",
+              "build.ui"
             ],
             "exec": {
               "command": "bun build --compile --minify --bytecode --target=bun-linux-x64 src/bin.ts --outfile dist/vx-linux-x64"
@@ -124,7 +164,8 @@
           "build.bun.linux-arm64": {
             "description": "compile standalone binary (linux arm64)",
             "dependsOn": [
-              "install"
+              "install",
+              "build.ui"
             ],
             "exec": {
               "command": "bun build --compile --minify --bytecode --target=bun-linux-arm64 src/bin.ts --outfile dist/vx-linux-arm64"
@@ -145,7 +186,8 @@
           "build.bun.darwin-x64": {
             "description": "compile standalone binary (darwin x64)",
             "dependsOn": [
-              "install"
+              "install",
+              "build.ui"
             ],
             "exec": {
               "command": "bun build --compile --minify --bytecode --target=bun-darwin-x64 src/bin.ts --outfile dist/vx-darwin-x64"
@@ -166,7 +208,8 @@
           "build.bun.darwin-arm64": {
             "description": "compile standalone binary (darwin arm64)",
             "dependsOn": [
-              "install"
+              "install",
+              "build.ui"
             ],
             "exec": {
               "command": "bun build --compile --minify --bytecode --target=bun-darwin-arm64 src/bin.ts --outfile dist/vx-darwin-arm64"
@@ -182,6 +225,228 @@
                   "dist/vx-darwin-arm64"
                 ]
               }
+            }
+          },
+          "build.cloud": {
+            "description": "compile standalone vx-cloud binaries for every target",
+            "dependsOn": [
+              "build.cloud.linux-x64",
+              "build.cloud.linux-arm64",
+              "build.cloud.darwin-x64",
+              "build.cloud.darwin-arm64"
+            ]
+          },
+          "build.cloud.linux-x64": {
+            "description": "compile standalone vx-cloud binary (linux x64)",
+            "dependsOn": [
+              "install",
+              "build.ui"
+            ],
+            "exec": {
+              "command": "bun build --compile --minify --bytecode --target=bun-linux-x64 packages/cloud/src/cli/bin.ts --outfile dist/vx-cloud-linux-x64"
+            },
+            "cache": {
+              "inputs": {
+                "files": [
+                  "**/*"
+                ],
+                "workspaceFiles": [
+                  "packages/cloud/src/**"
+                ]
+              },
+              "outputs": {
+                "files": [
+                  "dist/vx-cloud-linux-x64"
+                ]
+              }
+            }
+          },
+          "build.cloud.linux-arm64": {
+            "description": "compile standalone vx-cloud binary (linux arm64)",
+            "dependsOn": [
+              "install",
+              "build.ui"
+            ],
+            "exec": {
+              "command": "bun build --compile --minify --bytecode --target=bun-linux-arm64 packages/cloud/src/cli/bin.ts --outfile dist/vx-cloud-linux-arm64"
+            },
+            "cache": {
+              "inputs": {
+                "files": [
+                  "**/*"
+                ],
+                "workspaceFiles": [
+                  "packages/cloud/src/**"
+                ]
+              },
+              "outputs": {
+                "files": [
+                  "dist/vx-cloud-linux-arm64"
+                ]
+              }
+            }
+          },
+          "build.cloud.darwin-x64": {
+            "description": "compile standalone vx-cloud binary (darwin x64)",
+            "dependsOn": [
+              "install",
+              "build.ui"
+            ],
+            "exec": {
+              "command": "bun build --compile --minify --bytecode --target=bun-darwin-x64 packages/cloud/src/cli/bin.ts --outfile dist/vx-cloud-darwin-x64"
+            },
+            "cache": {
+              "inputs": {
+                "files": [
+                  "**/*"
+                ],
+                "workspaceFiles": [
+                  "packages/cloud/src/**"
+                ]
+              },
+              "outputs": {
+                "files": [
+                  "dist/vx-cloud-darwin-x64"
+                ]
+              }
+            }
+          },
+          "build.cloud.darwin-arm64": {
+            "description": "compile standalone vx-cloud binary (darwin arm64)",
+            "dependsOn": [
+              "install",
+              "build.ui"
+            ],
+            "exec": {
+              "command": "bun build --compile --minify --bytecode --target=bun-darwin-arm64 packages/cloud/src/cli/bin.ts --outfile dist/vx-cloud-darwin-arm64"
+            },
+            "cache": {
+              "inputs": {
+                "files": [
+                  "**/*"
+                ],
+                "workspaceFiles": [
+                  "packages/cloud/src/**"
+                ]
+              },
+              "outputs": {
+                "files": [
+                  "dist/vx-cloud-darwin-arm64"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "@vzn/vx-docs": {
+      "configPath": "apps/docs/vx.config.ts",
+      "configHash": "e987de8810246417",
+      "config": {
+        "tasks": {
+          "import": {
+            "description": "generate Starlight content from docs/ (codegen)",
+            "exec": {
+              "command": "bun scripts/import-docs.ts"
+            }
+          },
+          "build": {
+            "description": "astro build → dist/",
+            "dependsOn": [
+              "import"
+            ],
+            "exec": {
+              "command": "astro build"
+            },
+            "cache": {
+              "inputs": {
+                "files": [
+                  "**/*"
+                ],
+                "workspaceFiles": [
+                  "docs/**"
+                ]
+              },
+              "outputs": {
+                "files": [
+                  "dist/**"
+                ]
+              }
+            }
+          },
+          "dev": {
+            "description": "astro dev server (persistent)",
+            "dependsOn": [
+              "import"
+            ],
+            "exec": {
+              "command": "astro dev",
+              "persistent": {
+                "readyWhen": "Local"
+              },
+              "timeout": 120000
+            }
+          },
+          "preview": {
+            "description": "serve the built dist/ (persistent)",
+            "dependsOn": [
+              "build"
+            ],
+            "exec": {
+              "command": "astro preview",
+              "persistent": {
+                "readyWhen": "Local"
+              },
+              "timeout": 120000
+            }
+          }
+        }
+      }
+    },
+    "@vzn/vx-ui": {
+      "configPath": "packages/cloud/ui/vx.config.ts",
+      "configHash": "863ca1fee0cfae85",
+      "config": {
+        "tasks": {
+          "build": {
+            "description": "vite build → dist/",
+            "exec": {
+              "command": "vite build"
+            },
+            "cache": {
+              "inputs": {
+                "files": [
+                  "**/*"
+                ]
+              },
+              "outputs": {
+                "files": [
+                  "dist/**"
+                ]
+              }
+            }
+          },
+          "dev": {
+            "description": "vite dev server (persistent)",
+            "exec": {
+              "command": "vite",
+              "persistent": {
+                "readyWhen": "Local"
+              },
+              "timeout": 120000
+            }
+          },
+          "preview": {
+            "description": "serve the built dist/ (persistent)",
+            "dependsOn": [
+              "build"
+            ],
+            "exec": {
+              "command": "vite preview",
+              "persistent": {
+                "readyWhen": "Local"
+              },
+              "timeout": 120000
             }
           }
         }

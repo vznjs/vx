@@ -1,5 +1,7 @@
 import {
   DependencySpecError,
+  compileTaskPattern,
+  isTaskPattern,
   parseDependencySpec,
   type DependencySpec,
   type TaskOutcome,
@@ -22,6 +24,11 @@ import { UserError } from '../util/index.js'
  *   'name'      same-project task `name`
  *   '^name'     `name` task in every dep workspace
  *   'pkg#name'  specific package's `name` task
+ *   'name.*'    task-NAME patterns — the task half of any form above may
+ *               contain `*` (same glob as dependsOn patterns). A filter
+ *               that matched literally here while dependsOn expanded the
+ *               same string would silently select ZERO upstream hashes —
+ *               a stale-hit trap, so the two surfaces share the matcher.
  *   '!<form>'   exclude — any of the above with a leading `!`
  *
  * Patterns are applied in order; last write wins, so
@@ -62,14 +69,19 @@ export function filterUpstreamHashes(
     }
   })
 
+  // Per-spec task-name matcher, compiled once (exact compare or pattern).
+  const matchers = specs.map((spec) => taskMatcher(spec))
+
   // Dedup by hash (the key fold's unit), but remember the first task id
   // seen for each hash so the diff row can name the upstream.
   const selected = new Map<string, string>()
-  for (const spec of specs) {
+  for (let i = 0; i < specs.length; i++) {
+    const spec = specs[i]!
+    const taskMatches = matchers[i]!
     for (const u of upstream) {
       if (!u.hash) continue
       const isSelf = u.node.projectName === selfProjectName
-      if (!matches(spec, u, isSelf)) continue
+      if (!matches(spec, u, isSelf, taskMatches)) continue
       if (spec.negated) selected.delete(u.hash)
       else if (!selected.has(u.hash)) selected.set(u.hash, u.node.id)
     }
@@ -77,17 +89,33 @@ export function filterUpstreamHashes(
   return [...selected].map(([hash, id]) => [id, hash])
 }
 
-function matches(spec: DependencySpec, u: TaskOutcome, isSelf: boolean): boolean {
+/** Exact-name compare, or the shared `*`-glob when the form is a pattern. */
+function taskMatcher(spec: DependencySpec): (name: string) => boolean {
+  if (spec.kind === 'wildcardSelf' || spec.kind === 'wildcardDeps') return () => true
+  if (isTaskPattern(spec.task)) {
+    const re = compileTaskPattern(spec.task)
+    return (name) => re.test(name)
+  }
+  const exact = spec.task
+  return (name) => name === exact
+}
+
+function matches(
+  spec: DependencySpec,
+  u: TaskOutcome,
+  isSelf: boolean,
+  taskMatches: (name: string) => boolean,
+): boolean {
   switch (spec.kind) {
     case 'wildcardSelf':
       return isSelf
     case 'wildcardDeps':
       return !isSelf
     case 'self':
-      return isSelf && u.node.taskName === spec.task
+      return isSelf && taskMatches(u.node.taskName)
     case 'deps':
-      return !isSelf && u.node.taskName === spec.task
+      return !isSelf && taskMatches(u.node.taskName)
     case 'cross':
-      return u.node.projectName === spec.project && u.node.taskName === spec.task
+      return u.node.projectName === spec.project && taskMatches(u.node.taskName)
   }
 }

@@ -2,7 +2,7 @@
 // so internals like prepare.ts can import them without an upward
 // import of index.ts — the module entry must stay cycle-free.
 
-import type { CachePolicy } from '../cache/index.js'
+import type { CachePolicy, RemoteCacheLayer } from '../cache/index.js'
 import type { ContinueMode } from '../graph/index.js'
 import type { TaskOutcome } from '../graph/index.js'
 import type { EventBus } from './events.js'
@@ -20,6 +20,12 @@ export interface RunOptions {
   tasks: readonly string[]
   projects?: string[]
   concurrency?: number
+  /**
+   * Cache directory override (`--cache-dir <path>`). Absolute, or relative
+   * to `cwd`. Takes precedence over the workspace `cacheDir` field and the
+   * `.vx/cache` default. A per-run knob — never folded into a cache key.
+   */
+  cacheDir?: string
   /**
    * Granular cache read/write control across the local + remote layers.
    * Each of the four axes (localRead / localWrite / remoteRead /
@@ -53,6 +59,49 @@ export interface RunOptions {
    * (programmatic callers) behaves like today's 'full'.
    */
   flow?: 'focused' | 'broad'
+  /**
+   * Run-level retry default (`--retry <n>`): max additional attempts
+   * after a failed attempt, for tasks that don't declare their own
+   * `exec.retries` (explicit config wins, including `retries: 0`).
+   * Threaded as an option only — never folded into any cache key, so
+   * the same run with and without `--retry` derives identical keys.
+   */
+  retries?: number
+  /**
+   * Cache-correctness verification (`vx run --verify`). When set, an
+   * executed + cacheable task is re-run after its save and its outputs are
+   * content-compared: a divergence means the task is non-hermetic and its
+   * cache entry is provably unsafe (see docs/design/cache-correctness).
+   * `fingerprint` computes + ships an output-tree fingerprint on executed
+   * tasks (no re-run — the cross-machine diff feed; `--verify`/`=all` set
+   * it too, for free). `allow` (from `--verify-allow=<pkg#task>,…`) exempts
+   * known-nondeterministic tasks from failing the run. A pure side-channel —
+   * never folded into a cache key; the re-run never saves. Undefined = off
+   * (a plain run is byte-identical).
+   */
+  verify?: {
+    determinism: boolean
+    inputs: boolean
+    fingerprint: boolean
+    allow: ReadonlySet<string>
+  }
+  /**
+   * Run-level default task timeout (ms), for tasks that declare no
+   * `exec.timeout`. Highest of the run-level defaults: `--timeout` /
+   * this option → `VX_TASK_TIMEOUT` env → workspace `timeout`. Per-task
+   * `exec.timeout` always wins. Threaded as an option only — never
+   * folded into any cache key (a timed-out task fails and is never
+   * cached), so a `--timeout` run cache-hits a plain run's entry.
+   */
+  timeout?: number
+  /**
+   * Memory budget (bytes) that per-task `exec.resources.memory`
+   * reservations pack against (`--memory <size>`). Defaults to
+   * `os.totalmem()` — override it in cgroup-limited containers, where
+   * totalmem() reports the HOST's RAM, not the limit. A per-run
+   * scheduling knob only — never folded into any cache key.
+   */
+  memory?: number
   /**
    * Failure propagation: 'never' stops dispatch on the first failure
    * (in-flight tasks finish; everything queued skips), 'deps-ok'
@@ -130,6 +179,16 @@ export interface RunOptions {
    * record something useful.
    */
   command?: string
+  /**
+   * An injected remote cache layer — the embedder seam mirroring
+   * `telemetrySinks`: a host that already holds a wire client (a
+   * distribution agent, a serve executing on behalf of a submitter)
+   * passes it here and run() composes `LayeredCache(local, injected)`.
+   * Explicit injection WINS over the plugin `cache` capability (the
+   * host knows best; prevents double-wrapping when the workspace also
+   * declares a cache plugin). Undefined → identical to before.
+   */
+  remoteCache?: RemoteCacheLayer
 }
 
 export interface RunSummary {

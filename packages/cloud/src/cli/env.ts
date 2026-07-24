@@ -1,8 +1,10 @@
 // `vx-cloud connect` / `env ls|use|rm` / `disconnect` — the client-side
 // connection verbs over the per-user environments file (docker-context-style).
 // `connect` is the handshake: validate reachability + identity + token BEFORE
-// persisting anything; `env ls` is the one-command picture (named servers +
-// the synthetic auto-detected `(local)` row, with live reachability probes).
+// persisting anything; `env ls` is the one-command picture (named servers
+// with live reachability probes). Connecting is the ONLY client↔serve wiring
+// — a local serve is connected the same way (`vx-cloud connect
+// http://localhost:4321`), never auto-detected.
 
 import { UserError } from '@vzn/vx'
 import {
@@ -14,7 +16,6 @@ import {
   type EnvironmentEntry,
   type EnvironmentsFile,
 } from '../environments.js'
-import { pidAlive, readServeInfo } from '../serve-info.js'
 
 const CONNECT_TIMEOUT_MS = 2000
 const LS_PROBE_TIMEOUT_MS = 1000
@@ -69,10 +70,10 @@ interface ConnectArgs {
   url?: string
   name?: string
   token?: string
-  delegate?: boolean
   distribute?: number | boolean
   use: boolean
   force?: boolean
+  anonymous?: boolean
   error?: string
 }
 
@@ -80,8 +81,8 @@ export function parseConnectArgs(args: readonly string[]): ConnectArgs {
   const out: ConnectArgs = { use: true }
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!
-    if (a === '--delegate') {
-      out.delegate = true
+    if (a === '--anonymous') {
+      out.anonymous = true
       continue
     }
     if (a === '--distribute') {
@@ -160,6 +161,23 @@ export async function connectCmd(args: readonly string[]): Promise<number> {
   if (meta?.auth === 'token' && parsed.token === undefined) {
     throw new UserError(`connect: ${base} requires a token — pass one with --token <t>`)
   }
+  // The platform's machine surfaces (ingest, remote cache, agents) all need a
+  // `vxc_` API token; its telemetry/cache clients are never-fail by design, so
+  // a tokenless connect would LOOK healthy while every push 401s silently —
+  // "connected, but the dashboard stays empty and the cache never hits", with
+  // no error anywhere. Refuse it up front unless explicitly opted into.
+  if (meta?.auth === 'account' && parsed.token === undefined && parsed.anonymous !== true) {
+    throw new UserError(
+      `connect: ${base} is an account platform — machine pushes (run history, remote cache) need an API token.\n` +
+        `Mint one under Admin → Tokens on ${base} and re-run with --token vxc_…\n` +
+        `(--anonymous connects without one; ingest and cache will be off.)`,
+    )
+  }
+  if (meta?.auth === 'account' && parsed.token === undefined && parsed.anonymous === true) {
+    process.stderr.write(
+      `vx-cloud: connecting to ${base} WITHOUT a token — run ingest and the remote cache will not work until one is added (--token)\n`,
+    )
+  }
   if (parsed.token !== undefined) {
     const probe = await fetchWithTimeout(`${base}/v1/runs?limit=1`, CONNECT_TIMEOUT_MS, {
       authorization: `Bearer ${parsed.token}`,
@@ -184,7 +202,6 @@ export async function connectCmd(args: readonly string[]): Promise<number> {
   const entry: EnvironmentEntry = {
     url: base,
     ...(parsed.token !== undefined ? { token: parsed.token } : {}),
-    ...(parsed.delegate === true ? { delegate: true } : {}),
     ...(parsed.distribute !== undefined ? { distribute: parsed.distribute } : {}),
   }
   file.environments[name] = entry
@@ -217,7 +234,6 @@ interface LsRow {
   active: boolean
   name: string
   url: string
-  delegate: boolean
   distribute: string
   probe: Promise<{ up: boolean; name?: string }>
 }
@@ -244,19 +260,6 @@ async function envLs(): Promise<number> {
     override !== undefined && override !== '' ? override : (file.active ?? undefined)
 
   const rows: LsRow[] = []
-  // The auto-detected local serve is part of the picture: a synthetic first
-  // row, shown only when its advertisement is alive.
-  const info = readServeInfo()
-  if (info !== undefined && pidAlive(info.pid)) {
-    rows.push({
-      active: false,
-      name: '(local)',
-      url: info.origin,
-      delegate: false,
-      distribute: '',
-      probe: probeServer(info.origin),
-    })
-  }
   for (const [name, entry] of Object.entries(file.environments).sort(([a], [b]) =>
     a.localeCompare(b),
   )) {
@@ -264,7 +267,6 @@ async function envLs(): Promise<number> {
       active: name === effectiveActive,
       name,
       url: entry.url,
-      delegate: entry.delegate === true,
       distribute: fmtDistribute(entry.distribute),
       probe: probeServer(entry.url),
     })
@@ -281,7 +283,7 @@ async function envLs(): Promise<number> {
   const probes = await Promise.all(rows.map((r) => r.probe))
   const nameW = Math.max(4, ...rows.map((r) => r.name.length))
   const urlW = Math.max(3, ...rows.map((r) => r.url.length))
-  const lines = [`  ${'NAME'.padEnd(nameW)}  ${'URL'.padEnd(urlW)}  DELEGATE  DISTRIBUTE  STATUS`]
+  const lines = [`  ${'NAME'.padEnd(nameW)}  ${'URL'.padEnd(urlW)}  DISTRIBUTE  STATUS`]
   rows.forEach((row, i) => {
     const probe = probes[i]!
     const status = probe.up
@@ -289,7 +291,7 @@ async function envLs(): Promise<number> {
       : 'unreachable'
     lines.push(
       `${row.active ? '*' : ' '} ${row.name.padEnd(nameW)}  ${row.url.padEnd(urlW)}  ` +
-        `${(row.delegate ? 'yes' : '').padEnd(8)}  ${row.distribute.padEnd(10)}  ${status}`,
+        `${row.distribute.padEnd(10)}  ${status}`,
     )
   })
   process.stdout.write(`${lines.join('\n')}\n`)

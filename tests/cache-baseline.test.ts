@@ -59,6 +59,28 @@ function budgetUs(name: string, baseUs: number): number {
   return baseUs * SCALE
 }
 
+/**
+ * Min-of-N interleaved trials for RATIO guards. A ratio of two single-window
+ * medians multiplies both windows' noise — a lucky-fast denominator inflates
+ * it exactly like an unlucky-slow numerator — and the CI budget SCALE can't
+ * absorb it (ratios are scale-free by design); this false-redded main twice
+ * on shared runners. Noise only ever ADDS time, so the min median across
+ * trials is the robust per-side estimate; interleaving A/B cancels drift.
+ */
+async function benchRatioSides(
+  sideA: () => Promise<{ medianNs: number }>,
+  sideB: () => Promise<{ medianNs: number }>,
+  trials = 3,
+): Promise<{ aMinNs: number; bMinNs: number }> {
+  let aMin = Infinity
+  let bMin = Infinity
+  for (let t = 0; t < trials; t++) {
+    aMin = Math.min(aMin, (await sideA()).medianNs)
+    bMin = Math.min(bMin, (await sideB()).medianNs)
+  }
+  return { aMinNs: aMin, bMinNs: bMin }
+}
+
 /** Pretty-print a sample summary on failure so the diagnostic is actionable. */
 function diag(
   r: { medianNs: number; p99Ns: number; minNs: number; maxNs: number },
@@ -191,23 +213,25 @@ describePerf('cache baseline: hashFile', () => {
     // here is deliberately loose (5×) because CI runners' file I/O
     // varies enough that a tighter ratio flakes — dev boxes see >100×.
     // 5× is enough to prove the mtime+size memo is still firing.
+    // Min-of-3 interleaved: single-window ratios flake on shared runners.
     let i = 0
-    const cold = await bench(
-      100,
-      async () => {
-        const f = path.join(tmpdir, `rel-cold-${i++}.txt`)
-        await writeFile(f, 'x'.repeat(1024))
-        await cache.hashFile(f)
-      },
-      3,
-    )
     const warmFile = path.join(tmpdir, 'rel-warm.txt')
     await writeFile(warmFile, 'x'.repeat(1024))
     await cache.hashFile(warmFile)
-    const warm = await bench(2000, async () => {
-      await cache.hashFile(warmFile)
-    })
-    const ratio = cold.medianNs / warm.medianNs
+    const { aMinNs: coldMinNs, bMinNs: warmMinNs } = await benchRatioSides(
+      () =>
+        bench(
+          100,
+          async () => {
+            const f = path.join(tmpdir, `rel-cold-${i++}.txt`)
+            await writeFile(f, 'x'.repeat(1024))
+            await cache.hashFile(f)
+          },
+          3,
+        ),
+      () => bench(2000, async () => void (await cache.hashFile(warmFile))),
+    )
+    const ratio = coldMinNs / warmMinNs
     expect(ratio).toBeGreaterThanOrEqual(5)
   })
 })
@@ -293,16 +317,16 @@ describePerf('cache baseline: Cache.key', () => {
 
   it('scales near-linearly in file count (1000 / 100 ratio ≤ 30×)', async () => {
     // The 100→1000 jump SHOULD be ~10× since `Cache.key` walks inputs
-    // once. A ratio > 30 means quadratic blowup snuck in somewhere.
+    // once. A ratio > 30 means quadratic blowup snuck in somewhere
+    // (true quadratic reads ~100×). Min-of-3 interleaved — this guard
+    // false-redded main twice on shared runners as a single-window ratio.
     const f100 = await makeInputFiles('lin-100', 100)
     const f1000 = await makeInputFiles('lin-1000', 1000)
-    const a = await bench(50, async () => {
-      await cache.key({ ...baseInput, inputFiles: f100 })
-    })
-    const b = await bench(20, async () => {
-      await cache.key({ ...baseInput, inputFiles: f1000 })
-    })
-    const ratio = b.medianNs / a.medianNs
+    const { aMinNs, bMinNs } = await benchRatioSides(
+      () => bench(50, async () => void (await cache.key({ ...baseInput, inputFiles: f100 }))),
+      () => bench(20, async () => void (await cache.key({ ...baseInput, inputFiles: f1000 }))),
+    )
+    const ratio = bMinNs / aMinNs
     expect(ratio).toBeLessThanOrEqual(30)
   })
 })
@@ -612,44 +636,49 @@ describePerf('cache baseline: SQLite writes', () => {
     // "for (r of rows) recordRun(r)" replacements. The bar isn't huge
     // because WAL + synchronous=NORMAL already amortizes fsync;
     // most of the savings come from transaction + lock overhead.
+    // Min-of-3 interleaved: single-window ratios flake on loaded machines.
     let i = 200000
-    const single = await bench(
-      100,
-      () => {
-        cache.recordRun({
-          hash: `sb-${i++}`,
-          project: 'p',
-          task: 'build',
-          status: 'success',
-          exitCode: 0,
-          durationMs: 1,
-          startedAt: Date.now(),
-          endedAt: Date.now(),
-        })
-      },
-      3,
-    )
     let base = 300000
-    const batch = await bench(
-      20,
-      () => {
-        const rows = Array.from({ length: 50 }, (_, j) => ({
-          hash: `bb-${base + j}`,
-          project: 'p',
-          task: 'build',
-          status: 'success' as const,
-          exitCode: 0,
-          durationMs: 1,
-          startedAt: Date.now(),
-          endedAt: Date.now(),
-        }))
-        base += 50
-        cache.recordRuns(rows)
-      },
-      3,
+    const { aMinNs: singleMinNs, bMinNs: batchMinNs } = await benchRatioSides(
+      () =>
+        bench(
+          100,
+          () => {
+            cache.recordRun({
+              hash: `sb-${i++}`,
+              project: 'p',
+              task: 'build',
+              status: 'success',
+              exitCode: 0,
+              durationMs: 1,
+              startedAt: Date.now(),
+              endedAt: Date.now(),
+            })
+          },
+          3,
+        ),
+      () =>
+        bench(
+          20,
+          () => {
+            const rows = Array.from({ length: 50 }, (_, j) => ({
+              hash: `bb-${base + j}`,
+              project: 'p',
+              task: 'build',
+              status: 'success' as const,
+              exitCode: 0,
+              durationMs: 1,
+              startedAt: Date.now(),
+              endedAt: Date.now(),
+            }))
+            base += 50
+            cache.recordRuns(rows)
+          },
+          3,
+        ),
     )
-    const perRowSingle = single.medianNs
-    const perRowBatch = batch.medianNs / 50
+    const perRowSingle = singleMinNs
+    const perRowBatch = batchMinNs / 50
     expect(perRowSingle / perRowBatch).toBeGreaterThanOrEqual(3)
   })
 })

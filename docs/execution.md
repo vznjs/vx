@@ -12,7 +12,8 @@ terminal and a task succeeding or failing. Read it alongside
  │    1. bin.ts spawns; forwards process.argv to cli.run().
  │    2. cli/index.ts dispatches by subcommand (run / watch / cache /
  │       lock / migrate / upgrade / show / info / mcp / help / version;
- │       serve / dev / coordinator / worker redirect to vx-cloud).
+ │       serve / dev / coordinator / worker redirect to the service
+ │       package — see the Cloud section of the docs).
  │    3. cli/run.ts:parseRunArgs(argv) → RunArgs (validated; resolves
  │       the 4-axis cache policy from --cache / --no-cache / --force).
  │    4. cli/run.ts:runCmd resolves the project scope:
@@ -20,8 +21,8 @@ terminal and a task succeeding or failing. Read it alongside
  │         - anchored positionals (pkg#task) target directly
  │         - no positionals + TTY → interactive picker → pkg#task
  │    5. The options map to a RunRequest; the run BACKEND is resolved —
- │       a plugin's `backend` capability wins (e.g. @vzn/vx-cloud
- │       delegation), else core's in-process localBackend. --dry /
+ │       a plugin's `backend` capability wins (e.g. a distribution
+ │       plugin), else core's in-process localBackend. --dry /
  │       --graph short-circuit into planRun instead.
  │
  ├─ Prepare (src/orchestrator/prepare.ts:prepareRun — shared with planRun)
@@ -52,9 +53,9 @@ terminal and a task succeeding or failing. Read it alongside
  │       once; reused for every task's cache key.
  │    9. expandRequested → buildTaskGraph (see below).
  │   10. Cache open: new Cache(cacheDir, { read, write }) with the
- │       policy's local slice. A plugin's `cache` capability may wrap
- │       or replace it; else wrapWithRemoteCache layers the env-var
- │       Turbo-wire remote when VX_REMOTE_CACHE_URL + _TOKEN are set.
+ │       policy's local slice. An injected RunOptions.remoteCache is
+ │       composed into a LayeredCache (it wins); else a plugin's
+ │       `cache` capability may wrap or replace it; else bare local.
  │   11. Bulk git populate — ONE `git ls-files -s --others` (plus one
  │       `git status --porcelain`) at the root fills the per-project
  │       GitFilesCache with file lists + index OIDs.

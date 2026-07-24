@@ -539,6 +539,82 @@ describe('vx migrate (nx) — noop and root', () => {
   })
 })
 
+describe('vx migrate (nx) — root clobber guard', () => {
+  let root: string
+  beforeAll(async () => {
+    root = await makeNxWorkspace()
+    // A hand-written root config. The nx root node writes to this exact path,
+    // but the root is not a DISCOVERED project (packages/*), so the old
+    // meta-only conflict check missed it and clobbered it.
+    await writeFile(
+      path.join(root, 'vx.config.ts'),
+      'export default { /* PRECIOUS HAND-WRITTEN */ }',
+    )
+  })
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('refuses to overwrite an existing root vx.config.ts without --force', async () => {
+    const r = await vx(root, ['migrate'])
+    expect(r.code).toBe(1)
+    expect(r.err).toContain('refusing to overwrite')
+    const text = await Bun.file(path.join(root, 'vx.config.ts')).text()
+    expect(text).toContain('PRECIOUS HAND-WRITTEN') // untouched
+  })
+})
+
+describe('vx migrate (turbo) — commands with newlines round-trip', () => {
+  let root: string
+  beforeAll(async () => {
+    root = await makeRoot('vx-migrate-nl-')
+    await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: { build: {} } }))
+    await addPackage(root, 'app', { build: 'echo one\necho two' })
+  })
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('a script with an embedded newline generates a loadable config', async () => {
+    const r = await vx(root, ['migrate'])
+    expect(r.code).toBe(0)
+    // The generated single-quoted TS literal must escape the newline, else it
+    // is an unterminated string that fails to load.
+    const config = await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts'))
+    expect(config.tasks!.build!.exec?.command).toBe('echo one\necho two')
+  })
+})
+
+describe('vx migrate (turbo) — preset globals with quotes/backslashes round-trip', () => {
+  let root: string
+  beforeAll(async () => {
+    root = await makeRoot('vx-migrate-preset-')
+    // A globalDependencies glob containing a single quote + backslash: legal on
+    // Linux, verbatim in JSON. The preset renderer must escape it, else the
+    // emitted `vx-preset.ts` is an unterminated / mis-quoted string literal.
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      JSON.stringify({
+        globalDependencies: ["config's/**", 'a\\b/**'],
+        tasks: { build: {} },
+      }),
+    )
+    await addPackage(root, 'app', { build: 'tsc -b' })
+  })
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('generates a loadable vx-preset.ts preserving the exact glob strings', async () => {
+    const r = await vx(root, ['migrate'])
+    expect(r.code).toBe(0)
+    // Import the emitted preset through Bun's own TS loader — a malformed
+    // literal throws here; the values must survive escaping byte-for-byte.
+    const mod = (await import(path.join(root, 'vx-preset.ts'))) as { globalInputs: string[] }
+    expect(mod.globalInputs).toEqual(["config's/**", 'a\\b/**'])
+  })
+})
+
 describe('vx migrate source detection', () => {
   it(
     'nx.json without the graph file tells the user how to generate it',

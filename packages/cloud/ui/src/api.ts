@@ -7,11 +7,13 @@
 // `.vx/serve.json`, but the SPA can't read disk — the user pastes
 // the printed origin in, or accepts the default).
 
-import { signal, useSignal } from './store.ts'
+import { createSignal } from 'solid-js'
 
 const STORAGE_KEY = 'vx-ui:origin'
-const TOKEN_KEY = 'vx-ui:token'
+const ORG_KEY = 'vx-ui:org'
 const WORKSPACE_KEY = 'vx-ui:workspace'
+
+export type OrgRole = 'owner' | 'admin' | 'member' | 'viewer'
 
 function defaultOrigin(): string {
   // The dev server injects this; the hosted build falls back to the page's
@@ -29,54 +31,108 @@ function readStoredOrigin(): string {
   return stored ?? defaultOrigin()
 }
 
-const origin = signal(readStoredOrigin())
+const [origin, setOrigin] = createSignal(readStoredOrigin())
 
 export function getOrigin(): string {
-  return origin.get()
+  return origin()
 }
 
-export function useOrigin(): string {
-  return useSignal(origin)
+export function getOriginSignal(): () => string {
+  return origin
 }
 
 export function setOriginAndPersist(next: string): void {
   const trimmed = next.replace(/\/+$/, '').trim()
-  origin.set(trimmed)
+  setOrigin(trimmed)
   if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, trimmed)
 }
 
-// Bearer token for a token-gated vx serve. Persisted beside the origin;
-// empty string = no token (the open localhost default).
-function readStoredToken(): string {
+// --- Session / account auth (cloud-platform-2026-07 §6) ---------------------
+// The platform authenticates the dashboard with an HttpOnly SESSION COOKIE, not
+// a bearer token: every request rides `credentials: 'include'` so the browser
+// returns the cookie, and every state-changing request carries `x-vx-csrf: 1`
+// (a custom header a cross-site form can't forge). A 401 on any gated read
+// flips authState to 'anon' → the full-screen login gate.
+
+export type AuthState = 'loading' | 'anon' | 'authed'
+
+export interface CurrentUser {
+  userId: string
+  email: string
+  displayName: string
+  instanceAdmin: boolean
+  orgs: { orgId: string; role: OrgRole }[]
+}
+
+const [authState, setAuthState] = createSignal<AuthState>('loading')
+const [currentUser, setCurrentUser] = createSignal<CurrentUser | null>(null)
+
+export function getAuthStateSignal(): () => AuthState {
+  return authState
+}
+
+export function getCurrentUserSignal(): () => CurrentUser | null {
+  return currentUser
+}
+
+// --- Org clamp --------------------------------------------------------------
+// A session spanning >1 org must name which org each analytics read targets
+// (`?org=`); a single-org session may omit it, but the client always sends the
+// selected org for determinism. Persisted beside the origin (`vx-ui:org`).
+
+function readStoredOrg(): string {
   if (typeof localStorage === 'undefined') return ''
-  return localStorage.getItem(TOKEN_KEY) ?? ''
+  return localStorage.getItem(ORG_KEY) ?? ''
 }
 
-const token = signal(readStoredToken())
+const [org, setOrg] = createSignal(readStoredOrg())
 
-// Flipped by any 401 so the shell can surface its token prompt.
-const unauthorized = signal(false)
-
-export function getToken(): string {
-  return token.get()
+export function getOrg(): string {
+  return org()
 }
 
-export function useToken(): string {
-  return useSignal(token)
+export function getOrgSignal(): () => string {
+  return org
 }
 
-export function setTokenAndPersist(next: string): void {
+export function setOrgAndPersist(next: string): void {
   const trimmed = next.trim()
-  token.set(trimmed)
+  if (trimmed === org()) return
+  setOrg(trimmed)
   if (typeof localStorage !== 'undefined') {
-    if (trimmed === '') localStorage.removeItem(TOKEN_KEY)
-    else localStorage.setItem(TOKEN_KEY, trimmed)
+    if (trimmed === '') localStorage.removeItem(ORG_KEY)
+    else localStorage.setItem(ORG_KEY, trimmed)
   }
-  unauthorized.set(false)
+  // Workspaces are org-scoped — a stale selection must not ride the new org.
+  setWorkspaceAndPersist('')
 }
 
-export function useUnauthorized(): boolean {
-  return useSignal(unauthorized)
+export interface OrgSummary {
+  id: string
+  slug: string
+  name: string
+  role: OrgRole
+}
+
+const [orgs, setOrgs] = createSignal<OrgSummary[]>([])
+
+export function getOrgsSignal(): () => OrgSummary[] {
+  return orgs
+}
+
+/**
+ * Choose the org to target for the next reads: keep the stored one when the
+ * principal is still a member, else the first available (server-sorted). Pure
+ * — exported for tests; the caller persists the result.
+ */
+export function nextOrgSelection(list: readonly { id: string }[], current: string): string {
+  if (list.length === 0) return ''
+  if (current !== '' && list.some((o) => o.id === current)) return current
+  return list[0]!.id
+}
+
+function reconcileOrgSelection(list: readonly { id: string }[]): void {
+  setOrgAndPersist(nextOrgSelection(list, org()))
 }
 
 // ---------------------------------------------------------------------------
@@ -91,19 +147,19 @@ function readStoredWorkspace(): string {
   return localStorage.getItem(WORKSPACE_KEY) ?? ''
 }
 
-const workspace = signal(readStoredWorkspace())
+const [workspace, setWorkspace] = createSignal(readStoredWorkspace())
 
 export function getWorkspace(): string {
-  return workspace.get()
+  return workspace()
 }
 
-export function useWorkspace(): string {
-  return useSignal(workspace)
+export function getWorkspaceSignal(): () => string {
+  return workspace
 }
 
 export function setWorkspaceAndPersist(next: string): void {
   const trimmed = next.trim()
-  workspace.set(trimmed)
+  setWorkspace(trimmed)
   if (typeof localStorage !== 'undefined') {
     if (trimmed === '') localStorage.removeItem(WORKSPACE_KEY)
     else localStorage.setItem(WORKSPACE_KEY, trimmed)
@@ -111,29 +167,40 @@ export function setWorkspaceAndPersist(next: string): void {
 }
 
 /**
- * `origin|token|workspace` key — everything a remote read depends on. Pages
- * key their data fetches on this (useConnectionKey) so views re-fetch the
- * moment the user switches connection or workspace.
+ * Reactive key for everything a remote read depends on — the connected origin,
+ * the signed-in user (so login/logout re-fetches), the selected org, and the
+ * selected workspace. The jr page loader keys its resources on this so views
+ * re-fetch the moment any of them changes.
  */
 export function getConnectionKey(): string {
-  return `${origin.get()}|${token.get()}|${workspace.get()}`
+  return `${origin()}|${currentUser()?.userId ?? ''}|${org()}|${workspace()}`
 }
 
-/** Reactive form of getConnectionKey for React data hooks. */
-export function useConnectionKey(): string {
-  return `${useSignal(origin)}|${useSignal(token)}|${useSignal(workspace)}`
-}
-
-/** Workspace-list endpoints answer FOR all workspaces — never scoped by one. */
+/** Reads that answer for the whole org — never scoped by one workspace. */
 const WS_EXEMPT = new Set(['/v1/meta', '/v1/workspaces'])
+/** Auth-exempt surfaces that must not carry `?org=`. */
+const ORG_EXEMPT = new Set(['/v1/meta'])
 
-/** Append `ws=<id>` to a /v1 pathname when a workspace is selected. */
-function withWorkspace(pathname: string): string {
-  const ws = workspace.get()
-  if (ws === '' || !pathname.startsWith('/v1/')) return pathname
+/**
+ * Append the org + workspace clamp to a `/v1/*` analytics pathname. Pure —
+ * exported for tests. `/v1/auth/*` and `/v1/admin/*` carry their scope in the
+ * body / path, so they're left untouched.
+ */
+export function scopedPathFor(pathname: string, orgId: string, ws: string): string {
+  if (!pathname.startsWith('/v1/')) return pathname
   const bare = pathname.split('?', 1)[0]!
-  if (WS_EXEMPT.has(bare)) return pathname
-  return `${pathname}${pathname.includes('?') ? '&' : '?'}ws=${encodeURIComponent(ws)}`
+  if (bare.startsWith('/v1/auth/') || bare.startsWith('/v1/admin/')) return pathname
+  let p = pathname
+  const add = (kv: string): void => {
+    p = `${p}${p.includes('?') ? '&' : '?'}${kv}`
+  }
+  if (orgId !== '' && !ORG_EXEMPT.has(bare)) add(`org=${encodeURIComponent(orgId)}`)
+  if (ws !== '' && !WS_EXEMPT.has(bare)) add(`ws=${encodeURIComponent(ws)}`)
+  return p
+}
+
+function scopedPath(pathname: string): string {
+  return scopedPathFor(pathname, org(), workspace())
 }
 
 export interface WorkspaceInfo {
@@ -143,12 +210,12 @@ export interface WorkspaceInfo {
   runCount?: number
 }
 
-const workspaces = signal<WorkspaceInfo[]>([])
+const [workspaces, setWorkspaces] = createSignal<WorkspaceInfo[]>([])
 let workspacesKey: string | null = null
 
 /** Workspaces known to the connected serve; `[]` until the list resolves. */
-export function useWorkspaces(): WorkspaceInfo[] {
-  return useSignal(workspaces)
+export function getWorkspacesSignal(): () => WorkspaceInfo[] {
+  return workspaces
 }
 
 /**
@@ -158,19 +225,20 @@ export function useWorkspaces(): WorkspaceInfo[] {
  * every query doesn't scope to a workspace that doesn't exist here.
  */
 export function refreshWorkspaces(): void {
-  const key = `${origin.get()}|${token.get()}`
+  const key = `${origin()}|${org()}|${currentUser()?.userId ?? ''}`
   if (key === workspacesKey) return
   workspacesKey = key
-  workspaces.set([])
+  setWorkspaces([])
+  if (authState() !== 'authed') return
   void getWorkspaces().then(
     (list) => {
       if (workspacesKey !== key) return
-      workspaces.set(list)
-      const current = workspace.get()
+      setWorkspaces(list)
+      const current = workspace()
       if (current !== '' && !list.some((w) => w.id === current)) setWorkspaceAndPersist('')
     },
     () => {
-      if (workspacesKey === key) workspaces.set([])
+      if (workspacesKey === key) setWorkspaces([])
     },
   )
 }
@@ -192,14 +260,26 @@ export interface Capabilities {
   hasWorkspace: boolean
   /** Cache-entry-backed endpoints (entries / heat / input diff) have data. */
   hasCacheDb: boolean
+  /** The /v1/workspace/* catalog routes answer (advertised by /v1/meta). */
+  catalog: boolean
+  /** The serve hosts a run queue (`/v1/runs/queue`, advertised by /v1/meta).
+   *  The platform does NOT — polling a removed endpoint is a guaranteed 404
+   *  every 2s, so the Runs view gates its queue poll on this. */
+  queue: boolean
 }
 
-const UNKNOWN_CAPS: Capabilities = { known: false, hasWorkspace: false, hasCacheDb: false }
-const capabilities = signal<Capabilities>(UNKNOWN_CAPS)
+const UNKNOWN_CAPS: Capabilities = {
+  known: false,
+  hasWorkspace: false,
+  hasCacheDb: false,
+  catalog: false,
+  queue: false,
+}
+const [capabilities, setCapabilities] = createSignal<Capabilities>(UNKNOWN_CAPS)
 let capsKey: string | null = null
 
-export function useCapabilities(): Capabilities {
-  return useSignal(capabilities)
+export function getCapabilitiesSignal(): () => Capabilities {
+  return capabilities
 }
 
 /**
@@ -213,7 +293,7 @@ export function refreshCapabilities(): void {
   const key = getConnectionKey()
   if (key === capsKey) return
   capsKey = key
-  capabilities.set(UNKNOWN_CAPS)
+  setCapabilities(UNKNOWN_CAPS)
   void Promise.all([
     getGraph(['__vx_capability_probe__']).then(
       () => true,
@@ -223,30 +303,76 @@ export function refreshCapabilities(): void {
       (s) => s.entryCount > 0,
       () => false,
     ),
-  ]).then(([hasWorkspace, hasCacheDb]) => {
-    if (capsKey === key) capabilities.set({ known: true, hasWorkspace, hasCacheDb })
+    getMeta().then(
+      (m) => ({ catalog: m.catalog === true, queue: m.queue === true }),
+      () => ({ catalog: false, queue: false }),
+    ),
+  ]).then(([hasWorkspace, hasCacheDb, meta]) => {
+    if (capsKey === key) setCapabilities({ known: true, hasWorkspace, hasCacheDb, ...meta })
   })
 }
 
-/** `?token=` suffix for EventSource/WebSocket URLs (headers unsupported there). */
-function tokenQuery(prefix: '?' | '&' = '?'): string {
-  const t = token.get()
-  return t === '' ? '' : `${prefix}token=${encodeURIComponent(t)}`
-}
+// In-flight GET de-duplication. A view's sources are fetched concurrently, so
+// two that hit the SAME URL fire two identical requests — run-detail's `run` +
+// `runSelectedTask` both GET /v1/runs/:id (the largest query, doubled every 5s
+// poll on the common `?task=` deep-link), and task-detail's detail/flaky/config
+// sources overlap the `recommendations` aggregator's own fetches. Coalescing
+// concurrent identical GETs into one shared promise removes the waste. Cleared
+// on settle, so the next poll fetches fresh — this is request coalescing, not a
+// cache.
+const inflightGets = new Map<string, Promise<unknown>>()
 
 async function getJson<T>(pathname: string): Promise<T> {
-  const headers: Record<string, string> = { Accept: 'application/json' }
-  const t = token.get()
-  if (t !== '') headers['Authorization'] = `Bearer ${t}`
-  const res = await fetch(`${origin.get()}${withWorkspace(pathname)}`, { headers })
+  const url = `${origin()}${scopedPath(pathname)}`
+  const existing = inflightGets.get(url)
+  if (existing !== undefined) return existing as Promise<T>
+  const p = doGetJson<T>(pathname, url).finally(() => inflightGets.delete(url))
+  inflightGets.set(url, p)
+  return p
+}
+
+async function doGetJson<T>(pathname: string, url: string): Promise<T> {
+  const res = await fetch(url, {
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  })
   if (res.status === 401) {
-    unauthorized.set(true)
-    throw new Error(`${pathname}: 401 Unauthorized — this server requires a token`)
+    setAuthState('anon')
+    throw new Error(`${pathname}: 401 Unauthorized`)
   }
-  if (!res.ok) {
-    throw new Error(`${pathname}: ${res.status} ${res.statusText}`)
-  }
+  if (!res.ok) throw new Error(`${pathname}: ${res.status} ${res.statusText}`)
   return (await res.json()) as T
+}
+
+/** Result of a state-changing request (CSRF header + cookie credentials). */
+export interface MutateResult<T> {
+  ok: boolean
+  status: number
+  data?: T
+  error?: string
+}
+
+async function mutate<T = unknown>(
+  method: string,
+  pathname: string,
+  body?: unknown,
+): Promise<MutateResult<T>> {
+  try {
+    const headers: Record<string, string> = { 'x-vx-csrf': '1', Accept: 'application/json' }
+    if (body !== undefined) headers['content-type'] = 'application/json'
+    const res = await fetch(`${origin()}${scopedPath(pathname)}`, {
+      method,
+      credentials: 'include',
+      headers,
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    })
+    if (res.status === 401) setAuthState('anon')
+    const data = (await res.json().catch(() => undefined)) as (T & { error?: string }) | undefined
+    if (!res.ok) return { ok: false, status: res.status, error: data?.error ?? res.statusText }
+    return { ok: true, status: res.status, ...(data !== undefined ? { data } : {}) }
+  } catch (err) {
+    return { ok: false, status: 0, error: err instanceof Error ? err.message : String(err) }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -330,9 +456,6 @@ export interface CacheStats {
   hitLocalCountLast24h: number
   /** `status = 'cache-hit-remote'` over the last 24h. */
   hitRemoteCountLast24h: number
-  /** `/v8` artifact-store footprint (optional: older serves omit these). */
-  artifactCount?: number
-  artifactBytes?: number
 }
 
 /** One changed/added/removed cache-key component (metrics.ts `InputDiffEntry`). */
@@ -477,15 +600,26 @@ export interface ServerVersion {
   rpc: readonly string[]
 }
 
-/** Server identity from the auth-exempt /v1/meta (no workspace path, no secrets). */
+/** Server identity from the auth-exempt /v1/meta (no tenant data, no secrets). */
 export interface ServerMeta {
   v: number
   name: string
   vx: string
-  auth: 'token' | 'open'
+  /** 'account' = the platform (sessions + RBAC); legacy serves report token/open. */
+  auth: 'account' | 'token' | 'open'
   startedAt: number
   /** Workspace count on this serve (absent on serves predating workspaces). */
   workspaces?: number
+  /** This serve hosts the artifact store (`/v1/cache/:hash`). */
+  artifacts?: boolean
+  /** Artifact-store wire version (1 = the vx-native /v1/cache wire). */
+  cacheWire?: number
+  /** A colocated workspace makes the /v1/workspace/* catalog live. */
+  catalog?: boolean
+  /** The serve hosts a run queue (`/v1/runs/queue`); absent on the platform. */
+  queue?: boolean
+  /** The platform partitions the cache by trust tier. */
+  trustTiers?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -546,6 +680,19 @@ export async function getInvocation(runId: string): Promise<InvocationDetail | n
   }
 }
 
+/** Per-task run rows, filterable by project / task / runId (`/v1/runs`). */
+export async function listRuns(
+  args: { limit?: number; project?: string; task?: string; runId?: string } = {},
+): Promise<RunSummaryRow[]> {
+  const params = new URLSearchParams()
+  if (args.limit !== undefined) params.set('limit', String(args.limit))
+  if (args.project !== undefined) params.set('project', args.project)
+  if (args.task !== undefined) params.set('task', args.task)
+  if (args.runId !== undefined) params.set('runId', args.runId)
+  const r = await getJson<{ runs: RunSummaryRow[] }>(`/v1/runs?${params.toString()}`)
+  return r.runs
+}
+
 export async function getRun(runId: string): Promise<RunDetail | null> {
   try {
     return await getJson<RunDetail>(`/v1/runs/${encodeURIComponent(runId)}`)
@@ -555,13 +702,44 @@ export async function getRun(runId: string): Promise<RunDetail | null> {
   }
 }
 
-export async function getCacheStats(): Promise<CacheStats> {
-  return await getJson<CacheStats>('/v1/cache/stats')
+/** A task's persisted log tail. `source: 'cache'` resolves a hit to the run
+ *  that produced the bytes (`refRunId`); `artifactHash` present when the
+ *  serve holds a downloadable artifact for the requester's principal. */
+export interface TaskLogResponse {
+  runId: string
+  taskId: string
+  source: 'executed' | 'cache'
+  refRunId?: string
+  status: 'success' | 'failed'
+  content: string
+  charsFull: number
+  truncatedHeadChars: number
+  artifactHash?: string
 }
 
-export async function getHistory(args: { limit?: number } = {}): Promise<TaskHistoryRow[]> {
+export async function getTaskLog(runId: string, taskId: string): Promise<TaskLogResponse | null> {
+  try {
+    return await getJson<TaskLogResponse>(
+      `/v1/runs/${encodeURIComponent(runId)}/logs/${encodeURIComponent(taskId)}`,
+    )
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('404')) return null
+    throw err
+  }
+}
+
+export async function getCacheStats(windowDays?: number): Promise<CacheStats> {
+  const q = windowDays !== undefined ? `?windowDays=${windowDays}` : ''
+  return await getJson<CacheStats>(`/v1/cache/stats${q}`)
+}
+
+export async function getHistory(
+  args: { limit?: number; project?: string; task?: string } = {},
+): Promise<TaskHistoryRow[]> {
   const params = new URLSearchParams()
   if (args.limit !== undefined) params.set('limit', String(args.limit))
+  if (args.project !== undefined) params.set('project', args.project)
+  if (args.task !== undefined) params.set('task', args.task)
   const r = await getJson<{ history: TaskHistoryRow[] }>(`/v1/history?${params.toString()}`)
   return r.history
 }
@@ -576,6 +754,30 @@ export async function cacheKeyDiff(runId: string, taskId: string): Promise<Cache
   return await getJson<CacheKeyDiff>(
     `/v1/diff/${encodeURIComponent(runId)}/${encodeURIComponent(taskId)}`,
   )
+}
+
+/** One executed task's re-run verdict — the batched `/v1/why/:runId` row. */
+export interface WhyRunRow {
+  taskId: string
+  project: string
+  task: string
+  previousRunId: string | null
+  reason: string
+}
+
+/**
+ * Batched "why did this re-run" for a whole run — one request over every
+ * executed task, replacing the per-task `/v1/diff` fan-out. Returns [] on an
+ * older serve that lacks the route (404), so the panel degrades cleanly.
+ */
+export async function fetchRunWhy(runId: string): Promise<WhyRunRow[]> {
+  try {
+    const r = await getJson<{ rows: WhyRunRow[] }>(`/v1/why/${encodeURIComponent(runId)}`)
+    return r.rows
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('404')) return []
+    throw err
+  }
 }
 
 /**
@@ -621,16 +823,24 @@ export async function listCacheEntries(
   return r.entries
 }
 
-/** Raw task-execution rows (newest first), optionally scoped to a project/task. */
-export async function listRunRows(
-  args: { project?: string; task?: string; limit?: number } = {},
-): Promise<RunSummaryRow[]> {
-  const params = new URLSearchParams()
-  if (args.limit !== undefined) params.set('limit', String(args.limit))
-  if (args.project !== undefined) params.set('project', args.project)
-  if (args.task !== undefined) params.set('task', args.task)
-  const r = await getJson<{ runs: RunSummaryRow[] }>(`/v1/runs?${params}`)
-  return r.runs
+/** The latest cache-key entry for a task (metrics.ts `CacheKeyExplanation`). */
+export interface CacheKeyExplanation {
+  taskId: string
+  project: string
+  task: string
+  latestEntry: {
+    hash: string
+    command: string
+    exitCode: number
+    durationMs: number
+    sizeBytes: number
+    createdAt: number
+  } | null
+  note: string
+}
+
+export async function explainCacheKey(taskId: string): Promise<CacheKeyExplanation> {
+  return await getJson<CacheKeyExplanation>(`/v1/explain/${encodeURIComponent(taskId)}`)
 }
 
 export async function getTaskDetail(taskId: string): Promise<TaskDetail | null> {
@@ -681,6 +891,11 @@ export interface FlakyTask {
   runs: number
   failures: number
   failureRate: number
+  /** Runs that needed more than one attempt — the CONFIRMED flaky signal. */
+  withinRunRetries: number
+  maxAttempts: number | undefined
+  /** True when `withinRunRetries > 0` — flakiness confirmed, not inferred. */
+  flakyConfirmed: boolean
   durationTailRatio: number | undefined
   p50DurationMs: number | undefined
   p99DurationMs: number | undefined
@@ -722,6 +937,63 @@ export interface PrunableEntry {
   ageDays: number
 }
 
+export interface RegressedTask {
+  id: string
+  project: string
+  task: string
+  branchesFailing: number
+  branchesTotal: number
+  branches: string[]
+  regressed: boolean
+  firstFailedAt: number
+  lastRunAt: number
+  failures: number
+  runs: number
+}
+
+export interface ProjectBranchFailure {
+  task: string
+  firstBranch: string
+  firstFailedAt: number
+  firstCommit: string | null
+  lastFailedAt: number
+  branchesFailing: number
+  branches: { branch: string; firstFailedAt: number; firstCommit: string | null; failures: number }[]
+}
+
+export interface PeriodStats {
+  runs: number
+  taskRuns: number
+  executed: number
+  failures: number
+  cacheHits: number
+  totalDurationMs: number
+  avgDurationMs: number
+  p50DurationMs: number | undefined
+  p95DurationMs: number | undefined
+  failureRate: number
+  cacheHitRate: number
+}
+
+export interface TaskMover {
+  id: string
+  project: string
+  task: string
+  currentAvgMs: number
+  previousAvgMs: number
+  deltaMs: number
+  deltaPct: number
+  currentRuns: number
+  previousRuns: number
+}
+
+export interface PeriodComparison {
+  windowDays: number
+  current: { from: number; to: number; stats: PeriodStats }
+  previous: { from: number; to: number; stats: PeriodStats }
+  movers: TaskMover[]
+}
+
 export async function listProjects(limit = 100): Promise<ProjectRollup[]> {
   const r = await getJson<{ projects: ProjectRollup[] }>(`/v1/projects?limit=${limit}`)
   return r.projects
@@ -731,12 +1003,44 @@ export async function getRunTrends(args: {
   bucket?: 'hour' | 'day'
   from?: number
   to?: number
+  project?: string
 } = {}): Promise<{ bucket: string; points: TrendPoint[] }> {
   const params = new URLSearchParams()
   if (args.bucket) params.set('bucket', args.bucket)
   if (args.from !== undefined) params.set('from', String(args.from))
   if (args.to !== undefined) params.set('to', String(args.to))
+  if (args.project !== undefined) params.set('project', args.project)
   return await getJson(`/v1/trends/runs?${params}`)
+}
+
+export interface ProjectTaskTrendPoint {
+  task: string
+  t: number
+  runs: number
+  failures: number
+  avgDurationMs: number
+  p95DurationMs: number
+}
+
+/**
+ * Per-task, per-bucket time-series for the project view's task sparklines.
+ * `null` on an older serve without /v1/trends/tasks so the card degrades.
+ */
+export async function getProjectTaskTrends(
+  project: string,
+  args: { bucket?: 'hour' | 'day'; from?: number; to?: number; limit?: number } = {},
+): Promise<ProjectTaskTrendPoint[] | null> {
+  try {
+    const params = new URLSearchParams({ project })
+    if (args.bucket) params.set('bucket', args.bucket)
+    if (args.from !== undefined) params.set('from', String(args.from))
+    if (args.to !== undefined) params.set('to', String(args.to))
+    if (args.limit !== undefined) params.set('limit', String(args.limit))
+    const r = await getJson<{ points: ProjectTaskTrendPoint[] }>(`/v1/trends/tasks?${params}`)
+    return r.points
+  } catch {
+    return null
+  }
 }
 
 export async function getHeatmap(days = 30): Promise<HeatmapCellApi[]> {
@@ -777,14 +1081,84 @@ export async function getPrunable(
 }
 
 /**
+ * Tasks that started failing across branches (used to pass, now failing on
+ * >= minBranches distinct branches). `null` on an older serve without the
+ * /v1/regressions route so the card degrades to an empty state.
+ */
+export async function getRegressions(
+  sinceDays = 14,
+  minBranches = 2,
+  limit = 25,
+): Promise<RegressedTask[] | null> {
+  try {
+    const r = await getJson<{ tasks: RegressedTask[] }>(
+      `/v1/regressions?sinceDays=${sinceDays}&minBranches=${minBranches}&limit=${limit}`,
+    )
+    return r.tasks
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Period-over-period comparison (this window vs the previous equal-length one).
+ * Optional `scope` narrows to one project / one task — the entity pages'
+ * "did MY performance improve or decrease?" trend. `null` on an older serve
+ * without the /v1/analysis route.
+ */
+export async function getAnalysis(
+  windowDays = 7,
+  minRuns = 3,
+  limit = 8,
+  scope?: { project?: string; task?: string },
+): Promise<PeriodComparison | null> {
+  try {
+    const params = new URLSearchParams({
+      window: String(windowDays),
+      minRuns: String(minRuns),
+      limit: String(limit),
+    })
+    if (scope?.project !== undefined) params.set('project', scope.project)
+    if (scope?.task !== undefined) params.set('task', scope.task)
+    return await getJson<PeriodComparison>(`/v1/analysis?${params.toString()}`)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Per-task, per-branch failure attribution for the project view — which branch
+ * each task FIRST started failing on ("where was the issue first noticed").
+ * `null` on an older serve without the /v1/branch-failures route so the card
+ * degrades to an empty state.
+ */
+export async function getProjectBranchFailures(
+  project: string,
+  sinceDays = 14,
+  limit = 25,
+): Promise<ProjectBranchFailure[] | null> {
+  try {
+    const params = new URLSearchParams({
+      project,
+      sinceDays: String(sinceDays),
+      limit: String(limit),
+    })
+    const r = await getJson<{ tasks: ProjectBranchFailure[] }>(`/v1/branch-failures?${params}`)
+    return r.tasks
+  } catch {
+    return null
+  }
+}
+
+/**
  * Subscribe to live event stream via SSE. Returns an unsubscribe fn.
  * The hosted SPA uses this to overlay running tasks on the Overview.
  */
 export function subscribeEvents(onMessage: (event: unknown) => void): () => void {
   const origin = getOrigin()
-  // EventSource can't set headers — the token rides the query string.
-  const path = withWorkspace('/v1/events')
-  const source = new EventSource(`${origin}${path}${tokenQuery(path.includes('?') ? '&' : '?')}`)
+  // Same-origin EventSource returns the session cookie automatically; the dev
+  // proxy needs withCredentials to forward it.
+  const source = new EventSource(`${origin}${scopedPath('/v1/events')}`, { withCredentials: true })
   source.onmessage = (e) => {
     try {
       onMessage(JSON.parse(e.data))
@@ -843,8 +1217,8 @@ export function runTasks(tasks: readonly string[], cwd: string, h: RunHandlers):
   const wsOrigin = getOrigin().replace(/^http/, 'ws')
   let ws: WebSocket
   try {
-    // Browser WebSocket can't set headers — the token rides the query string.
-    ws = new WebSocket(`${wsOrigin}/${tokenQuery()}`)
+    // Same-origin WebSocket carries the session cookie on the handshake.
+    ws = new WebSocket(`${wsOrigin}/`)
   } catch (err) {
     h.onError(err instanceof Error ? err.message : String(err))
     return () => {}
@@ -874,4 +1248,611 @@ export function runTasks(tasks: readonly string[], cwd: string, h: RunHandlers):
       // already closed
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Workspace catalog — the /v1/workspace/* routes (colocated serves only).
+// Shapes mirror packages/cloud/src/workspace-catalog.ts.
+// ---------------------------------------------------------------------------
+
+export interface CatalogProjectSummary {
+  name: string
+  /** Workspace-root-relative POSIX dir; `.` for the root project. */
+  dir: string
+  configPath: string
+  taskCount: number
+  tasks: string[]
+}
+
+export interface CatalogProjectsResponse {
+  source: 'lock' | 'live'
+  root: string
+  workspaceId: string
+  /** Lock file mtime (lock mode only). */
+  lockedAt?: number
+  /** Lock mode: projects whose config bytes drifted since `vx lock`. */
+  staleProjects?: string[]
+  projects: CatalogProjectSummary[]
+}
+
+export interface CatalogProjectDetail {
+  source: 'lock' | 'live'
+  name: string
+  dir: string
+  configPath: string
+  stale?: boolean
+  /** Resolved, JSON-normalized config — the `vx show` payload. */
+  config: unknown
+}
+
+export interface CatalogTaskRow {
+  id: string
+  project: string
+  task: string
+  description?: string
+  group: boolean
+  cacheable: boolean
+  persistent: boolean
+  dependsOn: readonly string[]
+}
+
+export interface CatalogTasksResponse {
+  source: 'lock' | 'live'
+  tasks: CatalogTaskRow[]
+}
+
+export async function fetchCatalogProjects(): Promise<CatalogProjectsResponse> {
+  return await getJson<CatalogProjectsResponse>('/v1/workspace/projects')
+}
+
+export async function fetchCatalogProject(name: string): Promise<CatalogProjectDetail | null> {
+  try {
+    return await getJson<CatalogProjectDetail>(`/v1/workspace/projects/${encodeURIComponent(name)}`)
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('404')) return null
+    throw err
+  }
+}
+
+export async function fetchCatalogTasks(): Promise<CatalogTasksResponse> {
+  return await getJson<CatalogTasksResponse>('/v1/workspace/tasks')
+}
+
+// ---------------------------------------------------------------------------
+// Artifacts — the artifact store made visible (GET /v1/artifacts). NOT
+// workspace-gated: artifacts exist on remote serves too. Shapes mirror
+// packages/cloud/src/artifact-store.ts `ArtifactListEntry` + the serve's
+// best-effort provenance join.
+// ---------------------------------------------------------------------------
+
+export interface ArtifactRow {
+  hash: string
+  sizeBytes: number
+  /** When the artifact landed in the store (ms epoch). */
+  storedAt: number
+  /** Original task duration from the `.duration` sidecar, when present. */
+  durationMs?: number
+  tier: 'trusted' | 'untrusted'
+  /** Most-recent producing task/run from the ingest db; absent when unknown. */
+  task?: { project: string; task: string; runId?: string }
+}
+
+/** List readable artifacts, newest first. `null` = older serve (no route). */
+export async function fetchArtifacts(limit = 200): Promise<ArtifactRow[] | null> {
+  try {
+    const r = await getJson<{ artifacts: ArtifactRow[] }>(`/v1/artifacts?limit=${limit}`)
+    return r.artifacts
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('404')) return null
+    throw err
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Hermeticity — GET /v1/hermeticity (verify-cross-machine §4): cache keys
+// whose fingerprinted output trees diverge across reports, rels named.
+// ---------------------------------------------------------------------------
+
+export interface HermeticityReportRow {
+  os: string
+  arch: string
+  tree: string
+  runId: string
+  host: string | null
+  at: number
+}
+
+export interface DivergentKeyRow {
+  hash: string
+  taskId: string
+  /** false ⇒ same-platform run-to-run divergence. */
+  crossPlatform: boolean
+  changed: string[]
+  /** false when any report was tree-only/truncated — `changed` may be partial. */
+  changedComplete: boolean
+  reports: HermeticityReportRow[]
+}
+
+export interface HermeticityResponse {
+  divergent: DivergentKeyRow[]
+  keysTracked: number
+  reportCount: number
+}
+
+/** Cross-machine fingerprint divergence. `null` = older serve (no route). */
+export async function fetchHermeticity(limit = 50): Promise<HermeticityResponse | null> {
+  try {
+    return await getJson<HermeticityResponse>(`/v1/hermeticity?limit=${limit}`)
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('404')) return null
+    throw err
+  }
+}
+
+/**
+ * Bearer-fetch an artifact (`GET /v1/cache/:hash`) and hand it to the
+ * browser as a download — the ONE download path shared by TaskLogs, the
+ * artifacts table, and the entity-page download actions (an <a href> can't
+ * carry the bearer header).
+ */
+export async function downloadArtifact(hash: string): Promise<boolean> {
+  const res = await fetch(`${origin()}/v1/cache/${encodeURIComponent(hash)}`, {
+    credentials: 'include',
+  })
+  if (!res.ok) return false
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${hash}.tar.zst`
+  a.click()
+  URL.revokeObjectURL(url)
+  return true
+}
+
+// ---------------------------------------------------------------------------
+// Run queue — the serve-side FIFO every serve-executed run rides
+// (protocol-queue.ts). One WS per submitted job: the submitting socket IS the
+// stream, so after queue:start the standard event/result wire flows on it.
+// ---------------------------------------------------------------------------
+
+/** Mirror of the serve's JobView (`GET /v1/runs/queue`). */
+export interface QueueJobRow {
+  jobId: string
+  tasks: readonly string[]
+  state: 'queued' | 'running'
+  /** 0 = running; queued jobs count the jobs ahead of them. */
+  position: number
+  submittedAt: number
+  startedAt?: number
+}
+
+/** Live queue state (queued + running jobs; done jobs drop out). */
+export async function fetchQueue(): Promise<QueueJobRow[]> {
+  const r = await getJson<{ jobs: QueueJobRow[] }>('/v1/runs/queue')
+  return r.jobs
+}
+
+export interface QueueRunHandlers {
+  onAccepted: (jobId: string, position: number) => void
+  /** Earlier jobs finished — this job's queue position dropped. */
+  onPosition: (position: number) => void
+  onStart: () => void
+  onEvent: (ev: WireEvent) => void
+  /** The run's own result frame (the summary footer follows on events). */
+  onResult: (ok: boolean) => void
+  /** Terminal: the job left the queue. runId links to /runs/:id. */
+  onDone: (ok: boolean, runId?: string) => void
+  onRefused: (message: string) => void
+  onError: (message: string) => void
+}
+
+const QUEUE_PROTOCOL_VERSION = 1
+
+/**
+ * Submit one job to the serve's run queue and stream its lifecycle + events
+ * back over a dedicated WebSocket. `cancel()` withdraws a QUEUED job
+ * (queue:cancel + close); for a RUNNING job it stops watching — the run
+ * completes server-side (the established stop semantics).
+ */
+export function queueRun(
+  tasks: readonly string[],
+  cwd: string,
+  h: QueueRunHandlers,
+): { cancel: () => void } {
+  const wsOrigin = getOrigin().replace(/^http/, 'ws')
+  let ws: WebSocket
+  try {
+    // Same-origin WebSocket carries the session cookie on the handshake.
+    ws = new WebSocket(`${wsOrigin}/`)
+  } catch (err) {
+    h.onError(err instanceof Error ? err.message : String(err))
+    return { cancel: () => {} }
+  }
+  let jobId: string | null = null
+  let settled = false
+  ws.onopen = () =>
+    ws.send(
+      JSON.stringify({
+        t: 'queue:submit',
+        v: QUEUE_PROTOCOL_VERSION,
+        request: { tasks: [...tasks], cwd },
+      }),
+    )
+  ws.onmessage = (e) => {
+    let m: {
+      t?: string
+      jobId?: string
+      position?: number
+      runId?: string
+      ok?: boolean
+      message?: string
+      event?: WireEvent
+      result?: { ok: boolean }
+    }
+    try {
+      m = JSON.parse(String(e.data))
+    } catch {
+      return
+    }
+    switch (m.t) {
+      case 'queue:accepted':
+        jobId = m.jobId ?? null
+        h.onAccepted(m.jobId ?? '', m.position ?? 0)
+        break
+      case 'queue:update':
+        h.onPosition(m.position ?? 0)
+        break
+      case 'queue:start':
+        h.onStart()
+        break
+      case 'queue:done':
+        settled = true
+        h.onDone(m.ok === true, m.runId)
+        ws.close()
+        break
+      case 'queue:refused':
+        settled = true
+        h.onRefused(m.message ?? 'refused')
+        ws.close()
+        break
+      case 'event':
+        if (m.event) h.onEvent(m.event)
+        break
+      case 'result':
+        // Not terminal — queue:done follows with the runId.
+        if (m.result) h.onResult(m.result.ok)
+        break
+      case 'error':
+        settled = true
+        h.onError(m.message ?? 'run error')
+        ws.close()
+        break
+    }
+  }
+  ws.onerror = () => {
+    if (!settled) h.onError('connection error')
+  }
+  return {
+    cancel: () => {
+      try {
+        if (!settled && jobId !== null) {
+          ws.send(JSON.stringify({ t: 'queue:cancel', v: QUEUE_PROTOCOL_VERSION, jobId }))
+        }
+        ws.close()
+      } catch {
+        // already closed
+      }
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Auth — session lifecycle (cloud-platform-2026-07 §6). The dashboard boots
+// by resolving the current principal; login/register/logout re-resolve it.
+// ---------------------------------------------------------------------------
+
+/** Resolve the current session principal; throws when unauthenticated. */
+async function fetchMe(): Promise<CurrentUser> {
+  const res = await fetch(`${origin()}/v1/auth/me`, {
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  })
+  if (!res.ok) throw new Error(`me: ${res.status}`)
+  const body = (await res.json()) as {
+    kind: string
+    userId: string
+    email?: string
+    displayName?: string
+    instanceAdmin: boolean
+    orgs: { orgId: string; role: OrgRole }[]
+  }
+  if (body.kind !== 'session') throw new Error('not a session principal')
+  return {
+    userId: body.userId,
+    email: body.email ?? '',
+    displayName: body.displayName ?? body.email ?? body.userId,
+    instanceAdmin: body.instanceAdmin,
+    orgs: body.orgs,
+  }
+}
+
+/**
+ * (Re-)resolve the signed-in user and reconcile the org selection. Sets
+ * authState to 'authed' with the principal, or 'anon' when unauthenticated.
+ * The org list (with names) is refreshed in the background for the switcher.
+ */
+export async function bootstrapAuth(): Promise<void> {
+  try {
+    const me = await fetchMe()
+    setCurrentUser(me)
+    reconcileOrgSelection(me.orgs.map((o) => ({ id: o.orgId })))
+    setAuthState('authed')
+    void refreshOrgs()
+  } catch {
+    setCurrentUser(null)
+    setOrgs([])
+    setAuthState('anon')
+  }
+}
+
+export interface AuthResult {
+  ok: boolean
+  error?: string
+}
+
+async function authPost(pathname: string, body: Record<string, unknown>): Promise<AuthResult> {
+  try {
+    const res = await fetch(`${origin()}${pathname}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-vx-csrf': '1', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) return { ok: true }
+    const j = (await res.json().catch(() => null)) as { error?: string } | null
+    return { ok: false, error: j?.error ?? `request failed (${res.status})` }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+export async function login(email: string, password: string): Promise<AuthResult> {
+  const r = await authPost('/v1/auth/login', { email, password })
+  if (r.ok) await bootstrapAuth()
+  return r
+}
+
+export async function register(args: {
+  email: string
+  password: string
+  displayName?: string
+  invite?: string
+}): Promise<AuthResult> {
+  const body: Record<string, unknown> = { email: args.email, password: args.password }
+  if (args.displayName !== undefined && args.displayName !== '') body['displayName'] = args.displayName
+  if (args.invite !== undefined && args.invite !== '') body['invite'] = args.invite
+  const r = await authPost('/v1/auth/register', body)
+  if (r.ok) await bootstrapAuth()
+  return r
+}
+
+/** Join another org with an invite token (an already-signed-in user). */
+export async function acceptInvite(invite: string): Promise<AuthResult> {
+  const r = await authPost('/v1/auth/invites/accept', { invite })
+  if (r.ok) await bootstrapAuth()
+  return r
+}
+
+export async function logout(): Promise<void> {
+  try {
+    await fetch(`${origin()}/v1/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'x-vx-csrf': '1' },
+    })
+  } catch {
+    // best-effort — the local state is cleared regardless.
+  }
+  setCurrentUser(null)
+  setOrgs([])
+  setAuthState('anon')
+}
+
+// ---------------------------------------------------------------------------
+// Self-service profile — rename + change password (the /settings Profile +
+// Security tabs). Both are session + CSRF; the auth routes ignore the org/ws
+// clamp, so they use a direct credentialed fetch (not the analytics-scoped
+// `mutate`). A successful rename re-resolves `me` so the shell updates.
+// ---------------------------------------------------------------------------
+
+async function authFetch(
+  method: string,
+  pathname: string,
+  body: Record<string, unknown>,
+): Promise<AuthResult> {
+  try {
+    const res = await fetch(`${origin()}${pathname}`, {
+      method,
+      credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-vx-csrf': '1', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) return { ok: true }
+    const j = (await res.json().catch(() => null)) as { error?: string } | null
+    return { ok: false, error: j?.error ?? `request failed (${res.status})` }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+export async function updateProfile(displayName: string): Promise<AuthResult> {
+  const r = await authFetch('PATCH', '/v1/auth/me', { displayName })
+  if (r.ok) {
+    // Reflect the new name in the shell without a full reload.
+    const u = currentUser()
+    if (u !== null) setCurrentUser({ ...u, displayName })
+  }
+  return r
+}
+
+export function changePassword(currentPassword: string, newPassword: string): Promise<AuthResult> {
+  return authFetch('POST', '/v1/auth/password', { currentPassword, newPassword })
+}
+
+// ---------------------------------------------------------------------------
+// Notifications — the bell feed: recent runs that broke (`/v1/notifications`,
+// workspace-clamped). The unread badge is derived from a last-seen watermark
+// persisted per origin+workspace; opening the panel marks everything seen.
+// ---------------------------------------------------------------------------
+
+export interface NotificationItem {
+  kind: 'run-failed'
+  runId: string
+  startedAt: number
+  branch: string | null
+  commitSha: string | null
+  failedCount: number
+  taskCount: number
+}
+
+const NOTIF_SEEN_PREFIX = 'vx-ui:notif-seen'
+
+function notifSeenKey(): string {
+  return `${NOTIF_SEEN_PREFIX}:${origin()}|${workspace()}`
+}
+
+/** The watermark: notifications with startedAt after this are unread. */
+export function getNotificationsSeenAt(): number {
+  if (typeof localStorage === 'undefined') return 0
+  const v = localStorage.getItem(notifSeenKey())
+  return v === null ? 0 : Number(v)
+}
+
+export function markNotificationsSeen(at: number = Date.now()): void {
+  if (typeof localStorage !== 'undefined') localStorage.setItem(notifSeenKey(), String(at))
+}
+
+export async function fetchNotifications(limit = 20): Promise<NotificationItem[]> {
+  // getJson applies the org/ws clamp — pass the bare path.
+  const r = await getJson<{ notifications: NotificationItem[] }>(`/v1/notifications?limit=${limit}`)
+  return r.notifications
+}
+
+// ---------------------------------------------------------------------------
+// Admin — orgs / members / invites / tokens / workspaces (cloud-platform §6.4).
+// GET reads flow through getJson (session cookie); mutations through mutate
+// (CSRF header). Org id rides the PATH, so these are never `?org=`-scoped.
+// ---------------------------------------------------------------------------
+
+export interface OrgMember {
+  userId: string
+  email: string
+  displayName: string
+  role: OrgRole
+}
+
+export interface AdminToken {
+  id: string
+  name: string
+  kind: 'ci' | 'admin'
+  tier: 'trusted' | 'untrusted'
+  workspaceId: string | null
+  createdAt: number
+  lastUsedAt: number | null
+  expiresAt: number | null
+  revokedAt: number | null
+}
+
+export interface AdminWorkspace {
+  id: string
+  slug: string
+  name: string
+  createdAt: number
+}
+
+export interface CreatedInvite {
+  invite: string
+  url: string
+  expiresAt: number
+}
+
+export interface CreatedToken {
+  id: string
+  token: string
+}
+
+export async function adminListOrgs(): Promise<OrgSummary[]> {
+  const r = await getJson<{ orgs: OrgSummary[] }>('/v1/admin/orgs')
+  return r.orgs
+}
+
+/** Refresh the org list (names) for the switcher + reconcile the selection. */
+export async function refreshOrgs(): Promise<void> {
+  try {
+    const list = await adminListOrgs()
+    setOrgs(list)
+    reconcileOrgSelection(list)
+  } catch {
+    setOrgs([])
+  }
+}
+
+export function adminCreateOrg(slug: string, name?: string): Promise<MutateResult<{ orgId: string }>> {
+  return mutate('POST', '/v1/admin/orgs', { slug, ...(name !== undefined && name !== '' ? { name } : {}) })
+}
+
+export function adminUpdateOrg(
+  orgId: string,
+  patch: { name?: string; slug?: string },
+): Promise<MutateResult<{ ok: boolean }>> {
+  return mutate('PATCH', `/v1/admin/orgs/${orgId}`, patch)
+}
+
+export async function adminListMembers(orgId: string): Promise<OrgMember[]> {
+  const r = await getJson<{ members: OrgMember[] }>(`/v1/admin/orgs/${orgId}/members`)
+  return r.members
+}
+
+export function adminUpdateMemberRole(
+  orgId: string,
+  userId: string,
+  role: OrgRole,
+): Promise<MutateResult<{ ok: boolean }>> {
+  return mutate('PATCH', `/v1/admin/orgs/${orgId}/members/${userId}`, { role })
+}
+
+export function adminRemoveMember(orgId: string, userId: string): Promise<MutateResult<{ ok: boolean }>> {
+  return mutate('DELETE', `/v1/admin/orgs/${orgId}/members/${userId}`)
+}
+
+export function adminCreateInvite(orgId: string, role: OrgRole): Promise<MutateResult<CreatedInvite>> {
+  return mutate('POST', `/v1/admin/orgs/${orgId}/invites`, { role })
+}
+
+export async function adminListTokens(orgId: string): Promise<AdminToken[]> {
+  const r = await getJson<{ tokens: AdminToken[] }>(`/v1/admin/orgs/${orgId}/tokens`)
+  return r.tokens
+}
+
+export function adminCreateToken(
+  orgId: string,
+  body: { name: string; tier: 'trusted' | 'untrusted'; kind?: 'ci' | 'admin'; workspaceId?: string },
+): Promise<MutateResult<CreatedToken>> {
+  return mutate('POST', `/v1/admin/orgs/${orgId}/tokens`, body)
+}
+
+export function adminRevokeToken(orgId: string, tokenId: string): Promise<MutateResult<{ ok: boolean }>> {
+  return mutate('DELETE', `/v1/admin/orgs/${orgId}/tokens/${tokenId}`)
+}
+
+export async function adminListWorkspaces(orgId: string): Promise<AdminWorkspace[]> {
+  const r = await getJson<{ workspaces: AdminWorkspace[] }>(`/v1/admin/orgs/${orgId}/workspaces`)
+  return r.workspaces
+}
+
+export function adminCreateWorkspace(
+  orgId: string,
+  body: { slug: string; name?: string },
+): Promise<MutateResult<{ workspaceId: string }>> {
+  return mutate('POST', `/v1/admin/orgs/${orgId}/workspaces`, body)
 }

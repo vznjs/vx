@@ -7,7 +7,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
 import { run } from '../src/index.js'
 import {
   resolveBackend,
@@ -104,14 +104,12 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     ).rejects.toThrow(/org\/broken-be/)
   })
 
-  it('resolveCache: plugin cache wins and logs an override note when env is set', async () => {
+  it('resolveCache: plugin cache wins over the fallback', async () => {
     const cacheDir = mkdtempSync(path.join(tmpdir(), 'vx-cache-host-'))
     const local = new Cache(cacheDir, { read: true, write: true })
     const pluginCache = local // local Cache implements CacheLayer
     const plugins: VxPlugin[] = [{ name: 'org/cache', cache: () => pluginCache }]
-    const lines: string[] = []
-    const prev = process.env.VX_REMOTE_CACHE_URL
-    process.env.VX_REMOTE_CACHE_URL = 'https://example.test'
+    let fallbackCalled = false
     try {
       const resolved = await resolveCache(
         plugins,
@@ -121,14 +119,15 @@ describe('plugin-host — capability consultation + fallbacks', () => {
           localCache: local,
           policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false },
         },
-        makeSilentLogger((l) => lines.push(l)),
-        () => local,
+        makeSilentLogger(() => {}),
+        () => {
+          fallbackCalled = true
+          return local
+        },
       )
       expect(resolved).toBe(pluginCache)
-      expect(lines.some((l) => l.includes("plugin 'org/cache' cache overrides"))).toBe(true)
+      expect(fallbackCalled).toBe(false)
     } finally {
-      if (prev === undefined) delete process.env.VX_REMOTE_CACHE_URL
-      else process.env.VX_REMOTE_CACHE_URL = prev
       local.close()
       rmSync(cacheDir, { recursive: true, force: true })
     }
@@ -228,16 +227,7 @@ describe('plugin-host — capability consultation + fallbacks', () => {
 // --- end-to-end through run() / cli via vx.workspace.mjs ---------------
 
 describe('plugin capabilities — end-to-end', () => {
-  let envSnapshot: string | undefined
-  beforeEach(() => {
-    envSnapshot = process.env.VX_REMOTE_CACHE_URL
-  })
-  afterEach(() => {
-    if (envSnapshot === undefined) delete process.env.VX_REMOTE_CACHE_URL
-    else process.env.VX_REMOTE_CACHE_URL = envSnapshot
-  })
-
-  it('a cache plugin overrides the env path during a real run()', async () => {
+  it('a cache plugin is consulted during a real run()', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       // The plugin returns ctx.localCache as its CacheLayer (a no-op
@@ -256,20 +246,17 @@ describe('plugin capabilities — end-to-end', () => {
          }`,
       )
       await gitInit(workspaceRoot)
-      process.env.VX_REMOTE_CACHE_URL = 'https://example.test'
-      const lines: string[] = []
       const summary = await run({
         cwd: workspaceRoot,
         projects: ['pkg-a'],
         tasks: ['hello'],
-        log: makeSilentLogger((l) => lines.push(l)),
+        log: makeSilentLogger(() => {}),
         handleSignals: false,
       })
       expect(summary.ok).toBe(true)
       expect((globalThis as { __vxCachePluginConsulted?: boolean }).__vxCachePluginConsulted).toBe(
         true,
       )
-      expect(lines.some((l) => l.includes("plugin 'org/cache' cache overrides"))).toBe(true)
     } finally {
       cleanup()
     }

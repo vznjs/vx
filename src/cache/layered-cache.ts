@@ -32,7 +32,36 @@ import type {
   SaveArgs,
 } from './cache.js'
 import { FULL_CACHE_POLICY } from './cache.js'
-import type { RemoteCache } from './remote-cache.js'
+
+/**
+ * What a remote cache layer must provide — THE plugin seam for remote
+ * caching. Core ships no wire client; a plugin's `cache` capability (or an
+ * embedder via `RunOptions.remoteCache`) supplies an implementation speaking
+ * whatever protocol it wants, and `LayeredCache` owns everything else:
+ * policy gating, in-flight dedup, remote provenance, and the never-fail
+ * contract (implementations THROW on failure; LayeredCache degrades every
+ * throw to a cache miss via `onRemoteError`). The artifact bytes are the
+ * local `<hash>.tar.zst` verbatim. See
+ * docs/design/native-cache-wire-2026-07.md.
+ */
+export interface RemoteCacheLayer {
+  /** Existence probe (drives the plan path's `--dry` remote prediction). */
+  has(hash: string): Promise<boolean>
+  /**
+   * Optional batch existence probe: given N hashes, return the subset stored
+   * remotely in ONE round-trip. Lets the prefetch pass collapse N per-hash
+   * network probes into one, then fetch only the hits. A remote that can't
+   * batch omits this method (or returns `null`) and the layer falls back to
+   * the per-hash path. Never throws for control flow — `null` means "no batch
+   * info; use per-hash".
+   */
+  hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  /** Fetch an artifact's bytes; `null` = miss. `durationMs` is the
+   *  producing task's duration when the wire carries it. */
+  get(hash: string): Promise<{ body: ArrayBuffer; durationMs: number | undefined } | null>
+  /** Store an artifact (fire-and-forget from LayeredCache's perspective). */
+  put(hash: string, body: ArrayBuffer | Uint8Array, meta: { durationMs: number }): Promise<void>
+}
 
 /**
  * Cap on concurrent background PUTs. Keeps a burst of cache misses from
@@ -90,7 +119,7 @@ export class LayeredCache implements CacheLayer {
 
   constructor(
     private readonly local: Cache,
-    private readonly remote: RemoteCache,
+    private readonly remote: RemoteCacheLayer,
     private readonly options: LayeredCacheOptions = {},
   ) {
     this.policy = options.policy ?? FULL_CACHE_POLICY
@@ -103,7 +132,43 @@ export class LayeredCache implements CacheLayer {
   async prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean> {
     // No-op when remote reads are off — there's nothing to warm from.
     if (!this.policy.remoteRead) return false
+    // The local-first skip lives in doPullFromRemote (the shared choke
+    // point): pullFromRemote registers the `inflight` entry SYNCHRONOUSLY,
+    // so a concurrent markRemoteAbsent can't clobber a pending pull — a
+    // guard done here (behind an async local.has) would reopen that race.
     return await this.pullFromRemote(hash, ctx)
+  }
+
+  /**
+   * Batch existence probe over the remote layer — the subset of `hashes`
+   * present remotely, in one round-trip, or `null` when the remote can't
+   * batch (no `hasMany`, reads disabled, or an error). The prefetch pass uses
+   * this to fetch only the hits and to pre-mark the misses (`markRemoteAbsent`)
+   * so their lazy `get` skips the network. Never throws — a batch failure
+   * degrades to "no batch info" and the caller falls back to per-hash.
+   */
+  async remoteHasMany(hashes: readonly string[]): Promise<Set<string> | null> {
+    if (!this.policy.remoteRead || this.remote.hasMany === undefined) return null
+    try {
+      return await this.remote.hasMany(hashes)
+    } catch (err) {
+      this.reportRemoteError(err)
+      return null
+    }
+  }
+
+  /**
+   * Record that the remote layer has NO artifact for each of `hashes` (from a
+   * batch probe), so a later `get`/`prefetch` short-circuits to a miss WITHOUT
+   * a network round-trip. Byte-for-byte equivalent to a background prefetch GET
+   * having resolved `false` into `inflight` — same at-most-once semantics, same
+   * point-in-time staleness window — but without spending the GET. Never
+   * overwrites an entry already in flight.
+   */
+  markRemoteAbsent(hashes: Iterable<string>): void {
+    for (const hash of hashes) {
+      if (!this.inflight.has(hash)) this.inflight.set(hash, Promise.resolve(false))
+    }
   }
 
   async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null> {
@@ -165,6 +230,16 @@ export class LayeredCache implements CacheLayer {
   }
 
   private async doPullFromRemote(hash: string, ctx?: CacheGetContext): Promise<boolean> {
+    // Local-first, mirroring get()/has(): if local ALREADY holds the artifact
+    // there is nothing to pull — skip the remote GET (a warm-local run would
+    // otherwise re-download every artifact it already has) and DON'T mark it
+    // `remoteSourced` (that would mislabel a purely-local warm hit as
+    // cache-hit-remote and inflate the remote hit-rate). Returning `true` is
+    // correct for a get() read-through too: "the artifact is in local" — the
+    // caller re-reads it, keeping whatever provenance it already had (local,
+    // or remote if a concurrent prefetch set it).
+    if ((await this.local.has(hash)) === 'local') return true
+
     let remoteResult
     try {
       remoteResult = await this.remote.get(hash)

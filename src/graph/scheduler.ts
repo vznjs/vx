@@ -12,6 +12,61 @@ export type TaskStatus =
   // aborted — not counted, not shown (the run is tearing down).
   | 'aborted'
 
+/**
+ * Cache-correctness verdict for a task under `vx run --verify` (Phase 1:
+ * determinism; Phase 2: input-completeness). Declared here (structurally)
+ * because `graph` can't import `orchestrator` where the verifier lives —
+ * same pattern as `inputComponents`. A pure side-channel: never hashed,
+ * never persisted in Phase 1/2.
+ */
+export type VerifyVerdict =
+  | { kind: 'proven-deterministic' }
+  /** Phase 2: input-completeness proved — the task read nothing outside its
+   *  declared inputs (from `--verify=inputs` when determinism wasn't also
+   *  requested; an `--verify=all` pass reports the stronger deterministic). */
+  | { kind: 'proven-complete' }
+  /** Re-ran; outputs differ from the cached ones. `changed` names the rels. */
+  | { kind: 'nondeterministic'; changed: readonly string[] }
+  /** Phase 2: read a workspace path outside the declared inputs — the declared
+   *  `cache.inputs` are incomplete, so a hit could serve stale bytes. `paths`
+   *  names the undeclared reads (workspace-relative; empty when the sandbox
+   *  denied structurally but strace wasn't available to name them). */
+  | { kind: 'undeclared-inputs'; paths: readonly string[] }
+  /** Diverged but the task is on `--verify-allow` — reported, not failed. */
+  | { kind: 'allowed-nondeterministic'; changed: readonly string[] }
+  /** The verify re-run exited non-zero / timed out (nondeterministic by
+   *  definition — identical inputs, different outcome). */
+  | { kind: 'rerun-failed'; exitCode: number }
+  /** Cacheable + executed but declares no outputs — nothing to replay. */
+  | { kind: 'no-outputs' }
+  /** Didn't execute (cache hit) / not cacheable / group / persistent. */
+  | { kind: 'not-verified' }
+
+/**
+ * Content fingerprint of a task's output tree, computed under a `--verify*`
+ * mode on the executed (miss) path. Never hashed into any key; pure telemetry
+ * side-channel for the cross-machine diff (a serve pairs fingerprints for the
+ * SAME cache key across platforms and names diverging outputs). Declared here
+ * (structurally) because `graph` can't import `orchestrator` — the
+ * `VerifyVerdict` pattern. See docs/design/verify-cross-machine-2026-07.md.
+ */
+export interface OutputFingerprint {
+  /** Roll-up: xxh3hex over the sorted (key, hash) pairs, folded as
+   *  `key \0 hash \n` (\0 boundaries — the v18 lesson). Always present;
+   *  divergence DETECTION never depends on the per-file map. */
+  tree: string
+  /** Total files in the tree (pre-truncation). */
+  fileCount: number
+  /** Per-file map as sorted [outputKey, xxh3hex] pairs, capped at
+   *  FP_MAX_FILES (500). Deterministic truncation — sorted by key,
+   *  first N — so two machines' truncated maps cover the same subset
+   *  and partial diffs still name real rels. */
+  files?: ReadonlyArray<readonly [string, string]>
+  /** Set when `files` was truncated to the cap (or dropped by the
+   *  sink's run budget). */
+  truncated?: boolean
+}
+
 export interface TaskOutcome {
   node: TaskNode
   status: TaskStatus
@@ -40,6 +95,13 @@ export interface TaskOutcome {
    */
   restored?: boolean
   /**
+   * How many times the task executed this run, when `exec.retries` /
+   * `--retry` re-ran failed attempts. Set only when > 1 — a plain
+   * single-attempt run carries nothing. Not persisted; telemetry-side
+   * flaky detection reads it off the outcome stream.
+   */
+  attempts?: number
+  /**
    * Count of sandbox violations captured during this task's exec.
    * Populated only when `--sandbox` was set and the task is cached.
    * Non-zero values mean the task read files outside its declared
@@ -52,9 +114,34 @@ export interface TaskOutcome {
    * inline in the task's block instead of as loose status output.
    */
   sandboxViolationLines?: string[]
+  /**
+   * Cache-correctness verdict under `vx run --verify`. Set only in verify
+   * mode; a plain run leaves it undefined. Pure side-channel (never hashed).
+   */
+  verify?: VerifyVerdict
+  /**
+   * Output-tree fingerprint under a fingerprinting `--verify*` mode
+   * (`--verify` / `=all` / `=fingerprint`), executed + cacheable +
+   * output-declaring tasks only. A plain run leaves it undefined.
+   */
+  outputFp?: OutputFingerprint
 }
 
 export type ContinueMode = 'never' | 'deps-ok' | 'always'
+
+/**
+ * Resolved per-task resource reservation, in absolute units (cpu may be
+ * fractional; mem is bytes). Declared here (structurally) because `graph`
+ * can't import `orchestrator`, where the resolver lives — same pattern as
+ * `VerifyVerdict`. A `0` axis means "reserve nothing, run freely": the
+ * task is exempt from that axis entirely (needs no headroom, holds none).
+ */
+export interface ResourceCost {
+  cpu: number
+  mem: number
+}
+
+export const ZERO_COST: ResourceCost = { cpu: 0, mem: 0 }
 
 export interface ScheduleOptions {
   nodes: Map<string, TaskNode>
@@ -105,6 +192,18 @@ export interface ScheduleOptions {
    * second cache.get. When undefined/empty, behavior is byte-identical.
    */
   restoreTier?: ReadonlySet<string>
+  /**
+   * Resolved per-task resource reservations (`exec.resources`, resolved
+   * by the orchestrator against the run's budgets). An absent id means
+   * zero cost; undefined/empty means no task opted in — the scheduler
+   * takes the legacy path byte-identically. Admission control only —
+   * nothing is enforced on the child process.
+   */
+  resourceCosts?: ReadonlyMap<string, ResourceCost>
+  /** CPU budget reservations pack against. Defaults to `concurrency`. */
+  cpuBudget?: number
+  /** Memory budget (bytes). Defaults to Infinity (axis off). */
+  memBudget?: number
 }
 
 /**
@@ -197,6 +296,81 @@ export function computeReverseDepCount(nodes: Map<string, TaskNode>): Map<string
  * order produced by `buildTaskGraph`). Minimizes worker idle at the
  * end of the run.
  */
+/**
+ * A binary max-heap of ready task ids, ordered by (priority DESC, enqueue-seq
+ * ASC) so `pop()` returns the highest-priority task and equal-priority ties
+ * break in enqueue order — the exact contract the prior sorted-array kept, but
+ * O(log R) push/pop instead of O(R) splice/shift. On a wide ready frontier (the
+ * 1000-package startup enqueue, or a fan-out completion), that turns the
+ * queue's O(R²) maintenance into O(R log R).
+ */
+class ReadyHeap {
+  private readonly ids: string[] = []
+  private readonly seq: number[] = []
+  private next = 0
+  constructor(private readonly priority: ReadonlyMap<string, number>) {}
+  get size(): number {
+    return this.ids.length
+  }
+  /** True if slot i outranks slot j (higher priority, or equal priority + earlier seq). */
+  private higher(i: number, j: number): boolean {
+    const pi = this.priority.get(this.ids[i]!) ?? 0
+    const pj = this.priority.get(this.ids[j]!) ?? 0
+    return pi !== pj ? pi > pj : this.seq[i]! < this.seq[j]!
+  }
+  private swap(i: number, j: number): void {
+    const ti = this.ids[i]!
+    this.ids[i] = this.ids[j]!
+    this.ids[j] = ti
+    const si = this.seq[i]!
+    this.seq[i] = this.seq[j]!
+    this.seq[j] = si
+  }
+  /**
+   * `seq` defaults to a fresh monotonic counter. A parked-then-repushed
+   * task passes its ORIGINAL seq back in so FIFO-among-equals survives
+   * the round trip (a fresh seq would demote it behind later arrivals).
+   */
+  push(id: string, seq: number = this.next++): void {
+    this.ids.push(id)
+    this.seq.push(seq)
+    let i = this.ids.length - 1
+    while (i > 0) {
+      const parent = (i - 1) >> 1
+      if (!this.higher(i, parent)) break
+      this.swap(i, parent)
+      i = parent
+    }
+  }
+  /** The head's enqueue seq (capture before `pop` for a possible repush). */
+  peekSeq(): number {
+    return this.seq[0] ?? -1
+  }
+  pop(): string | undefined {
+    const n = this.ids.length
+    if (n === 0) return undefined
+    const top = this.ids[0]!
+    const lastId = this.ids.pop()!
+    const lastSeq = this.seq.pop()!
+    if (n > 1) {
+      this.ids[0] = lastId
+      this.seq[0] = lastSeq
+      let i = 0
+      for (;;) {
+        const l = 2 * i + 1
+        const r = 2 * i + 2
+        let best = i
+        if (l < this.ids.length && this.higher(l, best)) best = l
+        if (r < this.ids.length && this.higher(r, best)) best = r
+        if (best === i) break
+        this.swap(i, best)
+        i = best
+      }
+    }
+    return top
+  }
+}
+
 export async function runGraph(options: ScheduleOptions): Promise<Map<string, TaskOutcome>> {
   const { nodes, concurrency, execute, onStart, onFinish } = options
   const continueMode = options.continueMode ?? 'deps-ok'
@@ -231,45 +405,112 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     : baseline
 
   // Two ready queues — exec-tier (cache misses + unstable tasks) and
-  // restore-tier (confirmed stable local hits). Both are kept sorted on
-  // insert (descending by priority); equal-priority items insert AFTER
-  // existing entries so ties break in graph-insertion order — same
-  // contract the prior `scheduleOrder` sort provided via stable sort.
-  // The tick loop drains execReady FIRST, so misses own the worker pool
-  // and restores only backfill idle capacity (or run when an exec is
-  // blocked on a restorable dep and nothing else is runnable).
+  // restore-tier (confirmed stable local hits). Each is a max-heap keyed by
+  // (priority DESC, enqueue-seq ASC), so the highest-priority task pops first
+  // and equal-priority ties break in graph-insertion order — same contract the
+  // prior `scheduleOrder` sort provided via stable sort. The tick loop drains
+  // execReady FIRST, so misses own the worker pool and restores only backfill
+  // idle capacity (or run when an exec is blocked on a restorable dep and
+  // nothing else is runnable).
   const restoreTier = options.restoreTier
-  const execReady: string[] = []
-  const restoreReady: string[] = []
-  const insertSorted = (queue: string[], id: string): void => {
-    const p = priority.get(id) ?? 0
-    let lo = 0
-    let hi = queue.length
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1
-      if ((priority.get(queue[mid]!) ?? 0) >= p) lo = mid + 1
-      else hi = mid
-    }
-    queue.splice(lo, 0, id)
-  }
+  const execReady = new ReadyHeap(priority)
+  const restoreReady = new ReadyHeap(priority)
   // A restore-tier task is dep-independent (a stable hit's restore needs
   // none of its deps' output), so it's ready immediately; its `pending`
   // decrements still happen (in finishOne) but never re-enqueue it.
   // Everything else enqueues on the exec-tier the moment its deps
   // complete.
   for (const node of nodes.values()) {
-    if (restoreTier?.has(node.id)) insertSorted(restoreReady, node.id)
-    else if (node.deps.length === 0) insertSorted(execReady, node.id)
+    if (restoreTier?.has(node.id)) restoreReady.push(node.id)
+    else if (node.deps.length === 0) execReady.push(node.id)
   }
 
   let active = 0
   let resolved = false
 
+  // Resource admission (2-D bin packing over the count limit). Inactive
+  // (no task opted in) → the tick loop short-circuits before any of this
+  // and behaves byte-identically to the count-only scheduler.
+  const costs = options.resourceCosts
+  const resourcesActive = costs !== undefined && costs.size > 0
+  const cpuBudget = options.cpuBudget ?? concurrency
+  const memBudget = options.memBudget ?? Infinity
+  // Reservations are FLOAT sums (fractional cpus, and percent-of-budget
+  // resolves to non-representable values like `0.30000000000000004`), so
+  // add/release cycles leave ~1e-17 residue instead of an exact 0. Two
+  // guards keep that residue from corrupting admission:
+  //   - the solo-clamp gate ("is the axis idle?") reads INTEGER holder
+  //     counts, never the float sum === 0 — a residue would otherwise
+  //     park an over-budget task forever (active===0, no future tick =
+  //     a silent hang / exit-0-without-running);
+  //   - `reserved` snaps back to EXACT 0 whenever its holder count hits
+  //     0, so residue can't accumulate across busy periods.
+  // The within-budget comparison also carries a tiny relative epsilon so
+  // an exact-fill (`reserved + cost == budget`) can't mis-round into a
+  // spurious block. Admission is a hint, so the epsilon's sub-ulp
+  // over-admission is harmless.
+  let reservedCpu = 0
+  let reservedMem = 0
+  let holdersCpu = 0
+  let holdersMem = 0
+
+  // A restore-tier task is a confirmed local cache hit: its "execution"
+  // is a cheap tar extract, not the task's real work — it reserves ZERO
+  // regardless of what the config declares, so it never holds budget
+  // against a real executor (and never parks).
+  const costOf = (id: string): ResourceCost =>
+    options.restoreTier?.has(id) ? ZERO_COST : (costs?.get(id) ?? ZERO_COST)
+
+  // Zero never blocks; a within-budget cost needs headroom (with an
+  // exact-fill epsilon); an over-budget cost can never have headroom, so
+  // it solo-clamps: admitted only when the axis is idle (no holders — an
+  // idle pool always admits at least one ready task, no deadlock).
+  const fitsAxis = (cost: number, reserved: number, holders: number, budget: number): boolean =>
+    cost === 0 ? true : cost <= budget ? reserved + cost <= budget + budget * 1e-9 : holders === 0
+
+  const fits = (id: string): boolean => {
+    const c = costOf(id)
+    return (
+      fitsAxis(c.cpu, reservedCpu, holdersCpu, cpuBudget) &&
+      fitsAxis(c.mem, reservedMem, holdersMem, memBudget)
+    )
+  }
+
+  // Reserve/release keep the float sum AND the integer holder count in
+  // lockstep; releasing the last holder on an axis snaps its sum to 0.
+  const reserve = (c: ResourceCost): void => {
+    if (c.cpu > 0) {
+      reservedCpu += c.cpu
+      holdersCpu++
+    }
+    if (c.mem > 0) {
+      reservedMem += c.mem
+      holdersMem++
+    }
+  }
+  const release = (c: ResourceCost): void => {
+    if (c.cpu > 0 && --holdersCpu === 0) reservedCpu = 0
+    else reservedCpu -= c.cpu
+    if (c.mem > 0 && --holdersMem === 0) reservedMem = 0
+    else reservedMem -= c.mem
+  }
+
   return new Promise<Map<string, TaskOutcome>>((resolve) => {
     const finishOne = (id: string, outcome: TaskOutcome): void => {
       if (continueMode === 'never' && outcome.status === 'failed') failFastTripped = true
       outcomes.set(id, outcome)
-      onFinish?.(outcome)
+      // Observer hook (the logger's taskComplete). Crash-isolated: a
+      // throwing observer must NOT break scheduling — it would otherwise
+      // skip the dependent-enqueue + tick below and hang the run. Same
+      // "observability never breaks a run" rule the telemetry/eventSink
+      // paths hold. Isolated here (not the completion arm) so a throw
+      // can't be mistaken for the task itself failing.
+      try {
+        onFinish?.(outcome)
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err)
+        process.stderr.write(`[vx] onFinish observer threw for ${id}: ${m}\n`)
+      }
       const ds = dependents.get(id)
       if (!ds) return
       for (const d of ds) {
@@ -277,61 +518,106 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         pending.set(d, rem)
         // Restore-tier dependents were already enqueued at startup (they
         // don't wait on deps); only re-enqueue an exec-tier dependent.
-        if (rem === 0 && !restoreTier?.has(d)) insertSorted(execReady, d)
+        if (rem === 0 && !restoreTier?.has(d)) execReady.push(d)
       }
     }
 
-    // Drain a worker slot: prefer an exec-tier task (misses own the
-    // pool); only when none is ready does a restore-tier task backfill.
-    const takeReady = (): string | undefined =>
-      execReady.length > 0 ? execReady.shift() : restoreReady.shift()
+    // True when the task would be finished as `skipped` without running
+    // (fail-fast tripped, or a failed/skipped upstream under
+    // continueMode !== 'always'). ONE predicate shared by the admission
+    // parker and the dispatch loop's skip branch — a would-skip task
+    // executes nothing, so it must never park on a resource fit (a
+    // too-big doomed task parking forever would hang the run).
+    //
+    // Restore-tier tasks BYPASS the dep check: their key is independent
+    // of any dep's success (pure-input transitive hashing), so a valid
+    // cached output is reported `cache-hit` even if a dep failed — and
+    // they're dep-independent, so they typically restore before a dep
+    // could fail anyway.
+    const willSkip = (id: string): boolean => {
+      if (failFastTripped) return true
+      if (restoreTier?.has(id)) return false
+      if (continueMode === 'always') return false
+      const node = nodes.get(id) as TaskNode
+      return node.deps.some((d) => {
+        const u = outcomes.get(d)
+        return u?.status === 'failed' || u?.status === 'skipped'
+      })
+    }
 
     const tick = (): void => {
       if (resolved) return
+      // Exec-tier tasks parked THIS tick on a failed resource fit.
+      // Within one synchronous tick `reserved` only increases (release
+      // happens in the async completion callbacks, which run a fresh
+      // tick), so a task that doesn't fit now cannot fit later in the
+      // same tick — parking it for the tick's remainder is exact, and
+      // each id pops at most once per tick (O(R log R)).
+      const parked: Array<[string, number]> = []
 
-      while (active < concurrency && (execReady.length > 0 || restoreReady.length > 0)) {
-        const id = takeReady() as string
+      // Highest-priority admissible task: exec tier first (misses own
+      // the pool), then restore tier. With no reservations declared this
+      // short-circuits to exactly the legacy takeReady. A would-skip
+      // task returns without a fit check (finishing it is free); restore
+      // tasks cost zero by construction, so they never park.
+      const takeFitting = (): string | undefined => {
+        while (execReady.size > 0) {
+          const seq = execReady.peekSeq()
+          const id = execReady.pop() as string
+          if (!resourcesActive || willSkip(id) || fits(id)) return id
+          parked.push([id, seq])
+        }
+        return restoreReady.pop()
+      }
+
+      while (active < concurrency) {
+        const id = takeFitting()
+        if (id === undefined) break // nothing ready is admissible right now
         const node = nodes.get(id) as TaskNode
-        const isRestore = restoreTier?.has(id) === true
 
-        // If any upstream failed/skipped, propagate skip synchronously
-        // without running. Skipped tasks still flow through this queue
-        // because dependents are pushed when `pending` hits 0 regardless
-        // of outcome — keeps the propagation logic in one place.
-        //
-        // Restore-tier tasks BYPASS this check: their key is independent
-        // of any dep's success (pure-input transitive hashing), so a
-        // valid cached output is reported `cache-hit` even if a dep
-        // failed — and they're dep-independent, so they typically
-        // restore before a dep could fail anyway.
-        //
         // For a restore-tier task running BEFORE its deps finish, the
         // `upstream` entries below can be undefined (the cast lies) —
         // the preProbed hit path in execute-task never reads them, and
         // nothing on the restore path may.
         const upstream = node.deps.map((d) => outcomes.get(d) as TaskOutcome)
-        if (failFastTripped) {
+
+        // If any upstream failed/skipped, propagate skip synchronously
+        // without running. Skipped tasks still flow through this queue
+        // because dependents are pushed when `pending` hits 0 regardless
+        // of outcome — keeps the propagation logic in one place.
+        if (willSkip(id)) {
           finishOne(id, { node, status: 'skipped', exitCode: 1, durationMs: 0 })
           continue
         }
-        if (!isRestore && continueMode !== 'always') {
-          const failedDep = upstream.find((u) => u.status === 'failed' || u.status === 'skipped')
-          if (failedDep) {
-            finishOne(id, { node, status: 'skipped', exitCode: 1, durationMs: 0 })
-            continue
-          }
-        }
 
         active++
-        onStart?.(node)
+        // Reserve on dispatch; capture the cost so the release in the
+        // completion callbacks is symmetric even if the maps change.
+        const cost = costOf(id)
+        reserve(cost)
+        // Crash-isolated observer hook — a throwing onStart must not abort
+        // the dispatch loop (it would strand the tick with reservations held).
+        try {
+          onStart?.(node)
+        } catch (err) {
+          const m = err instanceof Error ? err.message : String(err)
+          process.stderr.write(`[vx] onStart observer threw for ${id}: ${m}\n`)
+        }
 
-        execute(node, upstream)
-          .then((outcome) => {
+        // `.then(onFulfilled, onRejected)` — NOT `.then(f).catch(g)`. The
+        // rejection arm handles ONLY `execute()` rejecting; a throw from
+        // the fulfillment arm (finishOne / onFinish / tick) must NOT also
+        // run the rejection arm, or `active`/`reserved` release twice —
+        // and a double release drives `reserved` negative, permanently
+        // wedging the solo-clamp gate.
+        execute(node, upstream).then(
+          (outcome) => {
             active--
+            release(cost)
             finishOne(id, outcome)
             tick()
-          })
-          .catch((err: unknown) => {
+          },
+          (err: unknown) => {
             const message = err instanceof Error ? err.message : String(err)
             const outcome: TaskOutcome = {
               node,
@@ -340,6 +626,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               durationMs: 0,
             }
             active--
+            release(cost)
             finishOne(id, outcome)
             // Surface the error live; the outcome itself doesn't
             // carry captured stderr (that's the logger's job). A
@@ -353,8 +640,13 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               process.stderr.write(`[vx] internal error in ${id}: ${named}${message}\n`)
             }
             tick()
-          })
+          },
+        )
       }
+
+      // Repush parked ids with their ORIGINAL seqs — FIFO-among-equals
+      // is exactly preserved for the next tick's admission pass.
+      for (const [id, seq] of parked) execReady.push(id, seq)
 
       if (outcomes.size === nodes.size && active === 0) {
         resolved = true
@@ -366,7 +658,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   })
 }
 
-function mergePriorities(
+export function mergePriorities(
   baseline: ReadonlyMap<string, number>,
   overrides: ReadonlyMap<string, number>,
 ): ReadonlyMap<string, number> {

@@ -121,7 +121,7 @@ export class OtelSink implements TelemetrySink {
           startTimeUnixNano: startNano,
           endTimeUnixNano: nanos(record.ts),
           attributes: taskSpanAttributes(t),
-          status: { code: taskStatusCode(record.status) },
+          status: { code: taskStatusCode(t) },
         })
         return
       }

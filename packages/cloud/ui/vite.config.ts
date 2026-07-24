@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite'
-import react from '@vitejs/plugin-react'
+import solid from 'vite-plugin-solid'
+import unocss from 'unocss/vite'
 
 /**
  * Inline every JS chunk and CSS asset into index.html so the build emits a
@@ -30,30 +31,28 @@ function singleFile(): Plugin {
           delete bundle[name]
         }
       }
-      // Vite replaces __VITE_PRELOAD__ markers in JS chunks in a LATER
-      // generateBundle stage — after this plugin moved the code into the HTML
-      // asset, where that replacer never looks. With one inlined chunk there
-      // are no dep lists to preload, so the correct substitution is `void 0`
-      // (what Vite itself emits under inlineDynamicImports).
-      src = src.replace(/__VITE_PRELOAD__/g, 'void 0')
       html.source = src
     },
   }
 }
 
+// The platform the dev server proxies API calls to. The SPA's default origin
+// in dev is the page's own origin (the vite server), so proxying keeps every
+// request SAME-ORIGIN — the HttpOnly session cookie and the CSRF header ride
+// exactly like production, where the platform hosts the SPA itself. Without
+// this, a UI contributor's fetches went cross-origin to :4321 and credentialed
+// CORS (wildcard Allow-Origin, no Allow-Credentials) blocked the login flow.
+const DEV_API = process.env['VX_CLOUD_DEV_PROXY'] ?? 'http://localhost:4321'
+const proxied = ['/v1', '/health', '/mcp', '/events', '/stream']
+
 export default defineConfig({
-  plugins: [react(), singleFile()],
-  build: {
-    rollupOptions: {
-      // One chunk, no code-splitting: a dynamic import would otherwise emit
-      // Vite's __VITE_PRELOAD__ helper referencing chunk files this build
-      // inlines and deletes — throwing at runtime in the embedded SPA.
-      output: { inlineDynamicImports: true },
-    },
-  },
+  plugins: [unocss(), solid(), singleFile()],
   server: {
     port: 5290,
     strictPort: false,
+    proxy: Object.fromEntries(
+      proxied.map((path) => [path, { target: DEV_API, changeOrigin: true, ws: true }]),
+    ),
   },
   preview: {
     port: 5290,

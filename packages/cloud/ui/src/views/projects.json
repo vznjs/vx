@@ -1,0 +1,152 @@
+{
+  "data": {
+    "projects": "projectsAll",
+    "catalog": "catalog"
+  },
+  "spec": {
+    "type": "Page",
+    "props": {
+      "title": "Projects",
+      "subtitle": "The workspace catalog joined with run analytics — never-run projects included when the serve is colocated."
+    },
+    "children": [
+      {
+        "type": "Text",
+        "props": {
+          "text": {
+            "$computed": "text",
+            "args": {
+              "tpl": "The lock is stale for {n} project(s) — run vx lock to refreeze the catalog.",
+              "n": {
+                "$state": "/catalog/_staleCount"
+              }
+            }
+          },
+          "tone": "warn",
+          "class": "rounded-lg border border-warn/40 bg-warn/5 px-4 py-2.5"
+        },
+        "visible": {
+          "$state": "/catalog/_staleCount",
+          "gt": 0
+        }
+      },
+      {
+        "type": "Card",
+        "props": {
+          "noPad": true
+        },
+        "children": [
+          {
+            "type": "DataTable",
+            "props": {
+              "rows": {
+                "$computed": "joinProjects",
+                "args": {
+                  "rollups": {
+                    "$state": "/projects"
+                  },
+                  "catalog": {
+                    "$state": "/catalog"
+                  }
+                }
+              },
+              "status": {
+                "$state": "/projectsStatus"
+              },
+              "filter": true,
+              "filterFrom": [
+                "project",
+                "dir"
+              ],
+              "filterPlaceholder": "filter…",
+              "initialSort": {
+                "key": "totalDurationMs",
+                "desc": true
+              },
+              "rowHref": "/projects/{project}",
+              "emptyTitle": "No projects discovered",
+              "emptyCmd": "vx run <task>",
+              "columns": [
+                {
+                  "key": "project",
+                  "label": "Project",
+                  "sortable": true,
+                  "kind": "dots",
+                  "dots": [
+                    {
+                      "field": "project",
+                      "map": "palette"
+                    }
+                  ]
+                },
+                {
+                  "key": "taskCount",
+                  "label": "Tasks",
+                  "align": "right",
+                  "sortable": true,
+                  "baseTone": "faint"
+                },
+                {
+                  "key": "runs",
+                  "label": "Runs",
+                  "align": "right",
+                  "sortable": true
+                },
+                {
+                  "key": "failures",
+                  "label": "Failures",
+                  "align": "right",
+                  "sortable": true,
+                  "tone": {
+                    "gt": 0,
+                    "tone": "danger"
+                  }
+                },
+                {
+                  "key": "hitRate",
+                  "label": "Hit %",
+                  "align": "right",
+                  "sortable": true,
+                  "kind": "percent0",
+                  "baseTone": "cache"
+                },
+                {
+                  "key": "totalDurationMs",
+                  "label": "Total time",
+                  "align": "right",
+                  "sortable": true,
+                  "kind": "bar",
+                  "format": "duration",
+                  "colorFrom": "project"
+                },
+                {
+                  "key": "estimatedTimeSavedMs",
+                  "label": "Saved",
+                  "align": "right",
+                  "sortable": true,
+                  "kind": "duration",
+                  "baseTone": "success"
+                },
+                {
+                  "key": "cacheBytes",
+                  "label": "Cache",
+                  "align": "right",
+                  "sortable": true,
+                  "kind": "bytes"
+                },
+                {
+                  "key": "lastRunAt",
+                  "label": "Last run",
+                  "align": "right",
+                  "sortable": true,
+                  "kind": "relativeTime",
+                  "baseTone": "faint"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

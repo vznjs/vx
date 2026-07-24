@@ -75,10 +75,10 @@ src/
     execute-task.ts     # per-task execution (probe/preProbed → spawn → save)
     task-hash.ts        # cache-key derivation (computeTaskHash & co.)
     upstream.ts         # filter upstream hashes for cache key
+    resources.ts        # exec.resources → absolute per-task admission costs
     stable-keys.ts      # shared stable-key derivation (prefetch + shortcircuit)
     local-shortcircuit.ts # restore-ahead classify (two-tier scheduler feed)
     remote-prefetch.ts  # background remote GETs (LayeredCache runs only)
-    remote-cache-setup.ts # VX_REMOTE_CACHE_* env → LayeredCache
     events.ts           # run event bus + serializable WireEvent contract
     plugin.ts           # VxPlugin interface + installPlugins
     plugin-host.ts      # eventSink wiring + end-of-run teardown/flush
@@ -102,9 +102,10 @@ src/
     lockfile.ts         # vx-lock.json freeze/trust/audit
   graph/                # task graph + scheduling
     index.ts task-graph.ts dependency-spec.ts
-    scheduler.ts        # two-tier parallel topo executor (exec + restore queues)
-  cache/                # local + remote cache cluster
-    index.ts cache.ts layered-cache.ts remote-cache.ts inputs.ts tar.ts
+    scheduler.ts        # two-tier parallel topo executor (exec + restore queues,
+                        # 2-D resource admission over exec.resources)
+  cache/                # local cache + the RemoteCacheLayer seam
+    index.ts cache.ts layered-cache.ts inputs.ts tar.ts
     cas-backend.ts / digest.ts # pluggable CAS seam (internal, artifact-store roadmap)
   exec/                 # per-task execution primitives
     index.ts runner.ts env.ts sandbox-runtime.ts
@@ -185,7 +186,4057 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 6. **Project boundaries are hard.** A project's globs never reach into
    another project's dir.
 
+## Dashboard product lens (owner directive, 2026-07-10)
+
+**The UI is built from a SINGLE DEV's perspective** — not an
+org/manager analytics console. Every surface answers one of the dev's
+own questions, in their flow order:
+
+1. **See it run** — spawn/watch live runs (the Runs landing).
+2. **Dig into the projects they own** — project drill-ins with their
+   tasks and history.
+3. **Task analysis: did MY performance improve or decrease?** — per
+   task/project over-time trend, not just workspace-wide aggregates.
+4. **Identify flaky tests** — confirmed/inferred flakiness with the
+   concrete fix.
+5. **Easy debug access** — from any failure, ONE click to the run's
+   logs and the task's artifacts.
+
+When adding a dashboard feature, ask "which of these five does it
+serve, and how many clicks from the dev's entry point?" — a feature
+serving none of them is probably org-analytics scope creep.
+
 ## Decision log
+
+- **2026-07-19**: **The recurring ~40%-of-runs cloud-CI flake ROOT-FIXED — an
+  advisory-lock KEY COLLISION deadlocked the first `/v1/auth/register` against
+  the boot-time index build** (the "disjoint agents-e2e/server flake" documented
+  three times this week as varying victims — `agents-e2e reassign`, then
+  `tenant-isolation + CSWSH + placement` — always in the real-server e2e class).
+  NOT a timing flake: pulling the actual CI job log showed all victims fail
+  IDENTICALLY at ~1.1-1.3s with `PostgresError: deadlock detected` →
+  `TypeError: null is not an object (evaluating .exec(set-cookie))` — every
+  `bootPlatform` fetches `/v1/auth/register`, which 500'd (no `Set-Cookie`), so
+  the cookie regex threw and the whole test failed. **Reproduced locally** (pg
+  installed) by looping empty-db `startServer` + immediate register under 8 CPU
+  hogs → deadlock within 25 iters, with the decisive `detail`: `Process A waits
+for ExclusiveLock on advisory lock [_,_,1987601154,1]; blocked by B. Process B
+waits for ShareLock on virtual transaction <A's xact>; blocked by A.` —
+  `1987601154 = 0x76786302`. **The bug:** `INDEX_LOCK_KEY` (added in the
+  2026-07-16 CONCURRENTLY-index pass) was `0x76786302`, IDENTICAL to auth's
+  `BOOTSTRAP_LOCK_KEY = 0x76786302` (the migration key is `…01`). So the
+  register xact holds its `pg_advisory_xact_lock(0x76786302)` while
+  `ensureIndexes` (fired `void` right after boot) holds the same key via
+  `pg_try_advisory_lock` and its `CREATE INDEX CONCURRENTLY` phase-2 waits on
+  register's open xact → a true cycle Postgres breaks by killing register. Two
+  SILENT bugs rode the same collision: a concurrent register made `ensureIndexes`
+  falsely log "another replica holds the lock — skipped" (it was the LOCAL
+  register), and the two unrelated subsystems were needlessly mutually excluded.
+  **The fix (one char):** `INDEX_LOCK_KEY = 0x76786303`, distinct from both
+  siblings. Verified: 40/40 registers succeed under the same 8-hog stress that
+  deadlocked before (differential: revert → deadlock at iter 20); the 3
+  previously-failing e2e (server tenant-isolation + CSWSH + agents-e2e placement)
+  pass together; db-indexes 10 pass. **Pinned deterministically** (not the flaky
+  e2e): a new `advisory-lock key namespace` unit test asserts all three keys
+  (`MIGRATION`/`BOOTSTRAP`/`INDEX`) are pairwise distinct, and the pre-existing
+  `INDEX_LOCK_KEY` pin — which only checked distinctness from MIGRATION, the gap
+  that let `…02` through — now checks BOTH siblings; `BOOTSTRAP_LOCK_KEY`
+  exported solely for the pin. NO CACHE/SCHEMA/wire/migration bump (an advisory
+  key is runtime-only, never persisted). **Process lessons:** (1) a red main is
+  not always a "flake" — pull the failing job's ACTUAL error before filing it as
+  known-flaky; three prior entries mislabeled a real deadlock as a
+  contention/pg-slot flake because I only read the summary line, not the stack.
+  (2) The just-pushed `ce937b3`'s core CI will red on lint.oxfmt: I ran the green
+  gate BEFORE adding its CLAUDE.md entry, and dir-mode `oxfmt --check .` scans
+  CLAUDE.md (a wrapped inline-code span needed de-indenting) — this commit
+  repairs it. ALWAYS re-run the full gate AFTER the last edit, including
+  CLAUDE.md.
+
+- **2026-07-19**: **Two timeout-path defects fixed — a HIGH silently-green
+  cache-corruption + a MEDIUM hang, both from a graceful/ignoring SIGTERM
+  handler** (a repro-mandated hostile review of the exec/runner + execute-task
+  timeout path — the one weak spot; everything else on the path REFUTED). The
+  timeout mechanism SIGTERMs a child once (`armTimeout`) and awaits
+  `proc.exited`, then execute-task classifies the outcome by the child's exit
+  code. TWO real failures when the child intercepts SIGTERM: **(1) HIGH —
+  silently-green cache corruption.** A task using the common graceful-shutdown
+  pattern `trap 'exit 0' TERM` exits **0** when the timeout SIGTERM fires — so
+  the timed-out task was classified `success`, its PARTIAL outputs were CACHED,
+  and every later run replayed the partial artifact as a green `cache-hit`
+  FOREVER (the run even reported green). Reproduced deterministically:
+  `trap 'exit 0' TERM; echo PARTIAL > out.txt; sleep 30 & wait; echo COMPLETE`
+  with `timeout: 300` → `out.txt` = "PARTIAL" cached, COMPLETE never written,
+  next same-input run cache-hits the partial. **The load-bearing detail** — the
+  child must interrupt cleanly: `sleep 30 & wait` (dash interrupts `wait` on a
+  trapped signal → exits 0 promptly), whereas foreground `sleep 30` DEFERS the
+  trap during the sleep so the child rides the SIGKILL escalation to 137 (which
+  masks the classification bug — the first repro cut was non-discriminating for
+  exactly this reason; verified the fixed test FAILS `Expected false, Received
+true` without fix #1). Fix (`execute-task.ts runAttempt`): a fired timeout
+  forces a non-zero classification — `if (res.timedOut && code === 0) code =
+signalExitCode('SIGTERM')` (143). A genuinely-killed child already reports
+  143, so this only rewrites the trap-exit-0 case; it matches the
+  `--verify && !result.timedOut` guard (a timeout is a real, retryable failure,
+  never a determinism verdict) and the existing "timed out ⇒ not cached" gate
+  now actually bites. **(2) MEDIUM — non-binding timeout / hang.** A task using
+  `trap '' TERM` (ignore SIGTERM) swallowed the one-shot timeout SIGTERM, so
+  `await proc.exited` waited out the child's natural exit (`sleep 10`, or
+  FOREVER for a truly-wedged child) — there is no run-level timeout, so a
+  wedged child hangs the whole run. Fix (`runner.ts armTimeout`): escalate to
+  SIGKILL after a `TIMEOUT_SIGKILL_GRACE_MS = 2000` grace (mirrors the
+  end-of-run persistent-shutdown escalation), the kill timer unref'd + cleared
+  in `clear()` so it never delays CLI exit. Pinned: a `trap '' TERM; sleep 10`
+  task with `timeout: 250` now completes `failed` in < 6s (bounded by
+  timeout + grace), not ~10s. Both fixes compose (fix #2 guarantees the child
+  dies; fix #1 handles the trap-exit-0 exit code). NO CACHE_VERSION/SCHEMA/wire
+  bump — key derivation + artifact bytes untouched; only the classification of
+  an already-timed-out task and the kill escalation changed (a buggy config that
+  cached a partial artifact self-heals: the corrupt entry's key is unchanged but
+  the task now fails instead of hitting → re-run → never a wrong hit). Verified:
+  task-timeout 17 pass (both new pins differential-confirmed), core 1278 pass,
+  lint (oxlint+tsgolint) + oxfmt 0. **Process note (the oxfmt-per-file trap):**
+  `oxfmt --check <explicit-file>` does NOT apply the repo `.oxfmtrc` the way the
+  CI command `oxfmt --check .` (dir mode) does, so per-file checks give FALSE
+  passes — a prior fix (`3b5a623`) redded core CI on exactly this. ALWAYS run
+  the real gate `bun src/bin.ts run lint --force` (dir-mode oxfmt) before push,
+  never a per-file oxfmt.
+
+- **2026-07-19**: **Remote prefetch skips the GET when local already has the
+  artifact — a MEDIUM redundant-download + racy provenance-mislabel fixed** (the
+  one CONFIRMED defect from a repro-mandated hostile review of the REMOTE cache
+  path — LayeredCache + remote-prefetch + native-cache client; complementing the
+  same-day LOCAL-path review, everything else REFUTED). **The bug
+  (`layered-cache.ts`):** `get()` and `has()` both check LOCAL first, but
+  `prefetch()` → `pullFromRemote` → `doPullFromRemote` called `remote.get()`
+  UNCONDITIONALLY. So on a warm-LOCAL run against a configured remote, every
+  stable+remote-present task RE-DOWNLOADED its full artifact (a 1000-task warm
+  monorepo = 1000 redundant downloads, defeating the local cache the download
+  exists to avoid) AND `remoteSourced.add` flipped its provenance — a RACY
+  mislabel (whether the prefetch's ingest beats the task's own local `get`) that
+  reports a purely-local hit as `cache-hit-remote`, inflating `hitRemoteCount` +
+  the "did the remote cache save me work?" dashboard signal so identical warm
+  runs report different local/remote splits. Not wrong BYTES (content-addressed →
+  identical), hence MEDIUM. **The fix:** a local-first skip in `doPullFromRemote`
+  (the shared choke point) — `if (await local.has(hash) === 'local') return true`
+  BEFORE the remote GET, mirroring `get()`/`has()`; returns `true` ("the artifact
+  is in local") WITHOUT marking `remoteSourced`, so a warm-local prefetch fires
+  no GET and keeps provenance local, and a get() read-through that finds local
+  already present (a concurrent-ingest race) still returns the hit correctly.
+  **Placement matters:** the first cut put the check in `prefetch()` itself, but
+  the added `await local.has` before `pullFromRemote` delayed the SYNCHRONOUS
+  `inflight` registration and reopened the `markRemoteAbsent`-clobbers-a-pending-
+  pull race (a pinned invariant) — moving it into `doPullFromRemote` (reached via
+  `pullFromRemote`, which registers `inflight` synchronously) keeps the invariant
+  intact. NO CACHE_VERSION/wire bump (only WHEN a remote GET fires; keys +
+  artifacts untouched). **Refuted by the reviewer (executed repros):** the remote
+  path is STRUCTURALLY immune to the stale-hit class the same-day local fix
+  addressed (under a LayeredCache `shouldShortCircuit` is false → no preProbed →
+  execute-task always recomputes the key with the full upstream; the transitive
+  stable-keys change only trims which tasks prefetch) — re-verified with the exact
+  buggy shape on the remote path (no stale hit); every remote error degrades to a
+  miss (never fails a run); at-most-once GET (inflight dedup); no
+  ingest-into-closing-DB; NativeCacheClient drops bearer+scope on a cross-origin
+  redirect (protocol-relative + `file://` probed), digest-verifies, bounds
+  downloads. Pinned by a warm-local prefetch test in `tests/layered-cache.test.ts`
+  (buggy: 1 redundant GET + source=remote; fixed: 0 GET + source=local) with the
+  markRemoteAbsent-no-clobber invariant still green. Verified: layered-cache 24
+  pass, core 1276 pass, lint (oxlint+tsgolint) + oxfmt 0.
+
+- **2026-07-19**: **Stale LOCAL cache-hit fixed — a `workspaceFiles` consumer
+  reaching into a dependency's project output was misclassified "stable" and
+  restore-tiered ahead of its regenerating upstream** (the one CONFIRMED defect
+  from a repro-mandated hostile review of the core execution path — scheduler +
+  execute-task + task-hash + cache + local-shortcircuit; everything else
+  REFUTED). **The bug (`stable-keys.ts dependsOnSiblingOutputs`):** it marked a
+  task's key preliminary only for (a) a same-project dep declaring
+  `outputs.files`, or (b) a `workspaceFiles`-reading task whose dep declared
+  `outputs.workspaceFiles` — it NEVER considered a dep's `outputs.files`. But
+  `inputs.workspaceFiles` globs ignore project boundaries and reach into ANY
+  project's dir, so a consumer reading `packages/pkg-a/gen/**` reads pkg-a's
+  PROJECT output (`outputs.files: ['gen/**']`). That dependency was invisible to
+  the check → the consumer classified STABLE → its key derived up-front (before
+  the upstream ran) → restore-tier eligible, restoring stale bytes keyed off the
+  upstream's not-yet-regenerated output. Reproduced deterministically: pkg-b
+  reading pkg-a's gen via a ws-glob + decoupling the upstream hash fold
+  (`cache.inputs.tasks: []`, a documented content-invalidation pattern) →
+  `cache-hit/v1` after pkg-a's source changed to v2. **The load-bearing detail:**
+  execute-task reuses a `preProbed` hash WITHOUT recomputing (the up-front key is
+  authoritative for a restore-tier task whose live upstream is incomplete), so a
+  preliminary key in `preProbed` is itself a stale-hit vector — the ONLY correct
+  fix is to mark the task UNSTABLE (excluded from `preProbed` → lazy recompute in
+  execute), NOT merely exclude it from the restore tier (the graph-wide
+  `anyWorkspaceOutputs` gate only touches the restore tier, leaving preProbed
+  reuse exposed). **The fix:** `deriveStableKeys` now accumulates, per node in
+  topo order, the TRANSITIVE-upstream output producers — `outputProjects`
+  (projects declaring `outputs.files` upstream) plus a `wsOutputUpstream` boolean
+  (`outputs.workspaceFiles` upstream) — and `dependsOnSiblingOutputs` consumes
+  them: unstable if a same-project producer is upstream (project-relative reach)
+  OR the task reads `workspaceFiles` and ANY output producer is upstream
+  (boundary-free reach). Transitive, so a producer reached through a no-output
+  intermediate is caught too — closing the direct case AND both transitive holes
+  (ws-reads-files, same-project-through-another-project) the earlier
+  direct-dep-only check missed. **Scope:** LOCAL-cache only (gated on
+  `shouldShortCircuit`, false under a LayeredCache — remote runs never form the
+  restore tier); the common-case optimization is preserved (a cross-project
+  `outputs.files` producer whose outputs a project-relative reader can't reach
+  stays STABLE — pinned by the existing restore-tier control). **NO
+  CACHE_VERSION bump:** the fix changes only the CLASSIFICATION (which tasks are
+  restore-tier eligible), never key derivation or artifact bytes; the affected
+  buggy configs change keys only for themselves and are self-healing (new key →
+  miss → re-run → re-cache, never a wrong hit). **Refuted by executed repros
+  (held):** output-cleaning `..` data loss (loader rejects `..` segments),
+  scheduler admission hang / skip-while-exiting-0 / reservation leak
+  (integer-holder-count solo-clamp, snap-to-exact-0, park/repush FIFO, willSkip
+  short-circuit), dangling-dep hang, retry-caches-wrong-attempt, timeout-vs-SIGINT
+  classification, in-flight dedup, restore-tier skip-restore integrity,
+  same-project direct codegen. Pinned by a deterministic classification test in
+  `tests/local-shortcircuit.test.ts` (buggy: the consumer is preProbed; fixed:
+  unstable, with a stable control sibling). Verified: local-shortcircuit 9 pass,
+  core 1269 pass, lint (oxlint+tsgolint) + oxfmt 0. **Process note:** the fix
+  commit's CI redded on a DISJOINT flake — the core `lint · format · test` job
+  PASSED; only `vx-cloud tests` failed, on `agents-e2e` "killing an agent
+  mid-task reassigns" (a real-subprocess/WS/pg timing e2e) failing FAST (1148ms,
+  not the 120s timeout — a setup/resource hiccup, the documented pg-slot flake
+  class, not a reassignment regression). `packages/cloud` is byte-identical to
+  the prior green commit `53c3a5c`, so the same cloud code passed there and
+  flaked here — proving the red is not this core-only diff. Follow-up commit adds
+  a direct classification-matrix unit suite (`tests/stable-keys.test.ts`) pinning
+  `dependsOnSiblingOutputs` across the transitive + no-over-mark cases the e2e
+  doesn't reach, and re-triggers CI.
+
+- **2026-07-19**: **Harness-level guard closes the cross-file `process.chdir`
+  cwd-leak flake class — a `--preload` global cwd-restore afterEach** (follow-up
+  to the 2026-07-18 watch-flake root-fix; empirically resolves that entry's open
+  question about cross-file cwd sharing). Confirmed in an isolated scratchpad
+  (a shared append-only file log to capture REAL execution order, since Bun's
+  console output is reordered per test): **Bun runs every test file SEQUENTIALLY
+  in ONE process and does NOT restore `process.cwd()` at the file boundary** — a
+  file that `process.chdir`s into a temp dir and doesn't restore leaks that cwd
+  into the NEXT file (file 2 read `sub1`, stable over 3 runs). Two corrections to
+  the prior note: (a) the "concurrently-run" wording was imprecise — it's
+  sequential-shared-process, not concurrent; (b) the ACTUAL watch flake was the
+  ORPHANED LOOP running `git ls-files` against its deleted explicit-cwd
+  workspaceRoot (fixed 2026-07-18), NOT a cwd-leak across files — the leak class
+  is a SEPARATE, latent concern. Every chdir'ing suite (2 describes in
+  `cli.test.ts`, cache-prune, `output-flow.test.ts`) already restores `origCwd`
+  BEFORE its `rm` in a throw-safe afterEach, so the suite was already
+  induction-safe per file. This adds one harness-level layer so the class is
+  STRUCTURALLY impossible for future test authors: new `tests/setup.ts` registers
+  a global `afterEach` that restores cwd to the root, and the `test` task command
+  gains `--preload ./tests/setup.ts` (scoped to the vx-driven path CI runs — NO
+  bunfig, avoiding the documented `[test] timeout` caution and any cloud-package
+  coupling). The restore is a no-op on the normal path (cwd already at root), so
+  it costs nothing when suites behave; it only bites a suite that forgets to
+  restore. Verified: the preload flips the scratchpad leak to no-leak, core suite
+  1270 pass through the preloaded command, lint + oxfmt clean, lock regenerated
+  (only the test command + its configHash changed). `grep` confirms only
+  `cli.test.ts` + `output-flow.test.ts` chdir; `packages/**/tests` never do.
+  Test-infra only, no product change, no CACHE/SCHEMA/wire bump.
+
+- **2026-07-18**: **The recurring `vx watch` e2e flake ROOT-FIXED — a slow re-run
+  under load no longer orphans the loop into a deleted cwd** (the documented
+  "cwd race" that has redded CI intermittently; it redded `de7bad2` even though
+  that commit was cloud-only — the core `test` task's watch e2e in
+  `tests/cli.test.ts` timed out, the `vx-cloud tests` job passed, proving the
+  failure was disjoint from the diff). **Root cause traced:** under heavy
+  full-suite load the watch cycle (spawn plus git enumeration plus the 150 ms
+  debounce) is slow, so `waitFor('v1')` hit its 25 s default and THREW before
+  the test reached its own `process.emit('SIGINT')` — leaving the watch loop
+  RUNNING. `afterEach` then `rm`'d the workspace, and the orphaned loop's next
+  `git ls-files` (given the now-deleted dir as cwd) failed with `fatal: Unable
+to read current working directory`, which cascaded into the next test. **Fix
+  (test-infra only, `tests/cli.test.ts`):** (1) a `startWatch()` helper tracks
+  the running loop with a `settled` flag, and `afterEach` SIGINTs plus awaits it
+  (8 s cap) BEFORE `rm` when a test threw mid-body — so an orphaned loop is
+  always torn down before its cwd vanishes; the `settled` guard prevents a
+  double SIGINT after a clean exit (which would hit Node's default handler and
+  kill the runner). (2) `waitFor`/`writeFor` defaults 25 s→45 s and the six
+  watch tests' per-test timeout 30 s→90 s, so a slow-but-coming re-run has
+  headroom to appear and each test reaches its own clean teardown. Verified: the
+  full core suite 1268 pass under load (the exact contention that flaked CI);
+  cli.test.ts 107 pass in isolation with no double-SIGINT. Not a product change
+  — the git spawns already pass an explicit `cwd`; this is purely test lifecycle
+  robustness. (The deeper cross-file `process.chdir` sharing across
+  concurrently-run test files remains a latent contributor, noted for a future
+  dedicated pass; this fix removes the dominant same-file orphan path.)
+  **Process note:** confirm the failing TEST NAME plus the disjoint-job signal
+  before assuming a red is your diff — here a cloud-only change's red was a
+  pre-existing core flake.
+
+- **2026-07-18**: **Adversarial review of the three distributed waves (per-task
+  logs, run-policy propagation, reconnect) — two LOW/LOW-MEDIUM defects fixed,
+  the rest REFUTED by executed repro** (a repro-mandated hostile reviewer over
+  `dist/agent-loop.ts` + `dist/scheduler.ts` + `protocol-dist.ts` +
+  `task-log-capture.ts`, the repo's standard discipline after touching the
+  load-bearing agent-loop). **Fixed (each with a new pinning test):** (1)
+  **LOW-MEDIUM — flapping-serve infinite reconnect HANG.** `runAgentLoop`'s
+  `onopen` reset `reconnectAttempts = 0` unconditionally, so a serve that
+  ACCEPTS the WS upgrade then immediately drops (a crash-loop / flap) refreshed
+  the budget every cycle and reconnected FOREVER, never settling `done` — so
+  `await loop.done` in the `vx-cloud agent` verb hangs indefinitely instead of
+  giving up after the budget. Fix: a stability DWELL (`RECONNECT_STABLE_MS=10s`,
+  test-overridable) — the budget refreshes only after a connection STAYS open
+  past the dwell; a flap clears the dwell timer in `onclose` before it fires, so
+  the budget is never refreshed and the flap exhausts it. Pinned by a
+  flap-gives-up test (mirrors the reviewer's repro) and a stable-connection-
+  refreshes-budget test. (2) **LOW — stale-stream log garble.** `TaskLogBuffer`
+  keys in-flight accumulation by `taskId` only, so a reconnect/reassignment
+  double-exec (a dropped agent's still-running detached `run()` streaming on its
+  RECONNECTED socket while the reassigned agent also streams) interleaved two
+  machines' output into one `task_logs` row (outcome always correct — first
+  `agent:done` wins). Fix: the controller's `agent:stdout`/`agent:stderr`
+  handler now gates append AND relay on the SENDING agent currently holding the
+  task (`agent.inFlight.get(submissionId).has(taskId)`) — the assign adds the
+  task to the holder's inFlight before it can stream, so a legit chunk always
+  passes and only a stale sibling's chunks drop. Pinned by a two-agent
+  holder-gate test. **Refuted by executed repro (held):** reconnect
+  double-`agent:done` (deduped by `outcomes.has`, first-done-wins); cache-hit
+  replayed stdout NOT stored twice (`finish` drops non-miss); per-assignment
+  policy applied correctly and ONLY per-assignment (a shared agent serving two
+  submissions gets each one's own; `retries:0`/`frozen:false` honored via
+  `!== undefined`); cache never propagated; the fresh-agentId-per-reconnect is
+  load-bearing (reusing the id would orphan the old socket's tasks via `drop`'s
+  id-mismatch no-op); settle/stop races (idempotent `settle`, terminal reasons
+  never reconnect, `stop()` mid-backoff resolves); `task_logs` idempotency plus
+  the no-recorder path writes nothing. Verified: cloud 499 pass (+3), lint
+  (oxlint+tsgolint) + oxfmt 0. NO schema/wire/CACHE/DIST_PROTOCOL bump
+  (agent-side lifecycle + a controller-side stale-chunk guard).
+
+- **2026-07-18**: **A distributed agent RECONNECTS through a transient WS drop —
+  the last distributed-CI resilience gap closed** (owner: "We should have no
+  limitations"; closes the "an agent that loses its WS exits — it does not
+  reconnect" known-limit). Before, `runAgentLoop`'s `ws.onclose` resolved
+  `{ok:false, reason:'closed'}` on ANY unexpected close and the `vx-cloud agent`
+  verb exited — so a network / serve blip killed a standing helper agent even
+  though the serve reassigns its tasks in ≤30 s (heartbeat/reap). The AGENT side
+  never came back. Now a standalone agent reconnects with bounded exponential
+  backoff (`DEFAULT_MAX_RECONNECTS=5`, 500 ms→8 s cap) on an UNEXPECTED close;
+  terminal closes (refused / stopped / idle-timeout / drain) never reconnect —
+  they are the agent's intended end. **The load-bearing correctness detail — a
+  FRESH agentId per reconnect:** the serve reassigns the old socket's in-flight
+  tasks when its close fires (`drop`→`onAgentLeave`), and `drop` no-ops on an id
+  mismatch — so reusing the id could let the fresh hello overwrite the still-
+  pending old entry and ORPHAN its tasks; a new id keeps the two registrations
+  independent (the old one's drop reassigns cleanly, the new one resumes taking
+  work). Only the very first connection may use a caller-pinned `opts.agentId`.
+  **The submitter's self-agent does NOT reconnect** (`ownerSubmissionId` set →
+  `reconnect` defaults off): its lifecycle is bound to the submission, which the
+  submitter ends via `stop()`. **Refactor:** the socket lifecycle moved into a
+  `connect()` the onclose can re-invoke; a `settle()` guard resolves `done` once
+  (so a `stop()` mid-backoff — no live socket to fire onclose — still resolves);
+  a new `wsFactory` seam (default `new WebSocket`) lets a unit test drive
+  open/drop with a fake socket, no live serve. **Bonus:** every reconnect timer
+  is unref'd + cleared by `stop()`, so a pending retry never delays process exit.
+  Verified: cloud 496 pass (+5 — reconnect-with-fresh-id + no-reconnect-on-refused
+  - gives-up-after-budget + self-agent-never-reconnects + stop-mid-backoff-still-
+    resolves; agents-e2e green on the rewritten loop with real agent subprocesses),
+    lint (oxlint+tsgolint) + oxfmt 0, docs build clean. NO
+    schema/wire/CACHE/DIST_PROTOCOL bump (agent-side lifecycle only).
+
+- **2026-07-18**: **Remote agents now honor the submitter's `--frozen` /
+  `--timeout` / `--retry` — per-assignment run policy on `task:assign`** (owner:
+  "We should have no limitations"; closes the distributed-CI "Known limits"
+  bullet + roadmap #6). Before, a standalone `vx-cloud agent` ran every
+  assignment with LIVE config eval and NO run-level defaults — the submitter's
+  `--frozen` (the CI reproducibility gate), `--timeout`, and `--retry` applied
+  only to its own in-process self-agent work, silently ignored on remote
+  agents. **The insight (the policy is already on the controller):** the whole
+  `RunRequest` rides `DistSubmitMessage.request`, so the server-side
+  `DistScheduler` already holds `frozen`/`timeout`/`retries`. The gap was purely
+  that `task:assign` was a bare `{taskId, submissionId}` — a standalone agent
+  multiplexes several submissions and can't infer each one's policy. **The
+  build:** `task:assign` gains an optional `policy?: AssignPolicy`
+  (`{frozen?, timeout?, retries?}`); the controller computes it ONCE from the
+  submitted request (`deriveAssignPolicy`) and includes it on every assignment;
+  the agent applies it per-assignment in its scoped `run()` (`frozen` falls back
+  to the loop's own `opts.frozen` for an older serve; `retries`/`timeout` come
+  purely per-assignment). **Cache is deliberately NOT propagated:** a distributed
+  run always has the remote axes (the §5.3 refusal gate), an agent running the
+  FULL cache policy IS the artifact transport (§6.3), and each agent keeps its
+  own local cache on so warm restores work across its assignments — propagating
+  a restrictive `--cache=remote:` would defeat that. **No `DIST_PROTOCOL` bump:**
+  the field is additive-optional with clean degradation both directions (an old
+  agent ignores it → live-eval = today's behavior; a new agent against an old
+  serve receives none → its own defaults), the branch/defaultBranch/context
+  precedent. **Bonus fix:** the submitter's OWN self-agent now applies
+  `--timeout`/`--retry` too (previously only `--frozen`/`--cache` reached it — a
+  latent faithfulness gap on the submitting machine itself). Verified: cloud
+  491 pass (+2 — wire round-trip of a policy-carrying assign; the controller
+  fills the policy from the request + a policy-less submission stays a BARE
+  assign; agents-e2e green), lint (oxlint+tsgolint) + oxfmt 0, docs build clean.
+  NO schema/CACHE/DIST_PROTOCOL bump.
+
+- **2026-07-18**: **Distributed per-task LOGS captured — the controller tees the
+  agent stream it already relays into the SHARED TaskLogBuffer, so a distributed
+  run's logs read back exactly like a local run's** (owner: "Let's do that" — the
+  one documented non-goal from the run-history increment below). **The insight
+  (no wire change needed):** each agent ALREADY tees its scoped run's task stream
+  to the controller as `agent:stdout`/`agent:stderr` — it subscribes to the
+  run's event bus, which carries EVERY chunk regardless of display mode (the
+  `outputLogs`/flow gating lives only in the terminal renderer, never on the
+  bus), filters to the assigned task id, and forwards — and the controller
+  relays those to the submitter as `task:stdout`/`task:stderr`. So the tail is
+  already ON the controller for free; no agent change, no `DIST_PROTOCOL` bump.
+  **The build:** `DistScheduler` now `append`s those relayed chunks into the
+  SAME `TaskLogBuffer` the local sink uses (128 KiB/task · 4 MiB/run · failed
+  tails never evicted by successes), and in `recordTaskDone` — the single
+  per-task choke point — `finish()`es + `takeEntry()`s the tail and attaches it
+  to the `TaskIngestRecord.log` the recorder already ships to
+  `Analytics.ingestTask`, which writes `task_logs` idempotently
+  `(workspace, run, task)`. So distributed logs read back through the SAME
+  `GET /v1/runs/:id/logs/:taskId` local runs use — click a failed distributed
+  task, read its output. **Retention = the buffer's rule, so distributed
+  MATCHES local exactly:** an executed miss (success/failed) retains its tail; a
+  cache hit / STORE prune hit / skip / group `finish`es to nothing (a hit
+  resolves by hash to the executed run that stored the bytes — pinned: a prune
+  hit stores NO log). **No-recorder byte-identity kept:** `append` is gated on
+  `recorder !== undefined`, so a recorder-less scheduler (unit tests) holds an
+  empty buffer. **Logs land purely on the live `taskDone` path** — the
+  end-of-run `runFinished` backstop carries no logs (the `RunSummaryRecord` has
+  none), so it's one existence-gated write per executed task. **Non-goal
+  (narrowed):** mid-task streaming of the STORED tail — the tail drains once at
+  completion (the local path's phasing too); the chunks already stream LIVE to
+  the submitter's terminal, only the dashboard-stored tail waits for the task to
+  finish. Verified: cloud 489 pass (+1 — a real DistScheduler + Analytics on
+  ephemeral pg injects an executed task's stdout, asserts the tail reads back
+  via `logFor` with correct content/charsFull/truncatedHead + a prune hit stores
+  none), lint (oxlint+tsgolint) + oxfmt 0, docs build clean (163 pages). NO
+  schema/wire/CACHE/DIST_PROTOCOL bump (`task_logs` write reuses the existing
+  incremental path; the agent stream was already relayed). Design:
+  `docs/design/dist-run-history-2026-07.md` (§Per-task logs).
+
+- **2026-07-18**: **Distributed runs now appear in Runs — the controller
+  records them, UNIFIED with the local path through ONE summary builder**
+  (owner: "distributed run still needs a controller" → "all agents report
+  to controller which handles the flow; controller works exactly like a
+  local run" → "make it unified"). Closed the last known-limit: a
+  `VX_CLOUD_DISTRIBUTE` run ingested no summary and never showed under
+  Runs, because run history is a byproduct of a single-process `run()`'s
+  telemetry, and a distributed run has none. **The insight (owner's):** it
+  DOES have a controller — the server-side `DistScheduler` — which already
+  collects every task's `OutcomeView` (it must, to know when the
+  submission finishes) and holds the full submit context. So the
+  controller records the run into Postgres analytics as it goes: a
+  `task_runs` row per `complete()` (live fill-in) + the `invocations`
+  header at `checkFinish()`, through the SAME `Analytics.ingestTask`/
+  `ingest` a local `POST /v1/ingest` uses, scoped to the submitter's
+  org/workspace. **Unified, not parallel (the "make it unified"
+  directive):** the `RunSummaryRecord` was built INLINE in `run.ts`;
+  extracted into ONE canonical `assembleRunSummary(run, tasks, timing)` in
+  core `telemetry.ts` (façade-exported), now the SOLE place the run
+  tallies are computed — called by both `run.ts` (local) AND the dist
+  controller. `deriveCacheSource(status)` is the single status→source
+  mapping both use. So a distributed run and a local run produce
+  byte-identical summaries and land in the identical ingest; the ONLY
+  distributed-specific code is the irreducible bits — projecting the wire
+  `OutcomeView` back to `TaskTelemetry`, the controller-clock timeline,
+  and the submitter run-context. **Two distributed-shape decisions:**
+  (1) run-context (os/arch/host/ci/vxVersion/dirty/workspaceName) comes
+  from the SUBMITTER (the invoking CI runner, like a local run's header)
+  — captured via core's `captureHostContext`/`detectCi`/`captureGitContext`
+  and sent additively on `DistSubmitMessage.context?` (NO
+  DIST_PROTOCOL_VERSION bump — the branch/defaultBranch precedent);
+  (2) each agent's wallclock-ns is relative to its OWN scoped run, not a
+  shared clock, so the controller stamps each task's start/end with its
+  own clock (`agent:start`/`agent:done`), encoded run-relative so
+  `insertTaskRun`'s existing derivation yields a coherent shared
+  epoch-ms timeline (flamegraph works, zero analytics change).
+  **Idempotency:** run_id = submissionId; both the live `taskDone` and the
+  end-of-run `runFinished` anchor `started_at` on the same `startedAtMs`
+  via the same `taskTelemetryFor`, so the header backstop's `ON CONFLICT
+DO NOTHING` dedups the live rows (test proves exactly 2 rows, never 4;
+  re-ingest adds nothing). Recording is fire-and-forget + swallow-and-warn
+  — a recording error can NEVER touch scheduling; a scheduler with no
+  recorder is byte-identical to before. **Core façade widened
+  (export-only):** `assembleRunSummary`, `detectCi`, `captureHostContext`
+  (+ `CiContext`/`HostContext`). **NO bumps** anywhere (CACHE_VERSION /
+  core SCHEMA / TELEMETRY_SCHEMA_VERSION / DIST_PROTOCOL_VERSION) — the
+  controller only WRITES existing columns; the wire field is
+  additive-optional. **Non-goals (documented):** per-task LOG capture on
+  the distributed path (agents don't stream their tails to the controller
+  yet — the run + task rows land; logs are a later increment, the same
+  phasing the local path used) + a pre-start "running" row. Verified
+  independently: lint 0, core 1713 pass, cloud 488 pass (incl. a real
+  `dist-ingest` e2e — real `DistScheduler` + real `Analytics` on ephemeral
+  pg, driven across a fake agent + a store-prune hit, read back through
+  the dashboard's own `listInvocations`/`listRuns`), docs build clean +
+  0 broken links. Design: `docs/design/dist-run-history-2026-07.md`.
+
+- **2026-07-17**: **Visual-first docs — corrected to MECHANISM DIAGRAMS +
+  real screenshots; NO terminal/UI emulation** (owner arc: "add
+  screenshots / cool graphics visualizing things — docs should be
+  engaging" → "explain visually/interactively before the how-to" →
+  "Remove changes from website. Screenshots in DOCS. Every feature
+  visualized or interactive demo" → **"Do not emulate terminal! Remove
+  all demos showing off terminal… explain feature not by how they LOOK
+  but how they WORK. Interactive workflows, graphs, screenshots — educate
+  why this is awesome"**). **First cut (reverted): fabricated UI.** I'd
+  built three Astro components — `Terminal.astro` (a faithful `vx`-output
+  renderer w/ an interactive cold→warm toggle), `GithubSummary.astro` (a
+  GitHub job-summary card), `SideBySide.astro` (before/after code panels)
+  — captured from a real temp `@acme/*` CLI run. The owner rejected the
+  approach: docs should teach HOW a feature works, not show a pretty
+  emulation of its output. **All three components DELETED**; every guide
+  reverted from `.mdx` back to `.md`. **The kept + corrected program:**
+  each feature's "See it" now leads with a **Mermaid flowchart of the
+  MECHANISM** (educational — what actually happens), plus the **real
+  dashboard screenshots** (those stay — they're genuine captures, not
+  emulations), plus standard markdown/code. **Mechanism diagrams shipped:**
+  caching (inputs → hash → key → hit-restore / miss-run-save); running-
+  tasks (`--affected`: git diff → changed files → owners → +dependents →
+  scoped set, rest never scheduled; `--verify`: run → re-run → compare →
+  proven/nondeterministic-fails); sandboxing (declared inputs = allow-list
+  → undeclared read denied → fail); dev-tasks (spawn → readyWhen match →
+  dependents start → teardown); remote-caching (need → local? → remote? →
+  download+hydrate / run+upload); task-dependencies (the `^build` DAG) +
+  distributed-ci (agent fan-out) — both already graphs. The GitHub job
+  summary is now a plain **markdown table** (what GitHub actually renders),
+  not a styled card. **Dashboard screenshots (kept, real):** Runs,
+  flamegraph, Insights, project, Task detail, Compare, Command palette,
+  Cache, Admin — embedded across `dashboard.md`, `overview.md`,
+  `remote-caching` (cloud), `self-hosting`. **STANDING DIRECTIVE:** explain
+  features by **how they WORK** — reach for a Mermaid graph of the
+  mechanism or a real screenshot; do NOT emulate terminal output or
+  fabricate UI chrome. Every wave: astro build clean + zero-broken-links
+  crawl + browser-verified the diagrams render (no syntax bombs). Docs
+  only; no core change.
+
+- **2026-07-17**: **Analytics correctness sweep (cycle 11) — a
+  re-pushed-run 500 in `compareRuns` fixed + two unclamped-window scans
+  clamped; the NULL-aggregate and tenant-clamp classes swept CLEAN**. A
+  read-only audit traced every read query in `analytics.ts` against the
+  four documented bug classes. **Finding 1 (MEDIUM, correctness/
+  availability) — `compareRuns` raised a hard 500 on a re-pushed run:**
+  its prev-run lookup used a BARE scalar subquery `started_at < (SELECT
+started_at FROM invocations WHERE run_id = $)` — but invocations'
+  uniqueness is `(started_at, run_id)`, so a re-push (changed startedAt,
+  passes the `ON CONFLICT (started_at, run_id)` guard) yields TWO headers
+  and the subquery matches >1 row → `PostgresError: more than one row
+returned by a subquery used as an expression` (repro'd: the exact
+  error), surfaced as 500 on both `/v1/compare/:runId` AND MCP
+  `compare_runs`. This was the LAST missed instance of the duplicate-
+  header class (getRegressions/getProjectBranchFailures/taskDurationHints
+  already fixed); collapsed with `MIN(started_at)` (earliest-header
+  convention). Pinned by a discriminating repro (throws on the old
+  scalar subquery; returns `previousRunId:'old'` on the fix). **Findings
+  2-3 (LOW/LOW-MED, perf/DoS) — unclamped windows:** `getRegressions.
+sinceDays` and `getBottlenecks.lookbackDays` had no `MAX_WINDOW_DAYS`
+  clamp, so a hostile `1e15` drove a full scan of every `task_runs`
+  partition (the 2026-07-14 degenerate-scan class that already protects
+  getRunHeatmap/getPeriodComparison/getRunTrends); both now `clampInt(…,
+1, MAX_WINDOW_DAYS)`. No discriminating unit test (on any seeded set a
+  hostile window returns the same rows — only timing differs, which is
+  flaky; a non-discriminating pin violates the assert-the-signature rule)
+  — defensive clamps in a proven, already-tested class; the existing
+  getRegressions/getBottlenecks correctness + scale guards confirm the
+  legit path is unbroken (scale 12/0). **Classes swept CLEAN (documented
+  negative result):** NULL-aggregate-into-non-null-number (every
+  single-row SUM/AVG/MAX/percentile is COALESCE'd or `?? 0`-mapped, every
+  ratio div-guarded) and missing-workspace_id tenant clamp (every read's
+  every joined table + CTE + LATERAL side individually verified clamped —
+  NO cross-tenant leak). jsonb double-encoding also re-verified clean
+  (all four `::jsonb` writes pass objects; the `@>` filter passes an
+  object literal). NO schema/wire/CACHE bump (output-preserving). Gate:
+  oxlint + oxfmt 0; analytics-read 46 + analytics-scale 12 pass.
+  **Process note:** the fix comment first shipped a JS parse error — a
+  SQL `-- ... `backtick-quoted` ...` comment INSIDE a Bun.sql template
+  literal closes the string; caught by the local run before commit (never
+  put backticks in a tagged-template SQL comment).
+
+- **2026-07-17**: **`taskDurationHints` de-duplicated — the same
+  re-pushed-invocation bug class the getRegressions/getProjectBranch-
+  Failures LATERAL fixes closed, found in the LPT dispatch hint (cycle 10)**. A targeted bug hunt grounded in this codebase's known failure
+  mode (`invocations` uniqueness is `(started_at, run_id)`, so a
+  re-pushed summary with a changed `started_at` yields TWO headers for
+  one run) swept every `invocations` join in `analytics.ts`. All the
+  analytics-read paths already had the LATERAL pick-one fix EXCEPT
+  `taskDurationHints` — the trunk-scoped LPT duration hint — which
+  predated that awareness (it shipped in the 2026-07-14 trust-scope wave,
+  before the cycle-7 getRegressions fix taught the pattern). Its plain
+  `LEFT JOIN invocations ON run_id` DUPLICATED each task_run of a
+  re-pushed run, skewing `avg(duration_ms)` toward it (pinned: two build
+  runs 100 + a re-pushed 200 gave 166.67, not the true 150), and — the
+  sharper leak — a re-push that changed branch could feed the SAME run
+  into both the trunk baseline AND a branch scope, defeating the very
+  trust isolation that wave built. Fixed with the established LATERAL
+  pick-one (earliest header per run_id), byte-identical on well-formed
+  single-header data. Advisory-only impact (dispatch ORDERING, never
+  outcomes/keys), so low severity — but a real aggregate-correctness bug
+  closed for consistency. Pinned by a DISCRIMINATING regression (fails
+  `150 vs 166.67` on the old join; the branch-leak half uses a genuine
+  feature run so `feature app#ship` = 1000 not the leaked 700). Gate:
+  oxlint + oxfmt 0; analytics-read + analytics-scale (incl. the hint
+  perf guard) + dist-registry 79 pass. NO schema/wire/CACHE bump
+  (output-preserving query rewrite).
+
+- **2026-07-17**: **CI too-many-clients flake killed structurally —
+  ephemeral-pg `max_connections` 100→400 (`d51dafd`)**. The session-memo
+  push (`95f17ef`) went RED on the cloud job — but NOT on its content:
+  the core job passed, `auth.test.ts` passed, and the sole failure was
+  `db-indexes.test.ts`'s replica-race try-lock test (cycle 7's
+  CONCURRENTLY pass), which passes 9/9 isolated. The CI log's
+  discriminator: `PostgresError: sorry, too many clients already` printed
+  immediately before the failure. Root cause: the full 37-file cloud
+  suite shares ONE ephemeral cluster and pooled connections peak faster
+  than they close; on Postgres's default `max_connections=100` the peak
+  tips over — the recurring "connection-slot flake" the log noted at
+  2026-07-13/14/16 as "isolated-passing." This test hit the ceiling first
+  because it uniquely holds an extra reserved `held` connection while
+  `ensureIndexes` reserves its own, so the failed reserve returned
+  `skipped:false` where the test asserts `skipped:true`. Fixed at the
+  ROOT for the whole class: `-c max_connections=400` on the cluster start
+  (fsync=off → headroom is ~free). Verified: three consecutive full-suite
+  runs 483 pass / 0 fail. Test-infra only, no product change; the
+  local-ci skill's known-flake note updated. **Lesson reinforced:** a red
+  main is not necessarily YOUR change — read the failing TEST NAME + the
+  pg error before assuming a regression; here the failing suite was
+  disjoint from the pushed diff.
+
+- **2026-07-17**: **Session-principal auth memo SHIPPED — the last named
+  residual of the 2026-07-12 perf audit (F1's deferred half)** (cycle 9).
+  Every session-authenticated request (the dashboard polls several `/v1`
+  reads per open tab) resolved the principal from Postgres — HMAC-verify
+  the cookie, SELECT the session row, renew, load user + memberships.
+  Now memoized in `auth/rbac.ts`, byte-for-byte the token-memo pattern:
+  5s TTL, 10k bound with clear-on-overflow, keyed by the sha256 id-hash
+  hex of the HMAC-VERIFIED session id (never the raw cookie; a tampered
+  cookie fails the constant-time HMAC gate before any memo or DB touch
+  and is never cached). Unknown/expired ids null-cache for the TTL (a
+  256-bit server-minted id can never become valid — the session analog
+  of secrets-can't-re-mint). **The invalidation surface that originally
+  deferred this is closed in-process:** logout → per-entry forget (the
+  memo lives in rbac.ts because sessions.ts is a leaf — `destroySession`'s
+  doc requires callers to forget, and its only caller does); member role
+  PATCH / member DELETE / invite accept / org create / profile RENAME
+  (displayName is on the principal) → whole-memo clear (rare admin
+  actions — obviously-correct beats per-user tracking); password change
+  deliberately does NOT clear (rewrites only `password_hash`, not on the
+  principal, no session rotation in the current code). Sliding renewal
+  fires only on a memo miss (verified: the UPDATE lives inside
+  `resolveSession`, which the hit path never reaches) — ≤5s skew against
+  a 30-day window, pinned. Per-entry validity caps at
+  `min(TTL, session.expiresAt)` mirroring the token memo — with a
+  stated-honestly wrinkle: the cap CANNOT bind today (any session within
+  15d of expiry is renewed to 30d during the very resolution that
+  memoizes it), kept as cheap insurance for a future renewal-policy
+  change. Pinned by 6 controlled-clock tests incl. the sharp ones:
+  logout's next request 401s (revocation beats TTL), a role demotion is
+  visible on the demoted user's NEXT request (no stale-escalation
+  window), invite-accept's own request memoizes the PRE-accept principal
+  so the accept-side clear is load-bearing (test fails without it), a
+  31-day-untouched session 401s, renewal bumps `expires_at` exactly.
+  **Accepted residuals:** cross-replica staleness ≤5s for every session
+  mutation (the token memo's accepted property); out-of-band DBA edits
+  (manual `disabled_at`, row deletes — no route performs these) visible
+  after ≤5s. Gates: oxlint (differential-verified with a planted TS2322
+  probe) + oxfmt exit 0; auth 32 + server 32 pass on real pg. NO
+  schema/wire/CACHE bump. Task #79 (the 2026-07-12 perf follow-ups) is
+  now fully CLOSED.
+
+- **2026-07-17**: **The trusted-GET S3 HEAD-skip SHIPPED — the deferred
+  backlog item (b), completed from the stashed WIP + adversarially
+  verified sound (zero defects)** (cycle 8). On a presigning (S3)
+  backend, `GET /v1/cache/:hash` by a principal whose read-scope set has
+  exactly ONE scope (trusted tokens) now skips the per-scope existence
+  HEAD and answers 307 to the presigned URL for that sole scope directly
+  — the HEAD decided nothing (the presigned key is server-derived either
+  way), and it was a wasted S3 round-trip per GET on the hottest surface.
+  **Wire change, stated honestly:** a single-scope GET of an ABSENT hash
+  is now 307 (bucket 404s → the client degrades to a miss — pinned as a
+  dedicated native-cache test, which did NOT previously exist) instead of
+  a serve-side 404; the end-to-end outcome is identical, the round-trip
+  moves off the serve. Multi-scope (untrusted: own sub-scope ∪ trusted)
+  GETs keep HEAD-per-scope resolution + the serve-side 404;
+  `HEAD`/`hasMany`/`list` are untouched (planRun predictions + the batch
+  prefetch stay accurate); `LocalDirBackend` (no 307 path) is
+  byte-identical via the `localPathFor` gate. Down bucket: single-scope
+  GET = 307 whose client follow fails → quiet degrade-to-miss (presign is
+  offline SigV4 — the serve can't observe the outage); HEAD/PUT/
+  multi-scope keep the loud 502; the boot-time S3 probe still fails loud.
+  **Adversarial review (repro-mandated, 15 executed attacks): SOUND.**
+  Refuted: scope forgery (13 hostile `x-vx-cache-scope` values + hostile
+  hashes → the Location is ALWAYS the caller's own scope key; `HASH_RE`
+  400s before any presign), untrusted-reaches-fast-path (readScopeSpecs
+  is unconditionally 2 entries for untrusted — repro'd 2 HEADs under 5
+  hostile/missing subs), existence oracle (the 307-for-both shape leaks
+  STRICTLY LESS than the old present/absent split), client degradation
+  (404-follow → null; strict-ACL 403-follow → throw → LayeredCache miss
+  with a REAL run() still succeeding; one-hop; bearer + scope header
+  dropped cross-origin; tampered body → digest mismatch → miss), PUT
+  immutability (409 + HEAD-before-body intact), and the zero-HEAD spy
+  pin's discriminating power (the same spy records 2 heads on the
+  untrusted path). **Accepted residuals:** a persistently mis-ACL'd
+  bucket (403 on absent keys) turns trusted cold misses into QUIET misses
+  (never-fail posture; HEAD/PUT/multi-scope still 502 loud — noted in the
+  fast-path comment); a cold trusted GET relocates the absent-probe
+  round-trip to client→bucket (the batch probe still prunes absent hashes
+  server-side for the prefetch flow). Docs shipped in the same wave
+  (wire-protocol.md single-scope-307 contract; the native-cache-wire
+  design doc's `GET → 404 miss` row gained a dated as-shipped deviation
+  note — the 2026-07-08 doc-correction precedent). Suites: the four
+  touched cloud suites 101 pass / 0 fail (+ the reviewer's 15-repro suite
+  green, then deleted); lint + fmt clean. NO CACHE_VERSION/schema/
+  DIST_PROTOCOL bump (server-side redirect shape only; `cacheWire` stays
+  2 — the client needed no change, its one-hop follow + 404-as-miss
+  predate this).
+
+- **2026-07-17**: **The document-every-cloud-feature directive EXECUTED —
+  a full audit→write→verify docs program over the 8 cloud pages + a new
+  HTTP API reference (`a4a5051`, `50dbe57`)** (owner: "document each and
+  Avery single one feature of vx cloud in docs"). A read-only audit agent
+  built the complete feature inventory from the decision log + every code
+  surface and graded all 8 `apps/docs/src/content/docs/cloud/` pages
+  (DOCUMENTED / THIN / MISSING with a ranked gap list); the writes were
+  then done INLINE in the main loop after the session limit killed all 9
+  writer agents at launch (resets 13:10 UTC — the "never stop" answer was
+  to do the work directly, not idle 4.5h). **Shipped:** (1) NEW
+  `cloud/api.md` — the whole `/v1` surface as a reference (auth classes
+  incl. the `x-vx-csrf` session-mutation header, tenancy resolution
+  `?ws=`/`?org=`, ~35 read routes with params/defaults/clamps verified
+  against `analytics-routes.ts`, the 4 ingest writes with body caps +
+  wire-version 400s + idempotency, cache-wire/streams/MCP pointers, error
+  conventions) + sidebar registration. (2) **Three accuracy fixes** —
+  distributed-ci.md + cli.md claimed a commit-SHA mismatch REFUSES an
+  agent (stale since the multi-run scheduler: commit is a
+  dispatch-ELIGIBILITY filter, only a DIST_PROTOCOL mismatch refuses —
+  `registry.ts` header is the proof); overview.md claimed "teams" (a
+  schema-only table, no shipped surface); `VX_CLOUD_DATA_DIR` reworded
+  vestigial. mcp.md's tool table had DRIFTED from `cli/mcp.ts`
+  (`run_trends` is workspace-wide bucketed activity, NOT per-project;
+  `compare_runs` diffs vs the PREVIOUS invocation, not two arbitrary
+  runs) — rewritten with real args/defaults + the workspace-resolution
+  ladder + batch/notification-202 semantics. (3) **New coverage**:
+  distributed-ci.md gains LPT duration-aware dispatch + trust-scoped
+  hints, heartbeat/liveness (10s/30s), the `/v1/agents` capacity probe +
+  `ready` autoscaling signal, and the GHA job-summary/check-run section
+  (with the honest distributed-run-no-summary caveat);
+  remote-caching.md gains per-PR sub-scope isolation (`VX_CACHE_SCOPE`,
+  `x-vx-cache-scope`, server sanitization, own-then-trusted reads) + the
+  batch probe; self-hosting.md gains a roles table derived from the
+  actual route guards, token `kind`/`expiresAt`/instant-revoke,
+  partition/retention mechanics, the background CONCURRENTLY index pass,
+  and a security-model section; dashboard.md now lists every shipped
+  card (full Insights + Cache sets, the cache-entry provenance page, the
+  Cmd/Ctrl-K palette, the run-detail graph/flame toggle + platform
+  fallback, both invite accept paths). **Verified:** every claim checked
+  against source before writing (each stale-doc fix cites its proof
+  line); astro build exit 0; a dist-wide crawler found ZERO broken
+  internal links. **Standard going forward:** a cloud feature is not
+  done until its docs land in the same wave. **Session note:** the
+  parallel trusted-GET HEAD-skip developer was killed mid-work by the
+  same session limit; its partial diff is preserved in `git stash`
+  ("WIP: trusted-GET HEAD-skip") for resume-or-relaunch.
+
+- **2026-07-16**: **Cycle 7 — the CONCURRENTLY index path SHIPPED
+  (`081efde` design, `420d02b` build); getRegressions got the LATERAL dedupe
+  (`9e71e44`); a CI incident diagnosed from run TIMING; and the bunfig
+  timeout fix CORRECTED (`d4bfa0e`)**. **(1) Concurrent indexes**
+  (docs/design/concurrent-index-migrations-2026-07.md): `runMigrations` stays
+  byte-untouched (its one-transaction guarantee is the foundation);
+  `db/indexes.ts` adds a declarative `ensureIndexes()` convergence pass — the
+  `maintainPartitions` sibling — because outside a transaction "DDL happened ⇔
+  ledger row exists" is unclosable, so the pg CATALOG is the ledger. Per
+  entry: `CREATE INDEX IF NOT EXISTS … ON ONLY` parent shell (instant,
+  INVALID) → per-partition `CREATE INDEX CONCURRENTLY` → `ATTACH PARTITION`
+  (attachment-probed, NOT name-probed — partitions created later by
+  `ensurePartitions` inherit AUTO-NAMED children) → parent flips valid on the
+  last attach. Recovery state machine (INVALID leftover → drop + rebuild;
+  valid-unattached → attach; attached → skip) means a crash mid-build never
+  wedges boot; replicas serialize on a session-level `pg_try_advisory_lock`
+  (key `0x76786302`) held on ONE `sql.reserve()` connection (a pool has no
+  same-connection guarantee); never-throws with per-entry/per-partition
+  isolation; `RETIRED_INDEXES` handles renames. Runs in the BACKGROUND after
+  bind + on the daily tick — a multi-minute build never blocks serving
+  (queries just keep their plan). First consumers:
+  `task_runs_failed_ws_started` + `invocations_failed_ws_started`
+  (`(workspace_id, started_at DESC) WHERE failed`) — the partial indexes
+  getNotifications/getRecentFailures/getRegressions/getProjectBranchFailures
+  wanted (task #79/#95 closed for (a)). Pinned on real pg: fresh convergence,
+  idempotent re-pass, new-partition inheritance, a REAL failed-CONCURRENTLY
+  injection (unique-over-duplicates → genuine `indisvalid=false` → next pass
+  recovers), try-lock skip, retirement, never-throws isolation, + a server
+  e2e (background pass builds both after a real boot). Verified empirically
+  before build: single-statement `sql.unsafe` CIC rides NO implicit
+  transaction on Bun.sql; the auto-named-children fact is why name-probing
+  would be wrong. **(2) getRegressions LATERAL dedupe (`9e71e44`)** — same
+  duplicate-run_id class as the branch-failures fix; a re-pushed summary can
+  no longer fake a ≥2-branch regression (pinned; cte-diff differential
+  byte-identical on well-formed data). **(3) CI incident forensics:** three
+  consecutive main reds (`9e71e44`, `081efde` docs-only, `b6648d4`
+  workflow-only) landed EXACTLY in a ~1h window where GitHub's jobs API 503'd
+  for every run. The discriminator when job logs are unreachable: RUN TIMING
+  from the runs-list payload — `9e71e44`'s run "failed" in 11 SECONDS (cannot
+  have executed a 70s suite → jobs never started → infra, proven). All
+  suites green locally on identical code throughout. `b6648d4` added
+  `workflow_dispatch` to ci.yml — the manual re-run button every flake triage
+  this week wanted. **(4) A false fix corrected honestly (`d4bfa0e`):**
+  `a213a4b`'s bunfig `[test] timeout` is NOT honored for hooks on Bun 1.3.11
+  (direct experiment: a 7s beforeAll still dies at 5s with the bunfig
+  in-tree) — and its "differential verification" was bogus (the grep counted
+  the `0 fail` summary line as a match). `bun test --timeout 30000`
+  verifiably works (same 7s hook survives) → the flag now rides the CI cloud
+  step + the local-ci skill; bunfig deleted. Caught by the implementation
+  agent's independent in-tree experiment — the lesson: a differential is only
+  as good as its failure-side assertion (assert the FAILURE SIGNATURE, never
+  a substring a passing run also prints). **Also pinned for posterity:**
+  Bun.sql's lazy SQLQuery passed to `expect(...).rejects.toThrow()` never
+  executes AND wedges the test process — await/`.then` the query and assert
+  the captured error instead (comment in db-indexes.test.ts).
+
+- **2026-07-16**: **The three ratio perf guards de-flaked — min-of-3
+  interleaved (`c0a4d0c`)**; found by doing what the corrected rule demands
+  (confirming the REAL CI conclusion after pushing). `518d051` and `8fbe0b5`
+  were RED on main — NOT on their content: both failed ONLY
+  `cache baseline: Cache.key scales near-linearly (1000/100 ≤ 30×)`
+  (1267/1268 pass) — a 50% false-red rate over four runs, which makes the CI
+  signal worthless. **Root cause (structural, not a bad bound):** a ratio of
+  two SINGLE-WINDOW medians multiplies both windows' noise — a lucky-fast
+  denominator inflates the ratio exactly like an unlucky-slow numerator — and
+  `VX_PERF_SCALE` (the CI 3× budget multiplier) can't absorb it because a
+  ratio is scale-free by design, so the noise headroom every absolute-budget
+  guard gets never applied to the ratio guards. All three ratio guards
+  (`scales near-linearly ≤30×`, `fast-path ≥5× vs cold`,
+  `batched recordRuns ≥3×` — the last also flaked locally under load) now run
+  through `benchRatioSides`: min-of-3 INTERLEAVED trials per side (noise only
+  ever ADDS time → the min median is the robust per-side estimate;
+  interleaving cancels drift — the repo's documented anti-flake method,
+  applied to the ratio guards that predated it). Bounds unchanged (they guard
+  algorithmic shape: linear ≈10× vs quadratic ≈100×). **Verified beyond a
+  green run:** 3× green isolated, core 1268/0, and 3× green at CI scale
+  (`CI=true` → 3× budgets) under FOUR busy-loop CPU hogs — heavier contention
+  than a shared runner (the same stress at dev-scale 1× correctly fails the
+  absolute budgets — that's the scale knob working, not a flake).
+  **Confirming `c0a4d0c`'s CI then exposed a SECOND, independent infra flake
+  (`a213a4b`):** its core job PASSED (the hardened ratio guards held on a
+  real runner) but the CLOUD job false-redded — 41 pg-backed tests failing
+  instantly in 9.5s. Root cause from the run log: the FIRST pg suite's
+  `beforeAll` (ephemeral-pg boot: initdb + pg_ctl + template migration)
+  exceeded bun's DEFAULT 5s hook timeout on the contended runner; the timeout
+  enforcement killed initdb mid-run ("caught signal") and every pg suite in
+  the process cascaded (the same signature had hit a loaded local run). The
+  boot isn't fixably slower — initdb already runs `--no-sync`, the server
+  `fsync=off` — the CEILING was too low: new `packages/cloud/bunfig.toml`
+  `[test] timeout = 30000` (headroom, not a wait; picked up by CI's
+  `cd packages/cloud && bun test` and the local-ci path). Verified
+  DIFFERENTIALLY that the knob governs hooks: `timeout = 1` → the boot hook
+  times out; `30000` → 54/54 green. Together these two commits close the
+  three distinct false-red sources observed this week (ratio-guard noise,
+  the stale-lint-cache push, the pg-boot hook timeout); CI conclusions for
+  `a213a4b`+log confirmed green after push.
+
+- **2026-07-16**: **Adversarial review of the project-analytics wave — five
+  verified defects fixed, the rest of the surface REFUTED (`00868d3`); + docs
+  currency (`8fbe0b5`) and the local-ci skill corrected** (cycle 6 of "Never
+  stop. Follow cycles."). A repro-mandated hostile reviewer (real ephemeral pg
+  - real `startServer` + the real UI helpers) swept `5fb1ffa`+`83f09c0`.
+    **Fixed (each repro'd before the fix):** (1) **MED** — `getProjectTaskTrends`'
+    `top` CTE ranked tasks by `SUM(duration_ms)` over ALL rows while the series
+    displays only executed successes, so a cache-hit-dominated task (60 hits ×
+    50ms beat 2 executions × 1000ms) crowded a genuinely slow executed task out
+    of the top-N and rendered an all-zero sparkline in its place → rank by the
+    DISPLAYED population (`SUM(...) FILTER (non-hit success) DESC NULLS LAST`).
+    (2) **LOW-MED** — `invocations` uniqueness is `(started_at, run_id)`, so a
+    re-pushed summary with a changed `startedAt` yields TWO headers for one run;
+    `getProjectBranchFailures`' plain join then attributed ONE failure to
+    multiple branches and could flip `firstBranch` to the re-push → LATERAL
+    pick-one (earliest header per run_id, indexed). NOTE: `getRegressions`
+    shared the join shape (pre-existing, same corruption class under a re-push)
+    — fixed in the follow-up with the same LATERAL + a duplicate-header pin (a
+    faked two-branch regression from one re-pushed run → not surfaced); the
+    well-formed path is byte-identical (the cte-diff differential stays green).
+    (3) **LOW** — the
+    `shorthash` DataTable cell rendered a NULL as the literal `null…`
+    (branch-failures `firstCommit` is the first nullable shorthash binding) →
+    guard null/''. (4) **LOW** — `getPeriodComparison`'s limit clamp (≤100)
+    silently zeroed the project view's Δavg column past the top-100 movers in a
+    large project (the table holds 500) → clamp raised to 500 (movers aggregate
+    in SQL; the clamp only bounds the sorted slice). (5) **LOW** — the server's
+    `avg=0` sentinel (an all-hit/all-failed bucket) plotted as a to-zero dip
+    that read "got fast" and reported a 0ms `_latest` → the sparkline now draws
+    the EXECUTED-duration series only (`foldTaskTrendPoints`, exported + unit-
+    pinned; an all-sentinel task honestly shows an empty series). **REFUTED by
+    executed repro (held):** workspace clamps incl. a same-run_id decoy in a
+    foreign ws; BRANCH_CAP keeps rank-1 under 15-branch + 20-way-tie storms; tie
+    determinism (`branch ASC`); hostile `from=0&to=1e15&limit=1e9` clamps;
+    SQL-injection/unicode project names; both new routes' 401/allowlist/400
+    gates; `_taskRef` link encoding; `rankProjects` identity/tie/absent-project
+    edges; `mergeMoverDelta` null paths; Spark viewBox NaN paths. **Accepted
+    residual (measured):** `/v1/trends/tasks` bounds at tasks×buckets (~72k
+    rows/462ms worst-case at 50 hourly tasks over 60d) — inside the established
+    bounded-array bar; a total-row cap is a noted tightening. **Also:** the
+    dashboard guide now documents the project drill-in's five cards + the
+    timeframe selector (`8fbe0b5`), and `.claude/skills/local-ci` was rewritten —
+    it referenced package.json scripts deleted long ago; it now runs the RAW
+    gate commands (cache-proof, the phase-1 stale-lint-cache lesson), covers
+    BOTH CI jobs, lists the known load-flakes, and ends with "confirm the real
+    CI conclusion after pushing". Full gate green: fmt clean (417 files), oxlint
+    clean, core 1268/0, cloud 462 pass (the 2 full-suite fails = the documented
+    db-migrate connection-slot flake, 11/11 isolated), docs build 2/2, browser
+    re-verify PASS (sparklines correctly drop to the executed-only series). NO
+    CACHE/schema/wire bump.
+
+- **2026-07-15**: **Project analytics phase 2 — per-task duration sparklines
+  (`83f09c0`); + fixed a phase-1 CI-red** (the literal "see all tasks and their
+  history over time, spot outliers/spikes/trends" ask). Phase 1 gave a
+  project-LEVEL trend + a lifetime table; phase 2 gives each task its OWN
+  time-series. **Server:** `getProjectTaskTrends(ws, project, {bucket, from, to,
+limit})` — ONE query, flat long-format (task, bucket) rows; a `top` CTE bounds
+  the task set to the ≤50 heaviest by total duration (so a many-task project
+  can't fan out unbounded), avg + p95 aggregate IN SQL over the non-hit
+  executed-success subset (no raw-row stream), span clamped to
+  `MAX_TREND_BUCKETS`. Route `GET /v1/trends/tasks?project=&bucket=&from=&to=&
+limit=` (project → 400), added to the `isAnalyticsSurface` allowlist (pinned by
+  a server e2e — a two-segment `/v1/trends/*` path still needs the allowlist or
+  it falls through to the SPA). **UI:** a new `SparkList` catalog component — a
+  row per task: label · inline-SVG sparkline of the task's avg-duration series
+  (deterministic viewBox, no layout on poll) · latest value · a trend dot. Trend
+  color comes from a LITERAL `SPARK_STROKE` map (up=slower=danger /
+  down=faster=success) — never a dynamically-built `stroke-${x}` (UnoCSS's static
+  extractor can't see those; the recurring dynamic-class trap). `data.ts`
+  `projectTaskTrendItems` groups the long rows into per-task
+  `{series, _latest, _failures, _trend, _dir}`, windowed off `?window`; a "Task
+  duration trends" card on `projectDetail.json` binds it (pure JSON). Verified
+  end-to-end in a real browser (seeded multi-day durations): the card renders 2
+  task sparklines, `/v1/trends/tasks` fires + rescopes with the window chips,
+  ZERO console errors. Analytics-read 41 + server 32, UI 64 pass; NO CACHE/
+  schema/wire bump. **LESSON (a real miss): phase-1 (`5fb1ffa`/`79e48b8`) went
+  out RED on main.** Its branch-failures test had `branch: undefined` (illegal
+  under `exactOptionalPropertyTypes` → oxlint TS2345), but the LOCAL
+  `bun src/bin.ts run ci` gate passed lint — a stale `lint.oxlint` cache hit
+  masked it — and I pushed without confirming the REAL CI run (the exact
+  2026-07-10 rule I'd already written down). A fresh CI runner has no lint cache,
+  ran `oxlint`, and failed the `vx run ci` step (the cloud-tests job passed).
+  Phase-2 fixes the TS2345 + swept an oxfmt drift in the design doc/decision-log
+  entry, and I CONFIRMED `83f09c04` = CI success before moving on. Reinforced:
+  after every push, verify the actual CI conclusion — "the local gate passed" is
+  not "CI is green," especially for lint (its cache can hit stale). **DEFERRED
+  (phase 3):** regressed-vs-always-broken flag on the branch-failures card; a
+  branch facet on recent executions.
+
+- **2026-07-15**: **Project analytics view — tasks over time, branch-first-
+  failure, cross-project rank (`5fb1ffa`)** (owner: "project view where I can see
+  all tasks and their history over time; spot outliers/spikes/trends; debug
+  logs+artifacts per execution; compare my project against others (failures vs
+  success); compare against branches so I know where the issue was first
+  noticed"). Design `docs/design/project-analytics-2026-07.md` — the project
+  detail page was aggregate-only; this turns it into a single-dev drill-in
+  answering all five asks. **Heavy reuse + ONE net-new query** (the design's
+  chosen option C): four of five asks land by reusing `listRuns`/`listProjects`/
+  `getRunTrends`/`getPeriodComparison`/`getHistory` with a filter or a client
+  rank; only #5 (where-first-noticed) had no existing shape. **Server:**
+  `getProjectBranchFailures(ws, project, {sinceDays, limit})` — ONE set-based
+  CTE computing the earliest failing run per `(task, branch)`
+  (`MIN(started_at)` + `(ARRAY_AGG(commit_sha ORDER BY started_at))[1]` for the
+  first commit), then `ROW_NUMBER() OVER (PARTITION BY task ORDER BY
+first_failed_at ASC, branch ASC)` so `branch_rank = 1` is the branch that
+  failed FIRST; JS folds per task (firstBranch/firstCommit from rank 1,
+  branchesFailing = true count, `branches[]` capped at `BRANCH_CAP`=12, sorted
+  most-recent-first, limit clamp ≤200). Workspace-clamped, project-scoped,
+  `started_at`-partition-pruned, reads only `status='failed'` rows, `inv` join on
+  the indexed `run_id` — **no N+1, no unbounded raw-row fetch** (wants the
+  deferred `status='failed'` partial index at extreme scale; project+window bound
+  it meanwhile — task #79/#95). `getRunTrends` gains an optional `project` filter
+  (one `AND project = $` clause) for a project-scoped failures/runs/hits series,
+  **byte-identical when absent**. Routes: `GET /v1/branch-failures?project=&
+sinceDays=&limit=` (project required → 400) + `project` passthrough on
+  `/v1/trends/runs`; the client `getHistory` now threads `project`/`task` (the
+  route already supported them). **Load-bearing gate fix:** `/v1/branch-failures`
+  is a single-segment route, so it had to be added to the `isAnalyticsSurface`
+  allowlist in `server.ts` — otherwise a session request FALLS THROUGH to the SPA
+  catch-all (returns the `vx-cloud` string, not JSON), the exact class as the
+  earlier `/v1/notifications`/`/v1/why` fixes; caught by the browser verify
+  (branch card empty), pinned by a server e2e (session reaches analytics → JSON
+  with firstBranch, not the SPA). **UI (pure-JSON view + data helpers, one
+  reusable component prop — zero core change):** `projectDetail.json` gains a
+  `TimeframeSelect` header, a failures-&-runs `LineChart` (`projectFailureTrend`),
+  a "how this project ranks" card (three axes — failure rate / avg exec / hit
+  rate — each a `RankList` with the current project highlighted), a "where
+  failures were first noticed across branches" `DataTable`, a **Δavg column** on
+  the task-history table (each task's period-over-period avg delta as a red/green
+  dot), and a **recent-executions** table (row → the run with this task
+  pre-selected so logs open, hash → the cache entry — the one-click debug ask).
+  `data.ts` helpers: `rankProjects` (client-side over the one `listProjects`
+  GROUP BY — top-8 per axis + always the current project with its true rank,
+  `_rankLabel`/`_me`), `mergeMoverDelta` (lifetime `getHistory` ⨝ analysis
+  `movers` for the Δavg column), `branchFailureRows`; every project source
+  windows off `?window` via `windowDaysOf`/`trendArgsOf` (lifetime table stays
+  all-time on purpose — the "over time" story is the trend cards). `scopedTrend`
+  gained a `windowDays` param (default 7 → pages without the selector
+  byte-identical); `RankList` gained a `highlightKey` prop (ring the row when
+  `item[key]` is truthy). **Windowing rides the proven params-refetch path** (the
+  json-render loader keys sources on decoded params+`?window`, so a chip re-fetches
+  every project source in place). **Verified END-TO-END in a real browser**
+  (real platform + fake S3 + Chromium, seeded via the ingest wire across two
+  projects and multiple branches): every card renders, `app#e2e` attributes to
+  `feat` as the first-noticed branch, the three-axis ranking + Δavg column + recent
+  executions all render, the window chips rescope every project-scoped `/v1/*`
+  request (branch-failures `sinceDays` + trends `project=` over the exact span),
+  ZERO console errors. NO CACHE/schema/wire bump (read-side only). Cloud
+  analytics-read 39 (+2: branch-first-failure ordering + ignores-success/null-
+  branch) + server 31 (+1: allowlist-reaches-analytics) pass, UI 64 pass, lint+
+  fmt clean, `dist/` unchanged (gitignored build artifact). **DEFERRED (phase 2/
+  3):** true per-task per-bucket sparklines (`getProjectTaskTrends` + a `SparkList`
+  component); regressed-vs-always-broken flag on #5; a branch facet on recent
+  executions.
+
+- **2026-07-14**: **Insights timeframe selector — 24h/7d/30d/90d, URL-persisted
+  (`ba3e7b9`)** (owner: "I should be able to select a timeframe for stats").
+  A preset chip row on the Insights analytics hub rescopes every windowed
+  source: the run/hit-rate tiles, the trend chart (24h → hourly buckets over
+  the last day; longer → daily over the span), heatmap, storage growth, the
+  period-over-period movers, cross-branch regressions, bottlenecks. **Mechanism
+  = the already-proven params-refetch path:** the json-render loader
+  (`jsonPage`) keys its resources on the decoded query params, so a new
+  `?window` re-fetches every source in place — identical to the Runs facets.
+  New `TimeframeSelect` catalog component reads/writes `?window` (normalizes an
+  absent value to the 30d default on mount, so the page is consistently
+  windowed + shareable); `data.ts` `windowDaysOf`/`trendArgsOf` translate the
+  token to each source's args, **defaulting to that source's OWN window when
+  absent** so pages without the selector (Cache, Overview, deep-links) stay
+  byte-identical. Only server change: `getCacheStatsSql` gains an optional
+  `windowDays` (default 1 = 24h), clamped to `MAX_WINDOW_DAYS`. Selector-
+  controlled tiles drop their hardcoded `(24h)`/`(this 7d)` labels — the
+  selector states the window once (the Grafana/Datadog pattern). **Scope
+  decision:** Insights-only + presets (the AskUserQuestion permission stream
+  closed, so I took the highest-value default; the mechanism is reusable for a
+  Cache/global extension). Pinned by a `windowDaysOf`/`trendArgsOf` unit suite +
+  a `getCacheStatsSql` window test, and **browser-verified end-to-end** (real
+  platform + Chromium: chips rescope the `/v1/*` requests — `windowDays` 1/30/90
+  - `bucket` hour↔day over the exact span, URL persists, ZERO console errors).
+    NO CACHE/schema/wire bump. Cloud analytics-read 37 pass, UI 64 pass, lint+fmt
+    clean; `dist/` unchanged (gitignored build artifact).
+
+- **2026-07-14**: **Improvement cycle 5 — periodStats percentiles into SQL + two
+  fresh-audit fixes (invocations retention, RunsView cross-tenant stale display)
+  (`adda10e`, `9899d1e`)** (owner: "Never stop. Follow cycles." + "Why do you
+  stop"). **(1) periodStats p50/p95 in SQL (`adda10e`):** it fetched EVERY
+  executed-success duration in the window into JS (no LIMIT) to compute
+  avg/p50/p95 — the last raw-row-fetch scale hazard (tens of millions of rows at
+  target scale). Folded into the aggregate via
+  `percentile_cont(…) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE non-hit
+AND success)` over the same subset the old `durs` query used, so durations
+  never leave Postgres. **No cross-surface inconsistency introduced:**
+  getHistory/getFlakiest/getTaskDetail percentiles already run over a DIFFERENT
+  population (the last-50, `rn<=50`) than periodStats' full-window set — never
+  comparable raw values — so the JS floor-index (`pickPercentile`) stays at those
+  bounded sites and only the unbounded one moved to SQL. New test pins avg 300 /
+  p50 300 / p95 480 over a 100..500 spread (a cache-hit + a failed row correctly
+  excluded) + the empty-window→undefined case; the getPeriodComparison scale
+  bench stays green. **(2) Fresh core-cache + UI-tsx audit → two fixes
+  (`9899d1e`):** **LOW** — `Cache.close()` pruned `runs` at 30d but never the
+  sibling `invocations` header table, so on a long-lived checkout it grew
+  unbounded AND the header outlived its `runs` rows (`vx info`/`vx mcp` would
+  list an invocation whose task detail was gone); now pruned on the same window.
+  **MED** — `RunsView` held `lastGoodInvocations` outside the resource (to
+  survive a transient failed poll) but never reset it on a connection change, so
+  switching to org B whose first `/v1/invocations` fetch fails rendered org A's
+  run history + CI-health + facets under org B until a successful B fetch — a
+  stale cross-tenant DISPLAY (server scopes correctly; the client fell back to
+  the prior tenant's cached rows); reset on a `getConnectionKey` change
+  (deferred). **The audit CONFIRMED SOUND:** the cache key derivation, the
+  trust-OID/dirty-prune + tar-traversal defenses, `markRemoteAbsent`/`inflight`
+  dedup, the in-flight GET dedup's URL keying (includes `?org=&ws=` — no
+  wrong-scope coalesce), the Flamegraph input-order safety, and every other
+  timer/WS/rAF teardown + auth/scope reconciliation. **DEFERRED — a partial-index
+  migration is NOT a clean drop-in:** `getNotifications` (`WHERE failed_count>0`)
+  and `getRecentFailures` (`task_runs WHERE status='failed'`) walk past the
+  majority-passing rows and would benefit from partial indexes, BUT the migration
+  framework applies all migrations in ONE transaction under an advisory lock, so
+  a plain `CREATE INDEX` on the 50-100M-row `task_runs` would hold a multi-minute
+  lock on every deploy — it needs `CREATE INDEX CONCURRENTLY` (non-transactional),
+  which the framework can't express; wants a CONCURRENTLY-capable migration path
+  first. NO CACHE_VERSION/schema/wire bump. Core 87 cache tests + 60 UI pass,
+  cloud analytics-read 36 pass, lint+fmt clean.
+
+- **2026-07-14**: **Improvement cycle 3-4 — heatmap SQL-bucketing + two
+  end-of-run hang fixes, from a fresh core-exec/cloud-server audit (`0e5ec76`,
+  `dad5d58`, `99adf96`)** (owner: "Never stop. Follow cycles."). **(cycle 3,
+  `0e5ec76`)** `getRunHeatmap` streamed every task_run in the window into JS to
+  bucket a 7×24 grid — at the platform's 50-100M-rows/day target that's tens of
+  millions of rows over the wire per request. Moved into a `GROUP BY` returning
+  ≤168 rows, byte-identical: Postgres `EXTRACT(DOW)` is Sun=0..Sat=6 (== JS
+  `getUTCDay`) and integer `started_at / 1000` drops the sub-second remainder,
+  which can never cross an hour boundary. Pinned by a UTC-cell test (incl. the
+  HH:59:59.999 truncation edge — the former total-only assertion never covered
+  the mapping) + a scale guard (`dad5d58`). The `periodStats` p50/p95 has the
+  same streaming shape but wants a COORDINATED percentile-strategy change across
+  ALL the p50/p95 sites (getHistory/getFlakiest use a JS floor-index) rather than
+  a piecemeal SQL percentile that would diverge cross-surface — deferred.
+  **(cycle 4, `99adf96`, a repro-mandated core-exec + cloud-server audit) — two
+  end-of-run HANG paths, both when the direct child exits but a descendant
+  lingers:** (1) **MED** `runCommand`/`runSandboxed` gate on `proc.exited` then
+  `await streams`, but only abort the readers on the TIMEOUT path — a task that
+  backgrounds a process inheriting fd 1/2 (`server & echo up`; a compound
+  command stays `sh -c`, so `sh` exits while the grandchild holds the pipe)
+  never EOFs, so on a NORMAL exit `await streams` blocks FOREVER (no default
+  timeout) and the scheduler slot never frees → `vx run` hangs. New shared
+  `drainOrAbort` lets a clean exit EOF at once (normal tasks pay nothing;
+  residual is bounded by the pipe buffer since streamToString drains during the
+  run) and aborts a stuck reader after a 250ms grace, returning what it
+  captured. (2) **LOW-MED** the end-of-run shutdown of dependency-only
+  persistent tasks awaited their exit after SIGTERM with no timeout/SIGKILL
+  escalation — a persistent dep that traps/ignores SIGTERM hung a normal
+  completion; now bounded (2s grace → SIGKILL the stragglers). Both timers are
+  cleared + unref'd so a fast shutdown never delays CLI exit. Regressions pin
+  both (`sleep 10 & echo up` returns <3s not ~10s; a SIGTERM-trapping persistent
+  dep completes <8s not ~30s). **The cloud server surface (auth gate,
+  machine-token/session split, CSWSH/Origin, org-scoped broadcast, SigV4,
+  artifact-store immutability/caps/scopes, CSRF) was audited and verified FULLY
+  SOUND — zero reachable defects.** The scheduler's 2-D resource admission
+  (float-residue/holder-count solo-clamp, park/repush FIFO) + the execute-task
+  retry/verify-restore were also confirmed sound. NO CACHE_VERSION/schema/wire
+  bump. Core gate green (1267 pass, 0 fail), cloud analytics-read 35 pass, lint+
+  fmt clean.
+
+- **2026-07-14**: **Improvement cycle 2 — turbo-preset escaping + a cloud
+  cross-tenant DoS + UI fetch-dedup/dead-code, from two fresh parallel audits
+  (`d7c6269`, `23f35a2`, `eed4b5a`)** (owner: "Never stop. Follow cycles.
+  Improve all aspects on vx an vx cloud"). Ran a fresh repro-mandated cloud
+  audit + a UI audit; acted on the verified findings. **(1) migrate-turbo preset
+  escaping (`d7c6269`):** `renderPreset` emitted each global array entry as a
+  naive `'${x}'`, bypassing the config emitter's escaping `quote()` — a
+  `globalDependencies` glob with a `'`/`\`/newline (legal on Linux, verbatim in
+  turbo.json = a system boundary) produced a malformed, unloadable
+  `vx-preset.ts`. `quote()` moved to a leaf `migrate-emit.ts` so both the
+  emitter and the preset renderer import it as a VALUE without closing a runtime
+  cycle (migrate.ts already imports the turbo mapper — a value back-import
+  tripped `import(no-cycle)`); test imports the generated preset through Bun's
+  TS loader. **(2) HIGH cloud cross-tenant DoS (`23f35a2`):** `getRunTrends` /
+  `getStorageGrowth` fill their output arrays with a SYNCHRONOUS
+  `for (t = start; t <= end; t += bucketMs)` loop bounded only by unclamped
+  client params — `GET /v1/trends/runs?from=0&to=1e15` drives ~2.7e8 iterations
+  (and `?days=1e9` the storage loop), allocating hundreds of millions of points
+  → freeze/OOM of the SINGLE-THREADED, MULTI-TENANT server for EVERY tenant,
+  triggerable by any authenticated viewer/ci token in one request. Fixed:
+  clamp the derived span to `MAX_TREND_BUCKETS` (10k, keeping the most-recent
+  buckets; `to` capped at now). The same unbounded span made `getRunHeatmap` /
+  `getPeriodComparison`'s raw-row fetches degenerate to full partition scans via
+  a huge negative `since`/`from` — clamped their day/window to `MAX_WINDOW_DAYS`
+  (~1yr). Legit dashboard ranges (24h/30d/7d) are far under the caps → results
+  unchanged; regression test asserts a hostile span returns a bounded array in
+  <1s. (The SQL-side percentile/bucket rewrite for the raw fetches at
+  50-100M-row scale is the deeper follow-up.) **(3) UI dedup + dead-code
+  (`eed4b5a`):** in-flight GET coalescing at the `getJson` choke point — a
+  view's sources fetch concurrently, so run-detail's `run` + `runSelectedTask`
+  both GET the largest `/v1/runs/:id` (doubled every 5s poll on the common
+  `?task=` deep-link) and task-detail's detail/flaky/config overlap the
+  recommendations aggregator; sharing one promise per URL (cleared on settle —
+  coalescing, not a cache) removes the duplicates with no view restructuring.
+  Dead-code: the Cache view fetched `prunable` (a Postgres scan) every 30s poll
+  but only Insights renders it (dropped); the `projects`/`invocations` sources +
+  the `LiveActivity` SSE component had zero references (deleted); `hitSplitRows`
+  returns `[]` on zero hits so the table shows its honest empty state. **The
+  cloud audit CONFIRMED SOUND:** the branch→trunk duration-hint leak invariant
+  (validates cycle-1's trust-scope work), the CTE rewrites, artifact-store trust
+  scopes, migrations/partitions, the read-side tenant clamp, and ingest
+  idempotency. NO CACHE_VERSION bump (cloud + UI + a migrate-emit refactor).
+  Core 1654 pass (full-suite 19 "fails" were the documented pg-slot + perf-guard
+  flakes under concurrent load — metrics/migrate/run-context all green in
+  isolation), cloud analytics-read 34 pass, UI 60 pass, lint+fmt clean.
+  **DEFERRED (next cycles):** the MED SQL-side percentile/bucket rewrite
+  (periodStats/heatmap at scale); the trusted-GET S3 HEAD-skip (still wants an
+  adversarial pass); `Stack` (a trivial unused layout primitive — kept as a
+  reusable JSON-view building block, unlike the heavy dead `LiveActivity`).
+
+- **2026-07-14**: **Improvement cycle 1 — two parallel read-only audits (core +
+  UI) drove five verified fixes across correctness/perf (`5a35824`, `aa6a56f`,
+  `9b16390`, `d7fa982`, + normalizeRemoteUrl)** (owner: "Never stop. Follow
+  cycles. Improve all aspects on vx an vx cloud"). Ran a core-audit agent + a
+  UI-audit agent (read-only, ranked findings), then fixed the top verified ones,
+  each repro'd before the fix. **CORE (all confirmed by executed repro):** (1)
+  **HIGH — `computeNestedProjectDirs` interloper bug** (`nested-dirs.ts`): the
+  contiguous-run scan `break`s on the first non-descendant, but a sibling whose
+  name extends the parent by a char sorting BELOW `/` (`-`/`.`/`+`/space) lands
+  between `foo` and `foo/` — so `foo`,`foo-utils`,`foo/nested` returned an EMPTY
+  nested set for `foo`, silently breaking the hard project-boundary invariant
+  (foo's globs then fold foo/nested's files into its key; a broad `outputs.files`
+  could clean/capture another project's files). Fixed to skip interlopers and
+  stop only past the parent's string-prefix block. (2) **HIGH (subdir layout) —
+  stale cache hits + `--affected` under-selection when the workspace root is a
+  git SUBDIR** (`inputs.ts`, `affected.ts`): `git ls-files` prints
+  cwd(workspace)-relative paths but `git status`/`diff` print repo-root-relative
+  ones, so the dirty set never matched the trusted-OID map → a modified tracked
+  file kept its committed OID → STALE HIT (old outputs), and `git diff`'s
+  `code/pkg/x` resolved to `<root>/code/pkg/x` → project not flagged affected.
+  Fixed: normalize `status` by the `--show-prefix` (a trivial concurrent 3rd
+  git spawn, no tree scan — wall-clock unaffected) + `git diff --relative`.
+  No-op when workspace==git root (common case byte-identical). (3) **LOW-MED —
+  `normalizeRemoteUrl` leaked an explicit port** into the workspace id
+  (`:2222/` → `/2222/`), so a ported SSH URL and the HTTPS URL of the SAME repo
+  derived different ids; now stripped (protocol-form only, so a numeric scp path
+  segment isn't mistaken for a port). **UI (from the dashboard audit):** (4)
+  throttled the four analytics views (insights/cache/artifacts/overview) from a
+  5s to 30s auto-refresh — they show 7-30d aggregates (getCacheSavings ~430ms,
+  …) that barely move, so 5s was ~6-12× the necessary Postgres/network load per
+  open tab (runDetail stays 5s for live fill-in); (5) semantic hit-split bar
+  colors (a `colorKey` literal-token column option → cache-local/cache-remote,
+  vs the arbitrary hashed hues) + fixed the taskDetail CPU% column keying a
+  nonexistent `_cpuPct` (→ `cpuMs`). Also a small perf touch: `LocalHistoryProvider`
+  filters on `(project,task)` tuples so the `runs(project,task)` index SEARCHes
+  instead of full-SCANs (the concatenated-expression it used defeated the index;
+  ~5-11%, opt-in predictive path). NO CACHE_VERSION bump — the two key-affecting
+  fixes (nested-dirs, subdir stale-hit) only change keys for the specific buggy
+  layouts and are self-healing (new key → miss → re-run → re-cache, never a wrong
+  hit); every other layout is byte-identical. Pinned by new suites
+  (`nested-dirs.test.ts` interloper matrix, `git-subdir-workspace.test.ts` both
+  subdir fixes on a real repo, normalizeRemoteUrl ports) + the spawn-count guard
+  updated 2→3 (concurrency is the invariant, not the literal count). Core 1264
+  pass, lint+fmt clean. **DEFERRED (verified, next cycles):** the trusted-GET S3
+  HEAD-skip (real hot-path win but changes a security-boundary test's shape —
+  wants an adversarial pass; reverted this cycle); core double-hash-on-miss
+  (#4, perf); restore-hit dead exitCode branch (#6); migrate-turbo preset
+  escaping (#8); UI restore-"see it run"-on-platform (#1, a feature) + dedup
+  task-detail fetches (#3) + delete dead LiveActivity (#4).
+
+- **2026-07-14**: **Lookahead scheduler — architect-designed, measured, NOT
+  built; the scheduler-policy benchmark IS the deliverable (`bench/schedule-
+policy.ts`)** (owner: "Critical path should always be prioritized but we
+  should also be smart and predict… to not schedule a task that would block
+  critical. But also not wait for critical and do nothing"). Design
+  `docs/design/lookahead-scheduler-2026-07.md`. **Verdict: don't build
+  reservation/lookahead admission.** The owner's three constraints are
+  self-resolving — (1) "prioritize critical path" is ALREADY the opt-in
+  time-based `remCP` priority (`computePredictedPriorities`, near-optimal LPT-
+  on-a-DAG); (3) "never idle" is ALREADY a hard invariant of the
+  work-conserving `tick()`; and (3) forecloses idle-insertion, the ONLY
+  lookahead with theoretical teeth — leaving only work-conserving REORDER,
+  which `remCP` already does. Worse, the naive "prefer a shorter ready task to
+  free a worker for critical" is an SPT bias, and a clean Graham anomaly
+  (design Example D) shows it REGRESSES makespan (30→32) — it optimizes
+  critical-task START LATENCY at the cost of makespan, a real and often-losing
+  trade. It'd also break the tested determinism invariant (schedule order is a
+  pure function of priorities+graph+completion order; wall-clock lookahead
+  makes it unpinnable). Full mechanism specified (Phase 3, opt-in
+  `lookahead: true`, logical-clock not wall-clock, no-op-without-data) so it's
+  a build-or-not decision if a latency need ever surfaces — prior: skip.
+  **Phase 1 SHIPPED — the benchmark**, the instrument that turns every future
+  scheduling claim into a number. `bench/schedule-policy.ts` (no `src/`
+  change; exported `mergePriorities` from scheduler.ts so the bench uses the
+  REAL merge, no drift) replays 9 graph shapes through a deterministic
+  discrete-event sim of `runGraph`'s greedy exec-tier list policy
+  (self-validated against 3 hand-computed makespans incl. Example D = 30;
+  logical durations, no wall-clock, so it's flake-free and a 2000-node graph
+  measures in ms). Compares `count` (duration-blind default) vs `remCP` (warm
+  predictive) vs `remCP-cold` (empty-history predictive = the cold-cache case).
+  **Measured finding (`bench/schedule-policy.md`):** structured shapes (chain/
+  fan/diamond/anomaly/work-bound/cp-bound) tie EXACTLY (0.0%); warm predictive
+  wins **−2.0% mean makespan + latency** on realistic mixed-duration DAGs;
+  **BUT cold predictive can REGRESS +0.1..+0.9%** (uniform-duration fallback
+  is a worse heuristic than reverse-dep-count on some shapes). **So the
+  benchmark CORRECTED the naive Phase-2 plan:** don't flip `predictive`
+  unconditionally default-on — the win-only form is DEFAULT-ON ONLY WHEN
+  HISTORY IS PRESENT (warm), keeping count on a cold cache (ties exactly).
+  Phase-2 cost MEASURED (the decisive number): `LocalHistoryProvider.loadFor`
+  = ~280 ms on a synthetic 2000-task / 60k-run warm cache.db (1.6 ms on this
+  repo's 10-task DB) — added to the DEFAULT path it would MORE THAN TRIPLE the
+  ~120 ms warm `vx run` on a large monorepo, on EVERY run including all-cache-
+  hit warm runs where the -2% ordering win doesn't even exist. FINAL
+  CONCLUSION: do NOT make `predictive` the default — keep it OPT-IN (the
+  current design is correct); the whole scheduling thread resolves to "don't
+  build lookahead, don't flip the default." The -2% win only lands on
+  execution-heavy mixed-duration runs, exactly what a user opts into with
+  `predictive: true`. (Root cause of the 280 ms: the query filters on
+  `(project||'#'||task) IN (…)`, a concatenated expression the
+  `runs(project,task)` index can't serve → full scan; rewriting to a
+  tuple-filter is a noted low-priority future optimization, not urgent.) NO
+  CACHE/SCHEMA/wire change (bench-only + one added export). Core ci green.
+
+- **2026-07-14**: **Duration hints are TRUST-SCOPED like the cache — timing
+  from main is accessible on a branch, but nothing from a branch leaks to main
+  (`873be25` capture + `<this>` scoping)** (owner: "I can be experimenting on a
+  branch increasing task time for all later on as avg will increase… take into
+  account PRs, don't count their times into main" → "It should work like with
+  cache. Timing from main should be accessible in branch but nothing from branch
+  leaks to main. It is untrusted"). The SHARED cloud LPT hint `taskDurationHints`
+  averaged `duration_ms GROUP BY project#task` over ALL of a workspace's
+  `task_runs`, so ONE dev's slow branch experiment permanently skewed the average
+  EVERY distributed run used to order dispatch. (The local predictive p50 reads
+  the single-user local `runs` table — no branch column, transient — left as-is;
+  the SHARED cross-dev vector is the one that mattered.) **Signal:** capture the
+  repo's DEFAULT branch — `captureDefaultBranch` in `run-context.ts` (GitLab
+  `CI_DEFAULT_BRANCH` → GitHub event-payload `repository.default_branch` →
+  `git symbolic-ref --short refs/remotes/origin/HEAD` stripped → null; never
+  throws, one best-effort read/spawn, paid only when telemetry is active),
+  threaded ADDITIVELY through `RunContextRecord.defaultBranch` (telemetry v2
+  unchanged — the `attempts`/`verify`/`outputFp` precedent). A run is TRUNK iff
+  `branch === defaultBranch` (both non-null) — subsumes BOTH PRs (head ≠ default)
+  AND feature-branch pushes with one field, no isPr boolean. **Storage:**
+  migration `0008` adds nullable `invocations.default_branch` (ADD COLUMN on the
+  partitioned parent cascades); ingest writes it. **The model = the artifact
+  store's `readScopeSpecs`** (owner's "work like with cache"): a TRUNK submission
+  reads ONLY the trunk baseline — a branch experiment's slow timings can NEVER
+  reach it, and a task with no trunk timing simply has no hint (→ FIFO), NEVER a
+  branch value (this REPLACES the first cut's `COALESCE(trunk, all)` fallback,
+  which was itself the leak — it served branch timings to main when a task had no
+  trunk data). A BRANCH submission reads its OWN branch's timings FIRST, falling
+  through to trunk for tasks it hasn't run on its branch, and NEVER another
+  branch's (`COALESCE(avg FILTER (branch=own), avg FILTER (trunk))` — the
+  own-sub-scope-then-trusted order of readScopeSpecs; one PR can't see another's,
+  exactly like the per-PR untrusted sub-scope). So a dev on a branch benefits
+  from their own accumulated (changed) durations layered over main, with zero
+  leakage up or sideways. **Scope on the wire:** `branch`/`defaultBranch` are
+  additive-optional on `DistSubmitMessage` (advisory, absence→trunk, NO
+  DIST_PROTOCOL bump — the telemetry-additive precedent); `dispatch.ts` passes
+  `{branch, defaultBranch}` from the submit into `taskDurationHints(ws, scope)`;
+  the memo is keyed per (workspace, scope). LEFT JOIN → a task_run with no
+  invocation header is un-attributable to any branch and feeds NO scope (only
+  provably-scoped runs move a baseline). Advisory + memoized-30s, so the added
+  per-row invocation lookup (existing `getRegressions` join; `invocations_run_id`
+  index) is off the outcome path. **Analytics dashboard avgs left as-is on
+  purpose** — those surfaces WANT per-branch data (regressions already split by
+  branch; "did MY PR make this slower" needs to see the PR run); only the shared
+  SCHEDULING hint is scoped. NO CACHE/core-SCHEMA/telemetry-wire bump (telemetry
+  field additive; local `runs` untouched). Tests: core `captureDefaultBranch`
+  env/git matrix + façade snapshot; cloud a trunk submission excludes a 10×
+  branch experiment (150 not 2000) + a task only on `exp2` is invisible to trunk,
+  a branch submission sees its own `exp` timing (2000) over trunk + falls through
+  to trunk for un-run tasks + never sees `exp2`, a null-default scope reads trunk,
+  - a `dist:submit` branch/defaultBranch wire round-trip. Core 1257 pass, cloud
+    analytics/dist/wire green (full-suite fail is the pg `too many clients`
+    connection-slot flake, schema-smoke suite, passes isolated), lint+fmt clean.
+    **Follow-on (deferred):** local predictive p50 stays branch-agnostic (would
+    need a branch column on the local `runs` table — a core SCHEMA bump — for a
+    single-user cache whose experiments skew only that dev's next local run; not
+    worth it vs the shared vector). Filtering the analytics-baseline avgs
+    (listProjects/getHistory/trends) to trunk is a separate, deliberately-unmade
+    choice (per-branch surfaces by design).
+
+- **2026-07-13**: **Core-audit completion — four defects in the previously-
+  unreviewed watch/migrate/lockfile/loader modules fixed (`780eac1`)** (cycle-4;
+  a repro-mandated hostile reviewer). **HIGH (data loss):** output/workspace
+  globs accepted `..` path segments, and `cleanOutputs` rm()s resolved output
+  paths before EVERY run while `Bun.Glob.scan` follows `..` out of cwd — so
+  `cache.outputs.files: ['../victim/**']` (or `outputs.workspaceFiles:
+['../above.txt']`) deleted files OUTSIDE the project / above the repo root, a
+  direct violation of the hard project-boundary invariant (real-CLI repro
+  deleted a committed sibling file). The loader now rejects a `..` path SEGMENT
+  in outputs.files / inputs.files / workspaceFiles (`foo..bar` filenames still
+  fine). **MED:** `vx migrate --from nx` clobbered an existing root
+  `vx.config.ts` without `--force` — the SYNTHESIZED workspace-root project has
+  no discovered meta, so the meta-only conflict check missed it; the check now
+  also stats every actual write target. **MED:** migrate emitted unterminated
+  string literals for commands with embedded newlines (`"echo a\necho b"`) →
+  the generated config failed to load; `quote()` now escapes `\n`/`\r`.
+  **LOW-MED:** `exec.env` was never validated, so a malformed `passThrough`
+  reached `buildIsolatedEnv`'s `for..of` (a number threw mid-run, a string
+  silently char-iterated) — the loader now validates `exec.env`. NO
+  CACHE_VERSION bump (valid configs byte-identical; the `..` rejection only
+  errors on configs that were already a data-loss vector). **REFUTED by the
+  reviewer (sound):** the watch reentrancy guard (no event loss / no overlap),
+  lockfile `--check` + run-side freeze, scoped broken-out-of-scope config.
+  Pinned by regressions in project-loader.test.ts + migrate.test.ts; core ci
+  exit 0.
+
+- **2026-07-13**: **#79 — the N+1 analytics savings/regression queries rewritten
+  as set-based CTEs (`3ad06c8`)** (cycle-4). `listProjects` ran a correlated
+  cache-savings subquery PER project (the worst N+1), `getCacheSavings` ran a
+  per-hit-row subquery twice, and `getRegressions` ran two per-candidate queries
+  (1+2K). Each is now ONE set-based query, output-identical: an `uncached` CTE
+  (avg uncached-success duration per project#task) that cache-hit rows join to
+  — the inner join IS the old `WHERE avg_dur IS NOT NULL`, and
+  `SUM(hit_count × avg)` equals the old per-row sum; getCacheSavings folds the
+  24h + all-time figures into one scan via `FILTER`; getRegressions' per-
+  candidate window-stats become one GROUP BY and ever-passed one DISTINCT set,
+  read from in-memory maps in the loop. Pinned by a differential test
+  (`analytics-cte-diff`) that re-runs the OLD per-item SQL as a reference over a
+  seeded dataset and asserts the new methods deep-equal it, plus hand-computed
+  values; the scale-guard bounds still hold. Cloud 436 pass. (Remaining #79
+  items — partition lookback bounds, the trusted-GET HEAD skip, the session
+  auth memo — are separate, still open.)
+
+- **2026-07-13**: **Pointer-move cost cut on the charts + flamegraph (P6/P8,
+  `69eb856`)** (cycle-4). Both hover handlers forced a `getBoundingClientRect`
+  (a sync layout) on EVERY mousemove. **P8 (live — insights/cache/task-detail
+  LineCharts):** the tooltip was an IIFE that read the hovered index and
+  returned a fresh `<foreignObject>`+`<For>` subtree, so moving between points
+  tore down + rebuilt the whole tooltip DOM per index — now a stable structure
+  with reactive position/text bindings; the rect is cached on pointer-enter (the
+  chart doesn't scroll) and index updates coalesce to one per animation frame.
+  **P6 (Flamegraph — used by the run cockpit):** the O(N) min/max time window
+  recomputed ~6×/render per cursor move → memoized; the rect cached on enter +
+  rAF-throttled. Both cancel any pending frame on unmount (`onCleanup`). A new
+  MEASURED guard sweeps the pointer across an insights LineChart and asserts
+  ≥40fps + zero long tasks (ui-perf now 5/5 in a real browser). P7 (the
+  `RunSession` O(N²) `find`) was NOT actioned — it's the dead spawn cockpit
+  (unreachable per the cycle-3 discovery); no live view instantiates the
+  Flamegraph either, so P6 is a component hardening, not a live-path fix. Cloud
+  435 pass, core ci exit 0.
+
+- **2026-07-13**: **Batched `/v1/why/:runId` — the run-detail "why did this
+  re-run" panel is one request + polls live + actually renders on the platform
+  (`d34d7e1`)** (cycle-4 C4). The panel fired one `/v1/diff/:runId/:taskId` per
+  executed task (bounded 8-concurrent) — a 500-task run = 500 requests — which
+  is exactly why the run-detail live-fill work had to pin `runWhy` as a
+  fetch-once `staticSources` source. Replaced the fan-out with a single
+  `GET /v1/why/:runId`: ONE `LATERAL` query finds each executed task's
+  most-recent prior run and compares cache keys, returning the verdict (first
+  run / inputs changed / ran without a cache hit) for the whole run. With the
+  fan-out gone, `runWhy` joins the live 5s poll and the **`staticSources`
+  loader capability was removed entirely** (it had no other consumer — the
+  reason I added it in `6a79514` is now moot). **Two latent bugs fixed along
+  the way:** (1) the why TABLE was gated `visible: capsCacheMissing not-true`,
+  so since the platform pivot (no local cache.db) it showed ONLY a "run vx why
+  locally" hint and NEVER the verdict — the table now always renders the
+  per-task verdict (derived purely from Postgres `task_runs` hashes), with the
+  per-file/env/dep detail noted as local-only; (2) the old client logic
+  labelled a hash-change as "not cacheable / forced" because it only checked
+  for fingerprint `entries` (never present on the platform) — the batched
+  server compares hashes directly, so a real key change reads "inputs changed".
+  The single-segment route needed adding to `isAnalyticsSurface` (the same
+  allowlist-or-fall-through-to-SPA class as the `/v1/notifications` fix), pinned
+  by a server e2e. Dead code swept: `whyRows`/`changeToken`/`diffText` +
+  the fingerprint-detail columns + the `WhyRow` fan-out shape. Verified in a
+  REAL browser: the panel renders "inputs changed" with exactly ONE `/v1/why`
+  request and ZERO `/v1/diff`. Cloud 435 pass, core ci exit 0.
+
+- **2026-07-13**: **Adversarial review of the incremental-ingest wave — VERDICT
+  SOUND, zero production-reachable defects; two consistency follow-ups shipped
+  (`1e7f206`)**. A repro-mandated hostile reviewer (real ephemeral pg + the real
+  wire) swept all seven defect classes; every one REFUTED by an executed repro:
+  (1) dedup-key alignment — both paths route through the SAME `insertTaskRun`
+  and derive `(started_at, run_id, project, task)` from the same
+  `endedAtMsAtStart` + the same `outcome.wallclockStartNs.toString()`
+  (byte-identical); (2) partition + `ON CONFLICT` — the unique index propagates
+  to parent + `task_runs_default` + every weekly partition, and dedup holds on
+  the DEFAULT and real partitions; (3) aborted/cache-hit consistency — both
+  paths skip aborted, cache-hits go batch-only (the sink's `miss` guard), and
+  every retained log tail is `takeEntry`'d so the batch drain never
+  double-ships; (4) log double-ship — unreachable in the single-client flow
+  (takeEntry before drain, no client retry); (5) auth/tenant — session→403,
+  no-auth→401, ci→200, `org_id` always token-derived, body `workspaceId` routed
+  WITHIN the org; (6) body validation — 8 malformed bodies→400, over-cap→413,
+  malformed-ns→200-with-null (`intNsOrNull`); (7) run.start coupling —
+  `TELEMETRY_SCHEMA_VERSION` stays 2, additive, otel ignores it, plain runs
+  byte-unaffected. Plus a NEW surface: concurrent first-pushes of a new
+  workspace (N tasks finishing at once) converge to ONE workspace via
+  `routeWorkspace`'s unique-violation retry. **The one test "fail" (DEFECT-2)
+  was a TEST ARTIFACT** — it did a raw `CREATE TABLE … PARTITION OF` that
+  bypasses the production `maintainPartitions → createPartitionMovingDefault`
+  recovery; I pinned the real path with a regression test (a DEFAULT-resident
+  incremental row + `maintainPartitions` creating its covering partition →
+  the row moves out of DEFAULT with zero warnings and dedups to one row).
+  **Two follow-ups shipped:** `/v1/ingest/task` now gates on the wire version
+  (400 on skew, parity with `/v1/ingest/logs` + `/v1/catalog`); the recovery
+  regression test committed. Accepted residuals (informational, no action): a
+  dropped incremental POST loses that task's LOG tail (the row is still
+  recovered by the batch backstop — the documented best-effort-logs tradeoff);
+  the log insert's SELECT-then-INSERT has no unique guard (a partitioned unique
+  index can't dedup it — `created_at` differs per path — but the normal flow
+  never double-delivers); 400 bodies echo internal exception text (consistent
+  with the route, ci-token-only). Cloud 434 pass, core ci exit 0.
+
+- **2026-07-13**: **Run detail fills in LIVE + a vacuous perf-guard fixed
+  (`6a79514`, `3fc3843`)** — completing the incremental-ingest payoff. The
+  `runDetail.json` view had NO refresh interval, so a page opened during a run
+  stayed frozen at load-time state; per-task rows landed in Postgres but an
+  open dashboard never showed them without a manual reload. Added
+  `refresh: 5000` (the same visibility-aware tick the overview/cache/insights
+  views use; the equality gate reuses byte-identical values → a finished run
+  polls with ZERO DOM churn). The expensive `runWhy` source (a per-task
+  `/v1/why` fan-out) must NOT repeat every tick, so the loader gained a
+  per-source refresh control: a new `staticSources` list on a JSON view names
+  sources that fetch ONCE (params/connection changes still re-fetch) — `runWhy`
+  is static; `run`/`invocation`/`artifacts`/`selectedTask` poll live. **Verified
+  in a REAL browser** (ephemeral pg + fake S3 + the built SPA): two
+  incrementally-ingested tasks render, then a third seeded mid-view appears
+  after one 5s poll WITHOUT a reload. **Discovery (`3fc3843`):** the committed
+  `ui-perf` guard was VACUOUS — `bootPlatform` never passed `uiHtmlPath`, so the
+  server returned the API-only `'vx-cloud'` fallback at `/` and the guard
+  navigated to a BLANK page; its ≥40fps + zero-long-task assertions passed
+  without ever rendering the dashboard. `bootPlatform` gained an optional
+  `uiHtmlPath` (off by default so API-surface suites don't touch the dist) and
+  the guard now serves the built dist — it renders the real 400-task run detail
+  - 120-run list and STILL measures ≥40fps / 0 long tasks (4/4 green). Cloud
+    433 pass, ui-perf 4/4 (now real), core ci exit 0.
+
+- **2026-07-13**: **Per-task incremental ingest — each EXECUTED task reports
+  its result + logs as it finishes, not batched at run end (`9a29a51`)**
+  (owner: "We should report each task same as we report result — logs should
+  go together or even be streamed as they go"). Before, the `cloud()` plugin
+  shipped a run's task rows + logs in ONE bundle at run end (`POST /v1/ingest`
+  after the summary), so a long run's dashboard stayed EMPTY until the final
+  task completed — you couldn't watch a run fill in, and the per-task logs a
+  dev wants mid-run were unavailable until every task finished. Now the sink
+  fires `POST /v1/ingest/task` on each `task.end` (result + retained log tail),
+  so the run-detail page fills in live and each task's logs are queryable the
+  moment it completes. **Executed-tasks-only** (`cacheSource === 'miss'` +
+  status success/failed): cache hits complete in BURSTS carrying no captured
+  output, so they're left to the end-of-run batch — the incremental burst
+  tracks wall-clock WORK, not a fan-out of instant restores (bounds the push
+  rate). **Unified by a task_runs idempotency key** (migration 0007:
+  `UNIQUE(started_at, run_id, project, task)`): the end-of-run batch re-inserts
+  every task with `ON CONFLICT DO NOTHING`, so incremental is a pure LATENCY
+  win, the batch stays the completeness BACKSTOP, and a dropped incremental
+  POST is recovered by the batch. **The load-bearing coupling:** both paths
+  must derive the dedup `started_at` from the SAME canonical run start or the
+  key splits into duplicate rows — threaded through a new ADDITIVE `run.start`
+  telemetry field (`startedAt`, = the run's `endedAtMsAtStart`), so the keys
+  match byte-for-byte with **no TELEMETRY_SCHEMA_VERSION bump** (stays 2).
+  **Logs best-effort:** `TaskLogBuffer.takeEntry(taskId)` removes a task's tail
+  once sent, so the end-of-run drain never double-ships it; the `task_runs` row
+  is the guaranteed record. **Server:** `Analytics.ingestTask` (routes ws →
+  inserts one task_run via the shared `insertTaskRun` + provisions project/task
+  - inserts the log tail idempotently; aborted tasks store nothing);
+    `POST /v1/ingest/task` (ci-token-only, 2 MiB body cap) added to
+    `isAnalyticsSurface` (a SESSION 403s — pinned). **Sink** (`plugin.ts`):
+    `incremental = connection !== undefined`; `wants` = `['run.start','task.end']`
+    when connected (+`'task.log'` when logs enabled — the chunk path stays free,
+    result reporting is separate). Verified: server e2e (session→403, token→200,
+    run detail + logs render BEFORE any summary), plugin unit ("reports each
+    executed task incrementally"), the batch-dedup differential (incremental +
+    batch of the same run → one row per task). Cloud 433 pass, core ci exit 0.
+    **Deferred:** a live "running" header row in the runs LIST (Phase 2 — wants a
+    schema for in-flight state) and mid-task CHUNK streaming (Phase 3 — stream
+    `task.log` chunks as they arrive, not just the retained tail at task end).
+
+- **2026-07-13**: **Dashboard is a real SaaS app — self-service profile,
+  change-password, a notification bell, and a Settings hub (`81ac87e`…,
+  `581fa07`)** (owner: "Redesign ui to be real sass with profiles switching
+  orgs workspaces notifications etc settings"). Org + workspace switchers
+  already existed (P4); this added the identity/notification/settings
+  surfaces. **Server (wave 1, no schema bump):** `/v1/auth/me` now carries
+  `email` + `displayName` — the session principal only loaded
+  `instance_admin`, so the account menu literally could not show who was
+  signed in; `sessionPrincipalFor` selects them. New `PATCH /v1/auth/me`
+  (rename — the one self-service field; email is the immutable login
+  identity), `POST /v1/auth/password` (verify current via argon2 → ≥8-char
+  new → re-hash; session + CSRF only, a bearer 403s), and
+  `GET /v1/notifications` (the bell feed: recent invocations that broke
+  `failed_count > 0`, newest-first, ONE indexed scan over the invocations
+  header — cheap to poll; the client derives unread from a last-seen
+  watermark). **UI (waves 2-3):** account menu = avatar(initials) + name +
+  email + admin badge + links to Settings/Admin + sign out; a notification
+  bell (visibility-aware 30s poll, unread badge vs a per-origin+ws
+  localStorage watermark, each item deep-links `/runs/:id`, honest "all
+  green" empty state); `/settings` = a personal hub with Profile (rename,
+  shell name updates live) + Security (change password, confirm + inline
+  banners) tabs + an Organization link out to `/admin`. **Verification fix:**
+  `/v1/notifications` fell through to the SPA because the server's
+  `isAnalyticsSurface` allowlist omitted it — added, pinned by a server e2e
+  (session reads the feed; green → empty, broken run → surfaced). Verified
+  end-to-end in a REAL browser (platform + Chromium, seeded via the ingest
+  wire): 9/9 flows (bell badge + panel, account-menu email, /settings rename
+  reflected in the shell, password change round-trips server-side), ZERO
+  console errors; the measured ui-perf guard stays green (4/4) with the
+  bell's poll. NOTE: `dist/` is a gitignored build artifact — never
+  committed. Cloud 429 pass, lint+fmt clean. Deferred (documented,
+  unbuilt): richer notification kinds (regressions/flaky as timestamped
+  events would want a schema), per-user notification prefs, avatar upload,
+  email change (needs a verify flow).
+
+- **2026-07-13**: **Audit loop cycle 3 — 60fps bar met everywhere +
+  virtualization, DX-1..5 shipped, CORE-1 fixed, the perf guard COMMITTED, and
+  a dead-code discovery that MOOTS four findings (`f33d1a0`..`2ea9f08`)**.
+  Wave 1 (`f33d1a0`): DataTable VIRTUALIZATION (windows rows above 120,
+  overscan 12, spacer rows preserving scroll geometry, row height calibrated
+  from the first rendered row) + C5's type-aware sort comparator — measured
+  after: every §1 scenario ≥55fps with ZERO >34ms frames and ZERO long tasks
+  (run-detail(700) 24fps/652ms-spike → 60fps/0). Wave 2 (`81ac87e`,
+  `0e7cb09`): DX-1 — `vx-cloud connect` REFUSES a tokenless connect to an
+  `auth: account` platform naming the Admin → Tokens fixit (`--anonymous`
+  opts in with a loud warning); the silent-401 trap where "connected" showed
+  an empty dashboard forever is closed at the front door. DX-5b stale-doc
+  sweep (npm replaces every curl-installer/VX_VERSION mention; from-turborepo
+  drops the dead "same remote-cache wire" claim, maps `turbo run build` →
+  `vx run build --all` with a default-scope bullet, un-claims Bun-required;
+  vx-distributed-ci's VX_CLOUD_TOKEN is now `required: true` — the platform's
+  machine surfaces are token-only; upgrade.ts strings stop naming the deleted
+  install.sh). **CORE-1 FIXED**: `computePredictedPriorities`' traversal never
+  actually pushed (all nodes pre-seeded its stack → `stack.includes` always
+  true), so it folded reverse-insertion order — and the graph Map inserts
+  DEPENDENTS FIRST (pre-order), so every upstream's priority collapsed to its
+  own duration on real graphs (the old tests passed topo-ordered nodes,
+  masking it). Now an explicit Kahn pass over the dependents relation
+  (order-independent, O(N+E)); regression tests pin real pre-order insertion
+  - a diamond whose long branch hangs off a short head, both red on the old
+    code. DX-2: GHA job summary + check run carry a dashboard DEEP LINK
+    (`/#/runs/<runId>`; `details_url` on the check) when a connection resolved.
+    DX-5a: the UI vite dev server PROXIES `/v1|/health|/mcp|/events|/stream` to
+    the platform (`VX_CLOUD_DEV_PROXY` override) so UI dev is same-origin and
+    the session cookie works; ui/README rewritten to the compose recipe. Wave 3
+    (`7edfaeb`, `b0e117e`, `2ea9f08`): **`vx why`** (DX-3) — the entry_inputs
+    component-level cache-key diff reaches the terminal (latest-vs-previous or
+    `--run`, bare-name resolution, `--format json`, honest "fingerprints
+    unavailable" degradation; 7 e2e over a real changed-input fixture);
+    **`vx-cloud status`** (DX-4) — the connection doctor naming ALL THREE
+    silent modes (tokenless-on-account, `VX_CLOUD_DISTRIBUTE` in a workspace
+    that never declares cloud() → flagged IGNORED, unreachable/rejected token;
+    7 e2e, one per mode); **the perf guard is a committed suite**
+    (`packages/cloud/tests/ui-perf.test.ts`: real platform + real Chromium +
+    rAF/longtask sampling seeded via the real ingest wire; asserts ≥40fps idle
+  - scroll on /runs and a 400-task run detail, 0 >200ms long tasks, 0 console
+    errors; SKIPS without playwright/the built dist — playwright is
+    deliberately NOT a dependency, resolved via NODE_PATH at runtime and typed
+    STRUCTURALLY since a file-level DOM lib reference collides with Bun's fetch
+    typings program-wide). **DISCOVERY — P4/P5/P7/C3 are MOOT**: the queue
+    protocol has ZERO server-side implementation left (the P4-server fold
+    deleted it; `/v1/meta` never advertises `queue`, `/version` 404s), so the
+    spawn bar, `queueRun`, `RunSession` and the foreign-jobs poll are
+    unreachable dead code — optimizing them would tune code that cannot
+    execute. Decision for the owner (audit doc §1 cycle-3): repurpose the live
+    surface onto the platform's org-scoped `/stream` (restores dashboard lens
+    #1 "see it run" — RECOMMENDED) vs delete the machinery. REMAINING (cycle
+    4, task #84): that decision, C4 (fetch cancellation + a batched
+    `/v1/why/:runId`), P6/P8 (run-detail pointer-move costs), core-audit
+    completion (watch/migrate/lockfile/loader), #79 cloud CTE rewrites.
+
+- **2026-07-12**: **Audit loop cycles 1-2 — measured 60fps dashboard
+  (owner: "full audit, document granularly so opus can pickup… real UI
+  perf, tested and MEASURED, no stuttering always 60fps… repeat cycles
+  until I stop")**. Cycle 1 (`b533a5e`): `docs/design/audit-cycle-2026-07.md`
+  — a REAL-browser perf harness (seeded platform: 300 runs × 40 tasks + a
+  700-task run; Playwright + rAF frame sampling + MutationObserver)
+  measured the 60fps bar FAILED everywhere (Runs scroll 20fps, IDLE 30fps,
+  14 console 404s/session); UI mechanism findings P1-P8/C1-C6 verified
+  against the @json-render dist (arrays are reference-compared flatten
+  leaves → every poll rebuilt every table's DOM); 7 DX/UX flows walked
+  with ranked improvements (the `env.ts:156` silent tokenless-connect
+  trap; the UI contributor flow broken by wildcard-CORS-vs-credentials);
+  5 architecture changes + a strict execution plan. Cycle 2 wave 1
+  (`9ae5074`): identity-stable polling (jsonPage equality gate tagging
+  each value with its entity + `identityStable()` for RunsView) → **0 DOM
+  mutations across 12s of idle polling**; stale cross-entity guard (C1);
+  `/v1/runs/queue`+`/version` polling capability-gated (meta `queue`
+  flag) → console errors 14→0; value-stable resource sources (C2 —
+  planRun no longer refired per click); and the A/B-attributed killer:
+  **`backdrop-filter` blur on every Card + sticky chrome WAS the entire
+  scroll stutter** (16fps baseline → 60fps with only blur off; a static
+  300-row control table scrolls 60fps in the same harness) — blur removed
+  from all scroll-path chrome, kept on static overlays. Measured after:
+  Runs scroll 20→60fps (0 frames >17ms), idle 30→60fps, Insights 24→57,
+  Tasks 38→60. REMAINING (cycle 3+): P3 virtualization (700-row
+  initial-render spike + route-mount long tasks), P4-P8, C3-C5, DX-1..5
+  (connect trap first), committed perf guard, core-audit completion
+  (CORE-1: predictive priorities collapse to own-duration — agent
+  confirmed pre-cutoff), #79 cloud queries. Perf-harness scripts:
+  scratchpad `perf/{seed-serve.ts,measure.mjs,attrib.mjs,control.mjs}`
+  (method documented in the audit doc §1).
+
+- **2026-07-12**: **OWNER DIRECTIVE — HTTP/3 REMOVED wholesale ("use http2 as 3
+  is experimental" + "remove all mention on http3, http2 is supported through
+  node" citing `import { createSecureServer } from 'node:http2'`).** REVERSES
+  the two native-HTTP/3 entries below: the `Bun.serve({ http3 })` opt-in,
+  `VX_CLOUD_HTTP3`, the `/v1/meta` `h3` flag, the Alt-Svc tests, every h3/QUIC
+  doc mention, and the Caddy edge's `h3` protocol + UDP 443 publish are all
+  GONE (decision-log + frozen design docs stay as history). In-process TLS
+  (`VX_CLOUD_TLS_CERT`/`_KEY`) survives as stable HTTPS/1.1; the Bun floor
+  reverted to ≥ 1.3 (1.3.14 was h3-motivated only). **The owner's node:http2
+  line was empirically probed before deciding** (real 1.3.14 + 1.3.11 binaries,
+  loopback): `node:http2.createSecureServer` DOES work under Bun — a real h2
+  round-trip serves 200 (`httpVersion=2.0`) — **but it is h2-ONLY:
+  `allowHTTP1: true` is unimplemented** (an ALPN `http/1.1` client's bytes are
+  blackholed; a no-ALPN client gets a bogus `HTTP/1.0 403 Forbidden`), and
+  **`server.emit('connection', socket)` injection into node:http/http2 servers
+  is also unimplemented** (hangs; verified NOT a sandbox artifact — the same
+  raw clients round-trip fine against `Bun.serve({tls})` and `node:https`,
+  and `node:tls.createServer` ALPN works). So the ALPN-demux single-port
+  design (tls front routing h2→http2 server / h1→http server) is impossible
+  under Bun today, and an h2-ONLY listener is useless for vx's own machine
+  wire: **Bun's `fetch` is an HTTP/1.1 client** (it cannot connect to an
+  h2-only server — pinned empirically), and the WS agent channels need the
+  h1.1 Upgrade. Conclusion shipped in docs: **HTTP/2 multiplexing = the edge
+  proxy** (Caddy `edge` profile, now `protocols h1 h2`); in-process TLS =
+  HTTPS/1.1 with keep-alive reuse; the CLI's real round-trip win is the batch
+  probe + keep-alive either way. **Revisit in-process h2 (small change: swap
+  `Bun.serve` for `createSecureServer` behind the same `tls` option) when Bun
+  implements `allowHTTP1`.** Tests: TLS e2e reworked to pin HTTPS/1.1 + NO
+  Alt-Svc + NO `h3` meta key; the http3 config tests deleted; the version gate
+  deleted (all TLS tests run on any Bun ≥ 1.3). Docker HEALTHCHECK stays
+  scheme-aware (that fix is TLS-motivated, not h3). NO CACHE/SCHEMA/wire
+  change (`h3` was advisory and unconsumed by any client).
+
+- **2026-07-12**: **Strict review of the day's transport + cloud-perf commits —
+  two shipped defects fixed, docs synced to the shipped behavior (owner:
+  "Review work of opus. Be very strict" + "make sure all docs are updated")**.
+  Hostile pass over `e4d7385`/`9ea4622` (native h3 + the h2-first refinement)
+  and re-verification of `d5a7978`..`94efe4b`/`47e1d84`. **Fixed:** (1)
+  MEDIUM-HIGH — the Docker `HEALTHCHECK` probed `http://127.0.0.1:<port>/health`
+  unconditionally, but with in-process TLS that port serves HTTPS ONLY, so
+  enabling `VX_CLOUD_TLS_CERT` in a container marked a healthy platform
+  unhealthy forever (orchestrators kill/restart on that signal); the probe now
+  follows the TLS env (`https` + `rejectUnauthorized:false` — liveness, not
+  trust). (2) MEDIUM — `VX_CLOUD_HTTP3=1` on Bun < 1.3.14 silently no-opped
+  (`Bun.serve` ignores the option) while `/v1/meta` advertised `h3: true` and
+  the boot log claimed QUIC — an explicit opt-in the runtime can't honor now
+  REFUSES BOOT naming the running version (the platform-honesty rule: never
+  advertise a capability that doesn't exist). (3) LOW — the whole h3 test
+  describe was version-gated, but only the Alt-Svc opt-in test needs 1.3.14;
+  the TLS-alone-HTTPS + unreadable-cert tests now run on any Bun (32 pass/1
+  skip on 1.3.11, 33/0 on 1.3.14, verified under both binaries). **Docs
+  synced:** self-hosting env table gained `VX_CLOUD_TLS_CERT/_KEY`,
+  `VX_CLOUD_HTTP3`, `VX_CLOUD_ALLOW_ORIGIN` rows; the production bullet no
+  longer claims TLS⇒HTTP/3 (pre-refinement leftover); wire-protocol's
+  `/v1/meta` example gained the `h3` flag; the Caddyfile's "Bun has no native
+  H2/H3" comment corrected to "no HTTP/2 server; h3 is an experimental
+  opt-in"; deploy README now states plainly that the compose file does NOT
+  wire in-process TLS (env not passed, no cert volume, no UDP publish — the
+  edge profile is the compose path; in-process TLS fits bare metal /
+  `docker run` with a PEM volume + UDP port); every "ignored on older Bun"
+  claim replaced by the boot-refusal fact; the Bun floor bumped to 1.3.14 in
+  docs/README, docs/cli, quickstart, introduction, migrate/from-turborepo.
+  **Verified sound (no action):** token memo (bounded 10k + clear, negative
+  caching safe since secrets can't re-mint, revoke clears in-process),
+  `compareRuns` (`prevStartedAt` correctly from the PREVIOUS run's getRun),
+  both set-based rewrites carry the `workspace_id` tenant clamp +
+  differential pins, `readTextBounded` streaming cap, dist `validateGraph`
+  wired in `start()`, SSE `cancel()` cleanup. **Accepted residuals
+  (informational):** random-bearer spam thrashes the token memo via `clear()`
+  (bounded memory, extra Postgres reads only); `getFlakiestTasks`' windowed
+  durations query scans all pairs, not just candidates (bounded by the scale
+  guard); the committed 100-year test TLS key (deliberate, test-only,
+  self-signed); the local dev env runs Bun 1.3.11 — BELOW the new engines
+  floor — so the h3 e2e only exercises via the fetched 1.3.14 binary + CI.
+
+- **2026-07-12**: **HTTP/2 (stable, at the edge) is the recommended multiplexing
+  path; native HTTP/3 DECOUPLED from TLS behind an explicit `VX_CLOUD_HTTP3`
+  opt-in (owner: "use http2 as 3 is experimental")**. Refines the native-HTTP/3
+  entry just below: that shipped `http3: true` AUTO-ENABLED whenever in-process
+  TLS was set. Since Bun's HTTP/3 is experimental and the owner wants stable
+  HTTP/2, I re-verified the transport facts against the real 1.3.14 binary:
+  **`Bun.serve` has NO HTTP/2 server** — its 1.3.14 type defs expose only
+  `http1?` + `http3?` (no `http2`), and `http2: true` is silently ignored like a
+  garbage key (only `http3: true` produced the `Alt-Svc` header). So native
+  in-process h2 is impossible; **stable HTTP/2 comes from an edge proxy** (the
+  already-shipped Caddy `edge` profile, where h2 is production-stable), and a
+  `node:http2.createSecureServer` rewrite of the whole WS/SSE/SPA host is a
+  massive, unjustified risk. **Changes:** (1) in-process TLS
+  (`VX_CLOUD_TLS_CERT`+`_KEY`) now serves **stable HTTPS/1.1** and adds NO
+  multiplexing on its own — a single-container-with-TLS convenience, not a
+  transport upgrade; (2) native h3 is a SEPARATE explicit opt-in
+  `VX_CLOUD_HTTP3=1` (requires TLS, else a boot error; requires Bun ≥ 1.3.14),
+  clearly labeled experimental; `/v1/meta` `h3` reflects the actual opt-in state
+  (false for TLS-only). (3) Docs (self-hosting/cli/deploy) now LEAD with "HTTP/2
+  at an edge proxy (recommended, stable)" and demote native h3 to an
+  experimental opt-in, stating the `Bun.serve`-has-no-h2 fact plainly. Pinned:
+  `resolveServerConfig` (TLS → h3 off by default; `VX_CLOUD_HTTP3` without TLS →
+  boot error) + the version-gated e2e (TLS-alone → NO Alt-Svc + `h3:false`;
+  `VX_CLOUD_HTTP3=1` → `Alt-Svc: h3=` + `h3:true`), both verified under the real
+  1.3.14 binary + ephemeral pg + fake S3. NO CACHE/SCHEMA/wire change; TLS-less
+  boot byte-identical to before.
+
+- **2026-07-12**: **Native HTTP/3 in the vx-cloud server — `Bun.serve({ http3:
+true })`, CORRECTING the earlier "Bun has no h3" conclusion (owner:
+  "https://bun.com/blog/bun-v1.3.14 Supports http3 !!!" + "or use http 2")**.
+  My prior two entries (the edge-proxy build + the "re-verified empirically"
+  note below) concluded Bun had NO native HTTP/3 — that was probed against Bun
+  **1.3.11**, which predates the feature. **Bun 1.3.14 added
+  `Bun.serve({ http3: true })`** (experimental, lsquic + uWebSockets). I fetched
+  the real 1.3.14 linux-x64 binary from npm (`@oven/bun-linux-x64@1.3.14`; bun.com
+  is egress-blocked) and **empirically confirmed** the exact API: `http3: true`
+  is the option (NOT the `h3` in an early X post — `h3`/`http2` are silently
+  ignored like a garbage key); it **requires `tls`** (throws `HTTP/3 requires
+  'tls' to be set` otherwise); it sets `Alt-Svc: h3=":port"; ma=86400` on the
+  HTTP/1.1 responses so clients auto-upgrade to QUIC on the SAME port; and
+  **WebSocket + SSE + the h1.1 fetch all coexist** with h3 enabled (verified a
+  WS echo + Alt-Svc together). So the whole platform architecture (single
+  `Bun.serve` hosting the cache wire + WS agent/dist channels + SSE/NDJSON
+  streams + MCP + SPA) stays UNCHANGED — h3 is purely additive. **Shipped
+  (in-process TLS path, opt-in):** `VX_CLOUD_TLS_CERT` + `VX_CLOUD_TLS_KEY` (PEM
+  paths, both-or-neither → a partial config is a boot error; unreadable at boot
+  → fail loud, never a silent no-TLS start) resolve a `ServerConfig.tls`;
+  `startServer` reads the PEM bytes and passes `tls` to `startPlatformHttp`,
+  which adds `{ tls, http3: true }` to the `Bun.serve` call and flips the origin
+  to `https://`; `/v1/meta` advertises `h3: <bool>`. With no TLS env the server
+  is byte-identical to before (plain h1.1, TLS at an edge proxy). **The Caddy
+  `edge` profile STAYS** as the alternative (h2 for older clients, a CDN, or
+  keeping certs out of the app) — docs now present BOTH (native vs edge; don't
+  run both TLS terminators). **Bun floor bumped ≥ 1.3.14** (`package.json`
+  engines + stack table; the option is silently ignored on older Bun, so it
+  degrades to HTTPS-without-H3 — the Alt-Svc integration test is
+  `Bun.semver`-gated on ≥1.3.14). **Verified end-to-end** by running the h3
+  test suite under the REAL 1.3.14 binary + ephemeral Postgres + fake S3: the
+  actual `server.ts` boot terminates TLS, serves `/v1/meta` over HTTPS with
+  `Alt-Svc: h3=` + `h3: true`, and an unreadable cert fails boot loud; the full
+  cloud suite (411 pass) stays green under 1.3.14. Tests: `resolveServerConfig`
+  TLS resolution (both → tls, partial → error) + the version-gated H3 e2e
+  (Alt-Svc + meta + unreadable-cert boot failure), embedding a 100-year
+  self-signed localhost cert so the fixture never expires. NO CACHE/SCHEMA/wire
+  change. **Lesson:** empirically probing a feature is only as good as the
+  version you probe — the earlier "Bun has NO QUIC/HTTP-3 server" was true for
+  1.3.11 and wrong for 1.3.14; pin the version claim to the version tested.
+
+- **2026-07-12**: **Cloud debug + performance pass — two parallel hostile
+  audits (bugs + perf) drove five correctness fixes and five hot-path
+  round-trip eliminations (owner: "Also debug for issues and bugs. Make sure
+  performance of cloud is top notch")**. Two read-only reviewers swept
+  `packages/cloud/src/**`. **Bug fixes (`d5a7978`):** (1) MEDIUM-HIGH — the
+  ingest/logs/catalog/MCP body readers checked size only AFTER `req.text()`, so
+  a chunked (no-content-length) body bypassed the pre-check and buffered up to
+  the 513 MiB server-wide `maxRequestBodySize` — the SAME class as the batch
+  endpoint's already-fixed streaming cap; extracted that cap to
+  `src/http-body.ts` (`readTextBounded`) and applied it to every one of those
+  paths + the artifact store. (2) MEDIUM — an empty / cyclic / dangling-dep
+  `dist:submit` graph hung `DistScheduler` forever (`checkFinish` only fires
+  from `complete()`), leaking the session + the submitter socket; validate the
+  submitted graph is a well-formed DAG up front (empty → clean finish via a
+  terminal `checkFinish`; cycle/unknown-dep → `abort`). (3) MEDIUM — SSE/NDJSON
+  subscribers were removed only via `req.signal` abort; added a
+  `ReadableStream.cancel()` fallback so dropped `/stream`/`/events` connections
+  can't accumulate in the broadcast set. (4) LOW-MED — analytics read routes
+  500'd on a malformed percent-encoding (`decodeURIComponent`→URIError); wrapped
+  them to answer 400, and folded `getRun`'s `Math.min(...tasks)` spread (up to
+  100k args) to a reduce. (5) doc — corrected `createPartitionMovingDefault`'s
+  docstring. The bug agent confirmed the timers, spool lifecycle, registry/
+  scheduler races, migrations, and auth handling are otherwise sound. **Perf
+  (`1329b57`, `7201c34`, `94efe4b`):** the audit's highest-value, provably-safe
+  wins. (F1) **Auth token lookups memoized** (5s TTL keyed by token-hash) — the
+  cache wire is the highest-QPS surface and did one Postgres round-trip per
+  request before any S3 work; a distributed build issues thousands. Token
+  principals are immutable except revoke → cleared in-process on `revokeToken`
+  (a revoked bearer stops authenticating at once), bounded by TTL across
+  replicas, and each entry's expiry is capped at the token's OWN `expires_at`
+  so a token expiring within the window is never served stale (the two auth
+  traps — revoke-kills-bearer + expiry-within-TTL — are pinned by existing +
+  new tests). Session principals are NOT memoized (their invalidation surface —
+  role/membership/disable — is deferred; the token surface is the QPS
+  dominator). (F7) **taskDurationHints memoized** per workspace (30s) — a
+  full-history GROUP BY that ran synchronously on EVERY `dist:submit` (the
+  latency-critical submit path); the hints are advisory (LPT ordering), so TTL
+  staleness never affects a run. (F6) **compareRuns** finds the previous run via
+  a single-row index seek on the `invocations` header table instead of a
+  `GROUP BY run_id` over all prior task_runs, comparing in one time frame. (F2)
+  **getHistory** 1+2N per-pair fan-out (up to 101 sequential round-trips for a
+  50-task page) → TWO set-based queries (one GROUP BY + one ROW_NUMBER-windowed
+  durations), the pair set/order + per-row math preserved exactly (shared
+  `historyRowFrom`), **pinned by a differential test asserting the batched
+  all-pairs result deep-equals the per-pair filtered result**. (F4)
+  **getFlakiestTasks** 1+N per-candidate `successDurations` → one windowed
+  durations query (shared `durationsByPair`/`pairKey` helpers), byte-identical.
+  No CACHE/SCHEMA/wire change; every query rewrite is output-preserving. Core CI
+  - cloud (403 pass) green throughout. **DEFERRED (documented, tracked
+    follow-up — need the correlated-subquery→CTE rewrite the audit specified +
+    differential tests, or are lower-frequency):** F3 `listProjects` (the worst
+    unlisted N+1 — loops `getCacheSavings`'s correlated subquery per project → the
+    `avg_dur` CTE join) + the `getCacheSavings`/`getRegressions` CTE rewrites;
+    Finding 5 (lookback bounds + a `status='failed'` partial index so dashboard
+    aggregates prune partitions); Finding 8 (skip the confirming S3 HEAD before a
+    TRUSTED cache GET's 307 — single-scope, the client already treats a post-307
+    404 as a miss); the SESSION auth memo.
+
+- **2026-07-12**: **Every audited cloud bug confirmed with a test; the two LOW
+  residuals FIXED (`47e1d84`) (owner: "All bugs should be confirmed with tests
+  and fixed")**. Residual fixes: (a) `getRunHeatmap` bucketed by the server's
+  LOCAL tz (`getDay`/`getHours`) while the platform is UTC/epoch-ms →
+  `getUTCDay`/`getUTCHours`, pinned by a test under `TZ=America/New_York` (a
+  03:00-UTC run lands in the UTC cell, not the 22:00 local one — discriminating
+  because Bun honors a runtime `TZ` change); (b) a malformed wallclock-ns string
+  (`"1.5"`) made `BigInt()` throw out of the ingest transaction and discard the
+  ENTIRE run — now parsed integer-string-only (`intNsOrNull`), so one bad field
+  is dropped, not the run (pinned: a good+malformed run stores both, bad field
+  NULL). Confirming tests added for the earlier fixes: the chunked-body cap (a
+
+  > 4 MiB MCP body → 413, streaming before parse, + the `readTextBounded` unit
+  > suite), and the SSE subscriber cleanup (a new `subscriberCount()` hook — also
+  > useful for ops — proves a disconnected `/stream` client leaves the broadcast
+  > set); the read-route 400 + dist-scheduler DAG guards already had tests. Cloud
+  > 407 pass, core lint clean. **Bun HTTP/3 — re-verified empirically (owner: "Bun
+  > support http3")**: Bun 1.3.11 has NO native HTTP/3/QUIC server — probed the
+  > binary (no `http3`/`quic` symbols; the `alt-svc` strings are `node:http2`'s
+  > HTTP/2 support) and the API surface (`Bun.quic` undefined,
+  > `globalThis.WebTransport` undefined, `node:quic` not a built-in, `Bun.serve`
+  > exposes no h3/protocols option). So the edge-proxy H3 (Caddy `edge` profile)
+  > stands; native h3 in `Bun.serve` stays blocked until Bun ships a QUIC server.
+  > \*\*[SUPERSEDED 2026-07-12: this was Bun 1.3.11; Bun 1.3.14 SHIPPED
+  >
+  > > `Bun.serve({ http3: true })` — see the native-HTTP/3 entry at the top.]\*\*
+
+- **2026-07-12**: **HTTP/3 + connection multiplexing via an edge proxy — a
+  ready Caddy `edge` compose profile terminating h1/h2/h3 (owner: "Support H3
+  as well. So you can use one connection with multiple requests")**. Verified
+  the transport facts empirically before building: **`Bun.serve` is HTTP/1.1
+  only** (no h2 option on the server object), **Bun has NO QUIC/HTTP-3 server**
+  (`globalThis.WebTransport` undefined, no QUIC API — only a `Bun.udpSocket`
+  primitive) **[SUPERSEDED: true on Bun 1.3.11 only — Bun 1.3.14 SHIPPED native
+  `Bun.serve({ http3: true })`; the edge profile below stays as the h2/CDN
+  alternative, see the native-HTTP/3 entry at the top]**, and `node:http2`
+  compat exists but rewiring the single
+  `Bun.serve` (which hosts the cache wire + WS agent/dist channels + SSE/NDJSON
+  streams + MCP + the SPA catch-all, all on Bun's WebSocket-upgrade API) onto
+  `node:http2.createSecureServer` would be a massive, risky rewrite for a
+  self-hosted platform that belongs behind a proxy anyway. **So H2/H3 are
+  terminated at the EDGE** — the universal production pattern (TLS already
+  lives there): the proxy speaks h1/h2/h3 to clients and plain HTTP/1.1 to the
+  app over the internal network. The payoff the owner asked for — one
+  connection multiplexing many concurrent requests, no per-request TCP+TLS
+  handshake — is delivered by h2/h3 at the edge, and **compounds with the
+  batch cache-existence probe shipped the same day** (N per-hash HEADs → 1
+  request): fewer requests, and the remaining concurrent GETs share one
+  connection. **Deliverable (deploy + docs only, ZERO app-code change —
+  correct by construction since the app never changes transport):**
+  `packages/cloud/deploy/Caddyfile` (global `servers { protocols h1 h2 h3 }` +
+  a `reverse_proxy app:4321`; `tls internal` for the localhost demo, drop it +
+  set `VX_CLOUD_DOMAIN` for real-domain ACME auto-HTTPS) + a `caddy` service
+  behind a docker-compose **`edge` PROFILE** (opt-in: `docker compose --profile
+edge up`, publishing `443:443` + `443:443/udp` for QUIC + `80:80`;
+  `caddydata`/`caddyconfig` volumes) so the plain `docker compose up` →
+  `localhost:4321` experience stays untouched. WebSocket + SSE bridge
+  transparently through Caddy (`flush_interval -1`). Docs: `deploy/README.md`
+  "HTTP/3 & connection multiplexing" + a new `cloud/self-hosting.md`
+  "Transports: HTTP/3 & multiplexing" section (Caddy one-directive example,
+  nginx/Cloudflare noted as equivalents, the app-is-H1-to-the-proxy invariant
+  stated), and the `/v1/cache/batch` row added to the HTTP-surface table.
+  **Client note (documented conservatively):** the vx CLI's requests to an
+  h2/h3 proxy use whatever protocol its fetch stack negotiates (H2 when
+  available, else keep-alive connection reuse) — I could NOT empirically
+  confirm Bun's fetch H2-client negotiation here (the sandbox blocks loopback
+  TLS: a `node:http2` secure server + Bun-fetch/curl `--http2` probe both
+  failed to connect, an env limitation not a Bun signal), so the docs don't
+  hinge on it; browser dashboard clients get full H3 regardless, and the batch
+  endpoint carries the CLI round-trip win. Verified: docker-compose.yml parses
+  (5 services incl. `caddy`/edge-profile, 4 volumes), astro build clean (157
+  pages, the transports + `#cache-wire` cross-links resolve, only the 7
+  pre-existing frozen-doc/module-stub broken links, zero new). `deploy/**` +
+  `apps/docs/**` are oxfmt/lint-ignored, so no core-gate impact. **NOT built
+  (deliberate, named):** native h2/h3 in Bun.serve (would need the whole host
+  rewritten onto node:http2 — deferred until Bun ships an h2/h3 server option);
+  an in-app QUIC listener (Bun has no QUIC server).
+
+- **2026-07-12**: **Batch cache existence probe — `POST /v1/cache/batch`
+  collapses N per-hash HEADs into ONE round-trip (owner ask: "shouldn't cache
+  have an endpoint to check many at the same time? To speed up?")**. The
+  vx-native cache wire was strictly per-hash (`GET`/`HEAD`/`PUT /v1/cache/:hash`),
+  so a fresh CI runner priming a 1000s-task graph probed the remote once per
+  task; the prefetch pass fired GETs concurrently (bounded pool) but on a
+  high-latency link that's still N/pool round-trip WAVES, and every cold-cache
+  miss cost a GET. **Server (`packages/cloud`):** `ArtifactStore.hasMany` +
+  `handleBatch` (the HTTP wrapper) — body `{ hashes: string[] }` (≤1024, else 400) → `{ present: string[] }`, resolved through the EXACT same
+  `findReadKey`/`readScopes(principal, sub)` path a GET uses, so a batch probe
+  is trust-scoped IDENTICALLY (trusted never sees untrusted, cross-org/cross-ws
+  never leak) and can't reveal existence wider than a fetch could reach.
+  Machine-token-only (`isMachineTokenOnly` + `isAnalyticsSurface` both updated
+  → a session cookie 403s, routes to dispatch not Postgres); bounded server
+  fan-out (`HASMANY_CONCURRENCY = 32`); body read with a STREAMING cap
+  (`readTextBounded`, 256 KiB) so a chunked no-content-length body can't buffer
+  past the cap into the 512 MiB artifact-PUT `maxRequestBodySize` (the P4-server
+  chunked-bypass class). `/v1/meta` now advertises `cacheWire: 2`. **Client
+  (`packages/cloud`):** `NativeCacheClient.hasMany` POSTs the batch (chunked at
+  1024), returns the present set — or `null` on 404/405 (an older `cacheWire: 1`
+  serve), memoized per client so a legacy serve costs at most one probe, then
+  falls back to per-hash. **Core (`src/`):** OPTIONAL `RemoteCacheLayer.hasMany?`
+  (a remote that can't batch omits it); `LayeredCache.remoteHasMany` (never-fail
+  → `null` on error/unsupported/reads-off) + `markRemoteAbsent` (pre-populates
+  the `inflight` map with resolved-`false` for batch-absent hashes, WITHOUT
+  clobbering an in-flight pull — byte-equivalent to a background prefetch-404
+  caching false, same at-most-once + staleness semantics). `startRemotePrefetch`
+  batch-probes all stable hashes ONCE, GETs only the hits, and marks the misses
+  absent so their lazy `get` short-circuits with ZERO network — collapsing N
+  probe waves into 1 + skipping every GET that would 404. Falls back to
+  prefetching every stable key when `remoteHasMany` returns null. **Honest
+  tradeoff (why OPTIONAL + fall-back, not mandatory):** for a warm all-hit run
+  on a FAST link the batch adds one serialization point (all GETs wait for the
+  one batch response) — so it's a clear win for many-task / high-latency /
+  cold-ish caches and neutral-to-marginal elsewhere; degrades gracefully
+  everywhere. NO CACHE_VERSION/SCHEMA/wire-BREAKING change — `cacheWire` is
+  additive (a `1` client/serve interoperates via the per-hash fallback). Tests:
+  core +7 (LayeredCache remoteHasMany null/error/reads-off + markRemoteAbsent
+  no-GET + no-clobber-in-flight; orchestrator-remote e2e: batch probed ONCE,
+  only hits fetched, miss never double-fetched — the deterministic 0-GET-on-
+  absent skip is unit-pinned since the e2e batch/execute race is timing-
+  dependent), cloud +10 (artifact-store trust-scope matrix incl. cross-org
+  clamp + malformed/over-cap 400s + streaming-cap 413 + best-effort-broken-
+  backend; native-cache round-trip/chunking/404-memoize-fallback/malformed;
+  server e2e: machine-token gated (session→403), trust-scoped, round-trips
+  through the REAL server on ephemeral pg + fake S3). Core CI green, cloud
+  392 pass, lint+fmt clean.
+
+- **2026-07-12**: **Docs + website reorg — core is provider-neutral (zero
+  `vx-cloud` references), all vx-cloud content consolidated into a dedicated
+  "vx Cloud" section (`d959c20`, `8961335`, `2e0149f`, `0dcadc8`)** (owner:
+  "Update all docs and website. Do not refer to vx cloud in docs. Move all vs
+  cloud to own section" + "Update readme as well"). After the platform pivot
+  the vx-cloud material was scattered across the core reference pages + core
+  guides, blurring the "core is only a task runner, the platform is an
+  optional plugin you connect to" boundary. Split cleanly: **(1) New "vx Cloud"
+  sidebar group** — 8 hand-authored pages under
+  `apps/docs/src/content/docs/cloud/` (overview, self-hosting, dashboard,
+  distributed-ci, remote-caching, mcp, cli, wire-protocol); the four platform
+  guides that used to live under `guides/` (self-hosting, dashboard,
+  distributed-ci, wire-protocol) MOVED here, and the vx-cloud CLI reference
+  (270 lines) was EXTRACTED out of `docs/cli.md` into `cloud/cli.md`. The
+  "Platform & extensions" group was renamed **"Extending vx"** and is now
+  core-only (extensibility / plugins / mcp / otel / predictive). **(2) Core
+  pages scrubbed provider-neutral** — every `docs/*.md` reference SOURCE
+  (cli, architecture, caching, comparison, differentiators, execution, flows,
+  schema, patterns, modules/\*) + the core guides (ci, extensibility, mcp,
+  plugins, remote-caching) + `introduction.md` + `migrate/from-turborepo.md`
+  - the landing (`index.astro`) now carry ZERO `vx-cloud`/`VX_CLOUD_`/
+    `@vzn/vx-cloud` documentation. Core describes only its SEAMS (the
+    `RemoteCacheLayer` seam + `LayeredCache` behavior, the `cache`/`backend`/
+    `telemetry` plugin capabilities, the vx-native `/v1/cache` wire as core's
+    own concept) and points at the Cloud section for the first-party
+    implementation. **Deliberate residual cross-references (kept, agent
+    judgment):** a page may NAME "vx Cloud" as the answer to "where do I get a
+    shared cache / dashboard / distributed execution" and link into the section
+    (`guides/remote-caching.md` description + body; `comparison.md` /
+    `differentiators.md` "the first-party cloud plugin ships X, see the Cloud
+    section"; the landing's single "Cloud, self-hosted" callout) — that's the
+    necessary bridge, the same way Turbo/Nx docs cross-reference their own
+    cloud products; removing it would make the comparison table and "how do I
+    share a cache" unanswerable in core. `Nx Cloud` mentions are a competitor,
+    untouched. **(3) README** rewritten the same way (`1871940`): core sections
+    provider-neutral, ONE "## vx Cloud" section (Postgres+S3, docker-compose,
+    `vx-cloud connect`), de-staled (`vx-cloud serve --ui` / `/v8` / Turbo-wire
+    remote cache / HMAC all removed). **CI-content judgment:** the GHA
+    job-summary + PR-checks material stayed in the core CI guide, reframed as
+    a first-party CI TELEMETRY plugin (works standalone with only `GITHUB_TOKEN`
+    — no serve), which is accurate; `docs/design/**` + `docs/progress/**` left
+    frozen (a pre-existing broken source-path link in a frozen design doc, and
+    the pre-existing `cli-*.md` module-reference stubs, are NOT reorg
+    regressions). **Verified:** independent `astro build` clean (157 pages), a
+    custom broken-link crawler over `dist/` found 7 broken links, ALL
+    pre-existing (byte-identical source at origin/main — the frozen design doc
+  - non-generated module stubs), ZERO introduced by the reorg; core-docs grep
+    for `vx-cloud|VX_CLOUD_|@vzn/vx-cloud` clean (only the deliberate
+    section-bridge "vx Cloud" cross-refs remain, all linking into
+    `/cloud/...`); oxfmt clean on the 8 edited reference `.md` pages + README +
+    this file. No core/runtime change — docs + site only.
+
+- **2026-07-12**: **Post-pivot future-proofing review — one dead-code removal +
+  stale-comment fixes; the pivot code is otherwise clean (`af…` follow-up)**.
+  A pass over the P1→P5 code for SIMPLE, durability wins (not a re-audit — the
+  tenant boundary was already adversarially reviewed). Found + fixed: (1)
+  `ArtifactStore.migrateLegacyFlatStore` was DEAD — a boot-time migration of the
+  pre-platform local flat store, but the platform is S3-only and never calls it
+  (LocalDirBackend is test-only); its "runs once on boot" comment actively
+  misled. Removed the method + its test + the now-unused `readdir`/`rename`
+  imports. (2) Comments in `artifact-store.ts` + `dist/registry.ts` still
+  described the DELETED "transitional single-tenant serve" — reworded: the
+  `bucket` override is a test-only flat-layout seam, `DEFAULT_ORG` is the
+  no-org fallback for the registry unit tests, and the platform gate always
+  builds a token-derived tenant-partitioned principal. (3) Dropped an unused
+  `orgId` in `analytics-write.test.ts` so a real future lint warning isn't lost
+  in noise. **Considered but SKIPPED as not-simple:** making the registry
+  `orgId` param required (churns ~20 test call sites; all 3 prod callers already
+  pass it); removing the vestigial `ServerConfig.dataDir` (a valuable "zero SQLite
+  at rest" e2e uses it as its watched dir); rewriting the N+1 `getCacheSavings`/
+  `getRegressions` queries (correctness-risky set-based rewrite, only matters at
+  extreme scale — deferred, bounded). Behavior unchanged; cloud 381 pass,
+  lint/fmt/core-ci clean.
+
+- **2026-07-12**: **Platform Phase 5 SHIPPED — docker-compose stack, `server`
+  image, docs rewrite, cloud CI job — the platform pivot (P1→P5) is COMPLETE
+  (`af6f451`, `68991eb`, `183900d`..`31d95a2`)**. The independent self-hosted
+  CI platform the owner directed ("fully independent SaaS… accounts, roles,
+  orgs, teams… deployed as docker compose… not possible to call vx-cloud
+  serve") is done end-to-end. **(1) Deploy infra (`af6f451`):** the Dockerfile
+  `CMD` invoked the DELETED `serve` verb (it would crash on boot) → `CMD
+["server"]`, STATELESS (no volume — Postgres + S3 hold all state,
+  horizontally scalable), full required-env doc. New `docker-compose.yml` is
+  the real stack — app + postgres:16 + minio + a one-shot `mc mb` bucket-init —
+  the "`VX_CLOUD_SECRET=$(openssl rand -hex 32) docker compose up` → open the
+  URL → register the first admin" experience; production swaps minio for
+  managed R2/S3 (partial S3 config is a boot error) behind a TLS proxy (https
+  `VX_CLOUD_BASE_URL` → Secure cookies). **(2) Cloud CI job (`68991eb`):**
+  `.github/workflows/ci.yml` gains a `cloud` job beside the unchanged core `ci`
+  — `apt-get install postgresql` (the ephemeral-pg helper boots its own
+  unix-socket cluster via initdb, non-root direct path on runners; S3 faked
+  in-process) → `cd packages/cloud && bun test`. Closes the standing gap where
+  the platform's 382 tests never ran in CI. **(3) Docs rewrite
+  (`183900d`..`006cbb7` + `31d95a2`):** the user-facing guides
+  (self-hosting/dashboard/distributed-ci/mcp/extensibility/plugins/ci/
+  wire-protocol/introduction/remote-caching) + reference pages (cli.md,
+  architecture.md, comparison.md, modules/mcp.md) + `deploy/README.md` rewritten
+  to the platform model (compose deploy, required env, register→Admin→mint
+  `vxc_` tokens, trust scopes, `VX_CLOUD_URL`+`VX_CLOUD_TOKEN` client connect,
+  `VX_CLOUD_DISTRIBUTE`) — every stale `vx-cloud serve` / `--ingest-dir` /
+  `VX_CLOUD_HOST`-token / SQLite-ingest / `environments.json`-auto-detect /
+  delegation reference scrubbed from the user-facing guides (remaining
+  `/v8/...` hits are the deliberate Turbo-wire third-party recipe; `docs/design/**`
+  - `docs/progress/**` left frozen). The biggest correction: `cli.md`'s dead
+    "transitional serve-era" HTTP block → the current platform surface. **Agent
+    judgment calls kept:** `environment-variables.md` left as-is (it's about
+    child-process env isolation, a different accurate topic — the server env
+    lives in self-hosting.md, the client env in remote-caching/distributed-ci);
+    `caching.md`/`patterns.md`/`differentiators.md` untouched (their `cache.db`
+    mentions are the legit LOCAL core cache). Verified: `astro build` clean (153
+    pages, no broken links), `ci.yml` valid YAML (both jobs), oxfmt clean (the
+    reference `.md` pages ARE oxfmt-scanned — fixed the table re-alignment, the
+    same CLAUDE.md class), docs stale-term grep clean. **DEFERRED (post-pivot,
+    not a phase):** multi-app-node HA (sticky agent routing / pg-backed
+    dispatch), team-scoped permissions (teams are metadata in v1), SSO/OIDC, an
+    audit log, per-request cache policy to remote agents (a DIST_PROTOCOL bump) —
+    all named in `cloud-platform-2026-07.md` §12/§13. **First real CI run of the
+    `cloud` job is the last thing to confirm green** (the runner env isn't fully
+    reproducible locally, but the 382 tests pass locally and the ephemeral-pg
+    helper is CI-path-aware).
+
+- **2026-07-12**: **Hostile review of platform Phase 4 (server half) — the
+  fold + MCP VERDICT SOUND; two live-stream findings fixed (`6c7a25c`)**
+  (repro-mandated reviewer over `d39d98a`..`e885a53`; real two-org
+  `startServer` + a real `vx-cloud agent` subprocess driving a real dist
+  build). **Fixed:** **(1) HIGH — cross-tenant leak on the live SSE/NDJSON
+  broadcast.** `/events` / `/v1/events` / `/stream` fanned every concurrent
+  dist run's events to a SINGLE GLOBAL subscriber set with NO org scoping — so
+  any authenticated principal (any org's ci token OR session) that opened
+  `/stream` received EVERY tenant's run stdout/stderr + the exact command
+  lines. Reproduced end-to-end: org B subscribed with its OWN token and
+  received org A's `SECRET-BUILD-OUTPUT` + `echo … && sleep 2 …` (2342 bytes of
+  another tenant's run). INHERITED from the deleted serve.ts (byte-identical
+  global `broadcast`), but the fold put it on the platform's SOLE multi-tenant
+  host — it directly contradicts the P3 tenant-isolation verdict for this
+  surface, and needs no CSRF/CORS (a scripted `curl /stream?token=<own>`
+  passively harvests all tenants' live runs). Fix (`dispatch.ts`): each
+  subscriber carries its server-derived `orgId`; `broadcast(msg, orgId)`
+  delivers ONLY to same-org subscribers; the emitting run's org
+  (`ws.data.principal.orgId`, set at upgrade) scopes its `send`. **(2) MEDIUM —
+  the CSWSH Origin gate the fold DROPPED** (a genuine regression — the deleted
+  serve.ts refused cross-origin WS/SSE handshakes via `originAllowed` +
+  `VX_CLOUD_ALLOW_ORIGIN`; the folded gate had no Origin check). Not
+  independently exploitable (the WS channels are machine-token-only — a session
+  cookie is 403'd — and cross-origin credentialed SSE is blocked by
+  `Allow-Origin: *` without `Allow-Credentials`), but it's a defense-in-depth
+  control the 2026-07-03 security wave explicitly added, silently removed.
+  Restored in `server.ts` (no-Origin CLI + same-origin pass; other cross-origin
+  browser handshakes → 403; `VX_CLOUD_ALLOW_ORIGIN` allowlists a hosted
+  dashboard). Pinned by two regression tests (`server.test.ts`, real two-org
+  server: org B's `/stream` sees nothing of org A's run; cross-origin SSE across
+  all three stream paths → 403). **Refuted by executed repro (sound):** the MCP
+  tenant clamp (org B / a ws-scoped token / an explicitly-named foreign
+  workspace all get isError-or-empty, never org A's data — MCP reuses
+  `resolveReadWorkspace` faithfully, every tool `WHERE workspace_id=<resolved>`);
+  the gate bypass (unauth cache PUT/GET/artifacts/agents/SSE → 401; session on
+  the machine-token-only surfaces → 403; no handler runs without a resolved
+  principal); every cache-wire contract (307 presign, 409 immutability, 400
+  zstd-magic, untrusted→404-from-trusted, `org/<id>/ws/…` prefix, cross-org
+  GET→404); NO SQLite at rest (0 `.db` files after ingest+logs+dist+mcp; the 4
+  stores gone; `/v1/graph` falls through not 500); dist agent org-keying. Cloud
+  380→382 (+2 regression), lint/fmt clean, core untouched.
+
+- **2026-07-12**: **Scale/perf e2e guards for 1000s-task workspaces —
+  "graph, lags" (owner ask) — SHIPPED (`02eff47`, `04344b5`, `614b528`)**,
+  plus a real deep-graph stack-overflow FIX the guard surfaced. Three
+  surfaces, anti-flake by the repo's proven method (min-of-3, bounds ~10-30×
+  measured healthy so they guard ALGORITHMIC complexity, not machine speed):
+  **(1) Core pipeline** — a REAL git-backed 2000-project / 6000-task
+  workspace; `planRun` (the `--dry` path: hashes every task + probes cache,
+  no exec) runs ~510 ms (bound 6000 ms), with functional pins on node count /
+  task kinds / edges. **(2) Dashboard run-graph** — `contractGroups`+
+  `layoutLevels` on a 3000-node/~12k-edge DAG ~11 ms (bound 500 ms, validated
+  vs an independent longest-depth oracle), `criticalPath` ~2 ms, `parallelism`
+  sweep (5000 intervals) ~2 ms, and a DEEP-CHAIN (8000) stack-safety pin.
+  **(3) Postgres analytics** — ~480 invocations → ~12k `task_runs` (+ a decoy
+  org) seeded via the real `Analytics.ingest`; every hot dashboard query
+  bounded (listRuns ~9 ms, getHistory ~29 ms, getRun(700-task) ~2 ms,
+  getFlakiestTasks ~46 ms, getRegressions ~150 ms, getPeriodComparison ~18 ms,
+  taskDurationHints ~9 ms, getCacheSavings ~430 ms), workspace-CLAMP verified
+  (the decoy org's rows never appear; foreign run-id → null). **REAL FIX
+  (`04344b5`):** the deep-chain pin caught `contractGroups.resolve()`
+  stack-OVERFLOWING at ~8000 depth (its `deps.flatMap(resolve)` recursion) —
+  a browser hard-crash on a pathologically deep dependency chain. Converted to
+  an explicit post-order stack, **byte-identical to the recursion**
+  (differential-verified over 8000 random DAGs + cyclic graphs), now safe past
+  500k. `layoutLevels`/`criticalPath` were KEPT recursive (they survive ~50k
+  depth in V8 — beyond any realistic task-graph depth; the guard test pins
+  them; converting them is a deferred nicety, not a bug). **Accepted residuals
+  (informational):** `getCacheSavings` (~430 ms, a correlated subquery per
+  cache-hit row) and `getRegressions` (~150 ms, an N+1 per-failing-task
+  subquery) are architecturally N+1 — bounded higher, NOT regressions; a
+  single set-based rewrite is the lever only if dashboard latency ever matters
+  at extreme scale. Core 1223, cloud 380 (+19 analytics-scale), UI 52
+  (+run-graph-scale) — all green together on the merged tree; the perf work
+  merged cleanly (disjoint files) on top of P4-server.
+
+- **2026-07-12**: **Platform Phase 4 (server half) SHIPPED — `serve.ts`
+  absorbed into the platform, all four residual SQLite stores DELETED
+  (`d39d98a`, `e885a53`)**, completing P4 (§12). The transitional companion
+  machinery is GONE; the platform is Postgres + S3 with ZERO bytes at rest on
+  the controller. **(1) The fold (`d39d98a`, additive):** new
+  `packages/cloud/src/cli/dispatch.ts` (`startPlatformHttp`) owns the single
+  `Bun.serve` for every machine surface the auth/admin/analytics `gate` does
+  NOT resolve to a Postgres Response — the vx-native cache wire
+  (`/v1/cache/:hash`), `/v1/artifacts`, `/mcp`, the agent/dist WS channels,
+  SSE/NDJSON streams, the SPA catch-all — and `server.ts` calls it instead of
+  `startServe`. `/mcp` re-backed by Postgres (`cli/mcp.ts`, the 7 tools over
+  `Analytics`, org/workspace-CLAMPED exactly like the analytics gate:
+  `list_workspaces`→`workspacesForOrg`, `list_runs`→`listInvocations`,
+  `get_run`→`getInvocation`+`getRun`, `run_trends`→`getRunTrends`,
+  `cache_stats`→`getCacheStatsSql`+`getHitRateSplit`,
+  `why_did_rerun`→`whyDidThisRerun`+`cacheKeyDiff`, `compare_runs`→
+  `compareRuns`). Dist LPT duration hints now come from `task_runs`
+  (`Analytics.resolveClientWorkspace`; FIFO when un-ingested). NO SQLite in the
+  platform path. **(2) The demolition (`e885a53`):** DELETED `cli/serve.ts`,
+  `cli/mcp-serve.ts`, `ingest-store.ts`, `log-store.ts`, `fp-store.ts`,
+  `workspace-catalog.ts`; the façade dropped `IngestStore`/`WorkspaceCatalog`/
+  `startServe`/`parseServeArgs`/`resolveS3Config`/`resolveServePort`/
+  `defaultServeSocketPath`/`DEFAULT_SERVE_PORT`/`handleMcpHttp` and added
+  `startServer`/`resolveServerConfig`/`PlatformServer`/`ServerConfig`; the
+  colocated cockpit (`/v1/graph` + `/v1/workspace/*` + `WorkspaceCatalog`) is
+  gone (an unknown path falls through to the SPA — the UI already treats them
+  as honest-disabled). **Unix-socket listener DELETED** (`serve --socket` was
+  a companion-only local transport; the platform binds `0.0.0.0` behind the
+  account/token gate, so a 0600-socket-as-auth has no role). `ServerConfig.
+dataDir` is now VESTIGIAL — kept + defaulted so an existing
+  `VX_CLOUD_DATA_DIR` doesn't error, but the server writes nothing to it.
+  **Cloud tests 479→361:** 11 companion suites deleted (serve, serve-socket,
+  serve-transports, ingest, fp-store, log-store, workspace-catalog, {analysis,
+  regressions,task-logs,mcp}-serve) with their still-valid HTTP route-wiring
+  assertions (MCP-over-PG, /v1/analysis, /v1/regressions, /v1/hermeticity,
+  task-log ingest+read, /v1/cache/stats no-shadow) MOVED onto `server.test.ts`
+  and the query-level coverage already in `analytics-read.test.ts`;
+  `agents-e2e` + `blob-store-s3` retargeted onto the platform via a new
+  `tests/helpers/platform.ts` (ephemeral pg + fake S3 + admin session + ci/
+  untrusted tokens). **Accepted coverage trims:** the LocalDirBackend GET-
+  streams-bytes path (dead in prod — the platform is S3-only) and the
+  `/v1/artifacts` orphan-hash "no task field" case. **Verified INDEPENDENTLY
+  with the real CLI** (`bun cli/bin.ts server` on ephemeral pg + fake S3): 11/11
+  — `/v1/meta` auth=account + cacheWire, register→instance admin, mint ci token,
+  cache PUT→200 / GET→307 presigned, `/mcp tools/list`→7 tools OVER POSTGRES, a
+  SESSION on the cache wire→403 (machine-token gate intact), removed `/v1/graph`
+  falls through (200 SPA, not 500), and the data dir holds ZERO `.db`/`.sqlite`
+  files. Core ci exit 0 (ZERO core `src/` change), cloud lint/fmt clean, cloud
+  361 pass, real-server e2e in `server.test.ts` green. **REMAINING: P5**
+  (docker-compose + image + self-hosting/dashboard/distributed-ci docs rewrite
+  for the platform + a cloud CI job — the 464→380 cloud tests still don't run in
+  CI, though Postgres IS available there).
+
+- **2026-07-12**: **Platform Phase 4 (dashboard UI half) SHIPPED — the
+  dashboard is now a session/account client + a full Admin area (`656d386`,
+  `575ca88`)**, executing the UI portion of P4 (§12). The SPA converted from
+  the retired companion Bearer-token model to the platform's account/session
+  model, ALL in `packages/cloud/ui/**` (ZERO `packages/cloud/src/**` change).
+  **Auth foundation (`656d386`):** `api.ts` dropped the bearer token entirely
+  (no more `vx-ui:token`) — every request rides `credentials: 'include'` so the
+  browser returns the HttpOnly session cookie, and every mutation carries
+  `x-vx-csrf: 1` (the SPA custom-header CSRF gate); added auth state
+  (`loading|anon|authed`) + current principal, the `?org=` clamp (persisted
+  `vx-ui:org`), session lifecycle (`bootstrapAuth`/`login`/`register`/`logout`/
+  `acceptInvite`), the full `/v1/admin/*` client, and pure helpers
+  `scopedPathFor`/`nextOrgSelection` (`getConnectionKey` now keys on
+  `origin|user|org|workspace`; `ServerMeta.auth` accepts `'account'`). A
+  full-screen `LoginGate` (sign-in / create-account, invite-aware) gates the
+  router in `main.tsx`; `Shell` swapped the token editor for an org switcher +
+  account menu + sign-out + conditional Admin nav. **Admin area (`575ca88`):**
+  a new `/admin` route (interactive Solid, not json views) — Members · Invites ·
+  Tokens · Workspaces · Settings, wired to `/v1/admin/*` with create/list/
+  revoke/role-change, RBAC-reflected (the server is the enforcer). Minted CI
+  tokens surface the plaintext `vxc_` secret ONCE with a copy affordance +
+  won't-show-again warning. **Verified in a REAL browser** (Playwright/Chromium
+  against a real `startServer` on ephemeral pg + fake S3 serving the built
+  `ui/dist`): login gate → register first user → dashboard + Admin → analytics
+  render → mint CI token (plaintext shown once) → create workspace → create
+  invite (`vxi_`) → create a second org → switch orgs (Settings re-seeds to the
+  new org) → logout → login gate → log back in — ALL steps, ZERO real console
+  errors. Accepted degradations (filtered): 404s to `/v1/graph`, `/version`,
+  `/v1/runs/queue` (removed on the platform) correctly leave the Runs spawn bar
+  honest-disabled. UI 32→52 tests (+20 pinning the org/ws clamp +
+  org-selection reconciliation); `bun run build` (vite+tsc) clean; core ci
+  green. **Corrections the agent made against the real server (kept):** (1)
+  invite onboarding — a NEW invited user registers via
+  `POST /v1/auth/register {…, invite}` (the LoginGate register form), while
+  `POST /v1/auth/invites/accept` adds a membership to an EXISTING session (an
+  in-app "Join with an invite" action) — the shipped server, not the design's
+  sketch. (2) Found + fixed a real bug: switching orgs while on the Settings
+  tab left the rename form seeded with the PREVIOUS org (a Save would have
+  renamed the wrong org) — fixed with a reactive `createEffect(on(...))`
+  re-seed, pinned by an e2e assertion. (3) No
+  `GET /v1/admin/orgs/:id/invites` on the server, so the Invites section only
+  creates (surfaces the token/URL) — no list. `dist` stays a gitignored build
+  artifact (not committed). **REMAINING P4 (server half, next):** absorb the
+  transitional `startServe` (serve.ts) into server.ts, repoint `/mcp` + dist
+  duration hints to the existing Postgres `Analytics`, DELETE the colocated
+  `/v1/graph`+`/v1/workspace/*` cockpit + the four residual SQLite stores
+  (ingest/log/fp/workspace-catalog) + serve.ts, retarget the companion suites.
+  Then P5 (compose/image/docs).
+
+- **2026-07-12**: **Hostile tenant-boundary review of platform Phase 3 —
+  VERDICT AIRTIGHT, zero confirmed defects** (repro-mandated adversarial
+  reviewer over `51facf1`..`df44193`; real two-org `startServer` on ephemeral
+  pg + fake S3). **59 attack assertions across all 7 invariants; 58 rejected
+  exactly, the 1 non-pass was the reviewer's own wrong expectation** (`/v1/graph`
+  returns 200 SPA-catchall, NOT a JSON 404 — the colocated `planRun` route is
+  genuinely DEAD post-`df44193`, so a GET falls through to the static SPA like
+  any unknown path; that CONFIRMS delegation removal rather than refuting it).
+  **Refuted by executed repro (the boundary holds):** cross-org cache read
+  (orgB GET of orgA's key → 404, incl. 10 hostile `x-vx-cache-scope` values —
+  `..`/`../..`/encoded slashes/orgA's UUID/`_org`/`trusted`/absolute — all 404;
+  trusted tier ignores the header, `subScopeOf` collapses `.`/`..`/non-matching
+  to `shared`, `validScope` re-checks every segment); cross-workspace within an
+  org (bidirectional `_org`↔ws segment isolation, all 404); scope injection
+  (every one of 7 S3 keys matched `^org/<uuid>/ws/(_org|<uuid>)/(trusted|
+untrusted/<seg>)/<hash>.tar.zst$` — none escaped to `..`/bucket-root/
+  `etc/passwd`; untrusted `scope=trusted` nested harmlessly at
+  `…/untrusted/trusted/…` and a trusted GET of it → 404 = poison isolation;
+  per-PR `pr-42` write / `pr-99` read → 404); dist pool cross-org (two orgs'
+  agents with IDENTICAL ws+session+commit over the real `/v1/agents` WS —
+  neither saw the other, `remoteAgents=1` each; `orgId` reaching `hello`/
+  `availableCapacity` is `data.principal.orgId`, never on the wire); provenance
+  leak (orgB PUT of the same hash → own copy with `task: undefined`, no orgA
+  `secretproj` provenance; `?ws=<orgA ws>` clamped to the token's own org);
+  delegation dead (`{t:'run'}` → rejection error, `/v1/runs/queue` → 404, no
+  handler/import survives); token forgery/privilege (session on `/v1/cache/:hash`
+  → 403 machine-token-only; ci minting an admin token → 403; spoofed `x-vx-org`
+  header ignored — org is DB-derived from the token hash; `?org=`/`?ws=` foreign
+  → scoped-to-own-org / 404). S3 `violations` stayed empty (no credentialed /
+  scope header leaked onto a presigned path). **Accepted by-design
+  (informational):** an instance-admin session reads any org (operator
+  superuser, not a customer boundary); an org-wide token lists the shared `_org`
+  scope while binding provenance to a `?ws=`-chosen workspace WITHIN its own org
+  (intra-org, no cross-tenant exposure). Root cause of the isolation: ONE
+  chokepoint `basePrefix(p) = p.bucket ?? org/${orgId}/ws/${workspaceId ?? _org}`
+  fed only by a server-built `Principal` (the `api_tokens` row keyed by
+  `sha256(token)`) + the registry `sessionKey(orgId, ws, session)` + analytics'
+  `WHERE workspace_id/org_id` clamps — no reachable path threads a wire value
+  into any of them. No code change (clean verdict).
+
+- **2026-07-12**: **Platform Phase 3 SHIPPED — cache + dist re-keyed to the
+  org/workspace tenancy prefix; run delegation DELETED (`51facf1`,
+  `e690a82`, `df44193`)**, executing P3 of
+  `docs/design/cloud-platform-2026-07.md`. **(1) Cache scope is now
+  tenant-partitioned (§8.1).** The artifact-store scope grew from
+  `<bucket>/<tier>` to `org/<orgId>/ws/<workspaceId>/<tier>[/<sub>]`, ALL
+  server-derived from the token — `Principal` became
+  `{ orgId, workspaceId?, tier, bucket? }`, `basePrefix(p)` =
+  `p.bucket ?? org/${orgId}/ws/${workspaceId ?? _org}`. The org is the top
+  tenant boundary (one org's token can NEVER read another's key); the
+  workspace is the token's bound workspace, or a reserved shared `_org`
+  segment for an org-wide token (its cache is shared across the org's
+  workspaces — `_org` isn't a valid UUID so it can't collide). The tier
+  boundary (fork-PR CVE fix) survives unchanged: untrusted writes only
+  `untrusted/<sub>`, reads `untrusted ∪ trusted`; trusted never reads
+  untrusted; per-PR sub-scopes; immutability 409; byte cap; zstd-magic
+  gate. The server gate derives the workspace from the token (ws-scoped →
+  its ws; org-wide → `_org`); a session gets an org-wide trusted principal.
+  The transitional single-tenant serve + the store-policy unit tests set an
+  explicit `bucket` override, which IS the scope base (`default/trusted`),
+  byte-identical to the pre-platform layout (legacy flat store still
+  migrates there). **(2) Dist sessions re-keyed by org (§8.2).** The agent
+  registry key grew `{workspaceId, session}` → `{orgId, workspaceId,
+session}`; `orgId` is a trailing `'default'`-defaulted param on
+  hello/beginSubmission/availableCapacity, SERVER-derived from the agent's/
+  submitter's token (never on the wire — NO DIST_PROTOCOL bump). Two
+  tenants' pools can never collide or pair; `dist:submit` runs under its ci
+  token's org. `/v1/artifacts` producing-task provenance moved off the
+  residual SQLite store onto Postgres `task_runs` (workspace-clamped via
+  Analytics `provenanceForHashes`), scoped by the principal's cache prefix
+  so provenance never crosses the tenant boundary. **(3) Run delegation
+  DELETED.** The platform has no checkout to execute against, so the
+  server-side `RunQueue` (`run-queue.ts`, `protocol-queue.ts`), the
+  `{t:'run'}` WS handler (now a clear rejection error), `cli/backend.ts`,
+  and `connect --delegate` (rejected at the environments-file boundary with
+  a migration hint to `--distribute`) are GONE. Distribution
+  (`VX_CLOUD_DISTRIBUTE` → agent pool, or local) is the ONLY remote
+  execution. −1308 lines net in df44193 (run-queue + serve delegation +
+  plugin backend rung + their suites). **Verified END-TO-END with the real
+  server** (ephemeral pg + fake S3 + live `vx-cloud server`): register
+  instance admin → create orgB → mint org-wide + ws-scoped trusted tokens →
+  PUT cache artifacts → the S3 bucket keys carry the full
+  `org/<orgA>/ws/{_org|<wsId>}/trusted/<hash>.tar.zst` tenant prefix; orgA
+  GETs its own key (307), orgB GET of orgA's key → 404 (cross-org), a
+  ws-scoped token can't read the `_org` key and the org-wide token can't
+  read the ws key (both 404, ws-segment isolation), orgB (wrote nothing)
+  has ZERO keys. Cloud 473→464 (−9: delegation suites deleted; +store
+  tenancy matrix, +dist org-key pins, +server principal-derivation);
+  core 1221 untouched (ZERO src/ change), core ci + cloud lint/fmt clean.
+  **DEVIATIONS (phase-honest, all P4-scoped, accepted):** the residual
+  `startServe` (serve.ts) keeps its colocated `/v1/graph` live-cockpit +
+  SQLite-backed dist duration hints (FIFO fallback when absent) + the
+  WorkspaceCatalog/MCP/IngestStore machinery — P4 absorbs serve.ts into
+  server.ts and deletes the SQLite stores; the registry orgId param is
+  trailing-optional (`'default'`) for that transitional path. **Deferred:**
+  P4 (dashboard login/admin UI + serve.ts absorption + SQLite-store
+  deletion + companion-suite retarget), P5 (compose/image/docs).
+
+- **2026-07-11**: **Tenant-boundary + query review of platform Phase 2 —
+  crown jewel VERDICT AIRTIGHT; three non-tenant defects fixed
+  (`1aaa694`)** (repro-mandated hostile reviewer over `304ac5c`..
+  `7df5232`; real two-tenant driven server). **Refuted by executed
+  repro (the tenant boundary holds):** every one of the 27 reads is
+  structurally clamped `WHERE workspace_id = <server-uuid>`; two orgs
+  pushing the SAME client workspace string get DISTINCT server
+  workspaces (isolated by `repos UNIQUE(org_id, client_workspace_id)`);
+  org B with `?ws=<A's ws>` → 404, `?org=<A>` token ignores it, session
+  → 404; fetching A's run/invocation/why/diff/compare/logs by id as B →
+  404/found:false (the secret never appears); SQL injection inert
+  (values stored verbatim as data); idempotent re-ingest; bounded
+  500-task run; retention-drop boundary correct; and a SQLite-vs-Postgres
+  DIFFERENTIAL of getFlakiestTasks/getHistory/listRuns (incl. the
+  wallclock-ns string shape)/getRunTrends/getPeriodComparison (empty
+  window → COALESCE 0)/getRegressions/getCacheSavings deep-equal. **Fixed
+  (all NON-tenant):** **(1) HIGH — partition maintenance was BOOT-FATAL.**
+  Postgres refuses to create a range partition when DEFAULT already holds
+  an in-range row (a backfill, a future-dated push past the ahead buffer,
+  a lagging tick — ingest never range-validates `started_at`), and that
+  throw aborted the whole tick (invocations first → cascades to
+  task_runs/task_logs) while boot AWAITED it uncaught — so a poisoned DB
+  made the server UNBOOTABLE platform-wide, triggerable by the
+  lowest-privilege writer. Now each table/partition failure is isolated
+  (logged, skipped), `maintainPartitions` NEVER throws, boot never dies
+  on it, and a DEFAULT collision is RECOVERED (detach DEFAULT → create
+  partition → move the in-range rows in → reattach) so the row lands in
+  its own partition instead of wedging maintenance forever. **(2) MEDIUM
+  — concurrent first-push data loss.** The `workspaces` INSERT wasn't
+  conflict-guarded, so N parallel first-pushes of a new workspace raced
+  on `UNIQUE(org_id, slug)` and N-1 aborted with the raw Postgres error
+  (400, history dropped) before the repo-claim recovery. `routeWorkspace`
+  now retries from the fast-path read on a unique violation — the same
+  client id converges to the winner's workspace, a slug-colliding
+  different client picks the next free slug. **(3) MEDIUM — the tag
+  filter never matched.** jsonb columns were `JSON.stringify(obj)::jsonb`
+  which Bun.sql DOUBLE-encodes into a jsonb STRING scalar, so
+  `tags @> …` degenerated to equality (never matched a multi-tag run);
+  reads were accidentally masked by a JSON.parse. Now tags/requestedTasks/
+  fingerprint-files/config are written as OBJECTS (proper jsonb, verified
+  `jsonb_typeof=object`), the `@>` filter passes an object, and the read
+  layer accepts the object form (still parsing a legacy string
+  defensively). Pinned by 5 regression tests. **Accepted residuals
+  (informational):** past-dated rows in DEFAULT are never pruned by
+  retention (minor accumulation); the double-encoding was systemic but
+  only the tag filter observably broke. Cloud 469→473 (+4), core ci +
+  lint clean. **Verdict: tenant isolation + the SQLite→Postgres port are
+  solid to build Phase 3 on.**
+
+- **2026-07-11**: **Platform Phase 2 SHIPPED — the analytics storage
+  swap onto Postgres (`304ac5c`, `22b6125`, `de22e97`, `7df5232`)**,
+  executing P2 of `docs/design/cloud-platform-2026-07.md`. The
+  `vx-cloud server` analytics path is now FULLY on Postgres end-to-end.
+  **Schema (migrations 0004-0006):** `invocations` (monthly RANGE
+  partitions), `task_runs` (weekly — the 50-100M-rows/day table),
+  `task_logs` (monthly), each with a DEFAULT catch-all partition so
+  ingest never drops a row; `output_fingerprints` plain; every hot
+  index leads with `workspace_id` (the tenant axis). `db/partitions.ts`
+  creates current+N-ahead partitions idempotently + drops past
+  `VX_CLOUD_RETENTION_DAYS` (default 180); a boot + daily maintenance
+  tick runs it. **`db/analytics.ts`:** the write half (`ingest`/
+  `ingestLogs`/`ingestCatalog` in one idempotent
+  `ON CONFLICT (started_at, run_id) DO NOTHING` transaction — race-free,
+  unlike core's SELECT-then-insert gate) + `routeWorkspace` (§5.5: the
+  org token's org → resolve-or-create the `workspaces` row by the
+  client's 16-hex `workspaceId` on first push; auto-provision projects/
+  tasks; a workspace-scoped token is refused a foreign ws), and the
+  full port of core's 27 read queries, org/workspace-CLAMPED. Core
+  `metrics.ts` is UNTOUCHED (it serves the LOCAL cache.db for `vx mcp`/
+  `vx info`); the Postgres port is a deliberate dialect fork.
+  `db/analytics-routes.ts` is the request router the server gate calls.
+  **Dialect decisions:** Bun.sql returns bigint/count/sum/numeric as
+  STRINGS (aggregates cast `::int`/`::float8`; bigint cols `Number()`'d;
+  wallclock ns kept as its wire string); jsonb reads back as TEXT
+  (`JSON.parse` the tag/config/files columns — core's TEXT-column
+  pattern); Postgres HAVING can't ref output aliases (repeat the
+  aggregate); `trunc(avg())::int` for SQLite toward-zero parity; the
+  invocation tag filter uses jsonb `@>` containment (the correct form
+  of core's `LIKE` hack). Drift-trap pins carried over (periodStats
+  COALESCE, getRegressions `run_id DESC` tiebreaker, half-open
+  `[from,to)` windows). Cache-ENTRY inventory queries return shaped
+  empties — the analytics schema holds run/task history only; cache
+  inventory IS the S3 artifact list (§5.1). **Verified END-TO-END with
+  the real server** (ephemeral pg + fake S3): register → mint ci token
+  → ingest into TWO workspaces (both auto-provisioned) → read back
+  per-workspace (ws A shows only its runs) → projects auto-provisioned
+  → a second org's token reads empty, a foreign `?ws=` is 404, a
+  cross-org session `?ws=&org=` is 404 (tenant clamp holds on the real
+  wire). Cloud 423→469 (+46: schema/partition, write/routing,
+  read-query pins with a decoy-workspace clamp proof, e2e); core 1221
+  untouched (ZERO src/ change). **DEVIATION (phase-honest, named):**
+  the SQLite stores (`ingest-store`/`log-store`/`fp-store`/
+  `workspace-catalog`/`workspaces.json`) + serve.ts's colocated
+  `/v1/graph`/`/v1/workspace/*` are NOT deleted — the design's §12 puts
+  serve.ts's absorption into server.ts + the ~15 companion-suite
+  retarget in P4, and those stores still back `startServe`
+  (transitional until P4). The P1 per-org SQLite `storeFor` IS removed;
+  serve.ts keeps ONE shared store only for residual machine surfaces
+  (dist duration-hints, `/v1/artifacts` provenance, `/mcp`, delegated
+  self-ingest — all P3/P4). Two smaller residuals: Postgres-served
+  `/v1/runs/:id/logs` drops the `artifactHash` link (P3 re-adds via
+  artifact-store access), `/mcp` still reads the empty shared store
+  (MCP-on-Postgres is a follow-up). Response types are mirrored in
+  `analytics.ts` (not on the façade; the no-core-change constraint) and
+  pinned by the seeded tests. **Deferred:** P3 (cache wire + dist under
+  org tokens + `org/<id>/ws/<id>` scope prefixes + delegation death),
+  P4 (dashboard auth/admin UI + serve.ts absorption + SQLite-store
+  deletion + companion-suite retarget), P5 (compose/image/docs).
+
+- **2026-07-11**: **Security review of platform Phase 1 — auth
+  foundation VERDICT SOUND; three availability/enumeration defects fixed
+  (`13d8be5`)** (repro-mandated hostile reviewer over the auth layer;
+  real ephemeral pg + driven server). **Every authorization invariant
+  held under executed repro (refuted as attacks):** session forge/tamper
+  (HMAC timingSafeEqual before any DB read; id sha256-at-rest), expiry +
+  sliding renewal, fixation (login rotates id), logout (server-side row
+  DELETE), token immutability (no route mutates trust_tier; admin tokens
+  force-trusted) + revocation, the full RBAC/cross-org matrix (member/
+  viewer can't mint/change-role/self-promote; cross-org is 404 no-leak;
+  admin TOKEN can't manage owners), the last-owner guard (applies to
+  instance admins too), the bootstrap-admin race (8 concurrent first-
+  registers → exactly 1 admin via the xact advisory lock), SQL injection
+  (all values are Bun.sql tagged-template params; no user value in
+  `sql.unsafe`), password handling (argon2id, no manual compare), the
+  config-refusal boot, and the `eeffcb5` env-shield. **Fixed (all
+  availability/enumeration, NOT authorization):** **(1) MEDIUM invite-
+  accept TOCTOU** — the accept path read `used_by IS NULL` then updated
+  in separate statements, so N concurrent accepts of ONE invite all
+  onboarded (an owner-role invite → N owners). Now an atomic conditional
+  `UPDATE … RETURNING` inside a transaction claims it (a second accept
+  row-locks, finds it used, RETURNING empty → 403); not-an-org / already-
+  member throw to roll the claim back so a legit retry isn't burned. The
+  register path was already safe (serialized on the bootstrap lock).
+  **(2) MEDIUM throttle bypass + unbounded map** — keyed only on the
+  client-supplied leftmost XFF (IP rotation defeated it) with no eviction
+  (a pre-auth memory-exhaustion vector). Now ALSO keys per-email (the
+  attacker can't avoid the victim's address, so rotation doesn't help a
+  targeted attack) + self-evicts expired entries + caps at 50k keys.
+  **(3) LOW-MED login timing oracle** — argon2 was skipped for an unknown
+  email (~300× faster = a clean enumeration oracle, and its stated
+  compensating throttle was itself bypassable). Every login now runs one
+  argon2 verify (a memoized dummy hash for unknown emails). Pinned by 4
+  regression tests. **Accepted residuals (informational):** login/
+  register aren't CSRF-gated (the JSON+no-CORS requirement blocks the
+  form attack; impact is only login-CSRF, low for a same-origin SPA); the
+  register email-exists 409 is reachable only with a valid invite; the
+  IP-axis throttle still needs a trusted proxy to be meaningful (the
+  email axis is the real defense). Cloud 419→423 (+4), lint clean.
+
+- **2026-07-11**: **Platform Phase 1 SHIPPED — identity/auth/RBAC on
+  Postgres, config-required `vx-cloud server`, the `serve` verb REMOVED
+  (`f1b0b46`, `2970fff`, `36e8257`, `eeffcb5`)**, executing P1 of
+  `docs/design/cloud-platform-2026-07.md`. **DB layer:** `db/client.ts`
+  (a thin `Bun.sql` seam — zero deps), `db/migrate.ts` (numbered
+  embedded-TS migrations applied in ONE transaction under
+  `pg_advisory_xact_lock`, so concurrent compose boots serialize —
+  finally kills the schema-gate-wipes-history landmine), migrations
+  0001-0003 (identity/tenancy/credentials). **Auth:** argon2id
+  (`Bun.password`); opaque 256-bit sessions sha256-at-rest with
+  `<id>.<hmac(secret)>` HttpOnly cookies + 30-day sliding renewal;
+  `vxc_` API tokens sha256-at-rest with an IMMUTABLE trust tier (the
+  fork-PR cache invariant becomes a token property); `/v1/auth/*` (first
+  registration becomes the instance admin, then signup CLOSES —
+  invite-only; per-IP+email login backoff; CSRF header on session
+  mutations) + `/v1/admin/*` (orgs/members/invites/tokens/workspaces;
+  cross-org reads 404; last-owner guard); one `resolvePrincipal`
+  middleware over the §6.5 surface→principal map. **`vx-cloud server`:**
+  `resolveServerConfig` refuses to boot listing EVERY missing var
+  (DATABASE_URL, VX_CLOUD_SECRET ≥32, VX_CLOUD_BASE_URL, the four S3
+  vars) — no tokenless mode, no loopback exemption; boot = reach
+  Postgres → migrate → S3 list-probe (fail loud) → bind `0.0.0.0`. The
+  `serve` verb prints a redirect to `server`. **Transitional (named,
+  §12 P1):** analytics still ride the SQLite `IngestStore`, now
+  per-org under `<dataDir>/orgs/<orgId>`, and the token's org id is the
+  artifact-store bucket — so cache scopes are org-partitioned from P1
+  (verified: an untrusted token's PUT lands under `<orgId>/untrusted/`,
+  a trusted GET never reads it). **Tests: real ephemeral Postgres, no
+  mocks** — `tests/helpers/ephemeral-pg.ts` boots ONE cluster/process
+  (initdb + unix-socket, runs as the `postgres` user since this env is
+  uid 0; CI runners take the direct path), migrates a `template_vx`
+  once, per-suite `CREATE DATABASE … TEMPLATE` clones. Cloud 379→419
+  (+10 db, +17 auth, +12 server, +1 the boot-bug regression); core 1221
+  untouched (zero `src/` change). **Verified END-TO-END with the real
+  CLI** (ephemeral pg + fake S3): boot migrates an empty DB, register →
+  instance admin + owner org, second register 403, mint CI token,
+  ingest 403-as-session/200-as-token, runs read back under the session,
+  untrusted PUT stored org-scoped + trusted GET 404, controller holds 0
+  artifact bytes. **Bug the e2e caught + fixed (`eeffcb5`):** `Bun.sql`
+  consults `process.env.DATABASE_URL`/`POSTGRES_URL` even when handed a
+  socket options object, so a libpq unix-socket URL in the env (which
+  `server` sets) threw `<redacted> cannot be parsed as a URL` at boot —
+  invisible to the test suite, which never put the socket URL in the
+  env. `openDb` now shields the sync socket construction from those two
+  vars; production compose (TCP URL) never hit it. **Deviations
+  (named):** WS-side surfaces (delegated-run self-ingest, dist hints)
+  still use the shared store (proper routing needs P2 repos + P3
+  re-keying); `VX_CLOUD_DATA_DIR` added for the transitional volume
+  (dies with P2); `/v1/artifacts` is session-readable (dev read
+  surface). **Deferred:** P2 (Postgres analytics tables + the ~40-query
+  metrics port + IngestStore deletion), P3 (org/ws scope prefixes,
+  registry re-key, delegation death), P4 (dashboard login/admin UI +
+  `startServe` deletion), P5 (compose/Dockerfile/guides). `startServe`
+  survives as an internal transitional export until P4 so the 34
+  pre-existing serve suites keep passing.
+
+- **2026-07-11**: **OWNER DIRECTIVE — vx-cloud is a fully INDEPENDENT
+  self-hosted CI PLATFORM, not a companion** ("It should be a fully
+  completely independent SaaS app! with full account creation,
+  permission roles users, multi workspaces, repos, projects, teams,
+  everything. It should be deployed as docker compose. It should be
+  not possible to call vx-cloud serve. It is not companion. it
+  requires setup of s3 db etc… it is not run next to vx thing. its a
+  self hosted cloud solution that cover orgs of 100000 of devs and
+  with millions of projects. Work on it no questions asked").
+  REVERSES: the companion/zero-config-local-serve model (the 2026-06-28
+  "vx-cloud serve --ui next to the workspace" story, the colocated-
+  workspace catalog premise, SQLite-per-workspace ingest as THE store),
+  and the single-token auth model. Target: accounts (email+password,
+  sessions for the UI, hashed API tokens for CI/agents), RBAC
+  (org → teams → members with roles; workspaces/projects/repos scoped
+  to orgs), Postgres as the system of record (Bun.sql — built-in, zero
+  deps; Postgres 16 available in this env AND CI for real hermetic
+  tests via ephemeral initdb + unix socket), S3 REQUIRED (the
+  2026-07-11 blob backend becomes mandatory), docker-compose deployment
+  (app + postgres + minio-or-external-S3), boot REFUSES without full
+  config (DATABASE_URL + S3 + secret), and the casual `serve` verb
+  DIES. The `cloud()` plugin/connect client story survives — a
+  workspace CONNECTS to a deployed platform (URL + token); nothing
+  auto-starts next to vx. Architecture + phasing:
+  `docs/design/cloud-platform-2026-07.md`.
+
+- **2026-07-11**: **Adversarial review of the S3 blob-backend wave —
+  VERDICT SOUND, zero defects; two accepted residuals noted** (repro-
+  mandated hostile reviewer over `be446b7`+`a13de4a`). **Refuted by
+  executed repro:** SigV4 byte-stability (wire == canonical through
+  `new URL().toString()`, four AWS-docs KATs), trust scopes through the
+  REAL serve+bucket flow (traversal `x-vx-cache-scope` values all
+  collapse to `shared/untrusted`, a trusted GET never presigns an
+  untrusted key, presigned URLs carry neither bearer nor scope),
+  dead-bucket safety (a real run stays ok=true on both PUT and GET
+  paths; wire = loud 502, internal probes degrade; garbage XML → `[]`),
+  spool lifecycle (unlinked on success/throw/disconnect/over-cap; a
+  half-upload never immutability-locks the key), digest-fallback
+  precedence (first-wins — a wrong `x-vx-digest` is never rescued by
+  the meta fallback), `resolveS3Config` (empty env = unset; partial
+  config prevents BOOT, never a silent local fallback), zero core
+  changes, cloud 379 green. **Accepted residuals (noted in the design
+  doc):** a GET response carrying NEITHER digest header is unverified
+  (the native wire's pre-existing advisory-digest property — both
+  stores always attach one in practice); exotic operator env values
+  (lone-surrogate prefix → loud 502 at request time, >7-day presign
+  TTL) are unvalidated — neither reachable from the untrusted wire.
+  **Same day: `install.sh` and the one-time npm seeding script were
+  REMOVED (owner: "no scripts are allowed in repo" — one-time only).**
+  npm is THE install path (`npm install -g @vzn/vx`); every doc install
+  block + CI recipe swapped. Context: the curl installer's missing
+  PATH persistence caused a "command not found" report (fixed, then
+  removed with the installer); the four `@vzn/vx-cloud-<target>` names
+  were successfully seeded on the registry by the owner (the publish
+  404 was missing npm auth), unblocking Trusted Publisher config + the
+  npm workflow re-run that completes the `@vzn/vx-cloud` publish.
+
+- **2026-07-11**: **The S3 blob backend SHIPPED — the serve stores zero
+  artifact bytes at rest when a bucket is configured (`be446b7`,
+  `a13de4a`)**, executing the same-day directive below, zero deviations
+  from the design. **The seam:** raw storage moved behind `BlobBackend`
+  (`packages/cloud/src/blob/{backend,local,s3}.ts`) — `ArtifactStore`
+  keeps ALL policy (trust scopes, immutability-409 via `backend.head`
+  BEFORE the body, streaming spool + mid-stream byte cap + zstd-magic
+  gate, metadata validation); `LocalDirBackend` is today's flat dir
+  byte-identical (the zero-config default); `S3Backend` = path-style
+  signed HEAD/PUT/ListObjectsV2 (hand-parsed XML, bounded continuation)
+  - SigV4 query-presigned GET. **Wire:** GET on S3 answers **307** to a
+    presigned URL (TTL 300 s default) — the controller never proxies a
+    download; the client (already shipped) follows one hop dropping
+    bearer + scope; metadata rides `x-amz-meta-vx-digest`/`-duration-ms`
+    and `NativeCacheClient` reads those as fallbacks (same DIGEST_RE), so
+    digest verification survives offload. PUT keeps proxying (spool →
+    S3 PUT with UNSIGNED-PAYLOAD → unlink in `finally`) so every
+    server-enforced gate survives — transit, not storage. A throwing
+    bucket is a LOUD **502** on the wire (never 404-as-miss); the
+    internal `has`/`storedDurationMs`/`list` probes degrade best-effort
+    so a down bucket can't crash a dist submission. **SigV4 hand-rolled**
+    (`blob/sigv4.ts`, node:crypto only, NO AWS SDK): per-segment AWS URI
+    re-canonicalization, header-signed + query-signed forms; pinned by
+    FOUR AWS-docs vectors (docs.aws.amazon.com is proxy-denied here —
+    vectors from memory, all four reproduced exactly on first run) + two
+    self-KATs + encoding edges. **Config:** `resolveS3Config` —
+    `VX_CLOUD_S3_ENDPOINT` enables; missing BUCKET/KEY/SECRET = boot-time
+    hard error naming the vars (never a silent local fallback);
+    credential-free boot line names the mode. **Verified independently
+    with the real CLI** (real serve in S3 env + standalone fake S3): cold
+    run → artifact lands in the bucket under `default/trusted/` while the
+    controller artifact dir holds **0 files** (the directive, asserted),
+    direct GET → 307 with a well-formed presigned URL, local wipe →
+    `restored-remote` through the offload with the fallback digest, and
+    the bucket recorded ZERO credentialed presigned requests (the
+    cross-origin drop through a real flow). Tests: cloud 379 pass (+27:
+    SigV4 KATs, S3-mode store suite incl. trust-scope matrix +
+    junk-PUT + chunked-cap + bucket-down-502 + list pagination, the
+    controller-byte-free e2e with tampered-bucket degradation,
+    client-fallback pins); core ci green; fake-S3 helper records
+    credentialed-presign violations as a standing assertion. Docs: cli.md
+    env table + 307 semantics, self-hosting S3 section (R2/MinIO
+    examples), deploy compose/README, the native-wire design's offload
+    flipped to shipped. Deferred consciously: PUT offload (client→bucket
+    presigned upload — would hand immutability/caps/junk-gate to the
+    client), bucket migration tooling, spool-gone tmpdir assertion
+    (covered by the controller-byte-free e2e + shared finally).
+
+- **2026-07-11**: **OWNER DIRECTIVE — the serve must NOT store artifact
+  bytes; connect to an S3-compatible bucket** ("we cannot store cache on
+  controller need to connect with s3 compat bucket"). Un-parks the
+  designed-not-built blob backend from `native-cache-wire-2026-07.md`
+  §offload. Design: `docs/design/s3-blob-backend-2026-07.md` —
+  `BlobBackend` seam inside ArtifactStore (policy — scopes/immutability/
+  caps/zstd-magic — stays in the store; raw storage goes behind the
+  seam), GET answers 307 to a SigV4 query-presigned bucket URL (the
+  client already follows one auth-dropping hop), PUT keeps proxying
+  through the serve (temp spool → S3 PUT → unlink; transit, not
+  storage) so every server-enforced gate survives, metadata rides
+  `x-amz-meta-vx-*` with client fallback reads, hand-rolled SigV4
+  (NO AWS SDK, KAT-pinned), env-driven config with partial-config a
+  boot error. Local-dir backend stays the zero-config default. The
+  analytics/log/fp DBs stay on the controller — they are state, not
+  cache.
+
+- **2026-07-10**: **Adversarial review of the native-cache wave — one
+  confirmed store-hygiene defect + two minors fixed; every
+  security-critical invariant verified sound by executed repro**
+  (repro-mandated hostile reviewer over `ca85901`..`5cdbe24`; the
+  session's standard). **Fixed:** **(1) LOW-MEDIUM — junk-PUT permanent
+  key lock.** The store accepted ANY authenticated PUT body (empty,
+  HTML error page) and immutability then 409'd the legitimate artifact
+  forever — a per-key cache-defeat DoS (executed: empty PUT → 200 →
+  0-byte artifact → real PUT → 409; consumer side stayed SAFE — the
+  junk GET degrades to a miss via the client digest/zstd checks, never
+  a wrong hit; blast radius tier-bounded). Fix: PUT gates on the zstd
+  frame magic (4 bytes, captured mid-stream — NOT content validation,
+  which stays client-side) → 400, nothing stored, key stays writable;
+  pinned by empty-body/junk-body/key-not-locked tests, and every store
+  test body became a real zstd frame (`zbody` helper). **(2) LOW —
+  `x-vx-cache-scope` leaked to a cross-origin redirect target** (only
+  the bearer was dropped). The scope header is serve-facing identity;
+  now gated on the same-origin flag exactly like the bearer, pinned by
+  the extended cross-origin test. **(3) LOW — `docs/differentiators.md`
+  still advertised the DELETED Turbo-HMAC signing** as a live
+  differentiator; rewritten to the always-on `x-vx-digest` structural
+  integrity story. The design doc's wire table synced to as-shipped
+  (PUT 400 row; the no-server-side-422 deviation noted inline — the
+  2026-07-08 doc-correction precedent). **Verified sound (executed
+  repros, NOT actioned):** trust scopes under hostile
+  `x-vx-cache-scope` values (`..`, `../trusted`, encoded slashes — all
+  collapse to `shared`, none escape), per-PR isolation + trusted-never-
+  reads-untrusted through a REAL serve with real trusted/PR tokens,
+  streaming-PUT cap (chunked over-cap → 413, no temp/torn file;
+  disconnect mid-stream → temp unlinked), concurrent same-hash PUT
+  race is torn-free, route regex shadows nothing, digest mismatch
+  degrades a REAL run to re-execution, redirect loop stops at one hop,
+  HEAD/PUT never follow redirects, dead-serve run stays ok=true,
+  injection-wins precedence, `--cache=remote:`/`--no-cache` issue zero
+  remote calls, planRun is HEAD-only (1 HEAD, 0 GET), agents always
+  construct the remote layer (§6 output transport preserved), zero
+  dead-surface references in live code. **Accepted (informational):**
+  `/v1/cache/<non-hex>` falls through to the SPA like any unknown path
+  (public HTML, still token-gated as `/v1/*`); an untrusted sub-scope
+  literally named `trusted` nests harmlessly UNDER `untrusted/`. Cloud
+  352 pass (+2), core 1221, lint clean. **Process lesson (the fix
+  commit `d608f3a` itself went out RED):** the `zbody` helper's
+  `Uint8Array` annotation broke tsgolint (TS2769 — `toEqual` pins the
+  expected type to the actual's `Uint8Array<ArrayBuffer>`), and the
+  local gate DID catch it — but the lint run was piped through
+  `| tail`, which masked the non-zero exit code, so the `&&` chain
+  committed and pushed anyway. Fixed in `9c6f260`. Rule: never pipe a
+  gate command's output through anything; check its exit code
+  explicitly (`cmd > file 2>&1; echo $?`), and confirm the REAL CI run
+  green after pushing — "the summary printed" is not "the gate
+  passed".
+
+- **2026-07-10**: **The plugin-driven remote cache SHIPPED — all three
+  phases of `docs/design/native-cache-wire-2026-07.md` (`ca85901`,
+  `a50a93e`, `aa1797f`, `5cdbe24`)**, executing the same-day owner
+  directive below. **Phase A (core seam):** exported `RemoteCacheLayer`
+  interface (`has`/`get`/`put`; implementations THROW, `LayeredCache`
+  degrades every throw to a miss) + `RunOptions.remoteCache` embedder
+  injection that WINS over the plugin `cache` capability (the
+  telemetrySinks pattern). **Phase B (the vx-native wire):** the serve's
+  ArtifactStore handles `/v1/cache/:hash` (GET/HEAD/PUT) — headers
+  `x-vx-duration-ms` (the `.duration` sidecar's wire form) and
+  `x-vx-digest` (`xxh3:<hex>` over the artifact bytes, stored as a
+  `.digest` sidecar, echoed on GET); PUT STREAMS to the temp file with
+  the 512 MiB cap enforced on ACTUAL cumulative bytes mid-stream (a
+  chunked/lying body can neither buffer RAM nor spoof the cap);
+  immutability 409 checked before the body; trust scopes byte-identical.
+  New `packages/cloud/src/native-cache.ts` `NativeCacheClient`: bounded
+  downloads (content-length REQUIRED + capped + mid-stream cap), digest
+  verification (mismatch throws → miss), ONE-hop 307/302 follow DROPPING
+  the bearer cross-origin (the blob-offload seam, client-ready before any
+  server implements it), clearable timeouts, 409-as-success on PUT.
+  `cloud()` builds it when the connected serve advertises `cacheWire: 1`
+  on `/v1/meta`; distributed agents/submitter switched from env wiring to
+  explicit `RunOptions.remoteCache` injection (both execute in-process
+  scoped `run()`s — no subprocess channel exists; `markAgentProcess`
+  keeps the telemetry sentinel). `/v8/artifacts` is DELETED. **Phase C
+  (core scrub):** `src/cache/remote-cache.ts` (Turbo client + HMAC +
+  preflight) and `orchestrator/remote-cache-setup.ts` (`VX_REMOTE_CACHE_*`
+  env hatch) deleted — core carries ZERO HTTP cache code; the façade
+  drops `RemoteCache` (boundary snapshot updated); `vx info` drops its
+  env-derived remote-cache row; `resolveCacheScope` survives untouched
+  (reads `VX_CACHE_SCOPE` + CI PR context — the per-PR partition concept
+  is part of the native wire). Turbo interop = the ~20-line third-party
+  recipe in the extensibility guide. **Named deviations (deliberate):**
+  no server-side digest verify (no 422 — the CLIENT verifies on GET,
+  which covers the corruption directions that matter; the server skips a
+  hash pass per upload); the serve route is hex-only `[0-9a-f]{16,64}`
+  so it can never shadow the named `/v1/cache/*` analytics endpoints
+  (pinned by a no-shadowing test); ArtifactStore's byte cap is
+  constructor-injectable so the mid-stream 413 is testable without a
+  512 MiB body. **Verified end-to-end** (real serve + the real `cloud()`
+  env ladder): cold miss → upload (`.tar.zst` + `.duration` + `.digest`
+  land in `default/trusted/`), local wipe → `restored-remote` with output
+  - stdout replay, GET carries both native headers, tampered artifact →
+    digest mismatch → degrades to a MISS and re-executes (never restores
+    corrupt bytes), `/v1/meta` advertises `cacheWire: 1`, `/v8` no longer
+    routes. Tests: core 1221 pass (orchestrator-remote re-targeted through
+    injected stub layers — coverage preserved incl. never-fail-on-500,
+    at-most-once GET, planRun HEAD prediction, `local:,remote:rw` in-memory
+    pack), cloud 350 pass (+16-test native-client suite incl. raw-TCP
+    sizeless refusal + cross-origin auth-drop), lint clean. Docs: cli.md /
+    comparison.md / caching / architecture / extensibility (the Turbo
+    recipe) / remote-caching guide all speak the native wire; the two dead
+    module pages deleted. Remaining designed-not-built: the serve-side blob
+    backend (S3/R2) behind the 307 the client already follows.
+
+- **2026-07-10**: **OWNER DIRECTIVE — the remote cache is PLUGIN-DRIVEN;
+  Turbo wire compatibility is DROPPED from core** ("I think the remote
+  cache should be driven by a plugin. We should drop turbo compatibility,
+  and use what make sense for vx cloud. Other could create turbo cache
+  plugin"). REVERSES: the 2026-05 "remote cache wire = Turbo
+  `/v8/artifacts/` spec verbatim" decision, the 2026-06 Turbo-compatible
+  HMAC rationale, and the same-day preflight client (`8fbd2c5`) whose
+  premise was Turbo interop. Target state: core keeps ONLY the seams —
+  local `Cache`, `LayeredCache` composition, the `CacheLayer` interface,
+  and the `cache` plugin capability; the Turbo-wire `RemoteCache` client
+  - the `VX_REMOTE_CACHE_*` env wiring LEAVE core. vx-cloud speaks its
+    OWN artifact wire designed for vx's needs (trust scopes, integrity,
+    streaming — not constrained by Turbo's shape); Turbo interop is a
+    THIRD-PARTY plugin story (we document the seam; we don't ship the
+    plugin). The presigned-artifacts design's "Turbo verbatim" premise is
+    superseded — offload gets designed into the vx-native wire instead.
+    Implementation phased behind an architect design
+    (`docs/design/native-cache-wire-2026-07.md`).
+
+- **2026-07-10**: \*\*The dashboard's product lens is THE SINGLE DEV
+  (standing owner directive — see "Dashboard product lens" section above)
+  - the first lens-driven wave SHIPPED (`df76cef`, `e969b92`)**. Owner:
+    "the ui should be from single dev perspective. He wants to see it run,
+    dig into projects he own, tasks analysis, see if his or improved or
+    decreased performance, identify flaky tests give him easy access to
+    debug like artifacts of run etc". Audit against the five questions:
+    see-it-run ✓ (live Runs), flaky ✓ (badges + Recommendations), but
+    "did MY task/project improve or decrease?" existed only
+    workspace-wide, and debug evidence took multiple hops. Closed: **(1)**
+    `getPeriodComparison` gains `project`/`task` scoping (one shared WHERE
+    fragment; `/v1/analysis?project=&task=`), and BOTH entity detail pages
+    render a scoped trend tile row (avg exec / failure rate / runs / hit
+    rate, this 7d vs prior 7d, signed deltas tinted by direction) — the
+    derivation shared with the Insights card via `trendFields()` in
+    `ui/jr/data.ts`. **(2)** Task detail gains a **Debug card\*\*: last
+    FAILED run deep-linked with `?task=` (captured logs open immediately),
+    latest run (deduped when it IS the failed one), latest artifact's
+    `/cache/:hash` page (facts + download) — RankList rows are BUTTONS with
+    programmatic navigation, so link assertions must click, not query
+    `<a>`. Browser-verified (task made 5× slower → `500ms`/`+400ms` amber
+    tiles on both pages; the failed-run row lands on
+    `/runs/<id>?task=app%23build`; zero page errors). Core 1251, cloud
+    331, UI 40, lint clean. When adding dashboard features, check the lens
+    section: a feature serving none of the five dev questions is
+    org-analytics scope creep.
+
+- **2026-07-10**: **Pre-signed artifact URLs: design + the client half
+  SHIPPED (`5ecbc42`, `8fbd2c5`) — and the patterns feature's adversarial
+  review closed a repro-confirmed stale-hit trap (`3e2a984`)**. **(1)
+  Design** (`docs/design/presigned-artifacts-2026-07.md`, architect):
+  adopt Turbo's `--preflight` mechanism VERBATIM (verified against
+  `turborepo-api-client/src/lib.rs`: `OPTIONS` + Access-Control-Request-_
+  → `Location` + `Access-Control-Allow-Headers` gates whether the bearer
+  rides) — the HMAC interop rationale again; a vx-native wire was
+  rejected. Phasing: (P1) core client preflight; (P2) cloud-only
+  `BlobBackend` (S3/R2, hand-rolled SigV4, NO AWS SDK) with GET offload
+  only — PUT keeps proxying so 409-immutability/caps/tag-sidecar stay
+  server-enforced; (P3, on-demand only) PUT offload with its
+  weakened-immutability residual stated honestly. Trust scopes survive by
+  construction (the pre-signed URL binds ONE server-derived scope key).
+  **(2) P1 shipped:** `RemoteCacheConfig.preflight` /
+  `VX_REMOTE_CACHE_PREFLIGHT` — OPTIONS precedes each GET/PUT/HEAD with
+  the intended method + header NAMES; `Location` (absolute or relative)
+  becomes the target; bearer kept iff Allow-Headers is `_`or names`authorization`(a query-signed URL rejects a request that ALSO carries
+Authorization). Off by default; every existing defense (bounded
+download, content-length refusal, zstd checks, HMAC tag verification)
+applies unchanged to the redirected body — pinned by a two-origin test
+suite (9 tests, incl. unsigned-blob refusal). vx now works against any
+Turbo server that offloads to object storage; the comparison gap is
+client-closed. **(3) Self-review of the day's two features**
+(repro-mandated, same standard as the Opus waves). CONFIRMED + fixed:
+**(a) MEDIUM-HIGH — the patterns stale-hit trap.**`cache.inputs.tasks`matched`'build._'`LITERALLY while dependsOn expanded it → the filter
+selected ZERO upstream hashes → the dependent DECOUPLED and cache-hit
+stale bytes after its upstream changed (executed e2e: served v1 after
+v1→v2). Shipping dependsOn patterns COMPLETED the trap (the pairing
+used to hard-error). Fix: the task half of every filter form (incl.`pkg#`and negation, unlike dependsOn) shares the`_`-glob matcher;
+pinned by 4 units + a real-CLI e2e that fails stale without the fix. NO
+CACHE_VERSION bump — a config using a pattern here before was in the
+silently-decoupled state; its key changing to fold the matched
+upstreams IS the fix. **(b) LOW — duplicate edges** from mixed
+exact+pattern (or literal duplicates, pre-existing): scheduling counts
+balance (executed), but the upstream hash double-folded on the default
+path and DOT printed the edge twice; `node.deps`deduped before the
+sort. **(c)** empty`VX_GITHUB_CHECK_NAME`falls through instead of
+naming a check`''`(a 422). **Refuted by execution:** edge-order
+determinism (sort covers all pattern paths; warm re-run all-hits;`--frozen`green), regex escaping (17 adversarial names) + no-ReDoS,`^pattern` scoped-loading symmetry (prepare loads the full dep closure;
+  both forms degrade identically), group surfacing, checks double-post
+  (uploaded flag), agent sentinel (a distributed run posts zero checks —
+  the documented distributed-ingest gap, not a dupe), endedAt epoch-ms,
+  timer cleanup (blackhole API → exactly 5s, then exit). Core 1250 pass
+  (+15), cloud 331, lint clean; real CI green on every push.
+
+- **2026-07-10**: **`dependsOn` task-name patterns SHIPPED — `'build.*'` /
+  `'^build.*'` (`660d299`)**, closing the last dependsOn gap vs Nx (19.5's
+  `build-*`) and pairing with the dotted-namespace convention (`lint:
+{ dependsOn: ['lint.*'] }` replaces hand-listing members). Semantics:
+  a same-project pattern expands to every OTHER matching task (the
+  declaring task never matches itself — instant self-cycle otherwise);
+  ZERO matches is legal (a preset-spread pattern needn't match in every
+  project — deliberate contrast with the exact-name hard error);
+  `'^pattern'` walks the SAME nearest-holder frontier as `'^name'`, where
+  a holder = a dep declaring ≥1 matching task and receives edges to ALL
+  its matches (holder-ness is about declaration, so a holder stops the
+  walk even when every match is `--excludeDependencies`'d; the flag
+  filters expanded matches by concrete name). `*` is the sole
+  metacharacter (regex-escape everything else — pinned by a test where an
+  unescaped `.` would widen the match). Bare `'*'`/`'^*'`/negation stay
+  filter-only rejections (message now says "bare wildcards");
+  `'pkg#pattern'` rejected with a clear error. `defineProject`'s
+  compile-time key check admits `*`-containing strings (they expand at
+  graph build, so they can't be key-checked; a bare `'*'` thus
+  type-checks but fails loud at runtime, accepted). Helpers
+  `isTaskPattern`/`compileTaskPattern` live in `graph/dependency-spec.ts`
+  (the parser itself unchanged — a pattern parses as a normal self/deps
+  spec whose task happens to contain `*`). NO CACHE_VERSION bump (the
+  pattern string rides resolved-config hashing; expansion changes the
+  upstream fold only for new-by-definition configs). Tests: 8 graph units
+  (expansion, self-exclusion, zero-match, holder-stop + multi-edge,
+  sparse bridge, exclude-filter, pkg#pattern reject, dot-escape pin) + 3
+  real-CLI e2e (`tests/wildcard-depends.test.ts`). Docs: schema.md
+  dependsOn forms + semantics, comparison.md matrix + gap #3 closed. Core
+  1235 pass (+11), lint clean. Deliberately NOT dogfooded in the repo's
+  own `lint` group — `lint.*` would also match `lint.oxfmt.fix` (the
+  rewriting task); the convention needs a non-matching name or an
+  exclusion story first.
+
+- **2026-07-10**: **Road-to-best-CI #2 COMPLETED — a real GitHub check run
+  on the commit (`2ecfce4`) + the live-refresh wave hardened against failed
+  polls (`37bdfbb`)**. **(1) PR checks:** when a `vx run` inside GitHub
+  Actions is handed `GITHUB_TOKEN` (the hand-off IS the opt-in — Actions
+  never exposes the token to a step by itself; `checks: write` required),
+  `CloudIngestSink.flush` now also creates ONE completed check run on the
+  commit via the Checks API: conclusion from `exitOk`, the failures-first
+  job-summary markdown as the check output (`packages/cloud/src/
+github-check.ts`, pure glue over `formatGithubSummary`). For
+  `pull_request` events it attaches to the PR's HEAD sha read from
+  `GITHUB_EVENT_PATH` — GITHUB_SHA is the synthetic merge commit there and
+  a check on it never surfaces on the PR (the dorny/test-reporter
+  convention). Knobs: `VX_GITHUB_CHECK=0` disables, `VX_GITHUB_CHECK_NAME`
+  names (default: the run's command). Never-fail; a 403 names the missing
+  permission. No serve needed — works standalone like the job summary.
+  Docs: guides/ci.md "PR checks" section. 11 unit tests + 2 plugin
+  activation pins (the decline test now also deletes GITHUB_TOKEN so the
+  suite is hermetic inside Actions itself). **(2) Adversarial review of the
+  live-refresh/CI-health wave (`a4b3f08`/`dae2f98`)** — the one shipped
+  wave that had no hostile pass; three CONFIRMED defects fixed, all hot
+  since the 5s tick landed: **(a) CRITICAL wedge** — the Runs `invocations`
+  resource was the only UNCAUGHT fetch in the view; one failed poll (serve
+  restart, laptop wake) threw an uncaught rejection out of the downstream
+  memos and PERMANENTLY froze the history table + CI-health ticks while
+  caught siblings kept animating (a frozen view masquerading as live;
+  executed repro against solid-js). Fix: catch to null + hold last-good
+  rows outside the resource — an outage neither wedges nor blanks.
+  **(b)** jsonPage dropped a populated section's data for a tick on a
+  transient refetch error (`res.latest` is UNREADABLE while errored — Solid
+  re-throws); a per-source last-good map keeps data, only a first-load
+  failure shows 'error'. **(c)** the project facet filtered with a stale or
+  absent runId set while its resource resolved (unfiltered rows under an
+  active chip on deep-link; project A's set applied while switching to B —
+  Solid serves the previous value during a source-change refetch); the
+  resource value now carries WHICH project it belongs to and the table
+  reads as loading until it matches. Plus: a failed `/v1/flakiness` probe
+  renders '—', never a confident green "0 flaky". **Verified through a real
+  outage/recovery cycle** (Playwright: serve killed mid-poll, restarted on
+  the same port): rows kept during the outage, count updates after
+  recovery, zero uncaught errors — pre-fix the view froze forever.
+  **Refuted by the review (sound):** live.ts timer lifecycle (no leak/
+  double-arm/burst; refcounted visibilitychange), Shell LiveIndicator, the
+  2s queue poll teardown, runTicks newest-LAST ordering, every tone
+  threshold, invocationPassed consistency (core maps exitOk via Boolean).
+  **Accepted residuals:** pass-rate "24h" computes over the most recent 200
+  invocations (truncated on >200-run days); post-dispose setQueueJobs is a
+  harmless signal write. Cloud 330 pass (+12), UI 40 pass, core 1224, lint
+  clean.
+
+- **2026-07-10**: **Adversarial review of the analytics wave — two
+  repro-confirmed defects fixed, the rest verified sound** (two parallel
+  hostile reviewers, repro-mandated, over the day's `getRegressions`/
+  `getPeriodComparison` + serve routes + UI derivations; the 2026-07-07/09
+  pattern). Both findings CONFIRMED by an executed reproduction. **(1)
+  `periodStats` empty-window `null` (`3cbc2e5`):** the aggregate bare-`SUM()`d
+  `failures`/`cacheHits`/`executed` but only `COALESCE`d `totalDurationMs` —
+  SQLite `SUM()` over ZERO rows returns NULL, and the PREVIOUS window is empty
+  for any workspace younger than the window (fresh serve, quiet prior week),
+  so `/v1/analysis` shipped `previous.stats.failures = null` where
+  `PeriodStats` declares `number` (contract break + a client `.toFixed()`
+  throw). Fix: COALESCE all four; pinned by a current-only-window metrics
+  test. **(2) Dead regression status dot (`3cbc2e5`):** the "Started failing
+  across branches" card's `dots` column bound `_dirReg`, a field
+  `regressionRows()` never produced (I described the derivation in-plan but
+  omitted it from the Edit), so the dot was permanently faint grey — the
+  red-regressed / amber-always-broken urgency cue was lost while the row's
+  TEXT still read fine (why the first render-check missed it: it asserted text
+  - zero errors, not the dot's COLOR). Fix: emit `_dirReg` (`'slower'`→red /
+    `'gone'`→amber via the delta DotMap); browser-verified the two dot colors
+    card-scoped. **Bundled:** the regressions latest-per-branch CTE gained a
+    `run_id DESC` tiebreaker (a time-ordered UUIDv7) so equal-`started_at` ties
+    are deterministic. **Refuted by repro (NOT actioned):** period-window
+    overlap/gap/off-by-one (half-open `[from,to)` is clean), the ROW_NUMBER
+    latest-per-branch dedup + since-recovered-branch + cache-hit-as-pass, every
+    NULL-vs-non-null claim in `getRegressions` (`win.runs` is COUNT, the rest
+    `?? 0`-guarded), mover `<minRuns` leakage + `deltaPct` div-by-zero +
+    percentile index, and every UI tone/sign/pp derivation (failure-up→bad,
+    hit-drop→warn, avg-slower→warn all correct) + `$state` binding + the commit
+    facet's prefix match. **Accepted residual:** malformed numeric query params
+    (`Number('abc')`→NaN) degrade to an empty response — a codebase-wide
+    convention across every metrics route, harmless, unreachable from the
+    dashboard. Core 1224 pass (+1), cloud 318 pass, UI 40 pass, lint clean.
+
+- **2026-07-10**: **vx-cloud analytics wave — live dashboard, run filters +
+  CI-health, cross-branch regression detection, and period-over-period
+  analysis** (owner, four requests across the day: "Improve ui. More
+  features" → "detect tasks that started failing across branches … see runs
+  per commit branch or all" → "We need advanced analysis and over time
+  comparisons"). A coherent analytics thread, all in `@vzn/vx-cloud`; core
+  gained only two read-side metrics queries (no schema/CACHE/TELEMETRY bump —
+  pure SQL over the existing `runs`/`invocations` tables). **(1) Live +
+  filters + CI-health** (UI-only, `a4b3f08`/`dae2f98`/`0f76e18`): every view
+  opts into a visibility-aware auto-refresh tick (`ui/src/live.ts`
+  `useVisibilityRefresh`, paused while the tab is hidden — re-fetches sources
+  on the SAME machinery as a connection switch, `res.latest` kept so a
+  refetch never flashes the loading skeleton); the Runs view gained
+  URL-persisted result/branch/project facets (`#/runs?result=failed&…`,
+  shareable + restore-on-load, clearable chips) and a CI-health strip (last
+  ~24 runs as status ticks + pass-rate/flaky/hit-rate/non-hermetic tiles).
+  **(2) Cross-branch regressions** (`1329b63` core + this wave's UI):
+  `getRegressions` (a task now failing on ≥ `minBranches` distinct branches
+  that has a prior success — the "what just broke everywhere?" signal,
+  distinct from flaky/nondeterministic; a `ROW_NUMBER() OVER (PARTITION BY
+project,task,branch ORDER BY started_at DESC)` CTE takes the latest run per
+  branch, so a since-recovered branch is not counted failing; a cache-hit
+  counts as a current pass). `GET /v1/regressions?sinceDays=&minBranches=&limit=`;
+  an Insights "Started failing across branches" card (red/amber
+  regressed-vs-always-broken dot). **(3) Period-over-period analysis**
+  (`42c5d8b` core + `94895bc` UI): `getPeriodComparison` splits runs into two
+  adjacent equal-length windows (default 7d: this week vs last), aggregates
+  each into `PeriodStats` (runs/failures/hits, avg/p50/p95 exec duration,
+  failure + hit rates), and ranks `movers` — tasks whose avg executed
+  duration shifted most, requiring ≥ `minRuns` (default 3) executions in BOTH
+  windows so a mover is a trend not noise. `GET /v1/analysis?window=&minRuns=&limit=`;
+  an Insights tile row ("this 7d vs prior 7d" with signed deltas tinted by
+  direction) + a "Biggest movers" table (red/green delta dots). **(4) Runs
+  per commit** (`95bd5f3`): a commit facet joins the Runs URL-persisted set
+  (`#/runs?commit=…`, prefix match so a short SHA selects) — with the branch
+  facet + "all", this covers "runs per commit/branch/all". **Derivation
+  pattern:** the analytics data sources (`ui/jr/data.ts` `analysisData`/
+  `regressionRows`) compute all display fields (signed deltas, per-tile
+  tones, mover direction, branch lists) so the pure-JSON views bind plain
+  state paths — conditions/formatters can't compute a signed tone. Every new
+  metrics query is pinned by a `tests/metrics.test.ts` block AND the
+  drift-guard `calls` map + the façade boundary snapshot; the UI filter/
+  regression/period derivations are unit-pinned in `functions.test.ts`; the
+  serve routes have standalone endpoint tests (`{analysis,regressions}-serve.test.ts`).
+  **Browser-verified** (Playwright/chromium against a seeded serve): the
+  Insights trending tiles + movers + "Started failing" cards render with
+  correct deltas/regressions and ZERO real console errors; the Runs commit
+  facet narrows the count and restores from the URL. Core 1223 pass (+9),
+  cloud 316 pass (+2), UI 40 pass (+3), lint clean. Dist is a build artifact
+  (gitignored, not committed — the 2026-07-05 decision). **UI gotcha logged:**
+  `document.body.innerText` reflects CSS `text-transform: uppercase`, so a
+  card-title assertion must be case-insensitive (the metric/card labels are
+  uppercased in CSS).
+
+- **2026-07-09**: **vx-cloud made ACTIONABLE — every surfaced problem now
+  carries its concrete fix** (owner: "Work on better vx cloud"; the
+  clearest expression of the standing "one-stop CI shop, butter, compete
+  with GHA/Jenkins/Nx Cloud" vision — a CI PRODUCT tells you how to fix a
+  problem, not just that it exists). Extends the pattern the hermeticity
+  card already established (a rendered remediation hint) to flaky tasks +
+  a per-task Recommendations card. **PURE UI** (`packages/cloud/ui`) — ZERO
+  core (`src/`) and ZERO serve (`packages/cloud/src/`) change; every
+  suggestion derives from data the dashboard already fetches
+  (`/v1/flakiness`, `/v1/hermeticity`, the workspace catalog). **(A)
+  Insights flaky card** gains a "Suggested fix" column: a CONFIRMED-flaky
+  row shows `exec.retries: N` (`N = max(maxAttempts ?? 2, 2)`), inferred-
+  only rows blank. **(B) Task-detail Recommendations card** aggregates
+  every applicable fix for that task, each a rationale + copy-able snippet:
+  flaky→`exec: { retries: N }` (catalog-aware REFINEMENT: if the resolved
+  config already declares `retries >= N`, flip to "still flaky — the
+  failure is nondeterministic, not transient; investigate / `vx run
+--verify`", no snippet); non-hermetic (task in the divergent list)→names
+  the platforms + rels and offers `cache.inputs.runtime: ['uname -sm']` or
+  fix-the-bug; slow+uncached (catalog-gated: no `cache` block declared +
+  p50 > ~1s)→"add a `cache` block so re-runs restore"; a positive "Looks
+  healthy ✓" zero-state when none apply. A small declarative `RecList`
+  catalog component renders each (icon + title + rationale + snippet).
+  Snippets are schema-accurate. Derivations (`suggestedRetriesFor`,
+  `withFlakyFix`, `computeRecommendations`) live in `jr/functions.ts`,
+  pinned by 16 new unit assertions (retries math, already-declares
+  refinement, per-signal + stacked + healthy). Browser-verified 6/6
+  against a seeded fixture (flaky→retries snippet, already-retries
+  refinement, non-hermetic split-key, slow-uncached add-caching, healthy
+  zero-state, Insights column) with ZERO console errors. UI 25 pass, cloud
+  299, core 1214, lint clean; dist rebuilt (not committed). Docs: dashboard
+  guide synced. Commits `f903f8f`..`de04d1c`. **Not built (owner decision,
+  unchanged):** run TRIGGERS (scheduled / on-push / webhook) — the
+  cloud-data-model Phase 4, which reverses a standing non-goal; do not
+  build unprompted.
+
+- **2026-07-09**: **npm release pipeline hardened — the `sigstore`
+  publish crash fixed + the 10-package publish made idempotent** (owner
+  pasted a live release failure: `Cannot find module 'sigstore'` from
+  `libnpmpublish/lib/provenance.js`). **Root cause (non-obvious):** the
+  publish logic was fine — `npm install -g npm@latest` self-upgrading IN
+  PLACE from node 22's OLD bundled npm 10.x leaves npm's own dependency
+  tree incomplete, so when `libnpmpublish` auto-generates provenance
+  (npm does this automatically in an OIDC trusted-publishing CI context,
+  token OR OIDC), it can't `require('sigstore')` and dies on the first
+  package. **Fix:** `node-version: 22 → 24` — Node 24's BUNDLED npm is
+  already ≥ 11.5.1 (trusted-publishing capable), so no fragile in-place
+  self-upgrade is needed; the upgrade step is now GUARDED (a `node -e`
+  semver check) and self-upgrades ONLY on the unexpected chance the
+  bundled npm is < 11.5.1 — avoiding the exact in-place upgrade that
+  corrupted sigstore. **Made bulletproof (not just "should work"):** a HARD
+  `require.resolve('sigstore', { paths: [<npm root>/npm] })` verify runs
+  BEFORE the publish loop — if it can't load, a forced clean reinstall
+  repairs it, and if it STILL can't, the job fails fast with a clear
+  `::error::` instead of the cryptic mid-publish MODULE_NOT_FOUND. So the
+  release either has a working provenance chain or stops loud + early,
+  never crashes on package 1. **Bundled hardening:** the publish loop is now
+  IDEMPOTENT — a 10-package sequential publish can fail partway (transient
+  registry error, or the sigstore abort), and npm 403s on republishing an
+  existing version, so a re-run used to abort on the first already-
+  published package; each package is now skipped when `npm view
+<name>@<version>` shows it already on the registry (name read from each
+  dir's package.json — `dirFor` maps `@vzn/vx`→`vx`, `@vzn/vx-cloud`→
+  `vx-cloud`, platform pkgs keep their full name), so a re-run COMPLETES
+  the set. The platform-first ordering + idempotency compose (a skipped
+  `@vzn/vx` still satisfies `@vzn/vx-cloud`'s same-version dep). release.yml
+  was already sound (version stamp present, `dist/vx-*` catches both binary
+  families). Verified: YAML valid across all four workflows, the semver
+  guard correct at every boundary (11.5.0 upgrades, 11.5.1 uses-as-is,
+  pre-release suffix handled), the idempotent loop simulated against a fake
+  dist tree (already-published skipped, rest publish). **Needs a real CI
+  re-run to confirm end-to-end** (the Actions runner env isn't reproducible
+  locally); fallback if sigstore somehow persists on Node 24 is
+  `--provenance=false` with the NPM_TOKEN path (loses the attestation).
+  **Standing owner TODO unchanged:** a Trusted Publisher must be configured
+  on npmjs.com for each of the TEN names, OR an `NPM_TOKEN` scope secret set
+  (either auth path now works past the sigstore crash).
+
+- **2026-07-09**: **Adversarial review of the day's three shipped features —
+  two shipping-blocker bugs + a detection gap fixed, the rest verified sound**
+  (three parallel repro-mandated hostile reviewers over the scheduler
+  admission `aabb0f3`, the serve surfaces `7d23eca`+`e224ccb`, and the
+  fingerprint core `fedfef0`; the 2026-07-07 pattern). Every finding
+  CONFIRMED by an executed reproduction or downgraded. **Fixed (one commit):**
+  (1) **CRITICAL — scheduler float-residue hang.** Reservation counters are
+  FLOAT sums (fractional `cpus`, and percent-of-budget resolves to
+  non-representable values — `resolveCpu('10%',3)===0.30000000000000004`), so
+  add/release cycles leave ~2.8e-17 residue instead of exact 0. The
+  solo-clamp gate was the knife-edge `reserved === 0`, so an over-budget task
+  parked FOREVER (active→0, no future tick) — the run HANGS, or worse, exits 0
+  silently WITHOUT running a requested task and prints no summary (CI reads
+  green). A legal config triggers it; reproduced 3/3. Fix: integer HOLDER
+  COUNTS per axis drive the solo-clamp ("axis idle" = `holders === 0`, exact),
+  `reserved` SNAPS to exact 0 when an axis's holders hit 0 (kills cross-busy-
+  period accumulation), and the within-budget compare gained a relative
+  epsilon against exact-fill mis-rounding. (2) **CRITICAL — serve O(N²) DoS
+  via `/v1/hermeticity`.** `FpStore.divergence()` nested a row-pair loop over
+  ALL reports for a divergent hash (no early exit, no per-hash cap),
+  synchronously — freezing the single-threaded serve (32.9s at 40k rows,
+  clean quadratic), weaponizable from the LOWEST-privilege principal (an
+  untrusted PR token POSTing attacker-chosen hash+trees; the Insights card
+  auto-loads the route so other users trip it). Fix: bound the per-hash load
+  (`FP_MAX_ROWS_PER_HASH = 64`, most-recent-first — totals stay exact via a
+  separate COUNT) + `crossPlatform` early-exit. (3) **Serve ingest body-cap
+  spoof.** `/v1/ingest`+`/v1/ingest/logs` capped on `content-length` ONLY, so
+  a chunked body (no length) read 0 and bypassed the 32/16 MiB cap into a
+  ~513 MiB buffer. Fix: re-check ACTUAL `Buffer.byteLength` after reading
+  (mirrors the artifact PUT). (4) **MEDIUM — fingerprint zero-output blind
+  spot.** A task that DECLARES outputs but produces zero files shipped NO
+  fingerprint (gate keyed on resolved count) — exactly the platform-
+  conditional-glob divergence Phase 4 exists to catch (platform A emits N,
+  platform B's glob matches nothing → one report, no divergence row). Fix:
+  gate the fp on the DECLARATION and ship the empty-tree sentinel; the
+  determinism `no-outputs` verdict stays keyed on the resolved count
+  (`verifyFp1.size === 0`) so `--verify` behavior is byte-identical. Bundled:
+  crash-isolate the scheduler's `onStart`/`onFinish` observer hooks (a
+  throwing logger must not wedge scheduling — the double-release path A#3 +
+  the "observability never breaks a run" rule), the `--verify=fingerprint`
+  status line names the cause on a 0-count (all-hit) run, artifact
+  `subScopeOf` rejects `.`/`..`, and the fp-store prune's per-row byte
+  accounting corrected (`+64`→`+256`, was undercounting the string columns
+  and widening the ceiling). **Refuted by repro (NOT actioned):** the legacy
+  scheduler path is byte-identical (300-trial/4015-assertion randomized
+  differential vs `aabb0f3^`), park/repush FIFO + solo-clamp semantics +
+  key-strip + frozen-lock validation all hold; the artifact trust-scope
+  list⊆GET invariant holds across 29 principal/sub-scope combos incl.
+  traversal, the provenance join is doubly-safe (parameterized + HASH_RE),
+  no cross-workspace capability, zstd-magic can't be confused, server-side
+  re-truncation defeats a hostile 10k-entry array, the sink budget doesn't
+  mutate the shared summary; and the fingerprint core is sound on every
+  Phase-1/2-class surface (raw-bytes truthfulness incl. the persistent
+  cross-run memo trap, dir-order/unicode machine-independence, truncation
+  honesty at entry #501, execute-once, attempt-1 attribution, strace-level
+  zero-cost). **A#2 doc correction:** the design + this log claimed persistent
+  reservations are "held for the task's lifetime" — the code releases them at
+  READY (the SAFER behavior; lifetime-holding would deadlock a persistent-
+  100% + downstream-100% graph). Corrected below + in the design doc. Tests:
+  core 1198→1214 (+16), cloud 285→288 (+3); regressions pin the FP hang, the
+  throwing-observer non-wedge, the DoS bound, the chunked-bypass 413, the
+  zero-output empty-tree, and the `.`/`..` subscope. No bumps anywhere.
+
+- **2026-07-08**: **Resource-aware scheduling: persistent reservations are
+  released at READY, not held for the task's lifetime** (correction to the
+  2026-07-08 entry below, surfaced by the 2026-07-09 adversarial review). The
+  original entry + `docs/design/resource-scheduling-2026-07.md` claimed
+  `persistent` + reservation is "HONORED for the task's whole lifetime." The
+  implementation cannot: `executePersistentTask` resolves its outcome at
+  READY, and the scheduler releases the reservation when that promise settles.
+  This is the SAFER behavior — lifetime-holding would deadlock a persistent
+  `cpus:'100%'` + a downstream `cpus:'100%'` forever (a permanently-held axis
+  never goes idle for the solo-clamp). So a persistent task's reservation
+  coordinates admission only UNTIL it signals ready; after that a heavy
+  downstream task can co-schedule with the still-running server (advisory, not
+  enforcement — consistent with the whole feature). No code change; the docs
+  were wrong.
+
+- **2026-07-09**: **`--verify` Phase 4 SHIPPED — cross-machine output-
+  fingerprint diff + the cheap `--verify=fingerprint` mode** (the
+  flagship's last open phase; design
+  `docs/design/verify-cross-machine-2026-07.md`, architect-reviewed, four
+  commits `fedfef0`..`58cc5ca`). Two machines reporting DIFFERENT output
+  trees for the SAME cache key = a machine-dependent shared remote cache
+  (first-writer-wins poisoning of the other platform) — the one failure
+  class a single-machine re-run structurally cannot observe; a connected
+  serve now names the exact task, key, platforms, and diverging rels.
+  **Core:** `OutputFingerprint { tree, fileCount, files≤500, truncated }`
+  declared structurally in `graph/scheduler.ts` (the VerifyVerdict
+  pattern) on `TaskOutcome.outputFp` + additive-optional on
+  `TaskTelemetry` (schema STAYS 2 — the attempts precedent); pure
+  `foldFingerprint` in verify.ts (tree digest folds `key\0hash\n` over
+  ALL sorted entries — \0 boundaries, the v18 lesson; per-file map is
+  DETERMINISTIC truncation, sorted-first-500, so two machines' truncated
+  maps stay comparable and detection NEVER depends on the map — the tree
+  digest always ships). NEW `--verify=fingerprint`: fp computed in the
+  save block at ~1× exec, NO 2× re-run — the mode that makes a
+  per-platform per-merge matrix affordable (the architect's key insight:
+  with a shared remote cache the second platform HITS — the poisoning
+  scenario itself — so useful pairs require `--force` runs, which 2×
+  determinism priced out). `--verify`/`=all` attach fp for FREE (fp1
+  already exists there); `=inputs` stays fp-free; fingerprint-only hits
+  get NO verdict; the no-write-policy guard + the distribution refusal
+  both inherit. Wire: additive `fingerprint` on `RunRequest.verify`, no
+  bump. The fp primitive is the BUG-1 raw-bytes xxh3 — which incidentally
+  made it machine-independent (the memoized OID path would have been
+  memo-poisonable AND platform-dependent). **Serve:** sidecar
+  `fingerprints.db` per workspace (`fp-store.ts`, own `FP_SCHEMA_VERSION
+1` gate — the LogStore pattern; a core-schema table would wipe every
+  user's cache.db for a cloud-only feature). **PK `(hash, os, arch,
+tree)`**: INSERT OR IGNORE = idempotent re-delivery, one row/platform
+  forever for deterministic tasks, and same-platform two-tree rows
+  accumulate — surfacing run-to-run nondeterminism WITHOUT the 2× re-run
+  as a bonus signal. Platform identity = os+arch (the axis a shared cache
+  spans); host is a debugging column, never identity. Extraction inside
+  `IngestStore.ingest` after the idempotency gate; caps at every layer
+  (500 files/task core, 4 MiB/run in `CloudIngestSink` — cloud-side so
+  core stays stateless, serve re-truncation + 32 MiB ingest 413);
+  90d/128 MiB pruning. `GET /v1/hermeticity?ws=` computes divergence at
+  READ time (`HAVING COUNT(DISTINCT tree) > 1`), names rels via core's
+  `diffOutputTrees` (façade export-only widening), flags `crossPlatform`
+  vs same-platform + `changedComplete` honesty. **UI:** Insights
+  Hermeticity card (zero-state, platform pair, rels in danger tone, task/
+  run drill-downs, remediation hint). **Advisory by design** — the serve
+  observes completed runs; no run-failing path, telemetry stays
+  observe-only; remediation = fix the hermeticity bug OR legitimately
+  split the key per platform via `cache.inputs.runtime: ['uname -sm']`.
+  NO bumps anywhere: CACHE_VERSION, core SCHEMA, TELEMETRY_SCHEMA_VERSION
+  (2), run wire, DIST_PROTOCOL all unchanged; plain-run byte-identity +
+  key-stability pinned by tests. Tests: core 1198→1209, cloud 268→285;
+  browser-verified 12/12 (crafted linux-x64 vs darwin-arm64 divergence
+  renders `dist/app.js` with links; fp-free serve renders the green
+  zero-state); real-CLI verified (`--force --verify=fingerprint` exit 0 +
+  the fingerprinted-N-trees status line; plain run unchanged). Docs:
+  cli.md flag + section with the CI matrix recipe, guides/ci.md,
+  dashboard guide. **Bundled dogfooding fix:** `lint.oxlint`/`lint.oxfmt`
+  cache inputs stopped at the project boundary while the commands scan
+  the whole tree — a cloud-only change rode a stale lint hit; both tasks
+  now declare `workspaceFiles: ['packages/*/src/**', 'packages/*/tests/**',
+'scripts/**']` (the documented escape hatch; keys change → fresh gate
+  run verified green, lock regenerated). With this, all four phases of
+  provable cache correctness are shipped; the verify thread is CLOSED
+  (remaining nice-to-haves live in the design docs' open questions:
+  per-task `cache.verify` opt-out, an MCP hermeticity tool, retention
+  tuning).
+
+- **2026-07-08**: **Cloud data-model Phase 2 SHIPPED — entity-page IA +
+  `/v1/artifacts` + Artifacts UI + Insights + `/cache/:hash` + `?task=`
+  deep links** (completes `docs/design/cloud-data-model-2026-07.md` §4.2 +
+  §8-10; six commits `7d23eca`..`db8ed10`). **Server half:**
+  `GET /v1/artifacts?limit=` — the `/v8` store made visible.
+  `ArtifactStore.list()` walks EXACTLY `readScopes()` (the same scope set
+  `has()`/GET resolve against), so the list can never leak wider than a
+  fetch could reach: trusted never lists untrusted, an untrusted principal
+  lists its own per-PR sub-scope ∪ trusted, and a hash present in both
+  scopes lists ONCE with GET-resolution priority (first-scope-wins dedupe).
+  Rows carry size/mtime/tier + the `.duration` sidecar; provenance
+  (`task: {project, task, runId}`) is a best-effort batched join
+  (900-chunked IN-lists, `ORDER BY started_at DESC` + first-wins = most
+  recent producer) against the workspace-resolved ingest db — absent for
+  workspaces this serve never ingested. NOT workspace-gated (artifacts
+  exist on remote serves; sits above the unknown-`?ws=` guard). **UI half
+  (all in `packages/cloud/ui`, zero core change):** nav is the
+  entity-ordered seven — **Runs · Workspace · Projects · Tasks · Cache ·
+  Artifacts · Insights**; `/trends` + `/bottlenecks` DIE as routes
+  (redirect to the NEW `/insights`, their views deleted and absorbed:
+  trends charts, heatmap, flaky-with-Retried, hit-split, savings,
+  time-burners, recent failures — every row links INTO its entity, failures
+  deep-link `/runs/:id?task=…`; the prunable-entries table moved here
+  rather than being orphaned); `/overview` became the **Workspace** page
+  (catalog summary card with `lock`/`live` source badge + stale count,
+  identity; analytics moved to Insights; the agent-pool card deliberately
+  SKIPPED — §12 open question, needs a sessions-list registry read);
+  Projects/Tasks are **catalog∪rollup joined** (never-run projects/tasks
+  navigable; no catalog → rollups pass through by reference — the
+  capabilities pattern); project detail gains resolved per-task config
+  blocks, task detail gains the Config card (the `vx show` payload), a
+  flaky badge ("CONFIRMED by within-run retries"), and `/cache/:hash` +
+  run deep links; NEW `/artifacts` (hash/size/age/duration/tier/provenance
+  links/download) + `/cache/:hash` entity page (producing/restoring runs +
+  artifact download; entry FACTS honestly absent on ingest-only serves —
+  the standing never-reads-cache.db decision); run detail gains project
+  links, a selected-task artifact download, and `?task=` seeding
+  (`jr/page.tsx` exposes decoded query params; the card already binds
+  `/selectedTask`). ONE shared bearer-fetched `downloadArtifact()` helper
+  serves TaskLogs + both new download sites; `fetchArtifacts()` treats an
+  older serve's 404 as `null` → honest empty state. **Bonus fix:**
+  `taskDetail.json` had always declared a `cacheKey` source that never
+  existed in `SOURCES` (the "Cache key" card could never render) — wired to
+  the existing `/v1/explain/:taskId`. Tests: +8 server (trust-scoped list
+  matrix, dedupe, provenance join present/absent, bearer gate) + 9 join
+  units + serve suites; cloud 268 pass, core 1198 pass, lint clean.
+  **Browser-verified 47/47** (Playwright against a real 3-project fixture
+  with a retry-confirmed flaky task + a `/v8`-stored artifact): nav, all
+  three redirects, never-run catalog entries navigable, the flaky
+  drill-down, `?task=` pre-opening with the failed log tail, artifact
+  downloads from BOTH sites with bytes asserted, palette "Trends" landing
+  on `/insights`, zero real console errors. Known accepted noise: 404
+  probes for never-run tasks / silent-task logs (API design; SPA renders
+  the empty states). Docs: dashboard guide nav synced; `GET /v1/artifacts`
+  added to cli.md (it had shipped undocumented). **Phase 3 (optional,
+  unbuilt):** disjoint-node-set concurrent runs; **Phase 4 = OWNER
+  DECISION** (triggers/webhooks — reverses a standing non-goal; do not
+  build unprompted).
+
+- **2026-07-08**: **Resource-aware scheduling SHIPPED — `exec.resources:
+{ cpus, memory }` 2-D admission on the two-tier scheduler** (owner: "tasks
+  could reserve how many cpu units… Maybe in exec?" → "CPUs should be number
+  or percentage same with memory" → "This should work as reserved. If 0 means
+  run. By default" → "Resources object is good"; spec
+  `docs/design/resource-scheduling-2026-07.md`, all three phases in one
+  commit). A task declares CPU units (fractional, or `"<n>%"` of the CPU
+  budget = the run's `concurrency`) and/or memory (bytes, `"512MB"`/`"2GB"`
+  size strings, or `"<n>%"` of the memory budget = `os.totalmem()` unless
+  `--memory <size>` overrides — the documented container caveat: cgroup
+  limits don't show in totalmem()); the scheduler packs ready tasks so
+  concurrent reservations never exceed either budget, layered ON the count
+  limit. **Admission, not enforcement** — nothing is cgrouped/niced/killed.
+  **Encoded rules:** zero-never-blocks (0/omitted = exempt from that axis —
+  every current config schedules byte-identically, gated on ONE check: an
+  empty cost map omits the scheduler fields entirely); backfill via
+  park-within-tick (within one synchronous tick `reserved` only increases, so
+  a non-fitting head parks for the tick's remainder and repushes with its
+  ORIGINAL heap seq — FIFO-among-equals survives exactly, O(R log R));
+  solo-clamp (an over-budget reservation admits alone when its axis is idle —
+  no deadlock, an idle pool always admits); skip-safety (ONE shared `willSkip`
+  predicate in both the parker and the dispatch loop — a doomed task skips
+  free, never parks; the spec's named hang risk); restore-tier tasks cost
+  ZERO by construction (a restore is a tar extract, and it must never park —
+  no parkedRestore list exists). **Key strip:** the whole `resources` object
+  is dropped from `hashTaskConfig` before stringify (`hashableConfig`, the
+  grouped object makes it a one-key drop) — tuning a reservation NEVER busts
+  a cache; a no-declaration config takes the fast path and stringifies
+  byte-identically, so **no CACHE_VERSION bump** (a declaring config is by
+  definition new). `timeout`/`retries` stay folded (distinct-by-design;
+  retro-stripping = CACHE_VERSION bump, deliberately out of scope).
+  **Boundary move:** `parseSize` relocated `cli/cache.ts` → `util/size.ts`
+  (orchestrator can't import cli; cache.ts re-exports so callers unchanged).
+  `ResourceCost`/`ZERO_COST` declared structurally in `graph/scheduler.ts`
+  (graph can't import orchestrator — the VerifyVerdict pattern); the pure
+  resolver (`orchestrator/resources.ts`: resolveCpu/resolveMem/
+  resolveResourceCosts, empty-map-when-nothing-declares) runs ONCE in run.ts
+  so the scheduler's inner loop is a plain Map.get. Loader validates form
+  (unknown-key reject like sandbox; `"1.5GB"` rejected — parseSize is
+  integer-only; percent regex; `persistent`+reservation allowed and honored
+  for the task's lifetime). **Display (Phase 2):** `cpu budget N · mem budget
+  X GB` on the footer `info` row, ONLY when a task opted in (RunContext
+  gains optional cpuBudget/memBudget; Infinity mem = axis off = not shown).
+  **Wire (Phase 3):** `RunRequest.memory` + both mappers — per-task
+  reservations need no wire field (a delegated run re-resolves configs
+  server-side, on the correct machine's RAM; explicit `--memory` wins
+  end-to-end). ReadyHeap gained `push(id, seq?)` + `peekSeq()` (repush keeps
+  the original seq). Tests +41 (core 1162→1198 + 5 in-suite): scheduler
+  admission suite (concurrent-within-budget, serialize-over-budget, memory
+  axis, combined-axes, backfill-around-parked-head, solo-clamp,
+  zero-runs-beside-clamped-giant, skip-safety-while-budget-held,
+  restore-reserves-0, FIFO-after-repush, empty-map-legacy-pin), resolver
+  units, loader accept/reject matrix, --memory parse + wire round-trip,
+  footer budget-line pins, e2e key-stability (add→tune→still cache-hit) +
+  e2e serialization through a real run. Verified with the real CLI: two
+  `cpus:'100%'` 300ms tasks ran serialized (617ms total) with the budget
+  line rendered; the repo's own runs (nothing declared) show no budget text.
+  Turbo/Nx have nothing comparable (flat count concurrency); Bazel local
+  resources is the precedent. Docs: schema.md `resources` section, cli.md
+  `--memory` row, help text. Core 1198 pass, cloud 250 pass, lint clean.
+
+- **2026-07-08**: **`vx-cloud connect` is the ONLY client↔serve wiring — the
+  local-serve auto-detect machinery DELETED** (owner-approved). REVERSES two
+  2026-06-28 decisions: "cloud() auto-detects a local vx-cloud serve" and
+  "per-user serve advertisement at `$XDG_RUNTIME_DIR/vx-cloud/serve.json`".
+  `packages/cloud/src/serve-info.ts` (write/read + `pidAlive`) is GONE and so
+  is every consumer path: serve.ts no longer writes/cleans serve.json; the
+  `cloud()` connection ladder is now exactly **explicit URL/token (opts + env
+  aliases) → active `vx-cloud connect` environment → decline** (the local
+  rung, its self-pid guard, and the sink's advertised-socket dial all deleted
+  — environments carry no socket, so the ingest POST is TCP-only; the `serve
+--socket` LISTENER itself stays, `defaultServeSocketPath` moved into
+  cli/serve.ts); `resolveBackend` dropped serve.json delegation discovery
+  (and its now-unused `cwd` param — delegation = `connect --delegate` env or
+  `VX_SERVICE_URL`); `env ls` lost the synthetic `(local)` row; `vx-cloud
+agent`'s URL fallback swapped the advertisement for the connected
+  environment (whose token rides only when the environment supplied the
+  URL). WHY: one wiring story (local = `vx-cloud serve --ui` then ONE-TIME
+  `vx-cloud connect http://localhost:4321` — the deterministic port is what
+  makes that stable), and it kills three whole complexity classes:
+  advertisement staleness (pid-guard/`pidAlive`/logout-cleared runtime dirs),
+  the POST-to-self deadlock guard, and the `VX_CLOUD_SERVE_INFO` pinning
+  ceremony EVERY serve-spawning test suite carried (13 files) so test serves
+  wouldn't clobber the real per-user file. A serve merely RUNNING can no
+  longer capture runs by existence — connecting is consent. Tests: −4
+  advertisement pins (plugin auto-detect/stale, socket-dial push, dist
+  stale-ad), +1 negative pin (a RUNNING unconnected local serve → telemetry
+  AND backend decline); resolveBackend suite rewritten to explicit-URL
+  delegation + fail-safe unreachable→local. `vx dev` untouched (its
+  per-workspace hub socket is not the serve advertisement). Docs: dashboard
+  guide quick start is the two-liner + connect; cli.md serve section swaps
+  "Advertisement" for "Connecting" + the 3-rung ladder; distributed-ci drops
+  the advertised-serve fallbacks. Design docs stay frozen historical records.
+  Cloud 250 pass, core suite + lint green. No CACHE_VERSION/SCHEMA/wire bump
+  — client-side wiring only.
+
+- **2026-07-08**: **Cloud data-model Phase 1 — workspace catalog + serve-side
+  run queue + ONE unified Runs view** (owner: "Redesign vx cloud around
+  workspaces, projects, tasks, runs, cache but from DATA perspective… In runs
+  I can navigate dig connect, even when I schedule from UI. And I want to
+  trigger MULTIPLE. We should have ONE view for runs. Where I can spawn
+  more."; design `docs/design/cloud-data-model-2026-07.md` §6-7, §11).
+  **Server half:** core façade widened EXPORT-ONLY (`readLockfile` /
+  `LOCKFILE_NAME` / `loadWorkspace` / `loadProjectConfig` /
+  `listProjectMetas` — metrics' `listProjects` keeps the bare name — +
+  types; boundary snapshot updated; zero behavior, zero hot-path cost).
+  `packages/cloud/src/workspace-catalog.ts`: the "access the LOCK" ladder —
+  lock-first (zero eval, the frozen configs a `--frozen` run sees) → live
+  loader-chain fallback → 404; per-(mtime,size) memo so warm requests are
+  stat-only; lock-staleness via the same xxh3 configHash `vx lock` wrote
+  (`staleProjects`, never a silent lock/live mix). Three
+  `GET /v1/workspace/{projects,projects/:name,tasks}` routes (bearer-gated,
+  single-workspace by nature — `?ws=` ignored; derived `group`/`cacheable`/
+  `persistent` computed serve-side) + `catalog: true` advertised on
+  `/v1/meta`. `run-queue.ts` `RunQueue`: in-memory FIFO, ONE run executing
+  at a time — "trigger MULTIPLE" = queue multiple; the solo submit starts
+  synchronously (byte-equivalent to the old immediate path). Cloud-owned
+  `queue:*` wire (`protocol-queue.ts`, `QUEUE_PROTOCOL_VERSION 1`, the
+  `dist:*` precedent — core `protocol.ts` untouched) on the existing run WS:
+  submit/cancel in, accepted/update/start/done/refused out; the submitting
+  socket IS the stream, so the standard event/result wire follows per
+  socket. `GET /v1/runs/queue` for the live section. **BEHAVIOR CHANGE,
+  named:** plain `{t:'run'}` CLI delegation rides the SAME queue — two
+  concurrent delegations used to execute CONCURRENTLY (racing on output
+  cleaning, the pre-existing exposure the 2026-06-27 cockpit forbid never
+  closed); they now serialize, and a non-immediate start streams one
+  `run:status` "queued behind N run(s)" line the wire renderer already
+  prints. Closing a QUEUED job's socket cancels it; a RUNNING job completes
+  server-side (stop-watching semantics). `dist:submit` does NOT ride the
+  queue (agents execute in their own checkouts — no serve-local output tree
+  to race on). Killing a RUNNING run from the UI stays out (core has no
+  abort handle). **UI half:** the `/run` cockpit DIES as a route (redirects
+  to `/runs`; Home lands on `/runs` unconditionally; old bookmarks keep
+  working). `RunConsole.tsx` deleted — its machinery extracted into
+  `RunSession.tsx`: `createRunSession(tasks)` is the per-run state factory
+  (statuses/timing/logs stores + the WireEvent reducer + the 250ms ticker)
+  living OUTSIDE the component tree so events keep landing while a row is
+  collapsed, and the `RunSession` component is the live layout (progress,
+  graph/flame toggle, critical path + parallelism, per-task facts + logs)
+  consuming RunGraph/Flamegraph strictly via existing props (both files
+  untouched — they were being modified in parallel). `RunsView.tsx` is THE
+  one Runs surface: spawn bar (datalist from `/v1/workspace/tasks` via the
+  new `Capabilities.catalog` probe, history-derived fallback; disabled with
+  an honest hint when the serve has no colocated workspace — history still
+  renders), queued/live section (one WS per submitted job via api.ts
+  `queueRun`; live positions, cancel-queued, the running job auto-expands
+  inline into its RunSession; FOREIGN jobs — CLI delegations — polled from
+  `/v1/runs/queue` at 2s as state-only `cli` rows), history table below
+  (the jr `DataTable` consumed DIRECTLY in JSX through a tiny `jrCtx` props
+  wrapper — the two-way-catalog path working as designed; the old separate
+  "Compare to previous" table merged into a per-row `⇄ compare` link).
+  Active jobs + sessions live at MODULE scope so route changes don't drop
+  sockets (closing a queued job's socket cancels it server-side).
+  `views/runs.json` deleted (+ its now-dead `invocationRows` helper and
+  `invocationsAll` source); nav is Runs-first with the Run entry gone.
+  api.ts: `fetchCatalogProjects`/`fetchCatalogProject`/`fetchCatalogTasks`,
+  `Capabilities.catalog` (probed from `/v1/meta`), `fetchQueue` + `queueRun`.
+  **Verified in a real browser** (Playwright/chromium against
+  `vx-cloud serve --ui` on a temp fixture): spawn from the UI, a second
+  submit holds at `queued · position 1` behind the running job, the running
+  job expands inline (DAG + critical path), both complete and flow into the
+  refetched history with compare links, `/` + `/run` redirect, a raw
+  CLI-delegated WS run renders as a state-only `cli` row, the queue drains,
+  ZERO console errors. Cloud 253 pass (queue unit + serve e2e + catalog
+  suites landed with the server half), core 1162 pass, lint clean; dist
+  rebuilt (build artifact, not committed). **Phase 2 SHIPPED same day** —
+  see the entity-model entry above.
+
+- **2026-07-07**: **Adversarial review of the session's nine commits — three
+  `--verify` soundness holes fixed, Phase-2→Phase-3 consumer gap closed, debt
+  swept** (owner: "review last opus commits make sure we are on track no tech
+  debt"). A hostile-review agent verified every finding by repro; the perf work
+  was CONFIRMED SOUND (ReadyHeap pinned byte-identical to the old sorted array
+  by a 2000-trial randomized differential; topoOrder/affected/db.query
+  equivalences checked). **The bugs (all verify-family edges, `a51a3c5`):**
+  (1) FALSE `proven-deterministic` at equal size+mtime — `hashOutputTree` used
+  `Cache.hashFile`, whose mtime+size memo returned attempt 1's digest for a
+  re-run output with equal size/mtime (exactly what mtime-normalizing
+  reproducible builds produce); fp1 primed the memo, fp2 read it back. Fix:
+  fingerprint raw BYTES via plain xxh3 (fp1/fp2 only compare to each other —
+  a proof must not trust a cache). (2) Verify re-run STRAYS survived — the
+  post-verify restore never cleaned the declared globs, so a diverging output
+  FILENAME left both attempts' files on disk (breaking "disk == cached artifact
+  regardless of verdict") and unmarked in the gitFilesCache; now mirrors the
+  restoreHit clean→restore→mark sequence exactly. (3) `--verify` + a no-write
+  policy (`--no-cache`) silently verified NOTHING and exited green; run() now
+  rejects the combination loudly (platform-honesty rule; `--force --verify`
+  stays the re-verify-warm recipe). **Consumer gap (`6a942a6`):** Phase 3
+  shipped before Phase 2, so `undeclared-inputs`/`proven-complete` never
+  reached the consumers — an undeclared-inputs task that REDS the run exported
+  an UNSET OTel span and a "✅ success" GHA row with NO Hermeticity line. Both
+  consumers now handle them (span ERROR + `vx.task.verify.undeclared` paths
+  attr; GHA inline flag + counted "unsafe"). Also: `--verify` now REFUSES
+  distribution (falls back local — agents don't run the verify machinery),
+  npm.yml header corrected (TEN trusted publishers, vx-cloud no longer
+  described as Bun-source), both release workflows get `--concurrency 2` (8
+  compiles OOM a 7 GB runner) + release timeout 25 min, the dead gitignored
+  `ui/dist` input glob dropped from `build.cloud.*` (the UI cascade rides the
+  `build.ui` dependsOn fold — input globs resolve against the GIT file set, so
+  a gitignored path is always a dead glob), and the npm launcher's signal exit
+  actually implements the 128+signo its comment promised. **NIT accepted, not
+  actioned:** `.bun-build` in ALWAYS_IGNORE (04f9abc) took no CACHE_VERSION
+  bump despite the v24 precedent — deliberate: the temp files are transient
+  (never rest on disk), so no real key changes; worst case is an orphaned
+  entry, not a wrong hit. Core 1162 pass, cloud 237 pass, otel 25 pass, lint
+  clean.
+
+- **2026-07-07**: **`@vzn/vx-cloud` publishes as a no-Bun standalone binary,
+  like `@vzn/vx`** (owner: "Cloud should be published compiled like vx"). REVERSES
+  the 2026-07-04 "vx-cloud is a Bun-source package requiring Bun" decision — the
+  documented "NEXT high-value" item. The `vx-cloud` CLI now cross-compiles to one
+  standalone binary per target (`bun build --compile packages/cloud/src/cli/bin.ts`)
+  with **core (`@vzn/vx`) AND the dashboard embedded** (`with { type: 'file' }` +
+  the bare `@vzn/vx` import bundles core via the link-self symlink) — verified: the
+  compiled binary boots `serve --ui` and serves the SPA (`GET / → 200`) with no Bun.
+  Same dual-purpose model as vx: the CLI is a Node **launcher** execing the
+  matching `@vzn/vx-cloud-<target>` platform binary (optionalDeps, os/cpu-gated),
+  while the **`cloud()` plugin stays importable source** (`@vzn/vx-cloud/plugin`,
+  evaluated inside the vx runtime — the package still ships `src` + `ui/dist` +
+  keeps `@vzn/vx` as a dep for the plugin path + the Bun source fallback). **ONE
+  generalized launcher** (`scripts/npm-launcher.mjs`) now serves BOTH packages —
+  it derives the platform-package prefix + binary name from its own `pkg.name`
+  (`@vzn/vx` → `vx`, `@vzn/vx-cloud` → `vx-cloud`) and the source-fallback entry
+  from a `vxSourceEntry` package.json field (`src/bin.ts` vs `src/cli/bin.ts`).
+  `build-npm.ts`: extracted `emitPlatformPackages()` shared by both families;
+  `buildCloudPackage` now emits the 4 `@vzn/vx-cloud-<target>` binary packages +
+  the launcher-based main package (dropped `engines.bun`, added the launcher +
+  optionalDeps + vxSourceEntry). `vx.config.ts`: added a `build.cloud` group + 4
+  `build.cloud.<target>` cross-compiles (inputs = root `**/*` for core src PLUS
+  `workspaceFiles: [packages/cloud/src/**, packages/cloud/ui/dist/index.html]`
+  since the cloud package is a separate project outside the root boundary); `build`
+  now fans out to BOTH `build.bun` + `build.cloud` (8 binaries/release). `npm.yml`:
+  publishes the 4 new cloud platform packages before `@vzn/vx-cloud` (10 packages
+  total). **Verified end-to-end** (linux-x64): built both binaries via the new
+  config, assembled the tree, simulated the installed node_modules, ran
+  `node launcher.mjs serve --ui` → execs the binary → serves the dashboard, no
+  Bun. Docs: self-hosting.md + distributed-ci.md drop the "requires Bun" caveat
+  (both CLIs are no-Bun binaries now). **Owner TODO:** trusted publishing now
+  covers TEN names (was six) — the 4 `@vzn/vx-cloud-<target>` platform packages
+  need seeding + trusted-publisher config too. **CI note:** 8 concurrent
+  `--compile --minify --bytecode` may pressure a 7 GB runner; drop to
+  `vx run build --concurrency 2` if it OOMs. No core/cloud src change — packaging
+  - build config only.
+
+- **2026-07-05**: **Quality sweep — perf O(n)→O(log n), +45 tests, doc-accuracy
+  fixes** (owner: "identify places where we miss tests… ensure all cases 100%.
+  Identify performance improvements, all O(n)… see if we can do O(1). Review
+  docs… no limitations, no todo, all done"). Drove three parallel read-only
+  audit agents (perf hot-paths, test-coverage gaps, doc staleness), then acted
+  on the ranked findings in three focused commits. **(1) Perf** (`68f9bc6`, no
+  behavior change, pinned by existing tests): scheduler ready-queue was two
+  sorted arrays (binary-search `splice` insert + `shift` take, both O(R)) →
+  O(R²) on a wide ready frontier (the 1000-pkg startup enqueue / a fan-out
+  completion); replaced with a **binary max-heap** keyed by (priority DESC,
+  enqueue-seq ASC) preserving the EXACT highest-first + FIFO-among-equals
+  contract, O(log R) push/pop. `stable-keys.ts topoOrder` used `queue.shift()`
+  (O(N²)) → head-pointer walk (O(N+E)), the last shift-based topo in core.
+  `cache.ts loadOutputFilesBatch` (≤3×/warm-hit) re-compiled its SQL each call
+  via `db.prepare` → `db.query` (caches by SQL text). `affected.ts
+projectsContaining` scanned all projects per changed file (O(F·P)) → dir→name
+  Map + bottom-up ancestor walk (deepest wins, same semantics, O(F·depth),
+  independent of project count). Deliberately SKIPPED the task-hash
+  workspaceFiles map-merge (#3) — cache-key-adjacent, memo staleness risk not
+  worth a conditional path — and the cold cloud-dist/metrics/predict/filter
+  items. **(2) Tests** (`7163db3`, +45, 1113→1158; tests-only + 2 pure helpers
+  exported): closed 16 audited gaps in correctness/security-critical code that
+  had NO direct test — `filterUpstreamHashes` (new upstream.test.ts: negation/
+  ordering/dedup), `parseDependencySpec` throw branches, `computeGroupHash`,
+  scheduler `priorities` override, `formatVerifySection` + the `rerun-failed`
+  verdict, the remote-cache download-cap defenses (content-length + mid-stream
+  `readBodyBounded` abort), `RemoteCache.has()` 503, `zstdContentSize` every
+  FCS layout (the bomb oracle), `parseCachePolicy` empty-seg, `isOutputsCurrent`
+  mode-mismatch, `parseRunArgs --retry/--timeout` errors + planning mutual-
+  exclusion, `defaultAffectedBase` success branch, `transitiveDependents`
+  cycle, persistent `forwardArgs`. Exported `readBodyBounded` + `zstdContentSize`
+  (pure, security-critical parsers) so a unit test pins them with a tiny cap /
+  crafted frames instead of a 512 MiB body — the only src change. **(3) Docs**
+  (`ea7619f`): 7 stale "unimplemented/deferred" claims corrected to match
+  shipped code — `vx stats` (ships as `vx info` alias), MCP-on-serve (`POST
+/mcp` ships), watch config-reload ("(Future)" → shipped), HMAC signing (was
+  listed open — shipped), and `globalInputs` reframed in 4 places from
+  "deferred/stub" to the owner-REJECTED non-goal it is (TS presets +
+  `cache.inputs.workspaceFiles` are the mechanism). The doc audit CONFIRMED the
+  CAS-not-rewired + predictive-experimental + vx-cloud-not-on-npm notes are
+  accurate (kept). Core 1158 pass, cloud 235 pass, lint clean.
+
+- **2026-07-05**: **Provable cache correctness Phase 2 — `--verify=inputs` /
+  `=all` (input-completeness via the sandbox)** (the flagship's second proof;
+  the OS sandbox — bwrap+strace — is installed in CI and now this env, so it's
+  e2e-verifiable). Determinism (Phase 1) proves outputs are reproducible; this
+  proves the OTHER half of cache safety: the declared `cache.inputs` are the
+  WHOLE workspace read set. `--verify=inputs` forces every executed cacheable
+  task through vx's existing declared-input baseline sandbox (`baseAllowRead` =
+  resolved inputs, `baseDenyRead = [workspaceRoot]`) regardless of whether the
+  task declared `sandbox: {}`; a read of any undeclared WORKSPACE file is flagged
+  `undeclared-inputs` (naming the path, workspace-relative, via the existing
+  strace `openat` oracle) and the run FAILS. `--verify=all` runs both proofs,
+  input-completeness FIRST (short-circuits the determinism re-run when inputs
+  are already wrong). Reads OUTSIDE the workspace (CA certs, `~/.config`) aren't
+  flagged — only undeclared reads inside it (the ones that can change a cached
+  output). **Key mechanism decision** (`execute-task.ts`): a sandbox forced on
+  ONLY by `--verify=inputs` surfaces its violations as the VERDICT (reds the run
+  via the `ok` clause, like `nondeterministic`) — it does NOT flip the task's
+  own exit code the way a USER-declared `sandbox: {}` violation does
+  (`if (userSandbox && violations.length > 0 && code === 0) code = 1`), so the
+  task isn't mislabeled failed and the retry loop doesn't pointlessly re-run.
+  New verdicts on `VerifyVerdict`: `proven-complete` (inputs OK on an
+  inputs-only run), `undeclared-inputs{paths}`. `run.ts` forces sandbox init
+  when `verify.inputs` and errors CLEARLY when the sandbox is unavailable (never
+  silently "passes" — the design's platform-honesty rule). Pure side-channel —
+  NO cache-key/SCHEMA/CACHE_VERSION change (verify is `RunOptions` only). CLI:
+  `--verify=inputs`/`=all` (previously rejected as "Phase 2"). **Tests:** parser
+  coverage for ALL FOUR `--verify` forms + `--verify-allow` (a gap even for
+  Phase 1 — there was zero parser test); pure `undeclaredInputPaths` unit tests
+  (bracket extraction, dedup/sort, raw-line fallback); 4 sandbox-gated e2e
+  (`describe.skipIf(!probeSandbox().available)` — proven-complete, undeclared-
+  inputs names the path + fails run, hit→not-verified, `=all` short-circuit).
+  Core 1113 pass, cloud 235 pass, lint clean. Verified with the real CLI
+  (clean→proven-complete exit 0; leaky→undeclared-inputs names
+  `packages/leaky/secret.txt` exit 1). Docs: cli.md (`--verify=inputs` section +
+  flag row), CI guide, comparison.md (both proofs). **STILL-OPEN (Phase 4):**
+  cross-machine fingerprint diff (ship Phase-1 `fp1` over telemetry, serve diffs
+  by cache key across arches). Deferred Phase-2 extras: per-task `cache.verify?:
+boolean` opt-out (+ hash-stripping) and `cache.verify.ignore` globs — the
+  run-level `--verify-allow` covers the escape-hatch need today.
+
+- **2026-07-05**: **Provable cache correctness Phase 3 (observability half) —
+  the `--verify` verdict rides telemetry, OTel spans, + the GHA job summary**
+  (continuing the flagship; the terminal-only verdict now reaches every
+  observability surface). Three additive slices, NO schema/CACHE_VERSION bump.
+  **(1) Core telemetry contract:** `TaskTelemetry` gains an additive-optional
+  `verify?: VerifyVerdict`, projected from the outcome in BOTH the streaming
+  `task.end` record (`telemetry.ts`) and the per-run summary's `tasks[]`
+  (`run.ts`) — modeled EXACTLY on the `attempts` flaky field: absent for a
+  non-verify run, so a v2 consumer is byte-unaffected and
+  `TELEMETRY_SCHEMA_VERSION` stays 2. `VerifyVerdict` re-exported from the
+  façade (`src/index.ts`) since it's now part of the public `RunSummaryRecord`
+  shape. **(2) `@vzn/vx-otel` (first consumer):** a `vx.task.verify` span
+  attribute carries the verdict kind; a `nondeterministic`/`allowed` verdict
+  lists the diverging paths in `vx.task.verify.changed`; a
+  `nondeterministic`/`rerun-failed` verdict maps the span to status ERROR
+  (`taskStatusCode` now takes the whole `TaskTelemetry`, not just status) — so
+  a task that exited 0 but poisons the cache surfaces as a FAILED span in
+  Grafana/Honeycomb/Datadog. Bundled the pre-existing gap: `vx.task.attempts`
+  (the retry count never reached the exporter). **(3) GitHub Actions job
+  summary** (`packages/cloud/src/github-summary.ts`, pure glue over the
+  RunSummaryRecord — no persistence, no serve needed, mirrors the flaky
+  treatment): the head gains a `🔒 Hermeticity: N proven · M non-deterministic`
+  line (⚠️ icon when M>0), and each non-hermetic task is flagged inline in its
+  status cell with the diverging outputs (truncated `+N more`). Silent for
+  hits / no-outputs / non-verify runs. **Tests:** telemetry projection pin
+  (verify on task.end, absent without --verify), vx-otel (verdict attrs +
+  changed + span-ERROR + attempts, +2), github-summary (hermeticity line +
+  inline marker + truncation + no-verify-no-line, +3). Core 1088 pass, otel
+  24 pass, cloud 235 pass, lint clean. Docs: cli.md anchor referenced from a
+  new guides/ci.md "Proving cache correctness" section (the `--force --verify`
+  nightly/merge-queue recipe). **STILL-OPEN (design Phase 2 + 4):** input-
+  completeness via the sandbox (`--verify=inputs`/`=all`) — blocked from e2e
+  here (bwrap/socat not installed in this env); cross-machine fingerprint
+  diff. Persisting the verdict in the cloud runs table for a historical
+  dashboard "Hermeticity" card is a deferred SCHEMA-bump follow-up (the
+  streaming surfaces above cover the actionable CI/observability paths today).
+
+- **2026-07-05**: **Provable cache correctness — `vx run --verify`
+  (Phase 1: determinism)** (owner: "I don't wanna copy competitors… what's
+  missing but is unlocked by vx architecture? build things on top add even
+  more to be ahead"). The flagship differentiator: vx is the only runner
+  that PROVES a cache entry safe instead of hoping. Design in
+  `docs/design/cache-correctness-2026-07.md` (two proofs: determinism +
+  input-completeness — the principled, EXPLICIT inverse of the
+  owner-rejected auto-input inference; vx never guesses inputs, it proves
+  the declared ones are complete/reproducible and fails loud with the exact
+  paths). **Phase 1 shipped:** after an executed cacheable task saves
+  attempt 1, `--verify` re-runs it and content-compares outputs (git-blob
+  OID per file via the existing `Cache.hashFile` — mtime-independent; NOT
+  the artifact bytes, which embed tar mtimes, and NOT `output_files` rows,
+  which store only size+mode+mtime). Same bytes ⇒ `proven-deterministic`;
+  divergent ⇒ `nondeterministic` naming the changed rels + the run FAILS.
+  **Verdicts** (`VerifyVerdict` union, structurally on `TaskOutcome.verify`
+  in `graph/scheduler.ts` since graph can't import orchestrator):
+  proven-deterministic / nondeterministic(changed) /
+  allowed-nondeterministic(changed) / rerun-failed(exitCode) / no-outputs /
+  not-verified (cache hit). **Zero-cost & key-stable:** a pure `RunOptions`
+  side-channel, NEVER folded into a cache key — a `--verify` run cache-HITS
+  a plain run's entry (pinned), so no CACHE_VERSION/SCHEMA bump; a plain run
+  attaches no verdict (byte-identical hot path). Only executed + cacheable +
+  output-declaring tasks verify (`no-outputs` when none declared, hit ⇒
+  `not-verified`). Pair with `--force` to re-execute + verify a warm graph.
+  **Mechanism** (`orchestrator/execute-task.ts`): extracted `runAttempt()`
+  (function decl) shared by the retry loop AND the verify re-run so they
+  can't drift; snapshot `violations` into `finalViolations` BEFORE the
+  re-run clobbers it; after the compare, `cache.restoreOutputs` puts attempt
+  1's saved bytes back so the on-disk tree ends bit-identical to the cached
+  artifact. New `orchestrator/verify.ts` (pure: `outputRefs` keys project
+  outputs by rel-to-projectDir + ws outputs by `workspace-outputs/<rel>`;
+  `hashOutputTree`; `diffOutputTrees`; `classifyDeterminism`;
+  `formatVerifySection`). CLI: `--verify` / `--verify=determinism`
+  (`inputs`/`all` rejected as "not available yet — Phase 2"), `--verify-allow
+=<pkg#task,…>` (exempts known-nondeterministic → `allowed-nondeterministic`,
+  stays green). Wire: `RunRequest.verify` (Set↔array in both mappers). `run.ts`:
+  extends the `ok` predicate (nondeterministic/rerun-failed ⇒ not ok), prints
+  the Verify summary section via `log.status`. Cost ≈ 2× exec for verified
+  tasks — a CI/pre-merge gate, not an every-run default. 7 tests in
+  `tests/verify.test.ts` (proven, nondeterministic-names-path-fails-run,
+  no-outputs, --verify-allow greens, hit→not-verified + key-stability pin,
+  --force verifies warm, plain-run→undefined). Core 1087 pass, cloud 232
+  pass, lint clean. Docs: cli.md (`--verify` flag rows + § "Provable cache
+  correctness"), comparison.md (LEADS "Where vx is ahead"). **NEXT
+  (design Phases 2-4):** input-completeness via the sandbox
+  (`--verify=inputs`/`=all` — the `runSandboxed` allowRead=declared-inputs +
+  strace/violation-store undeclared-read oracle already exists), a
+  dashboard "Hermeticity" card + telemetry field, cross-machine fingerprint
+  diff.
+
+- **2026-07-05**: **`--cache-dir <path>` CLI flag + `--continue` doc
+  correction** (backlog closeout from `docs/comparison.md`). Two small
+  comparison.md gaps closed. **(1) `--cache-dir`:** the workspace
+  `defineWorkspace({ cacheDir })` field already redirected the cache; added
+  the matching per-run CLI flag. `RunOptions.cacheDir` → `prepare.ts`
+  resolves it (`path.resolve(cwd, cacheDir)`) OVER `resolveCacheDir`, so it
+  beats the workspace field + the `.vx/cache` default. Per-run knob, NEVER
+  folded into a cache key (like `--timeout`/`--retry`); `RunRequest.cacheDir`
+  on both wire mappers; parser guards no `--cache=<spec>` collision (char 7
+  differs). Tests: parser (space/= forms, no collision, missing-value) + e2e
+  (cache lands in the override dir not `.vx/cache`, hits from there, a
+  no-override run misses). **(2) `--continue=<mode>` was mislisted as an open
+  gap** — it's been fully wired for a while (CLI parse → scheduler
+  never/deps-ok/always enforcement → wire → tests → cli.md). Marked shipped
+  in comparison.md (gaps list + the CLI-flag-map row now spells the three
+  modes) and dropped from the CLAUDE.md backlog. Core 1097 pass, cloud 232
+  pass, lint clean.
+
+- **2026-07-05**: **Docs Mermaid diagrams fixed — three independent root
+  causes** (owner: "Diagrams in docs are broken"). Every diagram page
+  rendered Mermaid's "Syntax error" bomb. Diagnosed by driving the built site
+  in a headless browser (Chromium at `/opt/pw-browsers`, playwright at
+  `/opt/node22/...`) + parsing each source with Mermaid's own UMD build to get
+  the exact grammar error. **(1) `Head.astro` re-render corruption:**
+  `renderMermaid` reset each block with `el.innerHTML = source`, which
+  re-parsed a `<br/>` in a label into a real `<br>` DOM element — mangling the
+  definition Mermaid reads. Switched to `el.textContent = source` so `<br/>`
+  stays literal (Mermaid renders it as a line break). This alone fixed the
+  flowcharts + state diagrams. **(2) reserved-word node id:**
+  `architecture.md` used `graph` as a flowchart NODE ID (`index --> graph`) —
+  `graph` is a reserved keyword, Mermaid 11 errors "got 'GRAPH'". Renamed to
+  `graphmod["graph"]` (safe id, same label). **(3) semicolon in sequence
+  text:** `flows.md` sequence diagrams put `;` in `Note`/message text —
+  Mermaid treats `;` as a STATEMENT SEPARATOR, so the note split and the
+  parser errored at the next token. Isolated by a parametric parse (`;` fails;
+  `<br/>`, `,`, messages all fine). Replaced the three `;` with an em dash /
+  removed it. **Gotchas for future diagrams:** never use `graph`/`end`/
+  `subgraph`/`class`/`state` as a flowchart node id; never put `;` in
+  sequenceDiagram note/message text; `<br/>` in labels is fine as long as the
+  render path feeds Mermaid textContent, not innerHTML. Browser-verified: all
+  4 diagram pages render 15/15 diagrams, 0 errors. Source-only fix
+  (`apps/docs/src/components/Head.astro`, `docs/{architecture,flows}.md`); the
+  Pages deploy rebuilds (dist + generated content are gitignored).
+
+- **2026-07-05**: **Dashboard SPA dist is a BUILD ARTIFACT, not committed;
+  no doc asks an external user to clone the internal repo** (owner: "make the
+  spa not committable … dist should be built during vx cloud build and
+  bundled into its package/bin not committed to repo. … do not ask user to
+  clone the repo in the docs. Repo is internal"). REVERSES the 2026-06-28
+  "commit `packages/cloud/ui/dist/index.html`" decision (which existed so a
+  fresh checkout could compile the binary without a SPA build). **(1) dist
+  un-committed**: gitignored plus `git rm --cached`; every consumer now builds
+  it first — the npm package (`build-npm.ts buildCloudPackage` runs the vite
+  build before copying `ui/dist`), the Docker image (a vite-build step before
+  the `bun build --compile` that embeds it), and locally `vx run build.ui` (the
+  `build.bun.*` tasks already depend on it). The runtime already degraded
+  gracefully: `loadUiHtmlPath` try/catches the dynamic `ui-asset` import and
+  returns null (API-only serve) when the dist is absent, so from-source dev is
+  unaffected. NO runtime UI build anywhere — the serve `GET /` test verifies
+  the SPA-routing contract against a tiny fixture HTML (not the real dist), so
+  it stays hermetic without building. **Verified end-to-end**: fresh tree (no
+  dist) then build SPA then
+  `bun build --compile` of the cloud bin then the compiled binary serves the
+  embedded dashboard plus `/health`. Cloud 232 pass, lint clean.
+  `.dockerignore` no longer whitelists `ui/dist` (built in-image, not copied
+  from context). **(2) no clone in docs**: both CLIs publish to npm now, so the
+  distributed-CI recipes and the `vx-agent` composite action install via
+  `npm i -g @vzn/vx` and `npm i -g @vzn/vx-cloud` (Bun-source, needs setup-bun)
+  instead of cloning the repo at a pinned ref plus a bun PATH shim; the
+  action's `ref` input (git ref) became `version` (npm dist-tag). The README
+  `## Development` clone stays (a contributor path for people with repo access,
+  not a user install step).
+
+- **2026-07-05**: **Task timeout defaults — per-task > env > workspace
+  precedence** (owner: "per task timeout and workspace timeout and global
+  timeout … Per task always precedence then env var then workspace var").
+  `exec.timeout` already bounded a single task; added the two run-level
+  FALLBACKS for tasks that declare none. Resolution, highest first:
+  per-task `exec.timeout` → `--timeout <ms>` / `RunOptions.timeout` →
+  `VX_TASK_TIMEOUT` env → workspace `timeout` (`defineWorkspace`). Modeled
+  EXACTLY on the `--retry`/`RunOptions.retries` run-level-default precedent:
+  `execute-task` resolves `step.timeout ?? args.timeout`; `run.ts` collapses
+  env+workspace+option into the single run-level default it threads
+  (`taskTimeoutDefault = options.timeout ?? readTaskTimeoutEnv() ??
+  workspaceConfig?.timeout`); a malformed `VX_TASK_TIMEOUT` is IGNORED
+  (parsed to undefined) so a typo never silently disables a task's own
+  limit. **Threaded as an option only — NEVER folded into a cache key** (a
+  timed-out task fails and is never cached), so a `--timeout` run cache-hits
+  a plain run's entry (pinned by a key-stability test, same as `--retry`).
+  Wire: `RunRequest.timeout` in both protocol mappers, so a delegated run
+  carries the default (the serve re-resolves its own env+workspace).
+  `--timeout` works for `vx watch` too via the shared resolver (a runaway
+  task in a watch loop should be bounded). Loader validates `WorkspaceConfig.
+timeout` (positive integer ms, mirrors `concurrency`). NO CACHE_VERSION/
+  SCHEMA bump. Files: `config.ts` (WorkspaceConfig.timeout), `project-loader.ts`
+  (validation), `orchestrator/{options,execute-task,run,protocol}.ts`,
+  `cli/{run,help}.ts`. 15 tests in `tests/task-timeout.test.ts` (precedence
+  across all four levels, per-task-always-wins BOTH directions, malformed-env
+  fallthrough, key stability, `--timeout` parsing + validation, wire
+  round-trip, loader validation). Core 1078 pass, cloud 232 pass, lint clean.
+  Docs: schema.md (exec.timeout precedence note + WorkspaceConfig.timeout +
+  error row), cli.md (`--timeout` flag row).
+
+- **2026-07-05**: **Flaky detection CONFIRMED from within-run retries, not
+  just cross-run inference** (road-to-best-CI #5; continuing the retries →
+  flaky thread). `getFlakiestTasks` inferred flakiness from cross-run failure
+  VARIANCE — it couldn't tell a nondeterministic task from one a later real
+  fix greened. A task that FAILED then PASSED within a SINGLE run (identical
+  inputs, same commit) is nondeterministic BY DEFINITION — the gold-standard
+  signal, and vx gets it FREE from the retry it already ran (Nx Cloud needs
+  paid re-runs to observe it). Persisted `attempts` into the `runs` table
+  (**SCHEMA v23**, nullable, analytics-only — the cache KEY is unchanged, NO
+  CACHE_VERSION bump; threaded through `RunRecord`/`bindRun`/the insert + the
+  cloud IngestStore's RunRecord mapping from the pushed summary). `getFlakiest
+Tasks` now CONFIRMS directly: a within-run retry surfaces the task even with
+  fewer than 3 runs and OUTRANKS every merely-inferred one (`flakyConfirmed`
+  / `withinRunRetries` / `maxAttempts` on `FlakyTask`; the rank score puts a
+  confirmed flake above any inferred one, then breaks ties by failure rate
+  then duration tail). Dashboard: a 'Retried' column (danger tone on a
+  non-zero count) on the Flaky tasks card, rebuilt dist. Prereq shipped same
+  day: the `attempts` telemetry field (below). Core 190 pass, cloud 232 pass.
+
+- **2026-07-05**: **Retried-then-passed tasks flagged flaky in the GHA job
+  summary + the day's red lint gate greened** (road-to-best-CI #4/#5
+  completion; continuing the non-stop loop). **(1) `attempts` telemetry
+  field.** A task that only goes green after a retry is flaky BY
+  DEFINITION, and `TaskOutcome.attempts` already carried the count (set
+  only when >1, from the 2026-07-04 retries work) but it dead-ended at the
+  outcome — never reached telemetry. Added `attempts?: number` to the
+  `TaskTelemetry` contract (`src/orchestrator/telemetry.ts`) and projected
+  it from the outcome in BOTH the streaming `task.end` record and the
+  per-run `RunSummaryRecord.tasks[]` (`run.ts` summary construction).
+  **ADDITIVE — no `TELEMETRY_SCHEMA_VERSION` bump** (stays 2): the field is
+  absent for a once-run task, so a v2 consumer that ignores it is
+  byte-unaffected (the same additive-optional rule the retries work used
+  for `ExecConfig.retries`). Small, justified deviation from the
+  zero-core-change streak — pure observe-only telemetry data, no scheduling/
+  cache path touched; pinned by a core test driving a real retried run
+  through a `telemetrySinks` hook and asserting `attempts: 2` lands in the
+  summary. **(2) GHA flaky flag.** `packages/cloud/src/github-summary.ts`
+  `statusCell` now renders a retried-then-succeeded task as `✅ success ⚠️
+  flaky (N attempts)` — the most actionable place, right on the failed
+  build's job page. A single-attempt success is never flagged. **(3) Greened
+  the lint gate** — the day's github-summary + task-logs commits had left
+  tsgolint (real type checking) RED with 10 errors that `bun test` (transpile-
+  only, no checking) never surfaced: `CloudIngestSink`'s options assigned
+  `string | undefined` into `exactOptionalPropertyTypes` exact-optional
+  fields (build the optional props via conditional spread + guard the
+  constructor assignments), and two serve/summary test fixtures carried an
+  invalid `RunContextRecord` (`flow: 'full'` isn't a flow; `os`/`arch` are
+  non-null `string`) plus an `unknown`-typed `res.json()` access. **Lesson
+  logged:** `bun test` passing is NOT the gate — `bun src/bin.ts run
+lint.oxlint` (oxlint + tsgolint) type-checks `packages/cloud` too and MUST
+  be run before push; the earlier commits skipped it. Core 1061 pass, cloud
+  232 pass, lint+oxfmt clean. NEXT on the road-to-best-CI: flaky
+  detection → auto-retry SUGGESTIONS surfaced in the dashboard (the
+  `getFlakiest`/`failureMode` surface + this new `attempts` signal are both
+  live now), then per-request cache policy to remote agents (§13 known-open).
+
+- **2026-07-04**: **Duration-aware dispatch — start the longest task first
+  (LPT)** (road-to-best-CI #5). The `DistScheduler` ready queue was FIFO; now
+  `nextReady()` returns the historically LONGEST ready task (longest-
+  processing-time makespan heuristic, the same Nx Agents uses) so a long pole
+  starts as early as possible. **Hint source = THIS serve's ingest history**
+  (mean executed-run ms per `project#task`, one grouped `AVG(duration_ms)` scan
+  in `taskDurationHints`), NOT the submitter — correct for CI, where the
+  submitter is an ephemeral empty runner with no local history.
+  `DistSchedulerArgs` gains an optional `durationHints: ReadonlyMap<string,
+number>`; serve.ts builds it at `dist:submit`. **No wire change**
+  (serve-computed), no core change, no protocol bump. **Byte-identical
+  fallback:** no hints (fresh workspace) or all-equal → `nextReady` returns the
+  queue head exactly as before (strict `>` keeps queue order on ties); the
+  existing single-submission dispatch tests stay green unchanged. Pinned by two
+  new tests (LPT reorders longest-first; an empty map stays FIFO). Cloud suite
+  231 pass. NEXT: flaky detection surface + optional auto-retry; the
+  PR-check-via-API half of #3.
+
+- **2026-07-04**: **GitHub Actions job summary — a per-task result table on the
+  job page** (road-to-best-CI #3, first half). A `vx run` inside GitHub Actions
+  appends a markdown result table (failures first, with exit codes; cache
+  provenance; verdict + stats line) to `$GITHUB_STEP_SUMMARY`, so a red build
+  says WHICH task failed on the job page — no log spelunking. **Pure cloud
+  glue, zero core change:** `github-summary.ts` `formatGithubSummary(summary)`
+  is a self-contained formatter over the `RunSummaryRecord` the telemetry sink
+  already holds (NOT core's `formatRunReportMarkdown`, which takes a different
+  `RunResult` shape and isn't on the façade — a small cloud-side formatter is
+  cleaner than converting). **Works with no serve connected:** the `cloud()`
+  telemetry capability now activates when EITHER a connection resolves OR
+  `GITHUB_STEP_SUMMARY` is set; the `CloudIngestSink` took an
+  options-object constructor with an OPTIONAL `connection` (undefined →
+  GHA-summary-only, skips the POSTs; log capture stays off without a serve to
+  ship to). A plain local run with neither still declines (zero-cost contract
+  held, pinned). Never-fail (write error swallowed + warned), bounded (table
+  caps 100 rows + a truncation note). 10 new tests; cloud suite 229 pass.
+  Docs: guides/ci.md "GitHub Actions job summary". **Second half still open:**
+  a real PR _check_ via the GitHub Checks API (needs a token + checks:write —
+  genuine service territory, deferred). NEXT: flaky detection→auto-retry (wire
+  `getFlakiestTasks` + the shipped `TaskOutcome.attempts`), duration-aware
+  dispatch ordering.
+
+- **2026-07-04**: **Per-task logs + artifacts in the dashboard — road-to-best-CI
+  #2 (Nx-Cloud parity: click a failed task, read its output)**. Design in
+  `docs/design/task-logs-2026-07.md`; shipped in three committable slices, ALL
+  in `@vzn/vx-cloud` — ZERO core change (the boundary check: `git status src/`
+  stayed empty across all three). The 2026-06 opt-in `task.log` telemetry
+  surface (built, never consumed until now) got its first consumer, so no
+  TELEMETRY_SCHEMA/CACHE_VERSION bump. **(1/3) foundation:**
+  `task-log-capture.ts` `TaskLogBuffer` (the shared bounded-tail primitive:
+  per-task 128 KiB whole-chunk head eviction with no concatenation until drain,
+  per-run 4 MiB budget where failed tails are NEVER evicted by successes,
+  cache-hit/skipped/aborted dropped, drain orders failures first) +
+  `log-store.ts` `LogStore` (a per-workspace `logs.db` sidecar with its OWN v1
+  gate — never core's Cache schema; idempotent INSERT-OR-IGNORE, server-side
+  re-truncation since the wire is never trusted for caps, zstd over 4 KiB, hash
+  resolution for hits, age + byte-ceiling prune throttled 5 min). **(2/3)
+  capture + API:** `CloudIngestSink` gains `wants ['task.log','task.end']` ONLY
+  when logs enabled (`cloud({ logs })` / `VX_CLOUD_LOGS`; default on when
+  connected) — off → `wants` stays `[]` so the source never projects
+  task:stdout (the plain-run zero-projection guarantee, pinned); flush ships one
+  `POST /v1/ingest/logs` after the summary (empty on an all-hit run). Serve:
+  `POST /v1/ingest/logs` (bearer, 16 MiB cap → 413, wire-version gate → 400) +
+  `GET /v1/runs/:id/logs/:taskId` (direct row → else cache-hit-by-hash with
+  `source:'cache'`+`refRunId` → else 404; `artifactHash` advertised only when
+  the requester's principal can fetch it from /v8). Delegated runs captured
+  server-side by a per-run sink (no client push, swept after 15 min if a run
+  crashes before its summary). **(3/3) UI:** a self-contained `TaskLogs`
+  json-render component (own createResource keyed on runId+task, ANSI-stripped
+  scrollback, truncation banner, cache-provenance link, bearer-fetched artifact
+  download) in the run-detail selected-task card; rebuilt dist. Browser-verified
+  end-to-end (SPA reaches the new endpoint 200, workspace-scoped, failed task's
+  content present, no console errors beyond the pre-existing `/v1/graph`
+  degradation). 36 new tests; cloud suite 221 pass. **Verified GAP surfaced &
+  documented:** a distributed (`VX_CLOUD_DISTRIBUTE`) run ingests NO run summary
+  anywhere today, so it's absent from run history entirely — that's the
+  documented Phase-2 prerequisite for distributed-run log capture (the relay
+  point already sees every chunk). Docs: dashboard.md (panel + bounded-storage/
+  privacy section + the distributed limit), cli.md serve knobs. NEXT on the
+  road-to-best-CI: PR/commit summary + checks (cloud glue over run-report.ts),
+  then flaky detection → auto-retry (wire `getFlakiestTasks` + the new
+  `TaskOutcome.attempts` onto the retries primitive), then duration-aware
+  dispatch ordering.
+
+- **2026-07-04**: **Task-level retries — `exec.retries` + `--retry <n>`**
+  (road-to-best-CI #4; the primitive flaky-detection→auto-retry will ride).
+  `ExecConfig.retries?: number` = max ADDITIONAL attempts after a failed
+  attempt; follows the `exec.timeout` precedent exactly (config-declared →
+  participates in resolved-config hashing naturally, distinct key by design;
+  absent → byte-identical keys; NO CACHE_VERSION bump, no special hashing
+  code). Loader rejects negative/non-integer and `retries`+`persistent`.
+  **Semantics** (`execute-task.ts`, the miss path is now a retry loop):
+  cleanOutputs re-runs before EVERY attempt (a failed attempt's partial
+  outputs can't leak into the next); sandbox violations reset + re-fold per
+  attempt; a TIMEOUT kill is a retryable failure but an ABORT
+  (SIGINT/SIGTERM teardown, `!timedOut`) returns immediately — a tearing-down
+  run never retries; between attempts one
+  `vx: retrying <id> (attempt k/n) after exit <code>` line streams via
+  taskStderr; the final outcome is the last attempt's, and `cache.save`
+  captures the WINNING attempt's stdout + inputComponents only (pinned: a
+  post-retry cache hit replays only the winning stdout).
+  `TaskOutcome.attempts` set only when >1 (not persisted, not on the wire —
+  telemetry-side flaky detection is the future consumer). **Run-level
+  default:** `RunOptions.retries` + `--retry <n>` (also `vx watch` via the
+  shared resolver); explicit config wins INCLUDING `retries: 0`; threaded as
+  an option only, never folded into any hash — pinned by a key-stability test
+  (a `--retry` run cache-hits a plain run's entry). Wire: `RunRequest.retries`
+  in both protocol mappers. 12 new tests in `tests/retries.test.ts`; core
+  1060 pass. Bundled cleanup: the long-dead `effectiveStderr` accumulation in
+  execute-task (stderr hasn't been cached since v17) deleted. Docs: schema.md
+  `retries` section, cli.md `--retry`. NEXT on this thread: wire
+  `getFlakiestTasks` + `attempts` into flaky detection → auto-retry
+  suggestions (dashboard), then duration-aware dispatch.
+
+- **2026-07-04**: **Adversarial re-review of the day's shipped waves — the
+  turnkey CI recipe's ambient-mode race fixed (+2 smaller fixes)** (owner:
+  "review past commits… treat as hostile"). Full-pass review of every commit
+  shipped earlier today. **(1) REAL BUG — `vx-distributed-ci.yml` used ambient
+  distribution in a fan-out CI:** the run job did `vx-cloud connect
+--distribute` + `vx run`, but ambient mode falls back to a SILENT LOCAL run
+  when zero remote agents are registered at the instant of submit — and the
+  agent matrix starts in PARALLEL with the run job, so whenever the submitter
+  wins the setup race the "distributed" run executes locally while N paid
+  agent jobs idle to their 15-min timeout. Fixed to EXPLICIT
+  `VX_CLOUD_DISTRIBUTE=<agents>` (submits regardless; agents join mid-run;
+  unreachable serve = hard error; no-agents = loud warning), which also
+  DELETED the run job's entire vx-cloud source-install + connect dance —
+  `VX_CLOUD_URL`/`TOKEN` env drive `resolveConnection` directly, so only agent
+  jobs need the vx-cloud binary. Guide recipes (GitHub + GitLab) synced, with
+  the ambient-vs-explicit rule documented: ambient = a developer's machine
+  (never blocks solo), explicit = CI (the workflow provisioned the agents).
+  Also corrected the recipe's "vx IS on npm" comment (first publish still
+  pending the owner's trusted-publisher setup). **(2)** `dist/submit.ts`'s
+  reachability + ambient-capacity probes used `AbortSignal.timeout` — the
+  exact not-unref'd-timer pattern the repo banned (plugin.ts documents why);
+  a warm ambient no-helpers run would hang up to ~1s at exit. Switched to the
+  clearable-timer pattern. **(3)** `environments.json` accepted ANY number for
+  `distribute` — a hand-edited `0`/`-1`/`NaN` passed validation and then
+  ENABLED ambient (the rung checks `!== undefined && !== false`, not
+  truthiness). Tightened to boolean | positive integer at the file boundary,
+  pinned by test. **Reviewed and confirmed SOUND:** heartbeat/sweep lifecycle
+  (armed on open, cleared on close/stop; serve timers unref'd + cleared on
+  stop), the composite action (explicit shells, GITHUB_PATH semantics,
+  `--idle-timeout 0` = never), npm.yml (publish order platform→vx→vx-cloud,
+  stamp-before-build, dry-run guard on both triggers, paths match build-npm's
+  `dirFor`), release.yml tag handling, and the trust scopes (tier is
+  server-derived from the token; the client-supplied PR sub-scope only
+  partitions WITHIN untrusted — a scope-claiming PR can touch same-tier peers
+  only, never trusted; documented residual). Cloud suite 197 pass.
 
 - **2026-07-04**: **Standing shared-pool multi-run scheduler — a session
   multiplexes CONCURRENT submissions across shared agents (DIST_PROTOCOL v1→v2)**
@@ -3771,21 +7822,73 @@ LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
 
 ## Active workstreams (prioritized)
 
-Roadmap is derived from [`docs/comparison.md`](docs/comparison.md) —
-the gap analysis against Turbo / Nx / vite-task with sourced cites.
+**OWNER DIRECTIVE 2026-07-16 — document EVERY vx Cloud feature:
+EXECUTED 2026-07-17** (`a4a5051` + `50dbe57`; see the decision-log
+entry). The audit→write→verify program ran to completion: full feature
+inventory, all 8 cloud pages audited, a new `cloud/api.md` HTTP API
+reference, every identified gap filled, astro build clean + a
+zero-broken-links crawl over `dist/`. Keep the standard alive: a new
+cloud feature is not DONE until its docs land in the same wave.
 
-1. **Pre-signed URL auth** for the remote cache. v2 per
-   `docs/design/remote-cache.md`. (The HMAC-signing half shipped
-   2026-06 via `VX_REMOTE_CACHE_SIGNATURE_KEY`.)
-2. 4. **`--continue=<mode>`.** Today vx aborts a failed task's
-      transitive dependents but continues independent siblings — Turbo's
-      middle setting. Add the explicit flag plus a `--continue=always`
-      for more lenient runs.
-3. **Wildcards in `dependsOn`** (`build-*`, `^build-*` — Nx 19.5+).
-4. **Workspace-level `globalInputs` / `globalEnv` / `globalPassThrough`.**
-5. **Auto-input inference** (vite-task's `{auto:true}` via filesystem
-   tracing). Biggest UX win, biggest engineering lift; needs an
-   `fspy`-equivalent per OS.
+The trusted-GET S3 HEAD-skip (backlog (b)) SHIPPED same day —
+completed from the stashed WIP, adversarially verified sound (see the
+decision-log entry).
+
+Near-term roadmap = the "road to best-CI" ranked table in
+`docs/design/ci-platform-2026-07.md` (owner: "Make vx the best CI env
+ever… compete with GitHub Actions and Nx Cloud"; the wedge is the
+portable execution+cache+pool LAYER inside any CI provider — triggers/
+hosted-runners/secrets/DSL/marketplace are permanent non-goals). The
+longer-horizon core gaps stay sourced from `docs/comparison.md`.
+
+1. ~~Per-task logs + artifacts in the dashboard~~ — **SHIPPED**
+   2026-07-04 (task-logs-2026-07; the dashboard TaskLogs panel).
+2. ~~PR/commit summary + checks~~ — **SHIPPED** (the GHA
+   `$GITHUB_STEP_SUMMARY` table 2026-07-04; the real check run via the
+   Checks API 2026-07-10 — client-side glue, no serve needed: pass
+   `GITHUB_TOKEN` to the step + `checks: write`).
+3. ~~Task-level retries~~ — **SHIPPED** 2026-07-04 (`exec.retries` +
+   `--retry`; `TaskOutcome.attempts` is the flaky-detection feed).
+4. **Flaky detection → surface + optional auto-retry.**
+   `getFlakiestTasks` (a query) + the new `attempts` primitive exist;
+   wire them: surface flaky tasks in the dashboard, suggest/auto-apply
+   `retries` on flagged tasks.
+5. ~~Duration-aware dispatch ordering~~ — **SHIPPED** 2026-07-04
+   (LPT; serve-computed `durationHints` from ingest history).
+6. ~~Run-level policy to REMOTE agents~~ — **SHIPPED** 2026-07-18. The
+   submitter's `--frozen`/`--timeout`/`--retry` now ride every `task:assign`
+   as an optional `policy` sub-object (filled by the controller from the
+   submission's `RunRequest`, applied per-assignment by the agent), so a
+   standalone agent honors THIS run's flags instead of live-evaluating with
+   no defaults. Cache stays full-by-design (the artifact transport; each
+   agent's own local cache stays on). Additive-optional → clean degradation
+   both directions (old agent ignores it = today's live-eval; new agent +
+   old serve = its own defaults), so NO DIST_PROTOCOL bump (the
+   branch/defaultBranch/context precedent).
+7. Core backlog (from `docs/comparison.md`): CLEARED. Blob offload
+   (pre-signed URLs): the CLIENT half ships in the native wire —
+   `NativeCacheClient` follows one auth-dropping 307/302 on GET; the
+   serve-side blob backend (S3/R2) behind that redirect is designed
+   (`docs/design/native-cache-wire-2026-07.md` §offload) — build when a
+   deployment actually needs it. (The Turbo `--preflight` client from
+   `presigned-artifacts-2026-07.md` was deleted with the Turbo wire.)
+   (`--continue=<mode>`, `--cache-dir`, and `dependsOn` wildcards are
+   SHIPPED.)
+
+**Owner-REJECTED non-goals (do NOT re-propose):**
+
+- **Workspace-level `globalInputs` / `globalEnv` / `globalPassThrough`**
+  (owner 2026-07-05: "no global"). TS configs compose — a shared preset
+  imported + spread into each config IS the global-inputs mechanism (same
+  rationale as the earlier-rejected named-inputs machinery); a schema
+  field would duplicate the language. The Turbo-migrate path already emits
+  a generated `vx-preset.ts` for this.
+- **Auto-input inference (fspy/strace filesystem tracing)** (owner
+  2026-07-05: "no auto input"). vx's explicit-inputs contract is a
+  correctness principle (Architecture principle #1: "Explicit over
+  magical"), not a gap; traced inputs aren't derivable before execution
+  (why vite-task has no remote cache). Declared `cache.inputs.files` +
+  `runtime`/`workspaceFiles` stay the only input surface.
 
 ## Recently shipped
 

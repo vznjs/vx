@@ -7,9 +7,10 @@
 //   - deps restore as warm hits from the shared cache (whichever agent
 //     executed them uploaded before reporting done), so keys are exactly
 //     the full-run keys (§6.3);
-//   - the remote layer comes from the ENVIRONMENT (`VX_REMOTE_CACHE_*`
-//     pointed at the serve), not new plumbing — hashing / probe / save /
-//     upload / drain all ride existing core machinery;
+//   - the remote layer is INJECTED (`opts.remoteCache` →
+//     `RunOptions.remoteCache`, a native-wire client pointed at the
+//     serve's artifact store) — hashing / probe / save / upload / drain
+//     all ride existing core machinery;
 //   - `run()` drains background uploads before resolving, so sending
 //     `agent:done` after it resolves IS the await-PUT-before-done gate.
 //
@@ -22,12 +23,14 @@ import {
   type CachePolicy,
   type Logger,
   type OutcomeView,
+  type RemoteCacheLayer,
   type RunEvent,
   createEventBus,
 } from '@vzn/vx'
 import {
   AGENT_HEARTBEAT_MS,
   DIST_PROTOCOL_VERSION,
+  type AssignPolicy,
   type DistClientMessage,
   type DistServerMessage,
 } from '../protocol-dist.js'
@@ -38,6 +41,43 @@ const silentLogger: Logger = {
   taskStderr() {},
   taskComplete() {},
 }
+
+/**
+ * The minimal WebSocket surface the loop drives — enough to (re)create a socket
+ * and wire the four handlers. A real `WebSocket` satisfies it structurally; a
+ * test supplies a fake it can open/close on demand to exercise reconnect
+ * without a live serve.
+ */
+export interface AgentSocket {
+  onopen: (() => void) | null
+  onmessage: ((ev: { data: unknown }) => void) | null
+  onclose: (() => void) | null
+  onerror: (() => void) | null
+  send(data: string): void
+  close(): void
+}
+
+export type AgentSocketFactory = (url: string, token?: string) => AgentSocket
+
+const defaultSocketFactory: AgentSocketFactory = (url, token) =>
+  (token !== undefined
+    ? new WebSocket(url, { headers: { authorization: `Bearer ${token}` } })
+    : new WebSocket(url)) as unknown as AgentSocket
+
+/** Max reconnect attempts before a standalone agent gives up (≈15 s of retries). */
+export const DEFAULT_MAX_RECONNECTS = 5
+/** First reconnect backoff; doubles each attempt, capped at RECONNECT_CAP_MS. */
+export const RECONNECT_BASE_MS = 500
+const RECONNECT_CAP_MS = 8_000
+/**
+ * How long a connection must STAY open before its reconnect budget is refreshed.
+ * A bare `onopen` is NOT proof of a stable link — a flapping / crash-looping
+ * serve that accepts the upgrade then immediately drops would reset the budget
+ * on every cycle and reconnect forever (an unbounded hang, never settling
+ * `done`). Only a connection that survives this dwell earns a fresh budget, so
+ * a flap exhausts the budget and gives up.
+ */
+export const RECONNECT_STABLE_MS = 10_000
 
 export interface AgentLoopOptions {
   /** http(s) origin of the serve; the WS URL is derived from it. */
@@ -65,9 +105,32 @@ export interface AgentLoopOptions {
    */
   frozen?: boolean
   cache?: CachePolicy
+  /** The remote layer for the scoped runs — the serve's artifact store,
+   *  injected as `RunOptions.remoteCache` (the §6.3 artifact transport). */
+  remoteCache?: RemoteCacheLayer
   onStatus?: (line: string) => void
   /** Fires per assignment — the submitter skips materializing these ids. */
   onAssigned?: (taskId: string) => void
+  /**
+   * Socket constructor seam (defaults to `new WebSocket`). A test supplies a
+   * fake to drive open/close and exercise reconnect without a live serve.
+   */
+  wsFactory?: AgentSocketFactory
+  /**
+   * Reconnect (bounded backoff) on an UNEXPECTED close — a transient network
+   * blip / serve blip shouldn't kill a standing helper agent, whose capacity
+   * the pool still wants. Defaults ON for a standalone agent and OFF for a
+   * submitter self-agent (`ownerSubmissionId` set) whose lifecycle the submitter
+   * owns via `stop()`. Refused / stopped / idle-timeout / drain closes never
+   * reconnect (they are terminal by design).
+   */
+  reconnect?: boolean
+  /** Reconnect attempt cap (default DEFAULT_MAX_RECONNECTS). */
+  maxReconnects?: number
+  /** First-attempt backoff ms (default RECONNECT_BASE_MS); doubles per attempt. */
+  reconnectBaseMs?: number
+  /** Dwell a connection must stay open to refresh the budget (default RECONNECT_STABLE_MS). */
+  reconnectStableMs?: number
 }
 
 export interface AgentLoopResult {
@@ -82,12 +145,23 @@ export interface AgentLoopHandle {
 
 export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
   const status = opts.onStatus ?? (() => undefined)
-  const agentId = opts.agentId ?? Bun.randomUUIDv7()
   const wsUrl = `${opts.origin.replace(/\/+$/, '').replace(/^http/, 'ws')}/v1/agents`
+  const factory = opts.wsFactory ?? defaultSocketFactory
+  // A standalone helper agent reconnects through a transient blip; the
+  // submitter's self-agent (ownerSubmissionId set) does not — the submitter
+  // owns its lifecycle via stop().
+  const reconnectEnabled = opts.reconnect ?? opts.ownerSubmissionId === undefined
+  const maxReconnects = opts.maxReconnects ?? DEFAULT_MAX_RECONNECTS
   // ONE shared registry across this agent's concurrent scoped runs — the
   // same concurrent-run dedup guarantee the serve's delegated runs use.
   const inflightRuns = new Map<string, Promise<void>>()
 
+  let ws!: AgentSocket
+  let currentAgentId = ''
+  let firstConnect = true
+  let reconnectAttempts = 0
+  let reconnectTimer: ReturnType<typeof setTimeout> | undefined
+  let stableTimer: ReturnType<typeof setTimeout> | undefined
   let inFlight = 0
   let drained = false
   let stopped = false
@@ -95,21 +169,22 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
   let idleFired = false
   let idleTimer: ReturnType<typeof setTimeout> | undefined
   let heartbeatTimer: ReturnType<typeof setInterval> | undefined
+  let settled = false
   let resolveDone!: (r: AgentLoopResult) => void
   const done = new Promise<AgentLoopResult>((r) => {
     resolveDone = r
   })
-
-  const ws =
-    opts.token !== undefined
-      ? new WebSocket(wsUrl, { headers: { authorization: `Bearer ${opts.token}` } })
-      : new WebSocket(wsUrl)
+  const settle = (r: AgentLoopResult): void => {
+    if (settled) return
+    settled = true
+    resolveDone(r)
+  }
 
   const send = (msg: DistClientMessage): void => {
     try {
       ws.send(JSON.stringify(msg))
     } catch {
-      // socket closed mid-write; the close handler resolves the loop
+      // socket closed mid-write; the close handler resolves or reconnects
     }
   }
 
@@ -134,67 +209,112 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
     idleTimer.unref?.()
   }
 
-  ws.onopen = () => {
-    send({
-      t: 'agent:hello',
-      protocol: DIST_PROTOCOL_VERSION,
-      agentId,
-      workspaceId: opts.workspaceId,
-      session: opts.session,
-      commitSha: opts.commitSha,
-      capacity: opts.capacity,
-      ...(opts.labels !== undefined && opts.labels.length > 0 ? { labels: opts.labels } : {}),
-      ...(opts.ownerSubmissionId !== undefined
-        ? { ownerSubmissionId: opts.ownerSubmissionId }
-        : {}),
-    })
-    armIdle()
-    // Liveness: a steady heartbeat lets the serve reap this agent within
-    // seconds of a crash/partition (a half-open TCP socket never fires
-    // `close`), so its in-flight tasks reassign instead of stalling.
-    heartbeatTimer = setInterval(() => send({ t: 'agent:heartbeat' }), AGENT_HEARTBEAT_MS)
-    heartbeatTimer.unref?.()
-  }
+  const connect = (): void => {
+    // A FRESH agentId per reconnect: the serve reassigns the previous socket's
+    // in-flight tasks when its close fires (`drop` → `onAgentLeave`), and `drop`
+    // no-ops on an id mismatch — so reusing the id could let this fresh hello
+    // overwrite the still-pending old entry and orphan its tasks. A new id keeps
+    // the two registrations independent. Only the very first connection may use
+    // a caller-pinned `opts.agentId`.
+    currentAgentId = firstConnect && opts.agentId !== undefined ? opts.agentId : Bun.randomUUIDv7()
+    firstConnect = false
+    ws = factory(wsUrl, opts.token)
 
-  ws.onmessage = (ev) => {
-    let msg: DistServerMessage
-    try {
-      msg = JSON.parse(String(ev.data)) as DistServerMessage
-    } catch {
-      return
+    ws.onopen = () => {
+      // Refresh the backoff budget ONLY after the connection has STAYED open for
+      // the dwell — a bare open is not a stable link. A flap (open then immediate
+      // close) clears this timer in `onclose` before it fires, so the budget
+      // isn't reset and the flap eventually exhausts it instead of hanging.
+      clearTimeout(stableTimer)
+      stableTimer = setTimeout(() => {
+        reconnectAttempts = 0
+      }, opts.reconnectStableMs ?? RECONNECT_STABLE_MS)
+      stableTimer.unref?.()
+      send({
+        t: 'agent:hello',
+        protocol: DIST_PROTOCOL_VERSION,
+        agentId: currentAgentId,
+        workspaceId: opts.workspaceId,
+        session: opts.session,
+        commitSha: opts.commitSha,
+        capacity: opts.capacity,
+        ...(opts.labels !== undefined && opts.labels.length > 0 ? { labels: opts.labels } : {}),
+        ...(opts.ownerSubmissionId !== undefined
+          ? { ownerSubmissionId: opts.ownerSubmissionId }
+          : {}),
+      })
+      armIdle()
+      // Liveness: a steady heartbeat lets the serve reap this agent within
+      // seconds of a crash/partition (a half-open TCP socket never fires
+      // `close`), so its in-flight tasks reassign instead of stalling.
+      heartbeatTimer = setInterval(() => send({ t: 'agent:heartbeat' }), AGENT_HEARTBEAT_MS)
+      heartbeatTimer.unref?.()
     }
-    if (msg.t === 'task:assign') {
+
+    ws.onmessage = (ev) => {
+      let msg: DistServerMessage
+      try {
+        msg = JSON.parse(String(ev.data)) as DistServerMessage
+      } catch {
+        return
+      }
+      if (msg.t === 'task:assign') {
+        clearTimeout(idleTimer)
+        inFlight++
+        opts.onAssigned?.(msg.taskId)
+        void executeAssigned(msg.submissionId, msg.taskId, msg.policy)
+      } else if (msg.t === 'agent:refused') {
+        refusedReason = msg.reason
+        status(`refused: ${msg.reason}`)
+      } else if (msg.t === 'coord:drain') {
+        drained = true
+        if (inFlight === 0) sayBye('shutdown')
+      }
+    }
+
+    ws.onclose = () => {
       clearTimeout(idleTimer)
-      inFlight++
-      opts.onAssigned?.(msg.taskId)
-      void executeAssigned(msg.submissionId, msg.taskId)
-    } else if (msg.t === 'agent:refused') {
-      refusedReason = msg.reason
-      status(`refused: ${msg.reason}`)
-    } else if (msg.t === 'coord:drain') {
-      drained = true
-      if (inFlight === 0) sayBye('shutdown')
+      clearInterval(heartbeatTimer)
+      // The connection didn't survive the dwell — don't refresh the budget.
+      clearTimeout(stableTimer)
+      // Terminal closes never reconnect — they are the agent's intended end.
+      if (refusedReason !== undefined) return settle({ ok: false, reason: 'refused' })
+      if (stopped) return settle({ ok: true, reason: 'stopped' })
+      if (idleFired) return settle({ ok: true, reason: 'idle-timeout' })
+      if (drained) return settle({ ok: true, reason: 'drained' })
+      // Unexpected close (serve died, network blip). Reconnect with bounded
+      // backoff so a transient outage doesn't kill a standing helper agent; the
+      // serve already reassigned this socket's in-flight tasks, and a fresh
+      // registration resumes taking new work. Give up after the budget.
+      if (reconnectEnabled && reconnectAttempts < maxReconnects) {
+        const base = opts.reconnectBaseMs ?? RECONNECT_BASE_MS
+        const delay = Math.min(base * 2 ** reconnectAttempts, RECONNECT_CAP_MS)
+        reconnectAttempts++
+        status(`connection lost — reconnecting (attempt ${reconnectAttempts}/${maxReconnects})`)
+        reconnectTimer = setTimeout(connect, delay)
+        reconnectTimer.unref?.()
+        return
+      }
+      settle({ ok: false, reason: 'closed' })
+    }
+    ws.onerror = () => {
+      // onclose always follows; classification (settle vs reconnect) happens there
     }
   }
 
-  ws.onclose = () => {
-    clearTimeout(idleTimer)
-    clearInterval(heartbeatTimer)
-    if (refusedReason !== undefined) resolveDone({ ok: false, reason: 'refused' })
-    else if (stopped) resolveDone({ ok: true, reason: 'stopped' })
-    else if (idleFired) resolveDone({ ok: true, reason: 'idle-timeout' })
-    else if (drained) resolveDone({ ok: true, reason: 'drained' })
-    // Unexpected close (serve died, network): infra failure, not a task
-    // verdict — the main job owns the aggregate exit code.
-    else resolveDone({ ok: false, reason: 'closed' })
-  }
-  ws.onerror = () => {
-    // onclose always follows; classification happens there
-  }
-
-  async function executeAssigned(submissionId: string, taskId: string): Promise<void> {
+  async function executeAssigned(
+    submissionId: string,
+    taskId: string,
+    policy?: AssignPolicy,
+  ): Promise<void> {
     status(`▶ ${taskId}`)
     send({ t: 'agent:start', taskId, submissionId })
+    // Honor the submission's run policy: --frozen / --timeout / --retry ride
+    // per-assignment so a standalone agent (which serves several submissions)
+    // applies each one's flags. `opts.frozen` is the fallback for an older serve
+    // that sends a bare assignment; cache is NOT propagated (full cache is the
+    // artifact transport — the agent's own local cache stays on).
+    const frozen = policy?.frozen ?? opts.frozen
     const bus = createEventBus()
     bus.subscribe((event: RunEvent) => {
       if (event.kind === 'task:stdout' && event.node.id === taskId) {
@@ -215,8 +335,11 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
         bus,
         inflight: inflightRuns,
         concurrency: opts.capacity,
-        ...(opts.frozen !== undefined ? { frozen: opts.frozen } : {}),
+        ...(frozen !== undefined ? { frozen } : {}),
         ...(opts.cache !== undefined ? { cache: opts.cache } : {}),
+        ...(policy?.retries !== undefined ? { retries: policy.retries } : {}),
+        ...(policy?.timeout !== undefined ? { timeout: policy.timeout } : {}),
+        ...(opts.remoteCache !== undefined ? { remoteCache: opts.remoteCache } : {}),
       })
       const own = summary.outcomes.find((o) => o.node.id === taskId)
       outcome =
@@ -242,17 +365,24 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
     else if (inFlight === 0) armIdle()
   }
 
+  connect()
+
   return {
     done,
     stop: () => {
       stopped = true
       clearTimeout(idleTimer)
       clearInterval(heartbeatTimer)
+      clearTimeout(reconnectTimer)
+      clearTimeout(stableTimer)
       try {
         ws.close()
       } catch {
         // already closed
       }
+      // Settle now: if we were mid-backoff (no live socket) there is no onclose
+      // coming; if a socket is live, its onclose settles too (idempotent).
+      settle({ ok: true, reason: 'stopped' })
     },
   }
 }

@@ -48,7 +48,7 @@ function sampleFile(): EnvironmentsFile {
     active: 'team',
     environments: {
       team: { url: 'https://vx.example', token: 'tok-1' },
-      staging: { url: 'https://stage.example', delegate: true },
+      staging: { url: 'https://stage.example', distribute: true },
     },
   }
 }
@@ -119,6 +119,35 @@ describe('write + read round-trip', () => {
     )
     expect(() => readEnvironmentsFile()).toThrow(/distribute/)
   })
+
+  it('rejects a numeric distribute that is not a positive integer (0 must not read as ON)', async () => {
+    // The ambient rung checks `!== undefined && !== false`, so a hand-edited
+    // 0 or -1 would silently ENABLE ambient distribution — refuse it loudly
+    // at the file boundary instead.
+    for (const bad of [0, -1, 2.5]) {
+      await writeFile(
+        cfgPath,
+        JSON.stringify({
+          version: ENVIRONMENTS_VERSION,
+          environments: { bad: { url: 'https://x', distribute: bad } },
+        }),
+      )
+      expect(() => readEnvironmentsFile()).toThrow(/positive integer/)
+    }
+  })
+
+  it('rejects a persisted `delegate` field — run delegation was removed', async () => {
+    await writeFile(
+      cfgPath,
+      JSON.stringify({
+        version: ENVIRONMENTS_VERSION,
+        environments: { old: { url: 'https://x', delegate: true } },
+      }),
+    )
+    expect(() => readEnvironmentsFile()).toThrow(/delegate/)
+    // The plugin path treats a rejected file as absent (never fails a run).
+    expect(activeEnvironment()).toBeUndefined()
+  })
 })
 
 describe('malformed / unknown-version files', () => {
@@ -156,7 +185,7 @@ describe('activeEnvironment', () => {
     expect(activeEnvironment()).toEqual({
       name: 'staging',
       url: 'https://stage.example',
-      delegate: true,
+      distribute: true,
     })
     process.env['VX_CLOUD_ENV'] = 'no-such-env'
     expect(activeEnvironment()).toBeUndefined()

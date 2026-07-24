@@ -5,7 +5,7 @@ description: Move a Turborepo monorepo to vx. What maps 1:1, what's better, and 
 
 vx is shaped like Turborepo on purpose, so this is the easy migration.
 Same per-package model, same `dependsOn` micro-syntax, same `--filter`
-DSL, same `--affected` selection, same remote-cache wire. The main change
+DSL, same `--affected` selection. The main change
 is that config moves from one `turbo.json` to per-package `vx.config.ts`
 files — and `vx migrate` writes them for you.
 
@@ -44,8 +44,13 @@ the script of the same name; vx makes the command explicit in `exec`).
 
 ### Before / after
 
+`vx migrate` reads your `turbo.json` and writes a `vx.config.ts` per
+package — scripts inlined as `exec.command`, everything it can't infer
+left as a `TODO` comment. Here's the same `build`/`test` pipeline before
+and after:
+
 ```jsonc
-// turbo.json
+// turbo.json  (before)
 {
   "tasks": {
     "build": {
@@ -60,7 +65,7 @@ the script of the same name; vx makes the command explicit in `exec`).
 ```
 
 ```ts
-// packages/app/vx.config.ts  (generated, then reviewed)
+// packages/app/vx.config.ts  (after — generated, then reviewed)
 import { defineProject } from '@vzn/vx'
 
 export default defineProject({
@@ -106,15 +111,19 @@ explains why.
 
 | Turborepo                         | vx                              |
 | --------------------------------- | ------------------------------- |
-| `turbo run build`                 | `vx run build`                  |
+| `turbo run build`                 | `vx run build --all`            |
 | `turbo run build --filter=@app/*` | `vx run build --filter "@app/*"`      |
 | `turbo run build --affected`      | `vx run build --affected`       |
 | `turbo run build --dry`           | `vx run build --dry`            |
 | `turbo run build -- --flag`       | `vx run build -- --flag`        |
-| `TURBO_TOKEN` / remote cache      | `VX_REMOTE_CACHE_URL` / `_TOKEN` |
+| `TURBO_TOKEN` / remote cache      | a remote-cache plugin connection (see the Cloud section) |
 
-Your remote cache server works unchanged — vx speaks the same
-`/v8/artifacts/` wire. See [Remote caching](../../guides/remote-caching/).
+The remote cache is plugin-driven: the first-party option is a self-hosted
+platform that wires it automatically (see the
+[Cloud section](../../cloud/overview/)), or bring a Turbo-wire server
+through a small cache plugin (see
+[Core is provider-neutral](../../guides/extensibility/)). See
+[Remote caching](../../guides/remote-caching/).
 
 ## A couple of differences to expect
 
@@ -124,7 +133,12 @@ Your remote cache server works unchanged — vx speaks the same
   broken artifact. `vx migrate` fills these in from your `turbo.json`.
 - **One command per task.** No `commands` array — chain with `&&` or split
   into `dependsOn`-linked tasks (which also lets each step cache).
-- **Bun is required** (≥ 1.3); there's no Node runtime for vx itself.
+- **Default scope is the current package**, not the whole workspace. A bare
+  `vx run build` inside a package runs that package (like running its
+  script directly); use `--all` for Turborepo's run-everything default, or
+  `--filter` / `--affected` to select.
+- **No Bun needed to run vx** — `npm install -g @vzn/vx` ships a standalone
+  binary. Bun (≥ 1.3) is only required when running vx from source.
 
 ## Next steps
 

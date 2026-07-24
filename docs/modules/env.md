@@ -76,9 +76,10 @@ which:
 With it, the rule is simple: a task depends on whatever its config
 declares, plus enough essentials to find binaries and behave normally.
 
-The allowlist is intentionally **not configurable** at the task level.
-Workspace-level customization (extending the list) is a possible
-future feature; for now, declare via `passThrough` what you need.
+The allowlist is intentionally **not configurable** — a task declares any
+extra vars it needs via `passThrough`. Workspace-level env defaults
+(`globalEnv` / `globalPassThrough`) are an owner-rejected non-goal; compose
+a shared `passThrough` list through a TypeScript preset instead.
 
 ## Tests
 

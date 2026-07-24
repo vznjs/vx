@@ -4,11 +4,16 @@
 // hello/close/submit; a serve restart mid-pipeline fails that pipeline
 // loudly and the next one is fine (no persistence by design).
 //
-// Registry key: `{workspaceId, session}`. A session holds its connected
-// agents and any number of CONCURRENT submissions, fairly multiplexed
-// across the shared agents by the registry's `dispatchSession` loop. The
-// registry outlives a run so sequential submissions reuse the pool AND so
-// concurrent submissions (parallel CI jobs at one commit, two teammates)
+// Registry key: `{orgId, workspaceId, session}` (cloud-platform-2026-07 §8.2).
+// The org is SERVER-DERIVED from the agent's / submitter's token (never a wire
+// claim), so two tenants' pools can never collide or pair; a caller that passes
+// no org (the `DEFAULT_ORG` fallback — the registry's own unit tests) keys
+// everything under `'default'`, byte-identical to the pre-tenancy
+// `{workspaceId, session}` key. A session holds its
+// connected agents and any number of CONCURRENT submissions, fairly
+// multiplexed across the shared agents by the registry's `dispatchSession`
+// loop. The registry outlives a run so sequential submissions reuse the pool
+// AND so concurrent submissions (parallel CI jobs at one commit, two teammates)
 // can share it.
 //
 // commitSha is a dispatch-ELIGIBILITY filter, never a refusal: an agent is
@@ -48,8 +53,15 @@ export const AGENT_STALE_MS = 30 * 1000
 /** How often the serve sweeps for stale agents. */
 export const AGENT_SWEEP_INTERVAL_MS = 15 * 1000
 
+/** Fallback org when a caller passes none (the registry unit tests). The
+ *  platform dispatch always passes the token-derived org, so a real request is
+ *  never keyed under this. */
+export const DEFAULT_ORG = 'default'
+
 export interface RegisteredAgent {
   readonly agentId: string
+  /** The token-derived org — the top tenant boundary of the session key. */
+  readonly orgId: string
   readonly workspaceId: string
   readonly session: string
   readonly commitSha: string
@@ -109,6 +121,7 @@ export interface ActiveSubmission {
 
 interface SessionState {
   key: string
+  orgId: string
   workspaceId: string
   session: string
   agents: Map<string, RegisteredAgent>
@@ -134,8 +147,8 @@ export interface SubmissionBinding {
   end(): void
 }
 
-function sessionKey(workspaceId: string, session: string): string {
-  return `${workspaceId}/${session}`
+function sessionKey(orgId: string, workspaceId: string, session: string): string {
+  return `${orgId}/${workspaceId}/${session}`
 }
 
 /** Total tasks this agent holds across all submissions (the capacity check). */
@@ -214,6 +227,7 @@ export class AgentRegistry {
   hello(
     msg: AgentHello,
     io: { send(m: DistServerMessage): void; close(): void },
+    orgId: string = DEFAULT_ORG,
   ): RegisteredAgent | null {
     if (msg.protocol !== DIST_PROTOCOL_VERSION) {
       io.send({
@@ -223,9 +237,10 @@ export class AgentRegistry {
       io.close()
       return null
     }
-    const state = this.sessionFor(msg.workspaceId, msg.session)
+    const state = this.sessionFor(orgId, msg.workspaceId, msg.session)
     const agent: RegisteredAgent = {
       agentId: msg.agentId,
+      orgId,
       workspaceId: msg.workspaceId,
       session: msg.session,
       commitSha: msg.commitSha,
@@ -252,7 +267,7 @@ export class AgentRegistry {
 
   /** WS close for a registered agent: unregister + hand each submission its own tasks back. */
   drop(agent: RegisteredAgent): void {
-    const state = this.sessions.get(sessionKey(agent.workspaceId, agent.session))
+    const state = this.sessions.get(sessionKey(agent.orgId, agent.workspaceId, agent.session))
     if (state === undefined || state.agents.get(agent.agentId) !== agent) return
     state.agents.delete(agent.agentId)
     state.lastActivityAt = this.now()
@@ -270,7 +285,7 @@ export class AgentRegistry {
    * own `onAgentMessage` re-triggers the fair dispatch loop when a slot frees.
    */
   dispatch(agent: RegisteredAgent, msg: unknown): void {
-    const state = this.sessions.get(sessionKey(agent.workspaceId, agent.session))
+    const state = this.sessions.get(sessionKey(agent.orgId, agent.workspaceId, agent.session))
     if (state === undefined) return
     const now = this.now()
     agent.lastSeenAt = now
@@ -282,7 +297,7 @@ export class AgentRegistry {
   /** Record an `agent:heartbeat` — updates liveness and marks the agent as one
    *  the staleness sweep may reap (see `RegisteredAgent.sawHeartbeat`). */
   heartbeat(agent: RegisteredAgent): void {
-    const state = this.sessions.get(sessionKey(agent.workspaceId, agent.session))
+    const state = this.sessions.get(sessionKey(agent.orgId, agent.workspaceId, agent.session))
     if (state === undefined) return
     const now = this.now()
     agent.lastSeenAt = now
@@ -302,8 +317,9 @@ export class AgentRegistry {
     workspaceId: string,
     session: string,
     submission: ActiveSubmission,
+    orgId: string = DEFAULT_ORG,
   ): SubmissionBinding | { error: string } {
-    const state = this.sessionFor(workspaceId, session)
+    const state = this.sessionFor(orgId, workspaceId, session)
     if (state.active.has(submission.submissionId)) {
       return { error: `submission ${submission.submissionId} is already active in ${state.key}` }
     }
@@ -408,6 +424,7 @@ export class AgentRegistry {
     workspaceId: string,
     session: string,
     commit?: string,
+    orgId: string = DEFAULT_ORG,
   ): {
     agents: number
     remoteAgents: number
@@ -415,7 +432,7 @@ export class AgentRegistry {
     remoteCapacity: number
     ready: number
   } {
-    const state = this.sessions.get(sessionKey(workspaceId, session))
+    const state = this.sessions.get(sessionKey(orgId, workspaceId, session))
     if (state === undefined) {
       return { agents: 0, remoteAgents: 0, capacity: 0, remoteCapacity: 0, ready: 0 }
     }
@@ -442,12 +459,13 @@ export class AgentRegistry {
     return { agents, remoteAgents, capacity, remoteCapacity, ready }
   }
 
-  private sessionFor(workspaceId: string, session: string): SessionState {
-    const key = sessionKey(workspaceId, session)
+  private sessionFor(orgId: string, workspaceId: string, session: string): SessionState {
+    const key = sessionKey(orgId, workspaceId, session)
     let state = this.sessions.get(key)
     if (state === undefined) {
       state = {
         key,
+        orgId,
         workspaceId,
         session,
         agents: new Map(),

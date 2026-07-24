@@ -2,6 +2,7 @@
 // run with caching. Each step delegates to a single-purpose sibling file
 // so the layers can be swapped without touching the others.
 
+import os from 'node:os'
 import {
   type CacheLayer,
   type CachePolicy,
@@ -21,6 +22,7 @@ import {
 } from '../graph/index.js'
 import { ulid, UserError } from '../util/index.js'
 import { executeTask } from './execute-task.js'
+import { resolveResourceCosts } from './resources.js'
 import { computeTaskHash } from './task-hash.js'
 import { busLogger, createEventBus, terminalSubscriber } from './events.js'
 import { installPlugins } from './plugin.js'
@@ -28,14 +30,15 @@ import type { VxPlugin } from './plugin.js'
 import { subscribeEventSinks, teardownPlugins } from './plugin-host.js'
 import type { SubscribedEventSinks } from './plugin-host.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
-import { deriveCacheSource, TELEMETRY_SCHEMA_VERSION } from './telemetry.js'
-import type { RunContextRecord, RunSummaryRecord, TaskTelemetry } from './telemetry.js'
+import { assembleRunSummary, deriveCacheSource } from './telemetry.js'
+import type { RunContextRecord, TaskTelemetry } from './telemetry.js'
 import { defaultLogger, resolveOutputView } from './logger.js'
 import { detectColors } from './colors.js'
 import { formatPersistentList } from './framed-output.js'
 import { plan, type RunPlan } from './plan.js'
 import { prepareRun } from './prepare.js'
 import {
+  captureDefaultBranch,
   captureGitContext,
   captureHostContext,
   captureWorkspaceIdentity,
@@ -43,11 +46,33 @@ import {
 } from './run-context.js'
 import { startRemotePrefetch } from './remote-prefetch.js'
 import { startLocalShortCircuit, type ShortCircuit } from './local-shortcircuit.js'
+import { formatVerifySection } from './verify.js'
 
 const EMPTY_SHORT_CIRCUIT: ShortCircuit = { preProbed: new Map(), restoreTier: new Set() }
+
+/**
+ * Grace after SIGTERMing the dependency-only persistent tasks at end-of-run
+ * before force-killing any that trap or ignore it — so a wedged mock server
+ * can't hang a normal run at completion. Well-behaved servers exit far under
+ * this, so the happy path never waits it out.
+ */
+const PERSISTENT_SHUTDOWN_GRACE_MS = 2000
 import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
 import { formatRunSummary } from './summary.js'
 import type { RunOptions, RunSummary } from './options.js'
+
+/**
+ * Parse the `VX_TASK_TIMEOUT` env var (ms) — the "global" run-level task
+ * timeout default. A missing/empty/non-positive-integer value yields
+ * `undefined` (ignored), so a typo never silently disables a task's own
+ * `exec.timeout`.
+ */
+function readTaskTimeoutEnv(): number | undefined {
+  const raw = process.env['VX_TASK_TIMEOUT']
+  if (raw === undefined || raw === '') return undefined
+  const n = Number(raw)
+  return Number.isInteger(n) && n > 0 ? n : undefined
+}
 
 /**
  * Compact the 4-axis cache policy into the `invocations.cache_policy`
@@ -176,6 +201,13 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     workspaceConfig?.concurrency ??
     Math.max(1, navigator.hardwareConcurrency)
 
+  // Run-level default task timeout (ms), applied to any task WITHOUT its own
+  // `exec.timeout`. Precedence, highest first: `--timeout`/RunOptions.timeout
+  // → `VX_TASK_TIMEOUT` env → workspace `timeout`. A malformed env value is
+  // ignored (a bad timeout must not silently disable a task's own limit).
+  const taskTimeoutDefault =
+    options.timeout ?? readTaskTimeoutEnv() ?? workspaceConfig?.timeout ?? undefined
+
   // Run-scoped registries of live subprocesses:
   //   - `liveChildren`: in-flight children. The runner adds/removes
   //     each child around its spawn (persistent children stay until
@@ -227,6 +259,20 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     const remoteCacheEnabled = cache instanceof LayeredCache
     const policy: CachePolicy = options.cache ?? FULL_CACHE_POLICY
 
+    // `--verify` observes the miss-then-save path, so a policy with NO write
+    // axis (`--no-cache`, `--cache=local:,remote:`) verifies nothing — every
+    // task would come back green with zero verdicts. The user asked for a
+    // proof; silently skipping it is the one failure mode verification must
+    // never have (same platform-honesty rule as the sandbox-unavailable
+    // error). `--force --verify` is the supported re-verify-warm recipe.
+    if (options.verify !== undefined && !policy.localWrite && !policy.remoteWrite) {
+      prepared.cache.close()
+      throw new UserError(
+        '--verify needs cache writes to prove anything (it verifies the save path); ' +
+          'drop --no-cache, or use --force --verify to re-execute and verify a warm graph',
+      )
+    }
+
     // Per-run context for the Tier-3 `invocations` header row. Captured
     // ONCE (git is ONE spawn for commit+branch, behind try/catch; never
     // fails a run). `dirty` reuses the `git status --porcelain` the
@@ -261,6 +307,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         flow: options.flow ?? null,
         commitSha: gitContext.commitSha,
         branch: gitContext.branch,
+        defaultBranch: captureDefaultBranch(process.env, workspaceRoot),
         dirty: gitContext.dirty,
         ci: ciContext.ci,
         ciProvider: ciContext.provider,
@@ -280,16 +327,24 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       )
     }
 
-    // Lazy SRT init: only fire it up if at least one task in the graph
-    // opts into sandboxing via its `sandbox: {...}` block. Tasks that
-    // need sandboxing on an unsupported platform get a hard error so
-    // they don't silently run unsandboxed.
-    const anySandboxed = [...nodes.values()].some((n) => n.config.sandbox !== undefined)
+    // Lazy SRT init: fire it up if at least one task opts into sandboxing
+    // via its `sandbox: {...}` block, OR `--verify=inputs`/`=all` is on (it
+    // forces the declared-input baseline sandbox onto every cacheable task to
+    // prove input-completeness). Tasks that need sandboxing on an unsupported
+    // platform get a hard error so they don't silently run unsandboxed —
+    // `--verify=inputs` in particular must fail loud, never falsely "pass".
+    const verifyInputs = options.verify?.inputs === true
+    const anySandboxed =
+      verifyInputs || [...nodes.values()].some((n) => n.config.sandbox !== undefined)
     if (anySandboxed) {
       const avail = await probeSandbox()
       if (!avail.available) {
         prepared.cache.close()
-        throw new UserError(`sandbox not available: ${avail.reason}`)
+        throw new UserError(
+          verifyInputs
+            ? `--verify=inputs needs the sandbox, which is not available: ${avail.reason}`
+            : `sandbox not available: ${avail.reason}`,
+        )
       }
       await initSandbox()
     }
@@ -316,6 +371,17 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         if (node.requested || node.surfaced === true) requestedCount++
       }
     }
+    // Resource-aware admission: resolve every task's `exec.resources`
+    // into absolute costs ONCE, up front (percent forms against the
+    // budgets), so the scheduler's inner loop is a plain Map.get. The
+    // CPU budget is the run's concurrency; the memory budget is
+    // os.totalmem() unless `--memory` overrides it (pass `--memory` in
+    // cgroup-limited containers — totalmem() reports the HOST's RAM).
+    // Nothing declared → empty map → fields omitted from the scheduler
+    // AND the footer → byte-identical legacy path.
+    const memBudget = options.memory ?? os.totalmem()
+    const resourceCosts = resolveResourceCosts(nodes, concurrency, memBudget)
+
     // Run context for the footer. The top-of-run header is gone — the
     // banner now lives in the summary, where the eye lands at the end.
     const runContext = {
@@ -324,11 +390,18 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       remoteCacheEnabled,
       concurrency,
       workspaceProjectCount,
+      ...(resourceCosts.size > 0 ? { cpuBudget: concurrency, memBudget } : {}),
     }
 
     // Lifecycle hooks drive the default logger's dynamic status line
     // (TTY-only); custom loggers may ignore them.
-    log.runStart?.({ total: taskCount, concurrency, requestedCount, context: runContext })
+    log.runStart?.({
+      total: taskCount,
+      concurrency,
+      requestedCount,
+      context: runContext,
+      startedAtMs: endedAtMsAtStart,
+    })
 
     // Remote-only: kick off background prefetches so remote-GET latency
     // overlaps execution. Fire-and-forget — execution starts on the next
@@ -386,6 +459,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         cache,
         cachePolicy: policy,
         forwardArgs: options.forwardArgs,
+        ...(options.retries !== undefined ? { retries: options.retries } : {}),
+        ...(taskTimeoutDefault !== undefined ? { timeout: taskTimeoutDefault } : {}),
+        ...(options.verify !== undefined ? { verify: options.verify } : {}),
         log,
         nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
         runStartHrTimeNs,
@@ -469,6 +545,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     const outcomes = await runGraph({
       nodes,
       concurrency,
+      ...(resourceCosts.size > 0 ? { resourceCosts, cpuBudget: concurrency, memBudget } : {}),
       ...(options.continueMode !== undefined ? { continueMode: options.continueMode } : {}),
       onStart: (node) => {
         log.taskStart?.(node)
@@ -510,25 +587,50 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     }
     const keepAliveSet = new Set(keepAlive)
 
-    // Shut down the dependency-only persistent tasks before reporting the
-    // final summary. SIGTERM gives well-behaved servers (vite, next,
-    // esbuild --watch) a moment to clean up; we don't escalate to SIGKILL
-    // — process-group propagation on Ctrl-C handles the unhappy case.
-    // Bun's Subprocess.kill is idempotent on an already-exited child.
-    for (const child of persistentRegistry.values()) {
-      if (!keepAliveSet.has(child)) child.kill('SIGTERM')
+    // Shut down the dependency-only persistent tasks before reporting the final
+    // summary. SIGTERM gives well-behaved servers (vite, next, esbuild --watch)
+    // a moment to clean up. Bun's Subprocess.kill is idempotent on an
+    // already-exited child. Bound the wait: a persistent dep that traps or
+    // ignores SIGTERM (a wedged mock server) would otherwise hang the run at
+    // NORMAL completion forever — after a grace, SIGKILL the stragglers and move
+    // on. Well-behaved servers exit in well under the grace, so the happy path
+    // pays nothing; the timer is cleared + unref'd so a fast shutdown never
+    // delays CLI exit.
+    const dyingChildren = [...persistentRegistry.values()].filter((c) => !keepAliveSet.has(c))
+    for (const child of dyingChildren) child.kill('SIGTERM')
+    const allExited = Promise.allSettled(dyingChildren.map((c) => c.exited))
+    let graceTimer: ReturnType<typeof setTimeout> | undefined
+    const winner = await Promise.race([
+      allExited.then(() => 'exited' as const),
+      new Promise<'grace'>((resolve) => {
+        graceTimer = setTimeout(() => resolve('grace'), PERSISTENT_SHUTDOWN_GRACE_MS)
+        graceTimer.unref?.()
+      }),
+    ])
+    if (graceTimer !== undefined) clearTimeout(graceTimer)
+    if (winner === 'grace') {
+      for (const child of dyingChildren) child.kill('SIGKILL')
+      await allExited
     }
-    await Promise.allSettled(
-      [...persistentRegistry.values()].filter((c) => !keepAliveSet.has(c)).map((c) => c.exited),
-    )
 
     // Clear the status line for good before the summary prints.
     log.runEnd?.()
 
     const list = [...outcomes.values()]
-    const ok = list.every(
-      (o) => o.status === 'success' || o.status === 'cache-hit' || o.status === 'cache-hit-remote',
-    )
+    const ok =
+      list.every(
+        (o) =>
+          o.status === 'success' || o.status === 'cache-hit' || o.status === 'cache-hit-remote',
+      ) &&
+      // `--verify`: a provably-unsafe cache entry (non-deterministic outputs, a
+      // re-run that failed, or a read of undeclared inputs) turns the run red so
+      // CI catches it.
+      !list.some(
+        (o) =>
+          o.verify?.kind === 'nondeterministic' ||
+          o.verify?.kind === 'rerun-failed' ||
+          o.verify?.kind === 'undeclared-inputs',
+      )
 
     // The summary + artifact writers + recordRun pass all exclude group
     // tasks via the shared tallyOutcomes helper. We pass the full
@@ -541,6 +643,24 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       for (const line of formatPersistentList(keepAliveNodes, colors)) log.status(line)
     }
     for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
+    if (options.verify !== undefined) {
+      for (const line of formatVerifySection(list)) log.status(line)
+      // A fingerprint-only run attaches no verdicts, so the verdict-driven
+      // section above prints nothing — report what actually happened.
+      if (options.verify.fingerprint && !options.verify.determinism && !options.verify.inputs) {
+        const n = list.filter((o) => o.outputFp !== undefined).length
+        log.status('')
+        log.status(
+          `  Verify:   fingerprinted ${n} task output trees (cross-machine diff via a connected serve)`,
+        )
+        // Only EXECUTED tasks fingerprint — a warm all-hit run reports 0.
+        // A per-platform matrix wired without `--force` produces nothing
+        // forever, so name the cause instead of a bare 0.
+        if (n === 0) {
+          log.status('            (0 executed — cache hits do not fingerprint; pair with --force)')
+        }
+      }
+    }
 
     // Optional artifacts. Errors are surfaced to the user but don't
     // change the run's exit code — the run already happened.
@@ -610,6 +730,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         if (o.hash !== undefined) t.hash = o.hash
         if (o.cpuMs !== undefined) t.cpuMs = o.cpuMs
         if (o.peakRssBytes !== undefined) t.peakRssBytes = o.peakRssBytes
+        if (o.attempts !== undefined) t.attempts = o.attempts
+        if (o.verify !== undefined) t.verify = o.verify
+        if (o.outputFp !== undefined) t.outputFp = o.outputFp
         if (o.wallclockStartNs !== undefined) t.wallclockStartNs = o.wallclockStartNs.toString()
         if (o.wallclockEndNs !== undefined) t.wallclockEndNs = o.wallclockEndNs.toString()
         summaryTasks.push(t)
@@ -641,6 +764,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         ...(o.wallclockStartNs !== undefined ? { wallclockStartNs: o.wallclockStartNs } : {}),
         ...(o.wallclockEndNs !== undefined ? { wallclockEndNs: o.wallclockEndNs } : {}),
         cacheHit: o.status === 'cache-hit' || o.status === 'cache-hit-remote',
+        ...(o.attempts !== undefined ? { attempts: o.attempts } : {}),
       })
       if (o.status === 'failed') failedCount++
       if (o.status === 'cache-hit') hitLocalCount++
@@ -680,20 +804,12 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // emitSummary/flush are crash-isolated, so a faulty sink can't fail
     // the run; flush is the sink's last chance to ship buffered records.
     if (telemetry !== undefined && runContextRecord !== undefined) {
-      const summary: RunSummaryRecord = {
-        v: TELEMETRY_SCHEMA_VERSION,
-        run: runContextRecord,
+      const summary = assembleRunSummary(runContextRecord, summaryTasks, {
         startedAt: endedAtMsAtStart,
         endedAt: endedAtMs,
         totalDurationMs: Math.round(totalMs),
-        taskCount: toRecord.length,
-        failedCount,
-        hitCount: hitLocalCount + hitRemoteCount,
-        hitLocalCount,
-        hitRemoteCount,
         exitOk: ok,
-        tasks: summaryTasks,
-      }
+      })
       telemetry.emitSummary(summary)
       await telemetry.flush()
     }

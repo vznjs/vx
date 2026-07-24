@@ -51,6 +51,7 @@ const RUN: RunContextRecord = {
   flow: 'focused',
   commitSha: 'abc123',
   branch: 'main',
+  defaultBranch: 'main',
   dirty: false,
   ci: false,
   ciProvider: null,
@@ -145,6 +146,28 @@ describe('createTelemetrySource — projection', () => {
       expect(r.peakRssBytes).toBe(1024)
       expect(r.wallclockStartNs).toBe('100')
       expect(r.wallclockEndNs).toBe('200')
+    }
+  })
+
+  it('projects the --verify verdict onto task.end (absent without --verify)', () => {
+    const { sink, records } = recorder()
+    const src = createTelemetrySource({ sinks: [sink], run: RUN })
+    const node = mkNode('a#build', 'tsc')
+    // A run WITHOUT --verify: no verdict on the outcome → no verify field.
+    src.subscriber({ kind: 'task:complete', node, outcome: mkOutcome(node) })
+    // A --verify run that caught a non-hermetic task.
+    src.subscriber({
+      kind: 'task:complete',
+      node,
+      outcome: mkOutcome(node, {
+        verify: { kind: 'nondeterministic', changed: ['dist/a.js'] },
+      } as Partial<TaskOutcome>),
+    })
+    const plain = records[0]!
+    const verified = records[1]!
+    if (plain.kind === 'task.end') expect(plain.verify).toBeUndefined()
+    if (verified.kind === 'task.end') {
+      expect(verified.verify).toEqual({ kind: 'nondeterministic', changed: ['dist/a.js'] })
     }
   })
 

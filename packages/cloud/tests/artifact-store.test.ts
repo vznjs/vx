@@ -1,152 +1,47 @@
-// The serve-hosted artifact store: the Turbo /v8/artifacts wire core's
-// RemoteCache already speaks, backed by a flat dir under the ingest root.
-// Covered at three levels: the raw wire (PUT/HEAD/GET + tag sidecar + auth +
-// limits), a real end-to-end run with VX_REMOTE_CACHE_URL pointed at the
-// serve (miss → upload, local wipe → remote-hit restore), and the cloud()
-// plugin's environment rung (lazy /v1/meta capability probe).
+// The ArtifactStore — the vx-native `/v1/cache/:hash` wire policy
+// (docs/design/native-cache-wire-2026-07.md), driven directly against the
+// store (backend-agnostic; the platform's S3 path + the full HTTP round-trip
+// live in blob-store-s3.test.ts + server.test.ts). Covered here: the raw
+// request policy (caps, zstd-magic, hostile hashes, has/storedDurationMs),
+// the trust-scope + tenancy + list matrix, and the cloud() plugin's
+// environment rung (lazy /v1/meta capability probe against a mock serve).
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test'
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { Cache, FULL_CACHE_POLICY, LayeredCache, type CacheContext } from '@vzn/vx'
 import {
-  Cache,
-  FULL_CACHE_POLICY,
-  LayeredCache,
-  run,
-  type CacheContext,
-  type Logger,
-} from '@vzn/vx'
-import { startServe } from '../src/cli/serve.js'
-import { ArtifactStore, type Principal } from '../src/artifact-store.js'
-import { serveInfoPath } from '../src/serve-info.js'
+  ArtifactStore,
+  BATCH_HASH_CAP,
+  MAX_ARTIFACT_BYTES,
+  type Principal,
+} from '../src/artifact-store.js'
 import { ENVIRONMENTS_VERSION, writeEnvironmentsFile } from '../src/environments.js'
 import { cloud } from '../src/plugin.js'
 
-const TIMEOUT = 30_000
+// PUT refuses a body that is not a zstd frame (an immutable store must never
+// let junk lock a key), so every stored test body is real zstd. Deterministic
+// per tag, so round-trip assertions compare against zbody(tag) bytes. The
+// copy pins the ArrayBuffer generic — toEqual() against a fresh
+// `new Uint8Array(await res.arrayBuffer())` needs both sides typed alike.
+const zbody = (tag: string): Uint8Array<ArrayBuffer> =>
+  new Uint8Array(Bun.zstdCompressSync(Buffer.from(tag)))
 
-// Isolate the per-user serve advertisement at a temp path so test serves
-// never clobber (or get discovered through) the real machine-level file.
-const prevServeInfo = process.env['VX_CLOUD_SERVE_INFO']
-beforeAll(() => {
-  process.env['VX_CLOUD_SERVE_INFO'] = path.join(
-    tmpdir(),
-    `vx-serveinfo-artifacts-${process.pid}.json`,
-  )
-})
-afterAll(async () => {
-  await rm(serveInfoPath(), { force: true })
-  if (prevServeInfo === undefined) delete process.env['VX_CLOUD_SERVE_INFO']
-  else process.env['VX_CLOUD_SERVE_INFO'] = prevServeInfo
-})
-
-describe('vx serve /v8/artifacts — the Turbo wire', () => {
+describe('ArtifactStore — native-wire request policy (LocalDirBackend)', () => {
   let dir: string
-  let server: Awaited<ReturnType<typeof startServe>>
-  const auth = { authorization: 'Bearer store-tok' }
 
   beforeAll(async () => {
     dir = await mkdtemp(path.join(tmpdir(), 'vx-artifacts-'))
-    server = await startServe({ root: dir, ingestDir: dir, token: 'store-tok' })
   })
-
   afterAll(async () => {
-    await server.stop()
     await rm(dir, { recursive: true, force: true })
   })
 
-  it('advertises the artifact store on /v1/meta', async () => {
-    const meta = (await (await fetch(`${server.origin}/v1/meta`)).json()) as {
-      artifacts: boolean
-    }
-    expect(meta.artifacts).toBe(true)
-  })
-
-  it('PUT → HEAD → GET round-trips bytes + the x-artifact-tag sidecar', async () => {
-    const hash = 'a1b2c3d4e5f60718'
-    const body = new TextEncoder().encode('artifact-bytes-v1')
-
-    // Miss before the upload.
-    expect(
-      (await fetch(`${server.origin}/v8/artifacts/${hash}`, { method: 'HEAD', headers: auth }))
-        .status,
-    ).toBe(404)
-
-    // PUT with a client-side signing tag (?teamId/slug accepted by ignoring).
-    const put = await fetch(`${server.origin}/v8/artifacts/${hash}?teamId=team_x&slug=acme`, {
-      method: 'PUT',
-      headers: { ...auth, 'x-artifact-tag': 'dGVzdC10YWc=', 'x-artifact-duration': '42' },
-      body,
-    })
-    expect(put.status).toBe(200)
-
-    // HEAD sees it now.
-    const head = await fetch(`${server.origin}/v8/artifacts/${hash}`, {
-      method: 'HEAD',
-      headers: auth,
-    })
-    expect(head.status).toBe(200)
-
-    // GET streams the exact bytes with content-length + the stored tag —
-    // signing clients verify the tag against the body on GET.
-    const get = await fetch(`${server.origin}/v8/artifacts/${hash}`, { headers: auth })
-    expect(get.status).toBe(200)
-    expect(get.headers.get('x-artifact-tag')).toBe('dGVzdC10YWc=')
-    // The original task duration rides back too, so a remote hit records
-    // honest analytics instead of durationMs 0.
-    expect(get.headers.get('x-artifact-duration')).toBe('42')
-    expect(Number(get.headers.get('content-length'))).toBe(body.byteLength)
-    expect(new Uint8Array(await get.arrayBuffer())).toEqual(body)
-
-    // The backing files land in the token's scope (a single --token maps to
-    // default/trusted): `<hash>.tar.zst` + sidecars.
-    const files = await readdir(path.join(dir, 'artifacts', 'default', 'trusted'))
-    expect(files.sort()).toEqual([`${hash}.duration`, `${hash}.tag`, `${hash}.tar.zst`])
-  })
-
-  it('/v1/cache/stats reports the artifact-store footprint', async () => {
-    // The round-trip test above uploaded at least one artifact; the stats
-    // route must reflect the store's real bytes (sidecars included), because
-    // the ingest DB's entries table is structurally empty on a serve and the
-    // dashboard's Store tile keys off these fields.
-    const res = await fetch(`${server.origin}/v1/cache/stats`, { headers: auth })
-    expect(res.status).toBe(200)
-    const stats = (await res.json()) as { artifactCount: number; artifactBytes: number }
-    expect(stats.artifactCount).toBeGreaterThanOrEqual(1)
-    expect(stats.artifactBytes).toBeGreaterThan(0)
-  })
-
-  it('omits x-artifact-tag on GET when the PUT carried none', async () => {
-    const hash = 'feedfacefeedface'
-    await fetch(`${server.origin}/v8/artifacts/${hash}`, {
-      method: 'PUT',
-      headers: auth,
-      body: 'untagged',
-    })
-    const get = await fetch(`${server.origin}/v8/artifacts/${hash}`, { headers: auth })
-    expect(get.status).toBe(200)
-    expect(get.headers.get('x-artifact-tag')).toBeNull()
-  })
-
-  it('is behind the bearer gate', async () => {
-    const res = await fetch(`${server.origin}/v8/artifacts/a1b2c3d4e5f60718`)
-    expect(res.status).toBe(401)
-    const put = await fetch(`${server.origin}/v8/artifacts/cafebabecafebabe`, {
-      method: 'PUT',
-      headers: { authorization: 'Bearer wrong' },
-      body: 'x',
-    })
-    expect(put.status).toBe(401)
-  })
-
-  it('rejects an oversized PUT with 413 and a hostile hash with 400', async () => {
-    // fetch() recomputes Content-Length from the real body, so the declared-
-    // length 413 branch is exercised against the handler directly (a
-    // hand-built Request keeps the header).
-    const { ArtifactStore, MAX_ARTIFACT_BYTES } = await import('../src/artifact-store.js')
+  it('rejects an oversized declared PUT with 413 and a hostile hash with 400', async () => {
     const store = new ArtifactStore(path.join(dir, 'artifacts'))
     const big = await store.handle(
-      new Request('http://x/v8/artifacts/deadbeefdeadbeef', {
+      new Request('http://x/v1/cache/deadbeefdeadbeef', {
         method: 'PUT',
         headers: { 'content-length': String(MAX_ARTIFACT_BYTES + 1) },
         body: 'small-but-lying',
@@ -155,144 +50,68 @@ describe('vx serve /v8/artifacts — the Turbo wire', () => {
     )
     expect(big.status).toBe(413)
 
-    const evil = await fetch(`${server.origin}/v8/artifacts/${encodeURIComponent('../escape')}`, {
-      method: 'PUT',
-      headers: auth,
-      body: 'x',
-    })
-    expect(evil.status).toBe(400)
+    // A hostile hash never becomes an entry — the store's own gate rejects a
+    // traversal token for any embedder calling handle() directly.
+    const evilDirect = await store.handle(
+      new Request('http://x/v1/cache/whatever', { method: 'PUT', body: 'x' }),
+      '../escape',
+    )
+    expect(evilDirect.status).toBe(400)
+    const stored = await readdir(path.join(dir, 'artifacts')).catch(() => [] as string[])
+    expect(stored.every((n) => !n.includes('escape'))).toBe(true)
   })
 
-  it('has() is a local stat: present after PUT, false for unknown/hostile hashes', async () => {
-    const { ArtifactStore } = await import('../src/artifact-store.js')
+  it('caps a chunked PUT on ACTUAL streamed bytes — 413, nothing stored', async () => {
+    // No content-length at all (a chunked body): the declared-length
+    // pre-check can't fire, so only the mid-stream cumulative cap stands
+    // between a hostile client and the disk.
+    const scratch = await mkdtemp(path.join(tmpdir(), 'vx-stream-cap-'))
+    try {
+      const store = new ArtifactStore(path.join(scratch, 'artifacts'), 1024)
+      const chunk = new Uint8Array(300).fill(65)
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (let i = 0; i < 5; i++) controller.enqueue(chunk) // 1500 bytes > 1024 cap
+          controller.close()
+        },
+      })
+      const res = await store.handle(
+        new Request('http://x/v1/cache/beefbeefbeef0001', { method: 'PUT', body: stream }),
+        'beefbeefbeef0001',
+      )
+      expect(res.status).toBe(413)
+      const names = await readdir(path.join(scratch, 'artifacts', 'default', 'trusted')).catch(
+        () => [] as string[],
+      )
+      expect(names).toEqual([])
+    } finally {
+      await rm(scratch, { recursive: true, force: true })
+    }
+  })
+
+  it('has()/storedDurationMs are a local stat; false for unknown/hostile hashes', async () => {
     const store = new ArtifactStore(path.join(dir, 'artifacts'))
     const hash = 'beefbeefbeefbeef'
     expect(await store.has(hash)).toBe(false)
-    await fetch(`${server.origin}/v8/artifacts/${hash}`, {
-      method: 'PUT',
-      headers: { ...auth, 'x-artifact-duration': '7' },
-      body: 'probe-me',
-    })
+    const put = await store.handle(
+      new Request(`http://x/v1/cache/${hash}`, {
+        method: 'PUT',
+        headers: { 'x-vx-duration-ms': '7' },
+        body: zbody('probe-me'),
+      }),
+      hash,
+    )
+    expect(put.status).toBe(200)
     expect(await store.has(hash)).toBe(true)
     expect(await store.storedDurationMs(hash)).toBe(7)
     expect(await store.storedDurationMs('0000000000000000')).toBeUndefined()
     expect(await store.has('../escape')).toBe(false)
   })
-
-  it('404s a GET for an unknown hash and 405s other methods', async () => {
-    const get = await fetch(`${server.origin}/v8/artifacts/0000000000000000`, { headers: auth })
-    expect(get.status).toBe(404)
-    const del = await fetch(`${server.origin}/v8/artifacts/0000000000000000`, {
-      method: 'DELETE',
-      headers: auth,
-    })
-    expect(del.status).toBe(405)
-  })
 })
 
-// ---------------------------------------------------------------------------
-// End-to-end: a real run with VX_REMOTE_CACHE_* pointed at the serve
-// ---------------------------------------------------------------------------
-
-const silentLogger: Logger = {
-  status() {},
-  taskStdout() {},
-  taskStderr() {},
-  taskComplete() {},
-}
-
-async function makeWorkspace(): Promise<string> {
-  const root = await mkdtemp(path.join(tmpdir(), 'vx-serve-remote-'))
-  await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-  await writeFile(
-    path.join(root, 'package.json'),
-    JSON.stringify({ name: 'fixture-root', private: true }),
-  )
-  const dir = path.join(root, 'packages', 'app')
-  await mkdir(path.join(dir, 'src'), { recursive: true })
-  await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app', version: '0.0.0' }))
-  await writeFile(path.join(dir, 'src', 'in.txt'), 'v1')
-  await writeFile(
-    path.join(dir, 'vx.config.mjs'),
-    `
-      export default {
-        tasks: {
-          build: {
-            exec: { command: 'echo built > out.txt' },
-            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-          },
-        },
-      }
-    `,
-  )
-  const git = (...args: string[]) => Bun.spawnSync({ cmd: ['git', ...args], cwd: root })
-  git('init', '-q')
-  git('config', 'user.email', 't@vx.local')
-  git('config', 'user.name', 'vx test')
-  git('add', '-A')
-  git('commit', '-qm', 'init')
-  return root
-}
-
-describe('e2e: vx run against the serve-hosted artifact store', () => {
-  const savedEnv: Record<string, string | undefined> = {}
-  const KEYS = ['VX_REMOTE_CACHE_URL', 'VX_REMOTE_CACHE_TOKEN', 'VX_REMOTE_CACHE_SIGNATURE_KEY']
-
-  beforeEach(() => {
-    for (const k of KEYS) savedEnv[k] = process.env[k]
-  })
-
-  afterEach(() => {
-    for (const [k, v] of Object.entries(savedEnv)) {
-      if (v === undefined) delete process.env[k]
-      else process.env[k] = v
-    }
-  })
-
-  it(
-    'miss → upload to the serve; local wipe → the remote hit restores (signed)',
-    async () => {
-      const ingestDir = await mkdtemp(path.join(tmpdir(), 'vx-serve-store-'))
-      const server = await startServe({ root: ingestDir, ingestDir, token: 'store-tok' })
-      const root = await makeWorkspace()
-      process.env['VX_REMOTE_CACHE_URL'] = server.origin
-      process.env['VX_REMOTE_CACHE_TOKEN'] = 'store-tok'
-      process.env['VX_REMOTE_CACHE_SIGNATURE_KEY'] = 'e2e-signing-key-0123456789abcdef'
-      try {
-        const first = await run({ cwd: root, tasks: ['build'], log: silentLogger })
-        expect(first.ok).toBe(true)
-        expect(first.outcomes[0]!.status).toBe('success')
-
-        // The write-through upload landed in the token's scope
-        // (default/trusted) — artifact + the signing-tag + duration sidecars.
-        const files = (
-          await readdir(path.join(ingestDir, 'artifacts', 'default', 'trusted'))
-        ).sort()
-        expect(files.length).toBe(3)
-        expect(files[0]!.endsWith('.duration')).toBe(true)
-        expect(files[1]!.endsWith('.tag')).toBe(true)
-        expect(files[2]!.endsWith('.tar.zst')).toBe(true)
-
-        // Wipe the local cache: the serve is now the only source of truth.
-        await rm(path.join(root, '.vx'), { recursive: true, force: true })
-
-        const second = await run({ cwd: root, tasks: ['build'], log: silentLogger })
-        expect(second.ok).toBe(true)
-        // A remote hit proves the GET round-trip INCLUDING the returned
-        // x-artifact-tag (the signing client verifies it before restoring).
-        expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
-        expect(await Bun.file(path.join(root, 'packages', 'app', 'out.txt')).text()).toContain(
-          'built',
-        )
-      } finally {
-        await server.stop()
-        await rm(root, { recursive: true, force: true })
-        await rm(ingestDir, { recursive: true, force: true })
-      }
-    },
-    TIMEOUT,
-  )
-})
+// (The full HTTP round-trip — PUT/HEAD/GET, the 307 offload, the bearer gate,
+// tier scopes, provenance, and a real NativeCacheClient run — is driven
+// against the platform server in server.test.ts + blob-store-s3.test.ts.)
 
 // ---------------------------------------------------------------------------
 // cloud() plugin — the environment rung of the cache capability
@@ -308,14 +127,14 @@ function cacheCtx(localCache: Cache, root: string): CacheContext {
   }
 }
 
-/** A mock serve answering /v1/meta + recording /v8 requests. */
-function mockServe(artifacts: boolean): {
+/** A mock serve answering /v1/meta + recording /v1/cache requests. */
+function mockServe(cacheWire: boolean): {
   server: ReturnType<typeof Bun.serve>
   origin: string
   metaHits: () => number
-  v8Requests: { hash: string; auth: string | null }[]
+  cacheRequests: { hash: string; auth: string | null }[]
 } {
-  const v8Requests: { hash: string; auth: string | null }[] = []
+  const cacheRequests: { hash: string; auth: string | null }[] = []
   let meta = 0
   const server = Bun.serve({
     port: 0,
@@ -323,22 +142,33 @@ function mockServe(artifacts: boolean): {
       const url = new URL(req.url)
       if (url.pathname === '/v1/meta') {
         meta++
-        return Response.json({ v: 1, name: 'mock', auth: 'token', artifacts })
+        return Response.json({
+          v: 1,
+          name: 'mock',
+          auth: 'token',
+          artifacts: cacheWire,
+          ...(cacheWire ? { cacheWire: 1 } : {}),
+        })
       }
-      const m = url.pathname.match(/^\/v8\/artifacts\/([^/]+)$/)
+      const m = url.pathname.match(/^\/v1\/cache\/([^/]+)$/)
       if (m) {
-        v8Requests.push({ hash: m[1]!, auth: req.headers.get('authorization') })
+        cacheRequests.push({ hash: m[1]!, auth: req.headers.get('authorization') })
         return new Response(null, { status: 404 })
       }
       return new Response('nope', { status: 404 })
     },
   })
-  return { server, origin: `http://localhost:${server.port}`, metaHits: () => meta, v8Requests }
+  return {
+    server,
+    origin: `http://localhost:${server.port}`,
+    metaHits: () => meta,
+    cacheRequests,
+  }
 }
 
 describe('cloud() cache capability — environment rung', () => {
   const savedEnv: Record<string, string | undefined> = {}
-  const KEYS = ['VX_REMOTE_CACHE_URL', 'VX_REMOTE_CACHE_TOKEN', 'VX_CLOUD_CONFIG', 'VX_CLOUD_ENV']
+  const KEYS = ['VX_CLOUD_URL', 'VX_CLOUD_TOKEN', 'VX_CLOUD_CONFIG', 'VX_CLOUD_ENV']
   let root: string
   let localCache: Cache
 
@@ -370,7 +200,7 @@ describe('cloud() cache capability — environment rung', () => {
     })
   }
 
-  it('builds a LayeredCache against the active environment when its serve advertises artifacts', async () => {
+  it('builds a LayeredCache against the active environment when its serve advertises the cache wire', async () => {
     const mock = mockServe(true)
     try {
       connectTo(mock.origin)
@@ -381,16 +211,16 @@ describe('cloud() cache capability — environment rung', () => {
       // environment's bearer token.
       const entry = await layer.get('deadbeefdeadbeef', { taskId: 'demo#build', command: 'x' })
       expect(entry).toBeNull()
-      expect(mock.v8Requests.length).toBe(1)
-      expect(mock.v8Requests[0]!.hash).toBe('deadbeefdeadbeef')
-      expect(mock.v8Requests[0]!.auth).toBe('Bearer env-tok')
+      expect(mock.cacheRequests.length).toBe(1)
+      expect(mock.cacheRequests[0]!.hash).toBe('deadbeefdeadbeef')
+      expect(mock.cacheRequests[0]!.auth).toBe('Bearer env-tok')
       expect(mock.metaHits()).toBe(1)
     } finally {
       void mock.server.stop(true)
     }
   })
 
-  it('declines when the environment serve does not advertise artifacts', async () => {
+  it('declines when the environment serve does not advertise the cache wire', async () => {
     const mock = mockServe(false)
     try {
       connectTo(mock.origin)
@@ -402,23 +232,23 @@ describe('cloud() cache capability — environment rung', () => {
     }
   })
 
-  it('never probes /v1/meta when env vars already configure the cache', async () => {
+  it('never probes /v1/meta when an explicit URL already configures the cache', async () => {
     const mock = mockServe(true)
     const explicit = mockServe(true)
     try {
       connectTo(mock.origin)
-      process.env['VX_REMOTE_CACHE_URL'] = explicit.origin
-      process.env['VX_REMOTE_CACHE_TOKEN'] = 'explicit-tok'
+      process.env['VX_CLOUD_URL'] = explicit.origin
+      process.env['VX_CLOUD_TOKEN'] = 'explicit-tok'
       const layer = (await cloud().cache!(cacheCtx(localCache, root))) as LayeredCache
       expect(layer).toBeInstanceOf(LayeredCache)
 
       await layer.get('deadbeefdeadbeef')
       // The explicit config won: its store saw the read; the connected
       // environment was never probed at all.
-      expect(explicit.v8Requests.length).toBe(1)
-      expect(explicit.v8Requests[0]!.auth).toBe('Bearer explicit-tok')
+      expect(explicit.cacheRequests.length).toBe(1)
+      expect(explicit.cacheRequests[0]!.auth).toBe('Bearer explicit-tok')
       expect(mock.metaHits()).toBe(0)
-      expect(mock.v8Requests.length).toBe(0)
+      expect(mock.cacheRequests.length).toBe(0)
     } finally {
       void mock.server.stop(true)
       void explicit.server.stop(true)
@@ -440,8 +270,8 @@ describe('cloud() cache capability — environment rung', () => {
 
 describe('ArtifactStore — trust scopes (poisoning guard)', () => {
   let dir: string
-  const trusted = { tier: 'trusted', bucket: 'default' } as const
-  const untrusted = { tier: 'untrusted', bucket: 'default' } as const
+  const trusted = { orgId: 'default', tier: 'trusted', bucket: 'default' } as const
+  const untrusted = { orgId: 'default', tier: 'untrusted', bucket: 'default' } as const
 
   beforeEach(async () => {
     dir = await mkdtemp(path.join(tmpdir(), 'vx-scope-'))
@@ -452,14 +282,14 @@ describe('ArtifactStore — trust scopes (poisoning guard)', () => {
 
   const hdrs = (scope?: string) =>
     scope !== undefined ? { headers: { 'x-vx-cache-scope': scope } } : {}
-  const put = (store: ArtifactStore, hash: string, body: string, p: Principal, scope?: string) =>
+  const put = (store: ArtifactStore, hash: string, tag: string, p: Principal, scope?: string) =>
     store.handle(
-      new Request(`http://x/v8/artifacts/${hash}`, { method: 'PUT', body, ...hdrs(scope) }),
+      new Request(`http://x/v1/cache/${hash}`, { method: 'PUT', body: zbody(tag), ...hdrs(scope) }),
       hash,
       p,
     )
   const get = (store: ArtifactStore, hash: string, p: Principal, scope?: string) =>
-    store.handle(new Request(`http://x/v8/artifacts/${hash}`, hdrs(scope)), hash, p)
+    store.handle(new Request(`http://x/v1/cache/${hash}`, hdrs(scope)), hash, p)
 
   it('an untrusted write NEVER feeds a trusted read (quarantine)', async () => {
     const store = new ArtifactStore(path.join(dir, 'artifacts'))
@@ -484,8 +314,10 @@ describe('ArtifactStore — trust scopes (poisoning guard)', () => {
     // cross-poison): immutability is per-scope.
     expect((await put(store, hash, 'from-pr-B', untrusted, 'pr-2')).status).toBe(200)
     // Each PR reads back its OWN bytes.
-    expect(await (await get(store, hash, untrusted, 'pr-1')).text()).toBe('from-pr-A')
-    expect(await (await get(store, hash, untrusted, 'pr-2')).text()).toBe('from-pr-B')
+    const a = await (await get(store, hash, untrusted, 'pr-1')).arrayBuffer()
+    expect(new Uint8Array(a)).toEqual(zbody('from-pr-A'))
+    const b = await (await get(store, hash, untrusted, 'pr-2')).arrayBuffer()
+    expect(new Uint8Array(b)).toEqual(zbody('from-pr-B'))
     // A trusted build still sees NEITHER.
     expect((await get(store, hash, trusted)).status).toBe(404)
   })
@@ -497,7 +329,7 @@ describe('ArtifactStore — trust scopes (poisoning guard)', () => {
     // The PR warms off main's cache.
     const got = await get(store, hash, untrusted)
     expect(got.status).toBe(200)
-    expect(await got.text()).toBe('legit')
+    expect(new Uint8Array(await got.arrayBuffer())).toEqual(zbody('legit'))
   })
 
   it('an untrusted write cannot overwrite a trusted artifact', async () => {
@@ -507,7 +339,7 @@ describe('ArtifactStore — trust scopes (poisoning guard)', () => {
     // The untrusted PUT lands in untrusted/, leaving trusted/ untouched.
     expect((await put(store, hash, 'evil', untrusted)).status).toBe(200)
     const trustedGet = await get(store, hash, trusted)
-    expect(await trustedGet.text()).toBe('legit')
+    expect(new Uint8Array(await trustedGet.arrayBuffer())).toEqual(zbody('legit'))
   })
 
   it('artifacts are immutable — a re-PUT of an existing hash is refused (409)', async () => {
@@ -516,20 +348,327 @@ describe('ArtifactStore — trust scopes (poisoning guard)', () => {
     expect((await put(store, hash, 'first', trusted)).status).toBe(200)
     expect((await put(store, hash, 'overwrite', trusted)).status).toBe(409)
     const got = await get(store, hash, trusted)
-    expect(await got.text()).toBe('first')
+    expect(new Uint8Array(await got.arrayBuffer())).toEqual(zbody('first'))
   })
 
-  it('migrates a legacy flat store into default/trusted/', async () => {
-    const artDir = path.join(dir, 'artifacts')
-    await mkdir(artDir, { recursive: true })
-    await writeFile(path.join(artDir, 'deadbeefdeadbeef.tar.zst'), 'legacy')
-    await writeFile(path.join(artDir, 'deadbeefdeadbeef.tag'), 'sig')
-    const store = new ArtifactStore(artDir)
-    await store.migrateLegacyFlatStore()
-    const got = await get(store, 'deadbeefdeadbeef', trusted)
-    expect(got.status).toBe(200)
-    expect(await got.text()).toBe('legacy')
-    const moved = await readdir(path.join(artDir, 'default', 'trusted'))
-    expect(moved.sort()).toEqual(['deadbeefdeadbeef.tag', 'deadbeefdeadbeef.tar.zst'])
+  it('a `..` / `.` sub-scope collapses to `shared` (no bucket-root scatter)', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    const hash = 'ddccbbaa00112233'
+    // An untrusted PUT claiming sub-scope `..` must not land at the bucket
+    // root; it collapses to the `shared` sub-scope like any invalid value.
+    expect((await put(store, hash, 'x', untrusted, '..')).status).toBe(200)
+    const shared = await readdir(path.join(dir, 'artifacts', 'default', 'untrusted', 'shared'))
+    expect(shared).toContain(`${hash}.tar.zst`)
+    // Nothing was written up at the bucket root.
+    const bucketRoot = await readdir(path.join(dir, 'artifacts', 'default'))
+    expect(bucketRoot.every((n) => !n.endsWith('.tar.zst'))).toBe(true)
   })
 })
+
+describe('ArtifactStore — org/workspace tenancy prefix (platform §8.1)', () => {
+  let dir: string
+  // Tenant-derived principals (no `bucket` override): the scope base is
+  // `org/<orgId>/ws/<workspaceId ?? _org>`.
+  const orgAws1: Principal = { orgId: 'org-a', workspaceId: 'ws-1', tier: 'trusted' }
+  const orgAws1Pr: Principal = { orgId: 'org-a', workspaceId: 'ws-1', tier: 'untrusted' }
+  const orgAws2: Principal = { orgId: 'org-a', workspaceId: 'ws-2', tier: 'trusted' }
+  const orgBws1: Principal = { orgId: 'org-b', workspaceId: 'ws-1', tier: 'trusted' }
+  const orgAwide: Principal = { orgId: 'org-a', tier: 'trusted' }
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'vx-tenant-'))
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  const put = (store: ArtifactStore, hash: string, tag: string, p: Principal) =>
+    store.handle(
+      new Request(`http://x/v1/cache/${hash}`, { method: 'PUT', body: zbody(tag) }),
+      hash,
+      p,
+    )
+  const get = (store: ArtifactStore, hash: string, p: Principal) =>
+    store.handle(new Request(`http://x/v1/cache/${hash}`), hash, p)
+
+  it('a write lands under org/<orgId>/ws/<wsId>/<tier>', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    const hash = 'a1a2a3a4a5a6a7a8'
+    expect((await put(store, hash, 'bytes', orgAws1)).status).toBe(200)
+    const under = await readdir(
+      path.join(dir, 'artifacts', 'org', 'org-a', 'ws', 'ws-1', 'trusted'),
+    )
+    expect(under).toContain(`${hash}.tar.zst`)
+    // The writer reads it back; a same-tier peer in the same tenant does too.
+    expect((await get(store, hash, orgAws1)).status).toBe(200)
+  })
+
+  it("a second org NEVER reads org A's cache key", async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    const hash = 'b1b2b3b4b5b6b7b8'
+    expect((await put(store, hash, 'org-a-bytes', orgAws1)).status).toBe(200)
+    // Same key, same workspace slug, DIFFERENT org → 404 (cross-tenant clamp).
+    expect((await get(store, hash, orgBws1)).status).toBe(404)
+  })
+
+  it('two workspaces in one org are isolated', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    const hash = 'c1c2c3c4c5c6c7c8'
+    expect((await put(store, hash, 'ws1-bytes', orgAws1)).status).toBe(200)
+    // A different workspace in the SAME org can't read it.
+    expect((await get(store, hash, orgAws2)).status).toBe(404)
+    // ...and can write the same key in its own scope.
+    expect((await put(store, hash, 'ws2-bytes', orgAws2)).status).toBe(200)
+    const w1 = await (await get(store, hash, orgAws1)).arrayBuffer()
+    expect(new Uint8Array(w1)).toEqual(zbody('ws1-bytes'))
+    const w2 = await (await get(store, hash, orgAws2)).arrayBuffer()
+    expect(new Uint8Array(w2)).toEqual(zbody('ws2-bytes'))
+  })
+
+  it('trust tiers hold within a tenant: untrusted never feeds trusted', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    const hash = 'd1d2d3d4d5d6d7d8'
+    // A fork PR under org-a/ws-1 poisons the key.
+    expect((await put(store, hash, 'evil', orgAws1Pr)).status).toBe(200)
+    const under = await readdir(
+      path.join(dir, 'artifacts', 'org', 'org-a', 'ws', 'ws-1', 'untrusted', 'shared'),
+    )
+    expect(under).toContain(`${hash}.tar.zst`)
+    // The trusted build for the same tenant/key must NOT see it.
+    expect((await get(store, hash, orgAws1)).status).toBe(404)
+    // A DIFFERENT key present only in the tenant's trusted scope warms the PR
+    // (it has no own untrusted copy to shadow the baseline).
+    const warmHash = 'd9dadbdcdddedf00'
+    expect((await put(store, warmHash, 'legit', orgAws1)).status).toBe(200)
+    const warm = await get(store, warmHash, orgAws1Pr)
+    expect(warm.status).toBe(200)
+    expect(new Uint8Array(await warm.arrayBuffer())).toEqual(zbody('legit'))
+  })
+
+  it('an org-wide token (no workspace) uses the shared _org segment', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    const hash = 'e1e2e3e4e5e6e7e8'
+    expect((await put(store, hash, 'shared', orgAwide)).status).toBe(200)
+    const under = await readdir(
+      path.join(dir, 'artifacts', 'org', 'org-a', 'ws', '_org', 'trusted'),
+    )
+    expect(under).toContain(`${hash}.tar.zst`)
+    // A workspace-scoped token in the same org does NOT see the _org cache.
+    expect((await get(store, hash, orgAws1)).status).toBe(404)
+  })
+})
+
+describe('ArtifactStore — batch existence (POST /v1/cache/batch)', () => {
+  let dir: string
+  const trusted = { orgId: 'default', tier: 'trusted', bucket: 'default' } as const
+  const untrusted = { orgId: 'default', tier: 'untrusted', bucket: 'default' } as const
+  const orgA: Principal = { orgId: 'org-a', workspaceId: 'ws-1', tier: 'trusted' }
+  const orgB: Principal = { orgId: 'org-b', workspaceId: 'ws-1', tier: 'trusted' }
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'vx-batch-'))
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  const put = (store: ArtifactStore, hash: string, p: Principal) =>
+    store.handle(
+      new Request(`http://x/v1/cache/${hash}`, { method: 'PUT', body: zbody(hash) }),
+      hash,
+      p,
+    )
+  const batch = (store: ArtifactStore, hashes: unknown, p: Principal, body?: string) =>
+    store.handleBatch(
+      new Request('http://x/v1/cache/batch', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: body ?? JSON.stringify({ hashes }),
+      }),
+      p,
+    )
+
+  it('returns the present subset (existence, not values)', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    await put(store, 'aaaa1111bbbb2222', trusted)
+    await put(store, 'cccc3333dddd4444', trusted)
+    const res = await batch(
+      store,
+      ['aaaa1111bbbb2222', 'ffff9999ffff9999', 'cccc3333dddd4444'],
+      trusted,
+    )
+    expect(res.status).toBe(200)
+    const { present } = (await res.json()) as { present: string[] }
+    expect([...present].sort()).toEqual(['aaaa1111bbbb2222', 'cccc3333dddd4444'])
+  })
+
+  it('resolves through the SAME trust scopes as a GET', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    // A trusted key + an untrusted-only key in the same tenant.
+    await put(store, 'aaaaaaaaaaaaaaaa', trusted)
+    await put(store, 'bbbbbbbbbbbbbbbb', untrusted)
+    // A trusted probe sees the trusted key but NOT the untrusted-only one.
+    const t = (await (
+      await batch(store, ['aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb'], trusted)
+    ).json()) as {
+      present: string[]
+    }
+    expect(t.present).toEqual(['aaaaaaaaaaaaaaaa'])
+    // An untrusted probe sees BOTH (untrusted reads untrusted ∪ trusted).
+    const u = (await (
+      await batch(store, ['aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb'], untrusted)
+    ).json()) as { present: string[] }
+    expect([...u.present].sort()).toEqual(['aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb'])
+  })
+
+  it("a batch probe NEVER reveals another org's key", async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    await put(store, 'deadbeefdeadbeef', orgA)
+    // Org B probes org A's exact hash → reported absent (cross-tenant clamp).
+    const res = await batch(store, ['deadbeefdeadbeef'], orgB)
+    expect(((await res.json()) as { present: string[] }).present).toEqual([])
+  })
+
+  it('drops invalid/duplicate hashes without failing', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    await put(store, 'abcabcabcabcabc0', trusted)
+    const res = await batch(
+      store,
+      ['abcabcabcabcabc0', 'abcabcabcabcabc0', '../escape', 'not a hash'],
+      trusted,
+    )
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { present: string[] }).present).toEqual(['abcabcabcabcabc0'])
+  })
+
+  it('rejects a malformed body (400), a non-array hashes (400), and an over-cap list (400)', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    expect((await batch(store, undefined, trusted, 'not json')).status).toBe(400)
+    expect((await batch(store, { nope: 1 } as unknown, trusted)).status).toBe(400)
+    const tooMany = Array.from({ length: BATCH_HASH_CAP + 1 }, (_, i) => `h${i}`)
+    expect((await batch(store, tooMany, trusted)).status).toBe(400)
+  })
+
+  it('rejects an oversized body with 413 before parsing (streaming cap)', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    // A ~300 KiB body — over the 256 KiB cap — aborts mid-read.
+    const huge = JSON.stringify({ hashes: ['x'.repeat(300 * 1024)] })
+    expect((await batch(store, undefined, trusted, huge)).status).toBe(413)
+  })
+
+  it('hasMany() is best-effort against a broken backend (absent, never throws)', async () => {
+    // A backend whose head() throws → every hash reads absent.
+    const store = new ArtifactStore({
+      async head() {
+        throw new Error('bucket down')
+      },
+      async put() {},
+      presignGet() {
+        return null
+      },
+      async list() {
+        return []
+      },
+      localPathFor() {
+        return null
+      },
+    })
+    const present = await store.hasMany(['aaaabbbbccccdddd'], trusted)
+    expect(present.size).toBe(0)
+  })
+})
+
+describe('ArtifactStore.list — trust-scoped listing (/v1/artifacts source)', () => {
+  let dir: string
+  const trusted = { orgId: 'default', tier: 'trusted', bucket: 'default' } as const
+  const untrusted = { orgId: 'default', tier: 'untrusted', bucket: 'default' } as const
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'vx-artlist-'))
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  const put = (
+    store: ArtifactStore,
+    hash: string,
+    tag: string,
+    p: Principal,
+    scope?: string,
+    duration?: string,
+  ) =>
+    store.handle(
+      new Request(`http://x/v1/cache/${hash}`, {
+        method: 'PUT',
+        body: zbody(tag),
+        headers: {
+          ...(scope !== undefined ? { 'x-vx-cache-scope': scope } : {}),
+          ...(duration !== undefined ? { 'x-vx-duration-ms': duration } : {}),
+        },
+      }),
+      hash,
+      p,
+    )
+
+  it('an empty store lists []', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    expect(await store.list(trusted)).toEqual([])
+  })
+
+  it('a trusted principal NEVER lists untrusted entries', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    await put(store, 'aaaaaaaaaaaaaaaa', 'evil', untrusted)
+    await put(store, 'bbbbbbbbbbbbbbbb', 'legit', trusted)
+    const rows = await store.list(trusted)
+    expect(rows.map((r) => r.hash)).toEqual(['bbbbbbbbbbbbbbbb'])
+    expect(rows[0]!.tier).toBe('trusted')
+    expect(rows[0]!.sizeBytes).toBe(zbody('legit').byteLength)
+  })
+
+  it('an untrusted principal lists its own sub-scope ∪ trusted — never another PR', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    await put(store, 'aaaaaaaaaaaaaaaa', 'from-pr-1', untrusted, 'pr-1')
+    await put(store, 'bbbbbbbbbbbbbbbb', 'baseline', trusted)
+    const pr1 = await store.list(untrusted, 'pr-1')
+    expect(pr1.map((r) => `${r.hash}:${r.tier}`).sort()).toEqual([
+      'aaaaaaaaaaaaaaaa:untrusted',
+      'bbbbbbbbbbbbbbbb:trusted',
+    ])
+    // A DIFFERENT PR sees only the trusted baseline.
+    const pr2 = await store.list(untrusted, 'pr-2')
+    expect(pr2.map((r) => r.hash)).toEqual(['bbbbbbbbbbbbbbbb'])
+  })
+
+  it('the duration sidecar rides as durationMs', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    await put(store, 'cccccccccccccccc', 'x', trusted, undefined, '1234')
+    const rows = await store.list(trusted)
+    expect(rows[0]!.durationMs).toBe(1234)
+  })
+
+  it('a hash in both readable scopes lists ONCE, own scope first (GET-resolution parity)', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    await put(store, 'dddddddddddddddd', 'own-copy', untrusted, 'pr-1')
+    await put(store, 'dddddddddddddddd', 'baseline', trusted)
+    const rows = await store.list(untrusted, 'pr-1')
+    expect(rows).toHaveLength(1)
+    // GET would resolve the sub-scope copy first; the list says the same.
+    expect(rows[0]!.tier).toBe('untrusted')
+    expect(rows[0]!.sizeBytes).toBe(zbody('own-copy').byteLength)
+  })
+
+  it('respects limit, newest first', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    await put(store, 'eeeeeeeeeeeeeee1', 'one', trusted)
+    await Bun.sleep(5)
+    await put(store, 'eeeeeeeeeeeeeee2', 'two', trusted)
+    const rows = await store.list(trusted, null, 1)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.hash).toBe('eeeeeeeeeeeeeee2')
+  })
+})
+
+// (GET /v1/artifacts with the Postgres task_runs provenance join is driven
+// against the platform server in server.test.ts; ArtifactStore.list scoping is
+// unit-tested directly above.)

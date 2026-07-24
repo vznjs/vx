@@ -1,8 +1,17 @@
+// The remote-cache seam, end to end: core ships NO wire client
+// (native-cache-wire-2026-07), so every remote layer here is an injected
+// `RunOptions.remoteCache` — an in-memory RemoteCacheLayer or a stub-HTTP
+// one where observing the wire matters. Coverage carried over from the
+// retired env-hatch (VX_REMOTE_CACHE_*) suites: the remote-hit e2e, the
+// plan path's HEAD prediction, never-fail on a fully-broken remote,
+// prefetch overlap + at-most-once, the codegen→consumer stability gate,
+// --no-cache issuing no reads, and the local:,remote:rw in-memory pack.
+
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { LayeredCache } from '../src/cache/index.js'
+import { describe, expect, it, spyOn } from 'bun:test'
+import { LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { planRun, run } from '../src/orchestrator/index.js'
 
@@ -85,28 +94,33 @@ async function addProject(
   return dir
 }
 
+/**
+ * A stub HTTP artifact server + the RemoteCacheLayer speaking to it — for
+ * the cases where observing the WIRE matters (per-hash GET/HEAD counts,
+ * concurrency overlap, a 500ing remote). The layer is deliberately thin:
+ * LayeredCache owns dedup/degradation, so the stub just translates.
+ */
 interface ArtifactServer {
   server: ReturnType<typeof Bun.serve>
-  baseUrl: string
+  layer: RemoteCacheLayer
   store: Map<string, Uint8Array>
-  tags: Map<string, string>
   /** Per-hash GET counts — pins at-most-once probing across prefetch + get. */
   getCounts: Map<string, number>
   /** Per-hash HEAD counts — the plan path's existence probes. */
   headCounts: Map<string, number>
-  /** Hashes a GET was issued for, in arrival order. */
+  /** Max GETs observed concurrently in flight. */
   getsInFlight: () => number
+  /** Number of `POST /artifacts/batch` existence probes served. */
+  batchCalls: () => number
 }
 
-/** Minimal in-memory Turbo /v8/artifacts server. `getLatencyMs` lets a
- *  test hold GETs open so prefetch overlap is observable. */
 function startArtifactServer(opts?: { getLatencyMs?: number; failAll?: boolean }): ArtifactServer {
   const store = new Map<string, Uint8Array>()
-  const tags = new Map<string, string>()
   const getCounts = new Map<string, number>()
   const headCounts = new Map<string, number>()
   let inFlight = 0
   let maxInFlight = 0
+  let batchCalls = 0
   const server = Bun.serve({
     port: 0,
     async fetch(req) {
@@ -115,14 +129,18 @@ function startArtifactServer(opts?: { getLatencyMs?: number; failAll?: boolean }
       // to a miss.
       if (opts?.failAll) return new Response('boom', { status: 500 })
       const url = new URL(req.url)
-      const m = url.pathname.match(/^\/v8\/artifacts\/([0-9a-f]+)$/)
+      // Batch existence probe — one round-trip for many hashes.
+      if (url.pathname === '/artifacts/batch' && req.method === 'POST') {
+        batchCalls++
+        const { hashes } = (await req.json()) as { hashes: string[] }
+        return Response.json({ present: hashes.filter((h) => store.has(h)) })
+      }
+      const m = url.pathname.match(/^\/artifacts\/([0-9a-f]+)$/)
       if (!m) return new Response('not found', { status: 404 })
       const hash = m[1]!
       if (req.method === 'PUT') {
         store.set(hash, new Uint8Array(await req.arrayBuffer()))
-        const tag = req.headers.get('x-artifact-tag')
-        if (tag) tags.set(hash, tag)
-        return new Response(JSON.stringify({ urls: [] }), { status: 200 })
+        return new Response(null, { status: 200 })
       }
       if (req.method === 'HEAD') {
         headCounts.set(hash, (headCounts.get(hash) ?? 0) + 1)
@@ -136,10 +154,7 @@ function startArtifactServer(opts?: { getLatencyMs?: number; failAll?: boolean }
           if (opts?.getLatencyMs) await Bun.sleep(opts.getLatencyMs)
           const body = store.get(hash)
           if (!body) return new Response('not found', { status: 404 })
-          const headers: Record<string, string> = { 'x-artifact-duration': '12' }
-          const tag = tags.get(hash)
-          if (tag) headers['x-artifact-tag'] = tag
-          return new Response(body, { status: 200, headers })
+          return new Response(body, { status: 200, headers: { 'x-duration': '12' } })
         } finally {
           inFlight--
         }
@@ -147,83 +162,98 @@ function startArtifactServer(opts?: { getLatencyMs?: number; failAll?: boolean }
       return new Response('method not allowed', { status: 405 })
     },
   })
+  const baseUrl = `http://localhost:${server.port}`
+  const layer: RemoteCacheLayer = {
+    async has(hash) {
+      const res = await fetch(`${baseUrl}/artifacts/${hash}`, { method: 'HEAD' })
+      if (res.status === 404) return false
+      if (!res.ok) throw new Error(`HEAD ${hash} → ${res.status}`)
+      return true
+    },
+    async hasMany(hashes) {
+      const res = await fetch(`${baseUrl}/artifacts/batch`, {
+        method: 'POST',
+        body: JSON.stringify({ hashes }),
+      })
+      if (!res.ok) throw new Error(`batch → ${res.status}`)
+      const { present } = (await res.json()) as { present: string[] }
+      return new Set(present)
+    },
+    async get(hash) {
+      const res = await fetch(`${baseUrl}/artifacts/${hash}`)
+      if (res.status === 404) return null
+      if (!res.ok) throw new Error(`GET ${hash} → ${res.status}`)
+      const durationRaw = res.headers.get('x-duration')
+      return {
+        body: await res.arrayBuffer(),
+        durationMs: durationRaw !== null ? Number(durationRaw) : undefined,
+      }
+    },
+    async put(hash, body) {
+      const res = await fetch(`${baseUrl}/artifacts/${hash}`, { method: 'PUT', body })
+      if (!res.ok) throw new Error(`PUT ${hash} → ${res.status}`)
+    },
+  }
   return {
     server,
-    baseUrl: `http://localhost:${server.port}`,
+    layer,
     store,
-    tags,
     getCounts,
     headCounts,
     getsInFlight: () => maxInFlight,
+    batchCalls: () => batchCalls,
   }
 }
 
-describe('orchestrator e2e: remote cache', () => {
-  let fixture: Fixture
-  let remote: ReturnType<typeof startArtifactServer>
-  const savedEnv: Record<string, string | undefined> = {}
+const BUILD_CONFIG = `
+  export default {
+    tasks: {
+      build: {
+        exec: { command: 'echo built > out.txt' },
+        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+      },
+    },
+  }
+`
 
-  beforeEach(async () => {
-    fixture = await makeWorkspace()
-    remote = startArtifactServer()
-    for (const k of [
-      'VX_REMOTE_CACHE_URL',
-      'VX_REMOTE_CACHE_TOKEN',
-      'VX_REMOTE_CACHE_SIGNATURE_KEY',
-    ]) {
-      savedEnv[k] = process.env[k]
-    }
-    process.env.VX_REMOTE_CACHE_URL = remote.baseUrl
-    process.env.VX_REMOTE_CACHE_TOKEN = 'test-token'
-    delete process.env.VX_REMOTE_CACHE_SIGNATURE_KEY
-  })
-
-  afterEach(async () => {
-    for (const [k, v] of Object.entries(savedEnv)) {
-      if (v === undefined) delete process.env[k]
-      else process.env[k] = v
-    }
-    await remote.server.stop(true)
-    await rm(fixture.root, { recursive: true, force: true })
-  })
-
+describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
   it(
     'a run served entirely from the remote layer reports ok: true',
     async () => {
-      await addProject(fixture.root, 'app', {
-        files: { 'src/in.txt': 'v1' },
-        config: `
-          export default {
-            tasks: {
-              build: {
-                exec: { command: 'echo built > out.txt' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-              },
-            },
-          }
-        `,
-      })
+      const fixture = await makeWorkspace()
+      const remote = startArtifactServer()
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
 
-      const first = await run({
-        cwd: fixture.root,
-        tasks: ['build'],
-        log: silentLogger(fixture),
-      })
-      expect(first.ok).toBe(true)
-      expect(first.outcomes[0]!.status).toBe('success')
-      // Write-through upload landed on the remote.
-      expect(remote.store.size).toBe(1)
+        const first = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        expect(first.ok).toBe(true)
+        expect(first.outcomes[0]!.status).toBe('success')
+        // Write-through upload landed on the remote.
+        expect(remote.store.size).toBe(1)
 
-      // Wipe the local cache so the only source of truth is the remote.
-      await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        // Wipe the local cache so the only source of truth is the remote.
+        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
 
-      const second = await run({
-        cwd: fixture.root,
-        tasks: ['build'],
-        log: silentLogger(fixture),
-      })
-      expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
-      expect(second.ok).toBe(true)
+        const second = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
+        expect(second.ok).toBe(true)
+      } finally {
+        await remote.server.stop(true)
+        await rm(fixture.root, { recursive: true, force: true })
+      }
     },
     TIMEOUT,
   )
@@ -231,40 +261,47 @@ describe('orchestrator e2e: remote cache', () => {
   it(
     'planRun (--dry) predicts hit-remote via HEAD — no artifact download, no local ingest',
     async () => {
-      await addProject(fixture.root, 'app', {
-        files: { 'src/in.txt': 'v1' },
-        config: `
-          export default {
-            tasks: {
-              build: {
-                exec: { command: 'echo built > out.txt' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-              },
-            },
-          }
-        `,
-      })
+      const fixture = await makeWorkspace()
+      const remote = startArtifactServer()
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
 
-      // Populate the remote, then wipe local so remote is the only source.
-      const first = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
-      expect(first.ok).toBe(true)
-      expect(remote.store.size).toBe(1)
-      await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
-      remote.getCounts.clear()
-      remote.headCounts.clear()
+        // Populate the remote, then wipe local so remote is the only source.
+        const first = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        expect(first.ok).toBe(true)
+        expect(remote.store.size).toBe(1)
+        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        remote.getCounts.clear()
+        remote.headCounts.clear()
 
-      const plan = await planRun({ cwd: fixture.root, tasks: ['build'] })
-      expect(plan.tasks).toHaveLength(1)
-      expect(plan.tasks[0]!.cacheStatus).toBe('hit-remote')
+        const plan = await planRun({
+          cwd: fixture.root,
+          tasks: ['build'],
+          remoteCache: remote.layer,
+        })
+        expect(plan.tasks).toHaveLength(1)
+        expect(plan.tasks[0]!.cacheStatus).toBe('hit-remote')
 
-      // The probe was an existence HEAD — no GET fired, and nothing was
-      // ingested into the (freshly recreated) local cache.
-      expect([...remote.getCounts.values()]).toEqual([])
-      expect([...remote.headCounts.values()]).toEqual([1])
-      const cacheDir = path.join(fixture.root, '.vx', 'cache')
-      const glob = new Bun.Glob('*.tar.zst')
-      const artifacts = [...glob.scanSync({ cwd: cacheDir })]
-      expect(artifacts).toEqual([])
+        // The probe was an existence HEAD — no GET fired, and nothing was
+        // ingested into the (freshly recreated) local cache.
+        expect([...remote.getCounts.values()]).toEqual([])
+        expect([...remote.headCounts.values()]).toEqual([1])
+        const cacheDir = path.join(fixture.root, '.vx', 'cache')
+        const glob = new Bun.Glob('*.tar.zst')
+        const artifacts = [...glob.scanSync({ cwd: cacheDir })]
+        expect(artifacts).toEqual([])
+      } finally {
+        await remote.server.stop(true)
+        await rm(fixture.root, { recursive: true, force: true })
+      }
     },
     TIMEOUT,
   )
@@ -274,25 +311,21 @@ describe('orchestrator e2e: remote cache', () => {
     async () => {
       // Point at a fully-broken remote: GET, PUT, and the prefetch
       // probe all 500. Nothing may escalate to a run failure.
+      const fixture = await makeWorkspace()
       const broken = startArtifactServer({ failAll: true })
-      process.env.VX_REMOTE_CACHE_URL = broken.baseUrl
       try {
         await addProject(fixture.root, 'app', {
           files: { 'src/in.txt': 'v1' },
-          config: `
-            export default {
-              tasks: {
-                build: {
-                  exec: { command: 'echo built > out.txt' },
-                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-                },
-              },
-            }
-          `,
+          config: BUILD_CONFIG,
         })
         // Cold run: prefetch GET 500s → miss → executes → write-through
         // PUT 500s → swallowed. Run succeeds.
-        const first = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+        const first = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: broken.layer,
+        })
         expect(first.ok).toBe(true)
         expect(first.outcomes[0]!.status).toBe('success')
         // Warm run: local hit (remote never contributed). Still ok.
@@ -300,68 +333,13 @@ describe('orchestrator e2e: remote cache', () => {
           cwd: fixture.root,
           tasks: ['build'],
           log: silentLogger(fixture),
+          remoteCache: broken.layer,
         })
         expect(second.ok).toBe(true)
       } finally {
         await broken.server.stop(true)
+        await rm(fixture.root, { recursive: true, force: true })
       }
-    },
-    TIMEOUT,
-  )
-
-  it(
-    'VX_REMOTE_CACHE_SIGNATURE_KEY signs uploads and verifies downloads end-to-end',
-    async () => {
-      process.env.VX_REMOTE_CACHE_SIGNATURE_KEY = 'e2e-signing-key-0123456789abcdef'
-      await addProject(fixture.root, 'app', {
-        files: { 'src/in.txt': 'v1' },
-        config: `
-          export default {
-            tasks: {
-              build: {
-                exec: { command: 'echo built > out.txt' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-              },
-            },
-          }
-        `,
-      })
-
-      const first = await run({
-        cwd: fixture.root,
-        tasks: ['build'],
-        log: silentLogger(fixture),
-      })
-      expect(first.ok).toBe(true)
-      // The upload carried an x-artifact-tag.
-      expect(remote.tags.size).toBe(1)
-
-      await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
-
-      // Round trip: the tagged artifact passes verification on the way back.
-      const second = await run({
-        cwd: fixture.root,
-        tasks: ['build'],
-        log: silentLogger(fixture),
-      })
-      expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
-
-      // Tamper the stored artifact: verification fails, the run degrades
-      // to re-execution instead of restoring poisoned bytes.
-      const [hash, body] = [...remote.store.entries()][0]!
-      const flipped = new Uint8Array(body)
-      flipped[0] = flipped[0]! ^ 0xff
-      remote.store.set(hash, flipped)
-      await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
-
-      const third = await run({
-        cwd: fixture.root,
-        tasks: ['build'],
-        log: silentLogger(fixture),
-      })
-      expect(third.ok).toBe(true)
-      expect(third.outcomes[0]!.status).toBe('success')
-      expect(fixture.log.join('\n')).toMatch(/signature mismatch/)
     },
     TIMEOUT,
   )
@@ -369,56 +347,112 @@ describe('orchestrator e2e: remote cache', () => {
   it(
     'a remote-served run issues AT MOST ONE GET per task key (prefetch + execute share it)',
     async () => {
-      await remote.server.stop(true)
-      remote = startArtifactServer({ getLatencyMs: 40 })
-      process.env.VX_REMOTE_CACHE_URL = remote.baseUrl
-
+      const fixture = await makeWorkspace()
       // Two independent (no-dep) tasks so both prefetch + execute, and
       // both are stable keys (no upstream outputs feed their inputs).
       for (const name of ['a', 'b']) {
         await addProject(fixture.root, name, {
           files: { 'src/in.txt': `v-${name}` },
-          config: `
-            export default {
-              tasks: {
-                build: {
-                  exec: { command: 'echo built > out.txt' },
-                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-                },
-              },
-            }
-          `,
+          config: BUILD_CONFIG,
         })
       }
+      const seed = startArtifactServer()
+      try {
+        // Warm the remote (and wipe local) so the second run is fully
+        // remote-served — both prefetch AND execute-task want each key.
+        await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: seed.layer,
+        })
+        expect(seed.store.size).toBe(2)
+        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
 
-      // Warm the remote (and wipe local) so the second run is fully
-      // remote-served — both prefetch AND execute-task want each key.
-      await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
-      expect(remote.store.size).toBe(2)
-      await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        const remote = startArtifactServer({ getLatencyMs: 40 })
+        // Carry over the warmed artifacts to the latency server.
+        for (const [h, b] of seed.store) remote.store.set(h, b)
+        try {
+          const second = await run({
+            cwd: fixture.root,
+            tasks: ['build'],
+            log: silentLogger(fixture),
+            remoteCache: remote.layer,
+          })
+          expect(second.ok).toBe(true)
+          // Both tasks served from remote.
+          expect(second.outcomes.filter((o) => o.status === 'cache-hit-remote')).toHaveLength(2)
+          // The crux: exactly one GET per key despite prefetch AND
+          // execute-task both wanting it. If the inflight de-dup were
+          // removed this would be 2 per hash.
+          for (const [, n] of remote.getCounts) expect(n).toBe(1)
+          // Overlap: both prefetches were in flight at the same time —
+          // their latency overlapped instead of serializing.
+          expect(remote.getsInFlight()).toBeGreaterThanOrEqual(2)
+        } finally {
+          await remote.server.stop(true)
+        }
+      } finally {
+        await seed.server.stop(true)
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 
-      const fresh = startArtifactServer({ getLatencyMs: 40 })
-      // Carry over the warmed artifacts to the latency server.
-      for (const [h, b] of remote.store) fresh.store.set(h, b)
-      await remote.server.stop(true)
-      remote = fresh
-      process.env.VX_REMOTE_CACHE_URL = remote.baseUrl
+  it(
+    'a batch-capable remote is probed ONCE and fetches only the hits',
+    async () => {
+      const fixture = await makeWorkspace()
+      // Two independent stable-key tasks; seed only ONE remotely so the
+      // other is a genuine remote miss on the warm run.
+      for (const name of ['a', 'b']) {
+        await addProject(fixture.root, name, {
+          files: { 'src/in.txt': `v-${name}` },
+          config: BUILD_CONFIG,
+        })
+      }
+      const seed = startArtifactServer()
+      try {
+        await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: seed.layer,
+        })
+        expect(seed.store.size).toBe(2)
+        const [presentHash, absentHash] = [...seed.store.keys()] as [string, string]
+        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
 
-      const second = await run({
-        cwd: fixture.root,
-        tasks: ['build'],
-        log: silentLogger(fixture),
-      })
-      expect(second.ok).toBe(true)
-      // Both tasks served from remote.
-      expect(second.outcomes.filter((o) => o.status === 'cache-hit-remote')).toHaveLength(2)
-      // The crux: exactly one GET per key despite prefetch AND
-      // execute-task both wanting it. If the inflight de-dup were
-      // removed this would be 2 per hash.
-      for (const [, n] of remote.getCounts) expect(n).toBe(1)
-      // Overlap: both prefetches were in flight at the same time —
-      // their latency overlapped instead of serializing.
-      expect(remote.getsInFlight()).toBeGreaterThanOrEqual(2)
+        const remote = startArtifactServer()
+        // Carry over ONLY one artifact — the other stays a remote miss.
+        remote.store.set(presentHash, seed.store.get(presentHash)!)
+        try {
+          const second = await run({
+            cwd: fixture.root,
+            tasks: ['build'],
+            log: silentLogger(fixture),
+            remoteCache: remote.layer,
+          })
+          expect(second.ok).toBe(true)
+          // ONE batch probe covered BOTH stable keys — not two HEADs.
+          expect(remote.batchCalls()).toBe(1)
+          // Exactly one task was served from remote, the other executed.
+          expect(second.outcomes.filter((o) => o.status === 'cache-hit-remote')).toHaveLength(1)
+          // The hit was fetched exactly once. The miss is never fetched more
+          // than once (batch + lazy get share the in-flight map); when the
+          // batch verdict lands before the task's probe it fires ZERO GETs —
+          // that skip is pinned deterministically in the LayeredCache unit
+          // suite (markRemoteAbsent → get → no remote GET).
+          expect(remote.getCounts.get(presentHash)).toBe(1)
+          expect(remote.getCounts.get(absentHash) ?? 0).toBeLessThanOrEqual(1)
+        } finally {
+          await remote.server.stop(true)
+        }
+      } finally {
+        await seed.server.stop(true)
+        await rm(fixture.root, { recursive: true, force: true })
+      }
     },
     TIMEOUT,
   )
@@ -430,36 +464,53 @@ describe('orchestrator e2e: remote cache', () => {
       // output `generated.txt`), so its key is preliminary until codegen
       // runs — it must NOT be prefetched, but the lazy read-through must
       // still produce a correct remote hit on the warm run.
-      await addProject(fixture.root, 'pkg', {
-        files: { 'src/seed.txt': 'seed' },
-        config: `
-          export default {
-            tasks: {
-              codegen: {
-                exec: { command: 'echo gen > generated.txt' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['generated.txt'] } },
+      const fixture = await makeWorkspace()
+      const remote = startArtifactServer()
+      try {
+        await addProject(fixture.root, 'pkg', {
+          files: { 'src/seed.txt': 'seed' },
+          config: `
+            export default {
+              tasks: {
+                codegen: {
+                  exec: { command: 'echo gen > generated.txt' },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['generated.txt'] } },
+                },
+                build: {
+                  dependsOn: ['codegen'],
+                  exec: { command: 'cat generated.txt > out.txt' },
+                  cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+                },
               },
-              build: {
-                dependsOn: ['codegen'],
-                exec: { command: 'cat generated.txt > out.txt' },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
-              },
-            },
-          }
-        `,
-      })
+            }
+          `,
+        })
 
-      const first = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
-      expect(first.ok).toBe(true)
-      await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        const first = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        expect(first.ok).toBe(true)
+        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
 
-      const second = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
-      expect(second.ok).toBe(true)
-      // Both tasks are remote hits on the warm run — the consumer's
-      // key resolves correctly via lazy read-through even though it was
-      // skipped by prefetch.
-      const statuses = second.outcomes.map((o) => `${o.node.taskName}:${o.status}`).sort()
-      expect(statuses).toEqual(['build:cache-hit-remote', 'codegen:cache-hit-remote'])
+        const second = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        expect(second.ok).toBe(true)
+        // Both tasks are remote hits on the warm run — the consumer's
+        // key resolves correctly via lazy read-through even though it was
+        // skipped by prefetch.
+        const statuses = second.outcomes.map((o) => `${o.node.taskName}:${o.status}`).sort()
+        expect(statuses).toEqual(['build:cache-hit-remote', 'codegen:cache-hit-remote'])
+      } finally {
+        await remote.server.stop(true)
+        await rm(fixture.root, { recursive: true, force: true })
+      }
     },
     TIMEOUT,
   )
@@ -467,32 +518,28 @@ describe('orchestrator e2e: remote cache', () => {
   it(
     '--no-cache issues no remote GET (no prefetch, no read-through)',
     async () => {
-      await remote.server.stop(true)
-      remote = startArtifactServer()
-      process.env.VX_REMOTE_CACHE_URL = remote.baseUrl
-      await addProject(fixture.root, 'app', {
-        files: { 'src/in.txt': 'v1' },
-        config: `
-          export default {
-            tasks: {
-              build: {
-                exec: { command: 'echo built > out.txt' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-              },
-            },
-          }
-        `,
-      })
+      const fixture = await makeWorkspace()
+      const remote = startArtifactServer()
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
 
-      const res = await run({
-        cwd: fixture.root,
-        tasks: ['build'],
-        cache: { localRead: false, localWrite: false, remoteRead: false, remoteWrite: false },
-        log: silentLogger(fixture),
-      })
-      expect(res.ok).toBe(true)
-      expect(res.outcomes[0]!.status).toBe('success')
-      expect([...remote.getCounts.values()]).toHaveLength(0)
+        const res = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          cache: { localRead: false, localWrite: false, remoteRead: false, remoteWrite: false },
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        expect(res.ok).toBe(true)
+        expect(res.outcomes[0]!.status).toBe('success')
+        expect([...remote.getCounts.values()]).toHaveLength(0)
+      } finally {
+        await remote.server.stop(true)
+        await rm(fixture.root, { recursive: true, force: true })
+      }
     },
     TIMEOUT,
   )
@@ -500,46 +547,43 @@ describe('orchestrator e2e: remote cache', () => {
   it(
     'local:,remote:rw uploads to remote even with local writes disabled (packs bytes in memory)',
     async () => {
-      await remote.server.stop(true)
-      remote = startArtifactServer()
-      process.env.VX_REMOTE_CACHE_URL = remote.baseUrl
-      await addProject(fixture.root, 'app', {
-        files: { 'src/in.txt': 'v1' },
-        config: `
-          export default {
-            tasks: {
-              build: {
-                exec: { command: 'echo built > out.txt' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-              },
-            },
-          }
-        `,
-      })
+      const fixture = await makeWorkspace()
+      const remote = startArtifactServer()
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
 
-      // local: (no read, no write), remote:rw — there is NO local
-      // artifact to read off disk, so the upload path must pack the
-      // bytes in memory.
-      const res = await run({
-        cwd: fixture.root,
-        tasks: ['build'],
-        cache: { localRead: false, localWrite: false, remoteRead: true, remoteWrite: true },
-        log: silentLogger(fixture),
-      })
-      expect(res.ok).toBe(true)
-      expect(res.outcomes[0]!.status).toBe('success')
-      // The artifact landed on the remote despite no local write.
-      expect(remote.store.size).toBe(1)
-      // No local cache.db entry was written (local writes were off);
-      // the next run with remote reads on serves the artifact from the
-      // remote layer.
-      await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
-      const second = await run({
-        cwd: fixture.root,
-        tasks: ['build'],
-        log: silentLogger(fixture),
-      })
-      expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
+        // local: (no read, no write), remote:rw — there is NO local
+        // artifact to read off disk, so the upload path must pack the
+        // bytes in memory.
+        const res = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          cache: { localRead: false, localWrite: false, remoteRead: true, remoteWrite: true },
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        expect(res.ok).toBe(true)
+        expect(res.outcomes[0]!.status).toBe('success')
+        // The artifact landed on the remote despite no local write.
+        expect(remote.store.size).toBe(1)
+        // No local cache.db entry was written (local writes were off);
+        // the next run with remote reads on serves the artifact from the
+        // remote layer.
+        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        const second = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
+      } finally {
+        await remote.server.stop(true)
+        await rm(fixture.root, { recursive: true, force: true })
+      }
     },
     TIMEOUT,
   )
@@ -548,23 +592,10 @@ describe('orchestrator e2e: remote cache', () => {
 describe('orchestrator: local-only runs never prefetch', () => {
   it('a run with no remote cache configured invokes no prefetch', async () => {
     const fixture = await makeWorkspace()
-    const savedUrl = process.env.VX_REMOTE_CACHE_URL
-    const savedTok = process.env.VX_REMOTE_CACHE_TOKEN
-    delete process.env.VX_REMOTE_CACHE_URL
-    delete process.env.VX_REMOTE_CACHE_TOKEN
     try {
       await addProject(fixture.root, 'app', {
         files: { 'src/in.txt': 'v1' },
-        config: `
-          export default {
-            tasks: {
-              build: {
-                exec: { command: 'echo built > out.txt' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-              },
-            },
-          }
-        `,
+        config: BUILD_CONFIG,
       })
 
       // Spy on the only entry point that fires prefetches. With no
@@ -576,11 +607,128 @@ describe('orchestrator: local-only runs never prefetch', () => {
       expect(prefetchSpy).toHaveBeenCalledTimes(0)
       prefetchSpy.mockRestore()
     } finally {
-      if (savedUrl === undefined) delete process.env.VX_REMOTE_CACHE_URL
-      else process.env.VX_REMOTE_CACHE_URL = savedUrl
-      if (savedTok === undefined) delete process.env.VX_REMOTE_CACHE_TOKEN
-      else process.env.VX_REMOTE_CACHE_TOKEN = savedTok
       await rm(fixture.root, { recursive: true, force: true })
     }
   })
+})
+
+// ─── RunOptions.remoteCache injection — THE plugin seam, wire-free ─────────
+// A remote layer is any object with has/get/put (RemoteCacheLayer); core
+// carries no wire client. An in-memory layer (zero HTTP) must drive the
+// full remote-hit path, and explicit injection must WIN over a
+// workspace-declared cache plugin (no double-wrapping).
+
+describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () => {
+  interface MemLayer {
+    layer: RemoteCacheLayer
+    store: Map<string, Uint8Array>
+    gets: number
+    puts: number
+    heads: number
+  }
+  function memoryLayer(): MemLayer {
+    const store = new Map<string, Uint8Array>()
+    const state: MemLayer = {
+      store,
+      gets: 0,
+      puts: 0,
+      heads: 0,
+      layer: {
+        async has(hash) {
+          state.heads++
+          return store.has(hash)
+        },
+        async get(hash) {
+          state.gets++
+          const body = store.get(hash)
+          if (!body) return null
+          return { body: body.slice().buffer as ArrayBuffer, durationMs: 7 }
+        },
+        async put(hash, body) {
+          state.puts++
+          store.set(hash, body instanceof Uint8Array ? body.slice() : new Uint8Array(body))
+        },
+      },
+    }
+    return state
+  }
+
+  it(
+    'an in-memory layer (no HTTP anywhere) serves the full remote-hit path',
+    async () => {
+      const fixture = await makeWorkspace()
+      const mem = memoryLayer()
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+
+        const first = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: mem.layer,
+        })
+        expect(first.ok).toBe(true)
+        expect(mem.puts).toBe(1) // write-through landed in the injected layer
+
+        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        const second = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: mem.layer,
+        })
+        expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
+        expect(second.ok).toBe(true)
+        expect(mem.gets).toBeGreaterThanOrEqual(1)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'explicit injection WINS over a workspace-declared cache plugin (never consulted)',
+    async () => {
+      const fixture = await makeWorkspace()
+      const mem = memoryLayer()
+      try {
+        // A cache plugin that would ABORT the run if consulted: the
+        // injection-wins precedence is only proven if this never fires.
+        await writeFile(
+          path.join(fixture.root, 'vx.workspace.mjs'),
+          `
+            export default {
+              plugins: [
+                {
+                  name: 'test/poison-cache',
+                  cache: () => {
+                    throw new Error('plugin cache must not be consulted when remoteCache is injected')
+                  },
+                },
+              ],
+            }
+          `,
+        )
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        const res = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: mem.layer,
+        })
+        expect(res.ok).toBe(true)
+        expect(mem.puts).toBe(1) // the injected layer got the upload
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })

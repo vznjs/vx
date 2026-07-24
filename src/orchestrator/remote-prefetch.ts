@@ -63,15 +63,30 @@ async function runPrefetch(args: PrefetchArgs): Promise<void> {
   const stableKeys = await deriveStableKeys(args)
   if (stableKeys.length === 0) return
 
-  // Bounded worker pool over the stable keys. Each prefetch is
+  // Batch existence probe FIRST (when the remote supports it): one round-trip
+  // tells us which of the N stable hashes exist remotely, so we GET only the
+  // hits and pre-mark the misses — their lazy `get` then short-circuits with
+  // no network. This collapses N probe waves into 1 and skips every GET that
+  // would 404. When the remote can't batch (`null` — an older serve, or reads
+  // disabled), fall back to prefetching every stable key, exactly as before.
+  let toPrefetch = stableKeys
+  const uniqueHashes = [...new Set(stableKeys.map((k) => k.hash))]
+  const present = await args.cache.remoteHasMany(uniqueHashes)
+  if (present !== null) {
+    args.cache.markRemoteAbsent(uniqueHashes.filter((h) => !present.has(h)))
+    toPrefetch = stableKeys.filter((k) => present.has(k.hash))
+    if (toPrefetch.length === 0) return
+  }
+
+  // Bounded worker pool over the keys to fetch. Each prefetch is
   // self-contained (LayeredCache owns the in-flight map + ingest); we
   // cap concurrency so a 1000-task run doesn't open 1000 sockets at
   // once. The pumps race alongside execution.
   let next = 0
-  const workers = Math.max(1, Math.min(args.concurrency, stableKeys.length))
+  const workers = Math.max(1, Math.min(args.concurrency, toPrefetch.length))
   const pump = async (): Promise<void> => {
-    while (next < stableKeys.length) {
-      const { hash, node } = stableKeys[next++]!
+    while (next < toPrefetch.length) {
+      const { hash, node } = toPrefetch[next++]!
       await args.cache
         .prefetch(hash, { taskId: node.id, command: node.config.exec?.command ?? '' })
         .catch(() => false)

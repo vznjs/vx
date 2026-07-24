@@ -4,8 +4,8 @@
 
 The single entry point for `import x from '@vzn/vx'`. Everything in
 this file is the public API; everything else under `src/` is
-internal. Since the core/cloud split this is the **cross-package
-contract**: `@vzn/vx-cloud`, `@vzn/vx-otel`, and any third-party
+internal. Since the core/service split this is the **cross-package
+contract**: the service package, `@vzn/vx-otel`, and any third-party
 plugin import everything they need from here via the bare `'@vzn/vx'`
 specifier — never a deep `src/...` path. The exact symbol set (~80
 exports) is pinned by `tests/package-boundaries.test.ts`; widening it
@@ -19,7 +19,7 @@ is a deliberate snapshot update.
 | Schema            | `defineProject`, `defineWorkspace`; types `WorkspaceConfig`, `ProjectConfig`, `TaskConfig`, `ExecConfig`, `ExecEnv`, `CacheConfig`, `CacheInputs`, `CacheOutputs`, `SandboxConfig`, `SandboxNetworkConfig`                                                                                                                                                                    |
 | Engine            | `run`, `planRun`, `prepareRun`; `computeTaskHash`, `createHashCache`, `deriveStableKeys`; `captureGitContext`, `captureWorkspaceIdentity`; `FULL_CACHE_POLICY`, `parseCachePolicy`; types `RunOptions`, `RunSummary`, `CachePolicy`, `PreparedRun`, `HashCache`, `StableKey`, `GitContext`, `WorkspaceIdentity`, `Logger`, `OutputView`; `defaultLogger`, `resolveOutputView` |
 | Graph             | `buildTaskGraph`, `expandRequested`, `isGroupTask`, `markSurfacedDeps`; types `TaskNode`, `TaskOutcome`, `TaskStatus`                                                                                                                                                                                                                                                         |
-| Cache             | `Cache`, `LayeredCache`, `RemoteCache`, `GitFilesCache`, `cleanOutputs`, `resolveInputs`, `resolveOutputs`; types `CacheLayer`, `RunRecord`, `InvocationRecord` (the CAS seam — `CASBackend`/`Digest` — is internal until the artifact store lands)                                                                                                                           |
+| Cache             | `Cache`, `LayeredCache`, `GitFilesCache`, `cleanOutputs`, `resolveInputs`, `resolveOutputs`; types `CacheLayer`, `RemoteCacheLayer`, `RunRecord`, `InvocationRecord` (the CAS seam — `CASBackend`/`Digest` — is internal until the artifact store lands)                                                                                                                      |
 | Workspace         | `findWorkspaceRoot`, `loadWorkspaceConfig`, `resolveCacheDir`                                                                                                                                                                                                                                                                                                                 |
 | Plugin API        | types `VxPlugin`, `EventSink`, `BackendContext`, `CacheContext`, `EventSinkContext`, `PluginSetupContext`                                                                                                                                                                                                                                                                     |
 | Telemetry         | `TELEMETRY_SCHEMA_VERSION`, `deriveCacheSource`; types `TelemetrySink`, `TelemetryContext`, `TelemetryRecord`, `RunSummaryRecord`, `RunContextRecord`, `TaskTelemetry`, `CacheSource`                                                                                                                                                                                         |

@@ -1,6 +1,6 @@
 // `vx upgrade [tag]` — self-update the compiled binary in place.
-// Mirrors install.sh: download the release asset for this os/arch,
-// write next to the current executable, atomic rename over it.
+// Downloads the GitHub release asset for this os/arch, writes next to
+// the current executable, atomic rename over it.
 // Named `upgrade` (not `update`) per CLI convention: bun upgrade,
 // deno upgrade — "update" is what package managers do to indexes.
 
@@ -24,7 +24,7 @@ export function isBunfsPath(p: string): boolean {
  * `Bun.main` (and argv[1]) rather than `import.meta.path`: with
  * `--minify --bytecode` — vx's release build flags — `import.meta.path`
  * reports the ORIGINAL SOURCE path, not the bunfs path, so the old
- * check silently failed for every curl-installed binary and `vx
+ * check silently failed for every installed binary and `vx
  * upgrade` refused with "running from source". `Bun.main` stays the
  * bunfs path under every compile-flag combination.
  */
@@ -68,7 +68,7 @@ export async function replaceBinary(dest: string, url: string): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err)
     throw new UserError(
       `vx upgrade: could not replace ${dest} (${msg}) — ` +
-        `check permissions, or reinstall via install.sh with VX_INSTALL_DIR set`,
+        `check permissions, or reinstall with npm install -g @vzn/vx`,
     )
   }
 }
@@ -82,8 +82,9 @@ export async function upgradeCmd(args: readonly string[]): Promise<number> {
   }
   if (!isCompiledBinary()) {
     throw new UserError(
-      'vx upgrade only works for the compiled binary (install.sh). ' +
-        'You are running from source — use git pull instead.',
+      'vx upgrade only works for the compiled binary. ' +
+        'You are running from source — use git pull instead. ' +
+        '(npm installs update with: npm install -g @vzn/vx@latest)',
     )
   }
   const asset = assetName()

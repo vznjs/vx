@@ -560,6 +560,28 @@ describe('resolveInputs — git ls-files path (v14)', () => {
     expect(rels).toContain(path.join('src', 'index.ts'))
     expect(rels).not.toContain(path.join('node_modules', 'dep', 'index.js'))
   })
+
+  it('a bun --compile temp file (.<hash>.bun-build) is always excluded', async () => {
+    // `bun build --compile` writes a transient `.<hash>-<n>.bun-build` in cwd.
+    // A broad `**/*` compile task must never try to hash it — a CONCURRENT
+    // compile is mid-write, so reading it races to EACCES/ENOENT. Force git to
+    // track one (leading dot included) and assert ALWAYS_IGNORE still drops it.
+    await write(path.join(projectDir, '.18bf7d9ff3ffeffe-00000001.bun-build'))
+    await write(path.join(projectDir, 'src', 'index.ts'))
+    await git(root, 'add', '-f', 'pkg/.18bf7d9ff3ffeffe-00000001.bun-build')
+
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['**/*'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    const rels = got.files.map((p) => path.relative(projectDir, p))
+    expect(rels).toContain(path.join('src', 'index.ts'))
+    expect(rels).not.toContain('.18bf7d9ff3ffeffe-00000001.bun-build')
+  })
 })
 
 describe('resolveInputs — gitFilesCache memoization', () => {
@@ -680,10 +702,13 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
     await rm(workspaceRoot, { recursive: true, force: true })
   })
 
-  it('spawns git exactly twice for N projects (ls-files + status, vs N spawns per-project)', async () => {
-    // The bulk populate uses async Bun.spawn (ls-files + status run
-    // concurrently); the per-project fallback uses spawnSync. Count
-    // both so a regression to per-project spawning is caught either way.
+  it('spawns git 3x concurrently for N projects (ls-files + status + show-prefix, vs N per-project)', async () => {
+    // The bulk populate uses async Bun.spawn (ls-files + status + a trivial
+    // rev-parse --show-prefix, all concurrent — the show-prefix reads .git with
+    // no tree scan so it never gates wall-clock); the per-project fallback uses
+    // spawnSync. Count both so a regression to per-project spawning is caught
+    // either way. The guard is CONCURRENCY, not the literal count: the point is
+    // O(1) bulk spawns, never O(N) per-project.
     const origSpawnSync = Bun.spawnSync
     const origSpawn = Bun.spawn
     let spawnCount = 0
@@ -707,9 +732,11 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
       const cache = new GitFilesCache()
       const projectDirs = ['a', 'b', 'c'].map((n) => path.join(workspaceRoot, 'packages', n))
       await populateGitFilesCache(workspaceRoot, projectDirs, cache)
-      // One bulk `ls-files -s --others` (file list + index OIDs) plus
-      // one `status --porcelain` (dirty set) — never per-project.
-      expect(spawnCount).toBe(2)
+      // One bulk `ls-files -s --others` (file list + index OIDs), one
+      // `status --porcelain` (dirty set), one `rev-parse --show-prefix`
+      // (repo→workspace path, to normalize status paths) — all concurrent,
+      // never per-project.
+      expect(spawnCount).toBe(3)
       // Every project got a non-null entry partitioned from the bulk
       // listing — `src.ts` shows up project-relative.
       for (const dir of projectDirs) {

@@ -114,12 +114,38 @@ export function taskSpanAttributes(t: TaskTelemetry): KeyValue[] {
   if (t.hash !== undefined) attrs.push(strAttr('vx.task.hash', t.hash))
   if (t.cpuMs !== undefined) attrs.push(intAttr('vx.cpu_ms', t.cpuMs))
   if (t.peakRssBytes !== undefined) attrs.push(intAttr('vx.peak_rss_bytes', t.peakRssBytes))
+  if (t.attempts !== undefined) attrs.push(intAttr('vx.task.attempts', t.attempts))
+  // Cache-correctness verdict from `--verify` — the hermeticity signal. A
+  // `nondeterministic` verdict means the task's cache entry is unsound; it
+  // maps to span status ERROR (see taskStatusCode) so it surfaces as a failed
+  // span in the tracing backend even though the task itself exited 0.
+  if (t.verify !== undefined) {
+    attrs.push(strAttr('vx.task.verify', t.verify.kind))
+    if (t.verify.kind === 'nondeterministic' || t.verify.kind === 'allowed-nondeterministic') {
+      attrs.push(strAttr('vx.task.verify.changed', t.verify.changed.join(',')))
+    }
+    // Phase 2 (--verify=inputs): the undeclared workspace reads, same shape
+    // as .changed — the actionable list a trace viewer needs.
+    if (t.verify.kind === 'undeclared-inputs') {
+      attrs.push(strAttr('vx.task.verify.undeclared', t.verify.paths.join(',')))
+    }
+  }
   return attrs
 }
 
-/** A failed task maps to span status ERROR; everything else stays UNSET. */
-export function taskStatusCode(status: TaskTelemetry['status']): number {
-  return status === 'failed' ? STATUS_ERROR : STATUS_UNSET
+/** A failed task maps to span status ERROR; so does a task whose `--verify`
+ *  verdict proved its cache entry unsound (nondeterministic / rerun-failed /
+ *  undeclared-inputs) — even though it exited 0. Everything else stays UNSET. */
+export function taskStatusCode(t: TaskTelemetry): number {
+  if (t.status === 'failed') return STATUS_ERROR
+  if (
+    t.verify?.kind === 'nondeterministic' ||
+    t.verify?.kind === 'rerun-failed' ||
+    t.verify?.kind === 'undeclared-inputs'
+  ) {
+    return STATUS_ERROR
+  }
+  return STATUS_UNSET
 }
 
 // --- envelope builders -------------------------------------------------

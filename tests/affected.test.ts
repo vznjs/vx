@@ -236,4 +236,22 @@ describe('defaultAffectedBase', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+
+  it("returns the remote's HEAD branch (origin/main) when origin/HEAD is set", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-symref-'))
+    try {
+      await git(root, 'init', '-q')
+      await git(root, 'config', 'user.email', 'test@vx.local')
+      await git(root, 'config', 'user.name', 'vx test')
+      await writeFile(path.join(root, 'a'), 'x')
+      await git(root, 'add', '.')
+      await git(root, 'commit', '-q', '-m', 'one')
+      // Point origin/HEAD at origin/main (the target need not exist for
+      // symbolic-ref); the resolver should short-return it over HEAD~1.
+      await git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main')
+      expect(await defaultAffectedBase(root)).toBe('origin/main')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
 })

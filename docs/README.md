@@ -58,8 +58,8 @@ CI. ~600 tests.
 
 ```bash
 bun add -d @vzn/vx
-# …or grab the standalone binary (no Node or Bun required):
-curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
+# …or globally, as the prebuilt standalone binary:
+npm install -g @vzn/vx
 ```
 
 Drop a `vx.config.ts` next to any workspace package:
@@ -103,22 +103,22 @@ vx run build --dry          # predicted hits/misses, no execution
 vx cache prune --older-than 7d --max-size 5gb
 ```
 
-Remote caching is two env vars (`VX_REMOTE_CACHE_URL`,
-`VX_REMOTE_CACHE_TOKEN`) and speaks a standard artifact wire, so
-existing cache servers work unchanged; add
-`VX_REMOTE_CACHE_SIGNATURE_KEY` for signed artifacts.
+Remote caching is plugin-driven: a `cache` plugin fills core's
+`RemoteCacheLayer` seam. The first-party option is a self-hosted platform
+(see the Cloud section of the docs); any other backend implements the same
+seam in a plugin.
 
 ## Feature map
 
-| Feature                                                                                                       | Where to read                                                                        |
-| ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Task graph: `dependsOn`, `^task` (nearest-holder + sparse bridging), `pkg#task`, group tasks, multi-task runs | [`schema.md`](./schema.md), [`execution.md`](./execution.md)                         |
-| Content-addressed caching: keys, invalidation table, transitive cascade, artifact format                      | [`caching.md`](./caching.md)                                                         |
-| Remote cache layer + HMAC signing                                                                             | [`caching.md`](./caching.md), [`modules/remote-cache.md`](./modules/remote-cache.md) |
-| Persistent tasks (`readyWhen`) + task `timeout`                                                               | [`schema.md`](./schema.md)                                                           |
-| Watch mode, filters, `--affected`, `--dry` / `--graph`, forwarding `--`                                       | [`cli.md`](./cli.md)                                                                 |
-| Per-task sandboxing (fail-on-violation)                                                                       | [`schema.md`](./schema.md)                                                           |
-| Run analytics (`vx stats`, `--summarize`, `--profile` Chrome traces)                                          | [`cli.md`](./cli.md)                                                                 |
+| Feature                                                                                                       | Where to read                                                                          |
+| ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Task graph: `dependsOn`, `^task` (nearest-holder + sparse bridging), `pkg#task`, group tasks, multi-task runs | [`schema.md`](./schema.md), [`execution.md`](./execution.md)                           |
+| Content-addressed caching: keys, invalidation table, transitive cascade, artifact format                      | [`caching.md`](./caching.md)                                                           |
+| Remote cache layer (plugin-driven)                                                                            | [`caching.md`](./caching.md), [`modules/layered-cache.md`](./modules/layered-cache.md) |
+| Persistent tasks (`readyWhen`) + task `timeout`                                                               | [`schema.md`](./schema.md)                                                             |
+| Watch mode, filters, `--affected`, `--dry` / `--graph`, forwarding `--`                                       | [`cli.md`](./cli.md)                                                                   |
+| Per-task sandboxing (fail-on-violation)                                                                       | [`schema.md`](./schema.md)                                                             |
+| Run analytics (`vx stats`, `--summarize`, `--profile` Chrome traces)                                          | [`cli.md`](./cli.md)                                                                   |
 
 ## Where to start
 
@@ -179,7 +179,6 @@ src/
     execute-task.ts               # per-task: hash → cache lookup → spawn → save
     task-hash.ts                  # cache-key derivation (computeTaskHash & co.)
     upstream.ts                   # filter upstream cache hashes per inputs.tasks
-    remote-cache-setup.ts         # VX_REMOTE_CACHE_* env → LayeredCache wrap
     logger.ts                     # default logger (framed blocks, summary, etc.)
     framed-output.ts              # ┌─ task ─┐ output format
     colors.ts                     # ANSI truecolor with NO_COLOR / FORCE_COLOR gating
@@ -203,8 +202,7 @@ src/
   cache/
     index.ts                      # module contract
     cache.ts                      # local cache (bun:sqlite + tar.zst artifacts)
-    layered-cache.ts              # local + remote composition (read-through, write-through)
-    remote-cache.ts               # Turbo /v8/artifacts/ HTTP client
+    layered-cache.ts              # local + remote composition + the RemoteCacheLayer seam
     inputs.ts                     # input/output glob resolution + boundary enforcement
     tar.ts                        # tar pack/extract primitives (module-internal)
   exec/
@@ -249,8 +247,9 @@ docs/
 - **SQLite schema.** `SCHEMA_VERSION` in `src/cache/cache.ts`.
   Mismatch wipes the `entries` and `runs` tables (no migrations in
   pre-alpha).
-- **Remote-cache wire.** Verbatim Turbo `/v8/artifacts/` — see
-  [`design/remote-cache.md`](./design/remote-cache.md).
+- **Remote-cache wire.** Plugin-driven; the first-party wire is the
+  self-hosted platform's `/v1/cache` — see
+  [`design/native-cache-wire-2026-07.md`](./design/native-cache-wire-2026-07.md).
 - **Module boundaries.** Each module's `index.ts` is its contract;
   cross-module imports of anything else fail
   `tests/module-boundaries.test.ts`. Every src file has a
@@ -267,14 +266,19 @@ These are deliberate non-features. Don't add them without a design pass:
 - **Executor / plugin protocol**, JS-function tasks.
 - **TUI / interactive panes** beyond the framed-block stream output.
 - **`.env` file loading.**
-- **Workspace-level `globalInputs` / `globalEnv`** (a stub exists in
-  the `WorkspaceConfig` future-fields list in
-  [`schema.md`](./schema.md); not implemented).
+- **Workspace-level `globalInputs` / `globalEnv` / `globalPassThrough`.**
+  Owner-rejected non-goal — TypeScript configs compose, so a shared preset
+  imported and spread into each config is the mechanism (see
+  [`schema.md`](./schema.md) and [`comparison.md`](./comparison.md)).
+  Root-anchored file inputs are declared per task via
+  `cache.inputs.workspaceFiles`.
 - **Symlink-aware input traversal.** `Bun.Glob` walks the real tree.
 - **Cross-platform shell quirks** beyond what `Bun.spawn` with
   `shell: true` gives you for free (Windows is unsupported).
-- **HMAC artifact signing + pre-signed URLs** on the remote cache —
-  workstream open, see [`design/remote-cache.md`](./design/remote-cache.md).
+- **A remote-cache wire client in core.** The remote cache is
+  plugin-driven (`design/native-cache-wire-2026-07.md`); core keeps only
+  the `RemoteCacheLayer` seam. Blob offload (pre-signed GET URLs) is
+  reserved in the wire via the client's one-hop 307 follow.
 
 The complete list of features Turbo / Nx / vite-task have that vx
 doesn't (deliberately or otherwise) is in

@@ -68,6 +68,15 @@ describe('buildPackageGraph', () => {
     expect(g.transitiveDependents('lonely')).toEqual([])
   })
 
+  it('transitiveDependents terminates on a 2-node cycle and includes the other node', () => {
+    // a ↔ b (each depends on the other). The reverse-edge accessor takes
+    // the legacy DFS path (the bitset sweep bails on a cycle); the stack
+    // guard must stop the walk. Mirrors the transitiveDeps cycle test.
+    const g = buildPackageGraph([meta('a', { b: 'workspace:*' }), meta('b', { a: 'workspace:*' })])
+    expect(g.transitiveDependents('a')).toContain('b')
+    expect(g.transitiveDependents('b')).toContain('a')
+  })
+
   it('reads all four dependency fields (dependencies, devDependencies, peer, optional)', () => {
     const m: ProjectMeta = {
       name: 'a',

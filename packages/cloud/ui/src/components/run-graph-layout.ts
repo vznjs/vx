@@ -20,6 +20,80 @@ export interface DepthLayout {
   levelSizes: number[]
 }
 
+/**
+ * Drop GROUP tasks (pure aggregators, no exec) from a graph view, contracting
+ * edges through them so the DAG stays connected: every node that depended on a
+ * group inherits the group's own (recursively resolved) non-group deps. Groups
+ * are organizational folders — `ci`, `build.bun` — not work; a run view should
+ * show the tasks that actually execute. Nested groups collapse transitively
+ * (`build → build.bun → build.bun.linux-x64` ⇒ an edge straight to the leaf).
+ */
+export function contractGroups<N extends { id: string; isGroup: boolean; deps: readonly string[] }>(
+  nodes: readonly N[],
+): Array<N & { deps: string[] }> {
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  // groupId → the non-group task ids reachable by walking down through that
+  // group's deps. Only GROUPS are memoized (a non-group resolves to itself, an
+  // unknown id to []). Computed with an EXPLICIT post-order stack rather than
+  // recursion so a deep group spine can't blow the JS stack on a big graph —
+  // the iterative form of the memoized DFS, byte-identical to it (children are
+  // pushed in reverse so they pop in dep order, matching the left-to-right
+  // recursion — this preserves the cycle-cut ordering exactly).
+  const memo = new Map<string, string[]>()
+  const onPath = new Set<string>()
+
+  // Single-step resolve of one dep id from `memo` — never recurses. A group
+  // that isn't memoized here is still on the current DFS path (a cycle), which
+  // contributes nothing, matching the recursive `visiting` guard.
+  const stepResolve = (id: string): string[] => {
+    const cached = memo.get(id)
+    if (cached !== undefined) return cached
+    const n = byId.get(id)
+    if (n === undefined) return []
+    if (!n.isGroup) return [id]
+    return [] // cycle guard — the graph is a DAG, but be safe
+  }
+
+  // Memoize a group id (and every group reachable from it) via post-order.
+  const ensureResolved = (rootId: string): void => {
+    const root = byId.get(rootId)
+    if (root === undefined || !root.isGroup || memo.has(rootId)) return
+    const stack: Array<{ id: string; entered: boolean }> = [{ id: rootId, entered: false }]
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1]!
+      const node = byId.get(frame.id)!
+      if (!frame.entered) {
+        if (memo.has(frame.id)) {
+          stack.pop()
+          continue
+        }
+        frame.entered = true
+        onPath.add(frame.id)
+        // Push child GROUPS (not yet memoized, not already on the path) in
+        // REVERSE so the LIFO stack processes them in dep order.
+        for (let i = node.deps.length - 1; i >= 0; i--) {
+          const dep = node.deps[i]!
+          const d = byId.get(dep)
+          if (d !== undefined && d.isGroup && !memo.has(dep) && !onPath.has(dep)) {
+            stack.push({ id: dep, entered: false })
+          }
+        }
+      } else {
+        memo.set(frame.id, [...new Set(node.deps.flatMap(stepResolve))])
+        onPath.delete(frame.id)
+        stack.pop()
+      }
+    }
+  }
+
+  return nodes
+    .filter((n) => !n.isGroup)
+    .map((n) => {
+      for (const dep of n.deps) ensureResolved(dep)
+      return { ...n, deps: [...new Set(n.deps.flatMap(stepResolve))].filter((d) => d !== n.id) }
+    })
+}
+
 export function layoutLevels(
   nodes: ReadonlyArray<{ id: string; deps: readonly string[] }>,
 ): DepthLayout {

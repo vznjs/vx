@@ -16,7 +16,7 @@
 // what or how tasks run. Contrast `backend`/`cache`, which return objects
 // core calls INTO; those are the behavior capabilities, kept separate.
 
-import type { TaskStatus } from '../graph/index.js'
+import type { OutputFingerprint, TaskStatus, VerifyVerdict } from '../graph/index.js'
 import type { RunEvent, RunEventSubscriber } from './events.js'
 
 /** Bumped when the record shape changes. Readers MUST check `v`. */
@@ -71,6 +71,15 @@ export interface RunContextRecord {
   // git / CI / host — straight from run-context.ts.
   commitSha: string | null
   branch: string | null
+  /**
+   * The repository's DEFAULT (trunk) branch, when detectable (v2 additive).
+   * A run is a TRUNK run iff `branch === defaultBranch` (both non-null);
+   * everything else is PR / feature-branch work. Consumers use it to keep
+   * branch-experiment timings out of the shared scheduling baseline; null
+   * (undetectable) means "count all runs" — no regression. Absent on a v1
+   * push; a reader treats absent as null.
+   */
+  defaultBranch: string | null
   dirty: boolean | null
   ci: boolean
   ciProvider: string | null
@@ -94,6 +103,22 @@ export interface TaskTelemetry {
   hash?: string
   cpuMs?: number
   peakRssBytes?: number
+  /** Total attempts when the task RETRIED (>1) — set only when `exec.retries`
+   *  / `--retry` produced more than one attempt. A retried-then-passed task is
+   *  flaky by definition; this is the telemetry-side flaky signal. */
+  attempts?: number
+  /** Cache-correctness verdict — set ONLY on a `--verify` run (absent
+   *  otherwise). A `nondeterministic` verdict means the task's cache entry is
+   *  unsound (its outputs aren't a pure function of its declared inputs); this
+   *  is the telemetry-side hermeticity signal a dashboard surfaces. */
+  verify?: VerifyVerdict
+  /** Output-tree fingerprint — set ONLY under a fingerprinting `--verify*`
+   *  mode (`--verify` / `=all` / `=fingerprint`), executed tasks only. A
+   *  connected serve pairs fingerprints for the SAME `hash` across platforms
+   *  and names diverging outputs (the cross-machine diff). Absent on plain
+   *  runs — additive-optional, no schema bump (the `attempts`/`verify`
+   *  precedent). */
+  outputFp?: OutputFingerprint
   /** bigint hrtime ns relative to run t=0, encoded as a decimal string. */
   wallclockStartNs?: string
   wallclockEndNs?: string
@@ -106,7 +131,16 @@ export interface TaskTelemetry {
  * `task.log` records are large and OPT-IN (see `TelemetrySink.wants`).
  */
 export type TelemetryRecord =
-  | { v: number; kind: 'run.start'; run: RunContextRecord; total: number; ts: number }
+  | {
+      v: number
+      kind: 'run.start'
+      run: RunContextRecord
+      total: number
+      ts: number
+      /** The run's canonical start (epoch ms) — equals the summary's
+       *  `startedAt`; a sink derives per-task timing from it during the run. */
+      startedAt: number
+    }
   | {
       v: number
       kind: 'task.start'
@@ -148,6 +182,46 @@ export interface RunSummaryRecord {
   hitRemoteCount: number
   exitOk: boolean
   tasks: readonly TaskTelemetry[]
+}
+
+/**
+ * Assemble the canonical per-run summary from the per-task telemetry + the
+ * run-level timing/verdict. THE one place the `RunSummaryRecord` tallies are
+ * computed: both a local `run()` and the distributed controller build their
+ * `TaskTelemetry[]` (each via `deriveCacheSource`) and call this, so a
+ * distributed run and a local run produce byte-identical summaries and land in
+ * the same ingest. The per-task tallies (taskCount / failedCount /
+ * hitLocal|Remote|Count) derive from `tasks`; `totalDurationMs` (wall time) and
+ * `exitOk` (the run's overall verdict — which counts skipped/verify beyond the
+ * recorded task list) are run-level facts and are passed in.
+ */
+export function assembleRunSummary(
+  run: RunContextRecord,
+  tasks: readonly TaskTelemetry[],
+  timing: { startedAt: number; endedAt: number; totalDurationMs: number; exitOk: boolean },
+): RunSummaryRecord {
+  let failedCount = 0
+  let hitLocalCount = 0
+  let hitRemoteCount = 0
+  for (const t of tasks) {
+    if (t.status === 'failed') failedCount++
+    if (t.cacheSource === 'local') hitLocalCount++
+    else if (t.cacheSource === 'remote') hitRemoteCount++
+  }
+  return {
+    v: TELEMETRY_SCHEMA_VERSION,
+    run,
+    startedAt: timing.startedAt,
+    endedAt: timing.endedAt,
+    totalDurationMs: timing.totalDurationMs,
+    taskCount: tasks.length,
+    failedCount,
+    hitCount: hitLocalCount + hitRemoteCount,
+    hitLocalCount,
+    hitRemoteCount,
+    exitOk: timing.exitOk,
+    tasks,
+  }
 }
 
 /** A telemetry consumer. Observe-only: receives records, holds no run handle. */
@@ -242,6 +316,7 @@ export function createTelemetrySource(args: {
           run,
           total: event.info.total,
           ts,
+          startedAt: event.info.startedAtMs ?? ts,
         })
         return
       case 'task:start': {
@@ -293,6 +368,9 @@ export function createTelemetrySource(args: {
         if (outcome.hash !== undefined) rec.hash = outcome.hash
         if (outcome.cpuMs !== undefined) rec.cpuMs = outcome.cpuMs
         if (outcome.peakRssBytes !== undefined) rec.peakRssBytes = outcome.peakRssBytes
+        if (outcome.attempts !== undefined) rec.attempts = outcome.attempts
+        if (outcome.verify !== undefined) rec.verify = outcome.verify
+        if (outcome.outputFp !== undefined) rec.outputFp = outcome.outputFp
         if (outcome.wallclockStartNs !== undefined)
           rec.wallclockStartNs = outcome.wallclockStartNs.toString()
         if (outcome.wallclockEndNs !== undefined)

@@ -1,32 +1,56 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { startServe } from '../src/cli/serve.js'
-import { serveInfoPath } from '../src/serve-info.js'
 import type { EnvironmentsFile } from '../src/environments.js'
 
 // The connect/env/disconnect verbs are exercised through the REAL vx-cloud
-// bin in a child process (async spawn, so an in-process startServe can answer
-// the handshake), with VX_CLOUD_CONFIG pointed at a per-test temp file —
-// nothing ever touches a real ~/.config.
+// bin in a child process (async spawn, so the in-process stub server below can
+// answer the handshake), with VX_CLOUD_CONFIG pointed at a per-test temp file
+// — nothing ever touches a real ~/.config. The stub emulates exactly the
+// connect-relevant surface (/health + /v1/meta + the token-gated /v1/runs
+// probe) in both the open and token-required modes.
 
 const BIN = path.join(import.meta.dir, '..', 'src', 'cli', 'bin.ts')
 
-// Isolate the per-user serve advertisement (written by startServe, read by
-// `env ls`) at a temp path so these tests never collide with a real serve.
-const prevServeInfo = process.env['VX_CLOUD_SERVE_INFO']
-beforeAll(() => {
-  process.env['VX_CLOUD_SERVE_INFO'] = path.join(
-    tmpdir(),
-    `vx-serveinfo-envcli-${process.pid}.json`,
-  )
-})
-afterAll(async () => {
-  await rm(serveInfoPath(), { force: true })
-  if (prevServeInfo === undefined) delete process.env['VX_CLOUD_SERVE_INFO']
-  else process.env['VX_CLOUD_SERVE_INFO'] = prevServeInfo
-})
+interface StubServer {
+  origin: string
+  stop(): Promise<void>
+}
+
+function startStubServe(opts: { name?: string; token?: string; auth?: string } = {}): StubServer {
+  const server = Bun.serve({
+    port: 0,
+    fetch(req) {
+      const url = new URL(req.url)
+      if (url.pathname === '/health') return new Response('ok')
+      if (url.pathname === '/v1/meta') {
+        return Response.json({
+          v: 1,
+          name: opts.name ?? 'localhost',
+          vx: '0.0.0',
+          auth: opts.auth ?? (opts.token !== undefined ? 'token' : 'open'),
+        })
+      }
+      if (url.pathname === '/v1/runs') {
+        if (
+          opts.token !== undefined &&
+          req.headers.get('authorization') !== `Bearer ${opts.token}`
+        ) {
+          return Response.json({ error: 'unauthorized' }, { status: 401 })
+        }
+        return Response.json({ runs: [] })
+      }
+      return new Response('not found', { status: 404 })
+    },
+  })
+  return {
+    origin: `http://localhost:${server.port}`,
+    stop: async () => {
+      await server.stop(true)
+    },
+  }
+}
 
 let dir: string
 let cfgPath: string
@@ -34,7 +58,6 @@ let cfgPath: string
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), 'vx-envcli-'))
   cfgPath = path.join(dir, 'environments.json')
-  await rm(serveInfoPath(), { force: true })
 })
 
 afterEach(async () => {
@@ -65,22 +88,65 @@ async function seedCfg(file: EnvironmentsFile): Promise<void> {
 
 describe('vx-cloud connect', () => {
   it('validates against a live serve, persists the entry, and activates it', async () => {
-    const server = await startServe({ root: dir })
+    const server = startStubServe()
     try {
-      const res = await cli(['connect', server.origin, '--name', 'team', '--delegate'])
+      const res = await cli(['connect', server.origin, '--name', 'team'])
       expect(res.code).toBe(0)
       expect(res.stdout).toContain('connected team')
       const file = await readCfg()
       expect(file.version).toBe(1)
       expect(file.active).toBe('team')
-      expect(file.environments['team']).toEqual({ url: server.origin, delegate: true })
+      expect(file.environments['team']).toEqual({ url: server.origin })
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('refuses a tokenless connect to an account platform (the silent-401 trap)', async () => {
+    const server = startStubServe({ auth: 'account' })
+    try {
+      const res = await cli(['connect', server.origin, '--name', 'team'])
+      expect(res.code).not.toBe(0)
+      expect(res.stderr).toContain('API token')
+      expect(res.stderr).toContain('Admin → Tokens')
+      // nothing persisted — the trap used to leave a broken entry behind
+      await expect(readCfg()).rejects.toThrow()
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('--anonymous connects tokenless to an account platform with a loud warning', async () => {
+    const server = startStubServe({ auth: 'account' })
+    try {
+      const res = await cli(['connect', server.origin, '--name', 'team', '--anonymous'])
+      expect(res.code).toBe(0)
+      expect(res.stderr).toContain('WITHOUT a token')
+      expect((await readCfg()).environments['team']).toEqual({ url: server.origin })
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('a token satisfies an account platform and is probed before persisting', async () => {
+    const server = startStubServe({ auth: 'account', token: 'vxc_good' })
+    try {
+      const bad = await cli(['connect', server.origin, '--name', 'team', '--token', 'vxc_bad'])
+      expect(bad.code).not.toBe(0)
+      expect(bad.stderr).toContain('401')
+      const ok = await cli(['connect', server.origin, '--name', 'team', '--token', 'vxc_good'])
+      expect(ok.code).toBe(0)
+      expect((await readCfg()).environments['team']).toEqual({
+        url: server.origin,
+        token: 'vxc_good',
+      })
     } finally {
       await server.stop()
     }
   })
 
   it('--distribute persists the ambient-pool policy on the environment', async () => {
-    const server = await startServe({ root: dir })
+    const server = startStubServe()
     try {
       const res = await cli(['connect', server.origin, '--name', 'pool', '--distribute'])
       expect(res.code).toBe(0)
@@ -94,7 +160,7 @@ describe('vx-cloud connect', () => {
   })
 
   it('--distribute=<n> persists the advisory agent count', async () => {
-    const server = await startServe({ root: dir })
+    const server = startStubServe()
     try {
       const res = await cli(['connect', server.origin, '--name', 'pool', '--distribute=4'])
       expect(res.code).toBe(0)
@@ -108,7 +174,7 @@ describe('vx-cloud connect', () => {
   })
 
   it('rejects a non-positive --distribute value', async () => {
-    const server = await startServe({ root: dir })
+    const server = startStubServe()
     try {
       const res = await cli(['connect', server.origin, '--distribute=nope'])
       expect(res.code).toBe(1)
@@ -119,7 +185,7 @@ describe('vx-cloud connect', () => {
   })
 
   it('--no-use persists without activating', async () => {
-    const server = await startServe({ root: dir })
+    const server = startStubServe()
     try {
       const res = await cli(['connect', server.origin, '--name', 'aside', '--no-use'])
       expect(res.code).toBe(0)
@@ -132,7 +198,7 @@ describe('vx-cloud connect', () => {
   })
 
   it('derives the name from the server identity (sanitized) when --name is absent', async () => {
-    const server = await startServe({ root: dir, name: 'Conn Serve' })
+    const server = startStubServe({ name: 'Conn Serve' })
     try {
       const res = await cli(['connect', server.origin])
       expect(res.code).toBe(0)
@@ -145,7 +211,7 @@ describe('vx-cloud connect', () => {
   })
 
   it('a token-requiring serve without --token errors with the fixit — nothing persisted', async () => {
-    const server = await startServe({ root: dir, token: 'sekret' })
+    const server = startStubServe({ token: 'sekret' })
     try {
       const res = await cli(['connect', server.origin, '--name', 'gated'])
       expect(res.code).toBe(1)
@@ -157,7 +223,7 @@ describe('vx-cloud connect', () => {
   })
 
   it('a wrong token is rejected (401) — nothing persisted', async () => {
-    const server = await startServe({ root: dir, token: 'sekret' })
+    const server = startStubServe({ token: 'sekret' })
     try {
       const res = await cli(['connect', server.origin, '--name', 'gated', '--token', 'wrong'])
       expect(res.code).toBe(1)
@@ -169,7 +235,7 @@ describe('vx-cloud connect', () => {
   })
 
   it('the right token verifies and persists with the entry', async () => {
-    const server = await startServe({ root: dir, token: 'sekret' })
+    const server = startStubServe({ token: 'sekret' })
     try {
       const res = await cli(['connect', server.origin, '--name', 'gated', '--token', 'sekret'])
       expect(res.code).toBe(0)
@@ -188,7 +254,7 @@ describe('vx-cloud connect', () => {
   })
 
   it('repointing an existing name at a different URL requires --force', async () => {
-    const server = await startServe({ root: dir })
+    const server = startStubServe()
     try {
       await seedCfg({
         version: 1,
@@ -242,24 +308,25 @@ describe('vx-cloud env use / rm / disconnect', () => {
 })
 
 describe('vx-cloud env ls', () => {
-  it('renders named envs + the synthetic (local) row, active marker, reachability — never tokens', async () => {
-    const server = await startServe({ root: dir, name: 'ls-serve' })
+  it('renders named envs, active marker, reachability — never tokens', async () => {
+    const server = startStubServe({ name: 'ls-serve' })
     try {
       await seedCfg({
         version: 1,
         active: 'team',
         environments: {
-          team: { url: server.origin, token: 'supersecret-token', delegate: true },
+          team: { url: server.origin, token: 'supersecret-token', distribute: true },
           dead: { url: 'http://localhost:1' },
         },
       })
       const res = await cli(['env', 'ls'])
       expect(res.code).toBe(0)
-      // The live advertisement produces the synthetic first row.
-      expect(res.stdout).toContain('(local)')
+      // A running local serve is NOT listed — only connected environments are.
+      expect(res.stdout).not.toContain('(local)')
       expect(res.stdout).toContain('* team')
       expect(res.stdout).toContain('ok (ls-serve)')
       expect(res.stdout).toContain('unreachable')
+      // The DISTRIBUTE column renders 'yes' for the ambient-pool policy.
       expect(res.stdout).toContain('yes')
       expect(res.stdout).not.toContain('supersecret-token')
     } finally {

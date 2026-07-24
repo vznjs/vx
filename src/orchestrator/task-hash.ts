@@ -170,11 +170,26 @@ function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string {
   if (hashCache) {
     const cached = hashCache.taskConfig.get(cfg)
     if (cached !== undefined) return cached
-    const hash = xxh3hex(JSON.stringify(cfg))
+    const hash = xxh3hex(JSON.stringify(hashableConfig(cfg)))
     hashCache.taskConfig.set(cfg, hash)
     return hash
   }
-  return xxh3hex(JSON.stringify(cfg))
+  return xxh3hex(JSON.stringify(hashableConfig(cfg)))
+}
+
+/**
+ * Project the config for hashing: `exec.resources` is a pure scheduling
+ * hint with zero effect on outputs, so it's stripped — tuning a
+ * reservation never busts a cache. A config that declares none takes the
+ * fast path and stringifies byte-identically to before the field existed
+ * (why this needs no CACHE_VERSION bump). `timeout`/`retries` stay folded
+ * — their keys are distinct by design (see the decision log); stripping
+ * them retroactively would bump CACHE_VERSION.
+ */
+function hashableConfig(cfg: TaskConfig): unknown {
+  if (cfg.exec?.resources === undefined) return cfg
+  const { resources: _resources, ...execRest } = cfg.exec
+  return { ...cfg, exec: execRest }
 }
 
 /**

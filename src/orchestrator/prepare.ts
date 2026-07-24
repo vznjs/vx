@@ -7,6 +7,7 @@
 // closes at the bottom of execution, `planRun()` does so via
 // try/finally around its plan() call.
 
+import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { UserError } from '../util/index.js'
 import {
@@ -15,6 +16,7 @@ import {
   type CachePolicy,
   FULL_CACHE_POLICY,
   GitFilesCache,
+  LayeredCache,
   populateGitFilesCache,
 } from '../cache/index.js'
 import {
@@ -32,7 +34,6 @@ import {
   type ProjectEntry,
 } from '../workspace/index.js'
 import { buildTaskGraph, expandRequested, type TaskNode } from '../graph/index.js'
-import { wrapWithRemoteCache } from './remote-cache-setup.js'
 import { resolveCache } from './plugin-host.js'
 import type { VxPlugin } from './plugin.js'
 import { createHashCache, type HashCache } from './task-hash.js'
@@ -190,19 +191,32 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const requested = expandRequested(options.tasks, candidateProjects, projects)
 
   const policy: CachePolicy = options.cache ?? FULL_CACHE_POLICY
-  const cacheDir = resolveCacheDir(workspaceRoot, workspaceConfig)
+  // `--cache-dir <path>` (RunOptions.cacheDir) overrides the workspace
+  // `cacheDir` field + the `.vx/cache` default; resolved relative to cwd.
+  const cacheDir = options.cacheDir
+    ? path.resolve(options.cwd, options.cacheDir)
+    : resolveCacheDir(workspaceRoot, workspaceConfig)
   const localCache = new Cache(cacheDir, { read: policy.localRead, write: policy.localWrite })
-  // Cache seam: a plugin's `cache` capability takes precedence; otherwise
-  // the env-var Turbo-wire fallback (today's unconditional behavior). With
-  // no cache plugin this is byte-identical to wrapWithRemoteCache.
+  // Cache seam precedence: an EXPLICITLY injected remote layer
+  // (RunOptions.remoteCache — a distribution agent or serve that already
+  // holds a wire client) wins outright; else a plugin's `cache` capability;
+  // else the local cache alone. Core ships no wire client — the remote
+  // cache is a plugin concern (native-cache-wire-2026-07). Injection
+  // winning prevents double-wrapping when the workspace also declares a
+  // cache plugin.
   const plugins = (workspaceConfig?.plugins ?? []) as readonly VxPlugin[]
-  const cache = await resolveCache(
-    plugins,
-    localCache,
-    { workspaceRoot, cacheDir, warn: (m) => log.status(m), localCache, policy },
-    log,
-    () => wrapWithRemoteCache(localCache, log, policy),
-  )
+  const cache = options.remoteCache
+    ? new LayeredCache(localCache, options.remoteCache, {
+        policy,
+        onRemoteError: (err) => log.status(`[vx] remote cache: ${err.message}`),
+      })
+    : await resolveCache(
+        plugins,
+        localCache,
+        { workspaceRoot, cacheDir, warn: (m) => log.status(m), localCache, policy },
+        log,
+        () => localCache,
+      )
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
   const gitFilesCache = new GitFilesCache()

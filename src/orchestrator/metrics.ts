@@ -430,16 +430,8 @@ export function getHistory(db: Database, args: GetHistoryArgs = {}): TaskHistory
     }
     const total = aggregate.total || 0
     const failures = aggregate.failures || 0
-    // Flaky requires a mixed-outcome KEY (same inputs, different outcomes);
-    // failures confined to their own keys are deterministic breakage and the
-    // task classifies stable on the flakiness axis.
-    const flakyKeys = failures > 0 ? mixedOutcomeKeyCount(db, p.project, p.task) : 0
     const failureMode: TaskHistoryRow['failureMode'] =
-      failures === 0 || flakyKeys === 0
-        ? 'stable'
-        : failures < total / 5
-          ? 'flaky-recoverable'
-          : 'flaky-fatal'
+      failures === 0 ? 'stable' : failures < total / 5 ? 'flaky-recoverable' : 'flaky-fatal'
     const durations = db
       .query(
         `SELECT duration_ms FROM runs
@@ -1297,29 +1289,6 @@ export function getRunHeatmap(db: Database, days = 30): HeatmapCell[] {
 // Flakiness — tasks that fail unpredictably or whose p99/p50 gap is wide
 // ---------------------------------------------------------------------------
 
-/**
- * Count of cache keys for one (project, task) that produced BOTH a failure
- * and a green outcome (success or cache hit) — the honest flakiness signal.
- * A failure at a key that only ever failed is a deterministic red (a code or
- * config change broke the task), not flakiness; key-scoping keeps legitimate
- * breakage from branding a task flaky.
- */
-function mixedOutcomeKeyCount(db: Database, project: string, task: string): number {
-  const row = db
-    .query(
-      `SELECT COUNT(*) AS n FROM (
-         SELECT hash FROM runs
-         WHERE project = ? AND task = ? AND hash IS NOT NULL AND hash != ''
-         GROUP BY hash
-         HAVING SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) > 0
-            AND SUM(CASE WHEN status = 'success' OR status LIKE 'cache-hit%' OR cache_hit = 1
-                    THEN 1 ELSE 0 END) > 0
-       )`,
-    )
-    .get(project, task) as { n: number }
-  return row.n
-}
-
 export interface FlakyTask {
   id: string
   project: string
@@ -1327,6 +1296,17 @@ export interface FlakyTask {
   runs: number
   failures: number
   failureRate: number
+  /**
+   * Runs where the task needed MORE than one attempt (`exec.retries` /
+   * `--retry` re-ran it and it eventually passed). This is the DIRECT
+   * flaky signal — a task that failed then passed under identical inputs
+   * is nondeterministic by definition, no cross-run inference needed.
+   */
+  withinRunRetries: number
+  /** The worst attempt count seen in any single run (undefined if never retried). */
+  maxAttempts: number | undefined
+  /** True when `withinRunRetries > 0` — flakiness is CONFIRMED, not inferred. */
+  flakyConfirmed: boolean
   /** p99 / p50 ratio for successful non-hit runs; >3 flags wide tail. */
   durationTailRatio: number | undefined
   p50DurationMs: number | undefined
@@ -1334,60 +1314,421 @@ export interface FlakyTask {
 }
 
 export function getFlakiestTasks(db: Database, limit = 25): FlakyTask[] {
+  // A within-run retry is a confirmed flake even with few runs, so surface
+  // such a task regardless of run count; cross-run failure variance still
+  // needs 3+ runs to be meaningful (else a single red build reads as flaky).
   const pairs = db
     .query(
       `SELECT project, task, COUNT(*) AS runs,
-              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures
-       FROM runs GROUP BY project, task HAVING runs >= 3`,
+              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
+              SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END) AS within_run_retries,
+              MAX(attempts) AS max_attempts
+       FROM runs GROUP BY project, task
+       HAVING runs >= 3 OR within_run_retries > 0`,
     )
-    .all() as { project: string; task: string; runs: number; failures: number }[]
-  return (
-    pairs
-      .map((p) => {
-        const durs = db
-          .query(
-            `SELECT duration_ms FROM runs
+    .all() as {
+    project: string
+    task: string
+    runs: number
+    failures: number
+    within_run_retries: number
+    max_attempts: number | null
+  }[]
+  return pairs
+    .map((p) => {
+      const durs = db
+        .query(
+          `SELECT duration_ms FROM runs
            WHERE project = ? AND task = ?
              AND (cache_hit IS NULL OR cache_hit = 0) AND status = 'success'
            ORDER BY started_at DESC LIMIT 50`,
-          )
-          .all(p.project, p.task) as { duration_ms: number }[]
-        const sorted = durs.map((r) => r.duration_ms).sort((a, b) => a - b)
-        const p50 = pickPercentile(sorted, 0.5)
-        const p99 = pickPercentile(sorted, 0.99)
-        const ratio = p50 && p50 > 0 && p99 !== undefined ? p99 / p50 : undefined
-        const flaky = p.failures > 0 && mixedOutcomeKeyCount(db, p.project, p.task) > 0
-        return {
-          row: {
-            id: `${p.project}#${p.task}`,
-            project: p.project,
-            task: p.task,
-            runs: p.runs,
-            failures: p.failures,
-            failureRate: p.runs > 0 ? p.failures / p.runs : 0,
-            durationTailRatio: ratio,
-            p50DurationMs: p50,
-            p99DurationMs: p99,
-          } satisfies FlakyTask,
-          flaky,
-        }
-      })
-      // Failure-driven inclusion requires a MIXED-outcome key — a task whose
-      // failures all sit at their own (changed) keys is deterministically red,
-      // not flaky. Wide-tail inclusion is orthogonal and stays.
-      .filter(
-        ({ row, flaky }) =>
-          flaky || (row.durationTailRatio !== undefined && row.durationTailRatio > 2),
+        )
+        .all(p.project, p.task) as { duration_ms: number }[]
+      const sorted = durs.map((r) => r.duration_ms).sort((a, b) => a - b)
+      const p50 = pickPercentile(sorted, 0.5)
+      const p99 = pickPercentile(sorted, 0.99)
+      const ratio = p50 && p50 > 0 && p99 !== undefined ? p99 / p50 : undefined
+      return {
+        id: `${p.project}#${p.task}`,
+        project: p.project,
+        task: p.task,
+        runs: p.runs,
+        failures: p.failures,
+        failureRate: p.runs > 0 ? p.failures / p.runs : 0,
+        withinRunRetries: p.within_run_retries,
+        maxAttempts: p.max_attempts ?? undefined,
+        flakyConfirmed: p.within_run_retries > 0,
+        durationTailRatio: ratio,
+        p50DurationMs: p50,
+        p99DurationMs: p99,
+      } satisfies FlakyTask
+    })
+    .filter(
+      (r) =>
+        r.flakyConfirmed ||
+        r.failureRate > 0 ||
+        (r.durationTailRatio !== undefined && r.durationTailRatio > 2),
+    )
+    .sort((a, b) => {
+      // Confirmed-flaky tasks (a real within-run retry) outrank every merely
+      // inferred one; within each tier, failure rate dominates and the
+      // duration tail breaks ties.
+      const score = (r: FlakyTask) =>
+        (r.flakyConfirmed ? 100 : 0) + r.failureRate * 10 + (r.durationTailRatio ?? 1)
+      return score(b) - score(a)
+    })
+    .slice(0, clampInt(limit, 1, 200))
+}
+
+// ---------------------------------------------------------------------------
+// Regressions — "which tasks just started failing across branches?"
+// ---------------------------------------------------------------------------
+
+/**
+ * A task that is currently failing on one or more branches and USED to pass —
+ * a regression, distinct from a flaky task (nondeterministic) or a task that
+ * has always been broken. "Across branches" is the key signal: a task failing
+ * on several branches at once points at a real break in that task or in shared
+ * code, not one developer's work-in-progress branch.
+ */
+export interface RegressedTask {
+  id: string
+  project: string
+  task: string
+  /** Distinct branches whose MOST-RECENT run in the window failed. */
+  branchesFailing: number
+  /** Distinct branches the task ran on in the window. */
+  branchesTotal: number
+  /** The currently-failing branch names (capped). */
+  branches: string[]
+  /**
+   * True if the task has any prior successful run — it regressed, rather than
+   * being perpetually broken. A regression is the more urgent signal.
+   */
+  regressed: boolean
+  /** Earliest failed run in the window (ms epoch) — ≈ when it started failing. */
+  firstFailedAt: number
+  /** Most-recent run in the window (ms epoch). */
+  lastRunAt: number
+  /** Failed runs in the window. */
+  failures: number
+  /** Total runs in the window. */
+  runs: number
+}
+
+export interface RegressionArgs {
+  /** Look-back window in days. Default 7. */
+  sinceDays?: number
+  /** Minimum distinct currently-failing branches to surface. Default 2
+   *  ("across branches"); pass 1 to include single-branch regressions. */
+  minBranches?: number
+  limit?: number
+}
+
+const PASS_STATUSES = "('success', 'cache-hit', 'cache-hit-remote')"
+const BRANCH_CAP = 12
+
+export function getRegressions(db: Database, args: RegressionArgs = {}): RegressedTask[] {
+  const sinceDays = args.sinceDays ?? 7
+  const minBranches = Math.max(1, args.minBranches ?? 2)
+  const limit = clampInt(args.limit ?? 25, 1, 200)
+  const since = Date.now() - sinceDays * 86_400_000
+
+  // The most-recent non-skipped run per (task, branch) in the window: its
+  // status is that task's CURRENT state on that branch. Skipped/aborted runs
+  // never finished on their own terms, so they're excluded from the state.
+  const latest = db
+    .query(
+      `WITH windowed AS (
+         SELECT r.project AS project, r.task AS task, inv.branch AS branch,
+                r.status AS status,
+                ROW_NUMBER() OVER (
+                  PARTITION BY r.project, r.task, inv.branch
+                  ORDER BY r.started_at DESC, r.run_id DESC
+                ) AS rn
+         FROM runs r JOIN invocations inv ON r.run_id = inv.run_id
+         WHERE inv.branch IS NOT NULL
+           AND r.started_at >= ?
+           AND r.status IN ('success', 'failed', 'cache-hit', 'cache-hit-remote')
+       )
+       SELECT project, task, branch, status FROM windowed WHERE rn = 1`,
+    )
+    .all(since) as { project: string; task: string; branch: string; status: string }[]
+
+  // Aggregate the latest-per-branch rows into per-task failing/total branch
+  // sets. `failing` = the task's most recent run on that branch failed.
+  const byTask = new Map<
+    string,
+    { project: string; task: string; failing: string[]; total: Set<string> }
+  >()
+  for (const r of latest) {
+    const id = `${r.project}#${r.task}`
+    let agg = byTask.get(id)
+    if (agg === undefined) {
+      agg = { project: r.project, task: r.task, failing: [], total: new Set() }
+      byTask.set(id, agg)
+    }
+    agg.total.add(r.branch)
+    if (r.status === 'failed') agg.failing.push(r.branch)
+  }
+
+  const out: RegressedTask[] = []
+  for (const [id, agg] of byTask) {
+    if (agg.failing.length < minBranches) continue
+    // Per-task follow-ups (the getFlakiestTasks pattern) — the regressed set
+    // is small, so a couple of point queries each is cheap.
+    const win = db
+      .query(
+        `SELECT COUNT(*) AS runs,
+                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
+                MIN(CASE WHEN status = 'failed' THEN started_at END) AS first_failed,
+                MAX(started_at) AS last_run
+         FROM runs WHERE project = ? AND task = ? AND started_at >= ?`,
       )
-      .map(({ row }) => row)
-      .sort((a, b) => {
-        // Rank by a composite score: failure rate dominates, tail ratio breaks ties.
-        const sa = a.failureRate * 10 + (a.durationTailRatio ?? 1)
-        const sb = b.failureRate * 10 + (b.durationTailRatio ?? 1)
-        return sb - sa
-      })
-      .slice(0, clampInt(limit, 1, 200))
+      .get(agg.project, agg.task, since) as {
+      runs: number
+      failures: number | null
+      first_failed: number | null
+      last_run: number | null
+    }
+    const everPassed =
+      db
+        .query(
+          `SELECT 1 FROM runs WHERE project = ? AND task = ? AND status IN ${PASS_STATUSES} LIMIT 1`,
+        )
+        .get(agg.project, agg.task) !== null
+    out.push({
+      id,
+      project: agg.project,
+      task: agg.task,
+      branchesFailing: agg.failing.length,
+      branchesTotal: agg.total.size,
+      branches: agg.failing.sort().slice(0, BRANCH_CAP),
+      regressed: everPassed,
+      firstFailedAt: win.first_failed ?? 0,
+      lastRunAt: win.last_run ?? 0,
+      failures: win.failures ?? 0,
+      runs: win.runs,
+    })
+  }
+  // Regressions (used-to-pass) first, then most branches affected, then the
+  // most recently-started failures — the "act on this now" ordering.
+  return out
+    .sort(
+      (a, b) =>
+        Number(b.regressed) - Number(a.regressed) ||
+        b.branchesFailing - a.branchesFailing ||
+        b.firstFailedAt - a.firstFailedAt,
+    )
+    .slice(0, limit)
+}
+
+// ---------------------------------------------------------------------------
+// Period-over-period analysis — "how is CI trending vs the previous window,
+// and which tasks moved the most?" Two adjacent equal-length windows.
+// ---------------------------------------------------------------------------
+
+export interface PeriodStats {
+  /** Distinct runs (invocations) in the window. */
+  runs: number
+  /** Task executions recorded (rows). */
+  taskRuns: number
+  /** Executions that actually ran (not a cache hit). */
+  executed: number
+  /** Failed task executions. */
+  failures: number
+  /** Cache-hit task executions (local or remote). */
+  cacheHits: number
+  /** Sum of executed-task durations (ms). */
+  totalDurationMs: number
+  /** Mean duration of successful executed tasks (ms). */
+  avgDurationMs: number
+  p50DurationMs: number | undefined
+  p95DurationMs: number | undefined
+  /** failures / taskRuns. */
+  failureRate: number
+  /** cacheHits / taskRuns. */
+  cacheHitRate: number
+}
+
+export interface TaskMover {
+  id: string
+  project: string
+  task: string
+  currentAvgMs: number
+  previousAvgMs: number
+  /** current − previous (positive = slower / regressed). */
+  deltaMs: number
+  /** (current − previous) / previous, as a fraction. */
+  deltaPct: number
+  currentRuns: number
+  previousRuns: number
+}
+
+export interface PeriodComparison {
+  windowDays: number
+  current: { from: number; to: number; stats: PeriodStats }
+  previous: { from: number; to: number; stats: PeriodStats }
+  /**
+   * Tasks whose average executed duration moved the most between the two
+   * windows, by absolute impact (biggest ms shift first; positive = slower).
+   * Only tasks with >= minRuns successful executions in BOTH windows qualify,
+   * so a mover reflects a real trend, not one-off noise.
+   */
+  movers: TaskMover[]
+}
+
+export interface PeriodComparisonArgs {
+  /** Length of each window in days. Default 7 (this week vs last week). */
+  windowDays?: number
+  /** End of the CURRENT window (ms). Default now — override for tests. */
+  endMs?: number
+  /** Min successful executions in EACH window for a mover to qualify. Default 3. */
+  minRuns?: number
+  /** Max movers returned. Default 8. */
+  limit?: number
+  /** Scope to one project — the project-detail "did MY project trend?" view. */
+  project?: string
+  /** Scope to one task within `project` — the task-detail trend. */
+  task?: string
+}
+
+/** Optional per-project/task scoping shared by the two window queries. */
+interface PeriodScope {
+  project?: string
+  task?: string
+}
+
+function scopeSql(scope: PeriodScope): { sql: string; params: string[] } {
+  let sql = ''
+  const params: string[] = []
+  if (scope.project !== undefined) {
+    sql += ' AND project = ?'
+    params.push(scope.project)
+  }
+  if (scope.task !== undefined) {
+    sql += ' AND task = ?'
+    params.push(scope.task)
+  }
+  return { sql, params }
+}
+
+function periodStats(db: Database, from: number, to: number, scope: PeriodScope): PeriodStats {
+  const { sql, params } = scopeSql(scope)
+  const agg = db
+    .query(
+      // COALESCE every SUM: over an empty window SQLite SUM() returns NULL, and
+      // the previous window is empty for any workspace younger than the window
+      // (a fresh serve, a quiet prior week) — a bare SUM would ship `null` where
+      // PeriodStats declares `number`, throwing on the client's `.toFixed()`.
+      `SELECT COUNT(*) AS taskRuns,
+              COUNT(DISTINCT run_id) AS runs,
+              COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failures,
+              COALESCE(SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END), 0) AS cacheHits,
+              COALESCE(SUM(CASE WHEN cache_hit IS NULL OR cache_hit = 0 THEN 1 ELSE 0 END), 0) AS executed,
+              COALESCE(SUM(CASE WHEN cache_hit IS NULL OR cache_hit = 0 THEN duration_ms ELSE 0 END), 0) AS totalDurationMs
+       FROM runs WHERE started_at >= ? AND started_at < ?${sql}`,
+    )
+    .get(from, to, ...params) as {
+    taskRuns: number
+    runs: number
+    failures: number
+    cacheHits: number
+    executed: number
+    totalDurationMs: number
+  }
+  const durs = (
+    db
+      .query(
+        `SELECT duration_ms AS d FROM runs
+         WHERE started_at >= ? AND started_at < ?
+           AND (cache_hit IS NULL OR cache_hit = 0) AND status = 'success'${sql}
+         ORDER BY duration_ms`,
+      )
+      .all(from, to, ...params) as { d: number }[]
+  ).map((r) => r.d)
+  const taskRuns = agg.taskRuns
+  return {
+    runs: agg.runs,
+    taskRuns,
+    executed: agg.executed,
+    failures: agg.failures,
+    cacheHits: agg.cacheHits,
+    totalDurationMs: agg.totalDurationMs,
+    avgDurationMs: durs.length > 0 ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length) : 0,
+    p50DurationMs: pickPercentile(durs, 0.5),
+    p95DurationMs: pickPercentile(durs, 0.95),
+    failureRate: taskRuns > 0 ? agg.failures / taskRuns : 0,
+    cacheHitRate: taskRuns > 0 ? agg.cacheHits / taskRuns : 0,
+  }
+}
+
+function avgByTask(
+  db: Database,
+  from: number,
+  to: number,
+  scope: PeriodScope,
+): Map<string, { avg: number; runs: number; project: string; task: string }> {
+  const { sql, params } = scopeSql(scope)
+  const rows = db
+    .query(
+      `SELECT project, task, AVG(duration_ms) AS avg, COUNT(*) AS runs
+       FROM runs
+       WHERE started_at >= ? AND started_at < ?
+         AND (cache_hit IS NULL OR cache_hit = 0) AND status = 'success'${sql}
+       GROUP BY project, task`,
+    )
+    .all(from, to, ...params) as { project: string; task: string; avg: number; runs: number }[]
+  return new Map(
+    rows.map((r) => [
+      `${r.project}#${r.task}`,
+      { avg: r.avg, runs: r.runs, project: r.project, task: r.task },
+    ]),
   )
+}
+
+export function getPeriodComparison(
+  db: Database,
+  args: PeriodComparisonArgs = {},
+): PeriodComparison {
+  const windowDays = Math.max(1, args.windowDays ?? 7)
+  const minRuns = Math.max(1, args.minRuns ?? 3)
+  const limit = clampInt(args.limit ?? 8, 1, 100)
+  const scope: PeriodScope = {
+    ...(args.project !== undefined ? { project: args.project } : {}),
+    ...(args.task !== undefined ? { task: args.task } : {}),
+  }
+  const to = args.endMs ?? Date.now()
+  const win = windowDays * 86_400_000
+  const curFrom = to - win
+  const prevTo = curFrom
+  const prevFrom = curFrom - win
+
+  const cur = avgByTask(db, curFrom, to, scope)
+  const prev = avgByTask(db, prevFrom, prevTo, scope)
+  const movers: TaskMover[] = []
+  for (const [id, c] of cur) {
+    const p = prev.get(id)
+    if (p === undefined || c.runs < minRuns || p.runs < minRuns) continue
+    movers.push({
+      id,
+      project: c.project,
+      task: c.task,
+      currentAvgMs: Math.round(c.avg),
+      previousAvgMs: Math.round(p.avg),
+      deltaMs: Math.round(c.avg - p.avg),
+      deltaPct: p.avg > 0 ? (c.avg - p.avg) / p.avg : 0,
+      currentRuns: c.runs,
+      previousRuns: p.runs,
+    })
+  }
+  movers.sort((a, b) => Math.abs(b.deltaMs) - Math.abs(a.deltaMs))
+  return {
+    windowDays,
+    current: { from: curFrom, to, stats: periodStats(db, curFrom, to, scope) },
+    previous: { from: prevFrom, to: prevTo, stats: periodStats(db, prevFrom, prevTo, scope) },
+    movers: movers.slice(0, limit),
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -8,8 +8,8 @@ in `src/cli/index.ts` dispatches to per-subcommand handlers under
 so existing Turbo users can swap in with minimal muscle-memory churn.
 
 ```sh
-# Standalone binary (no Bun required on target):
-curl -fsSL https://raw.githubusercontent.com/vznjs/vx/main/install.sh | sh
+# Standalone binary via npm (no Bun required on target):
+npm install -g @vzn/vx
 
 # From source (Bun ≥ 1.3):
 bun src/bin.ts --version
@@ -30,14 +30,6 @@ vx stats              # deprecated alias of vx info
 vx upgrade [tag]      # self-update a compiled binary
 vx mcp [--stdio]      # MCP server for AI agents
 
-# Cloud — the @vzn/vx-cloud package (separately installed; the `vx-cloud` binary)
-vx-cloud serve [--port N] [--ingest-dir D] [--token T] [--name N] [--ui] [--open]
-vx-cloud connect <url> [--name N] [--token T] [--delegate] [--no-use] [--force]
-vx-cloud env ls | use <name> | rm <name>
-vx-cloud disconnect
-vx-cloud agent --url <serve> [--token T] [--capacity N] [--session S] [--idle-timeout MS] [--label L]
-vx-cloud dev
-
 # Meta
 vx help
 vx --help, -h
@@ -45,13 +37,9 @@ vx version
 vx --version
 ```
 
-Typing `vx serve` / `dev` / `coordinator` / `worker` prints a
-redirect: those commands moved to `@vzn/vx-cloud` in the core/cloud
-split — core has no service CLI. Within `vx-cloud`, the `coordinator`
-and `worker` verbs are RETIRED (distributed-execution-2026-07):
-`coordinator` was absorbed into `vx-cloud serve` (enable with
-`VX_CLOUD_DISTRIBUTE=<n>` on the submitting run), and `worker` is now
-`vx-cloud agent`; both print redirects.
+Typing `vx serve` / `dev` / `coordinator` / `worker` prints a redirect:
+those commands live in a separate service package, not core — core has no
+service CLI. See the Cloud section of the docs for that binary.
 
 Multiple positional tasks run in one orchestrator invocation with a
 shared task graph: `vx run build lint test` fans out all three across
@@ -159,25 +147,31 @@ stays clean).
 
 ### Flags
 
-| Flag                              | Type           | Default                         | Description                                                                                                                                       |
-| --------------------------------- | -------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--filter <pattern>`              | repeatable     | (none)                          | pnpm-style filter DSL (see above).                                                                                                                |
-| `--all`                           | boolean        | off                             | Select every project that declares the task.                                                                                                      |
-| `--affected[=<base>]`             | optional value | off                             | Filter to projects changed since `<base>` (default `origin/HEAD`).                                                                                |
-| `--excludeDependencies[=<names>]` | optional value | off                             | Drop `dependsOn` edges. No value = all (just the requested task runs); comma-list = drop only those names.                                        |
-| `--concurrency <n>`               | positive int   | `navigator.hardwareConcurrency` | Maximum parallel tasks. `1` serializes.                                                                                                           |
-| `--no-cache`                      | boolean        | off                             | Disable caching entirely (no reads, no writes); output globs are NOT cleaned.                                                                     |
-| `--force`                         | boolean        | off                             | Re-execute everything (skip cache reads) but still REFRESH the cache (writes stay on). Output globs are cleaned (so the saved snapshot is clean). |
-| `--cache <spec>`                  | value          | all axes on                     | Per-layer read/write control. See below.                                                                                                          |
-| `--frozen`                        | boolean        | off                             | Load configs from `vx-lock.json` instead of evaluating (CI). See § `--frozen`.                                                                    |
-| `--output-logs <mode>`            | value          | flow-derived                    | `full` \| `errors-only` \| `none` — explicit output override. See § `--output-logs`.                                                              |
-| `--verbosity <n>`                 | int (0+)       | `0`                             | `1` prints a per-task summary table after the framed blocks; `2+` reserved.                                                                       |
-| `--dry[=text\|json]`              | optional value | off                             | Print the task graph + predicted cache hit/miss; skip execution.                                                                                  |
-| `--graph[=<path>]`                | optional value | off                             | Emit Graphviz DOT (stdout if no path); skip execution.                                                                                            |
-| `--summarize[=<path>]`            | optional value | off                             | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                                                                     |
-| `--profile[=<path>]`              | optional value | off (`profile.json` when set)   | Write Chrome-trace JSON of the run's wallclock spans.                                                                                             |
-| `--tag <k=v>`                     | repeatable     | (none)                          | Label this invocation. Recorded on the run's `invocations` row so dashboards can filter runs. `--tag=k=v` form too.                               |
-| `--report[=markdown]`             | optional value | off                             | After the run, print a markdown run report to stdout. Only `markdown` is supported (`json` is reserved).                                          |
+| Flag                              | Type           | Default                            | Description                                                                                                                                                                                                                                                                                                                                                                      |
+| --------------------------------- | -------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--filter <pattern>`              | repeatable     | (none)                             | pnpm-style filter DSL (see above).                                                                                                                                                                                                                                                                                                                                               |
+| `--all`                           | boolean        | off                                | Select every project that declares the task.                                                                                                                                                                                                                                                                                                                                     |
+| `--affected[=<base>]`             | optional value | off                                | Filter to projects changed since `<base>` (default `origin/HEAD`).                                                                                                                                                                                                                                                                                                               |
+| `--excludeDependencies[=<names>]` | optional value | off                                | Drop `dependsOn` edges. No value = all (just the requested task runs); comma-list = drop only those names.                                                                                                                                                                                                                                                                       |
+| `--concurrency <n>`               | positive int   | `navigator.hardwareConcurrency`    | Maximum parallel tasks. `1` serializes.                                                                                                                                                                                                                                                                                                                                          |
+| `--no-cache`                      | boolean        | off                                | Disable caching entirely (no reads, no writes); output globs are NOT cleaned.                                                                                                                                                                                                                                                                                                    |
+| `--force`                         | boolean        | off                                | Re-execute everything (skip cache reads) but still REFRESH the cache (writes stay on). Output globs are cleaned (so the saved snapshot is clean).                                                                                                                                                                                                                                |
+| `--cache <spec>`                  | value          | all axes on                        | Per-layer read/write control. See below.                                                                                                                                                                                                                                                                                                                                         |
+| `--cache-dir <path>`              | value          | workspace `cacheDir` / `.vx/cache` | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats the `defineWorkspace({ cacheDir })` field and the `.vx/cache` default. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too.                                                                                                                                      |
+| `--retry <n>`                     | value          | `0`                                | Re-run a failed task up to `n` more times. Run-level default only: a task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retry=<n>` form too.                                                                                                                                                                                                    |
+| `--timeout <ms>`                  | positive int   | none                               | Default per-task timeout for tasks without their own `exec.timeout`. Sits above `VX_TASK_TIMEOUT` + workspace `timeout`; per-task `exec.timeout` always wins. A runaway task is killed + `failed`. Never affects cache keys. `--timeout=<ms>` form too.                                                                                                                          |
+| `--memory <size>`                 | size           | total system RAM                   | Memory budget that per-task `exec.resources.memory` reservations pack against (`8GB`, `512MB`). Pass it in cgroup-limited containers — the default reads the HOST's RAM. Reservations are per-task config, not flags. Never affects cache keys. `--memory=<size>` form too.                                                                                                      |
+| `--verify[=<what>]`               | optional value | off                                | Prove cache correctness. `determinism` (default): re-run + content-compare outputs. `inputs`: sandbox with the declared-input baseline + flag undeclared reads. `fingerprint`: ship output-tree fingerprints for the cross-machine diff (~1× exec, no re-run). `all`: everything. An unsafe task fails the run with the exact paths. See § `--verify`. Never affects cache keys. |
+| `--verify-allow <pkg#task,…>`     | value          | (none)                             | Comma-list of task ids exempt from failing `--verify` (known-nondeterministic; reported `allowed-nondeterministic`). `--verify-allow=<csv>` form too.                                                                                                                                                                                                                            |
+| `--frozen`                        | boolean        | off                                | Load configs from `vx-lock.json` instead of evaluating (CI). See § `--frozen`.                                                                                                                                                                                                                                                                                                   |
+| `--output-logs <mode>`            | value          | flow-derived                       | `full` \| `errors-only` \| `none` — explicit output override. See § `--output-logs`.                                                                                                                                                                                                                                                                                             |
+| `--verbosity <n>`                 | int (0+)       | `0`                                | `1` prints a per-task summary table after the framed blocks; `2+` reserved.                                                                                                                                                                                                                                                                                                      |
+| `--dry[=text\|json]`              | optional value | off                                | Print the task graph + predicted cache hit/miss; skip execution.                                                                                                                                                                                                                                                                                                                 |
+| `--graph[=<path>]`                | optional value | off                                | Emit Graphviz DOT (stdout if no path); skip execution.                                                                                                                                                                                                                                                                                                                           |
+| `--summarize[=<path>]`            | optional value | off                                | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                                                                                                                                                                                                                                                                                                    |
+| `--profile[=<path>]`              | optional value | off (`profile.json` when set)      | Write Chrome-trace JSON of the run's wallclock spans.                                                                                                                                                                                                                                                                                                                            |
+| `--tag <k=v>`                     | repeatable     | (none)                             | Label this invocation. Recorded on the run's `invocations` row so dashboards can filter runs. `--tag=k=v` form too.                                                                                                                                                                                                                                                              |
+| `--report[=markdown]`             | optional value | off                                | After the run, print a markdown run report to stdout. Only `markdown` is supported (`json` is reserved).                                                                                                                                                                                                                                                                         |
 
 Mutual exclusion:
 
@@ -228,6 +222,143 @@ Combine with `--force` for "re-execute and refresh only the remote":
 
 Invalid layers/flags are a parse error
 (`invalid --cache layer 'disk'`, `invalid --cache flag 'x'`, …).
+
+#### Provable cache correctness: `--verify`
+
+Every cache built on declared inputs shares one unstated assumption: a
+task run twice on the same inputs produces the same outputs. When it
+doesn't — a timestamp baked into a bundle, an unsorted `Object.keys`
+iteration, a `Math.random()` seed, an absolute path in a sourcemap —
+the cache entry is a lie: a later "hit" replays whichever bytes
+happened to win the race the day it was saved. Turbo and Nx cannot tell
+you which of your tasks are like this; they just cache and hope.
+
+`vx run --verify` proves it. After an executed cacheable task saves its
+artifact, vx **re-runs the same task** and content-compares (git-blob
+OID per output file) the second run's outputs against the first. Same
+bytes ⇒ the task is deterministic on these inputs ⇒ its cache entry is
+provably safe (`proven-deterministic`). Different bytes ⇒ the task is
+non-hermetic ⇒ caching it is unsound, and the run **fails** naming the
+diverging output paths (`nondeterministic`). It is the correctness-first
+inverse of input auto-inference: vx never guesses your inputs, but it
+will prove the ones you declared are complete enough to cache.
+
+```
+$ vx run build --verify
+ …
+ Verify:  7 proven · 1 nondeterministic · 2 n/a
+ ✗ @acme/web#bundle — nondeterministic
+     changed: dist/app.js, dist/app.js.map
+```
+
+Cost: roughly **2× execution** for the verified tasks (each runs
+twice), so it's a CI / pre-merge gate, not an every-run default. Notes:
+
+- **Never changes a cache key.** `--verify` is a pure run-level
+  side-channel; a `--verify` run cache-hits a plain run's entry (and a
+  hit is reported `not-verified` — there's nothing to re-run). Pair it
+  with `--force` to re-execute and verify a warm graph:
+  `vx run build --force --verify`.
+- **Only executed, cacheable, output-declaring tasks are verified.** A
+  cache hit is `not-verified`; a cacheable task with no declared
+  outputs is `no-outputs` (nothing to replay); an uncacheable task is
+  skipped. If the re-run itself fails (flaky failure), the verdict is
+  `rerun-failed` and the run fails.
+- **`--verify-allow <pkg#task,…>`** exempts tasks you know are
+  non-deterministic and can't fix yet — they're reported
+  `allowed-nondeterministic` and don't fail the run, so the gate stays
+  green on the rest while you track the exceptions.
+
+The run still ends bit-identical to a normal run: after the verify
+re-run, vx restores the first attempt's saved bytes into the project,
+so the on-disk tree matches the artifact that was cached.
+
+##### `--verify=inputs` — proving the declared inputs are complete
+
+Determinism is only half the cache-safety story. The other half: are the
+inputs you declared the _whole_ read set? If a task reads a file you
+didn't list in `cache.inputs`, that file can change without changing the
+key — a silent stale hit. `--verify=inputs` proves it. The task runs once
+through vx's OS sandbox with the declared inputs (`cache.inputs.files` /
+`workspaceFiles` / `runtime`) as the only readable workspace paths; a read
+of any other workspace file is flagged and the run fails naming it:
+
+```
+$ vx run build --verify=inputs
+ …
+ Verify:   6 proven · 1 unsafe · 0 n/a
+ ✗ @acme/api#build — read undeclared inputs
+     src/generated/schema.ts
+     add them to cache.inputs.files / workspaceFiles
+```
+
+- `--verify=all` runs both proofs (input-completeness first; if the inputs
+  are incomplete there's no point re-running for determinism).
+- Needs the OS sandbox (bwrap on Linux, sandbox-exec on macOS). Full path
+  fidelity on Linux needs `strace` on PATH; without it the sandbox still
+  denies the read structurally but can't name the path. On a host where
+  the sandbox is unavailable, `--verify=inputs` errors clearly — it never
+  silently "passes".
+- Reads _outside_ the workspace (system CA certs, `~/.config` tool state)
+  are not flagged — only undeclared reads _inside_ the workspace, which are
+  the ones that can change a cached output.
+
+##### `--verify=fingerprint` — the cross-machine diff feed
+
+Determinism (`--verify`) proves a task reproducible **on one machine**.
+But vx's cache key deliberately folds no os/arch — the same commit on
+`linux-x64` and `darwin-arm64` derives the SAME key (that's what makes a
+shared remote cache work) — so a task that is deterministic per-machine
+but platform-DEPENDENT (embeds `process.arch`, links a mac-only
+toolchain, leaks an absolute build path) poisons a shared cache silently:
+first writer wins, and the other platform restores wrong bytes forever.
+No single-machine proof can see this. Two machines' fingerprints for the
+same key can.
+
+`--verify=fingerprint` fingerprints each executed cacheable task's output
+tree (a roll-up digest + a per-file content map, capped at 500 entries)
+and ships it on the task's telemetry — no re-run, no sandbox. Cost is
+roughly **1× execution plus a hash pass** over just-written, page-cached
+output bytes, so a per-platform CI matrix can afford it on every
+scheduled run. A connected analytics service persists fingerprints keyed
+by `(cache key, os, arch)` and diffs them at read time, naming the exact
+task, key, platforms, and diverging output files — the first-party one
+surfaces this on its dashboard (see the Cloud section of the docs).
+
+The per-platform CI recipe — the same matrix that builds your release
+binaries, with a shared cache + analytics service connected so each
+platform reports:
+
+```yaml
+strategy:
+  matrix:
+    os: [ubuntu-latest, macos-latest]
+steps:
+  # connect a shared cache + analytics service here (see the Cloud section)
+  - run: vx run --all --force --verify=fingerprint
+```
+
+`--force` matters: with a shared remote cache and plain reads, the
+SECOND platform cache-hits and never executes — which is exactly the
+poisoning scenario, so it never produces a fingerprint. Only `--force`
+(reads off, writes on) makes every platform execute and report. Notes:
+
+- The plain `--verify` / `--verify=all` runs ship fingerprints too, for
+  free (the determinism proof already computes them) — a team already
+  running the nightly `--force --verify` recipe gets cross-machine data
+  at zero extra cost. `--verify=inputs` stays fingerprint-free.
+- Fingerprints come only from **executed** tasks. A cache hit's on-disk
+  bytes are the producer's — fingerprinting them would attribute another
+  machine's output to this platform. Hits carry no verdict and no
+  fingerprint under `=fingerprint`.
+- Divergence detection is **advisory and retroactive**: the serve
+  observes completed runs and never fails one. A flagged key means either
+  a hermeticity bug to fix, or a genuinely platform-dependent task whose
+  key should split per platform — declare the axis:
+  `cache.inputs.runtime: ['uname -sm']`.
+- Like every `--verify` mode, it never changes a cache key: a
+  `--verify=fingerprint` run cache-hits a plain run's entry, and a plain
+  run's records are byte-identical (no fingerprint code executes).
 
 ### Output
 
@@ -724,8 +855,8 @@ Self-update the compiled binary in place: downloads the release asset
 for this platform and atomically replaces the running executable
 (`vx upgrade <tag>` pins a specific release; default latest). Named
 `upgrade` per CLI convention (`bun upgrade`, `deno upgrade`). Refuses
-when running from source — use `git pull`. Re-running `install.sh`
-remains equivalent.
+when running from source — use `git pull`. (An npm-installed vx
+updates with `npm update -g @vzn/vx` instead.)
 
 ## `vx migrate`
 
@@ -870,16 +1001,47 @@ cache dir:      /work/repo/.vx/cache
 cache entries:  42 (1.3 GB)
 runs (24h):     7 (5 cache hits)
 vx-lock.json:   yes
-remote cache:   no
 ```
 
 - `git` shows `(not found)` when the binary is missing; a broken
   project config contributes zero tasks instead of failing the
   printout.
-- `remote cache` is `yes` when both `VX_REMOTE_CACHE_URL` and
-  `VX_REMOTE_CACHE_TOKEN` are set.
 - `vx stats` is a **deprecated alias** of `vx info` (info absorbed
   it); it prints byte-identical output.
+
+## `vx why`
+
+Answer "why did this task re-run?" from the terminal — the same
+persisted data the dashboard's "Why did this re-run?" card and the MCP
+`whyDidThisRerun`/`cacheKeyDiff` tools read. Read-only over the local
+`cache.db`: no config evaluation, no re-hash.
+
+```
+vx why [TASK | PKG#TASK] [--run <runId>] [--format pretty|json]
+```
+
+By default it compares the task's **latest** recorded run against its
+immediately-previous run; `--run <id>` pins a specific run. A bare task
+name resolves when exactly one project ran it (several → an error
+listing the candidates; unknown → include-match suggestions).
+
+```
+$ vx why app#build
+app#build — run 019f5a02-…
+  this run   2026-07-13T05:39:20.590Z · success · executed · key f7ee661520…
+  previous   2026-07-13T05:37:29.550Z · success · key 8b2e9bb2e8…
+  verdict    cache key changed between the previous run and this one (inputs differ)
+
+  what changed (1 component, 41 unchanged):
+    changed file  src/input.txt  3fe2a1b0… → 91c47d22…
+```
+
+The component-level rows come from the `entry_inputs` input
+fingerprints persisted with each cache entry; when either side's entry
+is gone (pruned, or the run failed and never saved one) the verb still
+names the hash change and says the component diff is unavailable.
+`--format json` emits one machine-readable object (`{ taskId, runId,
+why, diff }`).
 
 ## `vx mcp` — Model Context Protocol server
 
@@ -916,241 +1078,6 @@ All tools read the local `cache.db` opened on demand. No network, no
 auth (stdio is process-private). Future tools (`runTasks`,
 `getRunState`) ship under the `vx:rpc` channel when the inspector WS
 surface lands.
-
-# Cloud commands — the `@vzn/vx-cloud` package
-
-The service layer (`serve` / `connect` / `env` / `coordinator` /
-`worker` / `dev`, the `/v1/*` metrics API, the bundled dashboard)
-lives in a **separate package, `@vzn/vx-cloud`**, which ships its own
-`vx-cloud` binary. Core `vx` stays limited to discovery / graph /
-cache / exec / the in-process run. Install it alongside core to get
-the commands below:
-
-```
-bun add -D @vzn/vx-cloud        # or run it from the package's vx-cloud bin
-```
-
-Core integrates with cloud through the first-party `cloud()` plugin —
-declare it in `vx.workspace.ts`
-(`defineWorkspace({ plugins: [cloud()] })`) and every `vx run` pushes
-its run summary to the chosen server, can delegate execution to a
-service, and can layer the cloud cache. Anyone can write a different
-plugin against the same `VxPlugin` interface. This section is a
-summary; the cloud package's own README (`packages/cloud/`) is the
-depth reference.
-
-## `vx-cloud serve` — standalone dashboard + ingest service
-
-One foreground process: SQLite ingest store + `/v1/*` metrics JSON
-API + SSE/NDJSON event streams + WS run delegation + the embedded
-dashboard SPA. Runs locally or in Docker (see
-`packages/cloud/deploy/`).
-
-```
-vx-cloud serve
-    --port <n>                   # default: VX_CLOUD_PORT, else 4321
-    --host <h>                   # bind address (env: VX_CLOUD_HOST); default 127.0.0.1.
-                                 #   a non-loopback bind REQUIRES a token
-    --ingest-dir <d>             # directory for the SQLite ingest store
-    --token <t>                  # the TRUSTED bearer token (env: VX_CLOUD_TOKEN)
-    --pr-token <t>               # the UNTRUSTED (fork-PR) token (env: VX_CLOUD_PR_TOKEN):
-                                 #   reads trusted+untrusted, writes only untrusted
-    --allow-origin <o>           # extra browser origin allowed on the WS/SSE channels
-                                 #   (repeatable; env: VX_CLOUD_ALLOW_ORIGIN, comma-sep)
-    --name <n>                   # server identity for /v1/meta (env: VX_CLOUD_NAME)
-    --socket [path]              # also listen on a unix socket (env: VX_CLOUD_SOCKET;
-                                 #   default $XDG_RUNTIME_DIR/vx-cloud/serve.sock)
-    --ui                         # require the bundled SPA (error if not built)
-    --open                       # open the dashboard in the browser (implies --ui)
-```
-
-- **Deterministic port.** `--port` > `VX_CLOUD_PORT` > `4321`. The
-  port is bound exactly; a busy port is a clean error ("free it, or
-  pick another with --port / VX_CLOUD_PORT") — the URL never silently
-  moves between restarts.
-- **Ingest-only data model.** The dashboard and `/v1/*` read ONLY the
-  serve's own SQLite store, populated by the `cloud()` plugin's
-  `POST /v1/ingest` push. The serve never reads a workspace
-  `cache.db`, so it can be deployed anywhere (cache-entry inventory
-  and the full input-fingerprint diff stay local — those live in the
-  local `cache.db`).
-- **Auth.** Binds `127.0.0.1` by default; a non-loopback bind
-  (`--host 0.0.0.0` / `VX_CLOUD_HOST`) is refused without a token — an
-  unauthenticated serve on a reachable interface would expose task
-  execution. With `--token` set, every request except `/health` and
-  `/v1/meta` requires `Authorization: Bearer <t>` (browser transports
-  may use `?token=` on `/events`, `/stream`, and the WS upgrade).
-  Cross-origin browser WS/SSE handshakes are refused unless the origin
-  is same-origin or allow-listed (`--allow-origin`) — a CSWSH / drive-by
-  defense. No token → open, but loopback-only.
-- **Unix socket.** With `--socket` the same API also listens on a
-  0600 unix socket; socket requests bypass the token gate — the OS
-  file permissions ARE the auth. The advertisement carries the socket
-  path and the `cloud()` plugin's local auto-detect prefers it (TCP
-  stays the fallback, and the browser dashboard stays on TCP).
-- **Artifact store.** `/v8/artifacts/:hash` speaks the Turbo wire
-  core's remote cache already talks — point `VX_REMOTE_CACHE_URL` at
-  the serve origin (token = the serve token) and the remote cache
-  works with no separate cache server. The store is **trust-scoped**:
-  artifacts live under `<ingest-dir>/artifacts/<bucket>/<tier>/`, with
-  `<bucket>/<tier>` SERVER-DERIVED from the presented token. A trusted
-  token reads/writes `trusted/`; a `--pr-token` (untrusted) reads
-  trusted+untrusted but writes only `untrusted/` — so a fork PR can warm
-  off `main`'s cache without being able to poison it. Artifacts are
-  immutable (a re-PUT of an existing hash is 409). Client-side signing
-  tags (`x-artifact-tag`) ride a `<hash>.tag` sidecar. `/v1/meta`
-  advertises `artifacts: true` and `trustTiers: true`. See
-  `docs/design/cache-trust-scopes-2026-07.md`.
-- **MCP.** `POST /mcp` is a dependency-free MCP server (JSON-RPC 2.0
-  over streamable HTTP, plain-JSON responses) exposing the dashboard's
-  read surface as tools — `list_workspaces`, `list_runs`, `get_run`,
-  `run_trends`, `cache_stats`, `why_did_rerun`, `compare_runs` — so an
-  AI agent pointed at the serve (with the bearer token as an
-  `Authorization` header) can inspect and debug runs.
-- **Advertisement.** The serve writes a per-user advertisement at
-  `$XDG_RUNTIME_DIR/vx-cloud/serve.json` (fallback: a per-uid temp
-  dir; `VX_CLOUD_SERVE_INFO` pins an exact path), so a `vx run` in ANY
-  workspace on the machine auto-detects it — zero-config local
-  dashboard.
-
-HTTP routes (all return JSON unless noted):
-
-| Route                          | Purpose                                                                                    |
-| ------------------------------ | ------------------------------------------------------------------------------------------ |
-| `GET /health`                  | Liveness probe (`200 ok`) — always open                                                    |
-| `GET /v1/meta`                 | Server identity (`name`, vx version, auth mode, `artifacts`) — always open                 |
-| `GET /version`                 | Protocol version + channels + RPC capability list                                          |
-| `POST /v1/ingest`              | Push endpoint — accepts a `RunSummaryRecord` from the `cloud()` plugin                     |
-| `GET /v1/*`                    | Metrics/analytics API (runs, tasks, projects, cache, trends, compare, why, …)              |
-| `HEAD/GET/PUT /v8/artifacts/…` | Turbo-wire artifact store (`VX_REMOTE_CACHE_URL` target)                                   |
-| `POST /mcp`                    | MCP server for AI agents (JSON-RPC 2.0, plain-JSON responses)                              |
-| `GET /events`                  | Server-Sent Events stream of every envelope from every concurrent run                      |
-| `GET /stream`                  | NDJSON stream (jq-friendly) of the same                                                    |
-| `WS /` (upgrade)               | Bidirectional; accepts both legacy `{ t: 'run', ... }` and JSON-RPC `submit.run` envelopes |
-| `WS /v1/agents` (upgrade)      | Distributed-execution agents rendezvous ({workspaceId, session} sessions)                  |
-
-Every wire frame is a JSON-RPC 2.0 envelope per
-`docs/design/wire-protocol-2026-06.md`.
-
-## `vx-cloud connect` / `env` / `disconnect` — environments
-
-Docker-context-style **named server environments**, stored per-user in
-`$XDG_CONFIG_HOME/vx-cloud/environments.json` (override:
-`$VX_CLOUD_CONFIG`; mode `0600` — it holds tokens). Connect once;
-every `vx run` on the machine then pushes its summary to the active
-server.
-
-```
-vx-cloud connect https://vx.corp.example --token vxc_…    # validate + persist + activate
-vx-cloud connect <url> --name team --delegate --no-use    # named; opt into run delegation; don't activate
-vx-cloud env ls                                           # named servers + the auto-detected (local) row, with reachability
-vx-cloud env use team                                     # switch the active environment
-vx-cloud env rm staging                                   # delete an entry
-vx-cloud disconnect                                       # clear the active pointer (entries + tokens survive)
-```
-
-`connect` is a handshake: it probes `/health`, reads the server's
-identity from `/v1/meta` (the default `--name`), errors if the server
-requires a token and none was given, verifies a given token with one
-authenticated request — and only then persists. `VX_CLOUD_ENV=<name>`
-overrides the active pointer per-shell without touching the file.
-
-**One connection drives everything.** `cloud()` resolves a SINGLE
-connection and feeds all three capabilities from it — analytics ingest,
-the remote cache (`/v8/artifacts`), and distributed execution. There is
-no separate cache/ingest/service URL. Resolution (first match wins):
-
-| #   | The connection                                                                                       |
-| --- | ---------------------------------------------------------------------------------------------------- |
-| 1   | `cloud({ url, token, prToken })` options / `VX_CLOUD_URL` + `VX_CLOUD_TOKEN` (+ `VX_CLOUD_PR_TOKEN`) |
-| 2   | the active named environment (`vx-cloud connect`)                                                    |
-| 3   | an auto-detected local `vx-cloud serve` (per-user serve.json + live pid)                             |
-| 4   | decline — a plain run stays zero-overhead                                                            |
-
-(The pre-consolidation env vars `VX_SERVICE_URL`, `VX_REMOTE_CACHE_URL/TOKEN`,
-`VX_CLOUD_INGEST_URL/TOKEN`, `VX_CLOUD_INSIGHTS_URL/TOKEN` are still accepted
-as aliases for the URL/token, so existing setups keep working.)
-
-- **Cache is internal to the connection.** A remote connection with a
-  token wraps the local cache in a `LayeredCache` at `<url>/v8/artifacts`
-  automatically. `VX_REMOTE_CACHE_*` is now only the escape hatch for a
-  THIRD-PARTY, Turbo-compatible cache server that isn't a vx-cloud.
-- **Trust follows the token.** Present `VX_CLOUD_TOKEN` (trusted) or
-  `VX_CLOUD_PR_TOKEN` (untrusted / fork-PR — reads trusted, writes only
-  untrusted). The serve derives the tier from the bearer; there is no
-  `VX_CACHE_TRUST` flag and no fork-PR autodetection.
-- **Delegation stays opt-in.** A plain connection NEVER moves execution
-  to the server; only an environment connected with `--delegate` does
-  (delegation runs against the request's cwd on the server — correct only
-  when it shares the filesystem). Distribution is opt-in via
-  `VX_CLOUD_DISTRIBUTE`.
-- A DISCOVERED serve (active environment) is capability-probed
-  (`/v1/meta` `artifacts: true`, once per process) before the cache
-  routes to it; an explicit `VX_CLOUD_URL` is trusted as configured.
-
-## `vx-cloud agent` — distributed-execution agent
-
-Attach this machine's checkout to a serve's session registry and
-execute assigned tasks via scoped, fully CACHED core runs
-(`docs/design/distributed-execution-2026-07.md`). Replaces the retired
-`worker` verb; the retired `coordinator` verb's scheduling now lives
-inside `vx-cloud serve`.
-
-```
-vx-cloud agent --url <serve-origin>   # (or --coordinator; falls back to
-                                      #  VX_SERVICE_URL / the local serve ad)
-    --token <t>                       # serve bearer (env: VX_CLOUD_TOKEN)
-    --capacity <n>                    # max concurrent assignments (default 1)
-    --session <s>                     # session key (default: VX_AGENT_SESSION >
-                                      #  CI-derived > 'local')
-    --idle-timeout <ms>               # self-terminate when idle (default 10 min;
-                                      #  0 = never)
-    --label <l>                       # capability label (repeatable)
-```
-
-Behavior:
-
-- Startup checks: git present, CLEAN worktree (a dirty agent exits 1
-  before poisoning keys), commit + workspace-id capture.
-- Points `VX_REMOTE_CACHE_URL`/`_TOKEN` at the serve (when unset), so
-  every scoped run reads/writes the serve's `/v8/artifacts` store —
-  the cache IS the artifact transport between agents. Sets
-  `VX_CLOUD_AGENT=1` so `cloud()`'s telemetry rung declines.
-- Registers over `/v1/agents` with
-  `agent:hello { protocol, workspaceId, session, commitSha, capacity }`.
-  Protocol or commit mismatch → `agent:refused` naming both, exit 1.
-- Per `task:assign { taskId }`: a scoped in-process `run()` of the
-  exact task id WITH its dep closure — deps restore as warm hits from
-  the shared store, the task executes, its artifact uploads before
-  `agent:done` reports core's `OutcomeView`. Only the assigned task's
-  events forward; dep restores stay silent.
-- Exits 0 on clean drain or idle timeout EVEN WHEN TASKS FAILED (the
-  submitting run owns the aggregate verdict); 1 on refusal, dirty
-  tree, or unexpected disconnect.
-
-Enable distribution on the submitting run with
-`VX_CLOUD_DISTRIBUTE=<n>` (or `cloud({ distribute: n })`) — the
-`cloud()` backend then prepares the graph, submits it to the serve
-(`dist:submit`), self-registers as an agent, renders the relayed
-stream, and materializes outputs locally. Refusal gates (dirty tree,
-non-remote cache policy, `-- forwardArgs`, persistent tasks) fall back
-LOUDLY to a normal local run; an unreachable serve is a hard error.
-
-## `vx-cloud dev` — devtools hub
-
-Foreground devtools hub that ingests forwarded NDJSON events from a
-local `vx run` and renders them through a connected web client.
-Needs the optional `devframe` package.
-
-```
-vx-cloud dev                     # bind a kernel-assigned local socket
-```
-
-Optional and dev-time only. Production observability is the
-telemetry-plugin path: declare `otel()` from `@vzn/vx-otel` in
-`vx.workspace.ts` and set `OTEL_EXPORTER_OTLP_ENDPOINT` (the endpoint
-alone no longer auto-exports), or push run summaries to a `vx-cloud
-serve` via the `cloud()` plugin.
 
 ## Output format
 
@@ -1217,19 +1144,14 @@ ANSI truecolor (`ansi-16m`) sequences, gated by env:
 Programmatic callers passing a custom `log` to the run options always
 see plain text.
 
-## Remote cache (env-driven)
+## Remote cache (plugin-driven)
 
-> **Using a vx-cloud?** Prefer the one connection —
-> `VX_CLOUD_URL` + `VX_CLOUD_TOKEN` (or `vx-cloud connect`) — which gives
-> you the remote cache automatically (it's internal to the connection).
-> The `VX_REMOTE_CACHE_*` vars below are the escape hatch for a
-> **third-party**, Turbo-compatible cache server that isn't a vx-cloud.
-
-If `VX_REMOTE_CACHE_URL` and a token (`VX_REMOTE_CACHE_TOKEN`, or
-`VX_REMOTE_CACHE_PR_TOKEN` for a fork PR) are set, `vx run` layers a
-remote cache on top of the local one (a plugin's `cache` capability,
-when declared, wins over the env vars). The trust tier follows whichever
-token you present — the server derives it.
+Core ships **no remote-cache wire client** — the remote cache is a
+plugin concern (`docs/design/native-cache-wire-2026-07.md`). A `cache`
+plugin composes core's `LayeredCache` over a wire client; the
+first-party option is a self-hosted platform whose plugin routes the
+cache to its `/v1/cache` store automatically, with the trust tier
+derived from the token you present (see the Cloud section of the docs).
 
 Reads try local first, then remote (hydrating local on remote hit),
 with a background prefetch pass overlapping remote GETs with
@@ -1237,20 +1159,12 @@ execution. Writes go to local immediately; the remote upload is a
 fire-and-forget background task drained at end of run — failures are
 logged via `onRemoteError` but never fail the build.
 
-| Env var                         | Required? | Notes                                                                                                                                                                      |
-| ------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VX_REMOTE_CACHE_URL`           | yes       | Base URL, e.g. `https://cache.example.com`.                                                                                                                                |
-| `VX_REMOTE_CACHE_TOKEN`         | yes       | Bearer token sent on every request.                                                                                                                                        |
-| `VX_REMOTE_CACHE_TEAM_ID`       | no        | Sent as `?teamId=` (Turbo tenancy).                                                                                                                                        |
-| `VX_REMOTE_CACHE_SLUG`          | no        | Sent as `?slug=`.                                                                                                                                                          |
-| `VX_REMOTE_CACHE_TIMEOUT_MS`    | no        | Per-request timeout. Default `60000`.                                                                                                                                      |
-| `VX_REMOTE_CACHE_SIGNATURE_KEY` | no        | HMAC artifact signing (Turbo-compatible `x-artifact-tag`). When set, uploads are signed and downloads are verified — a missing or mismatched tag degrades to a cache miss. |
-
-Wire spec is Turborepo `/v8/artifacts/`. Compatible servers include
-`ducktors/turborepo-remote-cache`, `Fox32/openturbo-remote-cache`, and
-Vercel's hosted Turbo cache. See
-[`design/remote-cache.md`](./design/remote-cache.md) for the full
-protocol.
+For any OTHER cache server (a Turbo-wire deployment, S3-direct, …),
+implement core's `RemoteCacheLayer` interface in a plugin's `cache`
+capability — the recipe lives in the extensibility guide. Embedders
+holding a wire client can inject it per-run via
+`RunOptions.remoteCache` (explicit injection wins over the plugin
+consult). The retired `VX_REMOTE_CACHE_*` env vars are gone.
 
 ## Run analytics
 
@@ -1272,7 +1186,7 @@ sqlite3 .vx/cache/cache.db "
 
 The schema is documented in
 [`caching.md` § SQLite tables](./caching.md#sqlite-tables). For a
-browsable view, run `vx-cloud serve` and open the dashboard.
+browsable view, connect a dashboard — see the Cloud section of the docs.
 
 ## What's still missing vs Turbo
 
@@ -1346,4 +1260,4 @@ down with it:
   still carries its input key, so dependents derive exactly the keys a
   healthy run derives.
 
-The mode rides the wire, so delegated and distributed runs honor it.
+The mode rides the wire, so distributed runs honor it.

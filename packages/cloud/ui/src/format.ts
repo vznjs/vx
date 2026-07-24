@@ -105,50 +105,9 @@ export function formatDateTime(t: number): string {
   })
 }
 
-/** Categorical data-viz palette (astryx data tokens, hex fallbacks). */
-export const CHART_PALETTE: readonly string[] = [
-  'var(--color-data-categorical-blue, #0171E3)',
-  'var(--color-data-categorical-orange, #EB6E00)',
-  'var(--color-data-categorical-green, #0B991F)',
-  'var(--color-data-categorical-purple, #6B1EFD)',
-  'var(--color-icon-cyan, #26C6DA)',
-  'var(--color-icon-pink, #EC407A)',
-  'var(--color-warning, #F2C00B)',
-  'var(--color-data-neutral, #8494A3)',
-]
-
-/** Stable hash → categorical palette color for category coloring. */
+/** Stable hash → chart-palette token for category coloring. */
 export function paletteFor(key: string): string {
   let h = 5381
   for (let i = 0; i < key.length; i++) h = ((h * 33) ^ key.charCodeAt(i)) >>> 0
-  return CHART_PALETTE[h % CHART_PALETTE.length]!
-}
-
-/** Count + correctly pluralized unit: `plural(1, 'run')` → "1 run". */
-export function plural(n: number, unit: string): string {
-  return `${n} ${unit}${n === 1 ? '' : 's'}`
-}
-
-/**
- * Humanize the `invocations.cache_policy` compact string (`'lR,lW,rR,rW'`
- * subsets). 'full' = every axis enabled (the default; whether a remote layer
- * actually exists is a separate fact), '' / no axes = cache bypassed.
- */
-export function formatCachePolicy(compact: string): string {
-  const parts = new Set(
-    compact
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean),
-  )
-  if (parts.size === 0) return 'cache off'
-  if (parts.size === 4) return 'full'
-  const axis = (r: boolean, w: boolean): string | null =>
-    r && w ? 'read/write' : r ? 'read-only' : w ? 'write-only' : null
-  const bits: string[] = []
-  const local = axis(parts.has('lR'), parts.has('lW'))
-  const remote = axis(parts.has('rR'), parts.has('rW'))
-  if (local !== null) bits.push(`local ${local}`)
-  if (remote !== null) bits.push(`remote ${remote}`)
-  return bits.length > 0 ? bits.join(' · ') : 'cache off'
+  return `chart-${(h % 8) + 1}`
 }

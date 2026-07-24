@@ -7,14 +7,17 @@
 import {
   FULL_CACHE_POLICY,
   LayeredCache,
-  RemoteCache,
   UserError,
+  VERSION,
+  captureDefaultBranch,
   captureGitContext,
+  captureHostContext,
   captureWorkspaceIdentity,
   cleanOutputs,
   createWireRenderer,
   defaultLogger,
   deriveStableKeys,
+  detectCi,
   findWorkspaceRoot,
   prepareRun,
   projectNode,
@@ -25,6 +28,7 @@ import {
   type Logger,
   type OutcomeView,
   type PreparedRun,
+  type RemoteCacheLayer,
   type RunBackend,
   type RunRequest,
   type RunResult,
@@ -34,11 +38,12 @@ import {
 import {
   DIST_PROTOCOL_VERSION,
   type DistGraphNode,
+  type DistSubmitContext,
   type DistSubmitMessage,
 } from '../protocol-dist.js'
 import { runAgentLoop, type AgentLoopHandle } from './agent-loop.js'
 import { DEFAULT_AGENT_TIMEOUT_MS, SUBMITTER_LABEL } from './scheduler.js'
-import { deriveSession, wireAgentCacheEnv } from './session.js'
+import { agentRemoteCache, deriveSession, markAgentProcess } from './session.js'
 
 const silentLogger: Logger = {
   status() {},
@@ -94,6 +99,12 @@ export function distributedBackend(opts: DistributedBackendOptions): RunBackend 
 
       if (request.forwardArgs !== undefined && request.forwardArgs.length > 0) {
         return await fallback('forwarded args (`-- …`) cannot be distributed')
+      }
+      // Agents don't run the verify machinery — distributing would leave
+      // agent-executed tasks silently unverified, the one failure mode a
+      // requested proof must never have. Verify locally instead.
+      if (request.verify !== undefined) {
+        return await fallback('--verify runs locally (agents do not verify)')
       }
       const policy = request.cache ?? FULL_CACHE_POLICY
       if (!policy.remoteRead || !policy.remoteWrite) {
@@ -177,6 +188,22 @@ export function distributedBackend(opts: DistributedBackendOptions): RunBackend 
 
         const identity = captureWorkspaceIdentity(prepared.workspaceRoot)
         const session = deriveSession()
+        // The invoking machine's context for the run's invocation header — for a
+        // distributed run that is the SUBMITTER (the CI runner), exactly as a
+        // local run's header uses the invoking machine. Sent additively so the
+        // controller records the run under Runs like a local `cloud()` run.
+        const host = captureHostContext()
+        const ci = detectCi(process.env)
+        const context: DistSubmitContext = {
+          os: host.os,
+          arch: host.arch,
+          host: host.host ?? '',
+          ci: ci.ci,
+          ciProvider: ci.provider,
+          vxVersion: VERSION,
+          dirty: git.dirty ?? false,
+          workspaceName: identity.name,
+        }
         // A session multiplexes concurrent submissions on this id; the self-
         // agent presents it as `ownerSubmissionId` so only THIS run may use it.
         const submissionId = Bun.randomUUIDv7()
@@ -187,6 +214,9 @@ export function distributedBackend(opts: DistributedBackendOptions): RunBackend 
           workspaceId: identity.id,
           submissionId,
           commitSha: git.commitSha,
+          branch: git.branch,
+          defaultBranch: captureDefaultBranch(process.env, prepared.workspaceRoot),
+          context,
           expectedAgents: opts.expectedAgents,
           agentTimeoutMs:
             opts.agentTimeoutMs ??
@@ -196,9 +226,12 @@ export function distributedBackend(opts: DistributedBackendOptions): RunBackend 
           nodes,
         }
 
-        // Wire the self-agent's scoped runs at the serve's own artifact store +
-        // flag the process as an agent (shared verbatim with the `agent` verb).
-        wireAgentCacheEnv(opts.origin, opts.token)
+        // The self-agent's scoped runs use the serve's own artifact store as
+        // their remote layer — injected explicitly (shared with the `agent`
+        // verb) — and the process is flagged as an agent so the telemetry
+        // rung declines.
+        const remoteCache = agentRemoteCache(opts.origin, opts.token)
+        markAgentProcess()
 
         const selfExecuted = new Set<string>()
         const result = await submitAndRender({
@@ -214,6 +247,7 @@ export function distributedBackend(opts: DistributedBackendOptions): RunBackend 
             checkoutRoot: prepared.workspaceRoot,
             frozen: request.frozen,
             cache: request.cache,
+            remoteCache,
             onAssigned: (taskId) => selfExecuted.add(taskId),
           },
         })
@@ -241,6 +275,7 @@ interface SelfAgentArgs {
   checkoutRoot: string
   frozen?: boolean | undefined
   cache?: RunRequest['cache'] | undefined
+  remoteCache: RemoteCacheLayer
   onAssigned: (taskId: string) => void
 }
 
@@ -295,6 +330,7 @@ function submitAndRender(args: {
         ownerSubmissionId: args.submit.submissionId,
         ...(args.selfAgent.frozen !== undefined ? { frozen: args.selfAgent.frozen } : {}),
         ...(args.selfAgent.cache !== undefined ? { cache: args.selfAgent.cache } : {}),
+        remoteCache: args.selfAgent.remoteCache,
         onAssigned: args.selfAgent.onAssigned,
       })
     }
@@ -342,12 +378,12 @@ async function materializeOutputs(args: {
 }): Promise<void> {
   const { prepared } = args
   const byId = new Map(args.outcomes.map((o) => [o.taskId, o]))
-  // prepareRun ran BEFORE the env pointed at the serve, so prepared.cache
-  // may be local-only; build the layered view explicitly when needed.
+  // prepareRun composed no remote layer (the request carries none), so build
+  // the layered view over the serve's store explicitly when needed.
   const layered =
     prepared.cache instanceof LayeredCache
       ? prepared.cache
-      : new LayeredCache(prepared.localCache, remoteFor(args.origin, args.token), {})
+      : new LayeredCache(prepared.localCache, agentRemoteCache(args.origin, args.token), {})
 
   for (const id of topoOrder(prepared.nodes)) {
     const node = prepared.nodes.get(id)!
@@ -372,16 +408,6 @@ async function materializeOutputs(args: {
     })
     await layered.restoreOutputs(outcome.hash, node.projectDir, prepared.workspaceRoot)
   }
-}
-
-function remoteFor(origin: string, token: string | undefined): RemoteCache {
-  const config: ConstructorParameters<typeof RemoteCache>[0] = {
-    baseUrl: origin,
-    token: token ?? '-',
-  }
-  const signatureKey = process.env['VX_REMOTE_CACHE_SIGNATURE_KEY']
-  if (signatureKey) config.signatureKey = signatureKey
-  return new RemoteCache(config)
 }
 
 function topoOrder(nodes: Map<string, TaskNode>): string[] {
@@ -417,13 +443,20 @@ function parsePositiveInt(raw: string | undefined): number | undefined {
 }
 
 async function reachable(origin: string): Promise<boolean> {
+  // Clearable timer, not AbortSignal.timeout — its internal timer is not
+  // unref'd and would hold the CLI open for the full second after a fast
+  // probe resolved (the same phantom-exit-hang the telemetry flush fixed).
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 1000)
   try {
     const res = await fetch(`${origin.replace(/\/$/, '')}/health`, {
-      signal: AbortSignal.timeout(1000),
+      signal: controller.signal,
     })
     return res.ok
   } catch {
     return false
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -439,13 +472,18 @@ async function probeCapacity(
   session: string,
   commit?: string,
 ): Promise<{ remoteAgents: number } | undefined> {
+  // Clearable timer (not AbortSignal.timeout) — the ambient no-helpers path
+  // must exit as fast as the local run it degrades to, not linger on an
+  // un-unref'd timeout timer.
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 1000)
   try {
     const url =
       `${origin.replace(/\/$/, '')}/v1/agents` +
       `?ws=${encodeURIComponent(workspaceId)}&session=${encodeURIComponent(session)}` +
       (commit !== undefined ? `&commit=${encodeURIComponent(commit)}` : '')
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(1000),
+      signal: controller.signal,
       ...(token !== undefined ? { headers: { authorization: `Bearer ${token}` } } : {}),
     })
     if (!res.ok) return undefined
@@ -453,5 +491,7 @@ async function probeCapacity(
     return { remoteAgents: typeof body.remoteAgents === 'number' ? body.remoteAgents : 0 }
   } catch {
     return undefined
+  } finally {
+    clearTimeout(timer)
   }
 }

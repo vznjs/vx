@@ -26,6 +26,7 @@ import {
 } from '../orchestrator/index.js'
 import type { ContinueMode } from '../graph/index.js'
 import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
+import { parseSize } from '../util/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 import { localBackend } from './backend.js'
 
@@ -53,7 +54,37 @@ export interface RunArgs {
    * / `--force` in precedence order. Defaults to all-on.
    */
   cache: CachePolicy
+  /** `--cache-dir <path>`: override the cache directory (cwd-relative). */
+  cacheDir: string | undefined
   frozen: boolean
+  /**
+   * `--retry <n>` / `--retry=<n>`: run-level retry default for tasks
+   * without their own `exec.retries`. Undefined when not passed.
+   */
+  retries: number | undefined
+  /**
+   * `--timeout <ms>` / `--timeout=<ms>`: run-level default task timeout for
+   * tasks without their own `exec.timeout`. Sits above the `VX_TASK_TIMEOUT`
+   * env and workspace `timeout` defaults. Undefined when not passed.
+   */
+  timeout: number | undefined
+  /**
+   * `--memory <size>` / `--memory=<size>`: memory budget (resolved to
+   * bytes) for `exec.resources.memory` reservations. Defaults to
+   * os.totalmem() when not passed — pass it in cgroup-limited containers.
+   */
+  memory: number | undefined
+  /**
+   * `--verify[=determinism|inputs|fingerprint|all]`: cache-correctness
+   * verification. Undefined when not passed. `determinism` re-runs and
+   * content-compares outputs; `inputs` sandboxes with the declared-input
+   * baseline and flags undeclared reads; `fingerprint` ships output-tree
+   * fingerprints for the cross-machine diff (no re-run; the determinism
+   * modes set it too, for free). `allow` (from `--verify-allow=<pkg#task>,…`)
+   * exempts tasks from failing the run on a divergence.
+   */
+  verify: { determinism: boolean; inputs: boolean; fingerprint: boolean } | undefined
+  verifyAllow: string[]
   outputLogs?: 'full' | 'errors-only' | 'none'
   forwardArgs: string[]
   verbosity: number
@@ -82,7 +113,13 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     excludeDependencies: [],
     concurrency: undefined,
     cache: { ...FULL_CACHE_POLICY },
+    cacheDir: undefined,
     frozen: false,
+    retries: undefined,
+    timeout: undefined,
+    memory: undefined,
+    verify: undefined,
+    verifyAllow: [],
     forwardArgs: [],
     verbosity: 0,
     dry: undefined,
@@ -131,12 +168,62 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
         .filter((s) => s.length > 0)
     } else if (a === '--frozen') {
       out.frozen = true
+    } else if (a === '--retry' || a?.startsWith('--retry=')) {
+      const v = a === '--retry' ? before[++i] : a.slice('--retry='.length)
+      if (v === undefined) return { ...out, error: `--retry requires a value` }
+      const n = Number(v)
+      if (v === '' || !Number.isInteger(n) || n < 0) {
+        return { ...out, error: `--retry must be a non-negative integer, got: ${v}` }
+      }
+      out.retries = n
+    } else if (a === '--timeout' || a?.startsWith('--timeout=')) {
+      const v = a === '--timeout' ? before[++i] : a.slice('--timeout='.length)
+      if (v === undefined) return { ...out, error: `--timeout requires a value` }
+      const n = Number(v)
+      if (v === '' || !Number.isInteger(n) || n <= 0) {
+        return { ...out, error: `--timeout must be a positive integer (ms), got: ${v}` }
+      }
+      out.timeout = n
+    } else if (a === '--memory' || a?.startsWith('--memory=')) {
+      const v = a === '--memory' ? before[++i] : a.slice('--memory='.length)
+      if (v === undefined || v === '') return { ...out, error: `--memory requires a value` }
+      const bytes = parseSize(v)
+      if (bytes === null || bytes <= 0) {
+        return { ...out, error: `--memory must be a size like 8GB or 512MB, got: ${v}` }
+      }
+      out.memory = bytes
+    } else if (a === '--verify' || a?.startsWith('--verify=')) {
+      const what = a === '--verify' ? 'determinism' : a.slice('--verify='.length)
+      if (what === 'determinism') {
+        out.verify = { determinism: true, inputs: false, fingerprint: true }
+      } else if (what === 'inputs') {
+        out.verify = { determinism: false, inputs: true, fingerprint: false }
+      } else if (what === 'fingerprint') {
+        out.verify = { determinism: false, inputs: false, fingerprint: true }
+      } else if (what === 'all') {
+        out.verify = { determinism: true, inputs: true, fingerprint: true }
+      } else {
+        return {
+          ...out,
+          error: `--verify must be determinism | inputs | fingerprint | all (or bare --verify), got: ${what}`,
+        }
+      }
+    } else if (a?.startsWith('--verify-allow=')) {
+      out.verifyAllow = a
+        .slice('--verify-allow='.length)
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
     } else if (a === '--output-logs') {
       const v = before[++i]
       if (v !== 'full' && v !== 'errors-only' && v !== 'none') {
         return { ...out, error: `--output-logs must be full, errors-only, or none` }
       }
       out.outputLogs = v
+    } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
+      const v = a === '--cache-dir' ? before[++i] : a.slice('--cache-dir='.length)
+      if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a value` }
+      out.cacheDir = v
     } else if (a === '--cache') {
       const v = before[++i]
       if (v === undefined) return { ...out, error: `${a} requires a value` }
@@ -336,6 +423,18 @@ export async function resolveRunOptions(
     opts.excludeDependencies = parsed.excludeDependencies
   }
   if (projects !== undefined) opts.projects = projects
+  if (parsed.retries !== undefined) opts.retries = parsed.retries
+  if (parsed.timeout !== undefined) opts.timeout = parsed.timeout
+  if (parsed.memory !== undefined) opts.memory = parsed.memory
+  if (parsed.cacheDir !== undefined) opts.cacheDir = parsed.cacheDir
+  if (parsed.verify !== undefined) {
+    opts.verify = {
+      determinism: parsed.verify.determinism,
+      inputs: parsed.verify.inputs,
+      fingerprint: parsed.verify.fingerprint,
+      allow: new Set(parsed.verifyAllow),
+    }
+  }
   if (parsed.concurrency !== undefined) opts.concurrency = parsed.concurrency
   if (parsed.summarize !== undefined) opts.summarize = parsed.summarize
   if (parsed.profile !== undefined) opts.profile = parsed.profile

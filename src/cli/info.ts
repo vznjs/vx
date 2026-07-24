@@ -48,8 +48,6 @@ export async function infoCmd(args: readonly string[]): Promise<number> {
   }
 
   const lockPresent = await Bun.file(lockfilePath(root)).exists()
-  const remoteConfigured =
-    Boolean(process.env.VX_REMOTE_CACHE_URL) && Boolean(process.env.VX_REMOTE_CACHE_TOKEN)
 
   const rows: [string, string][] = [
     ['vx', VERSION],
@@ -61,7 +59,6 @@ export async function infoCmd(args: readonly string[]): Promise<number> {
     ['cache entries', `${stats.entryCount} (${formatBytes(stats.totalBytes)})`],
     ['runs (24h)', `${stats.runCountLast24h} (${stats.hitCountLast24h} cache hits)`],
     ['vx-lock.json', lockPresent ? 'yes' : 'no'],
-    ['remote cache', remoteConfigured ? 'yes' : 'no'],
   ]
   const labelW = Math.max(...rows.map(([label]) => label.length))
   const lines = rows.map(([label, value]) => `${`${label}:`.padEnd(labelW + 1)} ${value}`)

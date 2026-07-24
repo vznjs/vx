@@ -93,6 +93,8 @@ interface ExecConfig {
   command: string // shell command, run from the project's dir
   env?: ExecEnv // optional per-task env layering
   timeout?: number // ms before vx SIGTERMs the child (see below)
+  retries?: number // max additional attempts after a failure (see below)
+  resources?: ResourcesConfig // CPU/memory reservations for admission (see below)
   persistent?: PersistentConfig // long-running task (dev server, watcher)
 }
 ```
@@ -142,11 +144,99 @@ build: { exec: { command: 'tsc -b', timeout: 120_000 } }
   task that's ready on spawn (no `readyWhen`) becomes ready before the
   timer can fire, so the timeout is a no-op for it.
 
+A task with **no** `exec.timeout` falls back to a run-level default, if
+one is set. Precedence, highest first: **per-task `exec.timeout` →
+`--timeout <ms>` / `RunOptions.timeout` → `VX_TASK_TIMEOUT` env →
+workspace `timeout`** (see workspace config below). Per-task always
+wins. The run-level defaults are threaded as run options, so — like
+`--retry` — they never touch a cache key: a `--timeout` run cache-hits a
+plain run's entry.
+
 **Why no multi-step `commands: string[]`?** Per-task caching is the
 right granularity for invalidation. If you'd benefit from caching each
 step independently (e.g. `codegen` then `build`), split into two
 tasks linked by `dependsOn`. If you don't need that, `&&` in shell is
 the right tool.
+
+#### `retries` (optional)
+
+Maximum ADDITIONAL attempts after a failed attempt. `retries: 2` means
+up to 3 executions total. `0` / omitted → no retries (fail on the first
+non-zero exit).
+
+```ts
+test: { exec: { command: 'bun test', retries: 1 } }
+```
+
+- A retry fires after ANY failure, `timeout` kills included. A Ctrl-C
+  teardown (`aborted`) is never retried — the run is tearing down.
+- Declared outputs are re-cleaned before each retry, exactly like the
+  first attempt — a failed attempt's partial outputs can't leak into
+  the next.
+- Every attempt streams its output live. Between attempts vx emits one
+  stderr line into the task's stream:
+  `vx: retrying <id> (attempt <k>/<total>) after exit <code>`.
+- The final outcome is the LAST attempt's: the first success wins (and
+  is what gets cached — its stdout only, not a concatenation of failed
+  attempts); if every attempt fails, the task is `failed` with the last
+  exit code and nothing is cached, as today.
+- `retries` is part of the resolved config, so declaring it derives a
+  distinct cache key (like every config field); tasks without it keep
+  byte-identical keys.
+- Not allowed with `persistent` — a persistent task has no exit to
+  retry (config error, like `cache` + `persistent`).
+
+The run-level default is `vx run --retry <n>` — it applies to tasks
+that don't declare their own `retries`; explicit config always wins,
+including an explicit `retries: 0`. The CLI flag never affects cache
+keys.
+
+#### `resources` (optional)
+
+```ts
+interface ResourcesConfig {
+  cpus?: number | string // CPU units (fractional ok) or "<n>%" of the CPU budget
+  memory?: number | string // bytes, "512MB"/"2GB" (powers of 1024), or "<n>%" of RAM
+}
+```
+
+Resource **reservations** for scheduling admission. A task declares how
+much CPU / memory it needs, and the scheduler packs ready tasks so
+concurrent reservations never exceed a budget on either axis — a 12 GB
+linker and a 6-core type-check no longer count the same as a near-free
+`lint`. Turbo and Nx have nothing comparable (flat task-count
+concurrency only); Bazel's local resources are the precedent.
+
+```ts
+test: {
+  exec: {
+    command: 'vitest run integration',
+    resources: { cpus: 4, memory: '2GB' }, // or { cpus: '50%', memory: '25%' }
+  },
+}
+```
+
+- **Admission control, NOT enforcement.** vx uses the numbers only to
+  decide what to co-schedule — it does not cgroup-limit, `nice`, or
+  kill a task that exceeds its declaration (that stays the job of
+  `exec.timeout` and the OS).
+- **Default `0` = reserve nothing, run freely.** A task that omits the
+  field (or declares `0`) is gated only by the concurrency-count limit.
+  Reservations coordinate among tasks that opt in; every existing
+  config schedules byte-identically.
+- **Budgets:** `cpus` percent resolves against the run's `concurrency`;
+  `memory` percent against total system RAM, overridable with
+  `vx run --memory <size>`. **Container caveat:** in a cgroup-limited
+  container `os.totalmem()` reports the HOST's RAM — pass `--memory`
+  with the real limit in CI containers.
+- **Never blocks the run:** a reservation larger than the whole budget
+  is admitted alone (when nothing else holds that axis), so an
+  over-declared task still runs — one at a time — instead of
+  deadlocking. Confirmed cache restores reserve nothing (a restore is a
+  tar extract, not the task's real work).
+- **Never busts a cache:** the whole `resources` object is stripped
+  from the cache key — it's a scheduling hint with zero effect on
+  outputs, so tuning a reservation re-uses every existing entry.
 
 #### `persistent` (optional)
 
@@ -270,11 +360,13 @@ Turbo/Nx-style micro-syntax — a flat array of strings:
 dependsOn?: readonly string[]
 ```
 
-| Form         | Meaning                                                           |
-| ------------ | ----------------------------------------------------------------- |
-| `'name'`     | Same-project task `name`.                                         |
-| `'^name'`    | The `name` task in the nearest workspace deps that declare it.    |
-| `'pkg#name'` | The `name` task in a specific other package (cross-project edge). |
+| Form         | Meaning                                                            |
+| ------------ | ------------------------------------------------------------------ |
+| `'name'`     | Same-project task `name`.                                          |
+| `'^name'`    | The `name` task in the nearest workspace deps that declare it.     |
+| `'pkg#name'` | The `name` task in a specific other package (cross-project edge).  |
+| `'name.*'`   | Every OTHER same-project task matching the pattern (`*` = any).    |
+| `'^name.*'`  | All matching tasks of the nearest deps that declare any (pattern). |
 
 Examples:
 
@@ -283,6 +375,8 @@ dependsOn: ['build'] // same-project build first
 dependsOn: ['^build'] // build in every workspace dep first
 dependsOn: ['codegen', '^build'] // both
 dependsOn: ['lib#build', 'shared#test'] // cross-project edges
+dependsOn: ['lint.*'] // every lint.<x> task in this project
+dependsOn: ['^build.*'] // all build.<x> tasks of the nearest deps
 ```
 
 Semantics:
@@ -304,10 +398,20 @@ Semantics:
   — not every package has a `lint`).
 - **`'pkg#name'`** — missing pkg or task is a hard error (you named
   them explicitly).
-- **No wildcards or negation here.** `'*'` / `'^*'` / `'!form'` belong
-  in `cache.inputs.tasks` (filtering which upstream hashes participate
-  in this task's cache key), not in `dependsOn` (declaring graph
-  edges). The micro-syntax parser rejects them in this position.
+- **Patterns (`'name.*'` / `'^name.*'`)** — `*` matches any run of
+  characters in a task NAME; everything else is literal (the dotted
+  namespace convention needs no escaping). A same-project pattern
+  expands to every other matching task (the declaring task never
+  matches itself); **zero matches is legal** — a preset-spread pattern
+  needn't match in every project. A `'^pattern'` walks the same
+  nearest-holder frontier as `'^name'`, where a holder is a dep
+  declaring at least one matching task; the holder receives edges to
+  ALL its matches and stops the walk. Patterns are not supported in
+  the `'pkg#task'` form. (Nx 19.5 `build-*` parity.)
+- **No bare wildcards or negation here.** `'*'` / `'^*'` / `'!form'`
+  belong in `cache.inputs.tasks` (filtering which upstream hashes
+  participate in this task's cache key), not in `dependsOn` (declaring
+  graph edges). The micro-syntax parser rejects them in this position.
 - **Cycle detection** runs across the resolved graph at the end of
   `buildTaskGraph`. Cycles throw with a path-formatted message.
 
@@ -520,6 +624,12 @@ Same micro-syntax as `dependsOn`, plus two filter-only extras:
 | `'pkg#name'` | Include the specific package's `name` task.    |
 | `'!<form>'`  | Exclude — any of the above with a leading `!`. |
 
+Task-name **patterns** work here too, in every form's task half:
+`'build.*'`, `'^build.*'`, `'pkg#build.*'`, `'!codegen.*'` — the same
+`*`-glob `dependsOn` patterns use, matched against upstream task names
+(a filter that matched patterns literally while `dependsOn` expanded
+them would silently select zero hashes — a stale-hit trap).
+
 Patterns are applied in order; **last write wins**. So
 `['*', '^*', '!^noisy']` reads as "all upstream except deps' noisy
 task". Defaults:
@@ -712,12 +822,12 @@ default.
 ```ts
 import { defineWorkspace } from '@vzn/vx'
 import { otel } from '@vzn/vx-otel'
-import { cloud } from '@vzn/vx-cloud/plugin'
 
 export default defineWorkspace({
   concurrency: 8,
   cacheDir: 'build/.vx-cache',
-  plugins: [otel(), cloud()],
+  timeout: 600_000,
+  plugins: [otel()],
 })
 ```
 
@@ -727,6 +837,8 @@ interface WorkspaceConfig {
   concurrency?: number
   /** Cache directory, relative to workspace root. Defaults to `.vx/cache`. */
   cacheDir?: string
+  /** Default per-task timeout (ms) for tasks without their own exec.timeout. */
+  timeout?: number
   /** Run-level plugins (backend / cache / telemetry capabilities). */
   plugins?: readonly Plugin[]
   /** Opt in to history-based predictive scheduler priorities. */
@@ -736,6 +848,12 @@ interface WorkspaceConfig {
 
 - **`concurrency`** — used as the default cap on parallel tasks; the
   CLI `--concurrency <n>` still wins when passed.
+- **`timeout`** — the lowest-precedence default per-task timeout (ms),
+  applied to any task that declares no `exec.timeout`. Precedence,
+  highest first: per-task `exec.timeout` → `--timeout` /
+  `RunOptions.timeout` → `VX_TASK_TIMEOUT` env → this. A runaway task is
+  SIGTERMed and reported `failed`. Purely a safety net — never folded
+  into a cache key (a timed-out task fails and is never cached).
 - **`cacheDir`** — relative paths are resolved against the workspace
   root; absolute paths are used as-is. `vx run`, `vx cache prune`,
   and any other reader use the same resolution
@@ -743,10 +861,11 @@ interface WorkspaceConfig {
 - **`plugins`** — the run-level extension points. Each entry is a
   `VxPlugin` object contributing any subset of `backend` (where the
   run executes), `cache` (which cache layer is used), `telemetry`
-  (observe-only data export — the canonical path for OTel, vx-cloud,
-  or custom sinks), the deprecated `eventSink`, plus optional
-  `setup`/`teardown`. First-party plugins: `otel()` from
-  `@vzn/vx-otel`, `cloud()` from `@vzn/vx-cloud/plugin`. A plugin
+  (observe-only data export — the canonical path for OTel, a self-hosted
+  dashboard, or custom sinks), the deprecated `eventSink`, plus optional
+  `setup`/`teardown`. First-party plugins include `otel()` from
+  `@vzn/vx-otel`; the first-party cloud plugin is declared the same way
+  (see the Cloud section of the docs). A plugin
   that declines every capability (e.g. `otel()` with no OTLP
   endpoint configured) costs nothing — a run with no active plugin
   is byte-identical to one with none declared. Plugins observe and
@@ -999,11 +1118,12 @@ and surfaces `UserError` (clean output, no stack):
 
 Workspace-config errors:
 
-| Symptom                                                                              | Cause                                     |
-| ------------------------------------------------------------------------------------ | ----------------------------------------- |
-| `concurrency must be a positive integer`                                             | `concurrency` is negative, zero, NaN, ... |
-| `cacheDir must be a string`                                                          | Wrong shape.                              |
-| `plugins must be an array of plugin objects`                                         | Wrong shape.                              |
-| `plugins[i].name must be a non-empty string`                                         | Missing / empty plugin name.              |
-| `plugins[i] must contribute at least one of setup/backend/cache/telemetry/eventSink` | A plugin object with no capability.       |
-| `predictive must be a boolean`                                                       | Wrong shape.                              |
+| Symptom                                                                              | Cause                                           |
+| ------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| `concurrency must be a positive integer`                                             | `concurrency` is negative, zero, NaN, ...       |
+| `timeout must be a positive integer (milliseconds)`                                  | Workspace `timeout` is ≤ 0, NaN, or not an int. |
+| `cacheDir must be a string`                                                          | Wrong shape.                                    |
+| `plugins must be an array of plugin objects`                                         | Wrong shape.                                    |
+| `plugins[i].name must be a non-empty string`                                         | Missing / empty plugin name.                    |
+| `plugins[i] must contribute at least one of setup/backend/cache/telemetry/eventSink` | A plugin object with no capability.             |
+| `predictive must be a boolean`                                                       | Wrong shape.                                    |

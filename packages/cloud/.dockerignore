@@ -1,7 +1,7 @@
 # Build context is the REPO ROOT (`docker build -f packages/cloud/Dockerfile .`),
 # so these patterns prune the root tree handed to the daemon. Keep it lean:
-# the build stage only needs source + lockfile + the committed
-# packages/cloud/ui/dist (which ui-asset.ts embeds via `with { type: 'file' }`).
+# the build stage needs source + lockfile + the dashboard SOURCE
+# (packages/cloud/ui/src) — it builds the SPA dist itself before compiling.
 
 # Installed deps + their symlinks — `bun install` reproduces them in-image.
 node_modules
@@ -38,11 +38,7 @@ bench
 # The docs site app and its generated content are irrelevant to the image.
 apps/docs
 
-# The dashboard SPA's node_modules are not needed — the COMMITTED
-# packages/cloud/ui/dist is what the binary embeds.
-# NB: packages/cloud/ui/dist/index.html IS needed and is whitelisted below.
+# The dashboard SPA's node_modules are reinstalled in-image by `bun install`;
+# the dist is BUILT in the image (see the Dockerfile `bun run build` step), not
+# copied from the context — so nothing under ui/dist needs whitelisting.
 packages/cloud/ui/node_modules
-
-# Re-include the committed single-file dashboard the binary embeds.
-!packages/cloud/ui/dist
-!packages/cloud/ui/dist/index.html

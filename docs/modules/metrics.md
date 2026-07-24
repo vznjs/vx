@@ -3,7 +3,7 @@
 ## Purpose
 
 Pure functions over a `bun:sqlite` Database — every aggregate the
-dashboard, `/v1/*` routes (`@vzn/vx-cloud` serve), and `vx mcp` read:
+dashboard, `/v1/*` routes (the self-hosted service), and `vx mcp` read:
 run history, task rankings, cache stats, hit-rate splits, invocations,
 `whyDidThisRerun`, `cacheKeyDiff`, `compareRuns`.
 

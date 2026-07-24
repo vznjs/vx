@@ -16,8 +16,10 @@ import {
   getHitRateSplit,
   getInvocation,
   getParallelismHistory,
+  getPeriodComparison,
   getPrunableEntries,
   getRecentFailures,
+  getRegressions,
   getRun,
   getRunHeatmap,
   getRunTrends,
@@ -50,6 +52,7 @@ function mkRun(
     wallclockStartNs: 0n,
     wallclockEndNs: 0n,
     cacheHit: args.cacheHit ?? false,
+    ...(args.attempts !== undefined ? { attempts: args.attempts } : {}),
   }
 }
 
@@ -529,12 +532,10 @@ describe('getHistory', () => {
   it('rolls (project, task) aggregates with failureMode classification', () => {
     withCache((cache) => {
       const now = Date.now()
-      // The failure shares hash h4 with a success — same key, different
-      // outcomes — which is the definition of flaky.
       cache.recordRuns(
         Array.from({ length: 6 }, (_, i) =>
           mkRun({
-            hash: i === 5 ? 'h4' : `h${i}`,
+            hash: `h${i}`,
             project: 'pkg',
             task: 'test',
             status: i === 5 ? 'failed' : 'success',
@@ -550,29 +551,6 @@ describe('getHistory', () => {
       expect(rows[0]!.successRate).toBeCloseTo(5 / 6, 5)
       expect(rows[0]!.failureMode).toBe('flaky-recoverable')
       expect(rows[0]!.p50DurationMs).toBeGreaterThan(0)
-    })
-  })
-
-  it('a failure confined to its own key is deterministic breakage — stable', () => {
-    withCache((cache) => {
-      const now = Date.now()
-      // Five green runs, then a failure at a NEW key (a code change broke the
-      // task). No key ever produced two different outcomes → not flaky.
-      cache.recordRuns(
-        Array.from({ length: 6 }, (_, i) =>
-          mkRun({
-            hash: `h${i}`,
-            project: 'pkg',
-            task: 'det',
-            status: i === 5 ? 'failed' : 'success',
-            startedAt: now - 1000 * (6 - i),
-            durationMs: 100,
-          }),
-        ),
-      )
-      const rows = getHistory(cache.dbHandle(), { project: 'pkg', task: 'det' })
-      expect(rows[0]!.failures).toBe(1)
-      expect(rows[0]!.failureMode).toBe('stable')
     })
   })
 })
@@ -916,7 +894,7 @@ describe('getRunHeatmap', () => {
 })
 
 describe('getFlakiestTasks', () => {
-  it('surfaces a task whose SAME key both failed and passed', () => {
+  it('surfaces tasks with mixed pass/fail or wide p99/p50', () => {
     withCache((cache) => {
       const now = Date.now()
       cache.recordRuns([
@@ -929,9 +907,8 @@ describe('getFlakiestTasks', () => {
           exitCode: 1,
           startedAt: now - 4000,
         }),
-        // The SAME key later passed — same inputs, different outcomes.
-        mkRun({ hash: 'h2', project: 'a', task: 't', status: 'success', startedAt: now - 3000 }),
-        mkRun({ hash: 'h3', project: 'a', task: 't', status: 'success', startedAt: now - 2000 }),
+        mkRun({ hash: 'h3', project: 'a', task: 't', status: 'success', startedAt: now - 3000 }),
+        mkRun({ hash: 'h4', project: 'a', task: 't', status: 'success', startedAt: now - 2000 }),
       ])
       const flaky = getFlakiestTasks(cache.dbHandle())
       expect(flaky.length).toBeGreaterThan(0)
@@ -940,25 +917,45 @@ describe('getFlakiestTasks', () => {
     })
   })
 
-  it('does NOT flag a task whose failures sit at their own keys', () => {
+  it('CONFIRMS flakiness from a within-run retry, ranked above inferred ones', () => {
     withCache((cache) => {
       const now = Date.now()
-      // A code change broke the task (new key fails), then a fix landed
-      // (another new key passes) — deterministic, not flaky.
       cache.recordRuns([
-        mkRun({ hash: 'k1', project: 'a', task: 'det', status: 'success', startedAt: now - 5000 }),
+        // `inferred#t`: fails in one of four runs — flaky by cross-run inference.
+        mkRun({ hash: 'i1', project: 'inferred', task: 't', startedAt: now - 5000 }),
         mkRun({
-          hash: 'k2',
-          project: 'a',
-          task: 'det',
+          hash: 'i2',
+          project: 'inferred',
+          task: 't',
           status: 'failed',
           exitCode: 1,
           startedAt: now - 4000,
         }),
-        mkRun({ hash: 'k3', project: 'a', task: 'det', status: 'success', startedAt: now - 3000 }),
+        mkRun({ hash: 'i3', project: 'inferred', task: 't', startedAt: now - 3000 }),
+        mkRun({ hash: 'i4', project: 'inferred', task: 't', startedAt: now - 2000 }),
+        // `confirmed#t`: passed on the FIRST try twice, then needed a retry once —
+        // a direct nondeterminism signal, even though it never shows a `failed` row.
+        mkRun({ hash: 'c1', project: 'confirmed', task: 't', startedAt: now - 1500 }),
+        mkRun({ hash: 'c2', project: 'confirmed', task: 't', startedAt: now - 1000 }),
+        mkRun({ hash: 'c3', project: 'confirmed', task: 't', attempts: 3, startedAt: now - 500 }),
       ])
       const flaky = getFlakiestTasks(cache.dbHandle())
-      expect(flaky.find((f) => f.id === 'a#det')).toBeUndefined()
+      const confirmed = flaky.find((f) => f.id === 'confirmed#t')
+      expect(confirmed).toBeDefined()
+      expect(confirmed!.flakyConfirmed).toBe(true)
+      expect(confirmed!.withinRunRetries).toBe(1)
+      expect(confirmed!.maxAttempts).toBe(3)
+      expect(confirmed!.failures).toBe(0)
+      // A confirmed within-run flake outranks a merely-inferred one.
+      expect(flaky[0]!.id).toBe('confirmed#t')
+    })
+  })
+
+  it('surfaces a confirmed within-run flake even with fewer than 3 runs', () => {
+    withCache((cache) => {
+      cache.recordRun(mkRun({ hash: 'x1', project: 'rare', task: 't', attempts: 2 }))
+      const flaky = getFlakiestTasks(cache.dbHandle())
+      expect(flaky.find((f) => f.id === 'rare#t')?.flakyConfirmed).toBe(true)
     })
   })
 })
@@ -1032,6 +1029,226 @@ describe('getPrunableEntries', () => {
   })
 })
 
+describe('getRegressions', () => {
+  // Seed one (project, task) run at a given branch/status/time, each in its
+  // own invocation so the runs→invocations branch join is exercised.
+  const seed = (
+    cache: Cache,
+    n: number,
+    task: string,
+    branch: string,
+    status: RunRecord['status'],
+    startedAt: number,
+  ): void => {
+    cache.recordRunBundle({
+      runs: [mkRun({ hash: `h-${n}`, project: 'pkg', task, runId: `r-${n}`, status, startedAt })],
+      invocation: mkInvocation({ runId: `r-${n}`, branch, startedAt }),
+    })
+  }
+  const now = Date.now()
+  const day = 86_400_000
+
+  it('surfaces a task now failing across >= 2 branches that used to pass', () => {
+    withCache((cache) => {
+      // `build` passed a week+ ago, now fails on BOTH main and dev.
+      seed(cache, 1, 'build', 'main', 'success', now - 8 * day)
+      seed(cache, 2, 'build', 'main', 'failed', now - 2 * day)
+      seed(cache, 3, 'build', 'dev', 'failed', now - 1 * day)
+      // `lint` fails only on one branch — not "across branches".
+      seed(cache, 4, 'lint', 'main', 'failed', now - 1 * day)
+      const regs = getRegressions(cache.dbHandle())
+      expect(regs.map((r) => r.id)).toEqual(['pkg#build'])
+      const b = regs[0]!
+      expect(b.branchesFailing).toBe(2)
+      expect(b.branches.sort()).toEqual(['dev', 'main'])
+      expect(b.regressed).toBe(true) // had a prior success
+      expect(b.failures).toBe(2)
+    })
+  })
+
+  it('uses the LATEST run per branch — a since-recovered branch is not failing', () => {
+    withCache((cache) => {
+      seed(cache, 1, 'build', 'main', 'success', now - 5 * day)
+      seed(cache, 2, 'build', 'main', 'failed', now - 4 * day)
+      seed(cache, 3, 'build', 'main', 'success', now - 1 * day) // recovered on main
+      seed(cache, 4, 'build', 'dev', 'failed', now - 2 * day)
+      seed(cache, 5, 'build', 'feat', 'failed', now - 1 * day)
+      const regs = getRegressions(cache.dbHandle())
+      // main recovered; only dev + feat are currently failing.
+      expect(regs[0]!.branches.sort()).toEqual(['dev', 'feat'])
+      expect(regs[0]!.branchesFailing).toBe(2)
+    })
+  })
+
+  it('a cache-hit counts as a pass (current state), not a failure', () => {
+    withCache((cache) => {
+      seed(cache, 1, 'build', 'main', 'failed', now - 3 * day)
+      seed(cache, 2, 'build', 'main', 'cache-hit', now - 1 * day) // latest = pass
+      seed(cache, 3, 'build', 'dev', 'failed', now - 1 * day)
+      // Only dev fails now → below the default minBranches=2 → nothing.
+      expect(getRegressions(cache.dbHandle())).toEqual([])
+      // minBranches=1 surfaces the single-branch regression.
+      expect(getRegressions(cache.dbHandle(), { minBranches: 1 }).map((r) => r.id)).toEqual([
+        'pkg#build',
+      ])
+    })
+  })
+
+  it('a never-passed task on 2 branches is flagged regressed=false', () => {
+    withCache((cache) => {
+      seed(cache, 1, 'broken', 'main', 'failed', now - 2 * day)
+      seed(cache, 2, 'broken', 'dev', 'failed', now - 1 * day)
+      const regs = getRegressions(cache.dbHandle())
+      expect(regs[0]!.id).toBe('pkg#broken')
+      expect(regs[0]!.regressed).toBe(false)
+    })
+  })
+
+  it('regressions (used-to-pass) sort above always-broken tasks', () => {
+    withCache((cache) => {
+      // A regressed task and an always-broken task, both failing on 2 branches.
+      seed(cache, 1, 'reg', 'main', 'success', now - 6 * day)
+      seed(cache, 2, 'reg', 'main', 'failed', now - 1 * day)
+      seed(cache, 3, 'reg', 'dev', 'failed', now - 1 * day)
+      seed(cache, 4, 'broke', 'main', 'failed', now - 1 * day)
+      seed(cache, 5, 'broke', 'dev', 'failed', now - 1 * day)
+      const regs = getRegressions(cache.dbHandle())
+      expect(regs.map((r) => r.id)).toEqual(['pkg#reg', 'pkg#broke'])
+    })
+  })
+
+  it('respects the window: failures older than sinceDays are ignored', () => {
+    withCache((cache) => {
+      seed(cache, 1, 'build', 'main', 'failed', now - 40 * day)
+      seed(cache, 2, 'build', 'dev', 'failed', now - 40 * day)
+      expect(getRegressions(cache.dbHandle(), { sinceDays: 7 })).toEqual([])
+      expect(getRegressions(cache.dbHandle(), { sinceDays: 60 }).map((r) => r.id)).toEqual([
+        'pkg#build',
+      ])
+    })
+  })
+})
+
+describe('getPeriodComparison', () => {
+  const day = 86_400_000
+  // Fixed clock so the two 7-day windows are deterministic. `now` is the end
+  // of the CURRENT window; [now-7d, now) is current, [now-14d, now-7d) previous.
+  const now = 14 * day + 12 * 3_600_000
+  const seed = (
+    cache: Cache,
+    n: number,
+    task: string,
+    status: RunRecord['status'],
+    durationMs: number,
+    startedAt: number,
+  ): void => {
+    cache.recordRunBundle({
+      runs: [
+        mkRun({
+          hash: `h-${n}`,
+          project: 'pkg',
+          task,
+          runId: `r-${n}`,
+          status,
+          durationMs,
+          startedAt,
+        }),
+      ],
+      invocation: mkInvocation({ runId: `r-${n}`, startedAt }),
+    })
+  }
+
+  it('splits runs into two adjacent windows and aggregates each', () => {
+    withCache((cache) => {
+      // Previous window: one success, one failure.
+      seed(cache, 1, 'build', 'success', 200, now - 10 * day)
+      seed(cache, 2, 'build', 'failed', 0, now - 9 * day)
+      // Current window: two successes.
+      seed(cache, 3, 'build', 'success', 300, now - 3 * day)
+      seed(cache, 4, 'build', 'success', 100, now - 2 * day)
+      const cmp = getPeriodComparison(cache.dbHandle(), { endMs: now })
+      expect(cmp.windowDays).toBe(7)
+      expect(cmp.current.stats.taskRuns).toBe(2)
+      expect(cmp.current.stats.failures).toBe(0)
+      expect(cmp.current.stats.avgDurationMs).toBe(200) // (300+100)/2
+      expect(cmp.previous.stats.taskRuns).toBe(2)
+      expect(cmp.previous.stats.failures).toBe(1)
+      expect(cmp.previous.stats.failureRate).toBe(0.5)
+    })
+  })
+
+  it('ranks movers by absolute average-duration delta, both windows >= minRuns', () => {
+    withCache((cache) => {
+      // `slow` got much slower; `fast` sped up a bit; `rare` has too few runs.
+      for (let i = 0; i < 3; i++) {
+        seed(cache, 100 + i, 'slow', 'success', 100, now - 10 * day)
+        seed(cache, 110 + i, 'slow', 'success', 500, now - 3 * day)
+        seed(cache, 120 + i, 'fast', 'success', 200, now - 10 * day)
+        seed(cache, 130 + i, 'fast', 'success', 150, now - 3 * day)
+      }
+      // `rare` runs once per window — below minRuns=3, excluded.
+      seed(cache, 140, 'rare', 'success', 100, now - 10 * day)
+      seed(cache, 141, 'rare', 'success', 9000, now - 3 * day)
+      const cmp = getPeriodComparison(cache.dbHandle(), { endMs: now })
+      expect(cmp.movers.map((m) => m.task)).toEqual(['slow', 'fast'])
+      const slow = cmp.movers[0]!
+      expect(slow.currentAvgMs).toBe(500)
+      expect(slow.previousAvgMs).toBe(100)
+      expect(slow.deltaMs).toBe(400)
+      expect(slow.deltaPct).toBeCloseTo(4, 5)
+      expect(cmp.movers.find((m) => m.task === 'rare')).toBeUndefined()
+    })
+  })
+
+  it('empty db yields zeroed stats and no movers', () => {
+    withCache((cache) => {
+      const cmp = getPeriodComparison(cache.dbHandle(), { endMs: now })
+      expect(cmp.current.stats.taskRuns).toBe(0)
+      expect(cmp.current.stats.avgDurationMs).toBe(0)
+      expect(cmp.movers).toEqual([])
+    })
+  })
+
+  it('project/task scoping narrows both windows and the movers', () => {
+    withCache((cache) => {
+      // Two tasks move; the scope must isolate ONE task's trend.
+      for (let i = 0; i < 3; i++) {
+        seed(cache, 200 + i, 'build', 'success', 100, now - 10 * day)
+        seed(cache, 210 + i, 'build', 'success', 400, now - 3 * day)
+        seed(cache, 220 + i, 'test', 'success', 900, now - 10 * day)
+        seed(cache, 230 + i, 'test', 'success', 100, now - 3 * day)
+      }
+      const scoped = getPeriodComparison(cache.dbHandle(), {
+        endMs: now,
+        project: 'pkg',
+        task: 'build',
+      })
+      expect(scoped.current.stats.taskRuns).toBe(3) // only build's rows
+      expect(scoped.current.stats.avgDurationMs).toBe(400)
+      expect(scoped.previous.stats.avgDurationMs).toBe(100)
+      expect(scoped.movers.map((m) => m.task)).toEqual(['build'])
+      // A different project scopes to nothing.
+      const other = getPeriodComparison(cache.dbHandle(), { endMs: now, project: 'nope' })
+      expect(other.current.stats.taskRuns).toBe(0)
+      expect(other.movers).toEqual([])
+    })
+  })
+
+  it('an empty window returns numeric 0s, never null (SUM-over-no-rows guard)', () => {
+    withCache((cache) => {
+      // Only the CURRENT window has runs; the previous window is empty — the
+      // common case for a workspace younger than the window. Every count must
+      // be a number (a bare SUM would return NULL and break the client).
+      seed(cache, 1, 'build', 'success', 100, now - 2 * day)
+      const prev = getPeriodComparison(cache.dbHandle(), { endMs: now }).previous.stats
+      for (const k of ['failures', 'cacheHits', 'executed', 'taskRuns', 'runs'] as const) {
+        expect(prev[k]).toBe(0)
+        expect(typeof prev[k]).toBe('number')
+      }
+    })
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Schema drift guard — every exported metrics query must run against the
 // CURRENT cache.db schema. The schema is owned by src/cache/cache.ts and its
@@ -1068,6 +1285,8 @@ describe('metrics schema drift guard', () => {
         getRunTrends: () => metrics.getRunTrends(db),
         getRunHeatmap: () => metrics.getRunHeatmap(db),
         getFlakiestTasks: () => metrics.getFlakiestTasks(db),
+        getRegressions: () => metrics.getRegressions(db),
+        getPeriodComparison: () => metrics.getPeriodComparison(db),
         getBottlenecks: () => metrics.getBottlenecks(db),
         getParallelismHistory: () => metrics.getParallelismHistory(db),
         getStorageGrowth: () => metrics.getStorageGrowth(db),

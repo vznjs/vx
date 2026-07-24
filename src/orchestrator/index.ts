@@ -84,7 +84,12 @@ export {
 } from './plugin.js'
 export { resolveBackend, resolveCache, subscribeEventSinks } from './plugin-host.js'
 export { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
-export { createTelemetrySource, deriveCacheSource, TELEMETRY_SCHEMA_VERSION } from './telemetry.js'
+export {
+  assembleRunSummary,
+  createTelemetrySource,
+  deriveCacheSource,
+  TELEMETRY_SCHEMA_VERSION,
+} from './telemetry.js'
 export type {
   CacheSource,
   RunContextRecord,
@@ -95,10 +100,20 @@ export type {
   TelemetrySink,
   TelemetrySource,
 } from './telemetry.js'
+// `diffOutputTrees` is the ONE tree-diff implementation — the verify verdict
+// and a serve's cross-machine fingerprint diff must never drift on it.
+export { diffOutputTrees } from './verify.js'
 export { deriveStableKeys } from './stable-keys.js'
 export type { DeriveStableKeysArgs, StableKey } from './stable-keys.js'
-export { captureGitContext, captureWorkspaceIdentity, resolveCacheScope } from './run-context.js'
-export type { GitContext, WorkspaceIdentity } from './run-context.js'
+export {
+  captureDefaultBranch,
+  captureGitContext,
+  captureHostContext,
+  captureWorkspaceIdentity,
+  detectCi,
+  resolveCacheScope,
+} from './run-context.js'
+export type { CiContext, GitContext, HostContext, WorkspaceIdentity } from './run-context.js'
 export {
   cacheKeyDiff,
   compareRuns,
@@ -112,8 +127,10 @@ export {
   getHitRateSplit,
   getInvocation,
   getParallelismHistory,
+  getPeriodComparison,
   getPrunableEntries,
   getRecentFailures,
+  getRegressions,
   getRun,
   getRunHeatmap,
   getRunTrends,
@@ -149,8 +166,14 @@ export type {
   ListInvocationsArgs,
   ListRunsArgs,
   ParallelismPoint,
+  PeriodComparison,
+  PeriodComparisonArgs,
+  PeriodStats,
   PrunableEntry,
   ProjectRollup,
+  RegressedTask,
+  RegressionArgs,
+  TaskMover,
   RunDetail,
   RunSummaryRow,
   StoragePoint,

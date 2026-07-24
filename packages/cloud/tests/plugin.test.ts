@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { describe, it, expect } from 'bun:test'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -14,25 +14,8 @@ import {
   type TelemetryContext,
   type TelemetrySink,
 } from '@vzn/vx'
-import { cloud } from '../src/plugin.js'
-import { startServe } from '../src/cli/serve.js'
-import { serveInfoPath } from '../src/serve-info.js'
+import { capFingerprintPayload, cloud } from '../src/plugin.js'
 import { ENVIRONMENTS_VERSION, writeEnvironmentsFile } from '../src/environments.js'
-
-// Isolate the per-user serve advertisement at a temp path so these tests never
-// touch a real local serve's file on the machine.
-const prevServeInfo = process.env['VX_CLOUD_SERVE_INFO']
-beforeAll(() => {
-  process.env['VX_CLOUD_SERVE_INFO'] = path.join(
-    tmpdir(),
-    `vx-serveinfo-plugin-${process.pid}.json`,
-  )
-})
-afterAll(async () => {
-  await rm(serveInfoPath(), { force: true })
-  if (prevServeInfo === undefined) delete process.env['VX_CLOUD_SERVE_INFO']
-  else process.env['VX_CLOUD_SERVE_INFO'] = prevServeInfo
-})
 
 // A minimal single-project workspace so a delegated `run()` has real work.
 async function makeWorkspace(): Promise<string> {
@@ -95,20 +78,26 @@ describe('cloud() plugin shape', () => {
 })
 
 // Clear every connection env var so a test's outcome depends only on what it
-// sets — the plugin resolves ONE connection from a superset of aliases.
+// sets — the plugin resolves ONE connection from a superset of aliases. The
+// GITHUB_* vars are cleared too so the suite is HERMETIC inside GitHub Actions
+// itself: `GITHUB_STEP_SUMMARY` (always set in Actions) activates the plugin's
+// GHA-summary telemetry path, and GITHUB_TOKEN/ACTIONS drive the check-run rung
+// — leaving them set makes a "declines when unconfigured" assertion fail on a
+// runner though it passes locally. A test that WANTS the GHA-summary path sets
+// GITHUB_STEP_SUMMARY itself inside the clean-env block.
 const CONN_KEYS = [
   'VX_CLOUD_URL',
   'VX_CLOUD_TOKEN',
   'VX_CLOUD_PR_TOKEN',
   'VX_SERVICE_URL',
-  'VX_REMOTE_CACHE_URL',
-  'VX_REMOTE_CACHE_TOKEN',
-  'VX_REMOTE_CACHE_PR_TOKEN',
   'VX_CLOUD_INGEST_URL',
   'VX_CLOUD_INGEST_TOKEN',
   'VX_CLOUD_INSIGHTS_URL',
   'VX_CLOUD_CONFIG',
   'VX_CLOUD_ENV',
+  'GITHUB_STEP_SUMMARY',
+  'GITHUB_TOKEN',
+  'GITHUB_ACTIONS',
 ]
 async function withCleanConnEnv<T>(
   overrides: Record<string, string>,
@@ -128,39 +117,10 @@ async function withCleanConnEnv<T>(
   }
 }
 
-// Point the active environment at a serve, optionally opting into delegation.
-function connectEnv(configDir: string, url: string, delegate: boolean): void {
-  process.env['VX_CLOUD_CONFIG'] = path.join(configDir, 'environments.json')
-  writeEnvironmentsFile({
-    version: ENVIRONMENTS_VERSION,
-    active: 'team',
-    environments: { team: { url, ...(delegate ? { delegate: true } : {}) } },
-  })
-}
-
+// Run delegation was removed (platform §12 P3): the backend capability now
+// only ever returns a DISTRIBUTION backend; a plain connection never moves
+// execution. These pin that a bare / plain / distribute connection behaves.
 describe('cloud() backend capability', () => {
-  it('delegates to a reachable serve ONLY when the environment opted in with delegate', async () => {
-    const root = await makeWorkspace()
-    const server = await startServe({ root })
-    const savedCfg = process.env['VX_CLOUD_CONFIG']
-    const savedUrl = process.env['VX_CLOUD_URL']
-    delete process.env['VX_CLOUD_URL']
-    try {
-      connectEnv(root, server.origin, true)
-      const backend = (await cloud().backend!(backendCtx(root)))!
-      expect(typeof backend.run).toBe('function')
-      const result = await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
-      expect(result.ok).toBe(true)
-      expect(result.outcomes[0]!.taskId).toBe('demo#hello')
-    } finally {
-      await server.stop()
-      await rm(root, { recursive: true, force: true })
-      if (savedCfg === undefined) delete process.env['VX_CLOUD_CONFIG']
-      else process.env['VX_CLOUD_CONFIG'] = savedCfg
-      if (savedUrl !== undefined) process.env['VX_CLOUD_URL'] = savedUrl
-    }
-  })
-
   it('declines (undefined) with no connection — a bare cloud() never delegates', async () => {
     await withCleanConnEnv({ VX_CLOUD_CONFIG: '/nonexistent/environments.json' }, async () => {
       const backend = await cloud().backend!(backendCtx('/x'))
@@ -168,29 +128,13 @@ describe('cloud() backend capability', () => {
     })
   })
 
-  it('a plain connection (url, no delegate) does NOT move execution', async () => {
-    // VX_CLOUD_URL wires cache/ingest/distribution but must never silently
-    // delegate a run to the server — so the backend rung declines.
+  it('a plain connection (url only) does NOT move execution', async () => {
+    // VX_CLOUD_URL wires cache/ingest/distribution but never delegates a run —
+    // delegation is gone, so the backend rung declines without VX_CLOUD_DISTRIBUTE.
     await withCleanConnEnv({ VX_CLOUD_URL: 'http://localhost:59998' }, async () => {
       const backend = await cloud().backend!(backendCtx('/x'))
       expect(backend).toBeUndefined()
     })
-  })
-
-  it('falls back to a local backend when a delegate environment is unreachable', async () => {
-    const root = await makeWorkspace()
-    const savedCfg = process.env['VX_CLOUD_CONFIG']
-    try {
-      connectEnv(root, 'http://localhost:1', true)
-      const backend = (await cloud().backend!(backendCtx(root)))!
-      const result = await backend.run({ tasks: ['hello'], cwd: root, flow: 'focused' })
-      expect(result.ok).toBe(true)
-      expect(result.outcomes[0]!.taskId).toBe('demo#hello')
-    } finally {
-      await rm(root, { recursive: true, force: true })
-      if (savedCfg === undefined) delete process.env['VX_CLOUD_CONFIG']
-      else process.env['VX_CLOUD_CONFIG'] = savedCfg
-    }
   })
 
   it('an ambient `distribute` environment returns a backend that FAILS SAFE to a local run', async () => {
@@ -231,7 +175,7 @@ describe('cloud() cache capability', () => {
       port: 0,
       fetch(req) {
         const url = new URL(req.url)
-        const m = url.pathname.match(/\/v8\/artifacts\/([^/]+)$/)
+        const m = url.pathname.match(/\/v1\/cache\/([^/]+)$/)
         if (m) seen.push({ hash: m[1]!, auth: req.headers.get('authorization') })
         return new Response(null, { status: 404 })
       },
@@ -289,6 +233,23 @@ describe('cloud() cache capability', () => {
   })
 })
 
+/** A stub GitHub API capturing check-run POSTs (path + head_sha). */
+function stubGithubApi(): {
+  server: ReturnType<typeof Bun.serve>
+  requests: { path: string; headSha: string }[]
+} {
+  const requests: { path: string; headSha: string }[] = []
+  const server = Bun.serve({
+    port: 0,
+    fetch: async (req) => {
+      const body = (await req.json()) as { head_sha: string }
+      requests.push({ path: new URL(req.url).pathname, headSha: body.head_sha })
+      return new Response('{"id":1}', { status: 201 })
+    },
+  })
+  return { server, requests }
+}
+
 function fakeSummary(): RunSummaryRecord {
   return {
     v: 1,
@@ -304,6 +265,7 @@ function fakeSummary(): RunSummaryRecord {
       flow: 'focused',
       commitSha: null,
       branch: null,
+      defaultBranch: null,
       dirty: null,
       ci: false,
       ciProvider: null,
@@ -370,6 +332,68 @@ describe('cloud() telemetry capability', () => {
     }
   })
 
+  it('caps the per-run fingerprint payload at 4 MiB (later tasks tree-only); small runs untouched', async () => {
+    // Pure-cap semantics: an under-budget summary is the SAME object…
+    const small = fakeSummary()
+    small.tasks = [
+      {
+        ...small.tasks[0]!,
+        hash: 'h1',
+        outputFp: { tree: 't1', fileCount: 1, files: [['out.txt', 'aa']] },
+      },
+    ]
+    expect(capFingerprintPayload(small)).toBe(small)
+
+    // …while a run whose serialized maps blow the budget ships the later
+    // tasks tree-only (truncated: true), earlier tasks intact.
+    // ~3 MiB serialized per task: the first fits the 4 MiB budget, the second
+    // (cumulative ~6 MiB) does not.
+    const bigFiles: Array<[string, string]> = []
+    for (let i = 0; i < 500; i++) {
+      bigFiles.push([`dist/${'p'.repeat(6000)}/f${i}.js`, `${i}`.padStart(16, '0')])
+    }
+    const big = fakeSummary()
+    big.tasks = [
+      {
+        ...big.tasks[0]!,
+        taskId: 'a#build',
+        hash: 'h1',
+        outputFp: { tree: 't1', fileCount: 500, files: bigFiles },
+      },
+      {
+        ...big.tasks[0]!,
+        taskId: 'b#build',
+        hash: 'h2',
+        outputFp: { tree: 't2', fileCount: 500, files: bigFiles },
+      },
+    ]
+    const capped = capFingerprintPayload(big)
+    expect(capped).not.toBe(big)
+    expect(capped.tasks[0]!.outputFp!.files).toBeDefined()
+    expect(capped.tasks[1]!.outputFp).toEqual({ tree: 't2', fileCount: 500, truncated: true })
+
+    // And the sink POSTs a small run's body byte-for-byte.
+    const bodies: string[] = []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        bodies.push(await req.text())
+        return new Response('ok')
+      },
+    })
+    try {
+      const sink = (await cloud({
+        url: `http://localhost:${server.port}`,
+        token: 't',
+      }).telemetry!(telemetryCtx('/x'))) as TelemetrySink
+      sink.onRunSummary!(small)
+      await sink.flush!()
+      expect(bodies[0]).toBe(JSON.stringify(small))
+    } finally {
+      void server.stop(true)
+    }
+  })
+
   it('flush never throws even if the ingest endpoint is down', async () => {
     const sink = (await cloud({
       url: 'http://localhost:1',
@@ -379,6 +403,304 @@ describe('cloud() telemetry capability', () => {
     await expect(sink.flush!()).resolves.toBeUndefined()
   })
 
+  it('captures task logs and POSTs a bundle to /v1/ingest/logs after the summary', async () => {
+    const paths: string[] = []
+    const bodies: string[] = []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        paths.push(new URL(req.url).pathname)
+        bodies.push(await req.text())
+        return new Response('ok')
+      },
+    })
+    try {
+      const sink = (await cloud({
+        url: `http://localhost:${server.port}`,
+        token: 't',
+        logs: true,
+      }).telemetry!(telemetryCtx('/x'))) as TelemetrySink
+      // Opt-in: the source only projects task.log when the sink wants it.
+      expect(sink.wants).toContain('task.log')
+      expect(sink.wants).toContain('task.end')
+
+      sink.onRecord!({
+        v: 2,
+        kind: 'task.log',
+        runId: 'run-xyz',
+        taskId: 'p#build',
+        stream: 'stderr',
+        chunk: 'boom\n',
+        ts: 1,
+      })
+      sink.onRecord!({
+        v: 2,
+        kind: 'task.end',
+        runId: 'run-xyz',
+        ts: 2,
+        taskId: 'p#build',
+        project: 'p',
+        task: 'build',
+        status: 'failed',
+        cacheSource: 'miss',
+        exitCode: 1,
+        durationMs: 1,
+      })
+      sink.onRunSummary!(fakeSummary())
+      await sink.flush!()
+
+      // Summary first, then the log bundle.
+      expect(paths).toEqual(['/v1/ingest', '/v1/ingest/logs'])
+      const logBody = JSON.parse(bodies[1]!) as {
+        workspaceId: string
+        tasks: { taskId: string; content: string }[]
+      }
+      expect(logBody.workspaceId).toBe('ws-test')
+      expect(logBody.tasks[0]!.taskId).toBe('p#build')
+      expect(logBody.tasks[0]!.content).toBe('boom\n')
+    } finally {
+      void server.stop(true)
+    }
+  })
+
+  it('reports each EXECUTED task incrementally on task.end (result + log), hits excepted', async () => {
+    const reqs: { path: string; body: string }[] = []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        reqs.push({ path: new URL(req.url).pathname, body: await req.text() })
+        return new Response('ok')
+      },
+    })
+    try {
+      const sink = (await cloud({
+        url: `http://localhost:${server.port}`,
+        token: 't',
+        logs: true,
+      }).telemetry!(telemetryCtx('/x'))) as TelemetrySink
+      // With a connection, run.start + task.end are projected for incremental.
+      expect(sink.wants).toContain('run.start')
+      expect(sink.wants).toContain('task.end')
+
+      // run.start carries the canonical start + the workspace to route to.
+      sink.onRecord!({
+        v: 2,
+        kind: 'run.start',
+        run: fakeSummary().run,
+        total: 2,
+        ts: 0,
+        startedAt: 7000,
+      })
+      // An executed task with output → fires an incremental push.
+      sink.onRecord!({
+        v: 2,
+        kind: 'task.log',
+        runId: 'run-xyz',
+        taskId: 'p#build',
+        stream: 'stdout',
+        chunk: 'ok\n',
+        ts: 1,
+      })
+      sink.onRecord!({
+        v: 2,
+        kind: 'task.end',
+        runId: 'run-xyz',
+        ts: 2,
+        taskId: 'p#build',
+        project: 'p',
+        task: 'build',
+        status: 'success',
+        cacheSource: 'miss',
+        exitCode: 0,
+        durationMs: 5,
+      })
+      // A CACHE HIT does NOT fire — it lands in the end-of-run batch.
+      sink.onRecord!({
+        v: 2,
+        kind: 'task.end',
+        runId: 'run-xyz',
+        ts: 3,
+        taskId: 'p#cached',
+        project: 'p',
+        task: 'cached',
+        status: 'cache-hit',
+        cacheSource: 'local',
+        exitCode: 0,
+        durationMs: 0,
+      })
+      // The incremental POST is fire-and-forget — wait for it to land.
+      for (let i = 0; i < 50 && !reqs.some((r) => r.path === '/v1/ingest/task'); i++) {
+        await Bun.sleep(10)
+      }
+      const taskPosts = reqs.filter((r) => r.path === '/v1/ingest/task')
+      expect(taskPosts).toHaveLength(1) // only the executed task, not the hit
+      const rec = JSON.parse(taskPosts[0]!.body) as {
+        runId: string
+        workspaceId: string
+        runStartedAt: number
+        task: { taskId: string }
+        log?: { content: string }
+      }
+      expect(rec.runId).toBe('run-xyz')
+      expect(rec.workspaceId).toBe('ws-test')
+      expect(rec.runStartedAt).toBe(7000)
+      expect(rec.task.taskId).toBe('p#build')
+      expect(rec.log?.content).toBe('ok\n')
+
+      // At flush, the summary posts; the log bundle is EMPTY (the tail already
+      // went out incrementally), so no /v1/ingest/logs.
+      sink.onRunSummary!(fakeSummary())
+      await sink.flush!()
+      expect(reqs.some((r) => r.path === '/v1/ingest')).toBe(true)
+      expect(reqs.some((r) => r.path === '/v1/ingest/logs')).toBe(false)
+    } finally {
+      void server.stop(true)
+    }
+  })
+
+  it('writes a GitHub job summary in CI even with NO cloud connected', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-gha-plugin-'))
+    const file = path.join(dir, 'summary.md')
+    await withCleanConnEnv({ VX_CLOUD_CONFIG: '/nonexistent/environments.json' }, async () => {
+      const prev = process.env['GITHUB_STEP_SUMMARY']
+      process.env['GITHUB_STEP_SUMMARY'] = file
+      try {
+        // No URL/token anywhere → no connection, but GITHUB_STEP_SUMMARY is set.
+        const sink = (await cloud().telemetry!(telemetryCtx('/x'))) as TelemetrySink
+        expect(sink).toBeDefined()
+        expect(sink.wants).toEqual([]) // no connection → no log capture
+        sink.onRunSummary!(fakeSummary())
+        await sink.flush!()
+        const written = await Bun.file(file).text()
+        expect(written).toContain('vx run')
+        expect(written).toContain('| Task | Status | Duration | Cache |')
+      } finally {
+        if (prev === undefined) delete process.env['GITHUB_STEP_SUMMARY']
+        else process.env['GITHUB_STEP_SUMMARY'] = prev
+        await rm(dir, { recursive: true, force: true })
+      }
+    })
+  })
+
+  it('still declines with no connection AND no GitHub surfaces (plain local run untouched)', async () => {
+    await withCleanConnEnv({ VX_CLOUD_CONFIG: '/nonexistent/environments.json' }, async () => {
+      const prevSummary = process.env['GITHUB_STEP_SUMMARY']
+      const prevToken = process.env['GITHUB_TOKEN']
+      delete process.env['GITHUB_STEP_SUMMARY']
+      // No token → no check candidate, even when the suite itself runs in
+      // Actions (GITHUB_ACTIONS=true there).
+      delete process.env['GITHUB_TOKEN']
+      try {
+        expect(await cloud().telemetry!(telemetryCtx('/x'))).toBeUndefined()
+      } finally {
+        if (prevSummary !== undefined) process.env['GITHUB_STEP_SUMMARY'] = prevSummary
+        if (prevToken !== undefined) process.env['GITHUB_TOKEN'] = prevToken
+      }
+    })
+  })
+
+  it('activates for the GitHub CHECK alone (token passed to the step, no serve)', async () => {
+    const stub = stubGithubApi()
+    await withCleanConnEnv({ VX_CLOUD_CONFIG: '/nonexistent/environments.json' }, async () => {
+      const saved: Record<string, string | undefined> = {}
+      const pin = (k: string, v: string | undefined): void => {
+        saved[k] = process.env[k]
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+      pin('GITHUB_STEP_SUMMARY', undefined)
+      pin('GITHUB_ACTIONS', 'true')
+      pin('GITHUB_TOKEN', 'tok')
+      pin('GITHUB_REPOSITORY', 'acme/mono')
+      pin('GITHUB_SHA', 'sha-1')
+      pin('GITHUB_EVENT_PATH', undefined)
+      pin('GITHUB_API_URL', `http://localhost:${stub.server.port}`)
+      try {
+        const sink = (await cloud().telemetry!(telemetryCtx('/x'))) as TelemetrySink
+        expect(sink).toBeDefined()
+        sink.onRunSummary!(fakeSummary())
+        await sink.flush!()
+        expect(stub.requests).toHaveLength(1)
+        expect(stub.requests[0]!.path).toBe('/repos/acme/mono/check-runs')
+        expect(stub.requests[0]!.headSha).toBe('sha-1')
+      } finally {
+        for (const [k, v] of Object.entries(saved)) {
+          if (v === undefined) delete process.env[k]
+          else process.env[k] = v
+        }
+        await stub.server.stop()
+      }
+    })
+  })
+
+  it('the zero-projection guarantee: VX_CLOUD_LOGS=0 does NOT subscribe to task.log (the chunk path stays free)', async () => {
+    const prev = process.env['VX_CLOUD_LOGS']
+    process.env['VX_CLOUD_LOGS'] = '0'
+    try {
+      const sink = (await cloud({
+        url: 'http://localhost:1',
+        token: 't',
+      }).telemetry!(telemetryCtx('/x'))) as TelemetrySink
+      // Logs off → the high-volume task.log stream is never projected (a plain
+      // run pays nothing per chunk). Per-task RESULT reporting (run.start +
+      // task.end) is a separate feature and stays on when connected.
+      expect(sink.wants).not.toContain('task.log')
+      expect(sink.wants).toContain('task.end')
+    } finally {
+      if (prev === undefined) delete process.env['VX_CLOUD_LOGS']
+      else process.env['VX_CLOUD_LOGS'] = prev
+    }
+  })
+
+  it('an all-hit run ships NO log bundle (only the summary)', async () => {
+    const paths: string[] = []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        paths.push(new URL(req.url).pathname)
+        await req.text()
+        return new Response('ok')
+      },
+    })
+    try {
+      const sink = (await cloud({
+        url: `http://localhost:${server.port}`,
+        token: 't',
+        logs: true,
+      }).telemetry!(telemetryCtx('/x'))) as TelemetrySink
+      // A cache hit: the buffer drops it (bytes resolve by hash to the run
+      // that produced them).
+      sink.onRecord!({
+        v: 2,
+        kind: 'task.log',
+        runId: 'run-xyz',
+        taskId: 'p#b',
+        stream: 'stdout',
+        chunk: 'replay\n',
+        ts: 1,
+      })
+      sink.onRecord!({
+        v: 2,
+        kind: 'task.end',
+        runId: 'run-xyz',
+        ts: 2,
+        taskId: 'p#b',
+        project: 'p',
+        task: 'b',
+        status: 'cache-hit',
+        cacheSource: 'local',
+        exitCode: 0,
+        durationMs: 1,
+        hash: 'h',
+      })
+      sink.onRunSummary!(fakeSummary())
+      await sink.flush!()
+      expect(paths).toEqual(['/v1/ingest']) // no /v1/ingest/logs
+    } finally {
+      void server.stop(true)
+    }
+  })
+
   it('declines (undefined) when no connection is configured', async () => {
     await withCleanConnEnv({ VX_CLOUD_CONFIG: '/nonexistent/environments.json' }, async () => {
       const sink = await cloud().telemetry!(telemetryCtx('/x'))
@@ -386,63 +708,21 @@ describe('cloud() telemetry capability', () => {
     })
   })
 
-  it('AUTO-DETECTS a local vx-cloud serve via its advertisement and pushes there', async () => {
-    const prevIngest = process.env['VX_CLOUD_INGEST_URL']
-    const prevInsights = process.env['VX_CLOUD_INSIGHTS_URL']
-    const prevUrl = process.env['VX_CLOUD_URL']
-    delete process.env['VX_CLOUD_INGEST_URL']
-    delete process.env['VX_CLOUD_INSIGHTS_URL']
-    delete process.env['VX_CLOUD_URL']
-    const root = await mkdtemp(path.join(tmpdir(), 'vx-autodetect-'))
-    const received: string[] = []
-    const server = Bun.serve({
-      port: 0,
-      async fetch(req) {
-        received.push(new URL(req.url).pathname)
-        await req.text()
-        return new Response('ok')
-      },
-    })
+  it('does NOT auto-detect a RUNNING local server — unconnected means decline', async () => {
+    // The one wiring story: `vx-cloud connect` (or explicit env vars). A server
+    // merely running on the machine must never capture runs by existence — the
+    // plugin does no local discovery, so the running stub below is irrelevant.
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-noautodetect-'))
+    const server = Bun.serve({ port: 0, fetch: () => new Response('ok') })
     try {
-      // Simulate a serve running in ANOTHER process advertising itself at the
-      // per-user (machine-level) path — discovered regardless of workspace. Use
-      // process.ppid: a DIFFERENT (so not "self") yet ALIVE pid, so the
-      // liveness check passes (the same-pid case is self; a dead pid is stale).
-      await mkdir(path.dirname(serveInfoPath()), { recursive: true })
-      await writeFile(
-        serveInfoPath(),
-        JSON.stringify({ origin: `http://localhost:${server.port}`, pid: process.ppid }),
-      )
-      const sink = (await cloud().telemetry!(telemetryCtx(root))) as TelemetrySink
-      expect(sink).toBeDefined()
-      sink.onRunSummary!(fakeSummary())
-      await sink.flush!()
-      expect(received).toContain('/v1/ingest')
-    } finally {
-      void server.stop(true)
-      await rm(serveInfoPath(), { force: true })
-      await rm(root, { recursive: true, force: true })
-      if (prevIngest !== undefined) process.env['VX_CLOUD_INGEST_URL'] = prevIngest
-      if (prevInsights !== undefined) process.env['VX_CLOUD_INSIGHTS_URL'] = prevInsights
-      if (prevUrl !== undefined) process.env['VX_CLOUD_URL'] = prevUrl
-    }
-  })
-
-  it('declines a STALE advertisement (serve died — pid not alive)', async () => {
-    const root = await mkdtemp(path.join(tmpdir(), 'vx-stale-'))
-    try {
-      await mkdir(path.dirname(serveInfoPath()), { recursive: true })
-      // pid 2147483646 ≈ no such process → liveness check fails → decline.
-      await writeFile(
-        serveInfoPath(),
-        JSON.stringify({ origin: 'http://localhost:59999', pid: 2_147_483_646 }),
-      )
       await withCleanConnEnv({ VX_CLOUD_CONFIG: '/nonexistent/environments.json' }, async () => {
         const sink = await cloud().telemetry!(telemetryCtx(root))
         expect(sink).toBeUndefined()
+        const backend = await cloud().backend!(backendCtx(root))
+        expect(backend).toBeUndefined()
       })
     } finally {
-      await rm(serveInfoPath(), { force: true })
+      void server.stop(true)
       await rm(root, { recursive: true, force: true })
     }
   })
@@ -465,12 +745,13 @@ describe('cloud() end-to-end through defineWorkspace', () => {
           '',
         ].join('\n'),
       )
-      // Remove any local serve advertisement so the subprocess's telemetry
-      // auto-detect declines (a `spawnSync`-blocked serve can't answer a POST,
-      // and flush() would wait the full timeout — a test-only artifact).
-      await rm(serveInfoPath(), { force: true })
       const binPath = path.join(import.meta.dir, '..', '..', '..', 'src', 'bin.ts')
-      const proc = Bun.spawnSync(['bun', binPath, 'run', 'hello'], { cwd: root })
+      // Pin the environments file at a nonexistent path so a real per-user
+      // connection on this machine can't leak into the subprocess.
+      const proc = Bun.spawnSync(['bun', binPath, 'run', 'hello'], {
+        cwd: root,
+        env: { ...process.env, VX_CLOUD_CONFIG: '/nonexistent/environments.json' },
+      })
       const out = proc.stdout.toString() + proc.stderr.toString()
       expect(proc.exitCode).toBe(0)
       expect(out).toContain('hi-from-task')

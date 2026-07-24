@@ -69,31 +69,14 @@ vx's MCP tools share dispatch with the inspector RPC channel
 WebSocket-side inspector ships, every MCP tool will work over WS
 too — one handler, two transports.
 
-## MCP over HTTP — a running `vx-cloud serve`
+## MCP over HTTP — the platform
 
-`vx mcp` (stdio) is per-workspace and process-private. A **`vx-cloud
-serve`** also exposes MCP over HTTP at `POST /mcp` — dependency-free
-(JSON-RPC 2.0, protocol `2025-03-26`, no SDK), behind the serve's bearer
-token. An AI agent points at any serve — local or a hosted team endpoint —
-and reads the same metrics the dashboard shows, across every workspace the
-serve holds:
-
-```jsonc
-// Claude Code, pointing at a running serve
-{
-  "mcpServers": {
-    "vx-team": {
-      "url": "https://vx.example.com/mcp",
-      "headers": { "Authorization": "Bearer <token>" }
-    }
-  }
-}
-```
-
-The HTTP surface serves a superset of the stdio tools (run detail, cache
-diff, hit-rate split, …) over the serve's ingest store rather than a local
-`cache.db`, so it works even on a serve deployed away from the machines
-that produced the runs. See [Self-host vx-cloud](../self-hosting/).
+`vx mcp` (stdio) is per-workspace and process-private. The optional
+self-hosted platform also exposes MCP over HTTP at `POST /mcp` — a
+team-wide, org/workspace-clamped surface backed by Postgres, so an AI agent
+reads the same analytics the dashboard shows across a whole org. That path
+lives in its own section: see
+[MCP over HTTP](../../cloud/mcp/).
 
 ## What's coming
 

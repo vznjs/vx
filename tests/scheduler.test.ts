@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test'
 import { computeReverseDepCount, runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
+import { computePredictedPriorities } from '../src/orchestrator/index.js'
+import type { HistoryTable, TaskHistory } from '../src/orchestrator/history.js'
 
 function node(id: string, deps: string[] = []): TaskNode {
   return {
@@ -251,6 +253,62 @@ describe('runGraph', () => {
       expect(started.indexOf('p#r1')).toBeLessThan(started.indexOf('p#r2'))
     })
   })
+
+  // End-to-end: predictive (time-based) critical-path priority must drive the
+  // schedule order, not just the structural reverse-dep count. Guards the whole
+  // computePredictedPriorities → mergePriorities → runGraph path — the one CORE-1
+  // silently broke (priorities that collapsed to own-duration on real graphs).
+  describe('predictive critical-path priority (time-based) drives order', () => {
+    const hist = (p50: number): TaskHistory => ({
+      runs: 5,
+      p50DurationMs: p50,
+      p99DurationMs: p50,
+      successRate: 1,
+      hitRate: 0,
+      failureMode: 'stable',
+    })
+
+    it('runs the head of the LONGER critical-path chain first, breaking a reverse-dep tie', async () => {
+      // Two independent chains, IDENTICAL structure (each head blocks exactly
+      // one task → same reverse-dep count → a structural tie). By TIME, chain A
+      // is the critical path (1000+1000ms) and chain B is trivial (10+10ms).
+      const a1 = node('p#a1')
+      const a2 = node('p#a2', ['p#a1'])
+      const b1 = node('p#b1')
+      const b2 = node('p#b2', ['p#b1'])
+      // Insert chain B FIRST, so insertion order (the structural tie-break)
+      // would otherwise pick b1 before a1.
+      const m = new Map<string, TaskNode>([
+        ['p#b1', b1],
+        ['p#b2', b2],
+        ['p#a1', a1],
+        ['p#a2', a2],
+      ])
+      const history: HistoryTable = new Map([
+        ['p#a1', hist(1000)],
+        ['p#a2', hist(1000)],
+        ['p#b1', hist(10)],
+        ['p#b2', hist(10)],
+      ])
+      const priorities = computePredictedPriorities([...m.values()], history)
+      // Sanity: a1's predicted remaining critical path (2000) >> b1's (20).
+      expect(priorities.get('p#a1')!).toBeGreaterThan(priorities.get('p#b1')!)
+
+      const started: string[] = []
+      await runGraph({
+        nodes: m,
+        concurrency: 1,
+        priorities,
+        execute: async (n) => {
+          started.push(n.id)
+          return success(n)
+        },
+      })
+      // a1 runs before b1 despite being inserted later and having the same
+      // reverse-dep count — the time-based critical path won.
+      expect(started.indexOf('p#a1')).toBeLessThan(started.indexOf('p#b1'))
+    })
+  })
 })
 
 describe('priority computation scale', () => {
@@ -383,6 +441,37 @@ describe('runGraph restore-tier (local short-circuit)', () => {
   })
 })
 
+describe('runGraph — priorities override', () => {
+  it('a priorities map overrides the default order; unscored nodes fall back to baseline', async () => {
+    // Four independent nodes: the default schedule is pure insertion
+    // order a, b, c, d (all baseline reverse-dep counts are 0). A
+    // priorities map lifts c above a; b and d are unscored and fall back
+    // to baseline (0), keeping their insertion order behind the scored pair.
+    const m = new Map<string, TaskNode>([
+      ['p#a', node('p#a')],
+      ['p#b', node('p#b')],
+      ['p#c', node('p#c')],
+      ['p#d', node('p#d')],
+    ])
+    const started: string[] = []
+    await runGraph({
+      nodes: m,
+      concurrency: 1,
+      priorities: new Map([
+        ['p#c', 5],
+        ['p#a', 1],
+      ]),
+      execute: async (n) => {
+        started.push(n.id)
+        return success(n)
+      },
+    })
+    // Scored highest-first: c (5) then a (1); then the two unscored nodes
+    // by baseline + insertion order: b then d. Inverts the default a,b,c,d.
+    expect(started).toEqual(['p#c', 'p#a', 'p#b', 'p#d'])
+  })
+})
+
 describe('runGraph — continueMode', () => {
   it('deps-ok (default): a failure skips dependents, siblings run — unchanged pin', async () => {
     const a = node('p#a')
@@ -438,5 +527,370 @@ describe('runGraph — continueMode', () => {
     expect(out.get('p#b')!.status).toBe('success')
     expect(seenUpstream[0]![0]!.status).toBe('failed')
     expect(seenUpstream[0]![0]!.hash).toBe('h-p#a')
+  })
+})
+
+describe('runGraph — resource admission (exec.resources)', () => {
+  // Manual completion gates: execute() records the start and blocks on
+  // the task's gate, so tests control exactly when budget releases.
+  function gates(ids: string[]) {
+    const release = new Map<string, () => void>()
+    const held = new Map<string, Promise<void>>()
+    for (const id of ids) {
+      held.set(
+        id,
+        new Promise<void>((r) => {
+          release.set(id, r)
+        }),
+      )
+    }
+    return { held, release }
+  }
+  const cost = (entries: Record<string, { cpu?: number; mem?: number }>) =>
+    new Map(Object.entries(entries).map(([id, c]) => [id, { cpu: c.cpu ?? 0, mem: c.mem ?? 0 }]))
+
+  it('two cpus:4 on a budget of 8 run concurrently', async () => {
+    let active = 0
+    let peak = 0
+    const out = await runGraph({
+      nodes: nodes(node('a#run'), node('b#run')),
+      concurrency: 8,
+      resourceCosts: cost({ 'a#run': { cpu: 4 }, 'b#run': { cpu: 4 } }),
+      execute: async (n) => {
+        active++
+        peak = Math.max(peak, active)
+        await new Promise((r) => setTimeout(r, 20))
+        active--
+        return success(n)
+      },
+    })
+    expect(out.size).toBe(2)
+    expect(peak).toBe(2)
+  })
+
+  it('two cpus:5 on a budget of 8 serialize', async () => {
+    let active = 0
+    let peak = 0
+    await runGraph({
+      nodes: nodes(node('a#run'), node('b#run')),
+      concurrency: 8,
+      resourceCosts: cost({ 'a#run': { cpu: 5 }, 'b#run': { cpu: 5 } }),
+      execute: async (n) => {
+        active++
+        peak = Math.max(peak, active)
+        await new Promise((r) => setTimeout(r, 20))
+        active--
+        return success(n)
+      },
+    })
+    expect(peak).toBe(1)
+  })
+
+  it('memory axis: two 600-byte tasks on a 1000-byte budget serialize', async () => {
+    let active = 0
+    let peak = 0
+    await runGraph({
+      nodes: nodes(node('a#run'), node('b#run')),
+      concurrency: 8,
+      memBudget: 1000,
+      resourceCosts: cost({ 'a#run': { mem: 600 }, 'b#run': { mem: 600 } }),
+      execute: async (n) => {
+        active++
+        peak = Math.max(peak, active)
+        await new Promise((r) => setTimeout(r, 20))
+        active--
+        return success(n)
+      },
+    })
+    expect(peak).toBe(1)
+  })
+
+  it('combined: a task that fits CPU but not memory waits for memory', async () => {
+    let active = 0
+    let peak = 0
+    await runGraph({
+      nodes: nodes(node('a#run'), node('b#run')),
+      concurrency: 8,
+      memBudget: 1000,
+      resourceCosts: cost({
+        'a#run': { cpu: 1, mem: 800 },
+        'b#run': { cpu: 1, mem: 400 },
+      }),
+      execute: async (n) => {
+        active++
+        peak = Math.max(peak, active)
+        await new Promise((r) => setTimeout(r, 20))
+        active--
+        return success(n)
+      },
+    })
+    expect(peak).toBe(1)
+  })
+
+  it('backfill: a parked too-big head lets a smaller lower-priority task through', async () => {
+    const { held, release } = gates(['p#a', 'p#b', 'p#c'])
+    const started: string[] = []
+    const done = runGraph({
+      nodes: nodes(node('p#a'), node('p#b'), node('p#c')),
+      concurrency: 8,
+      // Priority a > b > c; a (cpus:6) dispatches first, head b (cpus:4)
+      // doesn't fit and parks, c (cpus:2) backfills alongside a.
+      priorities: new Map([
+        ['p#a', 100],
+        ['p#b', 50],
+        ['p#c', 10],
+      ]),
+      resourceCosts: cost({ 'p#a': { cpu: 6 }, 'p#b': { cpu: 4 }, 'p#c': { cpu: 2 } }),
+      onStart: (n) => started.push(n.id),
+      execute: async (n) => {
+        await held.get(n.id)
+        return success(n)
+      },
+    })
+    await Bun.sleep(0)
+    expect(started).toEqual(['p#a', 'p#c'])
+    release.get('p#a')!()
+    await Bun.sleep(0)
+    expect(started).toEqual(['p#a', 'p#c', 'p#b'])
+    release.get('p#b')!()
+    release.get('p#c')!()
+    await done
+  })
+
+  it('solo-clamp: an over-budget task runs alone from idle; an all-over-budget graph serializes', async () => {
+    let active = 0
+    let peak = 0
+    const out = await runGraph({
+      nodes: nodes(node('a#run'), node('b#run'), node('c#run')),
+      concurrency: 8,
+      resourceCosts: cost({
+        'a#run': { cpu: 16 },
+        'b#run': { cpu: 16 },
+        'c#run': { cpu: 16 },
+      }),
+      execute: async (n) => {
+        active++
+        peak = Math.max(peak, active)
+        await new Promise((r) => setTimeout(r, 10))
+        active--
+        return success(n)
+      },
+    })
+    expect(out.size).toBe(3)
+    expect(peak).toBe(1)
+  })
+
+  it('zero never blocks: a cpus:0 task runs beside a solo-clamped giant while cpus:1 waits', async () => {
+    const { held, release } = gates(['p#big', 'p#small', 'p#free'])
+    const started: string[] = []
+    const done = runGraph({
+      nodes: nodes(node('p#big'), node('p#small'), node('p#free')),
+      concurrency: 8,
+      priorities: new Map([
+        ['p#big', 100],
+        ['p#small', 50],
+        ['p#free', 10],
+      ]),
+      // free has NO entry — zero cost by absence, exempt from the axis.
+      resourceCosts: cost({ 'p#big': { cpu: 16 }, 'p#small': { cpu: 1 } }),
+      onStart: (n) => started.push(n.id),
+      execute: async (n) => {
+        await held.get(n.id)
+        return success(n)
+      },
+    })
+    await Bun.sleep(0)
+    expect(started).toEqual(['p#big', 'p#free'])
+    release.get('p#big')!()
+    await Bun.sleep(0)
+    expect(started).toEqual(['p#big', 'p#free', 'p#small'])
+    release.get('p#small')!()
+    release.get('p#free')!()
+    await done
+  })
+
+  it('skip-safety: a too-big task with a failed dep skips instead of parking', async () => {
+    const { held, release } = gates(['p#long'])
+    const finished: string[] = []
+    let bigSkippedWhileLongActive = false
+    const done = runGraph({
+      nodes: nodes(node('p#dep'), node('p#long'), node('p#big', ['p#dep'])),
+      concurrency: 8,
+      resourceCosts: cost({ 'p#long': { cpu: 4 }, 'p#big': { cpu: 16 } }),
+      onFinish: (o) => {
+        finished.push(`${o.node.id}:${o.status}`)
+        // The doomed giant must resolve as skipped WHILE long still holds
+        // budget — if the parker fit-checked would-skip tasks, it would
+        // park here (16 > 8, reserved 4 ≠ 0) instead of finishing.
+        if (o.node.id === 'p#big' && o.status === 'skipped') bigSkippedWhileLongActive = true
+      },
+      execute: async (n) => {
+        if (n.id === 'p#dep') return failed(n)
+        await held.get(n.id)
+        return success(n)
+      },
+    })
+    await Bun.sleep(0)
+    expect(bigSkippedWhileLongActive).toBe(true)
+    release.get('p#long')!()
+    const out = await done
+    expect(out.get('p#big')!.status).toBe('skipped')
+    expect(out.get('p#long')!.status).toBe('success')
+  })
+
+  it('restore tier reserves 0: a restore declaring cpus:8 runs beside a cpus:8 executor', async () => {
+    let active = 0
+    let peak = 0
+    await runGraph({
+      nodes: nodes(node('a#run'), node('b#run')),
+      concurrency: 8,
+      restoreTier: new Set(['b#run']),
+      resourceCosts: cost({ 'a#run': { cpu: 8 }, 'b#run': { cpu: 8 } }),
+      execute: async (n) => {
+        active++
+        peak = Math.max(peak, active)
+        await new Promise((r) => setTimeout(r, 20))
+        active--
+        return success(n)
+      },
+    })
+    expect(peak).toBe(2)
+  })
+
+  it('FIFO-among-equals survives park + repush (original seq preserved)', async () => {
+    const { held, release } = gates(['p#a', 'p#b', 'p#c', 'p#d'])
+    const started: string[] = []
+    // All equal priority (independent roots, default baseline 0), so the
+    // contract is enqueue order: a, b, c, d. b/c/d park behind a's 6;
+    // after a completes, b and c admit IN ORDER and d parks again.
+    const done = runGraph({
+      nodes: nodes(node('p#a'), node('p#b'), node('p#c'), node('p#d')),
+      concurrency: 8,
+      resourceCosts: cost({
+        'p#a': { cpu: 6 },
+        'p#b': { cpu: 4 },
+        'p#c': { cpu: 4 },
+        'p#d': { cpu: 4 },
+      }),
+      onStart: (n) => started.push(n.id),
+      execute: async (n) => {
+        await held.get(n.id)
+        return success(n)
+      },
+    })
+    await Bun.sleep(0)
+    expect(started).toEqual(['p#a'])
+    release.get('p#a')!()
+    await Bun.sleep(0)
+    expect(started).toEqual(['p#a', 'p#b', 'p#c'])
+    release.get('p#b')!()
+    await Bun.sleep(0)
+    expect(started).toEqual(['p#a', 'p#b', 'p#c', 'p#d'])
+    release.get('p#c')!()
+    release.get('p#d')!()
+    await done
+  })
+
+  it('empty resourceCosts map takes the legacy path (no admission, count limit only)', async () => {
+    let active = 0
+    let peak = 0
+    await runGraph({
+      nodes: nodes(node('a#run'), node('b#run'), node('c#run')),
+      concurrency: 2,
+      resourceCosts: new Map(),
+      execute: async (n) => {
+        active++
+        peak = Math.max(peak, active)
+        await new Promise((r) => setTimeout(r, 10))
+        active--
+        return success(n)
+      },
+    })
+    expect(peak).toBe(2)
+  })
+
+  it('fractional costs that leave float residue do NOT hang the solo-clamp (regression)', async () => {
+    // 0.1 + 0.2 - 0.1 - 0.2 === 2.78e-17 in IEEE-754, so after the first two
+    // tasks release, a naive `reservedCpu === 0` solo-clamp gate would never
+    // fire and the over-budget `c` (cpu:4 on budget 3) would park forever —
+    // active hits 0, no future tick, the run hangs / exits without running c.
+    // The integer holder-count + snap-to-zero fix must let c run.
+    const ran = new Set<string>()
+    const out = await runGraph({
+      nodes: nodes(node('a#run'), node('b#run'), node('c#run')),
+      concurrency: 3,
+      cpuBudget: 3,
+      resourceCosts: new Map([
+        ['a#run', { cpu: 0.1, mem: 0 }],
+        ['b#run', { cpu: 0.2, mem: 0 }],
+        ['c#run', { cpu: 4, mem: 0 }], // over budget → solo-clamp
+      ]),
+      execute: async (n) => {
+        ran.add(n.id)
+        await new Promise((r) => setTimeout(r, 5))
+        return success(n)
+      },
+    })
+    expect(out.size).toBe(3)
+    expect(ran.has('c#run')).toBe(true)
+    expect(out.get('c#run')!.status).toBe('success')
+  })
+
+  it('percent-derived fractional memory (0.30000000000000004-style) still admits + terminates', async () => {
+    // resolveMem('10%', budget) yields non-representable fractional bytes;
+    // interleaved release must snap the axis back to exact 0 so an over-budget
+    // memory task solo-clamps instead of wedging.
+    const budget = 3
+    const frac = (10 / 100) * budget // 0.30000000000000004
+    const ran = new Set<string>()
+    const out = await runGraph({
+      nodes: nodes(node('a#run'), node('b#run'), node('big#run')),
+      concurrency: 3,
+      memBudget: budget,
+      resourceCosts: new Map([
+        ['a#run', { cpu: 0, mem: frac }],
+        ['b#run', { cpu: 0, mem: frac }],
+        ['big#run', { cpu: 0, mem: budget * 10 }], // over budget → solo-clamp
+      ]),
+      execute: async (n) => {
+        ran.add(n.id)
+        await new Promise((r) => setTimeout(r, 5))
+        return success(n)
+      },
+    })
+    expect(out.size).toBe(3)
+    expect(ran.has('big#run')).toBe(true)
+  })
+
+  it('a throwing onFinish does not double-release into a permanent admission wedge', async () => {
+    // `.then(onFulfilled, onRejected)` — a throw from the fulfillment arm
+    // (onFinish) must NOT also run the rejection arm, or the reservation
+    // releases twice, `reserved` goes negative, and the solo-clamp gate is
+    // never satisfiable again. The first task's onFinish throws; the later
+    // over-budget task must still run.
+    let threw = false
+    const ran = new Set<string>()
+    const out = await runGraph({
+      nodes: nodes(node('a#run'), node('big#run', ['a#run'])),
+      concurrency: 4,
+      cpuBudget: 4,
+      resourceCosts: new Map([
+        ['a#run', { cpu: 1, mem: 0 }],
+        ['big#run', { cpu: 8, mem: 0 }], // over budget → solo-clamp, needs idle axis
+      ]),
+      onFinish: (o) => {
+        if (o.node.id === 'a#run' && !threw) {
+          threw = true
+          throw new Error('boom from onFinish')
+        }
+      },
+      execute: async (n) => {
+        ran.add(n.id)
+        await new Promise((r) => setTimeout(r, 5))
+        return success(n)
+      },
+    })
+    expect(out.size).toBe(2)
+    expect(ran.has('big#run')).toBe(true)
   })
 })

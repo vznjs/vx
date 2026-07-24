@@ -8,6 +8,7 @@
 import path from 'node:path'
 import { relPosix, UserError } from '../util/index.js'
 import { findWorkspaceRoot, listProjects, loadWorkspace } from '../workspace/index.js'
+import { quote } from './migrate-emit.js'
 import { migrateNx } from './migrate-nx.js'
 import { migrateTurbo } from './migrate-turbo.js'
 
@@ -126,19 +127,25 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   }
 
   if (!parsed.dry && !parsed.force) {
-    const conflicts: string[] = []
+    const conflicts = new Set<string>()
+    // A discovered project with ANY existing vx config (.ts/.mjs/.js) — refuse
+    // so we never shadow a hand-written config with a fresh .ts.
     for (const p of plan.projects) {
       if (p.tasks.length === 0) continue
       const meta = metas.find((m) => m.dir === p.dir)
-      if (meta?.configPath) conflicts.push(relPosix(root, meta.configPath))
+      if (meta?.configPath) conflicts.add(relPosix(root, meta.configPath))
     }
-    for (const f of plan.extraFiles) {
-      if (await Bun.file(path.join(root, f.relPath)).exists()) conflicts.push(f.relPath)
+    // ALSO stat every actual write target. A SYNTHESIZED project (e.g. the Nx
+    // workspace-root node, dir === root) has no discovered meta, so the meta
+    // scan alone would miss an existing vx.config.ts at that path and clobber
+    // it. This also covers the extraFiles (vx-preset.ts).
+    for (const f of files) {
+      if (await Bun.file(f.abs).exists()) conflicts.add(f.relPath)
     }
-    if (conflicts.length > 0) {
+    if (conflicts.size > 0) {
       throw new UserError(
         'refusing to overwrite existing files (pass --force to overwrite):\n' +
-          `  ${conflicts.join('\n  ')}`,
+          `  ${[...conflicts].join('\n  ')}`,
       )
     }
   }
@@ -177,10 +184,6 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
 // ─── TS emission ──────────────────────────────────────────────────────
 
 const IDENT = /^[A-Za-z_$][\w$]*$/
-
-function quote(s: string): string {
-  return `'${s.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`
-}
 
 function isRawExpr(v: unknown): v is RawExpr {
   return typeof v === 'object' && v !== null && typeof (v as RawExpr).raw === 'string'

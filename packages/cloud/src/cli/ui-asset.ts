@@ -2,15 +2,18 @@
 //
 // The dashboard lives INSIDE this package (`packages/cloud/ui`) and builds to a
 // single self-contained `ui/dist/index.html` (JS + CSS inlined — see
-// `ui/vite.config.ts`). Importing it with `{ type: 'file' }` makes
-// `bun build --compile` embed the bytes inside the standalone binary; the
-// import resolves to a path (a `/$bunfs/...` path in a compiled binary, a real
-// fs path under `bun run`) that `Bun.file()` reads. So `vx-cloud serve` serves
-// the dashboard from a bare binary with nothing else on disk — the cloud
-// package is self-contained (it no longer depends on a separate `@vzn/vx-ui`).
+// `ui/vite.config.ts`). That dist is a BUILD ARTIFACT, not committed: the
+// vx-cloud build produces it (`vx run build.ui` locally; the npm package +
+// Docker image build the SPA before packaging/compiling). Importing it with
+// `{ type: 'file' }` makes `bun build --compile` embed the bytes inside the
+// standalone binary; the import resolves to a path (a `/$bunfs/...` path in a
+// compiled binary, a real fs path under `bun run`) that `Bun.file()` reads. So
+// `vx-cloud serve` serves the dashboard from a bare binary with nothing else on
+// disk — the cloud package is self-contained (no separate `@vzn/vx-ui`).
 //
 // This module is imported dynamically (only when the UI is served) so a source
-// checkout that hasn't built the SPA doesn't break a serve.
+// checkout that hasn't built the SPA yet degrades to an API-only serve
+// (loadUiHtmlPath returns null) instead of failing.
 
 // `with { type: 'file' }` makes this resolve to a path string at runtime, but
 // @types/bun types a `.html` import as `HTMLBundle` (its HTML-loader shape) —

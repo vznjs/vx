@@ -36,7 +36,15 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
     // surfaces only the destination path. We'd then miss flagging the
     // source project as affected. Treating renames as delete+add gives
     // us both halves so both projects get correctly marked.
-    cmd: ['git', 'diff', '--no-renames', '--name-only', args.since],
+    //
+    // `--relative` prints paths relative to the cwd (the workspace root), NOT
+    // the git repo root. Without it, when the workspace root is a SUBDIR of the
+    // git repo, `git diff` emits repo-root-relative paths (`code/pkg/x`) that
+    // `path.resolve(workspaceRoot, …)` mangles into `<root>/code/…`, matching no
+    // project → the project is silently NOT flagged affected. `--relative` also
+    // (correctly) drops changes ABOVE the workspace, which belong to no project.
+    // No-op when the workspace root IS the git root.
+    cmd: ['git', 'diff', '--no-renames', '--relative', '--name-only', args.since],
     cwd: args.workspaceRoot,
     stdout: 'pipe',
     stderr: 'pipe',
@@ -91,19 +99,27 @@ function projectsContaining(
   changedRelPaths: readonly string[],
   projects: readonly ProjectMeta[],
 ): Set<string> {
-  // Sort by dir length descending so a nested project wins over its
-  // parent when a single file falls inside both (a parent project's
-  // glob can't reach into a nested one, but the file's path is still
-  // a descendant of both dirs).
-  const sortedProjects = [...projects].sort((a, b) => b.dir.length - a.dir.length)
+  // Index projects by their (canonical) dir, then for each changed path walk
+  // its ancestor dirs bottom-up until one is a project dir. The FIRST hit is
+  // the DEEPEST containing project — so a nested project still wins over its
+  // parent, exactly as the prior longest-dir sort did — but this is
+  // O(files · path-depth) instead of O(files · projects): independent of the
+  // project count, which is what a big --affected diff on a 1000-project repo
+  // pays for.
+  const dirToName = new Map<string, string>()
+  for (const p of projects) dirToName.set(p.dir, p.name)
   const out = new Set<string>()
   for (const rel of changedRelPaths) {
-    const abs = path.resolve(workspaceRoot, rel)
-    for (const proj of sortedProjects) {
-      if (abs === proj.dir || abs.startsWith(proj.dir + path.sep)) {
-        out.add(proj.name)
+    let dir = path.resolve(workspaceRoot, rel)
+    for (;;) {
+      const name = dirToName.get(dir)
+      if (name !== undefined) {
+        out.add(name)
         break
       }
+      const parent = path.dirname(dir)
+      if (parent === dir) break // reached the filesystem root
+      dir = parent
     }
   }
   return out

@@ -21,6 +21,7 @@ export type {
   CacheConfig,
   CacheInputs,
   CacheOutputs,
+  ResourcesConfig,
   SandboxConfig,
   SandboxNetworkConfig,
 } from './config.js'
@@ -37,11 +38,14 @@ export type { PreparedRun } from './orchestrator/index.js'
 export { computeTaskHash, createHashCache, deriveStableKeys } from './orchestrator/index.js'
 export type { DeriveStableKeysArgs, HashCache, StableKey } from './orchestrator/index.js'
 export {
+  captureDefaultBranch,
   captureGitContext,
+  captureHostContext,
   captureWorkspaceIdentity,
+  detectCi,
   resolveCacheScope,
 } from './orchestrator/index.js'
-export type { GitContext, WorkspaceIdentity } from './orchestrator/index.js'
+export type { CiContext, GitContext, HostContext, WorkspaceIdentity } from './orchestrator/index.js'
 export { FULL_CACHE_POLICY, parseCachePolicy } from './orchestrator/index.js'
 export type {
   CachePolicy,
@@ -52,7 +56,16 @@ export type {
 } from './orchestrator/index.js'
 export { defaultLogger, resolveOutputView } from './orchestrator/index.js'
 export { buildTaskGraph, expandRequested, isGroupTask, markSurfacedDeps } from './graph/index.js'
-export type { TaskNode, TaskOutcome, TaskStatus } from './graph/index.js'
+export type {
+  OutputFingerprint,
+  TaskNode,
+  TaskOutcome,
+  TaskStatus,
+  VerifyVerdict,
+} from './graph/index.js'
+// The one output-tree diff implementation (verify verdicts + a serve's
+// cross-machine fingerprint diff both name rels through it).
+export { diffOutputTrees } from './orchestrator/index.js'
 
 // Cache classes + the layer interface (the `cache` capability's currency)
 // and input-output resolution. The blob-CAS/digest substrate
@@ -63,16 +76,29 @@ export type { TaskNode, TaskOutcome, TaskStatus } from './graph/index.js'
 export {
   Cache,
   LayeredCache,
-  RemoteCache,
   GitFilesCache,
   cleanOutputs,
   resolveInputs,
   resolveOutputs,
 } from './cache/index.js'
-export type { CacheLayer, RunRecord, InvocationRecord } from './cache/index.js'
+export type { CacheLayer, RemoteCacheLayer, RunRecord, InvocationRecord } from './cache/index.js'
 
-// Workspace discovery — an out-of-process service/CLI needs these.
+// Workspace discovery + the project/config catalog surface — an
+// out-of-process service/CLI needs these. `readLockfile` is THE one reader
+// of vx-lock.json (the format carries its own version sentinel; a second
+// parser in a sibling package would drift), and the loader chain
+// (`loadWorkspace` → `listProjectMetas` → `loadProjectConfig`) is the same
+// one `vx show` uses. Workspace's `listProjects` re-exports as
+// `listProjectMetas` — the bare name belongs to the metrics query below.
 export { findWorkspaceRoot, loadWorkspaceConfig, resolveCacheDir } from './workspace/index.js'
+export { readLockfile, LOCKFILE_NAME } from './workspace/index.js'
+export type { Lockfile, LockfileEntry } from './workspace/index.js'
+export {
+  loadWorkspace,
+  loadProjectConfig,
+  listProjects as listProjectMetas,
+} from './workspace/index.js'
+export type { ProjectMeta } from './workspace/index.js'
 
 // Plugin API — the run-level extension points. Behavior capabilities
 // (backend / cache) change WHAT/HOW work runs; the observe-only `telemetry`
@@ -92,7 +118,11 @@ export type {
 // (an OTel exporter, an HTTP sink, or any third-party consumer) reads. A sink implements TelemetrySink and is
 // returned from VxPlugin.telemetry(); it receives immutable records and holds
 // no run handle (observe-only by construction).
-export { TELEMETRY_SCHEMA_VERSION, deriveCacheSource } from './orchestrator/index.js'
+export {
+  assembleRunSummary,
+  TELEMETRY_SCHEMA_VERSION,
+  deriveCacheSource,
+} from './orchestrator/index.js'
 export type {
   CacheSource,
   RunContextRecord,
@@ -181,8 +211,10 @@ export {
   getHitRateSplit,
   getInvocation,
   getParallelismHistory,
+  getPeriodComparison,
   getPrunableEntries,
   getRecentFailures,
+  getRegressions,
   getRun,
   getRunHeatmap,
   getRunTrends,

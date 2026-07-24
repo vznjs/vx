@@ -1,0 +1,278 @@
+{
+  "refresh": 30000,
+  "data": {
+    "catalog": "catalog",
+    "meta": "serverMeta"
+  },
+  "spec": {
+    "type": "Page",
+    "props": {
+      "title": "Workspace",
+      "subtitle": "Identity + the project/task catalog. Analytics live under Insights."
+    },
+    "children": [
+      {
+        "type": "Grid",
+        "props": {
+          "variant": "metrics-4"
+        },
+        "visible": {
+          "$state": "/catalogStatus",
+          "eq": "ok"
+        },
+        "children": [
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Projects",
+              "value": {
+                "$computed": "aggFmt",
+                "args": {
+                  "arr": {
+                    "$state": "/catalog/projects"
+                  },
+                  "op": "count",
+                  "fmt": "number"
+                }
+              },
+              "sub": "in the catalog"
+            }
+          },
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Tasks",
+              "value": {
+                "$computed": "fmtNumber",
+                "args": {
+                  "n": {
+                    "$state": "/catalog/_taskTotal"
+                  }
+                }
+              },
+              "sub": "declared across all configs"
+            }
+          },
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Config source",
+              "value": {
+                "$state": "/catalog/source"
+              },
+              "sub": {
+                "$cond": {
+                  "$state": "/catalog/source",
+                  "eq": "lock"
+                },
+                "$then": "frozen by vx lock — zero eval",
+                "$else": "live evaluation (no vx-lock.json)"
+              }
+            }
+          },
+          {
+            "type": "Metric",
+            "props": {
+              "label": "Lock drift",
+              "value": {
+                "$computed": "fmtNumber",
+                "args": {
+                  "n": {
+                    "$state": "/catalog/_staleCount"
+                  }
+                }
+              },
+              "sub": "configs changed since vx lock",
+              "tone": {
+                "$computed": "gt",
+                "args": {
+                  "v": {
+                    "$state": "/catalog/_staleCount"
+                  },
+                  "n": 0,
+                  "then": "warn",
+                  "else": "good"
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "type": "Text",
+        "props": {
+          "text": {
+            "$computed": "text",
+            "args": {
+              "tpl": "The lock is stale for {n} project(s) — run vx lock to refreeze the catalog.",
+              "n": {
+                "$state": "/catalog/_staleCount"
+              }
+            }
+          },
+          "tone": "warn",
+          "class": "rounded-lg border border-warn/40 bg-warn/5 px-4 py-2.5"
+        },
+        "visible": {
+          "$state": "/catalog/_staleCount",
+          "gt": 0
+        }
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Workspace",
+          "actionHref": "/projects",
+          "actionLabel": "projects →"
+        },
+        "visible": {
+          "$state": "/catalogStatus",
+          "eq": "ok"
+        },
+        "children": [
+          {
+            "type": "Facts",
+            "props": {
+              "entry": {
+                "$state": "/catalog"
+              },
+              "fields": [
+                {
+                  "label": "root",
+                  "key": "root",
+                  "mono": true
+                },
+                {
+                  "label": "id",
+                  "key": "workspaceId",
+                  "mono": true
+                },
+                {
+                  "label": "locked",
+                  "key": "lockedAt",
+                  "kind": "relativeTime"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "Text",
+        "props": {
+          "text": "No workspace catalog here — this serve has no colocated workspace (or predates the catalog routes). Start vx-cloud serve inside the repo to browse projects and resolved task configs; run history and analytics still work.",
+          "tone": "faint",
+          "class": "rounded-lg border border-border bg-surface/60 px-4 py-3"
+        },
+        "visible": {
+          "$state": "/catalogStatus",
+          "eq": "missing"
+        }
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Server"
+        },
+        "visible": {
+          "$state": "/metaStatus",
+          "eq": "ok"
+        },
+        "children": [
+          {
+            "type": "Facts",
+            "props": {
+              "entry": {
+                "$state": "/meta"
+              },
+              "fields": [
+                {
+                  "label": "name",
+                  "key": "name",
+                  "mono": true
+                },
+                {
+                  "label": "vx",
+                  "key": "vx",
+                  "mono": true
+                },
+                {
+                  "label": "auth",
+                  "key": "auth"
+                },
+                {
+                  "label": "started",
+                  "key": "startedAt",
+                  "kind": "relativeTime"
+                },
+                {
+                  "label": "workspaces",
+                  "key": "workspaces"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "Grid",
+        "props": {
+          "variant": "cols-3"
+        },
+        "children": [
+          {
+            "type": "Card",
+            "props": {
+              "title": "Runs",
+              "actionHref": "/runs",
+              "actionLabel": "open"
+            },
+            "children": [
+              {
+                "type": "Text",
+                "props": {
+                  "text": "Spawn and queue runs, watch them live, dig into every invocation.",
+                  "tone": "muted"
+                }
+              }
+            ]
+          },
+          {
+            "type": "Card",
+            "props": {
+              "title": "Projects",
+              "actionHref": "/projects",
+              "actionLabel": "open"
+            },
+            "children": [
+              {
+                "type": "Text",
+                "props": {
+                  "text": "Every project in the catalog — including ones that never ran — joined with its analytics.",
+                  "tone": "muted"
+                }
+              }
+            ]
+          },
+          {
+            "type": "Card",
+            "props": {
+              "title": "Insights",
+              "actionHref": "/insights",
+              "actionLabel": "open"
+            },
+            "children": [
+              {
+                "type": "Text",
+                "props": {
+                  "text": "Trends, bottlenecks, flaky tasks, cache savings — every row links into its entity.",
+                  "tone": "muted"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

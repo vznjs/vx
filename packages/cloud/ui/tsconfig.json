@@ -13,9 +13,10 @@
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "jsx": "react-jsx",
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
     "types": ["vite/client"]
   },
-  "include": ["src/**/*", "vite.config.ts"],
-  "exclude": ["dist", "node_modules", "src/**/*.test.ts"]
+  "include": ["src/**/*", "vite.config.ts", "uno.config.ts"],
+  "exclude": ["dist", "node_modules"]
 }

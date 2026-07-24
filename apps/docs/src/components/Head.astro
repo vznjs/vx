@@ -29,7 +29,11 @@ import Default from '@astrojs/starlight/components/Head.astro'
     for (const el of blocks) {
       if (!sources.has(el)) sources.set(el, el.textContent ?? '')
       el.removeAttribute('data-processed')
-      el.innerHTML = sources.get(el) ?? ''
+      // Restore the raw definition as TEXT, not innerHTML — the source can
+      // contain `<br/>` in labels, and innerHTML would parse those into real
+      // <br> elements, corrupting the definition mermaid reads (→ "Syntax
+      // error"). textContent keeps `<br/>` literal so mermaid renders it.
+      el.textContent = sources.get(el) ?? ''
     }
 
     await mermaid.run({ nodes: blocks })

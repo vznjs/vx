@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
+  captureDefaultBranch,
   captureGitContext,
   captureHostContext,
   captureWorkspaceIdentity,
@@ -64,6 +65,59 @@ describe('captureGitContext', () => {
   })
 })
 
+describe('captureDefaultBranch', () => {
+  let dir: string
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-dfltbr-'))
+  })
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('prefers GitLab CI_DEFAULT_BRANCH', () => {
+    expect(captureDefaultBranch({ CI_DEFAULT_BRANCH: 'trunk' }, dir)).toBe('trunk')
+    // whitespace trimmed
+    expect(captureDefaultBranch({ CI_DEFAULT_BRANCH: '  main \n' }, dir)).toBe('main')
+  })
+
+  it('reads GitHub event payload repository.default_branch', async () => {
+    const evt = path.join(dir, 'event.json')
+    await writeFile(evt, JSON.stringify({ repository: { default_branch: 'develop' } }))
+    expect(captureDefaultBranch({ GITHUB_EVENT_PATH: evt }, dir)).toBe('develop')
+  })
+
+  it('GitLab env wins over a GitHub event payload', async () => {
+    const evt = path.join(dir, 'event.json')
+    await writeFile(evt, JSON.stringify({ repository: { default_branch: 'develop' } }))
+    expect(captureDefaultBranch({ CI_DEFAULT_BRANCH: 'trunk', GITHUB_EVENT_PATH: evt }, dir)).toBe(
+      'trunk',
+    )
+  })
+
+  it('falls back to git origin/HEAD, stripping the remote prefix', () => {
+    git(dir, ['init', '-q', '-b', 'main'])
+    git(dir, ['config', 'user.email', 'test@example.com'])
+    git(dir, ['config', 'user.name', 'Test'])
+    // A bare "remote" repo to point origin at + set origin/HEAD.
+    git(dir, ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main'])
+    expect(captureDefaultBranch({}, dir)).toBe('main')
+  })
+
+  it('returns null when nothing resolves (no env, no remote HEAD)', () => {
+    git(dir, ['init', '-q', '-b', 'main'])
+    // no origin/HEAD ref set
+    expect(captureDefaultBranch({}, dir)).toBeNull()
+  })
+
+  it('ignores an unreadable / malformed GitHub event payload, falls through to null', () => {
+    expect(
+      captureDefaultBranch({ GITHUB_EVENT_PATH: path.join(dir, 'missing.json') }, dir),
+    ).toBeNull()
+  })
+})
+
 describe('detectCi', () => {
   it('detects no CI for an empty env', () => {
     expect(detectCi({})).toEqual({ ci: false, provider: null })
@@ -114,6 +168,10 @@ describe('normalizeRemoteUrl', () => {
     expect(normalizeRemoteUrl('https://github.com/vznjs/vx')).toBe(want)
     expect(normalizeRemoteUrl('ssh://git@github.com/vznjs/vx.git')).toBe(want)
     expect(normalizeRemoteUrl('HTTPS://user:pass@GitHub.com/vznjs/vx/')).toBe(want)
+    // An explicit port must not split the id: a ported SSH/HTTPS URL reduces to
+    // the same string as the unported form (the port is stripped, not kept).
+    expect(normalizeRemoteUrl('ssh://git@github.com:2222/vznjs/vx.git')).toBe(want)
+    expect(normalizeRemoteUrl('https://github.com:8443/vznjs/vx.git')).toBe(want)
   })
 })
 

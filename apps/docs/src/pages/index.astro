@@ -79,13 +79,7 @@ const platform = [
     icon: 'spark',
     tone: 'var(--phosphor)',
     title: 'MCP for AI agents',
-    body: 'vx mcp boots a Model Context Protocol server over stdio, or vx-cloud serve exposes one at POST /mcp. Claude Code, Cursor, Continue.dev query cache stats, run history, and rebuild causes through the standard agent-tool protocol. No other runner ships an MCP surface.',
-  },
-  {
-    icon: 'mesh',
-    tone: 'var(--plasma)',
-    title: 'Distributed CI, OSS',
-    body: 'vx-cloud agents attach to a serve session and run your task graph across machines — the Nx-Cloud-DTE model without the paywall. Content-addressed; outputs move through the shared cache, and the submitting run self-registers so local and remote agents mix.',
+    body: 'vx mcp boots a Model Context Protocol server over stdio. Claude Code, Cursor, Continue.dev query cache stats, run history, and rebuild causes through the standard agent-tool protocol. No other runner ships an MCP surface.',
   },
   {
     icon: 'plug',
@@ -94,22 +88,22 @@ const platform = [
     body: 'Register plugins in vx.workspace.ts to subscribe to lifecycle hooks. Forward outcomes to Sentry, post to Slack, ship metrics anywhere. Vite-style lifecycle hooks, crash-isolated per hook.',
   },
   {
-    icon: 'wire',
-    tone: 'var(--phosphor)',
-    title: 'Open wire protocol',
-    body: 'vx-cloud serve speaks JSON-RPC 2.0 over WS, SSE and NDJSON. Any JSON-RPC client works — curl streams events, jq filters them, MCP and A2A interop free. No proprietary protocol.',
-  },
-  {
-    icon: 'cloud',
-    tone: 'var(--plasma)',
-    title: 'Self-hostable, Docker-ready',
-    body: 'vx-cloud serve is one token-authed container — dashboard, analytics, remote cache and MCP in a single process. The dashboard is embedded in the binary (nothing to build) and points at any reachable origin. docker compose up, no separate cloud stack.',
-  },
-  {
     icon: 'brain',
     tone: 'var(--amber)',
     title: 'Predictive scheduling',
     body: 'predictive: true and the scheduler reads run history, computes expected remaining critical-path per task, and dispatches by it. The only task runner that learns from itself.',
+  },
+  {
+    icon: 'wire',
+    tone: 'var(--phosphor)',
+    title: 'Provider-neutral core',
+    body: 'Core is only a task runner — fully offline, no account, no service. A dashboard, remote cache, distributed execution and telemetry export are plugins you declare in vx.workspace.ts, first-party or your own. Core depends on none of them.',
+  },
+  {
+    icon: 'cloud',
+    tone: 'var(--plasma)',
+    title: 'Cloud, self-hosted',
+    body: 'An optional self-hosted CI platform: a dashboard, a trust-scoped shared remote cache, distributed CI across an agent pool, and MCP over HTTP — one docker compose stack backed by Postgres + S3, with accounts and RBAC. Your workspaces connect to it; core never depends on it.',
   },
 ]
 
@@ -455,15 +449,13 @@ const footCols = {
                 href={
                   f.icon === 'spark'
                     ? href('guides/mcp/')
-                    : f.icon === 'mesh'
-                      ? href('guides/distributed-ci/')
-                      : f.icon === 'plug'
-                        ? href('guides/plugins/')
-                        : f.icon === 'wire'
-                          ? href('guides/wire-protocol/')
-                          : f.icon === 'cloud'
-                            ? href('guides/self-hosting/')
-                            : href('guides/predictive-scheduling/')
+                    : f.icon === 'plug'
+                      ? href('guides/plugins/')
+                      : f.icon === 'wire'
+                        ? href('guides/extensibility/')
+                        : f.icon === 'cloud'
+                          ? href('cloud/overview/')
+                          : href('guides/predictive-scheduling/')
                 }
               >
                 <span class="ico">

@@ -1,0 +1,200 @@
+{
+  "data": {
+    "entry": "cacheEntry",
+    "runs": "cacheEntryRuns",
+    "artifacts": "artifacts"
+  },
+  "spec": {
+    "type": "Page",
+    "props": {
+      "backHref": "/cache",
+      "backLabel": "cache",
+      "title": {
+        "$state": "/params/hash"
+      },
+      "mono": true
+    },
+    "children": [
+      {
+        "type": "Text",
+        "props": {
+          "text": "Loading…",
+          "tone": "faint"
+        },
+        "visible": {
+          "$state": "/entryStatus",
+          "eq": "loading"
+        }
+      },
+      {
+        "type": "Empty",
+        "props": {
+          "title": "No cache entry with this hash",
+          "hint": "The entry may have been pruned, or it lives in a different workspace's cache."
+        },
+        "visible": {
+          "$state": "/entryStatus",
+          "eq": "missing"
+        }
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Entry",
+          "actionHref": {
+            "$computed": "taskHref",
+            "args": {
+              "project": {
+                "$state": "/entry/project"
+              },
+              "task": {
+                "$state": "/entry/task"
+              }
+            }
+          },
+          "actionLabel": "task page →"
+        },
+        "visible": {
+          "$state": "/entryStatus",
+          "eq": "ok"
+        },
+        "children": [
+          {
+            "type": "Facts",
+            "props": {
+              "entry": {
+                "$state": "/entry"
+              },
+              "commandKey": "command",
+              "fields": [
+                {
+                  "label": "hash",
+                  "key": "hash",
+                  "kind": "shorthash16"
+                },
+                {
+                  "label": "project",
+                  "key": "project",
+                  "mono": true
+                },
+                {
+                  "label": "task",
+                  "key": "task",
+                  "mono": true
+                },
+                {
+                  "label": "size",
+                  "key": "sizeBytes",
+                  "kind": "bytes"
+                },
+                {
+                  "label": "duration",
+                  "key": "durationMs",
+                  "kind": "duration"
+                },
+                {
+                  "label": "exit",
+                  "key": "exitCode"
+                },
+                {
+                  "label": "created",
+                  "key": "createdAt",
+                  "kind": "relativeTime"
+                },
+                {
+                  "label": "accessed",
+                  "key": "accessedAt",
+                  "kind": "relativeTime"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Artifact"
+        },
+        "visible": {
+          "$state": "/entryStatus",
+          "neq": "loading"
+        },
+        "children": [
+          {
+            "type": "ArtifactDownload",
+            "props": {
+              "hash": {
+                "$state": "/params/hash"
+              },
+              "artifacts": {
+                "$state": "/artifacts"
+              },
+              "fallbackText": "This serve's artifact store holds no artifact for this hash — the entry may be local-only, pruned remotely, or outside your token's trust tier."
+            }
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Runs that produced or restored this entry",
+          "actionText": "newest first · click opens the run with the task selected",
+          "noPad": true
+        },
+        "children": [
+          {
+            "type": "DataTable",
+            "props": {
+              "rows": {
+                "$state": "/runs"
+              },
+              "status": {
+                "$state": "/runsStatus"
+              },
+              "rowHref": "/runs/{runId}?task={_taskRef}",
+              "initialSort": {
+                "key": "startedAt",
+                "desc": true
+              },
+              "emptyTitle": "No recorded runs reference this hash",
+              "emptyHint": "Run history is bounded — older runs may have aged out of the recent window.",
+              "columns": [
+                {
+                  "key": "runId",
+                  "label": "Run",
+                  "kind": "shorthash",
+                  "len": 8
+                },
+                {
+                  "key": "startedAt",
+                  "label": "When",
+                  "kind": "relativeTime",
+                  "baseTone": "faint",
+                  "sortable": true
+                },
+                {
+                  "key": "status",
+                  "label": "Status",
+                  "kind": "status"
+                },
+                {
+                  "key": "durationMs",
+                  "label": "Duration",
+                  "align": "right",
+                  "kind": "duration"
+                },
+                {
+                  "key": "cacheHit",
+                  "label": "Cache",
+                  "align": "right",
+                  "kind": "cache"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

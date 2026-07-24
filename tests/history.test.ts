@@ -126,6 +126,95 @@ describe('LocalHistoryProvider', () => {
     }
   })
 
+  it('computes per-task percentiles independently across MANY tasks (batched, no cross-contamination)', async () => {
+    const cache = makeCache()
+    try {
+      // Two tasks with distinct executed-success duration sets, interleaved
+      // with cache-hits + failures that must NOT enter the percentiles. If the
+      // batched windowed query failed to PARTITION BY task, task B's big
+      // durations would leak into A's percentiles (and vice versa).
+      const rows: RunRecord[] = [
+        // pkg#build executed-success: 100, 300, 200 → sorted [100,200,300]
+        mkRun({
+          hash: 'a1',
+          project: 'pkg',
+          task: 'build',
+          status: 'success',
+          durationMs: 100,
+          startedAt: 1000,
+        }),
+        mkRun({
+          hash: 'a2',
+          project: 'pkg',
+          task: 'build',
+          status: 'success',
+          durationMs: 300,
+          startedAt: 2000,
+        }),
+        mkRun({
+          hash: 'a3',
+          project: 'pkg',
+          task: 'build',
+          status: 'success',
+          durationMs: 200,
+          startedAt: 3000,
+        }),
+        // excluded from build percentiles: a cache hit + a failure
+        mkRun({
+          hash: 'a4',
+          project: 'pkg',
+          task: 'build',
+          status: 'success',
+          cacheHit: true,
+          durationMs: 5,
+          startedAt: 3500,
+        }),
+        mkRun({
+          hash: 'a5',
+          project: 'pkg',
+          task: 'build',
+          status: 'failed',
+          durationMs: 999,
+          startedAt: 3600,
+        }),
+        // pkg#test executed-success: 1000, 2000 → sorted [1000,2000]
+        mkRun({
+          hash: 'b1',
+          project: 'pkg',
+          task: 'test',
+          status: 'success',
+          durationMs: 1000,
+          startedAt: 1500,
+        }),
+        mkRun({
+          hash: 'b2',
+          project: 'pkg',
+          task: 'test',
+          status: 'success',
+          durationMs: 2000,
+          startedAt: 2500,
+        }),
+      ]
+      cache.recordRuns(rows)
+      const provider = new LocalHistoryProvider((cache as unknown as { db: any }).db)
+      const table = await provider.loadFor(['pkg#build', 'pkg#test'])
+      const build = table.get('pkg#build')!
+      const test = table.get('pkg#test')!
+      // pickPercentile(sorted, q) = sorted[min(len-1, floor(q*len))]
+      expect(build.p50DurationMs).toBe(200) // [100,200,300][1]
+      expect(build.p99DurationMs).toBe(300) // [100,200,300][2]
+      expect(test.p50DurationMs).toBe(2000) // [1000,2000][1]
+      expect(test.p99DurationMs).toBe(2000) // [1000,2000][1]
+      // Counts include hits/failures; build: 5 rows (1 hit), 1 fail.
+      expect(build.runs).toBe(5)
+      expect(build.hitRate).toBeCloseTo(1 / 5, 5)
+      expect(test.runs).toBe(2)
+    } finally {
+      cache.close()
+      rmSync(cacheDir, { recursive: true, force: true })
+    }
+  })
+
   it('returns nothing for tasks with no prior runs', async () => {
     const cache = makeCache()
     try {

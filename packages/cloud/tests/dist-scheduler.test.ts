@@ -5,7 +5,13 @@
 
 import { describe, expect, it } from 'bun:test'
 import type { OutcomeView, ServerMessage, TaskView } from '@vzn/vx'
-import { DistScheduler, SUBMITTER_LABEL, type ArtifactProbe } from '../src/dist/scheduler.js'
+import {
+  DistScheduler,
+  SUBMITTER_LABEL,
+  type ArtifactProbe,
+  type DistRunRecorder,
+} from '../src/dist/scheduler.js'
+import type { TaskIngestRecord } from '../src/db/analytics.js'
 import {
   dispatchGreedy,
   type ActiveSubmission,
@@ -73,6 +79,7 @@ function fakeAgent(agentId: string, capacity = 1, labels: string[] = []): FakeAg
   const sent: DistServerMessage[] = []
   return {
     agentId,
+    orgId: 'default',
     workspaceId: 'ws1',
     session: 'local',
     commitSha: 'commit-a',
@@ -202,6 +209,79 @@ describe('DistScheduler — dispatch', () => {
     expect(agent.assigned()).toEqual(['pkg#a', 'pkg#b'])
   })
 
+  it('an EMPTY submitted graph finishes immediately instead of hanging', async () => {
+    const out = collector()
+    const sched = new DistScheduler({ submit: submitMsg([]), store: store(), send: out.send })
+    await sched.start()
+    // done resolves (no hang) with a clean empty result.
+    expect(await sched.done).toEqual({ ok: true })
+    const result = out.messages.find((m) => m.t === 'result') as
+      | { t: 'result'; result: { ok: boolean; outcomes: unknown[] } }
+      | undefined
+    expect(result?.result).toEqual({ ok: true, outcomes: [] })
+  })
+
+  it('a CYCLIC submitted graph aborts instead of hanging forever', async () => {
+    const out = collector()
+    const sched = new DistScheduler({
+      submit: submitMsg([node('pkg#a', ['pkg#b']), node('pkg#b', ['pkg#a'])]),
+      store: store(),
+      send: out.send,
+    })
+    await sched.start()
+    expect(await sched.done).toEqual({ ok: false })
+    const err = out.messages.find((m) => m.t === 'error') as { message: string } | undefined
+    expect(err?.message).toMatch(/dependency cycle/)
+  })
+
+  it('a graph depending on an UNKNOWN task aborts instead of hanging', async () => {
+    const out = collector()
+    const sched = new DistScheduler({
+      submit: submitMsg([node('pkg#a', ['pkg#ghost'])]),
+      store: store(),
+      send: out.send,
+    })
+    await sched.start()
+    expect(await sched.done).toEqual({ ok: false })
+    const err = out.messages.find((m) => m.t === 'error') as { message: string } | undefined
+    expect(err?.message).toMatch(/unknown task pkg#ghost/)
+  })
+
+  it('dispatches the LONGEST task first when duration hints are present (LPT)', async () => {
+    const agent = fakeAgent('a1', 1)
+    const out = collector()
+    // pkg#a queues before pkg#b, but pkg#b is historically longer → it goes first.
+    const sched = new DistScheduler({
+      submit: submitMsg([node('pkg#a'), node('pkg#b')]),
+      store: store(),
+      send: out.send,
+      durationHints: new Map([
+        ['pkg#a', 1000],
+        ['pkg#b', 9000],
+      ]),
+    })
+    sched.attach(binding([agent], () => sched))
+    await sched.start()
+    expect(agent.assigned()).toEqual(['pkg#b'])
+    sched.onAgentMessage(agent, { t: 'agent:done', taskId: 'pkg#b', outcome: outcome('pkg#b') })
+    expect(agent.assigned()).toEqual(['pkg#b', 'pkg#a'])
+  })
+
+  it('with NO hints (or all-equal) dispatch stays FIFO — byte-identical', async () => {
+    const agent = fakeAgent('a1', 1)
+    const out = collector()
+    // An empty hint map (a no-history workspace) must not reorder anything.
+    const sched = new DistScheduler({
+      submit: submitMsg([node('pkg#a'), node('pkg#b')]),
+      store: store(),
+      send: out.send,
+      durationHints: new Map(),
+    })
+    sched.attach(binding([agent], () => sched))
+    await sched.start()
+    expect(agent.assigned()).toEqual(['pkg#a'])
+  })
+
   it('prefers the agent that executed a dep (dep-affinity), tie → first free', async () => {
     const a1 = fakeAgent('a1', 2)
     const a2 = fakeAgent('a2', 2)
@@ -254,6 +334,81 @@ describe('DistScheduler — dispatch', () => {
 
     sched.onAgentMessage(a2, { t: 'agent:done', taskId: 'pkg#a', outcome: outcome('pkg#a') })
     expect(doneOf(out.messages)?.ok).toBe(true)
+  })
+})
+
+describe('DistScheduler — per-assignment run policy', () => {
+  it('carries the submission --frozen/--timeout/--retry on every task:assign', async () => {
+    const agent = fakeAgent('a1', 4)
+    const out = collector()
+    const submit = submitMsg([node('pkg#a')])
+    submit.request = { tasks: ['build'], cwd: '/w', frozen: true, timeout: 30_000, retries: 2 }
+    const sched = new DistScheduler({ submit, store: store(), send: out.send })
+    sched.attach(binding([agent], () => sched))
+    await sched.start()
+    const assign = agent.sent.find((m) => m.t === 'task:assign') as
+      | { t: 'task:assign'; policy?: { frozen?: boolean; timeout?: number; retries?: number } }
+      | undefined
+    expect(assign?.policy).toEqual({ frozen: true, timeout: 30_000, retries: 2 })
+  })
+
+  it('a submission with no run flags sends a BARE assignment (byte-identical to before)', async () => {
+    const agent = fakeAgent('a1', 4)
+    const out = collector()
+    const sched = new DistScheduler({
+      submit: submitMsg([node('pkg#a')]),
+      store: store(),
+      send: out.send,
+    })
+    sched.attach(binding([agent], () => sched))
+    await sched.start()
+    const assign = agent.sent.find((m) => m.t === 'task:assign')!
+    expect(Object.keys(assign).sort()).toEqual(['submissionId', 't', 'taskId'])
+  })
+})
+
+describe('DistScheduler — log capture holder gate', () => {
+  it('drops stdout from an agent that does not HOLD the task (no stale-stream garble)', async () => {
+    const captured: TaskIngestRecord[] = []
+    const recorder: DistRunRecorder = { taskDone: (r) => captured.push(r), runFinished: () => {} }
+    const a = fakeAgent('a1', 4)
+    const b = fakeAgent('b1', 4)
+    const out = collector()
+    const sched = new DistScheduler({
+      submit: submitMsg([node('pkg#x')]),
+      store: store(),
+      send: out.send,
+      recorder,
+    })
+    sched.attach(binding([a, b], () => sched))
+    await sched.start()
+    // pkg#x lands on a1 (first free eligible); a1 HOLDS it, b1 does not.
+    expect(a.assigned()).toEqual(['pkg#x'])
+
+    // a1 (holder) streams real output; b1 (a stale reconnected sibling that no
+    // longer holds the task) streams garbage for the SAME task — only a1's must
+    // reach the stored log.
+    sched.onAgentMessage(a, {
+      t: 'agent:stdout',
+      taskId: 'pkg#x',
+      submissionId: 'sub-a',
+      chunk: 'A-real\n',
+    })
+    sched.onAgentMessage(b, {
+      t: 'agent:stdout',
+      taskId: 'pkg#x',
+      submissionId: 'sub-a',
+      chunk: 'B-stale\n',
+    })
+    sched.onAgentMessage(a, {
+      t: 'agent:done',
+      taskId: 'pkg#x',
+      submissionId: 'sub-a',
+      outcome: outcome('pkg#x'),
+    })
+
+    const rec = captured.find((r) => r.task.taskId === 'pkg#x')
+    expect(rec?.log?.content).toBe('A-real\n') // B-stale dropped, no interleave
   })
 })
 

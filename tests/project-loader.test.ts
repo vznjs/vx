@@ -193,6 +193,108 @@ describe('loadProjectConfig', () => {
       await expect(loadProjectConfig(file)).rejects.toThrow(/outputs.files.*non-empty/)
     })
 
+    // A `..` output glob escapes the project dir; `cleanOutputs` rm()s resolved
+    // output paths before every run, so an accepted `../victim/**` would delete
+    // files OUTSIDE the project. Reject at load (the boundary is hard).
+    it('rejects `..` path segments in cache.outputs.files (data-loss vector)', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['../victim/**'] } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/'\.\.' path segments are not allowed/)
+    })
+
+    it('rejects `..` path segments in cache.inputs.files', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: { inputs: { files: ['../sibling/**'] }, outputs: { files: [] } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/'\.\.' path segments are not allowed/)
+    })
+
+    // workspaceFiles are workspace-root-relative and deliberately boundary-free
+    // WITHIN the workspace — but `..` escapes ABOVE the root (deletes outside
+    // the repo). Reject it while still allowing cross-project workspace globs.
+    it('rejects `..` in cache.outputs.workspaceFiles (escapes the workspace root)', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['../above.txt'] } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/'\.\.' path segments are not allowed/)
+    })
+
+    it('accepts a filename with dots (foo..bar is not a `..` segment)', async () => {
+      // `foo..bar` is a valid filename (the `..` is not a path SEGMENT).
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: { inputs: { files: ['src/a..b.ts'] }, outputs: { files: [] } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).resolves.toBeDefined()
+    })
+
+    // exec.env was never validated: a malformed passThrough reaches
+    // buildIsolatedEnv's `for (const name of passThrough)` — a number throws
+    // "not iterable" mid-run, a string silently char-iterates. Fail loud at load.
+    it('rejects a non-array exec.env.passThrough', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc', env: { passThrough: 123 } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/passThrough must be an array/)
+    })
+
+    it('rejects a string exec.env.passThrough (would silently char-iterate)', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc', env: { passThrough: 'FOO' } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/passThrough must be an array/)
+    })
+
+    it('rejects a non-object exec.env.define', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc', env: { define: { PORT: 3000 } } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/define\.PORT must be a string/)
+    })
+
+    it('accepts a well-formed exec.env', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc', env: { passThrough: ['CI', 'HOME'], define: { NODE_ENV: 'production' } } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).resolves.toBeDefined()
+    })
+
     it('rejects absolute paths in cache.inputs.files (must be project-relative)', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(
@@ -260,6 +362,66 @@ describe('loadProjectConfig', () => {
       await expect(loadProjectConfig(file)).rejects.toThrow(
         /cache\.inputs\.workspaceRuntime must be an array of non-empty shell command strings/,
       )
+    })
+  })
+
+  describe('exec.resources validation', () => {
+    const withResources = (literal: string) =>
+      `export default { tasks: { build: { exec: { command: 'tsc', resources: ${literal} } } } }`
+
+    it('accepts numbers, percents, fractional cpus, and size strings', async () => {
+      for (const literal of [
+        `{ cpus: 2 }`,
+        `{ cpus: '50%' }`,
+        `{ cpus: 0.5 }`,
+        `{ memory: 1024 }`,
+        `{ memory: '512MB' }`,
+        `{ memory: '25%' }`,
+        `{ cpus: '12.5%', memory: '2GB' }`,
+        `{}`,
+      ]) {
+        const file = path.join(dir, 'vx.config.mjs')
+        await writeFile(file, withResources(literal))
+        const cfg = await loadProjectConfig(file)
+        expect(cfg.tasks?.build?.exec?.resources).toBeDefined()
+      }
+    })
+
+    it('rejects invalid cpus forms', async () => {
+      for (const literal of [`{ cpus: -1 }`, `{ cpus: NaN }`, `{ cpus: '%' }`, `{ cpus: '2GB' }`]) {
+        const file = path.join(dir, 'vx.config.mjs')
+        await writeFile(file, withResources(literal))
+        await expect(loadProjectConfig(file)).rejects.toThrow(
+          /resources\.cpus must be a non-negative number or a "<n>%" string/,
+        )
+      }
+    })
+
+    it('rejects invalid memory forms (incl. fractional sizes)', async () => {
+      for (const literal of [
+        `{ memory: -1 }`,
+        `{ memory: '5X' }`,
+        `{ memory: '1.5GB' }`,
+        `{ memory: '%' }`,
+      ]) {
+        const file = path.join(dir, 'vx.config.mjs')
+        await writeFile(file, withResources(literal))
+        await expect(loadProjectConfig(file)).rejects.toThrow(
+          /resources\.memory must be a non-negative integer/,
+        )
+      }
+    })
+
+    it('rejects unknown fields (future axes must be added deliberately)', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(file, withResources(`{ gpu: 1 }`))
+      await expect(loadProjectConfig(file)).rejects.toThrow(/unknown field "gpu"/)
+    })
+
+    it('rejects a non-object resources', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(file, withResources(`4`))
+      await expect(loadProjectConfig(file)).rejects.toThrow(/resources must be an object/)
     })
   })
 })

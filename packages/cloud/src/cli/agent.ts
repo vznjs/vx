@@ -9,9 +9,9 @@
 // failing test.
 
 import { captureGitContext, captureWorkspaceIdentity, findWorkspaceRoot, UserError } from '@vzn/vx'
+import { activeEnvironment } from '../environments.js'
 import { runAgentLoop } from '../dist/agent-loop.js'
-import { deriveSession, wireAgentCacheEnv } from '../dist/session.js'
-import { readServeInfo } from '../serve-info.js'
+import { agentRemoteCache, deriveSession, markAgentProcess } from '../dist/session.js'
 
 export interface AgentArgs {
   url?: string
@@ -82,19 +82,23 @@ function worktreeStatus(root: string): string[] {
 export async function agentCmd(args: readonly string[]): Promise<number> {
   const parsed = parseAgentArgs(args)
 
-  const origin =
-    parsed.url ??
-    process.env['VX_CLOUD_URL'] ??
-    process.env['VX_SERVICE_URL'] ??
-    readServeInfo()?.origin
+  // Explicit wiring only: --url / env vars / the connected environment
+  // (`vx-cloud connect`) — never an auto-detected local serve.
+  const env = activeEnvironment()
+  const explicitOrigin = parsed.url ?? process.env['VX_CLOUD_URL'] ?? process.env['VX_SERVICE_URL']
+  const origin = explicitOrigin ?? env?.url
   if (origin === undefined || origin === '') {
-    throw new UserError('vx-cloud agent: no serve URL — pass --url <origin> (or VX_CLOUD_URL)')
+    throw new UserError(
+      'vx-cloud agent: no serve URL — pass --url <origin> (or VX_CLOUD_URL, or `vx-cloud connect`)',
+    )
   }
   const token =
     parsed.token ??
     (process.env['VX_CLOUD_TOKEN'] !== undefined && process.env['VX_CLOUD_TOKEN'] !== ''
       ? process.env['VX_CLOUD_TOKEN']
-      : undefined)
+      : undefined) ??
+    // The environment's token rides only when the environment supplied the URL.
+    (explicitOrigin === undefined ? env?.token : undefined)
 
   const root = await findWorkspaceRoot(process.cwd())
 
@@ -117,9 +121,11 @@ export async function agentCmd(args: readonly string[]): Promise<number> {
   const identity = captureWorkspaceIdentity(root)
   const session = parsed.session ?? deriveSession()
 
-  // Point the scoped runs' remote layer at the serve's own /v8 store + flag
-  // this process as an agent (shared verbatim with the submitter self-agent).
-  wireAgentCacheEnv(origin, token)
+  // The scoped runs' remote layer: the serve's own artifact store, injected
+  // explicitly (shared with the submitter self-agent). Flag the process as
+  // an agent so cloud()'s telemetry rung declines.
+  const remoteCache = agentRemoteCache(origin, token)
+  markAgentProcess()
 
   process.stdout.write(
     `vx agent: serve   ${origin}\n` +
@@ -137,6 +143,7 @@ export async function agentCmd(args: readonly string[]): Promise<number> {
     commitSha: git.commitSha,
     capacity: parsed.capacity,
     checkoutRoot: root,
+    remoteCache,
     ...(parsed.labels.length > 0 ? { labels: parsed.labels } : {}),
     ...(parsed.idleTimeoutMs > 0 ? { idleTimeoutMs: parsed.idleTimeoutMs } : {}),
     onStatus: (line) => process.stdout.write(`  ${line}\n`),

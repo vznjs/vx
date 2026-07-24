@@ -82,9 +82,26 @@ export interface AgentHello {
   ownerSubmissionId?: string
 }
 
+/**
+ * The submission's run policy, propagated PER-ASSIGNMENT so a standalone agent
+ * (which serves several concurrent submissions of the same commit) honors each
+ * one's `--frozen` / `--timeout` / `--retry` instead of live-evaluating with no
+ * run-level defaults. `cache` is deliberately NOT here: a distributed run always
+ * has the remote axes (the §5.3 refusal gate), and an agent running the FULL
+ * cache policy IS the artifact transport (§6.3). Additive-optional → an older
+ * agent ignores it (live-eval, today's behavior) and a newer agent against an
+ * older serve receives none (its own configured defaults), so no
+ * DIST_PROTOCOL bump — the branch/defaultBranch/context precedent.
+ */
+export interface AssignPolicy {
+  frozen?: boolean
+  timeout?: number
+  retries?: number
+}
+
 /** serve → agent. `submissionId` names which multiplexed submission owns the task. */
 export type DistServerMessage =
-  | { t: 'task:assign'; taskId: string; submissionId: string }
+  | { t: 'task:assign'; taskId: string; submissionId: string; policy?: AssignPolicy }
   | { t: 'agent:refused'; reason: string }
   | { t: 'coord:drain' }
 
@@ -116,12 +133,43 @@ export interface DistSubmitMessage {
   /** Client-minted id (ULID) — the key a session multiplexes submissions on. */
   submissionId: string
   commitSha: string
+  /**
+   * The submitting run's git branch + the repo's default branch, so the serve
+   * can scope the LPT duration hint the way the cache scopes reads: a TRUNK
+   * submission (`branch === defaultBranch`) reads only the trunk timing
+   * baseline; a branch submission reads its OWN branch's timings first, then
+   * trunk. Advisory (hint ordering only) + absence-safe (an omitting/older
+   * submitter → the serve treats it as trunk = the clean baseline), so these
+   * are additive-optional with NO DIST_PROTOCOL bump. */
+  branch?: string | null
+  defaultBranch?: string | null
+  /**
+   * The INVOKING machine's context (the CI runner / submitter) for the run's
+   * invocation header — os/arch/host/ci/vxVersion/dirty/workspaceName, exactly
+   * as a local run's header uses the invoking machine. Additive-optional (an
+   * older submitter omits it → the controller records an empty header context,
+   * still a valid row), so NO DIST_PROTOCOL bump — the branch/defaultBranch
+   * precedent above.
+   */
+  context?: DistSubmitContext
   /** Advisory expected agent count (`VX_CLOUD_DISTRIBUTE=<n>`). */
   expectedAgents: number
   /** Zero REMOTE agents after this → loud warning, run proceeds. */
   agentTimeoutMs: number
   request: RunRequest
   nodes: readonly DistGraphNode[]
+}
+
+/** The submitter's machine context for a distributed run's invocation header. */
+export interface DistSubmitContext {
+  os: string
+  arch: string
+  host: string
+  ci: boolean
+  ciProvider: string | null
+  vxVersion: string
+  dirty: boolean
+  workspaceName: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +184,7 @@ export function distServerMessageToEnvelope(msg: DistServerMessage): Envelope {
       return makeNotification('coord.assign', {
         taskId: msg.taskId,
         submissionId: msg.submissionId,
+        ...(msg.policy !== undefined ? { policy: msg.policy } : {}),
       })
     case 'agent:refused':
       return makeNotification('agent.refused', { reason: msg.reason })
@@ -148,8 +197,13 @@ export function distServerMessageToEnvelope(msg: DistServerMessage): Envelope {
 export function envelopeToDistServerMessage(env: Envelope): DistServerMessage | null {
   if (!isNotification(env)) return null
   if (env.method === 'coord.assign') {
-    const p = env.params as { taskId: string; submissionId: string }
-    return { t: 'task:assign', taskId: p.taskId, submissionId: p.submissionId }
+    const p = env.params as { taskId: string; submissionId: string; policy?: AssignPolicy }
+    return {
+      t: 'task:assign',
+      taskId: p.taskId,
+      submissionId: p.submissionId,
+      ...(p.policy !== undefined ? { policy: p.policy } : {}),
+    }
   }
   if (env.method === 'agent.refused') {
     const p = env.params as { reason: string }
@@ -262,6 +316,9 @@ export function distSubmitToEnvelope(msg: DistSubmitMessage): Notification {
     workspaceId: msg.workspaceId,
     submissionId: msg.submissionId,
     commitSha: msg.commitSha,
+    ...(msg.branch !== undefined ? { branch: msg.branch } : {}),
+    ...(msg.defaultBranch !== undefined ? { defaultBranch: msg.defaultBranch } : {}),
+    ...(msg.context !== undefined ? { context: msg.context } : {}),
     expectedAgents: msg.expectedAgents,
     agentTimeoutMs: msg.agentTimeoutMs,
     request: msg.request,

@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Manual re-run without a push — for distinguishing runner-infra flakes
+  # from real regressions when a main run goes red.
+  workflow_dispatch:
 
 jobs:
   ci:
@@ -75,3 +78,40 @@ jobs:
       # resolve from a raw shell.
       - name: vx run ci
         run: bun src/bin.ts run ci
+
+  cloud:
+    name: vx-cloud tests (postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # The @vzn/vx-cloud suite runs against a REAL Postgres: the
+      # ephemeral-pg helper (packages/cloud/tests/helpers/ephemeral-pg.ts)
+      # boots its own cluster per test process via initdb + a unix socket
+      # (no port, trust auth), so it just needs the Postgres server binaries
+      # (initdb / pg_ctl / pg_config) on disk. S3 is faked in-process — no
+      # real bucket. Non-root runners take the helper's direct path.
+      - name: Install Postgres server binaries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql
+          # Confirm the helper can find the server binaries.
+          pg_config --bindir || ls -d /usr/lib/postgresql/*/bin
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: bun test (packages/cloud)
+        # --timeout 30000: the pg-backed suites boot a real Postgres cluster in
+        # their first beforeAll; on a contended runner that boot can exceed
+        # bun's default 5s hook timeout, killing initdb mid-run ("caught
+        # signal") and cascading failures into every pg suite. The CLI flag is
+        # the mechanism that verifiably raises the HOOK timeout (bunfig's
+        # [test] timeout is not honored for hooks on current Bun).
+        run: cd packages/cloud && bun test --timeout 30000
