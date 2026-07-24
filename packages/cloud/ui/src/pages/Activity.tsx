@@ -8,6 +8,7 @@
 import { Fragment, useMemo, useState, type CSSProperties, type JSX, type ReactNode } from 'react'
 import { Badge } from '@astryxdesign/core/Badge'
 import { Button } from '@astryxdesign/core/Button'
+import { Card } from '@astryxdesign/core/Card'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
 import { Table, TableCell, TableRow } from '@astryxdesign/core/Table'
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
@@ -96,6 +97,85 @@ const cell = (w: number, extra: CSSProperties = {}): CSSProperties => ({
   whiteSpace: 'nowrap',
   ...extra,
 })
+
+interface BranchHealth {
+  branch: string
+  runs: number
+  failedRuns: number
+  avgMs: number
+  lastAt: number
+  lastFailed: boolean
+}
+
+/** Per-branch rollup of the loaded invocations, most recently active first. */
+function branchHealth(rows: InvocationDetail[]): BranchHealth[] {
+  const by = new Map<string, InvocationDetail[]>()
+  for (const r of rows) {
+    if (r.branch === null || r.branch === '') continue
+    const list = by.get(r.branch) ?? []
+    list.push(r)
+    by.set(r.branch, list)
+  }
+  const out: BranchHealth[] = []
+  for (const [branch, list] of by) {
+    const newest = list.reduce((a, b) => (b.startedAt > a.startedAt ? b : a))
+    out.push({
+      branch,
+      runs: list.length,
+      failedRuns: list.filter(failed).length,
+      avgMs: list.reduce((n, r) => n + r.totalDurationMs, 0) / list.length,
+      lastAt: newest.startedAt,
+      lastFailed: failed(newest),
+    })
+  }
+  return out.sort((a, b) => b.lastAt - a.lastAt).slice(0, 6)
+}
+
+/**
+ * One branch's health chip: latest-run dot, name, pass/fail meter, run
+ * count + avg duration. Click filters the feed to that branch.
+ */
+function BranchChip(props: {
+  b: BranchHealth
+  active: boolean
+  onToggle: () => void
+}): JSX.Element {
+  const b = props.b
+  const passRate = b.runs > 0 ? (b.runs - b.failedRuns) / b.runs : 1
+  return (
+    <Card
+      padding={2}
+      onClick={props.onToggle}
+      style={{
+        cursor: 'pointer',
+        minWidth: 180,
+        outline: props.active ? '2px solid var(--color-accent)' : undefined,
+      }}
+    >
+      <VStack gap={1}>
+        <HStack gap={1.5} vAlign="center">
+          <StatusDot
+            variant={b.lastFailed ? 'error' : 'success'}
+            label={b.lastFailed ? 'latest run failed' : 'latest run passed'}
+          />
+          <Text type="code" size="sm" maxLines={1}>
+            {b.branch}
+          </Text>
+        </HStack>
+        <MeterBar
+          title={`${b.runs - b.failedRuns} passed · ${b.failedRuns} failed`}
+          segments={[
+            { frac: passRate, color: 'var(--color-success)' },
+            { frac: 1 - passRate, color: 'var(--color-error)' },
+          ]}
+        />
+        <Text type="supporting" size="2xs" color="secondary">
+          {b.runs} run{b.runs === 1 ? '' : 's'} · avg {formatDuration(b.avgMs)}
+        </Text>
+      </VStack>
+    </Card>
+  )
+}
 
 function GroupRow(props: {
   bucket: string
@@ -305,6 +385,22 @@ export function Activity(): JSX.Element {
             <PulseStrip points={pulsePoints} />
           </VStack>
         )}
+        {(() => {
+          const branches = branchHealth(rows)
+          if (branches.length === 0) return null
+          return (
+            <HStack gap={2} wrap="wrap" style={{ paddingBlockEnd: 'var(--spacing-4)' }}>
+              {branches.map((b) => (
+                <BranchChip
+                  key={b.branch}
+                  b={b}
+                  active={needle === b.branch}
+                  onToggle={() => setNeedle(needle === b.branch ? '' : b.branch)}
+                />
+              ))}
+            </HStack>
+          )
+        })()}
         <Table density="balanced" hasHover dividers="rows" textOverflow="truncate">
           {groups.map(([bucket, list]) => {
             const open = !collapsed.has(bucket)
