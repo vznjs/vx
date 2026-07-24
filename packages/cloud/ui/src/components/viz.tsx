@@ -27,6 +27,7 @@ import {
 } from 'recharts'
 import { formatCount, formatDuration, formatPercent } from '../format.ts'
 import { STATUS, type VizState } from './status.tsx'
+import { TaskRef } from './ident.tsx'
 
 export const SERIES_1 = 'var(--vx-chart-1, #7c3aed)'
 export const SERIES_2 = 'var(--vx-chart-2, #0891b2)'
@@ -417,9 +418,7 @@ export function DeltaBars(props: {
         return (
           <HStack key={e.id} gap={2} vAlign="center">
             <span style={{ width: 220, minWidth: 220 }}>
-              <Text type="code" size="sm" maxLines={1}>
-                {e.id}
-              </Text>
+              <TaskRef id={e.id} maxLines={1} />
             </span>
             <span
               title={`${e.deltaMs > 0 ? '+' : ''}${formatDuration(e.deltaMs)}`}

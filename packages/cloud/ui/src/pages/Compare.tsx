@@ -20,6 +20,7 @@ import { formatCount, formatDuration, formatSignedDuration } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, QueryGate, SectionHeader } from '../components/page.tsx'
 import { ChartCard, DeltaBars } from '../components/viz.tsx'
+import { TaskRef } from '../components/ident.tsx'
 import { StatusToken, toVizState } from '../components/status.tsx'
 
 type DeltaKind = 'slower' | 'faster' | 'same' | 'new' | 'gone'
@@ -102,7 +103,7 @@ export function Compare(): JSX.Element {
       width: proportional(2),
       renderCell: (r) => (
         <Link href={`#/tasks/${encodeURIComponent(r.taskId)}`}>
-          <Text type="code">{r.taskId}</Text>
+          <TaskRef id={r.taskId} />
         </Link>
       ),
     },

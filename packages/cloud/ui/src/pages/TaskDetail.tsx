@@ -21,6 +21,7 @@ import { cpuPct, formatBytes, formatCount, formatDuration, formatPercent, plural
 import { useQuery } from '../hooks.ts'
 import { Page, QueryGate, SectionHeader } from '../components/page.tsx'
 import { StatusToken, toVizState } from '../components/status.tsx'
+import { ProjectName, TaskName, TaskRef } from '../components/ident.tsx'
 import { ChartCard, DurationHistory } from '../components/viz.tsx'
 
 interface RecentRow extends Record<string, unknown> {
@@ -73,10 +74,10 @@ function AggregateFacts({ detail }: { detail: TaskDetailPayload }): JSX.Element 
   return (
     <MetadataList columns="multi">
       <MetadataListItem label="Project">
-        <Text type="code">{detail.project}</Text>
+        <ProjectName name={detail.project} />
       </MetadataListItem>
       <MetadataListItem label="Task">
-        <Text type="code">{detail.task}</Text>
+        <TaskName name={detail.task} />
       </MetadataListItem>
       {agg !== null && (
         <>
@@ -182,7 +183,9 @@ export function TaskDetail(): JSX.Element {
     <Page>
       <Breadcrumbs>
         <BreadcrumbItem href="#/tasks">Tasks</BreadcrumbItem>
-        <BreadcrumbItem isCurrent>{id}</BreadcrumbItem>
+        <BreadcrumbItem isCurrent>
+          <TaskRef id={id} />
+        </BreadcrumbItem>
       </Breadcrumbs>
 
       <QueryGate query={detail} rows={4}>

@@ -19,6 +19,7 @@ import { formatBytes, formatCount, formatDuration, formatPercent } from '../form
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, QueryGate, SectionHeader } from '../components/page.tsx'
 import { ChartCard, DailyArea } from '../components/viz.tsx'
+import { ProjectName, TaskName } from '../components/ident.tsx'
 
 interface TaskRow extends Record<string, unknown> {
   id: string
@@ -115,7 +116,7 @@ export function ProjectDetail(): JSX.Element {
       width: proportional(2),
       renderCell: (r) => (
         <Link href={`#/tasks/${encodeURIComponent(r.id)}`}>
-          <Text type="code">{r.task}</Text>
+          <TaskName name={r.task} />
         </Link>
       ),
     },
@@ -199,7 +200,9 @@ export function ProjectDetail(): JSX.Element {
     <Page>
       <Breadcrumbs>
         <BreadcrumbItem href="#/projects">Projects</BreadcrumbItem>
-        <BreadcrumbItem isCurrent>{name}</BreadcrumbItem>
+        <BreadcrumbItem isCurrent>
+          <ProjectName name={name} />
+        </BreadcrumbItem>
       </Breadcrumbs>
 
       <QueryGate query={summary} rows={2}>

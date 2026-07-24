@@ -48,6 +48,7 @@ import { Kpi, KpiRow, Page, QueryGate, SectionHeader } from '../components/page.
 import { Flamegraph, flameEdgesOf } from '../components/Flamegraph.tsx'
 import { RunGraph } from '../components/RunGraph.tsx'
 import { StatusToken, toVizState, type VizState } from '../components/status.tsx'
+import { TaskRef } from '../components/ident.tsx'
 
 const taskIdOf = (t: RunSummaryRow): string => `${t.project}#${t.task}`
 const shortId = (s: string): string => (s === '' ? '—' : s.slice(0, 8))
@@ -151,18 +152,16 @@ function InvocationFacts({ inv }: { inv: InvocationDetail }): JSX.Element {
 }
 
 /** "Why did this re-run?" — the on-demand input-fingerprint diff for one task. */
-function WhyPanel(props: {
-  runId: string
-  row: TaskRow
-  hasCacheDb: boolean
-  capsKnown: boolean
-}): JSX.Element {
+function WhyPanel(props: { runId: string; row: TaskRow }): JSX.Element {
   const { runId, row } = props
   const reran = row.status === 'success' || row.status === 'failed'
-  const gated = props.capsKnown && !props.hasCacheDb
+  // Always fetch: even without component fingerprints (they live in the
+  // workspace's cache.db, which an ingest serve never has) the diff still
+  // answers same-key vs changed-key from the run rows alone — the server's
+  // `note` carries the honest explanation for every empty-entries case.
   const diff = useQuery<CacheKeyDiff | null>(
-    () => (reran && !gated ? cacheKeyDiff(runId, row.id) : Promise.resolve(null)),
-    [runId, row.id, reran, gated],
+    () => (reran ? cacheKeyDiff(runId, row.id) : Promise.resolve(null)),
+    [runId, row.id, reran],
   )
 
   if (!reran) {
@@ -171,15 +170,6 @@ function WhyPanel(props: {
         {row.status === 'cache-hit' || row.status === 'cache-hit-remote'
           ? 'This task was a cache hit — it did not re-run.'
           : 'This task did not execute in this run.'}
-      </Text>
-    )
-  }
-  if (gated) {
-    return (
-      <Text type="supporting" color="secondary">
-        The input-fingerprint diff lives in the workspace's local cache.db — start vx-cloud serve
-        inside the repo to see exactly which files/env/deps changed. This serve shows pushed run
-        analytics only.
       </Text>
     )
   }
@@ -204,8 +194,7 @@ function WhyPanel(props: {
   if (d.entries.length === 0) {
     return (
       <Text type="supporting" color="secondary">
-        Ran with the same cache key as the previous run — the task isn't cacheable, or caching was
-        bypassed (--force / --no-cache).
+        {d.note !== '' ? d.note : 'No component-level changes recorded between these two runs.'}
       </Text>
     )
   }
@@ -316,7 +305,7 @@ export function RunDetail(): JSX.Element {
       width: proportional(2),
       renderCell: (r) => (
         <Link onClick={() => setSelected(r.id)}>
-          <Text type="code">{r.id}</Text>
+          <TaskRef id={r.id} />
         </Link>
       ),
     },
@@ -587,12 +576,7 @@ export function RunDetail(): JSX.Element {
                   <Text type="label" color="secondary">
                     Why did this re-run?
                   </Text>
-                  <WhyPanel
-                    runId={id}
-                    row={selectedRow}
-                    hasCacheDb={capabilities.hasCacheDb}
-                    capsKnown={capabilities.known}
-                  />
+                  <WhyPanel runId={id} row={selectedRow} />
                 </VStack>
               </VStack>
             </LayoutPanel>

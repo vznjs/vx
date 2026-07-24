@@ -15,6 +15,7 @@ import { getFlakiest, getHistory, getRunTrends } from '../api.ts'
 import { formatCount, formatDuration, formatPercent } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
+import { TaskRef } from '../components/ident.tsx'
 import { ChartCard, DailyArea } from '../components/viz.tsx'
 
 const AMBER = 'var(--color-warning, #fbbf24)'
@@ -116,7 +117,7 @@ export function InsightsFlaky(): JSX.Element {
                   label={
                     <VStack gap={1} style={{ width: '100%' }}>
                       <HStack gap={2} vAlign="center">
-                        <Text type="code">{t.id}</Text>
+                        <TaskRef id={t.id} />
                         <Text type="supporting" color="secondary">
                           {t.failures}/{t.runs} runs failed
                           {t.p50 !== undefined && t.p99 !== undefined

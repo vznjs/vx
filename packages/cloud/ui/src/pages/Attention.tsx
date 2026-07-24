@@ -23,6 +23,7 @@ import {
 import { formatDuration, formatPercent } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
+import { TaskRef } from '../components/ident.tsx'
 
 const isFailed = (r: InvocationDetail): boolean => r.failedCount > 0 || r.exitOk === false
 
@@ -183,7 +184,7 @@ export function Attention(): JSX.Element {
                       density="balanced"
                       href={`#/tasks/${encodeURIComponent(t.id)}`}
                       startContent={<Token size="sm" color="orange" label="flaky" />}
-                      label={<Text type="code">{t.id}</Text>}
+                      label={<TaskRef id={t.id} />}
                       description={`fails ${formatPercent(t.failureRate, 0)} of runs — ${t.failures} of ${t.runs}`}
                       endContent={<Token size="sm" color="red" label={`${t.failures}×`} />}
                     />
@@ -216,7 +217,7 @@ export function Attention(): JSX.Element {
                           {i + 1}.
                         </Text>
                       }
-                      label={<Text type="code">{b.id}</Text>}
+                      label={<TaskRef id={b.id} />}
                       description={`${b.runsRecent} run${b.runsRecent === 1 ? '' : 's'} · avg ${formatDuration(b.avgDurationMs)}`}
                       endContent={
                         <HStack gap={2} vAlign="center">

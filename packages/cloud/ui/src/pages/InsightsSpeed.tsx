@@ -28,6 +28,7 @@ import {
 import { formatDuration, plural } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
+import { TaskRef } from '../components/ident.tsx'
 import { WeekHeatmap, ChartCard as VizChartCard } from '../components/viz.tsx'
 
 const VIOLET = 'var(--color-icon-purple, #a78bfa)'
@@ -100,7 +101,7 @@ export function InsightsSpeed(): JSX.Element {
                   label={
                     <VStack gap={1} style={{ width: '100%' }}>
                       <HStack gap={2} vAlign="center">
-                        <Text type="code">{b.id}</Text>
+                        <TaskRef id={b.id} />
                         <Text type="supporting" color="secondary">
                           {plural(b.runsRecent, 'run')} · avg {formatDuration(b.avgDurationMs)} · {b.runsPerDay.toFixed(1)}/day
                         </Text>

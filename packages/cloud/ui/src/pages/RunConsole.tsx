@@ -62,6 +62,7 @@ import { criticalPath, parallelism } from '../components/critical-path.ts'
 import { Flamegraph, flameEdgesOf } from '../components/Flamegraph.tsx'
 import { RunGraph } from '../components/RunGraph.tsx'
 import { StatusCell, toVizState, type VizState } from '../components/status.tsx'
+import { projectColor, TASK_COLOR, TaskRef } from '../components/ident.tsx'
 
 interface NodeStatus {
   state: VizState
@@ -682,11 +683,26 @@ export function RunConsole(): JSX.Element {
                               <ListItem
                                 key={id}
                                 label={
-                                  <Text type="code" size="sm">
-                                    {i + 1}. {node?.task ?? id}
-                                  </Text>
+                                  <HStack gap={1} vAlign="center">
+                                    <Text type="code" size="sm" color="secondary" hasTabularNumbers>
+                                      {i + 1}.
+                                    </Text>
+                                    <Text type="code" size="sm" style={{ color: TASK_COLOR }}>
+                                      {node?.task ?? id}
+                                    </Text>
+                                  </HStack>
                                 }
-                                description={node?.project}
+                                description={
+                                  node !== undefined ? (
+                                    <Text
+                                      type="supporting"
+                                      size="2xs"
+                                      style={{ color: projectColor(node.project) }}
+                                    >
+                                      {node.project}
+                                    </Text>
+                                  ) : undefined
+                                }
                                 endContent={
                                   <Text type="code" size="sm" color="secondary" hasTabularNumbers>
                                     {fmtDur(durationOf(id))}
@@ -723,9 +739,7 @@ export function RunConsole(): JSX.Element {
                     <VStack gap={0} style={{ height: '100%', minHeight: 0 }}>
                       <HStack gap={2} vAlign="center" paddingInline={3} paddingBlock={2}>
                         <StackItem size="fill" style={{ minWidth: 0 }}>
-                          <Text type="code" size="sm" maxLines={1}>
-                            {selected}
-                          </Text>
+                          <TaskRef id={selected} maxLines={1} />
                         </StackItem>
                         <StatusCell state={selectedState} />
                       </HStack>

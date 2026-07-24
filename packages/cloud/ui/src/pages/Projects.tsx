@@ -7,6 +7,7 @@ import { useMemo, useState, type JSX } from 'react'
 import { Card } from '@astryxdesign/core/Card'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
 import { Link } from '@astryxdesign/core/Link'
+import { HStack } from '@astryxdesign/core/Layout'
 import { Table, pixel, proportional, useTableSortable } from '@astryxdesign/core/Table'
 import type { TableColumn, TableSortState } from '@astryxdesign/core/Table'
 import { Text } from '@astryxdesign/core/Text'
@@ -18,6 +19,7 @@ import { formatBytes, formatCount, formatDuration, formatPercent } from '../form
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
 import { BarCell } from '../components/viz.tsx'
+import { ProjectDot, ProjectName } from '../components/ident.tsx'
 
 interface ProjectRow extends Record<string, unknown> {
   project: string
@@ -93,7 +95,10 @@ export function Projects(): JSX.Element {
       sortable: true,
       renderCell: (r) => (
         <Link href={`#/projects/${encodeURIComponent(r.project)}`}>
-          <Text type="code">{r.project}</Text>
+          <HStack gap={1.5} vAlign="center">
+            <ProjectDot name={r.project} />
+            <ProjectName name={r.project} />
+          </HStack>
         </Link>
       ),
     },

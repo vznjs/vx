@@ -22,6 +22,7 @@ import {
 import { formatBytes, formatCount, formatDuration, formatPercent, plural } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
+import { TaskRef } from '../components/ident.tsx'
 import { ChartCard, DailyArea, RateLine, SERIES_2 } from '../components/viz.tsx'
 
 const CYAN = 'var(--color-icon-cyan, #22d3ee)'
@@ -170,7 +171,7 @@ export function InsightsCache(): JSX.Element {
                   label={
                     <VStack gap={1} style={{ width: '100%' }}>
                       <HStack gap={2} vAlign="center">
-                        <Text type="code">{t.id}</Text>
+                        <TaskRef id={t.id} />
                         <Text type="supporting" color="secondary">
                           {plural(t.runs, 'run')} · {formatCount(t.hits)} hits
                         </Text>

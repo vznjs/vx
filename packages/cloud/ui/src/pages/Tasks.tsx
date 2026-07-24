@@ -19,6 +19,7 @@ import { formatCount, formatDuration, formatPercent } from '../format.ts'
 import { useQuery } from '../hooks.ts'
 import { Kpi, KpiRow, Page, PageHeader, QueryGate, SectionHeader } from '../components/page.tsx'
 import { BarCell } from '../components/viz.tsx'
+import { ProjectDot, ProjectName, TaskRef } from '../components/ident.tsx'
 
 interface TaskRow extends Record<string, unknown> {
   id: string
@@ -92,7 +93,7 @@ export function Tasks(): JSX.Element {
       renderCell: (r) => (
         <HStack gap={2} vAlign="center">
           <Link href={`#/tasks/${encodeURIComponent(r.id)}`}>
-            <Text type="code">{r.id}</Text>
+            <TaskRef id={r.id} />
           </Link>
           {flakyToken(r.failureMode)}
         </HStack>
@@ -104,7 +105,10 @@ export function Tasks(): JSX.Element {
       width: proportional(1),
       renderCell: (r) => (
         <Link href={`#/projects/${encodeURIComponent(r.project)}`}>
-          <Text type="supporting">{r.project}</Text>
+          <HStack gap={1.5} vAlign="center">
+            <ProjectDot name={r.project} />
+            <ProjectName name={r.project} />
+          </HStack>
         </Link>
       ),
     },

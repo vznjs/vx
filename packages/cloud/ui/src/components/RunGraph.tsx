@@ -24,6 +24,7 @@ import type { GraphNode } from '../api.ts'
 import { cpuPct as cpuPctOf, formatBytes, formatDuration } from '../format.ts'
 import { layoutLevels } from './run-graph-layout.ts'
 import { PREDICTED, STATUS, type VizState } from './status.tsx'
+import { projectColor, TASK_COLOR } from './ident.tsx'
 
 /** Per-task CPU/RAM numbers shown as card chips. */
 export interface RunGraphCpuStats {
@@ -245,13 +246,18 @@ export function RunGraph(props: RunGraphProps): JSX.Element {
                   <HStack gap={1.5} vAlign="center">
                     <StatusDot variant={viz.dot} label={viz.label} isPulsing={viz.pulse} />
                     <StackItem size="fill" style={{ minWidth: 0 }}>
-                      <Text type="code" size="sm" maxLines={1}>
+                      <Text type="code" size="sm" maxLines={1} style={{ color: TASK_COLOR }}>
                         {n.task}
                       </Text>
                     </StackItem>
                     {crit && <Icon icon={FireIcon} size="xsm" color="warning" aria-label="bottleneck" />}
                   </HStack>
-                  <Text type="supporting" size="2xs" color="secondary" maxLines={1}>
+                  <Text
+                    type="supporting"
+                    size="2xs"
+                    maxLines={1}
+                    style={{ color: projectColor(n.project) }}
+                  >
                     {n.project}
                   </Text>
                   {n.isGroup ? (
