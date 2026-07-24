@@ -1646,7 +1646,13 @@ export class Analytics {
         total_duration_ms: null,
         last_seen_at: null,
       }
-      return historyRowFrom(p.project, p.task, agg, dursByKey.get(key) ?? [], mixedByKey.get(key) ?? 0)
+      return historyRowFrom(
+        p.project,
+        p.task,
+        agg,
+        dursByKey.get(key) ?? [],
+        mixedByKey.get(key) ?? 0,
+      )
     })
   }
 

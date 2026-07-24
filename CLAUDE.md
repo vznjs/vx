@@ -219,7 +219,7 @@ serving none of them is probably org-analytics scope creep.
   account-session auth + CSRF, org/workspace tenancy, no loopback exemption,
   `serve` verb removed) and evolved the Solid UI in parallel (41 commits:
   session auth shell, admin area, task logs, analytics, virtualization). The
-  branch's serve-era work was superseded wholesale: its dist/* multi-run
+  branch's serve-era work was superseded wholesale: its dist/\* multi-run
   scheduler had already landed on main (DIST_PROTOCOL v2 + distributed-review
   hardening), and its astryx SPA has NO login surface — it cannot authenticate
   against the platform server at all. Resolution: merge main with main winning
