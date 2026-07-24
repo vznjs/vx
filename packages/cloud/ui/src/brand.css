@@ -113,3 +113,10 @@
 #astryx-app-shell-main .astryx-section {
   background: transparent !important;
 }
+
+/* Wide tables scroll inside their own card — the page must never scroll
+   sideways (narrow-viewport rule; the Tasks table overflowed the pane at
+   1024px before this). */
+#astryx-app-shell-main .astryx-card:has(.astryx-base-table) {
+  overflow-x: auto;
+}
