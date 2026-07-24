@@ -270,6 +270,11 @@ export function App(): JSX.Element {
   return (
     <AppShell
       height="fill"
+      // wash, not the default elevated: elevated mounts its own opaque
+      // "surface" backdrop behind the content region, and the 12px gaps
+      // around our floating pane exposed it as a lighter band on the aurora.
+      // The pane (brand.css #astryx-app-shell-main) IS our elevated surface.
+      variant="wash"
       contentPadding={0}
       banner={
         unauthorized ? (
