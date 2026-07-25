@@ -1,17 +1,20 @@
 // Formatters for `--dry-run` (human / JSON) and `--graph` (DOT).
 
 import type { CacheStatus, RunPlan } from '../orchestrator/index.js'
+import { formatDuration } from '../orchestrator/index.js'
 
 /**
  * Human-readable preview. One line per real task (groups hidden, same
- * as the live runner), tagged with predicted cache outcome.
+ * as the live runner), tagged with predicted cache outcome. A would-run
+ * task with recorded history also shows its typical duration (~p50).
  *
  *   would run:
  *     ✓  @vzn/vx#lint       cache hit (local)        abc12345
  *     ↓  @vzn/vx#test       cache hit (remote)       def67890
- *     ▶  @vzn/vx#build      cache miss — would exec  fedcba98
+ *     ▶  @vzn/vx#build      cache miss — would exec  fedcba98  ~1.2s
  *
  *   3 task(s) planned: 2 cache hits (1 local, 1 remote), 1 would run.
+ *   predicted: ~1.2s wall · ~1.2s total execution
  */
 export function formatPlanText(plan: RunPlan): string {
   const real = plan.tasks.filter((t) => t.cacheStatus !== 'group')
@@ -29,7 +32,11 @@ export function formatPlanText(plan: RunPlan): string {
     const sym = symbolFor(t.cacheStatus)
     const desc = describe(t.cacheStatus)
     const shortHash = t.hash ? t.hash.slice(0, 8) : ''
-    lines.push(`  ${sym}  ${t.node.id.padEnd(idWidth)}  ${desc.padEnd(tagWidth)}  ${shortHash}`)
+    const executes = t.cacheStatus === 'miss' || t.cacheStatus === 'no-cache'
+    const eta = executes && t.p50Ms !== undefined ? `  ~${formatDuration(t.p50Ms)}` : ''
+    lines.push(
+      `  ${sym}  ${t.node.id.padEnd(idWidth)}  ${desc.padEnd(tagWidth)}  ${shortHash}${eta}`,
+    )
     // Optional one-line description from the task config, indented
     // under the id so the eye picks up the task → blurb mapping.
     const taskDesc = t.node.config.description
@@ -52,6 +59,19 @@ export function formatPlanText(plan: RunPlan): string {
   if (nocache > 0) summary.push(`${nocache} no-cache`)
   lines.push('')
   lines.push(summary.join(', ') + '.')
+
+  // Time prediction — only when history gave us something to say: at least
+  // one would-run task has a p50 (an all-unknown prediction is pure noise).
+  const p = plan.predicted
+  const executes = miss + nocache
+  if (p !== undefined && executes > 0 && executes > p.unknownCount) {
+    const parts = [`predicted: ~${formatDuration(p.wallMs)} wall`]
+    parts.push(`~${formatDuration(p.workMs)} total execution`)
+    if (p.unknownCount > 0) {
+      parts.push(`${p.unknownCount} task${p.unknownCount === 1 ? '' : 's'} without history (+?)`)
+    }
+    lines.push(parts.join(' · '))
+  }
   return lines.join('\n') + '\n'
 }
 
@@ -66,10 +86,12 @@ export function formatPlanJson(plan: RunPlan): string {
           hash: t.hash,
           cacheStatus: t.cacheStatus,
           deps: t.deps,
+          ...(t.p50Ms !== undefined ? { p50Ms: t.p50Ms } : {}),
           ...(t.node.config.description !== undefined
             ? { description: t.node.config.description }
             : {}),
         })),
+        ...(plan.predicted !== undefined ? { predicted: plan.predicted } : {}),
       },
       null,
       2,

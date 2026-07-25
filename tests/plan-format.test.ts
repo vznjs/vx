@@ -9,6 +9,7 @@ function task(
   hash: string,
   deps: readonly string[] = [],
   description?: string,
+  p50Ms?: number,
 ): PlannedTask {
   return {
     node: {
@@ -20,6 +21,7 @@ function task(
     hash,
     cacheStatus: status,
     deps,
+    ...(p50Ms !== undefined ? { p50Ms } : {}),
   }
 }
 
@@ -76,6 +78,56 @@ describe('formatPlanText', () => {
   })
 })
 
+describe('formatPlanText — time prediction', () => {
+  it('shows ~p50 on would-run tasks and the predicted footer', () => {
+    const plan: RunPlan = {
+      tasks: [
+        // A hit with history shows NO eta (it will restore, not execute).
+        task('a#lint', 'hit-local', 'aaaaaaaa11111111', [], undefined, 900),
+        task('a#build', 'miss', 'bbbbbbbb22222222', [], undefined, 1200),
+        task('a#dev', 'no-cache', 'cccccccc33333333', [], undefined, 300),
+      ],
+      predicted: { wallMs: 1500, workMs: 1500, unknownCount: 0 },
+    }
+    const out = formatPlanText(plan)
+    expect(out).toContain('~1.20s')
+    expect(out).toContain('~300ms')
+    // The hit line carries no eta.
+    const lintLine = out.split('\n').find((l) => l.includes('a#lint'))!
+    expect(lintLine).not.toContain('~')
+    expect(out).toContain('predicted: ~1.50s wall · ~1.50s total execution')
+  })
+
+  it('counts would-run tasks without history as unknown (+?)', () => {
+    const plan: RunPlan = {
+      tasks: [
+        task('a#build', 'miss', 'bbbbbbbb22222222', [], undefined, 1200),
+        task('a#fresh', 'miss', 'dddddddd44444444'),
+      ],
+      predicted: { wallMs: 1200, workMs: 1200, unknownCount: 1 },
+    }
+    const out = formatPlanText(plan)
+    expect(out).toContain('predicted: ~1.20s wall')
+    expect(out).toContain('1 task without history (+?)')
+  })
+
+  it('omits the footer when EVERY would-run task is unknown (nothing to say)', () => {
+    const plan: RunPlan = {
+      tasks: [task('a#build', 'miss', 'bbbbbbbb22222222')],
+      predicted: { wallMs: 0, workMs: 0, unknownCount: 1 },
+    }
+    expect(formatPlanText(plan)).not.toContain('predicted:')
+  })
+
+  it('omits the footer on an all-hit plan (nothing would run)', () => {
+    const plan: RunPlan = {
+      tasks: [task('a#lint', 'hit-local', 'aaaaaaaa11111111', [], undefined, 900)],
+      predicted: { wallMs: 0, workMs: 0, unknownCount: 0 },
+    }
+    expect(formatPlanText(plan)).not.toContain('predicted:')
+  })
+})
+
 describe('formatPlanJson', () => {
   it('emits a parseable JSON object with all planning fields', () => {
     const plan: RunPlan = {
@@ -97,6 +149,19 @@ describe('formatPlanJson', () => {
       deps: [],
     })
     expect(parsed.tasks[1]?.deps).toEqual(['a#build'])
+  })
+
+  it('carries p50Ms per task + the predicted object when present', () => {
+    const plan: RunPlan = {
+      tasks: [task('a#test', 'miss', 'bbbbbbbb', [], undefined, 450)],
+      predicted: { wallMs: 450, workMs: 450, unknownCount: 0 },
+    }
+    const parsed = JSON.parse(formatPlanJson(plan)) as {
+      tasks: Array<Record<string, unknown>>
+      predicted?: Record<string, unknown>
+    }
+    expect(parsed.tasks[0]?.['p50Ms']).toBe(450)
+    expect(parsed.predicted).toEqual({ wallMs: 450, workMs: 450, unknownCount: 0 })
   })
 })
 

@@ -491,10 +491,21 @@ $ vx run ci --dry
 would run:
   ◉  @vzn/vx#format-check  cache hit (local)         02bfe8a9
   ◉  @vzn/vx#lint          cache hit (local)         d66cfed2
-  ▶  @vzn/vx#test          cache miss — would exec   68595e49
+  ▶  @vzn/vx#test          cache miss — would exec   68595e49  ~72.64s
 
 3 task(s) planned, 2 cache hits (2 local), 1 would run.
+predicted: ~72.64s wall · ~72.64s total execution
 ```
+
+**Time prediction.** A would-run task with recorded history shows its
+typical executed duration (`~p50` over its recent non-hit runs in the
+local `cache.db` — the same history the opt-in predictive scheduler
+reads). The footer predicts the run: `wall` is the longest dependency
+chain of would-run cost (cache hits restore near-instantly and count
+as 0), `total execution` is the sum across would-run tasks. Tasks with
+no history count as 0 and are called out (`N tasks without history
+(+?)`) — the totals are honest lower bounds. The footer is omitted
+when nothing would run or when no would-run task has history.
 
 Status legend:
 
@@ -520,9 +531,13 @@ Status legend:
       "cacheStatus": "hit-local",
       "deps": []
     }
-  ]
+  ],
+  "predicted": { "wallMs": 72640, "workMs": 72640, "unknownCount": 0 }
 }
 ```
+
+Each would-run task with history also carries `p50Ms`; `predicted` is
+present whenever local history was readable.
 
 `--graph` prints Graphviz DOT (stdout by default; `--graph=path`
 writes a file):

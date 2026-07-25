@@ -35,6 +35,7 @@ import type { RunContextRecord, TaskTelemetry } from './telemetry.js'
 import { defaultLogger, resolveOutputView } from './logger.js'
 import { detectColors } from './colors.js'
 import { formatPersistentList } from './framed-output.js'
+import { LocalHistoryProvider } from './history.js'
 import { plan, type RunPlan } from './plan.js'
 import { prepareRun } from './prepare.js'
 import {
@@ -902,6 +903,12 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       nestedDirsByProject: prepared.nestedDirsByProject,
       gitFilesCache: prepared.gitFilesCache,
       hashCache: prepared.hashCache,
+      // Plan-time duration prediction (dev-scenarios S2): the same local
+      // history the predictive scheduler reads, folded into the plan as
+      // per-task p50s + a predicted wall-clock. `--dry` is an explicit
+      // inspection command, so the history read's cost is fine here even
+      // though it stays OFF the default run path.
+      history: new LocalHistoryProvider(prepared.localCache.dbHandle()),
     })
   } finally {
     prepared.cache.close()

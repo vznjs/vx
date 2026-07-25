@@ -2428,6 +2428,56 @@ describe('orchestrator e2e', () => {
   )
 
   it(
+    'planRun attaches per-task p50 history + a critical-path time prediction',
+    async () => {
+      const { planRun } = await import('../src/orchestrator/index.js')
+      const dir = await addProject(fixture.root, 'eta', {
+        files: { 'src/x.txt': 'v1' },
+        config: `
+          export default {
+            tasks: {
+              slow: {
+                exec: { command: 'sleep 0.12 && echo s > slow.txt' },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['slow.txt'] } },
+              },
+              dep: {
+                dependsOn: ['slow'],
+                exec: { command: 'sleep 0.04 && echo d > dep.txt' },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dep.txt'] } },
+              },
+              solo: {
+                exec: { command: 'echo q > solo.txt' },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['solo.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+      // One real run records history (durations land in the local runs table).
+      const r = await run({ cwd: fixture.root, tasks: ['dep', 'solo'], log: silentLogger(fixture) })
+      expect(r.ok).toBe(true)
+      // Change the shared input so every task predicts MISS again.
+      await Bun.write(path.join(dir, 'src', 'x.txt'), 'v2')
+      const p = await planRun({ cwd: fixture.root, tasks: ['dep', 'solo'] })
+      const byId = new Map(p.tasks.map((t) => [t.node.id, t]))
+      const slow = byId.get('eta#slow')!
+      const dep = byId.get('eta#dep')!
+      const solo = byId.get('eta#solo')!
+      expect(slow.cacheStatus).toBe('miss')
+      expect(slow.p50Ms).toBeGreaterThan(0)
+      expect(dep.p50Ms).toBeGreaterThan(0)
+      expect(solo.p50Ms).toBeGreaterThan(0)
+      // Relational pins only (recorded durations vary with load): the
+      // slow → dep chain is the wall-clock floor, the totals are exact sums.
+      expect(p.predicted).toBeDefined()
+      expect(p.predicted!.wallMs).toBe(slow.p50Ms! + dep.p50Ms!)
+      expect(p.predicted!.workMs).toBe(slow.p50Ms! + dep.p50Ms! + solo.p50Ms!)
+      expect(p.predicted!.unknownCount).toBe(0)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'records a Tier-3 invocation row + per-entry input rows on save; warm hit writes none',
     async () => {
       await addProject(fixture.root, 'app-rec', {
