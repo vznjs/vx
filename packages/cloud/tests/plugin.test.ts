@@ -582,6 +582,116 @@ describe('cloud() telemetry capability', () => {
     })
   })
 
+  it('annotates failed rows in the GHA summary with platform triage verdicts', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-gha-triage-'))
+    const file = path.join(dir, 'summary.md')
+    const paths: { path: string; auth: string | null }[] = []
+    const server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        const p = new URL(req.url).pathname
+        paths.push({ path: p, auth: req.headers.get('authorization') })
+        if (p === '/v1/triage/run-xyz') {
+          return Response.json({
+            rows: [
+              {
+                taskId: 'demo#hello',
+                verdict: 'flaky',
+                sameKeySuccesses: 2,
+                keyChanged: false,
+              },
+            ],
+          })
+        }
+        return new Response('ok')
+      },
+    })
+    const failing: RunSummaryRecord = {
+      ...fakeSummary(),
+      failedCount: 1,
+      exitOk: false,
+      tasks: [
+        {
+          taskId: 'demo#hello',
+          project: 'demo',
+          task: 'hello',
+          status: 'failed',
+          cacheSource: 'miss',
+          exitCode: 1,
+          durationMs: 5,
+        },
+      ],
+    }
+    const prev = process.env['GITHUB_STEP_SUMMARY']
+    process.env['GITHUB_STEP_SUMMARY'] = file
+    try {
+      const sink = (await cloud({
+        url: `http://localhost:${server.port}`,
+        token: 'tri-tok',
+      }).telemetry!(telemetryCtx('/x'))) as TelemetrySink
+      sink.onRunSummary!(failing)
+      await sink.flush!()
+      const written = await Bun.file(file).text()
+      expect(written).toContain('🎲 flaky — not this change (same key passed 2×)')
+      const triageReq = paths.find((r) => r.path === '/v1/triage/run-xyz')
+      expect(triageReq).toBeDefined()
+      expect(triageReq!.auth).toBe('Bearer tri-tok')
+    } finally {
+      if (prev === undefined) delete process.env['GITHUB_STEP_SUMMARY']
+      else process.env['GITHUB_STEP_SUMMARY'] = prev
+      void server.stop(true)
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('a failed triage fetch leaves the summary plain (never-fail)', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-gha-triage-err-'))
+    const file = path.join(dir, 'summary.md')
+    const server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        if (new URL(req.url).pathname.startsWith('/v1/triage/')) {
+          return new Response('boom', { status: 500 })
+        }
+        return new Response('ok')
+      },
+    })
+    const failing: RunSummaryRecord = {
+      ...fakeSummary(),
+      failedCount: 1,
+      exitOk: false,
+      tasks: [
+        {
+          taskId: 'demo#hello',
+          project: 'demo',
+          task: 'hello',
+          status: 'failed',
+          cacheSource: 'miss',
+          exitCode: 1,
+          durationMs: 5,
+        },
+      ],
+    }
+    const prev = process.env['GITHUB_STEP_SUMMARY']
+    process.env['GITHUB_STEP_SUMMARY'] = file
+    try {
+      const sink = (await cloud({
+        url: `http://localhost:${server.port}`,
+        token: 't',
+      }).telemetry!(telemetryCtx('/x'))) as TelemetrySink
+      sink.onRunSummary!(failing)
+      await sink.flush!()
+      const written = await Bun.file(file).text()
+      expect(written).toContain('❌ failed (exit 1)')
+      expect(written).not.toContain('🎲')
+    } finally {
+      if (prev === undefined) delete process.env['GITHUB_STEP_SUMMARY']
+      else process.env['GITHUB_STEP_SUMMARY'] = prev
+      void server.stop(true)
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('still declines with no connection AND no GitHub surfaces (plain local run untouched)', async () => {
     await withCleanConnEnv({ VX_CLOUD_CONFIG: '/nonexistent/environments.json' }, async () => {
       const prevSummary = process.env['GITHUB_STEP_SUMMARY']

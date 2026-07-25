@@ -217,6 +217,17 @@ check's name (default: the run's command). A missing `checks: write`
 permission warns and never fails the run — like every vx telemetry surface,
 it is observe-only.
 
+**Failure triage on the PR.** When the run is also connected to a vx Cloud
+platform (`VX_CLOUD_URL` + `VX_CLOUD_TOKEN`), a red run asks the platform
+*"is this failure mine?"* and annotates each failed row in the check and job
+summary with its verdict: **🎲 flaky** (the same cache key passed in other
+runs — nondeterminism, not this change), **📌 already broken on the default
+branch** (inherited), or **🆕 new failure** (first failure of this key,
+noting when this run changed the task's inputs). So the PR page answers the
+revert-retry-or-file-a-flake question without opening the dashboard. Purely
+additive and never-fail: without a connection — or if the triage fetch
+errors — the rows render exactly as before.
+
 ## Proving cache correctness: `vx run --verify`
 
 Every cache assumes a task run twice on the same inputs produces the same

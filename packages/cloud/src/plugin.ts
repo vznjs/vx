@@ -39,7 +39,11 @@ import type { TaskIngestRecord } from './db/analytics.js'
 import { activeEnvironment } from './environments.js'
 import { NativeCacheClient } from './native-cache.js'
 import { githubCheckCandidate, postGithubCheck, resolveGithubCheckTarget } from './github-check.js'
-import { appendGithubSummary } from './github-summary.js'
+import {
+  appendGithubSummary,
+  type GithubSummaryOptions,
+  type GithubTriageVerdict,
+} from './github-summary.js'
 import { TaskLogBuffer } from './task-log-capture.js'
 
 /** A resolved serve target for the ingest sink's POSTs. */
@@ -559,12 +563,24 @@ class CloudIngestSink implements TelemetrySink {
     // Deep link into the connected dashboard (DX-2): a red check is ONE click
     // from the run's logs + artifacts. Only when a connection resolved — the
     // GHA-summary-only mode has no dashboard to point at.
-    const ghOpts =
+    const ghOpts: GithubSummaryOptions =
       this.connection !== undefined
         ? {
             dashboardUrl: `${this.connection.baseUrl}/#/runs/${encodeURIComponent(this.summary.run.runId)}`,
           }
         : {}
+    // Triage verdicts on the PR page (dev-scenarios S3 follow-up): a red run
+    // with a connection asks the platform "is this failure mine?" and marks
+    // each failed row flaky / already-broken / new. AFTER the ingest above so
+    // the run's rows exist server-side; never-fail — any error just leaves
+    // the plain rows.
+    if (
+      this.summary.failedCount > 0 &&
+      (this.githubSummaryPath !== undefined || this.githubCheck)
+    ) {
+      const triage = await this.fetchTriage(this.summary.run.runId)
+      if (triage !== undefined) ghOpts.triage = triage
+    }
     if (this.githubSummaryPath !== undefined) {
       await appendGithubSummary(this.githubSummaryPath, this.summary, this.warn, ghOpts)
     }
@@ -573,6 +589,37 @@ class CloudIngestSink implements TelemetrySink {
       // any missing ingredient resolves to undefined and skips silently.
       const target = await resolveGithubCheckTarget(process.env, this.summary.run.command)
       if (target !== undefined) await postGithubCheck(target, this.summary, this.warn, ghOpts)
+    }
+  }
+
+  /** GET `/v1/triage/:runId` from the connection — the failed tasks'
+   *  "is this failure mine?" verdicts. undefined on ANY problem (no
+   *  connection, non-200, malformed, timeout): the check renders plain. */
+  private async fetchTriage(runId: string): Promise<Map<string, GithubTriageVerdict> | undefined> {
+    if (this.connection === undefined) return undefined
+    try {
+      const headers: Record<string, string> = {}
+      if (this.connection.token) headers['authorization'] = `Bearer ${this.connection.token}`
+      // Clearable timer, same reason as post(): AbortSignal.timeout's internal
+      // timer is not unref'd and would hold the CLI open after the fetch.
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 5000)
+      try {
+        const res = await fetch(
+          `${this.connection.baseUrl}/v1/triage/${encodeURIComponent(runId)}`,
+          { headers, signal: controller.signal },
+        )
+        if (!res.ok) return undefined
+        const body = (await res.json()) as {
+          rows?: Array<{ taskId: string } & GithubTriageVerdict>
+        }
+        if (!Array.isArray(body.rows) || body.rows.length === 0) return undefined
+        return new Map(body.rows.map((r) => [r.taskId, r]))
+      } finally {
+        clearTimeout(timer)
+      }
+    } catch {
+      return undefined
     }
   }
 

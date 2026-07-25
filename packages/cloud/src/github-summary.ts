@@ -51,7 +51,7 @@ function changedPreview(changed: readonly string[]): string {
   return changed.length > 3 ? `${head}, +${changed.length - 3} more` : head
 }
 
-function statusCell(t: TaskTelemetry): string {
+function statusCell(t: TaskTelemetry, opts: GithubSummaryOptions = {}): string {
   // A task that only passed after a retry is flaky by definition — flag it
   // right where it happened, the most actionable place.
   const flaky =
@@ -70,7 +70,7 @@ function statusCell(t: TaskTelemetry): string {
     case 'aborted':
       return '⏹ aborted'
     default:
-      return `❌ failed (exit ${t.exitCode})`
+      return `❌ failed (exit ${t.exitCode})${triageMarker(t, opts)}`
   }
 }
 
@@ -115,11 +115,44 @@ function hermeticityLine(tasks: readonly TaskTelemetry[]): string {
   return `\n${icon} Hermeticity: **${proven}** proven · **${bad}** unsafe${allowedPart}\n`
 }
 
+/** One failed task's triage verdict, as fetched from `/v1/triage/:runId` —
+ *  the "is this failure mine?" classification the run-detail card shows,
+ *  carried onto the PR page (dev-scenarios S3 follow-up). */
+export interface GithubTriageVerdict {
+  verdict: 'flaky' | 'pre-existing' | 'new-failure'
+  /** Green runs of this exact cache key elsewhere (the flaky evidence). */
+  sameKeySuccesses: number
+  /** This run changed the task's inputs vs its previous run (null = no prior). */
+  keyChanged: boolean | null
+}
+
 export interface GithubSummaryOptions {
   /** Deep link to this run in the connected dashboard (DX-2): rendered as a
    *  prominent link right under the verdict, so a red check is ONE click from
    *  the run's logs + artifacts. Absent (no connection) → no link line. */
   dashboardUrl?: string
+  /** Per-taskId triage verdicts for FAILED tasks (only failed rows consult
+   *  this). Absent — no connection, fetch failed, or a green run — renders
+   *  byte-identically to before. */
+  triage?: ReadonlyMap<string, GithubTriageVerdict>
+}
+
+/** The triage marker appended to a failed task's status cell — the PR page's
+ *  one-glance answer to "is this failure mine?". Only the failed branch of
+ *  `statusCell` consults it. */
+function triageMarker(t: TaskTelemetry, opts: GithubSummaryOptions): string {
+  const v = opts.triage?.get(t.taskId)
+  if (v === undefined) return ''
+  switch (v.verdict) {
+    case 'flaky':
+      return ` 🎲 flaky — not this change (same key passed ${v.sameKeySuccesses}×)`
+    case 'pre-existing':
+      return ' 📌 already broken on the default branch'
+    case 'new-failure':
+      return v.keyChanged === true
+        ? ' 🆕 new failure — this run changed its inputs'
+        : ' 🆕 new failure'
+  }
 }
 
 /** Render the run's result as a GitHub-flavored-markdown job summary. */
@@ -156,7 +189,7 @@ export function formatGithubSummary(
     '| --- | --- | ---: | --- |',
     ...shown.map(
       (t) =>
-        `| \`${t.taskId}\` | ${statusCell(t)} | ${fmtDuration(t.durationMs)} | ${cacheCell(t)} |`,
+        `| \`${t.taskId}\` | ${statusCell(t, opts)} | ${fmtDuration(t.durationMs)} | ${cacheCell(t)} |`,
     ),
   ].join('\n')
 

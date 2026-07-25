@@ -208,6 +208,27 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-24**: **Scenario-driven wave 5 — triage verdicts on the GHA
+  check/job summary** (dev-scenarios S3 follow-up, ranked #5: the PR page
+  answers "is this failure mine?" without opening the dashboard). At flush,
+  a CONNECTED red run GETs `/v1/triage/:runId` (AFTER the summary ingest so
+  the rows exist server-side; bearer; 5s CLEARABLE timer — never
+  AbortSignal.timeout, the house rule) and threads the verdict map through
+  `GithubSummaryOptions.triage` into BOTH GitHub surfaces (the job summary
+  and the Checks-API check share `formatGithubSummary`): failed rows gain
+  `🎲 flaky — not this change (same key passed N×)` / `📌 already broken on
+the default branch` / `🆕 new failure[ — this run changed its inputs]`.
+  Only failed rows consult the map (a nonsensical verdict for a green task
+  never renders — pinned). NEVER-FAIL + additive: no connection, non-200,
+  malformed, timeout, or a green run → byte-identical output to before
+  (pinned by the no-map case + a 500-triage plugin e2e); the fetch fires
+  only when `failedCount > 0` AND a GitHub surface is active. Tests: 3
+  formatter cases + 2 plugin e2e over fake servers (verdict lands in the
+  written GHA summary with the bearer on the triage GET; a triage 500
+  leaves plain rows). Docs: guides/ci.md PR-checks section + cloud/api.md
+  route row name the consumer. NO schema/wire/CACHE bump. The dev-scenarios
+  ranked list is now 5-for-6 shipped; remaining: flake trend (ranked low).
+
 - **2026-07-24**: **Scenario-driven wave 4 — plan-time duration prediction on
   `vx run --dry`** (dev-scenarios S2, ranked #4: "what will this change cost
   CI?"). The plan predicted WHAT runs but never HOW LONG. Now `PlannedTask`
