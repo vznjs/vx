@@ -212,10 +212,13 @@ successors.
   shareable; 24h switches the trend charts to hourly buckets).
   **Trending tiles** compare the selected window against the prior
   equal-length one (runs, failure rate, cache hit rate,
-  average executed duration). A **Biggest movers** table ranks tasks
-  whose average duration shifted most, and a **Started failing across
-  branches** card names tasks whose most-recent run fails on ≥2 distinct
-  branches — the "what just broke everywhere?" signal. Plus flaky tasks
+  average executed duration). A **Got slower** card flags tasks whose
+  latest executed run is ≥2× their own p50 (with a ≥100ms floor; cache
+  hits excluded on both sides) — the active "did something regress just
+  now?" nudge beside the trend surfaces. A **Biggest movers** table ranks
+  tasks whose average duration shifted most, and a **Started failing
+  across branches** card names tasks whose most-recent run fails on ≥2
+  distinct branches — the "what just broke everywhere?" signal. Plus flaky tasks
   (with a within-run-retry **Retried** column and a **Suggested fix**
   column), the **Hermeticity** card (cross-machine output-fingerprint
   divergence from `vx run --force --verify=fingerprint` runs — the exact

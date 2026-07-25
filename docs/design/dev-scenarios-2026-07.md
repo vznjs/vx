@@ -162,8 +162,9 @@ stuff" — a shared team scope stays out until the owner asks.
 1. **Failure triage on run detail** (S3) — `/v1/triage/:runId` + verdict
    card. **Shipped with this doc.**
 2. **Pinned projects** (S1) — personal scope for the landing + notifications.
+   **Shipped** (PR #158).
 3. **"Got slower" detector on Insights** (S5) — port the astryx Attention
-   detector onto the shipping UI.
+   detector onto the shipping UI. **Shipped.**
 4. **Plan-time duration prediction** (S2) — p50 + predicted wall on `--dry`.
 5. **Triage verdicts on the GHA check** (S3 follow-up) — the PR page says
    "flaky / pre-existing / yours" without opening the dashboard.
