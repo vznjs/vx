@@ -200,3 +200,48 @@ describe('appendGithubSummary', () => {
     expect(warnings[0]).toContain('github summary')
   })
 })
+
+describe('triage verdicts on failed rows', () => {
+  const failedRun = () =>
+    summary([
+      { taskId: 'a#flap', status: 'failed', exitCode: 1 },
+      { taskId: 'a#broken', status: 'failed', exitCode: 1 },
+      { taskId: 'a#mine', status: 'failed', exitCode: 1 },
+      { taskId: 'a#ok', status: 'success' },
+    ])
+
+  it('marks each failed row with its verdict; success rows never consult the map', () => {
+    const triage = new Map([
+      ['a#flap', { verdict: 'flaky' as const, sameKeySuccesses: 3, keyChanged: false }],
+      ['a#broken', { verdict: 'pre-existing' as const, sameKeySuccesses: 0, keyChanged: false }],
+      ['a#mine', { verdict: 'new-failure' as const, sameKeySuccesses: 0, keyChanged: true }],
+      // A (nonsensical) verdict for a green task must not render.
+      ['a#ok', { verdict: 'flaky' as const, sameKeySuccesses: 9, keyChanged: false }],
+    ])
+    const md = formatGithubSummary(failedRun(), { triage })
+    expect(md).toContain('🎲 flaky — not this change (same key passed 3×)')
+    expect(md).toContain('📌 already broken on the default branch')
+    expect(md).toContain('🆕 new failure — this run changed its inputs')
+    const okLine = md.split('\n').find((l) => l.includes('a#ok'))!
+    expect(okLine).not.toContain('flaky')
+  })
+
+  it('a new failure without a key change renders the bare marker', () => {
+    const triage = new Map([
+      ['a#mine', { verdict: 'new-failure' as const, sameKeySuccesses: 0, keyChanged: null }],
+    ])
+    const md = formatGithubSummary(summary([{ taskId: 'a#mine', status: 'failed', exitCode: 1 }]), {
+      triage,
+    })
+    expect(md).toContain('🆕 new failure')
+    expect(md).not.toContain('changed its inputs')
+  })
+
+  it('no triage map renders byte-identically to before (additive)', () => {
+    const plain = formatGithubSummary(failedRun())
+    expect(plain).toContain('❌ failed (exit 1)')
+    expect(plain).not.toContain('🎲')
+    expect(plain).not.toContain('📌')
+    expect(plain).not.toContain('🆕')
+  })
+})
