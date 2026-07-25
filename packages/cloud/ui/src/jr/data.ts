@@ -46,7 +46,7 @@ import {
   listRuns,
 } from '../api.ts'
 import { formatSignedDuration } from '../format.ts'
-import { type Recommendation, computeRecommendations } from './functions.ts'
+import { type Recommendation, computeRecommendations, detectSlowdowns } from './functions.ts'
 
 type P = Record<string, string>
 
@@ -514,6 +514,19 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   projectsAll: () => listProjects(500),
   trends: (p) => getRunTrends(trendArgsOf(p)).then((r) => r.points),
   history: () => getHistory({ limit: 500 }),
+  // "Got slower" (dev-scenarios S5): each task's LATEST executed run vs its
+  // own p50 — composed client-side from two reads the hub already knows.
+  slowdowns: async () => {
+    const [hist, rows] = await Promise.all([
+      getHistory({ limit: 500 }).catch(() => []),
+      listRuns({ limit: 300 }).catch(() => []),
+    ])
+    return detectSlowdowns(hist, rows).map((s) => ({
+      ...s,
+      _ratioLabel: `${s.ratio.toFixed(1)}× slower`,
+      _dir: 'slower',
+    }))
+  },
   cacheBreakdown: () => getCacheBreakdown(100),
   storage: (p) => getStorageGrowth(windowDaysOf(p, 30)),
   cacheEntries: () => listCacheEntries({ limit: 200, orderBy: 'size_bytes' }),

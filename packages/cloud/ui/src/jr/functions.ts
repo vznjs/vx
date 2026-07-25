@@ -517,3 +517,70 @@ function tagsText(tags: unknown): string {
     .map(([k, v]) => `${k}=${String(v)}`)
     .join(', ')
 }
+
+// --- "Got slower" detector (dev-scenarios S5) -------------------------------
+
+export interface SlowdownRow {
+  id: string
+  project: string
+  task: string
+  /** The task's own typical (p50) executed duration. */
+  p50: number
+  /** Its latest executed run's duration. */
+  last: number
+  ratio: number
+  /** When the slow run happened (epoch ms). */
+  at: number
+}
+
+interface SlowdownHistory {
+  id: string
+  p50DurationMs: number | undefined
+}
+interface SlowdownRun {
+  project: string
+  task: string
+  status: string
+  cacheHit: boolean | null
+  durationMs: number
+  startedAt: number
+}
+
+/**
+ * Tasks whose LATEST executed run is >= 2x their own typical (p50) executed
+ * duration, with a >= 100ms absolute floor so millisecond noise never flags.
+ * Cache hits are excluded on both sides — this compares real work against
+ * real work. `rows` must be newest-first (the /v1/runs order).
+ */
+export function detectSlowdowns(
+  hist: readonly SlowdownHistory[],
+  rows: readonly SlowdownRun[],
+): SlowdownRow[] {
+  const p50ById = new Map(
+    hist.filter((h) => (h.p50DurationMs ?? 0) > 0).map((h) => [h.id, h.p50DurationMs ?? 0]),
+  )
+  const latest = new Map<string, SlowdownRun>()
+  for (const r of rows) {
+    if (r.status !== 'success' || r.cacheHit === true) continue
+    const id = `${r.project}#${r.task}`
+    if (!latest.has(id)) latest.set(id, r) // newest-first ⇒ first seen wins
+  }
+  const out: SlowdownRow[] = []
+  for (const [id, r] of latest) {
+    const p50 = p50ById.get(id)
+    if (p50 === undefined) continue
+    const ratio = r.durationMs / p50
+    if (ratio >= 2 && r.durationMs - p50 >= 100) {
+      out.push({
+        id,
+        project: r.project,
+        task: r.task,
+        p50,
+        last: r.durationMs,
+        ratio,
+        at: r.startedAt,
+      })
+    }
+  }
+  return out.sort((a, b) => b.ratio - a.ratio).slice(0, 8)
+}

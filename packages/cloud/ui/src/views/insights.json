@@ -8,6 +8,7 @@
     "bottlenecks": "bottlenecks",
     "flaky": "flaky",
     "analysis": "analysis",
+    "slowdowns": "slowdowns",
     "regressions": "regressions",
     "prunable": "prunable",
     "stats": "cacheStats",
@@ -309,6 +310,68 @@
                 {
                   "key": "lastRunAt",
                   "label": "Last run",
+                  "align": "right",
+                  "kind": "relativeTime",
+                  "baseTone": "faint"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Got slower",
+          "actionText": "latest executed run vs the task's own p50 — cache hits excluded",
+          "noPad": true
+        },
+        "children": [
+          {
+            "type": "DataTable",
+            "props": {
+              "rows": {
+                "$state": "/slowdowns"
+              },
+              "status": {
+                "$state": "/slowdownsStatus"
+              },
+              "rowHref": "/tasks/{id}",
+              "emptyTitle": "No task is running meaningfully slower than its history",
+              "emptyHint": "Flags a latest executed run ≥ 2× the task's own p50 (and ≥ 100ms over it).",
+              "columns": [
+                {
+                  "key": "task",
+                  "label": "Task",
+                  "kind": "projtask"
+                },
+                {
+                  "key": "p50",
+                  "label": "Typical",
+                  "align": "right",
+                  "kind": "duration",
+                  "baseTone": "faint"
+                },
+                {
+                  "key": "last",
+                  "label": "Latest",
+                  "align": "right",
+                  "kind": "duration"
+                },
+                {
+                  "key": "_ratioLabel",
+                  "label": "×",
+                  "kind": "dots",
+                  "dots": [
+                    {
+                      "field": "_dir",
+                      "map": "delta"
+                    }
+                  ]
+                },
+                {
+                  "key": "at",
+                  "label": "When",
                   "align": "right",
                   "kind": "relativeTime",
                   "baseTone": "faint"

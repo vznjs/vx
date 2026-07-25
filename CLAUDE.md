@@ -208,6 +208,24 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-24**: **Scenario-driven wave 3 — the "Got slower" detector on
+  Insights** (dev-scenarios S5, ranked #3). The shape-over-time surfaces were
+  all passive (trends/movers/sparklines you must go read); this is the active
+  nudge: a task whose LATEST executed run is ≥2× its OWN p50 (≥100ms absolute
+  floor so millisecond noise never flags; cache hits + failures excluded on
+  both sides — real work vs real work) surfaces on Insights beside movers,
+  each row `typical → latest · N.N× slower · when`, linking to task detail.
+  Pure client-side compose (`detectSlowdowns` in jr/functions.ts — ported
+  from the parked astryx Attention page — over the getHistory p50s + the
+  latest 300 run rows; no server change), unit-pinned 6 ways (ratio bar,
+  absolute floor, hit/failure exclusion, newest-executed-wins so a RECOVERED
+  task unflags, ratio-desc cap 8, no-p50 skip). Browser-verified on a seeded
+  platform: a 3.1× spike renders with typical/latest durations while the
+  healthy control task stays absent; zero console errors. Docs: dashboard.md
+  Insights bullet; the scenarios doc's ranked list marks #2 and #3 shipped.
+  Remaining from the list: `--dry` duration prediction; triage verdicts on
+  the GHA check; flake trend.
+
 - **2026-07-24**: **Scenario-driven wave 2 — pinned "my projects", the
   personal lens** (dev-scenarios S1, ranked #2; owner arc: "as a developer…
   owning some of the projects… what information do you need"). A dev owning 2

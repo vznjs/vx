@@ -8,6 +8,7 @@ import {
   FUNCTIONS,
   computeRecommendations,
   countTone,
+  detectSlowdowns,
   distinctBranches,
   distinctCommits,
   filterInvocations,
@@ -373,5 +374,68 @@ describe('rateTone / countTone', () => {
     // any divergence is bad when badAt=1
     expect(countTone(1, 1)).toBe('bad')
     expect(countTone(0, 1)).toBe('good')
+  })
+})
+
+describe('detectSlowdowns', () => {
+  const h = (id: string, p50: number | undefined) => ({ id, p50DurationMs: p50 })
+  const r = (
+    project: string,
+    task: string,
+    durationMs: number,
+    startedAt: number,
+    over: Partial<{ status: string; cacheHit: boolean | null }> = {},
+  ) => ({
+    project,
+    task,
+    durationMs,
+    startedAt,
+    status: over.status ?? 'success',
+    cacheHit: over.cacheHit ?? false,
+  })
+
+  it('flags a latest executed run >= 2x p50 with the 100ms floor', () => {
+    const out = detectSlowdowns([h('a#t', 200)], [r('a', 't', 500, 9000)])
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({ id: 'a#t', p50: 200, last: 500, at: 9000 })
+    expect(out[0]!.ratio).toBeCloseTo(2.5, 5)
+  })
+
+  it('ignores sub-2x and sub-100ms-delta latest runs', () => {
+    // 1.9x — under the ratio bar.
+    expect(detectSlowdowns([h('a#t', 200)], [r('a', 't', 380, 1)])).toHaveLength(0)
+    // 2.5x but only +90ms — millisecond noise, under the absolute floor.
+    expect(detectSlowdowns([h('b#t', 60)], [r('b', 't', 150, 1)])).toHaveLength(0)
+  })
+
+  it('compares real work only: cache hits and failures never count as latest', () => {
+    const rows = [
+      // Newest first: a cache-hit and a failure land above the slow executed run.
+      r('a', 't', 5, 3000, { cacheHit: true }),
+      r('a', 't', 900, 2000, { status: 'failed' }),
+      r('a', 't', 500, 1000),
+    ]
+    const out = detectSlowdowns([h('a#t', 200)], rows)
+    expect(out).toHaveLength(1)
+    expect(out[0]!.last).toBe(500)
+  })
+
+  it('newest executed run wins; a recovered task does not flag', () => {
+    // Newest-first: the latest executed run is back to normal.
+    const rows = [r('a', 't', 210, 2000), r('a', 't', 900, 1000)]
+    expect(detectSlowdowns([h('a#t', 200)], rows)).toHaveLength(0)
+  })
+
+  it('sorts by ratio desc and caps at 8', () => {
+    const hist = Array.from({ length: 12 }, (_, i) => h(`p${i}#t`, 100))
+    const rows = Array.from({ length: 12 }, (_, i) => r(`p${i}`, 't', 300 + i * 50, i))
+    const out = detectSlowdowns(hist, rows)
+    expect(out).toHaveLength(8)
+    expect(out[0]!.id).toBe('p11#t') // biggest ratio first
+    expect(out[0]!.ratio).toBeGreaterThan(out[7]!.ratio)
+  })
+
+  it('a task with no usable p50 is skipped', () => {
+    expect(detectSlowdowns([h('a#t', undefined), h('b#t', 0)], [r('a', 't', 900, 1), r('b', 't', 900, 1)])).toHaveLength(0)
   })
 })
