@@ -426,6 +426,12 @@ describe('platform e2e (real pg + fake S3)', () => {
       'ran without a cache hit (not cacheable / forced)',
     ]).toContain(buildWhy!.reason)
 
+    // Failure triage (single-segment /v1/triage/:runId) is allowlisted the
+    // same way — reaches analytics, answers JSON (no failed tasks → []).
+    const triage = await call('GET', '/v1/triage/r-live', { cookie })
+    expect(triage.status).toBe(200)
+    expect(Array.isArray(((await triage.json()) as { rows: unknown[] }).rows)).toBe(true)
+
     // The notification feed reads as a session surface (allowlisted, not the
     // machine-only ingest path): a green run produces no notification.
     const none = await call('GET', '/v1/notifications', { cookie })

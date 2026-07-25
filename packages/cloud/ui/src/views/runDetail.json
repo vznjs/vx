@@ -5,7 +5,8 @@
     "runWhy": "runWhy",
     "invocation": "invocationDetail",
     "artifacts": "artifacts",
-    "selectedTask": "runSelectedTask"
+    "selectedTask": "runSelectedTask",
+    "runTriage": "runTriage"
   },
   "spec": {
     "type": "Page",
@@ -401,6 +402,46 @@
                   "label": "Cache",
                   "align": "right",
                   "kind": "cache"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Failed-task triage",
+          "actionText": "is this failure mine? — flaky / already broken / new",
+          "noPad": true
+        },
+        "visible": {
+          "$state": "/runTriageStatus",
+          "eq": "ok"
+        },
+        "children": [
+          {
+            "type": "DataTable",
+            "props": {
+              "rows": {
+                "$state": "/runTriage"
+              },
+              "columns": [
+                {
+                  "key": "verdict",
+                  "label": "",
+                  "kind": "dots",
+                  "dots": [{ "field": "verdict", "map": "triage" }]
+                },
+                { "key": "task", "label": "Task", "kind": "projtask" },
+                { "key": "_label", "label": "Verdict" },
+                { "key": "_evidence", "label": "Evidence", "baseTone": "faint" },
+                {
+                  "key": "_evidenceRunId",
+                  "label": "",
+                  "kind": "link",
+                  "href": "/runs/{_evidenceRunId}",
+                  "linkLabel": "see run"
                 }
               ]
             }

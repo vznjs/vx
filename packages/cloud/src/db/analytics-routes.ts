@@ -424,6 +424,12 @@ async function handleAnalyticsRequestInner(
     if (m) return json({ rows: await a.whyRunReran(ws, decodeURIComponent(m[1]!)) })
   }
   {
+    // Batched failure triage: every failed task's "is this failure mine?"
+    // verdict (flaky / pre-existing / new-failure) in one round-trip.
+    const m = /^\/v1\/triage\/([^/]+)$/.exec(p)
+    if (m) return json({ rows: await a.triageRun(ws, decodeURIComponent(m[1]!)) })
+  }
+  {
     const m = /^\/v1\/why\/([^/]+)\/(.+)$/.exec(p)
     if (m)
       return json(await a.whyDidThisRerun(ws, decodeURIComponent(m[1]!), decodeURIComponent(m[2]!)))

@@ -394,6 +394,34 @@ export interface WhyRunRow {
   reason: string
 }
 
+/**
+ * One failed task's triage verdict — the batched `/v1/triage/:runId` row.
+ * Answers the PR author's sharpest question: "is this failure mine?"
+ *
+ * - `flaky`        — the SAME cache key (identical inputs) succeeded in other
+ *                    runs; nondeterminism, not this change.
+ * - `pre-existing` — the default branch's latest run of this task is ALSO
+ *                    failing; inherited, not introduced.
+ * - `new-failure`  — first failure of this key with no trunk failure behind
+ *                    it; `keyChanged` says whether this run altered the
+ *                    task's inputs (the "probably yours" signal).
+ */
+export interface TriageRow {
+  taskId: string
+  project: string
+  task: string
+  verdict: 'flaky' | 'pre-existing' | 'new-failure'
+  /** Green runs (success or cache hit) of this exact cache key elsewhere. */
+  sameKeySuccesses: number
+  /** The default branch's most-recent run of this task is currently failed. */
+  defaultBranchFailing: boolean
+  /** That trunk run's id (evidence link), when one exists. */
+  defaultBranchRunId: string | null
+  /** Key differs from the task's previous run; null = no prior run. */
+  keyChanged: boolean | null
+  previousRunId: string | null
+}
+
 export interface CompareTaskSide {
   status: string
   durationMs: number
@@ -1886,6 +1914,75 @@ export class Analytics {
             ? 'inputs changed'
             : 'ran without a cache hit (not cacheable / forced)',
     }))
+  }
+
+  /**
+   * Batched failure triage over EVERY failed task of a run — one query, three
+   * signals per task (see `TriageRow`): same-key green runs elsewhere (flaky),
+   * the default branch's latest outcome for the task (pre-existing), and the
+   * key-changed-vs-previous comparison (the why panel's signal). Trunk-ness
+   * comes from the run's invocation header (`branch = default_branch`, both
+   * non-null) via EXISTS — never a row-multiplying join, so a re-pushed run's
+   * duplicate headers (the documented invocations-uniqueness wrinkle) cannot
+   * skew the result.
+   */
+  async triageRun(workspaceId: string, runId: string): Promise<TriageRow[]> {
+    const rows = await this.sql<
+      {
+        project: string
+        task: string
+        this_hash: string
+        same_key_successes: number
+        prev_run_id: string | null
+        prev_hash: string | null
+        trunk_run_id: string | null
+        trunk_status: string | null
+      }[]
+    >`
+      SELECT t.project, t.task, t.hash AS this_hash,
+             (SELECT count(*)::int FROM task_runs s
+               WHERE s.workspace_id = t.workspace_id AND s.project = t.project
+                 AND s.task = t.task AND s.hash = t.hash AND s.run_id <> t.run_id
+                 AND (s.status = 'success' OR s.status LIKE 'cache-hit%' OR s.cache_hit = true)
+             ) AS same_key_successes,
+             p.run_id AS prev_run_id, p.hash AS prev_hash,
+             d.run_id AS trunk_run_id, d.status AS trunk_status
+      FROM task_runs t
+      LEFT JOIN LATERAL (
+        SELECT run_id, hash FROM task_runs
+        WHERE workspace_id = t.workspace_id AND project = t.project AND task = t.task
+          AND started_at < t.started_at
+        ORDER BY started_at DESC LIMIT 1
+      ) p ON true
+      LEFT JOIN LATERAL (
+        SELECT r.run_id, r.status FROM task_runs r
+        WHERE r.workspace_id = t.workspace_id AND r.project = t.project AND r.task = t.task
+          AND r.run_id <> t.run_id
+          AND EXISTS (
+            SELECT 1 FROM invocations i
+            WHERE i.workspace_id = r.workspace_id AND i.run_id = r.run_id
+              AND i.branch IS NOT NULL AND i.default_branch IS NOT NULL
+              AND i.branch = i.default_branch
+          )
+        ORDER BY r.started_at DESC LIMIT 1
+      ) d ON true
+      WHERE t.workspace_id = ${workspaceId} AND t.run_id = ${runId} AND t.status = 'failed'
+      ORDER BY t.project, t.task`
+    return rows.map((r) => {
+      const sameKey = r.same_key_successes
+      const trunkFailing = r.trunk_status === 'failed'
+      return {
+        taskId: `${r.project}#${r.task}`,
+        project: r.project,
+        task: r.task,
+        verdict: sameKey > 0 ? 'flaky' : trunkFailing ? 'pre-existing' : 'new-failure',
+        sameKeySuccesses: sameKey,
+        defaultBranchFailing: trunkFailing,
+        defaultBranchRunId: r.trunk_run_id,
+        keyChanged: r.prev_hash === null ? null : r.prev_hash !== r.this_hash,
+        previousRunId: r.prev_run_id,
+      }
+    })
   }
 
   async whyDidThisRerun(

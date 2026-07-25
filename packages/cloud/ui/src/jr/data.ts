@@ -13,6 +13,7 @@ import {
   type TaskMover,
   compareRuns,
   explainCacheKey,
+  fetchRunTriage,
   fetchRunWhy,
   fetchArtifacts,
   fetchHermeticity,
@@ -562,6 +563,33 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   run: (p) => getRun(p.id ?? ''),
   // Batched re-run verdict for the whole run — one request (see fetchRunWhy).
   runWhy: (p) => fetchRunWhy(p.id ?? ''),
+  // Batched failure triage — null (card hidden) when the run has no failures.
+  // Display fields are derived HERE so the pure-JSON view binds plain paths.
+  runTriage: (p) =>
+    fetchRunTriage(p.id ?? '').then((rows) =>
+      rows === null
+        ? null
+        : rows.map((r) => ({
+            ...r,
+            _label:
+              r.verdict === 'flaky'
+                ? 'flaky'
+                : r.verdict === 'pre-existing'
+                  ? 'already broken'
+                  : 'new failure',
+            _evidence:
+              r.verdict === 'flaky'
+                ? `the same cache key passed ${r.sameKeySuccesses}× in other runs — nondeterminism, not this change`
+                : r.verdict === 'pre-existing'
+                  ? 'the default branch’s latest run of this task is also failing — inherited, not introduced'
+                  : r.keyChanged === null
+                    ? 'first recorded run of this task'
+                    : r.keyChanged
+                      ? 'first failure of this key — this run changed the task’s inputs'
+                      : 'first failure of this key',
+            _evidenceRunId: r.verdict === 'pre-existing' ? r.defaultBranchRunId : r.previousRunId,
+          })),
+    ),
   runSelectedTask: (p) => runSelectedTask(p),
   invocationDetail: (p) => getInvocation(p.id ?? ''),
   compare: (p) => compareRuns(p.id ?? ''),
