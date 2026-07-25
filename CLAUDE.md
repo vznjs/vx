@@ -208,6 +208,31 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-24**: **Flamegraph redesign — fitted, honest, readable** (owner:
+  "The flame graphs are very unreadable and ugly"). Three root causes fixed in
+  the shipping run-detail flame: (1) **the empty canvas** — RunViz wrapped both
+  views in a fixed `h-[460px]` box, so a 3-lane run painted ~370px of dead
+  surface; the flame now sizes to its lane count (`maxHeight` prop, scrolls
+  past 460px; the graph view keeps its fixed canvas). (2) **the fabricated
+  timeline** — an ingested run with no per-task wallclock anchors every task on
+  the RUN's span, so the timeline drew N identical full-width bars (a lie).
+  `layout()` now detects it (every span ≥97% of the window while the longest
+  RECORDED duration is well short of it — a genuinely-parallel run keeps the
+  timeline) and switches to `mode: 'durations'`: one lane per task, bars
+  proportional to recorded duration, longest first, with a sticky "no per-task
+  timeline recorded" note; dependency edges (meaningless off a timeline) are
+  skipped. `LayoutInput` gains `durationMs` (the truth), `LayoutBar.durationMs`
+  feeds labels. (3) **unreadable bars** — labels now carry `id · duration`,
+  render INSIDE wide bars and OUTSIDE narrow ones (normal ink), with a greedy
+  per-lane collision plan so a burst of instant cache hits shows one clean
+  label instead of stacked soup (suppressed bars keep tooltips); recessive
+  gridlines at the ticks; richer native tooltip (status + duration); axis 0
+  reads `0` not `<1ms`. Verified in a REAL browser both ways (staggered
+  wallclock run → timeline with critical-path ring; untimed run → ranked
+  duration bars + note; zero console errors); layout pinned by 3 new unit
+  tests (degenerate→durations with proportional widths, real-parallel stays
+  timeline, staggered stays timeline). UI-only, no schema/wire change.
+
 - **2026-07-24**: **Scenario-driven wave 1 — the dev-scenarios catalog + FAILURE
   TRIAGE on run detail ("is this failure mine?")** (owner: "create development
   scenarios… assess your or its effect, debug failures flakiness… then look for
