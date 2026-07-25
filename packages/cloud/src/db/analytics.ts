@@ -1932,17 +1932,18 @@ export class Analytics {
         prev_hash: string | null
       }[]
     >`
-      SELECT t.project, t.task, t.hash AS this_hash, p.run_id AS prev_run_id, p.hash AS prev_hash
+      SELECT DISTINCT ON (t.project, t.task)
+             t.project, t.task, t.hash AS this_hash, p.run_id AS prev_run_id, p.hash AS prev_hash
       FROM task_runs t
       LEFT JOIN LATERAL (
         SELECT run_id, hash FROM task_runs
         WHERE workspace_id = t.workspace_id AND project = t.project AND task = t.task
-          AND started_at < t.started_at
+          AND started_at < t.started_at AND run_id <> t.run_id
         ORDER BY started_at DESC LIMIT 1
       ) p ON true
       WHERE t.workspace_id = ${workspaceId} AND t.run_id = ${runId}
         AND t.status IN ('success', 'failed')
-      ORDER BY t.project, t.task`
+      ORDER BY t.project, t.task, t.started_at ASC`
     return rows.map((r) => ({
       taskId: `${r.project}#${r.task}`,
       project: r.project,
@@ -2047,18 +2048,22 @@ export class Analytics {
       >`
         SELECT hash, status, cache_hit, started_at FROM task_runs
         WHERE workspace_id = ${workspaceId} AND run_id = ${runId}
-          AND project = ${project} AND task = ${task}`
+          AND project = ${project} AND task = ${task}
+        ORDER BY started_at ASC LIMIT 1`
     )[0]
     if (this_ === undefined) {
       return { runId, taskId, found: false, note: 'no row matching that runId + taskId' }
     }
+    // Earliest-copy anchor + own-run exclusion: a re-pushed summary duplicates
+    // this run's rows at a shifted started_at, and "previous" must never
+    // resolve to the run's own other copy (the triageRun convention).
     const prev = (
       await this.sql<
         { hash: string; status: string; cache_hit: boolean | null; started_at: string }[]
       >`
         SELECT hash, status, cache_hit, started_at FROM task_runs
         WHERE workspace_id = ${workspaceId} AND project = ${project} AND task = ${task}
-          AND started_at < ${num(this_.started_at)}
+          AND started_at < ${num(this_.started_at)} AND run_id <> ${runId}
         ORDER BY started_at DESC LIMIT 1`
     )[0]
     return {
@@ -2102,7 +2107,8 @@ export class Analytics {
       await this.sql<{ hash: string; started_at: string }[]>`
         SELECT hash, started_at FROM task_runs
         WHERE workspace_id = ${workspaceId} AND run_id = ${runId}
-          AND project = ${project} AND task = ${task}`
+          AND project = ${project} AND task = ${task}
+        ORDER BY started_at ASC LIMIT 1`
     )[0]
     if (this_ === undefined) {
       return {
@@ -2115,11 +2121,13 @@ export class Analytics {
         note: 'no row matching that runId + taskId',
       }
     }
+    // Same re-push convention as whyDidThisRerun/triageRun: never diff a run
+    // against its own duplicate copy.
     const prev = (
       await this.sql<{ run_id: string; hash: string }[]>`
         SELECT run_id, hash FROM task_runs
         WHERE workspace_id = ${workspaceId} AND project = ${project} AND task = ${task}
-          AND started_at < ${num(this_.started_at)}
+          AND started_at < ${num(this_.started_at)} AND run_id <> ${runId}
         ORDER BY started_at DESC LIMIT 1`
     )[0]
     if (prev === undefined) {

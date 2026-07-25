@@ -351,6 +351,47 @@ describe('base fixture reads', () => {
     expect(await analytics.whyRunReran(ws, 'D1')).toEqual([])
   })
 
+  it('re-push safety: why/diff never resolve "previous" to the run\'s own copy', async () => {
+    const { org: o2, ws: w2 } = await newOrgWs(db, 'why-repush')
+    const now = Date.now()
+    // The real previous run (key A), then run W (key B) re-pushed +60s —
+    // duplicating W's row at a shifted started_at.
+    await insertTR(db, w2, o2, {
+      runId: 'WP',
+      project: 'app',
+      task: 'build',
+      hash: 'A',
+      startedAt: now - 2 * HOUR,
+    })
+    await insertTR(db, w2, o2, {
+      runId: 'W',
+      project: 'app',
+      task: 'build',
+      hash: 'B',
+      startedAt: now - HOUR,
+    })
+    await insertTR(db, w2, o2, {
+      runId: 'W',
+      project: 'app',
+      task: 'build',
+      hash: 'B',
+      startedAt: now - HOUR + 60_000,
+    })
+    // Batched panel: ONE row, previous = the REAL prior run, key changed.
+    const rows = await analytics.whyRunReran(w2, 'W')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.previousRunId).toBe('WP')
+    expect(rows[0]!.reason).toBe('inputs changed')
+    // Single-task why: same anchor + exclusion convention.
+    const why = await analytics.whyDidThisRerun(w2, 'W', 'app#build')
+    expect(why.found).toBe(true)
+    expect(why.previousRun?.hash).toBe('A')
+    // Diff: previous is WP, and the hashes differ.
+    const diff = await analytics.cacheKeyDiff(w2, 'W', 'app#build')
+    expect(diff.previousRunId).toBe('WP')
+    expect(diff.note).not.toContain('unchanged')
+  })
+
   it('compareRuns diffs a run against the previous invocation', async () => {
     const cmp = await analytics.compareRuns(ws, 'R3')
     expect(cmp.found).toBe(true)

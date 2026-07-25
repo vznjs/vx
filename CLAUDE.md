@@ -246,10 +246,12 @@ serving none of them is probably org-analytics scope creep.
   notifications json_agg(DISTINCT) dedupe + Shell mine-first reactivity;
   flamegraph durations-mode detection edges (n=1, all-zero, parallel stays
   timeline); detectSlowdowns exact-2.0×/+100ms boundaries + recovered-task
-  unflag; foldFlakeTrend clock-skew safety. **Known follow-up (same class,
-  pre-wave, not fixed here):** `whyDidThisRerun`/`cacheKeyDiff` share the
-  missing own-run exclusion + unordered `[0]` pick under a re-push — display
-  surfaces only, swept next pass. Gates: fmt/lint 0, cloud 539/0 (+5 pins),
+  unflag; foldFlakeTrend clock-skew safety. **Follow-up sweep (landed same
+  day):** `whyRunReran`/`whyDidThisRerun`/`cacheKeyDiff` — the pre-wave
+  same-class trio — now share the earliest-copy-anchor + `run_id <>`
+  convention (a re-pushed run's "previous" could be its own duplicate copy,
+  rendering "ran without a cache hit" where the truth was "inputs changed");
+  one differential-verified pin covers all three. Gates: fmt/lint 0, cloud 539/0 (+5 pins),
   core 1286/0. NO schema/wire/CACHE bump (query-shape only).
 
 - **2026-07-25**: **Scenario-driven wave 6 — the Flakiness-trend card closes
