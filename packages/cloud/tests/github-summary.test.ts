@@ -244,4 +244,16 @@ describe('triage verdicts on failed rows', () => {
     expect(plain).not.toContain('📌')
     expect(plain).not.toContain('🆕')
   })
+
+  it('an unknown verdict off the wire renders a plain failed cell, never "undefined"', () => {
+    // fetchTriage casts the response body unvalidated — a newer serve's future
+    // verdict string must degrade cleanly.
+    const out = formatGithubSummary(failedRun(), {
+      triage: new Map([
+        ['a#flap', { verdict: 'quarantined' as never, sameKeySuccesses: 0, keyChanged: null }],
+      ]),
+    })
+    expect(out).toContain('❌ failed (exit 1)')
+    expect(out).not.toContain('undefined')
+  })
 })

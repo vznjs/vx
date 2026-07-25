@@ -1560,17 +1560,23 @@ export class Analytics {
         failing_projects: string[] | null
       }[]
     >`
-      SELECT i.run_id, i.started_at, i.branch, i.commit_sha, i.failed_count, i.task_count,
-             fp.projects AS failing_projects
-      FROM invocations i
-      LEFT JOIN LATERAL (
-        SELECT json_agg(DISTINCT t.project) AS projects
-        FROM task_runs t
-        WHERE t.workspace_id = i.workspace_id AND t.run_id = i.run_id
-          AND t.status = 'failed'
-      ) fp ON true
-      WHERE i.workspace_id = ${workspaceId} AND i.failed_count > 0
-      ORDER BY i.started_at DESC LIMIT ${clampInt(limit, 1, 100)}`
+      SELECT * FROM (
+        -- DISTINCT ON: a re-pushed summary yields TWO headers for one run
+        -- (invocations uniqueness is (started_at, run_id)) — the feed must
+        -- surface each broken run ONCE (earliest-header convention).
+        SELECT DISTINCT ON (i.run_id)
+               i.run_id, i.started_at, i.branch, i.commit_sha, i.failed_count, i.task_count,
+               fp.projects AS failing_projects
+        FROM invocations i
+        LEFT JOIN LATERAL (
+          SELECT json_agg(DISTINCT t.project) AS projects
+          FROM task_runs t
+          WHERE t.workspace_id = i.workspace_id AND t.run_id = i.run_id
+            AND t.status = 'failed'
+        ) fp ON true
+        WHERE i.workspace_id = ${workspaceId} AND i.failed_count > 0
+        ORDER BY i.run_id, i.started_at ASC
+      ) n ORDER BY n.started_at DESC LIMIT ${clampInt(limit, 1, 100)}`
     return rows.map((r) => ({
       kind: 'run-failed',
       runId: r.run_id,
@@ -1957,9 +1963,13 @@ export class Analytics {
    * the default branch's latest outcome for the task (pre-existing), and the
    * key-changed-vs-previous comparison (the why panel's signal). Trunk-ness
    * comes from the run's invocation header (`branch = default_branch`, both
-   * non-null) via EXISTS — never a row-multiplying join, so a re-pushed run's
-   * duplicate headers (the documented invocations-uniqueness wrinkle) cannot
-   * skew the result.
+   * non-null) via EXISTS — never a row-multiplying join. Re-push safety needs
+   * MORE than that: a re-pushed summary duplicates the task_runs ROWS too
+   * (the idempotency key shifts with the run's startedAt), so the anchor is
+   * DISTINCT ON (project, task) earliest-copy and the previous-run LATERAL
+   * excludes the triaged run's own copies (`run_id <>`) — else a task rowed
+   * twice and its "previous run" was itself. An empty hash never pairs
+   * (matches `mixedOutcomeKeyCounts` / `getFlakeTrend`).
    */
   async triageRun(workspaceId: string, runId: string): Promise<TriageRow[]> {
     const rows = await this.sql<
@@ -1974,10 +1984,12 @@ export class Analytics {
         trunk_status: string | null
       }[]
     >`
-      SELECT t.project, t.task, t.hash AS this_hash,
+      SELECT DISTINCT ON (t.project, t.task)
+             t.project, t.task, t.hash AS this_hash,
              (SELECT count(*)::int FROM task_runs s
                WHERE s.workspace_id = t.workspace_id AND s.project = t.project
-                 AND s.task = t.task AND s.hash = t.hash AND s.run_id <> t.run_id
+                 AND s.task = t.task AND s.hash = t.hash AND s.hash <> ''
+                 AND s.run_id <> t.run_id
                  AND (s.status = 'success' OR s.status LIKE 'cache-hit%' OR s.cache_hit = true)
              ) AS same_key_successes,
              p.run_id AS prev_run_id, p.hash AS prev_hash,
@@ -1986,7 +1998,7 @@ export class Analytics {
       LEFT JOIN LATERAL (
         SELECT run_id, hash FROM task_runs
         WHERE workspace_id = t.workspace_id AND project = t.project AND task = t.task
-          AND started_at < t.started_at
+          AND started_at < t.started_at AND run_id <> t.run_id
         ORDER BY started_at DESC LIMIT 1
       ) p ON true
       LEFT JOIN LATERAL (
@@ -2002,8 +2014,11 @@ export class Analytics {
         ORDER BY r.started_at DESC LIMIT 1
       ) d ON true
       WHERE t.workspace_id = ${workspaceId} AND t.run_id = ${runId} AND t.status = 'failed'
-      ORDER BY t.project, t.task`
+      ORDER BY t.project, t.task, t.started_at ASC`
     return rows.map((r) => {
+      // An empty hash is "no key recorded", never key evidence: it can't
+      // corroborate flakiness (the SQL guard) and can't say the key changed.
+      const noKey = r.this_hash === '' || r.prev_hash === ''
       const sameKey = r.same_key_successes
       const trunkFailing = r.trunk_status === 'failed'
       return {
@@ -2014,7 +2029,7 @@ export class Analytics {
         sameKeySuccesses: sameKey,
         defaultBranchFailing: trunkFailing,
         defaultBranchRunId: r.trunk_run_id,
-        keyChanged: r.prev_hash === null ? null : r.prev_hash !== r.this_hash,
+        keyChanged: r.prev_hash === null || noKey ? null : r.prev_hash !== r.this_hash,
         previousRunId: r.prev_run_id,
       }
     })
@@ -2529,7 +2544,7 @@ export class Analytics {
       }[]
     >`
       WITH win AS (
-        SELECT started_at, status, attempts, hash, cache_hit FROM task_runs
+        SELECT run_id, started_at, status, attempts, hash, cache_hit FROM task_runs
         WHERE workspace_id = ${workspaceId} AND project = ${project} AND task = ${task}
           AND started_at >= ${since}
       ),
@@ -2538,11 +2553,16 @@ export class Analytics {
                BOOL_OR(status = 'success' OR status LIKE 'cache-hit%' OR cache_hit = true) AS has_pass
         FROM win WHERE hash IS NOT NULL AND hash != '' GROUP BY hash
       )
+      -- DISTINCT run_id: a re-pushed summary duplicates task_runs rows (the
+      -- idempotency key shifts with startedAt) — one run is one data point.
+      -- A cross-DAY re-push still lands in two buckets (accepted residual).
       SELECT (w.started_at / ${dayMs}::bigint) * ${dayMs}::bigint AS t,
-             count(*)::int AS runs,
-             SUM(CASE WHEN w.status = 'failed' THEN 1 ELSE 0 END)::int AS failures,
-             SUM(CASE WHEN w.attempts > 1 AND w.status = 'success' THEN 1 ELSE 0 END)::int AS retried,
-             SUM(CASE WHEN w.status = 'failed' AND k.has_pass THEN 1 ELSE 0 END)::int AS mixed_failures,
+             count(DISTINCT w.run_id)::int AS runs,
+             count(DISTINCT w.run_id) FILTER (WHERE w.status = 'failed')::int AS failures,
+             count(DISTINCT w.run_id) FILTER (
+               WHERE w.attempts > 1 AND w.status = 'success')::int AS retried,
+             count(DISTINCT w.run_id) FILTER (
+               WHERE w.status = 'failed' AND k.has_pass)::int AS mixed_failures,
              MIN(w.started_at) FILTER (WHERE (w.attempts > 1 AND w.status = 'success')
                                           OR (w.status = 'failed' AND k.has_pass)) AS first_ep,
              MAX(w.started_at) FILTER (WHERE (w.attempts > 1 AND w.status = 'success')

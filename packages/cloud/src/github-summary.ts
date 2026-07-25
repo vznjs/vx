@@ -152,6 +152,10 @@ function triageMarker(t: TaskTelemetry, opts: GithubSummaryOptions): string {
       return v.keyChanged === true
         ? ' 🆕 new failure — this run changed its inputs'
         : ' 🆕 new failure'
+    default:
+      // The verdict comes off the wire unvalidated — a newer serve's unknown
+      // verdict must render as a plain failed cell, not a literal "undefined".
+      return ''
   }
 }
 

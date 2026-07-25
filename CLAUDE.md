@@ -208,6 +208,50 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-25**: **Adversarial review of the six scenario waves (#156-#162) —
+  five confirmed defects fixed, everything else REFUTED by executed repro**
+  (the house-standard repro-mandated hostile reviewer over triageRun,
+  fetchTriage/triageMarker, predictPlan, getFlakeTrend, failingProjects +
+  mine-first, flamegraph-layout/detectSlowdowns/foldFlakeTrend). **Fixed (one
+  commit, each with a discriminating pin):** (1) **MED — `triageRun` was not
+  re-push-safe**: a re-pushed summary duplicates the task_runs ROWS too (the
+  idempotency key shifts with startedAt), so one failed task returned TWO
+  TriageRows and the prev-run LATERAL picked the run's OWN earlier copy —
+  `previousRunId` = the run itself with a wrong `keyChanged: false` (the GHA
+  marker then flip-flopped nondeterministically on the unordered tie). Fix:
+  `DISTINCT ON (project, task) … ORDER BY … started_at ASC` (earliest-copy
+  convention) + `run_id <>` in the prev LATERAL; the misleading "EXISTS makes
+  re-push harmless" comment corrected (it protected only the trunk signal).
+  (2) **MED — empty-hash false flaky**: `insertTaskRun` stores `hash ?? ''`
+  and the same_key subquery had no `hash <> ''` guard (unlike its two
+  siblings), so a hashless success + hashless failure fabricated
+  `verdict: 'flaky'` — which, having precedence, could also mask a genuine
+  pre-existing verdict. Fix: the SQL guard + `keyChanged: null` when either
+  side's hash is '' (no key evidence). (3) **LOW — literal `undefined` in the
+  job summary**: `fetchTriage` casts the body unvalidated and `triageMarker`'s
+  switch had no default, so an unknown future verdict string rendered
+  `❌ failed (exit 1)undefined`; default → ''. (4) **LOW — `getFlakeTrend`
+  re-push double-count**: all four bucket counts became
+  `COUNT(DISTINCT run_id) FILTER` (one run = one data point; a cross-day
+  re-push still splits buckets — accepted, documented in the query). (5)
+  **LOW, pre-existing — a re-pushed broken run appeared TWICE in the
+  notification bell**: `getNotifications` now wraps in `DISTINCT ON (run_id)`
+  earliest-header. **Refuted by executed repro (held):** fetchTriage timer
+  hygiene (process exits 65ms after flush; the clearable-timer rule holds on
+  success/non-200/throw) + malformed-body degradation + green-run-zero-GETs;
+  triageRun tenant clamp / precedence / own-run exclusion / null
+  default_branch; predictPlan diamond wall-vs-work + 60k-deep chain (no
+  recursion) + throwing-history fail-open; getFlakeTrend failed-retries
+  exclusion, hit-as-pass, cross-day pairing, bucket boundaries, tenant clamp;
+  notifications json_agg(DISTINCT) dedupe + Shell mine-first reactivity;
+  flamegraph durations-mode detection edges (n=1, all-zero, parallel stays
+  timeline); detectSlowdowns exact-2.0×/+100ms boundaries + recovered-task
+  unflag; foldFlakeTrend clock-skew safety. **Known follow-up (same class,
+  pre-wave, not fixed here):** `whyDidThisRerun`/`cacheKeyDiff` share the
+  missing own-run exclusion + unordered `[0]` pick under a re-push — display
+  surfaces only, swept next pass. Gates: fmt/lint 0, cloud 539/0 (+5 pins),
+  core 1286/0. NO schema/wire/CACHE bump (query-shape only).
+
 - **2026-07-25**: **Scenario-driven wave 6 — the Flakiness-trend card closes
   the dev-scenarios ranked list 7-for-7** (S4's minor gap: "is the flake
   getting better or worse, when did it first appear?"). New
