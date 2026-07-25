@@ -1376,4 +1376,54 @@ describe('getNotifications', () => {
     }
     expect(await analytics.getNotifications(ws, 3)).toHaveLength(3)
   })
+
+  it('names the failing projects per run (the pinned-projects lens feed)', async () => {
+    const { org, ws } = await newOrgWs(db, 'notif-projects')
+    const decoy = await newOrgWs(db, 'notif-projects-decoy')
+    const now = Date.now()
+    await insertINV(db, ws, org, { runId: 'P1', startedAt: now, failedCount: 2, taskCount: 4 })
+    // Two projects fail (one twice — deduped), one succeeds.
+    await insertTR(db, ws, org, {
+      runId: 'P1',
+      project: 'checkout',
+      task: 'test',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'P1',
+      project: 'checkout',
+      task: 'lint',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now + 1,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'P1',
+      project: 'orders',
+      task: 'test',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now + 2,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'P1',
+      project: 'sdk',
+      task: 'build',
+      startedAt: now + 3,
+    })
+    // Same runId failing in a FOREIGN workspace — must not pollute the list.
+    await insertTR(db, decoy.ws, decoy.org, {
+      runId: 'P1',
+      project: 'foreign',
+      task: 'test',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now + 4,
+    })
+    const notes = await analytics.getNotifications(ws)
+    expect(notes).toHaveLength(1)
+    expect([...notes[0]!.failingProjects].sort()).toEqual(['checkout', 'orders'])
+  })
 })

@@ -140,7 +140,13 @@ successors.
   compare. A **CI-health strip** shows the last ~24 runs as status ticks
   plus health tiles (pass rate, flaky-task count, cache hit rate,
   non-hermetic-key count), each tinted by threshold and linking to the
-  entity that explains it. **Faceted filters** (result · branch · project
+  entity that explains it. A **"My projects" strip** shows the projects
+  you've **starred** (the pin star on any project page or the Projects
+  table — persisted in this browser per server + workspace): each pin
+  renders with its live state (red with the count of tasks currently
+  failing on any branch, green otherwise) and links into the drill-in.
+  Pins also float runs that broke *your* projects to the top of the
+  notification bell, marked with a star. **Faceted filters** (result · branch · project
   · commit) narrow the history and persist in the URL hash
   (`#/runs?result=failed&branch=main`), so a filtered view is shareable
   and restores on load.

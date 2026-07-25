@@ -67,6 +67,7 @@
               "emptyTitle": "No projects discovered",
               "emptyCmd": "vx run <task>",
               "columns": [
+                { "key": "_pin", "label": "", "kind": "pin", "projectKey": "project" },
                 {
                   "key": "project",
                   "label": "Project",

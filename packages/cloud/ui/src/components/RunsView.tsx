@@ -35,6 +35,7 @@ import {
   getConnectionKey,
   getFlakiest,
   getHistory,
+  getProjectBranchFailures,
   getVersion,
   listInvocations,
   listRuns,
@@ -51,10 +52,11 @@ import {
   rateTone,
   runTicks,
 } from '../jr/functions.ts'
-import { formatDuration, formatPercent, formatRelativeTime } from '../format.ts'
+import { formatDuration, formatPercent, formatRelativeTime, paletteFor } from '../format.ts'
 import { identityStable, useVisibilityRefresh } from '../live.ts'
 import { DataTable, type Column } from '../jr/components.tsx'
-import { Card, EmptyState, MetricCard } from './ui.tsx'
+import { Card, EmptyState, MetricCard, PinStarButton } from './ui.tsx'
+import { pinnedProjects } from '../pins.ts'
 import { RunSession, createRunSession, type RunSessionState } from './RunSession.tsx'
 
 type JobState = 'submitting' | 'queued' | 'running' | 'done' | 'refused'
@@ -476,6 +478,9 @@ export function RunsView() {
         nonHermetic={nonHermeticCount()}
       />
 
+      {/* "My projects" — the personal lens over a huge workspace. */}
+      <MyProjectsStrip />
+
       {/* Queued / live jobs */}
       <Show when={anyActive()}>
         <div class="rounded-xl border border-border bg-surface/40 overflow-hidden">
@@ -700,6 +705,79 @@ function Chip(props: { label: string; onClear: () => void }) {
     </span>
   )
 }
+
+/**
+ * "My projects" — the dev's pinned projects with their live failing state
+ * (dev-scenarios S1). One /v1/branch-failures probe per pin (bounded by the
+ * pin count, 30s visibility-aware refresh): red when any task is currently
+ * failing on a branch, green otherwise. No pins renders a one-line hint at
+ * the star affordance; everything links into the project drill-in.
+ */
+const PALETTE_BG: Record<string, string> = {
+  'chart-1': 'bg-chart-1', 'chart-2': 'bg-chart-2', 'chart-3': 'bg-chart-3', 'chart-4': 'bg-chart-4',
+  'chart-5': 'bg-chart-5', 'chart-6': 'bg-chart-6', 'chart-7': 'bg-chart-7', 'chart-8': 'bg-chart-8',
+}
+
+function MyProjectsStrip() {
+  const tick = useVisibilityRefresh(30_000)
+  const [rows] = createResource(
+    () => `${getConnectionKey()}|${tick()}|${pinnedProjects().join(',')}`,
+    async () => {
+      const pins = pinnedProjects()
+      return await Promise.all(
+        pins.map(async (project) => {
+          const bf = await getProjectBranchFailures(project, 14, 50).catch(() => null)
+          const failingTasks = bf?.length ?? 0
+          const branches =
+            bf === null ? 0 : new Set(bf.flatMap((t) => t.branches.map((b) => b.branch))).size
+          return { project, failingTasks, branches }
+        }),
+      )
+    },
+  )
+  return (
+    <Show
+      when={pinnedProjects().length > 0}
+      fallback={
+        <div class="rounded-lg border border-border/60 bg-surface/30 px-4 py-2 text-[11px] text-fg-3 flex items-center gap-2">
+          <span class="i-tabler-star text-warn/70 shrink-0" aria-hidden="true" />
+          <span>
+            Pin the projects you own — the <span class="i-tabler-star inline-block align-[-1px]" /> on any
+            project page or the Projects table — and they'll live here with their current state.
+          </span>
+        </div>
+      }
+    >
+      <div class="rounded-lg border border-border bg-surface/40 px-3 py-2.5 flex items-center gap-2 flex-wrap">
+        <span class="text-[10px] uppercase tracking-wider text-fg-3 font-semibold mr-1 flex items-center gap-1.5">
+          <span class="i-tabler-star-filled text-warn text-[11px]" aria-hidden="true" />
+          My projects
+        </span>
+        <For each={rows() ?? pinnedProjects().map((project) => ({ project, failingTasks: 0, branches: 0 }))}>
+          {(r) => (
+            <span class="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 hover:border-border-strong">
+              <span class={`inline-block w-2 h-2 rounded-full ${PALETTE_BG[paletteFor(r.project)] ?? 'bg-accent'}`} />
+              <A href={`/projects/${encodeURIComponent(r.project)}`} class="no-underline font-mono text-[11px] text-fg hover:text-accent">
+                {r.project}
+              </A>
+              <Show
+                when={r.failingTasks > 0}
+                fallback={<span class="text-[10px] text-success flex items-center gap-1"><span class="inline-block w-1.5 h-1.5 rounded-full bg-success" />green</span>}
+              >
+                <span class="text-[10px] text-danger flex items-center gap-1">
+                  <span class="inline-block w-1.5 h-1.5 rounded-full bg-danger" />
+                  {r.failingTasks} failing{r.branches > 1 ? ` · ${r.branches} branches` : ''}
+                </span>
+              </Show>
+              <PinStarButton project={r.project} />
+            </span>
+          )}
+        </For>
+      </div>
+    </Show>
+  )
+}
+
 
 /**
  * The CI-health read atop Runs: a strip of recent-run status ticks (last ~24,

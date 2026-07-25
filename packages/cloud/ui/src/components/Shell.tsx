@@ -33,6 +33,7 @@ import {
   type OrgSummary,
 } from '../api.ts'
 import { getLiveActiveSignal, getVisibleSignal, useVisibilityRefresh } from '../live.ts'
+import { pinnedProjects } from '../pins.ts'
 import { formatCount, formatRelativeTime } from '../format.ts'
 import { CommandPalette } from './CommandPalette.tsx'
 import { StatusDot } from './ui.tsx'
@@ -399,6 +400,12 @@ function AccountMenu() {
  * last-seen watermark; opening the panel marks everything seen (the newest
  * failure's timestamp becomes the watermark, so future breaks still notify).
  */
+/** True when a notification's failing projects intersect the dev's pins. */
+function isMine(n: NotificationItem): boolean {
+  const pins = pinnedProjects()
+  return pins.length > 0 && (n.failingProjects ?? []).some((p) => pins.includes(p))
+}
+
 function NotificationBell() {
   const tick = useVisibilityRefresh(30_000)
   const [open, setOpen] = createSignal(false)
@@ -412,6 +419,12 @@ function NotificationBell() {
       }
     },
   )
+  // Pinned-projects lens: runs that broke MY projects float to the top (the
+  // feed stays newest-first within each half; a star marks the mine rows).
+  const ordered = createMemo(() => {
+    const list = items() ?? []
+    return [...list.filter(isMine), ...list.filter((n) => !isMine(n))]
+  })
   // A signal bumped when we mark-seen so the unread memo recomputes without a refetch.
   const [seenBump, setSeenBump] = createSignal(0)
   const unread = createMemo(() => {
@@ -476,7 +489,7 @@ function NotificationBell() {
                 </div>
               }
             >
-              <For each={items()}>
+              <For each={ordered()}>
                 {(n) => (
                   <A
                     href={`/runs/${encodeURIComponent(n.runId)}`}
@@ -487,6 +500,9 @@ function NotificationBell() {
                     <span class="min-w-0 flex-1">
                       <span class="block text-[12px] text-fg-1">
                         <span class="font-semibold text-danger">{n.failedCount}</span> of {n.taskCount} task{n.taskCount === 1 ? '' : 's'} failed
+                        <Show when={isMine(n)}>
+                          <span class="i-tabler-star-filled text-warn text-[10px] ml-1.5 align-[-1px]" title="involves a pinned project" aria-label="involves a pinned project" />
+                        </Show>
                       </span>
                       <span class="block text-[10px] text-fg-3 font-mono truncate mt-0.5">
                         {n.branch ?? '—'}
