@@ -114,6 +114,8 @@ machine-dependent keys.
 
 **Gap (minor).** No trend: is the flake getting better or worse, when did it
 first appear? Ranked low — the current list + logs answer the acute need.
+**Shipped**: the task-detail Flakiness-trend card (per-day episodes,
+first/last seen, direction verdict) via `/v1/flake-trend`.
 
 ## S5 · Shape over time — "my project got slower this quarter"
 
@@ -166,6 +168,8 @@ stuff" — a shared team scope stays out until the owner asks.
 3. **"Got slower" detector on Insights** (S5) — port the astryx Attention
    detector onto the shipping UI. **Shipped.**
 4. **Plan-time duration prediction** (S2) — p50 + predicted wall on `--dry`.
+   **Shipped** (PR #160).
 5. **Triage verdicts on the GHA check** (S3 follow-up) — the PR page says
-   "flaky / pre-existing / yours" without opening the dashboard.
-6. **Flake trend / first-seen** (S4) — low.
+   "flaky / pre-existing / yours" without opening the dashboard. **Shipped**
+   (PR #161).
+6. **Flake trend / first-seen** (S4) — low. **Shipped.**

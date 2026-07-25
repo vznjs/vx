@@ -181,6 +181,11 @@ successors.
   the latest run, and the latest artifact), a flaky badge, and a
   **Recommendations** card that turns flaky / hermeticity / caching
   signals into concrete config fixes (each with a copy-pasteable snippet).
+  A flagged task also gets a **Flakiness trend** card — flaky episodes per
+  day over the last 90 days (retried successes + failures whose cache key
+  also passed) with first-seen / last-episode timestamps and a
+  worsening / improving / steady verdict, answering "when did this flake
+  start, and is it getting better?". A healthy task shows no card.
 - **Project detail** — a single-dev drill-in for a project you own, all
   windowed by the same **timeframe selector** (24h · 7d · 30d · 90d,
   persisted in the URL). **Task duration trends** draws a per-task

@@ -1427,3 +1427,108 @@ describe('getNotifications', () => {
     expect([...notes[0]!.failingProjects].sort()).toEqual(['checkout', 'orders'])
   })
 })
+
+describe('getFlakeTrend', () => {
+  const DAY = 86_400_000
+
+  it('buckets episodes per day: mixed-key failures + retried successes; breaks never count', async () => {
+    const { org, ws } = await newOrgWs(db, 'flaketrend')
+    // Bucket-aligned base 10 days ago so expected bucket starts are exact.
+    const d0 = Math.floor((Date.now() - 10 * DAY) / DAY) * DAY
+    const d1 = d0 + DAY
+    const d5 = d0 + 5 * DAY
+    const tr = (t: Omit<TR, 'project' | 'task'>) =>
+      insertTR(db, ws, org, { project: 'app', task: 'e2e', ...t })
+    // Day 0: key K failed then succeeded (mixed), key C failed then CACHE-HIT
+    // (a hit is a pass too — the mixedOutcomeKeyCounts rule).
+    await tr({ runId: 'R1', startedAt: d0 + 1000, hash: 'K', status: 'failed', exitCode: 1 })
+    await tr({ runId: 'R2', startedAt: d0 + 5000, hash: 'K' })
+    await tr({ runId: 'R3', startedAt: d0 + 2000, hash: 'C', status: 'failed', exitCode: 1 })
+    await tr({ runId: 'R4', startedAt: d0 + 6000, hash: 'C', status: 'cache-hit', cacheHit: true })
+    // Day 1: a success that needed a retry (episode) + a pure break — key B
+    // ONLY ever fails, and its failed run's attempts>1 must NOT count as
+    // "retried" (a deterministic failure retried N times is not flake evidence).
+    await tr({ runId: 'R5', startedAt: d1 + 2000, hash: 'K2', attempts: 2 })
+    await tr({
+      runId: 'R6',
+      startedAt: d1 + 3000,
+      hash: 'B',
+      status: 'failed',
+      exitCode: 1,
+      attempts: 3,
+    })
+    // Day 5: a quiet healthy day.
+    await tr({ runId: 'R7', startedAt: d5 + 1000, hash: 'K3' })
+    // Outside the 90d window: never appears.
+    await tr({
+      runId: 'OLD',
+      startedAt: Date.now() - 100 * DAY,
+      hash: 'K',
+      status: 'failed',
+      exitCode: 1,
+    })
+    // Decoys: a FOREIGN workspace green for key B (+1ms — the table-wide
+    // idempotency index collides on byte-identical rows), and a same-ws
+    // DIFFERENT task with its own mixed key — neither may leak in.
+    const foreign = await newOrgWs(db, 'flaketrend-decoy')
+    await insertTR(db, foreign.ws, foreign.org, {
+      runId: 'R6',
+      project: 'app',
+      task: 'e2e',
+      startedAt: d1 + 3001,
+      hash: 'B',
+    })
+    await tr({ runId: 'R8', startedAt: d0 + 7000, hash: 'M' })
+    await insertTR(db, ws, org, {
+      runId: 'R9',
+      project: 'app',
+      task: 'other',
+      startedAt: d0 + 8000,
+      hash: 'M2',
+      status: 'failed',
+      exitCode: 1,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'R10',
+      project: 'app',
+      task: 'other',
+      startedAt: d0 + 9000,
+      hash: 'M2',
+    })
+
+    const trend = await analytics.getFlakeTrend(ws, 'app', 'e2e')
+    expect(trend.points.map((p) => p.t)).toEqual([d0, d1, d5])
+    const [p0, p1, p5] = trend.points
+    expect(p0).toEqual({ t: d0, runs: 5, failures: 2, retried: 0, mixedFailures: 2 })
+    expect(p1).toEqual({ t: d1, runs: 2, failures: 1, retried: 1, mixedFailures: 0 })
+    expect(p5).toEqual({ t: d5, runs: 1, failures: 0, retried: 0, mixedFailures: 0 })
+    expect(trend.episodes).toBe(3)
+    // Exact ms, not bucket starts.
+    expect(trend.firstSeenAt).toBe(d0 + 1000)
+    expect(trend.lastSeenAt).toBe(d1 + 2000)
+
+    // A hostile window clamps (MAX_WINDOW_DAYS) instead of scanning everything.
+    const clamped = await analytics.getFlakeTrend(ws, 'app', 'e2e', { sinceDays: 1e15 })
+    expect(clamped.episodes).toBeGreaterThanOrEqual(3)
+
+    // The foreign workspace sees nothing of ours.
+    const foreignTrend = await analytics.getFlakeTrend(foreign.ws, 'app', 'e2e')
+    expect(foreignTrend.episodes).toBe(0)
+  })
+
+  it('a healthy task yields zero episodes and null first/last seen', async () => {
+    const { org, ws } = await newOrgWs(db, 'flaketrend-healthy')
+    await insertTR(db, ws, org, {
+      runId: 'H1',
+      project: 'app',
+      task: 'build',
+      startedAt: Date.now() - HOUR,
+      hash: 'G',
+    })
+    const trend = await analytics.getFlakeTrend(ws, 'app', 'build')
+    expect(trend.points).toHaveLength(1)
+    expect(trend.episodes).toBe(0)
+    expect(trend.firstSeenAt).toBeNull()
+    expect(trend.lastSeenAt).toBeNull()
+  })
+})

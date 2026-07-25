@@ -4,6 +4,7 @@
     "cacheKey": "cacheKey",
     "config": "catalogTask",
     "flaky": "taskFlaky",
+    "flakeTrend": "taskFlakeTrend",
     "recommendations": "taskRecommendations",
     "trend": "taskTrend"
   },
@@ -47,6 +48,67 @@
           "$state": "/flakyStatus",
           "eq": "ok"
         }
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Flakiness trend",
+          "actionText": "episodes per day \u00b7 last 90d"
+        },
+        "visible": {
+          "$state": "/flakeTrendStatus",
+          "eq": "ok"
+        },
+        "children": [
+          {
+            "type": "Facts",
+            "props": {
+              "entry": {
+                "$state": "/flakeTrend"
+              },
+              "fields": [
+                {
+                  "key": "_firstSeen",
+                  "label": "first seen"
+                },
+                {
+                  "key": "_lastSeen",
+                  "label": "last episode"
+                },
+                {
+                  "key": "episodes",
+                  "label": "episodes (90d)",
+                  "kind": "count"
+                },
+                {
+                  "key": "direction",
+                  "label": "trend"
+                }
+              ]
+            }
+          },
+          {
+            "type": "LineChart",
+            "props": {
+              "rows": {
+                "$state": "/flakeTrend/series"
+              },
+              "xKey": "t",
+              "xFormat": "date",
+              "yFormat": "count",
+              "yMin": 0,
+              "height": 200,
+              "series": [
+                {
+                  "name": "episodes",
+                  "yKey": "episodes",
+                  "strokeClass": "stroke-warn",
+                  "areaClass": "fill-warn/10"
+                }
+              ]
+            }
+          }
+        ]
       },
       {
         "type": "Grid",

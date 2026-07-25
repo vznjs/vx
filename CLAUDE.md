@@ -208,6 +208,38 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-25**: **Scenario-driven wave 6 — the Flakiness-trend card closes
+  the dev-scenarios ranked list 7-for-7** (S4's minor gap: "is the flake
+  getting better or worse, when did it first appear?"). New
+  `Analytics.getFlakeTrend(ws, project, task, {sinceDays})` — ONE query: a
+  window CTE over the task's rows + a per-hash `BOOL_OR(pass)` CTE, bucketed
+  per day, counting `retried` (successes with `attempts > 1` — a FAILED run's
+  retries never count: a deterministic failure retried N times is not flake
+  evidence) and `mixedFailures` (failures whose key ALSO passed in the
+  window — a hit counts as a pass, the `mixedOutcomeKeys` rule; a
+  unique-key failure is a break and never counts), plus per-bucket
+  MIN/MAX episode timestamps so `firstSeenAt`/`lastSeenAt` are exact ms.
+  Both sides of the pairing are window-scoped (partition-pruned; "first
+  seen" honestly means within-window). Route `GET
+/v1/flake-trend?project=&task=&sinceDays=` (both required → 400,
+  `MAX_WINDOW_DAYS` clamp) + the `isAnalyticsSurface` allowlist (the
+  fall-through-to-SPA class, pinned in server e2e). **UI:** task detail
+  gains a "Flakiness trend" card under the flaky badge — Facts (first
+  seen, last episode, episodes, worsening/improving/steady) + a per-day
+  LineChart; `foldFlakeTrend` (jr/functions.ts, unit-pinned 4 ways) fills
+  gap days with 0 (a sparse series would lie about quiet stretches) and
+  derives direction from window halves; the source resolves null on a
+  healthy task / older serve / fetch error so the card hides. Pinned:
+  analytics matrix (bucket counts incl. hit-as-pass + failed-retries-not-
+  retried + pure-break exclusion, exact first/last ms, hostile-window
+  clamp, foreign-ws + same-ws-different-task decoys with the +1ms
+  idempotency-index offset), healthy-task nulls, server allowlist + 400.
+  Browser-verified on a seeded platform: flaky task renders card + chart +
+  "worsening" while the healthy control shows no card; zero console
+  errors. Docs: cloud/api.md route row + dashboard.md task-detail bullet;
+  the scenarios doc marks #4-#6 shipped. NO schema/wire/CACHE bump
+  (read-side only). The dev-scenarios ranked list is now fully shipped.
+
 - **2026-07-24**: **Scenario-driven wave 5 — triage verdicts on the GHA
   check/job summary** (dev-scenarios S3 follow-up, ranked #5: the PR page
   answers "is this failure mine?" without opening the dashboard). At flush,

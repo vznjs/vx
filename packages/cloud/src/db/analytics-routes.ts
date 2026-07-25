@@ -366,6 +366,17 @@ async function handleAnalyticsRequestInner(
     if (limit !== undefined) args.limit = limit
     return json({ tasks: await a.getProjectBranchFailures(ws, project, args) })
   }
+  if (p === '/v1/flake-trend') {
+    const project = q.get('project')
+    const task = q.get('task')
+    if (project === null || task === null) {
+      return json({ ok: false, error: 'project and task required' }, 400)
+    }
+    const args: { sinceDays?: number } = {}
+    const sinceDays = numParam(q.get('sinceDays'))
+    if (sinceDays !== undefined) args.sinceDays = sinceDays
+    return json(await a.getFlakeTrend(ws, project, task, args))
+  }
   if (p === '/v1/analysis') {
     const args: {
       windowDays?: number
