@@ -26,6 +26,7 @@ import {
   getCacheSavings,
   getCacheStats,
   getFailures,
+  getFlakeTrend,
   getFlakiest,
   getProjectBranchFailures,
   getProjectTaskTrends,
@@ -45,8 +46,13 @@ import {
   listProjects,
   listRuns,
 } from '../api.ts'
-import { formatSignedDuration } from '../format.ts'
-import { type Recommendation, computeRecommendations, detectSlowdowns } from './functions.ts'
+import { formatDate, formatRelativeTime, formatSignedDuration } from '../format.ts'
+import {
+  type Recommendation,
+  computeRecommendations,
+  detectSlowdowns,
+  foldFlakeTrend,
+} from './functions.ts'
 
 type P = Record<string, string>
 
@@ -563,6 +569,22 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   cacheKey: (p) => explainCacheKey(p.id ?? ''),
   // The flaky badge: non-null only when /v1/flakiness flags this task.
   taskFlaky: (p) => getFlakiest(100).then((ts) => ts.find((t) => t.id === p.id) ?? null),
+  // S4 flake trend: per-day nondeterminism episodes for THIS task, with
+  // first/last seen + direction. Null (card hidden) on a healthy task, an
+  // older serve (404), or any fetch problem.
+  taskFlakeTrend: async (p) => {
+    const [project = '', task = ''] = (p.id ?? '').split('#', 2)
+    if (project === '' || task === '') return null
+    const trend = await getFlakeTrend(project, task).catch(() => null)
+    if (trend === null) return null
+    const view = foldFlakeTrend(trend, Date.now())
+    if (view === null) return null
+    return {
+      ...view,
+      _firstSeen: formatDate(view.firstSeenAt),
+      _lastSeen: formatRelativeTime(view.lastSeenAt),
+    }
+  },
   catalogTask: async (p) => {
     const [project = '', task = ''] = (p.id ?? '').split('#', 2)
     if (project === '' || task === '') return null

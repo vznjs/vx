@@ -1091,6 +1091,31 @@ export async function getFlakiest(limit = 25): Promise<FlakyTask[]> {
   return r.tasks
 }
 
+export interface FlakeTrendPoint {
+  t: number
+  runs: number
+  failures: number
+  retried: number
+  mixedFailures: number
+}
+
+export interface FlakeTrendResponse {
+  points: FlakeTrendPoint[]
+  episodes: number
+  firstSeenAt: number | null
+  lastSeenAt: number | null
+}
+
+export async function getFlakeTrend(
+  project: string,
+  task: string,
+  sinceDays = 90,
+): Promise<FlakeTrendResponse> {
+  return getJson<FlakeTrendResponse>(
+    `/v1/flake-trend?project=${encodeURIComponent(project)}&task=${encodeURIComponent(task)}&sinceDays=${sinceDays}`,
+  )
+}
+
 export async function getBottlenecks(days = 14, limit = 15): Promise<BottleneckRow[]> {
   const r = await getJson<{ bottlenecks: BottleneckRow[] }>(
     `/v1/bottlenecks?days=${days}&limit=${limit}`,

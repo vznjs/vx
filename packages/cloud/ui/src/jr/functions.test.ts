@@ -9,6 +9,7 @@ import {
   computeRecommendations,
   countTone,
   detectSlowdowns,
+  foldFlakeTrend,
   distinctBranches,
   distinctCommits,
   filterInvocations,
@@ -437,5 +438,64 @@ describe('detectSlowdowns', () => {
 
   it('a task with no usable p50 is skipped', () => {
     expect(detectSlowdowns([h('a#t', undefined), h('b#t', 0)], [r('a', 't', 900, 1), r('b', 't', 900, 1)])).toHaveLength(0)
+  })
+})
+
+describe('foldFlakeTrend', () => {
+  const DAY = 86_400_000
+  const now = 200 * DAY + 5000 // fixed clock, mid-day
+  const today = Math.floor(now / DAY) * DAY
+  const pt = (t: number, retried = 0, mixedFailures = 0) => ({ t, retried, mixedFailures })
+
+  it('null when the window holds no episodes (healthy task → card hidden)', () => {
+    expect(foldFlakeTrend({ points: [pt(today)], episodes: 0, firstSeenAt: null, lastSeenAt: null }, now)).toBeNull()
+  })
+
+  it('fills gap days with 0 from the first observed bucket through today', () => {
+    const view = foldFlakeTrend(
+      {
+        points: [pt(today - 3 * DAY, 1, 0), pt(today, 0, 2)],
+        episodes: 3,
+        firstSeenAt: today - 3 * DAY + 500,
+        lastSeenAt: today + 100,
+      },
+      now,
+    )!
+    expect(view.series).toEqual([
+      { t: today - 3 * DAY, episodes: 1 },
+      { t: today - 2 * DAY, episodes: 0 },
+      { t: today - DAY, episodes: 0 },
+      { t: today, episodes: 2 },
+    ])
+    expect(view.episodes).toBe(3)
+    expect(view.firstSeenAt).toBe(today - 3 * DAY + 500)
+  })
+
+  it('direction: newer-half heavier = worsening, older-half heavier = improving, equal = steady', () => {
+    const old = today - 80 * DAY // firmly in the first half of a 90d window
+    const worsening = foldFlakeTrend(
+      { points: [pt(old, 1, 0), pt(today, 0, 3)], episodes: 4, firstSeenAt: old, lastSeenAt: today },
+      now,
+    )!
+    expect(worsening.direction).toBe('worsening')
+    const improving = foldFlakeTrend(
+      { points: [pt(old, 3, 0), pt(today, 0, 1)], episodes: 4, firstSeenAt: old, lastSeenAt: today },
+      now,
+    )!
+    expect(improving.direction).toBe('improving')
+    const steady = foldFlakeTrend(
+      { points: [pt(old, 0, 2), pt(today, 2, 0)], episodes: 4, firstSeenAt: old, lastSeenAt: today },
+      now,
+    )!
+    expect(steady.direction).toBe('steady')
+  })
+
+  it('an episode burst entirely in the recent half reads worsening (fresh flake)', () => {
+    const view = foldFlakeTrend(
+      { points: [pt(today - DAY, 2, 1)], episodes: 3, firstSeenAt: today - DAY, lastSeenAt: today - DAY },
+      now,
+    )!
+    expect(view.direction).toBe('worsening')
+    expect(view.series.at(-1)).toEqual({ t: today, episodes: 0 })
   })
 })

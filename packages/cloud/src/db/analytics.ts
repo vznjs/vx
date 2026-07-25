@@ -518,6 +518,26 @@ export interface FlakyTask {
   p99DurationMs: number | undefined
 }
 
+export interface FlakeTrendPoint {
+  /** Day-bucket start (epoch ms, UTC). Sparse — only days with runs appear. */
+  t: number
+  runs: number
+  failures: number
+  /** Successes that needed a within-run retry (the definitional flake). */
+  retried: number
+  /** Failures whose cache key ALSO succeeded inside the window. */
+  mixedFailures: number
+}
+
+export interface FlakeTrend {
+  points: FlakeTrendPoint[]
+  /** Total flaky episodes in the window (Σ retried + mixedFailures). */
+  episodes: number
+  /** Earliest / latest episode inside the window (exact ms, not bucketed). */
+  firstSeenAt: number | null
+  lastSeenAt: number | null
+}
+
 export interface RegressedTask {
   id: string
   project: string
@@ -2475,6 +2495,82 @@ export class Analytics {
         return score(b) - score(a)
       })
       .slice(0, clampInt(limit, 1, 200))
+  }
+
+  /**
+   * Per-day flaky-episode series for ONE task — the S4 "is the flake getting
+   * better or worse, and when did it first appear?" trend. An episode is a
+   * run exhibiting REAL nondeterminism evidence: a success that needed a
+   * within-run retry (`attempts > 1` — the definitional flake), or a failure
+   * whose cache key ALSO succeeded inside the window (the same signal
+   * `mixedOutcomeKeys` uses). A key that only ever failed is a break, not a
+   * flake — it never counts. Both sides of the mixed-key pairing are
+   * window-scoped so the scan stays partition-pruned; `firstSeenAt` is
+   * therefore "first seen within the window", which the UI states.
+   */
+  async getFlakeTrend(
+    workspaceId: string,
+    project: string,
+    task: string,
+    args: { sinceDays?: number } = {},
+  ): Promise<FlakeTrend> {
+    const dayMs = 86_400_000
+    const sinceDays = clampInt(args.sinceDays ?? 90, 1, MAX_WINDOW_DAYS)
+    const since = Date.now() - sinceDays * dayMs
+    const rows = await this.sql<
+      {
+        t: string
+        runs: number
+        failures: number
+        retried: number
+        mixed_failures: number
+        first_ep: string | null
+        last_ep: string | null
+      }[]
+    >`
+      WITH win AS (
+        SELECT started_at, status, attempts, hash, cache_hit FROM task_runs
+        WHERE workspace_id = ${workspaceId} AND project = ${project} AND task = ${task}
+          AND started_at >= ${since}
+      ),
+      keys AS (
+        SELECT hash,
+               BOOL_OR(status = 'success' OR status LIKE 'cache-hit%' OR cache_hit = true) AS has_pass
+        FROM win WHERE hash IS NOT NULL AND hash != '' GROUP BY hash
+      )
+      SELECT (w.started_at / ${dayMs}::bigint) * ${dayMs}::bigint AS t,
+             count(*)::int AS runs,
+             SUM(CASE WHEN w.status = 'failed' THEN 1 ELSE 0 END)::int AS failures,
+             SUM(CASE WHEN w.attempts > 1 AND w.status = 'success' THEN 1 ELSE 0 END)::int AS retried,
+             SUM(CASE WHEN w.status = 'failed' AND k.has_pass THEN 1 ELSE 0 END)::int AS mixed_failures,
+             MIN(w.started_at) FILTER (WHERE (w.attempts > 1 AND w.status = 'success')
+                                          OR (w.status = 'failed' AND k.has_pass)) AS first_ep,
+             MAX(w.started_at) FILTER (WHERE (w.attempts > 1 AND w.status = 'success')
+                                          OR (w.status = 'failed' AND k.has_pass)) AS last_ep
+      FROM win w LEFT JOIN keys k ON k.hash = w.hash
+      GROUP BY t ORDER BY t`
+    let episodes = 0
+    let firstSeenAt: number | null = null
+    let lastSeenAt: number | null = null
+    const points = rows.map((r) => {
+      episodes += r.retried + r.mixed_failures
+      if (r.first_ep !== null) {
+        const f = num(r.first_ep)
+        if (firstSeenAt === null || f < firstSeenAt) firstSeenAt = f
+      }
+      if (r.last_ep !== null) {
+        const l = num(r.last_ep)
+        if (lastSeenAt === null || l > lastSeenAt) lastSeenAt = l
+      }
+      return {
+        t: num(r.t),
+        runs: r.runs,
+        failures: r.failures,
+        retried: r.retried,
+        mixedFailures: r.mixed_failures,
+      }
+    })
+    return { points, episodes, firstSeenAt, lastSeenAt }
   }
 
   async getRegressions(workspaceId: string, args: RegressionArgs = {}): Promise<RegressedTask[]> {

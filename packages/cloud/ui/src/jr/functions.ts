@@ -584,3 +584,62 @@ export function detectSlowdowns(
   }
   return out.sort((a, b) => b.ratio - a.ratio).slice(0, 8)
 }
+
+/** One day of the flake-trend series the task-detail card charts. */
+export interface FlakeSeriesPoint {
+  t: number
+  episodes: number
+}
+
+export interface FlakeTrendView {
+  /** Continuous per-day series from the first observed bucket through today —
+   *  gap days render as 0 (a sparse series would lie about quiet stretches). */
+  series: FlakeSeriesPoint[]
+  episodes: number
+  firstSeenAt: number
+  lastSeenAt: number
+  /** Second half of the window vs the first: more episodes = worsening. */
+  direction: 'worsening' | 'improving' | 'steady'
+}
+
+const DAY_MS = 86_400_000
+
+/**
+ * Fold the `/v1/flake-trend` response into the display shape (dev-scenarios
+ * S4: "is the flake getting better or worse, when did it first appear?").
+ * Null when the window holds no episodes — a healthy task shows nothing
+ * rather than an all-zero chart.
+ */
+export function foldFlakeTrend(
+  trend: {
+    points: ReadonlyArray<{ t: number; retried: number; mixedFailures: number }>
+    episodes: number
+    firstSeenAt: number | null
+    lastSeenAt: number | null
+  },
+  nowMs: number,
+  windowDays = 90,
+): FlakeTrendView | null {
+  if (trend.episodes === 0 || trend.firstSeenAt === null || trend.lastSeenAt === null) return null
+  const byDay = new Map(trend.points.map((p) => [p.t, p.retried + p.mixedFailures]))
+  const start = trend.points[0]!.t
+  const end = Math.max(Math.floor(nowMs / DAY_MS) * DAY_MS, start)
+  const series: FlakeSeriesPoint[] = []
+  for (let t = start; t <= end; t += DAY_MS) series.push({ t, episodes: byDay.get(t) ?? 0 })
+  const mid = nowMs - (windowDays / 2) * DAY_MS
+  let older = 0
+  let newer = 0
+  for (const p of trend.points) {
+    const n = p.retried + p.mixedFailures
+    if (p.t >= mid) newer += n
+    else older += n
+  }
+  const direction = newer > older ? 'worsening' : newer < older ? 'improving' : 'steady'
+  return {
+    series,
+    episodes: trend.episodes,
+    firstSeenAt: trend.firstSeenAt,
+    lastSeenAt: trend.lastSeenAt,
+    direction,
+  }
+}

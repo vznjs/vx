@@ -432,6 +432,15 @@ describe('platform e2e (real pg + fake S3)', () => {
     expect(triage.status).toBe(200)
     expect(Array.isArray(((await triage.json()) as { rows: unknown[] }).rows)).toBe(true)
 
+    // /v1/flake-trend is allowlisted too — a session reaches analytics (JSON,
+    // not the SPA catch-all); missing params answer 400, not a fall-through.
+    const ft = await call('GET', '/v1/flake-trend?project=a&task=build', { cookie })
+    expect(ft.status).toBe(200)
+    const ftBody = (await ft.json()) as { points: unknown[]; episodes: number }
+    expect(Array.isArray(ftBody.points)).toBe(true)
+    expect(ftBody.episodes).toBe(0)
+    expect((await call('GET', '/v1/flake-trend?project=a', { cookie })).status).toBe(400)
+
     // The notification feed reads as a session surface (allowlisted, not the
     // machine-only ingest path): a green run produces no notification.
     const none = await call('GET', '/v1/notifications', { cookie })
