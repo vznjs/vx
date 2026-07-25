@@ -208,6 +208,37 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-24**: **Scenario-driven wave 1 — the dev-scenarios catalog + FAILURE
+  TRIAGE on run detail ("is this failure mine?")** (owner: "create development
+  scenarios… assess your or its effect, debug failures flakiness… then look for
+  ideas and solutions and implement"). `docs/design/dev-scenarios-2026-07.md`
+  walks eight real-life monorepo moments (morning triage, pre-flight cost, red
+  PR, flake war, shape-over-time, rank-among-peers, cache hygiene, team lens),
+  maps each to the data needed vs the shipping surfaces, and ranks the gaps.
+  **#1 SHIPPED — batched failure triage:** `GET /v1/triage/:runId` classifies
+  every FAILED task of a run in ONE query (`Analytics.triageRun`): `flaky`
+  (the SAME cache key succeeded in other runs — nondeterminism, not this
+  change), `pre-existing` (the default branch's LATEST run of the task is also
+  failing — inherited; trunk-ness via an EXISTS against `invocations.branch =
+default_branch`, never a row-multiplying join, so re-pushed duplicate headers
+  can't skew it), or `new-failure` (first failure of this key; `keyChanged`
+  from the why-panel's prev-run LATERAL says whether this run altered the
+  inputs). Precedence: flaky beats pre-existing (nondeterminism evidence beats
+  the inherited-break explanation — pinned). Run detail gains a "Failed-task
+  triage" card (dots map `triage`: new-failure red / flaky amber / pre-existing
+  accent; evidence sentence + a `see run` link to the trunk/previous run; the
+  `runTriage` source resolves null on a no-failure run so the card hides).
+  Allowlisted in `isAnalyticsSurface` (the fall-through-to-SPA class, pinned in
+  server e2e). Verified: analytics-read triage matrix (5 verdicts incl. the
+  precedence + a foreign-ws decoy at +1ms — the `(started_at, run_id, project,
+task)` idempotency index is table-wide, a byte-identical decoy collides),
+  server e2e 32 pass, REAL-browser check (platform + built SPA + Chromium via
+  the ingest wire: all three verdicts + evidence render, zero console errors).
+  Docs: cloud/api.md route row + dashboard.md run-detail card. NO
+  schema/wire/CACHE bump (read-side only). **Ranked next (from the doc):**
+  pinned "my projects" personal scope; the "got slower" detector on Insights;
+  `--dry` duration prediction; triage verdicts on the GHA check.
+
 - **2026-07-24**: **Two diverged arcs reconciled — the platform arc WINS the
   tree; the astryx dashboard rewrite is PARKED as the design-port target**
   (owner: "Fix it all", landing PR #155). A PR-branch session (fenced to

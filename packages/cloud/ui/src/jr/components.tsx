@@ -67,13 +67,16 @@ function interpolateRaw(tpl: string, row: Row): string {
   return tpl.replace(/\{(\w+)\}/g, (_m, f) => String(row[f] ?? ''))
 }
 
-type DotMap = 'palette' | 'failureMode' | 'delta' | 'keyChanged'
+type DotMap = 'palette' | 'failureMode' | 'delta' | 'keyChanged' | 'triage'
 function colorOf(map: DotMap, v: unknown): string {
   if (map === 'failureMode') return v === 'stable' ? 'success' : v === 'flaky-recoverable' ? 'warn' : 'danger'
   // Semantic delta colors — faster is GOOD (green), slower BAD (red); a
   // hash-palette here made slower/faster arbitrary, unstable colors.
   if (map === 'delta') return v === 'faster' ? 'success' : v === 'slower' ? 'danger' : v === 'new' ? 'accent' : v === 'gone' ? 'warn' : 'faint'
   if (map === 'keyChanged') return v === 'changed' ? 'warn' : 'faint'
+  // Failure triage: a NEW failure is probably yours (red); flaky is a known
+  // hazard (amber); pre-existing is inherited — informational, not blame.
+  if (map === 'triage') return v === 'new-failure' ? 'danger' : v === 'flaky' ? 'warn' : 'accent'
   return paletteFor(String(v))
 }
 

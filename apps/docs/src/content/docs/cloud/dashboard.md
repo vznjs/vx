@@ -147,7 +147,13 @@ successors.
 - **Run detail** — a per-task table (CPU + peak RSS + hash), a
   **graph / flame toggle** (the dependency graph view needs a colocated
   workspace to reconstruct edges, so on the platform the card
-  auto-falls back to the **flamegraph** timeline), and a
+  auto-falls back to the **flamegraph** timeline), a
+  **failed-task triage** card answering "is this failure mine?" for every
+  failed task — **flaky** (the same cache key succeeded in other runs),
+  **already broken** (the default branch's latest run of the task also
+  fails — inherited), or **new failure** (first failure of this key, noting
+  whether this run changed the task's inputs) — each with a link to the
+  evidence run, and a
   **"why did this re-run?"** card naming
   the exact cache-key components that changed since the previous run.
   Select a task to open its panel — including the task's **captured log

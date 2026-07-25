@@ -159,6 +159,7 @@ segment is a 400. Limits shown as `default/max` where the code clamps.
 | `/v1/explain/:taskId` | The task's cache-key composition. |
 | `/v1/why/:runId` | **Batched**: every executed task's re-run verdict (first run / inputs changed / ran uncached) in one round-trip. |
 | `/v1/why/:runId/:taskId` | One task's re-run verdict. |
+| `/v1/triage/:runId` | **Batched failure triage**: every failed task's "is this failure mine?" verdict — `flaky` (the same cache key succeeded in other runs), `pre-existing` (the default branch's latest run of the task also fails), or `new-failure` (first failure of this key; `keyChanged` says whether this run altered the inputs) — with evidence run ids. |
 | `/v1/diff/:runId/:taskId` | Cache-key component diff vs the previous run. |
 
 `taskId` path segments are `project#task`, URL-encoded (`app%23build`).

@@ -780,6 +780,34 @@ export async function fetchRunWhy(runId: string): Promise<WhyRunRow[]> {
   }
 }
 
+/** One failed task's triage verdict — the batched `/v1/triage/:runId` row. */
+export interface TriageRow {
+  taskId: string
+  project: string
+  task: string
+  verdict: 'flaky' | 'pre-existing' | 'new-failure'
+  sameKeySuccesses: number
+  defaultBranchFailing: boolean
+  defaultBranchRunId: string | null
+  keyChanged: boolean | null
+  previousRunId: string | null
+}
+
+/**
+ * Batched failure triage — "is this failure mine?" for every failed task of a
+ * run. Returns null when the run has no failures (the card hides) and on an
+ * older serve that lacks the route (404), so the panel degrades cleanly.
+ */
+export async function fetchRunTriage(runId: string): Promise<TriageRow[] | null> {
+  try {
+    const r = await getJson<{ rows: TriageRow[] }>(`/v1/triage/${encodeURIComponent(runId)}`)
+    return r.rows.length === 0 ? null : r.rows
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('404')) return null
+    throw err
+  }
+}
+
 /**
  * Diff a run against the immediately-previous invocation: per-task duration /
  * status / cache-key deltas. Always resolves (a missing/no-previous run is a

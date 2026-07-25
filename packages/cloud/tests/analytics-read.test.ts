@@ -597,6 +597,139 @@ describe('getPeriodComparison', () => {
   })
 })
 
+describe('triageRun', () => {
+  it('classifies each failed task: flaky / pre-existing / new-failure', async () => {
+    const { org, ws } = await newOrgWs(db, 'triage')
+    const now = Date.now()
+    // T0 (oldest trunk run): svc#both succeeded on key X.
+    await insertINV(db, ws, org, {
+      runId: 'T0',
+      startedAt: now - 6 * HOUR,
+      branch: 'main',
+      defaultBranch: 'main',
+    })
+    await insertTR(db, ws, org, {
+      runId: 'T0',
+      project: 'svc',
+      task: 'both',
+      hash: 'X',
+      startedAt: now - 6 * HOUR,
+    })
+    // T1 (latest trunk run): flappy green on F, broken FAILED on B1, solid
+    // green on S1, both FAILED on X2.
+    await insertINV(db, ws, org, {
+      runId: 'T1',
+      startedAt: now - 5 * HOUR,
+      branch: 'main',
+      defaultBranch: 'main',
+      failedCount: 2,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'T1',
+      project: 'svc',
+      task: 'flappy',
+      hash: 'F',
+      startedAt: now - 5 * HOUR,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'T1',
+      project: 'svc',
+      task: 'broken',
+      hash: 'B1',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now - 5 * HOUR,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'T1',
+      project: 'svc',
+      task: 'solid',
+      hash: 'S1',
+      startedAt: now - 5 * HOUR,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'T1',
+      project: 'svc',
+      task: 'both',
+      hash: 'X2',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now - 5 * HOUR,
+    })
+    // PR1 (the triaged run, a feature branch): five failures + one success.
+    await insertINV(db, ws, org, {
+      runId: 'PR1',
+      startedAt: now - HOUR,
+      branch: 'feat',
+      defaultBranch: 'main',
+      failedCount: 5,
+    })
+    const pr = (t: Omit<TR, 'runId' | 'startedAt'>) =>
+      insertTR(db, ws, org, { runId: 'PR1', startedAt: now - HOUR, ...t })
+    await pr({ project: 'svc', task: 'flappy', hash: 'F', status: 'failed', exitCode: 1 })
+    await pr({ project: 'svc', task: 'broken', hash: 'B2', status: 'failed', exitCode: 1 })
+    await pr({ project: 'svc', task: 'solid', hash: 'S2', status: 'failed', exitCode: 1 })
+    await pr({ project: 'svc', task: 'fresh', hash: 'N1', status: 'failed', exitCode: 1 })
+    await pr({ project: 'svc', task: 'both', hash: 'X', status: 'failed', exitCode: 1 })
+    await pr({ project: 'svc', task: 'green', hash: 'G1' })
+    // Decoy: a FOREIGN workspace with the same runId + a green same-key row —
+    // must never leak into this workspace's verdicts.
+    const foreign = await newOrgWs(db, 'triage-decoy')
+    // +1ms: the (started_at, run_id, project, task) idempotency index is
+    // table-wide, so a byte-identical decoy would collide with the real row.
+    await insertTR(db, foreign.ws, foreign.org, {
+      runId: 'PR1',
+      project: 'svc',
+      task: 'flappy',
+      hash: 'F',
+      startedAt: now - HOUR + 1,
+    })
+
+    const rows = await analytics.triageRun(ws, 'PR1')
+    // Only the FAILED tasks, ordered by (project, task).
+    expect(rows.map((r) => r.taskId)).toEqual([
+      'svc#both',
+      'svc#broken',
+      'svc#flappy',
+      'svc#fresh',
+      'svc#solid',
+    ])
+    const byId = new Map(rows.map((r) => [r.taskId, r]))
+
+    // flappy: same key F succeeded on trunk → flaky (decoy ws not counted).
+    const flappy = byId.get('svc#flappy')!
+    expect(flappy.verdict).toBe('flaky')
+    expect(flappy.sameKeySuccesses).toBe(1)
+
+    // broken: unique key, but trunk's LATEST run of the task also failed.
+    const broken = byId.get('svc#broken')!
+    expect(broken.verdict).toBe('pre-existing')
+    expect(broken.defaultBranchFailing).toBe(true)
+    expect(broken.defaultBranchRunId).toBe('T1')
+
+    // solid: key changed vs its previous run, trunk is green → new failure.
+    const solid = byId.get('svc#solid')!
+    expect(solid.verdict).toBe('new-failure')
+    expect(solid.keyChanged).toBe(true)
+    expect(solid.previousRunId).toBe('T1')
+    expect(solid.defaultBranchFailing).toBe(false)
+
+    // fresh: no history at all → new failure, keyChanged unknown.
+    const fresh = byId.get('svc#fresh')!
+    expect(fresh.verdict).toBe('new-failure')
+    expect(fresh.keyChanged).toBeNull()
+    expect(fresh.previousRunId).toBeNull()
+
+    // both: trunk latest failed AND a same-key success exists → flaky WINS
+    // (nondeterminism evidence beats the inherited-break explanation).
+    expect(byId.get('svc#both')!.verdict).toBe('flaky')
+
+    // The foreign workspace triages independently: its lone PR1 row is green,
+    // so it has nothing to triage.
+    expect(await analytics.triageRun(foreign.ws, 'PR1')).toEqual([])
+  })
+})
+
 describe('getRegressions', () => {
   it('surfaces a task failing on >= minBranches branches that used to pass', async () => {
     const { org, ws } = await newOrgWs(db, 'regress')
