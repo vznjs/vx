@@ -728,6 +728,77 @@ describe('triageRun', () => {
     // so it has nothing to triage.
     expect(await analytics.triageRun(foreign.ws, 'PR1')).toEqual([])
   })
+
+  it('a re-pushed run yields ONE row per task, never a self-referencing previous', async () => {
+    const { org, ws } = await newOrgWs(db, 'triage-repush')
+    const now = Date.now()
+    // The REAL previous run: key A, success.
+    await insertTR(db, ws, org, {
+      runId: 'P0',
+      project: 'app',
+      task: 'build',
+      hash: 'A',
+      startedAt: now - 2 * HOUR,
+    })
+    // The triaged run fails on key B — then its summary is RE-PUSHED with a
+    // shifted startedAt, duplicating BOTH the header and the task row (the
+    // (started_at, run_id, project, task) idempotency key moves with it).
+    await insertINV(db, ws, org, { runId: 'R', startedAt: now - HOUR, failedCount: 1 })
+    await insertTR(db, ws, org, {
+      runId: 'R',
+      project: 'app',
+      task: 'build',
+      hash: 'B',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now - HOUR,
+    })
+    await insertINV(db, ws, org, { runId: 'R', startedAt: now - HOUR + 60_000, failedCount: 1 })
+    await insertTR(db, ws, org, {
+      runId: 'R',
+      project: 'app',
+      task: 'build',
+      hash: 'B',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now - HOUR + 60_000,
+    })
+    const rows = await analytics.triageRun(ws, 'R')
+    // ONE row (not one per duplicate copy) whose previous run is the REAL
+    // prior run — not the triaged run's own later/earlier copy.
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.previousRunId).toBe('P0')
+    expect(rows[0]!.keyChanged).toBe(true)
+    expect(rows[0]!.verdict).toBe('new-failure')
+  })
+
+  it('an empty hash is never key evidence: no fabricated flaky, keyChanged null', async () => {
+    const { org, ws } = await newOrgWs(db, 'triage-nohash')
+    const now = Date.now()
+    // A hashless success then a hashless failure — same '' "key". Without the
+    // guard this read as flaky (sameKeySuccesses 1) with keyChanged false.
+    await insertTR(db, ws, org, {
+      runId: 'N0',
+      project: 'app',
+      task: 'test',
+      hash: '',
+      startedAt: now - 2 * HOUR,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'N1',
+      project: 'app',
+      task: 'test',
+      hash: '',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now - HOUR,
+    })
+    const rows = await analytics.triageRun(ws, 'N1')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.verdict).toBe('new-failure')
+    expect(rows[0]!.sameKeySuccesses).toBe(0)
+    expect(rows[0]!.keyChanged).toBeNull()
+  })
 })
 
 describe('getRegressions', () => {
@@ -1426,6 +1497,24 @@ describe('getNotifications', () => {
     expect(notes).toHaveLength(1)
     expect([...notes[0]!.failingProjects].sort()).toEqual(['checkout', 'orders'])
   })
+
+  it('a re-pushed broken run surfaces ONCE, not once per duplicate header', async () => {
+    const { org, ws } = await newOrgWs(db, 'notif-repush')
+    const now = Date.now()
+    await insertINV(db, ws, org, { runId: 'NR', startedAt: now - HOUR, failedCount: 1 })
+    await insertINV(db, ws, org, { runId: 'NR', startedAt: now - HOUR + 60_000, failedCount: 1 })
+    await insertTR(db, ws, org, {
+      runId: 'NR',
+      project: 'web',
+      task: 'test',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now - HOUR,
+    })
+    const notes = await analytics.getNotifications(ws)
+    expect(notes.filter((n) => n.runId === 'NR')).toHaveLength(1)
+    expect(notes[0]!.failingProjects).toEqual(['web'])
+  })
 })
 
 describe('getFlakeTrend', () => {
@@ -1530,5 +1619,31 @@ describe('getFlakeTrend', () => {
     expect(trend.episodes).toBe(0)
     expect(trend.firstSeenAt).toBeNull()
     expect(trend.lastSeenAt).toBeNull()
+  })
+
+  it('a re-pushed run counts as ONE data point, not one per duplicate row', async () => {
+    const { org, ws } = await newOrgWs(db, 'flaketrend-repush')
+    const d = Math.floor((Date.now() - 3 * DAY) / DAY) * DAY
+    // One retried success, re-pushed +60s: same run_id, two rows, same day.
+    await insertTR(db, ws, org, {
+      runId: 'RP',
+      project: 'app',
+      task: 'e2e',
+      hash: 'K',
+      attempts: 2,
+      startedAt: d + 1000,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'RP',
+      project: 'app',
+      task: 'e2e',
+      hash: 'K',
+      attempts: 2,
+      startedAt: d + 61_000,
+    })
+    const trend = await analytics.getFlakeTrend(ws, 'app', 'e2e')
+    expect(trend.points).toHaveLength(1)
+    expect(trend.points[0]).toEqual({ t: d, runs: 1, failures: 0, retried: 1, mixedFailures: 0 })
+    expect(trend.episodes).toBe(1)
   })
 })
