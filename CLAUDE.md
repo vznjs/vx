@@ -208,6 +208,38 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-24**: **Scenario-driven wave 4 — plan-time duration prediction on
+  `vx run --dry`** (dev-scenarios S2, ranked #4: "what will this change cost
+  CI?"). The plan predicted WHAT runs but never HOW LONG. Now `PlannedTask`
+  gains `p50Ms` (the task's typical executed duration — the SAME
+  `LocalHistoryProvider` p50 the opt-in predictive scheduler reads) and
+  `RunPlan.predicted = { wallMs, workMs, unknownCount }`: `wallMs` is the
+  longest dependency chain of would-run cost via one pass over a Kahn topo
+  order (NO recursion — a deep chain must not overflow; the CORE-1 lesson),
+  `workMs` the sum; hits + groups cost 0 (a restore is near-instant next to
+  execution), a would-run task with no history costs 0 and is COUNTED
+  (`unknownCount`) so the totals are honest lower bounds. `planRun` injects
+  the provider (`prepared.localCache.dbHandle()`); `plan()` takes it as an
+  optional `history` arg and FAILS OPEN (a history error yields a plan
+  without prediction — `--dry` never breaks). The 2026-07-14 lookahead
+  verdict ("don't put the ~280ms loadFor on the DEFAULT run path") is
+  respected: the read rides ONLY the explicit `--dry` inspection command.
+  Text output: `~p50` per would-run line + a `predicted: ~Xs wall · ~Ys
+total execution [· N tasks without history (+?)]` footer, OMITTED when
+  nothing would run or every would-run task is unknown (an all-noise
+  prediction says nothing). JSON: additive `p50Ms` + `predicted`. Contract
+  widening: `PlanPrediction` + `formatDuration` exported from
+  orchestrator/index.ts (p50s come from SUCCESS runs only, so a
+  failed-attempt history predicts nothing — observed live: the first
+  recorded run failed and the plan stayed honest). Pinned: 4 formatter
+  cases (eta on would-run only, footer, unknown note, both omissions) + a
+  JSON fields case + a planRun e2e with RELATIONAL assertions only (wallMs
+  = chain sum, workMs = total sum over the plan's own p50s — recorded
+  durations vary with load, so absolute pins would flake). Docs: cli.md
+  planning-mode section. NO CACHE/SCHEMA/wire bump (read-side presentation
+  of existing history). Remaining from the ranked list: triage verdicts on
+  the GHA check; flake trend.
+
 - **2026-07-24**: **Scenario-driven wave 3 — the "Got slower" detector on
   Insights** (dev-scenarios S5, ranked #3). The shape-over-time surfaces were
   all passive (trends/movers/sparklines you must go read); this is the active
