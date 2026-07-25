@@ -30,7 +30,7 @@ import {
   getTaskLog,
 } from '../api.ts'
 import { HBar, Heatmap as HeatmapPrimitive, LineChart as LineChartPrimitive, Treemap as TreemapPrimitive } from '../components/charts.tsx'
-import { Card as UiCard, EmptyState, LoadError, MetricCard, SegmentedToggle, SkeletonRows, StatusBadge } from '../components/ui.tsx'
+import { Card as UiCard, EmptyState, LoadError, MetricCard, PinStarButton, SegmentedToggle, SkeletonRows, StatusBadge } from '../components/ui.tsx'
 import { Flamegraph as FlamegraphPrimitive, flameEdgesOf } from '../components/Flamegraph.tsx'
 import { criticalPath } from '../components/critical-path.ts'
 import { RunGraph as RunGraphPrimitive, type RunGraphNode } from '../components/RunGraph.tsx'
@@ -121,7 +121,7 @@ function ChartSkeleton(props: { height?: number }) {
 
 // --- Layout -----------------------------------------------------------------
 
-export function Page(c: C<{ title?: string; subtitle?: string; backHref?: string; backLabel?: string; dotColor?: string; mono?: boolean }>) {
+export function Page(c: C<{ title?: string; subtitle?: string; backHref?: string; backLabel?: string; dotColor?: string; mono?: boolean; pinProject?: string }>) {
   return (
     <div class="flex flex-col gap-5">
       <Show when={c.props.backHref}>
@@ -133,6 +133,9 @@ export function Page(c: C<{ title?: string; subtitle?: string; backHref?: string
             <span class={`inline-block w-2 h-2 rounded-full ${DOT_BG[c.props.dotColor!] ?? 'bg-accent'}`} />
           </Show>
           <h1 class={`text-base font-semibold m-0 ${c.props.mono ? 'font-mono' : ''}`}>{c.props.title}</h1>
+          <Show when={c.props.pinProject}>
+            <PinStarButton project={c.props.pinProject!} size="md" />
+          </Show>
         </div>
       </Show>
       <Show when={!c.props.backHref && (c.props.title || c.props.subtitle)}>
@@ -451,7 +454,7 @@ export function RunViz(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string
 
 // --- DataTable --------------------------------------------------------------
 
-type CellKind = 'text' | 'mono' | 'muted' | 'faint' | FormatHint | 'cpuPct' | 'status' | 'cache' | 'projtask' | 'bar' | 'dots' | 'shorthash' | 'link' | 'download'
+type CellKind = 'text' | 'mono' | 'muted' | 'faint' | FormatHint | 'cpuPct' | 'status' | 'cache' | 'projtask' | 'bar' | 'dots' | 'shorthash' | 'link' | 'download' | 'pin'
 interface ToneRule {
   gt?: number
   lt?: number
@@ -539,6 +542,8 @@ function renderField(col: Column, row: Row, max: number) {
         </button>
       )
     }
+    case 'pin':
+      return <PinStarButton project={String(row[col.projectKey ?? 'project'] ?? '')} />
     case 'projtask':
       return (
         <span>

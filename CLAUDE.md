@@ -208,6 +208,34 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-24**: **Scenario-driven wave 2 — pinned "my projects", the
+  personal lens** (dev-scenarios S1, ranked #2; owner arc: "as a developer…
+  owning some of the projects… what information do you need"). A dev owning 2
+  of 1,800 projects can now STAR them: `ui/src/pins.ts` (module-scope signal
+  over api.ts persistence, `vx-ui:pins:<origin>|<workspace>` — the
+  notification-watermark pattern, this browser only). Affordances:
+  `PinStarButton` (ui.tsx) beside the project-detail title (Page gains a
+  `pinProject` prop), a `pin` DataTable column kind leading the Projects
+  table, and in each strip chip. **The Runs landing gains a "My projects"
+  strip**: one `/v1/branch-failures` probe per pin (bounded by pin count, 30s
+  visibility-aware) → red "N failing · M branches" or green, each chip
+  linking to the drill-in; zero pins renders a one-line hint at the star.
+  **The bell floats runs that broke YOUR projects first**:
+  `getNotifications` now returns `failingProjects` per run (a LATERAL
+  json_agg over the run's failed task_runs — JSON, not a pg array, so the
+  driver hands back string[]; workspace-clamped, decoy-pinned in
+  analytics-read), and the client orders mine-first with a star mark
+  (additive field — older serve → no reordering). **UnoCSS gotcha logged:**
+  presetIcons rules set width/height but NO display, so an icon span outside
+  a flex container collapses to 0×0 (every prior icon sat in a flex parent by
+  luck) — PinStarButton is `inline-flex` with a comment saying why. Verified
+  in a REAL browser end-to-end (star from table → drill-in star → strip
+  failing state → bell mine-first with an OLDER pinned-project run floating
+  above a newer foreign one → unpin returns the hint; zero console errors).
+  NO schema/wire/CACHE bump (read-side additive). Remaining from the doc's
+  ranked list: "got slower" on Insights, `--dry` duration prediction, triage
+  verdicts on the GHA check.
+
 - **2026-07-24**: **Flamegraph redesign — fitted, honest, readable** (owner:
   "The flame graphs are very unreadable and ugly"). Three root causes fixed in
   the shipping run-detail flame: (1) **the empty canvas** — RunViz wrapped both

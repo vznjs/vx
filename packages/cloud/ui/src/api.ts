@@ -1741,6 +1741,8 @@ export interface NotificationItem {
   commitSha: string | null
   failedCount: number
   taskCount: number
+  /** Projects with failed tasks in the run — absent on an older serve. */
+  failingProjects?: string[]
 }
 
 const NOTIF_SEEN_PREFIX = 'vx-ui:notif-seen'
@@ -1758,6 +1760,35 @@ export function getNotificationsSeenAt(): number {
 
 export function markNotificationsSeen(at: number = Date.now()): void {
   if (typeof localStorage !== 'undefined') localStorage.setItem(notifSeenKey(), String(at))
+}
+
+// ---------------------------------------------------------------------------
+// Pinned projects ("my projects") — the personal lens. A dev owning 2 of
+// 1,800 projects stars the ones that are theirs; pins scope the Runs landing
+// strip and float their runs first in the notification bell. Persisted like
+// the notification watermark: per origin+workspace, this browser only.
+// ---------------------------------------------------------------------------
+
+const PINS_PREFIX = 'vx-ui:pins'
+
+function pinsKey(): string {
+  return `${PINS_PREFIX}:${origin()}|${workspace()}`
+}
+
+export function getPinnedProjects(): string[] {
+  if (typeof localStorage === 'undefined') return []
+  try {
+    const v = JSON.parse(localStorage.getItem(pinsKey()) ?? '[]') as unknown
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+export function setPinnedProjects(pins: readonly string[]): void {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(pinsKey(), JSON.stringify([...new Set(pins)]))
+  }
 }
 
 export async function fetchNotifications(limit = 20): Promise<NotificationItem[]> {

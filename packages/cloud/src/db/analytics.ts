@@ -222,6 +222,9 @@ export interface NotificationItem {
   commitSha: string | null
   failedCount: number
   taskCount: number
+  /** Projects with failed tasks in the run — lets the client scope the feed
+   *  to a dev's pinned "my projects" set. */
+  failingProjects: string[]
 }
 
 export interface ListInvocationsArgs {
@@ -1523,6 +1526,9 @@ export class Analytics {
    * client computes the unread count from a last-seen watermark.
    */
   async getNotifications(workspaceId: string, limit = 20): Promise<NotificationItem[]> {
+    // failing_projects rides a LATERAL json_agg over the run's failed task
+    // rows — bounded by the feed's own LIMIT, and JSON (not a pg array) so the
+    // driver hands back a parsed string[] without array-literal parsing.
     const rows = await this.sql<
       {
         run_id: string
@@ -1531,12 +1537,20 @@ export class Analytics {
         commit_sha: string | null
         failed_count: number
         task_count: number
+        failing_projects: string[] | null
       }[]
     >`
-      SELECT run_id, started_at, branch, commit_sha, failed_count, task_count
-      FROM invocations
-      WHERE workspace_id = ${workspaceId} AND failed_count > 0
-      ORDER BY started_at DESC LIMIT ${clampInt(limit, 1, 100)}`
+      SELECT i.run_id, i.started_at, i.branch, i.commit_sha, i.failed_count, i.task_count,
+             fp.projects AS failing_projects
+      FROM invocations i
+      LEFT JOIN LATERAL (
+        SELECT json_agg(DISTINCT t.project) AS projects
+        FROM task_runs t
+        WHERE t.workspace_id = i.workspace_id AND t.run_id = i.run_id
+          AND t.status = 'failed'
+      ) fp ON true
+      WHERE i.workspace_id = ${workspaceId} AND i.failed_count > 0
+      ORDER BY i.started_at DESC LIMIT ${clampInt(limit, 1, 100)}`
     return rows.map((r) => ({
       kind: 'run-failed',
       runId: r.run_id,
@@ -1545,6 +1559,7 @@ export class Analytics {
       commitSha: r.commit_sha,
       failedCount: r.failed_count,
       taskCount: r.task_count,
+      failingProjects: Array.isArray(r.failing_projects) ? r.failing_projects : [],
     }))
   }
 

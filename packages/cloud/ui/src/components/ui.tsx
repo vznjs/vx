@@ -5,6 +5,7 @@
 
 import { For, type JSX, Show } from 'solid-js'
 import { STATUS, toVizState } from './status.tsx'
+import { isPinned, togglePin } from '../pins.ts'
 
 export function Card(props: {
   title?: string
@@ -148,5 +149,38 @@ export function StatusBadge(props: { status: string; cacheHit?: boolean | null }
       <span class={`${viz().icon} text-[11px]`} aria-hidden="true" />
       {viz().label}
     </span>
+  )
+}
+
+/**
+ * The pin star — the "my projects" toggle. Filled amber when pinned, faint
+ * outline otherwise; stops propagation so it works inside clickable rows.
+ */
+export function PinStarButton(props: { project: string; size?: 'sm' | 'md' }) {
+  return (
+    <button
+      type="button"
+      // inline-flex is load-bearing: the icon rule sets width/height but no
+      // display, so outside a flex context the inline span collapses to 0×0.
+      class="inline-flex items-center justify-center bg-transparent border-0 p-0.5 cursor-pointer leading-none align-middle"
+      classList={{
+        'text-warn hover:brightness-110': isPinned(props.project),
+        'text-fg-3 hover:text-warn': !isPinned(props.project),
+      }}
+      title={isPinned(props.project) ? 'Unpin from my projects' : 'Pin to my projects'}
+      aria-label={`${isPinned(props.project) ? 'Unpin' : 'Pin'} ${props.project}`}
+      aria-pressed={isPinned(props.project)}
+      onClick={(e) => {
+        e.stopPropagation()
+        e.preventDefault()
+        togglePin(props.project)
+      }}
+    >
+      <span
+        class={isPinned(props.project) ? 'i-tabler-star-filled' : 'i-tabler-star'}
+        classList={{ 'text-[13px]': props.size !== 'md', 'text-[16px]': props.size === 'md' }}
+        aria-hidden="true"
+      />
+    </button>
   )
 }

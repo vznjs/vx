@@ -26,7 +26,10 @@
       "title": {
         "$state": "/params/name"
       },
-      "mono": true
+      "mono": true,
+      "pinProject": {
+        "$state": "/params/name"
+      }
     },
     "children": [
       {
