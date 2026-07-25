@@ -147,7 +147,9 @@ successors.
 - **Run detail** — a per-task table (CPU + peak RSS + hash), a
   **graph / flame toggle** (the dependency graph view needs a colocated
   workspace to reconstruct edges, so on the platform the card
-  auto-falls back to the **flamegraph** timeline), a
+  auto-falls back to the **flamegraph** timeline — and when a run recorded
+  no per-task timeline, the flame switches to honest duration bars, longest
+  first, instead of drawing a fabricated timeline), a
   **failed-task triage** card answering "is this failure mine?" for every
   failed task — **flaky** (the same cache key succeeded in other runs),
   **already broken** (the default branch's latest run of the task also

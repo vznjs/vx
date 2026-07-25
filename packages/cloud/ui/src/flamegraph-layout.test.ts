@@ -6,8 +6,16 @@
 import { describe, expect, it } from 'bun:test'
 import { layout, type LayoutInput } from './flamegraph-layout.ts'
 
-function mk(id: string, startNs: number, endNs: number): LayoutInput {
-  return { taskId: id, project: id.split('#')[0]!, startNs, endNs, status: 'success', cacheHit: false }
+function mk(id: string, startNs: number, endNs: number, durationMs?: number): LayoutInput {
+  return {
+    taskId: id,
+    project: id.split('#')[0]!,
+    startNs,
+    endNs,
+    durationMs: durationMs ?? Math.max(0, endNs - startNs),
+    status: 'success',
+    cacheHit: false,
+  }
 }
 
 /** Assert no two bars share a lane AND overlap horizontally. */
@@ -71,6 +79,46 @@ describe('flamegraph layout — no overlap', () => {
   })
 
   it('empty input is empty', () => {
-    expect(layout([])).toEqual({ bars: [], lanes: [], totalNs: 0 })
+    expect(layout([])).toEqual({ bars: [], lanes: [], totalNs: 0, mode: 'timeline' })
+  })
+})
+
+describe('flamegraph layout — honest durations fallback', () => {
+  it('switches to duration bars when every span is the (fabricated) run window', () => {
+    // Ingest without per-task timing anchors every task on the run's span:
+    // three tasks all "spanning" 0..1000 while their recorded durations say
+    // 120 / 480 / 60. A timeline would draw three identical full-width bars.
+    const input = [
+      mk('a#build', 0, 1000, 120),
+      mk('b#test', 0, 1000, 480),
+      mk('c#lint', 0, 1000, 60),
+    ]
+    const l = layout(input)
+    expect(l.mode).toBe('durations')
+    expect(l.totalNs).toBe(480) // axis = the longest duration
+    // One lane per task, longest first: b (480) → a (120) → c (60).
+    const byId = new Map(l.bars.map((b) => [b.taskId, b]))
+    expect(byId.get('b#test')!.lane).toBe(0)
+    expect(byId.get('a#build')!.lane).toBe(1)
+    expect(byId.get('c#lint')!.lane).toBe(2)
+    // Left-aligned, width proportional to the RECORDED duration.
+    for (const b of l.bars) expect(b.leftPct).toBe(0)
+    expect(byId.get('b#test')!.widthPct).toBe(100)
+    expect(byId.get('a#build')!.widthPct).toBeCloseTo(25, 5)
+    expect(byId.get('c#lint')!.widthPct).toBeCloseTo(12.5, 5)
+    // bars stay 1:1 with input order (the component indexes props.tasks by i).
+    expect(l.bars.map((b) => b.taskId)).toEqual(['a#build', 'b#test', 'c#lint'])
+  })
+
+  it('keeps the timeline when full-window spans are REAL (durations match)', () => {
+    // Two tasks that genuinely ran in parallel for the whole window — the
+    // timeline (two full bars on two lanes) is the truth, not a fabrication.
+    const input = [mk('a#t', 0, 1000, 1000), mk('b#t', 0, 1000, 990)]
+    expect(layout(input).mode).toBe('timeline')
+  })
+
+  it('keeps the timeline for a real staggered run', () => {
+    const input = [mk('a#t', 0, 400, 400), mk('b#t', 400, 1000, 600)]
+    expect(layout(input).mode).toBe('timeline')
   })
 })

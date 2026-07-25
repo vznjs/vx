@@ -192,11 +192,17 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
       const dir = await addProject(
         fixture.root,
         'srv',
+        // lived.txt is written BEFORE the readiness marker on purpose: the
+        // moment 'Listening' matches, the run completes and SIGTERMs the
+        // persistent child — writing after the marker raced that teardown
+        // (under runner load the kill landed first and the file never
+        // appeared; flaked CI at ~150ms). The success assertions below carry
+        // the "timer didn't kill a healthy server" meaning either way.
         `export default {
           tasks: {
             dev: {
               exec: {
-                command: 'echo Listening on :3000 && echo lived > lived.txt && sleep 30',
+                command: 'echo lived > lived.txt && echo Listening on :3000 && sleep 30',
                 timeout: 5000,
                 persistent: { readyWhen: 'Listening' },
               },

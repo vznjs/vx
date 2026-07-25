@@ -401,25 +401,27 @@ export function RunViz(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string
           </span>
         </Show>
       </div>
-      <div class="h-[460px] w-full">
+      {/* Flame sizes to its lane count (bounded, scrolls past 460px) — a fixed
+          box here painted a large empty canvas under short runs. The graph
+          keeps the fixed height its pan/zoom canvas needs. */}
+      <div class="w-full">
         <Show when={view() === 'flame'}>
-          <div class="h-full p-1">
-            <Show when={rows().length > 0} fallback={<EmptyState title="No tasks" />}>
-              <FlamegraphPrimitive tasks={rows()} selectedId={selectedId()} highlightIds={criticalSet()} edges={flameEdges()} onSelect={(t) => setSelected(t)} />
-            </Show>
-          </div>
+          <Show when={rows().length > 0} fallback={<EmptyState title="No tasks" />}>
+            <FlamegraphPrimitive tasks={rows()} selectedId={selectedId()} highlightIds={criticalSet()} edges={flameEdges()} onSelect={(t) => setSelected(t)} />
+          </Show>
         </Show>
         <Show when={view() === 'graph'}>
-          <Show when={!graph.loading} fallback={<div class="p-6 text-fg-3 text-sm">Resolving graph…</div>}>
-            <Show
-              when={nodes().length > 0}
-              fallback={
-                <EmptyState
-                  title="Graph unavailable on this serve"
-                  hint="The dependency graph is rebuilt from a colocated workspace — start vx-cloud serve in the project. The Flame view works from recorded timings."
-                />
-              }
-            >
+          <div class="h-[460px]">
+            <Show when={!graph.loading} fallback={<div class="p-6 text-fg-3 text-sm">Resolving graph…</div>}>
+              <Show
+                when={nodes().length > 0}
+                fallback={
+                  <EmptyState
+                    title="Graph unavailable on this serve"
+                    hint="The dependency graph is rebuilt from a colocated workspace — start vx-cloud serve in the project. The Flame view works from recorded timings."
+                  />
+                }
+              >
               <RunGraphPrimitive
                 nodes={nodes()}
                 stateOf={stateOf}
@@ -438,8 +440,9 @@ export function RunViz(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string
                   if (r) setSelected(r)
                 }}
               />
+              </Show>
             </Show>
-          </Show>
+          </div>
         </Show>
       </div>
     </div>
