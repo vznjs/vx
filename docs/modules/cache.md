@@ -195,9 +195,13 @@ inputs:<n>\n
 `hex(HASH("blob " + byteLength + "\0" + content))` in the repo's
 object format (sha1 unless the repo uses `--object-format=sha256`).
 The OID arrives from `CacheKeyInput.fileHashes` when the run's bulk
-`git ls-files -s` harvested it (clean tracked files — no I/O at all),
-otherwise from `Cache.hashFile`, which computes the identical value
-in-process behind the `file_hashes` mtime+size memo. `<relPath>` is
+`git ls-files -s` harvested it AND the path survived the trust prunes
+(clean per `git status`, not `skip-worktree`/`assume-unchanged`, and
+not subject to a `text`/`eol`/`ident` clean filter — see "Clean
+filters" in `docs/caching.md`) — no I/O at all. Every other path goes
+to `Cache.hashFile`, which hashes the WORKTREE bytes in-process behind
+the `file_hashes` `(mtime, size, ctime, ino)` memo; that is the same
+value the index holds whenever no filter applies. `<relPath>` is
 the POSIX-relative path from `workspaceRoot` (so cache keys are
 stable across platforms).
 
