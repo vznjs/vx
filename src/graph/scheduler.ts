@@ -8,8 +8,10 @@ export type TaskStatus =
   | 'failed'
   | 'skipped'
   // A child killed by a shutdown signal (SIGINT/SIGTERM — e.g. Ctrl-C):
-  // the task never finished on its own terms, so it reverts to
-  // aborted — not counted, not shown (the run is tearing down).
+  // the task never finished on its own terms, so it reverts to aborted —
+  // excluded from the tally and the run history. It still PROPAGATES like
+  // a failure (see `willSkip`): the child died mid-write, so its outputs
+  // are partial.
   | 'aborted'
 
 /**
@@ -148,8 +150,8 @@ export interface ScheduleOptions {
   concurrency: number
   /**
    * Failure propagation (default 'deps-ok' — the historical behavior):
-   *   - 'deps-ok': a failed/skipped upstream skips its dependents;
-   *     independent siblings keep running.
+   *   - 'deps-ok': a failed/skipped/aborted upstream skips its
+   *     dependents; independent siblings keep running.
    *   - 'never': the first failure stops dispatch — in-flight tasks
    *     finish naturally, everything not yet started completes as
    *     skipped (restore-tier included: a fail-fast run stops
@@ -523,7 +525,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     }
 
     // True when the task would be finished as `skipped` without running
-    // (fail-fast tripped, or a failed/skipped upstream under
+    // (fail-fast tripped, or a failed/skipped/aborted upstream under
     // continueMode !== 'always'). ONE predicate shared by the admission
     // parker and the dispatch loop's skip branch — a would-skip task
     // executes nothing, so it must never park on a resource fit (a
@@ -541,7 +543,13 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       const node = nodes.get(id) as TaskNode
       return node.deps.some((d) => {
         const u = outcomes.get(d)
-        return u?.status === 'failed' || u?.status === 'skipped'
+        // `aborted` propagates even though it is counted nowhere: the
+        // upstream was killed mid-write, so its declared outputs are
+        // partial. A dependent that ran anyway would CACHE what it built
+        // from them — under the key a healthy run derives, since the fold
+        // takes the upstream's INPUT key — so the next run replays those
+        // bytes as a green hit.
+        return u?.status === 'failed' || u?.status === 'skipped' || u?.status === 'aborted'
       })
     }
 

@@ -1444,7 +1444,7 @@ describe('formatRunReportMarkdown', () => {
     expect(md).toContain('| web#test | skipped | — | 0ms |')
   })
 
-  it('excludes aborted tasks from totals and the table', () => {
+  it('keeps aborted tasks out of the totals but still names them', () => {
     const md = formatRunReportMarkdown({
       ok: true,
       outcomes: [
@@ -1452,8 +1452,12 @@ describe('formatRunReportMarkdown', () => {
         { taskId: 'web#dev', status: 'aborted', exitCode: 143, durationMs: 99 },
       ],
     })
+    // Aborted did no work, so it joins no outcome bucket and no total. It is
+    // still named: a run carrying one exits non-zero, and a report that shows
+    // only green rows leaves that red undiagnosable.
     expect(md).toContain('**1 task**')
-    expect(md).not.toContain('web#dev')
+    expect(md).toContain('1 aborted')
+    expect(md).toContain('| web#dev | aborted | — | 99ms |')
   })
 
   it('escapes pipes and newlines so a hostile task name cannot break the table', () => {

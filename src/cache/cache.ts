@@ -86,7 +86,17 @@ import { extractOutputs, parseTarHeaders, readTarText } from './tar.js'
 // dropped from both the restore and the output_files index. Neither is
 // self-healing: the stored bytes/headers are already wrong, so without a
 // new namespace the fixed code would keep replaying them forever.
-const CACHE_VERSION = 'vx-cache-v25'
+// v26: same situation, different producer. A task whose child was killed by
+// a shutdown signal reported `aborted`, but `aborted` did not propagate to
+// dependents — so a dependent ran against PARTIAL outputs, succeeded, and
+// cached what it built. The fold takes the upstream's INPUT key, which a
+// signal does not change, so that entry sits under exactly the key a healthy
+// run derives and replays forever as a green hit. Fixing the propagation
+// stops new poison but cannot reach entries already written, and a
+// `LayeredCache` uploads them, so the reach is a whole team's shared cache
+// rather than one developer's disk. Pre-alpha, so one cold rebuild is the
+// cheap side of that trade.
+const CACHE_VERSION = 'vx-cache-v26'
 // SCHEMA history (drop+recreate on mismatch; pre-alpha, no migrations):
 //   v20: file_hashes.content_hash (git blob OIDs).
 //   v21: dropped the unused outputs_hash column (pure-input hashing).

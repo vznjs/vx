@@ -309,6 +309,27 @@ export function formatRunSummary(
   )
 }
 
+/**
+ * Post-summary section naming the tasks a shutdown signal killed. An aborted
+ * task did no work, so it is in no tally bucket and no history row — but the
+ * run still exits non-zero, and without this the user reads a red exit over a
+ * fully green summary that names nothing. The interactive Ctrl-C path never
+ * gets here (the signal handler exits before any outcome lands), so this only
+ * ever prints for a run that reached its summary WITH a task killed by some
+ * other signal — an external `kill`, a supervisor, a self-terminating child.
+ * Empty when nothing aborted.
+ */
+export function formatAbortedSection(outcomes: readonly TaskOutcome[]): string[] {
+  const aborted = outcomes.filter((o) => o.status === 'aborted')
+  if (aborted.length === 0) return []
+  const lines = [
+    '',
+    `  Aborted:  ${aborted.length} task${aborted.length === 1 ? '' : 's'} killed by a shutdown signal — not counted above`,
+  ]
+  for (const o of aborted) lines.push(`    ✗ ${o.node.id} — exit ${o.exitCode}, nothing cached`)
+  return lines
+}
+
 export function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`
   return `${(ms / 1000).toFixed(2)}s`

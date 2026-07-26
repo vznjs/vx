@@ -36,6 +36,14 @@ const failed = (n: TaskNode): TaskOutcome => ({
   hash: `h-${n.id}`,
 })
 
+const aborted = (n: TaskNode): TaskOutcome => ({
+  node: n,
+  status: 'aborted',
+  exitCode: 143,
+  durationMs: 0,
+  hash: `h-${n.id}`,
+})
+
 describe('runGraph', () => {
   it('returns immediately on an empty graph', async () => {
     const out = await runGraph({
@@ -110,6 +118,29 @@ describe('runGraph', () => {
     })
     expect(out.get('a#build')?.status).toBe('failed')
     expect(out.get('b#build')?.status).toBe('skipped')
+  })
+
+  it('skips dependents of an aborted task', async () => {
+    // An aborted child was killed mid-write, so its declared outputs are
+    // partial. A dependent that ran anyway would cache what it built from
+    // them under the key a healthy run derives — a stale hit next run.
+    const out = await runGraph({
+      nodes: nodes(node('a#build'), node('b#build', ['a#build'])),
+      concurrency: 4,
+      execute: async (n) => (n.id === 'a#build' ? aborted(n) : success(n)),
+    })
+    expect(out.get('a#build')?.status).toBe('aborted')
+    expect(out.get('b#build')?.status).toBe('skipped')
+  })
+
+  it('an aborted task does not skip independent siblings', async () => {
+    const out = await runGraph({
+      nodes: nodes(node('a#run'), node('b#run')),
+      concurrency: 4,
+      execute: async (n) => (n.id === 'a#run' ? aborted(n) : success(n)),
+    })
+    expect(out.get('a#run')?.status).toBe('aborted')
+    expect(out.get('b#run')?.status).toBe('success')
   })
 
   it('continues independent siblings after one fails', async () => {
@@ -527,6 +558,21 @@ describe('runGraph — continueMode', () => {
     expect(out.get('p#b')!.status).toBe('success')
     expect(seenUpstream[0]![0]!.status).toBe('failed')
     expect(seenUpstream[0]![0]!.hash).toBe('h-p#a')
+  })
+
+  it('always: an aborted upstream still lets dependents run — documented, unchanged', async () => {
+    // `always` opts out of dep-status propagation entirely, aborted
+    // included. Same provenance argument as the failed case above.
+    const a = node('p#a')
+    const b = node('p#b', ['p#a'])
+    const out = await runGraph({
+      nodes: nodes(a, b),
+      concurrency: 2,
+      continueMode: 'always',
+      execute: async (n) => (n.id === 'p#a' ? aborted(n) : success(n)),
+    })
+    expect(out.get('p#a')!.status).toBe('aborted')
+    expect(out.get('p#b')!.status).toBe('success')
   })
 })
 

@@ -10,10 +10,10 @@ import type { OutcomeView } from './events.js'
 
 /**
  * Outcome buckets for the report header. Mirrors the terminal summary's
- * `tallyOutcomes` partition (success counts hits; `aborted` is no work
- * and excluded), but derives from the serializable `OutcomeView` the CLI
- * holds after a run rather than the in-process `TaskOutcome` — so it
- * needs no graph back-ref and stays self-contained here.
+ * `tallyOutcomes` partition (success counts hits; `aborted` is no work and
+ * so joins no bucket and no total), but derives from the serializable
+ * `OutcomeView` the CLI holds after a run rather than the in-process
+ * `TaskOutcome` — so it needs no graph back-ref and stays self-contained here.
  */
 interface ReportTally {
   total: number
@@ -21,6 +21,9 @@ interface ReportTally {
   failed: number
   skipped: number
   cached: number
+  /** Killed by a shutdown signal. Counted apart so a red report that has no
+   *  failing row still says why — the run reports `failed` either way. */
+  aborted: number
   /** Wall-clock ms summed over tasks that actually executed (misses). */
   executedMs: number
   /** Wall-clock ms summed over cache hits — the work the cache skipped. */
@@ -34,13 +37,18 @@ function tally(outcomes: readonly OutcomeView[]): ReportTally {
     failed: 0,
     skipped: 0,
     cached: 0,
+    aborted: 0,
     executedMs: 0,
     savedMs: 0,
   }
   for (const o of outcomes) {
-    // A child killed by a shutdown signal (Ctrl-C teardown) is no work —
-    // excluded from totals and every bucket, like the terminal tally.
-    if (o.status === 'aborted') continue
+    // A child killed by a shutdown signal is no work — kept out of totals
+    // and every outcome bucket, like the terminal tally, but still counted
+    // so the header can name it.
+    if (o.status === 'aborted') {
+      t.aborted++
+      continue
+    }
     t.total++
     switch (o.status) {
       case 'success':
@@ -122,6 +130,7 @@ export function formatRunReportMarkdown(result: RunResult): string {
     `${t.cached} cached`,
   ]
   if (t.skipped > 0) parts.push(`${t.skipped} skipped`)
+  if (t.aborted > 0) parts.push(`${t.aborted} aborted`)
   parts.push(`${fmtDuration(t.executedMs)} total`)
   if (t.savedMs > 0) parts.push(`${fmtDuration(t.savedMs)} saved`)
 
@@ -133,7 +142,6 @@ export function formatRunReportMarkdown(result: RunResult): string {
   lines.push('| Task | Status | Cache | Duration |')
   lines.push('| --- | --- | --- | --- |')
   for (const o of result.outcomes) {
-    if (o.status === 'aborted') continue
     lines.push(
       `| ${cell(o.taskId)} | ${cell(statusWord(o))} | ${cell(cacheWord(o))} | ${cell(
         fmtDuration(o.durationMs),

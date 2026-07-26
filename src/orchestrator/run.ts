@@ -59,7 +59,7 @@ const EMPTY_SHORT_CIRCUIT: ShortCircuit = { preProbed: new Map(), restoreTier: n
  */
 const PERSISTENT_SHUTDOWN_GRACE_MS = 2000
 import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
-import { formatRunSummary } from './summary.js'
+import { formatAbortedSection, formatRunSummary } from './summary.js'
 import type { RunOptions, RunSummary } from './options.js'
 
 /**
@@ -269,19 +269,34 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     const runStartHrTimeNs = process.hrtime.bigint()
     const endedAtMsAtStart = Date.now()
     const remoteCacheEnabled = cache instanceof LayeredCache
-    const policy: CachePolicy = options.cache ?? FULL_CACHE_POLICY
+    // The remote axes are inert without a remote layer to serve them: a
+    // `remote:w` policy over a bare local cache writes NOWHERE, yet the
+    // write axis read as on — so tasks cleaned their outputs before every
+    // exec for a save that never happened, and `--verify` went on to clean
+    // them AGAIN and restore an artifact that was never written (wiping a
+    // successful build's tree and reporting it failed). Normalise ONCE
+    // here so every consumer — the verify gate, execute-task, the dedup
+    // predicate, the recorded invocation row — reads the policy that
+    // actually governed the run.
+    const requestedPolicy: CachePolicy = options.cache ?? FULL_CACHE_POLICY
+    const policy: CachePolicy = prepared.hasRemoteLayer
+      ? requestedPolicy
+      : { ...requestedPolicy, remoteRead: false, remoteWrite: false }
 
-    // `--verify` observes the miss-then-save path, so a policy with NO write
-    // axis (`--no-cache`, `--cache=local:,remote:`) verifies nothing — every
-    // task would come back green with zero verdicts. The user asked for a
-    // proof; silently skipping it is the one failure mode verification must
-    // never have (same platform-honesty rule as the sandbox-unavailable
-    // error). `--force --verify` is the supported re-verify-warm recipe.
+    // `--verify` observes the miss-then-save path, so a policy with NO
+    // EFFECTIVE write axis (`--no-cache`, `--cache=local:,remote:`, or a
+    // remote-only write policy with no remote layer to serve it) verifies
+    // nothing — every task would come back green with zero verdicts. The user
+    // asked for a proof; silently skipping it is the one failure mode
+    // verification must never have (same platform-honesty rule as the
+    // sandbox-unavailable error). `--force --verify` re-verifies a warm graph.
     if (options.verify !== undefined && !policy.localWrite && !policy.remoteWrite) {
       prepared.cache.close()
       throw new UserError(
         '--verify needs cache writes to prove anything (it verifies the save path); ' +
-          'drop --no-cache, or use --force --verify to re-execute and verify a warm graph',
+          'drop --no-cache, use --force --verify to re-execute and verify a warm graph, ' +
+          'or — for a remote-only write policy — configure a remote cache ' +
+          '(the remote axes do nothing without one)',
       )
     }
 
@@ -655,6 +670,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       for (const line of formatPersistentList(keepAliveNodes, colors)) log.status(line)
     }
     for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
+    // A task killed by a shutdown signal is in no bucket above, yet it makes
+    // `ok` false — name it, or the red exit is undiagnosable.
+    for (const line of formatAbortedSection(list)) log.status(line)
     if (options.verify !== undefined) {
       for (const line of formatVerifySection(list)) log.status(line)
       // A fingerprint-only run attaches no verdicts, so the verdict-driven
