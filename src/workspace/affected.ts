@@ -112,11 +112,20 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  if (proc.exitCode !== 0) {
+  if (proc.exitCode === 0) return
+  // `--verify --quiet` exits 1 for "that ref does not exist" and 128 for
+  // "git could not run here at all" (not a repository, corrupt objects,
+  // permissions). Reporting the second as a ref problem sends you hunting
+  // for a branch name when the real fault is the repository — so only exit
+  // 1 gets the ref message; anything else surfaces what git actually said.
+  const stderr = new TextDecoder().decode(proc.stderr).trim()
+  if (proc.exitCode !== 1) {
     throw new UserError(
-      `git ref "${ref}" did not resolve. Pass a branch or commit you have locally.`,
+      `git rev-parse failed (exit ${proc.exitCode}) in ${workspaceRoot}` +
+        (stderr.length > 0 ? `: ${stderr}` : ''),
     )
   }
+  throw new UserError(`git ref "${ref}" did not resolve. Pass a branch or commit you have locally.`)
 }
 
 function projectsContaining(
